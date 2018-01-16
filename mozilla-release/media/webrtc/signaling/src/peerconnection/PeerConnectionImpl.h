@@ -24,6 +24,12 @@
 #include "nsPIDOMWindow.h"
 #include "nsIUUIDGenerator.h"
 #include "nsIThread.h"
+#include "mozilla/Mutex.h"
+
+// Work around nasty macro in webrtc/voice_engine/voice_engine_defines.h
+#ifdef GetLastError
+#undef GetLastError
+#endif
 
 #include "signaling/src/jsep/JsepSession.h"
 #include "signaling/src/jsep/JsepSessionImpl.h"
@@ -31,6 +37,7 @@
 
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/PeerConnectionImplEnumsBinding.h"
+#include "mozilla/dom/RTCPeerConnectionBinding.h" // mozPacketDumpType, maybe move?
 #include "PrincipalChangeObserver.h"
 #include "StreamTracks.h"
 
@@ -48,7 +55,6 @@ class AFakePCObserver;
 #endif
 }
 
-class nsGlobalWindow;
 class nsDOMDataChannel;
 
 namespace mozilla {
@@ -318,13 +324,13 @@ public:
   // (used directly by unit-tests, and indirectly by the JS entry point)
   // This is necessary because RTCConfiguration can't be used by unit-tests
   nsresult Initialize(PeerConnectionObserver& aObserver,
-                      nsGlobalWindow* aWindow,
+                      nsGlobalWindowInner* aWindow,
                       const PeerConnectionConfiguration& aConfiguration,
                       nsISupports* aThread);
 
   // Initialize PeerConnection from an RTCConfiguration object (JS entrypoint)
   void Initialize(PeerConnectionObserver& aObserver,
-                  nsGlobalWindow& aWindow,
+                  nsGlobalWindowInner& aWindow,
                   const RTCConfiguration& aConfiguration,
                   nsISupports* aThread,
                   ErrorResult &rv);
@@ -464,6 +470,24 @@ public:
                                const nsAString& aRid)
   {
     rv = AddRIDFilter(aRecvTrack, aRid);
+  }
+
+  // test-only
+  NS_IMETHODIMP_TO_ERRORRESULT(EnablePacketDump, ErrorResult& rv,
+                               unsigned long level,
+                               dom::mozPacketDumpType type,
+                               bool sending)
+  {
+    rv = EnablePacketDump(level, type, sending);
+  }
+
+  // test-only
+  NS_IMETHODIMP_TO_ERRORRESULT(DisablePacketDump, ErrorResult& rv,
+                               unsigned long level,
+                               dom::mozPacketDumpType type,
+                               bool sending)
+  {
+    rv = DisablePacketDump(level, type, sending);
   }
 
   nsresult GetPeerIdentity(nsAString& peerIdentity)
@@ -626,6 +650,12 @@ public:
 
   void OnMediaError(const std::string& aError);
 
+  bool ShouldDumpPacket(size_t level, dom::mozPacketDumpType type,
+                        bool sending) const;
+
+  void DumpPacket_m(size_t level, dom::mozPacketDumpType type, bool sending,
+                    UniquePtr<uint8_t[]>& packet, size_t size);
+
 private:
   virtual ~PeerConnectionImpl();
   PeerConnectionImpl(const PeerConnectionImpl&rhs);
@@ -771,6 +801,8 @@ private:
   mozilla::UniquePtr<mozilla::JsepSession> mJsepSession;
   std::string mPreviousIceUfrag; // used during rollback of ice restart
   std::string mPreviousIcePwd; // used during rollback of ice restart
+  unsigned long mIceRestartCount;
+  unsigned long mIceRollbackCount;
 
   // Start time of ICE, used for telemetry
   mozilla::TimeStamp mIceStartTime;
@@ -797,20 +829,29 @@ private:
   uint16_t mMaxSending[SdpMediaSection::kMediaTypes];
 
   // DTMF
-  struct DTMFState {
-    PeerConnectionImpl* mPeerConnectionImpl;
-    nsCOMPtr<nsITimer> mSendTimer;
-    nsString mTrackId;
-    nsString mTones;
-    size_t mLevel;
-    uint32_t mDuration;
-    uint32_t mInterToneGap;
+  class DTMFState : public nsITimerCallback {
+      virtual ~DTMFState();
+    public:
+      DTMFState();
+
+      NS_DECL_NSITIMERCALLBACK
+      NS_DECL_THREADSAFE_ISUPPORTS
+
+      PeerConnectionImpl* mPeerConnectionImpl;
+      nsCOMPtr<nsITimer> mSendTimer;
+      nsString mTrackId;
+      nsString mTones;
+      size_t mLevel;
+      uint32_t mDuration;
+      uint32_t mInterToneGap;
   };
 
-  static void
-  DTMFSendTimerCallback_m(nsITimer* timer, void*);
+  nsTArray<RefPtr<DTMFState>> mDTMFStates;
 
-  nsTArray<DTMFState> mDTMFStates;
+  std::vector<unsigned> mSendPacketDumpFlags;
+  std::vector<unsigned> mRecvPacketDumpFlags;
+  Atomic<bool> mPacketDumpEnabled;
+  mutable Mutex mPacketDumpFlagsMutex;
 
 public:
   //these are temporary until the DataChannel Listen/Connect API is removed

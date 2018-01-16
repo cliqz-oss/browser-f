@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -19,10 +20,11 @@ class VRLayerParent : public PVRLayerParent {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VRLayerParent)
 
 public:
-  VRLayerParent(uint32_t aVRDisplayID, const Rect& aLeftEyeRect,
-                const Rect& aRightEyeRect, const uint32_t aGroup);
-  virtual mozilla::ipc::IPCResult RecvSubmitFrame(PTextureParent* texture,
-                                                  const uint64_t& aFrameId) override;
+  VRLayerParent(uint32_t aVRDisplayID, const uint32_t aGroup);
+  virtual mozilla::ipc::IPCResult RecvSubmitFrame(const layers::SurfaceDescriptor &aTexture,
+                                                  const uint64_t& aFrameId,
+                                                  const gfx::Rect& aLeftEyeRect,
+                                                  const gfx::Rect& aRightEyeRect) override;
   virtual mozilla::ipc::IPCResult RecvDestroy() override;
   uint32_t GetDisplayID() const { return mVRDisplayID; }
   uint32_t GetGroup() const { return mGroup; }
@@ -35,10 +37,13 @@ protected:
   bool mIPCOpen;
 
   uint32_t mVRDisplayID;
-  gfx::IntSize mSize;
   gfx::Rect mLeftEyeRect;
   gfx::Rect mRightEyeRect;
   uint32_t mGroup;
+
+private:
+  void SubmitFrame(VRDisplayHost* aDisplay, const layers::SurfaceDescriptor& aTexture,
+                   uint64_t aFrameId, const gfx::Rect& aLeftEyeRect, const gfx::Rect& aRightEyeRect);
 };
 
 } // namespace gfx

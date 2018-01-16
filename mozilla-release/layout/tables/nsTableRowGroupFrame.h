@@ -8,7 +8,7 @@
 #include "mozilla/Attributes.h"
 #include "nscore.h"
 #include "nsContainerFrame.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsILineIterator.h"
 #include "nsTArray.h"
 #include "nsTableFrame.h"
@@ -60,7 +60,7 @@ public:
     }
   }
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   /** @see nsIFrame::DidSetStyleContext */
   virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;

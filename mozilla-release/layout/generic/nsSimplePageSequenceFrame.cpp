@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -829,7 +830,7 @@ nsSimplePageSequenceFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 {
   DisplayBorderBackgroundOutline(aBuilder, aLists);
 
-  nsDisplayList content;
+  nsDisplayList content(aBuilder);
 
   {
     // Clear clip state while we construct the children of the
@@ -838,17 +839,18 @@ nsSimplePageSequenceFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     clipState.Clear();
 
     nsIFrame* child = PrincipalChildList().FirstChild();
-    nsRect dirty = aBuilder->GetDirtyRect();
-    dirty.ScaleInverseRoundOut(PresContext()->GetPrintPreviewScale());
+    nsRect visible = aBuilder->GetVisibleRect();
+    visible.ScaleInverseRoundOut(PresContext()->GetPrintPreviewScale());
 
     while (child) {
-      if (child->GetVisualOverflowRectRelativeToParent().Intersects(dirty)) {
+      if (child->GetVisualOverflowRectRelativeToParent().Intersects(visible)) {
         nsDisplayListBuilder::AutoBuildingDisplayList
           buildingForChild(aBuilder, child,
-                           dirty - child->GetPosition(),
+                           visible - child->GetPosition(),
+                           visible - child->GetPosition(),
                            aBuilder->IsAtRootOfPseudoStackingContext());
         child->BuildDisplayListForStackingContext(aBuilder, &content);
-        aBuilder->ResetMarkedFramesForDisplayList();
+        aBuilder->ResetMarkedFramesForDisplayList(this);
       }
       child = child->GetNextSibling();
     }

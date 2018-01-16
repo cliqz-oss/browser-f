@@ -15,10 +15,13 @@
 #include "mozilla/PodOperations.h"
 
 #include "jsalloc.h"
-#include "jsgc.h"
 #include "jspubtd.h"
+#include "NamespaceImports.h"
 
+#include "gc/GCEnum.h"
 #include "js/GCAPI.h"
+#include "js/SliceBudget.h"
+#include "js/UniquePtr.h"
 #include "js/Vector.h"
 #include "vm/JSONPrinter.h"
 
@@ -55,6 +58,9 @@ struct ZoneGCStats
     /* Number of zones collected in this GC. */
     int collectedZoneCount;
 
+    /* Number of zones that could have been collected in this GC. */
+    int collectableZoneCount;
+
     /* Total number of zones in the Runtime at the start of this GC. */
     int zoneCount;
 
@@ -70,12 +76,13 @@ struct ZoneGCStats
     /* Total number of compartments swept by this GC. */
     int sweptCompartmentCount;
 
-    bool isCollectingAllZones() const { return collectedZoneCount == zoneCount; }
+    bool isFullCollection() const {
+        return collectedZoneCount == collectableZoneCount;
+    }
 
-    ZoneGCStats()
-      : collectedZoneCount(0), zoneCount(0), sweptZoneCount(0),
-        collectedCompartmentCount(0), compartmentCount(0), sweptCompartmentCount(0)
-    {}
+    ZoneGCStats() {
+        mozilla::PodZero(this);
+    }
 };
 
 #define FOR_EACH_GC_PROFILE_TIME(_)                                           \
@@ -310,6 +317,7 @@ struct Statistics
     /* GC numbers as of the beginning of the collection. */
     uint64_t startingMinorGCNumber;
     uint64_t startingMajorGCNumber;
+    uint64_t startingSliceNumber;
 
     /* Records the maximum GC pause in an API-controlled interval (in us). */
     mutable TimeDuration maxPauseInInterval;

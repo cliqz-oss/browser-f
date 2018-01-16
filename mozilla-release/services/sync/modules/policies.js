@@ -36,7 +36,7 @@ function getThrottledIntervalPreference(prefName) {
 this.SyncScheduler = function SyncScheduler(service) {
   this.service = service;
   this.init();
-}
+};
 SyncScheduler.prototype = {
   _log: Log.repository.getLogger("Sync.SyncScheduler"),
 
@@ -110,7 +110,7 @@ SyncScheduler.prototype = {
 
   },
   set numClients(value) {
-    throw new Error("Don't set numClients - the clients engine manages it.")
+    throw new Error("Don't set numClients - the clients engine manages it.");
   },
 
   init: function init() {
@@ -175,7 +175,7 @@ SyncScheduler.prototype = {
 
         let sync_interval;
         this.updateGlobalScore();
-        if (this.globalScore > 0) {
+        if (this.globalScore > 0 && Status.service == STATUS_OK) {
           // The global score should be 0 after a sync. If it's not, items were
           // changed during the last sync, and we should schedule an immediate
           // follow-up sync.
@@ -578,7 +578,7 @@ SyncScheduler.prototype = {
 this.ErrorHandler = function ErrorHandler(service) {
   this.service = service;
   this.init();
-}
+};
 ErrorHandler.prototype = {
   MINIMUM_ALERT_INTERVAL_MSEC: 604800000,   // One week.
 
@@ -635,8 +635,8 @@ ErrorHandler.prototype = {
         }
         break;
       case "weave:engine:sync:error": {
-        let exception = subject;  // exception thrown by engine's sync() method
-        let engine_name = data;   // engine name that threw the exception
+        let exception = subject; // exception thrown by engine's sync() method
+        let engine_name = data; // engine name that threw the exception
 
         this.checkServerError(exception);
 
@@ -751,7 +751,7 @@ ErrorHandler.prototype = {
     try {
       addons = await AddonManager.getAddonsByTypes(["extension"]);
     } catch (e) {
-      this._log.warn("Failed to dump addons", e)
+      this._log.warn("Failed to dump addons", e);
     }
 
     let relevantAddons = addons.filter(x => x.isActive && !x.hidden);

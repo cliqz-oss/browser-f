@@ -322,7 +322,8 @@ enum class Op
 };
 
 inline bool
-IsPrefixByte(uint8_t b) {
+IsPrefixByte(uint8_t b)
+{
     return b >= uint8_t(Op::AtomicPrefix);
 }
 
@@ -364,6 +365,7 @@ enum class MozOp
     F64Atan2,
 
     // asm.js-style call_indirect with the callee evaluated first.
+    OldCallDirect,
     OldCallIndirect,
 
     // Atomics
@@ -476,15 +478,6 @@ enum class NameType
     Local                                = 2
 };
 
-// Telemetry sample values for the JS_AOT_USAGE key, indicating whether asm.js
-// or WebAssembly is used.
-
-enum class Telemetry
-{
-    ASMJS = 0,
-    WASM = 1
-};
-
 // These limits are agreed upon with other engines for consistency.
 
 static const unsigned MaxTypes               =  1000000;
@@ -502,23 +495,16 @@ static const unsigned MaxBrTableElems        =  1000000;
 static const unsigned MaxMemoryInitialPages  = 16384;
 static const unsigned MaxMemoryMaximumPages  = 65536;
 static const unsigned MaxModuleBytes         = 1024 * 1024 * 1024;
-static const unsigned MaxFunctionBytes       =         128 * 1024;
+static const unsigned MaxFunctionBytes       =  7654321;
 
-// To be able to assign function indices during compilation while the number of
-// imports is still unknown, asm.js sets a maximum number of imports so it can
-// immediately start handing out function indices starting at the maximum + 1.
-// this means that there is a "hole" between the last import and the first
-// definition, but that's fine.
+// A magic value of the FramePointer to indicate after a return to the entry
+// stub that an exception has been caught and that we should throw.
 
-static const unsigned AsmJSMaxTypes          =   4 * 1024;
-static const unsigned AsmJSMaxFuncs          = 512 * 1024;
-static const unsigned AsmJSMaxImports        =   4 * 1024;
-static const unsigned AsmJSMaxTables         =   4 * 1024;
-static const unsigned AsmJSFirstDefFuncIndex = AsmJSMaxImports + 1;
+static const unsigned FailFP = 0xbad;
 
-static_assert(AsmJSMaxTypes <= MaxTypes, "conservative");
-static_assert(AsmJSMaxImports <= MaxImports, "conservative");
-static_assert(AsmJSFirstDefFuncIndex < MaxFuncs, "conservative");
+// Asserted by Decoder::readVarU32.
+
+static const unsigned MaxVarU32DecodedBytes = 5;
 
 } // namespace wasm
 } // namespace js

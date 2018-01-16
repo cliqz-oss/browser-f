@@ -8,6 +8,7 @@ mozilla.pth:third_party/python/compare-locales
 mozilla.pth:third_party/python/configobj
 mozilla.pth:third_party/python/cram
 mozilla.pth:third_party/python/dlmanager
+mozilla.pth:third_party/python/fluent
 mozilla.pth:third_party/python/futures
 mozilla.pth:third_party/python/hglib
 mozilla.pth:third_party/python/jsmin
@@ -41,6 +42,7 @@ mozilla.pth:testing/marionette/client
 mozilla.pth:testing/marionette/harness
 mozilla.pth:testing/marionette/harness/marionette_harness/runner/mixins/browsermob-proxy-py
 mozilla.pth:testing/marionette/puppeteer/firefox
+mozilla.pth:testing/talos
 packages.txt:testing/mozbase/packages.txt
 mozilla.pth:tools
 mozilla.pth:testing/web-platform
@@ -56,3 +58,4 @@ mozilla.pth:third_party/python/pyasn1
 mozilla.pth:third_party/python/pyasn1-modules
 mozilla.pth:third_party/python/rsa
 mozilla.pth:third_party/python/PyECC
+optional:packages.txt:comm/build/virtualenv_packages.txt

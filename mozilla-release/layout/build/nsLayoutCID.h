@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,10 +14,6 @@
 /* a6cf90f9-15b3-11d2-932e-00805f8add32 */
 #define NS_LAYOUT_DEBUGGER_CID \
  { 0xa6cf90f9, 0x15b3, 0x11d2,{0x93, 0x2e, 0x00, 0x80, 0x5f, 0x8a, 0xdd, 0x32}}
-
-/* a6cf90d7-15b3-11d2-932e-00805f8add32 */
-#define NS_FRAME_UTIL_CID \
- { 0xa6cf90d5, 0x15b3, 0x11d2,{0x93, 0x2e, 0x00, 0x80, 0x5f, 0x8a, 0xdd, 0x32}}
 
 #define NS_DOMSELECTION_CID \
 {/* {C87A37FC-8109-4ce2-A322-8CDEC925379F}*/ \

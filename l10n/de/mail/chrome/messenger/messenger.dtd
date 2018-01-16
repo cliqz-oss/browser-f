@@ -28,8 +28,8 @@
 <!ENTITY newOtherAccountsCmd.accesskey "o">
 <!ENTITY newCreateEmailAccountCmd.label "Neue E-Mail-Adresse erhalten…">
 <!ENTITY newCreateEmailAccountCmd.accesskey "E">
-<!ENTITY newExistingEmailAccountCmd.label "Existierendes E-Mail-Konto…">
-<!ENTITY newExistingEmailAccountCmd.accesskey "x">
+<!ENTITY newExistingEmailAccountCmd.label "Bestehendes E-Mail-Konto…">
+<!ENTITY newExistingEmailAccountCmd.accesskey "B">
 <!ENTITY newIMAccountCmd.label "Chat-Konto…">
 <!ENTITY newIMAccountCmd.accesskey "C">
 <!ENTITY newFeedAccountCmd.label "Feed-Konto…">
@@ -318,6 +318,7 @@
 <!ENTITY goChatCmd.label "Chat">
 <!ENTITY goChatCmd.accesskey "h">
 <!ENTITY goChatCmd.key "I">
+<!ENTITY goChatCmd2.key "H">
 <!ENTITY prevStarredMsgCmd.label "Gekennzeichnete Nachricht">
 <!ENTITY prevStarredMsgCmd.accesskey "G">
 <!ENTITY folderMenu.label "Ordner">
@@ -366,6 +367,8 @@
 <!ENTITY editAsNewMsgCmd.key "e">
 <!ENTITY editDraftMsgCmd.label "Entwurf bearbeiten">
 <!ENTITY editDraftMsgCmd.accesskey "w">
+<!ENTITY newMsgFromTemplateCmd.label "Neue Nachricht aus Vorlage">
+<!ENTITY newMsgFromTemplateCmd.keycode "VK_RETURN"><!-- do not change "VK_RETURN" -->
 <!ENTITY createFilter.label "Filter aus Nachricht erstellen…">
 <!ENTITY createFilter.accesskey "F">
 <!ENTITY moveMsgToMenu.label "Verschieben in">
@@ -734,12 +737,13 @@
 <!ENTITY attachmentColumn2.tooltip "Nach Anhängen sortieren">
 
 <!-- Thread Pane Context Menu -->
+<!ENTITY contextNewMsgFromTemplate.label "Neue Nachricht aus Vorlage">
 <!ENTITY contextOpenNewWindow.label "In neuem Fenster öffnen">
 <!ENTITY contextOpenNewWindow.accesskey "F">
-<!-- The key potentially conflicts with cutCmd.accessKey which is defined in
-     textcontext.dtd from toolkit. Right now, both menu items can't be visible
-     at the same time, but should someone enable copy/paste of message, this key
-     would probably need to be changed. -->
+<!-- The contextOpenNewTab.accesskey ("T") potentially conflicts with
+     cutCmd.accessKey which is defined in textcontext.dtd from toolkit. Right
+     now, both menu items can't be visible at the same time, but should someone
+     enable copy/paste of message, this key would probably need to be changed. -->
 <!ENTITY contextOpenNewTab.label "In neuem Tab öffnen">
 <!ENTITY contextOpenNewTab.accesskey "T">
 <!ENTITY contextOpenConversation.label "In Themenbaum anzeigen">

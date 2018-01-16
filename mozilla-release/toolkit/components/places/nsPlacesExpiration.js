@@ -252,8 +252,9 @@ const EXPIRATION_QUERIES = {
 
   // Expire orphan icons from the database.
   QUERY_EXPIRE_FAVICONS: {
-    sql: `DELETE FROM moz_icons
-          WHERE root = 0 AND id NOT IN (
+    sql: `DELETE FROM moz_icons WHERE id IN (
+            SELECT id FROM moz_icons WHERE root = 0
+            EXCEPT
             SELECT icon_id FROM moz_icons_to_pages
           )`,
     actions: ACTION.TIMED_OVERLIMIT | ACTION.SHUTDOWN_DIRTY |
@@ -419,9 +420,7 @@ function nsPlacesExpiration() {
                                      "@mozilla.org/widget/idleservice;1",
                                      "nsIIdleService");
 
-  this._prefBranch = Cc["@mozilla.org/preferences-service;1"].
-                     getService(Ci.nsIPrefService).
-                     getBranch(PREF_BRANCH);
+  this._prefBranch = Services.prefs.getBranch(PREF_BRANCH);
 
   this._loadPrefsPromise = this._loadPrefs().then(() => {
     // Observe our preferences branch for changes.

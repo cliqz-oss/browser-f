@@ -68,7 +68,8 @@ public:
   {
     MOZ_ASSERT(NS_IsMainThread());
 
-    nsGlobalWindow* globalWindow = nsGlobalWindow::GetInnerWindowWithId(mWindowID);
+    nsGlobalWindowInner* globalWindow =
+      nsGlobalWindowInner::GetInnerWindowWithId(mWindowID);
     if (!globalWindow) {
       return Cancel();
     }
@@ -670,12 +671,12 @@ FlyWebMDNSService::Init()
 {
   MOZ_ASSERT(mDiscoveryState == DISCOVERY_IDLE);
 
-  mDiscoveryStartTimer = do_CreateInstance("@mozilla.org/timer;1");
+  mDiscoveryStartTimer = NS_NewTimer();
   if (!mDiscoveryStartTimer) {
     return NS_ERROR_FAILURE;
   }
 
-  mDiscoveryStopTimer = do_CreateInstance("@mozilla.org/timer;1");
+  mDiscoveryStopTimer = NS_NewTimer();
   if (!mDiscoveryStopTimer) {
     return NS_ERROR_FAILURE;
   }
@@ -802,11 +803,11 @@ FlyWebMDNSService::PairWithService(const nsAString& aServiceId,
   url.Append(aInfo->mService.mHostname);
   if (!discInfo->mService.mPath.IsEmpty()) {
     if (discInfo->mService.mPath.Find("/") != 0) {
-      url.Append(NS_LITERAL_STRING("/"));
+      url.AppendLiteral(u"/");
     }
     url.Append(discInfo->mService.mPath);
   } else {
-    url.Append(NS_LITERAL_STRING("/"));
+    url.AppendLiteral(u"/");
   }
   nsCOMPtr<nsIURI> uiURL;
   NS_NewURI(getter_AddRefs(uiURL), url);

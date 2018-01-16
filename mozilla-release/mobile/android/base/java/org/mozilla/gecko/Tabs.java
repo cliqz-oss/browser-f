@@ -13,10 +13,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import android.content.SharedPreferences;
+import android.support.annotation.CheckResult;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
-import org.mozilla.gecko.annotation.JNITarget;
 import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.distribution.PartnerBrowserCustomizationsClient;
@@ -25,11 +25,13 @@ import org.mozilla.gecko.mozglue.SafeIntent;
 import org.mozilla.gecko.notifications.WhatsNewReceiver;
 import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.reader.ReaderModeUtils;
+import org.mozilla.gecko.tabs.TabHistoryController;
 import org.mozilla.gecko.util.BundleEventListener;
 import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.JavaUtil;
 import org.mozilla.gecko.util.ThreadUtils;
+import org.mozilla.gecko.webapps.WebAppManifest;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
@@ -101,9 +103,21 @@ public class Tabs implements BundleEventListener {
     private PersistTabsRunnable mPersistTabsRunnable;
     private int mPrivateClearColor;
 
-    public void closeAll() {
+    // Close all tabs including normal and private tabs.
+    @RobocopTarget
+    public void closeAllTabs() {
         for (final Tab tab : mOrder) {
-            Tabs.getInstance().closeTab(tab, false);
+            this.closeTab(tab, false);
+        }
+    }
+
+    // In the normal panel we want to close all tabs (both private and normal),
+    // but in the private panel we only want to close private tabs.
+    public void closeAllPrivateTabs() {
+        for (final Tab tab : mOrder) {
+            if (tab.isPrivate()) {
+                this.closeTab(tab, false);
+            }
         }
     }
 
@@ -129,6 +143,10 @@ public class Tabs implements BundleEventListener {
     };
 
     private Tabs() {
+        EventDispatcher.getInstance().registerGeckoThreadListener(this,
+            "Tab:GetNextTabId",
+            null);
+
         EventDispatcher.getInstance().registerUiThreadListener(this,
             "Content:LocationChange",
             "Content:SubframeNavigation",
@@ -310,6 +328,8 @@ public class Tabs implements BundleEventListener {
         }
 
         mSelectedTab = tab;
+        mSelectedTab.updatePageAction();
+
         notifyListeners(tab, TabEvents.SELECTED);
 
         if (mLayerView != null) {
@@ -367,11 +387,12 @@ public class Tabs implements BundleEventListener {
     /**
      * Gets the selected tab.
      *
-     * The selected tab can be null if we're doing a session restore after a
-     * crash and Gecko isn't ready yet.
+     * The selected tab can be null immediately after startup, in the worst case until after Gecko
+     * is up and running.
      *
      * @return the selected tab, or null if no tabs exist
      */
+    @CheckResult
     @Nullable
     public Tab getSelectedTab() {
         return mSelectedTab;
@@ -527,6 +548,10 @@ public class Tabs implements BundleEventListener {
                 }
             });
             return;
+
+        } else if ("Tab:GetNextTabId".equals(event)) {
+            callback.sendSuccess(getNextTabId());
+            return;
         }
 
         // All other events handled below should contain a tabID property
@@ -590,6 +615,7 @@ public class Tabs implements BundleEventListener {
 
         } else if ("Content:SecurityChange".equals(event)) {
             tab.updateIdentityData(message.getBundle("identity"));
+            tab.updatePageAction();
             notifyListeners(tab, TabEvents.SECURITY_CHANGE);
 
         } else if ("Content:StateChange".equals(event)) {
@@ -648,7 +674,11 @@ public class Tabs implements BundleEventListener {
             tab.setHasOpenSearch(message.getBoolean("visible"));
 
         } else if ("Link:Manifest".equals(event)) {
-            tab.setManifestUrl(message.getString("href"));
+            final String url = message.getString("href");
+            final String manifest = message.getString("manifest");
+
+            tab.setManifestUrl(url);
+            tab.setWebAppManifest(WebAppManifest.fromString(url, manifest));
 
         } else if ("DesktopMode:Changed".equals(event)) {
             tab.setDesktopMode(message.getBoolean("desktopMode"));
@@ -1098,8 +1128,7 @@ public class Tabs implements BundleEventListener {
     /**
      * Gets the next tab ID.
      */
-    @JNITarget
-    public static int getNextTabId() {
+    private static int getNextTabId() {
         return sTabId.getAndIncrement();
     }
 

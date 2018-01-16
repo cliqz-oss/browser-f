@@ -182,14 +182,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     "setYear", "setFullYear", "setUTCFullYear", "setMonth", "setUTCMonth",
     "setDate", "setUTCDate", "setHours", "setUTCHours", "setMinutes",
     "setUTCMinutes", "setSeconds", "setUTCSeconds", "setMilliseconds",
-    "setUTCMilliseconds", "toUTCString", "toLocaleFormat", "toLocaleString",
+    "setUTCMilliseconds", "toUTCString", "toLocaleString",
     "toLocaleDateString", "toLocaleTimeString", "toDateString", "toTimeString",
     "toISOString", "toJSON", "toSource", "toString", "valueOf", "constructor",
     "toGMTString", Symbol.toPrimitive];
   gConstructorProperties['Date'] = constructorProps(["UTC", "parse", "now"]);
   gPrototypeProperties['Object'] =
-    ["constructor", "toSource", "toString", "toLocaleString", "valueOf", "watch",
-     "unwatch", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
+    ["constructor", "toSource", "toString", "toLocaleString", "valueOf",
+     "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
      "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
      "__proto__"];
   gConstructorProperties['Object'] =
@@ -235,7 +235,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 
   gPrototypeProperties['Function'] =
     ["constructor", "toSource", "toString", "apply", "call", "bind",
-     "isGenerator", "length", "name", "arguments", "caller", Symbol.hasInstance];
+     "length", "name", "arguments", "caller", Symbol.hasInstance];
   gConstructorProperties['Function'] = constructorProps([])
 
   gPrototypeProperties['RegExp'] =
@@ -249,7 +249,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
                       "$`", "$'", Symbol.species])
 
   gPrototypeProperties['Promise'] =
-    ["constructor", "catch", "then", Symbol.toStringTag];
+    ["constructor", "catch", "then", "finally", Symbol.toStringTag];
   gConstructorProperties['Promise'] =
     constructorProps(["resolve", "reject", "all", "race", Symbol.species]);
 

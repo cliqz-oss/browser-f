@@ -278,6 +278,7 @@ GLContext::GLContext(CreateContextFlags flags, const SurfaceCaps& caps,
     mTopError(LOCAL_GL_NO_ERROR),
     mDebugFlags(ChooseDebugFlags(flags)),
     mSharedContext(sharedContext),
+    mSymbols{},
     mCaps(caps),
     mScreen(nullptr),
     mLockedSurface(nullptr),
@@ -348,7 +349,7 @@ GLContext::InitWithPrefix(const char* prefix, bool trygl)
 
     if (!InitWithPrefixImpl(prefix, trygl)) {
         // If initialization fails, zero the symbols to avoid hard-to-understand bugs.
-        mSymbols.Zero();
+        mSymbols = {};
         NS_WARNING("GLContext::InitWithPrefix failed!");
         return false;
     }
@@ -2140,7 +2141,7 @@ GLContext::MarkDestroyed()
         NS_WARNING("MakeCurrent() failed during MarkDestroyed! Skipping GL object teardown.");
     }
 
-    mSymbols.Zero();
+    mSymbols = {};
 }
 
 #ifdef MOZ_GL_DEBUG
@@ -3017,7 +3018,8 @@ GetBytesPerTexel(GLenum format, GLenum type)
         }
     } else if (type == LOCAL_GL_UNSIGNED_SHORT_4_4_4_4 ||
                type == LOCAL_GL_UNSIGNED_SHORT_5_5_5_1 ||
-               type == LOCAL_GL_UNSIGNED_SHORT_5_6_5)
+               type == LOCAL_GL_UNSIGNED_SHORT_5_6_5 ||
+               type == LOCAL_GL_UNSIGNED_SHORT)
     {
         return 2;
     }

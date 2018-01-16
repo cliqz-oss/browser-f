@@ -33,7 +33,6 @@ for (const type of [
   "DIALOG_OPEN",
   "DISABLE_ONBOARDING",
   "INIT",
-  "LOCALE_UPDATED",
   "MIGRATION_CANCEL",
   "MIGRATION_COMPLETED",
   "MIGRATION_START",
@@ -46,6 +45,7 @@ for (const type of [
   "OPEN_LINK",
   "OPEN_NEW_WINDOW",
   "OPEN_PRIVATE_WINDOW",
+  "PAGE_PRERENDERED",
   "PLACES_BOOKMARK_ADDED",
   "PLACES_BOOKMARK_CHANGED",
   "PLACES_BOOKMARK_REMOVED",
@@ -54,6 +54,7 @@ for (const type of [
   "PLACES_LINK_BLOCKED",
   "PREFS_INITIAL_VALUES",
   "PREF_CHANGED",
+  "RICH_ICON_MISSING",
   "SAVE_SESSION_PERF_DATA",
   "SAVE_TO_POCKET",
   "SCREENSHOT_UPDATED",
@@ -254,6 +255,13 @@ this.actionUtils = {
       return true;
     }
     return false;
+  },
+  isFromMain(action) {
+    if (!action.meta) {
+      return false;
+    }
+    return action.meta.from === MAIN_MESSAGE_TYPE &&
+      action.meta.to === CONTENT_MESSAGE_TYPE;
   },
   getPortIdOfSender(action) {
     return (action.meta && action.meta.fromTarget) || null;

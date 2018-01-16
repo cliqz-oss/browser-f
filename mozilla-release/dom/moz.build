@@ -50,6 +50,7 @@ DIRS += [
     'browser-element',
     'cache',
     'canvas',
+    'clients',
     'commandhandler',
     'credentialmanagement',
     'crypto',
@@ -109,6 +110,7 @@ DIRS += [
     'worklet',
     'script',
     'payments',
+    'websocket',
 ]
 
 if CONFIG['OS_ARCH'] == 'WINNT':

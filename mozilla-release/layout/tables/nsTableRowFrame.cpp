@@ -175,13 +175,13 @@ nsTableRowFrame::Init(nsIContent*       aContent,
 }
 
 void
-nsTableRowFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTableRowFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (HasAnyStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN)) {
     nsTableFrame::UnregisterPositionedTablePart(this, aDestructRoot);
   }
 
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 /* virtual */ void
@@ -218,8 +218,8 @@ nsTableRowFrame::AppendFrames(ChildListID  aListID,
     tableFrame->AppendCell(static_cast<nsTableCellFrame&>(*childFrame), GetRowIndex());
   }
 
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
   tableFrame->SetGeometryDirty();
 }
 
@@ -260,12 +260,12 @@ nsTableRowFrame::InsertFrames(ChildListID  aListID,
   // insert the cells into the cell map
   int32_t colIndex = -1;
   if (prevCellFrame) {
-    prevCellFrame->GetColIndex(colIndex);
+    colIndex = prevCellFrame->ColIndex();
   }
   tableFrame->InsertCells(cellChildren, GetRowIndex(), colIndex);
 
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
   tableFrame->SetGeometryDirty();
 }
 
@@ -284,9 +284,8 @@ nsTableRowFrame::RemoveFrame(ChildListID aListID,
   // Remove the frame and destroy it
   mFrames.DestroyFrame(aOldFrame);
 
-  PresContext()->PresShell()->
-    FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                     NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
 
   tableFrame->SetGeometryDirty();
 }
@@ -327,18 +326,6 @@ GetBSizeOfRowsSpannedBelowFirst(nsTableCellFrame& aTableCellFrame,
     nextRow = nextRow->GetNextSibling();
   }
   return bsize;
-}
-
-nsTableCellFrame*
-nsTableRowFrame::GetFirstCell()
-{
-  for (nsIFrame* childFrame : mFrames) {
-    nsTableCellFrame *cellFrame = do_QueryFrame(childFrame);
-    if (cellFrame) {
-      return cellFrame;
-    }
-  }
-  return nullptr;
 }
 
 /**
@@ -687,8 +674,7 @@ CalcAvailISize(nsTableFrame&     aTableFrame,
                nsTableCellFrame& aCellFrame)
 {
   nscoord cellAvailISize = 0;
-  int32_t colIndex;
-  aCellFrame.GetColIndex(colIndex);
+  uint32_t colIndex = aCellFrame.ColIndex();
   int32_t colspan = aTableFrame.GetEffectiveColSpan(aCellFrame);
   NS_ASSERTION(colspan > 0, "effective colspan should be positive");
   nsTableFrame* fifTable =
@@ -827,12 +813,12 @@ nsTableRowFrame::ReflowChildren(nsPresContext*           aPresContext,
       }
     }
 
-    int32_t cellColIndex;
-    cellFrame->GetColIndex(cellColIndex);
+    uint32_t cellColIndex = cellFrame->ColIndex();
     cellColSpan = aTableFrame.GetEffectiveColSpan(*cellFrame);
 
     // If the adjacent cell is in a prior row (because of a rowspan) add in the space
-    if (prevColIndex != (cellColIndex - 1)) {
+    // NOTE: prevColIndex can be -1 here.
+    if (prevColIndex != (static_cast<int32_t>(cellColIndex) - 1)) {
       iCoord += GetSpaceBetween(prevColIndex, cellColIndex, cellColSpan, aTableFrame,
                                 false);
     }
@@ -1207,8 +1193,7 @@ nsTableRowFrame::CollapseRowIfNecessary(nscoord aRowOffset,
     shift = rowRect.BSize(wm);
     nsTableCellFrame* cellFrame = GetFirstCell();
     if (cellFrame) {
-      int32_t rowIndex;
-      cellFrame->GetRowIndex(rowIndex);
+      uint32_t rowIndex = cellFrame->RowIndex();
       shift += tableFrame->GetRowSpacing(rowIndex);
       while (cellFrame) {
         LogicalRect cRect = cellFrame->GetLogicalRect(wm, containerSize);
@@ -1239,13 +1224,13 @@ nsTableRowFrame::CollapseRowIfNecessary(nscoord aRowOffset,
     for (nsIFrame* kidFrame : mFrames) {
       nsTableCellFrame *cellFrame = do_QueryFrame(kidFrame);
       if (cellFrame) {
-        int32_t cellColIndex;
-        cellFrame->GetColIndex(cellColIndex);
+        uint32_t cellColIndex = cellFrame->ColIndex();
         int32_t cellColSpan = tableFrame->GetEffectiveColSpan(*cellFrame);
 
         // If the adjacent cell is in a prior row (because of a rowspan) add in
         // the space
-        if (prevColIndex != (cellColIndex - 1)) {
+        // NOTE: prevColIndex can be -1 here.
+        if (prevColIndex != (static_cast<int32_t>(cellColIndex) - 1)) {
           iPos += GetSpaceBetween(prevColIndex, cellColIndex, cellColSpan,
                                   *tableFrame, true);
         }
@@ -1358,9 +1343,9 @@ nsTableRowFrame::InsertCellFrame(nsTableCellFrame* aFrame,
   for (nsIFrame* child : mFrames) {
     nsTableCellFrame *cellFrame = do_QueryFrame(child);
     if (cellFrame) {
-      int32_t colIndex;
-      cellFrame->GetColIndex(colIndex);
-      if (colIndex < aColIndex) {
+      uint32_t colIndex = cellFrame->ColIndex();
+      // Can aColIndex be -1 here?  Let's assume it can for now.
+      if (static_cast<int32_t>(colIndex) < aColIndex) {
         priorCell = cellFrame;
       }
       else break;
@@ -1458,7 +1443,9 @@ void
 nsTableRowFrame::InvalidateFrame(uint32_t aDisplayItemKey)
 {
   nsIFrame::InvalidateFrame(aDisplayItemKey);
-  GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey);
+  if (GetTableFrame()->IsBorderCollapse() && StyleBorder()->HasBorder()) {
+    GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey);
+  }
 }
 
 void

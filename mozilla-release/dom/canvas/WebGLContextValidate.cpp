@@ -78,7 +78,7 @@ const uint32_t kCommonMaxViewportDims = 4096;
 const float kCommonAliasedPointSizeRangeMin =  1;
 const float kCommonAliasedPointSizeRangeMax = 63;
 const float kCommonAliasedLineWidthRangeMin =  1;
-const float kCommonAliasedLineWidthRangeMax =  5;
+const float kCommonAliasedLineWidthRangeMax =  1;
 
 template<class T>
 static bool
@@ -389,19 +389,6 @@ WebGLContext::ValidateStencilParamsForDrawCall()
     return true;
 }
 
-static inline int32_t
-FloorPOT(int32_t x)
-{
-    MOZ_ASSERT(x > 0);
-    int32_t pot = 1;
-    while (pot < 0x40000000) {
-        if (x < pot*2)
-            break;
-        pot *= 2;
-    }
-    return pot;
-}
-
 bool
 WebGLContext::InitAndValidateGL(FailureReason* const out_failReason)
 {
@@ -691,7 +678,7 @@ WebGLContext::InitAndValidateGL(FailureReason* const out_failReason)
     mBypassShaderValidation = gfxPrefs::WebGLBypassShaderValidator();
 
     // initialize shader translator
-    if (!ShInitialize()) {
+    if (!sh::Initialize()) {
         *out_failReason = { "FEATURE_FAILURE_WEBGL_GLSL",
                             "GLSL translator initialization failed!" };
         return false;
@@ -766,6 +753,7 @@ WebGLContext::InitAndValidateGL(FailureReason* const out_failReason)
 
     mGenericVertexAttribTypes.reset(new GLenum[mGLMaxVertexAttribs]);
     std::fill_n(mGenericVertexAttribTypes.get(), mGLMaxVertexAttribs, LOCAL_GL_FLOAT);
+    mGenericVertexAttribTypeInvalidator.InvalidateCaches();
 
     static const float kDefaultGenericVertexAttribData[4] = { 0, 0, 0, 1 };
     memcpy(mGenericVertexAttrib0Data, kDefaultGenericVertexAttribData,
@@ -774,8 +762,16 @@ WebGLContext::InitAndValidateGL(FailureReason* const out_failReason)
     mFakeVertexAttrib0BufferObject = 0;
 
     mNeedsIndexValidation = !gl->IsSupported(gl::GLFeature::robust_buffer_access_behavior);
-    if (gfxPrefs::WebGLForceIndexValidation()) {
+    switch (gfxPrefs::WebGLForceIndexValidation()) {
+    case -1:
+        mNeedsIndexValidation = false;
+        break;
+    case 1:
         mNeedsIndexValidation = true;
+        break;
+    default:
+        MOZ_ASSERT(gfxPrefs::WebGLForceIndexValidation() == 0);
+        break;
     }
 
     return true;

@@ -1213,6 +1213,7 @@ class MochitestDesktop(object):
         if self.websocketProcessBridge is not None:
             try:
                 self.websocketProcessBridge.kill()
+                self.websocketProcessBridge.wait()
                 self.log.info('Stopping websocket/process bridge')
             except Exception:
                 self.log.critical('Exception stopping websocket/process bridge')
@@ -1483,7 +1484,7 @@ toolbar#nav-bar {
             self.tests_by_manifest[manifest_relpath].append(tp)
             self.prefs_by_manifest[manifest_relpath].add(test.get('prefs'))
 
-            if 'prefs' in test and not options.runByManifest:
+            if 'prefs' in test and not options.runByManifest and 'disabled' not in test:
                 self.log.error("parsing {}: runByManifest mode must be enabled to "
                                "set the `prefs` key".format(manifest_relpath))
                 sys.exit(1)
@@ -1612,6 +1613,9 @@ toolbar#nav-bar {
             browserEnv["MOZ_DEVELOPER_REPO_DIR"] = options.topsrcdir
         if hasattr(options, "topobjdir"):
             browserEnv["MOZ_DEVELOPER_OBJ_DIR"] = options.topobjdir
+
+        if options.headless:
+            browserEnv["MOZ_HEADLESS"] = '1'
 
         # These variables are necessary for correct application startup; change
         # via the commandline at your own risk.
@@ -1797,6 +1801,16 @@ toolbar#nav-bar {
             "dom.ipc.tabs.nested.enabled=%s" %
             ('true' if options.nested_oop else 'false'))
 
+        options.extraPrefs.append(
+            "idle.lastDailyNotification=%d" %
+            int(time.time()))
+
+        # Enable tracing output for detailed failures in case of
+        # failing connection attempts, and hangs (bug 1397201)
+        options.extraPrefs.append(
+            "marionette.logging=%s" %
+            "TRACE")
+
         # get extensions to install
         extensions = self.getExtensionsToInstall(options)
 
@@ -1818,17 +1832,7 @@ toolbar#nav-bar {
            '5.1' in platform.version() and options.e10s:
             prefs['layers.acceleration.disabled'] = True
 
-        sandbox_whitelist_paths = [SCRIPT_DIR]
-        try:
-            if options.workPath:
-                sandbox_whitelist_paths.append(options.workPath)
-        except AttributeError:
-            pass
-        try:
-            if options.objPath:
-                sandbox_whitelist_paths.append(options.objPath)
-        except AttributeError:
-            pass
+        sandbox_whitelist_paths = [SCRIPT_DIR] + options.sandboxReadWhitelist
         if (platform.system() == "Linux" or
             platform.system() in ("Windows", "Microsoft")):
             # Trailing slashes are needed to indicate directories on Linux and Windows
@@ -1977,18 +1981,23 @@ toolbar#nav-bar {
         If parent_pid is provided, and psutil is available, returns children of
         parent_pid according to psutil.
         """
-        if parent_pid and HAVE_PSUTIL:
-            self.log.info("Determining child pids from psutil")
-            return [p.pid for p in psutil.Process(parent_pid).children()]
-
         rv = []
+        if parent_pid and HAVE_PSUTIL:
+            self.log.info("Determining child pids from psutil...")
+            try:
+                rv = [p.pid for p in psutil.Process(parent_pid).children()]
+                self.log.info(str(rv))
+            except psutil.NoSuchProcess:
+                self.log.warning("Failed to lookup children of pid %d" % parent_pid)
+
+        rv = set(rv)
         pid_re = re.compile(r'==> process \d+ launched child process (\d+)')
         with open(process_log) as fd:
             for line in fd:
                 self.log.info(line.rstrip())
                 m = pid_re.search(line)
                 if m:
-                    rv.append(int(m.group(1)))
+                    rv.add(int(m.group(1)))
         return rv
 
     def checkForZombies(self, processLog, utilityPath, debuggerInfo):
@@ -2022,6 +2031,24 @@ toolbar#nav-bar {
                     dump_screen=not debuggerInfo)
 
         return foundZombie
+
+    def checkForRunningBrowsers(self):
+        firefoxes = ""
+        if HAVE_PSUTIL:
+            attrs = ['pid', 'ppid', 'name', 'cmdline', 'username']
+            for proc in psutil.process_iter():
+                try:
+                    if 'firefox' in proc.name():
+                        firefoxes = "%s%s\n" % (firefoxes, proc.as_dict(attrs=attrs))
+                except:
+                    # may not be able to access process info for all processes
+                    continue
+        if len(firefoxes) > 0:
+            # In automation, this warning is unexpected and should be investigated.
+            # In local testing, this is probably okay, as long as the browser is not
+            # running a marionette server.
+            self.log.warning("Found 'firefox' running before starting test browser!")
+            self.log.warning(firefoxes)
 
     def runApp(self,
                testUrl,
@@ -2145,6 +2172,8 @@ toolbar#nav-bar {
                          'onTimeout': [timeoutHandler]}
             kp_kwargs['processOutputLine'] = [outputHandler]
 
+            self.checkForRunningBrowsers()
+
             # create mozrunner instance and start the system under test process
             self.lastTestSeen = self.test_name
             startTime = datetime.now()
@@ -2206,7 +2235,12 @@ toolbar#nav-bar {
             # https://github.com/mozilla/mozbase/blob/master/mozrunner/mozrunner/runner.py#L61
             # until bug 913970 is fixed regarding mozrunner `wait` not returning status
             # see https://bugzilla.mozilla.org/show_bug.cgi?id=913970
+            self.log.info("runtests.py | Waiting for browser...")
             status = proc.wait()
+            if status is None:
+                self.log.warning("runtests.py | Failed to get app exit code - running/crashed?")
+                # must report an integer to process_exit()
+                status = 0
             self.log.process_exit("Main app process", status)
             runner.process_handler = None
 
@@ -2361,15 +2395,17 @@ toolbar#nav-bar {
         """
 
         # Number of times to repeat test(s) when running with --repeat
-        VERIFY_REPEAT = 20
+        VERIFY_REPEAT = 10
         # Number of times to repeat test(s) when running test in
-        VERIFY_REPEAT_SINGLE_BROWSER = 10
+        VERIFY_REPEAT_SINGLE_BROWSER = 5
 
         def step1():
             stepOptions = copy.deepcopy(options)
             stepOptions.repeat = VERIFY_REPEAT
             stepOptions.keep_open = False
             stepOptions.runUntilFailure = True
+            stepOptions.profilePath = None
+            self.urlOpts = []
             result = self.runTests(stepOptions)
             result = result or (-2 if self.countfail > 0 else 0)
             self.message_logger.finish()
@@ -2380,6 +2416,35 @@ toolbar#nav-bar {
             stepOptions.repeat = 0
             stepOptions.keep_open = False
             for i in xrange(VERIFY_REPEAT_SINGLE_BROWSER):
+                stepOptions.profilePath = None
+                self.urlOpts = []
+                result = self.runTests(stepOptions)
+                result = result or (-2 if self.countfail > 0 else 0)
+                self.message_logger.finish()
+                if result != 0:
+                    break
+            return result
+
+        def step3():
+            stepOptions = copy.deepcopy(options)
+            stepOptions.repeat = VERIFY_REPEAT
+            stepOptions.keep_open = False
+            stepOptions.environment.append("MOZ_CHAOSMODE=3")
+            stepOptions.profilePath = None
+            self.urlOpts = []
+            result = self.runTests(stepOptions)
+            result = result or (-2 if self.countfail > 0 else 0)
+            self.message_logger.finish()
+            return result
+
+        def step4():
+            stepOptions = copy.deepcopy(options)
+            stepOptions.repeat = 0
+            stepOptions.keep_open = False
+            stepOptions.environment.append("MOZ_CHAOSMODE=3")
+            for i in xrange(VERIFY_REPEAT_SINGLE_BROWSER):
+                stepOptions.profilePath = None
+                self.urlOpts = []
                 result = self.runTests(stepOptions)
                 result = result or (-2 if self.countfail > 0 else 0)
                 self.message_logger.finish()
@@ -2393,6 +2458,12 @@ toolbar#nav-bar {
             ("2. Run each test %d times in a new browser each time." %
              VERIFY_REPEAT_SINGLE_BROWSER,
              step2),
+            ("3. Run each test %d times in one browser, in chaos mode." %
+             VERIFY_REPEAT,
+             step3),
+            ("4. Run each test %d times in a new browser each time, "
+             "in chaos mode." % VERIFY_REPEAT_SINGLE_BROWSER,
+             step4),
         ]
 
         stepResults = {}
@@ -2442,6 +2513,7 @@ toolbar#nav-bar {
         if options.flavor in ('a11y', 'chrome'):
             options.e10s = False
         mozinfo.update({"e10s": options.e10s})  # for test manifest parsing.
+        mozinfo.update({"headless": options.headless})  # for test manifest parsing.
 
         if options.jscov_dir_prefix is not None:
             mozinfo.update({'coverage': True})
@@ -2610,7 +2682,13 @@ toolbar#nav-bar {
             elif options.debugger or not options.autorun:
                 timeout = None
             else:
-                timeout = 330.0  # default JS harness timeout is 300 seconds
+                # We generally want the JS harness or marionette to handle
+                # timeouts if they can.
+                # The default JS harness timeout is currently 300 seconds.
+                # The default Marionette socket timeout is currently 360 seconds.
+                # Wait a little (10 seconds) more before timing out here.
+                # See bug 479518 and bug 1414063.
+                timeout = 370.0
 
             # Detect shutdown leaks for m-bc runs if
             # code coverage is not enabled.
@@ -2720,11 +2798,28 @@ toolbar#nav-bar {
         self.log.info('Found child pids: %s' % child_pids)
 
         if HAVE_PSUTIL:
-            child_procs = [psutil.Process(pid) for pid in child_pids]
+            try:
+                browser_proc = [psutil.Process(browser_pid)]
+            except:
+                self.log.info('Failed to get proc for pid %d' % browser_pid)
+                browser_proc = []
+            try:
+                child_procs = [psutil.Process(pid) for pid in child_pids]
+            except:
+                self.log.info('Failed to get child procs')
+                child_procs = []
             for pid in child_pids:
                 self.killAndGetStack(pid, utilityPath, debuggerInfo,
                                      dump_screen=not debuggerInfo)
             gone, alive = psutil.wait_procs(child_procs, timeout=30)
+            for p in gone:
+                self.log.info('psutil found pid %s dead' % p.pid)
+            for p in alive:
+                self.log.warning('failed to kill pid %d after 30s' %
+                                 p.pid)
+            self.killAndGetStack(browser_pid, utilityPath, debuggerInfo,
+                                 dump_screen=not debuggerInfo)
+            gone, alive = psutil.wait_procs(browser_proc, timeout=30)
             for p in gone:
                 self.log.info('psutil found pid %s dead' % p.pid)
             for p in alive:
@@ -2740,8 +2835,8 @@ toolbar#nav-bar {
             if child_pids:
                 time.sleep(30)
 
-        self.killAndGetStack(browser_pid, utilityPath, debuggerInfo,
-                             dump_screen=not debuggerInfo)
+            self.killAndGetStack(browser_pid, utilityPath, debuggerInfo,
+                                 dump_screen=not debuggerInfo)
 
     class OutputHandler(object):
 

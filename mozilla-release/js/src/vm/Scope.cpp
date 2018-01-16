@@ -16,6 +16,7 @@
 #include "vm/StringBuffer.h"
 #include "wasm/WasmInstance.h"
 
+#include "gc/ObjectKind-inl.h"
 #include "vm/Shape-inl.h"
 
 using namespace js;
@@ -114,7 +115,7 @@ NextEnvironmentShape(JSContext* cx, HandleAtom name, BindingKind bindKind, uint3
     }
 
     jsid id = NameToId(name->asPropertyName());
-    Rooted<StackShape> child(cx, StackShape(base, id, slot, attrs, 0));
+    Rooted<StackShape> child(cx, StackShape(base, id, slot, attrs));
     return cx->zone()->propertyTree().getChild(cx, shape, child);
 }
 

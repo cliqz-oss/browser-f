@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -11,68 +12,84 @@
 #include "mozilla/layers/LayersMessages.h" // for TimedTexture
 #include "nsICanvasRenderingContextInternal.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
+#include "mozilla/layers/SyncObject.h" // for SyncObjectClient
 
 namespace mozilla {
 namespace gfx {
 
 VRLayerChild::VRLayerChild()
   : mCanvasElement(nullptr)
-  , mShSurfClient(nullptr)
-  , mFront(nullptr)
   , mIPCOpen(false)
+  , mLastSubmittedFrameId(0)
 {
   MOZ_COUNT_CTOR(VRLayerChild);
 }
 
 VRLayerChild::~VRLayerChild()
 {
-  if (mCanvasElement) {
-    mCanvasElement->StopVRPresentation();
-  }
-
   ClearSurfaces();
 
   MOZ_COUNT_DTOR(VRLayerChild);
 }
 
 void
-VRLayerChild::Initialize(dom::HTMLCanvasElement* aCanvasElement)
+VRLayerChild::Initialize(dom::HTMLCanvasElement* aCanvasElement,
+                         const gfx::Rect& aLeftEyeRect, const gfx::Rect& aRightEyeRect)
 {
   MOZ_ASSERT(aCanvasElement);
-  mCanvasElement = aCanvasElement;
-  mCanvasElement->StartVRPresentation();
-
-  VRManagerChild *vrmc = VRManagerChild::Get();
-  vrmc->RunFrameRequestCallbacks();
+  mLeftEyeRect = aLeftEyeRect;
+  mRightEyeRect = aRightEyeRect;
+  if (mCanvasElement == nullptr) {
+    mCanvasElement = aCanvasElement;
+    VRManagerChild *vrmc = VRManagerChild::Get();
+    vrmc->RunFrameRequestCallbacks();
+  } else {
+    mCanvasElement = aCanvasElement;
+  }
 }
 
 void
 VRLayerChild::SubmitFrame(uint64_t aFrameId)
 {
-  if (!mCanvasElement) {
+  // aFrameId will not increment unless the previuosly submitted
+  // frame was received by the VR thread and submitted to the VR
+  // compositor.  We early-exit here in the event that SubmitFrame
+  // was called twice for the same aFrameId.
+  if (!mCanvasElement || aFrameId == mLastSubmittedFrameId) {
     return;
   }
+  mLastSubmittedFrameId = aFrameId;
 
-  mShSurfClient = mCanvasElement->GetVRFrame();
-  if (!mShSurfClient) {
+  // Keep the SharedSurfaceTextureClient alive long enough for
+  // 1 extra frame, accomodating overlapped asynchronous rendering.
+  mLastFrameTexture = mThisFrameTexture;
+
+  mThisFrameTexture = mCanvasElement->GetVRFrame();
+  if (!mThisFrameTexture) {
     return;
   }
+  VRManagerChild* vrmc = VRManagerChild::Get();
+  layers::SyncObjectClient* syncObject = vrmc->GetSyncObject();
+  mThisFrameTexture->SyncWithObject(syncObject);
+  if (!gfxPlatform::GetPlatform()->DidRenderingDeviceReset()) {
+    if (syncObject && syncObject->IsSyncObjectValid()) {
+      syncObject->Synchronize();
+    }
+  }
 
-  gl::SharedSurface* surf = mShSurfClient->Surf();
+  gl::SharedSurface* surf = mThisFrameTexture->Surf();
   if (surf->mType == gl::SharedSurfaceType::Basic) {
     gfxCriticalError() << "SharedSurfaceType::Basic not supported for WebVR";
     return;
   }
 
-  mFront = mShSurfClient;
-  mShSurfClient = nullptr;
+  layers::SurfaceDescriptor desc;
+  if (!surf->ToSurfaceDescriptor(&desc)) {
+    gfxCriticalError() << "SharedSurface::ToSurfaceDescriptor failed in VRLayerChild::SubmitFrame";
+    return;
+  }
 
-  mFront->SetAddedToCompositableClient();
-  VRManagerChild* vrmc = VRManagerChild::Get();
-  mFront->SyncWithObject(vrmc->GetSyncObject());
-  MOZ_ALWAYS_TRUE(mFront->InitIPDLActor(vrmc));
-
-  SendSubmitFrame(mFront->GetIPDLActor(), aFrameId);
+  SendSubmitFrame(desc, aFrameId, mLeftEyeRect, mRightEyeRect);
 }
 
 bool
@@ -84,8 +101,8 @@ VRLayerChild::IsIPCOpen()
 void
 VRLayerChild::ClearSurfaces()
 {
-  mFront = nullptr;
-  mShSurfClient = nullptr;
+  mThisFrameTexture = nullptr;
+  mLastFrameTexture = nullptr;
 }
 
 void

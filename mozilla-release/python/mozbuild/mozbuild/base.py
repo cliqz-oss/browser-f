@@ -215,8 +215,7 @@ class MozbuildObject(ProcessExecutionMixin):
         """
         if not isinstance(self._mozconfig, dict):
             loader = MozconfigLoader(self.topsrcdir)
-            self._mozconfig = loader.read_mozconfig(path=self._mozconfig,
-                moz_build_app=os.environ.get('MOZ_CURRENT_PROJECT'))
+            self._mozconfig = loader.read_mozconfig(path=self._mozconfig)
 
         return self._mozconfig
 
@@ -673,7 +672,7 @@ class MozbuildObject(ProcessExecutionMixin):
         baseconfig = os.path.join(self.topsrcdir, 'config', 'baseconfig.mk')
 
         def is_xcode_lisense_error(output):
-            return self._is_osx() and 'Agreeing to the Xcode' in output
+            return self._is_osx() and b'Agreeing to the Xcode' in output
 
         def validate_make(make):
             if os.path.exists(baseconfig) and os.path.exists(make):

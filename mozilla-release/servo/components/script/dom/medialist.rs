@@ -6,8 +6,8 @@ use cssparser::{Parser, ParserInput};
 use dom::bindings::codegen::Bindings::MediaListBinding;
 use dom::bindings::codegen::Bindings::MediaListBinding::MediaListMethods;
 use dom::bindings::codegen::Bindings::WindowBinding::WindowBinding::WindowMethods;
-use dom::bindings::js::{JS, Root};
 use dom::bindings::reflector::{DomObject, Reflector, reflect_dom_object};
+use dom::bindings::root::{Dom, DomRoot};
 use dom::bindings::str::DOMString;
 use dom::cssstylesheet::CSSStyleSheet;
 use dom::window::Window;
@@ -18,13 +18,13 @@ use style::media_queries::MediaList as StyleMediaList;
 use style::parser::ParserContext;
 use style::shared_lock::{SharedRwLock, Locked};
 use style::stylesheets::CssRuleType;
-use style_traits::{PARSING_MODE_DEFAULT, ToCss};
+use style_traits::{ParsingMode, ToCss};
 
 #[dom_struct]
 pub struct MediaList {
     reflector_: Reflector,
-    parent_stylesheet: JS<CSSStyleSheet>,
-    #[ignore_heap_size_of = "Arc"]
+    parent_stylesheet: Dom<CSSStyleSheet>,
+    #[ignore_malloc_size_of = "Arc"]
     media_queries: Arc<Locked<StyleMediaList>>,
 }
 
@@ -33,7 +33,7 @@ impl MediaList {
     pub fn new_inherited(parent_stylesheet: &CSSStyleSheet,
                          media_queries: Arc<Locked<StyleMediaList>>) -> MediaList {
         MediaList {
-            parent_stylesheet: JS::from_ref(parent_stylesheet),
+            parent_stylesheet: Dom::from_ref(parent_stylesheet),
             reflector_: Reflector::new(),
             media_queries: media_queries,
         }
@@ -42,8 +42,8 @@ impl MediaList {
     #[allow(unrooted_must_root)]
     pub fn new(window: &Window, parent_stylesheet: &CSSStyleSheet,
                media_queries: Arc<Locked<StyleMediaList>>)
-        -> Root<MediaList> {
-        reflect_dom_object(box MediaList::new_inherited(parent_stylesheet, media_queries),
+        -> DomRoot<MediaList> {
+        reflect_dom_object(Box::new(MediaList::new_inherited(parent_stylesheet, media_queries)),
                            window,
                            MediaListBinding::Wrap)
     }
@@ -78,7 +78,7 @@ impl MediaListMethods for MediaList {
         let url = window.get_url();
         let quirks_mode = window.Document().quirks_mode();
         let context = ParserContext::new_for_cssom(&url, Some(CssRuleType::Media),
-                                                   PARSING_MODE_DEFAULT,
+                                                   ParsingMode::DEFAULT,
                                                    quirks_mode);
         *media_queries = parse_media_query_list(&context, &mut parser,
                                                 window.css_error_reporter());
@@ -116,7 +116,7 @@ impl MediaListMethods for MediaList {
         let url = win.get_url();
         let quirks_mode = win.Document().quirks_mode();
         let context = ParserContext::new_for_cssom(&url, Some(CssRuleType::Media),
-                                                   PARSING_MODE_DEFAULT,
+                                                   ParsingMode::DEFAULT,
                                                    quirks_mode);
         let m = MediaQuery::parse(&context, &mut parser);
         // Step 2
@@ -145,7 +145,7 @@ impl MediaListMethods for MediaList {
         let url = win.get_url();
         let quirks_mode = win.Document().quirks_mode();
         let context = ParserContext::new_for_cssom(&url, Some(CssRuleType::Media),
-                                                   PARSING_MODE_DEFAULT,
+                                                   ParsingMode::DEFAULT,
                                                    quirks_mode);
         let m = MediaQuery::parse(&context, &mut parser);
         // Step 2

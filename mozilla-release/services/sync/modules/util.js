@@ -23,6 +23,10 @@ XPCOMUtils.defineLazyGetter(this, "FxAccountsCommon", function() {
   return FxAccountsCommon;
 });
 
+XPCOMUtils.defineLazyServiceGetter(this, "cryptoSDR",
+                                   "@mozilla.org/login-manager/crypto/SDR;1",
+                                   "nsILoginManagerCrypto");
+
 /*
  * Custom exception types.
  */
@@ -68,11 +72,13 @@ this.Utils = {
   get userAgent() {
     if (!this._userAgent) {
       let hph = Cc["@mozilla.org/network/protocol;1?name=http"].getService(Ci.nsIHttpProtocolHandler);
+      /* eslint-disable no-multi-spaces */
       this._userAgent =
         Services.appinfo.name + "/" + Services.appinfo.version +  // Product.
         " (" + hph.oscpu + ")" +                                  // (oscpu)
         " FxSync/" + WEAVE_VERSION + "." +                        // Sync.
         Services.appinfo.appBuildID + ".";                        // Build.
+      /* eslint-enable no-multi-spaces */
     }
     return this._userAgent + Svc.Prefs.get("client.type", "desktop");
   },
@@ -479,35 +485,20 @@ this.Utils = {
   },
 
   /**
-   * Is there a master password configured, regardless of current lock state?
-   */
-  mpEnabled: function mpEnabled() {
-    let tokenDB = Cc["@mozilla.org/security/pk11tokendb;1"]
-                    .getService(Ci.nsIPK11TokenDB);
-    let token = tokenDB.getInternalKeyToken();
-    return token.hasPassword;
-  },
-
-  /**
    * Is there a master password configured and currently locked?
    */
-  mpLocked: function mpLocked() {
-    let tokenDB = Cc["@mozilla.org/security/pk11tokendb;1"]
-                    .getService(Ci.nsIPK11TokenDB);
-    let token = tokenDB.getInternalKeyToken();
-    return token.hasPassword && !token.isLoggedIn();
+  mpLocked() {
+    return !cryptoSDR.isLoggedIn;
   },
 
   // If Master Password is enabled and locked, present a dialog to unlock it.
   // Return whether the system is unlocked.
-  ensureMPUnlocked: function ensureMPUnlocked() {
-    if (!Utils.mpLocked()) {
-      return true;
+  ensureMPUnlocked() {
+    if (cryptoSDR.uiBusy) {
+      return false;
     }
-    let sdr = Cc["@mozilla.org/security/sdr;1"]
-                .getService(Ci.nsISecretDecoderRing);
     try {
-      sdr.encryptString("bacon");
+      cryptoSDR.encrypt("bacon");
       return true;
     } catch (e) {}
     return false;

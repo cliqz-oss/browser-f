@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -256,6 +257,9 @@ public:
    *
    * @param aElement the element linking to the the stylesheet.  May be null.
    * @param aURL the URL of the sheet.
+   * @param aTriggeringPrincipal the triggering principal for the load. May be
+   *        null, in which case the NodePrincipal() of the element (or
+   *        document if aElement is null) should be used.
    * @param aTitle the title of the sheet.
    * @param aMedia the media string for the sheet.
    * @param aHasAlternateRel whether the rel for this link included
@@ -269,6 +273,7 @@ public:
    */
   nsresult LoadStyleLink(nsIContent* aElement,
                          nsIURI* aURL,
+                         nsIPrincipal* aTriggeringPrincipal,
                          const nsAString& aTitle,
                          const nsAString& aMedia,
                          bool aHasAlternateRel,
@@ -473,7 +478,8 @@ private:
   friend class SheetLoadData;
   friend class StreamLoader;
 
-  nsresult CheckContentPolicy(nsIPrincipal* aSourcePrincipal,
+  nsresult CheckContentPolicy(nsIPrincipal* aLoadingPrincipal,
+                              nsIPrincipal* aTriggeringPrincipal,
                               nsIURI* aTargetURI,
                               nsISupports* aContext,
                               bool aIsPreload);

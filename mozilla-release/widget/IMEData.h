@@ -279,6 +279,18 @@ struct InputContext final
   {
   }
 
+  // If InputContext instance is a static variable, any heap allocated stuff
+  // of its members need to be deleted at XPCOM shutdown.  Otherwise, it's
+  // detected as memory leak.
+  void ShutDown()
+  {
+    // The buffer for nsString will be released with a call of SetCapacity(0).
+    // Truncate() isn't enough because it just sets length to 0.
+    mHTMLInputType.SetCapacity(0);
+    mHTMLInputInputmode.SetCapacity(0);
+    mActionHint.SetCapacity(0);
+  }
+
   bool IsPasswordEditor() const
   {
     return mHTMLInputType.LowerCaseEqualsLiteral("password");
@@ -312,6 +324,11 @@ struct InputContext final
    * composiion events. This enables a key-events-only mode on Android for
    * compatibility with webapps relying on key listeners. */
   bool mMayBeIMEUnaware;
+
+  /**
+   * True if the document has ever received user input
+   */
+  bool mHasHandledUserInput;
 
   /* Whether the owning document of the input element has been loaded
    * in private browsing mode. */
@@ -358,7 +375,12 @@ struct InputContextAction final
     // The cause is user's mouse operation.
     CAUSE_MOUSE,
     // The cause is user's touch operation (implies mouse)
-    CAUSE_TOUCH
+    CAUSE_TOUCH,
+    // The cause is unknown but it occurs during user input except keyboard
+    // input.  E.g., an event handler of a user input event moves focus.
+    CAUSE_UNKNOWN_DURING_NON_KEYBOARD_INPUT,
+    // The cause is unknown but it occurs during keyboard input.
+    CAUSE_UNKNOWN_DURING_KEYBOARD_INPUT,
   };
   Cause mCause;
 
@@ -393,24 +415,49 @@ struct InputContextAction final
 
   bool UserMightRequestOpenVKB() const
   {
-    return (mFocusChange == FOCUS_NOT_CHANGED &&
-            (mCause == CAUSE_MOUSE || mCause == CAUSE_TOUCH));
-  }
-
-  static bool IsUserAction(Cause aCause)
-  {
-    switch (aCause) {
-      case CAUSE_KEY:
+    // If focus is changed, user must not request to open VKB.
+    if (mFocusChange != FOCUS_NOT_CHANGED) {
+      return false;
+    }
+    switch (mCause) {
+      // If user clicks or touches focused editor, user must request to open
+      // VKB.
       case CAUSE_MOUSE:
       case CAUSE_TOUCH:
+      // If script does something during a user input and that causes changing
+      // input context, user might request to open VKB.  E.g., user clicks
+      // dummy editor and JS moves focus to an actual editable node.  However,
+      // this should return false if the user input is a keyboard event since
+      // physical keyboard operation shouldn't cause opening VKB.
+      case CAUSE_UNKNOWN_DURING_NON_KEYBOARD_INPUT:
         return true;
       default:
         return false;
     }
   }
 
-  bool IsUserAction() const {
-    return IsUserAction(mCause);
+  /**
+   * IsHandlingUserInput() returns true if it's caused by a user action directly
+   * or it's caused by script or something but it occurred while we're handling
+   * a user action.  E.g., when it's caused by Element.focus() in an event
+   * handler of a user input, this returns true.
+   */
+  static bool IsHandlingUserInput(Cause aCause)
+  {
+    switch (aCause) {
+      case CAUSE_KEY:
+      case CAUSE_MOUSE:
+      case CAUSE_TOUCH:
+      case CAUSE_UNKNOWN_DURING_NON_KEYBOARD_INPUT:
+      case CAUSE_UNKNOWN_DURING_KEYBOARD_INPUT:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool IsHandlingUserInput() const {
+    return IsHandlingUserInput(mCause);
   }
 
   InputContextAction()

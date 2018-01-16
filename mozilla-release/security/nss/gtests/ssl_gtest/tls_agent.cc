@@ -36,7 +36,6 @@ const std::string TlsAgent::kServerRsa = "rsa";    // both sign and encrypt
 const std::string TlsAgent::kServerRsaSign = "rsa_sign";
 const std::string TlsAgent::kServerRsaPss = "rsa_pss";
 const std::string TlsAgent::kServerRsaDecrypt = "rsa_decrypt";
-const std::string TlsAgent::kServerRsaChain = "rsa_chain";
 const std::string TlsAgent::kServerEcdsa256 = "ecdsa256";
 const std::string TlsAgent::kServerEcdsa384 = "ecdsa384";
 const std::string TlsAgent::kServerEcdsa521 = "ecdsa521";
@@ -388,7 +387,7 @@ void TlsAgent::SetShortHeadersEnabled() {
 void TlsAgent::SetAltHandshakeTypeEnabled() {
   EXPECT_TRUE(EnsureTlsSetup());
 
-  SECStatus rv = SSL_UseAltServerHelloType(ssl_fd(), true);
+  SECStatus rv = SSL_UseAltServerHelloType(ssl_fd(), PR_TRUE);
   EXPECT_EQ(SECSuccess, rv);
 }
 
@@ -492,6 +491,12 @@ void TlsAgent::CheckKEA(SSLKEAType kea_type, SSLNamedGroup kea_group,
   if (kea_group != ssl_grp_ffdhe_custom) {
     EXPECT_EQ(kea_size, info_.keaKeyBits);
     EXPECT_EQ(kea_group, info_.keaGroup);
+  }
+}
+
+void TlsAgent::CheckOriginalKEA(SSLNamedGroup kea_group) const {
+  if (kea_group != ssl_grp_ffdhe_custom) {
+    EXPECT_EQ(kea_group, info_.originalKeaGroup);
   }
 }
 
@@ -719,6 +724,8 @@ void TlsAgent::Connected() {
   SECStatus rv = SSL_GetChannelInfo(ssl_fd(), &info_, sizeof(info_));
   EXPECT_EQ(SECSuccess, rv);
   EXPECT_EQ(sizeof(info_), info_.length);
+
+  EXPECT_EQ(expect_resumption_, info_.resumed == PR_TRUE);
 
   // Preliminary values are exposed through callbacks during the handshake.
   // If either expected values were set or the callbacks were called, check

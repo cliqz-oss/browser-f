@@ -141,6 +141,7 @@ nsHttpTransaction::nsHttpTransaction()
     , mSynchronousRatePaceRequest(false)
     , mClassOfService(0)
     , m0RTTInProgress(false)
+    , mDoNotTryEarlyData(false)
     , mEarlyDataDisposition(EARLY_NONE)
     , mFastOpenStatus(TFO_NOT_TRIED)
 {
@@ -383,7 +384,8 @@ nsHttpTransaction::Init(uint32_t caps,
         // that we write data in the largest chunks possible.  this is actually
         // necessary to workaround some common server bugs (see bug 137155).
         nsCOMPtr<nsIInputStream> stream(do_QueryInterface(multi));
-        rv = NS_NewBufferedInputStream(getter_AddRefs(mRequestStream), stream,
+        rv = NS_NewBufferedInputStream(getter_AddRefs(mRequestStream),
+                                       stream.forget(),
                                        nsIOService::gDefaultSegmentSize);
         if (NS_FAILED(rv)) return rv;
     } else {
@@ -583,16 +585,25 @@ nsHttpTransaction::OnTransportStatus(nsITransport* transport,
         } else if (status == NS_NET_STATUS_CONNECTING_TO) {
             SetConnectStart(TimeStamp::Now());
         } else if (status == NS_NET_STATUS_CONNECTED_TO) {
-            SetConnectEnd(TimeStamp::Now(), true);
-        } else if (status == NS_NET_STATUS_TLS_HANDSHAKE_ENDED) {
+            TimeStamp tnow = TimeStamp::Now();
+            SetConnectEnd(tnow, true);
             {
-                // before overwriting connectEnd, copy it to secureConnectionStart
                 MutexAutoLock lock(mLock);
-                if (mTimings.secureConnectionStart.IsNull() &&
-                    !mTimings.connectEnd.IsNull()) {
-                    mTimings.secureConnectionStart = mTimings.connectEnd;
+                mTimings.tcpConnectEnd = tnow;
+                // After a socket is connected we know for sure whether data
+                // has been sent on SYN packet and if not we should update TLS
+                // start timing.
+                if ((mFastOpenStatus != TFO_DATA_SENT) && 
+                    !mTimings.secureConnectionStart.IsNull()) {
+                    mTimings.secureConnectionStart = tnow;
                 }
             }
+        } else if (status == NS_NET_STATUS_TLS_HANDSHAKE_STARTING) {
+            {
+                MutexAutoLock lock(mLock);
+                mTimings.secureConnectionStart = TimeStamp::Now();
+            }
+        } else if (status == NS_NET_STATUS_TLS_HANDSHAKE_ENDED) {
             SetConnectEnd(TimeStamp::Now(), false);
         } else if (status == NS_NET_STATUS_SENDING_TO) {
             // Set the timestamp to Now(), only if it null
@@ -1534,9 +1545,17 @@ nsHttpTransaction::HandleContentStart()
 
     if (mResponseHead) {
         if (mEarlyDataDisposition == EARLY_ACCEPTED) {
-            Unused << mResponseHead->SetHeader(nsHttp::X_Firefox_Early_Data, NS_LITERAL_CSTRING("accepted"));
+            if (mResponseHead->Status() == 425) {
+                // We will report this state when the final responce arrives.
+                mEarlyDataDisposition = EARLY_425;
+            } else {
+                Unused << mResponseHead->SetHeader(nsHttp::X_Firefox_Early_Data, NS_LITERAL_CSTRING("accepted"));
+            }
         } else if (mEarlyDataDisposition == EARLY_SENT) {
             Unused << mResponseHead->SetHeader(nsHttp::X_Firefox_Early_Data, NS_LITERAL_CSTRING("sent"));
+        } else if (mEarlyDataDisposition == EARLY_425) {
+            Unused << mResponseHead->SetHeader(nsHttp::X_Firefox_Early_Data, NS_LITERAL_CSTRING("received 425"));
+            mEarlyDataDisposition = EARLY_NONE;
         } // no header on NONE case
 
         if (mFastOpenStatus == TFO_DATA_SENT) {
@@ -1602,6 +1621,14 @@ nsHttpTransaction::HandleContentStart()
             // retry on a new connection - just in case
             if (!mRestartCount) {
                 mCaps &= ~NS_HTTP_ALLOW_KEEPALIVE;
+                mForceRestart = true; // force restart has built in loop protection
+                return NS_ERROR_NET_RESET;
+            }
+            break;
+        case 425:
+            LOG(("Too Early."));
+            if ((mEarlyDataDisposition == EARLY_425) && !mDoNotTryEarlyData) {
+                mDoNotTryEarlyData = true;
                 mForceRestart = true; // force restart has built in loop protection
                 return NS_ERROR_NET_RESET;
             }
@@ -1949,7 +1976,7 @@ nsHttpTransaction::CheckForStickyAuthSchemeAt(nsHttpAtom const& header)
       ToLowerCase(schema);
 
       nsAutoCString contractid;
-      contractid.Assign(NS_HTTP_AUTHENTICATOR_CONTRACTID_PREFIX);
+      contractid.AssignLiteral(NS_HTTP_AUTHENTICATOR_CONTRACTID_PREFIX);
       contractid.Append(schema);
 
       // using a new instance because of thread safety of auth modules refcnt
@@ -2076,6 +2103,13 @@ nsHttpTransaction::GetConnectStart()
 {
     mozilla::MutexAutoLock lock(mLock);
     return mTimings.connectStart;
+}
+
+mozilla::TimeStamp
+nsHttpTransaction::GetTcpConnectEnd()
+{
+    mozilla::MutexAutoLock lock(mLock);
+    return mTimings.tcpConnectEnd;
 }
 
 mozilla::TimeStamp
@@ -2264,6 +2298,7 @@ bool
 nsHttpTransaction::CanDo0RTT()
 {
     if (mRequestHead->IsSafeMethod() &&
+        !mDoNotTryEarlyData &&
         (!mConnection ||
          !mConnection->IsProxyConnectInProgress())) {
         return true;
@@ -2338,6 +2373,7 @@ nsHttpTransaction::RestartOnFastOpenError()
     mEarlyDataDisposition = EARLY_NONE;
     m0RTTInProgress = false;
     mFastOpenStatus = TFO_FAILED;
+    mTimings = TimingStruct();
     return NS_OK;
 }
 

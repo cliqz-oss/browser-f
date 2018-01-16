@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -24,16 +25,6 @@ void
 WebRenderCanvasRenderer::Initialize(const CanvasInitializeData& aData)
 {
   ShareableCanvasRenderer::Initialize(aData);
-
-  // XXX: Use basic surface factory until we support shared surface.
-  if (!mGLContext || mGLFrontbuffer)
-    return;
-
-  gl::GLScreenBuffer* screen = mGLContext->Screen();
-  auto factory = MakeUnique<gl::SurfaceFactory_Basic>(mGLContext,
-                                                      screen->mCaps,
-                                                      mFlags);
-  screen->Morph(Move(factory));
 }
 
 WebRenderCanvasRendererSync::~WebRenderCanvasRendererSync()

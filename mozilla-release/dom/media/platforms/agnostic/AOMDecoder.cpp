@@ -80,8 +80,8 @@ RefPtr<ShutdownPromise>
 AOMDecoder::Shutdown()
 {
   RefPtr<AOMDecoder> self = this;
-  return InvokeAsync(mTaskQueue, __func__, [self, this]() {
-    auto res = aom_codec_destroy(&mCodec);
+  return InvokeAsync(mTaskQueue, __func__, [self]() {
+    auto res = aom_codec_destroy(&self->mCodec);
     if (res != AOM_CODEC_OK) {
       LOG_RESULT(res, "aom_codec_destroy");
     }
@@ -193,8 +193,8 @@ AOMDecoder::ProcessDecode(MediaRawData* aSample)
   while ((img = aom_codec_get_frame(&mCodec, &iter))) {
     // Track whether the underlying buffer is 8 or 16 bits per channel.
     bool highbd = bool(img->fmt & AOM_IMG_FMT_HIGHBITDEPTH);
-    if (img->bit_depth > 8) {
-      // Downsample images with more than 8 significant bits per channel.
+    if (highbd) {
+      // Downsample images with more than 8 bits per channel.
       aom_img_fmt_t fmt8 = static_cast<aom_img_fmt_t>(img->fmt ^ AOM_IMG_FMT_HIGHBITDEPTH);
       img8.reset(aom_img_alloc(NULL, fmt8, img->d_w, img->d_h, 16));
       if (img8 == nullptr) {
@@ -322,7 +322,7 @@ AOMDecoder::IsSupportedCodec(const nsAString& aCodecType)
   // for a specific aom commit hash so sites can check
   // compatibility.
   auto version = NS_ConvertASCIItoUTF16("av1.experimental.");
-  version.AppendLiteral("f5bdeac22930ff4c6b219be49c843db35970b918");
+  version.AppendLiteral("e87fb2378f01103d5d6e477a4ef6892dc714e614");
   return aCodecType.EqualsLiteral("av1") ||
          aCodecType.Equals(version);
 }

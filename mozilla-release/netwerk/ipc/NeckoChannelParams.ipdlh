@@ -47,6 +47,7 @@ struct LoadInfoArgs
   bool                        upgradeInsecureRequests;
   bool                        verifySignedContent;
   bool                        enforceSRI;
+  bool                        forceAllowDataURI;
   bool                        forceInheritPrincipalDropped;
   uint64_t                    innerWindowID;
   uint64_t                    outerWindowID;
@@ -59,9 +60,18 @@ struct LoadInfoArgs
   OriginAttributes            originAttributes;
   RedirectHistoryEntryInfo[]  redirectChainIncludingInternalRedirects;
   RedirectHistoryEntryInfo[]  redirectChain;
+
+  /**
+   * Ancestor data for use with the WebRequest API.
+   * See nsILoadInfo.idl for details.
+   */
+  PrincipalInfo[]             ancestorPrincipals;
+  uint64_t[]                  ancestorOuterWindowIDs;
+
   nsCString[]                 corsUnsafeHeaders;
   bool                        forcePreflight;
   bool                        isPreflight;
+  bool                        loadTriggeredFromExternal;
   bool                        forceHSTSPriming;
   bool                        mixedContentWouldBlock;
   bool                        isHSTSPriming;
@@ -210,8 +220,10 @@ struct CookieStruct
   int64_t   expiry;
   int64_t   lastAccessed;
   int64_t   creationTime;
+  bool      isHttpOnly;
   bool      isSession;
   bool      isSecure;
+  int8_t    sameSite;
 };
 
 } // namespace ipc

@@ -6,8 +6,8 @@ this.EXPORTED_SYMBOLS = ["TabEngine", "TabSetRecord"];
 
 var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
-const TABS_TTL = 1814400;          // 21 days.
-const TAB_ENTRIES_LIMIT = 5;      // How many URLs to include in tab history.
+const TABS_TTL = 1814400; // 21 days.
+const TAB_ENTRIES_LIMIT = 5; // How many URLs to include in tab history.
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
@@ -23,7 +23,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
 
 this.TabSetRecord = function TabSetRecord(collection, id) {
   CryptoWrapper.call(this, collection, id);
-}
+};
 TabSetRecord.prototype = {
   __proto__: CryptoWrapper.prototype,
   _logName: "Sync.Record.Tabs",
@@ -35,7 +35,7 @@ Utils.deferGetSet(TabSetRecord, "cleartext", ["clientName", "tabs"]);
 
 this.TabEngine = function TabEngine(service) {
   SyncEngine.call(this, "Tabs", service);
-}
+};
 TabEngine.prototype = {
   __proto__: SyncEngine.prototype,
   _storeObj: TabStore,
@@ -184,7 +184,7 @@ TabStore.prototype = {
 
         let urls = candidates.map((entry) => entry.url)
                              .filter(acceptable)
-                             .reverse();                       // Because Sync puts current at index 0, and history after.
+                             .reverse(); // Because Sync puts current at index 0, and history after.
 
         // Truncate if necessary.
         if (urls.length > TAB_ENTRIES_LIMIT) {

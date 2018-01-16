@@ -42,6 +42,7 @@ using mozilla::Telemetry::Common::MsSinceProcessStart;
 using mozilla::Telemetry::Common::LogToBrowserConsole;
 using mozilla::Telemetry::Common::CanRecordInProcess;
 using mozilla::Telemetry::Common::GetNameForProcessID;
+using mozilla::Telemetry::Common::IsValidIdentifierString;
 using mozilla::Telemetry::EventExtraEntry;
 using mozilla::Telemetry::ChildEventData;
 using mozilla::Telemetry::ProcessID;
@@ -167,11 +168,6 @@ enum class RecordEventResult {
   WrongProcess,
 };
 
-enum class RegisterEventResult {
-  Ok,
-  AlreadyRegistered,
-};
-
 typedef nsTArray<EventExtraEntry> ExtraArray;
 
 class EventRecord {
@@ -281,16 +277,6 @@ UniqueEventName(const DynamicEventInfo& info)
   return UniqueEventName(info.category,
                          info.method,
                          info.object);
-}
-
-bool
-IsExpiredDate(uint32_t expires_days_since_epoch) {
-  if (expires_days_since_epoch == 0) {
-    return false;
-  }
-
-  const uint32_t days_since_epoch = PR_Now() / (PRTime(PR_USEC_PER_SEC) * 24 * 60 * 60);
-  return expires_days_since_epoch <= days_since_epoch;
 }
 
 void
@@ -519,19 +505,12 @@ ShouldRecordChildEvent(const StaticMutexAutoLock& lock, const nsACString& catego
   return RecordEventResult::Ok;
 }
 
-RegisterEventResult
+void
 RegisterEvents(const StaticMutexAutoLock& lock, const nsACString& category,
                const nsTArray<DynamicEventInfo>& eventInfos,
                const nsTArray<bool>& eventExpired)
 {
   MOZ_ASSERT(eventInfos.Length() == eventExpired.Length(), "Event data array sizes should match.");
-
-  // Check that none of the events are already registered.
-  for (auto& info : eventInfos) {
-    if (gEventNameIDMap.Get(UniqueEventName(info))) {
-      return RegisterEventResult::AlreadyRegistered;
-    }
-  }
 
   // Register the new events.
   if (!gDynamicEventInfo) {
@@ -539,15 +518,25 @@ RegisterEvents(const StaticMutexAutoLock& lock, const nsACString& category,
   }
 
   for (uint32_t i = 0, len = eventInfos.Length(); i < len; ++i) {
+    const nsCString& eventName = UniqueEventName(eventInfos[i]);
+
+    // Re-registering events can happen when add-ons update, so we don't print warnings.
+    // We don't support changing their definition, but the expiry might have changed.
+    EventKey* existing = nullptr;
+    if (gEventNameIDMap.Get(eventName, &existing)) {
+      if (eventExpired[i]) {
+        existing->id = kExpiredEventId;
+      }
+      continue;
+    }
+
     gDynamicEventInfo->AppendElement(eventInfos[i]);
     uint32_t eventId = eventExpired[i] ? kExpiredEventId : gDynamicEventInfo->Length() - 1;
-    gEventNameIDMap.Put(UniqueEventName(eventInfos[i]), new EventKey{eventId, true});
+    gEventNameIDMap.Put(eventName, new EventKey{eventId, true});
   }
 
   // Now after successful registration enable recording for this category.
   gEnabledCategories.PutEntry(category);
-
-  return RegisterEventResult::Ok;
 }
 
 } // anonymous namespace
@@ -699,8 +688,7 @@ TelemetryEvent::InitializeGlobalState(bool aCanRecordBase, bool aCanRecordExtend
     // If this event is expired or not recorded in this process, mark it with
     // a special event id.
     // This avoids doing repeated checks at runtime.
-    if (IsExpiredVersion(info.common_info.expiration_version().get()) ||
-        IsExpiredDate(info.common_info.expiration_day)) {
+    if (IsExpiredVersion(info.common_info.expiration_version().get())) {
       eventId = kExpiredEventId;
     }
 
@@ -951,44 +939,12 @@ GetArrayPropertyValues(JSContext* cx, JS::HandleObject obj, const char* property
   return true;
 }
 
-static bool
-IsStringCharValid(const char aChar, const bool allowInfixPeriod)
-{
-  return (aChar >= 'A' && aChar <= 'Z')
-      || (aChar >= 'a' && aChar <= 'z')
-      || (aChar >= '0' && aChar <= '9')
-      || (allowInfixPeriod && (aChar == '.'));
-}
-
-static bool
-IsValidIdentifierString(const nsACString& str, const size_t maxLength,
-                        const bool allowInfixPeriod)
-{
-  // Check string length.
-  if (str.Length() > maxLength) {
-    return false;
-  }
-
-  // Check string characters.
-  const char* first = str.BeginReading();
-  const char* end = str.EndReading();
-
-  for (const char* cur = first; cur < end; ++cur) {
-      const bool allowPeriod = allowInfixPeriod && (cur != first) && (cur != (end - 1));
-      if (!IsStringCharValid(*cur, allowPeriod)) {
-        return false;
-      }
-  }
-
-  return true;
-}
-
 nsresult
 TelemetryEvent::RegisterEvents(const nsACString& aCategory,
                                JS::Handle<JS::Value> aEventData,
                                JSContext* cx)
 {
-  if (!IsValidIdentifierString(aCategory, 30, true)) {
+  if (!IsValidIdentifierString(aCategory, 30, true, false)) {
     JS_ReportErrorASCII(cx, "Category parameter should match the identifier pattern.");
     return NS_ERROR_INVALID_ARG;
   }
@@ -1015,7 +971,7 @@ TelemetryEvent::RegisterEvents(const nsACString& aCategory,
       return NS_ERROR_FAILURE;
     }
 
-    if (!IsValidIdentifierString(NS_ConvertUTF16toUTF8(eventName), kMaxMethodNameByteLength, false)) {
+    if (!IsValidIdentifierString(NS_ConvertUTF16toUTF8(eventName), kMaxMethodNameByteLength, false, true)) {
       JS_ReportErrorASCII(cx, "Event names should match the identifier pattern.");
       return NS_ERROR_INVALID_ARG;
     }
@@ -1072,7 +1028,7 @@ TelemetryEvent::RegisterEvents(const nsACString& aCategory,
 
     // Validate methods.
     for (auto& method : methods) {
-      if (!IsValidIdentifierString(method, kMaxMethodNameByteLength, false)) {
+      if (!IsValidIdentifierString(method, kMaxMethodNameByteLength, false, false)) {
         JS_ReportErrorASCII(cx, "Method names should match the identifier pattern.");
         return NS_ERROR_INVALID_ARG;
       }
@@ -1080,7 +1036,7 @@ TelemetryEvent::RegisterEvents(const nsACString& aCategory,
 
     // Validate objects.
     for (auto& object : objects) {
-      if (!IsValidIdentifierString(object, kMaxObjectNameByteLength, false)) {
+      if (!IsValidIdentifierString(object, kMaxObjectNameByteLength, false, true)) {
         JS_ReportErrorASCII(cx, "Object names should match the identifier pattern.");
         return NS_ERROR_INVALID_ARG;
       }
@@ -1092,7 +1048,7 @@ TelemetryEvent::RegisterEvents(const nsACString& aCategory,
       return NS_ERROR_INVALID_ARG;
     }
     for (auto& key : extra_keys) {
-      if (!IsValidIdentifierString(key, kMaxExtraKeyNameByteLength, false)) {
+      if (!IsValidIdentifierString(key, kMaxExtraKeyNameByteLength, false, false)) {
         JS_ReportErrorASCII(cx, "Extra key names should match the identifier pattern.");
         return NS_ERROR_INVALID_ARG;
       }
@@ -1111,18 +1067,9 @@ TelemetryEvent::RegisterEvents(const nsACString& aCategory,
     }
   }
 
-  RegisterEventResult res = RegisterEventResult::Ok;
   {
     StaticMutexAutoLock locker(gTelemetryEventsMutex);
-    res = ::RegisterEvents(locker, aCategory, newEventInfos, newEventExpired);
-  }
-
-  switch (res) {
-    case RegisterEventResult::AlreadyRegistered:
-      JS_ReportErrorASCII(cx, "Attempt to register event that is already registered.");
-      return NS_ERROR_INVALID_ARG;
-    default:
-      break;
+    RegisterEvents(locker, aCategory, newEventInfos, newEventExpired);
   }
 
   return NS_OK;

@@ -76,7 +76,7 @@ class TestAccessibility(MarionetteTestCase):
 
     displayed_elementIDs = [
         "button1", "button2", "button3", "button4", "button5", "button6",
-        "button9", "no_accessible_but_displayed"
+        "no_accessible_but_displayed"
     ]
 
     displayed_but_a11y_hidden_elementIDs = ["button7", "button8"]
@@ -214,18 +214,6 @@ class TestAccessibility(MarionetteTestCase):
         self.setup_accessibility()
         # Sending keys to valid input should not raise any exceptions
         self.run_element_test(['input1'], lambda element: element.send_keys("a"))
-
-        self.setup_accessibility(False, False)
-        # Sending keys to invalid element should not raise any exceptions when raising accessibility
-        # exceptions is disabled
-        self.run_element_test(['button5'], lambda element: element.send_keys("abc"))
-
-    def test_send_keys_raises_element_not_accessible(self):
-        self.setup_accessibility()
-        # Sending keys to invalid element should raise an exception
-        self.run_element_test(['button5'],
-                              lambda element: self.assertRaises(ElementNotAccessibleException,
-                                                                element.send_keys))
 
     def test_is_selected_raises_no_exception(self):
         self.setup_accessibility()

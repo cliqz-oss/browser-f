@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,7 +10,7 @@
 #include "mozilla/StyleSetHandle.h"
 #include "mozilla/StyleSetHandleInlines.h"
 
-nsTreeStyleCache::Transition::Transition(DFAState aState, nsIAtom* aSymbol)
+nsTreeStyleCache::Transition::Transition(DFAState aState, nsAtom* aSymbol)
   : mState(aState), mInputSymbol(aSymbol)
 {
 }
@@ -32,8 +33,7 @@ nsTreeStyleCache::Transition::Hash() const
 
 // The style context cache impl
 nsStyleContext*
-nsTreeStyleCache::GetStyleContext(nsICSSPseudoComparator* aComparator,
-                                  nsPresContext* aPresContext,
+nsTreeStyleCache::GetStyleContext(nsPresContext* aPresContext,
                                   nsIContent* aContent,
                                   nsStyleContext* aContext,
                                   nsICSSAnonBoxPseudo* aPseudoElement,
@@ -80,17 +80,9 @@ nsTreeStyleCache::GetStyleContext(nsICSSPseudoComparator* aComparator,
   }
   if (!result) {
     // We missed the cache. Resolve this pseudo-style.
-    // XXXheycam ServoStyleSets do not support XUL tree styles.
-    RefPtr<nsStyleContext> newResult;
-    if (aPresContext->StyleSet()->IsServo()) {
-      NS_ERROR("stylo: ServoStyleSets should not support XUL tree styles yet");
-      newResult = aPresContext->StyleSet()->
-        ResolveStyleForPlaceholder();
-    } else {
-      newResult = aPresContext->StyleSet()->AsGecko()->
-        ResolveXULTreePseudoStyle(aContent->AsElement(), aPseudoElement,
-                                  aContext->AsGecko(), aComparator);
-    }
+    RefPtr<nsStyleContext> newResult = aPresContext->StyleSet()->
+        ResolveXULTreePseudoStyle(aContent->AsElement(),
+                                  aPseudoElement, aContext, aInputWord);
 
     // Put the style context in our table, transferring the owning reference to the table.
     if (!mCache) {

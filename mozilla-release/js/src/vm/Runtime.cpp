@@ -25,11 +25,9 @@
 #endif
 
 #include "jsatom.h"
-#include "jsgc.h"
 #include "jsmath.h"
 #include "jsobj.h"
 #include "jsscript.h"
-#include "jswatchpoint.h"
 #include "jswin.h"
 #include "jswrapper.h"
 
@@ -105,6 +103,7 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     profilerSampleBufferGen_(0),
     profilerSampleBufferLapCount_(1),
     telemetryCallback(nullptr),
+    consumeStreamCallback(nullptr),
     readableStreamDataRequestCallback(nullptr),
     readableStreamWriteIntoReadRequestCallback(nullptr),
     readableStreamCancelCallback(nullptr),
@@ -218,12 +217,12 @@ JSRuntime::init(JSContext* cx, uint32_t maxbytes, uint32_t maxNurseryBytes)
     if (!gc.init(maxbytes, maxNurseryBytes))
         return false;
 
-    ScopedJSDeletePtr<Zone> atomsZone(new_<Zone>(this, nullptr));
+    ScopedJSDeletePtr<Zone> atomsZone(js_new<Zone>(this, nullptr));
     if (!atomsZone || !atomsZone->init(true))
         return false;
 
     JS::CompartmentOptions options;
-    ScopedJSDeletePtr<JSCompartment> atomsCompartment(new_<JSCompartment>(atomsZone.get(), options));
+    ScopedJSDeletePtr<JSCompartment> atomsCompartment(js_new<JSCompartment>(atomsZone.get(), options));
     if (!atomsCompartment || !atomsCompartment->init(nullptr))
         return false;
 
@@ -728,7 +727,7 @@ JSRuntime::enqueuePromiseJob(JSContext* cx, HandleFunction job, HandleObject pro
                              HandleObject incumbentGlobal)
 {
     MOZ_ASSERT(cx->enqueuePromiseJobCallback,
-               "Must set a callback using JS_SetEnqeueuPromiseJobCallback before using Promises");
+               "Must set a callback using JS::SetEnqueuePromiseJobCallback before using Promises");
     MOZ_ASSERT_IF(incumbentGlobal, !IsWrapper(incumbentGlobal) && !IsWindowProxy(incumbentGlobal));
 
     void* data = cx->enqueuePromiseJobCallbackData;
@@ -799,13 +798,7 @@ JSRuntime::forkRandomKeyGenerator()
 void
 JSRuntime::updateMallocCounter(size_t nbytes)
 {
-    updateMallocCounter(nullptr, nbytes);
-}
-
-void
-JSRuntime::updateMallocCounter(JS::Zone* zone, size_t nbytes)
-{
-    gc.updateMallocCounter(zone, nbytes);
+    gc.updateMallocCounter(nbytes);
 }
 
 JS_FRIEND_API(void*)

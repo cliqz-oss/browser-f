@@ -5,11 +5,6 @@
 // The ext-* files are imported into the same scopes.
 /* import-globals-from ext-browser.js */
 
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-                                  "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-
 Cu.import("resource://gre/modules/ExtensionParent.jsm");
 
 var {
@@ -139,16 +134,6 @@ this.sidebarAction = class extends ExtensionAPI {
       let {SidebarUI} = window;
       if (install || SidebarUI.lastOpenedId == this.id) {
         SidebarUI.show(this.id);
-      }
-    }
-
-    if (install && !Services.prefs.prefHasUserValue("extensions.sidebar-button.shown")) {
-      Services.prefs.setBoolPref("extensions.sidebar-button.shown", true);
-      // If the sidebar button has never been moved to the toolbar, move it now
-      // so the user can see/access the sidebars.
-      let widget = CustomizableUI.getWidget("sidebar-button");
-      if (!widget.areaType) {
-        CustomizableUI.addWidgetToArea("sidebar-button", CustomizableUI.AREA_NAVBAR, 0);
       }
     }
   }

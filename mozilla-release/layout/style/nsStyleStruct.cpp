@@ -111,6 +111,9 @@ static bool AreShadowArraysEqual(nsCSSShadowArray* lhs, nsCSSShadowArray* rhs);
 nsStyleFont::nsStyleFont(const nsFont& aFont, const nsPresContext* aContext)
   : mFont(aFont)
   , mSize(nsStyleFont::ZoomText(aContext, mFont.size))
+  , mFontSizeFactor(1.0)
+  , mFontSizeOffset(0)
+  , mFontSizeKeyword(NS_STYLE_FONT_SIZE_MEDIUM)
   , mGenericID(kGenericFont_NONE)
   , mScriptLevel(0)
   , mMathVariant(NS_MATHML_MATHVARIANT_NONE)
@@ -131,6 +134,9 @@ nsStyleFont::nsStyleFont(const nsFont& aFont, const nsPresContext* aContext)
 nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
   : mFont(aSrc.mFont)
   , mSize(aSrc.mSize)
+  , mFontSizeFactor(aSrc.mFontSizeFactor)
+  , mFontSizeOffset(aSrc.mFontSizeOffset)
+  , mFontSizeKeyword(aSrc.mFontSizeKeyword)
   , mGenericID(aSrc.mGenericID)
   , mScriptLevel(aSrc.mScriptLevel)
   , mMathVariant(aSrc.mMathVariant)
@@ -193,13 +199,23 @@ nsStyleFont::CalcDifference(const nsStyleFont& aNewData) const
   MOZ_ASSERT(mAllowZoom == aNewData.mAllowZoom,
              "expected mAllowZoom to be the same on both nsStyleFonts");
   if (mSize != aNewData.mSize ||
-      mFont != aNewData.mFont ||
       mLanguage != aNewData.mLanguage ||
       mExplicitLanguage != aNewData.mExplicitLanguage ||
       mMathVariant != aNewData.mMathVariant ||
       mMathDisplay != aNewData.mMathDisplay ||
       mMinFontSizeRatio != aNewData.mMinFontSizeRatio) {
     return NS_STYLE_HINT_REFLOW;
+  }
+
+  switch (mFont.CalcDifference(aNewData.mFont)) {
+    case nsFont::MaxDifference::eLayoutAffecting:
+      return NS_STYLE_HINT_REFLOW;
+
+    case nsFont::MaxDifference::eVisual:
+      return NS_STYLE_HINT_VISUAL;
+
+    case nsFont::MaxDifference::eNone:
+      break;
   }
 
   // XXX Should any of these cause a non-nsChangeHint_NeutralChange change?
@@ -230,10 +246,10 @@ nsStyleFont::UnZoomText(nsPresContext *aPresContext, nscoord aSize)
   return NSToCoordTruncClamped(float(aSize) / aPresContext->EffectiveTextZoom());
 }
 
-/* static */ already_AddRefed<nsIAtom>
+/* static */ already_AddRefed<nsAtom>
 nsStyleFont::GetLanguage(const nsPresContext* aPresContext)
 {
-  RefPtr<nsIAtom> language = aPresContext->GetContentLanguage();
+  RefPtr<nsAtom> language = aPresContext->GetContentLanguage();
   if (!language) {
     // we didn't find a (usable) Content-Language, so we fall back
     // to whatever the presContext guessed from the charset
@@ -1033,6 +1049,97 @@ StyleBasicShape::GetShapeTypeName() const
 }
 
 // --------------------
+// StyleShapeSource
+
+StyleShapeSource::StyleShapeSource(const StyleShapeSource& aSource)
+{
+  DoCopy(aSource);
+}
+
+StyleShapeSource&
+StyleShapeSource::operator=(const StyleShapeSource& aOther)
+{
+  if (this != &aOther) {
+    DoCopy(aOther);
+  }
+
+  return *this;
+}
+
+bool
+StyleShapeSource::operator==(const StyleShapeSource& aOther) const
+{
+  if (mType != aOther.mType) {
+    return false;
+  }
+
+  if (mType == StyleShapeSourceType::URL) {
+    return DefinitelyEqualURIs(GetURL(), aOther.GetURL());
+  } else if (mType == StyleShapeSourceType::Shape) {
+    return *mBasicShape == *aOther.mBasicShape &&
+      mReferenceBox == aOther.mReferenceBox;
+  } else if (mType == StyleShapeSourceType::Box) {
+    return mReferenceBox == aOther.mReferenceBox;
+  }
+
+  return true;
+}
+
+bool
+StyleShapeSource::SetURL(css::URLValue* aValue)
+{
+  MOZ_ASSERT(aValue);
+  if (!mShapeImage) {
+    mShapeImage = MakeUnique<nsStyleImage>();
+  }
+  mShapeImage->SetURLValue(do_AddRef(aValue));
+  mType = StyleShapeSourceType::URL;
+  return true;
+}
+
+void
+StyleShapeSource::SetBasicShape(UniquePtr<StyleBasicShape> aBasicShape,
+                                StyleGeometryBox aReferenceBox)
+{
+  NS_ASSERTION(aBasicShape, "expected pointer");
+  mBasicShape = Move(aBasicShape);
+  mReferenceBox = aReferenceBox;
+  mType = StyleShapeSourceType::Shape;
+}
+
+void
+StyleShapeSource::SetReferenceBox(StyleGeometryBox aReferenceBox)
+{
+  mReferenceBox = aReferenceBox;
+  mType = StyleShapeSourceType::Box;
+}
+
+void
+StyleShapeSource::DoCopy(const StyleShapeSource& aOther)
+{
+
+  switch (aOther.mType) {
+    case StyleShapeSourceType::None:
+      mReferenceBox = StyleGeometryBox::NoBox;
+      mType = StyleShapeSourceType::None;
+      break;
+
+    case StyleShapeSourceType::URL:
+      SetURL(aOther.GetURL());
+      break;
+
+    case StyleShapeSourceType::Shape:
+      SetBasicShape(MakeUnique<StyleBasicShape>(*aOther.GetBasicShape()),
+                    aOther.GetReferenceBox());
+      break;
+
+    case StyleShapeSourceType::Box:
+      SetReferenceBox(aOther.GetReferenceBox());
+      break;
+  }
+}
+
+// --------------------
 // nsStyleFilter
 //
 nsStyleFilter::nsStyleFilter()
@@ -1213,7 +1320,7 @@ nsStyleSVGReset::CalcDifference(const nsStyleSVGReset& aNewData) const
 {
   nsChangeHint hint = nsChangeHint(0);
 
-  if (!mClipPath.DefinitelyEquals(aNewData.mClipPath)) {
+  if (mClipPath != aNewData.mClipPath) {
     hint |= nsChangeHint_UpdateEffects |
             nsChangeHint_RepaintFrame;
     // clip-path changes require that we update the PreEffectsBBoxProperty,
@@ -2315,13 +2422,13 @@ nsStyleImage::SetGradientData(nsStyleGradient* aGradient)
 }
 
 void
-nsStyleImage::SetElementId(already_AddRefed<nsIAtom> aElementId)
+nsStyleImage::SetElementId(already_AddRefed<nsAtom> aElementId)
 {
   if (mType != eStyleImageType_Null) {
     SetNull();
   }
 
-  if (nsCOMPtr<nsIAtom> atom = aElementId) {
+  if (RefPtr<nsAtom> atom = aElementId) {
     mElementId = atom.forget().take();
     mType = eStyleImageType_Element;
   }
@@ -2637,7 +2744,6 @@ const nsCSSPropertyID nsStyleImageLayers::kBackgroundLayerTable[] = {
   eCSSProperty_UNKNOWN                    // composite
 };
 
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
 const nsCSSPropertyID nsStyleImageLayers::kMaskLayerTable[] = {
   eCSSProperty_mask,                      // shorthand
   eCSSProperty_UNKNOWN,                   // color
@@ -2652,7 +2758,6 @@ const nsCSSPropertyID nsStyleImageLayers::kMaskLayerTable[] = {
   eCSSProperty_mask_mode,                 // maskMode
   eCSSProperty_mask_composite             // composite
 };
-#endif
 
 nsStyleImageLayers::nsStyleImageLayers(nsStyleImageLayers::LayerType aType)
   : mAttachmentCount(1)
@@ -3297,13 +3402,13 @@ StyleTransition::SetUnknownProperty(nsCSSPropertyID aProperty,
                                         CSSEnabledState::eForAllContent) ==
                aProperty,
              "property and property string should match");
-  nsCOMPtr<nsIAtom> temp = NS_Atomize(aPropertyString);
+  RefPtr<nsAtom> temp = NS_Atomize(aPropertyString);
   SetUnknownProperty(aProperty, temp);
 }
 
 void
 StyleTransition::SetUnknownProperty(nsCSSPropertyID aProperty,
-                                    nsIAtom* aPropertyString)
+                                    nsAtom* aPropertyString)
 {
   MOZ_ASSERT(aProperty == eCSSProperty_UNKNOWN ||
              aProperty == eCSSPropertyExtra_variable,
@@ -3341,7 +3446,7 @@ StyleAnimation::SetInitialValues()
   mTimingFunction = nsTimingFunction(NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE);
   mDuration = 0.0;
   mDelay = 0.0;
-  mName = EmptyString();
+  mName = nsGkAtoms::_empty;
   mDirection = dom::PlaybackDirection::Normal;
   mFillMode = dom::FillMode::None;
   mPlayState = NS_STYLE_ANIMATION_PLAY_STATE_RUNNING;
@@ -3568,7 +3673,7 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
     hint |= nsChangeHint_ReflowHintsForFloatAreaChange;
   }
 
-  if (!mShapeOutside.DefinitelyEquals(aNewData.mShapeOutside)) {
+  if (mShapeOutside != aNewData.mShapeOutside) {
     if (aNewData.mFloat != StyleFloat::None) {
       // If we are floating, and our shape-outside property changes, our
       // descendants are not impacted, but our ancestor and siblings are.
@@ -4095,7 +4200,7 @@ nsStyleText::nsStyleText(const nsPresContext* aContext)
   , mTextShadow(nullptr)
 {
   MOZ_COUNT_CTOR(nsStyleText);
-  nsCOMPtr<nsIAtom> language = aContext->GetContentLanguage();
+  RefPtr<nsAtom> language = aContext->GetContentLanguage();
   mTextEmphasisPosition = language &&
     nsStyleUtil::MatchesLanguagePrefix(language, u"zh") ?
     NS_STYLE_TEXT_EMPHASIS_POSITION_DEFAULT_ZH :
@@ -4296,7 +4401,6 @@ nsStyleUserInterface::nsStyleUserInterface(const nsPresContext* aContext)
   , mPointerEvents(NS_STYLE_POINTER_EVENTS_AUTO)
   , mCursor(NS_STYLE_CURSOR_AUTO)
   , mCaretColor(StyleComplexColor::Auto())
-  , mFontSmoothingBackgroundColor(NS_RGBA(0, 0, 0, 0))
 {
   MOZ_COUNT_CTOR(nsStyleUserInterface);
 }
@@ -4309,7 +4413,6 @@ nsStyleUserInterface::nsStyleUserInterface(const nsStyleUserInterface& aSource)
   , mCursor(aSource.mCursor)
   , mCursorImages(aSource.mCursorImages)
   , mCaretColor(aSource.mCaretColor)
-  , mFontSmoothingBackgroundColor(aSource.mFontSmoothingBackgroundColor)
 {
   MOZ_COUNT_CTOR(nsStyleUserInterface);
 }
@@ -4371,8 +4474,7 @@ nsStyleUserInterface::CalcDifference(const nsStyleUserInterface& aNewData) const
     hint |= nsChangeHint_NeutralChange;
   }
 
-  if (mCaretColor != aNewData.mCaretColor ||
-      mFontSmoothingBackgroundColor != aNewData.mFontSmoothingBackgroundColor) {
+  if (mCaretColor != aNewData.mCaretColor) {
     hint |= nsChangeHint_RepaintFrame;
   }
 

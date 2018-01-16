@@ -267,7 +267,7 @@ load 448543-1.html
 load 448543-2.html
 load 448543-3.html
 load 450319-1.xhtml
-asserts(1) load 453894-1.xhtml # Bug 398043
+asserts(1) asserts-if(stylo&&Android,2) load 453894-1.xhtml # Bug 398043
 load 454751-1.xul
 load 455063-1.html
 load 455063-2.html
@@ -469,6 +469,7 @@ load 1116104.html
 load 1127198-1.html
 load 1140198.html
 load 1143535.html
+load 1153716.html
 pref(layout.css.grid.enabled,true) load 1156588.html
 load 1162813.xul
 load 1163583.html
@@ -493,6 +494,7 @@ asserts(0-1) load 1343606.html # bug 1343948
 load 1352380.html
 load 1362423-1.html
 load 1381323.html
+load 1382534.html
 asserts-if(!stylo,1) load 1388625-1.html # bug 1389286
 load 1390389.html
 load 1391736.html
@@ -507,4 +509,10 @@ load 1400599-1.html
 load 1401739.html
 load 1401840.html
 load 1402476.html
+load 1404789-1.html
+load 1404789-2.html
 load 1406562.html
+load 1409088.html
+load 1409147.html
+load 1411138.html
+load 1419762.html

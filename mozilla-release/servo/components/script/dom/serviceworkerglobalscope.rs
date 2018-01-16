@@ -8,8 +8,8 @@ use dom::abstractworker::WorkerScriptMsg;
 use dom::bindings::codegen::Bindings::ServiceWorkerGlobalScopeBinding;
 use dom::bindings::codegen::Bindings::ServiceWorkerGlobalScopeBinding::ServiceWorkerGlobalScopeMethods;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{Root, RootCollection};
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::{DomRoot, RootCollection, ThreadLocalStackRoots};
 use dom::bindings::str::DOMString;
 use dom::event::Event;
 use dom::eventtarget::EventTarget;
@@ -22,10 +22,9 @@ use ipc_channel::ipc::{self, IpcSender, IpcReceiver};
 use ipc_channel::router::ROUTER;
 use js::jsapi::{JS_SetInterruptCallback, JSAutoCompartment, JSContext};
 use js::jsval::UndefinedValue;
-use js::rust::Runtime;
 use net_traits::{load_whole_resource, IpcSend, CustomResponseMediator};
-use net_traits::request::{CredentialsMode, Destination, RequestInit, Type as RequestType};
-use script_runtime::{CommonScriptMsg, ScriptChan, StackRootTLS, new_rt_and_cx};
+use net_traits::request::{CredentialsMode, Destination, RequestInit};
+use script_runtime::{CommonScriptMsg, ScriptChan, new_rt_and_cx, Runtime};
 use script_traits::{TimerEvent, WorkerGlobalScopeInit, ScopeThings, ServiceWorkerMsg, WorkerScriptLoadOrigin};
 use servo_config::prefs::PREFS;
 use servo_rand::random;
@@ -33,7 +32,7 @@ use servo_url::ServoUrl;
 use std::sync::mpsc::{Receiver, RecvError, Select, Sender, channel};
 use std::thread;
 use std::time::Duration;
-use style::thread_state::{self, IN_WORKER, SCRIPT};
+use style::thread_state::{self, ThreadState};
 
 /// Messages used to control service worker event loop
 pub enum ServiceWorkerScriptMsg {
@@ -62,22 +61,22 @@ impl ScriptChan for ServiceWorkerChan {
     }
 
     fn clone(&self) -> Box<ScriptChan + Send> {
-        box ServiceWorkerChan {
+        Box::new(ServiceWorkerChan {
             sender: self.sender.clone(),
-        }
+        })
     }
 }
 
 #[dom_struct]
 pub struct ServiceWorkerGlobalScope {
     workerglobalscope: WorkerGlobalScope,
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     receiver: Receiver<ServiceWorkerScriptMsg>,
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     own_sender: Sender<ServiceWorkerScriptMsg>,
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     timer_event_port: Receiver<()>,
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     swmanager_sender: IpcSender<ServiceWorkerMsg>,
     scope_url: ServoUrl,
 }
@@ -120,18 +119,20 @@ impl ServiceWorkerGlobalScope {
                timer_event_port: Receiver<()>,
                swmanager_sender: IpcSender<ServiceWorkerMsg>,
                scope_url: ServoUrl)
-               -> Root<ServiceWorkerGlobalScope> {
+               -> DomRoot<ServiceWorkerGlobalScope> {
         let cx = runtime.cx();
-        let scope = box ServiceWorkerGlobalScope::new_inherited(init,
-                                                                  worker_url,
-                                                                  from_devtools_receiver,
-                                                                  runtime,
-                                                                  own_sender,
-                                                                  receiver,
-                                                                  timer_event_chan,
-                                                                  timer_event_port,
-                                                                  swmanager_sender,
-                                                                  scope_url);
+        let scope = Box::new(ServiceWorkerGlobalScope::new_inherited(
+            init,
+            worker_url,
+            from_devtools_receiver,
+            runtime,
+            own_sender,
+            receiver,
+            timer_event_chan,
+            timer_event_port,
+            swmanager_sender,
+            scope_url
+        ));
         unsafe {
             ServiceWorkerGlobalScopeBinding::Wrap(cx, scope)
         }
@@ -152,15 +153,14 @@ impl ServiceWorkerGlobalScope {
         let serialized_worker_url = script_url.to_string();
         let origin = GlobalScope::current().expect("No current global object").origin().immutable().clone();
         thread::Builder::new().name(format!("ServiceWorker for {}", serialized_worker_url)).spawn(move || {
-            thread_state::initialize(SCRIPT | IN_WORKER);
+            thread_state::initialize(ThreadState::SCRIPT | ThreadState::IN_WORKER);
             let roots = RootCollection::new();
-            let _stack_roots_tls = StackRootTLS::new(&roots);
+            let _stack_roots = ThreadLocalStackRoots::new(&roots);
 
             let WorkerScriptLoadOrigin { referrer_url, referrer_policy, pipeline_id } = worker_load_origin;
 
             let request = RequestInit {
                 url: script_url.clone(),
-                type_: RequestType::Script,
                 destination: Destination::ServiceWorker,
                 credentials_mode: CredentialsMode::Include,
                 use_url_credentials: true,
@@ -307,9 +307,9 @@ impl ServiceWorkerGlobalScope {
     }
 
     pub fn script_chan(&self) -> Box<ScriptChan + Send> {
-        box ServiceWorkerChan {
+        Box::new(ServiceWorkerChan {
             sender: self.own_sender.clone()
-        }
+        })
     }
 
     fn dispatch_activate(&self) {
@@ -322,7 +322,7 @@ impl ServiceWorkerGlobalScope {
 #[allow(unsafe_code)]
 unsafe extern "C" fn interrupt_callback(cx: *mut JSContext) -> bool {
     let worker =
-        Root::downcast::<WorkerGlobalScope>(GlobalScope::from_context(cx))
+        DomRoot::downcast::<WorkerGlobalScope>(GlobalScope::from_context(cx))
             .expect("global is not a worker scope");
     assert!(worker.is::<ServiceWorkerGlobalScope>());
 

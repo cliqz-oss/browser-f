@@ -322,7 +322,7 @@ InterpreterStack::resumeGeneratorCallFrame(JSContext* cx, InterpreterRegs& regs,
                                            HandleFunction callee, HandleValue newTarget,
                                            HandleObject envChain)
 {
-    MOZ_ASSERT(callee->isStarGenerator() || callee->isLegacyGenerator() || callee->isAsync());
+    MOZ_ASSERT(callee->isGenerator() || callee->isAsync());
     RootedScript script(cx, JSFunction::getOrCreateScript(cx, callee));
     InterpreterFrame* prev = regs.fp();
     jsbytecode* prevpc = regs.pc;
@@ -560,14 +560,6 @@ AbstractFramePtr::hasInitialEnvironment() const
     if (isBaselineFrame())
         return asBaselineFrame()->hasInitialEnvironment();
     return asRematerializedFrame()->hasInitialEnvironment();
-}
-
-inline bool
-AbstractFramePtr::createSingleton() const
-{
-    if (isInterpreterFrame())
-        return asInterpreterFrame()->createSingleton();
-    return false;
 }
 
 inline bool
@@ -930,11 +922,8 @@ Activation::isProfiling() const
     if (isInterpreter())
         return asInterpreter()->isProfiling();
 
-    if (isJit())
-        return asJit()->isProfiling();
-
-    MOZ_ASSERT(isWasm());
-    return asWasm()->isProfiling();
+    MOZ_ASSERT(isJit());
+    return asJit()->isProfiling();
 }
 
 Activation*

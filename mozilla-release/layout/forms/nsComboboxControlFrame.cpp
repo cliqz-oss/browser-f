@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@
 #include "mozilla/gfx/PathHelpers.h"
 #include "nsCOMPtr.h"
 #include "nsFocusManager.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsGkAtoms.h"
 #include "nsCSSAnonBoxes.h"
 #include "nsHTMLParts.h"
@@ -27,6 +28,7 @@
 #include "nsIDOMNode.h"
 #include "nsISelectControlFrame.h"
 #include "nsContentUtils.h"
+#include "mozilla/dom/HTMLSelectElement.h"
 #include "nsIDocument.h"
 #include "nsIScrollableFrame.h"
 #include "nsListControlFrame.h"
@@ -550,7 +552,7 @@ public:
         static_cast<nsComboboxControlFrame*>(mFrame.GetFrame());
       static_cast<nsListControlFrame*>(combo->mDropdownFrame)->
         SetSuppressScrollbarUpdate(true);
-      nsCOMPtr<nsIPresShell> shell = mFrame->PresContext()->PresShell();
+      nsCOMPtr<nsIPresShell> shell = mFrame->PresShell();
       shell->FrameNeedsReflow(combo->mDropdownFrame, nsIPresShell::eResize,
                               NS_FRAME_IS_DIRTY);
       shell->FlushPendingNotifications(FlushType::Layout);
@@ -595,7 +597,7 @@ nsComboboxControlFrame::GetAvailableDropdownSpace(WritingMode aWM,
   *aBefore = 0;
   *aAfter = 0;
 
-  nsRect screen = nsFormControlFrame::GetUsableScreenRect(PresContext());
+  nsRect screen = nsCheckboxRadioFrame::GetUsableScreenRect(PresContext());
   nsSize containerSize = screen.Size();
   LogicalRect logicalScreen(aWM, screen, containerSize);
   if (mLastDropDownAfterScreenBCoord == nscoord_MIN) {
@@ -968,15 +970,6 @@ nsComboboxControlFrame::GetDropDown()
 
 ///////////////////////////////////////////////////////////////
 
-void
-nsComboboxControlFrame::SetPreviewText(const nsAString& aValue)
-{
-  nsAutoString previewValue(aValue);
-  nsContentUtils::RemoveNewlines(previewValue);
-
-  mPreviewText = previewValue;
-  RedisplayText();
-}
 
 NS_IMETHODIMP
 nsComboboxControlFrame::RedisplaySelectedText()
@@ -990,10 +983,14 @@ nsComboboxControlFrame::RedisplaySelectedText()
 nsresult
 nsComboboxControlFrame::RedisplayText()
 {
+  nsString previewValue;
   nsString previousText(mDisplayedOptionTextOrPreview);
+
+  auto* selectElement = static_cast<dom::HTMLSelectElement*>(GetContent());
+  selectElement->GetPreviewValue(previewValue);
   // Get the text to display
-  if (!mPreviewText.IsEmpty()) {
-    mDisplayedOptionTextOrPreview = mPreviewText;
+  if (!previewValue.IsEmpty()) {
+    mDisplayedOptionTextOrPreview = previewValue;
   } else if (mDisplayedIndex != -1) {
     mListControlFrame->GetOptionText(mDisplayedIndex, mDisplayedOptionTextOrPreview);
   } else {
@@ -1049,7 +1046,7 @@ nsComboboxControlFrame::HandleRedisplayTextEvent()
 
   ActuallyDisplayText(true);
   // XXXbz This should perhaps be eResize.  Check.
-  PresContext()->PresShell()->FrameNeedsReflow(mDisplayFrame,
+  PresShell()->FrameNeedsReflow(mDisplayFrame,
                                                nsIPresShell::eStyleChange,
                                                NS_FRAME_IS_DIRTY);
 
@@ -1181,7 +1178,7 @@ nsComboboxControlFrame::HandleEvent(nsPresContext* aPresContext,
 
 
 nsresult
-nsComboboxControlFrame::SetFormProperty(nsIAtom* aName, const nsAString& aValue)
+nsComboboxControlFrame::SetFormProperty(nsAtom* aName, const nsAString& aValue)
 {
   nsIFormControlFrame* fcFrame = do_QueryFrame(mDropdownFrame);
   if (!fcFrame) {
@@ -1220,7 +1217,7 @@ nsComboboxControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   // isn't possible to set the display type in CSS2 to create a button frame.
 
     // create content used for display
-  //nsIAtom* tag = NS_Atomize("mozcombodisplay");
+  //nsAtom* tag = NS_Atomize("mozcombodisplay");
 
   // Add a child text content node for the label
 
@@ -1350,7 +1347,7 @@ void
 nsComboboxDisplayFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                          const nsDisplayListSet& aLists)
 {
-  nsDisplayListCollection set;
+  nsDisplayListCollection set(aBuilder);
   nsBlockFrame::BuildDisplayList(aBuilder, set);
 
   // remove background items if parent frame is themed
@@ -1367,7 +1364,7 @@ nsComboboxControlFrame::CreateFrameForDisplayNode()
   MOZ_ASSERT(mDisplayContent);
 
   // Get PresShell
-  nsIPresShell *shell = PresContext()->PresShell();
+  nsIPresShell *shell = PresShell();
   StyleSetHandle styleSet = shell->StyleSet();
 
   // create the style contexts for the anonymous block frame and text frame
@@ -1397,7 +1394,7 @@ nsComboboxControlFrame::CreateFrameForDisplayNode()
 }
 
 void
-nsComboboxControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsComboboxControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (sFocused == this) {
     sFocused = nullptr;
@@ -1406,7 +1403,7 @@ nsComboboxControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
   // Revoke any pending RedisplayTextEvent
   mRedisplayTextEvent.Revoke();
 
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
 
   if (mDroppedDown) {
     MOZ_ASSERT(mDropdownFrame, "mDroppedDown without frame");
@@ -1419,10 +1416,10 @@ nsComboboxControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
   }
 
   // Cleanup frames in popup child list
-  mPopupFrames.DestroyFramesFrom(aDestructRoot);
-  DestroyAnonymousContent(mDisplayContent.forget());
-  DestroyAnonymousContent(mButtonContent.forget());
-  nsBlockFrame::DestroyFrom(aDestructRoot);
+  mPopupFrames.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
+  aPostDestroyData.AddAnonymousContent(mDisplayContent.forget());
+  aPostDestroyData.AddAnonymousContent(mButtonContent.forget());
+  nsBlockFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 const nsFrameList&
@@ -1674,7 +1671,6 @@ nsComboboxControlFrame::SaveState(nsPresState** aState)
   MOZ_ASSERT(!(*aState));
   (*aState) = new nsPresState();
   (*aState)->SetDroppedDown(mDroppedDown);
-  (*aState)->SetPreviewText(mPreviewText);
   return NS_OK;
 }
 
@@ -1684,7 +1680,6 @@ nsComboboxControlFrame::RestoreState(nsPresState* aState)
   if (!aState) {
     return NS_ERROR_FAILURE;
   }
-  aState->GetPreviewText(mPreviewText);
   ShowList(aState->GetDroppedDown()); // might destroy us
   return NS_OK;
 }
@@ -1701,7 +1696,7 @@ nsComboboxControlFrame::GenerateStateKey(nsIContent* aContent,
   if (NS_FAILED(rv) || aKey.IsEmpty()) {
     return rv;
   }
-  aKey.Append("CCF");
+  aKey.AppendLiteral("CCF");
   return NS_OK;
 }
 
@@ -1718,4 +1713,3 @@ nsComboboxControlFrame::ToolkitHasNativePopup()
   return false;
 #endif /* MOZ_USE_NATIVE_POPUP_WINDOWS */
 }
-

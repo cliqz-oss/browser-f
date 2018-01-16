@@ -22,6 +22,8 @@ import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.activitystream.ActivityStreamTelemetry;
 import org.mozilla.gecko.activitystream.homepanel.menu.ActivityStreamContextMenu;
 import org.mozilla.gecko.activitystream.homepanel.model.RowModel;
+import org.mozilla.gecko.activitystream.homepanel.model.TopSite;
+import org.mozilla.gecko.activitystream.homepanel.model.WebpageModel;
 import org.mozilla.gecko.activitystream.homepanel.model.WebpageRowModel;
 import org.mozilla.gecko.activitystream.homepanel.stream.HighlightsEmptyStateRow;
 import org.mozilla.gecko.activitystream.homepanel.stream.LearnMoreRow;
@@ -47,7 +49,7 @@ import java.util.List;
  * Every item is in a single adapter: Top Sites, Welcome panel, Highlights.
  */
 public class StreamRecyclerAdapter extends RecyclerView.Adapter<StreamViewHolder> implements RecyclerViewClickSupport.OnItemClickListener,
-        RecyclerViewClickSupport.OnItemLongClickListener, StreamHighlightItemRowContextMenuListener {
+        RecyclerViewClickSupport.OnItemLongClickListener {
 
     private static final String LOGTAG = StringUtils.safeSubstring("Gecko" + StreamRecyclerAdapter.class.getSimpleName(), 0, 23);
 
@@ -59,7 +61,7 @@ public class StreamRecyclerAdapter extends RecyclerView.Adapter<StreamViewHolder
     private final RowItemType[] ACTIVITY_STREAM_SECTIONS =
             { RowItemType.TOP_PANEL, RowItemType.TOP_STORIES_TITLE, RowItemType.HIGHLIGHTS_TITLE, RowItemType.LEARN_MORE_LINK };
     public static final int MAX_TOP_STORIES = 3;
-    private static final String LINK_MORE_POCKET = "https://getpocket.cdn.mozilla.net/explore/trending?src=ff_android";
+    private static final String LINK_MORE_POCKET = "https://getpocket.com/explore/trending?src=ff_android&cdn=0";
 
     private HomePager.OnUrlOpenListener onUrlOpenListener;
     private HomePager.OnUrlOpenInBackgroundListener onUrlOpenInBackgroundListener;
@@ -123,23 +125,35 @@ public class StreamRecyclerAdapter extends RecyclerView.Adapter<StreamViewHolder
     @Override
     public int getItemViewType(int position) {
         if (position >= recyclerViewModel.size()) {
-            throw new IllegalArgumentException("Requested position does not exist");
+            throw new IllegalArgumentException("Requested position, " + position + ", does not exist. Size is :" +
+                    recyclerViewModel.size());
         }
         return recyclerViewModel.get(position).getRowItemType().getViewType();
     }
 
     @Override
-    public StreamViewHolder onCreateViewHolder(ViewGroup parent, final int type) {
+    public StreamViewHolder onCreateViewHolder(final ViewGroup parent, final int type) {
         final LayoutInflater inflater = LayoutInflater.from(parent.getContext());
 
         if (type == RowItemType.TOP_PANEL.getViewType()) {
-            return new TopPanelRow(inflater.inflate(TopPanelRow.LAYOUT_ID, parent, false), onUrlOpenListener, onUrlOpenInBackgroundListener);
+            return new TopPanelRow(inflater.inflate(TopPanelRow.LAYOUT_ID, parent, false), onUrlOpenListener, new TopPanelRow.OnCardLongClickListener() {
+                @Override
+                public boolean onLongClick(final TopSite topSite, final int absolutePosition,
+                        final View tabletContextMenuAnchor, final int faviconWidth, final int faviconHeight) {
+                    openContextMenuForTopSite(topSite, absolutePosition, tabletContextMenuAnchor, parent, faviconWidth, faviconHeight);
+                    return true;
+                }
+            });
         } else if (type == RowItemType.TOP_STORIES_TITLE.getViewType()) {
             return new StreamTitleRow(inflater.inflate(StreamTitleRow.LAYOUT_ID, parent, false), R.string.activity_stream_topstories, R.string.activity_stream_link_more, LINK_MORE_POCKET, onUrlOpenListener);
-        } else if (type == RowItemType.TOP_STORIES_ITEM.getViewType()) {
-            return new WebpageItemRow(inflater.inflate(WebpageItemRow.LAYOUT_ID, parent, false), this);
-        } else if (type == RowItemType.HIGHLIGHT_ITEM.getViewType()) {
-            return new WebpageItemRow(inflater.inflate(WebpageItemRow.LAYOUT_ID, parent, false), this);
+        } else if (type == RowItemType.TOP_STORIES_ITEM.getViewType() ||
+                type == RowItemType.HIGHLIGHT_ITEM.getViewType()) {
+            return new WebpageItemRow(inflater.inflate(WebpageItemRow.LAYOUT_ID, parent, false), new WebpageItemRow.OnMenuButtonClickListener() {
+                @Override
+                public void onMenuButtonClicked(final WebpageItemRow row, final int position) {
+                    openContextMenuForWebpageItemRow(row, position, parent, ActivityStreamTelemetry.Contract.INTERACTION_MENU_BUTTON);
+                }
+            });
         } else if (type == RowItemType.HIGHLIGHTS_TITLE.getViewType()) {
             return new StreamTitleRow(inflater.inflate(StreamTitleRow.LAYOUT_ID, parent, false), R.string.activity_stream_highlights);
         } else if (type == RowItemType.HIGHLIGHTS_EMPTY_STATE.getViewType()) {
@@ -285,7 +299,7 @@ public class StreamRecyclerAdapter extends RecyclerView.Adapter<StreamViewHolder
         }
 
         final WebpageItemRow highlightItem = (WebpageItemRow) recyclerView.getChildViewHolder(v);
-        openContextMenu(highlightItem, position, ActivityStreamTelemetry.Contract.INTERACTION_LONG_CLICK);
+        openContextMenuForWebpageItemRow(highlightItem, position, recyclerView, ActivityStreamTelemetry.Contract.INTERACTION_LONG_CLICK);
         return true;
     }
 
@@ -315,8 +329,8 @@ public class StreamRecyclerAdapter extends RecyclerView.Adapter<StreamViewHolder
         return true;
     }
 
-    @Override
-    public void openContextMenu(final WebpageItemRow webpageItemRow, final int position, @NonNull final String interactionExtra) {
+    private void openContextMenuForWebpageItemRow(final WebpageItemRow webpageItemRow, final int position, final View snackbarAnchor,
+            @NonNull final String interactionExtra) {
         final WebpageRowModel model = (WebpageRowModel) recyclerViewModel.get(position);
 
         final String sourceType;
@@ -339,20 +353,45 @@ public class StreamRecyclerAdapter extends RecyclerView.Adapter<StreamViewHolder
               .set(ActivityStreamTelemetry.Contract.ACTION_POSITION, actionPosition)
               .set(ActivityStreamTelemetry.Contract.INTERACTION, interactionExtra);
 
-        ActivityStreamContextMenu.show(webpageItemRow.itemView.getContext(),
-                webpageItemRow.getContextMenuAnchor(),
+        openContextMenuInner(webpageItemRow.getTabletContextMenuAnchor(), snackbarAnchor, extras, menuMode, model,
+                /* shouldOverrideWithImageProvider */ true, // we use image providers in HighlightItem.pageIconLayout.
+                webpageItemRow.getTileWidth(), webpageItemRow.getTileHeight());
+    }
+
+    private void openContextMenuForTopSite(final TopSite topSite, final int absolutePosition, final View tabletContextMenuAnchor,
+            final View snackbarAnchor, final int faviconWidth, final int faviconHeight) {
+        ActivityStreamTelemetry.Extras.Builder extras = ActivityStreamTelemetry.Extras.builder()
+                .forTopSite(topSite)
+                .set(ActivityStreamTelemetry.Contract.ACTION_POSITION, absolutePosition);
+
+        openContextMenuInner(tabletContextMenuAnchor, snackbarAnchor, extras, ActivityStreamContextMenu.MenuMode.TOPSITE, topSite,
+                /* shouldOverrideWithImageProvider */ false, // we only use favicons for top sites.
+                faviconWidth, faviconHeight);
+    }
+
+    /**
+     * @param snackbarAnchor See {@link ActivityStreamContextMenu#show(View, View, ActivityStreamTelemetry.Extras.Builder, ActivityStreamContextMenu.MenuMode, WebpageModel, boolean, HomePager.OnUrlOpenListener, HomePager.OnUrlOpenInBackgroundListener, int, int)} )}
+     *                       for additional details.
+     */
+    private void openContextMenuInner(final View tabletContextMenuAnchor, final View snackbarAnchor,
+            final ActivityStreamTelemetry.Extras.Builder extras,
+            final ActivityStreamContextMenu.MenuMode menuMode, final WebpageModel webpageModel,
+            final boolean shouldOverrideWithImageProvider,
+            final int faviconWidth, final int faviconHeight) {
+        ActivityStreamContextMenu.show(tabletContextMenuAnchor, snackbarAnchor,
                 extras,
                 menuMode,
-                model,
-                /* shouldOverrideWithImageProvider */ true, // we use image providers in HighlightItem.pageIconLayout.
+                webpageModel,
+                shouldOverrideWithImageProvider,
                 onUrlOpenListener, onUrlOpenInBackgroundListener,
-                webpageItemRow.getTileWidth(), webpageItemRow.getTileHeight());
+                faviconWidth, faviconHeight);
 
         Telemetry.sendUIEvent(
                 TelemetryContract.Event.SHOW,
                 TelemetryContract.Method.CONTEXT_MENU,
                 extras.build()
         );
+
     }
 
     @Override

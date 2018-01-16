@@ -107,7 +107,7 @@ class MochitestRunner(MozbuildObject):
         if test_objects:
             return test_objects
 
-        from mozbuild.testing import TestResolver
+        from moztest.resolve import TestResolver
         resolver = self._spawn(TestResolver)
         tests = list(resolver.resolve_tests(paths=test_paths, cwd=cwd))
         return tests
@@ -171,6 +171,10 @@ class MochitestRunner(MozbuildObject):
             imp.load_module('runtestsremote', fh, path,
                             ('.py', 'r', imp.PY_SOURCE))
         import runtestsremote
+
+        from mozrunner.devices.android_device import get_adb_path
+        if not kwargs['adbPath']:
+            kwargs['adbPath'] = get_adb_path(self)
 
         options = Namespace(**kwargs)
 
@@ -411,6 +415,10 @@ class MachCommands(MachCommandBase):
             if result:
                 overall = result
 
+            # Halt tests on keyboard interrupt
+            if result == -1:
+                break
+
         # TODO consolidate summaries from all suites
         return overall
 
@@ -439,7 +447,7 @@ class RobocopCommands(MachCommandBase):
         test_paths = kwargs['test_paths']
         kwargs['test_paths'] = []
 
-        from mozbuild.testing import TestResolver
+        from moztest.resolve import TestResolver
         resolver = self._spawn(TestResolver)
         tests = list(resolver.resolve_tests(paths=test_paths, cwd=self._mach_context.cwd,
                                             flavor='instrumentation', subsuite='robocop'))
@@ -451,8 +459,11 @@ class RobocopCommands(MachCommandBase):
                 sorted(list(test_paths)))))
             return 1
 
-        from mozrunner.devices.android_device import grant_runtime_permissions
+        from mozrunner.devices.android_device import grant_runtime_permissions, get_adb_path
         grant_runtime_permissions(self)
+
+        if not kwargs['adbPath']:
+            kwargs['adbPath'] = get_adb_path(self)
 
         mochitest = self._spawn(MochitestRunner)
         return mochitest.run_robocop_test(self._mach_context, tests, 'robocop', **kwargs)

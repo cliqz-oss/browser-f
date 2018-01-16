@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -156,7 +157,7 @@ nsPlaceholderFrame::Reflow(nsPresContext*           aPresContext,
 }
 
 static nsIFrame::ChildListID
-ChildListIDForOutOfFlow(nsFrameState aPlaceholderState, nsIFrame* aChild)
+ChildListIDForOutOfFlow(nsFrameState aPlaceholderState, const nsIFrame* aChild)
 {
   if (aPlaceholderState & PLACEHOLDER_FOR_FLOAT) {
     return nsIFrame::kFloatList;
@@ -165,7 +166,7 @@ ChildListIDForOutOfFlow(nsFrameState aPlaceholderState, nsIFrame* aChild)
     return nsIFrame::kPopupList;
   }
   if (aPlaceholderState & PLACEHOLDER_FOR_FIXEDPOS) {
-    return nsLayoutUtils::IsReallyFixedPos(aChild)
+    return nsLayoutUtils::MayBeReallyFixedPos(aChild)
       ? nsIFrame::kFixedList : nsIFrame::kAbsoluteList;
   }
   if (aPlaceholderState & PLACEHOLDER_FOR_ABSPOS) {
@@ -176,7 +177,7 @@ ChildListIDForOutOfFlow(nsFrameState aPlaceholderState, nsIFrame* aChild)
 }
 
 void
-nsPlaceholderFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsPlaceholderFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   nsIFrame* oof = mOutOfFlowFrame;
   if (oof) {
@@ -195,7 +196,7 @@ nsPlaceholderFrame::DestroyFrom(nsIFrame* aDestructRoot)
     // else oof will be destroyed by its parent
   }
 
-  nsFrame::DestroyFrom(aDestructRoot);
+  nsFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 /* virtual */ bool

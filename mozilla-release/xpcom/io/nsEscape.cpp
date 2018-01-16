@@ -18,6 +18,7 @@ static const char hexCharsUpper[] = "0123456789ABCDEF";
 static const char hexCharsUpperLower[] = "0123456789ABCDEFabcdef";
 
 static const int netCharType[256] =
+// clang-format off
 /*  Bit 0       xalpha      -- the alphas
 **  Bit 1       xpalpha     -- as xalpha but
 **                             converts spaces to plus and plus to %2B
@@ -34,7 +35,8 @@ static const int netCharType[256] =
      7,7,7,7,7,7,7,7,7,7,7,0,0,0,0,7,   /* 5X  PQRSTUVWXYZ[\]^_  */
      0,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,   /* 6x  `abcdefghijklmno  */
      7,7,7,7,7,7,7,7,7,7,7,0,0,0,0,0,   /* 7X  pqrstuvwxyz{\}~  DEL */
-     0, };
+     0,
+  };
 
 /* decode % escaped hex codes into character values
  */
@@ -42,7 +44,7 @@ static const int netCharType[256] =
     ((C >= '0' && C <= '9') ? C - '0' : \
      ((C >= 'A' && C <= 'F') ? C - 'A' + 10 : \
      ((C >= 'a' && C <= 'f') ? C - 'a' + 10 : 0)))
-
+// clang-format on
 
 #define IS_OK(C) (netCharType[((unsigned int)(C))] & (aFlags))
 #define HEX_ESCAPE '%'
@@ -216,7 +218,7 @@ nsAppendEscapedHTML(const nsACString& aSrc, nsACString& aDst)
   // Preparation: aDst's length will increase by at least aSrc's length. If the
   // addition overflows, we skip this, which is fine, and we'll likely abort
   // while (infallibly) appending due to aDst becoming too large.
-  CheckedInt<nsACString::size_type> newCapacity = aDst.Length();
+  mozilla::CheckedInt<nsACString::size_type> newCapacity = aDst.Length();
   newCapacity += aSrc.Length();
   if (newCapacity.isValid()) {
     aDst.SetCapacity(newCapacity.value());
@@ -257,6 +259,7 @@ nsAppendEscapedHTML(const nsACString& aSrc, nsACString& aDst)
 // esc_Ref           =   512
 
 static const uint32_t EscapeChars[256] =
+// clang-format off
 //   0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
 {
      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  // 0x
@@ -269,6 +272,7 @@ static const uint32_t EscapeChars[256] =
   1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023, 896,1012, 896,1023,   0,  // 7x  pqrstuvwxyz{|}~ DEL
      0                                                                              // 80 to FF are zero
 };
+// clang-format on
 
 static uint16_t dontNeedEscape(unsigned char aChar, uint32_t aFlags)
 {
@@ -328,9 +332,9 @@ T_EscapeURL(const typename T::char_type* aPart, size_t aPartLen,
     // If there is a filter, we wish to skip any characters which match it.
     // This is needed so we don't perform an extra pass just to extract the
     // filtered characters.
-    if (aFilterMask && ASCIIMask::IsMasked(*aFilterMask, c)) {
+    if (aFilterMask && mozilla::ASCIIMask::IsMasked(*aFilterMask, c)) {
       if (!writing) {
-        if (!aResult.Append(aPart, i, fallible)) {
+        if (!aResult.Append(aPart, i, mozilla::fallible)) {
           return NS_ERROR_OUT_OF_MEMORY;
         }
         writing = true;
@@ -364,7 +368,7 @@ T_EscapeURL(const typename T::char_type* aPart, size_t aPartLen,
       }
     } else { /* do the escape magic */
       if (!writing) {
-        if (!aResult.Append(aPart, i, fallible)) {
+        if (!aResult.Append(aPart, i, mozilla::fallible)) {
           return NS_ERROR_OUT_OF_MEMORY;
         }
         writing = true;
@@ -377,7 +381,7 @@ T_EscapeURL(const typename T::char_type* aPart, size_t aPartLen,
     // Flush the temp buffer if it doesnt't have room for another encoded char.
     if (tempBufferPos >= mozilla::ArrayLength(tempBuffer) - ENCODE_MAX_LEN) {
       NS_ASSERTION(writing, "should be writing");
-      if (!aResult.Append(tempBuffer, tempBufferPos, fallible)) {
+      if (!aResult.Append(tempBuffer, tempBufferPos, mozilla::fallible)) {
         return NS_ERROR_OUT_OF_MEMORY;
       }
       tempBufferPos = 0;
@@ -386,7 +390,7 @@ T_EscapeURL(const typename T::char_type* aPart, size_t aPartLen,
     previousIsNonASCII = (c > 0x7f);
   }
   if (writing) {
-    if (!aResult.Append(tempBuffer, tempBufferPos, fallible)) {
+    if (!aResult.Append(tempBuffer, tempBufferPos, mozilla::fallible)) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
   }
@@ -442,7 +446,9 @@ NS_EscapeAndFilterURL(const nsACString& aStr, uint32_t aFlags,
   }
 
   if (!appended) {
-    aResult = aStr;
+    if (!aResult.Assign(aStr, fallible)) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
   }
 
   return rv;

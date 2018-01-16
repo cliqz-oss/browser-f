@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -45,6 +45,7 @@ class CompositorManagerChild;
 class CompositorOptions;
 class TextureClient;
 class TextureClientPool;
+class CapturedBufferState;
 class CapturedPaintState;
 struct FrameMetrics;
 
@@ -228,6 +229,14 @@ public:
   void FlushAsyncPaints();
 
   // Must only be called from the main thread. Notifies the CompositorBridge
+  // that the paint thread is going to begin preparing a buffer asynchronously.
+  void NotifyBeginAsyncPrepareBuffer(CapturedBufferState* aState);
+
+  // Must only be called from the paint thread. Notifies the CompositorBridge
+  // that the paint thread has finished an asynchronous buffer prepare.
+  void NotifyFinishedAsyncPrepareBuffer(CapturedBufferState* aState);
+
+  // Must only be called from the main thread. Notifies the CompositorBridge
   // that the paint thread is going to begin painting asynchronously.
   void NotifyBeginAsyncPaint(CapturedPaintState* aState);
 
@@ -387,7 +396,10 @@ private:
   // True if this CompositorBridge is currently delaying its messages until the
   // paint thread completes. This is R/W on both the main and paint threads, and
   // must be accessed within the paint lock.
-  bool mIsWaitingForPaint;
+  bool mIsDelayingForAsyncPaints;
+
+  uintptr_t mSlowFlushCount;
+  uintptr_t mTotalFlushCount;
 };
 
 } // namespace layers

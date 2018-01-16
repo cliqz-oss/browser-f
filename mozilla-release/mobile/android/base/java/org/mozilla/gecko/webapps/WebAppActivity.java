@@ -11,6 +11,7 @@ import java.util.List;
 
 import android.annotation.TargetApi;
 import android.app.ActivityManager;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
@@ -30,10 +31,15 @@ import android.widget.TextView;
 
 import org.mozilla.gecko.ActivityHandlerHelper;
 import org.mozilla.gecko.AppConstants;
+import org.mozilla.gecko.BrowserApp;
 import org.mozilla.gecko.DoorHangerPopup;
+import org.mozilla.gecko.GeckoAccessibility;
 import org.mozilla.gecko.GeckoScreenOrientation;
+import org.mozilla.gecko.GeckoSession;
+import org.mozilla.gecko.GeckoSessionSettings;
+import org.mozilla.gecko.GeckoSharedPrefs;
 import org.mozilla.gecko.GeckoView;
-import org.mozilla.gecko.GeckoViewSettings;
+import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.customtabs.CustomTabsActivity;
 import org.mozilla.gecko.permissions.Permissions;
@@ -45,13 +51,15 @@ import org.mozilla.gecko.widget.ActionModePresenter;
 
 public class WebAppActivity extends AppCompatActivity
                             implements ActionModePresenter,
-                                       GeckoView.NavigationListener {
+                                       GeckoSession.ContentListener,
+                                       GeckoSession.NavigationListener {
     private static final String LOGTAG = "WebAppActivity";
 
     public static final String MANIFEST_PATH = "MANIFEST_PATH";
     public static final String MANIFEST_URL = "MANIFEST_URL";
     private static final String SAVED_INTENT = "savedIntent";
 
+    private GeckoSession mGeckoSession;
     private GeckoView mGeckoView;
     private PromptService mPromptService;
     private DoorHangerPopup mDoorHangerPopup;
@@ -87,15 +95,13 @@ public class WebAppActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
 
         mGeckoView = new GeckoView(this);
-        mGeckoView.setNavigationListener(this);
-        mGeckoView.setContentListener(new GeckoView.ContentListener() {
-            public void onTitleChange(GeckoView view, String title) {}
-            public void onContextMenu(GeckoView view, int screenX, int screenY,
-                               String uri, String elementSrc) {}
-            public void onFullScreen(GeckoView view, boolean fullScreen) {
-                updateFullScreenContent(fullScreen);
-            }
-        });
+        mGeckoSession = new GeckoSession();
+        mGeckoView.setSession(mGeckoSession);
+
+        mGeckoSession.setNavigationListener(this);
+        mGeckoSession.setContentListener(this);
+
+        GeckoAccessibility.setDelegate(mGeckoView);
 
         mPromptService = new PromptService(this, mGeckoView.getEventDispatcher());
         mDoorHangerPopup = new DoorHangerPopup(this, mGeckoView.getEventDispatcher());
@@ -103,17 +109,50 @@ public class WebAppActivity extends AppCompatActivity
         mTextSelection = TextSelection.Factory.create(mGeckoView, this);
         mTextSelection.create();
 
-        final GeckoViewSettings settings = mGeckoView.getSettings();
-        settings.setBoolean(GeckoViewSettings.USE_MULTIPROCESS, false);
+        final GeckoSessionSettings settings = mGeckoView.getSettings();
+        settings.setBoolean(GeckoSessionSettings.USE_MULTIPROCESS, false);
+        settings.setBoolean(
+            GeckoSessionSettings.USE_REMOTE_DEBUGGER,
+            GeckoSharedPrefs.forApp(this).getBoolean(
+                GeckoPreferences.PREFS_DEVTOOLS_REMOTE_USB_ENABLED, false));
 
-        mManifest = WebAppManifest.fromFile(getIntent().getStringExtra(MANIFEST_URL),
-                                            getIntent().getStringExtra(MANIFEST_PATH));
+        try {
+            mManifest = WebAppManifest.fromFile(getIntent().getStringExtra(MANIFEST_URL),
+                                                getIntent().getStringExtra(MANIFEST_PATH));
+        } catch (Exception e) {
+            Log.w(LOGTAG, "Cannot retrieve manifest, launching in Firefox");
+            try {
+                Intent intent = new Intent(this, BrowserApp.class);
+                intent.setAction(Intent.ACTION_VIEW);
+                if (getIntent().getData() != null) {
+                    intent.setData(getIntent().getData());
+                    intent.setPackage(getPackageName());
+                    startActivity(intent);
+                }
+            } catch (Exception e2) {
+                Log.e(LOGTAG, "Failed to fall back to launching in Firefox");
+            }
+            finish();
+            return;
+        }
 
         updateFromManifest();
 
-        mGeckoView.loadUri(mManifest.getStartUri().toString());
+        mGeckoSession.loadUri(mManifest.getStartUri().toString());
 
         setContentView(mGeckoView);
+    }
+
+    @Override
+    public void onResume() {
+        mGeckoSession.setActive(true);
+        super.onResume();
+    }
+
+    @Override
+    public void onPause() {
+        mGeckoSession.setActive(false);
+        super.onPause();
     }
 
     @Override
@@ -155,9 +194,9 @@ public class WebAppActivity extends AppCompatActivity
     @Override
     public void onBackPressed() {
         if (mIsFullScreenContent) {
-            mGeckoView.exitFullScreen();
+            mGeckoSession.exitFullScreen();
         } else if (mCanGoBack) {
-            mGeckoView.goBack();
+            mGeckoSession.goBack();
         } else {
             super.onBackPressed();
         }
@@ -205,7 +244,7 @@ public class WebAppActivity extends AppCompatActivity
         final GeckoScreenOrientation.ScreenOrientation orientation =
             GeckoScreenOrientation.screenOrientationFromString(orientString);
         final int activityOrientation =
-            GeckoScreenOrientation.screenOrientationToAndroidOrientation(orientation);
+            GeckoScreenOrientation.screenOrientationToActivityInfoOrientation(orientation);
 
         setRequestedOrientation(activityOrientation);
     }
@@ -215,65 +254,101 @@ public class WebAppActivity extends AppCompatActivity
 
         updateFullScreenMode(displayMode.equals("fullscreen"));
 
-        GeckoViewSettings.DisplayMode mode;
+        int mode;
         switch (displayMode) {
             case "standalone":
-                mode = GeckoViewSettings.DisplayMode.STANDALONE;
+                mode = GeckoSessionSettings.DISPLAY_MODE_STANDALONE;
                 break;
             case "fullscreen":
-                mode = GeckoViewSettings.DisplayMode.FULLSCREEN;
+                mode = GeckoSessionSettings.DISPLAY_MODE_FULLSCREEN;
                 break;
             case "minimal-ui":
-                mode = GeckoViewSettings.DisplayMode.MINIMAL_UI;
+                mode = GeckoSessionSettings.DISPLAY_MODE_MINIMAL_UI;
                 break;
             case "browser":
             default:
-                mode = GeckoViewSettings.DisplayMode.BROWSER;
+                mode = GeckoSessionSettings.DISPLAY_MODE_BROWSER;
                 break;
         }
 
-        mGeckoView.getSettings().setInt(GeckoViewSettings.DISPLAY_MODE, mode.value());
+        mGeckoView.getSettings().setInt(GeckoSessionSettings.DISPLAY_MODE, mode);
     }
 
-    /* GeckoView.NavigationListener */
-    @Override
-    public void onLocationChange(GeckoView view, String url) {
+    @Override // GeckoSession.NavigationListener
+    public void onLocationChange(GeckoSession session, String url) {
     }
 
-    @Override
-    public void onCanGoBack(GeckoView view, boolean canGoBack) {
+    @Override // GeckoSession.NavigationListener
+    public void onCanGoBack(GeckoSession session, boolean canGoBack) {
         mCanGoBack = canGoBack;
     }
 
-    @Override
-    public void onCanGoForward(GeckoView view, boolean canGoForward) {
+    @Override // GeckoSession.NavigationListener
+    public void onCanGoForward(GeckoSession session, boolean canGoForward) {
+    }
+
+    @Override // GeckoSession.ContentListener
+    public void onTitleChange(GeckoSession session, String title) {
+    }
+
+    @Override // GeckoSession.ContentListener
+    public void onContextMenu(GeckoSession session, int screenX, int screenY,
+                              String uri, String elementSrc) {
+        final String content = uri != null ? uri : elementSrc != null ? elementSrc : "";
+        final Uri validUri = WebApps.getValidURL(content);
+        if (validUri == null) {
+            return;
+        }
+
+        WebApps.openInFennec(validUri, WebAppActivity.this);
+    }
+
+    @Override // GeckoSession.ContentListener
+    public void onFullScreen(GeckoSession session, boolean fullScreen) {
+        updateFullScreenContent(fullScreen);
     }
 
     @Override
-    public boolean onLoadUri(final GeckoView view, final String urlStr,
+    public boolean onLoadUri(final GeckoSession session, final String urlStr,
                              final TargetWindow where) {
-        final Uri url = Uri.parse(urlStr);
-        if (url == null) {
+        final Uri uri = Uri.parse(urlStr);
+        if (uri == null) {
             // We can't really handle this, so deny it?
             Log.w(LOGTAG, "Failed to parse URL for navigation: " + urlStr);
             return true;
         }
 
-        if (mManifest.isInScope(url) && where != TargetWindow.NEW) {
+        if (mManifest.isInScope(uri) && where != TargetWindow.NEW) {
             // This is in scope and wants to load in the same frame, so
             // let Gecko handle it.
             return false;
         }
 
-        CustomTabsIntent tab = new CustomTabsIntent.Builder()
-            .addDefaultShareMenuItem()
-            .setToolbarColor(mManifest.getThemeColor())
-            .setStartAnimations(this, R.anim.slide_in_right, R.anim.slide_out_left)
-            .setExitAnimations(this, R.anim.slide_in_left, R.anim.slide_out_right)
-            .build();
+        if ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()) ||
+            "data".equals(uri.getScheme()) || "blob".equals(uri.getScheme())) {
+            final CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder()
+                .addDefaultShareMenuItem()
+                .setStartAnimations(this, R.anim.slide_in_right, R.anim.slide_out_left)
+                .setExitAnimations(this, R.anim.slide_in_left, R.anim.slide_out_right);
 
-        tab.intent.setClass(this, CustomTabsActivity.class);
-        tab.launchUrl(this, url);
+            final Integer themeColor = mManifest.getThemeColor();
+            if (themeColor != null) {
+                builder.setToolbarColor(themeColor);
+            }
+
+            final CustomTabsIntent tab = builder.build();
+            tab.intent.setClass(this, CustomTabsActivity.class);
+            tab.launchUrl(this, uri);
+        } else {
+            final Intent intent = new Intent();
+            intent.setAction(Intent.ACTION_VIEW);
+            intent.setData(uri);
+            try {
+                startActivity(intent);
+            } catch (ActivityNotFoundException e) {
+                Log.w(LOGTAG, "No activity handler found for: " + urlStr);
+            }
+        }
         return true;
     }
 

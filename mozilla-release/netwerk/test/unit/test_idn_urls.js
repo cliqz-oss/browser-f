@@ -301,6 +301,9 @@ const testcases = [
     // ...but Arabic diacritics are allowed on Arabic text
     ["العَرَبِي", "xn--mgbc0a5a6cxbzabt", false, true, true],
 
+    // Hebrew diacritic also not allowed in Latin text (bug 1404349)
+    ["goo\u05b4gle", "xn--google-rvh", false, false, false],
+
     // Accents above dotless-i are not allowed
     ["na\u0131\u0308ve", "xn--nave-mza04z", false, false, false],
     ["d\u0131\u0302ner", "xn--dner-lza40z", false, false, false],

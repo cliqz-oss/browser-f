@@ -58,6 +58,7 @@ this.PlacesDBUtils = {
   async maintenanceOnIdle() {
     let tasks = [
       this.checkIntegrity,
+      this.invalidateCaches,
       this.checkCoherence,
       this._refreshUI
     ];
@@ -87,6 +88,7 @@ this.PlacesDBUtils = {
   async checkAndFixDatabase() {
     let tasks = [
       this.checkIntegrity,
+      this.invalidateCaches,
       this.checkCoherence,
       this.expire,
       this.vacuum,
@@ -202,6 +204,30 @@ this.PlacesDBUtils = {
     return logs;
   },
 
+  async invalidateCaches() {
+    let logs = [];
+    try {
+      await PlacesUtils.withConnectionWrapper(
+        "PlacesDBUtils: invalidate caches",
+        async (db) => {
+          let idsWithInvalidGuidsRows = await db.execute(`
+            SELECT id FROM moz_bookmarks
+            WHERE guid IS NULL OR
+                  NOT IS_VALID_GUID(guid)`);
+          for (let row of idsWithInvalidGuidsRows) {
+            let id = row.getResultByName("id");
+            PlacesUtils.invalidateCachedGuidFor(id);
+          }
+        }
+      );
+      logs.push("The caches have been invalidated");
+    } catch (ex) {
+      PlacesDBUtils.clearPendingTasks();
+      throw new Error("Unable to invalidate caches");
+    }
+    return logs;
+  },
+
   /**
    * Checks data coherence and tries to fix most common errors.
    *
@@ -240,6 +266,38 @@ this.PlacesDBUtils = {
 
   async _getBoundCoherenceStatements() {
     let cleanupStatements = [];
+
+    // Create triggers for updating Sync metadata. The "sync change" trigger
+    // bumps the parent's change counter when we update a GUID or move an item
+    // to a different folder, since Sync stores the list of child GUIDs on the
+    // parent. The "sync tombstone" trigger inserts tombstones for deleted
+    // synced bookmarks.
+    cleanupStatements.push({
+      query:
+      `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_sync_change_temp_trigger
+       AFTER UPDATE of guid, parent, position ON moz_bookmarks
+       FOR EACH ROW
+       BEGIN
+         UPDATE moz_bookmarks
+         SET syncChangeCounter = syncChangeCounter + 1
+         WHERE id = NEW.parent OR
+               (OLD.parent <> NEW.parent AND
+                id = OLD.parent);
+      END`,
+    });
+    cleanupStatements.push({
+      query:
+      `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_sync_tombstone_temp_trigger
+       AFTER DELETE ON moz_bookmarks
+       FOR EACH ROW WHEN OLD.guid NOT NULL AND
+                         OLD.syncStatus <> 1
+       BEGIN
+         INSERT INTO moz_bookmarks_deleted(guid, dateRemoved)
+         VALUES(OLD.guid, STRFTIME('%s', 'now', 'localtime', 'utc') * 1000000);
+      END`,
+    });
+
+    // MAINTENANCE STATEMENTS SHOULD GO BELOW THIS POINT!
 
     // MOZ_ANNO_ATTRIBUTES
     // A.1 remove obsolete annotations from moz_annos.
@@ -465,7 +523,10 @@ this.PlacesDBUtils = {
     // D.4 move orphan items to unsorted folder
     let fixOrphanItems = {
       query:
-      `UPDATE moz_bookmarks SET parent = :unsorted_folder WHERE guid NOT IN (
+      `UPDATE moz_bookmarks SET
+         parent = :unsorted_folder,
+         syncChangeCounter = syncChangeCounter + 1
+       WHERE guid NOT IN (
          :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
        ) AND id IN (
          SELECT b.id FROM moz_bookmarks b
@@ -488,7 +549,10 @@ this.PlacesDBUtils = {
     //     will move eventual children to unsorted bookmarks.
     let fixBookmarksAsFolders = {
       query:
-      `UPDATE moz_bookmarks SET type = :bookmark_type WHERE guid NOT IN (
+      `UPDATE moz_bookmarks
+       SET type = :bookmark_type,
+           syncChangeCounter = syncChangeCounter + 1
+       WHERE guid NOT IN (
          :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
        ) AND id IN (
          SELECT id FROM moz_bookmarks b
@@ -512,7 +576,10 @@ this.PlacesDBUtils = {
     //     folders.
     let fixFoldersAsBookmarks = {
       query:
-      `UPDATE moz_bookmarks SET type = :folder_type WHERE guid NOT IN (
+      `UPDATE moz_bookmarks
+       SET type = :folder_type,
+           syncChangeCounter = syncChangeCounter + 1
+       WHERE guid NOT IN (
          :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
        ) AND id IN (
          SELECT id FROM moz_bookmarks b
@@ -535,7 +602,10 @@ this.PlacesDBUtils = {
     //     as parent, if they have bad parent move them to unsorted bookmarks.
     let fixInvalidParents = {
       query:
-      `UPDATE moz_bookmarks SET parent = :unsorted_folder WHERE guid NOT IN (
+      `UPDATE moz_bookmarks SET
+         parent = :unsorted_folder,
+         syncChangeCounter = syncChangeCounter + 1
+       WHERE guid NOT IN (
          :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
        ) AND id IN (
          SELECT id FROM moz_bookmarks b
@@ -644,8 +714,10 @@ this.PlacesDBUtils = {
 
     let deleteOrphanIcons = {
       query:
-      `DELETE FROM moz_icons WHERE root = 0 AND id NOT IN (
-         SELECT icon_id FROM moz_icons_to_pages
+      `DELETE FROM moz_icons WHERE id IN (
+        SELECT id FROM moz_icons WHERE root = 0
+        EXCEPT
+        SELECT icon_id FROM moz_icons_to_pages
        )`
     };
     cleanupStatements.push(deleteOrphanIcons);
@@ -759,7 +831,83 @@ this.PlacesDBUtils = {
     };
     cleanupStatements.push(fixMissingHashes);
 
+    // L.6 fix invalid Place GUIDs.
+    let fixInvalidPlaceGuids = {
+      query:
+      `UPDATE moz_places
+       SET guid = GENERATE_GUID()
+       WHERE guid IS NULL OR
+             NOT IS_VALID_GUID(guid)`
+    };
+    cleanupStatements.push(fixInvalidPlaceGuids);
+
+    // MOZ_BOOKMARKS
+    // S.1 fix invalid GUIDs for synced bookmarks.
+    //     This requires multiple related statements.
+    //     First, we insert tombstones for all synced bookmarks with invalid
+    //     GUIDs, so that we can delete them on the server. Second, we add a
+    //     temporary trigger to bump the change counter for the parents of any
+    //     items we update, since Sync stores the list of child GUIDs on the
+    //     parent. Finally, we assign new GUIDs for all items with missing and
+    //     invalid GUIDs, bump their change counters, and reset their sync
+    //     statuses to NEW so that they're considered for deduping.
+    cleanupStatements.push({
+      query:
+      `INSERT OR IGNORE INTO moz_bookmarks_deleted(guid, dateRemoved)
+       SELECT guid, :dateRemoved
+       FROM moz_bookmarks
+       WHERE syncStatus <> :syncStatus AND
+             guid NOT NULL AND
+             NOT IS_VALID_GUID(guid)`,
+      params: {
+        dateRemoved: PlacesUtils.toPRTime(new Date()),
+        syncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NEW,
+      },
+    });
+    cleanupStatements.push({
+      query:
+      `UPDATE moz_bookmarks
+       SET guid = GENERATE_GUID(),
+           syncChangeCounter = syncChangeCounter + 1,
+           syncStatus = :syncStatus
+       WHERE guid IS NULL OR
+             NOT IS_VALID_GUID(guid)`,
+      params: {
+        syncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NEW,
+      },
+    });
+
+    // S.2 drop tombstones for bookmarks that aren't deleted.
+    cleanupStatements.push({
+      query:
+      `DELETE FROM moz_bookmarks_deleted
+       WHERE guid IN (SELECT guid FROM moz_bookmarks)`,
+    });
+
+    // S.3 set missing added and last modified dates.
+    cleanupStatements.push({
+      query:
+      `UPDATE moz_bookmarks
+       SET dateAdded = COALESCE(dateAdded, lastModified, (
+             SELECT MIN(visit_date) FROM moz_historyvisits
+             WHERE place_id = fk
+           ), STRFTIME('%s', 'now', 'localtime', 'utc') * 1000000),
+           lastModified = COALESCE(lastModified, dateAdded, (
+             SELECT MAX(visit_date) FROM moz_historyvisits
+             WHERE place_id = fk
+           ), STRFTIME('%s', 'now', 'localtime', 'utc') * 1000000)
+       WHERE dateAdded IS NULL OR
+             lastModified IS NULL`,
+    });
+
     // MAINTENANCE STATEMENTS SHOULD GO ABOVE THIS POINT!
+
+    cleanupStatements.push({
+      query: "DROP TRIGGER moz_bm_sync_change_temp_trigger",
+    });
+    cleanupStatements.push({
+      query: "DROP TRIGGER moz_bm_sync_tombstone_temp_trigger",
+    });
 
     return cleanupStatements;
   },

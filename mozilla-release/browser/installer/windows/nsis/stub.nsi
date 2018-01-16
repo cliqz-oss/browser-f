@@ -320,14 +320,8 @@ Function .onInit
     Quit
   ${EndIf}
 
-  ; Check if we meet the RAM requirement for the 64-bit build.
-  System::Call "*(i 64, i, l 0, l, l, l, l, l, l)p.r0"
-  System::Call "Kernel32::GlobalMemoryStatusEx(p r0)"
-  System::Call "*$0(i, i, l.r1, l, l, l, l, l, l)"
-  System::Free $0
-
-  ${If} ${RunningX64}
-  ${AndIf} $1 L> ${RAM_NEEDED_FOR_64BIT}
+  Call ShouldInstall64Bit
+  ${If} $0 == 1
     StrCpy $DroplistArch "$(VERSION_64BIT)"
     StrCpy $INSTDIR "${DefaultInstDir64bit}"
   ${Else}
@@ -871,7 +865,11 @@ Function createInstall
   ${ITBL3Create}
   ${ITBL3SetProgressState} "${TBPF_INDETERMINATE}"
 
+  ; Make sure the file we're about to try to download to doesn't already exist,
+  ; so we don't end up trying to "resume" on top of the wrong file.
+  Delete "$PLUGINSDIR\download.exe"
   ${NSD_CreateTimer} StartDownload ${DownloadIntervalMS}
+
   ${NSD_CreateTimer} ClearBlurb ${BlurbDisplayMS}
 
   LockWindow off
@@ -944,30 +942,38 @@ Function OnDownload
   # $2 = Remaining files
   # $3 = Number of downloaded bytes for the current file
   # $4 = Size of current file (Empty string if the size is unknown)
-  # /RESET must be used if status $0 > 299 (e.g. failure)
+  # /RESET must be used if status $0 > 299 (e.g. failure), even if resuming
   # When status is $0 =< 299 it is handled by InetBgDL
   StrCpy $DownloadServerIP "$5"
   ${If} $0 > 299
     ${NSD_KillTimer} OnDownload
     IntOp $DownloadRetryCount $DownloadRetryCount + 1
-    ${If} "$DownloadReset" != "true"
-      StrCpy $DownloadedBytes "0"
-      ${NSD_AddStyle} $Progressbar ${PBS_MARQUEE}
-      SendMessage $Progressbar ${PBM_SETMARQUEE} 1 \
-                  $ProgressbarMarqueeIntervalMS ; start=1|stop=0 interval(ms)=+N
-      ${ITBL3SetProgressState} "${TBPF_INDETERMINATE}"
-    ${EndIf}
-    InetBgDL::Get /RESET /END
-    StrCpy $DownloadSizeBytes ""
-    StrCpy $DownloadReset "true"
-
     ${If} $DownloadRetryCount >= ${DownloadMaxRetries}
       StrCpy $ExitCode "${ERR_DOWNLOAD_TOO_MANY_RETRIES}"
       ; Use a timer so the UI has a chance to update
       ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
-    ${Else}
-      ${NSD_CreateTimer} StartDownload ${DownloadRetryIntervalMS}
+      Return
     ${EndIf}
+
+    ; 1000 is a special code meaning InetBgDL lost the connection before it got
+    ; all the bytes it was expecting. We'll try to resume the transfer in that
+    ; case (assuming we aren't out of retries), so don't treat it as a reset
+    ; or clear the progress bar.
+    ${If} $0 != 1000
+      ${If} "$DownloadReset" != "true"
+        StrCpy $DownloadedBytes "0"
+        ${NSD_AddStyle} $Progressbar ${PBS_MARQUEE}
+        SendMessage $Progressbar ${PBM_SETMARQUEE} 1 \
+                    $ProgressbarMarqueeIntervalMS ; start=1|stop=0 interval(ms)=+N
+        ${ITBL3SetProgressState} "${TBPF_INDETERMINATE}"
+      ${EndIf}
+      StrCpy $DownloadSizeBytes ""
+      StrCpy $DownloadReset "true"
+      Delete "$PLUGINSDIR\download.exe"
+    ${EndIf}
+
+    InetBgDL::Get /RESET /END
+    ${NSD_CreateTimer} StartDownload ${DownloadRetryIntervalMS}
     Return
   ${EndIf}
 
@@ -1857,6 +1863,40 @@ Function GetLatestReleasedVersion
   Pop $1
 
   end:
+FunctionEnd
+
+; Returns 1 in $0 if we should install the 64-bit build, or 0 if not.
+; The requirements for selecting the 64-bit build to install are:
+; 1) Running a 64-bit OS (we've already checked the OS version).
+; 2) An amount of RAM strictly greater than RAM_NEEDED_FOR_64BIT
+; 3) No third-party products installed that cause issues with the 64-bit build.
+;    Currently this includes Lenovo OneKey Theater and Lenovo Energy Management.
+Function ShouldInstall64Bit
+  StrCpy $0 0
+
+  ${IfNot} ${RunningX64}
+    Return
+  ${EndIf}
+
+  System::Call "*(i 64, i, l 0, l, l, l, l, l, l)p.r1"
+  System::Call "Kernel32::GlobalMemoryStatusEx(p r1)"
+  System::Call "*$1(i, i, l.r2, l, l, l, l, l, l)"
+  System::Free $1
+  ${If} $2 L<= ${RAM_NEEDED_FOR_64BIT}
+    Return
+  ${EndIf}
+
+  ; Lenovo OneKey Theater can theoretically be in a directory other than this
+  ; one, because some installer versions let you change it, but it's unlikely.
+  ${If} ${FileExists} "$PROGRAMFILES32\Lenovo\Onekey Theater\windowsapihookdll64.dll"
+    Return
+  ${EndIf}
+
+  ${If} ${FileExists} "$PROGRAMFILES32\Lenovo\Energy Management\Energy Management.exe"
+    Return
+  ${EndIf}
+
+  StrCpy $0 1
 FunctionEnd
 
 Section

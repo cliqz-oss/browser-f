@@ -46,4 +46,4 @@
 <!ENTITY  shareproxy.accesskey          "F">
 <!ENTITY  autologinproxy.label          "Keine Authentifizierungsanfrage bei gespeichertem Passwort">
 <!ENTITY  autologinproxy.accesskey      "z">
-<!ENTITY  autologinproxy.tooltip        "Beim Aktivieren dieser Einstellungen wird die Anmeldung an Proxies automatisch vorgenommen, falls deren Passwort gespeichert ist. Bei fehlgeschlagener Authentifizierung wird das Passwort vom Benutzer abgefragt.">
+<!ENTITY  autologinproxy.tooltip        "Beim Aktivieren dieser Einstellung wird die Anmeldung an Proxies automatisch vorgenommen, falls deren Passwort gespeichert ist. Bei fehlgeschlagener Authentifizierung wird das Passwort vom Benutzer abgefragt.">

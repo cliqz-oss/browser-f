@@ -56,7 +56,7 @@ def _dismiss_user_prompts(session):
 @ignore_exceptions
 def _restore_window_state(session):
     """Reset window to an acceptable size, bringing it out of maximized,
-    minimized, or fullscreened state.
+    minimized, or fullscreened state
 
     """
     session.window.size = (800, 600)
@@ -253,3 +253,18 @@ def clear_all_cookies(session):
     """Removes all cookies associated with the current active document"""
     session.transport.send("DELETE", "session/%s/cookie" % session.session_id)
 
+
+def is_element_in_viewport(session, element):
+    """Check if element is outside of the viewport"""
+    return session.execute_script("""
+        let el = arguments[0];
+
+        let rect = el.getBoundingClientRect();
+        let viewport = {
+          height: window.innerHeight || document.documentElement.clientHeight,
+          width: window.innerWidth || document.documentElement.clientWidth,
+        };
+
+        return !(rect.right < 0 || rect.bottom < 0 ||
+            rect.left > viewport.width || rect.top > viewport.height)
+    """, args=(element,))

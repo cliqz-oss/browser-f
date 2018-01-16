@@ -464,6 +464,14 @@ UploadImageDataToTexture(GLContext* gl,
             // We don't have a specific luminance shader
             surfaceFormat = SurfaceFormat::A8;
             break;
+        case SurfaceFormat::A16:
+            format = LOCAL_GL_LUMINANCE;
+            internalFormat = LOCAL_GL_LUMINANCE16;
+            type = LOCAL_GL_UNSIGNED_SHORT;
+            // We don't have a specific luminance shader
+            surfaceFormat = SurfaceFormat::A8;
+            pixelSize = 2;
+            break;
         default:
             NS_ASSERTION(false, "Unhandled image surface format!");
     }
@@ -531,10 +539,10 @@ UploadSurfaceToTexture(GLContext* gl,
                        GLenum aTextureUnit,
                        GLenum aTextureTarget)
 {
-
-    int32_t stride = aSurface->Stride();
+    DataSourceSurface::ScopedMap map(aSurface, DataSourceSurface::READ);
+    int32_t stride = map.GetStride();
     SurfaceFormat format = aSurface->GetFormat();
-    unsigned char* data = aSurface->GetData() +
+    unsigned char* data = map.GetData() +
         DataOffset(aSrcPoint, stride, format);
 
     return UploadImageDataToTexture(gl, data, stride, format,

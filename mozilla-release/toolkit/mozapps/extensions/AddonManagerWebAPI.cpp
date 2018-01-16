@@ -42,9 +42,9 @@ IsValidHost(const nsACString& host) {
     }
   }
 
-  if (host.Equals("addons.mozilla.org") ||
-      host.Equals("discovery.addons.mozilla.org") ||
-      host.Equals("testpilot.firefox.com")) {
+  if (host.EqualsLiteral("addons.mozilla.org") ||
+      host.EqualsLiteral("discovery.addons.mozilla.org") ||
+      host.EqualsLiteral("testpilot.firefox.com")) {
     return true;
   }
 
@@ -91,7 +91,7 @@ AddonManagerWebAPI::IsValidSite(nsIURI* uri)
 bool
 AddonManagerWebAPI::IsAPIEnabled(JSContext* cx, JSObject* obj)
 {
-  nsGlobalWindow* global = xpc::WindowGlobalOrNull(obj);
+  nsGlobalWindowInner* global = xpc::WindowGlobalOrNull(obj);
   if (!global) {
     return false;
   }

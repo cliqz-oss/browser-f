@@ -59,8 +59,8 @@ EXPORTS.mp4_demuxer += [
     'binding/include/mp4_demuxer/Atom.h',
     'binding/include/mp4_demuxer/AtomType.h',
     'binding/include/mp4_demuxer/BitReader.h',
+    'binding/include/mp4_demuxer/BufferReader.h',
     'binding/include/mp4_demuxer/BufferStream.h',
-    'binding/include/mp4_demuxer/ByteReader.h',
     'binding/include/mp4_demuxer/ByteWriter.h',
     'binding/include/mp4_demuxer/DecoderData.h',
     'binding/include/mp4_demuxer/H264.h',
@@ -137,7 +137,7 @@ TEST_DIRS += [
 ]
 
 # We allow warnings for third-party code that can be updated from upstream.
-ALLOW_COMPILER_WARNINGS = True
+AllowCompilerWarnings()
 
 FINAL_LIBRARY = 'xul'
 

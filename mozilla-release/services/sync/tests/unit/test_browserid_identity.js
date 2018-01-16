@@ -3,7 +3,7 @@
 
 Cu.import("resource://gre/modules/FxAccounts.jsm");
 Cu.import("resource://services-sync/browserid_identity.js");
-Cu.import("resource://services-sync/rest.js");
+Cu.import("resource://services-sync/resource.js");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://services-common/utils.js");
 Cu.import("resource://services-crypto/utils.js");
@@ -169,21 +169,6 @@ add_test(function test_getResourceAuthenticator() {
   }
 );
 
-add_test(function test_getRESTRequestAuthenticator() {
-    _("BrowserIDManager supplies a REST Request Authenticator callback which sets a Hawk header on a request object.");
-    let request = new SyncStorageRequest(
-      "https://example.net/somewhere/over/the/rainbow");
-    let authenticator = globalBrowseridManager.getRESTRequestAuthenticator();
-    do_check_true(!!authenticator);
-    let output = authenticator(request, "GET");
-    do_check_eq(request.uri, output.uri);
-    do_check_true(output._headers.authorization.startsWith("Hawk"));
-    do_check_true(output._headers.authorization.includes("nonce"));
-    do_check_true(globalBrowseridManager.hasValidToken());
-    run_next_test();
-  }
-);
-
 add_test(function test_resourceAuthenticatorSkew() {
   _("BrowserIDManager Resource Authenticator compensates for clock skew in Hawk header.");
 
@@ -198,7 +183,7 @@ add_test(function test_resourceAuthenticatorSkew() {
   hawkClient.now = function() {
     dump("mocked client now: " + now + "\n");
     return now;
-  }
+  };
   // Imagine there's already been one fxa request and the hawk client has
   // already detected skew vs the fxa auth server.
   let localtimeOffsetMsec = -1 * 12 * HOUR_MS;
@@ -242,7 +227,7 @@ add_test(function test_resourceAuthenticatorSkew() {
   do_check_eq(browseridManager._fxaService.localtimeOffsetMsec,
       localtimeOffsetMsec);
 
-  let request = new SyncStorageRequest("https://example.net/i/like/pie/");
+  let request = new Resource("https://example.net/i/like/pie/");
   let authenticator = browseridManager.getResourceAuthenticator();
   let output = authenticator(request, "GET");
   dump("output" + JSON.stringify(output));
@@ -269,7 +254,7 @@ add_test(function test_RESTResourceAuthenticatorSkew() {
   // mock fxa hawk client skew
   hawkClient.now = function() {
     return now;
-  }
+  };
   // Imagine there's already been one fxa request and the hawk client has
   // already detected skew vs the fxa auth server.
   hawkClient._localtimeOffsetMsec = -1 * 12 * HOUR_MS;
@@ -289,7 +274,7 @@ add_test(function test_RESTResourceAuthenticatorSkew() {
 
   do_check_eq(browseridManager._fxaService.internal.now(), now);
 
-  let request = new SyncStorageRequest("https://example.net/i/like/pie/");
+  let request = new Resource("https://example.net/i/like/pie/");
   let authenticator = browseridManager.getResourceAuthenticator();
   let output = authenticator(request, "GET");
   dump("output" + JSON.stringify(output));
@@ -316,7 +301,7 @@ add_task(async function test_ensureLoggedIn() {
             "_shouldHaveSyncKeyBundle should always be true after ensureLogin completes.");
 
   // arrange for no logged in user.
-  let fxa = globalBrowseridManager._fxaService
+  let fxa = globalBrowseridManager._fxaService;
   let signedInUser = fxa.internal.currentAccountState.storageManager.accountData;
   fxa.internal.currentAccountState.storageManager.accountData = null;
   globalBrowseridManager.initializeWithCurrentIdentity();
@@ -558,13 +543,13 @@ add_task(async function test_getKeysErrorWithBackoff() {
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(config, function(method, data, uri) {
     Assert.equal(method, "get");
-    Assert.equal(uri, "http://mockedserver:9999/account/keys")
+    Assert.equal(uri, "http://mockedserver:9999/account/keys");
     return {
       status: 503,
       headers: {"content-type": "application/json",
                 "x-backoff": "100"},
       body: "{}",
-    }
+    };
   });
 
   let browseridManager = Service.identity;
@@ -592,13 +577,13 @@ add_task(async function test_getKeysErrorWithRetry() {
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(config, function(method, data, uri) {
     Assert.equal(method, "get");
-    Assert.equal(uri, "http://mockedserver:9999/account/keys")
+    Assert.equal(uri, "http://mockedserver:9999/account/keys");
     return {
       status: 503,
       headers: {"content-type": "application/json",
                 "retry-after": "100"},
       body: "{}",
-    }
+    };
   });
 
   let browseridManager = Service.identity;
@@ -618,12 +603,12 @@ add_task(async function test_getHAWKErrors() {
   let config = makeIdentityConfig();
   await initializeIdentityWithHAWKResponseFactory(config, function(method, data, uri) {
     Assert.equal(method, "post");
-    Assert.equal(uri, "http://mockedserver:9999/certificate/sign")
+    Assert.equal(uri, "http://mockedserver:9999/certificate/sign");
     return {
       status: 401,
       headers: {"content-type": "application/json"},
       body: JSON.stringify({}),
-    }
+    };
   });
   Assert.equal(Status.login, LOGIN_FAILED_LOGIN_REJECTED, "login was rejected");
 
@@ -634,12 +619,12 @@ add_task(async function test_getHAWKErrors() {
   _("Arrange for an empty body with a 200 response - should reflect a network error.");
   await initializeIdentityWithHAWKResponseFactory(config, function(method, data, uri) {
     Assert.equal(method, "post");
-    Assert.equal(uri, "http://mockedserver:9999/certificate/sign")
+    Assert.equal(uri, "http://mockedserver:9999/certificate/sign");
     return {
       status: 200,
       headers: [],
       body: "",
-    }
+    };
   });
   Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR, "login state is LOGIN_FAILED_NETWORK_ERROR");
 });
@@ -655,12 +640,12 @@ add_task(async function test_getGetKeysFailing401() {
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(config, function(method, data, uri) {
     Assert.equal(method, "get");
-    Assert.equal(uri, "http://mockedserver:9999/account/keys")
+    Assert.equal(uri, "http://mockedserver:9999/account/keys");
     return {
       status: 401,
       headers: {"content-type": "application/json"},
       body: "{}",
-    }
+    };
   });
   Assert.equal(Status.login, LOGIN_FAILED_LOGIN_REJECTED, "login was rejected");
 });
@@ -676,12 +661,12 @@ add_task(async function test_getGetKeysFailing503() {
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(config, function(method, data, uri) {
     Assert.equal(method, "get");
-    Assert.equal(uri, "http://mockedserver:9999/account/keys")
+    Assert.equal(uri, "http://mockedserver:9999/account/keys");
     return {
       status: 503,
       headers: {"content-type": "application/json"},
       body: "{}",
-    }
+    };
   });
   Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR, "state reflects network error");
 });
@@ -811,7 +796,7 @@ async function initializeIdentityWithHAWKResponseFactory(config, cbGetResponse) 
       }
       callback.call(this);
     }
-  }
+  };
 
   // The hawk client.
   function MockedHawkClient() {}
@@ -819,7 +804,7 @@ async function initializeIdentityWithHAWKResponseFactory(config, cbGetResponse) 
   MockedHawkClient.prototype.constructor = MockedHawkClient;
   MockedHawkClient.prototype.newHAWKAuthenticatedRESTRequest = function(uri, credentials, extra) {
     return new MockRESTRequest(uri, credentials, extra);
-  }
+  };
   // Arrange for the same observerPrefix as FxAccountsClient uses
   MockedHawkClient.prototype.observerPrefix = "FxA:hawk";
 
@@ -838,7 +823,7 @@ async function initializeIdentityWithHAWKResponseFactory(config, cbGetResponse) 
       storageManager.initialize(config.fxaccount.user);
       return new AccountState(storageManager);
     },
-  }
+  };
   let fxa = new FxAccounts(internal);
 
   globalBrowseridManager._fxaService = fxa;
@@ -871,14 +856,14 @@ function mockTokenServer(func) {
       this.response = func();
       callback.call(this);
     }
-  }
+  };
   // The mocked TokenServer client which will get the response.
   function MockTSC() { }
   MockTSC.prototype = new TokenServerClient();
   MockTSC.prototype.constructor = MockTSC;
   MockTSC.prototype.newRESTRequest = function(url) {
     return new MockRESTRequest(url);
-  }
+  };
   // Arrange for the same observerPrefix as browserid_identity uses.
   MockTSC.prototype.observerPrefix = "weave:service";
   return new MockTSC();

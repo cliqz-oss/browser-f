@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -10,18 +11,18 @@
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/layers/WebRenderMessages.h"
 #include "mozilla/layers/IpcResourceUpdateQueue.h"
+#include "mozilla/layers/SharedSurfacesChild.h"
 #include "nsDisplayListInvalidation.h"
 #include "WebRenderCanvasRenderer.h"
 
 namespace mozilla {
 namespace layers {
 
-WebRenderUserData::WebRenderUserData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
-                                     WebRenderUserDataRefTable* aTable)
+WebRenderUserData::WebRenderUserData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem)
   : mWRManager(aWRManager)
   , mFrame(aItem->Frame())
   , mDisplayItemKey(aItem->GetPerFrameKey())
-  , mTable(aTable)
+  , mTable(aWRManager->GetWebRenderUserDataTable())
   , mUsed(false)
 {
 }
@@ -48,24 +49,33 @@ WebRenderUserData::WrBridge() const
   return mWRManager->WrBridge();
 }
 
-WebRenderImageData::WebRenderImageData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
-                                       WebRenderUserDataRefTable* aTable)
-  : WebRenderUserData(aWRManager, aItem, aTable)
+WebRenderImageData::WebRenderImageData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem)
+  : WebRenderUserData(aWRManager, aItem)
+  , mGeneration(0)
 {
 }
 
 WebRenderImageData::~WebRenderImageData()
 {
+  ClearCachedResources();
+}
+
+void
+WebRenderImageData::ClearCachedResources()
+{
   if (mKey) {
     mWRManager->AddImageKeyForDiscard(mKey.value());
+    mKey.reset();
   }
 
   if (mExternalImageId) {
     WrBridge()->DeallocExternalImageId(mExternalImageId.ref());
+    mExternalImageId.reset();
   }
 
   if (mPipelineId) {
     WrBridge()->RemovePipelineIdForCompositable(mPipelineId.ref());
+    mPipelineId.reset();
   }
 }
 
@@ -74,36 +84,55 @@ WebRenderImageData::UpdateImageKey(ImageContainer* aContainer,
                                    wr::IpcResourceUpdateQueue& aResources,
                                    bool aForceUpdate)
 {
-  CreateImageClientIfNeeded();
-  CreateExternalImageIfNeeded();
+  MOZ_ASSERT(aContainer);
 
   if (mContainer != aContainer) {
     mContainer = aContainer;
   }
 
-  if (!mImageClient || !mExternalImageId) {
-    return Nothing();
-  }
-
-  MOZ_ASSERT(mImageClient->AsImageClientSingle());
-  MOZ_ASSERT(aContainer);
-
-  ImageClientSingle* imageClient = mImageClient->AsImageClientSingle();
-  uint32_t oldCounter = imageClient->GetLastUpdateGenerationCounter();
-
-  bool ret = imageClient->UpdateImage(aContainer, /* unused */0);
-  if (!ret || imageClient->IsEmpty()) {
-    // Delete old key
-    if (mKey) {
-      mWRManager->AddImageKeyForDiscard(mKey.value());
-      mKey = Nothing();
+  wr::ExternalImageId externalId;
+  uint32_t generation;
+  nsresult rv = SharedSurfacesChild::Share(aContainer, externalId, generation);
+  if (NS_SUCCEEDED(rv)) {
+    if (mExternalImageId.isSome() && mExternalImageId.ref() == externalId) {
+      // The image container has the same surface as before, we can reuse the
+      // key if the generation matches and the caller allows us.
+      if (mKey && mGeneration == generation && !aForceUpdate) {
+        return mKey;
+      }
+    } else {
+      // The image container has a new surface, generate a new image key.
+      mExternalImageId = Some(externalId);
     }
-    return Nothing();
-  }
 
-  // Reuse old key if generation is not updated.
-  if (!aForceUpdate && oldCounter == imageClient->GetLastUpdateGenerationCounter() && mKey) {
-    return mKey;
+    mGeneration = generation;
+  } else if (rv == NS_ERROR_NOT_IMPLEMENTED) {
+    CreateImageClientIfNeeded();
+    CreateExternalImageIfNeeded();
+
+    if (!mImageClient || !mExternalImageId) {
+      return Nothing();
+    }
+
+    MOZ_ASSERT(mImageClient->AsImageClientSingle());
+
+    ImageClientSingle* imageClient = mImageClient->AsImageClientSingle();
+    uint32_t oldCounter = imageClient->GetLastUpdateGenerationCounter();
+
+    bool ret = imageClient->UpdateImage(aContainer, /* unused */0);
+    if (!ret || imageClient->IsEmpty()) {
+      // Delete old key
+      if (mKey) {
+        mWRManager->AddImageKeyForDiscard(mKey.value());
+        mKey = Nothing();
+      }
+      return Nothing();
+    }
+
+    // Reuse old key if generation is not updated.
+    if (!aForceUpdate && oldCounter == imageClient->GetLastUpdateGenerationCounter() && mKey) {
+      return mKey;
+    }
   }
 
   // Delete old key, we are generating a new key.
@@ -130,8 +159,8 @@ void
 WebRenderImageData::CreateAsyncImageWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
                                                       ImageContainer* aContainer,
                                                       const StackingContextHelper& aSc,
-                                                      const LayerRect& aBounds,
-                                                      const LayerRect& aSCBounds,
+                                                      const LayoutDeviceRect& aBounds,
+                                                      const LayoutDeviceRect& aSCBounds,
                                                       const gfx::Matrix4x4& aSCTransform,
                                                       const gfx::MaybeIntSize& aScaleToSize,
                                                       const wr::ImageRendering& aFilter,
@@ -190,9 +219,8 @@ WebRenderImageData::CreateExternalImageIfNeeded()
   }
 }
 
-WebRenderFallbackData::WebRenderFallbackData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
-                                             WebRenderUserDataRefTable* aTable)
-  : WebRenderImageData(aWRManager, aItem, aTable)
+WebRenderFallbackData::WebRenderFallbackData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem)
+  : WebRenderImageData(aWRManager, aItem)
   , mInvalid(false)
 {
 }
@@ -213,30 +241,58 @@ WebRenderFallbackData::SetGeometry(nsAutoPtr<nsDisplayItemGeometry> aGeometry)
   mGeometry = aGeometry;
 }
 
-WebRenderAnimationData::WebRenderAnimationData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
-                                               WebRenderUserDataRefTable* aTable)
-  : WebRenderUserData(aWRManager, aItem, aTable)
+WebRenderAnimationData::WebRenderAnimationData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem)
+  : WebRenderUserData(aWRManager, aItem)
   , mAnimationInfo(aWRManager)
 {
 }
 
-WebRenderCanvasData::WebRenderCanvasData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
-                                         WebRenderUserDataRefTable* aTable)
-  : WebRenderUserData(aWRManager, aItem, aTable)
+WebRenderAnimationData::~WebRenderAnimationData()
+{
+  // It may be the case that nsDisplayItem that created this WebRenderUserData
+  // gets destroyed without getting a chance to discard the compositor animation
+  // id, so we should do it as part of cleanup here.
+  uint64_t animationId = mAnimationInfo.GetCompositorAnimationsId();
+  // animationId might be 0 if mAnimationInfo never held any active animations.
+  if (animationId) {
+    mWRManager->AddCompositorAnimationsIdForDiscard(animationId);
+  }
+}
+
+WebRenderCanvasData::WebRenderCanvasData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem)
+  : WebRenderUserData(aWRManager, aItem)
 {
 }
 
 WebRenderCanvasData::~WebRenderCanvasData()
 {
+  ClearCachedResources();
+}
+
+void
+WebRenderCanvasData::ClearCachedResources()
+{
+  if (mCanvasRenderer) {
+    mCanvasRenderer->ClearCachedResources();
+  }
+}
+
+void
+WebRenderCanvasData::ClearCanvasRenderer()
+{
+  mCanvasRenderer = nullptr;
 }
 
 WebRenderCanvasRendererAsync*
 WebRenderCanvasData::GetCanvasRenderer()
 {
-  if (!mCanvasRenderer) {
-    mCanvasRenderer = MakeUnique<WebRenderCanvasRendererAsync>(mWRManager);
-  }
+  return mCanvasRenderer.get();
+}
 
+WebRenderCanvasRendererAsync*
+WebRenderCanvasData::CreateCanvasRenderer()
+{
+  mCanvasRenderer = MakeUnique<WebRenderCanvasRendererAsync>(mWRManager);
   return mCanvasRenderer.get();
 }
 

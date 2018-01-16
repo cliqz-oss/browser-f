@@ -484,14 +484,6 @@
                 onget="return this.docShell.contentViewer;"
                 readonly="true"/>
 
-      <property name="contentViewerEdit"
-                onget="return this.docShell.contentViewer.QueryInterface(Components.interfaces.nsIContentViewerEdit);"
-                readonly="true"/>
-
-      <property name="contentViewerFile"
-                onget="return this.docShell.contentViewer.QueryInterface(Components.interfaces.nsIContentViewerFile);"
-                readonly="true"/>
-
       <property name="contentDocument"
                 onget="return this.webNavigation.document;"
                 readonly="true"/>
@@ -520,6 +512,17 @@
                 onget="return this.contentDocument.nodePrincipal;"
                 readonly="true"/>
 
+      <property name="contentRequestContextID" readonly="true">
+        <getter><![CDATA[
+          try {
+            return this.contentDocument.documentLoadGroup
+                       .requestContextID;
+          } catch (e) {
+            return null;
+          }
+        ]]></getter>
+      </property>
+
       <property name="showWindowResizer"
                 onset="if (val) this.setAttribute('showresizer', 'true');
                        else this.removeAttribute('showresizer');
@@ -541,6 +544,13 @@
         <setter><![CDATA[
           this.markupDocumentViewer.fullZoom = val;
         ]]></setter>
+      </property>
+
+      <property name="deviceFullZoom"
+                readonly="true">
+        <getter><![CDATA[
+          return this.markupDocumentViewer.deviceFullZoom;
+        ]]></getter>
       </property>
 
       <property name="textZoom">
@@ -1087,9 +1097,10 @@
             }
             case "Autoscroll:Start": {
               if (!this.autoscrollEnabled) {
-                return false;
+                return {autoscrollEnabled: false, usingApz: false};
               }
               this.startScroll(data.scrolldir, data.screenX, data.screenY);
+              let usingApz = false;
               if (this.isRemoteBrowser && data.scrollId != null &&
                   this.mPrefs.getBoolPref("apz.autoscroll.enabled", false)) {
                 let { tabParent } = this.frameLoader;
@@ -1101,14 +1112,15 @@
                                      .getService(Components.interfaces.nsIObserverService);
                   os.addObserver(this, "apz:cancel-autoscroll", true);
 
-                  tabParent.startApzAutoscroll(data.screenX, data.screenY,
-                                               data.scrollId, data.presShellId);
+                  usingApz = tabParent.startApzAutoscroll(
+                      data.screenX, data.screenY,
+                      data.scrollId, data.presShellId);
                 }
                 // Save the IDs for later
                 this._autoScrollScrollId = data.scrollId;
                 this._autoScrollPresShellId = data.presShellId;
               }
-              return true;
+              return {autoscrollEnabled: true, usingApz};
             }
             case "Autoscroll:Cancel":
               this._autoScrollPopup.hidePopup();

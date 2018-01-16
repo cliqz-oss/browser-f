@@ -1,25 +1,16 @@
 @namespace url('http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul');
 @namespace html url('http://www.w3.org/1999/xhtml');
 
-#mac html|input, #mac html|textarea {
-  margin: 4px;
-  padding: 0 1px;
-}
-
-#win html|input, #win html|textarea {
+:root > html|input,
+:root > html|textarea {
   margin: 2px 4px;
-  padding: 2px 3px 3px;
+  padding: 2px 2px 3px;
   padding-inline-start: 5px;
 }
 
-#win html|input:-moz-system-metric(windows-default-theme) {
-  padding: 1px 2px 2px;
-  padding-inline-start: 4px;
-}
-
-#linux html|input, #linux html|textarea {
-  margin: 2px 4px;
-  padding: 2px 5px 3px;
+#mac html|input, #mac html|textarea {
+  margin: 4px;
+  padding: 0 1px;
 }
 
 textbox[multiline="true"], html|textarea {
@@ -34,16 +25,14 @@ html|input, html|textarea {
   font: inherit;
 }
 
-html|input.ac {
-  padding: 0 4px !important;
-}
-
 html|input.empty {
   color: graytext;
 }
 
-:root:not(.winxp) html|input.empty:-moz-system-metric(windows-default-theme) {
-  font-style: italic;
+@media (-moz-windows-default-theme) and (-moz-os-version: windows-win7) {
+  :root:not(.winxp) html|input.empty {
+    font-style: italic;
+  }
 }
 
 html|input.num {

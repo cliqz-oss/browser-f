@@ -42,11 +42,20 @@ nsBrowserStatusFilter::~nsBrowserStatusFilter()
 // nsBrowserStatusFilter::nsISupports
 //-----------------------------------------------------------------------------
 
-NS_IMPL_ISUPPORTS(nsBrowserStatusFilter,
-                  nsIWebProgress,
-                  nsIWebProgressListener,
-                  nsIWebProgressListener2,
-                  nsISupportsWeakReference)
+NS_IMPL_CYCLE_COLLECTION(nsBrowserStatusFilter,
+                         mListener,
+                         mTarget)
+
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsBrowserStatusFilter)
+  NS_INTERFACE_MAP_ENTRY(nsIWebProgress)
+  NS_INTERFACE_MAP_ENTRY(nsIWebProgressListener)
+  NS_INTERFACE_MAP_ENTRY(nsIWebProgressListener2)
+  NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIWebProgress)
+NS_INTERFACE_MAP_END
+
+NS_IMPL_CYCLE_COLLECTING_ADDREF(nsBrowserStatusFilter)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(nsBrowserStatusFilter)
 
 //-----------------------------------------------------------------------------
 // nsBrowserStatusFilter::nsIWebProgress
@@ -182,6 +191,12 @@ nsBrowserStatusFilter::OnStateChange(nsIWebProgress *aWebProgress,
 
     // If we're here, we have either STATE_START or STATE_STOP.  The
     // listener only cares about these in certain conditions.
+    //
+    // XXX The filter is applied in both parent and child processes, but the
+    // condition below doesn't guarantee STATE_START and STATE_STOP of
+    // STATE_IS_REQUEST are delivered in pairs, meaning that mFinishedRequests
+    // can exceeds mTotalRequests on parent side. This is potentially
+    // problematic.
     bool isLoadingDocument = false;
     if ((aStateFlags & nsIWebProgressListener::STATE_IS_NETWORK ||
          (aStateFlags & nsIWebProgressListener::STATE_IS_REQUEST &&
@@ -375,14 +390,11 @@ nsBrowserStatusFilter::StartDelayTimer()
 {
     NS_ASSERTION(!DelayInEffect(), "delay should not be in effect");
 
-    mTimer = do_CreateInstance("@mozilla.org/timer;1");
-    if (!mTimer)
-        return NS_ERROR_FAILURE;
-
-    mTimer->SetTarget(mTarget);
-    return mTimer->InitWithNamedFuncCallback(
-        TimeoutHandler, this, 160, nsITimer::TYPE_ONE_SHOT,
-        "nsBrowserStatusFilter::TimeoutHandler");
+    return NS_NewTimerWithFuncCallback(getter_AddRefs(mTimer),
+                                       TimeoutHandler, this, 160,
+                                       nsITimer::TYPE_ONE_SHOT,
+                                       "nsBrowserStatusFilter::TimeoutHandler",
+                                       mTarget);
 }
 
 void

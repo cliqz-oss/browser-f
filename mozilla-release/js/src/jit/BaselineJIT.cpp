@@ -25,6 +25,7 @@
 #include "jsopcodeinlines.h"
 #include "jsscriptinlines.h"
 
+#include "gc/Iteration-inl.h"
 #include "jit/JitFrames-inl.h"
 #include "jit/MacroAssembler-inl.h"
 #include "vm/Stack-inl.h"
@@ -84,8 +85,6 @@ BaselineScript::BaselineScript(uint32_t prologueOffset, uint32_t epilogueOffset,
     controlFlowGraph_(nullptr)
 { }
 
-static const unsigned BASELINE_MAX_ARGS_LENGTH = 20000;
-
 static bool
 CheckFrame(InterpreterFrame* fp)
 {
@@ -108,17 +107,14 @@ CheckFrame(InterpreterFrame* fp)
 static JitExecStatus
 EnterBaseline(JSContext* cx, EnterJitData& data)
 {
-    if (data.osrFrame) {
-        // Check for potential stack overflow before OSR-ing.
-        uint8_t spDummy;
-        uint32_t extra = BaselineFrame::Size() + (data.osrNumStackValues * sizeof(Value));
-        uint8_t* checkSp = (&spDummy) - extra;
-        if (!CheckRecursionLimitWithStackPointer(cx, checkSp))
-            return JitExec_Aborted;
-    } else {
-        if (!CheckRecursionLimit(cx))
-            return JitExec_Aborted;
-    }
+    MOZ_ASSERT(data.osrFrame);
+
+    // Check for potential stack overflow before OSR-ing.
+    uint8_t spDummy;
+    uint32_t extra = BaselineFrame::Size() + (data.osrNumStackValues * sizeof(Value));
+    uint8_t* checkSp = (&spDummy) - extra;
+    if (!CheckRecursionLimitWithStackPointer(cx, checkSp))
+        return JitExec_Aborted;
 
 #ifdef DEBUG
     // Assert we don't GC before entering JIT code. A GC could discard JIT code
@@ -130,18 +126,12 @@ EnterBaseline(JSContext* cx, EnterJitData& data)
 #endif
 
     MOZ_ASSERT(jit::IsBaselineEnabled(cx));
-    MOZ_ASSERT_IF(data.osrFrame, CheckFrame(data.osrFrame));
+    MOZ_ASSERT(CheckFrame(data.osrFrame));
 
-    EnterJitCode enter = cx->runtime()->jitRuntime()->enterBaseline();
+    EnterJitCode enter = cx->runtime()->jitRuntime()->enterJit();
 
-    bool constructingLegacyGen =
-        data.constructing && CalleeTokenToFunction(data.calleeToken)->isLegacyGenerator();
-
-    // Caller must construct |this| before invoking the Ion function. Legacy
-    // generators can be called with 'new' but when we resume them, the
-    // this-slot and arguments are |undefined| (they are stored in the
-    // CallObject).
-    MOZ_ASSERT_IF(data.constructing && !constructingLegacyGen,
+    // Caller must construct |this| before invoking the function.
+    MOZ_ASSERT_IF(data.constructing,
                   data.maxArgv[0].isObject() || data.maxArgv[0].isMagic(JS_UNINITIALIZED_LEXICAL));
 
     data.result.setInt32(data.numActualArgs);
@@ -150,8 +140,7 @@ EnterBaseline(JSContext* cx, EnterJitData& data)
         ActivationEntryMonitor entryMonitor(cx, data.calleeToken);
         JitActivation activation(cx);
 
-        if (data.osrFrame)
-            data.osrFrame->setRunningInJit();
+        data.osrFrame->setRunningInJit();
 
 #ifdef DEBUG
         nogc.reset();
@@ -161,8 +150,7 @@ EnterBaseline(JSContext* cx, EnterJitData& data)
                             data.calleeToken, data.envChain.get(), data.osrNumStackValues,
                             data.result.address());
 
-        if (data.osrFrame)
-            data.osrFrame->clearRunningInJit();
+        data.osrFrame->clearRunningInJit();
     }
 
     MOZ_ASSERT(!cx->hasIonReturnOverride());
@@ -171,8 +159,7 @@ EnterBaseline(JSContext* cx, EnterJitData& data)
     // class constructors, which are forced to do it themselves.
     if (!data.result.isMagic() &&
         data.constructing &&
-        data.result.isPrimitive() &&
-        !constructingLegacyGen)
+        data.result.isPrimitive())
     {
         MOZ_ASSERT(data.maxArgv[0].isObject());
         data.result = data.maxArgv[0];
@@ -183,26 +170,6 @@ EnterBaseline(JSContext* cx, EnterJitData& data)
 
     MOZ_ASSERT_IF(data.result.isMagic(), data.result.isMagic(JS_ION_ERROR));
     return data.result.isMagic() ? JitExec_Error : JitExec_Ok;
-}
-
-JitExecStatus
-jit::EnterBaselineMethod(JSContext* cx, RunState& state)
-{
-    BaselineScript* baseline = state.script()->baselineScript();
-
-    EnterJitData data(cx);
-    data.jitcode = baseline->method()->raw();
-
-    Rooted<GCVector<Value>> vals(cx, GCVector<Value>(cx));
-    if (!SetEnterJitData(cx, data, state, &vals))
-        return JitExec_Error;
-
-    JitExecStatus status = EnterBaseline(cx, data);
-    if (status != JitExec_Ok)
-        return status;
-
-    state.setReturnValue(data.result);
-    return JitExec_Ok;
 }
 
 JitExecStatus
@@ -222,11 +189,12 @@ jit::EnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp, jsbytecode* pc)
         data.jitcode += MacroAssembler::ToggledCallSize(data.jitcode);
     }
 
+    // Note: keep this in sync with SetEnterJitData.
+
     data.osrFrame = fp;
     data.osrNumStackValues = fp->script()->nfixed() + cx->interpreterRegs().stackDepth();
 
-    AutoValueVector vals(cx);
-    RootedValue thisv(cx);
+    RootedValue newTarget(cx);
 
     if (fp->isFunctionFrame()) {
         data.constructing = fp->isConstructing();
@@ -236,28 +204,18 @@ jit::EnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp, jsbytecode* pc)
         data.envChain = nullptr;
         data.calleeToken = CalleeToToken(&fp->callee(), data.constructing);
     } else {
-        thisv.setUndefined();
         data.constructing = false;
         data.numActualArgs = 0;
-        data.maxArgc = 1;
-        data.maxArgv = thisv.address();
+        data.maxArgc = 0;
+        data.maxArgv = nullptr;
         data.envChain = fp->environmentChain();
 
         data.calleeToken = CalleeToToken(fp->script());
 
         if (fp->isEvalFrame()) {
-            if (!vals.reserve(2))
-                return JitExec_Aborted;
-
-            vals.infallibleAppend(thisv);
-
-            if (fp->script()->isDirectEvalInFunction())
-                vals.infallibleAppend(fp->newTarget());
-            else
-                vals.infallibleAppend(NullValue());
-
-            data.maxArgc = 2;
-            data.maxArgv = vals.begin();
+            newTarget = fp->newTarget();
+            data.maxArgc = 1;
+            data.maxArgv = newTarget.address();
         }
     }
 
@@ -379,18 +337,9 @@ jit::CanEnterBaselineMethod(JSContext* cx, RunState& state)
 {
     if (state.isInvoke()) {
         InvokeState& invoke = *state.asInvoke();
-
         if (invoke.args().length() > BASELINE_MAX_ARGS_LENGTH) {
             JitSpew(JitSpew_BaselineAbort, "Too many arguments (%u)", invoke.args().length());
             return Method_CantCompile;
-        }
-
-        if (!state.maybeCreateThisForConstructor(cx)) {
-            if (cx->isThrowingOutOfMemory()) {
-                cx->recoverFromOutOfMemory();
-                return Method_Skipped;
-            }
-            return Method_Error;
         }
     } else {
         if (state.asExecute()->isDebuggerEval()) {
@@ -1130,8 +1079,9 @@ BaselineScript::purgeOptimizedStubs(Zone* zone)
                 // Monitor stubs can't make calls, so are always in the
                 // optimized stub space.
                 ICTypeMonitor_Fallback* lastMonStub =
-                    lastStub->toMonitoredFallbackStub()->fallbackMonitorStub();
-                lastMonStub->resetMonitorStubChain(zone);
+                    lastStub->toMonitoredFallbackStub()->maybeFallbackMonitorStub();
+                if (lastMonStub)
+                    lastMonStub->resetMonitorStubChain(zone);
             }
         } else if (lastStub->isTypeMonitor_Fallback()) {
             lastStub->toTypeMonitor_Fallback()->resetMonitorStubChain(zone);

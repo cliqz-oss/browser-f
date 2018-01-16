@@ -41,9 +41,6 @@ XPIDL_SOURCES += [
     'nsIContentViewer.idl',
     'nsIContentViewerContainer.idl',
     'nsIContentViewerEdit.idl',
-    'nsIContentViewerFile.idl',
-    'nsIContextMenuListener.idl',
-    'nsIContextMenuListener2.idl',
     'nsIDocCharset.idl',
     'nsIDocShell.idl',
     'nsIDocShellLoadInfo.idl',
@@ -90,7 +87,6 @@ EXPORTS.mozilla.dom += [
 UNIFIED_SOURCES += [
     'LoadContext.cpp',
     'nsAboutRedirector.cpp',
-    'nsContextMenuInfo.cpp',
     'nsDefaultURIFixup.cpp',
     'nsDocShell.cpp',
     'nsDocShellEditorData.cpp',
@@ -98,12 +94,14 @@ UNIFIED_SOURCES += [
     'nsDocShellLoadInfo.cpp',
     'nsDocShellTransferableHooks.cpp',
     'nsDocShellTreeOwner.cpp',
-    'nsDownloadHistory.cpp',
     'nsDSURIContentListener.cpp',
     'nsWebNavigationInfo.cpp',
     'PendingGlobalHistoryEntry.cpp',
     'SerializedLoadContext.cpp',
 ]
+
+if not CONFIG['MOZ_PLACES']:
+    UNIFIED_SOURCES += ['nsDownloadHistory.cpp']
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

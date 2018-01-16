@@ -33,6 +33,7 @@ const {
 
 // We need to avoid touching Services.appinfo here in order to prevent
 // the wrong version from being cached during xpcshell test startup.
+// eslint-disable-next-line mozilla/use-services
 const appinfo = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime);
 const isContentProcess = appinfo.processType == appinfo.PROCESS_TYPE_CONTENT;
 
@@ -42,6 +43,7 @@ function parseScriptOptions(options) {
     matchAboutBlank: options.match_about_blank,
     frameID: options.frame_id,
     runAt: options.run_at,
+    hasActiveTabPermission: options.hasActiveTabPermission,
 
     matches: new MatchPatternSet(options.matches),
     excludeMatches: new MatchPatternSet(options.exclude_matches || []),

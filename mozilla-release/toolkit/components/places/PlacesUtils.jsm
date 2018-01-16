@@ -37,7 +37,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   OS: "resource://gre/modules/osfile.jsm",
   Sqlite: "resource://gre/modules/Sqlite.jsm",
-  Deprecated: "resource://gre/modules/Deprecated.jsm",
   Bookmarks: "resource://gre/modules/Bookmarks.jsm",
   History: "resource://gre/modules/History.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
@@ -136,6 +135,9 @@ function serializeNode(aNode, aIsLivemark) {
   data.title = aNode.title;
   data.id = aNode.itemId;
   data.livemark = aIsLivemark;
+  // Add an instanceId so we can tell which instance of an FF session the data
+  // is coming from.
+  data.instanceId = PlacesUtils.instanceId;
 
   let guid = aNode.bookmarkGuid;
   if (guid) {
@@ -255,10 +257,9 @@ const BOOKMARK_VALIDATORS = Object.freeze({
 // Sync bookmark records can contain additional properties.
 const SYNC_BOOKMARK_VALIDATORS = Object.freeze({
   // Sync uses Places GUIDs for all records except roots.
-  syncId: simpleValidateFunc(v => typeof v == "string" && (
-                                  (PlacesSyncUtils.bookmarks.ROOTS.includes(v) ||
-                                   PlacesUtils.isValidGuid(v)))),
-  parentSyncId: v => SYNC_BOOKMARK_VALIDATORS.syncId(v),
+  recordId: simpleValidateFunc(v => typeof v == "string" && (
+                                (PlacesSyncUtils.bookmarks.ROOTS.includes(v) || PlacesUtils.isValidGuid(v)))),
+  parentRecordId: v => SYNC_BOOKMARK_VALIDATORS.recordId(v),
   // Sync uses kinds instead of types, which distinguish between livemarks,
   // queries, and smart bookmarks.
   kind: simpleValidateFunc(v => typeof v == "string" &&
@@ -535,6 +536,8 @@ this.PlacesUtils = {
    *         - validIf: if the provided condition is not satisfied, then this
    *                    property is invalid.
    *         - defaultValue: an undefined property should default to this value.
+   *         - fixup: a function invoked when validation fails, takes the input
+   *                  object as argument and must fix the property.
    *
    * @return a validated and normalized item.
    * @throws if the object contains invalid data.
@@ -557,7 +560,11 @@ this.PlacesUtils = {
       }
       if (behavior[prop].hasOwnProperty("validIf") && input[prop] !== undefined &&
           !behavior[prop].validIf(input)) {
-        throw new Error(`${name}: Invalid value for property '${prop}': ${JSON.stringify(input[prop])}`);
+        if (behavior[prop].hasOwnProperty("fixup")) {
+          behavior[prop].fixup(input);
+        } else {
+          throw new Error(`${name}: Invalid value for property '${prop}': ${JSON.stringify(input[prop])}`);
+        }
       }
       if (behavior[prop].hasOwnProperty("defaultValue") && input[prop] === undefined) {
         input[prop] = behavior[prop].defaultValue;
@@ -578,7 +585,12 @@ this.PlacesUtils = {
         try {
           normalizedInput[prop] = validators[prop](input[prop], input);
         } catch (ex) {
-          throw new Error(`${name}: Invalid value for property '${prop}': ${JSON.stringify(input[prop])}`);
+          if (behavior.hasOwnProperty(prop) && behavior[prop].hasOwnProperty("fixup")) {
+            behavior[prop].fixup(input);
+            normalizedInput[prop] = input[prop];
+          } else {
+            throw new Error(`${name}: Invalid value for property '${prop}': ${JSON.stringify(input[prop])}`);
+          }
         }
       }
     }
@@ -1170,7 +1182,7 @@ this.PlacesUtils = {
    *        name, flags, expires.
    *        If the value for an annotation is not set it will be removed.
    */
-  setAnnotationsForItem: function PU_setAnnotationsForItem(aItemId, aAnnos, aSource) {
+  setAnnotationsForItem: function PU_setAnnotationsForItem(aItemId, aAnnos, aSource, aDontUpdateLastModified) {
     var annosvc = this.annotations;
 
     aAnnos.forEach(function(anno) {
@@ -1181,7 +1193,7 @@ this.PlacesUtils = {
         let expires = ("expires" in anno) ?
           anno.expires : Ci.nsIAnnotationService.EXPIRE_NEVER;
         annosvc.setItemAnnotation(aItemId, anno.name, anno.value, flags,
-                                  expires, aSource);
+                                  expires, aSource, aDontUpdateLastModified);
       }
     });
   },
@@ -1622,7 +1634,7 @@ this.PlacesUtils = {
    * @rejects if aItemId is invalid.
    */
   promiseItemGuid(aItemId) {
-    return GuidHelper.getItemGuid(aItemId)
+    return GuidHelper.getItemGuid(aItemId);
   },
 
   /**
@@ -1636,7 +1648,7 @@ this.PlacesUtils = {
    * @rejects if there's no item for the given GUID.
    */
   promiseItemId(aGuid) {
-    return GuidHelper.getItemId(aGuid)
+    return GuidHelper.getItemId(aGuid);
   },
 
   /**
@@ -1659,7 +1671,7 @@ this.PlacesUtils = {
    *        an item id
    */
   invalidateCachedGuidFor(aItemId) {
-    GuidHelper.invalidateCacheForItemId(aItemId)
+    GuidHelper.invalidateCacheForItemId(aItemId);
   },
 
   /**
@@ -1946,10 +1958,6 @@ XPCOMUtils.defineLazyServiceGetter(PlacesUtils, "asyncHistory",
                                    "@mozilla.org/browser/history;1",
                                    "mozIAsyncHistory");
 
-XPCOMUtils.defineLazyGetter(PlacesUtils, "bhistory", function() {
-  return PlacesUtils.history;
-});
-
 XPCOMUtils.defineLazyServiceGetter(PlacesUtils, "favicons",
                                    "@mozilla.org/browser/favicon-service;1",
                                    "mozIAsyncFavicons");
@@ -2015,9 +2023,12 @@ XPCOMUtils.defineLazyGetter(PlacesUtils, "transactionManager", function() {
 
 XPCOMUtils.defineLazyGetter(this, "bundle", function() {
   const PLACES_STRING_BUNDLE_URI = "chrome://places/locale/places.properties";
-  return Cc["@mozilla.org/intl/stringbundle;1"].
-         getService(Ci.nsIStringBundleService).
-         createBundle(PLACES_STRING_BUNDLE_URI);
+  return Services.strings.createBundle(PLACES_STRING_BUNDLE_URI);
+});
+
+// This is just used as a reasonably-random value for copy & paste / drag operations.
+XPCOMUtils.defineLazyGetter(PlacesUtils, "instanceId", () => {
+  return PlacesUtils.history.makeGuid();
 });
 
 /**
@@ -2316,7 +2327,8 @@ XPCOMUtils.defineLazyGetter(this, "gKeywordsCachePromise", () =>
         onItemVisited() {},
         onItemMoved() {},
 
-        onItemRemoved(id, parentId, index, itemType, uri, guid, parentGuid) {
+        onItemRemoved(id, parentId, index, itemType, uri, guid, parentGuid,
+                      source) {
           if (itemType != PlacesUtils.bookmarks.TYPE_BOOKMARK)
             return;
 
@@ -2330,14 +2342,14 @@ XPCOMUtils.defineLazyGetter(this, "gKeywordsCachePromise", () =>
             let bookmark = await PlacesUtils.bookmarks.fetch({ url: uri });
             if (!bookmark) {
               for (let keyword of keywords) {
-                await PlacesUtils.keywords.remove(keyword);
+                await PlacesUtils.keywords.remove({ keyword, source });
               }
             }
           })().catch(Cu.reportError);
         },
 
         onItemChanged(id, prop, isAnno, val, lastMod, itemType, parentId, guid,
-                      parentGuid, oldVal) {
+                      parentGuid, oldVal, source) {
           if (gIgnoreKeywordNotifications) {
             return;
           }
@@ -2345,14 +2357,14 @@ XPCOMUtils.defineLazyGetter(this, "gKeywordsCachePromise", () =>
           if (prop == "keyword") {
             this._onKeywordChanged(guid, val, oldVal);
           } else if (prop == "uri") {
-            this._onUrlChanged(guid, val, oldVal).catch(Cu.reportError);
+            this._onUrlChanged(guid, val, oldVal, source).catch(Cu.reportError);
           }
         },
 
         _onKeywordChanged(guid, keyword, href) {
           if (keyword.length == 0) {
             // We are removing a keyword.
-            let keywords = keywordsForHref(href)
+            let keywords = keywordsForHref(href);
             for (let kw of keywords) {
               cache.delete(kw);
             }
@@ -2362,7 +2374,7 @@ XPCOMUtils.defineLazyGetter(this, "gKeywordsCachePromise", () =>
           }
         },
 
-        async _onUrlChanged(guid, url, oldUrl) {
+        async _onUrlChanged(guid, url, oldUrl, source) {
           // Check if the old url is associated with keywords.
           let entries = [];
           await PlacesUtils.keywords.fetch({ url: oldUrl }, e => entries.push(e));
@@ -2372,9 +2384,16 @@ XPCOMUtils.defineLazyGetter(this, "gKeywordsCachePromise", () =>
 
           // Move the keywords to the new url.
           for (let entry of entries) {
-            await PlacesUtils.keywords.remove(entry.keyword);
-            entry.url = new URL(url);
-            await PlacesUtils.keywords.insert(entry);
+            await PlacesUtils.keywords.remove({
+              keyword: entry.keyword,
+              source,
+            });
+            await PlacesUtils.keywords.insert({
+              keyword: entry.keyword,
+              url,
+              postData: entry.postData,
+              source,
+            });
           }
         },
       };
@@ -2712,11 +2731,11 @@ this.PlacesAggregatedTransaction =
         aTxnCount = countTransactions(txn.childTransactions, aTxnCount);
     }
     return aTxnCount;
-  }
+  };
 
   let txnCount = countTransactions(this.childTransactions, 0);
   this._useBatch = txnCount >= MIN_TRANSACTIONS_FOR_BATCH;
-}
+};
 
 PlacesAggregatedTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -2781,7 +2800,7 @@ this.PlacesCreateFolderTransaction =
   this.item.index = aIndex;
   this.item.annotations = aAnnotations;
   this.childTransactions = aChildTransactions;
-}
+};
 
 PlacesCreateFolderTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -2858,7 +2877,7 @@ this.PlacesCreateBookmarkTransaction =
   this.item.postData = aPostData;
   this.item.annotations = aAnnotations;
   this.childTransactions = aChildTransactions;
-}
+};
 
 PlacesCreateBookmarkTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -2919,7 +2938,7 @@ this.PlacesCreateSeparatorTransaction =
   this.item = new TransactionItemCache();
   this.item.parentId = aParentId;
   this.item.index = aIndex;
-}
+};
 
 PlacesCreateSeparatorTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -2965,7 +2984,7 @@ this.PlacesCreateLivemarkTransaction =
   this.item.parentId = aParentId;
   this.item.index = aIndex;
   this.item.annotations = aAnnotations;
-}
+};
 
 PlacesCreateLivemarkTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3080,7 +3099,7 @@ this.PlacesMoveItemTransaction =
   this.new = new TransactionItemCache();
   this.new.parentId = aNewParentId;
   this.new.index = aNewIndex;
-}
+};
 
 PlacesMoveItemTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3157,7 +3176,7 @@ this.PlacesRemoveItemTransaction =
   this.item.dateAdded = PlacesUtils.bookmarks.getItemDateAdded(this.item.id);
   this.item.lastModified =
     PlacesUtils.bookmarks.getItemLastModified(this.item.id);
-}
+};
 
 PlacesRemoveItemTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3252,7 +3271,7 @@ this.PlacesEditItemTitleTransaction =
   this.item.id = aItemId;
   this.new = new TransactionItemCache();
   this.new.title = aNewTitle;
-}
+};
 
 PlacesEditItemTitleTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3284,7 +3303,7 @@ this.PlacesEditBookmarkURITransaction =
   this.item.id = aItemId;
   this.new = new TransactionItemCache();
   this.new.uri = aNewURI;
-}
+};
 
 PlacesEditBookmarkURITransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3333,7 +3352,7 @@ this.PlacesSetItemAnnotationTransaction =
   this.item.id = aItemId;
   this.new = new TransactionItemCache();
   this.new.annotations = [aAnnotationObject];
-}
+};
 
 PlacesSetItemAnnotationTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3387,7 +3406,7 @@ this.PlacesSetPageAnnotationTransaction =
   this.item.uri = aURI;
   this.new = new TransactionItemCache();
   this.new.annotations = [aAnnotationObject];
-}
+};
 
 PlacesSetPageAnnotationTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3446,8 +3465,8 @@ this.PlacesEditBookmarkKeywordTransaction =
   this.item.href = (PlacesUtils.bookmarks.getBookmarkURI(aItemId)).spec;
   this.new = new TransactionItemCache();
   this.new.keyword = aNewKeyword;
-  this.new.postData = aNewPostData
-}
+  this.new.postData = aNewPostData;
+};
 
 PlacesEditBookmarkKeywordTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3517,7 +3536,7 @@ this.PlacesEditBookmarkPostDataTransaction =
   this.item.id = aItemId;
   this.new = new TransactionItemCache();
   this.new.postData = aPostData;
-}
+};
 
 PlacesEditBookmarkPostDataTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3555,7 +3574,7 @@ this.PlacesEditItemDateAddedTransaction =
   this.item.id = aItemId;
   this.new = new TransactionItemCache();
   this.new.dateAdded = aNewDateAdded;
-}
+};
 
 PlacesEditItemDateAddedTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3591,7 +3610,7 @@ this.PlacesEditItemLastModifiedTransaction =
   this.item.id = aItemId;
   this.new = new TransactionItemCache();
   this.new.lastModified = aNewLastModified;
-}
+};
 
 PlacesEditItemLastModifiedTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3627,7 +3646,7 @@ this.PlacesSortFolderByNameTransaction =
  function PlacesSortFolderByNameTransaction(aFolderId) {
   this.item = new TransactionItemCache();
   this.item.id = aFolderId;
-}
+};
 
 PlacesSortFolderByNameTransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3711,7 +3730,7 @@ this.PlacesTagURITransaction =
   this.item = new TransactionItemCache();
   this.item.uri = aURI;
   this.item.tags = aTags;
-}
+};
 
 PlacesTagURITransaction.prototype = {
   __proto__: BaseTransaction.prototype,
@@ -3768,7 +3787,7 @@ this.PlacesUntagURITransaction =
     }
     this.item.tags = tags;
   }
-}
+};
 
 PlacesUntagURITransaction.prototype = {
   __proto__: BaseTransaction.prototype,

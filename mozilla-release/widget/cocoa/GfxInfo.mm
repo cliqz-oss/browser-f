@@ -31,7 +31,7 @@ using namespace mozilla::widget;
 NS_IMPL_ISUPPORTS_INHERITED(GfxInfo, GfxInfoBase, nsIGfxInfoDebug)
 #endif
 
-GfxInfo::GfxInfo()
+GfxInfo::GfxInfo() : mOSXVersion{0}
 {
 }
 
@@ -296,9 +296,9 @@ GfxInfo::AddCrashReportAnnotations()
    * can go away after we store the above in the socorro db */
   nsAutoCString note;
   /* AppendPrintf only supports 32 character strings, mrghh. */
-  note.Append("AdapterVendorID: ");
+  note.AppendLiteral("AdapterVendorID: ");
   note.Append(narrowVendorID);
-  note.Append(", AdapterDeviceID: ");
+  note.AppendLiteral(", AdapterDeviceID: ");
   note.Append(narrowDeviceID);
   CrashReporter::AppendAppNotesToCrashReport(note);
 #endif

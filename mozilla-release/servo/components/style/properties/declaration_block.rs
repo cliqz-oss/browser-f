@@ -8,18 +8,18 @@
 
 use context::QuirksMode;
 use cssparser::{DeclarationListParser, parse_important, ParserInput, CowRcStr};
-use cssparser::{Parser, AtRuleParser, DeclarationParser, Delimiter, ParseError as CssParseError};
+use cssparser::{Parser, AtRuleParser, DeclarationParser, Delimiter, ParseErrorKind};
+use custom_properties::CustomPropertiesBuilder;
 use error_reporting::{ParseErrorReporter, ContextualParseError};
 use parser::{ParserContext, ParserErrorContext};
 use properties::animated_properties::AnimationValue;
-use selectors::parser::SelectorParseError;
 use shared_lock::Locked;
 use smallbitvec::{self, SmallBitVec};
 use smallvec::SmallVec;
 use std::fmt;
 use std::iter::{DoubleEndedIterator, Zip};
 use std::slice::Iter;
-use style_traits::{PARSING_MODE_DEFAULT, ToCss, ParseError, ParsingMode, StyleParseError};
+use style_traits::{ToCss, ParseError, ParsingMode, StyleParseErrorKind};
 use stylesheets::{CssRuleType, Origin, UrlExtraData};
 use super::*;
 use values::computed::Context;
@@ -39,12 +39,19 @@ impl AnimationRules {
     }
 }
 
+/// Whether a given declaration comes from CSS parsing, or from CSSOM.
+#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq)]
+pub enum DeclarationSource {
+    /// The declaration was obtained from CSS parsing of sheets and such.
+    Parsing,
+    /// The declaration was obtained from CSSOM.
+    CssOm,
+}
+
 /// A declaration [importance][importance].
 ///
 /// [importance]: https://drafts.csswg.org/css-cascade/#importance
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq)]
 pub enum Importance {
     /// Indicates a declaration without `!important`.
     Normal,
@@ -148,21 +155,22 @@ impl<'a> Iterator for NormalDeclarationIterator<'a> {
 
 /// Iterator for AnimationValue to be generated from PropertyDeclarationBlock.
 pub struct AnimationValueIterator<'a, 'cx, 'cx_a:'cx> {
-    iter: DeclarationImportanceIterator<'a>,
+    iter: NormalDeclarationIterator<'a>,
     context: &'cx mut Context<'cx_a>,
     default_values: &'a ComputedValues,
     /// Custom properties in a keyframe if exists.
-    extra_custom_properties: &'a Option<Arc<::custom_properties::CustomPropertiesMap>>,
+    extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
 }
 
 impl<'a, 'cx, 'cx_a:'cx> AnimationValueIterator<'a, 'cx, 'cx_a> {
-    fn new(declarations: &'a PropertyDeclarationBlock,
-           context: &'cx mut Context<'cx_a>,
-           default_values: &'a ComputedValues,
-           extra_custom_properties: &'a Option<Arc<::custom_properties::CustomPropertiesMap>>,
+    fn new(
+        declarations: &'a PropertyDeclarationBlock,
+        context: &'cx mut Context<'cx_a>,
+        default_values: &'a ComputedValues,
+       extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
     ) -> AnimationValueIterator<'a, 'cx, 'cx_a> {
         AnimationValueIterator {
-            iter: declarations.declaration_importance_iter(),
+            iter: declarations.normal_declaration_iter(),
             context,
             default_values,
             extra_custom_properties,
@@ -171,32 +179,25 @@ impl<'a, 'cx, 'cx_a:'cx> AnimationValueIterator<'a, 'cx, 'cx_a> {
 }
 
 impl<'a, 'cx, 'cx_a:'cx> Iterator for AnimationValueIterator<'a, 'cx, 'cx_a> {
-    type Item = (AnimatableLonghand, AnimationValue);
+    type Item = AnimationValue;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let next = self.iter.next();
-            match next {
-                Some((decl, importance)) => {
-                    if importance == Importance::Normal {
-                        let property = AnimatableLonghand::from_declaration(decl);
-                        let animation = AnimationValue::from_declaration(
-                            decl,
-                            &mut self.context,
-                            self.extra_custom_properties,
-                            self.default_values
-                        );
-                        debug_assert!(property.is_none() == animation.is_none(),
-                                      "The failure condition of AnimatableLonghand::from_declaration \
-                                       and AnimationValue::from_declaration should be the same");
-                        // Skip the property if either ::from_declaration fails.
-                        match (property, animation) {
-                            (Some(p), Some(a)) => return Some((p, a)),
-                            (_, _) => {},
-                        }
-                    }
-                },
+            let decl = match next {
+                Some(decl) => decl,
                 None => return None,
+            };
+
+            let animation = AnimationValue::from_declaration(
+                decl,
+                &mut self.context,
+                self.extra_custom_properties,
+                self.default_values,
+            );
+
+            if let Some(anim) = animation {
+                return Some(anim);
             }
         }
     }
@@ -261,7 +262,7 @@ impl PropertyDeclarationBlock {
         &'a self,
         context: &'cx mut Context<'cx_a>,
         default_values: &'a ComputedValues,
-        extra_custom_properties: &'a Option<Arc<::custom_properties::CustomPropertiesMap>>,
+        extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
     ) -> AnimationValueIterator<'a, 'cx, 'cx_a> {
         AnimationValueIterator::new(self, context, default_values, extra_custom_properties)
     }
@@ -303,7 +304,7 @@ impl PropertyDeclarationBlock {
 
     /// Find the value of the given property in this block and serialize it
     ///
-    /// https://dev.w3.org/csswg/cssom/#dom-cssstyledeclaration-getpropertyvalue
+    /// <https://dev.w3.org/csswg/cssom/#dom-cssstyledeclaration-getpropertyvalue>
     pub fn property_value_to_css<W>(&self, property: &PropertyId, dest: &mut W) -> fmt::Result
         where W: fmt::Write,
     {
@@ -360,7 +361,7 @@ impl PropertyDeclarationBlock {
         }
     }
 
-    /// https://dev.w3.org/csswg/cssom/#dom-cssstyledeclaration-getpropertypriority
+    /// <https://dev.w3.org/csswg/cssom/#dom-cssstyledeclaration-getpropertypriority>
     pub fn property_priority(&self, property: &PropertyId) -> Importance {
         // Step 1: done when parsing a string to PropertyId
 
@@ -384,30 +385,15 @@ impl PropertyDeclarationBlock {
         }
     }
 
-    /// Adds or overrides the declaration for a given property in this block,
-    /// **except** if an existing declaration for the same property is more
-    /// important.
+    /// Adds or overrides the declaration for a given property in this block.
     ///
-    /// Always ensures that the property declaration is at the end.
-    pub fn extend(&mut self, drain: SourcePropertyDeclarationDrain, importance: Importance) {
-        self.extend_common(drain, importance, false);
-    }
-
-    /// Adds or overrides the declaration for a given property in this block,
-    /// **even** if an existing declaration for the same property is more
-    /// important, and reuses the same position in the block.
-    ///
-    /// Returns whether anything changed.
-    pub fn extend_reset(&mut self, drain: SourcePropertyDeclarationDrain,
-                        importance: Importance) -> bool {
-        self.extend_common(drain, importance, true)
-    }
-
-    fn extend_common(
+    /// See the documentation of `push` to see what impact `source` has when the
+    /// property is already there.
+    pub fn extend(
         &mut self,
         mut drain: SourcePropertyDeclarationDrain,
         importance: Importance,
-        overwrite_more_important_and_reuse_slot: bool,
+        source: DeclarationSource,
     ) -> bool {
         let all_shorthand_len = match drain.all_shorthand {
             AllShorthand::NotSet => 0,
@@ -421,10 +407,10 @@ impl PropertyDeclarationBlock {
 
         let mut changed = false;
         for decl in &mut drain.declarations {
-            changed |= self.push_common(
+            changed |= self.push(
                 decl,
                 importance,
-                overwrite_more_important_and_reuse_slot,
+                source,
             );
         }
         match drain.all_shorthand {
@@ -432,20 +418,20 @@ impl PropertyDeclarationBlock {
             AllShorthand::CSSWideKeyword(keyword) => {
                 for &id in ShorthandId::All.longhands() {
                     let decl = PropertyDeclaration::CSSWideKeyword(id, keyword);
-                    changed |= self.push_common(
+                    changed |= self.push(
                         decl,
                         importance,
-                        overwrite_more_important_and_reuse_slot,
+                        source,
                     );
                 }
             }
             AllShorthand::WithVariables(unparsed) => {
                 for &id in ShorthandId::All.longhands() {
                     let decl = PropertyDeclaration::WithVariables(id, unparsed.clone());
-                    changed |= self.push_common(
+                    changed |= self.push(
                         decl,
                         importance,
-                        overwrite_more_important_and_reuse_slot,
+                        source,
                     );
                 }
             }
@@ -453,21 +439,24 @@ impl PropertyDeclarationBlock {
         changed
     }
 
-    /// Adds or overrides the declaration for a given property in this block,
-    /// **except** if an existing declaration for the same property is more
-    /// important.
+    /// Adds or overrides the declaration for a given property in this block.
     ///
-    /// Ensures that, if inserted, it's inserted at the end of the declaration
+    /// Depending on the value of `source`, this has a different behavior in the
+    /// presence of another declaration with the same ID in the declaration
     /// block.
-    pub fn push(&mut self, declaration: PropertyDeclaration, importance: Importance) {
-        self.push_common(declaration, importance, false);
-    }
-
-    fn push_common(
+    ///
+    ///   * For `DeclarationSource::Parsing`, this will not override a
+    ///     declaration with more importance, and will ensure that, if inserted,
+    ///     it's inserted at the end of the declaration block.
+    ///
+    ///   * For `DeclarationSource::CssOm`, this will override importance and
+    ///     will preserve the original position on the block.
+    ///
+    pub fn push(
         &mut self,
         declaration: PropertyDeclaration,
         importance: Importance,
-        overwrite_more_important_and_reuse_slot: bool
+        source: DeclarationSource,
     ) -> bool {
         let longhand_id = match declaration.id() {
             PropertyDeclarationId::Longhand(id) => Some(id),
@@ -487,7 +476,9 @@ impl PropertyDeclarationBlock {
                         (false, true) => {}
 
                         (true, false) => {
-                            if !overwrite_more_important_and_reuse_slot {
+                            // For declarations set from the OM, less-important
+                            // declarations are overridden.
+                            if !matches!(source, DeclarationSource::CssOm) {
                                 return false
                             }
                         }
@@ -496,17 +487,38 @@ impl PropertyDeclarationBlock {
                         }
                     }
 
-                    if overwrite_more_important_and_reuse_slot {
-                        *slot = declaration;
-                        self.declarations_importance.set(i as u32, importance.important());
-                        return true;
-                    }
+                    match source {
+                        // CSSOM preserves the declaration position, and
+                        // overrides importance.
+                        DeclarationSource::CssOm => {
+                            *slot = declaration;
+                            self.declarations_importance.set(i as u32, importance.important());
+                            return true;
+                        }
+                        DeclarationSource::Parsing => {
+                            // As a compatibility hack, specially on Android,
+                            // don't allow to override a prefixed webkit display
+                            // value with an unprefixed version from parsing
+                            // code.
+                            //
+                            // TODO(emilio): Unship.
+                            if let PropertyDeclaration::Display(old_display) = *slot {
+                                use properties::longhands::display::computed_value::T as display;
 
-                    // NOTE(emilio): We could avoid this and just override for
-                    // properties not affected by logical props, but it's not
-                    // clear it's worth it given the `definitely_new` check.
-                    index_to_remove = Some(i);
-                    break;
+                                if let PropertyDeclaration::Display(new_display) = declaration {
+                                    if display::should_ignore_parsed_value(old_display, new_display) {
+                                        return false;
+                                    }
+                                }
+                            }
+
+                            // NOTE(emilio): We could avoid this and just override for
+                            // properties not affected by logical props, but it's not
+                            // clear it's worth it given the `definitely_new` check.
+                            index_to_remove = Some(i);
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -544,7 +556,7 @@ impl PropertyDeclarationBlock {
         updated_at_least_one
     }
 
-    /// https://dev.w3.org/csswg/cssom/#dom-cssstyledeclaration-removeproperty
+    /// <https://dev.w3.org/csswg/cssom/#dom-cssstyledeclaration-removeproperty>
     ///
     /// Returns whether any declaration was actually removed.
     pub fn remove_property(&mut self, property: &PropertyId) -> bool {
@@ -594,12 +606,14 @@ impl PropertyDeclarationBlock {
                 if self.declarations.len() == 1 {
                     let declaration = &self.declarations[0];
                     let custom_properties = if let Some(cv) = computed_values {
-                        // If there are extra custom properties for this declaration block,
-                        // factor them in too.
+                        // If there are extra custom properties for this
+                        // declaration block, factor them in too.
                         if let Some(block) = custom_properties_block {
+                            // FIXME(emilio): This is not super-efficient
+                            // here...
                             block.cascade_custom_properties(cv.custom_properties())
                         } else {
-                            cv.custom_properties()
+                            cv.custom_properties().cloned()
                         }
                     } else {
                         None
@@ -612,13 +626,14 @@ impl PropertyDeclarationBlock {
                         // |computed_values| is supplied, we use it to expand such variable
                         // declarations. This will be fixed properly in Gecko bug 1391537.
                         (&PropertyDeclaration::WithVariables(id, ref unparsed),
-                         Some(ref _computed_values)) => unparsed
-                            .substitute_variables(
+                         Some(ref _computed_values)) => {
+                            unparsed.substitute_variables(
                                 id,
-                                &custom_properties,
+                                custom_properties.as_ref(),
                                 QuirksMode::NoQuirks,
                             )
-                            .to_css(dest),
+                            .to_css(dest)
+                        },
                         (ref d, _) => d.to_css(dest),
                     }
                 } else {
@@ -651,14 +666,14 @@ impl PropertyDeclarationBlock {
         let mut longhands = LonghandIdSet::new();
 
         for (property, animation_value) in animation_value_map.iter() {
-          longhands.set_animatable_longhand_bit(property);
+          longhands.insert(*property);
           declarations.push(animation_value.uncompute());
         }
 
         PropertyDeclarationBlock {
-            declarations: declarations,
+            declarations,
+            longhands,
             declarations_importance: SmallBitVec::from_elem(len as u32, false),
-            longhands: longhands,
         }
     }
 
@@ -692,20 +707,17 @@ impl PropertyDeclarationBlock {
     /// properties.
     pub fn cascade_custom_properties(
         &self,
-        inherited_custom_properties: Option<Arc<::custom_properties::CustomPropertiesMap>>,
+        inherited_custom_properties: Option<&Arc<::custom_properties::CustomPropertiesMap>>,
     ) -> Option<Arc<::custom_properties::CustomPropertiesMap>> {
-        let mut custom_properties = None;
-        let mut seen_custom = PrecomputedHashSet::default();
+        let mut builder = CustomPropertiesBuilder::new(inherited_custom_properties);
 
         for declaration in self.normal_declaration_iter() {
             if let PropertyDeclaration::Custom(ref name, ref value) = *declaration {
-                ::custom_properties::cascade(
-                    &mut custom_properties, &inherited_custom_properties,
-                    &mut seen_custom, name, value.borrow());
+                builder.cascade(name, value.borrow());
             }
         }
-        ::custom_properties::finish_cascade(
-            custom_properties, &inherited_custom_properties)
+
+        builder.build()
     }
 }
 
@@ -841,7 +853,7 @@ impl ToCss for PropertyDeclarationBlock {
                     // Substeps 7 and 8
                     // We need to check the shorthand whether it's an alias property or not.
                     // If it's an alias property, it should be serialized like its longhand.
-                    if shorthand.flags().contains(SHORTHAND_ALIAS_PROPERTY) {
+                    if shorthand.flags().contains(PropertyFlags::SHORTHAND_ALIAS_PROPERTY) {
                         append_serialization::<_, Cloned<slice::Iter< _>>, _>(
                              dest,
                              &property,
@@ -1011,7 +1023,7 @@ pub fn parse_style_attribute<R>(input: &str,
     let context = ParserContext::new(Origin::Author,
                                      url_data,
                                      Some(CssRuleType::Style),
-                                     PARSING_MODE_DEFAULT,
+                                     ParsingMode::DEFAULT,
                                      quirks_mode);
     let error_context = ParserErrorContext { error_reporter: error_reporter };
     let mut input = ParserInput::new(input);
@@ -1022,15 +1034,17 @@ pub fn parse_style_attribute<R>(input: &str,
 /// `PropertyDeclaration`s when expanding a shorthand, for example.
 ///
 /// This does not attempt to parse !important at all.
-pub fn parse_one_declaration_into<R>(declarations: &mut SourcePropertyDeclaration,
-                                     id: PropertyId,
-                                     input: &str,
-                                     url_data: &UrlExtraData,
-                                     error_reporter: &R,
-                                     parsing_mode: ParsingMode,
-                                     quirks_mode: QuirksMode)
-                                     -> Result<(), ()>
-    where R: ParseErrorReporter
+pub fn parse_one_declaration_into<R>(
+    declarations: &mut SourcePropertyDeclaration,
+    id: PropertyId,
+    input: &str,
+    url_data: &UrlExtraData,
+    error_reporter: &R,
+    parsing_mode: ParsingMode,
+    quirks_mode: QuirksMode
+) -> Result<(), ()>
+where
+    R: ParseErrorReporter
 {
     let context = ParserContext::new(Origin::Author,
                                      url_data,
@@ -1040,16 +1054,16 @@ pub fn parse_one_declaration_into<R>(declarations: &mut SourcePropertyDeclaratio
     let mut input = ParserInput::new(input);
     let mut parser = Parser::new(&mut input);
     let start_position = parser.position();
-    let start_location = parser.current_source_location();
     parser.parse_entirely(|parser| {
         let name = id.name().into();
         PropertyDeclaration::parse_into(declarations, id, name, &context, parser)
             .map_err(|e| e.into())
     }).map_err(|err| {
+        let location = err.location;
         let error = ContextualParseError::UnsupportedPropertyDeclaration(
             parser.slice_from(start_position), err);
         let error_context = ParserErrorContext { error_reporter: error_reporter };
-        context.log_css_error(&error_context, start_location, error);
+        context.log_css_error(&error_context, location, error);
     })
 }
 
@@ -1065,7 +1079,7 @@ impl<'a, 'b, 'i> AtRuleParser<'i> for PropertyDeclarationParser<'a, 'b> {
     type PreludeNoBlock = ();
     type PreludeBlock = ();
     type AtRule = Importance;
-    type Error = SelectorParseError<'i, StyleParseError<'i>>;
+    type Error = StyleParseErrorKind<'i>;
 }
 
 /// Based on NonMozillaVendorIdentifier from Gecko's CSS parser.
@@ -1076,7 +1090,7 @@ fn is_non_mozilla_vendor_identifier(name: &str) -> bool {
 
 impl<'a, 'b, 'i> DeclarationParser<'i> for PropertyDeclarationParser<'a, 'b> {
     type Declaration = Importance;
-    type Error = SelectorParseError<'i, StyleParseError<'i>>;
+    type Error = StyleParseErrorKind<'i>;
 
     fn parse_value<'t>(&mut self, name: CowRcStr<'i>, input: &mut Parser<'i, 't>)
                        -> Result<Importance, ParseError<'i>> {
@@ -1084,11 +1098,11 @@ impl<'a, 'b, 'i> DeclarationParser<'i> for PropertyDeclarationParser<'a, 'b> {
         let id = match PropertyId::parse(&name, Some(&prop_context)) {
             Ok(id) => id,
             Err(()) => {
-                return Err(if is_non_mozilla_vendor_identifier(&name) {
-                    PropertyDeclarationParseError::UnknownVendorProperty
+                return Err(input.new_custom_error(if is_non_mozilla_vendor_identifier(&name) {
+                    StyleParseErrorKind::UnknownVendorProperty
                 } else {
-                    PropertyDeclarationParseError::UnknownProperty(name)
-                }.into());
+                    StyleParseErrorKind::UnknownProperty(name)
+                }));
             }
         };
         input.parse_until_before(Delimiter::Bang, |input| {
@@ -1108,11 +1122,13 @@ impl<'a, 'b, 'i> DeclarationParser<'i> for PropertyDeclarationParser<'a, 'b> {
 
 /// Parse a list of property declarations and return a property declaration
 /// block.
-pub fn parse_property_declaration_list<R>(context: &ParserContext,
-                                          error_context: &ParserErrorContext<R>,
-                                          input: &mut Parser)
-                                          -> PropertyDeclarationBlock
-    where R: ParseErrorReporter
+pub fn parse_property_declaration_list<R>(
+    context: &ParserContext,
+    error_context: &ParserErrorContext<R>,
+    input: &mut Parser,
+) -> PropertyDeclarationBlock
+where
+    R: ParseErrorReporter
 {
     let mut declarations = SourcePropertyDeclaration::new();
     let mut block = PropertyDeclarationBlock::new();
@@ -1124,21 +1140,24 @@ pub fn parse_property_declaration_list<R>(context: &ParserContext,
     while let Some(declaration) = iter.next() {
         match declaration {
             Ok(importance) => {
-                block.extend(iter.parser.declarations.drain(), importance);
+                block.extend(
+                    iter.parser.declarations.drain(),
+                    importance,
+                    DeclarationSource::Parsing,
+                );
             }
-            Err(err) => {
+            Err((error, slice)) => {
                 iter.parser.declarations.clear();
 
                 // If the unrecognized property looks like a vendor-specific property,
                 // silently ignore it instead of polluting the error output.
-                if let CssParseError::Custom(SelectorParseError::Custom(
-                    StyleParseError::PropertyDeclaration(
-                        PropertyDeclarationParseError::UnknownVendorProperty))) = err.error {
+                if let ParseErrorKind::Custom(StyleParseErrorKind::UnknownVendorProperty) = error.kind {
                     continue;
                 }
 
-                let error = ContextualParseError::UnsupportedPropertyDeclaration(err.slice, err.error);
-                context.log_css_error(error_context, err.location, error);
+                let location = error.location;
+                let error = ContextualParseError::UnsupportedPropertyDeclaration(slice, error);
+                context.log_css_error(error_context, location, error);
             }
         }
     }

@@ -186,6 +186,9 @@ var WebProgressListener = {
       json.principal = content.document.nodePrincipal;
       json.synthetic = content.document.mozSyntheticDocument;
       json.inLoadURI = WebNavigation.inLoadURI;
+      json.requestContextID = content.document.documentLoadGroup
+        ? content.document.documentLoadGroup.requestContextID
+        : null;
 
       if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
         let uri = aLocationURI.clone();
@@ -257,6 +260,8 @@ var WebNavigation =  {
     addMessageListener("WebNavigation:SetOriginAttributes", this);
     addMessageListener("WebNavigation:Reload", this);
     addMessageListener("WebNavigation:Stop", this);
+    // This message is used for measuring content process startup performance.
+    sendAsyncMessage("Content:BrowserChildReady", { time: Services.telemetry.msSystemNow() });
   },
 
   get webNavigation() {
@@ -349,7 +354,7 @@ var WebNavigation =  {
     if (baseURI)
       baseURI = Services.io.newURI(baseURI);
     if (triggeringPrincipal)
-      triggeringPrincipal = Utils.deserializePrincipal(triggeringPrincipal)
+      triggeringPrincipal = Utils.deserializePrincipal(triggeringPrincipal);
     this._wrapURIChangeCall(() => {
       return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
                                                    postData, headers, baseURI, triggeringPrincipal);
@@ -420,9 +425,9 @@ var ControllerCommands = {
         break;
     }
   }
-}
+};
 
-ControllerCommands.init()
+ControllerCommands.init();
 
 addEventListener("DOMTitleChanged", function(aEvent) {
   if (!aEvent.isTrusted || aEvent.target.defaultView != content)

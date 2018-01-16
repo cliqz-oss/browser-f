@@ -372,7 +372,6 @@ gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x
     'Clipboard.java',
     'CrashHandler.java',
     'EventDispatcher.java',
-    'GeckoAccessibility.java',
     'GeckoAppShell.java',
     'GeckoBatteryManager.java',
     'GeckoEditable.java',
@@ -385,11 +384,13 @@ gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x
     'GeckoProfile.java',
     'GeckoProfileDirectories.java',
     'GeckoScreenOrientation.java',
+    'GeckoSession.java',
+    'GeckoSessionHandler.java',
+    'GeckoSessionSettings.java',
     'GeckoSharedPrefs.java',
     'GeckoThread.java',
     'GeckoView.java',
-    'GeckoViewHandler.java',
-    'GeckoViewSettings.java',
+    'GeckoVRManager.java',
     'gfx/BitmapUtils.java',
     'gfx/BufferedImage.java',
     'gfx/BufferedImageGLInfo.java',
@@ -415,6 +416,7 @@ gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x
     'gfx/SurfaceTextureListener.java',
     'gfx/ViewTransform.java',
     'gfx/VsyncSource.java',
+    'HapticFeedbackDelegate.java',
     'InputConnectionListener.java',
     'InputMethods.java',
     'media/AsyncCodec.java',
@@ -462,12 +464,6 @@ gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x
     'WakeLockDelegate.java',
 ]]
 
-gvjar.sources += [geckoview_thirdparty_source_dir + f for f in [
-    'java/com/googlecode/eyesfree/braille/selfbraille/ISelfBrailleService.java',
-    'java/com/googlecode/eyesfree/braille/selfbraille/SelfBrailleClient.java',
-    'java/com/googlecode/eyesfree/braille/selfbraille/WriteData.java',
-]]
-
 if CONFIG['MOZ_ANDROID_HLS_SUPPORT']:
     gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x for x in [
         'media/GeckoHlsAudioRenderer.java',
@@ -482,6 +478,7 @@ gvjar.extra_jars += [
     CONFIG['ANDROID_SUPPORT_ANNOTATIONS_JAR_LIB'],
     CONFIG['ANDROID_SUPPORT_V4_AAR_LIB'],
     CONFIG['ANDROID_SUPPORT_V4_AAR_INTERNAL_LIB'],
+    CONFIG['ANDROID_PALETTE_V7_AAR_LIB'],
     'constants.jar',
     'gecko-mozglue.jar',
     'gecko-util.jar',
@@ -528,7 +525,6 @@ gbjar.sources += ['java/org/mozilla/gecko/' + x for x in [
     'activitystream/homepanel/stream/StreamViewHolder.java',
     'activitystream/homepanel/stream/TopPanelRow.java',
     'activitystream/homepanel/stream/WebpageItemRow.java',
-    'activitystream/homepanel/StreamHighlightItemRowContextMenuListener.java',
     'activitystream/homepanel/StreamItemAnimator.java',
     'activitystream/homepanel/StreamRecyclerAdapter.java',
     'activitystream/homepanel/topsites/TopSitesCard.java',
@@ -644,6 +640,7 @@ gbjar.sources += ['java/org/mozilla/gecko/' + x for x in [
     'firstrun/SyncPanel.java',
     'firstrun/TabQueuePanel.java',
     'FormAssistPopup.java',
+    'GeckoAccessibility.java',
     'GeckoActivity.java',
     'GeckoActivityMonitor.java',
     'GeckoApp.java',
@@ -822,7 +819,6 @@ gbjar.sources += ['java/org/mozilla/gecko/' + x for x in [
     'preferences/SetHomepagePreference.java',
     'preferences/SyncPreference.java',
     'preferences/TopSitesPanelsPreference.java',
-    'PresentationView.java',
     'PrintHelper.java',
     'PrivateTab.java',
     'promotion/AddToHomeScreenPromotion.java',
@@ -839,6 +835,7 @@ gbjar.sources += ['java/org/mozilla/gecko/' + x for x in [
     'prompts/PromptListItem.java',
     'prompts/PromptService.java',
     'prompts/TabInput.java',
+    'pwa/PwaUtils.java',
     'reader/ReaderModeUtils.java',
     'reader/ReadingListHelper.java',
     'reader/SavedReaderViewHelper.java',
@@ -928,6 +925,8 @@ gbjar.sources += ['java/org/mozilla/gecko/' + x for x in [
     'toolbar/NavButton.java',
     'toolbar/PageActionLayout.java',
     'toolbar/PhoneTabsButton.java',
+    'toolbar/PwaConfirm.java',
+    'toolbar/PwaOnboarding.java',
     'toolbar/SecurityModeUtil.java',
     'toolbar/ShapedButton.java',
     'toolbar/ShapedButtonFrameLayout.java',
@@ -1014,6 +1013,11 @@ gbjar.sources += ['java/org/mozilla/gecko/' + x for x in [
     'widget/themed/ThemedTextSwitcher.java',
     'widget/themed/ThemedTextView.java',
     'widget/themed/ThemedView.java',
+]]
+gbjar.sources += [thirdparty_source_dir + f for f in [
+    'com/googlecode/eyesfree/braille/selfbraille/ISelfBrailleService.java',
+    'com/googlecode/eyesfree/braille/selfbraille/SelfBrailleClient.java',
+    'com/googlecode/eyesfree/braille/selfbraille/WriteData.java',
 ]]
 # The following sources are Photon specific, Eventually they should be merged into base.
 gbjar.sources += ['../app/src/photon/java/org/mozilla/gecko/' + x for x in [
@@ -1171,7 +1175,6 @@ gbjar.extra_jars += [CONFIG['ANDROID_CARDVIEW_V7_AAR_LIB']]
 gbjar.extra_jars += [CONFIG['ANDROID_DESIGN_AAR_LIB']]
 gbjar.extra_jars += [CONFIG['ANDROID_RECYCLERVIEW_V7_AAR_LIB']]
 gbjar.extra_jars += [CONFIG['ANDROID_CUSTOMTABS_AAR_LIB']]
-gbjar.extra_jars += [CONFIG['ANDROID_PALETTE_V7_AAR_LIB']]
 
 gbjar.javac_flags += ['-Xlint:all,-deprecation,-fallthrough', '-J-Xmx512m', '-J-Xms128m']
 
@@ -1406,39 +1409,12 @@ ANDROID_GENERATED_RESFILES += [
 ]
 
 ANDROID_ASSETS_DIRS += [
-    '/mobile/android/app/assets',
+    '/mobile/android/app/src/main/assets',
 ]
 
 if CONFIG['MOZ_ANDROID_DISTRIBUTION_DIRECTORY']:
-    # If you change this, also change its equivalent in mobile/android/bouncer.
-    if not CONFIG['MOZ_ANDROID_PACKAGE_INSTALL_BOUNCER']:
-        # If we are packaging the bouncer, it will have the distribution, so don't put
-        # it in the main APK as well.
-        ANDROID_ASSETS_DIRS += [
-            '%' + CONFIG['MOZ_ANDROID_DISTRIBUTION_DIRECTORY'] + '/assets',
-        ]
-
-if CONFIG['MOZ_ANDROID_SEARCH_ACTIVITY']:
-    # The Search Activity is mostly independent of Fennec proper, but
-    # it does depend on Geckoview.  Therefore, we build it as a jar
-    # that depends on the Geckoview jars.
-    search_source_dir = SRCDIR + '/../search'
-    include('../search/search_activity_sources.mozbuild')
-
-    search_activity = add_java_jar('search-activity')
-    search_activity.sources += [search_source_dir + '/' + f for f in search_activity_sources]
-    search_activity.javac_flags += ['-Xlint:all']
-    search_activity.extra_jars = [
-        CONFIG['ANDROID_SUPPORT_ANNOTATIONS_JAR_LIB'],
-        CONFIG['ANDROID_SUPPORT_V4_AAR_LIB'],
-        CONFIG['ANDROID_SUPPORT_V4_AAR_INTERNAL_LIB'],
-        'constants.jar',
-        'gecko-R.jar',
-        'gecko-browser.jar',
-        'gecko-mozglue.jar',
-        'gecko-thirdparty.jar',
-        'gecko-util.jar',
-        'gecko-view.jar',
+    ANDROID_ASSETS_DIRS += [
+        '%' + CONFIG['MOZ_ANDROID_DISTRIBUTION_DIRECTORY'] + '/assets',
     ]
 
 DEFINES['ANDROID_PACKAGE_NAME'] = CONFIG['ANDROID_PACKAGE_NAME']

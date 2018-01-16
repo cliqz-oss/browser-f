@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -112,6 +114,13 @@ ShaderConfigOGL::SetYCbCr(bool aEnabled)
 {
   SetFeature(ENABLE_TEXTURE_YCBCR, aEnabled);
   MOZ_ASSERT(!(mFeatures & ENABLE_TEXTURE_NV12));
+}
+
+void
+ShaderConfigOGL::SetColorMultiplier(uint32_t aMultiplier)
+{
+  MOZ_ASSERT(mFeatures & ENABLE_TEXTURE_YCBCR, "Multiplier only supported with YCbCr!");
+  mMultiplier = aMultiplier;
 }
 
 void
@@ -441,11 +450,12 @@ ProgramProfileOGL::GetProfileFor(ShaderConfigOGL aConfig)
           fs << "  COLOR_PRECISION float cr = " << texture2D << "(uCbTexture, coord).a;" << endl;
         }
       }
-
-      fs << "  y = y - 0.06275;" << endl;
-      fs << "  cb = cb - 0.50196;" << endl;
-      fs << "  cr = cr - 0.50196;" << endl;
       fs << "  vec3 yuv = vec3(y, cb, cr);" << endl;
+      if (aConfig.mMultiplier != 1) {
+        fs << "  yuv *= " << aConfig.mMultiplier << ".0;" << endl;
+      }
+      fs << "  vec3 coeff = vec3(0.06275, 0.50196, 0.50196 );" << endl;
+      fs << "  yuv -= coeff;" << endl;
       fs << "  color.rgb = uYuvColorMatrix * yuv;" << endl;
       fs << "  color.a = 1.0;" << endl;
     } else if (aConfig.mFeatures & ENABLE_TEXTURE_COMPONENT_ALPHA) {

@@ -1,6 +1,5 @@
 Cu.import("resource://gre/modules/FormHistory.jsm");
 Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/PlacesSyncUtils.jsm");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/engines/bookmarks.js");
 Cu.import("resource://services-sync/engines/history.js");
@@ -40,7 +39,7 @@ add_task(async function test_history_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("history");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("history");
 
@@ -94,7 +93,7 @@ add_task(async function test_passwords_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("passwords");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("passwords");
 
@@ -151,7 +150,7 @@ add_task(async function test_prefs_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("prefs");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("prefs");
 
@@ -210,7 +209,7 @@ add_task(async function test_forms_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("forms");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("forms");
 
@@ -282,7 +281,7 @@ add_task(async function test_bookmark_change_during_sync() {
   });
 
   let engine = Service.engineManager.get("bookmarks");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("bookmarks");
 

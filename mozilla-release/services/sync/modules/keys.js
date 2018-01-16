@@ -107,9 +107,12 @@ KeyBundle.prototype = {
   /**
    * Populate this key pair with 2 new, randomly generated keys.
    */
-  generateRandom: function generateRandom() {
-    let generatedHMAC = Weave.Crypto.generateRandomKey();
-    let generatedEncr = Weave.Crypto.generateRandomKey();
+  async generateRandom() {
+    // Compute both at that same time
+    let [generatedHMAC, generatedEncr] = await Promise.all([
+      Weave.Crypto.generateRandomKey(),
+      Weave.Crypto.generateRandomKey()
+    ]);
     this.keyPairB64 = [generatedEncr, generatedHMAC];
   },
 
@@ -126,7 +129,7 @@ this.BulkKeyBundle = function BulkKeyBundle(collection) {
   KeyBundle.call(this);
 
   this._collection = collection;
-}
+};
 
 BulkKeyBundle.prototype = {
   __proto__: KeyBundle.prototype,

@@ -12,9 +12,8 @@ const {Task} = require("devtools/shared/task");
 const protocol = require("devtools/shared/protocol");
 const {LongStringActor} = require("devtools/server/actors/string");
 const {fetch} = require("devtools/shared/DevToolsUtils");
-const {originalSourceSpec, mediaRuleSpec, styleSheetSpec,
+const {mediaRuleSpec, styleSheetSpec,
        styleSheetsSpec} = require("devtools/shared/specs/stylesheets");
-const {SourceMapConsumer} = require("source-map");
 const {
   addPseudoClassLock, removePseudoClassLock } = require("devtools/server/actors/highlighters/utils/markup");
 
@@ -23,6 +22,7 @@ loader.lazyRequireGetter(this, "addPseudoClassLock",
   "devtools/server/actors/highlighters/utils/markup", true);
 loader.lazyRequireGetter(this, "removePseudoClassLock",
   "devtools/server/actors/highlighters/utils/markup", true);
+loader.lazyRequireGetter(this, "loadSheet", "devtools/shared/layout/utils", true);
 
 loader.lazyServiceGetter(this, "DOMUtils", "@mozilla.org/inspector/dom-utils;1", "inIDOMUtils");
 
@@ -31,12 +31,15 @@ var TRANSITION_DURATION_MS = 500;
 var TRANSITION_BUFFER_MS = 1000;
 var TRANSITION_RULE_SELECTOR =
 `:root${TRANSITION_PSEUDO_CLASS}, :root${TRANSITION_PSEUDO_CLASS} *`;
-var TRANSITION_RULE = `${TRANSITION_RULE_SELECTOR} {
-  transition-duration: ${TRANSITION_DURATION_MS}ms !important;
-  transition-delay: 0ms !important;
-  transition-timing-function: ease-out !important;
-  transition-property: all !important;
-}`;
+
+var TRANSITION_SHEET = "data:text/css;charset=utf-8," + encodeURIComponent(`
+  ${TRANSITION_RULE_SELECTOR} {
+    transition-duration: ${TRANSITION_DURATION_MS}ms !important;
+    transition-delay: 0ms !important;
+    transition-timing-function: ease-out !important;
+    transition-property: all !important;
+  }
+`);
 
 // The possible kinds of style-applied events.
 // UPDATE_PRESERVING_RULES means that the update is guaranteed to
@@ -53,64 +56,6 @@ exports.UPDATE_GENERAL = UPDATE_GENERAL;
 // is used so that navigation by the user will eventually cause the
 // edited text to be collected.
 let modifiedStyleSheets = new WeakMap();
-
-/**
- * Actor representing an original source of a style sheet that was specified
- * in a source map.
- */
-var OriginalSourceActor = protocol.ActorClassWithSpec(originalSourceSpec, {
-  initialize: function (url, sourceMap, parentActor) {
-    protocol.Actor.prototype.initialize.call(this, null);
-
-    this.url = url;
-    this.sourceMap = sourceMap;
-    this.parentActor = parentActor;
-    this.conn = this.parentActor.conn;
-
-    this.text = null;
-  },
-
-  form: function () {
-    return {
-      actor: this.actorID, // actorID is set when it's added to a pool
-      url: this.url,
-      relatedStyleSheet: this.parentActor.form()
-    };
-  },
-
-  _getText: function () {
-    if (this.text) {
-      return promise.resolve(this.text);
-    }
-    let content = this.sourceMap.sourceContentFor(this.url);
-    if (content) {
-      this.text = content;
-      return promise.resolve(content);
-    }
-    let options = {
-      // Make sure to use TYPE_OTHER - we are not fetching necessarily
-      // even fetching a style sheet, and anyway we're not planning to
-      // use it as a style sheet per se but rather just for its text;
-      // and this avoids problems with X-Content-Type-Options:
-      // nosniff.  See bug 1330383.
-      policy: Ci.nsIContentPolicy.TYPE_OTHER,
-      window: this.window
-    };
-    return fetch(this.url, options).then(({content: text}) => {
-      this.text = text;
-      return text;
-    });
-  },
-
-  /**
-   * Protocol method to get the text of this source.
-   */
-  getText: function () {
-    return this._getText().then((text) => {
-      return new LongStringActor(this.conn, text || "");
-    });
-  }
-});
 
 /**
  * A MediaRuleActor lives on the server and provides access to properties
@@ -187,9 +132,6 @@ var MediaRuleActor = protocol.ActorClassWithSpec(mediaRuleSpec, {
  * A StyleSheetActor represents a stylesheet on the server.
  */
 var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
-  /* List of original sources that generated this stylesheet */
-  _originalSources: null,
-
   toString: function () {
     return "[StyleSheetActor " + this.actorID + "]";
   },
@@ -198,7 +140,7 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
    * Window of target
    */
   get window() {
-    return this._window || this.parentActor.window;
+    return this.parentActor.window;
   },
 
   /**
@@ -206,6 +148,14 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
    */
   get document() {
     return this.window.document;
+  },
+
+  /**
+   * StyleSheet's window.
+   */
+  get ownerWindow() {
+    // eslint-disable-next-line mozilla/use-ownerGlobal
+    return this.ownerDocument.defaultView;
   },
 
   get ownerNode() {
@@ -260,18 +210,31 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
     }
   },
 
-  initialize: function (styleSheet, parentActor, window) {
+  initialize: function (styleSheet, parentActor) {
     protocol.Actor.prototype.initialize.call(this, null);
 
     this.rawSheet = styleSheet;
     this.parentActor = parentActor;
     this.conn = this.parentActor.conn;
 
-    this._window = window;
-
     // text and index are unknown until source load
     this.text = null;
     this._styleSheetIndex = -1;
+
+    // When the style is imported, `styleSheet.ownerNode` is null,
+    // so retrieve the topmost parent style sheet which has an ownerNode
+    let parentStyleSheet = styleSheet;
+    while (parentStyleSheet.parentStyleSheet) {
+      parentStyleSheet = parentStyleSheet.parentStyleSheet;
+    }
+    // When the style is injected via nsIDOMWindowUtils.loadSheet, even
+    // the parent style sheet has no owner, so default back to tab actor
+    // document
+    if (parentStyleSheet.ownerNode) {
+      this.ownerDocument = parentStyleSheet.ownerNode.ownerDocument;
+    } else {
+      this.ownerDocument = parentActor.window;
+    }
   },
 
   /**
@@ -475,8 +438,8 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
     let excludedProtocolsRe = /^(chrome|file|resource|moz-extension):\/\//;
     if (!excludedProtocolsRe.test(this.href)) {
       // Stylesheets using other protocols should use the content principal.
-      options.window = this.window;
-      options.principal = this.document.nodePrincipal;
+      options.window = this.ownerWindow;
+      options.principal = this.ownerDocument.nodePrincipal;
     }
 
     let result;
@@ -494,147 +457,6 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
 
     return result;
   }),
-
-  /**
-   * Protocol method to get the original source (actors) for this
-   * stylesheet if it has uses source maps.
-   */
-  getOriginalSources: function () {
-    if (this._originalSources) {
-      return promise.resolve(this._originalSources);
-    }
-    return this._fetchOriginalSources();
-  },
-
-  /**
-   * Fetch the original sources (actors) for this style sheet using its
-   * source map. If they've already been fetched, returns cached array.
-   *
-   * @return {Promise}
-   *         Promise that resolves with an array of OriginalSourceActors
-   */
-  _fetchOriginalSources: function () {
-    this._clearOriginalSources();
-    this._originalSources = [];
-
-    return this.getSourceMap().then((sourceMap) => {
-      if (!sourceMap) {
-        return null;
-      }
-      for (let url of sourceMap.sources) {
-        let actor = new OriginalSourceActor(url, sourceMap, this);
-
-        this.manage(actor);
-        this._originalSources.push(actor);
-      }
-      return this._originalSources;
-    });
-  },
-
-  /**
-   * Get the SourceMapConsumer for this stylesheet's source map, if
-   * it exists. Saves the consumer for later queries.
-   *
-   * @return {Promise}
-   *         A promise that resolves with a SourceMapConsumer, or null.
-   */
-  getSourceMap: function () {
-    if (this._sourceMap) {
-      return this._sourceMap;
-    }
-    return this._fetchSourceMap();
-  },
-
-  /**
-   * Fetch the source map for this stylesheet.
-   *
-   * @return {Promise}
-   *         A promise that resolves with a SourceMapConsumer, or null.
-   */
-  _fetchSourceMap: function () {
-    let deferred = defer();
-
-    let url = this.rawSheet.sourceMapURL;
-    if (!url) {
-      // no source map for this stylesheet
-      deferred.resolve(null);
-      return deferred.promise;
-    }
-
-    url = normalize(url, this.safeHref);
-    let options = {
-      loadFromCache: false,
-      policy: Ci.nsIContentPolicy.TYPE_INTERNAL_STYLESHEET,
-      window: this.window
-    };
-
-    let map = fetch(url, options).then(({content}) => {
-      // Fetching the source map might have failed with a 404 or other. When
-      // this happens, SourceMapConsumer may fail with a JSON.parse error.
-      let consumer;
-      try {
-        consumer = new SourceMapConsumer(content);
-      } catch (e) {
-        deferred.reject(new Error(
-          `Source map at ${url} not found or invalid`));
-        return null;
-      }
-      this._setSourceMapRoot(consumer, url, this.safeHref);
-      this._sourceMap = promise.resolve(consumer);
-
-      deferred.resolve(consumer);
-      return consumer;
-    }, deferred.reject);
-
-    this._sourceMap = map;
-
-    return deferred.promise;
-  },
-
-  /**
-   * Clear and unmanage the original source actors for this stylesheet.
-   */
-  _clearOriginalSources: function () {
-    for (let actor in this._originalSources) {
-      this.unmanage(actor);
-    }
-    this._originalSources = null;
-  },
-
-  /**
-   * Sets the source map's sourceRoot to be relative to the source map url.
-   */
-  _setSourceMapRoot: function (sourceMap, absSourceMapURL, scriptURL) {
-    if (scriptURL.startsWith("blob:")) {
-      scriptURL = scriptURL.replace("blob:", "");
-    }
-    const base = dirname(
-      absSourceMapURL.startsWith("data:")
-        ? scriptURL
-        : absSourceMapURL);
-    sourceMap.sourceRoot = sourceMap.sourceRoot
-      ? normalize(sourceMap.sourceRoot, base)
-      : base;
-  },
-
-  /**
-   * Protocol method that gets the location in the original source of a
-   * line, column pair in this stylesheet, if its source mapped, otherwise
-   * a promise of the same location.
-   */
-  getOriginalLocation: function (line, column) {
-    return this.getSourceMap().then((sourceMap) => {
-      if (sourceMap) {
-        return sourceMap.originalPositionFor({ line: line, column: column });
-      }
-      return {
-        fromSourceMap: false,
-        source: this.href,
-        line: line,
-        column: column
-      };
-    });
-  },
 
   /**
    * Protocol method to get the media rules for the stylesheet.
@@ -727,7 +549,7 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
     this._notifyPropertyChanged("ruleCount");
 
     if (transition) {
-      this._insertTransistionRule(kind);
+      this._startTransition(kind);
     } else {
       this.emit("style-applied", kind, this);
     }
@@ -738,14 +560,19 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
   },
 
   /**
-   * Insert a catch-all transition rule into the document. Set a timeout
-   * to remove the rule after a certain time.
+   * Insert a catch-all transition sheet into the document. Set a timeout
+   * to remove the transition after a certain time.
    */
-  _insertTransistionRule: function (kind) {
-    addPseudoClassLock(this.document.documentElement, TRANSITION_PSEUDO_CLASS);
+  _startTransition: function (kind) {
+    if (!this._transitionSheetLoaded) {
+      this._transitionSheetLoaded = true;
+      // We don't remove this sheet. It uses an internal selector that
+      // we only apply via locks, so there's no need to load and unload
+      // it all the time.
+      loadSheet(this.window, TRANSITION_SHEET);
+    }
 
-    // We always add the rule since we've just reset all the rules
-    this.rawSheet.insertRule(TRANSITION_RULE, this.rawSheet.cssRules.length);
+    addPseudoClassLock(this.document.documentElement, TRANSITION_PSEUDO_CLASS);
 
     // Set up clean up and commit after transition duration (+buffer)
     // @see _onTransitionEnd
@@ -762,13 +589,6 @@ var StyleSheetActor = protocol.ActorClassWithSpec(styleSheetSpec, {
   _onTransitionEnd: function (kind) {
     this._transitionTimeout = null;
     removePseudoClassLock(this.document.documentElement, TRANSITION_PSEUDO_CLASS);
-
-    let index = this.rawSheet.cssRules.length - 1;
-    let rule = this.rawSheet.cssRules[index];
-    if (rule.selectorText == TRANSITION_RULE_SELECTOR) {
-      this.rawSheet.deleteRule(index);
-    }
-
     this.emit("style-applied", kind, this);
   }
 });
@@ -806,6 +626,7 @@ var StyleSheetsActor = protocol.ActorClassWithSpec(styleSheetsSpec, {
     this._onNewStyleSheetActor = this._onNewStyleSheetActor.bind(this);
     this._onSheetAdded = this._onSheetAdded.bind(this);
     this._onWindowReady = this._onWindowReady.bind(this);
+    this._transitionSheetLoaded = false;
 
     this.parentActor.on("stylesheet-added", this._onNewStyleSheetActor);
     this.parentActor.on("window-ready", this._onWindowReady);
@@ -1042,20 +863,3 @@ var StyleSheetsActor = protocol.ActorClassWithSpec(styleSheetsSpec, {
 });
 
 exports.StyleSheetsActor = StyleSheetsActor;
-
-/**
- * Normalize multiple relative paths towards the base paths on the right.
- */
-function normalize(...urls) {
-  let base = Services.io.newURI(urls.pop());
-  let url;
-  while ((url = urls.pop())) {
-    base = Services.io.newURI(url, null, base);
-  }
-  return base.spec;
-}
-
-function dirname(path) {
-  return Services.io.newURI(
-    ".", null, Services.io.newURI(path)).spec;
-}

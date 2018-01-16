@@ -2,16 +2,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import os
 import platform
 import time
 import tempfile
 import uuid
 
-from addons import AddonManager
+from .addons import AddonManager
 import mozfile
-from permissions import Permissions
-from prefs import Preferences
+from .permissions import Permissions
+from .prefs import Preferences
 from shutil import copytree
 
 __all__ = ['Profile',
@@ -401,8 +403,6 @@ class FirefoxProfile(Profile):
         'security.notification_enable_delay': 0,
         # Suppress automatic safe mode after crashes
         'toolkit.startup.max_resumed_crashes': -1,
-        # Don't report telemetry information
-        'toolkit.telemetry.enabled': False,
         # Don't send Telemetry reports to the production server. This is
         # needed as Telemetry sends pings also if FHR upload is enabled.
         'toolkit.telemetry.server': 'http://%(server)s/telemetry-dummy/',

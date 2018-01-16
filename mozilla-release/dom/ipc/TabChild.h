@@ -41,12 +41,16 @@
 #include "AudioChannelService.h"
 #include "PuppetWidget.h"
 #include "mozilla/layers/GeckoContentController.h"
+#include "nsDeque.h"
 #include "nsISHistoryListener.h"
 #include "nsIPartialSHistoryListener.h"
 
 class nsIDOMWindowUtils;
 class nsIHttpChannel;
 class nsISerialEventTarget;
+
+template<typename T> class nsTHashtable;
+template<typename T> class nsPtrHashKey;
 
 namespace mozilla {
 class AbstractThread;
@@ -60,6 +64,7 @@ class APZEventState;
 class AsyncDragMetrics;
 class IAPZCTreeManager;
 class ImageCompositeNotification;
+class PCompositorBridgeChild;
 } // namespace layers
 
 namespace widget {
@@ -325,6 +330,8 @@ public:
   NS_DECL_NSIOBSERVER
   NS_DECL_NSITOOLTIPLISTENER
 
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(TabChild, TabChildBase)
+
   FORWARD_SHMEM_ALLOCATOR_TO(PBrowserChild)
 
   /**
@@ -573,6 +580,8 @@ public:
   void MakeVisible();
   void MakeHidden();
 
+  void OnDocShellActivated(bool aIsActive);
+
   nsIContentChild* Manager() const { return mManager; }
 
   static inline TabChild*
@@ -606,7 +615,7 @@ public:
   static TabChild* GetFrom(uint64_t aLayersId);
 
   uint64_t LayersId() { return mLayersId; }
-  bool IsLayersConnected() { return mLayersConnected; }
+  Maybe<bool> IsLayersConnected() { return mLayersConnected; }
 
   void DidComposite(uint64_t aTransactionId,
                     const TimeStamp& aCompositeStart,
@@ -678,6 +687,7 @@ public:
     return mParentIsActive;
   }
 
+  const mozilla::layers::CompositorOptions& GetCompositorOptions() const;
   bool AsyncPanZoomEnabled() const;
 
   virtual ScreenIntSize GetInnerSize() override;
@@ -757,8 +767,17 @@ public:
     return mWidgetNativeData;
   }
 
+  // Prepare to dispatch all coalesced mousemove events. We'll move all data
+  // in mCoalescedMouseData to a nsDeque; then we start processing them. We
+  // can't fetch the coalesced event one by one and dispatch it because we may
+  // reentry the event loop and access to the same hashtable. It's called when
+  // dispatching some mouse events other than mousemove.
+  void FlushAllCoalescedMouseData();
+  void ProcessPendingCoalescedMouseDataAndDispatchEvents();
 
-  void MaybeDispatchCoalescedMouseMoveEvents();
+  void HandleRealMouseButtonEvent(const WidgetMouseEvent& aEvent,
+                                  const ScrollableLayerGuid& aGuid,
+                                  const uint64_t& aInputBlockId);
 
   static bool HasActiveTabs()
   {
@@ -770,7 +789,7 @@ public:
   // open. There can also be zero foreground TabChilds if the foreground tab is
   // in a different content process. Note that this function should only be
   // called if HasActiveTabs() returns true.
-  static const nsTArray<TabChild*>& GetActiveTabs()
+  static const nsTHashtable<nsPtrHashKey<TabChild>>& GetActiveTabs()
   {
     MOZ_ASSERT(HasActiveTabs());
     return *sActiveTabs;
@@ -881,6 +900,8 @@ private:
   void InternalSetDocShellIsActive(bool aIsActive,
                                    bool aPreserveLayers);
 
+  bool CreateRemoteLayerManager(mozilla::layers::PCompositorBridgeChild* aCompositorChild);
+
   class DelayedDeleteRunnable;
 
   TextureFactoryIdentifier mTextureFactoryIdentifier;
@@ -898,7 +919,7 @@ private:
   int64_t mBeforeUnloadListeners;
   CSSRect mUnscaledOuterRect;
   nscolor mLastBackgroundColor;
-  bool mLayersConnected;
+  Maybe<bool> mLayersConnected;
   bool mDidFakeShow;
   bool mNotified;
   bool mTriedBrowserInit;
@@ -942,7 +963,12 @@ private:
   // takes time, some repeated events can be skipped to not flood child process.
   mozilla::TimeStamp mLastWheelProcessedTimeFromParent;
   mozilla::TimeDuration mLastWheelProcessingDuration;
-  CoalescedMouseData mCoalescedMouseData;
+
+  // Hash table to track coalesced mousemove events for different pointers.
+  nsClassHashtable<nsUint32HashKey, CoalescedMouseData> mCoalescedMouseData;
+
+  nsDeque mToBeDispatchedMouseData;
+
   CoalescedWheelData mCoalescedWheelData;
   RefPtr<CoalescedMouseMoveFlusher> mCoalescedMouseEventFlusher;
 
@@ -972,7 +998,7 @@ private:
   // the foreground). There may be more than one if there are multiple browser
   // windows open. There may be none if this process does not host any
   // foreground tabs.
-  static nsTArray<TabChild*>* sActiveTabs;
+  static nsTHashtable<nsPtrHashKey<TabChild>>* sActiveTabs;
 
   DISALLOW_EVIL_CONSTRUCTORS(TabChild);
 };

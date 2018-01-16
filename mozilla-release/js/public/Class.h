@@ -379,13 +379,11 @@ typedef bool
 /**
  * Set a property named by id in obj, treating the assignment as strict
  * mode code if strict is true. Note the jsid id type -- id may be a string
- * (Unicode property identifier) or an int (element index). The *vp out
- * parameter, on success, is the new property value after the
- * set.
+ * (Unicode property identifier) or an int (element index).
  */
 typedef bool
 (* JSSetterOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
-               JS::MutableHandleValue vp, JS::ObjectOpResult& result);
+               JS::HandleValue v, JS::ObjectOpResult& result);
 
 /**
  * Delete a property named by id in obj.
@@ -538,12 +536,6 @@ typedef bool
 typedef bool
 (* DeletePropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                      JS::ObjectOpResult& result);
-
-typedef bool
-(* WatchOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleObject callable);
-
-typedef bool
-(* UnwatchOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id);
 
 class JS_FRIEND_API(ElementAdder)
 {
@@ -743,8 +735,6 @@ struct JS_STATIC_CLASS ObjectOps
     SetPropertyOp    setProperty;
     GetOwnPropertyOp getOwnPropertyDescriptor;
     DeletePropertyOp deleteProperty;
-    WatchOp          watch;
-    UnwatchOp        unwatch;
     GetElementsOp    getElements;
     JSFunToStringOp  funToString;
 };
@@ -898,8 +888,8 @@ struct JS_STATIC_CLASS Class
      * Objects of this class aren't native objects. They don't have Shapes that
      * describe their properties and layout. Classes using this flag must
      * provide their own property behavior, either by being proxy classes (do
-     * this) or by overriding all the ObjectOps except getElements, watch and
-     * unwatch (don't do this).
+     * this) or by overriding all the ObjectOps except getElements
+     * (don't do this).
      */
     static const uint32_t NON_NATIVE = JSCLASS_INTERNAL_FLAG2;
 
@@ -976,8 +966,6 @@ struct JS_STATIC_CLASS Class
                                             const { return oOps ? oOps->getOwnPropertyDescriptor
                                                                                      : nullptr; }
     DeletePropertyOp getOpsDeleteProperty() const { return oOps ? oOps->deleteProperty : nullptr; }
-    WatchOp          getOpsWatch()          const { return oOps ? oOps->watch          : nullptr; }
-    UnwatchOp        getOpsUnwatch()        const { return oOps ? oOps->unwatch        : nullptr; }
     GetElementsOp    getOpsGetElements()    const { return oOps ? oOps->getElements    : nullptr; }
     JSFunToStringOp  getOpsFunToString()    const { return oOps ? oOps->funToString    : nullptr; }
 };

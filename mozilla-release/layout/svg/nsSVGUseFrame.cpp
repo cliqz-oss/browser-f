@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -48,7 +49,7 @@ nsSVGUseFrame::Init(nsIContent*       aContent,
 
 nsresult
 nsSVGUseFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                nsIAtom*        aAttribute,
+                                nsAtom*        aAttribute,
                                 int32_t         aModType)
 {
   SVGUseElement *useElement = static_cast<SVGUseElement*>(GetContent());
@@ -99,10 +100,10 @@ nsSVGUseFrame::AttributeChanged(int32_t         aNameSpaceID,
 }
 
 void
-nsSVGUseFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsSVGUseFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  DestroyAnonymousContent(mContentClone.forget());
-  nsSVGGFrame::DestroyFrom(aDestructRoot);
+  aPostDestroyData.AddAnonymousContent(mContentClone.forget());
+  nsSVGGFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 

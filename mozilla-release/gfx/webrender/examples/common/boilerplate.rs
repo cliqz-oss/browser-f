@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+extern crate env_logger;
+
 use gleam::gl;
 use glutin;
 use std::env;
@@ -20,12 +22,18 @@ impl Notifier {
 }
 
 impl RenderNotifier for Notifier {
-    fn new_frame_ready(&mut self) {
+    fn clone(&self) -> Box<RenderNotifier> {
+        Box::new(Notifier {
+            window_proxy: self.window_proxy.clone(),
+        })
+    }
+
+    fn new_frame_ready(&self) {
         #[cfg(not(target_os = "android"))]
         self.window_proxy.wakeup_event_loop();
     }
 
-    fn new_scroll_frame_ready(&mut self, _composite_needed: bool) {
+    fn new_scroll_frame_ready(&self, _composite_needed: bool) {
         #[cfg(not(target_os = "android"))]
         self.window_proxy.wakeup_event_loop();
     }
@@ -77,6 +85,8 @@ pub trait Example {
 }
 
 pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOptions>) {
+    env_logger::init().unwrap();
+
     let args: Vec<String> = env::args().collect();
     let res_path = if args.len() > 1 {
         Some(PathBuf::from(&args[1]))
@@ -121,12 +131,10 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
     };
 
     let size = DeviceUintSize::new(width, height);
-    let (mut renderer, sender) = webrender::Renderer::new(gl.clone(), opts).unwrap();
+    let notifier = Box::new(Notifier::new(window.create_window_proxy()));
+    let (mut renderer, sender) = webrender::Renderer::new(gl.clone(), notifier, opts).unwrap();
     let api = sender.create_api();
     let document_id = api.add_document(size);
-
-    let notifier = Box::new(Notifier::new(window.create_window_proxy()));
-    renderer.set_render_notifier(notifier);
 
     if let Some(external_image_handler) = example.get_external_image_handler() {
         renderer.set_external_image_handler(external_image_handler);
@@ -183,7 +191,7 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
                     Some(glutin::VirtualKeyCode::P),
                 ) => {
                     let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::PROFILER_DBG);
+                    flags.toggle(webrender::DebugFlags::PROFILER_DBG);
                     renderer.set_debug_flags(flags);
                 }
                 glutin::Event::KeyboardInput(
@@ -192,7 +200,7 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
                     Some(glutin::VirtualKeyCode::O),
                 ) => {
                     let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::RENDER_TARGET_DBG);
+                    flags.toggle(webrender::DebugFlags::RENDER_TARGET_DBG);
                     renderer.set_debug_flags(flags);
                 }
                 glutin::Event::KeyboardInput(
@@ -201,7 +209,7 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
                     Some(glutin::VirtualKeyCode::I),
                 ) => {
                     let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::TEXTURE_CACHE_DBG);
+                    flags.toggle(webrender::DebugFlags::TEXTURE_CACHE_DBG);
                     renderer.set_debug_flags(flags);
                 }
                 glutin::Event::KeyboardInput(
@@ -210,8 +218,30 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
                     Some(glutin::VirtualKeyCode::B),
                 ) => {
                     let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::ALPHA_PRIM_DBG);
+                    flags.toggle(webrender::DebugFlags::ALPHA_PRIM_DBG);
                     renderer.set_debug_flags(flags);
+                }
+                glutin::Event::KeyboardInput(
+                    glutin::ElementState::Pressed,
+                    _,
+                    Some(glutin::VirtualKeyCode::Key1),
+                ) => {
+                    api.set_window_parameters(document_id,
+                        size,
+                        DeviceUintRect::new(DeviceUintPoint::zero(), size),
+                        1.0
+                    );
+                }
+                glutin::Event::KeyboardInput(
+                    glutin::ElementState::Pressed,
+                    _,
+                    Some(glutin::VirtualKeyCode::Key2),
+                ) => {
+                    api.set_window_parameters(document_id,
+                        size,
+                        DeviceUintRect::new(DeviceUintPoint::zero(), size),
+                        2.0
+                    );
                 }
                 glutin::Event::KeyboardInput(
                     glutin::ElementState::Pressed,

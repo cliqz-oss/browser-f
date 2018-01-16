@@ -27,8 +27,8 @@ const {LocalizationHelper} = require("devtools/shared/l10n");
 const STYLE_INSPECTOR_L10N = new LocalizationHelper(STYLE_INSPECTOR_PROPERTIES);
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-const CSS_GRID_ENABLED_PREF = "layout.css.grid.enabled";
 const CSS_SHAPES_ENABLED_PREF = "devtools.inspector.shapesHighlighter.enabled";
+const CSS_SHAPE_OUTSIDE_ENABLED_PREF = "layout.css.shape-outside.enabled";
 
 /**
  * This module is used to process text for output by developer tools. This means
@@ -88,7 +88,9 @@ OutputParser.prototype = {
     options.expectCubicBezier = this.supportsType(name, CSS_TYPES.TIMING_FUNCTION);
     options.expectDisplay = name === "display";
     options.expectFilter = name === "filter";
-    options.expectShape = name === "clip-path" || name === "shape-outside";
+    options.expectShape = name === "clip-path" ||
+                          (name === "shape-outside"
+                           && Services.prefs.getBoolPref(CSS_SHAPE_OUTSIDE_ENABLED_PREF));
     options.supportsColor = this.supportsType(name, CSS_TYPES.COLOR) ||
                             this.supportsType(name, CSS_TYPES.GRADIENT);
 
@@ -368,8 +370,7 @@ OutputParser.prototype = {
           if (options.expectCubicBezier &&
               BEZIER_KEYWORDS.indexOf(token.text) >= 0) {
             this._appendCubicBezier(token.text, options);
-          } else if (Services.prefs.getBoolPref(CSS_GRID_ENABLED_PREF) &&
-                     this._isDisplayGrid(text, token, options)) {
+          } else if (this._isDisplayGrid(text, token, options)) {
             this._appendGrid(token.text, options);
           } else if (colorOK() &&
                      colorUtils.isValidCSSColor(token.text, this.cssColor4)) {

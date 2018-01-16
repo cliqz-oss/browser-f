@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,6 +8,7 @@
 #include "DrawTargetD2D1.h"
 #include "FilterNodeSoftware.h"
 #include "GradientStopsD2D.h"
+#include "SourceSurfaceCapture.h"
 #include "SourceSurfaceD2D1.h"
 #include "SourceSurfaceDual.h"
 #include "RadialGradientEffectD2D1.h"
@@ -44,8 +46,9 @@ RefPtr<ID2D1Factory1> D2DFactory()
 
 DrawTargetD2D1::DrawTargetD2D1()
   : mPushedLayers(1)
+  , mSnapshotLock(make_shared<Mutex>("DrawTargetD2D1::mSnapshotLock"))
   , mUsedCommandListsSincePurge(0)
-  , mDidComplexBlendWithListInList(false)
+  , mComplexBlendsWithListInList(0)
   , mDeviceSeq(0)
 {
 }
@@ -55,6 +58,7 @@ DrawTargetD2D1::~DrawTargetD2D1()
   PopAllClips();
 
   if (mSnapshot) {
+    MutexAutoLock lock(*mSnapshotLock);
     // We may hold the only reference. MarkIndependent will clear mSnapshot;
     // keep the snapshot object alive so it doesn't get destroyed while
     // MarkIndependent is running.
@@ -88,6 +92,7 @@ DrawTargetD2D1::~DrawTargetD2D1()
 already_AddRefed<SourceSurface>
 DrawTargetD2D1::Snapshot()
 {
+  MutexAutoLock lock(*mSnapshotLock);
   if (mSnapshot) {
     RefPtr<SourceSurface> snapshot(mSnapshot);
     return snapshot.forget();
@@ -609,8 +614,7 @@ void
 DrawTargetD2D1::FillGlyphs(ScaledFont *aFont,
                            const GlyphBuffer &aBuffer,
                            const Pattern &aPattern,
-                           const DrawOptions &aOptions,
-                           const GlyphRenderingOptions*)
+                           const DrawOptions &aOptions)
 {
   if (aFont->GetType() != FontType::DWRITE) {
     gfxDebug() << *this << ": Ignoring drawing call for incompatible font.";
@@ -950,6 +954,8 @@ DrawTargetD2D1::PopLayer()
   DCCommandSink sink(mDC);
   list->Stream(&sink);
 
+  mComplexBlendsWithListInList = 0;
+
   mDC->PopLayer();
 }
 
@@ -1271,6 +1277,7 @@ void
 DrawTargetD2D1::MarkChanged()
 {
   if (mSnapshot) {
+    MutexAutoLock lock(*mSnapshotLock);
     if (mSnapshot->hasOneRef()) {
       // Just destroy it, since no-one else knows about it.
       mSnapshot = nullptr;
@@ -1420,12 +1427,7 @@ DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp, const Pattern &aPattern)
 
     mDC->DrawImage(blendEffect, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY);
 
-    // This may seem a little counter intuitive. If this is false, we go through the regular
-    // codepaths and set it to true. When this was true, GetImageForLayerContent will return
-    // a bitmap for the current command list and we will no longer have a complex blend
-    // with a list for tmpImage. Therefore we can set it to false again.
-    mDidComplexBlendWithListInList = !mDidComplexBlendWithListInList;
-
+    mComplexBlendsWithListInList++;
     return;
   }
 
@@ -1506,6 +1508,8 @@ DrawTargetD2D1::GetDeviceSpaceClipRect(D2D1_RECT_F& aClipRect, bool& aIsPixelAli
   return true;
 }
 
+static const uint32_t sComplexBlendsWithListAllowedInList = 4;
+
 already_AddRefed<ID2D1Image>
 DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
 {
@@ -1535,7 +1539,7 @@ DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
     list->Close();
 
     RefPtr<ID2D1Bitmap1> tmpBitmap;
-    if (mDidComplexBlendWithListInList) {
+    if (mComplexBlendsWithListInList >= sComplexBlendsWithListAllowedInList) {
       D2D1_BITMAP_PROPERTIES1 props =
         D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET,
                                 D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -1545,6 +1549,7 @@ DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
       mDC->SetTarget(tmpBitmap);
       mDC->DrawImage(list, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY);
       mDC->SetTarget(CurrentTarget());
+      mComplexBlendsWithListInList = 0;
     }
 
     DCCommandSink sink(mDC);
@@ -1554,7 +1559,7 @@ DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
       PushAllClips();
     }
 
-    if (mDidComplexBlendWithListInList) {
+    if (tmpBitmap) {
       return tmpBitmap.forget();
     }
 
@@ -1914,6 +1919,17 @@ DrawTargetD2D1::GetImageForSurface(SourceSurface *aSurface, Matrix &aSourceTrans
 {
   RefPtr<ID2D1Image> image;
   switch (aSurface->GetType()) {
+  case SurfaceType::CAPTURE:
+    {
+      SourceSurfaceCapture* capture = static_cast<SourceSurfaceCapture*>(aSurface);
+      RefPtr<SourceSurface> resolved = capture->Resolve(GetBackendType());
+      if (!resolved) {
+        return nullptr;
+      }
+      MOZ_ASSERT(resolved->GetType() != SurfaceType::CAPTURE);
+      return GetImageForSurface(resolved, aSourceTransform, aExtendMode, aSourceRect, aUserSpace);
+    }
+    break;
   case SurfaceType::D2D1_1_IMAGE:
     {
       SourceSurfaceD2D1 *surf = static_cast<SourceSurfaceD2D1*>(aSurface);
@@ -1959,6 +1975,17 @@ DrawTargetD2D1::OptimizeSourceSurface(SourceSurface* aSurface) const
   if (aSurface->GetType() == SurfaceType::D2D1_1_IMAGE) {
     RefPtr<SourceSurface> surface(aSurface);
     return surface.forget();
+  }
+
+  // Special case captures so we don't resolve them to a data surface.
+  if (aSurface->GetType() == SurfaceType::CAPTURE) {
+    SourceSurfaceCapture* capture = static_cast<SourceSurfaceCapture*>(aSurface);
+    RefPtr<SourceSurface> resolved = capture->Resolve(GetBackendType());
+    if (!resolved) {
+      return nullptr;
+    }
+    MOZ_ASSERT(resolved->GetType() != SurfaceType::CAPTURE);
+    return OptimizeSourceSurface(resolved);
   }
 
   RefPtr<DataSourceSurface> data = aSurface->GetDataSurface();

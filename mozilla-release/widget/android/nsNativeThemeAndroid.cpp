@@ -13,6 +13,7 @@
 
 NS_IMPL_ISUPPORTS_INHERITED(nsNativeThemeAndroid, nsNativeTheme, nsITheme)
 
+using namespace mozilla;
 using namespace mozilla::gfx;
 
 static void
@@ -236,8 +237,8 @@ nsNativeThemeAndroid::GetMinimumWidgetSize(nsPresContext* aPresContext,
 {
   if (aWidgetType == NS_THEME_RADIO || aWidgetType == NS_THEME_CHECKBOX) {
     // 9px + (1px padding + 1px border) * 2
-    aResult->width = 13;
-    aResult->height = 13;
+    aResult->width = aPresContext->CSSPixelsToDevPixels(13);
+    aResult->height = aPresContext->CSSPixelsToDevPixels(13);
   }
 
   return NS_OK;
@@ -245,7 +246,7 @@ nsNativeThemeAndroid::GetMinimumWidgetSize(nsPresContext* aPresContext,
 
 NS_IMETHODIMP
 nsNativeThemeAndroid::WidgetStateChanged(nsIFrame* aFrame, uint8_t aWidgetType,
-                                     nsIAtom* aAttribute, bool* aShouldRepaint,
+                                     nsAtom* aAttribute, bool* aShouldRepaint,
                                      const nsAttrValue* aOldValue)
 {
   if (aWidgetType == NS_THEME_RADIO || aWidgetType == NS_THEME_CHECKBOX) {

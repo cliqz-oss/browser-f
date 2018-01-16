@@ -109,7 +109,7 @@ tabbrowser {
   -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser");
 }
 
-.tabbrowser-tabs {
+#tabbrowser-tabs {
   -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser-tabs");
 }
 
@@ -150,6 +150,7 @@ tabbrowser {
 }
 
 .tab-close-button,
+.tabbrowser-tab::after,
 .tab-background {
   /* Explicitly set the visibility to override the value (collapsed)
    * we inherit from #TabsToolbar[collapsed] upon opening a browser window. */
@@ -157,35 +158,38 @@ tabbrowser {
 }
 
 .tab-close-button[fadein],
+.tabbrowser-tab[fadein]::after,
 .tab-background[fadein] {
   /* This transition is only wanted for opening tabs. */
   transition: visibility 0ms 25ms;
 }
 
 .tab-close-button:not([fadein]),
+.tabbrowser-tab:not([fadein])::after,
 .tab-background:not([fadein]) {
   visibility: hidden;
 }
 
 .tab-label:not([fadein]),
 .tab-throbber:not([fadein]),
+.tab-throbber-fallback:not([fadein]),
 .tab-icon-image:not([fadein]) {
   display: none;
 }
 
-.tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned] {
+#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned] {
   position: fixed !important;
   display: block; /* position:fixed already does this (bug 579776), but let's be explicit */
 }
 
-.tabbrowser-tabs[movingtab] > .tabbrowser-tab[selected] {
+#tabbrowser-tabs[movingtab] > .tabbrowser-tab[selected] {
   position: relative;
   z-index: 2;
   pointer-events: none; /* avoid blocking dragover events on scroll buttons */
 }
 
 .tabbrowser-tab[tabdrop-samewindow],
-.tabbrowser-tabs[movingtab] > .tabbrowser-tab[fadein]:not([selected]) {
+#tabbrowser-tabs[movingtab] > .tabbrowser-tab[fadein]:not([selected]) {
   transition: transform 200ms var(--animation-easing-function);
 }
 
@@ -195,7 +199,7 @@ tabbrowser {
   padding-bottom: 15px;
 }
 
-#TabsToolbar[movingtab] > .tabbrowser-tabs {
+#TabsToolbar[movingtab] > #tabbrowser-tabs {
   padding-bottom: 15px;
   margin-bottom: -15px;
 }
@@ -247,7 +251,7 @@ window:not([chromehidden~="toolbar"]) #nav-bar[nonemptyoverflow] > .overflow-but
 
 %ifdef CAN_DRAW_IN_TITLEBAR
 %ifdef MENUBAR_CAN_AUTOHIDE
-#toolbar-menubar:not([autohide=true]) ~ #TabsToolbar > .titlebar-placeholder,
+#toolbar-menubar:not([autohide=true]) + #TabsToolbar > .titlebar-placeholder,
 %endif
 %ifndef MOZ_WIDGET_COCOA
 #main-window:not([sizemode=normal]) .titlebar-placeholder[type="pre-tabs"],
@@ -339,20 +343,7 @@ toolbarpaletteitem {
   transition: 1.5s margin-top ease-out;
 }
 
-/* Rules to help integrate SDK widgets */
-toolbaritem[sdkstylewidget="true"] > toolbarbutton,
-toolbarpaletteitem > toolbaritem[sdkstylewidget="true"] > iframe,
-toolbarpaletteitem > toolbaritem[sdkstylewidget="true"] > .toolbarbutton-text {
-  display: none;
-}
-
-toolbarpaletteitem:-moz-any([place="palette"], [place="panel"]) > toolbaritem[sdkstylewidget="true"] > toolbarbutton {
-  display: -moz-box;
-}
-
-toolbarpaletteitem > toolbaritem[sdkstylewidget="true"][cui-areatype="toolbar"] > .toolbarbutton-text {
-  display: -moz-box;
-}
+/* Rules to help integrate WebExtension buttons */
 
 .webextension-browser-action > .toolbarbutton-badge-stack > .toolbarbutton-icon {
   height: 16px;
@@ -386,10 +377,6 @@ toolbarpaletteitem > toolbaritem[sdkstylewidget="true"][cui-areatype="toolbar"] 
     list-style-image: var(--webextension-menupanel-image-dark, inherit);
   }
 
-  .webextension-page-action {
-    list-style-image: var(--webextension-urlbar-image, inherit);
-  }
-
   .webextension-menuitem {
     list-style-image: var(--webextension-menuitem-image, inherit);
   }
@@ -420,10 +407,6 @@ toolbarpaletteitem > toolbaritem[sdkstylewidget="true"][cui-areatype="toolbar"] 
   .webextension-browser-action[cui-areatype="menu-panel"]:-moz-lwtheme-darktext,
   toolbarpaletteitem[place="palette"] > .webextension-browser-action:-moz-lwtheme-darktext {
     list-style-image: var(--webextension-menupanel-image-2x-dark, inherit);
-  }
-
-  .webextension-page-action {
-    list-style-image: var(--webextension-urlbar-image-2x, inherit);
   }
 
   .webextension-menuitem {
@@ -525,10 +508,6 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   background-position: bottom left;
   background-color: var(--lwt-accent-color);
   background-image: var(--lwt-footer-image);
-}
-
-.menuitem-iconic-tooltip {
-  -moz-binding: url("chrome://browser/content/urlbarBindings.xml#menuitem-iconic-tooltip");
 }
 
 /* Hide menu elements intended for keyboard access support */
@@ -805,10 +784,6 @@ html|input.urlbar-input[textoverflow]:not([focused]) {
   margin-inline-end: 0.25em !important;
 }
 
-#main-window[customizing] :-moz-any(#urlbar, .searchbar-textbox) > .autocomplete-textbox-container > .textbox-input-box {
-  visibility: hidden;
-}
-
 /* Flexible spacer sizing (matching url bar) */
 toolbarpaletteitem[place=toolbar][id^=wrapper-customizableui-special-spring],
 toolbarspring {
@@ -1013,15 +988,6 @@ html|*#fullscreen-exit-button {
   -moz-binding: url("chrome://browser/content/urlbarBindings.xml#addon-progress-notification");
 }
 
-#click-to-play-plugins-notification {
-  -moz-binding: url("chrome://browser/content/urlbarBindings.xml#click-to-play-plugins-notification");
-}
-
-
-.plugin-popupnotification-centeritem {
-  -moz-binding: url("chrome://browser/content/urlbarBindings.xml#plugin-popupnotification-center-item");
-}
-
 browser[tabmodalPromptShowing] {
   -moz-user-focus: none !important;
 }
@@ -1100,29 +1066,6 @@ html|*#gcli-output-frame,
   content: attr(error-count);
   display: -moz-box;
   -moz-box-pack: center;
-}
-
-/* Responsive Mode */
-
-.browserContainer[responsivemode] {
-  overflow: auto;
-}
-
-.devtools-responsiveui-toolbar:-moz-locale-dir(rtl) {
-  -moz-box-pack: end;
-}
-
-.browserStack[responsivemode] {
-  transition-duration: 200ms;
-  transition-timing-function: linear;
-}
-
-.browserStack[responsivemode] {
-  transition-property: min-width, max-width, min-height, max-height;
-}
-
-.browserStack[responsivemode][notransition] {
-  transition: none;
 }
 
 /* Translation */
@@ -1242,11 +1185,6 @@ toolbarpaletteitem[place="palette"] > #downloads-button[indicator] > #downloads-
   transform: none;
 }
 %endif
-
-/* Customize mode */
-#PanelUI-contents > .panel-customization-placeholder > .panel-customization-placeholder-child {
-  list-style-image: none;
-}
 
 /* Apply crisp rendering for favicons at exactly 2dppx resolution */
 @media (resolution: 2dppx) {
@@ -1463,6 +1401,33 @@ toolbarpaletteitem[place="palette"][hidden] {
 #pageAction-panel-sendToDevice-subview-body:not([state="notready"]) > #pageAction-panel-sendToDevice-notReady,
 #pageAction-urlbar-sendToDevice-subview-body:not([state="notready"]) > #pageAction-urlbar-sendToDevice-notReady {
   display: none;
+}
+
+/* Page action buttons */
+.pageAction-panel-button > .toolbarbutton-icon {
+  list-style-image: var(--pageAction-image-16px, inherit);
+}
+.urlbar-page-action {
+  list-style-image: var(--pageAction-image-16px, inherit);
+}
+@media (min-resolution: 1.1dppx) {
+  .pageAction-panel-button > .toolbarbutton-icon {
+    list-style-image: var(--pageAction-image-32px, inherit);
+  }
+  .urlbar-page-action {
+    list-style-image: var(--pageAction-image-32px, inherit);
+  }
+}
+
+/* Page action context menu */
+#pageActionContextMenu > .pageActionContextMenuItem {
+  visibility: collapse;
+}
+#pageActionContextMenu[state=builtInPinned] > .pageActionContextMenuItem.builtInPinned,
+#pageActionContextMenu[state=builtInUnpinned] > .pageActionContextMenuItem.builtInUnpinned,
+#pageActionContextMenu[state=extensionPinned] > .pageActionContextMenuItem.extensionPinned,
+#pageActionContextMenu[state=extensionUnpinned] > .pageActionContextMenuItem.extensionUnpinned {
+  visibility: visible;
 }
 
 /* WebExtension Sidebars */

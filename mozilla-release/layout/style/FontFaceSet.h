@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -22,9 +23,7 @@ class nsPIDOMWindowInner;
 
 namespace mozilla {
 class PostTraversalTask;
-namespace css {
-class FontFamilyListRefCnt;
-} // namespace css
+class SharedFontList;
 namespace dom {
 class FontFace;
 class Promise;
@@ -136,7 +135,7 @@ public:
    * Finds an existing entry in the user font cache or creates a new user
    * font entry for the given FontFace object.
    */
-  already_AddRefed<gfxUserFontEntry>
+  static already_AddRefed<gfxUserFontEntry>
     FindOrCreateUserFontEntryFromFontFace(FontFace* aFontFace);
 
   /**
@@ -268,7 +267,7 @@ private:
     bool mLoadEventShouldFire;
   };
 
-  already_AddRefed<gfxUserFontEntry> FindOrCreateUserFontEntryFromFontFace(
+  static already_AddRefed<gfxUserFontEntry> FindOrCreateUserFontEntryFromFontFace(
                                                    const nsAString& aFamilyName,
                                                    FontFace* aFontFace,
                                                    SheetType aSheetType);
@@ -315,7 +314,7 @@ private:
 
   void ParseFontShorthandForMatching(
               const nsAString& aFont,
-              RefPtr<mozilla::css::FontFamilyListRefCnt>& aFamilyList,
+              RefPtr<SharedFontList>& aFamilyList,
               uint32_t& aWeight,
               int32_t& aStretch,
               uint8_t& aStyle,

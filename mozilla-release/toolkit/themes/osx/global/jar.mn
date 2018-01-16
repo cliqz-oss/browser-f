@@ -41,7 +41,6 @@ toolkit.jar:
   skin/classic/global/toolbar.css
   skin/classic/global/toolbarbutton.css
 * skin/classic/global/tree.css
-* skin/classic/global/viewbuttons.css
   skin/classic/global/wizard.css
 * skin/classic/global/alerts/alert.css                               (alerts/alert.css)
   skin/classic/global/arrow/arrow-dn-dis.gif                         (arrow/arrow-dn-dis.gif)
@@ -69,8 +68,6 @@ toolkit.jar:
   skin/classic/global/dirListing/dirListing.css                      (dirListing/dirListing.css)
   skin/classic/global/dirListing/folder.png                          (dirListing/folder.png)
   skin/classic/global/dirListing/up.png                              (dirListing/up.png)
-  skin/classic/global/icons/autocomplete-dropmarker.png              (icons/autocomplete-dropmarker.png)
-  skin/classic/global/icons/autoscroll.png                           (icons/autoscroll.png)
   skin/classic/global/icons/blacklist_favicon.png                    (icons/blacklist_favicon.png)
   skin/classic/global/icons/blacklist_64.png                         (icons/blacklist_64.png)
   skin/classic/global/icons/glyph-dropdown.png                       (icons/glyph-dropdown.png)

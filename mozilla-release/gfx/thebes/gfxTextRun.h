@@ -35,16 +35,13 @@ class gfxContext;
 class gfxFontGroup;
 class gfxUserFontEntry;
 class gfxUserFontSet;
-class nsIAtom;
+class nsAtom;
 class nsLanguageAtomService;
 class gfxMissingFontRecorder;
 
 namespace mozilla {
 class SVGContextPaint;
 enum class StyleHyphens : uint8_t;
-namespace layout {
-class TextDrawTarget;
-};
 };
 
 /**
@@ -247,7 +244,6 @@ public:
     struct MOZ_STACK_CLASS DrawParams
     {
         gfxContext* context;
-        mozilla::layout::TextDrawTarget* textDrawer = nullptr;
         DrawMode drawMode = DrawMode::GLYPH_FILL;
         nscolor textStrokeColor = 0;
         gfxPattern* textStrokePattern = nullptr;
@@ -281,7 +277,8 @@ public:
      * Glyphs should be drawn in logical content order, which can be significant
      * if they overlap (perhaps due to negative spacing).
      */
-    void Draw(Range aRange, gfxPoint aPt, const DrawParams& aParams) const;
+    void Draw(Range aRange, mozilla::gfx::Point aPt,
+              const DrawParams& aParams) const;
 
     /**
      * Draws the emphasis marks for this text run. Uses only GetSpacing
@@ -289,9 +286,8 @@ public:
      * line of emphasis marks.
      */
     void DrawEmphasisMarks(gfxContext* aContext,
-                           mozilla::layout::TextDrawTarget* aTextDrawer,
                            gfxTextRun* aMark,
-                           gfxFloat aMarkAdvance, gfxPoint aPt,
+                           gfxFloat aMarkAdvance, mozilla::gfx::Point aPt,
                            Range aRange, PropertyProvider* aProvider) const;
 
     /**
@@ -761,8 +757,9 @@ private:
                                      PropertyProvider *aProvider) const;
     gfxFloat ComputePartialLigatureWidth(Range aPartRange,
                                          PropertyProvider *aProvider) const;
-    void DrawPartialLigature(gfxFont *aFont, Range aRange,
-                             gfxPoint *aPt, PropertyProvider *aProvider,
+    void DrawPartialLigature(gfxFont* aFont, Range aRange,
+                             mozilla::gfx::Point* aPt,
+                             PropertyProvider* aProvider,
                              TextRunDrawParams& aParams,
                              mozilla::gfx::ShapedTextFlags aOrientation) const;
     // Advance aRange.start to the start of the nearest ligature, back
@@ -789,8 +786,8 @@ private:
                                  Metrics *aMetrics) const;
 
     // **** drawing helper ****
-    void DrawGlyphs(gfxFont *aFont, Range aRange, gfxPoint *aPt,
-                    PropertyProvider *aProvider, Range aSpacingRange,
+    void DrawGlyphs(gfxFont* aFont, Range aRange, mozilla::gfx::Point* aPt,
+                    PropertyProvider* aProvider, Range aSpacingRange,
                     TextRunDrawParams& aParams,
                     mozilla::gfx::ShapedTextFlags aOrientation) const;
 
@@ -845,6 +842,7 @@ private:
 class gfxFontGroup final : public gfxTextRunFactory {
 public:
     typedef mozilla::unicode::Script Script;
+    typedef gfxShapedText::CompressedGlyph CompressedGlyph;
 
     static void Shutdown(); // platform must call this to release the languageAtomService
 
@@ -1250,8 +1248,7 @@ protected:
     // search all faces in a family for a fallback in cases where it's unclear
     // whether the family might have a font for a given character
     gfxFont*
-    FindFallbackFaceForChar(gfxFontFamily* aFamily, uint32_t aCh,
-                            Script aRunScript);
+    FindFallbackFaceForChar(gfxFontFamily* aFamily, uint32_t aCh);
 
    // helper methods for looking up fonts
 

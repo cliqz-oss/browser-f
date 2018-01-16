@@ -32,7 +32,7 @@ export USE_ELF_HACK ELF_HACK_FLAGS
 # Override the value of OMNIJAR_NAME from config.status with the value
 # set earlier in this file.
 
-stage-package: $(MOZ_PKG_MANIFEST) $(MOZ_PKG_MANIFEST_DEPS)
+stage-package: multilocale.json locale-manifest.in $(MOZ_PKG_MANIFEST) $(MOZ_PKG_MANIFEST_DEPS)
 	OMNIJAR_NAME=$(OMNIJAR_NAME) \
 	NO_PKG_FILES="$(NO_PKG_FILES)" \
 	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/packager.py $(DEFINES) $(ACDEFINES) \
@@ -49,12 +49,12 @@ stage-package: $(MOZ_PKG_MANIFEST) $(MOZ_PKG_MANIFEST_DEPS)
 		$(MOZ_PKG_MANIFEST) $(DIST) $(DIST)/$(MOZ_PKG_DIR)$(if $(MOZ_PKG_MANIFEST),,$(_BINPATH)) \
 		$(if $(filter omni,$(MOZ_PACKAGER_FORMAT)),$(if $(NON_OMNIJAR_FILES),--non-resource $(NON_OMNIJAR_FILES)))
 	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/find-dupes.py $(DEFINES) $(ACDEFINES) $(MOZ_PKG_DUPEFLAGS) $(DIST)/$(MOZ_PKG_DIR)
-ifndef MOZ_THUNDERBIRD
+ifndef MOZ_IS_COMM_TOPDIR
 	# Package mozharness
 	$(call py_action,test_archive, \
 		mozharness \
 		$(ABS_DIST)/$(PKG_PATH)$(MOZHARNESS_PACKAGE))
-endif # MOZ_THUNDERBIRD
+endif # MOZ_IS_COMM_TOPDIR
 ifdef MOZ_PACKAGE_JSSHELL
 	# Package JavaScript Shell
 	@echo 'Packaging JavaScript Shell...'
@@ -182,3 +182,42 @@ hg-bundle:
 
 source-upload:
 	$(MAKE) upload UPLOAD_FILES='$(SOURCE_UPLOAD_FILES)' CHECKSUM_FILE='$(SOURCE_CHECKSUM_FILE)'
+
+
+ALL_LOCALES = $(if $(filter en-US,$(LOCALES)),$(LOCALES),$(LOCALES) en-US)
+
+# Firefox uses @RESPATH@.
+# Fennec uses @BINPATH@ and doesn't have the @RESPATH@ variable defined.
+ifeq ($(MOZ_BUILD_APP),mobile/android)
+BASE_PATH:=@BINPATH@
+MULTILOCALE_DIR = $(DIST)/$(BINPATH)/res
+else
+BASE_PATH:=@RESPATH@
+MULTILOCALE_DIR = $(DIST)/$(RESPATH)/res
+endif
+
+# This version of the target uses MOZ_CHROME_MULTILOCALE to build multilocale.json
+# and places it in dist/bin/res - it should be used when packaging a build.
+multilocale.json: LOCALES?=$(MOZ_CHROME_MULTILOCALE)
+multilocale.json:
+	$(call py_action,file_generate,$(MOZILLA_DIR)/toolkit/locales/gen_multilocale.py main $(MULTILOCALE_DIR)/multilocale.json $(MDDEPDIR)/multilocale.json.pp $(ALL_LOCALES))
+
+# This version of the target uses AB_CD to build multilocale.json and places it
+# in the $(XPI_NAME)/res dir - it should be used when repackaging a build.
+multilocale.json-%: LOCALES?=$(AB_CD)
+multilocale.json-%: MULTILOCALE_DIR=$(DIST)/xpi-stage/$(XPI_NAME)/res
+multilocale.json-%:
+	$(call py_action,file_generate,$(MOZILLA_DIR)/toolkit/locales/gen_multilocale.py main $(MULTILOCALE_DIR)/multilocale.json $(MDDEPDIR)/multilocale.json.pp $(ALL_LOCALES))
+
+locale-manifest.in: LOCALES?=$(MOZ_CHROME_MULTILOCALE)
+locale-manifest.in: $(GLOBAL_DEPS) FORCE
+	printf '\n[multilocale]\n' > $@
+	printf '$(BASE_PATH)/res/multilocale.json\n' >> $@
+	for LOCALE in $(ALL_LOCALES) ;\
+	do \
+	  for ENTRY in $(MOZ_CHROME_LOCALE_ENTRIES) ;\
+		do \
+		  printf "$$ENTRY""$$LOCALE"'@JAREXT@\n' >> $@; \
+		  printf "$$ENTRY""$$LOCALE"'.manifest\n' >> $@; \
+	  done \
+	done

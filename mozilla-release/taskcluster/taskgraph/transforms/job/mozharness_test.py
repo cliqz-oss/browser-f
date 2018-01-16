@@ -59,6 +59,7 @@ VARIANTS = [
     'pgo',
     'asan',
     'stylo',
+    'stylo-disabled',
     'stylo-sequential',
     'qr',
     'ccov',
@@ -144,7 +145,7 @@ def mozharness_test_on_docker(config, job, taskdesc):
     if 'actions' in mozharness:
         env['MOZHARNESS_ACTIONS'] = ' '.join(mozharness['actions'])
 
-    if config.params['project'] == 'try':
+    if 'try' in config.params['project']:
         env['TRY_COMMIT_MSG'] = config.params['message']
 
     # handle some of the mozharness-specific options
@@ -247,6 +248,8 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
 
     env = worker.setdefault('env', {})
     env['MOZ_AUTOMATION'] = '1'
+    env['GECKO_HEAD_REPOSITORY'] = config.params['head_repository']
+    env['GECKO_HEAD_REV'] = config.params['head_rev']
 
     # this list will get cleaned up / reduced / removed in bug 1354088
     if is_macosx:
@@ -310,7 +313,7 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
                 if isinstance(c, basestring) and c.startswith('--test-suite'):
                     mh_command[i] += suffix
 
-    if config.params['project'] == 'try':
+    if 'try' in config.params['project']:
         env['TRY_COMMIT_MSG'] = config.params['message']
 
     worker['mounts'] = [{
@@ -473,7 +476,7 @@ def mozharness_test_buildbot_bridge(config, job, taskdesc):
             variant = ''
 
         # this variant name has branch after the variant type in BBB bug 1338871
-        if variant in ('qr', 'stylo', 'stylo-sequential', 'devedition'):
+        if variant in ('qr', 'stylo', 'stylo-sequential', 'devedition', 'stylo-disabled'):
             name = '{prefix} {variant} {branch} talos {test_name}'
         elif variant:
             name = '{prefix} {branch} {variant} talos {test_name}'
@@ -498,12 +501,21 @@ def mozharness_test_buildbot_bridge(config, job, taskdesc):
         prefix = BUILDER_NAME_PREFIX.get(
             (test_platform, test.get('virtualization')),
             BUILDER_NAME_PREFIX[test_platform])
-        buildername = '{prefix} {branch} {build_type} test {test_name}'.format(
-            prefix=prefix,
-            branch=branch,
-            build_type=build_type,
-            test_name=test_name
-        )
+        if variant in ['stylo-disabled']:
+            buildername = '{prefix} {variant} {branch} {build_type} test {test_name}'.format(
+                prefix=prefix,
+                variant=variant,
+                branch=branch,
+                build_type=build_type,
+                test_name=test_name
+            )
+        else:
+            buildername = '{prefix} {branch} {build_type} test {test_name}'.format(
+                prefix=prefix,
+                branch=branch,
+                build_type=build_type,
+                test_name=test_name
+            )
 
     worker.update({
         'buildername': buildername,

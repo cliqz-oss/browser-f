@@ -37,8 +37,6 @@ public:
     static nsresult
                       Create(nsInputStreamPump  **result,
                              nsIInputStream      *stream,
-                             int64_t              streamPos = -1,
-                             int64_t              streamLen = -1,
                              uint32_t             segsize = 0,
                              uint32_t             segcount = 0,
                              bool                 closeWhenDone = false,
@@ -87,7 +85,6 @@ protected:
     nsCOMPtr<nsIEventTarget>      mLabeledMainThreadTarget;
     nsCOMPtr<nsIInputStream>      mStream;
     nsCOMPtr<nsIAsyncInputStream> mAsyncStream;
-    nsCOMPtr<nsIInputStream>      mBufferedStream;
     uint64_t                      mStreamOffset;
     uint64_t                      mStreamLength;
     uint32_t                      mSegSize;
@@ -103,6 +100,7 @@ protected:
     bool                          mWaitingForInputStreamReady;
     bool                          mCloseWhenDone;
     bool                          mRetargeting;
+    bool                          mAsyncStreamIsBuffered;
     // Protects state/member var accesses across multiple threads.
     mozilla::RecursiveMutex       mMutex;
 };

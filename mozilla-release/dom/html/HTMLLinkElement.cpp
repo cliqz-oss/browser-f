@@ -77,7 +77,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLLinkElement,
                                              nsGenericHTMLElement,
-                                             nsIDOMHTMLLinkElement,
                                              nsIStyleSheetLinkingElement,
                                              Link)
 
@@ -90,13 +89,6 @@ HTMLLinkElement::Disabled()
   return ss && ss->Disabled();
 }
 
-NS_IMETHODIMP
-HTMLLinkElement::GetMozDisabled(bool* aDisabled)
-{
-  *aDisabled = Disabled();
-  return NS_OK;
-}
-
 void
 HTMLLinkElement::SetDisabled(bool aDisabled)
 {
@@ -104,23 +96,6 @@ HTMLLinkElement::SetDisabled(bool aDisabled)
     ss->SetDisabled(aDisabled);
   }
 }
-
-NS_IMETHODIMP
-HTMLLinkElement::SetMozDisabled(bool aDisabled)
-{
-  SetDisabled(aDisabled);
-  return NS_OK;
-}
-
-
-NS_IMPL_STRING_ATTR(HTMLLinkElement, Charset, charset)
-NS_IMPL_URI_ATTR(HTMLLinkElement, Href, href)
-NS_IMPL_STRING_ATTR(HTMLLinkElement, Hreflang, hreflang)
-NS_IMPL_STRING_ATTR(HTMLLinkElement, Media, media)
-NS_IMPL_STRING_ATTR(HTMLLinkElement, Rel, rel)
-NS_IMPL_STRING_ATTR(HTMLLinkElement, Rev, rev)
-NS_IMPL_STRING_ATTR(HTMLLinkElement, Target, target)
-NS_IMPL_STRING_ATTR(HTMLLinkElement, Type, type)
 
 void
 HTMLLinkElement::OnDNSPrefetchRequested()
@@ -215,7 +190,7 @@ HTMLLinkElement::UnbindFromTree(bool aDeep, bool aNullParent)
 
 bool
 HTMLLinkElement::ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult)
 {
@@ -275,7 +250,7 @@ HTMLLinkElement::CreateAndDispatchEvent(nsIDocument* aDoc,
 }
 
 nsresult
-HTMLLinkElement::BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+HTMLLinkElement::BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                const nsAttrValueOrString* aValue, bool aNotify)
 {
   if (aNameSpaceID == kNameSpaceID_None &&
@@ -290,9 +265,11 @@ HTMLLinkElement::BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
 }
 
 nsresult
-HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                               const nsAttrValue* aValue,
-                              const nsAttrValue* aOldValue, bool aNotify)
+                              const nsAttrValue* aOldValue,
+                              nsIPrincipal* aSubjectPrincipal,
+                              bool aNotify)
 {
   // It's safe to call ResetLinkState here because our new attr value has
   // already been set or unset.  ResetLinkState needs the updated attribute
@@ -305,6 +282,12 @@ HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
     if (IsInUncomposedDoc()) {
       CreateAndDispatchEvent(OwnerDoc(), NS_LITERAL_STRING("DOMLinkChanged"));
     }
+  }
+
+  if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::href) {
+    mTriggeringPrincipal = nsContentUtils::GetAttrTriggeringPrincipal(
+        this, aValue ? aValue->GetStringValue() : EmptyString(),
+        aSubjectPrincipal);
   }
 
   if (aValue) {
@@ -363,7 +346,7 @@ HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNameSpaceID, aName, aValue,
-                                            aOldValue, aNotify);
+                                            aOldValue, aSubjectPrincipal, aNotify);
 }
 
 nsresult
@@ -395,7 +378,8 @@ HTMLLinkElement::GetLinkTarget(nsAString& aTarget)
 
 static const DOMTokenListSupportedToken sSupportedRelValues[] = {
   // Keep this in sync with ToLinkMask in nsStyleLinkElement.cpp.
-  // "import" must come first because it's conditional.
+  // "preload" must come first because it can be disabled.
+  "preload",
   "prefetch",
   "dns-prefetch",
   "stylesheet",
@@ -404,23 +388,9 @@ static const DOMTokenListSupportedToken sSupportedRelValues[] = {
   "preconnect",
   "icon",
   "search",
-  "preload",
   nullptr
 };
 
-static const DOMTokenListSupportedToken sSupportedRelValuesNoPreload[] = {
-  // Keep this in sync with ToLinkMask in nsStyleLinkElement.cpp.
-  // "import" must come first because it's conditional.
-  "prefetch",
-  "dns-prefetch",
-  "stylesheet",
-  "next",
-  "alternate",
-  "preconnect",
-  "icon",
-  "search",
-  nullptr
-};
 nsDOMTokenList*
 HTMLLinkElement::RelList()
 {
@@ -428,7 +398,7 @@ HTMLLinkElement::RelList()
     if (Preferences::GetBool("network.preload")) {
       mRelList = new nsDOMTokenList(this, nsGkAtoms::rel, sSupportedRelValues);
     } else {
-      mRelList = new nsDOMTokenList(this, nsGkAtoms::rel, sSupportedRelValuesNoPreload);
+      mRelList = new nsDOMTokenList(this, nsGkAtoms::rel, &sSupportedRelValues[1]);
     }
   }
   return mRelList;
@@ -441,14 +411,20 @@ HTMLLinkElement::GetHrefURI() const
 }
 
 already_AddRefed<nsIURI>
-HTMLLinkElement::GetStyleSheetURL(bool* aIsInline)
+HTMLLinkElement::GetStyleSheetURL(bool* aIsInline, nsIPrincipal** aTriggeringPrincipal)
 {
   *aIsInline = false;
+  *aTriggeringPrincipal = nullptr;
+
   nsAutoString href;
   GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
   if (href.IsEmpty()) {
     return nullptr;
   }
+
+  nsCOMPtr<nsIPrincipal> prin = mTriggeringPrincipal;
+  prin.forget(aTriggeringPrincipal);
+
   nsCOMPtr<nsIURI> uri = Link::GetURI();
   return uri.forget();
 }

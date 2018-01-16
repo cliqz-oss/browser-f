@@ -8,6 +8,7 @@
 
 const { getRootBindingParent } = require("devtools/shared/layout/utils");
 const { getTabPrefs } = require("devtools/shared/indentation");
+const { Ci, Cc } = require("chrome");
 
 const MAX_DATA_URL_LENGTH = 40;
 
@@ -157,8 +158,13 @@ function prettifyCSS(text, ruleCount) {
     prettifyCSS.LINE_SEPARATOR = (os === "WINNT" ? "\r\n" : "\n");
   }
 
-  // remove initial and terminating HTML comments and surrounding whitespace
-  text = text.replace(/(?:^\s*<!--[\r\n]*)|(?:\s*-->\s*$)/g, "");
+  // Stylesheets may start and end with HTML comment tags (possibly with whitespaces
+  // before and after). Remove those first. Don't do anything there aren't any.
+  let trimmed = text.trim();
+  if (trimmed.startsWith("<!--")) {
+    text = trimmed.replace(/^<!--/, "").replace(/-->$/, "").trim();
+  }
+
   let originalText = text;
   text = text.trim();
 
@@ -471,3 +477,43 @@ function getXPath(ele) {
   return parts.length ? "/" + parts.reverse().join("/") : "";
 }
 exports.getXPath = getXPath;
+
+/**
+ * Given a node, check to see if it is a ::before or ::after element.
+ * If so, return the node that is accessible from within the document
+ * (the parent of the anonymous node), along with which pseudo element
+ * it was.  Otherwise, return the node itself.
+ *
+ * @returns {Object}
+ *            - {DOMNode} node The non-anonymous node
+ *            - {string} pseudo One of ':before', ':after', or null.
+ */
+function getBindingElementAndPseudo(node) {
+  let bindingElement = node;
+  let pseudo = null;
+  if (node.nodeName == "_moz_generated_content_before") {
+    bindingElement = node.parentNode;
+    pseudo = ":before";
+  } else if (node.nodeName == "_moz_generated_content_after") {
+    bindingElement = node.parentNode;
+    pseudo = ":after";
+  }
+  return {
+    bindingElement: bindingElement,
+    pseudo: pseudo
+  };
+}
+exports.getBindingElementAndPseudo = getBindingElementAndPseudo;
+
+/**
+ * Returns css style rules for a given a node.
+ * This function can handle ::before or ::after pseudo element as well as
+ * normal element.
+ */
+function getCSSStyleRules(node) {
+  const DOMUtils =
+    Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils);
+  let { bindingElement, pseudo } = getBindingElementAndPseudo(node);
+  return DOMUtils.getCSSStyleRules(bindingElement, pseudo);
+}
+exports.getCSSStyleRules = getCSSStyleRules;

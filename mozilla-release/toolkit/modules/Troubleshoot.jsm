@@ -69,7 +69,8 @@ const PREFS_WHITELIST = [
   "keyword.",
   "layers.",
   "layout.css.dpi",
-  "layout.css.servo.enabled",
+  "layout.css.servo.",
+  "layout.display-list.",
   "media.",
   "mousewheel.",
   "network.",
@@ -85,7 +86,6 @@ const PREFS_WHITELIST = [
   "services.sync.lastSync",
   "services.sync.numClients",
   "services.sync.engine.",
-  "social.enabled",
   "storage.vacuum.last.",
   "svg.",
   "toolkit.startup.recent_crashes",
@@ -104,7 +104,6 @@ const PREFS_BLACKLIST = [
 ];
 
 // Table of getters for various preference types.
-// It's important to use getComplexValue for strings: it returns Unicode (wchars), getCharPref returns UTF-8 encoded chars.
 const PREFS_GETTERS = {};
 
 PREFS_GETTERS[Ci.nsIPrefBranch.PREF_STRING] = (prefs, name) => prefs.getStringPref(name);
@@ -249,6 +248,16 @@ var dataProviders = {
           Services.prefs.getBoolPref("layout.css.servo.enabled", false);
       }
     }
+    data.styloChromeDefault =
+      Services.prefs.getDefaultBranch(null)
+              .getBoolPref("layout.css.servo.chrome.enabled", false);
+    data.styloChromeResult = false;
+    if (data.styloResult) {
+      let winUtils = Services.wm.getMostRecentWindow("").
+                     QueryInterface(Ci.nsIInterfaceRequestor).
+                     getInterface(Ci.nsIDOMWindowUtils);
+      data.styloChromeResult = winUtils.isStyledByServo;
+    }
 
     const keyGoogle = Services.urlFormatter.formatURL("%GOOGLE_API_KEY%").trim();
     data.keyGoogleFound = keyGoogle != "no-google-api-key" && keyGoogle.length > 0;
@@ -318,7 +327,8 @@ var dataProviders = {
 
     // getExperiments promises experiment history
     Experiments.instance().getExperiments().then(
-      experiments => done(experiments)
+      experiments => done(experiments),
+      () => done([])
     );
   },
 
@@ -640,7 +650,25 @@ var dataProviders = {
     done({
       exists: userJSFile.exists() && userJSFile.fileSize > 0,
     });
-  }
+  },
+
+  intl: function intl(done) {
+    const osPrefs =
+      Cc["@mozilla.org/intl/ospreferences;1"].getService(Ci.mozIOSPreferences);
+    done({
+      localeService: {
+        requested: Services.locale.getRequestedLocales(),
+        available: Services.locale.getAvailableLocales(),
+        supported: Services.locale.getAppLocalesAsBCP47(),
+        regionalPrefs: Services.locale.getRegionalPrefsLocales(),
+        defaultLocale: Services.locale.defaultLocale,
+      },
+      osPrefs: {
+        systemLocales: osPrefs.getSystemLocales(),
+        regionalPrefsLocales: osPrefs.getRegionalPrefsLocales()
+      },
+    });
+  },
 };
 
 if (AppConstants.MOZ_CRASHREPORTER) {
@@ -653,7 +681,7 @@ if (AppConstants.MOZ_CRASHREPORTER) {
     let reportsPendingCount = reportsNew.length - reportsSubmitted.length;
     let data = {submitted: reportsSubmitted, pending: reportsPendingCount};
     done(data);
-  }
+  };
 }
 
 if (AppConstants.MOZ_SANDBOX) {
@@ -679,7 +707,7 @@ if (AppConstants.MOZ_SANDBOX) {
       for (let index = snapshot.begin; index < snapshot.end; ++index) {
         let report = snapshot.getElement(index);
         let { msecAgo, pid, tid, procType, syscall } = report;
-        let args = []
+        let args = [];
         for (let i = 0; i < report.numArgs; ++i) {
           args.push(report.getArg(i));
         }
@@ -698,5 +726,5 @@ if (AppConstants.MOZ_SANDBOX) {
     }
 
     done(data);
-  }
+  };
 }

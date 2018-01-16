@@ -198,8 +198,8 @@ class TestQuitRestart(MarionetteTestCase):
                             "about:")
 
     def test_in_app_restart_safe_mode(self):
-        if self.marionette.session_capabilities["moz:headless"]:
-            raise unittest.SkipTest("Bug 1390848 - Hang of Marionette client after the restart.")
+        if self.marionette.session_capabilities["platformName"] != "linux":
+            raise unittest.SkipTest("Bug 1397612 - Hang of Marionette client after the restart.")
 
         def restart_in_safe_mode():
             with self.marionette.using_context("chrome"):
@@ -223,7 +223,11 @@ class TestQuitRestart(MarionetteTestCase):
         finally:
             self.marionette.quit(clean=True)
 
-    def test_in_app_restart_with_callback_no_shutdown(self):
+    def test_in_app_restart_with_callback_not_callable(self):
+        with self.assertRaisesRegexp(ValueError, "is not callable"):
+            self.marionette.restart(in_app=True, callback=4)
+
+    def test_in_app_restart_with_callback_missing_shutdown(self):
         try:
             timeout_startup = self.marionette.DEFAULT_STARTUP_TIMEOUT
             timeout_shutdown = self.marionette.DEFAULT_SHUTDOWN_TIMEOUT
@@ -269,7 +273,7 @@ class TestQuitRestart(MarionetteTestCase):
         self.assertNotEqual(self.marionette.get_pref("startup.homepage_welcome_url"),
                             "about:")
 
-    def test_in_app_quit_with_callback_no_shutdown(self):
+    def test_in_app_quit_with_callback_missing_shutdown(self):
         try:
             timeout = self.marionette.DEFAULT_SHUTDOWN_TIMEOUT
             self.marionette.DEFAULT_SHUTDOWN_TIMEOUT = 10
@@ -278,6 +282,10 @@ class TestQuitRestart(MarionetteTestCase):
                 self.marionette.quit(in_app=True, callback=lambda: False)
         finally:
             self.marionette.DEFAULT_SHUTDOWN_TIMEOUT = timeout
+
+    def test_in_app_quit_with_callback_not_callable(self):
+        with self.assertRaisesRegexp(ValueError, "is not callable"):
+            self.marionette.restart(in_app=True, callback=4)
 
     @skip("Bug 1363368 - Wrong window handles after in_app restarts")
     def test_reset_context_after_quit_by_set_context(self):

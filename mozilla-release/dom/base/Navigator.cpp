@@ -618,7 +618,7 @@ Navigator::CookieEnabled()
 
   // Pass null for the channel, just like the cookie service does.
   nsCookieAccess access;
-  nsresult rv = permMgr->CanAccess(codebaseURI, nullptr, &access);
+  nsresult rv = permMgr->CanAccess(doc->NodePrincipal(), &access);
   NS_ENSURE_SUCCESS(rv, cookieEnabled);
 
   if (access != nsICookiePermission::ACCESS_DEFAULT) {
@@ -1446,7 +1446,7 @@ Navigator::GetGamepads(nsTArray<RefPtr<Gamepad> >& aGamepads,
     return;
   }
   NS_ENSURE_TRUE_VOID(mWindow->GetDocShell());
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   win->SetHasGamepadEventListener(true);
   win->GetGamepads(aGamepads);
 }
@@ -1468,7 +1468,7 @@ Navigator::GetVRDisplays(ErrorResult& aRv)
     return nullptr;
   }
 
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   win->NotifyVREventListenerAdded();
 
   nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(mWindow);
@@ -1505,7 +1505,7 @@ Navigator::GetActiveVRDisplays(nsTArray<RefPtr<VRDisplay>>& aDisplays) const
   if (!mWindow || !mWindow->GetDocShell()) {
     return;
   }
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   nsTArray<RefPtr<VRDisplay>> displays;
   if (win->UpdateVRDisplays(displays)) {
     for (auto display : displays) {
@@ -1521,7 +1521,7 @@ Navigator::NotifyVRDisplaysUpdated()
 {
   // Synchronize the VR devices and resolve the promises in
   // mVRGetDisplaysPromises
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
 
   nsTArray<RefPtr<VRDisplay>> vrDisplays;
   if (win->UpdateVRDisplays(vrDisplays)) {
@@ -1546,7 +1546,7 @@ VRServiceTest*
 Navigator::RequestVRServiceTest()
 {
   // Ensure that the Mock VR devices are not released prematurely
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   win->NotifyVREventListenerAdded();
 
   if (!mVRServiceTest) {
@@ -1558,21 +1558,21 @@ Navigator::RequestVRServiceTest()
 bool
 Navigator::IsWebVRContentDetected() const
 {
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   return win->IsVRContentDetected();
 }
 
 bool
 Navigator::IsWebVRContentPresenting() const
 {
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   return win->IsVRContentPresenting();
 }
 
 void
 Navigator::RequestVRPresentation(VRDisplay& aDisplay)
 {
-  nsGlobalWindow* win = nsGlobalWindow::Cast(mWindow);
+  nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   win->DispatchVRDisplayActivate(aDisplay.DisplayId(), VRDisplayEventReason::Requested);
 }
 
@@ -1724,20 +1724,6 @@ Navigator::HasUserMediaSupport(JSContext* /* unused */,
   // Make enabling peerconnection enable getUserMedia() as well
   return Preferences::GetBool("media.navigator.enabled", false) ||
          Preferences::GetBool("media.peerconnection.enabled", false);
-}
-
-/* static */
-bool
-Navigator::IsE10sEnabled(JSContext* aCx, JSObject* aGlobal)
-{
-  return XRE_IsContentProcess();
-}
-
-bool
-Navigator::MozE10sEnabled()
-{
-  // This will only be called if IsE10sEnabled() is true.
-  return true;
 }
 
 /* static */

@@ -14,6 +14,7 @@
 #include <objidl.h>
 
 #include "mozilla/mscom/Aggregation.h"
+#include "mozilla/NotNull.h"
 #include "mozilla/RefPtr.h"
 
 /* WARNING! The code in this file may be loaded into the address spaces of other
@@ -51,7 +52,11 @@ public:
    * @param aIid Interface requested, similar to IUnknown::QueryInterface
    * @param aOutInterface Outparam for the resulting interface to return to the
    *                      client.
-   * @return The usual HRESULT codes similarly to IUnknown::QueryInterface
+   * @return The usual HRESULT codes similarly to IUnknown::QueryInterface.
+   *         If E_NOINTERFACE is returned, the proxy will be queried.
+   *         If the handler is certain that this interface is not available,
+   *         it can return S_FALSE to avoid querying the proxy. This will be
+   *         translated to E_NOINTERFACE before it is returned to the client.
    */
   virtual HRESULT QueryHandlerInterface(IUnknown* aProxyUnknown, REFIID aIid,
                                         void** aOutInterface) = 0;
@@ -79,6 +84,11 @@ public:
    * The default implementation is the identity function.
    */
   virtual REFIID MarshalAs(REFIID aRequestedIid) { return aRequestedIid; }
+
+  virtual HRESULT GetMarshalInterface(REFIID aMarshalAsIid,
+                                      NotNull<IUnknown*> aProxy,
+                                      NotNull<IID*> aOutIid,
+                                      NotNull<IUnknown**> aOutUnk);
 
   /**
    * Called when the implementer must provide the size of the payload.

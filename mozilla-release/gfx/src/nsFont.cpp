@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -41,31 +42,42 @@ nsFont::~nsFont()
 
 bool nsFont::Equals(const nsFont& aOther) const
 {
-  if ((style == aOther.style) &&
-      (systemFont == aOther.systemFont) &&
-      (weight == aOther.weight) &&
-      (stretch == aOther.stretch) &&
-      (size == aOther.size) &&
-      (sizeAdjust == aOther.sizeAdjust) &&
-      (fontlist == aOther.fontlist) &&
-      (kerning == aOther.kerning) &&
-      (synthesis == aOther.synthesis) &&
-      (fontFeatureSettings == aOther.fontFeatureSettings) &&
-      (fontVariationSettings == aOther.fontVariationSettings) &&
-      (languageOverride == aOther.languageOverride) &&
-      (variantAlternates == aOther.variantAlternates) &&
-      (variantCaps == aOther.variantCaps) &&
-      (variantEastAsian == aOther.variantEastAsian) &&
-      (variantLigatures == aOther.variantLigatures) &&
-      (variantNumeric == aOther.variantNumeric) &&
-      (variantPosition == aOther.variantPosition) &&
-      (variantWidth == aOther.variantWidth) &&
-      (alternateValues == aOther.alternateValues) &&
-      (featureValueLookup == aOther.featureValueLookup) &&
-      (smoothing == aOther.smoothing)) {
-    return true;
+  return CalcDifference(aOther) == MaxDifference::eNone;
+}
+
+nsFont::MaxDifference
+nsFont::CalcDifference(const nsFont& aOther) const
+{
+  if ((style != aOther.style) ||
+      (systemFont != aOther.systemFont) ||
+      (weight != aOther.weight) ||
+      (stretch != aOther.stretch) ||
+      (size != aOther.size) ||
+      (sizeAdjust != aOther.sizeAdjust) ||
+      (fontlist != aOther.fontlist) ||
+      (kerning != aOther.kerning) ||
+      (synthesis != aOther.synthesis) ||
+      (fontFeatureSettings != aOther.fontFeatureSettings) ||
+      (fontVariationSettings != aOther.fontVariationSettings) ||
+      (languageOverride != aOther.languageOverride) ||
+      (variantAlternates != aOther.variantAlternates) ||
+      (variantCaps != aOther.variantCaps) ||
+      (variantEastAsian != aOther.variantEastAsian) ||
+      (variantLigatures != aOther.variantLigatures) ||
+      (variantNumeric != aOther.variantNumeric) ||
+      (variantPosition != aOther.variantPosition) ||
+      (variantWidth != aOther.variantWidth) ||
+      (alternateValues != aOther.alternateValues) ||
+      (featureValueLookup != aOther.featureValueLookup)) {
+    return MaxDifference::eLayoutAffecting;
   }
-  return false;
+
+  if ((smoothing != aOther.smoothing) ||
+      (fontSmoothingBackgroundColor != aOther.fontSmoothingBackgroundColor)) {
+    return MaxDifference::eVisual;
+  }
+
+  return MaxDifference::eNone;
 }
 
 nsFont& nsFont::operator=(const nsFont& aOther) = default;
@@ -273,6 +285,8 @@ void nsFont::AddFontFeaturesToStyle(gfxFontStyle *aStyle,
   if (smoothing == NS_FONT_SMOOTHING_GRAYSCALE) {
     aStyle->useGrayscaleAntialiasing = true;
   }
+
+  aStyle->fontSmoothingBackgroundColor = fontSmoothingBackgroundColor;
 }
 
 void nsFont::AddFontVariationsToStyle(gfxFontStyle *aStyle) const

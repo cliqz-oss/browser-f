@@ -1,3 +1,4 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -246,7 +247,7 @@ SVGPathElement::HasValidDimensions() const
 // nsIContent methods
 
 NS_IMETHODIMP_(bool)
-SVGPathElement::IsAttributeMapped(const nsIAtom* name) const
+SVGPathElement::IsAttributeMapped(const nsAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sMarkersMap
@@ -266,7 +267,7 @@ SVGPathElement::GetOrBuildPathForMeasuring()
 // SVGGeometryElement methods
 
 bool
-SVGPathElement::AttributeDefinesGeometry(const nsIAtom *aName)
+SVGPathElement::AttributeDefinesGeometry(const nsAtom *aName)
 {
   return aName == nsGkAtoms::d ||
          aName == nsGkAtoms::pathLength;

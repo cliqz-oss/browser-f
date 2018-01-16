@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::EventSourceBinding::{EventSourceInit, EventSourceMethods, Wrap};
 use dom::bindings::error::{Error, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::{DomObject, reflect_dom_object};
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::event::Event;
 use dom::eventtarget::EventTarget;
@@ -23,7 +23,8 @@ use js::conversions::ToJSValConvertible;
 use js::jsapi::JSAutoCompartment;
 use js::jsval::UndefinedValue;
 use mime::{Mime, TopLevel, SubLevel};
-use net_traits::{CoreResourceMsg, FetchMetadata, FetchResponseMsg, FetchResponseListener, NetworkError};
+use net_traits::{CoreResourceMsg, FetchChannels, FetchMetadata};
+use net_traits::{FetchResponseMsg, FetchResponseListener, NetworkError};
 use net_traits::request::{CacheMode, CorsSettings, CredentialsMode};
 use net_traits::request::{RequestInit, RequestMode};
 use network_listener::{NetworkListener, PreInvoke};
@@ -41,11 +42,11 @@ header! { (LastEventId, "Last-Event-ID") => [String] }
 
 const DEFAULT_RECONNECTION_TIME: u64 = 5000;
 
-#[derive(Clone, Copy, Debug, HeapSizeOf, JSTraceable, PartialEq)]
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
 struct GenerationId(u32);
 
-#[derive(Clone, Copy, Debug, HeapSizeOf, JSTraceable, PartialEq)]
-/// https://html.spec.whatwg.org/multipage/#dom-eventsource-readystate
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
+/// <https://html.spec.whatwg.org/multipage/#dom-eventsource-readystate>
 enum ReadyState {
     Connecting = 0,
     Open = 1,
@@ -56,8 +57,8 @@ enum ReadyState {
 pub struct EventSource {
     eventtarget: EventTarget,
     url: ServoUrl,
-    request: DOMRefCell<Option<RequestInit>>,
-    last_event_id: DOMRefCell<DOMString>,
+    request: DomRefCell<Option<RequestInit>>,
+    last_event_id: DomRefCell<DOMString>,
     reconnection_time: Cell<u64>,
     generation_id: Cell<GenerationId>,
 
@@ -90,7 +91,7 @@ struct EventSourceContext {
 }
 
 impl EventSourceContext {
-    /// https://html.spec.whatwg.org/multipage/#announce-the-connection
+    /// <https://html.spec.whatwg.org/multipage/#announce-the-connection>
     fn announce_the_connection(&self) {
         let event_source = self.event_source.root();
         if self.gen_id != event_source.generation_id.get() {
@@ -111,7 +112,7 @@ impl EventSourceContext {
         );
     }
 
-    /// https://html.spec.whatwg.org/multipage/#fail-the-connection
+    /// <https://html.spec.whatwg.org/multipage/#fail-the-connection>
     fn fail_the_connection(&self) {
         let event_source = self.event_source.root();
         if self.gen_id != event_source.generation_id.get() {
@@ -402,8 +403,8 @@ impl EventSource {
         EventSource {
             eventtarget: EventTarget::new_inherited(),
             url: url,
-            request: DOMRefCell::new(None),
-            last_event_id: DOMRefCell::new(DOMString::from("")),
+            request: DomRefCell::new(None),
+            last_event_id: DomRefCell::new(DOMString::from("")),
             reconnection_time: Cell::new(DEFAULT_RECONNECTION_TIME),
             generation_id: Cell::new(GenerationId(0)),
 
@@ -412,8 +413,8 @@ impl EventSource {
         }
     }
 
-    fn new(global: &GlobalScope, url: ServoUrl, with_credentials: bool) -> Root<EventSource> {
-        reflect_dom_object(box EventSource::new_inherited(url, with_credentials),
+    fn new(global: &GlobalScope, url: ServoUrl, with_credentials: bool) -> DomRoot<EventSource> {
+        reflect_dom_object(Box::new(EventSource::new_inherited(url, with_credentials)),
                            global,
                            Wrap)
     }
@@ -424,7 +425,7 @@ impl EventSource {
 
     pub fn Constructor(global: &GlobalScope,
                        url: DOMString,
-                       event_source_init: &EventSourceInit) -> Fallible<Root<EventSource>> {
+                       event_source_init: &EventSourceInit) -> Fallible<DomRoot<EventSource>> {
         // TODO: Step 2 relevant settings object
         // Step 3
         let base_url = global.api_base_url();
@@ -486,10 +487,11 @@ impl EventSource {
             task_source: global.networking_task_source(),
             canceller: Some(global.task_canceller())
         };
-        ROUTER.add_route(action_receiver.to_opaque(), box move |message| {
+        ROUTER.add_route(action_receiver.to_opaque(), Box::new(move |message| {
             listener.notify_fetch(message.to().unwrap());
-        });
-        global.core_resource_thread().send(CoreResourceMsg::Fetch(request, action_sender)).unwrap();
+        }));
+        global.core_resource_thread().send(
+            CoreResourceMsg::Fetch(request, FetchChannels::ResponseMsg(action_sender))).unwrap();
         // Step 13
         Ok(ev)
     }
@@ -528,11 +530,11 @@ impl EventSourceMethods for EventSource {
     }
 }
 
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 pub struct EventSourceTimeoutCallback {
-    #[ignore_heap_size_of = "Because it is non-owning"]
+    #[ignore_malloc_size_of = "Because it is non-owning"]
     event_source: Trusted<EventSource>,
-    #[ignore_heap_size_of = "Because it is non-owning"]
+    #[ignore_malloc_size_of = "Because it is non-owning"]
     action_sender: ipc::IpcSender<FetchResponseMsg>,
 }
 
@@ -552,6 +554,7 @@ impl EventSourceTimeoutCallback {
             request.headers.set(LastEventId(String::from(event_source.last_event_id.borrow().clone())));
         }
         // Step 5.4
-        global.core_resource_thread().send(CoreResourceMsg::Fetch(request, self.action_sender)).unwrap();
+        global.core_resource_thread().send(
+            CoreResourceMsg::Fetch(request, FetchChannels::ResponseMsg(self.action_sender))).unwrap();
     }
 }

@@ -14,6 +14,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/Unused.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -32,7 +33,6 @@
 #include "jsdtoa.h"
 #include "jsexn.h"
 #include "jsfun.h"
-#include "jsgc.h"
 #include "jsiter.h"
 #include "jsnativestack.h"
 #include "jsobj.h"
@@ -42,7 +42,6 @@
 #include "jsscript.h"
 #include "jsstr.h"
 #include "jstypes.h"
-#include "jswatchpoint.h"
 #include "jswin.h"
 
 #include "gc/Marking.h"
@@ -147,6 +146,11 @@ js::NewContext(uint32_t maxBytes, uint32_t maxNurseryBytes, JSRuntime* parentRun
     AutoNoteSingleThreadedRegion anstr;
 
     MOZ_RELEASE_ASSERT(!TlsContext.get());
+
+#if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
+    js::oom::SetThreadType(!parentRuntime ? js::THREAD_TYPE_COOPERATING
+                                          : js::THREAD_TYPE_WORKER);
+#endif
 
     JSRuntime* runtime = js_new<JSRuntime>(parentRuntime);
     if (!runtime)
@@ -348,7 +352,7 @@ PopulateReportBlame(JSContext* cx, JSErrorReport* report)
  * Furthermore, callers of ReportOutOfMemory (viz., malloc) assume a GC does
  * not occur, so GC must be avoided or suppressed.
  */
-void
+JS_FRIEND_API(void)
 js::ReportOutOfMemory(JSContext* cx)
 {
 #ifdef JS_MORE_DETERMINISTIC
@@ -486,14 +490,6 @@ js::ReportErrorVA(JSContext* cx, unsigned flags, const char* format,
 void
 js::ReportUsageErrorASCII(JSContext* cx, HandleObject callee, const char* msg)
 {
-    const char* usageStr = "usage";
-    PropertyName* usageAtom = Atomize(cx, usageStr, strlen(usageStr))->asPropertyName();
-    RootedId id(cx, NameToId(usageAtom));
-    DebugOnly<Shape*> shape = static_cast<Shape*>(callee->as<JSFunction>().lookup(cx, id));
-    MOZ_ASSERT(!shape->configurable());
-    MOZ_ASSERT(!shape->writable());
-    MOZ_ASSERT(shape->hasDefaultGetter());
-
     RootedValue usage(cx);
     if (!JS_GetProperty(cx, callee, "usage", &usage))
         return;
@@ -596,7 +592,7 @@ PrintSingleError(JSContext* cx, FILE* file, JS::ConstUTF8CharsZ toStringResult,
         ctmp++;
         if (prefix)
             fputs(prefix.get(), file);
-        fwrite(message, 1, ctmp - message, file);
+        mozilla::Unused << fwrite(message, 1, ctmp - message, file);
         message = ctmp;
     }
 
@@ -1143,19 +1139,22 @@ class MOZ_STACK_CLASS ReportExceptionClosure : public ScriptEnvironmentPreparer:
 } // anonymous namespace
 
 JS_FRIEND_API(bool)
-js::UseInternalJobQueues(JSContext* cx)
+js::UseInternalJobQueues(JSContext* cx, bool cooperative)
 {
     // Internal job queue handling must be set up very early. Self-hosting
     // initialization is as good a marker for that as any.
-    MOZ_RELEASE_ASSERT(!cx->runtime()->hasInitializedSelfHosting(),
+    MOZ_RELEASE_ASSERT(cooperative || !cx->runtime()->hasInitializedSelfHosting(),
                        "js::UseInternalJobQueues must be called early during runtime startup.");
     MOZ_ASSERT(!cx->jobQueue);
-    auto* queue = cx->new_<PersistentRooted<JobQueue>>(cx, JobQueue(SystemAllocPolicy()));
+    auto* queue = js_new<PersistentRooted<JobQueue>>(cx, JobQueue(SystemAllocPolicy()));
     if (!queue)
         return false;
 
     cx->jobQueue = queue;
-    cx->runtime()->offThreadPromiseState.ref().initInternalDispatchQueue();
+
+    if (!cooperative)
+        cx->runtime()->offThreadPromiseState.ref().initInternalDispatchQueue();
+    MOZ_ASSERT(cx->runtime()->offThreadPromiseState.ref().initialized());
 
     JS::SetEnqueuePromiseJobCallback(cx, InternalEnqueuePromiseJobCallback);
 
@@ -1327,7 +1326,6 @@ JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
     suppressProfilerSampling(false),
     tempLifoAlloc_((size_t)TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
     debuggerMutations(0),
-    propertyRemovals(0),
     ionPcScriptCache(nullptr),
     throwing(false),
     overRecursed_(false),
@@ -1608,6 +1606,17 @@ JSContext::findVersion()
         return JSVERSION_DEFAULT;
 
     return runtime()->defaultVersion();
+}
+
+void
+JSContext::updateMallocCounter(size_t nbytes)
+{
+    if (!zone()) {
+        runtime()->updateMallocCounter(nbytes);
+        return;
+    }
+
+    zone()->updateMallocCounter(nbytes);
 }
 
 #ifdef DEBUG

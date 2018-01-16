@@ -440,14 +440,14 @@ sandbox_moved(JSObject* obj, JSObject* old)
 
 static bool
 writeToProto_setProperty(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
-                         JS::MutableHandleValue vp, JS::ObjectOpResult& result)
+                         JS::HandleValue v, JS::ObjectOpResult& result)
 {
     RootedObject proto(cx);
     if (!JS_GetPrototype(cx, obj, &proto))
         return false;
 
     RootedValue receiver(cx, ObjectValue(*proto));
-    return JS_ForwardSetPropertyTo(cx, proto, id, vp, receiver, result);
+    return JS_ForwardSetPropertyTo(cx, proto, id, v, receiver, result);
 }
 
 static bool
@@ -1726,8 +1726,7 @@ AssembleSandboxMemoryReporterName(JSContext* cx, nsCString& sandboxName)
     NS_ENSURE_TRUE(cc, NS_ERROR_INVALID_ARG);
 
     // Get the current source info from xpc.
-    nsCOMPtr<nsIStackFrame> frame;
-    nsXPConnect::XPConnect()->GetCurrentJSStack(getter_AddRefs(frame));
+    nsCOMPtr<nsIStackFrame> frame = dom::GetCurrentJSStack();
 
     // Append the caller's location information.
     if (frame) {

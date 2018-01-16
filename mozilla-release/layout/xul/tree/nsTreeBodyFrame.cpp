@@ -13,6 +13,7 @@
 #include "mozilla/Likely.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/ResultExtensions.h"
 #include "mozilla/TextEditRules.h"
 
 #include "gfxUtils.h"
@@ -247,7 +248,7 @@ nsTreeBodyFrame::CalcMaxRowWidth()
   nsTreeColumn* col;
 
   RefPtr<gfxContext> rc =
-    PresContext()->PresShell()->CreateReferenceRenderingContext();
+    PresShell()->CreateReferenceRenderingContext();
 
   for (int32_t row = 0; row < mRowCount; ++row) {
     rowWidth = 0;
@@ -271,7 +272,7 @@ nsTreeBodyFrame::CalcMaxRowWidth()
 }
 
 void
-nsTreeBodyFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTreeBodyFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (mScrollbarActivity) {
     mScrollbarActivity->Destroy();
@@ -281,7 +282,7 @@ nsTreeBodyFrame::DestroyFrom(nsIFrame* aDestructRoot)
   mScrollEvent.Revoke();
   // Make sure we cancel any posted callbacks.
   if (mReflowCallbackPosted) {
-    PresContext()->PresShell()->CancelReflowCallback(this);
+    PresShell()->CancelReflowCallback(this);
     mReflowCallbackPosted = false;
   }
 
@@ -313,7 +314,7 @@ nsTreeBodyFrame::DestroyFrom(nsIFrame* aDestructRoot)
     mView = nullptr;
   }
 
-  nsLeafBoxFrame::DestroyFrom(aDestructRoot);
+  nsLeafBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
@@ -348,10 +349,10 @@ void
 nsTreeBodyFrame::EnsureView()
 {
   if (!mView) {
-    if (PresContext()->PresShell()->IsReflowLocked()) {
+    if (PresShell()->IsReflowLocked()) {
       if (!mReflowCallbackPosted) {
         mReflowCallbackPosted = true;
-        PresContext()->PresShell()->PostReflowCallback(this);
+        PresShell()->PostReflowCallback(this);
       }
       return;
     }
@@ -388,13 +389,13 @@ nsTreeBodyFrame::ManageReflowCallback(const nsRect& aRect, nscoord aHorzWidth)
 {
   if (!mReflowCallbackPosted &&
       (!aRect.IsEqualEdges(mRect) || mHorzWidth != aHorzWidth)) {
-    PresContext()->PresShell()->PostReflowCallback(this);
+    PresShell()->PostReflowCallback(this);
     mReflowCallbackPosted = true;
     mOriginalHorzWidth = mHorzWidth;
   }
   else if (mReflowCallbackPosted &&
            mHorzWidth != aHorzWidth && mOriginalHorzWidth == aHorzWidth) {
-    PresContext()->PresShell()->CancelReflowCallback(this);
+    PresShell()->CancelReflowCallback(this);
     mReflowCallbackPosted = false;
     mOriginalHorzWidth = -1;
   }
@@ -526,12 +527,12 @@ nsTreeBodyFrame::SetView(nsITreeView * aView)
     NS_ENSURE_STATE(weakFrame.IsAlive());
     mView->GetRowCount(&mRowCount);
 
-    if (!PresContext()->PresShell()->IsReflowLocked()) {
+    if (!PresShell()->IsReflowLocked()) {
       // The scrollbar will need to be updated.
       FullScrollbarsUpdate(false);
     } else if (!mReflowCallbackPosted) {
       mReflowCallbackPosted = true;
-      PresContext()->PresShell()->PostReflowCallback(this);
+      PresShell()->PostReflowCallback(this);
     }
   }
 
@@ -1770,7 +1771,7 @@ nsTreeBodyFrame::IsCellCropped(int32_t aRow, nsITreeColumn* aCol, bool *_retval)
     return NS_ERROR_INVALID_ARG;
 
   RefPtr<gfxContext> rc =
-    PresContext()->PresShell()->CreateReferenceRenderingContext();
+    PresShell()->CreateReferenceRenderingContext();
 
   rv = GetCellWidth(aRow, col, rc, desiredSize, currentSize);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1791,9 +1792,8 @@ nsTreeBodyFrame::MarkDirtyIfSelect()
     // XXX optimize this more
 
     mStringWidth = -1;
-    PresContext()->PresShell()->FrameNeedsReflow(this,
-                                                 nsIPresShell::eTreeChange,
-                                                 NS_FRAME_IS_DIRTY);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                  NS_FRAME_IS_DIRTY);
   }
 }
 
@@ -1810,16 +1810,12 @@ nsTreeBodyFrame::CreateTimer(const LookAndFeel::IntID aID,
   // Create a new timer only if the delay is greater than zero.
   // Zero value means that this feature is completely disabled.
   if (delay > 0) {
-    timer = do_CreateInstance("@mozilla.org/timer;1");
-    if (timer) {
-      timer->SetTarget(
-          mContent->OwnerDoc()->EventTargetFor(TaskCategory::Other));
-      timer->InitWithNamedFuncCallback(aFunc, this, delay, aType, aName);
-    }
+    MOZ_TRY_VAR(timer, NS_NewTimerWithFuncCallback(
+        aFunc, this, delay, aType, aName,
+        mContent->OwnerDoc()->EventTargetFor(TaskCategory::Other)));
   }
 
-  NS_IF_ADDREF(*aTimer = timer);
-
+  timer.forget(aTimer);
   return NS_OK;
 }
 
@@ -2199,6 +2195,7 @@ nsTreeBodyFrame::GetImage(int32_t aRowIndex, nsTreeColumn* aCol, bool aUseContex
                                               mContent,
                                               doc,
                                               mContent->NodePrincipal(),
+                                              0,
                                               doc->GetDocumentURI(),
                                               doc->GetReferrerPolicy(),
                                               imgNotificationObserver,
@@ -2790,6 +2787,12 @@ public:
     return new nsDisplayItemGenericImageGeometry(this, aBuilder);
   }
 
+  void Destroy(nsDisplayListBuilder* aBuilder) override
+  {
+    aBuilder->UnregisterThemeGeometry(this);
+    nsDisplayItem::Destroy(aBuilder);
+  }
+
   void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                  const nsDisplayItemGeometry* aGeometry,
                                  nsRegion *aInvalidRegion) const override
@@ -2845,6 +2848,9 @@ nsTreeBodyFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   if (!mView || !GetContent ()->GetComposedDoc()->GetWindow())
     return;
 
+  nsDisplayItem* item = new (aBuilder) nsDisplayTreeBody(aBuilder, this);
+  aLists.Content()->AppendToTop(item);
+
 #ifdef XP_MACOSX
   nsIContent* baseElement = GetBaseElement();
   nsIFrame* treeFrame =
@@ -2880,7 +2886,7 @@ nsTreeBodyFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
               nsRect rowRect(mInnerBox.x, mInnerBox.y + mRowHeight *
                              (i - FirstVisibleRow()), mInnerBox.width,
                              mRowHeight);
-              aBuilder->RegisterThemeGeometry(type,
+              aBuilder->RegisterThemeGeometry(type, item,
                 LayoutDeviceIntRect::FromUnknownRect(
                   (rowRect + aBuilder->ToReferenceFrame(this)).ToNearestPixels(
                     PresContext()->AppUnitsPerDevPixel())));
@@ -2891,9 +2897,6 @@ nsTreeBodyFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
   }
 #endif
-
-  aLists.Content()->AppendNewToTop(new (aBuilder)
-    nsDisplayTreeBody(aBuilder, this));
 }
 
 DrawResult
@@ -2916,8 +2919,8 @@ nsTreeBodyFrame::PaintTreeBody(gfxContext& aRenderingContext,
 
   if (oldPageCount != mPageLength || mHorzWidth != CalcHorzWidth(GetScrollParts())) {
     // Schedule a ResizeReflow that will update our info properly.
-    PresContext()->PresShell()->
-      FrameNeedsReflow(this, nsIPresShell::eResize, NS_FRAME_IS_DIRTY);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eResize,
+                                  NS_FRAME_IS_DIRTY);
   }
 #ifdef DEBUG
   int32_t rowCount = mRowCount;
@@ -3057,10 +3060,6 @@ nsTreeBodyFrame::PaintRow(int32_t               aRowIndex,
     theme = aPresContext->GetTheme();
   }
 
-  // Save the current font smoothing background color in case we change it.
-  Color originalColor(aRenderingContext.GetFontSmoothingBackgroundColor());
-  aRenderingContext.SetFontSmoothingBackgroundColor(
-    ToDeviceColor(rowContext->StyleUserInterface()->mFontSmoothingBackgroundColor));
   if (theme && theme->ThemeSupportsWidget(aPresContext, nullptr, appearance)) {
     nsRect dirty;
     dirty.IntersectRect(rowRect, aDirtyRect);
@@ -3169,11 +3168,6 @@ nsTreeBodyFrame::PaintRow(int32_t               aRowIndex,
                               aBuilder);
       }
     }
-  }
-  // If we've changed the font smoothing background color for this row, restore
-  // the color to the original one.
-  if (originalColor != aRenderingContext.GetFontSmoothingBackgroundColor()) {
-    aRenderingContext.SetFontSmoothingBackgroundColor(originalColor);
   }
 
   return result;
@@ -3317,8 +3311,6 @@ nsTreeBodyFrame::PaintCell(int32_t               aRowIndex,
       twistyContext->StyleMargin()->GetMargin(twistyMargin);
       twistyRect.Inflate(twistyMargin);
 
-      aRenderingContext.Save();
-
       const nsStyleBorder* borderStyle = lineContext->StyleBorder();
       // Resolve currentcolor values against the treeline context
       nscolor color = lineContext->StyleColor()->
@@ -3382,8 +3374,6 @@ nsTreeBodyFrame::PaintCell(int32_t               aRowIndex,
         currentParent = parent;
         srcX -= mIndentation;
       }
-
-      aRenderingContext.Restore();
     }
 
     // Always leave space for the twisty.
@@ -4478,26 +4468,9 @@ nsTreeBodyFrame::ThumbMoved(nsScrollbarFrame* aScrollbar,
 nsStyleContext*
 nsTreeBodyFrame::GetPseudoStyleContext(nsICSSAnonBoxPseudo* aPseudoElement)
 {
-  return mStyleCache.GetStyleContext(this, PresContext(), mContent,
+  return mStyleCache.GetStyleContext(PresContext(), mContent,
                                      mStyleContext, aPseudoElement,
                                      mScratchArray);
-}
-
-// Our comparator for resolving our complex pseudos
-bool
-nsTreeBodyFrame::PseudoMatches(nsCSSSelector* aSelector)
-{
-  // Iterate the class list.  For each item in the list, see if
-  // it is contained in our scratch array.  If we have a miss, then
-  // we aren't a match.  If all items in the class list are
-  // present in the scratch array, then we have a match.
-  nsAtomList* curr = aSelector->mClassList;
-  while (curr) {
-    if (!mScratchArray.Contains(curr->mAtom))
-      return false;
-    curr = curr->mNext;
-  }
-  return true;
 }
 
 nsIContent*

@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -14,7 +14,7 @@
 
 #include "nsColor.h"
 #include "nsCOMPtr.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIStyleRule.h"
 #include "nsIStyleRuleProcessor.h"
 #include "PLDHashTable.h"
@@ -79,7 +79,7 @@ public:
   // and converting the ruledata to Servo specified values.
   void CalculateMappedServoDeclarations(nsPresContext* aPresContext);
 
-  nsIStyleRule* LangRuleFor(const nsIAtom* aLanguage);
+  nsIStyleRule* LangRuleFor(const nsAtom* aLanguage);
 
 private:
   nsHTMLStyleSheet(const nsHTMLStyleSheet& aCopy) = delete;
@@ -170,7 +170,7 @@ public: // for mLangRuleTable structures only
   private:
     ~LangRule() {}
   public:
-    explicit LangRule(nsIAtom* aLang) : mLang(aLang) {}
+    explicit LangRule(nsAtom* aLang) : mLang(aLang) {}
 
     NS_DECL_ISUPPORTS
 
@@ -183,7 +183,7 @@ public: // for mLangRuleTable structures only
     virtual void List(FILE* out = stdout, int32_t aIndent = 0) const override;
   #endif
 
-    nsCOMPtr<nsIAtom> mLang;
+    RefPtr<nsAtom> mLang;
   };
 
 private:

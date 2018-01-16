@@ -7,8 +7,6 @@
 Components.utils.import("resource:///modules/SitePermissions.jsm");
 Components.utils.import("resource://gre/modules/BrowserUtils.jsm");
 
-const nsIQuotaManagerService = Components.interfaces.nsIQuotaManagerService;
-
 var gPermURI;
 var gPermPrincipal;
 var gUsageRequest;
@@ -76,20 +74,16 @@ function initRow(aPartId) {
   var checkbox = document.getElementById(aPartId + "Def");
   var command  = document.getElementById("cmd_" + aPartId + "Toggle");
   var {state} = SitePermissions.get(gPermURI, aPartId);
+  let defaultState = SitePermissions.getDefault(aPartId);
 
-  if (state != SitePermissions.UNKNOWN) {
+  if (state != defaultState) {
     checkbox.checked = false;
     command.removeAttribute("disabled");
   } else {
     checkbox.checked = true;
     command.setAttribute("disabled", "true");
-    state = SitePermissions.getDefault(aPartId);
   }
   setRadioState(aPartId, state);
-
-  if (aPartId == "indexedDB") {
-    initIndexedDBRow();
-  }
 }
 
 function createRow(aPartId) {
@@ -169,7 +163,7 @@ function onPluginRadioClick(aEvent) {
 function onRadioClick(aPartId) {
   var radioGroup = document.getElementById(aPartId + "RadioGroup");
   var id = radioGroup.selectedItem.id;
-  var permission = id.split("#")[1];
+  var permission = parseInt(id.split("#")[1]);
   SitePermissions.set(gPermURI, aPartId, permission);
 }
 
@@ -177,68 +171,6 @@ function setRadioState(aPartId, aValue) {
   var radio = document.getElementById(aPartId + "#" + aValue);
   if (radio) {
     radio.radioGroup.selectedItem = radio;
-  }
-}
-
-function initIndexedDBRow() {
-  // IndexedDB information is not shown for pages with a null principal
-  // such as sandboxed pages because these pages do not have access to indexedDB.
-  if (gPermPrincipal.isNullPrincipal)
-    return;
-
-  let row = document.getElementById("perm-indexedDB-row");
-  let extras = document.getElementById("perm-indexedDB-extras");
-
-  row.appendChild(extras);
-
-  var quotaManagerService =
-    Components.classes["@mozilla.org/dom/quota-manager-service;1"]
-              .getService(nsIQuotaManagerService);
-  gUsageRequest =
-    quotaManagerService.getUsageForPrincipal(gPermPrincipal,
-                                             onIndexedDBUsageCallback);
-
-  var status = document.getElementById("indexedDBStatus");
-  var button = document.getElementById("indexedDBClear");
-
-  status.value = "";
-  status.setAttribute("hidden", "true");
-  button.setAttribute("hidden", "true");
-}
-
-function onIndexedDBClear() {
-  Components.classes["@mozilla.org/dom/quota-manager-service;1"]
-            .getService(nsIQuotaManagerService)
-            .clearStoragesForPrincipal(gPermPrincipal);
-
-  Components.classes["@mozilla.org/serviceworkers/manager;1"]
-            .getService(Components.interfaces.nsIServiceWorkerManager)
-            .removeAndPropagate(gPermURI.host);
-
-  SitePermissions.remove(gPermURI, "indexedDB");
-  initIndexedDBRow();
-}
-
-function onIndexedDBUsageCallback(request) {
-  let uri = request.principal.URI;
-  if (!uri.equals(gPermURI)) {
-    throw new Error("Callback received for bad URI: " + uri);
-  }
-
-  let usage = request.result.usage;
-  if (usage) {
-    if (!("DownloadUtils" in window)) {
-      Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
-    }
-
-    var status = document.getElementById("indexedDBStatus");
-    var button = document.getElementById("indexedDBClear");
-
-    status.value =
-      gBundle.getFormattedString("indexedDBUsage",
-                                 DownloadUtils.convertByteUnits(usage));
-    status.removeAttribute("hidden");
-    button.removeAttribute("hidden");
   }
 }
 
@@ -251,6 +183,8 @@ function fillInPluginPermissionTemplate(aPluginName, aPermissionString) {
     [ ".permPluginTemplateRadioDefault", "id", aPermissionString + "#0" ],
     [ ".permPluginTemplateRadioAsk", "id", aPermissionString + "#3" ],
     [ ".permPluginTemplateRadioAllow", "id", aPermissionString + "#1" ],
+    // #8 comes from Ci.nsIObjectLoadingContent.PLUGIN_PERMISSION_PROMPT_ACTION_QUIET
+    [ ".permPluginTemplateRadioHide", "id", aPermissionString + "#8"],
     [ ".permPluginTemplateRadioBlock", "id", aPermissionString + "#2" ]
   ];
 

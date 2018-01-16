@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,7 +12,6 @@
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/PWebAuthnTransaction.h"
 #include "nsIDOMEventListener.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
 
 /*
  * Content process manager for the U2F protocol. Created on calls to the
@@ -53,19 +52,54 @@ class Promise;
 class U2FTransactionChild;
 class U2FTransactionInfo;
 
-class U2FManager final : public nsIIPCBackgroundChildCreateCallback
-                       , public nsIDOMEventListener
+class U2FTransaction
+{
+public:
+  U2FTransaction(nsPIDOMWindowInner* aParent,
+                 const WebAuthnTransactionInfo&& aInfo,
+                 const nsCString& aClientData)
+    : mParent(aParent)
+    , mInfo(aInfo)
+    , mClientData(aClientData)
+    , mId(NextId())
+  {
+    MOZ_ASSERT(mId > 0);
+  }
+
+  // Parent of the context we're running the transaction in.
+  nsCOMPtr<nsPIDOMWindowInner> mParent;
+
+  // JS Promise representing the transaction status.
+  MozPromiseHolder<U2FPromise> mPromise;
+
+  // Holds the parameters of the current transaction, as we need them both
+  // before the transaction request is sent, and on successful return.
+  WebAuthnTransactionInfo mInfo;
+
+  // Client data used to assemble reply objects.
+  nsCString mClientData;
+
+  // Unique transaction id.
+  uint64_t mId;
+
+private:
+  // Generates a unique id for new transactions. This doesn't have to be unique
+  // forever, it's sufficient to differentiate between temporally close
+  // transactions, where messages can intersect. Can overflow.
+  static uint64_t NextId() {
+    static uint64_t id = 0;
+    return ++id;
+  }
+};
+
+class U2FManager final : public nsIDOMEventListener
 {
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
+
   static U2FManager* GetOrCreate();
   static U2FManager* Get();
-
-  void FinishRegister(nsTArray<uint8_t>& aRegBuffer);
-  void FinishSign(nsTArray<uint8_t>& aCredentialId,
-                  nsTArray<uint8_t>& aSigBuffer);
-  void Cancel(const nsresult& aError);
 
   already_AddRefed<U2FPromise> Register(nsPIDOMWindowInner* aParent,
               const nsCString& aRpId,
@@ -78,47 +112,47 @@ public:
               const uint32_t& aTimeoutMillis,
               const nsTArray<WebAuthnScopedCredentialDescriptor>& aKeyList);
 
-  void StartRegister();
-  void StartSign();
-  void StartCancel();
+  void FinishRegister(const uint64_t& aTransactionId,
+                      nsTArray<uint8_t>& aRegBuffer);
+  void FinishSign(const uint64_t& aTransactionId,
+                  nsTArray<uint8_t>& aCredentialId,
+                  nsTArray<uint8_t>& aSigBuffer);
+  void RequestAborted(const uint64_t& aTransactionId, const nsresult& aError);
 
-  // nsIIPCbackgroundChildCreateCallback methods
-  void ActorCreated(PBackgroundChild* aActor) override;
-  void ActorFailed() override;
+  // XXX This is exposed only until we fix bug 1410346.
+  void MaybeCancelTransaction(const nsresult& aError) {
+    if (mTransaction.isSome()) {
+      CancelTransaction(NS_ERROR_ABORT);
+    }
+  }
+
   void ActorDestroyed();
+
 private:
   U2FManager();
   virtual ~U2FManager();
 
-  void MaybeClearTransaction();
-  nsresult PopulateTransactionInfo(const nsCString& aRpId,
-                    const nsCString& aClientDataJSON,
-                    const uint32_t& aTimeoutMillis,
-                    const nsTArray<WebAuthnScopedCredentialDescriptor>& aList);
+  static nsresult
+  BuildTransactionHashes(const nsCString& aRpId,
+                         const nsCString& aClientDataJSON,
+                         /* out */ CryptoBuffer& aRpIdHash,
+                         /* out */ CryptoBuffer& aClientDataHash);
 
-  typedef MozPromise<nsresult, nsresult, false> BackgroundActorPromise;
+  // Clears all information we have about the current transaction.
+  void ClearTransaction();
+  // Rejects the current transaction and calls ClearTransaction().
+  void RejectTransaction(const nsresult& aError);
+  // Cancels the current transaction (by sending a Cancel message to the
+  // parent) and rejects it by calling RejectTransaction().
+  void CancelTransaction(const nsresult& aError);
 
-  RefPtr<BackgroundActorPromise> GetOrCreateBackgroundActor();
+  bool MaybeCreateBackgroundActor();
 
-  // Promise representing transaction status.
-  MozPromiseHolder<U2FPromise> mTransactionPromise;
-
-  // IPC Channel for the current transaction.
+  // IPC Channel to the parent process.
   RefPtr<U2FTransactionChild> mChild;
 
-  // Parent of the context we're currently running the transaction in.
-  nsCOMPtr<nsPIDOMWindowInner> mCurrentParent;
-
-  // Client data, stored on successful transaction creation, so that it can be
-  // used to assemble reply objects.
-  Maybe<nsCString> mClientData;
-
-  // Holds the parameters of the current transaction, as we need them both
-  // before the transaction request is sent, and on successful return.
-  Maybe<WebAuthnTransactionInfo> mInfo;
-
-  // Promise for dealing with PBackground Actor creation.
-  MozPromiseHolder<BackgroundActorPromise> mPBackgroundCreationPromise;
+  // The current transaction, if any.
+  Maybe<U2FTransaction> mTransaction;
 };
 
 } // namespace dom

@@ -12,6 +12,7 @@ chai.use(chaiAssertions);
 let overrider = new GlobalOverrider();
 
 overrider.set({
+  AppConstants: {MOZILLA_OFFICIAL: true},
   Components: {
     classes: {},
     interfaces: {},
@@ -33,7 +34,9 @@ overrider.set({
   Services: {
     locale: {
       getAppLocalesAsLangTags() {},
-      getRequestedLocale() {},
+      getRequestedLocale() {
+        return "en-US";
+      },
       negotiateLanguages() {}
     },
     urlFormatter: {formatURL: str => str},
@@ -73,9 +76,11 @@ overrider.set({
       init(cb) { cb(); },
       getVisibleEngines: () => [{identifier: "google"}, {identifier: "bing"}],
       defaultEngine: {identifier: "google"}
-    }
+    },
+    scriptSecurityManager: {getSystemPrincipal() {}}
   },
   XPCOMUtils: {
+    defineLazyGetter(_1, _2, f) { f(); },
     defineLazyModuleGetter() {},
     defineLazyServiceGetter() {},
     generateQI() { return {}; }

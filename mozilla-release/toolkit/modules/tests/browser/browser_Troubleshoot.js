@@ -71,7 +71,7 @@ var tests = [
 
   function unicodePreferences(done) {
     let name = "font.name.sans-serif.x-western";
-    let utf8Value = "\xc4\x8capk\xc5\xafv Krasopis"
+    let utf8Value = "\xc4\x8capk\xc5\xafv Krasopis";
     let unicodeValue = "\u010Capk\u016Fv Krasopis";
 
     // set/getCharPref work with 8bit strings (utf8)
@@ -151,6 +151,12 @@ const SNAPSHOT_SCHEMA = {
           type: "boolean",
         },
         styloResult: {
+          type: "boolean",
+        },
+        styloChromeDefault: {
+          type: "boolean",
+        },
+        styloChromeResult: {
           type: "boolean",
         },
         keyGoogleFound: {
@@ -733,6 +739,52 @@ const SNAPSHOT_SCHEMA = {
                   type: "string",
                 },
               },
+            },
+          },
+        },
+      },
+    },
+    intl: {
+      required: true,
+      type: "object",
+      properties: {
+        localeService: {
+          required: true,
+          type: "object",
+          properties: {
+            requested: {
+              required: true,
+              type: "array"
+            },
+            available: {
+              required: true,
+              type: "array"
+            },
+            supported: {
+              required: true,
+              type: "array"
+            },
+            regionalPrefs: {
+              required: true,
+              type: "array"
+            },
+            defaultLocale: {
+              required: true,
+              type: "string"
+            },
+          },
+        },
+        osPrefs: {
+          required: true,
+          type: "object",
+          properties: {
+            systemLocales: {
+              required: true,
+              type: "array"
+            },
+            regionalPrefsLocales: {
+              required: true,
+              type: "array"
             },
           },
         },

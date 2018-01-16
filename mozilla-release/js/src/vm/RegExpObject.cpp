@@ -242,7 +242,7 @@ RegExpObject::create(JSContext* cx, HandleAtom source, RegExpFlag flags,
 {
     Maybe<CompileOptions> dummyOptions;
     if (!tokenStream && !options) {
-        dummyOptions.emplace(cx);
+        dummyOptions.emplace(cx, JSVERSION_DEFAULT);
         options = dummyOptions.ptr();
     }
     Maybe<TokenStream> dummyTokenStream;
@@ -987,7 +987,7 @@ RegExpShared::compile(JSContext* cx, MutableHandleRegExpShared re, HandleAtom pa
     if (!re->ignoreCase() && !StringHasRegExpMetaChars(pattern))
         re->canStringMatch = true;
 
-    CompileOptions options(cx);
+    CompileOptions options(cx, JSVERSION_DEFAULT);
     frontend::TokenStream dummyTokenStream(cx, options, nullptr, 0, nullptr);
 
     LifoAllocScope scope(&cx->tempLifoAlloc());
@@ -1347,47 +1347,39 @@ js::CloneRegExpObject(JSContext* cx, Handle<RegExpObject*> regex)
     return clone;
 }
 
-static bool
-HandleRegExpFlag(RegExpFlag flag, RegExpFlag* flags)
-{
-    if (*flags & flag)
-        return false;
-    *flags = RegExpFlag(*flags | flag);
-    return true;
-}
-
 template <typename CharT>
-static size_t
-ParseRegExpFlags(const CharT* chars, size_t length, RegExpFlag* flagsOut, char16_t* lastParsedOut)
+static bool
+ParseRegExpFlags(const CharT* chars, size_t length, RegExpFlag* flagsOut, char16_t* invalidFlag)
 {
     *flagsOut = RegExpFlag(0);
 
     for (size_t i = 0; i < length; i++) {
-        *lastParsedOut = chars[i];
+        RegExpFlag flag;
         switch (chars[i]) {
           case 'i':
-            if (!HandleRegExpFlag(IgnoreCaseFlag, flagsOut))
-                return false;
+            flag = IgnoreCaseFlag;
             break;
           case 'g':
-            if (!HandleRegExpFlag(GlobalFlag, flagsOut))
-                return false;
+            flag = GlobalFlag;
             break;
           case 'm':
-            if (!HandleRegExpFlag(MultilineFlag, flagsOut))
-                return false;
+            flag = MultilineFlag;
             break;
           case 'y':
-            if (!HandleRegExpFlag(StickyFlag, flagsOut))
-                return false;
+            flag = StickyFlag;
             break;
           case 'u':
-            if (!HandleRegExpFlag(UnicodeFlag, flagsOut))
-                return false;
+            flag = UnicodeFlag;
             break;
           default:
+            *invalidFlag = chars[i];
             return false;
         }
+        if (*flagsOut & flag) {
+            *invalidFlag = chars[i];
+            return false;
+        }
+        *flagsOut = RegExpFlag(*flagsOut | flag);
     }
 
     return true;
@@ -1403,17 +1395,17 @@ js::ParseRegExpFlags(JSContext* cx, JSString* flagStr, RegExpFlag* flagsOut)
     size_t len = linear->length();
 
     bool ok;
-    char16_t lastParsed;
+    char16_t invalidFlag;
     if (linear->hasLatin1Chars()) {
         AutoCheckCannotGC nogc;
-        ok = ::ParseRegExpFlags(linear->latin1Chars(nogc), len, flagsOut, &lastParsed);
+        ok = ::ParseRegExpFlags(linear->latin1Chars(nogc), len, flagsOut, &invalidFlag);
     } else {
         AutoCheckCannotGC nogc;
-        ok = ::ParseRegExpFlags(linear->twoByteChars(nogc), len, flagsOut, &lastParsed);
+        ok = ::ParseRegExpFlags(linear->twoByteChars(nogc), len, flagsOut, &invalidFlag);
     }
 
     if (!ok) {
-        TwoByteChars range(&lastParsed, 1);
+        TwoByteChars range(&invalidFlag, 1);
         UniqueChars utf8(JS::CharsToNewUTF8CharsZ(nullptr, range).c_str());
         if (!utf8)
             return false;

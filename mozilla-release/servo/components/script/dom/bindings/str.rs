@@ -7,8 +7,8 @@
 use cssparser::CowRcStr;
 use html5ever::{LocalName, Namespace};
 use servo_atoms::Atom;
-use std::ascii::AsciiExt;
 use std::borrow::{Borrow, Cow, ToOwned};
+use std::default::Default;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -18,7 +18,7 @@ use std::str;
 use std::str::{Bytes, FromStr};
 
 /// Encapsulates the IDL `ByteString` type.
-#[derive(Clone, Debug, Eq, HeapSizeOf, JSTraceable, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, JSTraceable, MallocSizeOf, PartialEq)]
 pub struct ByteString(Vec<u8>);
 
 impl ByteString {
@@ -77,7 +77,7 @@ impl ops::Deref for ByteString {
 
 /// A string that is constructed from a UCS-2 buffer by replacing invalid code
 /// points with the replacement character.
-#[derive(Clone, HeapSizeOf)]
+#[derive(Clone, Default, MallocSizeOf)]
 pub struct USVString(pub String);
 
 
@@ -152,7 +152,7 @@ pub fn is_token(s: &[u8]) -> bool {
 ///
 /// This type is currently `!Send`, in order to help with an independent
 /// experiment to store `JSString`s rather than Rust `String`s.
-#[derive(Clone, Debug, Eq, Hash, HeapSizeOf, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, Ord, PartialEq, PartialOrd)]
 pub struct DOMString(String, PhantomData<*const ()>);
 
 impl DOMString {
@@ -184,6 +184,29 @@ impl DOMString {
     /// An iterator over the bytes of this `DOMString`.
     pub fn bytes(&self) -> Bytes {
         self.0.bytes()
+    }
+
+    /// Removes newline characters according to <https://infra.spec.whatwg.org/#strip-newlines>.
+    pub fn strip_newlines(&mut self) {
+        self.0.retain(|c| c != '\r' && c != '\n');
+    }
+
+    /// Removes leading and trailing ASCII whitespaces according to
+    /// <https://infra.spec.whatwg.org/#strip-leading-and-trailing-ascii-whitespace>.
+    pub fn strip_leading_and_trailing_ascii_whitespace(&mut self) {
+        if self.0.len() == 0 { return; }
+
+        let last_non_whitespace = match self.0.rfind(|ref c| !char::is_ascii_whitespace(c)) {
+            Some(idx) => idx + 1,
+            None => {
+                self.0.clear();
+                return;
+            }
+        };
+        let first_non_whitespace = self.0.find(|ref c| !char::is_ascii_whitespace(c)).unwrap();
+
+        self.0.truncate(last_non_whitespace);
+        let _ = self.0.splice(0..first_non_whitespace, "");
     }
 }
 

@@ -414,6 +414,32 @@ IonCacheIRCompiler::init()
             allocator.initInputLocation(1, ic->id());
         break;
       }
+      case CacheKind::GetPropSuper:
+      case CacheKind::GetElemSuper: {
+        IonGetPropSuperIC* ic = ic_->asGetPropSuperIC();
+        TypedOrValueRegister output = ic->output();
+
+        available.add(output.valueReg());
+
+        liveRegs_.emplace(ic->liveRegs());
+        outputUnchecked_.emplace(output);
+
+        allowDoubleResult_.emplace(true);
+
+        MOZ_ASSERT(numInputs == 2 || numInputs == 3);
+
+        allocator.initInputLocation(0, ic->object(), JSVAL_TYPE_OBJECT);
+
+        if (ic->kind() == CacheKind::GetPropSuper) {
+            MOZ_ASSERT(numInputs == 2);
+            allocator.initInputLocation(1, ic->receiver());
+        } else {
+            MOZ_ASSERT(numInputs == 3);
+            allocator.initInputLocation(1, ic->id());
+            allocator.initInputLocation(2, ic->receiver());
+        }
+        break;
+      }
       case CacheKind::SetProp:
       case CacheKind::SetElem: {
         IonSetPropertyIC* ic = ic_->asSetPropertyIC();
@@ -509,8 +535,6 @@ IonCacheIRCompiler::init()
       case CacheKind::Call:
       case CacheKind::Compare:
       case CacheKind::TypeOf:
-      case CacheKind::GetPropSuper:
-      case CacheKind::GetElemSuper:
         MOZ_CRASH("Unsupported IC");
     }
 
@@ -1179,17 +1203,21 @@ IonCacheIRCompiler::emitCallProxyGetByValueResult()
     return true;
 }
 
+typedef bool (*ProxyHasFn)(JSContext*, HandleObject, HandleValue, MutableHandleValue);
+static const VMFunction ProxyHasInfo = FunctionInfo<ProxyHasFn>(ProxyHas, "ProxyHas");
+
 typedef bool (*ProxyHasOwnFn)(JSContext*, HandleObject, HandleValue, MutableHandleValue);
 static const VMFunction ProxyHasOwnInfo = FunctionInfo<ProxyHasOwnFn>(ProxyHasOwn, "ProxyHasOwn");
 
 bool
-IonCacheIRCompiler::emitCallProxyHasOwnResult()
+IonCacheIRCompiler::emitCallProxyHasPropResult()
 {
     AutoSaveLiveRegisters save(*this);
     AutoOutputRegister output(*this);
 
     Register obj = allocator.useRegister(masm, reader.objOperandId());
     ValueOperand idVal = allocator.useValueRegister(masm, reader.valOperandId());
+    bool hasOwn = reader.readBool();
 
     allocator.discardStack(masm);
 
@@ -1198,8 +1226,13 @@ IonCacheIRCompiler::emitCallProxyHasOwnResult()
     masm.Push(idVal);
     masm.Push(obj);
 
-    if (!callVM(masm, ProxyHasOwnInfo))
-        return false;
+    if (hasOwn) {
+        if (!callVM(masm, ProxyHasOwnInfo))
+            return false;
+    } else {
+        if (!callVM(masm, ProxyHasInfo))
+            return false;
+    }
 
     masm.storeCallResultValue(output);
     return true;
@@ -1932,20 +1965,6 @@ IonCacheIRCompiler::emitStoreTypedElement()
 
     masm.bind(&done);
     return true;
-}
-
-bool
-IonCacheIRCompiler::emitStoreUnboxedArrayElement()
-{
-    // --unboxed-arrays is currently untested and broken.
-    MOZ_CRASH("Baseline-specific op");
-}
-
-bool
-IonCacheIRCompiler::emitStoreUnboxedArrayElementHole()
-{
-    // --unboxed-arrays is currently untested and broken.
-    MOZ_CRASH("Baseline-specific op");
 }
 
 bool

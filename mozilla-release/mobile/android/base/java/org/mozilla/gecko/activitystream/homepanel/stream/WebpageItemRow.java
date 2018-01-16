@@ -14,9 +14,7 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
 import org.mozilla.gecko.R;
-import org.mozilla.gecko.activitystream.ActivityStreamTelemetry;
 import org.mozilla.gecko.activitystream.Utils;
-import org.mozilla.gecko.activitystream.homepanel.StreamHighlightItemRowContextMenuListener;
 import org.mozilla.gecko.activitystream.homepanel.model.WebpageRowModel;
 import org.mozilla.gecko.util.DrawableUtil;
 import org.mozilla.gecko.util.StringUtils;
@@ -45,7 +43,7 @@ public class WebpageItemRow extends StreamViewHolder {
     private final TextView pageSourceView;
     private final ImageView menuButton;
 
-    public WebpageItemRow(final View itemView, final StreamHighlightItemRowContextMenuListener contextMenuListener) {
+    public WebpageItemRow(final View itemView, final OnMenuButtonClickListener onMenuButtonClickListener) {
         super(itemView);
 
         pageTitleView = (TextView) itemView.findViewById(R.id.page_title);
@@ -62,8 +60,9 @@ public class WebpageItemRow extends StreamViewHolder {
         menuButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                contextMenuListener.openContextMenu(WebpageItemRow.this, position,
-                        ActivityStreamTelemetry.Contract.INTERACTION_MENU_BUTTON);
+                if (onMenuButtonClickListener != null) {
+                    onMenuButtonClickListener.onMenuButtonClicked(WebpageItemRow.this, position);
+                }
             }
         });
     }
@@ -125,10 +124,6 @@ public class WebpageItemRow extends StreamViewHolder {
         updatePageDomainTask.execute();
     }
 
-    public View getContextMenuAnchor() {
-        return menuButton;
-    }
-
     public int getTileWidth() {
         return pageIconLayout.getWidth();
     }
@@ -175,5 +170,13 @@ public class WebpageItemRow extends StreamViewHolder {
         private boolean isTagSameAsStartTag(final View viewToCheck) {
             return viewTagAtStart.equals(viewToCheck.getTag(VIEW_TAG_ID));
         }
+    }
+
+    public View getTabletContextMenuAnchor() {
+        return menuButton;
+    }
+
+    public interface OnMenuButtonClickListener {
+        void onMenuButtonClicked(WebpageItemRow row, int position);
     }
 }

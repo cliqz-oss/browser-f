@@ -2,6 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
+/* eslint-disable mozilla/no-cpows-in-tests */
+
 // Tests that the discovery view can install add-ons correctly
 
 const MAIN_URL = "https://example.com/" + RELATIVE_DIR + "discovery_install.html";
@@ -47,7 +49,7 @@ function waitForFail() {
     let listener = (subject, topic, data) => {
       Services.obs.removeObserver(listener, topic);
       resolve();
-    }
+    };
     Services.obs.addObserver(listener, "addon-install-origin-blocked");
   });
 }

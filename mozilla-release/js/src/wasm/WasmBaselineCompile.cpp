@@ -570,7 +570,7 @@ class BaseCompiler
 
     const ModuleEnvironment&    env_;
     BaseOpIter                  iter_;
-    const FuncCompileUnit&      func_;
+    const FuncCompileInput&     func_;
     size_t                      lastReadCallSite_;
     TempAllocator&              alloc_;
     const ValTypeVector&        locals_;         // Types of parameters and locals
@@ -645,7 +645,7 @@ class BaseCompiler
   public:
     BaseCompiler(const ModuleEnvironment& env,
                  Decoder& decoder,
-                 const FuncCompileUnit& func,
+                 const FuncCompileInput& input,
                  const ValTypeVector& locals,
                  bool debugEnabled,
                  TempAllocator* alloc,
@@ -659,7 +659,7 @@ class BaseCompiler
     MOZ_MUST_USE bool emitFunction();
     void emitInitStackLocals();
 
-    const SigWithId& sig() const { return *env_.funcSigs[func_.index()]; }
+    const SigWithId& sig() const { return *env_.funcSigs[func_.index]; }
 
     // Used by some of the ScratchRegister implementations.
     operator MacroAssembler&() const { return masm; }
@@ -2196,7 +2196,7 @@ class BaseCompiler
     void insertBreakablePoint(CallSiteDesc::Kind kind) {
         // The debug trap exit requires WasmTlsReg be loaded. However, since we
         // are emitting millions of these breakable points inline, we push this
-        // loading of TLS into the FarJumpIsland created by patchCallSites.
+        // loading of TLS into the FarJumpIsland created by linkCallSites.
         masm.nopPatchableToCall(CallSiteDesc(iter_.lastOpcodeOffset(), kind));
     }
 
@@ -2207,9 +2207,9 @@ class BaseCompiler
     void beginFunction() {
         JitSpew(JitSpew_Codegen, "# Emitting wasm baseline code");
 
-        SigIdDesc sigId = env_.funcSigs[func_.index()]->id;
+        SigIdDesc sigId = env_.funcSigs[func_.index]->id;
         if (mode_ == CompileMode::Tier1)
-            GenerateFunctionPrologue(masm, localSize_, sigId, &offsets_, mode_, func_.index());
+            GenerateFunctionPrologue(masm, localSize_, sigId, &offsets_, mode_, func_.index);
         else
             GenerateFunctionPrologue(masm, localSize_, sigId, &offsets_);
 
@@ -2220,7 +2220,7 @@ class BaseCompiler
         if (debugEnabled_) {
             // Initialize funcIndex and flag fields of DebugFrame.
             size_t debugFrame = masm.framePushed() - DebugFrame::offsetOfFrame();
-            masm.store32(Imm32(func_.index()),
+            masm.store32(Imm32(func_.index),
                          Address(masm.getStackPointer(), debugFrame + DebugFrame::offsetOfFuncIndex()));
             masm.storePtr(ImmWord(0),
                           Address(masm.getStackPointer(), debugFrame + DebugFrame::offsetOfFlagsWord()));
@@ -2345,7 +2345,7 @@ class BaseCompiler
         MOZ_ASSERT(localSize_ >= debugFrameReserved);
         if (localSize_ > debugFrameReserved)
             masm.addToStackPtr(Imm32(localSize_ - debugFrameReserved));
-        BytecodeOffset prologueTrapOffset(func_.lineOrBytecode());
+        BytecodeOffset prologueTrapOffset(func_.lineOrBytecode);
         masm.jump(TrapDesc(prologueTrapOffset, Trap::StackOverflow, debugFrameReserved));
 
         masm.bind(&returnLabel_);
@@ -2521,9 +2521,9 @@ class BaseCompiler
                 masm.movq(scratch, Operand(StackPointer, argLoc.offsetFromArgBase()));
 #elif defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_ARM)
                 loadI64Low(scratch, arg);
-                masm.store32(scratch, Address(StackPointer, argLoc.offsetFromArgBase() + INT64LOW_OFFSET));
+                masm.store32(scratch, LowWord(Address(StackPointer, argLoc.offsetFromArgBase())));
                 loadI64High(scratch, arg);
-                masm.store32(scratch, Address(StackPointer, argLoc.offsetFromArgBase() + INT64HIGH_OFFSET));
+                masm.store32(scratch, HighWord(Address(StackPointer, argLoc.offsetFromArgBase())));
 #else
                 MOZ_CRASH("BaseCompiler platform hook: passArg I64");
 #endif
@@ -2935,48 +2935,6 @@ class BaseCompiler
 #endif
     }
 
-    void reinterpretI64AsF64(RegI64 src, RegF64 dest) {
-#if defined(JS_CODEGEN_X64)
-        masm.vmovq(src.reg, dest);
-#elif defined(JS_CODEGEN_X86)
-        masm.Push(src.high);
-        masm.Push(src.low);
-        masm.vmovq(Operand(esp, 0), dest);
-        masm.freeStack(sizeof(uint64_t));
-#elif defined(JS_CODEGEN_ARM)
-        masm.ma_vxfer(src.low, src.high, dest);
-#else
-        MOZ_CRASH("BaseCompiler platform hook: reinterpretI64AsF64");
-#endif
-    }
-
-    void reinterpretF64AsI64(RegF64 src, RegI64 dest) {
-#if defined(JS_CODEGEN_X64)
-        masm.vmovq(src, dest.reg);
-#elif defined(JS_CODEGEN_X86)
-        masm.reserveStack(sizeof(uint64_t));
-        masm.vmovq(src, Operand(esp, 0));
-        masm.Pop(dest.low);
-        masm.Pop(dest.high);
-#elif defined(JS_CODEGEN_ARM)
-        masm.ma_vxfer(src, dest.low, dest.high);
-#else
-        MOZ_CRASH("BaseCompiler platform hook: reinterpretF64AsI64");
-#endif
-    }
-
-    void wrapI64ToI32(RegI64 src, RegI32 dest) {
-#if defined(JS_CODEGEN_X64)
-        // movl clears the high bits if the two registers are the same.
-        masm.movl(src.reg, dest);
-#elif defined(JS_NUNBOX32)
-        if (src.low != dest)
-            masm.move32(src.low, dest);
-#else
-        MOZ_CRASH("BaseCompiler platform hook: wrapI64ToI32");
-#endif
-    }
-
     RegI64 popI32ForSignExtendI64() {
 #if defined(JS_CODEGEN_X86)
         need2xI32(specific_edx, specific_eax);
@@ -2997,56 +2955,6 @@ class BaseCompiler
         return popI64ToSpecific(RegI64(Register64(specific_edx, specific_eax)));
 #else
         return popI64();
-#endif
-    }
-
-    void signExtendI64_8(RegI64 r) {
-#if defined(JS_CODEGEN_X64)
-        masm.movsbq(Operand(r.reg), r.reg);
-#elif defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_ARM)
-        masm.move8SignExtend(r.low, r.low);
-        signExtendI32ToI64(RegI32(r.low), r);
-#else
-        MOZ_CRASH("Basecompiler platform hook: signExtendI64_8");
-#endif
-    }
-
-    void signExtendI64_16(RegI64 r) {
-#if defined(JS_CODEGEN_X64)
-        masm.movswq(Operand(r.reg), r.reg);
-#elif defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_ARM)
-        masm.move16SignExtend(r.low, r.low);
-        signExtendI32ToI64(RegI32(r.low), r);
-#else
-        MOZ_CRASH("Basecompiler platform hook: signExtendI64_16");
-#endif
-    }
-
-    void signExtendI32ToI64(RegI32 src, RegI64 dest) {
-#if defined(JS_CODEGEN_X64)
-        masm.movslq(src, dest.reg);
-#elif defined(JS_CODEGEN_X86)
-        MOZ_ASSERT(dest.low == src);
-        MOZ_ASSERT(dest.low == eax);
-        MOZ_ASSERT(dest.high == edx);
-        masm.cdq();
-#elif defined(JS_CODEGEN_ARM)
-        masm.ma_mov(src, dest.low);
-        masm.ma_asr(Imm32(31), src, dest.high);
-#else
-        MOZ_CRASH("BaseCompiler platform hook: signExtendI32ToI64");
-#endif
-    }
-
-    void extendU32ToI64(RegI32 src, RegI64 dest) {
-#if defined(JS_CODEGEN_X64)
-        masm.movl(src, dest.reg);
-#elif defined(JS_NUNBOX32)
-        if (src != dest.low)
-            masm.move32(src, dest.low);
-        masm.move32(Imm32(0), dest.high);
-#else
-        MOZ_CRASH("BaseCompiler platform hook: extendU32ToI64");
 #endif
     }
 
@@ -3663,8 +3571,8 @@ class BaseCompiler
     // Sundry helpers.
 
     uint32_t readCallSiteLineOrBytecode() {
-        if (!func_.callSiteLineNums().empty())
-            return func_.callSiteLineNums()[lastReadCallSite_++];
+        if (!func_.callSiteLineNums.empty())
+            return func_.callSiteLineNums[lastReadCallSite_++];
         return iter_.lastOpcodeOffset();
     }
 
@@ -4481,12 +4389,12 @@ BaseCompiler::emitCopysignF64()
     pop2xF64(&r0, &r1);
     RegI64 x0 = needI64();
     RegI64 x1 = needI64();
-    reinterpretF64AsI64(r0, x0);
-    reinterpretF64AsI64(r1, x1);
+    masm.moveDoubleToGPR64(r0, x0);
+    masm.moveDoubleToGPR64(r1, x1);
     masm.and64(Imm64(INT64_MAX), x0);
     masm.and64(Imm64(INT64_MIN), x1);
     masm.or64(x1, x0);
-    reinterpretI64AsF64(x0, r0);
+    masm.moveGPR64ToDouble(x0, r0);
     freeI64(x0);
     freeI64(x1);
     freeF64(r1);
@@ -4985,7 +4893,7 @@ BaseCompiler::emitWrapI64ToI32()
 {
     RegI64 r0 = popI64();
     RegI32 i0 = fromI64(r0);
-    wrapI64ToI32(r0, i0);
+    masm.move64To32(r0, i0);
     freeI64Except(r0, i0);
     pushI32(i0);
 }
@@ -5010,7 +4918,7 @@ void
 BaseCompiler::emitExtendI64_8()
 {
     RegI64 r = popI64ForSignExtendI64();
-    signExtendI64_8(r);
+    masm.move8To64SignExtend(lowPart(r), r);
     pushI64(r);
 }
 
@@ -5018,7 +4926,7 @@ void
 BaseCompiler::emitExtendI64_16()
 {
     RegI64 r = popI64ForSignExtendI64();
-    signExtendI64_16(r);
+    masm.move16To64SignExtend(lowPart(r), r);
     pushI64(r);
 }
 
@@ -5026,20 +4934,16 @@ void
 BaseCompiler::emitExtendI64_32()
 {
     RegI64 x0 = popI64ForSignExtendI64();
-    RegI32 r0 = RegI32(lowPart(x0));
-    signExtendI32ToI64(r0, x0);
+    masm.move32To64SignExtend(lowPart(x0), x0);
     pushI64(x0);
-    // Note: no need to free r0, since it is part of x0
 }
 
 void
 BaseCompiler::emitExtendI32ToI64()
 {
     RegI64 x0 = popI32ForSignExtendI64();
-    RegI32 r0 = RegI32(lowPart(x0));
-    signExtendI32ToI64(r0, x0);
+    masm.move32To64SignExtend(lowPart(x0), x0);
     pushI64(x0);
-    // Note: no need to free r0, since it is part of x0
 }
 
 void
@@ -5047,9 +4951,8 @@ BaseCompiler::emitExtendU32ToI64()
 {
     RegI32 r0 = popI32();
     RegI64 x0 = widenI32(r0);
-    extendU32ToI64(r0, x0);
+    masm.move32To64ZeroExtend(r0, x0);
     pushI64(x0);
-    // Note: no need to free r0, since it is part of x0
 }
 
 void
@@ -5067,7 +4970,7 @@ BaseCompiler::emitReinterpretF64AsI64()
 {
     RegF64 r0 = popF64();
     RegI64 x0 = needI64();
-    reinterpretF64AsI64(r0, x0);
+    masm.moveDoubleToGPR64(r0, x0);
     freeF64(r0);
     pushI64(x0);
 }
@@ -5201,7 +5104,7 @@ BaseCompiler::emitReinterpretI64AsF64()
 {
     RegI64 r0 = popI64();
     RegF64 d0 = needF64();
-    reinterpretI64AsF64(r0, d0);
+    masm.moveGPR64ToDouble(r0, d0);
     freeI64(r0);
     pushF64(d0);
 }
@@ -7588,7 +7491,7 @@ BaseCompiler::emitInitStackLocals()
 
 BaseCompiler::BaseCompiler(const ModuleEnvironment& env,
                            Decoder& decoder,
-                           const FuncCompileUnit& func,
+                           const FuncCompileInput& func,
                            const ValTypeVector& locals,
                            bool debugEnabled,
                            TempAllocator* alloc,
@@ -7709,7 +7612,7 @@ FuncOffsets
 BaseCompiler::finish()
 {
     MOZ_ASSERT(done(), "all bytes must be consumed");
-    MOZ_ASSERT(func_.callSiteLineNums().length() == lastReadCallSite_);
+    MOZ_ASSERT(func_.callSiteLineNums.length() == lastReadCallSite_);
 
     masm.flushBuffer();
 
@@ -7745,37 +7648,54 @@ js::wasm::BaselineCanCompile()
 }
 
 bool
-js::wasm::BaselineCompileFunction(CompileTask* task, FuncCompileUnit* func, UniqueChars* error)
+js::wasm::BaselineCompileFunctions(const ModuleEnvironment& env, LifoAlloc& lifo,
+                                   const FuncCompileInputVector& inputs, CompiledCode* code,
+                                   UniqueChars* error)
 {
-    MOZ_ASSERT(task->tier() == Tier::Baseline);
-    MOZ_ASSERT(task->env().kind == ModuleKind::Wasm);
-
-    Decoder d(func->begin(), func->end(), func->lineOrBytecode(), error);
-
-    // Build the local types vector.
-
-    ValTypeVector locals;
-    if (!locals.appendAll(task->env().funcSigs[func->index()]->args()))
-        return false;
-    if (!DecodeLocalEntries(d, task->env().kind, &locals))
-        return false;
+    MOZ_ASSERT(env.tier == Tier::Baseline);
+    MOZ_ASSERT(env.kind == ModuleKind::Wasm);
 
     // The MacroAssembler will sometimes access the jitContext.
 
-    JitContext jitContext(&task->alloc());
+    TempAllocator alloc(&lifo);
+    JitContext jitContext(&alloc);
+    MOZ_ASSERT(IsCompilingWasm());
+    MacroAssembler masm(MacroAssembler::WasmToken(), alloc);
 
-    // One-pass baseline compilation.
-
-    BaseCompiler f(task->env(), d, *func, locals, task->debugEnabled(), &task->alloc(),
-                   &task->masm(), task->mode());
-    if (!f.init())
+    // Swap in already-allocated empty vectors to avoid malloc/free.
+    MOZ_ASSERT(code->empty());
+    if (!code->swap(masm))
         return false;
 
-    if (!f.emitFunction())
+    for (const FuncCompileInput& func : inputs) {
+        Decoder d(func.begin, func.end, func.lineOrBytecode, error);
+
+        // Build the local types vector.
+
+        ValTypeVector locals;
+        if (!locals.appendAll(env.funcSigs[func.index]->args()))
+            return false;
+        if (!DecodeLocalEntries(d, env.kind, &locals))
+            return false;
+
+        // One-pass baseline compilation.
+
+        BaseCompiler f(env, d, func, locals, env.debugEnabled(), &alloc, &masm, env.mode);
+        if (!f.init())
+            return false;
+
+        if (!f.emitFunction())
+            return false;
+
+        if (!code->codeRanges.emplaceBack(func.index, func.lineOrBytecode, f.finish()))
+            return false;
+    }
+
+    masm.finish();
+    if (masm.oom())
         return false;
 
-    func->finish(f.finish());
-    return true;
+    return code->swap(masm);
 }
 
 #undef INT_DIV_I64_CALLOUT

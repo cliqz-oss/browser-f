@@ -26,7 +26,6 @@
 #include "jsatom.h"
 #include "jscntxt.h"
 #include "jsfun.h"
-#include "jsgc.h"
 #include "jsobj.h"
 #include "jsopcode.h"
 #include "jsprf.h"
@@ -37,7 +36,6 @@
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/BytecodeEmitter.h"
 #include "frontend/SharedContext.h"
-#include "gc/Marking.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "jit/IonCode.h"
@@ -57,6 +55,7 @@
 #include "jsfuninlines.h"
 #include "jsobjinlines.h"
 
+#include "gc/Marking-inl.h"
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/SharedImmutableStringsCache-inl.h"
@@ -71,30 +70,41 @@ using mozilla::PodCopy;
 using mozilla::PodZero;
 using mozilla::RotateLeft;
 
+
+// Check that JSScript::data hasn't experienced obvious memory corruption.
+// This is a diagnositic for Bug 1367896.
+static void
+CheckScriptDataIntegrity(JSScript* script)
+{
+    ScopeArray* sa = script->scopes();
+    uint8_t* ptr = reinterpret_cast<uint8_t*>(sa->vector);
+
+    // Check that scope data - who's pointer is stored in data region - also
+    // points within the data region.
+    MOZ_RELEASE_ASSERT(ptr >= script->data &&
+                       ptr + sa->length <= script->data + script->dataSize(),
+                       "Corrupt JSScript::data");
+}
+
 template<XDRMode mode>
 bool
 js::XDRScriptConst(XDRState<mode>* xdr, MutableHandleValue vp)
 {
     JSContext* cx = xdr->cx();
 
-    /*
-     * A script constant can be an arbitrary primitive value as they are used
-     * to implement JSOP_LOOKUPSWITCH. But they cannot be objects, see
-     * bug 407186.
-     */
     enum ConstTag {
-        SCRIPT_INT     = 0,
-        SCRIPT_DOUBLE  = 1,
-        SCRIPT_ATOM    = 2,
-        SCRIPT_TRUE    = 3,
-        SCRIPT_FALSE   = 4,
-        SCRIPT_NULL    = 5,
-        SCRIPT_OBJECT  = 6,
-        SCRIPT_VOID    = 7,
-        SCRIPT_HOLE    = 8
+        SCRIPT_INT,
+        SCRIPT_DOUBLE,
+        SCRIPT_ATOM,
+        SCRIPT_TRUE,
+        SCRIPT_FALSE,
+        SCRIPT_NULL,
+        SCRIPT_OBJECT,
+        SCRIPT_VOID,
+        SCRIPT_HOLE
     };
 
-    uint32_t tag;
+    ConstTag tag;
     if (mode == XDR_ENCODE) {
         if (vp.isInt32()) {
             tag = SCRIPT_INT;
@@ -118,7 +128,7 @@ js::XDRScriptConst(XDRState<mode>* xdr, MutableHandleValue vp)
         }
     }
 
-    if (!xdr->codeUint32(&tag))
+    if (!xdr->codeEnum32(&tag))
         return false;
 
     switch (tag) {
@@ -184,6 +194,10 @@ js::XDRScriptConst(XDRState<mode>* xdr, MutableHandleValue vp)
         if (mode == XDR_DECODE)
             vp.setMagic(JS_ELEMENTS_HOLE);
         break;
+      default:
+        // Fail in debug, but only soft-fail in release
+        MOZ_ASSERT(false, "Bad XDR value kind");
+        return xdr->fail(JS::TranscodeResult_Failure_BadDecode);
     }
     return true;
 }
@@ -325,9 +339,7 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
         HasMappedArgsObj,
         FunctionHasThisBinding,
         FunctionHasExtraBodyVarScope,
-        IsGeneratorExp,
-        IsLegacyGenerator,
-        IsStarGenerator,
+        IsGenerator,
         IsAsync,
         HasRest,
         IsExprBody,
@@ -361,6 +373,8 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
     if (mode == XDR_ENCODE) {
         script = scriptp.get();
         MOZ_ASSERT(script->functionNonDelazifying() == fun);
+
+        CheckScriptDataIntegrity(script);
 
         if (!fun && script->treatAsRunOnce() && script->hasRunOnce()) {
             // This is a toplevel or eval script that's runOnce.  We want to
@@ -438,12 +452,8 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
         MOZ_ASSERT_IF(sourceObjectArg, sourceObjectArg->source() == script->scriptSource());
         if (!sourceObjectArg)
             scriptBits |= (1 << OwnSource);
-        if (script->isGeneratorExp())
-            scriptBits |= (1 << IsGeneratorExp);
-        if (script->isLegacyGenerator())
-            scriptBits |= (1 << IsLegacyGenerator);
-        if (script->isStarGenerator())
-            scriptBits |= (1 << IsStarGenerator);
+        if (script->isGenerator())
+            scriptBits |= (1 << IsGenerator);
         if (script->asyncKind() == AsyncFunction)
             scriptBits |= (1 << IsAsync);
         if (script->hasRest())
@@ -599,8 +609,6 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
             script->functionHasThisBinding_ = true;
         if (scriptBits & (1 << FunctionHasExtraBodyVarScope))
             script->functionHasExtraBodyVarScope_ = true;
-        if (scriptBits & (1 << IsGeneratorExp))
-            script->isGeneratorExp_ = true;
         if (scriptBits & (1 << HasSingleton))
             script->hasSingletons_ = true;
         if (scriptBits & (1 << TreatAsRunOnce))
@@ -615,13 +623,8 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
             script->isDerivedClassConstructor_ = true;
         if (scriptBits & (1 << IsDefaultClassConstructor))
             script->isDefaultClassConstructor_ = true;
-
-        if (scriptBits & (1 << IsLegacyGenerator)) {
-            MOZ_ASSERT(!(scriptBits & (1 << IsStarGenerator)));
-            script->setGeneratorKind(LegacyGenerator);
-        } else if (scriptBits & (1 << IsStarGenerator))
-            script->setGeneratorKind(StarGenerator);
-
+        if (scriptBits & (1 << IsGenerator))
+            script->setGeneratorKind(GeneratorKind::Generator);
         if (scriptBits & (1 << IsAsync))
             script->setAsyncKind(AsyncFunction);
         if (scriptBits & (1 << HasRest))
@@ -796,11 +799,20 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
               case ScopeKind::WasmFunction:
                 MOZ_CRASH("wasm functions cannot be nested in JSScripts");
                 break;
+              default:
+                // Fail in debug, but only soft-fail in release
+                MOZ_ASSERT(false, "Bad XDR scope kind");
+                return xdr->fail(JS::TranscodeResult_Failure_BadDecode);
             }
 
             if (mode == XDR_DECODE)
                 vector[i].init(scope);
         }
+
+        // Verify marker to detect data corruption after decoding scope data. A
+        // mismatch here indicates we will almost certainly crash in release.
+        if (!xdr->codeMarker(0x48922BAB))
+            return false;
     }
 
     /*
@@ -886,11 +898,17 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
           }
 
           default: {
-            MOZ_ASSERT(false, "Unknown class kind.");
-            return xdr->fail(JS::TranscodeResult_Failure_UnknownClassKind);
+            // Fail in debug, but only soft-fail in release
+            MOZ_ASSERT(false, "Bad XDR class kind");
+            return xdr->fail(JS::TranscodeResult_Failure_BadDecode);
           }
         }
     }
+
+    // Verify marker to detect data corruption after decoding object data. A
+    // mismatch here indicates we will almost certainly crash in release.
+    if (!xdr->codeMarker(0xF83B989A))
+        return false;
 
     if (ntrynotes != 0) {
         JSTryNote* tnfirst = script->trynotes()->vector;
@@ -937,6 +955,8 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
     }
 
     if (mode == XDR_DECODE) {
+        CheckScriptDataIntegrity(script);
+
         scriptp.set(script);
 
         /* see BytecodeEmitter::tellDebuggerAboutCompiledScript */
@@ -2092,10 +2112,12 @@ ScriptSource::xdrEncodeTopLevel(JSContext* cx, HandleScript script)
 
     RootedScript s(cx, script);
     if (!xdrEncoder_->codeScript(&s)) {
-        if (xdrEncoder_->resultCode() == JS::TranscodeResult_Throw)
-            return false;
-        // Encoding failures are reported by the xdrFinalizeEncoder function.
-        return true;
+        // On encoding failure, let failureCase destroy encoder and return true
+        // to avoid failing any currently executing script.
+        if (xdrEncoder_->resultCode() & JS::TranscodeResult_Failure)
+            return true;
+
+        return false;
     }
 
     failureCase.release();
@@ -2112,8 +2134,14 @@ ScriptSource::xdrEncodeFunction(JSContext* cx, HandleFunction fun, HandleScriptS
     });
 
     RootedFunction f(cx, fun);
-    if (!xdrEncoder_->codeFunction(&f, sourceObject))
+    if (!xdrEncoder_->codeFunction(&f, sourceObject)) {
+        // On encoding failure, let failureCase destroy encoder and return true
+        // to avoid failing any currently executing script.
+        if (xdrEncoder_->resultCode() & JS::TranscodeResult_Failure)
+            return true;
+
         return false;
+    }
 
     failureCase.release();
     return true;
@@ -2943,7 +2971,6 @@ JSScript::initFromFunctionBox(JSContext* cx, HandleScript script,
 
     script->funLength_ = funbox->length;
 
-    script->isGeneratorExp_ = funbox->isGenexpLambda;
     script->setGeneratorKind(funbox->generatorKind());
     script->setAsyncKind(funbox->asyncKind());
     if (funbox->hasRest())
@@ -2968,8 +2995,7 @@ JSScript::initFromModuleContext(JSContext* cx, HandleScript script,
     script->isDerivedClassConstructor_ = false;
     script->funLength_ = 0;
 
-    script->isGeneratorExp_ = false;
-    script->setGeneratorKind(NotGenerator);
+    script->setGeneratorKind(GeneratorKind::NotGenerator);
 
     // Since modules are only run once, mark the script so that initializers
     // created within it may be given more precise types.
@@ -3137,7 +3163,7 @@ JSScript::sizeOfData(mozilla::MallocSizeOf mallocSizeOf) const
 size_t
 JSScript::sizeOfTypeScript(mozilla::MallocSizeOf mallocSizeOf) const
 {
-    return types_->sizeOfIncludingThis(mallocSizeOf);
+    return types_ ? types_->sizeOfIncludingThis(mallocSizeOf) : 0;
 }
 
 /*
@@ -3193,8 +3219,6 @@ JSScript::finalize(FreeOp* fop)
 
     if (scriptData_)
         scriptData_->decRefCount();
-
-    fop->runtime()->caches().lazyScriptCache.remove(this);
 
     // In most cases, our LazyScript's script pointer will reference this
     // script, and thus be nulled out by normal weakref processing. However, if
@@ -3445,8 +3469,8 @@ CloneInnerInterpretedFunction(JSContext* cx, HandleScope enclosingScope, HandleF
 {
     /* NB: Keep this in sync with XDRInterpretedFunction. */
     RootedObject cloneProto(cx);
-    if (srcFun->isStarGenerator() || srcFun->isAsync()) {
-        cloneProto = GlobalObject::getOrCreateStarGeneratorFunctionPrototype(cx, cx->global());
+    if (srcFun->isGenerator() || srcFun->isAsync()) {
+        cloneProto = GlobalObject::getOrCreateGeneratorFunctionPrototype(cx, cx->global());
         if (!cloneProto)
             return nullptr;
     }
@@ -3492,6 +3516,8 @@ js::detail::CopyScript(JSContext* cx, HandleScript src, HandleScript dst,
     }
 
     /* NB: Keep this in sync with XDRScript. */
+
+    CheckScriptDataIntegrity(src);
 
     /* Some embeddings are not careful to use ExposeObjectToActiveJS as needed. */
     MOZ_ASSERT(!src->sourceObject()->isMarkedGray());
@@ -3613,7 +3639,6 @@ js::detail::CopyScript(JSContext* cx, HandleScript src, HandleScript dst,
     dst->hasSingletons_ = src->hasSingletons();
     dst->treatAsRunOnce_ = src->treatAsRunOnce();
     dst->hasInnerFunctions_ = src->hasInnerFunctions();
-    dst->isGeneratorExp_ = src->isGeneratorExp();
     dst->setGeneratorKind(src->generatorKind());
     dst->isDerivedClassConstructor_ = src->isDerivedClassConstructor();
     dst->needsHomeObject_ = src->needsHomeObject();
@@ -3912,7 +3937,7 @@ JSScript::getOrCreateBreakpointSite(JSContext* cx, jsbytecode* pc)
     BreakpointSite*& site = debug->breakpoints[pcToOffset(pc)];
 
     if (!site) {
-        site = cx->runtime()->new_<JSBreakpointSite>(this, pc);
+        site = cx->zone()->new_<JSBreakpointSite>(this, pc);
         if (!site) {
             ReportOutOfMemory(cx);
             return nullptr;
@@ -4183,8 +4208,7 @@ JSScript::argumentsOptimizationFailed(JSContext* cx, HandleScript script)
     if (script->needsArgsObj())
         return true;
 
-    MOZ_ASSERT(!script->isStarGenerator());
-    MOZ_ASSERT(!script->isLegacyGenerator());
+    MOZ_ASSERT(!script->isGenerator());
     MOZ_ASSERT(!script->isAsync());
 
     script->needsArgsObj_ = true;
@@ -4373,7 +4397,7 @@ LazyScript::Create(JSContext* cx, HandleFunction fun,
     p.isExprBody = false;
     p.numClosedOverBindings = closedOverBindings.length();
     p.numInnerFunctions = innerFunctions.length();
-    p.generatorKindBits = GeneratorKindAsBits(NotGenerator);
+    p.generatorKind = GeneratorKindAsBit(GeneratorKind::NotGenerator);
     p.strict = false;
     p.bindingsAccessedDynamically = false;
     p.hasDebuggerStatement = false;
@@ -4515,76 +4539,6 @@ bool
 JSScript::mayReadFrameArgsDirectly()
 {
     return argumentsHasVarBinding() || hasRest();
-}
-
-static inline void
-LazyScriptHash(uint32_t lineno, uint32_t column, uint32_t begin, uint32_t end,
-               HashNumber hashes[3])
-{
-    HashNumber hash = lineno;
-    hash = RotateLeft(hash, 4) ^ column;
-    hash = RotateLeft(hash, 4) ^ begin;
-    hash = RotateLeft(hash, 4) ^ end;
-
-    hashes[0] = hash;
-    hashes[1] = RotateLeft(hashes[0], 4) ^ begin;
-    hashes[2] = RotateLeft(hashes[1], 4) ^ end;
-}
-
-void
-LazyScriptHashPolicy::hash(const Lookup& lookup, HashNumber hashes[3])
-{
-    LazyScript* lazy = lookup.lazy;
-    LazyScriptHash(lazy->lineno(), lazy->column(), lazy->begin(), lazy->end(), hashes);
-}
-
-void
-LazyScriptHashPolicy::hash(JSScript* script, HashNumber hashes[3])
-{
-    LazyScriptHash(script->lineno(), script->column(), script->sourceStart(), script->sourceEnd(), hashes);
-}
-
-bool
-LazyScriptHashPolicy::match(JSScript* script, const Lookup& lookup)
-{
-    JSContext* cx = lookup.cx;
-    LazyScript* lazy = lookup.lazy;
-
-    // To be a match, the script and lazy script need to have the same line
-    // and column and to be at the same position within their respective
-    // source blobs, and to have the same source contents and version.
-    //
-    // While the surrounding code in the source may differ, this is
-    // sufficient to ensure that compiling the lazy script will yield an
-    // identical result to compiling the original script.
-    //
-    // Note that the filenames and origin principals of the lazy script and
-    // original script can differ. If there is a match, these will be fixed
-    // up in the resulting clone by the caller.
-
-    if (script->lineno() != lazy->lineno() ||
-        script->column() != lazy->column() ||
-        script->getVersion() != lazy->version() ||
-        script->sourceStart() != lazy->begin() ||
-        script->sourceEnd() != lazy->end())
-    {
-        return false;
-    }
-
-    UncompressedSourceCache::AutoHoldEntry holder;
-
-    size_t scriptBegin = script->sourceStart();
-    size_t length = script->sourceEnd() - scriptBegin;
-    ScriptSource::PinnedChars scriptChars(cx, script->scriptSource(), holder, scriptBegin, length);
-    if (!scriptChars.get())
-        return false;
-
-    MOZ_ASSERT(scriptBegin == lazy->begin());
-    ScriptSource::PinnedChars lazyChars(cx, lazy->scriptSource(), holder, scriptBegin, length);
-    if (!lazyChars.get())
-        return false;
-
-    return !memcmp(scriptChars.get(), lazyChars.get(), length);
 }
 
 void

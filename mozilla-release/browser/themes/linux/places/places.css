@@ -43,12 +43,16 @@
   margin: 0;
   color: inherit;
   -moz-appearance: none;
-  border: 0;
   background: transparent;
 }
 
 .sidebar-placesTreechildren::-moz-tree-row {
   min-height: 24px;
+}
+
+:root[uidensity=touch] #search-box,
+:root[uidensity=touch] .sidebar-placesTreechildren::-moz-tree-row {
+  min-height: 32px;
 }
 
 .sidebar-placesTreechildren::-moz-tree-cell(leaf) ,

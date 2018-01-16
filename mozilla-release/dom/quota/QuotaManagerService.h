@@ -49,8 +49,6 @@ class QuotaManagerService final
 
   nsCOMPtr<nsIEventTarget> mBackgroundThread;
 
-  nsTArray<nsAutoPtr<PendingRequestInfo>> mPendingRequests;
-
   QuotaChild* mBackgroundActor;
 
   bool mBackgroundActorFailed;
@@ -65,8 +63,8 @@ public:
   static QuotaManagerService*
   Get();
 
-  // Returns an owning reference! No one should call this but the factory.
-  static QuotaManagerService*
+  // No one should call this but the factory.
+  static already_AddRefed<QuotaManagerService>
   FactoryCreate();
 
   void

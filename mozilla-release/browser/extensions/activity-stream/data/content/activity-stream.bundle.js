@@ -60,7 +60,7 @@
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 11);
+/******/ 	return __webpack_require__(__webpack_require__.s = 12);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -94,7 +94,7 @@ const globalImportContext = typeof Window === "undefined" ? BACKGROUND_PROCESS :
 //   UNINIT: "UNINIT"
 // }
 const actionTypes = {};
-for (const type of ["BLOCK_URL", "BOOKMARK_URL", "DELETE_BOOKMARK_BY_ID", "DELETE_HISTORY_URL", "DELETE_HISTORY_URL_CONFIRM", "DIALOG_CANCEL", "DIALOG_OPEN", "DISABLE_ONBOARDING", "INIT", "LOCALE_UPDATED", "MIGRATION_CANCEL", "MIGRATION_COMPLETED", "MIGRATION_START", "NEW_TAB_INIT", "NEW_TAB_INITIAL_STATE", "NEW_TAB_LOAD", "NEW_TAB_REHYDRATED", "NEW_TAB_STATE_REQUEST", "NEW_TAB_UNLOAD", "OPEN_LINK", "OPEN_NEW_WINDOW", "OPEN_PRIVATE_WINDOW", "PLACES_BOOKMARK_ADDED", "PLACES_BOOKMARK_CHANGED", "PLACES_BOOKMARK_REMOVED", "PLACES_HISTORY_CLEARED", "PLACES_LINKS_DELETED", "PLACES_LINK_BLOCKED", "PREFS_INITIAL_VALUES", "PREF_CHANGED", "SAVE_SESSION_PERF_DATA", "SAVE_TO_POCKET", "SCREENSHOT_UPDATED", "SECTION_DEREGISTER", "SECTION_DISABLE", "SECTION_ENABLE", "SECTION_OPTIONS_CHANGED", "SECTION_REGISTER", "SECTION_UPDATE", "SECTION_UPDATE_CARD", "SETTINGS_CLOSE", "SETTINGS_OPEN", "SET_PREF", "SHOW_FIREFOX_ACCOUNTS", "SNIPPETS_DATA", "SNIPPETS_RESET", "SYSTEM_TICK", "TELEMETRY_IMPRESSION_STATS", "TELEMETRY_PERFORMANCE_EVENT", "TELEMETRY_UNDESIRED_EVENT", "TELEMETRY_USER_EVENT", "TOP_SITES_ADD", "TOP_SITES_CANCEL_EDIT", "TOP_SITES_EDIT", "TOP_SITES_PIN", "TOP_SITES_UNPIN", "TOP_SITES_UPDATED", "UNINIT"]) {
+for (const type of ["BLOCK_URL", "BOOKMARK_URL", "DELETE_BOOKMARK_BY_ID", "DELETE_HISTORY_URL", "DELETE_HISTORY_URL_CONFIRM", "DIALOG_CANCEL", "DIALOG_OPEN", "DISABLE_ONBOARDING", "INIT", "MIGRATION_CANCEL", "MIGRATION_COMPLETED", "MIGRATION_START", "NEW_TAB_INIT", "NEW_TAB_INITIAL_STATE", "NEW_TAB_LOAD", "NEW_TAB_REHYDRATED", "NEW_TAB_STATE_REQUEST", "NEW_TAB_UNLOAD", "OPEN_LINK", "OPEN_NEW_WINDOW", "OPEN_PRIVATE_WINDOW", "PAGE_PRERENDERED", "PLACES_BOOKMARK_ADDED", "PLACES_BOOKMARK_CHANGED", "PLACES_BOOKMARK_REMOVED", "PLACES_HISTORY_CLEARED", "PLACES_LINKS_DELETED", "PLACES_LINK_BLOCKED", "PREFS_INITIAL_VALUES", "PREF_CHANGED", "RICH_ICON_MISSING", "SAVE_SESSION_PERF_DATA", "SAVE_TO_POCKET", "SCREENSHOT_UPDATED", "SECTION_DEREGISTER", "SECTION_DISABLE", "SECTION_ENABLE", "SECTION_OPTIONS_CHANGED", "SECTION_REGISTER", "SECTION_UPDATE", "SECTION_UPDATE_CARD", "SETTINGS_CLOSE", "SETTINGS_OPEN", "SET_PREF", "SHOW_FIREFOX_ACCOUNTS", "SNIPPETS_DATA", "SNIPPETS_RESET", "SYSTEM_TICK", "TELEMETRY_IMPRESSION_STATS", "TELEMETRY_PERFORMANCE_EVENT", "TELEMETRY_UNDESIRED_EVENT", "TELEMETRY_USER_EVENT", "TOP_SITES_ADD", "TOP_SITES_CANCEL_EDIT", "TOP_SITES_EDIT", "TOP_SITES_PIN", "TOP_SITES_UNPIN", "TOP_SITES_UPDATED", "UNINIT"]) {
   actionTypes[type] = type;
 }
 
@@ -266,6 +266,12 @@ var actionUtils = {
     }
     return false;
   },
+  isFromMain(action) {
+    if (!action.meta) {
+      return false;
+    }
+    return action.meta.from === MAIN_MESSAGE_TYPE && action.meta.to === CONTENT_MESSAGE_TYPE;
+  },
   getPortIdOfSender(action) {
     return action.meta && action.meta.fromTarget || null;
   },
@@ -351,23 +357,17 @@ module.exports = {
 
 
 const { actionTypes: at } = __webpack_require__(0);
-
-// Locales that should be displayed RTL
-const RTL_LIST = ["ar", "he", "fa", "ur"];
+const { Dedupe } = __webpack_require__(20);
 
 const TOP_SITES_DEFAULT_LENGTH = 6;
 const TOP_SITES_SHOWMORE_LENGTH = 12;
+
+const dedupe = new Dedupe(site => site && site.url);
 
 const INITIAL_STATE = {
   App: {
     // Have we received real data from the app yet?
     initialized: false,
-    // The locale of the browser
-    locale: "",
-    // Localized strings with defaults
-    strings: null,
-    // The text direction for the locale
-    textDirection: "",
     // The version of the system-addon
     version: null
   },
@@ -400,18 +400,6 @@ function App(prevState = INITIAL_STATE.App, action) {
   switch (action.type) {
     case at.INIT:
       return Object.assign({}, prevState, action.data || {}, { initialized: true });
-    case at.LOCALE_UPDATED:
-      {
-        if (!action.data) {
-          return prevState;
-        }
-        let { locale, strings } = action.data;
-        return Object.assign({}, prevState, {
-          locale,
-          strings,
-          textDirection: RTL_LIST.indexOf(locale.split("-")[0]) >= 0 ? "rtl" : "ltr"
-        });
-      }
     default:
       return prevState;
   }
@@ -580,7 +568,7 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
       }
       return newState;
     case at.SECTION_UPDATE:
-      return prevState.map(section => {
+      newState = prevState.map(section => {
         if (section && section.id === action.data.id) {
           // If the action is updating rows, we should consider initialized to be true.
           // This can be overridden if initialized is defined in the action.data
@@ -589,6 +577,28 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
         }
         return section;
       });
+
+      if (!action.data.dedupeConfigurations) {
+        return newState;
+      }
+
+      action.data.dedupeConfigurations.forEach(dedupeConf => {
+        newState = newState.map(section => {
+          if (section.id === dedupeConf.id) {
+            const dedupedRows = dedupeConf.dedupeFrom.reduce((rows, dedupeSectionId) => {
+              const dedupeSection = newState.find(s => s.id === dedupeSectionId);
+              const [, newRows] = dedupe.group(dedupeSection.rows, rows);
+              return newRows;
+            }, section.rows);
+
+            return Object.assign({}, section, { rows: dedupedRows });
+          }
+
+          return section;
+        });
+      });
+
+      return newState;
     case at.SECTION_UPDATE_CARD:
       return prevState.map(section => {
         if (section && section.id === action.data.id && section.rows) {
@@ -611,10 +621,12 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
           // find the item within the rows that is attempted to be bookmarked
           if (item.url === action.data.url) {
             const { bookmarkGuid, bookmarkTitle, dateAdded } = action.data;
-            Object.assign(item, { bookmarkGuid, bookmarkTitle, bookmarkDateCreated: dateAdded });
-            if (!item.type || item.type === "history") {
-              item.type = "bookmark";
-            }
+            return Object.assign({}, item, {
+              bookmarkGuid,
+              bookmarkTitle,
+              bookmarkDateCreated: dateAdded,
+              type: "bookmark"
+            });
           }
           return item;
         })
@@ -683,148 +695,12 @@ module.exports = {
 /* 7 */
 /***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-/* globals Services */
-
-
-/* istanbul ignore if */
-// Note: normally we would just feature detect Components.utils here, but
-// unfortunately that throws an ugly warning in content if we do.
-
-if (typeof Window === "undefined" && typeof Components !== "undefined" && Components.utils) {
-  Components.utils.import("resource://gre/modules/Services.jsm");
-}
-
-let usablePerfObj;
-
-/* istanbul ignore if */
-/* istanbul ignore else */
-if (typeof Services !== "undefined") {
-  // Borrow the high-resolution timer from the hidden window....
-  usablePerfObj = Services.appShell.hiddenDOMWindow.performance;
-} else if (typeof performance !== "undefined") {
-  // we must be running in content space
-  usablePerfObj = performance;
-} else {
-  // This is a dummy object so this file doesn't crash in the node prerendering
-  // task.
-  usablePerfObj = {
-    now() {},
-    mark() {}
-  };
-}
-
-var _PerfService = function _PerfService(options) {
-  // For testing, so that we can use a fake Window.performance object with
-  // known state.
-  if (options && options.performanceObj) {
-    this._perf = options.performanceObj;
-  } else {
-    this._perf = usablePerfObj;
-  }
-};
-
-_PerfService.prototype = {
-  /**
-   * Calls the underlying mark() method on the appropriate Window.performance
-   * object to add a mark with the given name to the appropriate performance
-   * timeline.
-   *
-   * @param  {String} name  the name to give the current mark
-   * @return {void}
-   */
-  mark: function mark(str) {
-    this._perf.mark(str);
-  },
-
-  /**
-   * Calls the underlying getEntriesByName on the appropriate Window.performance
-   * object.
-   *
-   * @param  {String} name
-   * @param  {String} type eg "mark"
-   * @return {Array}       Performance* objects
-   */
-  getEntriesByName: function getEntriesByName(name, type) {
-    return this._perf.getEntriesByName(name, type);
-  },
-
-  /**
-   * The timeOrigin property from the appropriate performance object.
-   * Used to ensure that timestamps from the add-on code and the content code
-   * are comparable.
-   *
-   * @note If this is called from a context without a window
-   * (eg a JSM in chrome), it will return the timeOrigin of the XUL hidden
-   * window, which appears to be the first created window (and thus
-   * timeOrigin) in the browser.  Note also, however, there is also a private
-   * hidden window, presumably for private browsing, which appears to be
-   * created dynamically later.  Exactly how/when that shows up needs to be
-   * investigated.
-   *
-   * @return {Number} A double of milliseconds with a precision of 0.5us.
-   */
-  get timeOrigin() {
-    return this._perf.timeOrigin;
-  },
-
-  /**
-   * Returns the "absolute" version of performance.now(), i.e. one that
-   * should ([bug 1401406](https://bugzilla.mozilla.org/show_bug.cgi?id=1401406)
-   * be comparable across both chrome and content.
-   *
-   * @return {Number}
-   */
-  absNow: function absNow() {
-    return this.timeOrigin + this._perf.now();
-  },
-
-  /**
-   * This returns the absolute startTime from the most recent performance.mark()
-   * with the given name.
-   *
-   * @param  {String} name  the name to lookup the start time for
-   *
-   * @return {Number}       the returned start time, as a DOMHighResTimeStamp
-   *
-   * @throws {Error}        "No Marks with the name ..." if none are available
-   *
-   * @note Always surround calls to this by try/catch.  Otherwise your code
-   * may fail when the `privacy.resistFingerprinting` pref is true.  When
-   * this pref is set, all attempts to get marks will likely fail, which will
-   * cause this method to throw.
-   *
-   * See [bug 1369303](https://bugzilla.mozilla.org/show_bug.cgi?id=1369303)
-   * for more info.
-   */
-  getMostRecentAbsMarkStartByName(name) {
-    let entries = this.getEntriesByName(name, "mark");
-
-    if (!entries.length) {
-      throw new Error(`No marks with the name ${name}`);
-    }
-
-    let mostRecentEntry = entries[entries.length - 1];
-    return this._perf.timeOrigin + mostRecentEntry.startTime;
-  }
-};
-
-var perfService = new _PerfService();
-module.exports = {
-  _PerfService,
-  perfService
-};
-
-/***/ }),
-/* 8 */
-/***/ (function(module, exports, __webpack_require__) {
-
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
 
 const React = __webpack_require__(1);
 const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
 
-const LinkMenu = __webpack_require__(9);
+const LinkMenu = __webpack_require__(8);
 
 const { TOP_SITES_SOURCE, TOP_SITES_CONTEXT_MENU_OPTIONS, MIN_RICH_FAVICON_SIZE, MIN_CORNER_FAVICON_SIZE } = __webpack_require__(5);
 
@@ -1033,7 +909,7 @@ module.exports.TopSiteLink = TopSiteLink;
 module.exports.TopSitePlaceholder = TopSitePlaceholder;
 
 /***/ }),
-/* 9 */
+/* 8 */
 /***/ (function(module, exports, __webpack_require__) {
 
 const React = __webpack_require__(1);
@@ -1091,22 +967,17 @@ module.exports = injectIntl(LinkMenu);
 module.exports._unconnected = LinkMenu;
 
 /***/ }),
-/* 10 */
+/* 9 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(global) {var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
 
 const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
-const { injectIntl, FormattedMessage } = __webpack_require__(2);
-const Card = __webpack_require__(20);
-const { PlaceholderCard } = Card;
-const Topics = __webpack_require__(22);
 const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
+const { injectIntl, FormattedMessage } = __webpack_require__(2);
 
 const VISIBLE = "visible";
 const VISIBILITY_CHANGE_EVENT = "visibilitychange";
-const CARDS_PER_ROW = 3;
 
 function getFormattedMessage(message) {
   return typeof message === "string" ? React.createElement(
@@ -1114,6 +985,9 @@ function getFormattedMessage(message) {
     null,
     message
   ) : React.createElement(FormattedMessage, message);
+}
+function getCollapsed(props) {
+  return props.Prefs.values[props.prefName];
 }
 
 class Info extends React.PureComponent {
@@ -1202,436 +1076,214 @@ class Info extends React.PureComponent {
 
 const InfoIntl = injectIntl(Info);
 
-class Section extends React.PureComponent {
-  _dispatchImpressionStats() {
-    const { props } = this;
-    const maxCards = 3 * props.maxRows;
-    const cards = props.rows.slice(0, maxCards);
-
-    if (this.needsImpressionStats(cards)) {
-      props.dispatch(ac.ImpressionStats({
-        source: props.eventSource,
-        tiles: cards.map(link => ({ id: link.guid })),
-        incognito: props.options && props.options.personalized
-      }));
-      this.impressionCardGuids = cards.map(link => link.guid);
-    }
+class Disclaimer extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onAcknowledge = this.onAcknowledge.bind(this);
   }
 
-  // This sends an event when a user sees a set of new content. If content
-  // changes while the page is hidden (i.e. preloaded or on a hidden tab),
-  // only send the event if the page becomes visible again.
-  sendImpressionStatsOrAddListener() {
-    const { props } = this;
-
-    if (!props.shouldSendImpressionStats || !props.dispatch) {
-      return;
-    }
-
-    if (props.document.visibilityState === VISIBLE) {
-      this._dispatchImpressionStats();
-    } else {
-      // We should only ever send the latest impression stats ping, so remove any
-      // older listeners.
-      if (this._onVisibilityChange) {
-        props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
-      }
-
-      // When the page becoems visible, send the impression stats ping.
-      this._onVisibilityChange = () => {
-        if (props.document.visibilityState === VISIBLE) {
-          this._dispatchImpressionStats();
-          props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
-        }
-      };
-      props.document.addEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
-    }
-  }
-
-  componentDidMount() {
-    if (this.props.rows.length) {
-      this.sendImpressionStatsOrAddListener();
-    }
-  }
-
-  componentDidUpdate(prevProps) {
-    const { props } = this;
-    if (
-    // Don't send impression stats for the empty state
-    props.rows.length &&
-    // We only want to send impression stats if the content of the cards has changed
-    props.rows !== prevProps.rows) {
-      this.sendImpressionStatsOrAddListener();
-    }
-  }
-
-  needsImpressionStats(cards) {
-    if (!this.impressionCardGuids || this.impressionCardGuids.length !== cards.length) {
-      return true;
-    }
-
-    for (let i = 0; i < cards.length; i++) {
-      if (cards[i].guid !== this.impressionCardGuids[i]) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  numberOfPlaceholders(items) {
-    if (items === 0) {
-      return CARDS_PER_ROW;
-    }
-    const remainder = items % CARDS_PER_ROW;
-    if (remainder === 0) {
-      return 0;
-    }
-    return CARDS_PER_ROW - remainder;
+  onAcknowledge() {
+    this.props.dispatch(ac.SetPref(this.props.disclaimerPref, false));
+    this.props.dispatch(ac.UserEvent({ event: "SECTION_DISCLAIMER_ACKNOWLEDGED", source: this.props.eventSource }));
   }
 
   render() {
-    const {
-      id, eventSource, title, icon, rows,
-      infoOption, emptyState, dispatch, maxRows,
-      contextMenuOptions, initialized
-    } = this.props;
-    const maxCards = CARDS_PER_ROW * maxRows;
-
-    // Show topics only for top stories and if it's not initialized yet (so
-    // content doesn't shift when it is loaded) or has loaded with topics
-    const shouldShowTopics = id === "topstories" && (!this.props.topics || this.props.topics.length > 0);
-
-    const realRows = rows.slice(0, maxCards);
-    const placeholders = this.numberOfPlaceholders(realRows.length);
-
-    // The empty state should only be shown after we have initialized and there is no content.
-    // Otherwise, we should show placeholders.
-    const shouldShowEmptyState = initialized && !rows.length;
-
-    // <Section> <-- React component
-    // <section> <-- HTML5 element
-    return React.createElement(
-      "section",
-      { className: "section" },
-      React.createElement(
-        "div",
-        { className: "section-top-bar" },
-        React.createElement(
-          "h3",
-          { className: "section-title" },
-          icon && icon.startsWith("moz-extension://") ? React.createElement("span", { className: "icon icon-small-spacer", style: { "background-image": `url('${icon}')` } }) : React.createElement("span", { className: `icon icon-small-spacer icon-${icon || "webextension"}` }),
-          getFormattedMessage(title)
-        ),
-        infoOption && React.createElement(InfoIntl, { infoOption: infoOption, dispatch: dispatch })
-      ),
-      !shouldShowEmptyState && React.createElement(
-        "ul",
-        { className: "section-list", style: { padding: 0 } },
-        realRows.map((link, index) => link && React.createElement(Card, { key: index, index: index, dispatch: dispatch, link: link, contextMenuOptions: contextMenuOptions,
-          eventSource: eventSource, shouldSendImpressionStats: this.props.shouldSendImpressionStats })),
-        placeholders > 0 && [...new Array(placeholders)].map((_, i) => React.createElement(PlaceholderCard, { key: i }))
-      ),
-      shouldShowEmptyState && React.createElement(
-        "div",
-        { className: "section-empty-state" },
-        React.createElement(
-          "div",
-          { className: "empty-state" },
-          emptyState.icon && emptyState.icon.startsWith("moz-extension://") ? React.createElement("img", { className: "empty-state-icon icon", style: { "background-image": `url('${emptyState.icon}')` } }) : React.createElement("img", { className: `empty-state-icon icon icon-${emptyState.icon}` }),
-          React.createElement(
-            "p",
-            { className: "empty-state-message" },
-            getFormattedMessage(emptyState.message)
-          )
-        )
-      ),
-      shouldShowTopics && React.createElement(Topics, { topics: this.props.topics, read_more_endpoint: this.props.read_more_endpoint })
-    );
-  }
-}
-
-Section.defaultProps = {
-  document: global.document,
-  rows: [],
-  emptyState: {},
-  title: ""
-};
-
-const SectionIntl = injectIntl(Section);
-
-class Sections extends React.PureComponent {
-  render() {
-    const sections = this.props.Sections;
+    const disclaimer = this.props.disclaimer;
     return React.createElement(
       "div",
-      { className: "sections-list" },
-      sections.filter(section => section.enabled).map(section => React.createElement(SectionIntl, _extends({ key: section.id }, section, { dispatch: this.props.dispatch })))
-    );
-  }
-}
-
-module.exports = connect(state => ({ Sections: state.Sections }))(Sections);
-module.exports._unconnected = Sections;
-module.exports.SectionIntl = SectionIntl;
-module.exports._unconnectedSection = Section;
-module.exports.Info = Info;
-module.exports.InfoIntl = InfoIntl;
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
-
-/***/ }),
-/* 11 */
-/***/ (function(module, exports, __webpack_require__) {
-
-/* WEBPACK VAR INJECTION */(function(global) {const React = __webpack_require__(1);
-const ReactDOM = __webpack_require__(12);
-const Base = __webpack_require__(13);
-const { Provider } = __webpack_require__(3);
-const initStore = __webpack_require__(29);
-const { reducers } = __webpack_require__(6);
-const DetectUserSessionStart = __webpack_require__(31);
-const { addSnippetsSubscriber } = __webpack_require__(32);
-const { actionTypes: at, actionCreators: ac } = __webpack_require__(0);
-
-new DetectUserSessionStart().sendEventOrAddListener();
-
-const store = initStore(reducers, global.gActivityStreamPrerenderedState);
-
-// If we are starting in a prerendered state, we must wait until the first render
-// to request state rehydration (see Base.jsx). If we are NOT in a prerendered state,
-// we can request it immedately.
-if (!global.gActivityStreamPrerenderedState) {
-  store.dispatch(ac.SendToMain({ type: at.NEW_TAB_STATE_REQUEST }));
-}
-
-ReactDOM.render(React.createElement(
-  Provider,
-  { store: store },
-  React.createElement(Base, { isPrerendered: !!global.gActivityStreamPrerenderedState })
-), document.getElementById("root"));
-
-addSnippetsSubscriber(store);
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
-
-/***/ }),
-/* 12 */
-/***/ (function(module, exports) {
-
-module.exports = ReactDOM;
-
-/***/ }),
-/* 13 */
-/***/ (function(module, exports, __webpack_require__) {
-
-const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
-const { addLocaleData, IntlProvider } = __webpack_require__(2);
-const TopSites = __webpack_require__(14);
-const Search = __webpack_require__(23);
-const ConfirmDialog = __webpack_require__(25);
-const ManualMigration = __webpack_require__(26);
-const PreferencesPane = __webpack_require__(27);
-const Sections = __webpack_require__(10);
-const { actionTypes: at, actionCreators: ac } = __webpack_require__(0);
-const { PrerenderData } = __webpack_require__(28);
-
-// Add the locale data for pluralization and relative-time formatting for now,
-// this just uses english locale data. We can make this more sophisticated if
-// more features are needed.
-function addLocaleDataForReactIntl({ locale, textDirection }) {
-  addLocaleData([{ locale, parentLocale: "en" }]);
-  document.documentElement.lang = locale;
-  document.documentElement.dir = textDirection;
-}
-
-class Base extends React.PureComponent {
-  componentWillMount() {
-    this.sendNewTabRehydrated(this.props.App);
-  }
-
-  componentDidMount() {
-    // Request state AFTER the first render to ensure we don't cause the
-    // prerendered DOM to be unmounted. Otherwise, NEW_TAB_STATE_REQUEST is
-    // dispatched right after the store is ready.
-    if (this.props.isPrerendered) {
-      this.props.dispatch(ac.SendToMain({ type: at.NEW_TAB_STATE_REQUEST }));
-    }
-
-    // Also wait for the preloaded page to show, so the tab's title and favicon updates
-    addEventListener("visibilitychange", () => {
-      this.updateTitle(this.props.App);
-      document.getElementById("favicon").href += "#";
-    }, { once: true });
-  }
-
-  componentWillUpdate({ App }) {
-    this.sendNewTabRehydrated(App);
-
-    // Early loads might not have locale yet, so wait until we do
-    if (App.locale && App.locale !== this.props.App.locale) {
-      addLocaleDataForReactIntl(App);
-      this.updateTitle(App);
-    }
-  }
-
-  updateTitle({ strings }) {
-    if (strings) {
-      document.title = strings.newtab_page_title;
-    }
-  }
-
-  // The NEW_TAB_REHYDRATED event is used to inform feeds that their
-  // data has been consumed e.g. for counting the number of tabs that
-  // have rendered that data.
-  sendNewTabRehydrated(App) {
-    if (App && App.initialized && !this.renderNotified) {
-      this.props.dispatch(ac.SendToMain({ type: at.NEW_TAB_REHYDRATED, data: {} }));
-      this.renderNotified = true;
-    }
-  }
-
-  render() {
-    const props = this.props;
-    const { locale, strings, initialized } = props.App;
-    const prefs = props.Prefs.values;
-
-    const shouldBeFixedToTop = PrerenderData.arePrefsValid(name => prefs[name]);
-
-    const outerClassName = `outer-wrapper${shouldBeFixedToTop ? " fixed-to-top" : ""}`;
-
-    if (!props.isPrerendered && !initialized) {
-      return null;
-    }
-
-    // Note: the key on IntlProvider must be static in order to not blow away
-    // all elements on a locale change (such as after preloading).
-    // See https://github.com/yahoo/react-intl/issues/695 for more info.
-    return React.createElement(
-      IntlProvider,
-      { key: "STATIC", locale: locale, messages: strings },
+      { className: "section-disclaimer" },
       React.createElement(
         "div",
-        { className: outerClassName },
-        React.createElement(
-          "main",
-          null,
-          prefs.showSearch && React.createElement(Search, null),
-          React.createElement(
-            "div",
-            { className: `body-wrapper${initialized ? " on" : ""}` },
-            !prefs.migrationExpired && React.createElement(ManualMigration, null),
-            prefs.showTopSites && React.createElement(TopSites, null),
-            React.createElement(Sections, null)
-          ),
-          React.createElement(ConfirmDialog, null)
-        ),
-        initialized && React.createElement(PreferencesPane, null)
+        { className: "section-disclaimer-text" },
+        getFormattedMessage(disclaimer.text),
+        disclaimer.link && React.createElement(
+          "a",
+          { href: disclaimer.link.href, target: "_blank", rel: "noopener noreferrer" },
+          getFormattedMessage(disclaimer.link.title || disclaimer.link)
+        )
+      ),
+      React.createElement(
+        "button",
+        { onClick: this.onAcknowledge },
+        getFormattedMessage(disclaimer.button)
       )
     );
   }
 }
 
-module.exports = connect(state => ({ App: state.App, Prefs: state.Prefs }))(Base);
-module.exports._unconnected = Base;
+const DisclaimerIntl = injectIntl(Disclaimer);
 
-/***/ }),
-/* 14 */
-/***/ (function(module, exports, __webpack_require__) {
+class CollapsibleSection extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onBodyMount = this.onBodyMount.bind(this);
+    this.onInfoEnter = this.onInfoEnter.bind(this);
+    this.onInfoLeave = this.onInfoLeave.bind(this);
+    this.onHeaderClick = this.onHeaderClick.bind(this);
+    this.onTransitionEnd = this.onTransitionEnd.bind(this);
+    this.enableOrDisableAnimation = this.enableOrDisableAnimation.bind(this);
+    this.state = { enableAnimation: true, isAnimating: false, infoActive: false };
+  }
 
-const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
-const { FormattedMessage } = __webpack_require__(2);
+  componentWillMount() {
+    this.props.document.addEventListener(VISIBILITY_CHANGE_EVENT, this.enableOrDisableAnimation);
+  }
+  componentWillUpdate(nextProps) {
+    // Check if we're about to go from expanded to collapsed
+    if (!getCollapsed(this.props) && getCollapsed(nextProps)) {
+      // This next line forces a layout flush of the section body, which has a
+      // max-height style set, so that the upcoming collapse animation can
+      // animate from that height to the collapsed height. Without this, the
+      // update is coalesced and there's no animation from no-max-height to 0.
+      this.sectionBody.scrollHeight; // eslint-disable-line no-unused-expressions
+    }
+  }
+  componentWillUnmount() {
+    this.props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this.enableOrDisableAnimation);
+  }
+  enableOrDisableAnimation() {
+    // Only animate the collapse/expand for visible tabs.
+    const visible = this.props.document.visibilityState === VISIBLE;
+    if (this.state.enableAnimation !== visible) {
+      this.setState({ enableAnimation: visible });
+    }
+  }
+  _setInfoState(nextActive) {
+    // Take a truthy value to conditionally change the infoActive state.
+    const infoActive = !!nextActive;
+    if (infoActive !== this.state.infoActive) {
+      this.setState({ infoActive });
+    }
+  }
+  onBodyMount(node) {
+    this.sectionBody = node;
+  }
+  onInfoEnter() {
+    // We're getting focus or hover, so info state should be true if not yet.
+    this._setInfoState(true);
+  }
+  onInfoLeave(event) {
+    // We currently have an active (true) info state, so keep it true only if we
+    // have a related event target that is contained "within" the current target
+    // (section-info-option) as itself or a descendant. Set to false otherwise.
+    this._setInfoState(event && event.relatedTarget && (event.relatedTarget === event.currentTarget || event.relatedTarget.compareDocumentPosition(event.currentTarget) & Node.DOCUMENT_POSITION_CONTAINS));
+  }
+  onHeaderClick() {
+    // Get the current height of the body so max-height transitions can work
+    this.setState({
+      isAnimating: true,
+      maxHeight: `${this.sectionBody.scrollHeight}px`
+    });
+    this.props.dispatch(ac.SetPref(this.props.prefName, !getCollapsed(this.props)));
+  }
+  onTransitionEnd(event) {
+    // Only update the animating state for our own transition (not a child's)
+    if (event.target === event.currentTarget) {
+      this.setState({ isAnimating: false });
+    }
+  }
+  renderIcon() {
+    const icon = this.props.icon;
+    if (icon && icon.startsWith("moz-extension://")) {
+      return React.createElement("span", { className: "icon icon-small-spacer", style: { "background-image": `url('${icon}')` } });
+    }
+    return React.createElement("span", { className: `icon icon-small-spacer icon-${icon || "webextension"}` });
+  }
+  render() {
+    const isCollapsed = getCollapsed(this.props);
+    const { enableAnimation, isAnimating, maxHeight } = this.state;
+    const { id, infoOption, eventSource, disclaimer } = this.props;
+    const disclaimerPref = `section.${id}.showDisclaimer`;
+    const needsDisclaimer = disclaimer && this.props.Prefs.values[disclaimerPref];
 
-const TopSitesPerfTimer = __webpack_require__(15);
-const TopSitesEdit = __webpack_require__(16);
-const { TopSite, TopSitePlaceholder } = __webpack_require__(8);
-const { InfoIntl } = __webpack_require__(10);
-
-const TopSites = props => {
-  const realTopSites = props.TopSites.rows.slice(0, props.TopSitesCount);
-  const placeholderCount = props.TopSitesCount - realTopSites.length;
-  const infoOption = {
-    header: { id: "settings_pane_topsites_header" },
-    body: { id: "settings_pane_topsites_body" }
-  };
-  return React.createElement(
-    TopSitesPerfTimer,
-    null,
-    React.createElement(
+    return React.createElement(
       "section",
-      { className: "section top-sites" },
+      { className: `collapsible-section ${this.props.className}${enableAnimation ? " animation-enabled" : ""}${isCollapsed ? " collapsed" : ""}` },
       React.createElement(
         "div",
         { className: "section-top-bar" },
         React.createElement(
           "h3",
           { className: "section-title" },
-          React.createElement("span", { className: `icon icon-small-spacer icon-topsites` }),
-          React.createElement(FormattedMessage, { id: "header_top_sites" })
+          React.createElement(
+            "span",
+            { className: "click-target", onClick: this.onHeaderClick },
+            this.renderIcon(),
+            this.props.title,
+            React.createElement("span", { className: `icon ${isCollapsed ? "icon-arrowhead-forward" : "icon-arrowhead-down"}` })
+          )
         ),
-        React.createElement(InfoIntl, { infoOption: infoOption, dispatch: props.dispatch })
+        infoOption && React.createElement(InfoIntl, { infoOption: infoOption, dispatch: this.props.dispatch })
       ),
       React.createElement(
-        "ul",
-        { className: "top-sites-list" },
-        realTopSites.map((link, index) => link && React.createElement(TopSite, {
-          key: link.guid || link.url,
-          dispatch: props.dispatch,
-          link: link,
-          index: index,
-          intl: props.intl })),
-        placeholderCount > 0 && [...Array(placeholderCount)].map((_, i) => React.createElement(TopSitePlaceholder, { key: i }))
-      ),
-      React.createElement(TopSitesEdit, props)
-    )
-  );
+        "div",
+        {
+          className: `section-body${isAnimating ? " animating" : ""}`,
+          onTransitionEnd: this.onTransitionEnd,
+          ref: this.onBodyMount,
+          style: isAnimating && !isCollapsed ? { maxHeight } : null },
+        needsDisclaimer && React.createElement(DisclaimerIntl, { disclaimerPref: disclaimerPref, disclaimer: disclaimer, eventSource: eventSource, dispatch: this.props.dispatch }),
+        this.props.children
+      )
+    );
+  }
+}
+
+CollapsibleSection.defaultProps = {
+  document: global.document || {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    visibilityState: "hidden"
+  },
+  Prefs: { values: {} }
 };
 
-module.exports = connect(state => ({ TopSites: state.TopSites, TopSitesCount: state.Prefs.values.topSitesCount }))(TopSites);
-module.exports._unconnected = TopSites;
+module.exports = injectIntl(CollapsibleSection);
+module.exports._unconnected = CollapsibleSection;
+module.exports.Info = Info;
+module.exports.InfoIntl = InfoIntl;
+module.exports.Disclaimer = Disclaimer;
+module.exports.DisclaimerIntl = DisclaimerIntl;
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
 
 /***/ }),
-/* 15 */
+/* 10 */
 /***/ (function(module, exports, __webpack_require__) {
 
 const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
 const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
-const { perfService: perfSvc } = __webpack_require__(7);
+const { perfService: perfSvc } = __webpack_require__(11);
 
-/**
- * A proxy class that uses double requestAnimationFrame from
- * componentDidMount to dispatch a SAVE_SESSION_PERF_DATA to the main procsess
- * after the paint.
- *
- * This uses two callbacks because, after one callback, this part of the tree
- * may have rendered but not yet reflowed.  This strategy is modeled after
- * https://stackoverflow.com/a/34999925 but uses a double rFA because
- * we want to get to the closest reliable paint for measuring, and
- * setTimeout is often throttled or queued by browsers in ways that could
- * make it lag too long.
- *
- * XXX Should be made more generic by using this.props.children, or potentially
- * even split out into a higher-order component to wrap whatever.
- *
- * @class TopSitesPerfTimer
- * @extends {React.PureComponent}
- */
-class TopSitesPerfTimer extends React.PureComponent {
+// Currently record only a fixed set of sections. This will prevent data
+// from custom sections from showing up or from topstories.
+const RECORDED_SECTIONS = ["highlights", "topsites"];
+
+class ComponentPerfTimer extends React.Component {
   constructor(props) {
     super(props);
     // Just for test dependency injection:
     this.perfSvc = this.props.perfSvc || perfSvc;
 
+    this._sendBadStateEvent = this._sendBadStateEvent.bind(this);
     this._sendPaintedEvent = this._sendPaintedEvent.bind(this);
+    this._reportMissingData = false;
     this._timestampHandled = false;
+    this._recordedFirstRender = false;
   }
 
   componentDidMount() {
+    if (!RECORDED_SECTIONS.includes(this.props.id)) {
+      return;
+    }
+
     this._maybeSendPaintedEvent();
   }
 
   componentDidUpdate() {
+    if (!RECORDED_SECTIONS.includes(this.props.id)) {
+      return;
+    }
+
     this._maybeSendPaintedEvent();
   }
 
@@ -1659,18 +1311,22 @@ class TopSitesPerfTimer extends React.PureComponent {
     requestAnimationFrame(() => setTimeout(callback, 0));
   }
 
-  _maybeSendPaintedEvent() {
-    // We don't want this to ever happen, but sometimes it does.  And when it
-    // does (typically on the first newtab at startup time calling
-    // componentDidMount), the paint(s) we care about will be later (eg
-    // in a subsequent componentDidUpdate).
-    if (!this.props.TopSites.initialized) {
-      // XXX should send bad event
-      return;
+  _maybeSendBadStateEvent() {
+    // Follow up bugs:
+    // https://github.com/mozilla/activity-stream/issues/3691
+    if (!this.props.initialized) {
+      // Remember to report back when data is available.
+      this._reportMissingData = true;
+    } else if (this._reportMissingData) {
+      this._reportMissingData = false;
+      // Report how long it took for component to become initialized.
+      this._sendBadStateEvent();
     }
+  }
 
-    // If we've already handled a timestamp, don't do it again
-    if (this._timestampHandled) {
+  _maybeSendPaintedEvent() {
+    // If we've already handled a timestamp, don't do it again.
+    if (this._timestampHandled || !this.props.initialized) {
       return;
     }
 
@@ -1678,21 +1334,68 @@ class TopSitesPerfTimer extends React.PureComponent {
     // something goes wrong in the callback, we can't try again, as we'd be
     // sending back the wrong data, and we have to do it here, so that other
     // calls to this method while waiting for the next frame won't also try to
-    // handle handle it.
+    // handle it.
     this._timestampHandled = true;
-
     this._afterFramePaint(this._sendPaintedEvent);
   }
 
-  _sendPaintedEvent() {
-    this.perfSvc.mark("topsites_first_painted_ts");
+  /**
+   * Triggered by call to render. Only first call goes through due to
+   * `_recordedFirstRender`.
+   */
+  _ensureFirstRenderTsRecorded() {
+    // Used as t0 for recording how long component took to initialize.
+    if (!this._recordedFirstRender) {
+      this._recordedFirstRender = true;
+      // topsites_first_render_ts, highlights_first_render_ts.
+      const key = `${this.props.id}_first_render_ts`;
+      this.perfSvc.mark(key);
+    }
+  }
+
+  /**
+   * Creates `TELEMETRY_UNDESIRED_EVENT` with timestamp in ms
+   * of how much longer the data took to be ready for display than it would
+   * have been the ideal case.
+   * https://github.com/mozilla/ping-centre/issues/98
+   */
+  _sendBadStateEvent() {
+    // highlights_data_ready_ts, topsites_data_ready_ts.
+    const dataReadyKey = `${this.props.id}_data_ready_ts`;
+    this.perfSvc.mark(dataReadyKey);
 
     try {
-      let topsites_first_painted_ts = this.perfSvc.getMostRecentAbsMarkStartByName("topsites_first_painted_ts");
+      const firstRenderKey = `${this.props.id}_first_render_ts`;
+      // value has to be Int32.
+      const value = parseInt(this.perfSvc.getMostRecentAbsMarkStartByName(dataReadyKey) - this.perfSvc.getMostRecentAbsMarkStartByName(firstRenderKey), 10);
+      this.props.dispatch(ac.SendToMain({
+        type: at.SAVE_SESSION_PERF_DATA,
+        // highlights_data_late_by_ms, topsites_data_late_by_ms.
+        data: { [`${this.props.id}_data_late_by_ms`]: value }
+      }));
+    } catch (ex) {
+      // If this failed, it's likely because the `privacy.resistFingerprinting`
+      // pref is true.
+    }
+  }
+
+  _sendPaintedEvent() {
+    // Record first_painted event but only send if topsites.
+    if (this.props.id !== "topsites") {
+      return;
+    }
+
+    // topsites_first_painted_ts.
+    const key = `${this.props.id}_first_painted_ts`;
+    this.perfSvc.mark(key);
+
+    try {
+      const data = {};
+      data[key] = this.perfSvc.getMostRecentAbsMarkStartByName(key);
 
       this.props.dispatch(ac.SendToMain({
         type: at.SAVE_SESSION_PERF_DATA,
-        data: { topsites_first_painted_ts }
+        data
       }));
     } catch (ex) {
       // If this failed, it's likely because the `privacy.resistFingerprinting`
@@ -1702,12 +1405,399 @@ class TopSitesPerfTimer extends React.PureComponent {
   }
 
   render() {
+    if (RECORDED_SECTIONS.includes(this.props.id)) {
+      this._ensureFirstRenderTsRecorded();
+      this._maybeSendBadStateEvent();
+    }
     return this.props.children;
   }
 }
 
-module.exports = connect(state => ({ TopSites: state.TopSites }))(TopSitesPerfTimer);
-module.exports._unconnected = TopSitesPerfTimer;
+module.exports = ComponentPerfTimer;
+
+/***/ }),
+/* 11 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* globals Services */
+
+
+/* istanbul ignore if */
+// Note: normally we would just feature detect Components.utils here, but
+// unfortunately that throws an ugly warning in content if we do.
+
+if (typeof Window === "undefined" && typeof Components !== "undefined" && Components.utils) {
+  Components.utils.import("resource://gre/modules/Services.jsm");
+}
+
+let usablePerfObj;
+
+/* istanbul ignore if */
+/* istanbul ignore else */
+if (typeof Services !== "undefined") {
+  // Borrow the high-resolution timer from the hidden window....
+  usablePerfObj = Services.appShell.hiddenDOMWindow.performance;
+} else if (typeof performance !== "undefined") {
+  // we must be running in content space
+  usablePerfObj = performance;
+} else {
+  // This is a dummy object so this file doesn't crash in the node prerendering
+  // task.
+  usablePerfObj = {
+    now() {},
+    mark() {}
+  };
+}
+
+var _PerfService = function _PerfService(options) {
+  // For testing, so that we can use a fake Window.performance object with
+  // known state.
+  if (options && options.performanceObj) {
+    this._perf = options.performanceObj;
+  } else {
+    this._perf = usablePerfObj;
+  }
+};
+
+_PerfService.prototype = {
+  /**
+   * Calls the underlying mark() method on the appropriate Window.performance
+   * object to add a mark with the given name to the appropriate performance
+   * timeline.
+   *
+   * @param  {String} name  the name to give the current mark
+   * @return {void}
+   */
+  mark: function mark(str) {
+    this._perf.mark(str);
+  },
+
+  /**
+   * Calls the underlying getEntriesByName on the appropriate Window.performance
+   * object.
+   *
+   * @param  {String} name
+   * @param  {String} type eg "mark"
+   * @return {Array}       Performance* objects
+   */
+  getEntriesByName: function getEntriesByName(name, type) {
+    return this._perf.getEntriesByName(name, type);
+  },
+
+  /**
+   * The timeOrigin property from the appropriate performance object.
+   * Used to ensure that timestamps from the add-on code and the content code
+   * are comparable.
+   *
+   * @note If this is called from a context without a window
+   * (eg a JSM in chrome), it will return the timeOrigin of the XUL hidden
+   * window, which appears to be the first created window (and thus
+   * timeOrigin) in the browser.  Note also, however, there is also a private
+   * hidden window, presumably for private browsing, which appears to be
+   * created dynamically later.  Exactly how/when that shows up needs to be
+   * investigated.
+   *
+   * @return {Number} A double of milliseconds with a precision of 0.5us.
+   */
+  get timeOrigin() {
+    return this._perf.timeOrigin;
+  },
+
+  /**
+   * Returns the "absolute" version of performance.now(), i.e. one that
+   * should ([bug 1401406](https://bugzilla.mozilla.org/show_bug.cgi?id=1401406)
+   * be comparable across both chrome and content.
+   *
+   * @return {Number}
+   */
+  absNow: function absNow() {
+    return this.timeOrigin + this._perf.now();
+  },
+
+  /**
+   * This returns the absolute startTime from the most recent performance.mark()
+   * with the given name.
+   *
+   * @param  {String} name  the name to lookup the start time for
+   *
+   * @return {Number}       the returned start time, as a DOMHighResTimeStamp
+   *
+   * @throws {Error}        "No Marks with the name ..." if none are available
+   *
+   * @note Always surround calls to this by try/catch.  Otherwise your code
+   * may fail when the `privacy.resistFingerprinting` pref is true.  When
+   * this pref is set, all attempts to get marks will likely fail, which will
+   * cause this method to throw.
+   *
+   * See [bug 1369303](https://bugzilla.mozilla.org/show_bug.cgi?id=1369303)
+   * for more info.
+   */
+  getMostRecentAbsMarkStartByName(name) {
+    let entries = this.getEntriesByName(name, "mark");
+
+    if (!entries.length) {
+      throw new Error(`No marks with the name ${name}`);
+    }
+
+    let mostRecentEntry = entries[entries.length - 1];
+    return this._perf.timeOrigin + mostRecentEntry.startTime;
+  }
+};
+
+var perfService = new _PerfService();
+module.exports = {
+  _PerfService,
+  perfService
+};
+
+/***/ }),
+/* 12 */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* WEBPACK VAR INJECTION */(function(global) {const React = __webpack_require__(1);
+const ReactDOM = __webpack_require__(13);
+const Base = __webpack_require__(14);
+const { Provider } = __webpack_require__(3);
+const initStore = __webpack_require__(31);
+const { reducers } = __webpack_require__(6);
+const DetectUserSessionStart = __webpack_require__(33);
+const { addSnippetsSubscriber } = __webpack_require__(34);
+const { actionTypes: at, actionCreators: ac } = __webpack_require__(0);
+
+const store = initStore(reducers, global.gActivityStreamPrerenderedState);
+
+new DetectUserSessionStart(store).sendEventOrAddListener();
+
+// If we are starting in a prerendered state, we must wait until the first render
+// to request state rehydration (see Base.jsx). If we are NOT in a prerendered state,
+// we can request it immedately.
+if (!global.gActivityStreamPrerenderedState) {
+  store.dispatch(ac.SendToMain({ type: at.NEW_TAB_STATE_REQUEST }));
+}
+
+ReactDOM.render(React.createElement(
+  Provider,
+  { store: store },
+  React.createElement(Base, {
+    isPrerendered: !!global.gActivityStreamPrerenderedState,
+    locale: global.document.documentElement.lang,
+    strings: global.gActivityStreamStrings })
+), document.getElementById("root"));
+
+addSnippetsSubscriber(store);
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
+
+/***/ }),
+/* 13 */
+/***/ (function(module, exports) {
+
+module.exports = ReactDOM;
+
+/***/ }),
+/* 14 */
+/***/ (function(module, exports, __webpack_require__) {
+
+const React = __webpack_require__(1);
+const { connect } = __webpack_require__(3);
+const { addLocaleData, IntlProvider } = __webpack_require__(2);
+const TopSites = __webpack_require__(15);
+const Search = __webpack_require__(21);
+const ConfirmDialog = __webpack_require__(23);
+const ManualMigration = __webpack_require__(24);
+const PreferencesPane = __webpack_require__(25);
+const Sections = __webpack_require__(26);
+const { actionTypes: at, actionCreators: ac } = __webpack_require__(0);
+const { PrerenderData } = __webpack_require__(30);
+
+// Add the locale data for pluralization and relative-time formatting for now,
+// this just uses english locale data. We can make this more sophisticated if
+// more features are needed.
+function addLocaleDataForReactIntl(locale) {
+  addLocaleData([{ locale, parentLocale: "en" }]);
+}
+
+class Base extends React.PureComponent {
+  componentWillMount() {
+    const { App, locale } = this.props;
+    this.sendNewTabRehydrated(App);
+    addLocaleDataForReactIntl(locale);
+  }
+
+  componentDidMount() {
+    // Request state AFTER the first render to ensure we don't cause the
+    // prerendered DOM to be unmounted. Otherwise, NEW_TAB_STATE_REQUEST is
+    // dispatched right after the store is ready.
+    if (this.props.isPrerendered) {
+      this.props.dispatch(ac.SendToMain({ type: at.NEW_TAB_STATE_REQUEST }));
+      this.props.dispatch(ac.SendToMain({ type: at.PAGE_PRERENDERED }));
+    }
+
+    // Also wait for the preloaded page to show, so the tab's favicon updates
+    addEventListener("visibilitychange", () => {
+      document.getElementById("favicon").href += "#";
+    }, { once: true });
+  }
+
+  componentWillUpdate({ App }) {
+    this.sendNewTabRehydrated(App);
+  }
+
+  // The NEW_TAB_REHYDRATED event is used to inform feeds that their
+  // data has been consumed e.g. for counting the number of tabs that
+  // have rendered that data.
+  sendNewTabRehydrated(App) {
+    if (App && App.initialized && !this.renderNotified) {
+      this.props.dispatch(ac.SendToMain({ type: at.NEW_TAB_REHYDRATED, data: {} }));
+      this.renderNotified = true;
+    }
+  }
+
+  render() {
+    const props = this.props;
+    const { App, locale, strings } = props;
+    const { initialized } = App;
+    const prefs = props.Prefs.values;
+
+    const shouldBeFixedToTop = PrerenderData.arePrefsValid(name => prefs[name]);
+
+    const outerClassName = `outer-wrapper${shouldBeFixedToTop ? " fixed-to-top" : ""}`;
+
+    if (!props.isPrerendered && !initialized) {
+      return null;
+    }
+
+    return React.createElement(
+      IntlProvider,
+      { locale: locale, messages: strings },
+      React.createElement(
+        "div",
+        { className: outerClassName },
+        React.createElement(
+          "main",
+          null,
+          prefs.showSearch && React.createElement(Search, null),
+          React.createElement(
+            "div",
+            { className: `body-wrapper${initialized ? " on" : ""}` },
+            !prefs.migrationExpired && React.createElement(ManualMigration, null),
+            prefs.showTopSites && React.createElement(TopSites, null),
+            React.createElement(Sections, null)
+          ),
+          React.createElement(ConfirmDialog, null)
+        ),
+        initialized && React.createElement(PreferencesPane, null)
+      )
+    );
+  }
+}
+
+module.exports = connect(state => ({ App: state.App, Prefs: state.Prefs }))(Base);
+module.exports._unconnected = Base;
+
+/***/ }),
+/* 15 */
+/***/ (function(module, exports, __webpack_require__) {
+
+const React = __webpack_require__(1);
+const { connect } = __webpack_require__(3);
+const { FormattedMessage } = __webpack_require__(2);
+
+const TopSitesEdit = __webpack_require__(16);
+const { TopSite, TopSitePlaceholder } = __webpack_require__(7);
+const CollapsibleSection = __webpack_require__(9);
+const ComponentPerfTimer = __webpack_require__(10);
+const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
+const { MIN_RICH_FAVICON_SIZE, MIN_CORNER_FAVICON_SIZE } = __webpack_require__(5);
+
+/**
+ * Iterates through TopSites and counts types of images.
+ * @param acc Accumulator for reducer.
+ * @param topsite Entry in TopSites.
+ */
+function countTopSitesIconsTypes(topSites) {
+  const countTopSitesTypes = (acc, link) => {
+    if (link.tippyTopIcon || link.faviconRef === "tippytop") {
+      acc.tippytop++;
+    } else if (link.faviconSize >= MIN_RICH_FAVICON_SIZE) {
+      acc.rich_icon++;
+    } else if (link.screenshot && link.faviconSize >= MIN_CORNER_FAVICON_SIZE) {
+      acc.screenshot_with_icon++;
+    } else if (link.screenshot) {
+      acc.screenshot++;
+    } else {
+      acc.no_image++;
+    }
+
+    return acc;
+  };
+
+  return topSites.reduce(countTopSitesTypes, {
+    "screenshot_with_icon": 0,
+    "screenshot": 0,
+    "tippytop": 0,
+    "rich_icon": 0,
+    "no_image": 0
+  });
+}
+
+class TopSites extends React.PureComponent {
+  componentDidUpdate() {
+    const realTopSites = this.props.TopSites.rows.slice(0, this.props.TopSitesCount);
+
+    const topSitesIconsStats = countTopSitesIconsTypes(realTopSites);
+    // Dispatch telemetry event with the count of TopSites images types.
+    this.props.dispatch(ac.SendToMain({
+      type: at.SAVE_SESSION_PERF_DATA,
+      data: { topsites_icon_stats: topSitesIconsStats }
+    }));
+  }
+
+  componentDidMount() {
+    const realTopSites = this.props.TopSites.rows.slice(0, this.props.TopSitesCount);
+
+    const topSitesIconsStats = countTopSitesIconsTypes(realTopSites);
+    // Dispatch telemetry event with the count of TopSites images types.
+    this.props.dispatch(ac.SendToMain({
+      type: at.SAVE_SESSION_PERF_DATA,
+      data: { topsites_icon_stats: topSitesIconsStats }
+    }));
+  }
+
+  render() {
+    const props = this.props;
+    const realTopSites = props.TopSites.rows.slice(0, props.TopSitesCount);
+
+    const placeholderCount = props.TopSitesCount - realTopSites.length;
+    const infoOption = {
+      header: { id: "settings_pane_topsites_header" },
+      body: { id: "settings_pane_topsites_body" }
+    };
+    return React.createElement(
+      ComponentPerfTimer,
+      { id: "topsites", initialized: props.TopSites.initialized, dispatch: props.dispatch },
+      React.createElement(
+        CollapsibleSection,
+        { className: "top-sites", icon: "topsites", title: React.createElement(FormattedMessage, { id: "header_top_sites" }), infoOption: infoOption, prefName: "collapseTopSites", Prefs: props.Prefs, dispatch: props.dispatch },
+        React.createElement(
+          "ul",
+          { className: "top-sites-list" },
+          realTopSites.map((link, index) => link && React.createElement(TopSite, {
+            key: link.guid || link.url,
+            dispatch: props.dispatch,
+            link: link,
+            index: index,
+            intl: props.intl })),
+          placeholderCount > 0 && [...Array(placeholderCount)].map((_, i) => React.createElement(TopSitePlaceholder, { key: i }))
+        ),
+        React.createElement(TopSitesEdit, props)
+      )
+    );
+  }
+}
+
+module.exports = connect(state => ({ TopSites: state.TopSites, Prefs: state.Prefs, TopSitesCount: state.Prefs.values.topSitesCount }))(TopSites);
+module.exports._unconnected = TopSites;
 
 /***/ }),
 /* 16 */
@@ -1718,7 +1808,7 @@ const { FormattedMessage, injectIntl } = __webpack_require__(2);
 const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
 
 const TopSiteForm = __webpack_require__(17);
-const { TopSite, TopSitePlaceholder } = __webpack_require__(8);
+const { TopSite, TopSitePlaceholder } = __webpack_require__(7);
 
 const { TOP_SITES_DEFAULT_LENGTH, TOP_SITES_SHOWMORE_LENGTH } = __webpack_require__(6);
 const { TOP_SITES_SOURCE } = __webpack_require__(5);
@@ -2193,7 +2283,7 @@ module.exports = {
     icon: "bookmark-hollow",
     action: ac.SendToMain({
       type: at.BOOKMARK_URL,
-      data: { url: site.url, title: site.title }
+      data: { url: site.url, title: site.title, type: site.type }
     }),
     userEvent: "BOOKMARK_ADD"
   }),
@@ -2225,7 +2315,6 @@ module.exports = {
     impression: ac.ImpressionStats({
       source: eventSource,
       block: 0,
-      incognito: true,
       tiles: [{ id: site.guid, pos: index }]
     }),
     userEvent: "BLOCK"
@@ -2271,7 +2360,6 @@ module.exports = {
     impression: ac.ImpressionStats({
       source: eventSource,
       pocket: 0,
-      incognito: true,
       tiles: [{ id: site.guid, pos: index }]
     }),
     userEvent: "SAVE_TO_POCKET"
@@ -2291,12 +2379,750 @@ module.exports.CheckPinTopSite = (site, index) => site.isPinned ? module.exports
 
 /***/ }),
 /* 20 */
+/***/ (function(module, exports) {
+
+var Dedupe = class Dedupe {
+  constructor(createKey) {
+    this.createKey = createKey || this.defaultCreateKey;
+  }
+
+  defaultCreateKey(item) {
+    return item;
+  }
+
+  /**
+   * Dedupe any number of grouped elements favoring those from earlier groups.
+   *
+   * @param {Array} groups Contains an arbitrary number of arrays of elements.
+   * @returns {Array} A matching array of each provided group deduped.
+   */
+  group(...groups) {
+    const globalKeys = new Set();
+    const result = [];
+    for (const values of groups) {
+      const valueMap = new Map();
+      for (const value of values) {
+        const key = this.createKey(value);
+        if (!globalKeys.has(key) && !valueMap.has(key)) {
+          valueMap.set(key, value);
+        }
+      }
+      result.push(valueMap);
+      valueMap.forEach((value, key) => globalKeys.add(key));
+    }
+    return result.map(m => Array.from(m.values()));
+  }
+};
+module.exports = {
+  Dedupe
+};
+
+/***/ }),
+/* 21 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* globals ContentSearchUIController */
+
+
+const React = __webpack_require__(1);
+const { connect } = __webpack_require__(3);
+const { FormattedMessage, injectIntl } = __webpack_require__(2);
+const { actionCreators: ac } = __webpack_require__(0);
+const { IS_NEWTAB } = __webpack_require__(22);
+
+class Search extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onClick = this.onClick.bind(this);
+    this.onInputMount = this.onInputMount.bind(this);
+  }
+
+  handleEvent(event) {
+    // Also track search events with our own telemetry
+    if (event.detail.type === "Search") {
+      this.props.dispatch(ac.UserEvent({ event: "SEARCH" }));
+    }
+  }
+  onClick(event) {
+    window.gContentSearchController.search(event);
+  }
+  componentWillUnmount() {
+    delete window.gContentSearchController;
+  }
+  onInputMount(input) {
+    if (input) {
+      // The "healthReportKey" and needs to be "newtab" or "abouthome" so that
+      // BrowserUsageTelemetry.jsm knows to handle events with this name, and
+      // can add the appropriate telemetry probes for search. Without the correct
+      // name, certain tests like browser_UsageTelemetry_content.js will fail
+      // (See github ticket #2348 for more details)
+      const healthReportKey = IS_NEWTAB ? "newtab" : "abouthome";
+
+      // The "searchSource" needs to be "newtab" or "homepage" and is sent with
+      // the search data and acts as context for the search request (See
+      // nsISearchEngine.getSubmission). It is necessary so that search engine
+      // plugins can correctly atribute referrals. (See github ticket #3321 for
+      // more details)
+      const searchSource = IS_NEWTAB ? "newtab" : "homepage";
+
+      // gContentSearchController needs to exist as a global so that tests for
+      // the existing about:home can find it; and so it allows these tests to pass.
+      // In the future, when activity stream is default about:home, this can be renamed
+      window.gContentSearchController = new ContentSearchUIController(input, input.parentNode, healthReportKey, searchSource);
+      addEventListener("ContentSearchClient", this);
+
+      // Focus the search box if we are on about:home
+      if (!IS_NEWTAB) {
+        input.focus();
+      }
+    } else {
+      window.gContentSearchController = null;
+      removeEventListener("ContentSearchClient", this);
+    }
+  }
+
+  /*
+   * Do not change the ID on the input field, as legacy newtab code
+   * specifically looks for the id 'newtab-search-text' on input fields
+   * in order to execute searches in various tests
+   */
+  render() {
+    return React.createElement(
+      "div",
+      { className: "search-wrapper" },
+      React.createElement(
+        "label",
+        { htmlFor: "newtab-search-text", className: "search-label" },
+        React.createElement(
+          "span",
+          { className: "sr-only" },
+          React.createElement(FormattedMessage, { id: "search_web_placeholder" })
+        )
+      ),
+      React.createElement("input", {
+        id: "newtab-search-text",
+        maxLength: "256",
+        placeholder: this.props.intl.formatMessage({ id: "search_web_placeholder" }),
+        ref: this.onInputMount,
+        title: this.props.intl.formatMessage({ id: "search_web_placeholder" }),
+        type: "search" }),
+      React.createElement(
+        "button",
+        {
+          id: "searchSubmit",
+          className: "search-button",
+          onClick: this.onClick,
+          title: this.props.intl.formatMessage({ id: "search_button" }) },
+        React.createElement(
+          "span",
+          { className: "sr-only" },
+          React.createElement(FormattedMessage, { id: "search_button" })
+        )
+      )
+    );
+  }
+}
+
+module.exports = connect()(injectIntl(Search));
+module.exports._unconnected = Search;
+
+/***/ }),
+/* 22 */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* WEBPACK VAR INJECTION */(function(global) {module.exports = {
+  // constant to know if the page is about:newtab or about:home
+  IS_NEWTAB: global.document && global.document.documentURI === "about:newtab"
+};
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
+
+/***/ }),
+/* 23 */
 /***/ (function(module, exports, __webpack_require__) {
 
 const React = __webpack_require__(1);
-const LinkMenu = __webpack_require__(9);
+const { connect } = __webpack_require__(3);
 const { FormattedMessage } = __webpack_require__(2);
-const cardContextTypes = __webpack_require__(21);
+const { actionTypes, actionCreators: ac } = __webpack_require__(0);
+
+/**
+ * ConfirmDialog component.
+ * One primary action button, one cancel button.
+ *
+ * Content displayed is controlled by `data` prop the component receives.
+ * Example:
+ * data: {
+ *   // Any sort of data needed to be passed around by actions.
+ *   payload: site.url,
+ *   // Primary button SendToMain action.
+ *   action: "DELETE_HISTORY_URL",
+ *   // Primary button USerEvent action.
+ *   userEvent: "DELETE",
+ *   // Array of locale ids to display.
+ *   message_body: ["confirm_history_delete_p1", "confirm_history_delete_notice_p2"],
+ *   // Text for primary button.
+ *   confirm_button_string_id: "menu_action_delete"
+ * },
+ */
+class ConfirmDialog extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this._handleCancelBtn = this._handleCancelBtn.bind(this);
+    this._handleConfirmBtn = this._handleConfirmBtn.bind(this);
+  }
+
+  _handleCancelBtn() {
+    this.props.dispatch({ type: actionTypes.DIALOG_CANCEL });
+    this.props.dispatch(ac.UserEvent({ event: actionTypes.DIALOG_CANCEL }));
+  }
+
+  _handleConfirmBtn() {
+    this.props.data.onConfirm.forEach(this.props.dispatch);
+  }
+
+  _renderModalMessage() {
+    const message_body = this.props.data.body_string_id;
+
+    if (!message_body) {
+      return null;
+    }
+
+    return React.createElement(
+      "span",
+      null,
+      message_body.map(msg => React.createElement(
+        "p",
+        { key: msg },
+        React.createElement(FormattedMessage, { id: msg })
+      ))
+    );
+  }
+
+  render() {
+    if (!this.props.visible) {
+      return null;
+    }
+
+    return React.createElement(
+      "div",
+      { className: "confirmation-dialog" },
+      React.createElement("div", { className: "modal-overlay", onClick: this._handleCancelBtn }),
+      React.createElement(
+        "div",
+        { className: "modal" },
+        React.createElement(
+          "section",
+          { className: "modal-message" },
+          this._renderModalMessage()
+        ),
+        React.createElement(
+          "section",
+          { className: "actions" },
+          React.createElement(
+            "button",
+            { onClick: this._handleCancelBtn },
+            React.createElement(FormattedMessage, { id: "topsites_form_cancel_button" })
+          ),
+          React.createElement(
+            "button",
+            { className: "done", onClick: this._handleConfirmBtn },
+            React.createElement(FormattedMessage, { id: this.props.data.confirm_button_string_id })
+          )
+        )
+      )
+    );
+  }
+}
+
+module.exports = connect(state => state.Dialog)(ConfirmDialog);
+module.exports._unconnected = ConfirmDialog;
+module.exports.Dialog = ConfirmDialog;
+
+/***/ }),
+/* 24 */
+/***/ (function(module, exports, __webpack_require__) {
+
+const React = __webpack_require__(1);
+const { connect } = __webpack_require__(3);
+const { FormattedMessage } = __webpack_require__(2);
+const { actionTypes: at, actionCreators: ac } = __webpack_require__(0);
+
+/**
+ * Manual migration component used to start the profile import wizard.
+ * Message is presented temporarily and will go away if:
+ * 1.  User clicks "No Thanks"
+ * 2.  User completed the data import
+ * 3.  After 3 active days
+ * 4.  User clicks "Cancel" on the import wizard (currently not implemented).
+ */
+class ManualMigration extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onLaunchTour = this.onLaunchTour.bind(this);
+    this.onCancelTour = this.onCancelTour.bind(this);
+  }
+  onLaunchTour() {
+    this.props.dispatch(ac.SendToMain({ type: at.MIGRATION_START }));
+    this.props.dispatch(ac.UserEvent({ event: at.MIGRATION_START }));
+  }
+
+  onCancelTour() {
+    this.props.dispatch(ac.SendToMain({ type: at.MIGRATION_CANCEL }));
+    this.props.dispatch(ac.UserEvent({ event: at.MIGRATION_CANCEL }));
+  }
+
+  render() {
+    return React.createElement(
+      "div",
+      { className: "manual-migration-container" },
+      React.createElement(
+        "p",
+        null,
+        React.createElement("span", { className: "icon icon-import" }),
+        React.createElement(FormattedMessage, { id: "manual_migration_explanation2" })
+      ),
+      React.createElement(
+        "div",
+        { className: "manual-migration-actions actions" },
+        React.createElement(
+          "button",
+          { className: "dismiss", onClick: this.onCancelTour },
+          React.createElement(FormattedMessage, { id: "manual_migration_cancel_button" })
+        ),
+        React.createElement(
+          "button",
+          { onClick: this.onLaunchTour },
+          React.createElement(FormattedMessage, { id: "manual_migration_import_button" })
+        )
+      )
+    );
+  }
+}
+
+module.exports = connect()(ManualMigration);
+module.exports._unconnected = ManualMigration;
+
+/***/ }),
+/* 25 */
+/***/ (function(module, exports, __webpack_require__) {
+
+const React = __webpack_require__(1);
+const { connect } = __webpack_require__(3);
+const { injectIntl, FormattedMessage } = __webpack_require__(2);
+const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
+const { TOP_SITES_DEFAULT_LENGTH, TOP_SITES_SHOWMORE_LENGTH } = __webpack_require__(6);
+
+const getFormattedMessage = message => typeof message === "string" ? React.createElement(
+  "span",
+  null,
+  message
+) : React.createElement(FormattedMessage, message);
+
+const PreferencesInput = props => React.createElement(
+  "section",
+  null,
+  React.createElement("input", { type: "checkbox", id: props.prefName, name: props.prefName, checked: props.value, disabled: props.disabled, onChange: props.onChange, className: props.className }),
+  React.createElement(
+    "label",
+    { htmlFor: props.prefName, className: props.labelClassName },
+    getFormattedMessage(props.titleString)
+  ),
+  props.descString && React.createElement(
+    "p",
+    { className: "prefs-input-description" },
+    getFormattedMessage(props.descString)
+  ),
+  React.Children.map(props.children, child => React.createElement(
+    "div",
+    { className: `options${child.props.disabled ? " disabled" : ""}` },
+    child
+  ))
+);
+
+class PreferencesPane extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this.handleClickOutside = this.handleClickOutside.bind(this);
+    this.handlePrefChange = this.handlePrefChange.bind(this);
+    this.handleSectionChange = this.handleSectionChange.bind(this);
+    this.togglePane = this.togglePane.bind(this);
+    this.onWrapperMount = this.onWrapperMount.bind(this);
+  }
+  componentDidUpdate(prevProps, prevState) {
+    if (prevProps.PreferencesPane.visible !== this.props.PreferencesPane.visible) {
+      // While the sidebar is open, listen for all document clicks.
+      if (this.isSidebarOpen()) {
+        document.addEventListener("click", this.handleClickOutside);
+      } else {
+        document.removeEventListener("click", this.handleClickOutside);
+      }
+    }
+  }
+  isSidebarOpen() {
+    return this.props.PreferencesPane.visible;
+  }
+  handleClickOutside(event) {
+    // if we are showing the sidebar and there is a click outside, close it.
+    if (this.isSidebarOpen() && !this.wrapper.contains(event.target)) {
+      this.togglePane();
+    }
+  }
+  handlePrefChange(event) {
+    const target = event.target;
+    const { name, checked } = target;
+    let value = checked;
+    if (name === "topSitesCount") {
+      value = checked ? TOP_SITES_SHOWMORE_LENGTH : TOP_SITES_DEFAULT_LENGTH;
+    }
+    this.props.dispatch(ac.SetPref(name, value));
+  }
+  handleSectionChange(event) {
+    const target = event.target;
+    const id = target.name;
+    const type = target.checked ? at.SECTION_ENABLE : at.SECTION_DISABLE;
+    this.props.dispatch(ac.SendToMain({ type, data: id }));
+  }
+  togglePane() {
+    if (this.isSidebarOpen()) {
+      this.props.dispatch({ type: at.SETTINGS_CLOSE });
+      this.props.dispatch(ac.UserEvent({ event: "CLOSE_NEWTAB_PREFS" }));
+    } else {
+      this.props.dispatch({ type: at.SETTINGS_OPEN });
+      this.props.dispatch(ac.UserEvent({ event: "OPEN_NEWTAB_PREFS" }));
+    }
+  }
+  onWrapperMount(wrapper) {
+    this.wrapper = wrapper;
+  }
+  render() {
+    const props = this.props;
+    const prefs = props.Prefs.values;
+    const sections = props.Sections;
+    const isVisible = this.isSidebarOpen();
+    return React.createElement(
+      "div",
+      { className: "prefs-pane-wrapper", ref: this.onWrapperMount },
+      React.createElement(
+        "div",
+        { className: "prefs-pane-button" },
+        React.createElement("button", {
+          className: `prefs-button icon ${isVisible ? "icon-dismiss" : "icon-settings"}`,
+          title: props.intl.formatMessage({ id: isVisible ? "settings_pane_done_button" : "settings_pane_button_label" }),
+          onClick: this.togglePane })
+      ),
+      React.createElement(
+        "div",
+        { className: "prefs-pane" },
+        React.createElement(
+          "div",
+          { className: `sidebar ${isVisible ? "" : "hidden"}` },
+          React.createElement(
+            "div",
+            { className: "prefs-modal-inner-wrapper" },
+            React.createElement(
+              "h1",
+              null,
+              React.createElement(FormattedMessage, { id: "settings_pane_header" })
+            ),
+            React.createElement(
+              "p",
+              null,
+              React.createElement(FormattedMessage, { id: "settings_pane_body2" })
+            ),
+            React.createElement(PreferencesInput, {
+              className: "showSearch",
+              prefName: "showSearch",
+              value: prefs.showSearch,
+              onChange: this.handlePrefChange,
+              titleString: { id: "settings_pane_search_header" },
+              descString: { id: "settings_pane_search_body" } }),
+            React.createElement("hr", null),
+            React.createElement(
+              PreferencesInput,
+              {
+                className: "showTopSites",
+                prefName: "showTopSites",
+                value: prefs.showTopSites,
+                onChange: this.handlePrefChange,
+                titleString: { id: "settings_pane_topsites_header" },
+                descString: { id: "settings_pane_topsites_body" } },
+              React.createElement(PreferencesInput, {
+                className: "showMoreTopSites",
+                prefName: "topSitesCount",
+                disabled: !prefs.showTopSites,
+                value: prefs.topSitesCount !== TOP_SITES_DEFAULT_LENGTH,
+                onChange: this.handlePrefChange,
+                titleString: { id: "settings_pane_topsites_options_showmore" },
+                labelClassName: "icon icon-topsites" })
+            ),
+            sections.filter(section => !section.shouldHidePref).map(({ id, title, enabled, pref }) => React.createElement(
+              PreferencesInput,
+              {
+                key: id,
+                className: "showSection",
+                prefName: pref && pref.feed || id,
+                value: enabled,
+                onChange: pref && pref.feed ? this.handlePrefChange : this.handleSectionChange,
+                titleString: pref && pref.titleString || title,
+                descString: pref && pref.descString },
+              pref.nestedPrefs && pref.nestedPrefs.map(nestedPref => React.createElement(PreferencesInput, {
+                key: nestedPref.name,
+                prefName: nestedPref.name,
+                disabled: !enabled,
+                value: prefs[nestedPref.name],
+                onChange: this.handlePrefChange,
+                titleString: nestedPref.titleString,
+                labelClassName: `icon ${nestedPref.icon}` }))
+            )),
+            !prefs.disableSnippets && React.createElement("hr", null),
+            !prefs.disableSnippets && React.createElement(PreferencesInput, { className: "showSnippets", prefName: "feeds.snippets",
+              value: prefs["feeds.snippets"], onChange: this.handlePrefChange,
+              titleString: { id: "settings_pane_snippets_header" },
+              descString: { id: "settings_pane_snippets_body" } })
+          ),
+          React.createElement(
+            "section",
+            { className: "actions" },
+            React.createElement(
+              "button",
+              { className: "done", onClick: this.togglePane },
+              React.createElement(FormattedMessage, { id: "settings_pane_done_button" })
+            )
+          )
+        )
+      )
+    );
+  }
+}
+
+module.exports = connect(state => ({ Prefs: state.Prefs, PreferencesPane: state.PreferencesPane, Sections: state.Sections }))(injectIntl(PreferencesPane));
+module.exports.PreferencesPane = PreferencesPane;
+module.exports.PreferencesInput = PreferencesInput;
+
+/***/ }),
+/* 26 */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* WEBPACK VAR INJECTION */(function(global) {var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+const React = __webpack_require__(1);
+const { connect } = __webpack_require__(3);
+const { injectIntl, FormattedMessage } = __webpack_require__(2);
+const Card = __webpack_require__(27);
+const { PlaceholderCard } = Card;
+const Topics = __webpack_require__(29);
+const { actionCreators: ac } = __webpack_require__(0);
+const CollapsibleSection = __webpack_require__(9);
+const ComponentPerfTimer = __webpack_require__(10);
+
+const VISIBLE = "visible";
+const VISIBILITY_CHANGE_EVENT = "visibilitychange";
+const CARDS_PER_ROW = 3;
+
+function getFormattedMessage(message) {
+  return typeof message === "string" ? React.createElement(
+    "span",
+    null,
+    message
+  ) : React.createElement(FormattedMessage, message);
+}
+
+class Section extends React.PureComponent {
+  _dispatchImpressionStats() {
+    const { props } = this;
+    const maxCards = 3 * props.maxRows;
+    const cards = props.rows.slice(0, maxCards);
+
+    if (this.needsImpressionStats(cards)) {
+      props.dispatch(ac.ImpressionStats({
+        source: props.eventSource,
+        tiles: cards.map(link => ({ id: link.guid }))
+      }));
+      this.impressionCardGuids = cards.map(link => link.guid);
+    }
+  }
+
+  // This sends an event when a user sees a set of new content. If content
+  // changes while the page is hidden (i.e. preloaded or on a hidden tab),
+  // only send the event if the page becomes visible again.
+  sendImpressionStatsOrAddListener() {
+    const { props } = this;
+
+    if (!props.shouldSendImpressionStats || !props.dispatch) {
+      return;
+    }
+
+    if (props.document.visibilityState === VISIBLE) {
+      this._dispatchImpressionStats();
+    } else {
+      // We should only ever send the latest impression stats ping, so remove any
+      // older listeners.
+      if (this._onVisibilityChange) {
+        props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
+      }
+
+      // When the page becoems visible, send the impression stats ping if the section isn't collapsed.
+      this._onVisibilityChange = () => {
+        if (props.document.visibilityState === VISIBLE) {
+          const { id, Prefs } = this.props;
+          const isCollapsed = Prefs.values[`section.${id}.collapsed`];
+          if (!isCollapsed) {
+            this._dispatchImpressionStats();
+          }
+          props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
+        }
+      };
+      props.document.addEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
+    }
+  }
+
+  componentDidMount() {
+    const { id, rows, Prefs } = this.props;
+    const isCollapsed = Prefs.values[`section.${id}.collapsed`];
+    if (rows.length && !isCollapsed) {
+      this.sendImpressionStatsOrAddListener();
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    const { props } = this;
+    const { id, Prefs } = props;
+    const isCollapsedPref = `section.${id}.collapsed`;
+    const isCollapsed = Prefs.values[isCollapsedPref];
+    const wasCollapsed = prevProps.Prefs.values[isCollapsedPref];
+    if (
+    // Don't send impression stats for the empty state
+    props.rows.length && (
+    // We only want to send impression stats if the content of the cards has changed
+    // and the section is not collapsed...
+    props.rows !== prevProps.rows && !isCollapsed ||
+    // or if we are expanding a section that was collapsed.
+    wasCollapsed && !isCollapsed)) {
+      this.sendImpressionStatsOrAddListener();
+    }
+  }
+
+  needsImpressionStats(cards) {
+    if (!this.impressionCardGuids || this.impressionCardGuids.length !== cards.length) {
+      return true;
+    }
+
+    for (let i = 0; i < cards.length; i++) {
+      if (cards[i].guid !== this.impressionCardGuids[i]) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  numberOfPlaceholders(items) {
+    if (items === 0) {
+      return CARDS_PER_ROW;
+    }
+    const remainder = items % CARDS_PER_ROW;
+    if (remainder === 0) {
+      return 0;
+    }
+    return CARDS_PER_ROW - remainder;
+  }
+
+  render() {
+    const {
+      id, eventSource, title, icon, rows,
+      infoOption, emptyState, dispatch, maxRows,
+      contextMenuOptions, initialized, disclaimer
+    } = this.props;
+    const maxCards = CARDS_PER_ROW * maxRows;
+
+    // Show topics only for top stories and if it's not initialized yet (so
+    // content doesn't shift when it is loaded) or has loaded with topics
+    const shouldShowTopics = id === "topstories" && (!this.props.topics || this.props.topics.length > 0);
+
+    const realRows = rows.slice(0, maxCards);
+    const placeholders = this.numberOfPlaceholders(realRows.length);
+
+    // The empty state should only be shown after we have initialized and there is no content.
+    // Otherwise, we should show placeholders.
+    const shouldShowEmptyState = initialized && !rows.length;
+
+    // <Section> <-- React component
+    // <section> <-- HTML5 element
+    return React.createElement(
+      ComponentPerfTimer,
+      this.props,
+      React.createElement(
+        CollapsibleSection,
+        { className: "section", icon: icon, title: getFormattedMessage(title),
+          infoOption: infoOption,
+          id: id,
+          eventSource: eventSource,
+          disclaimer: disclaimer,
+          prefName: `section.${id}.collapsed`,
+          Prefs: this.props.Prefs,
+          dispatch: this.props.dispatch },
+        !shouldShowEmptyState && React.createElement(
+          "ul",
+          { className: "section-list", style: { padding: 0 } },
+          realRows.map((link, index) => link && React.createElement(Card, { key: index, index: index, dispatch: dispatch, link: link, contextMenuOptions: contextMenuOptions,
+            eventSource: eventSource, shouldSendImpressionStats: this.props.shouldSendImpressionStats })),
+          placeholders > 0 && [...new Array(placeholders)].map((_, i) => React.createElement(PlaceholderCard, { key: i }))
+        ),
+        shouldShowEmptyState && React.createElement(
+          "div",
+          { className: "section-empty-state" },
+          React.createElement(
+            "div",
+            { className: "empty-state" },
+            emptyState.icon && emptyState.icon.startsWith("moz-extension://") ? React.createElement("img", { className: "empty-state-icon icon", style: { "background-image": `url('${emptyState.icon}')` } }) : React.createElement("img", { className: `empty-state-icon icon icon-${emptyState.icon}` }),
+            React.createElement(
+              "p",
+              { className: "empty-state-message" },
+              getFormattedMessage(emptyState.message)
+            )
+          )
+        ),
+        shouldShowTopics && React.createElement(Topics, { topics: this.props.topics, read_more_endpoint: this.props.read_more_endpoint })
+      )
+    );
+  }
+}
+
+Section.defaultProps = {
+  document: global.document,
+  rows: [],
+  emptyState: {},
+  title: ""
+};
+
+const SectionIntl = injectIntl(Section);
+
+class Sections extends React.PureComponent {
+  render() {
+    const sections = this.props.Sections;
+    return React.createElement(
+      "div",
+      { className: "sections-list" },
+      sections.filter(section => section.enabled).map(section => React.createElement(SectionIntl, _extends({ key: section.id }, section, { Prefs: this.props.Prefs, dispatch: this.props.dispatch })))
+    );
+  }
+}
+
+module.exports = connect(state => ({ Sections: state.Sections, Prefs: state.Prefs }))(Sections);
+module.exports._unconnected = Sections;
+module.exports.SectionIntl = SectionIntl;
+module.exports._unconnectedSection = Section;
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
+
+/***/ }),
+/* 27 */
+/***/ (function(module, exports, __webpack_require__) {
+
+const React = __webpack_require__(1);
+const LinkMenu = __webpack_require__(8);
+const { FormattedMessage } = __webpack_require__(2);
+const cardContextTypes = __webpack_require__(28);
 const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
 
 // Keep track of pending image loads to only request once
@@ -2378,7 +3204,6 @@ class Card extends React.PureComponent {
       this.props.dispatch(ac.ImpressionStats({
         source: this.props.eventSource,
         click: 0,
-        incognito: true,
         tiles: [{ id: this.props.link.guid, pos: this.props.index }]
       }));
     }
@@ -2492,7 +3317,7 @@ module.exports = Card;
 module.exports.PlaceholderCard = PlaceholderCard;
 
 /***/ }),
-/* 21 */
+/* 28 */
 /***/ (function(module, exports) {
 
 module.exports = {
@@ -2515,7 +3340,7 @@ module.exports = {
 };
 
 /***/ }),
-/* 22 */
+/* 29 */
 /***/ (function(module, exports, __webpack_require__) {
 
 const React = __webpack_require__(1);
@@ -2566,459 +3391,7 @@ module.exports._unconnected = Topics;
 module.exports.Topic = Topic;
 
 /***/ }),
-/* 23 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* globals ContentSearchUIController */
-
-
-const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
-const { FormattedMessage, injectIntl } = __webpack_require__(2);
-const { actionCreators: ac } = __webpack_require__(0);
-const { IS_NEWTAB } = __webpack_require__(24);
-
-class Search extends React.PureComponent {
-  constructor(props) {
-    super(props);
-    this.onClick = this.onClick.bind(this);
-    this.onInputMount = this.onInputMount.bind(this);
-  }
-
-  handleEvent(event) {
-    // Also track search events with our own telemetry
-    if (event.detail.type === "Search") {
-      this.props.dispatch(ac.UserEvent({ event: "SEARCH" }));
-    }
-  }
-  onClick(event) {
-    window.gContentSearchController.search(event);
-  }
-  componentWillUnmount() {
-    delete window.gContentSearchController;
-  }
-  onInputMount(input) {
-    if (input) {
-      // The "healthReportKey" and needs to be "newtab" or "abouthome" so that
-      // BrowserUsageTelemetry.jsm knows to handle events with this name, and
-      // can add the appropriate telemetry probes for search. Without the correct
-      // name, certain tests like browser_UsageTelemetry_content.js will fail
-      // (See github ticket #2348 for more details)
-      const healthReportKey = IS_NEWTAB ? "newtab" : "abouthome";
-
-      // The "searchSource" needs to be "newtab" or "homepage" and is sent with
-      // the search data and acts as context for the search request (See
-      // nsISearchEngine.getSubmission). It is necessary so that search engine
-      // plugins can correctly atribute referrals. (See github ticket #3321 for
-      // more details)
-      const searchSource = IS_NEWTAB ? "newtab" : "homepage";
-
-      // gContentSearchController needs to exist as a global so that tests for
-      // the existing about:home can find it; and so it allows these tests to pass.
-      // In the future, when activity stream is default about:home, this can be renamed
-      window.gContentSearchController = new ContentSearchUIController(input, input.parentNode, healthReportKey, searchSource);
-      addEventListener("ContentSearchClient", this);
-
-      // Focus the search box if we are on about:home
-      if (!IS_NEWTAB) {
-        input.focus();
-      }
-    } else {
-      window.gContentSearchController = null;
-      removeEventListener("ContentSearchClient", this);
-    }
-  }
-
-  /*
-   * Do not change the ID on the input field, as legacy newtab code
-   * specifically looks for the id 'newtab-search-text' on input fields
-   * in order to execute searches in various tests
-   */
-  render() {
-    return React.createElement(
-      "div",
-      { className: "search-wrapper" },
-      React.createElement(
-        "label",
-        { htmlFor: "newtab-search-text", className: "search-label" },
-        React.createElement(
-          "span",
-          { className: "sr-only" },
-          React.createElement(FormattedMessage, { id: "search_web_placeholder" })
-        )
-      ),
-      React.createElement("input", {
-        id: "newtab-search-text",
-        maxLength: "256",
-        placeholder: this.props.intl.formatMessage({ id: "search_web_placeholder" }),
-        ref: this.onInputMount,
-        title: this.props.intl.formatMessage({ id: "search_web_placeholder" }),
-        type: "search" }),
-      React.createElement(
-        "button",
-        {
-          id: "searchSubmit",
-          className: "search-button",
-          onClick: this.onClick,
-          title: this.props.intl.formatMessage({ id: "search_button" }) },
-        React.createElement(
-          "span",
-          { className: "sr-only" },
-          React.createElement(FormattedMessage, { id: "search_button" })
-        )
-      )
-    );
-  }
-}
-
-// initialized is passed to props so that Search will rerender when it receives strings
-module.exports = connect(state => ({ locale: state.App.locale }))(injectIntl(Search));
-module.exports._unconnected = Search;
-
-/***/ }),
-/* 24 */
-/***/ (function(module, exports, __webpack_require__) {
-
-/* WEBPACK VAR INJECTION */(function(global) {module.exports = {
-  // constant to know if the page is about:newtab or about:home
-  IS_NEWTAB: global.document && global.document.documentURI === "about:newtab"
-};
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
-
-/***/ }),
-/* 25 */
-/***/ (function(module, exports, __webpack_require__) {
-
-const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
-const { FormattedMessage } = __webpack_require__(2);
-const { actionTypes, actionCreators: ac } = __webpack_require__(0);
-
-/**
- * ConfirmDialog component.
- * One primary action button, one cancel button.
- *
- * Content displayed is controlled by `data` prop the component receives.
- * Example:
- * data: {
- *   // Any sort of data needed to be passed around by actions.
- *   payload: site.url,
- *   // Primary button SendToMain action.
- *   action: "DELETE_HISTORY_URL",
- *   // Primary button USerEvent action.
- *   userEvent: "DELETE",
- *   // Array of locale ids to display.
- *   message_body: ["confirm_history_delete_p1", "confirm_history_delete_notice_p2"],
- *   // Text for primary button.
- *   confirm_button_string_id: "menu_action_delete"
- * },
- */
-const ConfirmDialog = React.createClass({
-  displayName: "ConfirmDialog",
-
-  getDefaultProps() {
-    return {
-      visible: false,
-      data: {}
-    };
-  },
-
-  _handleCancelBtn() {
-    this.props.dispatch({ type: actionTypes.DIALOG_CANCEL });
-    this.props.dispatch(ac.UserEvent({ event: actionTypes.DIALOG_CANCEL }));
-  },
-
-  _handleConfirmBtn() {
-    this.props.data.onConfirm.forEach(this.props.dispatch);
-  },
-
-  _renderModalMessage() {
-    const message_body = this.props.data.body_string_id;
-
-    if (!message_body) {
-      return null;
-    }
-
-    return React.createElement(
-      "span",
-      null,
-      message_body.map(msg => React.createElement(
-        "p",
-        { key: msg },
-        React.createElement(FormattedMessage, { id: msg })
-      ))
-    );
-  },
-
-  render() {
-    if (!this.props.visible) {
-      return null;
-    }
-
-    return React.createElement(
-      "div",
-      { className: "confirmation-dialog" },
-      React.createElement("div", { className: "modal-overlay", onClick: this._handleCancelBtn }),
-      React.createElement(
-        "div",
-        { className: "modal" },
-        React.createElement(
-          "section",
-          { className: "modal-message" },
-          this._renderModalMessage()
-        ),
-        React.createElement(
-          "section",
-          { className: "actions" },
-          React.createElement(
-            "button",
-            { onClick: this._handleCancelBtn },
-            React.createElement(FormattedMessage, { id: "topsites_form_cancel_button" })
-          ),
-          React.createElement(
-            "button",
-            { className: "done", onClick: this._handleConfirmBtn },
-            React.createElement(FormattedMessage, { id: this.props.data.confirm_button_string_id })
-          )
-        )
-      )
-    );
-  }
-});
-
-module.exports = connect(state => state.Dialog)(ConfirmDialog);
-module.exports._unconnected = ConfirmDialog;
-module.exports.Dialog = ConfirmDialog;
-
-/***/ }),
-/* 26 */
-/***/ (function(module, exports, __webpack_require__) {
-
-const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
-const { FormattedMessage } = __webpack_require__(2);
-const { actionTypes: at, actionCreators: ac } = __webpack_require__(0);
-
-/**
- * Manual migration component used to start the profile import wizard.
- * Message is presented temporarily and will go away if:
- * 1.  User clicks "No Thanks"
- * 2.  User completed the data import
- * 3.  After 3 active days
- * 4.  User clicks "Cancel" on the import wizard (currently not implemented).
- */
-class ManualMigration extends React.PureComponent {
-  constructor(props) {
-    super(props);
-    this.onLaunchTour = this.onLaunchTour.bind(this);
-    this.onCancelTour = this.onCancelTour.bind(this);
-  }
-  onLaunchTour() {
-    this.props.dispatch(ac.SendToMain({ type: at.MIGRATION_START }));
-    this.props.dispatch(ac.UserEvent({ event: at.MIGRATION_START }));
-  }
-
-  onCancelTour() {
-    this.props.dispatch(ac.SendToMain({ type: at.MIGRATION_CANCEL }));
-    this.props.dispatch(ac.UserEvent({ event: at.MIGRATION_CANCEL }));
-  }
-
-  render() {
-    return React.createElement(
-      "div",
-      { className: "manual-migration-container" },
-      React.createElement(
-        "p",
-        null,
-        React.createElement("span", { className: "icon icon-import" }),
-        React.createElement(FormattedMessage, { id: "manual_migration_explanation2" })
-      ),
-      React.createElement(
-        "div",
-        { className: "manual-migration-actions actions" },
-        React.createElement(
-          "button",
-          { className: "dismiss", onClick: this.onCancelTour },
-          React.createElement(FormattedMessage, { id: "manual_migration_cancel_button" })
-        ),
-        React.createElement(
-          "button",
-          { onClick: this.onLaunchTour },
-          React.createElement(FormattedMessage, { id: "manual_migration_import_button" })
-        )
-      )
-    );
-  }
-}
-
-module.exports = connect()(ManualMigration);
-module.exports._unconnected = ManualMigration;
-
-/***/ }),
-/* 27 */
-/***/ (function(module, exports, __webpack_require__) {
-
-const React = __webpack_require__(1);
-const { connect } = __webpack_require__(3);
-const { injectIntl, FormattedMessage } = __webpack_require__(2);
-const { actionCreators: ac, actionTypes: at } = __webpack_require__(0);
-const { TOP_SITES_DEFAULT_LENGTH, TOP_SITES_SHOWMORE_LENGTH } = __webpack_require__(6);
-
-const getFormattedMessage = message => typeof message === "string" ? React.createElement(
-  "span",
-  null,
-  message
-) : React.createElement(FormattedMessage, message);
-
-const PreferencesInput = props => React.createElement(
-  "section",
-  null,
-  React.createElement("input", { type: "checkbox", id: props.prefName, name: props.prefName, checked: props.value, disabled: props.disabled, onChange: props.onChange, className: props.className }),
-  React.createElement(
-    "label",
-    { htmlFor: props.prefName, className: props.labelClassName },
-    getFormattedMessage(props.titleString)
-  ),
-  props.descString && React.createElement(
-    "p",
-    { className: "prefs-input-description" },
-    getFormattedMessage(props.descString)
-  )
-);
-
-class PreferencesPane extends React.PureComponent {
-  constructor(props) {
-    super(props);
-    this.handleClickOutside = this.handleClickOutside.bind(this);
-    this.handlePrefChange = this.handlePrefChange.bind(this);
-    this.handleSectionChange = this.handleSectionChange.bind(this);
-    this.togglePane = this.togglePane.bind(this);
-    this.onWrapperMount = this.onWrapperMount.bind(this);
-  }
-  componentDidUpdate(prevProps, prevState) {
-    if (prevProps.PreferencesPane.visible !== this.props.PreferencesPane.visible) {
-      // While the sidebar is open, listen for all document clicks.
-      if (this.isSidebarOpen()) {
-        document.addEventListener("click", this.handleClickOutside);
-      } else {
-        document.removeEventListener("click", this.handleClickOutside);
-      }
-    }
-  }
-  isSidebarOpen() {
-    return this.props.PreferencesPane.visible;
-  }
-  handleClickOutside(event) {
-    // if we are showing the sidebar and there is a click outside, close it.
-    if (this.isSidebarOpen() && !this.wrapper.contains(event.target)) {
-      this.togglePane();
-    }
-  }
-  handlePrefChange(event) {
-    const target = event.target;
-    const { name, checked } = target;
-    let value = checked;
-    if (name === "topSitesCount") {
-      value = checked ? TOP_SITES_SHOWMORE_LENGTH : TOP_SITES_DEFAULT_LENGTH;
-    }
-    this.props.dispatch(ac.SetPref(name, value));
-  }
-  handleSectionChange(event) {
-    const target = event.target;
-    const id = target.name;
-    const type = target.checked ? at.SECTION_ENABLE : at.SECTION_DISABLE;
-    this.props.dispatch(ac.SendToMain({ type, data: id }));
-  }
-  togglePane() {
-    if (this.isSidebarOpen()) {
-      this.props.dispatch({ type: at.SETTINGS_CLOSE });
-      this.props.dispatch(ac.UserEvent({ event: "CLOSE_NEWTAB_PREFS" }));
-    } else {
-      this.props.dispatch({ type: at.SETTINGS_OPEN });
-      this.props.dispatch(ac.UserEvent({ event: "OPEN_NEWTAB_PREFS" }));
-    }
-  }
-  onWrapperMount(wrapper) {
-    this.wrapper = wrapper;
-  }
-  render() {
-    const props = this.props;
-    const prefs = props.Prefs.values;
-    const sections = props.Sections;
-    const isVisible = this.isSidebarOpen();
-    return React.createElement(
-      "div",
-      { className: "prefs-pane-wrapper", ref: this.onWrapperMount },
-      React.createElement(
-        "div",
-        { className: "prefs-pane-button" },
-        React.createElement("button", {
-          className: `prefs-button icon ${isVisible ? "icon-dismiss" : "icon-settings"}`,
-          title: props.intl.formatMessage({ id: isVisible ? "settings_pane_done_button" : "settings_pane_button_label" }),
-          onClick: this.togglePane })
-      ),
-      React.createElement(
-        "div",
-        { className: "prefs-pane" },
-        React.createElement(
-          "div",
-          { className: `sidebar ${isVisible ? "" : "hidden"}` },
-          React.createElement(
-            "div",
-            { className: "prefs-modal-inner-wrapper" },
-            React.createElement(
-              "h1",
-              null,
-              React.createElement(FormattedMessage, { id: "settings_pane_header" })
-            ),
-            React.createElement(
-              "p",
-              null,
-              React.createElement(FormattedMessage, { id: "settings_pane_body2" })
-            ),
-            React.createElement(PreferencesInput, { className: "showSearch", prefName: "showSearch", value: prefs.showSearch, onChange: this.handlePrefChange,
-              titleString: { id: "settings_pane_search_header" }, descString: { id: "settings_pane_search_body" } }),
-            React.createElement("hr", null),
-            React.createElement(PreferencesInput, { className: "showTopSites", prefName: "showTopSites", value: prefs.showTopSites, onChange: this.handlePrefChange,
-              titleString: { id: "settings_pane_topsites_header" }, descString: { id: "settings_pane_topsites_body" } }),
-            React.createElement(
-              "div",
-              { className: `options${prefs.showTopSites ? "" : " disabled"}` },
-              React.createElement(PreferencesInput, { className: "showMoreTopSites", prefName: "topSitesCount", disabled: !prefs.showTopSites,
-                value: prefs.topSitesCount !== TOP_SITES_DEFAULT_LENGTH, onChange: this.handlePrefChange,
-                titleString: { id: "settings_pane_topsites_options_showmore" }, labelClassName: "icon icon-topsites" })
-            ),
-            sections.filter(section => !section.shouldHidePref).map(({ id, title, enabled, pref }) => React.createElement(PreferencesInput, { key: id, className: "showSection", prefName: pref && pref.feed || id,
-              value: enabled, onChange: pref && pref.feed ? this.handlePrefChange : this.handleSectionChange,
-              titleString: pref && pref.titleString || title, descString: pref && pref.descString })),
-            !prefs.disableSnippets && React.createElement("hr", null),
-            !prefs.disableSnippets && React.createElement(PreferencesInput, { className: "showSnippets", prefName: "feeds.snippets",
-              value: prefs["feeds.snippets"], onChange: this.handlePrefChange,
-              titleString: { id: "settings_pane_snippets_header" },
-              descString: { id: "settings_pane_snippets_body" } })
-          ),
-          React.createElement(
-            "section",
-            { className: "actions" },
-            React.createElement(
-              "button",
-              { className: "done", onClick: this.togglePane },
-              React.createElement(FormattedMessage, { id: "settings_pane_done_button" })
-            )
-          )
-        )
-      )
-    );
-  }
-}
-
-module.exports = connect(state => ({ Prefs: state.Prefs, PreferencesPane: state.PreferencesPane, Sections: state.Sections }))(injectIntl(PreferencesPane));
-module.exports.PreferencesPane = PreferencesPane;
-module.exports.PreferencesInput = PreferencesInput;
-
-/***/ }),
-/* 28 */
+/* 30 */
 /***/ (function(module, exports) {
 
 class _PrerenderData {
@@ -3075,6 +3448,9 @@ var PrerenderData = new _PrerenderData({
     "showTopSites": true,
     "showSearch": true,
     "topSitesCount": 6,
+    "collapseTopSites": false,
+    "section.highlights.collapsed": false,
+    "section.topstories.collapsed": false,
     "feeds.section.topstories": true,
     "feeds.section.highlights": true
   },
@@ -3084,7 +3460,7 @@ var PrerenderData = new _PrerenderData({
   // too different for the prerendered version to be used. Unfortunately, this
   // will result in users who have modified some of their preferences not being
   // able to get the benefits of prerendering.
-  validation: ["showTopSites", "showSearch",
+  validation: ["showTopSites", "showSearch", "collapseTopSites", "section.highlights.collapsed", "section.topstories.collapsed",
   // This means if either of these are set to their default values,
   // prerendering can be used.
   { oneOf: ["feeds.section.topstories", "feeds.section.highlights"] }],
@@ -3108,17 +3484,18 @@ module.exports = {
 };
 
 /***/ }),
-/* 29 */
+/* 31 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(global) {/* eslint-env mozilla/frame-script */
 
-const { createStore, combineReducers, applyMiddleware } = __webpack_require__(30);
+const { createStore, combineReducers, applyMiddleware } = __webpack_require__(32);
 const { actionTypes: at, actionCreators: ac, actionUtils: au } = __webpack_require__(0);
 
 const MERGE_STORE_ACTION = "NEW_TAB_INITIAL_STATE";
 const OUTGOING_MESSAGE_NAME = "ActivityStream:ContentToMain";
 const INCOMING_MESSAGE_NAME = "ActivityStream:MainToContent";
+const EARLY_QUEUED_ACTIONS = [at.SAVE_SESSION_PERF_DATA, at.PAGE_PRERENDERED];
 
 /**
  * A higher-order function which returns a reducer that, on MERGE_STORE action,
@@ -3190,6 +3567,33 @@ const rehydrationMiddleware = store => next => action => {
 };
 
 /**
+ * This middleware queues up all the EARLY_QUEUED_ACTIONS until it receives
+ * the first action from main. This is useful for those actions for main which
+ * require higher reliability, i.e. the action will not be lost in the case
+ * that it gets sent before the main is ready to receive it. Conversely, any
+ * actions allowed early are accepted to be ignorable or re-sendable.
+ */
+const queueEarlyMessageMiddleware = store => next => action => {
+  if (store._receivedFromMain) {
+    next(action);
+  } else if (au.isFromMain(action)) {
+    next(action);
+    store._receivedFromMain = true;
+    // Sending out all the early actions as main is ready now
+    if (store._earlyActionQueue) {
+      store._earlyActionQueue.forEach(next);
+      store._earlyActionQueue = [];
+    }
+  } else if (EARLY_QUEUED_ACTIONS.includes(action.type)) {
+    store._earlyActionQueue = store._earlyActionQueue || [];
+    store._earlyActionQueue.push(action);
+  } else {
+    // Let any other type of action go through
+    next(action);
+  }
+};
+
+/**
  * initStore - Create a store and listen for incoming actions
  *
  * @param  {object} reducers An object containing Redux reducers
@@ -3197,7 +3601,7 @@ const rehydrationMiddleware = store => next => action => {
  * @return {object}          A redux store
  */
 module.exports = function initStore(reducers, initialState) {
-  const store = createStore(mergeStateReducer(combineReducers(reducers)), initialState, global.addMessageListener && applyMiddleware(rehydrationMiddleware, messageMiddleware));
+  const store = createStore(mergeStateReducer(combineReducers(reducers)), initialState, global.addMessageListener && applyMiddleware(rehydrationMiddleware, queueEarlyMessageMiddleware, messageMiddleware));
 
   store._didRehydrate = false;
   store._didRequestInitialState = false;
@@ -3217,31 +3621,33 @@ module.exports = function initStore(reducers, initialState) {
 };
 
 module.exports.rehydrationMiddleware = rehydrationMiddleware;
+module.exports.queueEarlyMessageMiddleware = queueEarlyMessageMiddleware;
 module.exports.MERGE_STORE_ACTION = MERGE_STORE_ACTION;
 module.exports.OUTGOING_MESSAGE_NAME = OUTGOING_MESSAGE_NAME;
 module.exports.INCOMING_MESSAGE_NAME = INCOMING_MESSAGE_NAME;
+module.exports.EARLY_QUEUED_ACTIONS = EARLY_QUEUED_ACTIONS;
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
 
 /***/ }),
-/* 30 */
+/* 32 */
 /***/ (function(module, exports) {
 
 module.exports = Redux;
 
 /***/ }),
-/* 31 */
+/* 33 */
 /***/ (function(module, exports, __webpack_require__) {
 
-/* WEBPACK VAR INJECTION */(function(global) {const { actionTypes: at } = __webpack_require__(0);
-const { perfService: perfSvc } = __webpack_require__(7);
+/* WEBPACK VAR INJECTION */(function(global) {const { actionTypes: at, actionCreators: ac } = __webpack_require__(0);
+const { perfService: perfSvc } = __webpack_require__(11);
 
 const VISIBLE = "visible";
 const VISIBILITY_CHANGE_EVENT = "visibilitychange";
 
 module.exports = class DetectUserSessionStart {
-  constructor(options = {}) {
+  constructor(store, options = {}) {
+    this._store = store;
     // Overrides for testing
-    this.sendAsyncMessage = options.sendAsyncMessage || global.sendAsyncMessage;
     this.document = options.document || global.document;
     this._perfService = options.perfService || perfSvc;
     this._onVisibilityChange = this._onVisibilityChange.bind(this);
@@ -3275,10 +3681,10 @@ module.exports = class DetectUserSessionStart {
     try {
       let visibility_event_rcvd_ts = this._perfService.getMostRecentAbsMarkStartByName("visibility_event_rcvd_ts");
 
-      this.sendAsyncMessage("ActivityStream:ContentToMain", {
+      this._store.dispatch(ac.SendToMain({
         type: at.SAVE_SESSION_PERF_DATA,
         data: { visibility_event_rcvd_ts }
-      });
+      }));
     } catch (ex) {
       // If this failed, it's likely because the `privacy.resistFingerprinting`
       // pref is true.  We should at least not blow up.
@@ -3299,7 +3705,7 @@ module.exports = class DetectUserSessionStart {
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
 
 /***/ }),
-/* 32 */
+/* 34 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(global) {const DATABASE_NAME = "snippets_db";

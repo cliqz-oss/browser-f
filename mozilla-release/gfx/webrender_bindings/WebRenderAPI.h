@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 sts=2 ts=8 et tw=99 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/layers/SyncObject.h"
@@ -20,6 +21,8 @@
 #include "Units.h"
 
 namespace mozilla {
+
+struct DisplayItemClipChain;
 
 namespace widget {
 class CompositorWidget;
@@ -39,12 +42,10 @@ class RendererEvent;
 // This isn't part of WR's API, but we define it here to simplify layout's
 // logic and data plumbing.
 struct Line {
-  float baseline;
-  float start;
-  float end;
-  float width;
-  wr::ColorF color;
+  wr::LayoutRect bounds;
+  float wavyLineThickness;
   wr::LineOrientation orientation;
+  wr::ColorF color;
   wr::LineStyle style;
 };
 
@@ -83,7 +84,8 @@ public:
 
   void UpdateBlobImage(wr::ImageKey aKey,
                        const ImageDescriptor& aDescriptor,
-                       wr::Vec_u8& aBytes);
+                       wr::Vec_u8& aBytes,
+                       const wr::DeviceUintRect& aDirtyRect);
 
   void UpdateExternalImage(ImageKey aKey,
                            const ImageDescriptor& aDescriptor,
@@ -95,13 +97,16 @@ public:
 
   void AddRawFont(wr::FontKey aKey, wr::Vec_u8& aBytes, uint32_t aIndex);
 
+  void AddFontDescriptor(wr::FontKey aKey, wr::Vec_u8& aBytes, uint32_t aIndex);
+
   void DeleteFont(wr::FontKey aKey);
 
   void AddFontInstance(wr::FontInstanceKey aKey,
                        wr::FontKey aFontKey,
                        float aGlyphSize,
                        const wr::FontInstanceOptions* aOptions,
-                       const wr::FontInstancePlatformOptions* aPlatformOptions);
+                       const wr::FontInstancePlatformOptions* aPlatformOptions,
+                       wr::Vec_u8& aVariations);
 
   void DeleteFontInstance(wr::FontInstanceKey aKey);
 
@@ -126,6 +131,10 @@ public:
   static already_AddRefed<WebRenderAPI> Create(layers::CompositorBridgeParentBase* aBridge,
                                                RefPtr<widget::CompositorWidget>&& aWidget,
                                                LayoutDeviceIntSize aSize);
+
+  // Redirect the WR's log to gfxCriticalError/Note.
+  static void InitExternalLogHandler();
+  static void ShutdownExternalLogHandler();
 
   already_AddRefed<WebRenderAPI> Clone();
 
@@ -156,6 +165,8 @@ public:
   void SetRootPipeline(wr::PipelineId aPipeline);
 
   void UpdateResources(ResourceUpdateQueue& aUpdates);
+
+  void UpdatePipelineResources(ResourceUpdateQueue& aUpdates, PipelineId aPipeline, Epoch aEpoch);
 
   void SetFrameStartTime(const TimeStamp& aTime);
 
@@ -201,14 +212,16 @@ protected:
 class DisplayListBuilder {
 public:
   explicit DisplayListBuilder(wr::PipelineId aId,
-                              const wr::LayoutSize& aContentSize);
+                              const wr::LayoutSize& aContentSize,
+                              size_t aCapacity = 0);
   DisplayListBuilder(DisplayListBuilder&&) = default;
 
   ~DisplayListBuilder();
 
-  void Begin(const mozilla::LayerIntSize& aSize);
+  void Save();
+  void Restore();
+  void ClearSave();
 
-  void End();
   void Finalize(wr::LayoutSize& aOutContentSize,
                 wr::BuiltDisplayList& aOutDisplayList);
 
@@ -223,16 +236,31 @@ public:
                            bool aIsBackfaceVisible);
   void PopStackingContext();
 
-  wr::WrClipId DefineClip(const wr::LayoutRect& aClipRect,
-                          const nsTArray<wr::WrComplexClipRegion>* aComplex = nullptr,
+  wr::WrClipId DefineClip(const Maybe<layers::FrameMetrics::ViewID>& aAncestorScrollId,
+                          const Maybe<wr::WrClipId>& aAncestorClipId,
+                          const wr::LayoutRect& aClipRect,
+                          const nsTArray<wr::ComplexClipRegion>* aComplex = nullptr,
                           const wr::WrImageMask* aMask = nullptr);
-  void PushClip(const wr::WrClipId& aClipId, bool aRecordInStack = true);
-  void PopClip(bool aRecordInStack = true);
+  void PushClip(const wr::WrClipId& aClipId, const DisplayItemClipChain* aParent = nullptr);
+  void PopClip(const DisplayItemClipChain* aParent = nullptr);
+  Maybe<wr::WrClipId> GetCacheOverride(const DisplayItemClipChain* aParent);
 
-  void PushBuiltDisplayList(wr::BuiltDisplayList &dl);
+  wr::WrStickyId DefineStickyFrame(const wr::LayoutRect& aContentRect,
+                                   const float* aTopMargin,
+                                   const float* aRightMargin,
+                                   const float* aBottomMargin,
+                                   const float* aLeftMargin,
+                                   const StickyOffsetBounds& aVerticalBounds,
+                                   const StickyOffsetBounds& aHorizontalBounds,
+                                   const wr::LayoutVector2D& aAppliedOffset);
+  void PushStickyFrame(const wr::WrStickyId& aStickyId,
+                       const DisplayItemClipChain* aParent);
+  void PopStickyFrame(const DisplayItemClipChain* aParent);
 
   bool IsScrollLayerDefined(layers::FrameMetrics::ViewID aScrollId) const;
   void DefineScrollLayer(const layers::FrameMetrics::ViewID& aScrollId,
+                         const Maybe<layers::FrameMetrics::ViewID>& aAncestorScrollId,
+                         const Maybe<wr::WrClipId>& aAncestorClipId,
                          const wr::LayoutRect& aContentRect, // TODO: We should work with strongly typed rects
                          const wr::LayoutRect& aClipRect);
   void PushScrollLayer(const layers::FrameMetrics::ViewID& aScrollId);
@@ -246,6 +274,8 @@ public:
                 const wr::LayoutRect& aClip,
                 bool aIsBackfaceVisible,
                 const wr::ColorF& aColor);
+
+  void PushClearRect(const wr::LayoutRect& aBounds);
 
   void PushLinearGradient(const wr::LayoutRect& aBounds,
                           const wr::LayoutRect& aClip,
@@ -351,7 +381,7 @@ public:
   void PushText(const wr::LayoutRect& aBounds,
                 const wr::LayoutRect& aClip,
                 bool aIsBackfaceVisible,
-                const gfx::Color& aColor,
+                const wr::ColorF& aColor,
                 wr::FontInstanceKey aFontKey,
                 Range<const wr::GlyphInstance> aGlyphBuffer,
                 const wr::GlyphOptions* aGlyphOptions = nullptr);
@@ -360,12 +390,12 @@ public:
                 bool aIsBackfaceVisible,
                 const wr::Line& aLine);
 
-  void PushTextShadow(const wr::LayoutRect& aBounds,
+  void PushShadow(const wr::LayoutRect& aBounds,
                       const wr::LayoutRect& aClip,
                       bool aIsBackfaceVisible,
-                      const wr::TextShadow& aShadow);
+                      const wr::Shadow& aShadow);
 
-  void PopTextShadow();
+  void PopAllShadows();
 
 
 
@@ -377,7 +407,7 @@ public:
                      const wr::ColorF& aColor,
                      const float& aBlurRadius,
                      const float& aSpreadRadius,
-                     const float& aBorderRadius,
+                     const wr::BorderRadius& aBorderRadius,
                      const wr::BoxShadowClipMode& aClipMode);
 
   // Returns the clip id that was most recently pushed with PushClip and that
@@ -386,27 +416,46 @@ public:
   Maybe<wr::WrClipId> TopmostClipId();
   // Same as TopmostClipId() but for scroll layers.
   layers::FrameMetrics::ViewID TopmostScrollId();
-  // Returns the scroll id that was pushed just before the given scroll id. This
-  // function returns Nothing() if the given scrollid has not been encountered,
-  // or if it is the rootmost scroll id (and therefore has no ancestor).
-  Maybe<layers::FrameMetrics::ViewID> ParentScrollIdFor(layers::FrameMetrics::ViewID aScrollId);
+  // If the topmost item on the stack is a clip or a scroll layer
+  bool TopmostIsClip();
 
   // Try to avoid using this when possible.
   wr::WrState* Raw() { return mWrState; }
+
+  // Return true if the current clip stack has any extra clip.
+  bool HasExtraClip() { return !mCacheOverride.empty(); }
+
 protected:
+  void PushCacheOverride(const DisplayItemClipChain* aParent,
+                         const wr::WrClipId& aClipId);
+  void PopCacheOverride(const DisplayItemClipChain* aParent);
+
   wr::WrState* mWrState;
 
   // Track the stack of clip ids and scroll layer ids that have been pushed
-  // (by PushClip and PushScrollLayer, respectively) and are still active.
-  // This is helpful for knowing e.g. what the ancestor scroll id of a particular
-  // scroll id is, and doing other "queries" of current state.
-  std::vector<wr::WrClipId> mClipIdStack;
-  std::vector<layers::FrameMetrics::ViewID> mScrollIdStack;
+  // (by PushClip and PushScrollLayer/PushClipAndScrollInfo, respectively) and
+  // haven't yet been popped.
+  std::vector<wr::ScrollOrClipId> mClipStack;
 
-  // Track the parent scroll id of each scroll id that we encountered. A
-  // Nothing() value indicates a root scroll id. We also use this structure to
-  // ensure that we don't define a particular scroll layer multiple times.
-  std::unordered_map<layers::FrameMetrics::ViewID, Maybe<layers::FrameMetrics::ViewID>> mScrollParents;
+  // Track each scroll id that we encountered. We use this structure to
+  // ensure that we don't define a particular scroll layer multiple times,
+  // as that results in undefined behaviour in WR.
+  std::unordered_set<layers::FrameMetrics::ViewID> mScrollIdsDefined;
+
+  // A map that holds the cache overrides creates by "out of band" clips, i.e.
+  // clips that are generated by display items but that ScrollingLayersHelper
+  // doesn't know about. These are called "cache overrides" because while we're
+  // inside one of these clips, the WR clip stack is different from what
+  // ScrollingLayersHelper thinks it actually is (because of the out-of-band
+  // clip that was pushed onto the stack) and so ScrollingLayersHelper cannot
+  // use its clip cache as-is. Instead, any time ScrollingLayersHelper wants
+  // to define a new clip as a child of clip X, it should first check the
+  // cache overrides to see if there is an out-of-band clip Y that is already a
+  // child of X, and then define its clip as a child of Y instead. This map
+  // stores X -> ClipId of Y, which allows ScrollingLayersHelper to do the
+  // necessary lookup. Note that there theoretically might be multiple
+  // different "Y" clips which is why we need a vector.
+  std::unordered_map<const DisplayItemClipChain*, std::vector<wr::WrClipId>> mCacheOverride;
 
   friend class WebRenderAPI;
 };

@@ -58,7 +58,7 @@
 #endif
     <!-- work-around bug 392512 -->
     <command id="Browser:AddBookmarkAs"
-             oncommand="PlacesCommandHook.bookmarkCurrentPage(true, PlacesUtils.bookmarksMenuFolderId);"/>
+             oncommand="PlacesCommandHook.bookmarkPage(gBrowser.selectedBrowser, true);"/>
     <!-- The command disabled state must be manually updated through
          PlacesCommandHook.updateBookmarkAllTabsCommand() -->
     <command id="Browser:BookmarkAllTabs"
@@ -102,10 +102,6 @@
      oncommand="Cc['@mozilla.org/browser/browserglue;1'].getService(Ci.nsIBrowserGlue).sanitize(window);"/>
     <command id="Tools:PrivateBrowsing"
       oncommand="OpenBrowserWindow({private: true});"/>
-#ifdef E10S_TESTING_ONLY
-    <command id="Tools:NonRemoteWindow"
-      oncommand="OpenBrowserWindow({remote: false});"/>
-#endif
     <command id="History:UndoCloseTab" oncommand="undoCloseTab();"/>
     <command id="History:UndoCloseWindow" oncommand="undoCloseWindow();"/>
   </commandset>

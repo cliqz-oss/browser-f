@@ -14,7 +14,6 @@
 
 #include "nsGkAtoms.h"
 
-#include "nsCSSParser.h"
 #include "nsHostObjectProtocolHandler.h"
 
 #include "mozilla/Preferences.h"
@@ -36,20 +35,9 @@ HTMLSourceElement::~HTMLSourceElement()
 NS_IMPL_CYCLE_COLLECTION_INHERITED(HTMLSourceElement, nsGenericHTMLElement,
                                    mSrcMediaSource)
 
-NS_IMPL_ADDREF_INHERITED(HTMLSourceElement, nsGenericHTMLElement)
-NS_IMPL_RELEASE_INHERITED(HTMLSourceElement, nsGenericHTMLElement)
-
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(HTMLSourceElement)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMHTMLSourceElement)
-NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(HTMLSourceElement, nsGenericHTMLElement)
 
 NS_IMPL_ELEMENT_CLONE(HTMLSourceElement)
-
-NS_IMPL_URI_ATTR(HTMLSourceElement, Src, src)
-NS_IMPL_STRING_ATTR(HTMLSourceElement, Type, type)
-NS_IMPL_STRING_ATTR(HTMLSourceElement, Srcset, srcset)
-NS_IMPL_STRING_ATTR(HTMLSourceElement, Sizes, sizes)
-NS_IMPL_STRING_ATTR(HTMLSourceElement, Media, media)
 
 bool
 HTMLSourceElement::MatchesCurrentMedia()
@@ -89,15 +77,21 @@ HTMLSourceElement::UpdateMediaList(const nsAttrValue* aValue)
     return;
   }
 
-  nsCSSParser cssParser;
   mMediaList = MediaList::Create(OwnerDoc()->GetStyleBackendType(), mediaStr);
 }
 
 nsresult
-HTMLSourceElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+HTMLSourceElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
-                                const nsAttrValue* aOldValue, bool aNotify)
+                                const nsAttrValue* aOldValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
+                                bool aNotify)
 {
+  if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::srcset) {
+    mSrcsetTriggeringPrincipal = nsContentUtils::GetAttrTriggeringPrincipal(
+        this, aValue ? aValue->GetStringValue() : EmptyString(),
+        aMaybeScriptedPrincipal);
+  }
   // If we are associated with a <picture> with a valid <img>, notify it of
   // responsive parameter changes
   Element *parent = nsINode::GetParentElement();
@@ -129,6 +123,9 @@ HTMLSourceElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
   } else if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::media) {
     UpdateMediaList(aValue);
   } else if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::src) {
+    mSrcTriggeringPrincipal = nsContentUtils::GetAttrTriggeringPrincipal(
+        this, aValue ? aValue->GetStringValue() : EmptyString(),
+        aMaybeScriptedPrincipal);
     mSrcMediaSource = nullptr;
     if (aValue) {
       nsString srcStr = aValue->GetStringValue();
@@ -141,7 +138,9 @@ HTMLSourceElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNameSpaceID, aName,
-                                            aValue, aOldValue, aNotify);
+                                            aValue, aOldValue,
+                                            aMaybeScriptedPrincipal,
+                                            aNotify);
 }
 
 nsresult

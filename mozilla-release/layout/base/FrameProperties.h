@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -288,12 +289,12 @@ public:
    * Remove and destroy all property values for the frame.
    */
   void DeleteAll(const nsIFrame* aFrame) {
-    mozilla::DebugOnly<size_t> len = mProperties.Length();
-    for (auto& prop : mProperties) {
+    nsTArray<PropertyValue> toDelete;
+    toDelete.SwapElements(mProperties);
+    for (auto& prop : toDelete) {
       prop.DestroyValueFor(aFrame);
-      MOZ_ASSERT(mProperties.Length() == len);
     }
-    mProperties.Clear();
+    MOZ_ASSERT(mProperties.IsEmpty(), "a property dtor added new properties");
   }
 
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {

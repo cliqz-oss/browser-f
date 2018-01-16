@@ -3,7 +3,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-const URL = "http://mochi.test:8888/browser/browser/base/content/test/general/test_offline_gzip.html"
+const URL = "http://mochi.test:8888/browser/browser/base/content/test/general/test_offline_gzip.html";
 
 registerCleanupFunction(function() {
   // Clean up after ourself
@@ -72,6 +72,7 @@ function test() {
   registerCleanupFunction(() => gBrowser.removeCurrentTab());
 
   BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(() => {
+    // eslint-disable-next-line mozilla/no-cpows-in-tests
     let window = gBrowser.selectedBrowser.contentWindow;
 
     window.addEventListener("message", handleMessageEvents);

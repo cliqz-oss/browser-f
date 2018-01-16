@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,13 +7,13 @@
 #ifndef MOZILLA_GFX_VR_VRMANAGERPARENT_H
 #define MOZILLA_GFX_VR_VRMANAGERPARENT_H
 
-#include "mozilla/layers/CompositableTransactionParent.h"
-#include "mozilla/layers/CompositorThread.h" // for CompositorThreadHolder
+#include "mozilla/layers/CompositableTransactionParent.h"  // need?
 #include "mozilla/gfx/PVRManagerParent.h" // for PVRManagerParent
 #include "mozilla/gfx/PVRLayerParent.h"   // for PVRLayerParent
 #include "mozilla/ipc/ProtocolUtils.h"    // for IToplevelProtocol
 #include "mozilla/TimeStamp.h"            // for TimeStamp
 #include "gfxVR.h"                        // for VRFieldOfView
+#include "VRThread.h"                     // for VRListenerThreadHolder
 
 namespace mozilla {
 using namespace layers;
@@ -28,9 +27,8 @@ class VRControllerPuppet;
 } // namespace impl
 
 class VRManagerParent final : public PVRManagerParent
-                            , public HostIPCAllocator
-                            , public ShmemAllocator
 {
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VRManagerParent);
 public:
   explicit VRManagerParent(ProcessId aChildProcessId, bool aIsContentChild);
 
@@ -38,49 +36,16 @@ public:
   static bool CreateForGPUProcess(Endpoint<PVRManagerParent>&& aEndpoint);
   static bool CreateForContent(Endpoint<PVRManagerParent>&& aEndpoint);
 
-  virtual base::ProcessId GetChildProcessId() override;
-
-  // ShmemAllocator
-
-  virtual ShmemAllocator* AsShmemAllocator() override { return this; }
-
-  virtual bool AllocShmem(size_t aSize,
-    ipc::SharedMemory::SharedMemoryType aType,
-    ipc::Shmem* aShmem) override;
-
-  virtual bool AllocUnsafeShmem(size_t aSize,
-    ipc::SharedMemory::SharedMemoryType aType,
-    ipc::Shmem* aShmem) override;
-
-  virtual void DeallocShmem(ipc::Shmem& aShmem) override;
-
-  virtual bool IsSameProcess() const override;
+  bool IsSameProcess() const;
   bool HaveEventListener();
   bool HaveControllerListener();
-
-  virtual void NotifyNotUsed(PTextureParent* aTexture, uint64_t aTransactionId) override;
-  virtual void SendAsyncMessage(const InfallibleTArray<AsyncParentMessageData>& aMessage) override;
   bool SendGamepadUpdate(const GamepadChangeEvent& aGamepadEvent);
   bool SendReplyGamepadVibrateHaptic(const uint32_t& aPromiseID);
 
 protected:
   ~VRManagerParent();
 
-  virtual PTextureParent* AllocPTextureParent(const SurfaceDescriptor& aSharedData,
-                                              const LayersBackend& aLayersBackend,
-                                              const TextureFlags& aFlags,
-                                              const uint64_t& aSerial) override;
-  virtual bool DeallocPTextureParent(PTextureParent* actor) override;
-
   virtual PVRLayerParent* AllocPVRLayerParent(const uint32_t& aDisplayID,
-                                              const float& aLeftEyeX,
-                                              const float& aLeftEyeY,
-                                              const float& aLeftEyeWidth,
-                                              const float& aLeftEyeHeight,
-                                              const float& aRightEyeX,
-                                              const float& aRightEyeY,
-                                              const float& aRightEyeWidth,
-                                              const float& aRightEyeHeight,
                                               const uint32_t& aGroup) override;
   virtual bool DeallocPVRLayerParent(PVRLayerParent* actor) override;
 
@@ -115,16 +80,14 @@ private:
 
   void Bind(Endpoint<PVRManagerParent>&& aEndpoint);
 
-  static void RegisterVRManagerInCompositorThread(VRManagerParent* aVRManager);
+  static void RegisterVRManagerInVRListenerThread(VRManagerParent* aVRManager);
 
   void DeferredDestroy();
 
   // This keeps us alive until ActorDestroy(), at which point we do a
   // deferred destruction of ourselves.
   RefPtr<VRManagerParent> mSelfRef;
-
-  // Keep the compositor thread alive, until we have destroyed ourselves.
-  RefPtr<layers::CompositorThreadHolder> mCompositorThreadHolder;
+  RefPtr<VRListenerThreadHolder> mVRListenerThreadHolder;
 
   // Keep the VRManager alive, until we have destroyed ourselves.
   RefPtr<VRManager> mVRManagerHolder;

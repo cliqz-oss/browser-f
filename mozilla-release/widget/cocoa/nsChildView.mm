@@ -71,6 +71,7 @@
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/IpcResourceUpdateQueue.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/widget/CompositorWidget.h"
 #include "gfxUtils.h"
@@ -359,6 +360,7 @@ nsChildView::nsChildView() : nsBaseWidget()
 , mEffectsLock("WidgetEffects")
 , mShowsResizeIndicator(false)
 , mHasRoundedBottomCorners(false)
+, mDevPixelCornerRadius{0}
 , mIsCoveringTitlebar(false)
 , mIsFullscreen(false)
 , mIsOpaque(false)
@@ -367,6 +369,8 @@ nsChildView::nsChildView() : nsBaseWidget()
 , mVisible(false)
 , mDrawing(false)
 , mIsDispatchPaint(false)
+, mPluginFocused{false}
+, mCurrentPanGestureBelongsToSwipe{false}
 {
   EnsureLogInitialized();
 }
@@ -2099,14 +2103,6 @@ nsChildView::AddWindowOverlayWebRenderCommands(layers::WebRenderBridgeChild* aWr
       titlebarCGContextDataLength
     );
 
-    if (mTitlebarImageKey &&
-        mTitlebarImageSize != size) {
-      // Delete wr::ImageKey. wr::ImageKey does not support size change.
-      // TODO: that's not true anymore! (size change is now supported).
-      CleanupWebRenderWindowOverlay(aWrBridge, aResources);
-      MOZ_ASSERT(mTitlebarImageKey.isNothing());
-    }
-
     if (!mTitlebarImageKey) {
       mTitlebarImageKey = Some(aWrBridge->GetNextImageKey());
       wr::ImageDescriptor descriptor(size, stride, format);
@@ -2123,16 +2119,6 @@ nsChildView::AddWindowOverlayWebRenderCommands(layers::WebRenderBridgeChild* aWr
     wr::LayoutRect rect = wr::ToLayoutRect(mTitlebarRect);
     aBuilder.PushImage(wr::LayoutRect{ rect.origin, { float(size.width), float(size.height) } },
                        rect, true, wr::ImageRendering::Auto, *mTitlebarImageKey);
-  }
-}
-
-void
-nsChildView::CleanupWebRenderWindowOverlay(layers::WebRenderBridgeChild* aWrBridge,
-                                           wr::IpcResourceUpdateQueue& aResources)
-{
-  if (mTitlebarImageKey) {
-    aResources.DeleteImage(*mTitlebarImageKey);
-    mTitlebarImageKey = Nothing();
   }
 }
 
@@ -3117,7 +3103,9 @@ nsChildView::GetDocumentAccessible()
   if (!mozilla::a11y::ShouldA11yBeEnabled())
     return nullptr;
 
-  if (mAccessible) {
+  // mAccessible might be dead if accessibility was previously disabled and is
+  // now being enabled again.
+  if (mAccessible && mAccessible->IsAlive()) {
     RefPtr<a11y::Accessible> ret;
     CallQueryReferent(mAccessible.get(),
                       static_cast<a11y::Accessible**>(getter_AddRefs(ret)));
@@ -3137,6 +3125,7 @@ nsChildView::GetDocumentAccessible()
 
 GLPresenter::GLPresenter(GLContext* aContext)
  : mGLContext(aContext)
+ , mQuadVBO{0}
 {
   mGLContext->MakeCurrent();
   ShaderConfigOGL config;
@@ -4021,6 +4010,8 @@ NSEvent* gLastDragMouseDownEvent = nil;
     if ([self isUsingOpenGL]) {
       if (ShadowLayerForwarder* slf = mGeckoChild->GetLayerManager()->AsShadowForwarder()) {
         slf->WindowOverlayChanged();
+      } else if (WebRenderLayerManager* wrlm = mGeckoChild->GetLayerManager()->AsWebRenderLayerManager()) {
+        wrlm->WindowOverlayChanged();
       }
     }
 
@@ -4165,18 +4156,6 @@ NSEvent* gLastDragMouseDownEvent = nil;
   NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(NO);
 }
 
-/*
- * In OS X Mountain Lion and above, smart zoom gestures are implemented in
- * smartMagnifyWithEvent. In OS X Lion, they are implemented in
- * magnifyWithEvent. See inline comments for more info.
- *
- * The prototypes swipeWithEvent, beginGestureWithEvent, magnifyWithEvent,
- * smartMagnifyWithEvent, rotateWithEvent, and endGestureWithEvent were
- * obtained from the following links:
- * https://developer.apple.com/library/mac/#documentation/Cocoa/Reference/ApplicationKit/Classes/NSResponder_Class/Reference/Reference.html
- * https://developer.apple.com/library/mac/#releasenotes/Cocoa/AppKit.html
- */
-
 - (void)swipeWithEvent:(NSEvent *)anEvent
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
@@ -4212,6 +4191,7 @@ NSEvent* gLastDragMouseDownEvent = nil;
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
+// Pinch zoom gesture.
 - (void)magnifyWithEvent:(NSEvent *)anEvent
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
@@ -4281,6 +4261,7 @@ NSEvent* gLastDragMouseDownEvent = nil;
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
+// Smart zoom gesture, i.e. two-finger double tap on trackpads.
 - (void)smartMagnifyWithEvent:(NSEvent *)anEvent
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
@@ -4719,8 +4700,10 @@ NSEvent* gLastDragMouseDownEvent = nil;
   if (!mGeckoChild)
     return;
 
-  // Let the superclass do the context menu stuff.
-  [super rightMouseDown:theEvent];
+  if (!nsBaseWidget::ShowContextMenuAfterMouseUp()) {
+    // Let the superclass do the context menu stuff.
+    [super rightMouseDown:theEvent];
+  }
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
@@ -4743,6 +4726,23 @@ NSEvent* gLastDragMouseDownEvent = nil;
 
   nsAutoRetainCocoaObject kungFuDeathGrip(self);
   mGeckoChild->DispatchInputEvent(&geckoEvent);
+  if (!mGeckoChild)
+    return;
+
+  if (nsBaseWidget::ShowContextMenuAfterMouseUp()) {
+    // Let the superclass do the context menu stuff, but pretend it's rightMouseDown.
+    NSEvent *dupeEvent = [NSEvent mouseEventWithType:NSRightMouseDown
+                                            location:theEvent.locationInWindow
+                                       modifierFlags:theEvent.modifierFlags
+                                           timestamp:theEvent.timestamp
+                                        windowNumber:theEvent.windowNumber
+                                             context:theEvent.context
+                                         eventNumber:theEvent.eventNumber
+                                          clickCount:theEvent.clickCount
+                                            pressure:theEvent.pressure];
+
+    [super rightMouseDown:dupeEvent];
+  }
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
@@ -6756,8 +6756,7 @@ HandleEvent(CGEventTapProxy aProxy, CGEventType aType,
 
 - (void)runEventThread
 {
-  char aLocal;
-  profiler_register_thread("APZC Event Thread", &aLocal);
+  PROFILER_REGISTER_THREAD("APZC Event Thread");
   NS_SetCurrentThreadName("APZC Event Thread");
 
   mThread = [NSThread currentThread];

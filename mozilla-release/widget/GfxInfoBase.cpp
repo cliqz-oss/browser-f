@@ -592,7 +592,10 @@ GfxInfoBase::Init()
 {
   InitGfxDriverInfoShutdownObserver();
   gfxPrefs::GetSingleton();
-  MediaPrefs::GetSingleton();
+  if (!XRE_IsGPUProcess()) {
+    // MediaPrefs can't run in the GPU process.
+    MediaPrefs::GetSingleton();
+  }
 
   nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
   if (os) {
@@ -1542,6 +1545,7 @@ GfxInfoBase::ControlGPUProcessForXPCShell(bool aEnable, bool *_retval)
     gpm->LaunchGPUProcess();
     gpm->EnsureGPUReady();
   } else {
+    gfxConfig::UserDisable(Feature::GPU_PROCESS, "xpcshell-test");
     gpm->KillProcess();
   }
 

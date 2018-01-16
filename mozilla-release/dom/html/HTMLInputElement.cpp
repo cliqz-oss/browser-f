@@ -227,9 +227,6 @@ const double HTMLInputElement::kMsPerDay = 24 * 60 * 60 * 1000;
   {0xb5, 0x13, 0x7b, 0x36, 0x93, 0x43, 0xe3, 0xa0} \
 }
 
-#define PROGRESS_STR "progress"
-static const uint32_t kProgressEventInterval = 50; // ms
-
 // An helper class for the dispatching of the 'change' event.
 // This class is used when the FilePicker finished its task (or when files and
 // directories are set by some chrome/test only method).
@@ -1256,7 +1253,6 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLInputElement,
                                              nsITextControlElement,
                                              imgINotificationObserver,
                                              nsIImageLoadingContent,
-                                             imgIOnloadBlocker,
                                              nsIDOMNSEditableElement,
                                              nsIConstraintValidation)
 
@@ -1323,7 +1319,7 @@ HTMLInputElement::Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,
 }
 
 nsresult
-HTMLInputElement::BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+HTMLInputElement::BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValueOrString* aValue,
                                 bool aNotify)
 {
@@ -1338,18 +1334,6 @@ HTMLInputElement::BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
         mType == NS_FORM_INPUT_RADIO &&
         (mForm || mDoneCreating)) {
       WillRemoveFromRadioGroup();
-    } else if (aNotify && aName == nsGkAtoms::src &&
-               mType == NS_FORM_INPUT_IMAGE) {
-      if (aValue) {
-        // Mark channel as urgent-start before load image if the image load is
-        // initaiated by a user interaction.
-        mUseUrgentStartForChannel = EventStateManager::IsHandlingUserInput();
-
-        LoadImage(aValue->String(), true, aNotify, eImageLoadType_Normal);
-      } else {
-        // Null value means the attr got unset; drop the image
-        CancelImageRequests(aNotify);
-      }
     } else if (aNotify && aName == nsGkAtoms::disabled) {
       mDisabledChanged = true;
     } else if (mType == NS_FORM_INPUT_RADIO && aName == nsGkAtoms::required) {
@@ -1374,9 +1358,11 @@ HTMLInputElement::BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
 }
 
 nsresult
-HTMLInputElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+HTMLInputElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                const nsAttrValue* aValue,
-                               const nsAttrValue* aOldValue, bool aNotify)
+                               const nsAttrValue* aOldValue,
+                               nsIPrincipal* aSubjectPrincipal,
+                               bool aNotify)
 {
   if (aNameSpaceID == kNameSpaceID_None) {
     //
@@ -1390,6 +1376,25 @@ HTMLInputElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
         (mForm || mDoneCreating)) {
       AddedToRadioGroup();
       UpdateValueMissingValidityStateForRadio(false);
+    }
+
+    if (aName == nsGkAtoms::src) {
+      mSrcTriggeringPrincipal = nsContentUtils::GetAttrTriggeringPrincipal(
+          this, aValue ? aValue->GetStringValue() : EmptyString(),
+          aSubjectPrincipal);
+      if (aNotify && mType == NS_FORM_INPUT_IMAGE) {
+        if (aValue) {
+          // Mark channel as urgent-start before load image if the image load is
+          // initiated by a user interaction.
+          mUseUrgentStartForChannel = EventStateManager::IsHandlingUserInput();
+
+          LoadImage(aValue->GetStringValue(), true, aNotify, eImageLoadType_Normal,
+                    mSrcTriggeringPrincipal);
+        } else {
+          // Null value means the attr got unset; drop the image
+          CancelImageRequests(aNotify);
+        }
+      }
     }
 
     // If @value is changed and BF_VALUE_CHANGED is false, @value is the value
@@ -1520,6 +1525,7 @@ HTMLInputElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
 
   return nsGenericHTMLFormElementWithState::AfterSetAttr(aNameSpaceID, aName,
                                                          aValue, aOldValue,
+                                                         aSubjectPrincipal,
                                                          aNotify);
 }
 
@@ -3328,7 +3334,9 @@ HTMLInputElement::SetCheckedInternal(bool aChecked, bool aNotify)
     }
   }
 
-  UpdateAllValidityStates(aNotify);
+  // No need to update element state, since we're about to call
+  // UpdateState anyway.
+  UpdateAllValidityStatesButNotElementState();
 
   // Notify the document that the CSS :checked pseudoclass for this element
   // has changed state.
@@ -4792,7 +4800,8 @@ HTMLInputElement::MaybeLoadImage()
   nsAutoString uri;
   if (mType == NS_FORM_INPUT_IMAGE &&
       GetAttr(kNameSpaceID_None, nsGkAtoms::src, uri) &&
-      (NS_FAILED(LoadImage(uri, false, true, eImageLoadType_Normal)) ||
+      (NS_FAILED(LoadImage(uri, false, true, eImageLoadType_Normal,
+                           mSrcTriggeringPrincipal)) ||
        !LoadingEnabled())) {
     CancelImageRequests(true);
   }
@@ -5017,8 +5026,9 @@ HTMLInputElement::HandleTypeChange(uint8_t aNewType, bool aNotify)
 
   UpdateHasRange();
 
-  // Do not notify, it will be done after if needed.
-  UpdateAllValidityStates(false);
+  // Update validity states, but not element state.  We'll update
+  // element state later, as part of this attribute change.
+  UpdateAllValidityStatesButNotElementState();
 
   UpdateApzAwareFlag();
 
@@ -5037,7 +5047,8 @@ HTMLInputElement::HandleTypeChange(uint8_t aNewType, bool aNotify)
       // initaiated by a user interaction.
       mUseUrgentStartForChannel = EventStateManager::IsHandlingUserInput();
 
-      LoadImage(src, false, aNotify, eImageLoadType_Normal);
+      LoadImage(src, false, aNotify, eImageLoadType_Normal,
+                mSrcTriggeringPrincipal);
     }
   }
 
@@ -5419,7 +5430,7 @@ HTMLInputElement::NormalizeDateTimeLocal(nsAString& aValue) const
   // Use 'T' as the separator between date string and time string.
   int32_t sepIndex = aValue.FindChar(' ');
   if (sepIndex != -1) {
-    aValue.Replace(sepIndex, 1, NS_LITERAL_STRING("T"));
+    aValue.ReplaceLiteral(sepIndex, 1, u"T");
   } else {
     sepIndex = aValue.FindChar('T');
   }
@@ -5741,7 +5752,7 @@ HTMLInputElement::IsInputColorEnabled()
 
 bool
 HTMLInputElement::ParseAttribute(int32_t aNamespaceID,
-                                 nsIAtom* aAttribute,
+                                 nsAtom* aAttribute,
                                  const nsAString& aValue,
                                  nsAttrValue& aResult)
 {
@@ -5836,7 +5847,7 @@ HTMLInputElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
 }
 
 nsChangeHint
-HTMLInputElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
+HTMLInputElement::GetAttributeChangeHint(const nsAtom* aAttribute,
                                          int32_t aModType) const
 {
   nsChangeHint retval =
@@ -5865,7 +5876,7 @@ HTMLInputElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
 }
 
 NS_IMETHODIMP_(bool)
-HTMLInputElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLInputElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
     { &nsGkAtoms::align },
@@ -6926,7 +6937,7 @@ HTMLInputElement::GetValueMode() const
     case NS_FORM_INPUT_DATETIME_LOCAL:
       return VALUE_MODE_VALUE;
     default:
-      NS_NOTYETIMPLEMENTED("Unexpected input type in GetValueMode()");
+      MOZ_ASSERT_UNREACHABLE("Unexpected input type in GetValueMode()");
       return VALUE_MODE_VALUE;
 #else // DEBUG
     default:
@@ -6974,7 +6985,7 @@ HTMLInputElement::DoesReadOnlyApply() const
     case NS_FORM_INPUT_DATETIME_LOCAL:
       return true;
     default:
-      NS_NOTYETIMPLEMENTED("Unexpected input type in DoesReadOnlyApply()");
+      MOZ_ASSERT_UNREACHABLE("Unexpected input type in DoesReadOnlyApply()");
       return true;
 #else // DEBUG
     default:
@@ -7014,7 +7025,7 @@ HTMLInputElement::DoesRequiredApply() const
     case NS_FORM_INPUT_DATETIME_LOCAL:
       return true;
     default:
-      NS_NOTYETIMPLEMENTED("Unexpected input type in DoesRequiredApply()");
+      MOZ_ASSERT_UNREACHABLE("Unexpected input type in DoesRequiredApply()");
       return true;
 #else // DEBUG
     default:
@@ -7064,7 +7075,7 @@ HTMLInputElement::DoesMinMaxApply() const
     case NS_FORM_INPUT_COLOR:
       return false;
     default:
-      NS_NOTYETIMPLEMENTED("Unexpected input type in DoesRequiredApply()");
+      MOZ_ASSERT_UNREACHABLE("Unexpected input type in DoesRequiredApply()");
       return false;
 #else // DEBUG
     default:
@@ -7104,7 +7115,7 @@ HTMLInputElement::DoesAutocompleteApply() const
     case NS_FORM_INPUT_FILE:
       return false;
     default:
-      NS_NOTYETIMPLEMENTED("Unexpected input type in DoesAutocompleteApply()");
+      MOZ_ASSERT_UNREACHABLE("Unexpected input type in DoesAutocompleteApply()");
       return false;
 #else // DEBUG
     default:
@@ -7335,6 +7346,16 @@ void
 HTMLInputElement::UpdateAllValidityStates(bool aNotify)
 {
   bool validBefore = IsValid();
+  UpdateAllValidityStatesButNotElementState();
+
+  if (validBefore != IsValid()) {
+    UpdateState(aNotify);
+  }
+}
+
+void
+HTMLInputElement::UpdateAllValidityStatesButNotElementState()
+{
   UpdateTooLongValidityState();
   UpdateTooShortValidityState();
   UpdateValueMissingValidityState();
@@ -7344,10 +7365,6 @@ HTMLInputElement::UpdateAllValidityStates(bool aNotify)
   UpdateRangeUnderflowValidityState();
   UpdateStepMismatchValidityState();
   UpdateBadInputValidityState();
-
-  if (validBefore != IsValid()) {
-    UpdateState(aNotify);
-  }
 }
 
 void

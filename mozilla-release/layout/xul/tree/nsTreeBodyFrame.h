@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,11 +7,11 @@
 #ifndef nsTreeBodyFrame_h
 #define nsTreeBodyFrame_h
 
+#include "mozilla/AtomArray.h"
 #include "mozilla/Attributes.h"
 
 #include "nsLeafBoxFrame.h"
 #include "nsITreeView.h"
-#include "nsICSSPseudoComparator.h"
 #include "nsIScrollbarMediator.h"
 #include "nsITimer.h"
 #include "nsIReflowCallback.h"
@@ -48,7 +49,6 @@ struct nsTreeImageCacheEntry
 // The actual frame that paints the cells and rows.
 class nsTreeBodyFrame final
   : public nsLeafBoxFrame
-  , public nsICSSPseudoComparator
   , public nsIScrollbarMediator
   , public nsIReflowCallback
 {
@@ -131,9 +131,6 @@ public:
   virtual bool ReflowFinished() override;
   virtual void ReflowCallbackCanceled() override;
 
-  // nsICSSPseudoComparator
-  virtual bool PseudoMatches(nsCSSSelector* aSelector) override;
-
   // nsIScrollbarMediator
   virtual void ScrollByPage(nsScrollbarFrame* aScrollbar, int32_t aDirection,
                             nsIScrollbarMediator::ScrollSnapMode aSnap
@@ -167,7 +164,7 @@ public:
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   virtual nsresult GetCursor(const nsPoint& aPoint,
                              nsIFrame::Cursor& aCursor) override;
@@ -599,7 +596,7 @@ protected: // Data Members
   nsDataHashtable<nsStringHashKey, nsTreeImageCacheEntry> mImageCache;
 
   // A scratch array used when looking up cached style contexts.
-  AtomArray mScratchArray;
+  mozilla::AtomArray mScratchArray;
 
   // The index of the first visible row and the # of rows visible onscreen.
   // The tree only examines onscreen rows, starting from

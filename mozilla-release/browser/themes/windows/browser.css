@@ -9,12 +9,12 @@
 
 %include ../shared/browser.inc.css
 %filter substitution
-%define glassShadowColor hsla(209,67%,12%,0.35)
+%define glassShadowColor hsla(240,5%,5%,0.3)
 
 :root {
   --titlebar-text-color: currentColor;
 
-  --tabs-border: threedshadow;
+  --tabs-border-color: threedshadow;
   --tab-line-color: highlight;
 
   --toolbar-non-lwt-bgcolor: -moz-dialog;
@@ -39,7 +39,7 @@
 
 @media (-moz-windows-default-theme) {
   :root {
-    --tabs-border: rgba(0,0,0,.3);
+    --tabs-border-color: rgba(0,0,0,.3);
     --tab-line-color: #0a84ff;
 
     --toolbar-non-lwt-bgcolor: #f9f9fa;
@@ -55,7 +55,7 @@
 }
 
 :root:-moz-lwtheme {
-  --tabs-border: rgba(0,0,0,.3);
+  --tabs-border-color: rgba(0,0,0,.3);
 
   --toolbar-bgcolor: rgba(255,255,255,.4);
   --toolbar-bgimage: none;
@@ -77,15 +77,15 @@
   display: none;
 }
 
-:root[sizemode="normal"][chromehidden~="menubar"] #toolbar-menubar ~ #TabsToolbar,
-:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] ~ #TabsToolbar {
+:root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar,
+:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar {
   padding-top: var(--space-above-tabbar);
 }
 
 /* Add 4px extra margin on top of the tabs toolbar on Windows 7. */
 @media (-moz-os-version: windows-win7) {
-  :root[sizemode="normal"][chromehidden~="menubar"] #toolbar-menubar ~ #TabsToolbar,
-  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] ~ #TabsToolbar {
+  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar,
+  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar {
     padding-top: calc(var(--space-above-tabbar) + 4px);
   }
 }
@@ -114,7 +114,7 @@
 @media (-moz-os-version: windows-win7) {
   @media (-moz-windows-default-theme) {
     :root:not(:-moz-lwtheme) {
-      --tabs-border: @glassShadowColor@;
+      --tabs-border-color: @glassShadowColor@;
     }
 
     #TabsToolbar:not(:-moz-lwtheme) {
@@ -122,7 +122,8 @@
     }
 
     /* Always show full-height tab separators on tabs with borders. */
-    .tabbrowser-tab:not(:-moz-lwtheme)::before {
+    .tabbrowser-tab:not(:-moz-lwtheme)::before,
+    .tabbrowser-tab:not(:-moz-lwtheme)::after {
       border-image: none !important;
     }
 
@@ -130,14 +131,24 @@
      * show the tabs toolbar background color inside tabs. */
     .tabbrowser-tab:not(:-moz-lwtheme) {
       background-color: hsl(235,33%,19%) !important;
-      border-top: 1px solid var(--tabs-border);
+      border-top: 1px solid var(--tabs-border-color);
       background-clip: padding-box;
     }
 
     /* The top border on top of the tab background is replaced
-     * by the slightly transparent outside tabs-border. */
+     * by the slightly transparent outside tabs-border-color. */
     .tab-background:not(:-moz-lwtheme) {
       border-top-style: none !important;
+    }
+
+    /* The border at the end of the tab strip is replaced
+     * by the slightly transparent outside tabs-border-color. */
+    .tabbrowser-tab[last-visible-tab]:not(:-moz-lwtheme) {
+      border-inline-end: 1px solid var(--tabs-border-color);
+    }
+
+    .tabbrowser-tab[last-visible-tab]:not(:-moz-lwtheme)::after {
+      display: none !important;
     }
   }
 }
@@ -242,17 +253,16 @@
 }
 
 #TabsToolbar:not([collapsed="true"]) + #nav-bar {
-  /* Position the toolbar above the bottom of background tabs */
+  /* This is needed for some toolbar button animations. Gross :( */
   position: relative;
-  z-index: 1;
 }
 
 #nav-bar {
-  border-top: 1px solid var(--tabs-border) !important;
+  box-shadow: 0 -@navbarTabsShadowSize@ 0 var(--tabs-border-color);
 }
 @media (-moz-windows-compositor: 0) {
   #TabsToolbar[collapsed="true"] + #nav-bar {
-    border-top-style: none !important;
+    box-shadow: none;
   }
 }
 
@@ -514,13 +524,9 @@ menuitem.bookmark-item {
 }
 
 html|*.urlbar-input:-moz-lwtheme::placeholder,
-.searchbar-textbox:-moz-lwtheme > .autocomplete-textbox-container > .textbox-input-box > html|*.textbox-input::placeholder {
+.searchbar-textbox:-moz-lwtheme > .urlbar-textbox-container > .textbox-input-box > html|*.textbox-input::placeholder {
   opacity: 1.0;
   color: #777;
-}
-
-.urlbar-textbox-container {
-  -moz-box-align: stretch;
 }
 
 /* ::::: URL Bar Zoom Reset Button ::::: */
@@ -766,7 +772,6 @@ html|span.ac-emphasize-text-url {
 #TabsToolbar {
   min-height: 0;
   padding: 0;
-  margin-bottom: calc(-1 * var(--tab-toolbar-navbar-overlap)); /* overlap the nav-bar's top border */
 }
 
 %include ../shared/tabs.inc.css
@@ -957,7 +962,11 @@ notification[value="translation"] {
 
   notification[value="translation"] button[type="menu"] > .button-box > .button-menu-dropmarker,
   notification[value="translation"] menulist > .menulist-dropmarker {
-    list-style-image: url("chrome://browser/skin/toolbarbutton-dropdown-arrow.png");
+    list-style-image: url(chrome://global/skin/icons/arrow-dropdown-16.svg);
+  }
+  notification[value="translation"] menulist > .menulist-dropmarker > .dropmarker-icon {
+    width: 11px;
+    height: 11px;
   }
 
   notification[value="translation"] button > .button-box,
@@ -1065,19 +1074,19 @@ notification[value="translation"] {
 
 /* Private browsing and accessibility indicators */
 
-:root[sizemode="normal"][chromehidden~="menubar"] #toolbar-menubar ~ #TabsToolbar > .private-browsing-indicator,
-:root[sizemode="normal"][chromehidden~="menubar"] #toolbar-menubar ~ #TabsToolbar > .accessibility-indicator,
-:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] ~ #TabsToolbar > .private-browsing-indicator,
-:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] ~ #TabsToolbar > .accessibility-indicator {
+:root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .private-browsing-indicator,
+:root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .accessibility-indicator,
+:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .private-browsing-indicator,
+:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .accessibility-indicator {
   margin-top: calc(-1 * var(--space-above-tabbar));
 }
 
 /* Compensate for 4px extra margin on top of the tabs toolbar on Windows 7. */
 @media (-moz-os-version: windows-win7) {
-  :root[sizemode="normal"][chromehidden~="menubar"] #toolbar-menubar ~ #TabsToolbar > .private-browsing-indicator,
-  :root[sizemode="normal"][chromehidden~="menubar"] #toolbar-menubar ~ #TabsToolbar > .accessibility-indicator,
-  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] ~ #TabsToolbar > .private-browsing-indicator,
-  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] ~ #TabsToolbar > .accessibility-indicator {
+  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .private-browsing-indicator,
+  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .accessibility-indicator,
+  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .private-browsing-indicator,
+  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .accessibility-indicator {
     margin-top: calc(-1 * (var(--space-above-tabbar) + 4px));
   }
 }
@@ -1109,6 +1118,7 @@ notification[value="translation"] {
 %include ../shared/contextmenu.inc.css
 
 /* Make menu items larger when opened through touch. */
+#widget-overflow[touchmode] .toolbarbutton-1,
 panel[touchmode] .PanelUI-subView .subviewbutton,
 menupopup[touchmode] menu,
 menupopup[touchmode] menuitem {

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -252,7 +253,7 @@ ImageBridgeChild::ActorDestroy(ActorDestroyReason aWhy)
   mDestroyed = true;
   {
     MutexAutoLock lock(mContainerMapLock);
-    mImageContainers.Clear();
+    mImageContainerListeners.Clear();
   }
 }
 
@@ -325,8 +326,8 @@ ImageBridgeChild::Connect(CompositableClient* aCompositable,
 
   {
     MutexAutoLock lock(mContainerMapLock);
-    MOZ_ASSERT(!mImageContainers.Contains(id));
-    mImageContainers.Put(id, aImageContainer);
+    MOZ_ASSERT(!mImageContainerListeners.Contains(id));
+    mImageContainerListeners.Put(id, aImageContainer->GetImageContainerListener());
   }
 
   CompositableHandle handle(id);
@@ -338,7 +339,7 @@ void
 ImageBridgeChild::ForgetImageContainer(const CompositableHandle& aHandle)
 {
   MutexAutoLock lock(mContainerMapLock);
-  mImageContainers.Remove(aHandle.Value());
+  mImageContainerListeners.Remove(aHandle.Value());
 }
 
 Thread* ImageBridgeChild::GetThread() const
@@ -727,7 +728,31 @@ MessageLoop * ImageBridgeChild::GetMessageLoop() const
 ImageBridgeChild::IdentifyCompositorTextureHost(const TextureFactoryIdentifier& aIdentifier)
 {
   if (RefPtr<ImageBridgeChild> child = GetSingleton()) {
-    child->IdentifyTextureHost(aIdentifier);
+    child->UpdateTextureFactoryIdentifier(aIdentifier);
+  }
+}
+
+void
+ImageBridgeChild::UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aIdentifier)
+{
+  bool disablingWebRender = GetCompositorBackendType() == LayersBackend::LAYERS_WR &&
+                            aIdentifier.mParentBackend != LayersBackend::LAYERS_WR;
+  IdentifyTextureHost(aIdentifier);
+  if (disablingWebRender) {
+    // ImageHost is incompatible between WebRender enabled and WebRender disabled.
+    // Then drop all ImageContainers' ImageClients during disabling WebRender.
+    nsTArray<RefPtr<ImageContainerListener> > listeners;
+    {
+      MutexAutoLock lock(mContainerMapLock);
+      for (auto iter = mImageContainerListeners.Iter(); !iter.Done(); iter.Next()) {
+        RefPtr<ImageContainerListener>& listener = iter.Data();
+        listeners.AppendElement(listener);
+      }
+    }
+    // Drop ImageContainer's ImageClient whithout holding mContainerMapLock to avoid deadlock.
+    for (auto container : listeners) {
+      container->DropImageClient();
+    }
   }
 }
 
@@ -998,10 +1023,8 @@ ImageBridgeChild::RecvDidComposite(InfallibleTArray<ImageCompositeNotification>&
     RefPtr<ImageContainerListener> listener;
     {
       MutexAutoLock lock(mContainerMapLock);
-      ImageContainer* imageContainer;
-      imageContainer = mImageContainers.Get(n.compositable().Value());
-      if (imageContainer) {
-        listener = imageContainer->GetImageContainerListener();
+      if (auto entry = mImageContainerListeners.Lookup(n.compositable().Value())) {
+        listener = entry.Data();
       }
     }
     if (listener) {
@@ -1112,7 +1135,7 @@ ImageBridgeChild::ReleaseCompositable(const CompositableHandle& aHandle)
 
   {
     MutexAutoLock lock(mContainerMapLock);
-    mImageContainers.Remove(aHandle.Value());
+    mImageContainerListeners.Remove(aHandle.Value());
   }
 }
 

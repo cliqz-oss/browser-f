@@ -69,18 +69,7 @@ IsReadyToRun(nsIRunnable* aEvent, SchedulerGroup* aEventGroup)
     return false;
   }
 
-  AutoTArray<RefPtr<SchedulerGroup>, 1> groups;
-  bool labeled = labelable->GetAffectedSchedulerGroups(groups);
-  if (!labeled) {
-    return false;
-  }
-
-  for (SchedulerGroup* group : groups) {
-    if (group->IsRunning()) {
-      return false;
-    }
-  }
-  return true;
+  return labelable->IsReadyToRun();
 }
 
 void
@@ -161,13 +150,13 @@ LabeledEventQueue::GetEvent(EventPriority* aPriority,
 
   Epoch epoch = mEpochs.FirstElement();
   if (!epoch.IsLabeled()) {
-    QueueEntry entry = mUnlabeled.FirstElement();
-    if (!IsReadyToRun(entry.mRunnable, nullptr)) {
+    QueueEntry& first = mUnlabeled.FirstElement();
+    if (!IsReadyToRun(first.mRunnable, nullptr)) {
       return nullptr;
     }
 
     PopEpoch();
-    mUnlabeled.Pop();
+    QueueEntry entry = mUnlabeled.Pop();
     MOZ_ASSERT(entry.mEpochNumber == epoch.mEpochNumber);
     MOZ_ASSERT(entry.mRunnable.get());
     return entry.mRunnable.forget();
@@ -181,8 +170,9 @@ LabeledEventQueue::GetEvent(EventPriority* aPriority,
   // prevents us from preferentially processing events from active tabs twice in
   // a row. This scheme is designed to prevent starvation.
   if (TabChild::HasActiveTabs() && mAvoidActiveTabCount <= 0) {
-    for (TabChild* tabChild : TabChild::GetActiveTabs()) {
-      SchedulerGroup* group = tabChild->TabGroup();
+    for (auto iter = TabChild::GetActiveTabs().ConstIter();
+         !iter.Done(); iter.Next()) {
+      SchedulerGroup* group = iter.Get()->GetKey()->TabGroup();
       if (!group->isInList() || group == sCurrentSchedulerGroup) {
         continue;
       }
@@ -207,17 +197,19 @@ LabeledEventQueue::GetEvent(EventPriority* aPriority,
   do {
     mAvoidActiveTabCount--;
 
-    RunnableEpochQueue* queue = mLabeled.Get(group);
-    if (!queue) {
+    auto queueEntry = mLabeled.Lookup(group);
+    if (!queueEntry) {
       // This can happen if |group| is in a different LabeledEventQueue than |this|.
       group = NextSchedulerGroup(group);
       continue;
     }
+
+    RunnableEpochQueue* queue = queueEntry.Data();
     MOZ_ASSERT(!queue->IsEmpty());
 
-    QueueEntry entry = queue->FirstElement();
-    if (entry.mEpochNumber == epoch.mEpochNumber &&
-        IsReadyToRun(entry.mRunnable, group)) {
+    QueueEntry& first = queue->FirstElement();
+    if (first.mEpochNumber == epoch.mEpochNumber &&
+        IsReadyToRun(first.mRunnable, group)) {
       sCurrentSchedulerGroup = NextSchedulerGroup(group);
 
       PopEpoch();
@@ -234,9 +226,9 @@ LabeledEventQueue::GetEvent(EventPriority* aPriority,
         }
         group->removeFrom(*sSchedulerGroups);
       }
-      queue->Pop();
+      QueueEntry entry = queue->Pop();
       if (queue->IsEmpty()) {
-        mLabeled.Remove(group);
+        queueEntry.Remove();
       }
       return entry.mRunnable.forget();
     }
@@ -269,7 +261,7 @@ LabeledEventQueue::HasReadyEvent(const MutexAutoLock& aProofOfLock)
   Epoch& frontEpoch = mEpochs.FirstElement();
 
   if (!frontEpoch.IsLabeled()) {
-    QueueEntry entry = mUnlabeled.FirstElement();
+    QueueEntry& entry = mUnlabeled.FirstElement();
     return IsReadyToRun(entry.mRunnable, nullptr);
   }
 
@@ -281,7 +273,7 @@ LabeledEventQueue::HasReadyEvent(const MutexAutoLock& aProofOfLock)
     RunnableEpochQueue* queue = iter.Data();
     MOZ_ASSERT(!queue->IsEmpty());
 
-    QueueEntry entry = queue->FirstElement();
+    QueueEntry& entry = queue->FirstElement();
     if (entry.mEpochNumber != currentEpoch) {
       continue;
     }

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -82,7 +82,7 @@ ConvertURLArrayHelper(const nsTArray<nsString>& aUrls, nsIArray** aResult)
       return rv;
     }
 
-    rv = urls->AppendElement(isupportsString, false);
+    rv = urls->AppendElement(isupportsString);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -1123,7 +1123,7 @@ PresentationService::UntrackSessionInfo(const nsAString& aSessionId,
         "dom::PresentationService::UntrackSessionInfo", [windowId]() -> void {
           PRES_DEBUG("Attempt to close window[%" PRIu64 "]\n", windowId);
 
-          if (auto* window = nsGlobalWindow::GetInnerWindowWithId(windowId)) {
+          if (auto* window = nsGlobalWindowInner::GetInnerWindowWithId(windowId)) {
             window->Close();
           }
         }));

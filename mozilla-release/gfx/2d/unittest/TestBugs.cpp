@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -60,9 +61,11 @@ TestBugs::CairoClip918671()
   RefPtr<DataSourceSurface> dataSurf1 = surf1->GetDataSurface();
   RefPtr<DataSourceSurface> dataSurf2 = surf2->GetDataSurface();
 
+  DataSourceSurface::ScopedMap map1(dataSurf1, DataSourceSurface::READ);
+  DataSourceSurface::ScopedMap map2(dataSurf2, DataSourceSurface::READ);
   for (int y = 0; y < dt->GetSize().height; y++) {
-    VERIFY(memcmp(dataSurf1->GetData() + y * dataSurf1->Stride(),
-                  dataSurf2->GetData() + y * dataSurf2->Stride(),
+    VERIFY(memcmp(map1.GetData() + y * map1.GetStride(),
+                  map2.GetData() + y * map2.GetStride(),
                   dataSurf1->GetSize().width * 4) == 0);
   }
 

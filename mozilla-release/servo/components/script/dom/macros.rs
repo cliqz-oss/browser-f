@@ -106,38 +106,22 @@ macro_rules! make_url_getter(
 );
 
 #[macro_export]
-macro_rules! make_url_or_base_getter(
+macro_rules! make_form_action_getter(
     ( $attr:ident, $htmlname:tt ) => (
         fn $attr(&self) -> DOMString {
             use dom::bindings::inheritance::Castable;
             use dom::element::Element;
             let element = self.upcast::<Element>();
-            let url = element.get_url_attribute(&local_name!($htmlname));
-            if url.is_empty() {
-                let window = window_from_node(self);
-                DOMString::from(window.get_url().into_string())
-            } else {
-                url
-            }
-        }
-    );
-);
-
-#[macro_export]
-macro_rules! make_string_or_document_url_getter(
-    ( $attr:ident, $htmlname:tt ) => (
-        fn $attr(&self) -> DOMString {
-            use dom::bindings::inheritance::Castable;
-            use dom::element::Element;
-            use dom::node::document_from_node;
-            let element = self.upcast::<Element>();
-            let val = element.get_string_attribute(&local_name!($htmlname));
-
-            if val.is_empty() {
-                let doc = document_from_node(self);
-                DOMString::from(doc.url().into_string())
-            } else {
-                val
+            let doc = ::dom::node::document_from_node(self);
+            let attr = element.get_attribute(&ns!(), &local_name!($htmlname));
+            let value = attr.as_ref().map(|attr| attr.value());
+            let value = match value {
+                Some(ref value) if !value.is_empty() => &***value,
+                _ => return doc.url().into_string().into(),
+            };
+            match doc.base_url().join(value) {
+                Ok(parsed) => parsed.into_string().into(),
+                Err(_) => value.to_owned().into(),
             }
         }
     );
@@ -149,7 +133,6 @@ macro_rules! make_enumerated_getter(
         fn $attr(&self) -> DOMString {
             use dom::bindings::inheritance::Castable;
             use dom::element::Element;
-            use std::ascii::AsciiExt;
             let element = self.upcast::<Element>();
             let mut val = element.get_string_attribute(&local_name!($htmlname));
             val.make_ascii_lowercase();
@@ -194,11 +177,8 @@ macro_rules! make_url_setter(
         fn $attr(&self, value: DOMString) {
             use dom::bindings::inheritance::Castable;
             use dom::element::Element;
-            use dom::node::document_from_node;
-            let value = AttrValue::from_url(document_from_node(self).url(),
-                                            value.into());
             let element = self.upcast::<Element>();
-            element.set_attribute(&local_name!($htmlname), value);
+            element.set_url_attribute(&local_name!($htmlname), value);
         }
     );
 );
@@ -600,8 +580,8 @@ macro_rules! rooted_vec {
 macro_rules! impl_performance_entry_struct(
     ($binding:ident, $struct:ident, $type:expr) => (
         use dom::bindings::codegen::Bindings::$binding;
-        use dom::bindings::js::Root;
         use dom::bindings::reflector::reflect_dom_object;
+        use dom::bindings::root::DomRoot;
         use dom::bindings::str::DOMString;
         use dom::globalscope::GlobalScope;
         use dom::performanceentry::PerformanceEntry;
@@ -627,9 +607,9 @@ macro_rules! impl_performance_entry_struct(
             pub fn new(global: &GlobalScope,
                        name: DOMString,
                        start_time: f64,
-                       duration: f64) -> Root<$struct> {
+                       duration: f64) -> DomRoot<$struct> {
                 let entry = $struct::new_inherited(name, start_time, duration);
-                reflect_dom_object(box entry, global, $binding::Wrap)
+                reflect_dom_object(Box::new(entry), global, $binding::Wrap)
             }
         }
     );

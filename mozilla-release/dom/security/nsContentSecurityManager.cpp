@@ -1,3 +1,9 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 #include "nsContentSecurityManager.h"
 #include "nsEscape.h"
 #include "nsIChannel.h"
@@ -13,20 +19,16 @@
 #include "nsCDefaultURIFixup.h"
 #include "nsIURIFixup.h"
 #include "nsIImageLoadingContent.h"
-#include "NullPrincipal.h"
 
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/TabChild.h"
 
 NS_IMPL_ISUPPORTS(nsContentSecurityManager,
                   nsIContentSecurityManager,
                   nsIChannelEventSink)
 
 /* static */ bool
-nsContentSecurityManager::AllowTopLevelNavigationToDataURI(
-  nsIURI* aURI,
-  nsContentPolicyType aContentPolicyType,
-  nsIPrincipal* aTriggeringPrincipal,
-  bool aLoadFromExternal)
+nsContentSecurityManager::AllowTopLevelNavigationToDataURI(nsIChannel* aChannel)
 {
   // Let's block all toplevel document navigations to a data: URI.
   // In all cases where the toplevel document is navigated to a
@@ -39,41 +41,60 @@ nsContentSecurityManager::AllowTopLevelNavigationToDataURI(
   if (!mozilla::net::nsIOService::BlockToplevelDataUriNavigations()) {
     return true;
   }
-  if (aContentPolicyType != nsIContentPolicy::TYPE_DOCUMENT) {
+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->GetLoadInfo();
+  if (!loadInfo) {
     return true;
   }
+  if (loadInfo->GetExternalContentPolicyType() != nsIContentPolicy::TYPE_DOCUMENT) {
+    return true;
+  }
+  if (loadInfo->GetForceAllowDataURI()) {
+    // if the loadinfo explicitly allows the data URI navigation, let's allow it now
+    return true;
+  }
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(uri));
+  NS_ENSURE_SUCCESS(rv, true);
   bool isDataURI =
-    (NS_SUCCEEDED(aURI->SchemeIs("data", &isDataURI)) && isDataURI);
+    (NS_SUCCEEDED(uri->SchemeIs("data", &isDataURI)) && isDataURI);
   if (!isDataURI) {
     return true;
   }
   // Whitelist data: images as long as they are not SVGs
   nsAutoCString filePath;
-  aURI->GetFilePath(filePath);
+  uri->GetFilePath(filePath);
   if (StringBeginsWith(filePath, NS_LITERAL_CSTRING("image/")) &&
       !StringBeginsWith(filePath, NS_LITERAL_CSTRING("image/svg+xml"))) {
     return true;
   }
-  // Whitelist data: PDFs
-  if (StringBeginsWith(filePath, NS_LITERAL_CSTRING("application/pdf"))) {
+  // Whitelist data: PDFs and JSON
+  if (StringBeginsWith(filePath, NS_LITERAL_CSTRING("application/pdf")) ||
+      StringBeginsWith(filePath, NS_LITERAL_CSTRING("application/json"))) {
     return true;
   }
-  if (!aLoadFromExternal &&
-      nsContentUtils::IsSystemPrincipal(aTriggeringPrincipal)) {
+  // Redirecting to a toplevel data: URI is not allowed, hence we make
+  // sure the RedirectChain is empty.
+  if (!loadInfo->GetLoadTriggeredFromExternal() &&
+      nsContentUtils::IsSystemPrincipal(loadInfo->TriggeringPrincipal()) &&
+      loadInfo->RedirectChain().IsEmpty()) {
     return true;
   }
   nsAutoCString dataSpec;
-  aURI->GetSpec(dataSpec);
+  uri->GetSpec(dataSpec);
   if (dataSpec.Length() > 50) {
     dataSpec.Truncate(50);
     dataSpec.AppendLiteral("...");
+  }
+  nsCOMPtr<nsITabChild> tabChild = do_QueryInterface(loadInfo->ContextForTopLevelLoad());
+  nsCOMPtr<nsIDocument> doc;
+  if (tabChild) {
+    doc = static_cast<mozilla::dom::TabChild*>(tabChild.get())->GetDocument();
   }
   NS_ConvertUTF8toUTF16 specUTF16(NS_UnescapeURL(dataSpec));
   const char16_t* params[] = { specUTF16.get() };
   nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
                                   NS_LITERAL_CSTRING("DATA_URI_BLOCKED"),
-                                  // no doc available, log to browser console
-                                  nullptr,
+                                  doc,
                                   nsContentUtils::eSECURITY_PROPERTIES,
                                   "BlockTopLevelDataURINavigation",
                                   params, ArrayLength(params));
@@ -455,18 +476,11 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
       MOZ_ASSERT(false, "can not perform security check without a valid contentType");
   }
 
-  // For document loads we use the triggeringPrincipal as the originPrincipal.
-  // Note the the loadingPrincipal for loads of TYPE_DOCUMENT is a nullptr.
-  nsCOMPtr<nsIPrincipal> principal =
-    (contentPolicyType == nsIContentPolicy::TYPE_DOCUMENT ||
-     contentPolicyType == nsIContentPolicy::TYPE_SUBDOCUMENT)
-    ? aLoadInfo->TriggeringPrincipal()
-    : aLoadInfo->LoadingPrincipal();
-
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
   rv = NS_CheckContentLoadPolicy(internalContentPolicyType,
                                  uri,
-                                 principal,
+                                 aLoadInfo->LoadingPrincipal(),
+                                 aLoadInfo->TriggeringPrincipal(),
                                  requestingContext,
                                  mimeTypeGuess,
                                  nullptr,        //extra,
@@ -573,27 +587,6 @@ nsContentSecurityManager::AsyncOnChannelRedirect(nsIChannel* aOldChannel,
     if (NS_FAILED(rv)) {
       aOldChannel->Cancel(rv);
       return rv;
-    }
-  }
-
-  // Redirecting to a toplevel data: URI is not allowed, hence we pass
-  // a NullPrincipal as the TriggeringPrincipal to
-  // AllowTopLevelNavigationToDataURI() which definitely blocks any
-  // data: URI load.
-  nsCOMPtr<nsILoadInfo> newLoadInfo = aNewChannel->GetLoadInfo();
-  if (newLoadInfo) {
-    nsCOMPtr<nsIURI> uri;
-    nsresult rv = NS_GetFinalChannelURI(aNewChannel, getter_AddRefs(uri));
-    NS_ENSURE_SUCCESS(rv, rv);
-    nsCOMPtr<nsIPrincipal> nullTriggeringPrincipal = NullPrincipal::Create();
-    if (!nsContentSecurityManager::AllowTopLevelNavigationToDataURI(
-          uri,
-          newLoadInfo->GetExternalContentPolicyType(),
-          nullTriggeringPrincipal,
-          false)) {
-        // logging to console happens within AllowTopLevelNavigationToDataURI
-      aOldChannel->Cancel(NS_ERROR_DOM_BAD_URI);
-      return NS_ERROR_DOM_BAD_URI;
     }
   }
 
@@ -798,9 +791,9 @@ nsContentSecurityManager::IsOriginPotentiallyTrustworthy(nsIPrincipal* aPrincipa
     return NS_OK;
   }
 
-  if (host.Equals("127.0.0.1") ||
-      host.Equals("localhost") ||
-      host.Equals("::1")) {
+  if (host.EqualsLiteral("127.0.0.1") ||
+      host.EqualsLiteral("localhost") ||
+      host.EqualsLiteral("::1")) {
     *aIsTrustWorthy = true;
     return NS_OK;
   }

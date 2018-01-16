@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -86,8 +88,6 @@
 #include "nsMenuBarListener.h"
 #endif
 
-#include "nsTextServicesDocument.h"
-
 #ifdef MOZ_WEBSPEECH
 #include "nsSynthVoiceRegistry.h"
 #endif
@@ -124,6 +124,7 @@
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
 #include "mozilla/dom/ipc/IPCBlobInputStreamStorage.h"
 #include "mozilla/dom/U2FTokenManager.h"
+#include "mozilla/dom/PointerEventHandler.h"
 
 using namespace mozilla;
 using namespace mozilla::net;
@@ -154,7 +155,6 @@ nsLayoutStatics::Initialize()
   nsCSSProps::AddRefTable();
   nsColorNames::AddRefTable();
   nsGkAtoms::AddRefAtoms();
-  nsTextServicesDocument::RegisterAtoms();
   nsHTMLTags::RegisterAtoms();
   nsRDFAtoms::RegisterAtoms();
 
@@ -191,6 +191,7 @@ nsLayoutStatics::Initialize()
 
   nsCellMap::Init();
 
+  mozilla::SharedFontList::Initialize();
   StaticPresData::Init();
   nsCSSRendering::Init();
 
@@ -259,7 +260,7 @@ nsLayoutStatics::Initialize()
   nsHtml5Module::InitializeStatics();
   mozilla::dom::FallbackEncoding::Initialize();
   nsLayoutUtils::Initialize();
-  nsIPresShell::InitializeStatics();
+  PointerEventHandler::InitializeStatics();
   TouchManager::InitializeStatics();
   ContentPrincipal::InitializeStatics();
 
@@ -400,7 +401,7 @@ nsLayoutStatics::Shutdown()
 
   nsCORSListenerProxy::Shutdown();
 
-  nsIPresShell::ReleaseStatics();
+  PointerEventHandler::ReleaseStatics();
 
   TouchManager::ReleaseStatics();
 
@@ -417,6 +418,7 @@ nsLayoutStatics::Shutdown()
   HTMLInputElement::DestroyUploadLastDir();
 
   nsLayoutUtils::Shutdown();
+  mozilla::SharedFontList::Shutdown();
 
   nsHyphenationManager::Shutdown();
   nsDOMMutationObserver::Shutdown();

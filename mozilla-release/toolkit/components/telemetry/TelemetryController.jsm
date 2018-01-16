@@ -110,7 +110,7 @@ var Policy = {
   now: () => new Date(),
   generatePingId: () => Utils.generateUUID(),
   getCachedClientID: () => ClientID.getCachedClientID(),
-}
+};
 
 this.EXPORTED_SYMBOLS = ["TelemetryController"];
 
@@ -623,9 +623,24 @@ var Impl = {
     // Configure base Telemetry recording.
     // Unified Telemetry makes it opt-out. If extended Telemetry is enabled, base recording
     // is always on as well.
-    const enabled = Utils.isTelemetryEnabled;
-    Telemetry.canRecordBase = enabled || IS_UNIFIED_TELEMETRY;
-    Telemetry.canRecordExtended = enabled;
+    if (IS_UNIFIED_TELEMETRY) {
+      // Enable extended Telemetry on pre-release channels and disable it
+      // on Release/ESR.
+      let prereleaseChannels = ["nightly", "aurora", "beta"];
+      if (!AppConstants.MOZILLA_OFFICIAL) {
+        // Turn extended telemetry for local developer builds.
+        prereleaseChannels.push("default");
+      }
+      const isPrereleaseChannel =
+        prereleaseChannels.includes(AppConstants.MOZ_UPDATE_CHANNEL);
+      Telemetry.canRecordBase = true;
+      Telemetry.canRecordExtended = isPrereleaseChannel ||
+        Services.prefs.getBoolPref(TelemetryUtils.Preferences.OverridePreRelease, false);
+    } else {
+      // We're not on unified Telemetry, stick to the old behaviour for
+      // supporting Fennec.
+      Telemetry.canRecordBase = Telemetry.canRecordExtended = Utils.isTelemetryEnabled;
+    }
 
     this._log.config("enableTelemetryRecording - canRecordBase:" + Telemetry.canRecordBase +
                      ", canRecordExtended: " + Telemetry.canRecordExtended);
@@ -938,7 +953,7 @@ var Impl = {
   },
 
   getCurrentPingData(aSubsession) {
-    this._log.trace("getCurrentPingData - subsession: " + aSubsession)
+    this._log.trace("getCurrentPingData - subsession: " + aSubsession);
 
     // Telemetry is disabled, don't gather any data.
     if (!Telemetry.canRecordBase) {

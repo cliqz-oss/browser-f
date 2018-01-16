@@ -229,6 +229,7 @@ public:
     , mCodecSpecificConfig(aOther.mCodecSpecificConfig)
     , mExtraData(aOther.mExtraData)
     , mRotation(aOther.mRotation)
+    , mBitDepth(aOther.mBitDepth)
     , mImageRect(aOther.mImageRect)
     , mAlphaPresent(aOther.mAlphaPresent)
   {
@@ -289,11 +290,18 @@ public:
         !mImage.height) {
       return ImageRect();
     }
+
     gfx::IntRect imageRect = ImageRect();
+    int64_t w = (aWidth * imageRect.Width()) / mImage.width;
+    int64_t h = (aHeight * imageRect.Height()) / mImage.height;
+    if (!w || !h) {
+      return imageRect;
+    }
+
     imageRect.x = (imageRect.x * aWidth) / mImage.width;
     imageRect.y = (imageRect.y * aHeight) / mImage.height;
-    imageRect.SetWidth((aWidth * imageRect.Width()) / mImage.width);
-    imageRect.SetHeight((aHeight * imageRect.Height()) / mImage.height);
+    imageRect.SetWidth(w);
+    imageRect.SetHeight(h);
     return imageRect;
   }
 
@@ -328,6 +336,9 @@ public:
   // Describing how many degrees video frames should be rotated in clock-wise to
   // get correct view.
   Rotation mRotation;
+
+  // Should be 8, 10 or 12. Default value is 8.
+  uint8_t mBitDepth = 8;
 
 private:
   // mImage may be cropped; currently only used with the WebM container.

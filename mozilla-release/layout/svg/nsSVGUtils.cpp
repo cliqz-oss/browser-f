@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -247,7 +248,7 @@ nsSVGUtils::ScheduleReflowSVG(nsIFrame *aFrame)
   nsFrameState dirtyBit =
     (outerSVGFrame == aFrame ? NS_FRAME_IS_DIRTY : NS_FRAME_HAS_DIRTY_CHILDREN);
 
-  aFrame->PresContext()->PresShell()->FrameNeedsReflow(
+  aFrame->PresShell()->FrameNeedsReflow(
     outerSVGFrame, nsIPresShell::eResize, dirtyBit);
 }
 
@@ -512,15 +513,7 @@ nsSVGUtils::DetermineMaskUsage(nsIFrame* aFrame, bool aHandleOpacity,
 
   nsTArray<nsSVGMaskFrame*> maskFrames = effectProperties.GetMaskFrames();
 
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
   aUsage.shouldGenerateMaskLayer = (maskFrames.Length() > 0);
-#else
-  // Since we do not support image mask so far, we should treat any
-  // unresolvable mask as no mask. Otherwise, any object with a valid image
-  // mask, e.g. url("xxx.png"), will become invisible just because we can not
-  // handle image mask correctly. (See bug 1294171)
-  aUsage.shouldGenerateMaskLayer = maskFrames.Length() == 1 && maskFrames[0];
-#endif
 
   nsSVGClipPathFrame *clipPathFrame = effectProperties.GetClipPathFrame();
   MOZ_ASSERT(!clipPathFrame ||
@@ -586,7 +579,7 @@ public:
     mTargetCtx = gfxContext::CreateOrNull(targetDT);
     MOZ_ASSERT(mTargetCtx); // already checked the draw target above
     mTargetCtx->SetMatrix(mSourceCtx->CurrentMatrix() *
-                          gfxMatrix::Translation(-drawRect.TopLeft()));
+                          Matrix::Translation(-drawRect.TopLeft()));
 
     mTargetOffset = drawRect.TopLeft();
 
@@ -602,7 +595,7 @@ public:
     RefPtr<SourceSurface> targetSurf = mTargetCtx->GetDrawTarget()->Snapshot();
 
     gfxContextAutoSaveRestore save(mSourceCtx);
-    mSourceCtx->SetMatrix(gfxMatrix()); // This will be restored right after.
+    mSourceCtx->SetMatrix(Matrix()); // This will be restored right after.
     RefPtr<gfxPattern> pattern =
       new gfxPattern(targetSurf,
                      Matrix::Translation(mTargetOffset.x, mTargetOffset.y));
@@ -861,8 +854,8 @@ nsSVGUtils::PaintFrameWithEffects(nsIFrame *aFrame,
     // have to adjust the scale.
     gfxMatrix reverseScaleMatrix = nsSVGUtils::GetCSSPxToDevPxMatrix(aFrame);
     DebugOnly<bool> invertible = reverseScaleMatrix.Invert();
-    target->SetMatrix(reverseScaleMatrix * aTransform *
-                      target->CurrentMatrix());
+    target->SetMatrixDouble(reverseScaleMatrix * aTransform *
+                            target->CurrentMatrixDouble());
 
     SVGPaintCallback paintCallback;
     nsFilterInstance::PaintFilteredFrame(aFrame, target, &paintCallback,
@@ -1195,6 +1188,7 @@ nsSVGUtils::GetBBox(nsIFrame* aFrame, uint32_t aFlags,
         } else if (aFrame->IsSVGForeignObjectFrame()) {
           matrix = gfxMatrix();
         }
+        matrix = clipContent->PrependLocalTransformsTo(matrix, eUserSpaceToParent);
         bbox =
           clipPathFrame->GetBBoxForClipPathFrame(bbox, matrix).ToThebesRect();
       }
@@ -1516,7 +1510,7 @@ nsSVGUtils::MakeFillPatternFor(nsIFrame* aFrame,
 
   if (ps) {
     RefPtr<gfxPattern> pattern =
-      ps->GetPaintServerPattern(aFrame, dt, aContext->CurrentMatrix(),
+      ps->GetPaintServerPattern(aFrame, dt, aContext->CurrentMatrixDouble(),
                                 &nsStyleSVG::mFill, fillOpacity, aImgParams);
     if (pattern) {
       pattern->CacheColorStops(dt);
@@ -1531,12 +1525,12 @@ nsSVGUtils::MakeFillPatternFor(nsIFrame* aFrame,
     case eStyleSVGPaintType_ContextFill:
       pattern =
         aContextPaint->GetFillPattern(dt, fillOpacity,
-                                      aContext->CurrentMatrix(), aImgParams);
+                                      aContext->CurrentMatrixDouble(), aImgParams);
       break;
     case eStyleSVGPaintType_ContextStroke:
       pattern =
         aContextPaint->GetStrokePattern(dt, fillOpacity,
-                                        aContext->CurrentMatrix(), aImgParams);
+                                        aContext->CurrentMatrixDouble(), aImgParams);
       break;
     default:
       ;
@@ -1592,7 +1586,7 @@ nsSVGUtils::MakeStrokePatternFor(nsIFrame* aFrame,
 
   if (ps) {
     RefPtr<gfxPattern> pattern =
-      ps->GetPaintServerPattern(aFrame, dt, aContext->CurrentMatrix(),
+      ps->GetPaintServerPattern(aFrame, dt, aContext->CurrentMatrixDouble(),
                                 &nsStyleSVG::mStroke, strokeOpacity, aImgParams);
     if (pattern) {
       pattern->CacheColorStops(dt);
@@ -1607,12 +1601,12 @@ nsSVGUtils::MakeStrokePatternFor(nsIFrame* aFrame,
     case eStyleSVGPaintType_ContextFill:
       pattern =
         aContextPaint->GetFillPattern(dt, strokeOpacity,
-                                      aContext->CurrentMatrix(), aImgParams);
+                                      aContext->CurrentMatrixDouble(), aImgParams);
       break;
     case eStyleSVGPaintType_ContextStroke:
       pattern =
         aContextPaint->GetStrokePattern(dt, strokeOpacity,
-                                        aContext->CurrentMatrix(), aImgParams);
+                                        aContext->CurrentMatrixDouble(), aImgParams);
       break;
     default:
       ;

@@ -5,17 +5,20 @@
 // The ext-* files are imported into the same scopes.
 /* import-globals-from ext-browser.js */
 
-XPCOMUtils.defineLazyGetter(this, "strBundle", function() {
-  const stringSvc = Cc["@mozilla.org/intl/stringbundle;1"].getService(Ci.nsIStringBundleService);
-  return stringSvc.createBundle("chrome://global/locale/extensions.properties");
-});
-
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
                                   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
                                   "resource://gre/modules/PromiseUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Services",
                                   "resource://gre/modules/Services.jsm");
+
+XPCOMUtils.defineLazyGetter(this, "strBundle", function() {
+  return Services.strings.createBundle("chrome://global/locale/extensions.properties");
+});
+
+var {
+  ExtensionError,
+} = ExtensionUtils;
 
 let tabListener = {
   tabReadyInitialized: false,
@@ -265,6 +268,8 @@ this.tabs = class extends ExtensionAPI {
             } else if (event.type == "TabBrowserInserted" &&
                        !event.detail.insertedOnTabCreation) {
               needed.push("discarded");
+            } else if (event.type == "TabBrowserDiscarded") {
+              needed.push("discarded");
             }
 
             let tab = tabManager.getWrapper(event.originalTarget);
@@ -289,11 +294,24 @@ this.tabs = class extends ExtensionAPI {
             }
           };
 
+          let isArticleChangeListener = (messageName, message) => {
+            let {gBrowser} = message.target.ownerGlobal;
+            let nativeTab = gBrowser.getTabForBrowser(message.target);
+
+            if (nativeTab) {
+              let tab = tabManager.getWrapper(nativeTab);
+              fireForTab(tab, {isArticle: message.data.isArticle});
+            }
+          };
+
           windowTracker.addListener("status", statusListener);
           windowTracker.addListener("TabAttrModified", listener);
           windowTracker.addListener("TabPinned", listener);
           windowTracker.addListener("TabUnpinned", listener);
           windowTracker.addListener("TabBrowserInserted", listener);
+          windowTracker.addListener("TabBrowserDiscarded", listener);
+
+          tabTracker.on("tab-isarticle", isArticleChangeListener);
 
           return () => {
             windowTracker.removeListener("status", statusListener);
@@ -301,6 +319,8 @@ this.tabs = class extends ExtensionAPI {
             windowTracker.removeListener("TabPinned", listener);
             windowTracker.removeListener("TabUnpinned", listener);
             windowTracker.removeListener("TabBrowserInserted", listener);
+            windowTracker.removeListener("TabBrowserDiscarded", listener);
+            tabTracker.off("tab-isarticle", isArticleChangeListener);
           };
         }).api(),
 
@@ -330,6 +350,10 @@ this.tabs = class extends ExtensionAPI {
 
               if (!context.checkLoadURL(url, {dontReportErrors: true})) {
                 return Promise.reject({message: `Illegal URL: ${url}`});
+              }
+
+              if (createProperties.openInReaderMode) {
+                url = `about:reader?url=${encodeURIComponent(url)}`;
               }
             }
 
@@ -423,6 +447,17 @@ this.tabs = class extends ExtensionAPI {
           for (let tabId of tabs) {
             let nativeTab = tabTracker.getTab(tabId);
             nativeTab.ownerGlobal.gBrowser.removeTab(nativeTab);
+          }
+        },
+
+        async discard(tabIds) {
+          if (!Array.isArray(tabIds)) {
+            tabIds = [tabIds];
+          }
+          let tabs = tabIds.map(tabId => tabTracker.getTab(tabId));
+
+          for (let tab of tabs) {
+            tab.ownerGlobal.gBrowser.discardBrowser(tab.linkedBrowser);
           }
         },
 
@@ -829,8 +864,8 @@ this.tabs = class extends ExtensionAPI {
                 // OK clicked (retval == 0) or replace confirmed (retval == 2)
                 try {
                   let fstream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
-                  fstream.init(picker.file, 0x2A, 0x1B6, 0);  // write|create|truncate, file permissions rw-rw-rw- = 0666 = 0x1B6
-                  fstream.close();  // unlock file
+                  fstream.init(picker.file, 0x2A, 0x1B6, 0); // write|create|truncate, file permissions rw-rw-rw- = 0666 = 0x1B6
+                  fstream.close(); // unlock file
                 } catch (e) {
                   resolve(retval == 0 ? "not_saved" : "not_replaced");
                   return;
@@ -912,6 +947,16 @@ this.tabs = class extends ExtensionAPI {
               }
             });
           });
+        },
+
+        async toggleReaderMode(tabId) {
+          let tab = await promiseTabWhenReady(tabId);
+          if (!tab.isInReaderMode && !tab.isArticle) {
+            throw new ExtensionError("The specified tab cannot be placed into reader mode.");
+          }
+          tab = getTabOrActive(tabId);
+
+          tab.linkedBrowser.messageManager.sendAsyncMessage("Reader:ToggleReaderMode");
         },
       },
     };

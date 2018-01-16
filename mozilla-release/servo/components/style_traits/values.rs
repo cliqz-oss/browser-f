@@ -5,8 +5,9 @@
 //! Helper types and traits for the handling of CSS values.
 
 use app_units::Au;
-use cssparser::{BasicParseError, ParseError, Parser, Token, UnicodeRange, serialize_string};
+use cssparser::{ParseError, Parser, Token, UnicodeRange, serialize_string};
 use cssparser::ToCss as CssparserToCss;
+use servo_arc::Arc;
 use std::fmt::{self, Write};
 
 /// Serialises a value according to its CSS representation.
@@ -298,12 +299,13 @@ impl Separator for CommaWithSpace {
         let mut results = vec![parse_one(input)?];
         loop {
             input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
+            let comma_location = input.current_source_location();
             let comma = input.try(|i| i.expect_comma()).is_ok();
             input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
             if let Ok(item) = input.try(&mut parse_one) {
                 results.push(item);
             } else if comma {
-                return Err(BasicParseError::UnexpectedToken(Token::Comma).into());
+                return Err(comma_location.new_unexpected_token_error(Token::Comma));
             } else {
                 break;
             }
@@ -336,6 +338,14 @@ impl<T> ToCss for Vec<T> where T: ToCss + OneOrMoreSeparated {
 }
 
 impl<T> ToCss for Box<T> where T: ?Sized + ToCss {
+    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
+        where W: Write,
+    {
+        (**self).to_css(dest)
+    }
+}
+
+impl<T> ToCss for Arc<T> where T: ?Sized + ToCss {
     fn to_css<W>(&self, dest: &mut W) -> fmt::Result
         where W: Write,
     {
@@ -405,7 +415,7 @@ macro_rules! __define_css_keyword_enum__add_optional_traits {
     ($name: ident [ $( $css: expr => $variant: ident ),+ ]
                   [ $( $alias: expr => $alias_variant: ident),* ]) => {
         __define_css_keyword_enum__actual! {
-            $name [ Deserialize, Serialize, HeapSizeOf ]
+            $name [ Deserialize, Serialize, MallocSizeOf ]
                   [ $( $css => $variant ),+ ]
                   [ $( $alias => $alias_variant ),* ]
         }
@@ -440,11 +450,16 @@ macro_rules! __define_css_keyword_enum__actual {
             /// Parse this property from a CSS input stream.
             pub fn parse<'i, 't>(input: &mut ::cssparser::Parser<'i, 't>)
                                  -> Result<$name, $crate::ParseError<'i>> {
-                let ident = input.expect_ident()?;
-                Self::from_ident(&ident)
-                    .map_err(|()| ::cssparser::ParseError::Basic(
-                        ::cssparser::BasicParseError::UnexpectedToken(
-                            ::cssparser::Token::Ident(ident.clone()))))
+                use cssparser::Token;
+                let location = input.current_source_location();
+                match *input.next()? {
+                    Token::Ident(ref ident) => {
+                        Self::from_ident(ident).map_err(|()| {
+                            location.new_unexpected_token_error(Token::Ident(ident.clone()))
+                        })
+                    }
+                    ref token => Err(location.new_unexpected_token_error(token.clone()))
+                }
             }
 
             /// Parse this property from an already-tokenized identifier.
@@ -457,7 +472,7 @@ macro_rules! __define_css_keyword_enum__actual {
             }
         }
 
-        impl ToCss for $name {
+        impl $crate::ToCss for $name {
             fn to_css<W>(&self, dest: &mut W) -> ::std::fmt::Result
                 where W: ::std::fmt::Write
             {
@@ -475,9 +490,7 @@ pub mod specified {
 
     /// Whether to allow negative lengths or not.
     #[repr(u8)]
-    #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-    #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-    #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+    #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, PartialOrd)]
     pub enum AllowedNumericType {
         /// Allow all kind of numeric values.
         All,

@@ -63,7 +63,7 @@
 #include "nsIDialogParamBlock.h"
 #include "nsIDOMWindow.h"
 #include "mozilla/ModuleUtils.h"
-#include "nsIIOService2.h"
+#include "nsIIOService.h"
 #include "nsIObserverService.h"
 #include "nsINativeAppSupport.h"
 #include "nsIPlatformInfo.h"
@@ -177,6 +177,9 @@
 #include "nsProfileLock.h"
 #include "SpecialSystemDirectory.h"
 #include <sched.h>
+#ifdef MOZ_ENABLE_DBUS
+#include "DBusRemoteClient.h"
+#endif
 // Time to wait for the remoting service to start
 #define MOZ_XREMOTE_START_TIMEOUT_SEC 5
 #endif
@@ -231,12 +234,6 @@
 extern uint32_t gRestartMode;
 extern void InstallSignalHandlers(const char *ProgramName);
 
-// This workaround is fixed in Rust 1.19. For details, see bug 1358151.
-// Implementation in toolkit/library/rust/shared/lib.rs
-extern "C" {
-  void rust_init_please_remove_this_after_updating_rust_1_19();
-}
-
 #define FILE_COMPATIBILITY_INFO NS_LITERAL_CSTRING("compatibility.ini")
 #define FILE_INVALIDATE_CACHES NS_LITERAL_CSTRING(".purgecaches")
 
@@ -263,6 +260,9 @@ nsString gAbsoluteArgv0Path;
 #include <pango/pangofc-fontmap.h>
 #endif
 #include <gtk/gtk.h>
+#ifdef MOZ_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
 #ifdef MOZ_X11
 #include <gdk/gdkx.h>
 #endif /* MOZ_X11 */
@@ -961,7 +961,6 @@ nsXULAppInfo::GetRemoteType(nsAString& aRemoteType)
 static bool gBrowserTabsRemoteAutostart = false;
 static uint64_t gBrowserTabsRemoteStatus = 0;
 static bool gBrowserTabsRemoteAutostartInitialized = false;
-static bool gListeningForCohortChange = false;
 
 NS_IMETHODIMP
 nsXULAppInfo::Observe(nsISupports *aSubject, const char *aTopic, const char16_t *aData) {
@@ -988,13 +987,6 @@ NS_IMETHODIMP
 nsXULAppInfo::GetMaxWebProcessCount(uint32_t* aResult)
 {
   *aResult = mozilla::GetMaxWebProcessCount();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXULAppInfo::GetMultiprocessBlockPolicy(uint32_t* aResult)
-{
-  *aResult = MultiprocessBlockPolicy();
   return NS_OK;
 }
 
@@ -1118,17 +1110,6 @@ nsXULAppInfo::GetReplacedLockTime(PRTime *aReplacedLockTime)
     return NS_ERROR_NOT_AVAILABLE;
   gProfileLock->GetReplacedLockTime(aReplacedLockTime);
   return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXULAppInfo::GetLastRunCrashID(nsAString &aLastRunCrashID)
-{
-#ifdef MOZ_CRASHREPORTER
-  CrashReporter::GetLastRunCrashID(aLastRunCrashID);
-  return NS_OK;
-#else
-  return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
@@ -1520,7 +1501,7 @@ ScopedXPCOMStartup::~ScopedXPCOMStartup()
       appStartup->DestroyHiddenWindow();
 
     gDirServiceProvider->DoShutdown();
-    profiler_add_marker("Shutdown early");
+    PROFILER_ADD_MARKER("Shutdown early");
 
     WriteConsoleLog();
 
@@ -1840,18 +1821,31 @@ static RemoteResult
 StartRemoteClient(const char* aDesktopStartupID,
                   nsCString& program,
                   const char* profile,
-                  const char* username)
+                  const char* username,
+                  bool aIsX11Display)
 {
-  XRemoteClient client;
-  nsresult rv = client.Init();
+  nsAutoPtr<nsRemoteClient> client;
+
+  if (aIsX11Display) {
+    client = new XRemoteClient();
+  } else {
+#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WAYLAND)
+    client = new DBusRemoteClient();
+#else
+    MOZ_ASSERT(false, "Missing remote implementation!");
+    return REMOTE_NOT_FOUND;
+#endif
+  }
+
+  nsresult rv = client->Init();
   if (NS_FAILED(rv))
     return REMOTE_NOT_FOUND;
 
   nsCString response;
   bool success = false;
-  rv = client.SendCommandLine(program.get(), username, profile,
-                              gArgc, gArgv, aDesktopStartupID,
-                              getter_Copies(response), &success);
+  rv = client->SendCommandLine(program.get(), username, profile,
+                               gArgc, gArgv, aDesktopStartupID,
+                               getter_Copies(response), &success);
   // did the command fail?
   if (!success)
     return REMOTE_NOT_FOUND;
@@ -1875,9 +1869,9 @@ XRE_InitOmnijar(nsIFile* greOmni, nsIFile* appOmni)
 }
 
 nsresult
-XRE_GetBinaryPath(const char* argv0, nsIFile* *aResult)
+XRE_GetBinaryPath(nsIFile* *aResult)
 {
-  return mozilla::BinaryPath::GetFile(argv0, aResult);
+  return mozilla::BinaryPath::GetFile(aResult);
 }
 
 #ifdef XP_WIN
@@ -1916,7 +1910,7 @@ static nsresult LaunchChild(nsINativeAppSupport* aNative,
   LaunchChildMac(gRestartArgc, gRestartArgv);
 #else
   nsCOMPtr<nsIFile> lf;
-  nsresult rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(lf));
+  nsresult rv = XRE_GetBinaryPath(getter_AddRefs(lf));
   if (NS_FAILED(rv))
     return rv;
 
@@ -3021,44 +3015,7 @@ static void MOZ_gdk_display_close(GdkDisplay *display)
   (void) display;
 #endif
 }
-
-const char* DetectDisplay(void)
-{
-  bool tryX11 = false;
-  bool tryWayland = false;
-  bool tryBroadway = false;
-
-  // Honor user backend selection
-  const char *backend = PR_GetEnv("GDK_BACKEND");
-  if (!backend || strstr(backend, "*")) {
-    // Try all backends
-    tryX11 = true;
-    tryWayland = true;
-    tryBroadway = true;
-  } else if (backend) {
-    if (strstr(backend, "x11"))
-      tryX11 = true;
-    if (strstr(backend, "wayland"))
-      tryWayland = true;
-    if (strstr(backend, "broadway"))
-      tryBroadway = true;
-  }
-
-  const char *display_name;
-  if (tryX11 && (display_name = PR_GetEnv("DISPLAY"))) {
-    return display_name;
-  }
-  if (tryWayland && (display_name = PR_GetEnv("WAYLAND_DISPLAY"))) {
-    return display_name;
-  }
-  if (tryBroadway && (display_name = PR_GetEnv("BROADWAY_DISPLAY"))) {
-    return display_name;
-  }
-
-  PR_fprintf(PR_STDERR, "Error: GDK_BACKEND does not match available displays\n");
-  return nullptr;
-}
-#endif // MOZ_WIDGET_GTK
+#endif
 
 /**
  * NSPR will search for the "nspr_use_zone_allocator" symbol throughout
@@ -3201,9 +3158,6 @@ XREMain::XRE_mainInit(bool* aExitFlag)
   if (!aExitFlag)
     return 1;
   *aExitFlag = false;
-
-  // This workaround is fixed in Rust 1.19. For details, see bug 1358151.
-  rust_init_please_remove_this_after_updating_rust_1_19();
 
   atexit(UnexpectedExit);
   auto expectedShutdown = mozilla::MakeScopeExit([&] {
@@ -3937,22 +3891,6 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
     return result;
   }
 
-#if defined(MOZ_WIDGET_GTK)
-  // display_name is owned by gdk.
-  const char *display_name = nullptr;
-  bool saveDisplayArg = false;
-  if (!gfxPlatform::IsHeadless()) {
-    display_name = gdk_get_display_arg_name();
-    if (display_name) {
-      saveDisplayArg = true;
-    } else {
-      display_name = DetectDisplay();
-      if (!display_name) {
-        return 1;
-      }
-    }
-  }
-#endif /* MOZ_WIDGET_GTK */
 #ifdef MOZ_X11
   // Init X11 in thread-safe mode. Must be called prior to the first call to XOpenDisplay
   // (called inside gdk_display_open). This is a requirement for off main tread compositing.
@@ -3962,19 +3900,58 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
 #endif
 #if defined(MOZ_WIDGET_GTK)
   if (!gfxPlatform::IsHeadless()) {
-    mGdkDisplay = gdk_display_open(display_name);
-    if (!mGdkDisplay) {
-      PR_fprintf(PR_STDERR, "Error: cannot open display: %s\n", display_name);
-      return 1;
+    const char *display_name = nullptr;
+    bool saveDisplayArg = false;
+
+    // display_name is owned by gdk.
+    display_name = gdk_get_display_arg_name();
+    // if --display argument is given make sure it's
+    // also passed to ContentChild::Init() by MOZ_GDK_DISPLAY.
+    if (display_name) {
+      SaveWordToEnv("MOZ_GDK_DISPLAY", nsDependentCString(display_name));
+      saveDisplayArg = true;
     }
-    gdk_display_manager_set_default_display (gdk_display_manager_get(),
-                                             mGdkDisplay);
+
+    // On Wayland disabled builds read X11 DISPLAY env exclusively
+    // and don't care about different displays.
+#if !defined(MOZ_WAYLAND)
+    if (!display_name) {
+      display_name = PR_GetEnv("DISPLAY");
+      if (!display_name) {
+        PR_fprintf(PR_STDERR,
+                   "Error: no DISPLAY environment variable specified\n");
+        return 1;
+      }
+    }
+#endif
+
+    if (display_name) {
+      mGdkDisplay = gdk_display_open(display_name);
+      if (!mGdkDisplay) {
+        PR_fprintf(PR_STDERR, "Error: cannot open display: %s\n", display_name);
+        return 1;
+      }
+      gdk_display_manager_set_default_display(gdk_display_manager_get(),
+                                              mGdkDisplay);
+      if (saveDisplayArg) {
+        if (GDK_IS_X11_DISPLAY(mGdkDisplay)) {
+            SaveWordToEnv("DISPLAY", nsDependentCString(display_name));
+        }
+#ifdef MOZ_WAYLAND
+        else if (GDK_IS_WAYLAND_DISPLAY(mGdkDisplay)) {
+            SaveWordToEnv("WAYLAND_DISPLAY", nsDependentCString(display_name));
+        }
+#endif
+      }
+    }
+#if (MOZ_WIDGET_GTK == 3)
+    else {
+      mGdkDisplay = gdk_display_manager_open_display(gdk_display_manager_get(),
+                                                     nullptr);
+    }
+#endif
   }
-  if (!gfxPlatform::IsHeadless() && GDK_IS_X11_DISPLAY(mGdkDisplay)) {
-    if (saveDisplayArg) {
-      SaveWordToEnv("DISPLAY", nsDependentCString(display_name));
-    }
-  } else {
+  else {
     mDisableRemote = true;
   }
 #endif
@@ -4054,7 +4031,8 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
     const char* desktopStartupIDPtr =
       mDesktopStartupID.IsEmpty() ? nullptr : mDesktopStartupID.get();
 
-    rr = StartRemoteClient(desktopStartupIDPtr, program, profile, username);
+    rr = StartRemoteClient(desktopStartupIDPtr, program, profile, username,
+                           GDK_IS_X11_DISPLAY(mGdkDisplay));
     if (rr == REMOTE_FOUND) {
       *aExitFlag = true;
       return 0;
@@ -4376,8 +4354,8 @@ XREMain::XRE_mainRun()
     rv = prefs->GetDefaultBranch(nullptr, getter_AddRefs(defaultPrefBranch));
 
     if (NS_SUCCEEDED(rv)) {
-      nsCString sval;
-      rv = defaultPrefBranch->GetCharPref("app.update.channel", getter_Copies(sval));
+      nsAutoCString sval;
+      rv = defaultPrefBranch->GetCharPref("app.update.channel", sval);
       if (NS_SUCCEEDED(rv)) {
         CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ReleaseChannel"),
                                             sval);
@@ -4407,7 +4385,7 @@ XREMain::XRE_mainRun()
 #endif
 
   if (mStartOffline) {
-    nsCOMPtr<nsIIOService2> io (do_GetService("@mozilla.org/network/io-service;1"));
+    nsCOMPtr<nsIIOService> io(do_GetService("@mozilla.org/network/io-service;1"));
     NS_ENSURE_TRUE(io, NS_ERROR_FAILURE);
     io->SetManageOfflineStatus(false);
     io->SetOffline(true);
@@ -4576,9 +4554,9 @@ XREMain::XRE_mainRun()
   }
 
 #if defined(MOZ_SANDBOX)
-  // Call SandboxBroker to cache directories needed for policy rules, this must
-  // be called after mDirProvider.DoStartup as it needs the profile dir.
-  SandboxBroker::CacheRulesDirectories();
+  // Call SandboxBroker to initialize things that depend on Gecko machinery like
+  // the directory provider.
+  SandboxBroker::GeckoDependentInitialize();
 #endif
 #endif
 
@@ -4749,9 +4727,7 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
   CodeCoverageHandler::Init();
 #endif
 
-  char aLocal;
-  AutoProfilerInit profilerInit(&aLocal);
-
+  AUTO_PROFILER_INIT;
   AUTO_PROFILER_LABEL("XREMain::XRE_main", OTHER);
 
   nsresult rv = NS_OK;
@@ -4787,7 +4763,7 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
   gAppData = mAppData.get();
 
   nsCOMPtr<nsIFile> binFile;
-  rv = XRE_GetBinaryPath(argv[0], getter_AddRefs(binFile));
+  rv = XRE_GetBinaryPath(getter_AddRefs(binFile));
   NS_ENSURE_SUCCESS(rv, 1);
 
   rv = binFile->GetPath(gAbsoluteArgv0Path);
@@ -4795,7 +4771,7 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
 
   if (!mAppData->xreDirectory) {
     nsCOMPtr<nsIFile> lf;
-    rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(lf));
+    rv = XRE_GetBinaryPath(getter_AddRefs(lf));
     if (NS_FAILED(rv))
       return 2;
 
@@ -4978,7 +4954,7 @@ XRE_InitCommandLine(int aArgc, char* aArgv[])
 
   // get the canonical version of the binary's path
   nsCOMPtr<nsIFile> binFile;
-  rv = XRE_GetBinaryPath(aArgv[0], getter_AddRefs(binFile));
+  rv = XRE_GetBinaryPath(getter_AddRefs(binFile));
   if (NS_FAILED(rv))
     return NS_ERROR_FAILURE;
 
@@ -5110,7 +5086,7 @@ enum {
   // kE10sDisabledForAccessibility = 4,
   // kE10sDisabledForMacGfx = 5, was removed in bug 1068674.
   // kE10sDisabledForBidi = 6, removed in bug 1309599
-  kE10sDisabledForAddons = 7,
+  // kE10sDisabledForAddons = 7, removed in bug 1406212
   kE10sForceDisabled = 8,
   // kE10sDisabledForXPAcceleration = 9, removed in bug 1296353
   // kE10sDisabledForOperatingSystem = 10, removed due to xp-eol
@@ -5119,47 +5095,7 @@ enum {
 const char* kForceEnableE10sPref = "browser.tabs.remote.force-enable";
 const char* kForceDisableE10sPref = "browser.tabs.remote.force-disable";
 
-uint32_t
-MultiprocessBlockPolicy()
-{
-  if (XRE_IsContentProcess()) {
-    // If we're in a content process, we're not blocked.
-    return 0;
-  }
-
-  /**
-   * Avoids enabling e10s if there are add-ons installed.
-   */
-  bool addonsCanDisable = Preferences::GetBool("extensions.e10sBlocksEnabling", false);
-  bool disabledByAddons = Preferences::GetBool("extensions.e10sBlockedByAddons", false);
-
-#ifdef MOZ_CRASHREPORTER
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AddonsShouldHaveBlockedE10s"),
-                                     disabledByAddons ? NS_LITERAL_CSTRING("1")
-                                                      : NS_LITERAL_CSTRING("0"));
-#endif
-
-  if (addonsCanDisable && disabledByAddons) {
-    return kE10sDisabledForAddons;
-  }
-
-  /*
-   * None of the blocking policies matched, so e10s is allowed to run. Return
-   * 0, indicating success.
-   */
-  return 0;
-}
-
 namespace mozilla {
-
-static void
-CohortChanged(const char* aPref, void* aClosure)
-{
-  // Reset to the default state and recompute on the next call.
-  gBrowserTabsRemoteAutostartInitialized = false;
-  gBrowserTabsRemoteAutostart = false;
-  Preferences::UnregisterCallback(CohortChanged, "e10s.rollout.cohort");
-}
 
 bool
 BrowserTabsRemoteAutostart()
@@ -5175,40 +5111,18 @@ BrowserTabsRemoteAutostart()
     return gBrowserTabsRemoteAutostart;
   }
 
-  // This is a pretty heinous hack. On the first launch, we end up retrieving
-  // whether e10s is enabled setting up a document very early in startup. This
-  // caches that e10s is off before the e10srollout extension can run. See
-  // bug 1372824 comment 3 for a more thorough explanation.
-  if (!gListeningForCohortChange) {
-    gListeningForCohortChange = true;
-    Preferences::RegisterCallback(CohortChanged, "e10s.rollout.cohort");
-  }
+  bool optInPref = Preferences::GetBool("browser.tabs.remote.autostart", true);
+  int status = kE10sEnabledByDefault;
 
-  bool optInPref = Preferences::GetBool("browser.tabs.remote.autostart", false);
-  bool trialPref = Preferences::GetBool("browser.tabs.remote.autostart.2", false);
-  bool prefEnabled = optInPref || trialPref;
-  int status;
   if (optInPref) {
-    status = kE10sEnabledByUser;
-  } else if (trialPref) {
-    status = kE10sEnabledByDefault;
+    gBrowserTabsRemoteAutostart = true;
   } else {
     status = kE10sDisabledByUser;
-  }
-
-  if (prefEnabled) {
-    uint32_t blockPolicy = MultiprocessBlockPolicy();
-    if (blockPolicy != 0) {
-      status = blockPolicy;
-    } else {
-      gBrowserTabsRemoteAutostart = true;
-    }
   }
 
   // Uber override pref for manual testing purposes
   if (Preferences::GetBool(kForceEnableE10sPref, false)) {
     gBrowserTabsRemoteAutostart = true;
-    prefEnabled = true;
     status = kE10sEnabledByUser;
   }
 
@@ -5223,10 +5137,6 @@ BrowserTabsRemoteAutostart()
   gBrowserTabsRemoteStatus = status;
 
   mozilla::Telemetry::Accumulate(mozilla::Telemetry::E10S_STATUS, status);
-  if (prefEnabled) {
-    mozilla::Telemetry::Accumulate(mozilla::Telemetry::E10S_BLOCKED_FROM_RUNNING,
-                                    !gBrowserTabsRemoteAutostart);
-  }
   return gBrowserTabsRemoteAutostart;
 }
 
@@ -5242,30 +5152,7 @@ GetMaxWebProcessCount()
 
   const char* optInPref = "dom.ipc.processCount";
   uint32_t optInPrefValue = Preferences::GetInt(optInPref, 1);
-  const char* useDefaultPerformanceSettings =
-    "browser.preferences.defaultPerformanceSettings.enabled";
-  bool useDefaultPerformanceSettingsValue =
-    Preferences::GetBool(useDefaultPerformanceSettings, true);
-
-  // If the user has set dom.ipc.processCount, or if they have opt out of
-  // default performances settings from about:preferences, respect their
-  // decision regardless of add-ons that might affect their experience or
-  // experiment cohort.
-  if (Preferences::HasUserValue(optInPref) || !useDefaultPerformanceSettingsValue) {
-    return std::max(1u, optInPrefValue);
-  }
-
-#ifdef RELEASE_OR_BETA
-  // For our rollout on Release and Beta, we set this pref from the
-  // e10srollout extension. On Nightly, we don't touch the pref at all,
-  // allowing stale values to disable e10s-multi for certain users.
-  if (Preferences::HasUserValue("dom.ipc.processCount.web")) {
-    // The user didn't opt in or out so read the .web version of the pref.
-    return std::max(1, Preferences::GetInt("dom.ipc.processCount.web", 1));
-  }
-#endif
-
-  return optInPrefValue;
+  return std::max(1u, optInPrefValue);
 }
 
 const char*
@@ -5331,6 +5218,7 @@ SetupErrorHandling(const char* progname)
   setbuf(stdout, 0);
 }
 
+// Note: This function should not be needed anymore. See Bug 818634 for details.
 void
 OverrideDefaultLocaleIfNeeded() {
   // Read pref to decide whether to override default locale with US English.

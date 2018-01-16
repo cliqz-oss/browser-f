@@ -9,12 +9,13 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import hashlib
 
+from mozbuild.shellutil import quote as shell_quote
+
 from taskgraph.util.schema import Schema
 from voluptuous import Optional, Required, Any
 
 from taskgraph.transforms.job import run_job_using
 from taskgraph.transforms.job.common import (
-    docker_worker_add_tc_vcs_cache,
     docker_worker_add_gecko_vcs_env_vars,
     docker_worker_add_public_artifacts,
     docker_worker_add_tooltool,
@@ -29,8 +30,13 @@ TOOLCHAIN_INDEX = 'gecko.cache.level-{level}.toolchains.v1.{name}.{digest}'
 toolchain_run_schema = Schema({
     Required('using'): 'toolchain-script',
 
-    # the script (in taskcluster/scripts/misc) to run
+    # The script (in taskcluster/scripts/misc) to run.
+    # Python scripts are invoked with `mach python` so vendored libraries
+    # are available.
     Required('script'): basestring,
+
+    # Arguments to pass to the script.
+    Optional('arguments'): [basestring],
 
     # If not false, tooltool downloads will be enabled via relengAPIProxy
     # for either just public files, or all files.  Not supported on Windows
@@ -39,6 +45,13 @@ toolchain_run_schema = Schema({
         'public',
         'internal',
     ),
+
+    # Sparse profile to give to checkout using `run-task`.  If given,
+    # a filename in `build/sparse-profiles`.  Defaults to
+    # "toolchain-build", i.e., to
+    # `build/sparse-profiles/toolchain-build`.  If `None`, instructs
+    # `run-task` to not use a sparse profile at all.
+    Required('sparse-profile', default='toolchain-build'): Any(basestring, None),
 
     # Paths/patterns pointing to files that influence the outcome of a
     # toolchain build.
@@ -53,7 +66,7 @@ toolchain_run_schema = Schema({
 })
 
 
-def add_optimizations(config, run, taskdesc):
+def add_optimization(config, run, taskdesc):
     files = list(run.get('resources', []))
     # This file
     files.append('taskcluster/taskgraph/transforms/job/toolchain.py')
@@ -64,7 +77,8 @@ def add_optimizations(config, run, taskdesc):
     if tooltool_manifest:
         files.append(tooltool_manifest)
 
-    digest = hash_paths(GECKO, files)
+    # Accumulate dependency hashes for index generation.
+    data = [hash_paths(GECKO, files)]
 
     # If the task has dependencies, we need those dependencies to influence
     # the index path. So take the digest from the files above, add the list
@@ -72,22 +86,26 @@ def add_optimizations(config, run, taskdesc):
     # If the task has no dependencies, just use the digest from above.
     deps = taskdesc['dependencies']
     if deps:
-        data = [digest] + sorted(deps.values())
-        digest = hashlib.sha256('\n'.join(data)).hexdigest()
+        data.extend(sorted(deps.values()))
+
+    # Likewise script arguments should influence the index.
+    args = run.get('arguments')
+    if args:
+        data.extend(args)
 
     label = taskdesc['label']
     subs = {
         'name': label.replace('%s-' % config.kind, ''),
-        'digest': digest,
+        'digest': hashlib.sha256('\n'.join(data)).hexdigest()
     }
-
-    optimizations = taskdesc.setdefault('optimizations', [])
 
     # We'll try to find a cached version of the toolchain at levels above
     # and including the current level, starting at the highest level.
+    index_routes = []
     for level in reversed(range(int(config.params['level']), 4)):
         subs['level'] = level
-        optimizations.append(['index-search', TOOLCHAIN_INDEX.format(**subs)])
+        index_routes.append(TOOLCHAIN_INDEX.format(**subs))
+    taskdesc['optimization'] = {'index-search': index_routes}
 
     # ... and cache at the lowest level.
     taskdesc.setdefault('routes', []).append(
@@ -100,13 +118,16 @@ def docker_worker_toolchain(config, job, taskdesc):
     taskdesc['run-on-projects'] = ['trunk', 'try']
 
     worker = taskdesc['worker']
-    worker['artifacts'] = []
     worker['chain-of-trust'] = True
 
-    docker_worker_add_public_artifacts(config, job, taskdesc)
-    docker_worker_add_tc_vcs_cache(config, job, taskdesc)
+    # Allow the job to specify where artifacts come from, but add
+    # public/build if it's not there already.
+    artifacts = worker.setdefault('artifacts', [])
+    if not any(artifact.get('name') == 'public/build' for artifact in artifacts):
+        docker_worker_add_public_artifacts(config, job, taskdesc)
+
     docker_worker_add_gecko_vcs_env_vars(config, job, taskdesc)
-    support_vcs_checkout(config, job, taskdesc)
+    support_vcs_checkout(config, job, taskdesc, sparse=True)
 
     env = worker['env']
     env.update({
@@ -120,15 +141,31 @@ def docker_worker_toolchain(config, job, taskdesc):
         internal = run['tooltool-downloads'] == 'internal'
         docker_worker_add_tooltool(config, job, taskdesc, internal=internal)
 
+    # Use `mach` to invoke python scripts so in-tree libraries are available.
+    if run['script'].endswith('.py'):
+        wrapper = 'workspace/build/src/mach python '
+    else:
+        wrapper = ''
+
+    args = run.get('arguments', '')
+    if args:
+        args = ' ' + shell_quote(*args)
+
+    sparse_profile = []
+    if run.get('sparse-profile'):
+        sparse_profile = ['--sparse-profile',
+                          'build/sparse-profiles/{}'.format(run['sparse-profile'])]
+
     worker['command'] = [
         '/builds/worker/bin/run-task',
         '--vcs-checkout=/builds/worker/workspace/build/src',
+    ] + sparse_profile + [
         '--',
         'bash',
         '-c',
         'cd /builds/worker && '
-        './workspace/build/src/taskcluster/scripts/misc/{}'.format(
-            run['script'])
+        '{}workspace/build/src/taskcluster/scripts/misc/{}{}'.format(
+            wrapper, run['script'], args)
     ]
 
     attributes = taskdesc.setdefault('attributes', {})
@@ -136,7 +173,7 @@ def docker_worker_toolchain(config, job, taskdesc):
     if 'toolchain-alias' in run:
         attributes['toolchain-alias'] = run['toolchain-alias']
 
-    add_optimizations(config, run, taskdesc)
+    add_optimization(config, run, taskdesc)
 
 
 @run_job_using("generic-worker", "toolchain-script", schema=toolchain_run_schema)
@@ -171,11 +208,20 @@ def windows_toolchain(config, job, taskdesc):
     hg_command.append('%GECKO_HEAD_REPOSITORY%')
     hg_command.append('.\\build\\src')
 
+    # Use `mach` to invoke python scripts so in-tree libraries are available.
+    if run['script'].endswith('.py'):
+        raise NotImplementedError("Python scripts don't work on Windows")
+
+    args = run.get('arguments', '')
+    if args:
+        args = ' ' + shell_quote(*args)
+
     bash = r'c:\mozilla-build\msys\bin\bash'
     worker['command'] = [
         ' '.join(hg_command),
         # do something intelligent.
-        r'{} -c ./build/src/taskcluster/scripts/misc/{}'.format(bash, run['script'])
+        r'{} build/src/taskcluster/scripts/misc/{}{}'.format(
+            bash, run['script'], args)
     ]
 
     attributes = taskdesc.setdefault('attributes', {})
@@ -183,4 +229,4 @@ def windows_toolchain(config, job, taskdesc):
     if 'toolchain-alias' in run:
         attributes['toolchain-alias'] = run['toolchain-alias']
 
-    add_optimizations(config, run, taskdesc)
+    add_optimization(config, run, taskdesc)

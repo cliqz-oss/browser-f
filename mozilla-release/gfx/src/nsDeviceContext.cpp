@@ -21,7 +21,7 @@
 #include "nsDebug.h"                    // for NS_NOTREACHED, NS_ASSERTION, etc
 #include "nsFont.h"                     // for nsFont
 #include "nsFontMetrics.h"              // for nsFontMetrics
-#include "nsIAtom.h"                    // for nsIAtom, NS_Atomize
+#include "nsAtom.h"                    // for nsAtom, NS_Atomize
 #include "nsID.h"
 #include "nsIDeviceContextSpec.h"       // for nsIDeviceContextSpec
 #include "nsLanguageAtomService.h"      // for nsLanguageAtomService
@@ -68,7 +68,7 @@ protected:
     ~nsFontCache() {}
 
     nsDeviceContext*          mContext; // owner
-    nsCOMPtr<nsIAtom>         mLocaleLanguage;
+    RefPtr<nsAtom>         mLocaleLanguage;
     nsTArray<nsFontMetrics*>  mFontMetrics;
 };
 
@@ -114,7 +114,7 @@ already_AddRefed<nsFontMetrics>
 nsFontCache::GetMetricsFor(const nsFont& aFont,
                            const nsFontMetrics::Params& aParams)
 {
-    nsIAtom* language = aParams.language ? aParams.language
+    nsAtom* language = aParams.language ? aParams.language
                                          : mLocaleLanguage.get();
 
     // First check our cache
@@ -144,7 +144,7 @@ nsFontCache::GetMetricsFor(const nsFont& aFont,
     RefPtr<nsFontMetrics> fm = new nsFontMetrics(aFont, params, mContext);
     // the mFontMetrics list has the "head" at the end, because append
     // is cheaper than insert
-    mFontMetrics.AppendElement(do_AddRef(fm.get()).take());
+    mFontMetrics.AppendElement(do_AddRef(fm).take());
     return fm.forget();
 }
 
@@ -426,7 +426,7 @@ nsDeviceContext::CreateRenderingContextCommon(bool aWantReferenceContext)
     }
     transform.PreScale(mPrintingScale, mPrintingScale);
 
-    pContext->SetMatrix(transform);
+    pContext->SetMatrixDouble(transform);
     return pContext.forget();
 }
 

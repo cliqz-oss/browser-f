@@ -35,7 +35,7 @@ var gGrid = {
   /**
    * All sites contained in the grid's cells. Sites may be empty.
    */
-  get sites() { return [for (cell of this.cells) cell.site]; },
+  get sites() { return this.cells.map(cell => cell.site); },
 
   // Tells whether the grid has already been initialized.
   get ready() { return !!this._ready; },
@@ -183,8 +183,8 @@ var gGrid = {
     site.innerHTML =
       '<a class="newtab-link">' +
       '  <span class="newtab-thumbnail placeholder"/>' +
-      '  <span class="newtab-thumbnail thumbnail"/>' +
-      '  <span class="newtab-thumbnail enhanced-content"/>' +
+      '  <img src="" alt="" class="newtab-thumbnail thumbnail"/>' +
+      '  <img src="" alt="" class="newtab-thumbnail enhanced-content"/>' +
       '  <span class="newtab-title"/>' +
       '</a>' +
       '<input type="button" title="' + newTabString("pin") + '"' +

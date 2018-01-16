@@ -33,7 +33,7 @@ DocumentFragment::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 bool
 DocumentFragment::IsNodeOfType(uint32_t aFlags) const
 {
-  return !(aFlags & ~(eCONTENT | eDOCUMENT_FRAGMENT));
+  return !(aFlags & ~eDOCUMENT_FRAGMENT);
 }
 
 #ifdef DEBUG
@@ -111,9 +111,7 @@ DocumentFragment::Constructor(const GlobalObject& aGlobal,
   return window->GetDoc()->CreateDocumentFragment();
 }
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(DocumentFragment,
-                                   FragmentOrElement,
-                                   mHost)
+NS_IMPL_CYCLE_COLLECTION_INHERITED(DocumentFragment, FragmentOrElement, mHost)
 
 // QueryInterface implementation for DocumentFragment
 NS_INTERFACE_MAP_BEGIN(DocumentFragment)

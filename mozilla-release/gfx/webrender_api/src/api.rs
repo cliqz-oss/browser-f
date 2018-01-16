@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use {BuiltDisplayList, BuiltDisplayListDescriptor, ClipId, ColorF, DeviceIntPoint};
-use {DeviceUintRect, DeviceUintSize, FontInstanceKey, FontKey, GlyphDimensions, GlyphKey};
-use {FontInstance, FontInstanceOptions, FontInstancePlatformOptions, NativeFontHandle, WorldPoint};
-use {ImageData, ImageDescriptor, ImageKey, LayoutPoint, LayoutSize, LayoutTransform,
-     LayoutVector2D};
+use {BuiltDisplayList, BuiltDisplayListDescriptor, ClipId, ColorF, DeviceIntPoint, DeviceUintRect};
+use {DeviceUintSize, FontInstance, FontInstanceKey, FontInstanceOptions};
+use {FontInstancePlatformOptions, FontKey, FontVariation, GlyphDimensions, GlyphKey, ImageData};
+use {ImageDescriptor, ImageKey, ItemTag, LayoutPoint, LayoutSize, LayoutTransform, LayoutVector2D};
+use {NativeFontHandle, WorldPoint};
 use app_units::Au;
 use channel::{self, MsgSender, Payload, PayloadSender, PayloadSenderHelperMethods};
 use std::cell::Cell;
@@ -94,6 +94,7 @@ impl ResourceUpdates {
         glyph_size: Au,
         options: Option<FontInstanceOptions>,
         platform_options: Option<FontInstancePlatformOptions>,
+        variations: Vec<FontVariation>,
     ) {
         self.updates
             .push(ResourceUpdate::AddFontInstance(AddFontInstance {
@@ -102,6 +103,7 @@ impl ResourceUpdates {
                 glyph_size,
                 options,
                 platform_options,
+                variations,
             }));
     }
 
@@ -140,6 +142,37 @@ pub enum AddFont {
     Native(FontKey, NativeFontHandle),
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct HitTestItem {
+    /// The pipeline that the display item that was hit belongs to.
+    pub pipeline: PipelineId,
+
+    /// The tag of the hit display item.
+    pub tag: ItemTag,
+
+    /// The hit point in the coordinate space of the "viewport" of the display item. The
+    /// viewport is the scroll node formed by the root reference frame of the display item's
+    /// pipeline.
+    pub point_in_viewport: LayoutPoint,
+
+    /// The coordinates of the original hit test point relative to the origin of this item.
+    /// This is useful for calculating things like text offsets in the client.
+    pub point_relative_to_item: LayoutPoint,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct HitTestResult {
+    pub items: Vec<HitTestItem>,
+}
+
+bitflags! {
+    #[derive(Deserialize, Serialize)]
+    pub struct HitTestFlags: u8 {
+        const FIND_ALL = 0b00000001;
+        const POINT_RELATIVE_TO_PIPELINE_VIEWPORT = 0b00000010;
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AddFontInstance {
     pub key: FontInstanceKey,
@@ -147,10 +180,12 @@ pub struct AddFontInstance {
     pub glyph_size: Au,
     pub options: Option<FontInstanceOptions>,
     pub platform_options: Option<FontInstancePlatformOptions>,
+    pub variations: Vec<FontVariation>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 pub enum DocumentMsg {
+    HitTest(Option<PipelineId>, WorldPoint, HitTestFlags, MsgSender<HitTestResult>),
     SetDisplayList {
         list_descriptor: BuiltDisplayListDescriptor,
         epoch: Epoch,
@@ -161,6 +196,11 @@ pub enum DocumentMsg {
         preserve_frame_state: bool,
         resources: ResourceUpdates,
     },
+    UpdatePipelineResources {
+        resources: ResourceUpdates,
+        pipeline_id: PipelineId,
+        epoch: Epoch,
+    },
     SetPageZoom(ZoomFactor),
     SetPinchZoom(ZoomFactor),
     SetPan(DeviceIntPoint),
@@ -170,6 +210,7 @@ pub enum DocumentMsg {
     SetWindowParameters {
         window_size: DeviceUintSize,
         inner_rect: DeviceUintRect,
+        device_pixel_ratio: f32,
     },
     Scroll(ScrollLocation, WorldPoint, ScrollEventPhase),
     ScrollNodeWithId(LayoutPoint, ClipId, ScrollClamping),
@@ -182,6 +223,8 @@ impl fmt::Debug for DocumentMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match *self {
             DocumentMsg::SetDisplayList { .. } => "DocumentMsg::SetDisplayList",
+            DocumentMsg::UpdatePipelineResources { .. } => "DocumentMsg::UpdatePipelineResources",
+            DocumentMsg::HitTest(..) => "DocumentMsg::HitTest",
             DocumentMsg::SetPageZoom(..) => "DocumentMsg::SetPageZoom",
             DocumentMsg::SetPinchZoom(..) => "DocumentMsg::SetPinchZoom",
             DocumentMsg::SetPan(..) => "DocumentMsg::SetPan",
@@ -428,7 +471,7 @@ impl RenderApi {
         ImageKey::new(self.namespace_id, new_id)
     }
 
-    /// Adds an image identified by the `ImageKey`.
+    /// Add/remove/update resources such as images and fonts.
     pub fn update_resources(&self, resources: ResourceUpdates) {
         if resources.updates.is_empty() {
             return;
@@ -436,6 +479,24 @@ impl RenderApi {
         self.api_sender
             .send(ApiMsg::UpdateResources(resources))
             .unwrap();
+    }
+
+    /// Add/remove/update resources such as images and fonts.
+    ///
+    /// This is similar to update_resources with the addition that it allows updating
+    /// a pipeline's epoch.
+    pub fn update_pipeline_resources(
+        &self,
+        resources: ResourceUpdates,
+        document_id: DocumentId,
+        pipeline_id: PipelineId,
+        epoch: Epoch,
+    ) {
+        self.send(document_id, DocumentMsg::UpdatePipelineResources {
+            resources,
+            pipeline_id,
+            epoch,
+        });
     }
 
     pub fn send_external_event(&self, evt: ExternalEvent) {
@@ -607,6 +668,23 @@ impl RenderApi {
         );
     }
 
+    /// Does a hit test on display items in the specified document, at the given
+    /// point. If a pipeline_id is specified, it is used to further restrict the
+    /// hit results so that only items inside that pipeline are matched. If the
+    /// HitTestFlags argument contains the FIND_ALL flag, then the vector of hit
+    /// results will contain all display items that match, ordered from front
+    /// to back.
+    pub fn hit_test(&self,
+                    document_id: DocumentId,
+                    pipeline_id: Option<PipelineId>,
+                    point: WorldPoint,
+                    flags: HitTestFlags)
+                    -> HitTestResult {
+        let (tx, rx) = channel::msg_channel().unwrap();
+        self.send(document_id, DocumentMsg::HitTest(pipeline_id, point, flags, tx));
+        rx.recv().unwrap()
+    }
+
     pub fn set_page_zoom(&self, document_id: DocumentId, page_zoom: ZoomFactor) {
         self.send(document_id, DocumentMsg::SetPageZoom(page_zoom));
     }
@@ -624,12 +702,14 @@ impl RenderApi {
         document_id: DocumentId,
         window_size: DeviceUintSize,
         inner_rect: DeviceUintRect,
+        device_pixel_ratio: f32,
     ) {
         self.send(
             document_id,
             DocumentMsg::SetWindowParameters {
                 window_size,
                 inner_rect,
+                device_pixel_ratio,
             },
         );
     }
@@ -798,10 +878,11 @@ pub struct DynamicProperties {
 }
 
 pub trait RenderNotifier: Send {
-    fn new_frame_ready(&mut self);
-    fn new_scroll_frame_ready(&mut self, composite_needed: bool);
-    fn external_event(&mut self, _evt: ExternalEvent) {
+    fn clone(&self) -> Box<RenderNotifier>;
+    fn new_frame_ready(&self);
+    fn new_scroll_frame_ready(&self, composite_needed: bool);
+    fn external_event(&self, _evt: ExternalEvent) {
         unimplemented!()
     }
-    fn shut_down(&mut self) {}
+    fn shut_down(&self) {}
 }

@@ -7,16 +7,6 @@
 #ifndef vm_PIC_h
 #define vm_PIC_h
 
-#include "jsapi.h"
-#include "jscntxt.h"
-#include "jsfriendapi.h"
-#include "jsobj.h"
-
-#include "gc/Barrier.h"
-#include "gc/Heap.h"
-#include "gc/Marking.h"
-
-#include "js/Value.h"
 #include "vm/GlobalObject.h"
 
 namespace js {
@@ -219,9 +209,6 @@ struct ForOfPIC
         // Initialize the canonical iterator function.
         bool initialize(JSContext* cx);
 
-        // Check if a given array object is optimized by this PIC.
-        Stub* isArrayOptimized(ArrayObject* obj);
-
         // Try to optimize this chain for an object.
         bool tryOptimizeArray(JSContext* cx, HandleArrayObject array, bool* optimized);
 
@@ -239,11 +226,8 @@ struct ForOfPIC
         void sweep(FreeOp* fop);
 
       private:
-        // Get a matching optimized stub for the given object.
-        Stub* getMatchingStub(JSObject* obj);
-
-        // Check if the given object is for-of optimizable with this PIC.
-        bool isOptimizableArray(JSObject* obj);
+        // Check if a matching optimized stub for the given object exists.
+        bool hasMatchingStub(ArrayObject* obj);
 
         // Reset the PIC and all info associated with it.
         void reset(JSContext* cx);

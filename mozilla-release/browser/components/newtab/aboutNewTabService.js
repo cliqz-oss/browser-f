@@ -10,28 +10,44 @@ const {utils: Cu, interfaces: Ci} = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/AppConstants.jsm");
+
 XPCOMUtils.defineLazyModuleGetter(this, "AboutNewTab",
                                   "resource:///modules/AboutNewTab.jsm");
 
 const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
+const TOPIC_APP_QUIT = "quit-application-granted";
+const TOPIC_LOCALES_CHANGE = "intl:requested-locales-changed";
 
-const ACTIVITY_STREAM_URL = "resource://activity-stream/data/content/activity-stream.html";
-
-const ACTIVITY_STREAM_PRERENDER_URL = "resource://activity-stream/data/content/activity-stream-prerendered.html";
+// Automated tests ensure packaged locales are in this list. Copied output of:
+// https://github.com/mozilla/activity-stream/blob/master/bin/render-activity-stream-html.js
+const ACTIVITY_STREAM_LOCALES = new Set("en-US ach ar ast az be bg bn-BD bn-IN br bs ca cak cs cy da de dsb el en-GB eo es-AR es-CL es-ES es-MX et eu fa ff fi fr fy-NL ga-IE gd gl gn gu-IN he hi-IN hr hsb hu hy-AM ia id it ja ka kab kk km kn ko lij lo lt ltg lv mk ml mr ms my nb-NO ne-NP nl nn-NO pa-IN pl pt-BR pt-PT rm ro ru si sk sl sq sr sv-SE ta te th tl tr uk ur uz vi zh-CN zh-TW".split(" "));
 
 const ABOUT_URL = "about:newtab";
 
 const IS_MAIN_PROCESS = Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT;
 
+const IS_RELEASE_OR_BETA = AppConstants.RELEASE_OR_BETA;
+
 // Pref that tells if activity stream is enabled
 const PREF_ACTIVITY_STREAM_ENABLED = "browser.newtabpage.activity-stream.enabled";
 const PREF_ACTIVITY_STREAM_PRERENDER_ENABLED = "browser.newtabpage.activity-stream.prerender";
+const PREF_ACTIVITY_STREAM_DEBUG = "browser.newtabpage.activity-stream.debug";
+
 
 function AboutNewTabService() {
-  Services.obs.addObserver(this, "quit-application-granted");
+  Services.obs.addObserver(this, TOPIC_APP_QUIT);
+  Services.obs.addObserver(this, TOPIC_LOCALES_CHANGE);
   Services.prefs.addObserver(PREF_ACTIVITY_STREAM_ENABLED, this);
   Services.prefs.addObserver(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED, this);
+  if (!IS_RELEASE_OR_BETA) {
+    Services.prefs.addObserver(PREF_ACTIVITY_STREAM_DEBUG, this);
+  }
+
+  // More initialization happens here
   this.toggleActivityStream();
+  this.initialized = true;
+
   if (IS_MAIN_PROCESS) {
     AboutNewTab.init();
   }
@@ -76,6 +92,8 @@ AboutNewTabService.prototype = {
   _newTabURL: ABOUT_URL,
   _activityStreamEnabled: false,
   _activityStreamPrerender: false,
+  _activityStreamPath: "",
+  _activityStreamDebug: false,
   _overridden: false,
 
   classID: Components.ID("{dfcd2adc-7867-4d3a-ba70-17501f208142}"),
@@ -92,22 +110,32 @@ AboutNewTabService.prototype = {
       case "nsPref:changed":
         if (data === PREF_ACTIVITY_STREAM_ENABLED) {
           if (this.toggleActivityStream()) {
-            Services.obs.notifyObservers(null, "newtab-url-changed", ABOUT_URL);
+            this.notifyChange();
           }
         } else if (data === PREF_ACTIVITY_STREAM_PRERENDER_ENABLED) {
           this._activityStreamPrerender = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED);
-          Services.obs.notifyObservers(null, "newtab-url-changed", ABOUT_URL);
+          this.notifyChange();
+        } else if (!IS_RELEASE_OR_BETA && data === PREF_ACTIVITY_STREAM_DEBUG) {
+          this._activityStreamDebug = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_DEBUG, false);
+          this.updatePrerenderedPath();
+          this.notifyChange();
         }
         break;
-      case "quit-application-granted":
-        Services.obs.removeObserver(this, "quit-application-granted");
-        Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_ENABLED, this);
-        Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED, this);
+      case TOPIC_APP_QUIT:
+        this.uninit();
         if (IS_MAIN_PROCESS) {
           AboutNewTab.uninit();
         }
         break;
+      case TOPIC_LOCALES_CHANGE:
+        this.updatePrerenderedPath();
+        this.notifyChange();
+        break;
     }
+  },
+
+  notifyChange() {
+    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
   },
 
   /**
@@ -137,8 +165,39 @@ AboutNewTabService.prototype = {
       this._activityStreamEnabled = false;
     }
     this._activityStreamPrerender = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED);
+    if (!IS_RELEASE_OR_BETA) {
+      this._activityStreamDebug = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_DEBUG, false);
+    }
+    this.updatePrerenderedPath();
     this._newtabURL = ABOUT_URL;
     return true;
+  },
+
+  /**
+   * Figure out what path under prerendered to use based on current state.
+   */
+  updatePrerenderedPath() {
+    // Debug files are specially packaged in a non-localized directory
+    let path;
+    if (this._activityStreamDebug) {
+      path = "static";
+    } else {
+      // Use the exact match locale if it's packaged
+      const locale = Services.locale.getRequestedLocale();
+      if (ACTIVITY_STREAM_LOCALES.has(locale)) {
+        path = locale;
+      } else {
+        // Fall back to a shared-language packaged locale
+        const language = locale.split("-")[0];
+        if (ACTIVITY_STREAM_LOCALES.has(language)) {
+          path = language;
+        } else {
+          // Just use the default locale as a final fallback
+          path = "en-US";
+        }
+      }
+    }
+    this._activityStreamPath = `${path}/`;
   },
 
   /*
@@ -151,7 +210,18 @@ AboutNewTabService.prototype = {
    */
   get defaultURL() {
     if (this.activityStreamEnabled) {
-      return this.activityStreamPrerender ? this.activityStreamPrerenderURL : this.activityStreamURL;
+      // Generate the desired activity stream resource depending on state, e.g.,
+      // resource://activity-stream/prerendered/ar/activity-stream.html
+      // resource://activity-stream/prerendered/en-US/activity-stream-prerendered.html
+      // resource://activity-stream/prerendered/static/activity-stream-debug.html
+      return [
+        "resource://activity-stream/prerendered/",
+        this._activityStreamPath,
+        "activity-stream",
+        this._activityStreamPrerender ? "-prerendered" : "",
+        this._activityStreamDebug ? "-debug" : "",
+        ".html"
+      ].join("");
     }
     return LOCAL_NEWTAB_URL;
   },
@@ -173,7 +243,7 @@ AboutNewTabService.prototype = {
     this.toggleActivityStream(false);
     this._newTabURL = aNewTabURL;
     this._overridden = true;
-    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
+    this.notifyChange();
   },
 
   get overridden() {
@@ -188,19 +258,29 @@ AboutNewTabService.prototype = {
     return this._activityStreamPrerender;
   },
 
-  get activityStreamURL() {
-    return ACTIVITY_STREAM_URL;
-  },
-
-  get activityStreamPrerenderURL() {
-    return ACTIVITY_STREAM_PRERENDER_URL;
+  get activityStreamDebug() {
+    return this._activityStreamDebug;
   },
 
   resetNewTabURL() {
     this._overridden = false;
     this._newTabURL = ABOUT_URL;
     this.toggleActivityStream(undefined, true);
-    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
+    this.notifyChange();
+  },
+
+  uninit() {
+    if (!this.initialized) {
+      return;
+    }
+    Services.obs.removeObserver(this, TOPIC_APP_QUIT);
+    Services.obs.removeObserver(this, TOPIC_LOCALES_CHANGE);
+    Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_ENABLED, this);
+    Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED, this);
+    if (!IS_RELEASE_OR_BETA) {
+      Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_DEBUG, this);
+    }
+    this.initialized = false;
   }
 };
 

@@ -108,6 +108,10 @@ class BaselineInspector
     MOZ_MUST_USE bool maybeInfoForPropertyOp(jsbytecode* pc, ReceiverVector& receivers,
                                              ObjectGroupVector& convertUnboxedGroups);
 
+    MOZ_MUST_USE bool maybeInfoForProtoReadSlot(jsbytecode* pc, ReceiverVector& receivers,
+                                                ObjectGroupVector& convertUnboxedGroups,
+                                                JSObject** holder);
+
     SetElemICInspector setElemICInspector(jsbytecode* pc) {
         return makeICInspector<SetElemICInspector>(pc, ICStub::SetElem_Fallback);
     }
@@ -123,7 +127,7 @@ class BaselineInspector
     bool hasSeenNonStringIterMore(jsbytecode* pc);
 
     MOZ_MUST_USE bool isOptimizableConstStringSplit(jsbytecode* pc, JSString** strOut,
-                                                    JSString** sepOut, JSObject** objOut);
+                                                    JSString** sepOut, ArrayObject** objOut);
     JSObject* getTemplateObject(jsbytecode* pc);
     JSObject* getTemplateObjectForNative(jsbytecode* pc, Native native);
     JSObject* getTemplateObjectForClassHook(jsbytecode* pc, const Class* clasp);

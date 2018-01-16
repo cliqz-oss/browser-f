@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -940,7 +941,7 @@ void
 nsTreeContentView::AttributeChanged(nsIDocument*  aDocument,
                                     dom::Element* aElement,
                                     int32_t       aNameSpaceID,
-                                    nsIAtom*      aAttribute,
+                                    nsAtom*      aAttribute,
                                     int32_t       aModType,
                                     const nsAttrValue* aOldValue)
 {
@@ -1095,20 +1096,18 @@ nsTreeContentView::AttributeChanged(nsIDocument*  aDocument,
 void
 nsTreeContentView::ContentAppended(nsIDocument *aDocument,
                                    nsIContent* aContainer,
-                                   nsIContent* aFirstNewContent,
-                                   int32_t     /* unused */)
+                                   nsIContent* aFirstNewContent)
 {
   for (nsIContent* cur = aFirstNewContent; cur; cur = cur->GetNextSibling()) {
     // Our contentinserted doesn't use the index
-    ContentInserted(aDocument, aContainer, cur, 0);
+    ContentInserted(aDocument, aContainer, cur);
   }
 }
 
 void
 nsTreeContentView::ContentInserted(nsIDocument *aDocument,
                                    nsIContent* aContainer,
-                                   nsIContent* aChild,
-                                   int32_t /* unused */)
+                                   nsIContent* aChild)
 {
   NS_ASSERTION(aChild, "null ptr");
 
@@ -1177,7 +1176,6 @@ void
 nsTreeContentView::ContentRemoved(nsIDocument *aDocument,
                                   nsIContent* aContainer,
                                   nsIContent* aChild,
-                                  int32_t aIndexInContainer,
                                   nsIContent* aPreviousSibling)
 {
   NS_ASSERTION(aChild, "null ptr");
@@ -1570,7 +1568,7 @@ nsTreeContentView::UpdateParentIndexes(int32_t aIndex, int32_t aSkip, int32_t aC
 nsIContent*
 nsTreeContentView::GetCell(nsIContent* aContainer, nsTreeColumn& aCol)
 {
-  nsCOMPtr<nsIAtom> colAtom(aCol.GetAtom());
+  RefPtr<nsAtom> colAtom(aCol.GetAtom());
   int32_t colIndex(aCol.GetIndex());
 
   // Traverse through cells, try to find the cell by "ref" attribute or by cell

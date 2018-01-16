@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,7 +13,6 @@
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
-#include "mozilla/layers/WebRenderLayer.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "nsDisplayList.h"
 #include "nsLayoutUtils.h"
@@ -131,6 +131,8 @@ public:
                                        nsDisplayListBuilder* aDisplayListBuilder) override
   {
     HTMLCanvasElement* element = static_cast<HTMLCanvasElement*>(mFrame->GetContent());
+    element->HandlePrintCallback(mFrame->PresContext()->Type());
+
     switch(element->GetCurrentContextType()) {
       case CanvasContextType::Canvas2D:
       case CanvasContextType::WebGL1:
@@ -138,17 +140,14 @@ public:
       {
         bool isRecycled;
         RefPtr<WebRenderCanvasData> canvasData =
-          aManager->CreateOrRecycleWebRenderUserData<WebRenderCanvasData>(this, &isRecycled);
+          aManager->CommandBuilder().CreateOrRecycleWebRenderUserData<WebRenderCanvasData>(this, &isRecycled);
+        nsHTMLCanvasFrame* canvasFrame = static_cast<nsHTMLCanvasFrame*>(mFrame);
+        if (!canvasFrame->UpdateWebRenderCanvasData(aDisplayListBuilder, canvasData)) {
+          return true;
+        }
         WebRenderCanvasRendererAsync* data =
           static_cast<WebRenderCanvasRendererAsync*>(canvasData->GetCanvasRenderer());
-
-        if (!isRecycled) {
-          nsHTMLCanvasFrame* canvasFrame = static_cast<nsHTMLCanvasFrame*>(mFrame);
-          if (!canvasFrame->InitializeCanvasRenderer(aDisplayListBuilder, data)) {
-            return true;
-          }
-        }
-
+        MOZ_ASSERT(data);
         data->UpdateCompositableClient();
 
         // Push IFrame for async image pipeline.
@@ -178,16 +177,15 @@ public:
         aBuilder.PushIFrame(r, !BackfaceIsHidden(), data->GetPipelineId().ref());
 
         gfx::Matrix4x4 scTransform;
+        gfxRect destGFXRect = mFrame->PresContext()->AppUnitsToGfxUnits(dest);
+        scTransform.PreScale(destGFXRect.Width() / canvasSizeInPx.width,
+                             destGFXRect.Height() / canvasSizeInPx.height, 1.0f);
         if (data->NeedsYFlip()) {
           scTransform = scTransform.PreTranslate(0, data->GetSize().height, 0).PreScale(1, -1, 1);
         }
 
-        gfxRect destGFXRect = mFrame->PresContext()->AppUnitsToGfxUnits(dest);
-        scTransform.PreScale(destGFXRect.Width() / canvasSizeInPx.width,
-                             destGFXRect.Height() / canvasSizeInPx.height, 1.0f);
-
         MaybeIntSize scaleToSize;
-        LayerRect scBounds(0, 0, bounds.width, bounds.height);
+        LayoutDeviceRect scBounds(LayoutDevicePoint(0, 0), bounds.Size());
         wr::ImageRendering filter = wr::ToImageRendering(nsLayoutUtils::GetSamplingFilterForFrame(mFrame));
         wr::MixBlendMode mixBlendMode = wr::MixBlendMode::Normal;
         aManager->WrBridge()->AddWebRenderParentCommand(OpUpdateAsyncImagePipeline(data->GetPipelineId().value(),
@@ -460,11 +458,11 @@ nsHTMLCanvasFrame::BuildLayer(nsDisplayListBuilder* aBuilder,
 }
 
 bool
-nsHTMLCanvasFrame::InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
-                                            CanvasRenderer* aRenderer)
+nsHTMLCanvasFrame::UpdateWebRenderCanvasData(nsDisplayListBuilder* aBuilder,
+                                             WebRenderCanvasData* aCanvasData)
 {
   HTMLCanvasElement* element = static_cast<HTMLCanvasElement*>(GetContent());
-  return element->InitializeCanvasRenderer(aBuilder, aRenderer);
+  return element->UpdateWebRenderCanvasData(aBuilder, aCanvasData);
 }
 
 void

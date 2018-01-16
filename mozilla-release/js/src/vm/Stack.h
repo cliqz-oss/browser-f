@@ -270,7 +270,6 @@ class AbstractFramePtr
     inline bool hasArgsObj() const;
     inline ArgumentsObject& argsObj() const;
     inline void initArgsObj(ArgumentsObject& argsobj) const;
-    inline bool createSingleton() const;
 
     inline Value& unaliasedLocal(uint32_t i);
     inline Value& unaliasedFormal(unsigned i, MaybeCheckAliasing checkAliasing = CHECK_ALIASING);
@@ -339,15 +338,12 @@ class InterpreterFrame
          */
         RUNNING_IN_JIT         =      0x100,
 
-        /* Miscellaneous state. */
-        CREATE_SINGLETON       =      0x200,  /* Constructed |this| object should be singleton. */
-
         /*
          * If set, this frame has been on the stack when
          * |js::SavedStacks::saveCurrentStack| was called, and so there is a
          * |js::SavedFrame| object cached for this frame.
          */
-        HAS_CACHED_SAVED_FRAME =      0x400,
+        HAS_CACHED_SAVED_FRAME =      0x200,
     };
 
     mutable uint32_t    flags_;         /* bits described by Flags */
@@ -548,7 +544,7 @@ class InterpreterFrame
     ArgumentsObject& argsObj() const;
     void initArgsObj(ArgumentsObject& argsobj);
 
-    JSObject* createRestParameter(JSContext* cx);
+    ArrayObject* createRestParameter(JSContext* cx);
 
     /*
      * Environment chain
@@ -718,8 +714,7 @@ class InterpreterFrame
     }
 
     void resumeGeneratorFrame(JSObject* envChain) {
-        MOZ_ASSERT(script()->isStarGenerator() || script()->isLegacyGenerator() ||
-                   script()->isAsync());
+        MOZ_ASSERT(script()->isGenerator() || script()->isAsync());
         MOZ_ASSERT(isFunctionFrame());
         flags_ |= HAS_INITIAL_ENV;
         envChain_ = envChain;
@@ -757,15 +752,6 @@ class InterpreterFrame
     bool hasArgsObj() const {
         MOZ_ASSERT(script()->needsArgsObj());
         return flags_ & HAS_ARGS_OBJ;
-    }
-
-    void setCreateSingleton() {
-        MOZ_ASSERT(isConstructing());
-        flags_ |= CREATE_SINGLETON;
-    }
-    bool createSingleton() const {
-        MOZ_ASSERT(isConstructing());
-        return flags_ & CREATE_SINGLETON;
     }
 
     /*
@@ -1241,7 +1227,6 @@ static_assert(sizeof(LiveSavedFrameCache) == sizeof(uintptr_t),
 /*****************************************************************************/
 
 class InterpreterActivation;
-class WasmActivation;
 
 namespace jit {
     class JitActivation;
@@ -1305,7 +1290,7 @@ class Activation
     // callFunctionWithAsyncStack.
     bool asyncCallIsExplicit_;
 
-    enum Kind { Interpreter, Jit, Wasm };
+    enum Kind { Interpreter, Jit };
     Kind kind_;
 
     inline Activation(JSContext* cx, Kind kind);
@@ -1330,9 +1315,7 @@ class Activation
     bool isJit() const {
         return kind_ == Jit;
     }
-    bool isWasm() const {
-        return kind_ == Wasm;
-    }
+    inline bool hasWasmExitFP() const;
 
     inline bool isProfiling() const;
     void registerProfiling();
@@ -1345,10 +1328,6 @@ class Activation
     jit::JitActivation* asJit() const {
         MOZ_ASSERT(isJit());
         return (jit::JitActivation*)this;
-    }
-    WasmActivation* asWasm() const {
-        MOZ_ASSERT(isWasm());
-        return (WasmActivation*)this;
     }
 
     void hideScriptedCaller() {
@@ -1460,9 +1439,6 @@ class ActivationIterator
   protected:
     Activation* activation_;
 
-  private:
-    void settle();
-
   public:
     explicit ActivationIterator(JSContext* cx);
 
@@ -1491,15 +1467,22 @@ class BailoutFrameInfo;
 // A JitActivation is used for frames running in Baseline or Ion.
 class JitActivation : public Activation
 {
-    // If Baseline or Ion code is on the stack, and has called into C++, this
-    // will be aligned to an ExitFrame.
-    uint8_t* exitFP_;
+  public:
+    static const uintptr_t ExitFpWasmBit = 0x1;
+
+  private:
+    // If Baseline, Ion or Wasm code is on the stack, and has called into C++,
+    // this will be aligned to an ExitFrame. The last bit indicates if it's a
+    // wasm frame (bit set to ExitFpWasmBit) or not (bit set to !ExitFpWasmBit).
+    uint8_t* packedExitFP_;
+
+    // When hasWasmExitFP(), encodedWasmExitReason_ holds ExitReason.
+    uint32_t encodedWasmExitReason_;
 
     JitActivation* prevJitActivation_;
-    bool active_;
 
     // Rematerialized Ion frames which has info copied out of snapshots. Maps
-    // frame pointers (i.e. exitFP_) to a vector of rematerializations of all
+    // frame pointers (i.e. packedExitFP_) to a vector of rematerializations of all
     // inline frames associated with that frame.
     //
     // This table is lazily initialized by calling getRematerializedFrame.
@@ -1543,13 +1526,8 @@ class JitActivation : public Activation
 #endif
 
   public:
-    explicit JitActivation(JSContext* cx, bool active = true);
+    explicit JitActivation(JSContext* cx);
     ~JitActivation();
-
-    bool isActive() const {
-        return active_;
-    }
-    void setActive(JSContext* cx, bool active = true);
 
     bool isProfiling() const {
         // All JitActivations can be profiled.
@@ -1563,19 +1541,22 @@ class JitActivation : public Activation
         return offsetof(JitActivation, prevJitActivation_);
     }
 
-    void setExitFP(uint8_t* fp) {
-        exitFP_ = fp;
+    bool hasExitFP() const {
+        return !!packedExitFP_;
     }
-    uint8_t* exitFP() const {
-        return exitFP_;
-    }
-    static size_t offsetOfExitFP() {
-        return offsetof(JitActivation, exitFP_);
+    static size_t offsetOfPackedExitFP() {
+        return offsetof(JitActivation, packedExitFP_);
     }
 
-    static size_t offsetOfActiveUint8() {
-        MOZ_ASSERT(sizeof(bool) == 1);
-        return offsetof(JitActivation, active_);
+    bool hasJSExitFP() const {
+        return !(uintptr_t(packedExitFP_) & ExitFpWasmBit);
+    }
+    uint8_t* jsExitFP() const {
+        MOZ_ASSERT(hasJSExitFP());
+        return packedExitFP_;
+    }
+    void setJSExitFP(uint8_t* fp) {
+        packedExitFP_ = fp;
     }
 
 #ifdef CHECK_OSIPOINT_REGISTERS
@@ -1615,7 +1596,6 @@ class JitActivation : public Activation
     void removeRematerializedFrame(uint8_t* top);
 
     void traceRematerializedFrames(JSTracer* trc);
-
 
     // Register the results of on Ion frame recovery.
     bool registerIonFrameRecovery(RInstructionResults&& results);
@@ -1657,6 +1637,40 @@ class JitActivation : public Activation
     void setLastProfilingCallSite(void* ptr) {
         lastProfilingCallSite_ = ptr;
     }
+
+    // WebAssembly specific attributes.
+    bool hasWasmExitFP() const {
+        return uintptr_t(packedExitFP_) & ExitFpWasmBit;
+    }
+    wasm::Frame* wasmExitFP() const {
+        MOZ_ASSERT(hasWasmExitFP());
+        return (wasm::Frame*)(uintptr_t(packedExitFP_) & ~ExitFpWasmBit);
+    }
+    void setWasmExitFP(const wasm::Frame* fp) {
+        if (fp) {
+            MOZ_ASSERT(!(uintptr_t(fp) & ExitFpWasmBit));
+            packedExitFP_ = (uint8_t*)(uintptr_t(fp) | ExitFpWasmBit);
+            MOZ_ASSERT(hasWasmExitFP());
+        } else {
+            packedExitFP_ = nullptr;
+        }
+    }
+    wasm::ExitReason wasmExitReason() const {
+        MOZ_ASSERT(hasWasmExitFP());
+        return wasm::ExitReason::Decode(encodedWasmExitReason_);
+    }
+    static size_t offsetOfEncodedWasmExitReason() {
+        return offsetof(JitActivation, encodedWasmExitReason_);
+    }
+
+    // Interrupts are started from the interrupt signal handler (or the ARM
+    // simulator) and cleared by WasmHandleExecutionInterrupt or WasmHandleThrow
+    // when the interrupt is handled.
+    void startWasmInterrupt(const JS::ProfilingFrameIterator::RegisterState& state);
+    void finishWasmInterrupt();
+    bool isWasmInterrupted() const;
+    void* wasmUnwindPC() const;
+    void* wasmResumePC() const;
 };
 
 // A filtering of the ActivationIterator to only stop at JitActivations.
@@ -1685,14 +1699,15 @@ class JitActivationIterator : public ActivationIterator
         settle();
         return *this;
     }
-
-    uint8_t* exitFP() const {
-        MOZ_ASSERT(activation_->isJit());
-        return activation_->asJit()->exitFP();
-    }
 };
 
 } // namespace jit
+
+inline bool
+Activation::hasWasmExitFP() const
+{
+    return isJit() && asJit()->hasWasmExitFP();
+}
 
 // Iterates over the frames of a single InterpreterActivation.
 class InterpreterFrameIterator
@@ -1736,42 +1751,6 @@ class InterpreterFrameIterator
     }
 };
 
-// An eventual goal is to remove WasmActivation and to run asm code in a
-// JitActivation interleaved with Ion/Baseline jit code. This would allow
-// efficient calls back and forth but requires that we can walk the stack for
-// all kinds of jit code.
-class WasmActivation : public Activation
-{
-    wasm::Frame* exitFP_;
-
-  public:
-    explicit WasmActivation(JSContext* cx);
-    ~WasmActivation();
-
-    bool isProfiling() const {
-        return true;
-    }
-
-    // Returns null or the final wasm::Frame* when wasm exited this
-    // WasmActivation.
-    wasm::Frame* exitFP() const { return exitFP_; }
-
-    // Written by JIT code:
-    static unsigned offsetOfExitFP() { return offsetof(WasmActivation, exitFP_); }
-
-    // Interrupts are started from the interrupt signal handler (or the ARM
-    // simulator) and cleared by WasmHandleExecutionInterrupt or WasmHandleThrow
-    // when the interrupt is handled.
-    void startInterrupt(const JS::ProfilingFrameIterator::RegisterState& state);
-    void finishInterrupt();
-    bool interrupted() const;
-    void* unwindPC() const;
-    void* resumePC() const;
-
-    // Used by wasm::WasmFrameIter during stack unwinding.
-    void unwindExitFP(wasm::Frame* exitFP);
-};
-
 // A JitFrameIter can iterate over all kind of frames emitted by our code
 // generators, be they composed of JS jit frames or wasm frames, interleaved or
 // not, in any order.
@@ -1799,11 +1778,14 @@ class WasmActivation : public Activation
 class JitFrameIter
 {
   protected:
+    jit::JitActivation* act_;
     mozilla::MaybeOneOf<jit::JSJitFrameIter, wasm::WasmFrameIter> iter_;
 
+    void settle();
+
   public:
-    JitFrameIter() : iter_() {}
-    explicit JitFrameIter(Activation* activation);
+    JitFrameIter() : act_(nullptr), iter_() {}
+    explicit JitFrameIter(jit::JitActivation* activation);
 
     explicit JitFrameIter(const JitFrameIter& another);
     JitFrameIter& operator=(const JitFrameIter& another);
@@ -1820,6 +1802,7 @@ class JitFrameIter
     const wasm::WasmFrameIter& asWasm() const { return iter_.ref<wasm::WasmFrameIter>(); }
 
     // Operations common to all frame iterators.
+    const jit::JitActivation* activation() const { return act_; }
     bool done() const;
     void operator++();
 
@@ -1838,7 +1821,7 @@ class OnlyJSJitFrameIter : public JitFrameIter
     }
 
   public:
-    explicit OnlyJSJitFrameIter(Activation* act);
+    explicit OnlyJSJitFrameIter(jit::JitActivation* act);
     explicit OnlyJSJitFrameIter(JSContext* cx);
     explicit OnlyJSJitFrameIter(const ActivationIterator& cx);
 
@@ -1885,13 +1868,13 @@ class FrameIter
     // the heap, so this structure should not contain any GC things.
     struct Data
     {
-        JSContext * cx_;
+        JSContext* cx_;
         DebuggerEvalOption  debuggerEvalOption_;
-        JSPrincipals *      principals_;
+        JSPrincipals*       principals_;
 
         State               state_;
 
-        jsbytecode *        pc_;
+        jsbytecode*         pc_;
 
         InterpreterFrameIterator interpFrames_;
         ActivationIterator activations_;

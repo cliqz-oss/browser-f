@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -143,7 +144,8 @@ public:
          HANDLE aHandleCr,
          const gfx::IntSize& aSize,
          const gfx::IntSize& aSizeY,
-         const gfx::IntSize& aSizeCbCr);
+         const gfx::IntSize& aSizeCbCr,
+         YUVColorSpace aYUVColorSpace);
 
   static DXGIYCbCrTextureData*
   Create(ID3D11Texture2D* aTextureCb,
@@ -151,7 +153,8 @@ public:
          ID3D11Texture2D* aTextureCr,
          const gfx::IntSize& aSize,
          const gfx::IntSize& aSizeY,
-         const gfx::IntSize& aSizeCbCr);
+         const gfx::IntSize& aSizeCbCr,
+         YUVColorSpace aYUVColorSpace);
 
   virtual bool Lock(OpenMode) override { return true; }
 
@@ -174,6 +177,25 @@ public:
     return TextureFlags::DEALLOCATE_MAIN_THREAD;
   }
 
+  DXGIYCbCrTextureData* AsDXGIYCbCrTextureData() override {
+    return this;
+  }
+
+  gfx::IntSize GetYSize() const
+  {
+    return mSizeY;
+  }
+
+  gfx::IntSize GetCbCrSize() const
+  {
+    return mSizeCbCr;
+  }
+
+  YUVColorSpace GetYUVColorSpace() const
+  {
+    return mYUVColorSpace;
+  }
+
   ID3D11Texture2D* GetD3D11Texture(size_t index) { return mD3D11Textures[index]; }
 
 protected:
@@ -183,6 +205,7 @@ protected:
    gfx::IntSize mSize;
    gfx::IntSize mSizeY;
    gfx::IntSize mSizeCbCr;
+   YUVColorSpace mYUVColorSpace;
 };
 
 /**
@@ -335,18 +358,18 @@ public:
 
   virtual void CreateRenderTexture(const wr::ExternalImageId& aExternalImageId) override;
 
-  virtual void GetWRImageKeys(nsTArray<wr::ImageKey>& aImageKeys,
-                              const std::function<wr::ImageKey()>& aImageKeyAllocator) override;
+  virtual uint32_t NumSubTextures() const override;
 
-  virtual void AddWRImage(wr::ResourceUpdateQueue& aAPI,
-                          Range<const wr::ImageKey>& aImageKeys,
-                          const wr::ExternalImageId& aExtID) override;
+  virtual void PushResourceUpdates(wr::ResourceUpdateQueue& aResources,
+                                   ResourceUpdateOp aOp,
+                                   const Range<wr::ImageKey>& aImageKeys,
+                                   const wr::ExternalImageId& aExtID) override;
 
-  virtual void PushExternalImage(wr::DisplayListBuilder& aBuilder,
-                                 const wr::LayoutRect& aBounds,
-                                 const wr::LayoutRect& aClip,
-                                 wr::ImageRendering aFilter,
-                                 Range<const wr::ImageKey>& aImageKeys) override;
+  virtual void PushDisplayItems(wr::DisplayListBuilder& aBuilder,
+                                const wr::LayoutRect& aBounds,
+                                const wr::LayoutRect& aClip,
+                                wr::ImageRendering aFilter,
+                                const Range<wr::ImageKey>& aImageKeys) override;
 
 protected:
   bool LockInternal();
@@ -382,8 +405,7 @@ public:
 
   virtual gfx::SurfaceFormat GetFormat() const override{ return gfx::SurfaceFormat::YUV; }
 
-  // Bug 1305906 fixes YUVColorSpace handling
-  virtual YUVColorSpace GetYUVColorSpace() const override { return YUVColorSpace::BT601; }
+  virtual YUVColorSpace GetYUVColorSpace() const override { return mYUVColorSpace; }
 
   virtual bool Lock() override;
 
@@ -398,18 +420,18 @@ public:
 
   virtual void CreateRenderTexture(const wr::ExternalImageId& aExternalImageId) override;
 
-  virtual void GetWRImageKeys(nsTArray<wr::ImageKey>& aImageKeys,
-                              const std::function<wr::ImageKey()>& aImageKeyAllocator) override;
+  virtual uint32_t NumSubTextures() const override;
 
-  virtual void AddWRImage(wr::ResourceUpdateQueue& aResources,
-                          Range<const wr::ImageKey>& aImageKeys,
-                          const wr::ExternalImageId& aExtID) override;
+  virtual void PushResourceUpdates(wr::ResourceUpdateQueue& aResources,
+                                   ResourceUpdateOp aOp,
+                                   const Range<wr::ImageKey>& aImageKeys,
+                                   const wr::ExternalImageId& aExtID) override;
 
-  virtual void PushExternalImage(wr::DisplayListBuilder& aBuilder,
-                                 const wr::LayoutRect& aBounds,
-                                 const wr::LayoutRect& aClip,
-                                 wr::ImageRendering aFilter,
-                                 Range<const wr::ImageKey>& aImageKeys) override;
+  virtual void PushDisplayItems(wr::DisplayListBuilder& aBuilder,
+                                const wr::LayoutRect& aBounds,
+                                const wr::LayoutRect& aClip,
+                                wr::ImageRendering aFilter,
+                                const Range<wr::ImageKey>& aImageKeys) override;
 
 private:
   bool EnsureTextureSource();
@@ -425,6 +447,7 @@ protected:
   gfx::IntSize mSize;
   WindowsHandle mHandles[3];
   bool mIsLocked;
+  YUVColorSpace mYUVColorSpace;
 };
 
 class CompositingRenderTargetD3D11 : public CompositingRenderTarget,
@@ -477,7 +500,7 @@ class SyncObjectD3D11Client : public SyncObjectClient
 public:
   explicit SyncObjectD3D11Client(SyncHandle aSyncHandle, ID3D11Device* aDevice);
 
-  virtual void Synchronize() override;
+  virtual bool Synchronize(bool aFallible) override;
 
   virtual bool IsSyncObjectValid() override;
 
@@ -486,7 +509,7 @@ public:
   void RegisterTexture(ID3D11Texture2D* aTexture);
 
 private:
-  bool Init();
+  bool Init(bool aFallible);
 
   SyncHandle mSyncHandle;
   RefPtr<ID3D11Device> mDevice;

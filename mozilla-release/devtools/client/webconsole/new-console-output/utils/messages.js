@@ -252,7 +252,7 @@ function transformEvaluationResultPacket(packet) {
     notes,
   } = packet;
 
-  let parameters = helperResult && helperResult.object
+  const parameter = helperResult && helperResult.object
     ? helperResult.object
     : result;
 
@@ -263,7 +263,7 @@ function transformEvaluationResultPacket(packet) {
     helperType: helperResult ? helperResult.type : null,
     level,
     messageText,
-    parameters,
+    parameters: [parameter],
     exceptionDocURL,
     frame,
     timeStamp,
@@ -355,9 +355,16 @@ function isGroupType(type) {
   ].includes(type);
 }
 
-exports.prepareMessage = prepareMessage;
-// Export for use in testing.
-exports.getRepeatId = getRepeatId;
+function getInitialMessageCountForViewport(win) {
+  const minMessageHeight = 20;
+  return Math.ceil(win.innerHeight / minMessageHeight);
+}
 
-exports.l10n = l10n;
-exports.isGroupType = isGroupType;
+module.exports = {
+  getInitialMessageCountForViewport,
+  isGroupType,
+  l10n,
+  prepareMessage,
+  // Export for use in testing.
+  getRepeatId,
+};

@@ -10,7 +10,6 @@ Cu.import("resource://gre/modules/Services.jsm");
 // common case to avoid the overhead of wrapping and detecting lazy loading.
 const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
 const {DefaultPrefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
-const {LocalizationFeed} = Cu.import("resource://activity-stream/lib/LocalizationFeed.jsm", {});
 const {ManualMigration} = Cu.import("resource://activity-stream/lib/ManualMigration.jsm", {});
 const {NewTabInit} = Cu.import("resource://activity-stream/lib/NewTabInit.jsm", {});
 const {SectionsFeed} = Cu.import("resource://activity-stream/lib/SectionsManager.jsm", {});
@@ -20,6 +19,7 @@ const {Store} = Cu.import("resource://activity-stream/lib/Store.jsm", {});
 const {SnippetsFeed} = Cu.import("resource://activity-stream/lib/SnippetsFeed.jsm", {});
 const {SystemTickFeed} = Cu.import("resource://activity-stream/lib/SystemTickFeed.jsm", {});
 const {TelemetryFeed} = Cu.import("resource://activity-stream/lib/TelemetryFeed.jsm", {});
+const {FaviconFeed} = Cu.import("resource://activity-stream/lib/FaviconFeed.jsm", {});
 const {TopSitesFeed} = Cu.import("resource://activity-stream/lib/TopSitesFeed.jsm", {});
 const {TopStoriesFeed} = Cu.import("resource://activity-stream/lib/TopStoriesFeed.jsm", {});
 const {HighlightsFeed} = Cu.import("resource://activity-stream/lib/HighlightsFeed.jsm", {});
@@ -60,14 +60,19 @@ const PREFS_CONFIG = new Map([
       provider_description: "pocket_description",
       provider_icon: "pocket",
       provider_name: "Pocket",
-      read_more_endpoint: "https://getpocket.cdn.mozilla.net/explore/trending?src=fx_new_tab",
+      read_more_endpoint: "https://getpocket.com/explore/trending?src=fx_new_tab",
       stories_endpoint: `https://getpocket.cdn.mozilla.net/v3/firefox/global-recs?version=2&consumer_key=$apiKey&locale_lang=${args.locale}`,
-      stories_referrer: "https://getpocket.com/recommendations",
+      stories_referrer: "http://getpocket.com/recommendations",
       info_link: "https://www.mozilla.org/privacy/firefox/#pocketstories",
+      disclaimer_link: "https://getpocket.cdn.mozilla.net/firefox/new_tab_learn_more",
       topics_endpoint: `https://getpocket.cdn.mozilla.net/v3/firefox/trending-topics?version=2&consumer_key=$apiKey&locale_lang=${args.locale}`,
       show_spocs: false,
-      personalized: false
+      personalized: true
     })
+  }],
+  ["showSponsored", {
+    title: "Show sponsored cards in spoc experiment (show_spocs in topstories.options has to be set to true as well)",
+    value: true
   }],
   ["filterAdult", {
     title: "Remove adult pages from sites, highlights, etc.",
@@ -90,7 +95,7 @@ const PREFS_CONFIG = new Map([
     value: true
   }],
   ["showSearch", {
-    title: "Show the Search bar on the New Tab page",
+    title: "Show the Search bar",
     value: true
   }],
   ["disableSnippets", {
@@ -98,24 +103,16 @@ const PREFS_CONFIG = new Map([
     value: false
   }],
   ["showTopSites", {
-    title: "Show the Top Sites section on the New Tab page",
+    title: "Show the Top Sites section",
     value: true
+  }],
+  ["collapseTopSites", {
+    title: "Collapse the Top Sites section",
+    value: false
   }],
   ["topSitesCount", {
     title: "Number of Top Sites to display",
     value: 6
-  }],
-  ["impressionStats.clicked", {
-    title: "GUIDs of clicked Top stories items",
-    value: "[]"
-  }],
-  ["impressionStats.blocked", {
-    title: "GUIDs of blocked Top stories items",
-    value: "[]"
-  }],
-  ["impressionStats.pocketed", {
-    title: "GUIDs of pocketed Top stories items",
-    value: "[]"
   }],
   ["telemetry", {
     title: "Enable system error and usage data collection",
@@ -125,17 +122,27 @@ const PREFS_CONFIG = new Map([
   ["telemetry.ping.endpoint", {
     title: "Telemetry server endpoint",
     value: "https://tiles.services.mozilla.com/v4/links/activity-stream"
+  }],
+  ["section.highlights.collapsed", {
+    title: "Collapse the Highlights section",
+    value: false
+  }],
+  ["section.topstories.collapsed", {
+    title: "Collapse the Top Stories section",
+    value: false
+  }],
+  ["section.topstories.showDisclaimer", {
+    title: "Boolean flag that decides whether or not to show the topstories disclaimer.",
+    value: true
+  }],
+  ["tippyTop.service.endpoint", {
+    title: "Tippy Top service manifest url",
+    value: "https://activity-stream-icons.services.mozilla.com/v1/icons.json.br"
   }]
 ]);
 
 // Array of each feed's FEEDS_CONFIG factory and values to add to PREFS_CONFIG
 const FEEDS_DATA = [
-  {
-    name: "localization",
-    factory: () => new LocalizationFeed(),
-    title: "Initialize strings and detect locale for Activity Stream",
-    value: true
-  },
   {
     name: "migration",
     factory: () => new ManualMigration(),
@@ -205,6 +212,12 @@ const FEEDS_DATA = [
     value: true
   },
   {
+    name: "favicon",
+    factory: () => new FaviconFeed(),
+    title: "Fetches tippy top manifests from remote service",
+    value: true
+  },
+  {
     name: "topsites",
     factory: () => new TopSitesFeed(),
     title: "Queries places and gets metadata for Top Sites section",
@@ -220,7 +233,6 @@ for (const config of FEEDS_DATA) {
 }
 
 this.ActivityStream = class ActivityStream {
-
   /**
    * constructor - Initializes an instance of ActivityStream
    *

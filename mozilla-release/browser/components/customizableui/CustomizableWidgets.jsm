@@ -358,10 +358,17 @@ const CustomizableWidgets = [
     _showTabs(paginationInfo) {
       this._showTabsPromise = this._showTabsPromise.then(() => {
         return this.__showTabs(paginationInfo);
+      }, e => {
+        Cu.reportError(e);
       });
     },
     // Return a new promise to update the tab list.
     __showTabs(paginationInfo) {
+      if (!this._tabsList) {
+        // Closed between the previous `this._showTabsPromise`
+        // resolving and now.
+        return undefined;
+      }
       let doc = this._tabsList.ownerDocument;
       return SyncedTabs.getTabClients().then(clients => {
         // The view may have been hidden while the promise was resolving.
@@ -867,7 +874,7 @@ const CustomizableWidgets = [
       let getPanel = () => {
         let {PanelUI} = document.ownerGlobal;
         return PanelUI.overflowPanel;
-      }
+      };
 
       if (CustomizableUI.getAreaType(this.currentArea) == CustomizableUI.TYPE_MENU_PANEL) {
         getPanel().addEventListener("popupshowing", updateButton);
@@ -911,7 +918,7 @@ const CustomizableWidgets = [
     tooltiptext: "email-link-button.tooltiptext3",
     onCommand(aEvent) {
       let win = aEvent.view;
-      win.MailIntegration.sendLinkForBrowser(win.gBrowser.selectedBrowser)
+      win.MailIntegration.sendLinkForBrowser(win.gBrowser.selectedBrowser);
     }
   }];
 
@@ -996,22 +1003,4 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
       forgetButton.removeEventListener("command", this);
     },
   });
-}
-
-if (AppConstants.E10S_TESTING_ONLY) {
-  if (Services.appinfo.browserTabsRemoteAutostart) {
-    CustomizableWidgets.push({
-      id: "e10s-button",
-      defaultArea: CustomizableUI.AREA_PANEL,
-      onBuild(aDocument) {
-        let node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
-        node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
-        node.setAttribute("tooltiptext", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
-      },
-      onCommand(aEvent) {
-        let win = aEvent.view;
-        win.OpenBrowserWindow({remote: false});
-      },
-    });
-  }
 }

@@ -123,14 +123,10 @@ UIEvent::GetMovementPoint()
     return mMovementPoint;
   }
 
-  if (!mEvent ||
-      (mEvent->mClass != eMouseEventClass &&
-       mEvent->mClass != eMouseScrollEventClass &&
-       mEvent->mClass != eWheelEventClass &&
-       mEvent->mClass != eDragEventClass &&
-       mEvent->mClass != ePointerEventClass &&
-       mEvent->mClass != eSimpleGestureEventClass) ||
-       !mEvent->AsGUIEvent()->mWidget) {
+  if (!mEvent || !mEvent->AsGUIEvent()->mWidget ||
+      (mEvent->mMessage != eMouseMove && mEvent->mMessage != ePointerMove)) {
+    // Pointer Lock spec defines that movementX/Y must be zero for all mouse
+    // events except mousemove.
     return nsIntPoint(0, 0);
   }
 
@@ -159,7 +155,7 @@ void
 UIEvent::InitUIEvent(const nsAString& typeArg,
                      bool canBubbleArg,
                      bool cancelableArg,
-                     nsGlobalWindow* viewArg,
+                     nsGlobalWindowInner* viewArg,
                      int32_t detailArg)
 {
   auto* view = viewArg ? viewArg->AsInner() : nullptr;

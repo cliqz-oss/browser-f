@@ -6,8 +6,8 @@ use dom::bindings::codegen::Bindings::CSSStyleDeclarationBinding::{self, CSSStyl
 use dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{JS, Root};
 use dom::bindings::reflector::{DomObject, Reflector, reflect_dom_object};
+use dom::bindings::root::{Dom, DomRoot};
 use dom::bindings::str::DOMString;
 use dom::cssrule::CSSRule;
 use dom::element::Element;
@@ -16,13 +16,12 @@ use dom::window::Window;
 use dom_struct::dom_struct;
 use servo_arc::Arc;
 use servo_url::ServoUrl;
-use std::ascii::AsciiExt;
 use style::attr::AttrValue;
-use style::properties::{Importance, PropertyDeclarationBlock, PropertyId, LonghandId, ShorthandId};
+use style::properties::{DeclarationSource, Importance, PropertyDeclarationBlock, PropertyId, LonghandId, ShorthandId};
 use style::properties::{parse_one_declaration_into, parse_style_attribute, SourcePropertyDeclaration};
 use style::selector_parser::PseudoElement;
 use style::shared_lock::Locked;
-use style_traits::{PARSING_MODE_DEFAULT, ToCss};
+use style_traits::{ParsingMode, ToCss};
 
 // http://dev.w3.org/csswg/cssom/#the-cssstyledeclaration-interface
 #[dom_struct]
@@ -33,12 +32,12 @@ pub struct CSSStyleDeclaration {
     pseudo: Option<PseudoElement>,
 }
 
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 #[must_root]
 pub enum CSSStyleOwner {
-    Element(JS<Element>),
-    CSSRule(JS<CSSRule>,
-            #[ignore_heap_size_of = "Arc"]
+    Element(Dom<Element>),
+    CSSRule(Dom<CSSRule>,
+            #[ignore_malloc_size_of = "Arc"]
             Arc<Locked<PropertyDeclarationBlock>>),
 }
 
@@ -137,10 +136,10 @@ impl CSSStyleOwner {
         }
     }
 
-    fn window(&self) -> Root<Window> {
+    fn window(&self) -> DomRoot<Window> {
         match *self {
             CSSStyleOwner::Element(ref el) => window_from_node(&**el),
-            CSSStyleOwner::CSSRule(ref rule, _) => Root::from_ref(rule.global().as_window()),
+            CSSStyleOwner::CSSRule(ref rule, _) => DomRoot::from_ref(rule.global().as_window()),
         }
     }
 
@@ -154,7 +153,7 @@ impl CSSStyleOwner {
     }
 }
 
-#[derive(HeapSizeOf, PartialEq)]
+#[derive(MallocSizeOf, PartialEq)]
 pub enum CSSModificationAccess {
     ReadWrite,
     Readonly,
@@ -192,12 +191,12 @@ impl CSSStyleDeclaration {
                owner: CSSStyleOwner,
                pseudo: Option<PseudoElement>,
                modification_access: CSSModificationAccess)
-               -> Root<CSSStyleDeclaration> {
-        reflect_dom_object(box CSSStyleDeclaration::new_inherited(owner,
-                                                                  pseudo,
-                                                                  modification_access),
-                           global,
-                           CSSStyleDeclarationBinding::Wrap)
+               -> DomRoot<CSSStyleDeclaration> {
+        reflect_dom_object(
+            Box::new(CSSStyleDeclaration::new_inherited(owner, pseudo, modification_access)),
+            global,
+            CSSStyleDeclarationBinding::Wrap
+        )
     }
 
     fn get_computed_style(&self, property: PropertyId) -> DOMString {
@@ -261,7 +260,7 @@ impl CSSStyleDeclaration {
             let mut declarations = SourcePropertyDeclaration::new();
             let result = parse_one_declaration_into(
                 &mut declarations, id, &value, &self.owner.base_url(),
-                window.css_error_reporter(), PARSING_MODE_DEFAULT, quirks_mode);
+                window.css_error_reporter(), ParsingMode::DEFAULT, quirks_mode);
 
             // Step 6
             match result {
@@ -274,7 +273,11 @@ impl CSSStyleDeclaration {
 
             // Step 7
             // Step 8
-            *changed = pdb.extend_reset(declarations.drain(), importance);
+            *changed = pdb.extend(
+                declarations.drain(),
+                importance,
+                DeclarationSource::CssOm,
+            );
 
             Ok(())
         })

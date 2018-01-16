@@ -21,8 +21,13 @@ bool is_in_main_thread();
 bool is_in_render_thread();
 bool is_glcontext_egl(void* glcontext_ptr);
 bool gfx_use_wrench();
+const char* gfx_wr_resource_path_override();
 void gfx_critical_note(const char* msg);
+void gfx_critical_error(const char* msg);
+void gecko_printf_stderr_output(const char* msg);
 void* get_proc_address_from_glcontext(void* glcontext_ptr, const char* procname);
+void gecko_profiler_register_thread(const char* threadname);
+void gecko_profiler_unregister_thread();
 
 } // extern "C"
 

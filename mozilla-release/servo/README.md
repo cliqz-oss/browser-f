@@ -4,7 +4,7 @@
 
 Servo is a prototype web browser engine written in the
 [Rust](https://github.com/rust-lang/rust) language. It is currently developed on
-64bit OS X, 64bit Linux, and Android.
+64-bit OS X, 64-bit Linux, and Android.
 
 Servo welcomes contribution from everyone.  See
 [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`HACKING_QUICKSTART.md`](docs/HACKING_QUICKSTART.md)
@@ -74,6 +74,16 @@ sudo dnf install curl freeglut-devel libtool gcc-c++ libXi-devel \
     rpm-build openssl-devel cmake bzip2-devel libXcursor-devel libXmu-devel mesa-libOSMesa-devel \
     dbus-devel ncurses-devel
 ```
+#### On CentOS
+
+``` sh
+sudo yum install curl freeglut-devel libtool gcc-c++ libXi-devel \
+    freetype-devel mesa-libGL-devel mesa-libEGL-devel glib2-devel libX11-devel libXrandr-devel gperf \
+    fontconfig-devel cabextract ttmkfdir python python-virtualenv python-pip expat-devel \
+    rpm-build openssl-devel cmake bzip2-devel libXcursor-devel libXmu-devel mesa-libOSMesa-devel \
+    dbus-devel ncurses-devel python34
+```
+
 #### On openSUSE Linux
 ``` sh
 sudo zypper install libX11-devel libexpat-devel libbz2-devel Mesa-libEGL-devel Mesa-libGL-devel cabextract cmake \
@@ -96,7 +106,7 @@ sudo emerge net-misc/curl media-libs/freeglut \
 ```
 #### On Windows (MSVC)
 
-1. Install Python for Windows (https://www.python.org/downloads/release/python-2711/). The Windows x86-64 MSI installer is fine.
+1. Install Python for Windows (https://www.python.org/downloads/release/python-2714/). The Windows x86-64 MSI installer is fine.
 You should change the installation to install the "Add python.exe to Path" feature.
 
 2. Install virtualenv.
@@ -111,7 +121,7 @@ pip install virtualenv
 settings for the installer are fine).
 
 4. Install Visual Studio Community 2017 (https://www.visualstudio.com/vs/community/). You MUST add "Visual C++" to the
-list of installed components. It is not on by default.
+list of installed components. It is not on by default. Visual Studio 2017 MUST installed to the default location or mach.bat will not find it.
 > If you encountered errors with the environment above, do the following for a workaround:
 > 1.  Download and install [Build Tools for Visual Studio 2017](https://www.visualstudio.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=15)
 > 2.  Install `python2.7 x86-x64` and `virtualenv`

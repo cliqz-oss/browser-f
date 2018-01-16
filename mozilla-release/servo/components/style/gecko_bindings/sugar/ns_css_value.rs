@@ -13,7 +13,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Index, IndexMut};
 use std::slice;
-use values::computed::{Angle, LengthOrPercentage, Percentage};
+use values::computed::{Angle, Length, LengthOrPercentage, Percentage};
 use values::specified::url::SpecifiedUrl;
 
 impl nsCSSValue {
@@ -21,6 +21,12 @@ impl nsCSSValue {
     #[inline]
     pub fn null() -> Self {
         unsafe { mem::zeroed() }
+    }
+
+    /// Returns true if this nsCSSValue is none.
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        self.mUnit == nsCSSUnit::eCSSUnit_None
     }
 
     /// Returns this nsCSSValue value as an integer, unchecked in release
@@ -75,10 +81,10 @@ impl nsCSSValue {
     pub unsafe fn set_lop(&mut self, lop: LengthOrPercentage) {
         match lop {
             LengthOrPercentage::Length(px) => {
-                bindings::Gecko_CSSValue_SetPixelLength(self, px.px())
+                self.set_px(px.px())
             }
             LengthOrPercentage::Percentage(pc) => {
-                bindings::Gecko_CSSValue_SetPercentage(self, pc.0)
+                self.set_percentage(pc.0)
             }
             LengthOrPercentage::Calc(calc) => {
                 bindings::Gecko_CSSValue_SetCalc(self, calc.into())
@@ -86,9 +92,18 @@ impl nsCSSValue {
         }
     }
 
+    /// Sets a px value to this nsCSSValue.
+    pub unsafe fn set_px(&mut self, px: f32) {
+        bindings::Gecko_CSSValue_SetPixelLength(self, px)
+    }
+
+    /// Sets a percentage value to this nsCSSValue.
+    pub unsafe fn set_percentage(&mut self, unit_value: f32) {
+        bindings::Gecko_CSSValue_SetPercentage(self, unit_value)
+    }
+
     /// Returns LengthOrPercentage value.
     pub unsafe fn get_lop(&self) -> LengthOrPercentage {
-        use values::computed::Length;
         match self.mUnit {
             nsCSSUnit::eCSSUnit_Pixel => {
                 LengthOrPercentage::Length(Length::new(bindings::Gecko_CSSValue_GetNumber(self)))
@@ -98,6 +113,16 @@ impl nsCSSValue {
             },
             nsCSSUnit::eCSSUnit_Calc => {
                 LengthOrPercentage::Calc(bindings::Gecko_CSSValue_GetCalc(self).into())
+            },
+            x => panic!("The unit should not be {:?}", x),
+        }
+    }
+
+    /// Returns Length  value.
+    pub unsafe fn get_length(&self) -> Length {
+        match self.mUnit {
+            nsCSSUnit::eCSSUnit_Pixel => {
+                Length::new(bindings::Gecko_CSSValue_GetNumber(self))
             },
             x => panic!("The unit should not be {:?}", x),
         }

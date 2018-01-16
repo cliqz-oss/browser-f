@@ -14,8 +14,6 @@
 #include "prenv.h"
 
 #include "nsDocShell.h"
-#include "nsIDOMHTMLIFrameElement.h"
-#include "nsIDOMHTMLFrameElement.h"
 #include "nsIDOMMozBrowserFrame.h"
 #include "nsIDOMWindow.h"
 #include "nsIPresShell.h"
@@ -59,6 +57,7 @@
 #include "nsBaseWidget.h"
 #include "GroupedSHistory.h"
 #include "PartialSHistory.h"
+#include "nsQueryObject.h"
 
 #include "nsIURI.h"
 #include "nsIURL.h"
@@ -87,6 +86,7 @@
 #include "mozilla/dom/FrameLoaderBinding.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "mozilla/layout/RenderFrameParent.h"
+#include "nsGenericHTMLFrameElement.h"
 #include "GeckoProfiler.h"
 
 #include "jsapi.h"
@@ -179,6 +179,7 @@ nsFrameLoader::nsFrameLoader(Element* aOwner, nsPIDOMWindowOuter* aOpener,
   , mInShow(false)
   , mHideCalled(false)
   , mNetworkCreated(aNetworkCreated)
+  , mLoadingOriginalSrc(false)
   , mRemoteBrowserShown(false)
   , mRemoteFrame(false)
   , mClipSubdocument(true)
@@ -234,20 +235,21 @@ nsFrameLoader::Create(Element* aOwner, nsPIDOMWindowOuter* aOpener, bool aNetwor
 }
 
 void
-nsFrameLoader::LoadFrame(ErrorResult& aRv)
+nsFrameLoader::LoadFrame(bool aOriginalSrc, ErrorResult& aRv)
 {
-  nsresult rv = LoadFrame();
+  nsresult rv = LoadFrame(aOriginalSrc);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
   }
 }
 
 NS_IMETHODIMP
-nsFrameLoader::LoadFrame()
+nsFrameLoader::LoadFrame(bool aOriginalSrc)
 {
   NS_ENSURE_TRUE(mOwnerContent, NS_ERROR_NOT_INITIALIZED);
 
   nsAutoString src;
+  nsCOMPtr<nsIPrincipal> principal;
 
   bool isSrcdoc = mOwnerContent->IsHTMLElement(nsGkAtoms::iframe) &&
                   mOwnerContent->HasAttr(kNameSpaceID_None, nsGkAtoms::srcdoc);
@@ -255,7 +257,7 @@ nsFrameLoader::LoadFrame()
     src.AssignLiteral("about:srcdoc");
   }
   else {
-    GetURL(src);
+    GetURL(src, getter_AddRefs(principal));
 
     src.Trim(" \t\n\r");
 
@@ -295,7 +297,7 @@ nsFrameLoader::LoadFrame()
   }
 
   if (NS_SUCCEEDED(rv)) {
-    rv = LoadURI(uri);
+    rv = LoadURI(uri, principal, aOriginalSrc);
   }
 
   if (NS_FAILED(rv)) {
@@ -321,20 +323,29 @@ nsFrameLoader::FireErrorEvent()
 }
 
 void
-nsFrameLoader::LoadURI(nsIURI* aURI, ErrorResult& aRv)
+nsFrameLoader::LoadURI(nsIURI* aURI, bool aOriginalSrc, ErrorResult& aRv)
 {
-  nsresult rv = LoadURI(aURI);
+  nsresult rv = LoadURI(aURI, aOriginalSrc);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
   }
 }
 
 NS_IMETHODIMP
-nsFrameLoader::LoadURI(nsIURI* aURI)
+nsFrameLoader::LoadURI(nsIURI* aURI, bool aOriginalSrc)
+{
+  return LoadURI(aURI, nullptr, aOriginalSrc);
+}
+
+nsresult
+nsFrameLoader::LoadURI(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal,
+                       bool aOriginalSrc)
 {
   if (!aURI)
     return NS_ERROR_INVALID_POINTER;
   NS_ENSURE_STATE(!mDestroyCalled && mOwnerContent);
+
+  mLoadingOriginalSrc = aOriginalSrc;
 
   nsCOMPtr<nsIDocument> doc = mOwnerContent->OwnerDoc();
 
@@ -344,14 +355,16 @@ nsFrameLoader::LoadURI(nsIURI* aURI)
   // that's under our control. We will already have done the security checks for
   // loading the plugin content itself in the object/embed loading code.
   if (!IsForJSPlugin()) {
-    rv = CheckURILoad(aURI);
+    rv = CheckURILoad(aURI, aTriggeringPrincipal);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
   mURIToLoad = aURI;
+  mTriggeringPrincipal = aTriggeringPrincipal;
   rv = doc->InitializeFrameLoader(this);
   if (NS_FAILED(rv)) {
     mURIToLoad = nullptr;
+    mTriggeringPrincipal = nullptr;
   }
   return rv;
 }
@@ -906,12 +919,15 @@ nsFrameLoader::ReallyStartLoadingInternal()
                "MaybeCreateDocShell succeeded with a null mDocShell");
 
   // Just to be safe, recheck uri.
-  rv = CheckURILoad(mURIToLoad);
+  rv = CheckURILoad(mURIToLoad, mTriggeringPrincipal);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIDocShellLoadInfo> loadInfo;
   mDocShell->CreateLoadInfo(getter_AddRefs(loadInfo));
   NS_ENSURE_TRUE(loadInfo, NS_ERROR_FAILURE);
+
+  loadInfo->SetOriginalFrameSrc(mLoadingOriginalSrc);
+  mLoadingOriginalSrc = false;
 
   // If this frame is sandboxed with respect to origin we will set it up with
   // a null principal later in nsDocShell::DoURILoad.
@@ -920,7 +936,11 @@ nsFrameLoader::ReallyStartLoadingInternal()
   // We'll use our principal, not that of the document loaded inside us.  This
   // is very important; needed to prevent XSS attacks on documents loaded in
   // subframes!
-  loadInfo->SetTriggeringPrincipal(mOwnerContent->NodePrincipal());
+  if (mTriggeringPrincipal) {
+    loadInfo->SetTriggeringPrincipal(mTriggeringPrincipal);
+  } else {
+    loadInfo->SetTriggeringPrincipal(mOwnerContent->NodePrincipal());
+  }
 
   nsCOMPtr<nsIURI> referrer;
 
@@ -991,7 +1011,7 @@ nsFrameLoader::ReallyStartLoadingInternal()
 }
 
 nsresult
-nsFrameLoader::CheckURILoad(nsIURI* aURI)
+nsFrameLoader::CheckURILoad(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal)
 {
   // Check for security.  The fun part is trying to figure out what principals
   // to use.  The way I figure it, if we're doing a LoadFrame() accidentally
@@ -1010,7 +1030,9 @@ nsFrameLoader::CheckURILoad(nsIURI* aURI)
   nsIScriptSecurityManager *secMan = nsContentUtils::GetSecurityManager();
 
   // Get our principal
-  nsIPrincipal* principal = mOwnerContent->NodePrincipal();
+  nsIPrincipal* principal = (aTriggeringPrincipal
+                             ? aTriggeringPrincipal
+                             : mOwnerContent->NodePrincipal());
 
   // Check if we are allowed to load absURL
   nsresult rv =
@@ -1587,7 +1609,7 @@ nsFrameLoader::SwapWithOtherRemoteLoader(nsFrameLoader* aOther,
 #ifdef XP_WIN
   // Native plugin windows used by this remote content need to be reparented.
   if (nsPIDOMWindowOuter* newWin = ourDoc->GetWindow()) {
-    RefPtr<nsIWidget> newParent = nsGlobalWindow::Cast(newWin)->GetMainWidget();
+    RefPtr<nsIWidget> newParent = nsGlobalWindowOuter::Cast(newWin)->GetMainWidget();
     const ManagedContainer<mozilla::plugins::PPluginWidgetParent>& plugins =
       aOther->mRemoteBrowser->ManagedPPluginWidgetParent();
     for (auto iter = plugins.ConstIter(); !iter.Done(); iter.Next()) {
@@ -2479,7 +2501,11 @@ nsFrameLoader::MaybeCreateDocShell()
 
   MOZ_RELEASE_ASSERT(!doc->IsResourceDoc(), "We shouldn't even exist");
 
-  if (!(doc->IsStaticDocument() || mOwnerContent->IsInComposedDoc())) {
+  // Check if the document still has a window since it is possible for an
+  // iframe to be inserted and cause the creation of the docshell in a
+  // partially unloaded document (see Bug 1305237 comment 127).
+  if (!doc->IsStaticDocument() &&
+      (!doc->GetWindow() || !mOwnerContent->IsInComposedDoc())) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -2711,14 +2737,26 @@ nsFrameLoader::MaybeCreateDocShell()
 
   nsDocShell::Cast(mDocShell)->SetOriginAttributes(attrs);
 
+  // Typically there will be a window, however for some cases such as printing
+  // the document is cloned with a docshell that has no window.  We check
+  // that the window exists to ensure we don't try to gather ancestors for
+  // those cases.
+  nsCOMPtr<nsPIDOMWindowOuter> win = doc->GetWindow();
   if (!mDocShell->GetIsMozBrowser() &&
-      parentType == mDocShell->ItemType()) {
+      parentType == mDocShell->ItemType() &&
+      !doc->IsStaticDocument() && win) {
     // Propagate through the ancestor principals.
     nsTArray<nsCOMPtr<nsIPrincipal>> ancestorPrincipals;
     // Make a copy, so we can modify it.
     ancestorPrincipals = doc->AncestorPrincipals();
     ancestorPrincipals.InsertElementAt(0, doc->NodePrincipal());
     nsDocShell::Cast(mDocShell)->SetAncestorPrincipals(Move(ancestorPrincipals));
+
+    // Repeat for outer window IDs.
+    nsTArray<uint64_t> ancestorOuterWindowIDs;
+    ancestorOuterWindowIDs = doc->AncestorOuterWindowIDs();
+    ancestorOuterWindowIDs.InsertElementAt(0, win->WindowID());
+    nsDocShell::Cast(mDocShell)->SetAncestorOuterWindowIDs(Move(ancestorOuterWindowIDs));
   }
 
   ReallyLoadFrameScripts();
@@ -2734,7 +2772,7 @@ nsFrameLoader::MaybeCreateDocShell()
 }
 
 void
-nsFrameLoader::GetURL(nsString& aURI)
+nsFrameLoader::GetURL(nsString& aURI, nsIPrincipal** aTriggeringPrincipal)
 {
   aURI.Truncate();
 
@@ -2742,6 +2780,10 @@ nsFrameLoader::GetURL(nsString& aURI)
     mOwnerContent->GetAttr(kNameSpaceID_None, nsGkAtoms::data, aURI);
   } else {
     mOwnerContent->GetAttr(kNameSpaceID_None, nsGkAtoms::src, aURI);
+    if (RefPtr<nsGenericHTMLFrameElement> frame = do_QueryObject(mOwnerContent)) {
+      nsCOMPtr<nsIPrincipal> prin = frame->GetSrcTriggeringPrincipal();
+      prin.forget(aTriggeringPrincipal);
+    }
   }
 }
 
@@ -2995,16 +3037,16 @@ nsFrameLoader::SetClipSubdocument(bool aClip)
   nsIFrame* frame = GetPrimaryFrameOfOwningContent();
   if (frame) {
     frame->InvalidateFrame();
-    frame->PresContext()->PresShell()->
+    frame->PresShell()->
       FrameNeedsReflow(frame, nsIPresShell::eResize, NS_FRAME_IS_DIRTY);
     nsSubDocumentFrame* subdocFrame = do_QueryFrame(frame);
     if (subdocFrame) {
       nsIFrame* subdocRootFrame = subdocFrame->GetSubdocumentRootFrame();
       if (subdocRootFrame) {
-        nsIFrame* subdocRootScrollFrame = subdocRootFrame->PresContext()->PresShell()->
+        nsIFrame* subdocRootScrollFrame = subdocRootFrame->PresShell()->
           GetRootScrollFrame();
         if (subdocRootScrollFrame) {
-          frame->PresContext()->PresShell()->
+          frame->PresShell()->
             FrameNeedsReflow(frame, nsIPresShell::eResize, NS_FRAME_IS_DIRTY);
         }
       }
@@ -3032,7 +3074,7 @@ nsFrameLoader::SetClampScrollPosition(bool aClamp)
     if (subdocFrame) {
       nsIFrame* subdocRootFrame = subdocFrame->GetSubdocumentRootFrame();
       if (subdocRootFrame) {
-        nsIScrollableFrame* subdocRootScrollFrame = subdocRootFrame->PresContext()->PresShell()->
+        nsIScrollableFrame* subdocRootScrollFrame = subdocRootFrame->PresShell()->
           GetRootScrollFrameAsScrollable();
         if (subdocRootScrollFrame) {
           subdocRootScrollFrame->ScrollTo(subdocRootScrollFrame->GetScrollPosition(), nsIScrollableFrame::INSTANT);
@@ -3650,7 +3692,7 @@ nsFrameLoader::ApplySandboxFlags(uint32_t sandboxFlags)
 nsFrameLoader::AttributeChanged(nsIDocument* aDocument,
                                 mozilla::dom::Element* aElement,
                                 int32_t      aNameSpaceID,
-                                nsIAtom*     aAttribute,
+                                nsAtom*     aAttribute,
                                 int32_t      aModType,
                                 const nsAttrValue* aOldValue)
 {
@@ -3761,6 +3803,18 @@ nsFrameLoader::RequestFrameLoaderClose()
 }
 
 void
+nsFrameLoader::RequestUpdatePosition(ErrorResult& aRv)
+{
+  if (auto* tabParent = TabParent::GetFrom(GetRemoteBrowser())) {
+    nsresult rv = tabParent->UpdatePosition();
+
+    if (NS_FAILED(rv)) {
+      aRv.Throw(rv);
+    }
+  }
+}
+
+void
 nsFrameLoader::Print(uint64_t aOuterWindowID,
                      nsIPrintSettings* aPrintSettings,
                      nsIWebProgressListener* aProgressListener,
@@ -3793,8 +3847,8 @@ nsFrameLoader::Print(uint64_t aOuterWindowID,
     return success ? NS_OK : NS_ERROR_FAILURE;
   }
 
-  nsGlobalWindow* outerWindow =
-    nsGlobalWindow::GetOuterWindowWithId(aOuterWindowID);
+  nsGlobalWindowOuter* outerWindow =
+    nsGlobalWindowOuter::GetOuterWindowWithId(aOuterWindowID);
   if (NS_WARN_IF(!outerWindow)) {
     return NS_ERROR_FAILURE;
   }

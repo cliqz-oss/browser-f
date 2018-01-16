@@ -1,3 +1,5 @@
+# META: timeout=long
+
 import pytest
 
 from tests.support.asserts import assert_error, assert_success, assert_dialog_handled
@@ -160,7 +162,6 @@ def test_normal(session):
 def test_boolean_attribute(session, tag, attrs):
     # 13.2 Step 5
     for attr in attrs:
-        print("testing boolean attribute <{0} {1}>".format(tag, attr))
         session.url = inline("<{0} {1}>".format(tag, attr))
 
         element = session.find.css(tag, all=False)

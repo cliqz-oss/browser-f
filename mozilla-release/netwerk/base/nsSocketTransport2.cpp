@@ -1102,8 +1102,7 @@ nsSocketTransport::ResolveHost()
             // When not resolving mHost locally, we still want to ensure that
             // it only contains valid characters.  See bug 304904 for details.
             // Sometimes the end host is not yet known and mHost is *
-            if (!net_IsValidHostName(mHost) &&
-                !mHost.Equals(NS_LITERAL_CSTRING("*"))) {
+            if (!net_IsValidHostName(mHost) && !mHost.EqualsLiteral("*")) {
                 SOCKET_LOG(("  invalid hostname %s\n", mHost.get()));
                 return NS_ERROR_UNKNOWN_HOST;
             }
@@ -2972,16 +2971,16 @@ nsSocketTransport::GetScriptableHelper(nsIXPCScriptable **_retval)
 }
 
 NS_IMETHODIMP
-nsSocketTransport::GetContractID(char * *aContractID)
+nsSocketTransport::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsSocketTransport::GetClassDescription(char * *aClassDescription)
+nsSocketTransport::GetClassDescription(nsACString& aClassDescription)
 {
-    *aClassDescription = nullptr;
+    aClassDescription.SetIsVoid(true);
     return NS_OK;
 }
 

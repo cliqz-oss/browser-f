@@ -37,7 +37,7 @@ const OPEN_DEVICE_MODAL_VALUE = "OPEN_DEVICE_MODAL";
 
 const { _loadPreferredDevices } = require("devtools/client/responsive.html/actions/devices");
 const asyncStorage = require("devtools/shared/async-storage");
-const { addDevice, removeDevice } = require("devtools/client/shared/devices");
+const { addDevice, removeDevice, removeLocalDevices } = require("devtools/client/shared/devices");
 
 SimpleTest.requestCompleteLog();
 SimpleTest.waitForExplicitFinish();
@@ -51,19 +51,16 @@ flags.testing = true;
 Services.prefs.clearUserPref("devtools.responsive.html.displayedDeviceList");
 Services.prefs.setCharPref("devtools.devices.url",
   TEST_URI_ROOT + "devices.json");
-Services.prefs.setBoolPref("devtools.responsive.html.enabled", true);
 
-registerCleanupFunction(() => {
+registerCleanupFunction(async () => {
   flags.testing = false;
   Services.prefs.clearUserPref("devtools.devices.url");
-  Services.prefs.clearUserPref("devtools.responsive.html.enabled");
   Services.prefs.clearUserPref("devtools.responsive.html.displayedDeviceList");
-  asyncStorage.removeItem("devtools.devices.url_cache");
-  asyncStorage.removeItem("devtools.devices.local");
+  await asyncStorage.removeItem("devtools.devices.url_cache");
+  await removeLocalDevices();
 });
 
-// This depends on the "devtools.responsive.html.enabled" pref
-loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsivedesign/responsivedesign");
+loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
 
 /**
  * Open responsive design mode for the given tab.
@@ -383,4 +380,44 @@ function* testUserAgent(ui, expected) {
     return content.navigator.userAgent;
   });
   is(ua, expected, `UA should be set to ${expected}`);
+}
+
+/**
+ * Assuming the device modal is open and the device adder form is shown, this helper
+ * function adds `device` via the form, saves it, and waits for it to appear in the store.
+ */
+function addDeviceInModal(ui, device) {
+  let { toolWindow } = ui;
+  let { store, document } = ui.toolWindow;
+  let React = toolWindow.require("devtools/client/shared/vendor/react");
+  let { Simulate } = React.addons.TestUtils;
+
+  let nameInput = document.querySelector("#device-adder-name input");
+  let [ widthInput, heightInput ] = document.querySelectorAll("#device-adder-size input");
+  let pixelRatioInput = document.querySelector("#device-adder-pixel-ratio input");
+  let userAgentInput = document.querySelector("#device-adder-user-agent input");
+  let touchInput = document.querySelector("#device-adder-touch input");
+
+  nameInput.value = device.name;
+  Simulate.change(nameInput);
+  widthInput.value = device.width;
+  Simulate.change(widthInput);
+  Simulate.blur(widthInput);
+  heightInput.value = device.height;
+  Simulate.change(heightInput);
+  Simulate.blur(heightInput);
+  pixelRatioInput.value = device.pixelRatio;
+  Simulate.change(pixelRatioInput);
+  userAgentInput.value = device.userAgent;
+  Simulate.change(userAgentInput);
+  touchInput.checked = device.touch;
+  Simulate.change(touchInput);
+
+  let existingCustomDevices = store.getState().devices.custom.length;
+  let adderSave = document.querySelector("#device-adder-save");
+  let saved = waitUntilState(store, state =>
+    state.devices.custom.length == existingCustomDevices + 1
+  );
+  Simulate.click(adderSave);
+  return saved;
 }

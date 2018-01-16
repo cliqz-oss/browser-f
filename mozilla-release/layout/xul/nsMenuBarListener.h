@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,6 +15,7 @@
 #undef KeyPress
 #endif
 
+class nsMenuFrame;
 class nsMenuBarFrame;
 class nsIDOMKeyEvent;
 
@@ -72,6 +74,18 @@ protected:
   static void InitAccessKey();
 
   static mozilla::Modifiers GetModifiersForAccessKey(nsIDOMKeyEvent* event);
+
+  /**
+   * Given a key event for an Alt+shortcut combination,
+   * return the menu, if any, that would be opened.
+   */
+  nsMenuFrame* GetMenuForKeyEvent(nsIDOMKeyEvent* aKeyEvent);
+
+  /**
+   * Call MarkAsReservedByChrome if the user's preferences indicate that
+   * the key should be chrome-only.
+   */
+  void ReserveKeyIfNeeded(nsIDOMEvent* aKeyEvent);
 
   // This should only be called by the nsMenuBarListener during event dispatch,
   // thus ensuring that this doesn't get destroyed during the process.

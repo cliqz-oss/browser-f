@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -59,7 +60,7 @@ public:
 
   virtual const nsFrameList& GetChildList(ChildListID aList) const override;
   virtual void GetChildLists(nsTArray<ChildList>* aLists) const override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
   virtual void ChildIsDirty(nsIFrame* aChild) override;
 
   virtual FrameSearchResult PeekOffsetNoAmount(bool aForward, int32_t* aOffset) override;
@@ -69,7 +70,7 @@ public:
                         PeekOffsetCharacterOptions()) override;
 
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
-                                    nsIAtom*        aAttribute,
+                                    nsAtom*        aAttribute,
                                     int32_t         aModType) override;
 
 #ifdef DEBUG_FRAME_DUMP
@@ -556,7 +557,8 @@ protected:
    * Derived classes must do that too, if they destroy such frame lists.
    * See nsBlockFrame::DestroyFrom for an example.
    */
-  void DestroyAbsoluteFrames(nsIFrame* aDestructRoot);
+  void DestroyAbsoluteFrames(nsIFrame*        aDestructRoot,
+                             PostDestroyData& aPostDestroyData);
 
   /**
    * Helper for StealFrame.  Returns true if aChild was removed from its list.
@@ -634,20 +636,45 @@ protected:
   bool MoveOverflowToChildList();
 
   /**
-   * Push aFromChild and its next siblings to the next-in-flow. Change
-   * the geometric parent of each frame that's pushed. If there is no
-   * next-in-flow the frames are placed on the overflow list (and the
-   * geometric parent is left unchanged).
+   * Basically same as MoveOverflowToChildList, except that this is for
+   * handling inline children where children of prev-in-flow can be
+   * pushed to overflow list even if a next-in-flow exists.
+   *
+   * @param aLineContainer the line container of the current frame.
+   *
+   * @return true if any frames were moved and false otherwise
+   */
+  bool MoveInlineOverflowToChildList(nsIFrame* aLineContainer);
+
+  /**
+   * Push aFromChild and its next siblings to the overflow list.
+   *
+   * @param aFromChild the first child frame to push. It is disconnected
+   *          from aPrevSibling
+   * @param aPrevSibling aFrameChild's previous sibling. Must not be null.
+   *          It's an error to push a parent's first child frame.
+   */
+  void PushChildrenToOverflow(nsIFrame* aFromChild, nsIFrame* aPrevSibling);
+
+  /**
+   * Same as above, except that this pushes frames to the next-in-flow
+   * frame and changes the geometric parent of the pushed frames when
+   * there is a next-in-flow frame.
    *
    * Updates the next-in-flow's child count. Does <b>not</b> update the
    * pusher's child count.
-   *
-   * @param   aFromChild the first child frame to push. It is disconnected from
-   *            aPrevSibling
-   * @param   aPrevSibling aFromChild's previous sibling. Must not be null.
-   *            It's an error to push a parent's first child frame
    */
   void PushChildren(nsIFrame* aFromChild, nsIFrame* aPrevSibling);
+
+  /**
+   * Reparent floats whose placeholders are inline descendants of aFrame from
+   * whatever block they're currently parented by to aOurBlock.
+   * @param aReparentSiblings if this is true, we follow aFrame's
+   * GetNextSibling chain reparenting them all
+   */
+  static void ReparentFloatsForInlineChild(nsIFrame* aOurBlock,
+                                           nsIFrame* aFrame,
+                                           bool aReparentSiblings);
 
   // ==========================================================================
   /*
@@ -705,8 +732,9 @@ protected:
    * frame then remove the property and delete the frame list.
    * Nothing happens if the property doesn't exist.
    */
-  void SafelyDestroyFrameListProp(nsIFrame* aDestructRoot,
-                                  nsIPresShell* aPresShell,
+  void SafelyDestroyFrameListProp(nsIFrame*        aDestructRoot,
+                                  PostDestroyData& aPostDestroyData,
+                                  nsIPresShell*    aPresShell,
                                   FrameListPropertyDescriptor aProp);
 
   // ==========================================================================
@@ -909,7 +937,7 @@ nsContainerFrame::DestroyOverflowList()
 {
   nsFrameList* list = RemovePropTableFrames(OverflowProperty());
   MOZ_ASSERT(list && list->IsEmpty());
-  list->Delete(PresContext()->PresShell());
+  list->Delete(PresShell());
 }
 
 #endif /* nsContainerFrame_h___ */

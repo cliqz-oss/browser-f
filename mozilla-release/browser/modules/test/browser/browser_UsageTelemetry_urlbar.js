@@ -89,9 +89,6 @@ add_task(async function setup() {
   // Enable the urlbar one-off buttons.
   Services.prefs.setBoolPref(ONEOFF_URLBAR_PREF, true);
 
-  // Enable Extended Telemetry.
-  await SpecialPowers.pushPrefEnv({"set": [["toolkit.telemetry.enabled", true]]});
-
   // Enable local telemetry recording for the duration of the tests.
   let oldCanRecord = Services.telemetry.canRecordExtended;
   Services.telemetry.canRecordExtended = true;
@@ -106,6 +103,9 @@ add_task(async function setup() {
   // Clear historical search suggestions to avoid interference from previous
   // tests.
   await SpecialPowers.pushPrefEnv({"set": [["browser.urlbar.maxHistoricalSearchSuggestions", 0]]});
+
+  // Use the default matching bucket configuration.
+  await SpecialPowers.pushPrefEnv({"set": [["browser.urlbar.matchBuckets", "general:5,suggestion:4"]]});
 
   // Make sure to restore the engine once we're done.
   registerCleanupFunction(async function() {
@@ -303,8 +303,8 @@ add_task(async function test_oneOff_enterSelection() {
   const url = getRootDirectory(gTestPath) + "usageTelemetrySearchSuggestions.xml";
   let suggestionEngine = await new Promise((resolve, reject) => {
     Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) { resolve(engine) },
-      onError() { reject() }
+      onSuccess(engine) { resolve(engine); },
+      onError() { reject(); }
     });
   });
 
@@ -376,8 +376,8 @@ add_task(async function test_suggestion_click() {
   const url = getRootDirectory(gTestPath) + "usageTelemetrySearchSuggestions.xml";
   let suggestionEngine = await new Promise((resolve, reject) => {
     Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) { resolve(engine) },
-      onError() { reject() }
+      onSuccess(engine) { resolve(engine); },
+      onError() { reject(); }
     });
   });
 
@@ -446,8 +446,8 @@ add_task(async function test_suggestion_enterSelection() {
   const url = getRootDirectory(gTestPath) + "usageTelemetrySearchSuggestions.xml";
   let suggestionEngine = await new Promise((resolve, reject) => {
     Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) { resolve(engine) },
-      onError() { reject() }
+      onSuccess(engine) { resolve(engine); },
+      onError() { reject(); }
     });
   });
 

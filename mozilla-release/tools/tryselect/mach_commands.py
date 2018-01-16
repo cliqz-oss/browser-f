@@ -38,6 +38,11 @@ def fuzzy_parser():
     return FuzzyParser()
 
 
+def empty_parser():
+    from tryselect.selectors.empty import EmptyParser
+    return EmptyParser()
+
+
 def generic_parser():
     from tryselect.cli import BaseTryParser
     parser = BaseTryParser()
@@ -78,8 +83,8 @@ class TrySelect(MachCommandBase):
         scheduling with the `syntax` selector.
         """
         from tryselect import preset
-        if kwargs['list_presets']:
-            preset.list_presets()
+        if kwargs['mod_presets']:
+            getattr(preset, kwargs['mod_presets'])()
             return
 
         # We do special handling of presets here so that `./mach try --preset foo`
@@ -143,6 +148,22 @@ class TrySelect(MachCommandBase):
         return run_fuzzy_try(**kwargs)
 
     @SubCommand('try',
+                'empty',
+                description='Push to try without scheduling any tasks.',
+                parser=empty_parser)
+    def try_empty(self, **kwargs):
+        """Push to try, running no builds or tests
+
+        This selector does not prompt you to run anything, it just pushes
+        your patches to try, running no builds or tests by default. After
+        the push finishes, you can manually add desired jobs to your push
+        via Treeherder's Add New Jobs feature, located in the per-push
+        menu.
+        """
+        from tryselect.selectors.empty import run_empty_try
+        return run_empty_try(**kwargs)
+
+    @SubCommand('try',
                 'syntax',
                 description='Select tasks on try using try syntax',
                 parser=syntax_parser)
@@ -184,7 +205,6 @@ class TrySelect(MachCommandBase):
         (available at https://github.com/glandium/git-cinnabar).
 
         """
-        from mozbuild.testing import TestResolver
         from tryselect.selectors.syntax import AutoTry
 
         try:
@@ -201,8 +221,5 @@ class TrySelect(MachCommandBase):
             print(CONFIG_ENVIRONMENT_NOT_FOUND)
             sys.exit(1)
 
-        def resolver_func():
-            return self._spawn(TestResolver)
-
-        at = AutoTry(self.topsrcdir, resolver_func, self._mach_context)
+        at = AutoTry(self.topsrcdir, self._mach_context)
         return at.run(**kwargs)

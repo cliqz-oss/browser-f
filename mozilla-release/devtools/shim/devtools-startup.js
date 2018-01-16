@@ -31,6 +31,8 @@ const kDebuggerPrefs = [
 // startup.
 const TOOLBAR_VISIBLE_PREF = "devtools.toolbar.visible";
 
+const DEVTOOLS_ENABLED_PREF = "devtools.enabled";
+
 const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
 XPCOMUtils.defineLazyModuleGetter(this, "Services",
                                   "resource://gre/modules/Services.jsm");
@@ -41,9 +43,14 @@ XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
 XPCOMUtils.defineLazyModuleGetter(this, "CustomizableWidgets",
                                   "resource:///modules/CustomizableWidgets.jsm");
 
-XPCOMUtils.defineLazyGetter(this, "Bundle", function () {
-  const kUrl = "chrome://devtools-shim/locale/key-shortcuts.properties";
-  return Services.strings.createBundle(kUrl);
+XPCOMUtils.defineLazyGetter(this, "StartupBundle", function () {
+  const url = "chrome://devtools-shim/locale/startup.properties";
+  return Services.strings.createBundle(url);
+});
+
+XPCOMUtils.defineLazyGetter(this, "KeyShortcutsBundle", function () {
+  const url = "chrome://devtools-shim/locale/key-shortcuts.properties";
+  return Services.strings.createBundle(url);
 });
 
 XPCOMUtils.defineLazyGetter(this, "KeyShortcuts", function () {
@@ -62,49 +69,49 @@ XPCOMUtils.defineLazyGetter(this, "KeyShortcuts", function () {
     // or the default one.
     {
       id: "toggleToolbox",
-      shortcut: Bundle.GetStringFromName("toggleToolbox.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("toggleToolbox.commandkey"),
       modifiers
     },
     // All locales are using F12
     {
       id: "toggleToolboxF12",
-      shortcut: Bundle.GetStringFromName("toggleToolboxF12.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("toggleToolboxF12.commandkey"),
       modifiers: "" // F12 is the only one without modifiers
     },
     // Toggle the visibility of the Developer Toolbar (=gcli)
     {
       id: "toggleToolbar",
-      shortcut: Bundle.GetStringFromName("toggleToolbar.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("toggleToolbar.commandkey"),
       modifiers: "shift"
     },
     // Open WebIDE window
     {
       id: "webide",
-      shortcut: Bundle.GetStringFromName("webide.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("webide.commandkey"),
       modifiers: "shift"
     },
     // Open the Browser Toolbox
     {
       id: "browserToolbox",
-      shortcut: Bundle.GetStringFromName("browserToolbox.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("browserToolbox.commandkey"),
       modifiers: "accel,alt,shift"
     },
     // Open the Browser Console
     {
       id: "browserConsole",
-      shortcut: Bundle.GetStringFromName("browserConsole.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("browserConsole.commandkey"),
       modifiers: "accel,shift"
     },
     // Toggle the Responsive Design Mode
     {
       id: "responsiveDesignMode",
-      shortcut: Bundle.GetStringFromName("responsiveDesignMode.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("responsiveDesignMode.commandkey"),
       modifiers
     },
     // Open ScratchPad window
     {
       id: "scratchpad",
-      shortcut: Bundle.GetStringFromName("scratchpad.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("scratchpad.commandkey"),
       modifiers: "shift"
     },
 
@@ -114,55 +121,58 @@ XPCOMUtils.defineLazyGetter(this, "KeyShortcuts", function () {
     // Key for opening the Inspector
     {
       toolId: "inspector",
-      shortcut: Bundle.GetStringFromName("inspector.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("inspector.commandkey"),
       modifiers
     },
     // Key for opening the Web Console
     {
       toolId: "webconsole",
-      shortcut: Bundle.GetStringFromName("webconsole.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("webconsole.commandkey"),
       modifiers
     },
     // Key for opening the Debugger
     {
       toolId: "jsdebugger",
-      shortcut: Bundle.GetStringFromName("debugger.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("debugger.commandkey"),
       modifiers
     },
     // Key for opening the Network Monitor
     {
       toolId: "netmonitor",
-      shortcut: Bundle.GetStringFromName("netmonitor.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("netmonitor.commandkey"),
       modifiers
     },
     // Key for opening the Style Editor
     {
       toolId: "styleeditor",
-      shortcut: Bundle.GetStringFromName("styleeditor.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("styleeditor.commandkey"),
       modifiers: "shift"
     },
     // Key for opening the Performance Panel
     {
       toolId: "performance",
-      shortcut: Bundle.GetStringFromName("performance.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("performance.commandkey"),
       modifiers: "shift"
     },
     // Key for opening the Storage Panel
     {
       toolId: "storage",
-      shortcut: Bundle.GetStringFromName("storage.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("storage.commandkey"),
       modifiers: "shift"
     },
     // Key for opening the DOM Panel
     {
       toolId: "dom",
-      shortcut: Bundle.GetStringFromName("dom.commandkey"),
+      shortcut: KeyShortcutsBundle.GetStringFromName("dom.commandkey"),
       modifiers
     },
   ];
 });
 
-function DevToolsStartup() {}
+function DevToolsStartup() {
+  this.onEnabledPrefChanged = this.onEnabledPrefChanged.bind(this);
+  this.onWindowReady = this.onWindowReady.bind(this);
+}
 
 DevToolsStartup.prototype = {
   /**
@@ -188,12 +198,29 @@ DevToolsStartup.prototype = {
     let debuggerFlag = cmdLine.handleFlag("jsdebugger", false);
     let devtoolsFlag = cmdLine.handleFlag("devtools", false);
 
+    // handle() can be called after browser startup (e.g. opening links from other apps).
+    let isInitialLaunch = cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH;
+    if (isInitialLaunch) {
+      // Execute only on first launch of this browser instance.
+      let hasDevToolsFlag = consoleFlag || devtoolsFlag || debuggerFlag;
+      this.setupEnabledPref(hasDevToolsFlag);
+
+      // Store devtoolsFlag to check it later in onWindowReady.
+      this.devtoolsFlag = devtoolsFlag;
+      // Only top level Firefox Windows fire a browser-delayed-startup-finished event
+      Services.obs.addObserver(this.onWindowReady, "browser-delayed-startup-finished");
+
+      // Update menu items when devtools.enabled changes.
+      Services.prefs.addObserver(DEVTOOLS_ENABLED_PREF, this.onEnabledPrefChanged);
+    }
+
     if (consoleFlag) {
       this.handleConsoleFlag(cmdLine);
     }
     if (debuggerFlag) {
       this.handleDebuggerFlag(cmdLine);
     }
+
     let debuggerServerFlag;
     try {
       debuggerServerFlag =
@@ -206,26 +233,55 @@ DevToolsStartup.prototype = {
     if (debuggerServerFlag) {
       this.handleDebuggerServerFlag(cmdLine, debuggerServerFlag);
     }
+  },
 
-    // Only top level Firefox Windows fire a browser-delayed-startup-finished event
-    let onWindowReady = window => {
-      this.hookWindow(window);
+  /**
+   * Called when receiving the "browser-delayed-startup-finished" event for a new
+   * top-level window.
+   */
+  onWindowReady(window) {
+    this.hookWindow(window);
 
-      if (Services.prefs.getBoolPref(TOOLBAR_VISIBLE_PREF, false)) {
-        // Loading devtools-browser will open the developer toolbar by also checking this
-        // pref.
-        this.initDevTools();
-      }
+    if (Services.prefs.getBoolPref(TOOLBAR_VISIBLE_PREF, false)) {
+      // Loading devtools-browser will open the developer toolbar by also checking this
+      // pref.
+      this.initDevTools();
+    }
 
-      if (devtoolsFlag) {
-        this.handleDevToolsFlag(window);
-        // This listener is called for all Firefox windows, but we want to execute
-        // that command only once
-        devtoolsFlag = false;
-      }
-      JsonView.initialize();
-    };
-    Services.obs.addObserver(onWindowReady, "browser-delayed-startup-finished");
+    // This listener is called for all Firefox windows, but we want to execute some code
+    // only once.
+    if (!this._firstWindowReadyReceived) {
+      this.onFirstWindowReady(window);
+      this._firstWindowReadyReceived = true;
+    }
+
+    JsonView.initialize();
+  },
+
+  onFirstWindowReady(window) {
+    if (this.devtoolsFlag) {
+      this.handleDevToolsFlag(window);
+    }
+
+    // Wait until we get a window before sending a ping to telemetry to avoid slowing down
+    // the startup phase.
+    this.pingOnboardingTelemetry();
+  },
+
+  /**
+   * Check if the user is being flagged as DevTools users or not. This probe should only
+   * be logged once per profile.
+   */
+  pingOnboardingTelemetry() {
+    // Only ping telemetry once per profile.
+    let alreadyLoggedPref = "devtools.onboarding.telemetry.logged";
+    if (Services.prefs.getBoolPref(alreadyLoggedPref)) {
+      return;
+    }
+
+    let scalarId = "devtools.onboarding.is_devtools_user";
+    Services.telemetry.scalarSet(scalarId, this.isDevToolsUser());
+    Services.prefs.setBoolPref(alreadyLoggedPref, true);
   },
 
   /**
@@ -251,6 +307,9 @@ DevToolsStartup.prototype = {
     if (!this.initialized) {
       this.hookWebDeveloperMenu(window);
     }
+
+    this.createDevToolsEnableMenuItem(window);
+    this.updateDevToolsMenuItems(window);
   },
 
   /**
@@ -285,8 +344,11 @@ DevToolsStartup.prototype = {
                      CustomizableUI.AREA_NAVBAR :
                      CustomizableUI.AREA_PANEL,
       onViewShowing: (event) => {
-        // Ensure creating the menuitems in the system menu before trying to copy them.
-        this.initDevTools("HamburgerMenu");
+        if (Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF)) {
+          // If DevTools are enabled, initialize DevTools to create all menuitems in the
+          // system menu before trying to copy them.
+          this.initDevTools("HamburgerMenu");
+        }
 
         // Populate the subview with whatever menuitems are in the developer
         // menu. We skip menu elements, because the menu panel has no way
@@ -336,9 +398,112 @@ DevToolsStartup.prototype = {
    */
   hookWebDeveloperMenu(window) {
     let menu = window.document.getElementById("webDeveloperMenu");
-    menu.addEventListener("popupshowing", () => {
+    let onPopupShowing = () => {
+      if (!Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF)) {
+        return;
+      }
+      menu.removeEventListener("popupshowing", onPopupShowing);
       this.initDevTools("SystemMenu");
-    }, { once: true });
+    };
+    menu.addEventListener("popupshowing", onPopupShowing);
+  },
+
+  /**
+   * Create a new menu item to enable DevTools and insert it DevTools's submenu in the
+   * System Menu.
+   */
+  createDevToolsEnableMenuItem(window) {
+    let {document} = window;
+
+    // Create the menu item.
+    let item = document.createElement("menuitem");
+    item.id = "enableDeveloperTools";
+    item.setAttribute("label", StartupBundle.GetStringFromName("enableDevTools.label"));
+    item.setAttribute("accesskey",
+      StartupBundle.GetStringFromName("enableDevTools.accesskey"));
+
+    // The menu item should open the install page for DevTools.
+    item.addEventListener("command", () => {
+      this.openInstallPage("SystemMenu");
+    });
+
+    // Insert the menu item in the DevTools submenu.
+    let systemMenuItem = document.getElementById("menuWebDeveloperPopup");
+    systemMenuItem.appendChild(item);
+  },
+
+  /**
+   * Update the visibility the menu item to enable DevTools.
+   */
+  updateDevToolsMenuItems(window) {
+    let item = window.document.getElementById("enableDeveloperTools");
+    item.hidden = Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF);
+  },
+
+  /**
+   * Loop on all windows and update the hidden attribute of the "enable DevTools" menu
+   * item.
+   */
+  onEnabledPrefChanged() {
+    let enumerator = Services.wm.getEnumerator("navigator:browser");
+    while (enumerator.hasMoreElements()) {
+      let window = enumerator.getNext();
+      if (window.gBrowserInit && window.gBrowserInit.delayedStartupFinished) {
+        this.updateDevToolsMenuItems(window);
+      }
+    }
+  },
+
+  /**
+   * Check if the user is a DevTools user by looking at our selfxss pref.
+   * This preference is incremented everytime the console is used (up to 5).
+   *
+   * @return {Boolean} true if the user can be considered as a devtools user.
+   */
+  isDevToolsUser() {
+    let selfXssCount = Services.prefs.getIntPref("devtools.selfxss.count", 0);
+    return selfXssCount > 0;
+  },
+
+  /**
+   * Depending on some runtime parameters (command line arguments as well as existing
+   * preferences), the DEVTOOLS_ENABLED_PREF might be forced to true.
+   *
+   * @param {Boolean} hasDevToolsFlag
+   *        true if any DevTools command line argument was passed when starting Firefox.
+   */
+  setupEnabledPref(hasDevToolsFlag) {
+    // Read the current experiment state.
+    let experimentState = Services.prefs.getCharPref("devtools.onboarding.experiment");
+    let isRegularExperiment = experimentState == "on";
+    let isForcedExperiment = experimentState == "force";
+    let isInExperiment = isRegularExperiment || isForcedExperiment;
+
+    // Force devtools.enabled to true for users that are not part of the experiment.
+    if (!isInExperiment) {
+      Services.prefs.setBoolPref(DEVTOOLS_ENABLED_PREF, true);
+      return;
+    }
+
+    // Force devtools.enabled to false once for each experiment user.
+    if (!Services.prefs.getBoolPref("devtools.onboarding.experiment.flipped")) {
+      Services.prefs.setBoolPref(DEVTOOLS_ENABLED_PREF, false);
+      Services.prefs.setBoolPref("devtools.onboarding.experiment.flipped", true);
+    }
+
+    if (Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF)) {
+      // Nothing to do if DevTools are already enabled.
+      return;
+    }
+
+    // We only consider checking the actual isDevToolsUser() if the user is in the
+    // "regular" experiment group.
+    let isDevToolsUser = isRegularExperiment && this.isDevToolsUser();
+
+    let hasToolbarPref = Services.prefs.getBoolPref(TOOLBAR_VISIBLE_PREF, false);
+    if (hasDevToolsFlag || hasToolbarPref || isDevToolsUser) {
+      Services.prefs.setBoolPref(DEVTOOLS_ENABLED_PREF, true);
+    }
   },
 
   hookKeyShortcuts(window) {
@@ -359,9 +524,18 @@ DevToolsStartup.prototype = {
   },
 
   onKey(window, key) {
-    let require = this.initDevTools("KeyShortcut");
-    let { gDevToolsBrowser } = require("devtools/client/framework/devtools-browser");
-    gDevToolsBrowser.onKeyShortcut(window, key);
+    if (!Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF)) {
+      let id = key.toolId || key.id;
+      this.openInstallPage("KeyShortcut", id);
+    } else {
+      // Record the timing at which this event started in order to compute later in
+      // gDevTools.showToolbox, the complete time it takes to open the toolbox.
+      // i.e. especially take `initDevTools` into account.
+      let startTime = window.performance.now();
+      let require = this.initDevTools("KeyShortcut");
+      let { gDevToolsBrowser } = require("devtools/client/framework/devtools-browser");
+      gDevToolsBrowser.onKeyShortcut(window, key, startTime);
+    }
   },
 
   // Create a <xul:key> DOM Element
@@ -387,6 +561,12 @@ DevToolsStartup.prototype = {
   },
 
   initDevTools: function (reason) {
+    // If an entry point is fired and tools are not enabled open the installation page
+    if (!Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF)) {
+      this.openInstallPage(reason);
+      return null;
+    }
+
     if (reason && !this.recorded) {
       // Only save the first call for each firefox run as next call
       // won't necessarely start the tool. For example key shortcuts may
@@ -399,9 +579,7 @@ DevToolsStartup.prototype = {
       }
       this.recorded = true;
     }
-    if (!this.initialized) {
-      Services.prefs.setBoolPref("devtools.enabled", true);
-    }
+
     this.initialized = true;
     let { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
     // Ensure loading main devtools module that hooks up into browser UI
@@ -410,12 +588,60 @@ DevToolsStartup.prototype = {
     return require;
   },
 
+  /**
+   * Open about:devtools to start the onboarding flow.
+   *
+   * @param {String} reason
+   *        One of "KeyShortcut", "SystemMenu", "HamburgerMenu", "ContextMenu",
+   *        "CommandLine".
+   * @param {String} keyId
+   *        Optional. If the onboarding flow was triggered by a keyboard shortcut, pass
+   *        the shortcut key id (or toolId) to about:devtools.
+   */
+  openInstallPage: function (reason, keyId) {
+    let { gBrowser } = Services.wm.getMostRecentWindow("navigator:browser");
+
+    // Focus about:devtools tab if there is already one opened in the current window.
+    for (let tab of gBrowser.tabs) {
+      let browser = tab.linkedBrowser;
+      // browser.documentURI might be undefined if the browser tab is still loading.
+      let location = browser.documentURI ? browser.documentURI.spec : "";
+      if (location.startsWith("about:devtools") &&
+          !location.startsWith("about:devtools-toolbox")) {
+        // Focus the existing about:devtools tab and bail out.
+        gBrowser.selectedTab = tab;
+        return;
+      }
+    }
+
+    let url = "about:devtools";
+
+    let params = [];
+    if (reason) {
+      params.push("reason=" + encodeURIComponent(reason));
+    }
+
+    let selectedBrowser = gBrowser.selectedBrowser;
+    if (selectedBrowser) {
+      params.push("tabid=" + selectedBrowser.outerWindowID);
+    }
+
+    if (keyId) {
+      params.push("keyid=" + keyId);
+    }
+
+    if (params.length > 0) {
+      url += "?" + params.join("&");
+    }
+
+    // Set relatedToCurrent: true to open the tab next to the current one.
+    gBrowser.selectedTab = gBrowser.addTab(url, {relatedToCurrent: true});
+  },
+
   handleConsoleFlag: function (cmdLine) {
     let window = Services.wm.getMostRecentWindow("devtools:webconsole");
     if (!window) {
-      this.initDevTools("CommandLine");
-
-      let { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+      let require = this.initDevTools("CommandLine");
       let { HUDService } = require("devtools/client/webconsole/hudservice");
       let { console } = Cu.import("resource://gre/modules/Console.jsm", {});
       HUDService.toggleBrowserConsole().catch(console.error);
@@ -623,19 +849,19 @@ const JsonView = {
   onSave: function (message) {
     let chrome = Services.wm.getMostRecentWindow("navigator:browser");
     let browser = chrome.gBrowser.selectedBrowser;
-    if (message.data.url === null) {
+    if (message.data === null) {
       // Save original contents
-      chrome.saveBrowser(browser, false, message.data.windowID);
+      chrome.saveBrowser(browser);
     } else {
       // The following code emulates saveBrowser, but:
       // - Uses the given blob URL containing the custom contents to save.
       // - Obtains the file name from the URL of the document, not the blob.
       let persistable = browser.frameLoader;
-      persistable.startPersistence(message.data.windowID, {
+      persistable.startPersistence(0, {
         onDocumentReady(doc) {
           let uri = chrome.makeURI(doc.documentURI, doc.characterSet);
           let filename = chrome.getDefaultFileName(undefined, uri, doc, null);
-          chrome.internalSave(message.data.url, doc, filename, null, doc.contentType,
+          chrome.internalSave(message.data, doc, filename, null, doc.contentType,
             false, null, null, null, doc, false, null, undefined);
         },
         onError(status) {

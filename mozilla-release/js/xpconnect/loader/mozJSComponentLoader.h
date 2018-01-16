@@ -23,8 +23,6 @@
 #include "xpcpublic.h"
 
 class nsIFile;
-class nsIPrincipal;
-class nsIXPConnectJSObjectHolder;
 class ComponentLoaderInfo;
 
 namespace mozilla {
@@ -55,6 +53,8 @@ class mozJSComponentLoader final : public mozilla::ModuleLoader,
 
     void FindTargetObject(JSContext* aCx,
                           JS::MutableHandleObject aTargetObject);
+
+    static already_AddRefed<mozJSComponentLoader> GetOrCreate();
 
     static mozJSComponentLoader* Get() { return sSelf; }
 

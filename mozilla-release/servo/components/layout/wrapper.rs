@@ -12,7 +12,7 @@
 //!
 //! 1. Layout is not allowed to mutate the DOM.
 //!
-//! 2. Layout is not allowed to see anything with `LayoutJS` in the name, because it could hang
+//! 2. Layout is not allowed to see anything with `LayoutDom` in the name, because it could hang
 //!    onto these objects and cause use-after-free.
 //!
 //! When implementing wrapper functions, be careful that you do not touch the borrow flags, or you
@@ -98,7 +98,7 @@ pub trait ThreadSafeLayoutNodeHelpers {
 
 impl<T: ThreadSafeLayoutNode> ThreadSafeLayoutNodeHelpers for T {
     fn flags(self) -> LayoutDataFlags {
-            self.borrow_layout_data().as_ref().unwrap().flags
+        self.borrow_layout_data().as_ref().unwrap().flags
     }
 
     fn insert_flags(self, new_flags: LayoutDataFlags) {
@@ -140,7 +140,7 @@ impl<T: ThreadSafeLayoutNode> ThreadSafeLayoutNodeHelpers for T {
         let damage = {
             let data = node.get_raw_data().unwrap();
 
-            if !data.layout_data.borrow().flags.contains(::data::HAS_BEEN_TRAVERSED) {
+            if !data.layout_data.borrow().flags.contains(::data::LayoutDataFlags::HAS_BEEN_TRAVERSED) {
                 // We're reflowing a node that was styled for the first time and
                 // has never been visited by layout. Return rebuild_and_reflow,
                 // because that's what the code expects.

@@ -8,9 +8,11 @@
 #define MediaDecoder_h_
 
 #include "DecoderDoctorDiagnostics.h"
+#include "MediaContainerType.h"
 #include "MediaDecoderOwner.h"
 #include "MediaEventSource.h"
 #include "MediaMetadataManager.h"
+#include "MediaPromiseDefs.h"
 #include "MediaResource.h"
 #include "MediaStatistics.h"
 #include "MediaStreamGraph.h"
@@ -22,7 +24,6 @@
 #include "mozilla/ReentrantMonitor.h"
 #include "mozilla/StateMirroring.h"
 #include "mozilla/StateWatching.h"
-#include "necko-config.h"
 #include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
 #include "nsIObserver.h"
@@ -118,7 +119,7 @@ public:
   void NotifyXPCOMShutdown();
 
   // Called if the media file encounters a network error.
-  void NetworkError();
+  void NetworkError(const MediaResult& aError);
 
   // Return the principal of the current URI being played or downloaded.
   virtual already_AddRefed<nsIPrincipal> GetCurrentPrincipal() = 0;
@@ -358,7 +359,7 @@ private:
     return mAbstractMainThread;
   }
 
-  void SetCDMProxy(CDMProxy* aProxy);
+  RefPtr<SetCDMPromise> SetCDMProxy(CDMProxy* aProxy);
 
   void EnsureTelemetryReported();
 
@@ -392,7 +393,7 @@ private:
   // data. Used for debugging purposes.
   virtual void GetMozDebugReaderData(nsACString& aString);
 
-  virtual void DumpDebugInfo();
+  RefPtr<GenericPromise> DumpDebugInfo();
 
   using DebugInfoPromise = MozPromise<nsCString, bool, true>;
   RefPtr<DebugInfoPromise> RequestDebugInfo();
@@ -472,14 +473,14 @@ protected:
   static constexpr auto DEFAULT_NEXT_FRAME_AVAILABLE_BUFFERED =
     media::TimeUnit::FromMicroseconds(250000);
 
+  virtual nsCString GetDebugInfo();
+
 private:
   // Ensures our media resource has been pinned.
   virtual void PinForSeek() = 0;
 
   // Ensures our media resource has been unpinned.
   virtual void UnpinForSeek() = 0;
-
-  nsCString GetDebugInfo();
 
   // Called when the owner's activity changed.
   void NotifyCompositor();

@@ -56,22 +56,19 @@ pref("devtools.inspector.imagePreviewTooltipSize", 300);
 pref("devtools.inspector.showUserAgentStyles", false);
 // Show all native anonymous content (like controls in <video> tags)
 pref("devtools.inspector.showAllAnonymousContent", false);
-// Enable the MDN docs tooltip
-pref("devtools.inspector.mdnDocsTooltip.enabled", false);
 // Enable the new color widget
 pref("devtools.inspector.colorWidget.enabled", false);
 // Enable the CSS shapes highlighter
-pref("devtools.inspector.shapesHighlighter.enabled", false);
+pref("devtools.inspector.shapesHighlighter.enabled", true);
+// Enable the Changes View
+pref("devtools.changesview.enabled", false);
+// Enable the Events View
+pref("devtools.eventsview.enabled", false);
+// Enable the Flexbox Inspector
+pref("devtools.flexboxinspector.enabled", false);
 
-// Enable the Font Inspector
-pref("devtools.fontinspector.enabled", true);
-
-// Counter to promote the inspector layout view.
-// @remove after release 56 (See Bug 1355747)
-pref("devtools.promote.layoutview", 1);
-// Whether or not to show the promote bar in the layout view
-// @remove after release 56 (See Bug 1355747)
-pref("devtools.promote.layoutview.showPromoteBar", true);
+// Enable the new Animation Inspector
+pref("devtools.new-animationinspector.enabled", false);
 
 // Grid highlighter preferences
 pref("devtools.gridinspector.gridOutlineMaxColumns", 50);
@@ -85,6 +82,8 @@ pref("devtools.gridinspector.showNegativeLineNumbers", false);
 pref("devtools.computed.boxmodel.opened", true);
 // Whether or not the box model panel is opened in the layout view
 pref("devtools.layout.boxmodel.opened", true);
+// Whether or not the flexbox panel is opened in the layout view
+pref("devtools.layout.flexbox.opened", true);
 // Whether or not the grid inspector panel is opened in the layout view
 pref("devtools.layout.grid.opened", true);
 
@@ -99,9 +98,6 @@ pref("devtools.markup.collapseAttributeLength", 120);
 
 // DevTools default color unit
 pref("devtools.defaultColorUnit", "authored");
-
-// Enable the Responsive UI tool
-pref("devtools.responsiveUI.no-reload-notification", false);
 
 // Enable the Memory tools
 pref("devtools.memory.enabled", true);
@@ -337,6 +333,3 @@ pref("devtools.editor.autocomplete", true);
 // opened developer tool. This allows us to ping telemetry just once per browser
 // version for each user.
 pref("devtools.telemetry.tools.opened.version", "{}");
-
-// Enable the HTML responsive design mode for all channels.
-pref("devtools.responsive.html.enabled", true);

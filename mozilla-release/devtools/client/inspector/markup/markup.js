@@ -198,10 +198,14 @@ MarkupView.prototype = {
   },
 
   isDragging: false,
+  _draggedContainer: null,
 
   _onMouseMove: function (event) {
     let target = event.target;
 
+    if (this._draggedContainer) {
+      this._draggedContainer.onMouseMove(event);
+    }
     // Auto-scroll if we're dragging.
     if (this.isDragging) {
       event.preventDefault();
@@ -329,7 +333,11 @@ MarkupView.prototype = {
     }
   },
 
-  _onMouseUp: function () {
+  _onMouseUp: function (event) {
+    if (this._draggedContainer) {
+      this._draggedContainer.onMouseUp(event);
+    }
+
     this.indicateDropTarget(null);
     this.indicateDragTarget(null);
     if (this._autoScrollAnimationFrame) {
@@ -1195,6 +1203,19 @@ MarkupView.prototype = {
     container.setExpanded(false);
   },
 
+  _collapseAll: function (container) {
+    container.setExpanded(false);
+    let children = container.getChildContainers() || [];
+    children.forEach(child => this._collapseAll(child));
+  },
+
+  /**
+   * Collapse the entire tree beneath a node.
+   */
+  collapseAll: function (node) {
+    this._collapseAll(this.getContainer(node));
+  },
+
   /**
    * Returns either the innerHTML or the outerHTML for a remote node.
    *
@@ -1434,22 +1455,24 @@ MarkupView.prototype = {
   },
 
   /**
-   * Mark the given node expanded.
+   * Expand or collapse the given node.
    *
    * @param  {NodeFront} node
-   *         The NodeFront to mark as expanded.
+   *         The NodeFront to update.
    * @param  {Boolean} expanded
-   *         Whether the expand or collapse.
-   * @param  {Boolean} expandDescendants
-   *         Whether to expand all descendants too
+   *         Whether the node should be expanded/collapsed.
+   * @param  {Boolean} applyToDescendants
+   *         Whether all descendants should also be expanded/collapsed
    */
-  setNodeExpanded: function (node, expanded, expandDescendants) {
+  setNodeExpanded: function (node, expanded, applyToDescendants) {
     if (expanded) {
-      if (expandDescendants) {
+      if (applyToDescendants) {
         this.expandAll(node);
       } else {
         this.expandNode(node);
       }
+    } else if (applyToDescendants) {
+      this.collapseAll(node);
     } else {
       this.collapseNode(node);
     }

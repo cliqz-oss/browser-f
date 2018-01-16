@@ -23,7 +23,7 @@ from mach.registrar import Registrar
 import toml
 
 from servo.packages import WINDOWS_MSVC as msvc_deps
-from servo.util import host_triple, host_platform
+from servo.util import host_triple
 
 BIN_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
@@ -261,9 +261,13 @@ class CommandBase(object):
         self.config["tools"].setdefault("rustc-with-gold", get_env_bool("SERVO_RUSTC_WITH_GOLD", True))
 
         # https://github.com/rust-lang/rust/pull/39754
-        platforms_with_rustc_alt_builds = ["unknown-linux-gnu", "apple-darwin", "pc-windows-msvc"]
+        triples_with_rustc_alt_builds = [
+            "x86_64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+        ]
         llvm_assertions_default = ("SERVO_RUSTC_LLVM_ASSERTIONS" in os.environ
-                                   or host_platform() not in platforms_with_rustc_alt_builds)
+                                   or host_triple() not in triples_with_rustc_alt_builds)
 
         self.config.setdefault("build", {})
         self.config["build"].setdefault("android", False)
@@ -273,6 +277,7 @@ class CommandBase(object):
         self.config["build"].setdefault("ccache", "")
         self.config["build"].setdefault("rustflags", "")
         self.config["build"].setdefault("incremental", False)
+        self.config["build"].setdefault("thinlto", False)
 
         self.config.setdefault("android", {})
         self.config["android"].setdefault("sdk", "")
@@ -532,11 +537,22 @@ class CommandBase(object):
         if geckolib:
             geckolib_build_path = path.join(self.context.topdir, "target", "geckolib").encode("UTF-8")
             env["CARGO_TARGET_DIR"] = geckolib_build_path
+        elif self.config["build"]["thinlto"]:
+            env['RUSTFLAGS'] += " -Z thinlto"
 
         return env
 
     def servo_crate(self):
         return path.join(self.context.topdir, "ports", "servo")
+
+    def servo_manifest(self):
+        return path.join(self.context.topdir, "ports", "servo", "Cargo.toml")
+
+    def geckolib_manifest(self):
+        return path.join(self.context.topdir, "ports", "geckolib", "Cargo.toml")
+
+    def cef_manifest(self):
+        return path.join(self.context.topdir, "ports", "cef", "Cargo.toml")
 
     def servo_features(self):
         """Return a list of optional features to enable for the Servo crate"""
@@ -550,6 +566,9 @@ class CommandBase(object):
 
     def android_build_dir(self, dev):
         return path.join(self.get_target_dir(), self.config["android"]["target"], "debug" if dev else "release")
+
+    def android_aar_dir(self):
+        return path.join(self.context.topdir, "target", "android_aar")
 
     def handle_android_target(self, target):
         if target == "arm-linux-androideabi":

@@ -14,15 +14,16 @@ Cu.import("resource://services-sync/record.js");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/collection_validator.js");
+Cu.import("resource://services-common/async.js");
 Cu.import("resource://gre/modules/Log.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
                                   "resource://gre/modules/FormHistory.jsm");
 
-const FORMS_TTL = 3 * 365 * 24 * 60 * 60;   // Three years in seconds.
+const FORMS_TTL = 3 * 365 * 24 * 60 * 60; // Three years in seconds.
 
 this.FormRec = function FormRec(collection, id) {
   CryptoWrapper.call(this, collection, id);
-}
+};
 FormRec.prototype = {
   __proto__: CryptoWrapper.prototype,
   _logName: "Sync.Record.Form",
@@ -50,7 +51,7 @@ var FormWrapper = {
         }
       };
       FormHistory.search(terms, searchData, callbacks);
-    })
+    });
   },
 
   async _update(changes) {
@@ -93,7 +94,7 @@ var FormWrapper = {
       op: "update",
       guid: oldGUID,
       newGuid: newGUID,
-    }
+    };
     await this._update(changes);
   }
 
@@ -101,13 +102,12 @@ var FormWrapper = {
 
 this.FormEngine = function FormEngine(service) {
   SyncEngine.call(this, "Forms", service);
-}
+};
 FormEngine.prototype = {
   __proto__: SyncEngine.prototype,
   _storeObj: FormStore,
   _trackerObj: FormTracker,
   _recordObj: FormRec,
-  applyIncomingBatchSize: FORMS_STORE_BATCH_SIZE,
 
   syncPriority: 6,
 
@@ -139,6 +139,7 @@ FormStore.prototype = {
   },
 
   async applyIncomingBatch(records) {
+    Async.checkAppReady();
     // We collect all the changes to be made then apply them all at once.
     this._changes = [];
     let failures = await Store.prototype.applyIncomingBatch.call(this, records);
@@ -150,7 +151,7 @@ FormStore.prototype = {
   },
 
   async getAllIDs() {
-    let results = await FormWrapper._search(["guid"], [])
+    let results = await FormWrapper._search(["guid"], []);
     let guids = {};
     for (let result of results) {
       guids[result.guid] = true;
@@ -182,6 +183,7 @@ FormStore.prototype = {
     this._log.trace("Adding form record for " + record.name);
     let change = {
       op: "add",
+      guid: record.id,
       fieldname: record.name,
       value: record.value
     };

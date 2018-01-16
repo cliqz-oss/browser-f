@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -53,7 +53,6 @@
 #include "nsIPageSequenceFrame.h"
 #include "nsNetUtil.h"
 #include "nsIContentViewerEdit.h"
-#include "nsIContentViewerFile.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/css/Loader.h"
 #include "nsIInterfaceRequestor.h"
@@ -65,7 +64,6 @@
 #include "mozilla/ReflowInput.h"
 #include "nsIImageLoadingContent.h"
 #include "nsCopySupport.h"
-#include "nsIDOMHTMLImageElement.h"
 #ifdef MOZ_XUL
 #include "nsIXULDocument.h"
 #include "nsXULPopupManager.h"
@@ -213,7 +211,6 @@ private:
 //-------------------------------------------------------------
 class nsDocumentViewer final : public nsIContentViewer,
                                public nsIContentViewerEdit,
-                               public nsIContentViewerFile,
                                public nsIDocumentViewerPrint
 
 #ifdef NS_PRINTING
@@ -236,9 +233,6 @@ public:
 
   // nsIContentViewerEdit
   NS_DECL_NSICONTENTVIEWEREDIT
-
-  // nsIContentViewerFile
-  NS_DECL_NSICONTENTVIEWERFILE
 
 #ifdef NS_PRINTING
   // nsIWebBrowserPrint
@@ -392,9 +386,6 @@ protected:
   nsAutoPtr<AutoPrintEventDispatcher> mAutoBeforeAndAfterPrint;
 #endif // NS_PRINT_PREVIEW
 
-#ifdef DEBUG
-  FILE* mDebugFile;
-#endif // DEBUG
 #endif // NS_PRINTING
 
   /* character set member data */
@@ -500,10 +491,6 @@ void nsDocumentViewer::PrepareToStartLoad()
 #endif
   }
 
-#ifdef DEBUG
-  mDebugFile = nullptr;
-#endif
-
 #endif // NS_PRINTING
 }
 
@@ -531,9 +518,6 @@ nsDocumentViewer::nsDocumentViewer()
     mOriginalPrintPreviewScale(0.0),
     mPrintPreviewZoom(1.0),
 #endif // NS_PRINT_PREVIEW
-#ifdef DEBUG
-    mDebugFile(nullptr),
-#endif // DEBUG
 #endif // NS_PRINTING
     mHintCharsetSource(kCharsetUninitialized),
     mHintCharset(nullptr),
@@ -550,7 +534,6 @@ NS_IMPL_RELEASE(nsDocumentViewer)
 
 NS_INTERFACE_MAP_BEGIN(nsDocumentViewer)
     NS_INTERFACE_MAP_ENTRY(nsIContentViewer)
-    NS_INTERFACE_MAP_ENTRY(nsIContentViewerFile)
     NS_INTERFACE_MAP_ENTRY(nsIContentViewerEdit)
     NS_INTERFACE_MAP_ENTRY(nsIDocumentViewerPrint)
     NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIContentViewer)
@@ -1206,6 +1189,13 @@ nsDocumentViewer::PermitUnloadInternal(bool *aShouldPrompt,
 
   NS_ASSERTION(nsContentUtils::IsSafeToRunScript(), "This is unsafe");
 
+  // https://html.spec.whatwg.org/multipage/browsing-the-web.html#prompt-to-unload-a-document
+  // Create an RAII object on mDocument that will increment the
+  // should-ignore-opens-during-unload counter on initialization
+  // and decrement it again when it goes out of score (regardless
+  // of how we exit this function).
+  IgnoreOpensDuringUnload ignoreOpens(mDocument);
+
   // Now, fire an BeforeUnload event to the document and see if it's ok
   // to unload...
   nsIPresShell* shell = mDocument->GetShell();
@@ -1232,7 +1222,7 @@ nsDocumentViewer::PermitUnloadInternal(bool *aShouldPrompt,
     nsAutoPopupStatePusher popupStatePusher(openAbused, true);
 
     // Never permit dialogs from the beforeunload handler
-    nsGlobalWindow* globalWindow = nsGlobalWindow::Cast(window);
+    nsGlobalWindowOuter* globalWindow = nsGlobalWindowOuter::Cast(window);
     dialogsAreEnabled = globalWindow->AreDialogsEnabled();
     nsGlobalWindow::TemporarilyDisableDialogs disableDialogs(globalWindow);
 
@@ -1414,6 +1404,12 @@ nsDocumentViewer::PageHide(bool aIsUnload)
       return NS_ERROR_NULL_POINTER;
     }
 
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#unload-a-document
+    // Create an RAII object on mDocument that will increment the
+    // should-ignore-opens-during-unload counter on initialization
+    // and decrement it again when it goes out of scope.
+    IgnoreOpensDuringUnload ignoreOpens(mDocument);
+
     // Now, fire an Unload event to the document...
     nsEventStatus status = nsEventStatus_eIgnore;
     WidgetEvent event(true, eUnload);
@@ -1507,6 +1503,8 @@ nsDocumentViewer::Open(nsISupports *aState, nsISHEntry *aSHEntry)
   SyncParentSubDocMap();
 
   if (mFocusListener && mDocument) {
+    // The focus listener may have been disconnected.
+    mFocusListener->Init(this);
     mDocument->AddEventListener(NS_LITERAL_STRING("focus"), mFocusListener,
                                 false, false);
     mDocument->AddEventListener(NS_LITERAL_STRING("blur"), mFocusListener,
@@ -2836,59 +2834,6 @@ NS_IMETHODIMP nsDocumentViewer::SetCommandNode(nsIDOMNode* aNode)
   return NS_OK;
 }
 
-/* ========================================================================================
- * nsIContentViewerFile
- * ======================================================================================== */
-/** ---------------------------------------------------
- *  See documentation above in the nsIContentViewerfile class definition
- *	@update 01/24/00 dwc
- */
-NS_IMETHODIMP
-nsDocumentViewer::Print(bool              aSilent,
-                          FILE *            aDebugFile,
-                          nsIPrintSettings* aPrintSettings)
-{
-#ifdef NS_PRINTING
-  nsCOMPtr<nsIPrintSettings> printSettings;
-
-#ifdef DEBUG
-  nsresult rv = NS_ERROR_FAILURE;
-
-  mDebugFile = aDebugFile;
-  // if they don't pass in a PrintSettings, then make one
-  // it will have all the default values
-  printSettings = aPrintSettings;
-  nsCOMPtr<nsIPrintSettingsService> printSettingsSvc
-    = do_GetService("@mozilla.org/gfx/printsettings-service;1", &rv);
-  if (NS_SUCCEEDED(rv)) {
-    // if they don't pass in a PrintSettings, then make one
-    if (printSettings == nullptr) {
-      printSettingsSvc->GetNewPrintSettings(getter_AddRefs(printSettings));
-    }
-    NS_ASSERTION(printSettings, "You can't PrintPreview without a PrintSettings!");
-  }
-  if (printSettings) printSettings->SetPrintSilent(aSilent);
-  if (printSettings) printSettings->SetShowPrintProgress(false);
-#endif
-
-
-  return Print(printSettings, nullptr);
-#else
-  return NS_ERROR_FAILURE;
-#endif
-}
-
-// nsIContentViewerFile interface
-NS_IMETHODIMP
-nsDocumentViewer::GetPrintable(bool *aPrintable)
-{
-  NS_ENSURE_ARG_POINTER(aPrintable);
-
-  *aPrintable = !GetIsPrinting();
-
-  return NS_OK;
-}
-
 NS_IMETHODIMP nsDocumentViewer::ScrollToNode(nsIDOMNode* aNode)
 {
   NS_ENSURE_ARG(aNode);
@@ -3225,6 +3170,25 @@ nsDocumentViewer::GetFullZoom(float* aFullZoom)
 }
 
 NS_IMETHODIMP
+nsDocumentViewer::GetDeviceFullZoom(float* aDeviceFullZoom)
+{
+  NS_ENSURE_ARG_POINTER(aDeviceFullZoom);
+#ifdef NS_PRINT_PREVIEW
+  if (GetIsPrintPreview()) {
+    // Print Preview overrides all zoom; if specified, we use the print preview
+    // zoom, no matter what.
+    *aDeviceFullZoom = mPrintPreviewZoom;
+    return NS_OK;
+  }
+#endif
+  // If not in print preview, ask the prescontext for the device zoom, if a
+  // prescontext is available.
+  nsPresContext* pc = GetPresContext();
+  *aDeviceFullZoom = pc ? pc->GetDeviceFullZoom() : mPageZoom;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDocumentViewer::SetOverrideDPPX(float aDPPX)
 {
   // If we don't have a document, then we need to bail.
@@ -3557,37 +3521,16 @@ nsDocumentViewer::GetContentSizeInternal(int32_t* aWidth, int32_t* aHeight,
     prefWidth = aMaxWidth;
   }
 
-  nsAutoPtr<nsPresState> frameState;
-  nsIScrollableFrame *scrollFrame = presShell->GetRootScrollFrameAsScrollable();
-  nsIStatefulFrame *statefulFrame = do_QueryFrame(scrollFrame);
-  if (statefulFrame) {
-    statefulFrame->SaveState(getter_Transfers(frameState));
-  }
-
-  nsresult rv = presShell->ResizeReflow(prefWidth, NS_UNCONSTRAINEDSIZE);
+  nsresult rv = presShell->ResizeReflow(prefWidth, aMaxHeight, 0, 0,
+                                        nsIPresShell::ResizeReflowOptions::eBSizeLimit);
   NS_ENSURE_SUCCESS(rv, rv);
 
   RefPtr<nsPresContext> presContext;
   GetPresContext(getter_AddRefs(presContext));
   NS_ENSURE_TRUE(presContext, NS_ERROR_FAILURE);
 
-  // so how big is it?
-  nsRect shellArea = presContext->GetVisibleArea();
-  if (shellArea.height > aMaxHeight) {
-    // Reflow to max height if we would up too tall.
-    rv = presShell->ResizeReflow(prefWidth, aMaxHeight);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    shellArea = presContext->GetVisibleArea();
-
-    // the first reflow reset our scroll, now set it back
-    if (frameState && presShell->GetRootScrollFrameAsScrollable() == scrollFrame) {
-      statefulFrame->RestoreState(frameState);
-      scrollFrame->ScrollToRestoredPosition();
-    }
-  }
-
   // Protect against bogus returns here
+  nsRect shellArea = presContext->GetVisibleArea();
   NS_ENSURE_TRUE(shellArea.width != NS_UNCONSTRAINEDSIZE &&
                  shellArea.height != NS_UNCONSTRAINEDSIZE,
                  NS_ERROR_FAILURE);
@@ -3986,13 +3929,7 @@ nsDocumentViewer::Print(nsIPrintSettings*       aPrintSettings,
     rv = printEngine->Initialize(this, mContainer, mDocument,
                                  float(mDeviceContext->AppUnitsPerCSSInch()) /
                                  float(mDeviceContext->AppUnitsPerDevPixel()) /
-                                 mPageZoom,
-#ifdef DEBUG
-                                 mDebugFile
-#else
-                                 nullptr
-#endif
-                                 );
+                                 mPageZoom);
     if (NS_FAILED(rv)) {
       printEngine->Destroy();
       return rv;
@@ -4078,13 +4015,7 @@ nsDocumentViewer::PrintPreview(nsIPrintSettings* aPrintSettings,
     rv = printEngine->Initialize(this, mContainer, doc,
                                  float(mDeviceContext->AppUnitsPerCSSInch()) /
                                  float(mDeviceContext->AppUnitsPerDevPixel()) /
-                                 mPageZoom,
-#ifdef DEBUG
-                                 mDebugFile
-#else
-                                 nullptr
-#endif
-                                 );
+                                 mPageZoom);
     if (NS_FAILED(rv)) {
       printEngine->Destroy();
       return rv;

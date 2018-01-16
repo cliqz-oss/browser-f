@@ -94,6 +94,9 @@ private:
                                                               MediaMemoryCachesCombinedLimitPcSysmem, uint32_t, 5);
   DECL_MEDIA_PREF("media.cache.resource-index",               MediaResourceIndexCache, uint32_t, 8192);
 
+  DECL_MEDIA_PREF("media.cache_resume_threshold",             MediaCacheResumeThreshold, int32_t, 10);
+  DECL_MEDIA_PREF("media.cache_readahead_limit",              MediaCacheReadaheadLimit, int32_t, 30);
+
   // AudioSink
   DECL_MEDIA_PREF("accessibility.monoaudio.enable",           MonoAudio, bool, false);
   DECL_MEDIA_PREF("media.resampling.enabled",                 AudioSinkResampling, bool, false);
@@ -206,9 +209,8 @@ private:
   // resume background video decoding when the cursor is hovering over the tab.
   DECL_MEDIA_PREF("media.resume-bkgnd-video-on-tabhover",     ResumeVideoDecodingOnTabHover, bool, false);
 
-#ifdef MOZ_CUBEB_REMOTING
+  // Enable sandboxing support for cubeb
   DECL_MEDIA_PREF("media.cubeb.sandbox",                      CubebSandbox, bool, false);
-#endif // MOZ_CUBEB_REMOTING
   DECL_MEDIA_PREF("media.videocontrols.lock-video-orientation",  VideoOrientationLockEnabled, bool, false);
 
 public:

@@ -470,6 +470,9 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
   if (NS_FAILED(BlockUntilLoadableRootsLoaded())) {
     return Result::FATAL_ERROR_LIBRARY_FAILURE;
   }
+  if (NS_FAILED(CheckForSmartCardChanges())) {
+    return Result::FATAL_ERROR_LIBRARY_FAILURE;
+  }
 
   if (evOidPolicy) {
     *evOidPolicy = SEC_OID_UNKNOWN;
@@ -840,93 +843,6 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                             KeyPurposeId::id_kp_emailProtection,
                             CertPolicyId::anyPolicy, stapledOCSPResponse);
       }
-      break;
-    }
-
-    case certificateUsageObjectSigner: {
-      NSSCertDBTrustDomain trustDomain(trustObjectSigning, defaultOCSPFetching,
-                                       mOCSPCache, pinArg, ocspGETConfig,
-                                       mOCSPTimeoutSoft, mOCSPTimeoutHard,
-                                       mCertShortLifetimeInDays,
-                                       pinningDisabled, MIN_RSA_BITS_WEAK,
-                                       ValidityCheckingMode::CheckingOff,
-                                       SHA1Mode::Allowed,
-                                       NetscapeStepUpPolicy::NeverMatch,
-                                       originAttributes, builtChain, nullptr,
-                                       nullptr);
-      rv = BuildCertChain(trustDomain, certDER, time,
-                          EndEntityOrCA::MustBeEndEntity,
-                          KeyUsage::digitalSignature,
-                          KeyPurposeId::id_kp_codeSigning,
-                          CertPolicyId::anyPolicy, stapledOCSPResponse);
-      break;
-    }
-
-    case certificateUsageVerifyCA:
-    case certificateUsageStatusResponder: {
-      // XXX This is a pretty useless way to verify a certificate. It is used
-      // by the certificate viewer UI. Because we don't know what trust bit is
-      // interesting, we just try them all.
-      mozilla::pkix::EndEntityOrCA endEntityOrCA;
-      mozilla::pkix::KeyUsage keyUsage;
-      KeyPurposeId eku;
-      if (usage == certificateUsageVerifyCA) {
-        endEntityOrCA = EndEntityOrCA::MustBeCA;
-        keyUsage = KeyUsage::keyCertSign;
-        eku = KeyPurposeId::anyExtendedKeyUsage;
-      } else {
-        endEntityOrCA = EndEntityOrCA::MustBeEndEntity;
-        keyUsage = KeyUsage::digitalSignature;
-        eku = KeyPurposeId::id_kp_OCSPSigning;
-      }
-
-      NSSCertDBTrustDomain sslTrust(trustSSL, defaultOCSPFetching, mOCSPCache,
-                                    pinArg, ocspGETConfig, mOCSPTimeoutSoft,
-                                    mOCSPTimeoutHard, mCertShortLifetimeInDays,
-                                    pinningDisabled, MIN_RSA_BITS_WEAK,
-                                    ValidityCheckingMode::CheckingOff,
-                                    SHA1Mode::Allowed,
-                                    NetscapeStepUpPolicy::NeverMatch,
-                                    originAttributes, builtChain, nullptr,
-                                    nullptr);
-      rv = BuildCertChain(sslTrust, certDER, time, endEntityOrCA,
-                          keyUsage, eku, CertPolicyId::anyPolicy,
-                          stapledOCSPResponse);
-      if (rv == Result::ERROR_UNKNOWN_ISSUER) {
-        NSSCertDBTrustDomain emailTrust(trustEmail, defaultOCSPFetching,
-                                        mOCSPCache, pinArg, ocspGETConfig,
-                                        mOCSPTimeoutSoft, mOCSPTimeoutHard,
-                                        mCertShortLifetimeInDays,
-                                        pinningDisabled, MIN_RSA_BITS_WEAK,
-                                        ValidityCheckingMode::CheckingOff,
-                                        SHA1Mode::Allowed,
-                                        NetscapeStepUpPolicy::NeverMatch,
-                                        originAttributes, builtChain, nullptr,
-                                        nullptr);
-        rv = BuildCertChain(emailTrust, certDER, time, endEntityOrCA,
-                            keyUsage, eku, CertPolicyId::anyPolicy,
-                            stapledOCSPResponse);
-        if (rv == Result::ERROR_UNKNOWN_ISSUER) {
-          NSSCertDBTrustDomain objectSigningTrust(trustObjectSigning,
-                                                  defaultOCSPFetching,
-                                                  mOCSPCache, pinArg,
-                                                  ocspGETConfig,
-                                                  mOCSPTimeoutSoft,
-                                                  mOCSPTimeoutHard,
-                                                  mCertShortLifetimeInDays,
-                                                  pinningDisabled,
-                                                  MIN_RSA_BITS_WEAK,
-                                                  ValidityCheckingMode::CheckingOff,
-                                                  SHA1Mode::Allowed,
-                                                  NetscapeStepUpPolicy::NeverMatch,
-                                                  originAttributes, builtChain,
-                                                  nullptr, nullptr);
-          rv = BuildCertChain(objectSigningTrust, certDER, time,
-                              endEntityOrCA, keyUsage, eku,
-                              CertPolicyId::anyPolicy, stapledOCSPResponse);
-        }
-      }
-
       break;
     }
 

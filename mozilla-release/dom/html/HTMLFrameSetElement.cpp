@@ -31,7 +31,7 @@ NS_IMPL_ISUPPORTS_INHERITED0(HTMLFrameSetElement, nsGenericHTMLElement)
 NS_IMPL_ELEMENT_CLONE(HTMLFrameSetElement)
 
 nsresult
-HTMLFrameSetElement::BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLFrameSetElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                    const nsAttrValueOrString* aValue,
                                    bool aNotify)
 {
@@ -135,7 +135,7 @@ HTMLFrameSetElement::GetColSpec(int32_t *aNumValues,
 
 bool
 HTMLFrameSetElement::ParseAttribute(int32_t aNamespaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     const nsAString& aValue,
                                     nsAttrValue& aResult)
 {
@@ -156,7 +156,7 @@ HTMLFrameSetElement::ParseAttribute(int32_t aNamespaceID,
 }
 
 nsChangeHint
-HTMLFrameSetElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
+HTMLFrameSetElement::GetAttributeChangeHint(const nsAtom* aAttribute,
                                             int32_t aModType) const
 {
   nsChangeHint retval =
@@ -302,7 +302,7 @@ HTMLFrameSetElement::ParseRowCol(const nsAString & aValue,
 }
 
 bool
-HTMLFrameSetElement::IsEventAttributeNameInternal(nsIAtom *aName)
+HTMLFrameSetElement::IsEventAttributeNameInternal(nsAtom *aName)
 {
   return nsContentUtils::IsEventAttributeName(aName,
                                               EventNameType_HTML |
@@ -319,7 +319,7 @@ HTMLFrameSetElement::IsEventAttributeNameInternal(nsIAtom *aName)
   HTMLFrameSetElement::GetOn##name_()                                          \
   {                                                                            \
     if (nsPIDOMWindowInner* win = OwnerDoc()->GetInnerWindow()) {              \
-      nsGlobalWindow* globalWin = nsGlobalWindow::Cast(win);                   \
+      nsGlobalWindowInner* globalWin = nsGlobalWindowInner::Cast(win);         \
       return globalWin->GetOn##name_();                                        \
     }                                                                          \
     return nullptr;                                                            \
@@ -332,7 +332,7 @@ HTMLFrameSetElement::IsEventAttributeNameInternal(nsIAtom *aName)
       return;                                                                  \
     }                                                                          \
                                                                                \
-    nsGlobalWindow* globalWin = nsGlobalWindow::Cast(win);                     \
+    nsGlobalWindowInner* globalWin = nsGlobalWindowInner::Cast(win);           \
     return globalWin->SetOn##name_(handler);                                   \
   }
 #define WINDOW_EVENT(name_, id_, type_, struct_)                               \

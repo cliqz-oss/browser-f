@@ -4,7 +4,7 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+const {interfaces: Ci, utils: Cu} = Components;
 
 Cu.import("resource://gre/modules/Log.jsm");
 Cu.import("resource://gre/modules/Preferences.jsm");
@@ -381,8 +381,8 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
 
       canvas = capture.canvas(
           win,
-          0,  // left
-          0,  // top
+          0, // left
+          0, // top
           win.innerWidth,
           win.innerHeight,
           {canvas, flags});

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -49,12 +50,13 @@ nsFrameList::DestroyFrames()
 }
 
 void
-nsFrameList::DestroyFramesFrom(nsIFrame* aDestructRoot)
+nsFrameList::DestroyFramesFrom(nsIFrame* aDestructRoot,
+                               layout::PostFrameDestroyData& aPostDestroyData)
 {
   NS_PRECONDITION(aDestructRoot, "Missing destruct root");
 
   while (nsIFrame* frame = RemoveFirstChild()) {
-    frame->DestroyFrom(aDestructRoot);
+    frame->DestroyFrom(aDestructRoot, aPostDestroyData);
   }
   mLastChild = nullptr;
 }
@@ -255,7 +257,7 @@ nsFrameList::ExtractTail(FrameLinkEnumerator& aLink)
   // Now make sure aLink doesn't point to a frame we no longer have.
   aLink.mFrame = nullptr;
 
-  NS_POSTCONDITION(aLink.AtEnd(), "What's going on here?");
+  MOZ_ASSERT(aLink.AtEnd(), "What's going on here?");
 
   return nsFrameList(newFirstFrame, newLastFrame);
 }

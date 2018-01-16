@@ -19,7 +19,6 @@
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
 #include "nsIOutputStream.h"
-#include "nsIStartupCache.h"
 #include "nsIStorageStream.h"
 #include "nsIStreamBufferAccess.h"
 #include "nsIStringStream.h"
@@ -501,7 +500,7 @@ StartupCache::WaitOnWriteThread()
 void
 StartupCache::ThreadedWrite(void *aClosure)
 {
-  AutoProfilerRegisterThread registerThread("StartupCache");
+  AUTO_PROFILER_REGISTER_THREAD("StartupCache");
   NS_SetCurrentThreadName("StartupCache");
   mozilla::IOInterposer::RegisterCurrentThread();
   /*
@@ -581,9 +580,9 @@ nsresult
 StartupCache::ResetStartupWriteTimer()
 {
   mStartupWriteInitiated = false;
-  nsresult rv;
+  nsresult rv = NS_OK;
   if (!mTimer)
-    mTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
+    mTimer = NS_NewTimer();
   else
     rv = mTimer->Cancel();
   NS_ENSURE_SUCCESS(rv, rv);
@@ -695,74 +694,6 @@ StartupCacheDebugOutputStream::PutBuffer(char* aBuffer, uint32_t aLength)
   mBinaryStream->PutBuffer(aBuffer, aLength);
 }
 #endif //DEBUG
-
-StartupCacheWrapper* StartupCacheWrapper::gStartupCacheWrapper = nullptr;
-
-NS_IMPL_ISUPPORTS(StartupCacheWrapper, nsIStartupCache)
-
-StartupCacheWrapper* StartupCacheWrapper::GetSingleton()
-{
-  if (!gStartupCacheWrapper)
-    gStartupCacheWrapper = new StartupCacheWrapper();
-
-  NS_ADDREF(gStartupCacheWrapper);
-  return gStartupCacheWrapper;
-}
-
-nsresult
-StartupCacheWrapper::GetBuffer(const char* id, char** outbuf, uint32_t* length)
-{
-  StartupCache* sc = StartupCache::GetSingleton();
-  if (!sc) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-  UniquePtr<char[]> buf;
-  nsresult rv = sc->GetBuffer(id, &buf, length);
-  *outbuf = buf.release();
-  return rv;
-}
-
-nsresult
-StartupCacheWrapper::PutBuffer(const char* id, const char* inbuf, uint32_t length)
-{
-  StartupCache* sc = StartupCache::GetSingleton();
-  if (!sc) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-  return sc->PutBuffer(id, inbuf, length);
-}
-
-nsresult
-StartupCacheWrapper::InvalidateCache()
-{
-  StartupCache* sc = StartupCache::GetSingleton();
-  if (!sc) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-  sc->InvalidateCache();
-  return NS_OK;
-}
-
-nsresult
-StartupCacheWrapper::GetDebugObjectOutputStream(nsIObjectOutputStream* stream,
-                                                nsIObjectOutputStream** outStream)
-{
-  StartupCache* sc = StartupCache::GetSingleton();
-  if (!sc) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-  return sc->GetDebugObjectOutputStream(stream, outStream);
-}
-
-nsresult
-StartupCacheWrapper::GetObserver(nsIObserver** obv) {
-  StartupCache* sc = StartupCache::GetSingleton();
-  if (!sc) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-  NS_ADDREF(*obv = sc->mListener);
-  return NS_OK;
-}
 
 } // namespace scache
 } // namespace mozilla

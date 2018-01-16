@@ -21,11 +21,11 @@ const {gDevTools} = require("./devtools");
 loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
 loader.lazyRequireGetter(this, "Toolbox", "devtools/client/framework/toolbox", true);
 loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
-loader.lazyRequireGetter(this, "DebuggerClient", "devtools/shared/client/main", true);
+loader.lazyRequireGetter(this, "DebuggerClient", "devtools/shared/client/debugger-client", true);
 loader.lazyRequireGetter(this, "BrowserMenus", "devtools/client/framework/browser-menus");
 loader.lazyRequireGetter(this, "appendStyleSheet", "devtools/client/shared/stylesheet-utils", true);
 loader.lazyRequireGetter(this, "DeveloperToolbar", "devtools/client/shared/developer-toolbar", true);
-loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsivedesign/responsivedesign");
+loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
 loader.lazyImporter(this, "BrowserToolboxProcess", "resource://devtools/client/framework/ToolboxProcess.jsm");
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
 
@@ -73,7 +73,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    * of there
    */
   // used by browser-sets.inc, command
-  toggleToolboxCommand(gBrowser) {
+  toggleToolboxCommand(gBrowser, startTime) {
     let target = TargetFactory.forTab(gBrowser.selectedTab);
     let toolbox = gDevTools.getToolbox(target);
 
@@ -81,7 +81,11 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
     // - should close a docked toolbox
     // - should focus a windowed toolbox
     let isDocked = toolbox && toolbox.hostType != Toolbox.HostType.WINDOW;
-    isDocked ? gDevTools.closeToolbox(target) : gDevTools.showToolbox(target);
+    if (isDocked) {
+      gDevTools.closeToolbox(target);
+    } else {
+      gDevTools.showToolbox(target, null, null, null, startTime);
+    }
   },
 
   /**
@@ -216,7 +220,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    */
   // Used when: - registering a new tool
   //            - new xul window, to add menu items
-  selectToolCommand(gBrowser, toolId) {
+  selectToolCommand(gBrowser, toolId, startTime) {
     let target = TargetFactory.forTab(gBrowser.selectedTab);
     let toolbox = gDevTools.getToolbox(target);
     let toolDefinition = gDevTools.getToolDefinition(toolId);
@@ -234,7 +238,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
       }
       gDevTools.emit("select-tool-command", toolId);
     } else {
-      gDevTools.showToolbox(target, toolId).then(newToolbox => {
+      gDevTools.showToolbox(target, toolId, null, null, startTime).then(newToolbox => {
         newToolbox.fireCustomKey(toolId);
         gDevTools.emit("select-tool-command", toolId);
       });
@@ -253,18 +257,21 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    *         - `toolId` used to identify a toolbox's panel like inspector or webconsole,
    *         - `id` used to identify any other key shortcuts like scratchpad or
    *         about:debugging
+   * @param {Number} startTime
+   *        Optional, indicates the time at which the key event fired. This is a
+   *        `performance.now()` timing.
    */
-  onKeyShortcut(window, key) {
+  onKeyShortcut(window, key, startTime) {
     // If this is a toolbox's panel key shortcut, delegate to selectToolCommand
     if (key.toolId) {
-      gDevToolsBrowser.selectToolCommand(window.gBrowser, key.toolId);
+      gDevToolsBrowser.selectToolCommand(window.gBrowser, key.toolId, startTime);
       return;
     }
     // Otherwise implement all other key shortcuts individually here
     switch (key.id) {
       case "toggleToolbox":
       case "toggleToolboxF12":
-        gDevToolsBrowser.toggleToolboxCommand(window.gBrowser);
+        gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, startTime);
         break;
       case "toggleToolbar":
         gDevToolsBrowser.getDeveloperToolbar(window).focusToggle();
@@ -356,7 +363,13 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
     return deferred.promise;
   },
 
-   // Used by menus.js
+  /**
+   * Open the Browser Content Toolbox for the provided gBrowser instance.
+   * Returns a promise that resolves with a toolbox instance. If no content process is
+   * available, the promise will be rejected and a message will be displayed to the user.
+   *
+   * Used by menus.js
+  */
   openContentProcessToolbox(gBrowser) {
     let { childCount } = Services.ppmm;
     // Get the process message manager for the current tab
@@ -370,16 +383,17 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
       }
     }
     if (processId) {
-      this._getContentProcessTarget(processId)
+      return this._getContentProcessTarget(processId)
           .then(target => {
             // Display a new toolbox, in a new window, with debugger by default
             return gDevTools.showToolbox(target, "jsdebugger",
                                          Toolbox.HostType.WINDOW);
           });
-    } else {
-      let msg = L10N.getStr("toolbox.noContentProcessForTab.message");
-      Services.prompt.alert(null, "", msg);
     }
+
+    let msg = L10N.getStr("toolbox.noContentProcessForTab.message");
+    Services.prompt.alert(null, "", msg);
+    return Promise.reject(msg);
   },
 
   /**

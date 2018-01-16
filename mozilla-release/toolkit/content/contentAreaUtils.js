@@ -7,6 +7,7 @@ Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
   Downloads: "resource://gre/modules/Downloads.jsm",
+  DownloadPaths: "resource://gre/modules/DownloadPaths.jsm",
   DownloadLastDir: "resource://gre/modules/DownloadLastDir.jsm",
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   OS: "resource://gre/modules/osfile.jsm",
@@ -29,7 +30,7 @@ var ContentAreaUtils = {
     return this.stringBundle =
       Services.strings.createBundle("chrome://global/locale/contentAreaCommands.properties");
   }
-}
+};
 
 function urlSecurityCheck(aURL, aPrincipal, aFlags) {
   return BrowserUtils.urlSecurityCheck(aURL, aPrincipal, aFlags);
@@ -259,7 +260,7 @@ function DownloadListener(win, transfer) {
   function makeClosure(name) {
     return function() {
       transfer[name].apply(transfer, arguments);
-    }
+    };
   }
 
   this.window = win;
@@ -293,7 +294,7 @@ DownloadListener.prototype = {
 
     throw Components.results.NS_ERROR_NO_INTERFACE;
   }
-}
+};
 
 const kSaveAsType_Complete = 0; // Save document with attached objects.
 XPCOMUtils.defineConstant(this, "kSaveAsType_Complete", 0);
@@ -874,7 +875,7 @@ function appendFiltersForContentType(aFilePicker, aContentType, aFileExtension, 
       while (extEnumerator.hasMore()) {
         var extension = extEnumerator.getNext();
         if (extString)
-          extString += "; ";    // If adding more than one extension,
+          extString += "; "; // If adding more than one extension,
                                 // separate by semi-colon
         extString += "*." + extension;
       }
@@ -981,7 +982,7 @@ function getDefaultFileName(aDefaultFileName, aURI, aDocument,
     const mhpContractID = "@mozilla.org/network/mime-hdrparam;1";
     const mhpIID = Components.interfaces.nsIMIMEHeaderParam;
     const mhp = Components.classes[mhpContractID].getService(mhpIID);
-    var dummy = { value: null };  // Need an out param...
+    var dummy = { value: null }; // Need an out param...
     var charset = getCharsetforSave(aDocument);
 
     var fileName = null;
@@ -996,23 +997,21 @@ function getDefaultFileName(aDefaultFileName, aURI, aDocument,
       }
     }
     if (fileName)
-      return fileName;
+      return validateFileName(fileName);
   }
 
   let docTitle;
-  if (aDocument) {
+  if (aDocument && aDocument.title && aDocument.title.trim()) {
     // If the document looks like HTML or XML, try to use its original title.
-    docTitle = validateFileName(aDocument.title).trim();
-    if (docTitle) {
-      let contentType = aDocument.contentType;
-      if (contentType == "application/xhtml+xml" ||
-          contentType == "application/xml" ||
-          contentType == "image/svg+xml" ||
-          contentType == "text/html" ||
-          contentType == "text/xml") {
-        // 2) Use the document title
-        return docTitle;
-      }
+    docTitle = validateFileName(aDocument.title);
+    let contentType = aDocument.contentType;
+    if (contentType == "application/xhtml+xml" ||
+        contentType == "application/xml" ||
+        contentType == "image/svg+xml" ||
+        contentType == "text/html" ||
+        contentType == "text/xml") {
+      // 2) Use the document title
+      return docTitle;
     }
   }
 
@@ -1044,7 +1043,7 @@ function getDefaultFileName(aDefaultFileName, aURI, aDocument,
   try {
     if (aURI.host)
       // 7) Use the host.
-      return aURI.host;
+      return validateFileName(aURI.host);
   } catch (e) {
     // Some files have no information at all, like Javascript generated pages
   }
@@ -1059,29 +1058,8 @@ function getDefaultFileName(aDefaultFileName, aURI, aDocument,
 }
 
 function validateFileName(aFileName) {
-  var re = /[\/]+/g;
-  if (navigator.appVersion.indexOf("Windows") != -1) {
-    re = /[\\\/\|]+/g;
-    aFileName = aFileName.replace(/[\"]+/g, "'");
-    aFileName = aFileName.replace(/[\*\:\?]+/g, " ");
-    aFileName = aFileName.replace(/[\<]+/g, "(");
-    aFileName = aFileName.replace(/[\>]+/g, ")");
-  } else if (navigator.appVersion.indexOf("Macintosh") != -1)
-    re = /[\:\/]+/g;
-  else if (navigator.appVersion.indexOf("Android") != -1) {
-    // On mobile devices, the filesystem may be very limited in what
-    // it considers valid characters. To avoid errors, we sanitize
-    // conservatively.
-    const dangerousChars = "*?<>|\":/\\[];,+=";
-    var processed = "";
-    for (var i = 0; i < aFileName.length; i++)
-      processed += aFileName.charCodeAt(i) >= 32 &&
-                   !(dangerousChars.indexOf(aFileName[i]) >= 0) ? aFileName[i]
-                                                                : "_";
-
-    // Last character should not be a space
-    processed = processed.trim();
-
+  let processed = DownloadPaths.sanitize(aFileName) || "_";
+  if (AppConstants.platform == "android") {
     // If a large part of the filename has been sanitized, then we
     // will use a default filename instead
     if (processed.replace(/_/g, "").length <= processed.length / 2) {
@@ -1099,10 +1077,8 @@ function validateFileName(aFileName) {
           processed += "." + suffix;
       }
     }
-    return processed;
   }
-
-  return aFileName.replace(re, "_");
+  return processed;
 }
 
 function getNormalizedLeafName(aFile, aDefaultExtension) {
@@ -1127,7 +1103,7 @@ function getNormalizedLeafName(aFile, aDefaultExtension) {
 
 function getDefaultExtension(aFilename, aURI, aContentType) {
   if (aContentType == "text/plain" || aContentType == "application/octet-stream" || aURI.scheme == "ftp")
-    return "";   // temporary fix for bug 120327
+    return ""; // temporary fix for bug 120327
 
   // First try the extension from the filename
   const stdURLContractID = "@mozilla.org/network/standard-url;1";
@@ -1240,7 +1216,7 @@ function openURL(aURL) {
           return this;
         throw Components.results.NS_ERROR_NO_INTERFACE;
       }
-    }
+    };
     loadgroup.groupObserver = loadListener;
 
     var uriListener = {
@@ -1257,7 +1233,7 @@ function openURL(aURL) {
           return loadgroup;
         throw Components.results.NS_ERROR_NO_INTERFACE;
       }
-    }
+    };
 
     var channel = NetUtil.newChannel({
       uri,

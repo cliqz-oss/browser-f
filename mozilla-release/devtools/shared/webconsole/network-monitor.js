@@ -439,13 +439,34 @@ NetworkResponseListener.prototype = {
     // we pass the data from our pipe to the converter.
     this.offset = 0;
 
+    let channel = this.request;
+
+    // Bug 1372115 - We should load bytecode cached requests from cache as the actual
+    // channel content is going to be optimized data that reflects platform internals
+    // instead of the content user expects (i.e. content served by HTTP server)
+    // Note that bytecode cached is one example, there may be wasm or other usecase in
+    // future.
+    let isOptimizedContent = false;
+    try {
+      if (channel instanceof Ci.nsICacheInfoChannel) {
+        isOptimizedContent = channel.alternativeDataType;
+      }
+    } catch (e) {
+      // Accessing `alternativeDataType` for some SW requests throws.
+    }
+    if (isOptimizedContent) {
+      let charset = this.request.contentCharset || this.httpActivity.charset;
+      NetworkHelper.loadFromCache(this.httpActivity.url, charset,
+                                  this._onComplete.bind(this));
+      return;
+    }
+
     // In the multi-process mode, the conversion happens on the child
     // side while we can only monitor the channel on the parent
     // side. If the content is gzipped, we have to unzip it
     // ourself. For that we use the stream converter services.  Do not
     // do that for Service workers as they are run in the child
     // process.
-    let channel = this.request;
     if (!this.httpActivity.fromServiceWorker &&
         channel instanceof Ci.nsIEncodedChannel &&
         channel.contentEncodings &&
@@ -814,10 +835,8 @@ NetworkMonitor.prototype = {
 
     this.interceptedChannels.add(subject);
 
-    // On e10s, we never receive http-on-examine-cached-response, so fake one.
-    if (Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT) {
-      this._httpResponseExaminer(channel, "http-on-examine-cached-response");
-    }
+    // Service workers never fire http-on-examine-cached-response, so fake one.
+    this._httpResponseExaminer(channel, "http-on-examine-cached-response");
   },
 
   /**
@@ -915,7 +934,8 @@ NetworkMonitor.prototype = {
       // There also is never any timing events, so we can fire this
       // event with zeroed out values.
       let timings = this._setupHarTimings(httpActivity, true);
-      httpActivity.owner.addEventTimings(timings.total, timings.timings);
+      httpActivity.owner.addEventTimings(timings.total, timings.timings,
+                                         timings.offsets);
     }
   },
 
@@ -1365,7 +1385,8 @@ NetworkMonitor.prototype = {
    */
   _onTransactionClose: function (httpActivity) {
     let result = this._setupHarTimings(httpActivity);
-    httpActivity.owner.addEventTimings(result.total, result.timings);
+    httpActivity.owner.addEventTimings(result.total, result.timings,
+                                       result.offsets);
     this.openRequests.delete(httpActivity.channel);
   },
 
@@ -1399,12 +1420,31 @@ NetworkMonitor.prototype = {
           send: 0,
           wait: 0,
           receive: 0
+        },
+        offsets: {
+          blocked: 0,
+          dns: 0,
+          ssl: 0,
+          connect: 0,
+          send: 0,
+          wait: 0,
+          receive: 0
         }
       };
     }
 
     let timings = httpActivity.timings;
     let harTimings = {};
+    // If the TCP Fast Open option or tls1.3 0RTT is used tls and data can
+    // be dispatched in SYN packet and not after tcp socket is connected.
+    // To demostrate this properly we will calculated TLS and send start time
+    // relative to CONNECTING_TO.
+    // Similary if 0RTT is used, data can be sent as soon as a TLS handshake
+    // starts.
+    let secureConnectionStartTime = 0;
+    let secureConnectionStartTimeRelative = false;
+    let startSendingTime = 0;
+    let startSendingTimeRelative = false;
 
     if (timings.STATUS_RESOLVING && timings.STATUS_CONNECTING_TO) {
       harTimings.blocked = timings.STATUS_RESOLVING.first -
@@ -1432,6 +1472,14 @@ NetworkMonitor.prototype = {
     if (timings.STATUS_TLS_STARTING && timings.STATUS_TLS_ENDING) {
       harTimings.ssl = timings.STATUS_TLS_ENDING.last -
                            timings.STATUS_TLS_STARTING.first;
+      if (timings.STATUS_CONNECTING_TO) {
+        secureConnectionStartTime =
+          timings.STATUS_TLS_STARTING.first - timings.STATUS_CONNECTING_TO.first;
+      }
+      if (secureConnectionStartTime < 0) {
+        secureConnectionStartTime = 0;
+      }
+      secureConnectionStartTimeRelative = true;
     } else {
       harTimings.ssl = -1;
     }
@@ -1441,26 +1489,93 @@ NetworkMonitor.prototype = {
     // nsITimedChannel interface used by Resource and Navigation Timing
     let timedChannel = httpActivity.channel.QueryInterface(Ci.nsITimedChannel);
 
-    if ((harTimings.connect <= 0) && timedChannel) {
-      if (timedChannel.secureConnectionStartTime > timedChannel.connectStartTime) {
-        harTimings.connect =
-          timedChannel.secureConnectionStartTime - timedChannel.connectStartTime;
-        harTimings.ssl =
-          timedChannel.connectEndTime - timedChannel.secureConnectionStartTime;
-      } else {
-        harTimings.connect =
-          timedChannel.connectEndTime - timedChannel.connectStartTime;
-        harTimings.ssl = -1;
+    let tcTcpConnectEndTime = 0;
+    let tcConnectStartTime = 0;
+    let tcConnectEndTime = 0;
+    let tcSecureConnectionStartTime = 0;
+    let tcDomainLookupEndTime = 0;
+    let tcDomainLookupStartTime = 0;
+
+    if (timedChannel) {
+      tcTcpConnectEndTime = timedChannel.tcpConnectEndTime;
+      tcConnectStartTime = timedChannel.connectStartTime;
+      tcConnectEndTime = timedChannel.connectEndTime;
+      tcSecureConnectionStartTime = timedChannel.secureConnectionStartTime;
+      tcDomainLookupEndTime = timedChannel.domainLookupEndTime;
+      tcDomainLookupStartTime = timedChannel.domainLookupStartTime;
+    }
+
+    // Make sure the above values are at least timedChannel.asyncOpenTime.
+    if (timedChannel && timedChannel.asyncOpenTime) {
+      if ((tcTcpConnectEndTime != 0) &&
+          (tcTcpConnectEndTime < timedChannel.asyncOpenTime)) {
+        tcTcpConnectEndTime = 0;
+      }
+      if ((tcConnectStartTime != 0) &&
+          (tcConnectStartTime < timedChannel.asyncOpenTime)) {
+        tcConnectStartTime = 0;
+      }
+      if ((tcConnectEndTime != 0) &&
+          (tcConnectEndTime < timedChannel.asyncOpenTime)) {
+        tcConnectEndTime = 0;
+      }
+      if ((tcSecureConnectionStartTime != 0) &&
+          (tcSecureConnectionStartTime < timedChannel.asyncOpenTime)) {
+        tcSecureConnectionStartTime = 0;
+      }
+      if ((tcDomainLookupEndTime != 0) &&
+          (tcDomainLookupEndTime < timedChannel.asyncOpenTime)) {
+        tcDomainLookupEndTime = 0;
+      }
+      if ((tcDomainLookupStartTime != 0) &&
+          (tcDomainLookupStartTime < timedChannel.asyncOpenTime)) {
+        tcDomainLookupStartTime = 0;
       }
     }
 
-    if ((harTimings.dns <= 0) && timedChannel) {
-      harTimings.dns =
-        timedChannel.domainLookupEndTime - timedChannel.domainLookupStartTime;
+    if ((harTimings.connect <= 0) && timedChannel &&
+        (tcTcpConnectEndTime != 0) && (tcConnectStartTime != 0)) {
+      harTimings.connect = tcTcpConnectEndTime - tcConnectStartTime;
+      if (tcSecureConnectionStartTime != 0) {
+        harTimings.ssl = tcConnectEndTime - tcSecureConnectionStartTime;
+        secureConnectionStartTime =
+          tcSecureConnectionStartTime - tcConnectStartTime;
+        secureConnectionStartTimeRelative = true;
+      } else {
+        harTimings.ssl = -1;
+      }
+    } else if (timedChannel && timings.STATUS_TLS_STARTING &&
+               (tcSecureConnectionStartTime != 0)) {
+      // It can happen that TCP Fast Open actually have not sent any data and
+      // timings.STATUS_TLS_STARTING.first value will be corrected in
+      // timedChannel.secureConnectionStartTime
+      if (tcSecureConnectionStartTime > timings.STATUS_TLS_STARTING.first) {
+        // TCP Fast Open actually did not sent any data.
+        harTimings.ssl =
+          tcConnectEndTime - tcSecureConnectionStartTime;
+        secureConnectionStartTimeRelative = false;
+      }
+    }
+
+    if ((harTimings.dns <= 0) && timedChannel &&
+        (tcDomainLookupEndTime != 0) && (tcDomainLookupStartTime != 0)) {
+      harTimings.dns = tcDomainLookupEndTime - tcDomainLookupStartTime;
     }
 
     if (timings.STATUS_SENDING_TO) {
-      harTimings.send = timings.STATUS_SENDING_TO.last - timings.STATUS_SENDING_TO.first;
+      harTimings.send =
+        timings.STATUS_SENDING_TO.last - timings.STATUS_SENDING_TO.first;
+      if (timings.STATUS_CONNECTING_TO) {
+        startSendingTime =
+          timings.STATUS_SENDING_TO.first - timings.STATUS_CONNECTING_TO.first;
+        startSendingTimeRelative = true;
+      } else if (tcConnectStartTime != 0) {
+        startSendingTime = timings.STATUS_SENDING_TO.first - tcConnectStartTime;
+        startSendingTimeRelative = true;
+      }
+      if (startSendingTime < 0) {
+        startSendingTime = 0;
+      }
     } else if (timings.REQUEST_HEADER && timings.REQUEST_BODY_SENT) {
       harTimings.send = timings.REQUEST_BODY_SENT.last - timings.REQUEST_HEADER.first;
     } else {
@@ -1482,18 +1597,72 @@ NetworkMonitor.prototype = {
       harTimings.receive = -1;
     }
 
+    if (secureConnectionStartTimeRelative) {
+      let time = Math.max(Math.round(secureConnectionStartTime / 1000), -1);
+      secureConnectionStartTime = time;
+    }
+    if (startSendingTimeRelative) {
+      let time = Math.max(Math.round(startSendingTime / 1000), -1);
+      startSendingTime = time;
+    }
+
+    let ot = this._calculateOffsetAndTotalTime(harTimings,
+                                               secureConnectionStartTime,
+                                               startSendingTimeRelative,
+                                               secureConnectionStartTimeRelative,
+                                               startSendingTime);
+    return {
+      total: ot.total,
+      timings: harTimings,
+      offsets: ot.offsets
+    };
+  },
+
+  _calculateOffsetAndTotalTime: function (harTimings,
+                                          secureConnectionStartTime,
+                                          startSendingTimeRelative,
+                                          secureConnectionStartTimeRelative,
+                                          startSendingTime) {
     let totalTime = 0;
     for (let timing in harTimings) {
       let time = Math.max(Math.round(harTimings[timing] / 1000), -1);
       harTimings[timing] = time;
-      if (time > -1) {
+      if ((time > -1) && (timing != "connect") && (timing != "ssl")) {
         totalTime += time;
       }
     }
 
+    // connect, ssl and send times can be overlapped.
+    if (startSendingTimeRelative) {
+      totalTime += startSendingTime;
+    } else if (secureConnectionStartTimeRelative) {
+      totalTime += secureConnectionStartTime;
+      totalTime += harTimings.ssl;
+    }
+
+    let offsets = {};
+    offsets.blocked = 0;
+    offsets.dns = harTimings.blocked;
+    offsets.connect = offsets.dns + harTimings.dns;
+    if (secureConnectionStartTimeRelative) {
+      offsets.ssl = offsets.connect + secureConnectionStartTime;
+    } else {
+      offsets.ssl = offsets.connect + harTimings.connect;
+    }
+    if (startSendingTimeRelative) {
+      offsets.send = offsets.connect + startSendingTime;
+      if (!secureConnectionStartTimeRelative) {
+        offsets.ssl = offsets.send - harTimings.ssl;
+      }
+    } else {
+      offsets.send = offsets.ssl + harTimings.ssl;
+    }
+    offsets.wait = offsets.send + harTimings.send;
+    offsets.receive = offsets.wait + harTimings.wait;
+
     return {
       total: totalTime,
-      timings: harTimings,
+      offsets: offsets
     };
   },
 

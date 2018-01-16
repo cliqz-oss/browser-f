@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -69,6 +70,10 @@ protected:
   std::vector<RefPtr<FilterNodeD2D1>> mInputFilters;
   std::vector<RefPtr<SourceSurface>> mInputSurfaces;
   FilterType mType;
+
+private:
+  using FilterNode::SetAttribute;
+  using FilterNode::SetInput;
 };
 
 class FilterNodeConvolveD2D1 : public FilterNodeD2D1
@@ -87,6 +92,9 @@ public:
   virtual ID2D1Effect* InputEffect() override;
 
 private:
+  using FilterNode::SetAttribute;
+  using FilterNode::SetInput;
+
   void UpdateChain();
   void UpdateOffset();
   void UpdateSourceRect();

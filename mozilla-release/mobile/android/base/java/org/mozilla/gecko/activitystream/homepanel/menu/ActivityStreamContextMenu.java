@@ -13,6 +13,7 @@ import android.support.design.widget.Snackbar;
 import android.view.MenuItem;
 import android.view.View;
 
+import org.mozilla.gecko.Clipboard;
 import org.mozilla.gecko.GeckoApplication;
 import org.mozilla.gecko.IntentHelper;
 import org.mozilla.gecko.R;
@@ -27,7 +28,6 @@ import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.db.SuggestedSites;
 import org.mozilla.gecko.home.HomePager;
 import org.mozilla.gecko.reader.SavedReaderViewHelper;
-import org.mozilla.gecko.util.Clipboard;
 import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.UIAsyncTask;
@@ -61,14 +61,13 @@ public abstract class ActivityStreamContextMenu
 
     private final MenuMode mode;
 
-    /* package-private */ ActivityStreamContextMenu(final Context context,
-                                                    final View snackbarAnchor,
+    /* package-private */ ActivityStreamContextMenu(final View snackbarAnchor,
                                                     final ActivityStreamTelemetry.Extras.Builder telemetryExtraBuilder,
                                                     final MenuMode mode,
                                                     final WebpageModel item,
                                                     HomePager.OnUrlOpenListener onUrlOpenListener,
                                                     HomePager.OnUrlOpenInBackgroundListener onUrlOpenInBackgroundListener) {
-        this.context = context;
+        this.context = snackbarAnchor.getContext();
         this.snackbarAnchor = snackbarAnchor;
         this.item = item;
         this.telemetryExtraBuilder = telemetryExtraBuilder;
@@ -280,11 +279,16 @@ public abstract class ActivityStreamContextMenu
                 break;
 
             case R.id.copy_url:
-                Clipboard.setText(item.getUrl());
+                Clipboard.setText(context, item.getUrl());
                 break;
 
             case R.id.add_homescreen:
-                GeckoApplication.createShortcut(item.getTitle(), item.getUrl());
+                ThreadUtils.postToBackgroundThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        GeckoApplication.createBrowserShortcut(item.getTitle(), item.getUrl());
+                    }
+                });
                 break;
 
             case R.id.open_new_tab:
@@ -336,12 +340,15 @@ public abstract class ActivityStreamContextMenu
     }
 
     /**
+     * @param tabletContextMenuAnchor A view to anchor the context menu on tablet, where it doesn't fill the screen.
+     * @param snackbarAnchor A view to anchor the Snackbar on. Don't use items in the recyclerView because these views can be
+     *               removed from the view hierarchy when the recyclerView scrolls.
      * @param shouldOverrideIconWithImageProvider true if the favicon should be replaced with an image provider,
      *                                            if applicable, false otherwise.
      */
     @RobocopTarget
-    public static ActivityStreamContextMenu show(Context context,
-                                                      View anchor, ActivityStreamTelemetry.Extras.Builder telemetryExtraBuilder,
+    public static ActivityStreamContextMenu show(final View tabletContextMenuAnchor, final View snackbarAnchor,
+                                                      ActivityStreamTelemetry.Extras.Builder telemetryExtraBuilder,
                                                       final MenuMode menuMode, final WebpageModel item,
                                                       final boolean shouldOverrideIconWithImageProvider,
                                                       HomePager.OnUrlOpenListener onUrlOpenListener,
@@ -350,14 +357,12 @@ public abstract class ActivityStreamContextMenu
         final ActivityStreamContextMenu menu;
 
         if (!HardwareUtils.isTablet()) {
-            menu = new BottomSheetContextMenu(context,
-                    anchor,
+            menu = new BottomSheetContextMenu(snackbarAnchor,
                     telemetryExtraBuilder, menuMode,
                     item, shouldOverrideIconWithImageProvider, onUrlOpenListener, onUrlOpenInBackgroundListener,
                     tilesWidth, tilesHeight);
         } else {
-            menu = new PopupContextMenu(context,
-                    anchor,
+            menu = new PopupContextMenu(tabletContextMenuAnchor, snackbarAnchor,
                     telemetryExtraBuilder, menuMode,
                     item, onUrlOpenListener, onUrlOpenInBackgroundListener);
         }

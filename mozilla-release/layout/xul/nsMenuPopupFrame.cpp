@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +7,7 @@
 #include "nsMenuPopupFrame.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsPresContext.h"
 #include "nsStyleContext.h"
 #include "nsCSSRendering.h"
@@ -158,7 +158,7 @@ nsMenuPopupFrame::Init(nsIContent*       aContent,
   mPopupType = ePopupTypePanel;
   nsIDocument* doc = aContent->OwnerDoc();
   int32_t namespaceID;
-  nsCOMPtr<nsIAtom> tag = doc->BindingManager()->ResolveTag(aContent, &namespaceID);
+  RefPtr<nsAtom> tag = doc->BindingManager()->ResolveTag(aContent, &namespaceID);
   if (namespaceID == kNameSpaceID_XUL) {
     if (tag == nsGkAtoms::menupopup || tag == nsGkAtoms::popup)
       mPopupType = ePopupTypeMenu;
@@ -319,7 +319,7 @@ nsMenuPopupFrame::CreateWidgetForView(nsView* aView)
 #endif
 
   nsIContent* parentContent = GetContent()->GetParent();
-  nsIAtom *tag = nullptr;
+  nsAtom *tag = nullptr;
   if (parentContent && parentContent->IsXULElement())
     tag = parentContent->NodeInfo()->NameAtom();
   widgetData.mHasRemoteContent = remote;
@@ -944,8 +944,8 @@ nsMenuPopupFrame::ShowPopup(bool aIsContextMenu)
 
     // do we need an actual reflow here?
     // is SetPopupPosition all that is needed?
-    PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                                 NS_FRAME_HAS_DIRTY_CHILDREN);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                  NS_FRAME_HAS_DIRTY_CHILDREN);
 
     if (mPopupType == ePopupTypeMenu) {
       nsCOMPtr<nsISound> sound(do_CreateInstance("@mozilla.org/sound;1"));
@@ -1878,7 +1878,7 @@ nsIScrollableFrame* nsMenuPopupFrame::GetScrollFrame(nsIFrame* aStart)
 void nsMenuPopupFrame::EnsureMenuItemIsVisible(nsMenuFrame* aMenuItem)
 {
   if (aMenuItem) {
-    aMenuItem->PresContext()->PresShell()->ScrollFrameRectIntoView(
+    aMenuItem->PresShell()->ScrollFrameRectIntoView(
       aMenuItem,
       nsRect(nsPoint(0,0), aMenuItem->GetRect().Size()),
       nsIPresShell::ScrollAxis(),
@@ -2029,7 +2029,7 @@ nsMenuPopupFrame::ChangeMenuItem(nsMenuFrame* aMenuItem,
       // the menu, blink it, or update any other state of the menuitem. The
       // command event will cause the item to be selected.
       nsContentUtils::DispatchXULCommand(aMenuItem->GetContent(), /* aTrusted = */ true,
-                                         nullptr, PresContext()->PresShell(),
+                                         nullptr, PresShell(),
                                          false, false, false, false);
     }
 #endif
@@ -2062,7 +2062,7 @@ nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, bool& doAction
   doAction = false;
 
   // Enumerate over our list of frames.
-  auto insertion = PresContext()->PresShell()->
+  auto insertion = PresShell()->
     FrameConstructor()->GetInsertionPoint(GetContent(), nullptr);
   nsContainerFrame* immediateParent = insertion.mParentFrame;
   if (!immediateParent)
@@ -2261,7 +2261,7 @@ nsMenuPopupFrame::AttachedDismissalListener()
 
 nsresult
 nsMenuPopupFrame::AttributeChanged(int32_t aNameSpaceID,
-                                   nsIAtom* aAttribute,
+                                   nsAtom* aAttribute,
                                    int32_t aModType)
 
 {
@@ -2336,10 +2336,10 @@ nsMenuPopupFrame::MoveToAttributePosition()
 }
 
 void
-nsMenuPopupFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsMenuPopupFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (mReflowCallbackData.mPosted) {
-    PresContext()->PresShell()->CancelReflowCallback(this);
+    PresShell()->CancelReflowCallback(this);
     mReflowCallbackData.Clear();
   }
 
@@ -2362,7 +2362,7 @@ nsMenuPopupFrame::DestroyFrom(nsIFrame* aDestructRoot)
     rootBox->SetDefaultTooltip(nullptr);
   }
 
-  nsBoxFrame::DestroyFrom(aDestructRoot);
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 

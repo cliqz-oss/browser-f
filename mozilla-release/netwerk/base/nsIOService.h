@@ -7,7 +7,7 @@
 #define nsIOService_h__
 
 #include "nsStringFwd.h"
-#include "nsIIOService2.h"
+#include "nsIIOService.h"
 #include "nsTArray.h"
 #include "nsCOMPtr.h"
 #include "nsWeakPtr.h"
@@ -46,7 +46,7 @@ namespace net {
 class NeckoChild;
 class nsAsyncRedirectVerifyHelper;
 
-class nsIOService final : public nsIIOService2
+class nsIOService final : public nsIIOService
                         , public nsIObserver
                         , public nsINetUtil
                         , public nsISpeculativeConnect
@@ -56,7 +56,6 @@ class nsIOService final : public nsIIOService2
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
     NS_DECL_NSIIOSERVICE
-    NS_DECL_NSIIOSERVICE2
     NS_DECL_NSIOBSERVER
     NS_DECL_NSINETUTIL
     NS_DECL_NSISPECULATIVECONNECT
@@ -64,8 +63,7 @@ public:
 
     // Gets the singleton instance of the IO Service, creating it as needed
     // Returns nullptr on out of memory or failure to initialize.
-    // Returns an addrefed pointer.
-    static nsIOService* GetInstance();
+    static already_AddRefed<nsIOService> GetInstance();
 
     nsresult Init();
     nsresult NewURI(const char* aSpec, nsIURI* aBaseURI,
@@ -172,7 +170,6 @@ private:
 
     nsCOMPtr<nsPISocketTransportService> mSocketTransportService;
     nsCOMPtr<nsPIDNSService>             mDNSService;
-    nsCOMPtr<nsIProtocolProxyService2>   mProxyService;
     nsCOMPtr<nsICaptivePortalService>    mCaptivePortalService;
     nsCOMPtr<nsINetworkLinkService>      mNetworkLinkService;
     bool                                 mNetworkLinkServiceInitialized;

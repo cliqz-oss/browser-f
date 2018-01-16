@@ -74,6 +74,11 @@ Handler::InternalQueryInterface(REFIID riid, void** ppv)
 
   // Try the handler implementation
   HRESULT hr = QueryHandlerInterface(mInnerUnk, riid, ppv);
+  if (hr == S_FALSE) {
+    // The handler knows this interface is not available, so don't bother
+    // asking the proxy.
+    return E_NOINTERFACE;
+  }
   if (hr != E_NOINTERFACE) {
     return hr;
   }
@@ -107,8 +112,8 @@ Handler::GetUnmarshalClass(REFIID riid, void* pv, DWORD dwDestContext,
                            void* pvDestContext, DWORD mshlflags,
                            CLSID* pCid)
 {
-  return mUnmarshal->GetUnmarshalClass(riid, pv, dwDestContext, pvDestContext,
-                                       mshlflags, pCid);
+  return mUnmarshal->GetUnmarshalClass(MarshalAs(riid), pv, dwDestContext,
+                                       pvDestContext, mshlflags, pCid);
 }
 
 HRESULT
@@ -165,6 +170,17 @@ Handler::GetMarshalSizeMax(REFIID riid, void* pv, DWORD dwDestContext,
 }
 
 HRESULT
+Handler::GetMarshalInterface(REFIID aMarshalAsIid,
+                             NotNull<IUnknown*> aProxy,
+                             NotNull<IID*> aOutIid,
+                             NotNull<IUnknown**> aOutUnk)
+{
+  *aOutIid = aMarshalAsIid;
+  return aProxy->QueryInterface(aMarshalAsIid,
+      reinterpret_cast<void**>(static_cast<IUnknown**>(aOutUnk)));
+}
+
+HRESULT
 Handler::MarshalInterface(IStream* pStm, REFIID riid, void* pv,
                           DWORD dwDestContext, void* pvDestContext,
                           DWORD mshlflags)
@@ -187,14 +203,14 @@ Handler::MarshalInterface(IStream* pStm, REFIID riid, void* pv,
   if (FAILED(hr)) {
     return hr;
   }
-
-  // When marshaling without a handler, we just use the riid as passed in.
-  REFIID marshalAs = riid;
-#else
-  REFIID marshalAs = MarshalAs(riid);
 #endif // defined(MOZ_MSCOM_REMARSHAL_NO_HANDLER)
 
-  hr = mInnerUnk->QueryInterface(marshalAs, getter_AddRefs(unkToMarshal));
+  REFIID marshalAs = MarshalAs(riid);
+  IID marshalOutAs;
+
+  hr = GetMarshalInterface(marshalAs, WrapNotNull<IUnknown*>(mInnerUnk),
+                           WrapNotNull(&marshalOutAs),
+                           WrapNotNull<IUnknown**>(getter_AddRefs(unkToMarshal)));
   if (FAILED(hr)) {
     return hr;
   }
@@ -216,6 +232,11 @@ Handler::MarshalInterface(IStream* pStm, REFIID riid, void* pv,
   // Now strip out the handler.
   if (!StripHandlerFromOBJREF(WrapNotNull(pStm), objrefPos.QuadPart,
                               endPos.QuadPart)) {
+    return E_FAIL;
+  }
+
+  // Fix the IID
+  if (!SetIID(WrapNotNull(pStm), objrefPos.QuadPart, marshalOutAs)) {
     return E_FAIL;
   }
 

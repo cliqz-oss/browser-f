@@ -4,14 +4,12 @@
 
 use byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
 use canvas_traits::canvas::{byte_swap, multiply_u8_pixel};
-use canvas_traits::webgl::{WebGLContextShareMode, WebGLCommand, WebGLError};
+use canvas_traits::webgl::{WebGLContextShareMode, WebGLCommand, WebGLError, WebGLVersion};
 use canvas_traits::webgl::{WebGLFramebufferBindingRequest, WebGLMsg, WebGLMsgSender, WebGLParameter, WebVRCommand};
+use canvas_traits::webgl::DOMToTextureCommand;
 use canvas_traits::webgl::WebGLError::*;
 use canvas_traits::webgl::webgl_channel;
-use core::cell::Ref;
-use core::iter::FromIterator;
-use core::nonzero::NonZero;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::WebGLRenderingContextBinding::{self, WebGLContextAttributes};
 use dom::bindings::codegen::Bindings::WebGLRenderingContextBinding::WebGLRenderingContextConstants as constants;
 use dom::bindings::codegen::Bindings::WebGLRenderingContextBinding::WebGLRenderingContextMethods;
@@ -19,12 +17,14 @@ use dom::bindings::codegen::UnionTypes::ImageDataOrHTMLImageElementOrHTMLCanvasE
 use dom::bindings::conversions::{ConversionResult, FromJSValConvertible, ToJSValConvertible};
 use dom::bindings::error::{Error, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{JS, LayoutJS, MutNullableJS, Root};
+use dom::bindings::nonnull::NonNullJSObjectPtr;
 use dom::bindings::reflector::{DomObject, Reflector, reflect_dom_object};
+use dom::bindings::root::{Dom, DomRoot, LayoutDom, MutNullableDom};
 use dom::bindings::str::DOMString;
 use dom::event::{Event, EventBubbles, EventCancelable};
 use dom::htmlcanvaselement::HTMLCanvasElement;
 use dom::htmlcanvaselement::utils as canvas_utils;
+use dom::htmliframeelement::HTMLIFrameElement;
 use dom::node::{Node, NodeDamage, window_from_node};
 use dom::webgl_extensions::WebGLExtensions;
 use dom::webgl_validations::WebGLValidator;
@@ -55,7 +55,8 @@ use net_traits::image_cache::ImageResponse;
 use offscreen_gl_context::{GLContextAttributes, GLLimits};
 use script_layout_interface::HTMLCanvasDataSource;
 use servo_config::prefs::PREFS;
-use std::cell::Cell;
+use std::cell::{Cell, Ref};
+use std::iter::FromIterator;
 use webrender_api;
 
 type ImagePixelResult = Result<(Vec<u8>, Size2D<i32>, bool), ()>;
@@ -110,6 +111,18 @@ macro_rules! object_binding_to_js_or_null {
     };
 }
 
+macro_rules! optional_root_object_to_js_or_null {
+    ($cx: expr, $binding:expr) => {
+        {
+            rooted!(in($cx) let mut rval = NullValue());
+            if let Some(object) = $binding {
+                object.to_jsval($cx, rval.handle_mut());
+            }
+            rval.get()
+        }
+    };
+}
+
 fn has_invalid_blend_constants(arg1: u32, arg2: u32) -> bool {
     match (arg1, arg2) {
         (constants::CONSTANT_COLOR, constants::CONSTANT_ALPHA) => true,
@@ -122,59 +135,97 @@ fn has_invalid_blend_constants(arg1: u32, arg2: u32) -> bool {
 
 /// Set of bitflags for texture unpacking (texImage2d, etc...)
 bitflags! {
-    #[derive(HeapSizeOf, JSTraceable)]
-    flags TextureUnpacking: u8 {
-        const FLIP_Y_AXIS = 0x01,
-        const PREMULTIPLY_ALPHA = 0x02,
-        const CONVERT_COLORSPACE = 0x04,
+    #[derive(JSTraceable, MallocSizeOf)]
+    struct TextureUnpacking: u8 {
+        const FLIP_Y_AXIS = 0x01;
+        const PREMULTIPLY_ALPHA = 0x02;
+        const CONVERT_COLORSPACE = 0x04;
     }
 }
+
+/// Information about the bound textures of a WebGL texture unit.
+#[must_root]
+#[derive(JSTraceable, MallocSizeOf)]
+struct TextureUnitBindings {
+    bound_texture_2d: MutNullableDom<WebGLTexture>,
+    bound_texture_cube_map: MutNullableDom<WebGLTexture>,
+}
+
+impl TextureUnitBindings {
+    fn new() -> Self {
+        Self {
+            bound_texture_2d: MutNullableDom::new(None),
+            bound_texture_cube_map: MutNullableDom::new(None),
+        }
+    }
+
+    /// Clears the slot associated to the given texture.
+    /// Returns the GL target of the cleared slot, if any.
+    fn clear_slot(&self, texture: &WebGLTexture) -> Option<u32> {
+        let fields = [(&self.bound_texture_2d, constants::TEXTURE_2D),
+                      (&self.bound_texture_cube_map, constants::TEXTURE_CUBE_MAP)];
+
+        fields.iter().find(|field| {
+            match field.0.get() {
+                Some(t) => t.id() == texture.id(),
+                _ => false,
+            }
+        }).and_then(|field| {
+            field.0.set(None);
+            Some(field.1)
+        })
+    }
+}
+
 
 #[dom_struct]
 pub struct WebGLRenderingContext {
     reflector_: Reflector,
-    #[ignore_heap_size_of = "Channels are hard"]
+    #[ignore_malloc_size_of = "Channels are hard"]
     webgl_sender: WebGLMsgSender,
-    #[ignore_heap_size_of = "Defined in webrender"]
+    #[ignore_malloc_size_of = "Defined in webrender"]
     webrender_image: Cell<Option<webrender_api::ImageKey>>,
     share_mode: WebGLContextShareMode,
-    #[ignore_heap_size_of = "Defined in offscreen_gl_context"]
+    webgl_version: WebGLVersion,
+    #[ignore_malloc_size_of = "Defined in offscreen_gl_context"]
     limits: GLLimits,
-    canvas: JS<HTMLCanvasElement>,
-    #[ignore_heap_size_of = "Defined in canvas_traits"]
+    canvas: Dom<HTMLCanvasElement>,
+    #[ignore_malloc_size_of = "Defined in canvas_traits"]
     last_error: Cell<Option<WebGLError>>,
     texture_unpacking_settings: Cell<TextureUnpacking>,
     texture_unpacking_alignment: Cell<u32>,
-    bound_framebuffer: MutNullableJS<WebGLFramebuffer>,
-    bound_renderbuffer: MutNullableJS<WebGLRenderbuffer>,
-    bound_texture_2d: MutNullableJS<WebGLTexture>,
-    bound_texture_cube_map: MutNullableJS<WebGLTexture>,
-    bound_buffer_array: MutNullableJS<WebGLBuffer>,
-    bound_buffer_element_array: MutNullableJS<WebGLBuffer>,
-    bound_attrib_buffers: DOMRefCell<FnvHashMap<u32, JS<WebGLBuffer>>>,
-    current_program: MutNullableJS<WebGLProgram>,
-    #[ignore_heap_size_of = "Because it's small"]
+    bound_framebuffer: MutNullableDom<WebGLFramebuffer>,
+    bound_renderbuffer: MutNullableDom<WebGLRenderbuffer>,
+    bound_textures: DomRefCell<FnvHashMap<u32, TextureUnitBindings>>,
+    bound_texture_unit: Cell<u32>,
+    bound_buffer_array: MutNullableDom<WebGLBuffer>,
+    bound_buffer_element_array: MutNullableDom<WebGLBuffer>,
+    bound_attrib_buffers: DomRefCell<FnvHashMap<u32, Dom<WebGLBuffer>>>,
+    current_program: MutNullableDom<WebGLProgram>,
+    #[ignore_malloc_size_of = "Because it's small"]
     current_vertex_attrib_0: Cell<(f32, f32, f32, f32)>,
-    #[ignore_heap_size_of = "Because it's small"]
+    #[ignore_malloc_size_of = "Because it's small"]
     current_scissor: Cell<(i32, i32, i32, i32)>,
-    #[ignore_heap_size_of = "Because it's small"]
+    #[ignore_malloc_size_of = "Because it's small"]
     current_clear_color: Cell<(f32, f32, f32, f32)>,
     extension_manager: WebGLExtensions,
 }
 
 impl WebGLRenderingContext {
-    fn new_inherited(window: &Window,
-                     canvas: &HTMLCanvasElement,
-                     size: Size2D<i32>,
-                     attrs: GLContextAttributes)
-                     -> Result<WebGLRenderingContext, String> {
+    pub fn new_inherited(
+        window: &Window,
+        canvas: &HTMLCanvasElement,
+        webgl_version: WebGLVersion,
+        size: Size2D<i32>,
+        attrs: GLContextAttributes
+    ) -> Result<WebGLRenderingContext, String> {
         if let Some(true) = PREFS.get("webgl.testing.context_creation_error").as_boolean() {
             return Err("WebGL context creation error forced by pref `webgl.testing.context_creation_error`".into());
         }
 
         let (sender, receiver) = webgl_channel().unwrap();
         let webgl_chan = window.webgl_chan();
-        webgl_chan.send(WebGLMsg::CreateContext(size, attrs, sender))
+        webgl_chan.send(WebGLMsg::CreateContext(webgl_version, size, attrs, sender))
                   .unwrap();
         let result = receiver.recv().unwrap();
 
@@ -184,32 +235,38 @@ impl WebGLRenderingContext {
                 webgl_sender: ctx_data.sender,
                 webrender_image: Cell::new(None),
                 share_mode: ctx_data.share_mode,
+                webgl_version,
                 limits: ctx_data.limits,
-                canvas: JS::from_ref(canvas),
+                canvas: Dom::from_ref(canvas),
                 last_error: Cell::new(None),
-                texture_unpacking_settings: Cell::new(CONVERT_COLORSPACE),
+                texture_unpacking_settings: Cell::new(TextureUnpacking::CONVERT_COLORSPACE),
                 texture_unpacking_alignment: Cell::new(4),
-                bound_framebuffer: MutNullableJS::new(None),
-                bound_texture_2d: MutNullableJS::new(None),
-                bound_texture_cube_map: MutNullableJS::new(None),
-                bound_buffer_array: MutNullableJS::new(None),
-                bound_buffer_element_array: MutNullableJS::new(None),
-                bound_attrib_buffers: DOMRefCell::new(Default::default()),
-                bound_renderbuffer: MutNullableJS::new(None),
-                current_program: MutNullableJS::new(None),
+                bound_framebuffer: MutNullableDom::new(None),
+                bound_textures: DomRefCell::new(Default::default()),
+                bound_texture_unit: Cell::new(constants::TEXTURE0),
+                bound_buffer_array: MutNullableDom::new(None),
+                bound_buffer_element_array: MutNullableDom::new(None),
+                bound_attrib_buffers: DomRefCell::new(Default::default()),
+                bound_renderbuffer: MutNullableDom::new(None),
+                current_program: MutNullableDom::new(None),
                 current_vertex_attrib_0: Cell::new((0f32, 0f32, 0f32, 1f32)),
                 current_scissor: Cell::new((0, 0, size.width, size.height)),
                 current_clear_color: Cell::new((0.0, 0.0, 0.0, 0.0)),
-                extension_manager: WebGLExtensions::new()
+                extension_manager: WebGLExtensions::new(webgl_version)
             }
         })
     }
 
     #[allow(unrooted_must_root)]
-    pub fn new(window: &Window, canvas: &HTMLCanvasElement, size: Size2D<i32>, attrs: GLContextAttributes)
-               -> Option<Root<WebGLRenderingContext>> {
-        match WebGLRenderingContext::new_inherited(window, canvas, size, attrs) {
-            Ok(ctx) => Some(reflect_dom_object(box ctx, window, WebGLRenderingContextBinding::Wrap)),
+    pub fn new(
+        window: &Window,
+        canvas: &HTMLCanvasElement,
+        webgl_version: WebGLVersion,
+        size: Size2D<i32>,
+        attrs: GLContextAttributes
+    ) -> Option<DomRoot<WebGLRenderingContext>> {
+        match WebGLRenderingContext::new_inherited(window, canvas, webgl_version, size, attrs) {
+            Ok(ctx) => Some(reflect_dom_object(Box::new(ctx), window, WebGLRenderingContextBinding::Wrap)),
             Err(msg) => {
                 error!("Couldn't create WebGLRenderingContext: {}", msg);
                 let event = WebGLContextEvent::new(window,
@@ -227,27 +284,45 @@ impl WebGLRenderingContext {
         &self.limits
     }
 
-    pub fn bound_texture_for_target(&self, target: &TexImageTarget) -> Option<Root<WebGLTexture>> {
-        match *target {
-            TexImageTarget::Texture2D => self.bound_texture_2d.get(),
-            TexImageTarget::CubeMapPositiveX |
-            TexImageTarget::CubeMapNegativeX |
-            TexImageTarget::CubeMapPositiveY |
-            TexImageTarget::CubeMapNegativeY |
-            TexImageTarget::CubeMapPositiveZ |
-            TexImageTarget::CubeMapNegativeZ => self.bound_texture_cube_map.get(),
+    fn bound_texture(&self, target: u32) -> Option<DomRoot<WebGLTexture>> {
+        match target {
+            constants::TEXTURE_2D => {
+                self.bound_textures.borrow().get(&self.bound_texture_unit.get()).and_then(|t| {
+                    t.bound_texture_2d.get()
+                })
+            },
+            constants::TEXTURE_CUBE_MAP => {
+                self.bound_textures.borrow().get(&self.bound_texture_unit.get()).and_then(|t| {
+                    t.bound_texture_cube_map.get()
+                })
+            },
+            _ => None,
         }
     }
 
-    pub fn borrow_bound_attrib_buffers(&self) -> Ref<FnvHashMap<u32, JS<WebGLBuffer>>> {
+    pub fn bound_texture_for_target(&self, target: &TexImageTarget) -> Option<DomRoot<WebGLTexture>> {
+        self.bound_textures.borrow().get(&self.bound_texture_unit.get()).and_then(|binding| {
+            match *target {
+                TexImageTarget::Texture2D => binding.bound_texture_2d.get(),
+                TexImageTarget::CubeMapPositiveX |
+                TexImageTarget::CubeMapNegativeX |
+                TexImageTarget::CubeMapPositiveY |
+                TexImageTarget::CubeMapNegativeY |
+                TexImageTarget::CubeMapPositiveZ |
+                TexImageTarget::CubeMapNegativeZ => binding.bound_texture_cube_map.get(),
+            }
+        })
+    }
+
+    pub fn borrow_bound_attrib_buffers(&self) -> Ref<FnvHashMap<u32, Dom<WebGLBuffer>>> {
         self.bound_attrib_buffers.borrow()
     }
 
     pub fn set_bound_attrib_buffers<'a, T>(&self, iter: T) where T: Iterator<Item=(u32, &'a WebGLBuffer)> {
-        *self.bound_attrib_buffers.borrow_mut() = FnvHashMap::from_iter(iter.map(|(k,v)| (k, JS::from_ref(v))));
+        *self.bound_attrib_buffers.borrow_mut() = FnvHashMap::from_iter(iter.map(|(k,v)| (k, Dom::from_ref(v))));
     }
 
-    pub fn bound_buffer_element_array(&self) -> Option<Root<WebGLBuffer>> {
+    pub fn bound_buffer_element_array(&self) -> Option<DomRoot<WebGLBuffer>> {
         self.bound_buffer_element_array.get()
     }
 
@@ -280,7 +355,7 @@ impl WebGLRenderingContext {
         // Right now offscreen_gl_context generates a new FBO and the bound texture is changed
         // in order to create a new render to texture attachment.
         // Send a command to re-bind the TEXTURE_2D, if any.
-        if let Some(texture) = self.bound_texture_2d.get() {
+        if let Some(texture) = self.bound_texture(constants::TEXTURE_2D) {
             self.send_command(WebGLCommand::BindTexture(constants::TEXTURE_2D, Some(texture.id())));
         }
 
@@ -356,8 +431,8 @@ impl WebGLRenderingContext {
 
     fn tex_parameter(&self, target: u32, name: u32, value: TexParameterValue) {
         let texture = match target {
-            constants::TEXTURE_2D => self.bound_texture_2d.get(),
-            constants::TEXTURE_CUBE_MAP => self.bound_texture_cube_map.get(),
+            constants::TEXTURE_2D |
+            constants::TEXTURE_CUBE_MAP => self.bound_texture(target),
             _ => return self.webgl_error(InvalidEnum),
         };
         if let Some(texture) = texture {
@@ -812,7 +887,7 @@ impl WebGLRenderingContext {
                        width: usize,
                        height: usize,
                        unpacking_alignment: usize) -> Vec<u8> {
-        if !self.texture_unpacking_settings.get().contains(FLIP_Y_AXIS) {
+        if !self.texture_unpacking_settings.get().contains(TextureUnpacking::FLIP_Y_AXIS) {
             return pixels;
         }
 
@@ -840,7 +915,7 @@ impl WebGLRenderingContext {
                           format: TexFormat,
                           data_type: TexDataType,
                           pixels: Vec<u8>) -> Vec<u8> {
-        if !self.texture_unpacking_settings.get().contains(PREMULTIPLY_ALPHA) {
+        if !self.texture_unpacking_settings.get().contains(TextureUnpacking::PREMULTIPLY_ALPHA) {
             return pixels;
         }
 
@@ -924,7 +999,7 @@ impl WebGLRenderingContext {
                       source_premultiplied: bool,
                       source_from_image_or_canvas: bool,
                       mut pixels: Vec<u8>) -> Vec<u8> {
-        let dest_premultiply = self.texture_unpacking_settings.get().contains(PREMULTIPLY_ALPHA);
+        let dest_premultiply = self.texture_unpacking_settings.get().contains(TextureUnpacking::PREMULTIPLY_ALPHA);
         if !source_premultiplied && dest_premultiply {
             if source_from_image_or_canvas {
                 // When the pixels come from image or canvas or imagedata, use RGBA8 format
@@ -992,7 +1067,7 @@ impl WebGLRenderingContext {
     }
 
     fn tex_sub_image_2d(&self,
-                        texture: Root<WebGLTexture>,
+                        texture: DomRoot<WebGLTexture>,
                         target: TexImageTarget,
                         level: u32,
                         xoffset: i32,
@@ -1057,7 +1132,7 @@ impl WebGLRenderingContext {
         receiver.recv().unwrap()
     }
 
-    fn layout_handle(&self) -> webrender_api::ImageKey {
+    pub fn layout_handle(&self) -> webrender_api::ImageKey {
         match self.share_mode {
             WebGLContextShareMode::SharedTexture => {
                 // WR using ExternalTexture requires a single update message.
@@ -1133,8 +1208,8 @@ unsafe fn fallible_array_buffer_view_to_vec(cx: *mut JSContext, abv: *mut JSObje
 
 impl WebGLRenderingContextMethods for WebGLRenderingContext {
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.1
-    fn Canvas(&self) -> Root<HTMLCanvasElement> {
-        Root::from_ref(&*self.canvas)
+    fn Canvas(&self) -> DomRoot<HTMLCanvasElement> {
+        DomRoot::from_ref(&*self.canvas)
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.11
@@ -1194,11 +1269,14 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
                 return object_binding_to_js_or_null!(cx, &self.bound_framebuffer),
             constants::RENDERBUFFER_BINDING =>
                 return object_binding_to_js_or_null!(cx, &self.bound_renderbuffer),
-            constants::TEXTURE_BINDING_2D =>
-                return object_binding_to_js_or_null!(cx, &self.bound_texture_2d),
-            constants::TEXTURE_BINDING_CUBE_MAP =>
-                return object_binding_to_js_or_null!(cx, &self.bound_texture_cube_map),
-
+            constants::TEXTURE_BINDING_2D => {
+                let texture = self.bound_texture(constants::TEXTURE_2D);
+                return optional_root_object_to_js_or_null!(cx, texture)
+            },
+            constants::TEXTURE_BINDING_CUBE_MAP => {
+                let texture = self.bound_texture(constants::TEXTURE_CUBE_MAP);
+                return optional_root_object_to_js_or_null!(cx, texture)
+            },
             // In readPixels we currently support RGBA/UBYTE only.  If
             // we wanted to support other formats, we could ask the
             // driver, but we would need to check for
@@ -1309,7 +1387,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
     #[allow(unsafe_code)]
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.14
     unsafe fn GetExtension(&self, _cx: *mut JSContext, name: DOMString)
-                    -> Option<NonZero<*mut JSObject>> {
+                    -> Option<NonNullJSObjectPtr> {
         self.extension_manager.init_once(|| {
             self.get_gl_extensions()
         });
@@ -1318,6 +1396,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.3
     fn ActiveTexture(&self, texture: u32) {
+        self.bound_texture_unit.set(texture);
         self.send_command(WebGLCommand::ActiveTexture(texture));
     }
 
@@ -1475,9 +1554,12 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8
     fn BindTexture(&self, target: u32, texture: Option<&WebGLTexture>) {
+        let mut bound_textures = self.bound_textures.borrow_mut();
+        let binding = bound_textures.entry(self.bound_texture_unit.get())
+                                    .or_insert(TextureUnitBindings::new());
         let slot = match target {
-            constants::TEXTURE_2D => &self.bound_texture_2d,
-            constants::TEXTURE_CUBE_MAP => &self.bound_texture_cube_map,
+            constants::TEXTURE_2D => &binding.bound_texture_2d,
+            constants::TEXTURE_CUBE_MAP => &binding.bound_texture_cube_map,
             _ => return self.webgl_error(InvalidEnum),
         };
 
@@ -1495,14 +1577,13 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8
     fn GenerateMipmap(&self, target: u32) {
-        let slot = match target {
-            constants::TEXTURE_2D => &self.bound_texture_2d,
-            constants::TEXTURE_CUBE_MAP => &self.bound_texture_cube_map,
-
+        let texture = match target {
+            constants::TEXTURE_2D |
+            constants::TEXTURE_CUBE_MAP => self.bound_texture(target),
             _ => return self.webgl_error(InvalidEnum),
         };
 
-        match slot.get() {
+        match texture {
             Some(texture) => handle_potential_webgl_error!(self, texture.generate_mipmap()),
             None => self.webgl_error(InvalidOperation)
         }
@@ -1833,39 +1914,39 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.9
     fn CompileShader(&self, shader: Option<&WebGLShader>) {
         if let Some(shader) = shader {
-            shader.compile(&self.extension_manager)
+            shader.compile(self.webgl_version, &self.extension_manager)
         }
     }
 
     // TODO(emilio): Probably in the future we should keep track of the
     // generated objects, either here or in the webgl thread
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.5
-    fn CreateBuffer(&self) -> Option<Root<WebGLBuffer>> {
+    fn CreateBuffer(&self) -> Option<DomRoot<WebGLBuffer>> {
         WebGLBuffer::maybe_new(self.global().as_window(), self.webgl_sender.clone())
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.6
-    fn CreateFramebuffer(&self) -> Option<Root<WebGLFramebuffer>> {
+    fn CreateFramebuffer(&self) -> Option<DomRoot<WebGLFramebuffer>> {
         WebGLFramebuffer::maybe_new(self.global().as_window(), self.webgl_sender.clone())
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.7
-    fn CreateRenderbuffer(&self) -> Option<Root<WebGLRenderbuffer>> {
+    fn CreateRenderbuffer(&self) -> Option<DomRoot<WebGLRenderbuffer>> {
         WebGLRenderbuffer::maybe_new(self.global().as_window(), self.webgl_sender.clone())
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8
-    fn CreateTexture(&self) -> Option<Root<WebGLTexture>> {
+    fn CreateTexture(&self) -> Option<DomRoot<WebGLTexture>> {
         WebGLTexture::maybe_new(self.global().as_window(), self.webgl_sender.clone())
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.9
-    fn CreateProgram(&self) -> Option<Root<WebGLProgram>> {
+    fn CreateProgram(&self) -> Option<DomRoot<WebGLProgram>> {
         WebGLProgram::maybe_new(self.global().as_window(), self.webgl_sender.clone())
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.9
-    fn CreateShader(&self, shader_type: u32) -> Option<Root<WebGLShader>> {
+    fn CreateShader(&self, shader_type: u32) -> Option<DomRoot<WebGLShader>> {
         match shader_type {
             constants::VERTEX_SHADER | constants::FRAGMENT_SHADER => {},
             _ => {
@@ -1940,10 +2021,29 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8
     fn DeleteTexture(&self, texture: Option<&WebGLTexture>) {
         if let Some(texture) = texture {
-            handle_object_deletion!(self, self.bound_texture_2d, texture,
-                                    Some(WebGLCommand::BindTexture(constants::TEXTURE_2D, None)));
-            handle_object_deletion!(self, self.bound_texture_cube_map, texture,
-                                    Some(WebGLCommand::BindTexture(constants::TEXTURE_CUBE_MAP, None)));
+            // From the GLES 2.0.25 spec, page 85:
+            //
+            //     "If a texture that is currently bound to one of the targets
+            //      TEXTURE_2D, or TEXTURE_CUBE_MAP is deleted, it is as though
+            //      BindTexture had been executed with the same target and texture
+            //      zero."
+            //
+            // The same texture may be bound to multiple texture units.
+            let mut bound_unit = self.bound_texture_unit.get();
+            for (texture_unit, binding) in self.bound_textures.borrow().iter() {
+                if let Some(target) = binding.clear_slot(texture) {
+                    if *texture_unit != bound_unit {
+                        self.send_command(WebGLCommand::ActiveTexture(*texture_unit));
+                        bound_unit = *texture_unit;
+                    }
+                    self.send_command(WebGLCommand::BindTexture(target, None));
+                }
+            }
+
+            // Restore bound texture unit if it has been changed.
+            if self.bound_texture_unit.get() != bound_unit {
+                self.send_command(WebGLCommand::ActiveTexture(self.bound_texture_unit.get()));
+            }
 
             // From the GLES 2.0.25 spec, page 113:
             //
@@ -2087,7 +2187,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.10
-    fn GetActiveUniform(&self, program: Option<&WebGLProgram>, index: u32) -> Option<Root<WebGLActiveInfo>> {
+    fn GetActiveUniform(&self, program: Option<&WebGLProgram>, index: u32) -> Option<DomRoot<WebGLActiveInfo>> {
         let program = match program {
             Some(program) => program,
             None => {
@@ -2114,7 +2214,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
     }
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.10
-    fn GetActiveAttrib(&self, program: Option<&WebGLProgram>, index: u32) -> Option<Root<WebGLActiveInfo>> {
+    fn GetActiveAttrib(&self, program: Option<&WebGLProgram>, index: u32) -> Option<DomRoot<WebGLActiveInfo>> {
         let program = match program {
             Some(program) => program,
             None => {
@@ -2212,7 +2312,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
     fn GetShaderPrecisionFormat(&self,
                                 shader_type: u32,
                                 precision_type: u32)
-                                -> Option<Root<WebGLShaderPrecisionFormat>> {
+                                -> Option<DomRoot<WebGLShaderPrecisionFormat>> {
         let (sender, receiver) = webgl_channel().unwrap();
         self.send_command(WebGLCommand::GetShaderPrecisionFormat(shader_type,
                                                                  precision_type,
@@ -2232,7 +2332,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.10
     fn GetUniformLocation(&self,
                           program: Option<&WebGLProgram>,
-                          name: DOMString) -> Option<Root<WebGLUniformLocation>> {
+                          name: DOMString) -> Option<DomRoot<WebGLUniformLocation>> {
         program.and_then(|p| {
             handle_potential_webgl_error!(self, p.get_uniform_location(name), None)
                 .map(|location| WebGLUniformLocation::new(self.global().as_window(), location, p.id()))
@@ -2359,9 +2459,9 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
         match param_name {
             constants::UNPACK_FLIP_Y_WEBGL => {
                if param_value != 0 {
-                    texture_settings.insert(FLIP_Y_AXIS)
+                    texture_settings.insert(TextureUnpacking::FLIP_Y_AXIS)
                 } else {
-                    texture_settings.remove(FLIP_Y_AXIS)
+                    texture_settings.remove(TextureUnpacking::FLIP_Y_AXIS)
                 }
 
                 self.texture_unpacking_settings.set(texture_settings);
@@ -2369,9 +2469,9 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
             },
             constants::UNPACK_PREMULTIPLY_ALPHA_WEBGL => {
                 if param_value != 0 {
-                    texture_settings.insert(PREMULTIPLY_ALPHA)
+                    texture_settings.insert(TextureUnpacking::PREMULTIPLY_ALPHA)
                 } else {
-                    texture_settings.remove(PREMULTIPLY_ALPHA)
+                    texture_settings.remove(TextureUnpacking::PREMULTIPLY_ALPHA)
                 }
 
                 self.texture_unpacking_settings.set(texture_settings);
@@ -2380,9 +2480,9 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
             constants::UNPACK_COLORSPACE_CONVERSION_WEBGL => {
                 match param_value as u32 {
                     constants::BROWSER_DEFAULT_WEBGL
-                        => texture_settings.insert(CONVERT_COLORSPACE),
+                        => texture_settings.insert(TextureUnpacking::CONVERT_COLORSPACE),
                     constants::NONE
-                        => texture_settings.remove(CONVERT_COLORSPACE),
+                        => texture_settings.remove(TextureUnpacking::CONVERT_COLORSPACE),
                     _ => return self.webgl_error(InvalidEnum),
                 }
 
@@ -3024,7 +3124,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
 
         }
 
-        self.bound_attrib_buffers.borrow_mut().insert(attrib_id, JS::from_ref(&*buffer_array));
+        self.bound_attrib_buffers.borrow_mut().insert(attrib_id, Dom::from_ref(&*buffer_array));
 
         let msg = WebGLCommand::VertexAttribPointer(attrib_id, size, data_type, normalized, stride, offset as u32);
         self.send_command(msg);
@@ -3167,6 +3267,45 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
 
         self.tex_image_2d(&texture, target, data_type, format,
                           level, width, height, border, 1, pixels);
+        Ok(())
+    }
+
+    // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8
+    fn TexImageDOM(&self,
+                   target: u32,
+                   level: i32,
+                   internal_format: u32,
+                   width: i32,
+                   height: i32,
+                   format: u32,
+                   data_type: u32,
+                   source: &HTMLIFrameElement) -> Fallible<()> {
+        // Currently DOMToTexture only supports TEXTURE_2D, RGBA, UNSIGNED_BYTE and no levels.
+        if target != constants::TEXTURE_2D || level != 0 || internal_format != constants::RGBA ||
+            format != constants::RGBA || data_type != constants::UNSIGNED_BYTE {
+            return Ok(self.webgl_error(InvalidValue));
+        }
+
+        // Get bound texture
+        let texture = match self.bound_texture(constants::TEXTURE_2D) {
+            Some(texture) => texture,
+            None => {
+                return Ok(self.webgl_error(InvalidOperation));
+            }
+        };
+
+        let pipeline_id = source.pipeline_id().ok_or(Error::InvalidState)?;
+        let document_id  = self.global().downcast::<Window>().ok_or(Error::InvalidState)?.webrender_document();
+
+        texture.set_attached_to_dom();
+
+        let command = DOMToTextureCommand::Attach(self.webgl_sender.context_id(),
+                                                  texture.id(),
+                                                  document_id,
+                                                  pipeline_id.to_webrender(),
+                                                  Size2D::new(width, height));
+        self.webgl_sender.send_dom_to_texture(command).unwrap();
+
         Ok(())
     }
 
@@ -3384,7 +3523,7 @@ pub trait LayoutCanvasWebGLRenderingContextHelpers {
     unsafe fn canvas_data_source(&self) -> HTMLCanvasDataSource;
 }
 
-impl LayoutCanvasWebGLRenderingContextHelpers for LayoutJS<WebGLRenderingContext> {
+impl LayoutCanvasWebGLRenderingContextHelpers for LayoutDom<WebGLRenderingContext> {
     #[allow(unsafe_code)]
     unsafe fn canvas_data_source(&self) -> HTMLCanvasDataSource {
         HTMLCanvasDataSource::WebGL((*self.unsafe_get()).layout_handle())

@@ -118,7 +118,17 @@ this.browserAction = class extends ExtensionAPI {
     this.tabContext = new TabContext(tab => Object.create(this.defaults),
                                      extension);
 
+    // eslint-disable-next-line mozilla/balanced-listeners
+    this.tabContext.on("location-change", this.handleLocationChange.bind(this));
+
     this.build();
+  }
+
+  handleLocationChange(eventType, tab, fromBrowse) {
+    if (fromBrowse) {
+      this.tabContext.clear(tab);
+      this.updateOnChange(tab);
+    }
   }
 
   onShutdown(reason) {
@@ -442,14 +452,12 @@ this.browserAction = class extends ExtensionAPI {
         node.setAttribute("disabled", "true");
       }
 
-      let badgeNode = node.ownerDocument.getAnonymousElementByAttribute(node,
-                                          "class", "toolbarbutton-badge");
-      if (badgeNode) {
-        let color = tabData.badgeBackgroundColor;
-        if (color) {
-          color = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
-        }
-        badgeNode.style.backgroundColor = color || "";
+      let color = tabData.badgeBackgroundColor;
+      if (color) {
+        color = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
+        node.setAttribute("badgeStyle", `background-color: ${color};`);
+      } else {
+        node.removeAttribute("badgeStyle");
       }
 
       let {style, legacy} = this.iconData.get(tabData.icon);

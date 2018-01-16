@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -166,7 +167,7 @@ SVGGeometryFrame::Init(nsIContent*       aContent,
 
 nsresult
 SVGGeometryFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                   nsIAtom*        aAttribute,
+                                   nsAtom*        aAttribute,
                                    int32_t         aModType)
 {
   // We don't invalidate for transform changes (the layers code does that).
@@ -276,7 +277,7 @@ SVGGeometryFrame::PaintSVG(gfxContext& aContext,
 
   // Matrix to the geometry's user space:
   gfxMatrix newMatrix =
-    aContext.CurrentMatrix().PreMultiply(aTransform).NudgeToIntegers();
+    aContext.CurrentMatrixDouble().PreMultiply(aTransform).NudgeToIntegers();
   if (newMatrix.IsSingular()) {
     return;
   }
@@ -542,7 +543,10 @@ SVGGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
     tmpDT = gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
 #endif
 
-    FillRule fillRule = nsSVGUtils::ToFillRule(StyleSVG()->mFillRule);
+    FillRule fillRule = nsSVGUtils::ToFillRule(
+        (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD)
+      ? StyleSVG()->mClipRule
+      : StyleSVG()->mFillRule);
     RefPtr<Path> pathInUserSpace = element->GetOrBuildPath(*tmpDT, fillRule);
     if (!pathInUserSpace) {
       return bbox;
@@ -763,7 +767,7 @@ SVGGeometryFrame::Render(gfxContext* aContext,
   // set it unnecessarily if we return early (it's an expensive operation for
   // some backends).
   gfxContextMatrixAutoSaveRestore autoRestoreTransform(aContext);
-  aContext->SetMatrix(aNewTransform);
+  aContext->SetMatrixDouble(aNewTransform);
 
   if (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) {
     // We don't complicate this code with GetAsSimplePath since the cost of

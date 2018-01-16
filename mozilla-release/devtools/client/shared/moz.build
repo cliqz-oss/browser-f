@@ -12,6 +12,7 @@ DIRS += [
     'redux',
     'source-map',
     'vendor',
+    'webpack',
     'widgets',
 ]
 
@@ -30,7 +31,6 @@ DevToolsModules(
     'file-saver.js',
     'getjson.js',
     'inplace-editor.js',
-    'Jsbeautify.jsm',
     'key-shortcuts.js',
     'keycodes.js',
     'natural-sort.js',

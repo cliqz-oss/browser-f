@@ -43,11 +43,27 @@ NS_IMPL_QUERY_INTERFACE(nsJAR, nsIZipReader)
 NS_IMPL_ADDREF(nsJAR)
 
 // Custom Release method works with nsZipReaderCache...
+// Release might be called from multi-thread, we have to
+// take this function carefully to avoid delete-after-use.
 MozExternalRefCountType nsJAR::Release(void)
 {
   nsrefcnt count;
   NS_PRECONDITION(0 != mRefCnt, "dup release");
-  count = --mRefCnt;
+
+  RefPtr<nsZipReaderCache> cache;
+  if (mRefCnt == 2) { // don't use a lock too frequently
+    // Use a mutex here to guarantee mCache is not racing and the target instance
+    // is still valid to increase ref-count.
+    MutexAutoLock lock(mLock);
+    cache = mCache;
+    mCache = nullptr;
+  }
+  if (cache) {
+    DebugOnly<nsresult> rv = cache->ReleaseZip(this);
+    MOZ_ASSERT(NS_SUCCEEDED(rv), "failed to release zip file");
+  }
+
+  count = --mRefCnt; // don't access any member variable after this line
   NS_LOG_RELEASE(this, count, "nsJAR");
   if (0 == count) {
     mRefCnt = 1; /* stabilize */
@@ -56,13 +72,7 @@ MozExternalRefCountType nsJAR::Release(void)
     delete this;
     return 0;
   }
-  if (1 == count && mCache) {
-#ifdef DEBUG
-    nsresult rv =
-#endif
-      mCache->ReleaseZip(this);
-    NS_ASSERTION(NS_SUCCEEDED(rv), "failed to release zip file");
-  }
+
   return count;
 }
 
@@ -601,7 +611,7 @@ nsZipReaderCache::IsCached(nsIFile* zipFile, bool* aResult)
   if (NS_FAILED(rv))
     return rv;
 
-  uri.Insert(NS_LITERAL_CSTRING("file:"), 0);
+  uri.InsertLiteral("file:", 0);
 
   *aResult = mZips.Contains(uri);
   return NS_OK;
@@ -623,7 +633,7 @@ nsZipReaderCache::GetZip(nsIFile* zipFile, nsIZipReader* *result,
   rv = zipFile->GetNativePath(uri);
   if (NS_FAILED(rv)) return rv;
 
-  uri.Insert(NS_LITERAL_CSTRING("file:"), 0);
+  uri.InsertLiteral("file:", 0);
 
   RefPtr<nsJAR> zip;
   mZips.Get(uri, getter_AddRefs(zip));
@@ -683,7 +693,7 @@ nsZipReaderCache::GetInnerZip(nsIFile* zipFile, const nsACString &entry,
   rv = zipFile->GetNativePath(uri);
   if (NS_FAILED(rv)) return rv;
 
-  uri.Insert(NS_LITERAL_CSTRING("jar:"), 0);
+  uri.InsertLiteral("jar:", 0);
   uri.AppendLiteral("!/");
   uri.Append(entry);
 
@@ -727,7 +737,7 @@ nsZipReaderCache::GetFd(nsIFile* zipFile, PRFileDesc** aRetVal)
   if (NS_FAILED(rv)) {
     return rv;
   }
-  uri.Insert(NS_LITERAL_CSTRING("file:"), 0);
+  uri.InsertLiteral("file:", 0);
 
   MutexAutoLock lock(mLock);
   RefPtr<nsJAR> zip;
@@ -815,9 +825,9 @@ nsZipReaderCache::ReleaseZip(nsJAR* zip)
     return rv;
 
   if (oldest->mOuterZipEntry.IsEmpty()) {
-    uri.Insert(NS_LITERAL_CSTRING("file:"), 0);
+    uri.InsertLiteral("file:", 0);
   } else {
-    uri.Insert(NS_LITERAL_CSTRING("jar:"), 0);
+    uri.InsertLiteral("jar:", 0);
     uri.AppendLiteral("!/");
     uri.Append(oldest->mOuterZipEntry);
   }
@@ -874,7 +884,7 @@ nsZipReaderCache::Observe(nsISupports *aSubject,
     if (NS_FAILED(file->GetNativePath(uri)))
       return NS_OK;
 
-    uri.Insert(NS_LITERAL_CSTRING("file:"), 0);
+    uri.InsertLiteral("file:", 0);
 
     MutexAutoLock lock(mLock);
 

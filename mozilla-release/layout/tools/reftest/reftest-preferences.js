@@ -86,7 +86,8 @@ user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 // Ensure that telemetry is disabled, so we don't connect to the telemetry
 // server in the middle of the tests.
 user_pref("toolkit.telemetry.enabled", false);
-user_pref("toolkit.telemetry.unified", false);
+user_pref("datareporting.healthreport.uploadEnabled", false);
+user_pref("experiments.enabled", false);
 // Likewise for safebrowsing.
 user_pref("browser.safebrowsing.phishing.enabled", false);
 user_pref("browser.safebrowsing.malware.enabled", false);
@@ -121,10 +122,6 @@ user_pref("extensions.autoDisableScopes", 0);
 // Allow unsigned add-ons
 user_pref("xpinstall.signatures.required", false);
 
-// Don't use auto-enabled e10s
-user_pref("browser.tabs.remote.autostart.1", false);
-user_pref("browser.tabs.remote.autostart.2", false);
-
 user_pref("startup.homepage_welcome_url", "");
 user_pref("startup.homepage_welcome_url.additional", "");
 user_pref("startup.homepage_override_url", "");
@@ -151,9 +148,10 @@ user_pref("media.openUnsupportedTypeWithExternalApp", false);
 // consumer automation; not vendor testing.
 user_pref("marionette.prefs.recommended", false);
 
-// Make sure we don't reach out to the network with pocket or snippets
+// Make sure we don't reach out to the network for activity stream services
 user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 user_pref("browser.newtabpage.activity-stream.feeds.snippets", false);
+user_pref("browser.newtabpage.activity-stream.tippyTop.service.endpoint", "");
 
 // Don't forcibly kill content processes after a timeout
 user_pref("dom.ipc.tabs.shutdownTimeoutSecs", 0);

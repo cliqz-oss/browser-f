@@ -19,8 +19,8 @@
 #include "nsIClipboard.h"
 #include "nsContentUtils.h"
 #include "nsIContent.h"
-#include "nsIBinaryInputStream.h"
-#include "nsIBinaryOutputStream.h"
+#include "nsIObjectInputStream.h"
+#include "nsIObjectOutputStream.h"
 #include "nsIStorageStream.h"
 #include "nsStringStream.h"
 #include "nsCRT.h"
@@ -204,7 +204,7 @@ DataTransfer::Constructor(const GlobalObject& aGlobal,
 {
   nsAutoCString onEventType("on");
   AppendUTF16toUTF8(aEventType, onEventType);
-  nsCOMPtr<nsIAtom> eventTypeAtom = NS_Atomize(onEventType);
+  RefPtr<nsAtom> eventTypeAtom = NS_Atomize(onEventType);
   if (!eventTypeAtom) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return nullptr;
@@ -697,7 +697,7 @@ DataTransfer::TypesListMayHaveChanged()
 already_AddRefed<DataTransfer>
 DataTransfer::MozCloneForEvent(const nsAString& aEvent, ErrorResult& aRv)
 {
-  nsCOMPtr<nsIAtom> atomEvt = NS_Atomize(aEvent);
+  RefPtr<nsAtom> atomEvt = NS_Atomize(aEvent);
   if (!atomEvt) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return nullptr;
@@ -968,7 +968,7 @@ DataTransfer::GetTransferables(nsILoadContext* aLoadContext)
   for (uint32_t i = 0; i < count; i++) {
     nsCOMPtr<nsITransferable> transferable = GetTransferable(i, aLoadContext);
     if (transferable) {
-      transArray->AppendElement(transferable, /*weak =*/ false);
+      transArray->AppendElement(transferable);
     }
   }
 
@@ -996,7 +996,7 @@ DataTransfer::GetTransferable(uint32_t aIndex, nsILoadContext* aLoadContext)
   transferable->Init(aLoadContext);
 
   nsCOMPtr<nsIStorageStream> storageStream;
-  nsCOMPtr<nsIBinaryOutputStream> stream;
+  nsCOMPtr<nsIObjectOutputStream> stream;
 
   bool added = false;
   bool handlingCustomFormats = true;
@@ -1087,8 +1087,7 @@ DataTransfer::GetTransferable(uint32_t aIndex, nsILoadContext* aLoadContext)
               nsCOMPtr<nsIOutputStream> outputStream;
               storageStream->GetOutputStream(0, getter_AddRefs(outputStream));
 
-              stream = do_CreateInstance("@mozilla.org/binaryoutputstream;1");
-              stream->SetOutputStream(outputStream);
+              stream = NS_NewObjectOutputStream(outputStream);
             }
 
             CheckedInt<uint32_t> formatLength =
@@ -1593,14 +1592,8 @@ DataTransfer::FillInExternalCustomTypes(nsIVariant* aData, uint32_t aIndex,
   nsCOMPtr<nsIInputStream> stringStream;
   NS_NewCStringInputStream(getter_AddRefs(stringStream), str);
 
-  nsCOMPtr<nsIBinaryInputStream> stream =
-    do_CreateInstance("@mozilla.org/binaryinputstream;1");
-  if (!stream) {
-    return;
-  }
-
-  rv = stream->SetInputStream(stringStream);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  nsCOMPtr<nsIObjectInputStream> stream =
+    NS_NewObjectInputStream(stringStream);
 
   uint32_t type;
   do {

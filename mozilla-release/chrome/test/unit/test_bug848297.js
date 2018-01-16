@@ -9,6 +9,7 @@ var MANIFESTS = [
 
 // Stub in the locale service so we can control what gets returned as the OS locale setting
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+Components.utils.import("resource://gre/modules/Services.jsm");
 
 registerManifests(MANIFESTS);
 
@@ -33,16 +34,16 @@ function enum_to_array(strings) {
 function run_test() {
 
   // without override
-  prefService.setCharPref("general.useragent.locale", "de");
+  Services.locale.setRequestedLocales(["de"]);
   do_check_eq(chromeReg.getSelectedLocale("basepack"), "en-US");
   do_check_eq(chromeReg.getSelectedLocale("overpack"), "de");
   do_check_matches(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
-                   ['en-US', 'fr']);
+                   ["en-US", "fr"]);
 
   // with override
   prefService.setCharPref("chrome.override_package.basepack", "overpack");
   do_check_eq(chromeReg.getSelectedLocale("basepack"), "de");
   do_check_matches(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
-                   ['de', 'en-US']);
+                   ["de", "en-US"]);
 
 }

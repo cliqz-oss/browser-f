@@ -4,12 +4,12 @@
 
 use cssparser::{Parser as CssParser, ParserInput};
 use dom::attr::Attr;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::DOMTokenListBinding::DOMTokenListBinding::DOMTokenListMethods;
 use dom::bindings::codegen::Bindings::HTMLLinkElementBinding;
 use dom::bindings::codegen::Bindings::HTMLLinkElementBinding::HTMLLinkElementMethods;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{MutNullableJS, Root, RootedReference};
+use dom::bindings::root::{DomRoot, MutNullableDom, RootedReference};
 use dom::bindings::str::DOMString;
 use dom::cssstylesheet::CSSStyleSheet;
 use dom::document::Document;
@@ -26,7 +26,6 @@ use html5ever::{LocalName, Prefix};
 use net_traits::ReferrerPolicy;
 use script_traits::{MozBrowserEvent, ScriptMsg};
 use servo_arc::Arc;
-use std::ascii::AsciiExt;
 use std::borrow::ToOwned;
 use std::cell::Cell;
 use std::default::Default;
@@ -35,10 +34,10 @@ use style::media_queries::parse_media_query_list;
 use style::parser::ParserContext as CssParserContext;
 use style::str::HTML_SPACE_CHARACTERS;
 use style::stylesheets::{CssRuleType, Stylesheet};
-use style_traits::PARSING_MODE_DEFAULT;
+use style_traits::ParsingMode;
 use stylesheet_loader::{StylesheetLoader, StylesheetContextSource, StylesheetOwner};
 
-#[derive(Clone, Copy, HeapSizeOf, JSTraceable, PartialEq)]
+#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
 pub struct RequestGenerationId(u32);
 
 impl RequestGenerationId {
@@ -50,12 +49,12 @@ impl RequestGenerationId {
 #[dom_struct]
 pub struct HTMLLinkElement {
     htmlelement: HTMLElement,
-    rel_list: MutNullableJS<DOMTokenList>,
-    #[ignore_heap_size_of = "Arc"]
-    stylesheet: DOMRefCell<Option<Arc<Stylesheet>>>,
-    cssom_stylesheet: MutNullableJS<CSSStyleSheet>,
+    rel_list: MutNullableDom<DOMTokenList>,
+    #[ignore_malloc_size_of = "Arc"]
+    stylesheet: DomRefCell<Option<Arc<Stylesheet>>>,
+    cssom_stylesheet: MutNullableDom<CSSStyleSheet>,
 
-    /// https://html.spec.whatwg.org/multipage/#a-style-sheet-that-is-blocking-scripts
+    /// <https://html.spec.whatwg.org/multipage/#a-style-sheet-that-is-blocking-scripts>
     parser_inserted: Cell<bool>,
     /// The number of loads that this link element has triggered (could be more
     /// than one because of imports) and have not yet finished.
@@ -73,8 +72,8 @@ impl HTMLLinkElement {
             htmlelement: HTMLElement::new_inherited(local_name, prefix, document),
             rel_list: Default::default(),
             parser_inserted: Cell::new(creator.is_parser_created()),
-            stylesheet: DOMRefCell::new(None),
-            cssom_stylesheet: MutNullableJS::new(None),
+            stylesheet: DomRefCell::new(None),
+            cssom_stylesheet: MutNullableDom::new(None),
             pending_loads: Cell::new(0),
             any_failed_load: Cell::new(false),
             request_generation_id: Cell::new(RequestGenerationId(0)),
@@ -85,8 +84,8 @@ impl HTMLLinkElement {
     pub fn new(local_name: LocalName,
                prefix: Option<Prefix>,
                document: &Document,
-               creator: ElementCreator) -> Root<HTMLLinkElement> {
-        Node::reflect_node(box HTMLLinkElement::new_inherited(local_name, prefix, document, creator),
+               creator: ElementCreator) -> DomRoot<HTMLLinkElement> {
+        Node::reflect_node(Box::new(HTMLLinkElement::new_inherited(local_name, prefix, document, creator)),
                            document,
                            HTMLLinkElementBinding::Wrap)
     }
@@ -111,7 +110,7 @@ impl HTMLLinkElement {
         self.stylesheet.borrow().clone()
     }
 
-    pub fn get_cssom_stylesheet(&self) -> Option<Root<CSSStyleSheet>> {
+    pub fn get_cssom_stylesheet(&self) -> Option<DomRoot<CSSStyleSheet>> {
         self.get_stylesheet().map(|sheet| {
             self.cssom_stylesheet.or_init(|| {
                 CSSStyleSheet::new(&window_from_node(self),
@@ -156,7 +155,7 @@ fn string_is_stylesheet(value: &Option<String>) -> bool {
 
 /// Favicon spec usage in accordance with CEF implementation:
 /// only url of icon is required/used
-/// https://html.spec.whatwg.org/multipage/#rel-icon
+/// <https://html.spec.whatwg.org/multipage/#rel-icon>
 fn is_favicon(value: &Option<String>) -> bool {
     match *value {
         Some(ref value) => {
@@ -250,7 +249,7 @@ impl VirtualMethods for HTMLLinkElement {
 
 
 impl HTMLLinkElement {
-    /// https://html.spec.whatwg.org/multipage/#concept-link-obtain
+    /// <https://html.spec.whatwg.org/multipage/#concept-link-obtain>
     fn handle_stylesheet_url(&self, href: &str) {
         let document = document_from_node(self);
         if document.browsing_context().is_none() {
@@ -287,7 +286,7 @@ impl HTMLLinkElement {
         let mut css_parser = CssParser::new(&mut input);
         let doc_url = document.url();
         let context = CssParserContext::new_for_cssom(&doc_url, Some(CssRuleType::Media),
-                                                      PARSING_MODE_DEFAULT,
+                                                      ParsingMode::DEFAULT,
                                                       document.quirks_mode());
         let window = document.window();
         let media = parse_media_query_list(&context, &mut css_parser,
@@ -408,7 +407,7 @@ impl HTMLLinkElementMethods for HTMLLinkElement {
     make_setter!(SetType, "type");
 
     // https://html.spec.whatwg.org/multipage/#dom-link-rellist
-    fn RelList(&self) -> Root<DOMTokenList> {
+    fn RelList(&self) -> DomRoot<DOMTokenList> {
         self.rel_list.or_init(|| DOMTokenList::new(self.upcast(), &local_name!("rel")))
     }
 
@@ -441,7 +440,7 @@ impl HTMLLinkElementMethods for HTMLLinkElement {
     }
 
     // https://drafts.csswg.org/cssom/#dom-linkstyle-sheet
-    fn GetSheet(&self) -> Option<Root<DOMStyleSheet>> {
-        self.get_cssom_stylesheet().map(Root::upcast)
+    fn GetSheet(&self) -> Option<DomRoot<DOMStyleSheet>> {
+        self.get_cssom_stylesheet().map(DomRoot::upcast)
     }
 }

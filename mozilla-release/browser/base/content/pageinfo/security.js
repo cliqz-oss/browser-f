@@ -87,10 +87,10 @@ var security = {
           retval.version = "TLS 1.1";
           break;
         case nsISSLStatus.TLS_VERSION_1_2:
-          retval.version = "TLS 1.2"
+          retval.version = "TLS 1.2";
           break;
         case nsISSLStatus.TLS_VERSION_1_3:
-          retval.version = "TLS 1.3"
+          retval.version = "TLS 1.3";
           break;
       }
 
@@ -334,7 +334,7 @@ function viewCertHelper(parent, cert) {
  */
 function hostHasCookies(uri) {
   var cookieManager = Components.classes["@mozilla.org/cookiemanager;1"]
-                                .getService(Components.interfaces.nsICookieManager2);
+                                .getService(Components.interfaces.nsICookieManager);
 
   return cookieManager.countCookiesFromHost(uri.asciiHost) > 0;
 }

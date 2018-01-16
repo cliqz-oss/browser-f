@@ -92,9 +92,6 @@
 #define NS_ADDONPATHSERVICE_CONTRACTID \
     "@mozilla.org/addon-path-service;1"
 
-#define NS_WEBREQUESTSERVICE_CONTRACTID \
-  "@mozilla.org/addons/webrequest-service;1"
-
 /////////////////////////////////////////////////////////////////////////////
 
 #define ALERT_NOTIFICATION_CID \
@@ -179,10 +176,16 @@
 #endif
 
 #define NS_APPLICATION_REPUTATION_SERVICE_CONTRACTID \
-  "@mozilla.org/downloads/application-reputation-service;1"
+  "@mozilla.org/reputationservice/application-reputation-service;1"
 
 #define NS_APPLICATION_REPUTATION_SERVICE_CID \
-{ 0x8576c950, 0xf4a2, 0x11e2, { 0xb7, 0x78, 0x08, 0x00, 0x20, 0x0c, 0x9a, 0x66 } }
+{ 0xd21b4c33, 0x716f, 0x4117, { 0x80, 0x41, 0x27, 0x70, 0xb5, 0x9f, 0xf8, 0xa6 } }
+
+#define NS_LOGIN_REPUTATION_SERVICE_CONTRACTID \
+  "@mozilla.org/reputationservice/login-reputation-service;1"
+
+#define NS_LOGIN_REPUTATION_SERVICE_CID \
+{ 0x91fa9e67, 0x1427, 0x4ee9, { 0x8e, 0xe0, 0x1a, 0x6e, 0xd5, 0x78, 0xbe, 0xe1 } }
 
 #define NS_ADDONCONTENTPOLICY_CID \
 { 0xc26a8241, 0xecf4, 0x4aed, { 0x9f, 0x3c, 0xf1, 0xf5, 0xc7, 0x13, 0xb9, 0xa5 } }
@@ -195,7 +198,3 @@
 
 #define NS_ADDON_POLICY_SERVICE_CONTRACTID \
   "@mozilla.org/addons/policy-service;1"
-
-// {5dd0c968-d74d-42c3-b930-36145f885c3b}
-#define NS_WEBREQUEST_SERVICE_CID \
-{ 0x5dd0c968, 0xd74d, 0x42c3, { 0xb9, 0x30, 0x36, 0x14, 0x5f, 0x88, 0x5c, 0x3b } }

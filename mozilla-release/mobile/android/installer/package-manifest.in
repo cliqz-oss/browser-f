@@ -15,8 +15,6 @@
 #filter substitution
 
 [@AB_CD@]
-@BINPATH@/chrome/@AB_CD@@JAREXT@
-@BINPATH@/chrome/@AB_CD@.manifest
 @BINPATH@/@PREF_DIR@/mobile-l10n.js
 @BINPATH@/update.locale
 #ifdef MOZ_UPDATER
@@ -38,6 +36,10 @@
 @BINPATH@/@DLL_PREFIX@nspr4@DLL_SUFFIX@
 #endif
 @BINPATH@/@DLL_PREFIX@lgpllibs@DLL_SUFFIX@
+#ifdef MOZ_FFVPX
+@BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
+@BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
+#endif
 #ifdef MOZ_OMX_PLUGIN
 @BINPATH@/@DLL_PREFIX@omxplugin@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxpluginkk@DLL_SUFFIX@
@@ -73,6 +75,10 @@
 # This should be MOZ_CHILD_PROCESS_NAME, but that has a "lib/" prefix.
 @BINPATH@/@MOZ_CHILD_PROCESS_NAME@
 @BINPATH@/@MOZ_CHILD_PROCESS_NAME_PIE@
+
+#ifdef MOZ_ANDROID_GOOGLE_VR
+@BINPATH@/@DLL_PREFIX@gvr@DLL_SUFFIX@
+#endif
 
 [xpcom]
 @BINPATH@/package-name.txt
@@ -174,9 +180,7 @@
 @BINPATH@/components/locale.xpt
 @BINPATH@/components/mimetype.xpt
 @BINPATH@/components/mozfind.xpt
-#ifdef ENABLE_INTL_API
 @BINPATH@/components/mozintl.xpt
-#endif
 @BINPATH@/components/necko_about.xpt
 @BINPATH@/components/necko_cache.xpt
 @BINPATH@/components/necko_cache2.xpt
@@ -208,6 +212,7 @@
 @BINPATH@/components/profiler.xpt
 #endif
 @BINPATH@/components/rdf.xpt
+@BINPATH@/components/reputationservice.xpt
 @BINPATH@/components/satchel.xpt
 @BINPATH@/components/saxparser.xpt
 @BINPATH@/components/services-crypto-component.xpt
@@ -230,7 +235,6 @@
 @BINPATH@/components/txtsvc.xpt
 @BINPATH@/components/txmgr.xpt
 @BINPATH@/components/uconv.xpt
-@BINPATH@/components/unicharutil.xpt
 @BINPATH@/components/update.xpt
 @BINPATH@/components/uriloader.xpt
 @BINPATH@/components/urlformatter.xpt
@@ -406,10 +410,8 @@
 @BINPATH@/components/TVSimulatorService.manifest
 #endif
 
-#ifdef ENABLE_INTL_API
 @BINPATH@/components/mozIntl.manifest
 @BINPATH@/components/mozIntl.js
-#endif
 
 ; Modules
 @BINPATH@/modules/*
@@ -443,10 +445,8 @@
 @BINPATH@/features/*
 
 ; DevTools
-#ifndef MOZ_GECKOVIEW_JAR
 @BINPATH@/chrome/devtools@JAREXT@
 @BINPATH@/chrome/devtools.manifest
-#endif
 
 ; [Default Preferences]
 ; All the pref files must be part of base to prevent migration bugs

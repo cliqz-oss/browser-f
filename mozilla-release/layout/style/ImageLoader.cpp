@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -268,7 +270,7 @@ ImageLoader::LoadImage(nsIURI* aURI, nsIPrincipal* aOriginPrincipal,
 
   RefPtr<imgRequestProxy> request;
   nsresult rv = nsContentUtils::LoadImage(aURI, mDocument, mDocument,
-                                          aOriginPrincipal, aReferrer,
+                                          aOriginPrincipal, 0, aReferrer,
                                           mDocument->GetReferrerPolicy(),
                                           nullptr, nsIRequest::LOAD_NORMAL,
                                           NS_LITERAL_STRING("css"),
@@ -379,7 +381,6 @@ NS_IMPL_RELEASE(ImageLoader)
 
 NS_INTERFACE_MAP_BEGIN(ImageLoader)
   NS_INTERFACE_MAP_ENTRY(imgINotificationObserver)
-  NS_INTERFACE_MAP_ENTRY(imgIOnloadBlocker)
 NS_INTERFACE_MAP_END
 
 NS_IMETHODIMP
@@ -488,30 +489,6 @@ ImageLoader::OnFrameUpdate(imgIRequest* aRequest)
   NS_ASSERTION(frameSet, "This should never be null!");
 
   DoRedraw(frameSet, /* aForcePaint = */ false);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-ImageLoader::BlockOnload(imgIRequest* aRequest)
-{
-  if (!mDocument) {
-    return NS_OK;
-  }
-
-  mDocument->BlockOnload();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-ImageLoader::UnblockOnload(imgIRequest* aRequest)
-{
-  if (!mDocument) {
-    return NS_OK;
-  }
-
-  mDocument->UnblockOnload(false);
 
   return NS_OK;
 }

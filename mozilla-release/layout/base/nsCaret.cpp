@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -636,16 +636,16 @@ void nsCaret::ResetBlinking()
   if (mBlinkTimer) {
     mBlinkTimer->Cancel();
   } else {
-    nsresult  err;
-    mBlinkTimer = do_CreateInstance("@mozilla.org/timer;1", &err);
-    if (NS_FAILED(err)) {
-      return;
-    }
-
+    nsIEventTarget* target = nullptr;
     if (nsCOMPtr<nsIPresShell> presShell = do_QueryReferent(mPresShell)) {
       if (nsCOMPtr<nsIDocument> doc = presShell->GetDocument()) {
-        mBlinkTimer->SetTarget(doc->EventTargetFor(TaskCategory::Other));
+        target = doc->EventTargetFor(TaskCategory::Other);
       }
+    }
+
+    mBlinkTimer = NS_NewTimer(target);
+    if (!mBlinkTimer) {
+      return;
     }
   }
 

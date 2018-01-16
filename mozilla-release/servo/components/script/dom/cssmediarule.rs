@@ -6,8 +6,8 @@ use cssparser::{Parser, ParserInput};
 use dom::bindings::codegen::Bindings::CSSMediaRuleBinding;
 use dom::bindings::codegen::Bindings::CSSMediaRuleBinding::CSSMediaRuleMethods;
 use dom::bindings::codegen::Bindings::WindowBinding::WindowBinding::WindowMethods;
-use dom::bindings::js::{MutNullableJS, Root};
 use dom::bindings::reflector::{DomObject, reflect_dom_object};
+use dom::bindings::root::{DomRoot, MutNullableDom};
 use dom::bindings::str::DOMString;
 use dom::cssconditionrule::CSSConditionRule;
 use dom::cssrule::SpecificCSSRule;
@@ -20,14 +20,14 @@ use style::media_queries::parse_media_query_list;
 use style::parser::ParserContext;
 use style::shared_lock::{Locked, ToCssWithGuard};
 use style::stylesheets::{CssRuleType, MediaRule};
-use style_traits::{PARSING_MODE_DEFAULT, ToCss};
+use style_traits::{ParsingMode, ToCss};
 
 #[dom_struct]
 pub struct CSSMediaRule {
     cssconditionrule: CSSConditionRule,
-    #[ignore_heap_size_of = "Arc"]
+    #[ignore_malloc_size_of = "Arc"]
     mediarule: Arc<Locked<MediaRule>>,
-    medialist: MutNullableJS<MediaList>,
+    medialist: MutNullableDom<MediaList>,
 }
 
 impl CSSMediaRule {
@@ -38,19 +38,19 @@ impl CSSMediaRule {
         CSSMediaRule {
             cssconditionrule: CSSConditionRule::new_inherited(parent_stylesheet, list),
             mediarule: mediarule,
-            medialist: MutNullableJS::new(None),
+            medialist: MutNullableDom::new(None),
         }
     }
 
     #[allow(unrooted_must_root)]
     pub fn new(window: &Window, parent_stylesheet: &CSSStyleSheet,
-               mediarule: Arc<Locked<MediaRule>>) -> Root<CSSMediaRule> {
-        reflect_dom_object(box CSSMediaRule::new_inherited(parent_stylesheet, mediarule),
+               mediarule: Arc<Locked<MediaRule>>) -> DomRoot<CSSMediaRule> {
+        reflect_dom_object(Box::new(CSSMediaRule::new_inherited(parent_stylesheet, mediarule)),
                            window,
                            CSSMediaRuleBinding::Wrap)
     }
 
-    fn medialist(&self) -> Root<MediaList> {
+    fn medialist(&self) -> DomRoot<MediaList> {
         self.medialist.or_init(|| {
             let guard = self.cssconditionrule.shared_lock().read();
             MediaList::new(self.global().as_window(),
@@ -59,7 +59,7 @@ impl CSSMediaRule {
         })
     }
 
-    /// https://drafts.csswg.org/css-conditional-3/#the-cssmediarule-interface
+    /// <https://drafts.csswg.org/css-conditional-3/#the-cssmediarule-interface>
     pub fn get_condition_text(&self) -> DOMString {
         let guard = self.cssconditionrule.shared_lock().read();
         let rule = self.mediarule.read_with(&guard);
@@ -67,7 +67,7 @@ impl CSSMediaRule {
         list.to_css_string().into()
     }
 
-    /// https://drafts.csswg.org/css-conditional-3/#the-cssmediarule-interface
+    /// <https://drafts.csswg.org/css-conditional-3/#the-cssmediarule-interface>
     pub fn set_condition_text(&self, text: DOMString) {
         let mut input = ParserInput::new(&text);
         let mut input = Parser::new(&mut input);
@@ -76,7 +76,7 @@ impl CSSMediaRule {
         let url = window.get_url();
         let quirks_mode = window.Document().quirks_mode();
         let context = ParserContext::new_for_cssom(&url, Some(CssRuleType::Media),
-                                                   PARSING_MODE_DEFAULT,
+                                                   ParsingMode::DEFAULT,
                                                    quirks_mode);
 
         let new_medialist = parse_media_query_list(&context, &mut input,
@@ -108,7 +108,7 @@ impl SpecificCSSRule for CSSMediaRule {
 
 impl CSSMediaRuleMethods for CSSMediaRule {
     // https://drafts.csswg.org/cssom/#dom-cssgroupingrule-media
-    fn Media(&self) -> Root<MediaList> {
+    fn Media(&self) -> DomRoot<MediaList> {
         self.medialist()
     }
 }

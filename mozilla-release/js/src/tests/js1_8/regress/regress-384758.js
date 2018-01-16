@@ -16,11 +16,10 @@ test();
 
 function test()
 {
-  enterFunc ('test');
   printBugNumber(BUGNUMBER);
   printStatus (summary);
 
-  expect = 'SyntaxError: missing ; before statement';
+  expect = 'SyntaxError: unexpected token: identifier';
   try
   {
     eval('(function() { if(t) function x() foo() bar(); })');
@@ -31,6 +30,4 @@ function test()
   }
 
   reportCompare(expect, actual, summary);
-
-  exitFunc ('test');
 }

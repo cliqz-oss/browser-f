@@ -9,7 +9,6 @@ package org.mozilla.gecko;
 import org.mozilla.gecko.annotation.ReflectionTarget;
 import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.annotation.WrapForJNI;
-import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.mozglue.JNIObject;
 import org.mozilla.gecko.util.BundleEventListener;
 import org.mozilla.gecko.util.EventCallback;
@@ -70,6 +69,10 @@ public final class EventDispatcher extends JNIObject {
 
     /* package */ EventDispatcher(final NativeQueue queue) {
         mNativeQueue = queue;
+    }
+
+    public NativeQueue getNativeQueue() {
+        return mNativeQueue;
     }
 
     private boolean isReadyForDispatchingToGecko() {

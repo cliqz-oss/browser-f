@@ -156,6 +156,16 @@ def DisableStlWrapping():
 def NoVisibilityFlags():
     COMPILE_FLAGS['VISIBILITY'] = []
 
+@template
+def AllowCompilerWarnings():
+    COMPILE_FLAGS['WARNINGS_AS_ERRORS'] = []
+
+@template
+def RustTest(name, features=None):
+    RUST_TEST = name
+
+    if features:
+        RUST_TEST_FEATURES = features
 
 include('gecko_templates.mozbuild')
 include('test_templates.mozbuild')

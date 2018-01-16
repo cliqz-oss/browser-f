@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -39,7 +40,6 @@ CopyableCanvasRenderer::CopyableCanvasRenderer()
   , mAsyncRenderer(nullptr)
   , mIsAlphaPremultiplied(true)
   , mOriginPos(gl::OriginPos::TopLeft)
-  , mIsMirror(false)
   , mOpaque(true)
   , mCachedTempSurface(nullptr)
 {
@@ -61,7 +61,6 @@ CopyableCanvasRenderer::Initialize(const CanvasInitializeData& aData)
     mGLContext = aData.mGLContext;
     mIsAlphaPremultiplied = aData.mIsGLAlphaPremult;
     mOriginPos = gl::OriginPos::BottomLeft;
-    mIsMirror = aData.mIsMirror;
 
     MOZ_ASSERT(mGLContext->IsOffscreen(), "canvas gl context isn't offscreen");
 
@@ -106,6 +105,7 @@ CopyableCanvasRenderer::Destroy()
     mBufferProvider->ClearCachedResources();
   }
 
+  mBufferProvider = nullptr;
   mCachedTempSurface = nullptr;
 }
 

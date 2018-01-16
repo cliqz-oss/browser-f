@@ -17,9 +17,8 @@
     </resources>
 
     <content>
-      <xul:stringbundle anonid="tbstringbundle" src="chrome://browser/locale/tabbrowser.properties"/>
       <xul:tabbox anonid="tabbox" class="tabbrowser-tabbox"
-                  flex="1" eventnode="document" xbl:inherits="handleCtrlPageUpDown,tabcontainer"
+                  flex="1" eventnode="document" xbl:inherits="tabcontainer"
                   onselect="if (event.target.localName == 'tabpanels') this.parentNode.updateCurrentBrowser();">
         <xul:tabpanels flex="1" class="plain" selectedIndex="0" anonid="panelcontainer">
           <xul:notificationbox flex="1" notificationside="top">
@@ -75,9 +74,6 @@
       </field>
       <field name="mPanelContainer" readonly="true">
         document.getAnonymousElementByAttribute(this, "anonid", "panelcontainer");
-      </field>
-      <field name="mStringBundle">
-        document.getAnonymousElementByAttribute(this, "anonid", "tbstringbundle");
       </field>
       <field name="mCurrentTab">
         null
@@ -264,7 +260,7 @@
           aTab.setAttribute("pinned", "true");
           this.tabContainer._unlockTabSizing();
           this.tabContainer._positionPinnedTabs();
-          this.tabContainer.adjustTabstrip();
+          this.tabContainer._updateCloseButtons();
 
           this.getBrowserForTab(aTab).messageManager.sendAsyncMessage("Browser:AppTab", { isAppTab: true })
 
@@ -288,7 +284,7 @@
           aTab.style.marginInlineStart = "";
           this.tabContainer._unlockTabSizing();
           this.tabContainer._positionPinnedTabs();
-          this.tabContainer.adjustTabstrip();
+          this.tabContainer._updateCloseButtons();
 
           this.getBrowserForTab(aTab).messageManager.sendAsyncMessage("Browser:AppTab", { isAppTab: false })
 
@@ -760,6 +756,32 @@
                       aWebProgress && aWebProgress.isTopLevel) {
                     this.mTab.setAttribute("busy", "true");
                     this.mTab._notselectedsinceload = !this.mTab.selected;
+                    SchedulePressure.startMonitoring(window, {
+                      highPressureFn() {
+                        // Only switch back to the SVG loading indicator after getting
+                        // three consecutive low pressure callbacks. Used to prevent
+                        // switching quickly between the SVG and APNG loading indicators.
+                        gBrowser.tabContainer._schedulePressureCount = gBrowser.schedulePressureDefaultCount;
+                        gBrowser.tabContainer.setAttribute("schedulepressure", "true");
+                      },
+                      lowPressureFn() {
+                        if (!gBrowser.tabContainer._schedulePressureCount ||
+                            --gBrowser.tabContainer._schedulePressureCount <= 0) {
+                          gBrowser.tabContainer.removeAttribute("schedulepressure");
+                        }
+
+                        // If tabs are closed while they are loading we need to
+                        // stop monitoring schedule pressure. We don't stop monitoring
+                        // during high pressure times because we want to eventually
+                        // return to the SVG tab loading animations.
+                        let continueMonitoring = true;
+                        if (!document.querySelector(".tabbrowser-tab[busy]")) {
+                          SchedulePressure.stopMonitoring(window);
+                          continueMonitoring = false;
+                        }
+                        return {continueMonitoring};
+                      },
+                    });
                     this._syncThrobberAnimations();
                   }
 
@@ -772,6 +794,10 @@
 
                 if (this.mTab.hasAttribute("busy")) {
                   this.mTab.removeAttribute("busy");
+                  if (!document.querySelector(".tabbrowser-tab[busy]")) {
+                    SchedulePressure.stopMonitoring(window);
+                    this.mTabBrowser.tabContainer.removeAttribute("schedulepressure");
+                  }
 
                   // Only animate the "burst" indicating the page has loaded if
                   // the top-level page is the one that finished loading.
@@ -869,6 +895,18 @@
                      aLocation.spec != "about:blank") ||
                     (isSameDocument && this.mBrowser.inLoadURI)) {
                   this.mBrowser.userTypedValue = null;
+                }
+
+                // If the tab has been set to "busy" outside the stateChange
+                // handler below (e.g. by sessionStore.navigateAndRestore), and
+                // the load results in an error page, it's possible that there
+                // isn't any (STATE_IS_NETWORK & STATE_STOP) state to cause busy
+                // attribute being removed. In this case we should remove the
+                // attribute here.
+                if ((aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_ERROR_PAGE) &&
+                    this.mTab.hasAttribute("busy")) {
+                  this.mTab.removeAttribute("busy");
+                  this.mTabBrowser._tabAttrModified(this.mTab, ["busy"]);
                 }
 
                 // If the browser was playing audio, we should remove the playing state.
@@ -982,13 +1020,14 @@
         <parameter name="aBrowser"/>
         <parameter name="aURI"/>
         <parameter name="aLoadingPrincipal"/>
+        <parameter name="aRequestContextID"/>
         <body>
           <![CDATA[
           try {
             if (!(aURI instanceof Ci.nsIURI)) {
               aURI = makeURI(aURI);
             }
-            PlacesUIUtils.loadFavicon(aBrowser, aLoadingPrincipal, aURI);
+            PlacesUIUtils.loadFavicon(aBrowser, aLoadingPrincipal, aURI, aRequestContextID);
           } catch (ex) {
             Components.utils.reportError(ex);
           }
@@ -1000,24 +1039,27 @@
         <parameter name="aTab"/>
         <parameter name="aURI"/>
         <parameter name="aLoadingPrincipal"/>
+        <parameter name="aRequestContextID"/>
         <body>
           <![CDATA[
             let browser = this.getBrowserForTab(aTab);
             browser.mIconURL = aURI instanceof Ci.nsIURI ? aURI.spec : aURI;
             let loadingPrincipal = aLoadingPrincipal ||
                                    Services.scriptSecurityManager.getSystemPrincipal();
+            let requestContextID = aRequestContextID || 0;
             let sizedIconUrl = browser.mIconURL || "";
             if (sizedIconUrl != aTab.getAttribute("image")) {
               if (sizedIconUrl) {
                 if (!browser.mIconLoadingPrincipal ||
                     !browser.mIconLoadingPrincipal.equals(loadingPrincipal)) {
-                  aTab.setAttribute("iconLoadingPrincipal",
+                  aTab.setAttribute("iconloadingprincipal",
                     this.serializationHelper.serializeToString(loadingPrincipal));
+                  aTab.setAttribute("requestcontextid", requestContextID);
                   browser.mIconLoadingPrincipal = loadingPrincipal;
                 }
                 aTab.setAttribute("image", sizedIconUrl);
               } else {
-                aTab.removeAttribute("iconLoadingPrincipal");
+                aTab.removeAttribute("iconloadingprincipal");
                 delete browser.mIconLoadingPrincipal;
                 aTab.removeAttribute("image");
               }
@@ -1071,6 +1113,7 @@
           <![CDATA[
             let browser = this.getBrowserForTab(aTab);
             let documentURI = browser.documentURI;
+            let requestContextID = browser.contentRequestContextID;
             let loadingPrincipal = browser.contentPrincipal;
             let icon = null;
 
@@ -1092,10 +1135,11 @@
               let url = documentURI.prePath + "/favicon.ico";
               if (!this.isFailedIcon(url)) {
                 icon = url;
-                this.storeIcon(browser, icon, loadingPrincipal);
+                this.storeIcon(browser, icon, loadingPrincipal, requestContextID);
               }
             }
-            this.setIcon(aTab, icon, loadingPrincipal);
+
+            this.setIcon(aTab, icon, loadingPrincipal, requestContextID);
           ]]>
         </body>
       </method>
@@ -1382,6 +1426,12 @@
 
             this.tabContainer._setPositionalAttributes();
 
+            // Enable touch events to start a native dragging
+            // session to allow the user to easily drag the selected tab.
+            // This is currently only supported on Windows.
+            oldTab.removeAttribute("touchdownstartsdrag");
+            this.mCurrentTab.setAttribute("touchdownstartsdrag", "true");
+
             if (!gMultiProcessBrowser) {
               document.commandDispatcher.unlock();
 
@@ -1623,10 +1673,19 @@
                   const textToSubURI = Components.classes["@mozilla.org/intl/texttosuburi;1"]
                                                  .getService(Components.interfaces.nsITextToSubURI);
                   title = textToSubURI.unEscapeNonAsciiURI(characterSet, title);
+                  // If it's a long data: URI that uses base64 encoding, truncate to
+                  // a reasonable length rather than trying to display the entire thing.
+                  // We can't shorten arbitrary URIs like this, as bidi etc might mean
+                  // we need the trailing characters for display. But a base64-encoded
+                  // data-URI is plain ASCII, so this is OK for tab-title display.
+                  // (See bug 1408854.)
+                  if (title.length > 500 && title.match(/^data:[^,]+;base64,/)) {
+                    title = title.substring(0, 500) + "\u2026";
+                  }
                 } catch (ex) { /* Do nothing. */ }
               } else {
                 // Still no title? Fall back to our untitled string.
-                title = this.mStringBundle.getString("tabs.emptyTabTitle");
+                title = gTabBrowserBundle.GetStringFromName("tabs.emptyTabTitle");
               }
             }
 
@@ -2524,6 +2583,9 @@
             tab.removeAttribute("linkedpanel");
 
             this._createLazyBrowser(tab);
+
+            let evt = new CustomEvent("TabBrowserDiscarded", { bubbles: true });
+            tab.dispatchEvent(evt);
           ]]>
         </body>
       </method>
@@ -2639,7 +2701,7 @@
 
             if (!aNoInitialLabel) {
               if (isBlankPageURL(aURI)) {
-                t.setAttribute("label", this.mStringBundle.getString("tabs.emptyTabTitle"));
+                t.setAttribute("label", gTabBrowserBundle.GetStringFromName("tabs.emptyTabTitle"));
               } else {
                 // Set URL as label so that the tab isn't empty initially.
                 this.setInitialTabTitle(t, aURI, { beforeTabOpen: true });
@@ -2907,7 +2969,6 @@
 
           // default to true: if it were false, we wouldn't get this far
           var warnOnClose = { value: true };
-          var bundle = this.mStringBundle;
 
           // focus the window before prompting.
           // this will raise any minimized window, which will
@@ -2916,18 +2977,18 @@
           // see bug #350299 for more details
           window.focus();
           var warningMessage =
-            PluralForm.get(tabsToClose, bundle.getString("tabs.closeWarningMultiple"))
+            PluralForm.get(tabsToClose, gTabBrowserBundle.GetStringFromName("tabs.closeWarningMultiple"))
                       .replace("#1", tabsToClose);
           var buttonPressed =
             ps.confirmEx(window,
-                         bundle.getString("tabs.closeWarningTitle"),
+                         gTabBrowserBundle.GetStringFromName("tabs.closeWarningTitle"),
                          warningMessage,
                          (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0)
                          + (ps.BUTTON_TITLE_CANCEL * ps.BUTTON_POS_1),
-                         bundle.getString("tabs.closeButtonMultiple"),
+                         gTabBrowserBundle.GetStringFromName("tabs.closeButtonMultiple"),
                          null, null,
                          aCloseTabs == this.closingTabsEnum.ALL ?
-                           bundle.getString("tabs.closeWarningPromptMe") : null,
+                           gTabBrowserBundle.GetStringFromName("tabs.closeWarningPromptMe") : null,
                          warnOnClose);
           var reallyClose = (buttonPressed == 0);
 
@@ -3301,7 +3362,7 @@
                 focusAndSelectUrlBar();
 
               // workaround for bug 345399
-              this.tabContainer.mTabstrip._updateScrollButtonsDisabledState();
+              this.tabContainer.arrowScrollbox._updateScrollButtonsDisabledState();
             }
 
             // We're going to remove the tab and the browser now.
@@ -3338,7 +3399,7 @@
                 this.tabContainer._positionPinnedTabs();
 
               // update tab close buttons state
-              this.tabContainer.adjustTabstrip();
+              this.tabContainer._updateCloseButtons();
 
               setTimeout(function(tabs) {
                 tabs._lastTabClosedByMouse = false;
@@ -3534,7 +3595,7 @@
               // Workarounds for bug 458697
               // Icon might have been set on DOMLinkAdded, don't override that.
               if (!ourBrowser.mIconURL && otherBrowser.mIconURL)
-                this.setIcon(aOurTab, otherBrowser.mIconURL, otherBrowser.contentPrincipal);
+                this.setIcon(aOurTab, otherBrowser.mIconURL, otherBrowser.contentPrincipal, otherBrowser.contentRequestContextID);
               var isBusy = aOtherTab.hasAttribute("busy");
               if (isBusy) {
                 aOurTab.setAttribute("busy", "true");
@@ -3812,7 +3873,7 @@
             aTab.removeAttribute("hidden");
             this._visibleTabs = null; // invalidate cache
 
-            this.tabContainer.adjustTabstrip();
+            this.tabContainer._updateCloseButtons();
 
             this.tabContainer._setPositionalAttributes();
 
@@ -3833,7 +3894,7 @@
             aTab.setAttribute("hidden", "true");
             this._visibleTabs = null; // invalidate cache
 
-            this.tabContainer.adjustTabstrip();
+            this.tabContainer._updateCloseButtons();
 
             this.tabContainer._setPositionalAttributes();
 
@@ -3944,20 +4005,6 @@
 
             // tell a new window to take the "dropped" tab
             return window.openDialog(getBrowserURL(), "_blank", options, aTab);
-          ]]>
-        </body>
-      </method>
-
-      <!-- Opens a given tab to a non-remote window. -->
-      <method name="openNonRemoteWindow">
-        <parameter name="aTab"/>
-        <body>
-          <![CDATA[
-            if (!AppConstants.E10S_TESTING_ONLY) {
-              throw "This method is intended only for e10s testing!";
-            }
-            let url = aTab.linkedBrowser.currentURI.spec;
-            return window.openDialog("chrome://browser/content/", "_blank", "chrome,all,dialog=no,non-remote", url);
           ]]>
         </body>
       </method>
@@ -5390,14 +5437,6 @@
                 onget="return this.mCurrentBrowser.markupDocumentViewer;"
                 readonly="true"/>
 
-      <property name="contentViewerEdit"
-                onget="return this.mCurrentBrowser.contentViewerEdit;"
-                readonly="true"/>
-
-      <property name="contentViewerFile"
-                onget="return this.mCurrentBrowser.contentViewerFile;"
-                readonly="true"/>
-
       <property name="contentDocument"
                 onget="return this.mCurrentBrowser.contentDocument;"
                 readonly="true"/>
@@ -5514,14 +5553,14 @@
           let stringWithShortcut = (stringId, keyElemId) => {
             let keyElem = document.getElementById(keyElemId);
             let shortcut = ShortcutUtils.prettifyShortcut(keyElem);
-            return this.mStringBundle.getFormattedString(stringId, [shortcut]);
+            return gTabBrowserBundle.formatStringFromName(stringId, [shortcut], 1);
           };
 
           var label;
           if (tab.mOverCloseButton) {
             label = tab.selected ?
                     stringWithShortcut("tabs.closeSelectedTab.tooltip", "key_close") :
-                    this.mStringBundle.getString("tabs.closeTab.tooltip");
+                    gTabBrowserBundle.GetStringFromName("tabs.closeTab.tooltip");
           } else if (tab._overPlayingIcon) {
             let stringID;
             if (tab.selected) {
@@ -5538,21 +5577,18 @@
                   "tabs.muteAudio.background.tooltip";
               }
 
-              label = this.mStringBundle.getString(stringID);
+              label = gTabBrowserBundle.GetStringFromName(stringID);
             }
           } else {
             label = tab._fullLabel || tab.getAttribute("label");
-            if (AppConstants.E10S_TESTING_ONLY &&
+            if (AppConstants.NIGHTLY_BUILD &&
                 tab.linkedBrowser &&
-                tab.linkedBrowser.isRemoteBrowser) {
-              label += " - e10s";
-              if (tab.linkedBrowser.frameLoader &&
-                  Services.appinfo.maxWebProcessCount > 1) {
-                label += " (" + tab.linkedBrowser.frameLoader.tabParent.osPid + ")";
-              }
+                tab.linkedBrowser.isRemoteBrowser &&
+                tab.linkedBrowser.frameLoader) {
+              label += " (pid " + tab.linkedBrowser.frameLoader.tabParent.osPid + ")";
             }
             if (tab.userContextId) {
-              label = this.mStringBundle.getFormattedString("tabs.containers.tooltip", [label, ContextualIdentityService.getUserContextLabel(tab.userContextId)]);
+              label = gTabBrowserBundle.formatStringFromName("tabs.containers.tooltip", [label, ContextualIdentityService.getUserContextLabel(tab.userContextId)], 2);
             }
           }
 
@@ -5824,10 +5860,15 @@
 
       <method name="_updateNewTabVisibility">
         <body><![CDATA[
-          let sib = this.tabContainer.nextElementSibling;
-          while (sib && sib.hidden) {
-            sib = sib.nextElementSibling;
-          }
+          // Helper functions to help deal with customize mode wrapping some items
+          let wrap = n => n.parentNode.localName == "toolbarpaletteitem" ? n.parentNode : n;
+          let unwrap = n => n && n.localName == "toolbarpaletteitem" ? n.firstElementChild : n;
+
+          let sib = this.tabContainer;
+          do {
+            sib = unwrap(wrap(sib).nextElementSibling);
+          } while (sib && sib.hidden);
+
           const kAttr = "hasadjacentnewtabbutton";
           if (sib && sib.id == "new-tab-button") {
             this.tabContainer.setAttribute(kAttr, "true");
@@ -5962,6 +6003,8 @@
 
           XPCOMUtils.defineLazyPreferenceGetter(this, "animationsEnabled",
                                                 "toolkit.cosmeticAnimations.enabled", true);
+          XPCOMUtils.defineLazyPreferenceGetter(this, "schedulePressureDefaultCount",
+                                                "browser.schedulePressure.defaultCount", 3);
           XPCOMUtils.defineLazyPreferenceGetter(this, "tabWarmingEnabled",
                                                 "browser.tabs.remote.warmup.enabled", false);
           XPCOMUtils.defineLazyPreferenceGetter(this, "tabWarmingMax",
@@ -6098,8 +6141,10 @@
               Services.focus.activeWindow)
             window.focus();
 
-          // Don't need to act if the tab is already selected:
-          if (tabForEvent.selected)
+          // Don't need to act if the tab is already selected or if there isn't
+          // a tab for the event (e.g. for the webextensions options_ui remote
+          // browsers embedded in the "about:addons" page):
+          if (!tabForEvent || tabForEvent.selected)
             return;
 
           // We always switch tabs for beforeunload tab-modal prompts.
@@ -6180,7 +6225,7 @@
           }
 
           tab.removeAttribute("soundplaying");
-          this.setIcon(tab, icon, browser.contentPrincipal);
+          this.setIcon(tab, icon, browser.contentPrincipal, browser.contentRequestContextID);
         ]]>
       </handler>
       <handler event="DOMAudioPlaybackStarted">
@@ -6365,13 +6410,13 @@
     <implementation implements="nsIDOMEventListener, nsIObserver">
       <constructor>
         <![CDATA[
-          this.mTabClipWidth = Services.prefs.getIntPref("browser.tabs.tabClipWidth");
+          this._tabClipWidth = Services.prefs.getIntPref("browser.tabs.tabClipWidth");
 
           let { restoreTabsButton } = this;
-          restoreTabsButton.setAttribute("label", this.tabbrowser.mStringBundle.getString("tabs.restoreLastTabs"));
+          restoreTabsButton.setAttribute("label", gTabBrowserBundle.GetStringFromName("tabs.restoreLastTabs"));
 
           var tab = this.firstChild;
-          tab.label = this.tabbrowser.mStringBundle.getString("tabs.emptyTabTitle");
+          tab.label = gTabBrowserBundle.GetStringFromName("tabs.emptyTabTitle");
           tab.setAttribute("onerror", "this.removeAttribute('image');");
 
           window.addEventListener("resize", this);
@@ -6402,15 +6447,13 @@
         document.getElementById("tabContextMenu");
       </field>
 
-      <field name="mTabstripWidth">0</field>
-
-      <field name="mTabstrip">
+      <field name="arrowScrollbox">
         document.getAnonymousElementByAttribute(this, "anonid", "arrowscrollbox");
       </field>
 
       <field name="_firstTab">null</field>
       <field name="_lastTab">null</field>
-      <field name="_afterSelectedTab">null</field>
+      <field name="_beforeSelectedTab">null</field>
       <field name="_beforeHoveredTab">null</field>
       <field name="_afterHoveredTab">null</field>
       <field name="_hoveredTab">null</field>
@@ -6435,13 +6478,15 @@
 
       <method name="updateSessionRestoreVisibility">
         <body><![CDATA[
-          let {restoreTabsButton, restoreTabsButtonWrapperWidth, windowUtils, mTabstripWidth} = this;
+          let {restoreTabsButton, restoreTabsButtonWrapperWidth, windowUtils} = this;
           let restoreTabsButtonWrapper = restoreTabsButton.parentNode;
 
           if (!restoreTabsButtonWrapper.getAttribute("session-exists")) {
             restoreTabsButtonWrapper.removeAttribute("shown");
             return;
           }
+
+          let arrowScrollboxWidth = this.arrowScrollbox.clientWidth;
 
           let newTabButton = document.getAnonymousElementByAttribute(
             this, "anonid", "tabs-newtab-button");
@@ -6457,7 +6502,7 @@
 
           // Subtract the elements' widths from the available space to ensure
           // that showing the restoreTabsButton won't cause any overflow.
-          if ((mTabstripWidth - tabbarUsedSpace) > restoreTabsButtonWrapperWidth) {
+          if (arrowScrollboxWidth - tabbarUsedSpace > restoreTabsButtonWrapperWidth) {
             restoreTabsButtonWrapper.setAttribute("shown", "true");
           } else {
             restoreTabsButtonWrapper.removeAttribute("shown");
@@ -6543,16 +6588,21 @@
 
           let selectedIndex = visibleTabs.indexOf(this.selectedItem);
 
-          let lastVisible = visibleTabs.length - 1;
+          if (this._beforeSelectedTab) {
+            this._beforeSelectedTab.removeAttribute("beforeselected-visible");
+          }
 
-          if (this._afterSelectedTab)
-            this._afterSelectedTab.removeAttribute("afterselected-visible");
-          if (this.selectedItem.closing || selectedIndex == lastVisible) {
-            this._afterSelectedTab = null;
+          if (this.selectedItem.closing || selectedIndex == 0) {
+            this._beforeSelectedTab = null;
           } else {
-            this._afterSelectedTab = visibleTabs[selectedIndex + 1];
-            this._afterSelectedTab.setAttribute("afterselected-visible",
-                                                "true");
+            let beforeSelectedTab = visibleTabs[selectedIndex - 1];
+            let separatedByScrollButton = this.getAttribute("overflow") == "true" &&
+              beforeSelectedTab.pinned && !this.selectedItem.pinned;
+            if (!separatedByScrollButton) {
+              this._beforeSelectedTab = beforeSelectedTab;
+              this._beforeSelectedTab.setAttribute("beforeselected-visible",
+                                                   "true");
+            }
           }
 
           if (this._firstTab)
@@ -6561,7 +6611,7 @@
           this._firstTab.setAttribute("first-visible-tab", "true");
           if (this._lastTab)
             this._lastTab.removeAttribute("last-visible-tab");
-          this._lastTab = visibleTabs[lastVisible];
+          this._lastTab = visibleTabs[visibleTabs.length - 1];
           this._lastTab.setAttribute("last-visible-tab", "true");
 
           let hoveredTab = this._hoveredTab;
@@ -6612,7 +6662,7 @@
 
           document.getElementById("menu_closeWindow").hidden = !visible;
           document.getElementById("menu_close").setAttribute("label",
-            this.tabbrowser.mStringBundle.getString(visible ? "tabs.closeTab" : "tabs.close"));
+            gTabBrowserBundle.GetStringFromName(visible ? "tabs.closeTab" : "tabs.close"));
 
           TabsInTitlebar.allowedBy("tabs-visible", visible);
         ]]></body>
@@ -6628,7 +6678,7 @@
       </method>
 
       <field name="_closeButtonsUpdatePending">false</field>
-      <method name="adjustTabstrip">
+      <method name="_updateCloseButtons">
         <body><![CDATA[
           // If we're overflowing, tabs are at their minimum widths.
           if (this.getAttribute("overflow") == "true") {
@@ -6663,7 +6713,7 @@
                              .getBoundsWithoutFlushing(ele);
               };
               let tab = this.tabbrowser.visibleTabs[this.tabbrowser._numPinnedTabs];
-              if (tab && rect(tab).width <= this.mTabClipWidth) {
+              if (tab && rect(tab).width <= this._tabClipWidth) {
                 this.setAttribute("closebuttons", "activetab");
               } else {
                 this.removeAttribute("closebuttons");
@@ -6677,7 +6727,7 @@
         <parameter name="aInstant"/>
         <body><![CDATA[
           if (this.getAttribute("overflow") == "true")
-            this.mTabstrip.ensureElementIsVisible(this.selectedItem, aInstant);
+            this.arrowScrollbox.ensureElementIsVisible(this.selectedItem, aInstant);
 
           this.selectedItem._notselectedsinceload = false;
         ]]></body>
@@ -6710,7 +6760,7 @@
           if (this.getAttribute("overflow") == "true") {
             // Don't need to do anything if we're in overflow mode and aren't scrolled
             // all the way to the right, or if we're closing the last tab.
-            if (isEndTab || !this.mTabstrip._scrollButtonDown.disabled)
+            if (isEndTab || !this.arrowScrollbox._scrollButtonDown.disabled)
               return;
 
             // If the tab has an owner that will become the active tab, the owner will
@@ -6782,6 +6832,14 @@
         ]]></body>
       </method>
 
+      <method name="uiDensityChanged">
+        <body><![CDATA[
+          this._positionPinnedTabs();
+          this._updateCloseButtons();
+          this._handleTabSelect(true);
+        ]]></body>
+      </method>
+
       <field name="_lastNumPinned">0</field>
       <field name="_pinnedTabsLayoutCache">null</field>
       <method name="_positionPinnedTabs">
@@ -6794,11 +6852,14 @@
             this.setAttribute("positionpinnedtabs", "true");
 
             let layoutData = this._pinnedTabsLayoutCache;
-            if (!layoutData) {
-              let tabstrip = this.mTabstrip;
+            let uiDensity = document.documentElement.getAttribute("uidensity");
+            if (!layoutData ||
+                layoutData.uiDensity != uiDensity) {
+              let arrowScrollbox = this.arrowScrollbox;
               layoutData = this._pinnedTabsLayoutCache = {
+                uiDensity,
                 pinnedTabWidth: this.childNodes[0].getBoundingClientRect().width,
-                scrollButtonWidth: tabstrip._scrollButtonDown.getBoundingClientRect().width
+                scrollButtonWidth: arrowScrollbox._scrollButtonDown.getBoundingClientRect().width
               };
             }
 
@@ -6865,7 +6926,7 @@
           let tabScreenX = draggedTab.boxObject.screenX;
           let translateX = screenX - draggedTab._dragData.screenX;
           if (!pinned)
-            translateX += this.mTabstrip._scrollbox.scrollLeft - draggedTab._dragData.scrollX;
+            translateX += this.arrowScrollbox._scrollbox.scrollLeft - draggedTab._dragData.scrollX;
           let leftBound = leftTab.boxObject.screenX - tabScreenX;
           let rightBound = (rightTab.boxObject.screenX + rightTab.boxObject.width) -
                            (tabScreenX + tabWidth);
@@ -6957,14 +7018,9 @@
                 break;
 
               TabsInTitlebar.updateAppearance();
-
-              var width = this.mTabstrip.boxObject.width;
-              if (width != this.mTabstripWidth) {
-                this.adjustTabstrip();
-                this._handleTabSelect(true);
-                this.mTabstripWidth = width;
-                this.updateSessionRestoreVisibility();
-              }
+              this._updateCloseButtons();
+              this._handleTabSelect(true);
+              this.updateSessionRestoreVisibility();
               break;
             case "mouseout":
               // If the "related target" (the node to which the pointer went) is not
@@ -6981,7 +7037,7 @@
       </method>
 
       <field name="_animateElement">
-        this.mTabstrip._scrollButtonDown;
+        this.arrowScrollbox._scrollButtonDown;
       </field>
 
       <method name="_notifyBackgroundTab">
@@ -6990,7 +7046,7 @@
           if (aTab.pinned || aTab.hidden)
             return;
 
-          var scrollRect = this.mTabstrip.scrollClientRect;
+          var scrollRect = this.arrowScrollbox.scrollClientRect;
           var tab = aTab.getBoundingClientRect();
 
           // DOMRect left/right properties are immutable.
@@ -7000,7 +7056,7 @@
           if (scrollRect.left <= tab.left && tab.right <= scrollRect.right)
             return;
 
-          if (this.mTabstrip.smoothScroll) {
+          if (this.arrowScrollbox.smoothScroll) {
             let selected = !this.selectedItem.pinned &&
                            this.selectedItem.getBoundingClientRect();
 
@@ -7008,13 +7064,13 @@
             if (!selected ||
                 Math.max(tab.right - selected.left, selected.right - tab.left) <=
                   scrollRect.width) {
-              this.mTabstrip.ensureElementIsVisible(aTab);
+              this.arrowScrollbox.ensureElementIsVisible(aTab);
               return;
             }
 
-            this.mTabstrip.scrollByPixels(this.mTabstrip._isRTLScrollbox ?
-                                          selected.right - scrollRect.right :
-                                          selected.left - scrollRect.left);
+            this.arrowScrollbox.scrollByPixels(this.arrowScrollbox._isRTLScrollbox ?
+                                                 selected.right - scrollRect.right :
+                                                 selected.left - scrollRect.left);
           }
 
           if (!this._animateElement.hasAttribute("highlight")) {
@@ -7071,7 +7127,7 @@
               let sourceNode = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
               if (sourceNode instanceof XULElement &&
                   sourceNode.localName == "tab" &&
-                  sourceNode.ownerGlobal instanceof ChromeWindow &&
+                  sourceNode.ownerGlobal.isChromeWindow &&
                   sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
                   sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
                 // Do not allow transfering a private tab to a non-private window
@@ -7104,7 +7160,7 @@
           tab._fullyOpen = true;
           this.tabbrowser.tabAnimationsInProgress--;
 
-          this.adjustTabstrip();
+          this._updateCloseButtons();
 
           if (tab.getAttribute("selected") == "true") {
             this._handleTabSelect();
@@ -7117,7 +7173,7 @@
           // if a tab was inserted to the overflow area or removed from it
           // without any scrolling and when the tabbar has already
           // overflowed.
-          this.mTabstrip._updateScrollButtonsDisabledState();
+          this.arrowScrollbox._updateScrollButtonsDisabledState();
 
           // Preload the next about:newtab if there isn't one already.
           this.tabbrowser._createPreloadBrowser();
@@ -7160,7 +7216,7 @@
 
         if (tab.getAttribute("fadein") == "true") {
           if (tab._fullyOpen)
-            this.adjustTabstrip();
+            this._updateCloseButtons();
           else
             this._handleNewTab(tab);
         } else if (tab.closing) {
@@ -7410,7 +7466,7 @@
         tab._dragData = {
           offsetX: event.screenX - window.screenX - tabOffsetX,
           offsetY: event.screenY - window.screenY,
-          scrollX: this.mTabstrip._scrollbox.scrollLeft,
+          scrollX: this.arrowScrollbox._scrollbox.scrollLeft,
           screenX: event.screenX
         };
 
@@ -7428,7 +7484,7 @@
         event.preventDefault();
         event.stopPropagation();
 
-        var tabStrip = this.mTabstrip;
+        var arrowScrollbox = this.arrowScrollbox;
         var ltr = (window.getComputedStyle(this).direction == "ltr");
 
         // autoscroll the tab strip if we drag over the scroll
@@ -7439,14 +7495,14 @@
           var targetAnonid = event.originalTarget.getAttribute("anonid");
           switch (targetAnonid) {
             case "scrollbutton-up":
-              pixelsToScroll = tabStrip.scrollIncrement * -1;
+              pixelsToScroll = arrowScrollbox.scrollIncrement * -1;
               break;
             case "scrollbutton-down":
-              pixelsToScroll = tabStrip.scrollIncrement;
+              pixelsToScroll = arrowScrollbox.scrollIncrement;
               break;
           }
           if (pixelsToScroll)
-            tabStrip.scrollByPixels((ltr ? 1 : -1) * pixelsToScroll, true);
+            arrowScrollbox.scrollByPixels((ltr ? 1 : -1) * pixelsToScroll, true);
         }
 
         if (effects == "move" &&
@@ -7470,12 +7526,12 @@
           }
         }
 
-        var rect = tabStrip.getBoundingClientRect();
+        var rect = arrowScrollbox.getBoundingClientRect();
         var newMargin;
         if (pixelsToScroll) {
           // if we are scrolling, put the drop indicator at the edge
           // so that it doesn't jump while scrolling
-          let scrollRect = tabStrip.scrollClientRect;
+          let scrollRect = arrowScrollbox.scrollClientRect;
           let minMargin = scrollRect.left - rect.left;
           let maxMargin = Math.min(minMargin + scrollRect.width,
                                    scrollRect.right);
@@ -7531,8 +7587,8 @@
           if (draggedTab.parentNode != this || event.shiftKey)
             this.selectedItem = newTab;
         } else if (draggedTab && draggedTab.parentNode == this) {
-          let oldTranslateX = draggedTab._dragData.translateX;
-          let tabWidth = draggedTab._dragData.tabWidth;
+          let oldTranslateX = Math.round(draggedTab._dragData.translateX);
+          let tabWidth = Math.round(draggedTab._dragData.tabWidth);
           let translateOffset = oldTranslateX % tabWidth;
           let newTranslateX = oldTranslateX - translateOffset;
           if (oldTranslateX > 0 && translateOffset > tabWidth / 2) {
@@ -7633,7 +7689,7 @@
         var wX = window.screenX;
         // check if the drop point is horizontally within the window
         if (eX > wX && eX < (wX + window.outerWidth)) {
-          let bo = this.mTabstrip.boxObject;
+          let bo = this.arrowScrollbox.boxObject;
           // also avoid detaching if the the tab was dropped too close to
           // the tabbar (half a tab)
           let endScreenY = bo.screenY + 1.5 * bo.height;
@@ -7761,7 +7817,11 @@
                     anonid="tab-throbber"
                     class="tab-throbber"
                     layer="true"/>
-          <xul:image xbl:inherits="src=image,loadingprincipal=iconLoadingPrincipal,fadein,pinned,selected=visuallyselected,busy,crashed,sharing"
+          <xul:image xbl:inherits="fadein,pinned,busy,progress,selected=visuallyselected"
+                     class="tab-throbber-fallback"
+                     role="presentation"
+                     layer="true"/>
+          <xul:image xbl:inherits="src=image,triggeringprincipal=iconloadingprincipal,requestcontextid,fadein,pinned,selected=visuallyselected,busy,crashed,sharing"
                      anonid="tab-icon-image"
                      class="tab-icon-image"
                      validate="never"
@@ -7938,7 +7998,10 @@
             tabContainer._beforeHoveredTab = null;
           } else {
             let candidate = visibleTabs[tabIndex - 1];
-            if (!candidate.selected) {
+            let separatedByScrollButton =
+              tabContainer.getAttribute("overflow") == "true" &&
+              candidate.pinned && !this.pinned;
+            if (!candidate.selected && !separatedByScrollButton) {
               tabContainer._beforeHoveredTab = candidate;
               candidate.setAttribute("beforehovered", "true");
             }
@@ -8128,7 +8191,6 @@
       <![CDATA[
         if (this.selected) {
           this.style.MozUserFocus = "ignore";
-          this.clientTop; // just using this to flush style updates
         } else if (this.mOverCloseButton ||
                    this._overPlayingIcon) {
           // Prevent tabbox.xml from selecting the tab.
@@ -8206,7 +8268,7 @@
 
           let windowUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
                                   .getInterface(Ci.nsIDOMWindowUtils);
-          let tabstripRect = windowUtils.getBoundsWithoutFlushing(tabContainer.mTabstrip);
+          let arrowScrollboxRect = windowUtils.getBoundsWithoutFlushing(tabContainer.arrowScrollbox);
           for (let menuitem of this.childNodes) {
             let curTab = menuitem.tab;
             if (!curTab) {
@@ -8214,8 +8276,8 @@
               continue;
             }
             let curTabRect = windowUtils.getBoundsWithoutFlushing(curTab);
-            if (curTabRect.left >= tabstripRect.left &&
-                curTabRect.right <= tabstripRect.right) {
+            if (curTabRect.left >= arrowScrollboxRect.left &&
+                curTabRect.right <= arrowScrollboxRect.right) {
               menuitem.setAttribute("tabIsVisible", "true");
             } else {
               menuitem.removeAttribute("tabIsVisible");
@@ -8251,8 +8313,10 @@
 
           if (aTab.hasAttribute("busy")) {
             aMenuitem.setAttribute("busy", aTab.getAttribute("busy"));
+            aMenuitem.removeAttribute("iconloadingprincipal");
             aMenuitem.removeAttribute("image");
           } else {
+            aMenuitem.setAttribute("iconloadingprincipal", aTab.getAttribute("iconloadingprincipal"));
             aMenuitem.setAttribute("image", aTab.getAttribute("image"));
             aMenuitem.removeAttribute("busy");
           }
@@ -8300,7 +8364,10 @@
 
         if (event.target.getAttribute("anonid") == "newtab-popup" ||
             event.target.id == "newtab-popup") {
-          createUserContextMenu(event, {useAccessKeys: false});
+          createUserContextMenu(event, {
+            useAccessKeys: false,
+            showDefaultTab: Services.prefs.getIntPref("privacy.userContext.longPressBehavior") == 1
+          });
         } else {
           document.getElementById("alltabs-popup-separator-1").hidden = !containersEnabled;
           let containersTab = document.getElementById("alltabs_containersTab");

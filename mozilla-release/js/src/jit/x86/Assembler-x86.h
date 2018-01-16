@@ -53,7 +53,6 @@ static constexpr FloatRegister ScratchDoubleReg = FloatRegister(X86Encoding::xmm
 static constexpr FloatRegister ScratchSimd128Reg = FloatRegister(X86Encoding::xmm7, FloatRegisters::Simd128);
 
 // Avoid ebp, which is the FramePointer, which is unavailable in some modes.
-static constexpr Register ArgumentsRectifierReg = esi;
 static constexpr Register CallTempReg0 = edi;
 static constexpr Register CallTempReg1 = eax;
 static constexpr Register CallTempReg2 = ebx;
@@ -81,14 +80,21 @@ class ABIArgGenerator
 
 };
 
+// These registers may be volatile or nonvolatile.
 static constexpr Register ABINonArgReg0 = eax;
 static constexpr Register ABINonArgReg1 = ebx;
 static constexpr Register ABINonArgReg2 = ecx;
 
+// These registers may be volatile or nonvolatile.
 // Note: these three registers are all guaranteed to be different
 static constexpr Register ABINonArgReturnReg0 = ecx;
 static constexpr Register ABINonArgReturnReg1 = edx;
 static constexpr Register ABINonVolatileReg = ebx;
+
+// This register is guaranteed to be clobberable during the prologue and
+// epilogue of an ABI call which must preserve both ABI argument, return
+// and non-volatile registers.
+static constexpr Register ABINonArgReturnVolatileReg = ecx;
 
 // TLS pointer argument register for WebAssembly functions. This must not alias
 // any other register used for passing function arguments or return values.
@@ -129,7 +135,7 @@ static constexpr Register RegExpTesterLastIndexReg = CallTempReg3;
 
 // GCC stack is aligned on 16 bytes. Ion does not maintain this for internal
 // calls. wasm code does.
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__MINGW32__)
 static constexpr uint32_t ABIStackAlignment = 16;
 #else
 static constexpr uint32_t ABIStackAlignment = 4;
@@ -201,6 +207,24 @@ static inline void
 PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitZoneGroup::BackedgeTarget target)
 {
     PatchJump(jump_, label);
+}
+
+static inline Operand
+LowWord(const Operand& op) {
+    switch (op.kind()) {
+      case Operand::MEM_REG_DISP: return Operand(LowWord(op.toAddress()));
+      case Operand::MEM_SCALE:    return Operand(LowWord(op.toBaseIndex()));
+      default:                    MOZ_CRASH("Invalid operand type");
+    }
+}
+
+static inline Operand
+HighWord(const Operand& op) {
+    switch (op.kind()) {
+      case Operand::MEM_REG_DISP: return Operand(HighWord(op.toAddress()));
+      case Operand::MEM_SCALE:    return Operand(HighWord(op.toBaseIndex()));
+      default:                    MOZ_CRASH("Invalid operand type");
+    }
 }
 
 // Return operand from a JS -> JS call.
@@ -763,9 +787,7 @@ class Assembler : public AssemblerX86Shared
     CodeOffset movlWithPatchLow(Register regLow, const Operand& dest) {
         switch (dest.kind()) {
           case Operand::MEM_REG_DISP: {
-            Address addr = dest.toAddress();
-            Operand low(addr.base, addr.offset + INT64LOW_OFFSET);
-            return movlWithPatch(regLow, low);
+            return movlWithPatch(regLow, LowWord(dest));
           }
           case Operand::MEM_ADDRESS32: {
             Operand low(PatchedAbsoluteAddress(uint32_t(dest.address()) + INT64LOW_OFFSET));
@@ -778,9 +800,7 @@ class Assembler : public AssemblerX86Shared
     CodeOffset movlWithPatchHigh(Register regHigh, const Operand& dest) {
         switch (dest.kind()) {
           case Operand::MEM_REG_DISP: {
-            Address addr = dest.toAddress();
-            Operand high(addr.base, addr.offset + INT64HIGH_OFFSET);
-            return movlWithPatch(regHigh, high);
+            return movlWithPatch(regHigh, HighWord(dest));
           }
           case Operand::MEM_ADDRESS32: {
             Operand high(PatchedAbsoluteAddress(uint32_t(dest.address()) + INT64HIGH_OFFSET));

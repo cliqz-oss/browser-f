@@ -12,7 +12,7 @@ registerCleanupFunction(async function() {
 /**
  * Make sure the downloads button and indicator overflows into the nav-bar
  * chevron properly, and then when those buttons are clicked in the overflow
- * panel that the downloads panel anchors to the chevron.
+ * panel that the downloads panel anchors to the chevron`s icon.
  */
 add_task(async function test_overflow_anchor() {
   await SpecialPowers.pushPrefEnv({set: [["browser.download.autohideButton", false]]});
@@ -25,7 +25,7 @@ add_task(async function test_overflow_anchor() {
   ok(!button.overflowed, "Downloads button should not be overflowed.");
   is(button.node.getAttribute("cui-areatype"), "toolbar", "Button should know it's in the toolbar");
 
-  gCustomizeMode.addToPanel(button.node);
+  await gCustomizeMode.addToPanel(button.node);
 
   let promise = promisePanelOpened();
   EventUtils.sendMouseEvent({ type: "mousedown", button: 0 }, button.node);
@@ -34,7 +34,9 @@ add_task(async function test_overflow_anchor() {
 
   let panel = DownloadsPanel.panel;
   let chevron = document.getElementById("nav-bar-overflow-button");
-  is(panel.anchorNode, chevron, "Panel should be anchored to the chevron.");
+  let chevronIcon = document.getAnonymousElementByAttribute(chevron,
+                                                            "class", "toolbarbutton-icon");
+  is(panel.anchorNode, chevronIcon, "Panel should be anchored to the chevron`s icon.");
 
   DownloadsPanel.hidePanel();
 
@@ -45,7 +47,9 @@ add_task(async function test_overflow_anchor() {
   EventUtils.sendMouseEvent({ type: "mousedown", button: 0 }, button.node);
   await promise;
 
-  is(panel.anchorNode.id, "downloads-indicator-anchor");
+  let downloadsAnchor = document.getAnonymousElementByAttribute(button.node, "class",
+                                                               "toolbarbutton-badge-stack");
+  is(panel.anchorNode, downloadsAnchor);
 
   DownloadsPanel.hidePanel();
 });

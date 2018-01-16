@@ -4,6 +4,7 @@
 <!ENTITY addons.windowTitle                   "Add-ons-Verwaltung">
 
 <!ENTITY search.placeholder                   "Alle Add-ons durchsuchen">
+
 <!ENTITY search.buttonlabel                   "Suchen">
 <!-- LOCALIZATION NOTE (search.commandKey):
      The search command key should match findOnCmd.commandkey from browser.dtd -->
@@ -26,6 +27,7 @@
 <!ENTITY cmd.back.tooltip                     "Eine Seite zurück">
 <!ENTITY cmd.forward.tooltip                  "Eine Seite vor">
 
+
 <!ENTITY showUnsignedExtensions.button.label  "Einige Erweiterungen konnten nicht verifiziert werden.">
 <!ENTITY showAllExtensions.button.label       "Alle Erweiterungen anzeigen">
 <!ENTITY debugAddons.label                    "Add-ons debuggen">
@@ -36,7 +38,7 @@
 <!ENTITY warning.checkcompatibility.label          "Die Addon-Kompatibilitäts-Prüfung ist deaktiviert. Sie könnten inkompatible Add-ons haben.">
 <!ENTITY warning.checkcompatibility.enable.label   "Aktivieren">
 <!ENTITY warning.checkcompatibility.enable.tooltip "Addon-Kompatibilitäts-Prüfung aktivieren">
-<!ENTITY warning.updatesecurity.label              "Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Ihre Sicherheit könnte durch Updates kompromittiert worden sein."> 
+<!ENTITY warning.updatesecurity.label              "Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Ihre Sicherheit könnte durch Updates kompromittiert worden sein.">
 <!ENTITY warning.updatesecurity.enable.label       "Aktivieren">
 <!ENTITY warning.updatesecurity.enable.tooltip     "Überprüfung auf Sicherheitsupdates für Add-ons aktivieren">
 
@@ -47,7 +49,7 @@
 <!ENTITY view.availableUpdates.label          "Verfügbare Updates">
 
 <!-- addon updates -->
-<!ENTITY updates.checkForUpdates.label         "Auf Updates überprüfen">
+<!ENTITY updates.checkForUpdates.label        "Auf Updates überprüfen">
 <!ENTITY updates.checkForUpdates.accesskey    "A">
 <!ENTITY updates.viewUpdates.label            "Kürzlich durchgeführte Updates anzeigen">
 <!ENTITY updates.viewUpdates.accesskey        "K">
@@ -141,7 +143,7 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 
 <!ENTITY detail.updateType                    "Automatische Updates">
 <!ENTITY detail.updateDefault.label           "Standard">
-<!ENTITY detail.updateDefault.tooltip         "Updates nur dann automatisch installieren, wenn das der Standard ist"> 
+<!ENTITY detail.updateDefault.tooltip         "Updates nur dann automatisch installieren, wenn das der Standard ist">
 <!ENTITY detail.updateAutomatic.label         "Ein">
 <!ENTITY detail.updateAutomatic.tooltip       "Updates automatisch installieren">
 <!ENTITY detail.updateManual.label            "Aus">
@@ -162,7 +164,7 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 
 
 <!-- ratings -->
-<!ENTITY rating2.label	     		          "Bewertung">
+<!ENTITY rating2.label                        "Bewertung">
 
 <!-- download/install progress -->
 <!ENTITY progress.pause.tooltip               "Pause">

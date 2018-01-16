@@ -37,8 +37,10 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   Feeds: "resource:///modules/Feeds.jsm",
   FileUtils: "resource://gre/modules/FileUtils.jsm",
+  FileSource: "resource://gre/modules/L10nRegistry.jsm",
   FormValidationHandler: "resource:///modules/FormValidationHandler.jsm",
   Integration: "resource://gre/modules/Integration.jsm",
+  L10nRegistry: "resource://gre/modules/L10nRegistry.jsm",
   LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
   LoginHelper: "resource://gre/modules/LoginHelper.jsm",
   LoginManagerParent: "resource://gre/modules/LoginManagerParent.jsm",
@@ -263,6 +265,7 @@ const OBSERVE_LASTWINDOW_CLOSE_TOPICS = AppConstants.platform != "macosx";
 BrowserGlue.prototype = {
   _saveSession: false,
   _migrationImportsDefaultBookmarks: false,
+  _placesBrowserInitComplete: false,
 
   _setPrefToSaveSession: function BG__setPrefToSaveSession(aForce) {
     if (!this._saveSession && !aForce)
@@ -430,6 +433,10 @@ BrowserGlue.prototype = {
           Object.defineProperty(this, "AlertsService", {
             value: subject.wrappedJSObject
           });
+        } else if (data == "places-browser-init-complete") {
+          if (this._placesBrowserInitComplete) {
+            Services.obs.notifyObservers(null, "places-browser-init-complete");
+          }
         }
         break;
       case "initial-migration-will-import-default-bookmarks":
@@ -660,6 +667,18 @@ BrowserGlue.prototype = {
       });
     }
 
+
+    // Initialize the default l10n resource sources for L10nRegistry.
+    const multilocalePath = "resource://gre/res/multilocale.json";
+    L10nRegistry.bootstrap = fetch(multilocalePath).then(d => d.json()).then(({ locales }) => {
+      const toolkitSource = new FileSource("toolkit", locales, "resource://gre/localization/{locale}/");
+      L10nRegistry.registerSource(toolkitSource);
+      const appSource = new FileSource("app", locales, "resource://app/localization/{locale}/");
+      L10nRegistry.registerSource(appSource);
+    }).catch(e => {
+      Services.console.logStringMessage(`Could not load multilocale.json. Error: ${e}`);
+    });
+
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
   },
 
@@ -671,6 +690,7 @@ BrowserGlue.prototype = {
 
       let buildID = Services.appinfo.appBuildID;
       let today = new Date().getTime();
+      /* eslint-disable no-multi-spaces */
       let buildDate = new Date(buildID.slice(0, 4),     // year
                                buildID.slice(4, 6) - 1, // months are zero-based.
                                buildID.slice(6, 8),     // day
@@ -678,6 +698,7 @@ BrowserGlue.prototype = {
                                buildID.slice(10, 12),   // min
                                buildID.slice(12, 14))   // ms
       .getTime();
+      /* eslint-enable no-multi-spaces */
 
       const millisecondsIn24Hours = 86400000;
       let acceptableAge = Services.prefs.getIntPref("app.update.checkInstallTime.days") * millisecondsIn24Hours;
@@ -947,6 +968,9 @@ BrowserGlue.prototype = {
 
     this._firstWindowTelemetry(aWindow);
     this._firstWindowLoaded();
+
+    // Set the default favicon size for UI views that use the page-icon protocol.
+    PlacesUtils.favicons.setDefaultIconURIPreferredSize(16 * aWindow.devicePixelRatio);
   },
 
   _sendMediaTelemetry() {
@@ -966,9 +990,7 @@ BrowserGlue.prototype = {
     // Call trackStartupCrashEnd here in case the delayed call on startup hasn't
     // yet occurred (see trackStartupCrashEnd caller in browser.js).
     try {
-      let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"]
-                         .getService(Ci.nsIAppStartup);
-      appStartup.trackStartupCrashEnd();
+      Services.startup.trackStartupCrashEnd();
     } catch (e) {
       Cu.reportError("Could not end startup crash tracking in quit-application-granted: " + e);
     }
@@ -1093,12 +1115,16 @@ BrowserGlue.prototype = {
     // early, so we use a maximum timeout for it.
     Services.tm.idleDispatchToMainThread(() => {
       SafeBrowsing.init();
+
+      // Login reputation depends on the Safe Browsing API.
+      if (Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled")) {
+        Cc["@mozilla.org/reputationservice/login-reputation-service;1"]
+        .getService(Ci.ILoginReputationService);
+      }
     }, 5000);
 
     if (AppConstants.MOZ_CRASHREPORTER) {
-      Services.tm.idleDispatchToMainThread(() => {
-        UnsubmittedCrashHandler.checkForUnsubmittedCrashReports();
-      });
+      UnsubmittedCrashHandler.scheduleCheckForUnsubmittedCrashReports();
     }
 
     if (AppConstants.platform == "win") {
@@ -1366,15 +1392,13 @@ BrowserGlue.prototype = {
     if (!actions || actions.indexOf("silent") != -1)
       return;
 
-    var formatter = Cc["@mozilla.org/toolkit/URLFormatterService;1"].
-                    getService(Ci.nsIURLFormatter);
     var appName = gBrandBundle.GetStringFromName("brandShortName");
 
     function getNotifyString(aPropData) {
       var propValue = update.getProperty(aPropData.propName);
       if (!propValue) {
         if (aPropData.prefName)
-          propValue = formatter.formatURLPref(aPropData.prefName);
+          propValue = Services.urlFormatter.formatURLPref(aPropData.prefName);
         else if (aPropData.stringParams)
           propValue = gBrowserBundle.formatStringFromName(aPropData.stringName,
                                                           aPropData.stringParams,
@@ -1479,6 +1503,7 @@ BrowserGlue.prototype = {
       // in any case, better safe than sorry.
       this._firstWindowReady.then(() => {
         this._showPlacesLockedNotificationBox();
+        this._placesBrowserInitComplete = true;
         Services.obs.notifyObservers(null, "places-browser-init-complete");
       });
       return;
@@ -1647,6 +1672,7 @@ BrowserGlue.prototype = {
     }).then(() => {
       // NB: deliberately after the catch so that we always do this, even if
       // we threw halfway through initializing in the Task above.
+      this._placesBrowserInitComplete = true;
       Services.obs.notifyObservers(null, "places-browser-init-complete");
     });
   },
@@ -1679,9 +1705,7 @@ BrowserGlue.prototype = {
     var accessKey = placesBundle.GetStringFromName("lockPromptInfoButton.accessKey");
 
     var helpTopic = "places-locked";
-    var url = Cc["@mozilla.org/toolkit/URLFormatterService;1"].
-              getService(Components.interfaces.nsIURLFormatter).
-              formatURLPref("app.support.baseURL");
+    var url = Services.urlFormatter.formatURLPref("app.support.baseURL");
     url += helpTopic;
 
     var win = RecentWindow.getMostRecentBrowserWindow();
@@ -1715,8 +1739,37 @@ BrowserGlue.prototype = {
       if (topic != "alertclickcallback")
         return;
       this._openPreferences("sync", { origin: "doorhanger" });
-    }
+    };
     this.AlertsService.showAlertNotification(null, title, body, true, null, clickCallback);
+  },
+
+  /**
+   * Uncollapses PersonalToolbar if its collapsed status is not
+   * persisted, and user customized it or changed default bookmarks.
+   *
+   * If the user does not have a persisted value for the toolbar's
+   * "collapsed" attribute, try to determine whether it's customized.
+   */
+  _maybeToggleBookmarkToolbarVisibility() {
+    const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
+    const NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE = 3;
+    let xulStore = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
+
+    if (!xulStore.hasValue(BROWSER_DOCURL, "PersonalToolbar", "collapsed")) {
+      // We consider the toolbar customized if it has more than NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE
+      // children, or if it has a persisted currentset value.
+      let toolbarIsCustomized = xulStore.hasValue(BROWSER_DOCURL, "PersonalToolbar", "currentset");
+      let getToolbarFolderCount = () => {
+        let toolbarFolder = PlacesUtils.getFolderContents(PlacesUtils.toolbarFolderId).root;
+        let toolbarChildCount = toolbarFolder.childCount;
+        toolbarFolder.containerOpen = false;
+        return toolbarChildCount;
+      };
+
+      if (toolbarIsCustomized || getToolbarFolderCount() > NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE) {
+        xulStore.setValue(BROWSER_DOCURL, "PersonalToolbar", "collapsed", "false");
+      }
+    }
   },
 
   // eslint-disable-next-line complexity
@@ -1730,6 +1783,15 @@ BrowserGlue.prototype = {
     } else {
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
+
+      try {
+        // New profiles may have existing bookmarks (imported from another browser or
+        // copied into the profile) and we want to show the bookmark toolbar for them
+        // in some cases.
+        this._maybeToggleBookmarkToolbarVisibility();
+      } catch (ex) {
+        Cu.reportError(ex);
+      }
       return;
     }
 
@@ -1770,7 +1832,7 @@ BrowserGlue.prototype = {
           } else {
             // Just append.
             currentset = currentset.replace(/(^|,)window-controls($|,)/,
-                                            "$1bookmarks-menu-button,window-controls$2")
+                                            "$1bookmarks-menu-button,window-controls$2");
           }
           xulStore.setValue(BROWSER_DOCURL, "nav-bar", "currentset", currentset);
         }
@@ -1807,17 +1869,6 @@ BrowserGlue.prototype = {
     if (currentUIVersion < 20) {
       // Remove persisted collapsed state from TabsToolbar.
       xulStore.removeValue(BROWSER_DOCURL, "TabsToolbar", "collapsed");
-    }
-
-    if (currentUIVersion < 23) {
-      const kSelectedEnginePref = "browser.search.selectedEngine";
-      if (Services.prefs.prefHasUserValue(kSelectedEnginePref)) {
-        try {
-          let name = Services.prefs.getComplexValue(kSelectedEnginePref,
-                                                    Ci.nsIPrefLocalizedString).data;
-          Services.search.currentEngine = Services.search.getEngineByName(name);
-        } catch (ex) {}
-      }
     }
 
     if (currentUIVersion < 24) {
@@ -2171,7 +2222,11 @@ BrowserGlue.prototype = {
         let currentEngine = Services.search.currentEngine.wrappedJSObject;
         // Only reset the current engine if it wasn't set by a WebExtension
         // and it is not one of the default engines.
-        if (currentEngine._extensionID || currentEngine._isDefault)
+        // If the original default is not a default, the user has a weird
+        // configuration probably involving langpacks, it's not worth
+        // attempting to reset their settings.
+        if (currentEngine._extensionID || currentEngine._isDefault ||
+            !Services.search.originalDefaultEngine.wrappedJSObject._isDefault)
           return;
 
         if (currentEngine._loadPath.startsWith("[https]")) {
@@ -2483,7 +2538,7 @@ BrowserGlue.prototype = {
         } else if (allSameDevice) {
           tabArrivingBody = "unnamedTabsArrivingNotification2.body";
         } else {
-          tabArrivingBody = "unnamedTabsArrivingNotificationMultiple2.body"
+          tabArrivingBody = "unnamedTabsArrivingNotificationMultiple2.body";
         }
 
         body = bundle.GetStringFromName(tabArrivingBody);
@@ -2496,7 +2551,7 @@ BrowserGlue.prototype = {
         if (obsTopic == "alertclickcallback") {
           win.gBrowser.selectedTab = firstTab;
         }
-      }
+      };
 
       // Specify an icon because on Windows no icon is shown at the moment
       let imageURL;
@@ -2574,7 +2629,7 @@ BrowserGlue.prototype = {
       if (topic != "alertclickcallback")
         return;
       this._openPreferences("sync", { origin: "devDisconnectedAlert"});
-    }
+    };
     this.AlertsService.showAlertNotification(null, title, body, true, null, clickCallback);
   },
 
@@ -2638,7 +2693,7 @@ BrowserGlue.prototype = {
 
   // redefine the default factory for XPCOMUtils
   _xpcom_factory: BrowserGlueServiceFactory,
-}
+};
 
 /**
  * ContentPermissionIntegration is responsible for showing the user
@@ -2742,7 +2797,7 @@ ContentPermissionPrompt.prototype = {
 };
 
 var DefaultBrowserCheck = {
-  get OPTIONPOPUP() { return "defaultBrowserNotificationPopup" },
+  get OPTIONPOPUP() { return "defaultBrowserNotificationPopup"; },
 
   closePrompt(aNode) {
     if (this._notification) {
@@ -2934,9 +2989,11 @@ var JawsScreenReaderVersionCheck = {
 
   _checkVersionAndPrompt() {
     // Make sure we only prompt for versions of JAWS we do not
-    // support and never prompt if e10s is disabled.
+    // support and never prompt if e10s is disabled or if we're on
+    // nightly.
     if (!Services.appinfo.shouldBlockIncompatJaws ||
-        !Services.appinfo.browserTabsRemoteAutostart) {
+        !Services.appinfo.browserTabsRemoteAutostart ||
+        AppConstants.NIGHTLY_BUILD) {
       return;
     }
 

@@ -1201,7 +1201,8 @@ class SharedStubInfo
 class ICMonitoredFallbackStub : public ICFallbackStub
 {
   protected:
-    // Pointer to the fallback monitor stub.
+    // Pointer to the fallback monitor stub. Created lazily by
+    // getFallbackMonitorStub if needed.
     ICTypeMonitor_Fallback* fallbackMonitorStub_;
 
     ICMonitoredFallbackStub(Kind kind, JitCode* stubCode)
@@ -1209,11 +1210,17 @@ class ICMonitoredFallbackStub : public ICFallbackStub
         fallbackMonitorStub_(nullptr) {}
 
   public:
-    MOZ_MUST_USE bool initMonitoringChain(JSContext* cx, ICStubSpace* space);
+    MOZ_MUST_USE bool initMonitoringChain(JSContext* cx, JSScript* script);
     MOZ_MUST_USE bool addMonitorStubForValue(JSContext* cx, BaselineFrame* frame,
                                              StackTypeSet* types, HandleValue val);
 
-    inline ICTypeMonitor_Fallback* fallbackMonitorStub() const {
+    ICTypeMonitor_Fallback* maybeFallbackMonitorStub() const {
+        return fallbackMonitorStub_;
+    }
+    ICTypeMonitor_Fallback* getFallbackMonitorStub(JSContext* cx, JSScript* script) {
+        if (!fallbackMonitorStub_ && !initMonitoringChain(cx, script))
+            return nullptr;
+        MOZ_ASSERT(fallbackMonitorStub_);
         return fallbackMonitorStub_;
     }
 
@@ -2306,45 +2313,11 @@ enum TypedThingLayout {
     Layout_InlineTypedObject
 };
 
-static inline TypedThingLayout
-GetTypedThingLayout(const Class* clasp)
-{
-    if (IsTypedArrayClass(clasp))
-        return Layout_TypedArray;
-    if (IsOutlineTypedObjectClass(clasp))
-        return Layout_OutlineTypedObject;
-    if (IsInlineTypedObjectClass(clasp))
-        return Layout_InlineTypedObject;
-    MOZ_CRASH("Bad object class");
-}
-
-bool
-IsPreliminaryObject(JSObject* obj);
-
 void
 StripPreliminaryObjectStubs(JSContext* cx, ICFallbackStub* stub);
 
-MOZ_MUST_USE bool
-CheckHasNoSuchOwnProperty(JSContext* cx, JSObject* obj, jsid id);
-
-MOZ_MUST_USE bool
-CheckHasNoSuchProperty(JSContext* cx, JSObject* obj, jsid id,
-                       JSObject** lastProto = nullptr, size_t* protoChainDepthOut = nullptr);
-
-void
-CheckForTypedObjectWithDetachedStorage(JSContext* cx, MacroAssembler& masm, Label* failure);
-
 void
 LoadTypedThingData(MacroAssembler& masm, TypedThingLayout layout, Register obj, Register result);
-
-bool
-IsPrimitiveArrayTypedObject(JSObject* obj);
-
-Scalar::Type
-TypedThingElementType(JSObject* obj);
-
-bool
-TypedThingRequiresFloatingPoint(JSObject* obj);
 
 void
 LoadTypedThingLength(MacroAssembler& masm, TypedThingLayout layout, Register obj, Register result);
@@ -2395,10 +2368,7 @@ class ICGetProp_Fallback : public ICMonitoredFallbackStub
         { }
 
         ICStub* getStub(ICStubSpace* space) {
-            ICGetProp_Fallback* stub = newStub<ICGetProp_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+            return newStub<ICGetProp_Fallback>(space, getStubCode());
         }
     };
 };

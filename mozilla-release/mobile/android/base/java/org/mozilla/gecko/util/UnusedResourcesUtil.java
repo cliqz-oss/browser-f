@@ -55,11 +55,9 @@ final class UnusedResourcesUtil {
     };
 
     public static final int[] USED_IN_MANIFEST = {
-            R.drawable.search_launcher,
             R.string.crash_reporter_title,
             R.xml.fxaccount_authenticator,
             R.xml.fxaccount_syncadapter,
-            R.xml.search_widget_info,
             R.xml.searchable,
     };
 
@@ -98,5 +96,9 @@ final class UnusedResourcesUtil {
     // not needed while Activity Stream is part of the HomePager
     public static final int[] TEMPORARY_UNUSED_ACTIVITY_STREAM = {
             R.string.activity_stream_topsites
+    };
+
+    public static final int[] USED_IN_PAGE_ACTION = {
+            R.drawable.add_to_homescreen
     };
 }

@@ -114,6 +114,7 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId) {
 
   this._toolRegistered = this._toolRegistered.bind(this);
   this._toolUnregistered = this._toolUnregistered.bind(this);
+  this._onWillNavigate = this._onWillNavigate.bind(this);
   this._refreshHostTitle = this._refreshHostTitle.bind(this);
   this._toggleNoAutohide = this._toggleNoAutohide.bind(this);
   this.showFramesMenu = this.showFramesMenu.bind(this);
@@ -163,6 +164,7 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId) {
 
   EventEmitter.decorate(this);
 
+  this._target.on("will-navigate", this._onWillNavigate);
   this._target.on("navigate", this._refreshHostTitle);
   this._target.on("frame-update", this._updateFrames);
   this._target.on("inspect-object", this._onInspectObject);
@@ -453,13 +455,12 @@ Toolbox.prototype = {
         if (e.originalTarget.closest("input[type=text]") ||
             e.originalTarget.closest("input[type=search]") ||
             e.originalTarget.closest("input:not([type])") ||
-            e.originalTarget.closest("textarea")
-        ) {
+            e.originalTarget.closest("textarea")) {
           e.stopPropagation();
           e.preventDefault();
           this.openTextBoxContextMenu(e.screenX, e.screenY);
         }
-      }, true);
+      });
 
       this.shortcuts = new KeyShortcuts({
         window: this.doc.defaultView
@@ -600,6 +601,22 @@ Toolbox.prototype = {
                     text: message,
                     contentType: "text/plain",
                   };
+                });
+            };
+
+          case "applySourceMap":
+            return (generatedId, url, code, mappings) => {
+              return target.applySourceMap(generatedId, url, code, mappings)
+                .then(result => {
+                  // If a tool has changed or introduced a source map
+                  // (e.g, by pretty-printing a source), tell the
+                  // source map URL service about the change, so that
+                  // subscribers to that service can be updated as
+                  // well.
+                  if (this._sourceMapURLService) {
+                    this._sourceMapURLService.sourceMapChanged(generatedId, url);
+                  }
+                  return result;
                 });
             };
 
@@ -1007,7 +1024,7 @@ Toolbox.prototype = {
     if (!this._notificationBox) {
       let { NotificationBox, PriorityLevels } =
         this.browserRequire(
-          "devtools/client/shared/components/notification-box");
+          "devtools/client/shared/components/NotificationBox");
 
       NotificationBox = this.React.createFactory(NotificationBox);
 
@@ -1908,12 +1925,11 @@ Toolbox.prototype = {
    * Loads the tool next to the currently selected tool.
    */
   selectNextTool: function () {
-    const index = this.panelDefinitions.findIndex(({id}) => id === this.currentToolId);
-    let definition = this.panelDefinitions[index + 1];
+    let definitions = this.component.panelDefinitions;
+    const index = definitions.findIndex(({id}) => id === this.currentToolId);
+    let definition = definitions[index + 1];
     if (!definition) {
-      definition = index === -1
-        ? this.panelDefinitions[0]
-        : this.optionsDefinition;
+      definition = index === -1 ? definitions[0] : this.optionsDefinition;
     }
     return this.selectTool(definition.id);
   },
@@ -1922,11 +1938,12 @@ Toolbox.prototype = {
    * Loads the tool just left to the currently selected tool.
    */
   selectPreviousTool: function () {
-    const index = this.panelDefinitions.findIndex(({id}) => id === this.currentToolId);
-    let definition = this.panelDefinitions[index - 1];
+    let definitions = this.component.panelDefinitions;
+    const index = definitions.findIndex(({id}) => id === this.currentToolId);
+    let definition = definitions[index - 1];
     if (!definition) {
       definition = index === -1
-        ? this.panelDefinitions[this.panelDefinitions.length - 1]
+        ? definitions[definitions.length - 1]
         : this.optionsDefinition;
     }
     return this.selectTool(definition.id);
@@ -1965,6 +1982,30 @@ Toolbox.prototype = {
     this.postMessage({
       name: "raise-host"
     });
+  },
+
+  /**
+   * Fired when user just started navigating away to another web page.
+   */
+  async _onWillNavigate() {
+    let toolId = this.currentToolId;
+    // For now, only inspector and webconsole fires "reloaded" event
+    if (toolId != "inspector" && toolId != "webconsole") {
+      return;
+    }
+
+    let start = this.win.performance.now();
+    let panel = this.getPanel(toolId);
+    // Ignore the timing if the panel is still loading
+    if (!panel) {
+      return;
+    }
+    await panel.once("reloaded");
+    let delay = this.win.performance.now() - start;
+
+    let telemetryKey = "DEVTOOLS_TOOLBOX_PAGE_RELOAD_DELAY_MS";
+    let histogram = Services.telemetry.getKeyedHistogramById(telemetryKey);
+    histogram.add(toolId, delay);
   },
 
   /**
@@ -2039,9 +2080,18 @@ Toolbox.prototype = {
   /**
    * Show a drop down menu that allows the user to switch frames.
    */
-  showFramesMenu: function (event) {
+  showFramesMenu: async function (event) {
     let menu = new Menu();
     let target = event.target;
+
+    // Need to initInspector to check presence of getNodeActorFromWindowID
+    // and use the highlighter later
+    await this.initInspector();
+    if (!("_supportsFrameHighlight" in this)) {
+    // Only works with FF58+ targets
+      this._supportsFrameHighlight =
+        await this.target.actorHasMethod("domwalker", "getNodeActorFromWindowID");
+    }
 
     // Generate list of menu items from the list of frames.
     this.frameMap.forEach(frame => {
@@ -2062,6 +2112,9 @@ Toolbox.prototype = {
         checked,
         click: () => {
           this.onSelectFrame(frame.id);
+        },
+        hover: () => {
+          this.onHightlightFrame(frame.id);
         }
       }));
     });
@@ -2072,6 +2125,7 @@ Toolbox.prototype = {
 
     menu.once("close").then(() => {
       this.frameButton.isChecked = false;
+      this.highlighterUtils.unhighlight();
     });
 
     // Show a drop down menu with frames.
@@ -2116,6 +2170,18 @@ Toolbox.prototype = {
       windowId: frameId
     };
     this._target.client.request(packet);
+  },
+
+  /**
+   * Highlight a frame in the page
+   */
+  onHightlightFrame: async function (frameId) {
+    // Only enable frame highlighting when the top level document is targeted
+    if (this._supportsFrameHighlight &&
+        this.frameMap.get(this.selectedFrameId).parentID === undefined) {
+      let frameActor = await this.walker.getNodeActorFromWindowID(frameId);
+      this.highlighterUtils.highlightNodeFront(frameActor);
+    }
   },
 
   /**
@@ -2515,6 +2581,7 @@ Toolbox.prototype = {
     this.emit("destroy");
 
     this._target.off("inspect-object", this._onInspectObject);
+    this._target.off("will-navigate", this._onWillNavigate);
     this._target.off("navigate", this._refreshHostTitle);
     this._target.off("frame-update", this._updateFrames);
     this.off("select", this._refreshHostTitle);

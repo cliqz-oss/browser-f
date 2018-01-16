@@ -6,8 +6,8 @@
 //! script thread, the dom, and the worker threads.
 
 use dom::bindings::codegen::Bindings::PromiseBinding::PromiseJobCallback;
-use dom::bindings::js::{RootCollection, RootCollectionPtr, trace_roots};
 use dom::bindings::refcounted::{LiveDOMReferences, trace_refcounted_objects};
+use dom::bindings::root::trace_roots;
 use dom::bindings::settings_stack;
 use dom::bindings::trace::{JSTraceable, trace_traceables};
 use dom::bindings::utils::DOM_CALLBACKS;
@@ -20,21 +20,22 @@ use js::jsapi::{JSGCMode, JSGCParamKey, JS_SetGCParameter, JS_SetGlobalJitCompil
 use js::jsapi::{JSJitCompilerOption, JS_SetOffthreadIonCompilationEnabled, JS_SetParallelParsingEnabled};
 use js::jsapi::{JSObject, RuntimeOptionsRef, SetPreserveWrapperCallback, SetEnqueuePromiseJobCallback};
 use js::panic::wrap_panic;
-use js::rust::Runtime;
+use js::rust::Runtime as RustRuntime;
 use microtask::{EnqueuedPromiseCallback, Microtask};
+use msg::constellation_msg::PipelineId;
 use profile_traits::mem::{Report, ReportKind, ReportsChan};
-use script_thread::{STACK_ROOTS, trace_thread};
+use script_thread::trace_thread;
 use servo_config::opts;
 use servo_config::prefs::PREFS;
 use std::cell::Cell;
 use std::fmt;
 use std::io::{Write, stdout};
-use std::marker::PhantomData;
+use std::ops::Deref;
 use std::os;
 use std::os::raw::c_void;
 use std::panic::AssertUnwindSafe;
 use std::ptr;
-use style::thread_state;
+use style::thread_state::{self, ThreadState};
 use task::TaskBox;
 use time::{Tm, now};
 
@@ -44,14 +45,14 @@ pub enum CommonScriptMsg {
     /// supplied channel.
     CollectReports(ReportsChan),
     /// Generic message that encapsulates event handling.
-    Task(ScriptThreadEventCategory, Box<TaskBox>),
+    Task(ScriptThreadEventCategory, Box<TaskBox>, Option<PipelineId>),
 }
 
 impl fmt::Debug for CommonScriptMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             CommonScriptMsg::CollectReports(_) => write!(f, "CollectReports(...)"),
-            CommonScriptMsg::Task(ref category, ref task) => {
+            CommonScriptMsg::Task(ref category, ref task, _) => {
                 f.debug_tuple("Task").field(category).field(task).finish()
             },
         }
@@ -102,23 +103,6 @@ pub trait ScriptPort {
     fn recv(&self) -> Result<CommonScriptMsg, ()>;
 }
 
-pub struct StackRootTLS<'a>(PhantomData<&'a u32>);
-
-impl<'a> StackRootTLS<'a> {
-    pub fn new(roots: &'a RootCollection) -> StackRootTLS<'a> {
-        STACK_ROOTS.with(|ref r| {
-            r.set(Some(RootCollectionPtr(roots as *const _)))
-        });
-        StackRootTLS(PhantomData)
-    }
-}
-
-impl<'a> Drop for StackRootTLS<'a> {
-    fn drop(&mut self) {
-        STACK_ROOTS.with(|ref r| r.set(None));
-    }
-}
-
 /// SM callback for promise job resolution. Adds a promise callback to the current
 /// global's microtask queue.
 #[allow(unsafe_code)]
@@ -138,13 +122,28 @@ unsafe extern "C" fn enqueue_job(cx: *mut JSContext,
     }), false)
 }
 
+#[derive(JSTraceable)]
+pub struct Runtime(RustRuntime);
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        THREAD_ACTIVE.with(|t| t.set(false));
+    }
+}
+
+impl Deref for Runtime {
+    type Target = RustRuntime;
+    fn deref(&self) -> &RustRuntime {
+        &self.0
+    }
+}
+
 #[allow(unsafe_code)]
 pub unsafe fn new_rt_and_cx() -> Runtime {
     LiveDOMReferences::initialize();
-    let runtime = Runtime::new().unwrap();
+    let runtime = RustRuntime::new().unwrap();
 
     JS_AddExtraGCRootsTracer(runtime.rt(), Some(trace_rust_roots), ptr::null_mut());
-    JS_AddExtraGCRootsTracer(runtime.rt(), Some(trace_refcounted_objects), ptr::null_mut());
 
     // Needed for debug assertions about whether GC is running.
     if cfg!(debug_assertions) {
@@ -311,7 +310,7 @@ pub unsafe fn new_rt_and_cx() -> Runtime {
         }
     }
 
-    runtime
+    Runtime(runtime)
 }
 
 #[allow(unsafe_code)]
@@ -412,17 +411,25 @@ unsafe extern "C" fn gc_slice_callback(_rt: *mut JSRuntime, progress: GCProgress
 #[allow(unsafe_code)]
 unsafe extern "C" fn debug_gc_callback(_rt: *mut JSRuntime, status: JSGCStatus, _data: *mut os::raw::c_void) {
     match status {
-        JSGCStatus::JSGC_BEGIN => thread_state::enter(thread_state::IN_GC),
-        JSGCStatus::JSGC_END   => thread_state::exit(thread_state::IN_GC),
+        JSGCStatus::JSGC_BEGIN => thread_state::enter(ThreadState::IN_GC),
+        JSGCStatus::JSGC_END   => thread_state::exit(ThreadState::IN_GC),
     }
 }
 
+thread_local!(
+    static THREAD_ACTIVE: Cell<bool> = Cell::new(true);
+);
+
 #[allow(unsafe_code)]
 unsafe extern fn trace_rust_roots(tr: *mut JSTracer, _data: *mut os::raw::c_void) {
+    if !THREAD_ACTIVE.with(|t| t.get()) {
+        return;
+    }
     debug!("starting custom root handler");
     trace_thread(tr);
     trace_traceables(tr);
     trace_roots(tr);
+    trace_refcounted_objects(tr);
     settings_stack::trace(tr);
     debug!("done custom root handler");
 }

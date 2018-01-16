@@ -163,10 +163,11 @@ void TestTextureClientSurface(TextureClient* texture, gfxImageSurface* surface) 
   if (host->Lock()) {
     RefPtr<mozilla::gfx::DataSourceSurface> hostDataSurface = host->GetAsSurface();
 
+    DataSourceSurface::ScopedMap map(hostDataSurface, DataSourceSurface::READ);
     RefPtr<gfxImageSurface> hostSurface =
-      new gfxImageSurface(hostDataSurface->GetData(),
+      new gfxImageSurface(map.GetData(),
                           hostDataSurface->GetSize(),
-                          hostDataSurface->Stride(),
+                          map.GetStride(),
                           SurfaceFormatToImageFormat(hostDataSurface->GetFormat()));
     AssertSurfacesEqual(surface, hostSurface.get());
     host->Unlock();
@@ -262,6 +263,7 @@ TEST(Layers, TextureYCbCrSerialization) {
   clientData.mCbCrStride = cbSurface->Stride();
   clientData.mStereoMode = StereoMode::MONO;
   clientData.mYUVColorSpace = YUVColorSpace::BT601;
+  clientData.mBitDepth = 8;
   clientData.mYSkip = 0;
   clientData.mCbSkip = 0;
   clientData.mCrSkip = 0;
@@ -290,9 +292,9 @@ TEST(Layers, TextureYCbCrSerialization) {
     return;
   }
 
-  RefPtr<TextureClient> client = TextureClient::CreateForYCbCr(imageBridge, clientData.mYSize, clientData.mCbCrSize,
+  RefPtr<TextureClient> client = TextureClient::CreateForYCbCr(imageBridge, clientData.mYSize, clientData.mYStride, clientData.mCbCrSize, clientData.mCbCrStride,
                                                                StereoMode::MONO, YUVColorSpace::BT601,
-                                                               TextureFlags::DEALLOCATE_CLIENT);
+                                                               8, TextureFlags::DEALLOCATE_CLIENT);
 
   TestTextureClientYCbCr(client, clientData);
 

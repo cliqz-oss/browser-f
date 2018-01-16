@@ -7,6 +7,7 @@
 
 #include "TextEditUtils.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/EditorDOMPoint.h"
 #include "mozilla/EditorUtils.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Preferences.h"
@@ -494,8 +495,11 @@ TextEditRules::CollapseSelectionToTrailingBRIfNeeded(Selection* aSelection)
 
   nsINode* nextNode = selNode->GetNextSibling();
   if (nextNode && TextEditUtils::IsMozBR(nextNode)) {
-    int32_t offsetInParent = EditorBase::GetChildOffset(selNode, parentNode);
-    rv = aSelection->Collapse(parentNode, offsetInParent + 1);
+    EditorRawDOMPoint afterSelNode(selNode);
+    if (NS_WARN_IF(!afterSelNode.AdvanceOffset())) {
+      return NS_ERROR_FAILURE;
+    }
+    rv = aSelection->Collapse(afterSelNode);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -713,8 +717,8 @@ TextEditRules::WillInsertText(EditAction aAction,
       if (mTimer) {
         mTimer->Cancel();
       } else {
-        mTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-        NS_ENSURE_SUCCESS(rv, rv);
+        mTimer = NS_NewTimer();
+        NS_ENSURE_TRUE(mTimer, NS_ERROR_OUT_OF_MEMORY);
       }
       mTimer->InitWithCallback(this, LookAndFeel::GetPasswordMaskDelay(),
                                nsITimer::TYPE_ONE_SHOT);
@@ -725,14 +729,16 @@ TextEditRules::WillInsertText(EditAction aAction,
 
   // get the (collapsed) selection location
   NS_ENSURE_STATE(aSelection->GetRangeAt(0));
-  nsCOMPtr<nsINode> selNode = aSelection->GetRangeAt(0)->GetStartContainer();
-  int32_t selOffset = aSelection->GetRangeAt(0)->StartOffset();
-  NS_ENSURE_STATE(selNode);
+  EditorRawDOMPoint atStartOfSelection(aSelection->GetRangeAt(0)->StartRef());
+  if (NS_WARN_IF(!atStartOfSelection.IsSetAndValid())) {
+    return NS_ERROR_FAILURE;
+  }
 
   // don't put text in places that can't have it
   NS_ENSURE_STATE(mTextEditor);
-  if (!EditorBase::IsTextNode(selNode) &&
-      !mTextEditor->CanContainTag(*selNode, *nsGkAtoms::textTagName)) {
+  if (!EditorBase::IsTextNode(atStartOfSelection.Container()) &&
+      !mTextEditor->CanContainTag(*atStartOfSelection.Container(),
+                                  *nsGkAtoms::textTagName)) {
     return NS_ERROR_FAILURE;
   }
 
@@ -744,38 +750,46 @@ TextEditRules::WillInsertText(EditAction aAction,
   if (aAction == EditAction::insertIMEText) {
     NS_ENSURE_STATE(mTextEditor);
     // Find better insertion point to insert text.
-    mTextEditor->FindBetterInsertionPoint(selNode, selOffset);
+    EditorRawDOMPoint betterInsertionPoint =
+      mTextEditor->FindBetterInsertionPoint(atStartOfSelection);
     // If there is one or more IME selections, its minimum offset should be
     // the insertion point.
     int32_t IMESelectionOffset =
-      mTextEditor->GetIMESelectionStartOffsetIn(selNode);
+      mTextEditor->GetIMESelectionStartOffsetIn(
+                     betterInsertionPoint.Container());
     if (IMESelectionOffset >= 0) {
-      selOffset = IMESelectionOffset;
+      betterInsertionPoint.Set(betterInsertionPoint.Container(),
+                               IMESelectionOffset);
     }
-    rv = mTextEditor->InsertTextImpl(*outString, address_of(selNode),
-                                     &selOffset, doc);
+    rv = mTextEditor->InsertTextImpl(*doc, *outString, betterInsertionPoint);
     NS_ENSURE_SUCCESS(rv, rv);
   } else {
-    // aAction == EditAction::insertText; find where we are
-    nsCOMPtr<nsINode> curNode = selNode;
-    int32_t curOffset = selOffset;
+    // aAction == EditAction::insertText
 
     // don't change my selection in subtransactions
     NS_ENSURE_STATE(mTextEditor);
     AutoTransactionsConserveSelection dontChangeMySelection(mTextEditor);
 
-    rv = mTextEditor->InsertTextImpl(*outString, address_of(curNode),
-                                     &curOffset, doc);
+    EditorRawDOMPoint pointAfterStringInserted;
+    rv = mTextEditor->InsertTextImpl(*doc, *outString, atStartOfSelection,
+                                     &pointAfterStringInserted);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if (curNode) {
+    if (pointAfterStringInserted.IsSet()) {
       // Make the caret attach to the inserted text, unless this text ends with a LF,
       // in which case make the caret attach to the next line.
       bool endsWithLF =
         !outString->IsEmpty() && outString->Last() == nsCRT::LF;
       aSelection->SetInterlinePosition(endsWithLF);
 
-      aSelection->Collapse(curNode, curOffset);
+      MOZ_ASSERT(!pointAfterStringInserted.GetChildAtOffset(),
+        "After inserting text into a text node, pointAfterStringInserted."
+        "GetChildAtOffset() should be nullptr");
+      IgnoredErrorResult error;
+      aSelection->Collapse(pointAfterStringInserted, error);
+      if (error.Failed()) {
+        NS_WARNING("Failed to collapse selection after inserting string");
+      }
     }
   }
   ASSERT_PASSWORD_LENGTHS_EQUAL()

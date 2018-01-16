@@ -457,7 +457,7 @@ NrIceCtx::InitializeGlobals(bool allow_loopback,
             &ice_tcp_listen_backlog);
         branch->GetCharPref(
             "media.peerconnection.ice.force_interface",
-            getter_Copies(force_net_interface));
+            force_net_interface);
       }
     }
 
@@ -633,8 +633,8 @@ NrIceCtx::Initialize(const std::string& ufrag,
     }
   }
 
-  nsCString mapping_type;
-  nsCString filtering_type;
+  nsAutoCString mapping_type;
+  nsAutoCString filtering_type;
   bool block_udp = false;
   bool block_tcp = false;
 
@@ -648,10 +648,10 @@ NrIceCtx::Initialize(const std::string& ufrag,
     if (NS_SUCCEEDED(rv)) {
       rv = pref_branch->GetCharPref(
           "media.peerconnection.nat_simulator.mapping_type",
-          getter_Copies(mapping_type));
+          mapping_type);
       rv = pref_branch->GetCharPref(
           "media.peerconnection.nat_simulator.filtering_type",
-          getter_Copies(filtering_type));
+          filtering_type);
       rv = pref_branch->GetBoolPref(
           "media.peerconnection.nat_simulator.block_udp",
           &block_udp);
@@ -964,18 +964,27 @@ nsresult NrIceCtx::StartGathering(bool default_route_only, bool proxy_only) {
 
   SetCtxFlags(default_route_only, proxy_only);
 
+  TimeStamp start = TimeStamp::Now();
   // This might start gathering for the first time, or again after
   // renegotiation, or might do nothing at all if gathering has already
   // finished.
   int r = nr_ice_gather(ctx_, &NrIceCtx::gather_cb, this);
 
+
   if (!r) {
     SetGatheringState(ICE_CTX_GATHER_COMPLETE);
+    Telemetry::AccumulateTimeDelta(
+        Telemetry::WEBRTC_ICE_NR_ICE_GATHER_TIME_IMMEDIATE_SUCCESS, start);
   } else if (r != R_WOULDBLOCK) {
     MOZ_MTLOG(ML_ERROR, "Couldn't gather ICE candidates for '"
                         << name_ << "', error=" << r);
     SetConnectionState(ICE_CTX_FAILED);
+    Telemetry::AccumulateTimeDelta(
+        Telemetry::WEBRTC_ICE_NR_ICE_GATHER_TIME_IMMEDIATE_FAILURE, start);
     return NS_ERROR_FAILURE;
+  } else {
+    Telemetry::AccumulateTimeDelta(
+        Telemetry::WEBRTC_ICE_NR_ICE_GATHER_TIME, start);
   }
 
   return NS_OK;

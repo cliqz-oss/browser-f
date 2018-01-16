@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -42,7 +43,6 @@ protected:
 
 public:
   void Destroy();
-  bool HasKeysToDelete();
 
   void AddPipeline(const wr::PipelineId& aPipelineId);
   void RemovePipeline(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
@@ -74,7 +74,7 @@ public:
   void RemoveAsyncImagePipeline(const wr::PipelineId& aPipelineId);
 
   void UpdateAsyncImagePipeline(const wr::PipelineId& aPipelineId,
-                                const LayerRect& aScBounds,
+                                const LayoutDeviceRect& aScBounds,
                                 const gfx::Matrix4x4& aScTransform,
                                 const gfx::MaybeIntSize& aScaleToSize,
                                 const wr::ImageRendering& aFilter,
@@ -92,7 +92,6 @@ public:
   }
 
 private:
-  void DeleteOldAsyncImages();
 
   uint32_t GetNextResourceId() { return ++mResourceId; }
   wr::IdNamespace GetNamespace() { return mIdNamespace; }
@@ -103,9 +102,6 @@ private:
     key.mHandle = GetNextResourceId();
     return key;
   }
-  bool GenerateImageKeyForTextureHost(wr::ResourceUpdateQueue& aResources,
-                                      TextureHost* aTexture,
-                                      nsTArray<wr::ImageKey>& aKeys);
 
   struct ForwardingTextureHost {
     ForwardingTextureHost(const wr::Epoch& aEpoch, TextureHost* aTexture)
@@ -128,7 +124,7 @@ private:
     bool mInitialised;
     bool mIsChanged;
     bool mUseExternalImage;
-    LayerRect mScBounds;
+    LayoutDeviceRect mScBounds;
     gfx::Matrix4x4 mScTransform;
     gfx::MaybeIntSize mScaleToSize;
     wr::ImageRendering mFilter;
@@ -138,11 +134,15 @@ private:
     nsTArray<wr::ImageKey> mKeys;
   };
 
-  bool UpdateImageKeys(wr::ResourceUpdateQueue& aResourceUpdates,
-                       bool& aUseExternalImage,
-                       AsyncImagePipeline* aImageMgr,
-                       nsTArray<wr::ImageKey>& aKeys,
-                       nsTArray<wr::ImageKey>& aKeysToDelete);
+  Maybe<TextureHost::ResourceUpdateOp>
+  UpdateImageKeys(wr::ResourceUpdateQueue& aResourceUpdates,
+                  AsyncImagePipeline* aPipeline,
+                  nsTArray<wr::ImageKey>& aKeys);
+  Maybe<TextureHost::ResourceUpdateOp>
+  UpdateWithoutExternalImage(wr::ResourceUpdateQueue& aResources,
+                             TextureHost* aTexture,
+                             wr::ImageKey aKey,
+                             TextureHost::ResourceUpdateOp);
 
   RefPtr<wr::WebRenderAPI> mApi;
   wr::IdNamespace mIdNamespace;
@@ -151,7 +151,6 @@ private:
   nsClassHashtable<nsUint64HashKey, PipelineTexturesHolder> mPipelineTexturesHolders;
   nsClassHashtable<nsUint64HashKey, AsyncImagePipeline> mAsyncImagePipelines;
   uint32_t mAsyncImageEpoch;
-  nsTArray<wr::ImageKey> mKeysToDelete;
   bool mDestroyed;
 
   // Render time for the current composition.

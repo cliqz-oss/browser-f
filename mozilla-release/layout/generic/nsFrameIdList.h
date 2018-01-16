@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,6 +15,7 @@ FRAME_ID(nsBoxFrame, Box, NotLeaf)
 FRAME_ID(nsBulletFrame, Bullet, Leaf)
 FRAME_ID(nsButtonBoxFrame, Box, NotLeaf)
 FRAME_ID(nsCanvasFrame, Canvas, NotLeaf)
+FRAME_ID(nsCheckboxRadioFrame, CheckboxRadio, Leaf)
 FRAME_ID(nsColorControlFrame, ColorControl, Leaf)
 FRAME_ID(nsColumnSetFrame, ColumnSet, NotLeaf)
 FRAME_ID(nsComboboxControlFrame, ComboboxControl, NotLeaf)
@@ -28,8 +31,6 @@ FRAME_ID(nsFirstLineFrame, Line, NotLeaf)
 FRAME_ID(nsFlexContainerFrame, FlexContainer, NotLeaf)
 FRAME_ID(nsFrame, None, NotLeaf)
 FRAME_ID(nsGfxButtonControlFrame, GfxButtonControl, Leaf)
-FRAME_ID(nsGfxCheckboxControlFrame, FormControl, Leaf)
-FRAME_ID(nsGfxRadioControlFrame, FormControl, Leaf)
 FRAME_ID(nsGridContainerFrame, GridContainer, NotLeaf)
 FRAME_ID(nsGridRowGroupFrame, Box, NotLeaf)
 FRAME_ID(nsGridRowLeafFrame, Box, NotLeaf)
@@ -154,7 +155,6 @@ FRAME_ID(ViewportFrame, Viewport, NotLeaf)
 
 // Non-concrete classes (for FrameIID use)
 ABSTRACT_FRAME_ID(nsContainerFrame)
-ABSTRACT_FRAME_ID(nsFormControlFrame)
 ABSTRACT_FRAME_ID(nsIFrame)
 ABSTRACT_FRAME_ID(nsLeafFrame)
 ABSTRACT_FRAME_ID(nsMathMLContainerFrame)

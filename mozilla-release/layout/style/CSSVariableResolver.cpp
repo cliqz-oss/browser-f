@@ -1,4 +1,5 @@
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -149,12 +150,14 @@ CSSVariableResolver::ResolveVariable(size_t aID)
     }
     nsString resolvedValue;
     nsCSSTokenSerializationType firstToken, lastToken;
-    if (!mParser.ResolveVariableValue(mVariables[aID].mValue, mOutput,
-                                      resolvedValue, firstToken, lastToken)) {
-      resolvedValue.Truncate(0);
+    if (mParser.ResolveVariableValue(mVariables[aID].mValue, mOutput,
+                                     resolvedValue, firstToken, lastToken)) {
+      mOutput->Put(mVariables[aID].mVariableName, resolvedValue,
+                   firstToken, lastToken);
+    } else {
+      mOutput->Put(mVariables[aID].mVariableName, EmptyString(),
+                   eCSSTokenSerialization_Nothing, eCSSTokenSerialization_Nothing);
     }
-    mOutput->Put(mVariables[aID].mVariableName, resolvedValue,
-                 firstToken, lastToken);
   }
   mVariables[aID].mResolved = true;
 }

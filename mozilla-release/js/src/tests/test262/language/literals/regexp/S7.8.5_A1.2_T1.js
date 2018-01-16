@@ -3,13 +3,22 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-info: "RegularExpressionFirstChar :: * or \\ or / or [empty] is incorrect"
-es5id: 7.8.5_A1.2_T1
-description: "*"
+esid: prod-RegularExpressionFirstChar
+info: |
+  RegularExpressionChars ::
+    [empty]
+    RegularExpressionCharsRegularExpressionChar
+
+  RegularExpressionFirstChar ::
+    RegularExpressionNonTerminator but not one of * or \ or / or [
+
+description: >
+  The first character of a regular expression may not be "*"
 negative:
   phase: early
   type: SyntaxError
 ---*/
 
-//CHECK#1
+throw "Test262: This statement should not be evaluated.";
+
 /*/

@@ -21,7 +21,6 @@ const {
   NoSuchElementError,
   NoSuchFrameError,
   NoSuchWindowError,
-  pprint,
   ScriptTimeoutError,
   SessionNotCreatedError,
   stack,
@@ -114,39 +113,6 @@ add_test(function test_stringify() {
       error.stringify(new WebDriverError("foo")).split("\n")[0]);
   equal("InvalidArgumentError: foo",
       error.stringify(new InvalidArgumentError("foo")).split("\n")[0]);
-
-  run_next_test();
-});
-
-add_test(function test_pprint() {
-  equal('[object Object] {"foo":"bar"}', pprint`${{foo: "bar"}}`);
-
-  equal("[object Number] 42", pprint`${42}`);
-  equal("[object Boolean] true", pprint`${true}`);
-  equal("[object Undefined] undefined", pprint`${undefined}`);
-  equal("[object Null] null", pprint`${null}`);
-
-  let complexObj = {toJSON: () => "foo"};
-  equal('[object Object] "foo"', pprint`${complexObj}`);
-
-  let cyclic = {};
-  cyclic.me = cyclic;
-  equal("[object Object] <cyclic object value>", pprint`${cyclic}`);
-
-  let el = {
-    hasAttribute: attr => attr in el,
-    getAttribute: attr => attr in el ? el[attr] : null,
-    nodeType: 1,
-    localName: "input",
-    id: "foo",
-    class: "a b",
-    href: "#",
-    name: "bar",
-    src: "s",
-    type: "t",
-  };
-  equal('<input id="foo" class="a b" href="#" name="bar" src="s" type="t">',
-        pprint`${el}`);
 
   run_next_test();
 });

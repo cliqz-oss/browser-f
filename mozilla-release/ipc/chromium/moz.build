@@ -40,15 +40,12 @@ if os_win:
         'src/base/lock_impl_win.cc',
         'src/base/message_pump_win.cc',
         'src/base/object_watcher.cc',
-        'src/base/platform_file_win.cc',
         'src/base/platform_thread_win.cc',
         'src/base/process_util_win.cc',
-        'src/base/process_win.cc',
         'src/base/rand_util_win.cc',
         'src/base/shared_memory_win.cc',
         'src/base/sys_info_win.cc',
         'src/base/sys_string_conversions_win.cc',
-        'src/base/thread_local_storage_win.cc',
         'src/base/thread_local_win.cc',
         'src/base/time_win.cc',
         'src/base/waitable_event_win.cc',
@@ -56,10 +53,6 @@ if os_win:
         'src/chrome/common/ipc_channel_win.cc',
         'src/chrome/common/process_watcher_win.cc',
         'src/chrome/common/transport_dib_win.cc',
-    ]
-
-    EXPORTS.base += [
-        'src/base/child_privileges.h',
     ]
 
 elif not CONFIG['MOZ_SYSTEM_LIBEVENT']:
@@ -72,16 +65,13 @@ if os_posix:
         'src/base/file_util_posix.cc',
         'src/base/lock_impl_posix.cc',
         'src/base/message_pump_libevent.cc',
-        'src/base/platform_file_posix.cc',
         'src/base/platform_thread_posix.cc',
-        'src/base/process_posix.cc',
         'src/base/process_util_posix.cc',
         'src/base/rand_util_posix.cc',
         'src/base/shared_memory_posix.cc',
         'src/base/string16.cc',
         'src/base/sys_info_posix.cc',
         'src/base/thread_local_posix.cc',
-        'src/base/thread_local_storage_posix.cc',
         'src/base/waitable_event_posix.cc',
         'src/chrome/common/file_descriptor_set_posix.cc',
         'src/chrome/common/ipc_channel_posix.cc',
@@ -141,6 +131,13 @@ if os_bsd or os_linux:
         SOURCES += [
             'src/base/message_pump_glib.cc',
         ]
+
+if os_solaris:
+    SOURCES += [
+        'src/base/atomicops_internals_x86_gcc.cc',
+        'src/base/process_util_linux.cc',
+        'src/base/time_posix.cc',
+    ]
 
 ost = CONFIG['OS_TEST']
 if '86' not in ost and 'arm' not in ost and 'aarch64' != ost and 'mips' not in ost:

@@ -34,11 +34,7 @@ fn main() {
         for line in r.lines() {
             let s = line.unwrap();
             for cap in matcher.captures_iter(&s) {
-                // GetStyleVariables is a Servo_* function, but temporarily defined
-                // on the Gecko side.
-                if &cap[1] != "GetStyleVariables" {
-                    w.write_all(format!("    [ Servo_{0}, bindings::Servo_{0} ];\n", &cap[1]).as_bytes()).unwrap();
-                }
+                w.write_all(format!("    [ Servo_{0}, bindings::Servo_{0} ];\n", &cap[1]).as_bytes()).unwrap();
             }
         }
 
@@ -64,7 +60,11 @@ fn main() {
                                      TO PASS DATA AROUND BETWEEN BUILD SCRIPTS_OUT_DIR").unwrap();
     File::create(out_dir.join("bindings.rs"))
         .unwrap()
-        .write_all(format!("include!(concat!({:?}, \"/gecko/structs_debug.rs\"));",
+        .write_all(format!("include!(concat!({:?}, \"/gecko/structs.rs\"));",
                            style_out_dir).as_bytes())
         .unwrap();
+
+    if env::var_os("MOZ_SRC").is_some() {
+        println!("cargo:rustc-cfg=linking_with_gecko")
+    }
 }

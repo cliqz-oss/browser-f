@@ -420,7 +420,8 @@ class XPCShellRemote(xpcshell.XPCShellTests, object):
                     "pk12util",
                     "BadCertServer",
                     "OCSPStaplingServer",
-                    "GenerateOCSPResponse"]
+                    "GenerateOCSPResponse",
+                    "SymantecSanctionsServer"]
         for fname in binaries:
             local = os.path.join(self.localBin, fname)
             if os.path.isfile(local):
@@ -601,6 +602,8 @@ def main():
         dm_args['port'] = options['devicePort']
     if options['log_tbpl_level'] == 'debug' or options['log_mach_level'] == 'debug':
         dm_args['logLevel'] = logging.DEBUG
+    if options['adbPath']:
+        dm_args['adbPath'] = options['adbPath']
     dm = mozdevice.DroidADB(**dm_args)
 
     if options['interactive'] and not options['testPath']:

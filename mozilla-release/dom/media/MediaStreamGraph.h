@@ -157,7 +157,6 @@ class AudioNodeEngine;
 class AudioNodeExternalInputStream;
 class AudioNodeStream;
 class AudioSegment;
-class DirectMediaStreamListener;
 class DirectMediaStreamTrackListener;
 class MediaInputPort;
 class MediaStreamGraphImpl;
@@ -703,8 +702,6 @@ public:
    */
   void NotifyListenersEventImpl(MediaStreamGraphEvent aEvent);
   void NotifyListenersEvent(MediaStreamGraphEvent aEvent);
-  void AddDirectListener(DirectMediaStreamListener* aListener);
-  void RemoveDirectListener(DirectMediaStreamListener* aListener);
 
   enum {
     ADDTRACK_QUEUED    = 0x01 // Queue track add until FinishAddTracks()
@@ -786,6 +783,12 @@ public:
    * to a LocalMediaStream.
    */
   void EndAllTrackAndFinish();
+
+  /**
+   * Removes all direct listeners and signals to them that they have been
+   * uninstalled.
+   */
+  void RemoveAllDirectListeners();
 
   void RegisterForAudioMixing();
 
@@ -893,7 +896,6 @@ protected:
   TimeStamp mStreamTracksStartTimeStamp;
   nsTArray<TrackData> mUpdateTracks;
   nsTArray<TrackData> mPendingTracks;
-  nsTArray<RefPtr<DirectMediaStreamListener>> mDirectListeners;
   nsTArray<TrackBound<DirectMediaStreamTrackListener>> mDirectTrackListeners;
   bool mPullEnabled;
   bool mUpdateFinished;
@@ -1268,6 +1270,7 @@ public:
   static const uint32_t AUDIO_CALLBACK_DRIVER_SHUTDOWN_TIMEOUT = 20*1000;
 
   // Main thread only
+  static MediaStreamGraph* GetInstanceIfExists(nsPIDOMWindowInner* aWindow);
   static MediaStreamGraph* GetInstance(GraphDriverType aGraphDriverRequested,
                                        nsPIDOMWindowInner* aWindow);
   static MediaStreamGraph* CreateNonRealtimeInstance(
@@ -1371,7 +1374,10 @@ public:
   void NotifyOutputData(AudioDataValue* aBuffer, size_t aFrames,
                         TrackRate aRate, uint32_t aChannels);
 
-  void AssertOnGraphThreadOrNotRunning() const;
+  void AssertOnGraphThreadOrNotRunning() const
+  {
+    MOZ_ASSERT(OnGraphThreadOrNotRunning());
+  }
 
 protected:
   explicit MediaStreamGraph(TrackRate aSampleRate)
@@ -1383,6 +1389,10 @@ protected:
   {
     MOZ_COUNT_DTOR(MediaStreamGraph);
   }
+
+  // Intended only for assertions, either on graph thread, not running, or
+  // with monitor held.
+  bool OnGraphThreadOrNotRunning() const;
 
   // Media graph thread only
   nsTArray<nsCOMPtr<nsIRunnable> > mPendingUpdateRunnables;

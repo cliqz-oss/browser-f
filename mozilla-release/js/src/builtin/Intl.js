@@ -427,8 +427,10 @@ function CanonicalizeLanguageTag(locale) {
             // "zh-nan" -> "nan"
             // Note that the script generating extlangMappings makes sure that
             // no extlang mapping will replace a normal language code.
-            subtag = extlangMappings[subtag].preferred;
-            if (i === 1 && extlangMappings[subtag].prefix === subtags[0]) {
+            // The preferred value for all current deprecated extlang subtags
+            // is equal to the extlang subtag, so we only need remove the
+            // redundant prefix to get the preferred value.
+            if (i === 1 && extlangMappings[subtag] === subtags[0]) {
                 callFunction(std_Array_shift, subtags);
                 i--;
             }
@@ -1395,7 +1397,8 @@ function initializeIntlObject(obj, type, lazyData) {
     assert((type === "Collator" && IsCollator(obj)) ||
            (type === "DateTimeFormat" && IsDateTimeFormat(obj)) ||
            (type === "NumberFormat" && IsNumberFormat(obj)) ||
-           (type === "PluralRules" && IsPluralRules(obj)),
+           (type === "PluralRules" && IsPluralRules(obj)) ||
+           (type === "RelativeTimeFormat" && IsRelativeTimeFormat(obj)),
            "type must match the object's class");
     assert(IsObject(lazyData), "non-object lazy data");
 
@@ -1462,7 +1465,9 @@ function maybeInternalProperties(internals) {
  */
 function getIntlObjectInternals(obj) {
     assert(IsObject(obj), "getIntlObjectInternals called with non-Object");
-    assert(IsCollator(obj) || IsDateTimeFormat(obj) || IsNumberFormat(obj) || IsPluralRules(obj),
+    assert(IsCollator(obj) || IsDateTimeFormat(obj) ||
+           IsNumberFormat(obj) || IsPluralRules(obj) ||
+           IsRelativeTimeFormat(obj),
            "getIntlObjectInternals called with non-Intl object");
 
     var internals = UnsafeGetReservedSlot(obj, INTL_INTERNALS_OBJECT_SLOT);
@@ -1472,7 +1477,8 @@ function getIntlObjectInternals(obj) {
     assert((internals.type === "Collator" && IsCollator(obj)) ||
            (internals.type === "DateTimeFormat" && IsDateTimeFormat(obj)) ||
            (internals.type === "NumberFormat" && IsNumberFormat(obj)) ||
-           (internals.type === "PluralRules" && IsPluralRules(obj)),
+           (internals.type === "PluralRules" && IsPluralRules(obj)) ||
+           (internals.type === "RelativeTimeFormat" && IsRelativeTimeFormat(obj)),
            "type must match the object's class");
     assert(hasOwn("lazyData", internals), "missing lazyData");
     assert(hasOwn("internalProps", internals), "missing internalProps");
@@ -1674,12 +1680,10 @@ function InitializeCollator(collator, locales, options) {
     // Steps 4-5.
     //
     // If we ever need more speed here at startup, we should try to detect the
-    // case where |options === undefined| and Object.prototype hasn't been
-    // mucked with.  (|options| is fully consumed in this method, so it's not a
-    // concern that Object.prototype might be touched between now and when
-    // |resolveCollatorInternals| is called.)  For now, just keep it simple.
+    // case where |options === undefined| and then directly use the default
+    // value for each option.  For now, just keep it simple.
     if (options === undefined)
-        options = {};
+        options = std_Object_create(null);
     else
         options = ToObject(options);
 
@@ -2169,12 +2173,10 @@ function InitializeNumberFormat(numberFormat, thisValue, locales, options) {
     // Steps 4-5.
     //
     // If we ever need more speed here at startup, we should try to detect the
-    // case where |options === undefined| and Object.prototype hasn't been
-    // mucked with.  (|options| is fully consumed in this method, so it's not a
-    // concern that Object.prototype might be touched between now and when
-    // |resolveNumberFormatInternals| is called.)  For now just keep it simple.
+    // case where |options === undefined| and then directly use the default
+    // value for each option.  For now, just keep it simple.
     if (options === undefined)
-        options = {};
+        options = std_Object_create(null);
     else
         options = ToObject(options);
 
@@ -2370,8 +2372,14 @@ _SetCanonicalName(Intl_NumberFormat_format_get, "get format");
 
 
 function Intl_NumberFormat_formatToParts(value) {
-    // Steps 1-3.
-    var nf = UnwrapNumberFormat(this, "formatToParts");
+    // Step 1.
+    var nf = this;
+
+    // Steps 2-3.
+    if (!IsObject(nf) || !IsNumberFormat(nf)) {
+        ThrowTypeError(JSMSG_INTL_OBJECT_NOT_INITED, "NumberFormat", "formatToParts",
+                       "NumberFormat");
+    }
 
     // Ensure the NumberFormat internals are resolved.
     getNumberFormatInternals(nf);
@@ -2438,6 +2446,8 @@ function resolveDateTimeFormatInternals(lazyDateTimeFormatData) {
     //         localeMatcher: "lookup" / "best fit",
     //
     //         hour12: true / false,  // optional
+    //
+    //         hourCycle: "h11" / "h12" / "h23" / "h24", // optional
     //       }
     //
     //     timeZone: IANA time zone name,
@@ -2498,6 +2508,12 @@ function resolveDateTimeFormatInternals(lazyDateTimeFormatData) {
     // Step 18.
     var formatOpt = lazyDateTimeFormatData.formatOpt;
 
+    // Copy the hourCycle setting, if present, to the format options. But
+    // only do this if no hour12 option is present, because the latter takes
+    // precedence over hourCycle.
+    if (r.hc !== null && formatOpt.hour12 === undefined)
+        formatOpt.hourCycle = r.hc;
+
     // Steps 27-28, more or less - see comment after this function.
     var pattern;
     if (lazyDateTimeFormatData.mozExtensions) {
@@ -2520,6 +2536,11 @@ function resolveDateTimeFormatInternals(lazyDateTimeFormatData) {
       pattern = toBestICUPattern(dataLocale, formatOpt);
     }
 
+    // If the hourCycle option was set, adjust the resolved pattern to use the
+    // requested hour cycle representation.
+    if (formatOpt.hourCycle !== undefined)
+        pattern = replaceHourRepresentation(pattern, formatOpt.hourCycle);
+
     // Step 29.
     internalProps.pattern = pattern;
 
@@ -2529,6 +2550,47 @@ function resolveDateTimeFormatInternals(lazyDateTimeFormatData) {
     // The caller is responsible for associating |internalProps| with the right
     // object using |setInternalProperties|.
     return internalProps;
+}
+
+
+/**
+ * Replaces all hour pattern characters in |pattern| to use the matching hour
+ * representation for |hourCycle|.
+ */
+function replaceHourRepresentation(pattern, hourCycle) {
+    var hour;
+    switch (hourCycle) {
+      case "h11":
+        hour = "K";
+        break;
+      case "h12":
+        hour = "h";
+        break;
+      case "h23":
+        hour = "H";
+        break;
+      case "h24":
+        hour = "k";
+        break;
+    }
+    assert(hour !== undefined, "Unexpected hourCycle requested: " + hourCycle);
+
+    // Parse the pattern according to the format specified in
+    // https://unicode.org/reports/tr35/tr35-dates.html#Date_Format_Patterns
+    // and replace all hour symbols with |hour|.
+    var resultPattern = "";
+    var inQuote = false;
+    for (var i = 0; i < pattern.length; i++) {
+        var ch = pattern[i];
+        if (ch === "'") {
+            inQuote = !inQuote;
+        } else if (!inQuote && (ch === "h" || ch === "H" || ch === "k" || ch === "K")) {
+            ch = hour;
+        }
+        resultPattern += ch;
+    }
+
+    return resultPattern;
 }
 
 
@@ -2609,7 +2671,8 @@ function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, m
     //         // all the properties/values listed in Table 3
     //         // (weekday, era, year, month, day, &c.)
     //
-    //         hour12: true / false  // optional
+    //         hour12: true / false,  // optional
+    //         hourCycle: "h11" / "h12" / "h23" / "h24", // optional
     //       }
     //
     //     formatMatcher: "basic" / "best fit",
@@ -2620,25 +2683,29 @@ function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, m
     // never a subset of them.
     var lazyDateTimeFormatData = std_Object_create(null);
 
-    // Step 3.
+    // Step 1.
     var requestedLocales = CanonicalizeLocaleList(locales);
     lazyDateTimeFormatData.requestedLocales = requestedLocales;
 
-    // Step 4.
+    // Step 2.
     options = ToDateTimeOptions(options, "any", "date");
 
     // Compute options that impact interpretation of locale.
-    // Step 5.
+    // Step 3.
     var localeOpt = new Record();
     lazyDateTimeFormatData.localeOpt = localeOpt;
 
-    // Steps 6-7.
+    // Steps 4-5.
     var localeMatcher =
         GetOption(options, "localeMatcher", "string", ["lookup", "best fit"],
                   "best fit");
     localeOpt.localeMatcher = localeMatcher;
 
-    // Steps 15-17.
+    // Step 6.
+    var hc = GetOption(options, "hourCycle", "string", ["h11", "h12", "h23", "h24"], undefined);
+    localeOpt.hc = hc;
+
+    // Steps 15-18.
     var tz = options.timeZone;
     if (tz !== undefined) {
         // Step 15.a.
@@ -2657,7 +2724,7 @@ function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, m
     }
     lazyDateTimeFormatData.timeZone = tz;
 
-    // Step 18.
+    // Step 19.
     var formatOpt = new Record();
     lazyDateTimeFormatData.formatOpt = formatOpt;
 
@@ -2673,7 +2740,7 @@ function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, m
         lazyDateTimeFormatData.timeStyle = timeStyle;
     }
 
-    // Step 19.
+    // Step 20.
     // 12.1, Table 4: Components of date and time formats.
     formatOpt.weekday = GetOption(options, "weekday", "string", ["narrow", "short", "long"],
                                   undefined);
@@ -2688,9 +2755,9 @@ function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, m
     formatOpt.timeZoneName = GetOption(options, "timeZoneName", "string", ["short", "long"],
                                        undefined);
 
-    // Steps 20-21 provided by ICU - see comment after this function.
+    // Steps 21-22 provided by ICU - see comment after this function.
 
-    // Step 22.
+    // Step 23.
     //
     // For some reason (ICU not exposing enough interface?) we drop the
     // requested format matcher on the floor after this.  In any case, even if
@@ -2701,9 +2768,9 @@ function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, m
                   "best fit");
     void formatMatcher;
 
-    // Steps 23-25 provided by ICU, more or less - see comment after this function.
+    // Steps 24-26 provided by ICU, more or less - see comment after this function.
 
-    // Step 26.
+    // Step 27.
     var hr12  = GetOption(options, "hour12", "boolean", undefined, undefined);
 
     // Pass hr12 on to ICU.
@@ -2787,6 +2854,7 @@ function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, m
 // - [[weekday]], [[era]], [[year]], [[month]], [[day]], [[hour]], [[minute]],
 //   [[second]], [[timeZoneName]]
 // - [[hour12]]
+// - [[hourCycle]]
 // - [[hourNo0]]
 // When needed for the resolvedOptions method, the resolveICUPattern function
 // maps the instance's ICU pattern back to the specified properties of the
@@ -2860,12 +2928,24 @@ function toBestICUPattern(locale, options) {
         skeleton += "d";
         break;
     }
+    // If hour12 and hourCycle are both present, hour12 takes precedence.
     var hourSkeletonChar = "j";
     if (options.hour12 !== undefined) {
         if (options.hour12)
             hourSkeletonChar = "h";
         else
             hourSkeletonChar = "H";
+    } else {
+        switch (options.hourCycle) {
+        case "h11":
+        case "h12":
+            hourSkeletonChar = "h";
+            break;
+        case "h23":
+        case "h24":
+            hourSkeletonChar = "H";
+            break;
+        }
     }
     switch (options.hour) {
     case "2-digit":
@@ -3002,7 +3082,7 @@ var dateTimeFormatInternalProperties = {
         addSpecialMissingLanguageTags(locales);
         return (this._availableLocales = locales);
     },
-    relevantExtensionKeys: ["ca", "nu"]
+    relevantExtensionKeys: ["ca", "nu", "hc"]
 };
 
 
@@ -3010,9 +3090,15 @@ function dateTimeFormatLocaleData() {
     return {
         ca: intl_availableCalendars,
         nu: getNumberingSystems,
+        hc: () => {
+            return [null, "h11", "h12", "h23", "h24"];
+        },
         default: {
             ca: intl_defaultCalendar,
             nu: intl_numberingSystem,
+            hc: () => {
+                return null;
+            }
         }
     };
 }
@@ -3071,8 +3157,14 @@ _SetCanonicalName(Intl_DateTimeFormat_format_get, "get format");
  * Intl.DateTimeFormat.prototype.formatToParts ( date )
  */
 function Intl_DateTimeFormat_formatToParts(date) {
-    // Steps 1-3.
-    var dtf = UnwrapDateTimeFormat(this, "formatToParts");
+    // Step 1.
+    var dtf = this;
+
+    // Steps 2-3.
+    if (!IsObject(dtf) || !IsDateTimeFormat(dtf)) {
+        ThrowTypeError(JSMSG_INTL_OBJECT_NOT_INITED, "DateTimeFormat", "formatToParts",
+                       "DateTimeFormat");
+    }
 
     // Ensure the DateTimeFormat internals are resolved.
     getDateTimeFormatInternals(dtf);
@@ -3209,10 +3301,24 @@ function resolveICUPattern(pattern, result) {
             }
             if (hasOwn(c, icuPatternCharToComponent))
                 _DefineDataProperty(result, icuPatternCharToComponent[c], value);
-            if (c === "h" || c === "K")
+            switch (c) {
+            case "h":
+                _DefineDataProperty(result, "hourCycle", "h12");
                 _DefineDataProperty(result, "hour12", true);
-            else if (c === "H" || c === "k")
+                break;
+            case "K":
+                _DefineDataProperty(result, "hourCycle", "h11");
+                _DefineDataProperty(result, "hour12", true);
+                break;
+            case "H":
+                _DefineDataProperty(result, "hourCycle", "h23");
                 _DefineDataProperty(result, "hour12", false);
+                break;
+            case "k":
+                _DefineDataProperty(result, "hourCycle", "h24");
+                _DefineDataProperty(result, "hour12", false);
+                break;
+            }
         }
     }
 }
@@ -3354,7 +3460,7 @@ function InitializePluralRules(pluralRules, locales, options) {
 
     // Steps 4-5.
     if (options === undefined)
-        options = {};
+        options = std_Object_create(null);
     else
         options = ToObject(options);
 
@@ -3459,6 +3565,223 @@ function Intl_PluralRules_resolvedOptions() {
         if (hasOwn(p, internals))
             _DefineDataProperty(result, p, internals[p]);
     }
+    return result;
+}
+
+
+/********** Intl.RelativeTimeFormat **********/
+
+/**
+ * RelativeTimeFormat internal properties.
+ *
+ * Spec: ECMAScript 402 API, RelativeTimeFormat, 1.3.3.
+ */
+var relativeTimeFormatInternalProperties = {
+    localeData: relativeTimeFormatLocaleData,
+    _availableLocales: null,
+    availableLocales: function() // eslint-disable-line object-shorthand
+    {
+        var locales = this._availableLocales;
+        if (locales)
+            return locales;
+
+        locales = intl_RelativeTimeFormat_availableLocales();
+        addSpecialMissingLanguageTags(locales);
+        return (this._availableLocales = locales);
+    },
+    relevantExtensionKeys: [],
+};
+
+function relativeTimeFormatLocaleData() {
+    // RelativeTimeFormat doesn't support any extension keys.
+    return {};
+}
+
+/**
+ * Compute an internal properties object from |lazyRelativeTimeFormatData|.
+ */
+function resolveRelativeTimeFormatInternals(lazyRelativeTimeFormatData) {
+    assert(IsObject(lazyRelativeTimeFormatData), "lazy data not an object?");
+
+    var internalProps = std_Object_create(null);
+
+    var RelativeTimeFormat = relativeTimeFormatInternalProperties;
+
+    // Step 16.
+    const r = ResolveLocale(callFunction(RelativeTimeFormat.availableLocales, RelativeTimeFormat),
+                            lazyRelativeTimeFormatData.requestedLocales,
+                            lazyRelativeTimeFormatData.opt,
+                            RelativeTimeFormat.relevantExtensionKeys,
+                            RelativeTimeFormat.localeData);
+
+    // Step 17.
+    internalProps.locale = r.locale;
+    internalProps.style = lazyRelativeTimeFormatData.style;
+
+    return internalProps;
+}
+
+/**
+ * Returns an object containing the RelativeTimeFormat internal properties of |obj|,
+ * or throws a TypeError if |obj| isn't RelativeTimeFormat-initialized.
+ */
+function getRelativeTimeFormatInternals(obj, methodName) {
+    assert(IsObject(obj), "getRelativeTimeFormatInternals called with non-object");
+    assert(IsRelativeTimeFormat(obj), "getRelativeTimeFormatInternals called with non-RelativeTimeFormat");
+
+    var internals = getIntlObjectInternals(obj);
+    assert(internals.type === "RelativeTimeFormat", "bad type escaped getIntlObjectInternals");
+
+    var internalProps = maybeInternalProperties(internals);
+    if (internalProps)
+        return internalProps;
+
+    internalProps = resolveRelativeTimeFormatInternals(internals.lazyData);
+    setInternalProperties(internals, internalProps);
+    return internalProps;
+}
+
+/**
+ * Initializes an object as a RelativeTimeFormat.
+ *
+ * This method is complicated a moderate bit by its implementing initialization
+ * as a *lazy* concept.  Everything that must happen now, does -- but we defer
+ * all the work we can until the object is actually used as a RelativeTimeFormat.
+ * This later work occurs in |resolveRelativeTimeFormatInternals|; steps not noted
+ * here occur there.
+ *
+ * Spec: ECMAScript 402 API, RelativeTimeFormat, 1.1.1.
+ */
+function InitializeRelativeTimeFormat(relativeTimeFormat, locales, options) {
+    assert(IsObject(relativeTimeFormat),
+           "InitializeRelativeimeFormat called with non-object");
+    assert(IsRelativeTimeFormat(relativeTimeFormat),
+           "InitializeRelativeTimeFormat called with non-RelativeTimeFormat");
+
+    // Lazy RelativeTimeFormat data has the following structure:
+    //
+    //   {
+    //     requestedLocales: List of locales,
+    //     style: "long" / "short" / "narrow",
+    //
+    //     opt: // opt object computer in InitializeRelativeTimeFormat
+    //       {
+    //         localeMatcher: "lookup" / "best fit",
+    //       }
+    //   }
+    //
+    // Note that lazy data is only installed as a final step of initialization,
+    // so every RelativeTimeFormat lazy data object has *all* these properties, never a
+    // subset of them.
+    const lazyRelativeTimeFormatData = std_Object_create(null);
+
+    // Step 3.
+    let requestedLocales = CanonicalizeLocaleList(locales);
+    lazyRelativeTimeFormatData.requestedLocales = requestedLocales;
+
+    // Steps 4-5.
+    if (options === undefined)
+        options = std_Object_create(null);
+    else
+        options = ToObject(options);
+
+    // Step 6.
+    let opt = new Record();
+
+    // Steps 7-8.
+    let matcher = GetOption(options, "localeMatcher", "string", ["lookup", "best fit"], "best fit");
+    opt.localeMatcher = matcher;
+
+    lazyRelativeTimeFormatData.opt = opt;
+
+    // Steps 13-14.
+    const style = GetOption(options, "style", "string", ["long", "short", "narrow"], "long");
+    lazyRelativeTimeFormatData.style = style;
+
+    initializeIntlObject(relativeTimeFormat, "RelativeTimeFormat", lazyRelativeTimeFormatData)
+}
+
+/**
+ * Returns the subset of the given locale list for which this locale list has a
+ * matching (possibly fallback) locale. Locales appear in the same order in the
+ * returned list as in the input list.
+ *
+ * Spec: ECMAScript 402 API, RelativeTimeFormat, 1.3.2.
+ */
+function Intl_RelativeTimeFormat_supportedLocalesOf(locales /*, options*/) {
+    var options = arguments.length > 1 ? arguments[1] : undefined;
+
+    // Step 1.
+    var availableLocales = callFunction(relativeTimeFormatInternalProperties.availableLocales,
+                                        relativeTimeFormatInternalProperties);
+    // Step 2.
+    let requestedLocales = CanonicalizeLocaleList(locales);
+
+    // Step 3.
+    return SupportedLocales(availableLocales, requestedLocales, options);
+}
+
+/**
+ * Returns a String value representing the written form of a relative date
+ * formatted according to the effective locale and the formatting options
+ * of this RelativeTimeFormat object.
+ *
+ * Spec: ECMAScript 402 API, RelativeTImeFormat, 1.4.3.
+ */
+function Intl_RelativeTimeFormat_format(value, unit) {
+    // Step 1.
+    let relativeTimeFormat = this;
+
+    // Step 2.
+    if (!IsObject(relativeTimeFormat) || !IsRelativeTimeFormat(relativeTimeFormat))
+        ThrowTypeError(JSMSG_INTL_OBJECT_NOT_INITED, "RelativeTimeFormat", "format", "RelativeTimeFormat");
+
+    // Ensure the RelativeTimeFormat internals are resolved.
+    getRelativeTimeFormatInternals(relativeTimeFormat);
+
+    // Step 3.
+    let t = ToNumber(value);
+
+    // Step 4.
+    let u = ToString(unit);
+
+    switch (u) {
+      case "second":
+      case "minute":
+      case "hour":
+      case "day":
+      case "week":
+      case "month":
+      case "quarter":
+      case "year":
+        break;
+      default:
+        ThrowRangeError(JSMSG_INVALID_OPTION_VALUE, "unit", u);
+    }
+
+    // Step 5.
+    return intl_FormatRelativeTime(relativeTimeFormat, t, u);
+}
+
+/**
+ * Returns the resolved options for a PluralRules object.
+ *
+ * Spec: ECMAScript 402 API, RelativeTimeFormat, 1.4.4.
+ */
+function Intl_RelativeTimeFormat_resolvedOptions() {
+    // Check "this RelativeTimeFormat object" per introduction of section 1.4.
+    if (!IsObject(this) || !IsRelativeTimeFormat(this)) {
+        ThrowTypeError(JSMSG_INTL_OBJECT_NOT_INITED, "RelativeTimeFormat", "resolvedOptions",
+                       "RelativeTimeFormat");
+    }
+
+    var internals = getRelativeTimeFormatInternals(this, "resolvedOptions");
+
+    var result = {
+        locale: internals.locale,
+        style: internals.style,
+    };
+
     return result;
 }
 
@@ -3570,8 +3893,8 @@ function Intl_getDisplayNames(locales, options) {
 
     // 2. If options is undefined, then
     if (options === undefined)
-        // a. Let options be ObjectCreate(%ObjectPrototype%).
-        options = {};
+        // a. Let options be ObjectCreate(null).
+        options = std_Object_create(null);
     // 3. Else,
     else
         // a. Let options be ? ToObject(options).

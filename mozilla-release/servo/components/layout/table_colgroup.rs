@@ -19,7 +19,11 @@ use style::logical_geometry::LogicalSize;
 use style::properties::ComputedValues;
 use style::values::computed::LengthOrPercentageOrAuto;
 
+#[allow(unsafe_code)]
+unsafe impl ::flow::HasBaseFlow for TableColGroupFlow {}
+
 /// A table formatting context.
+#[repr(C)]
 pub struct TableColGroupFlow {
     /// Data common to all flows.
     pub base: BaseFlow,
@@ -94,7 +98,7 @@ impl Flow for TableColGroupFlow {
 
     fn collect_stacking_contexts(&mut self, state: &mut StackingContextCollectionState) {
         self.base.stacking_context_id = state.current_stacking_context_id;
-        self.base.clip_and_scroll_info = Some(state.current_clip_and_scroll_info);
+        self.base.clipping_and_scrolling = Some(state.current_clipping_and_scrolling);
     }
 
     fn repair_style(&mut self, _: &::ServoArc<ComputedValues>) {}

@@ -9,36 +9,38 @@ Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://testing-common/services/sync/utils.js");
 
-const SMART_BOOKMARKS_ANNO = "Places/SmartBookmark";
-const IOService = Cc["@mozilla.org/network/io-service;1"]
-                .getService(Ci.nsIIOService);
-
-function newSmartBookmark(parent, uri, position, title, queryID) {
-  let id = PlacesUtils.bookmarks.insertBookmark(parent, uri, position, title);
-  PlacesUtils.annotations.setItemAnnotation(id, SMART_BOOKMARKS_ANNO,
-                                            queryID, 0,
-                                            PlacesUtils.annotations.EXPIRE_NEVER);
-  return id;
+async function newSmartBookmark(parentGuid, url, position, title, queryID) {
+  let info = await PlacesUtils.bookmarks.insert({
+    parentGuid,
+    url,
+    position,
+    title,
+  });
+  let id = await PlacesUtils.promiseItemId(info.guid);
+  PlacesUtils.annotations.setItemAnnotation(id,
+    PlacesSyncUtils.bookmarks.SMART_BOOKMARKS_ANNO, queryID, 0,
+    PlacesUtils.annotations.EXPIRE_NEVER);
+  return info;
 }
 
 function smartBookmarkCount() {
   // We do it this way because PlacesUtils.annotations.getItemsWithAnnotation
   // doesn't work the same (or at all?) between 3.6 and 4.0.
   let out = {};
-  PlacesUtils.annotations.getItemsWithAnnotation(SMART_BOOKMARKS_ANNO, out);
+  PlacesUtils.annotations.getItemsWithAnnotation(
+    PlacesSyncUtils.bookmarks.SMART_BOOKMARKS_ANNO, out);
   return out.value;
-}
-
-function clearBookmarks() {
-  _("Cleaning up existing items.");
-  PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.bookmarks.bookmarksMenuFolder);
-  PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.bookmarks.tagsFolder);
-  PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.bookmarks.toolbarFolder);
-  PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.bookmarks.unfiledBookmarksFolder);
 }
 
 let engine;
 let store;
+
+add_task(async function setup() {
+  initTestLogging("Trace");
+  Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace;
+
+  await generateNewKeys(Service.collectionKeys);
+});
 
 add_task(async function setup() {
   await Service.engineManager.register(BookmarksEngine);
@@ -49,38 +51,35 @@ add_task(async function setup() {
 // Verify that Places smart bookmarks have their annotation uploaded and
 // handled locally.
 add_task(async function test_annotation_uploaded() {
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
+
+  _("Cleaning up existing items.");
+  await PlacesUtils.bookmarks.eraseEverything();
 
   let startCount = smartBookmarkCount();
 
   _("Start count is " + startCount);
 
-  if (startCount > 0) {
-    // This can happen in XULRunner.
-    clearBookmarks();
-    _("Start count is now " + startCount);
-  }
-
   _("Create a smart bookmark in the toolbar.");
-  let parent = PlacesUtils.toolbarFolderId;
-  let uri =
-    CommonUtils.makeURI("place:sort=" +
-                  Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_DESCENDING +
-                  "&maxResults=10");
+  let url = "place:sort=" +
+            Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_DESCENDING +
+            "&maxResults=10";
   let title = "Most Visited";
 
-  let mostVisitedID = newSmartBookmark(parent, uri, -1, title, "MostVisited");
+  let mostVisitedInfo = await newSmartBookmark(
+    PlacesUtils.bookmarks.toolbarGuid, url, -1, title, "MostVisited");
+  let mostVisitedID = await PlacesUtils.promiseItemId(mostVisitedInfo.guid);
 
   _("New item ID: " + mostVisitedID);
   do_check_true(!!mostVisitedID);
 
   let annoValue = PlacesUtils.annotations.getItemAnnotation(mostVisitedID,
-                                              SMART_BOOKMARKS_ANNO);
+    PlacesSyncUtils.bookmarks.SMART_BOOKMARKS_ANNO);
   _("Anno: " + annoValue);
   do_check_eq("MostVisited", annoValue);
 
-  let guid = await store.GUIDForId(mostVisitedID);
+  let guid = await PlacesUtils.promiseItemGuid(mostVisitedID);
   _("GUID: " + guid);
   do_check_true(!!guid);
 
@@ -89,7 +88,7 @@ add_task(async function test_annotation_uploaded() {
   do_check_true(record instanceof Bookmark);
   do_check_true(record instanceof BookmarkQuery);
 
-  do_check_eq(record.bmkUri, uri.spec);
+  do_check_eq(record.bmkUri, url);
 
   _("Make sure the new record carries with it the annotation.");
   do_check_eq("MostVisited", record.queryId);
@@ -122,11 +121,13 @@ add_task(async function test_annotation_uploaded() {
 
     // "Clear" by changing attributes: if we delete it, apparently it sticks
     // around as a deleted record...
-    PlacesUtils.bookmarks.setItemTitle(mostVisitedID, "Not Most Visited");
-    PlacesUtils.bookmarks.changeBookmarkURI(
-      mostVisitedID, CommonUtils.makeURI("http://something/else"));
+    await PlacesUtils.bookmarks.update({
+      guid: mostVisitedInfo.guid,
+      title: "Not Most Visited",
+      url: "http://something/else",
+    });
     PlacesUtils.annotations.removeItemAnnotation(mostVisitedID,
-                                                 SMART_BOOKMARKS_ANNO);
+      PlacesSyncUtils.bookmarks.SMART_BOOKMARKS_ANNO);
     await store.wipe();
     await engine.resetClient();
     do_check_eq(smartBookmarkCount(), startCount);
@@ -139,20 +140,22 @@ add_task(async function test_annotation_uploaded() {
     do_check_eq(smartBookmarkCount(), startCount + 1);
 
     _("Find by GUID and verify that it's annotated.");
-    let newID = await store.idForGUID(serverGUID);
+    let newID = await PlacesUtils.promiseItemId(serverGUID);
     let newAnnoValue = PlacesUtils.annotations.getItemAnnotation(
-      newID, SMART_BOOKMARKS_ANNO);
+      newID, PlacesSyncUtils.bookmarks.SMART_BOOKMARKS_ANNO);
     do_check_eq(newAnnoValue, "MostVisited");
-    do_check_eq(PlacesUtils.bookmarks.getBookmarkURI(newID).spec, uri.spec);
+    let newInfo = await PlacesUtils.bookmarks.fetch(serverGUID);
+    do_check_eq(newInfo.url.href, url);
 
     _("Test updating.");
     let newRecord = await store.createRecord(serverGUID);
     do_check_eq(newRecord.queryId, newAnnoValue);
     newRecord.queryId = "LeastVisited";
-    await store.update(newRecord);
+    collection.insert(serverGUID, encryptPayload(newRecord.cleartext));
+    engine.lastModified = collection.timestamp + 1;
+    await sync_engine_and_validate_telem(engine, false);
     do_check_eq("LeastVisited", PlacesUtils.annotations.getItemAnnotation(
-      newID, SMART_BOOKMARKS_ANNO));
-
+      newID, PlacesSyncUtils.bookmarks.SMART_BOOKMARKS_ANNO));
 
   } finally {
     // Clean up.
@@ -164,46 +167,118 @@ add_task(async function test_annotation_uploaded() {
 });
 
 add_task(async function test_smart_bookmarks_duped() {
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
+  let collection = server.user("foo").collection("bookmarks");
 
-  let parent = PlacesUtils.toolbarFolderId;
-  let uri =
-    CommonUtils.makeURI("place:sort=" +
-                  Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_DESCENDING +
-                  "&maxResults=10");
+  let url = "place:sort=" +
+            Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_DESCENDING +
+            "&maxResults=10";
   let title = "Most Visited";
-  let mostVisitedID = newSmartBookmark(parent, uri, -1, title, "MostVisited");
-  let mostVisitedGUID = await store.GUIDForId(mostVisitedID);
 
-  let record = await store.createRecord(mostVisitedGUID);
-
-  _("Prepare sync.");
   try {
-    await engine._syncStartup();
 
-    _("Verify that mapDupe uses the anno, discovering a dupe regardless of URI.");
-    do_check_eq(mostVisitedGUID, (await engine._mapDupe(record)));
+    _("Verify that queries with the same anno and URL dupe");
+    {
+      let info = await newSmartBookmark(PlacesUtils.bookmarks.toolbarGuid, url,
+                                        -1, title, "MostVisited");
+      let idForOldGUID = await PlacesUtils.promiseItemId(info.guid);
 
-    record.bmkUri = "http://foo/";
-    do_check_eq(mostVisitedGUID, (await engine._mapDupe(record)));
-    do_check_neq(PlacesUtils.bookmarks.getBookmarkURI(mostVisitedID).spec,
-                 record.bmkUri);
+      let record = await store.createRecord(info.guid);
+      record.id = Utils.makeGUID();
+      collection.insert(record.id, encryptPayload(record.cleartext));
+
+      collection.insert("toolbar", encryptPayload({
+        id: "toolbar",
+        parentid: "places",
+        type: "folder",
+        title: "Bookmarks Toolbar",
+        children: [record.id],
+      }));
+
+      await sync_engine_and_validate_telem(engine, false);
+
+      let idForNewGUID = await PlacesUtils.promiseItemId(record.id);
+      equal(idForOldGUID, idForNewGUID);
+    }
+
+    _("Verify that queries with the same anno and different URL dupe");
+    {
+      let info = await newSmartBookmark(PlacesUtils.bookmarks.menuGuid,
+                                        "place:bar", -1, title,
+                                        "MostVisited");
+      let idForOldGUID = await PlacesUtils.promiseItemId(info.guid);
+
+      let record = await store.createRecord(info.guid);
+      record.id = Utils.makeGUID();
+      collection.insert(record.id, encryptPayload(record.cleartext), engine.lastSync + 1);
+
+      collection.insert("menu", encryptPayload({
+        id: "menu",
+        parentid: "places",
+        type: "folder",
+        title: "Bookmarks Menu",
+        children: [record.id],
+      }), engine.lastSync + 1);
+
+      engine.lastModified = collection.timestamp;
+      await sync_engine_and_validate_telem(engine, false);
+
+      let idForNewGUID = await PlacesUtils.promiseItemId(record.id);
+      equal(idForOldGUID, idForNewGUID);
+    }
 
     _("Verify that different annos don't dupe.");
-    let other = new BookmarkQuery("bookmarks", "abcdefabcdef");
-    other.queryId = "LeastVisited";
-    other.parentName = "Bookmarks Toolbar";
-    other.bmkUri = "place:foo";
-    other.title = "";
-    do_check_eq(undefined, (await engine._findDupe(other)));
+    {
+      let info = await newSmartBookmark(PlacesUtils.bookmarks.unfiledGuid,
+                                        "place:foo", -1, title, "LeastVisited");
+      let idForOldGUID = await PlacesUtils.promiseItemId(info.guid);
+
+      let other = await store.createRecord(info.guid);
+      other.id = "abcdefabcdef";
+      other.queryId = "MostVisited";
+      collection.insert(other.id, encryptPayload(other.cleartext), engine.lastSync + 1);
+
+      collection.insert("unfiled", encryptPayload({
+        id: "unfiled",
+        parentid: "places",
+        type: "folder",
+        title: "Other Bookmarks",
+        children: [other.id],
+      }), engine.lastSync + 1);
+
+      engine.lastModified = collection.timestamp;
+      await sync_engine_and_validate_telem(engine, false);
+
+      let idForNewGUID = await PlacesUtils.promiseItemId(other.id);
+      notEqual(idForOldGUID, idForNewGUID);
+    }
 
     _("Handle records without a queryId entry.");
-    record.bmkUri = uri;
-    delete record.queryId;
-    do_check_eq(mostVisitedGUID, (await engine._mapDupe(record)));
+    {
+      let info = await newSmartBookmark(PlacesUtils.bookmarks.mobileGuid, url,
+                                        -1, title, "MostVisited");
+      let idForOldGUID = await PlacesUtils.promiseItemId(info.guid);
 
-    await engine._syncFinish();
+      let record = await store.createRecord(info.guid);
+      record.id = Utils.makeGUID();
+      delete record.queryId;
+      collection.insert(record.id, encryptPayload(record.cleartext), engine.lastSync + 1);
+
+      collection.insert("mobile", encryptPayload({
+        id: "mobile",
+        parentid: "places",
+        type: "folder",
+        title: "Mobile Bookmarks",
+        children: [record.id],
+      }), engine.lastSync + 1);
+
+      engine.lastModified = collection.timestamp;
+      await sync_engine_and_validate_telem(engine, false);
+
+      let idForNewGUID = await PlacesUtils.promiseItemId(record.id);
+      equal(idForOldGUID, idForNewGUID);
+    }
 
   } finally {
     // Clean up.
@@ -213,12 +288,3 @@ add_task(async function test_smart_bookmarks_duped() {
     Service.recordManager.clearCache();
   }
 });
-
-function run_test() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace;
-
-  generateNewKeys(Service.collectionKeys);
-
-  run_next_test();
-}

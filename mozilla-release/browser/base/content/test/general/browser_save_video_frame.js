@@ -38,7 +38,7 @@ function waitForTransferComplete() {
     mockTransferCallback = () => {
       ok(true, "Transfer completed");
       resolve();
-    }
+    };
   });
 }
 
@@ -63,7 +63,7 @@ function rightClickVideo(browser) {
     utils.sendMouseEvent("contextmenu", left, top,
                          2, /* aButton */
                          1, /* aClickCount */
-                         0  /* aModifiers */);
+                         0 /* aModifiers */);
   };
   let mm = browser.messageManager;
   mm.loadFrameScript("data:,(" + frame_script.toString() + ")();", true);
@@ -115,7 +115,7 @@ add_task(async function() {
   info("Popup fired popupshown");
 
   let saveSnapshotCommand = document.getElementById("context-video-saveimage");
-  let promiseTransfer = waitForTransferComplete()
+  let promiseTransfer = waitForTransferComplete();
   info("Firing save snapshot command");
   saveSnapshotCommand.doCommand();
   context.hidePopup();

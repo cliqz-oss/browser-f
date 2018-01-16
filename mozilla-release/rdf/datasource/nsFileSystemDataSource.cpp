@@ -212,15 +212,9 @@ FileSystemDataSource::Create(nsISupports* aOuter, const nsIID& aIID, void **aRes
 NS_IMPL_ISUPPORTS(FileSystemDataSource, nsIRDFDataSource)
 
 NS_IMETHODIMP
-FileSystemDataSource::GetURI(char **uri)
+FileSystemDataSource::GetURI(nsACString& aURI)
 {
-    NS_PRECONDITION(uri != nullptr, "null ptr");
-    if (! uri)
-        return NS_ERROR_NULL_POINTER;
-
-    if ((*uri = NS_strdup("rdf:files")) == nullptr)
-        return NS_ERROR_OUT_OF_MEMORY;
-
+    aURI.AssignLiteral("rdf:files");
     return NS_OK;
 }
 
@@ -256,7 +250,7 @@ FileSystemDataSource::GetSources(nsIRDFResource *property,
                                  bool tv,
                                  nsISimpleEnumerator **sources /* out */)
 {
-//  NS_NOTYETIMPLEMENTED("write me");
+//  MOZ_ASSERT_UNREACHABLE("write me");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -711,7 +705,7 @@ NS_IMETHODIMP
 FileSystemDataSource::ArcLabelsIn(nsIRDFNode *node,
                             nsISimpleEnumerator ** labels /* out */)
 {
-//  NS_NOTYETIMPLEMENTED("write me");
+//  MOZ_ASSERT_UNREACHABLE("write me");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -768,7 +762,7 @@ FileSystemDataSource::ArcLabelsOut(nsIRDFResource *source,
 NS_IMETHODIMP
 FileSystemDataSource::GetAllResources(nsISimpleEnumerator** aCursor)
 {
-    NS_NOTYETIMPLEMENTED("sorry!");
+    MOZ_ASSERT_UNREACHABLE("sorry!");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -1019,7 +1013,7 @@ FileSystemDataSource::GetFolderList(nsIRDFResource *source, bool allowHidden,
         while ((aOffset = leaf.FindChar('/')) >= 0)
         {
             leaf.Cut((uint32_t)aOffset, 1);
-            leaf.Insert("%2F", (uint32_t)aOffset);
+            leaf.InsertLiteral("%2F", (uint32_t)aOffset);
         }
 
         // append the encoded name

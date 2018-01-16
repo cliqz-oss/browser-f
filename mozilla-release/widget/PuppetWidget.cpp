@@ -93,6 +93,7 @@ PuppetWidget::PuppetWidget(TabChild* aTabChild)
   , mDefaultScale(-1)
   , mCursorHotspotX(0)
   , mCursorHotspotY(0)
+  , mIgnoreCompositionEvents(false)
 {
   // Setting 'Unknown' means "not yet cached".
   mInputContext.mIMEState.mEnabled = IMEState::UNKNOWN;
@@ -345,6 +346,20 @@ PuppetWidget::DispatchEvent(WidgetGUIEvent* aEvent, nsEventStatus& aStatus)
     "before dispatched");
 
   if (aEvent->mClass == eCompositionEventClass) {
+    // If we've already requested to commit/cancel the latest composition,
+    // TextComposition for the old composition has been destroyed.  Then,
+    // the DOM tree needs to listen to next eCompositionStart and its
+    // following events.  So, until we meet new eCompositionStart, let's
+    // discard all unnecessary composition events here.
+    if (mIgnoreCompositionEvents) {
+      if (aEvent->mMessage != eCompositionStart) {
+        aStatus = nsEventStatus_eIgnore;
+        return NS_OK;
+      }
+      // Now, we receive new eCompositionStart.  Let's restart to handle
+      // composition in this process.
+      mIgnoreCompositionEvents = false;
+    }
     // Store the latest native IME context of parent process's widget or
     // TextEventDispatcher if it's in this process.
     WidgetCompositionEvent* compositionEvent = aEvent->AsCompositionEvent();
@@ -596,35 +611,23 @@ PuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
       return mLayerManager;
     }
 
-    if (mTabChild && !mTabChild->IsLayersConnected()) {
-      // If we know for sure that the parent side of this TabChild is not
-      // connected to the compositor, we don't want to use a "remote" layer
-      // manager like WebRender or Client. Instead we use a Basic one which
-      // can do drawing in this process.
-      mLayerManager = new BasicLayerManager(this);
-    } else if (gfxVars::UseWebRender()) {
-      MOZ_ASSERT(!aShadowManager);
-      mLayerManager = new WebRenderLayerManager(this);
-    } else {
-      mLayerManager = new ClientLayerManager(this);
-    }
-  }
-
-  // Attach a shadow forwarder if none exists.
-  ShadowLayerForwarder* lf = mLayerManager->AsShadowForwarder();
-  if (lf && !lf->HasShadowManager() && aShadowManager) {
-    lf->SetShadowManager(aShadowManager);
+    // If we know for sure that the parent side of this TabChild is not
+    // connected to the compositor, we don't want to use a "remote" layer
+    // manager like WebRender or Client. Instead we use a Basic one which
+    // can do drawing in this process.
+    MOZ_ASSERT(!mTabChild || mTabChild->IsLayersConnected() != Some(true));
+    mLayerManager = new BasicLayerManager(this);
   }
 
   return mLayerManager;
 }
 
 bool
-PuppetWidget::RecreateLayerManager(const std::function<bool(LayerManager*)>& aInitializeFunc)
+PuppetWidget::CreateRemoteLayerManager(const std::function<bool(LayerManager*)>& aInitializeFunc)
 {
   RefPtr<LayerManager> lm;
   MOZ_ASSERT(mTabChild);
-  if (gfxVars::UseWebRender()) {
+  if (mTabChild->GetCompositorOptions().UseWebRender()) {
     lm = new WebRenderLayerManager(this);
   } else {
     lm = new ClientLayerManager(this);
@@ -657,12 +660,26 @@ PuppetWidget::RequestIMEToCommitComposition(bool aCancel)
     return NS_OK;
   }
 
+  // We've already requested to commit/cancel composition.
+  if (NS_WARN_IF(mIgnoreCompositionEvents)) {
+#ifdef DEBUG
+    RefPtr<TextComposition> composition =
+      IMEStateManager::GetTextCompositionFor(this);
+    MOZ_ASSERT(!composition);
+#endif // #ifdef DEBUG
+    return NS_OK;
+  }
+
   RefPtr<TextComposition> composition =
     IMEStateManager::GetTextCompositionFor(this);
   // This method shouldn't be called when there is no text composition instance.
   if (NS_WARN_IF(!composition)) {
     return NS_OK;
   }
+
+  MOZ_DIAGNOSTIC_ASSERT(composition->IsRequestingCommitOrCancelComposition(),
+    "Requesting commit or cancel composition should be requested via "
+    "TextComposition instance");
 
   bool isCommitted = false;
   nsAutoString committedString;
@@ -683,6 +700,16 @@ PuppetWidget::RequestIMEToCommitComposition(bool aCancel)
   compositionCommitEvent.mData = committedString;
   nsEventStatus status = nsEventStatus_eIgnore;
   DispatchEvent(&compositionCommitEvent, status);
+
+#ifdef DEBUG
+  RefPtr<TextComposition> currentComposition =
+    IMEStateManager::GetTextCompositionFor(this);
+  MOZ_ASSERT(!currentComposition);
+#endif // #ifdef DEBUG
+
+  // Ignore the following composition events until we receive new
+  // eCompositionStart event.
+  mIgnoreCompositionEvents = true;
 
   Unused <<
     mTabChild->SendOnEventNeedingAckHandled(eCompositionCommitRequestHandled);
@@ -1053,7 +1080,9 @@ PuppetWidget::Paint()
 #endif
 
     if (mLayerManager->GetBackendType() == mozilla::layers::LayersBackend::LAYERS_CLIENT ||
-        mLayerManager->GetBackendType() == mozilla::layers::LayersBackend::LAYERS_WR) {
+        mLayerManager->GetBackendType() == mozilla::layers::LayersBackend::LAYERS_WR ||
+        (mozilla::layers::LayersBackend::LAYERS_BASIC == mLayerManager->GetBackendType() &&
+         mTabChild && mTabChild->IsLayersConnected().isSome())) {
       // Do nothing, the compositor will handle drawing
       if (mTabChild) {
         mTabChild->NotifyPainted();

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -70,7 +71,11 @@ nsFilterInstance::PaintFilteredFrame(nsIFrame *aFilteredFrame,
   UniquePtr<UserSpaceMetrics> metrics = UserSpaceMetricsForFrame(aFilteredFrame);
 
   gfxContextMatrixAutoSaveRestore autoSR(aCtx);
-  gfxSize scaleFactors = aCtx->CurrentMatrix().ScaleFactors(true);
+  gfxSize scaleFactors = aCtx->CurrentMatrixDouble().ScaleFactors(true);
+  if (scaleFactors.IsEmpty()) {
+    return;
+  }
+
   gfxMatrix scaleMatrix(scaleFactors.width, 0.0f,
                         0.0f, scaleFactors.height,
                         0.0f, 0.0f);
@@ -80,7 +85,7 @@ nsFilterInstance::PaintFilteredFrame(nsIFrame *aFilteredFrame,
   MOZ_ASSERT(invertible);
   // Pull scale vector out of aCtx's transform, put all scale factors, which
   // includes css and css-to-dev-px scale, into scaleMatrixInDevUnits.
-  aCtx->SetMatrix(reverseScaleMatrix * aCtx->CurrentMatrix());
+  aCtx->SetMatrixDouble(reverseScaleMatrix * aCtx->CurrentMatrixDouble());
 
   gfxMatrix scaleMatrixInDevUnits =
     scaleMatrix * nsSVGUtils::GetCSSPxToDevPxMatrix(aFilteredFrame);
@@ -409,8 +414,8 @@ nsFilterInstance::BuildSourcePaint(SourceInfo *aSource,
   MOZ_ASSERT(ctx); // already checked the draw target above
   gfxContextAutoSaveRestore saver(ctx);
 
-  ctx->SetMatrix(mPaintTransform *
-                 gfxMatrix::Translation(-neededRect.TopLeft()));
+  ctx->SetMatrixDouble(mPaintTransform *
+                       gfxMatrix::Translation(-neededRect.TopLeft()));
   GeneralPattern pattern;
   if (aSource == &mFillPaint) {
     nsSVGUtils::MakeFillPatternFor(mTargetFrame, ctx, &pattern, aImgParams);
@@ -440,7 +445,7 @@ nsFilterInstance::BuildSourcePaints(imgDrawingParams& aImgParams)
 }
 
 void
-nsFilterInstance::BuildSourceImage(imgDrawingParams& aImgParams)
+nsFilterInstance::BuildSourceImage(DrawTarget *aDest, imgDrawingParams& aImgParams)
 {
   MOZ_ASSERT(mTargetFrame);
 
@@ -450,8 +455,7 @@ nsFilterInstance::BuildSourceImage(imgDrawingParams& aImgParams)
   }
 
   RefPtr<DrawTarget> offscreenDT =
-    gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
-      neededRect.Size(), SurfaceFormat::B8G8R8A8);
+    aDest->CreateSimilarDrawTarget(neededRect.Size(), SurfaceFormat::B8G8R8A8);
   if (!offscreenDT || !offscreenDT->IsValid()) {
     return;
   }
@@ -479,8 +483,8 @@ nsFilterInstance::BuildSourceImage(imgDrawingParams& aImgParams)
   gfxMatrix devPxToCssPxTM = nsSVGUtils::GetCSSPxToDevPxMatrix(mTargetFrame);
   DebugOnly<bool> invertible = devPxToCssPxTM.Invert();
   MOZ_ASSERT(invertible);
-  ctx->SetMatrix(devPxToCssPxTM * mPaintTransform *
-                 gfxMatrix::Translation(-neededRect.TopLeft()));
+  ctx->SetMatrixDouble(devPxToCssPxTM * mPaintTransform *
+                       gfxMatrix::Translation(-neededRect.TopLeft()));
 
   mPaintCallback->Paint(*ctx, mTargetFrame, mPaintTransform, &dirty, aImgParams);
 
@@ -509,7 +513,7 @@ nsFilterInstance::Render(gfxContext* aCtx, imgDrawingParams& aImgParams)
 
   ComputeNeededBoxes();
 
-  BuildSourceImage(aImgParams);
+  BuildSourceImage(aCtx->GetDrawTarget(), aImgParams);
   BuildSourcePaints(aImgParams);
 
   FilterSupport::RenderFilterDescription(

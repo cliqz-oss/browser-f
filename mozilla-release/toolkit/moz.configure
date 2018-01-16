@@ -27,7 +27,7 @@ def gecko_profiler(target):
     if target.os == 'Android':
         return target.cpu in ('aarch64', 'arm', 'x86')
     elif target.kernel == 'Linux':
-        return target.cpu in ('x86', 'x86_64')
+        return target.cpu in ('x86', 'x86_64', 'mips64')
     return target.os in ('OSX', 'WINNT')
 
 @depends(gecko_profiler)
@@ -485,10 +485,6 @@ project_flag('MOZ_PLACES',
              help='Build Places if required',
              set_as_define=True)
 
-project_flag('MOZ_SOCIAL',
-             help='Build SocialAPI if required',
-             default=True)
-
 project_flag('MOZ_SERVICES_HEALTHREPORT',
              help='Build Firefox Health Reporter Service',
              set_for_old_configure=True,
@@ -570,17 +566,19 @@ simple_keyfile('Pocket API')
 option('--enable-stylo', nargs='?', choices=('build',),
        help='Include Stylo in the build and/or enable it at runtime')
 
-@depends('--enable-stylo', '--help', target)
-def stylo_config(value, _, target):
+@depends('--enable-stylo', '--help', target, milestone)
+def stylo_config(value, _, target, milestone):
     build_stylo = None
     enable_stylo = None
 
     # If nothing is specified, default to building and enabling Stylo where it
     # is known to work.
     if value.origin == 'default':
+        # Build stylo on Android Nighly, but this is still turned off yet.
         if target.os == 'Android':
-            # Stylo on Android is happening Later(tm).
-            pass
+            if milestone.is_nightly:
+                build_stylo = True
+                enable_stylo = None
         else:
             build_stylo = True
             enable_stylo = True
@@ -1144,33 +1142,47 @@ def geckodriver(enable, automation, compile_env, cross_compile, hazard, target):
 
 set_config('ENABLE_GECKODRIVER', geckodriver)
 
-# Code Coverage
-# ==============================================================
+# WebRTC
+# ========================================================
+@depends(target)
+def webrtc_default(target):
+    # Turn off webrtc for OS's we don't handle yet, but allow
+    # --enable-webrtc to override.
+    os_match = False
+    for os_fragment in ('linux', 'mingw', 'android', 'linuxandroid',
+                        'dragonfly', 'freebsd', 'netbsd', 'openbsd',
+                        'darwin'):
+        if target.raw_os.startswith(os_fragment):
+            os_match = True
 
-option('--enable-coverage', env='MOZ_CODE_COVERAGE',
-       help='Enable code coverage')
+    cpu_match = False
+    if (target.cpu in ('x86_64', 'arm', 'aarch64', 'x86', 'ia64', 'mips32', 'mips64') or
+        target.cpu.startswith('ppc')):
+        cpu_match = True
 
-@depends('--enable-coverage')
-def code_coverage(value):
-    if value:
+    if os_match and cpu_match:
+        return True
+    return False
+
+option('--disable-webrtc', default=webrtc_default,
+       help='Disable support for WebRTC')
+
+@depends('--disable-webrtc')
+def webrtc(enabled):
+    if enabled:
         return True
 
-set_config('MOZ_CODE_COVERAGE', code_coverage)
-set_define('MOZ_CODE_COVERAGE', code_coverage)
-
-# Cubeb Audio Remoting
-# ==============================================================
-
-option('--enable-cubeb-remoting', env='MOZ_CUBEB_REMOTING',
-       help='Enable cubeb audio remoting')
-
-@depends('--enable-cubeb-remoting')
-def cubeb_remoting(value):
-    if value:
-        return True
-
-set_config('MOZ_CUBEB_REMOTING', cubeb_remoting)
-set_define('MOZ_CUBEB_REMOTING', cubeb_remoting)
+set_config('MOZ_WEBRTC', webrtc)
+set_define('MOZ_WEBRTC', webrtc)
+add_old_configure_assignment('MOZ_WEBRTC', webrtc)
+set_config('MOZ_WEBRTC_SIGNALING', webrtc)
+set_define('MOZ_WEBRTC_SIGNALING', webrtc)
+set_config('MOZ_PEERCONNECTION', webrtc)
+set_define('MOZ_PEERCONNECTION', webrtc)
+# MOZ_WEBRTC_ASSERT_ALWAYS turns on a number of safety asserts in
+# opt/production builds (via MOZ_CRASH())
+set_config('MOZ_WEBRTC_ASSERT_ALWAYS', webrtc)
+set_define('MOZ_WEBRTC_ASSERT_ALWAYS', webrtc)
 
 # ASan Reporter Addon
 # ==============================================================

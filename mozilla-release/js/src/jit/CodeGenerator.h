@@ -245,10 +245,6 @@ class CodeGenerator final : public CodeGeneratorSpecific
     void visitSubstr(LSubstr* lir);
     void visitInitializedLength(LInitializedLength* lir);
     void visitSetInitializedLength(LSetInitializedLength* lir);
-    void visitUnboxedArrayLength(LUnboxedArrayLength* lir);
-    void visitUnboxedArrayInitializedLength(LUnboxedArrayInitializedLength* lir);
-    void visitIncrementUnboxedArrayInitializedLength(LIncrementUnboxedArrayInitializedLength* lir);
-    void visitSetUnboxedArrayInitializedLength(LSetUnboxedArrayInitializedLength* lir);
     void visitNotO(LNotO* ins);
     void visitNotV(LNotV* ins);
     void visitBoundsCheck(LBoundsCheck* lir);
@@ -295,6 +291,8 @@ class CodeGenerator final : public CodeGeneratorSpecific
     void visitSinCos(LSinCos *lir);
     void visitStringSplit(LStringSplit* lir);
     void visitFunctionEnvironment(LFunctionEnvironment* lir);
+    void visitHomeObject(LHomeObject* lir);
+    void visitHomeObjectSuperBase(LHomeObjectSuperBase* lir);
     void visitNewLexicalEnvironmentObject(LNewLexicalEnvironmentObject* lir);
     void visitCopyLexicalEnvironmentObject(LCopyLexicalEnvironmentObject* lir);
     void visitCallGetProperty(LCallGetProperty* lir);
@@ -433,6 +431,7 @@ class CodeGenerator final : public CodeGeneratorSpecific
 
     void visitGetPropertyCacheV(LGetPropertyCacheV* ins);
     void visitGetPropertyCacheT(LGetPropertyCacheT* ins);
+    void visitGetPropSuperCacheV(LGetPropSuperCacheV* ins);
     void visitBindNameCache(LBindNameCache* ins);
     void visitCallSetProperty(LInstruction* ins);
     void visitSetPropertyCache(LSetPropertyCache* ins);

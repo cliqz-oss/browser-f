@@ -9,7 +9,6 @@
 
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
-#include "nsIDOMHTMLOptionElement.h"
 #include "mozilla/dom/HTMLFormElement.h"
 
 namespace mozilla {
@@ -17,8 +16,7 @@ namespace dom {
 
 class HTMLSelectElement;
 
-class HTMLOptionElement final : public nsGenericHTMLElement,
-                                public nsIDOMHTMLOptionElement
+class HTMLOptionElement final : public nsGenericHTMLElement
 {
 public:
   explicit HTMLOptionElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
@@ -36,28 +34,31 @@ public:
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
-  // nsIDOMHTMLOptionElement
   using mozilla::dom::Element::SetText;
   using mozilla::dom::Element::GetText;
-  NS_DECL_NSIDOMHTMLOPTIONELEMENT
 
-  bool Selected() const;
-  bool DefaultSelected() const;
+  bool Selected() const
+  {
+    return mIsSelected;
+  }
+  void SetSelected(bool aValue);
+
 
   void SetSelectedChanged(bool aValue)
   {
     mSelectedChanged = aValue;
   }
 
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
 
-  virtual nsresult BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                  const nsAttrValueOrString* aValue,
                                  bool aNotify) override;
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
   void SetSelectedInternal(bool aValue, bool aNotify);
@@ -105,35 +106,39 @@ public:
 
   HTMLFormElement* GetForm();
 
-  // The XPCOM GetLabel is OK for us
+  void GetLabel(DOMString& aLabel)
+  {
+    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::label, aLabel)) {
+      GetText(aLabel);
+    }
+  }
   void SetLabel(const nsAString& aLabel, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::label, aLabel, aError);
   }
 
-  // The XPCOM DefaultSelected is OK for us
+  bool DefaultSelected() const
+  {
+    return HasAttr(kNameSpaceID_None, nsGkAtoms::selected);
+  }
   void SetDefaultSelected(bool aValue, ErrorResult& aRv)
   {
     SetHTMLBoolAttr(nsGkAtoms::selected, aValue, aRv);
   }
 
-  // The XPCOM Selected is OK for us
-  void SetSelected(bool aValue, ErrorResult& aRv)
+  void GetValue(nsAString& aValue)
   {
-    aRv = SetSelected(aValue);
+    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::value, aValue)) {
+      GetText(aValue);
+    }
   }
-
-  // The XPCOM GetValue is OK for us
   void SetValue(const nsAString& aValue, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::value, aValue, aRv);
   }
 
-  // The XPCOM GetText is OK for us
-  void SetText(const nsAString& aValue, ErrorResult& aRv)
-  {
-    aRv = SetText(aValue);
-  }
+  void GetText(nsAString& aText);
+  void SetText(const nsAString& aText, ErrorResult& aRv);
 
   int32_t Index();
 

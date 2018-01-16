@@ -176,6 +176,7 @@ config = {
         "browser-chrome-chunked": ["--flavor=browser", "--chunk-by-runtime"],
         "browser-chrome-addons": ["--flavor=browser", "--chunk-by-runtime", "--tag=addons"],
         "browser-chrome-screenshots": ["--flavor=browser", "--subsuite=screenshots"],
+        "browser-chrome-instrumentation": ["--flavor=browser"],
         "mochitest-gl": ["--subsuite=webgl"],
         "mochitest-devtools-chrome": ["--flavor=browser", "--subsuite=devtools"],
         "mochitest-devtools-chrome-chunked": ["--flavor=browser", "--subsuite=devtools", "--chunk-by-runtime"],
@@ -260,7 +261,17 @@ config = {
             'architectures': ['32bit', '64bit'],
             'halt_on_failure': True,
             'enabled': ADJUST_MOUSE_AND_SCREEN
-        }
+        },
+        {
+            'name': 'hide win 10 taskbar',
+            'cmd': [
+                'powershell', '-command',
+                '"&{$p=\'HKCU:SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3\';$v=(Get-ItemProperty -Path $p).Settings;$v[8]=3;&Set-ItemProperty -Path $p -Name Settings -Value $v;&Stop-Process -ProcessName explorer}"'
+            ],
+            'architectures': ['32bit', '64bit'],
+            'halt_on_failure': True,
+            'enabled': os.environ.get('ProgramFiles(x86)', False)
+        },
     ],
     "vcs_output_timeout": 1000,
     "minidump_save_path": "%(abs_work_dir)s/../minidumps",

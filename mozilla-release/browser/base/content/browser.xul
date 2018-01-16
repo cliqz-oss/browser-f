@@ -96,12 +96,6 @@
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
-#ifdef E10S_TESTING_ONLY
-      <menuitem id="context_openNonRemoteWindow" label="Open in new non-e10s window"
-                tbattr="tabbrowser-remote"
-                hidden="true"
-                oncommand="gBrowser.openNonRemoteWindow(TabContextMenu.contextTab);"/>
-#endif
       <menuseparator id="context_sendTabToDevice_separator"/>
       <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
             accesskey="&sendTabToDevice.accesskey;">
@@ -427,8 +421,7 @@
                             mainViewId="pageActionPanelMainView"
                             viewCacheId="appMenu-viewCache">
         <panelview id="pageActionPanelMainView"
-                   context="pageActionPanelContextMenu"
-                   oncontextmenu="BrowserPageActions.onContextMenu(event);"
+                   context="pageActionContextMenu"
                    class="PanelUI-subView">
           <vbox class="panel-subview-body"/>
         </panelview>
@@ -450,13 +443,24 @@
       <label id="pageActionFeedbackMessage"/>
     </panel>
 
-    <menupopup id="pageActionPanelContextMenu"
+    <menupopup id="pageActionContextMenu"
                onpopupshowing="BrowserPageActions.onContextMenuShowing(event, this);">
-      <menuitem id="pageActionPanelContextMenu-toggleUrlbar"
-                add-label="&pageAction.addToUrlbar.label;"
-                remove-label="&pageAction.removeFromUrlbar.label;"
+      <menuitem class="pageActionContextMenuItem builtInUnpinned"
                 label="&pageAction.addToUrlbar.label;"
-                oncommand="BrowserPageActions.toggleShownInUrlbarForContextAction();"/>
+                oncommand="BrowserPageActions.togglePinningForContextAction();"/>
+      <menuitem class="pageActionContextMenuItem builtInPinned"
+                label="&pageAction.removeFromUrlbar.label;"
+                oncommand="BrowserPageActions.togglePinningForContextAction();"/>
+      <menuitem class="pageActionContextMenuItem extensionUnpinned"
+                label="&pageAction.allowInUrlbar.label;"
+                oncommand="BrowserPageActions.togglePinningForContextAction();"/>
+      <menuitem class="pageActionContextMenuItem extensionPinned"
+                label="&pageAction.disallowInUrlbar.label;"
+                oncommand="BrowserPageActions.togglePinningForContextAction();"/>
+      <menuseparator class="pageActionContextMenuItem extensionPinned extensionUnpinned"/>
+      <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned"
+                label="&pageAction.manageExtension.label;"
+                oncommand="BrowserPageActions.openAboutAddonsForContextAction();"/>
     </menupopup>
 
     <!-- Bookmarks and history tooltip -->
@@ -634,7 +638,6 @@
 #endif
 
       <tabs id="tabbrowser-tabs"
-            class="tabbrowser-tabs"
             tabbrowser="content"
             flex="1"
             setfocus="false"
@@ -779,7 +782,6 @@
                      tabscrolling="true"
                      showcommentcolumn="true"
                      showimagecolumn="true"
-                     enablehistory="true"
                      newlines="stripsurroundingwhitespace"
                      ontextentered="this.handleCommand(param);"
                      ontextreverted="return this.handleRevert();"
@@ -804,14 +806,14 @@
                          tooltiptext="&urlbar.webNotificationsBlocked.tooltip;"/>
                   <image data-permission-id="camera" class="blocked-permission-icon camera-icon" role="button"
                          tooltiptext="&urlbar.cameraBlocked.tooltip;"/>
-                  <image data-permission-id="indexedDB" class="blocked-permission-icon indexedDB-icon" role="button"
-                         tooltiptext="&urlbar.indexedDBBlocked.tooltip;"/>
                   <image data-permission-id="microphone" class="blocked-permission-icon microphone-icon" role="button"
                          tooltiptext="&urlbar.microphoneBlocked.tooltip;"/>
                   <image data-permission-id="screen" class="blocked-permission-icon screen-icon" role="button"
                          tooltiptext="&urlbar.screenBlocked.tooltip;"/>
                   <image data-permission-id="persistent-storage" class="blocked-permission-icon persistent-storage-icon" role="button"
                          tooltiptext="&urlbar.persistentStorageBlocked.tooltip;"/>
+                  <image data-permission-id="popup" class="blocked-permission-icon popup-icon" role="button"
+                         tooltiptext="&urlbar.popupBlocked.tooltip;"/>
                 </box>
                 <box id="notification-popup-box"
                      hidden="true"
@@ -824,6 +826,8 @@
                          tooltiptext="&urlbar.geolocationNotificationAnchor.tooltip;"/>
                   <image id="addons-notification-icon" class="notification-anchor-icon install-icon" role="button"
                          tooltiptext="&urlbar.addonsNotificationAnchor.tooltip;"/>
+                  <image id="canvas-notification-icon" class="notification-anchor-icon" role="button"
+                         tooltiptext="&urlbar.canvasNotificationAnchor.tooltip;"/>
                   <image id="indexedDB-notification-icon" class="notification-anchor-icon indexedDB-icon" role="button"
                          tooltiptext="&urlbar.indexedDBNotificationAnchor.tooltip;"/>
                   <image id="password-notification-icon" class="notification-anchor-icon login-icon" role="button"
@@ -865,17 +869,11 @@
                 <label id="switchtab" class="urlbar-display urlbar-display-switchtab" value="&urlbar.switchToTab.label;"/>
                 <label id="extension" class="urlbar-display urlbar-display-extension" value="&urlbar.extension.label;"/>
               </box>
-              <hbox id="page-action-buttons">
+              <hbox id="page-action-buttons" context="pageActionContextMenu">
                 <hbox id="userContext-icons" hidden="true">
                   <label id="userContext-label"/>
                   <image id="userContext-indicator"/>
                 </hbox>
-                <image id="page-report-button"
-                       class="urlbar-icon urlbar-page-action"
-                       role="button"
-                       hidden="true"
-                       tooltiptext="&pageReportIcon.tooltip;"
-                       onmousedown="gPopupBlockerObserver.onReportButtonMousedown(event);"/>
                 <image id="reader-mode-button"
                        class="urlbar-icon urlbar-page-action"
                        role="button"
@@ -894,8 +892,6 @@
                 <hbox id="star-button-box"
                       hidden="true"
                       class="urlbar-icon-wrapper urlbar-page-action"
-                      context="pageActionPanelContextMenu"
-                      oncontextmenu="BrowserPageActions.onContextMenu(event);"
                       onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('bookmark'), event, this);">
                   <image id="star-button"
                          class="urlbar-icon"

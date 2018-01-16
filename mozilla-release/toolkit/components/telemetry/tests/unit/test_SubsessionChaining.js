@@ -90,8 +90,6 @@ add_task(async function test_setup() {
   finishAddonManagerStartup();
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
-
-  Preferences.set(TelemetryUtils.Preferences.TelemetryEnabled, true);
 });
 
 add_task(async function test_subsessionsChaining() {
@@ -115,7 +113,7 @@ add_task(async function test_subsessionsChaining() {
     let ms = minutes * MILLISECONDS_PER_MINUTE;
     now = fakeNow(futureDate(now, ms));
     monotonicNow = fakeMonotonicNow(monotonicNow + ms);
-  }
+  };
 
   // Keep track of the ping reasons we're expecting in this test.
   let expectedReasons = [];

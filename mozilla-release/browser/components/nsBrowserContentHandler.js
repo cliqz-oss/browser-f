@@ -468,10 +468,8 @@ nsBrowserContentHandler.prototype = {
     } else {
       info += "  --preferences      Open Preferences dialog.\n";
     }
-    if (AppConstants.platform == "win" || AppConstants.MOZ_WIDGET_GTK) {
-      info += "  --screenshot [<path>] Save screenshot to <path> or in working directory.\n";
-      info += "  --window-size width[,height] Width and optionally height of screenshot.\n";
-    }
+    info += "  --screenshot [<path>] Save screenshot to <path> or in working directory.\n";
+    info += "  --window-size width[,height] Width and optionally height of screenshot.\n";
     info += "  --search <term>    Search <term> with your default search engine.\n";
     return info;
   },
@@ -663,7 +661,7 @@ nsBrowserContentHandler.prototype = {
         // We don't have to show the instruction page.
         throw NS_ERROR_ABORT;
       }
-      cmdLine.handleFlag("osint", false)
+      cmdLine.handleFlag("osint", false);
     }
   },
 };

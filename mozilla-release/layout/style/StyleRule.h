@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -23,7 +24,7 @@
 #include "nsIStyleRule.h"
 #include "nsICSSStyleRuleDOMWrapper.h"
 
-class nsIAtom;
+class nsAtom;
 struct nsCSSSelectorList;
 
 namespace mozilla {
@@ -33,7 +34,7 @@ class CSSStyleSheet;
 
 struct nsAtomList {
 public:
-  explicit nsAtomList(nsIAtom* aAtom);
+  explicit nsAtomList(nsAtom* aAtom);
   explicit nsAtomList(const nsString& aAtomValue);
   ~nsAtomList(void);
 
@@ -42,7 +43,7 @@ public:
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-  nsCOMPtr<nsIAtom> mAtom;
+  RefPtr<nsAtom> mAtom;
   nsAtomList*       mNext;
 private:
   nsAtomList* Clone(bool aDeep) const;
@@ -111,8 +112,8 @@ public:
   nsAttrSelector(int32_t aNameSpace, const nsString& aAttr, uint8_t aFunction,
                  const nsString& aValue,
                  ValueCaseSensitivity aValueCaseSensitivity);
-  nsAttrSelector(int32_t aNameSpace, nsIAtom* aLowercaseAttr,
-                 nsIAtom* aCasedAttr, uint8_t aFunction,
+  nsAttrSelector(int32_t aNameSpace, nsAtom* aLowercaseAttr,
+                 nsAtom* aCasedAttr, uint8_t aFunction,
                  const nsString& aValue,
                  ValueCaseSensitivity aValueCaseSensitivity);
   ~nsAttrSelector(void);
@@ -130,8 +131,8 @@ public:
 
   nsString        mValue;
   nsAttrSelector* mNext;
-  nsCOMPtr<nsIAtom> mLowercaseAttr;
-  nsCOMPtr<nsIAtom> mCasedAttr;
+  RefPtr<nsAtom> mLowercaseAttr;
+  RefPtr<nsAtom> mCasedAttr;
   int32_t         mNameSpace;
   uint8_t         mFunction;
   ValueCaseSensitivity mValueCaseSensitivity;
@@ -226,8 +227,8 @@ public:
   // but in case-insensitive documents (HTML) mLowercaseTag is lowercase.
   // Also, for pseudo-elements mCasedTag will be null but mLowercaseTag
   // contains their name.
-  nsCOMPtr<nsIAtom> mLowercaseTag;
-  nsCOMPtr<nsIAtom> mCasedTag;
+  RefPtr<nsAtom> mLowercaseTag;
+  RefPtr<nsAtom> mCasedTag;
   nsAtomList*     mIDList;
   nsAtomList*     mClassList;
   nsPseudoClassList* mPseudoClassList; // atom for the pseudo, string for
@@ -347,6 +348,7 @@ public:
                                   uint32_t aSelectorIndex,
                                   const nsAString& aPseudo,
                                   bool* aMatches) override;
+  mozilla::NotNull<DeclarationBlock*> GetDeclarationBlock() const override;
 
   // WebIDL interface
   uint16_t Type() const override;

@@ -5,7 +5,6 @@ module.exports = {
     // Rules from the mozilla plugin
     "mozilla/balanced-listeners": "error",
     "mozilla/no-aArgs": "error",
-    "mozilla/no-cpows-in-tests": "error",
     "mozilla/var-only-at-top-level": "error",
 
     "valid-jsdoc": ["error", {
@@ -82,10 +81,10 @@ module.exports = {
     "no-fallthrough": "error",
 
     // Disallow use of multiline strings (use template strings instead).
-    "no-multi-str": "warn",
+    "no-multi-str": "error",
 
     // Disallow multiple empty lines.
-    "no-multiple-empty-lines": ["warn", {"max": 2}],
+    "no-multiple-empty-lines": ["error", {"max": 2}],
 
     // Disallow usage of __proto__ property.
     "no-proto": "error",
@@ -99,7 +98,7 @@ module.exports = {
     "no-throw-literal": "error",
 
     // Disallow padding within blocks.
-    "padded-blocks": ["warn", "never"],
+    "padded-blocks": ["error", "never"],
 
     // Require use of the second argument for parseInt().
     "radix": "error",

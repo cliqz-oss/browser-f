@@ -32,6 +32,7 @@ add_task(async function test_show_form() {
     // Now crash the browser.
     await BrowserTestUtils.crashBrowser(browser);
 
+    // eslint-disable-next-line mozilla/no-cpows-in-tests
     let doc = browser.contentDocument;
 
     // Ensure the request is visible. We can safely reach into
@@ -44,7 +45,7 @@ add_task(async function test_show_form() {
     // unchecked.
     let autoSubmit = doc.getElementById("autoSubmit");
     Assert.ok(!autoSubmit.checked,
-              "Checkbox for autosubmission is not checked.")
+              "Checkbox for autosubmission is not checked.");
 
     // Check the checkbox, and then restore the tab.
     autoSubmit.checked = true;
@@ -76,6 +77,7 @@ add_task(async function test_show_form() {
     // Now crash the browser.
     await BrowserTestUtils.crashBrowser(browser);
 
+    // eslint-disable-next-line mozilla/no-cpows-in-tests
     let doc = browser.contentDocument;
 
     // Ensure the request is NOT visible. We can safely reach into

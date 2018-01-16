@@ -199,12 +199,13 @@ FinderHighlighter.prototype = {
    * Toggle highlighting all occurrences of a word in a page. This method will
    * be called recursively for each (i)frame inside a page.
    *
-   * @param {Booolean} highlight Whether highlighting should be turned on
-   * @param {String}   word      Needle to search for and highlight when found
-   * @param {Boolean}  linksOnly Only consider nodes that are links for the search
+   * @param {Booolean} highlight   Whether highlighting should be turned on
+   * @param {String}   word        Needle to search for and highlight when found
+   * @param {Boolean}  linksOnly   Only consider nodes that are links for the search
+   * @param {Boolean}  drawOutline Whether found links should be outlined.
    * @yield {Promise}  that resolves once the operation has finished
    */
-  async highlight(highlight, word, linksOnly) {
+  async highlight(highlight, word, linksOnly, drawOutline) {
     let window = this.finder._getWindow();
     let dict = this.getForWindow(window);
     let controller = this.finder._getSelectionController(window);
@@ -237,7 +238,7 @@ FinderHighlighter.prototype = {
         dict.visible = true;
       await this.iterator.start(params);
       if (this._found)
-        this.finder._outlineLink(true);
+        this.finder._outlineLink(drawOutline);
     } else {
       this.hide(window);
 
@@ -291,11 +292,12 @@ FinderHighlighter.prototype = {
     } else {
       let findSelection = controller.getSelection(Ci.nsISelectionController.SELECTION_FIND);
       findSelection.addRange(range);
-      // Check if the range is inside an iframe.
+      // Check if the range is inside an (i)frame.
       if (window != window.top) {
         let dict = this.getForWindow(window.top);
-        if (!dict.frames.has(window))
-          dict.frames.set(window, null);
+        // Add this frame to the list, so that we'll be able to find it later
+        // when we need to clear its selection(s).
+        dict.frames.set(window, {});
       }
     }
 
@@ -425,7 +427,7 @@ FinderHighlighter.prototype = {
         if (!dict.visible && !params)
           params = {word: data.searchString, linksOnly: data.linksOnly};
         if (params)
-          this.highlight(true, params.word, params.linksOnly);
+          this.highlight(true, params.word, params.linksOnly, params.drawOutline);
       }
       return;
     }
@@ -445,7 +447,7 @@ FinderHighlighter.prototype = {
     }
 
     if (this._highlightAll)
-      this.highlight(true, data.searchString, data.linksOnly);
+      this.highlight(true, data.searchString, data.linksOnly, data.drawOutline);
   },
 
   /**
@@ -571,6 +573,9 @@ FinderHighlighter.prototype = {
     // If we're in a frame, update the position of the rect (top/ left).
     let currWin = window;
     while (currWin != window.top) {
+      let frameOffsets = this._getFrameElementOffsets(currWin);
+      cssPageRect.translate(frameOffsets.x, frameOffsets.y);
+
       // Since the frame is an element inside a parent window, we'd like to
       // learn its position relative to it.
       let el = this._getDWU(currWin).containerElement;
@@ -593,8 +598,46 @@ FinderHighlighter.prototype = {
 
       cssPageRect.translate(parentRect.left, parentRect.top);
     }
+    let frameOffsets = this._getFrameElementOffsets(currWin);
+    cssPageRect.translate(frameOffsets.x, frameOffsets.y);
 
     return cssPageRect;
+  },
+
+  /**
+   * (I)Frame elements may have a border and/ or padding set, which is not
+   * included in the bounds returned by nsDOMWindowUtils#getRootBounds() for the
+   * window it hosts.
+   * This method fetches this offset of the frame element to the respective window.
+   *
+   * @param  {nsIDOMWindow} window          Window to read the boundary rect from
+   * @return {Object}       Simple object that contains the following two properties:
+   *                        - {Number} x Offset along the horizontal axis.
+   *                        - {Number} y Offset along the vertical axis.
+   */
+  _getFrameElementOffsets(window) {
+    let frame = window.frameElement;
+    if (!frame)
+      return { x: 0, y: 0 };
+
+    // Getting style info is super expensive, causing reflows, so let's cache
+    // frame border widths and padding values aggressively.
+    let dict = this.getForWindow(window.top);
+    let frameData = dict.frames.get(window);
+    if (!frameData)
+      dict.frames.set(window, frameData = {});
+    if (frameData.offset)
+      return frameData.offset;
+
+    let style = frame.ownerGlobal.getComputedStyle(frame);
+    // We only need to left sides, because ranges are offset from point 0,0 in
+    // the top-left corner.
+    let borderOffset = [parseInt(style.borderLeftWidth, 10) || 0, parseInt(style.borderTopWidth, 10) || 0];
+    let paddingOffset = [parseInt(style.paddingLeft, 10) || 0, parseInt(style.paddingTop, 10) || 0];
+    return frameData.offset = {
+      x: borderOffset[0] + paddingOffset[0],
+      y: borderOffset[1] + paddingOffset[1]
+    };
   },
 
   /**
@@ -760,7 +803,7 @@ FinderHighlighter.prototype = {
     // Check if we're in a frameset (including iframes).
     if (window != window.top) {
       if (!dict.frames.has(window))
-        dict.frames.set(window, null);
+        dict.frames.set(window, {});
       return true;
     }
 
@@ -771,7 +814,7 @@ FinderHighlighter.prototype = {
         return true;
       }
       node = node.parentNode;
-    } while (node && node != document.documentElement)
+    } while (node && node != document.documentElement);
 
     return false;
   },
@@ -790,13 +833,13 @@ FinderHighlighter.prototype = {
     let bounds;
     // If the window is part of a frameset, try to cache the bounds query.
     if (dict && dict.frames.has(window)) {
-      bounds = dict.frames.get(window);
-      if (!bounds) {
-        bounds = this._getRootBounds(window);
-        dict.frames.set(window, bounds);
-      }
-    } else
+      let frameData = dict.frames.get(window);
+      bounds = frameData.bounds;
+      if (!bounds)
+        bounds = frameData.bounds = this._getRootBounds(window);
+    } else {
       bounds = this._getRootBounds(window);
+    }
 
     let topBounds = this._getRootBounds(window.top, false);
     let rects = [];
@@ -855,8 +898,8 @@ FinderHighlighter.prototype = {
    */
   _updateDynamicRangesRects(dict) {
     // Reset the frame bounds cache.
-    for (let frame of dict.frames.keys())
-      dict.frames.set(frame, null);
+    for (let frameData of dict.frames.values())
+      frameData.bounds = null;
     for (let range of dict.dynamicRangesSet)
       this._updateRangeRects(range, false, dict);
   },
@@ -1129,6 +1172,9 @@ FinderHighlighter.prototype = {
 
       let DOMRect = window.DOMRect;
       for (let [range, rectsAndTexts] of dict.modalHighlightRectsMap) {
+        if (!this.finder._fastFind.isRangeVisible(range, false))
+          continue;
+
         if (dict.updateAllRanges)
           rectsAndTexts = this._updateRangeRects(range);
 

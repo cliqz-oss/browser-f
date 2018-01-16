@@ -7,7 +7,7 @@ mod common {
     use std::path::{Path, PathBuf};
 
     lazy_static! {
-        pub static ref OUTDIR_PATH: PathBuf = PathBuf::from(env::var("OUT_DIR").unwrap()).join("gecko");
+        pub static ref OUTDIR_PATH: PathBuf = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("gecko");
     }
 
     /// Copy contents of one directory into another.
@@ -44,22 +44,8 @@ mod bindings {
     use super::super::PYTHON;
     use toml;
 
-    const STRUCTS_DEBUG_FILE: &'static str = "structs_debug.rs";
-    const STRUCTS_RELEASE_FILE: &'static str = "structs_release.rs";
+    const STRUCTS_FILE: &'static str = "structs.rs";
     const BINDINGS_FILE: &'static str = "bindings.rs";
-
-    #[derive(Clone, Copy, PartialEq)]
-    enum BuildType {
-        Debug,
-        Release,
-    }
-
-    fn structs_file(build_type: BuildType) -> &'static str {
-        match build_type {
-            BuildType::Debug => STRUCTS_DEBUG_FILE,
-            BuildType::Release => STRUCTS_RELEASE_FILE
-        }
-    }
 
     fn read_config(path: &PathBuf) -> toml::Table {
         println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
@@ -88,7 +74,7 @@ mod bindings {
     lazy_static! {
         static ref CONFIG: toml::Table = {
             // Load Gecko's binding generator config from the source tree.
-            let path = PathBuf::from(env::var("MOZ_SRC").unwrap())
+            let path = PathBuf::from(env::var_os("MOZ_SRC").unwrap())
                 .join("layout/style/ServoBindings.toml");
             read_config(&path)
         };
@@ -96,7 +82,7 @@ mod bindings {
             // Load build-specific config overrides.
             // FIXME: We should merge with CONFIG above instead of
             // forcing callers to do it.
-            let path = PathBuf::from(env::var("MOZ_TOPOBJDIR").unwrap())
+            let path = PathBuf::from(env::var_os("MOZ_TOPOBJDIR").unwrap())
                 .join("layout/style/bindgen.toml");
             read_config(&path)
         };
@@ -112,7 +98,7 @@ mod bindings {
         };
         static ref INCLUDE_RE: Regex = Regex::new(r#"#include\s*"(.+?)""#).unwrap();
         static ref DISTDIR_PATH: PathBuf = {
-            let path = PathBuf::from(env::var("MOZ_DIST").unwrap());
+            let path = PathBuf::from(env::var_os("MOZ_DIST").unwrap());
             if !path.is_absolute() || !path.is_dir() {
                 panic!("MOZ_DIST must be an absolute directory, was: {}", path.display());
             }
@@ -176,7 +162,7 @@ mod bindings {
     }
 
     trait BuilderExt {
-        fn get_initial_builder(build_type: BuildType) -> Builder;
+        fn get_initial_builder() -> Builder;
         fn include<T: Into<String>>(self, file: T) -> Builder;
         fn zero_size_type(self, ty: &str, structs_list: &HashSet<&str>) -> Builder;
         fn borrowed_type(self, ty: &str) -> Builder;
@@ -213,14 +199,20 @@ mod bindings {
     }
 
     impl BuilderExt for Builder {
-        fn get_initial_builder(build_type: BuildType) -> Builder {
-            let mut builder = Builder::default();
+        fn get_initial_builder() -> Builder {
+            use bindgen::RustTarget;
+
+            // Disable rust unions, because we replace some types inside of
+            // them.
+            let mut builder = Builder::default()
+                .rustfmt_bindings(false)
+                .rust_target(RustTarget::Stable_1_0);
             for dir in SEARCH_PATHS.iter() {
                 builder = builder.clang_arg("-I").clang_arg(dir.to_str().unwrap());
             }
             builder = builder.include(add_include("mozilla-config.h"));
 
-            if build_type == BuildType::Debug {
+            if env::var("CARGO_FEATURE_GECKO_DEBUG").is_ok() {
                 builder = builder.clang_arg("-DDEBUG=1").clang_arg("-DJS_DEBUG=1");
             }
 
@@ -247,7 +239,7 @@ mod bindings {
         // https://github.com/nikomatsakis/rust-memory-model/issues/2
         fn zero_size_type(self, ty: &str, structs_list: &HashSet<&str>) -> Builder {
             if !structs_list.contains(ty) {
-                self.hide_type(ty)
+                self.blacklist_type(ty)
                     .raw_line(format!("enum {}Void {{ }}", ty))
                     .raw_line(format!("pub struct {0}({0}Void);", ty))
             } else {
@@ -255,16 +247,16 @@ mod bindings {
             }
         }
         fn borrowed_type(self, ty: &str) -> Builder {
-            self.hide_type(format!("{}Borrowed", ty))
+            self.blacklist_type(format!("{}Borrowed", ty))
                 .raw_line(format!("pub type {0}Borrowed<'a> = &'a {0};", ty))
-                .hide_type(format!("{}BorrowedOrNull", ty))
+                .blacklist_type(format!("{}BorrowedOrNull", ty))
                 .raw_line(format!("pub type {0}BorrowedOrNull<'a> = Option<&'a {0}>;", ty))
         }
         fn mutable_borrowed_type(self, ty: &str) -> Builder {
             self.borrowed_type(ty)
-                .hide_type(format!("{}BorrowedMut", ty))
+                .blacklist_type(format!("{}BorrowedMut", ty))
                 .raw_line(format!("pub type {0}BorrowedMut<'a> = &'a mut {0};", ty))
-                .hide_type(format!("{}BorrowedMutOrNull", ty))
+                .blacklist_type(format!("{}BorrowedMutOrNull", ty))
                 .raw_line(format!("pub type {0}BorrowedMutOrNull<'a> = Option<&'a mut {0}>;", ty))
         }
     }
@@ -356,7 +348,7 @@ mod bindings {
         fn handle_common(self, fixups: &mut Vec<Fixup>) -> BuilderWithConfig<'a> {
             self.handle_str_items("headers", |b, item| b.header(add_include(item)))
                 .handle_str_items("raw-lines", |b, item| b.raw_line(item))
-                .handle_str_items("hide-types", |b, item| b.hide_type(item))
+                .handle_str_items("hide-types", |b, item| b.blacklist_type(item))
                 .handle_table_items("fixups", |builder, item| {
                     fixups.push(Fixup {
                         pat: item["pat"].as_str().unwrap().into(),
@@ -376,7 +368,7 @@ mod bindings {
         }
     }
 
-    fn generate_structs(build_type: BuildType) {
+    fn generate_structs() {
         #[derive(Debug)]
         struct Callbacks(HashMap<String, RegexSet>);
         impl ParseCallbacks for Callbacks {
@@ -394,7 +386,7 @@ mod bindings {
             }
         }
 
-        let builder = Builder::get_initial_builder(build_type)
+        let builder = Builder::get_initial_builder()
             .enable_cxx_namespaces()
             .with_codegen_config(CodegenConfig {
                 types: true,
@@ -405,9 +397,9 @@ mod bindings {
         let builder = BuilderWithConfig::new(builder, CONFIG["structs"].as_table().unwrap())
             .handle_common(&mut fixups)
             .handle_str_items("bitfield-enums", |b, item| b.bitfield_enum(item))
-            .handle_str_items("constified-enums", |b, item| b.constified_enum(item))
-            .handle_str_items("whitelist-vars", |b, item| b.whitelisted_var(item))
-            .handle_str_items("whitelist-types", |b, item| b.whitelisted_type(item))
+            .handle_str_items("rusty-enums", |b, item| b.rustified_enum(item))
+            .handle_str_items("whitelist-vars", |b, item| b.whitelist_var(item))
+            .handle_str_items("whitelist-types", |b, item| b.whitelist_type(item))
             .handle_str_items("opaque-types", |b, item| b.opaque_type(item))
             .handle_list("constified-enum-variants", |builder, iter| {
                 let mut map = HashMap::new();
@@ -425,16 +417,21 @@ mod bindings {
                 let gecko = item["gecko"].as_str().unwrap();
                 let servo = item["servo"].as_str().unwrap();
                 let gecko_name = gecko.rsplit("::").next().unwrap();
+                let gecko = gecko.split("::")
+                                .map(|s| format!("\\s*{}\\s*", s))
+                                .collect::<Vec<_>>()
+                                .join("::");
+
                 fixups.push(Fixup {
-                    pat: format!("\\broot::{}\\b", gecko),
+                    pat: format!("\\broot\\s*::\\s*{}\\b", gecko),
                     rep: format!("::gecko_bindings::structs::{}", gecko_name)
                 });
-                builder.hide_type(gecko)
+                builder.blacklist_type(gecko)
                     .raw_line(format!("pub type {0}{2} = {1}{2};", gecko_name, servo,
                                       if generic { "<T>" } else { "" }))
             })
             .get_builder();
-        write_binding_file(builder, structs_file(build_type), &fixups);
+        write_binding_file(builder, STRUCTS_FILE, &fixups);
     }
 
     fn setup_logging() -> bool {
@@ -466,7 +463,7 @@ mod bindings {
             }
         }
 
-        if let Ok(path) = env::var("STYLO_BUILD_LOG") {
+        if let Some(path) = env::var_os("STYLO_BUILD_LOG") {
             log::set_logger(|log_level| {
                 log_level.set(log::LogLevelFilter::Debug);
                 Box::new(BuildLogger {
@@ -483,7 +480,7 @@ mod bindings {
     }
 
     fn generate_bindings() {
-        let builder = Builder::get_initial_builder(BuildType::Release)
+        let builder = Builder::get_initial_builder()
             .disable_name_namespacing()
             .with_codegen_config(CodegenConfig {
                 functions: true,
@@ -494,9 +491,9 @@ mod bindings {
         let mut fixups = vec![];
         let mut builder = BuilderWithConfig::new(builder, config)
             .handle_common(&mut fixups)
-            .handle_str_items("whitelist-functions", |b, item| b.whitelisted_function(item))
+            .handle_str_items("whitelist-functions", |b, item| b.whitelist_function(item))
             .handle_str_items("structs-types", |mut builder, ty| {
-                builder = builder.hide_type(ty)
+                builder = builder.blacklist_type(ty)
                     .raw_line(format!("use gecko_bindings::structs::{};", ty));
                 structs_types.insert(ty);
                 // TODO this is hacky, figure out a better way to do it without
@@ -514,16 +511,16 @@ mod bindings {
             .handle_table_items("array-types", |builder, item| {
                 let cpp_type = item["cpp-type"].as_str().unwrap();
                 let rust_type = item["rust-type"].as_str().unwrap();
-                builder.hide_type(format!("nsTArrayBorrowed_{}", cpp_type))
+                builder
                     .raw_line(format!(concat!("pub type nsTArrayBorrowed_{}<'a> = ",
                                               "&'a mut ::gecko_bindings::structs::nsTArray<{}>;"),
                                       cpp_type, rust_type))
             })
             .handle_table_items("servo-owned-types", |mut builder, item| {
                 let name = item["name"].as_str().unwrap();
-                builder = builder.hide_type(format!("{}Owned", name))
+                builder = builder.blacklist_type(format!("{}Owned", name))
                     .raw_line(format!("pub type {0}Owned = ::gecko_bindings::sugar::ownership::Owned<{0}>;", name))
-                    .hide_type(format!("{}OwnedOrNull", name))
+                    .blacklist_type(format!("{}OwnedOrNull", name))
                     .raw_line(format!(concat!("pub type {0}OwnedOrNull = ",
                                               "::gecko_bindings::sugar::ownership::OwnedOrNull<{0}>;"), name))
                     .mutable_borrowed_type(name);
@@ -541,7 +538,7 @@ mod bindings {
             .get_builder();
         for ty in get_arc_types().iter() {
             builder = builder
-                .hide_type(format!("{}Strong", ty))
+                .blacklist_type(format!("{}Strong", ty))
                 .raw_line(format!("pub type {0}Strong = ::gecko_bindings::sugar::ownership::Strong<{0}>;", ty))
                 .borrowed_type(ty)
                 .zero_size_type(ty, &structs_types);
@@ -550,7 +547,7 @@ mod bindings {
     }
 
     fn generate_atoms() {
-        let script = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+        let script = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap())
             .join("gecko").join("regen_atoms.py");
         println!("cargo:rerun-if-changed={}", script.display());
         let status = Command::new(&*PYTHON)
@@ -579,8 +576,7 @@ mod bindings {
             }
         }
         run_tasks! {
-            generate_structs(BuildType::Debug),
-            generate_structs(BuildType::Release),
+            generate_structs(),
             generate_bindings(),
             generate_atoms(),
         }
@@ -602,7 +598,7 @@ mod bindings {
     use super::common::*;
 
     pub fn generate() {
-        let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("gecko/generated");
+        let dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("gecko/generated");
         println!("cargo:rerun-if-changed={}", dir.display());
         copy_dir(&dir, &*OUTDIR_PATH, |path| {
             println!("cargo:rerun-if-changed={}", path.display());

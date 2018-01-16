@@ -14,32 +14,12 @@ describe("Reducers", () => {
 
       assert.propertyVal(nextState, "initialized", true);
     });
-    it("should set initialized, version, and locale on INIT", () => {
+    it("should set initialized and version on INIT", () => {
       const action = {type: "INIT", data: {version: "1.2.3"}};
 
       const nextState = App(undefined, action);
 
       assert.propertyVal(nextState, "version", "1.2.3");
-      assert.propertyVal(nextState, "locale", INITIAL_STATE.App.locale);
-    });
-    it("should not update state for empty action.data on LOCALE_UPDATED", () => {
-      const nextState = App(undefined, {type: at.LOCALE_UPDATED});
-      assert.equal(nextState, INITIAL_STATE.App);
-    });
-    it("should set locale, strings and text direction on LOCALE_UPDATE", () => {
-      const strings = {};
-      const action = {type: "LOCALE_UPDATED", data: {locale: "zh-CN", strings}};
-      const nextState = App(undefined, action);
-      assert.propertyVal(nextState, "locale", "zh-CN");
-      assert.propertyVal(nextState, "strings", strings);
-      assert.propertyVal(nextState, "textDirection", "ltr");
-    });
-    it("should set rtl text direction for RTL locales", () => {
-      const action = {type: "LOCALE_UPDATED", data: {locale: "ar"}};
-
-      const nextState = App(undefined, action);
-
-      assert.propertyVal(nextState, "textDirection", "rtl");
     });
   });
   describe("TopSites", () => {
@@ -355,6 +335,19 @@ describe("Reducers", () => {
       const newState = Sections(oldState, action);
       const updatedSection = newState.find(section => section.id === "foo_bar_2");
       assert.propertyVal(updatedSection, "initialized", false);
+    });
+    it("should dedupe based on dedupeConfigurations", () => {
+      const site = {url: "foo.com"};
+      const highlights = {rows: [site], id: "highlights"};
+      const topstories = {rows: [site], id: "topstories"};
+      const dedupeConfigurations = [{id: "topstories", dedupeFrom: ["highlights"]}];
+      const action = {data: {dedupeConfigurations}, type: "SECTION_UPDATE"};
+      const state = [highlights, topstories];
+
+      const nextState = Sections(state, action);
+
+      assert.equal(nextState.find(s => s.id === "highlights").rows.length, 1);
+      assert.equal(nextState.find(s => s.id === "topstories").rows.length, 0);
     });
     it("should remove blocked and deleted urls from all rows in all sections", () => {
       const blockAction = {type: at.PLACES_LINK_BLOCKED, data: {url: "www.foo.bar"}};

@@ -1,10 +1,14 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "TimeoutExecutor.h"
+
+#include "mozilla/dom/TimeoutManager.h"
+#include "nsComponentManagerUtils.h"
+#include "nsString.h"
 
 namespace mozilla {
 namespace dom {
@@ -51,8 +55,8 @@ TimeoutExecutor::ScheduleDelayed(const TimeStamp& aDeadline,
   nsresult rv = NS_OK;
 
   if (!mTimer) {
-    mTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
+    mTimer = NS_NewTimer();
+    NS_ENSURE_TRUE(mTimer, NS_ERROR_OUT_OF_MEMORY);
 
     uint32_t earlyMicros = 0;
     MOZ_ALWAYS_SUCCEEDS(mTimer->GetAllowedEarlyFiringMicroseconds(&earlyMicros));

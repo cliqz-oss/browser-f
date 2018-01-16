@@ -44,7 +44,7 @@ nsXBLPrototypeResources::~nsXBLPrototypeResources()
 }
 
 void
-nsXBLPrototypeResources::AddResource(nsIAtom* aResourceType, const nsAString& aSrc)
+nsXBLPrototypeResources::AddResource(nsAtom* aResourceType, const nsAString& aSrc)
 {
   if (mLoader)
     mLoader->AddResource(aResourceType, aSrc);
@@ -111,7 +111,18 @@ nsXBLPrototypeResources::FlushSkinSheets()
     mStyleSheetList.AppendElement(newSheet);
   }
 
-  GatherRuleProcessor();
+  if (doc->IsStyledByServo()) {
+    // There may be no shell during unlink.
+    //
+    // FIXME(emilio): We shouldn't skip shadow root style updates just because?
+    // Though during unlink is fine I guess...
+    if (auto* shell = doc->GetShell()) {
+      MOZ_ASSERT(shell->GetPresContext());
+      ComputeServoStyleSet(shell->GetPresContext());
+    }
+  } else {
+    GatherRuleProcessor();
+  }
 
   return NS_OK;
 }

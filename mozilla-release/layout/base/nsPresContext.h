@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,7 +21,7 @@
 #include "nsStringFwd.h"
 #include "nsFont.h"
 #include "gfxFontConstants.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsITimer.h"
 #include "nsCRT.h"
 #include "nsIWidgetListener.h"
@@ -56,7 +57,7 @@ class nsIContent;
 class nsIFrame;
 class nsFrameManager;
 class nsILinkHandler;
-class nsIAtom;
+class nsAtom;
 class nsIRunnable;
 class gfxFontFeatureValueSet;
 class gfxUserFontEntry;
@@ -108,6 +109,7 @@ struct nsAutoLayoutPhase;
 
 enum nsLayoutPhase {
   eLayoutPhase_Paint,
+  eLayoutPhase_DisplayListBuilding, // sometimes a subset of the paint phase
   eLayoutPhase_Reflow,
   eLayoutPhase_FrameC,
   eLayoutPhase_COUNT
@@ -118,7 +120,6 @@ enum nsLayoutPhase {
 #define NS_AUTHOR_SPECIFIED_BACKGROUND      (1 << 0)
 #define NS_AUTHOR_SPECIFIED_BORDER          (1 << 1)
 #define NS_AUTHOR_SPECIFIED_PADDING         (1 << 2)
-#define NS_AUTHOR_SPECIFIED_TEXT_SHADOW     (1 << 3)
 
 class nsRootPresContext;
 
@@ -322,7 +323,7 @@ public:
   /**
    * Get medium of presentation
    */
-  nsIAtom* Medium() {
+  nsAtom* Medium() {
     if (!mIsEmulatingMedia)
       return mMedium;
     return mMediaEmulated;
@@ -346,9 +347,9 @@ public:
    * See the comment in StaticPresData::GetDefaultFont.
    */
   const nsFont* GetDefaultFont(uint8_t aFontID,
-                               nsIAtom *aLanguage, bool* aNeedsToCache = nullptr) const
+                               nsAtom *aLanguage, bool* aNeedsToCache = nullptr) const
   {
-    nsIAtom* lang = aLanguage ? aLanguage : mLanguage.get();
+    nsAtom* lang = aLanguage ? aLanguage : mLanguage.get();
     const LangGroupFontPrefs* prefs = GetFontPrefsForLang(lang, aNeedsToCache);
     if (aNeedsToCache && *aNeedsToCache) {
       return nullptr;
@@ -356,7 +357,7 @@ public:
     return StaticPresData::Get()->GetDefaultFontHelper(aFontID, lang, prefs);
   }
 
-  void ForceCacheLang(nsIAtom *aLanguage);
+  void ForceCacheLang(nsAtom *aLanguage);
   void CacheAllLangs();
 
   /** Get a cached boolean pref, by its type */
@@ -457,6 +458,12 @@ public:
     }
   }
 
+  bool ShouldFireResizeEvent() const {
+    return !mLastResizeEventVisibleArea.IsEqualEdges(mVisibleArea);
+  }
+
+  void WillFireResizeEvent() { mLastResizeEventVisibleArea = mVisibleArea; }
+
   /**
    * Return true if this presentation context is a paginated
    * context.
@@ -512,8 +519,8 @@ public:
 
   nsDeviceContext* DeviceContext() const { return mDeviceContext; }
   mozilla::EventStateManager* EventStateManager() { return mEventManager; }
-  nsIAtom* GetLanguageFromCharset() const { return mLanguage; }
-  already_AddRefed<nsIAtom> GetContentLanguage() const;
+  nsAtom* GetLanguageFromCharset() const { return mLanguage; }
+  already_AddRefed<nsAtom> GetContentLanguage() const;
 
   /**
    * Get/set a text zoom factor that is applied on top of the normal text zoom
@@ -569,7 +576,7 @@ public:
    * the language-specific global preference with the per-presentation
    * base minimum font size.
    */
-  int32_t MinFontSize(nsIAtom *aLanguage, bool* aNeedsToCache = nullptr) const {
+  int32_t MinFontSize(nsAtom *aLanguage, bool* aNeedsToCache = nullptr) const {
     const LangGroupFontPrefs *prefs = GetFontPrefsForLang(aLanguage, aNeedsToCache);
     if (aNeedsToCache && *aNeedsToCache) {
       return 0;
@@ -603,6 +610,12 @@ public:
   }
 
   float GetFullZoom() { return mFullZoom; }
+  /**
+   * Device full zoom differs from full zoom because it gets the zoom from
+   * the device context, which may be using a different zoom due to rounding
+   * of app units to device pixels.
+   */
+  float GetDeviceFullZoom();
   void SetFullZoom(float aZoom);
 
   float GetOverrideDPPX() { return mOverrideDPPX; }
@@ -1204,9 +1217,9 @@ protected:
    * Fetch the user's font preferences for the given aLanguage's
    * langugage group.
    */
-  const LangGroupFontPrefs* GetFontPrefsForLang(nsIAtom *aLanguage, bool* aNeedsToCache = nullptr) const
+  const LangGroupFontPrefs* GetFontPrefsForLang(nsAtom *aLanguage, bool* aNeedsToCache = nullptr) const
   {
-    nsIAtom* lang = aLanguage ? aLanguage : mLanguage.get();
+    nsAtom* lang = aLanguage ? aLanguage : mLanguage.get();
     return StaticPresData::Get()->GetFontPrefsForLangHelper(lang, &mLangGroupFontPrefs, aNeedsToCache);
   }
 
@@ -1287,8 +1300,8 @@ protected:
   RefPtr<nsAnimationManager> mAnimationManager;
   RefPtr<mozilla::RestyleManager> mRestyleManager;
   RefPtr<mozilla::CounterStyleManager> mCounterStyleManager;
-  nsIAtom* MOZ_UNSAFE_REF("always a static atom") mMedium; // initialized by subclass ctors
-  nsCOMPtr<nsIAtom> mMediaEmulated;
+  nsAtom* MOZ_UNSAFE_REF("always a static atom") mMedium; // initialized by subclass ctors
+  RefPtr<nsAtom> mMediaEmulated;
   RefPtr<gfxFontFeatureValueSet> mFontFeatureValuesLookup;
 
   // This pointer is nulled out through SetLinkHandler() in the destructors of
@@ -1300,7 +1313,7 @@ protected:
   // This may in fact hold a langGroup such as x-western rather than
   // a specific language, however (e.g, if it is inferred from the
   // charset rather than explicitly specified as a lang attribute).
-  nsCOMPtr<nsIAtom>     mLanguage;
+  RefPtr<nsAtom>     mLanguage;
 
 public:
   // The following are public member variables so that we can use them
@@ -1345,6 +1358,7 @@ protected:
   nsAutoPtr<gfxMissingFontRecorder> mMissingFonts;
 
   nsRect                mVisibleArea;
+  nsRect                mLastResizeEventVisibleArea;
   nsSize                mPageSize;
   float                 mPageScale;
   float                 mPPScale;
@@ -1386,7 +1400,7 @@ protected:
   LangGroupFontPrefs    mLangGroupFontPrefs;
 
   bool mFontGroupCacheDirty;
-  nsTHashtable<nsRefPtrHashKey<nsIAtom>> mLanguagesUsed;
+  nsTHashtable<nsRefPtrHashKey<nsAtom>> mLanguagesUsed;
 
   nscoord               mBorderWidthTable[3];
 

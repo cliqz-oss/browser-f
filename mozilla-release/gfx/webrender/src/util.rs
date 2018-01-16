@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BorderRadius, ComplexClipRegion, LayoutRect};
-use api::{DeviceIntRect, DevicePoint, DeviceRect, DeviceSize};
-use api::{LayerRect, LayerToWorldTransform, WorldPoint3D};
-use euclid::{Point2D, Rect, Size2D};
-use euclid::{TypedPoint2D, TypedRect, TypedSize2D, TypedTransform2D, TypedTransform3D};
+use api::{BorderRadius, ComplexClipRegion, DeviceIntPoint, DeviceIntRect, DeviceIntSize};
+use api::{DevicePoint, DeviceRect, DeviceSize, LayerRect, LayerToWorldTransform};
+use api::{LayoutPoint, LayoutRect, LayoutSize};
+use api::WorldPoint3D;
+use euclid::{Point2D, Rect, Size2D, TypedPoint2D, TypedRect, TypedSize2D, TypedTransform2D};
+use euclid::TypedTransform3D;
 use num_traits::Zero;
 use std::f32::consts::FRAC_1_SQRT_2;
+use std::i32;
 
 // Matches the definition of SK_ScalarNearlyZero in Skia.
 const NEARLY_ZERO: f32 = 1.0 / 4096.0;
@@ -18,8 +20,10 @@ pub trait MatrixHelpers<Src, Dst> {
     fn transform_rect(&self, rect: &TypedRect<f32, Src>) -> TypedRect<f32, Dst>;
     fn is_identity(&self) -> bool;
     fn preserves_2d_axis_alignment(&self) -> bool;
+    fn has_perspective_component(&self) -> bool;
     fn inverse_project(&self, target: &TypedPoint2D<f32, Dst>) -> Option<TypedPoint2D<f32, Src>>;
     fn inverse_rect_footprint(&self, rect: &TypedRect<f32, Dst>) -> TypedRect<f32, Src>;
+    fn transform_kind(&self) -> TransformedRectKind;
 }
 
 impl<Src, Dst> MatrixHelpers<Src, Dst> for TypedTransform3D<f32, Src, Dst> {
@@ -67,6 +71,10 @@ impl<Src, Dst> MatrixHelpers<Src, Dst> for TypedTransform3D<f32, Src, Dst> {
         col0 < 2 && col1 < 2 && row0 < 2 && row1 < 2
     }
 
+    fn has_perspective_component(&self) -> bool {
+         self.m14 != 0.0 || self.m24 != 0.0 || self.m34 != 0.0 || self.m44 != 1.0
+    }
+
     fn inverse_project(&self, target: &TypedPoint2D<f32, Dst>) -> Option<TypedPoint2D<f32, Src>> {
         let m: TypedTransform2D<f32, Src, Dst>;
         m = TypedTransform2D::column_major(
@@ -91,6 +99,14 @@ impl<Src, Dst> MatrixHelpers<Src, Dst> for TypedTransform3D<f32, Src, Dst> {
             self.inverse_project(&rect.bottom_right())
                 .unwrap_or(TypedPoint2D::zero()),
         ])
+    }
+
+    fn transform_kind(&self) -> TransformedRectKind {
+        if self.preserves_2d_axis_alignment() {
+            TransformedRectKind::AxisAligned
+        } else {
+            TransformedRectKind::Complex
+        }
     }
 }
 
@@ -127,6 +143,7 @@ pub fn rect_is_empty<N: PartialEq + Zero, U>(rect: &TypedRect<N, U>) -> bool {
     rect.size.width == Zero::zero() || rect.size.height == Zero::zero()
 }
 
+#[allow(dead_code)]
 #[inline]
 pub fn rect_from_points_f(x0: f32, y0: f32, x1: f32, y1: f32) -> Rect<f32> {
     Rect::new(Point2D::new(x0, y0), Size2D::new(x1 - x0, y1 - y0))
@@ -136,7 +153,7 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     (b - a) * t + a
 }
 
-pub fn subtract_rect<U>(
+pub fn _subtract_rect<U>(
     rect: &TypedRect<f32, U>,
     other: &TypedRect<f32, U>,
     results: &mut Vec<TypedRect<f32, U>>,
@@ -203,13 +220,6 @@ pub struct TransformedRect {
     pub kind: TransformedRectKind,
 }
 
-// Having an unlimited bounding box is fine up until we try
-// to cast it to `i32`, where we get `-2147483648` for any
-// values larger than or equal to 2^31.
-//Note: clamping to i32::MIN and i32::MAX is not a solution,
-// with explanation left as an exercise for the reader.
-const MAX_COORD: f32 = 1.0e9;
-
 impl TransformedRect {
     pub fn new(
         rect: &LayerRect,
@@ -245,10 +255,7 @@ impl TransformedRect {
         let inner_min_dp = (DevicePoint::new(xs[1], ys[1]) * device_pixel_ratio).ceil();
         let inner_max_dp = (DevicePoint::new(xs[2], ys[2]) * device_pixel_ratio).floor();
 
-        let max_rect = DeviceRect::new(
-            DevicePoint::new(-MAX_COORD, -MAX_COORD),
-            DeviceSize::new(2.0 * MAX_COORD, 2.0 * MAX_COORD),
-        );
+        let max_rect = DeviceRect::max_rect();
         let bounding_rect = DeviceRect::new(outer_min_dp, (outer_max_dp - outer_min_dp).to_size())
             .intersection(&max_rect)
             .unwrap_or(max_rect)
@@ -278,13 +285,78 @@ pub trait ComplexClipRegionHelpers {
     /// Return the approximately largest aligned rectangle that is fully inside
     /// the provided clip region.
     fn get_inner_rect_full(&self) -> Option<LayoutRect>;
+    /// Split the clip region into 2 sets of rectangles: opaque and transparent.
+    /// Guarantees no T-junctions in the produced split.
+    /// Attempts to cover more space in opaque, where it reasonably makes sense.
+    fn split_rectangles(
+        &self,
+        opaque: &mut Vec<LayoutRect>,
+        transparent: &mut Vec<LayoutRect>,
+    );
 }
 
 impl ComplexClipRegionHelpers for ComplexClipRegion {
     fn get_inner_rect_full(&self) -> Option<LayoutRect> {
-        // this `k` optimal for a simple case of all border radii being equal
+        // this `k` is optimal for a simple case of all border radii being equal
         let k = 1.0 - 0.5 * FRAC_1_SQRT_2; // could be nicely approximated to `0.3`
         extract_inner_rect_impl(&self.rect, &self.radii, k)
+    }
+
+    fn split_rectangles(
+        &self,
+        opaque: &mut Vec<LayoutRect>,
+        transparent: &mut Vec<LayoutRect>,
+    ) {
+        fn rect(p0: LayoutPoint, p1: LayoutPoint) -> Option<LayoutRect> {
+            if p0.x != p1.x && p0.y != p1.y {
+                Some(LayerRect::new(p0.min(p1), (p1 - p0).abs().to_size()))
+            } else {
+                None
+            }
+        }
+
+        let inner = match extract_inner_rect_impl(&self.rect, &self.radii, 1.0) {
+            Some(rect) => rect,
+            None => {
+                transparent.push(self.rect);
+                return
+            },
+        };
+        let left_top = inner.origin - self.rect.origin;
+        let right_bot = self.rect.bottom_right() - inner.bottom_right();
+
+        // fill in the opaque parts
+        opaque.push(inner);
+        if left_top.x > 0.0 {
+            opaque.push(LayerRect::new(
+                LayoutPoint::new(self.rect.origin.x, inner.origin.y),
+                LayoutSize::new(left_top.x, inner.size.height),
+            ));
+        }
+        if right_bot.y > 0.0 {
+            opaque.push(LayerRect::new(
+                LayoutPoint::new(inner.origin.x, inner.origin.y + inner.size.height),
+                LayoutSize::new(inner.size.width, right_bot.y),
+            ));
+        }
+        if right_bot.x > 0.0 {
+            opaque.push(LayerRect::new(
+                LayoutPoint::new(inner.origin.x + inner.size.width, inner.origin.y),
+                LayoutSize::new(right_bot.x, inner.size.height),
+            ));
+        }
+        if left_top.y > 0.0 {
+            opaque.push(LayerRect::new(
+                LayoutPoint::new(inner.origin.x, self.rect.origin.y),
+                LayoutSize::new(inner.size.width, left_top.y),
+            ));
+        }
+
+        // fill in the transparent parts
+        transparent.extend(rect(self.rect.origin, inner.origin));
+        transparent.extend(rect(self.rect.bottom_left(), inner.bottom_left()));
+        transparent.extend(rect(self.rect.bottom_right(), inner.bottom_right()));
+        transparent.extend(rect(self.rect.top_right(), inner.top_right()));
     }
 }
 
@@ -356,5 +428,35 @@ pub mod test {
         let m1 = Transform3D::create_rotation(0.0, 1.0, 0.0, Radians::new(PI / 3.0));
         // rotation by 60 degrees would imply scaling of X component by a factor of 2
         assert_eq!(m1.inverse_project(&p0), Some(Point2D::new(2.0, 2.0)));
+    }
+}
+
+pub trait MaxRect {
+    fn max_rect() -> Self;
+}
+
+impl MaxRect for DeviceIntRect {
+    fn max_rect() -> Self {
+        DeviceIntRect::new(
+            DeviceIntPoint::new(i32::MIN / 2, i32::MIN / 2),
+            DeviceIntSize::new(i32::MAX, i32::MAX),
+        )
+    }
+}
+
+impl MaxRect for DeviceRect {
+    fn max_rect() -> Self {
+        // Having an unlimited bounding box is fine up until we try
+        // to cast it to `i32`, where we get `-2147483648` for any
+        // values larger than or equal to 2^31.
+        //
+        // Note: clamping to i32::MIN and i32::MAX is not a solution,
+        // with explanation left as an exercise for the reader.
+        const MAX_COORD: f32 = 1.0e9;
+
+        DeviceRect::new(
+            DevicePoint::new(-MAX_COORD, -MAX_COORD),
+            DeviceSize::new(2.0 * MAX_COORD, 2.0 * MAX_COORD),
+        )
     }
 }

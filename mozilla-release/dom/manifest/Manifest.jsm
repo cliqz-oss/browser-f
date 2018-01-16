@@ -75,8 +75,19 @@ class Manifest {
   }
 
   async initialise() {
-    this._store = new JSONFile({path: this._path});
+    this._store = new JSONFile({path: this._path, saveDelayMs: 100});
     await this._store.load();
+  }
+
+  async prefetch(browser) {
+    const manifestData = await ManifestObtainer.browserObtainManifest(browser);
+    const icon = await ManifestIcons.browserFetchIcon(browser, manifestData, 192);
+    const data = {
+      installed: false,
+      manifest: manifestData,
+      cached_icon: icon
+    };
+    return data;
   }
 
   async install() {
@@ -109,6 +120,7 @@ class Manifest {
 
   get name() {
     return this._store.data.manifest.short_name ||
+      this._store.data.manifest.name ||
       this._store.data.manifest.short_url;
   }
 

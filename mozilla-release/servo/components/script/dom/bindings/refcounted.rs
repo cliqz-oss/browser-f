@@ -22,14 +22,12 @@
 //! its hash table during the next GC. During GC, the entries of the hash table are counted
 //! as JS roots.
 
-use core::nonzero::NonZero;
 use dom::bindings::conversions::ToJSValConvertible;
 use dom::bindings::error::Error;
-use dom::bindings::js::Root;
 use dom::bindings::reflector::{DomObject, Reflector};
+use dom::bindings::root::DomRoot;
 use dom::bindings::trace::trace_reflector;
 use dom::promise::Promise;
-use js::jsapi::JSAutoCompartment;
 use js::jsapi::JSTracer;
 use libc;
 use std::cell::RefCell;
@@ -37,7 +35,6 @@ use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::hash_map::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::os;
 use std::rc::Rc;
 use std::sync::{Arc, Weak};
 use task::TaskOnce;
@@ -126,10 +123,7 @@ impl TrustedPromise {
         let this = self;
         task!(reject_promise: move || {
             debug!("Rejecting promise.");
-            let this = this.root();
-            let cx = this.global().get_cx();
-            let _ac = JSAutoCompartment::new(cx, this.reflector().get_jsobject().get());
-            this.reject_error(cx, error);
+            this.root().reject_error(error);
         })
     }
 
@@ -142,10 +136,7 @@ impl TrustedPromise {
         let this = self;
         task!(resolve_promise: move || {
             debug!("Resolving promise.");
-            let this = this.root();
-            let cx = this.global().get_cx();
-            let _ac = JSAutoCompartment::new(cx, this.reflector().get_jsobject().get());
-            this.resolve_native(cx, &value);
+            this.root().resolve_native(&value);
         })
     }
 }
@@ -185,14 +176,14 @@ impl<T: DomObject> Trusted<T> {
     /// Obtain a usable DOM pointer from a pinned `Trusted<T>` value. Fails if used on
     /// a different thread than the original value from which this `Trusted<T>` was
     /// obtained.
-    pub fn root(&self) -> Root<T> {
+    pub fn root(&self) -> DomRoot<T> {
         assert!(LIVE_REFERENCES.with(|ref r| {
             let r = r.borrow();
             let live_references = r.as_ref().unwrap();
             self.owner_thread == (&*live_references) as *const _ as *const libc::c_void
         }));
         unsafe {
-            Root::new(NonZero::new_unchecked(self.refcount.0 as *const T))
+            DomRoot::from_ref(&*(self.refcount.0 as *const T))
         }
     }
 }
@@ -275,8 +266,7 @@ fn remove_nulls<K: Eq + Hash + Clone, V> (table: &mut HashMap<K, Weak<V>>) {
 
 /// A JSTraceDataOp for tracing reflectors held in LIVE_REFERENCES
 #[allow(unrooted_must_root)]
-pub unsafe extern "C" fn trace_refcounted_objects(tracer: *mut JSTracer,
-                                                  _data: *mut os::raw::c_void) {
+pub unsafe fn trace_refcounted_objects(tracer: *mut JSTracer) {
     info!("tracing live refcounted references");
     LIVE_REFERENCES.with(|ref r| {
         let r = r.borrow();

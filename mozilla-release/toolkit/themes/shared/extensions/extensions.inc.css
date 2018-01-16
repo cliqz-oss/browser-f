@@ -289,21 +289,6 @@ button.warning {
   display: none;
 }
 
-.nav-button {
-  list-style-image: url(chrome://mozapps/skin/extensions/navigation.svg);
-  margin-top: 15px;
-  margin-bottom: 15px;
-  border-color: transparent;
-  -moz-context-properties: fill;
-  fill: currentColor;
-}
-
-#back-btn:-moz-locale-dir(rtl),
-#forward-btn:-moz-locale-dir(ltr) {
-  transform: scaleX(-1);
-}
-
-
 /*** sorters ***/
 
 .sort-controls {
@@ -675,7 +660,7 @@ button.warning {
 
 /*** detail view ***/
 
-#detail-view > .box-inherit {
+#detail-view > .scrollbox-innerbox {
   margin-right: 48px;
   margin-left: 48px;
 }

@@ -24,7 +24,7 @@ extern mozilla::LazyLogModule gMediaDemuxerLog;
 using mozilla::media::TimeUnit;
 using mozilla::media::TimeInterval;
 using mozilla::media::TimeIntervals;
-using mp4_demuxer::ByteReader;
+using mp4_demuxer::BufferReader;
 
 namespace mozilla {
 
@@ -53,12 +53,6 @@ MP3Demuxer::Init()
 
   MP3LOG("MP3Demuxer::Init() successful");
   return InitPromise::CreateAndResolve(NS_OK, __func__);
-}
-
-bool
-MP3Demuxer::HasTrackType(TrackInfo::TrackType aType) const
-{
-  return aType == TrackInfo::kAudioTrack;
 }
 
 uint32_t
@@ -544,9 +538,10 @@ MP3TrackDemuxer::FindNextFrame()
       break;
     }
 
-    ByteReader reader(buffer, read);
+    BufferReader reader(buffer, read);
     uint32_t bytesToSkip = 0;
-    foundFrame = mParser.Parse(&reader, &bytesToSkip);
+    auto res = mParser.Parse(&reader, &bytesToSkip);
+    foundFrame = res.isOk() ? res.unwrap() : false;
     frameHeaderOffset =
       mOffset + reader.Offset() - FrameParser::FrameHeader::SIZE;
 
@@ -644,7 +639,7 @@ MP3TrackDemuxer::GetNextFrame(const MediaByteRange& aRange)
 
   if (mNumParsedFrames == 1) {
     // First frame parsed, let's read VBR info if available.
-    ByteReader reader(frame->Data(), frame->Size());
+    BufferReader reader(frame->Data(), frame->Size());
     mParser.ParseVBRHeader(&reader);
     mFirstFrameOffset = frame->mOffset;
   }

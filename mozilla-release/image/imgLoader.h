@@ -291,6 +291,7 @@ public:
                                   nsIURI* aReferrerURI,
                                   ReferrerPolicy aReferrerPolicy,
                                   nsIPrincipal* aLoadingPrincipal,
+                                  uint64_t aRequestContextID,
                                   nsILoadGroup* aLoadGroup,
                                   imgINotificationObserver* aObserver,
                                   nsINode* aContext,
@@ -554,6 +555,7 @@ public:
                     bool forcePrincipalCheckForCacheEntry);
 
   void AddProxy(imgRequestProxy* aProxy);
+  void RemoveProxy(imgRequestProxy* aProxy);
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITHREADRETARGETABLESTREAMLISTENER

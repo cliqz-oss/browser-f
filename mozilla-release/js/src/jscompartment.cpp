@@ -13,12 +13,9 @@
 
 #include "jscntxt.h"
 #include "jsfriendapi.h"
-#include "jsgc.h"
 #include "jsiter.h"
-#include "jswatchpoint.h"
 #include "jswrapper.h"
 
-#include "gc/Marking.h"
 #include "gc/Policy.h"
 #include "jit/JitCompartment.h"
 #include "jit/JitOptions.h"
@@ -27,7 +24,6 @@
 #include "js/RootingAPI.h"
 #include "proxy/DeadObjectProxy.h"
 #include "vm/Debugger.h"
-#include "vm/StopIterationObject.h"
 #include "vm/WrapperObject.h"
 
 #include "jsatominlines.h"
@@ -36,6 +32,7 @@
 #include "jsobjinlines.h"
 #include "jsscriptinlines.h"
 
+#include "gc/Marking-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/UnboxedObject-inl.h"
 
@@ -56,11 +53,8 @@ JSCompartment::JSCompartment(Zone* zone, const JS::CompartmentOptions& options =
     isAtomsCompartment_(false),
     isSelfHosting(false),
     marked(true),
-    warnedAboutDateToLocaleFormat(false),
     warnedAboutExprClosure(false),
     warnedAboutForEach(false),
-    warnedAboutLegacyGenerator(false),
-    warnedAboutObjectWatch(false),
     warnedAboutStringGenericsMethods(0),
 #ifdef DEBUG
     firedOnNewGlobalObject(false),
@@ -87,7 +81,6 @@ JSCompartment::JSCompartment(Zone* zone, const JS::CompartmentOptions& options =
     debugModeBits(0),
     validAccessPtr(nullptr),
     randomKeyGenerator_(runtime_->forkRandomKeyGenerator()),
-    watchpointMap(nullptr),
     scriptCountsMap(nullptr),
     scriptNameMap(nullptr),
     debugScriptMap(nullptr),
@@ -118,7 +111,6 @@ JSCompartment::~JSCompartment()
         rt->lcovOutput().writeLCovResult(lcovOutput);
 
     js_delete(jitCompartment_);
-    js_delete(watchpointMap);
     js_delete(scriptCountsMap);
     js_delete(scriptNameMap);
     js_delete(debugScriptMap);
@@ -402,17 +394,6 @@ JSCompartment::getNonWrapperObjectForCurrentCompartment(JSContext* cx, MutableHa
         return true;
     }
 
-    // Translate StopIteration singleton.
-    if (obj->is<StopIterationObject>()) {
-        // StopIteration isn't a constructor, but it's stored in GlobalObject
-        // as one, out of laziness. Hence the GetBuiltinConstructor call here.
-        RootedObject stopIteration(cx);
-        if (!GetBuiltinConstructor(cx, JSProto_StopIteration, &stopIteration))
-            return false;
-        obj.set(stopIteration);
-        return true;
-    }
-
     // Invoke the prewrap callback. The prewrap callback is responsible for
     // doing similar reification as above, but can account for any additional
     // embedder requirements.
@@ -642,10 +623,10 @@ JSCompartment::addToVarNames(JSContext* cx, JS::Handle<JSAtom*> name)
 /* static */ HashNumber
 TemplateRegistryHashPolicy::hash(const Lookup& lookup)
 {
-    size_t length = GetAnyBoxedOrUnboxedInitializedLength(lookup);
+    size_t length = lookup->as<NativeObject>().getDenseInitializedLength();
     HashNumber hash = 0;
     for (uint32_t i = 0; i < length; i++) {
-        JSAtom& lookupAtom = GetAnyBoxedOrUnboxedDenseElement(lookup, i).toString()->asAtom();
+        JSAtom& lookupAtom = lookup->as<NativeObject>().getDenseElement(i).toString()->asAtom();
         hash = mozilla::AddToHash(hash, lookupAtom.hash());
     }
     return hash;
@@ -654,13 +635,13 @@ TemplateRegistryHashPolicy::hash(const Lookup& lookup)
 /* static */ bool
 TemplateRegistryHashPolicy::match(const Key& key, const Lookup& lookup)
 {
-    size_t length = GetAnyBoxedOrUnboxedInitializedLength(lookup);
-    if (GetAnyBoxedOrUnboxedInitializedLength(key) != length)
+    size_t length = lookup->as<NativeObject>().getDenseInitializedLength();
+    if (key->as<NativeObject>().getDenseInitializedLength() != length)
         return false;
 
     for (uint32_t i = 0; i < length; i++) {
-        JSAtom* a = &GetAnyBoxedOrUnboxedDenseElement(key, i).toString()->asAtom();
-        JSAtom* b = &GetAnyBoxedOrUnboxedDenseElement(lookup, i).toString()->asAtom();
+        JSAtom* a = &key->as<NativeObject>().getDenseElement(i).toString()->asAtom();
+        JSAtom* b = &lookup->as<NativeObject>().getDenseElement(i).toString()->asAtom();
         if (a != b)
             return false;
     }
@@ -669,7 +650,7 @@ TemplateRegistryHashPolicy::match(const Key& key, const Lookup& lookup)
 }
 
 bool
-JSCompartment::getTemplateLiteralObject(JSContext* cx, HandleObject rawStrings,
+JSCompartment::getTemplateLiteralObject(JSContext* cx, HandleArrayObject rawStrings,
                                         MutableHandleObject templateObj)
 {
     if (TemplateRegistry::AddPtr p = templateLiteralMap_.lookupForAdd(rawStrings)) {
@@ -696,7 +677,7 @@ JSCompartment::getTemplateLiteralObject(JSContext* cx, HandleObject rawStrings,
 }
 
 JSObject*
-JSCompartment::getExistingTemplateLiteralObject(JSObject* rawStrings)
+JSCompartment::getExistingTemplateLiteralObject(ArrayObject* rawStrings)
 {
     TemplateRegistry::Ptr p = templateLiteralMap_.lookup(rawStrings);
     MOZ_ASSERT(p);
@@ -777,12 +758,6 @@ JSCompartment::traceRoots(JSTracer* trc, js::gc::GCRuntime::TraceOrMarkRuntime t
     if (traceOrMark == js::gc::GCRuntime::MarkRuntime && !zone()->isCollectingFromAnyThread())
         return;
 
-    // During a GC, these are treated as weak pointers.
-    if (traceOrMark == js::gc::GCRuntime::TraceRuntime) {
-        if (watchpointMap)
-            watchpointMap->trace(trc);
-    }
-
     /* Mark debug scopes, if present */
     if (debugEnvs)
         debugEnvs->trace(trc);
@@ -825,9 +800,6 @@ JSCompartment::traceRoots(JSTracer* trc, js::gc::GCRuntime::TraceOrMarkRuntime t
 void
 JSCompartment::finishRoots()
 {
-    if (watchpointMap)
-        watchpointMap->clear();
-
     if (debugEnvs)
         debugEnvs->finish();
 
@@ -942,13 +914,6 @@ void
 JSCompartment::sweepVarNames()
 {
     varNames_.sweep();
-}
-
-void
-JSCompartment::sweepWatchpoints()
-{
-    if (watchpointMap)
-        watchpointMap->sweep();
 }
 
 void

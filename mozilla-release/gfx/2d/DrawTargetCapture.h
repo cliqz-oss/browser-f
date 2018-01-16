@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,7 +8,7 @@
 #define MOZILLA_GFX_DRAWTARGETCAPTURE_H_
 
 #include "2D.h"
-#include <vector>
+#include "CaptureCommandList.h"
 
 #include "Filters.h"
 
@@ -15,13 +16,18 @@ namespace mozilla {
 namespace gfx {
 
 class DrawingCommand;
+class SourceSurfaceCapture;
+class AlphaBoxBlur;
 
 class DrawTargetCaptureImpl : public DrawTargetCapture
 {
+  friend class SourceSurfaceCapture;
+
 public:
   DrawTargetCaptureImpl(BackendType aBackend, const IntSize& aSize, SurfaceFormat aFormat);
 
   bool Init(const IntSize& aSize, DrawTarget* aRefDT);
+  void InitForData(int32_t aStride, size_t aSurfaceAllocationSize);
 
   virtual BackendType GetBackendType() const override { return mRefDT->GetBackendType(); }
   virtual DrawTargetType GetType() const override { return mRefDT->GetType(); }
@@ -45,7 +51,7 @@ public:
                                      const Color &aColor,
                                      const Point &aOffset,
                                      Float aSigma,
-                                     CompositionOp aOperator) override { /* Not implemented */ }
+                                     CompositionOp aOperator) override;
 
   virtual void ClearRect(const Rect &aRect) override;
   virtual void MaskSurface(const Pattern &aSource,
@@ -78,14 +84,12 @@ public:
   virtual void FillGlyphs(ScaledFont *aFont,
                           const GlyphBuffer &aBuffer,
                           const Pattern &aPattern,
-                          const DrawOptions &aOptions = DrawOptions(),
-                          const GlyphRenderingOptions *aRenderingOptions = nullptr) override;
+                          const DrawOptions &aOptions = DrawOptions()) override;
   virtual void StrokeGlyphs(ScaledFont* aFont,
                             const GlyphBuffer& aBuffer,
                             const Pattern& aPattern,
                             const StrokeOptions& aStrokeOptions = StrokeOptions(),
-                            const DrawOptions& aOptions = DrawOptions(),
-                            const GlyphRenderingOptions* aRenderingOptions = nullptr) override;
+                            const DrawOptions& aOptions = DrawOptions()) override;
   virtual void Mask(const Pattern &aSource,
                     const Pattern &aMask,
                     const DrawOptions &aOptions = DrawOptions()) override;
@@ -99,9 +103,11 @@ public:
                          const IntRect& aBounds,
                          bool aCopyBackground) override;
   virtual void PopLayer() override;
-
+  virtual void Blur(const AlphaBoxBlur& aBlur) override;
 
   virtual void SetTransform(const Matrix &aTransform) override;
+
+  virtual bool SupportsRegionClipping() const override { return mRefDT->SupportsRegionClipping(); }
 
   virtual already_AddRefed<SourceSurface> CreateSourceSurfaceFromData(unsigned char *aData,
                                                                   const IntSize &aSize,
@@ -110,10 +116,7 @@ public:
   {
     return mRefDT->CreateSourceSurfaceFromData(aData, aSize, aStride, aFormat);
   }
-  virtual already_AddRefed<SourceSurface> OptimizeSourceSurface(SourceSurface *aSurface) const override
-  {
-    return mRefDT->OptimizeSourceSurface(aSurface);
-  }
+  virtual already_AddRefed<SourceSurface> OptimizeSourceSurface(SourceSurface *aSurface) const override;
 
   virtual already_AddRefed<SourceSurface>
     CreateSourceSurfaceFromNativeSurface(const NativeSurface &aSurface) const override
@@ -122,10 +125,9 @@ public:
   }
 
   virtual already_AddRefed<DrawTarget>
-    CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFormat) const override
-  {
-    return mRefDT->CreateSimilarDrawTarget(aSize, aFormat);
-  }
+    CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFormat) const override;
+  virtual RefPtr<DrawTarget>
+    CreateSimilarRasterTarget(const IntSize& aSize, SurfaceFormat aFormat) const override;
 
   virtual already_AddRefed<PathBuilder> CreatePathBuilder(FillRule aFillRule = FillRule::FILL_WINDING) const override
   {
@@ -151,29 +153,41 @@ public:
 protected:
   virtual ~DrawTargetCaptureImpl();
 
-private:
+  void MarkChanged();
 
+private:
   // This storage system was used to minimize the amount of heap allocations
   // that are required while recording. It should be noted there's no
   // guarantees on the alignments of DrawingCommands allocated in this array.
   template<typename T>
-  T* AppendToCommandList()
-  {
-    size_t oldSize = mDrawCommandStorage.size();
-    mDrawCommandStorage.resize(mDrawCommandStorage.size() + sizeof(T) + sizeof(uint32_t));
-    uint8_t* nextDrawLocation = &mDrawCommandStorage.front() + oldSize;
-    *(uint32_t*)(nextDrawLocation) = sizeof(T) + sizeof(uint32_t);
-    return reinterpret_cast<T*>(nextDrawLocation + sizeof(uint32_t));
+  T* AppendToCommandList() {
+    if (T::AffectsSnapshot) {
+      MarkChanged();
+    }
+    return mCommands.Append<T>();
   }
+
   RefPtr<DrawTarget> mRefDT;
   IntSize mSize;
+  RefPtr<SourceSurfaceCapture> mSnapshot;
 
-  std::vector<uint8_t> mDrawCommandStorage;
+  // These are set if the draw target must be explicitly backed by data.
+  int32_t mStride;
+  size_t mSurfaceAllocationSize;
+
+  struct PushedLayer
+  {
+    explicit PushedLayer(bool aOldPermitSubpixelAA)
+      : mOldPermitSubpixelAA(aOldPermitSubpixelAA)
+    {}
+    bool mOldPermitSubpixelAA;
+  };
+  std::vector<PushedLayer> mPushedLayers;
+
+  CaptureCommandList mCommands;
 };
 
 } // namespace gfx
-
 } // namespace mozilla
-
 
 #endif /* MOZILLA_GFX_DRAWTARGETCAPTURE_H_ */

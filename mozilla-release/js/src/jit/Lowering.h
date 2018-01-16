@@ -203,6 +203,8 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitLoadSlot(MLoadSlot* ins);
     void visitLoadFixedSlotAndUnbox(MLoadFixedSlotAndUnbox* ins);
     void visitFunctionEnvironment(MFunctionEnvironment* ins);
+    void visitHomeObject(MHomeObject* ins);
+    void visitHomeObjectSuperBase(MHomeObjectSuperBase* ins);
     void visitInterruptCheck(MInterruptCheck* ins);
     void visitWasmTrap(MWasmTrap* ins);
     void visitWasmReinterpret(MWasmReinterpret* ins);
@@ -223,10 +225,6 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitTypedObjectDescr(MTypedObjectDescr* ins);
     void visitInitializedLength(MInitializedLength* ins);
     void visitSetInitializedLength(MSetInitializedLength* ins);
-    void visitUnboxedArrayLength(MUnboxedArrayLength* ins);
-    void visitUnboxedArrayInitializedLength(MUnboxedArrayInitializedLength* ins);
-    void visitIncrementUnboxedArrayInitializedLength(MIncrementUnboxedArrayInitializedLength* ins);
-    void visitSetUnboxedArrayInitializedLength(MSetUnboxedArrayInitializedLength* ins);
     void visitNot(MNot* ins);
     void visitBoundsCheck(MBoundsCheck* ins);
     void visitBoundsCheckLower(MBoundsCheckLower* ins);
@@ -254,6 +252,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitClampToUint8(MClampToUint8* ins);
     void visitLoadFixedSlot(MLoadFixedSlot* ins);
     void visitStoreFixedSlot(MStoreFixedSlot* ins);
+    void visitGetPropSuperCache(MGetPropSuperCache* ins);
     void visitGetPropertyCache(MGetPropertyCache* ins);
     void visitGetPropertyPolymorphic(MGetPropertyPolymorphic* ins);
     void visitSetPropertyPolymorphic(MSetPropertyPolymorphic* ins);

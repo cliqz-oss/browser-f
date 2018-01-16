@@ -1799,11 +1799,7 @@ AstDecodeEnvironment(AstDecodeContext& c)
 static bool
 AstDecodeCodeSection(AstDecodeContext& c)
 {
-    uint32_t sectionStart, sectionSize;
-    if (!c.d.startSection(SectionId::Code, &c.env(), &sectionStart, &sectionSize, "code"))
-        return false;
-
-    if (sectionStart == Decoder::NotStarted) {
+    if (!c.env().codeSection) {
         if (c.env().numFuncDefs() != 0)
             return c.d.fail("expected function bodies");
         return true;
@@ -1824,7 +1820,7 @@ AstDecodeCodeSection(AstDecodeContext& c)
             return false;
     }
 
-    return c.d.finishSection(sectionStart, sectionSize, "code");
+    return c.d.finishSection(*c.env().codeSection, "code");
 }
 
 // Number of bytes to display in a single fragment of a data section (per line).
@@ -1880,8 +1876,8 @@ wasm::BinaryToAst(JSContext* cx, const uint8_t* bytes, uint32_t length, LifoAllo
         !AstDecodeModuleTail(c))
     {
         if (error) {
-            JS_ReportErrorNumberASCII(c.cx, GetErrorMessage, nullptr, JSMSG_WASM_COMPILE_ERROR,
-                                      error.get());
+            JS_ReportErrorNumberUTF8(c.cx, GetErrorMessage, nullptr, JSMSG_WASM_COMPILE_ERROR,
+                                     error.get());
             return false;
         }
         ReportOutOfMemory(c.cx);

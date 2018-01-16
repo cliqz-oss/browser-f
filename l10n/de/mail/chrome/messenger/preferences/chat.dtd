@@ -2,6 +2,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!ENTITY  generalTab.label            "Allgemein">
+
 <!ENTITY  startupAction.label         "Beim Start von &brandShortName;:">
 <!ENTITY  startupAction.accesskey     "S">
 <!ENTITY  startupOffline.label        "Chat-Konten nicht verbinden">
@@ -40,3 +42,19 @@ sentence. -->
 <!ENTITY  browse.label                        "Durchsuchen…">
 <!ENTITY  browse.accesskey                    "D">
 
+<!ENTITY messageStyleTab.title             "Nachrichtenansicht">
+<!ENTITY messageStylePreview.label         "Vorschau:">
+<!ENTITY messageStyleTheme.label           "Erscheinungsbild:">
+<!ENTITY messageStyleTheme.accesskey       "E">
+<!ENTITY messageStyleThunderbirdTheme.label "Thunderbird">
+<!ENTITY messageStyleBubblesTheme.label    "Sprechblasen">
+<!ENTITY messageStyleDarkTheme.label       "Dunkel">
+<!ENTITY messageStylePaperSheetsTheme.label "Papierseiten">
+<!ENTITY messageStyleSimpleTheme.label     "Einfach">
+<!ENTITY messageStyleDefaultTheme.label    "Standard">
+<!ENTITY messageStyleVariant.label         "Variante:">
+<!ENTITY messageStyleVariant.accesskey     "V">
+<!ENTITY messageStyleShowHeader.label      "Kopfzeilen anzeigen">
+<!ENTITY messageStyleShowHeader.accesskey  "K">
+<!ENTITY messageStyleNoPreview.title       "Keine Vorschau verfügbar">
+<!ENTITY messageStyleNoPreview.description "Dieses Erscheinungsbild ist ungültig oder derzeit nicht verfügbar (z.B. weil Add-on deaktiviert, Thunderbird im Abgesicherten Modus, …).">

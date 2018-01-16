@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -69,7 +70,7 @@ nsAbsoluteContainingBlock::AppendFrames(nsIFrame*      aDelegatingFrame,
 
   // no damage to intrinsic widths, since absolutely positioned frames can't
   // change them
-  aDelegatingFrame->PresContext()->PresShell()->
+  aDelegatingFrame->PresShell()->
     FrameNeedsReflow(aDelegatingFrame, nsIPresShell::eResize,
                      NS_FRAME_HAS_DIRTY_CHILDREN);
 }
@@ -91,7 +92,7 @@ nsAbsoluteContainingBlock::InsertFrames(nsIFrame*      aDelegatingFrame,
 
   // no damage to intrinsic widths, since absolutely positioned frames can't
   // change them
-  aDelegatingFrame->PresContext()->PresShell()->
+  aDelegatingFrame->PresShell()->
     FrameNeedsReflow(aDelegatingFrame, nsIPresShell::eResize,
                      NS_FRAME_HAS_DIRTY_CHILDREN);
 }
@@ -349,9 +350,10 @@ nsAbsoluteContainingBlock::FrameDependsOnContainer(nsIFrame* f,
 
 void
 nsAbsoluteContainingBlock::DestroyFrames(nsIFrame* aDelegatingFrame,
-                                         nsIFrame* aDestructRoot)
+                                         nsIFrame* aDestructRoot,
+                                         PostDestroyData& aPostDestroyData)
 {
-  mAbsoluteFrames.DestroyFramesFrom(aDestructRoot);
+  mAbsoluteFrames.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
 }
 
 void

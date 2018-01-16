@@ -425,6 +425,7 @@ class ContentScriptContextChild extends BaseContext {
       // enables us to create the APIs object in this sandbox object and then
       // copying it into the iframe's window.  See bug 1214658.
       this.sandbox = Cu.Sandbox(contentWindow, {
+        sandboxName: `Content Script ExtensionPage ${this.extension.id}`,
         sandboxPrototype: contentWindow,
         sameZoneAs: contentWindow,
         wantXrays: false,
@@ -441,6 +442,7 @@ class ContentScriptContextChild extends BaseContext {
 
       this.sandbox = Cu.Sandbox(principal, {
         metadata,
+        sandboxName: `Content Script ${this.extension.id}`,
         sandboxPrototype: contentWindow,
         sameZoneAs: contentWindow,
         wantXrays: true,
@@ -450,7 +452,16 @@ class ContentScriptContextChild extends BaseContext {
         originAttributes: attrs,
       });
 
+      // Preserve a copy of the original window's XMLHttpRequest and fetch
+      // in a content object (fetch is manually binded to the window
+      // to prevent it from raising a TypeError because content object is not
+      // a real window).
       Cu.evalInSandbox(`
+        this.content = {
+          XMLHttpRequest: window.XMLHttpRequest,
+          fetch: window.fetch.bind(window),
+        };
+
         window.JSON = JSON;
         window.XMLHttpRequest = XMLHttpRequest;
         window.fetch = fetch;

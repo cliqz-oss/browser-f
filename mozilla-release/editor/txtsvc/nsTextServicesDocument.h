@@ -17,7 +17,6 @@
 #include "nscore.h"
 
 class OffsetEntry;
-class nsIAtom;
 class nsIContent;
 class nsIContentIterator;
 class nsIDOMCharacterData;
@@ -36,33 +35,6 @@ class nsTextServicesDocument final : public nsITextServicesDocument,
                                      public nsIEditActionListener
 {
 private:
-  static nsIAtom *sAAtom;
-  static nsIAtom *sAddressAtom;
-  static nsIAtom *sBigAtom;
-  static nsIAtom *sBAtom;
-  static nsIAtom *sCiteAtom;
-  static nsIAtom *sCodeAtom;
-  static nsIAtom *sDfnAtom;
-  static nsIAtom *sEmAtom;
-  static nsIAtom *sFontAtom;
-  static nsIAtom *sIAtom;
-  static nsIAtom *sKbdAtom;
-  static nsIAtom *sKeygenAtom;
-  static nsIAtom *sNobrAtom;
-  static nsIAtom *sSAtom;
-  static nsIAtom *sSampAtom;
-  static nsIAtom *sSmallAtom;
-  static nsIAtom *sSpacerAtom;
-  static nsIAtom *sSpanAtom;
-  static nsIAtom *sStrikeAtom;
-  static nsIAtom *sStrongAtom;
-  static nsIAtom *sSubAtom;
-  static nsIAtom *sSupAtom;
-  static nsIAtom *sTtAtom;
-  static nsIAtom *sUAtom;
-  static nsIAtom *sVarAtom;
-  static nsIAtom *sWbrAtom;
-
   typedef enum { eIsDone=0,        // No iterator (I), or iterator doesn't point to anything valid.
                  eValid,           // I points to first text node (TN) in current block (CB).
                  ePrev,            // No TN in CB, I points to first TN in prev block.
@@ -97,10 +69,6 @@ public:
   /** The default constructor.
    */
   nsTextServicesDocument();
-
-  /** To be called at module init
-   */
-  static void RegisterAtoms();
 
   /* Macro for AddRef(), Release(), and QueryInterface() */
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -150,8 +118,11 @@ public:
                           nsIDOMNode  *aParent,
                           nsresult     aResult) override;
   // these listen methods are unused:
-  NS_IMETHOD WillCreateNode(const nsAString& aTag, nsIDOMNode *aParent, int32_t aPosition) override;
-  NS_IMETHOD DidCreateNode(const nsAString& aTag, nsIDOMNode *aNode, nsIDOMNode *aParent, int32_t aPosition, nsresult aResult) override;
+  NS_IMETHOD WillCreateNode(const nsAString& aTag,
+                            nsIDOMNode* aNextSiblingOfNewNode) override;
+  NS_IMETHOD DidCreateNode(const nsAString& aTag,
+                           nsIDOMNode* aNewNode,
+                           nsresult aResult) override;
   NS_IMETHOD WillInsertText(nsIDOMCharacterData *aTextNode, int32_t aOffset, const nsAString &aString) override;
   NS_IMETHOD DidInsertText(nsIDOMCharacterData *aTextNode, int32_t aOffset, const nsAString &aString, nsresult aResult) override;
   NS_IMETHOD WillDeleteText(nsIDOMCharacterData *aTextNode, int32_t aOffset, int32_t aLength) override;

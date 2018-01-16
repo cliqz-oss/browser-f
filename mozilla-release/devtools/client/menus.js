@@ -31,7 +31,7 @@
 loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
 loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
 loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
-loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsivedesign/responsivedesign");
+loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
 
 loader.lazyImporter(this, "BrowserToolboxProcess", "resource://devtools/client/framework/ToolboxProcess.jsm");
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
@@ -41,7 +41,7 @@ exports.menuitems = [
     l10nKey: "devToolboxMenuItem",
     oncommand(event) {
       let window = event.target.ownerDocument.defaultView;
-      gDevToolsBrowser.toggleToolboxCommand(window.gBrowser);
+      gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, window.performance.now());
     },
     keyId: "toggleToolbox",
     checkbox: true

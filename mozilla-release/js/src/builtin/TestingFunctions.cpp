@@ -13,11 +13,12 @@
 #include "mozilla/Unused.h"
 
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 
 #include "jsapi.h"
 #include "jscntxt.h"
 #include "jsfriendapi.h"
-#include "jsgc.h"
 #include "jsiter.h"
 #include "jsobj.h"
 #include "jsprf.h"
@@ -41,6 +42,7 @@
 #include "js/UbiNodeShortestPaths.h"
 #include "js/UniquePtr.h"
 #include "js/Vector.h"
+#include "vm/Debugger.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
 #include "vm/ProxyObject.h"
@@ -59,6 +61,7 @@
 #include "jscntxtinlines.h"
 #include "jsobjinlines.h"
 
+#include "vm/Debugger-inl.h"
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
@@ -1465,6 +1468,17 @@ OOMThreadTypes(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
+CheckCanSimulateOOM(JSContext* cx)
+{
+    if (js::oom::GetThreadType() != js::THREAD_TYPE_COOPERATING) {
+        JS_ReportErrorASCII(cx, "Simulated OOM failure is only supported on the main thread");
+        return false;
+    }
+
+    return true;
+}
+
+static bool
 SetupOOMFailure(JSContext* cx, bool failAlways, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -1502,6 +1516,9 @@ SetupOOMFailure(JSContext* cx, bool failAlways, unsigned argc, Value* vp)
         return false;
     }
 
+    if (!CheckCanSimulateOOM(cx))
+        return false;
+
     js::oom::SimulateOOMAfter(count, targetThread, failAlways);
     args.rval().setUndefined();
     return true;
@@ -1523,6 +1540,10 @@ static bool
 ResetOOMFailure(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
+
+    if (!CheckCanSimulateOOM(cx))
+        return false;
+
     args.rval().setBoolean(js::oom::HadSimulatedOOM());
     js::oom::ResetSimulatedOOM();
     return true;
@@ -1558,6 +1579,9 @@ OOMTest(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
+    if (!CheckCanSimulateOOM(cx))
+        return false;
+
     bool expectExceptionOnFailure = true;
     if (args.length() == 2)
         expectExceptionOnFailure = args[1].toBoolean();
@@ -1576,13 +1600,13 @@ OOMTest(JSContext* cx, unsigned argc, Value* vp)
 
     bool verbose = EnvVarIsDefined("OOM_VERBOSE");
 
-    unsigned threadStart = THREAD_TYPE_COOPERATING;
-    unsigned threadEnd = THREAD_TYPE_MAX;
+    unsigned threadStart = oom::FirstThreadTypeToTest;
+    unsigned threadEnd = oom::LastThreadTypeToTest;
 
     // Test a single thread type if specified by the OOM_THREAD environment variable.
     int threadOption = 0;
     if (EnvVarAsInt("OOM_THREAD", &threadOption)) {
-        if (threadOption < THREAD_TYPE_COOPERATING || threadOption > THREAD_TYPE_MAX) {
+        if (threadOption < oom::FirstThreadTypeToTest || threadOption > oom::LastThreadTypeToTest) {
             JS_ReportErrorASCII(cx, "OOM_THREAD value out of range.");
             return false;
         }
@@ -1650,7 +1674,7 @@ OOMTest(JSContext* cx, unsigned argc, Value* vp)
 
             // Some tests create a new compartment or zone on every
             // iteration. Our GC is triggered by GC allocations and not by
-            // number of copmartments or zones, so these won't normally get
+            // number of compartments or zones, so these won't normally get
             // cleaned up. The check here stops some tests running out of
             // memory.
             if (CountCompartments(cx) > compartmentCount + 100) {
@@ -1680,6 +1704,279 @@ OOMTest(JSContext* cx, unsigned argc, Value* vp)
     args.rval().setUndefined();
     return true;
 }
+
+static bool
+StackTest(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    if (args.length() < 1 || args.length() > 2) {
+        JS_ReportErrorASCII(cx, "stackTest() takes between 1 and 2 arguments.");
+        return false;
+    }
+
+    if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
+        JS_ReportErrorASCII(cx, "The first argument to stackTest() must be a function.");
+        return false;
+    }
+
+    if (args.length() == 2 && !args[1].isBoolean()) {
+        JS_ReportErrorASCII(cx, "The optional second argument to stackTest() must be a boolean.");
+        return false;
+    }
+
+    bool expectExceptionOnFailure = true;
+    if (args.length() == 2)
+        expectExceptionOnFailure = args[1].toBoolean();
+
+    // There are some places where we do fail without raising an exception, so
+    // we can't expose this to the fuzzers by default.
+    if (fuzzingSafe)
+        expectExceptionOnFailure = false;
+
+    if (disableOOMFunctions) {
+        args.rval().setUndefined();
+        return true;
+    }
+
+    RootedFunction function(cx, &args[0].toObject().as<JSFunction>());
+
+    bool verbose = EnvVarIsDefined("OOM_VERBOSE");
+
+    unsigned threadStart = oom::FirstThreadTypeToTest;
+    unsigned threadEnd = oom::LastThreadTypeToTest;
+
+    // Test a single thread type if specified by the OOM_THREAD environment variable.
+    int threadOption = 0;
+    if (EnvVarAsInt("OOM_THREAD", &threadOption)) {
+        if (threadOption < oom::FirstThreadTypeToTest || threadOption > oom::LastThreadTypeToTest) {
+            JS_ReportErrorASCII(cx, "OOM_THREAD value out of range.");
+            return false;
+        }
+
+        threadStart = threadOption;
+        threadEnd = threadOption + 1;
+    }
+
+    if (cx->runningOOMTest) {
+        JS_ReportErrorASCII(cx, "Nested call to oomTest() or stackTest() is not allowed.");
+        return false;
+    }
+    cx->runningOOMTest = true;
+
+    MOZ_ASSERT(!cx->isExceptionPending());
+
+    size_t compartmentCount = CountCompartments(cx);
+
+#ifdef JS_GC_ZEAL
+    JS_SetGCZeal(cx, 0, JS_DEFAULT_ZEAL_FREQ);
+#endif
+
+    for (unsigned thread = threadStart; thread < threadEnd; thread++) {
+        if (verbose)
+            fprintf(stderr, "thread %d\n", thread);
+
+        unsigned check = 1;
+        bool handledOOM;
+        do {
+            if (verbose)
+                fprintf(stderr, "  check %d\n", check);
+
+            MOZ_ASSERT(!cx->isExceptionPending());
+
+            js::oom::SimulateStackOOMAfter(check, thread, false);
+
+            RootedValue result(cx);
+            bool ok = JS_CallFunction(cx, cx->global(), function,
+                                      HandleValueArray::empty(), &result);
+
+            handledOOM = js::oom::HadSimulatedStackOOM();
+            js::oom::ResetSimulatedStackOOM();
+
+            MOZ_ASSERT_IF(ok, !cx->isExceptionPending());
+
+            if (ok) {
+                MOZ_ASSERT(!cx->isExceptionPending(),
+                           "Thunk execution succeeded but an exception was raised - "
+                           "missing error check?");
+            } else if (expectExceptionOnFailure) {
+                MOZ_ASSERT(cx->isExceptionPending(),
+                           "Thunk execution failed but no exception was raised - "
+                           "missing call to js::ReportOutOfMemory()?");
+            }
+
+            // Note that it is possible that the function throws an exception
+            // unconnected to OOM, in which case we ignore it. More correct
+            // would be to have the caller pass some kind of exception
+            // specification and to check the exception against it.
+
+            cx->clearPendingException();
+
+            // Some tests create a new compartment or zone on every
+            // iteration. Our GC is triggered by GC allocations and not by
+            // number of compartments or zones, so these won't normally get
+            // cleaned up. The check here stops some tests running out of
+            // memory.
+            if (CountCompartments(cx) > compartmentCount + 100) {
+                JS_GC(cx);
+                compartmentCount = CountCompartments(cx);
+            }
+
+#ifdef JS_TRACE_LOGGING
+            // Reset the TraceLogger state if enabled.
+            TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
+            if (logger->enabled()) {
+                while (logger->enabled())
+                    logger->disable();
+                logger->enable(cx);
+            }
+#endif
+
+            check++;
+        } while (handledOOM);
+
+        if (verbose) {
+            fprintf(stderr, "  finished after %d checks\n", check - 2);
+        }
+    }
+
+    cx->runningOOMTest = false;
+    args.rval().setUndefined();
+    return true;
+}
+
+static bool
+FailingInterruptCallback(JSContext* cx)
+{
+    return false;
+}
+
+static bool
+InterruptTest(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    if (args.length() < 1 || args.length() > 2) {
+        JS_ReportErrorASCII(cx, "interruptTest() takes exactly 1 argument.");
+        return false;
+    }
+
+    if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
+        JS_ReportErrorASCII(cx, "The argument to interruptTest() must be a function.");
+        return false;
+    }
+
+    if (disableOOMFunctions) {
+        args.rval().setUndefined();
+        return true;
+    }
+
+    RootedFunction function(cx, &args[0].toObject().as<JSFunction>());
+
+    bool verbose = EnvVarIsDefined("OOM_VERBOSE");
+
+    unsigned threadStart = oom::FirstThreadTypeToTest;
+    unsigned threadEnd = oom::LastThreadTypeToTest;
+
+    // Test a single thread type if specified by the OOM_THREAD environment variable.
+    int threadOption = 0;
+    if (EnvVarAsInt("OOM_THREAD", &threadOption)) {
+        if (threadOption < oom::FirstThreadTypeToTest || threadOption > oom::LastThreadTypeToTest) {
+            JS_ReportErrorASCII(cx, "OOM_THREAD value out of range.");
+            return false;
+        }
+
+        threadStart = threadOption;
+        threadEnd = threadOption + 1;
+    }
+
+    if (cx->runningOOMTest) {
+        JS_ReportErrorASCII(cx, "Nested call to oomTest(), stackTest() or interruptTest() is not allowed.");
+        return false;
+    }
+    cx->runningOOMTest = true;
+
+    MOZ_ASSERT(!cx->isExceptionPending());
+
+    size_t compartmentCount = CountCompartments(cx);
+
+#ifdef JS_GC_ZEAL
+    JS_SetGCZeal(cx, 0, JS_DEFAULT_ZEAL_FREQ);
+#endif
+
+    JSInterruptCallback *prevEnd = cx->interruptCallbacks().end();
+    JS_AddInterruptCallback(cx, FailingInterruptCallback);
+
+    for (unsigned thread = threadStart; thread < threadEnd; thread++) {
+        if (verbose)
+            fprintf(stderr, "thread %d\n", thread);
+
+        unsigned check = 1;
+        bool handledInterrupt;
+        do {
+            if (verbose)
+                fprintf(stderr, "  check %d\n", check);
+
+            MOZ_ASSERT(!cx->isExceptionPending());
+
+            js::oom::SimulateInterruptAfter(check, thread, false);
+
+            RootedValue result(cx);
+            bool ok = JS_CallFunction(cx, cx->global(), function,
+                                      HandleValueArray::empty(), &result);
+
+            handledInterrupt = js::oom::HadSimulatedInterrupt();
+            js::oom::ResetSimulatedInterrupt();
+
+            MOZ_ASSERT_IF(ok, !cx->isExceptionPending());
+
+            if (ok) {
+                MOZ_ASSERT(!cx->isExceptionPending(),
+                           "Thunk execution succeeded but an exception was raised - "
+                           "missing error check?");
+            }
+
+            // Note that it is possible that the function throws an exception
+            // unconnected to OOM, in which case we ignore it. More correct
+            // would be to have the caller pass some kind of exception
+            // specification and to check the exception against it.
+
+            cx->clearPendingException();
+
+            // Some tests create a new compartment or zone on every
+            // iteration. Our GC is triggered by GC allocations and not by
+            // number of compartments or zones, so these won't normally get
+            // cleaned up. The check here stops some tests running out of
+            // memory.
+            if (CountCompartments(cx) > compartmentCount + 100) {
+                JS_GC(cx);
+                compartmentCount = CountCompartments(cx);
+            }
+
+#ifdef JS_TRACE_LOGGING
+            // Reset the TraceLogger state if enabled.
+            TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
+            if (logger->enabled()) {
+                while (logger->enabled())
+                    logger->disable();
+                logger->enable(cx);
+            }
+#endif
+
+            check++;
+        } while (handledInterrupt);
+
+        if (verbose) {
+            fprintf(stderr, "  finished after %d checks\n", check - 2);
+        }
+    }
+
+    // Clear any interrupt callbacks we added within this function
+    cx->interruptCallbacks().erase(prevEnd, cx->interruptCallbacks().end());
+    cx->runningOOMTest = false;
+    args.rval().setUndefined();
+    return true;
+}
 #endif
 
 static bool
@@ -1693,13 +1990,13 @@ SettlePromiseNow(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    RootedNativeObject promise(cx, &args[0].toObject().as<NativeObject>());
+    Rooted<PromiseObject*> promise(cx, &args[0].toObject().as<PromiseObject>());
     int32_t flags = promise->getFixedSlot(PromiseSlot_Flags).toInt32();
     promise->setFixedSlot(PromiseSlot_Flags,
                           Int32Value(flags | PROMISE_FLAG_RESOLVED | PROMISE_FLAG_FULFILLED));
     promise->setFixedSlot(PromiseSlot_ReactionsOrResult, UndefinedValue());
 
-    JS::dbg::onPromiseSettled(cx, promise);
+    Debugger::onPromiseSettled(cx, promise);
     return true;
 }
 
@@ -2222,7 +2519,7 @@ testingFunc_inIon(JSContext* cx, unsigned argc, Value* vp)
         return true;
     }
 
-    if (cx->activation()->isWasm()) {
+    if (cx->activation()->hasWasmExitFP()) {
         // Exited through wasm. Note this is false when the fast wasm->jit exit
         // was taken, in which case we actually have jit frames on the stack.
         args.rval().setBoolean(false);
@@ -2389,9 +2686,11 @@ SetIonCheckGraphCoherency(JSContext* cx, unsigned argc, Value* vp)
 
 class CloneBufferObject : public NativeObject {
     static const JSPropertySpec props_[3];
-    static const size_t DATA_SLOT   = 0;
+
+    static const size_t DATA_SLOT = 0;
     static const size_t LENGTH_SLOT = 1;
-    static const size_t NUM_SLOTS   = 2;
+    static const size_t SYNTHETIC_SLOT = 2;
+    static const size_t NUM_SLOTS = 3;
 
   public:
     static const Class class_;
@@ -2402,6 +2701,7 @@ class CloneBufferObject : public NativeObject {
             return nullptr;
         obj->as<CloneBufferObject>().setReservedSlot(DATA_SLOT, PrivateValue(nullptr));
         obj->as<CloneBufferObject>().setReservedSlot(LENGTH_SLOT, Int32Value(0));
+        obj->as<CloneBufferObject>().setReservedSlot(SYNTHETIC_SLOT, BooleanValue(false));
 
         if (!JS_DefineProperties(cx, obj, props_))
             return nullptr;
@@ -2419,7 +2719,7 @@ class CloneBufferObject : public NativeObject {
             return nullptr;
         }
         buffer->steal(data.get());
-        obj->setData(data.release());
+        obj->setData(data.release(), false);
         return obj;
     }
 
@@ -2427,9 +2727,14 @@ class CloneBufferObject : public NativeObject {
         return static_cast<JSStructuredCloneData*>(getReservedSlot(DATA_SLOT).toPrivate());
     }
 
-    void setData(JSStructuredCloneData* aData) {
+    bool isSynthetic() const {
+        return getReservedSlot(SYNTHETIC_SLOT).toBoolean();
+    }
+
+    void setData(JSStructuredCloneData* aData, bool synthetic) {
         MOZ_ASSERT(!data());
         setReservedSlot(DATA_SLOT, PrivateValue(aData));
+        setReservedSlot(SYNTHETIC_SLOT, BooleanValue(synthetic));
     }
 
     // Discard an owned clone buffer.
@@ -2443,12 +2748,6 @@ class CloneBufferObject : public NativeObject {
 
     static bool
     setCloneBuffer_impl(JSContext* cx, const CallArgs& args) {
-        if (fuzzingSafe) {
-            // A manually-created clonebuffer could easily trigger a crash
-            args.rval().setUndefined();
-            return true;
-        }
-
         Rooted<CloneBufferObject*> obj(cx, &args.thisv().toObject().as<CloneBufferObject>());
 
         uint8_t* data = nullptr;
@@ -2471,17 +2770,20 @@ class CloneBufferObject : public NativeObject {
             nbytes = JS_GetStringLength(str);
         }
 
-        if (nbytes % sizeof(uint64_t) != 0) {
+        if (nbytes == 0 || (nbytes % sizeof(uint64_t) != 0)) {
             JS_ReportErrorASCII(cx, "Invalid length for clonebuffer data");
             return false;
         }
 
         auto buf = js::MakeUnique<JSStructuredCloneData>(0, 0, nbytes);
-        if (!buf->Init(nbytes, nbytes))
+        if (!buf || !buf->Init(nbytes, nbytes)) {
+            ReportOutOfMemory(cx);
             return false;
+        }
+
         js_memcpy(buf->Start(), data, nbytes);
         obj->discard();
-        obj->setData(buf.release());
+        obj->setData(buf.release(), true);
 
         args.rval().setUndefined();
         return true;
@@ -2699,8 +3001,11 @@ Deserialize(JSContext* cx, unsigned argc, Value* vp)
         JS_ReportErrorASCII(cx, "deserialize requires a clonebuffer argument");
         return false;
     }
+    Rooted<CloneBufferObject*> obj(cx, &args[0].toObject().as<CloneBufferObject>());
 
-    JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcessSameThread;
+    JS::StructuredCloneScope scope =
+        obj->isSynthetic() ? JS::StructuredCloneScope::DifferentProcess
+                           : JS::StructuredCloneScope::SameProcessSameThread;
     if (args.get(1).isObject()) {
         RootedObject opts(cx, &args[1].toObject());
         if (!opts)
@@ -2724,8 +3029,6 @@ Deserialize(JSContext* cx, unsigned argc, Value* vp)
         }
     }
 
-    Rooted<CloneBufferObject*> obj(cx, &args[0].toObject().as<CloneBufferObject>());
-
     // Clone buffer was already consumed?
     if (!obj->data()) {
         JS_ReportErrorASCII(cx, "deserialize given invalid clone buffer "
@@ -2736,6 +3039,13 @@ Deserialize(JSContext* cx, unsigned argc, Value* vp)
     bool hasTransferable;
     if (!JS_StructuredCloneHasTransferables(*obj->data(), &hasTransferable))
         return false;
+
+    if (obj->isSynthetic() &&
+        (scope != JS::StructuredCloneScope::DifferentProcess || hasTransferable))
+    {
+        JS_ReportErrorASCII(cx, "clone buffer data is synthetic but may contain pointers");
+        return false;
+    }
 
     RootedValue deserialized(cx);
     if (!JS_ReadStructuredClone(cx, *obj->data(),
@@ -3989,10 +4299,8 @@ SetRNGState(JSContext* cx, unsigned argc, Value* vp)
 #endif
 
 static ModuleEnvironmentObject*
-GetModuleEnvironment(JSContext* cx, HandleValue moduleValue)
+GetModuleEnvironment(JSContext* cx, HandleModuleObject module)
 {
-    RootedModuleObject module(cx, &moduleValue.toObject().as<ModuleObject>());
-
     // Use the initial environment so that tests can check bindings exists
     // before they have been instantiated.
     RootedModuleEnvironmentObject env(cx, &module->initialEnvironment());
@@ -4016,7 +4324,13 @@ GetModuleEnvironmentNames(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    RootedModuleEnvironmentObject env(cx, GetModuleEnvironment(cx, args[0]));
+    RootedModuleObject module(cx, &args[0].toObject().as<ModuleObject>());
+    if (module->status() == MODULE_STATUS_ERRORED) {
+        JS_ReportErrorASCII(cx, "Module environment unavailable");
+        return false;
+    }
+
+    RootedModuleEnvironmentObject env(cx, GetModuleEnvironment(cx, module));
     Rooted<IdVector> ids(cx, IdVector(cx));
     if (!JS_Enumerate(cx, env, &ids))
         return false;
@@ -4053,7 +4367,13 @@ GetModuleEnvironmentValue(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    RootedModuleEnvironmentObject env(cx, GetModuleEnvironment(cx, args[0]));
+    RootedModuleObject module(cx, &args[0].toObject().as<ModuleObject>());
+    if (module->status() == MODULE_STATUS_ERRORED) {
+        JS_ReportErrorASCII(cx, "Module environment unavailable");
+        return false;
+    }
+
+    RootedModuleEnvironmentObject env(cx, GetModuleEnvironment(cx, module));
     RootedString name(cx, args[1].toString());
     RootedId id(cx);
     if (!JS_StringToId(cx, name, &id))
@@ -4454,6 +4774,118 @@ DisableForEach(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
+static bool
+GetTimeZone(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    RootedObject callee(cx, &args.callee());
+
+    if (args.length() != 0) {
+        ReportUsageErrorASCII(cx, callee, "Wrong number of arguments");
+        return false;
+    }
+
+    auto getTimeZone = [](std::time_t* now) -> const char* {
+        std::tm local{};
+#if defined(_WIN32)
+        _tzset();
+        if (localtime_s(&local, now) == 0)
+            return _tzname[local.tm_isdst > 0];
+#else
+        tzset();
+#if defined(HAVE_LOCALTIME_R)
+        if (localtime_r(now, &local)) {
+#else
+        std::tm* localtm = std::localtime(now);
+        if (localtm) {
+            *local = *localtm;
+#endif /* HAVE_LOCALTIME_R */
+
+#if defined(HAVE_TM_ZONE_TM_GMTOFF)
+            return local.tm_zone;
+#else
+            return tzname[local.tm_isdst > 0];
+#endif /* HAVE_TM_ZONE_TM_GMTOFF */
+        }
+#endif /* _WIN32 */
+        return nullptr;
+    };
+
+    std::time_t now = std::time(nullptr);
+    if (now != static_cast<std::time_t>(-1)) {
+        if (const char* tz = getTimeZone(&now)) {
+            JSString* str = JS_NewStringCopyZ(cx, tz);
+            if (!str)
+                return false;
+            args.rval().setString(str);
+            return true;
+        }
+    }
+
+    args.rval().setUndefined();
+    return true;
+}
+
+static bool
+SetTimeZone(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    RootedObject callee(cx, &args.callee());
+
+    if (args.length() != 1) {
+        ReportUsageErrorASCII(cx, callee, "Wrong number of arguments");
+        return false;
+    }
+
+    if (!args[0].isString() && !args[0].isUndefined()) {
+        ReportUsageErrorASCII(cx, callee, "First argument should be a string or undefined");
+        return false;
+    }
+
+    auto setTimeZone = [](const char* value) {
+#if defined(_WIN32)
+        return _putenv_s("TZ", value) == 0;
+#else
+        return setenv("TZ", value, true) == 0;
+#endif /* _WIN32 */
+    };
+
+    auto unsetTimeZone = []() {
+#if defined(_WIN32)
+        return _putenv_s("TZ", "") == 0;
+#else
+        return unsetenv("TZ") == 0;
+#endif /* _WIN32 */
+    };
+
+    if (args[0].isString() && !args[0].toString()->empty()) {
+        JSAutoByteString timeZone;
+        if (!timeZone.encodeLatin1(cx, args[0].toString()))
+            return false;
+
+        if (!setTimeZone(timeZone.ptr())) {
+            JS_ReportErrorASCII(cx, "Failed to set 'TZ' environment variable");
+            return false;
+        }
+    } else {
+        if (!unsetTimeZone()) {
+            JS_ReportErrorASCII(cx, "Failed to unset 'TZ' environment variable");
+            return false;
+        }
+    }
+
+#if defined(_WIN32)
+    _tzset();
+#else
+    tzset();
+#endif /* _WIN32 */
+
+    JS::ResetTimeZone();
+
+    args.rval().setUndefined();
+    return true;
+}
+
 #if defined(FUZZING) && defined(__AFL_COMPILER)
 static bool
 AflLoop(JSContext* cx, unsigned argc, Value* vp)
@@ -4651,6 +5083,16 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  By default this tests that an exception is raised if execution fails, but\n"
 "  this can be disabled by passing false as the optional second parameter.\n"
 "  This is also disabled when --fuzzing-safe is specified."),
+
+    JS_FN_HELP("stackTest", StackTest, 0, 0,
+"stackTest(function, [expectExceptionOnFailure = true])",
+"  This function behaves exactly like oomTest with the difference that\n"
+"  instead of simulating regular OOM conditions, it simulates the engine\n"
+"  running out of stack space (failing recursion check)."),
+
+    JS_FN_HELP("interruptTest", InterruptTest, 0, 0,
+"interruptTest(function)",
+"  This function simulates interrupts similar to how oomTest simulates OOM conditions."),
 #endif
 
     JS_FN_HELP("settlePromiseNow", SettlePromiseNow, 1, 0,
@@ -5126,6 +5568,10 @@ gc::ZealModeHelpText),
 "isLegacyIterator(value)",
 "  Returns whether the value is considered is a legacy iterator.\n"),
 
+    JS_FN_HELP("getTimeZone", GetTimeZone, 0, 0,
+"getTimeZone()",
+"  Get the current time zone.\n"),
+
     JS_FS_HELP_END
 };
 
@@ -5143,6 +5589,12 @@ static const JSFunctionSpecWithHelp FuzzingUnsafeTestingFunctions[] = {
     JS_FN_HELP("getErrorNotes", GetErrorNotes, 1, 0,
 "getErrorNotes(error)",
 "  Returns an array of error notes."),
+
+    JS_FN_HELP("setTimeZone", SetTimeZone, 1, 0,
+"setTimeZone(tzname)",
+"  Set the 'TZ' environment variable to the given time zone and applies the new time zone.\n"
+"  An empty string or undefined resets the time zone to its default value.\n"
+"  NOTE: The input string is not validated and will be passed verbatim to setenv()."),
 
     JS_FS_HELP_END
 };

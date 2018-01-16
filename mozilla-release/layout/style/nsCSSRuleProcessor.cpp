@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:tabstop=2:expandtab:shiftwidth=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,9 +14,8 @@
 #include "nsAutoPtr.h"
 #include "nsRuleProcessorData.h"
 #include <algorithm>
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "PLDHashTable.h"
-#include "nsICSSPseudoComparator.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/css/ImportRule.h"
 #include "mozilla/css/StyleRule.h"
@@ -66,7 +65,7 @@ typedef ArenaAllocator<4096, 8> CascadeAllocator;
 
 static bool gSupportVisitedPseudo = true;
 
-static nsTArray< nsCOMPtr<nsIAtom> >* sSystemMetrics = 0;
+static nsTArray< RefPtr<nsAtom> >* sSystemMetrics = 0;
 
 #ifdef XP_WIN
 uint8_t nsCSSRuleProcessor::sWinThemeId = LookAndFeel::eWindowsTheme_Generic;
@@ -182,13 +181,13 @@ struct RuleHashTableEntry : public PLDHashEntryHdr {
 struct RuleHashTagTableEntry : public RuleHashTableEntry {
   // If you add members that have heap allocated memory be sure to change the
   // logic in RuleHash::SizeOf{In,Ex}cludingThis.
-  nsCOMPtr<nsIAtom> mTag;
+  RefPtr<nsAtom> mTag;
 };
 
 static PLDHashNumber
 RuleHash_CIHashKey(const void *key)
 {
-  nsIAtom *atom = const_cast<nsIAtom*>(static_cast<const nsIAtom*>(key));
+  nsAtom *atom = const_cast<nsAtom*>(static_cast<const nsAtom*>(key));
 
   nsAutoString str;
   atom->ToString(str);
@@ -208,9 +207,9 @@ SubjectSelectorForRuleHash(const PLDHashEntryHdr *hdr)
 }
 
 static inline bool
-CIMatchAtoms(const void* key, nsIAtom *entry_atom)
+CIMatchAtoms(const void* key, nsAtom *entry_atom)
 {
-  auto match_atom = const_cast<nsIAtom*>(static_cast<const nsIAtom*>(key));
+  auto match_atom = const_cast<nsAtom*>(static_cast<const nsAtom*>(key));
 
   // Check for case-sensitive match first.
   if (match_atom == entry_atom) {
@@ -226,9 +225,9 @@ CIMatchAtoms(const void* key, nsIAtom *entry_atom)
 }
 
 static inline bool
-CSMatchAtoms(const void* key, nsIAtom *entry_atom)
+CSMatchAtoms(const void* key, nsAtom *entry_atom)
 {
-  auto match_atom = const_cast<nsIAtom*>(static_cast<const nsIAtom*>(key));
+  auto match_atom = const_cast<nsAtom*>(static_cast<const nsAtom*>(key));
   return match_atom == entry_atom;
 }
 
@@ -286,8 +285,8 @@ RuleHash_MoveEntry(PLDHashTable *table, const PLDHashEntryHdr *from,
 static bool
 RuleHash_TagTable_MatchEntry(const PLDHashEntryHdr *hdr, const void *key)
 {
-  nsIAtom *match_atom = const_cast<nsIAtom*>(static_cast<const nsIAtom*>(key));
-  nsIAtom *entry_atom = static_cast<const RuleHashTagTableEntry*>(hdr)->mTag;
+  nsAtom *match_atom = const_cast<nsAtom*>(static_cast<const nsAtom*>(key));
+  nsAtom *entry_atom = static_cast<const RuleHashTagTableEntry*>(hdr)->mTag;
 
   return match_atom == entry_atom;
 }
@@ -297,7 +296,7 @@ RuleHash_TagTable_InitEntry(PLDHashEntryHdr *hdr, const void *key)
 {
   RuleHashTagTableEntry* entry = static_cast<RuleHashTagTableEntry*>(hdr);
   new (KnownNotNull, entry) RuleHashTagTableEntry();
-  entry->mTag = const_cast<nsIAtom*>(static_cast<const nsIAtom*>(key));
+  entry->mTag = const_cast<nsAtom*>(static_cast<const nsAtom*>(key));
 }
 
 static void
@@ -542,7 +541,7 @@ void RuleHash::AppendRuleToTable(PLDHashTable* aTable, const void* aKey,
 }
 
 static void
-AppendRuleToTagTable(PLDHashTable* aTable, nsIAtom* aKey,
+AppendRuleToTagTable(PLDHashTable* aTable, nsAtom* aKey,
                      const RuleValue& aRuleInfo)
 {
   // Get a new or exisiting entry
@@ -613,8 +612,8 @@ void RuleHash::EnumerateAllRules(Element* aElement, ElementDependentRuleProcesso
                                  NodeMatchContext& aNodeContext)
 {
   int32_t nameSpace = aElement->GetNameSpaceID();
-  nsIAtom* tag = aElement->NodeInfo()->NameAtom();
-  nsIAtom* id = aElement->GetID();
+  nsAtom* tag = aElement->NodeInfo()->NameAtom();
+  nsAtom* id = aElement->GetID();
   const nsAttrValue* classList = aElement->GetClasses();
 
   MOZ_ASSERT(tag, "How could we not have a tag?");
@@ -776,7 +775,7 @@ struct SelectorPair
 
 // A hash table mapping atoms to lists of selectors
 struct AtomSelectorEntry : public PLDHashEntryHdr {
-  nsIAtom *mAtom;
+  nsAtom *mAtom;
   // Auto length 2, because a decent fraction of these arrays ends up
   // with 2 elements, and each entry is cheap.
   AutoTArray<SelectorPair, 2> mSelectors;
@@ -793,7 +792,7 @@ AtomSelector_InitEntry(PLDHashEntryHdr *hdr, const void *key)
 {
   AtomSelectorEntry *entry = static_cast<AtomSelectorEntry*>(hdr);
   new (KnownNotNull, entry) AtomSelectorEntry();
-  entry->mAtom = const_cast<nsIAtom*>(static_cast<const nsIAtom*>(key));
+  entry->mAtom = const_cast<nsAtom*>(static_cast<const nsAtom*>(key));
 }
 
 static void
@@ -837,7 +836,7 @@ static const PLDHashTableOps AtomSelector_CIOps = {
 //--------------------------------
 
 struct RuleCascadeData {
-  RuleCascadeData(nsIAtom *aMedium, bool aQuirksMode)
+  RuleCascadeData(nsAtom *aMedium, bool aQuirksMode)
     : mRuleHash(aQuirksMode),
       mStateSelectors(),
       mSelectorDocumentStates(0),
@@ -894,16 +893,17 @@ struct RuleCascadeData {
   nsTArray<nsCSSPageRule*> mPageRules;
   nsTArray<nsCSSCounterStyleRule*> mCounterStyleRules;
 
-  nsDataHashtable<nsStringHashKey, nsCSSKeyframesRule*> mKeyframesRuleTable;
+  nsDataHashtable<nsRefPtrHashKey<const nsAtom>,
+                  nsCSSKeyframesRule*> mKeyframesRuleTable;
   // The hashtable doesn't need to hold a strong reference to the name
   // atom, because nsCSSCounterStyleRule always does. If the name changes
   // we need to discard this table and rebuild it anyway.
-  nsDataHashtable<nsPtrHashKey<nsIAtom>,
+  nsDataHashtable<nsPtrHashKey<nsAtom>,
                   nsCSSCounterStyleRule*> mCounterStyleRuleTable;
 
   // Looks up or creates the appropriate list in |mAttributeSelectors|.
   // Returns null only on allocation failure.
-  nsTArray<SelectorPair>* AttributeListFor(nsIAtom* aAttribute);
+  nsTArray<SelectorPair>* AttributeListFor(nsAtom* aAttribute);
 
   nsMediaQueryResultCacheKey mCacheKey;
   RuleCascadeData*  mNext; // for a different medium
@@ -952,23 +952,13 @@ RuleCascadeData::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
   n += mFontFeatureValuesRules.ShallowSizeOfExcludingThis(aMallocSizeOf);
   n += mPageRules.ShallowSizeOfExcludingThis(aMallocSizeOf);
   n += mCounterStyleRules.ShallowSizeOfExcludingThis(aMallocSizeOf);
-
   n += mKeyframesRuleTable.ShallowSizeOfExcludingThis(aMallocSizeOf);
-  for (auto iter = mKeyframesRuleTable.ConstIter(); !iter.Done(); iter.Next()) {
-    // We don't own the nsCSSKeyframesRule objects so we don't count them. We
-    // do care about the size of the keys' nsAString members' buffers though.
-    //
-    // Note that we depend on nsStringHashKey::GetKey() returning a reference,
-    // since otherwise aKey would be a copy of the string key and we would not
-    // be measuring the right object here.
-    n += iter.Key().SizeOfExcludingThisIfUnshared(aMallocSizeOf);
-  }
 
   return n;
 }
 
 nsTArray<SelectorPair>*
-RuleCascadeData::AttributeListFor(nsIAtom* aAttribute)
+RuleCascadeData::AttributeListFor(nsAtom* aAttribute)
 {
   auto entry = static_cast<AtomSelectorEntry*>
                           (mAttributeSelectors.Add(aAttribute, fallible));
@@ -1082,7 +1072,7 @@ nsCSSRuleProcessor::InitSystemMetrics()
 
   MOZ_ASSERT(NS_IsMainThread());
 
-  sSystemMetrics = new nsTArray< nsCOMPtr<nsIAtom> >;
+  sSystemMetrics = new nsTArray< RefPtr<nsAtom> >;
 
   /***************************************************************************
    * ANY METRICS ADDED HERE SHOULD ALSO BE ADDED AS MEDIA QUERIES IN         *
@@ -1153,11 +1143,6 @@ nsCSSRuleProcessor::InitSystemMetrics()
     sSystemMetrics->AppendElement(nsGkAtoms::windows_glass);
   }
 
-  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_ColorPickerAvailable, &metricResult);
-  if (NS_SUCCEEDED(rv) && metricResult) {
-    sSystemMetrics->AppendElement(nsGkAtoms::color_picker_available);
-  }
-
   rv = LookAndFeel::GetInt(LookAndFeel::eIntID_WindowsClassic, &metricResult);
   if (NS_SUCCEEDED(rv) && metricResult) {
     sSystemMetrics->AppendElement(nsGkAtoms::windows_classic);
@@ -1174,10 +1159,28 @@ nsCSSRuleProcessor::InitSystemMetrics()
     sSystemMetrics->AppendElement(nsGkAtoms::swipe_animation_enabled);
   }
 
-  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_PhysicalHomeButton,
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDAvailable,
                            &metricResult);
   if (NS_SUCCEEDED(rv) && metricResult) {
-    sSystemMetrics->AppendElement(nsGkAtoms::physical_home_button);
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_available);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDMinimizeButton,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_minimize_button);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDMaximizeButton,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_maximize_button);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDCloseButton,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_close_button);
   }
 
 #ifdef XP_WIN
@@ -1229,7 +1232,7 @@ nsCSSRuleProcessor::Shutdown()
 }
 
 /* static */ bool
-nsCSSRuleProcessor::HasSystemMetric(nsIAtom* aMetric)
+nsCSSRuleProcessor::HasSystemMetric(nsAtom* aMetric)
 {
   nsCSSRuleProcessor::InitSystemMetrics();
   return sSystemMetrics->IndexOf(aMetric) != sSystemMetrics->NoIndex;
@@ -1670,28 +1673,9 @@ StateSelectorMatches(Element* aElement,
   return true;
 }
 
-// Chooses the thread safe version in Servo mode, and
-// the non-thread safe one in Gecko mode. The non thread safe one does
-// some extra caching, and is preferred when possible.
-static inline bool
-IsSignificantChildMaybeThreadSafe(const nsIContent* aContent,
-                                  bool aTextIsSignificant,
-                                  bool aWhitespaceIsSignificant)
-{
-  if (ServoStyleSet::IsInServoTraversal()) {
-    // See bug 1349100 for optimizing this
-    return nsStyleUtil::ThreadSafeIsSignificantChild(aContent,
-                                                     aTextIsSignificant,
-                                                     aWhitespaceIsSignificant);
-  } else {
-    auto content = const_cast<nsIContent*>(aContent);
-    return IsSignificantChild(content, aTextIsSignificant, aWhitespaceIsSignificant);
-  }
-}
-
 /* static */ bool
 nsCSSRuleProcessor::LangPseudoMatches(const mozilla::dom::Element* aElement,
-                                      const nsIAtom* aOverrideLang,
+                                      const nsAtom* aOverrideLang,
                                       bool aHasOverrideLang,
                                       const char16_t* aString,
                                       const nsIDocument* aDocument)
@@ -1724,22 +1708,12 @@ nsCSSRuleProcessor::LangPseudoMatches(const mozilla::dom::Element* aElement,
 
   nsDependentString langString(aString);
   language.StripWhitespace();
-  int32_t begin = 0;
-  int32_t len = language.Length();
-  while (begin < len) {
-    int32_t end = language.FindChar(char16_t(','), begin);
-    if (end == kNotFound) {
-      end = len;
-    }
-    if (nsStyleUtil::DashMatchCompare(Substring(language, begin, end - begin),
+  for (auto const& lang : language.Split(char16_t(','))) {
+    if (nsStyleUtil::DashMatchCompare(lang,
                                       langString,
                                       nsASCIICaseInsensitiveStringComparator())) {
       return true;
     }
-    begin = end + 1;
-  }
-  if (begin < len) {
-    return true;
   }
   return false;
 }
@@ -1749,12 +1723,9 @@ nsCSSRuleProcessor::StringPseudoMatches(const mozilla::dom::Element* aElement,
                                         CSSPseudoClassType aPseudo,
                                         const char16_t* aString,
                                         const nsIDocument* aDocument,
-                                        bool aForStyling,
                                         EventStates aStateMask,
-                                        bool* aSetSlowSelectorFlag,
                                         bool* const aDependence)
 {
-  MOZ_ASSERT(aSetSlowSelectorFlag);
 
   switch (aPseudo) {
     case CSSPseudoClassType::mozLocaleDir:
@@ -1781,41 +1752,6 @@ nsCSSRuleProcessor::StringPseudoMatches(const mozilla::dom::Element* aElement,
           }
         } else {
           // Selectors specifying other directions never match.
-          return false;
-        }
-      }
-      break;
-
-    case CSSPseudoClassType::mozSystemMetric:
-      {
-        nsCOMPtr<nsIAtom> metric = NS_Atomize(aString);
-        if (!nsCSSRuleProcessor::HasSystemMetric(metric)) {
-          return false;
-        }
-      }
-      break;
-
-    case CSSPseudoClassType::mozEmptyExceptChildrenWithLocalname:
-      {
-        NS_ASSERTION(aString, "Must have string!");
-        const nsIContent *child = nullptr;
-        int32_t index = -1;
-
-        if (aForStyling) {
-          // FIXME:  This isn't sufficient to handle:
-          //   :-moz-empty-except-children-with-localname() + E
-          //   :-moz-empty-except-children-with-localname() ~ E
-          // because we don't know to restyle the grandparent of the
-          // inserted/removed element (as in bug 534804 for :empty).
-          *aSetSlowSelectorFlag = true;
-        }
-        do {
-          child = aElement->GetChildAt(++index);
-        } while (child &&
-                  (!IsSignificantChildMaybeThreadSafe(child, true, false) ||
-                  (child->GetNameSpaceID() == aElement->GetNameSpaceID() &&
-                    child->NodeInfo()->NameAtom()->Equals(nsDependentString(aString)))));
-        if (child) {
           return false;
         }
       }
@@ -1894,7 +1830,7 @@ static bool SelectorMatches(Element* aElement,
     return false;
 
   if (aSelector->mLowercaseTag) {
-    nsIAtom* selectorTag =
+    nsAtom* selectorTag =
       (aTreeMatchContext.mIsHTMLDocument && aElement->IsHTMLElement()) ?
         aSelector->mLowercaseTag : aSelector->mCasedTag;
     if (selectorTag != aElement->NodeInfo()->NameAtom()) {
@@ -1904,7 +1840,7 @@ static bool SelectorMatches(Element* aElement,
 
   nsAtomList* IDList = aSelector->mIDList;
   if (IDList) {
-    nsIAtom* id = aElement->GetID();
+    nsAtom* id = aElement->GetID();
     if (id) {
       // case sensitivity: bug 93371
       const bool isCaseSensitive =
@@ -2203,18 +2139,12 @@ static bool SelectorMatches(Element* aElement,
     default:
       {
         MOZ_ASSERT(nsCSSPseudoClasses::HasStringArg(pseudoClass->mType));
-        bool setSlowSelectorFlag = false;
         bool matched = nsCSSRuleProcessor::StringPseudoMatches(aElement,
                                                                pseudoClass->mType,
                                                                pseudoClass->u.mString,
                                                                aTreeMatchContext.mDocument,
-                                                               aTreeMatchContext.mForStyling,
                                                                aNodeMatchContext.mStateMask,
-                                                               &setSlowSelectorFlag,
                                                                aDependence);
-        if (setSlowSelectorFlag) {
-          aElement->SetFlags(NODE_HAS_SLOW_SELECTOR);
-        }
 
         if (!matched) {
           return false;
@@ -2232,7 +2162,7 @@ static bool SelectorMatches(Element* aElement,
     }
     result = true;
     nsAttrSelector* attr = aSelector->mAttrList;
-    nsIAtom* matchAttribute;
+    nsAtom* matchAttribute;
 
     do {
       bool isHTML =
@@ -2398,6 +2328,20 @@ enum SelectorMatchesTreeFlags {
   eMatchOnConditionalRestyleAncestor = 0x2,
 };
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#define ASSERT_XBL_CHILDREN_HACK() do {                                     \
+  if (MOZ_UNLIKELY(xblChildrenMatched)) {                                   \
+    nsAutoString selectorString;                                            \
+    aSelector->ToString(selectorString, nullptr, false);                    \
+    MOZ_CRASH_UNSAFE_PRINTF("XBL compat hack matched, please file a bug "   \
+                            "blocking bug 1374247. Selector: %s",           \
+                            NS_ConvertUTF16toUTF8(selectorString).get());   \
+  }                                                                         \
+} while (0)
+#else
+#define ASSERT_XBL_CHILDREN_HACK() do { /* nothing */ } while (0)
+#endif
+
 static bool
 SelectorMatchesTree(Element* aPrevElement,
                     nsCSSSelector* aSelector,
@@ -2407,6 +2351,8 @@ SelectorMatchesTree(Element* aPrevElement,
   MOZ_ASSERT(!aSelector || !aSelector->IsPseudoElement());
   nsCSSSelector* selector = aSelector;
   Element* prevElement = aPrevElement;
+  bool xblChildrenMatched = false;
+
   while (selector) { // check compound selectors
     NS_ASSERTION(!selector->mNext ||
                  selector->mNext->mOperator != char16_t(0),
@@ -2416,6 +2362,7 @@ SelectorMatchesTree(Element* aPrevElement,
     // current style scope, we don't need to match any further.
     if (aTreeMatchContext.mForScopedStyle &&
         !aTreeMatchContext.IsWithinStyleScopeForSelectorMatching()) {
+      ASSERT_XBL_CHILDREN_HACK();
       return false;
     }
 
@@ -2462,12 +2409,17 @@ SelectorMatchesTree(Element* aPrevElement,
         // matching to work.
         if (selector->mOperator == '>' && element->IsActiveChildrenElement()) {
           Element* styleScope = aTreeMatchContext.mCurrentStyleScope;
-          if (SelectorMatchesTree(element, selector, aTreeMatchContext,
-                                  aFlags)) {
+          xblChildrenMatched |=
+            SelectorMatchesTree(element, selector, aTreeMatchContext, aFlags);
+
+#ifndef EARLY_BETA_OR_EARLIER
+          if (xblChildrenMatched) {
             // It matched, don't try matching on the <xbl:children> element at
             // all.
             return true;
           }
+#endif
+
           // We want to reset mCurrentStyleScope on aTreeMatchContext
           // back to its state before the SelectorMatchesTree call, in
           // case that call happens to traverse past the style scope element
@@ -2477,6 +2429,7 @@ SelectorMatchesTree(Element* aPrevElement,
       }
     }
     if (!element) {
+      ASSERT_XBL_CHILDREN_HACK();
       return false;
     }
     if ((aFlags & eMatchOnConditionalRestyleAncestor) &&
@@ -2543,6 +2496,7 @@ SelectorMatchesTree(Element* aPrevElement,
       // for adjacent sibling and child combinators, if we didn't find
       // a match, we're done
       if (!NS_IS_GREEDY_OPERATOR(selector->mOperator)) {
+        ASSERT_XBL_CHILDREN_HACK();
         return false;  // parent was required to match
       }
     }
@@ -2550,6 +2504,8 @@ SelectorMatchesTree(Element* aPrevElement,
   }
   return true; // all the selectors matched.
 }
+
+#undef ASSERT_XBL_CHILDREN_HACK
 
 static inline
 void ContentEnumFunc(const RuleValue& value, nsCSSSelector* aSelector,
@@ -2666,6 +2622,22 @@ nsCSSRuleProcessor::RulesMatching(AnonBoxRuleProcessorData* aData)
 }
 
 #ifdef MOZ_XUL
+static bool
+XULTreePseudoMatches(nsCSSSelector* aSelector, const AtomArray& aInputWord)
+{
+  // Iterate the class list.  For each item in the list, see if
+  // it is contained in our scratch array.  If we have a miss, then
+  // we aren't a match.  If all items in the class list are
+  // present in the scratch array, then we have a match.
+  nsAtomList* curr = aSelector->mClassList;
+  while (curr) {
+    if (!aInputWord.Contains(curr->mAtom))
+      return false;
+    curr = curr->mNext;
+  }
+  return true;
+}
+
 /* virtual */ void
 nsCSSRuleProcessor::RulesMatching(XULTreeRuleProcessorData* aData)
 {
@@ -2680,7 +2652,7 @@ nsCSSRuleProcessor::RulesMatching(XULTreeRuleProcessorData* aData)
       nsTArray<RuleValue>& rules = entry->mRules;
       for (RuleValue *value = rules.Elements(), *end = value + rules.Length();
            value != end; ++value) {
-        if (aData->mComparator->PseudoMatches(value->mSelector)) {
+        if (XULTreePseudoMatches(value->mSelector, aData->mInputWord)) {
           ContentEnumFunc(*value, value->mSelector->mNext, aData, nodeContext,
                           nullptr);
         }
@@ -2990,7 +2962,7 @@ nsCSSRuleProcessor::HasAttributeDependentStyle(
   // ones we might have started matching.
   if (cascade) {
     if (aData->mAttribute == nsGkAtoms::id) {
-      nsIAtom* id = aData->mElement->GetID();
+      nsAtom* id = aData->mElement->GetID();
       if (id) {
         auto entry =
           static_cast<AtomSelectorEntry*>(cascade->mIdSelectors.Search(id));
@@ -3019,7 +2991,7 @@ nsCSSRuleProcessor::HasAttributeDependentStyle(
       if (elementClasses) {
         int32_t atomCount = elementClasses->GetAtomCount();
         if (atomCount > 0) {
-          nsTHashtable<nsPtrHashKey<nsIAtom>> otherClassesTable;
+          nsTHashtable<nsPtrHashKey<nsAtom>> otherClassesTable;
           if (otherClasses) {
             int32_t otherClassesCount = otherClasses->GetAtomCount();
             for (int32_t i = 0; i < otherClassesCount; ++i) {
@@ -3027,7 +2999,7 @@ nsCSSRuleProcessor::HasAttributeDependentStyle(
             }
           }
           for (int32_t i = 0; i < atomCount; ++i) {
-            nsIAtom* curClass = elementClasses->AtomAt(i);
+            nsAtom* curClass = elementClasses->AtomAt(i);
             if (!otherClassesTable.Contains(curClass)) {
               auto entry =
                 static_cast<AtomSelectorEntry*>
@@ -3157,7 +3129,7 @@ nsCSSRuleProcessor::AppendFontFaceRules(
 
 nsCSSKeyframesRule*
 nsCSSRuleProcessor::KeyframesRuleForName(nsPresContext* aPresContext,
-                                         const nsString& aName)
+                                         const nsAtom* aName)
 {
   RuleCascadeData* cascade = GetRuleCascade(aPresContext);
 
@@ -3170,7 +3142,7 @@ nsCSSRuleProcessor::KeyframesRuleForName(nsPresContext* aPresContext,
 
 nsCSSCounterStyleRule*
 nsCSSRuleProcessor::CounterStyleRuleForName(nsPresContext* aPresContext,
-                                            nsIAtom* aName)
+                                            nsAtom* aName)
 {
   RuleCascadeData* cascade = GetRuleCascade(aPresContext);
 
@@ -4093,7 +4065,7 @@ AncestorFilter::PushAncestor(Element *aElement)
   mElements.AppendElement(aElement);
 #endif
   mHashes.AppendElement(aElement->NodeInfo()->NameAtom()->hash());
-  nsIAtom *id = aElement->GetID();
+  nsAtom *id = aElement->GetID();
   if (id) {
     mHashes.AppendElement(id->hash());
   }

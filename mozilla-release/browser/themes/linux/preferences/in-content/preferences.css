@@ -10,12 +10,12 @@ window * {
   font-size: 1.11rem;
 }
 
-caption > label:not(.dialogTitle) {
+caption label:not(.dialogTitle) {
   font-size: 1.27rem;
 }
 
 .tip-caption,
-.help-button {
+.help-label {
   font-size: 1rem;
 }
 
@@ -38,11 +38,6 @@ caption > label:not(.dialogTitle) {
 
 .actionsMenu > .menulist-label-box > .menulist-label {
   margin-top: 2px !important;
-}
-
-menulist.actionsMenu > .menulist-dropmarker {
-  margin-top: 11px;
-  margin-bottom: 11px;
 }
 
 filefield + button {

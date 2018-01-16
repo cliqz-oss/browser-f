@@ -11,7 +11,7 @@
  * netwerk/base/ classes
  */
 
-// service implementing nsIIOService and nsIIOService2.
+// service implementing nsIIOService
 #define NS_IOSERVICE_CONTRACTID \
     "@mozilla.org/network/io-service;1"
 #define NS_IOSERVICE_CID                             \
@@ -111,18 +111,6 @@
     0x8034,                                          \
     0x11d3,                                          \
     {0x93, 0x99, 0x00, 0x10, 0x4b, 0xa0, 0xfd, 0x40} \
-}
-
-// compoenent implementing nsIStandardURL, nsIURI, nsIURL
-// future replacement for nsStandardURL
-#define NS_RUSTURL_CONTRACTID \
-    "@mozilla.org/network/rust-url;1"
-#define NS_RUSTURL_CID                               \
-{ /* fd2d9f76-b34a-459e-b80e-447b03a1283a */         \
-    0xfd2d9f76,                                      \
-    0xb34a,                                          \
-    0x459e,                                          \
-    {0xb8, 0x0e, 0x44, 0x7b, 0x03, 0xa1, 0x28, 0x3a} \
 }
 
 // service implementing nsIURLParser that assumes the URL will NOT contain an
@@ -713,17 +701,6 @@
 }
 
 /******************************************************************************
- * netwerk/protocol/device classes
- */
-#define NS_DEVICEPROTOCOLHANDLER_CID                 \
-{ /* 6b0ffe9e-d114-486b-aeb7-da62e7273ed5 */         \
-    0x60ffe9e,                                       \
-    0xd114,                                          \
-    0x486b,                                          \
-    {0xae, 0xb7, 0xda, 0x62, 0xe7, 0x27, 0x3e, 0xd5} \
-}
-
-/******************************************************************************
  * netwerk/protocol/viewsource/ classes
  */
 
@@ -913,7 +890,7 @@
  * netwerk/cookie classes
  */
 
-// service implementing nsICookieManager and nsICookieManager2.
+// service implementing nsICookieManager
 #define NS_COOKIEMANAGER_CONTRACTID \
     "@mozilla.org/cookiemanager;1"
 #define NS_COOKIEMANAGER_CID                           \

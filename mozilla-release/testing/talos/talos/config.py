@@ -6,6 +6,7 @@ from __future__ import absolute_import, print_function
 import copy
 import os
 import sys
+import time
 
 from mozlog.commandline import setup_logging
 from talos import utils, test
@@ -15,6 +16,8 @@ from talos.cmdline import parse_args
 class ConfigurationError(Exception):
     pass
 
+
+FAR_IN_FUTURE = 7258114800
 
 DEFAULTS = dict(
     # args to pass to browser
@@ -27,12 +30,10 @@ DEFAULTS = dict(
         cycles=1,
         profile_path='${talos}/base_profile',
         responsiveness=False,
-        e10s=False,
         gecko_profile=False,
         gecko_profile_interval=1,
         gecko_profile_entries=100000,
         resolution=1,
-        rss=False,
         mainthread=False,
         shutdown=False,
         timeout=3600,
@@ -41,10 +42,10 @@ DEFAULTS = dict(
         tpmozafterpaint=False,
         fnbpaint=False,
         firstpaint=False,
+        format_pagename=True,
         userready=False,
         testeventmap=[],
         base_vs_ref=False,
-        tpdisable_e10s=False,
         tpnoisy=True,
         tppagecycles=1,
         tploadnocache=False,
@@ -92,6 +93,9 @@ DEFAULTS = dict(
         'network.proxy.http': 'localhost',
         'network.proxy.http_port': 80,
         'network.proxy.type': 1,
+        # Bug 1383896 - reduces noise in tests
+        'idle.lastDailyNotification': int(time.time()),
+        'places.database.lastMaintenance': FAR_IN_FUTURE,
         'security.enable_java': False,
         'security.fileuri.strict_origin_policy': False,
         'dom.send_after_paint_to_content': True,
@@ -99,6 +103,7 @@ DEFAULTS = dict(
         'take_over_this_computer': True,
         'browser.newtabpage.activity-stream.default.sites': '',
         'browser.newtabpage.activity-stream.telemetry': False,
+        'browser.newtabpage.activity-stream.tippyTop.service.endpoint': '',
         'browser.newtabpage.activity-stream.feeds.section.topstories': False,
         'browser.newtabpage.activity-stream.feeds.snippets': False,
         'browser.newtabpage.directory.source':
@@ -131,6 +136,7 @@ DEFAULTS = dict(
         'privacy.trackingprotection.pbmode.enabled': False,
         'browser.search.isUS': True,
         'browser.search.countryCode': 'US',
+        'browser.search.geoip.url': '',
         'browser.urlbar.userMadeSearchSuggestionsChoice': True,
         'extensions.update.url':
             'http://127.0.0.1/extensions-dummy/updateURL',
@@ -211,8 +217,6 @@ GLOBAL_OVERRIDES = (
     'gecko_profile',
     'gecko_profile_interval',
     'gecko_profile_entries',
-    'mainthread',
-    'rss',
     'shutdown',
     'tpcycles',
     'tpdelay',
@@ -286,15 +290,7 @@ def set_webserver(config):
 
 @validator
 def update_prefs(config):
-    # if e10s is enabled, set prefs accordingly
-    if config['e10s']:
-        config['preferences']['browser.tabs.remote.autostart'] = True
-        config['preferences']['extensions.e10sBlocksEnabling'] = False
-    else:
-        config['preferences']['browser.tabs.remote.autostart'] = False
-        config['preferences']['browser.tabs.remote.autostart.1'] = False
-        config['preferences']['browser.tabs.remote.autostart.2'] = False
-
+    config['preferences']['browser.tabs.remote.autostart'] = True
     # update prefs from command line
     prefs = config.pop('extraPrefs')
     if prefs:
@@ -311,8 +307,6 @@ def fix_init_url(config):
 
 def get_counters(config):
     counters = set()
-    if config['rss']:
-        counters.add('Main_RSS')
     return counters
 
 
@@ -439,7 +433,6 @@ def get_browser_config(config):
                 'branch_name': '',
                 'child_process': 'plugin-container',
                 'develop': False,
-                'e10s': False,
                 'process': '',
                 'framework': 'talos',
                 'repository': None,
@@ -452,6 +445,7 @@ def get_browser_config(config):
                 'enable_stylo': False,
                 'disable_stylo': False,
                 'stylothreads': 0,
+                'subtests': None,
                 }
     browser_config = dict(title=config['title'])
     browser_config.update(dict([(i, config[i]) for i in required]))

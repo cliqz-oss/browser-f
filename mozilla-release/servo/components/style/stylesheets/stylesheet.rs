@@ -18,7 +18,7 @@ use servo_arc::Arc;
 use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked, SharedRwLock, SharedRwLockReadGuard};
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
-use style_traits::PARSING_MODE_DEFAULT;
+use style_traits::ParsingMode;
 use stylesheets::{CssRule, CssRules, Origin, UrlExtraData};
 use stylesheets::loader::StylesheetLoader;
 use stylesheets::rule_parser::{State, TopLevelRuleParser};
@@ -38,7 +38,7 @@ pub struct UserAgentStylesheets {
 /// A set of namespaces applying to a given stylesheet.
 ///
 /// The namespace id is used in gecko
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, MallocSizeOf)]
 #[allow(missing_docs)]
 pub struct Namespaces {
     pub default: Option<(Namespace, NamespaceId)>,
@@ -275,9 +275,9 @@ impl StylesheetInDocument for Stylesheet {
 /// A simple wrapper over an `Arc<Stylesheet>`, with pointer comparison, and
 /// suitable for its use in a `StylesheetSet`.
 #[derive(Clone)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub struct DocumentStyleSheet(
-    #[cfg_attr(feature = "servo", ignore_heap_size_of = "Arc")]
+    #[cfg_attr(feature = "servo", ignore_malloc_size_of = "Arc")]
     pub Arc<Stylesheet>
 );
 
@@ -364,7 +364,7 @@ impl Stylesheet {
                 origin,
                 url_data,
                 None,
-                PARSING_MODE_DEFAULT,
+                ParsingMode::DEFAULT,
                 quirks_mode
             );
         let error_context = ParserErrorContext { error_reporter };
@@ -394,10 +394,11 @@ impl Stylesheet {
                             break;
                         }
                     },
-                    Err(err) => {
-                        let error = ContextualParseError::InvalidRule(err.slice, err.error);
+                    Err((error, slice)) => {
+                        let location = error.location;
+                        let error = ContextualParseError::InvalidRule(slice, error);
                         iter.parser.context.log_css_error(&iter.parser.error_context,
-                                                          err.location, error);
+                                                          location, error);
                     }
                 }
             }

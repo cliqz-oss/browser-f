@@ -28,7 +28,6 @@
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "nsClassHashtable.h"
 #include "nsDataHashtable.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
 #include "nsRefPtrHashtable.h"
 #include "nsTArrayForwardDeclare.h"
 #include "nsTObserverArray.h"
@@ -83,7 +82,6 @@ public:
  */
 class ServiceWorkerManager final
   : public nsIServiceWorkerManager
-  , public nsIIPCBackgroundChildCreateCallback
   , public nsIObserver
 {
   friend class GetReadyPromiseRunnable;
@@ -98,7 +96,6 @@ class ServiceWorkerManager final
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSISERVICEWORKERMANAGER
-  NS_DECL_NSIIPCBACKGROUNDCHILDCREATECALLBACK
   NS_DECL_NSIOBSERVER
 
   struct RegistrationDataPerPrincipal;
@@ -336,6 +333,9 @@ public:
   void
   WorkerIsIdle(ServiceWorkerInfo* aWorker);
 
+  void
+  CheckPendingReadyPromises();
+
 private:
   ServiceWorkerManager();
   ~ServiceWorkerManager();
@@ -446,9 +446,6 @@ private:
   StorePendingReadyPromise(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
                            Promise* aPromise);
 
-  void
-  CheckPendingReadyPromises();
-
   bool
   CheckReadyPromise(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
                     Promise* aPromise);
@@ -463,13 +460,6 @@ private:
     RefPtr<Promise> mPromise;
   };
 
-  void AppendPendingOperation(nsIRunnable* aRunnable);
-
-  bool HasBackgroundActor() const
-  {
-    return !!mActor;
-  }
-
   nsClassHashtable<nsISupportsHashKey, PendingReadyPromise> mPendingReadyPromises;
 
   void
@@ -480,8 +470,6 @@ private:
   RemoveAllRegistrations(OriginAttributesPattern* aPattern);
 
   RefPtr<ServiceWorkerManagerChild> mActor;
-
-  nsTArray<nsCOMPtr<nsIRunnable>> mPendingOperations;
 
   bool mShuttingDown;
 

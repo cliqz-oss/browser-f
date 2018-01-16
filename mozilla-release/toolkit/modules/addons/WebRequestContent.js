@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Managed via the message managers.
-/* global initialProcessData */
+/* globals MatchPatternSet, initialProcessData */
 
 "use strict";
 
@@ -15,8 +15,6 @@ var Cr = Components.results;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "MatchPattern",
-                                  "resource://gre/modules/MatchPattern.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "WebRequestCommon",
                                   "resource://gre/modules/WebRequestCommon.jsm");
 
@@ -53,7 +51,7 @@ var ContentPolicy = {
       this.register();
     }
     if (filter.urls) {
-      filter.urls = new MatchPattern(filter.urls);
+      filter.urls = new MatchPatternSet(filter.urls);
     }
     this.contentPolicies.set(id, {blocking, filter});
   },
@@ -118,6 +116,7 @@ var ContentPolicy = {
 
     let windowId = 0;
     let parentWindowId = -1;
+    let frameAncestors = [];
     let mm = Services.cpmm;
 
     function getWindowId(window) {
@@ -152,6 +151,18 @@ var ContentPolicy = {
       windowId = getWindowId(window);
       if (window.parent !== window) {
         parentWindowId = getWindowId(window.parent);
+
+        for (let frame = window.parent; ; frame = frame.parent) {
+          frameAncestors.push({
+            url: frame.document.documentURIObject.spec,
+            frameId: getWindowId(frame),
+          });
+          if (frame === frame.parent) {
+            // Set the last frameId to zero for top level frame.
+            frameAncestors[frameAncestors.length - 1].frameId = 0;
+            break;
+          }
+        }
       }
 
       let ir = window.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -172,8 +183,14 @@ var ContentPolicy = {
                 type: WebRequestCommon.typeForPolicyType(policyType),
                 windowId,
                 parentWindowId};
+    if (frameAncestors.length > 0) {
+      data.frameAncestors = frameAncestors;
+    }
     if (requestOrigin) {
-      data.originUrl = requestOrigin.spec;
+      data.documentUrl = requestOrigin.spec;
+    }
+    if (requestPrincipal && requestPrincipal.URI) {
+      data.originUrl = requestPrincipal.URI.spec;
     }
     mm.sendAsyncMessage("WebRequest:ShouldLoad", data);
 

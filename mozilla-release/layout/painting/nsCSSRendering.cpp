@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -60,7 +60,6 @@
 #include "nsRubyTextContainerFrame.h"
 #include <algorithm>
 #include "SVGImageContext.h"
-#include "mozilla/layers/WebRenderDisplayItemLayer.h"
 #include "TextDrawTarget.h"
 
 using namespace mozilla;
@@ -668,6 +667,7 @@ nsCSSRendering::CreateBorderRenderer(nsPresContext* aPresContext,
                                      const nsRect& aDirtyRect,
                                      const nsRect& aBorderArea,
                                      nsStyleContext* aStyleContext,
+                                     bool* aOutBorderIsEmpty,
                                      Sides aSkipSides)
 {
   nsStyleContext *styleIfVisited = aStyleContext->GetStyleIfVisited();
@@ -678,7 +678,8 @@ nsCSSRendering::CreateBorderRenderer(nsPresContext* aPresContext,
     return CreateBorderRendererWithStyleBorder(aPresContext, aDrawTarget,
                                                aForFrame, aDirtyRect,
                                                aBorderArea, *styleBorder,
-                                               aStyleContext, aSkipSides);
+                                               aStyleContext, aOutBorderIsEmpty,
+                                               aSkipSides);
   }
 
   nsStyleBorder newStyleBorder(*styleBorder);
@@ -691,7 +692,100 @@ nsCSSRendering::CreateBorderRenderer(nsPresContext* aPresContext,
   return CreateBorderRendererWithStyleBorder(aPresContext, aDrawTarget,
                                              aForFrame, aDirtyRect, aBorderArea,
                                              newStyleBorder, aStyleContext,
-                                             aSkipSides);
+                                             aOutBorderIsEmpty, aSkipSides);
+}
+
+
+bool
+nsCSSRendering::CreateWebRenderCommandsForBorder(nsDisplayItem* aItem,
+                                                 nsIFrame* aForFrame,
+                                                 const nsRect& aBorderArea,
+                                                 mozilla::wr::DisplayListBuilder& aBuilder,
+                                                 mozilla::wr::IpcResourceUpdateQueue& aResources,
+                                                 const mozilla::layers::StackingContextHelper& aSc,
+                                                 mozilla::layers::WebRenderLayerManager* aManager,
+                                                 nsDisplayListBuilder* aDisplayListBuilder)
+{
+  // First try to draw a normal border
+  {
+    bool borderIsEmpty = false;
+    Maybe<nsCSSBorderRenderer> br =
+      nsCSSRendering::CreateBorderRenderer(aForFrame->PresContext(),
+                                           nullptr,
+                                           aForFrame,
+                                           nsRect(),
+                                           aBorderArea,
+                                           aForFrame->StyleContext(),
+                                           &borderIsEmpty,
+                                           aForFrame->GetSkipSides());
+    if (borderIsEmpty) {
+      return true;
+    }
+
+    if (br) {
+      if (!br->CanCreateWebRenderCommands()) {
+        return false;
+      }
+      br->CreateWebRenderCommands(aItem, aBuilder, aResources, aSc);
+      return true;
+    }
+  }
+
+  // Next try to draw an image border
+  const nsStyleBorder *styleBorder = aForFrame->StyleContext()->StyleBorder();
+  const nsStyleImage* image = &styleBorder->mBorderImageSource;
+
+  // Filter out unsupported image/border types
+  if (!image) {
+    return false;
+  }
+
+  // All this code bitrotted too much (but is almost right); disabled for now.
+  bool imageTypeSupported = false;
+  // FIXME(1409773): fix this: image->GetType() == eStyleImageType_Image
+  // FIXME(1409774): fix this: image->GetType() == eStyleImageType_Gradient;
+
+  if (!imageTypeSupported) {
+    return false;
+  }
+
+  if (styleBorder->mBorderImageRepeatH == NS_STYLE_BORDER_IMAGE_REPEAT_ROUND ||
+      styleBorder->mBorderImageRepeatH == NS_STYLE_BORDER_IMAGE_REPEAT_SPACE ||
+      styleBorder->mBorderImageRepeatV == NS_STYLE_BORDER_IMAGE_REPEAT_ROUND ||
+      styleBorder->mBorderImageRepeatV == NS_STYLE_BORDER_IMAGE_REPEAT_SPACE) {
+    return false;
+  }
+
+
+  uint32_t flags = 0;
+  if (aDisplayListBuilder->ShouldSyncDecodeImages()) {
+    flags |= nsImageRenderer::FLAG_SYNC_DECODE_IMAGES;
+  }
+
+  image::DrawResult result;
+  Maybe<nsCSSBorderImageRenderer> bir =
+    nsCSSBorderImageRenderer::CreateBorderImageRenderer(aForFrame->PresContext(),
+                                                        aForFrame,
+                                                        aBorderArea,
+                                                        *styleBorder,
+                                                        aItem->GetVisibleRect(),
+                                                        aForFrame->GetSkipSides(),
+                                                        flags,
+                                                        &result);
+
+  if (!bir) {
+    return false;
+  }
+
+  if (image->GetType() == eStyleImageType_Image &&
+      !bir->mImageRenderer.IsImageContainerAvailable(aManager, flags)) {
+    return false;
+  }
+
+  bir->CreateWebRenderCommands(aItem, aForFrame, aBuilder, aResources, aSc,
+                               aManager, aDisplayListBuilder);
+
+  return true;
 }
 
 nsCSSBorderRenderer
@@ -787,7 +881,8 @@ ConstructBorderRenderer(nsPresContext* aPresContext,
                              borderColors,
                              aStyleBorder.mBorderColors.get(),
                              bgColor,
-                             !aForFrame->BackfaceIsHidden());
+                             !aForFrame->BackfaceIsHidden(),
+                             *aNeedsClip ? Some(NSRectToRect(aBorderArea, oneDevPixel)) : Nothing());
 }
 
 
@@ -894,6 +989,7 @@ nsCSSRendering::CreateBorderRendererWithStyleBorder(nsPresContext* aPresContext,
                                                     const nsRect& aBorderArea,
                                                     const nsStyleBorder& aStyleBorder,
                                                     nsStyleContext* aStyleContext,
+                                                    bool* aOutBorderIsEmpty,
                                                     Sides aSkipSides)
 {
   const nsStyleDisplay* displayData = aStyleContext->StyleDisplay();
@@ -914,6 +1010,9 @@ nsCSSRendering::CreateBorderRendererWithStyleBorder(nsPresContext* aPresContext,
   if (0 == border.left && 0 == border.right &&
       0 == border.top  && 0 == border.bottom) {
     // Empty border area
+    if (aOutBorderIsEmpty) {
+      *aOutBorderIsEmpty = true;
+    }
     return Nothing();
   }
 
@@ -927,9 +1026,6 @@ nsCSSRendering::CreateBorderRendererWithStyleBorder(nsPresContext* aPresContext,
                                                    aStyleBorder,
                                                    aSkipSides,
                                                    &needsClip);
-  if (needsClip) {
-    return Nothing();
-  }
   return Some(br);
 }
 
@@ -1067,7 +1163,8 @@ nsCSSRendering::CreateBorderRendererForOutline(nsPresContext* aPresContext,
                          outlineColors,
                          nullptr,
                          bgColor,
-                         !aForFrame->BackfaceIsHidden());
+                         !aForFrame->BackfaceIsHidden(),
+                         Nothing());
 
   return Some(br);
 }
@@ -1143,7 +1240,8 @@ nsCSSRendering::PaintFocus(nsPresContext* aPresContext,
                          focusColors,
                          nullptr,
                          NS_RGB(255, 0, 0),
-                         true);
+                         true,
+                         Nothing());
   br.DrawBorders();
 
   PrintAsStringNewline();
@@ -1321,15 +1419,12 @@ nsCSSRendering::FindRootFrameBackground(nsIFrame* aForFrame)
 }
 
 inline bool
-FindElementBackground(nsIFrame* aForFrame, nsIFrame* aRootElementFrame,
-                      nsStyleContext** aBackgroundSC)
+FindElementBackground(nsIFrame* aForFrame, nsIFrame* aRootElementFrame)
 {
   if (aForFrame == aRootElementFrame) {
     // We must have propagated our background to the viewport or canvas. Abort.
     return false;
   }
-
-  *aBackgroundSC = aForFrame->StyleContext();
 
   // Return true unless the frame is for a BODY element whose background
   // was propagated to the viewport.
@@ -1361,17 +1456,30 @@ FindElementBackground(nsIFrame* aForFrame, nsIFrame* aRootElementFrame,
 }
 
 bool
+nsCSSRendering::FindBackgroundFrame(nsIFrame* aForFrame,
+                                    nsIFrame** aBackgroundFrame)
+{
+  nsIFrame* rootElementFrame =
+    aForFrame->PresShell()->FrameConstructor()->GetRootElementStyleFrame();
+  if (IsCanvasFrame(aForFrame)) {
+    *aBackgroundFrame = FindCanvasBackgroundFrame(aForFrame, rootElementFrame);
+    return true;
+  } else {
+    *aBackgroundFrame = aForFrame;
+    return FindElementBackground(aForFrame, rootElementFrame);
+  }
+}
+
+bool
 nsCSSRendering::FindBackground(nsIFrame* aForFrame,
                                nsStyleContext** aBackgroundSC)
 {
-  nsIFrame* rootElementFrame =
-    aForFrame->PresContext()->PresShell()->FrameConstructor()->GetRootElementStyleFrame();
-  if (IsCanvasFrame(aForFrame)) {
-    *aBackgroundSC = FindCanvasBackground(aForFrame, rootElementFrame);
+  nsIFrame *backgroundFrame = nullptr;
+  if (FindBackgroundFrame(aForFrame, &backgroundFrame)) {
+    *aBackgroundSC = backgroundFrame->StyleContext();
     return true;
-  } else {
-    return FindElementBackground(aForFrame, rootElementFrame, aBackgroundSC);
   }
+  return false;
 }
 
 void
@@ -1577,8 +1685,8 @@ nsCSSRendering::PaintBoxShadowOuter(nsPresContext* aPresContext,
         nsLayoutUtils::PointToGfxPoint(nsPoint(shadowItem->mXOffset,
                                                shadowItem->mYOffset),
                                        aPresContext->AppUnitsPerDevPixel());
-      shadowContext->SetMatrix(
-        shadowContext->CurrentMatrix().PreTranslate(devPixelOffset));
+      shadowContext->SetMatrixDouble(
+        shadowContext->CurrentMatrixDouble().PreTranslate(devPixelOffset));
 
       nsRect nativeRect = aDirtyRect;
       nativeRect.MoveBy(-nsPoint(shadowItem->mXOffset, shadowItem->mYOffset));
@@ -2000,7 +2108,6 @@ nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayer(const PaintBGParams
                                                              mozilla::wr::DisplayListBuilder& aBuilder,
                                                              mozilla::wr::IpcResourceUpdateQueue& aResources,
                                                              const mozilla::layers::StackingContextHelper& aSc,
-                                                             mozilla::layers::WebRenderDisplayItemLayer* aLayer,
                                                              mozilla::layers::WebRenderLayerManager* aManager,
                                                              nsDisplayItem* aItem)
 {
@@ -2026,7 +2133,7 @@ nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayer(const PaintBGParams
     sc = aParams.frame->StyleContext();
   }
   return BuildWebRenderDisplayItemsForStyleImageLayerWithSC(aParams, aBuilder, aResources, aSc,
-                                                            aLayer, aManager, aItem,
+                                                            aManager, aItem,
                                                             sc, *aParams.frame->StyleBorder());
 }
 
@@ -2153,11 +2260,6 @@ nsCSSRendering::GetImageLayerClip(const nsStyleImageLayers::Layer& aLayer,
                                   bool aWillPaintBorder, nscoord aAppUnitsPerPixel,
                                   /* out */ ImageLayerClipState* aClipState)
 {
-  aClipState->mHasRoundedCorners = false;
-  aClipState->mHasAdditionalBGClipArea = false;
-  aClipState->mAdditionalBGClipArea.SetEmpty();
-  aClipState->mCustomClip = false;
-
   StyleGeometryBox layerClip = ComputeBoxValue(aForFrame, aLayer.mClip);
   if (IsSVGStyleGeometryBox(layerClip)) {
     MOZ_ASSERT(aForFrame->IsFrameOfType(nsIFrame::eSVG) &&
@@ -2678,15 +2780,18 @@ nsCSSRendering::PaintStyleImageLayerWithSC(const PaintBGParams& aParams,
       bool isBottomLayer = (i == layers.mImageCount - 1);
       if (currentBackgroundClip != layer.mClip || isBottomLayer) {
         currentBackgroundClip = layer.mClip;
-        // For  the bottom layer, we already called GetImageLayerClip above
-        // and it stored its results in clipState.
-        if (!isBottomLayer) {
+        ImageLayerClipState currentLayerClipState;
+        if (isBottomLayer) {
+          currentLayerClipState = clipState;
+        } else {
+          // For the bottom layer, we already called GetImageLayerClip above
+          // and it stored its results in clipState.
           GetImageLayerClip(layer, aParams.frame,
                             aBorder, aParams.borderArea, aParams.dirtyRect,
                             (aParams.paintFlags & PAINTBG_WILL_PAINT_BORDER),
-                            appUnitsPerPixel, &clipState);
+                            appUnitsPerPixel, &currentLayerClipState);
         }
-        SetupImageLayerClip(clipState, &aRenderingCtx,
+        SetupImageLayerClip(currentLayerClipState, &aRenderingCtx,
                             appUnitsPerPixel, &autoSR);
         if (!clipBorderArea.IsEqualEdges(aParams.borderArea)) {
           // We're drawing the background for the joined continuation boxes
@@ -2749,7 +2854,6 @@ nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayerWithSC(const PaintBG
                                                                    mozilla::wr::DisplayListBuilder& aBuilder,
                                                                    mozilla::wr::IpcResourceUpdateQueue& aResources,
                                                                    const mozilla::layers::StackingContextHelper& aSc,
-                                                                   mozilla::layers::WebRenderDisplayItemLayer* aLayer,
                                                                    mozilla::layers::WebRenderLayerManager* aManager,
                                                                    nsDisplayItem* aItem,
                                                                    nsStyleContext *aBackgroundSC,
@@ -2792,7 +2896,7 @@ nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayerWithSC(const PaintBG
   if (!state.mFillArea.IsEmpty()) {
     return state.mImageRenderer.BuildWebRenderDisplayItemsForLayer(&aParams.presCtx,
                                      aBuilder, aResources, aSc,
-                                     aLayer, aManager, aItem,
+                                     aManager, aItem,
                                      state.mDestArea, state.mFillArea,
                                      state.mAnchor + paintBorderArea.TopLeft(),
                                      clipState.mDirtyRectInAppUnits,
@@ -3829,6 +3933,11 @@ nsCSSRendering::PaintDecorationLine(nsIFrame* aFrame, DrawTarget& aDrawTarget,
 
   AutoPopClips autoPopClips(&aDrawTarget);
 
+  mozilla::layout::TextDrawTarget* textDrawer = nullptr;
+  if (aDrawTarget.GetBackendType() == BackendType::WEBRENDER_TEXT) {
+    textDrawer = static_cast<mozilla::layout::TextDrawTarget*>(&aDrawTarget);
+  }
+
   switch (aParams.style) {
     case NS_STYLE_TEXT_DECORATION_STYLE_SOLID:
     case NS_STYLE_TEXT_DECORATION_STYLE_DOUBLE:
@@ -3899,8 +4008,8 @@ nsCSSRendering::PaintDecorationLine(nsIFrame* aFrame, DrawTarget& aDrawTarget,
     case NS_STYLE_TEXT_DECORATION_STYLE_DASHED: {
       Point p1 = rect.TopLeft();
       Point p2 = aParams.vertical ? rect.BottomLeft() : rect.TopRight();
-      if (aParams.textDrawer) {
-        aParams.textDrawer->AppendDecoration(
+      if (textDrawer) {
+        textDrawer->AppendDecoration(
           p1, p2, lineThickness, aParams.vertical, color, aParams.style);
       } else {
         aDrawTarget.StrokeLine(p1, p2, colorPat, strokeOptions, drawOptions);
@@ -3934,11 +4043,11 @@ nsCSSRendering::PaintDecorationLine(nsIFrame* aFrame, DrawTarget& aDrawTarget,
       Point p1b = aParams.vertical ? rect.TopRight() : rect.BottomLeft();
       Point p2b = rect.BottomRight();
 
-      if (aParams.textDrawer) {
-        aParams.textDrawer->AppendDecoration(
+      if (textDrawer) {
+        textDrawer->AppendDecoration(
           p1a, p2a, lineThickness, aParams.vertical, color,
           NS_STYLE_TEXT_DECORATION_STYLE_SOLID);
-        aParams.textDrawer->AppendDecoration(
+        textDrawer->AppendDecoration(
           p1b, p2b, lineThickness, aParams.vertical, color,
           NS_STYLE_TEXT_DECORATION_STYLE_SOLID);
       } else {
@@ -3980,8 +4089,6 @@ nsCSSRendering::PaintDecorationLine(nsIFrame* aFrame, DrawTarget& aDrawTarget,
        * directions in the above description.
        */
 
-      // TODO(gankro)
-
       Float& rectICoord = aParams.vertical ? rect.y : rect.x;
       Float& rectISize = aParams.vertical ? rect.height : rect.width;
       const Float rectBSize = aParams.vertical ? rect.width : rect.height;
@@ -3995,9 +4102,20 @@ nsCSSRendering::PaintDecorationLine(nsIFrame* aFrame, DrawTarget& aDrawTarget,
       rect = ExpandPaintingRectForDecorationLine(aFrame, aParams.style, rect,
                                                  aParams.icoordInFrame,
                                                  cycleLength, aParams.vertical);
+
+      if (textDrawer) {
+        // Undo attempted centering
+        Float& rectBCoord = aParams.vertical ? rect.x : rect.y;
+        rectBCoord -= lineThickness / 2;
+
+        textDrawer->AppendWavyDecoration(rect, lineThickness,
+                                         aParams.vertical, color);
+        return;
+      }
+
       // figure out if we can trim whole cycles from the left and right edges
       // of the line, to try and avoid creating an unnecessarily long and
-      // complex path
+      // complex path (but don't do this for webrender, )
       const Float dirtyRectICoord = aParams.vertical ? aParams.dirtyRect.y
                                                      : aParams.dirtyRect.x;
       int32_t skipCycles = floor((dirtyRectICoord - rectICoord) / cycleLength);
@@ -4008,21 +4126,11 @@ nsCSSRendering::PaintDecorationLine(nsIFrame* aFrame, DrawTarget& aDrawTarget,
 
       rectICoord += lineThickness / 2.0;
 
-      if (aParams.textDrawer) {
-        Point p1 = rect.TopLeft();
-        Point p2 = aParams.vertical ? rect.BottomLeft() : rect.TopRight();
-
-        aParams.textDrawer->AppendDecoration(
-          p1, p2, adv, aParams.vertical, color,
-          NS_STYLE_TEXT_DECORATION_STYLE_WAVY);
-        return;
-      }
-
       Point pt(rect.TopLeft());
       Float& ptICoord = aParams.vertical ? pt.y : pt.x;
       Float& ptBCoord = aParams.vertical ? pt.x : pt.y;
       if (aParams.vertical) {
-        ptBCoord += adv + lineThickness / 2.0;
+        ptBCoord += adv;
       }
       Float iCoordLimit = ptICoord + rectISize + lineThickness;
 
@@ -4222,7 +4330,24 @@ nsCSSRendering::GetTextDecorationRectInternal(const Point& aPt,
   }
 
   gfxFloat baseline = floor(bCoord + aParams.ascent + 0.5);
+
+  // Calculate adjusted offset based on writing-mode/orientation and thickness
+  // of decoration line. The input value aParams.offset is the nominal position
+  // (offset from baseline) where we would draw a single, infinitely-thin line;
+  // but for a wavy or double line, we'll need to move the bounding rect of the
+  // decoration outwards from the baseline so that an underline remains below
+  // the glyphs, and an overline above them, despite the increased block-dir
+  // extent of the decoration.
+  //
+  // So adjustments by r.Height() are used to make the wider line styles (wavy
+  // and double) "grow" in the appropriate direction compared to the basic
+  // single line.
+  //
+  // Note that at this point, the decoration rect is being calculated in line-
+  // relative coordinates, where 'x' is line-rightwards, and 'y' is line-
+  // upwards. We'll swap them to be physical coords at the end.
   gfxFloat offset = 0.0;
+
   switch (aParams.decoration) {
     case NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE:
       offset = aParams.offset;
@@ -4238,24 +4363,46 @@ nsCSSRendering::GetTextDecorationRectInternal(const Point& aPt,
         }
       }
       break;
+
     case NS_STYLE_TEXT_DECORATION_LINE_OVERLINE:
+      // For overline, we adjust the offset by lineThickness (the thickness of
+      // a single decoration line) because empirically it looks better to draw
+      // the overline just inside rather than outside the font's ascent, which
+      // is what nsTextFrame passes as aParams.offset (as fonts don't provide
+      // an explicit overline-offset).
       offset = aParams.offset - lineThickness + r.Height();
       break;
+
     case NS_STYLE_TEXT_DECORATION_LINE_LINE_THROUGH: {
+      // To maintain a consistent mid-point for line-through decorations,
+      // we adjust the offset by half of the decoration rect's height.
       gfxFloat extra = floor(r.Height() / 2.0 + 0.5);
       extra = std::max(extra, lineThickness);
       offset = aParams.offset - lineThickness + extra;
       break;
     }
+
     default:
       NS_ERROR("Invalid decoration value!");
   }
 
+  // Convert line-relative coordinate system (x = line-right, y = line-up)
+  // to physical coords, and move the decoration rect to the calculated
+  // offset from baseline.
   if (aParams.vertical) {
-    r.y = baseline + floor(offset + 0.5);
     Swap(r.x, r.y);
     Swap(r.width, r.height);
+    // line-upwards in vertical mode = physical-right, so we /add/ offset
+    // to baseline. Except in sideways-lr mode, where line-upwards will be
+    // physical leftwards.
+    if (aParams.sidewaysLeft) {
+      r.x = baseline - floor(offset + 0.5);
+    } else {
+      r.x = baseline + floor(offset - r.Width() + 0.5);
+    }
   } else {
+    // line-upwards in horizontal mode = physical-up, but our physical coord
+    // system works downwards, so we /subtract/ offset from baseline.
     r.y = baseline - floor(offset + 0.5);
   }
 
@@ -4332,7 +4479,7 @@ nsContextBoxBlur::Init(const nsRect& aRect, nscoord aSpreadRadius,
     nsLayoutUtils::RectToGfxRect(aDirtyRect, aAppUnitsPerDevPixel);
   dirtyRect.RoundOut();
 
-  gfxMatrix transform = aDestinationCtx->CurrentMatrix();
+  gfxMatrix transform = aDestinationCtx->CurrentMatrixDouble();
   rect = transform.TransformBounds(rect);
 
   mPreTransformed = !transform.IsIdentity();
@@ -4369,7 +4516,7 @@ nsContextBoxBlur::DoPaint()
   gfxContextMatrixAutoSaveRestore saveMatrix(mDestinationCtx);
 
   if (mPreTransformed) {
-    mDestinationCtx->SetMatrix(gfxMatrix());
+    mDestinationCtx->SetMatrix(Matrix());
   }
 
   mAlphaBoxBlur.Paint(mDestinationCtx);
@@ -4430,12 +4577,12 @@ nsContextBoxBlur::BlurRectangle(gfxContext* aDestinationCtx,
   // Do blurs in device space when possible.
   // Chrome/Skia always does the blurs in device space
   // and will sometimes get incorrect results (e.g. rotated blurs)
-  gfxMatrix transform = aDestinationCtx->CurrentMatrix();
+  gfxMatrix transform = aDestinationCtx->CurrentMatrixDouble();
   // XXX: we could probably handle negative scales but for now it's easier just to fallback
   if (!transform.HasNonAxisAlignedTransform() && transform._11 > 0.0 && transform._22 > 0.0) {
     scaleX = transform._11;
     scaleY = transform._22;
-    aDestinationCtx->SetMatrix(gfxMatrix());
+    aDestinationCtx->SetMatrix(Matrix());
   } else {
     transform = gfxMatrix();
   }
@@ -4530,13 +4677,13 @@ nsContextBoxBlur::InsetBoxBlur(gfxContext* aDestinationCtx,
   // input data to the blur. This way, we don't have to scale the min
   // inset blur to the invert of the dest context, then rescale it back
   // when we draw to the destination surface.
-  gfxSize scale = aDestinationCtx->CurrentMatrix().ScaleFactors(true);
-  Matrix transform = ToMatrix(aDestinationCtx->CurrentMatrix());
+  gfx::Size scale = aDestinationCtx->CurrentMatrix().ScaleFactors(true);
+  Matrix transform = aDestinationCtx->CurrentMatrix();
 
   // XXX: we could probably handle negative scales but for now it's easier just to fallback
   if (!transform.HasNonAxisAlignedTransform() && transform._11 > 0.0 && transform._22 > 0.0) {
     // If we don't have a rotation, we're pre-transforming all the rects.
-    aDestinationCtx->SetMatrix(gfxMatrix());
+    aDestinationCtx->SetMatrix(Matrix());
   } else {
     // Don't touch anything, we have a rotation.
     transform = Matrix();

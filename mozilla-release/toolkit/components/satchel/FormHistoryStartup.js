@@ -52,6 +52,7 @@ FormHistoryStartup.prototype = {
 
     // triggers needed service cleanup and db shutdown
     Services.obs.addObserver(this, "profile-before-change", true);
+    Services.obs.addObserver(this, "idle-daily", true);
     Services.obs.addObserver(this, "formhistory-expire-now", true);
 
     Services.ppmm.loadProcessScript("chrome://satchel/content/formSubmitListener.js", true);
@@ -126,11 +127,12 @@ FormHistoryStartup.prototype = {
       }
 
       case "FormHistory:RemoveEntry": {
-        let { inputName, value } = message.data;
+        let { inputName, value, guid } = message.data;
         FormHistory.update({
           op: "remove",
           fieldname: inputName,
           value,
+          guid,
         });
         break;
       }

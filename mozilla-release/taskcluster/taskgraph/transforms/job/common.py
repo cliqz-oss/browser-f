@@ -35,15 +35,6 @@ def docker_worker_add_workspace_cache(config, job, taskdesc, extra=None):
         )
 
 
-def docker_worker_add_tc_vcs_cache(config, job, taskdesc):
-    taskdesc['worker'].setdefault('caches', []).append({
-        'type': 'persistent',
-        'name': 'level-{}-{}-tc-vcs'.format(
-            config.params['level'], config.params['project']),
-        'mount-point': "/builds/worker/.tc-vcs",
-    })
-
-
 def add_public_artifacts(config, job, taskdesc, path):
     taskdesc['worker'].setdefault('artifacts', []).append({
         'name': 'public/build',
@@ -71,6 +62,14 @@ def docker_worker_add_gecko_vcs_env_vars(config, job, taskdesc):
         'GECKO_HEAD_REPOSITORY': config.params['head_repository'],
         'GECKO_HEAD_REV': config.params['head_rev'],
     })
+
+    if 'comm_base_repository' in config.params:
+        taskdesc['worker']['env'].update({
+            'COMM_BASE_REPOSITORY': config.params['comm_base_repository'],
+            'COMM_HEAD_REF': config.params['comm_head_rev'],
+            'COMM_HEAD_REPOSITORY': config.params['comm_head_repository'],
+            'COMM_HEAD_REV': config.params['comm_head_rev'],
+        })
 
 
 def support_vcs_checkout(config, job, taskdesc, sparse=False):
@@ -103,6 +102,15 @@ def support_vcs_checkout(config, job, taskdesc, sparse=False):
         'GECKO_HEAD_REV': config.params['head_rev'],
         'HG_STORE_PATH': '/builds/worker/checkouts/hg-store',
     })
+
+    if 'comm_base_repository' in config.params:
+        taskdesc['worker']['env'].update({
+            'COMM_BASE_REPOSITORY': config.params['comm_base_repository'],
+            'COMM_HEAD_REPOSITORY': config.params['comm_head_repository'],
+            'COMM_HEAD_REV': config.params['comm_head_rev'],
+        })
+    elif job['run'].get('comm-checkout', False):
+        raise Exception("Can't checkout from comm-* repository if not given a repository.")
 
     # Give task access to hgfingerprint secret so it can pin the certificate
     # for hg.mozilla.org.

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -59,7 +59,7 @@ AuthenticatorAssertionResponse::GetAuthenticatorData(JSContext* aCx,
                                                      JS::MutableHandle<JSObject*> aRetVal)
 {
   if (!mAuthenticatorDataCachedObj) {
-    mAuthenticatorDataCachedObj = mAuthenticatorData.ToUint8Array(aCx);
+    mAuthenticatorDataCachedObj = mAuthenticatorData.ToArrayBuffer(aCx);
   }
   aRetVal.set(mAuthenticatorDataCachedObj);
 }
@@ -78,7 +78,7 @@ AuthenticatorAssertionResponse::GetSignature(JSContext* aCx,
                                              JS::MutableHandle<JSObject*> aRetVal)
 {
   if (!mSignatureCachedObj) {
-    mSignatureCachedObj = mSignature.ToUint8Array(aCx);
+    mSignatureCachedObj = mSignature.ToArrayBuffer(aCx);
   }
   aRetVal.set(mSignatureCachedObj);
 }
@@ -89,6 +89,21 @@ AuthenticatorAssertionResponse::SetSignature(CryptoBuffer& aBuffer)
   if (NS_WARN_IF(!mSignature.Assign(aBuffer))) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
+  return NS_OK;
+}
+
+void
+AuthenticatorAssertionResponse::GetUserId(DOMString& aRetVal)
+{
+  // This requires mUserId to not be re-set for the life of the caller's in-var.
+  aRetVal.SetOwnedString(mUserId);
+}
+
+nsresult
+AuthenticatorAssertionResponse::SetUserId(const nsAString& aUserId)
+{
+  MOZ_ASSERT(mUserId.IsEmpty(), "We already have a UserID?");
+  mUserId.Assign(aUserId);
   return NS_OK;
 }
 

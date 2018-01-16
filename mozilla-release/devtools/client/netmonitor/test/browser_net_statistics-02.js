@@ -13,7 +13,7 @@ add_task(function* () {
   info("Starting test... ");
 
   let panel = monitor.panelWin;
-  let { document, store, windowRequire } = panel;
+  let { document, store, windowRequire, connector } = panel;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
 
   EventUtils.sendMouseEvent({ type: "click" },
@@ -26,10 +26,10 @@ add_task(function* () {
     document.querySelector(".requests-list-filter-ws-button"));
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector(".requests-list-filter-other-button"));
-  testFilterButtonsCustom(monitor, [0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1]);
+  testFilterButtonsCustom(monitor, [0, 1, 1, 1, 0, 0, 0, 0, 1, 1]);
   info("The correct filtering predicates are used before entering perf. analysis mode.");
 
-  store.dispatch(Actions.openStatistics(true));
+  store.dispatch(Actions.openStatistics(connector, true));
 
   ok(document.querySelector(".statistics-panel"),
     "The main panel is switched to the statistics panel.");

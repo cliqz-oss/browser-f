@@ -207,6 +207,7 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerURI
   openLinkIn(url, where, params);
 }
 
+/* eslint-disable complexity */
 function openLinkIn(url, where, params) {
   if (!where || !url)
     return;
@@ -222,6 +223,7 @@ function openLinkIn(url, where, params) {
       params.referrerPolicy : Ci.nsIHttpChannel.REFERRER_POLICY_UNSET);
   var aRelatedToCurrent     = params.relatedToCurrent;
   var aAllowMixedContent    = params.allowMixedContent;
+  var aForceAllowDataURI    = params.forceAllowDataURI;
   var aInBackground         = params.inBackground;
   var aDisallowInheritPrincipal = params.disallowInheritPrincipal;
   var aInitiatingDoc        = params.initiatingDoc;
@@ -288,6 +290,14 @@ function openLinkIn(url, where, params) {
   aTriggeringPrincipal = useOAForPrincipal(aTriggeringPrincipal);
 
   if (!w || where == "window") {
+    let features = "chrome,dialog=no,all";
+    if (aIsPrivate) {
+      features += ",private";
+      // To prevent regular browsing data from leaking to private browsing sites,
+      // strip the referrer when opening a new private window. (See Bug: 1409226)
+      aNoReferrer = true;
+    }
+
     // This propagates to window.arguments.
     var sa = Cc["@mozilla.org/array;1"].
              createInstance(Ci.nsIMutableArray);
@@ -331,11 +341,6 @@ function openLinkIn(url, where, params) {
     sa.appendElement(userContextIdSupports);
     sa.appendElement(aPrincipal);
     sa.appendElement(aTriggeringPrincipal);
-
-    let features = "chrome,dialog=no,all";
-    if (aIsPrivate) {
-      features += ",private";
-    }
 
     const sourceWindow = (w || window);
     let win;
@@ -429,6 +434,9 @@ function openLinkIn(url, where, params) {
     }
     if (aIndicateErrorPageLoad) {
       flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ERROR_LOAD_CHANGES_RV;
+    }
+    if (aForceAllowDataURI) {
+      flags |= Ci.nsIWebNavigation.LOAD_FLAGS_FORCE_ALLOW_DATA_URI;
     }
 
     let {URI_INHERITS_SECURITY_CONTEXT} = Ci.nsIProtocolHandler;
@@ -531,6 +539,7 @@ function checkForMiddleClick(node, event) {
 function createUserContextMenu(event, {
                                         isContextMenu = false,
                                         excludeUserContextId = 0,
+                                        showDefaultTab = false,
                                         useAccessKeys = true
                                       } = {}) {
   while (event.target.hasChildNodes()) {
@@ -541,7 +550,7 @@ function createUserContextMenu(event, {
   let docfrag = document.createDocumentFragment();
 
   // If we are excluding a userContextId, we want to add a 'no-container' item.
-  if (excludeUserContextId) {
+  if (excludeUserContextId || showDefaultTab) {
     let menuitem = document.createElement("menuitem");
     menuitem.setAttribute("data-usercontextid", "0");
     menuitem.setAttribute("label", bundle.getString("userContextNone.label"));
@@ -827,7 +836,7 @@ function openFeedbackPage() {
 }
 
 function openTourPage() {
-  let scope = {}
+  let scope = {};
   Components.utils.import("resource:///modules/UITour.jsm", scope);
   openUILinkIn(scope.UITour.url, "tab");
 }

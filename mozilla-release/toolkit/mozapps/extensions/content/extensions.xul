@@ -131,23 +131,7 @@
          command="cmd_focusSearch"/>
   </keyset>
   <hbox flex="1">
-    <vbox>
-      <hbox id="nav-header"
-            align="center"
-            pack="center">
-        <toolbarbutton id="back-btn"
-                       class="nav-button header-button"
-                       command="cmd_back"
-                       tooltiptext="&cmd.back.tooltip;"
-                       hidden="true"
-                       disabled="true"/>
-        <toolbarbutton id="forward-btn"
-                       class="nav-button header-button"
-                       command="cmd_forward"
-                       tooltiptext="&cmd.forward.tooltip;"
-                       hidden="true"
-                       disabled="true"/>
-      </hbox>
+    <vbox id="category-box">
       <!-- category list -->
       <richlistbox id="categories" flex="1">
         <richlistitem id="category-search" value="addons://search/"

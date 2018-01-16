@@ -30,7 +30,6 @@ Cu.import("resource://services-sync/main.js");
 Cu.import("resource://services-sync/policies.js");
 Cu.import("resource://services-sync/record.js");
 Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-sync/rest.js");
 Cu.import("resource://services-sync/stages/enginesync.js");
 Cu.import("resource://services-sync/stages/declined.js");
 Cu.import("resource://services-sync/status.js");
@@ -47,7 +46,7 @@ function getEngineModules() {
     Prefs: {module: "prefs.js", symbol: "PrefsEngine"},
     Tab: {module: "tabs.js", symbol: "TabEngine"},
     ExtensionStorage: {module: "extension-storage.js", symbol: "ExtensionStorageEngine"},
-  }
+  };
   if (Svc.Prefs.get("engine.addresses.available", false)) {
     result.Addresses = {
       module: "resource://formautofill/FormAutofillSync.jsm",
@@ -62,11 +61,6 @@ function getEngineModules() {
   }
   return result;
 }
-
-const STORAGE_INFO_TYPES = [INFO_COLLECTIONS,
-                            INFO_COLLECTION_USAGE,
-                            INFO_COLLECTION_COUNTS,
-                            INFO_QUOTA];
 
 // A unique identifier for this browser session. Used for logging so
 // we can easily see whether 2 logs are in the same browser session or
@@ -240,7 +234,7 @@ Sync11Service.prototype = {
       if (keysChanged) {
         // Did they change? If so, carry on.
         this._log.info("Suggesting retry.");
-        return true;              // Try again.
+        return true; // Try again.
       }
 
       // If not, reupload them and continue the current sync.
@@ -255,7 +249,7 @@ Sync11Service.prototype = {
                        "Continuing sync; let's try again later.");
       }
 
-      return false;            // Don't try again: same keys.
+      return false; // Don't try again: same keys.
 
     } catch (ex) {
       this._log.warn("Got exception fetching and handling crypto keys. " +
@@ -267,7 +261,7 @@ Sync11Service.prototype = {
   async handleFetchedKeys(syncKey, cryptoKeys, skipReset) {
     // Don't want to wipe if we're just starting up!
     let wasBlank = this.collectionKeys.isClear;
-    let keysChanged = this.collectionKeys.updateContents(syncKey, cryptoKeys);
+    let keysChanged = await this.collectionKeys.updateContents(syncKey, cryptoKeys);
 
     if (keysChanged && !wasBlank) {
       this._log.debug("Keys changed: " + JSON.stringify(keysChanged));
@@ -486,16 +480,6 @@ Sync11Service.prototype = {
   },
 
   /**
-   * Obtain a SyncStorageRequest instance with authentication credentials.
-   */
-  getStorageRequest: function getStorageRequest(url) {
-    let request = new SyncStorageRequest(url);
-    request.authenticator = this.identity.getRESTRequestAuthenticator();
-
-    return request;
-  },
-
-  /**
    * Perform the info fetch as part of a login or key fetch, or
    * inside engine sync.
    */
@@ -514,7 +498,7 @@ Sync11Service.prototype = {
     // Always check for errors; this is also where we look for X-Weave-Alert.
     this.errorHandler.checkServerError(info);
     if (!info.success) {
-      this._log.error("Aborting sync: failed to get collections.")
+      this._log.error("Aborting sync: failed to get collections.");
       throw info;
     }
     return info;
@@ -724,9 +708,9 @@ Sync11Service.prototype = {
 
   async generateNewSymmetricKeys() {
     this._log.info("Generating new keys WBO...");
-    let wbo = this.collectionKeys.generateNewKeysWBO();
+    let wbo = await this.collectionKeys.generateNewKeysWBO();
     this._log.info("Encrypting new key bundle.");
-    wbo.encrypt(this.identity.syncKeyBundle);
+    await wbo.encrypt(this.identity.syncKeyBundle);
 
     let uploadRes = await this._uploadCryptoKeys(wbo, 0);
     if (uploadRes.status != 200) {
@@ -735,7 +719,7 @@ Sync11Service.prototype = {
       throw new Error("Unable to upload symmetric keys.");
     }
     this._log.info("Got status " + uploadRes.status + " uploading keys.");
-    let serverModified = uploadRes.obj;   // Modified timestamp according to server.
+    let serverModified = uploadRes.obj; // Modified timestamp according to server.
     this._log.debug("Server reports crypto modified: " + serverModified);
 
     // Now verify that info/collections shows them!
@@ -1050,7 +1034,8 @@ Sync11Service.prototype = {
   _shouldLogin: function _shouldLogin() {
     return this.enabled &&
            !Services.io.offline &&
-           !this.isLoggedIn;
+           !this.isLoggedIn &&
+           Async.isAppReady();
   },
 
   /**
@@ -1077,6 +1062,8 @@ Sync11Service.prototype = {
       reason = kSyncMasterPasswordLocked;
     else if (Svc.Prefs.get("firstSync") == "notReady")
       reason = kFirstSyncChoiceNotMade;
+    else if (!Async.isAppReady())
+      reason = kFirefoxShuttingDown;
 
     if (ignore && ignore.indexOf(reason) != -1)
       return "";
@@ -1375,53 +1362,6 @@ Sync11Service.prototype = {
         await engine.resetClient();
       }
     })();
-  },
-
-  /**
-   * Fetch storage info from the server.
-   *
-   * @param type
-   *        String specifying what info to fetch from the server. Must be one
-   *        of the INFO_* values. See Sync Storage Server API spec for details.
-   * @param callback
-   *        Callback function with signature (error, data) where `data' is
-   *        the return value from the server already parsed as JSON.
-   *
-   * @return RESTRequest instance representing the request, allowing callers
-   *         to cancel the request.
-   */
-  getStorageInfo: function getStorageInfo(type, callback) {
-    if (STORAGE_INFO_TYPES.indexOf(type) == -1) {
-      throw new Error(`Invalid value for 'type': ${type}`);
-    }
-
-    let info_type = "info/" + type;
-    this._log.trace("Retrieving '" + info_type + "'...");
-    let url = this.userBaseURL + info_type;
-    return this.getStorageRequest(url).get(function onComplete(error) {
-      // Note: 'this' is the request.
-      if (error) {
-        this._log.debug("Failed to retrieve '" + info_type + "'", error);
-        return callback(error);
-      }
-      if (this.response.status != 200) {
-        this._log.debug("Failed to retrieve '" + info_type +
-                        "': server responded with HTTP" +
-                        this.response.status);
-        return callback(this.response);
-      }
-
-      let result;
-      try {
-        result = JSON.parse(this.response.body);
-      } catch (ex) {
-        this._log.debug("Server returned invalid JSON for '" + info_type +
-                        "': " + this.response.body);
-        return callback(ex);
-      }
-      this._log.trace("Successfully retrieved '" + info_type + "'.");
-      return callback(null, result);
-    });
   },
 
   recordTelemetryEvent(object, method, value, extra = undefined) {

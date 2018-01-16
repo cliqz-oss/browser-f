@@ -46,7 +46,7 @@ _SUBDIR_CONFIG_ARGS="$ac_configure_args"
 dnl Set the version number of the libs included with mozilla
 dnl ========================================================
 MOZJPEG=62
-MOZPNG=10631
+MOZPNG=10634
 NSPR_VERSION=4
 NSPR_MINVER=4.17
 NSS_VERSION=3
@@ -493,10 +493,18 @@ if test -n "$COMPILE_ENVIRONMENT"; then
    MOZ_CONFIG_SANITIZE
 fi
 
-# Add the hardening flags from moz.configure
+dnl ========================================================
+dnl Add optional and non-optional hardening flags
+dnl ========================================================
 CFLAGS="$CFLAGS $HARDENING_CFLAGS"
 CPPFLAGS="$CPPFLAGS $HARDENING_CFLAGS"
 CXXFLAGS="$CXXFLAGS $HARDENING_CFLAGS"
+
+if test "$GNU_CC" -o test -n "${CLANG_CC}${CLANG_CL}"; then
+   CFLAGS="$CFLAGS -D_FORTIFY_SOURCE=2"
+   CPPFLAGS="$CPPFLAGS -D_FORTIFY_SOURCE=2"
+   CXXFLAGS="$CXXFLAGS -D_FORTIFY_SOURCE=2"
+fi
 
 dnl ========================================================
 dnl GNU specific defaults
@@ -508,8 +516,8 @@ if test "$GNU_CC"; then
     SSSE3_FLAGS="-mssse3"
     # FIXME: Let us build with strict aliasing. bug 414641.
     CFLAGS="$CFLAGS -fno-strict-aliasing"
-    MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(DSO_SONAME) -o $@'
-    MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(DSO_SONAME) -o $@'
+    MKSHLIB='$(CXX) $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(DSO_SONAME) -o $@'
+    MKCSHLIB='$(CC) $(COMPUTED_C_LDFLAGS) $(PGO_CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(DSO_SONAME) -o $@'
     WARNINGS_AS_ERRORS='-Werror'
     DSO_CFLAGS=''
     DSO_PIC_CFLAGS='-fPIC'
@@ -624,7 +632,7 @@ if test "$GNU_CC"; then
         fi
     fi
 
-    _DEFINES_CFLAGS='-include $(topobjdir)/mozilla-config.h -DMOZILLA_CLIENT'
+    _DEFINES_CFLAGS="-include $_objdir/mozilla-config.h -DMOZILLA_CLIENT"
     _USE_CPP_INCLUDE_FLAG=1
 
     ASFLAGS="$ASFLAGS $_DEFINES_CFLAGS"
@@ -634,7 +642,7 @@ if test "$GNU_CXX"; then
     # FIXME: Let us build with strict aliasing. bug 414641.
     CXXFLAGS="$CXXFLAGS -fno-exceptions -fno-strict-aliasing"
 
-    _DEFINES_CXXFLAGS='-DMOZILLA_CLIENT -include $(topobjdir)/mozilla-config.h'
+    _DEFINES_CXXFLAGS="-DMOZILLA_CLIENT -include $_objdir/mozilla-config.h"
     _USE_CPP_INCLUDE_FLAG=1
 fi
 
@@ -756,8 +764,8 @@ dnl ========================================================
 
 case "$target" in
 *-darwin*)
-    MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -o $@'
-    MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -o $@'
+    MKSHLIB='$(CXX) $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -o $@'
+    MKCSHLIB='$(CC) $(COMPUTED_C_LDFLAGS) $(PGO_CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -o $@'
     MOZ_OPTIMIZE_FLAGS="-O3"
     CXXFLAGS="$CXXFLAGS -stdlib=libc++"
     DSO_LDOPTS=''
@@ -896,8 +904,8 @@ case "$target" in
         WIN32_GUI_EXE_LDFLAGS=-SUBSYSTEM:WINDOWS,$WIN32_SUBSYSTEM_VERSION
         DSO_LDOPTS=-SUBSYSTEM:WINDOWS,$WIN32_SUBSYSTEM_VERSION
         _USE_CPP_INCLUDE_FLAG=1
-        _DEFINES_CFLAGS='-FI $(topobjdir)/mozilla-config.h -DMOZILLA_CLIENT'
-        _DEFINES_CXXFLAGS='-FI $(topobjdir)/mozilla-config.h -DMOZILLA_CLIENT'
+        _DEFINES_CFLAGS="-FI $_objdir/mozilla-config.h -DMOZILLA_CLIENT"
+        _DEFINES_CXXFLAGS="-FI $_objdir/mozilla-config.h -DMOZILLA_CLIENT"
         CFLAGS="$CFLAGS -W3 -Gy -Zc:inline"
         CXXFLAGS="$CXXFLAGS -W3 -Gy -Zc:inline"
         if test -z "$CLANG_CL"; then
@@ -1073,7 +1081,7 @@ case "$target" in
     if $CC -E - -dM </dev/null | grep __ELF__ >/dev/null; then
         DSO_PIC_CFLAGS='-fPIC -DPIC'
         DSO_LDOPTS='-shared'
-        BIN_FLAGS='-Wl,--export-dynamic'
+        MOZ_PROGRAM_LDFLAGS="$MOZ_PROGRAM_LDFLAGS -Wl,--export-dynamic"
     else
         DSO_PIC_CFLAGS='-fPIC -DPIC'
         DSO_LDOPTS='-shared'
@@ -1082,8 +1090,8 @@ case "$target" in
     if test "$LIBRUNPATH"; then
         DSO_LDOPTS="-Wl,-R$LIBRUNPATH $DSO_LDOPTS"
     fi
-    MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(DSO_SONAME) -o $@'
-    MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(DSO_SONAME) -o $@'
+    MKSHLIB='$(CXX) $(COMPUTED_CXX_LDFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(DSO_SONAME) -o $@'
+    MKCSHLIB='$(CC) $(COMPUTED_C_LDFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(DSO_SONAME) -o $@'
     ;;
 
 *-openbsd*)
@@ -1104,6 +1112,10 @@ case "$target" in
     ;;
 
 esac
+
+if test -z "$MOZ_OPTIMIZE_FLAGS"; then
+    MOZ_OPTIMIZE_FLAGS="-O"
+fi
 
 AC_SUBST_LIST(MMX_FLAGS)
 AC_SUBST_LIST(SSE_FLAGS)
@@ -1903,7 +1915,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.33, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.34.1, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_SYSTEM_NSS"; then
@@ -2067,11 +2079,7 @@ MOZ_VORBIS=
 MOZ_TREMOR=
 MOZ_SAMPLE_TYPE_FLOAT32=
 MOZ_SAMPLE_TYPE_S16=
-MOZ_WEBRTC=1
-MOZ_PEERCONNECTION=
 MOZ_SRTP=
-MOZ_WEBRTC_SIGNALING=
-MOZ_WEBRTC_ASSERT_ALWAYS=1
 MOZ_WEBRTC_HARDWARE_AEC_NS=
 MOZ_SCTP=
 VPX_USE_YASM=
@@ -2207,12 +2215,6 @@ if test -n "$MOZ_MULET"; then
     AC_DEFINE(MOZ_MULET)
 fi
 
-# Propagate feature switches for code written in rust from confvars.sh
-if test -n "$MOZ_RUST_URLPARSE"; then
-    AC_DEFINE(MOZ_RUST_URLPARSE)
-    AC_SUBST(MOZ_RUST_URLPARSE)
-fi
-
 AC_SUBST(MOZ_PHOENIX)
 AC_SUBST(MOZ_XULRUNNER)
 AC_SUBST(MOZ_MULET)
@@ -2224,7 +2226,7 @@ dnl ========================================================
 
 case "$MOZ_BUILD_APP" in
 mobile/android)
-    MOZ_ANDROID_SDK(23, 23, 23.0.3 23.0.1, 25.3.2 25.3.1)
+    MOZ_ANDROID_SDK(23, 23, 25.0.3, 26.0.0 26.0.0-dev 25.3.2 25.3.1)
     ;;
 esac
 
@@ -2535,60 +2537,14 @@ if test "${MOZ_WIDGET_TOOLKIT}" = "linuxgl" -a "$ACCESSIBILITY" != "1"; then
     AC_MSG_ERROR(["Accessibility is required for the linuxgl widget backend"])
 fi
 
-dnl Turn off webrtc for OS's we don't handle yet, but allow
-dnl --enable-webrtc to override.  Can disable for everything in
-dnl the master list above.
-if test -n "$MOZ_WEBRTC"; then
-    case "$target" in
-    *-linux*|*-mingw*|*-darwin*|*-android*|*-linuxandroid*|*-dragonfly*|*-freebsd*|*-netbsd*|*-openbsd*)
-        dnl Leave enabled
-        ;;
-    *)
-        dnl default to disabled for all others
-        MOZ_WEBRTC=
-        ;;
-    esac
-fi
-
 AC_TRY_COMPILE([#include <linux/ethtool.h>],
                [ struct ethtool_cmd cmd; cmd.speed_hi = 0; ],
                MOZ_WEBRTC_HAVE_ETHTOOL_SPEED_HI=1)
 
 AC_SUBST(MOZ_WEBRTC_HAVE_ETHTOOL_SPEED_HI)
 
-# target_arch is from {ia32|x64|arm|ppc}
-case "$CPU_ARCH" in
-x86_64 | arm | aarch64 | x86 | ppc* | ia64)
-    :
-    ;;
-*)
-# unsupported arch for webrtc
-    MOZ_WEBRTC=
-    ;;
-
-esac
-
-dnl ========================================================
-dnl = Disable WebRTC code
-dnl ========================================================
-MOZ_ARG_DISABLE_BOOL(webrtc,
-[  --disable-webrtc        Disable support for WebRTC],
-    MOZ_WEBRTC=,
-    MOZ_WEBRTC=1)
-
 if test -n "$MOZ_WEBRTC"; then
-    AC_DEFINE(MOZ_WEBRTC)
-    dnl MOZ_WEBRTC_ASSERT_ALWAYS turns on a number of safety asserts in
-    dnl opt/production builds (via MOZ_CRASH())
-    AC_DEFINE(MOZ_WEBRTC_ASSERT_ALWAYS)
     MOZ_RAW=1
-
-dnl enable once Signaling lands
-    MOZ_WEBRTC_SIGNALING=1
-    AC_DEFINE(MOZ_WEBRTC_SIGNALING)
-dnl enable once PeerConnection lands
-    MOZ_PEERCONNECTION=1
-    AC_DEFINE(MOZ_PEERCONNECTION)
     MOZ_SCTP=1
     MOZ_SRTP=1
     AC_DEFINE(MOZ_SCTP)
@@ -2612,10 +2568,6 @@ if test -n "$MOZ_WEBRTC_HARDWARE_AEC_NS"; then
     AC_DEFINE(MOZ_WEBRTC_HARDWARE_AEC_NS)
 fi
 
-AC_SUBST(MOZ_WEBRTC)
-AC_SUBST(MOZ_WEBRTC_SIGNALING)
-AC_SUBST(MOZ_PEERCONNECTION)
-AC_SUBST(MOZ_WEBRTC_ASSERT_ALWAYS)
 AC_SUBST(MOZ_WEBRTC_HARDWARE_AEC_NS)
 AC_SUBST(MOZ_SCTP)
 AC_SUBST(MOZ_SRTP)
@@ -3256,21 +3208,34 @@ dnl = FFmpeg's ffvpx configuration
 dnl ========================================================
 
 MOZ_FFVPX=
+MOZ_FFVPX_FLACONLY=
 case "$CPU_ARCH" in
-  x86)
+  x86|x86_64)
       MOZ_FFVPX=1
+      dnl Use same conditional as MOZ_LIBAV_FFT to enable FFmpeg's ffvpx assembly decoder.
+      if test -n "$LIBAV_FFT_ASFLAGS"; then
+          FFVPX_ASFLAGS=$LIBAV_FFT_ASFLAGS
+      else
+          dnl On x86 system with assembly optimizations disabled, the ffvp9 and
+          dnl ffvp8 decoders give worse performance than libvpx ones. So we only
+          dnl enable the FFmpeg FLAC decoder on those machines.
+          MOZ_FFVPX_FLACONLY=1
+      fi
   ;;
-  x86_64)
+  arm*|aarch64)
       MOZ_FFVPX=1
+      MOZ_FFVPX_FLACONLY=1
+      dnl Use same conditional as MOZ_LIBVPX to enable FFmpeg's ffvpx assembly decoder.
+      dnl aarch 64 FLAC decoder for now will be C only.
+      FFVPX_ASFLAGS=$VPX_ASFLAGS
   ;;
 esac
 
-dnl Use same conditional as MOZ_LIBAV_FFT to enable FFmpeg's ffvpx assembly decoder.
-if test -n "$MOZ_LIBAV_FFT"; then
-  FFVPX_ASFLAGS=$LIBAV_FFT_ASFLAGS
-fi
 if test -n "$MOZ_FFVPX"; then
   AC_DEFINE(MOZ_FFVPX)
+fi
+if test -n "$MOZ_FFVPX_FLACONLY"; then
+  AC_DEFINE(MOZ_FFVPX_FLACONLY)
 fi
 
 dnl ========================================================
@@ -3755,22 +3720,12 @@ fi
 dnl ========================================================
 dnl = Enable code optimization. ON by default.
 dnl ========================================================
-if test -z "$MOZ_OPTIMIZE_FLAGS"; then
-    MOZ_OPTIMIZE_FLAGS="-O"
-fi
 
-MOZ_ARG_ENABLE_STRING(optimize,
-[  --disable-optimize      Disable compiler optimization
-  --enable-optimize=[OPT] Specify compiler optimization flags [OPT=-O]],
-[ if test "$enableval" != "no"; then
-    MOZ_OPTIMIZE=1
-    if test -n "$enableval" -a "$enableval" != "yes"; then
-        MOZ_OPTIMIZE_FLAGS=`echo "$enableval" | sed -e 's|\\\ | |g'`
-        MOZ_OPTIMIZE=2
-    fi
-else
-    MOZ_OPTIMIZE=
-fi ], MOZ_OPTIMIZE=1)
+# Use value from moz.configure if one is defined. Else use our computed
+# value.
+if test -n "${MOZ_CONFIGURE_OPTIMIZE_FLAGS}"; then
+    MOZ_OPTIMIZE_FLAGS=${MOZ_CONFIGURE_OPTIMIZE_FLAGS}
+fi
 
 MOZ_SET_FRAMEPTR_FLAGS
 
@@ -3791,11 +3746,10 @@ if test -n "$MOZ_OPTIMIZE"; then
 fi
 fi # COMPILE_ENVIRONMENT
 
-AC_SUBST(MOZ_OPTIMIZE)
-AC_SUBST(MOZ_FRAMEPTR_FLAGS)
-AC_SUBST(MOZ_OPTIMIZE_FLAGS)
-AC_SUBST(MOZ_OPTIMIZE_LDFLAGS)
-AC_SUBST(MOZ_PGO_OPTIMIZE_FLAGS)
+AC_SUBST_LIST(MOZ_FRAMEPTR_FLAGS)
+AC_SUBST_LIST(MOZ_OPTIMIZE_FLAGS)
+AC_SUBST_LIST(MOZ_OPTIMIZE_LDFLAGS)
+AC_SUBST_LIST(MOZ_PGO_OPTIMIZE_FLAGS)
 
 dnl ========================================================
 dnl = Disable treating compiler warnings as errors
@@ -4007,16 +3961,6 @@ if test -n "$MOZ_REFLOW_PERF"; then
 fi
 
 dnl ========================================================
-dnl = Horizon build options - set default preferences for
-dnl   the horizon project. Horizon is a browser built on
-dnl   top of the graphene runtime.
-dnl ========================================================
-if test -n "$MOZ_HORIZON"; then
-    AC_DEFINE(MOZ_HORIZON)
-fi
-AC_SUBST(MOZ_HORIZON)
-
-dnl ========================================================
 dnl = Offer a way to disable the startup cache
 dnl ========================================================
 
@@ -4112,15 +4056,6 @@ dnl ========================================================
 MOZ_ARG_HEADER(Misc. Options)
 
 dnl ========================================================
-dnl = Define default location for MOZILLA_FIVE_HOME
-dnl ========================================================
-MOZ_ARG_WITH_STRING(default-mozilla-five-home,
-[  --with-default-mozilla-five-home
-                          Set the default value for MOZILLA_FIVE_HOME],
-[ val=`echo $withval`
-  AC_DEFINE_UNQUOTED(MOZ_DEFAULT_MOZILLA_FIVE_HOME,"$val") ])
-
-dnl ========================================================
 dnl = Location of the mozilla user directory (default is ~/.mozilla).],
 dnl ========================================================
 MOZ_ARG_WITH_STRING(user-appdir,
@@ -4197,6 +4132,7 @@ dnl =
 dnl ========================================================
 MOZ_ARG_HEADER(Build dependencies)
 
+if test "$COMPILE_ENVIRONMENT"; then
 if test "$GNU_CC" -a "$GNU_CXX"; then
   _DEPEND_CFLAGS='-MD -MP -MF $(MDDEPDIR)/$(@F).pp'
 else
@@ -4229,6 +4165,7 @@ else
     AC_SUBST(NONASCII)
   fi
 fi
+fi # COMPILE_ENVIRONMENT
 
 dnl ========================================================
 dnl =
@@ -4458,6 +4395,9 @@ AC_SUBST_LIST(MOZ_CAIRO_LIBS)
 AC_SUBST_LIST(MOZ_CAIRO_OSLIBS)
 AC_SUBST(MOZ_TREE_PIXMAN)
 
+BINDGEN_SYSTEM_FLAGS="$_BINDGEN_CFLAGS $NSPR_CFLAGS $NSS_CFLAGS $MOZ_PIXMAN_CFLAGS $MOZ_CAIRO_CFLAGS"
+AC_SUBST_TOML_LIST(BINDGEN_SYSTEM_FLAGS)
+
 dnl ========================================================
 dnl disable xul
 dnl ========================================================
@@ -4481,20 +4421,24 @@ dnl
 dnl option to disable necko's wifi scanner
 dnl
 
-case "$OS_TARGET" in
-  Darwin)
-    if test -z "$MOZ_IOS"; then
+if test "$MOZ_WIDGET_TOOLKIT"; then
+
+  case "$OS_TARGET" in
+    Darwin)
+      if test -z "$MOZ_IOS"; then
+	NECKO_WIFI=1
+      fi
+      ;;
+    DragonFly|FreeBSD|WINNT)
       NECKO_WIFI=1
-    fi
-    ;;
-  DragonFly|FreeBSD|WINNT)
-    NECKO_WIFI=1
-    ;;
-  Linux)
-    NECKO_WIFI=1
-    NECKO_WIFI_DBUS=1
-    ;;
-esac
+      ;;
+    Linux)
+      NECKO_WIFI=1
+      NECKO_WIFI_DBUS=1
+      ;;
+  esac
+
+fi
 
 MOZ_ARG_DISABLE_BOOL(necko-wifi,
 [  --disable-necko-wifi    Disable necko wifi scanner],
@@ -4541,11 +4485,9 @@ AC_SUBST(RCFLAGS)
 AC_SUBST(WINDRES)
 AC_SUBST(IMPLIB)
 AC_SUBST(FILTER)
-AC_SUBST(BIN_FLAGS)
 AC_SUBST(MOZ_AUTH_EXTENSION)
 AC_SUBST(MOZ_PREF_EXTENSIONS)
-AC_SUBST(MOZ_DEBUG)
-AC_SUBST(MOZ_DEBUG_LDFLAGS)
+AC_SUBST_LIST(MOZ_DEBUG_LDFLAGS)
 AC_SUBST(WARNINGS_AS_ERRORS)
 AC_SUBST_SET(MOZ_EXTENSIONS)
 AC_SUBST(LIBICONV)
@@ -4572,7 +4514,6 @@ AC_SUBST(MOZ_D3DCOMPILER_VISTA_DLL_PATH)
 
 AC_SUBST(MOZ_ANDROID_APPLICATION_CLASS)
 AC_SUBST(MOZ_ANDROID_BROWSER_INTENT_CLASS)
-AC_SUBST(MOZ_ANDROID_SEARCH_INTENT_CLASS)
 AC_SUBST(MOZ_EXCLUDE_HYPHENATION_DICTIONARIES)
 AC_SUBST(ENABLE_STRIP)
 AC_SUBST(PKG_SKIP_STRIP)
@@ -4580,7 +4521,7 @@ AC_SUBST(STRIP_FLAGS)
 AC_SUBST(USE_ELF_HACK)
 AC_SUBST(INCREMENTAL_LINKER)
 
-AC_SUBST(MOZ_FIX_LINK_PATHS)
+AC_SUBST_LIST(MOZ_FIX_LINK_PATHS)
 
 AC_SUBST(MOZ_POST_PROGRAM_COMMAND)
 AC_SUBST(MOZ_LINKER_EXTRACT)
@@ -4873,21 +4814,21 @@ OS_COMPILE_CFLAGS="$COMPILE_CFLAGS"
 OS_COMPILE_CXXFLAGS="$COMPILE_CXXFLAGS"
 OS_LDFLAGS="$LDFLAGS"
 OS_LIBS="$LIBS"
-AC_SUBST(OS_CFLAGS)
-AC_SUBST(OS_CXXFLAGS)
-AC_SUBST(OS_CPPFLAGS)
-AC_SUBST(OS_COMPILE_CFLAGS)
-AC_SUBST(OS_COMPILE_CXXFLAGS)
-AC_SUBST(OS_LDFLAGS)
+AC_SUBST_LIST(OS_CFLAGS)
+AC_SUBST_LIST(OS_CXXFLAGS)
+AC_SUBST_LIST(OS_CPPFLAGS)
+AC_SUBST_LIST(OS_COMPILE_CFLAGS)
+AC_SUBST_LIST(OS_COMPILE_CXXFLAGS)
+AC_SUBST_LIST(OS_LDFLAGS)
 AC_SUBST(OS_LIBS)
 
 AC_SUBST(HOST_CC)
 AC_SUBST(HOST_CXX)
-AC_SUBST(HOST_CFLAGS)
-AC_SUBST(HOST_CPPFLAGS)
-AC_SUBST(HOST_CXXFLAGS)
+AC_SUBST_LIST(HOST_CFLAGS)
+AC_SUBST_LIST(HOST_CPPFLAGS)
+AC_SUBST_LIST(HOST_CXXFLAGS)
 AC_SUBST(HOST_LDFLAGS)
-AC_SUBST(HOST_OPTIMIZE_FLAGS)
+AC_SUBST_LIST(HOST_OPTIMIZE_FLAGS)
 AC_SUBST(HOST_AR)
 AC_SUBST(HOST_AR_FLAGS)
 AC_SUBST(HOST_RANLIB)
@@ -4900,11 +4841,10 @@ AC_SUBST(HAVE_X86_AVX2)
 AC_SUBST(HAVE_ALTIVEC)
 AC_SUBST(GCC_USE_GNU_LD)
 
-AC_SUBST(WRAP_LDFLAGS)
 AC_SUBST(MKSHLIB)
 AC_SUBST(MKCSHLIB)
-AC_SUBST(DSO_CFLAGS)
-AC_SUBST(DSO_PIC_CFLAGS)
+AC_SUBST_LIST(DSO_CFLAGS)
+AC_SUBST_LIST(DSO_PIC_CFLAGS)
 AC_SUBST(DSO_LDOPTS)
 AC_SUBST(BIN_SUFFIX)
 AC_SUBST(USE_N32)
@@ -4916,6 +4856,7 @@ AC_SUBST(WIN32_GUI_EXE_LDFLAGS)
 AC_SUBST(MOZ_VORBIS)
 AC_SUBST(MOZ_TREMOR)
 AC_SUBST(MOZ_FFVPX)
+AC_SUBST(MOZ_FFVPX_FLACONLY)
 AC_SUBST_LIST(FFVPX_ASFLAGS)
 AC_SUBST(VPX_USE_YASM)
 AC_SUBST_LIST(VPX_ASFLAGS)
@@ -5023,7 +4964,6 @@ dnl The following defines are used by xpcom
 _NON_GLOBAL_ACDEFINES="$_NON_GLOBAL_ACDEFINES
 CPP_THROW_NEW
 HAVE_CPP_DYNAMIC_CAST_TO_VOID_PTR
-HAVE_CPP_PARTIAL_SPECIALIZATION
 HAVE_GETPAGESIZE
 HAVE_ICONV
 HAVE_ICONV_WITH_CONST_INPUT
@@ -5050,16 +4990,6 @@ else
 fi
 
 AC_SUBST(PREPROCESS_OPTION)
-
-dnl ========================================================
-dnl mask as shorthand property
-dnl ========================================================
-
-# The control structure code will be removed as soon as the feature is stable
-# Refer to bug 1281101 for more details.
-MOZ_ENABLE_MASK_AS_SHORTHAND=1
-AC_DEFINE(MOZ_ENABLE_MASK_AS_SHORTHAND)
-AC_SUBST(MOZ_ENABLE_MASK_AS_SHORTHAND)
 
 # Avoid using obsolete NSPR features
 AC_DEFINE(NO_NSPR_10_SUPPORT)
@@ -5102,9 +5032,8 @@ if test -n "$_subconfigure_subdir"; then
   srcdir="$_save_srcdir"
 fi
 
-if test "$COMPILE_ENVIRONMENT"; then
+if test "$COMPILE_ENVIRONMENT" -a "$MOZ_WIDGET_TOOLKIT"; then
 
-export WRAP_LDFLAGS
 
 dnl ========================================================
 dnl = Setup a nice relatively clean build environment for
@@ -5172,6 +5101,7 @@ export HOST_CFLAGS
 export HOST_CPPFLAGS
 export HOST_CXXFLAGS
 export HOST_LDFLAGS
+export MOZ_PGO
 
 if ! test -e js; then
     mkdir js

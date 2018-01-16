@@ -1592,8 +1592,8 @@ CheckResumptionValue(JSContext* cx, AbstractFramePtr frame, const Maybe<HandleVa
         // function violate the iterator protocol. The return value from
         // such a frame must have the form { done: <bool>, value: <anything> }.
         RootedFunction callee(cx, frame.callee());
-        if (callee->isStarGenerator()) {
-            if (!CheckStarGeneratorResumptionValue(cx, vp)) {
+        if (callee->isGenerator()) {
+            if (!CheckGeneratorResumptionValue(cx, vp)) {
                 JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_DEBUG_BAD_YIELD);
                 return false;
             }
@@ -2298,10 +2298,7 @@ Debugger::appendAllocationSite(JSContext* cx, HandleObject obj, HandleSavedFrame
     }
 
     if (allocationsLog.length() > maxAllocationsLogLength) {
-        if (!allocationsLog.popFront()) {
-            ReportOutOfMemory(cx);
-            return false;
-        }
+        allocationsLog.popFront();
         MOZ_ASSERT(allocationsLog.length() == maxAllocationsLogLength);
         allocationsLogOverflowed = true;
     }
@@ -2343,11 +2340,17 @@ Debugger::firePromiseHook(JSContext* cx, Hook hook, HandleObject promise, Mutabl
 }
 
 /* static */ void
-Debugger::slowPathPromiseHook(JSContext* cx, Hook hook, HandleObject promise)
+Debugger::slowPathPromiseHook(JSContext* cx, Hook hook, Handle<PromiseObject*> promise)
 {
     MOZ_ASSERT(hook == OnNewPromise || hook == OnPromiseSettled);
-    RootedValue rval(cx);
 
+    Maybe<AutoCompartment> ac;
+    if (hook == OnNewPromise)
+        ac.emplace(cx, promise);
+
+    assertSameCompartment(cx, promise);
+
+    RootedValue rval(cx);
     JSTrapStatus status = dispatchHook(
         cx,
         [hook](Debugger* dbg) -> bool { return dbg->getHook(hook); },
@@ -5372,7 +5375,7 @@ static bool
 DebuggerScript_getIsGeneratorFunction(JSContext* cx, unsigned argc, Value* vp)
 {
     THIS_DEBUGSCRIPT_SCRIPT(cx, argc, vp, "(get isGeneratorFunction)", args, obj, script);
-    args.rval().setBoolean(script->isLegacyGenerator() || script->isStarGenerator());
+    args.rval().setBoolean(script->isGenerator());
     return true;
 }
 
@@ -6527,7 +6530,7 @@ struct DebuggerScriptSetBreakpointMatcher
         if (!site)
             return false;
         site->inc(cx_->runtime()->defaultFreeOp());
-        if (cx_->runtime()->new_<Breakpoint>(dbg_, site, handler_))
+        if (cx_->zone()->new_<Breakpoint>(dbg_, site, handler_))
             return true;
         site->dec(cx_->runtime()->defaultFreeOp());
         site->destroyIfEmpty(cx_->runtime()->defaultFreeOp());
@@ -6544,7 +6547,7 @@ struct DebuggerScriptSetBreakpointMatcher
         if (!site)
             return false;
         site->inc(cx_->runtime()->defaultFreeOp());
-        if (cx_->runtime()->new_<WasmBreakpoint>(dbg_, site, handler_, instance.object()))
+        if (cx_->zone()->new_<WasmBreakpoint>(dbg_, site, handler_, instance.object()))
             return true;
         site->dec(cx_->runtime()->defaultFreeOp());
         site->destroyIfEmpty(cx_->runtime()->defaultFreeOp());
@@ -7645,9 +7648,7 @@ DebuggerFrame::getEnvironment(JSContext* cx, HandleDebuggerFrame frame,
 DebuggerFrame::getIsGenerator(HandleDebuggerFrame frame)
 {
     AbstractFramePtr referent = DebuggerFrame::getReferent(frame);
-    return referent.hasScript() &&
-           (referent.script()->isStarGenerator() ||
-            referent.script()->isLegacyGenerator());
+    return referent.hasScript() && referent.script()->isGenerator();
 }
 
 /* static */ bool
@@ -8484,7 +8485,7 @@ DebuggerArguments::create(JSContext* cx, HandleObject proto, HandleDebuggerFrame
         if (!getobj ||
             !NativeDefineAccessorProperty(cx, obj, id,
                                           JS_DATA_TO_FUNC_PTR(GetterOp, getobj.get()), nullptr,
-                                          JSPROP_ENUMERATE | JSPROP_SHARED | JSPROP_GETTER))
+                                          JSPROP_ENUMERATE | JSPROP_GETTER))
         {
             return nullptr;
         }
@@ -9961,7 +9962,7 @@ DebuggerObject::isGeneratorFunction() const
     MOZ_ASSERT(isDebuggeeFunction());
 
     JSFunction* fun = RemoveAsyncWrapper(&referent()->as<JSFunction>());
-    return fun->isLegacyGenerator() || fun->isStarGenerator();
+    return fun->isGenerator();
 }
 
 bool
@@ -10647,7 +10648,7 @@ DebuggerObject::forceLexicalInitializationByName(JSContext* cx, HandleDebuggerOb
         MOZ_ASSERT(prop.isNativeProperty());
         Shape* shape = prop.shape();
         Value v = globalLexical->as<NativeObject>().getSlot(shape->slot());
-        if (shape->hasSlot() && v.isMagic() && v.whyMagic() == JS_UNINITIALIZED_LEXICAL) {
+        if (shape->isDataProperty() && v.isMagic() && v.whyMagic() == JS_UNINITIALIZED_LEXICAL) {
             globalLexical->as<NativeObject>().setSlot(shape->slot(), UndefinedValue());
             result = true;
         }
@@ -11568,32 +11569,6 @@ JS_DefineDebuggerObject(JSContext* cx, HandleObject obj)
     return true;
 }
 
-static inline void
-AssertIsPromise(JSContext* cx, HandleObject promise)
-{
-    MOZ_ASSERT(promise);
-    assertSameCompartment(cx, promise);
-    MOZ_ASSERT(strcmp(promise->getClass()->name, "Promise") == 0);
-}
-
-JS_PUBLIC_API(void)
-JS::dbg::onNewPromise(JSContext* cx, HandleObject promise_)
-{
-    RootedObject promise(cx, promise_);
-    if (IsWrapper(promise))
-        promise = UncheckedUnwrap(promise);
-    AutoCompartment ac(cx, promise);
-    AssertIsPromise(cx, promise);
-    Debugger::slowPathPromiseHook(cx, Debugger::OnNewPromise, promise);
-}
-
-JS_PUBLIC_API(void)
-JS::dbg::onPromiseSettled(JSContext* cx, HandleObject promise)
-{
-    AssertIsPromise(cx, promise);
-    Debugger::slowPathPromiseHook(cx, Debugger::OnPromiseSettled, promise);
-}
-
 JS_PUBLIC_API(bool)
 JS::dbg::IsDebugger(JSObject& obj)
 {
@@ -11651,7 +11626,7 @@ namespace dbg {
 /* static */ GarbageCollectionEvent::Ptr
 GarbageCollectionEvent::Create(JSRuntime* rt, ::js::gcstats::Statistics& stats, uint64_t gcNumber)
 {
-    auto data = rt->make_unique<GarbageCollectionEvent>(gcNumber);
+    auto data = MakeUnique<GarbageCollectionEvent>(gcNumber);
     if (!data)
         return nullptr;
 

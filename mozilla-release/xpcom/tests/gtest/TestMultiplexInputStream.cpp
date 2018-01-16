@@ -5,21 +5,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "gtest/gtest.h"
+#include "nsIAsyncInputStream.h"
 #include "nsComponentManagerUtils.h"
-#include "nsCOMPtr.h"
 #include "nsIInputStream.h"
 #include "nsIMultiplexInputStream.h"
 #include "nsISeekableStream.h"
-#include "nsStringStream.h"
+#include "nsThreadUtils.h"
+#include "Helpers.h"
 
 TEST(MultiplexInputStream, Seek_SET)
 {
   nsCString buf1;
   nsCString buf2;
   nsCString buf3;
-  buf1.Assign("Hello world");
-  buf2.Assign("The quick brown fox jumped over the lazy dog");
-  buf3.Assign("Foo bar");
+  buf1.AssignLiteral("Hello world");
+  buf2.AssignLiteral("The quick brown fox jumped over the lazy dog");
+  buf3.AssignLiteral("Foo bar");
 
   nsCOMPtr<nsIInputStream> inputStream1;
   nsCOMPtr<nsIInputStream> inputStream2;
@@ -100,4 +101,296 @@ TEST(MultiplexInputStream, Seek_SET)
   ASSERT_TRUE(NS_SUCCEEDED(rv));
   ASSERT_EQ((uint64_t)buf2.Length() - 6 + buf3.Length(), length);
   ASSERT_EQ(0, strncmp(readBuf, "The qu", count));
+}
+
+already_AddRefed<nsIInputStream>
+CreateStreamHelper()
+{
+  nsCOMPtr<nsIMultiplexInputStream> multiplexStream =
+    do_CreateInstance("@mozilla.org/io/multiplex-input-stream;1");
+
+  nsCString buf1;
+  buf1.AssignLiteral("Hello");
+
+  nsCOMPtr<nsIInputStream> inputStream1 = new testing::AsyncStringStream(buf1);
+  multiplexStream->AppendStream(inputStream1);
+
+  nsCString buf2;
+  buf2.AssignLiteral(" ");
+
+  nsCOMPtr<nsIInputStream> inputStream2 = new testing::AsyncStringStream(buf2);
+  multiplexStream->AppendStream(inputStream2);
+
+  nsCString buf3;
+  buf3.AssignLiteral("World!");
+
+  nsCOMPtr<nsIInputStream> inputStream3 = new testing::AsyncStringStream(buf3);
+  multiplexStream->AppendStream(inputStream3);
+
+  nsCOMPtr<nsIInputStream> stream(do_QueryInterface(multiplexStream));
+  return stream.forget();
+}
+
+// AsyncWait - without EventTarget
+TEST(TestMultiplexInputStream, AsyncWait_withoutEventTarget) {
+  nsCOMPtr<nsIInputStream> is = CreateStreamHelper();
+
+  nsCOMPtr<nsIAsyncInputStream> ais = do_QueryInterface(is);
+  ASSERT_TRUE(!!ais);
+
+  RefPtr<testing::InputStreamCallback> cb =
+    new testing::InputStreamCallback();
+
+  ASSERT_EQ(NS_OK, ais->AsyncWait(cb, 0, 0, nullptr));
+  ASSERT_FALSE(cb->Called());
+
+  // Eventually it is called.
+  MOZ_ALWAYS_TRUE(mozilla::SpinEventLoopUntil([&]() { return cb->Called(); }));
+  ASSERT_TRUE(cb->Called());
+}
+
+// AsyncWait - with EventTarget
+TEST(TestMultiplexInputStream, AsyncWait_withEventTarget) {
+  nsCOMPtr<nsIInputStream> is = CreateStreamHelper();
+
+  nsCOMPtr<nsIAsyncInputStream> ais = do_QueryInterface(is);
+  ASSERT_TRUE(!!ais);
+
+  RefPtr<testing::InputStreamCallback> cb =
+    new testing::InputStreamCallback();
+  nsCOMPtr<nsIThread> thread = do_GetCurrentThread();
+
+  ASSERT_EQ(NS_OK, ais->AsyncWait(cb, 0, 0, thread));
+
+  ASSERT_FALSE(cb->Called());
+
+  // Eventually it is called.
+  MOZ_ALWAYS_TRUE(mozilla::SpinEventLoopUntil([&]() { return cb->Called(); }));
+  ASSERT_TRUE(cb->Called());
+}
+
+// AsyncWait - without EventTarget - closureOnly
+TEST(TestMultiplexInputStream, AsyncWait_withoutEventTarget_closureOnly) {
+  nsCOMPtr<nsIInputStream> is = CreateStreamHelper();
+
+  nsCOMPtr<nsIAsyncInputStream> ais = do_QueryInterface(is);
+  ASSERT_TRUE(!!ais);
+
+  RefPtr<testing::InputStreamCallback> cb =
+    new testing::InputStreamCallback();
+
+  ASSERT_EQ(NS_OK, ais->AsyncWait(cb, nsIAsyncInputStream::WAIT_CLOSURE_ONLY,
+                                  0, nullptr));
+  ASSERT_FALSE(cb->Called());
+
+  ais->CloseWithStatus(NS_ERROR_FAILURE);
+  ASSERT_FALSE(cb->Called());
+
+  // Eventually it is called.
+  MOZ_ALWAYS_TRUE(mozilla::SpinEventLoopUntil([&]() { return cb->Called(); }));
+  ASSERT_TRUE(cb->Called());
+}
+
+// AsyncWait - withEventTarget - closureOnly
+TEST(TestMultiplexInputStream, AsyncWait_withEventTarget_closureOnly) {
+  nsCOMPtr<nsIInputStream> is = CreateStreamHelper();
+
+  nsCOMPtr<nsIAsyncInputStream> ais = do_QueryInterface(is);
+  ASSERT_TRUE(!!ais);
+
+  RefPtr<testing::InputStreamCallback> cb =
+    new testing::InputStreamCallback();
+  nsCOMPtr<nsIThread> thread = do_GetCurrentThread();
+
+  ASSERT_EQ(NS_OK, ais->AsyncWait(cb, nsIAsyncInputStream::WAIT_CLOSURE_ONLY,
+                                  0, thread));
+
+  ASSERT_FALSE(cb->Called());
+  ais->CloseWithStatus(NS_ERROR_FAILURE);
+  ASSERT_FALSE(cb->Called());
+
+  // Eventually it is called.
+  MOZ_ALWAYS_TRUE(mozilla::SpinEventLoopUntil([&]() { return cb->Called(); }));
+  ASSERT_TRUE(cb->Called());
+}
+
+class ClosedStream final : public nsIInputStream
+{
+public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+
+  ClosedStream() {}
+
+  NS_IMETHOD
+  Available(uint64_t* aLength) override
+  {
+    return NS_BASE_STREAM_CLOSED;
+  }
+
+  NS_IMETHOD
+  Read(char* aBuffer, uint32_t aCount, uint32_t* aReadCount) override
+  {
+    MOZ_CRASH("This should not be called!");
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  ReadSegments(nsWriteSegmentFun aWriter, void* aClosure,
+               uint32_t aCount, uint32_t *aResult) override
+  {
+    MOZ_CRASH("This should not be called!");
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  Close() override { return NS_OK; }
+
+  NS_IMETHOD
+  IsNonBlocking(bool* aNonBlocking) override
+  {
+    *aNonBlocking = true;
+    return NS_OK;
+  }
+
+private:
+  ~ClosedStream() = default;
+};
+
+NS_IMPL_ISUPPORTS(ClosedStream, nsIInputStream)
+
+class AsyncStream final : public nsIAsyncInputStream
+{
+public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+
+  explicit AsyncStream(int64_t aSize) : mState(eBlocked), mSize(aSize) {}
+
+  void
+  Unblock()
+  {
+    mState = eUnblocked;
+  }
+
+  NS_IMETHOD
+  Available(uint64_t* aLength) override
+  {
+   *aLength = mState == eBlocked ? 0 : mSize;
+   return mState == eClosed ? NS_BASE_STREAM_CLOSED : NS_OK;
+  }
+
+  NS_IMETHOD
+  Read(char* aBuffer, uint32_t aCount, uint32_t* aReadCount) override
+  {
+    MOZ_CRASH("This should not be called!");
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  ReadSegments(nsWriteSegmentFun aWriter, void* aClosure,
+               uint32_t aCount, uint32_t *aResult) override
+  {
+    MOZ_CRASH("This should not be called!");
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  Close() override
+  {
+    mState = eClosed;
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  IsNonBlocking(bool* aNonBlocking) override
+  {
+    *aNonBlocking = true;
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  AsyncWait(nsIInputStreamCallback* aCallback,
+            uint32_t aFlags, uint32_t aRequestedCount,
+            nsIEventTarget* aEventTarget) override
+  {
+    MOZ_CRASH("This should not be called!");
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  CloseWithStatus(nsresult aStatus) override
+  {
+    return NS_OK;
+  }
+
+private:
+  ~AsyncStream() = default;
+
+  enum {
+    eBlocked,
+    eUnblocked,
+    eClosed
+  } mState;
+
+  uint64_t mSize;
+};
+
+NS_IMPL_ISUPPORTS(AsyncStream, nsIInputStream, nsIAsyncInputStream)
+
+TEST(TestMultiplexInputStream, Available) {
+  nsCOMPtr<nsIMultiplexInputStream> multiplexStream =
+    do_CreateInstance("@mozilla.org/io/multiplex-input-stream;1");
+
+  nsCOMPtr<nsIInputStream> s = do_QueryInterface(multiplexStream);
+  ASSERT_TRUE(!!s);
+
+  nsCOMPtr<nsIAsyncInputStream> as = do_QueryInterface(multiplexStream);
+  ASSERT_TRUE(!as);
+
+  uint64_t length;
+
+  // The stream returns NS_BASE_STREAM_CLOSED if there are no substreams.
+  nsresult rv = s->Available(&length);
+  ASSERT_EQ(NS_BASE_STREAM_CLOSED, rv);
+
+  rv = multiplexStream->AppendStream(new ClosedStream());
+  ASSERT_EQ(NS_OK, rv);
+
+  uint64_t asyncSize = 2;
+  RefPtr<AsyncStream> asyncStream = new AsyncStream(2);
+  rv = multiplexStream->AppendStream(asyncStream);
+  ASSERT_EQ(NS_OK, rv);
+
+  nsCString buffer;
+  buffer.Assign("World!!!");
+
+  nsCOMPtr<nsIInputStream> stringStream;
+  rv = NS_NewCStringInputStream(getter_AddRefs(stringStream), buffer);
+  ASSERT_EQ(NS_OK, rv);
+
+  rv = multiplexStream->AppendStream(stringStream);
+  ASSERT_EQ(NS_OK, rv);
+
+  // Now we are async.
+  as = do_QueryInterface(multiplexStream);
+  ASSERT_TRUE(!!as);
+
+  // Available should skip the closed stream and return 0 because the
+  // asyncStream returns 0 and it's async.
+  rv = s->Available(&length);
+  ASSERT_EQ(NS_OK, rv);
+  ASSERT_EQ((uint64_t)0, length);
+
+  asyncStream->Unblock();
+
+  // Now we should return only the size of the async stream because we don't
+  // know when this is completed.
+  rv = s->Available(&length);
+  ASSERT_EQ(NS_OK, rv);
+  ASSERT_EQ(asyncSize, length);
+
+  asyncStream->Close();
+
+  rv = s->Available(&length);
+  ASSERT_EQ(NS_OK, rv);
+  ASSERT_EQ(buffer.Length(), length);
 }

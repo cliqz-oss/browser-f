@@ -530,9 +530,9 @@ NS_INTERFACE_MAP_END
 //
 
 NS_IMETHODIMP
-CompositeDataSourceImpl::GetURI(char* *uri)
+CompositeDataSourceImpl::GetURI(nsACString& aURI)
 {
-    *uri = nullptr;
+    aURI.SetIsVoid(true);
     return NS_OK;
 }
 
@@ -1068,7 +1068,7 @@ CompositeDataSourceImpl::ArcLabelsOut(nsIRDFResource* aSource,
 NS_IMETHODIMP
 CompositeDataSourceImpl::GetAllResources(nsISimpleEnumerator** aResult)
 {
-    NS_NOTYETIMPLEMENTED("CompositeDataSourceImpl::GetAllResources");
+    MOZ_ASSERT_UNREACHABLE("CompositeDataSourceImpl::GetAllResources");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 

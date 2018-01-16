@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import, print_function
+
 import glob
 import os
 import re
@@ -105,10 +107,10 @@ def check_for_crashes(dump_directory,
                 stackwalk_output.append("minidump_stackwalk exited with return code %d" %
                                         info.stackwalk_retcode)
             signature = info.signature if info.signature else "unknown top frame"
-            print "PROCESS-CRASH | %s | application crashed [%s]" % (test_name,
-                                                                     signature)
-            print '\n'.join(stackwalk_output)
-            print '\n'.join(info.stackwalk_errors)
+            print("PROCESS-CRASH | %s | application crashed [%s]" % (test_name,
+                                                                     signature))
+            print('\n'.join(stackwalk_output))
+            print('\n'.join(info.stackwalk_errors))
 
     return crash_count
 
@@ -371,12 +373,12 @@ def check_for_java_exception(logcat, test_name=None, quiet=False):
                 if m and m.group(1):
                     exception_location = m.group(1)
                 if not quiet:
-                    print "PROCESS-CRASH | %s | java-exception %s %s" % (test_name,
+                    print("PROCESS-CRASH | %s | java-exception %s %s" % (test_name,
                                                                          exception_type,
-                                                                         exception_location)
+                                                                         exception_location))
             else:
-                print "Automation Error: java exception in logcat at line " \
-                    "%d of %d: %s" % (i, len(logcat), line)
+                print("Automation Error: java exception in logcat at line "
+                      "%d of %d: %s" % (i, len(logcat), line))
             break
 
     return found_exception
@@ -471,10 +473,32 @@ if mozinfo.isWin:
         :param pid: PID of the process to terminate.
         """
         PROCESS_TERMINATE = 0x0001
+        WAIT_OBJECT_0 = 0x0
+        WAIT_FAILED = -1
+        logger = get_logger()
         handle = OpenProcess(PROCESS_TERMINATE, 0, pid)
         if handle:
-            kernel32.TerminateProcess(handle, 1)
+            if kernel32.TerminateProcess(handle, 1):
+                # TerminateProcess is async; wait up to 30 seconds for process to
+                # actually terminate, then give up so that clients are not kept
+                # waiting indefinitely for hung processes.
+                status = kernel32.WaitForSingleObject(handle, 30000)
+                if status == WAIT_FAILED:
+                    err = kernel32.GetLastError()
+                    logger.warning("kill_pid(): wait failed (%d) terminating pid %d: error %d" %
+                                   (status, pid, err))
+                elif status != WAIT_OBJECT_0:
+                    logger.warning("kill_pid(): wait failed (%d) terminating pid %d" %
+                                   (status, pid))
+            else:
+                err = kernel32.GetLastError()
+                logger.warning("kill_pid(): unable to terminate pid %d: %d" %
+                               (pid, err))
             CloseHandle(handle)
+        else:
+            err = kernel32.GetLastError()
+            logger.warning("kill_pid(): unable to get handle for pid %d: %d" %
+                           (pid, err))
 else:
     def kill_pid(pid):
         """

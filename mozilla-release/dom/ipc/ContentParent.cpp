@@ -34,6 +34,8 @@
 #include "mozilla/DataStorage.h"
 #include "mozilla/devtools/HeapSnapshotTempFileHelperParent.h"
 #include "mozilla/docshell/OfflineCacheUpdateParent.h"
+#include "mozilla/dom/ClientManager.h"
+#include "mozilla/dom/ClientOpenWindowOpActors.h"
 #include "mozilla/dom/DataTransfer.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/File.h"
@@ -169,6 +171,7 @@
 #include "nsDocShell.h"
 #include "nsOpenURIInFrameParams.h"
 #include "mozilla/net/NeckoMessageUtils.h"
+#include "gfxPlatform.h"
 #include "gfxPrefs.h"
 #include "prio.h"
 #include "private/pprio.h"
@@ -268,7 +271,6 @@
 
 static NS_DEFINE_CID(kCClipboardCID, NS_CLIPBOARD_CID);
 
-using base::ChildPrivileges;
 using base::KillProcess;
 
 #ifdef MOZ_CRASHREPORTER
@@ -628,6 +630,7 @@ ContentParent::StartUp()
   mozilla::dom::time::InitializeDateCacheCleaner();
 
   BackgroundChild::Startup();
+  ClientManager::Startup();
 
   sDisableUnsafeCPOWWarnings = PR_GetEnv("DISABLE_UNSAFE_CPOW_WARNINGS");
 
@@ -1064,8 +1067,7 @@ mozilla::ipc::IPCResult
 ContentParent::RecvUngrabPointer(const uint32_t& aTime)
 {
 #if !defined(MOZ_WIDGET_GTK)
-  NS_RUNTIMEABORT("This message only makes sense on GTK platforms");
-  return IPC_OK();
+  MOZ_CRASH("This message only makes sense on GTK platforms");
 #else
   gdk_pointer_ungrab(aTime);
   return IPC_OK();
@@ -1907,14 +1909,13 @@ ContentParent::StartForceKillTimer()
 
   int32_t timeoutSecs = Preferences::GetInt("dom.ipc.tabs.shutdownTimeoutSecs", 5);
   if (timeoutSecs > 0) {
-    mForceKillTimer = do_CreateInstance("@mozilla.org/timer;1");
+    NS_NewTimerWithFuncCallback(getter_AddRefs(mForceKillTimer),
+                                ContentParent::ForceKillTimerCallback,
+                                this,
+                                timeoutSecs * 1000,
+                                nsITimer::TYPE_ONE_SHOT,
+                                "dom::ContentParent::StartForceKillTimer");
     MOZ_ASSERT(mForceKillTimer);
-    mForceKillTimer->InitWithNamedFuncCallback(
-      ContentParent::ForceKillTimerCallback,
-      this,
-      timeoutSecs * 1000,
-      nsITimer::TYPE_ONE_SHOT,
-      "dom::ContentParent::StartForceKillTimer");
   }
 }
 
@@ -2123,10 +2124,8 @@ ContentParent::ContentParent(ContentParent* aOpener,
 #endif
 
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
-  ChildPrivileges privs = mRemoteType.EqualsLiteral(FILE_REMOTE_TYPE)
-                          ? base::PRIVILEGES_FILEREAD
-                          : base::PRIVILEGES_DEFAULT;
-  mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content, privs);
+  bool isFile = mRemoteType.EqualsLiteral(FILE_REMOTE_TYPE);
+  mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content, isFile);
 }
 
 ContentParent::~ContentParent()
@@ -2226,9 +2225,10 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority,
       }
     }
   }
-  // This is only implemented (returns a non-empty list) by MacOSX at present.
-  nsTArray<FontFamilyListEntry> fontFamilies;
-  gfxPlatform::GetPlatform()->GetSystemFontFamilyList(&fontFamilies);
+  // This is only implemented (returns a non-empty list) by MacOSX and Linux
+  // at present.
+  nsTArray<SystemFontListEntry> fontList;
+  gfxPlatform::GetPlatform()->ReadSystemFontList(&fontList);
   nsTArray<LookAndFeelInt> lnfCache = LookAndFeel::GetIntCache();
 
   // Content processes have no permission to access profile directory, so we
@@ -2263,12 +2263,15 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority,
 
   DataStorage::GetAllChildProcessData(xpcomInit.dataStorage());
 
+  // Send the dynamic scalar definitions to the new process.
+  TelemetryIPC::GetDynamicScalarDefinitions(xpcomInit.dynamicScalarDefs());
+
   // Must send screen info before send initialData
   ScreenManager& screenManager = ScreenManager::GetSingleton();
   screenManager.CopyScreensToRemote(this);
 
   Unused << SendSetXPCOMProcessAttributes(xpcomInit, initialData, lnfCache,
-                                          fontFamilies);
+                                          fontList);
 
   if (aSendRegisteredChrome) {
     nsCOMPtr<nsIChromeRegistry> registrySvc = nsChromeRegistry::GetService();
@@ -2317,34 +2320,31 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority,
     // PBrowsers are created, because they rely on the Compositor
     // already being around.  (Creation is async, so can't happen
     // on demand.)
-    bool useOffMainThreadCompositing = !!CompositorThreadHolder::Loop();
-    if (useOffMainThreadCompositing) {
-      GPUProcessManager* gpm = GPUProcessManager::Get();
+    GPUProcessManager* gpm = GPUProcessManager::Get();
 
-      Endpoint<PCompositorManagerChild> compositor;
-      Endpoint<PImageBridgeChild> imageBridge;
-      Endpoint<PVRManagerChild> vrBridge;
-      Endpoint<PVideoDecoderManagerChild> videoManager;
-      AutoTArray<uint32_t, 3> namespaces;
+    Endpoint<PCompositorManagerChild> compositor;
+    Endpoint<PImageBridgeChild> imageBridge;
+    Endpoint<PVRManagerChild> vrBridge;
+    Endpoint<PVideoDecoderManagerChild> videoManager;
+    AutoTArray<uint32_t, 3> namespaces;
 
-      DebugOnly<bool> opened = gpm->CreateContentBridges(
-        OtherPid(),
-        &compositor,
-        &imageBridge,
-        &vrBridge,
-        &videoManager,
-        &namespaces);
-      MOZ_ASSERT(opened);
+    DebugOnly<bool> opened = gpm->CreateContentBridges(
+      OtherPid(),
+      &compositor,
+      &imageBridge,
+      &vrBridge,
+      &videoManager,
+      &namespaces);
+    MOZ_ASSERT(opened);
 
-      Unused << SendInitRendering(
-        Move(compositor),
-        Move(imageBridge),
-        Move(vrBridge),
-        Move(videoManager),
-        namespaces);
+    Unused << SendInitRendering(
+      Move(compositor),
+      Move(imageBridge),
+      Move(vrBridge),
+      Move(videoManager),
+      namespaces);
 
-      gpm->AddListener(this);
-    }
+    gpm->AddListener(this);
   }
 
   nsStyleSheetService *sheetService = nsStyleSheetService::GetInstance();
@@ -2386,8 +2386,7 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority,
   // purpose. If the decision is made to permanently rely on the pref, this
   // should be changed so that it is required to restart firefox for the change
   // of value to take effect.
-  shouldSandbox = (GetEffectiveContentSandboxLevel() > 0) &&
-    !PR_GetEnv("MOZ_DISABLE_CONTENT_SANDBOX");
+  shouldSandbox = IsContentSandboxEnabled();
 
 #ifdef XP_LINUX
   if (shouldSandbox) {
@@ -2516,6 +2515,18 @@ void
 ContentParent::OnCompositorDeviceReset()
 {
   Unused << SendReinitRenderingForDeviceReset();
+}
+
+PClientOpenWindowOpParent*
+ContentParent::AllocPClientOpenWindowOpParent(const ClientOpenWindowArgs& aArgs)
+{
+  return AllocClientOpenWindowOpParent(aArgs);
+}
+
+bool
+ContentParent::DeallocPClientOpenWindowOpParent(PClientOpenWindowOpParent* aActor)
+{
+  return DeallocClientOpenWindowOpParent(aActor);
 }
 
 void
@@ -4253,6 +4264,17 @@ ContentParent::NotifyUpdatedDictionaries()
   }
 }
 
+void
+ContentParent::NotifyUpdatedFonts()
+{
+  InfallibleTArray<SystemFontListEntry> fontList;
+  gfxPlatform::GetPlatform()->ReadSystemFontList(&fontList);
+
+  for (auto* cp : AllProcesses(eLive)) {
+    Unused << cp->SendUpdateFontList(fontList);
+  }
+}
+
 /*static*/ void
 ContentParent::UnregisterRemoteFrame(const TabId& aTabId,
                                const ContentParentId& aCpId,
@@ -4487,7 +4509,8 @@ ContentParent::CommonCreateWindow(PBrowserParent* aThisTab,
                                   nsresult& aResult,
                                   nsCOMPtr<nsITabParent>& aNewTabParent,
                                   bool* aWindowIsNew,
-                                  nsIPrincipal* aTriggeringPrincipal)
+                                  nsIPrincipal* aTriggeringPrincipal,
+                                  bool aLoadURI)
 
 {
   // The content process should never be in charge of computing whether or
@@ -4571,10 +4594,19 @@ ContentParent::CommonCreateWindow(PBrowserParent* aThisTab,
     params->SetTriggeringPrincipal(aTriggeringPrincipal);
 
     nsCOMPtr<nsIFrameLoaderOwner> frameLoaderOwner;
-    aResult = browserDOMWin->OpenURIInFrame(aURIToLoad, params, openLocation,
-                                            nsIBrowserDOMWindow::OPEN_NEW,
-                                            aNextTabParentId, aName,
-                                            getter_AddRefs(frameLoaderOwner));
+    if (aLoadURI) {
+      aResult = browserDOMWin->OpenURIInFrame(aURIToLoad,
+                                              params, openLocation,
+                                              nsIBrowserDOMWindow::OPEN_NEW,
+                                              aNextTabParentId, aName,
+                                              getter_AddRefs(frameLoaderOwner));
+    } else {
+      aResult = browserDOMWin->CreateContentWindowInFrame(aURIToLoad,
+                                              params, openLocation,
+                                              nsIBrowserDOMWindow::OPEN_NEW,
+                                              aNextTabParentId, aName,
+                                              getter_AddRefs(frameLoaderOwner));
+    }
     if (NS_SUCCEEDED(aResult) && frameLoaderOwner) {
       RefPtr<nsFrameLoader> frameLoader = frameLoaderOwner->GetFrameLoader();
       if (frameLoader) {
@@ -4619,7 +4651,7 @@ ContentParent::CommonCreateWindow(PBrowserParent* aThisTab,
       ->SendSetOriginAttributes(openerOriginAttributes);
   }
 
-  if (aURIToLoad) {
+  if (aURIToLoad && aLoadURI) {
     nsCOMPtr<mozIDOMWindowProxy> openerWindow;
     if (aSetOpener && thisTabParent) {
       openerWindow = thisTabParent->GetParentWindowOuter();
@@ -4649,6 +4681,7 @@ ContentParent::RecvCreateWindow(PBrowserParent* aThisTab,
                                 const bool& aCalledFromJS,
                                 const bool& aPositionSpecified,
                                 const bool& aSizeSpecified,
+                                const OptionalURIParams& aURIToLoad,
                                 const nsCString& aFeatures,
                                 const nsCString& aBaseURI,
                                 const float& aFullZoom,
@@ -4691,19 +4724,21 @@ ContentParent::RecvCreateWindow(PBrowserParent* aThisTab,
   const uint64_t nextTabParentId = ++sNextTabParentId;
   sNextTabParents.Put(nextTabParentId, newTab);
 
+  const nsCOMPtr<nsIURI> uriToLoad = DeserializeURI(aURIToLoad);
+
   nsCOMPtr<nsITabParent> newRemoteTab;
   mozilla::ipc::IPCResult ipcResult =
     CommonCreateWindow(aThisTab, /* aSetOpener = */ true, aChromeFlags,
                        aCalledFromJS, aPositionSpecified, aSizeSpecified,
-                       nullptr, aFeatures, aBaseURI, aFullZoom,
-                       nextTabParentId, NullString(), rv,
+                       uriToLoad, aFeatures, aBaseURI, aFullZoom,
+                       nextTabParentId, VoidString(), rv,
                        newRemoteTab, &cwi.windowOpened(),
-                       aTriggeringPrincipal);
+                       aTriggeringPrincipal, /* aLoadUri = */ false);
   if (!ipcResult) {
     return ipcResult;
   }
 
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  if (NS_WARN_IF(NS_FAILED(rv)) || !newRemoteTab) {
     return IPC_OK();
   }
 
@@ -4753,7 +4788,8 @@ ContentParent::RecvCreateWindowInDifferentProcess(
                        aCalledFromJS, aPositionSpecified, aSizeSpecified,
                        uriToLoad, aFeatures, aBaseURI, aFullZoom,
                        /* aNextTabParentId = */ 0, aName, rv,
-                       newRemoteTab, &windowIsNew, aTriggeringPrincipal);
+                       newRemoteTab, &windowIsNew, aTriggeringPrincipal,
+                       /* aLoadUri = */ true);
   if (!ipcResult) {
     return ipcResult;
   }

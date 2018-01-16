@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,9 +10,9 @@
 #include "mozilla/ipc/ProtocolTypes.h"
 #include "mozilla/ipc/ProtocolUtils.h"       // for IToplevelProtocol
 #include "mozilla/TimeStamp.h"               // for TimeStamp
-#include "mozilla/layers/CompositorThread.h"
 #include "mozilla/Unused.h"
 #include "VRManager.h"
+#include "VRThread.h"
 #include "gfxVRPuppet.h"
 
 namespace mozilla {
@@ -21,8 +20,7 @@ using namespace layers;
 namespace gfx {
 
 VRManagerParent::VRManagerParent(ProcessId aChildProcessId, bool aIsContentChild)
-  : HostIPCAllocator()
-  , mDisplayTestID(0)
+  : mDisplayTestID(0)
   , mControllerTestID(0)
   , mHaveEventListener(false)
   , mHaveControllerListener(false)
@@ -41,37 +39,12 @@ VRManagerParent::~VRManagerParent()
   MOZ_COUNT_DTOR(VRManagerParent);
 }
 
-PTextureParent*
-VRManagerParent::AllocPTextureParent(const SurfaceDescriptor& aSharedData,
-                                     const LayersBackend& aLayersBackend,
-                                     const TextureFlags& aFlags,
-                                     const uint64_t& aSerial)
-{
-  return layers::TextureHost::CreateIPDLActor(this, aSharedData, aLayersBackend, aFlags, aSerial, Nothing());
-}
-
-bool
-VRManagerParent::DeallocPTextureParent(PTextureParent* actor)
-{
-  return layers::TextureHost::DestroyIPDLActor(actor);
-}
-
 PVRLayerParent*
 VRManagerParent::AllocPVRLayerParent(const uint32_t& aDisplayID,
-                                     const float& aLeftEyeX,
-                                     const float& aLeftEyeY,
-                                     const float& aLeftEyeWidth,
-                                     const float& aLeftEyeHeight,
-                                     const float& aRightEyeX,
-                                     const float& aRightEyeY,
-                                     const float& aRightEyeWidth,
-                                     const float& aRightEyeHeight,
                                      const uint32_t& aGroup)
 {
   RefPtr<VRLayerParent> layer;
   layer = new VRLayerParent(aDisplayID,
-                            Rect(aLeftEyeX, aLeftEyeY, aLeftEyeWidth, aLeftEyeHeight),
-                            Rect(aRightEyeX, aRightEyeY, aRightEyeWidth, aRightEyeHeight),
                             aGroup);
   VRManager* vm = VRManager::Get();
   RefPtr<gfx::VRDisplayHost> display = vm->GetDisplay(aDisplayID);
@@ -89,49 +62,9 @@ VRManagerParent::DeallocPVRLayerParent(PVRLayerParent* actor)
 }
 
 bool
-VRManagerParent::AllocShmem(size_t aSize,
-  ipc::SharedMemory::SharedMemoryType aType,
-  ipc::Shmem* aShmem)
-{
-  return PVRManagerParent::AllocShmem(aSize, aType, aShmem);
-}
-
-bool
-VRManagerParent::AllocUnsafeShmem(size_t aSize,
-  ipc::SharedMemory::SharedMemoryType aType,
-  ipc::Shmem* aShmem)
-{
-  return PVRManagerParent::AllocUnsafeShmem(aSize, aType, aShmem);
-}
-
-void
-VRManagerParent::DeallocShmem(ipc::Shmem& aShmem)
-{
-  PVRManagerParent::DeallocShmem(aShmem);
-}
-
-bool
 VRManagerParent::IsSameProcess() const
 {
   return OtherPid() == base::GetCurrentProcId();
-}
-
-void
-VRManagerParent::NotifyNotUsed(PTextureParent* aTexture, uint64_t aTransactionId)
-{
-  MOZ_ASSERT_UNREACHABLE("unexpected to be called");
-}
-
-void
-VRManagerParent::SendAsyncMessage(const InfallibleTArray<AsyncParentMessageData>& aMessage)
-{
-  MOZ_ASSERT_UNREACHABLE("unexpected to be called");
-}
-
-base::ProcessId
-VRManagerParent::GetChildProcessId()
-{
-  return OtherPid();
 }
 
 void
@@ -153,7 +86,7 @@ VRManagerParent::UnregisterFromManager()
 /* static */ bool
 VRManagerParent::CreateForContent(Endpoint<PVRManagerParent>&& aEndpoint)
 {
-  MessageLoop* loop = layers::CompositorThreadHolder::Loop();
+  MessageLoop* loop = VRListenerThreadHolder::Loop();
 
   RefPtr<VRManagerParent> vmp = new VRManagerParent(aEndpoint.OtherPid(), true);
   loop->PostTask(NewRunnableMethod<Endpoint<PVRManagerParent>&&>(
@@ -177,7 +110,7 @@ VRManagerParent::Bind(Endpoint<PVRManagerParent>&& aEndpoint)
 }
 
 /*static*/ void
-VRManagerParent::RegisterVRManagerInCompositorThread(VRManagerParent* aVRManager)
+VRManagerParent::RegisterVRManagerInVRListenerThread(VRManagerParent* aVRManager)
 {
   aVRManager->RegisterWithManager();
 }
@@ -185,21 +118,21 @@ VRManagerParent::RegisterVRManagerInCompositorThread(VRManagerParent* aVRManager
 /*static*/ VRManagerParent*
 VRManagerParent::CreateSameProcess()
 {
-  MessageLoop* loop = mozilla::layers::CompositorThreadHolder::Loop();
+  MessageLoop* loop = VRListenerThreadHolder::Loop();
   RefPtr<VRManagerParent> vmp = new VRManagerParent(base::GetCurrentProcId(), false);
-  vmp->mCompositorThreadHolder = layers::CompositorThreadHolder::GetSingleton();
+  vmp->mVRListenerThreadHolder = VRListenerThreadHolder::GetSingleton();
   vmp->mSelfRef = vmp;
-  loop->PostTask(NewRunnableFunction(RegisterVRManagerInCompositorThread, vmp.get()));
+  loop->PostTask(NewRunnableFunction(RegisterVRManagerInVRListenerThread, vmp.get()));
   return vmp.get();
 }
 
 bool
 VRManagerParent::CreateForGPUProcess(Endpoint<PVRManagerParent>&& aEndpoint)
 {
-  MessageLoop* loop = mozilla::layers::CompositorThreadHolder::Loop();
+  MessageLoop* loop = VRListenerThreadHolder::Loop();
 
   RefPtr<VRManagerParent> vmp = new VRManagerParent(aEndpoint.OtherPid(), false);
-  vmp->mCompositorThreadHolder = layers::CompositorThreadHolder::GetSingleton();
+  vmp->mVRListenerThreadHolder = VRListenerThreadHolder::GetSingleton();
   loop->PostTask(NewRunnableMethod<Endpoint<PVRManagerParent>&&>(
     "gfx::VRManagerParent::Bind",
     vmp,
@@ -211,7 +144,7 @@ VRManagerParent::CreateForGPUProcess(Endpoint<PVRManagerParent>&& aEndpoint)
 void
 VRManagerParent::DeferredDestroy()
 {
-  mCompositorThreadHolder = nullptr;
+  mVRListenerThreadHolder = nullptr;
   mSelfRef = nullptr;
 }
 
@@ -228,12 +161,15 @@ VRManagerParent::ActorDestroy(ActorDestroyReason why)
 void
 VRManagerParent::OnChannelConnected(int32_t aPid)
 {
-  mCompositorThreadHolder = layers::CompositorThreadHolder::GetSingleton();
+  mVRListenerThreadHolder = VRListenerThreadHolder::GetSingleton();
 }
 
 mozilla::ipc::IPCResult
 VRManagerParent::RecvRefreshDisplays()
 {
+  // TODO: Bug 1406327, Launch VR listener thread here.
+  MOZ_ASSERT(VRListenerThreadHolder::IsInVRListenerThread());
+
   // This is called to refresh the VR Displays for Navigator.GetVRDevices().
   // We must pass "true" to VRManager::RefreshVRDisplays()
   // to ensure that the promise returned by Navigator.GetVRDevices
@@ -289,18 +225,19 @@ VRManagerParent::RecvSetHaveEventListener(const bool& aHaveEventListener)
 mozilla::ipc::IPCResult
 VRManagerParent::RecvControllerListenerAdded()
 {
+  // Force update the available controllers for GamepadManager,
+  // remove the existing controllers and sync them by NotifyVsync().
   VRManager* vm = VRManager::Get();
+  vm->RemoveControllers();
   mHaveControllerListener = true;
-  // Ask the connected gamepads to be added to GamepadManager
-  vm->ScanForControllers();
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 VRManagerParent::RecvControllerListenerRemoved()
 {
-  VRManager* vm = VRManager::Get();
   mHaveControllerListener = false;
+  VRManager* vm = VRManager::Get();
   vm->RemoveControllers();
   return IPC_OK();
 }

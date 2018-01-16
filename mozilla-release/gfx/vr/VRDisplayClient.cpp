@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -32,6 +33,7 @@ VRDisplayClient::VRDisplayClient(const VRDisplayInfo& aDisplayInfo)
   , bLastEventWasPresenting(false)
   , mPresentationCount(0)
   , mLastEventFrameId(0)
+  , mLastPresentingGeneration(0)
 {
   MOZ_COUNT_CTOR(VRDisplayClient);
 }
@@ -74,6 +76,22 @@ VRDisplayClient::SetGroupMask(uint32_t aGroupMask)
 {
   VRManagerChild *vm = VRManagerChild::Get();
   vm->SendSetGroupMask(mDisplayInfo.mDisplayID, aGroupMask);
+}
+
+bool
+VRDisplayClient::IsPresentationGenerationCurrent() const
+{
+  if (mLastPresentingGeneration != mDisplayInfo.mPresentingGeneration) {
+    return false;
+  }
+
+  return true;
+}
+
+void
+VRDisplayClient::MakePresentationGenerationCurrent()
+{
+  mLastPresentingGeneration = mDisplayInfo.mPresentingGeneration;
 }
 
 void

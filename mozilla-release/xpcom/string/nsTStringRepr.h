@@ -13,6 +13,7 @@
 #include "nsCharTraits.h"
 
 template <typename T> class nsTSubstringTuple;
+template <typename T> class nsTLiteralString;
 
 // The base for string comparators
 template <typename T> class nsTStringComparator
@@ -43,6 +44,36 @@ extern template class nsTDefaultStringComparator<char>;
 extern template class nsTDefaultStringComparator<char16_t>;
 
 namespace mozilla {
+
+// This is mainly intended to be used in the context of nsTStrings where
+// we want to enable a specific function only for a given character class. In
+// order for this technique to work the member function needs to be templated
+// on something other than `T`. We keep this in the `mozilla` namespace rather
+// than `nsTStringRepr` as it's intentionally not dependent on `T`.
+//
+// The 'T' at the end of `Char[16]OnlyT` is refering to the `::type` portion
+// which will only be defined if the character class is correct. This is similar
+// to `std::enable_if_t` which is available in C++14, but not C++11.
+//
+// `CharType` is generally going to be a shadowed type of `T`.
+//
+// Example usage of a function that will only be defined if `T` == `char`:
+//
+// template <typename T>
+// class nsTSubstring : public nsTStringRepr<T> {
+//   template <typename Q = T, typename EnableForChar = typename CharOnlyT<Q>>
+//   int Foo() { return 42; }
+// };
+//
+// Please note that we had to use a separate type `Q` for this to work. You
+// will get a semi-decent compiler error if you use `T` directly.
+
+template <typename CharType> using CharOnlyT =
+  typename std::enable_if<std::is_same<char, CharType>::value>::type;
+
+template <typename CharType> using Char16OnlyT =
+  typename std::enable_if<std::is_same<char16_t, CharType>::value>::type;
+
 namespace detail {
 
 // nsTStringRepr defines a string's memory layout and some accessor methods.
@@ -74,6 +105,7 @@ public:
 
   typedef nsTSubstring<T> substring_type;
   typedef nsTSubstringTuple<T> substring_tuple_type;
+  typedef nsTLiteralString<T> literalstring_type;
 
   typedef nsReadingIterator<char_type> const_iterator;
   typedef nsWritingIterator<char_type> iterator;
@@ -89,11 +121,6 @@ public:
   // These are only for internal use within the string classes:
   typedef StringDataFlags DataFlags;
   typedef StringClassFlags ClassFlags;
-
-  // These are used to conditionally enable functions for specific character
-  // types.
-  using IsChar   = std::enable_if<std::is_same<char, T>::value>;
-  using IsChar16 = std::enable_if<std::is_same<char16_t, T>::value>;
 
   // Reading iterators.
   const_char_iterator BeginReading() const
@@ -133,13 +160,13 @@ public:
   }
 
   // Accessors.
-  template <typename U> struct raw_type { typedef const U* type; };
+  template <typename U, typename Dummy> struct raw_type { typedef const U* type; };
 #if defined(MOZ_USE_CHAR16_WRAPPER)
-  template <> struct raw_type<char16_t> { typedef char16ptr_t type; };
+  template <typename Dummy> struct raw_type<char16_t, Dummy> { typedef char16ptr_t type; };
 #endif
 
   // Returns pointer to string data (not necessarily null-terminated)
-  const typename raw_type<T>::type Data() const
+  const typename raw_type<T, int>::type Data() const
   {
     return mData;
   }
@@ -210,12 +237,12 @@ public:
                           const comparator_type& aComp) const;
 
 #if defined(MOZ_USE_CHAR16_WRAPPER)
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = Char16OnlyT<Q>>
   bool NS_FASTCALL Equals(char16ptr_t aData) const
   {
     return Equals(static_cast<const char16_t*>(aData));
   }
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = Char16OnlyT<Q>>
   bool NS_FASTCALL Equals(char16ptr_t aData, const comparator_type& aComp) const
   {
     return Equals(static_cast<const char16_t*>(aData), aComp);

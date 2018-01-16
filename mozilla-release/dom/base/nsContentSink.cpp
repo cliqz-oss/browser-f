@@ -27,7 +27,7 @@
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "nsViewManager.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsGkAtoms.h"
 #include "nsNetCID.h"
 #include "nsIOfflineCacheUpdate.h"
@@ -79,6 +79,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsContentSink)
   }
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocument)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mParser)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocShell)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mCSSLoader)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mNodeInfoManager)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mScriptLoader)
@@ -86,6 +87,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsContentSink)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocument)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mParser)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocShell)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCSSLoader)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mNodeInfoManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mScriptLoader)
@@ -300,7 +302,7 @@ nsContentSink::ProcessHTTPHeaders(nsIChannel* aChannel)
 }
 
 nsresult
-nsContentSink::ProcessHeaderData(nsIAtom* aHeader, const nsAString& aValue,
+nsContentSink::ProcessHeaderData(nsAtom* aHeader, const nsAString& aValue,
                                  nsIContent* aContent)
 {
   nsresult rv = NS_OK;
@@ -810,7 +812,7 @@ nsContentSink::ProcessStyleLink(nsIContent* aElement,
   // If this is a fragment parser, we don't want to observe.
   // We don't support CORS for processing instructions
   bool isAlternate;
-  rv = mCSSLoader->LoadStyleLink(aElement, url, aTitle, aMedia, aAlternate,
+  rv = mCSSLoader->LoadStyleLink(aElement, url, nullptr, aTitle, aMedia, aAlternate,
                                  CORS_NONE, referrerPolicy,
                                  integrity, mRunsToCompletion ? nullptr : this,
                                  &isAlternate);
@@ -852,7 +854,7 @@ nsContentSink::ProcessMETATag(nsIContent* aContent)
     nsAutoString result;
     aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::content, result);
     if (!result.IsEmpty()) {
-      nsCOMPtr<nsIAtom> fieldAtom(NS_Atomize(header));
+      RefPtr<nsAtom> fieldAtom(NS_Atomize(header));
       rv = ProcessHeaderData(fieldAtom, result, aContent);
     }
   }
@@ -1310,8 +1312,7 @@ nsContentSink::NotifyAppend(nsIContent* aContainer, uint32_t aStartIndex)
     // Scope so we call EndUpdate before we decrease mInNotification
     MOZ_AUTO_DOC_UPDATE(mDocument, UPDATE_CONTENT_MODEL, !mBeganUpdate);
     nsNodeUtils::ContentAppended(aContainer,
-                                 aContainer->GetChildAt(aStartIndex),
-                                 aStartIndex);
+                                 aContainer->GetChildAt(aStartIndex));
     mLastNotificationTime = PR_Now();
   }
 
@@ -1403,20 +1404,14 @@ nsContentSink::WillInterruptImpl()
         // Convert to milliseconds
         delay /= PR_USEC_PER_MSEC;
 
-        mNotificationTimer = do_CreateInstance("@mozilla.org/timer;1",
-                                               &result);
-        if (NS_SUCCEEDED(result)) {
+        NS_NewTimerWithCallback(getter_AddRefs(mNotificationTimer),
+                                this, delay,
+                                nsITimer::TYPE_ONE_SHOT);
+        if (mNotificationTimer) {
           SINK_TRACE(static_cast<LogModule*>(gContentSinkLogModuleInfo),
                      SINK_TRACE_REFLOW,
                      ("nsContentSink::WillInterrupt: setting up timer with "
                       "delay %d", delay));
-
-          result =
-            mNotificationTimer->InitWithCallback(this, delay,
-                                                 nsITimer::TYPE_ONE_SHOT);
-          if (NS_FAILED(result)) {
-            mNotificationTimer = nullptr;
-          }
         }
       }
     }

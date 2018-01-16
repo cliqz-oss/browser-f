@@ -232,14 +232,14 @@ public:
 };
 
 class nsWindow::GeckoViewSupport final
-    : public GeckoView::Window::Natives<GeckoViewSupport>
+    : public GeckoSession::Window::Natives<GeckoViewSupport>
     , public SupportsWeakPtr<GeckoViewSupport>
 {
     nsWindow& window;
-    GeckoView::Window::GlobalRef mGeckoViewWindow;
+    GeckoSession::Window::GlobalRef mGeckoViewWindow;
 
 public:
-    typedef GeckoView::Window::Natives<GeckoViewSupport> Base;
+    typedef GeckoSession::Window::Natives<GeckoViewSupport> Base;
     typedef SupportsWeakPtr<GeckoViewSupport> SupportsWeakPtr;
 
     MOZ_DECLARE_WEAKREFERENCE_TYPENAME(GeckoViewSupport);
@@ -258,7 +258,7 @@ public:
     }
 
     GeckoViewSupport(nsWindow* aWindow,
-                     const GeckoView::Window::LocalRef& aInstance)
+                     const GeckoSession::Window::LocalRef& aInstance)
         : window(*aWindow)
         , mGeckoViewWindow(aInstance)
     {
@@ -278,23 +278,24 @@ private:
 public:
     // Create and attach a window.
     static void Open(const jni::Class::LocalRef& aCls,
-                     GeckoView::Window::Param aWindow,
-                     GeckoView::Param aView, jni::Object::Param aCompositor,
+                     GeckoSession::Window::Param aWindow,
                      jni::Object::Param aDispatcher,
-                     jni::String::Param aChromeURI,
                      jni::Object::Param aSettings,
+                     jni::String::Param aChromeURI,
                      int32_t aScreenId,
                      bool aPrivateMode);
 
     // Close and destroy the nsWindow.
     void Close();
 
-    // Reattach this nsWindow to a new GeckoView.
-    void Reattach(const GeckoView::Window::LocalRef& inst,
-                  GeckoView::Param aView, jni::Object::Param aCompositor,
-                  jni::Object::Param aDispatcher);
+    // Transfer this nsWindow to new GeckoSession objects.
+    void Transfer(const GeckoSession::Window::LocalRef& inst,
+                  jni::Object::Param aDispatcher,
+                  jni::Object::Param aSettings);
 
-    void LoadUri(jni::String::Param aUri, int32_t aFlags);
+    // Reattach this nsWindow to a new GeckoView.
+    void Attach(const GeckoSession::Window::LocalRef& inst,
+                jni::Object::Param aView, jni::Object::Param aCompositor);
 
     void EnableEventDispatcher();
 };
@@ -307,6 +308,8 @@ class nsWindow::NPZCSupport final
     : public NativePanZoomController::Natives<NPZCSupport>
 {
     using LockedWindowPtr = WindowPtr<NPZCSupport>::Locked;
+
+    static bool sNegateWheelScroll;
 
     WindowPtr<NPZCSupport> mWindow;
     NativePanZoomController::GlobalRef mNPZC;
@@ -367,6 +370,13 @@ public:
         , mPreviousButtons(0)
     {
         MOZ_ASSERT(mWindow);
+
+        static bool sInited;
+        if (!sInited) {
+            Preferences::AddBoolVarCache(&sNegateWheelScroll,
+                                         "ui.scrolling.negate_wheel_scroll");
+            sInited = true;
+        }
     }
 
     ~NPZCSupport()
@@ -456,6 +466,11 @@ public:
 
         ScreenPoint origin = ScreenPoint(aX, aY);
 
+        if (sNegateWheelScroll) {
+            aHScroll = -aHScroll;
+            aVScroll = -aVScroll;
+        }
+
         ScrollWheelInput input(aTime, GetEventTimeStamp(aTime), GetModifiers(aMetaState),
                                ScrollWheelInput::SCROLLMODE_SMOOTH,
                                ScrollWheelInput::SCROLLDELTA_PIXEL,
@@ -543,26 +558,26 @@ public:
         MouseInput::MouseType mouseType = MouseInput::MOUSE_NONE;
         MouseInput::ButtonType buttonType = MouseInput::NONE;
         switch (aAction) {
-            case AndroidMotionEvent::ACTION_DOWN:
+            case java::sdk::MotionEvent::ACTION_DOWN:
                 mouseType = MouseInput::MOUSE_DOWN;
                 buttonType = GetButtonType(buttons ^ mPreviousButtons);
                 mPreviousButtons = buttons;
                 break;
-            case AndroidMotionEvent::ACTION_UP:
+            case java::sdk::MotionEvent::ACTION_UP:
                 mouseType = MouseInput::MOUSE_UP;
                 buttonType = GetButtonType(buttons ^ mPreviousButtons);
                 mPreviousButtons = buttons;
                 break;
-            case AndroidMotionEvent::ACTION_MOVE:
+            case java::sdk::MotionEvent::ACTION_MOVE:
                 mouseType = MouseInput::MOUSE_MOVE;
                 break;
-            case AndroidMotionEvent::ACTION_HOVER_MOVE:
+            case java::sdk::MotionEvent::ACTION_HOVER_MOVE:
                 mouseType = MouseInput::MOUSE_MOVE;
                 break;
-            case AndroidMotionEvent::ACTION_HOVER_ENTER:
+            case java::sdk::MotionEvent::ACTION_HOVER_ENTER:
                 mouseType = MouseInput::MOUSE_WIDGET_ENTER;
                 break;
-            case AndroidMotionEvent::ACTION_HOVER_EXIT:
+            case java::sdk::MotionEvent::ACTION_HOVER_EXIT:
                 mouseType = MouseInput::MOUSE_WIDGET_EXIT;
                 break;
             default:
@@ -735,6 +750,8 @@ public:
 
 template<> const char
 nsWindow::NativePtr<nsWindow::NPZCSupport>::sName[] = "NPZCSupport";
+
+bool nsWindow::NPZCSupport::sNegateWheelScroll;
 
 NS_IMPL_ISUPPORTS(nsWindow::AndroidView,
                   nsIAndroidEventDispatcher,
@@ -1248,12 +1265,10 @@ nsWindow::GeckoViewSupport::~GeckoViewSupport()
 
 /* static */ void
 nsWindow::GeckoViewSupport::Open(const jni::Class::LocalRef& aCls,
-                                 GeckoView::Window::Param aWindow,
-                                 GeckoView::Param aView,
-                                 jni::Object::Param aCompositor,
+                                 GeckoSession::Window::Param aWindow,
                                  jni::Object::Param aDispatcher,
-                                 jni::String::Param aChromeURI,
                                  jni::Object::Param aSettings,
+                                 jni::String::Param aChromeURI,
                                  int32_t aScreenId,
                                  bool aPrivateMode)
 {
@@ -1300,21 +1315,16 @@ nsWindow::GeckoViewSupport::Open(const jni::Class::LocalRef& aCls,
 
     // Attach a new GeckoView support object to the new window.
     window->mGeckoViewSupport = mozilla::MakeUnique<GeckoViewSupport>(
-        window, (GeckoView::Window::LocalRef(aCls.Env(), aWindow)));
+        window, (GeckoSession::Window::LocalRef(aCls.Env(), aWindow)));
 
     window->mGeckoViewSupport->mDOMWindow = pdomWindow;
 
     // Attach a new GeckoEditable support object to the new window.
-    auto editable = GeckoEditable::New(aView);
+    auto editable = GeckoEditable::New();
     auto editableChild = GeckoEditableChild::New(editable);
     editable->SetDefaultEditableChild(editableChild);
     window->mEditable = editable;
     window->mEditableSupport.Attach(editableChild, window, editableChild);
-
-    // Attach the Compositor to the new window.
-    auto compositor = LayerView::Compositor::LocalRef(
-            aCls.Env(), LayerView::Compositor::Ref::From(aCompositor));
-    window->mLayerViewSupport.Attach(compositor, window, compositor);
 
     // Attach again using the new window.
     androidView->mEventDispatcher->Attach(
@@ -1349,10 +1359,25 @@ nsWindow::GeckoViewSupport::Close()
 }
 
 void
-nsWindow::GeckoViewSupport::Reattach(const GeckoView::Window::LocalRef& inst,
-                                     GeckoView::Param aView,
-                                     jni::Object::Param aCompositor,
-                                     jni::Object::Param aDispatcher)
+nsWindow::GeckoViewSupport::Transfer(const GeckoSession::Window::LocalRef& inst,
+                                     jni::Object::Param aDispatcher,
+                                     jni::Object::Param aSettings)
+{
+    if (!window.mAndroidView) {
+        return;
+    }
+
+    window.mAndroidView->mEventDispatcher->Attach(
+            java::EventDispatcher::Ref::From(aDispatcher), mDOMWindow);
+    window.mAndroidView->mSettings = java::GeckoBundle::Ref::From(aSettings);
+
+    inst->OnTransfer(aDispatcher);
+}
+
+void
+nsWindow::GeckoViewSupport::Attach(const GeckoSession::Window::LocalRef& inst,
+                                   jni::Object::Param aView,
+                                   jni::Object::Param aCompositor)
 {
     // Associate our previous GeckoEditable with the new GeckoView.
     MOZ_ASSERT(window.mEditable);
@@ -1364,53 +1389,15 @@ nsWindow::GeckoViewSupport::Reattach(const GeckoView::Window::LocalRef& inst,
         window.mNPZCSupport.Detach();
     }
 
-    MOZ_ASSERT(window.mLayerViewSupport);
-    window.mLayerViewSupport.Detach();
-
-    auto compositor = LayerView::Compositor::LocalRef(
-            inst.Env(), LayerView::Compositor::Ref::From(aCompositor));
-    window.mLayerViewSupport.Attach(compositor, &window, compositor);
-    compositor->Reattach();
-
-    MOZ_ASSERT(window.mAndroidView);
-    window.mAndroidView->mEventDispatcher->Attach(
-            java::EventDispatcher::Ref::From(aDispatcher), mDOMWindow);
-
-    mGeckoViewWindow->OnReattach(aView);
-}
-
-void
-nsWindow::GeckoViewSupport::LoadUri(jni::String::Param aUri, int32_t aFlags)
-{
-    if (!mDOMWindow) {
-        return;
+    if (window.mLayerViewSupport) {
+        window.mLayerViewSupport.Detach();
     }
 
-    nsCOMPtr<nsIURI> uri = nsAppShell::ResolveURI(aUri->ToCString());
-    if (NS_WARN_IF(!uri)) {
-        return;
-    }
-
-    nsCOMPtr<nsIDOMChromeWindow> chromeWin = do_QueryInterface(mDOMWindow);
-    nsCOMPtr<nsIBrowserDOMWindow> browserWin;
-
-    if (NS_WARN_IF(!chromeWin) || NS_WARN_IF(NS_FAILED(
-            chromeWin->GetBrowserDOMWindow(getter_AddRefs(browserWin))))) {
-        return;
-    }
-
-    const int flags = aFlags == GeckoView::LOAD_NEW_TAB ?
-                        nsIBrowserDOMWindow::OPEN_NEWTAB :
-                      aFlags == GeckoView::LOAD_SWITCH_TAB ?
-                        nsIBrowserDOMWindow::OPEN_SWITCHTAB :
-                        nsIBrowserDOMWindow::OPEN_CURRENTWINDOW;
-    nsCOMPtr<mozIDOMWindowProxy> newWin;
-
-    if (NS_FAILED(browserWin->OpenURI(
-            uri, nullptr, flags, nsIBrowserDOMWindow::OPEN_EXTERNAL,
-            nsContentUtils::GetSystemPrincipal(),
-            getter_AddRefs(newWin)))) {
-        NS_WARNING("Failed to open URI");
+    if (aCompositor) {
+        auto compositor = LayerView::Compositor::LocalRef(
+                inst.Env(), LayerView::Compositor::Ref::From(aCompositor));
+        window.mLayerViewSupport.Attach(compositor, &window, compositor);
+        compositor->Reattach();
     }
 }
 
@@ -2146,7 +2133,7 @@ nsWindow::GeckoViewSupport::EnableEventDispatcher()
     if (!mGeckoViewWindow) {
         return;
     }
-    mGeckoViewWindow->SetState(GeckoView::State::READY());
+    mGeckoViewWindow->OnReady();
 }
 
 void
@@ -2158,6 +2145,10 @@ nsWindow::UserActivity()
 
   if (mIdleService) {
     mIdleService->ResetIdleTimeOut(0);
+  }
+
+  if (FindTopLevel() != nsWindow::TopWindow()) {
+    BringToFront();
   }
 }
 

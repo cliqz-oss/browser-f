@@ -6,11 +6,13 @@ loader: taskgraph.loader.single_dep:loader
 
 transforms:
    - taskgraph.transforms.l10n:transforms
+   - taskgraph.transforms.use_toolchains:transforms
    - taskgraph.transforms.job:transforms
    - taskgraph.transforms.task:transforms
 
 kind-dependencies:
    - build
+   - toolchain
 
 only-for-build-platforms:
    - linux64-nightly/opt
@@ -27,7 +29,7 @@ job-template:
          android-api-16-nightly: Single Locale Repack
    locales-file:
       by-build-platform:
-         default: browser/locales/all-locales
+         default: browser/locales/l10n-changesets.json
          android-api-16-nightly: mobile/locales/l10n-changesets.json
    locales-per-chunk: 2
    run-on-projects: ['release']
@@ -40,6 +42,24 @@ job-template:
       by-build-platform:
          default: 36000
          android-api-16-nightly: 18000
+   docker-image:
+      by-build-platform:
+         default:
+           in-tree: desktop-build
+         android-api-16-nightly:
+           in-tree: android-build
+         win.*: null
+   secrets:
+      by-build-platform:
+         default: false
+         android-api-16-nightly: true
+   toolchains:
+      by-build-platform:
+         default: []
+         android-api-16-nightly:
+            - android-gradle-dependencies
+            - android-sdk-linux
+            - proguard-jar
    tooltool:
       by-build-platform:
          default: public
@@ -142,18 +162,21 @@ job-template:
                - platform-config=single_locale/win32.py
                - config=single_locale/tc_win32.py
                - config=taskcluster_nightly.py
+               - revision=$GECKO_HEAD_REV
             win64-nightly:
                - environment-config=single_locale/production.py
                - branch-config=single_locale/{project}.py
                - platform-config=single_locale/win64.py
                - config=single_locale/tc_win64.py
                - config=taskcluster_nightly.py
+               - revision=$GECKO_HEAD_REV
             default: [ ]
       actions:
          by-build-platform:
             default: ['clone-locales', 'list-locales', 'setup', 'repack',
                       'submit-to-balrog', 'summary']
-            android-api-16-nightly: ['clone-locales', 'list-locales', 'setup', 'repack',
+            android-api-16-nightly: ['get-secrets',
+                                     'clone-locales', 'list-locales', 'setup', 'repack',
                                      'upload-repacks', 'submit-to-balrog', 'summary']
       script:
          by-build-platform:

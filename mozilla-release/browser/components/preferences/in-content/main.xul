@@ -4,6 +4,9 @@
 
 <!-- General panel -->
 
+<link rel="localization" href="browser/preferences/main.ftl"/>
+<script type="text/javascript" src="chrome://global/content/l10n.js"></script>
+
 <script type="application/javascript"
         src="chrome://browser/content/preferences/in-content/main.js"/>
 
@@ -17,18 +20,6 @@
 <stringbundle id="bundlePreferences" src="chrome://browser/locale/preferences.properties"/>
 
 <preferences id="mainPreferences" hidden="true" data-category="paneGeneral">
-
-#ifdef E10S_TESTING_ONLY
-    <preference id="browser.tabs.remote.autostart"
-                name="browser.tabs.remote.autostart"
-                type="bool"/>
-    <preference id="e10sTempPref"
-                name="browser.tabs.remote.autostart.2"
-                type="bool"/>
-    <preference id="e10sForceEnable"
-                name="browser.tabs.remote.force-enable"
-                type="bool"/>
-#endif
 
     <!-- Startup -->
     <preference id="browser.startup.page"
@@ -172,10 +163,6 @@
               name="layout.spellcheckDefault"
               type="int"/>
 
-  <preference id="toolkit.telemetry.enabled"
-              name="toolkit.telemetry.enabled"
-              type="bool"/>
-
   <preference id="browser.preferences.defaultPerformanceSettings.enabled"
               name="browser.preferences.defaultPerformanceSettings.enabled"
               type="bool"/>
@@ -298,11 +285,6 @@
   </vbox>
 #endif
 
-#ifdef E10S_TESTING_ONLY
-  <checkbox id="e10sAutoStart"
-            label="&e10sEnabled.label;"/>
-#endif
-
 #ifdef HAVE_SHELL_SERVICE
   <vbox id="defaultBrowserBox">
     <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
@@ -339,6 +321,12 @@
              value="3"
              id="browserStartupLastSession"/>
     </radiogroup>
+    <hbox id="browserNewTabExtensionContent" align="center" hidden="true">
+      <description control="disableNewTabExtension" flex="1" />
+      <button id="disableNewTabExtension"
+              class="extension-controlled-button accessory-button"
+              label="&disableExtension.label;" />
+    </hbox>
   </vbox>
 </groupbox>
 
@@ -348,7 +336,7 @@
           hidden="true">
   <caption><label>&homepage2.label;</label></caption>
 
-  <hbox id="browserHomePageExtensionContent" align="center">
+  <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
     <description control="disableHomePageExtension" flex="1" />
     <button id="disableHomePageExtension"
             class="extension-controlled-button accessory-button"

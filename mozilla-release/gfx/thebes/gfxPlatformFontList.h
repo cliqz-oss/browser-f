@@ -121,7 +121,7 @@ public:
     // initialize font lists
     nsresult InitFontList();
 
-    virtual void GetFontList(nsIAtom *aLangGroup,
+    virtual void GetFontList(nsAtom *aLangGroup,
                              const nsACString& aGenericFamily,
                              nsTArray<nsString>& aListOfFonts);
 
@@ -150,7 +150,10 @@ public:
         // family" names to add to the font list. This is used to avoid
         // a recursive search when using FindFamily to find a potential base
         // family name for a styled variant.
-        eNoSearchForLegacyFamilyNames = 1 << 1
+        eNoSearchForLegacyFamilyNames = 1 << 1,
+
+        // If set, FindAndAddFamilies will not add a missing entry to mOtherNamesMissed
+        eNoAddToNamesMissedWhenSearching = 1 << 2
     };
 
     // Find family(ies) matching aFamily and append to the aOutput array
@@ -238,7 +241,7 @@ public:
 
     virtual void
     AddGenericFonts(mozilla::FontFamilyType aGenericType,
-                    nsIAtom* aLanguage,
+                    nsAtom* aLanguage,
                     nsTArray<gfxFontFamily*>& aFamilyList);
 
     nsTArray<RefPtr<gfxFontFamily>>*
@@ -252,10 +255,10 @@ public:
     static eFontPrefLang GetFontPrefLangFor(const char* aLang);
 
     // convert a lang group atom to enum constant
-    static eFontPrefLang GetFontPrefLangFor(nsIAtom *aLang);
+    static eFontPrefLang GetFontPrefLangFor(nsAtom *aLang);
 
     // convert an enum constant to a lang group atom
-    static nsIAtom* GetLangGroupForPrefLang(eFontPrefLang aLang);
+    static nsAtom* GetLangGroupForPrefLang(eFontPrefLang aLang);
 
     // convert a enum constant to lang group string (i.e. eFontPrefLang_ChineseTW ==> "zh-TW")
     static const char* GetPrefLangName(eFontPrefLang aLang);
@@ -274,15 +277,13 @@ public:
     GetDefaultGeneric(eFontPrefLang aLang);
 
     // map lang group ==> lang string
-    void GetSampleLangForGroup(nsIAtom* aLanguage, nsACString& aLangStr,
+    void GetSampleLangForGroup(nsAtom* aLanguage, nsACString& aLangStr,
                                bool aCheckEnvironment = true);
 
     // Returns true if the font family whitelist is not empty.
     bool IsFontFamilyWhitelistActive();
 
-    static void FontWhitelistPrefChanged(const char *aPref, void *aClosure) {
-        gfxPlatformFontList::PlatformFontList()->UpdateFontList();
-    }
+    static void FontWhitelistPrefChanged(const char *aPref, void *aClosure);
 
     bool AddWithLegacyFamilyName(const nsAString& aLegacyName,
                                  gfxFontEntry* aFontEntry);
@@ -360,7 +361,7 @@ protected:
         }
 
         PrefNameMaker(const char* aGeneric,
-                      nsIAtom* aLangGroup)
+                      nsAtom* aLangGroup)
         {
             if (aLangGroup) {
                 Init(nsDependentCString(aGeneric), nsAtomCString(aLangGroup));
@@ -468,10 +469,10 @@ protected:
     virtual void GetFontFamilyNames(nsTArray<nsString>& aFontFamilyNames);
 
     // helper function to map lang to lang group
-    nsIAtom* GetLangGroup(nsIAtom* aLanguage);
+    nsAtom* GetLangGroup(nsAtom* aLanguage);
 
     // helper method for finding an appropriate lang string
-    bool TryLangForGroup(const nsACString& aOSLang, nsIAtom* aLangGroup,
+    bool TryLangForGroup(const nsACString& aOSLang, nsAtom* aLangGroup,
                          nsACString& aLang);
 
     static const char* GetGenericName(mozilla::FontFamilyType aGenericType);

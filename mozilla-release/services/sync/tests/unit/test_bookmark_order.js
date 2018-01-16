@@ -13,8 +13,8 @@ Svc.Prefs.set("log.logger.engine.bookmarks", "Trace");
 initTestLogging("Trace");
 Log.repository.getLogger("Sqlite").level = Log.Level.Info;
 
-function serverForFoo(engine) {
-  generateNewKeys(Service.collectionKeys);
+async function serverForFoo(engine) {
+  await generateNewKeys(Service.collectionKeys);
 
   let clientsEngine = Service.clientsEngine;
   return serverForUsers({"foo": "password"}, {
@@ -40,8 +40,8 @@ function serverForFoo(engine) {
         // Generate a fake default key bundle to avoid resetting the client
         // before the first sync.
         default: [
-          Weave.Crypto.generateRandomKey(),
-          Weave.Crypto.generateRandomKey(),
+          await Weave.Crypto.generateRandomKey(),
+          await Weave.Crypto.generateRandomKey(),
         ],
       }),
     },
@@ -148,10 +148,15 @@ async function resolveConflict(engine, collection, timestamp, buildTree,
     expectedTree, message);
 }
 
-add_task(async function test_local_order_newer() {
-  let engine = Service.engineManager.get("bookmarks");
+add_task(async function setup() {
+  await Service.engineManager.unregister("bookmarks");
+});
 
-  let server = serverForFoo(engine);
+add_task(async function test_local_order_newer() {
+  let engine = new BookmarksEngine(Service);
+  await engine.initialize();
+
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   try {
@@ -190,13 +195,15 @@ add_task(async function test_local_order_newer() {
     await engine.wipeClient();
     await Service.startOver();
     await promiseStopServer(server);
+    await engine.finalize();
   }
 });
 
 add_task(async function test_remote_order_newer() {
-  let engine = Service.engineManager.get("bookmarks");
+  let engine = new BookmarksEngine(Service);
+  await engine.initialize();
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   try {
@@ -235,6 +242,7 @@ add_task(async function test_remote_order_newer() {
     await engine.wipeClient();
     await Service.startOver();
     await promiseStopServer(server);
+    await engine.finalize();
   }
 });
 

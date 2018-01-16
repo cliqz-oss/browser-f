@@ -36,7 +36,11 @@
 #include "PeerConnectionImpl.h"
 #include "webrtc/system_wrappers/include/trace.h"
 
-static const char* logTag = "WebrtcGlobalInformation";
+static const char* wgiLogTag = "WebrtcGlobalInformation";
+#ifdef LOGTAG
+#undef LOGTAG
+#endif
+#define LOGTAG wgiLogTag
 
 namespace mozilla {
 namespace dom {
@@ -106,7 +110,7 @@ public:
     mCallback.get()->Call(mResult, rv);
 
     if (rv.Failed()) {
-      CSFLogError(logTag, "Error firing stats observer callback");
+      CSFLogError(LOGTAG, "Error firing stats observer callback");
     }
   }
 
@@ -266,7 +270,7 @@ OnStatsReport_m(WebrtcGlobalChild* aThisChild,
   StatsRequest* request = StatsRequest::Get(aRequestId);
 
   if (!request) {
-    CSFLogError(logTag, "Bad RequestId");
+    CSFLogError(LOGTAG, "Bad RequestId");
     return;
   }
 
@@ -337,7 +341,7 @@ static void OnGetLogging_m(WebrtcGlobalChild* aThisChild,
   LogRequest* request = LogRequest::Get(aRequestId);
 
   if (!request) {
-    CSFLogError(logTag, "Bad RequestId");
+    CSFLogError(LOGTAG, "Bad RequestId");
     return;
   }
 
@@ -662,6 +666,7 @@ WebrtcGlobalInformation::GetLogging(
 
 static int32_t sLastSetLevel = 0;
 static bool sLastAECDebug = false;
+static Maybe<nsCString> sAecDebugLogDir;
 
 void
 WebrtcGlobalInformation::SetDebugLevel(const GlobalObject& aGlobal, int32_t aLevel)
@@ -688,7 +693,7 @@ void
 WebrtcGlobalInformation::SetAecDebug(const GlobalObject& aGlobal, bool aEnable)
 {
   if (aEnable) {
-    StartAecLog();
+    sAecDebugLogDir.emplace(StartAecLog());
   } else {
     StopAecLog();
   }
@@ -706,6 +711,12 @@ WebrtcGlobalInformation::AecDebug(const GlobalObject& aGlobal)
   return sLastAECDebug;
 }
 
+void
+WebrtcGlobalInformation::GetAecDebugLogDir(const GlobalObject& aGlobal, nsAString& aDir)
+{
+  aDir = NS_ConvertASCIItoUTF16(sAecDebugLogDir.valueOr(EmptyCString()));
+}
+
 mozilla::ipc::IPCResult
 WebrtcGlobalParent::RecvGetStatsResult(const int& aRequestId,
                                        nsTArray<RTCStatsReportInternal>&& Stats)
@@ -716,7 +727,7 @@ WebrtcGlobalParent::RecvGetStatsResult(const int& aRequestId,
   StatsRequest* request = StatsRequest::Get(aRequestId);
 
   if (!request) {
-    CSFLogError(logTag, "Bad RequestId");
+    CSFLogError(LOGTAG, "Bad RequestId");
     return IPC_FAIL_NO_REASON(this);
   }
 
@@ -760,7 +771,7 @@ WebrtcGlobalParent::RecvGetLogResult(const int& aRequestId,
   LogRequest* request = LogRequest::Get(aRequestId);
 
   if (!request) {
-    CSFLogError(logTag, "Bad RequestId");
+    CSFLogError(LOGTAG, "Bad RequestId");
     return IPC_FAIL_NO_REASON(this);
   }
   request->mResult.AppendElements(aLog, fallible);
@@ -779,7 +790,7 @@ WebrtcGlobalParent::RecvGetLogResult(const int& aRequestId,
 
   if (NS_FAILED(rv)) {
     //Unable to get gecko process log. Return what has been collected.
-    CSFLogError(logTag, "Unable to extract chrome process log");
+    CSFLogError(LOGTAG, "Unable to extract chrome process log");
     request->Complete();
     LogRequest::Delete(aRequestId);
   }

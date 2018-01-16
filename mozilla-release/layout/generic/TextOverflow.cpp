@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -24,6 +24,9 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Likely.h"
 #include "nsISelection.h"
+#include "TextDrawTarget.h"
+
+using mozilla::layout::TextDrawTarget;
 
 namespace mozilla {
 namespace css {
@@ -38,7 +41,7 @@ public:
   virtual already_AddRefed<DrawTarget> GetRefDrawTarget() override
   {
     RefPtr<gfxContext> ctx =
-      mFrame->PresContext()->PresShell()->CreateReferenceRenderingContext();
+      mFrame->PresShell()->CreateReferenceRenderingContext();
     RefPtr<DrawTarget> dt = ctx->GetDrawTarget();
     return dt.forget();
   }
@@ -208,6 +211,13 @@ public:
   }
   void PaintTextToContext(gfxContext* aCtx,
                           nsPoint aOffsetFromRect);
+
+  virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                       mozilla::wr::IpcResourceUpdateQueue& aResources,
+                                       const StackingContextHelper& aSc,
+                                       layers::WebRenderLayerManager* aManager,
+                                       nsDisplayListBuilder* aDisplayListBuilder) override;
+
   NS_DISPLAY_DECL_NAME("TextOverflow", TYPE_TEXT_OVERFLOW)
 private:
   nsRect          mRect;   // in reference frame coordinates
@@ -230,6 +240,9 @@ void
 nsDisplayTextOverflowMarker::Paint(nsDisplayListBuilder* aBuilder,
                                    gfxContext*           aCtx)
 {
+  DrawTargetAutoDisableSubpixelAntialiasing disable(aCtx->GetDrawTarget(),
+                                                    mDisableSubpixelAA);
+
   nscolor foregroundColor = nsLayoutUtils::
     GetColor(mFrame, &nsStyleText::mWebkitTextFillColor);
 
@@ -266,7 +279,7 @@ nsDisplayTextOverflowMarker::PaintTextToContext(gfxContext* aCtx,
     if (textRun) {
       NS_ASSERTION(!textRun->IsRightToLeft(),
                    "Ellipsis textruns should always be LTR!");
-      gfxPoint gfxPt(pt.x, pt.y);
+      gfx::Point gfxPt(pt.x, pt.y);
       textRun->Draw(gfxTextRun::Range(textRun), gfxPt,
                     gfxTextRun::DrawParams(aCtx));
     }
@@ -278,6 +291,33 @@ nsDisplayTextOverflowMarker::PaintTextToContext(gfxContext* aCtx,
   }
 }
 
+bool
+nsDisplayTextOverflowMarker::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                                     mozilla::wr::IpcResourceUpdateQueue& aResources,
+                                                     const StackingContextHelper& aSc,
+                                                     layers::WebRenderLayerManager* aManager,
+                                                     nsDisplayListBuilder* aDisplayListBuilder)
+{
+  if (!gfxPrefs::LayersAllowTextLayers()) {
+      return false;
+  }
+
+  bool snap;
+  nsRect bounds = GetBounds(aDisplayListBuilder, &snap);
+  if (bounds.IsEmpty()) {
+    return true;
+  }
+
+  // Run the rendering algorithm to capture the glyphs and shadows
+  RefPtr<TextDrawTarget> textDrawer = new TextDrawTarget(aBuilder, aSc, aManager, this, bounds);
+  RefPtr<gfxContext> captureCtx = gfxContext::CreateOrNull(textDrawer);
+  Paint(aDisplayListBuilder, captureCtx);
+  textDrawer->TerminateShadows();
+
+  return !textDrawer->HasUnsupportedFeatures();
+}
+
+
 TextOverflow::TextOverflow(nsDisplayListBuilder* aBuilder,
                            nsIFrame* aBlockFrame)
   : mContentArea(aBlockFrame->GetWritingMode(),
@@ -286,13 +326,14 @@ TextOverflow::TextOverflow(nsDisplayListBuilder* aBuilder,
   , mBuilder(aBuilder)
   , mBlock(aBlockFrame)
   , mScrollableFrame(nsLayoutUtils::GetScrollableFrameFor(aBlockFrame))
+  , mMarkerList(aBuilder)
   , mBlockSize(aBlockFrame->GetSize())
   , mBlockWM(aBlockFrame->GetWritingMode())
   , mAdjustForPixelSnapping(false)
 {
 #ifdef MOZ_XUL
   if (!mScrollableFrame) {
-    nsIAtom* pseudoType = aBlockFrame->StyleContext()->GetPseudo();
+    nsAtom* pseudoType = aBlockFrame->StyleContext()->GetPseudo();
     if (pseudoType == nsCSSAnonBoxes::mozXULAnonymousBlock) {
       mScrollableFrame =
         nsLayoutUtils::GetScrollableFrameFor(aBlockFrame->GetParent());
@@ -321,8 +362,6 @@ TextOverflow::TextOverflow(nsDisplayListBuilder* aBuilder,
                         LogicalPoint(mBlockWM,
                                      mScrollableFrame->GetScrollPosition(),
                                      nullContainerSize));
-    nsIFrame* scrollFrame = do_QueryFrame(mScrollableFrame);
-    scrollFrame->AddStateBits(NS_SCROLLFRAME_INVALIDATE_CONTENTS_ON_SCROLL);
   }
   uint8_t direction = aBlockFrame->StyleVisibility()->mDirection;
   const nsStyleTextReset* style = aBlockFrame->StyleTextReset();
@@ -716,7 +755,7 @@ TextOverflow::PruneDisplayListContents(nsDisplayList* aList,
                                        const FrameHashtable& aFramesToHide,
                                        const LogicalRect& aInsideMarkersArea)
 {
-  nsDisplayList saved;
+  nsDisplayList saved(mBuilder);
   nsDisplayItem* item;
   while ((item = aList->RemoveBottom())) {
     nsIFrame* itemFrame = item->Frame();
@@ -783,7 +822,7 @@ TextOverflow::CanHaveTextOverflow(nsIFrame* aBlockFrame)
   }
 
   // Inhibit the markers if a descendant content owns the caret.
-  RefPtr<nsCaret> caret = aBlockFrame->PresContext()->PresShell()->GetCaret();
+  RefPtr<nsCaret> caret = aBlockFrame->PresShell()->GetCaret();
   if (caret && caret->IsVisible()) {
     nsCOMPtr<nsISelection> domSelection = caret->GetSelection();
     if (domSelection) {
@@ -857,7 +896,7 @@ TextOverflow::Marker::SetupString(nsIFrame* aFrame)
     }
   } else {
     RefPtr<gfxContext> rc =
-      aFrame->PresContext()->PresShell()->CreateReferenceRenderingContext();
+      aFrame->PresShell()->CreateReferenceRenderingContext();
     RefPtr<nsFontMetrics> fm =
       nsLayoutUtils::GetInflatedFontMetricsForFrame(aFrame);
     mISize = nsLayoutUtils::AppUnitWidthOfStringBidi(mStyle->mString, aFrame,

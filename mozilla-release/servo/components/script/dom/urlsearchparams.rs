@@ -2,20 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::URLSearchParamsBinding::URLSearchParamsMethods;
 use dom::bindings::codegen::Bindings::URLSearchParamsBinding::URLSearchParamsWrap;
 use dom::bindings::codegen::UnionTypes::USVStringOrURLSearchParams;
 use dom::bindings::error::Fallible;
 use dom::bindings::iterable::Iterable;
-use dom::bindings::js::Root;
 use dom::bindings::reflector::{Reflector, reflect_dom_object};
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::{DOMString, USVString};
 use dom::bindings::weakref::MutableWeakRef;
 use dom::globalscope::GlobalScope;
 use dom::url::URL;
 use dom_struct::dom_struct;
-use encoding::types::EncodingRef;
 use url::form_urlencoded;
 
 // https://url.spec.whatwg.org/#interface-urlsearchparams
@@ -23,7 +22,7 @@ use url::form_urlencoded;
 pub struct URLSearchParams {
     reflector_: Reflector,
     // https://url.spec.whatwg.org/#concept-urlsearchparams-list
-    list: DOMRefCell<Vec<(String, String)>>,
+    list: DomRefCell<Vec<(String, String)>>,
     // https://url.spec.whatwg.org/#concept-urlsearchparams-url-object
     url: MutableWeakRef<URL>,
 }
@@ -32,19 +31,19 @@ impl URLSearchParams {
     fn new_inherited(url: Option<&URL>) -> URLSearchParams {
         URLSearchParams {
             reflector_: Reflector::new(),
-            list: DOMRefCell::new(url.map_or(Vec::new(), |url| url.query_pairs())),
+            list: DomRefCell::new(url.map_or(Vec::new(), |url| url.query_pairs())),
             url: MutableWeakRef::new(url),
         }
     }
 
-    pub fn new(global: &GlobalScope, url: Option<&URL>) -> Root<URLSearchParams> {
-        reflect_dom_object(box URLSearchParams::new_inherited(url), global,
+    pub fn new(global: &GlobalScope, url: Option<&URL>) -> DomRoot<URLSearchParams> {
+        reflect_dom_object(Box::new(URLSearchParams::new_inherited(url)), global,
                            URLSearchParamsWrap)
     }
 
     // https://url.spec.whatwg.org/#dom-urlsearchparams-urlsearchparams
     pub fn Constructor(global: &GlobalScope, init: Option<USVStringOrURLSearchParams>) ->
-                       Fallible<Root<URLSearchParams>> {
+                       Fallible<DomRoot<URLSearchParams>> {
         // Step 1.
         let query = URLSearchParams::new(global, None);
         match init {
@@ -140,17 +139,16 @@ impl URLSearchParamsMethods for URLSearchParams {
 
     // https://url.spec.whatwg.org/#stringification-behavior
     fn Stringifier(&self) -> DOMString {
-        DOMString::from(self.serialize(None))
+        DOMString::from(self.serialize_utf8())
     }
 }
 
 
 impl URLSearchParams {
     // https://url.spec.whatwg.org/#concept-urlencoded-serializer
-    pub fn serialize(&self, encoding: Option<EncodingRef>) -> String {
+    pub fn serialize_utf8(&self) -> String {
         let list = self.list.borrow();
         form_urlencoded::Serializer::new(String::new())
-            .encoding_override(encoding)
             .extend_pairs(&*list)
             .finish()
     }

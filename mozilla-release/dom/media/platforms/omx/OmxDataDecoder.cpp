@@ -204,9 +204,9 @@ OmxDataDecoder::Drain()
   LOG("");
 
   RefPtr<OmxDataDecoder> self = this;
-  return InvokeAsync(mOmxTaskQueue, __func__, [self, this]() {
-    RefPtr<DecodePromise> p = mDrainPromise.Ensure(__func__);
-    SendEosBuffer();
+  return InvokeAsync(mOmxTaskQueue, __func__, [self]() {
+    RefPtr<DecodePromise> p = self->mDrainPromise.Ensure(__func__);
+    self->SendEosBuffer();
     return p;
   });
 }
@@ -409,8 +409,8 @@ OmxDataDecoder::EmptyBufferFailure(OmxBufferFailureHolder aFailureHolder)
 void
 OmxDataDecoder::NotifyError(OMX_ERRORTYPE aOmxError, const char* aLine, const MediaResult& aError)
 {
-  LOG("NotifyError %d (%" PRIu32 ") at %s", static_cast<int>(aOmxError),
-      static_cast<uint32_t>(aError.Code()), aLine);
+  LOG("NotifyError %d (%s) at %s", static_cast<int>(aOmxError),
+      aError.ErrorName().get(), aLine);
   mDecodedData.Clear();
   mDecodePromise.RejectIfExists(aError, __func__);
   mDrainPromise.RejectIfExists(aError, __func__);

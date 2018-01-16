@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,6 +10,7 @@
 #include "nscore.h"
 #include "nsStringGlue.h"
 #include "mozilla/css/Rule.h"
+#include "mozilla/NotNull.h"
 
 /**
  * Shared superclass for mozilla::css::StyleRule and mozilla::ServoStyleRule,
@@ -18,6 +20,7 @@
 class nsICSSDeclaration;
 
 namespace mozilla {
+class DeclarationBlock;
 namespace dom {
 class Element;
 }
@@ -54,6 +57,7 @@ public:
                                           uint32_t aSelectorIndex,
                                           const nsAString& aPseudo,
                                           bool* aMatches) = 0;
+  virtual NotNull<DeclarationBlock*> GetDeclarationBlock() const = 0;
 
   // WebIDL API
   // For GetSelectorText/SetSelectorText, we purposefully use a signature that

@@ -69,6 +69,7 @@ included_inclnames_to_ignore = set([
     'jscustomallocator.h',      # provided by embedders;  allowed to be missing
     'js-config.h',              # generated in $OBJDIR
     'fdlibm.h',                 # fdlibm
+    'mozmemory.h',              # included without a path
     'pratom.h',                 # NSPR
     'prcvar.h',                 # NSPR
     'prerror.h',                # NSPR
@@ -90,12 +91,15 @@ included_inclnames_to_ignore = set([
     'unicode/ucol.h',           # ICU
     'unicode/udat.h',           # ICU
     'unicode/udatpg.h',         # ICU
+    'unicode/udisplaycontext.h',# ICU
     'unicode/uenum.h',          # ICU
     'unicode/uloc.h',           # ICU
+    'unicode/unistr.h',         # ICU
     'unicode/unorm2.h',         # ICU
     'unicode/unum.h',           # ICU
     'unicode/unumsys.h',        # ICU
     'unicode/upluralrules.h',   # ICU
+    'unicode/ureldatefmt.h',    # ICU
     'unicode/ustring.h',        # ICU
     'unicode/utypes.h',         # ICU
     'vtune/VTuneWrapper.h'      # VTune

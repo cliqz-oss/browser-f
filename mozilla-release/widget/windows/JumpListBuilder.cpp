@@ -47,7 +47,7 @@ NS_IMPL_ISUPPORTS(JumpListBuilder, nsIJumpListBuilder, nsIObserver)
 
 namespace detail {
 
-class DoneCommitListBuildCallback : public nsIRunnable
+class DoneCommitListBuildCallback final : public nsIRunnable
 {
   NS_DECL_THREADSAFE_ISUPPORTS
 
@@ -587,7 +587,7 @@ nsresult JumpListBuilder::TransferIObjectArrayToIMutableArray(IObjectArray *objA
       pItem->Release();
 
     if (NS_SUCCEEDED(rv)) {
-      removedItems->AppendElement(item, false);
+      removedItems->AppendElement(item);
     }
   }
   return NS_OK;

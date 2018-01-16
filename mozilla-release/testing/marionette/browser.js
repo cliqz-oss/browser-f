@@ -14,13 +14,52 @@ const {
   UnsupportedOperationError,
 } = Cu.import("chrome://marionette/content/error.js", {});
 Cu.import("chrome://marionette/content/frame.js");
+const {WindowState} = Cu.import("chrome://marionette/content/wm.js", {});
 
-this.EXPORTED_SYMBOLS = ["browser", "WindowState"];
+this.EXPORTED_SYMBOLS = ["browser", "Context", "WindowState"];
 
 /** @namespace */
 this.browser = {};
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/**
+ * Variations of Marionette contexts.
+ *
+ * Choosing a context through the <tt>Marionette:SetContext</tt>
+ * command directs all subsequent browsing context scoped commands
+ * to that context.
+ *
+ * @enum
+ */
+const Context = {
+  Chrome: "chrome",
+  Content: "content",
+};
+this.Context = Context;
+
+/**
+ * Gets the correct context from a string.
+ *
+ * @param {string} s
+ *     Context string serialisation.
+ *
+ * @return {Context}
+ *     Context.
+ *
+ * @throws {TypeError}
+ *     If <var>s</var> is not a context.
+ */
+Context.fromString = function(s) {
+  switch (s) {
+    case "chrome":
+      return Context.Chrome;
+    case "content":
+      return Context.Content;
+    default:
+      throw new TypeError(`Unknown context: ${s}`);
+  }
+};
 
 /**
  * Get the <code>&lt;xul:browser&gt;</code> for the specified tab.
@@ -234,9 +273,7 @@ browser.Context = class {
    */
   closeWindow() {
     return new Promise(resolve => {
-      this.window.addEventListener("unload", ev => {
-        resolve();
-      }, {once: true});
+      this.window.addEventListener("unload", resolve, {once: true});
       this.window.close();
     });
   }
@@ -263,16 +300,12 @@ browser.Context = class {
     return new Promise((resolve, reject) => {
       if (this.tabBrowser.closeTab) {
         // Fennec
-        this.tabBrowser.deck.addEventListener("TabClose", ev => {
-          resolve();
-        }, {once: true});
+        this.tabBrowser.deck.addEventListener("TabClose", resolve, {once: true});
         this.tabBrowser.closeTab(this.tab);
 
       } else if (this.tabBrowser.removeTab) {
         // Firefox
-        this.tab.addEventListener("TabClose", ev => {
-          resolve();
-        }, {once: true});
+        this.tab.addEventListener("TabClose", resolve, {once: true});
         this.tabBrowser.removeTab(this.tab);
 
       } else {
@@ -456,49 +489,4 @@ browser.Windows = class extends Map {
     return wref.get();
   }
 
-};
-
-// TODO(ato): Move this to testing/marionette/wm.js
-// after https://bugzil.la/1311041
-/**
- * Marionette representation of the {@link ChromeWindow} window state.
- *
- * @enum {string}
- */
-this.WindowState = {
-  Maximized: "maximized",
-  Minimized: "minimized",
-  Normal: "normal",
-  Fullscreen: "fullscreen",
-
-  /**
-   * Converts {@link nsIDOMChromeWindow.windowState} to WindowState.
-   *
-   * @param {number} windowState
-   *     Attribute from {@link nsIDOMChromeWindow.windowState}.
-   *
-   * @return {WindowState}
-   *     JSON representation.
-   *
-   * @throws {TypeError}
-   *     If <var>windowState</var> was unknown.
-   */
-  from(windowState) {
-    switch (windowState) {
-      case 1:
-        return WindowState.Maximized;
-
-      case 2:
-        return WindowState.Minimized;
-
-      case 3:
-        return WindowState.Normal;
-
-      case 4:
-        return WindowState.Fullscreen;
-
-      default:
-        throw new TypeError(`Unknown window state: ${windowState}`);
-    }
-  },
 };

@@ -86,9 +86,9 @@ RefPtr<ShutdownPromise>
 VPXDecoder::Shutdown()
 {
   RefPtr<VPXDecoder> self = this;
-  return InvokeAsync(mTaskQueue, __func__, [self, this]() {
-    vpx_codec_destroy(&mVPX);
-    vpx_codec_destroy(&mVPXAlpha);
+  return InvokeAsync(mTaskQueue, __func__, [self]() {
+    vpx_codec_destroy(&self->mVPX);
+    vpx_codec_destroy(&self->mVPXAlpha);
     return ShutdownPromise::CreateAndResolve(true, __func__);
   });
 }
@@ -122,11 +122,6 @@ RefPtr<MediaDataDecoder::DecodePromise>
 VPXDecoder::ProcessDecode(MediaRawData* aSample)
 {
   MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
-
-#if defined(DEBUG)
-  NS_ASSERTION(IsKeyframe(*aSample, mCodec) == aSample->mKeyframe,
-               "VPX Decode Keyframe error sample->mKeyframe and sample data out of sync");
-#endif
 
   if (vpx_codec_err_t r = vpx_codec_decode(&mVPX, aSample->Data(), aSample->Size(), nullptr, 0)) {
     LOG("VPX Decode error: %s", vpx_codec_err_to_string(r));

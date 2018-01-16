@@ -32,22 +32,22 @@ using mozilla::Swap;
 /*****************************************************************************/
 // WasmFrameIter implementation
 
-WasmFrameIter::WasmFrameIter(WasmActivation* activation, Unwind unwind)
+WasmFrameIter::WasmFrameIter(JitActivation* activation, wasm::Frame* fp)
   : activation_(activation),
     code_(nullptr),
     callsite_(nullptr),
     codeRange_(nullptr),
-    fp_(activation->exitFP()),
-    unwind_(unwind)
+    fp_(fp ? fp : activation->wasmExitFP()),
+    unwind_(Unwind::False)
 {
     MOZ_ASSERT(fp_);
 
-    // Normally, execution exits wasm code via an exit stub which sets exitFP to
-    // the exit stub's frame. Thus, in this case, we want to start iteration at
-    // the caller of the exit frame, whose Code, CodeRange and CallSite are
+    // Normally, execution exits wasm code via an exit stub which sets exitFP
+    // to the exit stub's frame. Thus, in this case, we want to start iteration
+    // at the caller of the exit frame, whose Code, CodeRange and CallSite are
     // indicated by the returnAddress of the exit stub's frame.
 
-    if (!activation->interrupted()) {
+    if (!activation->isWasmInterrupted()) {
         popFrame();
         MOZ_ASSERT(!done());
         return;
@@ -55,15 +55,16 @@ WasmFrameIter::WasmFrameIter(WasmActivation* activation, Unwind unwind)
 
     // When asynchronously interrupted, exitFP is set to the interrupted frame
     // itself and so we do not want to skip it. Instead, we can recover the
-    // Code and CodeRange from the WasmActivation, which are set when control
-    // flow was interrupted. There is no CallSite (b/c the interrupt was async),
-    // but this is fine because CallSite is only used for line number for which
-    // we can use the beginning of the function from the CodeRange instead.
+    // Code and CodeRange from the JitActivation, which are set when control
+    // flow was interrupted. There is no CallSite (b/c the interrupt was
+    // async), but this is fine because CallSite is only used for line number
+    // for which we can use the beginning of the function from the CodeRange
+    // instead.
 
     code_ = &fp_->tls->instance->code();
-    MOZ_ASSERT(code_ == activation->compartment()->wasm.lookupCode(activation->unwindPC()));
+    MOZ_ASSERT(code_ == LookupCode(activation->wasmUnwindPC()));
 
-    codeRange_ = code_->lookupRange(activation->unwindPC());
+    codeRange_ = code_->lookupRange(activation->wasmUnwindPC());
     MOZ_ASSERT(codeRange_->kind() == CodeRange::Function);
 
     MOZ_ASSERT(!done());
@@ -82,20 +83,20 @@ WasmFrameIter::operator++()
 {
     MOZ_ASSERT(!done());
 
-    // When the iterator is set to unwind, each time the iterator pops a
-    // frame, the WasmActivation is updated so that the just-popped frame
-    // is no longer visible. This is necessary since Debugger::onLeaveFrame is
-    // called before popping each frame and, once onLeaveFrame is called for a
-    // given frame, that frame must not be visible to subsequent stack iteration
-    // (or it could be added as a "new" frame just as it becomes garbage).
-    // When the frame is "interrupted", then exitFP is included in the callstack
+    // When the iterator is set to unwind, each time the iterator pops a frame,
+    // the JitActivation is updated so that the just-popped frame is no longer
+    // visible. This is necessary since Debugger::onLeaveFrame is called before
+    // popping each frame and, once onLeaveFrame is called for a given frame,
+    // that frame must not be visible to subsequent stack iteration (or it
+    // could be added as a "new" frame just as it becomes garbage).  When the
+    // frame is "interrupted", then exitFP is included in the callstack
     // (otherwise, it is skipped, as explained above). So to unwind the
     // innermost frame, we just clear the interrupt state.
 
     if (unwind_ == Unwind::True) {
-        if (activation_->interrupted())
-            activation_->finishInterrupt();
-        activation_->unwindExitFP(fp_);
+        if (activation_->isWasmInterrupted())
+            activation_->finishWasmInterrupt();
+        activation_->setWasmExitFP(fp_);
     }
 
     popFrame();
@@ -106,6 +107,7 @@ WasmFrameIter::popFrame()
 {
     Frame* prevFP = fp_;
     fp_ = prevFP->callerFP;
+    MOZ_ASSERT(!(uintptr_t(fp_) & JitActivation::ExitFpWasmBit));
 
     if (!fp_) {
         code_ = nullptr;
@@ -113,7 +115,8 @@ WasmFrameIter::popFrame()
         callsite_ = nullptr;
 
         if (unwind_ == Unwind::True) {
-            activation_->unwindExitFP(nullptr);
+            // TODO with bug 1319203, there may be other JIT frames above.
+            activation_->setWasmExitFP(nullptr);
             unwoundAddressOfReturnAddress_ = &prevFP->returnAddress;
         }
 
@@ -124,7 +127,7 @@ WasmFrameIter::popFrame()
     void* returnAddress = prevFP->returnAddress;
 
     code_ = &fp_->tls->instance->code();
-    MOZ_ASSERT(code_ == activation_->compartment()->wasm.lookupCode(returnAddress));
+    MOZ_ASSERT(code_ == LookupCode(returnAddress));
 
     codeRange_ = code_->lookupRange(returnAddress);
     MOZ_ASSERT(codeRange_->kind() == CodeRange::Function);
@@ -175,7 +178,7 @@ unsigned
 WasmFrameIter::lineOrBytecode() const
 {
     MOZ_ASSERT(!done());
-    MOZ_ASSERT_IF(!callsite_, activation_->interrupted());
+    MOZ_ASSERT_IF(!callsite_, activation_->isWasmInterrupted());
     return callsite_ ? callsite_->lineOrBytecode() : codeRange_->funcLineOrBytecode();
 }
 
@@ -238,54 +241,48 @@ WasmFrameIter::debugTrapCallsite() const
 #if defined(JS_CODEGEN_X64)
 static const unsigned PushedRetAddr = 0;
 static const unsigned PushedTLS = 2;
-static const unsigned PushedExitReason = 4;
-static const unsigned PushedFP = 5;
-static const unsigned SetFP = 8;
-static const unsigned PoppedFP = 4;
-static const unsigned PoppedExitReason = 2;
+static const unsigned PushedFP = 3;
+static const unsigned SetFP = 6;
+static const unsigned PoppedFP = 2;
+static const unsigned PoppedTLSReg = 0;
 #elif defined(JS_CODEGEN_X86)
 static const unsigned PushedRetAddr = 0;
 static const unsigned PushedTLS = 1;
-static const unsigned PushedExitReason = 3;
-static const unsigned PushedFP = 4;
-static const unsigned SetFP = 6;
-static const unsigned PoppedFP = 2;
-static const unsigned PoppedExitReason = 1;
+static const unsigned PushedFP = 2;
+static const unsigned SetFP = 4;
+static const unsigned PoppedFP = 1;
+static const unsigned PoppedTLSReg = 0;
 #elif defined(JS_CODEGEN_ARM)
 static const unsigned BeforePushRetAddr = 0;
 static const unsigned PushedRetAddr = 4;
 static const unsigned PushedTLS = 8;
-static const unsigned PushedExitReason = 16;
-static const unsigned PushedFP = 20;
-static const unsigned SetFP = 24;
-static const unsigned PoppedFP = 8;
-static const unsigned PoppedExitReason = 4;
+static const unsigned PushedFP = 12;
+static const unsigned SetFP = 16;
+static const unsigned PoppedFP = 4;
+static const unsigned PoppedTLSReg = 0;
 #elif defined(JS_CODEGEN_ARM64)
 static const unsigned BeforePushRetAddr = 0;
 static const unsigned PushedRetAddr = 0;
 static const unsigned PushedTLS = 1;
-static const unsigned PushedExitReason = 2;
-static const unsigned PushedFP = 0;
+static const unsigned PushedFP = 1;
 static const unsigned SetFP = 0;
 static const unsigned PoppedFP = 0;
-static const unsigned PoppedExitReason = 0;
+static const unsigned PoppedTLSReg = 0;
 #elif defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
 static const unsigned BeforePushRetAddr = 0;
 static const unsigned PushedRetAddr = 8;
 static const unsigned PushedTLS = 16;
-static const unsigned PushedExitReason = 28;
-static const unsigned PushedFP = 36;
-static const unsigned SetFP = 40;
+static const unsigned PushedFP = 24;
+static const unsigned SetFP = 28;
 static const unsigned PoppedFP = 16;
-static const unsigned PoppedExitReason = 8;
+static const unsigned PoppedTLSReg = 8;
 #elif defined(JS_CODEGEN_NONE)
 static const unsigned PushedRetAddr = 0;
 static const unsigned PushedTLS = 1;
-static const unsigned PushedExitReason = 2;
 static const unsigned PushedFP = 0;
 static const unsigned SetFP = 0;
 static const unsigned PoppedFP = 0;
-static const unsigned PoppedExitReason = 0;
+static const unsigned PoppedTLSReg = 0;
 #else
 # error "Unknown architecture!"
 #endif
@@ -305,14 +302,35 @@ PushRetAddr(MacroAssembler& masm, unsigned entry)
 }
 
 static void
-LoadActivation(MacroAssembler& masm, Register dest)
+LoadActivation(MacroAssembler& masm, const Register& dest)
 {
-    // WasmCall pushes a WasmActivation and an inactive JitActivation. The
-    // JitActivation only becomes active when calling into JS from wasm.
+    // WasmCall pushes a JitActivation.
     masm.loadPtr(Address(WasmTlsReg, offsetof(wasm::TlsData, addressOfContext)), dest);
     masm.loadPtr(Address(dest, 0), dest);
     masm.loadPtr(Address(dest, JSContext::offsetOfActivation()), dest);
-    masm.loadPtr(Address(dest, Activation::offsetOfPrev()), dest);
+}
+
+void
+wasm::SetExitFP(MacroAssembler& masm, ExitReason reason, Register scratch)
+{
+    MOZ_ASSERT(!reason.isNone());
+
+    LoadActivation(masm, scratch);
+
+    masm.store32(Imm32(reason.encode()),
+                 Address(scratch, JitActivation::offsetOfEncodedWasmExitReason()));
+
+    masm.orPtr(Imm32(JitActivation::ExitFpWasmBit), FramePointer);
+    masm.storePtr(FramePointer, Address(scratch, JitActivation::offsetOfPackedExitFP()));
+    masm.andPtr(Imm32(int32_t(~JitActivation::ExitFpWasmBit)), FramePointer);
+}
+
+void
+wasm::ClearExitFP(MacroAssembler& masm, Register scratch)
+{
+    LoadActivation(masm, scratch);
+    masm.storePtr(ImmWord(0x0), Address(scratch, JitActivation::offsetOfPackedExitFP()));
+    masm.store32(Imm32(0x0), Address(scratch, JitActivation::offsetOfEncodedWasmExitReason()));
 }
 
 static void
@@ -334,8 +352,6 @@ GenerateCallablePrologue(MacroAssembler& masm, unsigned framePushed, ExitReason 
         MOZ_ASSERT_IF(!masm.oom(), PushedRetAddr == masm.currentOffset() - *entry);
         masm.push(WasmTlsReg);
         MOZ_ASSERT_IF(!masm.oom(), PushedTLS == masm.currentOffset() - *entry);
-        masm.push(Imm32(reason.encode()));
-        MOZ_ASSERT_IF(!masm.oom(), PushedExitReason == masm.currentOffset() - *entry);
         masm.push(FramePointer);
         MOZ_ASSERT_IF(!masm.oom(), PushedFP == masm.currentOffset() - *entry);
         masm.moveStackPtrTo(FramePointer);
@@ -366,22 +382,10 @@ GenerateCallablePrologue(MacroAssembler& masm, unsigned framePushed, ExitReason 
             *tierEntry = masm.currentOffset();
     }
 
-    if (!reason.isNone()) {
-        Register act = ABINonArgReg0;
-
-        // Native callers expect the native ABI, which assume that non-saved
-        // registers are preserved. Explicitly preserve the act register
-        // in that case.
-        if (reason.isNative() && !act.volatile_())
-            masm.Push(act);
-
-        LoadActivation(masm, act);
-        masm.wasmAssertNonExitInvariants(act);
-        masm.storePtr(FramePointer, Address(act, WasmActivation::offsetOfExitFP()));
-
-        if (reason.isNative() && !act.volatile_())
-            masm.Pop(act);
-    }
+    // If this frame will be exiting compiled code to C++, record the fp and
+    // reason in the JitActivation so the frame iterators can unwind.
+    if (!reason.isNone())
+        SetExitFP(masm, reason, ABINonArgReturnVolatileReg);
 
     if (framePushed)
         masm.subFromStackPtr(Imm32(framePushed));
@@ -394,32 +398,8 @@ GenerateCallableEpilogue(MacroAssembler& masm, unsigned framePushed, ExitReason 
     if (framePushed)
         masm.addToStackPtr(Imm32(framePushed));
 
-    if (!reason.isNone()) {
-        Register act = ABINonArgReturnReg0;
-
-        // See comment in GenerateCallablePrologue.
-        if (reason.isNative() && !act.volatile_())
-            masm.Push(act);
-
-        LoadActivation(masm, act);
-        masm.storePtr(ImmWord(0), Address(act, WasmActivation::offsetOfExitFP()));
-
-#ifdef DEBUG
-        // Check the passed exitReason is the same as the one on entry.
-        // Do it here rather than in the pop sequence to not perturbate the
-        // static stack structure in debug vs optimized mode.
-        Register scratch = act;
-        size_t exitReasonSlot = 1 + (reason.isNative() && !scratch.volatile_() ? 1 : 0);
-        masm.load32(Address(masm.getStackPointer(), exitReasonSlot * sizeof(void*)), scratch);
-        Label ok;
-        masm.branch32(Assembler::Condition::Equal, scratch, Imm32(reason.encode()), &ok);
-        masm.breakpoint();
-        masm.bind(&ok);
-#endif
-
-        if (reason.isNative() && !act.volatile_())
-            masm.Pop(act);
-    }
+    if (!reason.isNone())
+        ClearExitFP(masm, ABINonArgReturnVolatileReg);
 
     // Forbid pools for the same reason as described in GenerateCallablePrologue.
 #if defined(JS_CODEGEN_ARM)
@@ -436,17 +416,20 @@ GenerateCallableEpilogue(MacroAssembler& masm, unsigned framePushed, ExitReason 
     masm.pop(FramePointer);
     DebugOnly<uint32_t> poppedFP = masm.currentOffset();
 
-    // Pop the exit reason to WasmTlsReg; it's going to be clobbered just
-    // thereafter to store the real value of WasmTlsReg.
     masm.pop(WasmTlsReg);
-    DebugOnly<uint32_t> poppedExitReason = masm.currentOffset();
+    DebugOnly<uint32_t> poppedTlsReg = masm.currentOffset();
 
-    masm.pop(WasmTlsReg);
+#if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
+    masm.pop(ra);
+    *ret = masm.currentOffset();
+    masm.branch(ra);
+#else
     *ret = masm.currentOffset();
     masm.ret();
+#endif
 
     MOZ_ASSERT_IF(!masm.oom(), PoppedFP == *ret - poppedFP);
-    MOZ_ASSERT_IF(!masm.oom(), PoppedExitReason == *ret - poppedExitReason);
+    MOZ_ASSERT_IF(!masm.oom(), PoppedTLSReg == *ret - poppedTlsReg);
 }
 
 void
@@ -518,6 +501,47 @@ wasm::GenerateExitEpilogue(MacroAssembler& masm, unsigned framePushed, ExitReaso
     masm.setFramePushed(0);
 }
 
+static void
+AssertNoWasmExitFPInJitExit(MacroAssembler& masm)
+{
+    // As a general stack invariant, if Activation::packedExitFP is tagged as
+    // wasm, it must point to a valid wasm::Frame. The JIT exit stub calls into
+    // JIT code and thus does not really exit, thus, when entering/leaving the
+    // JIT exit stub from/to normal wasm code, packedExitFP is not tagged wasm.
+#ifdef DEBUG
+    Register scratch = ABINonArgReturnReg0;
+    LoadActivation(masm, scratch);
+
+    Label ok;
+    masm.branchTestPtr(Assembler::Zero,
+                       Address(scratch, JitActivation::offsetOfPackedExitFP()),
+                       Imm32(uintptr_t(JitActivation::ExitFpWasmBit)),
+                       &ok);
+    masm.breakpoint();
+    masm.bind(&ok);
+#endif
+}
+
+void
+wasm::GenerateJitExitPrologue(MacroAssembler& masm, unsigned framePushed, CallableOffsets* offsets)
+{
+    masm.haltingAlign(CodeAlignment);
+    GenerateCallablePrologue(masm, framePushed, ExitReason::None(),
+                             &offsets->begin, nullptr, CompileMode::Once, 0);
+    AssertNoWasmExitFPInJitExit(masm);
+    masm.setFramePushed(framePushed);
+}
+
+void
+wasm::GenerateJitExitEpilogue(MacroAssembler& masm, unsigned framePushed, CallableOffsets* offsets)
+{
+    // Inverse of GenerateJitExitPrologue:
+    MOZ_ASSERT(masm.framePushed() == framePushed);
+    AssertNoWasmExitFPInJitExit(masm);
+    GenerateCallableEpilogue(masm, framePushed, ExitReason::None(), &offsets->ret);
+    masm.setFramePushed(0);
+}
+
 /*****************************************************************************/
 // ProfilingFrameIterator
 
@@ -533,29 +557,42 @@ ProfilingFrameIterator::ProfilingFrameIterator()
     MOZ_ASSERT(done());
 }
 
-ProfilingFrameIterator::ProfilingFrameIterator(const WasmActivation& activation)
+ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation)
   : activation_(&activation),
     code_(nullptr),
     codeRange_(nullptr),
     callerFP_(nullptr),
     callerPC_(nullptr),
     stackAddress_(nullptr),
-    exitReason_(ExitReason::Fixed::None)
+    exitReason_(activation.wasmExitReason())
 {
-    initFromExitFP();
+    initFromExitFP(activation.wasmExitFP());
+}
+
+ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation, const Frame* fp)
+  : activation_(&activation),
+    code_(nullptr),
+    codeRange_(nullptr),
+    callerFP_(nullptr),
+    callerPC_(nullptr),
+    stackAddress_(nullptr),
+    exitReason_(ExitReason::Fixed::ImportJit)
+{
+    MOZ_ASSERT(fp);
+    initFromExitFP(fp);
 }
 
 static inline void
-AssertMatchesCallSite(const WasmActivation& activation, void* callerPC, Frame* callerFP)
+AssertMatchesCallSite(const JitActivation& activation, void* callerPC, Frame* callerFP)
 {
 #ifdef DEBUG
-    const Code* code = activation.compartment()->wasm.lookupCode(callerPC);
+    const Code* code = LookupCode(callerPC);
     MOZ_ASSERT(code);
 
     const CodeRange* callerCodeRange = code->lookupRange(callerPC);
     MOZ_ASSERT(callerCodeRange);
 
-    if (callerCodeRange->kind() == CodeRange::Entry) {
+    if (callerCodeRange->kind() == CodeRange::InterpEntry) {
         MOZ_ASSERT(callerFP == nullptr);
         return;
     }
@@ -566,18 +603,14 @@ AssertMatchesCallSite(const WasmActivation& activation, void* callerPC, Frame* c
 }
 
 void
-ProfilingFrameIterator::initFromExitFP()
+ProfilingFrameIterator::initFromExitFP(const Frame* fp)
 {
-    Frame* fp = activation_->exitFP();
+    MOZ_ASSERT(fp);
+    stackAddress_ = (void*)fp;
+
     void* pc = fp->returnAddress;
 
-    // The iterator inserts a pretend innermost frame for ExitReasons.
-    // This allows the variety of exit reasons to show up in the callstack.
-    exitReason_ = ExitReason::Decode(fp->encodedExitReason);
-
-    stackAddress_ = fp;
-
-    code_ = activation_->compartment()->wasm.lookupCode(pc);
+    code_ = LookupCode(pc);
     MOZ_ASSERT(code_);
 
     codeRange_ = code_->lookupRange(pc);
@@ -591,7 +624,7 @@ ProfilingFrameIterator::initFromExitFP()
     //    of an exit reason and inject a fake "builtin" frame; and
     //  - for async interrupts, we just accept that we'll lose the innermost frame.
     switch (codeRange_->kind()) {
-      case CodeRange::Entry:
+      case CodeRange::InterpEntry:
         callerPC_ = nullptr;
         callerFP_ = nullptr;
         break;
@@ -606,7 +639,8 @@ ProfilingFrameIterator::initFromExitFP()
       case CodeRange::BuiltinThunk:
       case CodeRange::TrapExit:
       case CodeRange::DebugTrap:
-      case CodeRange::Inline:
+      case CodeRange::OutOfBoundsExit:
+      case CodeRange::UnalignedExit:
       case CodeRange::Throw:
       case CodeRange::Interrupt:
       case CodeRange::FarJumpIsland:
@@ -617,24 +651,29 @@ ProfilingFrameIterator::initFromExitFP()
 }
 
 bool
-js::wasm::StartUnwinding(const WasmActivation& activation, const RegisterState& registers,
+js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& registers,
                          UnwindState* unwindState, bool* unwoundCaller)
 {
     // Shorthands.
     uint8_t* const pc = (uint8_t*) registers.pc;
-    Frame* const fp = (Frame*) registers.fp;
     void** const sp = (void**) registers.sp;
+
+    // The frame pointer might be in the process of tagging/untagging; make
+    // sure it's untagged.
+    Frame* const fp = (Frame*) (intptr_t(registers.fp) & ~JitActivation::ExitFpWasmBit);
 
     // Get the CodeRange describing pc and the base address to which the
     // CodeRange is relative. If the pc is not in a wasm module or a builtin
     // thunk, then execution must be entering from or leaving to the C++ caller
-    // that pushed the WasmActivation.
+    // that pushed the JitActivation.
     const CodeRange* codeRange;
     uint8_t* codeBase;
-    const Code* code = activation.compartment()->wasm.lookupCode(pc);
-    if (code) {
-        const CodeSegment* codeSegment;
-        codeRange = code->lookupRange(pc, &codeSegment);
+    const Code* code = nullptr;
+
+    const CodeSegment* codeSegment = LookupCodeSegment(pc);
+    if (codeSegment) {
+        code = codeSegment->code();
+        codeRange = code->lookupRange(pc);
         codeBase = codeSegment->base();
     } else if (!LookupBuiltinThunk(pc, &codeRange, &codeBase)) {
         return false;
@@ -678,7 +717,22 @@ js::wasm::StartUnwinding(const WasmActivation& activation, const RegisterState& 
       case CodeRange::ImportInterpExit:
       case CodeRange::BuiltinThunk:
       case CodeRange::TrapExit:
-#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) || defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
+      case CodeRange::DebugTrap:
+#if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
+        if ((offsetFromEntry >= BeforePushRetAddr && offsetFromEntry < PushedFP) || codeRange->isThunk()) {
+            // See BUG 1407986.
+            // On MIPS push is emulated by two instructions: adjusting the sp
+            // and storing the value to sp.
+            // Execution might be interrupted in between the two operation so we
+            // have to relay on register state instead of state saved on stack
+            // until the wasm::Frame is completely built.
+            // On entry the return address is in ra (registers.lr) and
+            // fp holds the caller's fp.
+            fixedPC = (uint8_t*) registers.lr;
+            fixedFP = fp;
+            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+        } else
+#elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64)
         if (offsetFromEntry == BeforePushRetAddr || codeRange->isThunk()) {
             // The return address is still in lr and fp holds the caller's fp.
             fixedPC = (uint8_t*) registers.lr;
@@ -692,16 +746,10 @@ js::wasm::StartUnwinding(const WasmActivation& activation, const RegisterState& 
             fixedPC = sp[0];
             fixedFP = fp;
             AssertMatchesCallSite(activation, fixedPC, fixedFP);
-        } else if (offsetFromEntry >= PushedTLS && offsetFromEntry < PushedExitReason) {
+        } else if (offsetFromEntry >= PushedTLS && offsetFromEntry < PushedFP) {
             // The return address and caller's TLS have been pushed on the
             // stack; fp is still the caller's fp.
             fixedPC = sp[1];
-            fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
-        } else if (offsetFromEntry == PushedExitReason) {
-            // The return address, caller's TLS and exit reason have been
-            // pushed on the stack; fp is still the caller's fp.
-            fixedPC = sp[2];
             fixedFP = fp;
             AssertMatchesCallSite(activation, fixedPC, fixedFP);
         } else if (offsetFromEntry == PushedFP) {
@@ -710,25 +758,47 @@ js::wasm::StartUnwinding(const WasmActivation& activation, const RegisterState& 
             fixedPC = reinterpret_cast<Frame*>(sp)->returnAddress;
             fixedFP = fp;
             AssertMatchesCallSite(activation, fixedPC, fixedFP);
-        } else if (offsetInCode == codeRange->ret() - PoppedFP) {
-            // The fixedFP field of the Frame has been popped into fp, but the
-            // exit reason hasn't been popped yet.
-            fixedPC = sp[2];
-            fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
-        } else if (offsetInCode == codeRange->ret() - PoppedExitReason) {
-            // The fixedFP field of the Frame has been popped into fp, and the
-            // exit reason has been popped.
+        } else if (offsetInCode >= codeRange->ret() - PoppedFP &&
+                   offsetInCode < codeRange->ret() - PoppedTLSReg)
+        {
+            // The fixedFP field of the Frame has been popped into fp.
             fixedPC = sp[1];
             fixedFP = fp;
             AssertMatchesCallSite(activation, fixedPC, fixedFP);
+#if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
+        } else if (offsetInCode >= codeRange->ret() - PoppedTLSReg &&
+                   offsetInCode < codeRange->ret())
+        {
+            // The fixedFP field of the Frame has been popped into fp, but the
+            // exit reason hasn't been popped yet.
+            fixedPC = sp[0];
+            fixedFP = fp;
+            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+        } else if (offsetInCode == codeRange->ret()) {
+            // Both the TLS, fixedFP and ra have been popped and fp now
+            // points to the caller's frame.
+            fixedPC = (uint8_t*) registers.lr;
+            fixedFP = fp;
+            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+#else
         } else if (offsetInCode == codeRange->ret()) {
             // Both the TLS and fixedFP fields have been popped and fp now
             // points to the caller's frame.
             fixedPC = sp[0];
             fixedFP = fp;
             AssertMatchesCallSite(activation, fixedPC, fixedFP);
+#endif
         } else {
+            if (codeRange->kind() == CodeRange::ImportJitExit) {
+                // The jit exit contains a range where the value of FP can't be
+                // trusted. Technically, we could recover fp from sp, but since
+                // the range is so short, for now just drop the stack.
+                if (offsetInCode >= codeRange->jitExitUntrustedFPStart() &&
+                    offsetInCode < codeRange->jitExitUntrustedFPEnd())
+                {
+                    return false;
+                }
+            }
             // Not in the prologue/epilogue.
             fixedPC = pc;
             fixedFP = fp;
@@ -737,19 +807,19 @@ js::wasm::StartUnwinding(const WasmActivation& activation, const RegisterState& 
             break;
         }
         break;
-      case CodeRange::DebugTrap:
-      case CodeRange::Inline:
-        // Inline code stubs execute after the prologue/epilogue have completed
+      case CodeRange::OutOfBoundsExit:
+      case CodeRange::UnalignedExit:
+        // These code stubs execute after the prologue/epilogue have completed
         // so pc/fp contains the right values here.
         fixedPC = pc;
         fixedFP = fp;
         *unwoundCaller = false;
         AssertMatchesCallSite(activation, fp->returnAddress, fp->callerFP);
         break;
-      case CodeRange::Entry:
-        // The entry trampoline is the final frame in an WasmActivation. The entry
-        // trampoline also doesn't GeneratePrologue/Epilogue so we can't use
-        // the general unwinding logic above.
+      case CodeRange::InterpEntry:
+        // The entry trampoline is the final frame in an wasm JitActivation. The
+        // entry trampoline also doesn't GeneratePrologue/Epilogue so we can't
+        // use the general unwinding logic above.
         break;
       case CodeRange::Throw:
         // The throw stub executes a small number of instructions before popping
@@ -770,7 +840,7 @@ js::wasm::StartUnwinding(const WasmActivation& activation, const RegisterState& 
     return true;
 }
 
-ProfilingFrameIterator::ProfilingFrameIterator(const WasmActivation& activation,
+ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation,
                                                const RegisterState& state)
   : activation_(&activation),
     code_(nullptr),
@@ -780,10 +850,12 @@ ProfilingFrameIterator::ProfilingFrameIterator(const WasmActivation& activation,
     stackAddress_(nullptr),
     exitReason_(ExitReason::Fixed::None)
 {
-    // In the case of ImportJitExit, the fp register may be temporarily
-    // clobbered on return from Ion so always use activation.fp when it is set.
-    if (activation.exitFP()) {
-        initFromExitFP();
+    // Let wasmExitFP take precedence to StartUnwinding when it is set since
+    // during the body of an exit stub, the register state may not be valid
+    // causing StartUnwinding() to abandon unwinding this activation.
+    if (activation.hasWasmExitFP()) {
+        exitReason_ = activation.wasmExitReason();
+        initFromExitFP(activation.wasmExitFP());
         return;
     }
 
@@ -827,14 +899,14 @@ ProfilingFrameIterator::operator++()
 
     if (!callerFP_) {
         codeRange_ = code_->lookupRange(callerPC_);
-        MOZ_ASSERT(codeRange_->kind() == CodeRange::Entry);
+        MOZ_ASSERT(codeRange_->kind() == CodeRange::InterpEntry);
         callerPC_ = nullptr;
         MOZ_ASSERT(!done());
         return;
     }
 
     code_ = &callerFP_->tls->instance->code();
-    MOZ_ASSERT(code_ == activation_->compartment()->wasm.lookupCode(callerPC_));
+    MOZ_ASSERT(code_ == LookupCode(callerPC_));
 
     codeRange_ = code_->lookupRange(callerPC_);
     MOZ_ASSERT(codeRange_);
@@ -846,14 +918,15 @@ ProfilingFrameIterator::operator++()
       case CodeRange::BuiltinThunk:
       case CodeRange::TrapExit:
       case CodeRange::DebugTrap:
-      case CodeRange::Inline:
+      case CodeRange::OutOfBoundsExit:
+      case CodeRange::UnalignedExit:
       case CodeRange::FarJumpIsland:
         stackAddress_ = callerFP_;
         callerPC_ = callerFP_->returnAddress;
         AssertMatchesCallSite(*activation_, callerPC_, callerFP_->callerFP);
         callerFP_ = callerFP_->callerFP;
         break;
-      case CodeRange::Entry:
+      case CodeRange::InterpEntry:
         MOZ_CRASH("should have had null caller fp");
       case CodeRange::Interrupt:
       case CodeRange::Throw:
@@ -979,9 +1052,6 @@ ProfilingFrameIterator::label() const
 
     // Use the same string for both time inside and under so that the two
     // entries will be coalesced by the profiler.
-    //
-    // NB: these labels are parsed for location by
-    //     devtools/client/performance/modules/logic/frame-utils.js
     static const char* importJitDescription = "fast FFI trampoline (in wasm)";
     static const char* importInterpDescription = "slow FFI trampoline (in wasm)";
     static const char* builtinNativeDescription = "fast FFI trampoline to native (in wasm)";
@@ -1008,13 +1078,14 @@ ProfilingFrameIterator::label() const
 
     switch (codeRange_->kind()) {
       case CodeRange::Function:          return code_->profilingLabel(codeRange_->funcIndex());
-      case CodeRange::Entry:             return "entry trampoline (in wasm)";
+      case CodeRange::InterpEntry:       return "slow entry trampoline (in wasm)";
       case CodeRange::ImportJitExit:     return importJitDescription;
       case CodeRange::BuiltinThunk:      return builtinNativeDescription;
       case CodeRange::ImportInterpExit:  return importInterpDescription;
       case CodeRange::TrapExit:          return trapDescription;
       case CodeRange::DebugTrap:         return debugTrapDescription;
-      case CodeRange::Inline:            return "inline stub (in wasm)";
+      case CodeRange::OutOfBoundsExit:   return "out-of-bounds stub (in wasm)";
+      case CodeRange::UnalignedExit:     return "unaligned trap stub (in wasm)";
       case CodeRange::FarJumpIsland:     return "interstitial (in wasm)";
       case CodeRange::Throw:             MOZ_FALLTHROUGH;
       case CodeRange::Interrupt:         MOZ_CRASH("does not have a frame");
@@ -1024,7 +1095,7 @@ ProfilingFrameIterator::label() const
 }
 
 Instance*
-wasm::LookupFaultingInstance(const Code& code, void* pc, void* fp)
+wasm::LookupFaultingInstance(const CodeSegment& codeSegment, void* pc, void* fp)
 {
     // Assume bug-caused faults can be raised at any PC and apply the logic of
     // ProfilingFrameIterator to reject any pc outside the (post-prologue,
@@ -1032,45 +1103,25 @@ wasm::LookupFaultingInstance(const Code& code, void* pc, void* fp)
     // simulators which call this function at every load/store before even
     // knowing whether there is a fault.
 
-    const CodeSegment* codeSegment;
-    const CodeRange* codeRange = code.lookupRange(pc, &codeSegment);
+    const CodeRange* codeRange = codeSegment.code()->lookupRange(pc);
     if (!codeRange || !codeRange->isFunction())
         return nullptr;
 
-    size_t offsetInModule = ((uint8_t*)pc) - codeSegment->base();
+    size_t offsetInModule = ((uint8_t*)pc) - codeSegment.base();
     if (offsetInModule < codeRange->funcNormalEntry() + SetFP)
         return nullptr;
     if (offsetInModule >= codeRange->ret() - PoppedFP)
         return nullptr;
 
     Instance* instance = reinterpret_cast<Frame*>(fp)->tls->instance;
-    MOZ_RELEASE_ASSERT(&instance->code() == &code);
+    MOZ_RELEASE_ASSERT(&instance->code() == codeSegment.code());
     return instance;
-}
-
-WasmActivation*
-wasm::ActivationIfInnermost(JSContext* cx)
-{
-    // WasmCall pushes both an outer WasmActivation and an inner JitActivation
-    // that only becomes active when calling JIT code.
-    Activation* act = cx->activation();
-    while (act && act->isJit() && !act->asJit()->isActive())
-        act = act->prev();
-    if (!act || !act->isWasm())
-        return nullptr;
-    return act->asWasm();
 }
 
 bool
 wasm::InCompiledCode(void* pc)
 {
-    JSContext* cx = TlsContext.get();
-    if (!cx)
-        return false;
-
-    MOZ_RELEASE_ASSERT(!cx->handlingSegFault);
-
-    if (cx->compartment()->wasm.lookupCode(pc))
+    if (LookupCodeSegment(pc))
         return true;
 
     const CodeRange* codeRange;

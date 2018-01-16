@@ -21,11 +21,13 @@ loader.lazyRequireGetter(this, "AutocompletePopup", "devtools/client/shared/auto
 loader.lazyRequireGetter(this, "ToolSidebar", "devtools/client/framework/sidebar", true);
 loader.lazyRequireGetter(this, "Messages", "devtools/client/webconsole/console-output", true);
 loader.lazyRequireGetter(this, "asyncStorage", "devtools/shared/async-storage");
-loader.lazyRequireGetter(this, "EnvironmentClient", "devtools/shared/client/main", true);
-loader.lazyRequireGetter(this, "ObjectClient", "devtools/shared/client/main", true);
+loader.lazyRequireGetter(this, "EnvironmentClient", "devtools/shared/client/environment-client");
+loader.lazyRequireGetter(this, "ObjectClient", "devtools/shared/client/object-client");
 loader.lazyImporter(this, "VariablesView", "resource://devtools/client/shared/widgets/VariablesView.jsm");
 loader.lazyImporter(this, "VariablesViewController", "resource://devtools/client/shared/widgets/VariablesViewController.jsm");
 loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
+loader.lazyRequireGetter(this, "NotificationBox", "devtools/client/shared/components/NotificationBox", true);
+loader.lazyRequireGetter(this, "PriorityLevels", "devtools/client/shared/components/NotificationBox", true);
 
 const l10n = require("devtools/client/webconsole/webconsole-l10n");
 
@@ -269,9 +271,8 @@ JSTerm.prototype = {
     } else {
       let okstring = l10n.getStr("selfxss.okstring");
       let msg = l10n.getFormatStr("selfxss.msg", [okstring]);
-      this._onPaste = WebConsoleUtils.pasteHandlerGen(
-        this.inputNode, doc.getElementById("webconsole-notificationbox"),
-        msg, okstring);
+      this._onPaste = WebConsoleUtils.pasteHandlerGen(this.inputNode,
+          this.getNotificationBox(), msg, okstring);
       this.inputNode.addEventListener("keypress", this._keyPress);
       this.inputNode.addEventListener("paste", this._onPaste);
       this.inputNode.addEventListener("drop", this._onPaste);
@@ -546,6 +547,21 @@ JSTerm.prototype = {
 
     this.webConsoleClient.evaluateJSAsync(str, onResult, evalOptions);
     return deferred.promise;
+  },
+
+  /**
+   * Copy the object/variable by invoking the server
+   * which invokes the `copy(variable)` command and makes it
+   * available in the clipboard
+   * @param evalString - string which has the evaluation string to be copied
+   * @param options - object - Options for evaluation
+   * @return object
+   *         A promise object that is resolved when the server response is
+   *         received.
+   */
+  copyObject: function (evalString, evalOptions) {
+    return this.webConsoleClient.evaluateJSAsync(`copy(${evalString})`,
+      null, evalOptions);
   },
 
   /**
@@ -980,6 +996,7 @@ JSTerm.prototype = {
     this.focus();
     this.emit("messages-cleared");
   },
+
   /**
    * Remove all of the private messages from the Web Console output.
    *
@@ -1006,7 +1023,11 @@ JSTerm.prototype = {
     inputNode.style.height = "auto";
 
     // Now resize the input field to fit its contents.
-    let scrollHeight = inputNode.inputField.scrollHeight;
+    // TODO: remove `inputNode.inputField.scrollHeight` when the old
+    // console UI is removed. See bug 1381834
+    let scrollHeight = inputNode.inputField ?
+      inputNode.inputField.scrollHeight : inputNode.scrollHeight;
+
     if (scrollHeight > 0) {
       inputNode.style.height = scrollHeight + "px";
     }
@@ -1729,6 +1750,30 @@ JSTerm.prototype = {
   },
 
   /**
+   * Build the notification box as soon as needed.
+   */
+  getNotificationBox: function () {
+    if (this._notificationBox) {
+      return this._notificationBox;
+    }
+
+    let box = this.hud.document.getElementById("webconsole-notificationbox");
+    if (box.tagName === "notificationbox") {
+      // Here we are in the old console frontend (e.g. browser console), so we
+      // can directly return the notificationbox.
+      return box;
+    }
+
+    let toolbox = gDevTools.getToolbox(this.hud.owner.target);
+
+    // Render NotificationBox and assign priority levels to it.
+    this._notificationBox = Object.assign(
+      toolbox.ReactDOM.render(toolbox.React.createElement(NotificationBox), box),
+      PriorityLevels);
+    return this._notificationBox;
+  },
+
+  /**
    * Destroy the sidebar.
    * @private
    */
@@ -1754,7 +1799,13 @@ JSTerm.prototype = {
     this._sidebarDestroy();
 
     this.clearCompletion();
-    this.clearOutput();
+
+    if (this.hud.NEW_CONSOLE_OUTPUT_ENABLED) {
+      this.webConsoleClient.clearNetworkRequests();
+      this.hud.outputNode.innerHTML = "";
+    } else {
+      this.clearOutput();
+    }
 
     this.autocompletePopup.destroy();
     this.autocompletePopup = null;

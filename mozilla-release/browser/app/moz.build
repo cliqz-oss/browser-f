@@ -36,18 +36,15 @@ DIRS += ['profile/extensions']
 
 GeckoProgram(CONFIG['MOZ_APP_NAME'])
 
-JS_PREFERENCE_PP_FILES += [
-    'profile/firefox.js',
-]
-
 SOURCES += [
     'nsBrowserApp.cpp',
 ]
 
-FINAL_TARGET_FILES += ['blocklist.xml']
-FINAL_TARGET_FILES.defaults += ['permissions']
+# Neither channel-prefs.js nor firefox.exe want to end up in dist/bin/browser.
+DIST_SUBDIR = ""
 
-DEFINES['APP_VERSION'] = CONFIG['MOZ_APP_VERSION']
+# channel-prefs.js is handled separate from other prefs due to bug 756325
+JS_PREFERENCE_PP_FILES += ['profile/channel-prefs.js']
 
 LOCAL_INCLUDES += [
     '!/build',
@@ -62,6 +59,9 @@ if CONFIG['LIBFUZZER']:
         '/tools/fuzzing/libfuzzer',
     ]
 
+if CONFIG['ENABLE_GECKODRIVER']:
+    DEFINES['MOZ_GECKODRIVER'] = True
+
 if CONFIG['_MSC_VER']:
     # Always enter a Windows program through wmain, whether or not we're
     # a console application.
@@ -70,9 +70,6 @@ if CONFIG['_MSC_VER']:
 if CONFIG['OS_ARCH'] == 'WINNT':
     RCINCLUDE = 'splash.rc'
     DEFINES['MOZ_PHOENIX'] = True
-
-for cdm in CONFIG['MOZ_EME_MODULES']:
-    DEFINES['MOZ_%s_EME' % cdm.upper()] = True
 
 if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
     # For sandbox includes and the include dependencies those have
@@ -109,11 +106,14 @@ if CONFIG['MOZ_LINKER']:
 if CONFIG['HAVE_CLOCK_MONOTONIC']:
     OS_LIBS += CONFIG['REALTIME_LIBS']
 
-if CONFIG['MOZ_GPSD']:
-    DEFINES['MOZ_GPSD'] = True
-
 if CONFIG['MOZ_LINUX_32_SSE2_STARTUP_ERROR']:
     DEFINES['MOZ_LINUX_32_SSE2_STARTUP_ERROR'] = True
+    COMPILE_FLAGS['OS_CXXFLAGS'] = [
+        f for f in COMPILE_FLAGS.get('OS_CXXFLAGS', [])
+        if not f.startswith('-march=') and f not in ('-msse', '-msse2', '-mfpmath=sse')
+    ] + [
+        '-mno-sse', '-mno-sse2', '-mfpmath=387',
+    ]
 
 for icon in ('firefox', 'document', 'newwindow', 'newtab', 'pbmode'):
     DEFINES[icon.upper() + '_ICO'] = '"%s/%s/%s.ico"' % (

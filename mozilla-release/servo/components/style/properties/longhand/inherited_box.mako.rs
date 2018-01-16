@@ -70,9 +70,7 @@ ${helpers.single_keyword("image-rendering",
     use std::f64::consts::PI;
     const TWO_PI: f64 = 2.0 * PI;
 
-    #[derive(Clone, Copy, Debug, PartialEq)]
-    #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-    #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+    #[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
     pub struct SpecifiedValue {
         pub angle: Option<Angle>,
         pub flipped: bool
@@ -102,9 +100,7 @@ ${helpers.single_keyword("image-rendering",
         use style_traits::ToCss;
         use values::specified::Angle;
 
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+        #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq)]
         pub enum Orientation {
             Angle0 = 0,
             Angle90,
@@ -135,9 +131,7 @@ ${helpers.single_keyword("image-rendering",
             }
         }
 
-        #[derive(Clone, Copy, Debug, PartialEq)]
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+        #[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
         pub enum T {
             FromImage,
             AngleWithFlipped(Orientation, bool),
@@ -241,7 +235,7 @@ ${helpers.single_keyword("image-rendering",
             // Handle <angle> | <angle> flip
             let angle = input.try(|input| Angle::parse(context, input)).ok();
             if angle.is_none() {
-                return Err(StyleParseError::UnspecifiedError.into());
+                return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
             }
 
             let flipped = input.try(|input| input.expect_ident_matching("flip")).is_ok();

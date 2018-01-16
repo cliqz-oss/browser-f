@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -164,9 +164,11 @@ public:
     // a stack is expensive. This is still useful if (1) you're trying to remove
     // all flushes for a particial frame or (2) the costly flush is triggered
     // near the call site where the first observer is triggered.
+#ifdef MOZ_GECKO_PROFILER
     if (!mStyleCause) {
       mStyleCause = profiler_get_backtrace();
     }
+#endif
     bool appended = mStyleFlushObservers.AppendElement(aShell) != nullptr;
     EnsureTimerStarted();
 
@@ -178,6 +180,7 @@ public:
   bool AddLayoutFlushObserver(nsIPresShell* aShell) {
     NS_ASSERTION(!IsLayoutFlushObserver(aShell),
                  "Double-adding layout flush observer");
+#ifdef MOZ_GECKO_PROFILER
     // We only get the cause for the first observer each frame because capturing
     // a stack is expensive. This is still useful if (1) you're trying to remove
     // all flushes for a particial frame or (2) the costly flush is triggered
@@ -185,6 +188,7 @@ public:
     if (!mReflowCause) {
       mReflowCause = profiler_get_backtrace();
     }
+#endif
     bool appended = mLayoutFlushObservers.AppendElement(aShell) != nullptr;
     EnsureTimerStarted();
     return appended;
@@ -216,6 +220,9 @@ public:
   }
   bool ViewManagerFlushIsPending() {
     return mViewManagerFlushIsPending;
+  }
+  bool HasScheduleFlush() {
+    return mHasScheduleFlush;
   }
 
   /**
@@ -413,8 +420,10 @@ private:
   mozilla::RefreshDriverTimer* ChooseTimer() const;
   mozilla::RefreshDriverTimer* mActiveTimer;
 
+#ifdef MOZ_GECKO_PROFILER
   UniqueProfilerBacktrace mReflowCause;
   UniqueProfilerBacktrace mStyleCause;
+#endif
 
   // nsPresContext passed in constructor and unset in Disconnect.
   mozilla::WeakPtr<nsPresContext> mPresContext;
@@ -442,6 +451,11 @@ private:
   bool mNeedToRecomputeVisibility;
   bool mTestControllingRefreshes;
   bool mViewManagerFlushIsPending;
+
+  // True if the view manager needs a flush. Layers-free mode uses this value
+  // to know when to notify invalidation.
+  bool mHasScheduleFlush;
+
   bool mInRefresh;
 
   // True if the refresh driver is suspended waiting for transaction

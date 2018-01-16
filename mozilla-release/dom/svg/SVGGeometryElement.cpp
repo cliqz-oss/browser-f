@@ -35,9 +35,11 @@ SVGGeometryElement::GetNumberInfo()
 }
 
 nsresult
-SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                  const nsAttrValue* aValue,
-                                 const nsAttrValue* aOldValue, bool aNotify)
+                                 const nsAttrValue* aOldValue,
+                                 nsIPrincipal* aSubjectPrincipal,
+                                 bool aNotify)
 {
   if (mCachedPath &&
       aNamespaceID == kNameSpaceID_None &&
@@ -45,11 +47,13 @@ SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
     mCachedPath = nullptr;
   }
   return SVGGeometryElementBase::AfterSetAttr(aNamespaceID, aName,
-                                              aValue, aOldValue, aNotify);
+                                              aValue, aOldValue,
+                                              aSubjectPrincipal,
+                                              aNotify);
 }
 
 bool
-SVGGeometryElement::AttributeDefinesGeometry(const nsIAtom *aName)
+SVGGeometryElement::AttributeDefinesGeometry(const nsAtom *aName)
 {
   if (aName == nsGkAtoms::pathLength) {
     return true;
@@ -102,11 +106,10 @@ SVGGeometryElement::GetOrBuildPath(const DrawTarget& aDrawTarget,
   // that the pref is only live on page reload (or app restart for SVG in
   // chrome). The benefit is that we avoid causing a CPU memory cache miss by
   // looking at the global variable that the pref's stored in.
-  if (cacheable && mCachedPath) {
-    if (aDrawTarget.GetBackendType() == mCachedPath->GetBackendType()) {
-      RefPtr<Path> path(mCachedPath);
-      return path.forget();
-    }
+  if (cacheable && mCachedPath && mCachedPath->GetFillRule() == aFillRule &&
+      aDrawTarget.GetBackendType() == mCachedPath->GetBackendType()) {
+    RefPtr<Path> path(mCachedPath);
+    return path.forget();
   }
   RefPtr<PathBuilder> builder = aDrawTarget.CreatePathBuilder(aFillRule);
   RefPtr<Path> path = BuildPath(builder);

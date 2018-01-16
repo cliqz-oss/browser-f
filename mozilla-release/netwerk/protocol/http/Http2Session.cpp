@@ -118,6 +118,7 @@ Http2Session::Http2Session(nsISocketTransport *aSocketTransport, uint32_t versio
   , mUseH2Deps(false)
   , mAttemptingEarlyData(attemptingEarlyData)
   , mOriginFrameActivated(false)
+  , mTlsHandshakeFinished(false)
 {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
 
@@ -394,6 +395,11 @@ Http2Session::AddStream(nsAHttpTransaction *aHttpTransaction,
     mConnection = aHttpTransaction->Connection();
   }
 
+  if (!mFirstHttpTransaction && !mTlsHandshakeFinished) {
+    mFirstHttpTransaction = aHttpTransaction->QueryHttpTransaction();
+    LOG3(("Http2Session::AddStream first session=%p trans=%p ", this, mFirstHttpTransaction.get()));
+  }
+
   if (mClosed || mShouldGoAway) {
     nsHttpTransaction *trans = aHttpTransaction->QueryHttpTransaction();
     if (trans && !trans->GetPushedStream()) {
@@ -589,9 +595,18 @@ void
 Http2Session::DontReuse()
 {
   LOG3(("Http2Session::DontReuse %p\n", this));
+  if (!OnSocketThread()) {
+    LOG3(("Http2Session %p not on socket thread\n", this));
+    nsCOMPtr<nsIRunnable> event = NewRunnableMethod(
+      "Http2Session::DontReuse", this, &Http2Session::DontReuse);
+    gSocketTransportService->Dispatch(event, NS_DISPATCH_NORMAL);
+    return;
+  }
+
   mShouldGoAway = true;
-  if (!mStreamTransactionHash.Count())
+  if (!mClosed && !mStreamTransactionHash.Count()) {
     Close(NS_OK);
+  }
 }
 
 uint32_t
@@ -2667,19 +2682,23 @@ Http2Session::OnTransportStatus(nsITransport* aTransport,
   case NS_NET_STATUS_TLS_HANDSHAKE_STARTING:
   case NS_NET_STATUS_TLS_HANDSHAKE_ENDED:
   {
-    Http2Stream *target = mStreamIDHash.Get(mUseH2Deps ? 0xF : 0x3);
-    if (!target) {
-      // any transaction will do if we can't find the low numbered one
-      // generally this happens when the initial transaction hasn't been
-      // assigned a stream id yet.
-      auto iter = mStreamTransactionHash.Iter();
-      if (!iter.Done()) {
-        target = iter.Data();
+
+    if (!mFirstHttpTransaction) {
+      // if we still do not have a HttpTransaction store timings info in
+      // a HttpConnection.
+      // If some error occur it can happen that we do not have a connection.
+      if (mConnection) {
+        RefPtr<nsHttpConnection> conn = mConnection->HttpConnection();
+        conn->SetEvent(aStatus);
       }
+    } else {
+      mFirstHttpTransaction->OnTransportStatus(aTransport, aStatus, aProgress);
     }
-    nsAHttpTransaction *transaction = target ? target->Transaction() : nullptr;
-    if (transaction)
-      transaction->OnTransportStatus(aTransport, aStatus, aProgress);
+
+    if (aStatus == NS_NET_STATUS_TLS_HANDSHAKE_ENDED) {
+      mFirstHttpTransaction = nullptr;
+      mTlsHandshakeFinished = true;
+    }
     break;
   }
 
@@ -3231,7 +3250,9 @@ Http2Session::WriteSegmentsAgain(nsAHttpSegmentWriter *writer,
             "stream->writeSegments returning code %" PRIx32 "\n",
             this, streamID, mNeedsCleanup, static_cast<uint32_t>(rv)));
       MOZ_ASSERT(!mNeedsCleanup || mNeedsCleanup->StreamID() == streamID);
-      CleanupStream(streamID, NS_OK, CANCEL_ERROR);
+      CleanupStream(streamID,
+                    (rv == NS_BINDING_RETARGETED) ? NS_BINDING_RETARGETED : NS_OK,
+                    CANCEL_ERROR);
       mNeedsCleanup = nullptr;
       *again = false;
       rv = ResumeRecv();
@@ -3265,8 +3286,9 @@ Http2Session::WriteSegmentsAgain(nsAHttpSegmentWriter *writer,
     char trash[4096];
     uint32_t discardCount = std::min(mInputFrameDataSize - mInputFrameDataRead,
                                      4096U);
-    LOG3(("Http2Session::WriteSegments %p trying to discard %d bytes of data",
-          this, discardCount));
+    LOG3(("Http2Session::WriteSegments %p trying to discard %d bytes of %s",
+          this, discardCount,
+          mDownstreamState == DISCARDING_DATA_FRAME ? "data" : "padding"));
 
     if (!discardCount && mDownstreamState == DISCARDING_DATA_FRAME) {
       // Only do this short-cirtuit if we're not discarding a pure padding
@@ -3298,9 +3320,15 @@ Http2Session::WriteSegmentsAgain(nsAHttpSegmentWriter *writer,
         streamToCleanup = mInputFrameDataStream;
       }
 
+      bool discardedPadding = (mDownstreamState == DISCARDING_DATA_FRAME_PADDING);
       ResetDownstreamState();
 
       if (streamToCleanup) {
+        if (discardedPadding && !(streamToCleanup->StreamID() & 1)) {
+          // Pushed streams are special on padding-only final data frames.
+          // See bug 1409570 comments 6-8 for details.
+          streamToCleanup->SetPushComplete();
+        }
         CleanupStream(streamToCleanup, NS_OK, CANCEL_ERROR);
       }
     }

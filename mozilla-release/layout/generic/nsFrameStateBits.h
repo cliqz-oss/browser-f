@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -390,6 +391,10 @@ FRAME_STATE_BIT(SVG, 23, NS_STATE_SVG_POSITIONING_MAY_USE_PERCENTAGES)
 
 FRAME_STATE_BIT(SVG, 24, NS_STATE_SVG_TEXT_IN_REFLOW)
 
+// Set on SVGTextFrame frames when they need a
+// TextNodeCorrespondenceRecorder::RecordCorrespondence call
+// to update the cached nsTextNode indexes that they correspond to.
+FRAME_STATE_BIT(SVG, 25, NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY)
 
 // == Frame state bits that apply to text frames ==============================
 
@@ -550,17 +555,6 @@ FRAME_STATE_GROUP(Bullet, nsBulletFrame)
 
 FRAME_STATE_BIT(Block, 62, BULLET_FRAME_HAS_FONT_INFLATION)
 FRAME_STATE_BIT(Block, 63, BULLET_FRAME_IMAGE_LOADING)
-
-
-// == Frame state bits that apply to scroll frames ============================
-
-FRAME_STATE_GROUP(Scroll, nsIScrollableFrame)
-
-// When set, the next scroll operation on the scrollframe will invalidate its
-// entire contents. Useful for text-overflow.
-// This bit is cleared after each time the scrollframe is scrolled. Whoever
-// needs to set it should set it again on each paint.
-FRAME_STATE_BIT(Scroll, 20, NS_SCROLLFRAME_INVALIDATE_CONTENTS_ON_SCROLL)
 
 
 // == Frame state bits that apply to image frames =============================

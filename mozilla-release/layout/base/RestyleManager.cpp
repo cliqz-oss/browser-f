@@ -495,7 +495,7 @@ DumpContext(nsIFrame* aFrame, nsStyleContext* aContext)
   if (aContext) {
     fprintf(stdout, " style: %p ", static_cast<void*>(aContext));
 
-    nsIAtom* pseudoTag = aContext->GetPseudo();
+    nsAtom* pseudoTag = aContext->GetPseudo();
     if (pseudoTag) {
       nsAutoString buffer;
       pseudoTag->ToString(buffer);
@@ -728,6 +728,16 @@ RecomputePosition(nsIFrame* aFrame)
     return false;
   }
 
+  // Flexbox and Grid layout supports CSS Align and the optimizations below
+  // don't support that yet.
+  if (aFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW)) {
+    nsIFrame* ph = aFrame->GetPlaceholderFrame();
+    if (ph && ph->HasAnyStateBits(PLACEHOLDER_STATICPOS_NEEDS_CSSALIGN)) {
+      StyleChangeReflow(aFrame, nsChangeHint_NeedReflow);
+      return false;
+    }
+  }
+
   aFrame->SchedulePaint();
 
   // For relative positioning, we can simply update the frame rect
@@ -797,7 +807,7 @@ RecomputePosition(nsIFrame* aFrame)
   // doesn't need to change, we can simply update the frame position. Otherwise
   // we fall back to a reflow.
   RefPtr<gfxContext> rc =
-    aFrame->PresContext()->PresShell()->CreateReferenceRenderingContext();
+    aFrame->PresShell()->CreateReferenceRenderingContext();
 
   // Construct a bogus parent reflow state so that there's a usable
   // containing block reflow state.
@@ -1235,7 +1245,7 @@ StyleChangeReflow(nsIFrame* aFrame, nsChangeHint aHint)
   }
 
   do {
-    aFrame->PresContext()->PresShell()->FrameNeedsReflow(
+    aFrame->PresShell()->FrameNeedsReflow(
       aFrame, dirtyType, dirtyBits, rootHandling);
     aFrame = nsLayoutUtils::GetNextContinuationOrIBSplitSibling(aFrame);
   } while (aFrame);
@@ -1422,8 +1432,7 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
       break;
     }
 
-    nsStyleChangeData& mutable_data = aChangeList[i];
-    const nsStyleChangeData& data = mutable_data;
+    const nsStyleChangeData& data = aChangeList[i];
     nsIFrame* frame = data.mFrame;
     nsIContent* content = data.mContent;
     nsChangeHint hint = data.mHint;
@@ -1562,6 +1571,7 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
            frame->IsFrameOfType(nsIFrame::eSVG) &&
            !(frame->GetStateBits() & NS_STATE_IS_OUTER_SVG))) {
         SVGObserverUtils::InvalidateRenderingObservers(frame);
+        frame->SchedulePaint();
       }
       if (hint & nsChangeHint_NeedReflow) {
         StyleChangeReflow(frame, hint);

@@ -8,9 +8,9 @@ use dom::bindings::codegen::Bindings::NodeFilterBinding::NodeFilter;
 use dom::bindings::codegen::Bindings::NodeFilterBinding::NodeFilterConstants;
 use dom::bindings::codegen::Bindings::NodeIteratorBinding;
 use dom::bindings::codegen::Bindings::NodeIteratorBinding::NodeIteratorMethods;
-use dom::bindings::error::Fallible;
-use dom::bindings::js::{JS, MutJS, Root};
+use dom::bindings::error::{Error, Fallible};
 use dom::bindings::reflector::{Reflector, reflect_dom_object};
+use dom::bindings::root::{Dom, DomRoot, MutDom};
 use dom::document::Document;
 use dom::node::Node;
 use dom_struct::dom_struct;
@@ -20,13 +20,14 @@ use std::rc::Rc;
 #[dom_struct]
 pub struct NodeIterator {
     reflector_: Reflector,
-    root_node: JS<Node>,
-    #[ignore_heap_size_of = "Defined in rust-mozjs"]
-    reference_node: MutJS<Node>,
+    root_node: Dom<Node>,
+    #[ignore_malloc_size_of = "Defined in rust-mozjs"]
+    reference_node: MutDom<Node>,
     pointer_before_reference_node: Cell<bool>,
     what_to_show: u32,
-    #[ignore_heap_size_of = "Can't measure due to #6870"]
+    #[ignore_malloc_size_of = "Can't measure due to #6870"]
     filter: Filter,
+    active: Cell<bool>,
 }
 
 impl NodeIterator {
@@ -35,19 +36,20 @@ impl NodeIterator {
                      filter: Filter) -> NodeIterator {
         NodeIterator {
             reflector_: Reflector::new(),
-            root_node: JS::from_ref(root_node),
-            reference_node: MutJS::new(root_node),
+            root_node: Dom::from_ref(root_node),
+            reference_node: MutDom::new(root_node),
             pointer_before_reference_node: Cell::new(true),
             what_to_show: what_to_show,
-            filter: filter
+            filter: filter,
+            active: Cell::new(false),
         }
     }
 
     pub fn new_with_filter(document: &Document,
                            root_node: &Node,
                            what_to_show: u32,
-                           filter: Filter) -> Root<NodeIterator> {
-        reflect_dom_object(box NodeIterator::new_inherited(root_node, what_to_show, filter),
+                           filter: Filter) -> DomRoot<NodeIterator> {
+        reflect_dom_object(Box::new(NodeIterator::new_inherited(root_node, what_to_show, filter)),
                            document.window(),
                            NodeIteratorBinding::Wrap)
     }
@@ -55,7 +57,7 @@ impl NodeIterator {
     pub fn new(document: &Document,
                root_node: &Node,
                what_to_show: u32,
-               node_filter: Option<Rc<NodeFilter>>) -> Root<NodeIterator> {
+               node_filter: Option<Rc<NodeFilter>>) -> DomRoot<NodeIterator> {
         let filter = match node_filter {
             None => Filter::None,
             Some(jsfilter) => Filter::Callback(jsfilter)
@@ -66,8 +68,8 @@ impl NodeIterator {
 
 impl NodeIteratorMethods for NodeIterator {
     // https://dom.spec.whatwg.org/#dom-nodeiterator-root
-    fn Root(&self) -> Root<Node> {
-        Root::from_ref(&*self.root_node)
+    fn Root(&self) -> DomRoot<Node> {
+        DomRoot::from_ref(&*self.root_node)
     }
 
     // https://dom.spec.whatwg.org/#dom-nodeiterator-whattoshow
@@ -84,7 +86,7 @@ impl NodeIteratorMethods for NodeIterator {
     }
 
     // https://dom.spec.whatwg.org/#dom-nodeiterator-referencenode
-    fn ReferenceNode(&self) -> Root<Node> {
+    fn ReferenceNode(&self) -> DomRoot<Node> {
         self.reference_node.get()
     }
 
@@ -94,7 +96,7 @@ impl NodeIteratorMethods for NodeIterator {
     }
 
     // https://dom.spec.whatwg.org/#dom-nodeiterator-nextnode
-    fn NextNode(&self) -> Fallible<Option<Root<Node>>> {
+    fn NextNode(&self) -> Fallible<Option<DomRoot<Node>>> {
         // https://dom.spec.whatwg.org/#concept-NodeIterator-traverse
         // Step 1.
         let node = self.reference_node.get();
@@ -138,7 +140,7 @@ impl NodeIteratorMethods for NodeIterator {
     }
 
     // https://dom.spec.whatwg.org/#dom-nodeiterator-previousnode
-    fn PreviousNode(&self) -> Fallible<Option<Root<Node>>> {
+    fn PreviousNode(&self) -> Fallible<Option<DomRoot<Node>>> {
         // https://dom.spec.whatwg.org/#concept-NodeIterator-traverse
         // Step 1.
         let node = self.reference_node.get();
@@ -192,15 +194,29 @@ impl NodeIterator {
     // https://dom.spec.whatwg.org/#concept-node-filter
     fn accept_node(&self, node: &Node) -> Fallible<u16> {
         // Step 1.
-        let n = node.NodeType() - 1;
+        if self.active.get() {
+            return Err(Error::InvalidState);
+        }
         // Step 2.
+        let n = node.NodeType() - 1;
+        // Step 3.
         if (self.what_to_show & (1 << n)) == 0 {
             return Ok(NodeFilterConstants::FILTER_SKIP)
         }
-        // Step 3-5.
+
         match self.filter {
+            // Step 4.
             Filter::None => Ok(NodeFilterConstants::FILTER_ACCEPT),
-            Filter::Callback(ref callback) => callback.AcceptNode_(self, node, Rethrow)
+            Filter::Callback(ref callback) => {
+                // Step 5.
+                self.active.set(true);
+                // Step 6.
+                let result = callback.AcceptNode_(self, node, Rethrow);
+                // Step 7.
+                self.active.set(false);
+                // Step 8.
+                result
+            }
         }
     }
 }

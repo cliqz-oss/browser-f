@@ -24,7 +24,8 @@
 #include "nsStringFwd.h"
 #include "SVGAttrValueWrapper.h"
 #include "nsTArrayForwardDeclare.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
+#include "mozilla/AtomArray.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/EnumTypeTraits.h"
@@ -84,8 +85,6 @@ public:
 class nsAttrValue {
   friend struct MiscContainer;
 public:
-  typedef nsTArray< nsCOMPtr<nsIAtom> > AtomArray;
-
   // This has to be the same as in ValueBaseType
   enum ValueType {
     eString =       0x00, //   00
@@ -122,7 +121,7 @@ public:
   nsAttrValue();
   nsAttrValue(const nsAttrValue& aOther);
   explicit nsAttrValue(const nsAString& aValue);
-  explicit nsAttrValue(nsIAtom* aValue);
+  explicit nsAttrValue(nsAtom* aValue);
   nsAttrValue(already_AddRefed<mozilla::DeclarationBlock> aValue,
               const nsAString* aSerialized);
   explicit nsAttrValue(const nsIntMargin& aValue);
@@ -145,7 +144,7 @@ public:
 
   void SetTo(const nsAttrValue& aOther);
   void SetTo(const nsAString& aValue);
-  void SetTo(nsIAtom* aValue);
+  void SetTo(nsAtom* aValue);
   void SetTo(int16_t aInt);
   void SetTo(int32_t aInt, const nsAString* aSerialized);
   void SetTo(double aValue, const nsAString* aSerialized);
@@ -189,18 +188,18 @@ public:
    * Returns the value of this object as an atom. If necessary, the value will
    * first be serialised using ToString before converting to an atom.
    */
-  already_AddRefed<nsIAtom> GetAsAtom() const;
+  already_AddRefed<nsAtom> GetAsAtom() const;
 
   // Methods to get value. These methods do not convert so only use them
   // to retrieve the datatype that this nsAttrValue has.
   inline bool IsEmptyString() const;
   const nsCheapString GetStringValue() const;
-  inline nsIAtom* GetAtomValue() const;
+  inline nsAtom* GetAtomValue() const;
   inline int32_t GetIntegerValue() const;
   bool GetColorValue(nscolor& aColor) const;
   inline int16_t GetEnumValue() const;
   inline float GetPercentValue() const;
-  inline AtomArray* GetAtomArrayValue() const;
+  inline mozilla::AtomArray* GetAtomArrayValue() const;
   inline mozilla::DeclarationBlock* GetCSSDeclarationValue() const;
   inline mozilla::css::URLValue* GetURLValue() const;
   inline mozilla::css::ImageValue* GetImageValue() const;
@@ -221,13 +220,13 @@ public:
   uint32_t GetAtomCount() const;
   // Returns the atom at aIndex (0-based).  Do not call this with
   // aIndex >= GetAtomCount().
-  nsIAtom* AtomAt(int32_t aIndex) const;
+  nsAtom* AtomAt(int32_t aIndex) const;
 
   uint32_t HashValue() const;
   bool Equals(const nsAttrValue& aOther) const;
   // aCaseSensitive == eIgnoreCase means ASCII case-insenstive matching
   bool Equals(const nsAString& aValue, nsCaseTreatment aCaseSensitive) const;
-  bool Equals(nsIAtom* aValue, nsCaseTreatment aCaseSensitive) const;
+  bool Equals(nsAtom* aValue, nsCaseTreatment aCaseSensitive) const;
 
   /**
    * Compares this object with aOther according to their string representation.
@@ -242,7 +241,7 @@ public:
    * Returns true if this AttrValue is equal to the given atom, or is an
    * array which contains the given atom.
    */
-  bool Contains(nsIAtom* aValue, nsCaseTreatment aCaseSensitive) const;
+  bool Contains(nsAtom* aValue, nsCaseTreatment aCaseSensitive) const;
   /**
    * Returns true if this AttrValue is an atom equal to the given
    * string, or is an array of atoms which contains the given string.
@@ -501,11 +500,11 @@ nsAttrValue::operator=(const nsAttrValue& aOther)
   return *this;
 }
 
-inline nsIAtom*
+inline nsAtom*
 nsAttrValue::GetAtomValue() const
 {
   NS_PRECONDITION(Type() == eAtom, "wrong type");
-  return reinterpret_cast<nsIAtom*>(GetPtr());
+  return reinterpret_cast<nsAtom*>(GetPtr());
 }
 
 inline nsAttrValue::ValueBaseType
@@ -543,8 +542,8 @@ nsAttrValue::ToString(mozilla::dom::DOMString& aResult) const
     }
     case eAtom:
     {
-      nsIAtom *atom = static_cast<nsIAtom*>(GetPtr());
-      aResult.SetStringBuffer(atom->GetStringBuffer(), atom->GetLength());
+      nsAtom *atom = static_cast<nsAtom*>(GetPtr());
+      aResult.SetOwnedAtom(atom, mozilla::dom::DOMString::eNullNotExpected);
       break;
     }
     default:

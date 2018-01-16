@@ -20,7 +20,6 @@
 #include "nsIDocument.h"
 #include "nsIDOMCustomEvent.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMHTMLObjectElement.h"
 #include "nsIExternalProtocolHandler.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIObjectFrame.h"
@@ -892,14 +891,14 @@ nsObjectLoadingContent::GetNestedParams(nsTArray<MozPluginParameter>& aParams)
       continue;
 
     nsCOMPtr<nsIContent> parent = element->GetParent();
-    nsCOMPtr<nsIDOMHTMLObjectElement> domObject;
-    while (!domObject && parent) {
-      domObject = do_QueryInterface(parent);
+    RefPtr<HTMLObjectElement> objectElement;
+    while (!objectElement && parent) {
+      objectElement = HTMLObjectElement::FromContent(parent);
       parent = parent->GetParent();
     }
 
-    if (domObject) {
-      parent = do_QueryInterface(domObject);
+    if (objectElement) {
+      parent = objectElement;
     } else {
       continue;
     }
@@ -931,7 +930,7 @@ nsObjectLoadingContent::BuildParametersArray()
   for (uint32_t i = 0; i != content->GetAttrCount(); i += 1) {
     MozPluginParameter param;
     const nsAttrName* attrName = content->GetAttrNameAt(i);
-    nsIAtom* atom = attrName->LocalName();
+    nsAtom* atom = attrName->LocalName();
     content->GetAttr(attrName->NamespaceID(), atom, param.mValue);
     atom->ToString(param.mName);
     mCachedAttributes.AppendElement(param);
@@ -1334,6 +1333,7 @@ nsObjectLoadingContent::ObjectState() const
         case eFallbackUserDisabled:
           return NS_EVENT_STATE_USERDISABLED;
         case eFallbackClickToPlay:
+        case eFallbackClickToPlayQuiet:
           return NS_EVENT_STATE_TYPE_CLICK_TO_PLAY;
         case eFallbackDisabled:
           return NS_EVENT_STATE_BROKEN | NS_EVENT_STATE_HANDLER_DISABLED;
@@ -1483,7 +1483,8 @@ nsObjectLoadingContent::CheckLoadPolicy(int16_t *aContentPolicy)
   *aContentPolicy = nsIContentPolicy::ACCEPT;
   nsresult rv = NS_CheckContentLoadPolicy(contentPolicyType,
                                           mURI,
-                                          doc->NodePrincipal(),
+                                          doc->NodePrincipal(), // loading principal
+                                          doc->NodePrincipal(), // triggering principal
                                           thisContent,
                                           mContentType,
                                           nullptr, //extra
@@ -1536,7 +1537,8 @@ nsObjectLoadingContent::CheckProcessPolicy(int16_t *aContentPolicy)
   nsresult rv =
     NS_CheckContentProcessPolicy(objectType,
                                  mURI ? mURI : mBaseURI,
-                                 doc->NodePrincipal(),
+                                 doc->NodePrincipal(), // loading principal
+                                 doc->NodePrincipal(), // triggering principal
                                  static_cast<nsIImageLoadingContent*>(this),
                                  mContentType,
                                  nullptr, //extra
@@ -2299,7 +2301,7 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
       handlerURI->GetSpec(spec);
       LOG(("OBJLC [%p]: Loading fake plugin handler (%s)", this, spec.get()));
 
-      rv = mFrameLoader->LoadURI(handlerURI);
+      rv = mFrameLoader->LoadURI(handlerURI, false);
       if (NS_FAILED(rv)) {
         LOG(("OBJLC [%p]: LoadURI() failed for fake handler", this));
         mFrameLoader->Destroy();
@@ -2377,7 +2379,7 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
 
     // Don't fire error events if we're falling back to click-to-play; instead
     // pretend like this is a really slow-loading plug-in instead.
-    if (fallbackType != eFallbackClickToPlay) {
+    if (fallbackType != eFallbackClickToPlay && fallbackType != eFallbackClickToPlayQuiet) {
       MaybeFireErrorEvent();
     }
 
@@ -3341,6 +3343,14 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason)
       return true;
     case nsIPermissionManager::DENY_ACTION:
       aReason = eFallbackDisabled;
+      return false;
+    case PLUGIN_PERMISSION_PROMPT_ACTION_QUIET:
+      if (PreferFallback(true /* isPluginClickToPlay */)) {
+        aReason = eFallbackAlternate;
+      } else {
+        aReason = eFallbackClickToPlayQuiet;
+      }
+
       return false;
     case nsIPermissionManager::PROMPT_ACTION:
       if (PreferFallback(true /* isPluginClickToPlay */)) {

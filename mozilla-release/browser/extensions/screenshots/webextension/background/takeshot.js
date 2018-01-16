@@ -57,6 +57,7 @@ this.takeshot = (function() {
       return browser.tabs.create({url: shot.creatingUrl})
     }).then((tab) => {
       openedTab = tab;
+      sendEvent('internal', 'open-shot-tab');
       return uploadShot(shot, imageBlob);
     }).then(() => {
       return browser.tabs.update(openedTab.id, {url: shot.viewUrl}).then(
@@ -72,6 +73,7 @@ this.takeshot = (function() {
         }
       );
     }).then(() => {
+      catcher.watchPromise(communication.sendToBootstrap('incrementUploadCount'));
       return shot.viewUrl;
     }).catch((error) => {
       browser.tabs.remove(openedTab.id);
@@ -152,7 +154,7 @@ this.takeshot = (function() {
       let enc = new TextEncoder("utf-8");
       body = enc.encode(body);
       body = concatBuffers(body.buffer, blobAsBuffer);
-      let tail = "\r\n" + "--" + boundary + "--";
+      let tail = `\r\n--${boundary}--`;
       tail = enc.encode(tail);
       body = concatBuffers(body, tail.buffer);
       return {
@@ -171,12 +173,12 @@ this.takeshot = (function() {
           {shot: JSON.stringify(shot.asJson())},
           "blob", "screenshot.png", blob
         );
-      } else {
-        return {
-          "content-type": "application/json",
-          body: JSON.stringify(shot.asJson())
-        };
       }
+      return {
+        "content-type": "application/json",
+        body: JSON.stringify(shot.asJson())
+      };
+
     }).then((submission) => {
       headers["content-type"] = submission["content-type"];
       sendEvent("upload", "started", {eventValue: Math.floor(submission.body.length / 1000)});

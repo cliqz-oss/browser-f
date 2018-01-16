@@ -75,7 +75,7 @@ void write_color0(vec4 color, float style, bool flip) {
             break;
     }
 
-    vColor0 = vec4(color.rgb * modulate.x, color.a);
+    vColor0 = vec4(min(color.rgb * modulate.x, vec3(color.a)), color.a);
 }
 
 void write_color1(vec4 color, float style, bool flip) {
@@ -97,7 +97,7 @@ void write_color1(vec4 color, float style, bool flip) {
             break;
     }
 
-    vColor1 = vec4(color.rgb * modulate.y, color.a);
+    vColor1 = vec4(min(color.rgb * modulate.y, vec3(color.a)), color.a);
 }
 
 void write_clip_params(float style,
@@ -222,10 +222,10 @@ void main(void) {
 #ifdef WR_FEATURE_TRANSFORM
     TransformVertexInfo vi = write_transform_vertex(segment_rect,
                                                     prim.local_clip_rect,
+                                                    vec4(1.0),
                                                     prim.z,
                                                     prim.layer,
-                                                    prim.task,
-                                                    prim.local_rect);
+                                                    prim.task);
 #else
     VertexInfo vi = write_vertex(segment_rect,
                                  prim.local_clip_rect,
@@ -250,11 +250,10 @@ void main(void) {
     vec2 local_pos = vLocalPos;
 #endif
 
-    alpha = min(alpha, do_clip());
+    alpha *= do_clip();
 
     // Find the appropriate distance to apply the step over.
-    vec2 fw = fwidth(local_pos);
-    float afwidth = length(fw);
+    float aa_range = compute_aa_range(local_pos);
 
     // Applies the math necessary to draw a style: double
     // border. In the case of a solid border, the vertex
@@ -291,13 +290,11 @@ void main(void) {
     // Get the dot alpha
     vec2 dot_relative_pos = vec2(x, pos.x) - vClipParams.zw;
     float dot_distance = length(dot_relative_pos) - vClipParams.z;
-    float dot_alpha = 1.0 - smoothstep(-0.5 * afwidth,
-                                        0.5 * afwidth,
-                                        dot_distance);
+    float dot_alpha = distance_aa(aa_range, dot_distance);
 
     // Select between dot/dash alpha based on clip mode.
     alpha = min(alpha, mix(dash_alpha, dot_alpha, vClipSelect));
 
-    oFragColor = color * vec4(1.0, 1.0, 1.0, alpha);
+    oFragColor = color * alpha;
 }
 #endif

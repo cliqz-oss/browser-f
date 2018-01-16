@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -62,9 +63,9 @@ nsSVGClipPathFrame::ApplyClipPath(gfxContext& aContext,
         PrependLocalTransformsTo(GetClipPathTransform(aClippedFrame) * aMatrix,
                                  eUserSpaceToParent);
       gfxMatrix newMatrix =
-        aContext.CurrentMatrix().PreMultiply(toChildsUserSpace).NudgeToIntegers();
+        aContext.CurrentMatrixDouble().PreMultiply(toChildsUserSpace).NudgeToIntegers();
       if (!newMatrix.IsSingular()) {
-        aContext.SetMatrix(newMatrix);
+        aContext.SetMatrixDouble(newMatrix);
         FillRule clipRule =
           nsSVGUtils::ToFillRule(pathFrame->StyleSVG()->mClipRule);
         clipPath = pathElement->GetOrBuildPath(aDrawTarget, clipRule);
@@ -102,7 +103,7 @@ nsSVGClipPathFrame::CreateClipMask(gfxContext& aReferenceContext,
 }
 
 static void
-ComposeExtraMask(DrawTarget* aTarget, const gfxMatrix& aMaskTransfrom,
+ComposeExtraMask(DrawTarget* aTarget,
                  SourceSurface* aExtraMask, const Matrix& aExtraMasksTransform)
 {
   MOZ_ASSERT(aExtraMask);
@@ -177,14 +178,14 @@ nsSVGClipPathFrame::PaintClipMask(gfxContext& aMaskContext,
   }
 
   // Moz2D transforms in the opposite direction to Thebes
-  gfxMatrix maskTransfrom = aMaskContext.CurrentMatrix();
+  Matrix maskTransfrom = aMaskContext.CurrentMatrix();
   maskTransfrom.Invert();
 
   if (aExtraMask) {
-    ComposeExtraMask(maskDT, maskTransfrom, aExtraMask, aExtraMasksTransform);
+    ComposeExtraMask(maskDT, aExtraMask, aExtraMasksTransform);
   }
 
-  *aMaskTransform = ToMatrix(maskTransfrom);
+  *aMaskTransform = maskTransfrom;
 }
 
 void
@@ -270,7 +271,7 @@ nsSVGClipPathFrame::GetClipMask(gfxContext& aReferenceContext,
     return nullptr;
   }
   maskContext->SetMatrix(aReferenceContext.CurrentMatrix() *
-                         gfxMatrix::Translation(-offset));
+                         Matrix::Translation(-offset));
 
   PaintClipMask(*maskContext, aClippedFrame, aMatrix, aMaskTransform,
                 aExtraMask, aExtraMasksTransform);
@@ -416,7 +417,7 @@ nsSVGClipPathFrame::IsValid()
 
 nsresult
 nsSVGClipPathFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None) {
@@ -479,12 +480,13 @@ nsSVGClipPathFrame::GetBBoxForClipPathFrame(const SVGBBox &aBBox,
   nsIContent* node = GetContent()->GetFirstChild();
   SVGBBox unionBBox, tmpBBox;
   for (; node; node = node->GetNextSibling()) {
-    nsIFrame *frame =
-      static_cast<nsSVGElement*>(node)->GetPrimaryFrame();
+    nsSVGElement* svgNode = static_cast<nsSVGElement*>(node);
+    nsIFrame* frame = svgNode->GetPrimaryFrame();
     if (frame) {
       nsSVGDisplayableFrame* svg = do_QueryFrame(frame);
       if (svg) {
-        tmpBBox = svg->GetBBoxContribution(mozilla::gfx::ToMatrix(aMatrix),
+        gfxMatrix matrix = svgNode->PrependLocalTransformsTo(aMatrix, eUserSpaceToParent);
+        tmpBBox = svg->GetBBoxContribution(mozilla::gfx::ToMatrix(matrix),
                                            nsSVGUtils::eBBoxIncludeFill);
         SVGObserverUtils::EffectProperties effectProperties =
                               SVGObserverUtils::GetEffectProperties(frame);

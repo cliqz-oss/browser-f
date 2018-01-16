@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -28,13 +29,14 @@ class nsIScrollPositionListener;
 class nsIFrame;
 class nsPresContext;
 class nsIContent;
-class nsIAtom;
+class nsAtom;
 class nsDisplayListBuilder;
 
 namespace mozilla {
 struct ContainerLayerParameters;
 namespace layers {
 class Layer;
+class LayerManager;
 } // namespace layers
 } // namespace mozilla
 
@@ -240,7 +242,7 @@ public:
    * number of layer pixels (so the operation is fast and looks clean).
    */
   virtual void ScrollToCSSPixelsApproximate(const mozilla::CSSPoint& aScrollPosition,
-                                            nsIAtom *aOrigin = nullptr) = 0;
+                                            nsAtom *aOrigin = nullptr) = 0;
 
   /**
    * Returns the scroll position in integer CSS pixels, rounded to the nearest
@@ -263,7 +265,7 @@ public:
    */
   virtual void ScrollBy(nsIntPoint aDelta, ScrollUnit aUnit, ScrollMode aMode,
                         nsIntPoint* aOverflow = nullptr,
-                        nsIAtom* aOrigin = nullptr,
+                        nsAtom* aOrigin = nullptr,
                         ScrollMomentum aMomentum = NOT_MOMENTUM,
                         nsIScrollbarMediator::ScrollSnapMode aSnap
                           = nsIScrollbarMediator::DISABLE_SNAP) = 0;
@@ -315,6 +317,18 @@ public:
    * expectation that scrolling is going to happen.
    */
   virtual bool IsScrollingActive(nsDisplayListBuilder* aBuilder) = 0;
+
+  /**
+   * Returns true if this scroll frame might be scrolled
+   * asynchronously by the compositor.
+   */
+  virtual bool MayBeAsynchronouslyScrolled() = 0;
+
+  /**
+   * Same as the above except doesn't take into account will-change budget,
+   * which means that it can be called during display list building.
+   */
+  virtual bool IsMaybeScrollingActive() const = 0;
   /**
    * Returns true if the scrollframe is currently processing an async
    * or smooth scroll.
@@ -350,7 +364,7 @@ public:
    * nsGkAtoms::apz when the compositor's replica frame metrics includes the
    * latest instant scroll.
    */
-  virtual nsIAtom* LastScrollOrigin() = 0;
+  virtual nsAtom* LastScrollOrigin() = 0;
   /**
    * Sets a flag on the scrollframe that indicates the current scroll origin
    * has been sent over in a layers transaction, and subsequent changes to
@@ -374,7 +388,7 @@ public:
    * by an instant scroll before the smooth scroll could be started by the
    * compositor, this is set to nullptr to clear the smooth scroll.
    */
-  virtual nsIAtom* LastSmoothScrollOrigin() = 0;
+  virtual nsAtom* LastSmoothScrollOrigin() = 0;
   /**
    * Returns the current generation counter for the scroll. This counter
    * increments every time the scroll position is set.
@@ -397,11 +411,13 @@ public:
    */
   virtual bool WantAsyncScroll() const = 0;
   /**
-   * aLayer's animated geometry root is this frame. If there needs to be a
-   * ScrollMetadata contributed by this frame, append it to aOutput.
+   * aLayer's animated geometry root is this frame. Returns the ScrollMetadata
+   * contributed by this frame, if there is one.
+   * If aClip is non-null, then aLayer must also be non-null.
    */
   virtual mozilla::Maybe<mozilla::layers::ScrollMetadata> ComputeScrollMetadata(
     mozilla::layers::Layer* aLayer,
+    mozilla::layers::LayerManager* aLayerManager,
     const nsIFrame* aContainerReferenceFrame,
     const ContainerLayerParameters& aParameters,
     const mozilla::DisplayItemClip* aClip) const = 0;
@@ -440,15 +456,18 @@ public:
   /**
    * Determine if we should build a scrollable layer for this scroll frame and
    * return the result. It will also record this result on the scroll frame.
+   * Pass the visible rect in aVisibleRect. On return it will be set to the
+   * displayport if there is one.
    * Pass the dirty rect in aDirtyRect. On return it will be set to the
-   * displayport if there is one (ie the dirty rect that should be used).
-   * This function may create a display port where one did not exist before if
-   * aAllowCreateDisplayPort is true. It is only allowed to be false if there
-   * has been a call with it set to true before on the same paint.
+   * dirty rect inside the displayport (ie the dirty rect that should be used).
+   * This function will set the display port base rect if aSetBase is true.
+   * aSetBase is only allowed to be false if there has been a call with it
+   * set to true before on the same paint.
    */
   virtual bool DecideScrollableLayer(nsDisplayListBuilder* aBuilder,
+                                     nsRect* aVisibleRect,
                                      nsRect* aDirtyRect,
-                                     bool aAllowCreateDisplayPort) = 0;
+                                     bool aSetBase) = 0;
 
   /**
    * Notification that this scroll frame is getting its frame visibility updated.

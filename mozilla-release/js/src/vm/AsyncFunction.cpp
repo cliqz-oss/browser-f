@@ -135,8 +135,7 @@ js::WrapAsyncFunctionWithProto(JSContext* cx, HandleFunction unwrapped, HandleOb
     RootedFunction wrapped(cx, NewFunctionWithProto(cx, WrappedAsyncFunction, length,
                                                     JSFunction::NATIVE_FUN, nullptr,
                                                     funName, proto,
-                                                    AllocKind::FUNCTION_EXTENDED,
-                                                    TenuredObject));
+                                                    AllocKind::FUNCTION_EXTENDED));
     if (!wrapped)
         return nullptr;
 
@@ -184,8 +183,8 @@ AsyncFunctionResume(JSContext* cx, Handle<PromiseObject*> resultPromise, HandleV
 
     // Execution context switching is handled in generator.
     HandlePropertyName funName = kind == ResumeKind::Normal
-                                 ? cx->names().StarGeneratorNext
-                                 : cx->names().StarGeneratorThrow;
+                                 ? cx->names().GeneratorNext
+                                 : cx->names().GeneratorThrow;
     FixedInvokeArgs<1> args(cx);
     args[0].set(valueOrReason);
     RootedValue value(cx);

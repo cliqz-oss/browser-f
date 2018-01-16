@@ -8,8 +8,8 @@
 
 #include "mozIStorageConnection.h"
 #include "mozIStorageService.h"
-#include "nsIBinaryInputStream.h"
-#include "nsIBinaryOutputStream.h"
+#include "nsIObjectInputStream.h"
+#include "nsIObjectOutputStream.h"
 #include "nsIFile.h"
 #include "nsIFileStreams.h"
 #include "nsIObserverService.h"
@@ -2163,18 +2163,14 @@ GetBinaryOutputStream(nsIFile* aFile,
     return rv;
   }
 
-  nsCOMPtr<nsIBinaryOutputStream> binaryStream =
-    do_CreateInstance("@mozilla.org/binaryoutputstream;1");
-  if (NS_WARN_IF(!binaryStream)) {
-    return NS_ERROR_FAILURE;
+  if (NS_WARN_IF(!outputStream)) {
+    return NS_ERROR_UNEXPECTED;
   }
 
-  rv = binaryStream->SetOutputStream(outputStream);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+  nsCOMPtr<nsIObjectOutputStream> objectOutputStream =
+    NS_NewObjectOutputStream(outputStream);
 
-  binaryStream.forget(aStream);
+  objectOutputStream.forget(aStream);
   return NS_OK;
 }
 
@@ -2458,7 +2454,8 @@ GetBinaryInputStream(nsIFile* aDirectory,
   }
 
   nsCOMPtr<nsIInputStream> bufferedStream;
-  rv = NS_NewBufferedInputStream(getter_AddRefs(bufferedStream), stream, 512);
+  rv = NS_NewBufferedInputStream(getter_AddRefs(bufferedStream),
+                                 stream.forget(), 512);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -3586,16 +3583,11 @@ QuotaManager::CollectOriginsForEviction(
 nsresult
 QuotaManager::Init(const nsAString& aBasePath)
 {
-  nsresult rv;
 
   mBasePath = aBasePath;
 
-  nsCOMPtr<nsIFile> baseDir = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = baseDir->InitWithPath(aBasePath);
+  nsCOMPtr<nsIFile> baseDir;
+  nsresult rv = NS_NewLocalFile(aBasePath, false, getter_AddRefs(baseDir));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -3645,7 +3637,7 @@ QuotaManager::Init(const nsAString& aBasePath)
 
   // Make a timer here to avoid potential failures later. We don't actually
   // initialize the timer until shutdown.
-  mShutdownTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
+  mShutdownTimer = NS_NewTimer();
   if (NS_WARN_IF(!mShutdownTimer)) {
     return NS_ERROR_FAILURE;
   }
@@ -3949,11 +3941,8 @@ QuotaManager::GetQuotaObject(PersistenceType aPersistenceType,
     *aFileSizeOut = 0;
   }
 
-  nsresult rv;
-  nsCOMPtr<nsIFile> file = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, nullptr);
-
-  rv = file->InitWithPath(aPath);
+  nsCOMPtr<nsIFile> file;
+  nsresult rv = NS_NewLocalFile(aPath, false, getter_AddRefs(file));
   NS_ENSURE_SUCCESS(rv, nullptr);
 
   return GetQuotaObject(aPersistenceType, aGroup, aOrigin, file, aFileSizeOut);
@@ -4008,12 +3997,9 @@ QuotaManager::GetDirectoryForOrigin(PersistenceType aPersistenceType,
                                     const nsACString& aASCIIOrigin,
                                     nsIFile** aDirectory) const
 {
-  nsresult rv;
-  nsCOMPtr<nsIFile> directory =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = directory->InitWithPath(GetStoragePath(aPersistenceType));
+  nsCOMPtr<nsIFile> directory;
+  nsresult rv = NS_NewLocalFile(GetStoragePath(aPersistenceType), false,
+                                getter_AddRefs(directory));
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsAutoCString originSanitized(aASCIIOrigin);
@@ -4219,15 +4205,9 @@ QuotaManager::InitializeRepository(PersistenceType aPersistenceType)
   MOZ_ASSERT(aPersistenceType == PERSISTENCE_TYPE_TEMPORARY ||
              aPersistenceType == PERSISTENCE_TYPE_DEFAULT);
 
-  nsresult rv;
-
-  nsCOMPtr<nsIFile> directory =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = directory->InitWithPath(GetStoragePath(aPersistenceType));
+  nsCOMPtr<nsIFile> directory;
+  nsresult rv = NS_NewLocalFile(GetStoragePath(aPersistenceType), false,
+                                getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4398,13 +4378,10 @@ QuotaManager::MaybeUpgradeIndexedDBDirectory()
 {
   AssertIsOnIOThread();
 
-  nsresult rv;
 
-  nsCOMPtr<nsIFile> indexedDBDir =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = indexedDBDir->InitWithPath(mIndexedDBPath);
+  nsCOMPtr<nsIFile> indexedDBDir;
+  nsresult rv = NS_NewLocalFile(mIndexedDBPath, false,
+                                getter_AddRefs(indexedDBDir));
   NS_ENSURE_SUCCESS(rv, rv);
 
   bool exists;
@@ -4425,11 +4402,9 @@ QuotaManager::MaybeUpgradeIndexedDBDirectory()
     return NS_OK;
   }
 
-  nsCOMPtr<nsIFile> persistentStorageDir =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = persistentStorageDir->InitWithPath(mStoragePath);
+  nsCOMPtr<nsIFile> persistentStorageDir;
+  rv = NS_NewLocalFile(mStoragePath, false,
+                       getter_AddRefs(persistentStorageDir));
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = persistentStorageDir->Append(NS_LITERAL_STRING(PERSISTENT_DIRECTORY_NAME));
@@ -4464,15 +4439,10 @@ QuotaManager::MaybeUpgradePersistentStorageDirectory()
 {
   AssertIsOnIOThread();
 
-  nsresult rv;
 
-  nsCOMPtr<nsIFile> persistentStorageDir =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = persistentStorageDir->InitWithPath(mStoragePath);
+  nsCOMPtr<nsIFile> persistentStorageDir;
+  nsresult rv = NS_NewLocalFile(mStoragePath, false,
+                                getter_AddRefs(persistentStorageDir));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4504,13 +4474,9 @@ QuotaManager::MaybeUpgradePersistentStorageDirectory()
     return NS_OK;
   }
 
-  nsCOMPtr<nsIFile> defaultStorageDir =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = defaultStorageDir->InitWithPath(mDefaultStoragePath);
+  nsCOMPtr<nsIFile> defaultStorageDir;
+  rv = NS_NewLocalFile(mDefaultStoragePath, false,
+                       getter_AddRefs(defaultStorageDir));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4536,13 +4502,9 @@ QuotaManager::MaybeUpgradePersistentStorageDirectory()
   }
 
   // Upgrade metadata files for origin directories in temporary storage.
-  nsCOMPtr<nsIFile> temporaryStorageDir =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = temporaryStorageDir->InitWithPath(mTemporaryStoragePath);
+  nsCOMPtr<nsIFile> temporaryStorageDir;
+  rv = NS_NewLocalFile(mTemporaryStoragePath, false,
+                       getter_AddRefs(temporaryStorageDir));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4587,15 +4549,9 @@ QuotaManager::MaybeRemoveOldDirectories()
 {
   AssertIsOnIOThread();
 
-  nsresult rv;
-
-  nsCOMPtr<nsIFile> indexedDBDir =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = indexedDBDir->InitWithPath(mIndexedDBPath);
+  nsCOMPtr<nsIFile> indexedDBDir;
+  nsresult rv = NS_NewLocalFile(mIndexedDBPath, false,
+                                getter_AddRefs(indexedDBDir));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4615,13 +4571,9 @@ QuotaManager::MaybeRemoveOldDirectories()
     }
   }
 
-  nsCOMPtr<nsIFile> persistentStorageDir =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = persistentStorageDir->InitWithPath(mStoragePath);
+  nsCOMPtr<nsIFile> persistentStorageDir;
+  rv = NS_NewLocalFile(mStoragePath, false,
+                       getter_AddRefs(persistentStorageDir));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4670,13 +4622,9 @@ QuotaManager::UpgradeStorageFrom0_0To1_0(mozIStorageConnection* aConnection)
   }
 
   for (const PersistenceType persistenceType : kAllPersistenceTypes) {
-    nsCOMPtr<nsIFile> directory =
-      do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    rv = directory->InitWithPath(GetStoragePath(persistenceType));
+    nsCOMPtr<nsIFile> directory;
+    rv = NS_NewLocalFile(GetStoragePath(persistenceType), false,
+                         getter_AddRefs(directory));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -4787,13 +4735,9 @@ QuotaManager::UpgradeStorageFrom1_0To2_0(mozIStorageConnection* aConnection)
   nsresult rv;
 
   for (const PersistenceType persistenceType : kAllPersistenceTypes) {
-    nsCOMPtr<nsIFile> directory =
-      do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    rv = directory->InitWithPath(GetStoragePath(persistenceType));
+    nsCOMPtr<nsIFile> directory;
+    rv = NS_NewLocalFile(GetStoragePath(persistenceType), false,
+                         getter_AddRefs(directory));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -4850,13 +4794,9 @@ QuotaManager::UpgradeStorageFrom2_0To2_1(mozIStorageConnection* aConnection)
   nsresult rv;
 
   for (const PersistenceType persistenceType : kAllPersistenceTypes) {
-    nsCOMPtr<nsIFile> directory =
-      do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    rv = directory->InitWithPath(GetStoragePath(persistenceType));
+    nsCOMPtr<nsIFile> directory;
+    rv = NS_NewLocalFile(GetStoragePath(persistenceType), false,
+                         getter_AddRefs(directory));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -4921,15 +4861,9 @@ QuotaManager::EnsureStorageIsInitialized()
     return NS_OK;
   }
 
-  nsresult rv;
 
-  nsCOMPtr<nsIFile> storageFile =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = storageFile->InitWithPath(mBasePath);
+  nsCOMPtr<nsIFile> storageFile;
+  nsresult rv = NS_NewLocalFile(mBasePath, false, getter_AddRefs(storageFile));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4995,13 +4929,8 @@ QuotaManager::EnsureStorageIsInitialized()
   if (storageVersion < kStorageVersion) {
     const bool newDatabase = !storageVersion;
 
-    nsCOMPtr<nsIFile> storageDir =
-      do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    rv = storageDir->InitWithPath(mStoragePath);
+    nsCOMPtr<nsIFile> storageDir;
+    rv = NS_NewLocalFile(mStoragePath, false, getter_AddRefs(storageDir));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -5013,13 +4942,9 @@ QuotaManager::EnsureStorageIsInitialized()
     }
 
     if (!exists) {
-      nsCOMPtr<nsIFile> indexedDBDir =
-        do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-
-      rv = indexedDBDir->InitWithPath(mIndexedDBPath);
+      nsCOMPtr<nsIFile> indexedDBDir;
+      rv = NS_NewLocalFile(mIndexedDBPath, false,
+                           getter_AddRefs(indexedDBDir));
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -5238,41 +5163,10 @@ QuotaManager::EnsureOriginIsInitializedInternal(
       *aCreated = false;
       return NS_OK;
     }
-  } else if (!mTemporaryStorageInitialized) {
-    rv = InitializeRepository(aPersistenceType);
+  } else {
+    rv = EnsureTemporaryStorageIsInitialized();
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      // We have to cleanup partially initialized quota.
-      RemoveQuota();
-
       return rv;
-    }
-
-    rv = InitializeRepository(ComplementaryPersistenceType(aPersistenceType));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      // We have to cleanup partially initialized quota.
-      RemoveQuota();
-
-      return rv;
-    }
-
-    if (gFixedLimitKB >= 0) {
-      mTemporaryStorageLimit = static_cast<uint64_t>(gFixedLimitKB) * 1024;
-    }
-    else {
-      nsCOMPtr<nsIFile> storageDir =
-        do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-
-      rv = storageDir->InitWithPath(GetStoragePath());
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-
-      rv = GetTemporaryStorageLimit(storageDir, mTemporaryStorageUsage,
-                                    &mTemporaryStorageLimit);
-      NS_ENSURE_SUCCESS(rv, rv);
     }
 
     mTemporaryStorageInitialized = true;
@@ -5338,6 +5232,60 @@ QuotaManager::EnsureOriginIsInitializedInternal(
   directory.forget(aDirectory);
   *aCreated = created;
   return NS_OK;
+}
+
+nsresult
+QuotaManager::EnsureTemporaryStorageIsInitialized()
+{
+  AssertIsOnIOThread();
+  MOZ_ASSERT(mStorageInitialized);
+
+  if (mTemporaryStorageInitialized) {
+    return NS_OK;
+  }
+
+  nsresult rv = InitializeRepository(PERSISTENCE_TYPE_DEFAULT);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    // We have to cleanup partially initialized quota.
+    RemoveQuota();
+
+    return rv;
+  }
+
+  rv = InitializeRepository(PERSISTENCE_TYPE_TEMPORARY);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    // We have to cleanup partially initialized quota.
+    RemoveQuota();
+
+    return rv;
+  }
+
+  if (gFixedLimitKB >= 0) {
+    mTemporaryStorageLimit = static_cast<uint64_t>(gFixedLimitKB) * 1024;
+  } else {
+    nsCOMPtr<nsIFile> storageDir =
+      do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    rv = storageDir->InitWithPath(GetStoragePath());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    rv = GetTemporaryStorageLimit(storageDir, mTemporaryStorageUsage,
+                                  &mTemporaryStorageLimit);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+  }
+
+  mTemporaryStorageInitialized = true;
+
+  CheckTemporaryStorageLimits();
+
+  return rv;
 }
 
 void
@@ -5877,7 +5825,7 @@ QuotaManager::ShutdownTimerCallback(nsITimer* aTimer, void* aClosure)
 
   // Abort all operations.
   for (RefPtr<Client>& client : quotaManager->mClients) {
-    client->AbortOperations(NullCString());
+    client->AbortOperations(VoidCString());
   }
 }
 
@@ -6928,15 +6876,10 @@ GetUsageOp::TraverseRepository(QuotaManager* aQuotaManager,
   AssertIsOnIOThread();
   MOZ_ASSERT(aQuotaManager);
 
-  nsresult rv;
 
-  nsCOMPtr<nsIFile> directory =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = directory->InitWithPath(aQuotaManager->GetStoragePath(aPersistenceType));
+  nsCOMPtr<nsIFile> directory;
+  nsresult rv = NS_NewLocalFile(aQuotaManager->GetStoragePath(aPersistenceType),
+                                false, getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -7150,14 +7093,16 @@ GetOriginUsageOp::DoDirectoryWork(QuotaManager* aQuotaManager)
   nsresult rv;
 
   if (mGetGroupUsage) {
-    nsCOMPtr<nsIFile> directory;
+    // Ensure temporary storage is initialized first. It will initialize all
+    // origins for temporary storage including origins belonging to our group by
+    // traversing the repositories. EnsureStorageIsInitialized is needed before
+    // EnsureTemporaryStorageIsInitialized.
+    rv = aQuotaManager->EnsureStorageIsInitialized();
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
 
-    // Ensure origin is initialized first. It will initialize all origins for
-    // temporary storage including origins belonging to our group.
-    rv = aQuotaManager->EnsureOriginIsInitialized(PERSISTENCE_TYPE_TEMPORARY,
-                                                  mSuffix, mGroup,
-                                                  mOriginScope.GetOrigin(),
-                                                  getter_AddRefs(directory));
+    rv = aQuotaManager->EnsureTemporaryStorageIsInitialized();
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -7368,15 +7313,10 @@ ResetOrClearOp::DeleteFiles(QuotaManager* aQuotaManager)
   AssertIsOnIOThread();
   MOZ_ASSERT(aQuotaManager);
 
-  nsresult rv;
 
-  nsCOMPtr<nsIFile> directory =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
-  rv = directory->InitWithPath(aQuotaManager->GetStoragePath());
+  nsCOMPtr<nsIFile> directory;
+  nsresult rv = NS_NewLocalFile(aQuotaManager->GetStoragePath(), false,
+                                getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -7389,13 +7329,9 @@ ResetOrClearOp::DeleteFiles(QuotaManager* aQuotaManager)
     MOZ_ASSERT(false, "Failed to remove storage directory!");
   }
 
-  nsCOMPtr<nsIFile> storageFile =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
-  rv = storageFile->InitWithPath(aQuotaManager->GetBasePath());
+  nsCOMPtr<nsIFile> storageFile;
+  rv = NS_NewLocalFile(aQuotaManager->GetBasePath(), false,
+                       getter_AddRefs(storageFile));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -7450,15 +7386,10 @@ ClearRequestBase::DeleteFiles(QuotaManager* aQuotaManager,
   AssertIsOnIOThread();
   MOZ_ASSERT(aQuotaManager);
 
-  nsresult rv;
 
-  nsCOMPtr<nsIFile> directory =
-    do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
-  rv = directory->InitWithPath(aQuotaManager->GetStoragePath(aPersistenceType));
+  nsCOMPtr<nsIFile> directory;
+  nsresult rv = NS_NewLocalFile(aQuotaManager->GetStoragePath(aPersistenceType),
+                                false, getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -8271,7 +8202,7 @@ OriginParser::Parse(nsACString& aSpec, OriginAttributes* aAttrs) -> ResultType
     }
 
     if (!mHandledTokens.IsEmpty()) {
-      mHandledTokens.Append(NS_LITERAL_CSTRING(", "));
+      mHandledTokens.AppendLiteral(", ");
     }
     mHandledTokens.Append('\'');
     mHandledTokens.Append(token);
@@ -8862,19 +8793,14 @@ CreateOrUpgradeDirectoryMetadataHelper::ProcessOriginDirectory(
     // Move internal origins to new persistent storage.
     if (QuotaManager::IsOriginInternal(aOriginProps.mSpec)) {
       if (!mPermanentStorageDir) {
-        mPermanentStorageDir =
-          do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-        if (NS_WARN_IF(NS_FAILED(rv))) {
-          return rv;
-        }
-
         QuotaManager* quotaManager = QuotaManager::Get();
         MOZ_ASSERT(quotaManager);
 
         const nsString& permanentStoragePath =
           quotaManager->GetStoragePath(PERSISTENCE_TYPE_PERSISTENT);
 
-        rv = mPermanentStorageDir->InitWithPath(permanentStoragePath);
+        rv = NS_NewLocalFile(permanentStoragePath, false,
+                             getter_AddRefs(mPermanentStorageDir));
         if (NS_WARN_IF(NS_FAILED(rv))) {
           return rv;
         }

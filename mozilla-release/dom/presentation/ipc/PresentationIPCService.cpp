@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et ft=cpp : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -73,7 +73,7 @@ PresentationIPCService::StartSession(
   }
 
   nsPIDOMWindowInner* window =
-    nsGlobalWindow::GetInnerWindowWithId(aWindowId)->AsInner();
+    nsGlobalWindowInner::GetInnerWindowWithId(aWindowId)->AsInner();
   TabId tabId = TabParent::GetTabIdFrom(window->GetDocShell());
 
   return SendRequest(aCallback, StartSessionRequest(aUrls,
@@ -490,7 +490,7 @@ PresentationIPCService::UntrackSessionInfo(const nsAString& aSessionId,
         [windowId]() -> void {
           PRES_DEBUG("Attempt to close window[%" PRIu64 "]\n", windowId);
 
-          if (auto* window = nsGlobalWindow::GetInnerWindowWithId(windowId)) {
+          if (auto* window = nsGlobalWindowInner::GetInnerWindowWithId(windowId)) {
             window->Close();
           }
         }));

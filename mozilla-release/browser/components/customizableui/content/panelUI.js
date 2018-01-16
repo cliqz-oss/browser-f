@@ -471,6 +471,10 @@ const PanelUI = {
       CustomizableUI.addPanelCloseListeners(tempPanel);
       tempPanel.addEventListener("popuphidden", panelRemover);
 
+      if (aAnchor.parentNode.id == "PersonalToolbar") {
+        tempPanel.classList.add("bookmarks-toolbar");
+      }
+
       let anchor = this._getPanelAnchor(aAnchor);
 
       if (aAnchor != anchor && aAnchor.id) {
@@ -557,7 +561,7 @@ const PanelUI = {
    * Remove all the nodes from the 'Recent Highlights' section and hide it as well.
    */
   clearLibraryRecentHighlights() {
-    let container = document.getElementById("appMenu-library-recentHighlights")
+    let container = document.getElementById("appMenu-library-recentHighlights");
     while (container.firstChild) {
       container.firstChild.remove();
     }
@@ -575,6 +579,10 @@ const PanelUI = {
     let button = event.target;
     if (event.button > 1 || !button._highlight) {
       return;
+    }
+    if (event.button == 1) {
+      // Bug 1402849, close library panel on mid mouse click
+      CustomizableUI.hidePanelForNode(button);
     }
     window.openUILink(button._highlight.url, event);
   },
@@ -712,7 +720,7 @@ const PanelUI = {
     if (this.panel.state == "showing" || this.panel.state == "open") {
       // If the menu is already showing, then we need to dismiss all notifications
       // since we don't want their doorhangers competing for attention
-      doorhangers.forEach(n => { n.dismissed = true; })
+      doorhangers.forEach(n => { n.dismissed = true; });
       this._hidePopup();
       this._clearBadge();
       if (!notifications[0].options.badgeOnly) {
@@ -846,6 +854,8 @@ const PanelUI = {
 
   _getPanelAnchor(candidate) {
     let iconAnchor =
+      document.getAnonymousElementByAttribute(candidate, "class",
+                                              "toolbarbutton-badge-stack") ||
       document.getAnonymousElementByAttribute(candidate, "class",
                                               "toolbarbutton-icon");
     return iconAnchor || candidate;

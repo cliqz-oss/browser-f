@@ -69,13 +69,10 @@ class IDBFactory final
   // process.
   RefPtr<TabChild> mTabChild;
 
-  nsTArray<nsAutoPtr<PendingRequestInfo>> mPendingRequests;
-
   indexedDB::BackgroundFactoryChild* mBackgroundActor;
 
-  // A DocGroup-specific EventTarget if created by CreateForWindow().
-  // Otherwise, it must either be set to SystemGroup on main thread or
-  // NS_GetCurrentThread() off main thread.
+  // It is either set to a DocGroup-specific EventTarget if created by
+  // CreateForWindow() or set to GetCurrentThreadEventTarget() otherwise.
   nsCOMPtr<nsIEventTarget> mEventTarget;
 
   uint64_t mInnerWindowID;
@@ -265,13 +262,6 @@ private:
                bool aDeleting,
                CallerType aCallerType,
                ErrorResult& aRv);
-
-  nsresult
-  BackgroundActorCreated(PBackgroundChild* aBackgroundActor,
-                         const indexedDB::LoggingInfo& aLoggingInfo);
-
-  void
-  BackgroundActorFailed();
 
   nsresult
   InitiateRequest(IDBOpenDBRequest* aRequest,

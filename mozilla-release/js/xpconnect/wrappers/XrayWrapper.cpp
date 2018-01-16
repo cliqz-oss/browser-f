@@ -280,7 +280,7 @@ ReportWrapperDenial(JSContext* cx, HandleId id, WrapperDenialType type, const ch
 
     // Compute the current window id if any.
     uint64_t windowId = 0;
-    nsGlobalWindow* win = WindowGlobalOrNull(CurrentGlobalOrNull(cx));
+    nsGlobalWindowInner* win = WindowGlobalOrNull(CurrentGlobalOrNull(cx));
     if (win)
       windowId = win->WindowID();
 
@@ -716,6 +716,8 @@ bool
 JSXrayTraits::delete_(JSContext* cx, HandleObject wrapper, HandleId id, ObjectOpResult& result)
 {
     RootedObject holder(cx, ensureHolder(cx, wrapper));
+    if (!holder)
+        return false;
 
     // If we're using Object Xrays, we allow callers to attempt to delete any
     // property from the underlying object that they are able to resolve. Note
@@ -954,6 +956,9 @@ JSXrayTraits::construct(JSContext* cx, HandleObject wrapper,
 {
     JSXrayTraits& self = JSXrayTraits::singleton;
     JS::RootedObject holder(cx, self.ensureHolder(cx, wrapper));
+    if (!holder)
+        return false;
+
     if (self.getProtoKey(holder) == JSProto_Function) {
         JSProtoKey standardConstructor = constructorFor(holder);
         if (standardConstructor == JSProto_Null)
@@ -1429,7 +1434,7 @@ IsXPCWNHolderClass(const JSClass* clasp)
 
 } // namespace XrayUtils
 
-static nsGlobalWindow*
+static nsGlobalWindowInner*
 AsWindow(JSContext* cx, JSObject* wrapper)
 {
   // We want to use our target object here, since we don't want to be
@@ -1522,9 +1527,6 @@ XPCWrappedNativeXrayTraits::resolveNativeProperty(JSContext* cx, HandleObject wr
         if (member->IsWritableAttribute())
             attrs |= JSPROP_SETTER;
 
-        // Make the property shared on the holder so no slot is allocated
-        // for it. This avoids keeping garbage alive through that slot.
-        attrs |= JSPROP_SHARED;
         desc.setAttributes(attrs);
     } else {
         // This is a method. Clone a function for it.
@@ -1630,7 +1632,7 @@ XrayTraits::resolveOwnProperty(JSContext* cx, HandleObject wrapper, HandleObject
         if (!JS_AlreadyHasOwnPropertyById(cx, holder, id, &found))
             return false;
         if (!found && !JS_DefinePropertyById(cx, holder, id, wrappedJSObject_getter, nullptr,
-                                             JSPROP_ENUMERATE | JSPROP_SHARED)) {
+                                             JSPROP_ENUMERATE)) {
             return false;
         }
         if (!JS_GetOwnPropertyDescriptorById(cx, holder, id, desc))
@@ -1761,13 +1763,13 @@ DOMXrayTraits::resolveOwnProperty(JSContext* cx, HandleObject wrapper, HandleObj
     // Check for indexed access on a window.
     uint32_t index = GetArrayIndexFromId(cx, id);
     if (IsArrayIndex(index)) {
-        nsGlobalWindow* win = AsWindow(cx, wrapper);
+        nsGlobalWindowInner* win = AsWindow(cx, wrapper);
         // Note: As() unwraps outer windows to get to the inner window.
         if (win) {
             nsCOMPtr<nsPIDOMWindowOuter> subframe = win->IndexedGetter(index);
             if (subframe) {
                 subframe->EnsureInnerWindow();
-                nsGlobalWindow* global = nsGlobalWindow::Cast(subframe);
+                nsGlobalWindowOuter* global = nsGlobalWindowOuter::Cast(subframe);
                 JSObject* obj = global->FastGetGlobalJSObject();
                 if (MOZ_UNLIKELY(!obj)) {
                     // It's gone?
@@ -1833,7 +1835,7 @@ DOMXrayTraits::enumerateNames(JSContext* cx, HandleObject wrapper, unsigned flag
                               AutoIdVector& props)
 {
     // Put the indexed properties for a window first.
-    nsGlobalWindow* win = AsWindow(cx, wrapper);
+    nsGlobalWindowInner* win = AsWindow(cx, wrapper);
     if (win) {
         uint32_t length = win->Length();
         if (!props.reserve(props.length() + length)) {
@@ -2074,6 +2076,10 @@ XrayWrapper<Base, Traits>::getPropertyDescriptor(JSContext* cx, HandleObject wra
                                                  JS::MutableHandle<PropertyDescriptor> desc)
                                                  const
 {
+    // We can't assert !Traits::HasPrototypes here, because
+    // CrossOriginXrayWrapper::getOwnPropertyDescriptor calls us, but it uses
+    // DOMXrayTraits, which have HasPrototype.
+
     assertEnteredPolicy(cx, wrapper, id, BaseProxyHandler::GET | BaseProxyHandler::SET |
                                          BaseProxyHandler::GET_PROPERTY_DESCRIPTOR);
     RootedObject target(cx, XrayTraits::getTargetObject(wrapper));
@@ -2122,8 +2128,10 @@ XrayWrapper<Base, Traits>::getPropertyDescriptor(JSContext* cx, HandleObject wra
     // Scope Polluter and thus the resulting properties are non-|own|. However,
     // we're set up (above) to cache (on the holder) anything that comes out of
     // resolveNativeProperty, which we don't want for something dynamic like
-    // named access. So we just handle it separately here.
-    nsGlobalWindow* win = nullptr;
+    // named access. So we just handle it separately here.  Note that this is
+    // only relevant for CrossOriginXrayWrapper, which calls
+    // getPropertyDescriptor from getOwnPropertyDescriptor.
+    nsGlobalWindowInner* win = nullptr;
     if (!desc.object() &&
         JSID_IS_STRING(id) &&
         (win = AsWindow(cx, wrapper)))
@@ -2132,7 +2140,7 @@ XrayWrapper<Base, Traits>::getPropertyDescriptor(JSContext* cx, HandleObject wra
         if (!name.init(cx, JSID_TO_STRING(id)))
             return false;
         if (nsCOMPtr<nsPIDOMWindowOuter> childDOMWin = win->GetChildWindow(name)) {
-            auto* cwin = nsGlobalWindow::Cast(childDOMWin);
+            auto* cwin = nsGlobalWindowOuter::Cast(childDOMWin);
             JSObject* childObj = cwin->FastGetGlobalJSObject();
             if (MOZ_UNLIKELY(!childObj))
                 return xpc::Throw(cx, NS_ERROR_FAILURE);
@@ -2431,6 +2439,7 @@ template <typename Base, typename Traits>
 JSObject*
 XrayWrapper<Base, Traits>::enumerate(JSContext* cx, HandleObject wrapper) const
 {
+    MOZ_ASSERT(!Traits::HasPrototype, "Why did we get called?");
     // Skip our Base if it isn't already ProxyHandler.
     return js::BaseProxyHandler::enumerate(cx, wrapper);
 }

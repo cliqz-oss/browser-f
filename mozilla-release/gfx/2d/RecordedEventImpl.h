@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -22,7 +23,11 @@ namespace gfx {
 template<class Derived>
 class RecordedEventDerived : public RecordedEvent {
   using RecordedEvent::RecordedEvent;
+  public:
   void RecordToStream(std::ostream &aStream) const {
+    static_cast<const Derived*>(this)->Record(aStream);
+  }
+  void RecordToStream(EventStream& aStream) const {
     static_cast<const Derived*>(this)->Record(aStream);
   }
   void RecordToStream(MemStream &aStream) const {
@@ -79,7 +84,7 @@ public:
   SurfaceFormat mFormat;
   bool mHasExistingData;
   RefPtr<SourceSurface> mExistingData;
-  
+
 private:
   friend class RecordedEvent;
 
@@ -511,7 +516,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "SetTransform"; }
 
   Matrix mTransform;
@@ -536,7 +541,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "DrawSurface"; }
 private:
   friend class RecordedEvent;
@@ -565,7 +570,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "DrawSurfaceWithShadow"; }
 private:
   friend class RecordedEvent;
@@ -614,12 +619,12 @@ class RecordedPathCreation : public RecordedEventDerived<RecordedPathCreation> {
 public:
   MOZ_IMPLICIT RecordedPathCreation(PathRecording *aPath);
   ~RecordedPathCreation();
-  
+
   virtual bool PlayEvent(Translator *aTranslator) const;
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "Path Creation"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 private:
@@ -639,12 +644,12 @@ public:
     : RecordedEventDerived(PATHDESTRUCTION), mRefPtr(aPath)
   {
   }
-  
+
   virtual bool PlayEvent(Translator *aTranslator) const;
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "Path Destruction"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 private:
@@ -671,7 +676,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "SourceSurface Creation"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 private:
@@ -699,7 +704,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "SourceSurface Destruction"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 private:
@@ -775,7 +780,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "GradientStops Creation"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 private:
@@ -802,7 +807,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "GradientStops Destruction"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 private:
@@ -825,7 +830,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "Snapshot"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 private:
@@ -916,16 +921,17 @@ private:
 class RecordedFontDescriptor : public RecordedEventDerived<RecordedFontDescriptor> {
 public:
 
-  static void FontDescCb(const uint8_t* aData, uint32_t aSize,
+  static void FontDescCb(const uint8_t* aData, uint32_t aSize, uint32_t aIndex,
                          void* aBaton)
   {
     auto recordedFontDesc = static_cast<RecordedFontDescriptor*>(aBaton);
-    recordedFontDesc->SetFontDescriptor(aData, aSize);
+    recordedFontDesc->SetFontDescriptor(aData, aSize, aIndex);
   }
 
   explicit RecordedFontDescriptor(UnscaledFont* aUnscaledFont)
     : RecordedEventDerived(FONTDESC)
     , mType(aUnscaledFont->GetType())
+    , mIndex(0)
     , mRefPtr(aUnscaledFont)
   {
     mHasDesc = aUnscaledFont->GetFontDescriptor(FontDescCb, this);
@@ -946,12 +952,13 @@ public:
 private:
   friend class RecordedEvent;
 
-  void SetFontDescriptor(const uint8_t* aData, uint32_t aSize);
+  void SetFontDescriptor(const uint8_t* aData, uint32_t aSize, uint32_t aIndex);
 
   bool mHasDesc;
 
   FontType mType;
   std::vector<uint8_t> mData;
+  uint32_t mIndex;
   ReferencePtr mRefPtr;
 
   template<class S>
@@ -1023,10 +1030,12 @@ private:
 class RecordedScaledFontCreation : public RecordedEventDerived<RecordedScaledFontCreation> {
 public:
 
-  static void FontInstanceDataProc(const uint8_t* aData, uint32_t aSize, void* aBaton)
+  static void FontInstanceDataProc(const uint8_t* aData, uint32_t aSize,
+                                   const FontVariation* aVariations, uint32_t aNumVariations,
+                                   void* aBaton)
   {
     auto recordedScaledFontCreation = static_cast<RecordedScaledFontCreation*>(aBaton);
-    recordedScaledFontCreation->SetFontInstanceData(aData, aSize);
+    recordedScaledFontCreation->SetFontInstanceData(aData, aSize, aVariations, aNumVariations);
   }
 
   RecordedScaledFontCreation(ScaledFont* aScaledFont,
@@ -1043,11 +1052,12 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "ScaledFont Creation"; }
   virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
 
-  void SetFontInstanceData(const uint8_t *aData, uint32_t aSize);
+  void SetFontInstanceData(const uint8_t *aData, uint32_t aSize,
+                           const FontVariation* aVariations, uint32_t aNumVariations);
 
 private:
   friend class RecordedEvent;
@@ -1056,9 +1066,54 @@ private:
   ReferencePtr mUnscaledFont;
   Float mGlyphSize;
   std::vector<uint8_t> mInstanceData;
+  std::vector<FontVariation> mVariations;
 
   template<class S>
   MOZ_IMPLICIT RecordedScaledFontCreation(S &aStream);
+};
+
+class RecordedScaledFontCreationByIndex : public RecordedEventDerived<RecordedScaledFontCreationByIndex> {
+public:
+
+  static void FontInstanceDataProc(const uint8_t* aData, uint32_t aSize,
+                                   const FontVariation* aVariations, uint32_t aNumVariations,
+                                   void* aBaton)
+  {
+    auto recordedScaledFontCreation = static_cast<RecordedScaledFontCreationByIndex*>(aBaton);
+    recordedScaledFontCreation->SetFontInstanceData(aData, aSize, aVariations, aNumVariations);
+  }
+
+  RecordedScaledFontCreationByIndex(ScaledFont* aScaledFont, size_t aUnscaledFontIndex)
+    : RecordedEventDerived(SCALEDFONTCREATIONBYINDEX)
+    , mRefPtr(aScaledFont)
+    , mUnscaledFontIndex(aUnscaledFontIndex)
+    , mGlyphSize(aScaledFont->GetSize())
+  {
+    aScaledFont->GetFontInstanceData(FontInstanceDataProc, this);
+  }
+
+  virtual bool PlayEvent(Translator *aTranslator) const;
+
+  template<class S> void Record(S &aStream) const;
+  virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
+
+  virtual std::string GetName() const { return "ScaledFont Creation"; }
+  virtual ReferencePtr GetObjectRef() const { return mRefPtr; }
+
+  void SetFontInstanceData(const uint8_t *aData, uint32_t aSize,
+                           const FontVariation* aVariations, uint32_t aNumVariations);
+
+private:
+  friend class RecordedEvent;
+
+  ReferencePtr mRefPtr;
+  size_t mUnscaledFontIndex;
+  Float mGlyphSize;
+  std::vector<uint8_t> mInstanceData;
+  std::vector<FontVariation> mVariations;
+
+  template<class S>
+  MOZ_IMPLICIT RecordedScaledFontCreationByIndex(S &aStream);
 };
 
 class RecordedScaledFontDestruction : public RecordedEventDerived<RecordedScaledFontDestruction> {
@@ -1099,7 +1154,7 @@ public:
 
   template<class S> void Record(S &aStream) const;
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const;
-  
+
   virtual std::string GetName() const { return "MaskSurface"; }
 private:
   friend class RecordedEvent;
@@ -1284,7 +1339,7 @@ inline void
 RecordedEvent::StorePattern(PatternStorage &aDestination, const Pattern &aSource) const
 {
   aDestination.mType = aSource.GetType();
-  
+
   switch (aSource.GetType()) {
   case PatternType::COLOR:
     {
@@ -1478,8 +1533,10 @@ RecordedDrawTargetCreation::Record(S &aStream) const
     MOZ_ASSERT(mExistingData);
     MOZ_ASSERT(mExistingData->GetSize() == mSize);
     RefPtr<DataSourceSurface> dataSurf = mExistingData->GetDataSurface();
+
+    DataSourceSurface::ScopedMap map(dataSurf, DataSourceSurface::READ);
     for (int y = 0; y < mSize.height; y++) {
-      aStream.write((const char*)dataSurf->GetData() + y * dataSurf->Stride(),
+      aStream.write((const char*)map.GetData() + y * map.GetStride(),
                     BytesPerPixel(mFormat) * mSize.width);
     }
   }
@@ -1504,8 +1561,9 @@ RecordedDrawTargetCreation::RecordedDrawTargetCreation(S &aStream)
       return;
     }
 
+    DataSourceSurface::ScopedMap map(dataSurf, DataSourceSurface::READ);
     for (int y = 0; y < mSize.height; y++) {
-      aStream.read((char*)dataSurf->GetData() + y * dataSurf->Stride(),
+      aStream.read((char*)map.GetData() + y * map.GetStride(),
                     BytesPerPixel(mFormat) * mSize.width);
     }
     mExistingData = dataSurf;
@@ -2279,7 +2337,7 @@ RecordedPathCreation::~RecordedPathCreation()
 inline bool
 RecordedPathCreation::PlayEvent(Translator *aTranslator) const
 {
-  RefPtr<PathBuilder> builder = 
+  RefPtr<PathBuilder> builder =
     aTranslator->GetReferenceDrawTarget()->CreatePathBuilder(mFillRule);
 
   for (size_t i = 0; i < mPathOps.size(); i++) {
@@ -2757,7 +2815,7 @@ inline bool
 RecordedFontDescriptor::PlayEvent(Translator *aTranslator) const
 {
   RefPtr<UnscaledFont> font =
-    Factory::CreateUnscaledFontFromFontDescriptor(mType, mData.data(), mData.size());
+    Factory::CreateUnscaledFontFromFontDescriptor(mType, mData.data(), mData.size(), mIndex);
   if (!font) {
     gfxDevCrash(LogReason::InvalidFont) <<
       "Failed creating UnscaledFont of type " << int(mType) << " from font descriptor";
@@ -2775,6 +2833,7 @@ RecordedFontDescriptor::Record(S &aStream) const
   MOZ_ASSERT(mHasDesc);
   WriteElement(aStream, mType);
   WriteElement(aStream, mRefPtr);
+  WriteElement(aStream, mIndex);
   WriteElement(aStream, (size_t)mData.size());
   aStream.write((char*)mData.data(), mData.size());
 }
@@ -2786,9 +2845,10 @@ RecordedFontDescriptor::OutputSimpleEventInfo(std::stringstream &aStringStream) 
 }
 
 inline void
-RecordedFontDescriptor::SetFontDescriptor(const uint8_t* aData, uint32_t aSize)
+RecordedFontDescriptor::SetFontDescriptor(const uint8_t* aData, uint32_t aSize, uint32_t aIndex)
 {
   mData.assign(aData, aData + aSize);
+  mIndex = aIndex;
 }
 
 template<class S>
@@ -2797,6 +2857,7 @@ RecordedFontDescriptor::RecordedFontDescriptor(S &aStream)
 {
   ReadElement(aStream, mType);
   ReadElement(aStream, mRefPtr);
+  ReadElement(aStream, mIndex);
 
   size_t size;
   ReadElement(aStream, size);
@@ -2895,7 +2956,9 @@ RecordedScaledFontCreation::PlayEvent(Translator *aTranslator) const
   }
 
   RefPtr<ScaledFont> scaledFont =
-    unscaledFont->CreateScaledFont(mGlyphSize, mInstanceData.data(), mInstanceData.size());
+    unscaledFont->CreateScaledFont(mGlyphSize,
+                                   mInstanceData.data(), mInstanceData.size(),
+                                   mVariations.data(), mVariations.size());
   aTranslator->AddScaledFont(mRefPtr, scaledFont);
   return true;
 }
@@ -2909,6 +2972,8 @@ RecordedScaledFontCreation::Record(S &aStream) const
   WriteElement(aStream, mGlyphSize);
   WriteElement(aStream, (size_t)mInstanceData.size());
   aStream.write((char*)mInstanceData.data(), mInstanceData.size());
+  WriteElement(aStream, (size_t)mVariations.size());
+  aStream.write((char*)mVariations.data(), sizeof(FontVariation) * mVariations.size());
 }
 
 inline void
@@ -2918,9 +2983,11 @@ RecordedScaledFontCreation::OutputSimpleEventInfo(std::stringstream &aStringStre
 }
 
 inline void
-RecordedScaledFontCreation::SetFontInstanceData(const uint8_t *aData, uint32_t aSize)
+RecordedScaledFontCreation::SetFontInstanceData(const uint8_t *aData, uint32_t aSize,
+                                                const FontVariation* aVariations, uint32_t aNumVariations)
 {
   mInstanceData.assign(aData, aData + aSize);
+  mVariations.assign(aVariations, aVariations + aNumVariations);
 }
 
 template<class S>
@@ -2935,6 +3002,74 @@ RecordedScaledFontCreation::RecordedScaledFontCreation(S &aStream)
   ReadElement(aStream, size);
   mInstanceData.resize(size);
   aStream.read((char*)mInstanceData.data(), size);
+  size_t numVariations;
+  ReadElement(aStream, numVariations);
+  mVariations.resize(numVariations);
+  aStream.read((char*)mVariations.data(), sizeof(FontVariation) * numVariations);
+}
+
+inline bool
+RecordedScaledFontCreationByIndex::PlayEvent(Translator *aTranslator) const
+{
+  UnscaledFont* unscaledFont = aTranslator->LookupUnscaledFontByIndex(mUnscaledFontIndex);
+  if (!unscaledFont) {
+    gfxDevCrash(LogReason::UnscaledFontNotFound) <<
+      "UnscaledFont lookup failed for key |" << hexa(mUnscaledFontIndex) << "|.";
+    return false;
+  }
+
+  RefPtr<ScaledFont> scaledFont =
+    unscaledFont->CreateScaledFont(mGlyphSize,
+                                   mInstanceData.data(), mInstanceData.size(),
+                                   mVariations.data(), mVariations.size());
+
+  aTranslator->AddScaledFont(mRefPtr, scaledFont);
+  return true;
+}
+
+template<class S>
+void
+RecordedScaledFontCreationByIndex::Record(S &aStream) const
+{
+  WriteElement(aStream, mRefPtr);
+  WriteElement(aStream, mUnscaledFontIndex);
+  WriteElement(aStream, mGlyphSize);
+  WriteElement(aStream, (size_t)mInstanceData.size());
+  aStream.write((char*)mInstanceData.data(), mInstanceData.size());
+  WriteElement(aStream, (size_t)mVariations.size());
+  aStream.write((char*)mVariations.data(), sizeof(FontVariation) * mVariations.size());
+}
+
+inline void
+RecordedScaledFontCreationByIndex::OutputSimpleEventInfo(std::stringstream &aStringStream) const
+{
+  aStringStream << "[" << mRefPtr << "] ScaledFont Created By Index";
+}
+
+inline void
+RecordedScaledFontCreationByIndex::SetFontInstanceData(const uint8_t *aData, uint32_t aSize,
+                                                const FontVariation* aVariations, uint32_t aNumVariations)
+{
+  mInstanceData.assign(aData, aData + aSize);
+  mVariations.assign(aVariations, aVariations + aNumVariations);
+}
+
+template<class S>
+RecordedScaledFontCreationByIndex::RecordedScaledFontCreationByIndex(S &aStream)
+  : RecordedEventDerived(SCALEDFONTCREATIONBYINDEX)
+{
+  ReadElement(aStream, mRefPtr);
+  ReadElement(aStream, mUnscaledFontIndex);
+  ReadElement(aStream, mGlyphSize);
+
+  size_t size;
+  ReadElement(aStream, size);
+  mInstanceData.resize(size);
+  aStream.read((char*)mInstanceData.data(), size);
+  size_t numVariations;
+  ReadElement(aStream, numVariations);
+  mVariations.resize(numVariations);
+  aStream.read((char*)mVariations.data(), sizeof(FontVariation) * numVariations);
 }
 
 inline bool
@@ -3152,6 +3287,7 @@ RecordedFilterNodeSetInput::OutputSimpleEventInfo(std::stringstream &aStringStre
     f(GRADIENTSTOPSDESTRUCTION, RecordedGradientStopsDestruction); \
     f(SNAPSHOT, RecordedSnapshot); \
     f(SCALEDFONTCREATION, RecordedScaledFontCreation); \
+    f(SCALEDFONTCREATIONBYINDEX, RecordedScaledFontCreationByIndex); \
     f(SCALEDFONTDESTRUCTION, RecordedScaledFontDestruction); \
     f(MASKSURFACE, RecordedMaskSurface); \
     f(FILTERNODESETATTRIBUTE, RecordedFilterNodeSetAttribute); \

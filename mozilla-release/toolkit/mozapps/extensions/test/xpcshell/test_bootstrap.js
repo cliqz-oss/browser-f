@@ -695,7 +695,7 @@ function check_test_13() {
       do_check_false(b1.userDisabled);
       do_check_false(b1.isActive);
       BootstrapMonitor.checkAddonInstalled(ID1, "3.0"); // We call install even for disabled add-ons
-      BootstrapMonitor.checkAddonNotStarted(ID1);       // Should not have called startup though
+      BootstrapMonitor.checkAddonNotStarted(ID1); // Should not have called startup though
       do_check_not_in_crash_annotation(ID1, "3.0");
 
       do_execute_soon(test_13_restart);
@@ -713,7 +713,7 @@ function test_13_restart() {
     do_check_false(b1.userDisabled);
     do_check_false(b1.isActive);
     BootstrapMonitor.checkAddonInstalled(ID1, "3.0"); // We call install even for disabled add-ons
-    BootstrapMonitor.checkAddonNotStarted(ID1);       // Should not have called startup though
+    BootstrapMonitor.checkAddonNotStarted(ID1); // Should not have called startup though
     do_check_not_in_crash_annotation(ID1, "3.0");
 
     do_check_bootstrappedPref(function() {
@@ -742,7 +742,7 @@ function run_test_14() {
     do_check_false(b1.userDisabled);
     do_check_false(b1.isActive);
     BootstrapMonitor.checkAddonInstalled(ID1, "3.0"); // We call install even for disabled add-ons
-    BootstrapMonitor.checkAddonNotStarted(ID1);       // Should not have called startup though
+    BootstrapMonitor.checkAddonNotStarted(ID1); // Should not have called startup though
     do_check_not_in_crash_annotation(ID1, "3.0");
 
     do_check_bootstrappedPref(function() {
@@ -956,11 +956,10 @@ function check_test_19() {
     do_check_true(b1.isActive);
     do_check_false(b1.isSystem);
 
-    // TODO these reasons really should be ADDON_DOWNGRADE (bug 607818)
-    do_check_eq(getShutdownReason(), ADDON_UNINSTALL);
-    do_check_eq(getUninstallReason(), ADDON_UNINSTALL);
-    do_check_eq(getInstallReason(), ADDON_INSTALL);
-    do_check_eq(getStartupReason(), ADDON_INSTALL);
+    do_check_eq(getShutdownReason(), ADDON_DOWNGRADE);
+    do_check_eq(getUninstallReason(), ADDON_DOWNGRADE);
+    do_check_eq(getInstallReason(), ADDON_DOWNGRADE);
+    do_check_eq(getStartupReason(), ADDON_DOWNGRADE);
 
     do_check_eq(getShutdownNewVersion(), undefined);
     do_check_eq(getUninstallNewVersion(), undefined);

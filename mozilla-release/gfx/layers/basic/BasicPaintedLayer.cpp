@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -150,19 +151,19 @@ BasicPaintedLayer::Validate(LayerManager::DrawPaintedLayerCallback aCallback,
   uint32_t flags = 0;
 #ifndef MOZ_WIDGET_ANDROID
   if (BasicManager()->CompositorMightResample()) {
-    flags |= RotatedContentBuffer::PAINT_WILL_RESAMPLE;
+    flags |= ContentClient::PAINT_WILL_RESAMPLE;
   }
-  if (!(flags & RotatedContentBuffer::PAINT_WILL_RESAMPLE)) {
+  if (!(flags & ContentClient::PAINT_WILL_RESAMPLE)) {
     if (MayResample()) {
-      flags |= RotatedContentBuffer::PAINT_WILL_RESAMPLE;
+      flags |= ContentClient::PAINT_WILL_RESAMPLE;
     }
   }
 #endif
   if (mDrawAtomically) {
-    flags |= RotatedContentBuffer::PAINT_NO_ROTATION;
+    flags |= ContentClient::PAINT_NO_ROTATION;
   }
   PaintState state =
-    mContentClient->BeginPaintBuffer(this, flags);
+    mContentClient->BeginPaint(this, flags);
   SubtractFromValidRegion(state.mRegionToInvalidate);
 
   DrawTarget* target = mContentClient->BorrowDrawTargetForPainting(state);
@@ -182,19 +183,18 @@ BasicPaintedLayer::Validate(LayerManager::DrawPaintedLayerCallback aCallback,
 
     PaintBuffer(ctx,
                 state.mRegionToDraw, state.mRegionToDraw, state.mRegionToInvalidate,
-                state.mDidSelfCopy,
                 state.mClip,
                 aCallback, aCallbackData);
     MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) PaintThebes", this));
     Mutated();
     ctx = nullptr;
-    mContentClient->ReturnDrawTargetToBuffer(target);
+    mContentClient->ReturnDrawTarget(target);
     target = nullptr;
 
     RenderTraceInvalidateEnd(this, "FFFF00");
   } else {
     if (target) {
-      mContentClient->ReturnDrawTargetToBuffer(target);
+      mContentClient->ReturnDrawTarget(target);
       target = nullptr;
     }
 

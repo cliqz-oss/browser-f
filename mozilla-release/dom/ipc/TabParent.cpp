@@ -110,6 +110,7 @@
 
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
 #include "mozilla/a11y/AccessibleWrap.h"
+#include "mozilla/a11y/Compatibility.h"
 #include "mozilla/a11y/nsWinUtils.h"
 #endif
 
@@ -1706,9 +1707,8 @@ TabParent::RecvSyncMessage(const nsString& aMessage,
                            const IPC::Principal& aPrincipal,
                            nsTArray<StructuredCloneData>* aRetVal)
 {
-  NS_LossyConvertUTF16toASCII messageNameCStr(aMessage);
-  AUTO_PROFILER_LABEL_DYNAMIC("TabParent::RecvSyncMessage", EVENTS,
-                              messageNameCStr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+    "TabParent::RecvSyncMessage", EVENTS, aMessage);
 
   StructuredCloneData data;
   ipc::UnpackClonedMessageDataForParent(aData, data);
@@ -1727,9 +1727,8 @@ TabParent::RecvRpcMessage(const nsString& aMessage,
                           const IPC::Principal& aPrincipal,
                           nsTArray<StructuredCloneData>* aRetVal)
 {
-  NS_LossyConvertUTF16toASCII messageNameCStr(aMessage);
-  AUTO_PROFILER_LABEL_DYNAMIC("TabParent::RecvRpcMessage", EVENTS,
-                              messageNameCStr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+    "TabParent::RecvRpcMessage", EVENTS, aMessage);
 
   StructuredCloneData data;
   ipc::UnpackClonedMessageDataForParent(aData, data);
@@ -1747,9 +1746,8 @@ TabParent::RecvAsyncMessage(const nsString& aMessage,
                             const IPC::Principal& aPrincipal,
                             const ClonedMessageData& aData)
 {
-  NS_LossyConvertUTF16toASCII messageNameCStr(aMessage);
-  AUTO_PROFILER_LABEL_DYNAMIC("TabParent::RecvAsyncMessage", EVENTS,
-                              messageNameCStr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+    "TabParent::RecvAsyncMessage", EVENTS, aMessage);
 
   StructuredCloneData data;
   ipc::UnpackClonedMessageDataForParent(aData, data);
@@ -1903,7 +1901,7 @@ TabParent::RecvNotifyIMEFocus(const ContentCache& aContentCache,
     return IPC_OK();
   }
 
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
   if (!widget) {
     aResolve(IMENotificationRequests());
     return IPC_OK();
@@ -1925,7 +1923,7 @@ mozilla::ipc::IPCResult
 TabParent::RecvNotifyIMETextChange(const ContentCache& aContentCache,
                                    const IMENotification& aIMENotification)
 {
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
   if (!widget || !IMEStateManager::DoesTabParentHaveIMEFocus(this)) {
     return IPC_OK();
   }
@@ -1939,7 +1937,7 @@ TabParent::RecvNotifyIMECompositionUpdate(
              const ContentCache& aContentCache,
              const IMENotification& aIMENotification)
 {
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
   if (!widget || !IMEStateManager::DoesTabParentHaveIMEFocus(this)) {
     return IPC_OK();
   }
@@ -1952,7 +1950,7 @@ mozilla::ipc::IPCResult
 TabParent::RecvNotifyIMESelection(const ContentCache& aContentCache,
                                   const IMENotification& aIMENotification)
 {
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
   if (!widget || !IMEStateManager::DoesTabParentHaveIMEFocus(this)) {
     return IPC_OK();
   }
@@ -1964,7 +1962,7 @@ TabParent::RecvNotifyIMESelection(const ContentCache& aContentCache,
 mozilla::ipc::IPCResult
 TabParent::RecvUpdateContentCache(const ContentCache& aContentCache)
 {
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
   if (!widget || !IMEStateManager::DoesTabParentHaveIMEFocus(this)) {
     return IPC_OK();
   }
@@ -1979,7 +1977,7 @@ TabParent::RecvNotifyIMEMouseButtonEvent(
              bool* aConsumedByIME)
 {
 
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
   if (!widget || !IMEStateManager::DoesTabParentHaveIMEFocus(this)) {
     *aConsumedByIME = false;
     return IPC_OK();
@@ -1993,7 +1991,7 @@ mozilla::ipc::IPCResult
 TabParent::RecvNotifyIMEPositionChange(const ContentCache& aContentCache,
                                        const IMENotification& aIMENotification)
 {
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
   if (!widget || !IMEStateManager::DoesTabParentHaveIMEFocus(this)) {
     return IPC_OK();
   }
@@ -2009,7 +2007,7 @@ TabParent::RecvOnEventNeedingAckHandled(const EventMessage& aMessage)
   // WidgetSelectionEvent.
   // FYI: Don't check if widget is nullptr here because it's more important to
   //      notify mContentCahce of this than handling something in it.
-  nsCOMPtr<nsIWidget> widget = GetWidget();
+  nsCOMPtr<nsIWidget> widget = GetDocWidget();
 
   // While calling OnEventNeedingAckHandled(), TabParent *might* be destroyed
   // since it may send notifications to IME.
@@ -2288,8 +2286,16 @@ TabParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent)
     case eQueryTextRect:
     case eQueryCaretRect:
     case eQueryEditorRect:
+    {
+      nsCOMPtr<nsIWidget> widget = GetWidget();
+      nsCOMPtr<nsIWidget> docWidget = GetDocWidget();
+      if (widget != docWidget) {
+        aEvent.mReply.mRect +=
+          nsLayoutUtils::WidgetToWidgetOffset(widget, docWidget);
+      }
       aEvent.mReply.mRect -= GetChildProcessOffset();
       break;
+    }
     default:
       break;
   }
@@ -2905,6 +2911,23 @@ TabParent::SetDocShellIsActive(bool isActive)
   mDocShellIsActive = isActive;
   Unused << SendSetDocShellIsActive(isActive, mPreserveLayers, mLayerTreeEpoch);
 
+  // update active accessible documents on windows
+#if defined(XP_WIN) && defined(ACCESSIBILITY)
+  if (a11y::Compatibility::IsDolphin()) {
+    if (a11y::DocAccessibleParent* tabDoc = GetTopLevelDocAccessible()) {
+      HWND window = tabDoc->GetEmulatedWindowHandle();
+      MOZ_ASSERT(window);
+      if (window) {
+        if (isActive) {
+          a11y::nsWinUtils::ShowNativeWindow(window);
+        } else {
+          a11y::nsWinUtils::HideNativeWindow(window);
+        }
+      }
+    }
+  }
+#endif
+
   // Let's inform the priority manager. This operation can end up with the
   // changing of the process priority.
   ProcessPriorityManager::TabActivityChanged(this, isActive);
@@ -3124,7 +3147,7 @@ TabParent::AllocPPluginWidgetParent()
 #ifdef XP_WIN
   return new mozilla::plugins::PluginWidgetParent();
 #else
-  MOZ_ASSERT_UNREACHABLE();
+  MOZ_ASSERT_UNREACHABLE("AllocPPluginWidgetParent only supports Windows");
   return nullptr;
 #endif
 }
@@ -3450,12 +3473,15 @@ TabParent::StartPersistence(uint64_t aOuterWindowID,
 
 NS_IMETHODIMP
 TabParent::StartApzAutoscroll(float aAnchorX, float aAnchorY,
-                              nsViewID aScrollId, uint32_t aPresShellId)
+                              nsViewID aScrollId, uint32_t aPresShellId,
+                              bool* aOutRetval)
 {
   if (!AsyncPanZoomEnabled()) {
+    *aOutRetval = false;
     return NS_OK;
   }
 
+  bool success = false;
   if (RenderFrameParent* renderFrame = GetRenderFrame()) {
     uint64_t layersId = renderFrame->GetLayersId();
     if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
@@ -3468,11 +3494,12 @@ TabParent::StartApzAutoscroll(float aAnchorX, float aAnchorY,
       LayoutDeviceIntPoint anchor = RoundedToInt(anchorCss * widget->GetDefaultScale());
       anchor -= widget->WidgetToScreenOffset();
 
-      widget->StartAsyncAutoscroll(
+      success = widget->StartAsyncAutoscroll(
           ViewAs<ScreenPixel>(anchor, PixelCastJustification::LayoutDeviceIsScreenForBounds),
           guid);
     }
   }
+  *aOutRetval = success;
   return NS_OK;
 }
 
@@ -3581,6 +3608,27 @@ TabParent::RecvRequestCrossBrowserNavigation(const uint32_t& aGlobalIndex)
   nsCOMPtr<nsISupports> promise;
   if (NS_FAILED(frameLoader->RequestGroupedHistoryNavigation(aGlobalIndex,
                                                              getter_AddRefs(promise)))) {
+    return IPC_FAIL_NO_REASON(this);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+TabParent::RecvShowCanvasPermissionPrompt(const nsCString& aFirstPartyURI)
+{
+  nsCOMPtr<nsIBrowser> browser = do_QueryInterface(mFrameElement);
+  if (!browser) {
+    // If the tab is being closed, the browser may not be available.
+    // In this case we can ignore the request.
+    return IPC_OK();
+  }
+  nsCOMPtr<nsIObserverService> os = services::GetObserverService();
+  if (!os) {
+    return IPC_FAIL_NO_REASON(this);
+  }
+  nsresult rv = os->NotifyObservers(browser, "canvas-permissions-prompt",
+                                    NS_ConvertUTF8toUTF16(aFirstPartyURI).get());
+  if (NS_FAILED(rv)) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();

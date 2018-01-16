@@ -20,7 +20,7 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-static nsIAtom** const unitMap[] =
+static nsStaticAtom** const unitMap[] =
 {
   nullptr, /* SVG_ANGLETYPE_UNKNOWN */
   nullptr, /* SVG_ANGLETYPE_UNSPECIFIED */
@@ -67,7 +67,7 @@ GetUnitTypeForString(const nsAString& unitStr)
   if (unitStr.IsEmpty())
     return SVG_ANGLETYPE_UNSPECIFIED;
 
-  nsIAtom *unitAtom = NS_GetStaticAtom(unitStr);
+  nsStaticAtom* unitAtom = NS_GetStaticAtom(unitStr);
 
   if (unitAtom) {
     for (uint32_t i = 0 ; i < ArrayLength(unitMap) ; i++) {
@@ -90,10 +90,10 @@ GetValueString(nsAString &aValueAsString, float aValue, uint16_t aUnitType)
   aValueAsString.Append(unitString);
 }
 
-static bool
-GetValueFromString(const nsAString& aString,
-                   float& aValue,
-                   uint16_t* aUnitType)
+/* static */ bool
+nsSVGAngle::GetValueFromString(const nsAString& aString,
+                               float& aValue,
+                               uint16_t* aUnitType)
 {
   RangedPtr<const char16_t> iter =
     SVGContentUtils::GetStartRangedPtr(aString);

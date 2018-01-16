@@ -66,6 +66,7 @@ from .data import (
     RustLibrary,
     HostRustLibrary,
     RustProgram,
+    RustTest,
     SharedLibrary,
     SimpleProgram,
     Sources,
@@ -130,6 +131,8 @@ class TreeMetadataEmitter(LoggingMixin):
         self._libs = OrderedDefaultDict(list)
         self._binaries = OrderedDict()
         self._compile_dirs = set()
+        self._host_compile_dirs = set()
+        self._rust_compile_dirs = set()
         self._compile_flags = dict()
         self._linkage = []
         self._static_linking_shared = set()
@@ -548,6 +551,8 @@ class TreeMetadataEmitter(LoggingMixin):
             if not programs:
                 continue
 
+            if kind == 'RUST_PROGRAMS':
+                self._rust_compile_dirs.add(context.objdir)
             all_rust_programs.append((programs, kind, cls))
 
         # Verify Rust program definitions.
@@ -714,10 +719,10 @@ class TreeMetadataEmitter(LoggingMixin):
                     raise SandboxValidationError(
                         'SYMBOLS_FILE can only be used with a SHARED_LIBRARY.',
                         context)
-                if context.get('DEFFILE') or context.get('LD_VERSION_SCRIPT'):
+                if context.get('DEFFILE'):
                     raise SandboxValidationError(
-                        'SYMBOLS_FILE cannot be used along DEFFILE or '
-                        'LD_VERSION_SCRIPT.', context)
+                        'SYMBOLS_FILE cannot be used along DEFFILE.',
+                        context)
                 if isinstance(symbols_file, SourcePath):
                     if not os.path.exists(symbols_file.full_path):
                         raise SandboxValidationError(
@@ -772,9 +777,19 @@ class TreeMetadataEmitter(LoggingMixin):
 
         # Avoid emitting compile flags for directories only containing rust
         # libraries. Emitted compile flags are only relevant to C/C++ sources
-        # for the time being.
-        if not all(isinstance(l, (RustLibrary, HostRustLibrary))
-                   for l in linkables + host_linkables):
+        # for the time being, however ldflags must be emitted for the benefit
+        # of cargo.
+        if not all(isinstance(l, (RustLibrary)) for l in linkables):
+            self._compile_dirs.add(context.objdir)
+        elif linkables:
+            self._rust_compile_dirs.add(context.objdir)
+
+        if host_linkables and not all(isinstance(l, HostRustLibrary) for l in host_linkables):
+            self._host_compile_dirs.add(context.objdir)
+            # TODO: objdirs with only host things in them shouldn't need target
+            # flags, but there's at least one Makefile.in (in
+            # build/unix/elfhack) that relies on the value of LDFLAGS being
+            # passed to one-off rules.
             self._compile_dirs.add(context.objdir)
 
         sources = defaultdict(list)
@@ -874,9 +889,8 @@ class TreeMetadataEmitter(LoggingMixin):
                     if canonical_suffix in ('.cpp', '.mm'):
                         cxx_sources[variable] = True
                     arglist = [context, list(files), canonical_suffix]
-                    if (variable.startswith('UNIFIED_') and
-                            'FILES_PER_UNIFIED_FILE' in context):
-                        arglist.append(context['FILES_PER_UNIFIED_FILE'])
+                    if variable.startswith('UNIFIED_'):
+                        arglist.append(context.get('FILES_PER_UNIFIED_FILE', 16))
                     obj = cls(*arglist)
                     yield obj
 
@@ -916,12 +930,15 @@ class TreeMetadataEmitter(LoggingMixin):
         for obj in self._process_xpidl(context):
             yield obj
 
+        computed_flags = ComputedFlags(context, context['COMPILE_FLAGS'])
+        computed_link_flags = ComputedFlags(context, context['LINK_FLAGS'])
+        computed_host_flags = ComputedFlags(context, context['HOST_COMPILE_FLAGS'])
+
         # Proxy some variables as-is until we have richer classes to represent
         # them. We should aim to keep this set small because it violates the
         # desired abstraction of the build definition away from makefiles.
         passthru = VariablePassthru(context)
         varlist = [
-            'ALLOW_COMPILER_WARNINGS',
             'ANDROID_APK_NAME',
             'ANDROID_APK_PACKAGE',
             'ANDROID_GENERATED_RESFILES',
@@ -931,7 +948,6 @@ class TreeMetadataEmitter(LoggingMixin):
             'RCINCLUDE',
             'DEFFILE',
             'WIN32_EXE_LDFLAGS',
-            'LD_VERSION_SCRIPT',
             'USE_EXTENSION_MANIFEST',
             'NO_JS_MANIFEST',
             'HAS_MISC_RULE',
@@ -946,10 +962,28 @@ class TreeMetadataEmitter(LoggingMixin):
                 for dll in context['DELAYLOAD_DLLS']])
             context['OS_LIBS'].append('delayimp')
 
-        for v in ['CFLAGS', 'CXXFLAGS', 'CMFLAGS', 'CMMFLAGS', 'ASFLAGS',
-                  'LDFLAGS', 'HOST_CFLAGS', 'HOST_CXXFLAGS']:
+        for v in ['CMFLAGS', 'CMMFLAGS', 'ASFLAGS']:
             if v in context and context[v]:
                 passthru.variables['MOZBUILD_' + v] = context[v]
+
+        for v in ['CXXFLAGS', 'CFLAGS']:
+            if v in context and context[v]:
+                computed_flags.resolve_flags('MOZBUILD_%s' % v, context[v])
+
+        for v in ['HOST_CXXFLAGS', 'HOST_CFLAGS']:
+            if v in context and context[v]:
+                computed_host_flags.resolve_flags('MOZBUILD_%s' % v, context[v])
+
+        if 'LDFLAGS' in context and context['LDFLAGS']:
+            computed_link_flags.resolve_flags('MOZBUILD', context['LDFLAGS'])
+
+        deffile = context['DEFFILE']
+        if deffile and context.config.substs.get('OS_ARCH') == 'WINNT':
+            if context.config.substs.get('GNU_CC'):
+                computed_link_flags.resolve_flags('DEFFILE', [deffile])
+            else:
+                computed_link_flags.resolve_flags('DEFFILE',
+                                                  ['-DEF:' + deffile])
 
         dist_install = context['DIST_INSTALL']
         if dist_install is True:
@@ -969,8 +1003,9 @@ class TreeMetadataEmitter(LoggingMixin):
             if (context.config.substs.get('MOZ_DEBUG') and
                     not context.config.substs.get('MOZ_NO_DEBUG_RTL')):
                 rtl_flag += 'd'
-            # Use a list, like MOZBUILD_*FLAGS variables
-            passthru.variables['RTL_FLAGS'] = [rtl_flag]
+            computed_flags.resolve_flags('RTL', [rtl_flag])
+            if not context.config.substs.get('CROSS_COMPILE'):
+                computed_host_flags.resolve_flags('RTL', [rtl_flag])
 
         generated_files = set()
         for obj in self._process_generated_files(context):
@@ -984,25 +1019,23 @@ class TreeMetadataEmitter(LoggingMixin):
             generated_files.add(str(sub.relpath))
             yield sub
 
-        computed_flags = ComputedFlags(context, context['COMPILE_FLAGS'])
-
-        for defines_var, cls in (('DEFINES', Defines),
-                                 ('HOST_DEFINES', HostDefines)):
+        for defines_var, cls, backend_flags in (('DEFINES', Defines, computed_flags),
+                                                ('HOST_DEFINES', HostDefines, computed_host_flags)):
             defines = context.get(defines_var)
             if defines:
                 defines_obj = cls(context, defines)
-                yield defines_obj
+                if isinstance(defines_obj, Defines):
+                    # DEFINES have consumers outside the compile command line,
+                    # HOST_DEFINES do not.
+                    yield defines_obj
             else:
                 # If we don't have explicitly set defines we need to make sure
                 # initialized values if present end up in computed flags.
                 defines_obj = cls(context, context[defines_var])
 
-            if isinstance(defines_obj, Defines):
-                defines_from_obj = list(defines_obj.get_defines())
-                if defines_from_obj:
-                    computed_flags.resolve_flags('DEFINES',
-                                                 defines_from_obj)
-
+            defines_from_obj = list(defines_obj.get_defines())
+            if defines_from_obj:
+                backend_flags.resolve_flags(defines_var, defines_from_obj)
 
         simple_lists = [
             ('GENERATED_EVENTS_WEBIDL_FILES', GeneratedEventWebIDLFile),
@@ -1124,6 +1157,15 @@ class TreeMetadataEmitter(LoggingMixin):
                                           Manifest('components',
                                                    mozpath.basename(c)))
 
+        if self.config.substs.get('MOZ_RUST_TESTS', None):
+            rust_test = context.get('RUST_TEST', None)
+            if rust_test:
+                # TODO: more sophisticated checking of the declared name vs.
+                # contents of the Cargo.toml file.
+                features = context.get('RUST_TEST_FEATURES', [])
+
+                yield RustTest(context, rust_test, features)
+
         for obj in self._process_test_manifests(context):
             yield obj
 
@@ -1164,6 +1206,12 @@ class TreeMetadataEmitter(LoggingMixin):
 
         if context.objdir in self._compile_dirs:
             self._compile_flags[context.objdir] = computed_flags
+            yield computed_link_flags
+        elif context.objdir in self._rust_compile_dirs:
+            yield computed_link_flags
+
+        if context.objdir in self._host_compile_dirs:
+            yield computed_host_flags
 
 
     def _create_substitution(self, cls, context, path):
@@ -1265,7 +1313,7 @@ class TreeMetadataEmitter(LoggingMixin):
     def _process_test_manifest(self, context, info, manifest_path, mpmanifest):
         flavor, install_root, install_subdir, package_tests = info
 
-        path = mozpath.normpath(mozpath.join(context.srcdir, manifest_path))
+        path = manifest_path.full_path
         manifest_dir = mozpath.dirname(path)
         manifest_reldir = mozpath.dirname(mozpath.relpath(path,
             context.config.topsrcdir))
@@ -1365,8 +1413,7 @@ class TreeMetadataEmitter(LoggingMixin):
                 context)
 
     def _process_reftest_manifest(self, context, flavor, manifest_path, manifest):
-        manifest_full_path = mozpath.normpath(mozpath.join(
-            context.srcdir, manifest_path))
+        manifest_full_path = manifest_path.full_path
         manifest_reldir = mozpath.dirname(mozpath.relpath(manifest_full_path,
             context.config.topsrcdir))
 

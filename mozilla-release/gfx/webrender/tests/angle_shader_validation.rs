@@ -41,10 +41,6 @@ const SHADERS: &[Shader] = &[
         name: "cs_text_run",
         features: CACHE_FEATURES,
     },
-    Shader {
-        name: "cs_box_shadow",
-        features: CACHE_FEATURES,
-    },
     // Prim shaders
     Shader {
         name: "ps_line",
@@ -59,10 +55,6 @@ const SHADERS: &[Shader] = &[
         features: PRIM_FEATURES,
     },
     Shader {
-        name: "ps_box_shadow",
-        features: PRIM_FEATURES,
-    },
-    Shader {
         name: "ps_gradient",
         features: PRIM_FEATURES,
     },
@@ -72,10 +64,6 @@ const SHADERS: &[Shader] = &[
     },
     Shader {
         name: "ps_radial_gradient",
-        features: PRIM_FEATURES,
-    },
-    Shader {
-        name: "ps_cache_image",
         features: PRIM_FEATURES,
     },
     Shader {
@@ -104,11 +92,20 @@ const SHADERS: &[Shader] = &[
     },
     Shader {
         name: "ps_text_run",
-        features: &["", "TRANSFORM", "SUBPIXEL_AA_FEATURE"],
+        features: PRIM_FEATURES,
     },
     Shader {
         name: "ps_rectangle",
         features: &["", "TRANSFORM", "CLIP_FEATURE", "TRANSFORM,CLIP_FEATURE"],
+    },
+    // Brush shaders
+    Shader {
+        name: "brush_mask",
+        features: &[],
+    },
+    Shader {
+        name: "brush_image",
+        features: &["COLOR_TARGET", "ALPHA_TARGET"],
     },
 ];
 

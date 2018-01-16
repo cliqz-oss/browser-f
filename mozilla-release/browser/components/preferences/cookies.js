@@ -7,7 +7,7 @@ const nsICookie = Components.interfaces.nsICookie;
 
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/PluralForm.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm")
+Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "SiteDataManager",
@@ -16,18 +16,14 @@ XPCOMUtils.defineLazyModuleGetter(this, "ContextualIdentityService",
                                   "resource://gre/modules/ContextualIdentityService.jsm");
 
 var gCookiesWindow = {
-  _cm: Components.classes["@mozilla.org/cookiemanager;1"]
-                    .getService(Components.interfaces.nsICookieManager),
   _hosts: {},
   _hostOrder: [],
   _tree: null,
   _bundle: null,
 
   init() {
-    var os = Components.classes["@mozilla.org/observer-service;1"]
-                       .getService(Components.interfaces.nsIObserverService);
-    os.addObserver(this, "cookie-changed");
-    os.addObserver(this, "perm-changed");
+    Services.obs.addObserver(this, "cookie-changed");
+    Services.obs.addObserver(this, "perm-changed");
 
     this._bundle = document.getElementById("bundlePreferences");
     this._tree = document.getElementById("cookiesList");
@@ -47,10 +43,8 @@ var gCookiesWindow = {
   },
 
   uninit() {
-    var os = Components.classes["@mozilla.org/observer-service;1"]
-                       .getService(Components.interfaces.nsIObserverService);
-    os.removeObserver(this, "cookie-changed");
-    os.removeObserver(this, "perm-changed");
+    Services.obs.removeObserver(this, "cookie-changed");
+    Services.obs.removeObserver(this, "perm-changed");
   },
 
   _populateList(aInitialLoad) {
@@ -475,7 +469,7 @@ var gCookiesWindow = {
   },
 
   _loadCookies() {
-    var e = this._cm.enumerator;
+    var e = Services.cookies.enumerator;
     var hostCount = { value: 0 };
     this._hosts = {};
     this._hostOrder = [];
@@ -576,13 +570,11 @@ var gCookiesWindow = {
   },
 
   performDeletion: function gCookiesWindow_performDeletion(deleteItems) {
-    var psvc = Components.classes["@mozilla.org/preferences-service;1"]
-                         .getService(Components.interfaces.nsIPrefBranch);
     var blockFutureCookies = false;
-    if (psvc.prefHasUserValue("network.cookie.blockFutureCookies"))
-      blockFutureCookies = psvc.getBoolPref("network.cookie.blockFutureCookies");
+    if (Services.prefs.prefHasUserValue("network.cookie.blockFutureCookies"))
+      blockFutureCookies = Services.prefs.getBoolPref("network.cookie.blockFutureCookies");
     for (let item of deleteItems) {
-      this._cm.remove(item.host, item.name, item.path,
+      Services.cookies.remove(item.host, item.name, item.path,
                       blockFutureCookies, item.originAttributes);
     }
   },
@@ -722,7 +714,7 @@ var gCookiesWindow = {
       this._tree.treeBoxObject.rowCountChanged(0, -rowCount);
       this.performDeletion(deleteItems);
     } else {
-      this._cm.removeAll();
+      Services.cookies.removeAll();
     }
     this._updateRemoveAllButton();
     this.focusFilterBox();
@@ -733,6 +725,14 @@ var gCookiesWindow = {
         (AppConstants.platform == "macosx" &&
         aEvent.keyCode == KeyEvent.DOM_VK_BACK_SPACE)) {
       this.deleteCookie();
+      aEvent.preventDefault();
+    } else if (aEvent.getModifierState("Accel") &&
+               document.getElementById("key_selectAll")
+                       .getAttribute("key")
+                       .toLocaleLowerCase()
+                       .charCodeAt(0) == aEvent.charCode) {
+      let view = gCookiesWindow._view;
+      view.selection.selectAll();
       aEvent.preventDefault();
     }
   },

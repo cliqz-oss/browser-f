@@ -410,6 +410,48 @@ private:
   IMENotification mPendingLayoutChange;
   IMENotification mPendingCompositionUpdate;
 
+#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  // Log of event messages to be output to crash report.
+  nsTArray<EventMessage> mDispatchedEventMessages;
+  nsTArray<EventMessage> mReceivedEventMessages;
+  // Log of RequestIMEToCommitComposition() in the last 2 compositions.
+  enum class RequestIMEToCommitCompositionResult : uint8_t
+  {
+    eToOldCompositionReceived,
+    eToCommittedCompositionReceived,
+    eReceivedAfterTabParentBlur,
+    eReceivedButNoTextComposition,
+    eHandledAsynchronously,
+    eHandledSynchronously,
+  };
+  const char* ToReadableText(RequestIMEToCommitCompositionResult aResult) const
+  {
+    switch (aResult) {
+      case RequestIMEToCommitCompositionResult::eToOldCompositionReceived:
+        return "Commit request is not handled because it's for "
+               "older composition";
+      case RequestIMEToCommitCompositionResult::eToCommittedCompositionReceived:
+        return "Commit request is not handled because TabParent has already "
+               "sent commit event for the composition";
+      case RequestIMEToCommitCompositionResult::eReceivedAfterTabParentBlur:
+        return "Commit request is handled with stored composition string "
+               "because TabParent has already lost focus";
+      case RequestIMEToCommitCompositionResult::eReceivedButNoTextComposition:
+        return "Commit request is not handled because there is no "
+               "TextCompsition instance";
+      case RequestIMEToCommitCompositionResult::eHandledAsynchronously:
+        return "Commit request is handled but IME doesn't commit current "
+               "composition synchronously";
+      case RequestIMEToCommitCompositionResult::eHandledSynchronously:
+        return "Commit reqeust is handled synchronously";
+      default:
+        return "Unknown reason";
+    }
+  }
+  nsTArray<RequestIMEToCommitCompositionResult>
+    mRequestIMEToCommitCompositionResults;
+#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+
   // mTabParent is owner of the instance.
   dom::TabParent& MOZ_NON_OWNING_REF mTabParent;
   // mCompositionString is composition string which were sent to the remote
@@ -436,14 +478,17 @@ private:
   // mPendingCompositionCount is number of compositions which started in widget
   // but not yet handled in the child process.
   uint8_t mPendingCompositionCount;
+  // mPendingCommitCount is number of eCompositionCommit(AsIs) events which
+  // were sent to the child process but not yet handled in it.
+  uint8_t mPendingCommitCount;
   // mWidgetHasComposition is true when the widget in this process thinks that
   // IME has composition.  So, this is set to true when eCompositionStart is
   // dispatched and set to false when eCompositionCommit(AsIs) is dispatched.
   bool mWidgetHasComposition;
-  // mIsPendingLastCommitEvent is true only when this sends
-  // eCompositionCommit(AsIs) event to the remote process but it's not handled
-  // in the remote process yet.
-  bool mIsPendingLastCommitEvent;
+  // mIsChildIgnoringCompositionEvents is set to true if the child process
+  // requests commit composition whose commit has already been sent to it.
+  // Then, set to false when the child process ignores the commit event.
+  bool mIsChildIgnoringCompositionEvents;
 
   ContentCacheInParent() = delete;
 
@@ -464,6 +509,19 @@ private:
                          LayoutDeviceIntRect& aUnionTextRect) const;
 
   void FlushPendingNotifications(nsIWidget* aWidget);
+
+#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  /**
+   * Remove unnecessary messages from mDispatchedEventMessages and
+   * mReceivedEventMessages.
+   */
+  void RemoveUnnecessaryEventMessageLog();
+
+  /**
+   * Append event message log to aLog.
+   */
+  void AppendEventMessageLog(nsACString& aLog) const;
+#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
 };
 
 } // namespace mozilla

@@ -12,6 +12,7 @@
 #include "MediaEventSource.h"
 #include "SeekTarget.h"
 #include "MediaDecoderOwner.h"
+#include "MediaPromiseDefs.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsIObserver.h"
 #include "mozilla/CORSMode.h"
@@ -145,7 +146,7 @@ public:
                                            nsGenericHTMLElement)
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                              nsIAtom* aAttribute,
+                              nsAtom* aAttribute,
                               const nsAString& aValue,
                               nsAttrValue& aResult) override;
 
@@ -173,7 +174,7 @@ public:
 
   // Called by the video decoder object, on the main thread,
   // when the resource has a network error during loading.
-  virtual void NetworkError() final override;
+  virtual void NetworkError(const MediaResult& aError) final override;
 
   // Called by the video decoder object, on the main thread, when the
   // resource has a decode error during metadata loading or decoding.
@@ -211,11 +212,7 @@ public:
   // Called by the media stream, on the main thread, when the download
   // has been resumed by the cache or because the element itself
   // asked the decoder to resumed the download.
-  // If aForceNetworkLoading is True, ignore the fact that the download has
-  // previously finished. We are downloading the middle of the media after
-  // having downloaded the end, we need to notify the element a download in
-  // ongoing.
-  virtual void DownloadResumed(bool aForceNetworkLoading = false) final override;
+  void DownloadResumed();
 
   // Called to indicate the download is progressing.
   virtual void DownloadProgressed() final override;
@@ -224,9 +221,9 @@ public:
   // suspended the channel.
   virtual void NotifySuspendedByCache(bool aSuspendedByCache) final override;
 
-  virtual bool IsActive() const final override;
+  bool IsActive() const;
 
-  virtual bool IsHidden() const final override;
+  bool IsHidden() const;
 
   // Called by the media decoder and the video frame to get the
   // ImageContainer containing the video data.
@@ -250,7 +247,7 @@ public:
                                                     const PrincipalHandle& aNewPrincipalHandle);
 
   // Dispatch events
-  virtual nsresult DispatchAsyncEvent(const nsAString& aName) final override;
+  virtual void DispatchAsyncEvent(const nsAString& aName) final override;
 
   // Triggers a recomputation of readyState.
   void UpdateReadyState() override { UpdateReadyStateInternal(); }
@@ -435,10 +432,13 @@ public:
 
   MediaError* GetError() const;
 
-  // XPCOM GetSrc() is OK
-  void SetSrc(const nsAString& aSrc, ErrorResult& aRv)
+  void GetSrc(nsString& aSrc, nsIPrincipal*)
   {
-    SetHTMLAttr(nsGkAtoms::src, aSrc, aRv);
+    GetSrc(aSrc);
+  }
+  void SetSrc(const nsAString& aSrc, nsIPrincipal* aTriggeringPrincipal, ErrorResult& aRv)
+  {
+    SetHTMLAttr(nsGkAtoms::src, aSrc, aTriggeringPrincipal, aRv);
   }
 
   // XPCOM GetCurrentSrc() is OK
@@ -625,7 +625,7 @@ public:
   // data from decoder/reader/MDSM. Used for debugging purposes.
   already_AddRefed<Promise> MozRequestDebugInfo(ErrorResult& aRv);
 
-  void MozDumpDebugInfo();
+  already_AddRefed<Promise> MozDumpDebugInfo();
 
   // For use by mochitests. Enabling pref "media.test.video-suspend"
   void SetVisible(bool aVisible);
@@ -644,11 +644,6 @@ public:
   already_AddRefed<DOMMediaStream> GetSrcObject() const;
   void SetSrcObject(DOMMediaStream& aValue);
   void SetSrcObject(DOMMediaStream* aValue);
-
-  // TODO: remove prefixed versions soon (1183495).
-  already_AddRefed<DOMMediaStream> GetMozSrcObject() const;
-  void SetMozSrcObject(DOMMediaStream& aValue);
-  void SetMozSrcObject(DOMMediaStream* aValue);
 
   bool MozPreservesPitch() const
   {
@@ -671,7 +666,7 @@ public:
   void DispatchEncrypted(const nsTArray<uint8_t>& aInitData,
                          const nsAString& aInitDataType) override;
 
-  bool IsEventAttributeNameInternal(nsIAtom* aName) override;
+  bool IsEventAttributeNameInternal(nsAtom* aName) override;
 
   // Returns the principal of the "top level" document; the origin displayed
   // in the URL bar of the browser window.
@@ -810,6 +805,7 @@ protected:
   class StreamListener;
   class StreamSizeListener;
   class ShutdownObserver;
+  class ForceReloadListener;
 
   MediaDecoderOwner::NextFrameStatus NextFrameStatus();
 
@@ -986,7 +982,7 @@ protected:
   /**
    * Call this before modifying mLoadingSrc.
    */
-  void RemoveMediaElementFromURITable();
+  void RemoveMediaElementFromURITable(bool aFroceClearEntry = false);
   /**
    * Call this to find a media element with the same NodePrincipal and mLoadingSrc
    * set to aURI, and with a decoder on which Load() has been called.
@@ -1059,7 +1055,7 @@ protected:
   /**
    * The resource-fetch algorithm step of the load algorithm.
    */
-  nsresult LoadResource();
+  MediaResult LoadResource();
 
   /**
    * Selects the next <source> child from which to load a resource. Called
@@ -1245,8 +1241,6 @@ protected:
    */
   void HiddenVideoStop();
 
-  void ReportEMETelemetry();
-
   void ReportTelemetry();
 
   // Seeks to aTime seconds. aSeekType can be Exact to seek to exactly the
@@ -1328,13 +1322,23 @@ protected:
   // suspend-video-decoder is disabled.
   void MarkAsTainted();
 
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 bool aNotify) override;
-  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
                                           const nsAttrValueOrString& aValue,
                                           bool aNotify) override;
+
+  bool DetachExistingMediaKeys();
+  bool TryRemoveMediaKeysAssociation();
+  void RemoveMediaKeys();
+  bool AttachNewMediaKeys();
+  bool TryMakeAssociationWithCDM(CDMProxy* aProxy);
+  void MakeAssociationWithCDMResolved();
+  void SetCDMProxyFailure(const MediaResult& aResult);
+  void ResetSetMediaKeysTempVariables();
 
   // The current decoder. Load() has been called on this decoder.
   // At most one of mDecoder and mSrcStream can be non-null.
@@ -1351,9 +1355,6 @@ protected:
   // Used by streams captured from this element.
   nsTArray<DecoderPrincipalChangeObserver*> mDecoderPrincipalChangeObservers;
 
-  // State-watching manager.
-  WatchManager<HTMLMediaElement> mWatchManager;
-
   // A reference to the VideoFrameContainer which contains the current frame
   // of video to display.
   RefPtr<VideoFrameContainer> mVideoFrameContainer;
@@ -1361,6 +1362,9 @@ protected:
   // Holds a reference to the DOM wrapper for the MediaStream that has been
   // set in the src attribute.
   RefPtr<DOMMediaStream> mSrcAttrStream;
+
+  // Holds the triggering principal for the src attribute.
+  nsCOMPtr<nsIPrincipal> mSrcAttrTriggeringPrincipal;
 
   // Holds a reference to the DOM wrapper for the MediaStream that we're
   // actually playing.
@@ -1391,6 +1395,7 @@ protected:
   RefPtr<VideoStreamTrack> mSelectedVideoStreamTrack;
 
   const RefPtr<ShutdownObserver> mShutdownObserver;
+  RefPtr<ForceReloadListener> mForceReloadListener;
 
   // Holds a reference to the MediaSource, if any, referenced by the src
   // attribute on the media element.
@@ -1425,7 +1430,7 @@ protected:
   // Media loading flags. See:
   //   http://www.whatwg.org/specs/web-apps/current-work/#video)
   nsMediaNetworkState mNetworkState;
-  Watchable<nsMediaReadyState> mReadyState;
+  nsMediaReadyState mReadyState = nsIDOMHTMLMediaElement::HAVE_NOTHING;
 
   enum LoadAlgorithmState {
     // No load algorithm instance is waiting for a source to be added to the
@@ -1471,6 +1476,9 @@ protected:
   // This is always the original URL we're trying to load --- before
   // redirects etc.
   nsCOMPtr<nsIURI> mLoadingSrc;
+
+  // The triggering principal for the current source.
+  nsCOMPtr<nsIPrincipal> mLoadingSrcTriggeringPrincipal;
 
   // Stores the current preload action for this element. Initially set to
   // PRELOAD_UNDEFINED, its value is changed by calling
@@ -1534,13 +1542,15 @@ protected:
 
   // Encrypted Media Extension media keys.
   RefPtr<MediaKeys> mMediaKeys;
+  RefPtr<MediaKeys> mIncomingMediaKeys;
+  // The dom promise is used for HTMLMediaElement::SetMediaKeys.
+  RefPtr<DetailedPromise> mSetMediaKeysDOMPromise;
+  // Used to indicate if the MediaKeys attaching operation is on-going or not.
+  bool mAttachingMediaKey;
+  MozPromiseRequestHolder<SetCDMPromise> mSetCDMRequest;
 
   // Stores the time at the start of the current 'played' range.
   double mCurrentPlayRangeStart;
-
-  // If true then we have begun downloading the media content.
-  // Set to false when completed, or not yet started.
-  bool mBegun;
 
   // True if loadeddata has been fired.
   bool mLoadedDataFired;
@@ -1679,7 +1689,7 @@ protected:
   EncryptionInfo mPendingEncryptedInitData;
 
   // True if the media's channel's download has been suspended.
-  Watchable<bool> mDownloadSuspendedByCache;
+  bool mDownloadSuspendedByCache = false;
 
   // Disable the video playback by track selection. This flag might not be
   // enough if we ever expand the ability of supporting multi-tracks video
@@ -1761,7 +1771,7 @@ private:
    * @param aName the localname of the attribute being set
    * @param aNotify Whether we plan to notify document observers.
    */
-  void AfterMaybeChangeAttr(int32_t aNamespaceID, nsIAtom* aName, bool aNotify);
+  void AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName, bool aNotify);
 
   // Total time a video has spent playing.
   TimeDurationAccumulator mPlayTime;
@@ -1816,6 +1826,9 @@ private:
   // resolved/rejected at AsyncResolveSeekDOMPromiseIfExists()/
   // AsyncRejectSeekDOMPromiseIfExists() methods.
   RefPtr<dom::Promise> mSeekDOMPromise;
+
+  // For debugging bug 1407148.
+  void AssertReadyStateIsNothing();
 };
 
 // Check if the context is chrome or has the debugger or tabs permission

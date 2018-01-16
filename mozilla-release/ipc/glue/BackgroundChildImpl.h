@@ -89,6 +89,12 @@ protected:
   virtual bool
   DeallocPIPCBlobInputStreamChild(PIPCBlobInputStreamChild* aActor) override;
 
+  virtual PTemporaryIPCBlobChild*
+  AllocPTemporaryIPCBlobChild() override;
+
+  virtual bool
+  DeallocPTemporaryIPCBlobChild(PTemporaryIPCBlobChild* aActor) override;
+
   virtual PFileDescriptorSetChild*
   AllocPFileDescriptorSetChild(const FileDescriptor& aFileDescriptor)
                                override;
@@ -198,6 +204,12 @@ protected:
   virtual bool
   DeallocPGamepadTestChannelChild(PGamepadTestChannelChild* aActor) override;
 
+  virtual PClientManagerChild*
+  AllocPClientManagerChild() override;
+
+  virtual bool
+  DeallocPClientManagerChild(PClientManagerChild* aActor) override;
+
 #ifdef EARLY_BETA_OR_EARLIER
   virtual void
   OnChannelReceivedMessage(const Message& aMsg) override;
@@ -224,7 +236,7 @@ protected:
                                  const bool& aIsPrivate) override;
 
   bool
-  GetMessageSchedulerGroups(const Message& aMsg, nsTArray<RefPtr<SchedulerGroup>>& aGroups) override;
+  GetMessageSchedulerGroups(const Message& aMsg, SchedulerGroupSet& aGroups) override;
 };
 
 class BackgroundChildImpl::ThreadLocal final

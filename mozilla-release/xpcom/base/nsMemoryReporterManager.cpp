@@ -18,7 +18,9 @@
 #include "nsIObserverService.h"
 #include "nsIGlobalObject.h"
 #include "nsIXPConnect.h"
+#ifdef MOZ_GECKO_PROFILER
 #include "GeckoProfilerReporter.h"
+#endif
 #if defined(XP_UNIX) || defined(MOZ_DMD)
 #include "nsMemoryInfoDumper.h"
 #endif
@@ -1734,13 +1736,9 @@ nsMemoryReporterManager::StartGettingReports()
   }
 
   if (!s->mChildrenPending.IsEmpty()) {
-    nsCOMPtr<nsITimer> timer = do_CreateInstance(NS_TIMER_CONTRACTID);
-    // Don't use NS_ENSURE_* here; can't return until the report is finished.
-    if (NS_WARN_IF(!timer)) {
-      FinishReporting();
-      return NS_ERROR_FAILURE;
-    }
-    rv = timer->InitWithNamedFuncCallback(
+    nsCOMPtr<nsITimer> timer;
+    rv = NS_NewTimerWithFuncCallback(
+      getter_AddRefs(timer),
       TimeoutCallback,
       this,
       kTimeoutLengthMS,

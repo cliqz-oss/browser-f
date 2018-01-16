@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,7 +34,7 @@
 #include <type_traits>
 
 class imgRequestProxy;
-class nsIAtom;
+class nsAtom;
 class nsIContent;
 class nsIDocument;
 class nsIPrincipal;
@@ -336,31 +337,6 @@ private:
   operator=(const GridTemplateAreasValue& aOther) = delete;
 };
 
-class FontFamilyListRefCnt final : public FontFamilyList {
-public:
-    FontFamilyListRefCnt()
-        : FontFamilyList()
-    {}
-
-    explicit FontFamilyListRefCnt(FontFamilyType aGenericType)
-        : FontFamilyList(aGenericType)
-    {}
-
-    FontFamilyListRefCnt(const nsAString& aFamilyName,
-                         QuotedName aQuoted)
-        : FontFamilyList(aFamilyName, aQuoted)
-    {}
-
-    FontFamilyListRefCnt(const FontFamilyListRefCnt& aOther)
-        : FontFamilyList(aOther)
-    {}
-
-    NS_INLINE_DECL_REFCOUNTING(FontFamilyListRefCnt);
-
-private:
-    ~FontFamilyListRefCnt() {}
-};
-
 struct RGBAColorData
 {
   // 1.0 means 100% for all components, but the value may fall outside
@@ -528,10 +504,10 @@ enum nsCSSUnit {
   eCSSUnit_PairListDep  = 57,     // (nsCSSValuePairList*) same as PairList
                                   //   but does not own the list
 
-  eCSSUnit_FontFamilyList = 58,   // (FontFamilyList*) value
+  eCSSUnit_FontFamilyList = 58,   // (SharedFontList*) value
 
   // Atom units
-  eCSSUnit_AtomIdent    = 60,     // (nsIAtom*) for its string as an identifier
+  eCSSUnit_AtomIdent    = 60,     // (nsAtom*) for its string as an identifier
 
   eCSSUnit_Integer      = 70,     // (int) simple value
   eCSSUnit_Enumerated   = 71,     // (int) value has enumerated meaning
@@ -641,7 +617,7 @@ public:
   explicit nsCSSValue(nsCSSValueGradient* aValue);
   explicit nsCSSValue(nsCSSValueTokenStream* aValue);
   explicit nsCSSValue(mozilla::css::GridTemplateAreasValue* aValue);
-  explicit nsCSSValue(mozilla::css::FontFamilyListRefCnt* aValue);
+  explicit nsCSSValue(mozilla::SharedFontList* aValue);
   nsCSSValue(const nsCSSValue& aCopy);
   nsCSSValue(nsCSSValue&& aOther)
     : mUnit(aOther.mUnit)
@@ -843,13 +819,13 @@ public:
     return mValue.mSharedList;
   }
 
-  mozilla::FontFamilyList* GetFontFamilyListValue() const
+  mozilla::NotNull<mozilla::SharedFontList*> GetFontFamilyListValue() const
   {
     MOZ_ASSERT(mUnit == eCSSUnit_FontFamilyList,
                "not a font family list value");
     NS_ASSERTION(mValue.mFontFamilyList != nullptr,
                  "font family list value should never be null");
-    return mValue.mFontFamilyList;
+    return mozilla::WrapNotNull(mValue.mFontFamilyList);
   }
 
   // bodies of these are below
@@ -918,7 +894,7 @@ public:
     return mValue.mFloatColor;
   }
 
-  nsIAtom* GetAtomValue() const {
+  nsAtom* GetAtomValue() const {
     MOZ_ASSERT(mUnit == eCSSUnit_AtomIdent);
     return mValue.mAtom;
   }
@@ -944,7 +920,7 @@ public:
   void SetPercentValue(float aValue);
   void SetFloatValue(float aValue, nsCSSUnit aUnit);
   void SetStringValue(const nsString& aValue, nsCSSUnit aUnit);
-  void SetAtomIdentValue(already_AddRefed<nsIAtom> aValue);
+  void SetAtomIdentValue(already_AddRefed<nsAtom> aValue);
   void SetColorValue(nscolor aValue);
   void SetIntegerColorValue(nscolor aValue, nsCSSUnit aUnit);
   // converts the nscoord to pixels
@@ -962,7 +938,7 @@ public:
   void SetGradientValue(nsCSSValueGradient* aGradient);
   void SetTokenStreamValue(nsCSSValueTokenStream* aTokenStream);
   void SetGridTemplateAreas(mozilla::css::GridTemplateAreasValue* aValue);
-  void SetFontFamilyListValue(mozilla::css::FontFamilyListRefCnt* aFontListValue);
+  void SetFontFamilyListValue(already_AddRefed<mozilla::SharedFontList> aFontListValue);
   void SetPairValue(const nsCSSValuePair* aPair);
   void SetPairValue(const nsCSSValue& xValue, const nsCSSValue& yValue);
   void SetSharedListValue(nsCSSValueSharedList* aList);
@@ -1048,7 +1024,7 @@ protected:
     // If we're of a string type, mString is not null.
     nsStringBuffer* MOZ_OWNING_REF mString;
     nscolor    mColor;
-    nsIAtom* MOZ_OWNING_REF mAtom;
+    nsAtom* MOZ_OWNING_REF mAtom;
     Array* MOZ_OWNING_REF mArray;
     mozilla::css::URLValue* MOZ_OWNING_REF mURL;
     mozilla::css::ImageValue* MOZ_OWNING_REF mImage;
@@ -1064,7 +1040,7 @@ protected:
     nsCSSValuePairList_heap* MOZ_OWNING_REF mPairList;
     nsCSSValuePairList* mPairListDependent;
     nsCSSValueFloatColor* MOZ_OWNING_REF mFloatColor;
-    mozilla::css::FontFamilyListRefCnt* MOZ_OWNING_REF mFontFamilyList;
+    mozilla::SharedFontList* MOZ_OWNING_REF mFontFamilyList;
     mozilla::css::ComplexColorValue* MOZ_OWNING_REF mComplexColor;
   } mValue;
 };

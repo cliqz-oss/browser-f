@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +8,7 @@
 #include "nsTreeUtils.h"
 #include "ChildIterator.h"
 #include "nsCRT.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsNameSpaceManager.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
@@ -44,7 +45,7 @@ nsTreeUtils::TokenizeProperties(const nsAString& aProperties, AtomArray & aPrope
     if (iter == first)
       break;
 
-    nsCOMPtr<nsIAtom> atom = NS_Atomize(Substring(first, iter));
+    RefPtr<nsAtom> atom = NS_Atomize(Substring(first, iter));
     aPropertiesArray.AppendElement(atom);
   } while (iter != end);
 
@@ -52,7 +53,7 @@ nsTreeUtils::TokenizeProperties(const nsAString& aProperties, AtomArray & aPrope
 }
 
 nsIContent*
-nsTreeUtils::GetImmediateChild(nsIContent* aContainer, nsIAtom* aTag)
+nsTreeUtils::GetImmediateChild(nsIContent* aContainer, nsAtom* aTag)
 {
   dom::FlattenedChildIterator iter(aContainer);
   for (nsIContent* child = iter.GetNextChild(); child; child = iter.GetNextChild()) {
@@ -65,7 +66,7 @@ nsTreeUtils::GetImmediateChild(nsIContent* aContainer, nsIAtom* aTag)
 }
 
 nsIContent*
-nsTreeUtils::GetDescendantChild(nsIContent* aContainer, nsIAtom* aTag)
+nsTreeUtils::GetDescendantChild(nsIContent* aContainer, nsAtom* aTag)
 {
   dom::FlattenedChildIterator iter(aContainer);
   for (nsIContent* child = iter.GetNextChild(); child; child = iter.GetNextChild()) {

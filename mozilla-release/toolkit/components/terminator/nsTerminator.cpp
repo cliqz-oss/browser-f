@@ -157,6 +157,9 @@ RunWatchdog(void* arg)
     }
 
     // Shutdown is apparently dead. Crash the process.
+#if defined(MOZ_CRASHREPORTER)
+    CrashReporter::SetMinidumpAnalysisAllThreads();
+#endif
     MOZ_CRASH("Shutdown too long, probably frozen, causing a crash.");
   }
 }
@@ -216,7 +219,7 @@ PRMonitor* gWriteReady = nullptr;
 
 void RunWriter(void* arg)
 {
-  AutoProfilerRegisterThread registerThread("Shutdown Statistics Writer");
+  AUTO_PROFILER_REGISTER_THREAD("Shutdown Statistics Writer");
   NS_SetCurrentThreadName("Shutdown Statistics Writer");
 
   MOZ_LSAN_INTENTIONALLY_LEAK_OBJECT(arg);
@@ -225,7 +228,8 @@ void RunWriter(void* arg)
 
   // Setup destinationPath and tmpFilePath
 
-  nsCString destinationPath(static_cast<char*>(arg));
+  nsCString destinationPath;
+  destinationPath.Adopt(static_cast<char*>(arg));
   nsAutoCString tmpFilePath;
   tmpFilePath.Append(destinationPath);
   tmpFilePath.AppendLiteral(".tmp");
@@ -358,12 +362,12 @@ nsTerminator::Start()
 {
   MOZ_ASSERT(!mInitialized);
   StartWatchdog();
-#if !defined(DEBUG)
-  // Only allow nsTerminator to write on non-debug builds so we don't get leak warnings on
-  // shutdown for intentional leaks (see bug 1242084). This will be enabled again by bug
-  // 1255484 when 1255478 lands.
+#if !defined(NS_FREE_PERMANENT_DATA)
+  // Only allow nsTerminator to write on non-leak-checked builds so we don't
+  // get leak warnings on shutdown for intentional leaks (see bug 1242084).
+  // This will be enabled again by bug 1255484 when 1255478 lands.
   StartWriter();
-#endif // !defined(DEBUG)
+#endif // !defined(NS_FREE_PERMANENT_DATA)
   mInitialized = true;
 }
 
@@ -452,12 +456,12 @@ nsTerminator::Observe(nsISupports *, const char *aTopic, const char16_t *)
   }
 
   UpdateHeartbeat(aTopic);
-#if !defined(DEBUG)
-  // Only allow nsTerminator to write on non-debug builds so we don't get leak warnings on
+#if !defined(NS_FREE_PERMANENT_DATA)
+  // Only allow nsTerminator to write on non-leak checked builds so we don't get leak warnings on
   // shutdown for intentional leaks (see bug 1242084). This will be enabled again by bug
   // 1255484 when 1255478 lands.
   UpdateTelemetry();
-#endif // !defined(DEBUG)
+#endif // !defined(NS_FREE_PERMANENT_DATA)
   UpdateCrashReport(aTopic);
 
   // Perform a little cleanup
@@ -515,7 +519,7 @@ nsTerminator::UpdateTelemetry()
       continue;
     }
     if (fields++ > 0) {
-      telemetryData->Append(", ");
+      telemetryData->AppendLiteral(", ");
     }
     telemetryData->AppendLiteral(R"(")");
     telemetryData->Append(shutdownStep.mTopic);

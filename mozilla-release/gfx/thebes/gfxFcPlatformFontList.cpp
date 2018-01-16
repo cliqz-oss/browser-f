@@ -12,6 +12,8 @@
 #include "gfxFT2Utils.h"
 #include "gfxPlatform.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/dom/ContentChild.h"
+#include "mozilla/dom/ContentParent.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/TimeStamp.h"
@@ -22,10 +24,12 @@
 #include "nsDirectoryServiceDefs.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsCharSeparatedTokenizer.h"
+#include "nsXULAppAPI.h"
 
 #include "mozilla/gfx/HelpersCairo.h"
 
 #include <fontconfig/fcfreetype.h>
+#include <unistd.h>
 
 #ifdef MOZ_WIDGET_GTK
 #include <gdk/gdk.h>
@@ -36,9 +40,17 @@
 #include "mozilla/X11Util.h"
 #endif
 
+#ifdef MOZ_CONTENT_SANDBOX
+#include "mozilla/SandboxBrokerPolicyFactory.h"
+#include "mozilla/SandboxSettings.h"
+#endif
+
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::unicode;
+
+using mozilla::dom::SystemFontListEntry;
+using mozilla::dom::FontPatternListEntry;
 
 #ifndef FC_POSTSCRIPT_NAME
 #define FC_POSTSCRIPT_NAME  "postscriptname"      /* String */
@@ -690,15 +702,16 @@ gfxFontconfigFontEntry::CreateScaledFont(FcPattern* aRenderPattern,
         // so that it gets deleted whenever cairo decides
         NS_ASSERTION(mFTFace, "FT_Face is null when setting user data");
         NS_ASSERTION(mUserFontData, "user font data is null when setting user data");
+        mUserFontData.get()->AddRef();
         if (cairo_font_face_set_user_data(face,
                                           &sFcFontlistUserFontDataKey,
                                           mUserFontData,
                                           ReleaseFTUserFontData) != CAIRO_STATUS_SUCCESS) {
             NS_WARNING("Failed binding FTUserFontData to Cairo font face");
+            mUserFontData.get()->Release();
             cairo_font_face_destroy(face);
             return nullptr;
         }
-        mUserFontData.get()->AddRef();
     }
 
     cairo_scaled_font_t *scaledFont = nullptr;
@@ -814,7 +827,7 @@ PreparePattern(FcPattern* aPattern, bool aIsPrinterFont)
 void
 gfxFontconfigFontEntry::UnscaledFontCache::MoveToFront(size_t aIndex) {
     if (aIndex > 0) {
-        WeakPtr<UnscaledFont> front =
+        ThreadSafeWeakPtr<UnscaledFontFontconfig> front =
             Move(mUnscaledFonts[aIndex]);
         for (size_t i = aIndex; i > 0; i--) {
             mUnscaledFonts[i] = Move(mUnscaledFonts[i-1]);
@@ -826,13 +839,12 @@ gfxFontconfigFontEntry::UnscaledFontCache::MoveToFront(size_t aIndex) {
 already_AddRefed<UnscaledFontFontconfig>
 gfxFontconfigFontEntry::UnscaledFontCache::Lookup(const char* aFile, uint32_t aIndex) {
     for (size_t i = 0; i < kNumEntries; i++) {
-        UnscaledFontFontconfig* entry =
-            static_cast<UnscaledFontFontconfig*>(mUnscaledFonts[i].get());
+        RefPtr<UnscaledFontFontconfig> entry(mUnscaledFonts[i]);
         if (entry &&
             !strcmp(entry->GetFile(), aFile) &&
             entry->GetIndex() == aIndex) {
             MoveToFront(i);
-            return do_AddRef(entry);
+            return entry.forget();
         }
     }
     return nullptr;
@@ -995,9 +1007,7 @@ gfxFontconfigFontFamily::FindStyleVariations(FontInfoData *aFontInfoData)
             new gfxFontconfigFontEntry(faceName, face, mContainsAppFonts);
         AddFontEntry(fontEntry);
 
-        if (fontEntry->IsUpright() &&
-            fontEntry->Weight() == NS_FONT_WEIGHT_NORMAL &&
-            fontEntry->Stretch() == NS_FONT_STRETCH_NORMAL) {
+        if (fontEntry->IsNormalStyle()) {
             numRegularFaces++;
         }
 
@@ -1168,7 +1178,7 @@ PatternHasLang(const FcPattern *aPattern, const FcChar8 *aLang)
 }
 
 bool
-gfxFontconfigFontFamily::SupportsLangGroup(nsIAtom *aLangGroup) const
+gfxFontconfigFontFamily::SupportsLangGroup(nsAtom *aLangGroup) const
 {
     if (!aLangGroup || aLangGroup == nsGkAtoms::Unicode) {
         return true;
@@ -1205,6 +1215,25 @@ gfxFontconfigFontFamily::~gfxFontconfigFontFamily()
  {
     // Should not be dropped by stylo
     MOZ_ASSERT(NS_IsMainThread());
+}
+
+template<typename Func>
+void
+gfxFontconfigFontFamily::AddFacesToFontList(Func aAddPatternFunc)
+{
+    if (HasStyles()) {
+        for (auto& fe : mAvailableFonts) {
+            if (!fe) {
+                continue;
+            }
+            auto fce = static_cast<gfxFontconfigFontEntry*>(fe.get());
+            aAddPatternFunc(fce->GetPattern(), mContainsAppFonts);
+        }
+    } else {
+        for (auto& pat : mFontPatterns) {
+            aAddPatternFunc(pat, mContainsAppFonts);
+        }
+    }
 }
 
 gfxFontconfigFont::gfxFontconfigFont(const RefPtr<UnscaledFontFontconfig>& aUnscaledFont,
@@ -1246,20 +1275,20 @@ gfxFcPlatformFontList::gfxFcPlatformFontList()
     , mLastConfig(nullptr)
     , mAlwaysUseFontconfigGenerics(true)
 {
-    // if the rescan interval is set, start the timer
-    int rescanInterval = FcConfigGetRescanInterval(nullptr);
-    if (rescanInterval) {
-        mLastConfig = FcConfigGetCurrent();
-        mCheckFontUpdatesTimer = do_CreateInstance("@mozilla.org/timer;1");
-        if (mCheckFontUpdatesTimer) {
-          mCheckFontUpdatesTimer->InitWithNamedFuncCallback(
-            CheckFontUpdates,
-            this,
-            (rescanInterval + 1) * 1000,
-            nsITimer::TYPE_REPEATING_SLACK,
-            "gfxFcPlatformFontList::gfxFcPlatformFontList");
-        } else {
-            NS_WARNING("Failure to create font updates timer");
+    if (XRE_IsParentProcess()) {
+        // if the rescan interval is set, start the timer
+        int rescanInterval = FcConfigGetRescanInterval(nullptr);
+        if (rescanInterval) {
+            mLastConfig = FcConfigGetCurrent();
+            NS_NewTimerWithFuncCallback(getter_AddRefs(mCheckFontUpdatesTimer),
+                                        CheckFontUpdates,
+                                        this,
+                                        (rescanInterval + 1) * 1000,
+                                        nsITimer::TYPE_REPEATING_SLACK,
+                                        "gfxFcPlatformFontList::gfxFcPlatformFontList");
+            if (!mCheckFontUpdatesTimer) {
+                NS_WARNING("Failure to create font updates timer");
+            }
         }
     }
 
@@ -1277,14 +1306,15 @@ gfxFcPlatformFontList::~gfxFcPlatformFontList()
 }
 
 void
-gfxFcPlatformFontList::AddFontSetFamilies(FcFontSet* aFontSet, bool aAppFonts)
+gfxFcPlatformFontList::AddFontSetFamilies(FcFontSet* aFontSet,
+                                          const SandboxPolicy* aPolicy,
+                                          bool aAppFonts)
 {
     // This iterates over the fonts in a font set and adds in gfxFontFamily
-    // objects for each family. The patterns for individual fonts are not
-    // copied here. When a family is actually used, the fonts in the family
-    // are enumerated and the patterns copied. Note that we're explicitly
-    // excluding non-scalable fonts such as X11 bitmap fonts, which
-    // Chrome Skia/Webkit code does also.
+    // objects for each family. Individual gfxFontEntry objects for each face
+    // are not created here; the patterns are just stored in the family. When
+    // a family is actually used, it will be populated with gfxFontEntry
+    // records and the patterns moved to those.
 
     if (!aFontSet) {
         NS_WARNING("AddFontSetFamilies called with a null font set.");
@@ -1295,100 +1325,246 @@ gfxFcPlatformFontList::AddFontSetFamilies(FcFontSet* aFontSet, bool aAppFonts)
     RefPtr<gfxFontconfigFontFamily> fontFamily;
     nsAutoString familyName;
     for (int f = 0; f < aFontSet->nfont; f++) {
-        FcPattern* font = aFontSet->fonts[f];
+        FcPattern* pattern = aFontSet->fonts[f];
 
-        // get canonical name
-        uint32_t cIndex = FindCanonicalNameIndex(font, FC_FAMILYLANG);
-        FcChar8* canonical = nullptr;
-        FcPatternGetString(font, FC_FAMILY, cIndex, &canonical);
-        if (!canonical) {
+        // Skip any fonts that aren't readable for us (e.g. due to restrictive
+        // file ownership/permissions).
+        FcChar8* path;
+        if (FcPatternGetString(pattern, FC_FILE, 0, &path) != FcResultMatch) {
+            continue;
+        }
+        if (access(reinterpret_cast<const char*>(path), F_OK | R_OK) != 0) {
             continue;
         }
 
-        // same as the last one? no need to add a new family, skip
-        if (FcStrCmp(canonical, lastFamilyName) != 0) {
-            lastFamilyName = canonical;
+#ifdef MOZ_CONTENT_SANDBOX
+        // Skip any fonts that will be blocked by the content-process sandbox
+        // policy.
+        if (aPolicy && !(aPolicy->Lookup(reinterpret_cast<const char*>(path)) &
+                         SandboxBroker::Perms::MAY_READ)) {
+            continue;
+        }
+#endif
 
-            // add new family if one doesn't already exist
-            familyName.Truncate();
-            AppendUTF8toUTF16(ToCharPtr(canonical), familyName);
-            nsAutoString keyName(familyName);
-            ToLowerCase(keyName);
+        AddPatternToFontList(pattern, lastFamilyName,
+                             familyName, fontFamily, aAppFonts);
+    }
+}
 
-            fontFamily = static_cast<gfxFontconfigFontFamily*>
-                             (mFontFamilies.GetWeak(keyName));
-            if (!fontFamily) {
-                fontFamily = new gfxFontconfigFontFamily(familyName);
-                mFontFamilies.Put(keyName, fontFamily);
-            }
-            // Record if the family contains fonts from the app font set
-            // (in which case we won't rely on fontconfig's charmap, due to
-            // bug 1276594).
-            if (aAppFonts) {
-                fontFamily->SetFamilyContainsAppFonts(true);
-            }
+void
+gfxFcPlatformFontList::AddPatternToFontList(FcPattern* aFont,
+                                            FcChar8*& aLastFamilyName,
+                                            nsAString& aFamilyName,
+                                            RefPtr<gfxFontconfigFontFamily>& aFontFamily,
+                                            bool aAppFonts)
+{
+    // get canonical name
+    uint32_t cIndex = FindCanonicalNameIndex(aFont, FC_FAMILYLANG);
+    FcChar8* canonical = nullptr;
+    FcPatternGetString(aFont, FC_FAMILY, cIndex, &canonical);
+    if (!canonical) {
+        return;
+    }
 
-            // Add pointers to other localized family names. Most fonts
-            // only have a single name, so the first call to GetString
-            // will usually not match
-            FcChar8* otherName;
-            int n = (cIndex == 0 ? 1 : 0);
-            while (FcPatternGetString(font, FC_FAMILY, n, &otherName) == FcResultMatch) {
-                NS_ConvertUTF8toUTF16 otherFamilyName(ToCharPtr(otherName));
-                AddOtherFamilyName(fontFamily, otherFamilyName);
-                n++;
-                if (n == int(cIndex)) {
-                    n++; // skip over canonical name
-                }
-            }
+    // same as the last one? no need to add a new family, skip
+    if (FcStrCmp(canonical, aLastFamilyName) != 0) {
+        aLastFamilyName = canonical;
+
+        // add new family if one doesn't already exist
+        aFamilyName.Truncate();
+        AppendUTF8toUTF16(ToCharPtr(canonical), aFamilyName);
+        nsAutoString keyName(aFamilyName);
+        ToLowerCase(keyName);
+
+        aFontFamily = static_cast<gfxFontconfigFontFamily*>
+            (mFontFamilies.GetWeak(keyName));
+        if (!aFontFamily) {
+            aFontFamily = new gfxFontconfigFontFamily(aFamilyName);
+            mFontFamilies.Put(keyName, aFontFamily);
+        }
+        // Record if the family contains fonts from the app font set
+        // (in which case we won't rely on fontconfig's charmap, due to
+        // bug 1276594).
+        if (aAppFonts) {
+            aFontFamily->SetFamilyContainsAppFonts(true);
         }
 
-        NS_ASSERTION(fontFamily, "font must belong to a font family");
-        fontFamily->AddFontPattern(font);
+        // Add pointers to other localized family names. Most fonts
+        // only have a single name, so the first call to GetString
+        // will usually not match
+        FcChar8* otherName;
+        int n = (cIndex == 0 ? 1 : 0);
+        while (FcPatternGetString(aFont, FC_FAMILY, n, &otherName) ==
+               FcResultMatch) {
+            NS_ConvertUTF8toUTF16 otherFamilyName(ToCharPtr(otherName));
+            AddOtherFamilyName(aFontFamily, otherFamilyName);
+            n++;
+            if (n == int(cIndex)) {
+                n++; // skip over canonical name
+            }
+        }
+    }
 
-        // map the psname, fullname ==> font family for local font lookups
-        nsAutoString psname, fullname;
-        GetFaceNames(font, familyName, psname, fullname);
-        if (!psname.IsEmpty()) {
-            ToLowerCase(psname);
-            mLocalNames.Put(psname, font);
-        }
-        if (!fullname.IsEmpty()) {
-            ToLowerCase(fullname);
-            mLocalNames.Put(fullname, font);
-        }
+    MOZ_ASSERT(aFontFamily, "font must belong to a font family");
+    aFontFamily->AddFontPattern(aFont);
+
+    // map the psname, fullname ==> font family for local font lookups
+    nsAutoString psname, fullname;
+    GetFaceNames(aFont, aFamilyName, psname, fullname);
+    if (!psname.IsEmpty()) {
+        ToLowerCase(psname);
+        mLocalNames.Put(psname, aFont);
+    }
+    if (!fullname.IsEmpty()) {
+        ToLowerCase(fullname);
+        mLocalNames.Put(fullname, aFont);
     }
 }
 
 nsresult
 gfxFcPlatformFontList::InitFontListForPlatform()
 {
-    mLastConfig = FcConfigGetCurrent();
+#ifdef MOZ_BUNDLED_FONTS
+    ActivateBundledFonts();
+#endif
 
     mLocalNames.Clear();
     mFcSubstituteCache.Clear();
 
-    // iterate over available fonts
-    FcFontSet* systemFonts = FcConfigGetFonts(nullptr, FcSetSystem);
-    AddFontSetFamilies(systemFonts, /* aAppFonts = */ false);
     mAlwaysUseFontconfigGenerics = PrefFontListsUseOnlyGenerics();
-
-#ifdef MOZ_BUNDLED_FONTS
-    ActivateBundledFonts();
-    FcFontSet* appFonts = FcConfigGetFonts(nullptr, FcSetApplication);
-    AddFontSetFamilies(appFonts, /* aAppFonts = */ true);
-#endif
-
     mOtherFamilyNamesInitialized = true;
 
+    if (XRE_IsContentProcess()) {
+        // Content process: use the font list passed from the chrome process,
+        // because we can't rely on fontconfig in the presence of sandboxing;
+        // it may report fonts that we can't actually access.
+
+        FcChar8* lastFamilyName = (FcChar8*)"";
+        RefPtr<gfxFontconfigFontFamily> fontFamily;
+        nsAutoString familyName;
+
+        // Get font list that was passed during XPCOM startup
+        // or in an UpdateFontList message.
+        auto& fontList = dom::ContentChild::GetSingleton()->SystemFontList();
+
+        // For fontconfig versions between 2.10.94 and 2.11.1 inclusive,
+        // we need to escape any leading space in the charset element,
+        // otherwise FcNameParse will fail. :(
+        //
+        // The bug was introduced on 2013-05-24 by
+        //   https://cgit.freedesktop.org/fontconfig/commit/?id=cd9b1033a68816a7acfbba1718ba0aa5888f6ec7
+        //   "Bug 64906 - FcNameParse() should ignore leading whitespace in parameters"
+        // because ignoring a leading space in the encoded value of charset
+        // causes erroneous decoding of the whole element.
+        // This first shipped in version 2.10.94, and was eventually fixed as
+        // a side-effect of switching to the "human-readable" representation of
+        // charsets on 2014-07-03 in
+        //   https://cgit.freedesktop.org/fontconfig/commit/?id=e708e97c351d3bc9f7030ef22ac2f007d5114730
+        //   "Change charset parse/unparse format to be human readable"
+        // (with a followup fix next day) which means a leading space is no
+        // longer significant. This fix landed after 2.11.1 had been shipped,
+        // so the first version tag without the bug is 2.11.91.
+        int fcVersion = FcGetVersion();
+        bool fcCharsetParseBug = fcVersion >= 21094 && fcVersion <= 21101;
+
+        for (SystemFontListEntry& fle : fontList) {
+            MOZ_ASSERT(fle.type() ==
+                       SystemFontListEntry::Type::TFontPatternListEntry);
+            FontPatternListEntry& fpe(fle);
+            nsCString& patternStr = fpe.pattern();
+            if (fcCharsetParseBug) {
+                int32_t index = patternStr.Find(":charset= ");
+                if (index != kNotFound) {
+                    // insert backslash after the =, before the space
+                    patternStr.Insert('\\', index + 9);
+                }
+            }
+            FcPattern* pattern =
+                FcNameParse((const FcChar8*)patternStr.get());
+            AddPatternToFontList(pattern, lastFamilyName, familyName,
+                                 fontFamily, fpe.appFontFamily());
+            FcPatternDestroy(pattern);
+        }
+
+        LOG_FONTLIST(("got font list from chrome process: "
+                      "%u faces in %u families",
+                      (unsigned)fontList.Length(), mFontFamilies.Count()));
+
+        fontList.Clear();
+
+        return NS_OK;
+    }
+
+    mLastConfig = FcConfigGetCurrent();
+
+    UniquePtr<SandboxPolicy> policy;
+
+#ifdef MOZ_CONTENT_SANDBOX
+    // Create a temporary SandboxPolicy to check font paths; use a fake PID
+    // to avoid picking up any PID-specific rules by accident.
+    SandboxBrokerPolicyFactory policyFactory;
+    if (GetEffectiveContentSandboxLevel() > 0 &&
+        !PR_GetEnv("MOZ_DISABLE_CONTENT_SANDBOX")) {
+        policy = policyFactory.GetContentPolicy(-1, false);
+    }
+#endif
+
+    // iterate over available fonts
+    FcFontSet* systemFonts = FcConfigGetFonts(nullptr, FcSetSystem);
+    AddFontSetFamilies(systemFonts, policy.get(), /* aAppFonts = */ false);
+
+#ifdef MOZ_BUNDLED_FONTS
+    FcFontSet* appFonts = FcConfigGetFonts(nullptr, FcSetApplication);
+    AddFontSetFamilies(appFonts, policy.get(), /* aAppFonts = */ true);
+#endif
+
     return NS_OK;
+}
+
+void
+gfxFcPlatformFontList::ReadSystemFontList(
+    InfallibleTArray<SystemFontListEntry>* retValue)
+{
+    // Fontconfig versions below 2.9 drop the FC_FILE element in FcNameUnparse
+    // (see https://bugs.freedesktop.org/show_bug.cgi?id=26718), so when using
+    // an older version, we manually append it to the unparsed pattern.
+    if (FcGetVersion() < 20900) {
+        for (auto iter = mFontFamilies.Iter(); !iter.Done(); iter.Next()) {
+            auto family =
+                static_cast<gfxFontconfigFontFamily*>(iter.Data().get());
+            family->AddFacesToFontList([&](FcPattern* aPat, bool aAppFonts) {
+                char* s = (char*)FcNameUnparse(aPat);
+                nsAutoCString patternStr(s);
+                free(s);
+                if (FcResultMatch ==
+                    FcPatternGetString(aPat, FC_FILE, 0, (FcChar8**)&s)) {
+                    patternStr.Append(":file=");
+                    patternStr.Append(s);
+                }
+                retValue->AppendElement(FontPatternListEntry(patternStr,
+                                                             aAppFonts));
+            });
+        }
+    } else {
+        for (auto iter = mFontFamilies.Iter(); !iter.Done(); iter.Next()) {
+            auto family =
+                static_cast<gfxFontconfigFontFamily*>(iter.Data().get());
+            family->AddFacesToFontList([&](FcPattern* aPat, bool aAppFonts) {
+                char* s = (char*)FcNameUnparse(aPat);
+                nsDependentCString patternStr(s);
+                retValue->AppendElement(FontPatternListEntry(patternStr,
+                                                             aAppFonts));
+                free(s);
+            });
+        }
+    }
 }
 
 // For displaying the fontlist in UI, use explicit call to FcFontList. Using
 // FcFontList results in the list containing the localized names as dictated
 // by system defaults.
 static void
-GetSystemFontList(nsTArray<nsString>& aListOfFonts, nsIAtom *aLangGroup)
+GetSystemFontList(nsTArray<nsString>& aListOfFonts, nsAtom *aLangGroup)
 {
     aListOfFonts.Clear();
 
@@ -1438,7 +1614,7 @@ GetSystemFontList(nsTArray<nsString>& aListOfFonts, nsIAtom *aLangGroup)
 }
 
 void
-gfxFcPlatformFontList::GetFontList(nsIAtom *aLangGroup,
+gfxFcPlatformFontList::GetFontList(nsAtom *aLangGroup,
                                    const nsACString& aGenericFamily,
                                    nsTArray<nsString>& aListOfFonts)
 {
@@ -1518,12 +1694,12 @@ gfxFcPlatformFontList::MakePlatformFont(const nsAString& aFontName,
 {
     FT_Face face = Factory::NewFTFaceFromData(nullptr, aFontData, aLength, 0);
     if (!face) {
-        NS_Free((void*)aFontData);
+        free((void*)aFontData);
         return nullptr;
     }
     if (FT_Err_Ok != FT_Select_Charmap(face, FT_ENCODING_UNICODE)) {
         Factory::ReleaseFTFace(face);
-        NS_Free((void*)aFontData);
+        free((void*)aFontData);
         return nullptr;
     }
 
@@ -1540,7 +1716,7 @@ gfxFcPlatformFontList::FindAndAddFamilies(const nsAString& aFamily,
 {
     nsAutoString familyName(aFamily);
     ToLowerCase(familyName);
-    nsIAtom* language = (aStyle ? aStyle->language.get() : nullptr);
+    nsAtom* language = (aStyle ? aStyle->language.get() : nullptr);
 
     // deprecated generic names are explicitly converted to standard generics
     bool isDeprecatedGeneric = false;
@@ -1729,7 +1905,7 @@ gfxFcPlatformFontList::GetStandardFamilyName(const nsAString& aFontName,
 
 void
 gfxFcPlatformFontList::AddGenericFonts(mozilla::FontFamilyType aGenericType,
-                                       nsIAtom* aLanguage,
+                                       nsAtom* aLanguage,
                                        nsTArray<gfxFontFamily*>& aFamilyList)
 {
     bool usePrefFontList = false;
@@ -1751,7 +1927,7 @@ gfxFcPlatformFontList::AddGenericFonts(mozilla::FontFamilyType aGenericType,
     NS_ConvertASCIItoUTF16 genericToLookup(generic);
     if ((!mAlwaysUseFontconfigGenerics && aLanguage) ||
         aLanguage == nsGkAtoms::x_math) {
-        nsIAtom* langGroup = GetLangGroup(aLanguage);
+        nsAtom* langGroup = GetLangGroup(aLanguage);
         nsAutoString fontlistValue;
         Preferences::GetString(NamePref(generic, langGroup).get(),
                                fontlistValue);
@@ -1840,7 +2016,7 @@ gfxFcPlatformFontList::GetFTLibrary()
 
 gfxPlatformFontList::PrefFontList*
 gfxFcPlatformFontList::FindGenericFamilies(const nsAString& aGeneric,
-                                           nsIAtom* aLanguage)
+                                           nsAtom* aLanguage)
 {
     // set up name
     NS_ConvertUTF16toUTF8 generic(aGeneric);
@@ -1982,6 +2158,10 @@ gfxFcPlatformFontList::PrefFontListsUseOnlyGenerics()
 /* static */ void
 gfxFcPlatformFontList::CheckFontUpdates(nsITimer *aTimer, void *aThis)
 {
+    // A content process is not supposed to check this directly;
+    // it will be notified by the parent when the font list changes.
+    MOZ_ASSERT(XRE_IsParentProcess());
+
     // check for font updates
     FcInitBringUptoDate();
 
@@ -1991,6 +2171,8 @@ gfxFcPlatformFontList::CheckFontUpdates(nsITimer *aTimer, void *aThis)
     if (current != pfl->GetLastConfig()) {
         pfl->UpdateFontList();
         pfl->ForceGlobalReflow();
+
+        mozilla::dom::ContentParent::NotifyUpdatedFonts();
     }
 }
 

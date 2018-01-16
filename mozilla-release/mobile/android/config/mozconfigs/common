@@ -7,6 +7,13 @@ if [ "x$IS_NIGHTLY" = "xyes" ]; then
   MOZ_AUTOMATION_UPLOAD_SYMBOLS=${MOZ_AUTOMATION_UPLOAD_SYMBOLS-1}
 fi
 
+if [ -z "$NO_NDK" ]; then
+  # MOZ_UPDATE_CHANNEL isn't always set.  It cannot use to detect as trunk.
+  if [ `tail -1 "$topsrcdir/config/milestone.txt" | grep 'a1'` ] ; then
+    . "$topsrcdir/build/mozconfig.stylo"
+  fi
+fi
+
 MOZ_AUTOMATION_L10N_CHECK=0
 . "$topsrcdir/build/mozconfig.common"
 
@@ -41,6 +48,9 @@ ANDROID_NDK_VERSION_32BIT="r8c"
 # Build Fennec
 ac_add_options --enable-application=mobile/android
 ac_add_options --with-android-sdk="$topsrcdir/android-sdk-linux"
+
+ac_add_options --with-gradle="$topsrcdir/android-gradle-dependencies/gradle-dist/bin/gradle"
+export GRADLE_MAVEN_REPOSITORIES="file://$topsrcdir/android-gradle-dependencies/jcenter","file://$topsrcdir/android-gradle-dependencies/google"
 
 if [ -z "$NO_NDK" ]; then
     ac_add_options --with-android-ndk="$topsrcdir/android-ndk"
@@ -108,3 +118,5 @@ export MOZ_PACKAGE_JSSHELL=1
 . "$topsrcdir/build/unix/mozconfig.stdcxx"
 
 JS_BINARY="$topsrcdir/mobile/android/config/js_wrapper.sh"
+
+export PROGUARD_JAR="$topsrcdir/proguard/lib/proguard.jar"

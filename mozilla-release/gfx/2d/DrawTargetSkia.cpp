@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -25,6 +26,7 @@
 #include "Tools.h"
 #include "DataSurfaceHelpers.h"
 #include "PathHelpers.h"
+#include "SourceSurfaceCapture.h"
 #include "Swizzle.h"
 #include <algorithm>
 
@@ -47,6 +49,8 @@
 #ifdef XP_WIN
 #include "ScaledFontDWrite.h"
 #endif
+
+using namespace std;
 
 namespace mozilla {
 namespace gfx {
@@ -237,6 +241,16 @@ GetSkImageForSurface(SourceSurface* aSurface, const Rect* aBounds = nullptr, con
     return nullptr;
   }
 
+  if (aSurface->GetType() == SurfaceType::CAPTURE) {
+    SourceSurfaceCapture* capture = static_cast<SourceSurfaceCapture*>(aSurface);
+    RefPtr<SourceSurface> resolved = capture->Resolve(BackendType::SKIA);
+    if (!resolved) {
+      return nullptr;
+    }
+    MOZ_ASSERT(resolved->GetType() != SurfaceType::CAPTURE);
+    return GetSkImageForSurface(resolved, aBounds, aMatrix);
+  }
+
   if (aSurface->GetType() == SurfaceType::SKIA) {
     return static_cast<SourceSurfaceSkia*>(aSurface)->GetImage();
   }
@@ -264,6 +278,7 @@ GetSkImageForSurface(SourceSurface* aSurface, const Rect* aBounds = nullptr, con
 
 DrawTargetSkia::DrawTargetSkia()
   : mSnapshot(nullptr)
+  , mSnapshotLock{"DrawTargetSkia::mSnapshotLock"}
 #ifdef MOZ_WIDGET_COCOA
   , mCG(nullptr)
   , mColorSpace(nullptr)
@@ -276,6 +291,12 @@ DrawTargetSkia::DrawTargetSkia()
 
 DrawTargetSkia::~DrawTargetSkia()
 {
+  if (mSnapshot) {
+    MutexAutoLock lock(mSnapshotLock);
+    // We're going to go away, hand our SkSurface to the SourceSurface.
+    mSnapshot->GiveSurface(mSurface);
+  }
+
 #ifdef MOZ_WIDGET_COCOA
   if (mCG) {
     CGContextRelease(mCG);
@@ -292,6 +313,9 @@ DrawTargetSkia::~DrawTargetSkia()
 already_AddRefed<SourceSurface>
 DrawTargetSkia::Snapshot()
 {
+  // Without this lock, this could cause us to get out a snapshot and race with
+  // Snapshot::~Snapshot() actually destroying itself.
+  MutexAutoLock lock(mSnapshotLock);
   RefPtr<SourceSurfaceSkia> snapshot = mSnapshot;
   if (mSurface && !snapshot) {
     snapshot = new SourceSurfaceSkia();
@@ -1243,8 +1267,7 @@ bool
 DrawTargetSkia::FillGlyphsWithCG(ScaledFont *aFont,
                                  const GlyphBuffer &aBuffer,
                                  const Pattern &aPattern,
-                                 const DrawOptions &aOptions,
-                                 const GlyphRenderingOptions *aRenderingOptions)
+                                 const DrawOptions &aOptions)
 {
   MOZ_ASSERT(aFont->GetType() == FontType::MAC);
   MOZ_ASSERT(aPattern.GetType() == PatternType::COLOR);
@@ -1261,10 +1284,11 @@ DrawTargetSkia::FillGlyphsWithCG(ScaledFont *aFont,
     return false;
   }
 
-  SetFontSmoothingBackgroundColor(cgContext, mColorSpace, aRenderingOptions);
+  ScaledFontMac* macFont = static_cast<ScaledFontMac*>(aFont);
+  SetFontSmoothingBackgroundColor(cgContext, mColorSpace,
+                                  macFont->FontSmoothingBackgroundColor());
   SetFontColor(cgContext, mColorSpace, aPattern);
 
-  ScaledFontMac* macFont = static_cast<ScaledFontMac*>(aFont);
   if (ScaledFontMac::CTFontDrawGlyphsPtr != nullptr) {
     ScaledFontMac::CTFontDrawGlyphsPtr(macFont->mCTFont, glyphs.begin(),
                                        positions.begin(),
@@ -1298,12 +1322,12 @@ DrawTargetSkia::FillGlyphsWithCG(ScaledFont *aFont,
 }
 
 static bool
-HasFontSmoothingBackgroundColor(const GlyphRenderingOptions* aRenderingOptions)
+HasFontSmoothingBackgroundColor(ScaledFont* aFont)
 {
   // This should generally only be true if we have a popup context menu
-  if (aRenderingOptions && aRenderingOptions->GetType() == FontType::MAC) {
+  if (aFont && aFont->GetType() == FontType::MAC) {
     Color fontSmoothingBackgroundColor =
-      static_cast<const GlyphRenderingOptionsCG*>(aRenderingOptions)->FontSmoothingBackgroundColor();
+      static_cast<ScaledFontMac*>(aFont)->FontSmoothingBackgroundColor();
     return fontSmoothingBackgroundColor.a > 0;
   }
 
@@ -1311,9 +1335,9 @@ HasFontSmoothingBackgroundColor(const GlyphRenderingOptions* aRenderingOptions)
 }
 
 static bool
-ShouldUseCGToFillGlyphs(const GlyphRenderingOptions* aOptions, const Pattern& aPattern)
+ShouldUseCGToFillGlyphs(ScaledFont* aFont, const Pattern& aPattern)
 {
-  return HasFontSmoothingBackgroundColor(aOptions) &&
+  return HasFontSmoothingBackgroundColor(aFont) &&
           aPattern.GetType() == PatternType::COLOR;
 }
 
@@ -1340,8 +1364,7 @@ DrawTargetSkia::DrawGlyphs(ScaledFont* aFont,
                            const GlyphBuffer& aBuffer,
                            const Pattern& aPattern,
                            const StrokeOptions* aStrokeOptions,
-                           const DrawOptions& aOptions,
-                           const GlyphRenderingOptions* aRenderingOptions)
+                           const DrawOptions& aOptions)
 {
   if (!CanDrawFont(aFont)) {
     return;
@@ -1351,8 +1374,8 @@ DrawTargetSkia::DrawGlyphs(ScaledFont* aFont,
 
 #ifdef MOZ_WIDGET_COCOA
   if (!aStrokeOptions &&
-      ShouldUseCGToFillGlyphs(aRenderingOptions, aPattern)) {
-    if (FillGlyphsWithCG(aFont, aBuffer, aPattern, aOptions, aRenderingOptions)) {
+      ShouldUseCGToFillGlyphs(aFont, aPattern)) {
+    if (FillGlyphsWithCG(aFont, aBuffer, aPattern, aOptions)) {
       return;
     }
   }
@@ -1472,10 +1495,9 @@ void
 DrawTargetSkia::FillGlyphs(ScaledFont* aFont,
                            const GlyphBuffer& aBuffer,
                            const Pattern& aPattern,
-                           const DrawOptions& aOptions,
-                           const GlyphRenderingOptions* aRenderingOptions)
+                           const DrawOptions& aOptions)
 {
-  DrawGlyphs(aFont, aBuffer, aPattern, nullptr, aOptions, aRenderingOptions);
+  DrawGlyphs(aFont, aBuffer, aPattern, nullptr, aOptions);
 }
 
 void
@@ -1483,10 +1505,9 @@ DrawTargetSkia::StrokeGlyphs(ScaledFont* aFont,
                              const GlyphBuffer& aBuffer,
                              const Pattern& aPattern,
                              const StrokeOptions& aStrokeOptions,
-                             const DrawOptions& aOptions,
-                             const GlyphRenderingOptions* aRenderingOptions)
+                             const DrawOptions& aOptions)
 {
-  DrawGlyphs(aFont, aBuffer, aPattern, &aStrokeOptions, aOptions, aRenderingOptions);
+  DrawGlyphs(aFont, aBuffer, aPattern, &aStrokeOptions, aOptions);
 }
 
 void
@@ -1561,12 +1582,14 @@ DrawTarget::Draw3DTransformedSurface(SourceSurface* aSurface, const Matrix4x4& a
   if (!dstSurf) {
     return false;
   }
+
+  DataSourceSurface::ScopedMap map(dstSurf, DataSourceSurface::READ_WRITE);
   std::unique_ptr<SkCanvas> dstCanvas(
     SkCanvas::MakeRasterDirect(
                         SkImageInfo::Make(xformBounds.Width(), xformBounds.Height(),
                         GfxFormatToSkiaColorType(dstSurf->GetFormat()),
                         kPremul_SkAlphaType),
-      dstSurf->GetData(), dstSurf->Stride()));
+      map.GetData(), map.GetStride()));
   if (!dstCanvas) {
     return false;
   }
@@ -1734,13 +1757,14 @@ DrawTargetSkia::OptimizeSourceSurfaceForUnknownAlpha(SourceSurface *aSurface) co
   }
 
   RefPtr<DataSourceSurface> dataSurface = aSurface->GetDataSurface();
+  DataSourceSurface::ScopedMap map(dataSurface, DataSourceSurface::READ_WRITE);
 
   // For plugins, GDI can sometimes just write 0 to the alpha channel
   // even for RGBX formats. In this case, we have to manually write
   // the alpha channel to make Skia happy with RGBX and in case GDI
   // writes some bad data. Luckily, this only happens on plugins.
-  WriteRGBXFormat(dataSurface->GetData(), dataSurface->GetSize(),
-                  dataSurface->Stride(), dataSurface->GetFormat());
+  WriteRGBXFormat(map.GetData(), dataSurface->GetSize(),
+                  map.GetStride(), dataSurface->GetFormat());
   return dataSurface.forget();
 }
 
@@ -1763,8 +1787,11 @@ DrawTargetSkia::OptimizeSourceSurface(SourceSurface *aSurface) const
   // to trigger any required readback so that it only happens
   // once.
   RefPtr<DataSourceSurface> dataSurface = aSurface->GetDataSurface();
-  MOZ_ASSERT(VerifyRGBXFormat(dataSurface->GetData(), dataSurface->GetSize(),
-                              dataSurface->Stride(), dataSurface->GetFormat()));
+#ifdef DEBUG
+  DataSourceSurface::ScopedMap map(dataSurface, DataSourceSurface::READ);
+  MOZ_ASSERT(VerifyRGBXFormat(map.GetData(), dataSurface->GetSize(),
+                              map.GetStride(), dataSurface->GetFormat()));
+#endif
   return dataSurface.forget();
 }
 
@@ -2164,6 +2191,25 @@ DrawTargetSkia::PopLayer()
 #endif
 }
 
+void
+DrawTargetSkia::Blur(const AlphaBoxBlur& aBlur)
+{
+  MarkChanged();
+  Flush();
+
+  SkPixmap pixmap;
+  if (!mCanvas->peekPixels(&pixmap)) {
+    gfxWarning() << "Cannot perform in-place blur on non-raster Skia surface";
+    return;
+  }
+
+  // Sanity check that the blur size matches the draw target.
+  MOZ_ASSERT(pixmap.width() == aBlur.GetSize().width);
+  MOZ_ASSERT(pixmap.height() == aBlur.GetSize().height);
+  MOZ_ASSERT(size_t(aBlur.GetStride()) == pixmap.rowBytes());
+  aBlur.Blur(static_cast<uint8_t*>(pixmap.writable_addr()));
+}
+
 already_AddRefed<GradientStops>
 DrawTargetSkia::CreateGradientStops(GradientStop *aStops, uint32_t aNumStops, ExtendMode aExtendMode) const
 {
@@ -2186,7 +2232,17 @@ DrawTargetSkia::CreateFilter(FilterType aType)
 void
 DrawTargetSkia::MarkChanged()
 {
+  // I'm not entirely certain whether this lock is needed, as multiple threads
+  // should never modify the DrawTarget at the same time anyway, but this seems
+  // like the safest.
+  MutexAutoLock lock(mSnapshotLock);
   if (mSnapshot) {
+    if (mSnapshot->hasOneRef()) {
+      // No owners outside of this DrawTarget's own reference. Just dump it.
+      mSnapshot = nullptr;
+      return;
+    }
+
     mSnapshot->DrawTargetWillChange();
     mSnapshot = nullptr;
 
@@ -2195,12 +2251,6 @@ DrawTargetSkia::MarkChanged()
       mSurface->notifyContentWillChange(SkSurface::kRetain_ContentChangeMode);
     }
   }
-}
-
-void
-DrawTargetSkia::SnapshotDestroyed()
-{
-  mSnapshot = nullptr;
 }
 
 } // namespace gfx

@@ -125,10 +125,12 @@ private:
                                       STAUniquePtr<IUnknown> aTarget,
                                       void** aOutInterface);
   MapEntry* Lookup(REFIID aIid);
-  HRESULT QueryInterfaceTarget(REFIID aIid, void** aOutput);
+  HRESULT QueryInterfaceTarget(REFIID aIid, void** aOutput,
+                               TimeDuration* aOutDuration = nullptr);
   HRESULT ThreadSafeQueryInterface(REFIID aIid,
                                    IUnknown** aOutInterface) override;
   HRESULT CreateInterceptor(REFIID aIid, IUnknown* aOuter, IUnknown** aOutput);
+  REFIID MarshalAs(REFIID aIid) const;
   HRESULT PublishTarget(detail::LiveSetAutoLock& aLiveSetLock,
                         RefPtr<IUnknown> aInterceptor,
                         REFIID aTargetIid,

@@ -124,6 +124,15 @@ OriginalPromiseThen(JSContext* cx, Handle<PromiseObject*> promise,
                     HandleValue onFulfilled, HandleValue onRejected,
                     MutableHandleObject dependent, bool createDependent);
 
+/**
+ * PromiseResolve ( C, x )
+ *
+ * The abstract operation PromiseResolve, given a constructor and a value,
+ * returns a new promise resolved with that value.
+ */
+MOZ_MUST_USE JSObject*
+PromiseResolve(JSContext* cx, HandleObject constructor, HandleValue value);
+
 
 MOZ_MUST_USE PromiseObject*
 CreatePromiseObjectForAsync(JSContext* cx, HandleValue generatorVal);
@@ -187,6 +196,10 @@ class OffThreadPromiseTask : public JS::Dispatchable
 
   public:
     ~OffThreadPromiseTask() override;
+
+    // Initializing an OffThreadPromiseTask informs the runtime that it must
+    // wait on shutdown for this task to rejoin the active JSContext by calling
+    // dispatchResolveAndDestroy().
     bool init(JSContext* cx);
 
     // An initialized OffThreadPromiseTask can be dispatched to an active
@@ -194,7 +207,7 @@ class OffThreadPromiseTask : public JS::Dispatchable
     // lead to resolve() being called on JSContext thread, given the Promise.
     // However, if shutdown interrupts, resolve() may not be called, though the
     // OffThreadPromiseTask will be destroyed on a JSContext thread.
-    void dispatchResolve();
+    void dispatchResolveAndDestroy();
 };
 
 using OffThreadPromiseTaskSet = HashSet<OffThreadPromiseTask*,

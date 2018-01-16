@@ -1,4 +1,3 @@
-use backtrace::Backtrace;
 use hyper::status::StatusCode;
 use rustc_serialize::base64::FromBase64Error;
 use rustc_serialize::json::{DecoderError, Json, ParserError, ToJson};
@@ -141,8 +140,8 @@ pub enum ErrorStatus {
     UnsupportedOperation,
 }
 
-
 impl ErrorStatus {
+    /// Returns the string serialisation of the error type.
     pub fn error_code(&self) -> &'static str {
         use self::ErrorStatus::*;
         match *self {
@@ -178,6 +177,7 @@ impl ErrorStatus {
         }
     }
 
+    /// Returns the correct HTTP status code associated with the error type.
     pub fn http_status(&self) -> StatusCode {
         use self::ErrorStatus::*;
         use self::StatusCode::*;
@@ -201,7 +201,7 @@ impl ErrorStatus {
             NoSuchWindow => NotFound,
             ScriptTimeout => RequestTimeout,
             SessionNotCreated => InternalServerError,
-            StaleElementReference => BadRequest,
+            StaleElementReference => NotFound,
             Timeout => RequestTimeout,
             UnableToCaptureScreen => BadRequest,
             UnableToSetCookie => InternalServerError,
@@ -211,6 +211,42 @@ impl ErrorStatus {
             UnknownMethod => MethodNotAllowed,
             UnknownPath => NotFound,
             UnsupportedOperation => InternalServerError,
+        }
+    }
+}
+
+/// Deserialises error type from string.
+impl From<String> for ErrorStatus {
+    fn from(s: String) -> ErrorStatus {
+        use self::ErrorStatus::*;
+        match &*s {
+            "element click intercepted" => ElementClickIntercepted,
+            "element not interactable" | "element not visible" => ElementNotInteractable,
+            "element not selectable" => ElementNotSelectable,
+            "insecure certificate" => InsecureCertificate,
+            "invalid argument" => InvalidArgument,
+            "invalid cookie domain" => InvalidCookieDomain,
+            "invalid coordinates" | "invalid element coordinates" => InvalidCoordinates,
+            "invalid element state" => InvalidElementState,
+            "invalid selector" => InvalidSelector,
+            "invalid session id" => InvalidSessionId,
+            "javascript error" => JavascriptError,
+            "move target out of bounds" => MoveTargetOutOfBounds,
+            "no such alert" => NoSuchAlert,
+            "no such element" => NoSuchElement,
+            "no such frame" => NoSuchFrame,
+            "no such window" => NoSuchWindow,
+            "script timeout" => ScriptTimeout,
+            "session not created" => SessionNotCreated,
+            "stale element reference" => StaleElementReference,
+            "timeout" => Timeout,
+            "unable to capture screen" => UnableToCaptureScreen,
+            "unable to set cookie" => UnableToSetCookie,
+            "unexpected alert open" => UnexpectedAlertOpen,
+            "unknown command" => UnknownCommand,
+            "unknown error" => UnknownError,
+            "unsupported operation" => UnsupportedOperation,
+            _ => UnknownError,
         }
     }
 }
@@ -232,7 +268,7 @@ impl WebDriverError {
         WebDriverError {
             error: error,
             message: message.into(),
-            stack: format!("{:?}", Backtrace::new()).into(),
+            stack: "".into(),
             delete_session: false,
         }
     }

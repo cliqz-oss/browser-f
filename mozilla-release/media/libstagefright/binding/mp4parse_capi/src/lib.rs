@@ -70,8 +70,7 @@ pub enum mp4parse_status {
     UNSUPPORTED = 3,
     EOF = 4,
     IO = 5,
-    TABLE_TOO_LARGE = 6,
-    OOM = 7,
+    OOM = 6,
 }
 
 #[allow(non_camel_case_types)]
@@ -108,7 +107,7 @@ impl Default for mp4parse_codec {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct mp4parse_track_info {
     pub track_type: mp4parse_track_type,
     pub codec: mp4parse_codec,
@@ -130,6 +129,7 @@ pub struct mp4parse_indice {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct mp4parse_byte_data {
     pub length: u32,
     // cheddar can't handle generic type, so it needs to be multiple data types here.
@@ -165,7 +165,7 @@ pub struct mp4parse_pssh_info {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct mp4parse_sinf_info {
     pub is_encrypted: u32,
     pub iv_size: u8,
@@ -173,7 +173,7 @@ pub struct mp4parse_sinf_info {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct mp4parse_track_audio_info {
     pub channels: u16,
     pub bit_depth: u16,
@@ -185,7 +185,7 @@ pub struct mp4parse_track_audio_info {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct mp4parse_track_video_info {
     pub display_width: u32,
     pub display_height: u32,
@@ -197,7 +197,7 @@ pub struct mp4parse_track_video_info {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct mp4parse_fragment_info {
     pub fragment_duration: u64,
     // TODO:
@@ -310,11 +310,6 @@ pub unsafe extern fn mp4parse_log(enable: bool) {
     mp4parse::set_debug_mode(enable);
 }
 
-#[no_mangle]
-pub unsafe extern fn mp4parse_fallible_allocation(enable: bool) {
-    mp4parse::set_fallible_allocation_mode(enable);
-}
-
 /// Run the `mp4parse_parser*` allocated by `mp4parse_new()` until EOF or error.
 #[no_mangle]
 pub unsafe extern fn mp4parse_read(parser: *mut mp4parse_parser) -> mp4parse_status {
@@ -344,7 +339,6 @@ pub unsafe extern fn mp4parse_read(parser: *mut mp4parse_parser) -> mp4parse_sta
             (*parser).set_poisoned(true);
             mp4parse_status::IO
         },
-        Err(Error::TableTooLarge) => mp4parse_status::TABLE_TOO_LARGE,
         Err(Error::OutOfMemory) => mp4parse_status::OOM,
     }
 }
@@ -438,7 +432,7 @@ pub unsafe extern fn mp4parse_get_track_info(parser: *mut mp4parse_parser, track
                 mp4parse_codec::AAC,
             AudioCodecSpecific::ES_Descriptor(ref esds) if esds.audio_codec == CodecType::MP3 =>
                 mp4parse_codec::MP3,
-            AudioCodecSpecific::ES_Descriptor(_) =>
+            AudioCodecSpecific::ES_Descriptor(_) | AudioCodecSpecific::LPCM =>
                 mp4parse_codec::UNKNOWN,
             AudioCodecSpecific::MP3 =>
                 mp4parse_codec::MP3,
@@ -527,9 +521,9 @@ pub unsafe extern fn mp4parse_get_track_audio_info(parser: *mut mp4parse_parser,
         _ => return mp4parse_status::INVALID,
     };
 
-    (*info).channels = audio.channelcount;
+    (*info).channels = audio.channelcount as u16;
     (*info).bit_depth = audio.samplesize;
-    (*info).sample_rate = audio.samplerate >> 16; // 16.16 fixed point
+    (*info).sample_rate = audio.samplerate as u32;
 
     match audio.codec_specific {
         AudioCodecSpecific::ES_Descriptor(ref v) => {
@@ -578,7 +572,7 @@ pub unsafe extern fn mp4parse_get_track_audio_info(parser: *mut mp4parse_parser,
                 }
             }
         }
-        AudioCodecSpecific::MP3 => (),
+        AudioCodecSpecific::MP3 | AudioCodecSpecific::LPCM => (),
     }
 
     if let Some(p) = audio.protection_info.iter().find(|sinf| sinf.tenc.is_some()) {
@@ -839,20 +833,26 @@ impl<'a> Iterator for SampleToChunkIterator<'a> {
         let has_chunk = self.chunks.next()
             .or_else(|| {
                 self.chunks = match (self.stsc_peek_iter.next(), self.stsc_peek_iter.peek()) {
-                    (Some(next), Some(peek)) => {
+                    (Some(next), Some(peek)) if next.first_chunk > 0 && peek.first_chunk > 0 => {
                         self.sample_count = next.samples_per_chunk;
                         ((next.first_chunk - 1) .. (peek.first_chunk - 1))
                     },
-                    (Some(next), None) => {
+                    (Some(next), None) if next.first_chunk > 0 => {
                         self.sample_count = next.samples_per_chunk;
                         // Total chunk number in 'stsc' could be different to 'stco',
                         // there could be more chunks at the last 'stsc' record.
-                        ((next.first_chunk - 1) .. next.first_chunk + self.remain_chunk_count -1)
+                        match next.first_chunk.checked_add(self.remain_chunk_count) {
+                            Some(r) => ((next.first_chunk - 1) .. r - 1),
+                            _ => (0 .. 0),
+                        }
                     },
                     _ => (0 .. 0),
                 };
-                self.remain_chunk_count -= self.chunks.len() as u32;
-                self.chunks.next()
+
+                self.remain_chunk_count.checked_sub(self.chunks.len() as u32).and_then(|res| {
+                    self.remain_chunk_count = res;
+                    self.chunks.next()
+                })
             });
 
         has_chunk.map_or(None, |id| { Some((id, self.sample_count)) })
@@ -925,10 +925,9 @@ fn create_sample_table(track: &Track, track_offset_time: i64) -> Option<Vec<mp4p
     // Mark the sync sample in sample_table according to 'stss'.
     if let Some(ref v) = track.stss {
         for iter in &v.samples {
-            if let Some(elem) = sample_table.get_mut((iter - 1) as usize) {
-                elem.sync = true;
-            } else {
-                return None;
+            match iter.checked_sub(1).and_then(|idx| { sample_table.get_mut(idx as usize) }) {
+                Some(elem) => elem.sync = true,
+                _ => return None,
             }
         }
     }

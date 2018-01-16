@@ -17,10 +17,10 @@
 
 #include "mozilla/Move.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/Telemetry.h"
 
 #include "webrtc/config.h"
 
-#include "signaling/src/jsep/JsepTrack.h"
 #include "signaling/src/jsep/JsepTrack.h"
 #include "signaling/src/jsep/JsepTransport.h"
 #include "signaling/src/sdp/Sdp.h"
@@ -338,7 +338,7 @@ JsepSessionImpl::SetParameters(const std::string& streamId,
     }
   }
   if (addVideoExt != SdpDirectionAttribute::kInactive) {
-    AddVideoRtpExtension("urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id", addVideoExt);
+    AddVideoRtpExtension(webrtc::RtpExtension::kRtpStreamIdUri, addVideoExt);
   }
 
   it->mTrack->SetJsConstraints(constraints);
@@ -727,6 +727,7 @@ JsepSessionImpl::CreateOffer(const JsepOfferOptions& options,
                              std::string* offer)
 {
   mLastError.clear();
+  mLocalIceIsRestarting = options.mIceRestart.isSome() && *(options.mIceRestart);
 
   if (mState != kJsepStateStable) {
     JSEP_SET_ERROR("Cannot create offer in state " << GetStateStr(mState));
@@ -1197,6 +1198,19 @@ JsepSessionImpl::SetLocalDescription(JsepSdpType type, const std::string& sdp)
   rv = ValidateLocalDescription(*parsed);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  switch (type) {
+    case kJsepSdpOffer:
+      rv = ValidateOffer(*parsed);
+      break;
+    case kJsepSdpAnswer:
+    case kJsepSdpPranswer:
+      rv = ValidateAnswer(*mPendingRemoteDescription, *parsed);
+      break;
+    case kJsepSdpRollback:
+      MOZ_CRASH(); // Handled above
+  }
+  NS_ENSURE_SUCCESS(rv, rv);
+
   // Create transport objects.
   mOldTransports = mTransports; // Save in case we need to rollback
   mTransports.clear();
@@ -1236,12 +1250,8 @@ JsepSessionImpl::SetLocalDescriptionAnswer(JsepSdpType type,
   MOZ_ASSERT(mState == kJsepStateHaveRemoteOffer);
   mPendingLocalDescription = Move(answer);
 
-  nsresult rv = ValidateAnswer(*mPendingRemoteDescription,
-                               *mPendingLocalDescription);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = HandleNegotiatedSession(mPendingLocalDescription,
-                               mPendingRemoteDescription);
+  nsresult rv = HandleNegotiatedSession(mPendingLocalDescription,
+                                        mPendingRemoteDescription);
   NS_ENSURE_SUCCESS(rv, rv);
 
   mCurrentRemoteDescription = Move(mPendingRemoteDescription);
@@ -1305,6 +1315,19 @@ JsepSessionImpl::SetRemoteDescription(JsepSdpType type, const std::string& sdp)
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = ValidateRemoteDescription(*parsed);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  switch (type) {
+    case kJsepSdpOffer:
+      rv = ValidateOffer(*parsed);
+      break;
+    case kJsepSdpAnswer:
+    case kJsepSdpPranswer:
+      rv = ValidateAnswer(*mPendingLocalDescription, *parsed);
+      break;
+    case kJsepSdpRollback:
+      MOZ_CRASH(); // Handled above
+  }
   NS_ENSURE_SUCCESS(rv, rv);
 
   bool iceLite =
@@ -1532,6 +1555,11 @@ JsepSessionImpl::MakeNegotiatedTrackPair(const SdpMediaSection& remote,
     // TODO(bug 1095743): verify that the PTs are consistent with mux.
     MOZ_MTLOG(ML_DEBUG, "RTCP-MUX is off");
     trackPairOut->mRtcpTransport = transport;
+  }
+
+  if (local.GetMediaType() != SdpMediaSection::kApplication) {
+    Telemetry::Accumulate(Telemetry::WEBRTC_RTCP_MUX,
+        transport->mComponents == 1);
   }
 
   return NS_OK;
@@ -1777,12 +1805,9 @@ JsepSessionImpl::SetRemoteDescriptionOffer(UniquePtr<Sdp> offer)
 {
   MOZ_ASSERT(mState == kJsepStateStable);
 
-  nsresult rv = ValidateOffer(*offer);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   // TODO(bug 1095780): Note that we create remote tracks even when
   // They contain only codecs we can't negotiate or other craziness.
-  rv = SetRemoteTracksFromDescription(offer.get());
+  nsresult rv = SetRemoteTracksFromDescription(offer.get());
   NS_ENSURE_SUCCESS(rv, rv);
 
   mPendingRemoteDescription = Move(offer);
@@ -1800,13 +1825,9 @@ JsepSessionImpl::SetRemoteDescriptionAnswer(JsepSdpType type,
 
   mPendingRemoteDescription = Move(answer);
 
-  nsresult rv = ValidateAnswer(*mPendingLocalDescription,
-                               *mPendingRemoteDescription);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   // TODO(bug 1095780): Note that this creates remote tracks even if
   // we offered sendonly and other side offered sendrecv or recvonly.
-  rv = SetRemoteTracksFromDescription(mPendingRemoteDescription.get());
+  nsresult rv = SetRemoteTracksFromDescription(mPendingRemoteDescription.get());
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = HandleNegotiatedSession(mPendingLocalDescription,
@@ -1989,6 +2010,15 @@ JsepSessionImpl::ValidateRemoteDescription(const Sdp& description)
     }
 
     bool differ = mSdpHelper.IceCredentialsDiffer(newMsection, oldMsection);
+
+    // Detect bad answer ICE restart when offer doesn't request ICE restart
+    if (mIsOfferer && differ && !mLocalIceIsRestarting) {
+      JSEP_SET_ERROR("Remote description indicates ICE restart but offer did not "
+                     "request ICE restart (new remote description changes either "
+                     "the ice-ufrag or ice-pwd)");
+      return NS_ERROR_INVALID_ARG;
+    }
+
     // Detect whether all the creds are the same or all are different
     if (!iceCredsDiffer.isSome()) {
       // for the first msection capture whether creds are different or same
@@ -2382,12 +2412,15 @@ JsepSessionImpl::SetupDefaultCodecs()
 void
 JsepSessionImpl::SetupDefaultRtpExtensions()
 {
-  AddAudioRtpExtension("urn:ietf:params:rtp-hdrext:ssrc-audio-level",
+  AddAudioRtpExtension(webrtc::RtpExtension::kAudioLevelUri,
                        SdpDirectionAttribute::Direction::kSendonly);
-  AddVideoRtpExtension(
-    "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time",
+  AddAudioRtpExtension(webrtc::RtpExtension::kMIdUri,
                        SdpDirectionAttribute::Direction::kSendrecv);
-  AddVideoRtpExtension("urn:ietf:params:rtp-hdrext:toffset",
+  AddVideoRtpExtension(webrtc::RtpExtension::kAbsSendTimeUri,
+                       SdpDirectionAttribute::Direction::kSendrecv);
+  AddVideoRtpExtension(webrtc::RtpExtension::kTimestampOffsetUri,
+                       SdpDirectionAttribute::Direction::kSendrecv);
+  AddVideoRtpExtension(webrtc::RtpExtension::kMIdUri,
                        SdpDirectionAttribute::Direction::kSendrecv);
 }
 

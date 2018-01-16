@@ -10,7 +10,7 @@
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsContentUtils.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIFrame.h"
 #include "mozilla/dom/Element.h"
 
@@ -34,9 +34,15 @@ nsIContent::SetPrimaryFrame(nsIFrame* aFrame)
                   "Losing track of existing primary frame");
 
   if (aFrame) {
-    aFrame->SetIsPrimaryFrame(true);
+    if (MOZ_LIKELY(!IsHTMLElement(nsGkAtoms::area)) ||
+        aFrame->GetContent() == this) {
+      aFrame->SetIsPrimaryFrame(true);
+    }
   } else if (nsIFrame* currentPrimaryFrame = GetPrimaryFrame()) {
-    currentPrimaryFrame->SetIsPrimaryFrame(false);
+    if (MOZ_LIKELY(!IsHTMLElement(nsGkAtoms::area)) ||
+        currentPrimaryFrame->GetContent() == this) {
+      currentPrimaryFrame->SetIsPrimaryFrame(false);
+    }
   }
 
   mPrimaryFrame = aFrame;
@@ -113,7 +119,7 @@ nsIContent::GetFlattenedTreeParent() const
 }
 
 inline bool
-nsIContent::IsEventAttributeName(nsIAtom* aName)
+nsIContent::IsEventAttributeName(nsAtom* aName)
 {
   const char16_t* name = aName->GetUTF16String();
   if (name[0] != 'o' || name[1] != 'n') {

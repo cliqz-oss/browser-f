@@ -13,10 +13,8 @@
 #include "jsapi.h"
 #include "jscntxt.h"
 #include "jsfun.h"
-#include "jsgc.h"
 #include "jswrapper.h"
 
-#include "gc/Marking.h"
 #include "proxy/DeadObjectProxy.h"
 #include "proxy/ScriptedProxyHandler.h"
 #include "vm/WrapperObject.h"
@@ -24,6 +22,7 @@
 #include "jsatominlines.h"
 #include "jsobjinlines.h"
 
+#include "gc/Marking-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -269,6 +268,21 @@ Proxy::has(JSContext* cx, HandleObject proxy, HandleId id, bool* bp)
     }
 
     return handler->has(cx, proxy, id, bp);
+}
+
+bool
+js::ProxyHas(JSContext* cx, HandleObject proxy, HandleValue idVal, MutableHandleValue result)
+{
+    RootedId id(cx);
+    if (!ValueToId<CanGC>(cx, idVal, &id))
+        return false;
+
+    bool has;
+    if (!Proxy::has(cx, proxy, id, &has))
+        return false;
+
+    result.setBoolean(has);
+    return true;
 }
 
 bool
@@ -610,22 +624,6 @@ Proxy::boxedValue_unbox(JSContext* cx, HandleObject proxy, MutableHandleValue vp
 JSObject * const TaggedProto::LazyProto = reinterpret_cast<JSObject*>(0x1);
 
 /* static */ bool
-Proxy::watch(JSContext* cx, JS::HandleObject proxy, JS::HandleId id, JS::HandleObject callable)
-{
-    if (!CheckRecursionLimit(cx))
-        return false;
-    return proxy->as<ProxyObject>().handler()->watch(cx, proxy, id, callable);
-}
-
-/* static */ bool
-Proxy::unwatch(JSContext* cx, JS::HandleObject proxy, JS::HandleId id)
-{
-    if (!CheckRecursionLimit(cx))
-        return false;
-    return proxy->as<ProxyObject>().handler()->unwatch(cx, proxy, id);
-}
-
-/* static */ bool
 Proxy::getElements(JSContext* cx, HandleObject proxy, uint32_t begin, uint32_t end,
                    ElementAdder* adder)
 {
@@ -808,7 +806,6 @@ const ObjectOps js::ProxyObjectOps = {
     Proxy::set,
     Proxy::getOwnPropertyDescriptor,
     proxy_DeleteProperty,
-    Proxy::watch, Proxy::unwatch,
     Proxy::getElements,
     Proxy::fun_toString
 };

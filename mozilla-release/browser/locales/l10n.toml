@@ -51,6 +51,7 @@ locales = [
     "hsb",
     "hu",
     "hy-AM",
+    "ia",
     "id",
     "is",
     "it",
@@ -77,6 +78,7 @@ locales = [
     "ne-NP",
     "nl",
     "nn-NO",
+    "oc",
     "or",
     "pa-IN",
     "pl",
@@ -101,6 +103,7 @@ locales = [
     "ur",
     "uz",
     "vi",
+    "wo",
     "xh",
     "zh-CN",
     "zh-TW",
@@ -117,6 +120,10 @@ locales = [
 [[paths]]
     reference = "browser/branding/official/locales/en-US/**"
     l10n = "{l}browser/branding/official/**"
+
+[[paths]]
+    reference = "browser/extensions/formautofill/locales/en-US/**"
+    l10n = "{l}browser/extensions/formautofill/**"
 
 [[paths]]
     reference = "browser/extensions/onboarding/locales/en-US/**"

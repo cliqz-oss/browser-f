@@ -26,6 +26,7 @@
 #include "nsIDocument.h"
 #include "mozilla/dom/Animation.h"
 #include "nsIAnimationObserver.h"
+#include "nsGlobalWindow.h"
 
 class nsDOMMutationObserver;
 using mozilla::dom::MutationObservingInfo;
@@ -38,8 +39,8 @@ class nsDOMMutationRecord final : public nsISupports,
 public:
   typedef nsTArray<RefPtr<mozilla::dom::Animation>> AnimationArray;
 
-  nsDOMMutationRecord(nsIAtom* aType, nsISupports* aOwner)
-  : mType(aType), mAttrNamespace(NullString()), mPrevValue(NullString()), mOwner(aOwner)
+  nsDOMMutationRecord(nsAtom* aType, nsISupports* aOwner)
+  : mType(aType), mAttrNamespace(VoidString()), mPrevValue(VoidString()), mOwner(aOwner)
   {
   }
 
@@ -111,8 +112,8 @@ public:
   }
 
   nsCOMPtr<nsINode>             mTarget;
-  nsCOMPtr<nsIAtom>             mType;
-  nsCOMPtr<nsIAtom>             mAttrName;
+  RefPtr<nsAtom>             mType;
+  RefPtr<nsAtom>             mAttrName;
   nsString                      mAttrNamespace;
   nsString                      mPrevValue;
   RefPtr<nsSimpleContentList> mAddedNodes;
@@ -217,8 +218,8 @@ public:
     mAttributeOldValue = aOldValue;
   }
 
-  nsCOMArray<nsIAtom>& AttributeFilter() { return mAttributeFilter; }
-  void SetAttributeFilter(nsCOMArray<nsIAtom>&& aFilter)
+  nsTArray<RefPtr<nsAtom>>& AttributeFilter() { return mAttributeFilter; }
+  void SetAttributeFilter(nsTArray<RefPtr<nsAtom>>&& aFilter)
   {
     NS_ASSERTION(!mParent, "Shouldn't have parent");
     mAttributeFilter.Clear();
@@ -286,7 +287,7 @@ protected:
   bool ObservesAttr(nsINode* aRegisterTarget,
                     mozilla::dom::Element* aElement,
                     int32_t aNameSpaceID,
-                    nsIAtom* aAttr)
+                    nsAtom* aAttr)
   {
     if (mParent) {
       return mParent->ObservesAttr(aRegisterTarget, aElement, aNameSpaceID, aAttr);
@@ -305,8 +306,8 @@ protected:
       return false;
     }
 
-    nsCOMArray<nsIAtom>& filters = AttributeFilter();
-    for (int32_t i = 0; i < filters.Count(); ++i) {
+    nsTArray<RefPtr<nsAtom>>& filters = AttributeFilter();
+    for (size_t i = 0; i < filters.Length(); ++i) {
       if (filters[i] == aAttr) {
         return true;
       }
@@ -336,7 +337,7 @@ private:
   bool                               mAllAttributes;
   bool                               mAttributeOldValue;
   bool                               mAnimations;
-  nsCOMArray<nsIAtom>                mAttributeFilter;
+  nsTArray<RefPtr<nsAtom>>          mAttributeFilter;
 };
 
 
@@ -405,7 +406,7 @@ public:
   virtual void AttributeSetToCurrentValue(nsIDocument* aDocument,
                                           mozilla::dom::Element* aElement,
                                           int32_t aNameSpaceID,
-                                          nsIAtom* aAttribute) override
+                                          nsAtom* aAttribute) override
   {
     // We can reuse AttributeWillChange implementation.
     AttributeWillChange(aDocument, aElement, aNameSpaceID, aAttribute,
@@ -574,11 +575,27 @@ public:
   }
 
   // static methods
-  static void HandleMutations()
+  static void HandleMutations(mozilla::AutoSlowOperation& aAso)
   {
     if (sScheduledMutationObservers) {
-      HandleMutationsInternal();
+      HandleMutationsInternal(aAso);
     }
+  }
+
+  static bool AllScheduledMutationObserversAreSuppressed()
+  {
+    if (sScheduledMutationObservers) {
+      uint32_t len = sScheduledMutationObservers->Length();
+      if (len > 0) {
+        for (uint32_t i = 0; i < len; ++i) {
+          if (!(*sScheduledMutationObservers)[i]->Suppressed()) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
+    return false;
   }
 
   static void EnterMutationHandling();
@@ -604,19 +621,15 @@ protected:
   void ScheduleForRun();
   void RescheduleForRun();
 
-  nsDOMMutationRecord* CurrentRecord(nsIAtom* aType);
+  nsDOMMutationRecord* CurrentRecord(nsAtom* aType);
   bool HasCurrentRecord(const nsAString& aType);
 
   bool Suppressed()
   {
-    if (mOwner) {
-      nsCOMPtr<nsIDocument> d = mOwner->GetExtantDoc();
-      return d && d->IsInSyncOperation();
-    }
-    return false;
+    return mOwner && nsGlobalWindowInner::Cast(mOwner)->IsInSyncOperation();
   }
 
-  static void HandleMutationsInternal();
+  static void HandleMutationsInternal(mozilla::AutoSlowOperation& aAso);
 
   static void AddCurrentlyHandlingObserver(nsDOMMutationObserver* aObserver,
                                            uint32_t aMutationLevel);
@@ -644,7 +657,6 @@ protected:
 
   static uint64_t                                    sCount;
   static AutoTArray<RefPtr<nsDOMMutationObserver>, 4>* sScheduledMutationObservers;
-  static nsDOMMutationObserver*                      sCurrentObserver;
 
   static uint32_t                                    sMutationLevel;
   static AutoTArray<AutoTArray<RefPtr<nsDOMMutationObserver>, 4>, 4>*

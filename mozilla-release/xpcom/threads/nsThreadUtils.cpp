@@ -9,6 +9,10 @@
 #include "mozilla/Likely.h"
 #include "mozilla/TimeStamp.h"
 #include "LeakRefPtr.h"
+#include "nsComponentManagerUtils.h"
+#include "nsITimer.h"
+
+#include "nsComponentManagerUtils.h"
 
 #ifdef MOZILLA_INTERNAL_API
 # include "nsThreadManager.h"
@@ -77,16 +81,6 @@ CancelableRunnable::Cancel()
 
 NS_IMPL_ISUPPORTS_INHERITED(IdleRunnable, CancelableRunnable,
                             nsIIdleRunnable)
-
-namespace mozilla {
-namespace detail {
-already_AddRefed<nsITimer> CreateTimer()
-{
-  nsCOMPtr<nsITimer> timer = do_CreateInstance(NS_TIMER_CONTRACTID);
-  return timer.forget();
-}
-} // namespace detail
-} // namespace mozilla
 
 NS_IMPL_ISUPPORTS_INHERITED(PrioritizableRunnable, Runnable,
                             nsIRunnablePriority)
@@ -357,15 +351,13 @@ public:
   {
     MOZ_ASSERT(aTarget);
     MOZ_ASSERT(!mTimer);
-    mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
-    if (mTimer) {
-      mTimer->SetTarget(aTarget);
-      mTimer->InitWithNamedFuncCallback(TimedOut,
-                                        this,
-                                        aDelay,
-                                        nsITimer::TYPE_ONE_SHOT,
-                                        "IdleRunnableWrapper::SetTimer");
-    }
+    NS_NewTimerWithFuncCallback(getter_AddRefs(mTimer),
+                                TimedOut,
+                                this,
+                                aDelay,
+                                nsITimer::TYPE_ONE_SHOT,
+                                "IdleRunnableWrapper::SetTimer",
+                                aTarget);
   }
 
   NS_IMETHOD GetName(nsACString& aName) override

@@ -5,7 +5,8 @@
 use {ColorF, FontInstanceKey, ImageKey, LayerPixel, LayoutPixel, LayoutPoint, LayoutRect,
      LayoutSize, LayoutTransform};
 use {GlyphOptions, LayoutVector2D, PipelineId, PropertyBinding};
-use euclid::{SideOffsets2D, TypedRect, TypedSideOffsets2D};
+use euclid::{SideOffsets2D, TypedRect};
+use std::ops::Not;
 
 // NOTE: some of these structs have an "IMPLICIT" comment.
 // This indicates that the BuiltDisplayList will have serialized
@@ -38,6 +39,29 @@ impl ClipAndScrollInfo {
     }
 }
 
+bitflags! {
+    /// Each bit of the edge AA mask is:
+    /// 0, when the edge of the primitive needs to be considered for AA
+    /// 1, when the edge of the segment needs to be considered for AA
+    ///
+    /// *Note*: the bit values have to match the shader logic in
+    /// `write_transform_vertex()` function.
+    #[derive(Deserialize, Serialize)]
+    pub struct EdgeAaSegmentMask: u8 {
+        const LEFT = 0x1;
+        const TOP = 0x2;
+        const RIGHT = 0x4;
+        const BOTTOM = 0x8;
+    }
+}
+
+/// A tag that can be used to identify items during hit testing. If the tag
+/// is missing then the item doesn't take part in hit testing at all. This
+/// is composed of two numbers. In Servo, the first is an identifier while the
+/// second is used to select the cursor that should be used during mouse
+/// movement.
+pub type ItemTag = (u64, u8);
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DisplayItem {
     pub item: SpecificDisplayItem,
@@ -49,7 +73,9 @@ pub struct DisplayItem {
 pub struct PrimitiveInfo<T> {
     pub rect: TypedRect<f32, T>,
     pub local_clip: LocalClip,
+    pub edge_aa_segment_mask: EdgeAaSegmentMask,
     pub is_backface_visible: bool,
+    pub tag: Option<ItemTag>,
 }
 
 impl LayerPrimitiveInfo {
@@ -57,9 +83,10 @@ impl LayerPrimitiveInfo {
         Self::with_clip_rect(rect, rect)
     }
 
-    pub fn with_clip_rect(rect: TypedRect<f32, LayerPixel>,
-                          clip_rect: TypedRect<f32, LayerPixel>)
-                          -> Self {
+    pub fn with_clip_rect(
+        rect: TypedRect<f32, LayerPixel>,
+        clip_rect: TypedRect<f32, LayerPixel>,
+    ) -> Self {
         Self::with_clip(rect, LocalClip::from(clip_rect))
     }
 
@@ -67,7 +94,9 @@ impl LayerPrimitiveInfo {
         PrimitiveInfo {
             rect: rect,
             local_clip: clip,
+            edge_aa_segment_mask: EdgeAaSegmentMask::empty(),
             is_backface_visible: true,
+            tag: None,
         }
     }
 }
@@ -81,6 +110,7 @@ pub enum SpecificDisplayItem {
     ScrollFrame(ScrollFrameDisplayItem),
     StickyFrame(StickyFrameDisplayItem),
     Rectangle(RectangleDisplayItem),
+    ClearRectangle,
     Line(LineDisplayItem),
     Text(TextDisplayItem),
     Image(ImageDisplayItem),
@@ -93,32 +123,64 @@ pub enum SpecificDisplayItem {
     PushStackingContext(PushStackingContextDisplayItem),
     PopStackingContext,
     SetGradientStops,
-    PushNestedDisplayList,
-    PopNestedDisplayList,
-    PushTextShadow(TextShadow),
-    PopTextShadow,
+    PushShadow(Shadow),
+    PopAllShadows,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ClipDisplayItem {
     pub id: ClipId,
-    pub parent_id: ClipId,
     pub image_mask: Option<ImageMask>,
+}
+
+/// The minimum and maximum allowable offset for a sticky frame in a single dimension.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct StickyOffsetBounds {
+    /// The minimum offset for this frame, typically a negative value, which specifies how
+    /// far in the negative direction the sticky frame can offset its contents in this
+    /// dimension.
+    pub min: f32,
+
+    /// The maximum offset for this frame, typically a positive value, which specifies how
+    /// far in the positive direction the sticky frame can offset its contents in this
+    /// dimension.
+    pub max: f32,
+}
+
+impl StickyOffsetBounds {
+    pub fn new(min: f32, max: f32) -> StickyOffsetBounds {
+        StickyOffsetBounds { min, max }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct StickyFrameDisplayItem {
     pub id: ClipId,
-    pub sticky_frame_info: StickyFrameInfo,
-}
 
-pub type StickyFrameInfo = TypedSideOffsets2D<Option<StickySideConstraint>, LayoutPoint>;
+    /// The margins that should be maintained between the edge of the parent viewport and this
+    /// sticky frame. A margin of None indicates that the sticky frame should not stick at all
+    /// to that particular edge of the viewport.
+    pub margins: SideOffsets2D<Option<f32>>,
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub struct StickySideConstraint {
-    pub margin: f32,
-    pub max_offset: f32,
+    /// The minimum and maximum vertical offsets for this sticky frame. Ignoring these constraints,
+    /// the sticky frame will continue to stick to the edge of the viewport as its original
+    /// position is scrolled out of view. Constraints specify a maximum and minimum offset from the
+    /// original position relative to non-sticky content within the same scrolling frame.
+    pub vertical_offset_bounds: StickyOffsetBounds,
+
+    /// The minimum and maximum horizontal offsets for this sticky frame. Ignoring these constraints,
+    /// the sticky frame will continue to stick to the edge of the viewport as its original
+    /// position is scrolled out of view. Constraints specify a maximum and minimum offset from the
+    /// original position relative to non-sticky content within the same scrolling frame.
+    pub horizontal_offset_bounds: StickyOffsetBounds,
+
+    /// The amount of offset that has already been applied to the sticky frame. A positive y
+    /// component this field means that a top-sticky item was in a scrollframe that has been
+    /// scrolled down, such that the sticky item's position needed to be offset downwards by
+    /// `previously_applied_offset.y`. A negative y component corresponds to the upward offset
+    /// applied due to bottom-stickiness. The x-axis works analogously.
+    pub previously_applied_offset: LayoutVector2D,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
@@ -130,7 +192,6 @@ pub enum ScrollSensitivity {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ScrollFrameDisplayItem {
     pub id: ClipId,
-    pub parent_id: ClipId,
     pub image_mask: Option<ImageMask>,
     pub scroll_sensitivity: ScrollSensitivity,
 }
@@ -142,11 +203,8 @@ pub struct RectangleDisplayItem {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LineDisplayItem {
-    pub baseline: f32, // LayerPixel
-    pub start: f32,
-    pub end: f32,
     pub orientation: LineOrientation, // toggles whether above values are interpreted as x/y values
-    pub width: f32,
+    pub wavy_line_thickness: f32,
     pub color: ColorF,
     pub style: LineStyle,
 }
@@ -240,6 +298,13 @@ pub struct BorderDisplayItem {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub enum BorderRadiusKind {
+    Uniform,
+    NonUniform,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BorderRadius {
     pub top_left: LayoutSize,
     pub top_right: LayoutSize,
@@ -281,9 +346,8 @@ pub enum BorderStyle {
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum BoxShadowClipMode {
-    None = 0,
-    Outset = 1,
-    Inset = 2,
+    Outset = 0,
+    Inset = 1,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
@@ -293,13 +357,13 @@ pub struct BoxShadowDisplayItem {
     pub color: ColorF,
     pub blur_radius: f32,
     pub spread_radius: f32,
-    pub border_radius: f32,
+    pub border_radius: BorderRadius,
     pub clip_mode: BoxShadowClipMode,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub struct TextShadow {
+pub struct Shadow {
     pub offset: LayoutVector2D,
     pub color: ColorF,
     pub blur_radius: f32,
@@ -332,7 +396,6 @@ pub struct GradientStop {
     pub offset: f32,
     pub color: ColorF,
 }
-known_heap_size!(0, GradientStop);
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RadialGradient {
@@ -371,8 +434,6 @@ pub enum ScrollPolicy {
     Scrollable = 0,
     Fixed = 1,
 }
-
-known_heap_size!(0, ScrollPolicy);
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -543,18 +604,41 @@ impl LocalClip {
                 ComplexClipRegion {
                     rect: complex.rect.translate(offset),
                     radii: complex.radii,
+                    mode: complex.mode,
                 },
             ),
         }
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ClipMode {
+    Clip,    // Pixels inside the region are visible.
+    ClipOut, // Pixels outside the region are visible.
+}
+
+impl Not for ClipMode {
+    type Output = ClipMode;
+
+    fn not(self) -> ClipMode {
+        match self {
+            ClipMode::Clip => ClipMode::ClipOut,
+            ClipMode::ClipOut => ClipMode::Clip,
+        }
+    }
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ComplexClipRegion {
     /// The boundaries of the rectangle.
     pub rect: LayoutRect,
     /// Border radii of this rectangle.
     pub radii: BorderRadius,
+    /// Whether we are clipping inside or outside
+    /// the region.
+    pub mode: ClipMode,
 }
 
 impl BorderRadius {
@@ -614,23 +698,25 @@ impl BorderRadius {
 
 impl ComplexClipRegion {
     /// Create a new complex clip region.
-    pub fn new(rect: LayoutRect, radii: BorderRadius) -> ComplexClipRegion {
-        ComplexClipRegion { rect, radii }
+    pub fn new(
+        rect: LayoutRect,
+        radii: BorderRadius,
+        mode: ClipMode,
+    ) -> Self {
+        ComplexClipRegion { rect, radii, mode }
     }
 }
 
-pub type NestingIndex = u64;
-
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum ClipId {
-    Clip(u64, NestingIndex, PipelineId),
+    Clip(u64, PipelineId),
     ClipExternalId(u64, PipelineId),
     DynamicallyAddedNode(u64, PipelineId),
 }
 
 impl ClipId {
     pub fn root_scroll_node(pipeline_id: PipelineId) -> ClipId {
-        ClipId::Clip(0, 0, pipeline_id)
+        ClipId::Clip(0, pipeline_id)
     }
 
     pub fn root_reference_frame(pipeline_id: PipelineId) -> ClipId {
@@ -649,7 +735,7 @@ impl ClipId {
 
     pub fn pipeline_id(&self) -> PipelineId {
         match *self {
-            ClipId::Clip(_, _, pipeline_id) |
+            ClipId::Clip(_, pipeline_id) |
             ClipId::ClipExternalId(_, pipeline_id) |
             ClipId::DynamicallyAddedNode(_, pipeline_id) => pipeline_id,
         }
@@ -664,33 +750,8 @@ impl ClipId {
 
     pub fn is_root_scroll_node(&self) -> bool {
         match *self {
-            ClipId::Clip(0, 0, _) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_nested(&self) -> bool {
-        match *self {
-            ClipId::Clip(_, nesting_level, _) => nesting_level != 0,
+            ClipId::Clip(0, _) => true,
             _ => false,
         }
     }
 }
-
-macro_rules! define_empty_heap_size_of {
-    ($name:ident) => {
-        impl ::heapsize::HeapSizeOf for $name {
-            fn heap_size_of_children(&self) -> usize { 0 }
-        }
-    }
-}
-
-define_empty_heap_size_of!(ClipAndScrollInfo);
-define_empty_heap_size_of!(ClipId);
-define_empty_heap_size_of!(ImageKey);
-define_empty_heap_size_of!(LocalClip);
-define_empty_heap_size_of!(MixBlendMode);
-define_empty_heap_size_of!(RepeatMode);
-define_empty_heap_size_of!(ScrollSensitivity);
-define_empty_heap_size_of!(StickySideConstraint);
-define_empty_heap_size_of!(TransformStyle);

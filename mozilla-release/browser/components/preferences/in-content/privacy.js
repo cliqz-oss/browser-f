@@ -176,10 +176,19 @@ var gPrivacyPane = {
     setEventListener("notificationsDoNotDisturb", "command",
       gPrivacyPane.toggleDoNotDisturbNotifications);
 
+    let bundlePrefs = document.getElementById("bundlePreferences");
+
     if (AlertsServiceDND) {
       let notificationsDoNotDisturbBox =
         document.getElementById("notificationsDoNotDisturbBox");
       notificationsDoNotDisturbBox.removeAttribute("hidden");
+      let checkbox = document.getElementById("notificationsDoNotDisturb");
+      let brandName = document.getElementById("bundleBrand")
+        .getString("brandShortName");
+      checkbox.setAttribute("label",
+        bundlePrefs.getFormattedString("pauseNotifications.label",
+          [brandName]));
+      checkbox.setAttribute("accesskey", bundlePrefs.getString("pauseNotifications.accesskey"));
       if (AlertsServiceDND.manualDoNotDisturb) {
         let notificationsDoNotDisturb =
           document.getElementById("notificationsDoNotDisturb");
@@ -189,24 +198,6 @@ var gPrivacyPane = {
 
     setEventListener("cacheSize", "change",
       gPrivacyPane.updateCacheSizePref);
-
-    if (Services.prefs.getBoolPref("browser.preferences.offlineGroup.enabled")) {
-      this.updateOfflineApps();
-      this.updateActualAppCacheSize();
-      setEventListener("offlineNotifyExceptions", "command",
-        gPrivacyPane.showOfflineExceptions);
-      setEventListener("offlineAppsList", "select",
-        gPrivacyPane.offlineAppSelected);
-      setEventListener("offlineAppsListRemove", "command",
-        gPrivacyPane.removeOfflineApp);
-      setEventListener("clearOfflineAppCacheButton", "command",
-        gPrivacyPane.clearOfflineAppCache);
-      let bundlePrefs = document.getElementById("bundlePreferences");
-      document.getElementById("offlineAppsList")
-        .style.height = bundlePrefs.getString("offlineAppsList.height");
-      let offlineGroup = document.getElementById("offlineGroup");
-      offlineGroup.removeAttribute("data-hidden-from-search");
-    }
 
     if (Services.prefs.getBoolPref("browser.storageManager.enabled")) {
       Services.obs.addObserver(this, "sitedatamanager:sites-updated");
@@ -254,7 +245,6 @@ var gPrivacyPane = {
     setEventListener("submitHealthReportBox", "command",
       gPrivacyPane.updateSubmitHealthReport);
     this._initA11yState();
-    let bundlePrefs = document.getElementById("bundlePreferences");
     let signonBundle = document.getElementById("signonBundle");
     let pkiBundle = document.getElementById("pkiBundle");
     appendSearchKeywords("passwordExceptions", [
@@ -315,9 +305,7 @@ var gPrivacyPane = {
     ]);
 
     // Notify observers that the UI is now ready
-    Components.classes["@mozilla.org/observer-service;1"]
-      .getService(Components.interfaces.nsIObserverService)
-      .notifyObservers(window, "privacy-pane-loaded");
+    Services.obs.notifyObservers(window, "privacy-pane-loaded");
   },
 
   // TRACKING PROTECTION MODE
@@ -575,9 +563,7 @@ var gPrivacyPane = {
       true, false);
     if (buttonIndex == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
       pref.value = autoStart.hasAttribute("checked");
-      let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"]
-        .getService(Ci.nsIAppStartup);
-      appStartup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
+      Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
       return;
     }
 
@@ -894,7 +880,7 @@ var gPrivacyPane = {
     var params = {
       blockVisible: false, sessionVisible: false, allowVisible: true,
       prefilledHost: "", permissionType: "popup"
-    }
+    };
     params.windowTitle = bundlePreferences.getString("popuppermissionstitle2");
     params.introText = bundlePreferences.getString("popuppermissionstext");
 
@@ -995,10 +981,8 @@ var gPrivacyPane = {
     var secmodDB = Cc["@mozilla.org/security/pkcs11moduledb;1"].
       getService(Ci.nsIPKCS11ModuleDB);
     if (secmodDB.isFIPSEnabled) {
-      var promptService = Cc["@mozilla.org/embedcomp/prompt-service;1"].
-        getService(Ci.nsIPromptService);
       var bundle = document.getElementById("bundlePreferences");
-      promptService.alert(window,
+      Services.prompt.alert(window,
         bundle.getString("pw_change_failed_title"),
         bundle.getString("pw_change2empty_in_fips_mode"));
       this._initMasterPasswordUI();
@@ -1072,7 +1056,7 @@ var gPrivacyPane = {
     let blockUncommonPref = document.getElementById("browser.safebrowsing.downloads.remote.block_uncommon");
 
     let learnMoreLink = document.getElementById("enableSafeBrowsingLearnMore");
-    let phishingUrl = "https://support.mozilla.org/kb/how-does-phishing-and-malware-protection-work";
+    let phishingUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "phishing-malware";
     learnMoreLink.setAttribute("href", phishingUrl);
 
     enableSafeBrowsing.addEventListener("command", function() {
@@ -1243,38 +1227,9 @@ var gPrivacyPane = {
    */
   clearCache() {
     try {
-      var cache = Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
-        .getService(Components.interfaces.nsICacheStorageService);
-      cache.clear();
+      Services.cache2.clear();
     } catch (ex) { }
     this.updateActualCacheSize();
-  },
-
-  showOfflineExceptions() {
-    var bundlePreferences = document.getElementById("bundlePreferences");
-    var params = {
-      blockVisible: false,
-      sessionVisible: false,
-      allowVisible: false,
-      prefilledHost: "",
-      permissionType: "offline-app",
-      manageCapability: Components.interfaces.nsIPermissionManager.DENY_ACTION,
-      windowTitle: bundlePreferences.getString("offlinepermissionstitle"),
-      introText: bundlePreferences.getString("offlinepermissionstext")
-    };
-    gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
-      null, params);
-  },
-
-
-  offlineAppSelected() {
-    var removeButton = document.getElementById("offlineAppsListRemove");
-    var list = document.getElementById("offlineAppsList");
-    if (list.selectedItem) {
-      removeButton.setAttribute("disabled", "false");
-    } else {
-      removeButton.setAttribute("disabled", "true");
-    }
   },
 
   showSiteDataSettings() {
@@ -1325,10 +1280,7 @@ var gPrivacyPane = {
     actualSizeLabel.textContent = prefStrBundle.getString("actualDiskCacheSizeCalculated");
 
     try {
-      var cacheService =
-        Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
-          .getService(Components.interfaces.nsICacheStorageService);
-      cacheService.asyncGetDiskConsumption(this.observer);
+      Services.cache2.asyncGetDiskConsumption(this.observer);
     } catch (e) { }
   },
 
@@ -1447,166 +1399,6 @@ var gPrivacyPane = {
     let checkbox = document.getElementById("submitHealthReportBox");
     Services.prefs.setBoolPref(PREF_UPLOAD_ENABLED, checkbox.checked);
   },
-
-  // Methods for Offline Apps (AppCache)
-
-  /**
-   * Clears the application cache.
-   */
-  clearOfflineAppCache() {
-    Components.utils.import("resource:///modules/offlineAppCache.jsm");
-    OfflineAppCacheHelper.clear();
-
-    this.updateActualAppCacheSize();
-    this.updateOfflineApps();
-  },
-
-  // Retrieves the amount of space currently used by offline cache
-  updateActualAppCacheSize() {
-    var visitor = {
-      onCacheStorageInfo(aEntryCount, aConsumption, aCapacity, aDiskDirectory) {
-        var actualSizeLabel = document.getElementById("actualAppCacheSize");
-        var sizeStrings = DownloadUtils.convertByteUnits(aConsumption);
-        var prefStrBundle = document.getElementById("bundlePreferences");
-        // The XBL binding for the string bundle may have been destroyed if
-        // the page was closed before this callback was executed.
-        if (!prefStrBundle.getFormattedString) {
-          return;
-        }
-        var sizeStr = prefStrBundle.getFormattedString("actualAppCacheSize", sizeStrings);
-        actualSizeLabel.value = sizeStr;
-      }
-    };
-
-    try {
-      var cacheService =
-        Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
-          .getService(Components.interfaces.nsICacheStorageService);
-      var storage = cacheService.appCacheStorage(LoadContextInfo.default, null);
-      storage.asyncVisitStorage(visitor, false);
-    } catch (e) { }
-  },
-
-  readOfflineNotify() {
-    var pref = document.getElementById("browser.offline-apps.notify");
-    var button = document.getElementById("offlineNotifyExceptions");
-    button.disabled = !pref.value;
-    return pref.value;
-  },
-
-  // XXX: duplicated in browser.js
-  _getOfflineAppUsage(perm, groups) {
-    let cacheService = Cc["@mozilla.org/network/application-cache-service;1"].
-      getService(Ci.nsIApplicationCacheService);
-    if (!groups) {
-      try {
-        groups = cacheService.getGroups();
-      } catch (ex) {
-        return 0;
-      }
-    }
-
-    let usage = 0;
-    for (let group of groups) {
-      let uri = Services.io.newURI(group);
-      if (perm.matchesURI(uri, true)) {
-        let cache = cacheService.getActiveCache(group);
-        usage += cache.usage;
-      }
-    }
-
-    return usage;
-  },
-
-  /**
-   * Updates the list of offline applications
-   */
-  updateOfflineApps() {
-    var pm = Components.classes["@mozilla.org/permissionmanager;1"]
-      .getService(Components.interfaces.nsIPermissionManager);
-
-    var list = document.getElementById("offlineAppsList");
-    while (list.firstChild) {
-      list.firstChild.remove();
-    }
-
-    var groups;
-    try {
-      var cacheService = Components.classes["@mozilla.org/network/application-cache-service;1"].
-        getService(Components.interfaces.nsIApplicationCacheService);
-      groups = cacheService.getGroups();
-    } catch (e) {
-      return;
-    }
-
-    var bundle = document.getElementById("bundlePreferences");
-
-    var enumerator = pm.enumerator;
-    while (enumerator.hasMoreElements()) {
-      var perm = enumerator.getNext().QueryInterface(Components.interfaces.nsIPermission);
-      if (perm.type == "offline-app" &&
-        perm.capability != Components.interfaces.nsIPermissionManager.DEFAULT_ACTION &&
-        perm.capability != Components.interfaces.nsIPermissionManager.DENY_ACTION) {
-        var row = document.createElement("listitem");
-        row.id = "";
-        row.className = "offlineapp";
-        row.setAttribute("origin", perm.principal.origin);
-        var converted = DownloadUtils.
-          convertByteUnits(this._getOfflineAppUsage(perm, groups));
-        row.setAttribute("usage",
-          bundle.getFormattedString("offlineAppUsage",
-            converted));
-        list.appendChild(row);
-      }
-    }
-  },
-
-  removeOfflineApp() {
-    var list = document.getElementById("offlineAppsList");
-    var item = list.selectedItem;
-    var origin = item.getAttribute("origin");
-    var principal = Services.scriptSecurityManager.createCodebasePrincipalFromOrigin(origin);
-
-    var prompts = Components.classes["@mozilla.org/embedcomp/prompt-service;1"]
-      .getService(Components.interfaces.nsIPromptService);
-    var flags = prompts.BUTTON_TITLE_IS_STRING * prompts.BUTTON_POS_0 +
-      prompts.BUTTON_TITLE_CANCEL * prompts.BUTTON_POS_1;
-
-    var bundle = document.getElementById("bundlePreferences");
-    var title = bundle.getString("offlineAppRemoveTitle");
-    var prompt = bundle.getFormattedString("offlineAppRemovePrompt", [principal.URI.prePath]);
-    var confirm = bundle.getString("offlineAppRemoveConfirm");
-    var result = prompts.confirmEx(window, title, prompt, flags, confirm,
-      null, null, null, {});
-    if (result != 0)
-      return;
-
-    // get the permission
-    var pm = Components.classes["@mozilla.org/permissionmanager;1"]
-      .getService(Components.interfaces.nsIPermissionManager);
-    var perm = pm.getPermissionObject(principal, "offline-app", true);
-    if (perm) {
-      // clear offline cache entries
-      try {
-        var cacheService = Components.classes["@mozilla.org/network/application-cache-service;1"].
-          getService(Components.interfaces.nsIApplicationCacheService);
-        var groups = cacheService.getGroups();
-        for (var i = 0; i < groups.length; i++) {
-          var uri = Services.io.newURI(groups[i]);
-          if (perm.matchesURI(uri, true)) {
-            var cache = cacheService.getActiveCache(groups[i]);
-            cache.discard();
-          }
-        }
-      } catch (e) { }
-
-      pm.removePermission(perm);
-    }
-    list.removeChild(item);
-    gPrivacyPane.offlineAppSelected();
-    this.updateActualAppCacheSize();
-  },
-  // Methods for Offline Apps (AppCache) end
 
   observe(aSubject, aTopic, aData) {
     switch (aTopic) {

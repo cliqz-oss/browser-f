@@ -59,7 +59,7 @@ const kSubviewEvents = [
  * The current version. We can use this to auto-add new default widgets as necessary.
  * (would be const but isn't because of testing purposes)
  */
-var kVersion = 12;
+var kVersion = 13;
 
 /**
  * Buttons removed from built-ins by version they were removed. kVersion must be
@@ -345,7 +345,6 @@ var CustomizableUIInternal = {
         "preferences-button",
         "add-ons-button",
         "sync-button",
-        "e10s-button",
       ];
 
       if (!AppConstants.MOZ_DEV_EDITION) {
@@ -452,6 +451,17 @@ var CustomizableUIInternal = {
         }
       }
     }
+
+    // Remove the old placements from the now-gone Nightly-only
+    // "New non-e10s window" button.
+    if (currentVersion < 13 && gSavedState.placements) {
+      for (let placements of Object.values(gSavedState.placements)) {
+        let buttonIndex = placements.indexOf("e10s-button");
+        if (buttonIndex != -1) {
+          placements.splice(buttonIndex, 1);
+        }
+      }
+    }
   },
 
   /**
@@ -466,7 +476,7 @@ var CustomizableUIInternal = {
       return;
     // we're upgrading, update state if necessary
     for (let id in ObsoleteBuiltinButtons) {
-      let version = ObsoleteBuiltinButtons[id]
+      let version = ObsoleteBuiltinButtons[id];
       if (version == kVersion) {
         gSeenWidgets.add(id);
         gDirty = true;
@@ -578,7 +588,7 @@ var CustomizableUIInternal = {
       // Check aProperties instead of props because this check is only interested
       // in the passed arguments, not the state of a potentially pre-existing area.
       if (!aInternalCaller && aProperties.defaultCollapsed) {
-        throw new Error("defaultCollapsed is only allowed for default toolbars.")
+        throw new Error("defaultCollapsed is only allowed for default toolbars.");
       }
       if (!props.has("defaultCollapsed")) {
         props.set("defaultCollapsed", true);
@@ -1297,7 +1307,7 @@ var CustomizableUIInternal = {
   _getSpecialIdForNode(aNode) {
     if (typeof aNode == "object" && aNode.localName) {
       if (aNode.id) {
-        return aNode.id
+        return aNode.id;
       }
       if (aNode.localName.startsWith("toolbar")) {
         return aNode.localName.substring(7);
@@ -1678,8 +1688,6 @@ var CustomizableUIInternal = {
     let inItem = false;
     // whether the current menuitem has a valid closemenu attribute
     let menuitemCloseMenu = "auto";
-    // whether the toolbarbutton/item has a valid closemenu attribute.
-    let closemenu = "auto";
 
     // While keeping track of that, we go from the original target back up,
     // to the panel if we have to. We bail as soon as we find an input,
@@ -1705,11 +1713,6 @@ var CustomizableUIInternal = {
       inItem = tagName == "toolbaritem" || tagName == "toolbarbutton";
       let isMenuItem = tagName == "menuitem";
       inMenu = inMenu || isMenuItem;
-      if (inItem && target.hasAttribute("closemenu")) {
-        let closemenuVal = target.getAttribute("closemenu");
-        closemenu = (closemenuVal == "single" || closemenuVal == "none") ?
-                    closemenuVal : "auto";
-      }
 
       if (isMenuItem && target.hasAttribute("closemenu")) {
         let closemenuVal = target.getAttribute("closemenu");
@@ -1751,17 +1754,6 @@ var CustomizableUIInternal = {
     // If we're not in a menu, and we *are* in a type="menu" toolbarbutton,
     // we'll now interact with the menu
     if (inItem && target.getAttribute("type") == "menu") {
-      return true;
-    }
-    // If we're not in a menu, and we *are* in a type="menu-button" toolbarbutton,
-    // it depends whether we're in the dropmarker or the 'real' button:
-    if (inItem && target.getAttribute("type") == "menu-button") {
-      // 'real' button (which has a single action):
-      if (target.getAttribute("anonid") == "button") {
-        return closemenu != "none";
-      }
-      // otherwise, this is the outer button, and the user will now
-      // interact with the menu:
       return true;
     }
     return inInput || !inItem;
@@ -2573,7 +2565,7 @@ var CustomizableUIInternal = {
       let widgetNode = window.document.getElementById(aWidgetId) ||
                        window.gNavToolbox.palette.getElementsByAttribute("id", aWidgetId)[0];
       if (widgetNode) {
-        let container = widgetNode.parentNode
+        let container = widgetNode.parentNode;
         this.notifyListeners("onWidgetBeforeDOMChange", widgetNode, null,
                              container, true);
         widgetNode.remove();
@@ -2777,6 +2769,10 @@ var CustomizableUIInternal = {
     if (typeof aWidget == "string") {
       widgetId = aWidget;
     } else {
+      // Skipped items could just not have ids.
+      if (!aWidget.id && aWidget.getAttribute("skipintoolbarset") == "true") {
+        return false;
+      }
       if (!aWidget.id &&
           !["toolbarspring", "toolbarspacer", "toolbarseparator"].includes(aWidget.nodeName)) {
         throw new Error("No nodes without ids that aren't special widgets should ever come into contact with CUI");
@@ -4221,6 +4217,7 @@ function OverflowableToolbar(aToolbarNode) {
 OverflowableToolbar.prototype = {
   initialized: false,
   _forceOnOverflow: false,
+  _addedListener: false,
 
   observe(aSubject, aTopic, aData) {
     if (aTopic == "browser-delayed-startup-finished" &&
@@ -4249,6 +4246,7 @@ OverflowableToolbar.prototype = {
     CustomizableUIInternal.addPanelCloseListeners(this._panel);
 
     CustomizableUI.addListener(this);
+    this._addedListener = true;
 
     // The 'overflow' event may have been fired before init was called.
     if (this._toolbar.overflowedDuringConstruction) {
@@ -4280,6 +4278,7 @@ OverflowableToolbar.prototype = {
     this._chevron.removeEventListener("dragend", this);
     this._panel.removeEventListener("popuphiding", this);
     CustomizableUI.removeListener(this);
+    this._addedListener = false;
     CustomizableUIInternal.removePanelCloseListeners(this._panel);
   },
 
@@ -4317,7 +4316,7 @@ OverflowableToolbar.prototype = {
     }
   },
 
-  show() {
+  show(aEvent) {
     if (this._panel.state == "open") {
       return Promise.resolve();
     }
@@ -4338,10 +4337,10 @@ OverflowableToolbar.prototype = {
       // Ensure we update the gEditUIVisible flag when opening the popup, in
       // case the edit controls are in it.
       this._panel.addEventListener("popupshowing", () => doc.defaultView.updateEditUIVisibility(), {once: true});
-      this._panel.openPopup(anchor || this._chevron);
+      this._panel.openPopup(anchor || this._chevron, { triggerEvent: aEvent });
       this._chevron.open = true;
 
-      this._panel.addEventListener("popupshown", aEvent => {
+      this._panel.addEventListener("popupshown", () => {
         this._panel.addEventListener("dragover", this);
         this._panel.addEventListener("dragend", this);
         resolve();
@@ -4354,7 +4353,7 @@ OverflowableToolbar.prototype = {
       this._panel.hidePopup();
       this._chevron.open = false;
     } else if (this._panel.state != "hiding" && !this._chevron.disabled) {
-      this.show();
+      this.show(aEvent);
     }
   },
 
@@ -4397,10 +4396,12 @@ OverflowableToolbar.prototype = {
         CustomizableUIInternal.notifyListeners("onWidgetOverflow", child, this._target);
 
         this._list.insertBefore(child, this._list.firstChild);
-        if (!this._toolbar.hasAttribute("overflowing")) {
+        if (!this._addedListener) {
           CustomizableUI.addListener(this);
         }
-        this._toolbar.setAttribute("overflowing", "true");
+        if (!CustomizableUI.isSpecialWidget(child.id)) {
+          this._toolbar.setAttribute("overflowing", "true");
+        }
       }
       child = prevChild;
     }
@@ -4426,7 +4427,7 @@ OverflowableToolbar.prototype = {
       if (!shouldMoveAllItems &&
           minSize &&
           this._target.clientWidth <= minSize) {
-        return;
+        break;
       }
 
       this._collapsed.delete(child.id);
@@ -4461,9 +4462,13 @@ OverflowableToolbar.prototype = {
     let win = this._target.ownerGlobal;
     win.UpdateUrlbarSearchSplitterState();
 
-    if (!this._collapsed.size) {
+    let collapsedWidgetIds = Array.from(this._collapsed.keys());
+    if (collapsedWidgetIds.every(w => CustomizableUI.isSpecialWidget(w))) {
       this._toolbar.removeAttribute("overflowing");
+    }
+    if (this._addedListener && !this._collapsed.size) {
       CustomizableUI.removeListener(this);
+      this._addedListener = false;
     }
   },
 
@@ -4553,9 +4558,13 @@ OverflowableToolbar.prototype = {
       CustomizableUIInternal.ensureButtonContextMenu(aNode, aContainer);
       CustomizableUIInternal.notifyListeners("onWidgetUnderflow", aNode, this._target);
 
-      if (!this._collapsed.size) {
+      let collapsedWidgetIds = Array.from(this._collapsed.keys());
+      if (collapsedWidgetIds.every(w => CustomizableUI.isSpecialWidget(w))) {
         this._toolbar.removeAttribute("overflowing");
+      }
+      if (this._addedListener && !this._collapsed.size) {
         CustomizableUI.removeListener(this);
+        this._addedListener = false;
       }
     } else if (aNode.previousSibling) {
       // but if it still is, it must have changed places. Bookkeep:

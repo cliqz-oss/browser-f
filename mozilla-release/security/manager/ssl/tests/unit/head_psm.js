@@ -50,6 +50,7 @@ const SEC_ERROR_UNTRUSTED_CERT                          = SEC_ERROR_BASE + 21;
 const SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE              = SEC_ERROR_BASE + 30;
 const SEC_ERROR_CA_CERT_INVALID                         = SEC_ERROR_BASE + 36;
 const SEC_ERROR_UNKNOWN_CRITICAL_EXTENSION              = SEC_ERROR_BASE + 41;
+const SEC_ERROR_PKCS7_BAD_SIGNATURE                     = SEC_ERROR_BASE + 47;
 const SEC_ERROR_INADEQUATE_KEY_USAGE                    = SEC_ERROR_BASE + 90;
 const SEC_ERROR_INADEQUATE_CERT_TYPE                    = SEC_ERROR_BASE + 91;
 const SEC_ERROR_CERT_NOT_IN_NAME_SPACE                  = SEC_ERROR_BASE + 112;
@@ -90,9 +91,6 @@ const certificateUsageSSLServer              = 0x0002;
 const certificateUsageSSLCA                  = 0x0008;
 const certificateUsageEmailSigner            = 0x0010;
 const certificateUsageEmailRecipient         = 0x0020;
-const certificateUsageObjectSigner           = 0x0040;
-const certificateUsageVerifyCA               = 0x0100;
-const certificateUsageStatusResponder        = 0x0400;
 
 // A map from the name of a certificate usage to the value of the usage.
 // Useful for printing debugging information and for enumerating all supported
@@ -103,9 +101,6 @@ const allCertificateUsages = {
   certificateUsageSSLCA,
   certificateUsageEmailSigner,
   certificateUsageEmailRecipient,
-  certificateUsageObjectSigner,
-  certificateUsageVerifyCA,
-  certificateUsageStatusResponder
 };
 
 const NO_FLAGS = 0;
@@ -125,6 +120,16 @@ function pemToBase64(pem) {
   return pem.replace(/-----BEGIN CERTIFICATE-----/, "")
             .replace(/-----END CERTIFICATE-----/, "")
             .replace(/[\r\n]/g, "");
+}
+
+function build_cert_chain(certNames) {
+  let certList = Cc["@mozilla.org/security/x509certlist;1"]
+                   .createInstance(Ci.nsIX509CertList);
+  certNames.forEach(function(certName) {
+    let cert = constructCertFromFile("bad_certs/" + certName + ".pem");
+    certList.addCert(cert);
+  });
+  return certList;
 }
 
 function readFile(file) {
@@ -708,6 +713,7 @@ function add_cert_override(aHost, aExpectedBits, aExpectedErrorRegexp,
     (sslstatus.isUntrusted ? Ci.nsICertOverrideService.ERROR_UNTRUSTED : 0) |
     (sslstatus.isDomainMismatch ? Ci.nsICertOverrideService.ERROR_MISMATCH : 0) |
     (sslstatus.isNotValidAtThisTime ? Ci.nsICertOverrideService.ERROR_TIME : 0);
+
   Assert.equal(bits, aExpectedBits,
                "Actual and expected override bits should match");
   let cert = sslstatus.serverCert;
@@ -723,7 +729,8 @@ function add_cert_override(aHost, aExpectedBits, aExpectedErrorRegexp,
 // with the expected errors and that adding an override results in a subsequent
 // connection succeeding.
 function add_cert_override_test(aHost, aExpectedBits, aExpectedError,
-                                aExpectedErrorRegexp = undefined) {
+                                aExpectedErrorRegexp = undefined,
+                                aExpectedSSLStatus = undefined) {
   add_connection_test(aHost, aExpectedError, null,
                       add_cert_override.bind(this, aHost, aExpectedBits,
                                              aExpectedErrorRegexp));
@@ -731,6 +738,13 @@ function add_cert_override_test(aHost, aExpectedBits, aExpectedError,
     Assert.ok(aSecurityInfo.securityState &
               Ci.nsIWebProgressListener.STATE_CERT_USER_OVERRIDDEN,
               "Cert override flag should be set on the security state");
+    if (aExpectedSSLStatus) {
+      let sslstatus = aSecurityInfo.QueryInterface(Ci.nsISSLStatusProvider)
+                                  .SSLStatus;
+      if (aExpectedSSLStatus.failedCertChain) {
+        ok(aExpectedSSLStatus.failedCertChain.equals(sslstatus.failedCertChain));
+      }
+    }
   });
 }
 

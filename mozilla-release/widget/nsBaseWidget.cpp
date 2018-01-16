@@ -697,10 +697,6 @@ nsBaseWidget::SetSizeMode(nsSizeMode aMode)
 // Get this component cursor
 //
 //-------------------------------------------------------------------------
-nsCursor nsBaseWidget::GetCursor()
-{
-  return mCursor;
-}
 
 void
 nsBaseWidget::SetCursor(nsCursor aCursor)
@@ -1222,6 +1218,22 @@ nsBaseWidget::DispatchEventToAPZOnly(mozilla::WidgetInputEvent* aEvent)
   }
 }
 
+// static
+bool
+nsBaseWidget::ShowContextMenuAfterMouseUp()
+{
+  static bool gContextMenuAfterMouseUp = false;
+  static bool gContextMenuAfterMouseUpCached = false;
+  if (!gContextMenuAfterMouseUpCached) {
+    Preferences::AddBoolVarCache(&gContextMenuAfterMouseUp,
+                                 "ui.context_menus.after_mouseup",
+                                 false);
+
+    gContextMenuAfterMouseUpCached = true;
+  }
+  return gContextMenuAfterMouseUp;
+}
+
 nsIDocument*
 nsBaseWidget::GetDocument() const
 {
@@ -1259,11 +1271,10 @@ nsBaseWidget::CreateCompositorSession(int aWidth,
   do {
     CreateCompositorVsyncDispatcher();
 
-    bool enableWR = gfx::gfxVars::UseWebRender();
-    if (enableWR && !WidgetTypeSupportsAcceleration()) {
-      // fall back to basic
-      break;
-    }
+    // If widget type does not supports acceleration, we use ClientLayerManager
+    // even when gfxVars::UseWebRender() is true. WebRender could coexist only
+    // with BasicCompositor.
+    bool enableWR = gfx::gfxVars::UseWebRender() && WidgetTypeSupportsAcceleration();
     bool enableAPZ = UseAPZ();
     CompositorOptions options(enableAPZ, enableWR);
 
@@ -1307,8 +1318,6 @@ nsBaseWidget::CreateCompositorSession(int aWidth,
       return lm.forget();
     }
   } while (true);
-
-  return nullptr;
 }
 
 void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
@@ -1934,13 +1943,13 @@ nsBaseWidget::StartAsyncScrollbarDrag(const AsyncDragMetrics& aDragMetrics)
       aDragMetrics));
 }
 
-void
+bool
 nsBaseWidget::StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
                                    const ScrollableLayerGuid& aGuid)
 {
   MOZ_ASSERT(XRE_IsParentProcess() && AsyncPanZoomEnabled());
 
-  mAPZC->StartAutoscroll(aGuid, aAnchorLocation);
+  return mAPZC->StartAutoscroll(aGuid, aAnchorLocation);
 }
 
 void
@@ -1996,8 +2005,8 @@ nsIWidget::SynthesizeNativeTouchTap(LayoutDeviceIntPoint aPoint, bool aLongTap,
   int elapse = Preferences::GetInt("ui.click_hold_context_menus.delay",
                                    TOUCH_INJECT_LONG_TAP_DEFAULT_MSEC);
   if (!mLongTapTimer) {
-    mLongTapTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
-    if (NS_FAILED(rv)) {
+    mLongTapTimer = NS_NewTimer();
+    if (!mLongTapTimer) {
       SynthesizeNativeTouchPoint(pointerId, TOUCH_CANCEL,
                                  aPoint, 0, 0, nullptr);
       return NS_ERROR_UNEXPECTED;
