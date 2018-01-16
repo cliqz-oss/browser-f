@@ -1,3 +1,4 @@
+// |reftest| skip -- regexp-named-groups is not supported
 // Copyright 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -24,6 +25,7 @@ for (let flags of ["", "u"]) {
   assert.sameValue("bacd", "abcd".replace(re, "$2$1"));
   assert.sameValue("cd", "abcd".replace(re, "$3"));
   assert.sameValue("$<sndcd", "abcd".replace(re, "$<snd"));
+  assert.sameValue("$<sndacd", "abcd".replace(re, "$<snd$1"));
   assert.sameValue("$<42a>cd", "abcd".replace(re, "$<42$1>"));
   assert.sameValue("$<fth>cd", "abcd".replace(re, "$<fth>"));
   assert.sameValue("$<a>cd", "abcd".replace(re, "$<$1>"));

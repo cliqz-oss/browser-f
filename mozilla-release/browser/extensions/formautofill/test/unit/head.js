@@ -15,6 +15,7 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/NetUtil.jsm");
 Cu.import("resource://gre/modules/ObjectUtils.jsm");
 Cu.import("resource://gre/modules/FormLikeFactory.jsm");
+Cu.import("resource://testing-common/FileTestUtils.jsm");
 Cu.import("resource://testing-common/MockDocument.jsm");
 Cu.import("resource://testing-common/TestUtils.jsm");
 
@@ -51,46 +52,13 @@ if (!extensionDir.exists()) {
 }
 Components.manager.addBootstrappedManifestLocation(extensionDir);
 
-// While the previous test file should have deleted all the temporary files it
-// used, on Windows these might still be pending deletion on the physical file
-// system.  Thus, start from a new base number every time, to make a collision
-// with a file that is still pending deletion highly unlikely.
-let gFileCounter = Math.floor(Math.random() * 1000000);
-
-/**
- * Returns a reference to a temporary file, that is guaranteed not to exist, and
- * to have never been created before.
- *
- * @param {string} leafName
- *        Suggested leaf name for the file to be created.
- *
- * @returns {nsIFile} pointing to a non-existent file in a temporary directory.
- *
- * @note It is not enough to delete the file if it exists, or to delete the file
- *       after calling nsIFile.createUnique, because on Windows the delete
- *       operation in the file system may still be pending, preventing a new
- *       file with the same name to be created.
- */
+// Returns a reference to a temporary file that is guaranteed not to exist and
+// is cleaned up later. See FileTestUtils.getTempFile for details.
 function getTempFile(leafName) {
-  // Prepend a serial number to the extension in the suggested leaf name.
-  let [base, ext] = DownloadPaths.splitBaseNameAndExtension(leafName);
-  let finalLeafName = base + "-" + gFileCounter + ext;
-  gFileCounter++;
-
-  // Get a file reference under the temporary directory for this test file.
-  let file = FileUtils.getFile("TmpD", [finalLeafName]);
-  do_check_false(file.exists());
-
-  do_register_cleanup(function() {
-    if (file.exists()) {
-      file.remove(false);
-    }
-  });
-
-  return file;
+  return FileTestUtils.getTempFile(leafName);
 }
 
-async function initProfileStorage(fileName, records) {
+async function initProfileStorage(fileName, records, collectionName = "addresses") {
   let {ProfileStorage} = Cu.import("resource://formautofill/ProfileStorage.jsm", {});
   let path = getTempFile(fileName).path;
   let profileStorage = new ProfileStorage(path);
@@ -103,7 +71,7 @@ async function initProfileStorage(fileName, records) {
   let onChanged = TestUtils.topicObserved("formautofill-storage-changed",
                                           (subject, data) => data == "add");
   for (let record of records) {
-    do_check_true(profileStorage.addresses.add(record));
+    do_check_true(profileStorage[collectionName].add(record));
     await onChanged;
   }
   await profileStorage._saveImmediately();
@@ -134,6 +102,7 @@ function runHeuristicsTest(patterns, fixturePathPrefix) {
       forms.forEach((form, formIndex) => {
         let formInfo = FormAutofillHeuristics.getFormInfo(form);
         do_print("FieldName Prediction Results: " + formInfo.map(i => i.fieldName));
+        do_print("FieldName Expected Results:   " + testPattern.expectedResult[formIndex].map(i => i.fieldName));
         Assert.equal(formInfo.length, testPattern.expectedResult[formIndex].length, "Expected field count.");
         formInfo.forEach((field, fieldIndex) => {
           let expectedField = testPattern.expectedResult[formIndex][fieldIndex];

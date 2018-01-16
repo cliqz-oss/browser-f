@@ -55,7 +55,6 @@ EXPORTS += [
     'nsDOMCSSRGBColor.h',
     'nsICSSDeclaration.h',
     'nsICSSLoaderObserver.h',
-    'nsICSSPseudoComparator.h',
     'nsICSSStyleRuleDOMWrapper.h',
     'nsIStyleRule.h',
     'nsIStyleRuleProcessor.h',
@@ -104,6 +103,7 @@ EXPORTS.mozilla += [
     'ServoBindingList.h',
     'ServoBindings.h',
     'ServoBindingTypes.h',
+    'ServoCSSParser.h',
     'ServoCSSRuleList.h',
     'ServoDeclarationBlock.h',
     'ServoDocumentRule.h',
@@ -218,7 +218,6 @@ UNIFIED_SOURCES += [
     'nsCSSParser.cpp',
     'nsCSSProps.cpp',
     'nsCSSPseudoClasses.cpp',
-    'nsCSSPseudoElements.cpp',
     'nsCSSRuleProcessor.cpp',
     'nsCSSRules.cpp',
     'nsCSSScanner.cpp',
@@ -250,6 +249,7 @@ UNIFIED_SOURCES += [
     'RuleNodeCacheConditions.cpp',
     'RuleProcessorCache.cpp',
     'ServoBindings.cpp',
+    'ServoCSSParser.cpp',
     'ServoCSSRuleList.cpp',
     'ServoDeclarationBlock.cpp',
     'ServoDocumentRule.cpp',
@@ -276,9 +276,12 @@ UNIFIED_SOURCES += [
     'URLExtraData.cpp',
 ]
 
-# - nsLayoutStylesheetCache.cpp needs to be built separately because it uses
-# nsExceptionHandler.h, which includes windows.h.
 SOURCES += [
+    # Both nsCSSPseudoElements.cpp and nsCSSPseudoClasses.cpp defined a
+    # 'mozPlaceholder' static atom.
+    'nsCSSPseudoElements.cpp',
+    # nsLayoutStylesheetCache.cpp uses nsExceptionHandler.h, which includes
+    # windows.h.
     'nsLayoutStylesheetCache.cpp',
 ]
 

@@ -42,6 +42,14 @@ const size_t CellAlignMask = CellAlignBytes - 1;
 
 const size_t CellBytesPerMarkBit = CellAlignBytes;
 
+/*
+ * We sometimes use an index to refer to a cell in an arena. The index for a
+ * cell is found by dividing by the cell alignment so not all indicies refer to
+ * valid cells.
+ */
+const size_t ArenaCellIndexBytes = CellAlignBytes;
+const size_t MaxArenaCellIndex = ArenaSize / CellAlignBytes;
+
 /* These are magic constants derived from actual offsets in gc/Heap.h. */
 #ifdef JS_GC_SMALL_CHUNK_SIZE
 const size_t ChunkMarkBitmapOffset = 258104;
@@ -334,7 +342,6 @@ GetGCThingZone(const uintptr_t addr)
     MOZ_ASSERT(addr);
     const uintptr_t zone_addr = (addr & ~ArenaMask) | ArenaZoneOffset;
     return *reinterpret_cast<JS::Zone**>(zone_addr);
-
 }
 
 static MOZ_ALWAYS_INLINE bool
@@ -406,8 +413,6 @@ IsInsideNursery(const js::gc::Cell* cell)
 MOZ_ALWAYS_INLINE bool
 IsCellPointerValid(const void* cell)
 {
-    if (!cell)
-        return true;
     auto addr = uintptr_t(cell);
     if (addr < ChunkSize || addr % CellAlignBytes != 0)
         return false;
@@ -417,6 +422,14 @@ IsCellPointerValid(const void* cell)
     if (location == ChunkLocation::Nursery)
         return detail::NurseryCellHasStoreBuffer(cell);
     return false;
+}
+
+MOZ_ALWAYS_INLINE bool
+IsCellPointerValidOrNull(const void* cell)
+{
+    if (!cell)
+        return true;
+    return IsCellPointerValid(cell);
 }
 
 } /* namespace gc */

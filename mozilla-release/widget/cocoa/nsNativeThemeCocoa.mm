@@ -21,7 +21,7 @@
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsIFrame.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsNameSpaceManager.h"
 #include "nsPresContext.h"
 #include "nsGkAtoms.h"
@@ -3004,7 +3004,7 @@ nsNativeThemeCocoa::GetWidgetBorder(nsDeviceContext* aContext,
     case NS_THEME_CHECKBOX:
     case NS_THEME_RADIO:
     {
-      // nsFormControlFrame::GetIntrinsicWidth and nsFormControlFrame::GetIntrinsicHeight
+      // nsCheckboxRadioFrame::GetIntrinsicWidth and nsCheckboxRadioFrame::GetIntrinsicHeight
       // assume a border width of 2px.
       aResult->SizeTo(2, 2, 2, 2);
       break;
@@ -3508,7 +3508,7 @@ nsNativeThemeCocoa::GetMinimumWidgetSize(nsPresContext* aPresContext,
 
 NS_IMETHODIMP
 nsNativeThemeCocoa::WidgetStateChanged(nsIFrame* aFrame, uint8_t aWidgetType,
-                                       nsIAtom* aAttribute, bool* aShouldRepaint,
+                                       nsAtom* aAttribute, bool* aShouldRepaint,
                                        const nsAttrValue* aOldValue)
 {
   // Some widget types just never change state.

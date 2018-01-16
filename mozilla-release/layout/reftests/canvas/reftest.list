@@ -74,7 +74,7 @@ fails-if((azureSkia&&!azureSkiaGL)||(azureSkiaGL&&Android)) == linear-gradient-1
 == evenodd-fill-1.html evenodd-fill-ref.html
 
 == dash-sanity.html data:text/html,<body>Pass
-fuzzy-if(azureSkia||skiaContent,9,470) random-if(Android) == dash-1.html dash-1-ref.svg  # Bug 668412 (really is android-specific, not IPC-specific)
+fuzzy-if(azureSkia||skiaContent,9,470) random-if(Android) fails-if(webrender) == dash-1.html dash-1-ref.svg  # Bug 668412 (really is android-specific, not IPC-specific)
 
 == ctm-sanity.html data:text/html,<body>Pass
 == ctm-singular-sanity.html data:text/html,<body>Pass

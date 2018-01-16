@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=2 et tw=80 : */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -212,8 +212,12 @@ CrossProcessCompositorBridgeParent::AllocPWebRenderBridgeParent(const wr::Pipeli
   MOZ_ASSERT(sIndirectLayerTrees.find(layersId) != sIndirectLayerTrees.end());
   MOZ_ASSERT(sIndirectLayerTrees[layersId].mWrBridge == nullptr);
   WebRenderBridgeParent* parent = nullptr;
+  WebRenderBridgeParent* root = nullptr;
   CompositorBridgeParent* cbp = sIndirectLayerTrees[layersId].mParent;
-  if (!cbp) {
+  if (cbp) {
+    root = sIndirectLayerTrees[cbp->RootLayerTreeId()].mWrBridge.get();
+  }
+  if (!root) {
     // This could happen when this function is called after CompositorBridgeParent destruction.
     // This was observed during Tab move between different windows.
     NS_WARNING("Created child without a matching parent?");
@@ -223,7 +227,6 @@ CrossProcessCompositorBridgeParent::AllocPWebRenderBridgeParent(const wr::Pipeli
     *aTextureFactoryIdentifier = TextureFactoryIdentifier(LayersBackend::LAYERS_NONE);
     return parent;
   }
-  WebRenderBridgeParent* root = sIndirectLayerTrees[cbp->RootLayerTreeId()].mWrBridge.get();
 
   RefPtr<wr::WebRenderAPI> api = root->GetWebRenderAPI()->Clone();
   RefPtr<AsyncImagePipelineManager> holder = root->AsyncImageManager();

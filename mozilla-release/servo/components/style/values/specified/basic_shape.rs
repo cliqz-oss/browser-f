@@ -11,7 +11,7 @@ use cssparser::Parser;
 use parser::{Parse, ParserContext};
 use std::borrow::Cow;
 use std::fmt;
-use style_traits::{ToCss, ParseError, StyleParseError};
+use style_traits::{ToCss, ParseError, StyleParseErrorKind};
 use values::computed::Percentage;
 use values::generics::basic_shape::{Circle as GenericCircle};
 use values::generics::basic_shape::{ClippingShape as GenericClippingShape, Ellipse as GenericEllipse};
@@ -81,7 +81,7 @@ impl<ReferenceBox: Parse> Parse for ShapeSource<BasicShape, ReferenceBox, Specif
             return Ok(ShapeSource::Shape(shp, ref_box))
         }
 
-        ref_box.map(|v| ShapeSource::Box(v)).ok_or(StyleParseError::UnspecifiedError.into())
+        ref_box.map(|v| ShapeSource::Box(v)).ok_or(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
     }
 }
 
@@ -91,7 +91,7 @@ impl Parse for GeometryBox {
             return Ok(GeometryBox::ShapeBox(shape_box))
         }
 
-        try_match_ident_ignore_ascii_case! { input.expect_ident()?,
+        try_match_ident_ignore_ascii_case! { input,
             "fill-box" => Ok(GeometryBox::FillBox),
             "stroke-box" => Ok(GeometryBox::StrokeBox),
             "view-box" => Ok(GeometryBox::ViewBox),
@@ -101,6 +101,7 @@ impl Parse for GeometryBox {
 
 impl Parse for BasicShape {
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
+        let location = input.current_source_location();
         let function = input.expect_function()?.clone();
         input.parse_nested_block(move |i| {
             (match_ignore_ascii_case! { &function,
@@ -109,7 +110,7 @@ impl Parse for BasicShape {
                 "ellipse" => return Ellipse::parse_function_arguments(context, i).map(GenericBasicShape::Ellipse),
                 "polygon" => return Polygon::parse_function_arguments(context, i).map(GenericBasicShape::Polygon),
                 _ => Err(())
-            }).map_err(|()| StyleParseError::UnexpectedFunction(function.clone()).into())
+            }).map_err(|()| location.new_custom_error(StyleParseErrorKind::UnexpectedFunction(function.clone())))
         })
     }
 }
@@ -150,7 +151,7 @@ impl Circle {
     #[allow(missing_docs)]
     pub fn parse_function_arguments<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
                                             -> Result<Self, ParseError<'i>> {
-        let radius = input.try(|i| ShapeRadius::parse(context, i)).ok().unwrap_or_default();
+        let radius = input.try(|i| ShapeRadius::parse(context, i)).unwrap_or_default();
         let position = if input.try(|i| i.expect_ident_matching("at")).is_ok() {
             Position::parse(context, input)?
         } else {
@@ -191,7 +192,7 @@ impl Ellipse {
                                             -> Result<Self, ParseError<'i>> {
         let (a, b) = input.try(|i| -> Result<_, ParseError> {
             Ok((ShapeRadius::parse(context, i)?, ShapeRadius::parse(context, i)?))
-        }).ok().unwrap_or_default();
+        }).unwrap_or_default();
         let position = if input.try(|i| i.expect_ident_matching("at")).is_ok() {
             Position::parse(context, input)?
         } else {
@@ -229,14 +230,14 @@ impl Parse for ShapeRadius {
             return Ok(GenericShapeRadius::Length(lop))
         }
 
-        try_match_ident_ignore_ascii_case! { input.expect_ident()?,
+        try_match_ident_ignore_ascii_case! { input,
             "closest-side" => Ok(GenericShapeRadius::ClosestSide),
             "farthest-side" => Ok(GenericShapeRadius::FarthestSide),
         }
     }
 }
 
-/// https://drafts.csswg.org/css-shapes/#basic-shape-serialization
+/// <https://drafts.csswg.org/css-shapes/#basic-shape-serialization>
 ///
 /// Positions get serialized differently with basic shapes. Keywords
 /// are converted to percentages where possible. Only the two or four
@@ -318,7 +319,7 @@ impl Polygon {
             let fill = FillRule::parse(i)?;
             i.expect_comma()?;      // only eat the comma if there is something before it
             Ok(fill)
-        }).ok().unwrap_or_default();
+        }).unwrap_or_default();
 
         let buf = input.parse_comma_separated(|i| {
             Ok((LengthOrPercentage::parse(context, i)?, LengthOrPercentage::parse(context, i)?))

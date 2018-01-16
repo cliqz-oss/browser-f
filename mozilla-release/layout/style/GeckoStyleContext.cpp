@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -32,7 +33,7 @@ GeckoStyleContext::Initialize()
 #endif
 
 GeckoStyleContext::GeckoStyleContext(GeckoStyleContext* aParent,
-                                     nsIAtom* aPseudoTag,
+                                     nsAtom* aPseudoTag,
                                      CSSPseudoElementType aPseudoType,
                                      already_AddRefed<nsRuleNode> aRuleNode,
                                      bool aSkipParentDisplayBasedStyleFixup)
@@ -45,6 +46,7 @@ GeckoStyleContext::GeckoStyleContext(GeckoStyleContext* aParent,
   , mParent(aParent)
 #ifdef DEBUG
   , mComputingStruct(nsStyleStructID_None)
+  , mFrameRefCnt(0)
 #endif
 {
   mBits |= NS_STYLE_CONTEXT_IS_GECKO;
@@ -317,7 +319,7 @@ GeckoStyleContext::DoClearCachedInheritedStyleDataOnDescendants(uint32_t aStruct
 }
 
 already_AddRefed<GeckoStyleContext>
-GeckoStyleContext::FindChildWithRules(const nsIAtom* aPseudoTag,
+GeckoStyleContext::FindChildWithRules(const nsAtom* aPseudoTag,
                                    nsRuleNode* aSource,
                                    nsRuleNode* aSourceIfVisited,
                                    bool aRelevantLinkVisited)

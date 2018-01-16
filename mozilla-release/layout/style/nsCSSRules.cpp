@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,7 +19,7 @@
 #include "mozilla/css/NameSpaceRule.h"
 
 #include "nsString.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 
 #include "nsCSSProps.h"
 
@@ -211,11 +212,24 @@ ImportRule::~ImportRule()
 NS_IMPL_ADDREF_INHERITED(ImportRule, CSSImportRule)
 NS_IMPL_RELEASE_INHERITED(ImportRule, CSSImportRule)
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(ImportRule, CSSImportRule, mMedia, mChildSheet)
-
 // QueryInterface implementation for ImportRule
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ImportRule)
 NS_INTERFACE_MAP_END_INHERITING(CSSImportRule)
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(ImportRule)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(ImportRule, CSSImportRule)
+  if (tmp->mChildSheet) {
+    tmp->mChildSheet->SetOwnerRule(nullptr);
+    tmp->mChildSheet = nullptr;
+  }
+  tmp->mMedia = nullptr;
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ImportRule, CSSImportRule)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMedia)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mChildSheet)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 #ifdef DEBUG
 /* virtual */ void
@@ -341,8 +355,18 @@ NS_IMPL_RELEASE_INHERITED(MediaRule, CSSMediaRule)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MediaRule)
 NS_INTERFACE_MAP_END_INHERITING(CSSMediaRule)
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(MediaRule, CSSMediaRule,
-                                   mMedia)
+NS_IMPL_CYCLE_COLLECTION_CLASS(MediaRule)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(MediaRule, CSSMediaRule)
+  if (tmp->mMedia) {
+    tmp->mMedia->SetStyleSheet(nullptr);
+    tmp->mMedia = nullptr;
+  }
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(MediaRule, CSSMediaRule)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMedia)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 /* virtual */ void
 MediaRule::SetStyleSheet(StyleSheet* aSheet)
@@ -692,7 +716,7 @@ DocumentRule::AppendConditionText(nsAString& aCssText) const
 // NameSpaceRule
 //
 
-NameSpaceRule::NameSpaceRule(nsIAtom* aPrefix, const nsString& aURLSpec,
+NameSpaceRule::NameSpaceRule(nsAtom* aPrefix, const nsString& aURLSpec,
                              uint32_t aLineNumber, uint32_t aColumnNumber)
   : CSSNamespaceRule(aLineNumber, aColumnNumber),
     mPrefix(aPrefix),
@@ -1302,7 +1326,7 @@ FeatureValuesToString(
 
 static void
 FontFeatureValuesRuleToString(
-  const mozilla::FontFamilyList& aFamilyList,
+  mozilla::SharedFontList* aFamilyList,
   const nsTArray<gfxFontFeatureValueSet::FeatureValues>& aFeatureValues,
   nsAString& aOutStr)
 {
@@ -1396,13 +1420,6 @@ struct MakeFamilyArray {
   nsTArray<nsString>& familyArray;
   bool hasGeneric;
 };
-
-void
-nsCSSFontFeatureValuesRule::SetFamilyList(
-  const mozilla::FontFamilyList& aFamilyList)
-{
-  mFamilyList = aFamilyList;
-}
 
 void
 nsCSSFontFeatureValuesRule::AddValueList(int32_t aVariantAlternate,
@@ -1733,7 +1750,7 @@ nsCSSKeyframesRule::List(FILE* out, int32_t aIndent) const
   }
 
   fprintf_stderr(out, "%s@keyframes %s {\n",
-                 indentStr.get(), NS_ConvertUTF16toUTF8(mName).get());
+                 indentStr.get(), nsAtomCString(mName).get());
 
   GroupRule::List(out, aIndent);
 
@@ -1745,7 +1762,7 @@ void
 nsCSSKeyframesRule::GetCssTextImpl(nsAString& aCssText) const
 {
   aCssText.AssignLiteral("@keyframes ");
-  aCssText.Append(mName);
+  aCssText.Append(nsDependentAtomString(mName));
   aCssText.AppendLiteral(" {\n");
   nsAutoString tmp;
   for (const Rule* rule : GeckoRules()) {
@@ -1759,21 +1776,21 @@ nsCSSKeyframesRule::GetCssTextImpl(nsAString& aCssText) const
 NS_IMETHODIMP
 nsCSSKeyframesRule::GetName(nsAString& aName)
 {
-  aName = mName;
+  mName->ToString(aName);
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsCSSKeyframesRule::SetName(const nsAString& aName)
 {
-  if (mName == aName) {
+  if (mName->Equals(aName)) {
     return NS_OK;
   }
 
   nsIDocument* doc = GetDocument();
   MOZ_AUTO_DOC_UPDATE(doc, UPDATE_STYLE, true);
 
-  mName = aName;
+  mName = NS_Atomize(aName);
 
   if (StyleSheet* sheet = GetStyleSheet()) {
     sheet->AsGecko()->SetModifiedByChildRule();
@@ -2283,7 +2300,7 @@ NS_IMETHODIMP
 nsCSSCounterStyleRule::SetName(const nsAString& aName)
 {
   nsCSSParser parser;
-  if (nsCOMPtr<nsIAtom> name = parser.ParseCounterStyleName(aName, nullptr)) {
+  if (RefPtr<nsAtom> name = parser.ParseCounterStyleName(aName, nullptr)) {
     nsIDocument* doc = GetDocument();
     MOZ_AUTO_DOC_UPDATE(doc, UPDATE_STYLE, true);
 

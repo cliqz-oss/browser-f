@@ -72,12 +72,11 @@ template<> const char ObjectBase<TypedObject<jdoubleArray>, jdoubleArray>::name[
 template<> const char ObjectBase<TypedObject<jobjectArray>, jobjectArray>::name[] = "[Ljava/lang/Object;";
 template<> const char ObjectBase<ByteBuffer, jobject>::name[] = "java/nio/ByteBuffer";
 
-
+JavaVM* sJavaVM;
 JNIEnv* sGeckoThreadEnv;
 
 namespace {
 
-JavaVM* sJavaVM;
 pthread_key_t sThreadEnvKey;
 jclass sOOMErrorClass;
 jobject sClassLoader;
@@ -211,6 +210,15 @@ bool ReportException(JNIEnv* aEnv, jthrowable aExc, jstring aStack)
     result &= NS_SUCCEEDED(CrashReporter::AnnotateCrashReport(
             NS_LITERAL_CSTRING("JavaStackTrace"),
             String::Ref::From(aStack)->ToCString()));
+
+    auto appNotes = java::GeckoAppShell::GetAppNotes();
+    if (NS_WARN_IF(aEnv->ExceptionCheck())) {
+        aEnv->ExceptionDescribe();
+        aEnv->ExceptionClear();
+    } else if (appNotes) {
+        CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("\n") +
+                                                   appNotes->ToCString());
+    }
 #endif // MOZ_CRASHREPORTER
 
     if (sOOMErrorClass && aEnv->IsInstanceOf(aExc, sOOMErrorClass)) {

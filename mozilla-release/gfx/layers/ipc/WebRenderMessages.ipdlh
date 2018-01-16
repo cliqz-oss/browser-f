@@ -23,8 +23,8 @@ using mozilla::wr::FontKey from "mozilla/webrender/WebRenderTypes.h";
 using mozilla::wr::ImageKey from "mozilla/webrender/WebRenderTypes.h";
 using mozilla::wr::PipelineId from "mozilla/webrender/WebRenderTypes.h";
 using mozilla::gfx::MaybeIntSize from "mozilla/gfx/Point.h";
-using mozilla::LayerPoint from "Units.h";
-using mozilla::layers::MaybeLayerRect from "mozilla/layers/LayersTypes.h";
+using mozilla::LayoutDeviceRect from "Units.h";
+using mozilla::ImageIntRect from "Units.h";
 using class mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
 
@@ -54,7 +54,7 @@ struct OpAddCompositorAnimations {
 
 struct OpUpdateAsyncImagePipeline {
   PipelineId pipelineId;
-  LayerRect scBounds;
+  LayoutDeviceRect scBounds;
   Matrix4x4 scTransform;
   MaybeIntSize scaleToSize;
   ImageRendering filter;
@@ -97,6 +97,7 @@ struct OpUpdateBlobImage {
   ImageDescriptor descriptor;
   OffsetRange bytes;
   ImageKey key;
+  ImageIntRect dirtyRect;
 };
 
 struct OpDeleteImage {
@@ -109,13 +110,20 @@ struct OpAddRawFont {
   FontKey key;
 };
 
+struct OpAddFontDescriptor {
+  OffsetRange bytes;
+  uint32_t fontIndex;
+  FontKey key;
+};
+
 struct OpDeleteFont {
   FontKey key;
 };
 
 struct OpAddFontInstance {
   MaybeFontInstanceOptions options;
-  MaybeFontInstancePlatformOptions platformOptions ;
+  MaybeFontInstancePlatformOptions platformOptions;
+  OffsetRange variations;
   FontInstanceKey instanceKey;
   FontKey fontKey;
   float glyphSize;
@@ -132,6 +140,7 @@ union OpUpdateResource {
   OpUpdateBlobImage;
   OpDeleteImage;
   OpAddRawFont;
+  OpAddFontDescriptor;
   OpDeleteFont;
   OpAddFontInstance;
   OpDeleteFontInstance;

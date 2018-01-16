@@ -5,8 +5,7 @@
 // The ext-* files are imported into the same scopes.
 /* import-globals-from ext-browserAction.js */
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
+Cu.import("resource://gre/modules/PlacesUtils.jsm");
 
 const {
   TYPE_BOOKMARK,
@@ -318,7 +317,7 @@ this.bookmarks = class extends ExtensionAPI {
 
           // The API doesn't give you the old bookmark at the moment
           try {
-            return PlacesUtils.bookmarks.remove(info, {preventRemovalOfNonEmptyFolders: true}).then(result => {})
+            return PlacesUtils.bookmarks.remove(info, {preventRemovalOfNonEmptyFolders: true})
               .catch(error => Promise.reject({message: error.message}));
           } catch (e) {
             return Promise.reject({message: `Invalid bookmark: ${JSON.stringify(info)}`});
@@ -331,7 +330,7 @@ this.bookmarks = class extends ExtensionAPI {
           };
 
           try {
-            return PlacesUtils.bookmarks.remove(info).then(result => {})
+            return PlacesUtils.bookmarks.remove(info)
               .catch(error => Promise.reject({message: error.message}));
           } catch (e) {
             return Promise.reject({message: `Invalid bookmark: ${JSON.stringify(info)}`});

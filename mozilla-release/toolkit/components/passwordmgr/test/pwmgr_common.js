@@ -128,6 +128,7 @@ function doKey(aKey, modifier) {
  * notifications might be confused by this.
  */
 function commonInit(selfFilling) {
+  // eslint-disable-next-line mozilla/use-services
   var pwmgr = SpecialPowers.Cc["@mozilla.org/login-manager;1"].
               getService(SpecialPowers.Ci.nsILoginManager);
   ok(pwmgr != null, "Access LoginManager");
@@ -443,7 +444,8 @@ if (this.addMessageListener) {
   // Code to only run in the mochitest pages (not in the chrome script).
   SpecialPowers.pushPrefEnv({"set": [["signon.rememberSignons", true],
                                      ["signon.autofillForms.http", true],
-                                     ["security.insecure_field_warning.contextual.enabled", false]]
+                                     ["security.insecure_field_warning.contextual.enabled", false],
+                                     ["network.auth.non-web-content-triggered-resources-http-auth-allow", true]]
                            });
   SimpleTest.registerCleanupFunction(() => {
     SpecialPowers.popPrefEnv();

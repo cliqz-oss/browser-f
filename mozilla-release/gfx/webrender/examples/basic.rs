@@ -218,7 +218,11 @@ impl Example for App {
             rect: (75, 75).by(100, 100),
             repeat: false,
         };
-        let complex = ComplexClipRegion::new((50, 50).to(150, 150), BorderRadius::uniform(20.0));
+        let complex = ComplexClipRegion::new(
+            (50, 50).to(150, 150),
+            BorderRadius::uniform(20.0),
+            ClipMode::Clip
+        );
         let id = builder.define_clip(None, bounds, vec![complex], Some(mask));
         builder.push_clip_id(id);
 
@@ -247,18 +251,18 @@ impl Example for App {
 
         let info = LayoutPrimitiveInfo::new((100, 100).to(200, 200));
         builder.push_border(&info, border_widths, border_details);
-
+        builder.pop_clip_id();
 
         if false {
             // draw text?
             let font_key = api.generate_font_key();
-            let font_bytes = load_file("res/FreeSans.ttf");
+            let font_bytes = load_file("../wrench/reftest/text/FreeSans.ttf");
             resources.add_raw_font(font_key, font_bytes, 0);
 
             let font_instance_key = api.generate_font_instance_key();
-            resources.add_font_instance(font_instance_key, font_key, Au::from_px(32), None, None);
+            resources.add_font_instance(font_instance_key, font_key, Au::from_px(32), None, None, Vec::new());
 
-            let text_bounds = (100, 200).by(700, 300);
+            let text_bounds = (100, 50).by(700, 200);
             let glyphs = vec![
                 GlyphInstance {
                     index: 48,
@@ -339,12 +343,11 @@ impl Example for App {
                 color,
                 blur_radius,
                 spread_radius,
-                simple_border_radius,
+                BorderRadius::uniform(simple_border_radius),
                 box_shadow_type,
             );
         }
 
-        builder.pop_clip_id();
         builder.pop_stacking_context();
     }
 

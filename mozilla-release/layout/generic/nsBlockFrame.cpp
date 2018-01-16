@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -321,18 +321,18 @@ nsBlockFrame::~nsBlockFrame()
 }
 
 void
-nsBlockFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsBlockFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   ClearLineCursor();
-  DestroyAbsoluteFrames(aDestructRoot);
-  mFloats.DestroyFramesFrom(aDestructRoot);
+  DestroyAbsoluteFrames(aDestructRoot, aPostDestroyData);
+  mFloats.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
   nsPresContext* presContext = PresContext();
   nsIPresShell* shell = presContext->PresShell();
   nsLineBox::DeleteLineList(presContext, mLines, aDestructRoot,
-                            &mFrames);
+                            &mFrames, aPostDestroyData);
 
   if (HasPushedFloats()) {
-    SafelyDestroyFrameListProp(aDestructRoot, shell,
+    SafelyDestroyFrameListProp(aDestructRoot, aPostDestroyData, shell,
                                PushedFloatProperty());
     RemoveStateBits(NS_BLOCK_HAS_PUSHED_FLOATS);
   }
@@ -341,23 +341,24 @@ nsBlockFrame::DestroyFrom(nsIFrame* aDestructRoot)
   FrameLines* overflowLines = RemoveOverflowLines();
   if (overflowLines) {
     nsLineBox::DeleteLineList(presContext, overflowLines->mLines,
-                              aDestructRoot, &overflowLines->mFrames);
+                              aDestructRoot, &overflowLines->mFrames,
+                              aPostDestroyData);
     delete overflowLines;
   }
 
   if (GetStateBits() & NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS) {
-    SafelyDestroyFrameListProp(aDestructRoot, shell,
+    SafelyDestroyFrameListProp(aDestructRoot, aPostDestroyData, shell,
                                OverflowOutOfFlowsProperty());
     RemoveStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS);
   }
 
   if (HasOutsideBullet()) {
-    SafelyDestroyFrameListProp(aDestructRoot, shell,
+    SafelyDestroyFrameListProp(aDestructRoot, aPostDestroyData, shell,
                                OutsideBulletProperty());
     RemoveStateBits(NS_BLOCK_FRAME_HAS_OUTSIDE_BULLET);
   }
 
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 /* virtual */ nsILineIterator*
@@ -1243,8 +1244,6 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
   // and reflow them, but just in case it does, this is a safety precaution so
   // we don't end up with a placeholder pointing to frames that have already
   // been deleted as part of removing our next-in-flow.
-  // XXXmats maybe this code isn't needed anymore?
-  // XXXmats (layout/generic/crashtests/600100.xhtml doesn't crash without it)
   if (state.mReflowStatus.IsFullyComplete()) {
     nsBlockFrame* nif = static_cast<nsBlockFrame*>(GetNextInFlow());
     while (nif) {
@@ -1508,51 +1507,6 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
                    delta, perLineDelta, numLines, ectc - ctc);
     printf("%s\n", buf);
   }
-#endif
-
-#ifdef EARLY_BETA_OR_EARLIER
-  // Bug 1358299 START: Remove this code after the 56 merge date.
-  static bool sIsTelemetryEnabled;
-  static bool sTelemetryPrefCached = false;
-
-  if (!sTelemetryPrefCached) {
-    sTelemetryPrefCached = true;
-    Preferences::AddBoolVarCache(&sIsTelemetryEnabled,
-                                 "toolkit.telemetry.enabled");
-  }
-
-  if (sIsTelemetryEnabled) {
-    // Collect data for the BOX_ALIGN_PROPS_IN_BLOCKS_FLAG probe.
-    auto IsStyleNormalOrAuto = [](uint16_t value)->bool {
-      return ((value == NS_STYLE_ALIGN_NORMAL) ||
-              (value == NS_STYLE_ALIGN_AUTO));
-    };
-
-    // First check this frame for non-default values of the css-align properties
-    // that apply to block containers.
-    // Note: we check here for non-default "justify-items", though technically
-    // that'd only affect rendering if some child has "justify-self:auto".
-    // (It's safe to assume that's likely, since it's the default value that
-    // a child would have.)
-    const nsStylePosition* stylePosition = reflowInput->mStylePosition;
-    if (!IsStyleNormalOrAuto(stylePosition->mJustifyContent) ||
-        !IsStyleNormalOrAuto(stylePosition->mAlignContent) ||
-        !IsStyleNormalOrAuto(stylePosition->mJustifyItems)) {
-      Telemetry::Accumulate(Telemetry::BOX_ALIGN_PROPS_IN_BLOCKS_FLAG, true);
-    } else {
-      // If not already flagged by the parent, now check justify-self of the
-      // block-level child frames.
-      for (nsBlockFrame::LineIterator line = LinesBegin();
-           line != LinesEnd(); ++line) {
-        if (line->IsBlock() &&
-            !IsStyleNormalOrAuto(line->mFirstChild->StylePosition()->mJustifySelf)) {
-          Telemetry::Accumulate(Telemetry::BOX_ALIGN_PROPS_IN_BLOCKS_FLAG, true);
-          break;
-        }
-      }
-    }
-  }
-  // Bug 1358299 END
 #endif
 
   NS_FRAME_SET_TRUNCATION(aStatus, (*reflowInput), aMetrics);
@@ -3060,7 +3014,7 @@ nsBlockFrame::MoveChildFramesOfLine(nsLineBox* aLine, nscoord aDeltaBCoord)
 
 nsresult
 nsBlockFrame::AttributeChanged(int32_t         aNameSpaceID,
-                               nsIAtom*        aAttribute,
+                               nsAtom*        aAttribute,
                                int32_t         aModType)
 {
   nsresult rv = nsContainerFrame::AttributeChanged(aNameSpaceID,
@@ -3088,9 +3042,8 @@ nsBlockFrame::AttributeChanged(int32_t         aNameSpaceID,
       if (ancestor) {
         // XXX Not sure if this is necessary anymore
         if (ancestor->RenumberList()) {
-          PresContext()->PresShell()->
-            FrameNeedsReflow(ancestor, nsIPresShell::eStyleChange,
-                             NS_FRAME_HAS_DIRTY_CHILDREN);
+          PresShell()->FrameNeedsReflow(ancestor, nsIPresShell::eStyleChange,
+                                        NS_FRAME_HAS_DIRTY_CHILDREN);
         }
       }
     }
@@ -5147,7 +5100,7 @@ nsBlockFrame::SetOverflowOutOfFlows(const nsFrameList& aList,
     nsFrameList* list = RemovePropTableFrames(OverflowOutOfFlowsProperty());
     NS_ASSERTION(aPropValue == list, "prop value mismatch");
     list->Clear();
-    list->Delete(PresContext()->PresShell());
+    list->Delete(PresShell());
     RemoveStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS);
   }
   else if (GetStateBits() & NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS) {
@@ -5156,7 +5109,7 @@ nsBlockFrame::SetOverflowOutOfFlows(const nsFrameList& aList,
     *aPropValue = aList;
   }
   else {
-    SetPropTableFrames(new (PresContext()->PresShell()) nsFrameList(aList),
+    SetPropTableFrames(new (PresShell()) nsFrameList(aList),
                        OverflowOutOfFlowsProperty());
     AddStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS);
   }
@@ -5214,7 +5167,7 @@ nsBlockFrame::EnsurePushedFloats()
   if (result)
     return result;
 
-  result = new (PresContext()->PresShell()) nsFrameList;
+  result = new (PresShell()) nsFrameList;
   SetProperty(PushedFloatProperty(), result);
   AddStateBits(NS_BLOCK_HAS_PUSHED_FLOATS);
 
@@ -5268,9 +5221,17 @@ nsBlockFrame::AppendFrames(ChildListID  aListID,
   printf("\n");
 #endif
 
+  if (nsSVGUtils::IsInSVGTextSubtree(this)) {
+    MOZ_ASSERT(GetParent()->IsSVGTextFrame(),
+               "unexpected block frame in SVG text");
+    // Workaround for bug 1399425 in case this bit has been removed from the
+    // SVGTextFrame just before the parser adds more descendant nodes.
+    GetParent()->AddStateBits(NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY);
+  }
+
   AddFrames(aFrameList, lastKid);
   if (aListID != kNoReflowPrincipalList) {
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eTreeChange,
                        NS_FRAME_HAS_DIRTY_CHILDREN); // XXX sufficient?
   }
@@ -5306,7 +5267,7 @@ nsBlockFrame::InsertFrames(ChildListID aListID,
 
   AddFrames(aFrameList, aPrevFrame);
   if (aListID != kNoReflowPrincipalList) {
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eTreeChange,
                        NS_FRAME_HAS_DIRTY_CHILDREN); // XXX sufficient?
   }
@@ -5352,7 +5313,7 @@ nsBlockFrame::RemoveFrame(ChildListID aListID,
     MOZ_CRASH("unexpected child list");
   }
 
-  PresContext()->PresShell()->
+  PresShell()->
     FrameNeedsReflow(this, nsIPresShell::eTreeChange,
                      NS_FRAME_HAS_DIRTY_CHILDREN); // XXX sufficient?
 }
@@ -5864,19 +5825,6 @@ nsBlockInFlowLineIterator::FindValidLine()
   }
 }
 
-static void RemoveBlockChild(nsIFrame* aFrame,
-                             bool      aRemoveOnlyFluidContinuations)
-{
-  if (!aFrame) {
-    return;
-  }
-  nsBlockFrame* nextBlock = nsLayoutUtils::GetAsBlock(aFrame->GetParent());
-  NS_ASSERTION(nextBlock,
-               "Our child's continuation's parent is not a block?");
-  nextBlock->DoRemoveFrame(aFrame,
-      (aRemoveOnlyFluidContinuations ? 0 : nsBlockFrame::REMOVE_FIXED_CONTINUATIONS));
-}
-
 // This function removes aDeletedFrame and all its continuations.  It
 // is optimized for deleting a whole series of frames. The easy
 // implementation would invoke itself recursively on
@@ -5885,7 +5833,8 @@ static void RemoveBlockChild(nsIFrame* aFrame,
 // start by locating aDeletedFrame and then scanning from that point
 // on looking for continuations.
 void
-nsBlockFrame::DoRemoveFrame(nsIFrame* aDeletedFrame, uint32_t aFlags)
+nsBlockFrame::DoRemoveFrameInternal(nsIFrame* aDeletedFrame, uint32_t aFlags,
+                                    PostDestroyData& aPostDestroyData)
 {
   // Clear our line cursor, since our lines may change.
   ClearLineCursor();
@@ -6012,7 +5961,7 @@ nsBlockFrame::DoRemoveFrame(nsIFrame* aDeletedFrame, uint32_t aFlags)
       deletedNextContinuation = nullptr;
     }
 
-    aDeletedFrame->Destroy();
+    aDeletedFrame->DestroyFrom(aDeletedFrame, aPostDestroyData);
     aDeletedFrame = deletedNextContinuation;
 
     bool haveAdvancedToNextLine = false;
@@ -6113,8 +6062,15 @@ nsBlockFrame::DoRemoveFrame(nsIFrame* aDeletedFrame, uint32_t aFlags)
   VerifyOverflowSituation();
 #endif
 
-  // Advance to next flow block if the frame has more continuations
-  RemoveBlockChild(aDeletedFrame, !(aFlags & REMOVE_FIXED_CONTINUATIONS));
+  // Advance to next flow block if the frame has more continuations.
+  if (!aDeletedFrame) {
+    return;
+  }
+  nsBlockFrame* nextBlock = nsLayoutUtils::GetAsBlock(aDeletedFrame->GetParent());
+  NS_ASSERTION(nextBlock,
+               "Our child's continuation's parent is not a block?");
+  uint32_t flags = (aFlags & REMOVE_FIXED_CONTINUATIONS);
+  nextBlock->DoRemoveFrameInternal(aDeletedFrame, flags, aPostDestroyData);
 }
 
 static bool
@@ -6671,6 +6627,7 @@ DisplayLine(nsDisplayListBuilder* aBuilder, const nsRect& aLineArea,
   // stick outside of the line's bounding box or our bounding box)
   // intersects the dirty rect then paint the line.
   bool intersect = aLineArea.Intersects(aBuilder->GetDirtyRect());
+  bool visible = aLineArea.Intersects(aBuilder->GetVisibleRect());
 #ifdef DEBUG
   if (nsBlockFrame::gLamePaintMetrics) {
     aDrawnLines++;
@@ -6686,14 +6643,14 @@ DisplayLine(nsDisplayListBuilder* aBuilder, const nsRect& aLineArea,
   // frame in the line, it's also true for aFrame.
   bool lineInline = aLine->IsInline();
   bool lineMayHaveTextOverflow = aTextOverflow && lineInline;
-  if (!intersect && !aBuilder->ShouldDescendIntoFrame(aFrame) &&
+  if (!intersect && !aBuilder->ShouldDescendIntoFrame(aFrame, visible) &&
       !lineMayHaveTextOverflow)
     return;
 
   // Collect our line's display items in a temporary nsDisplayListCollection,
   // so that we can apply any "text-overflow" clipping to the entire collection
   // without affecting previous lines.
-  nsDisplayListCollection collection;
+  nsDisplayListCollection collection(aBuilder);
 
   // Block-level child backgrounds go on the blockBorderBackgrounds list ...
   // Inline-level child backgrounds go on the regular child content list.
@@ -6759,7 +6716,7 @@ nsBlockFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     TextOverflow::WillProcessLines(aBuilder, this);
 
   // We'll collect our lines' display items here, & then append this to aLists.
-  nsDisplayListCollection linesDisplayListCollection;
+  nsDisplayListCollection linesDisplayListCollection(aBuilder);
 
   // Don't use the line cursor if we might have a descendant placeholder ...
   // it might skip lines that contain placeholders but don't themselves
@@ -6771,7 +6728,7 @@ nsBlockFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   // Also skip the cursor if we're creating text overflow markers,
   // since we need to know what line number we're up to in order
   // to generate unique display item keys.
-  nsLineBox* cursor = (aBuilder->ShouldDescendIntoFrame(this) || textOverflow) ?
+  nsLineBox* cursor = (aBuilder->ShouldDescendIntoFrame(this, true) || textOverflow) ?
     nullptr : GetFirstLineContaining(aBuilder->GetDirtyRect().y);
   LineIterator line_end = LinesEnd();
 
@@ -7070,7 +7027,7 @@ nsBlockFrame::SetInitialChildList(ChildListID     aListID,
     // the anonymous block in {ib} splits do NOT get first-letter frames.
     // Note that NS_BLOCK_HAS_FIRST_LETTER_STYLE gets set on all continuations
     // of the block.
-    nsIAtom *pseudo = StyleContext()->GetPseudo();
+    nsAtom *pseudo = StyleContext()->GetPseudo();
     bool haveFirstLetterStyle =
       (!pseudo ||
        (pseudo == nsCSSAnonBoxes::cellContent &&
@@ -7130,7 +7087,7 @@ void
 nsBlockFrame::CreateBulletFrameForListItem(bool aCreateBulletList,
                                            bool aListStylePositionInside)
 {
-  nsIPresShell* shell = PresContext()->PresShell();
+  nsIPresShell* shell = PresShell();
 
   CSSPseudoElementType pseudoType = aCreateBulletList ?
     CSSPseudoElementType::mozListBullet :
@@ -7527,10 +7484,9 @@ nsBlockFrame::ComputeFinalBSize(const ReflowInput& aReflowInput,
                          aBorderPadding.BEnd(wm));
 
   if (aStatus->IsIncomplete() &&
-      aFinalSize.BSize(wm) < aReflowInput.AvailableBSize()) {
-    // We fit in the available space - change status to OVERFLOW_INCOMPLETE.
-    // XXXmats why didn't Reflow report OVERFLOW_INCOMPLETE in the first place?
-    // XXXmats and why exclude the case when our size == AvailableBSize?
+      aFinalSize.BSize(wm) <= aReflowInput.AvailableBSize()) {
+    // We ran out of height on this page but we're incomplete.
+    // Set status to complete except for overflow.
     aStatus->SetOverflowIncomplete();
   }
 

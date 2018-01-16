@@ -40,7 +40,7 @@ InactiveFeaturesAndParamsCheck()
   StrVec filters;
 
   ASSERT_TRUE(!profiler_is_active());
-  ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::GPU));
+  ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
   ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
   ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
@@ -85,7 +85,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
                    features, filters, MOZ_ARRAY_LENGTH(filters));
 
     ASSERT_TRUE(profiler_is_active());
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::GPU));
+    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
@@ -99,14 +99,15 @@ TEST(GeckoProfiler, FeaturesAndParams)
 
   // Try some different features and filters.
   {
-    uint32_t features = ProfilerFeature::GPU | ProfilerFeature::Privacy;
+    uint32_t features = ProfilerFeature::MainThreadIO |
+                        ProfilerFeature::Privacy;
     const char* filters[] = { "GeckoMain", "Foo", "Bar" };
 
     profiler_start(999999, 3,
                    features, filters, MOZ_ARRAY_LENGTH(filters));
 
     ASSERT_TRUE(profiler_is_active());
-    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::GPU));
+    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Privacy));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
@@ -129,7 +130,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
                    availableFeatures, filters, MOZ_ARRAY_LENGTH(filters));
 
     ASSERT_TRUE(profiler_is_active());
-    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::GPU));
+    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Privacy));
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Restyle));
 
@@ -150,7 +151,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
                    features, filters, MOZ_ARRAY_LENGTH(filters));
 
     ASSERT_TRUE(profiler_is_active());
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::GPU));
+    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
@@ -270,7 +271,7 @@ TEST(GeckoProfiler, DifferentThreads)
       NS_DISPATCH_SYNC);
 
     ASSERT_TRUE(profiler_is_active());
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::GPU));
+    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
@@ -299,7 +300,7 @@ TEST(GeckoProfiler, DifferentThreads)
         "GeckoProfiler_DifferentThreads_Test::TestBody",
         [&]() {
           ASSERT_TRUE(profiler_is_active());
-          ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::GPU));
+          ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
           ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
           ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
@@ -457,20 +458,20 @@ TEST(GeckoProfiler, Markers)
                  features, filters, MOZ_ARRAY_LENGTH(filters));
 
   profiler_tracing("A", "B", TRACING_EVENT);
-  profiler_tracing("A", "C", TRACING_INTERVAL_START);
-  profiler_tracing("A", "C", TRACING_INTERVAL_END);
+  PROFILER_TRACING("A", "C", TRACING_INTERVAL_START);
+  PROFILER_TRACING("A", "C", TRACING_INTERVAL_END);
 
   UniqueProfilerBacktrace bt = profiler_get_backtrace();
-  profiler_tracing("B", "A", Move(bt), TRACING_EVENT);
+  profiler_tracing("B", "A", TRACING_EVENT, Move(bt));
 
   {
-    AutoProfilerTracing tracing("C", "A");
+    AUTO_PROFILER_TRACING("C", "A");
   }
 
   profiler_add_marker("M1");
-  profiler_add_marker("M2",
-                      MakeUnique<TracingMarkerPayload>("C", TRACING_EVENT));
-  profiler_add_marker("M3");
+  profiler_add_marker(
+    "M2", MakeUnique<TracingMarkerPayload>("C", TRACING_EVENT));
+  PROFILER_ADD_MARKER("M3");
   profiler_add_marker(
     "M4",
     MakeUnique<TracingMarkerPayload>("C", TRACING_EVENT,
@@ -494,9 +495,9 @@ TEST(GeckoProfiler, Markers)
   okstr1[kMax - 1] = '\0';
   okstr2[kMax - 1] = '\0';
   longstr[kMax] = '\0';
-  AUTO_PROFILER_LABEL_DYNAMIC("", CSS, okstr1.get());
-  AUTO_PROFILER_LABEL_DYNAMIC("okstr2", CSS, okstr2.get());
-  AUTO_PROFILER_LABEL_DYNAMIC("", CSS, longstr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", CSS, okstr1.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("okstr2", CSS, okstr2.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", CSS, longstr.get());
 
   // Sleep briefly to ensure a sample is taken and the pending markers are
   // processed.
@@ -627,7 +628,7 @@ TEST(GeckoProfiler, StreamJSONForThisProcess)
   profiler_start(PROFILER_DEFAULT_ENTRIES, PROFILER_DEFAULT_INTERVAL,
                  features, filters, MOZ_ARRAY_LENGTH(filters));
 
-  w.Start(SpliceableJSONWriter::SingleLineStyle);
+  w.Start();
   ASSERT_TRUE(profiler_stream_json_for_this_process(w));
   w.End();
 
@@ -662,7 +663,7 @@ TEST(GeckoProfiler, StreamJSONForThisProcessThreaded)
     NS_NewRunnableFunction(
       "GeckoProfiler_StreamJSONForThisProcessThreaded_Test::TestBody",
       [&]() {
-        w.Start(SpliceableJSONWriter::SingleLineStyle);
+        w.Start();
         ASSERT_TRUE(profiler_stream_json_for_this_process(w));
         w.End();
       }),
@@ -697,7 +698,11 @@ TEST(GeckoProfiler, PseudoStack)
 
   UniqueFreePtr<char> dynamic(strdup("dynamic"));
   {
-    AUTO_PROFILER_LABEL_DYNAMIC("A::C", JS, dynamic.get());
+    AUTO_PROFILER_LABEL_DYNAMIC_CSTR("A::C", JS, dynamic.get());
+    AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING(
+      "A::C2", JS, nsDependentCString(dynamic.get()));
+    AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+      "A::C3", JS, NS_ConvertUTF8toUTF16(dynamic.get()));
 
     profiler_start(PROFILER_DEFAULT_ENTRIES, PROFILER_DEFAULT_INTERVAL,
                    features, filters, MOZ_ARRAY_LENGTH(filters));

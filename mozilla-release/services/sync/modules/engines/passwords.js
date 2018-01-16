@@ -47,10 +47,18 @@ function isSyncableChange(oldLogin, newLogin) {
 
 this.LoginRec = function LoginRec(collection, id) {
   CryptoWrapper.call(this, collection, id);
-}
+};
 LoginRec.prototype = {
   __proto__: CryptoWrapper.prototype,
   _logName: "Sync.Record.Login",
+
+  cleartextToString() {
+    let o = Object.assign({}, this.cleartext);
+    if (o.password) {
+      o.password = "X".repeat(o.password.length);
+    }
+    return JSON.stringify(o);
+  }
 };
 
 Utils.deferGetSet(LoginRec, "cleartext", [
@@ -62,14 +70,12 @@ Utils.deferGetSet(LoginRec, "cleartext", [
 
 this.PasswordEngine = function PasswordEngine(service) {
   SyncEngine.call(this, "Passwords", service);
-}
+};
 PasswordEngine.prototype = {
   __proto__: SyncEngine.prototype,
   _storeObj: PasswordStore,
   _trackerObj: PasswordTracker,
   _recordObj: LoginRec,
-
-  applyIncomingBatchSize: PASSWORDS_STORE_BATCH_SIZE,
 
   syncPriority: 2,
 
@@ -274,13 +280,13 @@ PasswordStore.prototype = {
       return;
     }
 
-    this._log.debug("Adding login for " + record.hostname);
+    this._log.trace("Adding login for " + record.hostname);
     this._log.trace("httpRealm: " + JSON.stringify(login.httpRealm) + "; " +
                     "formSubmitURL: " + JSON.stringify(login.formSubmitURL));
     try {
       Services.logins.addLogin(login);
     } catch (ex) {
-      this._log.debug(`Adding record ${record.id} resulted in exception`, ex);
+      this._log.error(`Adding record ${record.id} resulted in exception`, ex);
     }
   },
 
@@ -299,11 +305,11 @@ PasswordStore.prototype = {
   async update(record) {
     let loginItem = await this._getLoginFromGUID(record.id);
     if (!loginItem) {
-      this._log.debug("Skipping update for unknown item: " + record.hostname);
+      this._log.trace("Skipping update for unknown item: " + record.hostname);
       return;
     }
 
-    this._log.debug("Updating " + record.hostname);
+    this._log.trace("Updating " + record.hostname);
     let newinfo = this._nsLoginInfoFromRecord(record);
     if (!newinfo) {
       return;
@@ -404,7 +410,7 @@ class PasswordValidator extends CollectionValidator {
 
   getClientItems() {
     let logins = Services.logins.getAllLogins({});
-    let syncHosts = Utils.getSyncCredentialsHosts()
+    let syncHosts = Utils.getSyncCredentialsHosts();
     let result = logins.map(l => l.QueryInterface(Ci.nsILoginMetaInfo))
                        .filter(l => !syncHosts.has(l.hostname));
     return Promise.resolve(result);
@@ -422,7 +428,7 @@ class PasswordValidator extends CollectionValidator {
       username: item.username,
       usernameField: item.usernameField,
       original: item,
-    }
+    };
   }
 
   async normalizeServerItem(item) {

@@ -44,7 +44,7 @@ NS_IMPL_ELEMENT_CLONE(HTMLBodyElement)
 
 bool
 HTMLBodyElement::ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult)
 {
@@ -93,11 +93,6 @@ HTMLBodyElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
     int32_t bodyBottomMargin = -1;
     int32_t bodyLeftMargin = -1;
     int32_t bodyRightMargin = -1;
-
-    // check the mode (fortunately, the GenericSpecifiedValues has a presContext for us to use!)
-    NS_ASSERTION(aData->mPresContext, "null presContext in MapAttributesIntoRule was unexpected");
-    nsCompatibility mode = aData->mPresContext->CompatibilityMode();
-
 
     const nsAttrValue* value;
     // if marginwidth/marginheight are set, reflect them as 'margin'
@@ -177,20 +172,6 @@ HTMLBodyElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
         nscoord frameMarginHeight=-1; // default value
         docShell->GetMarginWidth(&frameMarginWidth); // -1 indicates not set
         docShell->GetMarginHeight(&frameMarginHeight);
-        if (frameMarginWidth >= 0 && bodyMarginWidth == -1) { // set in <frame> & not in <body>
-          if (eCompatibility_NavQuirks == mode) {
-            if (bodyMarginHeight == -1 && 0 > frameMarginHeight) { // nav quirk
-              frameMarginHeight = 0;
-            }
-          }
-        }
-        if (frameMarginHeight >= 0 && bodyMarginHeight == -1) { // set in <frame> & not in <body>
-          if (eCompatibility_NavQuirks == mode) {
-            if (bodyMarginWidth == -1 && 0 > frameMarginWidth) { // nav quirk
-              frameMarginWidth = 0;
-            }
-          }
-        }
 
         if (bodyMarginWidth == -1 && frameMarginWidth >= 0) {
           if (bodyLeftMargin == -1) {
@@ -264,7 +245,7 @@ HTMLBodyElement::GetAttributeMappingFunction() const
 }
 
 NS_IMETHODIMP_(bool)
-HTMLBodyElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLBodyElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
     { &nsGkAtoms::link },
@@ -318,7 +299,7 @@ HTMLBodyElement::GetAssociatedEditor()
 }
 
 bool
-HTMLBodyElement::IsEventAttributeNameInternal(nsIAtom *aName)
+HTMLBodyElement::IsEventAttributeNameInternal(nsAtom *aName)
 {
   return nsContentUtils::IsEventAttributeName(aName,
                                               EventNameType_HTML |
@@ -338,13 +319,15 @@ HTMLBodyElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 }
 
 nsresult
-HTMLBodyElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+HTMLBodyElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                               const nsAttrValue* aValue,
-                              const nsAttrValue* aOldValue, bool aNotify)
+                              const nsAttrValue* aOldValue,
+                              nsIPrincipal* aSubjectPrincipal,
+                              bool aNotify)
 {
   nsresult rv = nsGenericHTMLElement::AfterSetAttr(aNameSpaceID,
                                                    aName, aValue, aOldValue,
-                                                   aNotify);
+                                                   aSubjectPrincipal, aNotify);
   NS_ENSURE_SUCCESS(rv, rv);
   // if the last mapped attribute was removed, don't clear the
   // nsMappedAttributes, our style can still depend on the containing frame element
@@ -365,7 +348,7 @@ HTMLBodyElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
   HTMLBodyElement::GetOn##name_()                                              \
   {                                                                            \
     if (nsPIDOMWindowInner* win = OwnerDoc()->GetInnerWindow()) {              \
-      nsGlobalWindow* globalWin = nsGlobalWindow::Cast(win);                   \
+      nsGlobalWindowInner* globalWin = nsGlobalWindowInner::Cast(win);         \
       return globalWin->GetOn##name_();                                        \
     }                                                                          \
     return nullptr;                                                            \
@@ -378,7 +361,7 @@ HTMLBodyElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
       return;                                                                  \
     }                                                                          \
                                                                                \
-    nsGlobalWindow* globalWin = nsGlobalWindow::Cast(win);                     \
+    nsGlobalWindowInner* globalWin = nsGlobalWindowInner::Cast(win);           \
     return globalWin->SetOn##name_(handler);                                   \
   }
 #define WINDOW_EVENT(name_, id_, type_, struct_)                               \

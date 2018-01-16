@@ -38,6 +38,8 @@ public:
   typedef typename nsTSubstring<T>::substring_type substring_type;
 #endif
 
+  typedef typename substring_type::literalstring_type literalstring_type;
+
   typedef typename substring_type::fallible_t fallible_t;
 
   typedef typename substring_type::char_type char_type;
@@ -61,9 +63,6 @@ public:
   typedef typename substring_type::DataFlags DataFlags;
   typedef typename substring_type::ClassFlags ClassFlags;
 
-  using typename substring_type::IsChar;
-  using typename substring_type::IsChar16;
-
 public:
 
   /**
@@ -83,7 +82,7 @@ public:
   }
 
 #if defined(MOZ_USE_CHAR16_WRAPPER)
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   explicit
   nsTString(char16ptr_t aStr, size_type aLength = size_type(-1))
     : substring_type(ClassFlags::NULL_TERMINATED)
@@ -98,6 +97,12 @@ public:
     this->Assign(aStr);
   }
 
+  nsTString(self_type&& aStr)
+    : substring_type(ClassFlags::NULL_TERMINATED)
+  {
+    this->Assign(mozilla::Move(aStr));
+  }
+
   MOZ_IMPLICIT nsTString(const substring_tuple_type& aTuple)
     : substring_type(ClassFlags::NULL_TERMINATED)
   {
@@ -106,6 +111,21 @@ public:
 
   explicit
   nsTString(const substring_type& aReadable)
+    : substring_type(ClassFlags::NULL_TERMINATED)
+  {
+    this->Assign(aReadable);
+  }
+
+  explicit
+  nsTString(substring_type&& aReadable)
+    : substring_type(ClassFlags::NULL_TERMINATED)
+  {
+    this->Assign(mozilla::Move(aReadable));
+  }
+
+  // NOTE(nika): gcc 4.9 workaround. Remove when support is dropped.
+  explicit
+  nsTString(const literalstring_type& aReadable)
     : substring_type(ClassFlags::NULL_TERMINATED)
   {
     this->Assign(aReadable);
@@ -128,8 +148,13 @@ public:
     this->Assign(aStr);
     return *this;
   }
+  self_type& operator=(self_type&& aStr)
+  {
+    this->Assign(mozilla::Move(aStr));
+    return *this;
+  }
 #if defined(MOZ_USE_CHAR16_WRAPPER)
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   self_type& operator=(const char16ptr_t aStr)
   {
     this->Assign(static_cast<const char16_t*>(aStr));
@@ -137,6 +162,17 @@ public:
   }
 #endif
   self_type& operator=(const substring_type& aStr)
+  {
+    this->Assign(aStr);
+    return *this;
+  }
+  self_type& operator=(substring_type&& aStr)
+  {
+    this->Assign(mozilla::Move(aStr));
+    return *this;
+  }
+  // NOTE(nika): gcc 4.9 workaround. Remove when support is dropped.
+  self_type& operator=(const literalstring_type& aStr)
   {
     this->Assign(aStr);
     return *this;
@@ -151,12 +187,12 @@ public:
    * returns the null-terminated string
    */
 
-  template <typename U> struct raw_type { typedef const U* type; };
+  template <typename U, typename Dummy> struct raw_type { typedef const U* type; };
 #if defined(MOZ_USE_CHAR16_WRAPPER)
-  template <> struct raw_type<char16_t> { typedef char16ptr_t type; };
+  template <typename Dummy> struct raw_type<char16_t, Dummy> { typedef char16ptr_t type; };
 #endif
 
-  MOZ_NO_DANGLING_ON_TEMPORARIES typename raw_type<T>::type get() const
+  MOZ_NO_DANGLING_ON_TEMPORARIES typename raw_type<T, int>::type get() const
   {
     return this->mData;
   }
@@ -200,14 +236,14 @@ public:
   int32_t Find(const char* aString, bool aIgnoreCase = false,
                int32_t aOffset = 0, int32_t aCount = -1) const;
 
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   int32_t Find(const self_type& aString, int32_t aOffset = 0,
                int32_t aCount = -1) const;
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   int32_t Find(const char_type* aString, int32_t aOffset = 0,
                int32_t aCount = -1) const;
 #ifdef MOZ_USE_CHAR16_WRAPPER
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   int32_t Find(char16ptr_t aString, int32_t aOffset = 0,
                int32_t aCount = -1) const
   {
@@ -234,10 +270,10 @@ public:
   int32_t RFind(const char* aCString, bool aIgnoreCase = false,
                 int32_t aOffset = -1, int32_t aCount = -1) const;
 
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   int32_t RFind(const self_type& aString, int32_t aOffset = -1,
                 int32_t aCount = -1) const;
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   int32_t RFind(const char_type* aString, int32_t aOffset = -1,
                 int32_t aCount = -1) const;
 
@@ -273,7 +309,7 @@ public:
     return FindCharInSet(aString.get(), aOffset);
   }
 
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   int32_t FindCharInSet(const char* aSet, int32_t aOffset = 0) const;
 
 
@@ -302,7 +338,7 @@ public:
    * @param   aCount tells us how many chars to compare
    * @return  -1,0,1
    */
-  template <typename EnableIfChar = IsChar>
+  template <typename Q = T, typename EnableIfChar = mozilla::CharOnlyT<Q>>
   int32_t Compare(const char_type* aString, bool aIgnoreCase = false,
                   int32_t aCount = -1) const;
 
@@ -315,13 +351,13 @@ public:
    * @param   aCount tells us how many chars to compare
    * @return  boolean
    */
-  template <typename EnableIfChar = IsChar>
+  template <typename Q = T, typename EnableIfChar = mozilla::CharOnlyT<Q>>
   bool EqualsIgnoreCase(const char_type* aString, int32_t aCount = -1) const
   {
     return Compare(aString, true, aCount) == 0;
   }
 
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   bool EqualsIgnoreCase(const incompatible_char_type* aString, int32_t aCount = -1) const;
 
   /**
@@ -407,10 +443,10 @@ public:
    */
   void StripChars(const char_type* aSet);
 
-  template<typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   bool StripChars(const incompatible_char_type* aSet, const fallible_t&);
 
-  template<typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   void StripChars(const incompatible_char_type* aSet);
 
   /**
@@ -427,7 +463,7 @@ public:
   void ReplaceChar(char_type aOldChar, char_type aNewChar);
   void ReplaceChar(const char_type* aSet, char_type aNewChar);
 
-  template<typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   void ReplaceChar(const char* aSet, char16_t aNewChar);
 
   /**
@@ -501,8 +537,8 @@ protected:
   {
   }
 
-  friend const nsTString<char>& NullCString();
-  friend const nsTString<char16_t>& NullString();
+  friend const nsTString<char>& VoidCString();
+  friend const nsTString<char16_t>& VoidString();
 
   // Used by Null[C]String.
   explicit nsTString(DataFlags aDataFlags)
@@ -525,94 +561,6 @@ protected:
 //extern template class nsTString<char>;
 //extern template class nsTString<char16_t>;
 
-template <typename T>
-class nsTFixedString : public nsTString<T>
-{
-public:
-
-  typedef nsTFixedString<T> self_type;
-  typedef nsTFixedString<T> fixed_string_type;
-
-  typedef nsTString<T> base_string_type;
-  typedef typename base_string_type::string_type string_type;
-  typedef typename base_string_type::char_type char_type;
-  typedef typename base_string_type::char_traits char_traits;
-  typedef typename base_string_type::substring_type substring_type;
-  typedef typename base_string_type::size_type size_type;
-  typedef typename base_string_type::substring_tuple_type substring_tuple_type;
-
-  // These are only for internal use within the string classes:
-  typedef typename base_string_type::DataFlags DataFlags;
-  typedef typename base_string_type::ClassFlags ClassFlags;
-
-  using typename base_string_type::IsChar;
-  using typename base_string_type::IsChar16;
-
-public:
-
-  /**
-   * @param aData
-   *        fixed-size buffer to be used by the string (the contents of
-   *        this buffer may be modified by the string)
-   * @param aStorageSize
-   *        the size of the fixed buffer
-   * @param aLength (optional)
-   *        the length of the string already contained in the buffer
-   */
-
-  nsTFixedString(char_type* aData, size_type aStorageSize)
-    : string_type(aData, uint32_t(char_traits::length(aData)),
-                  DataFlags::TERMINATED | DataFlags::FIXED,
-                  ClassFlags::FIXED)
-    , mFixedCapacity(aStorageSize - 1)
-    , mFixedBuf(aData)
-  {
-  }
-
-  nsTFixedString(char_type* aData, size_type aStorageSize,
-                 size_type aLength)
-    : string_type(aData, aLength, DataFlags::TERMINATED | DataFlags::FIXED,
-                  ClassFlags::FIXED)
-    , mFixedCapacity(aStorageSize - 1)
-    , mFixedBuf(aData)
-  {
-    // null-terminate
-    mFixedBuf[aLength] = char_type(0);
-  }
-
-  // |operator=| does not inherit, so we must define our own
-  self_type& operator=(char_type aChar)
-  {
-    this->Assign(aChar);
-    return *this;
-  }
-  self_type& operator=(const char_type* aData)
-  {
-    this->Assign(aData);
-    return *this;
-  }
-  self_type& operator=(const substring_type& aStr)
-  {
-    this->Assign(aStr);
-    return *this;
-  }
-  self_type& operator=(const substring_tuple_type& aTuple)
-  {
-    this->Assign(aTuple);
-    return *this;
-  }
-
-protected:
-
-  friend class nsTSubstring<T>;
-
-  size_type  mFixedCapacity;
-  char_type* mFixedBuf;
-};
-
-extern template class nsTFixedString<char>;
-extern template class nsTFixedString<char>;
-
 /**
  * nsTAutoStringN
  *
@@ -626,29 +574,24 @@ extern template class nsTFixedString<char>;
  *   nsAutoCStringN / nsTAutoCString for narrow characters
  */
 template<typename T, size_t N>
-class MOZ_NON_MEMMOVABLE nsTAutoStringN : public nsTFixedString<T>
+class MOZ_NON_MEMMOVABLE nsTAutoStringN : public nsTString<T>
 {
 public:
 
   typedef nsTAutoStringN<T, N> self_type;
 
-#ifdef __clang__
-  // bindgen w/ clang 3.9 at least chokes on a typedef, but using is okay.
-  using typename nsTFixedString<T>::fixed_string_type;
-#else
-  // On the other hand msvc chokes on the using statement. It seems others
-  // don't care either way so we lump them in here.
-  typedef typename nsTFixedString<T>::fixed_string_type fixed_string_type;
-#endif
+  typedef nsTString<T> base_string_type;
+  typedef typename base_string_type::string_type string_type;
+  typedef typename base_string_type::char_type char_type;
+  typedef typename base_string_type::char_traits char_traits;
+  typedef typename base_string_type::substring_type substring_type;
+  typedef typename base_string_type::size_type size_type;
+  typedef typename base_string_type::substring_tuple_type substring_tuple_type;
+  typedef typename base_string_type::literalstring_type literalstring_type;
 
-  typedef typename fixed_string_type::char_type char_type;
-  typedef typename fixed_string_type::char_traits char_traits;
-  typedef typename fixed_string_type::substring_type substring_type;
-  typedef typename fixed_string_type::size_type size_type;
-  typedef typename fixed_string_type::substring_tuple_type substring_tuple_type;
-
-  using typename fixed_string_type::IsChar;
-  using typename fixed_string_type::IsChar16;
+  // These are only for internal use within the string classes:
+  typedef typename base_string_type::DataFlags DataFlags;
+  typedef typename base_string_type::ClassFlags ClassFlags;
 
 public:
 
@@ -657,48 +600,73 @@ public:
    */
 
   nsTAutoStringN()
-    : fixed_string_type(mStorage, N, 0)
+    : string_type(mStorage, 0, DataFlags::TERMINATED | DataFlags::INLINE,
+                  ClassFlags::INLINE)
+    , mInlineCapacity(N - 1)
   {
+    // null-terminate
+    mStorage[0] = char_type(0);
   }
 
   explicit
   nsTAutoStringN(char_type aChar)
-    : fixed_string_type(mStorage, N, 0)
+    : self_type()
   {
     this->Assign(aChar);
   }
 
   explicit
   nsTAutoStringN(const char_type* aData, size_type aLength = size_type(-1))
-    : fixed_string_type(mStorage, N, 0)
+    : self_type()
   {
     this->Assign(aData, aLength);
   }
 
 #if defined(MOZ_USE_CHAR16_WRAPPER)
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   explicit
   nsTAutoStringN(char16ptr_t aData, size_type aLength = size_type(-1))
-    : nsTAutoStringN(static_cast<const char16_t*>(aData), aLength)
+    : self_type(static_cast<const char16_t*>(aData), aLength)
   {
   }
 #endif
 
   nsTAutoStringN(const self_type& aStr)
-    : fixed_string_type(mStorage, N, 0)
+    : self_type()
+  {
+    this->Assign(aStr);
+  }
+
+  nsTAutoStringN(self_type&& aStr)
+    : self_type()
+  {
+    this->Assign(mozilla::Move(aStr));
+  }
+
+  explicit
+  nsTAutoStringN(const substring_type& aStr)
+    : self_type()
   {
     this->Assign(aStr);
   }
 
   explicit
-  nsTAutoStringN(const substring_type& aStr)
-    : fixed_string_type(mStorage, N, 0)
+  nsTAutoStringN(substring_type&& aStr)
+    : self_type()
+  {
+    this->Assign(mozilla::Move(aStr));
+  }
+
+  // NOTE(nika): gcc 4.9 workaround. Remove when support is dropped.
+  explicit
+  nsTAutoStringN(const literalstring_type& aStr)
+    : self_type()
   {
     this->Assign(aStr);
   }
 
   MOZ_IMPLICIT nsTAutoStringN(const substring_tuple_type& aTuple)
-    : fixed_string_type(mStorage, N, 0)
+    : self_type()
   {
     this->Assign(aTuple);
   }
@@ -715,7 +683,7 @@ public:
     return *this;
   }
 #if defined(MOZ_USE_CHAR16_WRAPPER)
-  template <typename EnableIfChar16 = IsChar16>
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   self_type& operator=(char16ptr_t aStr)
   {
     this->Assign(aStr);
@@ -727,7 +695,23 @@ public:
     this->Assign(aStr);
     return *this;
   }
+  self_type& operator=(self_type&& aStr)
+  {
+    this->Assign(mozilla::Move(aStr));
+    return *this;
+  }
   self_type& operator=(const substring_type& aStr)
+  {
+    this->Assign(aStr);
+    return *this;
+  }
+  self_type& operator=(substring_type&& aStr)
+  {
+    this->Assign(mozilla::Move(aStr));
+    return *this;
+  }
+  // NOTE(nika): gcc 4.9 workaround. Remove when support is dropped.
+  self_type& operator=(const literalstring_type& aStr)
   {
     this->Assign(aStr);
     return *this;
@@ -740,8 +724,12 @@ public:
 
   static const size_t kStorageSize = N;
 
-private:
+protected:
+  friend class nsTSubstring<T>;
 
+  size_type mInlineCapacity;
+
+private:
   char_type mStorage[N];
 };
 

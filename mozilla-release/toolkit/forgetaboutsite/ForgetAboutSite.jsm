@@ -71,7 +71,7 @@ this.ForgetAboutSite = {
     // Need to maximize the number of cookies cleaned here
     promises.push((async function() {
       let cm = Cc["@mozilla.org/cookiemanager;1"].
-               getService(Ci.nsICookieManager2);
+                 getService(Ci.nsICookieManager);
       let enumerator = cm.getCookiesWithOriginAttributes(JSON.stringify({}), aDomain);
       while (enumerator.hasMoreElements()) {
         let cookie = enumerator.getNext().QueryInterface(Ci.nsICookie);
@@ -247,4 +247,4 @@ this.ForgetAboutSite = {
     if (ErrorCount !== 0)
       throw new Error(`There were a total of ${ErrorCount} errors during removal`);
   }
-}
+};

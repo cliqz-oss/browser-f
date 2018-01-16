@@ -80,8 +80,7 @@ js::WrapAsyncGeneratorWithProto(JSContext* cx, HandleFunction unwrapped, HandleO
     RootedFunction wrapped(cx, NewFunctionWithProto(cx, WrappedAsyncGenerator, length,
                                                     JSFunction::NATIVE_FUN, nullptr,
                                                     funName, proto,
-                                                    AllocKind::FUNCTION_EXTENDED,
-                                                    TenuredObject));
+                                                    AllocKind::FUNCTION_EXTENDED));
     if (!wrapped)
         return nullptr;
 
@@ -313,7 +312,22 @@ AsyncGeneratorObject::create(JSContext* cx, HandleFunction asyncGen, HandleValue
     // Step 8.
     asyncGenObj->clearSingleQueueRequest();
 
+    asyncGenObj->clearCachedRequest();
+
     return asyncGenObj;
+}
+
+/* static */ AsyncGeneratorRequest*
+AsyncGeneratorObject::createRequest(JSContext* cx, Handle<AsyncGeneratorObject*> asyncGenObj,
+                                    CompletionKind completionKind, HandleValue completionValue,
+                                    HandleObject promise)
+{
+    if (!asyncGenObj->hasCachedRequest())
+        return AsyncGeneratorRequest::create(cx, completionKind, completionValue, promise);
+
+    AsyncGeneratorRequest* request = asyncGenObj->takeCachedRequest();
+    request->init(completionKind, completionValue, promise);
+    return request;
 }
 
 /* static */ MOZ_MUST_USE bool
@@ -375,17 +389,15 @@ const Class AsyncGeneratorRequest::class_ = {
 
 // Async Iteration proposal 11.4.3.1.
 /* static */ AsyncGeneratorRequest*
-AsyncGeneratorRequest::create(JSContext* cx, CompletionKind completionKind_,
-                              HandleValue completionValue_, HandleObject promise_)
+AsyncGeneratorRequest::create(JSContext* cx, CompletionKind completionKind,
+                              HandleValue completionValue, HandleObject promise)
 {
     RootedObject obj(cx, NewNativeObjectWithGivenProto(cx, &class_, nullptr));
     if (!obj)
         return nullptr;
 
     Handle<AsyncGeneratorRequest*> request = obj.as<AsyncGeneratorRequest>();
-    request->setCompletionKind(completionKind_);
-    request->setCompletionValue(completionValue_);
-    request->setPromise(promise_);
+    request->init(completionKind, completionValue, promise);
     return request;
 }
 
@@ -452,10 +464,10 @@ js::AsyncGeneratorResume(JSContext* cx, Handle<AsyncGeneratorObject*> asyncGenOb
 
     // 11.4.3.5 steps 12-14, 16-20.
     HandlePropertyName funName = completionKind == CompletionKind::Normal
-                                 ? cx->names().StarGeneratorNext
+                                 ? cx->names().GeneratorNext
                                  : completionKind == CompletionKind::Throw
-                                 ? cx->names().StarGeneratorThrow
-                                 : cx->names().StarGeneratorReturn;
+                                 ? cx->names().GeneratorThrow
+                                 : cx->names().GeneratorReturn;
     FixedInvokeArgs<1> args(cx);
     args[0].set(argument);
     RootedValue result(cx);

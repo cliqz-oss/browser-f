@@ -19,7 +19,10 @@ const kCSSVarsMap = new Map([
   ["--toolbar-bgcolor", "toolbarColor"],
   ["--toolbar-color", "toolbar_text"],
   ["--url-and-searchbar-background-color", "toolbar_field"],
-  ["--url-and-searchbar-color", "toolbar_field_text"]
+  ["--url-and-searchbar-color", "toolbar_field_text"],
+  ["--tabs-border-color", "toolbar_top_separator"],
+  ["--toolbox-border-bottom-color", "toolbar_bottom_separator"],
+  ["--urlbar-separator-color", "toolbar_vertical_separator"],
 ]);
 
 this.LightweightThemeConsumer =
@@ -37,7 +40,7 @@ this.LightweightThemeConsumer =
   Cu.import("resource://gre/modules/LightweightThemeManager.jsm", temp);
   this._update(temp.LightweightThemeManager.currentThemeForDisplay);
   this._win.addEventListener("resize", this);
-}
+};
 
 LightweightThemeConsumer.prototype = {
   _lastData: null,
@@ -55,7 +58,7 @@ LightweightThemeConsumer.prototype = {
 
   disable() {
     // Dance to keep the data, but reset the applied styles:
-    let lastData = this._lastData
+    let lastData = this._lastData;
     this._update(null);
     this._enabled = false;
     this._lastData = lastData;
@@ -122,13 +125,14 @@ LightweightThemeConsumer.prototype = {
     // so if we don't reset first, it'll keep the old value.
     root.style.removeProperty("--lwt-text-color");
     root.style.removeProperty("--lwt-accent-color");
-    let textcolor = this._sanitizeCSSColor(aData.textcolor) || "black";
+    let textcolor = aData.textcolor || "black";
     _setProperty(root, active, "--lwt-text-color", textcolor);
     _setProperty(root, active, "--lwt-accent-color", this._sanitizeCSSColor(aData.accentcolor) || "white");
+
     if (active) {
       let dummy = this._doc.createElement("dummy");
       dummy.style.color = textcolor;
-      let [r, g, b] = _parseRGB(this._doc.defaultView.getComputedStyle(dummy).color);
+      let [r, g, b] = _parseRGB(this._win.getComputedStyle(dummy).color);
       let luminance = 0.2125 * r + 0.7154 * g + 0.0721 * b;
       root.setAttribute("lwthemetextcolor", luminance <= 110 ? "dark" : "bright");
       root.setAttribute("lwtheme", "true");
@@ -168,14 +172,15 @@ LightweightThemeConsumer.prototype = {
     // simple round trip gets us a sanitized color value.
     let span = this._doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
     span.style.color = cssColor;
-    cssColor = span.style.color;
-    if (cssColor == "transparent" ||
-        cssColor == "rgba(0, 0, 0, 0)") {
+    cssColor = this._win.getComputedStyle(span).color;
+    if (cssColor == "rgba(0, 0, 0, 0)" ||
+        !cssColor) {
       return "";
     }
-    return cssColor;
+    // Remove alpha channel from color
+    return `rgb(${_parseRGB(cssColor).join(", ")})`;
   }
-}
+};
 
 function _setImage(aRoot, aActive, aVariableName, aURLs) {
   if (aURLs && !Array.isArray(aURLs)) {

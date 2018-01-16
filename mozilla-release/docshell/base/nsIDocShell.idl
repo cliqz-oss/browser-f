@@ -12,6 +12,8 @@
 #include "js/TypeDecls.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/NotNull.h"
+#include "nsCOMPtr.h"
+#include "nsIURI.h"
 class nsPresContext;
 class nsIPresShell;
 namespace mozilla {
@@ -123,9 +125,13 @@ interface nsIDocShell : nsIDocShellTreeItem
   // Whether the load should be treated as srcdoc load, rather than a URI one.
   const long INTERNAL_LOAD_FLAGS_IS_SRCDOC               = 0x40;
 
+  // Whether this is the load of a frame's original src attribute
+  const long INTERNAL_LOAD_FLAGS_ORIGINAL_FRAME_SRC      = 0x80;
+
   const long INTERNAL_LOAD_FLAGS_NO_OPENER               = 0x100;
 
-  // NB: 0x80 is available.
+  // Whether a top-level data URI navigation is allowed for that load
+  const long INTERNAL_LOAD_FLAGS_FORCE_ALLOW_DATA_URI    = 0x200;
 
   /**
    * Loads the given URI.  This method is identical to loadURI(...) except
@@ -173,6 +179,8 @@ interface nsIDocShell : nsIDocShellTreeItem
    * @param aFileName            - Non-null when the link should be downloaded as
                                    the given filename.
    * @param aPostDataStream      - Post data stream (if POSTing)
+   * @param aPostDataStreamLength - Post data stream length. Use -1 if the length
+                                    of the stream is unknown.
    * @param aHeadersStream       - Stream containing "extra" request headers...
    * @param aLoadFlags           - Flags to modify load behaviour. Flags are defined
    *                               in nsIWebNavigation.
@@ -198,6 +206,7 @@ interface nsIDocShell : nsIDocShellTreeItem
                               in string aTypeHint,
                               in AString aFileName,
                               in nsIInputStream aPostDataStream,
+                              in long long aPostDataStreamLength,
                               in nsIInputStream aHeadersStream,
                               in unsigned long aLoadFlags,
                               in nsISHEntry aSHEntry,
@@ -1012,7 +1021,7 @@ interface nsIDocShell : nsIDocShellTreeItem
   /**
    * Set when an iframe/frame is added dynamically.
    */
-  attribute boolean createdDynamically;
+  [infallible] attribute boolean createdDynamically;
 
   /**
    * Returns false for mLSHE, true for mOSHE

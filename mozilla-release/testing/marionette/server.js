@@ -4,10 +4,8 @@
 
 "use strict";
 
-const {Constructor: CC, classes: Cc, interfaces: Ci, utils: Cu} = Components;
+const {Constructor: CC, interfaces: Ci, utils: Cu} = Components;
 
-const loader = Cc["@mozilla.org/moz/jssubscript-loader;1"]
-    .getService(Ci.mozIJSSubScriptLoader);
 const ServerSocket = CC(
     "@mozilla.org/network/server-socket;1",
     "nsIServerSocket",
@@ -24,7 +22,11 @@ const {
   error,
   UnknownCommandError,
 } = Cu.import("chrome://marionette/content/error.js", {});
-Cu.import("chrome://marionette/content/message.js");
+const {
+  Command,
+  Message,
+  Response,
+} = Cu.import("chrome://marionette/content/message.js", {});
 const {DebuggerTransport} =
     Cu.import("chrome://marionette/content/transport.js", {});
 
@@ -162,6 +164,14 @@ const RECOMMENDED_PREFS = new Map([
   // Should be set in profile.
   ["browser.uitour.enabled", false],
 
+  // Turn off search suggestions in the location bar so as not to trigger
+  // network connections.
+  ["browser.urlbar.suggest.searches", false],
+
+  // Turn off the location bar search suggestions opt-in.  It interferes with
+  // tests that don't expect it to be there.
+  ["browser.urlbar.userMadeSearchSuggestionsChoice", true],
+
   // Do not show datareporting policy notifications which can
   // interfere with tests
   [
@@ -199,9 +209,6 @@ const RECOMMENDED_PREFS = new Map([
   // Should be set in profile.
   ["extensions.autoDisableScopes", 0],
   ["extensions.enabledScopes", 5],
-
-  // Do not block add-ons for e10s
-  ["extensions.e10sBlocksEnabling", false],
 
   // Disable metadata caching for installed add-ons by default
   ["extensions.getAddons.cache.enabled", false],
@@ -450,7 +457,7 @@ server.TCPConnection = class {
    * Debugger transport callback that cleans up
    * after a connection is closed.
    */
-  onClosed(reason) {
+  onClosed() {
     this.driver.deleteSession();
     if (this.onclose) {
       this.onclose(this);
@@ -481,8 +488,8 @@ server.TCPConnection = class {
     // return immediately with any error trying to unmarshal message
     let msg;
     try {
-      msg = Message.fromMsg(data);
-      msg.origin = MessageOrigin.Client;
+      msg = Message.fromPacket(data);
+      msg.origin = Message.Origin.Client;
       this.log_(msg);
     } catch (e) {
       let resp = this.createResponse(data[1]);
@@ -611,7 +618,7 @@ server.TCPConnection = class {
    *     The command or response to send.
    */
   send(msg) {
-    msg.origin = MessageOrigin.Server;
+    msg.origin = Message.Origin.Server;
     if (msg instanceof Command) {
       this.commands_.set(msg.id, msg);
       this.sendToEmulator(msg);
@@ -641,7 +648,7 @@ server.TCPConnection = class {
    */
   sendMessage(msg) {
     this.log_(msg);
-    let payload = msg.toMsg();
+    let payload = msg.toPacket();
     this.sendRaw(payload);
   }
 
@@ -657,9 +664,8 @@ server.TCPConnection = class {
   }
 
   log_(msg) {
-    let a = (msg.origin == MessageOrigin.Client ? " -> " : " <- ");
-    let s = JSON.stringify(msg.toMsg());
-    logger.trace(this.id + a + s);
+    let dir = (msg.origin == Message.Origin.Client ? "->" : "<-");
+    logger.trace(`${this.id} ${dir} ${msg}`);
   }
 
   toString() {

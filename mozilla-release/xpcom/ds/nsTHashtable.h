@@ -12,7 +12,6 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/fallible.h"
-#include "mozilla/MemoryChecking.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
 #include "mozilla/OperatorNewExtensions.h"
@@ -380,9 +379,6 @@ template<class EntryType>
 nsTHashtable<EntryType>::nsTHashtable(nsTHashtable<EntryType>&& aOther)
   : mTable(mozilla::Move(aOther.mTable))
 {
-  // aOther shouldn't touch mTable after this, because we've stolen the table's
-  // pointers but not overwitten them.
-  MOZ_MAKE_MEM_UNDEFINED(&aOther.mTable, sizeof(aOther.mTable));
 }
 
 template<class EntryType>
@@ -414,7 +410,7 @@ template<class EntryType>
 PLDHashNumber
 nsTHashtable<EntryType>::s_HashKey(const void* aKey)
 {
-  return EntryType::HashKey(static_cast<const KeyTypePointer>(aKey));
+  return EntryType::HashKey(static_cast<KeyTypePointer>(aKey));
 }
 
 template<class EntryType>
@@ -423,7 +419,7 @@ nsTHashtable<EntryType>::s_MatchEntry(const PLDHashEntryHdr* aEntry,
                                       const void* aKey)
 {
   return ((const EntryType*)aEntry)->KeyEquals(
-    static_cast<const KeyTypePointer>(aKey));
+    static_cast<KeyTypePointer>(aKey));
 }
 
 template<class EntryType>

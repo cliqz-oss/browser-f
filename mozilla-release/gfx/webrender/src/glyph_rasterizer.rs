@@ -3,10 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #[cfg(test)]
-use api::{ColorF, FontRenderMode, IdNamespace, LayoutPoint, SubpixelDirection};
-use api::{DevicePoint, DeviceUintSize, FontInstance};
-use api::{FontKey, FontTemplate};
-use api::{GlyphDimensions, GlyphKey};
+use api::{ColorF, ColorU, IdNamespace, LayoutPoint, SubpixelDirection};
+use api::{DevicePoint, DeviceUintSize, FontInstance, FontRenderMode};
+use api::{FontKey, FontTemplate, GlyphDimensions, GlyphKey};
 use api::{ImageData, ImageDescriptor, ImageFormat};
 #[cfg(test)]
 use app_units::Au;
@@ -14,7 +13,7 @@ use device::TextureFilter;
 use glyph_cache::{CachedGlyphInfo, GlyphCache};
 use gpu_cache::GpuCache;
 use internal_types::FastHashSet;
-use platform::font::{FontContext, RasterizedGlyph};
+use platform::font::FontContext;
 use profiler::TextureCacheProfileCounters;
 use rayon::ThreadPool;
 use rayon::prelude::*;
@@ -23,6 +22,35 @@ use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use texture_cache::{TextureCache, TextureCacheHandle};
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum GlyphFormat {
+    Mono,
+    Alpha,
+    Subpixel,
+    ColorBitmap,
+}
+
+impl From<FontRenderMode> for GlyphFormat {
+    fn from(render_mode: FontRenderMode) -> GlyphFormat {
+        match render_mode {
+            FontRenderMode::Mono => GlyphFormat::Mono,
+            FontRenderMode::Alpha => GlyphFormat::Alpha,
+            FontRenderMode::Subpixel => GlyphFormat::Subpixel,
+            FontRenderMode::Bitmap => GlyphFormat::ColorBitmap,
+        }
+    }
+}
+
+pub struct RasterizedGlyph {
+    pub top: f32,
+    pub left: f32,
+    pub width: u32,
+    pub height: u32,
+    pub scale: f32,
+    pub format: GlyphFormat,
+    pub bytes: Vec<u8>,
+}
 
 pub struct FontContexts {
     // These worker are mostly accessed from their corresponding worker threads.
@@ -144,6 +172,10 @@ impl GlyphRasterizer {
         self.fonts_to_remove.push(font_key);
     }
 
+    pub fn prepare_font(&self, font: &mut FontInstance) {
+        FontContext::prepare_font(font);
+    }
+
     pub fn request_glyphs(
         &mut self,
         glyph_cache: &mut GlyphCache,
@@ -165,7 +197,7 @@ impl GlyphRasterizer {
         for key in glyph_keys {
             match glyph_key_cache.entry(key.clone()) {
                 Entry::Occupied(mut entry) => {
-                    if let Some(ref mut glyph_info) = *entry.get_mut() {
+                    if let Ok(Some(ref mut glyph_info)) = *entry.get_mut() {
                         if texture_cache.request(&mut glyph_info.texture_cache_handle, gpu_cache) {
                             // This case gets hit when we have already rasterized
                             // the glyph and stored it in CPU memory, the the glyph
@@ -183,7 +215,7 @@ impl GlyphRasterizer {
                                 },
                                 TextureFilter::Linear,
                                 ImageData::Raw(glyph_info.glyph_bytes.clone()),
-                                [glyph_info.offset.x, glyph_info.offset.y],
+                                [glyph_info.offset.x, glyph_info.offset.y, glyph_info.scale],
                                 None,
                                 gpu_cache,
                             );
@@ -246,6 +278,12 @@ impl GlyphRasterizer {
             .get_glyph_dimensions(font, glyph_key)
     }
 
+    pub fn is_bitmap_font(&self, font: &FontInstance) -> bool {
+        self.font_contexts
+            .lock_shared_context()
+            .is_bitmap_font(font)
+    }
+
     pub fn get_glyph_index(&mut self, font_key: FontKey, ch: char) -> Option<u32> {
         self.font_contexts
             .lock_shared_context()
@@ -306,7 +344,7 @@ impl GlyphRasterizer {
                         },
                         TextureFilter::Linear,
                         ImageData::Raw(glyph_bytes.clone()),
-                        [glyph.left, glyph.top],
+                        [glyph.left, glyph.top, glyph.scale],
                         None,
                         gpu_cache,
                     );
@@ -315,6 +353,8 @@ impl GlyphRasterizer {
                         glyph_bytes,
                         size: DeviceUintSize::new(glyph.width, glyph.height),
                         offset: DevicePoint::new(glyph.left, glyph.top),
+                        scale: glyph.scale,
+                        format: glyph.format,
                     })
                 } else {
                     None
@@ -322,7 +362,7 @@ impl GlyphRasterizer {
 
             let glyph_key_cache = glyph_cache.get_glyph_key_cache_for_font_mut(job.request.font);
 
-            glyph_key_cache.insert(job.request.key, glyph_info);
+            glyph_key_cache.insert(job.request.key, Ok(glyph_info));
         }
 
         // Now that we are done with the critical path (rendering the glyphs),
@@ -407,9 +447,12 @@ fn raterize_200_glyphs() {
         font_key,
         Au::from_px(32),
         ColorF::new(0.0, 0.0, 0.0, 1.0),
+        ColorU::new(0, 0, 0, 0),
         FontRenderMode::Subpixel,
         SubpixelDirection::Horizontal,
         None,
+        Vec::new(),
+        false,
     );
 
     let mut glyph_keys = Vec::with_capacity(200);

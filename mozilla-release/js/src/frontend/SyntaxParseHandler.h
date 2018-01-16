@@ -237,11 +237,7 @@ class SyntaxParseHandler
         return NodeUnparenthesizedUnary;
     }
 
-    Node newNullary(ParseNodeKind kind, JSOp op, const TokenPos& pos) {
-        return NodeGeneric;
-    }
-
-    Node newUnary(ParseNodeKind kind, JSOp op, uint32_t begin, Node kid) {
+    Node newUnary(ParseNodeKind kind, uint32_t begin, Node kid) {
         return NodeUnparenthesizedUnary;
     }
 
@@ -253,31 +249,19 @@ class SyntaxParseHandler
         return NodeGeneric;
     }
 
-    Node newArrayPush(uint32_t begin, Node kid) {
-        return NodeGeneric;
-    }
-
-    Node newBinary(ParseNodeKind kind, Node left, Node right, JSOp op = JSOP_NOP) {
-        return NodeGeneric;
-    }
-    Node appendOrCreateList(ParseNodeKind kind, Node left, Node right,
-                            ParseContext* pc, JSOp op = JSOP_NOP) {
-        return NodeGeneric;
-    }
-
-    Node newTernary(ParseNodeKind kind, Node first, Node second, Node third, JSOp op = JSOP_NOP) {
+    Node appendOrCreateList(ParseNodeKind kind, Node left, Node right, ParseContext* pc) {
         return NodeGeneric;
     }
 
     // Expressions
 
-    Node newArrayComprehension(Node body, const TokenPos& pos) { return NodeGeneric; }
     Node newArrayLiteral(uint32_t begin) { return NodeUnparenthesizedArray; }
     MOZ_MUST_USE bool addElision(Node literal, const TokenPos& pos) { return true; }
     MOZ_MUST_USE bool addSpreadElement(Node literal, uint32_t begin, Node inner) { return true; }
     void addArrayElement(Node literal, Node element) { }
 
     Node newCall(const TokenPos& pos) { return NodeFunctionCall; }
+    Node newSuperCall(Node callee) { return NodeGeneric; }
     Node newTaggedTemplate(const TokenPos& pos) { return NodeGeneric; }
 
     Node newObjectLiteral(uint32_t begin) { return NodeUnparenthesizedObject; }
@@ -293,8 +277,8 @@ class SyntaxParseHandler
     MOZ_MUST_USE bool addPropertyDefinition(Node literal, Node name, Node expr) { return true; }
     MOZ_MUST_USE bool addShorthand(Node literal, Node name, Node expr) { return true; }
     MOZ_MUST_USE bool addSpreadProperty(Node literal, uint32_t begin, Node inner) { return true; }
-    MOZ_MUST_USE bool addObjectMethodDefinition(Node literal, Node name, Node fn, JSOp op) { return true; }
-    MOZ_MUST_USE bool addClassMethodDefinition(Node literal, Node name, Node fn, JSOp op, bool isStatic) { return true; }
+    MOZ_MUST_USE bool addObjectMethodDefinition(Node literal, Node name, Node fn, AccessorType atype) { return true; }
+    MOZ_MUST_USE bool addClassMethodDefinition(Node literal, Node name, Node fn, AccessorType atype, bool isStatic) { return true; }
     Node newYieldExpression(uint32_t begin, Node value) { return NodeGeneric; }
     Node newYieldStarExpression(uint32_t begin, Node value) { return NodeGeneric; }
     Node newAwaitExpression(uint32_t begin, Node value) { return NodeGeneric; }
@@ -315,6 +299,12 @@ class SyntaxParseHandler
         return NodeGeneric;
     }
     Node newExportDefaultDeclaration(Node kid, Node maybeBinding, const TokenPos& pos) {
+        return NodeGeneric;
+    }
+    Node newExportSpec(Node bindingName, Node exportName) {
+        return NodeGeneric;
+    }
+    Node newExportBatchSpec(const TokenPos& pos) {
         return NodeGeneric;
     }
 
@@ -363,25 +353,12 @@ class SyntaxParseHandler
     Node newFunctionExpression(const TokenPos& pos) { return NodeFunctionDefinition; }
     Node newArrowFunction(const TokenPos& pos) { return NodeFunctionDefinition; }
 
-    bool setComprehensionLambdaBody(Node pn, Node body) { return true; }
     void setFunctionFormalParametersAndBody(Node pn, Node kid) {}
     void setFunctionBody(Node pn, Node kid) {}
     void setFunctionBox(Node pn, FunctionBox* funbox) {}
     void addFunctionFormalParameter(Node pn, Node argpn) {}
 
     Node newForStatement(uint32_t begin, Node forHead, Node body, unsigned iflags) {
-        return NodeGeneric;
-    }
-
-    Node newComprehensionFor(uint32_t begin, Node forHead, Node body) {
-        return NodeGeneric;
-    }
-
-    Node newComprehensionBinding(Node kid) {
-        // Careful: we're asking this well after the name was parsed, so the
-        // value returned may not correspond to |kid|'s actual name.  But it
-        // *will* be truthy iff |kid| was a name, so we're safe.
-        MOZ_ASSERT(isUnparenthesizedName(kid));
         return NodeGeneric;
     }
 
@@ -410,27 +387,18 @@ class SyntaxParseHandler
         return ts.currentToken().pos.begin;
     }
 
-    Node newList(ParseNodeKind kind, const TokenPos& pos, JSOp op = JSOP_NOP) {
+    Node newList(ParseNodeKind kind, const TokenPos& pos) {
         MOZ_ASSERT(kind != PNK_VAR);
         MOZ_ASSERT(kind != PNK_LET);
         MOZ_ASSERT(kind != PNK_CONST);
         return NodeGeneric;
     }
 
-  private:
-    Node newList(ParseNodeKind kind, uint32_t begin, JSOp op = JSOP_NOP) {
-        return newList(kind, TokenPos(begin, begin + 1), op);
+    Node newList(ParseNodeKind kind, Node kid) {
+        return newList(kind, TokenPos());
     }
 
-    template<typename T>
-    Node newList(ParseNodeKind kind, const T& begin, JSOp op = JSOP_NOP) = delete;
-
-  public:
-    Node newList(ParseNodeKind kind, Node kid, JSOp op = JSOP_NOP) {
-        return newList(kind, TokenPos(), op);
-    }
-
-    Node newDeclarationList(ParseNodeKind kind, const TokenPos& pos, JSOp op = JSOP_NOP) {
+    Node newDeclarationList(ParseNodeKind kind, const TokenPos& pos) {
         if (kind == PNK_VAR)
             return NodeVarDeclaration;
         MOZ_ASSERT(kind == PNK_LET || kind == PNK_CONST);
@@ -462,7 +430,7 @@ class SyntaxParseHandler
     }
 
     Node newCatchList(const TokenPos& pos) {
-        return newList(PNK_CATCHLIST, pos, JSOP_NOP);
+        return NodeGeneric;
     }
 
     Node newCommaExpressionList(Node kid) {
@@ -480,18 +448,11 @@ class SyntaxParseHandler
     }
 
     Node newNewExpression(uint32_t begin, Node ctor) {
-        Node newExpr = newList(PNK_NEW, begin, JSOP_NEW);
-        if (!newExpr)
-            return newExpr;
-
-        addList(newExpr, ctor);
-        return newExpr;
+        return NodeGeneric;
     }
 
-    Node newAssignment(ParseNodeKind kind, Node lhs, Node rhs, JSOp op) {
-        if (kind == PNK_ASSIGN)
-            return NodeUnparenthesizedAssignment;
-        return newBinary(kind, lhs, rhs, op);
+    Node newAssignment(ParseNodeKind kind, Node lhs, Node rhs) {
+        return kind == PNK_ASSIGN ? NodeUnparenthesizedAssignment : NodeGeneric;
     }
 
     bool isUnparenthesizedCommaExpression(Node node) {

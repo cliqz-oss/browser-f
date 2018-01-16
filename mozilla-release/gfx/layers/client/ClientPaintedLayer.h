@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,7 +9,7 @@
 
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #include "Layers.h"                     // for PaintedLayer, etc
-#include "RotatedBuffer.h"              // for RotatedContentBuffer, etc
+#include "RotatedBuffer.h"              // for RotatedBuffer, etc
 #include "mozilla/Attributes.h"         // for override
 #include "mozilla/RefPtr.h"             // for RefPtr
 #include "mozilla/layers/ContentClient.h"  // for ContentClient
@@ -32,8 +33,8 @@ class SpecificLayerAttributes;
 class ClientPaintedLayer : public PaintedLayer,
                            public ClientLayer {
 public:
-  typedef RotatedContentBuffer::PaintState PaintState;
-  typedef RotatedContentBuffer::ContentType ContentType;
+  typedef ContentClient::PaintState PaintState;
+  typedef ContentClient::ContentType ContentType;
 
   explicit ClientPaintedLayer(ClientLayerManager* aLayerManager,
                              LayerManager::PaintedLayerCreationHint aCreationHint = LayerManager::NONE) :
@@ -120,7 +121,7 @@ protected:
   uint32_t GetPaintFlags();
   void UpdateContentClient(PaintState& aState);
   bool UpdatePaintRegion(PaintState& aState);
-  bool PaintOffMainThread();
+  void PaintOffMainThread();
 
   virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 

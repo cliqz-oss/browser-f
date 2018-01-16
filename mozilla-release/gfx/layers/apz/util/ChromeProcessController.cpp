@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -310,18 +311,18 @@ ChromeProcessController::NotifyAsyncScrollbarDragRejected(const FrameMetrics::Vi
 }
 
 void
-ChromeProcessController::NotifyAutoscrollHandledByAPZ(const FrameMetrics::ViewID& aScrollId)
+ChromeProcessController::NotifyAsyncAutoscrollRejected(const FrameMetrics::ViewID& aScrollId)
 {
   if (MessageLoop::current() != mUILoop) {
     mUILoop->PostTask(NewRunnableMethod<FrameMetrics::ViewID>(
-      "layers::ChromeProcessController::NotifyAutoscrollHandledByAPZ",
+      "layers::ChromeProcessController::NotifyAsyncAutoscrollRejected",
       this,
-      &ChromeProcessController::NotifyAutoscrollHandledByAPZ,
+      &ChromeProcessController::NotifyAsyncAutoscrollRejected,
       aScrollId));
     return;
   }
 
-  APZCCallbackHelper::NotifyAutoscrollHandledByAPZ(aScrollId);
+  APZCCallbackHelper::NotifyAsyncAutoscrollRejected(aScrollId);
 }
 
 void

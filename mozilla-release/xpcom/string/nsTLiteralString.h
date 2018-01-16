@@ -26,7 +26,16 @@ class nsTLiteralString : public mozilla::detail::nsTStringRepr<T>
 public:
 
   typedef nsTLiteralString<T> self_type;
+
+#ifdef __clang__
+  // bindgen w/ clang 3.9 at least chokes on a typedef, but using is okay.
+  using typename mozilla::detail::nsTStringRepr<T>::base_string_type;
+#else
+  // On the other hand msvc chokes on the using statement. It seems others
+  // don't care either way so we lump them in here.
   typedef typename mozilla::detail::nsTStringRepr<T>::base_string_type base_string_type;
+#endif
+
   typedef typename base_string_type::char_type char_type;
   typedef typename base_string_type::size_type size_type;
   typedef typename base_string_type::DataFlags DataFlags;
@@ -61,18 +70,18 @@ public:
     return AsString();
   }
 
-  template<typename N> struct raw_type { typedef N* type; };
+  template<typename N, typename Dummy> struct raw_type { typedef N* type; };
 
 #ifdef MOZ_USE_CHAR16_WRAPPER
-  template<> struct raw_type<char16_t> { typedef char16ptr_t type; };
+  template<typename Dummy> struct raw_type<char16_t, Dummy> { typedef char16ptr_t type; };
 #endif
 
   /**
    * Prohibit get() on temporaries as in nsLiteralCString("x").get().
    * These should be written as just "x", using a string literal directly.
    */
-  const typename raw_type<T>::type get() const && = delete;
-  const typename raw_type<T>::type get() const &
+  const typename raw_type<T, int>::type get() const && = delete;
+  const typename raw_type<T, int>::type get() const &
   {
     return this->mData;
   }

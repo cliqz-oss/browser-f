@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -330,23 +330,20 @@ nsBlockReflowContext::ReflowBlock(const LogicalRect&  aSpace,
     mMetrics.SetOverflowAreasToDesiredBounds();
   }
 
-  if (!aFrameReflowStatus.IsInlineBreakBefore() ||
-      (mFrame->GetStateBits() & NS_FRAME_OUT_OF_FLOW)) {
+  if (!aFrameReflowStatus.IsInlineBreakBefore() &&
+      aFrameReflowStatus.IsFullyComplete()) {
     // If frame is complete and has a next-in-flow, we need to delete
     // them now. Do not do this when a break-before is signaled because
-    // the frame is going to get reflowed again (and may end up wanting
-    // a next-in-flow where it ends up), unless it is an out of flow frame.
-    if (aFrameReflowStatus.IsFullyComplete()) {
-      nsIFrame* kidNextInFlow = mFrame->GetNextInFlow();
-      if (nullptr != kidNextInFlow) {
-        // Remove all of the childs next-in-flows. Make sure that we ask
-        // the right parent to do the removal (it's possible that the
-        // parent is not this because we are executing pullup code).
-        // Floats will eventually be removed via nsBlockFrame::RemoveFloat
-        // which detaches the placeholder from the float.
-        nsOverflowContinuationTracker::AutoFinish fini(aState.mOverflowTracker, mFrame);
-        kidNextInFlow->GetParent()->DeleteNextInFlowChild(kidNextInFlow, true);
-      }
+    // the frame is going to get reflowed again (whether the frame is
+    // (in)complete is undefined in that case anyway).
+    if (nsIFrame* kidNextInFlow = mFrame->GetNextInFlow()) {
+      // Remove all of the childs next-in-flows. Make sure that we ask
+      // the right parent to do the removal (it's possible that the
+      // parent is not this because we are executing pullup code).
+      // Floats will eventually be removed via nsBlockFrame::RemoveFloat
+      // which detaches the placeholder from the float.
+      nsOverflowContinuationTracker::AutoFinish fini(aState.mOverflowTracker, mFrame);
+      kidNextInFlow->GetParent()->DeleteNextInFlowChild(kidNextInFlow, true);
     }
   }
 }

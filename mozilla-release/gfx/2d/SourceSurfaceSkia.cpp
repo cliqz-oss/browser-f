@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -12,20 +13,19 @@
 #include "skia/include/core/SkData.h"
 #include "mozilla/CheckedInt.h"
 
+using namespace std;
+
 namespace mozilla {
 namespace gfx {
 
 SourceSurfaceSkia::SourceSurfaceSkia()
   : mDrawTarget(nullptr)
+  , mChangeMutex("SourceSurfaceSkia::mChangeMutex")
 {
 }
 
 SourceSurfaceSkia::~SourceSurfaceSkia()
 {
-  if (mDrawTarget) {
-    mDrawTarget->SnapshotDestroyed();
-    mDrawTarget = nullptr;
-  }
 }
 
 IntSize
@@ -38,6 +38,14 @@ SurfaceFormat
 SourceSurfaceSkia::GetFormat() const
 {
   return mFormat;
+}
+
+sk_sp<SkImage>
+SourceSurfaceSkia::GetImage()
+{
+  MutexAutoLock lock(mChangeMutex);
+  sk_sp<SkImage> image = mImage;
+  return image;
 }
 
 static sk_sp<SkData>
@@ -155,9 +163,28 @@ SourceSurfaceSkia::GetData()
   return reinterpret_cast<uint8_t*>(pixmap.writable_addr());
 }
 
+bool
+SourceSurfaceSkia::Map(MapType, MappedSurface *aMappedSurface)
+{
+  mChangeMutex.Lock();
+  aMappedSurface->mData = GetData();
+  aMappedSurface->mStride = Stride();
+  mIsMapped = !!aMappedSurface->mData;
+  return mIsMapped;
+}
+
+void
+SourceSurfaceSkia::Unmap()
+{
+  mChangeMutex.Unlock();
+  MOZ_ASSERT(mIsMapped);
+  mIsMapped = false;
+}
+
 void
 SourceSurfaceSkia::DrawTargetWillChange()
 {
+  MutexAutoLock lock(mChangeMutex);
   if (mDrawTarget) {
     // Raster snapshots do not use Skia's internal copy-on-write mechanism,
     // so we need to do an explicit copy here.

@@ -7,7 +7,7 @@
 #![deny(missing_docs)]
 
 use num_traits::ToPrimitive;
-use std::ascii::AsciiExt;
+#[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::borrow::Cow;
 use std::convert::AsRef;
 use std::iter::{Filter, Peekable};
@@ -21,7 +21,7 @@ pub type StaticStringVec = &'static [&'static str];
 
 /// A "space character" according to:
 ///
-/// https://html.spec.whatwg.org/multipage/#space-character
+/// <https://html.spec.whatwg.org/multipage/#space-character>
 pub static HTML_SPACE_CHARACTERS: StaticCharVec = &[
     '\u{0020}',
     '\u{0009}',
@@ -58,7 +58,8 @@ pub fn split_commas<'a>(s: &'a str) -> Filter<Split<'a, char>, fn(&&str) -> bool
     s.split(',').filter(not_empty as fn(&&str) -> bool)
 }
 
-fn is_ascii_digit(c: &char) -> bool {
+/// Character is ascii digit
+pub fn is_ascii_digit(c: &char) -> bool {
     match *c {
         '0'...'9' => true,
         _ => false,

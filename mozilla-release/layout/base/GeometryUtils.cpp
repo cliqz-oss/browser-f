@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -34,18 +35,18 @@ static nsIFrame*
 GetFrameForNode(nsINode* aNode, GeometryNodeType aType)
 {
   nsIDocument* doc = aNode->OwnerDoc();
-  doc->FlushPendingNotifications(FlushType::Layout);
-  switch (aType) {
-  case GEOMETRY_NODE_ELEMENT:
-    return aNode->AsContent()->GetPrimaryFrame();
-  case GEOMETRY_NODE_TEXT: {
-    nsIPresShell* presShell = doc->GetShell();
-    if (presShell) {
-      return presShell->FrameConstructor()->EnsureFrameForTextNode(
+  if (aType == GEOMETRY_NODE_TEXT) {
+    if (nsIPresShell* shell = doc->GetShell()) {
+      shell->FrameConstructor()->EnsureFrameForTextNodeIsCreatedAfterFlush(
           static_cast<nsGenericDOMDataNode*>(aNode));
     }
-    return nullptr;
   }
+  doc->FlushPendingNotifications(FlushType::Layout);
+
+  switch (aType) {
+  case GEOMETRY_NODE_TEXT:
+  case GEOMETRY_NODE_ELEMENT:
+    return aNode->AsContent()->GetPrimaryFrame();
   case GEOMETRY_NODE_DOCUMENT: {
     nsIPresShell* presShell = doc->GetShell();
     return presShell ? presShell->GetRootFrame() : nullptr;

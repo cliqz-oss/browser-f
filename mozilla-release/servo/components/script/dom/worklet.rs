@@ -17,12 +17,10 @@ use dom::bindings::codegen::Bindings::WorkletBinding::WorkletOptions;
 use dom::bindings::codegen::Bindings::WorkletBinding::Wrap;
 use dom::bindings::error::Error;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::JS;
-use dom::bindings::js::Root;
-use dom::bindings::js::RootCollection;
 use dom::bindings::refcounted::TrustedPromise;
 use dom::bindings::reflector::Reflector;
 use dom::bindings::reflector::reflect_dom_object;
+use dom::bindings::root::{Dom, DomRoot, RootCollection, ThreadLocalStackRoots};
 use dom::bindings::str::USVString;
 use dom::bindings::trace::JSTraceable;
 use dom::bindings::trace::RootedTraceableBox;
@@ -39,17 +37,15 @@ use js::jsapi::JSGCParamKey;
 use js::jsapi::JSTracer;
 use js::jsapi::JS_GC;
 use js::jsapi::JS_GetGCParameter;
-use js::rust::Runtime;
 use msg::constellation_msg::PipelineId;
 use net_traits::IpcSend;
 use net_traits::load_whole_resource;
 use net_traits::request::Destination;
 use net_traits::request::RequestInit;
 use net_traits::request::RequestMode;
-use net_traits::request::Type as RequestType;
 use script_runtime::CommonScriptMsg;
+use script_runtime::Runtime;
 use script_runtime::ScriptThreadEventCategory;
-use script_runtime::StackRootTLS;
 use script_runtime::new_rt_and_cx;
 use script_thread::{MainThreadScriptMsg, ScriptThread};
 use servo_rand;
@@ -66,7 +62,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::thread;
-use style::thread_state;
+use style::thread_state::{self, ThreadState};
 use swapper::Swapper;
 use swapper::swapper;
 use task::TaskBox;
@@ -77,10 +73,10 @@ const WORKLET_THREAD_POOL_SIZE: u32 = 3;
 const MIN_GC_THRESHOLD: u32 = 1_000_000;
 
 #[dom_struct]
-/// https://drafts.css-houdini.org/worklets/#worklet
+/// <https://drafts.css-houdini.org/worklets/#worklet>
 pub struct Worklet {
     reflector: Reflector,
-    window: JS<Window>,
+    window: Dom<Window>,
     worklet_id: WorkletId,
     global_type: WorkletGlobalScopeType,
 }
@@ -89,15 +85,15 @@ impl Worklet {
     fn new_inherited(window: &Window, global_type: WorkletGlobalScopeType) -> Worklet {
         Worklet {
             reflector: Reflector::new(),
-            window: JS::from_ref(window),
+            window: Dom::from_ref(window),
             worklet_id: WorkletId::new(),
             global_type: global_type,
         }
     }
 
-    pub fn new(window: &Window, global_type: WorkletGlobalScopeType) -> Root<Worklet> {
+    pub fn new(window: &Window, global_type: WorkletGlobalScopeType) -> DomRoot<Worklet> {
         debug!("Creating worklet {:?}.", global_type);
-        reflect_dom_object(box Worklet::new_inherited(window, global_type), window, Wrap)
+        reflect_dom_object(Box::new(Worklet::new_inherited(window, global_type)), window, Wrap)
     }
 
     pub fn worklet_id(&self) -> WorkletId {
@@ -112,7 +108,7 @@ impl Worklet {
 
 impl WorkletMethods for Worklet {
     #[allow(unrooted_must_root)]
-    /// https://drafts.css-houdini.org/worklets/#dom-worklet-addmodule
+    /// <https://drafts.css-houdini.org/worklets/#dom-worklet-addmodule>
     fn AddModule(&self, module_url: USVString, options: &WorkletOptions) -> Rc<Promise> {
         // Step 1.
         let promise = Promise::new(self.window.upcast());
@@ -123,7 +119,7 @@ impl WorkletMethods for Worklet {
             Err(err) => {
                 // Step 4.
                 debug!("URL {:?} parse error {:?}.", module_url.0, err);
-                promise.reject_error(self.window.get_cx(), Error::Syntax);
+                promise.reject_error(Error::Syntax);
                 return promise;
             }
         };
@@ -154,7 +150,7 @@ impl WorkletMethods for Worklet {
 #[derive(Clone, Copy, Debug, Eq, Hash, JSTraceable, PartialEq)]
 pub struct WorkletId(Uuid);
 
-known_heap_size!(0, WorkletId);
+malloc_size_of_is_0!(WorkletId);
 
 impl WorkletId {
     fn new() -> WorkletId {
@@ -162,7 +158,7 @@ impl WorkletId {
     }
 }
 
-/// https://drafts.css-houdini.org/worklets/#pending-tasks-struct
+/// <https://drafts.css-houdini.org/worklets/#pending-tasks-struct>
 #[derive(Clone, Debug)]
 struct PendingTasksStruct(Arc<AtomicIsize>);
 
@@ -278,7 +274,7 @@ impl WorkletThreadPool {
     /// Loads a worklet module into every worklet thread.
     /// If all of the threads load successfully, the promise is resolved.
     /// If any of the threads fails to load, the promise is rejected.
-    /// https://drafts.css-houdini.org/worklets/#fetch-and-invoke-a-worklet-script
+    /// <https://drafts.css-houdini.org/worklets/#fetch-and-invoke-a-worklet-script>
     fn fetch_and_invoke_a_worklet_script(&self,
                                          pipeline_id: PipelineId,
                                          worklet_id: WorkletId,
@@ -398,7 +394,7 @@ struct WorkletThread {
     global_init: WorkletGlobalScopeInit,
 
     /// The global scopes created by this thread
-    global_scopes: HashMap<WorkletId, JS<WorkletGlobalScope>>,
+    global_scopes: HashMap<WorkletId, Dom<WorkletGlobalScope>>,
 
     /// A one-place buffer for control messages
     control_buffer: Option<WorkletControl>,
@@ -429,9 +425,9 @@ impl WorkletThread {
             // TODO: set interrupt handler?
             // TODO: configure the JS runtime (e.g. discourage GC, encourage agressive JIT)
             debug!("Initializing worklet thread.");
-            thread_state::initialize(thread_state::SCRIPT | thread_state::IN_WORKER);
+            thread_state::initialize(ThreadState::SCRIPT | ThreadState::IN_WORKER);
             let roots = RootCollection::new();
-            let _stack_roots_tls = StackRootTLS::new(&roots);
+            let _stack_roots = ThreadLocalStackRoots::new(&roots);
             let mut thread = RootedTraceableBox::new(WorkletThread {
                 role: role,
                 control_receiver: control_receiver,
@@ -540,22 +536,22 @@ impl WorkletThread {
                                 worklet_id: WorkletId,
                                 global_type: WorkletGlobalScopeType,
                                 base_url: ServoUrl)
-                                -> Root<WorkletGlobalScope>
+                                -> DomRoot<WorkletGlobalScope>
     {
         match self.global_scopes.entry(worklet_id) {
-            hash_map::Entry::Occupied(entry) => Root::from_ref(entry.get()),
+            hash_map::Entry::Occupied(entry) => DomRoot::from_ref(entry.get()),
             hash_map::Entry::Vacant(entry) => {
                 debug!("Creating new worklet global scope.");
                 let executor = WorkletExecutor::new(worklet_id, self.primary_sender.clone());
                 let result = global_type.new(&self.runtime, pipeline_id, base_url, executor, &self.global_init);
-                entry.insert(JS::from_ref(&*result));
+                entry.insert(Dom::from_ref(&*result));
                 result
             },
         }
     }
 
     /// Fetch and invoke a worklet script.
-    /// https://drafts.css-houdini.org/worklets/#fetch-and-invoke-a-worklet-script
+    /// <https://drafts.css-houdini.org/worklets/#fetch-and-invoke-a-worklet-script>
     fn fetch_and_invoke_a_worklet_script(&self,
                                          global_scope: &WorkletGlobalScope,
                                          pipeline_id: PipelineId,
@@ -576,7 +572,6 @@ impl WorkletThread {
         let resource_fetcher = self.global_init.resource_threads.sender();
         let request = RequestInit {
             url: script_url,
-            type_: RequestType::Script,
             destination: Destination::Script,
             mode: RequestMode::CorsMode,
             credentials_mode: credentials.into(),
@@ -649,17 +644,17 @@ impl WorkletThread {
     where
         T: TaskBox + 'static,
     {
-        let msg = CommonScriptMsg::Task(ScriptThreadEventCategory::WorkletEvent, box task);
+        let msg = CommonScriptMsg::Task(ScriptThreadEventCategory::WorkletEvent, Box::new(task), None);
         let msg = MainThreadScriptMsg::Common(msg);
         self.global_init.to_script_thread_sender.send(msg).expect("Worklet thread outlived script thread.");
     }
 }
 
 /// An executor of worklet tasks
-#[derive(Clone, HeapSizeOf, JSTraceable)]
+#[derive(Clone, JSTraceable, MallocSizeOf)]
 pub struct WorkletExecutor {
     worklet_id: WorkletId,
-    #[ignore_heap_size_of = "channels are hard"]
+    #[ignore_malloc_size_of = "channels are hard"]
     primary_sender: Sender<WorkletData>,
 }
 

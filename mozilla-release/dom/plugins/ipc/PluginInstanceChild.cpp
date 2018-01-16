@@ -158,7 +158,6 @@ PluginInstanceChild::PluginInstanceChild(const NPPluginFuncs* aPluginIface,
     , mWinlessThrottleOldWndProc(0)
     , mWinlessHiddenMsgHWND(0)
 #endif // OS_WIN
-    , mAsyncCallMutex("PluginInstanceChild::mAsyncCallMutex")
 #if defined(MOZ_WIDGET_COCOA)
 #if defined(__i386__)
     , mEventModel(NPEventModelCarbon)
@@ -756,8 +755,7 @@ PluginInstanceChild::AnswerNPP_GetValue_NPPVpluginNativeAccessibleAtkPlugId(
 
 #else
 
-    NS_RUNTIMEABORT("shouldn't be called on non-ATK platforms");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("shouldn't be called on non-ATK platforms");
 
 #endif
 }
@@ -1076,8 +1074,7 @@ PluginInstanceChild::AnswerNPP_HandleEvent_IOSurface(const NPRemoteEvent& event,
                                                      const uint32_t &surfaceid,
                                                      int16_t* handled)
 {
-    NS_RUNTIMEABORT("NPP_HandleEvent_IOSurface is a OSX-only message");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("NPP_HandleEvent_IOSurface is a OSX-only message");
 }
 #endif
 
@@ -1091,8 +1088,7 @@ PluginInstanceChild::RecvWindowPosChanged(const NPRemoteEvent& event)
     int16_t dontcare;
     return AnswerNPP_HandleEvent(event, &dontcare);
 #else
-    NS_RUNTIMEABORT("WindowPosChanged is a windows-only message");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("WindowPosChanged is a windows-only message");
 #endif
 }
 
@@ -1111,8 +1107,7 @@ PluginInstanceChild::RecvContentsScaleFactorChanged(const double& aContentsScale
 #endif
     return IPC_OK();
 #else
-    NS_RUNTIMEABORT("ContentsScaleFactorChanged is an Windows or OSX only message");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("ContentsScaleFactorChanged is an Windows or OSX only message");
 #endif
 }
 
@@ -3310,10 +3305,14 @@ PluginInstanceChild::UpdateWindowAttributes(bool aForceSetWindow)
     // window.x/y passed to NPP_SetWindow
 
     if (mPluginIface->event) {
+        // width and height are stored as units, but narrow to ints here
+        MOZ_RELEASE_ASSERT(mWindow.width <= INT_MAX);
+        MOZ_RELEASE_ASSERT(mWindow.height <= INT_MAX);
+
         WINDOWPOS winpos = {
             0, 0,
             mWindow.x, mWindow.y,
-            mWindow.width, mWindow.height,
+            (int32_t)mWindow.width, (int32_t)mWindow.height,
             0
         };
         NPEvent pluginEvent = {
@@ -3380,7 +3379,7 @@ PluginInstanceChild::PaintRectToPlatformSurface(const nsIntRect& aRect,
     NPEvent paintEvent = {
         WM_PAINT,
         uintptr_t(mWindow.window),
-        uintptr_t(&rect)
+        intptr_t(&rect)
     };
 
     ::SetViewportOrgEx((HDC) mWindow.window, -mWindow.x, -mWindow.y, nullptr);
@@ -4040,25 +4039,6 @@ PluginInstanceChild::UnscheduleTimer(uint32_t id)
 }
 
 void
-PluginInstanceChild::AsyncCall(PluginThreadCallback aFunc, void* aUserData)
-{
-    RefPtr<ChildAsyncCall> task = new ChildAsyncCall(this, aFunc, aUserData);
-    PostChildAsyncCall(task.forget());
-}
-
-void
-PluginInstanceChild::PostChildAsyncCall(already_AddRefed<ChildAsyncCall> aTask)
-{
-    RefPtr<ChildAsyncCall> task = aTask;
-
-    {
-        MutexAutoLock lock(mAsyncCallMutex);
-        mPendingAsyncCalls.AppendElement(task);
-    }
-    ProcessChild::message_loop()->PostTask(task.forget());
-}
-
-void
 PluginInstanceChild::SwapSurfaces()
 {
     RefPtr<gfxASurface> tmpsurf = mCurrentSurface;
@@ -4277,13 +4257,6 @@ PluginInstanceChild::Destroy()
     }
     mPendingFlashThrottleMsgs.Clear();
 #endif
-
-    // Pending async calls are discarded, not delivered. This matches the
-    // in-process behavior.
-    for (uint32_t i = 0; i < mPendingAsyncCalls.Length(); ++i)
-        mPendingAsyncCalls[i]->Cancel();
-
-    mPendingAsyncCalls.Clear();
 }
 
 mozilla::ipc::IPCResult

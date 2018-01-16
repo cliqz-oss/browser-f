@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import, print_function
+
 from optparse import OptionParser
 import os
 import shutil
@@ -13,6 +15,8 @@ import time
 import zipfile
 
 import requests
+
+from six import reraise
 
 import mozfile
 import mozinfo
@@ -108,7 +112,7 @@ def install(src, dest):
             except:
                 exc, val, tb = sys.exc_info()
                 msg = "{} ({})".format(msg, val)
-                raise InvalidSource, msg, tb
+                reraise(InvalidSource, msg, tb)
         raise InvalidSource(msg)
 
     src = os.path.realpath(src)
@@ -146,9 +150,9 @@ def install(src, dest):
                     pass
         if issubclass(cls, Exception):
             error = InstallError('Failed to install "%s (%s)"' % (src, str(exc)))
-            raise InstallError, error, trbk
+            reraise(InstallError, error, trbk)
         # any other kind of exception like KeyboardInterrupt is just re-raised.
-        raise cls, exc, trbk
+        reraise(cls, exc, trbk)
 
     finally:
         # trbk won't get GC'ed due to circular reference
@@ -213,13 +217,13 @@ def uninstall(install_folder):
     # On Windows we have to use the uninstaller. If it's not available fallback
     # to the directory removal code
     if mozinfo.isWin:
-        uninstall_folder = '%s\uninstall' % install_folder
-        log_file = '%s\uninstall.log' % uninstall_folder
+        uninstall_folder = '%s\\uninstall' % install_folder
+        log_file = '%s\\uninstall.log' % uninstall_folder
 
         if os.path.isfile(log_file):
             trbk = None
             try:
-                cmdArgs = ['%s\uninstall\helper.exe' % install_folder, '/S']
+                cmdArgs = ['%s\\uninstall\helper.exe' % install_folder, '/S']
                 result = subprocess.call(cmdArgs)
                 if result is not 0:
                     raise Exception('Execution of uninstaller failed.')
@@ -234,10 +238,10 @@ def uninstall(install_folder):
                     if time.time() > end_time:
                         raise Exception('Failure removing uninstall folder.')
 
-            except Exception, ex:
+            except Exception as ex:
                 cls, exc, trbk = sys.exc_info()
                 error = UninstallError('Failed to uninstall %s (%s)' % (install_folder, str(ex)))
-                raise UninstallError, error, trbk
+                reraise(UninstallError, error, trbk)
 
             finally:
                 # trbk won't get GC'ed due to circular reference
@@ -277,15 +281,18 @@ def _install_dmg(src, dest):
     dest -- the path to extract to
 
     """
+    appDir = None
     try:
-        proc = subprocess.Popen('hdiutil attach -nobrowse -noautoopen "%s"' % src,
+        # According to the Apple doc, the hdiutil output is stable and is based on the tab
+        # separators
+        # Therefor, $3 should give us the mounted path
+        proc = subprocess.Popen('hdiutil attach -nobrowse -noautoopen "%s"'
+                                '|grep /Volumes/'
+                                '|awk \'BEGIN{FS="\t"} {print $3}\'' % src,
                                 shell=True,
                                 stdout=subprocess.PIPE)
 
-        for data in proc.communicate()[0].split():
-            if data.find('/Volumes/') != -1:
-                appDir = data
-                break
+        appDir = proc.communicate()[0].strip()
 
         for appFile in os.listdir(appDir):
             if appFile.endswith('.app'):
@@ -303,8 +310,9 @@ def _install_dmg(src, dest):
         shutil.copytree(mounted_path, dest, False)
 
     finally:
-        subprocess.call('hdiutil detach %s -quiet' % appDir,
-                        shell=True)
+        if appDir:
+            subprocess.call('hdiutil detach %s -quiet' % appDir,
+                            shell=True)
 
     return dest
 
@@ -360,7 +368,7 @@ def install_cli(argv=sys.argv[1:]):
         install_path = install(src, options.dest)
         binary = get_binary(install_path, app_name=options.app)
 
-    print binary
+    print(binary)
 
 
 def uninstall_cli(argv=sys.argv[1:]):

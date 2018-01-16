@@ -101,6 +101,9 @@ async function test_i18n_css(options = {}) {
 
   let contentPage = await ExtensionTestUtils.loadContentPage(`${BASE_URL}/file_sample.html`);
 
+  // workaround for extension may not be ready for applying foo.css
+  await new Promise(do_execute_soon);
+
   let maxWidth = await ContentTask.spawn(contentPage.browser, {}, async function() {
     /* globals content */
     let style = content.getComputedStyle(content.document.body);
@@ -119,23 +122,20 @@ async function test_i18n_css(options = {}) {
 
   // We don't currently have a good way to mock this.
   if (false) {
-    const LOCALE = "general.useragent.locale";
     const DIR = "intl.uidirection";
-    const DIR_LEGACY = "intl.uidirection.en"; // Needed for Android until bug 1215247 is resolved
 
     // We don't wind up actually switching the chrome registry locale, since we
     // don't have a chrome package for Hebrew. So just override it, and force
     // RTL directionality.
-    Preferences.set(LOCALE, "he");
+    const origReqLocales = Services.locale.getRequestedLocales();
+    Services.locale.setRequestedLocales(["he"]);
     Preferences.set(DIR, 1);
-    Preferences.set(DIR_LEGACY, "rtl");
 
     css = await fetch(cssURL);
     equal(css, '* { content: "he rtl ltr right left" }', "CSS file localized in mochitest scope");
 
-    Preferences.reset(LOCALE);
+    Services.locale.setRequestedLocales(origReqLocales);
     Preferences.reset(DIR);
-    Preferences.reset(DIR_LEGACY);
   }
 
   await extension.awaitFinish("i18n-css");

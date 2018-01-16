@@ -174,7 +174,6 @@ public:
     return mIsFullyOccluded;
   }
 
-  virtual nsCursor        GetCursor() override;
   virtual void            SetCursor(nsCursor aCursor) override;
   virtual nsresult        SetCursor(imgIContainer* aCursor,
                                     uint32_t aHotspotX, uint32_t aHotspotY) override;
@@ -368,7 +367,7 @@ public:
 
   virtual void StartAsyncScrollbarDrag(const AsyncDragMetrics& aDragMetrics) override;
 
-  virtual void StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
+  virtual bool StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
                                     const ScrollableLayerGuid& aGuid) override;
 
   virtual void StopAsyncAutoscroll(const ScrollableLayerGuid& aGuid) override;
@@ -417,6 +416,12 @@ public:
   void UpdateRootFrameMetrics(const ScreenPoint& aScrollOffset, const CSSToScreenScale& aZoom) override {};
   void RecvScreenPixels(mozilla::ipc::Shmem&& aMem, const ScreenIntSize& aSize) override {};
 #endif
+
+  /**
+   * Whether context menus should only appear on mouseup instead of mousedown,
+   * on OSes where they normally appear on mousedown (macOS, *nix).
+   */
+  static bool ShowContextMenuAfterMouseUp();
 
 protected:
   // These are methods for CompositorWidgetWrapper, and should only be

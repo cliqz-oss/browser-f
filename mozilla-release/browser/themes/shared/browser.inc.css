@@ -4,6 +4,9 @@
 
 %include downloads/indicator.inc.css
 
+%filter substitution
+%define navbarTabsShadowSize 1px
+
 :root {
   /* Note: Setting this to 0 (without px) breaks CSS calculations for OSX. */
   --space-above-tabbar: 0px;
@@ -80,6 +83,7 @@
   -moz-context-properties: fill;
   fill: currentColor;
 }
+
 /* Private browsing and accessibility indicators */
 
 .accessibility-indicator,
@@ -89,8 +93,8 @@
   background-position: center;
   width: 24px;
   height: 24px;
-  margin-left: 8px;
-  margin-right: 8px;
+  margin-left: 7px;
+  margin-right: 7px;
   position: relative;
   /* Need to ensure this gets positioned on top of the position:relative #navigator-toolbox
    * in case the dark/light themes give that item a background. */

@@ -40,6 +40,12 @@ ${helpers.single_keyword("-moz-window-shadow", "none default menu tooltip sheet"
                          internal=True,
                          spec="None (Nonstandard internal property)")}
 
+${helpers.predefined_type("-moz-window-opacity", "Opacity", "1.0", products="gecko",
+                          gecko_ffi_name="mWindowOpacity",
+                          animation_value_type="ComputedValue",
+                          internal=True,
+                          spec="None (Nonstandard internal property)")}
+
 <%helpers:longhand name="-moz-force-broken-image-icon"
                    products="gecko"
                    animation_value_type="discrete"
@@ -48,9 +54,7 @@ ${helpers.single_keyword("-moz-window-shadow", "none default menu tooltip sheet"
     use style_traits::ToCss;
 
     pub mod computed_value {
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-        #[derive(Clone, Copy, Debug, PartialEq, ToComputedValue)]
+        #[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
         pub struct T(pub bool);
     }
 
@@ -77,7 +81,7 @@ ${helpers.single_keyword("-moz-window-shadow", "none default menu tooltip sheet"
         match input.expect_integer()? {
             0 => Ok(computed_value::T(false)),
             1 => Ok(computed_value::T(true)),
-            _ => Err(StyleParseError::UnspecifiedError.into()),
+            _ => Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
         }
     }
 

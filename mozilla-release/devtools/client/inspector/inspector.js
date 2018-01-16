@@ -14,6 +14,10 @@ const EventEmitter = require("devtools/shared/old-event-emitter");
 const {executeSoon} = require("devtools/shared/DevToolsUtils");
 const {Task} = require("devtools/shared/task");
 
+// Use privileged promise in panel documents to prevent having them to freeze
+// during toolbox destruction. See bug 1402779.
+const Promise = require("Promise");
+
 // constructor
 const Telemetry = require("devtools/client/shared/telemetry");
 const HighlightersOverlay = require("devtools/client/inspector/shared/highlighters-overlay");
@@ -32,7 +36,6 @@ loader.lazyRequireGetter(this, "Menu", "devtools/client/framework/menu");
 loader.lazyRequireGetter(this, "MenuItem", "devtools/client/framework/menu-item");
 loader.lazyRequireGetter(this, "ExtensionSidebar", "devtools/client/inspector/extensions/extension-sidebar");
 loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
-loader.lazyRequireGetter(this, "ViewHelpers", "devtools/client/shared/widgets/view-helpers", true);
 loader.lazyRequireGetter(this, "clipboardHelper", "devtools/shared/platform/clipboard");
 
 const {LocalizationHelper, localizeMarkup} = require("devtools/shared/l10n");
@@ -119,7 +122,6 @@ function Inspector(toolbox) {
   this.onMarkupLoaded = this.onMarkupLoaded.bind(this);
   this.onNewSelection = this.onNewSelection.bind(this);
   this.onNewRoot = this.onNewRoot.bind(this);
-  this.onPaneToggleButtonClicked = this.onPaneToggleButtonClicked.bind(this);
   this.onPanelWindowResize = this.onPanelWindowResize.bind(this);
   this.onShowBoxModelHighlighterForNode =
     this.onShowBoxModelHighlighterForNode.bind(this);
@@ -464,7 +466,7 @@ Inspector.prototype = {
     if (!this._InspectorTabPanel) {
       this._InspectorTabPanel =
         this.React.createFactory(this.browserRequire(
-        "devtools/client/inspector/components/inspector-tab-panel"));
+        "devtools/client/inspector/components/InspectorTabPanel"));
     }
     return this._InspectorTabPanel;
   },
@@ -485,7 +487,7 @@ Inspector.prototype = {
    */
   setupSplitter: function () {
     let SplitBox = this.React.createFactory(this.browserRequire(
-      "devtools/client/shared/components/splitter/split-box"));
+      "devtools/client/shared/components/splitter/SplitBox"));
 
     let { width, height } = this.getSidebarSize();
     let splitter = SplitBox({
@@ -595,10 +597,6 @@ Inspector.prototype = {
         const BoxModel = require("devtools/client/inspector/boxmodel/box-model");
         panel = new BoxModel(this, this.panelWin);
         break;
-      case "fontinspector":
-        const FontInspector = require("devtools/client/inspector/fonts/fonts");
-        panel = new FontInspector(this, this.panelWin);
-        break;
       default:
         // This is a custom panel or a non lazy-loaded one.
         return null;
@@ -618,11 +616,6 @@ Inspector.prototype = {
     this.sidebar.on("select", this.onSidebarSelect);
 
     let defaultTab = Services.prefs.getCharPref("devtools.inspector.activeSidebar");
-
-    if (!Services.prefs.getBoolPref("devtools.fontinspector.enabled") &&
-       defaultTab == "fontinspector") {
-      defaultTab = "ruleview";
-    }
 
     // Append all side panels
     this.sidebar.addExistingTab(
@@ -653,26 +646,120 @@ Inspector.prototype = {
               this.browserRequire("devtools/client/inspector/layout/layout");
             this.layoutview = new LayoutView(this, this.panelWin);
           }
+
           return this.layoutview.provider;
         }
       },
       defaultTab == layoutId);
 
-    if (this.target.form.animationsActor) {
-      this.sidebar.addFrameTab(
-        "animationinspector",
-        INSPECTOR_L10N.getStr("inspector.sidebar.animationInspectorTitle"),
-        "chrome://devtools/content/animationinspector/animation-inspector.xhtml",
-        defaultTab == "animationinspector");
+    if (Services.prefs.getBoolPref("devtools.changesview.enabled")) {
+      // Inject a lazy loaded react tab by exposing a fake React object
+      // with a lazy defined Tab thanks to `panel` being a function
+      let changesId = "changesview";
+      let changesTitle = INSPECTOR_L10N.getStr("inspector.sidebar.changesViewTitle");
+      this.sidebar.addTab(
+        changesId,
+        changesTitle,
+        {
+          props: {
+            id: changesId,
+            title: changesTitle
+          },
+          panel: () => {
+            if (!this.changesview) {
+              const ChangesView =
+                this.browserRequire("devtools/client/inspector/changes/changes");
+              this.changesview = new ChangesView(this, this.panelWin);
+            }
+
+            return this.changesview.provider;
+          }
+        },
+        defaultTab == changesId);
     }
 
-    if (Services.prefs.getBoolPref("devtools.fontinspector.enabled") &&
-        this.canGetUsedFontFaces) {
-      const FontInspector = this.browserRequire("devtools/client/inspector/fonts/fonts");
-      this.fontinspector = new FontInspector(this, this.panelWin);
-      this.fontinspector.init();
+    if (Services.prefs.getBoolPref("devtools.eventsview.enabled")) {
+      // Inject a lazy loaded react tab by exposing a fake React object
+      // with a lazy defined Tab thanks to `panel` being a function
+      let eventsId = "eventsview";
+      let eventsTitle = INSPECTOR_L10N.getStr("inspector.sidebar.eventsViewTitle");
+      this.sidebar.addTab(
+        eventsId,
+        eventsTitle,
+        {
+          props: {
+            id: eventsId,
+            title: eventsTitle
+          },
+          panel: () => {
+            if (!this.eventview) {
+              const EventsView =
+                this.browserRequire("devtools/client/inspector/events/events");
+              this.eventsview = new EventsView(this, this.panelWin);
+            }
 
-      this.sidebar.toggleTab(true, "fontinspector");
+            return this.eventsview.provider;
+          }
+        },
+        defaultTab == eventsId);
+    }
+
+    if (this.target.form.animationsActor) {
+      const animationTitle =
+        INSPECTOR_L10N.getStr("inspector.sidebar.animationInspectorTitle");
+
+      if (Services.prefs.getBoolPref("devtools.new-animationinspector.enabled")) {
+        const animationId = "newanimationinspector";
+
+        this.sidebar.addTab(
+          animationId,
+          animationTitle,
+          {
+            props: {
+              id: animationId,
+              title: animationTitle
+            },
+            panel: () => {
+              const AnimationInspector =
+                this.browserRequire("devtools/client/inspector/animation/animation");
+              this.animationinspector = new AnimationInspector(this);
+              return this.animationinspector.provider;
+            }
+          },
+          defaultTab == animationId);
+      } else {
+        this.sidebar.addFrameTab(
+          "animationinspector",
+          animationTitle,
+          "chrome://devtools/content/animationinspector/animation-inspector.xhtml",
+          defaultTab == "animationinspector");
+      }
+    }
+
+    if (this.canGetUsedFontFaces) {
+      // Inject a lazy loaded react tab by exposing a fake React object
+      // with a lazy defined Tab thanks to `panel` being a function
+      let fontId = "fontinspector";
+      let fontTitle = INSPECTOR_L10N.getStr("inspector.sidebar.fontInspectorTitle");
+      this.sidebar.addTab(
+        fontId,
+        fontTitle,
+        {
+          props: {
+            id: fontId,
+            title: fontTitle
+          },
+          panel: () => {
+            if (!this.fontinspector) {
+              const FontInspector =
+                this.browserRequire("devtools/client/inspector/fonts/fonts");
+              this.fontinspector = new FontInspector(this, this.panelWin);
+            }
+
+            return this.fontinspector.provider;
+          }
+        },
+        defaultTab == fontId);
     }
 
     // Persist splitter state in preferences.
@@ -794,20 +881,6 @@ Inspector.prototype = {
   setupToolbar: Task.async(function* () {
     this.teardownToolbar();
 
-    // Setup the sidebar toggle button.
-    let SidebarToggle = this.React.createFactory(this.browserRequire(
-      "devtools/client/shared/components/sidebar-toggle"));
-
-    let sidebarToggle = SidebarToggle({
-      onClick: this.onPaneToggleButtonClicked,
-      collapsed: false,
-      expandPaneTitle: INSPECTOR_L10N.getStr("inspector.expandPane"),
-      collapsePaneTitle: INSPECTOR_L10N.getStr("inspector.collapsePane"),
-    });
-
-    let parentBox = this.panelDoc.getElementById("inspector-sidebar-toggle-box");
-    this._sidebarToggle = this.ReactDOM.render(sidebarToggle, parentBox);
-
     // Setup the add-node button.
     this.addNode = this.addNode.bind(this);
     this.addNodeButton = this.panelDoc.getElementById("inspector-element-add-button");
@@ -838,8 +911,6 @@ Inspector.prototype = {
   }),
 
   teardownToolbar: function () {
-    this._sidebarToggle = null;
-
     if (this.addNodeButton) {
       this.addNodeButton.removeEventListener("click", this.addNode);
       this.addNodeButton = null;
@@ -855,6 +926,9 @@ Inspector.prototype = {
    * Reset the inspector on new root mutation.
    */
   onNewRoot: function () {
+    // Record new-root timing for telemetry
+    this._newRootStart = this.panelWin.performance.now();
+
     this._defaultNode = null;
     this.selection.setNodeFront(null);
     this._destroyMarkup();
@@ -890,7 +964,7 @@ Inspector.prototype = {
       return;
     }
 
-    this.markup.expandNode(this.selection.nodeFront);
+    let onExpand = this.markup.expandNode(this.selection.nodeFront);
 
     // Restore the highlighter states prior to emitting "new-root".
     yield Promise.all([
@@ -899,6 +973,26 @@ Inspector.prototype = {
     ]);
 
     this.emit("new-root");
+
+    // Wait for full expand of the selected node in order to ensure
+    // the markup view is fully emitted before firing 'reloaded'.
+    // 'reloaded' is used to know when the panel is fully updated
+    // after a page reload.
+    yield onExpand;
+
+    this.emit("reloaded");
+
+    // Record the time between new-root event and inspector fully loaded.
+    if (this._newRootStart) {
+      // Only log the timing when inspector is not destroyed and is in foreground.
+      if (this.toolbox && this.toolbox.currentToolId == "inspector") {
+        let delay = this.panelWin.performance.now() - this._newRootStart;
+        let telemetryKey = "DEVTOOLS_INSPECTOR_NEW_ROOT_TO_RELOAD_DELAY_MS";
+        let histogram = Services.telemetry.getHistogramById(telemetryKey);
+        histogram.add(delay);
+      }
+      delete this._newRootStart;
+    }
   }),
 
   _selectionCssSelector: null,
@@ -1086,6 +1180,10 @@ Inspector.prototype = {
       this.fontinspector.destroy();
     }
 
+    if (this.animationinspector) {
+      this.animationinspector.destroy();
+    }
+
     let cssPropertiesDestroyer = this._cssPropertiesLoaded.then(({front}) => {
       if (front) {
         front.destroy();
@@ -1142,7 +1240,15 @@ Inspector.prototype = {
   },
 
   _onContextMenu: function (e) {
+    if (e.originalTarget.closest("input[type=text]") ||
+        e.originalTarget.closest("input:not([type])") ||
+        e.originalTarget.closest("textarea")) {
+      return;
+    }
+
+    e.stopPropagation();
     e.preventDefault();
+
     this._openMenu({
       screenX: e.screenX,
       screenY: e.screenY,
@@ -1256,9 +1362,9 @@ Inspector.prototype = {
     }));
     menu.append(new MenuItem({
       id: "node-menu-collapse",
-      label: INSPECTOR_L10N.getStr("inspectorCollapseNode.label"),
+      label: INSPECTOR_L10N.getStr("inspectorCollapseAll.label"),
       disabled: !isNodeWithChildren || !markupContainer.expanded,
-      click: () => this.collapseNode(),
+      click: () => this.collapseAll(),
     }));
 
     menu.append(new MenuItem({
@@ -1571,43 +1677,6 @@ Inspector.prototype = {
     this._markupBox = null;
 
     return destroyPromise;
-  },
-
-  /**
-   * When the pane toggle button is clicked or pressed, toggle the pane, change the button
-   * state and tooltip.
-   */
-  onPaneToggleButtonClicked: function (e) {
-    let sidePaneContainer = this.panelDoc.querySelector(
-      "#inspector-splitter-box .controlled");
-    let isVisible = !this._sidebarToggle.state.collapsed;
-
-    // Make sure the sidebar has width and height attributes before collapsing
-    // because ViewHelpers needs it.
-    if (isVisible) {
-      let rect = sidePaneContainer.getBoundingClientRect();
-      if (!sidePaneContainer.hasAttribute("width")) {
-        sidePaneContainer.setAttribute("width", rect.width);
-      }
-      // always refresh the height attribute before collapsing, it could have
-      // been modified by resizing the container.
-      sidePaneContainer.setAttribute("height", rect.height);
-    }
-
-    let onAnimationDone = () => {
-      if (isVisible) {
-        this._sidebarToggle.setState({collapsed: true});
-      } else {
-        this._sidebarToggle.setState({collapsed: false});
-      }
-    };
-
-    ViewHelpers.togglePane({
-      visible: !isVisible,
-      animated: true,
-      delayed: true,
-      callback: onAnimationDone
-    }, sidePaneContainer);
   },
 
   onEyeDropperButtonClicked: function () {
@@ -2024,8 +2093,8 @@ Inspector.prototype = {
     this.markup.expandAll(this.selection.nodeFront);
   },
 
-  collapseNode: function () {
-    this.markup.collapseNode(this.selection.nodeFront);
+  collapseAll: function () {
+    this.markup.collapseAll(this.selection.nodeFront);
   },
 
   /**

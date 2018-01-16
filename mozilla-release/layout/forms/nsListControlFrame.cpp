@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,10 +8,8 @@
 #include "nsCOMPtr.h"
 #include "nsUnicharUtils.h"
 #include "nsListControlFrame.h"
-#include "nsFormControlFrame.h" // for COMPARE macro
+#include "nsCheckboxRadioFrame.h" // for COMPARE macro
 #include "nsGkAtoms.h"
-#include "nsIDOMHTMLSelectElement.h"
-#include "nsIDOMHTMLOptionElement.h"
 #include "nsComboboxControlFrame.h"
 #include "nsIPresShell.h"
 #include "nsIDOMMouseEvent.h"
@@ -127,7 +126,7 @@ static bool ShouldFireDropDownEvent() {
 
 // for Bug 47302 (remove this comment later)
 void
-nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   // get the receiver interface from the browser button's content node
   ENSURE_TRUE(mContent);
@@ -155,8 +154,8 @@ nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
                                true));
   }
 
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsHTMLScrollFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  nsHTMLScrollFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
@@ -231,12 +230,9 @@ void nsListControlFrame::PaintFocus(DrawTarget* aDrawTarget, nsPoint aPt)
   fRect += aPt;
 
   bool lastItemIsSelected = false;
-  if (focusedContent) {
-    nsCOMPtr<nsIDOMHTMLOptionElement> domOpt =
-      do_QueryInterface(focusedContent);
-    if (domOpt) {
-      domOpt->GetSelected(&lastItemIsSelected);
-    }
+  HTMLOptionElement* domOpt = HTMLOptionElement::FromContentOrNull(focusedContent);
+  if (domOpt) {
+    lastItemIsSelected = domOpt->Selected();
   }
 
   // set up back stop colors and then ask L&F service for the real colors
@@ -383,7 +379,7 @@ nsListControlFrame::Reflow(nsPresContext*           aPresContext,
   }
 
   if (GetStateBits() & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   if (IsInDropDownMode()) {
@@ -490,6 +486,7 @@ nsListControlFrame::Reflow(nsPresContext*           aPresContext,
   // XXXbz to make the ascent really correct, we should add our
   // mComputedPadding.top to it (and subtract it from descent).  Need that
   // because nsGfxScrollFrame just adds in the border....
+  aStatus.Reset();
   nsHTMLScrollFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
 }
 
@@ -614,6 +611,7 @@ nsListControlFrame::ReflowAsDropdown(nsPresContext*           aPresContext,
 
   mLastDropdownComputedBSize = state.ComputedBSize();
 
+  aStatus.Reset();
   nsHTMLScrollFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
 }
 
@@ -1051,10 +1049,9 @@ nsListControlFrame::ResetList(bool aAllowScrolling)
     // Scroll to the selected index
     int32_t indexToSelect = kNothingSelected;
 
-    nsCOMPtr<nsIDOMHTMLSelectElement> selectElement(do_QueryInterface(mContent));
-    NS_ASSERTION(selectElement, "No select element!");
+    HTMLSelectElement* selectElement = HTMLSelectElement::FromContent(mContent);
     if (selectElement) {
-      selectElement->GetSelectedIndex(&indexToSelect);
+      indexToSelect = selectElement->SelectedIndex();
       AutoWeakFrame weakFrame(this);
       ScrollToIndex(indexToSelect);
       if (!weakFrame.IsAlive()) {
@@ -1430,7 +1427,7 @@ nsListControlFrame::OnSetSelectedIndex(int32_t aOldIndex, int32_t aNewIndex)
 //----------------------------------------------------------------------
 
 nsresult
-nsListControlFrame::SetFormProperty(nsIAtom* aName,
+nsListControlFrame::SetFormProperty(nsAtom* aName,
                                 const nsAString& aValue)
 {
   if (nsGkAtoms::selected == aName) {
@@ -1856,7 +1853,8 @@ nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
       if (mComboboxFrame->IsOpenInParentProcess()) {
         nsCOMPtr<nsIDOMEventTarget> etarget;
         aMouseEvent->GetTarget(getter_AddRefs(etarget));
-        nsCOMPtr<nsIDOMHTMLOptionElement> option = do_QueryInterface(etarget);
+        nsCOMPtr<nsIContent> econtent = do_QueryInterface(etarget);
+        HTMLOptionElement* option = HTMLOptionElement::FromContentOrNull(econtent);
         if (option) {
           return NS_OK;
         }
@@ -1981,7 +1979,7 @@ nsListControlFrame::ScrollToFrame(dom::HTMLOptionElement& aOptElement)
   // otherwise we find the content's frame and scroll to it
   nsIFrame* childFrame = aOptElement.GetPrimaryFrame();
   if (childFrame) {
-    PresContext()->PresShell()->
+    PresShell()->
       ScrollFrameRectIntoView(childFrame,
                               nsRect(nsPoint(0, 0), childFrame->GetSize()),
                               nsIPresShell::ScrollAxis(), nsIPresShell::ScrollAxis(),
@@ -2452,11 +2450,11 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
     }
 
     nsAutoString text;
-    if (NS_FAILED(optionElement->GetText(text)) ||
-        !StringBeginsWith(
-           nsContentUtils::TrimWhitespace<
-             nsContentUtils::IsHTMLWhitespaceOrNBSP>(text, false),
-           incrementalString, nsCaseInsensitiveStringComparator())) {
+    optionElement->GetText(text);
+    if (!StringBeginsWith(
+          nsContentUtils::TrimWhitespace<
+          nsContentUtils::IsHTMLWhitespaceOrNBSP>(text, false),
+          incrementalString, nsCaseInsensitiveStringComparator())) {
       continue;
     }
 
@@ -2566,6 +2564,6 @@ nsListEventListener::HandleEvent(nsIDOMEvent* aEvent)
     return mFrame->nsListControlFrame::MouseMove(aEvent);
   }
 
-  NS_ABORT();
+  MOZ_ASSERT_UNREACHABLE("Unexpected eventType");
   return NS_OK;
 }

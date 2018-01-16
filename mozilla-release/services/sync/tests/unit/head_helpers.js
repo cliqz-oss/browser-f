@@ -16,6 +16,7 @@ Cu.import("resource://testing-common/PlacesTestUtils.jsm");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/PlacesUtils.jsm");
+Cu.import("resource://gre/modules/PlacesSyncUtils.jsm");
 Cu.import("resource://gre/modules/ObjectUtils.jsm");
 
 add_task(async function head_setup() {
@@ -61,20 +62,6 @@ XPCOMUtils.defineLazyGetter(this, "SyncPingValidator", function() {
   let ajv = new ns.Ajv({ async: "co*" });
   return ajv.compile(SyncPingSchema);
 });
-
-var provider = {
-  getFile(prop, persistent) {
-    persistent.value = true;
-    switch (prop) {
-      case "ExtPrefDL":
-        return [Services.dirsvc.get("CurProcD", Ci.nsIFile)];
-      default:
-        throw Cr.NS_ERROR_FAILURE;
-    }
-  },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIDirectoryServiceProvider])
-};
-Services.dirsvc.QueryInterface(Ci.nsIDirectoryService).registerProvider(provider);
 
 // This is needed for loadAddonTestFunctions().
 var gGlobalScope = this;
@@ -197,8 +184,8 @@ function uninstallAddon(addon) {
   Async.waitForSyncCallback(cb);
 }
 
-function generateNewKeys(collectionKeys, collections = null) {
-  let wbo = collectionKeys.generateNewKeysWBO(collections);
+async function generateNewKeys(collectionKeys, collections = null) {
+  let wbo = await collectionKeys.generateNewKeysWBO(collections);
   let modified = new_timestamp();
   collectionKeys.setContents(wbo.cleartext, modified);
 }
@@ -466,7 +453,7 @@ async function sync_engine_and_validate_telem(engine, allowErrorPings, onError) 
       } else {
         resolve(ping.syncs[0]);
       }
-    }
+    };
   });
   // neuter the scheduler as it interacts badly with some of the tests - the
   // engine being synced usually isn't the registered engine, so we see
@@ -498,8 +485,8 @@ function promiseOneObserver(topic, callback) {
     let observer = function(subject, data) {
       Svc.Obs.remove(topic, observer);
       resolve({ subject, data });
-    }
-    Svc.Obs.add(topic, observer)
+    };
+    Svc.Obs.add(topic, observer);
   });
 }
 
@@ -535,10 +522,10 @@ function enableValidationPrefs() {
   Svc.Prefs.set("engine.bookmarks.validation.enabled", true);
 }
 
-function serverForEnginesWithKeys(users, engines, callback) {
+async function serverForEnginesWithKeys(users, engines, callback) {
   // Generate and store a fake default key bundle to avoid resetting the client
   // before the first sync.
-  let wbo = Service.collectionKeys.generateNewKeysWBO();
+  let wbo = await Service.collectionKeys.generateNewKeysWBO();
   let modified = new_timestamp();
   Service.collectionKeys.setContents(wbo.cleartext, modified);
 
@@ -569,7 +556,7 @@ function serverForEnginesWithKeys(users, engines, callback) {
   return serverForUsers(users, contents, callback);
 }
 
-function serverForFoo(engine, callback) {
+async function serverForFoo(engine, callback) {
   // The bookmarks engine *always* tracks changes, meaning we might try
   // and sync due to the bookmarks we ourselves create! Worse, because we
   // do an engine sync only, there's no locking - so we end up with multiple

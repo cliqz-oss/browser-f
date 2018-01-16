@@ -5,7 +5,7 @@
 //! The high-level interface from script to constellation. Using this abstract interface helps
 //! reduce coupling between these two components.
 
-use core::nonzero::NonZero;
+use nonzero::NonZero;
 use std::cell::Cell;
 use std::fmt;
 use webrender_api;
@@ -18,7 +18,7 @@ pub enum KeyState {
 }
 
 //N.B. Based on the glutin key enum
-#[derive(Clone, Copy, Debug, Deserialize, Eq, HeapSizeOf, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, MallocSizeOf, PartialEq, Serialize)]
 pub enum Key {
     Space,
     Apostrophe,
@@ -148,12 +148,12 @@ pub enum Key {
 
 bitflags! {
     #[derive(Deserialize, Serialize)]
-    pub flags KeyModifiers: u8 {
-        const NONE = 0x00,
-        const SHIFT = 0x01,
-        const CONTROL = 0x02,
-        const ALT = 0x04,
-        const SUPER = 0x08,
+    pub struct KeyModifiers: u8 {
+        const NONE = 0x00;
+        const SHIFT = 0x01;
+        const CONTROL = 0x02;
+        const ALT = 0x04;
+        const SUPER = 0x08;
     }
 }
 
@@ -217,14 +217,14 @@ impl PipelineNamespace {
 
 thread_local!(pub static PIPELINE_NAMESPACE: Cell<Option<PipelineNamespace>> = Cell::new(None));
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, HeapSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct PipelineNamespaceId(pub u32);
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct PipelineIndex(pub NonZero<u32>);
-known_heap_size!(0, PipelineIndex);
+malloc_size_of_is_0!(PipelineIndex);
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, HeapSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct PipelineId {
     pub namespace_id: PipelineNamespaceId,
     pub index: PipelineIndex
@@ -246,6 +246,17 @@ impl PipelineId {
         webrender_api::PipelineId(namespace_id, index.get())
     }
 
+    #[allow(unsafe_code)]
+    pub fn from_webrender(pipeline: webrender_api::PipelineId) -> PipelineId {
+        let webrender_api::PipelineId(namespace_id, index) = pipeline;
+        unsafe {
+            PipelineId {
+                namespace_id: PipelineNamespaceId(namespace_id),
+                index: PipelineIndex(NonZero::new_unchecked(index)),
+            }
+        }
+    }
+
     pub fn root_scroll_node(&self) -> webrender_api::ClipId {
         webrender_api::ClipId::root_scroll_node(self.to_webrender())
     }
@@ -265,9 +276,9 @@ impl fmt::Display for PipelineId {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BrowsingContextIndex(pub NonZero<u32>);
-known_heap_size!(0, BrowsingContextIndex);
+malloc_size_of_is_0!(BrowsingContextIndex);
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, HeapSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BrowsingContextId {
     pub namespace_id: PipelineNamespaceId,
     pub index: BrowsingContextIndex,
@@ -294,7 +305,7 @@ impl fmt::Display for BrowsingContextId {
 
 thread_local!(pub static TOP_LEVEL_BROWSING_CONTEXT_ID: Cell<Option<TopLevelBrowsingContextId>> = Cell::new(None));
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, HeapSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct TopLevelBrowsingContextId(BrowsingContextId);
 
 impl TopLevelBrowsingContextId {
@@ -339,15 +350,19 @@ impl PartialEq<BrowsingContextId> for TopLevelBrowsingContextId {
 // We provide ids just for unit testing.
 pub const TEST_NAMESPACE: PipelineNamespaceId = PipelineNamespaceId(1234);
 #[allow(unsafe_code)]
+#[cfg(feature = "unstable")]
 pub const TEST_PIPELINE_INDEX: PipelineIndex = unsafe { PipelineIndex(NonZero::new_unchecked(5678)) };
+#[cfg(feature = "unstable")]
 pub const TEST_PIPELINE_ID: PipelineId = PipelineId { namespace_id: TEST_NAMESPACE, index: TEST_PIPELINE_INDEX };
 #[allow(unsafe_code)]
+#[cfg(feature = "unstable")]
 pub const TEST_BROWSING_CONTEXT_INDEX: BrowsingContextIndex =
     unsafe { BrowsingContextIndex(NonZero::new_unchecked(8765)) };
+#[cfg(feature = "unstable")]
 pub const TEST_BROWSING_CONTEXT_ID: BrowsingContextId =
     BrowsingContextId { namespace_id: TEST_NAMESPACE, index: TEST_BROWSING_CONTEXT_INDEX };
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, HeapSizeOf, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize)]
 pub enum FrameType {
     IFrame,
     MozBrowserIFrame,

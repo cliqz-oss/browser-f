@@ -134,7 +134,7 @@ RokuApp.prototype = {
       callback();
     }
   }
-}
+};
 
 /* RemoteMedia provides a wrapper for using TCP socket to control Roku apps.
  * The server implementation must be built into the Roku receiver app.
@@ -152,7 +152,7 @@ function RemoteMedia(url, listener) {
 
   this._inputStream = this._socket.openInputStream(0, 0, 0);
   this._pump = Cc["@mozilla.org/network/input-stream-pump;1"].createInstance(Ci.nsIInputStreamPump);
-  this._pump.init(this._inputStream, -1, -1, 0, 0, true);
+  this._pump.init(this._inputStream, 0, 0, true);
   this._pump.asyncRead(this, null);
 }
 
@@ -227,4 +227,4 @@ RemoteMedia.prototype = {
   get status() {
     return this._status;
   }
-}
+};

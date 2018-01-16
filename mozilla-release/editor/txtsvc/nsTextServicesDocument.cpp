@@ -33,7 +33,7 @@
 #include "nsITextServicesFilter.h"      // for nsITextServicesFilter
 #include "nsIWordBreaker.h"             // for nsWordRange, nsIWordBreaker
 #include "nsRange.h"                    // for nsRange
-#include "nsStaticAtom.h"               // for NS_STATIC_ATOM, etc
+#include "nsStaticAtom.h"               // for NS_STATIC_ATOM_SETUP, etc
 #include "nsString.h"                   // for nsString, nsAutoString
 #include "nsTextServicesDocument.h"
 #include "nscore.h"                     // for nsresult, NS_IMETHODIMP, etc
@@ -76,10 +76,6 @@ public:
   bool    mIsValid;
 };
 
-#define TS_ATOM(name_, value_) nsIAtom* nsTextServicesDocument::name_ = 0;
-#include "nsTSAtomList.h" // IWYU pragma: keep
-#undef TS_ATOM
-
 nsTextServicesDocument::nsTextServicesDocument()
 {
   mSelStartIndex  = -1;
@@ -93,23 +89,6 @@ nsTextServicesDocument::nsTextServicesDocument()
 nsTextServicesDocument::~nsTextServicesDocument()
 {
   ClearOffsetTable(&mOffsetTable);
-}
-
-#define TS_ATOM(name_, value_) NS_STATIC_ATOM_BUFFER(name_##_buffer, value_)
-#include "nsTSAtomList.h" // IWYU pragma: keep
-#undef TS_ATOM
-
-/* static */
-void
-nsTextServicesDocument::RegisterAtoms()
-{
-  static const nsStaticAtom ts_atoms[] = {
-#define TS_ATOM(name_, value_) NS_STATIC_ATOM(name_##_buffer, &name_),
-#include "nsTSAtomList.h" // IWYU pragma: keep
-#undef TS_ATOM
-  };
-
-  NS_RegisterStaticAtoms(ts_atoms);
 }
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsTextServicesDocument)
@@ -2038,34 +2017,34 @@ nsTextServicesDocument::IsBlockNode(nsIContent *aContent)
     return false;
   }
 
-  nsIAtom *atom = aContent->NodeInfo()->NameAtom();
+  nsAtom *atom = aContent->NodeInfo()->NameAtom();
 
-  return (sAAtom       != atom &&
-          sAddressAtom != atom &&
-          sBigAtom     != atom &&
-          sBAtom       != atom &&
-          sCiteAtom    != atom &&
-          sCodeAtom    != atom &&
-          sDfnAtom     != atom &&
-          sEmAtom      != atom &&
-          sFontAtom    != atom &&
-          sIAtom       != atom &&
-          sKbdAtom     != atom &&
-          sKeygenAtom  != atom &&
-          sNobrAtom    != atom &&
-          sSAtom       != atom &&
-          sSampAtom    != atom &&
-          sSmallAtom   != atom &&
-          sSpacerAtom  != atom &&
-          sSpanAtom    != atom &&
-          sStrikeAtom  != atom &&
-          sStrongAtom  != atom &&
-          sSubAtom     != atom &&
-          sSupAtom     != atom &&
-          sTtAtom      != atom &&
-          sUAtom       != atom &&
-          sVarAtom     != atom &&
-          sWbrAtom     != atom);
+  return (nsGkAtoms::a       != atom &&
+          nsGkAtoms::address != atom &&
+          nsGkAtoms::big     != atom &&
+          nsGkAtoms::b       != atom &&
+          nsGkAtoms::cite    != atom &&
+          nsGkAtoms::code    != atom &&
+          nsGkAtoms::dfn     != atom &&
+          nsGkAtoms::em      != atom &&
+          nsGkAtoms::font    != atom &&
+          nsGkAtoms::i       != atom &&
+          nsGkAtoms::kbd     != atom &&
+          nsGkAtoms::keygen  != atom &&
+          nsGkAtoms::nobr    != atom &&
+          nsGkAtoms::s       != atom &&
+          nsGkAtoms::samp    != atom &&
+          nsGkAtoms::small   != atom &&
+          nsGkAtoms::spacer  != atom &&
+          nsGkAtoms::span    != atom &&
+          nsGkAtoms::strike  != atom &&
+          nsGkAtoms::strong  != atom &&
+          nsGkAtoms::sub     != atom &&
+          nsGkAtoms::sup     != atom &&
+          nsGkAtoms::tt      != atom &&
+          nsGkAtoms::u       != atom &&
+          nsGkAtoms::var     != atom &&
+          nsGkAtoms::wbr     != atom);
 }
 
 bool
@@ -2389,20 +2368,10 @@ nsTextServicesDocument::GetCollapsedSelection(nsITextServicesDocument::TSDBlockS
     // If the parent has children, position the iterator
     // on the child that is to the left of the offset.
 
-    uint32_t childIndex = offset;
-
-    if (childIndex > 0) {
-      uint32_t numChildren = parent->GetChildCount();
-      NS_ASSERTION(childIndex <= numChildren, "Invalid selection offset!");
-
-      if (childIndex > numChildren) {
-        childIndex = numChildren;
-      }
-
-      childIndex -= 1;
+    nsIContent* content = range->GetChildAtStartOffset();
+    if (content && parent->GetFirstChild() != content) {
+      content = content->GetPreviousSibling();
     }
-
-    nsIContent* content = parent->GetChildAt(childIndex);
     NS_ENSURE_TRUE(content, NS_ERROR_FAILURE);
 
     rv = iter->PositionAt(content);
@@ -3404,13 +3373,16 @@ nsTextServicesDocument::WillJoinNodes(nsIDOMNode  *aLeftNode,
 // -------------------------------
 
 NS_IMETHODIMP
-nsTextServicesDocument::WillCreateNode(const nsAString& aTag, nsIDOMNode *aParent, int32_t aPosition)
+nsTextServicesDocument::WillCreateNode(const nsAString& aTag,
+                                       nsIDOMNode* aNextSiblingOfNewNode)
 {
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsTextServicesDocument::DidCreateNode(const nsAString& aTag, nsIDOMNode *aNode, nsIDOMNode *aParent, int32_t aPosition, nsresult aResult)
+nsTextServicesDocument::DidCreateNode(const nsAString& aTag,
+                                      nsIDOMNode* aNewNode,
+                                      nsresult aResult)
 {
   return NS_OK;
 }

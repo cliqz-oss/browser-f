@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -932,7 +932,7 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
   gfxRect dirtyAreaToFill = nsLayoutUtils::RectToGfxRect(dirty, appUnitsPerDevPixel);
   dirtyAreaToFill.RoundOut();
 
-  gfxMatrix ctm = aContext.CurrentMatrix();
+  Matrix ctm = aContext.CurrentMatrix();
   bool isCTMPreservingAxisAlignedRectangles = ctm.PreservesAxisAlignedRectangles();
 
   // xStart/yStart are the top-left corner of the top-left tile.
@@ -975,7 +975,7 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
         gfxMatrix transform = gfxUtils::TransformRectToRect(fillRect,
             snappedFillRectTopLeft, snappedFillRectTopRight,
             snappedFillRectBottomRight);
-        aContext.SetMatrix(transform);
+        aContext.SetMatrixDouble(transform);
       }
       aContext.NewPath();
       aContext.Rectangle(fillRect);
@@ -989,8 +989,8 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
         edgeColor.a *= aOpacity;
         aContext.SetColor(edgeColor);
       } else {
-        aContext.SetMatrix(
-          aContext.CurrentMatrix().Copy().PreTranslate(tileRect.TopLeft()));
+        aContext.SetMatrixDouble(
+          aContext.CurrentMatrixDouble().Copy().PreTranslate(tileRect.TopLeft()));
         aContext.SetPattern(gradientPattern);
       }
       aContext.Fill();
@@ -1026,7 +1026,6 @@ nsCSSGradientRenderer::BuildWebRenderParameters(float aOpacity,
 void
 nsCSSGradientRenderer::BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuilder,
                                                   const layers::StackingContextHelper& aSc,
-                                                  layers::WebRenderDisplayItemLayer* aLayer,
                                                   const nsRect& aDest,
                                                   const nsRect& aFillArea,
                                                   const nsSize& aRepeatSize,
@@ -1066,8 +1065,6 @@ nsCSSGradientRenderer::BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuild
 
   // Make the rects relative to the parent stacking context
   wr::LayoutRect wrClipBounds = aSc.ToRelativeLayoutRect(clipBounds);
-  LayerSize layerFirstTileSize = ViewAs<LayerPixel>(firstTileBounds.Size(),
-      PixelCastJustification::WebRenderHasUnitResolution);
   wr::LayoutRect wrGradientBounds = aSc.ToRelativeLayoutRect(gradientBounds);
 
   // srcTransform is used for scaling the gradient to match aSrc
@@ -1091,7 +1088,7 @@ nsCSSGradientRenderer::BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuild
       mozilla::wr::ToLayoutPoint(lineEnd),
       stops,
       extendMode,
-      mozilla::wr::ToLayoutSize(layerFirstTileSize),
+      mozilla::wr::ToLayoutSize(firstTileBounds.Size()),
       mozilla::wr::ToLayoutSize(tileSpacing));
   } else {
     gradientRadius.width *= srcTransform.width;
@@ -1105,7 +1102,7 @@ nsCSSGradientRenderer::BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuild
       mozilla::wr::ToLayoutSize(gradientRadius),
       stops,
       extendMode,
-      mozilla::wr::ToLayoutSize(layerFirstTileSize),
+      mozilla::wr::ToLayoutSize(firstTileBounds.Size()),
       mozilla::wr::ToLayoutSize(tileSpacing));
   }
 }

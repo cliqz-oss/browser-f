@@ -395,7 +395,7 @@ int32_t gDisableOpenClickDelay;
 
 } // anonymous namespace
 
-TimeoutManager::TimeoutManager(nsGlobalWindow& aWindow)
+TimeoutManager::TimeoutManager(nsGlobalWindowInner& aWindow)
   : mWindow(aWindow),
     mExecutor(new TimeoutExecutor(this)),
     mNormalTimeouts(*this),
@@ -1194,7 +1194,7 @@ class ThrottleTimeoutsCallback final : public nsITimerCallback
                                      , public nsINamed
 {
 public:
-  explicit ThrottleTimeoutsCallback(nsGlobalWindow* aWindow)
+  explicit ThrottleTimeoutsCallback(nsGlobalWindowInner* aWindow)
     : mWindow(aWindow)
   {
     MOZ_DIAGNOSTIC_ASSERT(aWindow->IsInnerWindow());
@@ -1215,7 +1215,7 @@ private:
 private:
   // The strong reference here keeps the Window and hence the TimeoutManager
   // object itself alive.
-  RefPtr<nsGlobalWindow> mWindow;
+  RefPtr<nsGlobalWindowInner> mWindow;
 };
 
 NS_IMPL_ISUPPORTS(ThrottleTimeoutsCallback, nsITimerCallback, nsINamed)
@@ -1235,7 +1235,6 @@ TimeoutManager::BudgetThrottlingEnabled(bool aIsBackground) const
 {
   // A window can be throttled using budget if
   // * It isn't active
-  // * If it isn't using user media
   // * If it isn't using WebRTC
   // * If it hasn't got open WebSockets
   // * If it hasn't got active IndexedDB databases
@@ -1254,11 +1253,6 @@ TimeoutManager::BudgetThrottlingEnabled(bool aIsBackground) const
 
   // Check if there are any active IndexedDB databases
   if (mWindow.AsInner()->HasActiveIndexedDBDatabases()) {
-    return false;
-  }
-
-  // Check if we have active GetUserMedia
-  if (mWindow.AsInner()->HasActiveUserMedia()) {
     return false;
   }
 
@@ -1315,19 +1309,12 @@ TimeoutManager::MaybeStartThrottleTimeout()
           ("TimeoutManager %p delaying tracking timeout throttling by %dms\n",
            this, gTimeoutThrottlingDelay));
 
-  mThrottleTimeoutsTimer =
-    do_CreateInstance("@mozilla.org/timer;1");
-  if (!mThrottleTimeoutsTimer) {
-    return;
-  }
-
   nsCOMPtr<nsITimerCallback> callback =
     new ThrottleTimeoutsCallback(&mWindow);
 
-  mThrottleTimeoutsTimer->SetTarget(EventTarget());
-
-  mThrottleTimeoutsTimer->InitWithCallback(
-    callback, gTimeoutThrottlingDelay, nsITimer::TYPE_ONE_SHOT);
+  NS_NewTimerWithCallback(getter_AddRefs(mThrottleTimeoutsTimer),
+                          callback, gTimeoutThrottlingDelay, nsITimer::TYPE_ONE_SHOT,
+                          EventTarget());
 }
 
 void

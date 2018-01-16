@@ -1,5 +1,6 @@
-/* -*- Mode: c++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -314,10 +315,10 @@ RectTyped<units> IntRectToRect(const IntRectTyped<units>& aRect)
   return RectTyped<units>(aRect.x, aRect.y, aRect.Width(), aRect.Height());
 }
 
-// Convenience function for intersecting two rectangles wrapped in Maybes.
-template <typename T>
-Maybe<T>
-IntersectMaybeRects(const Maybe<T>& a, const Maybe<T>& b)
+// Convenience functions for intersecting and unioning two rectangles wrapped in Maybes.
+template <typename Rect>
+Maybe<Rect>
+IntersectMaybeRects(const Maybe<Rect>& a, const Maybe<Rect>& b)
 {
   if (!a) {
     return b;
@@ -325,6 +326,18 @@ IntersectMaybeRects(const Maybe<T>& a, const Maybe<T>& b)
     return a;
   } else {
     return Some(a->Intersect(*b));
+  }
+}
+template <typename Rect>
+Maybe<Rect>
+UnionMaybeRects(const Maybe<Rect>& a, const Maybe<Rect>& b)
+{
+  if (!a) {
+    return b;
+  } else if (!b) {
+    return a;
+  } else {
+    return Some(a->Union(*b));
   }
 }
 

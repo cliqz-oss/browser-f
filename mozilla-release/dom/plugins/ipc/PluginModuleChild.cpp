@@ -301,8 +301,6 @@ PluginModuleChild::InitForChrome(const std::string& aPluginFilename,
 
     GetIPCChannel()->SetAbortOnError(true);
 
-    // TODO: use PluginPRLibrary here
-
 #if defined(OS_LINUX) || defined(OS_BSD) || defined(OS_SOLARIS)
     mShutdownFunc =
         (NP_PLUGINSHUTDOWN) PR_FindFunctionSymbol(mLibrary, "NP_Shutdown");
@@ -728,8 +726,7 @@ PluginModuleChild::RecvSetAudioSessionData(const nsID& aId,
                                            const nsString& aIconPath)
 {
 #if !defined XP_WIN
-    NS_RUNTIMEABORT("Not Reached!");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("Not Reached!");
 #else
     nsresult rv = mozilla::widget::RecvAudioSessionData(aId, aDisplayName, aIconPath);
     NS_ENSURE_SUCCESS(rv, IPC_OK()); // Bail early if this fails
@@ -926,10 +923,6 @@ _pushpopupsenabledstate(NPP aNPP, NPBool enabled);
 static void
 _poppopupsenabledstate(NPP aNPP);
 
-static void
-_pluginthreadasynccall(NPP instance, PluginThreadCallback func,
-                       void *userData);
-
 static NPError
 _getvalueforurl(NPP npp, NPNURLVariable variable, const char *url,
                 char **value, uint32_t *len);
@@ -1017,7 +1010,7 @@ const NPNetscapeFuncs PluginModuleChild::sBrowserFuncs = {
     mozilla::plugins::child::_pushpopupsenabledstate,
     mozilla::plugins::child::_poppopupsenabledstate,
     mozilla::plugins::child::_enumerate,
-    mozilla::plugins::child::_pluginthreadasynccall,
+    nullptr, // pluginthreadasynccall, not used
     mozilla::plugins::child::_construct,
     mozilla::plugins::child::_getvalueforurl,
     mozilla::plugins::child::_setvalueforurl,
@@ -1049,13 +1042,7 @@ NPError
 _requestread(NPStream* aStream,
              NPByteRange* aRangeList)
 {
-    PLUGIN_LOG_DEBUG_FUNCTION;
-    ENSURE_PLUGIN_THREAD(NPERR_INVALID_PARAM);
-
-    BrowserStreamChild* bs =
-        static_cast<BrowserStreamChild*>(static_cast<AStream*>(aStream->ndata));
-    bs->EnsureCorrectStream(aStream);
-    return bs->NPN_RequestRead(aRangeList);
+    return NPERR_STREAM_NOT_SEEKABLE;
 }
 
 NPError
@@ -1550,18 +1537,6 @@ _poppopupsenabledstate(NPP aNPP)
     InstCast(aNPP)->CallNPN_PopPopupsEnabledState();
 }
 
-void
-_pluginthreadasynccall(NPP aNPP,
-                       PluginThreadCallback aFunc,
-                       void* aUserData)
-{
-    PLUGIN_LOG_DEBUG_FUNCTION;
-    if (!aFunc)
-        return;
-
-    InstCast(aNPP)->AsyncCall(aFunc, aUserData);
-}
-
 NPError
 _getvalueforurl(NPP npp, NPNURLVariable variable, const char *url,
                 char **value, uint32_t *len)
@@ -1997,9 +1972,9 @@ class GetKeyStateTask : public Runnable
 public:
     explicit GetKeyStateTask(int aVirtKey, HANDLE aSemaphore, SHORT* aKeyState) :
         Runnable("GetKeyStateTask"),
+        mKeyState(aKeyState),
         mVirtKey(aVirtKey),
-        mSemaphore(aSemaphore),
-        mKeyState(aKeyState)
+        mSemaphore(aSemaphore)
     {}
 
     NS_IMETHOD Run() override
@@ -2071,8 +2046,10 @@ class PluginThreadTask : public Runnable
 public:
     explicit PluginThreadTask(PluginThreadTaskData* aTaskData,
                               HANDLE aSemaphore) :
-        Runnable("PluginThreadTask"), mTaskData(aTaskData),
-        mSemaphore(aSemaphore), mSuccess(false)
+        Runnable("PluginThreadTask"),
+        mSuccess(false),
+        mTaskData(aTaskData),
+        mSemaphore(aSemaphore)
     {}
 
     NS_IMETHOD Run() override
@@ -2636,7 +2613,7 @@ PluginModuleChild::RecvProcessNativeEventsInInterruptCall()
     ProcessNativeEventsInInterruptCall();
     return IPC_OK();
 #else
-    NS_RUNTIMEABORT(
+    MOZ_CRASH(
         "PluginModuleChild::RecvProcessNativeEventsInInterruptCall not implemented!");
     return IPC_FAIL_NO_REASON(this);
 #endif
@@ -2683,8 +2660,7 @@ PluginModuleChild::PluginRequiresAudioDeviceChanges(
     }
     return rv;
 #else
-    NS_RUNTIMEABORT("PluginRequiresAudioDeviceChanges is not available on this platform.");
-    return NPERR_GENERIC_ERROR;
+    MOZ_CRASH("PluginRequiresAudioDeviceChanges is not available on this platform.");
 #endif // XP_WIN
 }
 
@@ -2703,7 +2679,6 @@ PluginModuleChild::RecvNPP_SetValue_NPNVaudioDeviceChangeDetails(
     }
     return IPC_OK();
 #else
-    NS_RUNTIMEABORT("NPP_SetValue_NPNVaudioDeviceChangeDetails is a Windows-only message");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("NPP_SetValue_NPNVaudioDeviceChangeDetails is a Windows-only message");
 #endif
 }

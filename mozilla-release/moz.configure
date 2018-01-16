@@ -14,17 +14,6 @@ include('build/moz.configure/init.configure')
 # - Spidermonkey-specific options and rules should go in js/moz.configure.
 # - etc.
 
-# Multiprocess Firefox Testing UI - Nightly and Aurora
-# To be removed in Bug 1003313
-@depends(milestone)
-def e10s_testing_only(milestone):
-    if not milestone.is_release_or_beta:
-        return True
-
-set_config('E10S_TESTING_ONLY', e10s_testing_only)
-set_define('E10S_TESTING_ONLY', e10s_testing_only)
-
-
 option('--enable-artifact-builds', env='MOZ_ARTIFACT_BUILDS',
        help='Download and use prebuilt binary artifacts.')
 
@@ -112,8 +101,17 @@ js_option('--enable-debug',
           help='Enable building with developer debug info '
                '(using the given compiler flags).')
 
+@depends('--enable-debug')
+def moz_debug(debug):
+    if debug:
+        return bool(debug)
+
+set_config('MOZ_DEBUG', moz_debug)
+set_define('MOZ_DEBUG', moz_debug)
+# Override any value MOZ_DEBUG may have from the environment when passing it
+# down to old-configure.
 add_old_configure_assignment('MOZ_DEBUG',
-                             depends('--enable-debug')(lambda v: bool(v)))
+                             depends('--enable-debug')(lambda x: bool(x)))
 
 js_option('--enable-rust-debug',
           help='Build Rust code with debug assertions turned on.')
@@ -279,6 +277,22 @@ def build_gtest(pgo, build_project, target, automation, enabled, enable_tests):
         return True
 
 set_config('LINK_GTEST_DURING_COMPILE', build_gtest)
+
+# clang-plugin location
+# ==============================================================
+@depends(library_name_info, check_build_environment, when='--enable-clang-plugin')
+def clang_plugin_path(library_name_info, build_env):
+    topobjdir = build_env.topobjdir
+    if topobjdir.endswith('/js/src'):
+        topobjdir = topobjdir[:-7]
+    return os.path.abspath(
+        os.path.join(topobjdir, 'build', 'clang-plugin',
+                     '%sclang-plugin%s' % (library_name_info.dll.prefix,
+                                           library_name_info.dll.suffix))
+    )
+
+add_old_configure_assignment('CLANG_PLUGIN', clang_plugin_path)
+
 
 # Awk detection
 # ==============================================================

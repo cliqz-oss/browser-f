@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -17,6 +18,7 @@
 #include "gfxUtils.h"
 #include "gfxVRPuppet.h"
 #include "VRManager.h"
+#include "VRThread.h"
 
 #include "mozilla/dom/GamepadEventTypes.h"
 #include "mozilla/dom/GamepadBinding.h"
@@ -50,6 +52,7 @@ static const uint32_t kNumPuppetHaptcs = 1;
 VRDisplayPuppet::VRDisplayPuppet()
  : VRDisplayHost(VRDeviceType::Puppet)
  , mIsPresenting(false)
+ , mSensorState{}
 {
   MOZ_COUNT_CTOR_INHERITED(VRDisplayPuppet, VRDisplayHost);
 
@@ -148,6 +151,13 @@ VRHMDSensorState
 VRDisplayPuppet::GetSensorState()
 {
   mSensorState.inputFrameID = mDisplayInfo.mFrameId;
+
+  Matrix4x4 matHeadToEye[2];
+  for (uint32_t eye = 0; eye < 2; ++eye) {
+    matHeadToEye[eye].PreTranslate(mDisplayInfo.mEyeTranslation[eye]);
+  }
+  mSensorState.CalcViewMatrices(matHeadToEye);
+
   return mSensorState;
 }
 
@@ -274,7 +284,7 @@ VRDisplayPuppet::UpdateConstantBuffers()
 }
 
 bool
-VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
+VRDisplayPuppet::SubmitFrame(ID3D11Texture2D* aSource,
                              const IntSize& aSize,
                              const gfx::Rect& aLeftEyeRect,
                              const gfx::Rect& aRightEyeRect)
@@ -303,14 +313,13 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
       // The frames are submitted to VR compositor are decoded
       // into a base64Image and dispatched to the DOM side.
       D3D11_TEXTURE2D_DESC desc;
-      ID3D11Texture2D* texture = aSource->GetD3D11Texture();
-      texture->GetDesc(&desc);
+      aSource->GetDesc(&desc);
       MOZ_ASSERT(desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM,
                  "Only support B8G8R8A8_UNORM format.");
       // Map the staging resource
       ID3D11Texture2D* mappedTexture = nullptr;
       D3D11_MAPPED_SUBRESOURCE mapInfo;
-      HRESULT hr = mContext->Map(texture,
+      HRESULT hr = mContext->Map(aSource,
                                  0,  // Subsource
                                  D3D11_MAP_READ,
                                  0,  // MapFlags
@@ -338,7 +347,7 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
             return false;
           }
           // Copy the texture to a staging resource
-          mContext->CopyResource(stagingTexture, texture);
+          mContext->CopyResource(stagingTexture, aSource);
           // Map the staging resource
           hr = mContext->Map(stagingTexture,
                              0,  // Subsource
@@ -354,31 +363,38 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
           return false;
         }
       } else {
-        mappedTexture = texture;
+        mappedTexture = aSource;
       }
       // Ideally, we should convert the srcData to a PNG image and decode it
       // to a Base64 string here, but the GPU process does not have the privilege to
       // access the image library. So, we have to convert the RAW image data
       // to a base64 string and forward it to let the content process to
       // do the image conversion.
-      char* srcData = static_cast<char*>(mapInfo.pData);
+      const char* srcData = static_cast<const char*>(mapInfo.pData);
       VRSubmitFrameResultInfo result;
       result.mFormat = SurfaceFormat::B8G8R8A8;
-      // If the original texture size is not pow of 2, CopyResource() will add padding,
-      // so the size is adjusted. We have to get the correct size by (mapInfo.RowPitch /
-      // the format size).
-      result.mWidth = mapInfo.RowPitch / 4;
+      result.mWidth = desc.Width;
       result.mHeight = desc.Height;
       result.mFrameNum = mDisplayInfo.mFrameId;
-      nsCString rawString(Substring(srcData, mapInfo.RowPitch * desc.Height));
+      // If the original texture size is not pow of 2, the data will not be tightly strided.
+      // We have to copy the pixels by rows.
+      nsCString rawString;
+      for (uint32_t i = 0; i < desc.Height; i++) {
+        rawString += Substring(srcData + i * mapInfo.RowPitch,
+                               desc.Width * 4);
+      }
+      mContext->Unmap(mappedTexture, 0);
 
       if (Base64Encode(rawString, result.mBase64Image) != NS_OK) {
         MOZ_ASSERT(false, "Failed to encode base64 images.");
       }
-      mContext->Unmap(mappedTexture, 0);
       // Dispatch the base64 encoded string to the DOM side. Then, it will be decoded
       // and convert to a PNG image there.
-      vm->DispatchSubmitFrameResult(mDisplayInfo.mDisplayID, result);
+      MessageLoop* loop = VRListenerThreadHolder::Loop();
+      loop->PostTask(NewRunnableMethod<const uint32_t, VRSubmitFrameResultInfo>(
+        "VRManager::DispatchSubmitFrameResult",
+        vm, &VRManager::DispatchSubmitFrameResult, mDisplayInfo.mDisplayID, result
+      ));
       break;
     }
     case 2:
@@ -429,12 +445,15 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
       mContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
       mContext->VSSetShader(mQuadVS, nullptr, 0);
       mContext->PSSetShader(mQuadPS, nullptr, 0);
-      ID3D11ShaderResourceView* srView = aSource->GetShaderResourceView();
-      if (!srView) {
-        NS_WARNING("Failed to get SRV for Puppet");
+
+      RefPtr<ID3D11ShaderResourceView> srView;
+      HRESULT hr = mDevice->CreateShaderResourceView(aSource, nullptr, getter_AddRefs(srView));
+      if (FAILED(hr) || !srView) {
+        gfxWarning() << "Could not create shader resource view for Puppet: " << hexa(hr);
         return false;
       }
-      mContext->PSSetShaderResources(0 /* 0 == TexSlot::RGB */, 1, &srView);
+      ID3D11ShaderResourceView* viewPtr = srView.get();
+      mContext->PSSetShaderResources(0 /* 0 == TexSlot::RGB */, 1, &viewPtr);
       // XXX Use Constant from TexSlot in CompositorD3D11.cpp?
 
       ID3D11SamplerState *sampler = mLinearSamplerState;
@@ -516,7 +535,11 @@ VRDisplayPuppet::SubmitFrame(MacIOSurface* aMacIOSurface,
         }
         // Dispatch the base64 encoded string to the DOM side. Then, it will be decoded
         // and convert to a PNG image there.
-        vm->DispatchSubmitFrameResult(mDisplayInfo.mDisplayID, result);
+        MessageLoop* loop = VRListenerThreadHolder::Loop();
+        loop->PostTask(NewRunnableMethod<const uint32_t, VRSubmitFrameResultInfo>(
+          "VRManager::DispatchSubmitFrameResult",
+          vm, &VRManager::DispatchSubmitFrameResult, mDisplayInfo.mDisplayID, result
+        ));
       }
       break;
     }
@@ -526,6 +549,16 @@ VRDisplayPuppet::SubmitFrame(MacIOSurface* aMacIOSurface,
       break;
     }
   }
+
+  return false;
+}
+
+#elif defined(MOZ_ANDROID_GOOGLE_VR)
+
+bool
+VRDisplayPuppet::SubmitFrame(const mozilla::layers::EGLImageDescriptor* aDescriptor,
+                           const gfx::Rect& aLeftEyeRect,
+                           const gfx::Rect& aRightEyeRect) {
 
   return false;
 }

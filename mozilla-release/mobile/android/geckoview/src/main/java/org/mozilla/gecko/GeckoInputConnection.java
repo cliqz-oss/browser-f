@@ -8,16 +8,15 @@ package org.mozilla.gecko;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.concurrent.SynchronousQueue;
 
 import org.mozilla.gecko.gfx.DynamicToolbarAnimator;
-import org.mozilla.gecko.util.Clipboard;
+import org.mozilla.gecko.util.ActivityUtils;
 import org.mozilla.gecko.util.GamepadUtils;
 import org.mozilla.gecko.util.ThreadUtils;
-import org.mozilla.gecko.util.ThreadUtils.AssertBehavior;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
+import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Matrix;
@@ -72,7 +71,7 @@ class GeckoInputConnection
 
     private String mCurrentInputMethod = "";
 
-    private final View mView;
+    private final GeckoView mView;
     private final GeckoEditableClient mEditableClient;
     protected int mBatchEditCount;
     private ExtractedTextRequest mUpdateRequest;
@@ -83,7 +82,7 @@ class GeckoInputConnection
     // Prevent showSoftInput and hideSoftInput from causing reentrant calls on some devices.
     private volatile boolean mSoftInputReentrancyGuard;
 
-    public static GeckoEditableListener create(View targetView,
+    public static GeckoEditableListener create(GeckoView targetView,
                                                GeckoEditableClient editable) {
         if (DEBUG)
             return DebugGeckoInputConnection.create(targetView, editable);
@@ -91,7 +90,7 @@ class GeckoInputConnection
             return new GeckoInputConnection(targetView, editable);
     }
 
-    protected GeckoInputConnection(View targetView,
+    protected GeckoInputConnection(GeckoView targetView,
                                    GeckoEditableClient editable) {
         super(targetView, true);
         mView = targetView;
@@ -134,8 +133,9 @@ class GeckoInputConnection
 
     @Override
     public boolean performContextMenuAction(int id) {
-        Editable editable = getEditable();
-        if (editable == null) {
+        final View view = getView();
+        final Editable editable = getEditable();
+        if (view == null || editable == null) {
             return false;
         }
         int selStart = Selection.getSelectionStart(editable);
@@ -149,18 +149,17 @@ class GeckoInputConnection
                 // If selection is empty, we'll select everything
                 if (selStart == selEnd) {
                     // Fill the clipboard
-                    Clipboard.setText(editable);
+                    Clipboard.setText(view.getContext(), editable);
                     editable.clear();
                 } else {
-                    Clipboard.setText(
-                            editable.toString().substring(
-                                Math.min(selStart, selEnd),
-                                Math.max(selStart, selEnd)));
+                    Clipboard.setText(view.getContext(),
+                                      editable.subSequence(Math.min(selStart, selEnd),
+                                                           Math.max(selStart, selEnd)));
                     editable.delete(selStart, selEnd);
                 }
                 break;
             case android.R.id.paste:
-                commitText(Clipboard.getText(), 1);
+                commitText(Clipboard.getText(view.getContext()), 1);
                 break;
             case android.R.id.copy:
                 // Copy the current selection or the empty string if nothing is selected.
@@ -168,7 +167,7 @@ class GeckoInputConnection
                                     editable.toString().substring(
                                         Math.min(selStart, selEnd),
                                         Math.max(selStart, selEnd));
-                Clipboard.setText(copiedText);
+                Clipboard.setText(view.getContext(), copiedText);
                 break;
         }
         return true;
@@ -204,7 +203,7 @@ class GeckoInputConnection
         return extract;
     }
 
-    private View getView() {
+    private GeckoView getView() {
         return mView;
     }
 
@@ -217,7 +216,7 @@ class GeckoInputConnection
         return InputMethods.getInputMethodManager(context);
     }
 
-    private void showSoftInput() {
+    private void showSoftInputWithToolbar(final boolean showToolbar) {
         if (mSoftInputReentrancyGuard) {
             return;
         }
@@ -236,7 +235,10 @@ class GeckoInputConnection
                     v.clearFocus();
                     v.requestFocus();
                 }
-                GeckoAppShell.getLayerView().getDynamicToolbarAnimator().showToolbar(/*immediately*/true);
+                final GeckoView view = getView();
+                if (view != null && showToolbar) {
+                    view.getDynamicToolbarAnimator().showToolbar(/*immediately*/ true);
+                }
                 mSoftInputReentrancyGuard = true;
                 imm.showSoftInput(v, 0);
                 mSoftInputReentrancyGuard = false;
@@ -359,18 +361,18 @@ class GeckoInputConnection
         mCursorAnchorInfoBuilder.reset();
 
         // Calculate Gecko logical coords to screen coords
-        final View v = getView();
-        if (v == null) {
+        final GeckoView view = getView();
+        if (view == null) {
             return;
         }
 
         int[] viewCoords = new int[2];
-        v.getLocationOnScreen(viewCoords);
+        view.getLocationOnScreen(viewCoords);
 
-        DynamicToolbarAnimator animator = GeckoAppShell.getLayerView().getDynamicToolbarAnimator();
-        float toolbarHeight = (float)animator.getCurrentToolbarHeight();
+        DynamicToolbarAnimator animator = view.getDynamicToolbarAnimator();
+        float toolbarHeight = (float) animator.getCurrentToolbarHeight();
 
-        Matrix matrix = GeckoAppShell.getLayerView().getMatrixForLayerRectToViewRect();
+        Matrix matrix = view.getMatrixForLayerRectToViewRect();
         if (matrix == null) {
             if (DEBUG) {
                 Log.d(LOGTAG, "Cannot get Matrix to convert from Gecko coords to layer view coords");
@@ -649,9 +651,12 @@ class GeckoInputConnection
         outAttrs.initialSelEnd = Selection.getSelectionEnd(editable);
 
         if (mIsUserAction) {
-            showSoftInput();
+            if ((context instanceof Activity) && ActivityUtils.isFullScreen((Activity) context)) {
+                showSoftInputWithToolbar(false);
+            } else {
+                showSoftInputWithToolbar(true);
+            }
         }
-
         return this;
     }
 
@@ -937,7 +942,7 @@ class GeckoInputConnection
                 break;
 
             case NOTIFY_IME_OPEN_VKB:
-                showSoftInput();
+                showSoftInputWithToolbar(false);
                 break;
 
             case GeckoEditableListener.NOTIFY_IME_TO_COMMIT_COMPOSITION: {
@@ -1035,13 +1040,13 @@ final class DebugGeckoInputConnection
     private InputConnection mProxy;
     private final StringBuilder mCallLevel;
 
-    private DebugGeckoInputConnection(View targetView,
+    private DebugGeckoInputConnection(GeckoView targetView,
                                       GeckoEditableClient editable) {
         super(targetView, editable);
         mCallLevel = new StringBuilder();
     }
 
-    public static GeckoEditableListener create(View targetView,
+    public static GeckoEditableListener create(GeckoView targetView,
                                                GeckoEditableClient editable) {
         final Class<?>[] PROXY_INTERFACES = { InputConnection.class,
                 InputConnectionListener.class,

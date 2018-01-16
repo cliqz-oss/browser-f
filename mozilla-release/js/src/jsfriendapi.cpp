@@ -12,10 +12,8 @@
 
 #include "jscntxt.h"
 #include "jscompartment.h"
-#include "jsgc.h"
 #include "jsobj.h"
 #include "jsprf.h"
-#include "jswatchpoint.h"
 #include "jsweakmap.h"
 #include "jswrapper.h"
 
@@ -278,7 +276,7 @@ js::GetBuiltinClass(JSContext* cx, HandleObject obj, ESClass* cls)
 
     if (obj->is<PlainObject>() || obj->is<UnboxedPlainObject>())
         *cls = ESClass::Object;
-    else if (obj->is<ArrayObject>() || obj->is<UnboxedArrayObject>())
+    else if (obj->is<ArrayObject>())
         *cls = ESClass::Array;
     else if (obj->is<NumberObject>())
         *cls = ESClass::Number;
@@ -530,22 +528,6 @@ js::SetPreserveWrapperCallback(JSContext* cx, PreserveWrapperCallback callback)
     cx->runtime()->preserveWrapperCallback = callback;
 }
 
-/*
- * The below code is for temporary telemetry use. It can be removed when
- * sufficient data has been harvested.
- */
-
-namespace js {
-// Defined in vm/GlobalObject.cpp.
-extern size_t sSetProtoCalled;
-} // namespace js
-
-JS_FRIEND_API(size_t)
-JS_SetProtoCalled(JSContext*)
-{
-    return sSetProtoCalled;
-}
-
 JS_FRIEND_API(unsigned)
 JS_PCToLineNumber(JSScript* script, jsbytecode* pc, unsigned* columnp)
 {
@@ -574,7 +556,6 @@ void
 js::TraceWeakMaps(WeakMapTracer* trc)
 {
     WeakMapBase::traceAllMappings(trc);
-    WatchpointMap::traceAll(trc);
 }
 
 extern JS_FRIEND_API(bool)
@@ -1122,7 +1103,7 @@ JS::ForceLexicalInitialization(JSContext *cx, HandleObject obj)
     for (Shape::Range<NoGC> r(nobj->lastProperty()); !r.empty(); r.popFront()) {
         Shape* s = &r.front();
         Value v = nobj->getSlot(s->slot());
-        if (s->hasSlot() && v.isMagic() && v.whyMagic() == JS_UNINITIALIZED_LEXICAL) {
+        if (s->isDataProperty() && v.isMagic() && v.whyMagic() == JS_UNINITIALIZED_LEXICAL) {
             nobj->setSlot(s->slot(), UndefinedValue());
             initializedAny = true;
         }

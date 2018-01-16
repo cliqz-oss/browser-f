@@ -843,52 +843,6 @@ nsImageLoadingContent::ForceReload(bool aNotify /* = true */,
   return result.StealNSResult();
 }
 
-NS_IMETHODIMP
-nsImageLoadingContent::BlockOnload(imgIRequest* aRequest)
-{
-  if (aRequest == mCurrentRequest) {
-    NS_ASSERTION(!(mCurrentRequestFlags & REQUEST_BLOCKS_ONLOAD),
-                 "Double BlockOnload!?");
-    mCurrentRequestFlags |= REQUEST_BLOCKS_ONLOAD;
-  } else if (aRequest == mPendingRequest) {
-    NS_ASSERTION(!(mPendingRequestFlags & REQUEST_BLOCKS_ONLOAD),
-                 "Double BlockOnload!?");
-    mPendingRequestFlags |= REQUEST_BLOCKS_ONLOAD;
-  } else {
-    return NS_OK;
-  }
-
-  nsIDocument* doc = GetOurCurrentDoc();
-  if (doc) {
-    doc->BlockOnload();
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsImageLoadingContent::UnblockOnload(imgIRequest* aRequest)
-{
-  if (aRequest == mCurrentRequest) {
-    NS_ASSERTION(mCurrentRequestFlags & REQUEST_BLOCKS_ONLOAD,
-                 "Double UnblockOnload!?");
-    mCurrentRequestFlags &= ~REQUEST_BLOCKS_ONLOAD;
-  } else if (aRequest == mPendingRequest) {
-    NS_ASSERTION(mPendingRequestFlags & REQUEST_BLOCKS_ONLOAD,
-                 "Double UnblockOnload!?");
-    mPendingRequestFlags &= ~REQUEST_BLOCKS_ONLOAD;
-  } else {
-    return NS_OK;
-  }
-
-  nsIDocument* doc = GetOurCurrentDoc();
-  if (doc) {
-    doc->UnblockOnload(false);
-  }
-
-  return NS_OK;
-}
-
 /*
  * Non-interface methods
  */
@@ -897,7 +851,8 @@ nsresult
 nsImageLoadingContent::LoadImage(const nsAString& aNewURI,
                                  bool aForce,
                                  bool aNotify,
-                                 ImageLoadType aImageLoadType)
+                                 ImageLoadType aImageLoadType,
+                                 nsIPrincipal* aTriggeringPrincipal)
 {
   // First, get a document (needed for security checks and the like)
   nsIDocument* doc = GetOurOwnerDoc();
@@ -931,7 +886,8 @@ nsImageLoadingContent::LoadImage(const nsAString& aNewURI,
 
   NS_TryToSetImmutable(imageURI);
 
-  return LoadImage(imageURI, aForce, aNotify, aImageLoadType, false, doc);
+  return LoadImage(imageURI, aForce, aNotify, aImageLoadType, false, doc,
+                   nsIRequest::LOAD_NORMAL, aTriggeringPrincipal);
 }
 
 nsresult
@@ -941,7 +897,8 @@ nsImageLoadingContent::LoadImage(nsIURI* aNewURI,
                                  ImageLoadType aImageLoadType,
                                  bool aLoadStart,
                                  nsIDocument* aDocument,
-                                 nsLoadFlags aLoadFlags)
+                                 nsLoadFlags aLoadFlags,
+                                 nsIPrincipal* aTriggeringPrincipal)
 {
   MOZ_ASSERT(!mIsStartingImageLoad, "some evil code is reentering LoadImage.");
   if (mIsStartingImageLoad) {
@@ -1018,8 +975,6 @@ nsImageLoadingContent::LoadImage(nsIURI* aNewURI,
              "Principal mismatch?");
 #endif
 
-  nsContentPolicyType policyType = PolicyTypeForLoad(aImageLoadType);
-
   nsLoadFlags loadFlags = aLoadFlags;
   int32_t corsmode = GetCORSMode();
   if (corsmode == CORS_ANONYMOUS) {
@@ -1040,12 +995,25 @@ nsImageLoadingContent::LoadImage(nsIURI* aNewURI,
   RefPtr<imgRequestProxy>& req = PrepareNextRequest(aImageLoadType);
   nsCOMPtr<nsIContent> content =
       do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
+
+  nsCOMPtr<nsIPrincipal> triggeringPrincipal;
+  bool result =
+    nsContentUtils::QueryTriggeringPrincipal(content, aTriggeringPrincipal,
+                                             getter_AddRefs(triggeringPrincipal));
+
+  // If result is true, which means this node has specified 'triggeringprincipal'
+  // attribute on it, so we use favicon as the policy type.
+  nsContentPolicyType policyType = result ?
+                                     nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON:
+                                     PolicyTypeForLoad(aImageLoadType);
+
   nsCOMPtr<nsINode> thisNode =
     do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
   nsresult rv = nsContentUtils::LoadImage(aNewURI,
                                           thisNode,
                                           aDocument,
-                                          aDocument->NodePrincipal(),
+                                          triggeringPrincipal,
+                                          0,
                                           aDocument->GetDocumentURI(),
                                           referrerPolicy,
                                           this, loadFlags,
@@ -1593,9 +1561,6 @@ nsImageLoadingContent::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 
   TrackImage(mCurrentRequest);
   TrackImage(mPendingRequest);
-
-  if (mCurrentRequestFlags & REQUEST_BLOCKS_ONLOAD)
-    aDocument->BlockOnload();
 }
 
 void
@@ -1608,9 +1573,6 @@ nsImageLoadingContent::UnbindFromTree(bool aDeep, bool aNullParent)
 
   UntrackImage(mCurrentRequest);
   UntrackImage(mPendingRequest);
-
-  if (mCurrentRequestFlags & REQUEST_BLOCKS_ONLOAD)
-    doc->UnblockOnload(false);
 }
 
 void

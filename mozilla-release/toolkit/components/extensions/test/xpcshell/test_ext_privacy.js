@@ -235,6 +235,12 @@ add_task(async function test_privacy_other_prefs() {
     "websites.referrersEnabled": {
       "network.http.sendRefererHeader": 2,
     },
+    "websites.resistFingerprinting": {
+      "privacy.resistFingerprinting": true,
+    },
+    "websites.firstPartyIsolate": {
+      "privacy.firstparty.isolate": true,
+    },
   };
 
   async function background() {
@@ -337,6 +343,24 @@ add_task(async function test_privacy_other_prefs() {
   await testSetting("websites.referrersEnabled", true,
     {
       "network.http.sendRefererHeader": 2,
+    });
+
+  await testSetting("websites.resistFingerprinting", false,
+    {
+      "privacy.resistFingerprinting": false,
+    });
+  await testSetting("websites.resistFingerprinting", true,
+    {
+      "privacy.resistFingerprinting": true,
+    });
+
+  await testSetting("websites.firstPartyIsolate", false,
+    {
+      "privacy.firstparty.isolate": false,
+    });
+  await testSetting("websites.firstPartyIsolate", true,
+    {
+      "privacy.firstparty.isolate": true,
     });
 
   await testSetting("websites.trackingProtectionMode", "always", {

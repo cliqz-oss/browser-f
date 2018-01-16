@@ -961,14 +961,6 @@ class nsIWidget : public nsISupports
     virtual void SetBackgroundColor(const nscolor &aColor) { }
 
     /**
-     * Get the cursor for this widget.
-     *
-     * @return this widget's cursor.
-     */
-
-    virtual nsCursor GetCursor(void) = 0;
-
-    /**
      * Set the cursor for this widget
      *
      * @param aCursor the new cursor for this widget
@@ -1301,13 +1293,6 @@ class nsIWidget : public nsISupports
     virtual void AddWindowOverlayWebRenderCommands(mozilla::layers::WebRenderBridgeChild* aWrBridge,
                                                    mozilla::wr::DisplayListBuilder& aBuilder,
                                                    mozilla::wr::IpcResourceUpdateQueue& aResources) {}
-
-    /**
-     * Called on the main thread when WebRender resources used for
-     * AddWindowOverlayWebRenderCommands need to be destroyed.
-     */
-    virtual void CleanupWebRenderWindowOverlay(mozilla::layers::WebRenderBridgeChild* aWrBridge,
-                                               mozilla::wr::IpcResourceUpdateQueue& aResources) {}
 
     /**
      * Called when Gecko knows which themed widgets exist in this window.
@@ -1700,8 +1685,9 @@ class nsIWidget : public nsISupports
      * Notify APZ to start autoscrolling.
      * @param aAnchorLocation the location of the autoscroll anchor
      * @param aGuid identifies the scroll frame to be autoscrolled
+     * @return true if APZ has been successfully notified
      */
-    virtual void StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
+    virtual bool StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
                                       const ScrollableLayerGuid& aGuid) = 0;
 
     /**

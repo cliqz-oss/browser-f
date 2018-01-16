@@ -323,6 +323,7 @@ Section "Uninstall"
     DeleteRegKey HKLM "Software\Classes\CliqzURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKLM "Software\Clients\StartMenuInternet\$R9"
+    DeleteRegValue HKLM "Software\RegisteredApplications" "$R9"
     DeleteRegValue HKLM "Software\RegisteredApplications" "${AppRegName}"
   ${EndIf}
   ReadRegStr $0 HKCU "Software\Classes\CliqzHTML\DefaultIcon" ""
@@ -332,6 +333,7 @@ Section "Uninstall"
     DeleteRegKey HKCU "Software\Classes\CliqzURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKCU "Software\Clients\StartMenuInternet\$R9"
+    DeleteRegValue HKCU "Software\RegisteredApplications" "$R9"
     DeleteRegValue HKCU "Software\RegisteredApplications" "${AppRegName}"
   ${EndIf}
 

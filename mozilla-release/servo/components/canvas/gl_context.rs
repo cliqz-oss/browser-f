@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use canvas_traits::webgl::WebGLCommand;
+use canvas_traits::webgl::{WebGLCommand, WebGLVersion};
 use compositing::compositor_thread::{CompositorProxy, self};
 use euclid::Size2D;
 use gleam::gl;
-use offscreen_gl_context::{ColorAttachmentType, GLContext, GLContextAttributes, GLContextDispatcher, GLLimits};
+use offscreen_gl_context::{ColorAttachmentType, GLContext, GLContextAttributes, GLContextDispatcher};
+use offscreen_gl_context::{GLLimits, GLVersion};
 use offscreen_gl_context::{NativeGLContext, NativeGLContextHandle, NativeGLContextMethods};
 use offscreen_gl_context::{OSMesaContext, OSMesaContextHandle};
 use std::sync::{Arc, Mutex};
@@ -40,9 +41,12 @@ impl GLContextFactory {
     }
 
     /// Creates a new shared GLContext with the main GLContext
-    pub fn new_shared_context(&self,
-                              size: Size2D<i32>,
-                              attributes: GLContextAttributes) -> Result<GLContextWrapper, &'static str> {
+    pub fn new_shared_context(
+        &self,
+        webgl_version: WebGLVersion,
+        size: Size2D<i32>,
+        attributes: GLContextAttributes
+    ) -> Result<GLContextWrapper, &'static str> {
         match *self {
             GLContextFactory::Native(ref handle, ref dispatcher) => {
                 let dispatcher = dispatcher.as_ref().map(|d| Box::new(d.clone()) as Box<_>);
@@ -50,6 +54,7 @@ impl GLContextFactory {
                                                                                    attributes,
                                                                                    ColorAttachmentType::Texture,
                                                                                    gl::GlType::default(),
+                                                                                   Self::gl_version(webgl_version),
                                                                                    Some(handle),
                                                                                    dispatcher);
                 ctx.map(GLContextWrapper::Native)
@@ -59,6 +64,7 @@ impl GLContextFactory {
                                                                                  attributes,
                                                                                  ColorAttachmentType::Texture,
                                                                                  gl::GlType::default(),
+                                                                                 Self::gl_version(webgl_version),
                                                                                  Some(handle),
                                                                                  None);
                 ctx.map(GLContextWrapper::OSMesa)
@@ -67,15 +73,19 @@ impl GLContextFactory {
     }
 
     /// Creates a new non-shared GLContext
-    pub fn new_context(&self,
-                       size: Size2D<i32>,
-                       attributes: GLContextAttributes) -> Result<GLContextWrapper, &'static str> {
+    pub fn new_context(
+        &self,
+        webgl_version: WebGLVersion,
+        size: Size2D<i32>,
+        attributes: GLContextAttributes
+    ) -> Result<GLContextWrapper, &'static str> {
         match *self {
             GLContextFactory::Native(..) => {
                 let ctx = GLContext::<NativeGLContext>::new_shared_with_dispatcher(size,
                                                                                    attributes,
                                                                                    ColorAttachmentType::Texture,
                                                                                    gl::GlType::default(),
+                                                                                   Self::gl_version(webgl_version),
                                                                                    None,
                                                                                    None);
                 ctx.map(GLContextWrapper::Native)
@@ -85,10 +95,18 @@ impl GLContextFactory {
                                                                                  attributes,
                                                                                  ColorAttachmentType::Texture,
                                                                                  gl::GlType::default(),
+                                                                                 Self::gl_version(webgl_version),
                                                                                  None,
                                                                                  None);
                 ctx.map(GLContextWrapper::OSMesa)
             }
+        }
+    }
+
+    fn gl_version(webgl_version: WebGLVersion) -> GLVersion {
+        match webgl_version {
+            WebGLVersion::WebGL1 => GLVersion::Major(2),
+            WebGLVersion::WebGL2 => GLVersion::Major(3),
         }
     }
 }

@@ -1181,7 +1181,7 @@ nsHTMLDocument::Applets()
 
 bool
 nsHTMLDocument::MatchLinks(Element* aElement, int32_t aNamespaceID,
-                           nsIAtom* aAtom, void* aData)
+                           nsAtom* aAtom, void* aData)
 {
   nsIDocument* doc = aElement->GetUncomposedDoc();
 
@@ -1201,7 +1201,7 @@ nsHTMLDocument::MatchLinks(Element* aElement, int32_t aNamespaceID,
 
     mozilla::dom::NodeInfo *ni = aElement->NodeInfo();
 
-    nsIAtom *localName = ni->NameAtom();
+    nsAtom *localName = ni->NameAtom();
     if (ni->NamespaceID() == kNameSpaceID_XHTML &&
         (localName == nsGkAtoms::a || localName == nsGkAtoms::area)) {
       return aElement->HasAttr(kNameSpaceID_None, nsGkAtoms::href);
@@ -1229,7 +1229,7 @@ nsHTMLDocument::Links()
 
 bool
 nsHTMLDocument::MatchAnchors(Element* aElement, int32_t aNamespaceID,
-                             nsIAtom* aAtom, void* aData)
+                             nsAtom* aAtom, void* aData)
 {
   NS_ASSERTION(aElement->IsInUncomposedDoc(),
                "This method should never be called on content nodes that "
@@ -1478,7 +1478,7 @@ nsHTMLDocument::Open(JSContext* /* unused */,
     rv.Throw(NS_ERROR_NOT_INITIALIZED);
     return nullptr;
   }
-  RefPtr<nsGlobalWindow> win = nsGlobalWindow::Cast(outer);
+  RefPtr<nsGlobalWindowOuter> win = nsGlobalWindowOuter::Cast(outer);
   nsCOMPtr<nsPIDOMWindowOuter> newWindow;
   // XXXbz We ignore aReplace for now.
   rv = win->OpenJS(aURL, aName, aFeatures, getter_AddRefs(newWindow));
@@ -1498,6 +1498,11 @@ nsHTMLDocument::Open(JSContext* cx,
                "XOW should have caught this!");
   if (!IsHTMLDocument() || mDisableDocWrite) {
     // No calling document.open() on XHTML
+    aError.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return nullptr;
+  }
+
+  if (ShouldThrowOnDynamicMarkupInsertion()) {
     aError.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
   }
@@ -1525,6 +1530,13 @@ nsHTMLDocument::Open(JSContext* cx,
     // Note that aborting a parser leaves the parser "active" with its
     // insertion point "not undefined". We track this using mParserAborted,
     // because aborting a parser nulls out mParser.
+    nsCOMPtr<nsIDocument> ret = this;
+    return ret.forget();
+  }
+
+  // Implement Step 6 of:
+  // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps
+  if (ShouldIgnoreOpens()) {
     nsCOMPtr<nsIDocument> ret = this;
     return ret.forget();
   }
@@ -1841,6 +1853,11 @@ nsHTMLDocument::Close(ErrorResult& rv)
     return;
   }
 
+  if (ShouldThrowOnDynamicMarkupInsertion()) {
+    rv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return;
+  }
+
   if (!mParser || !mParser->IsScriptCreated()) {
     return;
   }
@@ -1925,6 +1942,11 @@ nsHTMLDocument::WriteCommon(JSContext *cx,
     return NS_ERROR_DOM_INVALID_STATE_ERR;
   }
 
+
+  if (ShouldThrowOnDynamicMarkupInsertion()) {
+    return NS_ERROR_DOM_INVALID_STATE_ERR;
+  }
+
   if (mParserAborted) {
     // Hixie says aborting the parser doesn't undefine the insertion point.
     // However, since we null out mParser in that case, we track the
@@ -1932,11 +1954,17 @@ nsHTMLDocument::WriteCommon(JSContext *cx,
     return NS_OK;
   }
 
+  // Implement Step 4.1 of:
+  // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps
+  if (ShouldIgnoreOpens()) {
+    return NS_OK;
+  }
+
   nsresult rv = NS_OK;
 
   void *key = GenerateParserKey();
   if (mParser && !mParser->IsInsertionPointDefined()) {
-    if (mExternalScriptsBeingEvaluated) {
+    if (mIgnoreDestructiveWritesCounter) {
       // Instead of implying a call to document.open(), ignore the call.
       nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
                                       NS_LITERAL_CSTRING("DOM Events"), this,
@@ -1946,12 +1974,15 @@ nsHTMLDocument::WriteCommon(JSContext *cx,
                                       mDocumentURI);
       return NS_OK;
     }
+    // The spec doesn't tell us to ignore opens from here, but we need to
+    // ensure opens are ignored here.
+    IgnoreOpensDuringUnload ignoreOpenGuard(this);
     mParser->Terminate();
-    NS_ASSERTION(!mParser, "mParser should have been null'd out");
+    MOZ_RELEASE_ASSERT(!mParser, "mParser should have been null'd out");
   }
 
   if (!mParser) {
-    if (mExternalScriptsBeingEvaluated) {
+    if (mIgnoreDestructiveWritesCounter) {
       // Instead of implying a call to document.open(), ignore the call.
       nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
                                       NS_LITERAL_CSTRING("DOM Events"), this,
@@ -2033,38 +2064,6 @@ nsHTMLDocument::Writeln(JSContext* cx, const Sequence<nsString>& aText,
                         ErrorResult& rv)
 {
   WriteCommon(cx, aText, true, rv);
-}
-
-bool
-nsHTMLDocument::MatchNameAttribute(Element* aElement, int32_t aNamespaceID,
-                                   nsIAtom* aAtom, void* aData)
-{
-  NS_PRECONDITION(aElement, "Must have element to work with!");
-
-  if (!aElement->HasName()) {
-    return false;
-  }
-
-  nsString* elementName = static_cast<nsString*>(aData);
-  return
-    aElement->GetNameSpaceID() == kNameSpaceID_XHTML &&
-    aElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
-                          *elementName, eCaseMatters);
-}
-
-/* static */
-void*
-nsHTMLDocument::UseExistingNameString(nsINode* aRootNode, const nsString* aName)
-{
-  return const_cast<nsString*>(aName);
-}
-
-NS_IMETHODIMP
-nsHTMLDocument::GetElementsByName(const nsAString& aElementName,
-                                  nsIDOMNodeList** aReturn)
-{
-  *aReturn = GetElementsByName(aElementName).take();
-  return NS_OK;
 }
 
 void
@@ -2355,7 +2354,7 @@ nsHTMLDocument::GetForms()
 
 bool
 nsHTMLDocument::MatchFormControls(Element* aElement, int32_t aNamespaceID,
-                                  nsIAtom* aAtom, void* aData)
+                                  nsAtom* aAtom, void* aData)
 {
   return aElement->IsNodeOfType(nsIContent::eHTML_FORM_CONTROL);
 }

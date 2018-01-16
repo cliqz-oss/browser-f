@@ -28,9 +28,7 @@ function one_test(delay, continuation) {
     const nameStem = "test_bug1204626_" + Date.now();
     let wbp = Cc["@mozilla.org/embedding/browser/nsWebBrowserPersist;1"]
               .createInstance(Ci.nsIWebBrowserPersist);
-    let tmp = Cc["@mozilla.org/file/directory_service;1"]
-              .getService(Ci.nsIProperties)
-              .get("TmpD", Ci.nsIFile);
+    let tmp = Services.dirsvc.get("TmpD", Ci.nsIFile);
     let tmpFile = tmp.clone();
     tmpFile.append(nameStem + "_saved.html");
     let tmpDir = tmp.clone();
@@ -57,7 +55,7 @@ function one_test(delay, continuation) {
         ok(true, "Finished save (" + delayStr + ") but might have crashed.");
         continuation();
       }
-    }
+    };
 
     function doSave() {
       wbp.saveDocument(doc, tmpFile, tmpDir, null, 0, 0);

@@ -141,8 +141,8 @@ dictionary ScrollToOptions : ScrollOptions {
 };
 
 partial interface Window {
-  //[Throws,NewObject] MediaQueryList matchMedia(DOMString query);
-  [Throws,NewObject] MediaQueryList? matchMedia(DOMString query);
+  //[Throws, NewObject, NeedsCallerType] MediaQueryList matchMedia(DOMString query);
+  [Throws, NewObject, NeedsCallerType] MediaQueryList? matchMedia(DOMString query);
   // Per spec, screen is SameObject, but we don't actually guarantee that given
   // nsGlobalWindow::Cleanup.  :(
   //[SameObject, Replaceable, Throws] readonly attribute Screen screen;
@@ -259,7 +259,7 @@ partial interface Window {
   [Throws, NeedsCallerType]
   readonly attribute float mozInnerScreenY;
   [Replaceable, Throws, NeedsCallerType]
-  readonly attribute float devicePixelRatio;
+  readonly attribute double devicePixelRatio;
 
   /* The maximum offset that the window can be scrolled to
      (i.e., the document width/height minus the scrollport width/height) */
@@ -373,8 +373,8 @@ partial interface Window {
 };
 #endif
 
-[Func="IsChromeOrXBL"]
-interface ChromeWindow {
+// Mozilla extensions for Chrome windows.
+partial interface Window {
   // The STATE_* constants need to match the corresponding enum in nsGlobalWindow.cpp.
   [Func="nsGlobalWindow::IsPrivilegedChromeWindow"]
   const unsigned short STATE_MAXIMIZED = 1;
@@ -444,6 +444,9 @@ interface ChromeWindow {
    */
   [Throws, Func="nsGlobalWindow::IsPrivilegedChromeWindow"]
   void beginWindowMove(Event mouseDownEvent, optional Element? panel = null);
+
+  [Func="IsChromeOrXBL"]
+  readonly attribute boolean isChromeWindow;
 };
 
 partial interface Window {
@@ -471,7 +474,6 @@ partial interface Window {
     readonly attribute Worklet paintWorklet;
 };
 
-Window implements ChromeWindow;
 Window implements WindowOrWorkerGlobalScope;
 
 partial interface Window {
@@ -520,12 +522,10 @@ partial interface Window {
   [Func="IsChromeOrXBL"]
   sequence<DOMString> getRegionalPrefsLocales();
 
-#ifdef ENABLE_INTL_API
   /**
    * Getter funcion for IntlUtils, which provides helper functions for
    * localization.
    */
   [Throws, Func="IsChromeOrXBL"]
   readonly attribute IntlUtils intlUtils;
-#endif
 };

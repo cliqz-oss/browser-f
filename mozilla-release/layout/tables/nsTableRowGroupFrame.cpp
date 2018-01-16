@@ -64,13 +64,13 @@ nsTableRowGroupFrame::~nsTableRowGroupFrame()
 }
 
 void
-nsTableRowGroupFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTableRowGroupFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (HasAnyStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN)) {
     nsTableFrame::UnregisterPositionedTablePart(this, aDestructRoot);
   }
 
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 NS_QUERYFRAME_HEAD(nsTableRowGroupFrame)
@@ -181,8 +181,7 @@ nsTableRowGroupFrame::InitRepeatedFrame(nsTableRowGroupFrame* aHeaderFooterFrame
     while (copyCellFrame && originalCellFrame) {
       NS_ASSERTION(originalCellFrame->GetContent() == copyCellFrame->GetContent(),
                    "cell frames have different content");
-      int32_t colIndex;
-      originalCellFrame->GetColIndex(colIndex);
+      uint32_t colIndex = originalCellFrame->ColIndex();
       copyCellFrame->SetColIndex(colIndex);
 
       // Move to the next cell frame
@@ -213,14 +212,14 @@ DisplayRows(nsDisplayListBuilder* aBuilder, nsFrame* aFrame,
   // the rows in |f|, but that's exactly what we're trying to avoid, so we
   // approximate it by checking it for |f|: if it's true for any row
   // in |f| then it's true for |f| itself.
-  nsIFrame* kid = aBuilder->ShouldDescendIntoFrame(f) ?
-    nullptr : f->GetFirstRowContaining(aBuilder->GetDirtyRect().y, &overflowAbove);
+  nsIFrame* kid = aBuilder->ShouldDescendIntoFrame(f, true) ?
+    nullptr : f->GetFirstRowContaining(aBuilder->GetVisibleRect().y, &overflowAbove);
 
   if (kid) {
     // have a cursor, use it
     while (kid) {
-      if (kid->GetRect().y - overflowAbove >= aBuilder->GetDirtyRect().YMost() &&
-          kid->GetNormalRect().y - overflowAbove >= aBuilder->GetDirtyRect().YMost())
+      if (kid->GetRect().y - overflowAbove >= aBuilder->GetVisibleRect().YMost() &&
+          kid->GetNormalRect().y - overflowAbove >= aBuilder->GetVisibleRect().YMost())
         break;
       f->BuildDisplayListForChild(aBuilder, kid, aLists);
       kid = kid->GetNextSibling();
@@ -1043,8 +1042,7 @@ nsTableRowGroupFrame::SplitSpanningCells(nsPresContext&           aPresContext,
               nsTableCellFrame* contCell = static_cast<nsTableCellFrame*>(
                 aPresContext.PresShell()->FrameConstructor()->
                   CreateContinuingFrame(&aPresContext, cell, &aLastRow));
-              int32_t colIndex;
-              cell->GetColIndex(colIndex);
+              uint32_t colIndex = cell->ColIndex();
               aContRow->InsertCellFrame(contCell, colIndex);
             }
           }
@@ -1491,9 +1489,8 @@ nsTableRowGroupFrame::AppendFrames(ChildListID     aListID,
   if (rows.Length() > 0) {
     nsTableFrame* tableFrame = GetTableFrame();
     tableFrame->AppendRows(this, rowIndex, rows);
-    PresContext()->PresShell()->
-      FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                       NS_FRAME_HAS_DIRTY_CHILDREN);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                  NS_FRAME_HAS_DIRTY_CHILDREN);
     tableFrame->SetGeometryDirty();
   }
 }
@@ -1541,9 +1538,8 @@ nsTableRowGroupFrame::InsertFrames(ChildListID     aListID,
     int32_t rowIndex = (prevRow) ? prevRow->GetRowIndex() + 1 : startRowIndex;
     tableFrame->InsertRows(this, rows, rowIndex, true);
 
-    PresContext()->PresShell()->
-      FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                       NS_FRAME_HAS_DIRTY_CHILDREN);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                  NS_FRAME_HAS_DIRTY_CHILDREN);
     tableFrame->SetGeometryDirty();
   }
 }
@@ -1563,9 +1559,8 @@ nsTableRowGroupFrame::RemoveFrame(ChildListID     aListID,
     // remove the rows from the table (and flag a rebalance)
     tableFrame->RemoveRows(*rowFrame, 1, true);
 
-    PresContext()->PresShell()->
-      FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                       NS_FRAME_HAS_DIRTY_CHILDREN);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                  NS_FRAME_HAS_DIRTY_CHILDREN);
     tableFrame->SetGeometryDirty();
   }
   mFrames.DestroyFrame(aOldFrame);
@@ -1997,7 +1992,9 @@ void
 nsTableRowGroupFrame::InvalidateFrame(uint32_t aDisplayItemKey)
 {
   nsIFrame::InvalidateFrame(aDisplayItemKey);
-  GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey);
+  if (GetTableFrame()->IsBorderCollapse() && StyleBorder()->HasBorder()) {
+    GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey);
+  }
 }
 
 void

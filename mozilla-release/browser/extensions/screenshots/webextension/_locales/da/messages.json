@@ -29,6 +29,9 @@
   "downloadScreenshot": {
     "message": "Hent"
   },
+  "downloadOnlyDetailsPrivate": {
+    "message": "I et privat browsing-vindue."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Link kopieret"
   },
@@ -36,6 +39,14 @@
     "message": "Linket til dit skærmbillede er blevet gemt i udklipsholderen. Tryk på $META_KEY$-V for at sætte ind. ",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "Billedet er blevet beskåret til $PIXELS$ px.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -81,6 +92,12 @@
   },
   "tourBodyIntro": {
     "message": "Tag, gem og del skærmbilleder uden at forlade Firefox. "
+  },
+  "tourHeaderPageAction": {
+    "message": "En ny måde at gemme på"
+  },
+  "tourBodyPageAction": {
+    "message": "Klik på Sidehandlinger i adressefeltet, når du vil tage et skærmbillede."
   },
   "tourHeaderClickAndDrag": {
     "message": "Gem lige hvad du vil."

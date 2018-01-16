@@ -9,7 +9,7 @@ use counter_style::{Symbols, parse_counter_style_name};
 use cssparser::Parser;
 use parser::{Parse, ParserContext};
 use std::fmt;
-use style_traits::{Comma, OneOrMoreSeparated, ParseError, StyleParseError, ToCss};
+use style_traits::{Comma, OneOrMoreSeparated, ParseError, StyleParseErrorKind, ToCss};
 use super::CustomIdent;
 
 pub mod background;
@@ -68,7 +68,7 @@ impl SymbolsType {
     }
 }
 
-/// https://drafts.csswg.org/css-counter-styles/#typedef-counter-style
+/// <https://drafts.csswg.org/css-counter-styles/#typedef-counter-style>
 ///
 /// Since wherever <counter-style> is used, 'none' is a valid value as
 /// well, we combine them into one type to make code simpler.
@@ -114,16 +114,16 @@ impl Parse for CounterStyleOrNone {
                 // numeric system.
                 if (symbols_type == SymbolsType::Alphabetic ||
                     symbols_type == SymbolsType::Numeric) && symbols.0.len() < 2 {
-                    return Err(StyleParseError::UnspecifiedError.into());
+                    return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
                 // Identifier is not allowed in symbols() function.
                 if symbols.0.iter().any(|sym| !sym.is_allowed_in_symbols()) {
-                    return Err(StyleParseError::UnspecifiedError.into());
+                    return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
                 Ok(CounterStyleOrNone::Symbols(symbols_type, symbols))
             });
         }
-        Err(StyleParseError::UnspecifiedError.into())
+        Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
     }
 }
 
@@ -131,9 +131,7 @@ impl Parse for CounterStyleOrNone {
 ///
 /// For font-feature-settings, this is a tag and an integer,
 /// for font-variation-settings this is a tag and a float
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Debug, Eq, PartialEq, ToComputedValue)]
+#[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, ToComputedValue)]
 pub struct FontSettingTag<T> {
     /// A four-character tag, packed into a u32 (one byte per character)
     pub tag: u32,
@@ -159,8 +157,8 @@ impl<T: ToCss> ToCss for FontSettingTag<T> {
 }
 
 impl<T: Parse> Parse for FontSettingTag<T> {
-    /// https://www.w3.org/TR/css-fonts-3/#propdef-font-feature-settings
-    /// https://drafts.csswg.org/css-fonts-4/#low-level-font-variation-
+    /// <https://www.w3.org/TR/css-fonts-3/#propdef-font-feature-settings>
+    /// <https://drafts.csswg.org/css-fonts-4/#low-level-font-variation->
     /// settings-control-the-font-variation-settings-property
     /// <string> [ on | off | <integer> ]
     /// <string> <number>
@@ -170,13 +168,14 @@ impl<T: Parse> Parse for FontSettingTag<T> {
 
         let u_tag;
         {
+            let location = input.current_source_location();
             let tag = input.expect_string()?;
 
             // allowed strings of length 4 containing chars: <U+20, U+7E>
             if tag.len() != 4 ||
                tag.chars().any(|c| c < ' ' || c > '~')
             {
-                return Err(StyleParseError::UnspecifiedError.into())
+                return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             }
 
             let mut raw = Cursor::new(tag.as_bytes());
@@ -189,9 +188,7 @@ impl<T: Parse> Parse for FontSettingTag<T> {
 
 
 /// A font settings value for font-variation-settings or font-feature-settings
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Debug, Eq, PartialEq, ToComputedValue, ToCss)]
+#[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub enum FontSettings<T> {
     /// No settings (default)
     Normal,
@@ -200,7 +197,7 @@ pub enum FontSettings<T> {
 }
 
 impl<T: Parse> Parse for FontSettings<T> {
-    /// https://www.w3.org/TR/css-fonts-3/#propdef-font-feature-settings
+    /// <https://www.w3.org/TR/css-fonts-3/#propdef-font-feature-settings>
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
         if input.try(|i| i.expect_ident_matching("normal")).is_ok() {
             return Ok(FontSettings::Normal);
@@ -214,18 +211,15 @@ impl<T: Parse> Parse for FontSettings<T> {
 ///
 /// Do not use this type anywhere except within FontSettings
 /// because it serializes with the preceding space
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ToComputedValue)]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, ToComputedValue)]
 pub struct FontSettingTagInt(pub u32);
 
 /// A number value to be used for font-variation-settings
 ///
 /// Do not use this type anywhere except within FontSettings
 /// because it serializes with the preceding space
-#[cfg_attr(feature = "gecko", derive(Animate, ComputeSquaredDistance, MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Debug, PartialEq, ToComputedValue)]
+#[cfg_attr(feature = "gecko", derive(Animate, ComputeSquaredDistance))]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
 pub struct FontSettingTagFloat(pub f32);
 
 impl ToCss for FontSettingTagInt {
@@ -248,7 +242,7 @@ impl Parse for FontSettingTagInt {
             if value >= 0 {
                 Ok(FontSettingTagInt(value as u32))
             } else {
-                Err(StyleParseError::UnspecifiedError.into())
+                Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             }
         } else if let Ok(_) = input.try(|input| input.expect_ident_matching("on")) {
             // on is an alias for '1'
@@ -278,15 +272,13 @@ impl ToCss for FontSettingTagFloat {
 }
 
 /// A wrapper of Non-negative values.
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(Deserialize, HeapSizeOf, Serialize))]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf)]
 #[derive(PartialEq, PartialOrd, ToAnimatedZero, ToComputedValue, ToCss)]
 pub struct NonNegative<T>(pub T);
 
 /// A wrapper of greater-than-or-equal-to-one values.
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(Deserialize, HeapSizeOf, Serialize))]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf)]
 #[derive(PartialEq, PartialOrd, ToAnimatedZero, ToComputedValue, ToCss)]
 pub struct GreaterThanOrEqualToOne<T>(pub T);

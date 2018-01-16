@@ -1,4 +1,5 @@
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -549,8 +550,6 @@ CSS_PROP_ALIAS(-webkit-user-select,
                _moz_user_select,
                WebkitUserSelect,
                WEBKIT_PREFIX_PREF)
-
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
 CSS_PROP_ALIAS(-webkit-mask,
                _webkit_mask,
                mask,
@@ -601,5 +600,4 @@ CSS_PROP_ALIAS(-webkit-mask-size,
                mask_size,
                WebkitMaskSize,
                WEBKIT_PREFIX_PREF)
-#endif
 #undef WEBKIT_PREFIX_PREF

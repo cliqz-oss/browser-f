@@ -2,7 +2,6 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-common/async.js");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://services-sync/engines.js");
 Cu.import("resource://services-sync/engines/history.js");
@@ -12,9 +11,6 @@ Cu.import("resource://services-sync/service.js");
 const kDBName = "places.sqlite";
 const storageSvc = Cc["@mozilla.org/storage/service;1"]
                      .getService(Ci.mozIStorageService);
-
-const fxuri = CommonUtils.makeURI("http://getfirefox.com/");
-const tburi = CommonUtils.makeURI("http://getthunderbird.com/");
 
 function setPlacesDatabase(aFileName) {
   removePlacesDatabase();
@@ -94,118 +90,103 @@ add_task(async function test_history_guids() {
 
   let places = [
     {
-      uri: fxuri,
+      url: "http://getfirefox.com/",
       title: "Get Firefox!",
       visits: [{
-        visitDate: Date.now() * 1000,
-        transitionType: Ci.nsINavHistoryService.TRANSITION_LINK
+        date: new Date(),
+        transition: Ci.nsINavHistoryService.TRANSITION_LINK
       }]
     },
     {
-      uri: tburi,
+      url: "http://getthunderbird.com/",
       title: "Get Thunderbird!",
       visits: [{
-        visitDate: Date.now() * 1000,
-        transitionType: Ci.nsINavHistoryService.TRANSITION_LINK
+        date: new Date(),
+        transition: Ci.nsINavHistoryService.TRANSITION_LINK
       }]
     }
   ];
 
   async function onVisitAdded() {
-    let fxguid = await store.GUIDForUri(fxuri, true);
-    let tbguid = await store.GUIDForUri(tburi, true);
+    let fxguid = await store.GUIDForUri("http://getfirefox.com/", true);
+    let tbguid = await store.GUIDForUri("http://getthunderbird.com/", true);
     dump("fxguid: " + fxguid + "\n");
     dump("tbguid: " + tbguid + "\n");
 
     _("History: Verify GUIDs are added to the guid column.");
-    let connection = PlacesUtils.history
-                                .QueryInterface(Ci.nsPIPlacesDatabase)
-                                .DBConnection;
-    let stmt = connection.createAsyncStatement(
-      "SELECT id FROM moz_places WHERE guid = :guid");
-
-    stmt.params.guid = fxguid;
-    let result = Async.querySpinningly(stmt, ["id"]);
+    let db = await PlacesUtils.promiseDBConnection();
+    let result = await db.execute(
+      "SELECT id FROM moz_places WHERE guid = :guid",
+      {guid: fxguid}
+    );
     do_check_eq(result.length, 1);
 
-    stmt.params.guid = tbguid;
-    result = Async.querySpinningly(stmt, ["id"]);
+    result = await db.execute(
+      "SELECT id FROM moz_places WHERE guid = :guid",
+      {guid: tbguid}
+    );
     do_check_eq(result.length, 1);
-    stmt.finalize();
 
     _("History: Verify GUIDs weren't added to annotations.");
-    stmt = connection.createAsyncStatement(
-      "SELECT a.content AS guid FROM moz_annos a WHERE guid = :guid");
-
-    stmt.params.guid = fxguid;
-    result = Async.querySpinningly(stmt, ["guid"]);
+    result = await db.execute(
+      "SELECT a.content AS guid FROM moz_annos a WHERE guid = :guid",
+      {guid: fxguid}
+    );
     do_check_eq(result.length, 0);
 
-    stmt.params.guid = tbguid;
-    result = Async.querySpinningly(stmt, ["guid"]);
+    result = await db.execute(
+      "SELECT a.content AS guid FROM moz_annos a WHERE guid = :guid",
+      {guid: tbguid}
+    );
     do_check_eq(result.length, 0);
-    stmt.finalize();
   }
 
-  await new Promise((resolve, reject) => {
-    PlacesUtils.asyncHistory.updatePlaces(places, {
-      handleError: function handleError() {
-        do_throw("Unexpected error in adding visit.");
-      },
-      handleResult: function handleResult() {},
-      handleCompletion: () => { onVisitAdded().then(resolve, reject) },
-    });
-  });
+  await PlacesUtils.history.insertMany(places);
+  await onVisitAdded();
 });
 
 add_task(async function test_bookmark_guids() {
-  let engine = new BookmarksEngine(Service);
-  let store = engine._store;
-
-  let fxid = PlacesUtils.bookmarks.insertBookmark(
-    PlacesUtils.bookmarks.toolbarFolder,
-    fxuri,
-    PlacesUtils.bookmarks.DEFAULT_INDEX,
-    "Get Firefox!");
-  let tbid = PlacesUtils.bookmarks.insertBookmark(
-    PlacesUtils.bookmarks.toolbarFolder,
-    tburi,
-    PlacesUtils.bookmarks.DEFAULT_INDEX,
-    "Get Thunderbird!");
-
-  let fxguid = await store.GUIDForId(fxid);
-  let tbguid = await store.GUIDForId(tbid);
+  let fx = await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    url: "http://getfirefox.com/",
+    title: "Get Firefox!",
+  });
+  let fxid = await PlacesUtils.promiseItemId(fx.guid);
+  let tb = await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    url: "http://getthunderbird.com/",
+    title: "Get Thunderbird!",
+  });
+  let tbid = await PlacesUtils.promiseItemId(tb.guid);
 
   _("Bookmarks: Verify GUIDs are added to the guid column.");
-  let connection = PlacesUtils.history
-                              .QueryInterface(Ci.nsPIPlacesDatabase)
-                              .DBConnection;
-  let stmt = connection.createAsyncStatement(
-    "SELECT id FROM moz_bookmarks WHERE guid = :guid");
-
-  stmt.params.guid = fxguid;
-  let result = Async.querySpinningly(stmt, ["id"]);
+  let db = await PlacesUtils.promiseDBConnection();
+  let result = await db.execute(
+    "SELECT id FROM moz_bookmarks WHERE guid = :guid",
+    {guid: fx.guid}
+  );
   do_check_eq(result.length, 1);
-  do_check_eq(result[0].id, fxid);
+  do_check_eq(result[0].getResultByName("id"), fxid);
 
-  stmt.params.guid = tbguid;
-  result = Async.querySpinningly(stmt, ["id"]);
+  result = await db.execute(
+    "SELECT id FROM moz_bookmarks WHERE guid = :guid",
+    {guid: tb.guid}
+  );
   do_check_eq(result.length, 1);
-  do_check_eq(result[0].id, tbid);
-  stmt.finalize();
+  do_check_eq(result[0].getResultByName("id"), tbid);
 
   _("Bookmarks: Verify GUIDs weren't added to annotations.");
-  stmt = connection.createAsyncStatement(
-    "SELECT a.content AS guid FROM moz_items_annos a WHERE guid = :guid");
-
-  stmt.params.guid = fxguid;
-  result = Async.querySpinningly(stmt, ["guid"]);
+  result = await db.execute(
+    "SELECT a.content AS guid FROM moz_items_annos a WHERE guid = :guid",
+    {guid: fx.guid}
+  );
   do_check_eq(result.length, 0);
 
-  stmt.params.guid = tbguid;
-  result = Async.querySpinningly(stmt, ["guid"]);
+  result = await db.execute(
+    "SELECT a.content AS guid FROM moz_items_annos a WHERE guid = :guid",
+    {guid: tb.guid}
+  );
   do_check_eq(result.length, 0);
-  stmt.finalize();
 });
 
 function run_test() {

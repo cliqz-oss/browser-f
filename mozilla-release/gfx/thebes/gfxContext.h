@@ -24,6 +24,9 @@ namespace mozilla {
 namespace gfx {
 struct RectCornerRadii;
 } // namespace gfx
+namespace layout {
+class TextDrawTarget;
+} // namespace layout
 } // namespace mozilla
 
 class ClipExporter;
@@ -78,6 +81,11 @@ public:
         CreatePreservingTransformOrNull(mozilla::gfx::DrawTarget* aTarget);
 
     mozilla::gfx::DrawTarget *GetDrawTarget() { return mDT; }
+
+    /**
+     * Returns the DrawTarget if it's actually a TextDrawTarget.
+     */
+    mozilla::layout::TextDrawTarget* GetTextDrawer();
 
     /**
      ** State
@@ -164,12 +172,14 @@ public:
     /**
      * Replaces the current transformation matrix with matrix.
      */
-    void SetMatrix(const gfxMatrix& matrix);
+    void SetMatrix(const mozilla::gfx::Matrix& matrix);
+    void SetMatrixDouble(const gfxMatrix& matrix);
 
     /**
      * Returns the current transformation matrix.
      */
-    gfxMatrix CurrentMatrix() const;
+    mozilla::gfx::Matrix CurrentMatrix() const;
+    gfxMatrix CurrentMatrixDouble() const;
 
     /**
      * Converts a point from device to user coordinates using the inverse
@@ -272,13 +282,6 @@ public:
      * Uses a pattern for drawing.
      */
     void SetPattern(gfxPattern *pattern);
-
-    /**
-     * Set the color that text drawn on top of transparent pixels should be
-     * anti-aliased into.
-     */
-    void SetFontSmoothingBackgroundColor(const mozilla::gfx::Color& aColor);
-    mozilla::gfx::Color GetFontSmoothingBackgroundColor();
 
     /**
      * Get the source pattern (solid color, normal pattern, surface, etc)
@@ -627,7 +630,7 @@ public:
       }
     }
 
-    const gfxMatrix& Matrix()
+    const mozilla::gfx::Matrix& Matrix()
     {
       MOZ_ASSERT(mContext, "mMatrix doesn't contain a useful matrix");
       return mMatrix;
@@ -637,7 +640,7 @@ public:
 
 private:
     gfxContext *mContext;
-    gfxMatrix   mMatrix;
+    mozilla::gfx::Matrix mMatrix;
 };
 
 

@@ -28,6 +28,17 @@ const TEST_CREDIT_CARD_3 = {
   "cc-exp-year": 2000,
 };
 
+const TEST_CREDIT_CARD_4 = {
+  "cc-name": "Foo Bar",
+  "cc-number": "9999888877776666",
+};
+
+const TEST_CREDIT_CARD_WITH_EMPTY_FIELD = {
+  "cc-name": "",
+  "cc-number": "1234123412341234",
+  "cc-exp-month": 1,
+};
+
 const TEST_CREDIT_CARD_WITH_2_DIGITS_YEAR = {
   "cc-number": "1234123412341234",
   "cc-exp-month": 1,
@@ -52,15 +63,67 @@ const TEST_CREDIT_CARD_WITH_SPACES_BETWEEN_DIGITS = {
   "cc-number": "1111 2222 3333 4444",
 };
 
-const TEST_CREDIT_CARD_WITH_INVALID_NUMBERS = {
-  "cc-name": "John Doe",
-  "cc-number": "abcdefg",
-};
-
-const TEST_CREDIT_CARD_WITH_SHORT_NUMBERS = {
-  "cc-name": "John Doe",
-  "cc-number": "1234567890",
-};
+const MERGE_TESTCASES = [
+  {
+    description: "Merge a superset",
+    creditCardInStorage: {
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+    creditCardToMerge: {
+      "cc-name": "John Doe",
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+    expectedCreditCard: {
+      "cc-name": "John Doe",
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+  },
+  {
+    description: "Merge a subset",
+    creditCardInStorage: {
+      "cc-name": "John Doe",
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+    creditCardToMerge: {
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+    expectedCreditCard: {
+      "cc-name": "John Doe",
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+    noNeedToUpdate: true,
+  },
+  {
+    description: "Merge an creditCard with partial overlaps",
+    creditCardInStorage: {
+      "cc-name": "John Doe",
+      "cc-number": "1234567812345678",
+    },
+    creditCardToMerge: {
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+    expectedCreditCard: {
+      "cc-name": "John Doe",
+      "cc-number": "1234567812345678",
+      "cc-exp-month": 4,
+      "cc-exp-year": 2017,
+    },
+  },
+];
 
 let prepareTestCreditCards = async function(path) {
   let profileStorage = new ProfileStorage(path);
@@ -68,13 +131,10 @@ let prepareTestCreditCards = async function(path) {
 
   let onChanged = TestUtils.topicObserved("formautofill-storage-changed",
                                           (subject, data) => data == "add");
-  let encryptedCC_1 = Object.assign({}, TEST_CREDIT_CARD_1);
-  await profileStorage.creditCards.normalizeCCNumberFields(encryptedCC_1);
-  do_check_true(profileStorage.creditCards.add(encryptedCC_1));
+  do_check_true(profileStorage.creditCards.add(TEST_CREDIT_CARD_1));
   await onChanged;
-  let encryptedCC_2 = Object.assign({}, TEST_CREDIT_CARD_2);
-  await profileStorage.creditCards.normalizeCCNumberFields(encryptedCC_2);
-  do_check_true(profileStorage.creditCards.add(encryptedCC_2));
+  do_check_true(profileStorage.creditCards.add(TEST_CREDIT_CARD_2));
+  await onChanged;
   await profileStorage._saveImmediately();
 };
 
@@ -87,6 +147,7 @@ let do_check_credit_card_matches = (creditCardWithMeta, creditCard) => {
       do_check_neq(matches, null);
       do_check_eq(creditCardWithMeta["cc-number"].length, creditCard["cc-number"].length);
       do_check_eq(creditCard["cc-number"].endsWith(matches[2]), true);
+      do_check_neq(creditCard["cc-number-encrypted"], "");
     } else {
       do_check_eq(creditCardWithMeta[key], creditCard[key]);
     }
@@ -182,9 +243,13 @@ add_task(async function test_add() {
   do_check_eq(creditCards[0].timeLastUsed, 0);
   do_check_eq(creditCards[0].timesUsed, 0);
 
-  let encryptedCC_invalid = Object.assign({}, TEST_CREDIT_CARD_WITH_INVALID_FIELD);
-  await profileStorage.creditCards.normalizeCCNumberFields(encryptedCC_invalid);
-  Assert.throws(() => profileStorage.creditCards.add(encryptedCC_invalid),
+  // Empty string should be deleted before saving.
+  profileStorage.creditCards.add(TEST_CREDIT_CARD_WITH_EMPTY_FIELD);
+  let creditCard = profileStorage.creditCards.data[2];
+  do_check_eq(creditCard["cc-exp-month"], TEST_CREDIT_CARD_WITH_EMPTY_FIELD["cc-exp-month"]);
+  do_check_eq(creditCard["cc-name"], undefined);
+
+  Assert.throws(() => profileStorage.creditCards.add(TEST_CREDIT_CARD_WITH_INVALID_FIELD),
     /"invalidField" is not a valid field\./);
 });
 
@@ -203,7 +268,6 @@ add_task(async function test_update() {
                                           (subject, data) => data == "update");
 
   do_check_neq(creditCards[1]["cc-name"], undefined);
-  await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_3);
   profileStorage.creditCards.update(guid, TEST_CREDIT_CARD_3);
   await onChanged;
   await profileStorage._saveImmediately();
@@ -217,15 +281,19 @@ add_task(async function test_update() {
   do_check_neq(creditCard.timeLastModified, timeLastModified);
   do_check_credit_card_matches(creditCard, TEST_CREDIT_CARD_3);
 
+  // Empty string should be deleted while updating.
+  profileStorage.creditCards.update(profileStorage.creditCards.data[0].guid, TEST_CREDIT_CARD_WITH_EMPTY_FIELD);
+  creditCard = profileStorage.creditCards.data[0];
+  do_check_eq(creditCard["cc-exp-month"], TEST_CREDIT_CARD_WITH_EMPTY_FIELD["cc-exp-month"]);
+  do_check_eq(creditCard["cc-name"], undefined);
+
   Assert.throws(
     () => profileStorage.creditCards.update("INVALID_GUID", TEST_CREDIT_CARD_3),
     /No matching record\./
   );
 
-  let encryptedCC_invalid = Object.assign({}, TEST_CREDIT_CARD_WITH_INVALID_FIELD);
-  await profileStorage.creditCards.normalizeCCNumberFields(encryptedCC_invalid);
   Assert.throws(
-    () => profileStorage.creditCards.update(guid, encryptedCC_invalid),
+    () => profileStorage.creditCards.update(guid, TEST_CREDIT_CARD_WITH_INVALID_FIELD),
     /"invalidField" is not a valid field\./
   );
 });
@@ -236,11 +304,8 @@ add_task(async function test_validate() {
   let profileStorage = new ProfileStorage(path);
   await profileStorage.initialize();
 
-  await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_WITH_INVALID_EXPIRY_DATE);
   profileStorage.creditCards.add(TEST_CREDIT_CARD_WITH_INVALID_EXPIRY_DATE);
-  await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_WITH_2_DIGITS_YEAR);
   profileStorage.creditCards.add(TEST_CREDIT_CARD_WITH_2_DIGITS_YEAR);
-  await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_WITH_SPACES_BETWEEN_DIGITS);
   profileStorage.creditCards.add(TEST_CREDIT_CARD_WITH_SPACES_BETWEEN_DIGITS);
 
   let creditCards = profileStorage.creditCards.getAll();
@@ -256,20 +321,6 @@ add_task(async function test_validate() {
   do_check_eq(creditCards[1]["cc-exp"], year + "-" + month.toString().padStart(2, "0"));
 
   do_check_eq(creditCards[2]["cc-number"].length, 16);
-
-  try {
-    await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_WITH_INVALID_NUMBERS);
-    throw new Error("Not receiving invalid characters error");
-  } catch (e) {
-    Assert.equal(e.message, "Credit card number contains invalid characters or is under 12 digits.");
-  }
-
-  try {
-    await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_WITH_SHORT_NUMBERS);
-    throw new Error("Not receiving invalid characters error");
-  } catch (e) {
-    Assert.equal(e.message, "Credit card number contains invalid characters or is under 12 digits.");
-  }
 });
 
 add_task(async function test_notifyUsed() {
@@ -330,4 +381,82 @@ add_task(async function test_remove() {
   do_check_eq(creditCards.length, 1);
 
   do_check_eq(profileStorage.creditCards.get(guid), null);
+});
+
+MERGE_TESTCASES.forEach((testcase) => {
+  add_task(async function test_merge() {
+    do_print("Starting testcase: " + testcase.description);
+    let profileStorage = await initProfileStorage(TEST_STORE_FILE_NAME,
+                                                  [testcase.creditCardInStorage],
+                                                  "creditCards");
+    let creditCards = profileStorage.creditCards.getAll();
+    let guid = creditCards[0].guid;
+    let timeLastModified = creditCards[0].timeLastModified;
+    // Merge creditCard and verify the guid in notifyObservers subject
+    let onMerged = TestUtils.topicObserved(
+      "formautofill-storage-changed",
+      (subject, data) =>
+        data == "update" && subject.QueryInterface(Ci.nsISupportsString).data == guid
+    );
+    // Force to create sync metadata.
+    profileStorage.creditCards.pullSyncChanges();
+    do_check_eq(getSyncChangeCounter(profileStorage.creditCards, guid), 1);
+    Assert.ok(profileStorage.creditCards.mergeIfPossible(guid, testcase.creditCardToMerge));
+    if (!testcase.noNeedToUpdate) {
+      await onMerged;
+    }
+    creditCards = profileStorage.creditCards.getAll();
+    Assert.equal(creditCards.length, 1);
+    do_check_credit_card_matches(creditCards[0], testcase.expectedCreditCard);
+    if (!testcase.noNeedToUpdate) {
+      // Record merging should update timeLastModified and bump the change counter.
+      Assert.notEqual(creditCards[0].timeLastModified, timeLastModified);
+      do_check_eq(getSyncChangeCounter(profileStorage.creditCards, guid), 2);
+    } else {
+      // Subset record merging should not update timeLastModified and the change
+      // counter is still the same.
+      Assert.equal(creditCards[0].timeLastModified, timeLastModified);
+      do_check_eq(getSyncChangeCounter(profileStorage.creditCards, guid), 1);
+    }
+  });
+});
+
+add_task(async function test_merge_unable_merge() {
+  let profileStorage = await initProfileStorage(TEST_STORE_FILE_NAME,
+                                                [TEST_CREDIT_CARD_1],
+                                                "creditCards");
+
+  let creditCards = profileStorage.creditCards.getAll();
+  let guid = creditCards[0].guid;
+  // Force to create sync metadata.
+  profileStorage.creditCards.pullSyncChanges();
+  do_check_eq(getSyncChangeCounter(profileStorage.creditCards, guid), 1);
+
+  // Unable to merge because of conflict
+  let anotherCreditCard = profileStorage.creditCards._clone(TEST_CREDIT_CARD_1);
+  anotherCreditCard["cc-name"] = "Foo Bar";
+  do_check_eq(profileStorage.creditCards.mergeIfPossible(guid, anotherCreditCard), false);
+  // The change counter is unchanged.
+  do_check_eq(getSyncChangeCounter(profileStorage.creditCards, guid), 1);
+
+  // Unable to merge because no credit card number
+  anotherCreditCard = profileStorage.creditCards._clone(TEST_CREDIT_CARD_1);
+  anotherCreditCard["cc-number"] = "";
+  do_check_eq(profileStorage.creditCards.mergeIfPossible(guid, anotherCreditCard), false);
+  // The change counter is still unchanged.
+  do_check_eq(getSyncChangeCounter(profileStorage.creditCards, guid), 1);
+});
+
+add_task(async function test_mergeToStorage() {
+  let profileStorage = await initProfileStorage(TEST_STORE_FILE_NAME,
+                                                [TEST_CREDIT_CARD_3, TEST_CREDIT_CARD_4],
+                                                "creditCards");
+  // Merge a creditCard to storage
+  let anotherCreditCard = profileStorage.creditCards._clone(TEST_CREDIT_CARD_3);
+  anotherCreditCard["cc-name"] = "Foo Bar";
+  do_check_eq(profileStorage.creditCards.mergeToStorage(anotherCreditCard).length, 2);
+  do_check_eq(profileStorage.creditCards.getAll()[0]["cc-name"], "Foo Bar");
+  do_check_eq(profileStorage.creditCards.getAll()[0]["cc-exp"], "2000-01");
+  do_check_eq(profileStorage.creditCards.getAll()[1]["cc-name"], "Foo Bar");
+  do_check_eq(profileStorage.creditCards.getAll()[1]["cc-exp"], "2000-01");
 });

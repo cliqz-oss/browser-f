@@ -7,6 +7,7 @@
 #ifndef mozilla_StyleSetHandle_h
 #define mozilla_StyleSetHandle_h
 
+#include "mozilla/AtomArray.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/ServoTypes.h"
@@ -28,7 +29,8 @@ class ShadowRoot;
 class nsBindingManager;
 class nsCSSCounterStyleRule;
 struct nsFontFaceRuleContainer;
-class nsIAtom;
+class nsAtom;
+class nsICSSAnonBoxPseudo;
 class nsIContent;
 class nsIDocument;
 class nsStyleContext;
@@ -140,10 +142,17 @@ public:
                               nsStyleContext* aParentContext,
                               dom::Element* aPseudoElement);
     inline already_AddRefed<nsStyleContext>
-    ResolveInheritingAnonymousBoxStyle(nsIAtom* aPseudoTag,
+    ResolveInheritingAnonymousBoxStyle(nsAtom* aPseudoTag,
                                        nsStyleContext* aParentContext);
     inline already_AddRefed<nsStyleContext>
-    ResolveNonInheritingAnonymousBoxStyle(nsIAtom* aPseudoTag);
+    ResolveNonInheritingAnonymousBoxStyle(nsAtom* aPseudoTag);
+#ifdef MOZ_XUL
+    inline already_AddRefed<nsStyleContext>
+    ResolveXULTreePseudoStyle(dom::Element* aParentElement,
+                              nsICSSAnonBoxPseudo* aPseudoTag,
+                              nsStyleContext* aParentContext,
+                              const AtomArray& aInputWord);
+#endif
     inline nsresult AppendStyleSheet(SheetType aType, StyleSheet* aSheet);
     inline nsresult PrependStyleSheet(SheetType aType, StyleSheet* aSheet);
     inline nsresult RemoveStyleSheet(SheetType aType, StyleSheet* aSheet);
@@ -175,7 +184,7 @@ public:
     inline void RootStyleContextRemoved();
 
     inline bool AppendFontFaceRules(nsTArray<nsFontFaceRuleContainer>& aArray);
-    inline nsCSSCounterStyleRule* CounterStyleRuleForName(nsIAtom* aName);
+    inline nsCSSCounterStyleRule* CounterStyleRuleForName(nsAtom* aName);
     inline already_AddRefed<gfxFontFeatureValueSet> BuildFontFeatureValueSet();
 
     inline bool EnsureUniqueInnerOnCSSSheets();

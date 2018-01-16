@@ -142,9 +142,9 @@ function parseCompletionRequest(aRequest) {
   let partialLength = parseInt(tokens[1]);
 
   let payloadStart = tokens[1].length + // partial length
-                     1 +                // ':'
+                     1 + // ':'
                      tokens[2].length + // payload length
-                     1;                 // '\n'
+                     1; // '\n'
 
   let prefixSet = [];
   for (let i = payloadStart; i < aRequest.length; i += partialLength) {
@@ -205,9 +205,9 @@ function getRandomCompletionSet(forceServerError) {
       completion.forceServerError = true;
     }
     if (completion.expectCompletion) {
-      // Generate a random alpha-numeric string of length at most 6 for the
+      // Generate a random alpha-numeric string of length start with "test" for the
       // table name.
-      completion.table = (rand.nextNum(31)).toString(36);
+      completion.table = "test" + (rand.nextNum(31)).toString(36);
 
       completion.chunkId = rand.nextNum(16);
     }

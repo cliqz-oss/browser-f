@@ -13,10 +13,6 @@
 
 /* ::::: XBL bindings ::::: */
 
-radio {
-  -moz-binding: url("chrome://global/skin/globalBindings.xml#radio-with-spacing");
-}
-
 menulist > menupopup {
   -moz-binding: url("chrome://global/content/bindings/popup.xml#popup-scrollbars");
 }
@@ -25,8 +21,10 @@ progressmeter[mode="undetermined"] {
   -moz-binding: url("chrome://global/content/bindings/progressmeter.xml#progressmeter-undetermined");
 }
 
-toolbar[type="menubar"]:not([autohide="true"]):not(:-moz-lwtheme):-moz-system-metric(menubar-drag) {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbar-drag");
+@media (-moz-menubar-drag) {
+  toolbar[type="menubar"]:not([autohide="true"]):not(:-moz-lwtheme) {
+    -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbar-drag");
+  }
 }
 
 /* ::::: Variables ::::: */
@@ -287,18 +285,19 @@ popupnotificationcontent {
   border: none;
   margin: -14px;
   padding: 0;
-  background-image: url("chrome://global/skin/icons/autoscroll.png");
+  background-image: url("chrome://global/skin/icons/autoscroll.svg");
+  background-size: contain;
   background-color: transparent;
-  background-position: right top;
+  background-repeat: no-repeat;
   -moz-appearance: none;
 }
 
 .autoscroller[scrolldir="NS"] {
-  background-position: right center;
+  background-image: url("chrome://global/skin/icons/autoscroll-vertical.svg");
 }
 
 .autoscroller[scrolldir="EW"] {
-  background-position: right bottom;
+  background-image: url("chrome://global/skin/icons/autoscroll-horizontal.svg");
 }
 
 /* :::::: Close button icons ::::: */

@@ -1,7 +1,8 @@
-commit 5c8f4db9d72385965ff8b4fa94536649279f1470
+commit a456b0a390bb0f70b4cb8d38cb5ab0ecb557a851
+Merge: db05f2f 297502b
 Author: Rick Waldron <waldron.rick@gmail.com>
-Date:   Wed May 17 15:46:04 2017 -0400
+Date:   Mon Oct 23 11:02:44 2017 -0400
 
-    Merge pull request #1040 from leobalter/remove-unnecessary-tests
+    Merge pull request #1310 from bocoup/contributing
     
-    Remove unnecessary tests
+    CONTRIBUTING.md Fix mistake in test generation section

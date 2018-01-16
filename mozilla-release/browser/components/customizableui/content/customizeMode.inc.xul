@@ -8,16 +8,8 @@
       <label id="customization-header">
         &customizeMode.menuAndToolbars.header3;
       </label>
-      <hbox id="customization-empty" hidden="true">
-        <label>&customizeMode.menuAndToolbars.empty;</label>
-        <label onclick="BrowserOpenAddonsMgr('addons://discover/');"
-               onkeypress="BrowserOpenAddonsMgr('addons://discover/');"
-               id="customization-more-tools"
-               class="text-link">
-          &customizeMode.menuAndToolbars.emptyLink;
-        </label>
-      </hbox>
       <vbox id="customization-palette" class="customization-palette" hidden="true"/>
+      <vbox id="customization-pong-arena" hidden="true"/>
       <spacer id="customization-spacer"/>
     </box>
     <vbox id="customization-panel-container">
@@ -27,7 +19,8 @@
         </box>
         <box class="panel-arrowcontent" side="top" flex="1">
           <vbox id="customization-panelHolder">
-            <description id="customization-panelDescription">&customizeMode.emptyOverflowList.description;</description>
+            <description id="customization-panelHeader">&customizeMode.overflowList.title2;</description>
+            <description id="customization-panelDescription">&customizeMode.overflowList.description;</description>
           </vbox>
           <box class="panel-inner-arrowcontentfooter" hidden="true"/>
         </box>
@@ -125,6 +118,12 @@
 #endif
       </panel>
     </button>
+
+    <button id="whimsy-button"
+            type="checkbox"
+            class="customizationmode-button"
+            oncommand="gCustomizeMode.togglePong(this.checked);"
+            hidden="true"/>
 
     <spacer id="customization-footer-spacer"/>
     <button id="customization-undo-reset-button"

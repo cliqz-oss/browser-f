@@ -11,7 +11,7 @@ this.EXPORTED_SYMBOLS = ["Point", "Rect"];
  */
 this.Point = function Point(x, y) {
   this.set(x, y);
-}
+};
 
 Point.prototype = {
   clone: function clone() {
@@ -329,6 +329,18 @@ Rect.prototype = {
     this.right += xAdj;
     this.top -= yAdj;
     this.bottom += yAdj;
+    return this;
+  },
+
+  /**
+   * Grows or shrinks the rectangle by fixed amount while keeping the center point.
+   * Accepts single fixed amount
+   */
+  inflateFixed: function inflateFixed(fixed) {
+    this.left -= fixed;
+    this.right += fixed;
+    this.top -= fixed;
+    this.bottom += fixed;
     return this;
   }
 };

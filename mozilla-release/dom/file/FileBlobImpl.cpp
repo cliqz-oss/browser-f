@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "FileBlobImpl.h"
+#include "mozilla/SlicedInputStream.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerRunnable.h"
 #include "nsCExternalHandlerService.h"
@@ -13,7 +14,6 @@
 #include "nsIMIMEService.h"
 #include "nsNetUtil.h"
 #include "nsStreamUtils.h"
-#include "SlicedInputStream.h"
 
 namespace mozilla {
 namespace dom {
@@ -239,7 +239,7 @@ const uint32_t sFileStreamFlags =
   nsIFileInputStream::SHARE_DELETE;
 
 void
-FileBlobImpl::GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv)
+FileBlobImpl::CreateInputStream(nsIInputStream** aStream, ErrorResult& aRv)
 {
   nsCOMPtr<nsIInputStream> stream;
   aRv = NS_NewLocalFileInputStream(getter_AddRefs(stream), mFile, -1, -1,
@@ -254,7 +254,7 @@ FileBlobImpl::GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv)
   }
 
   RefPtr<SlicedInputStream> slicedInputStream =
-    new SlicedInputStream(stream, mStart, mLength);
+    new SlicedInputStream(stream.forget(), mStart, mLength);
   slicedInputStream.forget(aStream);
 }
 

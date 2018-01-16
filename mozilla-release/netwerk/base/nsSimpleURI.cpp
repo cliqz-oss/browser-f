@@ -469,7 +469,9 @@ nsSimpleURI::SetPathQueryRefEscaped(const nsACString &aPath, bool aNeedsEscape)
           return rv;
         }
     } else {
-        path.Assign(aPath);
+        if (!path.Assign(aPath, fallible)) {
+            return NS_ERROR_OUT_OF_MEMORY;
+        }
     }
 
     int32_t queryPos = path.FindChar('?');
@@ -744,18 +746,18 @@ nsSimpleURI::GetScriptableHelper(nsIXPCScriptable **_retval)
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetContractID(char * *aContractID)
+nsSimpleURI::GetContractID(nsACString& aContractID)
 {
     // Make sure to modify any subclasses as needed if this ever
     // changes.
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetClassDescription(char * *aClassDescription)
+nsSimpleURI::GetClassDescription(nsACString& aClassDescription)
 {
-    *aClassDescription = nullptr;
+    aClassDescription.SetIsVoid(true);
     return NS_OK;
 }
 

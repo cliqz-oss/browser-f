@@ -71,12 +71,17 @@ class VCSHelper(object):
         return vcs_class[vcs](root)
 
     def run(self, cmd):
-        try:
-            return subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+
+        if proc.returncode:
             print("Error running `{}`:".format(' '.join(cmd)))
-            print(e.output)
-            raise
+            if out:
+                print("stdout:\n{}".format(out))
+            if err:
+                print("stderr:\n{}".format(err))
+            raise subprocess.CalledProcessError(proc.returncode, cmd, out)
+        return out
 
     def write_task_config(self, labels, templates=None):
         config = os.path.join(self.root, 'try_task_config.json')
@@ -97,26 +102,26 @@ class VCSHelper(object):
             print(UNCOMMITTED_CHANGES)
             sys.exit(1)
 
-    def push_to_try(self, method, msg, labels=None, templates=None, push=True):
-        commit_message = '%s\n\nPushed via `mach try %s`' % (msg, method)
+    def push_to_try(self, method, msg, labels=None, templates=None, push=True,
+                    closed_tree=False):
+        closed_tree_string = " ON A CLOSED TREE" if closed_tree else ""
+        commit_message = ('%s%s\n\nPushed via `mach try %s`' %
+                          (msg, closed_tree_string, method))
 
         self.check_working_directory(push)
 
         config = None
-        if labels:
+        if labels or labels == []:
             config = self.write_task_config(labels, templates)
 
         try:
             if not push:
-                print("Calculated try selector:")
+                print("Commit message:")
+                print(commit_message)
                 if config:
+                    print("Calculated try_task_config.json:")
                     with open(config) as fh:
                         print(fh.read())
-                else:
-                    print(msg)
-
-                print('Commit message:')
-                print(commit_message)
                 return
 
             self._push_to_try(commit_message, config)

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,9 +16,8 @@
 #include "nsGenericHTMLElement.h"
 #include "nsIEditor.h"
 #include "nsTextFragment.h"
-#include "nsIDOMHTMLTextAreaElement.h"
 #include "nsNameSpaceManager.h"
-#include "nsFormControlFrame.h" //for registering accesskeys
+#include "nsCheckboxRadioFrame.h" //for registering accesskeys
 
 #include "nsIContent.h"
 #include "nsPresContext.h"
@@ -135,7 +135,7 @@ nsTextControlFrame::~nsTextControlFrame()
 }
 
 void
-nsTextControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTextControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   mScrollEvent.Revoke();
 
@@ -147,7 +147,7 @@ nsTextControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
   NS_ASSERTION(txtCtrl, "Content not a text control element");
   txtCtrl->UnbindFromFrame(this);
 
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
 
   if (mMutationObserver) {
     mRootNode->RemoveMutationObserver(mMutationObserver);
@@ -155,11 +155,11 @@ nsTextControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
   }
 
   // FIXME(emilio, bug 1400618): Do this after the child frames are destroyed.
-  DestroyAnonymousContent(mRootNode.forget());
-  DestroyAnonymousContent(mPlaceholderDiv.forget());
-  DestroyAnonymousContent(mPreviewDiv.forget());
+  aPostDestroyData.AddAnonymousContent(mRootNode.forget());
+  aPostDestroyData.AddAnonymousContent(mPlaceholderDiv.forget());
+  aPostDestroyData.AddAnonymousContent(mPreviewDiv.forget());
 
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 LogicalSize
@@ -613,7 +613,7 @@ nsTextControlFrame::Reflow(nsPresContext*   aPresContext,
 
   // make sure that the form registers itself on the initial/first reflow
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   // set values of reflow's out parameters
@@ -803,7 +803,7 @@ void nsTextControlFrame::SetFocus(bool aOn, bool aRepaint)
     docSel->RemoveAllRanges();
 }
 
-nsresult nsTextControlFrame::SetFormProperty(nsIAtom* aName, const nsAString& aValue)
+nsresult nsTextControlFrame::SetFormProperty(nsAtom* aName, const nsAString& aValue)
 {
   if (!mIsProcessing)//some kind of lock.
   {
@@ -1081,7 +1081,7 @@ nsTextControlFrame::OffsetToDOMPoint(uint32_t aOffset,
 ////NSIFRAME
 nsresult
 nsTextControlFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType)
 {
   nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
@@ -1161,22 +1161,20 @@ nsTextControlFrame::AttributeChanged(int32_t         aNameSpaceID,
 }
 
 
-nsresult
+void
 nsTextControlFrame::GetText(nsString& aText)
 {
-  nsresult rv = NS_OK;
   nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
   NS_ASSERTION(txtCtrl, "Content not a text control element");
   if (IsSingleLineTextControl()) {
     // There will be no line breaks so we can ignore the wrap property.
     txtCtrl->GetTextEditorValue(aText, true);
   } else {
-    nsCOMPtr<nsIDOMHTMLTextAreaElement> textArea = do_QueryInterface(mContent);
+    HTMLTextAreaElement* textArea = HTMLTextAreaElement::FromContent(mContent);
     if (textArea) {
-      rv = textArea->GetValue(aText);
+      textArea->GetValue(aText);
     }
   }
-  return rv;
 }
 
 
@@ -1477,8 +1475,7 @@ void
 nsTextControlFrame::nsAnonDivObserver::ContentAppended(
   nsIDocument* aDocument,
   nsIContent* aContainer,
-  nsIContent* aFirstNewContent,
-  int32_t /* unused */)
+  nsIContent* aFirstNewContent)
 {
   mFrame.ClearCachedValue();
 }
@@ -1487,8 +1484,7 @@ void
 nsTextControlFrame::nsAnonDivObserver::ContentInserted(
   nsIDocument* aDocument,
   nsIContent* aContainer,
-  nsIContent* aChild,
-  int32_t /* unused */)
+  nsIContent* aChild)
 {
   mFrame.ClearCachedValue();
 }
@@ -1498,7 +1494,6 @@ nsTextControlFrame::nsAnonDivObserver::ContentRemoved(
   nsIDocument* aDocument,
   nsIContent* aContainer,
   nsIContent* aChild,
-  int32_t aIndexInContainer,
   nsIContent* aPreviousSibling)
 {
   mFrame.ClearCachedValue();

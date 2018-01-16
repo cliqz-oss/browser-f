@@ -17,7 +17,7 @@ interface HTMLMediaElement : HTMLElement {
   readonly attribute MediaError? error;
 
   // network state
-  [CEReactions, SetterThrows]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, SetterThrows]
            attribute DOMString src;
   readonly attribute DOMString currentSrc;
 
@@ -108,11 +108,9 @@ partial interface HTMLMediaElement {
   Promise<DOMString> mozRequestDebugInfo();
 
   [Pref="media.test.dumpDebugInfo"]
-  void mozDumpDebugInfo();
+  Promise<void> mozDumpDebugInfo();
 
   attribute MediaStream? srcObject;
-  // TODO: remove prefixed version soon (1183495).
-  attribute MediaStream? mozSrcObject;
 
   attribute boolean mozPreservesPitch;
   readonly attribute boolean mozAutoplayEnabled;

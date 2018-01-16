@@ -35,12 +35,13 @@ struct CompileArgs;
 // LinkData contains all the metadata necessary to patch all the locations
 // that depend on the absolute address of a CodeSegment.
 //
-// LinkData is built incrementing by ModuleGenerator and then stored immutably
-// in Module.
+// LinkData is built incrementally by ModuleGenerator and then stored immutably
+// in Module. LinkData is distinct from Metadata in that LinkData is owned and
+// destroyed by the Module since it is not needed after instantiation; Metadata
+// is needed at runtime.
 
 struct LinkDataTierCacheablePod
 {
-    uint32_t functionCodeLength;
     uint32_t interruptOffset;
     uint32_t outOfBoundsOffset;
     uint32_t unalignedAccessOffset;
@@ -58,17 +59,8 @@ struct LinkDataTier : LinkDataTierCacheablePod
     const LinkDataTierCacheablePod& pod() const { return *this; }
 
     struct InternalLink {
-        enum Kind {
-            RawPointer,
-            CodeLabel,
-            InstructionImmediate
-        };
-        MOZ_INIT_OUTSIDE_CTOR uint32_t patchAtOffset;
-        MOZ_INIT_OUTSIDE_CTOR uint32_t targetOffset;
-
-        InternalLink() = default;
-        explicit InternalLink(Kind kind);
-        bool isRawPointerPatch();
+        uint32_t patchAtOffset;
+        uint32_t targetOffset;
     };
     typedef Vector<InternalLink, 0, SystemAllocPolicy> InternalLinkVector;
 
@@ -124,6 +116,8 @@ struct Tiering
     bool active;
 };
 
+typedef ExclusiveWaitableData<Tiering> ExclusiveTiering;
+
 // Module represents a compiled wasm module and primarily provides two
 // operations: instantiation and serialization. A Module can be instantiated any
 // number of times to produce new Instance objects. A Module can be serialized
@@ -148,7 +142,7 @@ class Module : public JS::WasmModule
     const DataSegmentVector dataSegments_;
     const ElemSegmentVector elemSegments_;
     const SharedBytes       bytecode_;
-    ExclusiveData<Tiering>  tiering_;
+    ExclusiveTiering        tiering_;
 
     // `codeIsBusy_` is set to false initially and then to true when `code_` is
     // already being used for an instance and can't be shared because it may be
@@ -226,21 +220,8 @@ class Module : public JS::WasmModule
 
     void startTier2(const CompileArgs& args);
     void finishTier2(UniqueLinkDataTier linkData2, UniqueMetadataTier metadata2,
-                     UniqueConstCodeSegment code2, ModuleEnvironment* env2);
-
-    // Wait until Ion-compiled code is available, which will be true either
-    // immediately (first-level compile was Ion and is already done), not at all
-    // (first-level compile was Baseline and there's not a second level), or
-    // later (ongoing second-level compilation).  Once this returns, one can use
-    // code().hasTier() to check code availability - there is no guarantee that
-    // Ion code will be available, but if it isn't then it never will.
-
-    void blockOnIonCompileFinished() const;
-
-    // Signal all waiters that are waiting on tier-2 compilation to be done that
-    // they should wake up.  They will be waiting in blockOnIonCompileFinished.
-
-    void unblockOnTier2GeneratorFinished(CompileMode newMode) const;
+                     UniqueCodeSegment code2, ModuleEnvironment* env2);
+    void blockOnTier2Complete() const;
 
     // JS API and JS::WasmModule implementation:
 

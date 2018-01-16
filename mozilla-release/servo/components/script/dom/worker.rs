@@ -9,9 +9,9 @@ use dom::bindings::codegen::Bindings::WorkerBinding;
 use dom::bindings::codegen::Bindings::WorkerBinding::WorkerMethods;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::{DomObject, reflect_dom_object};
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::bindings::structuredclone::StructuredCloneData;
 use dom::dedicatedworkerglobalscope::DedicatedWorkerGlobalScope;
@@ -36,12 +36,13 @@ pub type TrustedWorkerAddress = Trusted<Worker>;
 #[dom_struct]
 pub struct Worker {
     eventtarget: EventTarget,
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     /// Sender to the Receiver associated with the DedicatedWorkerGlobalScope
     /// this Worker created.
     sender: Sender<(TrustedWorkerAddress, WorkerScriptMsg)>,
+    #[ignore_malloc_size_of = "Arc"]
     closing: Arc<AtomicBool>,
-    #[ignore_heap_size_of = "Defined in rust-mozjs"]
+    #[ignore_malloc_size_of = "Defined in rust-mozjs"]
     runtime: Arc<Mutex<Option<SharedRt>>>,
     terminated: Cell<bool>,
 }
@@ -60,15 +61,15 @@ impl Worker {
 
     pub fn new(global: &GlobalScope,
                sender: Sender<(TrustedWorkerAddress, WorkerScriptMsg)>,
-               closing: Arc<AtomicBool>) -> Root<Worker> {
-        reflect_dom_object(box Worker::new_inherited(sender, closing),
+               closing: Arc<AtomicBool>) -> DomRoot<Worker> {
+        reflect_dom_object(Box::new(Worker::new_inherited(sender, closing)),
                            global,
                            WorkerBinding::Wrap)
     }
 
     // https://html.spec.whatwg.org/multipage/#dom-worker
     #[allow(unsafe_code)]
-    pub fn Constructor(global: &GlobalScope, script_url: DOMString) -> Fallible<Root<Worker>> {
+    pub fn Constructor(global: &GlobalScope, script_url: DOMString) -> Fallible<DomRoot<Worker>> {
         // Step 2-4.
         let worker_url = match global.api_base_url().join(&script_url) {
             Ok(url) => url,

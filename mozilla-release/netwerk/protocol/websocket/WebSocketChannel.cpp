@@ -25,7 +25,7 @@
 #include "nsIDNSRecord.h"
 #include "nsIDNSService.h"
 #include "nsIStreamConverterService.h"
-#include "nsIIOService2.h"
+#include "nsIIOService.h"
 #include "nsIProtocolProxyService.h"
 #include "nsIProxyInfo.h"
 #include "nsIProxiedChannel.h"
@@ -265,18 +265,14 @@ public:
         if (remainingDelay) {
           // reconnecting within delay interval: delay by remaining time
           nsresult rv;
-          ws->mReconnectDelayTimer =
-            do_CreateInstance("@mozilla.org/timer;1", &rv);
+          rv = NS_NewTimerWithCallback(getter_AddRefs(ws->mReconnectDelayTimer),
+                                       ws, remainingDelay, nsITimer::TYPE_ONE_SHOT);
           if (NS_SUCCEEDED(rv)) {
-            rv = ws->mReconnectDelayTimer->InitWithCallback(
-                          ws, remainingDelay, nsITimer::TYPE_ONE_SHOT);
-            if (NS_SUCCEEDED(rv)) {
-              LOG(("WebSocket: delaying websocket [this=%p] by %lu ms, changing"
-                   " state to CONNECTING_DELAYED", ws,
-                   (unsigned long)remainingDelay));
-              ws->mConnecting = CONNECTING_DELAYED;
-              return;
-            }
+            LOG(("WebSocket: delaying websocket [this=%p] by %lu ms, changing"
+                 " state to CONNECTING_DELAYED", ws,
+                 (unsigned long)remainingDelay));
+            ws->mConnecting = CONNECTING_DELAYED;
+            return;
           }
           // if timer fails (which is very unlikely), drop down to BeginOpen call
         } else if (fail->IsExpired(rightNow)) {
@@ -1051,13 +1047,6 @@ public:
   {
     MOZ_ASSERT(mMsgType == kMsgTypeStream, "Not a stream!");
 
-#ifdef DEBUG
-    // Make sure we got correct length from Blob
-    uint64_t bytes;
-    mMsg.pStream->Available(&bytes);
-    NS_ASSERTION(bytes == mLength, "Stream length != blob length!");
-#endif
-
     nsAutoPtr<nsCString> temp(new nsCString());
     nsresult rv = NS_ReadInputStreamToString(mMsg.pStream, *temp, mLength);
 
@@ -1328,12 +1317,11 @@ WebSocketChannel::OnNetworkChanged()
   if (!mPingTimer) {
     // The ping timer is only conditionally running already. If it wasn't
     // already created do it here.
-    nsresult rv;
-    mPingTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-    if (NS_FAILED(rv)) {
+    mPingTimer = NS_NewTimer();
+    if (!mPingTimer) {
       LOG(("WebSocket: unable to create ping timer!"));
       NS_WARNING("unable to create ping timer!");
-      return rv;
+      return NS_ERROR_OUT_OF_MEMORY;
     }
   }
   // Trigger the ping timeout asap to fire off a new ping. Wait just
@@ -1428,15 +1416,9 @@ WebSocketChannel::BeginOpenInternal()
   }
   mOpenedHttpChannel = 1;
 
-  mOpenTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-  if (NS_FAILED(rv)) {
-    LOG(("WebSocketChannel::BeginOpenInternal: cannot create open timer\n"));
-    AbortSession(NS_ERROR_UNEXPECTED);
-    return;
-  }
-
-  rv = mOpenTimer->InitWithCallback(this, mOpenTimeout,
-                                    nsITimer::TYPE_ONE_SHOT);
+  rv = NS_NewTimerWithCallback(getter_AddRefs(mOpenTimer),
+                               this, mOpenTimeout,
+                               nsITimer::TYPE_ONE_SHOT);
   if (NS_FAILED(rv)) {
     LOG(("WebSocketChannel::BeginOpenInternal: cannot initialize open "
          "timer\n"));
@@ -2135,11 +2117,10 @@ WebSocketChannel::PrimeNewOutgoingMessage()
       StopSession(mStopOnClose);
     } else {
       /* wait for reciprocal close from server */
-      mCloseTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-      if (NS_SUCCEEDED(rv)) {
-        mCloseTimer->InitWithCallback(this, mCloseTimeout,
-                                      nsITimer::TYPE_ONE_SHOT);
-      } else {
+      rv = NS_NewTimerWithCallback(getter_AddRefs(mCloseTimer),
+                                   this, mCloseTimeout,
+                                   nsITimer::TYPE_ONE_SHOT);
+      if (NS_FAILED(rv)) {
         StopSession(rv);
       }
     }
@@ -2450,11 +2431,10 @@ WebSocketChannel::StopSession(nsresult reason)
     LOG(("WebSocketChannel::StopSession: Wait for Server TCP close"));
 
     nsresult rv;
-    mLingeringCloseTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-    if (NS_SUCCEEDED(rv))
-      mLingeringCloseTimer->InitWithCallback(this, kLingeringCloseTimeout,
-                                             nsITimer::TYPE_ONE_SHOT);
-    else
+    rv = NS_NewTimerWithCallback(getter_AddRefs(mLingeringCloseTimer),
+                                 this, kLingeringCloseTimeout,
+                                 nsITimer::TYPE_ONE_SHOT);
+    if (NS_FAILED(rv))
       CleanupConnection();
   } else {
     CleanupConnection();
@@ -2563,7 +2543,7 @@ ParseWebSocketExtension(const nsACString& aExtension,
   nsCCharSeparatedTokenizer tokens(aExtension, ';');
 
   if (!tokens.hasMoreTokens() ||
-      !tokens.nextToken().Equals(NS_LITERAL_CSTRING("permessage-deflate"))) {
+      !tokens.nextToken().EqualsLiteral("permessage-deflate")) {
     LOG(("WebSocketChannel::ParseWebSocketExtension: "
          "HTTP Sec-WebSocket-Extensions negotiated unknown value %s\n",
          PromiseFlatCString(aExtension).get()));
@@ -3017,13 +2997,14 @@ WebSocketChannel::StartPinging()
   MOZ_ASSERT(!mPingTimer);
 
   nsresult rv;
-  mPingTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-  if (NS_FAILED(rv)) {
-    NS_WARNING("unable to create ping timer. Carrying on.");
-  } else {
+  rv = NS_NewTimerWithCallback(getter_AddRefs(mPingTimer),
+                               this, mPingInterval,
+                               nsITimer::TYPE_ONE_SHOT);
+  if (NS_SUCCEEDED(rv)) {
     LOG(("WebSocketChannel will generate ping after %d ms of receive silence\n",
          mPingInterval));
-    mPingTimer->InitWithCallback(this, mPingInterval, nsITimer::TYPE_ONE_SHOT);
+  } else {
+    NS_WARNING("unable to create ping timer. Carrying on.");
   }
 
   return NS_OK;
@@ -3487,15 +3468,9 @@ WebSocketChannel::AsyncOpen(nsIURI *aURI,
     return rv;
   }
 
-  nsCOMPtr<nsIIOService2> io2 = do_QueryInterface(ioService, &rv);
-  if (NS_FAILED(rv)) {
-    NS_WARNING("WebSocketChannel: unable to continue without ioservice2");
-    return rv;
-  }
-
   // Ideally we'd call newChannelFromURIWithLoadInfo here, but that doesn't
   // allow setting proxy uri/flags
-  rv = io2->NewChannelFromURIWithProxyFlags2(
+  rv = ioService->NewChannelFromURIWithProxyFlags2(
               localURI,
               mURI,
               nsIProtocolProxyService::RESOLVE_PREFER_HTTPS_PROXY |

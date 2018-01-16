@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -70,18 +71,18 @@ nsSVGForeignObjectFrame::Init(nsIContent*       aContent,
   }
 }
 
-void nsSVGForeignObjectFrame::DestroyFrom(nsIFrame* aDestructRoot)
+void nsSVGForeignObjectFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   // Only unregister if we registered in the first place:
   if (!(mState & NS_FRAME_IS_NONDISPLAY)) {
       nsSVGUtils::GetOuterSVGFrame(this)->UnregisterForeignObject(this);
   }
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nsresult
 nsSVGForeignObjectFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                          nsIAtom *aAttribute,
+                                          nsAtom *aAttribute,
                                           int32_t  aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None) {
@@ -439,7 +440,7 @@ nsSVGForeignObjectFrame::NotifySVGChanged(uint32_t aFlags)
   // PresShell and prevent it from reflowing us properly in future. Besides
   // that, nsSVGOuterSVGFrame::DidReflow will take care of reflowing us
   // synchronously, so there's no need.
-  if (needReflow && !PresContext()->PresShell()->IsReflowLocked()) {
+  if (needReflow && !PresShell()->IsReflowLocked()) {
     RequestReflow(nsIPresShell::eResize);
   }
 
@@ -502,7 +503,7 @@ void nsSVGForeignObjectFrame::RequestReflow(nsIPresShell::IntrinsicDirty aType)
   if (!kid)
     return;
 
-  PresContext()->PresShell()->FrameNeedsReflow(kid, aType, NS_FRAME_IS_DIRTY);
+  PresShell()->FrameNeedsReflow(kid, aType, NS_FRAME_IS_DIRTY);
 }
 
 void

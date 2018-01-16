@@ -11,7 +11,7 @@ const TEST_URL = URL_ROOT + "doc_markup_edit.html";
 /*eslint-disable */
 const LONG_ATTRIBUTE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-ABCDEFGHIJKLMNOPQRSTUVWXYZ-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ-ABCDEFGHIJKLMNOPQRSTUVWXYZ-ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const LONG_ATTRIBUTE_COLLAPSED = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-ABCDEFGHIJKLMNOPQRSTUVWXYZ-ABCDEF\u2026UVWXYZ-ABCDEFGHIJKLMNOPQRSTUVWXYZ-ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-/*eslint-enable */
+/* eslint-enable */
 
 add_task(function* () {
   let {inspector, testActor} = yield openInspectorForURL(TEST_URL);
@@ -26,10 +26,13 @@ function* testCollapsedLongAttribute(inspector, testActor) {
   info("Try to modify the collapsed long attribute, making sure it expands.");
 
   info("Adding test attributes to the node");
-  let onMutated = inspector.once("markupmutation");
+  let onMutation = inspector.once("markupmutation");
   yield testActor.setAttribute("#node24", "class", "");
+  yield onMutation;
+
+  onMutation = inspector.once("markupmutation");
   yield testActor.setAttribute("#node24", "data-long", LONG_ATTRIBUTE);
-  yield onMutated;
+  yield onMutation;
 
   yield assertAttributes("#node24", {
     id: "node24",

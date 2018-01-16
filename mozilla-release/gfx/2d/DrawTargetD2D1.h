@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -89,8 +90,7 @@ public:
   virtual void FillGlyphs(ScaledFont *aFont,
                           const GlyphBuffer &aBuffer,
                           const Pattern &aPattern,
-                          const DrawOptions &aOptions = DrawOptions(),
-                          const GlyphRenderingOptions *aRenderingOptions = nullptr) override;
+                          const DrawOptions &aOptions = DrawOptions()) override;
   virtual void Mask(const Pattern &aSource,
                     const Pattern &aMask,
                     const DrawOptions &aOptions = DrawOptions()) override;
@@ -280,6 +280,7 @@ private:
   // The latest snapshot of this surface. This needs to be told when this
   // target is modified. We keep it alive as a cache.
   RefPtr<SourceSurfaceD2D1> mSnapshot;
+  std::shared_ptr<Mutex> mSnapshotLock;
   // A list of targets we need to flush when we're modified.
   TargetSet mDependentTargets;
   // A list of targets which have this object in their mDependentTargets set
@@ -291,7 +292,7 @@ private:
   // this causes an infinite recursion inside D2D as it tries to resolve the bounds.
   // If we resolve the current command list before this happens
   // we can avoid the subsequent hang. (See bug 1293586)
-  bool mDidComplexBlendWithListInList;
+  uint32_t mComplexBlendsWithListInList;
 
   static StaticRefPtr<ID2D1Factory1> mFactory;
   // This value is uesed to verify if the DrawTarget is created by a stale device.

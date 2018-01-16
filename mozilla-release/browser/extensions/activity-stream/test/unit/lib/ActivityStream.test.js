@@ -13,7 +13,6 @@ describe("ActivityStream", () => {
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
     ({ActivityStream, PREFS_CONFIG} = injector({
-      "lib/LocalizationFeed.jsm": {LocalizationFeed: Fake},
       "lib/ManualMigration.jsm": {ManualMigration: Fake},
       "lib/NewTabInit.jsm": {NewTabInit: Fake},
       "lib/PlacesFeed.jsm": {PlacesFeed: Fake},
@@ -22,6 +21,7 @@ describe("ActivityStream", () => {
       "lib/SnippetsFeed.jsm": {SnippetsFeed: Fake},
       "lib/SystemTickFeed.jsm": {SystemTickFeed: Fake},
       "lib/TelemetryFeed.jsm": {TelemetryFeed: Fake},
+      "lib/FaviconFeed.jsm": {FaviconFeed: Fake},
       "lib/TopSitesFeed.jsm": {TopSitesFeed: Fake},
       "lib/TopStoriesFeed.jsm": {TopStoriesFeed: Fake},
       "lib/HighlightsFeed.jsm": {HighlightsFeed: Fake}
@@ -100,10 +100,6 @@ describe("ActivityStream", () => {
     });
   });
   describe("feeds", () => {
-    it("should create a Localization feed", () => {
-      const feed = as.feeds.get("feeds.localization")();
-      assert.instanceOf(feed, Fake);
-    });
     it("should create a NewTabInit feed", () => {
       const feed = as.feeds.get("feeds.newtabinit")();
       assert.instanceOf(feed, Fake);
@@ -151,6 +147,10 @@ describe("ActivityStream", () => {
     });
     it("should create a SystemTick feed", () => {
       const feed = as.feeds.get("feeds.systemtick")();
+      assert.instanceOf(feed, Fake);
+    });
+    it("should create a Favicon feed", () => {
+      const feed = as.feeds.get("feeds.favicon")();
       assert.instanceOf(feed, Fake);
     });
   });

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -260,6 +261,15 @@ VRDisplayOSVR::VRDisplayOSVR(OSVR_ClientContext* context,
     mDisplayInfo.mEyeTranslation[eye].x = eyePose.translation.data[0];
     mDisplayInfo.mEyeTranslation[eye].y = eyePose.translation.data[1];
     mDisplayInfo.mEyeTranslation[eye].z = eyePose.translation.data[2];
+
+    Matrix4x4 pose;
+    pose.SetRotationFromQuaternion(gfx::Quaternion(osvrQuatGetX(&eyePose.rotation),
+                                                   osvrQuatGetY(&eyePose.rotation),
+                                                   osvrQuatGetZ(&eyePose.rotation),
+                                                   osvrQuatGetW(&eyePose.rotation)));
+    pose.PreTranslate(eyePose.translation.data[0], eyePose.translation.data[1], eyePose.translation.data[2]);
+    pose.Invert();
+    mHeadToEye[eye] = pose;
   }
 }
 
@@ -287,7 +297,7 @@ VRDisplayOSVR::GetSensorState()
   //this usually goes into app's mainloop
   osvr_ClientUpdate(*m_ctx);
 
-  VRHMDSensorState result;
+  VRHMDSensorState result{};
   OSVR_TimeValue timestamp;
 
   OSVR_OrientationState orientation;
@@ -304,6 +314,9 @@ VRDisplayOSVR::GetSensorState()
     result.orientation[1] = orientation.data[2];
     result.orientation[2] = orientation.data[3];
     result.orientation[3] = orientation.data[0];
+  } else {
+    // default to an identity quaternion
+    result.orientation[3] = 1.0f;
   }
 
   OSVR_PositionState position;
@@ -315,13 +328,15 @@ VRDisplayOSVR::GetSensorState()
     result.position[2] = position.data[2];
   }
 
+  result.CalcViewMatrices(mHeadToEye);
+
   return result;
 }
 
 #if defined(XP_WIN)
 
 bool
-VRDisplayOSVR::SubmitFrame(TextureSourceD3D11* aSource,
+VRDisplayOSVR::SubmitFrame(ID3D11Texture2D* aSource,
   const IntSize& aSize,
   const gfx::Rect& aLeftEyeRect,
   const gfx::Rect& aRightEyeRect)
@@ -335,6 +350,17 @@ VRDisplayOSVR::SubmitFrame(TextureSourceD3D11* aSource,
 bool
 VRDisplayOSVR::SubmitFrame(MacIOSurface* aMacIOSurface,
                            const IntSize& aSize,
+                           const gfx::Rect& aLeftEyeRect,
+                           const gfx::Rect& aRightEyeRect)
+{
+  // XXX Add code to submit frame
+  return false;
+}
+
+#elif defined(MOZ_ANDROID_GOOGLE_VR)
+
+bool
+VRDisplayOSVR::SubmitFrame(const mozilla::layers::EGLImageDescriptor*,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect)
 {

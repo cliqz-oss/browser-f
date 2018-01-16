@@ -2,22 +2,37 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BorderRadius, ExtendMode, FontRenderMode, GlyphInstance, GradientStop};
-use api::{BuiltDisplayList, ColorF, ComplexClipRegion, DeviceIntRect, DeviceIntSize, DevicePoint};
-use api::{device_length, FontInstance, LayerVector2D, LineOrientation, LineStyle};
-use api::{GlyphKey, LayerToWorldTransform, TileOffset, YuvColorSpace, YuvFormat};
-use api::{ImageKey, ImageRendering, ItemRange, LayerPoint, LayerRect, LayerSize, TextShadow};
-use app_units::Au;
+use api::{BorderRadius, BuiltDisplayList, ColorF, ComplexClipRegion, DeviceIntRect};
+use api::{DevicePoint, ExtendMode, FontInstance, GlyphInstance, GlyphKey};
+use api::{GradientStop, ImageKey, ImageRendering, ItemRange, ItemTag, LayerPoint, LayerRect};
+use api::{ClipMode, LayerSize, LayerVector2D, LineOrientation, LineStyle};
+use api::{ClipAndScrollInfo, EdgeAaSegmentMask, TileOffset, YuvColorSpace, YuvFormat};
 use border::BorderCornerInstance;
-use clip::{ClipMode, ClipSourcesHandle, ClipStore};
-use euclid::Size2D;
+use clip::{ClipSourcesHandle, ClipStore, Geometry};
+use frame_builder::PrimitiveContext;
 use gpu_cache::{GpuBlockData, GpuCache, GpuCacheAddress, GpuCacheHandle, GpuDataRequest,
                 ToGpuBlocks};
-use render_task::{RenderTask, RenderTaskId, RenderTaskTree};
+use picture::PicturePrimitive;
+use render_task::{ClipWorkItem, ClipChainNode, RenderTask, RenderTaskId, RenderTaskTree};
 use renderer::MAX_VERTEX_TEXTURE_WIDTH;
 use resource_cache::{ImageProperties, ResourceCache};
 use std::{mem, usize};
-use util::{pack_as_float, recycle_vec, TransformedRect};
+use std::rc::Rc;
+use util::{pack_as_float, recycle_vec, MatrixHelpers, TransformedRect, TransformedRectKind};
+
+#[derive(Clone, Debug)]
+pub struct PrimitiveRun {
+    pub base_prim_index: PrimitiveIndex,
+    pub count: usize,
+    pub clip_and_scroll: ClipAndScrollInfo,
+}
+
+#[derive(Debug)]
+pub struct PrimitiveRunResult {
+    pub local_rect: LayerRect,
+    pub device_rect: DeviceIntRect,
+    pub visible_primitives: usize,
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct PrimitiveOpacity {
@@ -56,10 +71,10 @@ pub struct TexelRect {
 }
 
 impl TexelRect {
-    pub fn new(u0: u32, v0: u32, u1: u32, v1: u32) -> TexelRect {
+    pub fn new(u0: f32, v0: f32, u1: f32, v1: f32) -> TexelRect {
         TexelRect {
-            uv0: DevicePoint::new(u0 as f32, v0 as f32),
-            uv1: DevicePoint::new(u1 as f32, v1 as f32),
+            uv0: DevicePoint::new(u0, v0),
+            uv1: DevicePoint::new(u1, v1),
         }
     }
 
@@ -108,9 +123,9 @@ pub enum PrimitiveKind {
     AlignedGradient,
     AngleGradient,
     RadialGradient,
-    BoxShadow,
-    TextShadow,
     Line,
+    Picture,
+    Brush,
 }
 
 impl GpuCacheHandle {
@@ -144,17 +159,95 @@ pub struct PrimitiveMetadata {
     pub local_rect: LayerRect,
     pub local_clip_rect: LayerRect,
     pub is_backface_visible: bool,
+    pub screen_rect: Option<DeviceIntRect>,
+
+    /// A tag used to identify this primitive outside of WebRender. This is
+    /// used for returning useful data during hit testing.
+    pub tag: Option<ItemTag>,
+}
+
+#[derive(Debug,Clone,Copy)]
+pub enum RectangleContent {
+    Fill(ColorF),
+    Clear,
 }
 
 #[derive(Debug)]
-#[repr(C)]
 pub struct RectanglePrimitive {
-    pub color: ColorF,
+    pub content: RectangleContent,
+    pub edge_aa_segment_mask: EdgeAaSegmentMask,
 }
 
 impl ToGpuBlocks for RectanglePrimitive {
     fn write_gpu_blocks(&self, mut request: GpuDataRequest) {
-        request.push(self.color);
+        match &self.content {
+            &RectangleContent::Fill(ref color) => {
+                request.push(color.premultiplied());
+            }
+            &RectangleContent::Clear => {
+                // Opaque black with operator dest out
+                request.push(ColorF::new(0.0, 0.0, 0.0, 1.0));
+            }
+        }
+        request.extend_from_slice(&[GpuBlockData {
+            data: [self.edge_aa_segment_mask.bits() as f32, 0.0, 0.0, 0.0],
+        }]);
+    }
+}
+
+#[derive(Debug)]
+pub enum BrushMaskKind {
+    //Rect,         // TODO(gw): Optimization opportunity for masks with 0 border radii.
+    Corner(LayerSize),
+    RoundedRect(LayerRect, BorderRadius),
+}
+
+#[derive(Debug)]
+pub enum BrushKind {
+    Mask {
+        clip_mode: ClipMode,
+        kind: BrushMaskKind,
+    }
+}
+
+#[derive(Debug)]
+pub struct BrushPrimitive {
+    pub kind: BrushKind,
+}
+
+impl ToGpuBlocks for BrushPrimitive {
+    fn write_gpu_blocks(&self, mut request: GpuDataRequest) {
+        match self.kind {
+            BrushKind::Mask { clip_mode, kind: BrushMaskKind::Corner(radius) } => {
+                request.push([
+                    radius.width,
+                    radius.height,
+                    clip_mode as u32 as f32,
+                    0.0,
+                ]);
+            }
+            BrushKind::Mask { clip_mode, kind: BrushMaskKind::RoundedRect(rect, radii) } => {
+                request.push([
+                    clip_mode as u32 as f32,
+                    0.0,
+                    0.0,
+                    0.0
+                ]);
+                request.push(rect);
+                request.push([
+                    radii.top_left.width,
+                    radii.top_left.height,
+                    radii.top_right.width,
+                    radii.top_right.height,
+                ]);
+                request.push([
+                    radii.bottom_right.width,
+                    radii.bottom_right.height,
+                    radii.bottom_left.width,
+                    radii.bottom_left.height,
+                ]);
+            }
+        }
     }
 }
 
@@ -162,6 +255,7 @@ impl ToGpuBlocks for RectanglePrimitive {
 #[repr(C)]
 pub struct LinePrimitive {
     pub color: ColorF,
+    pub wavy_line_thickness: f32,
     pub style: LineStyle,
     pub orientation: LineOrientation,
 }
@@ -170,9 +264,9 @@ impl ToGpuBlocks for LinePrimitive {
     fn write_gpu_blocks(&self, mut request: GpuDataRequest) {
         request.push(self.color);
         request.push([
+            self.wavy_line_thickness,
             pack_as_float(self.style as u32),
             pack_as_float(self.orientation as u32),
-            0.0,
             0.0,
         ]);
     }
@@ -221,46 +315,6 @@ pub struct BorderPrimitiveCpu {
 impl ToGpuBlocks for BorderPrimitiveCpu {
     fn write_gpu_blocks(&self, mut request: GpuDataRequest) {
         request.extend_from_slice(&self.gpu_blocks);
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct BoxShadowPrimitiveCacheKey {
-    pub shadow_rect_size: Size2D<Au>,
-    pub border_radius: Au,
-    pub blur_radius: Au,
-    pub inverted: bool,
-}
-
-#[derive(Debug)]
-pub struct BoxShadowPrimitiveCpu {
-    // todo(gw): generate on demand
-    // gpu data
-    pub src_rect: LayerRect,
-    pub bs_rect: LayerRect,
-    pub color: ColorF,
-    pub border_radius: f32,
-    pub edge_size: f32,
-    pub blur_radius: f32,
-    pub inverted: f32,
-    pub rects: Vec<LayerRect>,
-    pub render_task_id: Option<RenderTaskId>,
-}
-
-impl ToGpuBlocks for BoxShadowPrimitiveCpu {
-    fn write_gpu_blocks(&self, mut request: GpuDataRequest) {
-        request.push(self.src_rect);
-        request.push(self.bs_rect);
-        request.push(self.color);
-        request.push([
-            self.border_radius,
-            self.edge_size,
-            self.blur_radius,
-            self.inverted,
-        ]);
-        for &rect in &self.rects {
-            request.push(rect);
-        }
     }
 }
 
@@ -508,13 +562,6 @@ impl RadialGradientPrimitiveCpu {
     }
 }
 
-#[derive(Debug)]
-pub struct TextShadowPrimitiveCpu {
-    pub shadow: TextShadow,
-    pub primitives: Vec<PrimitiveIndex>,
-    pub render_task_id: Option<RenderTaskId>,
-}
-
 #[derive(Debug, Clone)]
 pub struct TextRunPrimitiveCpu {
     pub font: FontInstance,
@@ -523,52 +570,39 @@ pub struct TextRunPrimitiveCpu {
     pub glyph_count: usize,
     pub glyph_keys: Vec<GlyphKey>,
     pub glyph_gpu_blocks: Vec<GpuBlockData>,
-    pub shadow_render_mode: FontRenderMode,
-    pub color: ColorF,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum TextRunMode {
-    Normal,
-    Shadow,
-}
 
 impl TextRunPrimitiveCpu {
+    pub fn get_font(&self, device_pixel_ratio: f32) -> FontInstance {
+        let mut font = self.font.clone();
+        font.size = font.size.scale_by(device_pixel_ratio);
+        font
+    }
+
     fn prepare_for_render(
         &mut self,
         resource_cache: &mut ResourceCache,
         device_pixel_ratio: f32,
         display_list: &BuiltDisplayList,
-        run_mode: TextRunMode,
         gpu_cache: &mut GpuCache,
     ) {
-        let mut font = self.font.clone();
-        font.size = font.size.scale_by(device_pixel_ratio);
-        match run_mode {
-            TextRunMode::Shadow => {
-                font.render_mode = self.shadow_render_mode;
-            }
-            TextRunMode::Normal => {}
-        }
-
-        if run_mode == TextRunMode::Shadow {
-            font.render_mode = self.shadow_render_mode;
-        }
+        let font = self.get_font(device_pixel_ratio);
 
         // Cache the glyph positions, if not in the cache already.
         // TODO(gw): In the future, remove `glyph_instances`
         //           completely, and just reference the glyphs
         //           directly from the display list.
         if self.glyph_keys.is_empty() {
+            let subpx_dir = font.subpx_dir.limit_by(font.render_mode);
             let src_glyphs = display_list.get(self.glyph_range);
 
             // TODO(gw): If we support chunks() on AuxIter
             //           in the future, this code below could
             //           be much simpler...
             let mut gpu_block = GpuBlockData::empty();
-
             for (i, src) in src_glyphs.enumerate() {
-                let key = GlyphKey::new(src.index, src.point, font.render_mode, font.subpx_dir);
+                let key = GlyphKey::new(src.index, src.point, font.render_mode, subpx_dir);
                 self.glyph_keys.push(key);
 
                 // Two glyphs are packed per GPU block.
@@ -594,11 +628,12 @@ impl TextRunPrimitiveCpu {
     }
 
     fn write_gpu_blocks(&self, request: &mut GpuDataRequest) {
-        request.push(self.color);
+        request.push(ColorF::from(self.font.color).premultiplied());
+        request.push(ColorF::from(self.font.bg_color));
         request.push([
             self.offset.x,
             self.offset.y,
-            self.font.subpx_dir as u32 as f32,
+            self.font.subpx_dir.limit_by(self.font.render_mode) as u32 as f32,
             0.0,
         ]);
         request.extend_from_slice(&self.glyph_gpu_blocks);
@@ -800,24 +835,23 @@ pub enum PrimitiveContainer {
     AlignedGradient(GradientPrimitiveCpu),
     AngleGradient(GradientPrimitiveCpu),
     RadialGradient(RadialGradientPrimitiveCpu),
-    BoxShadow(BoxShadowPrimitiveCpu),
-    TextShadow(TextShadowPrimitiveCpu),
+    Picture(PicturePrimitive),
     Line(LinePrimitive),
+    Brush(BrushPrimitive),
 }
 
 pub struct PrimitiveStore {
     /// CPU side information only.
-    pub cpu_bounding_rects: Vec<Option<DeviceIntRect>>,
     pub cpu_rectangles: Vec<RectanglePrimitive>,
+    pub cpu_brushes: Vec<BrushPrimitive>,
     pub cpu_text_runs: Vec<TextRunPrimitiveCpu>,
-    pub cpu_text_shadows: Vec<TextShadowPrimitiveCpu>,
+    pub cpu_pictures: Vec<PicturePrimitive>,
     pub cpu_images: Vec<ImagePrimitiveCpu>,
     pub cpu_yuv_images: Vec<YuvImagePrimitiveCpu>,
     pub cpu_gradients: Vec<GradientPrimitiveCpu>,
     pub cpu_radial_gradients: Vec<RadialGradientPrimitiveCpu>,
     pub cpu_metadata: Vec<PrimitiveMetadata>,
     pub cpu_borders: Vec<BorderPrimitiveCpu>,
-    pub cpu_box_shadows: Vec<BoxShadowPrimitiveCpu>,
     pub cpu_lines: Vec<LinePrimitive>,
 }
 
@@ -826,15 +860,14 @@ impl PrimitiveStore {
         PrimitiveStore {
             cpu_metadata: Vec::new(),
             cpu_rectangles: Vec::new(),
-            cpu_bounding_rects: Vec::new(),
+            cpu_brushes: Vec::new(),
             cpu_text_runs: Vec::new(),
-            cpu_text_shadows: Vec::new(),
+            cpu_pictures: Vec::new(),
             cpu_images: Vec::new(),
             cpu_yuv_images: Vec::new(),
             cpu_gradients: Vec::new(),
             cpu_radial_gradients: Vec::new(),
             cpu_borders: Vec::new(),
-            cpu_box_shadows: Vec::new(),
             cpu_lines: Vec::new(),
         }
     }
@@ -843,15 +876,14 @@ impl PrimitiveStore {
         PrimitiveStore {
             cpu_metadata: recycle_vec(self.cpu_metadata),
             cpu_rectangles: recycle_vec(self.cpu_rectangles),
-            cpu_bounding_rects: recycle_vec(self.cpu_bounding_rects),
+            cpu_brushes: recycle_vec(self.cpu_brushes),
             cpu_text_runs: recycle_vec(self.cpu_text_runs),
-            cpu_text_shadows: recycle_vec(self.cpu_text_shadows),
+            cpu_pictures: recycle_vec(self.cpu_pictures),
             cpu_images: recycle_vec(self.cpu_images),
             cpu_yuv_images: recycle_vec(self.cpu_yuv_images),
             cpu_gradients: recycle_vec(self.cpu_gradients),
             cpu_radial_gradients: recycle_vec(self.cpu_radial_gradients),
             cpu_borders: recycle_vec(self.cpu_borders),
-            cpu_box_shadows: recycle_vec(self.cpu_box_shadows),
             cpu_lines: recycle_vec(self.cpu_lines),
         }
     }
@@ -862,40 +894,62 @@ impl PrimitiveStore {
         local_clip_rect: &LayerRect,
         is_backface_visible: bool,
         clip_sources: ClipSourcesHandle,
+        tag: Option<ItemTag>,
         container: PrimitiveContainer,
     ) -> PrimitiveIndex {
         let prim_index = self.cpu_metadata.len();
-        self.cpu_bounding_rects.push(None);
+
+        let base_metadata = PrimitiveMetadata {
+            clip_sources,
+            gpu_location: GpuCacheHandle::new(),
+            clip_task_id: None,
+            local_rect: *local_rect,
+            local_clip_rect: *local_clip_rect,
+            is_backface_visible: is_backface_visible,
+            screen_rect: None,
+            tag,
+            opacity: PrimitiveOpacity::translucent(),
+            prim_kind: PrimitiveKind::Rectangle,
+            cpu_prim_index: SpecificPrimitiveIndex(0),
+        };
 
         let metadata = match container {
             PrimitiveContainer::Rectangle(rect) => {
+                let opacity = match &rect.content {
+                    &RectangleContent::Fill(ref color) => {
+                        PrimitiveOpacity::from_alpha(color.a)
+                    },
+                    &RectangleContent::Clear => PrimitiveOpacity::opaque()
+                };
                 let metadata = PrimitiveMetadata {
-                    opacity: PrimitiveOpacity::from_alpha(rect.color.a),
-                    clip_sources,
+                    opacity,
                     prim_kind: PrimitiveKind::Rectangle,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_rectangles.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_rectangles.push(rect);
 
                 metadata
             }
+            PrimitiveContainer::Brush(brush) => {
+                let metadata = PrimitiveMetadata {
+                    opacity: PrimitiveOpacity::translucent(),
+                    prim_kind: PrimitiveKind::Brush,
+                    cpu_prim_index: SpecificPrimitiveIndex(self.cpu_brushes.len()),
+                    ..base_metadata
+                };
+
+                self.cpu_brushes.push(brush);
+
+                metadata
+            }
             PrimitiveContainer::Line(line) => {
                 let metadata = PrimitiveMetadata {
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::Line,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_lines.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_lines.push(line);
@@ -904,46 +958,31 @@ impl PrimitiveStore {
             PrimitiveContainer::TextRun(text_cpu) => {
                 let metadata = PrimitiveMetadata {
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::TextRun,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_text_runs.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_text_runs.push(text_cpu);
                 metadata
             }
-            PrimitiveContainer::TextShadow(text_shadow) => {
+            PrimitiveContainer::Picture(picture) => {
                 let metadata = PrimitiveMetadata {
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
-                    prim_kind: PrimitiveKind::TextShadow,
-                    cpu_prim_index: SpecificPrimitiveIndex(self.cpu_text_shadows.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    prim_kind: PrimitiveKind::Picture,
+                    cpu_prim_index: SpecificPrimitiveIndex(self.cpu_pictures.len()),
+                    ..base_metadata
                 };
 
-                self.cpu_text_shadows.push(text_shadow);
+                self.cpu_pictures.push(picture);
                 metadata
             }
             PrimitiveContainer::Image(image_cpu) => {
                 let metadata = PrimitiveMetadata {
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::Image,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_images.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_images.push(image_cpu);
@@ -952,14 +991,9 @@ impl PrimitiveStore {
             PrimitiveContainer::YuvImage(image_cpu) => {
                 let metadata = PrimitiveMetadata {
                     opacity: PrimitiveOpacity::opaque(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::YuvImage,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_yuv_images.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_yuv_images.push(image_cpu);
@@ -968,14 +1002,9 @@ impl PrimitiveStore {
             PrimitiveContainer::Border(border_cpu) => {
                 let metadata = PrimitiveMetadata {
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::Border,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_borders.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_borders.push(border_cpu);
@@ -984,14 +1013,9 @@ impl PrimitiveStore {
             PrimitiveContainer::AlignedGradient(gradient_cpu) => {
                 let metadata = PrimitiveMetadata {
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::AlignedGradient,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_gradients.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_gradients.push(gradient_cpu);
@@ -1001,14 +1025,9 @@ impl PrimitiveStore {
                 let metadata = PrimitiveMetadata {
                     // TODO: calculate if the gradient is actually opaque
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::AngleGradient,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_gradients.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_gradients.push(gradient_cpu);
@@ -1018,33 +1037,12 @@ impl PrimitiveStore {
                 let metadata = PrimitiveMetadata {
                     // TODO: calculate if the gradient is actually opaque
                     opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
                     prim_kind: PrimitiveKind::RadialGradient,
                     cpu_prim_index: SpecificPrimitiveIndex(self.cpu_radial_gradients.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
+                    ..base_metadata
                 };
 
                 self.cpu_radial_gradients.push(radial_gradient_cpu);
-                metadata
-            }
-            PrimitiveContainer::BoxShadow(box_shadow) => {
-                let metadata = PrimitiveMetadata {
-                    opacity: PrimitiveOpacity::translucent(),
-                    clip_sources,
-                    prim_kind: PrimitiveKind::BoxShadow,
-                    cpu_prim_index: SpecificPrimitiveIndex(self.cpu_box_shadows.len()),
-                    gpu_location: GpuCacheHandle::new(),
-                    clip_task_id: None,
-                    local_rect: *local_rect,
-                    local_clip_rect: *local_clip_rect,
-                    is_backface_visible: is_backface_visible,
-                };
-
-                self.cpu_box_shadows.push(box_shadow);
                 metadata
             }
         };
@@ -1062,47 +1060,15 @@ impl PrimitiveStore {
         self.cpu_metadata.len()
     }
 
-    pub fn build_bounding_rect(
-        &mut self,
-        prim_index: PrimitiveIndex,
-        screen_rect: &DeviceIntRect,
-        layer_transform: &LayerToWorldTransform,
-        layer_combined_local_clip_rect: &LayerRect,
-        device_pixel_ratio: f32,
-    ) -> Option<(LayerRect, DeviceIntRect)> {
-        let metadata = &self.cpu_metadata[prim_index.0];
-
-        if !metadata.is_backface_visible && layer_transform.is_backface_visible() {
-            return None;
-        }
-
-        let local_rect = metadata
-            .local_rect
-            .intersection(&metadata.local_clip_rect)
-            .and_then(|rect| rect.intersection(layer_combined_local_clip_rect));
-
-        let bounding_rect = local_rect.and_then(|local_rect| {
-            let xf_rect = TransformedRect::new(&local_rect, layer_transform, device_pixel_ratio);
-            xf_rect.bounding_rect.intersection(screen_rect)
-        });
-
-        self.cpu_bounding_rects[prim_index.0] = bounding_rect;
-        bounding_rect.map(|screen_bound| (local_rect.unwrap(), screen_bound))
-    }
-
     /// Add any task dependencies for this primitive to the provided task.
     pub fn add_render_tasks_for_prim(&self, prim_index: PrimitiveIndex, task: &mut RenderTask) {
         // Add any dynamic render tasks needed to render this primitive
         let metadata = &self.cpu_metadata[prim_index.0];
 
         let render_task_id = match metadata.prim_kind {
-            PrimitiveKind::BoxShadow => {
-                let box_shadow = &self.cpu_box_shadows[metadata.cpu_prim_index.0];
-                box_shadow.render_task_id
-            }
-            PrimitiveKind::TextShadow => {
-                let text_shadow = &self.cpu_text_shadows[metadata.cpu_prim_index.0];
-                text_shadow.render_task_id
+            PrimitiveKind::Picture => {
+                let picture = &self.cpu_pictures[metadata.cpu_prim_index.0];
+                picture.render_task_id
             }
             PrimitiveKind::Rectangle |
             PrimitiveKind::TextRun |
@@ -1112,7 +1078,8 @@ impl PrimitiveStore {
             PrimitiveKind::Border |
             PrimitiveKind::AngleGradient |
             PrimitiveKind::RadialGradient |
-            PrimitiveKind::Line => None,
+            PrimitiveKind::Line |
+            PrimitiveKind::Brush => None,
         };
 
         if let Some(render_task_id) = render_task_id {
@@ -1124,121 +1091,36 @@ impl PrimitiveStore {
         }
     }
 
-    /// Returns true if the bounding box needs to be updated.
-    pub fn prepare_prim_for_render(
+    fn prepare_prim_for_render_inner(
         &mut self,
         prim_index: PrimitiveIndex,
+        prim_context: &PrimitiveContext,
         resource_cache: &mut ResourceCache,
         gpu_cache: &mut GpuCache,
-        layer_transform: &LayerToWorldTransform,
-        device_pixel_ratio: f32,
-        display_list: &BuiltDisplayList,
-        text_run_mode: TextRunMode,
         render_tasks: &mut RenderTaskTree,
-        clip_store: &mut ClipStore,
-    ) -> &mut PrimitiveMetadata {
-        let (prim_kind, cpu_prim_index) = {
-            let metadata = &self.cpu_metadata[prim_index.0];
-            (metadata.prim_kind, metadata.cpu_prim_index)
-        };
-
-        // Recurse into any sub primitives and prepare them for rendering first.
-        // TODO(gw): This code is a bit hacky to work around the borrow checker.
-        //           Specifically, the clone() below on the primitive list for
-        //           text shadow primitives. Consider restructuring this code to
-        //           avoid borrow checker issues.
-        if prim_kind == PrimitiveKind::TextShadow {
-            for sub_prim_index in self.cpu_text_shadows[cpu_prim_index.0].primitives.clone() {
-                self.prepare_prim_for_render(
-                    sub_prim_index,
-                    resource_cache,
-                    gpu_cache,
-                    layer_transform,
-                    device_pixel_ratio,
-                    display_list,
-                    TextRunMode::Shadow,
-                    render_tasks,
-                    clip_store,
-                );
-            }
-        }
-
+    ) {
         let metadata = &mut self.cpu_metadata[prim_index.0];
-        clip_store.get_mut(&metadata.clip_sources).update(
-            layer_transform,
-            gpu_cache,
-            resource_cache,
-            device_pixel_ratio,
-        );
-
         match metadata.prim_kind {
             PrimitiveKind::Rectangle | PrimitiveKind::Border | PrimitiveKind::Line => {}
-            PrimitiveKind::BoxShadow => {
-                // TODO(gw): Account for zoom factor!
-                // Here, we calculate the size of the patch required in order
-                // to create the box shadow corner. First, scale it by the
-                // device pixel ratio since the cache shader expects vertices
-                // in device space. The shader adds a 1-pixel border around
-                // the patch, in order to prevent bilinear filter artifacts as
-                // the patch is clamped / mirrored across the box shadow rect.
-                let box_shadow = &mut self.cpu_box_shadows[cpu_prim_index.0];
-                let edge_size = box_shadow.edge_size.ceil() * device_pixel_ratio;
-                let edge_size = edge_size as i32 + 2; // Account for bilinear filtering
-                let cache_size = DeviceIntSize::new(edge_size, edge_size);
-
-                let cache_key = BoxShadowPrimitiveCacheKey {
-                    blur_radius: Au::from_f32_px(box_shadow.blur_radius),
-                    border_radius: Au::from_f32_px(box_shadow.border_radius),
-                    inverted: box_shadow.inverted != 0.0,
-                    shadow_rect_size: Size2D::new(
-                        Au::from_f32_px(box_shadow.bs_rect.size.width),
-                        Au::from_f32_px(box_shadow.bs_rect.size.height),
-                    ),
-                };
-
-                // Create a render task for this box shadow primitive. This renders a small
-                // portion of the box shadow to a render target. That portion is then
-                // stretched over the actual primitive rect by the box shadow primitive
-                // shader, to reduce the number of pixels that the expensive box
-                // shadow shader needs to run on.
-                // TODO(gw): In the future, we can probably merge the box shadow
-                // primitive (stretch) shader with the generic cached primitive shader.
-                let render_task = RenderTask::new_box_shadow(cache_key, cache_size, prim_index);
-                let render_task_id = render_tasks.add(render_task);
-
-                box_shadow.render_task_id = Some(render_task_id);
-            }
-            PrimitiveKind::TextShadow => {
-                let shadow = &mut self.cpu_text_shadows[cpu_prim_index.0];
-
-                // This is a text-shadow element. Create a render task that will
-                // render the text run to a target, and then apply a gaussian
-                // blur to that text run in order to build the actual primitive
-                // which will be blitted to the framebuffer.
-                let cache_width =
-                    (metadata.local_rect.size.width * device_pixel_ratio).ceil() as i32;
-                let cache_height =
-                    (metadata.local_rect.size.height * device_pixel_ratio).ceil() as i32;
-                let cache_size = DeviceIntSize::new(cache_width, cache_height);
-                let blur_radius = device_length(shadow.shadow.blur_radius, device_pixel_ratio);
-                let prim_cache_task = RenderTask::new_prim_cache(cache_size, prim_index);
-                let prim_cache_task_id = render_tasks.add(prim_cache_task);
-                let render_task =
-                    RenderTask::new_blur(blur_radius, prim_cache_task_id, render_tasks);
-                shadow.render_task_id = Some(render_tasks.add(render_task));
+            PrimitiveKind::Picture => {
+                self.cpu_pictures[metadata.cpu_prim_index.0]
+                    .prepare_for_render(
+                        prim_index,
+                        prim_context,
+                        render_tasks
+                    );
             }
             PrimitiveKind::TextRun => {
-                let text = &mut self.cpu_text_runs[cpu_prim_index.0];
+                let text = &mut self.cpu_text_runs[metadata.cpu_prim_index.0];
                 text.prepare_for_render(
                     resource_cache,
-                    device_pixel_ratio,
-                    display_list,
-                    text_run_mode,
+                    prim_context.device_pixel_ratio,
+                    prim_context.display_list,
                     gpu_cache,
                 );
             }
             PrimitiveKind::Image => {
-                let image_cpu = &mut self.cpu_images[cpu_prim_index.0];
+                let image_cpu = &mut self.cpu_images[metadata.cpu_prim_index.0];
 
                 resource_cache.request_image(
                     image_cpu.image_key,
@@ -1260,7 +1142,7 @@ impl PrimitiveStore {
                 }
             }
             PrimitiveKind::YuvImage => {
-                let image_cpu = &mut self.cpu_yuv_images[cpu_prim_index.0];
+                let image_cpu = &mut self.cpu_yuv_images[metadata.cpu_prim_index.0];
 
                 let channel_num = image_cpu.format.get_plane_num();
                 debug_assert!(channel_num <= 3);
@@ -1275,7 +1157,8 @@ impl PrimitiveStore {
             }
             PrimitiveKind::AlignedGradient |
             PrimitiveKind::AngleGradient |
-            PrimitiveKind::RadialGradient => {}
+            PrimitiveKind::RadialGradient |
+            PrimitiveKind::Brush => {}
         }
 
         // Mark this GPU resource as required for this frame.
@@ -1285,7 +1168,7 @@ impl PrimitiveStore {
 
             match metadata.prim_kind {
                 PrimitiveKind::Rectangle => {
-                    let rect = &self.cpu_rectangles[cpu_prim_index.0];
+                    let rect = &self.cpu_rectangles[metadata.cpu_prim_index.0];
                     rect.write_gpu_blocks(request);
                 }
                 PrimitiveKind::Line => {
@@ -1293,54 +1176,250 @@ impl PrimitiveStore {
                     line.write_gpu_blocks(request);
                 }
                 PrimitiveKind::Border => {
-                    let border = &self.cpu_borders[cpu_prim_index.0];
+                    let border = &self.cpu_borders[metadata.cpu_prim_index.0];
                     border.write_gpu_blocks(request);
                 }
-                PrimitiveKind::BoxShadow => {
-                    let box_shadow = &self.cpu_box_shadows[cpu_prim_index.0];
-                    box_shadow.write_gpu_blocks(request);
-                }
                 PrimitiveKind::Image => {
-                    let image = &self.cpu_images[cpu_prim_index.0];
+                    let image = &self.cpu_images[metadata.cpu_prim_index.0];
                     image.write_gpu_blocks(request);
                 }
                 PrimitiveKind::YuvImage => {
-                    let yuv_image = &self.cpu_yuv_images[cpu_prim_index.0];
+                    let yuv_image = &self.cpu_yuv_images[metadata.cpu_prim_index.0];
                     yuv_image.write_gpu_blocks(request);
                 }
                 PrimitiveKind::AlignedGradient => {
-                    let gradient = &self.cpu_gradients[cpu_prim_index.0];
-                    metadata.opacity = gradient.build_gpu_blocks_for_aligned(display_list, request);
+                    let gradient = &self.cpu_gradients[metadata.cpu_prim_index.0];
+                    metadata.opacity = gradient.build_gpu_blocks_for_aligned(prim_context.display_list, request);
                 }
                 PrimitiveKind::AngleGradient => {
-                    let gradient = &self.cpu_gradients[cpu_prim_index.0];
-                    gradient.build_gpu_blocks_for_angle_radial(display_list, request);
+                    let gradient = &self.cpu_gradients[metadata.cpu_prim_index.0];
+                    gradient.build_gpu_blocks_for_angle_radial(prim_context.display_list, request);
                 }
                 PrimitiveKind::RadialGradient => {
-                    let gradient = &self.cpu_radial_gradients[cpu_prim_index.0];
-                    gradient.build_gpu_blocks_for_angle_radial(display_list, request);
+                    let gradient = &self.cpu_radial_gradients[metadata.cpu_prim_index.0];
+                    gradient.build_gpu_blocks_for_angle_radial(prim_context.display_list, request);
                 }
                 PrimitiveKind::TextRun => {
-                    let text = &self.cpu_text_runs[cpu_prim_index.0];
+                    let text = &self.cpu_text_runs[metadata.cpu_prim_index.0];
                     text.write_gpu_blocks(&mut request);
                 }
-                PrimitiveKind::TextShadow => {
-                    let prim = &self.cpu_text_shadows[cpu_prim_index.0];
-                    request.push(prim.shadow.color);
-                    request.push([
-                        prim.shadow.offset.x,
-                        prim.shadow.offset.y,
-                        prim.shadow.blur_radius,
-                        0.0,
-                    ]);
+                PrimitiveKind::Picture => {
+                    self.cpu_pictures[metadata.cpu_prim_index.0]
+                        .write_gpu_blocks(request);
+                }
+                PrimitiveKind::Brush => {
+                    let brush = &self.cpu_brushes[metadata.cpu_prim_index.0];
+                    brush.write_gpu_blocks(request);
                 }
             }
         }
+    }
 
-        metadata
+    fn update_clip_task(
+        &mut self,
+        prim_index: PrimitiveIndex,
+        prim_context: &PrimitiveContext,
+        prim_screen_rect: DeviceIntRect,
+        resource_cache: &mut ResourceCache,
+        gpu_cache: &mut GpuCache,
+        render_tasks: &mut RenderTaskTree,
+        clip_store: &mut ClipStore,
+    ) -> bool {
+        let metadata = &mut self.cpu_metadata[prim_index.0];
+        let transform = &prim_context.scroll_node.world_content_transform;
+
+        clip_store.get_mut(&metadata.clip_sources).update(
+            transform,
+            gpu_cache,
+            resource_cache,
+            prim_context.device_pixel_ratio,
+        );
+
+        // Try to create a mask if we may need to.
+        let prim_clips = clip_store.get(&metadata.clip_sources);
+        let is_axis_aligned = transform.transform_kind() == TransformedRectKind::AxisAligned;
+
+        let clip_task = if prim_context.clip_node.clip_chain_node.is_some() || prim_clips.is_masking() {
+            // Take into account the actual clip info of the primitive, and
+            // mutate the current bounds accordingly.
+            let mask_rect = match prim_clips.bounds.outer {
+                Some(ref outer) => match prim_screen_rect.intersection(&outer.device_rect) {
+                    Some(rect) => rect,
+                    None => {
+                        metadata.screen_rect = None;
+                        return false;
+                    }
+                },
+                _ => prim_screen_rect,
+            };
+
+            let extra_clip = if prim_clips.is_masking() {
+                Some(Rc::new(ClipChainNode {
+                    work_item: ClipWorkItem {
+                        scroll_node_id: prim_context.scroll_node.id,
+                        clip_sources: metadata.clip_sources.weak(),
+                        coordinate_system_id: prim_context.scroll_node.coordinate_system_id,
+                    },
+                    prev: None,
+                }))
+            } else {
+                None
+            };
+
+            RenderTask::new_mask(
+                None,
+                mask_rect,
+                prim_context.clip_node.clip_chain_node.clone(),
+                extra_clip,
+                prim_screen_rect,
+                clip_store,
+                is_axis_aligned,
+                prim_context.scroll_node.coordinate_system_id,
+            )
+        } else {
+            None
+        };
+
+        metadata.clip_task_id = clip_task.map(|clip_task| render_tasks.add(clip_task));
+        true
+    }
+
+    pub fn prepare_prim_for_render(
+        &mut self,
+        prim_index: PrimitiveIndex,
+        prim_context: &PrimitiveContext,
+        resource_cache: &mut ResourceCache,
+        gpu_cache: &mut GpuCache,
+        render_tasks: &mut RenderTaskTree,
+        clip_store: &mut ClipStore,
+    ) -> Option<Geometry> {
+        let (geometry, dependent_primitives) = {
+            let metadata = &mut self.cpu_metadata[prim_index.0];
+            metadata.screen_rect = None;
+
+            if metadata.local_rect.size.width <= 0.0 ||
+               metadata.local_rect.size.height <= 0.0 {
+                warn!("invalid primitive rect {:?}", metadata.local_rect);
+                return None;
+            }
+
+            if !metadata.is_backface_visible &&
+               prim_context.scroll_node.world_content_transform.is_backface_visible() {
+                return None;
+            }
+
+            let local_rect = metadata
+                .local_rect
+                .intersection(&metadata.local_clip_rect);
+
+            let local_rect = match local_rect {
+                Some(local_rect) => local_rect,
+                None => return None,
+            };
+
+            let xf_rect = TransformedRect::new(
+                &local_rect,
+                &prim_context.scroll_node.world_content_transform,
+                prim_context.device_pixel_ratio
+            );
+
+            let clip_bounds = &prim_context.clip_node.combined_clip_outer_bounds;
+            metadata.screen_rect = xf_rect.bounding_rect
+                                          .intersection(clip_bounds);
+
+            let geometry = match metadata.screen_rect {
+                Some(device_rect) => Geometry {
+                    local_rect,
+                    device_rect,
+                },
+                None => return None,
+            };
+
+            let dependencies = match metadata.prim_kind {
+                PrimitiveKind::Picture =>
+                    self.cpu_pictures[metadata.cpu_prim_index.0].prim_runs.clone(),
+                _ => Vec::new(),
+            };
+            (geometry, dependencies)
+        };
+
+        // Recurse into any sub primitives and prepare them for rendering first.
+        // TODO(gw): This code is a bit hacky to work around the borrow checker.
+        //           Specifically, the clone() below on the primitive list for
+        //           text shadow primitives. Consider restructuring this code to
+        //           avoid borrow checker issues.
+        for run in dependent_primitives {
+            for i in 0 .. run.count {
+                let sub_prim_index = PrimitiveIndex(run.base_prim_index.0 + i);
+
+                self.prepare_prim_for_render_inner(
+                    sub_prim_index,
+                    prim_context,
+                    resource_cache,
+                    gpu_cache,
+                    render_tasks,
+                );
+            }
+        }
+
+        if !self.update_clip_task(
+            prim_index,
+            prim_context,
+            geometry.device_rect,
+            resource_cache,
+            gpu_cache,
+            render_tasks,
+            clip_store,
+        ) {
+            return None;
+        }
+
+        self.prepare_prim_for_render_inner(
+            prim_index,
+            prim_context,
+            resource_cache,
+            gpu_cache,
+            render_tasks,
+        );
+
+        Some(geometry)
+    }
+
+    pub fn prepare_prim_run(
+        &mut self,
+        run: &PrimitiveRun,
+        prim_context: &PrimitiveContext,
+        gpu_cache: &mut GpuCache,
+        resource_cache: &mut ResourceCache,
+        render_tasks: &mut RenderTaskTree,
+        clip_store: &mut ClipStore,
+    ) -> PrimitiveRunResult {
+        let mut result = PrimitiveRunResult {
+            local_rect: LayerRect::zero(),
+            device_rect: DeviceIntRect::zero(),
+            visible_primitives: 0,
+        };
+
+        for i in 0 .. run.count {
+            let prim_index = PrimitiveIndex(run.base_prim_index.0 + i);
+
+            if let Some(prim_geom) = self.prepare_prim_for_render(
+                prim_index,
+                prim_context,
+                resource_cache,
+                gpu_cache,
+                render_tasks,
+                clip_store,
+            ) {
+                result.local_rect = result.local_rect.union(&prim_geom.local_rect);
+                result.device_rect = result.device_rect.union(&prim_geom.device_rect);
+                result.visible_primitives += 1;
+            }
+        }
+
+        result
     }
 }
-
 
 //Test for one clip region contains another
 trait InsideTest<T> {

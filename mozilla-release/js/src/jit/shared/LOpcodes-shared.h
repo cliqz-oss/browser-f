@@ -273,10 +273,6 @@
     _(PostWriteElementBarrierV)     \
     _(InitializedLength)            \
     _(SetInitializedLength)         \
-    _(UnboxedArrayLength)           \
-    _(UnboxedArrayInitializedLength) \
-    _(IncrementUnboxedArrayInitializedLength) \
-    _(SetUnboxedArrayInitializedLength) \
     _(BoundsCheck)                  \
     _(BoundsCheckRange)             \
     _(BoundsCheckLower)             \
@@ -325,6 +321,9 @@
     _(FunctionEnvironment)          \
     _(NewLexicalEnvironmentObject)  \
     _(CopyLexicalEnvironmentObject) \
+    _(HomeObject)                   \
+    _(HomeObjectSuperBase)          \
+    _(GetPropSuperCacheV)           \
     _(GetPropertyCacheV)            \
     _(GetPropertyCacheT)            \
     _(GetPropertyPolymorphicV)      \

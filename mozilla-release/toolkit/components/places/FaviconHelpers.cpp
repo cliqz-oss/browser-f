@@ -435,14 +435,21 @@ FetchIconPerSpec(const RefPtr<Database>& aDB,
   // Return the biggest icon close to the preferred width. It may be bigger
   // or smaller if the preferred width isn't found.
   bool hasResult;
+  int32_t lastWidth = 0;
   while (NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
     int32_t width;
     rv = stmt->GetInt32(0, &width);
+    if (lastWidth == width) {
+      // We already found an icon for this width. We always prefer the first
+      // icon found, because it's a non-root icon, per the root ASC ordering.
+      continue;
+    }
     if (!aIconData.spec.IsEmpty() && width < aPreferredWidth) {
       // We found the best match, or we already found a match so we don't need
       // to fallback to the root domain icon.
       break;
     }
+    lastWidth = width;
     rv = stmt->GetUTF8String(1, aIconData.spec);
     NS_ENSURE_SUCCESS(rv, rv);
   }
@@ -505,6 +512,7 @@ AsyncFetchAndSetIconForPage::AsyncFetchAndSetIconForPage(
 , bool aFaviconLoadPrivate
 , nsIFaviconDataCallback* aCallback
 , nsIPrincipal* aLoadingPrincipal
+, uint64_t aRequestContextID
 ) : Runnable("places::AsyncFetchAndSetIconForPage")
   , mCallback(new nsMainThreadPtrHolder<nsIFaviconDataCallback>(
       "AsyncFetchAndSetIconForPage::mCallback", aCallback))
@@ -514,6 +522,7 @@ AsyncFetchAndSetIconForPage::AsyncFetchAndSetIconForPage(
   , mLoadingPrincipal(new nsMainThreadPtrHolder<nsIPrincipal>(
       "AsyncFetchAndSetIconForPage::mLoadingPrincipal", aLoadingPrincipal))
   , mCanceled(false)
+  , mRequestContextID(aRequestContextID)
 {
   MOZ_ASSERT(NS_IsMainThread());
 }
@@ -599,6 +608,11 @@ AsyncFetchAndSetIconForPage::FetchFromNetwork() {
     if (cos) {
       cos->AddClassFlags(nsIClassOfService::Tail |
                          nsIClassOfService::Throttleable);
+    }
+
+    nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(channel));
+    if (httpChannel) {
+      Unused << httpChannel->SetRequestContextID(mRequestContextID);
     }
   }
 
@@ -1288,7 +1302,7 @@ FetchAndConvertUnsupportedPayloads::ConvertPayload(int64_t aId,
 
   // Decode the input stream to a surface.
   RefPtr<gfx::SourceSurface> surface =
-      image::ImageOps::DecodeToSurface(stream,
+      image::ImageOps::DecodeToSurface(stream.forget(),
                                        aMimeType,
                                        imgIContainer::DECODE_FLAGS_DEFAULT);
   NS_ENSURE_STATE(surface);

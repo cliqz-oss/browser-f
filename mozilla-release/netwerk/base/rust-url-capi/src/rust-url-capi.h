@@ -19,7 +19,8 @@ extern "C" {
 // The `rusturl` opaque type is equivalent to the rust type `::url::Url`
 struct rusturl;
 
-rusturl* rusturl_new(const nsACString* spec);
+rusturl* rusturl_new(const nsACString* spec, const rusturl* base);
+rusturl* rusturl_clone(const rusturl* url);
 /* unsafe */ void rusturl_free(rusturl* url);
 
 nsresult rusturl_get_spec(const rusturl* url, nsACString* cont);
@@ -28,10 +29,12 @@ nsresult rusturl_get_username(const rusturl* url, nsACString* cont);
 nsresult rusturl_get_password(const rusturl* url, nsACString* cont);
 nsresult rusturl_get_host(const rusturl* url, nsACString* cont);
 nsresult rusturl_get_port(const rusturl* url, int32_t* port);
+nsresult rusturl_get_filepath(const rusturl* url, nsACString* cont);
 nsresult rusturl_get_path(const rusturl* url, nsACString* cont);
 nsresult rusturl_get_query(const rusturl* url, nsACString* cont);
 nsresult rusturl_get_fragment(const rusturl* url, nsACString* cont);
 nsresult rusturl_has_fragment(const rusturl* url, bool* has_fragment);
+nsresult rusturl_get_origin(const rusturl* url, nsACString* origin);
 
 nsresult rusturl_set_scheme(rusturl* url, const nsACString* scheme);
 nsresult rusturl_set_username(rusturl* url, const nsACString* user);

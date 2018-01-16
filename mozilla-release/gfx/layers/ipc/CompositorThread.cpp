@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 sts=2 ts=8 et tw=99 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,6 +8,7 @@
 #include "nsThreadUtils.h"
 #include "CompositorBridgeParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
+#include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/media/MediaSystemResourceService.h"
 
 namespace mozilla {
@@ -56,8 +57,9 @@ CompositorThreadHolder::CompositorThreadHolder()
 CompositorThreadHolder::~CompositorThreadHolder()
 {
   MOZ_ASSERT(NS_IsMainThread());
-
-  DestroyCompositorThread(mCompositorThread);
+  if (mCompositorThread) {
+    DestroyCompositorThread(mCompositorThread);
+  }
 }
 
 /* static */ void
@@ -68,6 +70,7 @@ CompositorThreadHolder::DestroyCompositorThread(base::Thread* aCompositorThread)
   MOZ_ASSERT(!sCompositorThreadHolder, "We shouldn't be destroying the compositor thread yet.");
 
   CompositorBridgeParent::Shutdown();
+  SharedSurfacesParent::Shutdown();
   delete aCompositorThread;
   sFinishedCompositorShutDown = true;
 }
@@ -102,6 +105,7 @@ CompositorThreadHolder::CreateCompositorThread()
     return nullptr;
   }
 
+  SharedSurfacesParent::Initialize();
   CompositorBridgeParent::Setup();
   ImageBridgeParent::Setup();
 
@@ -114,14 +118,26 @@ CompositorThreadHolder::Start()
   MOZ_ASSERT(NS_IsMainThread(), "Should be on the main Thread!");
   MOZ_ASSERT(!sCompositorThreadHolder, "The compositor thread has already been started!");
 
+  // We unset the holder instead of asserting because failing to start the
+  // compositor thread may not be a fatal error. As long as this succeeds in
+  // either the GPU process or the UI process, the user will have a usable
+  // browser. If we get neither, it will crash as soon as we try to post to the
+  // compositor thread for the first time.
   sCompositorThreadHolder = new CompositorThreadHolder();
+  if (!sCompositorThreadHolder->GetCompositorThread()) {
+    gfxCriticalNote << "Compositor thread not started (" << XRE_IsParentProcess() << ")";
+    sCompositorThreadHolder = nullptr;
+  }
 }
 
 void
 CompositorThreadHolder::Shutdown()
 {
   MOZ_ASSERT(NS_IsMainThread(), "Should be on the main Thread!");
-  MOZ_ASSERT(sCompositorThreadHolder, "The compositor thread has already been shut down!");
+  if (!sCompositorThreadHolder) {
+    // We've already shutdown or never started.
+    return;
+  }
 
   ImageBridgeParent::Shutdown();
   gfx::ReleaseVRManagerParentSingleton();

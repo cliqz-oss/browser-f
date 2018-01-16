@@ -53,7 +53,7 @@ function logMsg(msg, file, line, flag, winID) {
 let setupPrototype = (_class, dict) => {
   _class.prototype.classDescription = _class.name;
   Object.assign(_class.prototype, dict);
-}
+};
 
 // Global list of PeerConnection objects, so they can be cleaned up when
 // a page is torn down. (Maps inner window ID to an array of PC objects).
@@ -1178,6 +1178,18 @@ class RTCPeerConnection {
     this._impl.addRIDFilter(receiver.track, rid);
   }
 
+  mozSetPacketCallback(callback) {
+    this._onPacket = callback;
+  }
+
+  mozEnablePacketDump(level, type, sending) {
+    this._impl.enablePacketDump(level, type, sending);
+  }
+
+  mozDisablePacketDump(level, type, sending) {
+    this._impl.disablePacketDump(level, type, sending);
+  }
+
   get localDescription() {
     this._checkClosed();
     let sdp = this._impl.localDescription;
@@ -1526,18 +1538,6 @@ class PeerConnectionObserver {
         this.handleIceGatheringStateChange(this._dompc._pc.iceGatheringState);
         break;
 
-      case "SdpState":
-        // No-op
-        break;
-
-      case "ReadyState":
-        // No-op
-        break;
-
-      case "SipccState":
-        // No-op
-        break;
-
       default:
         this._dompc.logWarning("Unhandled state type: " + state);
         break;
@@ -1615,6 +1615,13 @@ class PeerConnectionObserver {
     var sender = pc._senders.find(({track}) => track.id == trackId);
     sender.dtmf.dispatchEvent(new pc._win.RTCDTMFToneChangeEvent("tonechange",
                                                                  { tone }));
+  }
+
+  onPacket(level, type, sending, packet) {
+    var pc = this._dompc;
+    if (pc._onPacket) {
+      pc._onPacket(level, type, sending, packet);
+    }
   }
 }
 setupPrototype(PeerConnectionObserver, {

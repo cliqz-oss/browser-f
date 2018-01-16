@@ -20,7 +20,7 @@ use style::attr::AttrValue;
 use style::computed_values::display;
 use style::context::SharedStyleContext;
 use style::data::ElementData;
-use style::dom::{LayoutIterator, NodeInfo, PresentationalHintsSynthesizer, TNode};
+use style::dom::{LayoutIterator, NodeInfo, TNode};
 use style::dom::OpaqueNode;
 use style::font_metrics::ServoMetricsProvider;
 use style::properties::{CascadeFlags, ComputedValues};
@@ -79,7 +79,7 @@ pub trait GetLayoutData {
 }
 
 /// A wrapper so that layout can access only the methods that it should have access to. Layout must
-/// only ever see these and must never see instances of `LayoutJS`.
+/// only ever see these and must never see instances of `LayoutDom`.
 pub trait LayoutNode: Debug + GetLayoutData + TNode {
     type ConcreteThreadSafeLayoutNode: ThreadSafeLayoutNode;
     fn to_threadsafe(&self) -> Self::ConcreteThreadSafeLayoutNode;
@@ -100,14 +100,6 @@ pub trait LayoutNode: Debug + GetLayoutData + TNode {
     fn traverse_preorder(self) -> TreeIterator<Self> {
         TreeIterator::new(self)
     }
-
-    fn first_child(&self) -> Option<Self>;
-
-    fn last_child(&self) -> Option<Self>;
-
-    fn prev_sibling(&self) -> Option<Self>;
-
-    fn next_sibling(&self) -> Option<Self>;
 }
 
 pub struct ReverseChildrenIterator<ConcreteNode> where ConcreteNode: LayoutNode {
@@ -169,10 +161,6 @@ pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo 
     /// Returns `None` if this is a pseudo-element; otherwise, returns `Some`.
     fn type_id(&self) -> Option<LayoutNodeType>;
 
-    /// Returns the type ID of this node, without discarding pseudo-elements as
-    /// `type_id` does.
-    fn type_id_without_excluding_pseudo_elements(&self) -> LayoutNodeType;
-
     /// Returns the style for a text node. This is computed on the fly from the
     /// parent style to avoid traversing text nodes in the style system.
     ///
@@ -182,14 +170,6 @@ pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo 
     /// of the parent data is fine, since the bottom-up traversal will not process
     /// the parent until all the children have been processed.
     fn parent_style(&self) -> Arc<ComputedValues>;
-
-    #[inline]
-    fn is_element_or_elements_pseudo(&self) -> bool {
-        match self.type_id_without_excluding_pseudo_elements() {
-            LayoutNodeType::Element(..) => true,
-            _ => false,
-        }
-    }
 
     fn get_before_pseudo(&self) -> Option<Self> {
         self.as_element().and_then(|el| el.get_before_pseudo()).map(|el| el.as_node())
@@ -275,12 +255,12 @@ pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo 
     fn svg_data(&self) -> Option<SVGSVGData>;
 
     /// If this node is an iframe element, returns its browsing context ID. If this node is
-    /// not an iframe element, fails.
-    fn iframe_browsing_context_id(&self) -> BrowsingContextId;
+    /// not an iframe element, fails. Returns None if there is no nested browsing context.
+    fn iframe_browsing_context_id(&self) -> Option<BrowsingContextId>;
 
     /// If this node is an iframe element, returns its pipeline ID. If this node is
-    /// not an iframe element, fails.
-    fn iframe_pipeline_id(&self) -> PipelineId;
+    /// not an iframe element, fails. Returns None if there is no nested browsing context.
+    fn iframe_pipeline_id(&self) -> Option<PipelineId>;
 
     fn get_colspan(&self) -> u32;
 
@@ -310,10 +290,14 @@ pub trait DangerousThreadSafeLayoutNode: ThreadSafeLayoutNode {
     unsafe fn dangerous_next_sibling(&self) -> Option<Self>;
 }
 
-pub trait ThreadSafeLayoutElement: Clone + Copy + Sized + Debug +
-                                   ::selectors::Element<Impl=SelectorImpl> +
-                                   GetLayoutData +
-                                   PresentationalHintsSynthesizer {
+pub trait ThreadSafeLayoutElement
+    : Clone
+    + Copy
+    + Sized
+    + Debug
+    + ::selectors::Element<Impl=SelectorImpl>
+    + GetLayoutData
+{
     type ConcreteThreadSafeLayoutNode: ThreadSafeLayoutNode<ConcreteThreadSafeLayoutElement = Self>;
 
     fn as_node(&self) -> Self::ConcreteThreadSafeLayoutNode;
@@ -428,7 +412,8 @@ pub trait ThreadSafeLayoutElement: Clone + Copy + Sized + Debug +
                                    RuleInclusion::All,
                                    data.styles.primary(),
                                    /* is_probe = */ false,
-                                   &ServoMetricsProvider)
+                                   &ServoMetricsProvider,
+                                   /* matching_func = */ None)
                                .unwrap()
                                .clone()
                     }

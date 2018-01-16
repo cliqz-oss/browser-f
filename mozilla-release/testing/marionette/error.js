@@ -6,6 +6,8 @@
 
 const {interfaces: Ci, utils: Cu} = Components;
 
+const {pprint} = Cu.import("chrome://marionette/content/format.js", {});
+
 const ERRORS = new Set([
   "ElementClickInterceptedError",
   "ElementNotAccessibleError",
@@ -47,7 +49,6 @@ const BUILTIN_ERRORS = new Set([
 
 this.EXPORTED_SYMBOLS = [
   "error",
-  "pprint",
   "stack",
 ].concat(Array.from(ERRORS));
 
@@ -146,70 +147,6 @@ error.stringify = function(err) {
   } catch (e) {
     return "<unprintable error>";
   }
-};
-
-/**
- * Pretty-print values passed to template strings.
- *
- * Usage:
- *
- *     const {pprint} = Cu.import("chrome://marionette/content/error.js", {});
- *     let bool = {value: true};
- *     pprint`Expected boolean, got ${bool}`;
- *     => 'Expected boolean, got [object Object] {"value": true}'
- *
- *     let htmlElement = document.querySelector("input#foo");
- *     pprint`Expected element ${htmlElement}`;
- *     => 'Expected element <input id="foo" class="bar baz" type="input">'
- */
-this.pprint = function(ss, ...values) {
-  function prettyObject(obj) {
-    let proto = Object.prototype.toString.call(obj);
-    let s = "";
-    try {
-      s = JSON.stringify(obj);
-    } catch (e) {
-      if (e instanceof TypeError) {
-        s = `<${e.message}>`;
-      } else {
-        throw e;
-      }
-    }
-    return proto + " " + s;
-  }
-
-  function prettyElement(el) {
-    let attrs = ["id", "class", "href", "name", "src", "type"];
-
-    let idents = "";
-    for (let attr of attrs) {
-      if (el.hasAttribute(attr)) {
-        idents += ` ${attr}="${el.getAttribute(attr)}"`;
-      }
-    }
-
-    return `<${el.localName}${idents}>`;
-  }
-
-  let res = [];
-  for (let i = 0; i < ss.length; i++) {
-    res.push(ss[i]);
-    if (i < values.length) {
-      let val = values[i];
-      let s;
-      try {
-        if (val && val.nodeType === 1) {
-          s = prettyElement(val);
-        } else {
-          s = prettyObject(val);
-        }
-      } catch (e) {
-        s = typeof val;
-      }
-      res.push(s);
-    }
-  }
-  return res.join("");
 };
 
 /** Create a stacktrace to the current line in the program. */

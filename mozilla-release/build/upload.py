@@ -31,7 +31,8 @@
 # to indicate that files should be uploaded including their paths relative
 # to the base path.
 
-import sys, os
+import sys
+import os
 import re
 import json
 import errno
@@ -51,12 +52,14 @@ import boto
 import boto.s3
 import boto.s3.key
 
+
 def OptionalEnvironmentVariable(v):
     """Return the value of the environment variable named v, or None
     if it's unset (or empty)."""
     if v in os.environ and os.environ[v] != "":
         return os.environ[v]
     return None
+
 
 def FixupMsysPath(path):
     """MSYS helpfully translates absolute pathnames in environment variables
@@ -73,6 +76,7 @@ def FixupMsysPath(path):
                 path = path[len(msys):]
     return path
 
+
 def WindowsPathToMsysPath(path):
     """Translate a Windows pathname to an MSYS pathname.
     Necessary because we call out to ssh/scp, which are MSYS binaries
@@ -82,7 +86,8 @@ def WindowsPathToMsysPath(path):
     if sys.platform != 'win32' or path.startswith('/'):
         return path
     (drive, path) = os.path.splitdrive(os.path.abspath(path))
-    return "/" + drive[0] + path.replace('\\','/')
+    return "/" + drive[0] + path.replace('\\', '/')
+
 
 def AppendOptionalArgsToSSHCommandline(cmdline, port, ssh_key):
     """Given optional port and ssh key values, append valid OpenSSH
@@ -97,6 +102,7 @@ def AppendOptionalArgsToSSHCommandline(cmdline, port, ssh_key):
     # In case of an issue here we don't want to hang on a password prompt.
     cmdline.extend(["-o", "BatchMode=yes"])
 
+
 def DoSSHCommand(command, user, host, port=None, ssh_key=None):
     """Execute command on user@host using ssh. Optionally use
     port and ssh_key, if provided."""
@@ -108,21 +114,22 @@ def DoSSHCommand(command, user, host, port=None, ssh_key=None):
         try:
             output = f(cmdline, stderr=STDOUT).strip()
         except CalledProcessError as e:
-            print "failed ssh command output:"
-            print '=' * 20
-            print e.output
-            print '=' * 20
+            print("failed ssh command output:")
+            print('=' * 20)
+            print(e.output)
+            print('=' * 20)
             raise
         return output
 
     raise Exception("Command %s returned non-zero exit code" % cmdline)
+
 
 def DoSCPFile(file, remote_path, user, host, port=None, ssh_key=None,
               log=False):
     """Upload file to user@host:remote_path using scp. Optionally use
     port and ssh_key, if provided."""
     if log:
-        print 'Uploading %s' % file
+        print('Uploading %s' % file)
     cmdline = ["scp"]
     AppendOptionalArgsToSSHCommandline(cmdline, port, ssh_key)
     cmdline.extend([WindowsPathToMsysPath(file),
@@ -132,6 +139,7 @@ def DoSCPFile(file, remote_path, user, host, port=None, ssh_key=None,
         return
 
     raise Exception("Command %s returned non-zero exit code" % cmdline)
+
 
 def GetBaseRelativePath(path, local_file, base_path):
     """Given a remote path to upload to, a full path to a local file, and an
@@ -146,7 +154,7 @@ def GetBaseRelativePath(path, local_file, base_path):
         return path
     dir = os.path.dirname(local_file)
     # strip base_path + extra slash and make it unixy
-    dir = dir[len(base_path)+1:].replace('\\','/')
+    dir = dir[len(base_path) + 1:].replace('\\', '/')
     return path + dir
 
 
@@ -167,6 +175,7 @@ def GetFileHashAndSize(filename):
 
     return (sha512Hash, size)
 
+
 def GetMarProperties(filename):
     if not os.path.exists(filename):
         return {}
@@ -177,13 +186,14 @@ def GetMarProperties(filename):
         'completeMarHash': mar_hash,
     }
 
+
 def GetUrlProperties(output, package):
     # let's create a switch case using name-spaces/dict
     # rather than a long if/else with duplicate code
     property_conditions = [
         # key: property name, value: condition
         ('symbolsUrl', lambda m: m.endswith('crashreporter-symbols.zip') or
-                       m.endswith('crashreporter-symbols-full.zip')),
+         m.endswith('crashreporter-symbols-full.zip')),
         ('testsUrl', lambda m: m.endswith(('tests.tar.bz2', 'tests.zip'))),
         ('robocopApkUrl', lambda m: m.endswith('apk') and 'robocop' in m),
         ('jsshellUrl', lambda m: 'jsshell-' in m and m.endswith('.zip')),
@@ -194,7 +204,14 @@ def GetUrlProperties(output, package):
         ('testPackagesUrl', lambda m: m.endswith('test_packages.json')),
         ('packageUrl', lambda m: m.endswith(package)),
     ]
+<<<<<<< HEAD
     url_re = re.compile(r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|deb|mar|tar\.gz|json))$''')
+||||||| merged common ancestors
+    url_re = re.compile(r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|mar|tar\.gz|json))$''')
+=======
+    url_re = re.compile(
+        r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|mar|tar\.gz|json))$''')
+>>>>>>> origin/upstream-releases
     properties = {}
 
     try:
@@ -209,9 +226,11 @@ def GetUrlProperties(output, package):
     except IOError as e:
         if e.errno != errno.ENOENT:
             raise
-        properties = {prop: 'UNKNOWN' for prop, condition in property_conditions}
+        properties = {prop: 'UNKNOWN' for prop, condition
+                      in property_conditions}
     return properties
 
+<<<<<<< HEAD
 def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
     """Upload only mar file(s) from the list to s3_bucket/s3_path/.
     If verbose is True, print status updates while working."""
@@ -287,6 +306,13 @@ def UploadServiceFilesToS3(s3_bucket, s3_path, files, verbose=False):
         print "Upload service files complete"
 
 def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None, package=None):
+||||||| merged common ancestors
+def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None, package=None):
+=======
+
+def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None,
+                upload_to_temp_dir=False, post_upload_command=None, package=None):
+>>>>>>> origin/upstream-releases
     """Upload each file in the list files to user@host:path. Optionally pass
     port and ssh_key to the ssh commands. If base_path is not None, upload
     files including their path relative to base_path. If upload_to_temp_dir is
@@ -300,12 +326,12 @@ def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None,
     if not host or not user:
         return {}
     if (not path and not upload_to_temp_dir) or (path and upload_to_temp_dir):
-        print "One (and only one of UPLOAD_PATH or UPLOAD_TO_TEMP must be " + \
-                "defined."
+        print("One (and only one of UPLOAD_PATH or UPLOAD_TO_TEMP must be defined.")
         sys.exit(1)
 
     if upload_to_temp_dir:
-        path = DoSSHCommand("mktemp -d", user, host, port=port, ssh_key=ssh_key)
+        path = DoSSHCommand("mktemp -d", user, host,
+                            port=port, ssh_key=ssh_key)
     if not path.endswith("/"):
         path += "/"
     if base_path is not None:
@@ -329,7 +355,8 @@ def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None,
         # If we wanted to, we could reduce the remote paths if they are a parent
         # of any entry.
         for p in sorted(remote_paths):
-            DoSSHCommand("mkdir -p " + p, user, host, port=port, ssh_key=ssh_key)
+            DoSSHCommand("mkdir -p " + p, user, host,
+                         port=port, ssh_key=ssh_key)
 
         with futures.ThreadPoolExecutor(4) as e:
             fs = []
@@ -348,19 +375,21 @@ def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None,
 
         if post_upload_command is not None:
             if verbose:
-                print "Running post-upload command: " + post_upload_command
+                print("Running post-upload command: " + post_upload_command)
             file_list = '"' + '" "'.join(remote_files) + '"'
-            output = DoSSHCommand('%s "%s" %s' % (post_upload_command, path, file_list), user, host, port=port, ssh_key=ssh_key)
+            output = DoSSHCommand('%s "%s" %s' % (
+                post_upload_command, path, file_list), user, host, port=port, ssh_key=ssh_key)
             # We print since mozharness may parse URLs from the output stream.
-            print output
+            print(output)
             properties = GetUrlProperties(output, package)
     finally:
         if upload_to_temp_dir:
             DoSSHCommand("rm -rf %s" % path, user, host, port=port,
                          ssh_key=ssh_key)
     if verbose:
-        print "Upload complete"
+        print("Upload complete")
     return properties
+
 
 def CopyFilesLocally(path, files, verbose=False, base_path=None, package=None):
     """Copy each file in the list of files to `path`.  The `base_path` argument is treated
@@ -378,8 +407,9 @@ def CopyFilesLocally(path, files, verbose=False, base_path=None, package=None):
         if not os.path.exists(target_path):
             os.makedirs(target_path)
         if verbose:
-            print "Copying " + file + " to " + target_path
+            print("Copying " + file + " to " + target_path)
         shutil.copy(file, target_path)
+
 
 def WriteProperties(files, properties_file, url_properties, package):
     properties = url_properties
@@ -390,6 +420,7 @@ def WriteProperties(files, properties_file, url_properties, package):
         properties['packageFilename'] = package
         properties['uploadFiles'] = [os.path.abspath(f) for f in files]
         json.dump(properties, outfile, indent=4)
+
 
 if __name__ == '__main__':
     s3_path = OptionalEnvironmentVariable('S3_UPLOAD_PATH')
@@ -415,7 +446,8 @@ if __name__ == '__main__':
     parser = OptionParser(usage="usage: %prog [options] <files>")
     parser.add_option("-b", "--base-path",
                       action="store",
-                      help="Preserve file paths relative to this path when uploading. If unset, all files will be uploaded directly to UPLOAD_PATH.")
+                      help="Preserve file paths relative to this path when uploading. "
+                      "If unset, all files will be uploaded directly to UPLOAD_PATH.")
     parser.add_option("--properties-file",
                       action="store",
                       help="Path to the properties file to store the upload properties.")
@@ -424,12 +456,13 @@ if __name__ == '__main__':
                       help="Name of the main package.")
     (options, args) = parser.parse_args()
     if len(args) < 1:
-        print "You must specify at least one file to upload"
+        print("You must specify at least one file to upload")
         sys.exit(1)
     if not options.properties_file:
-        print "You must specify a --properties-file"
+        print("You must specify a --properties-file")
         sys.exit(1)
 
+<<<<<<< HEAD
     if not s3_bucket:
         if host == "localhost":
             if upload_to_temp_dir:
@@ -439,6 +472,25 @@ if __name__ == '__main__':
                 # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
                 # scripts, so just ignore it until it's no longer used anywhere
                 print "Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost"
+||||||| merged common ancestors
+    if host == "localhost":
+        if upload_to_temp_dir:
+            print "Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost"
+            sys.exit(1)
+        if post_upload_command:
+            # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
+            # scripts, so just ignore it until it's no longer used anywhere
+            print "Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost"
+=======
+    if host == "localhost":
+        if upload_to_temp_dir:
+            print("Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost")
+            sys.exit(1)
+        if post_upload_command:
+            # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
+            # scripts, so just ignore it until it's no longer used anywhere
+            print("Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost")
+>>>>>>> origin/upstream-releases
 
     try:
         if s3_bucket:
@@ -448,6 +500,7 @@ if __name__ == '__main__':
             if s3_service_path and s3_bucket_service:
                 UploadServiceFilesToS3(s3_bucket_service, s3_service_path, args, verbose=True)
         else:
+<<<<<<< HEAD
             if host == "localhost":
                 CopyFilesLocally(path, args, base_path=options.base_path,
                                  package=options.package,
@@ -464,4 +517,28 @@ if __name__ == '__main__':
 
     except IOError, (strerror):
         print strerror
+||||||| merged common ancestors
+
+            url_properties = UploadFiles(user, host, path, args,
+                                         base_path=options.base_path, port=port, ssh_key=key,
+                                         upload_to_temp_dir=upload_to_temp_dir,
+                                         post_upload_command=post_upload_command,
+                                         package=options.package, verbose=True)
+
+            WriteProperties(args, options.properties_file, url_properties, options.package)
+    except IOError, (strerror):
+        print strerror
+=======
+
+            url_properties = UploadFiles(user, host, path, args,
+                                         base_path=options.base_path, port=port, ssh_key=key,
+                                         upload_to_temp_dir=upload_to_temp_dir,
+                                         post_upload_command=post_upload_command,
+                                         package=options.package, verbose=True)
+
+            WriteProperties(args, options.properties_file,
+                            url_properties, options.package)
+    except IOError as strerror:
+        print(strerror)
+>>>>>>> origin/upstream-releases
         sys.exit(1)

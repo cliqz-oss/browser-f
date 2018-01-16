@@ -200,7 +200,7 @@ function safeCall(aCallback, ...aArgs) {
 function makeSafe(aCallback) {
   return function(...aArgs) {
     safeCall(aCallback, ...aArgs);
-  }
+  };
 }
 
 /**
@@ -449,7 +449,7 @@ AddonAuthor.prototype = {
   toString() {
     return this.name || "";
   }
-}
+};
 
 /**
  * This represents an screenshot for an add-on
@@ -493,7 +493,7 @@ AddonScreenshot.prototype = {
   toString() {
     return this.url || "";
   }
-}
+};
 
 
 /**
@@ -2001,8 +2001,9 @@ var AddonManagerInternal = {
     // Local installs may already be in a failed state in which case
     // we won't get any further events, detect those cases now.
     if (install.state == AddonManager.STATE_DOWNLOADED && install.addon.appDisabled) {
-          this.installNotifyObservers("addon-install-failed", browser, url, install);
-          return;
+      install.cancel();
+      this.installNotifyObservers("addon-install-failed", browser, url, install);
+      return;
     }
 
     let self = this;
@@ -2493,6 +2494,10 @@ var AddonManagerInternal = {
    *
    * @param  aTypes
    *         An optional array of types to retrieve. Each type is a string name
+   *
+   * @resolve {addons: Array, fullData: bool}
+   *          fullData is true if addons contains all the data we have on those
+   *          addons. It is false if addons only contains partial data.
    */
   async getActiveAddons(aTypes) {
     if (!gStarted)
@@ -2503,22 +2508,25 @@ var AddonManagerInternal = {
       throw Components.Exception("aTypes must be an array or null",
                                  Cr.NS_ERROR_INVALID_ARG);
 
-    let addons = [];
+    let addons = [], fullData = true;
 
     for (let provider of this.providers) {
-      let providerAddons;
+      let providerAddons, providerFullData;
       if ("getActiveAddons" in provider) {
-        providerAddons = await callProvider(provider, "getActiveAddons", null, aTypes);
+        ({addons: providerAddons, fullData: providerFullData} = await callProvider(provider, "getActiveAddons", null, aTypes));
       } else {
         providerAddons = await promiseCallProvider(provider, "getAddonsByTypes", aTypes);
         providerAddons = providerAddons.filter(a => a.isActive);
+        providerFullData = true;
       }
 
-      if (providerAddons)
+      if (providerAddons) {
         addons.push(...providerAddons);
+        fullData = fullData && providerFullData;
+      }
     }
 
-    return addons;
+    return {addons, fullData};
   },
 
   /**
@@ -2677,7 +2685,7 @@ var AddonManagerInternal = {
           // Claim configurability to maintain the proxy invariants.
           configurable: true,
           enumerable: true
-        }
+        };
       },
 
       preventExtensions(target) {
@@ -2939,7 +2947,7 @@ var AddonManagerInternal = {
             } else if (event == "onDownloadCancelled" || event == "onInstallCancelled") {
               reject({message: "install cancelled"});
             }
-          }
+          };
         });
       });
 
@@ -3039,7 +3047,7 @@ var AddonManagerInternal = {
         let callback = () => resolve(result);
         if (Services.prefs.getBoolPref(PREF_WEBEXT_PERM_PROMPTS, false)) {
           let subject = {wrappedJSObject: {target, addon, callback}};
-          Services.obs.notifyObservers(subject, "webextension-install-notify")
+          Services.obs.notifyObservers(subject, "webextension-install-notify");
         } else {
           callback();
         }

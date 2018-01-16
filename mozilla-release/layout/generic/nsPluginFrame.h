@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -101,7 +102,7 @@ public:
   virtual nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
 
@@ -348,6 +349,21 @@ private:
   mozilla::UniquePtr<PluginFrameDidCompositeObserver> mDidCompositeObserver;
 };
 
+class nsDisplayPluginGeometry : public nsDisplayItemGenericGeometry
+{
+public:
+  nsDisplayPluginGeometry(nsDisplayItem *aItem, nsDisplayListBuilder* aBuilder)
+    : nsDisplayItemGenericGeometry(aItem, aBuilder)
+  {}
+
+  // Plugins MozPaintWait event depends on sync decode, so we always want
+  // to rebuild the display list when sync decoding.
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return true;
+  }
+};
+
 class nsDisplayPlugin : public nsDisplayItem {
 public:
   nsDisplayPlugin(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
@@ -389,6 +405,11 @@ public:
   {
     return static_cast<nsPluginFrame*>(mFrame)->GetLayerState(aBuilder,
                                                               aManager);
+  }
+
+  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override
+  {
+    return new nsDisplayPluginGeometry(this, aBuilder);
   }
 
   virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,

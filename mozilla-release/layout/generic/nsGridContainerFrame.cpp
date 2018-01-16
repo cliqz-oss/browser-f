@@ -1,8 +1,8 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
-/* This Source Code is subject to the terms of the Mozilla Public License
- * version 2.0 (the "License"). You can obtain a copy of the License at
- * http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* rendering object for CSS "display: grid | inline-grid" */
 
@@ -6465,6 +6465,9 @@ nsGridContainerFrame::RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame)
 #ifdef DEBUG
   ChildListIDs supportedLists =
     kAbsoluteList | kFixedList | kPrincipalList | kNoReflowPrincipalList;
+  // We don't handle the kBackdropList frames in any way, but it only contains
+  // a placeholder for ::backdrop which is OK to not reflow (for now anyway).
+  supportedLists |= kBackdropList;
   MOZ_ASSERT(supportedLists.Contains(aListID), "unexpected child list");
 
   // Note that kPrincipalList doesn't mean aOldFrame must be on that list.
@@ -6684,10 +6687,13 @@ nsGridContainerFrame::NoteNewChildren(ChildListID aListID,
 #ifdef DEBUG
   ChildListIDs supportedLists =
     kAbsoluteList | kFixedList | kPrincipalList | kNoReflowPrincipalList;
+  // We don't handle the kBackdropList frames in any way, but it only contains
+  // a placeholder for ::backdrop which is OK to not reflow (for now anyway).
+  supportedLists |= kBackdropList;
   MOZ_ASSERT(supportedLists.Contains(aListID), "unexpected child list");
 #endif
 
-  nsIPresShell* shell = PresContext()->PresShell();
+  nsIPresShell* shell = PresShell();
   for (auto pif = GetPrevInFlow(); pif; pif = pif->GetPrevInFlow()) {
     if (aListID == kPrincipalList) {
       pif->AddStateBits(NS_STATE_GRID_DID_PUSH_ITEMS);
@@ -6726,7 +6732,7 @@ nsGridContainerFrame::MergeSortedExcessOverflowContainers(nsFrameList& aList)
   if (eoc) {
     ::MergeSortedFrameLists(*eoc, aList, GetContent());
   } else {
-    SetPropTableFrames(new (PresContext()->PresShell()) nsFrameList(aList),
+    SetPropTableFrames(new (PresShell()) nsFrameList(aList),
                        ExcessOverflowContainersProperty());
   }
 }
@@ -6803,8 +6809,13 @@ void
 nsGridContainerFrame::SetInitialChildList(ChildListID  aListID,
                                           nsFrameList& aChildList)
 {
+#ifdef DEBUG
   ChildListIDs supportedLists = kAbsoluteList | kFixedList | kPrincipalList;
+  // We don't handle the kBackdropList frames in any way, but it only contains
+  // a placeholder for ::backdrop which is OK to not reflow (for now anyway).
+  supportedLists |= kBackdropList;
   MOZ_ASSERT(supportedLists.Contains(aListID), "unexpected child list");
+#endif
 
   return nsContainerFrame::SetInitialChildList(aListID, aChildList);
 }
@@ -6822,7 +6833,8 @@ nsGridContainerFrame::SanityCheckGridItemsBeforeReflow() const
     for (nsIFrame::ChildListIterator childLists(f);
          !childLists.IsDone(); childLists.Next()) {
       if (!itemLists.Contains(childLists.CurrentID())) {
-        MOZ_ASSERT(absLists.Contains(childLists.CurrentID()),
+        MOZ_ASSERT(absLists.Contains(childLists.CurrentID()) ||
+                   childLists.CurrentID() == kBackdropList,
                    "unexpected non-empty child list");
         continue;
       }
@@ -6915,15 +6927,24 @@ nsGridContainerFrame::GetGridFrameWithComputedInfo(nsIFrame* aFrame)
 
     if (reflowNeeded) {
       // Trigger a reflow that generates additional grid property data.
-      nsIPresShell* shell = gridFrame->PresContext()->PresShell();
+      // Hold onto aFrame while we do this, in case reflow destroys it.
+      AutoWeakFrame weakFrameRef(aFrame);
+
+      nsIPresShell* shell = gridFrame->PresShell();
       gridFrame->AddStateBits(NS_STATE_GRID_GENERATE_COMPUTED_VALUES);
       shell->FrameNeedsReflow(gridFrame,
                               nsIPresShell::eResize,
                               NS_FRAME_IS_DIRTY);
       shell->FlushPendingNotifications(FlushType::Layout);
 
-      // Since the reflow may have side effects, get the grid frame again.
-      gridFrame = GetGridContainerFrame(aFrame);
+      // Since the reflow may have side effects, get the grid frame
+      // again. But if the weakFrameRef is no longer valid, then we
+      // must bail out.
+      if (!weakFrameRef.IsAlive()) {
+        return nullptr;
+      }
+
+      gridFrame = GetGridContainerFrame(weakFrameRef.GetFrame());
 
       // Assert the grid properties are present
       MOZ_ASSERT(!gridFrame ||

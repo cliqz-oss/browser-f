@@ -255,9 +255,6 @@ var gPlayTests = [
   // Test playback of a WebM file with resolution changes.
   { name:"resolution-change.webm", type:"video/webm", duration:6.533 },
 
-  // Test playback of a raw file
-  { name:"seek.yuv", type:"video/x-raw-yuv", duration:1.833 },
-
   // A really short, low sample rate, single channel file. This tests whether
   // we can handle playing files when only push very little audio data to the
   // hardware.
@@ -352,8 +349,6 @@ var gSeekToNextFrameTests = [
   { name:"seek-short.webm", type:"video/webm", duration:0.23 },
   // Test playback of a WebM file with non-zero start time.
   { name:"split.webm", type:"video/webm", duration:1.967 },
-  // Test playback of a raw file
-  { name:"seek.yuv", type:"video/x-raw-yuv", duration:1.833 },
 
   { name:"gizmo-short.mp4", type:"video/mp4", duration:0.27 },
 
@@ -1635,8 +1630,6 @@ function MediaTestManager() {
   // Instead MediaTestManager will manage timeout of each test.
   SimpleTest.requestLongerTimeout(1000);
 
-  this.hasTimeout = false;
-
   // Return how many seconds elapsed since |begin|.
   function elapsedTime(begin) {
     var end = new Date();
@@ -1688,9 +1681,10 @@ function MediaTestManager() {
     this.numTestsRunning++;
     this.handlers[token] = handler;
 
-    var onTimeout = () => {
-      this.hasTimeout = true;
-      ok(false, `${token} timed out!`);
+    var onTimeout = async () => {
+      ok(false, "Test timed out!");
+      info(`${token} timed out!`);
+      await dumpDebugInfoForToken(token);
       this.finished(token);
     };
     // Default timeout to 180s for each test.
@@ -1756,9 +1750,6 @@ function MediaTestManager() {
       if (this.onFinished) {
         this.onFinished();
       }
-      if (this.hasTimeout) {
-        dumpDebugInfo();
-      }
       var onCleanup = () => {
         var end = new Date();
         SimpleTest.info("Finished at " + end + " (" + (end.getTime() / 1000) + "s)");
@@ -1791,6 +1782,20 @@ function mediaTestCleanup(callback) {
 // B2G emulator and Android 2.3 are condidered slow platforms
 function isSlowPlatform() {
   return SpecialPowers.Services.appinfo.name == "B2G" || getAndroidVersion() == 10;
+}
+
+async function dumpDebugInfoForToken(token) {
+  for (let v of document.getElementsByTagName("video")) {
+    if (token === v.token) {
+      return v.mozDumpDebugInfo();
+    }
+  }
+  for (let a of document.getElementsByTagName("audio")) {
+    if (token === a.token) {
+      return a.mozDumpDebugInfo();
+    }
+  }
+  return Promise.resolve();
 }
 
 function dumpDebugInfo() {

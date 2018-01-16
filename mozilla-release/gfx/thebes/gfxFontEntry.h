@@ -37,7 +37,7 @@ class gfxUserFontData;
 class gfxSVGGlyphs;
 class FontInfoData;
 struct FontListSizes;
-class nsIAtom;
+class nsAtom;
 
 namespace mozilla {
 class SVGContextPaint;
@@ -142,6 +142,19 @@ public:
     bool IsBold() const { return mWeight >= 600; } // bold == weights 600 and above
     bool IgnoreGDEF() const { return mIgnoreGDEF; }
     bool IgnoreGSUB() const { return mIgnoreGSUB; }
+
+    // Return whether the face corresponds to "normal" CSS style properties:
+    //    font-style: normal;
+    //    font-weight: normal;
+    //    font-stretch: normal;
+    // If this is false, we might want to fall back to a different face and
+    // possibly apply synthetic styling.
+    bool IsNormalStyle() const
+    {
+        return IsUpright() &&
+               Weight() == NS_FONT_WEIGHT_NORMAL &&
+               Stretch() == NS_FONT_STRETCH_NORMAL;
+    }
 
     // whether a feature is supported by the font (limited to a small set
     // of features for which some form of fallback needs to be implemented)
@@ -336,7 +349,6 @@ public:
 
     uint8_t          mStyle       : 2; // italic/oblique
     bool             mFixedPitch  : 1;
-    bool             mIsValid     : 1;
     bool             mIsBadUnderlineFont : 1;
     bool             mIsUserFontContainer : 1; // userfont entry
     bool             mIsDataUserFont : 1;      // platform font entry (data)
@@ -568,16 +580,14 @@ private:
 // used when iterating over all fonts looking for a match for a given character
 struct GlobalFontMatch {
     GlobalFontMatch(const uint32_t aCharacter,
-                    mozilla::unicode::Script aRunScript,
                     const gfxFontStyle *aStyle) :
-        mCh(aCharacter), mRunScript(aRunScript), mStyle(aStyle),
+        mCh(aCharacter), mStyle(aStyle),
         mMatchRank(0), mCount(0), mCmapsTested(0)
         {
 
         }
 
     const uint32_t         mCh;          // codepoint to be matched
-    mozilla::unicode::Script mRunScript;   // Unicode script for the codepoint
     const gfxFontStyle*    mStyle;       // style to match
     int32_t                mMatchRank;   // metric indicating closest match
     RefPtr<gfxFontEntry> mBestMatch;   // current best match
@@ -759,7 +769,7 @@ public:
     // Return true if the family should be included in the list, false to omit.
     // Default implementation returns true for everything, so no filtering
     // will occur; individual platforms may override.
-    virtual bool FilterForFontList(nsIAtom* aLangGroup,
+    virtual bool FilterForFontList(nsAtom* aLangGroup,
                                    const nsACString& aGeneric) const {
         return true;
     }

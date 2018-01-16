@@ -416,8 +416,9 @@ function cleanErrorMessage(error) {
   }
   // Try to filter things that look somewhat like a URL (in that they contain a
   // colon in the middle of non-whitespace), in case anything else is including
-  // these in error messages.
-  error = error.replace(/\S+:\S+/g, "<URL>");
+  // these in error messages. Note that JSON.stringified stuff comes through
+  // here, so we explicitly ignore double-quotes as well.
+  error = error.replace(/[^\s"]+:[^\s"]+/g, "<URL>");
   return error;
 }
 
@@ -573,8 +574,8 @@ class SyncTelemetryImpl {
     log.debug("recording event", eventDetails);
 
     let { object, method, value, extra } = eventDetails;
-    if (extra && AsyncResource.serverTime && !extra.serverTime) {
-      extra.serverTime = String(AsyncResource.serverTime);
+    if (extra && Resource.serverTime && !extra.serverTime) {
+      extra.serverTime = String(Resource.serverTime);
     }
     let category = "sync";
     let ts = Math.floor(tryGetMonotonicTimestamp());
@@ -698,10 +699,6 @@ class SyncTelemetryImpl {
       return { name: "autherror", from: error.source };
     }
 
-    if (error instanceof Ci.mozIStorageError) {
-      return { name: "sqlerror", code: error.result };
-    }
-
     let httpCode = error.status ||
       (error.response && error.response.status) ||
       error.code;
@@ -713,10 +710,22 @@ class SyncTelemetryImpl {
     if (error.result) {
       return { name: "nserror", code: error.result };
     }
-
+    // It's probably an Error object, but it also could be some
+    // other object that may or may not override toString to do
+    // something useful.
+    let msg = String(error);
+    if (msg.startsWith("[object")) {
+      // Nothing useful in the default, check for a string "message" property.
+      if (typeof error.message == "string") {
+        msg = String(error.message);
+      } else {
+        // Hopefully it won't come to this...
+        msg = JSON.stringify(error);
+      }
+    }
     return {
       name: "unexpectederror",
-      error: cleanErrorMessage(String(error))
+      error: cleanErrorMessage(msg)
     };
   }
 

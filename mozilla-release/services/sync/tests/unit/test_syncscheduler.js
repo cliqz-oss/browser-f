@@ -51,9 +51,9 @@ function sync_httpd_setup() {
 async function setUp(server) {
   await configureIdentity({username: "johndoe@mozilla.com"}, server);
 
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
   let serverKeys = Service.collectionKeys.asWBO("crypto", "keys");
-  serverKeys.encrypt(Service.identity.syncKeyBundle);
+  await serverKeys.encrypt(Service.identity.syncKeyBundle);
   let result = (await serverKeys.upload(Service.resource(Service.cryptoKeysURL))).success;
   return result;
 }
@@ -89,7 +89,7 @@ add_task(async function setup() {
 add_test(function test_prefAttributes() {
   _("Test various attributes corresponding to preferences.");
 
-  const INTERVAL = 42 * 60 * 1000;   // 42 minutes
+  const INTERVAL = 42 * 60 * 1000; // 42 minutes
   const THRESHOLD = 3142;
   const SCORE = 2718;
   const TIMESTAMP1 = 1275493471649;
@@ -527,7 +527,7 @@ add_task(async function test_autoconnect_mp_locked() {
   Utils.ensureMPUnlocked = () => {
     _("Faking Master Password entry cancelation.");
     return false;
-  }
+  };
   let origCanFetchKeys = Service.identity._canFetchKeys;
   Service.identity._canFetchKeys = () => false;
 
@@ -756,6 +756,37 @@ add_task(async function test_sync_failed_partial_500s() {
   await cleanUpAndGo(server);
 });
 
+add_task(async function test_sync_failed_partial_noresync() {
+  enableValidationPrefs();
+  let server = sync_httpd_setup();
+
+  let engine = Service.engineManager.get("catapult");
+  engine.enabled = true;
+  engine.exception = "Bad news";
+  engine._tracker._score = 10;
+
+  do_check_eq(Status.sync, SYNC_SUCCEEDED);
+
+  do_check_true(await setUp(server));
+
+  let resyncDoneObserver = promiseOneObserver("weave:service:resyncs-finished");
+
+  await Service.sync();
+
+  do_check_eq(Status.service, SYNC_FAILED_PARTIAL);
+
+  function onSyncStarted() {
+    do_throw("Should not start resync when previous sync failed");
+  }
+
+  Svc.Obs.add("weave:service:sync:start", onSyncStarted);
+  await resyncDoneObserver;
+
+  Svc.Obs.remove("weave:service:sync:start", onSyncStarted);
+  engine._tracker._store = 0;
+  await cleanUpAndGo(server);
+});
+
 add_task(async function test_sync_failed_partial_400s() {
   enableValidationPrefs();
 
@@ -818,8 +849,8 @@ add_task(async function test_sync_X_Weave_Backoff() {
     { id: "foo", cleartext: { os: "mobile", version: "0.01", type: "desktop" } }
   );
   let rec = await clientsEngine._store.createRecord("foo", "clients");
-  rec.encrypt(Service.collectionKeys.keyForCollection("clients"));
-  rec.upload(Service.resource(clientsEngine.engineURL + rec.id));
+  await rec.encrypt(Service.collectionKeys.keyForCollection("clients"));
+  await rec.upload(Service.resource(clientsEngine.engineURL + rec.id));
 
   // Sync once to log in and get everything set up. Let's verify our initial
   // values.
@@ -879,8 +910,8 @@ add_task(async function test_sync_503_Retry_After() {
     { id: "foo", cleartext: { os: "mobile", version: "0.01", type: "desktop" } }
   );
   let rec = await clientsEngine._store.createRecord("foo", "clients");
-  rec.encrypt(Service.collectionKeys.keyForCollection("clients"));
-  rec.upload(Service.resource(clientsEngine.engineURL + rec.id));
+  await rec.encrypt(Service.collectionKeys.keyForCollection("clients"));
+  await rec.upload(Service.resource(clientsEngine.engineURL + rec.id));
 
   // Sync once to log in and get everything set up. Let's verify our initial
   // values.
@@ -948,7 +979,7 @@ add_task(async function test_loginError_recoverable_reschedules() {
   do_check_true(scheduler.syncTimer.delay <= scheduler.syncInterval);
 
   Svc.Obs.remove("weave:service:sync:start", onSyncStart);
-  await cleanUpAndGo()
+  await cleanUpAndGo();
 });
 
 add_task(async function test_loginError_fatal_clearsTriggers() {

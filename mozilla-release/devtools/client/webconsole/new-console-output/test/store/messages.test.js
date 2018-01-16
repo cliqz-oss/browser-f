@@ -45,7 +45,7 @@ describe("Message reducer:", () => {
       expect(messages.first()).toEqual(message);
     });
 
-    it("increments repeat on a repeating message", () => {
+    it("increments repeat on a repeating log message", () => {
       const key1 = "console.log('foobar', 'test')";
       const { dispatch, getState } = setupStore([key1, key1]);
 
@@ -55,6 +55,46 @@ describe("Message reducer:", () => {
       packet.message.timeStamp = 1;
       dispatch(actions.messageAdd(packet));
       packet.message.timeStamp = 2;
+      dispatch(actions.messageAdd(packet));
+
+      const messages = getAllMessagesById(getState());
+
+      expect(messages.size).toBe(1);
+
+      const repeat = getAllRepeatById(getState());
+      expect(repeat[messages.first().id]).toBe(4);
+    });
+
+    it("increments repeat on a repeating css message", () => {
+      const key1 = "Unknown property ‘such-unknown-property’.  Declaration dropped.";
+      const { dispatch, getState } = setupStore([key1, key1]);
+
+      const packet = clonePacket(stubPackets.get(key1));
+
+      // Repeat ID must be the same even if the timestamp is different.
+      packet.pageError.timeStamp = 1;
+      dispatch(actions.messageAdd(packet));
+      packet.pageError.timeStamp = 2;
+      dispatch(actions.messageAdd(packet));
+
+      const messages = getAllMessagesById(getState());
+
+      expect(messages.size).toBe(1);
+
+      const repeat = getAllRepeatById(getState());
+      expect(repeat[messages.first().id]).toBe(4);
+    });
+
+    it("increments repeat on a repeating error message", () => {
+      const key1 = "ReferenceError: asdf is not defined";
+      const { dispatch, getState } = setupStore([key1, key1]);
+
+      const packet = clonePacket(stubPackets.get(key1));
+
+      // Repeat ID must be the same even if the timestamp is different.
+      packet.pageError.timeStamp = 1;
+      dispatch(actions.messageAdd(packet));
+      packet.pageError.timeStamp = 2;
       dispatch(actions.messageAdd(packet));
 
       const messages = getAllMessagesById(getState());
@@ -755,6 +795,37 @@ describe("Message reducer:", () => {
       dispatch(actions.messageAdd(stubPackets.get("console.log('foobar', 'test')")));
 
       expect(getAllMessagesTableDataById(getState()).size).toBe(0);
+    });
+  });
+
+  describe("messagesAdd", () => {
+    it("still log repeated message over logLimit, but only repeated ones", () => {
+      // Log two distinct messages
+      const key1 = "console.log('foobar', 'test')";
+      const key2 = "console.log(undefined)";
+      const { dispatch, getState } = setupStore([key1, key2], null, {
+        logLimit: 2
+      });
+
+      // Then repeat the last one two times and log the first one again
+      const packet1 = clonePacket(stubPackets.get(key2));
+      const packet2 = clonePacket(stubPackets.get(key2));
+      const packet3 = clonePacket(stubPackets.get(key1));
+
+      // Repeat ID must be the same even if the timestamp is different.
+      packet1.message.timeStamp = 1;
+      packet2.message.timeStamp = 2;
+      packet3.message.timeStamp = 3;
+      dispatch(actions.messagesAdd([packet1, packet2, packet3]));
+
+      // There is still only two messages being logged,
+      const messages = getAllMessagesById(getState());
+      expect(messages.size).toBe(2);
+
+      // the second one being repeated 3 times
+      const repeat = getAllRepeatById(getState());
+      expect(repeat[messages.first().id]).toBe(3);
+      expect(repeat[messages.last().id]).toBe(undefined);
     });
   });
 });

@@ -33,10 +33,9 @@ const CONFIG_PREFS = [
 
 this.FxAccountsConfig = {
 
-  // Returns a promise that resolves with the URI of the remote UI flows.
-  async promiseAccountsSignUpURI() {
+  async _getPrefURL(prefName) {
     await this.ensureConfigured();
-    let url = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.signup.uri");
+    let url = Services.urlFormatter.formatURLPref(prefName);
     if (fxAccounts.requiresHttps() && !/^https:/.test(url)) { // Comment to un-break emacs js-mode highlighting
       throw new Error("Firefox Accounts server must use HTTPS");
     }
@@ -44,23 +43,17 @@ this.FxAccountsConfig = {
   },
 
   // Returns a promise that resolves with the URI of the remote UI flows.
-  async promiseAccountsSignInURI() {
-    await this.ensureConfigured();
-    let url = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.signin.uri");
-    if (fxAccounts.requiresHttps() && !/^https:/.test(url)) { // Comment to un-break emacs js-mode highlighting
-      throw new Error("Firefox Accounts server must use HTTPS");
-    }
-    return url;
+  promiseAccountsSignUpURI() {
+    return this._getPrefURL("identity.fxaccounts.remote.signup.uri");
   },
 
   // Returns a promise that resolves with the URI of the remote UI flows.
-  async promiseAccountsEmailURI() {
-    await this.ensureConfigured();
-    let url = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.email.uri");
-    if (fxAccounts.requiresHttps() && !/^https:/.test(url)) { // Comment to un-break emacs js-mode highlighting
-      throw new Error("Firefox Accounts server must use HTTPS");
-    }
-    return url;
+  promiseAccountsSignInURI() {
+    return this._getPrefURL("identity.fxaccounts.remote.signin.uri");
+  },
+
+  promiseAccountsEmailURI() {
+    return this._getPrefURL("identity.fxaccounts.remote.email.uri");
   },
 
   resetConfigURLs() {
@@ -148,7 +141,7 @@ this.FxAccountsConfig = {
     log.debug("Got successful configuration response", jsonStr);
     try {
       // Update the prefs directly specified by the config.
-      let config = JSON.parse(jsonStr)
+      let config = JSON.parse(jsonStr);
       let authServerBase = config.auth_server_base_url;
       if (!authServerBase.endsWith("/v1")) {
         authServerBase += "/v1";

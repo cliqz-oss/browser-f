@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -204,7 +205,7 @@ Declaration::RemoveProperty(const nsAString& aProperty)
     [&](const nsAString& name) { RemoveVariable(name); });
 }
 
-void
+bool
 Declaration::RemovePropertyByID(nsCSSPropertyID aProperty)
 {
   MOZ_ASSERT(0 <= aProperty && aProperty < eCSSProperty_COUNT);
@@ -213,18 +214,22 @@ Declaration::RemovePropertyByID(nsCSSPropertyID aProperty)
   ExpandTo(&data);
   MOZ_ASSERT(!mData && !mImportantData, "Expand didn't null things out");
 
+  bool removed = false;
   if (nsCSSProps::IsShorthand(aProperty)) {
     CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(p, aProperty,
                                          CSSEnabledState::eForAllContent) {
       data.ClearLonghandProperty(*p);
-      mOrder.RemoveElement(static_cast<uint32_t>(*p));
+      if (mOrder.RemoveElement(static_cast<uint32_t>(*p))) {
+        removed = true;
+      }
     }
   } else {
     data.ClearLonghandProperty(aProperty);
-    mOrder.RemoveElement(static_cast<uint32_t>(aProperty));
+    removed = mOrder.RemoveElement(static_cast<uint32_t>(aProperty));
   }
 
   CompressFrom(&data);
+  return removed;
 }
 
 bool
@@ -441,11 +446,7 @@ Declaration::GetImageLayerValue(
         }
       // This layer is an mask layer
       } else {
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
         MOZ_ASSERT(aTable == nsStyleImageLayers::kMaskLayerTable);
-#else
-        MOZ_ASSERT_UNREACHABLE("Should never get here when mask-as-shorthand is disable");
-#endif
         if (repeat || positionX || positionY || clip || origin || size ||
             composite || mode) {
           // Uneven length lists, so can't be serialized as shorthand.
@@ -466,11 +467,7 @@ Declaration::GetImageLayerValue(
       }
     // This layer is an mask layer
     } else {
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
       MOZ_ASSERT(aTable == nsStyleImageLayers::kMaskLayerTable);
-#else
-      MOZ_ASSERT_UNREACHABLE("Should never get here when mask-as-shorthand is disable");
-#endif
       if (!repeat || !positionX || !positionY || !clip || !origin || !size ||
           !composite || !mode) {
         // Uneven length lists, so can't be serialized as shorthand.
@@ -800,7 +797,6 @@ Declaration::GetPropertyValueInternal(
                                  nsStyleImageLayers::kBackgroundLayerTable);
       break;
     }
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
     case eCSSProperty_mask: {
       GetImageLayerValue(data, aValue, nsStyleImageLayers::kMaskLayerTable);
       break;
@@ -810,7 +806,6 @@ Declaration::GetPropertyValueInternal(
                                  nsStyleImageLayers::kMaskLayerTable);
       break;
     }
-#endif
     case eCSSProperty_font: {
       // systemFont might not be present; other values are guaranteed to be
       // available based on the shorthand check at the beginning of the

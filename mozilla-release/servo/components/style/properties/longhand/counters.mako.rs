@@ -36,9 +36,7 @@
         #[cfg(feature = "gecko")]
         use values::specified::Attr;
 
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[derive(Clone, Debug, Eq, PartialEq, ToComputedValue)]
+        #[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, ToComputedValue)]
         pub enum ContentItem {
             /// Literal string content.
             String(String),
@@ -98,9 +96,7 @@
             }
         }
 
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-        #[derive(Clone, Debug, Eq, PartialEq, ToComputedValue)]
+        #[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, ToComputedValue)]
         pub enum T {
             Normal,
             None,
@@ -205,7 +201,9 @@
                     };
                     match result {
                         Some(result) => content.push(result?),
-                        None => return Err(StyleParseError::UnexpectedFunction(name.clone()).into())
+                        None => return Err(input.new_custom_error(
+                            StyleParseErrorKind::UnexpectedFunction(name.clone())
+                        ))
                     }
                 }
                 Ok(Token::Ident(ref ident)) => {
@@ -218,15 +216,15 @@
                         _ => false,
                     };
                     if !valid {
-                        return Err(SelectorParseError::UnexpectedIdent(ident.clone()).into())
+                        return Err(input.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone())))
                     }
                 }
                 Err(_) => break,
-                Ok(t) => return Err(BasicParseError::UnexpectedToken(t).into())
+                Ok(t) => return Err(input.new_unexpected_token_error(t))
             }
         }
         if content.is_empty() {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
         Ok(SpecifiedValue::Items(content))
     }
@@ -247,9 +245,7 @@
         use style_traits::ToCss;
         use values::CustomIdent;
 
-        #[derive(Clone, Debug, PartialEq)]
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+        #[derive(Clone, Debug, MallocSizeOf, PartialEq)]
         pub struct T(pub Vec<(CustomIdent, i32)>);
 
         impl ToCss for T {
@@ -332,9 +328,10 @@
 
         let mut counters = Vec::new();
         loop {
+            let location = input.current_source_location();
             let counter_name = match input.next() {
-                Ok(&Token::Ident(ref ident)) => CustomIdent::from_ident(ident, &["none"])?,
-                Ok(t) => return Err(BasicParseError::UnexpectedToken(t.clone()).into()),
+                Ok(&Token::Ident(ref ident)) => CustomIdent::from_ident(location, ident, &["none"])?,
+                Ok(t) => return Err(location.new_unexpected_token_error(t.clone())),
                 Err(_) => break,
             };
             let counter_delta = input.try(|input| specified::parse_integer(context, input))
@@ -345,7 +342,7 @@
         if !counters.is_empty() {
             Ok(SpecifiedValue(counters))
         } else {
-            Err(StyleParseError::UnspecifiedError.into())
+            Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
     }
 </%helpers:longhand>

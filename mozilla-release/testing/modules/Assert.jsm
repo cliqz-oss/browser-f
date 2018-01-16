@@ -25,14 +25,24 @@ XPCOMUtils.defineLazyModuleGetter(this, "Promise",
  * 1. The assert module provides functions that throw AssertionError's when
  * particular conditions are not met.
  *
- * To use the module you'll need to instantiate it first, which allows consumers
+ * To use the module you may instantiate it first, which allows consumers
  * to override certain behavior on the newly obtained instance. For examples,
  * see the javadoc comments for the `report` member function.
+ *
+ * The isDefault argument is used by test suites to set reporterFunc as the
+ * default used by the global instance, which is called for example by other
+ * test-only modules. This is false when the reporter is set by content scripts,
+ * because they may still run in the parent process.
  */
-var Assert = this.Assert = function(reporterFunc) {
+var Assert = this.Assert = function(reporterFunc, isDefault) {
   if (reporterFunc)
     this.setReporter(reporterFunc);
+  if (isDefault)
+    Assert.setReporter(reporterFunc);
 };
+
+// This allows using the Assert object as an additional global instance.
+Object.setPrototypeOf(Assert, Assert.prototype);
 
 function instanceOf(object, type) {
   return Object.prototype.toString.call(object) == "[object " + type + "]";
@@ -109,7 +119,7 @@ Assert.AssertionError = function(options) {
   let stack = Components.stack;
   do {
     stack = stack.asyncCaller || stack.caller;
-  } while (stack && stack.filename && stack.filename.includes("Assert.jsm"))
+  } while (stack && stack.filename && stack.filename.includes("Assert.jsm"));
   this.stack = stack;
 };
 
@@ -330,10 +340,23 @@ function expectedException(actual, expected) {
  * 11. Expected to throw an error:
  * assert.throws(block, Error_opt, message_opt);
  *
+ * Example:
+ * ```js
+ * // The following will verify that an error of type TypeError was thrown:
+ * Assert.throws(() => testBody(), TypeError);
+ * // The following will verify that an error was thrown with an error message matching "hello":
+ * Assert.throws(() => testBody(), /hello/);
+ * // The following will verify that any error was thrown and will use "hello" in the test report:
+ * Assert.throws(() => testBody(), "hello");
+ * ```
+ *
  * @param block
  *        (function) Function block to evaluate and catch eventual thrown errors
  * @param expected (optional)
- *        (mixed) Test reference to evaluate against the thrown result from `block`
+ *        (mixed) This parameter can be either a RegExp, a function, or a string. The
+ *        function is either the error type's constructor, or it's a method that returns a boolean
+ *        that describes the test outcome. When string value is provided, it will be used as if it
+ *        was provided as the message parameter.
  * @param message (optional)
  *        (string) Short explanation of the expected result
  */
@@ -473,4 +496,3 @@ proto.less = function less(lhs, rhs, message) {
 proto.lessOrEqual = function lessOrEqual(lhs, rhs, message) {
   compareNumbers.call(this, lhs > rhs, lhs, rhs, message, "<=");
 };
-

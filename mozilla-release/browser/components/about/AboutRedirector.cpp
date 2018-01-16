@@ -103,11 +103,17 @@ static const RedirEntry kRedirMap[] = {
   { "healthreport", "chrome://browser/content/abouthealthreport/abouthealth.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
 #endif
+<<<<<<< HEAD
 #if 0
 # Disabled in Cliqz
   { "accounts", "chrome://browser/content/aboutaccounts/aboutaccounts.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
 #endif
+||||||| merged common ancestors
+  { "accounts", "chrome://browser/content/aboutaccounts/aboutaccounts.xhtml",
+    nsIAboutModule::ALLOW_SCRIPT },
+=======
+>>>>>>> origin/upstream-releases
   { "reader", "chrome://global/content/reader/aboutReader.html",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT |

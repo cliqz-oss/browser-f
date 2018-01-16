@@ -935,26 +935,32 @@ MacroAssemblerMIPSCompat::loadDouble(const BaseIndex& src, FloatRegister dest)
 }
 
 void
-MacroAssemblerMIPSCompat::loadUnalignedDouble(const BaseIndex& src, Register temp,
-                                              FloatRegister dest)
+MacroAssemblerMIPSCompat::loadUnalignedDouble(const wasm::MemoryAccessDesc& access,
+                                              const BaseIndex& src, Register temp, FloatRegister dest)
 {
     computeScaledAddress(src, SecondScratchReg);
 
+    uint32_t framePushed = asMasm().framePushed();
+    BufferOffset load;
     if (Imm16::IsInSignedRange(src.offset) && Imm16::IsInSignedRange(src.offset + 7)) {
-        as_lwl(temp, SecondScratchReg, src.offset + INT64LOW_OFFSET + 3);
+        load = as_lwl(temp, SecondScratchReg, src.offset + INT64LOW_OFFSET + 3);
         as_lwr(temp, SecondScratchReg, src.offset + INT64LOW_OFFSET);
+        append(access, load.getOffset(), framePushed);
         moveToDoubleLo(temp, dest);
-        as_lwl(temp, SecondScratchReg, src.offset + INT64HIGH_OFFSET + 3);
+        load = as_lwl(temp, SecondScratchReg, src.offset + INT64HIGH_OFFSET + 3);
         as_lwr(temp, SecondScratchReg, src.offset + INT64HIGH_OFFSET);
+        append(access, load.getOffset(), framePushed);
         moveToDoubleHi(temp, dest);
     } else {
         ma_li(ScratchRegister, Imm32(src.offset));
         as_daddu(ScratchRegister, SecondScratchReg, ScratchRegister);
-        as_lwl(temp, ScratchRegister, INT64LOW_OFFSET + 3);
+        load = as_lwl(temp, ScratchRegister, INT64LOW_OFFSET + 3);
         as_lwr(temp, ScratchRegister, INT64LOW_OFFSET);
+        append(access, load.getOffset(), framePushed);
         moveToDoubleLo(temp, dest);
-        as_lwl(temp, ScratchRegister, INT64HIGH_OFFSET + 3);
+        load = as_lwl(temp, ScratchRegister, INT64HIGH_OFFSET + 3);
         as_lwr(temp, ScratchRegister, INT64HIGH_OFFSET);
+        append(access, load.getOffset(), framePushed);
         moveToDoubleHi(temp, dest);
     }
 }
@@ -987,21 +993,21 @@ MacroAssemblerMIPSCompat::loadFloat32(const BaseIndex& src, FloatRegister dest)
 }
 
 void
-MacroAssemblerMIPSCompat::loadUnalignedFloat32(const BaseIndex& src, Register temp,
-                                               FloatRegister dest)
+MacroAssemblerMIPSCompat::loadUnalignedFloat32(const wasm::MemoryAccessDesc& access,
+                                               const BaseIndex& src, Register temp, FloatRegister dest)
 {
     computeScaledAddress(src, SecondScratchReg);
-
+    BufferOffset load;
     if (Imm16::IsInSignedRange(src.offset) && Imm16::IsInSignedRange(src.offset + 3)) {
-        as_lwl(temp, SecondScratchReg, src.offset + 3);
+        load = as_lwl(temp, SecondScratchReg, src.offset + 3);
         as_lwr(temp, SecondScratchReg, src.offset);
     } else {
         ma_li(ScratchRegister, Imm32(src.offset));
         as_daddu(ScratchRegister, SecondScratchReg, ScratchRegister);
-        as_lwl(temp, ScratchRegister, 3);
+        load = as_lwl(temp, ScratchRegister, 3);
         as_lwr(temp, ScratchRegister, 0);
     }
-
+    append(access, load.getOffset(), asMasm().framePushed());
     moveToFloat32(temp, dest);
 }
 
@@ -1139,46 +1145,52 @@ MacroAssemblerMIPSCompat::storePtr(Register src, AbsoluteAddress dest)
 }
 
 void
-MacroAssemblerMIPSCompat::storeUnalignedFloat32(FloatRegister src, Register temp,
-                                                const BaseIndex& dest)
+MacroAssemblerMIPSCompat::storeUnalignedFloat32(const wasm::MemoryAccessDesc& access,
+                                                FloatRegister src, Register temp, const BaseIndex& dest)
 {
     computeScaledAddress(dest, SecondScratchReg);
     moveFromFloat32(src, temp);
 
+    BufferOffset store;
     if (Imm16::IsInSignedRange(dest.offset) && Imm16::IsInSignedRange(dest.offset + 3)) {
-        as_swl(temp, SecondScratchReg, dest.offset + 3);
+        store = as_swl(temp, SecondScratchReg, dest.offset + 3);
         as_swr(temp, SecondScratchReg, dest.offset);
     } else {
         ma_li(ScratchRegister, Imm32(dest.offset));
         as_daddu(ScratchRegister, SecondScratchReg, ScratchRegister);
-        as_swl(temp, ScratchRegister, 3);
+        store = as_swl(temp, ScratchRegister, 3);
         as_swr(temp, ScratchRegister, 0);
     }
+    append(access, store.getOffset(), asMasm().framePushed());
 }
 
 void
-MacroAssemblerMIPSCompat::storeUnalignedDouble(FloatRegister src, Register temp,
-                                               const BaseIndex& dest)
+MacroAssemblerMIPSCompat::storeUnalignedDouble(const wasm::MemoryAccessDesc& access,
+                                               FloatRegister src, Register temp, const BaseIndex& dest)
 {
     computeScaledAddress(dest, SecondScratchReg);
 
+    uint32_t framePushed = asMasm().framePushed();
+    BufferOffset store;
     if (Imm16::IsInSignedRange(dest.offset) && Imm16::IsInSignedRange(dest.offset + 7)) {
+        moveFromDoubleHi(src, temp);
+        store = as_swl(temp, SecondScratchReg, dest.offset + INT64HIGH_OFFSET + 3);
+        as_swr(temp, SecondScratchReg, dest.offset + INT64HIGH_OFFSET);
         moveFromDoubleLo(src, temp);
         as_swl(temp, SecondScratchReg, dest.offset + INT64LOW_OFFSET + 3);
         as_swr(temp, SecondScratchReg, dest.offset + INT64LOW_OFFSET);
-        moveFromDoubleHi(src, temp);
-        as_swl(temp, SecondScratchReg, dest.offset + INT64HIGH_OFFSET + 3);
-        as_swr(temp, SecondScratchReg, dest.offset + INT64HIGH_OFFSET);
+
     } else {
         ma_li(ScratchRegister, Imm32(dest.offset));
         as_daddu(ScratchRegister, SecondScratchReg, ScratchRegister);
+        moveFromDoubleHi(src, temp);
+        store = as_swl(temp, ScratchRegister, INT64HIGH_OFFSET + 3);
+        as_swr(temp, ScratchRegister, INT64HIGH_OFFSET);
         moveFromDoubleLo(src, temp);
         as_swl(temp, ScratchRegister, INT64LOW_OFFSET + 3);
         as_swr(temp, ScratchRegister, INT64LOW_OFFSET);
-        moveFromDoubleHi(src, temp);
-        as_swl(temp, ScratchRegister, INT64HIGH_OFFSET + 3);
-        as_swr(temp, ScratchRegister, INT64HIGH_OFFSET);
     }
+    append(access, store.getOffset(), framePushed);
 }
 
 // Note: this function clobbers the input register.
@@ -1698,10 +1710,13 @@ MacroAssemblerMIPSCompat::pushValue(const Address& addr)
 {
     // Allocate stack slots for type and payload. One for each.
     ma_subu(StackPointer, StackPointer, Imm32(sizeof(Value)));
+    // If address is based on StackPointer its offset needs to be adjusted
+    // to accommodate for previous stack allocation.
+    int32_t offset = addr.base != StackPointer ? addr.offset : addr.offset + sizeof(Value);
     // Store type and payload.
-    ma_lw(ScratchRegister, Address(addr.base, addr.offset + TAG_OFFSET));
+    ma_lw(ScratchRegister, Address(addr.base, offset + TAG_OFFSET));
     ma_sw(ScratchRegister, Address(StackPointer, TAG_OFFSET));
-    ma_lw(ScratchRegister, Address(addr.base, addr.offset + PAYLOAD_OFFSET));
+    ma_lw(ScratchRegister, Address(addr.base, offset + PAYLOAD_OFFSET));
     ma_sw(ScratchRegister, Address(StackPointer, PAYLOAD_OFFSET));
 }
 
@@ -1855,6 +1870,7 @@ MacroAssemblerMIPSCompat::handleFailureWithHandlerTail(void* handler)
     Label finally;
     Label return_;
     Label bailout;
+    Label wasm;
 
     // Already clobbered a0, so use it...
     load32(Address(StackPointer, offsetof(ResumeFromException, kind)), a0);
@@ -1865,6 +1881,7 @@ MacroAssemblerMIPSCompat::handleFailureWithHandlerTail(void* handler)
     asMasm().branch32(Assembler::Equal, a0, Imm32(ResumeFromException::RESUME_FORCED_RETURN),
                       &return_);
     asMasm().branch32(Assembler::Equal, a0, Imm32(ResumeFromException::RESUME_BAILOUT), &bailout);
+    asMasm().branch32(Assembler::Equal, a0, Imm32(ResumeFromException::RESUME_WASM), &wasm);
 
     breakpoint(); // Invalid kind.
 
@@ -1933,6 +1950,14 @@ MacroAssemblerMIPSCompat::handleFailureWithHandlerTail(void* handler)
     ma_li(ReturnReg, Imm32(BAILOUT_RETURN_OK));
     loadPtr(Address(sp, offsetof(ResumeFromException, target)), a1);
     jump(a1);
+
+    // If we are throwing and the innermost frame was a wasm frame, reset SP and
+    // FP; SP is pointing to the unwound return address to the wasm entry, so
+    // we can just ret().
+    bind(&wasm);
+    loadPtr(Address(StackPointer, offsetof(ResumeFromException, framePointer)), FramePointer);
+    loadPtr(Address(StackPointer, offsetof(ResumeFromException, stackPointer)), StackPointer);
+    ret();
 }
 
 template<typename T>

@@ -1787,7 +1787,6 @@ END_WORKERS_NAMESPACE
 WorkerLoadInfo::WorkerLoadInfo()
   : mLoadFlags(nsIRequest::LOAD_NORMAL)
   , mWindowID(UINT64_MAX)
-  , mServiceWorkerID(0)
   , mReferrerPolicy(net::RP_Unset)
   , mFromWindow(false)
   , mEvalAllowed(false)
@@ -1844,9 +1843,9 @@ WorkerLoadInfo::StealFrom(WorkerLoadInfo& aOther)
   mDomain = aOther.mDomain;
   mOrigin = aOther.mOrigin;
   mServiceWorkerCacheName = aOther.mServiceWorkerCacheName;
+  mServiceWorkerDescriptor = aOther.mServiceWorkerDescriptor;
   mLoadFlags = aOther.mLoadFlags;
   mWindowID = aOther.mWindowID;
-  mServiceWorkerID = aOther.mServiceWorkerID;
   mReferrerPolicy = aOther.mReferrerPolicy;
   mFromWindow = aOther.mFromWindow;
   mEvalAllowed = aOther.mEvalAllowed;
@@ -2592,7 +2591,7 @@ WorkerPrivate::MemoryReporter::TryToMapAddon(nsACString &path)
   }
 
   static const size_t explicitLength = strlen("explicit/");
-  addonId.Insert(NS_LITERAL_CSTRING("add-ons/"), 0);
+  addonId.InsertLiteral("add-ons/", 0);
   addonId += "/";
   path.Insert(addonId, explicitLength);
 }
@@ -2827,7 +2826,7 @@ WorkerPrivateParent<Derived>::WorkerPrivateParent(
 : mMutex("WorkerPrivateParent Mutex"),
   mCondVar(mMutex, "WorkerPrivateParent CondVar"),
   mParent(aParent), mScriptURL(aScriptURL),
-  mWorkerName(aWorkerName), mServiceWorkerScope(aServiceWorkerScope),
+  mWorkerName(aWorkerName),
   mLoadingWorkerScript(false), mBusyCount(0), mParentWindowPausedDepth(0),
   mParentStatus(Pending), mParentFrozen(false),
   mIsChromeWorker(aIsChromeWorker), mMainThreadObjectsForgotten(false),
@@ -4646,7 +4645,7 @@ WorkerPrivate::Constructor(const GlobalObject& aGlobal,
 {
   JSContext* cx = aGlobal.Context();
   return Constructor(cx, aScriptURL, aIsChromeWorker, aWorkerType,
-                     aWorkerName, NullCString(), aLoadInfo, aRv);
+                     aWorkerName, VoidCString(), aLoadInfo, aRv);
 }
 
 // static
@@ -5296,7 +5295,7 @@ WorkerPrivate::InitializeGCTimers()
   // Once the worker goes idle we set a short (IDLE_GC_TIMER_DELAY_SEC) timer to
   // run a shrinking GC. If the worker receives more messages then the short
   // timer is canceled and the periodic timer resumes.
-  mGCTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
+  mGCTimer = NS_NewTimer();
   MOZ_ASSERT(mGCTimer);
 
   mPeriodicGCTimerRunning = false;
@@ -6129,6 +6128,7 @@ WorkerPrivate::EnterDebuggerEventLoop()
   uint32_t currentEventLoopLevel = ++mDebuggerEventLoopLevel;
 
   while (currentEventLoopLevel <= mDebuggerEventLoopLevel) {
+
     bool debuggerRunnablesPending = false;
 
     {
@@ -6147,7 +6147,8 @@ WorkerPrivate::EnterDebuggerEventLoop()
       MutexAutoLock lock(mMutex);
 
       while (mControlQueue.IsEmpty() &&
-             !(debuggerRunnablesPending = !mDebuggerQueue.IsEmpty())) {
+             !(debuggerRunnablesPending = !mDebuggerQueue.IsEmpty()) &&
+             Promise::IsWorkerDebuggerMicroTaskEmpty()) {
         WaitForWorkerEvents();
       }
 
@@ -6155,7 +6156,9 @@ WorkerPrivate::EnterDebuggerEventLoop()
 
       // XXXkhuey should we abort JS on the stack here if we got Abort above?
     }
-
+    if (!Promise::IsWorkerDebuggerMicroTaskEmpty()) {
+      Promise::PerformWorkerDebuggerMicroTaskCheckpoint();
+    }
     if (debuggerRunnablesPending) {
       // Start the periodic GC timer if it is not already running.
       SetGCTimerMode(PeriodicTimer);
@@ -6478,12 +6481,10 @@ WorkerPrivate::SetTimeout(JSContext* aCx,
   // If the timeout we just made is set to fire next then we need to update the
   // timer, unless we're currently running timeouts.
   if (insertedInfo == mTimeouts.Elements() && !mRunningExpiredTimeouts) {
-    nsresult rv;
-
     if (!mTimer) {
-      mTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
-      if (NS_FAILED(rv)) {
-        aRv.Throw(rv);
+      mTimer = NS_NewTimer();
+      if (!mTimer) {
+        aRv.Throw(NS_ERROR_UNEXPECTED);
         return 0;
       }
 
@@ -7212,20 +7213,6 @@ EventTarget::IsOnCurrentThreadInfallible()
 }
 
 BEGIN_WORKERS_NAMESPACE
-
-WorkerCrossThreadDispatcher*
-GetWorkerCrossThreadDispatcher(JSContext* aCx, const JS::Value& aWorker)
-{
-  if (!aWorker.isObject()) {
-    return nullptr;
-  }
-
-  JS::Rooted<JSObject*> obj(aCx, &aWorker.toObject());
-  WorkerPrivate* w = nullptr;
-  UNWRAP_OBJECT(Worker, &obj, w);
-  MOZ_ASSERT(w);
-  return w->GetCrossThreadDispatcher();
-}
 
 // Force instantiation.
 template class WorkerPrivateParent<WorkerPrivate>;

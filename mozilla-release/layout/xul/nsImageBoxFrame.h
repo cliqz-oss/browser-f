@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,23 +12,19 @@
 #include "imgILoader.h"
 #include "imgIRequest.h"
 #include "imgIContainer.h"
-#include "imgINotificationObserver.h"
-#include "imgIOnloadBlocker.h"
 
 class imgRequestProxy;
 class nsImageBoxFrame;
 
 class nsDisplayXULImage;
 
-class nsImageBoxListener final : public imgINotificationObserver,
-                                 public imgIOnloadBlocker
+class nsImageBoxListener final : public imgINotificationObserver
 {
 public:
   nsImageBoxListener();
 
   NS_DECL_ISUPPORTS
   NS_DECL_IMGINOTIFICATIONOBSERVER
-  NS_DECL_IMGIONLOADBLOCKER
 
   void SetFrame(nsImageBoxFrame *frame) { mFrame = frame; }
 
@@ -61,12 +58,12 @@ public:
                     nsIFrame*         asPrevInFlow) override;
 
   virtual nsresult AttributeChanged(int32_t aNameSpaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t aModType) override;
 
   virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
 #ifdef DEBUG_FRAME_DUMP
   virtual nsresult GetFrameName(nsAString& aResult) const override;

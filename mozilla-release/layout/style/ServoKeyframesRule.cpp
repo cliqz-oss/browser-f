@@ -90,7 +90,12 @@ public:
   {
     mStyleSheet = nullptr;
     mParentRule = nullptr;
-    DropAllRules();
+    for (css::Rule* rule : mRules) {
+      if (rule) {
+        rule->SetStyleSheet(nullptr);
+        rule->SetParentRule(nullptr);
+      }
+    }
   }
 
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
@@ -103,15 +108,16 @@ public:
   }
 
 private:
-  virtual ~ServoKeyframeList() {}
+  virtual ~ServoKeyframeList() {
+    MOZ_ASSERT(!mParentRule, "Backpointer should have been cleared");
+    MOZ_ASSERT(!mStyleSheet, "Backpointer should have been cleared");
+    DropAllRules();
+  }
 
   void DropAllRules()
   {
-    for (css::Rule* rule : mRules) {
-      if (rule) {
-        rule->SetStyleSheet(nullptr);
-        rule->SetParentRule(nullptr);
-      }
+    if (mParentRule || mStyleSheet) {
+      DropReference();
     }
     mRules.Clear();
     mRawRule = nullptr;
@@ -163,6 +169,9 @@ ServoKeyframesRule::ServoKeyframesRule(RefPtr<RawServoKeyframesRule> aRawRule,
 
 ServoKeyframesRule::~ServoKeyframesRule()
 {
+  if (mKeyframeList) {
+    mKeyframeList->DropReference();
+  }
 }
 
 NS_IMPL_ADDREF_INHERITED(ServoKeyframesRule, dom::CSSKeyframesRule)
@@ -253,7 +262,7 @@ ServoKeyframesRule::UpdateRule(Func aCallback)
 NS_IMETHODIMP
 ServoKeyframesRule::GetName(nsAString& aName)
 {
-  nsIAtom* name = Servo_KeyframesRule_GetName(mRawRule);
+  nsAtom* name = Servo_KeyframesRule_GetName(mRawRule);
   aName = nsDependentAtomString(name);
   return NS_OK;
 }
@@ -261,8 +270,8 @@ ServoKeyframesRule::GetName(nsAString& aName)
 NS_IMETHODIMP
 ServoKeyframesRule::SetName(const nsAString& aName)
 {
-  nsCOMPtr<nsIAtom> name = NS_Atomize(aName);
-  nsIAtom* oldName = Servo_KeyframesRule_GetName(mRawRule);
+  RefPtr<nsAtom> name = NS_Atomize(aName);
+  nsAtom* oldName = Servo_KeyframesRule_GetName(mRawRule);
   if (name == oldName) {
     return NS_OK;
   }

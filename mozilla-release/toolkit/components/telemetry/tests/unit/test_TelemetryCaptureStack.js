@@ -176,13 +176,12 @@ add_task({
 }, function test_CaptureStacksDoesNotAllowBadKey() {
   for (let badKey of [null, "KEY-!@\"#$%^&*()_"]) {
     let stacks = captureStacks(badKey);
-    let captureData = stacks.captures.find(capture => capture[0] === badKey)
+    let captureData = stacks.captures.find(capture => capture[0] === badKey);
     Assert.ok(!captureData, `"${badKey}" should not be allowed as a key`);
   }
 });
 
 function run_test() {
   do_get_profile(true);
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   run_next_test();
 }

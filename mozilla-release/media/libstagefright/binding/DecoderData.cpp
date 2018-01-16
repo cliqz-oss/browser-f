@@ -4,14 +4,16 @@
 
 #include "mp4_demuxer/Adts.h"
 #include "mp4_demuxer/AnnexB.h"
-#include "mp4_demuxer/ByteReader.h"
+#include "mp4_demuxer/BufferReader.h"
 #include "mp4_demuxer/DecoderData.h"
 #include <media/stagefright/foundation/ABitReader.h>
 #include "media/stagefright/MetaData.h"
 #include "media/stagefright/MediaDefs.h"
 #include "media/stagefright/Utils.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/EndianUtils.h"
 #include "include/ESDS.h"
+#include "VideoUtils.h"
 
 // OpusDecoder header is really needed only by MP4 in rust
 #include "OpusDecoder.h"
@@ -85,27 +87,27 @@ FindData(const MetaData* aMetaData, uint32_t aKey, mozilla::MediaByteBuffer* aDe
   return FindData(aMetaData, aKey, static_cast<nsTArray<uint8_t>*>(aDest));
 }
 
-bool
+mozilla::Result<mozilla::Ok, nsresult>
 CryptoFile::DoUpdate(const uint8_t* aData, size_t aLength)
 {
-  ByteReader reader(aData, aLength);
+  BufferReader reader(aData, aLength);
   while (reader.Remaining()) {
     PsshInfo psshInfo;
     if (!reader.ReadArray(psshInfo.uuid, 16)) {
-      return false;
+      return mozilla::Err(NS_ERROR_FAILURE);
     }
 
     if (!reader.CanReadType<uint32_t>()) {
-      return false;
+      return mozilla::Err(NS_ERROR_FAILURE);
     }
     auto length = reader.ReadType<uint32_t>();
 
     if (!reader.ReadArray(psshInfo.data, length)) {
-      return false;
+      return mozilla::Err(NS_ERROR_FAILURE);
     }
     pssh.AppendElement(psshInfo);
   }
-  return true;
+  return mozilla::Ok();
 }
 
 static void
@@ -203,15 +205,15 @@ MP4AudioInfo::Update(const mp4parse_track_info* track,
     MOZ_ASSERT(audio->extra_data.data);
     MOZ_ASSERT(audio->extra_data.length >= 12);
     uint16_t preskip =
-      LittleEndian::readUint16(audio->extra_data.data + 10);
-    OpusDataDecoder::AppendCodecDelay(mCodecSpecificConfig,
+      mozilla::LittleEndian::readUint16(audio->extra_data.data + 10);
+    mozilla::OpusDataDecoder::AppendCodecDelay(mCodecSpecificConfig,
         mozilla::FramesToUsecs(preskip, 48000).value());
   } else if (track->codec == mp4parse_codec_AAC) {
-    mMimeType = MEDIA_MIMETYPE_AUDIO_AAC;
+    mMimeType = NS_LITERAL_CSTRING("audio/mp4a-latm");
   } else if (track->codec == mp4parse_codec_FLAC) {
-    mMimeType = MEDIA_MIMETYPE_AUDIO_FLAC;
+    mMimeType = NS_LITERAL_CSTRING("audio/flac");
   } else if (track->codec == mp4parse_codec_MP3) {
-    mMimeType = MEDIA_MIMETYPE_AUDIO_MPEG;
+    mMimeType = NS_LITERAL_CSTRING("audio/mpeg");
   }
 
   mRate = audio->sample_rate;
@@ -245,11 +247,11 @@ MP4VideoInfo::Update(const mp4parse_track_info* track,
 {
   UpdateTrackProtectedInfo(*this, video->protected_data);
   if (track->codec == mp4parse_codec_AVC) {
-    mMimeType = MEDIA_MIMETYPE_VIDEO_AVC;
+    mMimeType = NS_LITERAL_CSTRING("video/avc");
   } else if (track->codec == mp4parse_codec_VP9) {
     mMimeType = NS_LITERAL_CSTRING("video/vp9");
   } else if (track->codec == mp4parse_codec_MP4V) {
-    mMimeType = MEDIA_MIMETYPE_VIDEO_MPEG4;
+    mMimeType = NS_LITERAL_CSTRING("video/mp4v-es");
   }
   mTrackId = track->track_id;
   mDuration = TimeUnit::FromMicroseconds(track->duration);

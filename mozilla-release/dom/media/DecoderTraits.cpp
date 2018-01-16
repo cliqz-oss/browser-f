@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "ChannelMediaDecoder.h"
 #include "DecoderTraits.h"
 #include "MediaContainerType.h"
 #include "nsMimeTypes.h"
@@ -95,7 +94,6 @@ CanHandleCodecsType(const MediaContainerType& aType,
     // ogg is supported and working: the codec must be invalid.
     return CANPLAY_NO;
   }
-#if !defined(MOZ_OMX_WEBM_DECODER)
   if (WebMDecoder::IsSupportedType(mimeType)) {
     if (WebMDecoder::IsSupportedType(aType)) {
       return CANPLAY_YES;
@@ -104,7 +102,6 @@ CanHandleCodecsType(const MediaContainerType& aType,
     // webm is supported and working: the codec must be invalid.
     return CANPLAY_NO;
   }
-#endif
 #ifdef MOZ_FMP4
   if (MP4Decoder::IsSupportedType(mimeType,
                                   /* DecoderDoctorDiagnostics* */ nullptr)) {
@@ -167,11 +164,9 @@ CanHandleMediaType(const MediaContainerType& aType,
     return CANPLAY_MAYBE;
   }
 #endif
-#if !defined(MOZ_OMX_WEBM_DECODER)
   if (WebMDecoder::IsSupportedType(mimeType)) {
     return CANPLAY_MAYBE;
   }
-#endif
   if (MP3Decoder::IsSupportedType(mimeType)) {
     return CANPLAY_MAYBE;
   }
@@ -222,37 +217,6 @@ bool DecoderTraits::ShouldHandleMediaType(const char* aMIMEType,
   }
 
   return CanHandleMediaType(*containerType, aDiagnostics) != CANPLAY_NO;
-}
-
-// Instantiates but does not initialize decoder.
-static already_AddRefed<ChannelMediaDecoder>
-InstantiateDecoder(MediaDecoderInit& aInit,
-                   DecoderDoctorDiagnostics* aDiagnostics)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  RefPtr<ChannelMediaDecoder> decoder;
-
-  const MediaContainerType& type = aInit.mContainerType;
-  if (DecoderTraits::IsSupportedType(type)) {
-    decoder = new ChannelMediaDecoder(aInit);
-    return decoder.forget();
-  }
-
-  if (DecoderTraits::IsHttpLiveStreamingType(type)) {
-    // We don't have an HLS decoder.
-    Telemetry::Accumulate(Telemetry::MEDIA_HLS_DECODER_SUCCESS, false);
-  }
-
-  return nullptr;
-}
-
-/* static */
-already_AddRefed<ChannelMediaDecoder>
-DecoderTraits::CreateDecoder(MediaDecoderInit& aInit,
-                             DecoderDoctorDiagnostics* aDiagnostics)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  return InstantiateDecoder(aInit, aDiagnostics);
 }
 
 /* static */
@@ -325,7 +289,7 @@ bool DecoderTraits::IsSupportedInVideoDocument(const nsACString& aType)
   // Forbid playing media in video documents if the user has opted
   // not to, using either the legacy WMF specific pref, or the newer
   // catch-all pref.
-  if (!Preferences::GetBool("media.windows-media-foundation.play-stand-alone", true) ||
+  if (!Preferences::GetBool("media.wmf.play-stand-alone", true) ||
       !Preferences::GetBool("media.play-stand-alone", true)) {
     return false;
   }

@@ -180,9 +180,7 @@ public:
 
         case Work::Type::SHUTDOWN:
           DecodePoolImpl::ShutdownThread(thisThread);
-
-          profiler_unregister_thread();
-
+          PROFILER_UNREGISTER_THREAD();
           return NS_OK;
 
         default:
@@ -321,8 +319,8 @@ DecodePool::SyncRunIfPreferred(IDecodingTask* aTask, const nsCString& aURI)
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aTask);
 
-  AUTO_PROFILER_LABEL_DYNAMIC("DecodePool::SyncRunIfPreferred", GRAPHICS,
-                              aURI.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING(
+    "DecodePool::SyncRunIfPreferred", GRAPHICS, aURI);
 
   if (aTask->ShouldPreferSyncRun()) {
     aTask->Run();
@@ -339,8 +337,8 @@ DecodePool::SyncRunIfPossible(IDecodingTask* aTask, const nsCString& aURI)
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aTask);
 
-  AUTO_PROFILER_LABEL_DYNAMIC("DecodePool::SyncRunIfPossible", GRAPHICS,
-                              aURI.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING(
+    "DecodePool::SyncRunIfPossible", GRAPHICS, aURI);
 
   aTask->Run();
 }

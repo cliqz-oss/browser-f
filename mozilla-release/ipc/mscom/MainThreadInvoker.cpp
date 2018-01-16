@@ -44,7 +44,11 @@ public:
     }
     mHasRun = true;
 
+    TimeStamp runStart(TimeStamp::Now());
     mRunnable->Run();
+    TimeStamp runEnd(TimeStamp::Now());
+
+    mDuration = runEnd - runStart;
 
     mEvent.Signal();
     return NS_OK;
@@ -55,10 +59,16 @@ public:
     return mEvent.Wait(mozilla::mscom::MainThreadInvoker::GetTargetThread());
   }
 
+  const mozilla::TimeDuration& GetDuration() const
+  {
+    return mDuration;
+  }
+
 private:
   bool                      mHasRun = false;
   nsCOMPtr<nsIRunnable>     mRunnable;
   mozilla::mscom::SpinEvent mEvent;
+  mozilla::TimeDuration     mDuration;
 };
 
 } // anonymous namespace
@@ -123,13 +133,15 @@ MainThreadInvoker::Invoke(already_AddRefed<nsIRunnable>&& aRunnable)
     return false;
   }
 
-  return syncRunnable->WaitUntilComplete();
+  bool result = syncRunnable->WaitUntilComplete();
+  mDuration = syncRunnable->GetDuration();
+  return result;
 }
 
 /* static */ VOID CALLBACK
 MainThreadInvoker::MainThreadAPC(ULONG_PTR aParam)
 {
-  AutoProfilerThreadWake wake;
+  AUTO_PROFILER_THREAD_WAKE;
   mozilla::HangMonitor::NotifyActivity(mozilla::HangMonitor::kGeneralActivity);
   MOZ_ASSERT(NS_IsMainThread());
   auto runnable = reinterpret_cast<SyncRunnable*>(aParam);

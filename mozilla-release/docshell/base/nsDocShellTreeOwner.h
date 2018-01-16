@@ -28,7 +28,6 @@
 #include "nsITooltipTextProvider.h"
 #include "nsCTooltipTextProvider.h"
 #include "nsIDroppedLinkHandler.h"
-#include "nsCommandHandler.h"
 
 namespace mozilla {
 namespace dom {
@@ -38,14 +37,13 @@ class EventTarget;
 
 class nsWebBrowser;
 class ChromeTooltipListener;
-class ChromeContextMenuListener;
 
 // {6D10C180-6888-11d4-952B-0020183BF181}
 #define NS_ICDOCSHELLTREEOWNER_IID \
   { 0x6d10c180, 0x6888, 0x11d4, { 0x95, 0x2b, 0x0, 0x20, 0x18, 0x3b, 0xf1, 0x81 } }
 
 // This is a fake 'hidden' interface that nsDocShellTreeOwner implements.
-// Classes such as nsCommandHandler can QI for this interface to be sure that
+// Classes can QI for this interface to be sure that
 // they're dealing with a valid nsDocShellTreeOwner and not some other object
 // that implements nsIDocShellTreeOwner.
 class nsICDocShellTreeOwner : public nsISupports
@@ -65,7 +63,6 @@ class nsDocShellTreeOwner final : public nsIDocShellTreeOwner,
                                   public nsSupportsWeakReference
 {
   friend class nsWebBrowser;
-  friend class nsCommandHandler;
 
 public:
   NS_DECL_ISUPPORTS
@@ -88,11 +85,6 @@ protected:
 
   NS_IMETHOD AddChromeListeners();
   NS_IMETHOD RemoveChromeListeners();
-
-  nsresult FindItemWithNameAcrossWindows(
-    const char16_t* aName,
-    nsIDocShellTreeItem* aRequestor, nsIDocShellTreeItem* aOriginalRequestor,
-    nsIDocShellTreeItem** aFoundItem);
 
   void EnsurePrompter();
   void EnsureAuthPrompter();
@@ -127,7 +119,6 @@ protected:
   // They are separate objects to avoid circular references between |this|
   // and the DOM.
   RefPtr<ChromeTooltipListener> mChromeTooltipListener;
-  RefPtr<ChromeContextMenuListener> mChromeContextMenuListener;
 
   RefPtr<nsDocShellTreeOwner> mContentTreeOwner;
 
@@ -208,39 +199,6 @@ private:
   // The timer must either fire or be cancelled (or possibly released?), and we
   // release this reference in each of those cases. So we don't leak.
   nsCOMPtr<nsIDOMNode> mPossibleTooltipNode;
-};
-
-// The class that listens to the chrome events and tells the embedding chrome to
-// show context menus, as appropriate. Handles registering itself with the DOM
-// with AddChromeListeners() and removing itself with RemoveChromeListeners().
-class ChromeContextMenuListener : public nsIDOMEventListener
-{
-protected:
-  virtual ~ChromeContextMenuListener();
-
-public:
-  NS_DECL_ISUPPORTS
-
-  ChromeContextMenuListener(nsWebBrowser* aInBrowser,
-                            nsIWebBrowserChrome* aInChrome);
-
-  // nsIDOMContextMenuListener
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override;
-
-  // Add/remove the relevant listeners, based on what interfaces
-  // the embedding chrome implements.
-  NS_IMETHOD AddChromeListeners();
-  NS_IMETHOD RemoveChromeListeners();
-
-private:
-  NS_IMETHOD AddContextMenuListener();
-  NS_IMETHOD RemoveContextMenuListener();
-
-  bool mContextMenuListenerInstalled;
-
-  nsWebBrowser* mWebBrowser;
-  nsCOMPtr<mozilla::dom::EventTarget> mEventTarget;
-  nsCOMPtr<nsIWebBrowserChrome> mWebBrowserChrome;
 };
 
 #endif /* nsDocShellTreeOwner_h__ */

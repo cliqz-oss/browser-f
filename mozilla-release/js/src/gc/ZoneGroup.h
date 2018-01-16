@@ -7,8 +7,6 @@
 #ifndef gc_ZoneGroup_h
 #define gc_ZoneGroup_h
 
-#include "jsgc.h"
-
 #include "gc/Statistics.h"
 #include "vm/Caches.h"
 #include "vm/Stack.h"
@@ -43,7 +41,7 @@ class ZoneGroup
 
     // If this flag is true, then we may need to block before entering this zone
     // group. Blocking happens using JSContext::yieldToEmbedding.
-    UnprotectedData<bool> useExclusiveLocking;
+    UnprotectedData<bool> useExclusiveLocking_;
 
   public:
     CooperatingContext& ownerContext() { return ownerContext_.ref(); }
@@ -51,6 +49,7 @@ class ZoneGroup
 
     void enter(JSContext* cx);
     void leave();
+    bool canEnterWithoutYielding(JSContext* cx);
     bool ownedByCurrentThread();
 
     // All zones in the group.
@@ -102,8 +101,9 @@ class ZoneGroup
     inline bool isCollecting();
     inline bool isGCScheduled();
 
-    // See the useExclusiveLocking field above.
-    void setUseExclusiveLocking() { useExclusiveLocking = true; }
+    // See the useExclusiveLocking_ field above.
+    void setUseExclusiveLocking() { useExclusiveLocking_ = true; }
+    bool useExclusiveLocking() { return useExclusiveLocking_; }
 
     // Delete an empty zone after its contents have been merged.
     void deleteEmptyZone(Zone* zone);

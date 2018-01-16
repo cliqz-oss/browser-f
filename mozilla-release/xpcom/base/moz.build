@@ -21,7 +21,6 @@ XPIDL_SOURCES += [
     'nsIMessageLoop.idl',
     'nsIMutable.idl',
     'nsISecurityConsoleMessage.idl',
-    'nsIStatusReporter.idl',
     'nsISupports.idl',
     'nsIUUIDGenerator.idl',
     'nsIVersionComparator.idl',
@@ -105,7 +104,6 @@ EXPORTS.mozilla += [
     'HoldDropJSObjects.h',
     'IntentionalCrash.h',
     'JSObjectHolder.h',
-    'LinuxUtils.h',
     'Logging.h',
     'MemoryReportingProcess.h',
     'nsMemoryInfoDumper.h',
@@ -114,7 +112,6 @@ EXPORTS.mozilla += [
     'SizeOfState.h',
     'StaticMutex.h',
     'StaticPtr.h',
-    'SystemMemoryReporter.h',
 ]
 
 # nsDebugImpl isn't unified because we disable PGO so that NS_ABORT_OOM isn't
@@ -160,7 +157,6 @@ UNIFIED_SOURCES += [
     'nsMessageLoop.cpp',
     'NSPRLogModulesParser.cpp',
     'nsSecurityConsoleMessage.cpp',
-    'nsStatusReporterManager.cpp',
     'nsSystemInfo.cpp',
     'nsTraceRefcnt.cpp',
     'nsUUIDGenerator.cpp',
@@ -179,12 +175,6 @@ GENERATED_FILES["ErrorList.h"].script = "ErrorList.py:error_list_h"
 GENERATED_FILES["ErrorNamesInternal.h"].script = "ErrorList.py:error_names_internal_h"
 GENERATED_FILES["error_list.rs"].script = "ErrorList.py:error_list_rs"
 
-if CONFIG['OS_ARCH'] == 'Linux':
-    SOURCES += [
-        'LinuxUtils.cpp',
-        'SystemMemoryReporter.cpp',
-    ]
-
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     SOURCES += [
         'nsMacUtilsImpl.cpp',
@@ -200,6 +190,7 @@ FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     '../build',
+    '/dom/base',
     '/xpcom/ds',
 ]
 

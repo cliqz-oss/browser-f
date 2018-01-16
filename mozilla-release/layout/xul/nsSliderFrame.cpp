@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -102,7 +103,7 @@ nsSliderFrame::~nsSliderFrame()
 {
   if (mSuppressionActive) {
     APZCCallbackHelper::SuppressDisplayport(false, PresContext() ?
-                                                   PresContext()->PresShell() :
+                                                   PresShell() :
                                                    nullptr);
   }
 }
@@ -189,7 +190,7 @@ nsSliderFrame::GetPageIncrement(nsIContent* content)
 }
 
 int32_t
-nsSliderFrame::GetIntegerAttribute(nsIContent* content, nsIAtom* atom, int32_t defaultValue)
+nsSliderFrame::GetIntegerAttribute(nsIContent* content, nsAtom* atom, int32_t defaultValue)
 {
     nsAutoString value;
     content->GetAttr(kNameSpaceID_None, atom, value);
@@ -207,7 +208,7 @@ class nsValueChangedRunnable : public Runnable
 {
 public:
   nsValueChangedRunnable(nsISliderListener* aListener,
-                         nsIAtom* aWhich,
+                         nsAtom* aWhich,
                          int32_t aValue,
                          bool aUserChanged)
     : mozilla::Runnable("nsValueChangedRunnable")
@@ -224,7 +225,7 @@ public:
   }
 
   nsCOMPtr<nsISliderListener> mListener;
-  nsCOMPtr<nsIAtom> mWhich;
+  RefPtr<nsAtom> mWhich;
   int32_t mValue;
   bool mUserChanged;
 };
@@ -249,7 +250,7 @@ public:
 
 nsresult
 nsSliderFrame::AttributeChanged(int32_t aNameSpaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 int32_t aModType)
 {
   nsresult rv = nsBoxFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -312,7 +313,7 @@ nsSliderFrame::AttributeChanged(int32_t aNameSpaceID,
       aAttribute == nsGkAtoms::pageincrement ||
       aAttribute == nsGkAtoms::increment) {
 
-      PresContext()->PresShell()->
+      PresShell()->
         FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
   }
 
@@ -379,7 +380,6 @@ nsSliderFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
     mozilla::layers::FrameMetrics::ViewID scrollTargetId =
       aBuilder->GetCurrentScrollbarTarget();
     bool thumbGetsLayer = (scrollTargetId != layers::FrameMetrics::NULL_SCROLL_ID);
-    nsLayoutUtils::SetScrollbarThumbLayerization(thumb, thumbGetsLayer);
 
     if (thumbGetsLayer) {
       MOZ_ASSERT((flags & nsDisplayOwnLayer::HORIZONTAL_SCROLLBAR) ||
@@ -419,11 +419,11 @@ nsSliderFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
         refSize.width /= scale.width;
         refSize.height /= scale.height;
       }
-      nsRect dirty = aBuilder->GetDirtyRect().Intersect(thumbRect);
-      dirty = nsLayoutUtils::ComputePartialPrerenderArea(aBuilder->GetDirtyRect(), overflow, refSize);
+      nsRect dirty = aBuilder->GetVisibleRect().Intersect(thumbRect);
+      dirty = nsLayoutUtils::ComputePartialPrerenderArea(aBuilder->GetVisibleRect(), overflow, refSize);
 
       nsDisplayListBuilder::AutoBuildingDisplayList
-        buildingDisplayList(aBuilder, this, dirty, false);
+        buildingDisplayList(aBuilder, this, dirty, dirty, false);
 
       // Clip the thumb layer to the slider track. This is necessary to ensure
       // FrameLayerBuilder is able to merge content before and after the
@@ -441,12 +441,12 @@ nsSliderFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
       thumbContentsClipState.Clear();
 
       nsDisplayListBuilder::AutoContainerASRTracker contASRTracker(aBuilder);
-      nsDisplayListCollection tempLists;
+      nsDisplayListCollection tempLists(aBuilder);
       nsBoxFrame::BuildDisplayListForChildren(aBuilder, tempLists);
 
       // This is a bit of a hack. Collect up all descendant display items
       // and merge them into a single Content() list.
-      nsDisplayList masterList;
+      nsDisplayList masterList(aBuilder);
       masterList.AppendToTop(tempLists.BorderBackground());
       masterList.AppendToTop(tempLists.BlockBorderBackgrounds());
       masterList.AppendToTop(tempLists.Floats());
@@ -1072,6 +1072,22 @@ ScrollFrameWillBuildScrollInfoLayer(nsIFrame* aScrollFrame)
   return false;
 }
 
+nsIScrollableFrame* nsSliderFrame::GetScrollFrame()
+{
+  nsIFrame* scrollbarBox = GetScrollbar();
+  if (!scrollbarBox) {
+    return nullptr;
+  }
+
+  nsContainerFrame* scrollFrame = scrollbarBox->GetParent();
+  if (!scrollFrame) {
+    return nullptr;
+  }
+
+  nsIScrollableFrame* scrollFrameAsScrollable = do_QueryFrame(scrollFrame);
+  return scrollFrameAsScrollable;
+}
+
 void
 nsSliderFrame::StartAPZDrag(WidgetGUIEvent* aEvent)
 {
@@ -1117,7 +1133,7 @@ nsSliderFrame::StartAPZDrag(WidgetGUIEvent* aEvent)
 
   nsCOMPtr<nsIContent> scrollbar = GetContentOfBox(scrollbarBox);
 
-  nsIPresShell* shell = PresContext()->PresShell();
+  nsIPresShell* shell = PresShell();
   uint64_t inputblockId = InputAPZContext::GetInputBlockId();
   uint32_t presShellId = shell->GetPresShellId();
   AsyncDragMetrics dragMetrics(scrollTargetId, presShellId, inputblockId,
@@ -1489,7 +1505,7 @@ nsSliderFrame::HandleRelease(nsPresContext* aPresContext,
 }
 
 void
-nsSliderFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsSliderFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   // tell our mediator if we have one we are gone.
   if (mMediator) {
@@ -1499,7 +1515,7 @@ nsSliderFrame::DestroyFrom(nsIFrame* aDestructRoot)
   StopRepeat();
 
   // call base class Destroy()
-  nsBoxFrame::DestroyFrom(aDestructRoot);
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nsSize
@@ -1625,8 +1641,8 @@ void
 nsSliderFrame::SuppressDisplayport()
 {
   if (!mSuppressionActive) {
-    MOZ_ASSERT(PresContext()->PresShell());
-    APZCCallbackHelper::SuppressDisplayport(true, PresContext()->PresShell());
+    MOZ_ASSERT(PresShell());
+    APZCCallbackHelper::SuppressDisplayport(true, PresShell());
     mSuppressionActive = true;
   }
 }
@@ -1635,8 +1651,8 @@ void
 nsSliderFrame::UnsuppressDisplayport()
 {
   if (mSuppressionActive) {
-    MOZ_ASSERT(PresContext()->PresShell());
-    APZCCallbackHelper::SuppressDisplayport(false, PresContext()->PresShell());
+    MOZ_ASSERT(PresShell());
+    APZCCallbackHelper::SuppressDisplayport(false, PresShell());
     mSuppressionActive = false;
   }
 }

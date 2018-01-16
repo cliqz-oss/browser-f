@@ -27,6 +27,11 @@ class Promise;
 } // namespace mozilla
 
 // We don't export TestCodeGenBinding.h, but it's right in our parent dir.
+#ifdef XP_WIN
+// If we're on windows, simulate including windows.h. This step will cause
+// compilation failure if NeedsWindowsUndef is not defined.
+#define NO_ERROR 0x1
+#endif
 #include "../TestCodeGenBinding.h"
 
 extern bool TestFuncControlledMember(JSContext*, JSObject*);
@@ -964,6 +969,9 @@ public:
   void NeedsCallerTypeMethod(CallerType);
   bool NeedsCallerTypeAttr(CallerType);
   void SetNeedsCallerTypeAttr(bool, CallerType);
+  void NeedsNonSystemSubjectPrincipalMethod(nsIPrincipal*);
+  bool NeedsNonSystemSubjectPrincipalAttr(nsIPrincipal*);
+  void SetNeedsNonSystemSubjectPrincipalAttr(bool, nsIPrincipal*);
   void CeReactionsMethod();
   void CeReactionsMethodOverload();
   void CeReactionsMethodOverload(const nsAString&);
@@ -1459,6 +1467,9 @@ public:
   void NeedsCallerTypeMethod(CallerType);
   bool NeedsCallerTypeAttr(CallerType);
   void SetNeedsCallerTypeAttr(bool, CallerType);
+  void NeedsNonSystemSubjectPrincipalMethod(Maybe<nsIPrincipal*>);
+  bool NeedsNonSystemSubjectPrincipalAttr(Maybe<nsIPrincipal*>);
+  void SetNeedsNonSystemSubjectPrincipalAttr(bool, Maybe<nsIPrincipal*>);
 };
 
 class TestHTMLConstructorInterface : public nsGenericHTMLElement

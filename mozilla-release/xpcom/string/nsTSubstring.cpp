@@ -37,13 +37,13 @@ nsTSubstring<T>::nsTSubstring(char_type* aData, size_type aLength,
 #endif /* XPCOM_STRING_CONSTRUCTOR_OUT_OF_LINE */
 
 /**
- * helper function for down-casting a nsTSubstring to a nsTFixedString.
+ * helper function for down-casting a nsTSubstring to an nsTAutoString.
  */
 template <typename T>
-inline const nsTFixedString<T>*
-AsFixedString(const nsTSubstring<T>* aStr)
+inline const nsTAutoString<T>*
+AsAutoString(const nsTSubstring<T>* aStr)
 {
-  return static_cast<const nsTFixedString<T>*>(aStr);
+  return static_cast<const nsTAutoString<T>*>(aStr);
 }
 
 /**
@@ -122,7 +122,7 @@ nsTSubstring<T>::MutatePrep(size_type aCapacity, char_type** aOldData,
   //
   //  (1) we have a shared buffer (this->mDataFlags & DataFlags::SHARED)
   //  (2) we have an owned buffer (this->mDataFlags & DataFlags::OWNED)
-  //  (3) we have a fixed buffer (this->mDataFlags & DataFlags::FIXED)
+  //  (3) we have an inline buffer (this->mDataFlags & DataFlags::INLINE)
   //  (4) we have a readonly buffer
   //
   // requiring that we in some cases preserve the data before creating
@@ -150,16 +150,16 @@ nsTSubstring<T>::MutatePrep(size_type aCapacity, char_type** aOldData,
   char_type* newData;
   DataFlags newDataFlags;
 
-  // if we have a fixed buffer of sufficient size, then use it.  this helps
-  // avoid heap allocations.
-  if ((this->mClassFlags & ClassFlags::FIXED) &&
-      (aCapacity < AsFixedString(this)->mFixedCapacity)) {
-    newData = AsFixedString(this)->mFixedBuf;
-    newDataFlags = DataFlags::TERMINATED | DataFlags::FIXED;
+  // If this is an nsTAutoStringN whose inline buffer is sufficiently large,
+  // then use it. This helps avoid heap allocations.
+  if ((this->mClassFlags & ClassFlags::INLINE) &&
+      (aCapacity < AsAutoString(this)->mInlineCapacity)) {
+    newData = (char_type*)AsAutoString(this)->mStorage;
+    newDataFlags = DataFlags::TERMINATED | DataFlags::INLINE;
   } else {
     // if we reach here then, we must allocate a new buffer.  we cannot
-    // make use of our DataFlags::OWNED or DataFlags::FIXED buffers because they are not
-    // large enough.
+    // make use of our DataFlags::OWNED or DataFlags::INLINE buffers because
+    // they are not large enough.
 
     nsStringBuffer* newHdr =
       nsStringBuffer::Alloc(storageSize).take();
@@ -283,8 +283,8 @@ nsTSubstring<T>::Capacity() const
     } else {
       capacity = (hdr->StorageSize() / sizeof(char_type)) - 1;
     }
-  } else if (this->mDataFlags & DataFlags::FIXED) {
-    capacity = AsFixedString(this)->mFixedCapacity;
+  } else if (this->mDataFlags & DataFlags::INLINE) {
+    capacity = AsAutoString(this)->mInlineCapacity;
   } else if (this->mDataFlags & DataFlags::OWNED) {
     // we don't store the capacity of an adopted buffer because that would
     // require an additional member field.  the best we can do is base the
@@ -303,7 +303,7 @@ bool
 nsTSubstring<T>::EnsureMutable(size_type aNewLen)
 {
   if (aNewLen == size_type(-1) || aNewLen == this->mLength) {
-    if (this->mDataFlags & (DataFlags::FIXED | DataFlags::OWNED)) {
+    if (this->mDataFlags & (DataFlags::INLINE | DataFlags::OWNED)) {
       return true;
     }
     if ((this->mDataFlags & DataFlags::SHARED) &&
@@ -482,6 +482,60 @@ nsTSubstring<T>::Assign(const self_type& aStr, const fallible_t& aFallible)
 
   // else, treat this like an ordinary assignment.
   return Assign(aStr.Data(), aStr.Length(), aFallible);
+}
+
+template <typename T>
+void
+nsTSubstring<T>::Assign(self_type&& aStr)
+{
+  if (!Assign(mozilla::Move(aStr), mozilla::fallible)) {
+    AllocFailed(aStr.Length());
+  }
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::Assign(self_type&& aStr, const fallible_t& aFallible)
+{
+  // We're moving |aStr| in this method, so we need to try to steal the data,
+  // and in the fallback perform a copy-assignment followed by a truncation of
+  // the original string.
+
+  if (&aStr == this) {
+    NS_WARNING("Move assigning a string to itself?");
+    return true;
+  }
+
+  if (aStr.mDataFlags & (DataFlags::SHARED | DataFlags::OWNED)) {
+    // If they have a SHARED or OWNED buffer, we can avoid a copy - so steal
+    // their buffer and reset them to the empty string.
+
+    // |aStr| should be null-terminated
+    NS_ASSERTION(aStr.mDataFlags & DataFlags::TERMINATED,
+                 "shared or owned, but not terminated");
+
+    ::ReleaseData(this->mData, this->mDataFlags);
+
+    SetData(aStr.mData, aStr.mLength, aStr.mDataFlags);
+    aStr.SetToEmptyBuffer();
+    return true;
+  }
+
+  // Otherwise treat this as a normal assignment, and truncate the moved string.
+  // We don't truncate the source string if the allocation failed.
+  if (!Assign(aStr, aFallible)) {
+    return false;
+  }
+  aStr.Truncate();
+  return true;
+}
+
+// NOTE(nika): gcc 4.9 workaround. Remove when support is dropped.
+template <typename T>
+void
+nsTSubstring<T>::Assign(const literalstring_type& aStr)
+{
+  Assign(aStr.AsString());
 }
 
 template <typename T>
@@ -1177,10 +1231,10 @@ nsTSubstring<T>::SizeOfExcludingThisIfUnshared(
 
   // If we reach here, exactly one of the following must be true:
   // - DataFlags::VOIDED is set, and this->mData points to sEmptyBuffer;
-  // - DataFlags::FIXED is set, and this->mData points to a buffer within a string
-  //   object (e.g. nsAutoString);
-  // - None of DataFlags::SHARED, DataFlags::OWNED, DataFlags::FIXED is set, and this->mData points to a buffer
-  //   owned by something else.
+  // - DataFlags::INLINE is set, and this->mData points to a buffer within a
+  //   string object (e.g. nsAutoString);
+  // - None of DataFlags::SHARED, DataFlags::OWNED, DataFlags::INLINE is set,
+  //   and this->mData points to a buffer owned by something else.
   //
   // In all three cases, we don't measure it.
   return 0;

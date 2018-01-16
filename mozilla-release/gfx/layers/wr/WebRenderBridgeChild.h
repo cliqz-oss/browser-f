@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=4 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -28,20 +28,21 @@ class CompositableClient;
 class CompositorBridgeChild;
 class StackingContextHelper;
 class TextureForwarder;
+class WebRenderLayerManager;
 
 template<class T>
-class WeakPtrHashKey : public PLDHashEntryHdr
+class ThreadSafeWeakPtrHashKey : public PLDHashEntryHdr
 {
 public:
-  typedef T* KeyType;
+  typedef RefPtr<T> KeyType;
   typedef const T* KeyTypePointer;
 
-  explicit WeakPtrHashKey(KeyTypePointer aKey) : mKey(const_cast<KeyType>(aKey)) {}
+  explicit ThreadSafeWeakPtrHashKey(KeyTypePointer aKey) : mKey(do_AddRef(const_cast<T*>(aKey))) {}
 
-  KeyType GetKey() const { return mKey; }
-  bool KeyEquals(KeyTypePointer aKey) const { return aKey == mKey; }
+  KeyType GetKey() const { return do_AddRef(mKey); }
+  bool KeyEquals(KeyTypePointer aKey) const { return mKey == aKey; }
 
-  static KeyTypePointer KeyToPointer(KeyType aKey) { return aKey; }
+  static KeyTypePointer KeyToPointer(const KeyType& aKey) { return aKey.get(); }
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   {
     return NS_PTR_TO_UINT32(aKey) >> 2;
@@ -49,11 +50,11 @@ public:
   enum { ALLOW_MEMMOVE = true };
 
 private:
-  WeakPtr<T> mKey;
+  ThreadSafeWeakPtr<T> mKey;
 };
 
-typedef WeakPtrHashKey<gfx::UnscaledFont> UnscaledFontHashKey;
-typedef WeakPtrHashKey<gfx::ScaledFont> ScaledFontHashKey;
+typedef ThreadSafeWeakPtrHashKey<gfx::UnscaledFont> UnscaledFontHashKey;
+typedef ThreadSafeWeakPtrHashKey<gfx::ScaledFont> ScaledFontHashKey;
 
 class WebRenderBridgeChild final : public PWebRenderBridgeChild
                                  , public CompositableForwarder
@@ -67,13 +68,17 @@ public:
   void AddWebRenderParentCommands(const nsTArray<WebRenderParentCommand>& aCommands);
 
   void UpdateResources(wr::IpcResourceUpdateQueue& aResources);
-  bool BeginTransaction(const  gfx::IntSize& aSize);
-  void EndTransaction(wr::DisplayListBuilder &aBuilder,
+  void BeginTransaction();
+  void EndTransaction(const wr::LayoutSize& aContentSize,
+                      wr::BuiltDisplayList& dl,
                       wr::IpcResourceUpdateQueue& aResources,
                       const gfx::IntSize& aSize,
-                      bool aIsSync, uint64_t aTransactionId,
+                      uint64_t aTransactionId,
                       const WebRenderScrollData& aScrollData,
                       const mozilla::TimeStamp& aTxnStartTime);
+  void EndEmptyTransaction(const FocusTarget& aFocusTarget,
+                           uint64_t aTransactionId,
+                           const mozilla::TimeStamp& aTxnStartTime);
   void ProcessWebRenderParentCommands();
 
   CompositorBridgeChild* GetCompositorBridgeChild();
@@ -108,24 +113,38 @@ public:
     mIdNamespace = aIdNamespace;
   }
 
+  wr::FontKey GetNextFontKey()
+  {
+    return wr::FontKey { GetNamespace(), GetNextResourceId() };
+  }
+
+  wr::FontInstanceKey GetNextFontInstanceKey()
+  {
+    return wr::FontInstanceKey { GetNamespace(), GetNextResourceId() };
+  }
+
   wr::WrImageKey GetNextImageKey()
   {
     return wr::WrImageKey{ GetNamespace(), GetNextResourceId() };
   }
 
-  void PushGlyphs(wr::DisplayListBuilder& aBuilder, const nsTArray<gfx::Glyph>& aGlyphs,
-                  gfx::ScaledFont* aFont, const gfx::Color& aColor,
+  void PushGlyphs(wr::DisplayListBuilder& aBuilder, const nsTArray<wr::GlyphInstance>& aGlyphs,
+                  gfx::ScaledFont* aFont, const wr::ColorF& aColor,
                   const StackingContextHelper& aSc,
-                  const LayerRect& aBounds, const LayerRect& aClip,
-                  bool aBackfaceVisible);
+                  const wr::LayerRect& aBounds, const wr::LayerRect& aClip,
+                  bool aBackfaceVisible,
+                  const wr::GlyphOptions* aGlyphOptions = nullptr);
 
   wr::FontInstanceKey GetFontKeyForScaledFont(gfx::ScaledFont* aScaledFont);
+  wr::FontKey GetFontKeyForUnscaledFont(gfx::UnscaledFont* aUnscaledFont);
 
   void RemoveExpiredFontKeys();
   void ClearReadLocks();
 
   void BeginClearCachedResources();
   void EndClearCachedResources();
+
+  void SetWebRenderLayerManager(WebRenderLayerManager* aManager);
 
   ipc::IShmemAllocator* GetShmemAllocator();
 
@@ -185,6 +204,7 @@ private:
   wr::IdNamespace mIdNamespace;
   uint32_t mResourceId;
   wr::PipelineId mPipelineId;
+  WebRenderLayerManager* mManager;
 
   bool mIPCOpen;
   bool mDestroyed;

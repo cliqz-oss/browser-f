@@ -18,6 +18,7 @@ const {
 const {
   MESSAGE_ADD,
   MESSAGE_OPEN,
+  MESSAGES_ADD,
   MESSAGES_CLEAR,
   REMOVED_ACTORS_CLEAR,
   NETWORK_MESSAGE_UPDATE,
@@ -30,6 +31,9 @@ const {
   getAllMessagesUiById,
 } = require("devtools/client/webconsole/new-console-output/selectors/messages");
 const DataProvider = require("devtools/client/netmonitor/src/connector/firefox-data-provider");
+const {
+  getAllNetworkMessagesUpdateById,
+} = require("devtools/client/webconsole/new-console-output/selectors/messages");
 
 /**
  * Create and configure store for the Console panel. This is the place
@@ -127,7 +131,7 @@ function enableActorReleaser(hud) {
 
       let type = action.type;
       let proxy = hud ? hud.proxy : null;
-      if (proxy && (type == MESSAGE_ADD || type == MESSAGES_CLEAR)) {
+      if (proxy && ([MESSAGE_ADD, MESSAGES_ADD, MESSAGES_CLEAR].includes(type))) {
         releaseActors(state.messages.removedActors, proxy);
 
         // Reset `removedActors` in message reducer.
@@ -177,12 +181,34 @@ function enableNetProvider(hud) {
       }
 
       let type = action.type;
+      let newState = reducer(state, action);
 
-      // If network message has been opened, fetch all
-      // HTTP details from the backend.
+      // If network message has been opened, fetch all HTTP details
+      // from the backend. It can happen (especially in test) that
+      // the message is opened before all network event updates are
+      // received. The rest of updates will be handled below, see:
+      // NETWORK_MESSAGE_UPDATE action handler.
       if (type == MESSAGE_OPEN) {
         let message = getMessage(state, action.id);
         if (!message.openedOnce && message.source == "network") {
+          let updates = getAllNetworkMessagesUpdateById(newState);
+
+          // If there is no network request update received for this
+          // request-log, it's likely that it comes from cache.
+          // I.e. it's been executed before the console panel started
+          // listening from network events. Let fix that by updating
+          // the reducer now.
+          // Executing the reducer means that the `networkMessagesUpdateById`
+          // is updated (a actor key created). The key is needed for proper
+          // handling NETWORK_UPDATE_REQUEST event (in the same reducer).
+          if (!updates[action.id]) {
+            newState = reducer(newState, {
+              type: NETWORK_MESSAGE_UPDATE,
+              message: message,
+            });
+          }
+
+          dataProvider.onNetworkEvent(null, message);
           message.updates.forEach(updateType => {
             dataProvider.onNetworkEventUpdate(null, {
               packet: { updateType: updateType },
@@ -194,13 +220,14 @@ function enableNetProvider(hud) {
 
       // Process all incoming HTTP details packets.
       if (type == NETWORK_MESSAGE_UPDATE) {
-        let open = getAllMessagesUiById(state).includes(action.id);
+        let actor = action.response.networkInfo.actor;
+        let open = getAllMessagesUiById(state).includes(actor);
         if (open) {
           dataProvider.onNetworkEventUpdate(null, action.response);
         }
       }
 
-      return reducer(state, action);
+      return newState;
     }
 
     return next(netProviderEnhancer, initialState, enhancer);

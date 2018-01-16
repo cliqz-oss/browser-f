@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -41,7 +42,6 @@ struct CanvasInitializeData {
     , mSize(0,0)
     , mHasAlpha(false)
     , mIsGLAlphaPremult(true)
-    , mIsMirror(false)
   { }
 
   // One of these three must be specified for Canvas2D, but never more than one
@@ -66,10 +66,6 @@ struct CanvasInitializeData {
 
   // Whether mGLContext contains data that is alpha-premultiplied.
   bool mIsGLAlphaPremult;
-
-  // Whether the canvas front buffer is already being rendered somewhere else.
-  // When true, do not swap buffers or Morph() to another factory on mGLContext
-  bool mIsMirror;
 };
 
 // Based class which used for canvas rendering. There are many derived classes for

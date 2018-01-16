@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,6 +14,7 @@
 #include "gfxFontFeatures.h"
 #include "gfxFontVariations.h"
 #include "mozilla/RefPtr.h"             // for RefPtr
+#include "nsColor.h"                    // for nsColor and NS_RGBA
 #include "nsCoord.h"                    // for nscoord
 #include "nsStringFwd.h"                // for nsAString
 #include "nsString.h"               // for nsString
@@ -71,6 +73,10 @@ struct nsFont {
 
   // Smoothing - controls subpixel-antialiasing (currently OSX only)
   uint8_t smoothing = NS_FONT_SMOOTHING_AUTO;
+
+  // The estimated background color behind the text. Enables a special
+  // rendering mode when NS_GET_A(.) > 0. Only used for text in the chrome.
+  nscolor fontSmoothingBackgroundColor = NS_RGBA(0,0,0,0);
 
   // The weight of the font; see gfxFontConstants.h.
   uint16_t weight = NS_FONT_WEIGHT_NORMAL;
@@ -136,6 +142,14 @@ struct nsFont {
   bool Equals(const nsFont& aOther) const;
 
   nsFont& operator=(const nsFont& aOther);
+
+  enum class MaxDifference : uint8_t {
+    eNone,
+    eVisual,
+    eLayoutAffecting
+  };
+
+  MaxDifference CalcDifference(const nsFont& aOther) const;
 
   void CopyAlternates(const nsFont& aOther);
 

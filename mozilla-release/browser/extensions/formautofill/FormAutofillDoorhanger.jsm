@@ -23,8 +23,9 @@ Cu.import("resource://formautofill/FormAutofillUtils.jsm");
 this.log = null;
 FormAutofillUtils.defineLazyLogGetter(this, this.EXPORTED_SYMBOLS[0]);
 
-const BUNDLE_URI = "chrome://formautofill/locale/formautofill.properties";
-const GetStringFromName = Services.strings.createBundle(BUNDLE_URI).GetStringFromName;
+const GetStringFromName = FormAutofillUtils.stringBundle.GetStringFromName;
+const formatStringFromName = FormAutofillUtils.stringBundle.formatStringFromName;
+const brandShortName = FormAutofillUtils.brandBundle.GetStringFromName("brandShortName");
 let changeAutofillOptsKey = "changeAutofillOptions";
 let autofillOptsKey = "autofillOptionsLink";
 let autofillSecurityOptionsKey = "autofillSecurityOptionsLink";
@@ -37,7 +38,7 @@ if (AppConstants.platform == "macosx") {
 const CONTENT = {
   firstTimeUse: {
     notificationId: "autofill-address",
-    message: GetStringFromName("saveAddressesMessage"),
+    message: formatStringFromName("saveAddressesMessage", [brandShortName], 1),
     anchor: {
       id: "autofill-address-notification-icon",
       URL: "chrome://formautofill/content/formfill-anchor.svg",
@@ -45,7 +46,7 @@ const CONTENT = {
     },
     mainAction: {
       label: GetStringFromName(changeAutofillOptsKey),
-      accessKey: "C",
+      accessKey: GetStringFromName("changeAutofillOptionsAccessKey"),
       callbackState: "open-pref",
       disableHighlight: true,
     },
@@ -70,7 +71,7 @@ const CONTENT = {
       hideClose: true,
     },
   },
-  update: {
+  updateAddress: {
     notificationId: "autofill-address",
     message: GetStringFromName("updateAddressMessage"),
     linkMessage: GetStringFromName(autofillOptsKey),
@@ -81,12 +82,12 @@ const CONTENT = {
     },
     mainAction: {
       label: GetStringFromName("updateAddressLabel"),
-      accessKey: "U",
+      accessKey: GetStringFromName("updateAddressAccessKey"),
       callbackState: "update",
     },
     secondaryActions: [{
       label: GetStringFromName("createAddressLabel"),
-      accessKey: "C",
+      accessKey: GetStringFromName("createAddressAccessKey"),
       callbackState: "create",
     }],
     options: {
@@ -95,9 +96,9 @@ const CONTENT = {
       hideClose: true,
     },
   },
-  creditCard: {
+  addCreditCard: {
     notificationId: "autofill-credit-card",
-    message: GetStringFromName("saveCreditCardMessage"),
+    message: formatStringFromName("saveCreditCardMessage", [brandShortName], 1),
     linkMessage: GetStringFromName(autofillSecurityOptionsKey),
     anchor: {
       id: "autofill-credit-card-notification-icon",
@@ -106,17 +107,66 @@ const CONTENT = {
     },
     mainAction: {
       label: GetStringFromName("saveCreditCardLabel"),
-      accessKey: "S",
+      accessKey: GetStringFromName("saveCreditCardAccessKey"),
       callbackState: "save",
     },
     secondaryActions: [{
       label: GetStringFromName("cancelCreditCardLabel"),
-      accessKey: "D",
+      accessKey: GetStringFromName("cancelCreditCardAccessKey"),
       callbackState: "cancel",
     }, {
       label: GetStringFromName("neverSaveCreditCardLabel"),
-      accessKey: "N",
+      accessKey: GetStringFromName("neverSaveCreditCardAccessKey"),
       callbackState: "disable",
+    }],
+    options: {
+      persistWhileVisible: true,
+      popupIconURL: "chrome://formautofill/content/icon-credit-card.svg",
+      hideClose: true,
+      checkbox: {
+        get checked() {
+          return Services.prefs.getBoolPref("services.sync.engine.creditcards");
+        },
+        get label() {
+          // Only set the label when the fallowing conditions existed:
+          // - sync account is set
+          // - credit card sync is disabled
+          // - credit card sync is available
+          // otherwise return null label to hide checkbox.
+          return Services.prefs.prefHasUserValue("services.sync.username") &&
+            !Services.prefs.getBoolPref("services.sync.engine.creditcards") &&
+            Services.prefs.getBoolPref("services.sync.engine.creditcards.available") ?
+            GetStringFromName("creditCardsSyncCheckbox") : null;
+        },
+        callback(event) {
+          let {secondaryButton, menubutton} = event.target.parentNode.parentNode.parentNode;
+          let checked = event.target.checked;
+          Services.prefs.setBoolPref("services.sync.engine.creditcards", checked);
+          secondaryButton.disabled = checked;
+          menubutton.disabled = checked;
+          log.debug("Set creditCard sync to", checked);
+        },
+      },
+    },
+  },
+  updateCreditCard: {
+    notificationId: "autofill-credit-card",
+    message: GetStringFromName("updateCreditCardMessage"),
+    linkMessage: GetStringFromName(autofillOptsKey),
+    anchor: {
+      id: "autofill-credit-card-notification-icon",
+      URL: "chrome://formautofill/content/formfill-anchor.svg",
+      tooltiptext: GetStringFromName("openAutofillMessagePanel"),
+    },
+    mainAction: {
+      label: GetStringFromName("updateCreditCardLabel"),
+      accessKey: GetStringFromName("updateCreditCardAccessKey"),
+      callbackState: "update",
+    },
+    secondaryActions: [{
+      label: GetStringFromName("createCreditCardLabel"),
+      accessKey: GetStringFromName("createCreditCardAccessKey"),
+      callbackState: "create",
     }],
     options: {
       persistWhileVisible: true,
@@ -164,6 +214,11 @@ let FormAutofillDoorhanger = {
     }
 
     return [mainAction, secondaryActions];
+  },
+  _getNotificationElm(browser, id) {
+    let notificationId = id + "-notification";
+    let chromeDoc = browser.ownerDocument;
+    return chromeDoc.getElementById(notificationId);
   },
   /**
    * Append the link label element to the popupnotificationcontent.
@@ -224,26 +279,20 @@ let FormAutofillDoorhanger = {
     if (!options.checkbox) {
       return;
     }
-    let id = notificationId + "-notification";
-    let chromeDoc = browser.ownerDocument;
-    let notification = chromeDoc.getElementById(id);
-    let cb = notification.checkbox;
+    let {checkbox} = this._getNotificationElm(browser, notificationId);
 
-    if (cb) {
-      cb.addEventListener("command", options.checkbox.callback);
+    if (checkbox && !checkbox.hidden) {
+      checkbox.addEventListener("command", options.checkbox.callback);
     }
   },
   _removeCheckboxListener(browser, {notificationId, options}) {
     if (!options.checkbox) {
       return;
     }
-    let id = notificationId + "-notification";
-    let chromeDoc = browser.ownerDocument;
-    let notification = chromeDoc.getElementById(id);
-    let cb = notification.checkbox;
+    let {checkbox} = this._getNotificationElm(browser, notificationId);
 
-    if (cb) {
-      cb.removeEventListener("command", options.checkbox.callback);
+    if (checkbox && !checkbox.hidden) {
+      checkbox.removeEventListener("command", options.checkbox.callback);
     }
   },
   /**

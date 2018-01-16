@@ -68,7 +68,7 @@ this.fakeSHA256HMAC = function fakeSHA256HMAC(message) {
      message += " ";
    }
    return message;
-}
+};
 
 this.FakeGUIDService = function FakeGUIDService() {
   let latestGUID = 0;
@@ -78,7 +78,7 @@ this.FakeGUIDService = function FakeGUIDService() {
     let nextGUID = "fake-guid-" + String(latestGUID++).padStart(2, "0");
     return nextGUID.slice(nextGUID.length - 12, nextGUID.length);
   };
-}
+};
 
 /*
  * Mock implementation of WeaveCrypto. It does not encrypt or
@@ -87,24 +87,24 @@ this.FakeGUIDService = function FakeGUIDService() {
 this.FakeCryptoService = function FakeCryptoService() {
   this.counter = 0;
 
-  delete Weave.Crypto;  // get rid of the getter first
+  delete Weave.Crypto; // get rid of the getter first
   Weave.Crypto = this;
 
   CryptoWrapper.prototype.ciphertextHMAC = function ciphertextHMAC(keyBundle) {
     return fakeSHA256HMAC(this.ciphertext);
   };
-}
+};
 FakeCryptoService.prototype = {
 
-  encrypt: function encrypt(clearText, symmetricKey, iv) {
+  async encrypt(clearText, symmetricKey, iv) {
     return clearText;
   },
 
-  decrypt: function decrypt(cipherText, symmetricKey, iv) {
+  async decrypt(cipherText, symmetricKey, iv) {
     return cipherText;
   },
 
-  generateRandomKey: function generateRandomKey() {
+  async generateRandomKey() {
     return btoa("fake-symmetric-key-" + this.counter++);
   },
 

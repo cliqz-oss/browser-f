@@ -10,7 +10,7 @@
 
 [HTMLConstructor]
 interface HTMLScriptElement : HTMLElement {
-  [CEReactions, SetterThrows]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, SetterThrows]
   attribute DOMString src;
   [CEReactions, SetterThrows]
   attribute DOMString type;
@@ -24,7 +24,7 @@ interface HTMLScriptElement : HTMLElement {
   attribute boolean defer;
   [CEReactions, SetterThrows]
   attribute DOMString? crossOrigin;
-  [CEReactions, SetterThrows]
+  [CEReactions, Throws]
   attribute DOMString text;
 };
 

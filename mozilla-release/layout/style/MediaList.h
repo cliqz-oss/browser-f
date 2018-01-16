@@ -44,7 +44,9 @@ public:
    * Creates a MediaList backed by the given StyleBackendType.
    */
   static already_AddRefed<MediaList> Create(StyleBackendType,
-                                            const nsAString& aMedia);
+                                            const nsAString& aMedia,
+                                            CallerType aCallerType =
+                                              CallerType::NonSystem);
 
   virtual already_AddRefed<MediaList> Clone() = 0;
 
@@ -82,7 +84,9 @@ protected:
   virtual nsresult Delete(const nsAString& aOldMedium) = 0;
   virtual nsresult Append(const nsAString& aNewMedium) = 0;
 
-  virtual ~MediaList() {}
+  virtual ~MediaList() {
+    MOZ_ASSERT(!mStyleSheet, "Backpointer should have been cleared");
+  }
 
   // not refcounted; sheet will let us know when it goes away
   // mStyleSheet is the sheet that needs to be dirtied when this

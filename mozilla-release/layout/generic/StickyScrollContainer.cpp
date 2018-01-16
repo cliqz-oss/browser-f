@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -285,7 +285,7 @@ StickyScrollContainer::GetScrollRanges(nsIFrame* aFrame, nsRect* aOuter,
   const nsPoint normalPosition = firstCont->GetNormalPosition();
 
   // Bottom and top
-  if (stick.YMost() != nscoord_MAX/2) {
+  if (stick.YMost() != (nscoord_MAX + (nscoord_MIN/2))) {
     aOuter->SetTopEdge(contain.y - stick.YMost());
     aInner->SetTopEdge(normalPosition.y - stick.YMost());
   }
@@ -296,7 +296,7 @@ StickyScrollContainer::GetScrollRanges(nsIFrame* aFrame, nsRect* aOuter,
   }
 
   // Right and left
-  if (stick.XMost() != nscoord_MAX/2) {
+  if (stick.XMost() != (nscoord_MAX + (nscoord_MIN/2))) {
     aOuter->SetLeftEdge(contain.x - stick.XMost());
     aInner->SetLeftEdge(normalPosition.x - stick.XMost());
   }

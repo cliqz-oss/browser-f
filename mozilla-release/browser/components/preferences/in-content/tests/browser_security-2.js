@@ -8,10 +8,10 @@ const PREFS = [
   "browser.safebrowsing.downloads.remote.block_uncommon"
 ];
 
-let originals = PREFS.map(pref => [pref, Services.prefs.getBoolPref(pref)])
+let originals = PREFS.map(pref => [pref, Services.prefs.getBoolPref(pref)]);
 let originalMalwareTable = Services.prefs.getCharPref("urlclassifier.malwareTable");
 registerCleanupFunction(function() {
-  originals.forEach(([pref, val]) => Services.prefs.setBoolPref(pref, val))
+  originals.forEach(([pref, val]) => Services.prefs.setBoolPref(pref, val));
   Services.prefs.setCharPref("urlclassifier.malwareTable", originalMalwareTable);
 });
 
@@ -49,6 +49,7 @@ add_task(async function() {
 
     // scroll the checkbox into view, otherwise the synthesizeMouseAtCenter will be ignored, and click it
     checkbox.scrollIntoView();
+    // eslint-disable-next-line mozilla/no-cpows-in-tests
     EventUtils.synthesizeMouseAtCenter(checkbox, {}, gBrowser.selectedBrowser.contentWindow);
 
     // check that setting is now turned on or off
@@ -88,6 +89,7 @@ add_task(async function() {
 
     // scroll the checkbox into view, otherwise the synthesizeMouseAtCenter will be ignored, and click it
     checkbox.scrollIntoView();
+    // eslint-disable-next-line mozilla/no-cpows-in-tests
     EventUtils.synthesizeMouseAtCenter(checkbox, {}, gBrowser.selectedBrowser.contentWindow);
 
     // check that both settings are now turned on or off

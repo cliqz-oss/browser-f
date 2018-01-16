@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 sts=2 ts=8 et tw=99 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -128,9 +128,11 @@ public:
   RenderTextureHost* GetRenderTexture(WrExternalImageId aExternalImageId);
 
   /// Can be called from any thread.
-  uint32_t GetPendingFrameCount(wr::WindowId aWindowId);
+  bool TooManyPendingFrames(wr::WindowId aWindowId);
   /// Can be called from any thread.
   void IncPendingFrameCount(wr::WindowId aWindowId);
+  /// Can be called from any thread.
+  void IncRenderingFrameCount(wr::WindowId aWindowId);
   /// Can be called from any thread.
   void DecPendingFrameCount(wr::WindowId aWindowId);
 
@@ -151,8 +153,13 @@ private:
 
   std::map<wr::WindowId, UniquePtr<RendererOGL>> mRenderers;
 
-  Mutex mPendingFrameCountMapLock;
-  nsDataHashtable<nsUint64HashKey, uint32_t> mPendingFrameCounts;
+  struct FrameCount {
+    int64_t mPendingCount = 0;
+    int64_t mRenderingCount = 0;
+  };
+
+  Mutex mFrameCountMapLock;
+  nsDataHashtable<nsUint64HashKey, FrameCount> mPendingFrameCounts;
 
   Mutex mRenderTextureMapLock;
   nsRefPtrHashtable<nsUint64HashKey, RenderTextureHost> mRenderTextures;

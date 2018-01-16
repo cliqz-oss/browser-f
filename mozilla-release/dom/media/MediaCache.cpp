@@ -13,6 +13,8 @@
 #include "MediaResource.h"
 #include "MemoryBlockCache.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/ClearOnShutdown.h"
+#include "mozilla/ErrorNames.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ReentrantMonitor.h"
@@ -23,7 +25,8 @@
 #include "nsContentUtils.h"
 #include "nsIObserverService.h"
 #include "nsIPrincipal.h"
-#include "nsISeekableStream.h"
+#include "nsPrintfCString.h"
+#include "nsProxyRelease.h"
 #include "nsThreadUtils.h"
 #include "prio.h"
 #include <algorithm>
@@ -32,10 +35,20 @@ namespace mozilla {
 
 #undef LOG
 #undef LOGI
+#undef LOGE
 LazyLogModule gMediaCacheLog("MediaCache");
 #define LOG(...) MOZ_LOG(gMediaCacheLog, LogLevel::Debug, (__VA_ARGS__))
 #define LOGI(...) MOZ_LOG(gMediaCacheLog, LogLevel::Info, (__VA_ARGS__))
+#define LOGE(...) NS_DebugBreak(NS_DEBUG_WARNING, nsPrintfCString(__VA_ARGS__).get(), nullptr, __FILE__, __LINE__)
 
+// For HTTP seeking, if number of bytes needing to be
+// seeked forward is less than this value then a read is
+// done rather than a byte range request.
+//
+// If we assume a 100Mbit connection, and assume reissuing an HTTP seek causes
+// a delay of 200ms, then in that 200ms we could have simply read ahead 2MB. So
+// setting SEEK_VS_READ_THRESHOLD to 1MB sounds reasonable.
+static const int64_t SEEK_VS_READ_THRESHOLD = 1 * 1024 * 1024;
 
 // Readahead blocks for non-seekable streams will be limited to this
 // fraction of the cache space. We don't normally evict such blocks
@@ -143,6 +156,8 @@ public:
   // file backing will be provided.
   static RefPtr<MediaCache> GetMediaCache(int64_t aContentLength);
 
+  nsIEventTarget* OwnerThread() const { return sThread; }
+
   // Brutally flush the cache contents. Main thread only.
   void Flush();
 
@@ -159,17 +174,18 @@ public:
   nsresult ReadCacheFile(int64_t aOffset, void* aData, int32_t aLength,
                          int32_t* aBytes);
 
+  // The generated IDs are always positive.
   int64_t AllocateResourceID()
   {
     mReentrantMonitor.AssertCurrentThreadIn();
-    return mNextResourceID++;
+    return ++mNextResourceID;
   }
 
   // mReentrantMonitor must be held, called on main thread.
   // These methods are used by the stream to set up and tear down streams,
   // and to handle reads and writes.
   // Add aStream to the list of streams.
-  void OpenStream(MediaCacheStream* aStream);
+  void OpenStream(MediaCacheStream* aStream, bool aIsClone = false);
   // Remove aStream from the list of streams.
   void ReleaseStream(MediaCacheStream* aStream);
   // Free all blocks belonging to aStream.
@@ -258,8 +274,7 @@ public:
 
 protected:
   explicit MediaCache(MediaBlockCacheBase* aCache)
-    : mNextResourceID(1)
-    , mReentrantMonitor("MediaCache.mReentrantMonitor")
+    : mReentrantMonitor("MediaCache.mReentrantMonitor")
     , mBlockCache(aCache)
     , mUpdateQueued(false)
 #ifdef DEBUG
@@ -402,7 +417,7 @@ protected:
 
   // This member is main-thread only. It's used to allocate unique
   // resource IDs to streams.
-  int64_t                       mNextResourceID;
+  int64_t mNextResourceID = 0;
 
   // The monitor protects all the data members here. Also, off-main-thread
   // readers that need to block will Wait() on this monitor. When new
@@ -428,10 +443,19 @@ protected:
 #endif
   // A list of resource IDs to notify about the change in suspended status.
   nsTArray<int64_t> mSuspendedStatusToNotify;
+  // The thread on which we will run data callbacks from the channels.
+  // Note this thread is shared among all MediaCache instances.
+  static StaticRefPtr<nsIThread> sThread;
+  // True if we've tried to init sThread. Note we try once only so it is safe
+  // to access sThread on all threads.
+  static bool sThreadInit;
 };
 
 // Initialized to nullptr by non-local static initialization.
 /* static */ MediaCache* MediaCache::gMediaCache;
+
+/* static */ StaticRefPtr<nsIThread> MediaCache::sThread;
+/* static */ bool MediaCache::sThreadInit = false;
 
 NS_IMETHODIMP
 MediaCacheFlusher::Observe(nsISupports *aSubject, char const *aTopic, char16_t const *aData)
@@ -458,12 +482,9 @@ MediaCacheStream::MediaCacheStream(ChannelMediaResource* aClient,
   : mMediaCache(nullptr)
   , mClient(aClient)
   , mDidNotifyDataEnded(false)
-  , mResourceID(0)
   , mIsTransportSeekable(false)
   , mCacheSuspended(false)
   , mChannelEnded(false)
-  , mChannelOffset(0)
-  , mStreamLength(-1)
   , mStreamOffset(0)
   , mPlaybackBytesPerSecond(10000)
   , mPinCount(0)
@@ -688,6 +709,34 @@ MediaCache::CloseStreamsForPrivateBrowsing()
 MediaCache::GetMediaCache(int64_t aContentLength)
 {
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
+
+  if (!sThreadInit) {
+    sThreadInit = true;
+    nsCOMPtr<nsIThread> thread;
+    nsresult rv = NS_NewNamedThread("MediaCache", getter_AddRefs(thread));
+    if (NS_FAILED(rv)) {
+      NS_WARNING("Failed to create a thread for MediaCache.");
+      return nullptr;
+    }
+    sThread = thread.forget();
+
+    static struct ClearThread
+    {
+      // Called during shutdown to clear sThread.
+      void operator=(std::nullptr_t)
+      {
+        nsCOMPtr<nsIThread> thread = sThread.forget();
+        MOZ_ASSERT(thread);
+        thread->Shutdown();
+      }
+    } sClearThread;
+    ClearOnShutdown(&sClearThread, ShutdownPhase::ShutdownThreads);
+  }
+
+  if (!sThread) {
+    return nullptr;
+  }
+
   if (aContentLength > 0 &&
       aContentLength <= int64_t(MediaPrefs::MediaMemoryCacheMaxSize()) * 1024) {
     // Small-enough resource, use a new memory-backed MediaCache.
@@ -1123,12 +1172,26 @@ MediaCache::PredictNextUseForIncomingData(MediaCacheStream* aStream)
       std::min<int64_t>(millisecondsAhead, INT32_MAX));
 }
 
-enum StreamAction { NONE, SEEK, SEEK_AND_RESUME, RESUME, SUSPEND };
-
 void
 MediaCache::Update()
 {
-  NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
+  MOZ_ASSERT(sThread->IsOnCurrentThread());
+
+  ReentrantMonitorAutoEnter mon(mReentrantMonitor);
+
+  struct StreamAction
+  {
+    enum
+    {
+      NONE,
+      SEEK,
+      RESUME,
+      SUSPEND
+    } mTag = NONE;
+    // Members for 'SEEK' only.
+    bool mResume = false;
+    int64_t mSeekTarget = -1;
+  };
 
   // The action to use for each stream. We store these so we can make
   // decisions while holding the cache lock but implement those decisions
@@ -1136,335 +1199,338 @@ MediaCache::Update()
   // stream, decoder and element code.
   AutoTArray<StreamAction,10> actions;
 
-  {
-    ReentrantMonitorAutoEnter mon(mReentrantMonitor);
-    mUpdateQueued = false;
+  mUpdateQueued = false;
 #ifdef DEBUG
-    mInUpdate = true;
+  mInUpdate = true;
 #endif
 
-    int32_t maxBlocks = mBlockCache->GetMaxBlocks();
-    TimeStamp now = TimeStamp::Now();
+  int32_t maxBlocks = mBlockCache->GetMaxBlocks();
+  TimeStamp now = TimeStamp::Now();
 
-    int32_t freeBlockCount = mFreeBlocks.GetCount();
-    TimeDuration latestPredictedUseForOverflow = 0;
-    if (mIndex.Length() > uint32_t(maxBlocks)) {
-      // Try to trim back the cache to its desired maximum size. The cache may
-      // have overflowed simply due to data being received when we have
-      // no blocks in the main part of the cache that are free or lower
-      // priority than the new data. The cache can also be overflowing because
-      // the media.cache_size preference was reduced.
-      // First, figure out what the least valuable block in the cache overflow
-      // is. We don't want to replace any blocks in the main part of the
-      // cache whose expected time of next use is earlier or equal to that.
-      // If we allow that, we can effectively end up discarding overflowing
-      // blocks (by moving an overflowing block to the main part of the cache,
-      // and then overwriting it with another overflowing block), and we try
-      // to avoid that since it requires HTTP seeks.
-      // We also use this loop to eliminate overflowing blocks from
-      // freeBlockCount.
-      for (int32_t blockIndex = mIndex.Length() - 1; blockIndex >= maxBlocks;
-           --blockIndex) {
-        if (IsBlockFree(blockIndex)) {
-          // Don't count overflowing free blocks in our free block count
-          --freeBlockCount;
-          continue;
-        }
-        TimeDuration predictedUse = PredictNextUse(now, blockIndex);
-        latestPredictedUseForOverflow = std::max(latestPredictedUseForOverflow, predictedUse);
-      }
-    } else {
-      freeBlockCount += maxBlocks - mIndex.Length();
-    }
-
-    // Now try to move overflowing blocks to the main part of the cache.
+  int32_t freeBlockCount = mFreeBlocks.GetCount();
+  TimeDuration latestPredictedUseForOverflow = 0;
+  if (mIndex.Length() > uint32_t(maxBlocks)) {
+    // Try to trim back the cache to its desired maximum size. The cache may
+    // have overflowed simply due to data being received when we have
+    // no blocks in the main part of the cache that are free or lower
+    // priority than the new data. The cache can also be overflowing because
+    // the media.cache_size preference was reduced.
+    // First, figure out what the least valuable block in the cache overflow
+    // is. We don't want to replace any blocks in the main part of the
+    // cache whose expected time of next use is earlier or equal to that.
+    // If we allow that, we can effectively end up discarding overflowing
+    // blocks (by moving an overflowing block to the main part of the cache,
+    // and then overwriting it with another overflowing block), and we try
+    // to avoid that since it requires HTTP seeks.
+    // We also use this loop to eliminate overflowing blocks from
+    // freeBlockCount.
     for (int32_t blockIndex = mIndex.Length() - 1; blockIndex >= maxBlocks;
          --blockIndex) {
-      if (IsBlockFree(blockIndex))
-        continue;
-
-      Block* block = &mIndex[blockIndex];
-      // Try to relocate the block close to other blocks for the first stream.
-      // There is no point in trying to make it close to other blocks in
-      // *all* the streams it might belong to.
-      int32_t destinationBlockIndex =
-        FindReusableBlock(now, block->mOwners[0].mStream,
-                          block->mOwners[0].mStreamBlock, maxBlocks);
-      if (destinationBlockIndex < 0) {
-        // Nowhere to place this overflow block. We won't be able to
-        // place any more overflow blocks.
-        break;
-      }
-
-      if (IsBlockFree(destinationBlockIndex) ||
-          PredictNextUse(now, destinationBlockIndex) > latestPredictedUseForOverflow) {
-        // Reuse blocks in the main part of the cache that are less useful than
-        // the least useful overflow blocks
-
-        nsresult rv = mBlockCache->MoveBlock(blockIndex, destinationBlockIndex);
-
-        if (NS_SUCCEEDED(rv)) {
-          // We successfully copied the file data.
-          LOG("Swapping blocks %d and %d (trimming cache)",
-              blockIndex, destinationBlockIndex);
-          // Swapping the block metadata here lets us maintain the
-          // correct positions in the linked lists
-          SwapBlocks(blockIndex, destinationBlockIndex);
-          //Free the overflowing block even if the copy failed.
-          LOG("Released block %d (trimming cache)", blockIndex);
-          FreeBlock(blockIndex);
-        }
-      } else {
-        LOG("Could not trim cache block %d (destination %d, "
-            "predicted next use %f, latest predicted use for overflow %f",
-            blockIndex, destinationBlockIndex,
-            PredictNextUse(now, destinationBlockIndex).ToSeconds(),
-            latestPredictedUseForOverflow.ToSeconds());
-      }
-    }
-    // Try chopping back the array of cache entries and the cache file.
-    Truncate();
-
-    // Count the blocks allocated for readahead of non-seekable streams
-    // (these blocks can't be freed but we don't want them to monopolize the
-    // cache)
-    int32_t nonSeekableReadaheadBlockCount = 0;
-    for (uint32_t i = 0; i < mStreams.Length(); ++i) {
-      MediaCacheStream* stream = mStreams[i];
-      if (!stream->mIsTransportSeekable) {
-        nonSeekableReadaheadBlockCount += stream->mReadaheadBlocks.GetCount();
-      }
-    }
-
-    // If freeBlockCount is zero, then compute the latest of
-    // the predicted next-uses for all blocks
-    TimeDuration latestNextUse;
-    if (freeBlockCount == 0) {
-      int32_t reusableBlock = FindReusableBlock(now, nullptr, 0, maxBlocks);
-      if (reusableBlock >= 0) {
-        latestNextUse = PredictNextUse(now, reusableBlock);
-      }
-    }
-
-    int32_t resumeThreshold = Preferences::GetInt("media.cache_resume_threshold", 10);
-    int32_t readaheadLimit = Preferences::GetInt("media.cache_readahead_limit", 30);
-
-    for (uint32_t i = 0; i < mStreams.Length(); ++i) {
-      actions.AppendElement(NONE);
-
-      MediaCacheStream* stream = mStreams[i];
-      if (stream->mClosed) {
-        LOG("Stream %p closed", stream);
+      if (IsBlockFree(blockIndex)) {
+        // Don't count overflowing free blocks in our free block count
+        --freeBlockCount;
         continue;
       }
-
-      // Figure out where we should be reading from. It's the first
-      // uncached byte after the current mStreamOffset.
-      int64_t dataOffset = stream->GetCachedDataEndInternal(stream->mStreamOffset);
-      MOZ_ASSERT(dataOffset >= 0);
-
-      // Compute where we'd actually seek to to read at readOffset
-      int64_t desiredOffset = dataOffset;
-      if (stream->mIsTransportSeekable) {
-        if (desiredOffset > stream->mChannelOffset &&
-            desiredOffset <= stream->mChannelOffset + SEEK_VS_READ_THRESHOLD) {
-          // Assume it's more efficient to just keep reading up to the
-          // desired position instead of trying to seek
-          desiredOffset = stream->mChannelOffset;
-        }
-      } else {
-        // We can't seek directly to the desired offset...
-        if (stream->mChannelOffset > desiredOffset) {
-          // Reading forward won't get us anywhere, we need to go backwards.
-          // Seek back to 0 (the client will reopen the stream) and then
-          // read forward.
-          NS_WARNING("Can't seek backwards, so seeking to 0");
-          desiredOffset = 0;
-          // Flush cached blocks out, since if this is a live stream
-          // the cached data may be completely different next time we
-          // read it. We have to assume that live streams don't
-          // advertise themselves as being seekable...
-          ReleaseStreamBlocks(stream);
-        } else {
-          // otherwise reading forward is looking good, so just stay where we
-          // are and don't trigger a channel seek!
-          desiredOffset = stream->mChannelOffset;
-        }
-      }
-
-      // Figure out if we should be reading data now or not. It's amazing
-      // how complex this is, but each decision is simple enough.
-      bool enableReading;
-      if (stream->mStreamLength >= 0 && dataOffset >= stream->mStreamLength) {
-        // We want data at the end of the stream, where there's nothing to
-        // read. We don't want to try to read if we're suspended, because that
-        // might create a new channel and seek unnecessarily (and incorrectly,
-        // since HTTP doesn't allow seeking to the actual EOF), and we don't want
-        // to suspend if we're not suspended and already reading at the end of
-        // the stream, since there just might be more data than the server
-        // advertised with Content-Length, and we may as well keep reading.
-        // But we don't want to seek to the end of the stream if we're not
-        // already there.
-        LOG("Stream %p at end of stream", stream);
-        enableReading = !stream->mCacheSuspended &&
-          stream->mStreamLength == stream->mChannelOffset;
-      } else if (desiredOffset < stream->mStreamOffset) {
-        // We're reading to try to catch up to where the current stream
-        // reader wants to be. Better not stop.
-        LOG("Stream %p catching up", stream);
-        enableReading = true;
-      } else if (desiredOffset < stream->mStreamOffset + BLOCK_SIZE) {
-        // The stream reader is waiting for us, or nearly so. Better feed it.
-        LOG("Stream %p feeding reader", stream);
-        enableReading = true;
-      } else if (!stream->mIsTransportSeekable &&
-                 nonSeekableReadaheadBlockCount >= maxBlocks*NONSEEKABLE_READAHEAD_MAX) {
-        // This stream is not seekable and there are already too many blocks
-        // being cached for readahead for nonseekable streams (which we can't
-        // free). So stop reading ahead now.
-        LOG("Stream %p throttling non-seekable readahead", stream);
-        enableReading = false;
-      } else if (mIndex.Length() > uint32_t(maxBlocks)) {
-        // We're in the process of bringing the cache size back to the
-        // desired limit, so don't bring in more data yet
-        LOG("Stream %p throttling to reduce cache size", stream);
-        enableReading = false;
-      } else {
-        TimeDuration predictedNewDataUse = PredictNextUseForIncomingData(stream);
-
-        if (stream->mThrottleReadahead &&
-            stream->mCacheSuspended &&
-            predictedNewDataUse.ToSeconds() > resumeThreshold) {
-          // Don't need data for a while, so don't bother waking up the stream
-          LOG("Stream %p avoiding wakeup since more data is not needed", stream);
-          enableReading = false;
-        } else if (stream->mThrottleReadahead &&
-                   predictedNewDataUse.ToSeconds() > readaheadLimit) {
-          // Don't read ahead more than this much
-          LOG("Stream %p throttling to avoid reading ahead too far", stream);
-          enableReading = false;
-        } else if (freeBlockCount > 0) {
-          // Free blocks in the cache, so keep reading
-          LOG("Stream %p reading since there are free blocks", stream);
-          enableReading = true;
-        } else if (latestNextUse <= TimeDuration(0)) {
-          // No reusable blocks, so can't read anything
-          LOG("Stream %p throttling due to no reusable blocks", stream);
-          enableReading = false;
-        } else {
-          // Read ahead if the data we expect to read is more valuable than
-          // the least valuable block in the main part of the cache
-          LOG("Stream %p predict next data in %f, current worst block is %f",
-              stream, predictedNewDataUse.ToSeconds(), latestNextUse.ToSeconds());
-          enableReading = predictedNewDataUse < latestNextUse;
-        }
-      }
-
-      if (enableReading) {
-        for (uint32_t j = 0; j < i; ++j) {
-          MediaCacheStream* other = mStreams[j];
-          if (other->mResourceID == stream->mResourceID && !other->mClosed &&
-              !other->mClient->IsSuspended() &&
-              OffsetToBlockIndexUnchecked(other->mChannelOffset) ==
-                OffsetToBlockIndexUnchecked(desiredOffset)) {
-            // This block is already going to be read by the other stream.
-            // So don't try to read it from this stream as well.
-            enableReading = false;
-            LOG("Stream %p waiting on same block (%" PRId32 ") from stream %p",
-                stream,
-                OffsetToBlockIndexUnchecked(desiredOffset),
-                other);
-            break;
-          }
-        }
-      }
-
-      if (stream->mChannelOffset != desiredOffset && enableReading) {
-        // We need to seek now.
-        NS_ASSERTION(stream->mIsTransportSeekable || desiredOffset == 0,
-                     "Trying to seek in a non-seekable stream!");
-        // Round seek offset down to the start of the block. This is essential
-        // because we don't want to think we have part of a block already
-        // in mPartialBlockBuffer.
-        stream->mChannelOffset =
-          OffsetToBlockIndexUnchecked(desiredOffset) * BLOCK_SIZE;
-        actions[i] = stream->mCacheSuspended ? SEEK_AND_RESUME : SEEK;
-        // mChannelOffset is updated to a new position. We don't want data from
-        // the old channel to be written to the wrong position. 0 is a sentinel
-        // value which will not match any ID passed to NotifyDataReceived().
-        stream->mLoadID = 0;
-      } else if (enableReading && stream->mCacheSuspended) {
-        actions[i] = RESUME;
-      } else if (!enableReading && !stream->mCacheSuspended) {
-        actions[i] = SUSPEND;
-      }
+      TimeDuration predictedUse = PredictNextUse(now, blockIndex);
+      latestPredictedUseForOverflow = std::max(latestPredictedUseForOverflow, predictedUse);
     }
-#ifdef DEBUG
-    mInUpdate = false;
-#endif
+  } else {
+    freeBlockCount += maxBlocks - mIndex.Length();
   }
 
-  // Update the channel state without holding our cache lock. While we're
-  // doing this, decoder threads may be running and seeking, reading or changing
-  // other cache state. That's OK, they'll trigger new Update events and we'll
-  // get back here and revise our decisions. The important thing here is that
-  // performing these actions only depends on mChannelOffset and
-  // the action, which can only be written by the main thread (i.e., this
-  // thread), so we don't have races here.
+  // Now try to move overflowing blocks to the main part of the cache.
+  for (int32_t blockIndex = mIndex.Length() - 1; blockIndex >= maxBlocks;
+       --blockIndex) {
+    if (IsBlockFree(blockIndex))
+      continue;
+
+    Block* block = &mIndex[blockIndex];
+    // Try to relocate the block close to other blocks for the first stream.
+    // There is no point in trying to make it close to other blocks in
+    // *all* the streams it might belong to.
+    int32_t destinationBlockIndex =
+      FindReusableBlock(now, block->mOwners[0].mStream,
+                        block->mOwners[0].mStreamBlock, maxBlocks);
+    if (destinationBlockIndex < 0) {
+      // Nowhere to place this overflow block. We won't be able to
+      // place any more overflow blocks.
+      break;
+    }
+
+    // Don't evict |destinationBlockIndex| if it is within [cur, end) otherwise
+    // a new channel will be opened to download this block again which is bad.
+    bool inCurrentCachedRange = false;
+    for (BlockOwner& owner : mIndex[destinationBlockIndex].mOwners) {
+      MediaCacheStream* stream = owner.mStream;
+      int64_t end = OffsetToBlockIndexUnchecked(
+        stream->GetCachedDataEndInternal(stream->mStreamOffset));
+      int64_t cur = OffsetToBlockIndexUnchecked(stream->mStreamOffset);
+      if (cur <= owner.mStreamBlock && owner.mStreamBlock < end) {
+        inCurrentCachedRange = true;
+        break;
+      }
+    }
+    if (inCurrentCachedRange) {
+      continue;
+    }
+
+    if (IsBlockFree(destinationBlockIndex) ||
+        PredictNextUse(now, destinationBlockIndex) > latestPredictedUseForOverflow) {
+      // Reuse blocks in the main part of the cache that are less useful than
+      // the least useful overflow blocks
+
+      nsresult rv = mBlockCache->MoveBlock(blockIndex, destinationBlockIndex);
+
+      if (NS_SUCCEEDED(rv)) {
+        // We successfully copied the file data.
+        LOG("Swapping blocks %d and %d (trimming cache)",
+            blockIndex, destinationBlockIndex);
+        // Swapping the block metadata here lets us maintain the
+        // correct positions in the linked lists
+        SwapBlocks(blockIndex, destinationBlockIndex);
+        //Free the overflowing block even if the copy failed.
+        LOG("Released block %d (trimming cache)", blockIndex);
+        FreeBlock(blockIndex);
+      }
+    } else {
+      LOG("Could not trim cache block %d (destination %d, "
+          "predicted next use %f, latest predicted use for overflow %f",
+          blockIndex, destinationBlockIndex,
+          PredictNextUse(now, destinationBlockIndex).ToSeconds(),
+          latestPredictedUseForOverflow.ToSeconds());
+    }
+  }
+  // Try chopping back the array of cache entries and the cache file.
+  Truncate();
+
+  // Count the blocks allocated for readahead of non-seekable streams
+  // (these blocks can't be freed but we don't want them to monopolize the
+  // cache)
+  int32_t nonSeekableReadaheadBlockCount = 0;
+  for (uint32_t i = 0; i < mStreams.Length(); ++i) {
+    MediaCacheStream* stream = mStreams[i];
+    if (!stream->mIsTransportSeekable) {
+      nonSeekableReadaheadBlockCount += stream->mReadaheadBlocks.GetCount();
+    }
+  }
+
+  // If freeBlockCount is zero, then compute the latest of
+  // the predicted next-uses for all blocks
+  TimeDuration latestNextUse;
+  if (freeBlockCount == 0) {
+    int32_t reusableBlock = FindReusableBlock(now, nullptr, 0, maxBlocks);
+    if (reusableBlock >= 0) {
+      latestNextUse = PredictNextUse(now, reusableBlock);
+    }
+  }
+
+  int32_t resumeThreshold = MediaPrefs::MediaCacheResumeThreshold();
+  int32_t readaheadLimit = MediaPrefs::MediaCacheReadaheadLimit();
+
+  for (uint32_t i = 0; i < mStreams.Length(); ++i) {
+    actions.AppendElement(StreamAction{});
+
+    MediaCacheStream* stream = mStreams[i];
+    if (stream->mClosed) {
+      LOG("Stream %p closed", stream);
+      continue;
+    }
+
+    // We make decisions based on mSeekTarget when there is a pending seek.
+    // Otherwise we will keep issuing seek requests until mChannelOffset
+    // is changed by NotifyDataStarted() which is bad.
+    int64_t channelOffset =
+      stream->mSeekTarget != -1 ? stream->mSeekTarget : stream->mChannelOffset;
+
+    // Figure out where we should be reading from. It's the first
+    // uncached byte after the current mStreamOffset.
+    int64_t dataOffset = stream->GetCachedDataEndInternal(stream->mStreamOffset);
+    MOZ_ASSERT(dataOffset >= 0);
+
+    // Compute where we'd actually seek to to read at readOffset
+    int64_t desiredOffset = dataOffset;
+    if (stream->mIsTransportSeekable) {
+      if (desiredOffset > channelOffset &&
+          desiredOffset <= channelOffset + SEEK_VS_READ_THRESHOLD) {
+        // Assume it's more efficient to just keep reading up to the
+        // desired position instead of trying to seek
+        desiredOffset = channelOffset;
+      }
+    } else {
+      // We can't seek directly to the desired offset...
+      if (channelOffset > desiredOffset) {
+        // Reading forward won't get us anywhere, we need to go backwards.
+        // Seek back to 0 (the client will reopen the stream) and then
+        // read forward.
+        NS_WARNING("Can't seek backwards, so seeking to 0");
+        desiredOffset = 0;
+        // Flush cached blocks out, since if this is a live stream
+        // the cached data may be completely different next time we
+        // read it. We have to assume that live streams don't
+        // advertise themselves as being seekable...
+        ReleaseStreamBlocks(stream);
+      } else {
+        // otherwise reading forward is looking good, so just stay where we
+        // are and don't trigger a channel seek!
+        desiredOffset = channelOffset;
+      }
+    }
+
+    // Figure out if we should be reading data now or not. It's amazing
+    // how complex this is, but each decision is simple enough.
+    bool enableReading;
+    if (stream->mStreamLength >= 0 && dataOffset >= stream->mStreamLength) {
+      // We want data at the end of the stream, where there's nothing to
+      // read. We don't want to try to read if we're suspended, because that
+      // might create a new channel and seek unnecessarily (and incorrectly,
+      // since HTTP doesn't allow seeking to the actual EOF), and we don't want
+      // to suspend if we're not suspended and already reading at the end of
+      // the stream, since there just might be more data than the server
+      // advertised with Content-Length, and we may as well keep reading.
+      // But we don't want to seek to the end of the stream if we're not
+      // already there.
+      LOG("Stream %p at end of stream", stream);
+      enableReading =
+        !stream->mCacheSuspended && stream->mStreamLength == channelOffset;
+    } else if (desiredOffset < stream->mStreamOffset) {
+      // We're reading to try to catch up to where the current stream
+      // reader wants to be. Better not stop.
+      LOG("Stream %p catching up", stream);
+      enableReading = true;
+    } else if (desiredOffset < stream->mStreamOffset + BLOCK_SIZE) {
+      // The stream reader is waiting for us, or nearly so. Better feed it.
+      LOG("Stream %p feeding reader", stream);
+      enableReading = true;
+    } else if (!stream->mIsTransportSeekable &&
+               nonSeekableReadaheadBlockCount >= maxBlocks*NONSEEKABLE_READAHEAD_MAX) {
+      // This stream is not seekable and there are already too many blocks
+      // being cached for readahead for nonseekable streams (which we can't
+      // free). So stop reading ahead now.
+      LOG("Stream %p throttling non-seekable readahead", stream);
+      enableReading = false;
+    } else if (mIndex.Length() > uint32_t(maxBlocks)) {
+      // We're in the process of bringing the cache size back to the
+      // desired limit, so don't bring in more data yet
+      LOG("Stream %p throttling to reduce cache size", stream);
+      enableReading = false;
+    } else {
+      TimeDuration predictedNewDataUse = PredictNextUseForIncomingData(stream);
+
+      if (stream->mThrottleReadahead &&
+          stream->mCacheSuspended &&
+          predictedNewDataUse.ToSeconds() > resumeThreshold) {
+        // Don't need data for a while, so don't bother waking up the stream
+        LOG("Stream %p avoiding wakeup since more data is not needed", stream);
+        enableReading = false;
+      } else if (stream->mThrottleReadahead &&
+                 predictedNewDataUse.ToSeconds() > readaheadLimit) {
+        // Don't read ahead more than this much
+        LOG("Stream %p throttling to avoid reading ahead too far", stream);
+        enableReading = false;
+      } else if (freeBlockCount > 0) {
+        // Free blocks in the cache, so keep reading
+        LOG("Stream %p reading since there are free blocks", stream);
+        enableReading = true;
+      } else if (latestNextUse <= TimeDuration(0)) {
+        // No reusable blocks, so can't read anything
+        LOG("Stream %p throttling due to no reusable blocks", stream);
+        enableReading = false;
+      } else {
+        // Read ahead if the data we expect to read is more valuable than
+        // the least valuable block in the main part of the cache
+        LOG("Stream %p predict next data in %f, current worst block is %f",
+            stream, predictedNewDataUse.ToSeconds(), latestNextUse.ToSeconds());
+        enableReading = predictedNewDataUse < latestNextUse;
+      }
+    }
+
+    if (enableReading) {
+      for (uint32_t j = 0; j < i; ++j) {
+        MediaCacheStream* other = mStreams[j];
+        if (other->mResourceID == stream->mResourceID && !other->mClosed &&
+            !other->mClientSuspended &&
+            OffsetToBlockIndexUnchecked(other->mSeekTarget != -1
+                                          ? other->mSeekTarget
+                                          : other->mChannelOffset) ==
+              OffsetToBlockIndexUnchecked(desiredOffset)) {
+          // This block is already going to be read by the other stream.
+          // So don't try to read it from this stream as well.
+          enableReading = false;
+          LOG("Stream %p waiting on same block (%" PRId32 ") from stream %p",
+              stream,
+              OffsetToBlockIndexUnchecked(desiredOffset),
+              other);
+          break;
+        }
+      }
+    }
+
+    if (channelOffset != desiredOffset && enableReading) {
+      // We need to seek now.
+      NS_ASSERTION(stream->mIsTransportSeekable || desiredOffset == 0,
+                   "Trying to seek in a non-seekable stream!");
+      // Round seek offset down to the start of the block. This is essential
+      // because we don't want to think we have part of a block already
+      // in mPartialBlockBuffer.
+      stream->mSeekTarget =
+        OffsetToBlockIndexUnchecked(desiredOffset) * BLOCK_SIZE;
+      actions[i].mTag = StreamAction::SEEK;
+      actions[i].mResume = stream->mCacheSuspended;
+      actions[i].mSeekTarget = stream->mSeekTarget;
+    } else if (enableReading && stream->mCacheSuspended) {
+      actions[i].mTag = StreamAction::RESUME;
+    } else if (!enableReading && !stream->mCacheSuspended) {
+      actions[i].mTag = StreamAction::SUSPEND;
+    }
+  }
+#ifdef DEBUG
+  mInUpdate = false;
+#endif
 
   // First, update the mCacheSuspended/mCacheEnded flags so that they're all correct
   // when we fire our CacheClient commands below. Those commands can rely on these flags
   // being set correctly for all streams.
   for (uint32_t i = 0; i < mStreams.Length(); ++i) {
     MediaCacheStream* stream = mStreams[i];
-    switch (actions[i]) {
-    case SEEK:
-	case SEEK_AND_RESUME:
-      stream->mCacheSuspended = false;
-      stream->mChannelEnded = false;
-      break;
-    case RESUME:
-      stream->mCacheSuspended = false;
-      break;
-    case SUSPEND:
-      stream->mCacheSuspended = true;
-      break;
-    default:
-      break;
+    switch (actions[i].mTag) {
+      case StreamAction::SEEK:
+        stream->mCacheSuspended = false;
+        stream->mChannelEnded = false;
+        break;
+      case StreamAction::RESUME:
+        stream->mCacheSuspended = false;
+        break;
+      case StreamAction::SUSPEND:
+        stream->mCacheSuspended = true;
+        break;
+      default:
+        break;
     }
   }
 
   for (uint32_t i = 0; i < mStreams.Length(); ++i) {
     MediaCacheStream* stream = mStreams[i];
-    nsresult rv;
-    switch (actions[i]) {
-    case SEEK:
-	case SEEK_AND_RESUME:
-      LOG("Stream %p CacheSeek to %" PRId64 " (resume=%d)", stream,
-          stream->mChannelOffset, actions[i] == SEEK_AND_RESUME);
-      rv = stream->mClient->CacheClientSeek(stream->mChannelOffset,
-                                            actions[i] == SEEK_AND_RESUME);
-      break;
-    case RESUME:
-      LOG("Stream %p Resumed", stream);
-      rv = stream->mClient->CacheClientResume();
-      QueueSuspendedStatusUpdate(stream->mResourceID);
-      break;
-    case SUSPEND:
-      LOG("Stream %p Suspended", stream);
-      rv = stream->mClient->CacheClientSuspend();
-      QueueSuspendedStatusUpdate(stream->mResourceID);
-      break;
-    default:
-      rv = NS_OK;
-      break;
-    }
-
-    if (NS_FAILED(rv)) {
-      // Close the streams that failed due to error. This will cause all
-      // client Read and Seek operations on those streams to fail. Blocked
-      // Reads will also be woken up.
-      stream->mClient->Close();
+    switch (actions[i].mTag) {
+      case StreamAction::SEEK:
+        LOG("Stream %p CacheSeek to %" PRId64 " (resume=%d)",
+            stream,
+            actions[i].mSeekTarget,
+            actions[i].mResume);
+        stream->mClient->CacheClientSeek(actions[i].mSeekTarget,
+                                         actions[i].mResume);
+        break;
+      case StreamAction::RESUME:
+        LOG("Stream %p Resumed", stream);
+        stream->mClient->CacheClientResume();
+        QueueSuspendedStatusUpdate(stream->mResourceID);
+        break;
+      case StreamAction::SUSPEND:
+        LOG("Stream %p Suspended", stream);
+        stream->mClient->CacheClientSuspend();
+        QueueSuspendedStatusUpdate(stream->mResourceID);
+        break;
+      default:
+        break;
     }
   }
 
@@ -1490,6 +1556,10 @@ public:
   NS_IMETHOD Run() override
   {
     mMediaCache->Update();
+    // Ensure MediaCache is deleted on the main thread.
+    NS_ProxyRelease("UpdateEvent::mMediaCache",
+                    SystemGroup::EventTargetFor(mozilla::TaskCategory::Other),
+                    mMediaCache.forget());
     return NS_OK;
   }
 
@@ -1513,13 +1583,13 @@ MediaCache::QueueUpdate()
   // shutdown and get freed in the final cycle-collector cleanup.  So
   // don't leak a runnable in that case.
   nsCOMPtr<nsIRunnable> event = new UpdateEvent(this);
-  SystemGroup::Dispatch(TaskCategory::Other, event.forget());
+  sThread->Dispatch(event.forget());
 }
 
 void
 MediaCache::QueueSuspendedStatusUpdate(int64_t aResourceID)
 {
-  NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
+  mReentrantMonitor.AssertCurrentThreadIn();
   if (!mSuspendedStatusToNotify.Contains(aResourceID)) {
     mSuspendedStatusToNotify.AppendElement(aResourceID);
   }
@@ -1688,14 +1758,22 @@ MediaCache::AllocateAndWriteBlock(MediaCacheStream* aStream,
 }
 
 void
-MediaCache::OpenStream(MediaCacheStream* aStream)
+MediaCache::OpenStream(MediaCacheStream* aStream, bool aIsClone)
 {
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
 
   ReentrantMonitorAutoEnter mon(mReentrantMonitor);
   LOG("Stream %p opened", aStream);
   mStreams.AppendElement(aStream);
-  aStream->mResourceID = AllocateResourceID();
+
+  // A cloned stream should've got the ID from its original.
+  if (!aIsClone) {
+    MOZ_ASSERT(aStream->mResourceID == 0, "mResourceID has been initialized.");
+    aStream->mResourceID = AllocateResourceID();
+  }
+
+  // We should have a valid ID now no matter it is cloned or not.
+  MOZ_ASSERT(aStream->mResourceID > 0, "mResourceID is invalid");
 
   // Queue an update since a new stream has been opened.
   QueueUpdate();
@@ -1867,14 +1945,16 @@ MediaCacheStream::NotifyDataLength(int64_t aLength)
 }
 
 void
-MediaCacheStream::NotifyDataStarted(uint32_t aLoadID, int64_t aOffset)
+MediaCacheStream::NotifyDataStarted(uint32_t aLoadID,
+                                    int64_t aOffset,
+                                    bool aSeekable)
 {
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
   MOZ_ASSERT(aLoadID > 0);
   LOG("Stream %p DataStarted: %" PRId64 " aLoadID=%u", this, aOffset, aLoadID);
 
   ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
-  NS_WARNING_ASSERTION(aOffset == mChannelOffset,
+  NS_WARNING_ASSERTION(aOffset == mSeekTarget || aOffset == mChannelOffset,
                        "Server is giving us unexpected offset");
   MOZ_ASSERT(aOffset >= 0);
   mChannelOffset = aOffset;
@@ -1884,6 +1964,17 @@ MediaCacheStream::NotifyDataStarted(uint32_t aLoadID, int64_t aOffset)
     mStreamLength = std::max(mStreamLength, mChannelOffset);
   }
   mLoadID = aLoadID;
+
+  MOZ_ASSERT(aOffset == 0 || aSeekable,
+             "channel offset must be zero when we become non-seekable");
+  mIsTransportSeekable = aSeekable;
+  // Queue an Update since we may change our strategy for dealing
+  // with this stream
+  mMediaCache->QueueUpdate();
+
+  // Reset mSeekTarget since the seek is completed so MediaCache::Update() will
+  // make decisions based on mChannelOffset instead of mSeekTarget.
+  mSeekTarget = -1;
 }
 
 void
@@ -1901,8 +1992,8 @@ MediaCacheStream::UpdatePrincipal(nsIPrincipal* aPrincipal)
 
 void
 MediaCacheStream::NotifyDataReceived(uint32_t aLoadID,
-                                     int64_t aSize,
-                                     const char* aData)
+                                     uint32_t aCount,
+                                     const uint8_t* aData)
 {
   MOZ_ASSERT(aLoadID > 0);
   // This might happen off the main thread.
@@ -1913,16 +2004,11 @@ MediaCacheStream::NotifyDataReceived(uint32_t aLoadID,
     return;
   }
 
-  LOG("Stream %p DataReceived at %" PRId64 " count=%" PRId64 " aLoadID=%u",
+  LOG("Stream %p DataReceived at %" PRId64 " count=%u aLoadID=%u",
       this,
       mChannelOffset,
-      aSize,
+      aCount,
       aLoadID);
-
-  // TODO: For now NotifyDataReceived() always runs on the main thread. This
-  // assertion is to make sure our load ID algorithm doesn't go wrong. Remove it
-  // when OMT data delievery is enabled.
-  MOZ_DIAGNOSTIC_ASSERT(mLoadID == aLoadID);
 
   if (mLoadID != aLoadID) {
     // mChannelOffset is updated to a new position when loading a new channel.
@@ -1930,38 +2016,42 @@ MediaCacheStream::NotifyDataReceived(uint32_t aLoadID,
     // stored to the wrong positoin.
     return;
   }
-  int64_t size = aSize;
-  const char* data = aData;
+
+  auto source = MakeSpan<const uint8_t>(aData, aCount);
 
   // We process the data one block (or part of a block) at a time
-  while (size > 0) {
-    uint32_t blockIndex = OffsetToBlockIndexUnchecked(mChannelOffset);
-    int32_t blockOffset = int32_t(mChannelOffset - blockIndex*BLOCK_SIZE);
-    int32_t chunkSize = std::min<int64_t>(BLOCK_SIZE - blockOffset, size);
+  while (!source.IsEmpty()) {
+    // The data we've collected so far in the partial block.
+    auto partial = MakeSpan<const uint8_t>(mPartialBlockBuffer.get(),
+                                           OffsetInBlock(mChannelOffset));
 
-    if (blockOffset == 0) {
+    if (partial.IsEmpty()) {
       // We've just started filling this buffer so now is a good time
       // to clear this flag.
       mMetadataInPartialBlockBuffer = false;
     }
 
-    ReadMode mode = mMetadataInPartialBlockBuffer
-      ? MODE_METADATA : MODE_PLAYBACK;
+    // The number of bytes needed to complete the partial block.
+    size_t remaining = BLOCK_SIZE - partial.Length();
 
-    if (blockOffset + chunkSize == BLOCK_SIZE) {
+    if (source.Length() >= remaining) {
       // We have a whole block now to write it out.
-      auto data1 = MakeSpan<const uint8_t>(
-        mPartialBlockBuffer.get(), blockOffset);
-      auto data2 = MakeSpan<const uint8_t>(
-        reinterpret_cast<const uint8_t*>(data), chunkSize);
-      mMediaCache->AllocateAndWriteBlock(this, blockIndex, mode, data1, data2);
+      mMediaCache->AllocateAndWriteBlock(
+        this,
+        OffsetToBlockIndexUnchecked(mChannelOffset),
+        mMetadataInPartialBlockBuffer ? MODE_METADATA : MODE_PLAYBACK,
+        partial,
+        source.First(remaining));
+      source = source.From(remaining);
+      mChannelOffset += remaining;
     } else {
-      memcpy(mPartialBlockBuffer.get() + blockOffset, data, chunkSize);
+      // The buffer to be filled in the partial block.
+      auto buf = MakeSpan<uint8_t>(mPartialBlockBuffer.get() + partial.Length(),
+                                   remaining);
+      memcpy(buf.Elements(), source.Elements(), source.Length());
+      mChannelOffset += source.Length();
+      break;
     }
-
-    mChannelOffset += chunkSize;
-    size -= chunkSize;
-    data += chunkSize;
   }
 
   MediaCache::ResourceStreamIterator iter(mMediaCache, mResourceID);
@@ -2072,6 +2162,24 @@ MediaCacheStream::NotifyChannelRecreated()
   mDidNotifyDataEnded = false;
 }
 
+void
+MediaCacheStream::NotifyClientSuspended(bool aSuspended)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  RefPtr<ChannelMediaResource> client = mClient;
+  nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+    "MediaCacheStream::NotifyClientSuspended", [client, this, aSuspended]() {
+      if (mClientSuspended != aSuspended) {
+        mClientSuspended = aSuspended;
+        // mClientSuspended changes the decision of reading streams.
+        ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
+        mMediaCache->QueueUpdate();
+      }
+    });
+  OwnerThread()->Dispatch(r.forget());
+}
+
 MediaCacheStream::~MediaCacheStream()
 {
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
@@ -2090,25 +2198,6 @@ MediaCacheStream::~MediaCacheStream()
       lengthKb);
   Telemetry::Accumulate(Telemetry::HistogramID::MEDIACACHESTREAM_LENGTH_KB,
                         lengthKb);
-}
-
-void
-MediaCacheStream::SetTransportSeekable(bool aIsTransportSeekable)
-{
-  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
-  NS_ASSERTION(mIsTransportSeekable || aIsTransportSeekable ||
-               mChannelOffset == 0, "channel offset must be zero when we become non-seekable");
-  mIsTransportSeekable = aIsTransportSeekable;
-  // Queue an Update since we may change our strategy for dealing
-  // with this stream
-  mMediaCache->QueueUpdate();
-}
-
-bool
-MediaCacheStream::IsTransportSeekable()
-{
-  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
-  return mIsTransportSeekable;
 }
 
 bool
@@ -2144,12 +2233,13 @@ MediaCacheStream::Close()
     return;
   }
 
+  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
+
   // Closing a stream will change the return value of
   // MediaCacheStream::AreAllStreamsForResourceSuspended as well as
   // ChannelMediaResource::IsSuspendedByCache. Let's notify it.
   mMediaCache->QueueSuspendedStatusUpdate(mResourceID);
 
-  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
   mClosed = true;
   mMediaCache->ReleaseStreamBlocks(this);
   // Wake up any blocked readers
@@ -2192,7 +2282,7 @@ MediaCacheStream::GetLength()
 int64_t
 MediaCacheStream::GetOffset() const
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
   return mChannelOffset;
 }
 
@@ -2316,41 +2406,22 @@ MediaCacheStream::SetPlaybackRate(uint32_t aBytesPerSecond)
 }
 
 nsresult
-MediaCacheStream::Seek(int32_t aWhence, int64_t aOffset)
+MediaCacheStream::Seek(int64_t aOffset)
 {
-  NS_ASSERTION(!NS_IsMainThread(), "Don't call on main thread");
+  MOZ_ASSERT(!NS_IsMainThread());
+  mMediaCache->GetReentrantMonitor().AssertCurrentThreadIn();
 
-  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
-  if (mClosed)
-    return NS_ERROR_FAILURE;
+  if (!IsOffsetAllowed(aOffset)) {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+  if (mClosed) {
+    return NS_ERROR_ABORT;
+  }
 
   int64_t oldOffset = mStreamOffset;
-  int64_t newOffset = mStreamOffset;
-  switch (aWhence) {
-  case PR_SEEK_END:
-    if (mStreamLength < 0)
-      return NS_ERROR_FAILURE;
-    newOffset = mStreamLength + aOffset;
-    break;
-  case PR_SEEK_CUR:
-    newOffset += aOffset;
-    break;
-  case PR_SEEK_SET:
-    newOffset = aOffset;
-    break;
-  default:
-    NS_ERROR("Unknown whence");
-    return NS_ERROR_FAILURE;
-  }
-
-  if (!IsOffsetAllowed(newOffset)) {
-    return NS_ERROR_FAILURE;
-  }
-  mStreamOffset = newOffset;
-
+  mStreamOffset = aOffset;
   LOG("Stream %p Seek to %" PRId64, this, mStreamOffset);
   mMediaCache->NoteSeek(this, oldOffset);
-
   mMediaCache->QueueUpdate();
   return NS_OK;
 }
@@ -2359,12 +2430,78 @@ void
 MediaCacheStream::ThrottleReadahead(bool bThrottle)
 {
   MOZ_ASSERT(NS_IsMainThread());
+  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
   if (mThrottleReadahead != bThrottle) {
     LOGI("Stream %p ThrottleReadahead %d", this, bThrottle);
     mThrottleReadahead = bThrottle;
-    ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
     mMediaCache->QueueUpdate();
   }
+}
+
+uint32_t
+MediaCacheStream::ReadPartialBlock(int64_t aOffset, Span<char> aBuffer)
+{
+  mMediaCache->GetReentrantMonitor().AssertCurrentThreadIn();
+  MOZ_ASSERT(IsOffsetAllowed(aOffset));
+
+  if (OffsetToBlockIndexUnchecked(mChannelOffset) !=
+        OffsetToBlockIndexUnchecked(aOffset) ||
+      aOffset >= mChannelOffset) {
+    // Not in the partial block or no data to read.
+    return 0;
+  }
+
+  auto source = MakeSpan<const uint8_t>(
+    mPartialBlockBuffer.get() + OffsetInBlock(aOffset),
+    OffsetInBlock(mChannelOffset) - OffsetInBlock(aOffset));
+  // We have |source.Length() <= BLOCK_SIZE < INT32_MAX| to guarantee
+  // that |bytesToRead| can fit into a uint32_t.
+  uint32_t bytesToRead = std::min(aBuffer.Length(), source.Length());
+  memcpy(aBuffer.Elements(), source.Elements(), bytesToRead);
+  return bytesToRead;
+}
+
+Result<uint32_t, nsresult>
+MediaCacheStream::ReadBlockFromCache(int64_t aOffset, Span<char> aBuffer)
+{
+  mMediaCache->GetReentrantMonitor().AssertCurrentThreadIn();
+  MOZ_ASSERT(IsOffsetAllowed(aOffset));
+
+  // OffsetToBlockIndexUnchecked() is always non-negative.
+  uint32_t index = OffsetToBlockIndexUnchecked(aOffset);
+  int32_t cacheBlock = index < mBlocks.Length() ? mBlocks[index] : -1;
+  if (cacheBlock < 0) {
+    // Not in the cache.
+    return 0;
+  }
+
+  if (aBuffer.Length() > size_t(BLOCK_SIZE)) {
+    // Clamp the buffer to avoid overflow below since we will read at most
+    // BLOCK_SIZE bytes.
+    aBuffer = aBuffer.First(BLOCK_SIZE);
+  }
+  // |BLOCK_SIZE - OffsetInBlock(aOffset)| <= BLOCK_SIZE
+  int32_t bytesToRead =
+    std::min<int32_t>(BLOCK_SIZE - OffsetInBlock(aOffset), aBuffer.Length());
+  int32_t bytesRead = 0;
+  nsresult rv =
+    mMediaCache->ReadCacheFile(cacheBlock * BLOCK_SIZE + OffsetInBlock(aOffset),
+                               aBuffer.Elements(),
+                               bytesToRead,
+                               &bytesRead);
+
+  // Ensure |cacheBlock * BLOCK_SIZE + OffsetInBlock(aOffset)| won't overflow.
+  static_assert(INT64_MAX >= BLOCK_SIZE * (uint32_t(INT32_MAX) + 1),
+                "BLOCK_SIZE too large!");
+
+  if (NS_FAILED(rv)) {
+    nsCString name;
+    GetErrorName(rv, name);
+    LOGE("Stream %p ReadCacheFile failed, rv=%s", this, name.Data());
+    return mozilla::Err(rv);
+  }
+
+  return bytesRead;
 }
 
 int64_t
@@ -2380,8 +2517,6 @@ MediaCacheStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes)
   NS_ASSERTION(!NS_IsMainThread(), "Don't call on main thread");
 
   ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
-  if (mClosed)
-    return NS_ERROR_FAILURE;
 
   // Cache the offset in case it is changed again when we are waiting for the
   // monitor to be notified to avoid reading at the wrong position.
@@ -2390,10 +2525,16 @@ MediaCacheStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes)
   uint32_t count = 0;
   // Read one block (or part of a block) at a time
   while (count < aCount) {
+    if (mClosed) {
+      return NS_ERROR_ABORT;
+    }
+
     int32_t streamBlock = OffsetToBlockIndex(streamOffset);
     if (streamBlock < 0) {
-      break;
+      LOGE("Stream %p invalid offset=%" PRId64, this, streamOffset);
+      return NS_ERROR_ILLEGAL_VALUE;
     }
+
     uint32_t offsetInStreamBlock = uint32_t(streamOffset - streamBlock*BLOCK_SIZE);
     int64_t size = std::min<int64_t>(aCount - count, BLOCK_SIZE - offsetInStreamBlock);
 
@@ -2414,12 +2555,6 @@ MediaCacheStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes)
     if (cacheBlock < 0) {
       // We don't have a complete cached block here.
 
-      if (count > 0) {
-        // Some data has been read, so return what we've got instead of
-        // blocking or trying to find a stream with a partial block.
-        break;
-      }
-
       // See if the data is available in the partial cache block of any
       // stream reading this resource. We need to do this in case there is
       // another stream with this resource that has all the data to the end of
@@ -2429,7 +2564,8 @@ MediaCacheStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes)
       while (MediaCacheStream* stream = iter.Next()) {
         if (OffsetToBlockIndexUnchecked(stream->mChannelOffset) ==
               streamBlock &&
-            streamOffset < stream->mChannelOffset) {
+            streamOffset < stream->mChannelOffset &&
+            stream->mChannelOffset == stream->mStreamLength) {
           streamWithPartialBlock = stream;
           break;
         }
@@ -2442,23 +2578,28 @@ MediaCacheStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes)
         // Clamp bytes until 64-bit file size issues are fixed.
         bytes = std::min(bytes, int64_t(INT32_MAX));
         MOZ_ASSERT(bytes >= 0 && bytes <= aCount, "Bytes out of range.");
-        memcpy(aBuffer,
-          streamWithPartialBlock->mPartialBlockBuffer.get() + offsetInStreamBlock, bytes);
+        memcpy(aBuffer + count,
+               streamWithPartialBlock->mPartialBlockBuffer.get() +
+                 offsetInStreamBlock,
+               bytes);
         if (mCurrentMode == MODE_METADATA) {
           streamWithPartialBlock->mMetadataInPartialBlockBuffer = true;
         }
         streamOffset += bytes;
-        count = bytes;
+        count += bytes;
+        // Break for we've reached EOS and have nothing more to read.
         break;
+      }
+
+      if (mStreamOffset != streamOffset) {
+        // Updat mStreamOffset before we drop the lock. We need to run
+        // Update() again since stream reading strategy might have changed.
+        mStreamOffset = streamOffset;
+        mMediaCache->QueueUpdate();
       }
 
       // No data has been read yet, so block
       mon.Wait();
-      if (mClosed) {
-        // We may have successfully read some data, but let's just throw
-        // that out.
-        return NS_ERROR_FAILURE;
-      }
       continue;
     }
 
@@ -2471,22 +2612,25 @@ MediaCacheStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes)
     nsresult rv = mMediaCache->ReadCacheFile(
       offset, aBuffer + count, int32_t(size), &bytes);
     if (NS_FAILED(rv)) {
-      if (count == 0)
-        return rv;
-      // If we did successfully read some data, may as well return it
-      break;
+      nsCString name;
+      GetErrorName(rv, name);
+      LOGE("Stream %p ReadCacheFile failed, rv=%s", this, name.Data());
+      return rv;
     }
     streamOffset += bytes;
     count += bytes;
   }
 
-  if (count > 0) {
-    // Some data was read, so queue an update since block priorities may
-    // have changed
-    mMediaCache->QueueUpdate();
-  }
-  LOG("Stream %p Read at %" PRId64 " count=%d", this, streamOffset-count, count);
   *aBytes = count;
+  if (count == 0) {
+    return NS_OK;
+  }
+
+  // Some data was read, so queue an update since block priorities may
+  // have changed
+  mMediaCache->QueueUpdate();
+
+  LOG("Stream %p Read at %" PRId64 " count=%d", this, streamOffset-count, count);
   mStreamOffset = streamOffset;
   return NS_OK;
 }
@@ -2498,73 +2642,55 @@ MediaCacheStream::ReadAt(int64_t aOffset, char* aBuffer,
   NS_ASSERTION(!NS_IsMainThread(), "Don't call on main thread");
 
   ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
-  nsresult rv = Seek(nsISeekableStream::NS_SEEK_SET, aOffset);
+  nsresult rv = Seek(aOffset);
   if (NS_FAILED(rv)) return rv;
   return Read(aBuffer, aCount, aBytes);
 }
 
 nsresult
-MediaCacheStream::ReadFromCache(char* aBuffer, int64_t aOffset, int64_t aCount)
+MediaCacheStream::ReadFromCache(char* aBuffer, int64_t aOffset, uint32_t aCount)
 {
   ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
 
+  // The buffer we are about to fill.
+  auto buffer = MakeSpan<char>(aBuffer, aCount);
+
   // Read one block (or part of a block) at a time
-  uint32_t count = 0;
   int64_t streamOffset = aOffset;
-  while (count < aCount) {
+  while (!buffer.IsEmpty()) {
     if (mClosed) {
       // We need to check |mClosed| in each iteration which might be changed
       // after calling |mMediaCache->ReadCacheFile|.
       return NS_ERROR_FAILURE;
     }
-    int32_t streamBlock = OffsetToBlockIndex(streamOffset);
-    if (streamBlock < 0) {
-      break;
-    }
-    uint32_t offsetInStreamBlock =
-      uint32_t(streamOffset - streamBlock*BLOCK_SIZE);
-    int64_t size = std::min<int64_t>(aCount - count, BLOCK_SIZE - offsetInStreamBlock);
 
-    if (mStreamLength >= 0) {
-      // Don't try to read beyond the end of the stream
-      int64_t bytesRemaining = mStreamLength - streamOffset;
-      if (bytesRemaining <= 0) {
-        return NS_ERROR_FAILURE;
-      }
-      size = std::min(size, bytesRemaining);
-      // Clamp size until 64-bit file size issues are fixed.
-      size = std::min(size, int64_t(INT32_MAX));
+    if (!IsOffsetAllowed(streamOffset)) {
+      LOGE("Stream %p invalid offset=%" PRId64, this, streamOffset);
+      return NS_ERROR_ILLEGAL_VALUE;
     }
 
-    int32_t bytes;
-    int32_t channelBlock = OffsetToBlockIndexUnchecked(mChannelOffset);
-    int32_t cacheBlock =
-      size_t(streamBlock) < mBlocks.Length() ? mBlocks[streamBlock] : -1;
-    if (channelBlock == streamBlock && streamOffset < mChannelOffset) {
-      // We can just use the data in mPartialBlockBuffer. In fact we should
-      // use it rather than waiting for the block to fill and land in
-      // the cache.
-      // Clamp bytes until 64-bit file size issues are fixed.
-      int64_t toCopy = std::min<int64_t>(size, mChannelOffset - streamOffset);
-      bytes = std::min(toCopy, int64_t(INT32_MAX));
-      MOZ_ASSERT(bytes >= 0 && bytes <= toCopy, "Bytes out of range.");
-      memcpy(aBuffer + count,
-        mPartialBlockBuffer.get() + offsetInStreamBlock, bytes);
-    } else {
-      if (cacheBlock < 0) {
-        // We expect all blocks to be cached! Fail!
-        return NS_ERROR_FAILURE;
-      }
-      int64_t offset = cacheBlock*BLOCK_SIZE + offsetInStreamBlock;
-      MOZ_ASSERT(size >= 0 && size <= INT32_MAX, "Size out of range.");
-      nsresult rv = mMediaCache->ReadCacheFile(
-        offset, aBuffer + count, int32_t(size), &bytes);
-      if (NS_FAILED(rv)) {
-        return rv;
-      }
+    Result<uint32_t, nsresult> rv = ReadBlockFromCache(streamOffset, buffer);
+    if (rv.isErr()) {
+      return rv.unwrapErr();
     }
-    streamOffset += bytes;
-    count += bytes;
+
+    uint32_t bytes = rv.unwrap();
+    if (bytes > 0) {
+      // Read data from the cache successfully. Let's try next block.
+      streamOffset += bytes;
+      buffer = buffer.From(bytes);
+      continue;
+    }
+
+    // The partial block is our last chance to get data.
+    bytes = ReadPartialBlock(streamOffset, buffer);
+    if (bytes < buffer.Length()) {
+      // Not enough data to read.
+      return NS_ERROR_FAILURE;
+    }
+
+    // Return for we've got all the requested bytes.
+    return NS_OK;
   }
 
   return NS_OK;
@@ -2603,10 +2729,11 @@ MediaCacheStream::InitAsClone(MediaCacheStream* aOriginal)
   MOZ_ASSERT(!mMediaCache, "Has been initialized.");
   MOZ_ASSERT(aOriginal->mMediaCache, "Don't clone an uninitialized stream.");
 
+  // This needs to be done before OpenStream() to avoid data race.
+  mClientSuspended = true;
+
   // Use the same MediaCache as our clone.
   mMediaCache = aOriginal->mMediaCache;
-
-  mMediaCache->OpenStream(this);
 
   mResourceID = aOriginal->mResourceID;
 
@@ -2640,6 +2767,14 @@ MediaCacheStream::InitAsClone(MediaCacheStream* aOriginal)
     // stream offset is zero
     mMediaCache->AddBlockOwnerAsReadahead(cacheBlockIndex, this, i);
   }
+
+  mMediaCache->OpenStream(this, true /* aIsClone */);
+}
+
+nsIEventTarget*
+MediaCacheStream::OwnerThread() const
+{
+  return mMediaCache->OwnerThread();
 }
 
 nsresult MediaCacheStream::GetCachedRanges(MediaByteRangeSet& aRanges)
@@ -2663,6 +2798,19 @@ nsresult MediaCacheStream::GetCachedRanges(MediaByteRangeSet& aRanges)
       "Must have advanced to start of next range, or hit end of stream");
   }
   return NS_OK;
+}
+
+nsCString
+MediaCacheStream::GetDebugInfo()
+{
+  ReentrantMonitorAutoEnter mon(mMediaCache->GetReentrantMonitor());
+  return nsPrintfCString("mStreamLength=%" PRId64 " mChannelOffset=%" PRId64
+                         " mCacheSuspended=%d mChannelEnded=%d mLoadID=%u",
+                         mStreamLength,
+                         mChannelOffset,
+                         mCacheSuspended,
+                         mChannelEnded,
+                         mLoadID);
 }
 
 } // namespace mozilla

@@ -274,7 +274,7 @@ BookmarkImporter.prototype = {
     // so we can repair any searches after inserting the bookmarks (see bug 824502).
     for (let node of nodes) {
       if (!node.children || node.children.length == 0)
-        continue;  // Nothing to restore for this root
+        continue; // Nothing to restore for this root
 
       // Ensure we set the source correctly.
       node.source = this._source;
@@ -301,7 +301,7 @@ BookmarkImporter.prototype = {
         await PlacesUtils.bookmarks.insert(node);
       }
 
-      await PlacesUtils.bookmarks.insertTree(node);
+      await PlacesUtils.bookmarks.insertTree(node, { fixupOrSkipInvalidEntries: true });
 
       // Now add any favicons.
       try {
@@ -354,13 +354,13 @@ async function fixupQuery(aQueryURI, aFolderIdMap) {
   let queryFolderGuids = [];
   for (let folderString of found) {
     let existingFolderId = folderString.match(re)[0];
-    queryFolderGuids.push(aFolderIdMap[existingFolderId])
+    queryFolderGuids.push(aFolderIdMap[existingFolderId]);
   }
 
   let newFolderIds = await PlacesUtils.promiseManyItemIds(queryFolderGuids);
   let convert = function(str, p1) {
     return "folder=" + newFolderIds.get(aFolderIdMap[p1]);
-  }
+  };
   return uri.replace(reGlobal, convert);
 }
 
@@ -455,7 +455,7 @@ function translateTreeTypes(node) {
     let lastModified = PlacesUtils.toDate(node.lastModified);
     // Ensure we get a last modified date that's later or equal to the dateAdded
     // so that we don't upset the Bookmarks API.
-    if (lastModified >= node.dataAdded) {
+    if (lastModified >= node.dateAdded) {
       node.lastModified = lastModified;
     } else {
       delete node.lastModified;

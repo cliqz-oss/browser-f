@@ -106,24 +106,9 @@ inline void MOZ_PretendNoReturn()
 #endif
 
 /**
- * NS_PRECONDITION/POSTCONDITION are synonyms for NS_ASSERTION.
+ * NS_PRECONDITION is a synonym for NS_ASSERTION.
  */
 #define NS_PRECONDITION(expr, str) NS_ASSERTION(expr, str)
-#define NS_POSTCONDITION(expr, str) NS_ASSERTION(expr, str)
-
-/**
- * This macros triggers a program failure if executed. It indicates that
- * an attempt was made to execute some unimplemented functionality.
- */
-#ifdef DEBUG
-#define NS_NOTYETIMPLEMENTED(str)                             \
-  do {                                                        \
-    NS_DebugBreak(NS_DEBUG_ASSERTION, str, "NotYetImplemented", __FILE__, __LINE__); \
-    MOZ_PretendNoReturn();                                    \
-  } while(0)
-#else
-#define NS_NOTYETIMPLEMENTED(str)      do { /* nothing */ } while(0)
-#endif
 
 /**
  * This macros triggers a program failure if executed. It indicates that
@@ -160,21 +145,6 @@ inline void MOZ_PretendNoReturn()
   NS_DebugBreak(NS_DEBUG_WARNING, str, nullptr, __FILE__, __LINE__)
 #else
 #define NS_WARNING(str)                do { /* nothing */ } while(0)
-#endif
-
-/**
- * Trigger an debug-only abort.
- *
- * @see NS_RUNTIMEABORT for release-mode asserts.
- */
-#ifdef DEBUG
-#define NS_ABORT()                                            \
-  do {                                                        \
-    NS_DebugBreak(NS_DEBUG_ABORT, nullptr, nullptr, __FILE__, __LINE__); \
-    MOZ_PretendNoReturn();                                    \
-  } while(0)
-#else
-#define NS_ABORT()                     do { /* nothing */ } while(0)
 #endif
 
 /**
@@ -246,15 +216,6 @@ inline void MOZ_PretendNoReturn()
 ** Macros for terminating execution when an unrecoverable condition is
 ** reached.  These need to be compiled regardless of the DEBUG flag.
 ******************************************************************************/
-
-/**
- * Terminate execution <i>immediately</i>, and if possible on the current
- * platform, in such a way that execution can't be continued by other
- * code (e.g., by intercepting a signal).
- */
-#define NS_RUNTIMEABORT(msg)                                    \
-  NS_DebugBreak(NS_DEBUG_ABORT, msg, nullptr, __FILE__, __LINE__)
-
 
 /* Macros for checking the trueness of an expression passed in within an
  * interface implementation.  These need to be compiled regardless of the

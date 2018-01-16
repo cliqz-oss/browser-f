@@ -19,8 +19,6 @@ Form autofill test: simple form address autofill
 
 "use strict";
 
-const {FormAutofillUtils} = SpecialPowers.Cu.import("resource://formautofill/FormAutofillUtils.jsm");
-
 let MOCK_STORAGE = [{
   organization: "Sesame Street",
   "street-address": "123 Sesame Street.\n2-line\n3-line",
@@ -63,6 +61,7 @@ function checkAutoCompleteInputFilled(element, expectedvalue) {
 }
 
 function checkFormFilled(address) {
+  info("expecting form filled");
   let promises = [];
   for (let prop in address) {
     let element = document.getElementById(prop);
@@ -117,7 +116,7 @@ add_task(async function all_saved_fields_less_than_threshold() {
   await expectPopup();
   checkMenuEntries(["foo@mozilla.com"], false);
 
-  await cleanUpAddress();
+  await cleanUpAddresses();
 });
 
 // Form with both history and address storage.
@@ -189,7 +188,7 @@ add_task(async function check_search_result_for_pref_off() {
 
 // Autofill the address from dropdown menu.
 add_task(async function check_fields_after_form_autofill() {
-  await setInput("#organization", "Moz");
+  const focusedInput = await setInput("#organization", "Moz");
   doKey("down");
   await expectPopup();
   checkMenuEntries(MOCK_STORAGE.map(address =>
@@ -200,6 +199,8 @@ add_task(async function check_fields_after_form_autofill() {
   ).slice(1));
   doKey("down");
   await checkFormFilled(MOCK_STORAGE[1]);
+  doKey("escape");
+  is(focusedInput.value, "Mozilla", "Filled field shouldn't be reverted by ESC key");
 });
 
 // Fallback to history search after autofill address.

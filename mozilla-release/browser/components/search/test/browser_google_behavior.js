@@ -9,7 +9,7 @@
 
 "use strict";
 
-const SEARCH_ENGINE_DETAILS = [{
+let searchEngineDetails = [{
   alias: "g",
   baseURL: "https://www.google.com/search?q=foo&ie=utf-8&oe=utf-8",
   codes: {
@@ -20,6 +20,29 @@ const SEARCH_ENGINE_DETAILS = [{
   },
   name: "Google",
 }];
+
+let countryCode = Services.prefs.getCharPref("browser.search.countryCode");
+let code = "";
+switch (countryCode) {
+  case "US":
+    code = "firefox-b-1";
+    break;
+  case "DE":
+    code = "firefox-b";
+    break;
+  case "RU":
+    // Covered by test but doesn't use a code
+    break;
+}
+
+if (code) {
+  let codes = searchEngineDetails[0].codes;
+  let suffix = `&client=${code}`;
+  codes.context = suffix;
+  codes.newTab = suffix;
+  codes.submission = suffix;
+  codes.keyword = `${suffix}-ab`;
+}
 
 function promiseStateChangeURI() {
   return new Promise(resolve => {
@@ -32,7 +55,8 @@ function promiseStateChangeURI() {
         if (!(flags & docStart) || !webProgress.isTopLevel)
           return;
 
-        if (req.originalURI.spec == "about:blank")
+        let spec = req.originalURI.spec;
+        if (spec == "about:blank")
           return;
 
         gBrowser.removeProgressListener(listener);
@@ -44,10 +68,10 @@ function promiseStateChangeURI() {
         req.cancel(Components.results.NS_ERROR_FAILURE);
 
         executeSoon(() => {
-          resolve(req.originalURI.spec);
+          resolve(spec);
         });
       }
-    }
+    };
 
     gBrowser.addProgressListener(listener);
   });
@@ -73,7 +97,7 @@ function promiseContentSearchReady(browser) {
   });
 }
 
-for (let engine of SEARCH_ENGINE_DETAILS) {
+for (let engine of searchEngineDetails) {
   add_task(async function() {
     let previouslySelectedEngine = Services.search.currentEngine;
 
@@ -145,7 +169,7 @@ async function testSearchEngine(engineDetails) {
       name: "new tab search",
       searchURL: base + engineDetails.codes.newTab,
       async preTest(tab) {
-        let browser = tab.linkedBrowser
+        let browser = tab.linkedBrowser;
         await BrowserTestUtils.loadURI(browser, "about:newtab");
         await BrowserTestUtils.browserLoaded(browser);
 

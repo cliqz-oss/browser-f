@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -27,7 +28,6 @@
 #include "nsIDocument.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIFactory.h"
-#include "nsIFrameUtil.h"
 #include "nsIIdleService.h"
 #include "nsHTMLStyleSheet.h"
 #include "nsILayoutDebugger.h"
@@ -342,7 +342,6 @@ Shutdown()
 }
 
 #ifdef DEBUG
-nsresult NS_NewFrameUtil(nsIFrameUtil** aResult);
 nsresult NS_NewLayoutDebugger(nsILayoutDebugger** aResult);
 #endif
 
@@ -363,8 +362,6 @@ nsresult NS_CreateFrameTraversal(nsIFrameTraversal** aResult);
 
 nsresult NS_NewDomSelection(nsISelection** aResult);
 already_AddRefed<nsIContentViewer> NS_NewContentViewer();
-nsresult NS_NewGenRegularIterator(nsIContentIterator** aResult);
-nsresult NS_NewGenSubtreeIterator(nsIContentIterator** aInstancePtrResult);
 nsresult NS_NewContentDocumentLoaderFactory(nsIDocumentLoaderFactory** aResult);
 nsresult NS_NewHTMLCopyTextEncoder(nsIDocumentEncoder** aResult);
 nsresult NS_NewTextEncoder(nsIDocumentEncoder** aResult);
@@ -411,7 +408,6 @@ ctor_(nsISupports* aOuter, REFNSIID aIID, void** aResult) \
 }
 
 #ifdef DEBUG
-MAKE_CTOR(CreateNewFrameUtil,             nsIFrameUtil,                NS_NewFrameUtil)
 MAKE_CTOR(CreateNewLayoutDebugger,        nsILayoutDebugger,           NS_NewLayoutDebugger)
 #endif
 
@@ -537,7 +533,9 @@ NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(SystemPrincipal,
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(NullPrincipal, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsStructuredCloneContainer)
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(OSFileConstantsService)
+NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(OSFileConstantsService,
+                                         OSFileConstantsService::GetOrCreate);
+
 NS_GENERIC_FACTORY_CONSTRUCTOR(UDPSocketChild)
 
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(GeckoMediaPluginService, GeckoMediaPluginService::GetGeckoMediaPluginService)
@@ -568,7 +566,6 @@ Construct_nsIScriptSecurityManager(nsISupports *aOuter, REFNSIID aIID,
 }
 
 #ifdef DEBUG
-NS_DEFINE_NAMED_CID(NS_FRAME_UTIL_CID);
 NS_DEFINE_NAMED_CID(NS_LAYOUT_DEBUGGER_CID);
 #endif
 NS_DEFINE_NAMED_CID(NS_FRAMETRAVERSAL_CID);
@@ -827,7 +824,6 @@ nsEditingCommandTableConstructor(nsISupports *aOuter, REFNSIID aIID,
 static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   XPCONNECT_CIDENTRIES
 #ifdef DEBUG
-  { &kNS_FRAME_UTIL_CID, false, nullptr, CreateNewFrameUtil },
   { &kNS_LAYOUT_DEBUGGER_CID, false, nullptr, CreateNewLayoutDebugger },
 #endif
   { &kNS_FRAMETRAVERSAL_CID, false, nullptr, CreateNewFrameTraversal },

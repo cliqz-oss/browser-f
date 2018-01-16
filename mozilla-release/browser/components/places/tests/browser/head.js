@@ -5,20 +5,27 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
 XPCOMUtils.defineLazyModuleGetter(this, "TestUtils",
   "resource://testing-common/TestUtils.jsm");
 
-// We need to cache this before test runs...
-var cachedLeftPaneFolderIdGetter;
-var getter = PlacesUIUtils.__lookupGetter__("leftPaneFolderId");
-if (!cachedLeftPaneFolderIdGetter && typeof(getter) == "function") {
-  cachedLeftPaneFolderIdGetter = getter;
+// We need to cache these before test runs...
+let leftPaneGetters = new Map([["leftPaneFolderId", null],
+                               ["allBookmarksFolderId", null]]);
+for (let [key, val] of leftPaneGetters) {
+  if (!val) {
+    let getter = Object.getOwnPropertyDescriptor(PlacesUIUtils, key).get;
+    if (typeof getter == "function") {
+      leftPaneGetters.set(key, getter);
+    }
+  }
 }
 
-// ...And restore it when test ends.
-registerCleanupFunction(function() {
-  let updatedGetter = PlacesUIUtils.__lookupGetter__("leftPaneFolderId");
-  if (cachedLeftPaneFolderIdGetter && typeof(updatedGetter) != "function") {
-    PlacesUIUtils.__defineGetter__("leftPaneFolderId", cachedLeftPaneFolderIdGetter);
+// ...And restore them when test ends.
+function restoreLeftPaneGetters() {
+  for (let [key, getter] of leftPaneGetters) {
+    Object.defineProperty(PlacesUIUtils, key, {
+      enumerable: true, configurable: true, get: getter
+    });
   }
-});
+}
+registerCleanupFunction(restoreLeftPaneGetters);
 
 function openLibrary(callback, aLeftPaneRoot) {
   let library = window.openDialog("chrome://browser/content/places/places.xul",
@@ -75,8 +82,8 @@ function promiseLibraryClosed(organizer) {
  *        Data flavor to expect.
  */
 function promiseClipboard(aPopulateClipboardFn, aFlavor) {
-  return new Promise(resolve => {
-    waitForClipboard(data => !!data, aPopulateClipboardFn, resolve, aFlavor);
+  return new Promise((resolve, reject) => {
+    waitForClipboard(data => !!data, aPopulateClipboardFn, resolve, reject, aFlavor);
   });
 }
 
@@ -150,51 +157,6 @@ function promiseIsURIVisited(aURI) {
       resolve(aIsVisited);
     });
 
-  });
-}
-
-function promiseBookmarksNotification(notification, conditionFn) {
-  info(`promiseBookmarksNotification: waiting for ${notification}`);
-  return new Promise((resolve) => {
-    let proxifiedObserver = new Proxy({}, {
-      get: (target, name) => {
-        if (name == "QueryInterface")
-          return XPCOMUtils.generateQI([ Ci.nsINavBookmarkObserver ]);
-        info(`promiseBookmarksNotification: got ${name} notification`);
-        if (name == notification)
-          return (...args) => {
-            if (conditionFn.apply(this, args)) {
-              PlacesUtils.bookmarks.removeObserver(proxifiedObserver, false);
-              executeSoon(resolve);
-            } else {
-              info(`promiseBookmarksNotification: skip cause condition doesn't apply to ${JSON.stringify(args)}`);
-            }
-          }
-        return () => {};
-      }
-    });
-    PlacesUtils.bookmarks.addObserver(proxifiedObserver);
-  });
-}
-
-function promiseHistoryNotification(notification, conditionFn) {
-  info(`Waiting for ${notification}`);
-  return new Promise((resolve) => {
-    let proxifiedObserver = new Proxy({}, {
-      get: (target, name) => {
-        if (name == "QueryInterface")
-          return XPCOMUtils.generateQI([ Ci.nsINavHistoryObserver ]);
-        if (name == notification)
-          return (...args) => {
-            if (conditionFn.apply(this, args)) {
-              PlacesUtils.history.removeObserver(proxifiedObserver, false);
-              executeSoon(resolve);
-            }
-          }
-        return () => {};
-      }
-    });
-    PlacesUtils.history.addObserver(proxifiedObserver);
   });
 }
 
@@ -364,7 +326,7 @@ var openContextMenuForContentSelector = async function(browser, selector) {
                                                      "popupshown");
   await ContentTask.spawn(browser, { selector }, async function(args) {
     let doc = content.document;
-    let elt = doc.querySelector(args.selector)
+    let elt = doc.querySelector(args.selector);
     dump(`openContextMenuForContentSelector: found ${elt}\n`);
 
     /* Open context menu so chrome can access the element */
@@ -471,3 +433,15 @@ var withSidebarTree = async function(type, taskFn) {
     SidebarUI.hide();
   }
 };
+
+function promisePlacesInitComplete() {
+  const gBrowserGlue = Cc["@mozilla.org/browser/browserglue;1"]
+                         .getService(Ci.nsIObserver);
+
+  let placesInitCompleteObserved = TestUtils.topicObserved("places-browser-init-complete");
+
+  gBrowserGlue.observe(null, "browser-glue-test",
+    "places-browser-init-complete");
+
+  return placesInitCompleteObserved;
+}

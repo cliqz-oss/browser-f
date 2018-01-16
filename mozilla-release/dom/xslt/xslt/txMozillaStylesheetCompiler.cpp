@@ -281,7 +281,7 @@ txStylesheetSink::OnStartRequest(nsIRequest *aRequest, nsISupports *aContext)
     channel->GetURI(getter_AddRefs(uri));
     bool sniff;
     if (NS_SUCCEEDED(uri->SchemeIs("file", &sniff)) && sniff &&
-        contentType.Equals(UNKNOWN_CONTENT_TYPE)) {
+        contentType.EqualsLiteral(UNKNOWN_CONTENT_TYPE)) {
         nsresult rv;
         nsCOMPtr<nsIStreamConverterService> serv =
             do_GetService("@mozilla.org/streamConverters;1", &rv);
@@ -672,8 +672,8 @@ TX_CompileStylesheet(nsINode* aNode, txMozillaXSLTProcessor* aProcessor,
     nsCOMPtr<nsIDocument> doc = aNode->OwnerDoc();
 
     nsCOMPtr<nsIURI> uri;
-    if (aNode->IsNodeOfType(nsINode::eCONTENT)) {
-      uri = static_cast<nsIContent*>(aNode)->GetBaseURI();
+    if (aNode->IsContent()) {
+      uri = aNode->AsContent()->GetBaseURI();
     }
     else {
       NS_ASSERTION(aNode->IsNodeOfType(nsINode::eDOCUMENT), "not a doc");

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@
 #include "nsGkAtoms.h"
 #include "nsButtonFrameRenderer.h"
 #include "nsCSSAnonBoxes.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsNameSpaceManager.h"
 #include "nsDisplayList.h"
 #include <algorithm>
@@ -37,10 +38,10 @@ nsHTMLButtonControlFrame::~nsHTMLButtonControlFrame()
 }
 
 void
-nsHTMLButtonControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsHTMLButtonControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
@@ -105,15 +106,15 @@ nsHTMLButtonControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     eventClipState->ClipContainingBlockDescendants(rect, hasRadii ? radii : nullptr);
   }
 
-  nsDisplayList onTop;
+  nsDisplayList onTop(aBuilder);
   if (IsVisibleForPainting(aBuilder)) {
     mRenderer.DisplayButton(aBuilder, aLists.BorderBackground(), &onTop);
   }
 
-  nsDisplayListCollection set;
+  nsDisplayListCollection set(aBuilder);
 
   // Do not allow the child subtree to receive events.
-  if (!isForEventDelivery) {
+  if (!isForEventDelivery || aBuilder->HitTestIsForVisibility()) {
     DisplayListClipState::AutoSaveRestore clipState(aBuilder);
 
     if (ShouldClipPaintingToBorderBox()) {
@@ -180,7 +181,7 @@ nsHTMLButtonControlFrame::Reflow(nsPresContext* aPresContext,
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), true);
   }
 
   // Reflow the child
@@ -372,7 +373,7 @@ nsHTMLButtonControlFrame::GetNaturalBaselineBOffset(mozilla::WritingMode aWM,
   return true;
 }
 
-nsresult nsHTMLButtonControlFrame::SetFormProperty(nsIAtom* aName, const nsAString& aValue)
+nsresult nsHTMLButtonControlFrame::SetFormProperty(nsAtom* aName, const nsAString& aValue)
 {
   if (nsGkAtoms::value == aName) {
     return mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::value,

@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -507,8 +508,9 @@ APZCTreeManager::PushStateToWR(wr::WebRenderAPI* aWrApi,
         // the scroll offset. Since we are effectively giving WR the async
         // scroll delta here, we want to negate the translation.
         ParentLayerPoint asyncScrollDelta = -layerTranslation;
+        // XXX figure out what zoom-related conversions need to happen here.
         aWrApi->UpdateScrollPosition(lastPipelineId, apzc->GetGuid().mScrollId,
-            wr::ToLayoutPoint(asyncScrollDelta));
+            wr::ToLayoutPoint(LayoutDevicePoint::FromUnknownPoint(asyncScrollDelta.ToUnknownPoint())));
 
         apzc->ReportCheckerboard(aSampleTime);
         activeAnimations |= apzc->AdvanceAnimations(aSampleTime);
@@ -649,6 +651,10 @@ GetEventRegionsOverride(HitTestingTreeNode* aParent,
   // layer in the hit-test tree. This saves having to walk up the tree every
   // we want to see if a hit-test node is affected by this flag.
   EventRegionsOverride result = aLayer.GetEventRegionsOverride();
+  if (result != EventRegionsOverride::NoOverride) {
+    // Overrides should only ever get set for ref layers.
+    MOZ_ASSERT(aLayer.GetReferentId());
+  }
   if (aParent) {
     result |= aParent->GetEventRegionsOverride();
   }
@@ -659,7 +665,6 @@ void
 APZCTreeManager::StartScrollbarDrag(const ScrollableLayerGuid& aGuid,
                                     const AsyncDragMetrics& aDragMetrics)
 {
-
   RefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aGuid);
   if (!apzc) {
     NotifyScrollbarDragRejected(aGuid);
@@ -670,13 +675,24 @@ APZCTreeManager::StartScrollbarDrag(const ScrollableLayerGuid& aGuid,
   mInputQueue->ConfirmDragBlock(inputBlockId, apzc, aDragMetrics);
 }
 
-void
+bool
 APZCTreeManager::StartAutoscroll(const ScrollableLayerGuid& aGuid,
                                  const ScreenPoint& aAnchorLocation)
 {
-  if (RefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aGuid)) {
-    apzc->StartAutoscroll(aAnchorLocation);
+  RefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aGuid);
+  if (!apzc) {
+    if (XRE_IsGPUProcess()) {
+      // If we're in the compositor process, the "return false" will be
+      // ignored because the query comes over the PAPZCTreeManager protocol
+      // via an async message. In this case, send an explicit rejection
+      // message to content.
+      NotifyAutoscrollRejected(aGuid);
+    }
+    return false;
   }
+
+  apzc->StartAutoscroll(aAnchorLocation);
+  return true;
 }
 
 void
@@ -693,6 +709,14 @@ APZCTreeManager::NotifyScrollbarDragRejected(const ScrollableLayerGuid& aGuid) c
   const LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(aGuid.mLayersId);
   MOZ_ASSERT(state && state->mController);
   state->mController->NotifyAsyncScrollbarDragRejected(aGuid.mScrollId);
+}
+
+void
+APZCTreeManager::NotifyAutoscrollRejected(const ScrollableLayerGuid& aGuid) const
+{
+  const LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(aGuid.mLayersId);
+  MOZ_ASSERT(state && state->mController);
+  state->mController->NotifyAsyncAutoscrollRejected(aGuid.mScrollId);
 }
 
 template<class ScrollNode> HitTestingTreeNode*

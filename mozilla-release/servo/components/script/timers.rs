@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::callback::ExceptionHandling::Report;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::FunctionBinding::Function;
 use dom::bindings::reflector::DomObject;
 use dom::bindings::str::DOMString;
@@ -13,7 +13,6 @@ use dom::globalscope::GlobalScope;
 use dom::testbinding::TestBindingCallback;
 use dom::xmlhttprequest::XHRTimeoutCallback;
 use euclid::Length;
-use heapsize::HeapSizeOf;
 use ipc_channel::ipc::IpcSender;
 use js::jsapi::{HandleValue, Heap};
 use js::jsval::{JSVal, UndefinedValue};
@@ -27,18 +26,18 @@ use std::collections::HashMap;
 use std::default::Default;
 use std::rc::Rc;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, HeapSizeOf, JSTraceable, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, JSTraceable, MallocSizeOf, Ord, PartialEq, PartialOrd)]
 pub struct OneshotTimerHandle(i32);
 
-#[derive(DenyPublicFields, HeapSizeOf, JSTraceable)]
+#[derive(DenyPublicFields, JSTraceable, MallocSizeOf)]
 pub struct OneshotTimers {
     js_timers: JsTimers,
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     timer_event_chan: IpcSender<TimerEvent>,
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     scheduler_chan: IpcSender<TimerSchedulerMsg>,
     next_timer_handle: Cell<OneshotTimerHandle>,
-    timers: DOMRefCell<Vec<OneshotTimer>>,
+    timers: DomRefCell<Vec<OneshotTimer>>,
     suspended_since: Cell<Option<MsDuration>>,
     /// Initially 0, increased whenever the associated document is reactivated
     /// by the amount of ms the document was inactive. The current time can be
@@ -54,7 +53,7 @@ pub struct OneshotTimers {
     expected_event_id: Cell<TimerEventId>,
 }
 
-#[derive(DenyPublicFields, HeapSizeOf, JSTraceable)]
+#[derive(DenyPublicFields, JSTraceable, MallocSizeOf)]
 struct OneshotTimer {
     handle: OneshotTimerHandle,
     source: TimerSource,
@@ -65,7 +64,7 @@ struct OneshotTimer {
 // This enum is required to work around the fact that trait objects do not support generic methods.
 // A replacement trait would have a method such as
 //     `invoke<T: DomObject>(self: Box<Self>, this: &T, js_timers: &JsTimers);`.
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 pub enum OneshotTimerCallback {
     XhrTimeout(XHRTimeoutCallback),
     EventSourceTimeout(EventSourceTimeoutCallback),
@@ -117,7 +116,7 @@ impl OneshotTimers {
             timer_event_chan: timer_event_chan,
             scheduler_chan: scheduler_chan,
             next_timer_handle: Cell::new(OneshotTimerHandle(1)),
-            timers: DOMRefCell::new(Vec::new()),
+            timers: DomRefCell::new(Vec::new()),
             suspended_since: Cell::new(None),
             suspension_offset: Cell::new(Length::new(0)),
             expected_event_id: Cell::new(TimerEventId(0)),
@@ -301,20 +300,20 @@ impl OneshotTimers {
     }
 }
 
-#[derive(Clone, Copy, Eq, Hash, HeapSizeOf, JSTraceable, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, Hash, JSTraceable, MallocSizeOf, Ord, PartialEq, PartialOrd)]
 pub struct JsTimerHandle(i32);
 
-#[derive(DenyPublicFields, HeapSizeOf, JSTraceable)]
+#[derive(DenyPublicFields, JSTraceable, MallocSizeOf)]
 pub struct JsTimers {
     next_timer_handle: Cell<JsTimerHandle>,
-    active_timers: DOMRefCell<HashMap<JsTimerHandle, JsTimerEntry>>,
+    active_timers: DomRefCell<HashMap<JsTimerHandle, JsTimerEntry>>,
     /// The nesting level of the currently executing timer task or 0.
     nesting_level: Cell<u32>,
     /// Used to introduce a minimum delay in event intervals
     min_duration: Cell<Option<MsDuration>>,
 }
 
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 struct JsTimerEntry {
     oneshot_handle: OneshotTimerHandle,
 }
@@ -323,9 +322,9 @@ struct JsTimerEntry {
 // (ie. function value to invoke and all arguments to pass
 //      to the function when calling it)
 // TODO: Handle rooting during invocation when movable GC is turned on
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 pub struct JsTimerTask {
-    #[ignore_heap_size_of = "Because it is non-owning"]
+    #[ignore_malloc_size_of = "Because it is non-owning"]
     handle: JsTimerHandle,
     source: TimerSource,
     callback: InternalTimerCallback,
@@ -335,7 +334,7 @@ pub struct JsTimerTask {
 }
 
 // Enum allowing more descriptive values for the is_interval field
-#[derive(Clone, Copy, HeapSizeOf, JSTraceable, PartialEq)]
+#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
 pub enum IsInterval {
     Interval,
     NonInterval,
@@ -347,24 +346,21 @@ pub enum TimerCallback {
     FunctionTimerCallback(Rc<Function>),
 }
 
-#[derive(Clone, JSTraceable)]
+#[derive(Clone, JSTraceable, MallocSizeOf)]
 enum InternalTimerCallback {
     StringTimerCallback(DOMString),
-    FunctionTimerCallback(Rc<Function>, Rc<Box<[Heap<JSVal>]>>),
-}
-
-impl HeapSizeOf for InternalTimerCallback {
-    fn heap_size_of_children(&self) -> usize {
-        // FIXME: Rc<T> isn't HeapSizeOf and we can't ignore it due to #6870 and #6871
-        0
-    }
+    FunctionTimerCallback(
+        #[ignore_malloc_size_of = "Rc"]
+        Rc<Function>,
+        #[ignore_malloc_size_of = "Rc"]
+        Rc<Box<[Heap<JSVal>]>>),
 }
 
 impl JsTimers {
     pub fn new() -> JsTimers {
         JsTimers {
             next_timer_handle: Cell::new(JsTimerHandle(1)),
-            active_timers: DOMRefCell::new(HashMap::new()),
+            active_timers: DomRefCell::new(HashMap::new()),
             nesting_level: Cell::new(0),
             min_duration: Cell::new(None),
         }

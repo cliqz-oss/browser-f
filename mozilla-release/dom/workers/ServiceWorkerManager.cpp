@@ -38,13 +38,13 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/ContentParent.h"
-#include "mozilla/dom/DOMError.h"
 #include "mozilla/dom/ErrorEvent.h"
 #include "mozilla/dom/Headers.h"
 #include "mozilla/dom/InternalHeaders.h"
 #include "mozilla/dom/Navigator.h"
 #include "mozilla/dom/NotificationEvent.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
+#include "mozilla/dom/PromiseWindowProxy.h"
 #include "mozilla/dom/Request.h"
 #include "mozilla/dom/RootedDictionary.h"
 #include "mozilla/dom/TypedArray.h"
@@ -251,7 +251,6 @@ NS_IMPL_RELEASE(ServiceWorkerManager)
 
 NS_INTERFACE_MAP_BEGIN(ServiceWorkerManager)
   NS_INTERFACE_MAP_ENTRY(nsIServiceWorkerManager)
-  NS_INTERFACE_MAP_ENTRY(nsIIPCBackgroundChildCreateCallback)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIServiceWorkerManager)
 NS_INTERFACE_MAP_END
@@ -297,11 +296,20 @@ ServiceWorkerManager::Init(ServiceWorkerRegistrar* aRegistrar)
     }
   }
 
-  if (!BackgroundChild::GetOrCreateForCurrentThread(this)) {
-    // Make sure to do this last as our failure cleanup expects Init() to have
-    // executed.
-    ActorFailed();
+  PBackgroundChild* actorChild = BackgroundChild::GetOrCreateForCurrentThread();
+  if (NS_WARN_IF(!actorChild)) {
+    MaybeStartShutdown();
+    return;
   }
+
+  PServiceWorkerManagerChild* actor =
+    actorChild->SendPServiceWorkerManagerConstructor();
+  if (!actor) {
+    MaybeStartShutdown();
+    return;
+  }
+
+  mActor = static_cast<ServiceWorkerManagerChild*>(actor);
 }
 
 void
@@ -340,8 +348,6 @@ ServiceWorkerManager::MaybeStartShutdown()
     }
   }
 
-  mPendingOperations.Clear();
-
   if (!mActor) {
     return;
   }
@@ -356,10 +362,9 @@ ServiceWorkerManager::MaybeStartShutdown()
 
 class ServiceWorkerResolveWindowPromiseOnRegisterCallback final : public ServiceWorkerJob::Callback
 {
-  RefPtr<nsPIDOMWindowInner> mWindow;
   // The promise "returned" by the call to Update up to
   // navigator.serviceWorker.register().
-  RefPtr<Promise> mPromise;
+  PromiseWindowProxy mPromise;
 
   ~ServiceWorkerResolveWindowPromiseOnRegisterCallback()
   {}
@@ -369,9 +374,18 @@ class ServiceWorkerResolveWindowPromiseOnRegisterCallback final : public Service
   {
     AssertIsOnMainThread();
     MOZ_ASSERT(aJob);
+    RefPtr<Promise> promise = mPromise.Get();
+    if (!promise) {
+      return;
+    }
 
     if (aStatus.Failed()) {
-      mPromise->MaybeReject(aStatus);
+      promise->MaybeReject(aStatus);
+      return;
+    }
+
+    nsCOMPtr<nsPIDOMWindowInner> window = mPromise.GetWindow();
+    if (!window) {
       return;
     }
 
@@ -381,15 +395,14 @@ class ServiceWorkerResolveWindowPromiseOnRegisterCallback final : public Service
     RefPtr<ServiceWorkerRegistrationInfo> reg = registerJob->GetRegistration();
 
     RefPtr<ServiceWorkerRegistration> swr =
-      mWindow->GetServiceWorkerRegistration(NS_ConvertUTF8toUTF16(reg->mScope));
-    mPromise->MaybeResolve(swr);
+      window->GetServiceWorkerRegistration(NS_ConvertUTF8toUTF16(reg->mScope));
+    promise->MaybeResolve(swr);
   }
 
 public:
   ServiceWorkerResolveWindowPromiseOnRegisterCallback(nsPIDOMWindowInner* aWindow,
                                                       Promise* aPromise)
-    : mWindow(aWindow)
-    , mPromise(aPromise)
+    : mPromise(aWindow, aPromise)
   {}
 
   NS_INLINE_DECL_REFCOUNTING(ServiceWorkerResolveWindowPromiseOnRegisterCallback, override)
@@ -425,120 +438,6 @@ private:
 
   const OriginAttributes mOriginAttributes;
   const nsString mScope;
-};
-
-class PropagateUnregisterRunnable final : public Runnable
-{
-public:
-  PropagateUnregisterRunnable(nsIPrincipal* aPrincipal,
-                              nsIServiceWorkerUnregisterCallback* aCallback,
-                              const nsAString& aScope)
-    : Runnable("dom::workers::PropagateUnregisterRunnable")
-    , mPrincipal(aPrincipal)
-    , mCallback(aCallback)
-    , mScope(aScope)
-  {
-    MOZ_ASSERT(aPrincipal);
-  }
-
-  NS_IMETHOD Run() override
-  {
-    AssertIsOnMainThread();
-
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    if (swm) {
-      swm->PropagateUnregister(mPrincipal, mCallback, mScope);
-    }
-
-    return NS_OK;
-  }
-
-private:
-  ~PropagateUnregisterRunnable()
-  {}
-
-  nsCOMPtr<nsIPrincipal> mPrincipal;
-  nsCOMPtr<nsIServiceWorkerUnregisterCallback> mCallback;
-  const nsString mScope;
-};
-
-class RemoveRunnable final : public Runnable
-{
-public:
-  explicit RemoveRunnable(const nsACString& aHost)
-    : Runnable("dom::workers::RemoveRunnable")
-  {
-  }
-
-  NS_IMETHOD Run() override
-  {
-    AssertIsOnMainThread();
-
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    if (swm) {
-      swm->Remove(mHost);
-    }
-
-    return NS_OK;
-  }
-
-private:
-  ~RemoveRunnable()
-  {}
-
-  const nsCString mHost;
-};
-
-class PropagateRemoveRunnable final : public Runnable
-{
-public:
-  explicit PropagateRemoveRunnable(const nsACString& aHost)
-    : Runnable("dom::workers::PropagateRemoveRunnable")
-  {
-  }
-
-  NS_IMETHOD Run() override
-  {
-    AssertIsOnMainThread();
-
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    if (swm) {
-      swm->PropagateRemove(mHost);
-    }
-
-    return NS_OK;
-  }
-
-private:
-  ~PropagateRemoveRunnable()
-  {}
-
-  const nsCString mHost;
-};
-
-class PropagateRemoveAllRunnable final : public Runnable
-{
-public:
-  PropagateRemoveAllRunnable()
-    : Runnable("dom::workers::PropagateRemoveAllRunnable")
-  {
-  }
-
-  NS_IMETHOD Run() override
-  {
-    AssertIsOnMainThread();
-
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    if (swm) {
-      swm->PropagateRemoveAll();
-    }
-
-    return NS_OK;
-  }
-
-private:
-  ~PropagateRemoveAllRunnable()
-  {}
 };
 
 class PromiseResolverCallback final : public ServiceWorkerUpdateFinishCallback
@@ -874,7 +773,8 @@ ServiceWorkerManager::Register(mozIDOMWindow* aWindow,
   int16_t decision = nsIContentPolicy::ACCEPT;
   rv = NS_CheckContentLoadPolicy(nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER,
                                  aScriptURI,
-                                 documentPrincipal,
+                                 documentPrincipal, // loading principal
+                                 documentPrincipal, // triggering principal
                                  doc,
                                  EmptyCString(),
                                  nullptr,
@@ -962,17 +862,6 @@ ServiceWorkerManager::Register(mozIDOMWindow* aWindow,
 
   promise.forget(aPromise);
   return NS_OK;
-}
-
-void
-ServiceWorkerManager::AppendPendingOperation(nsIRunnable* aRunnable)
-{
-  MOZ_ASSERT(!mActor);
-  MOZ_ASSERT(aRunnable);
-
-  if (!mShuttingDown) {
-    mPendingOperations.AppendElement(aRunnable);
-  }
 }
 
 /*
@@ -2110,45 +1999,6 @@ ServiceWorkerManager::LoadRegistrations(
 }
 
 void
-ServiceWorkerManager::ActorFailed()
-{
-  MOZ_DIAGNOSTIC_ASSERT(!mActor);
-  MaybeStartShutdown();
-}
-
-void
-ServiceWorkerManager::ActorCreated(mozilla::ipc::PBackgroundChild* aActor)
-{
-  MOZ_ASSERT(aActor);
-  MOZ_ASSERT(!mActor);
-
-  if (mShuttingDown) {
-    MOZ_DIAGNOSTIC_ASSERT(mPendingOperations.IsEmpty());
-    return;
-  }
-
-  PServiceWorkerManagerChild* actor =
-    aActor->SendPServiceWorkerManagerConstructor();
-  if (!actor) {
-    ActorFailed();
-    return;
-  }
-
-  mActor = static_cast<ServiceWorkerManagerChild*>(actor);
-
-  // Flush the pending requests.
-  for (uint32_t i = 0, len = mPendingOperations.Length(); i < len; ++i) {
-    MOZ_ASSERT(mPendingOperations[i]);
-    nsresult rv = NS_DispatchToCurrentThread(mPendingOperations[i].forget());
-    if (NS_FAILED(rv)) {
-      NS_WARNING("Failed to dispatch a runnable.");
-    }
-  }
-
-  mPendingOperations.Clear();
-}
-
-void
 ServiceWorkerManager::StoreRegistration(
                                    nsIPrincipal* aPrincipal,
                                    ServiceWorkerRegistrationInfo* aRegistration)
@@ -2157,11 +2007,6 @@ ServiceWorkerManager::StoreRegistration(
   MOZ_ASSERT(aRegistration);
 
   if (mShuttingDown) {
-    return;
-  }
-
-  MOZ_DIAGNOSTIC_ASSERT(mActor);
-  if (!mActor) {
     return;
   }
 
@@ -2705,9 +2550,11 @@ public:
   {
     AssertIsOnMainThread();
     NS_WARNING("Unexpected error while dispatching fetch event!");
-    DebugOnly<nsresult> rv = mChannel->ResetInterception();
-    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                         "Failed to resume intercepted network request");
+    nsresult rv = mChannel->ResetInterception();
+    if (NS_FAILED(rv)) {
+      NS_WARNING("Failed to resume intercepted network request");
+      mChannel->CancelInterception(rv);
+    }
   }
 
   NS_IMETHOD
@@ -3038,13 +2885,6 @@ ServiceWorkerManager::SoftUpdate(const OriginAttributes& aOriginAttributes,
     return;
   }
 
-  if (!mActor) {
-    RefPtr<Runnable> runnable =
-      new SoftUpdateRunnable(aOriginAttributes, aScope, false, nullptr);
-    AppendPendingOperation(runnable);
-    return;
-  }
-
   RefPtr<GenericPromise::Private> promise =
     new GenericPromise::Private(__func__);
 
@@ -3179,14 +3019,6 @@ ServiceWorkerManager::Update(nsIPrincipal* aPrincipal,
 {
   AssertIsOnMainThread();
 
-  if (!mActor) {
-    RefPtr<Runnable> runnable =
-      new UpdateRunnable(aPrincipal, aScope, aCallback,
-                         UpdateRunnable::ePostpone, nullptr);
-    AppendPendingOperation(runnable);
-    return;
-  }
-
   RefPtr<GenericPromise::Private> promise =
     new GenericPromise::Private(__func__);
 
@@ -3269,7 +3101,7 @@ FireControllerChangeOnDocument(nsIDocument* aDocument)
     return;
   }
 
-  auto* window = nsGlobalWindow::Cast(w.get());
+  auto* window = nsGlobalWindowInner::Cast(w.get());
   dom::Navigator* navigator = window->Navigator();
   if (!navigator) {
     return;
@@ -3539,6 +3371,8 @@ void
 ServiceWorkerManager::FireControllerChange(ServiceWorkerRegistrationInfo* aRegistration)
 {
   AssertIsOnMainThread();
+
+  AutoTArray<nsCOMPtr<nsIDocument>, 16> documents;
   for (auto iter = mControlledDocuments.Iter(); !iter.Done(); iter.Next()) {
     if (iter.UserData() != aRegistration) {
       continue;
@@ -3549,6 +3383,12 @@ ServiceWorkerManager::FireControllerChange(ServiceWorkerRegistrationInfo* aRegis
       continue;
     }
 
+    documents.AppendElement(doc);
+  }
+
+  // Fire event after iterating mControlledDocuments is done to prevent
+  // modification by reentering from the event handlers during iteration.
+  for (auto& doc : documents) {
     FireControllerChangeOnDocument(doc);
   }
 }
@@ -3734,7 +3574,7 @@ ServiceWorkerManager::GetAllRegistrations(nsIArray** aResult)
         continue;
       }
 
-      array->AppendElement(reg, false);
+      array->AppendElement(reg);
     }
   }
 
@@ -3778,14 +3618,6 @@ ServiceWorkerManager::Remove(const nsACString& aHost)
 {
   AssertIsOnMainThread();
 
-  // We need to postpone this operation in case we don't have an actor because
-  // this is needed by the ForceUnregister.
-  if (!mActor) {
-    RefPtr<nsIRunnable> runnable = new RemoveRunnable(aHost);
-    AppendPendingOperation(runnable);
-    return;
-  }
-
   for (auto it1 = mRegistrationInfos.Iter(); !it1.Done(); it1.Next()) {
     ServiceWorkerManager::RegistrationDataPerPrincipal* data = it1.UserData();
     for (auto it2 = data->mInfos.Iter(); !it2.Done(); it2.Next()) {
@@ -3805,13 +3637,6 @@ void
 ServiceWorkerManager::PropagateRemove(const nsACString& aHost)
 {
   AssertIsOnMainThread();
-
-  if (!mActor) {
-    RefPtr<nsIRunnable> runnable = new PropagateRemoveRunnable(aHost);
-    AppendPendingOperation(runnable);
-    return;
-  }
-
   mActor->SendPropagateRemove(nsCString(aHost));
 }
 
@@ -3834,13 +3659,6 @@ ServiceWorkerManager::PropagateRemoveAll()
 {
   AssertIsOnMainThread();
   MOZ_ASSERT(XRE_IsParentProcess());
-
-  if (!mActor) {
-    RefPtr<nsIRunnable> runnable = new PropagateRemoveAllRunnable();
-    AppendPendingOperation(runnable);
-    return;
-  }
-
   mActor->SendPropagateRemoveAll();
 }
 
@@ -3974,7 +3792,8 @@ ServiceWorkerManager::ShouldReportToWindow(mozIDOMWindowProxy* aWindow,
         continue;
       }
 
-      nsCOMPtr<nsPIDOMWindowInner> win = nsGlobalWindow::GetInnerWindowWithId(id)->AsInner();
+      nsCOMPtr<nsPIDOMWindowInner> win =
+        nsGlobalWindowInner::GetInnerWindowWithId(id)->AsInner();
       if (!win) {
         continue;
       }
@@ -4078,14 +3897,6 @@ ServiceWorkerManager::PropagateSoftUpdate(const OriginAttributes& aOriginAttribu
                                           const nsAString& aScope)
 {
   AssertIsOnMainThread();
-
-  if (!mActor) {
-    RefPtr<nsIRunnable> runnable =
-      new PropagateSoftUpdateRunnable(aOriginAttributes, aScope);
-    AppendPendingOperation(runnable);
-    return;
-  }
-
   mActor->SendPropagateSoftUpdate(aOriginAttributes, nsString(aScope));
 }
 
@@ -4096,13 +3907,6 @@ ServiceWorkerManager::PropagateUnregister(nsIPrincipal* aPrincipal,
 {
   AssertIsOnMainThread();
   MOZ_ASSERT(aPrincipal);
-
-  if (!mActor) {
-    RefPtr<nsIRunnable> runnable =
-      new PropagateUnregisterRunnable(aPrincipal, aCallback, aScope);
-    AppendPendingOperation(runnable);
-    return NS_OK;
-  }
 
   PrincipalInfo principalInfo;
   if (NS_WARN_IF(NS_FAILED(PrincipalToPrincipalInfo(aPrincipal,
@@ -4340,23 +4144,18 @@ ServiceWorkerManager::ScheduleUpdateTimer(nsIPrincipal* aPrincipal,
     return;
   }
 
-  timer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    data->mUpdateTimers.Remove(aScope); // another lookup, but very rare
-    return;
-  }
-
-  // Label with SystemGroup because UpdateTimerCallback only sends an IPC message
-  // (PServiceWorkerUpdaterConstructor) without touching any web contents.
-  timer->SetTarget(SystemGroup::EventTargetFor(TaskCategory::Other));
-
   nsCOMPtr<nsITimerCallback> callback = new UpdateTimerCallback(aPrincipal,
                                                                 aScope);
 
   const uint32_t UPDATE_DELAY_MS = 1000;
 
-  rv = timer->InitWithCallback(callback, UPDATE_DELAY_MS,
-                               nsITimer::TYPE_ONE_SHOT);
+  // Label with SystemGroup because UpdateTimerCallback only sends an IPC message
+  // (PServiceWorkerUpdaterConstructor) without touching any web contents.
+  rv = NS_NewTimerWithCallback(getter_AddRefs(timer),
+                               callback, UPDATE_DELAY_MS,
+                               nsITimer::TYPE_ONE_SHOT,
+                               SystemGroup::EventTargetFor(TaskCategory::Other));
+
   if (NS_WARN_IF(NS_FAILED(rv))) {
     data->mUpdateTimers.Remove(aScope); // another lookup, but very rare
     return;

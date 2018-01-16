@@ -5,13 +5,13 @@
 use canvas_traits::canvas::{CanvasGradientStop, FillOrStrokeStyle, LinearGradientStyle, RadialGradientStyle};
 use cssparser::{Parser, ParserInput, RGBA};
 use cssparser::Color as CSSColor;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::CanvasGradientBinding;
 use dom::bindings::codegen::Bindings::CanvasGradientBinding::CanvasGradientMethods;
 use dom::bindings::error::{Error, ErrorResult};
-use dom::bindings::js::Root;
 use dom::bindings::num::Finite;
 use dom::bindings::reflector::{Reflector, reflect_dom_object};
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::globalscope::GlobalScope;
 use dom_struct::dom_struct;
@@ -21,10 +21,10 @@ use dom_struct::dom_struct;
 pub struct CanvasGradient {
     reflector_: Reflector,
     style: CanvasGradientStyle,
-    stops: DOMRefCell<Vec<CanvasGradientStop>>,
+    stops: DomRefCell<Vec<CanvasGradientStop>>,
 }
 
-#[derive(Clone, HeapSizeOf, JSTraceable)]
+#[derive(Clone, JSTraceable, MallocSizeOf)]
 pub enum CanvasGradientStyle {
     Linear(LinearGradientStyle),
     Radial(RadialGradientStyle),
@@ -35,12 +35,12 @@ impl CanvasGradient {
         CanvasGradient {
             reflector_: Reflector::new(),
             style: style,
-            stops: DOMRefCell::new(Vec::new()),
+            stops: DomRefCell::new(Vec::new()),
         }
     }
 
-    pub fn new(global: &GlobalScope, style: CanvasGradientStyle) -> Root<CanvasGradient> {
-        reflect_dom_object(box CanvasGradient::new_inherited(style),
+    pub fn new(global: &GlobalScope, style: CanvasGradientStyle) -> DomRoot<CanvasGradient> {
+        reflect_dom_object(Box::new(CanvasGradient::new_inherited(style)),
                            global,
                            CanvasGradientBinding::Wrap)
     }

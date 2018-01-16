@@ -13,7 +13,7 @@ use style::context::QuirksMode;
 use style::parser::ParserContext;
 use style::stylesheets::CssRuleType;
 use style::stylesheets::supports_rule::{Declaration, parse_condition_or_declaration};
-use style_traits::PARSING_MODE_DEFAULT;
+use style_traits::ParsingMode;
 
 #[dom_struct]
 pub struct CSS {
@@ -21,14 +21,14 @@ pub struct CSS {
 }
 
 impl CSS {
-    /// http://dev.w3.org/csswg/cssom/#serialize-an-identifier
+    /// <http://dev.w3.org/csswg/cssom/#serialize-an-identifier>
     pub fn Escape(_: &Window, ident: DOMString) -> Fallible<DOMString> {
         let mut escaped = String::new();
         serialize_identifier(&ident, &mut escaped).unwrap();
         Ok(DOMString::from(escaped))
     }
 
-    /// https://drafts.csswg.org/css-conditional/#dom-css-supports
+    /// <https://drafts.csswg.org/css-conditional/#dom-css-supports>
     pub fn Supports(win: &Window, property: DOMString, value: DOMString) -> bool {
         let mut decl = String::new();
         serialize_identifier(&property, &mut decl).unwrap();
@@ -39,13 +39,13 @@ impl CSS {
         let context = ParserContext::new_for_cssom(
             &url,
             Some(CssRuleType::Style),
-            PARSING_MODE_DEFAULT,
+            ParsingMode::DEFAULT,
             QuirksMode::NoQuirks
         );
         decl.eval(&context)
     }
 
-    /// https://drafts.csswg.org/css-conditional/#dom-css-supports
+    /// <https://drafts.csswg.org/css-conditional/#dom-css-supports>
     pub fn Supports_(win: &Window, condition: DOMString) -> bool {
         let mut input = ParserInput::new(&condition);
         let mut input = Parser::new(&mut input);
@@ -55,7 +55,7 @@ impl CSS {
             let context = ParserContext::new_for_cssom(
                 &url,
                 Some(CssRuleType::Style),
-                PARSING_MODE_DEFAULT,
+                ParsingMode::DEFAULT,
                 QuirksMode::NoQuirks
             );
             cond.eval(&context)

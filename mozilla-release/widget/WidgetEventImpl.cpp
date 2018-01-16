@@ -13,6 +13,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
+#include "nsContentUtils.h"
 #include "nsIContent.h"
 #include "nsIDOMEventTarget.h"
 #include "nsPrintfCString.h"
@@ -271,10 +272,11 @@ WidgetEvent::HasDragEventMessage() const
   }
 }
 
+/* static */
 bool
-WidgetEvent::HasKeyEventMessage() const
+WidgetEvent::IsKeyEventMessage(EventMessage aMessage)
 {
-  switch (mMessage) {
+  switch (aMessage) {
     case eKeyDown:
     case eKeyPress:
     case eKeyUp:
@@ -513,6 +515,59 @@ WidgetEvent::GetOriginalDOMEventTarget() const
     return GetTargetForDOMEvent(mOriginalTarget);
   }
   return GetDOMEventTarget();
+}
+
+void
+WidgetEvent::PreventDefault(bool aCalledByDefaultHandler,
+                            nsIPrincipal* aPrincipal)
+{
+  if (mMessage == ePointerDown) {
+    if (aCalledByDefaultHandler) {
+      // Shouldn't prevent default on pointerdown by default handlers to stop
+      // firing legacy mouse events. Use MOZ_ASSERT to catch incorrect usages
+      // in debug builds.
+      MOZ_ASSERT(false);
+      return;
+    }
+    if (aPrincipal) {
+      nsAutoString addonId;
+      Unused << NS_WARN_IF(NS_FAILED(aPrincipal->GetAddonId(addonId)));
+      if (!addonId.IsEmpty()) {
+        // Ignore the case that it's called by a web extension.
+        return;
+      }
+    }
+  }
+  mFlags.PreventDefault(aCalledByDefaultHandler);
+}
+
+bool
+WidgetEvent::IsUserAction() const
+{
+  if (!IsTrusted()) {
+    return false;
+  }
+  // FYI: eMouseScrollEventClass and ePointerEventClass represent
+  //      user action but they are synthesized events.
+  switch (mClass) {
+    case eKeyboardEventClass:
+    case eCompositionEventClass:
+    case eMouseScrollEventClass:
+    case eWheelEventClass:
+    case eGestureNotifyEventClass:
+    case eSimpleGestureEventClass:
+    case eTouchEventClass:
+    case eCommandEventClass:
+    case eContentCommandEventClass:
+    case ePluginEventClass:
+      return true;
+    case eMouseEventClass:
+    case eDragEventClass:
+    case ePointerEventClass:
+      return AsMouseEvent()->IsReal();
+    default:
+      return false;
+  }
 }
 
 /******************************************************************************
@@ -854,8 +909,9 @@ WidgetKeyboardEvent::GetAccessKeyCandidates(nsTArray<uint32_t>& aCandidates) con
   // the priority of the charCodes are:
   //   0: charCode, 1: unshiftedCharCodes[0], 2: shiftedCharCodes[0]
   //   3: unshiftedCharCodes[1], 4: shiftedCharCodes[1],...
-  if (mCharCode) {
-    uint32_t ch = mCharCode;
+  uint32_t pseudoCharCode = PseudoCharCode();
+  if (pseudoCharCode) {
+    uint32_t ch = pseudoCharCode;
     if (IS_IN_BMP(ch)) {
       ch = ToLowerCase(static_cast<char16_t>(ch));
     }
@@ -872,7 +928,7 @@ WidgetKeyboardEvent::GetAccessKeyCandidates(nsTArray<uint32_t>& aCandidates) con
       if (IS_IN_BMP(ch[j])) {
         ch[j] = ToLowerCase(static_cast<char16_t>(ch[j]));
       }
-      // Don't append the mCharCode that was already appended.
+      // Don't append the charcode that was already appended.
       if (aCandidates.IndexOf(ch[j]) == aCandidates.NoIndex) {
         aCandidates.AppendElement(ch[j]);
       }
@@ -884,7 +940,7 @@ WidgetKeyboardEvent::GetAccessKeyCandidates(nsTArray<uint32_t>& aCandidates) con
   // press.  However, if the space key is assigned to a function key, it
   // shouldn't work as a space key.
   if (mKeyNameIndex == KEY_NAME_INDEX_USE_STRING &&
-      mCodeNameIndex == CODE_NAME_INDEX_Space && mCharCode != ' ') {
+      mCodeNameIndex == CODE_NAME_INDEX_Space && pseudoCharCode != ' ') {
     aCandidates.AppendElement(' ');
   }
 }

@@ -194,14 +194,14 @@ wasm::ReadI64Object(JSContext* cx, HandleValue v, int64_t* i64)
 static bool
 ThrowBadImportArg(JSContext* cx)
 {
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_ARG);
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_ARG);
     return false;
 }
 
 static bool
 ThrowBadImportType(JSContext* cx, const char* field, const char* str)
 {
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_TYPE, field, str);
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_TYPE, field, str);
     return false;
 }
 
@@ -239,8 +239,8 @@ GetImports(JSContext* cx,
             return false;
 
         if (!v.isObject()) {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_FIELD,
-                                      import.module.get());
+            JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_FIELD,
+                                     import.module.get());
             return false;
         }
 
@@ -390,11 +390,11 @@ wasm::Eval(JSContext* cx, Handle<TypedArrayObject*> code, HandleObject importObj
         return false;
 
     UniqueChars error;
-    SharedModule module = CompileInitialTier(*bytecode, *compileArgs, &error);
+    SharedModule module = CompileBuffer(*compileArgs, *bytecode, &error);
     if (!module) {
         if (error) {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_COMPILE_ERROR,
-                                      error.get());
+            JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_COMPILE_ERROR,
+                                     error.get());
             return false;
         }
         ReportOutOfMemory(cx);
@@ -423,7 +423,7 @@ ToNonWrappingUint32(JSContext* cx, HandleValue v, uint32_t max, const char* kind
         return false;
 
     if (dbl < 0 || dbl > max) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_UINT32, kind, noun);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_UINT32, kind, noun);
         return false;
     }
 
@@ -454,7 +454,10 @@ GetLimits(JSContext* cx, HandleObject obj, uint32_t maxInitial, uint32_t maxMaxi
     RootedId maximumId(cx, AtomToId(maximumAtom));
 
     bool found;
-    if (HasProperty(cx, obj, maximumId, &found) && found) {
+    if (!HasProperty(cx, obj, maximumId, &found))
+        return false;
+
+    if (found) {
         RootedValue maxVal(cx);
         if (!GetProperty(cx, obj, obj, maximumId, &maxVal))
             return false;
@@ -464,8 +467,8 @@ GetLimits(JSContext* cx, HandleObject obj, uint32_t maxInitial, uint32_t maxMaxi
             return false;
 
         if (limits->initial > *limits->maximum) {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_UINT32,
-                                      kind, "maximum size");
+            JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_UINT32,
+                                     kind, "maximum size");
             return false;
         }
     }
@@ -534,7 +537,7 @@ GetModuleArg(JSContext* cx, CallArgs args, const char* name, Module** module)
         return false;
 
     if (!args[0].isObject() || !IsModuleObject(&args[0].toObject(), module)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_MOD_ARG);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_MOD_ARG);
         return false;
     }
 
@@ -832,22 +835,14 @@ GetBufferSource(JSContext* cx, JSObject* obj, unsigned errorNumber, MutableBytes
 
     JSObject* unwrapped = CheckedUnwrap(obj);
 
-    size_t byteLength = 0;
-    uint8_t* ptr = nullptr;
-    if (unwrapped && unwrapped->is<TypedArrayObject>()) {
-        TypedArrayObject& view = unwrapped->as<TypedArrayObject>();
-        byteLength = view.byteLength();
-        ptr = (uint8_t*)view.viewDataEither().unwrap();
-    } else if (unwrapped && unwrapped->is<ArrayBufferObject>()) {
-        ArrayBufferObject& buffer = unwrapped->as<ArrayBufferObject>();
-        byteLength = buffer.byteLength();
-        ptr = buffer.dataPointer();
-    } else {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, errorNumber);
+    SharedMem<uint8_t*> dataPointer;
+    size_t byteLength;
+    if (!unwrapped || !IsBufferSource(unwrapped, &dataPointer, &byteLength)) {
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, errorNumber);
         return false;
     }
 
-    if (!(*bytecode)->append(ptr, byteLength)) {
+    if (!(*bytecode)->append(dataPointer.unwrap(), byteLength)) {
         ReportOutOfMemory(cx);
         return false;
     }
@@ -855,14 +850,21 @@ GetBufferSource(JSContext* cx, JSObject* obj, unsigned errorNumber, MutableBytes
     return true;
 }
 
-static bool
-InitCompileArgs(JSContext* cx, CompileArgs* compileArgs)
+static SharedCompileArgs
+InitCompileArgs(JSContext* cx)
 {
     ScriptedCaller scriptedCaller;
     if (!DescribeScriptedCaller(cx, &scriptedCaller))
-        return false;
+        return nullptr;
 
-    return compileArgs->initFromContext(cx, Move(scriptedCaller));
+    MutableCompileArgs compileArgs = cx->new_<CompileArgs>();
+    if (!compileArgs)
+        return nullptr;
+
+    if (!compileArgs->initFromContext(cx, Move(scriptedCaller)))
+        return nullptr;
+
+    return compileArgs;
 }
 
 /* static */ bool
@@ -877,7 +879,7 @@ WasmModuleObject::construct(JSContext* cx, unsigned argc, Value* vp)
         return false;
 
     if (!callArgs[0].isObject()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_ARG);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_ARG);
         return false;
     }
 
@@ -885,16 +887,16 @@ WasmModuleObject::construct(JSContext* cx, unsigned argc, Value* vp)
     if (!GetBufferSource(cx, &callArgs[0].toObject(), JSMSG_WASM_BAD_BUF_ARG, &bytecode))
         return false;
 
-    MutableCompileArgs compileArgs = cx->new_<CompileArgs>();
-    if (!compileArgs || !InitCompileArgs(cx, compileArgs.get()))
+    SharedCompileArgs compileArgs = InitCompileArgs(cx);
+    if (!compileArgs)
         return false;
 
     UniqueChars error;
-    SharedModule module = CompileInitialTier(*bytecode, *compileArgs, &error);
+    SharedModule module = CompileBuffer(*compileArgs, *bytecode, &error);
     if (!module) {
         if (error) {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_COMPILE_ERROR,
-                                      error.get());
+            JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_COMPILE_ERROR,
+                                     error.get());
             return false;
         }
         ReportOutOfMemory(cx);
@@ -1105,7 +1107,7 @@ WasmInstanceObject::construct(JSContext* cx, unsigned argc, Value* vp)
 
     Module* module;
     if (!args[0].isObject() || !IsModuleObject(&args[0].toObject(), &module)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_MOD_ARG);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_MOD_ARG);
         return false;
     }
 
@@ -1353,7 +1355,7 @@ WasmMemoryObject::construct(JSContext* cx, unsigned argc, Value* vp)
         return false;
 
     if (!args.get(0).isObject()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_DESC_ARG, "memory");
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_DESC_ARG, "memory");
         return false;
     }
 
@@ -1418,7 +1420,7 @@ WasmMemoryObject::growImpl(JSContext* cx, const CallArgs& args)
     uint32_t ret = grow(memory, delta, cx);
 
     if (ret == uint32_t(-1)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_GROW, "memory");
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_GROW, "memory");
         return false;
     }
 
@@ -1639,7 +1641,7 @@ WasmTableObject::construct(JSContext* cx, unsigned argc, Value* vp)
         return false;
 
     if (!args.get(0).isObject()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_DESC_ARG, "table");
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_DESC_ARG, "table");
         return false;
     }
 
@@ -1655,7 +1657,7 @@ WasmTableObject::construct(JSContext* cx, unsigned argc, Value* vp)
         return false;
 
     if (!elementVal.isString()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_ELEMENT);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_ELEMENT);
         return false;
     }
 
@@ -1664,7 +1666,7 @@ WasmTableObject::construct(JSContext* cx, unsigned argc, Value* vp)
         return false;
 
     if (!StringEqualsAscii(elementStr, "anyfunc")) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_ELEMENT);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_ELEMENT);
         return false;
     }
 
@@ -1706,6 +1708,20 @@ const JSPropertySpec WasmTableObject::properties[] =
     JS_PS_END
 };
 
+static bool
+ToTableIndex(JSContext* cx, HandleValue v, const Table& table, const char* noun, uint32_t* index)
+{
+    if (!ToNonWrappingUint32(cx, v, UINT32_MAX, "Table", noun, index))
+        return false;
+
+    if (*index >= table.length()) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_UINT32, "Table", noun);
+        return false;
+    }
+
+    return true;
+}
+
 /* static */ bool
 WasmTableObject::getImpl(JSContext* cx, const CallArgs& args)
 {
@@ -1713,7 +1729,7 @@ WasmTableObject::getImpl(JSContext* cx, const CallArgs& args)
     const Table& table = tableObj->table();
 
     uint32_t index;
-    if (!ToNonWrappingUint32(cx, args.get(0), table.length() - 1, "Table", "get index", &index))
+    if (!ToTableIndex(cx, args.get(0), table, "get index", &index))
         return false;
 
     ExternalTableElem& elem = table.externalArray()[index];
@@ -1752,12 +1768,12 @@ WasmTableObject::setImpl(JSContext* cx, const CallArgs& args)
         return false;
 
     uint32_t index;
-    if (!ToNonWrappingUint32(cx, args.get(0), table.length() - 1, "Table", "set index", &index))
+    if (!ToTableIndex(cx, args.get(0), table, "set index", &index))
         return false;
 
     RootedFunction value(cx);
     if (!IsExportedFunction(args[1], &value) && !args[1].isNull()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_TABLE_VALUE);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_TABLE_VALUE);
         return false;
     }
 
@@ -1804,7 +1820,7 @@ WasmTableObject::growImpl(JSContext* cx, const CallArgs& args)
     uint32_t ret = table->table().grow(delta, cx);
 
     if (ret == uint32_t(-1)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_GROW, "table");
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_GROW, "table");
         return false;
     }
 
@@ -1850,16 +1866,24 @@ WebAssembly_toSource(JSContext* cx, unsigned argc, Value* vp)
 #endif
 
 static bool
+RejectWithPendingException(JSContext* cx, Handle<PromiseObject*> promise)
+{
+    if (!cx->isExceptionPending())
+        return false;
+
+    RootedValue rejectionValue(cx);
+    if (!GetAndClearException(cx, &rejectionValue))
+        return false;
+
+    return PromiseObject::reject(cx, promise, rejectionValue);
+}
+
+static bool
 Reject(JSContext* cx, const CompileArgs& args, UniqueChars error, Handle<PromiseObject*> promise)
 {
     if (!error) {
         ReportOutOfMemory(cx);
-
-        RootedValue rejectionValue(cx);
-        if (!cx->getPendingException(&rejectionValue))
-            return false;
-
-        return PromiseObject::reject(cx, promise, rejectionValue);
+        return RejectWithPendingException(cx, promise);
     }
 
     RootedObject stack(cx, promise->allocationSite());
@@ -1891,52 +1915,81 @@ Reject(JSContext* cx, const CompileArgs& args, UniqueChars error, Handle<Promise
 }
 
 static bool
-ResolveCompilation(JSContext* cx, Module& module, const CompileArgs& compileArgs,
-                   Handle<PromiseObject*> promise)
+Resolve(JSContext* cx, Module& module, const CompileArgs& compileArgs,
+        Handle<PromiseObject*> promise, bool instantiate, HandleObject importObj)
 {
     RootedObject proto(cx, &cx->global()->getPrototype(JSProto_WasmModule).toObject());
     RootedObject moduleObj(cx, WasmModuleObject::create(cx, module, proto));
     if (!moduleObj)
-        return false;
+        return RejectWithPendingException(cx, promise);
 
-    RootedValue resolutionValue(cx, ObjectValue(*moduleObj));
-    return PromiseObject::resolve(cx, promise, resolutionValue);
+    RootedValue resolutionValue(cx);
+    if (instantiate) {
+        RootedWasmInstanceObject instanceObj(cx);
+        if (!Instantiate(cx, module, importObj, &instanceObj))
+            return RejectWithPendingException(cx, promise);
+
+        RootedObject resultObj(cx, JS_NewPlainObject(cx));
+        if (!resultObj)
+            return RejectWithPendingException(cx, promise);
+
+        RootedValue val(cx, ObjectValue(*moduleObj));
+        if (!JS_DefineProperty(cx, resultObj, "module", val, JSPROP_ENUMERATE))
+            return RejectWithPendingException(cx, promise);
+
+        val = ObjectValue(*instanceObj);
+        if (!JS_DefineProperty(cx, resultObj, "instance", val, JSPROP_ENUMERATE))
+            return RejectWithPendingException(cx, promise);
+
+        resolutionValue = ObjectValue(*resultObj);
+    } else {
+        MOZ_ASSERT(!importObj);
+        resolutionValue = ObjectValue(*moduleObj);
+    }
+
+    if (!PromiseObject::resolve(cx, promise, resolutionValue))
+        return RejectWithPendingException(cx, promise);
+
+    return true;
 }
 
-struct CompilePromiseTask : PromiseHelperTask
+struct CompileBufferTask : PromiseHelperTask
 {
-    MutableBytes      bytecode;
-    SharedCompileArgs compileArgs;
-    UniqueChars       error;
-    SharedModule      module;
+    MutableBytes           bytecode;
+    SharedCompileArgs      compileArgs;
+    UniqueChars            error;
+    SharedModule           module;
+    bool                   instantiate;
+    PersistentRootedObject importObj;
 
-    CompilePromiseTask(JSContext* cx, Handle<PromiseObject*> promise)
-      : PromiseHelperTask(cx, promise)
+    CompileBufferTask(JSContext* cx, Handle<PromiseObject*> promise, HandleObject importObj)
+      : PromiseHelperTask(cx, promise),
+        instantiate(true),
+        importObj(cx, importObj)
     {}
 
+    CompileBufferTask(JSContext* cx, Handle<PromiseObject*> promise)
+      : PromiseHelperTask(cx, promise),
+        instantiate(false)
+    {}
+
+    bool init(JSContext* cx) {
+        compileArgs = InitCompileArgs(cx);
+        if (!compileArgs)
+            return false;
+        return PromiseHelperTask::init(cx);
+    }
+
     void execute() override {
-        module = CompileInitialTier(*bytecode, *compileArgs, &error);
+        module = CompileBuffer(*compileArgs, *bytecode, &error);
     }
 
     bool resolve(JSContext* cx, Handle<PromiseObject*> promise) override {
         return module
-               ? ResolveCompilation(cx, *module, *compileArgs, promise)
+               ? Resolve(cx, *module, *compileArgs, promise, instantiate, importObj)
                : Reject(cx, *compileArgs, Move(error), promise);
     }
 };
-
-static bool
-RejectWithPendingException(JSContext* cx, Handle<PromiseObject*> promise)
-{
-    if (!cx->isExceptionPending())
-        return false;
-
-    RootedValue rejectionValue(cx);
-    if (!GetAndClearException(cx, &rejectionValue))
-        return false;
-
-    return PromiseObject::reject(cx, promise, rejectionValue);
-}
 
 static bool
 RejectWithPendingException(JSContext* cx, Handle<PromiseObject*> promise, CallArgs& callArgs)
@@ -1965,7 +2018,7 @@ GetBufferSource(JSContext* cx, CallArgs callArgs, const char* name, MutableBytes
         return false;
 
     if (!callArgs[0].isObject()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_ARG);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_ARG);
         return false;
     }
 
@@ -1982,7 +2035,7 @@ WebAssembly_compile(JSContext* cx, unsigned argc, Value* vp)
     if (!promise)
         return false;
 
-    auto task = cx->make_unique<CompilePromiseTask>(cx, promise);
+    auto task = cx->make_unique<CompileBufferTask>(cx, promise);
     if (!task || !task->init(cx))
         return false;
 
@@ -1990,11 +2043,6 @@ WebAssembly_compile(JSContext* cx, unsigned argc, Value* vp)
 
     if (!GetBufferSource(cx, callArgs, "WebAssembly.compile", &task->bytecode))
         return RejectWithPendingException(cx, promise, callArgs);
-
-    MutableCompileArgs compileArgs = cx->new_<CompileArgs>();
-    if (!compileArgs || !InitCompileArgs(cx, compileArgs))
-        return false;
-    task->compileArgs = compileArgs;
 
     if (!StartOffThreadPromiseHelperTask(cx, Move(task)))
         return false;
@@ -2004,61 +2052,6 @@ WebAssembly_compile(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
-ResolveInstantiation(JSContext* cx, Module& module, const CompileArgs& compileArgs,
-                     HandleObject importObj, Handle<PromiseObject*> promise)
-{
-    RootedObject proto(cx, &cx->global()->getPrototype(JSProto_WasmModule).toObject());
-    RootedObject moduleObj(cx, WasmModuleObject::create(cx, module, proto));
-    if (!moduleObj)
-        return false;
-
-    RootedWasmInstanceObject instanceObj(cx);
-    if (!Instantiate(cx, module, importObj, &instanceObj))
-        return RejectWithPendingException(cx, promise);
-
-    RootedObject resultObj(cx, JS_NewPlainObject(cx));
-    if (!resultObj)
-        return false;
-
-    RootedValue val(cx, ObjectValue(*moduleObj));
-    if (!JS_DefineProperty(cx, resultObj, "module", val, JSPROP_ENUMERATE))
-        return false;
-
-    val = ObjectValue(*instanceObj);
-    if (!JS_DefineProperty(cx, resultObj, "instance", val, JSPROP_ENUMERATE))
-        return false;
-
-    val = ObjectValue(*resultObj);
-    return PromiseObject::resolve(cx, promise, val);
-}
-
-struct InstantiatePromiseTask : PromiseHelperTask
-{
-    MutableBytes           bytecode;
-    SharedCompileArgs      compileArgs;
-    UniqueChars            error;
-    SharedModule           module;
-    PersistentRootedObject importObj;
-
-    InstantiatePromiseTask(JSContext* cx, Handle<PromiseObject*> promise,
-                           const CompileArgs& compileArgs, HandleObject importObj)
-      : PromiseHelperTask(cx, promise),
-        compileArgs(&compileArgs),
-        importObj(cx, importObj)
-    {}
-
-    void execute() override {
-        module = CompileInitialTier(*bytecode, *compileArgs, &error);
-    }
-
-    bool resolve(JSContext* cx, Handle<PromiseObject*> promise) override {
-        return module
-               ? ResolveInstantiation(cx, *module, *compileArgs, importObj, promise)
-               : Reject(cx, *compileArgs, Move(error), promise);
-    }
-};
-
-static bool
 GetInstantiateArgs(JSContext* cx, CallArgs callArgs, MutableHandleObject firstArg,
                    MutableHandleObject importObj)
 {
@@ -2066,7 +2059,7 @@ GetInstantiateArgs(JSContext* cx, CallArgs callArgs, MutableHandleObject firstAr
         return false;
 
     if (!callArgs[0].isObject()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_MOD_ARG);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_MOD_ARG);
         return false;
     }
 
@@ -2102,11 +2095,7 @@ WebAssembly_instantiate(JSContext* cx, unsigned argc, Value* vp)
         if (!PromiseObject::resolve(cx, promise, resolutionValue))
             return false;
     } else {
-        MutableCompileArgs compileArgs = cx->new_<CompileArgs>();
-        if (!compileArgs || !InitCompileArgs(cx, compileArgs.get()))
-            return false;
-
-        auto task = cx->make_unique<InstantiatePromiseTask>(cx, promise, *compileArgs, importObj);
+        auto task = cx->make_unique<CompileBufferTask>(cx, promise, importObj);
         if (!task || !task->init(cx))
             return false;
 
@@ -2145,6 +2134,459 @@ WebAssembly_validate(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
+static bool
+EnsureStreamSupport(JSContext* cx)
+{
+    if (!EnsurePromiseSupport(cx))
+        return false;
+
+    if (!CanUseExtraThreads()) {
+        JS_ReportErrorASCII(cx, "WebAssembly.compileStreaming not supported with --no-threads");
+        return false;
+    }
+
+    if (!cx->runtime()->consumeStreamCallback) {
+        JS_ReportErrorASCII(cx, "WebAssembly streaming not supported in this runtime");
+        return false;
+    }
+
+    return true;
+}
+
+static bool
+RejectWithErrorNumber(JSContext* cx, uint32_t errorNumber, Handle<PromiseObject*> promise)
+{
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, errorNumber);
+    return RejectWithPendingException(cx, promise);
+}
+
+class CompileStreamTask : public PromiseHelperTask, public JS::StreamConsumer
+{
+    enum StreamState { Env, Code, Tail, Closed };
+    typedef ExclusiveWaitableData<StreamState> ExclusiveStreamState;
+
+    // Immutable:
+    const SharedCompileArgs      compileArgs_;
+    const bool                   instantiate_;
+    const PersistentRootedObject importObj_;
+
+    // Mutated on a stream thread (consumeChunk() and streamClosed()):
+    ExclusiveStreamState         streamState_;
+    Bytes                        envBytes_;        // immutable after Env state
+    SectionRange                 codeSection_;     // immutable after Env state
+    Bytes                        codeBytes_;       // not resized after Env state
+    uint8_t*                     codeStreamEnd_;
+    ExclusiveStreamEnd           exclusiveCodeStreamEnd_;
+    Bytes                        tailBytes_;       // immutable after Tail state
+    ExclusiveTailBytesPtr        exclusiveTailBytes_;
+    Maybe<uint32_t>              streamError_;
+    Atomic<bool>                 streamFailed_;
+
+    // Mutated on helper thread (execute()):
+    SharedModule                 module_;
+    UniqueChars                  compileError_;
+
+    // Called on a stream thread:
+
+    // Until StartOffThreadPromiseHelperTask succeeds, we are responsible for
+    // dispatching ourselves back to the JS thread.
+    //
+    // Warning: After this function returns, 'this' can be deleted at any time, so the
+    // caller must immediately return from the stream callback.
+    void setClosedAndDestroyBeforeHelperThreadStarted() {
+        streamState_.lock().get() = Closed;
+        dispatchResolveAndDestroy();
+    }
+
+    // See setClosedAndDestroyBeforeHelperThreadStarted() comment.
+    bool rejectAndDestroyBeforeHelperThreadStarted(unsigned errorNumber) {
+        MOZ_ASSERT(streamState_.lock() == Env);
+        MOZ_ASSERT(!streamError_);
+        streamError_ = Some(errorNumber);
+        setClosedAndDestroyBeforeHelperThreadStarted();
+        return false;
+    }
+
+    // Once StartOffThreadPromiseHelperTask succeeds, the helper thread will
+    // dispatchResolveAndDestroy() after execute() returns, but execute()
+    // wait()s for state to be Closed.
+    //
+    // Warning: After this function returns, 'this' can be deleted at any time, so the
+    // caller must immediately return from the stream callback.
+    void setClosedAndDestroyAfterHelperThreadStarted() {
+        auto streamState = streamState_.lock();
+        streamState.get() = Closed;
+        streamState.notify_one(/* stream closed */);
+    }
+
+    // See setClosedAndDestroyAfterHelperThreadStarted() comment.
+    bool rejectAndDestroyAfterHelperThreadStarted(unsigned errorNumber) {
+        MOZ_ASSERT(streamState_.lock() == Code || streamState_.lock() == Tail);
+        MOZ_ASSERT(!streamError_);
+        streamError_ = Some(JSMSG_OUT_OF_MEMORY);
+        streamFailed_ = true;
+        exclusiveCodeStreamEnd_.lock().notify_one();
+        exclusiveTailBytes_.lock().notify_one();
+        setClosedAndDestroyAfterHelperThreadStarted();
+        return false;
+    }
+
+    bool consumeChunk(const uint8_t* begin, size_t length) override {
+        switch (streamState_.lock().get()) {
+          case Env: {
+            if (!envBytes_.append(begin, length))
+                return rejectAndDestroyBeforeHelperThreadStarted(JSMSG_OUT_OF_MEMORY);
+
+            if (!StartsCodeSection(envBytes_.begin(), envBytes_.end(), &codeSection_))
+                return true;
+
+            uint32_t extraBytes = envBytes_.length() - codeSection_.start;
+            if (extraBytes)
+                envBytes_.shrinkTo(codeSection_.start);
+
+            if (codeSection_.size > MaxModuleBytes)
+                return rejectAndDestroyBeforeHelperThreadStarted(JSMSG_OUT_OF_MEMORY);
+
+            if (!codeBytes_.resize(codeSection_.size))
+                return rejectAndDestroyBeforeHelperThreadStarted(JSMSG_OUT_OF_MEMORY);
+
+            codeStreamEnd_ = codeBytes_.begin();
+            exclusiveCodeStreamEnd_.lock().get() = codeStreamEnd_;
+
+            if (!StartOffThreadPromiseHelperTask(this))
+                return rejectAndDestroyBeforeHelperThreadStarted(JSMSG_OUT_OF_MEMORY);
+
+            // Set the state to Code iff StartOffThreadPromiseHelperTask()
+            // succeeds so that the state tells us whether we are before or
+            // after the helper thread started.
+            streamState_.lock().get() = Code;
+
+            if (extraBytes)
+                return consumeChunk(begin + length - extraBytes, extraBytes);
+
+            return true;
+          }
+          case Code: {
+            size_t copyLength = Min<size_t>(length, codeBytes_.end() - codeStreamEnd_);
+            memcpy(codeStreamEnd_, begin, copyLength);
+            codeStreamEnd_ += copyLength;
+
+            {
+                auto codeStreamEnd = exclusiveCodeStreamEnd_.lock();
+                codeStreamEnd.get() = codeStreamEnd_;
+                codeStreamEnd.notify_one();
+            }
+
+            if (codeStreamEnd_ != codeBytes_.end())
+                return true;
+
+            streamState_.lock().get() = Tail;
+
+            if (uint32_t extraBytes = length - copyLength)
+                return consumeChunk(begin + copyLength, extraBytes);
+
+            return true;
+          }
+          case Tail: {
+            if (!tailBytes_.append(begin, length))
+                return rejectAndDestroyAfterHelperThreadStarted(JSMSG_OUT_OF_MEMORY);
+
+            return true;
+          }
+          case Closed:
+            MOZ_CRASH("consumeChunk() in Closed state");
+        }
+        MOZ_CRASH("unreachable");
+    }
+
+    void streamClosed(JS::StreamConsumer::CloseReason closeReason) override {
+        switch (closeReason) {
+          case JS::StreamConsumer::EndOfFile:
+            switch (streamState_.lock().get()) {
+              case Env: {
+                SharedBytes bytecode = js_new<ShareableBytes>(Move(envBytes_));
+                if (!bytecode) {
+                    rejectAndDestroyBeforeHelperThreadStarted(JSMSG_OUT_OF_MEMORY);
+                    return;
+                }
+                module_ = CompileBuffer(*compileArgs_, *bytecode, &compileError_);
+                setClosedAndDestroyBeforeHelperThreadStarted();
+                return;
+              }
+              case Code:
+              case Tail:
+                {
+                    auto tailBytes = exclusiveTailBytes_.lock();
+                    tailBytes.get() = &tailBytes_;
+                    tailBytes.notify_one();
+                }
+                setClosedAndDestroyAfterHelperThreadStarted();
+                return;
+              case Closed:
+                MOZ_CRASH("streamClosed() in Closed state");
+            }
+            break;
+          case JS::StreamConsumer::Error:
+            switch (streamState_.lock().get()) {
+              case Env:
+                rejectAndDestroyBeforeHelperThreadStarted(JSMSG_WASM_STREAM_ERROR);
+                return;
+              case Tail:
+              case Code:
+                rejectAndDestroyAfterHelperThreadStarted(JSMSG_WASM_STREAM_ERROR);
+                return;
+              case Closed:
+                MOZ_CRASH("streamClosed() in Closed state");
+            }
+            break;
+        }
+        MOZ_CRASH("unreachable");
+    }
+
+    // Called on a helper thread:
+
+    void execute() override {
+        module_ = CompileStreaming(*compileArgs_, envBytes_, codeBytes_, exclusiveCodeStreamEnd_,
+                                   exclusiveTailBytes_, streamFailed_, &compileError_);
+
+        // When execute() returns, the CompileStreamTask will be dispatched
+        // back to its JS thread to call resolve() and then be destroyed. We
+        // can't let this happen until the stream has been closed lest
+        // consumeChunk() or streamClosed() be called on a dead object.
+        auto streamState = streamState_.lock();
+        while (streamState != Closed)
+            streamState.wait(/* stream closed */);
+    }
+
+    // Called on a JS thread after streaming compilation completes/errors:
+
+    bool resolve(JSContext* cx, Handle<PromiseObject*> promise) override {
+        MOZ_ASSERT(streamState_.lock() == Closed);
+        MOZ_ASSERT_IF(module_, !streamFailed_ && !streamError_ && !compileError_);
+        return module_
+               ? Resolve(cx, *module_, *compileArgs_, promise, instantiate_, importObj_)
+               : streamError_
+                 ? RejectWithErrorNumber(cx, *streamError_, promise)
+                 : Reject(cx, *compileArgs_, Move(compileError_), promise);
+    }
+
+  public:
+    CompileStreamTask(JSContext* cx, Handle<PromiseObject*> promise,
+                      const CompileArgs& compileArgs, bool instantiate,
+                      HandleObject importObj)
+      : PromiseHelperTask(cx, promise),
+        compileArgs_(&compileArgs),
+        instantiate_(instantiate),
+        importObj_(cx, importObj),
+        streamState_(mutexid::WasmStreamStatus, Env),
+        codeStreamEnd_(nullptr),
+        exclusiveCodeStreamEnd_(mutexid::WasmCodeStreamEnd, nullptr),
+        exclusiveTailBytes_(mutexid::WasmTailBytesPtr, nullptr),
+        streamFailed_(false)
+    {
+        MOZ_ASSERT_IF(importObj_, instantiate_);
+    }
+};
+
+// A short-lived object that captures the arguments of a
+// WebAssembly.{compileStreaming,instantiateStreaming} while waiting for
+// the Promise<Response> to resolve to a (hopefully) Promise.
+class ResolveResponseClosure : public NativeObject
+{
+    static const unsigned COMPILE_ARGS_SLOT = 0;
+    static const unsigned PROMISE_OBJ_SLOT = 1;
+    static const unsigned INSTANTIATE_SLOT = 2;
+    static const unsigned IMPORT_OBJ_SLOT = 3;
+    static const ClassOps classOps_;
+
+    static void finalize(FreeOp* fop, JSObject* obj) {
+        obj->as<ResolveResponseClosure>().compileArgs().Release();
+    }
+
+  public:
+    static const unsigned RESERVED_SLOTS = 4;
+    static const Class class_;
+
+    static ResolveResponseClosure* create(JSContext* cx, const CompileArgs& args,
+                                          HandleObject promise, bool instantiate,
+                                          HandleObject importObj)
+    {
+        MOZ_ASSERT_IF(importObj, instantiate);
+
+        AutoSetNewObjectMetadata metadata(cx);
+        auto* obj = NewObjectWithGivenProto<ResolveResponseClosure>(cx, nullptr);
+        if (!obj)
+            return nullptr;
+
+        args.AddRef();
+        obj->setReservedSlot(COMPILE_ARGS_SLOT, PrivateValue(const_cast<CompileArgs*>(&args)));
+        obj->setReservedSlot(PROMISE_OBJ_SLOT, ObjectValue(*promise));
+        obj->setReservedSlot(INSTANTIATE_SLOT, BooleanValue(instantiate));
+        obj->setReservedSlot(IMPORT_OBJ_SLOT, ObjectOrNullValue(importObj));
+        return obj;
+    }
+
+    const CompileArgs& compileArgs() const {
+        return *(const CompileArgs*)getReservedSlot(COMPILE_ARGS_SLOT).toPrivate();
+    }
+    PromiseObject& promise() const {
+        return getReservedSlot(PROMISE_OBJ_SLOT).toObject().as<PromiseObject>();
+    }
+    bool instantiate() const {
+        return getReservedSlot(INSTANTIATE_SLOT).toBoolean();
+    }
+    JSObject* importObj() const {
+        return getReservedSlot(IMPORT_OBJ_SLOT).toObjectOrNull();
+    }
+};
+
+const ClassOps ResolveResponseClosure::classOps_ =
+{
+    nullptr, /* addProperty */
+    nullptr, /* delProperty */
+    nullptr, /* enumerate */
+    nullptr, /* newEnumerate */
+    nullptr, /* resolve */
+    nullptr, /* mayResolve */
+    ResolveResponseClosure::finalize
+};
+
+const Class ResolveResponseClosure::class_ =
+{
+    "WebAssembly ResolveResponseClosure",
+    JSCLASS_DELAY_METADATA_BUILDER |
+    JSCLASS_HAS_RESERVED_SLOTS(ResolveResponseClosure::RESERVED_SLOTS) |
+    JSCLASS_FOREGROUND_FINALIZE,
+    &ResolveResponseClosure::classOps_,
+};
+
+static ResolveResponseClosure*
+ToResolveResponseClosure(CallArgs args)
+{
+    return &args.callee().as<JSFunction>().getExtendedSlot(0).toObject().as<ResolveResponseClosure>();
+}
+
+static bool
+ResolveResponse_OnFulfilled(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs callArgs = CallArgsFromVp(argc, vp);
+
+    Rooted<ResolveResponseClosure*> closure(cx, ToResolveResponseClosure(callArgs));
+    Rooted<PromiseObject*> promise(cx, &closure->promise());
+    const CompileArgs& compileArgs = closure->compileArgs();
+    bool instantiate = closure->instantiate();
+    Rooted<JSObject*> importObj(cx, closure->importObj());
+
+    auto task = cx->make_unique<CompileStreamTask>(cx, promise, compileArgs, instantiate, importObj);
+    if (!task || !task->init(cx))
+        return false;
+
+    if (!callArgs.get(0).isObject())
+        return RejectWithErrorNumber(cx, JSMSG_BAD_RESPONSE_VALUE, promise);
+
+    RootedObject response(cx, &callArgs.get(0).toObject());
+    if (!cx->runtime()->consumeStreamCallback(cx, response, JS::MimeType::Wasm, task.get()))
+        return RejectWithPendingException(cx, promise);
+
+    Unused << task.release();
+
+    callArgs.rval().setUndefined();
+    return true;
+}
+
+static bool
+ResolveResponse_OnRejected(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    Rooted<ResolveResponseClosure*> closure(cx, ToResolveResponseClosure(args));
+    Rooted<PromiseObject*> promise(cx, &closure->promise());
+
+    if (!PromiseObject::reject(cx, promise, args.get(0)))
+        return false;
+
+    args.rval().setUndefined();
+    return true;
+}
+
+static bool
+ResolveResponse(JSContext* cx, CallArgs callArgs, Handle<PromiseObject*> promise,
+                bool instantiate = false, HandleObject importObj = nullptr)
+{
+    MOZ_ASSERT_IF(importObj, instantiate);
+
+    SharedCompileArgs compileArgs = InitCompileArgs(cx);
+    if (!compileArgs)
+        return false;
+
+    RootedObject closure(cx, ResolveResponseClosure::create(cx, *compileArgs, promise,
+                                                            instantiate, importObj));
+    if (!closure)
+        return false;
+
+    RootedFunction onResolved(cx, NewNativeFunction(cx, ResolveResponse_OnFulfilled, 1, nullptr,
+                                                    gc::AllocKind::FUNCTION_EXTENDED));
+    if (!onResolved)
+        return false;
+
+    RootedFunction onRejected(cx, NewNativeFunction(cx, ResolveResponse_OnRejected, 1, nullptr,
+                                                    gc::AllocKind::FUNCTION_EXTENDED));
+    if (!onRejected)
+        return false;
+
+    onResolved->setExtendedSlot(0, ObjectValue(*closure));
+    onRejected->setExtendedSlot(0, ObjectValue(*closure));
+
+    RootedObject resolve(cx, PromiseObject::unforgeableResolve(cx, callArgs.get(0)));
+    if (!resolve)
+        return false;
+
+    return JS::AddPromiseReactions(cx, resolve, onResolved, onRejected);
+}
+
+static bool
+WebAssembly_compileStreaming(JSContext* cx, unsigned argc, Value* vp)
+{
+    if (!EnsureStreamSupport(cx))
+        return false;
+
+    Rooted<PromiseObject*> promise(cx, PromiseObject::createSkippingExecutor(cx));
+    if (!promise)
+        return false;
+
+    CallArgs callArgs = CallArgsFromVp(argc, vp);
+
+    if (!ResolveResponse(cx, callArgs, promise))
+        return RejectWithPendingException(cx, promise, callArgs);
+
+    callArgs.rval().setObject(*promise);
+    return true;
+}
+
+static bool
+WebAssembly_instantiateStreaming(JSContext* cx, unsigned argc, Value* vp)
+{
+    if (!EnsureStreamSupport(cx))
+        return false;
+
+    Rooted<PromiseObject*> promise(cx, PromiseObject::createSkippingExecutor(cx));
+    if (!promise)
+        return false;
+
+    CallArgs callArgs = CallArgsFromVp(argc, vp);
+
+    RootedObject firstArg(cx);
+    RootedObject importObj(cx);
+    if (!GetInstantiateArgs(cx, callArgs, &firstArg, &importObj))
+        return RejectWithPendingException(cx, promise, callArgs);
+
+    if (!ResolveResponse(cx, callArgs, promise, true, importObj))
+        return RejectWithPendingException(cx, promise, callArgs);
+
+    callArgs.rval().setObject(*promise);
+    return true;
+}
+
 static const JSFunctionSpec WebAssembly_static_methods[] =
 {
 #if JS_HAS_TOSOURCE
@@ -2153,6 +2595,8 @@ static const JSFunctionSpec WebAssembly_static_methods[] =
     JS_FN("compile", WebAssembly_compile, 1, 0),
     JS_FN("instantiate", WebAssembly_instantiate, 1, 0),
     JS_FN("validate", WebAssembly_validate, 1, 0),
+    JS_FN("compileStreaming", WebAssembly_compileStreaming, 1, 0),
+    JS_FN("instantiateStreaming", WebAssembly_instantiateStreaming, 1, 0),
     JS_FS_END
 };
 

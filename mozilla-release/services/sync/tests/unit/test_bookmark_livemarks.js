@@ -10,9 +10,6 @@ Cu.import("resource://services-sync/service.js");
 
 const DESCRIPTION_ANNO = "bookmarkProperties/description";
 
-let engine;
-let store;
-
 // Record borrowed from Bug 631361.
 const record631361 = {
   id: "M5bwUKK8hPyF",
@@ -66,12 +63,13 @@ add_task(async function setup() {
   initTestLogging("Trace");
   Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace;
   Log.repository.getLogger("Sync.Store.Bookmarks").level  = Log.Level.Trace;
-
-  engine = Service.engineManager.get("bookmarks");
-  store = engine._store;
 });
 
 add_task(async function test_livemark_descriptions() {
+  let engine = new BookmarksEngine(Service);
+  await engine.initialize();
+  let store = engine._store;
+
   let record = record631361.payload;
 
   async function doRecord(r) {
@@ -88,37 +86,43 @@ add_task(async function test_livemark_descriptions() {
   await doRecord(makeLivemark(record));
 
   // Attempt to provoke an error by adding a bad description anno.
-  let id = await store.idForGUID(record.id);
+  let id = await PlacesUtils.promiseItemId(record.id);
   PlacesUtils.annotations.setItemAnnotation(id, DESCRIPTION_ANNO, "", 0,
                                             PlacesUtils.annotations.EXPIRE_NEVER);
+
+  await engine.finalize();
 });
 
 add_task(async function test_livemark_invalid() {
+  let engine = new BookmarksEngine(Service);
+  await engine.initialize();
+  let store = engine._store;
+
   _("Livemarks considered invalid by nsLivemarkService are skipped.");
 
   _("Parent is unknown. Will be set to unfiled.");
   let lateParentRec = makeLivemark(record631361.payload, true);
-  let parentGUID = Utils.makeGUID();
-  lateParentRec.parentid = parentGUID;
-  do_check_eq(-1, (await store.idForGUID(parentGUID)));
+  lateParentRec.parentid = Utils.makeGUID();
 
   await store.create(lateParentRec);
-  let recID = await store.idForGUID(lateParentRec.id, true);
-  do_check_true(recID > 0);
-  do_check_eq(PlacesUtils.bookmarks.getFolderIdForItem(recID),
-              PlacesUtils.bookmarks.unfiledBookmarksFolder);
+  let recInfo = await PlacesUtils.bookmarks.fetch(lateParentRec.id);
+  do_check_eq(recInfo.parentGuid, PlacesUtils.bookmarks.unfiledGuid);
 
   _("No feed URI, which is invalid. Will be skipped.");
   let noFeedURIRec = makeLivemark(record631361.payload, true);
   delete noFeedURIRec.cleartext.feedUri;
   await store.create(noFeedURIRec);
   // No exception, but no creation occurs.
-  do_check_eq(-1, (await store.idForGUID(noFeedURIRec.id, true)));
+  let noFeedURIItem = await PlacesUtils.bookmarks.fetch(noFeedURIRec.id);
+  do_check_null(noFeedURIItem);
 
   _("Parent is a Livemark. Will be skipped.");
   let lmParentRec = makeLivemark(record631361.payload, true);
-  lmParentRec.parentid = await store.GUIDForId(recID);
+  lmParentRec.parentid = recInfo.guid;
   await store.create(lmParentRec);
   // No exception, but no creation occurs.
-  do_check_eq(-1, (await store.idForGUID(lmParentRec.id, true)));
+  let lmParentItem = await PlacesUtils.bookmarks.fetch(lmParentRec.id);
+  do_check_null(lmParentItem);
+
+  await engine.finalize();
 });

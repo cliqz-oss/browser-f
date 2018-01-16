@@ -25,6 +25,24 @@
 namespace js {
 namespace wasm {
 
+// This struct captures the bytecode offset of a section's payload (so not
+// including the header) and the size of the payload.
+
+struct SectionRange
+{
+    uint32_t start;
+    uint32_t size;
+
+    uint32_t end() const {
+        return start + size;
+    }
+    bool operator==(const SectionRange& rhs) const {
+        return start == rhs.start && size == rhs.size;
+    }
+};
+
+typedef Maybe<SectionRange> MaybeSectionRange;
+
 // ModuleEnvironment contains all the state necessary to validate, process or
 // render functions. It is created by decoding all the sections before the wasm
 // code section and then used immutably during. When compiling a module using a
@@ -36,14 +54,15 @@ namespace wasm {
 struct ModuleEnvironment
 {
     // Constant parameters for the entire compilation:
-    const CompileMode         mode;
-    const Tier                tier;
     const DebugEnabled        debug;
     const ModuleKind          kind;
+    const CompileMode         mode;
+    const Tier                tier;
 
-    // Module fields filled out incrementally during decoding:
+    // Module fields decoded from the module environment (or initialized while
+    // validating an asm.js module) and immutable during compilation:
     MemoryUsage               memoryUsage;
-    Atomic<uint32_t>          minMemoryLength;
+    uint32_t                  minMemoryLength;
     Maybe<uint32_t>           maxMemoryLength;
     SigWithIdVector           sigs;
     SigWithIdPtrVector        funcSigs;
@@ -54,6 +73,9 @@ struct ModuleEnvironment
     ImportVector              imports;
     ExportVector              exports;
     Maybe<uint32_t>           startFuncIndex;
+    MaybeSectionRange         codeSection;
+
+    // Fields decoded as part of the wasm module tail:
     ElemSegmentVector         elemSegments;
     DataSegmentVector         dataSegments;
     NameInBytecodeVector      funcNames;
@@ -63,10 +85,10 @@ struct ModuleEnvironment
                                Tier tier = Tier::Ion,
                                DebugEnabled debug = DebugEnabled::False,
                                ModuleKind kind = ModuleKind::Wasm)
-      : mode(mode),
-        tier(tier),
-        debug(debug),
+      : debug(debug),
         kind(kind),
+        mode(mode),
+        tier(tier),
         memoryUsage(MemoryUsage::None),
         minMemoryLength(0)
     {}
@@ -78,23 +100,13 @@ struct ModuleEnvironment
         return sigs.length();
     }
     size_t numFuncs() const {
-        // asm.js pre-reserves a bunch of function index space which is
-        // incrementally filled in during function-body validation. Thus, there
-        // are a few possible interpretations of numFuncs() (total index space
-        // size vs.  exact number of imports/definitions encountered so far) and
-        // to simplify things we simply only define this quantity for wasm.
-        MOZ_ASSERT(!isAsmJS());
         return funcSigs.length();
     }
-    size_t numFuncDefs() const {
-        // asm.js overallocates the length of funcSigs and in general does not
-        // know the number of function definitions until it's done compiling.
-        MOZ_ASSERT(!isAsmJS());
-        return funcSigs.length() - funcImportGlobalDataOffsets.length();
-    }
     size_t numFuncImports() const {
-        MOZ_ASSERT(!isAsmJS());
         return funcImportGlobalDataOffsets.length();
+    }
+    size_t numFuncDefs() const {
+        return funcSigs.length() - funcImportGlobalDataOffsets.length();
     }
     bool usesMemory() const {
         return UsesMemory(memoryUsage);
@@ -348,6 +360,7 @@ class Decoder
 
     template <typename UInt>
     MOZ_MUST_USE bool readVarU(UInt* out) {
+        DebugOnly<const uint8_t*> before = cur_;
         const unsigned numBits = sizeof(UInt) * CHAR_BIT;
         const unsigned remainderBits = numBits % 7;
         const unsigned numBitsInSevens = numBits - remainderBits;
@@ -367,6 +380,7 @@ class Decoder
         if (!readFixedU8(&byte) || (byte & (unsigned(-1) << remainderBits)))
             return false;
         *out = u | (UInt(byte) << numBitsInSevens);
+        MOZ_ASSERT_IF(sizeof(UInt) == 4, unsigned(cur_ - before) <= MaxVarU32DecodedBytes);
         return true;
     }
 
@@ -411,11 +425,11 @@ class Decoder
     {
         MOZ_ASSERT(begin <= end);
     }
-    explicit Decoder(const Bytes& bytes, UniqueChars* error = nullptr)
+    explicit Decoder(const Bytes& bytes, size_t offsetInModule = 0, UniqueChars* error = nullptr)
       : beg_(bytes.begin()),
         end_(bytes.end()),
         cur_(bytes.begin()),
-        offsetInModule_(0),
+        offsetInModule_(offsetInModule),
         error_(error),
         resilientMode_(false)
     {}
@@ -540,15 +554,13 @@ class Decoder
 
     // See "section" description in Encoder.
 
-    static const uint32_t NotStarted = UINT32_MAX;
+    MOZ_MUST_USE bool readSectionHeader(uint8_t* id, SectionRange* range);
 
     MOZ_MUST_USE bool startSection(SectionId id,
                                    ModuleEnvironment* env,
-                                   uint32_t* sectionStart,
-                                   uint32_t* sectionSize,
+                                   MaybeSectionRange* range,
                                    const char* sectionName);
-    MOZ_MUST_USE bool finishSection(uint32_t sectionStart,
-                                    uint32_t sectionSize,
+    MOZ_MUST_USE bool finishSection(const SectionRange& range,
                                     const char* sectionName);
 
     // Custom sections do not cause validation errors unless the error is in
@@ -557,24 +569,21 @@ class Decoder
     MOZ_MUST_USE bool startCustomSection(const char* expected,
                                          size_t expectedLength,
                                          ModuleEnvironment* env,
-                                         uint32_t* sectionStart,
-                                         uint32_t* sectionSize);
+                                         MaybeSectionRange* range);
     template <size_t NameSizeWith0>
     MOZ_MUST_USE bool startCustomSection(const char (&name)[NameSizeWith0],
                                          ModuleEnvironment* env,
-                                         uint32_t* sectionStart,
-                                         uint32_t* sectionSize)
+                                         MaybeSectionRange* range)
     {
         MOZ_ASSERT(name[NameSizeWith0 - 1] == '\0');
-        return startCustomSection(name, NameSizeWith0 - 1, env, sectionStart, sectionSize);
+        return startCustomSection(name, NameSizeWith0 - 1, env, range);
     }
-    void finishCustomSection(uint32_t sectionStart, uint32_t sectionSize);
+    void finishCustomSection(const SectionRange& range);
     MOZ_MUST_USE bool skipCustomSection(ModuleEnvironment* env);
 
-    // The Name section has its own subsections. Like startSection, NotStart is
-    // returned as the endOffset if the given name subsection wasn't present.
+    // The Name section has its own optional subsections.
 
-    MOZ_MUST_USE bool startNameSubsection(NameType nameType, uint32_t* endOffset);
+    MOZ_MUST_USE bool startNameSubsection(NameType nameType, Maybe<uint32_t>* endOffset);
     MOZ_MUST_USE bool finishNameSubsection(uint32_t endOffset);
 
     // The infallible "unchecked" decoding functions can be used when we are
@@ -667,6 +676,16 @@ EncodeLocalEntries(Encoder& d, const ValTypeVector& locals);
 
 MOZ_MUST_USE bool
 DecodeLocalEntries(Decoder& d, ModuleKind kind, ValTypeVector* locals);
+
+// Returns whether the given [begin, end) prefix of a module's bytecode starts a
+// code section and, if so, returns the SectionRange of that code section.
+// Note that, even if this function returns 'false', [begin, end) may actually
+// be a valid module in the special case when there are no function defs and the
+// code section is not present. Such modules can be valid so the caller must
+// handle this special case.
+
+MOZ_MUST_USE bool
+StartsCodeSection(const uint8_t* begin, const uint8_t* end, SectionRange* range);
 
 // Calling DecodeModuleEnvironment decodes all sections up to the code section
 // and performs full validation of all those sections. The client must then

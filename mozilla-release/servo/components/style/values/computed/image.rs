@@ -13,6 +13,8 @@ use std::fmt;
 use style_traits::ToCss;
 use values::{Either, None_};
 use values::computed::{Angle, ComputedUrl, Context, Length, LengthOrPercentage, NumberOrPercentage, ToComputedValue};
+#[cfg(feature = "gecko")]
+use values::computed::Percentage;
 use values::computed::position::Position;
 use values::generics::image::{CompatMode, ColorStop as GenericColorStop, EndingShape as GenericEndingShape};
 use values::generics::image::{Gradient as GenericGradient, GradientItem as GenericGradientItem};
@@ -25,11 +27,11 @@ use values::specified::position::{X, Y};
 pub type ImageLayer = Either<None_, Image>;
 
 /// Computed values for an image according to CSS-IMAGES.
-/// https://drafts.csswg.org/css-images/#image-values
+/// <https://drafts.csswg.org/css-images/#image-values>
 pub type Image = GenericImage<Gradient, MozImageRect, ComputedUrl>;
 
 /// Computed values for a CSS gradient.
-/// https://drafts.csswg.org/css-images/#gradients
+/// <https://drafts.csswg.org/css-images/#gradients>
 pub type Gradient = GenericGradient<
     LineDirection,
     Length,
@@ -49,9 +51,7 @@ pub type GradientKind = GenericGradientKind<
 >;
 
 /// A computed gradient line direction.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
 pub enum LineDirection {
     /// An angle.
     Angle(Angle),
@@ -88,7 +88,13 @@ impl GenericLineDirection for LineDirection {
                 if compat_mode != CompatMode::Modern => true,
             LineDirection::Corner(..) => false,
             #[cfg(feature = "gecko")]
-            LineDirection::MozPosition(_, _) => false,
+            LineDirection::MozPosition(Some(Position {
+                horizontal: LengthOrPercentage::Percentage(Percentage(x)),
+                vertical: LengthOrPercentage::Percentage(Percentage(y)),
+            }), None) => {
+                // `50% 0%` is the default value for line direction.
+                x == 0.5 && y == 0.0
+            },
             _ => false,
         }
     }

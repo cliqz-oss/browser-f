@@ -11,9 +11,7 @@ use dom::TElement;
 use log::LogLevel::Trace;
 use matching::{CascadeVisitedMode, MatchMethods};
 use properties::{AnimationRules, CascadeFlags, ComputedValues};
-use properties::{IS_LINK, IS_ROOT_ELEMENT, IS_VISITED_LINK};
-use properties::{PROHIBIT_DISPLAY_CONTENTS, SKIP_ROOT_AND_ITEM_BASED_DISPLAY_FIXUP};
-use properties::{VISITED_DEPENDENT_ONLY, cascade};
+use properties::cascade;
 use properties::longhands::display::computed_value::T as display;
 use rule_tree::StrongRuleNode;
 use selector_parser::{PseudoElement, SelectorImpl};
@@ -110,18 +108,18 @@ fn eager_pseudo_is_definitely_not_generated(
     pseudo: &PseudoElement,
     style: &ComputedValues,
 ) -> bool {
-    use properties::computed_value_flags::{INHERITS_CONTENT, INHERITS_DISPLAY};
+    use properties::computed_value_flags::ComputedValueFlags;
 
     if !pseudo.is_before_or_after() {
         return false;
     }
 
-    if !style.flags.intersects(INHERITS_DISPLAY) &&
+    if !style.flags.intersects(ComputedValueFlags::INHERITS_DISPLAY) &&
        style.get_box().clone_display() == display::none {
         return true;
     }
 
-    if !style.flags.intersects(INHERITS_CONTENT) &&
+    if !style.flags.intersects(ComputedValueFlags::INHERITS_CONTENT) &&
        style.ineffective_content_property() {
         return true;
     }
@@ -293,7 +291,7 @@ where
         pseudo: Option<&PseudoElement>,
     ) -> ResolvedStyle {
         let mut style_if_visited = None;
-        if parent_style.map_or(false, |s| s.get_visited_style().is_some()) ||
+        if parent_style.map_or(false, |s| s.visited_style().is_some()) ||
             inputs.visited_rules.is_some() {
             style_if_visited = Some(self.cascade_style(
                 inputs.visited_rules.as_ref().or(inputs.rules.as_ref()),
@@ -384,7 +382,7 @@ where
         };
 
         let mut visited_rules = None;
-        if originating_element_style.style().get_visited_style().is_some() {
+        if originating_element_style.style().visited_style().is_some() {
             visited_rules = self.match_pseudo(
                 originating_element_style.style(),
                 pseudo,
@@ -550,14 +548,14 @@ where
 
         if self.element.skip_root_and_item_based_display_fixup() ||
            pseudo.map_or(false, |p| p.skip_item_based_display_fixup()) {
-            cascade_flags.insert(SKIP_ROOT_AND_ITEM_BASED_DISPLAY_FIXUP);
+            cascade_flags.insert(CascadeFlags::SKIP_ROOT_AND_ITEM_BASED_DISPLAY_FIXUP);
         }
 
         if pseudo.is_none() && self.element.is_link() {
-            cascade_flags.insert(IS_LINK);
+            cascade_flags.insert(CascadeFlags::IS_LINK);
             if self.element.is_visited_link() &&
                 self.context.shared.visited_styles_enabled {
-                cascade_flags.insert(IS_VISITED_LINK);
+                cascade_flags.insert(CascadeFlags::IS_VISITED_LINK);
             }
         }
 
@@ -567,15 +565,15 @@ where
             // visitedness of the relevant link should influence style.
             if pseudo.is_some() || !self.element.is_link() {
                 parent_style = parent_style.map(|s| {
-                    s.get_visited_style().unwrap_or(s)
+                    s.visited_style().unwrap_or(s)
                 });
             }
-            cascade_flags.insert(VISITED_DEPENDENT_ONLY);
+            cascade_flags.insert(CascadeFlags::VISITED_DEPENDENT_ONLY);
         }
         if self.element.is_native_anonymous() || pseudo.is_some() {
-            cascade_flags.insert(PROHIBIT_DISPLAY_CONTENTS);
+            cascade_flags.insert(CascadeFlags::PROHIBIT_DISPLAY_CONTENTS);
         } else if self.element.is_root() {
-            cascade_flags.insert(IS_ROOT_ELEMENT);
+            cascade_flags.insert(CascadeFlags::IS_ROOT_ELEMENT);
         }
 
         let implemented_pseudo = self.element.implemented_pseudo_element();

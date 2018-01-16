@@ -9,6 +9,7 @@
 
 #include "prsystem.h"
 
+#include "nsError.h"
 #include "nsHttp.h"
 #include "nsHttpHandler.h"
 #include "nsHttpChannel.h"
@@ -30,6 +31,7 @@
 #include "nsPrintfCString.h"
 #include "nsCOMPtr.h"
 #include "nsNetCID.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Printf.h"
 #include "mozilla/Sprintf.h"
 #include "nsAsyncRedirectVerifyHelper.h"
@@ -57,6 +59,7 @@
 #include "nsIXULRuntime.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsRFPService.h"
+#include "rust-helper/src/helper.h"
 
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/net/NeckoParent.h"
@@ -168,7 +171,20 @@ GetDeviceModelId() {
 // nsHttpHandler <public>
 //-----------------------------------------------------------------------------
 
-nsHttpHandler *gHttpHandler = nullptr;
+StaticRefPtr<nsHttpHandler> gHttpHandler;
+
+/* static */ already_AddRefed<nsHttpHandler>
+nsHttpHandler::GetInstance()
+{
+    if (!gHttpHandler) {
+        gHttpHandler = new nsHttpHandler();
+        DebugOnly<nsresult> rv = gHttpHandler->Init();
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+        ClearOnShutdown(&gHttpHandler);
+    }
+    RefPtr<nsHttpHandler> httpHandler = gHttpHandler;
+    return httpHandler.forget();
+}
 
 nsHttpHandler::nsHttpHandler()
     : mHttpVersion(NS_HTTP_VERSION_1_1)
@@ -243,6 +259,7 @@ nsHttpHandler::nsHttpHandler()
     , mSpdyPingThreshold(PR_SecondsToInterval(58))
     , mSpdyPingTimeout(PR_SecondsToInterval(8))
     , mConnectTimeout(90000)
+    , mTLSHandshakeTimeout(30000)
     , mParallelSpeculativeConnectLimit(6)
     , mSpeculativeConnectEnabled(true)
     , mRequestTokenBucketEnabled(true)
@@ -271,7 +288,7 @@ nsHttpHandler::nsHttpHandler()
     mUserAgentOverride.SetIsVoid(true);
 
     MOZ_ASSERT(!gHttpHandler, "HTTP handler already created!");
-    gHttpHandler = this;
+
     nsCOMPtr<nsIXULRuntime> runtime = do_GetService("@mozilla.org/xre/runtime;1");
     if (runtime) {
         runtime->GetProcessID(&mProcessId);
@@ -389,7 +406,6 @@ nsHttpHandler::~nsHttpHandler()
     // and it'll segfault.  NeckoChild will get cleaned up by process exit.
 
     nsHttp::DestroyAtomTable();
-    gHttpHandler = nullptr;
 }
 
 nsresult
@@ -1149,8 +1165,7 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
 
     // general.useragent.override
     if (PREF_CHANGED(UA_PREF("override"))) {
-        prefs->GetCharPref(UA_PREF("override"),
-                            getter_Copies(mUserAgentOverride));
+        prefs->GetCharPref(UA_PREF("override"), mUserAgentOverride);
         mUserAgentIsDirty = true;
     }
 
@@ -1327,8 +1342,8 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("version"))) {
-        nsCString httpVersion;
-        prefs->GetCharPref(HTTP_PREF("version"), getter_Copies(httpVersion));
+        nsAutoCString httpVersion;
+        prefs->GetCharPref(HTTP_PREF("version"), httpVersion);
         if (!httpVersion.IsVoid()) {
             if (httpVersion.EqualsLiteral("1.1"))
                 mHttpVersion = NS_HTTP_VERSION_1_1;
@@ -1340,8 +1355,8 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("proxy.version"))) {
-        nsCString httpVersion;
-        prefs->GetCharPref(HTTP_PREF("proxy.version"), getter_Copies(httpVersion));
+        nsAutoCString httpVersion;
+        prefs->GetCharPref(HTTP_PREF("proxy.version"), httpVersion);
         if (!httpVersion.IsVoid()) {
             if (httpVersion.EqualsLiteral("1.1"))
                 mProxyHttpVersion = NS_HTTP_VERSION_1_1;
@@ -1358,9 +1373,8 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("accept.default"))) {
-        nsCString accept;
-        rv = prefs->GetCharPref(HTTP_PREF("accept.default"),
-                                  getter_Copies(accept));
+        nsAutoCString accept;
+        rv = prefs->GetCharPref(HTTP_PREF("accept.default"), accept);
         if (NS_SUCCEEDED(rv)) {
             rv = SetAccept(accept.get());
             MOZ_ASSERT(NS_SUCCEEDED(rv));
@@ -1368,9 +1382,8 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("accept-encoding"))) {
-        nsCString acceptEncodings;
-        rv = prefs->GetCharPref(HTTP_PREF("accept-encoding"),
-                                  getter_Copies(acceptEncodings));
+        nsAutoCString acceptEncodings;
+        rv = prefs->GetCharPref(HTTP_PREF("accept-encoding"), acceptEncodings);
         if (NS_SUCCEEDED(rv)) {
             rv = SetAcceptEncodings(acceptEncodings.get(), false);
             MOZ_ASSERT(NS_SUCCEEDED(rv));
@@ -1378,9 +1391,9 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("accept-encoding.secure"))) {
-        nsCString acceptEncodings;
+        nsAutoCString acceptEncodings;
         rv = prefs->GetCharPref(HTTP_PREF("accept-encoding.secure"),
-                                  getter_Copies(acceptEncodings));
+                                acceptEncodings);
         if (NS_SUCCEEDED(rv)) {
             rv = SetAcceptEncodings(acceptEncodings.get(), true);
             MOZ_ASSERT(NS_SUCCEEDED(rv));
@@ -1388,9 +1401,8 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("default-socket-type"))) {
-        nsCString sval;
-        rv = prefs->GetCharPref(HTTP_PREF("default-socket-type"),
-                                getter_Copies(sval));
+        nsAutoCString sval;
+        rv = prefs->GetCharPref(HTTP_PREF("default-socket-type"), sval);
         if (NS_SUCCEEDED(rv)) {
             if (sval.IsEmpty())
                 mDefaultSocketType.SetIsVoid(true);
@@ -1575,6 +1587,14 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         if (NS_SUCCEEDED(rv))
             // the pref is in seconds, but the variable is in milliseconds
             mConnectTimeout = clamped(val, 1, 0xffff) * PR_MSEC_PER_SEC;
+    }
+
+    // The maximum amount of time to wait for a tls handshake to finish.
+    if (PREF_CHANGED(HTTP_PREF("tls-handshake-timeout"))) {
+        rv = prefs->GetIntPref(HTTP_PREF("tls-handshake-timeout"), &val);
+        if (NS_SUCCEEDED(rv))
+            // the pref is in seconds, but the variable is in milliseconds
+            mTLSHandshakeTimeout = clamped(val, 1, 0xffff) * PR_MSEC_PER_SEC;
     }
 
     // The maximum number of current global half open sockets allowable
@@ -1886,51 +1906,6 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
 #undef MULTI_PREF_CHANGED
 }
 
-
-/**
- * Currently, only regularizes the case of subtags.
- */
-static void
-CanonicalizeLanguageTag(char *languageTag)
-{
-    char *s = languageTag;
-    while (*s != '\0') {
-        *s = nsCRT::ToLower(*s);
-        s++;
-    }
-
-    s = languageTag;
-    bool isFirst = true;
-    bool seenSingleton = false;
-    while (*s != '\0') {
-        char *subTagEnd = strchr(s, '-');
-        if (subTagEnd == nullptr) {
-            subTagEnd = strchr(s, '\0');
-        }
-
-        if (isFirst) {
-            isFirst = false;
-        } else if (seenSingleton) {
-            // Do nothing
-        } else {
-            size_t subTagLength = subTagEnd - s;
-            if (subTagLength == 1) {
-                seenSingleton = true;
-            } else if (subTagLength == 2) {
-                *s = nsCRT::ToUpper(*s);
-                *(s + 1) = nsCRT::ToUpper(*(s + 1));
-            } else if (subTagLength == 4) {
-                *s = nsCRT::ToUpper(*s);
-            }
-        }
-
-        s = subTagEnd;
-        if (*s != '\0') {
-            s++;
-        }
-    }
-}
-
 /**
  *  Allocates a C string into that contains a ISO 639 language list
  *  notated with HTTP "q" values for output with a HTTP Accept-Language
@@ -1950,78 +1925,9 @@ PrepareAcceptLanguages(const char *i_AcceptLanguages, nsACString &o_AcceptLangua
     if (!i_AcceptLanguages)
         return NS_OK;
 
-    uint32_t n, count_n, size, wrote;
-    double q, dec;
-    char *p, *p2, *token, *q_Accept, *o_Accept;
-    const char *comma;
-    int32_t available;
-
-    o_Accept = strdup(i_AcceptLanguages);
-    if (!o_Accept)
-        return NS_ERROR_OUT_OF_MEMORY;
-    for (p = o_Accept, n = size = 0; '\0' != *p; p++) {
-        if (*p == ',') n++;
-            size++;
-    }
-
-    available = size + ++n * 11 + 1;
-    q_Accept = new char[available];
-    if (!q_Accept) {
-        free(o_Accept);
-        return NS_ERROR_OUT_OF_MEMORY;
-    }
-    *q_Accept = '\0';
-    q = 1.0;
-    dec = q / (double) n;
-    count_n = 0;
-    p2 = q_Accept;
-    for (token = nsCRT::strtok(o_Accept, ",", &p);
-         token != nullptr;
-         token = nsCRT::strtok(p, ",", &p))
-    {
-        token = net_FindCharNotInSet(token, HTTP_LWS);
-        char* trim;
-        trim = net_FindCharInSet(token, ";" HTTP_LWS);
-        if (trim != nullptr)  // remove "; q=..." if present
-            *trim = '\0';
-
-        if (*token != '\0') {
-            CanonicalizeLanguageTag(token);
-
-            comma = count_n++ != 0 ? "," : ""; // delimiter if not first item
-            uint32_t u = QVAL_TO_UINT(q);
-
-            // Only display q-value if less than 1.00.
-            if (u < 100) {
-                const char *qval_str;
-
-                // With a small number of languages, one decimal place is enough to prevent duplicate q-values.
-                // Also, trailing zeroes do not add any information, so they can be removed.
-                if ((n < 10) || ((u % 10) == 0)) {
-                    u = (u + 5) / 10;
-                    qval_str = "%s%s;q=0.%u";
-                } else {
-                    // Values below 10 require zero padding.
-                    qval_str = "%s%s;q=0.%02u";
-                }
-
-                wrote = snprintf(p2, available, qval_str, comma, token, u);
-            } else {
-                wrote = snprintf(p2, available, "%s%s", comma, token);
-            }
-
-            q -= dec;
-            p2 += wrote;
-            available -= wrote;
-            MOZ_ASSERT(available > 0, "allocated string not long enough");
-        }
-    }
-    free(o_Accept);
-
-    o_AcceptLanguages.Assign((const char *) q_Accept);
-    delete [] q_Accept;
-
-    return NS_OK;
+    const nsAutoCString ns_accept_languages(i_AcceptLanguages);
+    return rust_prepare_accept_languages(&ns_accept_languages,
+                                         &o_AcceptLanguages);
 }
 
 nsresult

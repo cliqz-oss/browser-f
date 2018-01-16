@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -130,7 +130,7 @@ nsCSSValue::nsCSSValue(mozilla::css::GridTemplateAreasValue* aValue)
   mValue.mGridTemplateAreas->AddRef();
 }
 
-nsCSSValue::nsCSSValue(css::FontFamilyListRefCnt* aValue)
+nsCSSValue::nsCSSValue(SharedFontList* aValue)
   : mUnit(eCSSUnit_FontFamilyList)
 {
   mValue.mFontFamilyList = aValue;
@@ -320,7 +320,8 @@ bool nsCSSValue::operator==(const nsCSSValue& aOther) const
       return *mValue.mGridTemplateAreas == *aOther.mValue.mGridTemplateAreas;
     }
     else if (eCSSUnit_FontFamilyList == mUnit) {
-      return *mValue.mFontFamilyList == *aOther.mValue.mFontFamilyList;
+      return mValue.mFontFamilyList->mNames ==
+             aOther.mValue.mFontFamilyList->mNames;
     }
     else if (eCSSUnit_AtomIdent == mUnit) {
       return mValue.mAtom == aOther.mValue.mAtom;
@@ -511,7 +512,7 @@ void nsCSSValue::SetStringValue(const nsString& aValue,
 }
 
 void
-nsCSSValue::SetAtomIdentValue(already_AddRefed<nsIAtom> aValue)
+nsCSSValue::SetAtomIdentValue(already_AddRefed<nsAtom> aValue)
 {
   Reset();
   mUnit = eCSSUnit_AtomIdent;
@@ -617,12 +618,11 @@ void nsCSSValue::SetGridTemplateAreas(mozilla::css::GridTemplateAreasValue* aVal
   mValue.mGridTemplateAreas->AddRef();
 }
 
-void nsCSSValue::SetFontFamilyListValue(css::FontFamilyListRefCnt* aValue)
+void nsCSSValue::SetFontFamilyListValue(already_AddRefed<SharedFontList> aValue)
 {
   Reset();
   mUnit = eCSSUnit_FontFamilyList;
-  mValue.mFontFamilyList = aValue;
-  mValue.mFontFamilyList->AddRef();
+  mValue.mFontFamilyList = aValue.take();
 }
 
 void nsCSSValue::SetPairValue(const nsCSSValuePair* aValue)
@@ -989,7 +989,7 @@ void
 nsCSSValue::AtomizeIdentValue()
 {
   MOZ_ASSERT(mUnit == eCSSUnit_Ident);
-  nsCOMPtr<nsIAtom> atom = NS_Atomize(GetStringBufferValue());
+  RefPtr<nsAtom> atom = NS_Atomize(GetStringBufferValue());
   Reset();
   mUnit = eCSSUnit_AtomIdent;
   mValue.mAtom = atom.forget().take();
@@ -1989,7 +1989,7 @@ nsCSSValue::AppendToString(nsCSSPropertyID aProperty,
       nsStyleUtil::AppendEscapedCSSString(areas->mTemplates[i], aResult);
     }
   } else if (eCSSUnit_FontFamilyList == unit) {
-    nsStyleUtil::AppendEscapedCSSFontFamilyList(*mValue.mFontFamilyList,
+    nsStyleUtil::AppendEscapedCSSFontFamilyList(mValue.mFontFamilyList,
                                                 aResult);
   } else if (eCSSUnit_AtomIdent == unit) {
     nsDependentAtomString buffer(GetAtomValue());
@@ -2208,6 +2208,9 @@ nsCSSValue::SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
       break;
 
     case eCSSUnit_FontFamilyList:
+      // The SharedFontList is a refcounted object, but is unique per
+      // declaration. We don't measure the references from computed
+      // values.
       n += mValue.mFontFamilyList->SizeOfIncludingThis(aMallocSizeOf);
       break;
 

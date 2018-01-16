@@ -24,7 +24,6 @@ const BLANK_URL_FOR_CLEARING = "data:text/html;charset=UTF-8,%3C%21%2D%2DCLEAR%2
 CU.import("resource://gre/modules/Timer.jsm");
 CU.import("chrome://reftest/content/AsyncSpellCheckTestHelper.jsm");
 CU.import("resource://gre/modules/Services.jsm");
-CU.import('resource://gre/modules/XPCOMUtils.jsm');
 
 var gBrowserIsRemote;
 var gIsWebRenderEnabled;
@@ -39,6 +38,7 @@ var gHaveCanvasSnapshot = false;
 var gExplicitPendingPaintCount = 0;
 var gExplicitPendingPaintsCompleteHook;
 var gCurrentURL;
+var gCurrentURLTargetType;
 var gCurrentTestType;
 var gTimeoutHook = null;
 var gFailureTimeout = null;
@@ -56,6 +56,10 @@ const TYPE_LOAD = 'load';  // test without a reference (just test that it does
 const TYPE_SCRIPT = 'script'; // test contains individual test results
 const TYPE_PRINT = 'print'; // test and reference will be printed to PDF's and
                             // compared structurally
+
+// keep this in sync with globals.jsm
+const URL_TARGET_TYPE_TEST = 0;      // first url
+const URL_TARGET_TYPE_REFERENCE = 1; // second url, if any
 
 function markupDocumentViewer() {
     return docShell.contentViewer;
@@ -124,7 +128,7 @@ function OnInitialLoad()
     LogInfo("Using browser remote="+ gBrowserIsRemote +"\n");
 }
 
-function SetFailureTimeout(cb, timeout)
+function SetFailureTimeout(cb, timeout, uri)
 {
   var targetTime = Date.now() + timeout;
 
@@ -139,10 +143,15 @@ function SetFailureTimeout(cb, timeout)
     }
   }
 
+  // Once OnDocumentLoad is called to handle the 'load' event it will update
+  // this error message to reflect what stage of the processing it has reached
+  // as it advances to each stage in turn.
+  gFailureReason = "timed out after " + timeout +
+                   " ms waiting for 'load' event for " + uri;
   gFailureTimeout = setTimeout(wrapper, timeout);
 }
 
-function StartTestURI(type, uri, timeout)
+function StartTestURI(type, uri, uriTargetType, timeout)
 {
     // The GC is only able to clean up compartments after the CC runs. Since
     // the JS ref tests disable the normal browser chrome and do not otherwise
@@ -159,12 +168,13 @@ function StartTestURI(type, uri, timeout)
 
     gCurrentTestType = type;
     gCurrentURL = uri;
+    gCurrentURLTargetType = uriTargetType;
 
     gCurrentTestStartTime = Date.now();
     if (gFailureTimeout != null) {
         SendException("program error managing timeouts\n");
     }
-    SetFailureTimeout(LoadFailed, timeout);
+    SetFailureTimeout(LoadFailed, timeout, uri);
 
     LoadURI(gCurrentURL);
 }
@@ -218,12 +228,12 @@ function setupPrintMode() {
 // Prints current page to a PDF file and calls callback when sucessfully
 // printed and written.
 function printToPdf(callback) {
-    var currentDoc = content.document;
-    var isPrintSelection = false;
-    var printRange = '';
+    let currentDoc = content.document;
+    let isPrintSelection = false;
+    let printRange = '';
 
     if (currentDoc) {
-        var contentRootElement = currentDoc.documentElement;
+        let contentRootElement = currentDoc.documentElement;
         printRange = contentRootElement.getAttribute("reftest-print-range") || '';
     }
 
@@ -236,13 +246,13 @@ function printToPdf(callback) {
         }
     }
 
-    var fileName = "reftest-print.pdf";
-    var file = Services.dirsvc.get("TmpD", CI.nsIFile);
+    let fileName = "reftest-print.pdf";
+    let file = Services.dirsvc.get("TmpD", CI.nsIFile);
     file.append(fileName);
     file.createUnique(file.NORMAL_FILE_TYPE, 0o644);
 
-    var PSSVC = CC[PRINTSETTINGS_CONTRACTID].getService(CI.nsIPrintSettingsService);
-    var ps = PSSVC.newPrintSettings;
+    let PSSVC = CC[PRINTSETTINGS_CONTRACTID].getService(CI.nsIPrintSettingsService);
+    let ps = PSSVC.newPrintSettings;
     ps.printSilent = true;
     ps.showPrintProgress = false;
     ps.printBGImages = true;
@@ -256,12 +266,12 @@ function printToPdf(callback) {
         ps.printRange = CI.nsIPrintSettings.kRangeSelection;
     } else if (printRange) {
         ps.printRange = CI.nsIPrintSettings.kRangeSpecifiedPageRange;
-        var range = printRange.split('-');
+        let range = printRange.split('-');
         ps.startPageRange = +range[0] || 1;
         ps.endPageRange = +range[1] || 1;
     }
 
-    var webBrowserPrint = content.QueryInterface(CI.nsIInterfaceRequestor)
+    let webBrowserPrint = content.QueryInterface(CI.nsIInterfaceRequestor)
                                  .getInterface(CI.nsIWebBrowserPrint);
     webBrowserPrint.print(ps, {
         onStateChange: function(webProgress, request, stateFlags, status) {
@@ -440,6 +450,12 @@ function shouldSnapshotWholePage(contentRootElement) {
 function getNoPaintElements(contentRootElement) {
     return contentRootElement.getElementsByClassName('reftest-no-paint');
 }
+function getNoDisplayListElements(contentRootElement) {
+    return contentRootElement.getElementsByClassName('reftest-no-display-list');
+}
+function getDisplayListElements(contentRootElement) {
+    return contentRootElement.getElementsByClassName('reftest-display-list');
+}
 
 function getOpaqueLayerElements(contentRootElement) {
     return contentRootElement.getElementsByClassName('reftest-opaque-layer');
@@ -598,6 +614,14 @@ function WaitForTestEnd(contentRootElement, inPrintMode, spellCheckedElements) {
                 for (var i = 0; i < elements.length; ++i) {
                   windowUtils().checkAndClearPaintedState(elements[i]);
                 }
+                elements = getNoDisplayListElements(contentRootElement);
+                for (var i = 0; i < elements.length; ++i) {
+                  windowUtils().checkAndClearDisplayListState(elements[i]);
+                }
+                elements = getDisplayListElements(contentRootElement);
+                for (var i = 0; i < elements.length; ++i) {
+                  windowUtils().checkAndClearDisplayListState(elements[i]);
+                }
                 var notification = content.document.createEvent("Events");
                 notification.initEvent("MozReftestInvalidate", true, false);
                 contentRootElement.dispatchEvent(notification);
@@ -696,6 +720,23 @@ function WaitForTestEnd(contentRootElement, inPrintMode, spellCheckedElements) {
                   if (windowUtils().checkAndClearPaintedState(elements[i])) {
                       SendFailedNoPaint();
                   }
+              }
+              // We only support retained display lists in the content process
+              // right now, so don't fail reftest-no-display-list tests when
+              // we don't have e10s.
+              if (gBrowserIsRemote) {
+                elements = getNoDisplayListElements(contentRootElement);
+                for (var i = 0; i < elements.length; ++i) {
+                    if (windowUtils().checkAndClearDisplayListState(elements[i])) {
+                        SendFailedNoDisplayList();
+                    }
+                }
+                elements = getDisplayListElements(contentRootElement);
+                for (var i = 0; i < elements.length; ++i) {
+                    if (!windowUtils().checkAndClearDisplayListState(elements[i])) {
+                        SendFailedDisplayList();
+                    }
+                }
               }
               CheckLayerAssertions(contentRootElement);
             }
@@ -848,6 +889,11 @@ function CheckLayerAssertions(contentRootElement)
     if (!contentRootElement) {
         return;
     }
+    if (gIsWebRenderEnabled) {
+        // WebRender doesn't use layers, so let's not try checking layers
+        // assertions.
+        return;
+    }
 
     var opaqueLayerElements = getOpaqueLayerElements(contentRootElement);
     for (var i = 0; i < opaqueLayerElements.length; ++i) {
@@ -915,6 +961,7 @@ function RecordResult()
     gFailureReason = null;
     gFailureTimeout = null;
     gCurrentURL = null;
+    gCurrentURLTargetType = undefined;
 
     if (gCurrentTestType == TYPE_PRINT) {
         printToPdf(function (status, fileName) {
@@ -1075,7 +1122,9 @@ function RegisterMessageListeners()
     );
     addMessageListener(
         "reftest:LoadTest",
-        function (m) { RecvLoadTest(m.json.type, m.json.uri, m.json.timeout); }
+        function (m) { RecvLoadTest(m.json.type, m.json.uri,
+                                    m.json.uriTargetType,
+                                    m.json.timeout); }
     );
     addMessageListener(
         "reftest:ResetRenderingState",
@@ -1089,19 +1138,19 @@ function RecvClear()
     LoadURI(BLANK_URL_FOR_CLEARING);
 }
 
-function RecvLoadTest(type, uri, timeout)
+function RecvLoadTest(type, uri, uriTargetType, timeout)
 {
-    StartTestURI(type, uri, timeout);
+    StartTestURI(type, uri, uriTargetType, timeout);
 }
 
 function RecvLoadScriptTest(uri, timeout)
 {
-    StartTestURI(TYPE_SCRIPT, uri, timeout);
+    StartTestURI(TYPE_SCRIPT, uri, URL_TARGET_TYPE_TEST, timeout);
 }
 
 function RecvLoadPrintTest(uri, timeout)
 {
-    StartTestURI(TYPE_PRINT, uri, timeout);
+    StartTestURI(TYPE_PRINT, uri, URL_TARGET_TYPE_TEST, timeout);
 }
 
 function RecvResetRenderingState()
@@ -1152,6 +1201,16 @@ function SendFailedLoad(why)
 function SendFailedNoPaint()
 {
     sendAsyncMessage("reftest:FailedNoPaint");
+}
+
+function SendFailedNoDisplayList()
+{
+    sendAsyncMessage("reftest:FailedNoDisplayList");
+}
+
+function SendFailedDisplayList()
+{
+    sendAsyncMessage("reftest:FailedDisplayList");
 }
 
 function SendFailedOpaqueLayer(why)

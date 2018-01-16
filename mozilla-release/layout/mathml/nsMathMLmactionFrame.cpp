@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -195,10 +196,12 @@ nsMathMLmactionFrame::SetInitialChildList(ChildListID     aListID,
 
 nsresult
 nsMathMLmactionFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                       nsIAtom* aAttribute,
+                                       nsAtom* aAttribute,
                                        int32_t  aModType)
 {
   bool needsReflow = false;
+
+  InvalidateFrame();
 
   if (aAttribute == nsGkAtoms::actiontype_) {
     // updating mActionType ...
@@ -223,7 +226,7 @@ nsMathMLmactionFrame::AttributeChanged(int32_t  aNameSpaceID,
   }
 
   if (needsReflow) {
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eTreeChange, NS_FRAME_IS_DIRTY);
   }
 
@@ -271,7 +274,7 @@ nsMathMLmactionFrame::MouseListener::HandleEvent(nsIDOMEvent* aEvent)
     mOwner->MouseOut();
   }
   else {
-    NS_ABORT();
+    MOZ_ASSERT_UNREACHABLE("Unexpected eventType");
   }
 
   return NS_OK;
@@ -330,7 +333,7 @@ nsMathMLmactionFrame::MouseClick()
       mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::selection_, value, notify);
 
       // Now trigger a content-changed reflow...
-      PresContext()->PresShell()->
+      PresShell()->
         FrameNeedsReflow(mSelectedFrame, nsIPresShell::eTreeChange,
                          NS_FRAME_IS_DIRTY);
     }

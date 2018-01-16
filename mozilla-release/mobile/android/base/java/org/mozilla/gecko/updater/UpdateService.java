@@ -147,8 +147,8 @@ public class UpdateService extends IntentService {
 
         mPrefs = getSharedPreferences(PREFS_NAME, 0);
         mNotificationManager = NotificationManagerCompat.from(this);
-        mConnectivityManager = (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
-        mWifiLock = ((WifiManager)getSystemService(Context.WIFI_SERVICE))
+        mConnectivityManager = (ConnectivityManager) getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        mWifiLock = ((WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE))
                     .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, PREFS_NAME);
         mCancelDownload = false;
     }
@@ -783,7 +783,7 @@ public class UpdateService extends IntentService {
         editor.commit();
     }
 
-    private class UpdateInfo {
+    private static final class UpdateInfo {
         public URI uri;
         public String buildID;
         public String hashFunction;

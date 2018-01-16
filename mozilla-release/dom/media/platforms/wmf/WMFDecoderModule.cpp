@@ -202,6 +202,11 @@ bool
 WMFDecoderModule::Supports(const TrackInfo& aTrackInfo,
                            DecoderDoctorDiagnostics* aDiagnostics) const
 {
+  const auto videoInfo = aTrackInfo.GetAsVideoInfo();
+  if (videoInfo && !SupportsBitDepth(videoInfo->mBitDepth, aDiagnostics)) {
+    return false;
+  }
+
   if ((aTrackInfo.mMimeType.EqualsLiteral("audio/mp4a-latm") ||
        aTrackInfo.mMimeType.EqualsLiteral("audio/mp4")) &&
        WMFDecoderModule::HasAAC()) {
@@ -215,6 +220,12 @@ WMFDecoderModule::Supports(const TrackInfo& aTrackInfo,
     return true;
   }
   if (MediaPrefs::PDMWMFVP9DecoderEnabled()) {
+    static const uint32_t VP8_USABLE_BUILD = 16287;
+    if (VPXDecoder::IsVP8(aTrackInfo.mMimeType) &&
+        IsWindowsBuildOrLater(VP8_USABLE_BUILD) &&
+        CanCreateWMFDecoder<CLSID_WebmMfVpxDec>()) {
+      return true;
+    }
     if (VPXDecoder::IsVP9(aTrackInfo.mMimeType) &&
         ((gfxPrefs::PDMWMFAMDVP9DecoderEnabled() &&
           CanCreateWMFDecoder<CLSID_AMDWebmMfVp9Dec>()) ||

@@ -126,6 +126,7 @@ load 646184.html
 load 658845-1.svg
 load 666869.html
 load 667336-1.html
+load 675516.xhtml
 load 675621-1.html
 load 677194.html
 load 679459.html
@@ -203,8 +204,10 @@ load 1158412.html
 load 1181619.html
 load 1230422.html
 load 1251361.html
+pref(dom.webcomponents.enabled,true) load 1281715.html
 load 1304437.html
 pref(dom.IntersectionObserver.enabled,true) load 1324209.html
+load 1324500.html
 pref(dom.IntersectionObserver.enabled,true) load 1326194-1.html
 pref(dom.IntersectionObserver.enabled,true) load 1326194-2.html
 pref(dom.IntersectionObserver.enabled,true) load 1332939.html
@@ -216,9 +219,9 @@ pref(dom.IntersectionObserver.enabled,true) load 1369363.xul
 load 1370072.html
 pref(clipboard.autocopy,true) load 1370737.html
 pref(dom.IntersectionObserver.enabled,true) load 1370968.html
+load 1373750.html
 load 1377826.html
 skip-if(stylo&&isDebugBuild&&winWidget) load structured_clone_container_throws.html # Bug 1383845
-HTTP(..) load xhr_abortinprogress.html
 load xhr_empty_datauri.html
 load xhr_html_nullresponse.html
 load 1383478.html
@@ -226,3 +229,10 @@ load 1383780.html
 pref(clipboard.autocopy,true) load 1385272-1.html
 load 1393806.html
 load 1396466.html
+load 1400701.html
+load 1403377.html
+load 1405771.html
+load 1406109-1.html
+pref(dom.webcomponents.enabled,true) load 1324463.html
+pref(dom.webcomponents.customelements.enabled,true) load 1413815.html
+load 1411473.html

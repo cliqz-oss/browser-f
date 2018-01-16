@@ -82,7 +82,7 @@ this.Doctor = {
           }
         }
       } finally {
-        this.lastRepairAdvance = this._now();
+        this.lastRepairAdvance = Math.floor(this._now());
       }
     }
   },
@@ -186,7 +186,7 @@ this.Doctor = {
           throw ex;
         }
         log.error(`Failed to run validation on ${engine.name}!`, ex);
-        Observers.notify("weave:engine:validate:error", ex, engine.name)
+        Observers.notify("weave:engine:validate:error", ex, engine.name);
         // Keep validating -- there's no reason to think that a failure for one
         // validator would mean the others will fail.
       }
@@ -247,7 +247,7 @@ this.Doctor = {
   // functions used so tests can mock them
   _now() {
     // We use the server time, which is SECONDS
-    return AsyncResource.serverTime;
+    return Resource.serverTime;
   },
 
   _getRepairRequestor(name) {
@@ -257,4 +257,4 @@ this.Doctor = {
   _getAllRepairRequestors() {
     return getAllRepairRequestors();
   }
-}
+};

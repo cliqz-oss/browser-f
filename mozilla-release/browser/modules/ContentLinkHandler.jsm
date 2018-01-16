@@ -114,8 +114,16 @@ function setIconForLink(aIconInfo, aChromeGlobal) {
     "Link:SetIcon",
     { url: aIconInfo.iconUri.spec,
       loadingPrincipal: aIconInfo.loadingPrincipal,
+      requestContextID: aIconInfo.requestContextID,
       canUseForTab: !aIconInfo.isRichIcon,
     });
+}
+
+/**
+ * Checks whether the icon info represents an ICO image.
+ */
+function isICO(icon) {
+  return icon.type == "image/x-icon" || icon.type == "image/vnd.microsoft.icon";
 }
 
 /*
@@ -134,8 +142,10 @@ function faviconTimeoutCallback(aFaviconLoads, aPageUrl, aChromeGlobal) {
   if (!load)
     return;
 
-  // SVG and ico are the preferred icons
-  let preferredIcon;
+  let preferredIcon = {
+    type: null
+  };
+  let preferredWidth = 16 * Math.ceil(aChromeGlobal.content.devicePixelRatio);
   // Other links with the "icon" tag are the default icons
   let defaultIcon;
   // Rich icons are either apple-touch or fluid icons, or the ones of the
@@ -143,11 +153,17 @@ function faviconTimeoutCallback(aFaviconLoads, aPageUrl, aChromeGlobal) {
   let largestRichIcon;
 
   for (let icon of load.iconInfos) {
-    if (icon.type === "image/svg+xml" ||
-      icon.type === "image/x-icon" ||
-      icon.type === "image/vnd.microsoft.icon") {
-      preferredIcon = icon;
-      continue;
+    if (!icon.isRichIcon) {
+      // First check for svg. If it's not available check for an icon with a
+      // size adapt to the current resolution. If both are not available, prefer
+      // ico files. When multiple icons are in the same set, the latest wins.
+      if (icon.type == "image/svg+xml") {
+        preferredIcon = icon;
+      } else if (icon.width == preferredWidth && preferredIcon.type != "image/svg+xml") {
+        preferredIcon = icon;
+      } else if (isICO(icon) && (preferredIcon.type == null || isICO(preferredIcon))) {
+        preferredIcon = icon;
+      }
     }
 
     // Note that some sites use hi-res icons without specifying them as
@@ -169,7 +185,7 @@ function faviconTimeoutCallback(aFaviconLoads, aPageUrl, aChromeGlobal) {
   if (largestRichIcon) {
     setIconForLink(largestRichIcon, aChromeGlobal);
   }
-  if (preferredIcon) {
+  if (preferredIcon.type) {
     setIconForLink(preferredIcon, aChromeGlobal);
   } else if (defaultIcon) {
     setIconForLink(defaultIcon, aChromeGlobal);
@@ -177,6 +193,21 @@ function faviconTimeoutCallback(aFaviconLoads, aPageUrl, aChromeGlobal) {
 
   load.timer = null;
   aFaviconLoads.delete(aPageUrl);
+}
+
+/*
+ * Get request context ID of the link dom node's document.
+ *
+ * @param {DOMNode} aLink A link dom node.
+ * @return {Number} The request context ID.
+ *                  Return null when document's load group is not available.
+ */
+function getLinkRequestContextID(aLink) {
+  try {
+    return aLink.ownerDocument.documentLoadGroup.requestContextID;
+  } catch (e) {
+    return null;
+  }
 }
 
 /*
@@ -201,12 +232,13 @@ function handleFaviconLink(aLink, aIsRichIcon, aChromeGlobal, aFaviconLoads) {
     width,
     isRichIcon: aIsRichIcon,
     type: aLink.type,
-    loadingPrincipal: aLink.ownerDocument.nodePrincipal
+    loadingPrincipal: aLink.ownerDocument.nodePrincipal,
+    requestContextID: getLinkRequestContextID(aLink)
   };
 
   if (aFaviconLoads.has(pageUrl)) {
     let load = aFaviconLoads.get(pageUrl);
-    load.iconInfos.push(iconInfo)
+    load.iconInfos.push(iconInfo);
     // Re-initialize the timer
     load.timer.delay = FAVICON_PARSING_TIMEOUT;
   } else {

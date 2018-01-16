@@ -74,7 +74,7 @@ NS_QUERYFRAME_TAIL_INHERITING(nsLeafBoxFrame)
 
 nsresult
 nsTextBoxFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                 nsIAtom*        aAttribute,
+                                 nsAtom*        aAttribute,
                                  int32_t         aModType)
 {
     bool aResize;
@@ -83,7 +83,7 @@ nsTextBoxFrame::AttributeChanged(int32_t         aNameSpaceID,
     UpdateAttributes(aAttribute, aResize, aRedraw);
 
     if (aResize) {
-        PresContext()->PresShell()->
+        PresShell()->
             FrameNeedsReflow(this, nsIPresShell::eStyleChange,
                              NS_FRAME_IS_DIRTY);
     } else if (aRedraw) {
@@ -131,11 +131,11 @@ nsTextBoxFrame::Init(nsIContent*       aContent,
 }
 
 void
-nsTextBoxFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTextBoxFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
     // unregister access key
     RegUnregAccessKey(false);
-    nsLeafBoxFrame::DestroyFrom(aDestructRoot);
+    nsLeafBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 bool
@@ -215,7 +215,7 @@ nsTextBoxFrame::UpdateAccesskey(WeakFrame& aWeakThis)
         RecomputeTitle();
         mAccessKey = accesskey;
         UpdateAccessTitle();
-        PresContext()->PresShell()->
+        PresShell()->
             FrameNeedsReflow(this, nsIPresShell::eStyleChange,
                              NS_FRAME_IS_DIRTY);
         return true;
@@ -224,7 +224,7 @@ nsTextBoxFrame::UpdateAccesskey(WeakFrame& aWeakThis)
 }
 
 void
-nsTextBoxFrame::UpdateAttributes(nsIAtom*         aAttribute,
+nsTextBoxFrame::UpdateAttributes(nsAtom*         aAttribute,
                                  bool&          aResize,
                                  bool&          aRedraw)
 {
@@ -518,7 +518,7 @@ nsTextBoxFrame::DrawText(gfxContext&         aRenderingContext,
     }
 
     RefPtr<gfxContext> refContext =
-        PresContext()->PresShell()->CreateReferenceRenderingContext();
+        PresShell()->CreateReferenceRenderingContext();
     DrawTarget* refDrawTarget = refContext->GetDrawTarget();
 
     CalculateUnderline(refDrawTarget, *fontMet);
@@ -526,8 +526,6 @@ nsTextBoxFrame::DrawText(gfxContext&         aRenderingContext,
     nscolor c = aOverrideColor ? *aOverrideColor : StyleColor()->mColor;
     ColorPattern color(ToDeviceColor(c));
     aRenderingContext.SetColor(Color::FromABGR(c));
-    aRenderingContext.SetFontSmoothingBackgroundColor(
-        Color::FromABGR(StyleUserInterface()->mFontSmoothingBackgroundColor));
 
     nsresult rv = NS_ERROR_FAILURE;
 
@@ -599,8 +597,6 @@ nsTextBoxFrame::DrawText(gfxContext&         aRenderingContext,
       params.style = strikeStyle;
       nsCSSRendering::PaintDecorationLine(this, *drawTarget, params);
     }
-
-    aRenderingContext.SetFontSmoothingBackgroundColor(Color());
 }
 
 void
@@ -982,7 +978,7 @@ nsTextBoxFrame::DoXULLayout(nsBoxLayoutState& aBoxLayoutState)
     if (mNeedsReflowCallback) {
         nsIReflowCallback* cb = new nsAsyncAccesskeyUpdate(this);
         if (cb) {
-            PresContext()->PresShell()->PostReflowCallback(cb);
+            PresShell()->PostReflowCallback(cb);
         }
         mNeedsReflowCallback = false;
     }
@@ -1105,7 +1101,7 @@ nsTextBoxFrame::CalcDrawRect(gfxContext &aRenderingContext)
     // changed.
     nsAccessibilityService* accService = GetAccService();
     if (accService) {
-        accService->UpdateLabelValue(PresContext()->PresShell(), mContent,
+        accService->UpdateLabelValue(PresShell(), mContent,
                                      mCroppedTitle);
     }
 #endif

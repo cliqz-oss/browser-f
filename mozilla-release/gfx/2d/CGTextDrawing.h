@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #ifndef _MOZILLA_GFX_SKIACGPOPUPDRAWER_H
@@ -42,20 +43,16 @@ ColorToCGColor(CGColorSpaceRef aColorSpace, const Color& aColor)
 
 static bool
 SetFontSmoothingBackgroundColor(CGContextRef aCGContext, CGColorSpaceRef aColorSpace,
-                                const GlyphRenderingOptions* aRenderingOptions)
+                                const Color& aFontSmoothingBackgroundColor)
 {
-  if (aRenderingOptions) {
-    Color fontSmoothingBackgroundColor =
-      static_cast<const GlyphRenderingOptionsCG*>(aRenderingOptions)->FontSmoothingBackgroundColor();
-    if (fontSmoothingBackgroundColor.a > 0) {
-      CGContextSetFontSmoothingBackgroundColorFunc setFontSmoothingBGColorFunc =
-        GetCGContextSetFontSmoothingBackgroundColorFunc();
-      if (setFontSmoothingBGColorFunc) {
-        CGColorRef color = ColorToCGColor(aColorSpace, fontSmoothingBackgroundColor);
-        setFontSmoothingBGColorFunc(aCGContext, color);
-        CGColorRelease(color);
-        return true;
-      }
+  if (aFontSmoothingBackgroundColor.a > 0) {
+    CGContextSetFontSmoothingBackgroundColorFunc setFontSmoothingBGColorFunc =
+      GetCGContextSetFontSmoothingBackgroundColorFunc();
+    if (setFontSmoothingBGColorFunc) {
+      CGColorRef color = ColorToCGColor(aColorSpace, aFontSmoothingBackgroundColor);
+      setFontSmoothingBGColorFunc(aCGContext, color);
+      CGColorRelease(color);
+      return true;
     }
   }
 

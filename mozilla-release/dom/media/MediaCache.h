@@ -8,12 +8,14 @@
 #define MediaCache_h_
 
 #include "Intervals.h"
+#include "mozilla/Result.h"
 #include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"
 #include "nsHashKeys.h"
 #include "nsTArray.h"
 #include "nsTHashtable.h"
 
+class nsIEventTarget;
 class nsIPrincipal;
 
 namespace mozilla {
@@ -210,14 +212,9 @@ public:
   // on this class.
   void InitAsClone(MediaCacheStream* aOriginal);
 
+  nsIEventTarget* OwnerThread() const;
+
   // These are called on the main thread.
-  // Tell us whether the stream is seekable or not. Non-seekable streams
-  // will always pass 0 for aOffset to CacheClientSeek. This should only
-  // be called while the stream is at channel offset 0. Seekability can
-  // change during the lifetime of the MediaCacheStream --- every time
-  // we do an HTTP load the seekability may be different (and sometimes
-  // is, in practice, due to the effects of caching proxies).
-  void SetTransportSeekable(bool aIsTransportSeekable);
   // This must be called (and return) before the ChannelMediaResource
   // used to create this MediaCacheStream is deleted.
   void Close();
@@ -256,13 +253,21 @@ public:
   // offset that the cache requested in
   // ChannelMediaResource::CacheClientSeek. This can be called at any
   // time by the client, not just after a CacheClientSeek.
-  void NotifyDataStarted(uint32_t aLoadID, int64_t aOffset);
+  // aSeekable tells us whether the stream is seekable or not. Non-seekable
+  // streams will always pass 0 for aOffset to CacheClientSeek. This should only
+  // be called while the stream is at channel offset 0. Seekability can
+  // change during the lifetime of the MediaCacheStream --- every time
+  // we do an HTTP load the seekability may be different (and sometimes
+  // is, in practice, due to the effects of caching proxies).
+  void NotifyDataStarted(uint32_t aLoadID, int64_t aOffset, bool aSeekable);
   // Notifies the cache that data has been received. The stream already
   // knows the offset because data is received in sequence and
   // the starting offset is known via NotifyDataStarted or because
   // the cache requested the offset in
   // ChannelMediaResource::CacheClientSeek, or because it defaulted to 0.
-  void NotifyDataReceived(uint32_t aLoadID, int64_t aSize, const char* aData);
+  void NotifyDataReceived(uint32_t aLoadID,
+                          uint32_t aCount,
+                          const uint8_t* aData);
   // Notifies the cache that the current bytes should be written to disk.
   // Called on the main thread.
   void FlushPartialBlock();
@@ -272,6 +277,10 @@ public:
   // Notifies the stream that the channel is reopened. The stream should
   // reset variables such as |mDidNotifyDataEnded|.
   void NotifyChannelRecreated();
+
+  // Notifies the stream that the suspend status of the client has changed.
+  // Main thread only.
+  void NotifyClientSuspended(bool aSuspended);
 
   // These methods can be called on any thread.
   // Cached blocks associated with this stream will not be evicted
@@ -306,9 +315,7 @@ public:
   // in the cache. Will not mark blocks as read. Can be called from the main
   // thread. It's the caller's responsibility to wrap the call in a pin/unpin,
   // and also to check that the range they want is cached before calling this.
-  nsresult ReadFromCache(char* aBuffer,
-                         int64_t aOffset,
-                         int64_t aCount);
+  nsresult ReadFromCache(char* aBuffer, int64_t aOffset, uint32_t aCount);
 
   // IsDataCachedToEndOfStream returns true if all the data from
   // aOffset to the end of the stream (the server-reported end, if the
@@ -322,8 +329,6 @@ public:
   // because it doesn't know when the decoder was paused, buffering, etc.
   // Do not pass zero.
   void SetPlaybackRate(uint32_t aBytesPerSecond);
-  // Returns the last set value of SetTransportSeekable.
-  bool IsTransportSeekable();
 
   // Returns true when all streams for this resource are suspended or their
   // channel has ended.
@@ -332,9 +337,6 @@ public:
   // These methods must be called on a different thread from the main
   // thread. They should always be called on the same thread for a given
   // stream.
-  // This can fail when aWhence is NS_SEEK_END and no stream length
-  // is known.
-  nsresult Seek(int32_t aWhence, int64_t aOffset);
   int64_t Tell();
   // *aBytes gets the number of bytes that were actually read. This can
   // be less than aCount. If the first byte of data is not in the cache,
@@ -353,6 +355,8 @@ public:
   // Update mPrincipal for all streams of the same resource given that data has
   // been received from aPrincipal
   void UpdatePrincipal(nsIPrincipal* aPrincipal);
+
+  nsCString GetDebugInfo();
 
 private:
   friend class MediaCache;
@@ -416,6 +420,19 @@ private:
     int32_t mCount;
   };
 
+  // Read data from the partial block and return the number of bytes read
+  // successfully. 0 if aOffset is not an offset in the partial block or there
+  // is nothing to read.
+  uint32_t ReadPartialBlock(int64_t aOffset, Span<char> aBuffer);
+
+  // Read data from the cache block specified by aOffset. Return the number of
+  // bytes read successfully or an error code if any failure.
+  Result<uint32_t, nsresult> ReadBlockFromCache(int64_t aOffset,
+                                                Span<char> aBuffer);
+
+  // Non-main thread only.
+  nsresult Seek(int64_t aOffset);
+
   // Returns the end of the bytes starting at the given offset
   // which are in cache.
   // This method assumes that the cache monitor is held and can be called on
@@ -435,8 +452,9 @@ private:
   // Instance of MediaCache to use with this MediaCacheStream.
   RefPtr<MediaCache> mMediaCache;
 
+  ChannelMediaResource* const mClient;
+
   // These fields are main-thread-only.
-  ChannelMediaResource*  mClient;
   nsCOMPtr<nsIPrincipal> mPrincipal;
   // True if CacheClientNotifyDataEnded has been called for this stream.
   bool                   mDidNotifyDataEnded;
@@ -451,7 +469,9 @@ private:
   // This is a unique ID representing the resource we're loading.
   // All streams with the same mResourceID are loading the same
   // underlying resource and should share data.
-  int64_t mResourceID;
+  // Initialized to 0 as invalid. Will be allocated a valid ID (always positive)
+  // from the cache.
+  int64_t mResourceID = 0;
   // The last reported seekability state for the underlying channel
   bool mIsTransportSeekable;
   // True if the cache has suspended our channel because the cache is
@@ -460,15 +480,14 @@ private:
   bool mCacheSuspended;
   // True if the channel ended and we haven't seeked it again.
   bool mChannelEnded;
-  // The offset where the next data from the channel will arrive
-  int64_t      mChannelOffset;
-  // The reported or discovered length of the data, or -1 if nothing is
-  // known
-  int64_t      mStreamLength;
 
-  // The following fields are protected by the cache's monitor can can be written
+  // The following fields are protected by the cache's monitor and can be written
   // by any thread.
 
+  // The reported or discovered length of the data, or -1 if nothing is known
+  int64_t mStreamLength = -1;
+  // The offset where the next data from the channel will arrive
+  int64_t mChannelOffset = 0;
   // The offset where the reader is positioned in the stream
   int64_t           mStreamOffset;
   // For each block in the stream data, maps to the cache entry for the
@@ -497,9 +516,10 @@ private:
   // The load ID of the current channel. Used to check whether the data is
   // coming from an old channel and should be discarded.
   uint32_t mLoadID = 0;
+  // The seek target initiated by MediaCache. -1 if no seek is going on.
+  int64_t mSeekTarget = -1;
 
-  // The following field is protected by the cache's monitor but are
-  // only written on the main thread.
+  bool mThrottleReadahead = false;
 
   // Data received for the block containing mChannelOffset. Data needs
   // to wait here so we can write back a complete block. The first
@@ -507,12 +527,15 @@ private:
   // the rest are garbage.
   // Heap allocate this buffer since the exact power-of-2 will cause allocation
   // slop when combined with the rest of the object members.
-  UniquePtr<uint8_t[]> mPartialBlockBuffer = MakeUnique<uint8_t[]>(BLOCK_SIZE);
+  // This partial buffer should always be read/write within the cache's monitor.
+  const UniquePtr<uint8_t[]> mPartialBlockBuffer =
+    MakeUnique<uint8_t[]>(BLOCK_SIZE);
 
   // True if associated with a private browsing window.
   const bool mIsPrivateBrowsing;
 
-  bool mThrottleReadahead = false;
+  // True if the client is suspended. Accessed on the owner thread only.
+  bool mClientSuspended = false;
 };
 
 } // namespace mozilla

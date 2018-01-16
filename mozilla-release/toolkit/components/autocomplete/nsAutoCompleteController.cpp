@@ -71,7 +71,7 @@ nsAutoCompleteController::nsAutoCompleteController() :
   mRowCount(0),
   mSearchesOngoing(0),
   mSearchesFailed(0),
-  mFirstSearchResult(false),
+  mDelayedRowCountDelta(0),
   mImmediateSearchesCount(0),
   mCompletedSelectionIndex(-1)
 {
@@ -216,6 +216,7 @@ nsAutoCompleteController::ResetInternalState()
   mProhibitAutoFill = false;
   mSearchStatus = nsIAutoCompleteController::STATUS_NONE;
   mRowCount = 0;
+  mDelayedRowCountDelta = 0;
   mCompletedSelectionIndex = -1;
 
   return NS_OK;
@@ -501,6 +502,11 @@ nsAutoCompleteController::HandleKeyNavigation(uint32_t aKey, bool *_retval)
       bool completeSelection;
       input->GetCompleteSelectedIndex(&completeSelection);
 
+      // The user has keyed up or down to change the selection.  Stop the search
+      // (if there is one) now so that the results do not change while the user
+      // is making a selection.
+      Unused << StopSearch();
+
       // Instruct the result view to scroll by the given amount and direction
       popup->SelectBy(reverse, page);
 
@@ -562,8 +568,11 @@ nsAutoCompleteController::HandleKeyNavigation(uint32_t aKey, bool *_retval)
       }
 #endif
       if (*_retval) {
+        nsAutoString oldSearchString;
         // Open the popup if there has been a previous search, or else kick off a new search
-        if (!mResults.IsEmpty()) {
+        if (!mResults.IsEmpty() &&
+            NS_SUCCEEDED(mResults[0]->GetSearchString(oldSearchString)) &&
+            oldSearchString.Equals(mSearchString, nsCaseInsensitiveStringComparator())) {
           if (mRowCount) {
             OpenPopup();
           }
@@ -869,25 +878,14 @@ nsAutoCompleteController::HandleSearchResult(nsIAutoCompleteSearch *aSearch,
 //// nsIAutoCompleteObserver
 
 NS_IMETHODIMP
-nsAutoCompleteController::OnUpdateSearchResult(nsIAutoCompleteSearch *aSearch, nsIAutoCompleteResult* aResult)
-{
-  MOZ_ASSERT(mSearches.Contains(aSearch));
-
-  ClearResults();
-  HandleSearchResult(aSearch, aResult);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsAutoCompleteController::OnSearchResult(nsIAutoCompleteSearch *aSearch, nsIAutoCompleteResult* aResult)
 {
   MOZ_ASSERT(mSearchesOngoing > 0 && mSearches.Contains(aSearch));
 
-  // If this is the first search result we are processing
-  // we should clear out the previously cached results.
-  if (mFirstSearchResult) {
-    ClearResults();
-    mFirstSearchResult = false;
+  // Update the tree if necessary.
+  if (mTree && mDelayedRowCountDelta != 0) {
+    mTree->RowCountChanged(0, mDelayedRowCountDelta);
+    mDelayedRowCountDelta = 0;
   }
 
   uint16_t result = 0;
@@ -1217,16 +1215,18 @@ nsAutoCompleteController::BeforeSearches()
   mSearchStatus = nsIAutoCompleteController::STATUS_SEARCHING;
   mDefaultIndexCompleted = false;
 
-  // The first search result will clear mResults array, though we should pass
-  // the previous result to each search to allow them to reuse it.  So we
-  // temporarily cache current results till AfterSearches().
+  // ClearResults will clear the mResults array, but we should pass the previous
+  // result to each search to allow reusing it.  So we temporarily cache the
+  // current results until AfterSearches().
   if (!mResultCache.AppendObjects(mResults)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
-
+  // The rowCountChanged notification is sent later, when the first result
+  // from the search arrives, to avoid flickering in the tree contents.
+  mDelayedRowCountDelta = 0;
+  ClearResults(true);
   mSearchesOngoing = mSearches.Length();
   mSearchesFailed = 0;
-  mFirstSearchResult = true;
 
   // notify the input that the search is beginning
   mInput->OnSearchBegin();
@@ -1424,15 +1424,8 @@ nsAutoCompleteController::StartSearches()
   MOZ_ASSERT(timeout > 0, "Trying to delay searches with a 0 timeout!");
 
   // Now start the delayed searches.
-  nsresult rv;
-  mTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-  if (NS_FAILED(rv))
-      return rv;
-  rv = mTimer->InitWithCallback(this, timeout, nsITimer::TYPE_ONE_SHOT);
-  if (NS_FAILED(rv))
-      mTimer = nullptr;
-
-  return rv;
+  return NS_NewTimerWithCallback(getter_AddRefs(mTimer),
+                                 this, timeout, nsITimer::TYPE_ONE_SHOT);
 }
 
 nsresult
@@ -1735,6 +1728,12 @@ nsAutoCompleteController::PostSearchCleanup()
   uint32_t minResults;
   input->GetMinResultsForPopup(&minResults);
 
+  // Apply a pending rowCountChanged.
+  if (mTree && mDelayedRowCountDelta != 0) {
+    mTree->RowCountChanged(0, mDelayedRowCountDelta);
+    // mDelayedRowCountDelta will be reset by the next search.
+  }
+
   if (mRowCount || minResults == 0) {
     OpenPopup();
     if (mRowCount)
@@ -1753,15 +1752,22 @@ nsAutoCompleteController::PostSearchCleanup()
 }
 
 nsresult
-nsAutoCompleteController::ClearResults()
+nsAutoCompleteController::ClearResults(bool aIsSearching)
 {
   int32_t oldRowCount = mRowCount;
   mRowCount = 0;
   mResults.Clear();
   if (oldRowCount != 0) {
-    if (mTree)
-      mTree->RowCountChanged(0, -oldRowCount);
-    else if (mInput) {
+    if (mTree) {
+      if (aIsSearching) {
+        // Delay the notification, so the tree provides a smoother transition to
+        // the new result. It will be handled as soon as we add the first result.
+        mDelayedRowCountDelta = -oldRowCount;
+      } else {
+        // Notify immediately.
+        mTree->RowCountChanged(0, -oldRowCount);
+      }
+    } else if (mInput) {
       nsCOMPtr<nsIAutoCompletePopup> popup;
       mInput->GetPopup(getter_AddRefs(popup));
       NS_ENSURE_TRUE(popup != nullptr, NS_ERROR_FAILURE);

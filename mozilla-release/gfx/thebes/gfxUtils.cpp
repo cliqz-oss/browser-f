@@ -25,6 +25,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "mozilla/Unused.h"
 #include "mozilla/Vector.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIClipboardHelper.h"
@@ -437,8 +438,8 @@ PrescaleAndTileDrawable(gfxDrawable* aDrawable,
                         gfxFloat aOpacity,
                         ExtendMode aExtendMode)
 {
-  gfxSize scaleFactor = aContext->CurrentMatrix().ScaleFactors(true);
-  gfxMatrix scaleMatrix = gfxMatrix::Scaling(scaleFactor.width, scaleFactor.height);
+  Size scaleFactor = aContext->CurrentMatrix().ScaleFactors(true);
+  Matrix scaleMatrix = Matrix::Scaling(scaleFactor.width, scaleFactor.height);
   const float fuzzFactor = 0.01;
 
   // If we aren't scaling or translating, don't go down this path
@@ -455,13 +456,13 @@ PrescaleAndTileDrawable(gfxDrawable* aDrawable,
   clipExtents.Inflate(1.0);
 
   gfxRect needed = aRegion.IntersectAndRestrict(clipExtents);
-  Rect scaledNeededRect = ToMatrix(scaleMatrix).TransformBounds(ToRect(needed));
+  Rect scaledNeededRect = scaleMatrix.TransformBounds(ToRect(needed));
   scaledNeededRect.RoundOut();
   if (scaledNeededRect.IsEmpty()) {
     return false;
   }
 
-  Rect scaledImageRect = ToMatrix(scaleMatrix).TransformBounds(aImageRect);
+  Rect scaledImageRect = scaleMatrix.TransformBounds(aImageRect);
   if (!ShouldUseTempSurface(scaledImageRect, scaledNeededRect)) {
     return false;
   }
@@ -484,7 +485,7 @@ PrescaleAndTileDrawable(gfxDrawable* aDrawable,
   RefPtr<gfxContext> tmpCtx = gfxContext::CreateOrNull(scaledDT);
   MOZ_ASSERT(tmpCtx); // already checked the target above
 
-  scaledDT->SetTransform(ToMatrix(scaleMatrix));
+  scaledDT->SetTransform(scaleMatrix);
   gfxRect gfxImageRect(aImageRect.x, aImageRect.y, aImageRect.width, aImageRect.height);
 
   // Since this is just the scaled image, we don't want to repeat anything yet.
@@ -494,12 +495,12 @@ PrescaleAndTileDrawable(gfxDrawable* aDrawable,
 
   {
     gfxContextMatrixAutoSaveRestore autoSR(aContext);
-    Matrix withoutScale = ToMatrix(aContext->CurrentMatrix());
+    Matrix withoutScale = aContext->CurrentMatrix();
     DrawTarget* destDrawTarget = aContext->GetDrawTarget();
 
     // The translation still is in scaled units
     withoutScale.PreScale(1.0 / scaleFactor.width, 1.0 / scaleFactor.height);
-    aContext->SetMatrix(ThebesMatrix(withoutScale));
+    aContext->SetMatrix(withoutScale);
 
     DrawOptions drawOptions(aOpacity, aContext->CurrentOp(),
                             aContext->CurrentAntialiasMode());
@@ -1048,7 +1049,7 @@ EncodeSourceSurfaceInternal(SourceSurface* aSurface,
 
   if (aBinaryOrData == gfxUtils::eBinaryEncode) {
     if (aFile) {
-      fwrite(imgData.begin(), 1, imgSize, aFile);
+      Unused << fwrite(imgData.begin(), 1, imgSize, aFile);
     }
     return NS_OK;
   }
@@ -1060,7 +1061,7 @@ EncodeSourceSurfaceInternal(SourceSurface* aSurface,
 
   nsCString string("data:");
   string.Append(aMimeType);
-  string.Append(";base64,");
+  string.AppendLiteral(";base64,");
   string.Append(encodedImg);
 
   if (aFile) {
@@ -1297,10 +1298,11 @@ gfxUtils::DumpAsDataURI(DrawTarget* aDT, FILE* aFile)
 /* static */ nsCString
 gfxUtils::GetAsLZ4Base64Str(DataSourceSurface* aSourceSurface)
 {
-  int32_t dataSize = aSourceSurface->GetSize().height * aSourceSurface->Stride();
+  DataSourceSurface::ScopedMap map(aSourceSurface, DataSourceSurface::READ);
+  int32_t dataSize = aSourceSurface->GetSize().height * map.GetStride();
   auto compressedData = MakeUnique<char[]>(LZ4::maxCompressedSize(dataSize));
   if (compressedData) {
-    int nDataSize = LZ4::compress((char*)aSourceSurface->GetData(),
+    int nDataSize = LZ4::compress((char*)map.GetData(),
                                   dataSize,
                                   compressedData.get());
     if (nDataSize > 0) {
@@ -1310,7 +1312,7 @@ gfxUtils::GetAsLZ4Base64Str(DataSourceSurface* aSourceSurface)
         nsCString string("");
         string.AppendPrintf("data:image/lz4bgra;base64,%i,%i,%i,",
                              aSourceSurface->GetSize().width,
-                             aSourceSurface->Stride(),
+                             map.GetStride(),
                              aSourceSurface->GetSize().height);
         string.Append(encodedImg);
         return string;
@@ -1483,6 +1485,7 @@ gfxUtils::ThreadSafeGetFeatureStatus(const nsCOMPtr<nsIGfxInfo>& gfxInfo,
 /* static */ bool
 gfxUtils::DumpDisplayList() {
   return gfxPrefs::LayoutDumpDisplayList() ||
+         (gfxPrefs::LayoutDumpDisplayListParent() && XRE_IsParentProcess()) ||
          (gfxPrefs::LayoutDumpDisplayListContent() && XRE_IsContentProcess());
 }
 

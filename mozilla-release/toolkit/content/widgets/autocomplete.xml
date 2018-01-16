@@ -17,23 +17,15 @@
     </resources>
 
     <content sizetopopup="pref">
-      <xul:hbox class="autocomplete-textbox-container" flex="1" xbl:inherits="focused">
-        <children includes="image|deck|stack|box">
-          <xul:image class="autocomplete-icon" allowevents="true"/>
-        </children>
+      <children includes="image|deck|stack|box"/>
 
-        <xul:hbox anonid="textbox-input-box" class="textbox-input-box" flex="1" xbl:inherits="tooltiptext=inputtooltiptext">
-          <children/>
-          <html:input anonid="input" class="autocomplete-textbox textbox-input"
-                      allowevents="true"
-                      xbl:inherits="tooltiptext=inputtooltiptext,value,type=inputtype,maxlength,disabled,size,readonly,placeholder,tabindex,accesskey,mozactionhint"/>
-        </xul:hbox>
-        <children includes="hbox"/>
+      <xul:hbox anonid="textbox-input-box" class="textbox-input-box" flex="1" xbl:inherits="tooltiptext=inputtooltiptext">
+        <children/>
+        <html:input anonid="input" class="autocomplete-textbox textbox-input"
+                    allowevents="true"
+                    xbl:inherits="tooltiptext=inputtooltiptext,value,type=inputtype,maxlength,disabled,size,readonly,placeholder,tabindex,accesskey,mozactionhint"/>
       </xul:hbox>
-
-      <xul:dropmarker anonid="historydropmarker" class="autocomplete-history-dropmarker"
-                      allowevents="true"
-                      xbl:inherits="open,enablehistory,parentfocused=focused"/>
+      <children includes="hbox"/>
 
       <xul:popupset anonid="popupset" class="autocomplete-result-popupset"/>
 
@@ -401,23 +393,6 @@
 
       <method name="showHistoryPopup">
         <body><![CDATA[
-          // history dropmarker pushed state
-          function cleanup(popup) {
-            popup.removeEventListener("popupshowing", onShow);
-          }
-          function onShow(event) {
-            var popup = event.target, input = popup.input;
-            cleanup(popup);
-            input.setAttribute("open", "true");
-            function onHide() {
-              input.removeAttribute("open");
-              popup.removeEventListener("popuphiding", onHide);
-            }
-            popup.addEventListener("popuphiding", onHide);
-          }
-          this.popup.addEventListener("popupshowing", onShow);
-          setTimeout(cleanup, 1000, this.popup);
-
           // Store our "normal" maxRows on the popup, so that it can reset the
           // value when the popup is hidden.
           this.popup._normalMaxRows = this.maxRows;
@@ -437,10 +412,7 @@
 
       <method name="toggleHistoryPopup">
         <body><![CDATA[
-          // If this method is called on the same event tick as the popup gets
-          // hidden, do nothing to avoid re-opening the popup when the drop
-          // marker is clicked while the popup is still open.
-          if (!this.popup.isPopupHidingTick && !this.popup.popupOpen)
+          if (!this.popup.popupOpen)
             this.showHistoryPopup();
           else
             this.closePopup();
@@ -912,7 +884,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
     <implementation implements="nsIAutoCompletePopup">
       <field name="mInput">null</field>
       <field name="mPopupOpen">false</field>
-      <field name="mIsPopupHidingTick">false</field>
 
       <!-- =================== nsIAutoCompletePopup =================== -->
 
@@ -924,9 +895,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
 
       <property name="popupOpen" readonly="true"
                 onget="return this.mPopupOpen;"/>
-
-      <property name="isPopupHidingTick" readonly="true"
-                onget="return this.mIsPopupHidingTick;"/>
 
       <method name="closePopup">
         <body>
@@ -1033,14 +1001,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
 
         this.removeAttribute("autocompleteinput");
         this.mPopupOpen = false;
-
-        // Prevent opening popup from historydropmarker mousedown handler
-        // on the same event tick the popup is hidden by the same mousedown
-        // event.
-        this.mIsPopupHidingTick = true;
-        setTimeout(() => {
-          this.mIsPopupHidingTick = false;
-        }, 0);
 
         // Reset the maxRows property to the cached "normal" value (if there's
         // any), and reset normalMaxRows so that we can detect whether it was set
@@ -1341,7 +1301,8 @@ extends="chrome://global/content/bindings/popup.xml#popup">
             if (itemExists) {
               item = this.richlistbox.childNodes[this._currentIndex];
 
-              originalValue = item.getAttribute("ac-value");
+              // Url may be a modified version of value, see _adjustACItem().
+              originalValue = item.getAttribute("url") || item.getAttribute("ac-value");
               originalText = item.getAttribute("ac-text");
               originalType = item.getAttribute("originaltype");
 
@@ -1384,7 +1345,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
               if (typeof item._cleanup == "function") {
                 item._cleanup();
               }
-
               item.setAttribute("originaltype", style);
             }
 
@@ -2085,18 +2045,16 @@ extends="chrome://global/content/bindings/popup.xml#popup">
       <method name="_adjustAcItem">
         <body>
           <![CDATA[
-          this.setAttribute("url", this.getAttribute("ac-value"));
+          let originalUrl = this.getAttribute("ac-value");
+          let title = this.getAttribute("ac-comment");
+          this.setAttribute("url", originalUrl);
           this.setAttribute("image", this.getAttribute("ac-image"));
-          this.setAttribute("title", this.getAttribute("ac-comment"));
+          this.setAttribute("title", title);
           this.setAttribute("text", this.getAttribute("ac-text"));
 
           let popup = this.parentNode.parentNode;
-
-          let title = this.getAttribute("title");
           let titleLooksLikeUrl = false;
-
           let displayUrl;
-          let originalUrl = this.getAttribute("url");
           let emphasiseUrl = true;
 
           let type = this.getAttribute("originaltype");
@@ -2582,14 +2540,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
       </xul:hbox>
       <xul:scrollbar xbl:inherits="collapsed=hidescrollbar" orient="vertical" class="tree-scrollbar"/>
     </content>
-  </binding>
-
-  <binding id="history-dropmarker" extends="chrome://global/content/bindings/general.xml#dropmarker">
-    <handlers>
-      <handler event="mousedown" button="0"><![CDATA[
-        document.getBindingParent(this).toggleHistoryPopup();
-      ]]></handler>
-    </handlers>
   </binding>
 
 </bindings>

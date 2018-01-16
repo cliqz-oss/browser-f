@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -68,7 +69,7 @@ public:
 
   // get the alternate text for a content node
   static void GetAlternateTextFor(nsIContent* aContent,
-                                  nsIAtom* aTag,  // content object's tag
+                                  nsAtom* aTag,  // content object's tag
                                   nsAString& aAltText);
 
 private:
@@ -316,11 +317,12 @@ public:
                             CharacterDataChangeInfo* aInfo);
 
   // If aContent is a text node that has been optimized away due to being
-  // whitespace next to a block boundary (or for some other reason), stop
-  // doing that and create a frame for it if it should have one. This recreates
-  // frames so be careful (although this should not change actual layout).
-  // Returns the frame for aContent if there is one.
-  nsIFrame* EnsureFrameForTextNode(nsGenericDOMDataNode* aContent);
+  // whitespace next to a block boundary (or for some other reason), ensure that
+  // a frame for it is created the next time frames are flushed, if it can
+  // possibly have a frame at all.
+  //
+  // Returns whether there are chances for the frame to be unsuppressed.
+  bool EnsureFrameForTextNodeIsCreatedAfterFlush(nsGenericDOMDataNode* aContent);
 
   // Generate the child frames and process bindings
   void GenerateChildFrames(nsContainerFrame* aFrame);
@@ -472,7 +474,7 @@ private:
   void CreateAttributeContent(nsIContent* aParentContent,
                               nsIFrame* aParentFrame,
                               int32_t aAttrNamespace,
-                              nsIAtom* aAttrName,
+                              nsAtom* aAttrName,
                               nsStyleContext* aStyleContext,
                               nsCOMArray<nsIContent>& aGeneratedContent,
                               nsIContent** aNewContent,
@@ -777,13 +779,13 @@ private:
   };
 
   /* Structure representing a mapping of an atom to a FrameConstructionData.
-     This can be used with non-static atoms, assuming that the nsIAtom* is
+     This can be used with non-static atoms, assuming that the nsAtom* is
      stored somewhere that this struct can point to (that is, a static
-     nsIAtom*) and that it's allocated before the struct is ever used. */
+     nsAtom*) and that it's allocated before the struct is ever used. */
   struct FrameConstructionDataByTag {
-    // Pointer to nsIAtom* is used because we want to initialize this
+    // Pointer to nsStaticAtom* is used because we want to initialize this
     // statically, so before our atom tables are set up.
-    const nsIAtom * const * const mTag;
+    const nsStaticAtom * const * const mTag;
     const FrameConstructionData mData;
   };
 
@@ -837,7 +839,7 @@ private:
      match or if the matching tag has a FrameConstructionDataGetter that
      returns null. */
   static const FrameConstructionData*
-    FindDataByTag(nsIAtom* aTag, Element* aElement,
+    FindDataByTag(nsAtom* aTag, Element* aElement,
                   nsStyleContext* aStyleContext,
                   const FrameConstructionDataByTag* aDataPtr,
                   uint32_t aDataLength);
@@ -879,7 +881,7 @@ private:
     FrameConstructionItem* AppendItem(nsCSSFrameConstructor* aFCtor,
                                       const FrameConstructionData* aFCData,
                                       nsIContent* aContent,
-                                      nsIAtom* aTag,
+                                      nsAtom* aTag,
                                       int32_t aNameSpaceID,
                                       PendingBinding* aPendingBinding,
                                       already_AddRefed<nsStyleContext>&& aStyleContext,
@@ -901,7 +903,7 @@ private:
     FrameConstructionItem* PrependItem(nsCSSFrameConstructor* aFCtor,
                                        const FrameConstructionData* aFCData,
                                        nsIContent* aContent,
-                                       nsIAtom* aTag,
+                                       nsAtom* aTag,
                                        int32_t aNameSpaceID,
                                        PendingBinding* aPendingBinding,
                                        already_AddRefed<nsStyleContext>&& aStyleContext,
@@ -1156,7 +1158,7 @@ private:
     : public mozilla::LinkedListElement<FrameConstructionItem> {
     FrameConstructionItem(const FrameConstructionData* aFCData,
                           nsIContent* aContent,
-                          nsIAtom* aTag,
+                          nsAtom* aTag,
                           int32_t aNameSpaceID,
                           PendingBinding* aPendingBinding,
                           already_AddRefed<nsStyleContext>& aStyleContext,
@@ -1245,7 +1247,7 @@ private:
     // The nsIContent node to use when initializing the new frame.
     nsIContent* mContent;
     // The XBL-resolved tag name to use for frame construction.
-    nsIAtom* mTag;
+    nsAtom* mTag;
     // The PendingBinding for this frame construction item, if any.  May be
     // null.  We maintain a list of PendingBindings in the frame construction
     // state in the order in which AddToAttachedQueue should be called on them:
@@ -1512,7 +1514,7 @@ private:
   // aParentFrame might be null.  If it is, that means it was an
   // inline frame.
   static const FrameConstructionData* FindHTMLData(Element* aContent,
-                                                   nsIAtom* aTag,
+                                                   nsAtom* aTag,
                                                    int32_t aNameSpaceID,
                                                    nsIFrame* aParentFrame,
                                                    nsStyleContext* aStyleContext);
@@ -1564,7 +1566,7 @@ private:
   void AddFrameConstructionItemsInternal(nsFrameConstructorState& aState,
                                          nsIContent*              aContent,
                                          nsContainerFrame*        aParentFrame,
-                                         nsIAtom*                 aTag,
+                                         nsAtom*                 aTag,
                                          int32_t                  aNameSpaceID,
                                          bool                     aSuppressWhiteSpaceOptimizations,
                                          nsStyleContext*          aStyleContext,
@@ -1606,14 +1608,14 @@ private:
   // Function to find FrameConstructionData for aContent.  Will return
   // null if aContent is not MathML.
   static const FrameConstructionData* FindMathMLData(Element* aElement,
-                                                     nsIAtom* aTag,
+                                                     nsAtom* aTag,
                                                      int32_t aNameSpaceID,
                                                      nsStyleContext* aStyleContext);
 
   // Function to find FrameConstructionData for aContent.  Will return
   // null if aContent is not XUL.
   static const FrameConstructionData* FindXULTagData(Element* aElement,
-                                                     nsIAtom* aTag,
+                                                     nsAtom* aTag,
                                                      int32_t aNameSpaceID,
                                                      nsStyleContext* aStyleContext);
   // XUL data-finding helper functions and structures
@@ -1681,7 +1683,7 @@ private:
                             nsFrameItems&            aFrameItems);
 
   static const FrameConstructionData* FindSVGData(Element* aElement,
-                                                  nsIAtom* aTag,
+                                                  nsAtom* aTag,
                                                   int32_t aNameSpaceID,
                                                   nsIFrame* aParentFrame,
                                                   bool aIsWithinSVGText,
@@ -1825,7 +1827,7 @@ private:
                            nsIContent*              aContent,
                            nsStyleContext*          aContentStyle,
                            nsContainerFrame*        aParentFrame,
-                           nsIAtom*                 aScrolledPseudo,
+                           nsAtom*                 aScrolledPseudo,
                            bool                     aIsRoot,
                            nsContainerFrame*&       aNewFrame);
 
@@ -2099,13 +2101,6 @@ private:
                              nsContainerFrame*        aBlockFrame,
                              nsFrameItems&            aFrameItems);
 
-  void InsertFirstLineFrames(nsFrameConstructorState& aState,
-                             nsIContent*              aContent,
-                             nsIFrame*                aBlockFrame,
-                             nsContainerFrame**       aParentFrame,
-                             nsIFrame*                aPrevSibling,
-                             nsFrameItems&            aFrameItems);
-
   /**
    * When aFrameItems is being inserted into aParentFrame, and aParentFrame has
    * pseudo-element-affected styles, it's possible that we're inserting under a
@@ -2118,64 +2113,53 @@ private:
   void CheckForFirstLineInsertion(nsIFrame* aParentFrame,
                                   nsFrameItems& aFrameItems);
 
-  /**
-   * Find the right frame to use for aContent when looking for sibling
-   * frames for aTargetContent.  If aPrevSibling is true, this
-   * will look for last continuations, etc, as necessary.  This calls
-   * IsValidSibling as needed; if that returns false it returns null.
-   *
-   * @param aContent the content to search for frames
-   * @param aTargetContent the content we're finding a sibling frame for
-   * @param aTargetContentDisplay the CSS display enum for aTargetContent if
-   *          already known, UNSET_DISPLAY otherwise. It will be filled in
-   *          if needed.
-   * @param aParentFrame the nearest ancestor frame, used internally for
-   *          finding ::after / ::before frames
-   * @param aPrevSibling true if we're searching in reverse DOM order
-   */
-  nsIFrame* FindFrameForContentSibling(nsIContent* aContent,
-                                       nsIContent* aTargetContent,
-                                       mozilla::StyleDisplay& aTargetContentDisplay,
-                                       nsContainerFrame* aParentFrame,
-                                       bool aPrevSibling);
+  // The direction in which we should look for siblings.
+  enum class SiblingDirection
+  {
+    Forward,
+    Backward,
+  };
 
   /**
-   * Find the frame for the content immediately preceding the one aIter
-   * points to, following continuations if necessary.  aIter is passed by
-   * value on purpose, so as not to modify the caller's iterator.
+   * Find the frame for the content immediately next to the one aIter points to,
+   * in the direction SiblingDirection indicates, following continuations if
+   * necessary.
+   *
+   * aIter is passed by const reference on purpose, so as not to modify the
+   * caller's iterator.
    *
    * @param aIter should be positioned such that aIter.GetPreviousChild()
    *          is the first content to search for frames
-   * @param aTargetContent the content we're finding a sibling frame for
-   * @param aTargetContentDisplay the CSS display enum for aTargetContent if
-   *          already known, UNSET_DISPLAY otherwise. It will be filled in
-   *          if needed.
-   * @param aParentFrame the nearest ancestor frame, used inernally for
-   *          finding ::after / ::before frames
+   * @param aTargetContentDisplay the CSS display enum for the content aIter
+   *          points to if already known, UNSET_DISPLAY otherwise. It will be
+   *          filled in if needed.
    */
-  nsIFrame* FindPreviousSibling(mozilla::dom::FlattenedChildIterator aIter,
-                                nsIContent* aTargetContent,
-                                mozilla::StyleDisplay& aTargetContentDisplay,
-                                nsContainerFrame* aParentFrame);
+  template<SiblingDirection>
+  nsIFrame* FindSibling(const mozilla::dom::FlattenedChildIterator& aIter,
+                        mozilla::StyleDisplay& aTargetContentDisplay);
 
-  /**
-   * Find the frame for the content node immediately following the one aIter
-   * points to, following continuations if necessary.  aIter is passed by value
-   * on purpose, so as not to modify the caller's iterator.
-   *
-   * @param aIter should be positioned such that aIter.GetNextChild()
-   *          is the first content to search for frames
-   * @param aTargetContent the content we're finding a sibling frame for
-   * @param aTargetContentDisplay the CSS display enum for aTargetContent if
-   *          already known, UNSET_DISPLAY otherwise. It will be filled in
-   *          if needed.
-   * @param aParentFrame the nearest ancestor frame, used inernally for
-   *          finding ::after / ::before frames
-   */
-  nsIFrame* FindNextSibling(mozilla::dom::FlattenedChildIterator aIter,
-                            nsIContent* aTargetContent,
-                            mozilla::StyleDisplay& aTargetContentDisplay,
-                            nsContainerFrame* aParentFrame);
+  // Helper for the implementation of FindSibling.
+  template<SiblingDirection>
+  nsIFrame* FindSiblingInternal(
+    mozilla::dom::FlattenedChildIterator,
+    nsIContent* aTargetContent,
+    mozilla::StyleDisplay& aTargetContentDisplay);
+
+  // An alias of FindSibling<SiblingDirection::Forward>.
+  nsIFrame* FindNextSibling(const mozilla::dom::FlattenedChildIterator& aIter,
+                            mozilla::StyleDisplay& aTargetContentDisplay);
+  // An alias of FindSibling<SiblingDirection::Backwards>.
+  nsIFrame* FindPreviousSibling(const mozilla::dom::FlattenedChildIterator& aIter,
+                                mozilla::StyleDisplay& aTargetContentDisplay);
+
+  // Given a potential first-continuation sibling frame for aTargetContent,
+  // verify that it is an actual valid sibling for it, and return the
+  // appropriate continuation the new frame for aTargetContent should be
+  // inserted next to.
+  nsIFrame* AdjustSiblingFrame(nsIFrame* aSibling,
+                               nsIContent* aTargetContent,
+                               mozilla::StyleDisplay& aTargetContentDisplay,
+                               SiblingDirection aDirection);
 
   // Find the right previous sibling for an insertion.  This also updates the
   // parent frame to point to the correct continuation of the parent frame to

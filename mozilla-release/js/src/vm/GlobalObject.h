@@ -77,10 +77,9 @@ class GlobalObject : public NativeObject
         ITERATOR_PROTO,
         ARRAY_ITERATOR_PROTO,
         STRING_ITERATOR_PROTO,
-        LEGACY_GENERATOR_OBJECT_PROTO,
-        STAR_GENERATOR_OBJECT_PROTO,
-        STAR_GENERATOR_FUNCTION_PROTO,
-        STAR_GENERATOR_FUNCTION,
+        GENERATOR_OBJECT_PROTO,
+        GENERATOR_FUNCTION_PROTO,
+        GENERATOR_FUNCTION,
         ASYNC_FUNCTION_PROTO,
         ASYNC_FUNCTION,
         ASYNC_ITERATOR_PROTO,
@@ -96,6 +95,7 @@ class GlobalObject : public NativeObject
         DATE_TIME_FORMAT,
         DATE_TIME_FORMAT_PROTO,
         PLURAL_RULES_PROTO,
+        RELATIVE_TIME_FORMAT_PROTO,
         MODULE_PROTO,
         IMPORT_ENTRY_PROTO,
         EXPORT_ENTRY_PROTO,
@@ -478,6 +478,11 @@ class GlobalObject : public NativeObject
         return getOrCreateObject(cx, global, PLURAL_RULES_PROTO, initIntlObject);
     }
 
+    static JSObject*
+    getOrCreateRelativeTimeFormatPrototype(JSContext* cx, Handle<GlobalObject*> global) {
+        return getOrCreateObject(cx, global, RELATIVE_TIME_FORMAT_PROTO, initIntlObject);
+    }
+
     static bool ensureModulePrototypesCreated(JSContext *cx, Handle<GlobalObject*> global);
 
     JSObject* maybeGetModulePrototype() {
@@ -572,27 +577,21 @@ class GlobalObject : public NativeObject
     }
 
     static NativeObject*
-    getOrCreateLegacyGeneratorObjectPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        return MaybeNativeObject(getOrCreateObject(cx, global, LEGACY_GENERATOR_OBJECT_PROTO,
-                                                   initLegacyGeneratorProto));
-    }
-
-    static NativeObject*
-    getOrCreateStarGeneratorObjectPrototype(JSContext* cx, Handle<GlobalObject*> global)
+    getOrCreateGeneratorObjectPrototype(JSContext* cx, Handle<GlobalObject*> global)
     {
-        return MaybeNativeObject(getOrCreateObject(cx, global, STAR_GENERATOR_OBJECT_PROTO,
-                                                   initStarGenerators));
+        return MaybeNativeObject(getOrCreateObject(cx, global, GENERATOR_OBJECT_PROTO,
+                                                   initGenerators));
     }
 
     static NativeObject*
-    getOrCreateStarGeneratorFunctionPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        return MaybeNativeObject(getOrCreateObject(cx, global, STAR_GENERATOR_FUNCTION_PROTO,
-                                                   initStarGenerators));
+    getOrCreateGeneratorFunctionPrototype(JSContext* cx, Handle<GlobalObject*> global) {
+        return MaybeNativeObject(getOrCreateObject(cx, global, GENERATOR_FUNCTION_PROTO,
+                                                   initGenerators));
     }
 
     static JSObject*
-    getOrCreateStarGeneratorFunction(JSContext* cx, Handle<GlobalObject*> global) {
-        return getOrCreateObject(cx, global, STAR_GENERATOR_FUNCTION, initStarGenerators);
+    getOrCreateGeneratorFunction(JSContext* cx, Handle<GlobalObject*> global) {
+        return getOrCreateObject(cx, global, GENERATOR_FUNCTION, initGenerators);
     }
 
     static NativeObject*
@@ -765,8 +764,7 @@ class GlobalObject : public NativeObject
     static bool initStringIteratorProto(JSContext* cx, Handle<GlobalObject*> global);
 
     // Implemented in vm/GeneratorObject.cpp.
-    static bool initLegacyGeneratorProto(JSContext* cx, Handle<GlobalObject*> global);
-    static bool initStarGenerators(JSContext* cx, Handle<GlobalObject*> global);
+    static bool initGenerators(JSContext* cx, Handle<GlobalObject*> global);
 
     static bool initAsyncFunction(JSContext* cx, Handle<GlobalObject*> global);
 
@@ -778,7 +776,7 @@ class GlobalObject : public NativeObject
 
     // Implemented in Intl.cpp.
     static bool initIntlObject(JSContext* cx, Handle<GlobalObject*> global);
-    static bool addPluralRulesConstructor(JSContext* cx, HandleObject intl);
+    static bool addRelativeTimeFormatConstructor(JSContext* cx, HandleObject intl);
 
     // Implemented in builtin/ModuleObject.cpp
     static bool initModuleProto(JSContext* cx, Handle<GlobalObject*> global);
@@ -844,10 +842,10 @@ class GlobalObject : public NativeObject
         return &value.toObject().as<JSFunction>();
     }
 
-    // Returns either this global's star-generator function prototype, or null
-    // if that object was never created.  Dodgy; for use only in also-dodgy
+    // Returns either this global's generator function prototype, or null if
+    // that object was never created.  Dodgy; for use only in also-dodgy
     // GlobalHelperThreadState::mergeParseTaskCompartment().
-    JSObject* getStarGeneratorFunctionPrototype();
+    JSObject* getGeneratorFunctionPrototype();
 };
 
 /*

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -267,7 +268,7 @@ static already_AddRefed<TextureClient>
 TexClientFromReadback(SharedSurface* src, CompositableForwarder* allocator,
                       TextureFlags baseFlags, LayersBackend layersBackend)
 {
-  auto backendType = gfx::BackendType::CAIRO;
+  auto backendType = gfx::BackendType::SKIA;
   TexClientFactory factory(allocator, src->mHasAlpha, src->mSize, backendType,
                            baseFlags, layersBackend);
 
@@ -408,11 +409,6 @@ CanvasClientSharedSurface::UpdateRenderer(gfx::IntSize aSize, Renderer& aRendere
     mShSurfClient = CloneSurface(canvasRenderer->mGLFrontbuffer.get(), canvasRenderer->mFactory.get());
     if (!mShSurfClient) {
       gfxCriticalError() << "Invalid canvas front buffer";
-      return;
-    }
-  } else if (canvasRenderer && canvasRenderer->mIsMirror) {
-    mShSurfClient = CloneSurface(gl->Screen()->Front()->Surf(), canvasRenderer->mFactory.get());
-    if (!mShSurfClient) {
       return;
     }
   } else {

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -43,11 +44,6 @@ public:
   template<class T> void NotifyGamepadChange(uint32_t aIndex, const T& aInfo);
   RefPtr<gfx::VRDisplayHost> GetDisplay(const uint32_t& aDisplayID);
   void GetVRDisplayInfo(nsTArray<VRDisplayInfo>& aDisplayInfo);
-
-  void SubmitFrame(VRLayerParent* aLayer, layers::PTextureParent* aTexture,
-                   uint64_t aFrameId,
-                   const gfx::Rect& aLeftEyeRect,
-                   const gfx::Rect& aRightEyeRect);
   RefPtr<gfx::VRControllerHost> GetController(const uint32_t& aControllerID);
   void GetVRControllerInfo(nsTArray<VRControllerInfo>& aControllerInfo);
   void CreateVRTestSystem();
@@ -62,7 +58,6 @@ protected:
   ~VRManager();
 
 private:
-  RefPtr<layers::TextureHost> mLastFrame;
 
   void Init();
   void Destroy();

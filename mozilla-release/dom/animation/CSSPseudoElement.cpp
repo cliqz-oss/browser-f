@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,6 +7,7 @@
 #include "mozilla/dom/CSSPseudoElement.h"
 #include "mozilla/dom/CSSPseudoElementBinding.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/KeyframeEffectBinding.h"
 #include "mozilla/AnimationComparator.h"
 
 namespace mozilla {
@@ -82,7 +83,7 @@ CSSPseudoElement::GetCSSPseudoElement(Element* aElement,
     return nullptr;
   }
 
-  nsIAtom* propName = CSSPseudoElement::GetCSSPseudoElementPropertyAtom(aType);
+  nsAtom* propName = CSSPseudoElement::GetCSSPseudoElementPropertyAtom(aType);
   RefPtr<CSSPseudoElement> pseudo =
     static_cast<CSSPseudoElement*>(aElement->GetProperty(propName));
   if (pseudo) {
@@ -102,7 +103,7 @@ CSSPseudoElement::GetCSSPseudoElement(Element* aElement,
   return pseudo.forget();
 }
 
-/* static */ nsIAtom*
+/* static */ nsAtom*
 CSSPseudoElement::GetCSSPseudoElementPropertyAtom(CSSPseudoElementType aType)
 {
   switch (aType) {

@@ -43,12 +43,12 @@ let waitingForBrowserReady = true;
 let startupData;
 
 /**
- * Set pref. Why no `getPrefs` function is due to the priviledge level.
+ * Set pref. Why no `getPrefs` function is due to the privilege level.
  * We cannot set prefs inside a framescript but can read.
- * For simplicity and effeciency, we still read prefs inside the framescript.
+ * For simplicity and efficiency, we still read prefs inside the framescript.
  *
  * @param {Array} prefs the array of prefs to set.
- *   The array element carrys info to set pref, should contain
+ *   The array element carries info to set pref, should contain
  *   - {String} name the pref name, such as `browser.onboarding.state`
  *   - {*} value the value to set
  **/
@@ -72,7 +72,7 @@ function setPrefs(prefs) {
         Services.prefs.setStringPref(name, pref.value);
         break;
       default:
-        throw new TypeError(`Unexpected type (${type}) for preference ${name}.`)
+        throw new TypeError(`Unexpected type (${type}) for preference ${name}.`);
     }
   });
 }
@@ -137,7 +137,7 @@ let syncTourChecker = {
   uninit() {
     this.unregister();
   },
-}
+};
 
 /**
  * Listen and process events from content.

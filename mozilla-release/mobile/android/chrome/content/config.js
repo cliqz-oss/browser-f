@@ -6,12 +6,12 @@
 var {classes: Cc, interfaces: Ci, manager: Cm, utils: Cu} = Components;
 Cu.import("resource://gre/modules/Services.jsm");
 
-const VKB_ENTER_KEY = 13;   // User press of VKB enter key
-const INITIAL_PAGE_DELAY = 500;   // Initial pause on program start for scroll alignment
-const PREFS_BUFFER_MAX = 30;   // Max prefs buffer size for getPrefsBuffer()
-const PAGE_SCROLL_TRIGGER = 200;     // Triggers additional getPrefsBuffer() on user scroll-to-bottom
-const FILTER_CHANGE_TRIGGER = 200;     // Delay between responses to filterInput changes
-const INNERHTML_VALUE_DELAY = 100;    // Delay before providing prefs innerHTML value
+const VKB_ENTER_KEY = 13; // User press of VKB enter key
+const INITIAL_PAGE_DELAY = 500; // Initial pause on program start for scroll alignment
+const PREFS_BUFFER_MAX = 30; // Max prefs buffer size for getPrefsBuffer()
+const PAGE_SCROLL_TRIGGER = 200; // Triggers additional getPrefsBuffer() on user scroll-to-bottom
+const FILTER_CHANGE_TRIGGER = 200; // Delay between responses to filterInput changes
+const INNERHTML_VALUE_DELAY = 100; // Delay before providing prefs innerHTML value
 
 var gStringBundle = Services.strings.createBundle("chrome://browser/locale/config.properties");
 var gClipboardHelper = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper);
@@ -87,7 +87,7 @@ var NewPrefDialog = {
     }
 
     // If item already in list, it's being changed, else added
-    let item = AboutConfig._list.filter(i => { return i.name == aPrefName });
+    let item = AboutConfig._list.filter(i => { return i.name == aPrefName; });
     if (item.length) {
       this._positiveButton.textContent = gStringBundle.GetStringFromName("newPref.changeButton");
     } else {
@@ -178,7 +178,7 @@ var NewPrefDialog = {
   toggleBoolValue: function AC_toggleBoolValue() {
     this._booleanValue.value = (this._booleanValue.value == "true" ? "false" : "true");
   }
-}
+};
 
 
 /* ============================== AboutConfig ==============================
@@ -492,7 +492,7 @@ var AboutConfig = {
     }
 
     // If pref not already in list, refresh display as it's being added
-    let anyWhere = this._list.filter(i => { return i.name == pref.name });
+    let anyWhere = this._list.filter(i => { return i.name == pref.name; });
     if (!anyWhere.length) {
       document.location.reload();
     }
@@ -507,7 +507,7 @@ var AboutConfig = {
       gClipboardHelper.copyString(pref.value);
     }
   }
-}
+};
 
 
 /* ============================== Pref ==============================
@@ -668,5 +668,5 @@ Pref.prototype = {
       this.li.querySelector(".pref-name").setAttribute("locked", true);
     }
   }
-}
+};
 

@@ -122,6 +122,7 @@ const char* mozilla::dom::ContentPrefs::gInitPrefs[] = {
   "javascript.use_us_english_locale",
   "jsloader.shareGlobal",
 #ifdef MOZ_STYLO
+  "layout.css.servo.chrome.enabled",
   "layout.css.stylo-blocklist.blocked_domains",
   "layout.css.stylo-blocklist.enabled",
 #endif
@@ -180,11 +181,6 @@ const char* mozilla::dom::ContentPrefs::gInitPrefs[] = {
   "media.wmf.enabled",
   "media.wmf.skip-blacklist",
   "media.wmf.vp9.enabled",
-  "memory.free_dirty_pages",
-  "memory.low_commit_space_threshold_mb",
-  "memory.low_memory_notification_interval_ms",
-  "memory.low_physical_memory_threshold_mb",
-  "memory.low_virtual_mem_threshold_mb",
   "network.IDN.blacklist_chars",
   "network.IDN.restriction_profile",
   "network.IDN.use_whitelist",
@@ -245,6 +241,7 @@ const char* mozilla::dom::ContentPrefs::gInitPrefs[] = {
   "toolkit.telemetry.minSubsessionLength",
   "toolkit.telemetry.scheduler.idleTickInterval",
   "toolkit.telemetry.scheduler.tickInterval",
+  "toolkit.telemetry.testing.overridePreRelease",
   "toolkit.telemetry.unified",
   "ui.key.menuAccessKeyFocuses",
   "ui.popup.disable_autohide",

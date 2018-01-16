@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,7 +9,9 @@
 #include "nsISeekableStream.h"
 #include "nsStreamUtils.h"
 
-using namespace mozilla::ipc;
+namespace mozilla {
+
+using namespace ipc;
 
 NS_IMPL_ADDREF(SlicedInputStream);
 NS_IMPL_RELEASE(SlicedInputStream);
@@ -28,7 +31,7 @@ NS_INTERFACE_MAP_BEGIN(SlicedInputStream)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIInputStream)
 NS_INTERFACE_MAP_END
 
-SlicedInputStream::SlicedInputStream(nsIInputStream* aInputStream,
+SlicedInputStream::SlicedInputStream(already_AddRefed<nsIInputStream> aInputStream,
                                      uint64_t aStart, uint64_t aLength)
   : mWeakCloneableInputStream(nullptr)
   , mWeakIPCSerializableInputStream(nullptr)
@@ -41,8 +44,8 @@ SlicedInputStream::SlicedInputStream(nsIInputStream* aInputStream,
   , mAsyncWaitFlags(0)
   , mAsyncWaitRequestedCount(0)
 {
-  MOZ_ASSERT(aInputStream);
-  SetSourceStream(aInputStream);
+  nsCOMPtr<nsIInputStream> inputStream = mozilla::Move(aInputStream);
+  SetSourceStream(inputStream.forget());
 }
 
 SlicedInputStream::SlicedInputStream()
@@ -62,35 +65,34 @@ SlicedInputStream::~SlicedInputStream()
 {}
 
 void
-SlicedInputStream::SetSourceStream(nsIInputStream* aInputStream)
+SlicedInputStream::SetSourceStream(already_AddRefed<nsIInputStream> aInputStream)
 {
   MOZ_ASSERT(!mInputStream);
-  MOZ_ASSERT(aInputStream);
 
-  mInputStream = aInputStream;
+  mInputStream = mozilla::Move(aInputStream);
 
   nsCOMPtr<nsICloneableInputStream> cloneableStream =
-    do_QueryInterface(aInputStream);
-  if (cloneableStream && SameCOMIdentity(aInputStream, cloneableStream)) {
+    do_QueryInterface(mInputStream);
+  if (cloneableStream && SameCOMIdentity(mInputStream, cloneableStream)) {
     mWeakCloneableInputStream = cloneableStream;
   }
 
   nsCOMPtr<nsIIPCSerializableInputStream> serializableStream =
-    do_QueryInterface(aInputStream);
+    do_QueryInterface(mInputStream);
   if (serializableStream &&
-      SameCOMIdentity(aInputStream, serializableStream)) {
+      SameCOMIdentity(mInputStream, serializableStream)) {
     mWeakIPCSerializableInputStream = serializableStream;
   }
 
   nsCOMPtr<nsISeekableStream> seekableStream =
-    do_QueryInterface(aInputStream);
-  if (seekableStream && SameCOMIdentity(aInputStream, seekableStream)) {
+    do_QueryInterface(mInputStream);
+  if (seekableStream && SameCOMIdentity(mInputStream, seekableStream)) {
     mWeakSeekableInputStream = seekableStream;
   }
 
   nsCOMPtr<nsIAsyncInputStream> asyncInputStream =
-    do_QueryInterface(aInputStream);
-  if (asyncInputStream && SameCOMIdentity(aInputStream, asyncInputStream)) {
+    do_QueryInterface(mInputStream);
+  if (asyncInputStream && SameCOMIdentity(mInputStream, asyncInputStream)) {
     mWeakAsyncInputStream = asyncInputStream;
   }
 }
@@ -101,7 +103,7 @@ SlicedInputStream::Close()
   NS_ENSURE_STATE(mInputStream);
 
   mClosed = true;
-  return NS_OK;
+  return mInputStream->Close();
 }
 
 // nsIInputStream interface
@@ -116,6 +118,11 @@ SlicedInputStream::Available(uint64_t* aLength)
   }
 
   nsresult rv = mInputStream->Available(aLength);
+  if (rv == NS_BASE_STREAM_CLOSED) {
+    mClosed = true;
+    return rv;
+  }
+
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -159,7 +166,12 @@ SlicedInputStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aReadCount)
         uint32_t bytesRead;
         uint64_t bufCount = XPCOM_MIN(mStart - mCurPos, (uint64_t)sizeof(buf));
         nsresult rv = mInputStream->Read(buf, bufCount, &bytesRead);
-        if (NS_WARN_IF(NS_FAILED(rv)) || bytesRead == 0) {
+        if (NS_SUCCEEDED(rv) && bytesRead == 0) {
+          mClosed = true;
+          return rv;
+        }
+
+        if (NS_WARN_IF(NS_FAILED(rv))) {
           return rv;
         }
 
@@ -173,8 +185,18 @@ SlicedInputStream::Read(char* aBuffer, uint32_t aCount, uint32_t* aReadCount)
     aCount = mStart + mLength - mCurPos;
   }
 
+  // Nothing else to read.
+  if (!aCount) {
+    return NS_OK;
+  }
+
   nsresult rv = mInputStream->Read(aBuffer, aCount, aReadCount);
-  if (NS_WARN_IF(NS_FAILED(rv)) || *aReadCount == 0) {
+  if (NS_SUCCEEDED(rv) && *aReadCount == 0) {
+    mClosed = true;
+    return rv;
+  }
+
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
 
@@ -221,7 +243,7 @@ SlicedInputStream::Clone(nsIInputStream** aResult)
   }
 
   nsCOMPtr<nsIInputStream> sis =
-    new SlicedInputStream(clonedStream, mStart, mLength);
+    new SlicedInputStream(clonedStream.forget(), mStart, mLength);
 
   sis.forget(aResult);
   return NS_OK;
@@ -235,6 +257,7 @@ SlicedInputStream::CloseWithStatus(nsresult aStatus)
   NS_ENSURE_STATE(mInputStream);
   NS_ENSURE_STATE(mWeakAsyncInputStream);
 
+  mClosed = true;
   return mWeakAsyncInputStream->CloseWithStatus(aStatus);
 }
 
@@ -303,12 +326,17 @@ SlicedInputStream::OnInputStreamReady(nsIAsyncInputStream* aStream)
       uint32_t bytesRead;
       uint64_t bufCount = XPCOM_MIN(mStart - mCurPos, (uint64_t)sizeof(buf));
       nsresult rv = mInputStream->Read(buf, bufCount, &bytesRead);
+      if (NS_SUCCEEDED(rv) && bytesRead == 0) {
+        mClosed = true;
+        return RunAsyncWaitCallback();
+      }
+
       if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
         return mWeakAsyncInputStream->AsyncWait(this, 0, mStart - mCurPos,
                                                 mAsyncWaitEventTarget);
       }
 
-      if (NS_WARN_IF(NS_FAILED(rv)) || bytesRead == 0) {
+      if (NS_WARN_IF(NS_FAILED(rv))) {
         return RunAsyncWaitCallback();
       }
 
@@ -379,7 +407,7 @@ SlicedInputStream::Deserialize(const mozilla::ipc::InputStreamParams& aParams,
     return false;
   }
 
-  SetSourceStream(stream);
+  SetSourceStream(stream.forget());
 
   mStart = params.start();
   mLength = params.length();
@@ -421,6 +449,11 @@ SlicedInputStream::Seek(int32_t aWhence, int64_t aOffset)
     case NS_SEEK_END: {
       uint64_t available;
       rv = mInputStream->Available(&available);
+      if (rv == NS_BASE_STREAM_CLOSED) {
+        mClosed = true;
+        return rv;
+      }
+
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -480,3 +513,5 @@ SlicedInputStream::SetEOF()
   mClosed = true;
   return mWeakSeekableInputStream->SetEOF();
 }
+
+} // namespace mozilla

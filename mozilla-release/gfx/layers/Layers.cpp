@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -841,8 +840,7 @@ ContainerLayer::ContainerLayer(LayerManager* aManager, void* aImplData)
     mUseIntermediateSurface(false),
     mSupportsComponentAlphaChildren(false),
     mMayHaveReadbackChild(false),
-    mChildrenChanged(false),
-    mEventRegionsOverride(EventRegionsOverride::NoOverride)
+    mChildrenChanged(false)
 {
 }
 
@@ -1036,8 +1034,7 @@ ContainerLayer::FillSpecificAttributes(SpecificLayerAttributes& aAttrs)
 {
   aAttrs = ContainerLayerAttributes(mPreXScale, mPreYScale,
                                     mInheritedXScale, mInheritedYScale,
-                                    mPresShellResolution, mScaleToResolution,
-                                    mEventRegionsOverride);
+                                    mPresShellResolution, mScaleToResolution);
 }
 
 bool
@@ -2063,12 +2060,6 @@ ContainerLayer::PrintInfo(std::stringstream& aStream, const char* aPrefix)
   if (mScaleToResolution) {
     aStream << nsPrintfCString(" [presShellResolution=%g]", mPresShellResolution).get();
   }
-  if (mEventRegionsOverride & EventRegionsOverride::ForceDispatchToContent) {
-    aStream << " [force-dtc]";
-  }
-  if (mEventRegionsOverride & EventRegionsOverride::ForceEmptyHitRegion) {
-    aStream << " [force-ehr]";
-  }
 }
 
 void
@@ -2245,6 +2236,12 @@ RefLayer::PrintInfo(std::stringstream& aStream, const char* aPrefix)
   if (0 != mId) {
     AppendToString(aStream, mId, " [id=", "]");
   }
+  if (mEventRegionsOverride & EventRegionsOverride::ForceDispatchToContent) {
+    aStream << " [force-dtc]";
+  }
+  if (mEventRegionsOverride & EventRegionsOverride::ForceEmptyHitRegion) {
+    aStream << " [force-ehr]";
+  }
 }
 
 void
@@ -2303,7 +2300,7 @@ LayerManager::Dump(std::stringstream& aStream, const char* aPrefix,
   nsAutoCString pfx(aPrefix);
   pfx += "  ";
   if (!GetRoot()) {
-    aStream << nsPrintfCString("%s(null)", pfx.get()).get();
+    aStream << nsPrintfCString("%s(null)\n", pfx.get()).get();
     if (aDumpHtml) {
       aStream << "</li></ul>";
     }

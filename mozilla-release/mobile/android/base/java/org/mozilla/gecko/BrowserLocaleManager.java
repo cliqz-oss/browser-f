@@ -17,6 +17,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.mozilla.gecko.annotation.ReflectionTarget;
+import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.GeckoJarReader;
 
@@ -225,6 +226,12 @@ public class BrowserLocaleManager implements LocaleManager {
         data.putString("languageTag", Locales.getLanguageTag(osLocale));
 
         EventDispatcher.getInstance().dispatch("Locale:OS", data);
+
+        if (GeckoThread.isRunning()) {
+            refreshLocales();
+        } else {
+            GeckoThread.queueNativeCall(BrowserLocaleManager.class, "refreshLocales");
+        }
     }
 
     @Override
@@ -348,6 +355,11 @@ public class BrowserLocaleManager implements LocaleManager {
         return currentLocale = Locales.parseLocaleCode(current);
     }
 
+    @Override
+    public Locale getDefaultSystemLocale() {
+        return systemLocale;
+    }
+
     /**
      * Updates the Java locale and the Android configuration.
      *
@@ -388,7 +400,8 @@ public class BrowserLocaleManager implements LocaleManager {
         return locale.toString();
     }
 
-    private boolean isMirroringSystemLocale(final Context context) {
+    @Override
+    public boolean isMirroringSystemLocale(Context context) {
         return getPersistedLocale(context) == null;
     }
 
@@ -450,5 +463,27 @@ public class BrowserLocaleManager implements LocaleManager {
     @SuppressWarnings("static-method")
     public String getFallbackLocaleTag() {
         return FALLBACK_LOCALE_TAG;
+    }
+
+    @WrapForJNI(dispatchTo = "Gecko")
+    private static native void refreshLocales();
+
+
+    @WrapForJNI
+    private static String getLocale() {
+        try {
+            LocaleManager localeManager = Locales.getLocaleManager();
+            Context context = GeckoAppShell.getApplicationContext();
+            if (!localeManager.isMirroringSystemLocale(context)) {
+                // User uses specific browser locale instead of system locale
+                return Locales.getLanguageTag(localeManager.getCurrentLocale(context));
+            }
+            // Since user selects system default for browser locale, we should return system locale
+            Locale locale = localeManager.getDefaultSystemLocale();
+            return Locales.getLanguageTag(locale);
+        } catch (NullPointerException e) {
+            Log.i(LOG_TAG, "Couldn't get current locale.");
+            return null;
+        }
     }
 }

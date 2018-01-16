@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -3003,7 +3004,7 @@ static const nsCSSPropertyID gScrollSnapTypeSubpropTable[] = {
   eCSSProperty_scroll_snap_type_y,
   eCSSProperty_UNKNOWN
 };
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
+
 static const nsCSSPropertyID gMaskSubpropTable[] = {
   eCSSProperty_mask_image,
   eCSSProperty_mask_repeat,
@@ -3016,12 +3017,13 @@ static const nsCSSPropertyID gMaskSubpropTable[] = {
   eCSSProperty_mask_mode,
   eCSSProperty_UNKNOWN
 };
+
 static const nsCSSPropertyID gMaskPositionSubpropTable[] = {
   eCSSProperty_mask_position_x,
   eCSSProperty_mask_position_y,
   eCSSProperty_UNKNOWN
 };
-#endif
+
 // FIXME: mask-border tables should be added when we implement
 // mask-border properties.
 

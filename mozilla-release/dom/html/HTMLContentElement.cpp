@@ -13,7 +13,7 @@
 #include "mozilla/GenericSpecifiedValuesInlines.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsCSSRuleProcessor.h"
 #include "nsRuleProcessorData.h"
 #include "nsRuleWalker.h"
@@ -32,7 +32,7 @@ NS_NewHTMLContentElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
   // We have to jump through some hoops to be able to produce both NodeInfo* and
   // already_AddRefed<NodeInfo>& for our callees.
   RefPtr<mozilla::dom::NodeInfo> nodeInfo(aNodeInfo);
-  if (!nsDocument::IsWebComponentsEnabled(nodeInfo)) {
+  if (!nsContentUtils::IsWebComponentsEnabled()) {
     already_AddRefed<mozilla::dom::NodeInfo> nodeInfoArg(nodeInfo.forget());
     return new mozilla::dom::HTMLUnknownElement(nodeInfoArg);
   }
@@ -56,11 +56,8 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(HTMLContentElement,
                                    nsGenericHTMLElement,
                                    mMatchedNodes)
 
-NS_IMPL_ADDREF_INHERITED(HTMLContentElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLContentElement, Element)
-
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(HTMLContentElement)
-NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(HTMLContentElement,
+                                               nsGenericHTMLElement)
 
 NS_IMPL_ELEMENT_CLONE(HTMLContentElement)
 
@@ -210,9 +207,11 @@ IsValidContentSelectors(nsCSSSelector* aSelector)
 }
 
 nsresult
-HTMLContentElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLContentElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                  const nsAttrValue* aValue,
-                                 const nsAttrValue* aOldValue, bool aNotify)
+                                 const nsAttrValue* aOldValue,
+                                 nsIPrincipal* aSubjectPrincipal,
+                                 bool aNotify)
 {
   if (aNamespaceID == kNameSpaceID_None && aName == nsGkAtoms::select) {
     if (aValue) {
@@ -248,8 +247,7 @@ HTMLContentElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
         }
       }
 
-      ShadowRoot* containingShadow = GetContainingShadow();
-      if (containingShadow) {
+      if (ShadowRoot* containingShadow = GetContainingShadow()) {
         containingShadow->DistributeAllNodes();
       }
     } else {
@@ -258,15 +256,14 @@ HTMLContentElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
       mValidSelector = true;
       mSelectorList = nullptr;
 
-      ShadowRoot* containingShadow = GetContainingShadow();
-      if (containingShadow) {
+      if (ShadowRoot* containingShadow = GetContainingShadow()) {
         containingShadow->DistributeAllNodes();
       }
     }
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNamespaceID, aName, aValue,
-                                            aOldValue, aNotify);
+                                            aOldValue, aSubjectPrincipal, aNotify);
 }
 
 bool

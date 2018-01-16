@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,7 +14,6 @@
 
 #include "imgIContainer.h"
 #include "imgINotificationObserver.h"
-#include "imgIOnloadBlocker.h"
 
 class imgIContainer;
 class imgRequestProxy;
@@ -21,15 +21,13 @@ class imgRequestProxy;
 class nsBulletFrame;
 class BulletRenderer;
 
-class nsBulletListener final : public imgINotificationObserver,
-                               public imgIOnloadBlocker
+class nsBulletListener final : public imgINotificationObserver
 {
 public:
   nsBulletListener();
 
   NS_DECL_ISUPPORTS
   NS_DECL_IMGINOTIFICATIONOBSERVER
-  NS_DECL_IMGIONLOADBLOCKER
 
   void SetFrame(nsBulletFrame *frame) { mFrame = frame; }
 
@@ -58,17 +56,14 @@ public:
     , mIntrinsicSize(GetWritingMode())
     , mOrdinal(0)
     , mRequestRegistered(false)
-    , mBlockingOnload(false)
   {}
 
   virtual ~nsBulletFrame();
 
   NS_IMETHOD Notify(imgIRequest* aRequest, int32_t aType, const nsIntRect* aData);
-  NS_IMETHOD BlockOnload(imgIRequest* aRequest);
-  NS_IMETHOD UnblockOnload(imgIRequest* aRequest);
 
   // nsIFrame
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                 const nsDisplayListSet& aLists) override;
   virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
@@ -86,6 +81,14 @@ public:
                          nsIFrame::InlineMinISizeData* aData) override;
   void AddInlinePrefISize(gfxContext* aRenderingContext,
                           nsIFrame::InlinePrefISizeData* aData) override;
+
+  virtual bool IsFrameOfType(uint32_t aFlags) const override
+  {
+    if (aFlags & eSupportsCSSTransforms) {
+      return false;
+    }
+    return nsFrame::IsFrameOfType(aFlags);
+  }
 
   // nsBulletFrame
   int32_t SetListItemOrdinal(int32_t aNextOrdinal, bool* aChanged,
@@ -144,9 +147,6 @@ private:
   // This is a boolean flag indicating whether or not the current image request
   // has been registered with the refresh driver.
   bool mRequestRegistered : 1;
-
-  // Whether we're currently blocking onload.
-  bool mBlockingOnload : 1;
 };
 
 #endif /* nsBulletFrame_h___ */

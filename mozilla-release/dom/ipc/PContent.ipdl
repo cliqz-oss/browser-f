@@ -6,6 +6,7 @@
 
 include protocol PBackground;
 include protocol PBrowser;
+include protocol PClientOpenWindowOp;
 include protocol PCompositorManager;
 include protocol PContentBridge;
 include protocol PContentPermissionRequest;
@@ -58,6 +59,7 @@ include PContentPermission;
 include ServiceWorkerConfiguration;
 include GraphicsMessages;
 include MemoryReportTypes;
+include ClientIPCTypes;
 
 // Workaround to prevent error if PContentChild.cpp & PContentBridgeParent.cpp
 // are put into different UnifiedProtocolsXX.cpp files.
@@ -70,7 +72,6 @@ using AlertNotificationType from "mozilla/AlertNotificationIPCSerializer.h";
 using struct ChromePackage from "mozilla/chrome/RegistryMessageUtils.h";
 using struct SubstitutionMapping from "mozilla/chrome/RegistryMessageUtils.h";
 using struct OverrideMapping from "mozilla/chrome/RegistryMessageUtils.h";
-using base::ChildPrivileges from "base/process_util.h";
 using base::ProcessId from "base/process.h";
 using struct IPC::Permission from "mozilla/net/NeckoMessageUtils.h";
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
@@ -94,6 +95,7 @@ using mozilla::Telemetry::HistogramAccumulation from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::KeyedHistogramAccumulation from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::ScalarAction from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::KeyedScalarAction from "mozilla/TelemetryComms.h";
+using mozilla::Telemetry::DynamicScalarDefinition from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::ChildEventData from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::DiscardedData from "mozilla/TelemetryComms.h";
 using mozilla::CrossProcessMutexHandle from "mozilla/ipc/CrossProcessMutex.h";
@@ -128,6 +130,19 @@ struct FontListEntry {
 struct FontFamilyListEntry {
     nsString familyName;
     uint8_t  entryType;
+};
+
+// Used on Linux to pass list of font patterns from chrome to content.
+struct FontPatternListEntry {
+    nsCString pattern;
+    bool      appFontFamily;
+};
+
+// Wrap the Font*ListEntry records in a union so the SetXPCOMProcessAttributes
+// message can pass an array of either type.
+union SystemFontListEntry {
+    FontFamilyListEntry;
+    FontPatternListEntry;
 };
 
 union PrefValue {
@@ -264,6 +279,7 @@ struct XPCOMInitData
     DataStorageEntry[] dataStorage;
     nsCString[] appLocales;
     nsCString[] requestedLocales;
+    DynamicScalarDefinition[] dynamicScalarDefs;
 };
 
 /**
@@ -274,6 +290,7 @@ struct XPCOMInitData
 nested(upto inside_cpow) sync protocol PContent
 {
     manages PBrowser;
+    manages PClientOpenWindowOp;
     manages PContentPermissionRequest;
     manages PCycleCollectWithLogs;
     manages PPSMContentDownloader;
@@ -425,6 +442,8 @@ child:
 
     async UpdateDictionaryList(nsString[] dictionaries);
 
+    async UpdateFontList(SystemFontListEntry[] fontList);
+
     async UpdateAppLocales(nsCString[] appLocales);
     async UpdateRequestedLocales(nsCString[] requestedLocales);
 
@@ -472,8 +491,8 @@ child:
     async SetXPCOMProcessAttributes(XPCOMInitData xpcomInit,
                                     StructuredCloneData initialData,
                                     LookAndFeelInt[] lookAndFeelIntCache,
-                                    /* used on MacOSX only: */
-                                    FontFamilyListEntry[] fontFamilyList);
+                                    /* used on MacOSX and Linux only: */
+                                    SystemFontListEntry[] systemFontList);
 
     // Notify child that last-pb-context-exited notification was observed
     async LastPrivateDocShellDestroyed();
@@ -664,6 +683,21 @@ child:
      * queue.
      */
     prio(input) async SuspendInputEventQueue();
+
+    /*
+     * IPC message to propagate dynamic scalar definitions, added after the
+     * content process is spawned, from the parent to the child.
+     * Dynamic scalar definitions added at the process startup are handled
+     * using the |TelemetryIPC::AddDynamicScalarDefinitions| functions.
+     */
+    async AddDynamicScalars(DynamicScalarDefinition[] definitions);
+
+    /*
+     * Message to construct a PClientOpenWindowOp actor.  This is used to
+     * open windows cross-process and receive notification when the operation
+     * has completed.
+     */
+    async PClientOpenWindowOp(ClientOpenWindowArgs aArgs);
 
 parent:
     async InitBackground(Endpoint<PBackgroundParent> aEndpoint);
@@ -980,6 +1014,7 @@ parent:
                        bool aCalledFromJS,
                        bool aPositionSpecified,
                        bool aSizeSpecified,
+                       OptionalURIParams aURIToLoad,
                        nsCString aFeatures,
                        nsCString aBaseURI,
                        float aFullZoom,

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -19,6 +20,7 @@ class nsCSSClipPathInstance
 {
   typedef mozilla::gfx::DrawTarget DrawTarget;
   typedef mozilla::gfx::Path Path;
+  typedef mozilla::gfx::Rect Rect;
 
 public:
   static void ApplyBasicShapeClip(gfxContext& aContext,
@@ -26,6 +28,9 @@ public:
   // aPoint is in CSS pixels.
   static bool HitTestBasicShapeClip(nsIFrame* aFrame,
                                     const gfxPoint& aPoint);
+
+  static Rect GetBoundingRectForBasicShapeClip(nsIFrame* aFrame,
+                                               const StyleShapeSource& aClipPathStyle);
 private:
   explicit nsCSSClipPathInstance(nsIFrame* aFrame,
                                  const StyleShapeSource aClipPathStyle)

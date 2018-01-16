@@ -221,7 +221,6 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_PREDECREMENT:
       case PNK_POSTDECREMENT:
       case PNK_COMPUTED_NAME:
-      case PNK_ARRAYPUSH:
       case PNK_SPREAD:
       case PNK_MUTATEPROTO:
       case PNK_EXPORT:
@@ -266,7 +265,6 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_NEWTARGET:
       case PNK_SETTHIS:
       case PNK_FOR:
-      case PNK_COMPREHENSIONFOR:
       case PNK_WITH: {
         MOZ_ASSERT(pn->isArity(PN_BINARY));
         stack->push(pn->pn_left);
@@ -415,7 +413,8 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       // statements in the catch block.
       case PNK_CATCH: {
         MOZ_ASSERT(pn->isArity(PN_TERNARY));
-        stack->push(pn->pn_kid1);
+        if (pn->pn_kid1)
+            stack->push(pn->pn_kid1);
         if (pn->pn_kid2)
             stack->push(pn->pn_kid2);
         stack->push(pn->pn_kid3);
@@ -447,11 +446,11 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_DIV:
       case PNK_MOD:
       case PNK_POW:
+      case PNK_PIPELINE:
       case PNK_COMMA:
       case PNK_NEW:
       case PNK_CALL:
       case PNK_SUPERCALL:
-      case PNK_GENEXP:
       case PNK_ARRAY:
       case PNK_OBJECT:
       case PNK_TEMPLATE_STRING_LIST:
@@ -467,20 +466,6 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_PARAMSBODY:
       case PNK_CLASSMETHODLIST:
         return PushListNodeChildren(pn, stack);
-
-      // Array comprehension nodes are lists with a single child:
-      // PNK_COMPREHENSIONFOR for comprehensions, PNK_LEXICALSCOPE for legacy
-      // comprehensions.  Probably this should be a non-list eventually.
-      case PNK_ARRAYCOMP: {
-#ifdef DEBUG
-        MOZ_ASSERT(pn->isKind(PNK_ARRAYCOMP));
-        MOZ_ASSERT(pn->isArity(PN_LIST));
-        MOZ_ASSERT(pn->pn_count == 1);
-        MOZ_ASSERT(pn->pn_head->isKind(PNK_LEXICALSCOPE) ||
-                   pn->pn_head->isKind(PNK_COMPREHENSIONFOR));
-#endif
-        return PushListNodeChildren(pn, stack);
-      }
 
       case PNK_LABEL:
       case PNK_DOT:
@@ -571,7 +556,7 @@ ParseNodeAllocator::allocNode()
 }
 
 ParseNode*
-ParseNode::appendOrCreateList(ParseNodeKind kind, JSOp op, ParseNode* left, ParseNode* right,
+ParseNode::appendOrCreateList(ParseNodeKind kind, ParseNode* left, ParseNode* right,
                               FullParseHandler* handler, ParseContext* pc)
 {
     // The asm.js specification is written in ECMAScript grammar terms that
@@ -593,9 +578,7 @@ ParseNode::appendOrCreateList(ParseNodeKind kind, JSOp op, ParseNode* left, Pars
         // processed with a left fold because (+) is left-associative.
         //
         if (left->isKind(kind) &&
-            left->isOp(op) &&
-            (CodeSpec[op].format & JOF_LEFTASSOC ||
-             (kind == PNK_POW && !left->pn_parens)))
+            (kind == PNK_POW ? !left->pn_parens : left->isBinaryOperation()))
         {
             ListNode* list = &left->as<ListNode>();
 
@@ -606,7 +589,7 @@ ParseNode::appendOrCreateList(ParseNodeKind kind, JSOp op, ParseNode* left, Pars
         }
     }
 
-    ParseNode* list = handler->new_<ListNode>(kind, op, left);
+    ParseNode* list = handler->new_<ListNode>(kind, JSOP_NOP, left);
     if (!list)
         return nullptr;
 

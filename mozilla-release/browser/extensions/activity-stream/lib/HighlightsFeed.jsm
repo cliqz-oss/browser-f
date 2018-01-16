@@ -21,31 +21,24 @@ XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
   "resource://gre/modules/NewTabUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Screenshots",
   "resource://activity-stream/lib/Screenshots.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
+  "resource://gre/modules/PageThumbs.jsm");
 
 const HIGHLIGHTS_MAX_LENGTH = 9;
-const HIGHLIGHTS_UPDATE_TIME = 15 * 60 * 1000; // 15 minutes
 const MANY_EXTRA_LENGTH = HIGHLIGHTS_MAX_LENGTH * 5 + TOP_SITES_SHOWMORE_LENGTH;
 const SECTION_ID = "highlights";
 
 this.HighlightsFeed = class HighlightsFeed {
   constructor() {
-    this.highlightsLastUpdated = 0;
-    this.highlightsLength = 0;
     this.dedupe = new Dedupe(this._dedupeKey);
     this.linksCache = new LinksCache(NewTabUtils.activityStreamLinks,
-      "getHighlights", (oldLink, newLink) => {
-        // Migrate any pending images or images to the new link
-        for (const property of ["__fetchingScreenshot", "image"]) {
-          const oldValue = oldLink[property];
-          if (oldValue) {
-            newLink[property] = oldValue;
-          }
-        }
-      });
+      "getHighlights", ["image"]);
+    PageThumbs.addExpirationFilter(this);
   }
 
   _dedupeKey(site) {
-    return site && site.url;
+    // Treat bookmarks as un-dedupable, otherwise show one of a url
+    return site && (site.type === "bookmark" ? {} : site.url);
   }
 
   init() {
@@ -54,29 +47,42 @@ this.HighlightsFeed = class HighlightsFeed {
 
   postInit() {
     SectionsManager.enableSection(SECTION_ID);
-    this.fetchHighlights(true);
+    this.fetchHighlights({broadcast: true});
   }
 
   uninit() {
     SectionsManager.disableSection(SECTION_ID);
+    PageThumbs.removeExpirationFilter(this);
   }
 
-  async fetchHighlights(broadcast = false) {
-    // We broadcast when we want to force an update, so get fresh links
-    if (broadcast) {
-      this.linksCache.expire();
+  filterForThumbnailExpiration(callback) {
+    const sectionIndex = SectionsManager.sections.get(SECTION_ID).order;
+    const state = this.store.getState().Sections[sectionIndex];
+
+    callback(state && state.initialized ? state.rows.reduce((acc, site) => {
+      // Screenshots call in `fetchImage` will search for preview_image_url or
+      // fallback to URL, so we prevent both from being expired.
+      acc.push(site.url);
+      if (site.preview_image_url) {
+        acc.push(site.preview_image_url);
+      }
+      return acc;
+    }, []) : []);
+  }
+
+  /**
+   * Refresh the highlights data for content.
+   * @param {bool} options.broadcast Should the update be broadcasted.
+   */
+  async fetchHighlights(options = {}) {
+    // We need TopSites for deduping, so wait for TOP_SITES_UPDATED.
+    if (!this.store.getState().TopSites.initialized) {
+      return;
     }
 
-    // We need TopSites to have been initialised for deduping
-    if (!this.store.getState().TopSites.initialized) {
-      await new Promise(resolve => {
-        const unsubscribe = this.store.subscribe(() => {
-          if (this.store.getState().TopSites.initialized) {
-            unsubscribe();
-            resolve();
-          }
-        });
-      });
+    // We broadcast when we want to force an update, so get fresh links
+    if (options.broadcast) {
+      this.linksCache.expire();
     }
 
     // Request more than the expected length to allow for items being removed by
@@ -117,9 +123,8 @@ this.HighlightsFeed = class HighlightsFeed {
       highlights.push(page);
       hosts.add(hostname);
 
-      // Remove any internal properties
-      delete page.__fetchingScreenshot;
-      delete page.__updateCache;
+      // Remove internal properties that might be updated after dispatch
+      delete page.__sharedCache;
 
       // Skip the rest if we have enough items
       if (highlights.length === HIGHLIGHTS_MAX_LENGTH) {
@@ -127,9 +132,12 @@ this.HighlightsFeed = class HighlightsFeed {
       }
     }
 
-    SectionsManager.updateSection(SECTION_ID, {rows: highlights}, broadcast);
-    this.highlightsLastUpdated = Date.now();
-    this.highlightsLength = highlights.length;
+    const sectionIndex = SectionsManager.sections.get(SECTION_ID).order;
+    const {initialized} = this.store.getState().Sections[sectionIndex];
+    // Broadcast when required or if it is the first update.
+    const shouldBroadcast = options.broadcast || !initialized;
+
+    SectionsManager.updateSection(SECTION_ID, {rows: highlights}, shouldBroadcast);
   }
 
   /**
@@ -139,7 +147,7 @@ this.HighlightsFeed = class HighlightsFeed {
   async fetchImage(page) {
     // Request a screenshot if we don't already have one pending
     const {preview_image_url: imageUrl, url} = page;
-    Screenshots.maybeGetAndSetScreenshot(page, imageUrl || url, "image", image => {
+    Screenshots.maybeCacheScreenshot(page, imageUrl || url, "image", image => {
       SectionsManager.updateSectionCard(SECTION_ID, url, {image}, true);
     });
   }
@@ -149,25 +157,22 @@ this.HighlightsFeed = class HighlightsFeed {
       case at.INIT:
         this.init();
         break;
-      case at.NEW_TAB_LOAD:
-        if (this.highlightsLength < HIGHLIGHTS_MAX_LENGTH) {
-          // If we haven't filled the highlights grid yet, fetch again.
-          this.fetchHighlights(true);
-        } else if (Date.now() - this.highlightsLastUpdated >= HIGHLIGHTS_UPDATE_TIME) {
-          // If the last time we refreshed the data is greater than 15 minutes, fetch again.
-          this.fetchHighlights(false);
-        }
+      case at.SYSTEM_TICK:
+        this.fetchHighlights({broadcast: false});
         break;
       case at.MIGRATION_COMPLETED:
       case at.PLACES_HISTORY_CLEARED:
       case at.PLACES_LINKS_DELETED:
       case at.PLACES_LINK_BLOCKED:
-        this.fetchHighlights(true);
+        this.fetchHighlights({broadcast: true});
         break;
       case at.PLACES_BOOKMARK_ADDED:
       case at.PLACES_BOOKMARK_REMOVED:
+        this.linksCache.expire();
+        this.fetchHighlights({broadcast: false});
+        break;
       case at.TOP_SITES_UPDATED:
-        this.fetchHighlights(false);
+        this.fetchHighlights({broadcast: false});
         break;
       case at.UNINIT:
         this.uninit();
@@ -176,5 +181,4 @@ this.HighlightsFeed = class HighlightsFeed {
   }
 };
 
-this.HIGHLIGHTS_UPDATE_TIME = HIGHLIGHTS_UPDATE_TIME;
-this.EXPORTED_SYMBOLS = ["HighlightsFeed", "HIGHLIGHTS_UPDATE_TIME", "SECTION_ID"];
+this.EXPORTED_SYMBOLS = ["HighlightsFeed", "SECTION_ID"];

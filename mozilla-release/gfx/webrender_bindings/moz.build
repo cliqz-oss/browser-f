@@ -10,6 +10,7 @@ with Files('**'):
 EXPORTS.mozilla.webrender += [
     'RenderBufferTextureHost.h',
     'RendererOGL.h',
+    'RenderSharedSurfaceTextureHost.h',
     'RenderTextureHost.h',
     'RenderTextureHostOGL.h',
     'RenderThread.h',
@@ -23,6 +24,7 @@ UNIFIED_SOURCES += [
     'Moz2DImageRenderer.cpp',
     'RenderBufferTextureHost.cpp',
     'RendererOGL.cpp',
+    'RenderSharedSurfaceTextureHost.cpp',
     'RenderTextureHost.cpp',
     'RenderTextureHostOGL.cpp',
     'RenderThread.cpp',
@@ -45,6 +47,10 @@ if CONFIG['MOZ_ENABLE_D3D10_LAYER']:
     UNIFIED_SOURCES += [
         'RenderD3D11TextureHostOGL.cpp',
     ]
+
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk2', 'gtk3'):
+    CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
+    CXXFLAGS += CONFIG['CAIRO_FT_CFLAGS']
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

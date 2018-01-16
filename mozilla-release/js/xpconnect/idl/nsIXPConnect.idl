@@ -311,15 +311,6 @@ interface nsIXPConnect : nsISupports
                in nsIIDRef     aIID);
 
     /**
-     * Same as wrapNative, but it returns the JSObject in an nsIXPConnectJSObjectHolder.
-     */
-    nsIXPConnectJSObjectHolder
-    wrapNativeHolder(in JSContextPtr aJSContext,
-                     in JSObjectPtr  aScope,
-                     in nsISupports  aCOMObj,
-                     in nsIIDRef     aIID);
-
-    /**
      * Same as wrapNative, but it returns the JSObject in aVal. C++ callers
      * must ensure that aVal is rooted.
      * aIID may be null, it means the same as passing in
@@ -383,9 +374,6 @@ interface nsIXPConnect : nsISupports
     nsIXPConnectWrappedNative
     getWrappedNativeOfJSObject(in JSContextPtr aJSContext,
                                in JSObjectPtr  aJSObj);
-
-    // Will return null if there is no JS stack right now.
-    readonly attribute nsIStackFrame                CurrentJSStack;
 
     void debugDump(in short depth);
     void debugDumpObject(in nsISupports aCOMObj, in short depth);

@@ -77,7 +77,8 @@ typedef uint32_t ScreenOrientationInternal;
 
 class nsDocShell;
 class nsDOMNavigationTiming;
-class nsGlobalWindow;
+class nsGlobalWindowOuter;
+class nsGlobalWindowInner;
 class nsIController;
 class nsIScrollableFrame;
 class OnLinkClickEvent;
@@ -113,8 +114,12 @@ class nsRefreshTimer : public nsITimerCallback
                      , public nsINamed
 {
 public:
-  nsRefreshTimer(nsDocShell* aDocShell, nsIURI* aURI, int32_t aDelay,
-                 bool aRepeat, bool aMetaRefresh);
+  nsRefreshTimer(nsDocShell* aDocShell,
+                 nsIURI* aURI,
+                 nsIPrincipal* aPrincipal,
+                 int32_t aDelay,
+                 bool aRepeat,
+                 bool aMetaRefresh);
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITIMERCALLBACK
@@ -124,6 +129,7 @@ public:
 
   RefPtr<nsDocShell> mDocShell;
   nsCOMPtr<nsIURI> mURI;
+  nsCOMPtr<nsIPrincipal> mPrincipal;
   int32_t mDelay;
   bool mRepeat;
   bool mMetaRefresh;
@@ -173,6 +179,7 @@ public:
   virtual nsresult Init() override;
 
   NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsDocShell, nsDocLoader)
 
   NS_DECL_NSIDOCSHELL
   NS_DECL_NSIDOCSHELLTREEITEM
@@ -210,6 +217,7 @@ public:
                          const char16_t* aTargetSpec,
                          const nsAString& aFileName,
                          nsIInputStream* aPostDataStream,
+                         int64_t aPostDataStreamLength,
                          nsIInputStream* aHeadersDataStream,
                          bool aIsTrusted,
                          nsIPrincipal* aTriggeringPrincipal) override;
@@ -218,6 +226,7 @@ public:
                              const char16_t* aTargetSpec,
                              const nsAString& aFileName,
                              nsIInputStream* aPostDataStream = 0,
+                             int64_t aPostDataStreamLength = -1,
                              nsIInputStream* aHeadersDataStream = 0,
                              bool aNoOpenerImplied = false,
                              nsIDocShell** aDocShell = 0,
@@ -255,7 +264,8 @@ public:
   // ForceRefreshURI method on nsIRefreshURI, but makes sure to take
   // the timer involved out of mRefreshURIList if it's there.
   // aTimer must not be null.
-  nsresult ForceRefreshURIFromTimer(nsIURI* aURI, int32_t aDelay,
+  nsresult ForceRefreshURIFromTimer(nsIURI* aURI, nsIPrincipal* aPrincipal,
+                                    int32_t aDelay,
                                     bool aMetaRefresh, nsITimer* aTimer);
 
   friend class OnLinkClickEvent;
@@ -325,6 +335,28 @@ public:
     nsTArray<nsCOMPtr<nsIPrincipal>>&& aAncestorPrincipals)
   {
     mAncestorPrincipals = mozilla::Move(aAncestorPrincipals);
+  }
+
+  /**
+   * Get the list of ancestor outerWindowIDs for this docshell.  The list is meant
+   * to be the list of outer window IDs that correspond to the ancestorPrincipals
+   * above.   For each ancestor principal, we store the parent window ID.
+   */
+  const nsTArray<uint64_t>& AncestorOuterWindowIDs() const
+  {
+    return mAncestorOuterWindowIDs;
+  }
+
+  /**
+   * Set the list of ancestor outer window IDs for this docshell.  We call this
+   * from frameloader as well in order to keep the array matched with the
+   * ancestor principals.
+   *
+   * This method steals the data from the passed-in array.
+   */
+  void SetAncestorOuterWindowIDs(nsTArray<uint64_t>&& aAncestorOuterWindowIDs)
+  {
+    mAncestorOuterWindowIDs = mozilla::Move(aAncestorOuterWindowIDs);
   }
 
 private:
@@ -427,6 +459,8 @@ protected:
                      mozilla::Maybe<nsCOMPtr<nsIURI>> const& aResultPrincipalURI,
                      bool aLoadReplace,
                      bool aLoadFromExternal,
+                     bool aForceAllowDataURI,
+                     bool aOriginalFrameSrc,
                      nsIURI* aReferrer,
                      bool aSendReferrer,
                      uint32_t aReferrerPolicy,
@@ -435,6 +469,7 @@ protected:
                      const char* aTypeHint,
                      const nsAString& aFileName,
                      nsIInputStream* aPostData,
+                     int64_t aPostDataLength,
                      nsIInputStream* aHeadersData,
                      bool aFirstParty,
                      nsIDocShell** aDocShell,
@@ -891,7 +926,7 @@ protected:
   nsCOMPtr<nsIURI> mCurrentURI;
   nsCOMPtr<nsIURI> mReferrerURI;
   uint32_t mReferrerPolicy;
-  RefPtr<nsGlobalWindow> mScriptGlobal;
+  RefPtr<nsGlobalWindowOuter> mScriptGlobal;
   nsCOMPtr<nsISHistory> mSessionHistory;
   nsCOMPtr<nsIGlobalHistory2> mGlobalHistory;
   nsCOMPtr<nsIWebBrowserFind> mFind;
@@ -1132,6 +1167,8 @@ private:
 
   // Our list of ancestor principals.
   nsTArray<nsCOMPtr<nsIPrincipal>> mAncestorPrincipals;
+  // Our list of ancestor outerWindowIDs.
+  nsTArray<uint64_t> mAncestorOuterWindowIDs;
 
   // Separate function to do the actual name (i.e. not _top, _self etc.)
   // searching for FindItemWithName.

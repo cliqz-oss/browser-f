@@ -184,23 +184,109 @@ exports.defineLazyPrototypeGetter = function (object, key, callback) {
  */
 exports.getProperty = function (object, key) {
   let root = object;
-  try {
-    do {
-      const desc = object.getOwnPropertyDescriptor(key);
-      if (desc) {
-        if ("value" in desc) {
-          return desc.value;
-        }
-        // Call the getter if it's safe.
-        return exports.hasSafeGetter(desc) ? desc.get.call(root).return : undefined;
+  while (object && exports.isSafeDebuggerObject(object)) {
+    let desc;
+    try {
+      desc = object.getOwnPropertyDescriptor(key);
+    } catch (e) {
+      // The above can throw when the debuggee does not subsume the object's
+      // compartment, or for some WrappedNatives like Cu.Sandbox.
+      return undefined;
+    }
+    if (desc) {
+      if ("value" in desc) {
+        return desc.value;
       }
-      object = object.proto;
-    } while (object);
-  } catch (e) {
-    // If anything goes wrong report the error and return undefined.
-    exports.reportException("getProperty", e);
+      // Call the getter if it's safe.
+      if (exports.hasSafeGetter(desc)) {
+        try {
+          return desc.get.call(root).return;
+        } catch (e) {
+          // If anything goes wrong report the error and return undefined.
+          exports.reportException("getProperty", e);
+        }
+      }
+      return undefined;
+    }
+    object = object.proto;
   }
   return undefined;
+};
+
+/**
+ * Removes all the non-opaque security wrappers of a debuggee object.
+ *
+ * @param obj Debugger.Object
+ *        The debuggee object to be unwrapped.
+ * @return Debugger.Object|null|undefined
+ *      - If the object has no wrapper, the same `obj` is returned. Note DeadObject
+ *        objects belong to this case.
+ *      - Otherwise, if the debuggee doesn't subsume object's compartment, returns `null`.
+ *      - Otherwise, if the object belongs to an invisible-to-debugger compartment,
+ *        returns `undefined`. Note CPOW objects belong to this case.
+ *      - Otherwise, returns the unwrapped object.
+ */
+exports.unwrap = function unwrap(obj) {
+  // Check if `obj` has an opaque wrapper.
+  if (obj.class === "Opaque") {
+    return obj;
+  }
+
+  // Attempt to unwrap via `obj.unwrap()`. Note that:
+  // - This will return `null` if the debuggee does not subsume object's compartment.
+  // - This will throw if the object belongs to an invisible-to-debugger compartment.
+  //   This case includes CPOWs (see bug 1391449).
+  // - This will return `obj` if there is no wrapper.
+  let unwrapped;
+  try {
+    unwrapped = obj.unwrap();
+  } catch (err) {
+    return undefined;
+  }
+
+  // Check if further unwrapping is not possible.
+  if (!unwrapped || unwrapped === obj) {
+    return unwrapped;
+  }
+
+  // Recursively remove additional security wrappers.
+  return unwrap(unwrapped);
+};
+
+/**
+ * Checks whether a debuggee object is safe. Unsafe objects may run proxy traps or throw
+ * when using `proto`, `isExtensible`, `isFrozen` or `isSealed`. Note that safe objects
+ * may still throw when calling `getOwnPropertyNames`, `getOwnPropertyDescriptor`, etc.
+ * Also note CPOW objects are considered to be unsafe, and DeadObject objects to be safe.
+ *
+ * @param obj Debugger.Object
+ *        The debuggee object to be checked.
+ * @return boolean
+ */
+exports.isSafeDebuggerObject = function (obj) {
+  let unwrapped = exports.unwrap(obj);
+
+  // Objects belonging to an invisible-to-debugger compartment might be proxies,
+  // so just in case consider them unsafe. CPOWs are included in this case.
+  if (unwrapped === undefined) {
+    return false;
+  }
+
+  // If the debuggee does not subsume the object's compartment, most properties won't
+  // be accessible. Cross-origin Window and Location objects might expose some, though.
+  // Therefore, it must be considered safe. Note that proxy objects have fully opaque
+  // security wrappers, so proxy traps won't run in this case.
+  if (unwrapped === null) {
+    return true;
+  }
+
+  // Proxy objects can run traps when accessed. `isProxy` getter is called on `unwrapped`
+  // instead of on `obj` in order to detect proxies behind transparent wrappers.
+  if (unwrapped.isProxy) {
+    return false;
+  }
+
+  return true;
 };
 
 /**
@@ -214,13 +300,9 @@ exports.getProperty = function (object, key) {
 exports.hasSafeGetter = function (desc) {
   // Scripted functions that are CCWs will not appear scripted until after
   // unwrapping.
-  try {
-    let fn = desc.get.unwrap();
-    return fn && fn.callable && fn.class == "Function" && fn.script === undefined;
-  } catch (e) {
-    // Avoid exception 'Object in compartment marked as invisible to Debugger'
-    return false;
-  }
+  let fn = desc.get;
+  fn = fn && exports.unwrap(fn);
+  return fn && fn.callable && fn.class == "Function" && fn.script === undefined;
 };
 
 /**
@@ -507,7 +589,18 @@ function mainThreadFetch(urlIn, aOptions = { loadFromCache: true,
       // the input unmodified. Essentially we try to decode the data as UTF-8
       // and if that fails, we use the locale specific default encoding. This is
       // the best we can do if the source does not provide charset info.
-      let charset = bomCharset || channel.contentCharset || aOptions.charset || "UTF-8";
+      let charset = bomCharset;
+      if (!charset) {
+        try {
+          charset = channel.contentCharset;
+        } catch (e) {
+          // Accessing `contentCharset` on content served by a service worker in
+          // non-e10s may throw.
+        }
+      }
+      if (!charset) {
+        charset = aOptions.charset || "UTF-8";
+      }
       let unicodeSource = NetworkHelper.convertToUnicode(source, charset);
 
       deferred.resolve({

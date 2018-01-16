@@ -359,7 +359,7 @@ add_task(async function addFavicons() {
   await PlacesTestUtils.addVisits(visit);
 
   let faviconData = new Map();
-  faviconData.set("https://mozilla.com", base64URL);
+  faviconData.set("https://mozilla.com", `${base64URL}#tippytop`);
   await PlacesTestUtils.addFavicons(faviconData);
 
   await provider._addFavicons(links);
@@ -367,6 +367,7 @@ add_task(async function addFavicons() {
   Assert.equal(links[0].faviconLength, links[0].favicon.length, "Got the right length for the byte array");
   Assert.equal(provider._faviconBytesToDataURI(links)[0].favicon, base64URL, "Got the right favicon");
   Assert.equal(links[0].faviconSize, 1, "Got the right favicon size (width and height of favicon)");
+  Assert.equal(links[0].faviconRef, "tippytop", "Got the favicon url ref");
 
   // Check with http version of the link that doesn't have its own
   const nonHttps = [{url: links[0].url.replace("https", "http")}];
@@ -735,9 +736,9 @@ add_task(async function activityStream_deleteBookmark() {
 
   let bookmarkGuid = await new Promise(resolve => PlacesUtils.bookmarks.fetch(
     {url: bookmarks[0].url}, bookmark => resolve(bookmark.guid)));
-  let deleted = await provider.deleteBookmark(bookmarkGuid);
-  Assert.equal(deleted.guid, bookmarkGuid, "the correct bookmark was deleted");
-
+  await provider.deleteBookmark(bookmarkGuid);
+  Assert.strictEqual((await PlacesUtils.bookmarks.fetch(bookmarkGuid)), null,
+    "the bookmark should no longer be found");
   bookmarksSize = await getBookmarksSize();
   Assert.equal(bookmarksSize, 1, "size 1 after deleting");
 });
@@ -794,4 +795,3 @@ TestProvider.prototype = {
     }
   },
 };
-

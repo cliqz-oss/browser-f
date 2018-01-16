@@ -51,9 +51,6 @@ var hh = Cc["@mozilla.org/network/protocol;1?name=http"]
 var prefs = Cc["@mozilla.org/preferences-service;1"]
             .getService(Ci.nsIPrefBranch);
 
-var mozmillInit = {};
-Cu.import("resource://mozmill/driver/mozmill.js", mozmillInit);
-
 XPCOMUtils.defineLazyGetter(this, "fileProtocolHandler", () => {
   let fileHandler = Services.io.getProtocolHandler("file");
   return fileHandler.QueryInterface(Ci.nsIFileProtocolHandler);
@@ -239,7 +236,7 @@ var TPS = {
         case "weave:service:sync:start":
           // Ensure that the sync operation has been started by TPS
           if (!this._triggeredSync) {
-            this.DumpError("Automatic sync got triggered, which is not allowed.")
+            this.DumpError("Automatic sync got triggered, which is not allowed.");
           }
 
           this._syncActive = true;
@@ -414,11 +411,11 @@ var TPS = {
             HistoryEntry.Delete(entry, this._usSinceEpoch);
             break;
           case ACTION_VERIFY:
-            Logger.AssertTrue(HistoryEntry.Find(entry, this._usSinceEpoch),
+            Logger.AssertTrue((await HistoryEntry.Find(entry, this._usSinceEpoch)),
               "Uri visits not found in history database");
             break;
           case ACTION_VERIFY_NOT:
-            Logger.AssertTrue(!HistoryEntry.Find(entry, this._usSinceEpoch),
+            Logger.AssertTrue(!(await HistoryEntry.Find(entry, this._usSinceEpoch)),
               "Uri visits found in history database, but they shouldn't be");
             break;
           default:
@@ -428,7 +425,7 @@ var TPS = {
       Logger.logPass("executing action " + action.toUpperCase() +
                      " on history");
     } catch (e) {
-      DumpHistory();
+      await DumpHistory();
       throw (e);
     }
   },
@@ -574,23 +571,6 @@ var TPS = {
     }
   },
 
-  MozmillEndTestListener: function TPS__MozmillEndTestListener(obj) {
-    Logger.logInfo("mozmill endTest: " + JSON.stringify(obj));
-    if (obj.failed > 0) {
-      this.DumpError("mozmill test failed, name: " + obj.name + ", reason: " + JSON.stringify(obj.fails));
-    } else if ("skipped" in obj && obj.skipped) {
-      this.DumpError("mozmill test failed, name: " + obj.name + ", reason: " + obj.skipped_reason);
-    } else {
-      CommonUtils.namedTimer(function() {
-        this.FinishAsyncOperation();
-      }, 2000, this, "postmozmilltest");
-    }
-  },
-
-  MozmillSetTestListener: function TPS__MozmillSetTestListener(obj) {
-    Logger.logInfo("mozmill setTest: " + obj.name);
-  },
-
   async Cleanup() {
     try {
       await this.WipeServer();
@@ -627,7 +607,7 @@ var TPS = {
       for (let json of resp.obj) {
         let record = new collection._recordObj();
         record.deserialize(json);
-        record.decrypt(collectionKey);
+        await record.decrypt(collectionKey);
         items.push(record.cleartext);
       }
       return items;
@@ -819,7 +799,7 @@ var TPS = {
 
       stream.init(schemaFile, FileUtils.MODE_RDONLY, FileUtils.PERMS_FILE, 0);
       let schema = jsonReader.decodeFromStream(stream, stream.available());
-      Logger.logInfo("Successfully loaded schema")
+      Logger.logInfo("Successfully loaded schema");
 
       // Importing resource://testing-common/* isn't possible from within TPS,
       // so we load Ajv manually.
@@ -1039,25 +1019,6 @@ var TPS = {
     this._enabledEngines = names;
   },
 
-  RunMozmillTest: function TPS__RunMozmillTest(testfile) {
-    var mozmillfile = Cc["@mozilla.org/file/local;1"]
-                      .createInstance(Ci.nsIFile);
-    if (hh.oscpu.toLowerCase().indexOf("windows") > -1) {
-      let re = /\/(\w)\/(.*)/;
-      this.config.testdir = this.config.testdir.replace(re, "$1://$2").replace(/\//g, "\\");
-    }
-    mozmillfile.initWithPath(this.config.testdir);
-    mozmillfile.appendRelativePath(testfile);
-    Logger.logInfo("Running mozmill test " + mozmillfile.path);
-
-    var frame = {};
-    Cu.import("resource://mozmill/modules/frame.js", frame);
-    frame.events.addListener("setTest", this.MozmillSetTestListener.bind(this));
-    frame.events.addListener("endTest", this.MozmillEndTestListener.bind(this));
-    this.StartAsyncOperation();
-    frame.runTestFile(mozmillfile.path, null);
-  },
-
   /**
    * Returns a promise that resolves when a specific observer notification is
    * resolved. This is similar to the various waitFor* functions, although is
@@ -1085,7 +1046,7 @@ var TPS = {
         Logger.logInfo("Observed " + aEventName);
         Svc.Obs.remove(aEventName, handler);
         resolve();
-      }
+      };
       Svc.Obs.add(aEventName, handler);
     });
   },

@@ -1,8 +1,8 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
-/* This Source Code is subject to the terms of the Mozilla Public License
- * version 2.0 (the "License"). You can obtain a copy of the License at
- * http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* rendering object for CSS "display: ruby-base-container" */
 
@@ -313,12 +313,13 @@ nsRubyBaseContainerFrame::Reflow(nsPresContext* aPresContext,
 
   mDescendantLeadings.Reset();
 
-  MoveOverflowToChildList();
+  nsIFrame* lineContainer = aReflowInput.mLineLayout->LineContainerFrame();
+  MoveInlineOverflowToChildList(lineContainer);
   // Ask text containers to drain overflows
   AutoRubyTextContainerArray textContainers(this);
   const uint32_t rtcCount = textContainers.Length();
   for (uint32_t i = 0; i < rtcCount; i++) {
-    textContainers[i]->MoveOverflowToChildList();
+    textContainers[i]->MoveInlineOverflowToChildList(lineContainer);
   }
 
   WritingMode lineWM = aReflowInput.mLineLayout->GetWritingMode();
@@ -544,7 +545,7 @@ nsRubyBaseContainerFrame::ReflowColumns(const RubyReflowInput& aReflowInput,
       baseFrame = nextColumn->mBaseFrame;
     }
     if (baseFrame) {
-      PushChildren(baseFrame, baseFrame->GetPrevSibling());
+      PushChildrenToOverflow(baseFrame, baseFrame->GetPrevSibling());
     }
     for (uint32_t i = 0; i < rtcCount; i++) {
       nsRubyTextFrame* textFrame = column.mTextFrames[i];
@@ -552,8 +553,8 @@ nsRubyBaseContainerFrame::ReflowColumns(const RubyReflowInput& aReflowInput,
         textFrame = nextColumn->mTextFrames[i];
       }
       if (textFrame) {
-        aReflowInput.mTextContainers[i]->PushChildren(
-          textFrame, textFrame->GetPrevSibling());
+        aReflowInput.mTextContainers[i]->
+          PushChildrenToOverflow(textFrame, textFrame->GetPrevSibling());
       }
     }
   } else if (reflowStatus.IsInlineBreakAfter()) {

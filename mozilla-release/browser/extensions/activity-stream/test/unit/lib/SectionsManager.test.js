@@ -12,11 +12,14 @@ const FAKE_CARD_OPTIONS = {title: "Some fake title"};
 describe("SectionsManager", () => {
   let globals;
   let fakeServices;
+  let fakePlacesUtils;
 
   beforeEach(() => {
     globals = new GlobalOverrider();
     fakeServices = {prefs: {getBoolPref: sinon.spy(), addObserver: sinon.spy(), removeObserver: sinon.spy()}};
+    fakePlacesUtils = {history: {update: sinon.stub(), insert: sinon.stub()}};
     globals.set("Services", fakeServices);
+    globals.set("PlacesUtils", fakePlacesUtils);
   });
 
   afterEach(() => {
@@ -132,10 +135,11 @@ describe("SectionsManager", () => {
     it("should emit an UPDATE_SECTION event with correct arguments", () => {
       SectionsManager.addSection(FAKE_ID, FAKE_OPTIONS);
       const spy = sinon.spy();
+      const dedupeConfigurations = [{id: "topstories", dedupeFrom: ["highlights"]}];
       SectionsManager.on(SectionsManager.UPDATE_SECTION, spy);
       SectionsManager.updateSection(FAKE_ID, {rows: FAKE_ROWS}, true);
       assert.calledOnce(spy);
-      assert.calledWith(spy, SectionsManager.UPDATE_SECTION, FAKE_ID, {rows: FAKE_ROWS}, true);
+      assert.calledWith(spy, SectionsManager.UPDATE_SECTION, FAKE_ID, {rows: FAKE_ROWS, dedupeConfigurations}, true);
     });
     it("should do nothing if the section doesn't exist", () => {
       SectionsManager.removeSection(FAKE_ID);
@@ -205,25 +209,50 @@ describe("SectionsManager", () => {
       assert.notCalled(spy);
     });
   });
-  describe("#dedupe", () => {
-    it("should dedupe stories from highlights", () => {
-      SectionsManager.init();
-      // Add some rows to highlights
-      SectionsManager.updateSection("highlights", {rows: [{url: "https://highlight.com/abc"}, {url: "https://shared.com/def"}]});
-      // Add some rows to top stories
-      SectionsManager.updateSection("topstories", {rows: [{url: "https://topstory.com/ghi"}, {url: "https://shared.com/def"}]});
-      // Verify deduping
-      assert.deepEqual(SectionsManager.sections.get("topstories").rows, [{url: "https://topstory.com/ghi"}]);
+  describe("#updateBookmarkMetadata", () => {
+    beforeEach(() => {
+      let rows = [{
+        url: "bar",
+        title: "title",
+        description: "description",
+        image: "image"
+      }];
+      SectionsManager.addSection("topstories", {rows});
+      // Simulate 2 sections.
+      rows = [{
+        url: "foo",
+        title: "title",
+        description: "description",
+        image: "image"
+      }];
+      SectionsManager.addSection("highlights", {rows});
     });
-    it("should dedupe stories from highlights when updating highlights", () => {
-      SectionsManager.init();
-      // Add some rows to top stories
-      SectionsManager.updateSection("topstories", {rows: [{url: "https://topstory.com/ghi"}, {url: "https://shared.com/def"}]});
-      assert.deepEqual(SectionsManager.sections.get("topstories").rows, [{url: "https://topstory.com/ghi"}, {url: "https://shared.com/def"}]);
-      // Add some rows to highlights
-      SectionsManager.updateSection("highlights", {rows: [{url: "https://highlight.com/abc"}, {url: "https://shared.com/def"}]});
-      // Verify deduping
-      assert.deepEqual(SectionsManager.sections.get("topstories").rows, [{url: "https://topstory.com/ghi"}]);
+
+    it("shouldn't call PlacesUtils if URL is not in topstories", () => {
+      SectionsManager.updateBookmarkMetadata({url: "foo"});
+
+      assert.notCalled(fakePlacesUtils.history.update);
+    });
+    it("should call PlacesUtils.history.update", () => {
+      SectionsManager.updateBookmarkMetadata({url: "bar"});
+
+      assert.calledOnce(fakePlacesUtils.history.update);
+      assert.calledWithExactly(fakePlacesUtils.history.update, {
+        url: "bar",
+        title: "title",
+        description: "description",
+        previewImageURL: "image"
+      });
+    });
+    it("should call PlacesUtils.history.insert", () => {
+      SectionsManager.updateBookmarkMetadata({url: "bar"});
+
+      assert.calledOnce(fakePlacesUtils.history.insert);
+      assert.calledWithExactly(fakePlacesUtils.history.insert, {
+        url: "bar",
+        title: "title",
+        visits: [{}]
+      });
     });
   });
 });
@@ -425,6 +454,13 @@ describe("SectionsFeed", () => {
       for (const action of disallowedActions) {
         assert.neverCalledWith(spy, "ACTION_DISPATCHED", action);
       }
+    });
+    it("should call updateBookmarkMetadata on PLACES_BOOKMARK_ADDED", () => {
+      const stub = sinon.stub(SectionsManager, "updateBookmarkMetadata");
+
+      feed.onAction({type: "PLACES_BOOKMARK_ADDED", data: {}});
+
+      assert.calledOnce(stub);
     });
   });
 });

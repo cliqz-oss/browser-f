@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsCOMPtr.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsXBLDocumentInfo.h"
 #include "nsIInputStream.h"
 #include "nsNameSpaceManager.h"
@@ -405,7 +405,7 @@ nsXBLBinding::GenerateAnonymousContent()
     int32_t namespaceID = attrInfo.mName->NamespaceID();
     // Hold a strong reference here so that the atom doesn't go away during
     // UnsetAttr.
-    nsCOMPtr<nsIAtom> name = attrInfo.mName->LocalName();
+    RefPtr<nsAtom> name = attrInfo.mName->LocalName();
 
     if (name != nsGkAtoms::includes) {
       if (!nsContentUtils::HasNonEmptyAttr(mBoundElement, namespaceID, name)) {
@@ -467,8 +467,8 @@ nsXBLBinding::ClearInsertionPoints()
     mDefaultInsertionPoint->ClearInsertedChildren();
   }
 
-  for (uint32_t i = 0; i < mInsertionPoints.Length(); ++i) {
-    mInsertionPoints[i]->ClearInsertedChildren();
+  for (const auto& insertionPoint : mInsertionPoints) {
+    insertionPoint->ClearInsertedChildren();
   }
 }
 
@@ -505,7 +505,7 @@ nsXBLBinding::InstallEventHandlers()
       nsXBLPrototypeHandler* curr;
       for (curr = handlerChain; curr; curr = curr->GetNextHandler()) {
         // Fetch the event type.
-        nsCOMPtr<nsIAtom> eventAtom = curr->GetEventName();
+        RefPtr<nsAtom> eventAtom = curr->GetEventName();
         if (!eventAtom ||
             eventAtom == nsGkAtoms::keyup ||
             eventAtom == nsGkAtoms::keydown ||
@@ -593,10 +593,10 @@ nsXBLBinding::InstallImplementation()
   return NS_OK;
 }
 
-nsIAtom*
+nsAtom*
 nsXBLBinding::GetBaseTag(int32_t* aNameSpaceID)
 {
-  nsIAtom *tag = mPrototypeBinding->GetBaseTag(aNameSpaceID);
+  nsAtom *tag = mPrototypeBinding->GetBaseTag(aNameSpaceID);
   if (!tag && mNextBinding)
     return mNextBinding->GetBaseTag(aNameSpaceID);
 
@@ -604,7 +604,7 @@ nsXBLBinding::GetBaseTag(int32_t* aNameSpaceID)
 }
 
 void
-nsXBLBinding::AttributeChanged(nsIAtom* aAttribute, int32_t aNameSpaceID,
+nsXBLBinding::AttributeChanged(nsAtom* aAttribute, int32_t aNameSpaceID,
                                bool aRemoveFlag, bool aNotify)
 {
   // XXX Change if we ever allow multiple bindings in a chain to contribute anonymous content
@@ -657,7 +657,7 @@ nsXBLBinding::UnhookEventHandlers()
         continue;
       }
 
-      nsCOMPtr<nsIAtom> eventAtom = curr->GetEventName();
+      RefPtr<nsAtom> eventAtom = curr->GetEventName();
       if (!eventAtom ||
           eventAtom == nsGkAtoms::keyup ||
           eventAtom == nsGkAtoms::keydown ||
@@ -704,34 +704,6 @@ nsXBLBinding::UnhookEventHandlers()
       }
 
       manager->RemoveEventListenerByType(handler, type, flags);
-    }
-  }
-}
-
-static void
-UpdateInsertionParent(XBLChildrenElement* aPoint,
-                      nsIContent* aOldBoundElement)
-{
-  if (aPoint->IsDefaultInsertion()) {
-    return;
-  }
-
-  for (size_t i = 0; i < aPoint->InsertedChildrenLength(); ++i) {
-    nsIContent* child = aPoint->InsertedChild(i);
-
-    MOZ_ASSERT(child->GetParentNode());
-
-    // Here, we're iterating children that we inserted. There are two cases:
-    // either |child| is an explicit child of |aOldBoundElement| and is no
-    // longer inserted anywhere or it's a child of a <children> element
-    // parented to |aOldBoundElement|. In the former case, the child is no
-    // longer inserted anywhere, so we set its insertion parent to null. In the
-    // latter case, the child is now inserted into |aOldBoundElement| from some
-    // binding above us, so we set its insertion parent to aOldBoundElement.
-    if (child->GetParentNode() == aOldBoundElement) {
-      child->SetXBLInsertionParent(nullptr);
-    } else {
-      child->SetXBLInsertionParent(aOldBoundElement);
     }
   }
 }
@@ -829,19 +801,6 @@ nsXBLBinding::ChangeDocument(nsIDocument* aOldDocument, nsIDocument* aNewDocumen
       nsXBLBinding::UnbindAnonymousContent(aOldDocument, mContent);
     }
 
-    // Now that we've unbound our anonymous content from the tree and updated
-    // its binding parent, update the insertion parent for content inserted
-    // into our <children> elements.
-    if (mDefaultInsertionPoint) {
-      UpdateInsertionParent(mDefaultInsertionPoint, mBoundElement);
-    }
-
-    for (size_t i = 0; i < mInsertionPoints.Length(); ++i) {
-      UpdateInsertionParent(mInsertionPoints[i], mBoundElement);
-    }
-
-    // Now that our inserted children no longer think they're inserted
-    // anywhere, make sure our internal state reflects that as well.
     ClearInsertionPoints();
   }
 }

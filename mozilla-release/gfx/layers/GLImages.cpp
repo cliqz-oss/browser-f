@@ -1,3 +1,8 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GLImages.h"
 #include "GLContext.h"
@@ -15,35 +20,6 @@ namespace mozilla {
 namespace layers {
 
 static RefPtr<GLContext> sSnapshotContext;
-
-EGLImageImage::EGLImageImage(EGLImage aImage, EGLSync aSync,
-                             const gfx::IntSize& aSize, const gl::OriginPos& aOrigin,
-                             bool aOwns)
- : GLImage(ImageFormat::EGLIMAGE),
-   mImage(aImage),
-   mSync(aSync),
-   mSize(aSize),
-   mPos(aOrigin),
-   mOwns(aOwns)
-{
-}
-
-EGLImageImage::~EGLImageImage()
-{
-  if (!mOwns) {
-    return;
-  }
-
-  if (mImage) {
-    sEGLLibrary.fDestroyImage(EGL_DISPLAY(), mImage);
-    mImage = nullptr;
-  }
-
-  if (mSync) {
-    sEGLLibrary.fDestroySync(EGL_DISPLAY(), mSync);
-    mSync = nullptr;
-  }
-}
 
 already_AddRefed<gfx::SourceSurface>
 GLImage::GetAsSourceSurface()

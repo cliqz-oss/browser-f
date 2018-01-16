@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -93,14 +94,14 @@ nsSVGImageFrame::Init(nsIContent*       aContent,
 }
 
 /* virtual */ void
-nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (GetStateBits() & NS_FRAME_IS_NONDISPLAY) {
     DecApproximateVisibleCount();
   }
 
   if (mReflowCallbackPosted) {
-    PresContext()->PresShell()->CancelReflowCallback(this);
+    PresShell()->CancelReflowCallback(this);
     mReflowCallbackPosted = false;
   }
 
@@ -111,7 +112,7 @@ nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot)
     imageLoader->FrameDestroyed(this);
   }
 
-  nsFrame::DestroyFrom(aDestructRoot);
+  nsFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 //----------------------------------------------------------------------
@@ -119,7 +120,7 @@ nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot)
 
 nsresult
 nsSVGImageFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                  nsIAtom*        aAttribute,
+                                  nsAtom*        aAttribute,
                                   int32_t         aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None) {
@@ -450,7 +451,7 @@ nsSVGImageFrame::ReflowSVG()
     SVGObserverUtils::UpdateEffects(this);
 
     if (!mReflowCallbackPosted) {
-      nsIPresShell* shell = PresContext()->PresShell();
+      nsIPresShell* shell = PresShell();
       mReflowCallbackPosted = true;
       shell->PostReflowCallback(this);
     }

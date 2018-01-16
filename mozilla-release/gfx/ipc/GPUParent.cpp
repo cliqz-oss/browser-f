@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -31,12 +31,14 @@
 #include "mozilla/layers/UiCompositorControllerParent.h"
 #include "mozilla/layers/MemoryReportingMLGPU.h"
 #include "mozilla/webrender/RenderThread.h"
+#include "mozilla/webrender/WebRenderAPI.h"
 #include "nsDebugImpl.h"
 #include "nsThreadManager.h"
 #include "prenv.h"
 #include "ProcessUtils.h"
 #include "VRManager.h"
 #include "VRManagerParent.h"
+#include "VRThread.h"
 #include "VsyncBridgeParent.h"
 #if defined(XP_WIN)
 # include "mozilla/gfx/DeviceManagerDx.h"
@@ -93,6 +95,11 @@ GPUParent::Init(base::ProcessId aParentPid,
 
   nsDebugImpl::SetMultiprocessMode("GPU");
 
+  // This must be sent before any IPDL message, which may hit sentinel
+  // errors due to parent and content processes having different
+  // versions.
+  GetIPCChannel()->SendBuildID();
+
 #ifdef MOZ_CRASHREPORTER
   // Init crash reporter support.
   CrashReporterClient::InitSingleton(this);
@@ -115,6 +122,8 @@ GPUParent::Init(base::ProcessId aParentPid,
   }
 
   CompositorThreadHolder::Start();
+  // TODO: Bug 1406327, Start VRListenerThreadHolder when loading VR content.
+  VRListenerThreadHolder::Start();
   APZThreadUtils::SetControllerThread(CompositorThreadHolder::Loop());
   APZCTreeManager::InitializeGlobalState();
   LayerTreeOwnerTracker::Initialize();
@@ -205,10 +214,21 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
   } else {
     gtk_init(nullptr, nullptr);
   }
+
+  // Ensure we have an FT library for font instantiation.
+  // This would normally be set by gfxPlatform::Init().
+  // Since we bypass that, we must do it here instead.
+  if (gfxVars::UseWebRender()) {
+    FT_Library library = Factory::NewFTLibrary();
+    MOZ_ASSERT(library);
+    Factory::SetFTLibrary(library);
+  }
 #endif
 
   // Make sure to do this *after* we update gfxVars above.
   if (gfxVars::UseWebRender()) {
+    wr::WebRenderAPI::InitExternalLogHandler();
+
     wr::RenderThread::Start();
   }
 
@@ -323,6 +343,17 @@ GPUParent::RecvGetDeviceStatus(GPUDeviceData* aOut)
 }
 
 mozilla::ipc::IPCResult
+GPUParent::RecvSimulateDeviceReset(GPUDeviceData* aOut)
+{
+#if defined(XP_WIN)
+  DeviceManagerDx::Get()->ForceDeviceReset(ForcedDeviceResetReason::COMPOSITOR_UPDATED);
+  DeviceManagerDx::Get()->MaybeResetAndReacquireDevices();
+#endif
+  RecvGetDeviceStatus(aOut);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
 GPUParent::RecvNewContentCompositorManager(Endpoint<PCompositorManagerParent>&& aEndpoint)
 {
   CompositorManagerParent::Create(Move(aEndpoint));
@@ -426,8 +457,11 @@ GPUParent::ActorDestroy(ActorDestroyReason aWhy)
   }
   dom::VideoDecoderManagerParent::ShutdownVideoBridge();
   CompositorThreadHolder::Shutdown();
+  VRListenerThreadHolder::Shutdown();
   if (gfxVars::UseWebRender()) {
     wr::RenderThread::ShutDown();
+
+    wr::WebRenderAPI::ShutdownExternalLogHandler();
   }
   Factory::ShutDown();
 #if defined(XP_WIN)

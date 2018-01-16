@@ -598,7 +598,7 @@ final class GeckoEditable extends IGeckoEditableParent.Stub
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private GeckoEditable(final GeckoView v) {
+    private GeckoEditable() {
         if (DEBUG) {
             // Called by nsWindow.
             ThreadUtils.assertOnGeckoThread();
@@ -613,8 +613,6 @@ final class GeckoEditable extends IGeckoEditableParent.Stub
                 PROXY_INTERFACES, this);
 
         mIcRunHandler = mIcPostHandler = ThreadUtils.getUiHandler();
-
-        onViewChange(v);
     }
 
     @WrapForJNI(calledFrom = "gecko")
@@ -1303,9 +1301,14 @@ final class GeckoEditable extends IGeckoEditableParent.Stub
                 // Finally replace the sequence itself to preserve new spans.
                 mText.currentReplace(actionStart, actionEnd, action.mSequence);
 
-                // Ignore the next selection change because the selection change is a
-                // side-effect of the replace-text event we sent.
-                mIgnoreSelectionChange = true;
+                // If one of the Java selection ends is not at the end of the replaced
+                // text, we want to preserve that selection, so we ignore the Gecko
+                // selection change notification. On the other hand, if the Java selection
+                // is normal, we want to try syncing the Java selection to the Gecko
+                // selection, because this text change could have changed the Gecko
+                // selection to elsewhere; so in that case, don't ignore the Gecko
+                // selection change notification.
+                mIgnoreSelectionChange = !resetSelStart || !resetSelEnd;
             }
 
         } else if (geckoIsSameText(start, oldEnd, text)) {
@@ -1399,6 +1402,15 @@ final class GeckoEditable extends IGeckoEditableParent.Stub
         return String.valueOf(value);
     }
 
+    private static String getPrintableChar(char chr) {
+        if (chr >= 0x20 && chr <= 0x7e) {
+            return String.valueOf(chr);
+        } else if (chr == '\n') {
+            return "\u21b2";
+        }
+        return String.format("%04x", (int) chr);
+    }
+
     static StringBuilder debugAppend(StringBuilder sb, Object obj) {
         if (obj == null) {
             sb.append("null");
@@ -1408,8 +1420,20 @@ final class GeckoEditable extends IGeckoEditableParent.Stub
             sb.append("GeckoEditableChild");
         } else if (Proxy.isProxyClass(obj.getClass())) {
             debugAppend(sb, Proxy.getInvocationHandler(obj));
+        } else if (obj instanceof Character) {
+            sb.append('\'').append(getPrintableChar((Character) obj)).append('\'');
         } else if (obj instanceof CharSequence) {
-            sb.append('"').append(obj.toString().replace('\n', '\u21b2')).append('"');
+            final String str = obj.toString();
+            sb.append('"');
+            for (int i = 0; i < str.length(); i++) {
+              final char chr = str.charAt(i);
+              if (chr >= 0x20 && chr <= 0x7e) {
+                sb.append(chr);
+              } else {
+                sb.append(getPrintableChar(chr));
+              }
+            }
+            sb.append('"');
         } else if (obj.getClass().isArray()) {
             sb.append(obj.getClass().getComponentType().getSimpleName()).append('[')
               .append(Array.getLength(obj)).append(']');
@@ -1436,32 +1460,8 @@ final class GeckoEditable extends IGeckoEditableParent.Stub
         } else {
             target = mText.getShadowText();
         }
-        Object ret;
-        try {
-            ret = method.invoke(target, args);
-        } catch (InvocationTargetException e) {
-            // Bug 817386
-            // Most likely Gecko has changed the text while GeckoInputConnection is
-            // trying to access the text. If we pass through the exception here, Fennec
-            // will crash due to a lack of exception handler. Log the exception and
-            // return an empty value instead.
-            if (!(e.getCause() instanceof IndexOutOfBoundsException)) {
-                // Only handle IndexOutOfBoundsException for now,
-                // as other exceptions might signal other bugs
-                throw e;
-            }
-            Log.w(LOGTAG, "Exception in GeckoEditable." + method.getName(), e.getCause());
-            Class<?> retClass = method.getReturnType();
-            if (retClass == Character.TYPE) {
-                ret = '\0';
-            } else if (retClass == Integer.TYPE) {
-                ret = 0;
-            } else if (retClass == String.class) {
-                ret = "";
-            } else {
-                ret = null;
-            }
-        }
+
+        final Object ret = method.invoke(target, args);
         if (DEBUG) {
             StringBuilder log = new StringBuilder(method.getName());
             log.append("(");

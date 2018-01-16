@@ -1,7 +1,8 @@
-/*-*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this file,
- * You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef NSDISPLAYLISTINVALIDATION_H_
 #define NSDISPLAYLISTINVALIDATION_H_
@@ -59,6 +60,11 @@ public:
   virtual void MoveBy(const nsPoint& aOffset)
   {
     mBounds.MoveBy(aOffset);
+  }
+
+  virtual bool InvalidateForSyncDecodeImages() const
+  {
+    return false;
   }
 
   /**
@@ -170,6 +176,11 @@ public:
     : nsDisplayItemGenericGeometry(aItem, aBuilder)
     , nsImageGeometryMixin(aItem, aBuilder)
   { }
+
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return ShouldInvalidateToSyncDecodeImages();
+  }
 };
 
 class nsDisplayItemBoundsGeometry : public nsDisplayItemGeometry
@@ -189,6 +200,11 @@ public:
 
   virtual void MoveBy(const nsPoint& aOffset) override;
 
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return ShouldInvalidateToSyncDecodeImages();
+  }
+
   nsRect mContentRect;
 };
 
@@ -200,6 +216,11 @@ public:
   nsDisplayBackgroundGeometry(nsDisplayBackgroundImage* aItem, nsDisplayListBuilder* aBuilder);
 
   virtual void MoveBy(const nsPoint& aOffset) override;
+
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return ShouldInvalidateToSyncDecodeImages();
+  }
 
   nsRect mPositioningArea;
   nsRect mDestRect;
@@ -286,6 +307,11 @@ class nsDisplayMaskGeometry : public nsDisplaySVGEffectGeometry
 public:
   nsDisplayMaskGeometry(nsDisplayMask* aItem, nsDisplayListBuilder* aBuilder);
 
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return ShouldInvalidateToSyncDecodeImages();
+  }
+
   nsTArray<nsRect> mDestRects;
 };
 
@@ -295,6 +321,11 @@ class nsDisplayFilterGeometry : public nsDisplaySVGEffectGeometry
 public:
   nsDisplayFilterGeometry(nsDisplayFilter* aItem,
                           nsDisplayListBuilder* aBuilder);
+
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return ShouldInvalidateToSyncDecodeImages();
+  }
 };
 
 class nsCharClipGeometry : public nsDisplayItemGenericGeometry
@@ -315,6 +346,11 @@ public:
   nsDisplayTableItemGeometry(nsDisplayTableItem* aItem,
                              nsDisplayListBuilder* aBuilder,
                              const nsPoint& aFrameOffsetToViewport);
+
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return ShouldInvalidateToSyncDecodeImages();
+  }
 
   nsPoint mFrameOffsetToViewport;
 };

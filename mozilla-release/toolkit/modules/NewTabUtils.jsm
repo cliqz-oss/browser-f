@@ -650,7 +650,7 @@ var PlacesProvider = {
     options.maxResults = this.maxNumLinks;
 
     // Sort by frecency, descending.
-    options.sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_FRECENCY_DESCENDING
+    options.sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_FRECENCY_DESCENDING;
 
     let links = [];
 
@@ -763,7 +763,7 @@ var PlacesProvider = {
   },
 
   onClearHistory() {
-    this._callObservers("onClearHistory")
+    this._callObservers("onClearHistory");
   },
 
   /**
@@ -933,7 +933,7 @@ var ActivityStreamProvider = {
       aUri,
       // Package up the icon data in an object if we have it; otherwise null
       (iconUri, faviconLength, favicon, mimeType, faviconSize) =>
-        resolve(iconUri ? {favicon, faviconLength, faviconSize, mimeType} : null),
+        resolve(iconUri ? {favicon, faviconLength, faviconRef: iconUri.ref, faviconSize, mimeType} : null),
       preferredWidth));
   },
 
@@ -1257,7 +1257,6 @@ var ActivityStreamLinks = {
       const {url, title} = aData;
       return aBrowser.ownerGlobal.PlacesCommandHook.bookmarkPage(
               aBrowser,
-              undefined,
               true,
               url,
               title);
@@ -1269,8 +1268,7 @@ var ActivityStreamLinks = {
    * @param {String} aBookmarkGuid
    *          The bookmark guid associated with the bookmark to remove
    *
-   * @returns {Promise} Returns a promise set to an object representing the
-   *            removed bookmark
+   * @returns {Promise} Returns a promise at completion.
    */
   deleteBookmark(aBookmarkGuid) {
     return PlacesUtils.bookmarks.remove(aBookmarkGuid);
@@ -1805,7 +1803,7 @@ var Links = {
     // Make sure to update open about:newtab instances. If there are no opened
     // pages we can just wait for the next new tab to populate the cache again.
     if (AllPages.length && AllPages.enabled)
-      this.populateCache(function() { AllPages.update() }, true);
+      this.populateCache(function() { AllPages.update(); }, true);
     else
       this.resetCache();
   },

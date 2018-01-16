@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* eslint mozilla/use-services:off */
+
 this.EXPORTED_SYMBOLS = ["Services"];
 
 const Ci = Components.interfaces;
@@ -12,6 +14,11 @@ Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 this.Services = {};
+
+/**
+ * WARNING: If you add a getter that isn't in the initTable, please update the
+ * eslint rule in /tools/lint/eslint/eslint-plugin-mozilla/lib/rules/use-services.js
+ */
 
 XPCOMUtils.defineLazyGetter(Services, "prefs", function() {
   return Cc["@mozilla.org/preferences-service;1"]
@@ -62,7 +69,7 @@ XPCOMUtils.defineLazyGetter(Services, "ppmm", () => {
 
 XPCOMUtils.defineLazyGetter(Services, "io", () => {
   return Cc["@mozilla.org/network/io-service;1"]
-           .getService(Ci.nsIIOService2)
+           .getService(Ci.nsIIOService)
            .QueryInterface(Ci.nsISpeculativeConnect);
 });
 
@@ -72,7 +79,7 @@ var initTable = {
   cache2: ["@mozilla.org/netwerk/cache-storage-service;1", "nsICacheStorageService"],
   cpmm: ["@mozilla.org/childprocessmessagemanager;1", "nsIMessageSender"],
   console: ["@mozilla.org/consoleservice;1", "nsIConsoleService"],
-  cookies: ["@mozilla.org/cookiemanager;1", "nsICookieManager2"],
+  cookies: ["@mozilla.org/cookiemanager;1", "nsICookieManager"],
   downloads: ["@mozilla.org/download-manager;1", "nsIDownloadManager"],
   droppedLinkHandler: ["@mozilla.org/content/dropped-link-handler;1", "nsIDroppedLinkHandler"],
   els: ["@mozilla.org/eventlistenerservice;1", "nsIEventListenerService"],

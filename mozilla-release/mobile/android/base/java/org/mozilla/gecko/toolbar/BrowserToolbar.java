@@ -13,6 +13,7 @@ import android.graphics.Rect;
 import android.support.annotation.Nullable;
 import android.support.v4.content.ContextCompat;
 import org.mozilla.gecko.BrowserApp;
+import org.mozilla.gecko.Clipboard;
 import org.mozilla.gecko.GeckoSharedPrefs;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.Tab;
@@ -32,7 +33,6 @@ import org.mozilla.gecko.tabs.TabHistoryController;
 import org.mozilla.gecko.toolbar.ToolbarDisplayLayout.OnStopListener;
 import org.mozilla.gecko.toolbar.ToolbarDisplayLayout.OnTitleChangeListener;
 import org.mozilla.gecko.toolbar.ToolbarDisplayLayout.UpdateFlags;
-import org.mozilla.gecko.util.Clipboard;
 import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.MenuUtils;
 import org.mozilla.gecko.util.WindowUtil;
@@ -251,7 +251,7 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
                 MenuInflater inflater = activity.getMenuInflater();
                 inflater.inflate(R.menu.titlebar_contextmenu, menu);
 
-                String clipboard = Clipboard.getText();
+                String clipboard = Clipboard.getText(context);
                 if (TextUtils.isEmpty(clipboard)) {
                     menu.findItem(R.id.pasteandgo).setVisible(false);
                     menu.findItem(R.id.paste).setVisible(false);
@@ -262,7 +262,7 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
                     String url = tab.getURL();
                     if (url == null) {
                         menu.findItem(R.id.copyurl).setVisible(false);
-                        menu.findItem(R.id.add_to_launcher).setVisible(false);
+                        MenuUtils.safeSetVisible(menu, R.id.add_to_launcher, false);
                         menu.findItem(R.id.set_as_homepage).setVisible(false);
                     }
 
@@ -273,7 +273,7 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
                 } else {
                     // if there is no tab, remove anything tab dependent
                     menu.findItem(R.id.copyurl).setVisible(false);
-                    menu.findItem(R.id.add_to_launcher).setVisible(false);
+                    MenuUtils.safeSetVisible(menu, R.id.add_to_launcher, false);
                     menu.findItem(R.id.set_as_homepage).setVisible(false);
                     MenuUtils.safeSetVisible(menu, R.id.subscribe, false);
                     MenuUtils.safeSetVisible(menu, R.id.add_search_engine, false);

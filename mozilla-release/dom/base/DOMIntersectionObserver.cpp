@@ -10,6 +10,7 @@
 #include "nsIFrame.h"
 #include "nsContentUtils.h"
 #include "nsLayoutUtils.h"
+#include "mozilla/ServoCSSParser.h"
 
 namespace mozilla {
 namespace dom {
@@ -115,6 +116,11 @@ DOMIntersectionObserver::Constructor(const mozilla::dom::GlobalObject& aGlobal,
 bool
 DOMIntersectionObserver::SetRootMargin(const nsAString& aString)
 {
+  if (mDocument && mDocument->IsStyledByServo()) {
+    return ServoCSSParser::ParseIntersectionObserverRootMargin(aString,
+                                                               &mRootMargin);
+  }
+
   // By not passing a CSS Loader object we make sure we don't parse in quirks
   // mode so that pixel/percent and unit-less values will be differentiated.
   nsCSSParser parser(nullptr);
@@ -430,13 +436,15 @@ DOMIntersectionObserver::Update(nsIDocument* aDocument, DOMHighResTimeStamp time
       }
     }
 
-    double targetArea = targetRect.Width() * targetRect.Height();
-    double intersectionArea = !intersectionRect ?
-      0 : intersectionRect->Width() * intersectionRect->Height();
+    int64_t targetArea =
+      (int64_t) targetRect.Width() * (int64_t) targetRect.Height();
+    int64_t intersectionArea = !intersectionRect ? 0 :
+      (int64_t) intersectionRect->Width() *
+      (int64_t) intersectionRect->Height();
 
     double intersectionRatio;
     if (targetArea > 0.0) {
-      intersectionRatio = intersectionArea / targetArea;
+      intersectionRatio = (double) intersectionArea / (double) targetArea;
     } else {
       intersectionRatio = intersectionRect.isSome() ? 1.0 : 0.0;
     }

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -12,6 +13,7 @@
 #include "FrameMetrics.h"
 #include "ipc/IPCMessageUtils.h"
 #include "LayersTypes.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/GfxMessageUtils.h"
 #include "mozilla/layers/LayerAttributes.h"
 #include "mozilla/layers/LayersMessageUtils.h"
@@ -40,12 +42,6 @@ public:
   WebRenderLayerScrollData(); // needed for IPC purposes
   ~WebRenderLayerScrollData();
 
-  // Actually initialize the object. This is not done during the constructor
-  // for optimization purposes (the call site is hard to write efficiently
-  // if we do this in the constructor).
-  void Initialize(WebRenderScrollData& aOwner,
-                  Layer* aLayer,
-                  int32_t aDescendantCount);
   void InitializeRoot(int32_t aDescendantCount);
   void Initialize(WebRenderScrollData& aOwner,
                   nsDisplayItem* aItem,
@@ -132,7 +128,10 @@ class WebRenderScrollData
 {
 public:
   WebRenderScrollData();
+  explicit WebRenderScrollData(WebRenderLayerManager* aManager);
   ~WebRenderScrollData();
+
+  WebRenderLayerManager* GetManager() const;
 
   // Add the given ScrollMetadata if it doesn't already exist. Return an index
   // that can be used to look up the metadata later.
@@ -167,6 +166,11 @@ public:
   void Dump() const;
 
 private:
+  // Pointer back to the layer manager; if this is non-null, it will always be
+  // valid, because the WebRenderLayerManager that created |this| will
+  // outlive |this|.
+  WebRenderLayerManager* MOZ_NON_OWNING_REF mManager;
+
   // Internal data structure used to maintain uniqueness of mScrollMetadatas.
   // This is not serialized/deserialized over IPC because there's no need for it,
   // as the parent side doesn't need this at all. Also because we don't have any

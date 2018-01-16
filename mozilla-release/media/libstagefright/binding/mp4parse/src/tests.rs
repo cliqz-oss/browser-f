@@ -848,6 +848,9 @@ fn read_qt_wave_atom() {
          .B8(0x6b)  // mp3
          .append_repeated(0, 12)
     }).into_inner();
+    let chan = make_box(BoxSize::Auto, b"chan", |s| {
+        s.append_repeated(0, 10)    // we don't care its data.
+    }).into_inner();
     let wave = make_box(BoxSize::Auto, b"wave", |s| {
         s.append_bytes(esds.as_slice())
     }).into_inner();
@@ -862,6 +865,7 @@ fn read_qt_wave_atom() {
          .B32(48000 << 16)
          .append_repeated(0, 16)
          .append_bytes(wave.as_slice())
+         .append_bytes(chan.as_slice())
     });
 
     let mut iter = super::BoxIter::new(&mut stream);
@@ -1023,7 +1027,7 @@ fn max_table_limit() {
     let mut stream = iter.next_box().unwrap().unwrap();
     let mut track = super::Track::new(0);
     match super::read_edts(&mut stream, &mut track) {
-        Err(Error::TableTooLarge) => (),
+        Err(Error::OutOfMemory) => (),
         Ok(_) => panic!("expected an error result"),
         _ => panic!("expected a different error result"),
     }
@@ -1127,4 +1131,48 @@ fn read_invalid_pssh() {
         Err(Error::InvalidData(s)) => assert_eq!(s, "read_buf size exceeds BUF_SIZE_LIMIT"),
         _ => panic!("unexpected result with invalid descriptor"),
     }
+}
+
+#[test]
+fn read_stsd_lpcm() {
+    // Extract from sample converted by ffmpeg.
+    // "ffmpeg -i ./gizmo-short.mp4 -acodec pcm_s16le -ar 96000 -vcodec copy -f mov gizmo-short.mov"
+    let lpcm =
+        vec![
+                              0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x10, 0xff,
+            0xfe, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x48, 0x40, 0xf7, 0x70, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x7f,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+            0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x02, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x18, 0x63,
+            0x68, 0x61, 0x6e, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x64, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00,
+        ];
+
+    let mut stream = make_box(BoxSize::Auto, b"lpcm", |s| {
+        s.append_bytes(lpcm.as_slice())
+    });
+    let mut iter = super::BoxIter::new(&mut stream);
+    let mut stream = iter.next_box().unwrap().unwrap();
+
+    let (codec_type, sample_entry) = super::read_audio_sample_entry(&mut stream).unwrap();
+
+    assert_eq!(codec_type, super::CodecType::LPCM);
+
+    match sample_entry {
+        super::SampleEntry::Audio(a) => {
+            assert_eq!(a.samplerate, 96000.0);
+            assert_eq!(a.channelcount, 1);
+            match a.codec_specific {
+                super::AudioCodecSpecific::LPCM => (),
+                _ => panic!("it should be LPCM!"),
+            }
+        },
+        _ => panic!("it should be a audio sample entry!"),
+    }
+
 }

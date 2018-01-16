@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 pref("security.tls.version.min", 1);
-pref("security.tls.version.max", 3);
+pref("security.tls.version.max", 4);
 pref("security.tls.version.fallback-limit", 3);
 pref("security.tls.insecure_fallback_hosts", "");
 pref("security.tls.enable_0rtt_data", false);
@@ -28,12 +28,7 @@ pref("security.ssl3.dhe_rsa_aes_128_sha", true);
 pref("security.ssl3.dhe_rsa_aes_256_sha", true);
 pref("security.ssl3.rsa_aes_128_sha", true);
 pref("security.ssl3.rsa_aes_256_sha", true);
-// Deprecate 3DES on nightly builds, Bug 1386754
-#ifdef RELEASE_OR_BETA
 pref("security.ssl3.rsa_des_ede3_sha", true);
-#else
-pref("security.ssl3.rsa_des_ede3_sha", false);
-#endif
 
 pref("security.content.signature.root_hash",
      "97:E8:BA:9C:F1:2F:B3:DE:53:CC:42:A4:E6:57:7E:D6:4D:F4:93:C2:47:B4:14:FE:A0:36:81:8D:38:23:56:0E");
@@ -49,7 +44,7 @@ pref("security.password_lifetime",       30);
 // Changing this requires a restart to take effect.
 // Note that the environment variable MOZPSM_NSSDBDIR_OVERRIDE can override both
 // the behavior of this preference and the NSS default.
-pref("security.use_sqldb", false);
+pref("security.use_sqldb", true);
 
 // The supported values of this pref are:
 // 0: disable detecting Family Safety mode and importing the root

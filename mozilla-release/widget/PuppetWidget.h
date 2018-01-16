@@ -182,11 +182,17 @@ public:
                   LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
                   LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 
-  // This is used after a compositor reset. The lambda aInitializeFunc is used
-  // to perform any caller-required initialization for the newly created layer
+  // This is used for creating remote layer managers and for re-creating
+  // them after a compositor reset. The lambda aInitializeFunc is used to perform
+  // any caller-required initialization for the newly created layer
   // manager; in the event of a failure, return false and it will destroy the
   // new layer manager without changing the state of the widget.
-  bool RecreateLayerManager(const std::function<bool(LayerManager*)>& aInitializeFunc);
+  bool CreateRemoteLayerManager(const std::function<bool(LayerManager*)>& aInitializeFunc);
+
+  bool HasLayerManager()
+  {
+    return !!mLayerManager;
+  }
 
   virtual void SetInputContext(const InputContext& aContext,
                                const InputContextAction& aAction) override;
@@ -405,6 +411,14 @@ protected:
 
 private:
   bool mNeedIMEStateInit;
+  // When remote process requests to commit/cancel a composition, the
+  // composition may have already been committed in the main process.  In such
+  // case, this will receive remaining composition events for the old
+  // composition even after requesting to commit/cancel the old composition
+  // but the TextComposition for the old composition has already been destroyed.
+  // So, until this meets new eCompositionStart, following composition events
+  // should be ignored if this is set to true.
+  bool mIgnoreCompositionEvents;
 };
 
 class PuppetScreen : public nsBaseScreen

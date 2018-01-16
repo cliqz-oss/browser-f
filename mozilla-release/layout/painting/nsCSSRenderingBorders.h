@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -31,7 +31,6 @@ class GradientStops;
 } // namespace gfx
 namespace layers {
 class StackingContextHelper;
-class WebRenderDisplayItemLayer;
 } // namespace layers
 } // namespace mozilla
 
@@ -102,13 +101,15 @@ public:
                       const nscolor* aBorderColors,
                       const nsBorderColors* aCompositeColors,
                       nscolor aBackgroundColor,
-                      bool aBackfaceIsVisible);
+                      bool aBackfaceIsVisible,
+                      const mozilla::Maybe<Rect>& aClipRect);
 
   // draw the entire border
   void DrawBorders();
 
   bool CanCreateWebRenderCommands();
-  void CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+  void CreateWebRenderCommands(nsDisplayItem* aItem,
+                               mozilla::wr::DisplayListBuilder& aBuilder,
                                mozilla::wr::IpcResourceUpdateQueue& aResources,
                                const mozilla::layers::StackingContextHelper& aSc);
 
@@ -166,6 +167,7 @@ private:
   bool mNoBorderRadius;
   bool mAvoidStroke;
   bool mBackfaceIsVisible;
+  mozilla::Maybe<Rect> mLocalClip;
 
   // For all the sides in the bitmask, would they be rendered
   // in an identical color and style?
@@ -308,6 +310,14 @@ public:
                   gfxContext& aRenderingContext,
                   nsIFrame* aForFrame,
                   const nsRect& aDirtyRect);
+  void
+  CreateWebRenderCommands(nsDisplayItem* aItem,
+                          nsIFrame* aForFrame,
+                          mozilla::wr::DisplayListBuilder& aBuilder,
+                          mozilla::wr::IpcResourceUpdateQueue& aResources,
+                          const mozilla::layers::StackingContextHelper& aSc,
+                          mozilla::layers::WebRenderLayerManager* aManager,
+                          nsDisplayListBuilder* aDisplayListBuilder);
 
   nsCSSBorderImageRenderer(const nsCSSBorderImageRenderer& aRhs);
   nsCSSBorderImageRenderer& operator=(const nsCSSBorderImageRenderer& aRhs);
@@ -331,6 +341,7 @@ private:
   uint8_t mFill;
 
   friend class nsDisplayBorder;
+  friend struct nsCSSRendering;
 };
 
 namespace mozilla {

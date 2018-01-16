@@ -127,10 +127,6 @@ using mozilla::dom::FakePluginMimeEntry;
     }                                                                \
   }
 
-// this is the name of the directory which will be created
-// to cache temporary files.
-#define kPluginTmpDirName NS_LITERAL_CSTRING("plugtmp")
-
 static const char *kPrefWhitelist = "plugin.allowed_types";
 static const char *kPrefLoadInParentPrefix = "plugin.load_in_parent_process.";
 static const char *kPrefDisableFullPage = "plugin.disable_full_page_plugin_for_types";
@@ -661,7 +657,7 @@ void nsPluginHost::OnPluginInstanceDestroyed(nsPluginTag* aPluginTag)
       if (aPluginTag->mUnloadTimer) {
         aPluginTag->mUnloadTimer->Cancel();
       } else {
-        aPluginTag->mUnloadTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
+        aPluginTag->mUnloadTimer = NS_NewTimer();
       }
       uint32_t unloadTimeout = Preferences::GetUint(kPrefUnloadPluginTimeoutSecs,
                                                     kDefaultPluginUnloadingTimeout);
@@ -670,27 +666,6 @@ void nsPluginHost::OnPluginInstanceDestroyed(nsPluginTag* aPluginTag)
                                                  nsITimer::TYPE_ONE_SHOT);
     }
   }
-}
-
-nsresult
-nsPluginHost::GetPluginTempDir(nsIFile **aDir)
-{
-  if (!sPluginTempDir) {
-    nsCOMPtr<nsIFile> tmpDir;
-    nsresult rv = NS_GetSpecialDirectory(NS_OS_TEMP_DIR,
-                                         getter_AddRefs(tmpDir));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    rv = tmpDir->AppendNative(kPluginTmpDirName);
-
-    // make it unique, and mode == 0700, not world-readable
-    rv = tmpDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0700);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    tmpDir.swap(sPluginTempDir);
-  }
-
-  return sPluginTempDir->Clone(aDir);
 }
 
 nsresult
@@ -1235,21 +1210,6 @@ nsPluginHost::FindNativePluginForExtension(const nsACString & aExtension,
 static nsresult CreateNPAPIPlugin(nsPluginTag *aPluginTag,
                                   nsNPAPIPlugin **aOutNPAPIPlugin)
 {
-  // If this is an in-process plugin we'll need to load it here if we haven't already.
-  if (!nsNPAPIPlugin::RunPluginOOP(aPluginTag)) {
-    if (aPluginTag->mFullPath.IsEmpty())
-      return NS_ERROR_FAILURE;
-    nsCOMPtr<nsIFile> file = do_CreateInstance("@mozilla.org/file/local;1");
-    file->InitWithPath(NS_ConvertUTF8toUTF16(aPluginTag->mFullPath));
-    nsPluginFile pluginFile(file);
-    PRLibrary* pluginLibrary = nullptr;
-
-    if (NS_FAILED(pluginFile.LoadPlugin(&pluginLibrary)) || !pluginLibrary)
-      return NS_ERROR_FAILURE;
-
-    aPluginTag->mLibrary = pluginLibrary;
-  }
-
   nsresult rv;
   rv = nsNPAPIPlugin::CreatePlugin(aPluginTag, aOutNPAPIPlugin);
 
@@ -2161,14 +2121,6 @@ nsresult nsPluginHost::ScanPluginsDirectory(nsIFile *pluginsDir,
     if (!seenBefore) {
       // We have a valid new plugin so report that plugins have changed.
       *aPluginsChanged = true;
-    }
-
-    // Avoid adding different versions of the same plugin if they are running
-    // in-process, otherwise we risk undefined behaviour.
-    if (!nsNPAPIPlugin::RunPluginOOP(pluginTag)) {
-      if (HaveSamePlugin(pluginTag)) {
-        continue;
-      }
     }
 
     // Don't add the same plugin again if it hasn't changed
@@ -3431,7 +3383,6 @@ NS_IMETHODIMP nsPluginHost::Observe(nsISupports *aSubject,
                                     const char16_t *someData)
 {
   if (!strcmp(NS_XPCOM_SHUTDOWN_OBSERVER_ID, aTopic)) {
-    OnShutdown();
     UnloadPlugins();
     sInst->Release();
   }

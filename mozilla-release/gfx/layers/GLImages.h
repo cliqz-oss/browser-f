@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -26,38 +27,6 @@ public:
   GLImage* AsGLImage() override {
     return this;
   }
-};
-
-class EGLImageImage : public GLImage {
-public:
-  EGLImageImage(EGLImage aImage, EGLSync aSync,
-                const gfx::IntSize& aSize, const gl::OriginPos& aOrigin,
-                bool aOwns);
-
-  gfx::IntSize GetSize() override { return mSize; }
-  gl::OriginPos GetOriginPos() const {
-    return mPos;
-  }
-  EGLImage GetImage() const {
-    return mImage;
-  }
-  EGLSync GetSync() const {
-    return mSync;
-  }
-
-  EGLImageImage* AsEGLImageImage() override {
-    return this;
-  }
-
-protected:
-  virtual ~EGLImageImage();
-
-private:
-  EGLImage mImage;
-  EGLSync mSync;
-  gfx::IntSize mSize;
-  gl::OriginPos mPos;
-  bool mOwns;
 };
 
 #ifdef MOZ_WIDGET_ANDROID

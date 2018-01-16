@@ -10,10 +10,10 @@ name = "bluetooth"
 path = "lib.rs"
 
 [dependencies]
-bitflags = "0.7"
+bitflags = "1.0"
 bluetooth_traits = {path = "../bluetooth_traits"}
 device = {git = "https://github.com/servo/devices", features = ["bluetooth-test"]}
-ipc-channel = "0.8"
+ipc-channel = "0.9"
 servo_config = {path = "../config"}
 servo_rand = {path = "../rand"}
 uuid = {version = "0.5", features = ["v4"]}

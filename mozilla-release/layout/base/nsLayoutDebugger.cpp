@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -151,8 +152,8 @@ PrintDisplayItemTo(nsDisplayListBuilder* aBuilder, nsDisplayItem* aItem,
   }
 #endif
 
-  aStream << nsPrintfCString("%s p=0x%p f=0x%p(%s) %sbounds(%d,%d,%d,%d) layerBounds(%d,%d,%d,%d) visible(%d,%d,%d,%d) componentAlpha(%d,%d,%d,%d) clip(%s) asr(%s) clipChain(%s)%s ref=0x%p agr=0x%p",
-          aItem->Name(), aItem, (void*)f, NS_ConvertUTF16toUTF8(contentData).get(),
+  aStream << nsPrintfCString("%s p=0x%p f=0x%p(%s) key=%d %sbounds(%d,%d,%d,%d) layerBounds(%d,%d,%d,%d) visible(%d,%d,%d,%d) componentAlpha(%d,%d,%d,%d) clip(%s) asr(%s) clipChain(%s)%s ref=0x%p agr=0x%p",
+          aItem->Name(), aItem, (void*)f, NS_ConvertUTF16toUTF8(contentData).get(), aItem->GetPerFrameKey(),
           (aItem->ZIndex() ? nsPrintfCString("z=%d ", aItem->ZIndex()).get() : ""),
           rect.x, rect.y, rect.width, rect.height,
           layerRect.x, layerRect.y, layerRect.width, layerRect.height,
@@ -190,13 +191,12 @@ PrintDisplayItemTo(nsDisplayListBuilder* aBuilder, nsDisplayItem* aItem,
     aStream << "</a>";
   }
 #endif
-  uint32_t key = aItem->GetPerFrameKey();
-  Layer* layer = mozilla::FrameLayerBuilder::GetDebugOldLayerFor(f, key);
-  if (layer) {
+  DisplayItemData* data = mozilla::FrameLayerBuilder::GetOldDataFor(aItem);
+  if (data && data->GetLayer()) {
     if (aDumpHtml) {
-      aStream << nsPrintfCString(" <a href=\"#%p\">layer=%p</a>", layer, layer);
+      aStream << nsPrintfCString(" <a href=\"#%p\">layer=%p</a>", data->GetLayer(), data->GetLayer());
     } else {
-      aStream << nsPrintfCString(" layer=0x%p", layer);
+      aStream << nsPrintfCString(" layer=0x%p", data->GetLayer());
     }
   }
 #ifdef MOZ_DUMP_PAINTING

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,6 +14,7 @@
 #include "gfxDrawable.h"
 #include "ImageOps.h"
 #include "mozilla/layers/StackingContextHelper.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 #include "nsContentUtils.h"
 #include "nsCSSRendering.h"
 #include "nsCSSRenderingGradients.h"
@@ -22,6 +23,7 @@
 #include "nsSVGDisplayableFrame.h"
 #include "SVGObserverUtils.h"
 #include "nsSVGIntegrationUtils.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -493,7 +495,7 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
   IntRect tmpDTRect;
 
   if (ctx->CurrentOp() != CompositionOp::OP_OVER || mMaskOp == NS_STYLE_MASK_MODE_LUMINANCE) {
-    gfxRect clipRect = ctx->GetClipExtents();
+    gfxRect clipRect = ctx->GetClipExtents(gfxContext::eDeviceSpace);
     tmpDTRect = RoundedOut(ToRect(clipRect));
     if (tmpDTRect.IsEmpty()) {
       return DrawResult::SUCCESS;
@@ -506,7 +508,7 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
       gfxDevCrash(LogReason::InvalidContext) << "ImageRenderer::Draw problem " << gfx::hexa(tempDT);
       return DrawResult::TEMPORARY_ERROR;
     }
-    tempDT->SetTransform(Matrix::Translation(-tmpDTRect.TopLeft()));
+    tempDT->SetTransform(ctx->GetDrawTarget()->GetTransform() * Matrix::Translation(-tmpDTRect.TopLeft()));
     ctx = gfxContext::CreatePreservingTransformOrNull(tempDT);
     if (!ctx) {
       gfxDevCrash(LogReason::InvalidContext) << "ImageRenderer::Draw problem " << gfx::hexa(tempDT);
@@ -565,7 +567,7 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
     if (mMaskOp == NS_STYLE_MASK_MODE_LUMINANCE) {
       RefPtr<DataSourceSurface> maskData = surf->GetDataSurface();
       DataSourceSurface::MappedSurface map;
-      if (!maskData->Map(DataSourceSurface::MapType::WRITE, &map)) {
+      if (!maskData->Map(DataSourceSurface::MapType::READ_WRITE, &map)) {
         return result;
       }
 
@@ -575,10 +577,13 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
     }
 
     DrawTarget* dt = aRenderingContext.GetDrawTarget();
+    Matrix oldTransform = dt->GetTransform();
+    dt->SetTransform(Matrix());
     dt->DrawSurface(surf, Rect(tmpDTRect.x, tmpDTRect.y, tmpDTRect.width, tmpDTRect.height),
                     Rect(0, 0, tmpDTRect.width, tmpDTRect.height),
                     DrawSurfaceOptions(SamplingFilter::POINT),
                     DrawOptions(1.0f, aRenderingContext.CurrentOp()));
+    dt->SetTransform(oldTransform);
   }
 
   return result;
@@ -589,7 +594,6 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
                                             mozilla::wr::DisplayListBuilder& aBuilder,
                                             mozilla::wr::IpcResourceUpdateQueue& aResources,
                                             const mozilla::layers::StackingContextHelper& aSc,
-                                            mozilla::layers::WebRenderDisplayItemLayer* aLayer,
                                             mozilla::layers::WebRenderLayerManager* aManager,
                                             nsDisplayItem* aItem,
                                             const nsRect& aDirtyRect,
@@ -615,7 +619,7 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
       nsCSSGradientRenderer renderer =
         nsCSSGradientRenderer::Create(aPresContext, mGradientData, mSize);
 
-      renderer.BuildWebRenderDisplayItems(aBuilder, aSc, aLayer, aDest, aFill,
+      renderer.BuildWebRenderDisplayItems(aBuilder, aSc, aDest, aFill,
                                           aRepeatSize, aSrc, !aItem->BackfaceIsHidden(), aOpacity);
       break;
     }
@@ -635,7 +639,8 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
       }
 
       gfx::IntSize size;
-      Maybe<wr::ImageKey> key = aManager->CreateImageKey(aItem, container, aBuilder, aResources, aSc, size);
+      Maybe<wr::ImageKey> key = aManager->CommandBuilder().CreateImageKey(aItem, container, aBuilder,
+                                                                          aResources, aSc, size, Nothing());
 
       if (key.isNothing()) {
         return DrawResult::BAD_IMAGE;
@@ -693,7 +698,7 @@ nsImageRenderer::DrawableForElement(const nsRect& aImageRect,
       nsSVGIntegrationUtils::DrawableFromPaintServer(
         mPaintServerFrame, mForFrame, mSize, imageSize,
         aContext.GetDrawTarget(),
-        aContext.CurrentMatrix(),
+        aContext.CurrentMatrixDouble(),
         nsSVGIntegrationUtils::FLAG_SYNC_DECODE_IMAGES);
 
     return drawable.forget();
@@ -737,7 +742,6 @@ nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresCo
                                                     mozilla::wr::DisplayListBuilder& aBuilder,
                                                     mozilla::wr::IpcResourceUpdateQueue& aResources,
                                                     const mozilla::layers::StackingContextHelper& aSc,
-                                                    WebRenderDisplayItemLayer*       aLayer,
                                                     mozilla::layers::WebRenderLayerManager* aManager,
                                                     nsDisplayItem*       aItem,
                                                     const nsRect&        aDest,
@@ -756,7 +760,7 @@ nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresCo
     return DrawResult::SUCCESS;
   }
   return BuildWebRenderDisplayItems(aPresContext, aBuilder, aResources, aSc,
-                                    aLayer, aManager, aItem,
+                                    aManager, aItem,
                                     aDirty, aDest, aFill, aAnchor, aRepeatSize,
                                     CSSIntRect(0, 0,
                                                nsPresContext::AppUnitsToIntCSSPixels(mSize.width),

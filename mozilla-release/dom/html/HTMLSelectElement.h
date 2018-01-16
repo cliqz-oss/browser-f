@@ -8,10 +8,10 @@
 
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
-#include "nsIDOMHTMLSelectElement.h"
 #include "nsIConstraintValidation.h"
 
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/HTMLOptionsCollection.h"
 #include "mozilla/ErrorResult.h"
 #include "nsCheapSets.h"
@@ -120,7 +120,6 @@ private:
  * Implementation of &lt;select&gt;
  */
 class HTMLSelectElement final : public nsGenericHTMLFormElementWithState,
-                                public nsIDOMHTMLSelectElement,
                                 public nsIConstraintValidation
 {
 public:
@@ -164,9 +163,6 @@ public:
     return true;
   }
 
-  // nsIDOMHTMLSelectElement
-  NS_DECL_NSIDOMHTMLSELECTELEMENT
-
   // WebIdl HTMLSelectElement
   bool Autofocus() const
   {
@@ -204,7 +200,11 @@ public:
   {
     SetHTMLBoolAttr(nsGkAtoms::multiple, aVal, aRv);
   }
-  // Uses XPCOM GetName.
+
+  void GetName(DOMString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::name, aValue);
+  }
   void SetName(const nsAString& aName, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::name, aName, aRv);
@@ -226,7 +226,7 @@ public:
     SetUnsignedIntAttr(nsGkAtoms::size, aSize, 0, aRv);
   }
 
-  // Uses XPCOM GetType.
+  void GetType(nsAString& aValue);
 
   HTMLOptionsCollection* Options() const
   {
@@ -252,14 +252,14 @@ public:
   void Add(const HTMLOptionElementOrHTMLOptGroupElement& aElement,
            const Nullable<HTMLElementOrLong>& aBefore,
            ErrorResult& aRv);
-  // Uses XPCOM Remove.
+  void Remove(int32_t aIndex);
   void IndexedSetter(uint32_t aIndex, HTMLOptionElement* aOption,
                      ErrorResult& aRv)
   {
     mOptions->IndexedSetter(aIndex, aOption, aRv);
   }
 
-  static bool MatchSelectedOptions(Element* aElement, int32_t, nsIAtom*,
+  static bool MatchSelectedOptions(Element* aElement, int32_t, nsAtom*,
                                    void*);
 
   nsIHTMLCollection* SelectedOptions();
@@ -273,7 +273,7 @@ public:
     aRv = SetSelectedIndexInternal(aIdx, true);
   }
   void GetValue(DOMString& aValue);
-  // Uses XPCOM SetValue.
+  void SetValue(const nsAString& aValue);
 
   // Override SetCustomValidity so we update our state properly when it's called
   // via bindings.
@@ -361,31 +361,19 @@ public:
                                  uint32_t aOptionsMask);
 
   /**
-   * Finds the index of a given option element
-   *
-   * @param aOption the option to get the index of
-   * @param aStartIndex the index to start looking at
-   * @param aForward TRUE to look forward, FALSE to look backward
-   * @return the option index
-   */
-  NS_IMETHOD GetOptionIndex(nsIDOMHTMLOptionElement* aOption,
-                            int32_t aStartIndex,
-                            bool aForward,
-                            int32_t* aIndex);
-
-  /**
    * Called when an attribute is about to be changed
    */
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                nsIContent* aBindingParent,
                                bool aCompileEventHandlers) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
-  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                  const nsAttrValueOrString* aValue,
                                  bool aNotify) override;
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
   virtual void DoneAddingChildren(bool aHaveNotified) override;
@@ -394,13 +382,13 @@ public:
   }
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult) override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,
                          bool aPreallocateChildren) const override;
@@ -443,7 +431,10 @@ public:
   bool OpenInParentProcess();
   void SetOpenInParentProcess(bool aVal);
 
-  void GetPreviewValue(nsAString& aValue);
+  void GetPreviewValue(nsAString& aValue)
+  {
+    aValue = mPreviewValue;
+  }
   void SetPreviewValue(const nsAString& aValue);
 
 protected:
@@ -659,6 +650,11 @@ protected:
    * The live list of selected options.
   */
   RefPtr<nsContentList> mSelectedOptions;
+
+  /**
+   * The current displayed preview text.
+  */
+  nsString  mPreviewValue;
 
 private:
   static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,

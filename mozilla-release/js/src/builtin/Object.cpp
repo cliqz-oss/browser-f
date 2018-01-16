@@ -24,6 +24,7 @@
 
 #include "vm/NativeObject-inl.h"
 #include "vm/Shape-inl.h"
+#include "vm/UnboxedObject-inl.h"
 
 #ifdef FUZZING
 #include "builtin/TestingFunctions.h"
@@ -354,7 +355,7 @@ js::ObjectToSource(JSContext* cx, HandleObject obj)
                         return false;
                 }
 
-                if (fun->isStarGenerator()) {
+                if (fun->isGenerator()) {
                     if (!buf.append('*'))
                         return false;
                 }
@@ -502,7 +503,7 @@ GetBuiltinTagFast(JSObject* obj, const Class* clasp, JSContext* cx)
         return cx->names().objectObject;
     }
 
-    if (clasp == &ArrayObject::class_ || clasp == &UnboxedArrayObject::class_)
+    if (clasp == &ArrayObject::class_)
         return cx->names().objectArray;
 
     if (clasp == &JSFunction::class_)
@@ -763,8 +764,7 @@ TryAssignNative(JSContext* cx, HandleObject to, HandleObject from, bool* optimiz
         // with a non-native object.
         if (MOZ_LIKELY(from->isNative() &&
                        from->as<NativeObject>().lastProperty() == fromShape &&
-                       shape->hasDefaultGetter() &&
-                       shape->hasSlot()))
+                       shape->isDataProperty()))
         {
             if (!shape->enumerable())
                 continue;
@@ -772,6 +772,59 @@ TryAssignNative(JSContext* cx, HandleObject to, HandleObject from, bool* optimiz
         } else {
             // |from| changed shape or the property is not a data property, so
             // we have to do the slower enumerability check and GetProp.
+            bool enumerable;
+            if (!PropertyIsEnumerable(cx, from, nextKey, &enumerable))
+                return false;
+            if (!enumerable)
+                continue;
+            if (!GetProperty(cx, from, from, nextKey, &propValue))
+                return false;
+        }
+
+        ObjectOpResult result;
+        if (MOZ_UNLIKELY(!SetProperty(cx, to, nextKey, propValue, toReceiver, result)))
+            return false;
+        if (MOZ_UNLIKELY(!result.checkStrict(cx, to, nextKey)))
+            return false;
+    }
+
+    return true;
+}
+
+static bool
+TryAssignFromUnboxed(JSContext* cx, HandleObject to, HandleObject from, bool* optimized)
+{
+    *optimized = false;
+
+    if (!from->is<UnboxedPlainObject>() || !to->isNative())
+        return true;
+
+    // Don't use the fast path for unboxed objects with expandos.
+    UnboxedPlainObject* fromUnboxed = &from->as<UnboxedPlainObject>();
+    if (fromUnboxed->maybeExpando())
+        return true;
+
+    *optimized = true;
+
+    RootedObjectGroup fromGroup(cx, from->group());
+
+    RootedValue propValue(cx);
+    RootedId nextKey(cx);
+    RootedValue toReceiver(cx, ObjectValue(*to));
+
+    const UnboxedLayout& layout = fromUnboxed->layout();
+    for (size_t i = 0; i < layout.properties().length(); i++) {
+        const UnboxedLayout::Property& property = layout.properties()[i];
+        nextKey = NameToId(property.name);
+
+        // All unboxed properties are enumerable.
+        // Guard on the group to ensure that the object stays unboxed.
+        // We can ignore expando properties added after the loop starts.
+        if (MOZ_LIKELY(from->group() == fromGroup)) {
+            propValue = from->as<UnboxedPlainObject>().getValue(property);
+        } else {
+            // |from| changed so we have to do the slower enumerability check
+            // and GetProp.
             bool enumerable;
             if (!PropertyIsEnumerable(cx, from, nextKey, &enumerable))
                 return false;
@@ -858,6 +911,11 @@ obj_assign(JSContext* cx, unsigned argc, Value* vp)
         if (optimized)
             continue;
 
+        if (!TryAssignFromUnboxed(cx, to, from, &optimized))
+            return false;
+        if (optimized)
+            continue;
+
         if (!AssignSlow(cx, to, from))
             return false;
     }
@@ -866,109 +924,6 @@ obj_assign(JSContext* cx, unsigned argc, Value* vp)
     args.rval().setObject(*to);
     return true;
 }
-
-#if JS_HAS_OBJ_WATCHPOINT
-
-bool
-js::WatchHandler(JSContext* cx, JSObject* obj_, jsid id_, const JS::Value& old,
-                 JS::Value* nvp, void* closure)
-{
-    RootedObject obj(cx, obj_);
-    RootedId id(cx, id_);
-
-    /* Avoid recursion on (obj, id) already being watched on cx. */
-    AutoResolving resolving(cx, obj, id, AutoResolving::WATCH);
-    if (resolving.alreadyStarted())
-        return true;
-
-    FixedInvokeArgs<3> args(cx);
-
-    args[0].set(IdToValue(id));
-    args[1].set(old);
-    args[2].set(*nvp);
-
-    RootedValue callable(cx, ObjectValue(*static_cast<JSObject*>(closure)));
-    RootedValue thisv(cx, ObjectValue(*obj));
-    RootedValue rv(cx);
-    if (!Call(cx, callable, thisv, args, &rv))
-        return false;
-
-    *nvp = rv;
-    return true;
-}
-
-static bool
-obj_watch(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-
-    RootedObject obj(cx, ToObject(cx, args.thisv()));
-    if (!obj)
-        return false;
-
-    if (!cx->compartment()->warnedAboutObjectWatch) {
-        if (!JS_ReportErrorFlagsAndNumberASCII(cx, JSREPORT_WARNING, GetErrorMessage, nullptr,
-                                               JSMSG_OBJECT_WATCH_DEPRECATED))
-        {
-            return false;
-        }
-        cx->compartment()->warnedAboutObjectWatch = true;
-    }
-
-    if (args.length() <= 1) {
-        ReportMissingArg(cx, args.calleev(), 1);
-        return false;
-    }
-
-    RootedObject callable(cx, ValueToCallable(cx, args[1], args.length() - 2));
-    if (!callable)
-        return false;
-
-    RootedId propid(cx);
-    if (!ValueToId<CanGC>(cx, args[0], &propid))
-        return false;
-
-    if (!WatchProperty(cx, obj, propid, callable))
-        return false;
-
-    args.rval().setUndefined();
-    return true;
-}
-
-static bool
-obj_unwatch(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-
-    RootedObject obj(cx, ToObject(cx, args.thisv()));
-    if (!obj)
-        return false;
-
-    if (!cx->compartment()->warnedAboutObjectWatch) {
-        if (!JS_ReportErrorFlagsAndNumberASCII(cx, JSREPORT_WARNING, GetErrorMessage, nullptr,
-                                               JSMSG_OBJECT_WATCH_DEPRECATED))
-        {
-            return false;
-        }
-        cx->compartment()->warnedAboutObjectWatch = true;
-    }
-
-    RootedId id(cx);
-    if (args.length() != 0) {
-        if (!ValueToId<CanGC>(cx, args[0], &id))
-            return false;
-    } else {
-        id = JSID_VOID;
-    }
-
-    if (!UnwatchProperty(cx, obj, id))
-        return false;
-
-    args.rval().setUndefined();
-    return true;
-}
-
-#endif /* JS_HAS_OBJ_WATCHPOINT */
 
 /* ES5 15.2.4.6. */
 static bool
@@ -1369,37 +1324,38 @@ js::IdToStringOrSymbol(JSContext* cx, HandleId id, MutableHandleValue result)
     return true;
 }
 
-/* ES6 draft rev 25 (2014 May 22) 19.1.2.8.1 */
+// ES2018 draft rev c164be80f7ea91de5526b33d54e5c9321ed03d3f
+// 19.1.2.10.1 Runtime Semantics: GetOwnPropertyKeys ( O, Type )
 bool
 js::GetOwnPropertyKeys(JSContext* cx, const JS::CallArgs& args, unsigned flags)
 {
-    // Steps 1-2.
+    // Step 1.
     RootedObject obj(cx, ToObject(cx, args.get(0)));
     if (!obj)
         return false;
 
-    // Steps 3-10.
+    // Steps 2-4.
     AutoIdVector keys(cx);
     if (!GetPropertyKeys(cx, obj, flags, &keys))
         return false;
 
-    // Step 11.
-    AutoValueVector vals(cx);
-    if (!vals.resize(keys.length()))
+    // Step 5 (Inlined CreateArrayFromList).
+    RootedArrayObject array(cx, NewDenseFullyAllocatedArray(cx, keys.length()));
+    if (!array)
         return false;
 
+    array->ensureDenseInitializedLength(cx, 0, keys.length());
+
+    RootedValue val(cx);
     for (size_t i = 0, len = keys.length(); i < len; i++) {
         MOZ_ASSERT_IF(JSID_IS_SYMBOL(keys[i]), flags & JSITER_SYMBOLS);
         MOZ_ASSERT_IF(!JSID_IS_SYMBOL(keys[i]), !(flags & JSITER_SYMBOLSONLY));
-        if (!IdToStringOrSymbol(cx, keys[i], vals[i]))
+        if (!IdToStringOrSymbol(cx, keys[i], &val))
             return false;
+        array->initDenseElement(i, val);
     }
 
-    JSObject* aobj = NewDenseCopiedArray(cx, vals.length(), vals.begin());
-    if (!aobj)
-        return false;
-
-    args.rval().setObject(*aobj);
+    args.rval().setObject(*array);
     return true;
 }
 
@@ -1579,10 +1535,6 @@ ProtoGetter(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
-namespace js {
-size_t sSetProtoCalled = 0;
-} // namespace js
-
 static bool
 ProtoSetter(JSContext* cx, unsigned argc, Value* vp)
 {
@@ -1598,9 +1550,6 @@ ProtoSetter(JSContext* cx, unsigned argc, Value* vp)
         args.rval().setUndefined();
         return true;
     }
-
-    if (!cx->runningWithTrustedPrincipals())
-        ++sSetProtoCalled;
 
     Rooted<JSObject*> obj(cx, &args.thisv().toObject());
 
@@ -1625,10 +1574,6 @@ static const JSFunctionSpec object_methods[] = {
     JS_INLINABLE_FN(js_toString_str,   obj_toString,                0,0, ObjectToString),
     JS_SELF_HOSTED_FN(js_toLocaleString_str, "Object_toLocaleString", 0, 0),
     JS_SELF_HOSTED_FN(js_valueOf_str,  "Object_valueOf",            0,0),
-#if JS_HAS_OBJ_WATCHPOINT
-    JS_FN(js_watch_str,                obj_watch,                   2,0),
-    JS_FN(js_unwatch_str,              obj_unwatch,                 1,0),
-#endif
     JS_SELF_HOSTED_FN(js_hasOwnProperty_str, "Object_hasOwnProperty", 1,0),
     JS_FN(js_isPrototypeOf_str,        obj_isPrototypeOf,           1,0),
     JS_FN(js_propertyIsEnumerable_str, obj_propertyIsEnumerable,    1,0),

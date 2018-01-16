@@ -190,14 +190,8 @@ extern const char XPC_XPCONNECT_CONTRACTID[];
 
 #define XPC_STRING_GETTER_BODY(dest, src)                                     \
     NS_ENSURE_ARG_POINTER(dest);                                              \
-    char* result;                                                             \
-    if (src)                                                                  \
-        result = (char*) nsMemory::Clone(src,                                 \
-                                         sizeof(char)*(strlen(src)+1));       \
-    else                                                                      \
-        result = nullptr;                                                      \
-    *dest = result;                                                           \
-    return (result || !src) ? NS_OK : NS_ERROR_OUT_OF_MEMORY
+    *dest = src ? moz_xstrdup(src) : nullptr;                                 \
+    return NS_OK
 
 // If IS_WN_CLASS for the JSClass of an object is true, the object is a
 // wrappednative wrapper, holding the XPCWrappedNative in its private slot.
@@ -263,10 +257,7 @@ public:
         return gSystemPrincipal;
     }
 
-    // This returns an AddRef'd pointer. It does not do this with an 'out' param
-    // only because this form is required by the generic module macro:
-    // NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR
-    static nsXPConnect* GetSingleton();
+    static already_AddRefed<nsXPConnect> GetSingleton();
 
     // Called by module code in dll startup
     static void InitStatics();
@@ -2037,26 +2028,6 @@ private:
     nsCOMPtr<nsISupports> mOuter;    // only set in root
 };
 
-/***************************************************************************/
-
-class XPCJSObjectHolder final : public nsIXPConnectJSObjectHolder
-{
-public:
-    // all the interface method declarations...
-    NS_DECL_ISUPPORTS
-    NS_DECL_NSIXPCONNECTJSOBJECTHOLDER
-
-    // non-interface implementation
-
-public:
-    XPCJSObjectHolder(JSContext* cx, JSObject* obj);
-
-private:
-    virtual ~XPCJSObjectHolder() {}
-    XPCJSObjectHolder() = delete;
-
-    JS::PersistentRooted<JSObject*> mJSObj;
-};
 
 /***************************************************************************
 ****************************************************************************
@@ -2123,8 +2094,7 @@ public:
      * @param src_is_identity optional performance hint. Set to true only
      *                        if src is the identity pointer.
      */
-    static bool NativeInterface2JSObject(JS::MutableHandleValue d,
-                                         nsIXPConnectJSObjectHolder** dest,
+    static bool NativeInterface2JSObject(JS::MutableHandleValue dest,
                                          xpcObjectHelper& aHelper,
                                          const nsID* iid,
                                          bool allowNativeWrapper,

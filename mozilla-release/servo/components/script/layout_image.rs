@@ -13,7 +13,7 @@ use ipc_channel::ipc;
 use ipc_channel::router::ROUTER;
 use net_traits::{FetchResponseMsg, FetchResponseListener, FetchMetadata, NetworkError};
 use net_traits::image_cache::{ImageCache, PendingImageId};
-use net_traits::request::{Type as RequestType, RequestInit as FetchRequestInit};
+use net_traits::request::{Destination, RequestInit as FetchRequestInit};
 use network_listener::{NetworkListener, PreInvoke};
 use servo_url::ServoUrl;
 use std::sync::{Arc, Mutex};
@@ -64,18 +64,18 @@ pub fn fetch_image_for_layout(url: ServoUrl,
         task_source: window.networking_task_source(),
         canceller: Some(window.task_canceller()),
     };
-    ROUTER.add_route(action_receiver.to_opaque(), box move |message| {
+    ROUTER.add_route(action_receiver.to_opaque(), Box::new(move |message| {
         listener.notify_fetch(message.to().unwrap());
-    });
+    }));
 
     let request = FetchRequestInit {
         url: url,
         origin: document.origin().immutable().clone(),
-        type_: RequestType::Image,
+        destination: Destination::Image,
         pipeline_id: Some(document.global().pipeline_id()),
         .. FetchRequestInit::default()
     };
 
     // Layout image loads do not delay the document load event.
-    document.mut_loader().fetch_async_background(request, action_sender);
+    document.loader().fetch_async_background(request, action_sender);
 }

@@ -1,11 +1,13 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/layers/SingleTiledContentClient.h"
 
 #include "ClientTiledPaintedLayer.h"
+#include "mozilla/Maybe.h"
 
 namespace mozilla {
 namespace layers {
@@ -150,6 +152,15 @@ ClientSingleTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
                         extraPainted,
                         &backBufferOnWhite);
 
+  // Mark the area we need to paint in the back buffer as invalid in the
+  // front buffer as they will become out of sync.
+  mTile.mInvalidFront.OrWith(tileDirtyRegion);
+
+  // Add backbuffer's invalid region to the dirty region to be painted.
+  // This will be empty if we were able to copy from the front in to the back.
+  paintRegion.OrWith(mTile.mInvalidBack.MovedBy(mTilingOrigin));
+  tileDirtyRegion.OrWith(mTile.mInvalidBack);
+
   mTile.mUpdateRect = tileDirtyRegion.GetBounds().Union(extraPainted.GetBounds());
 
   extraPainted.MoveBy(mTilingOrigin);
@@ -191,32 +202,33 @@ ClientSingleTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
     if (!copyableRegion.IsEmpty()) {
       TextureClientAutoLock frontLock(discardedFrontBuffer,
                                       OpenMode::OPEN_READ);
-      if (frontLock.Succeeded()) {
+      Maybe<TextureClientAutoLock> frontOnWhiteLock;
+      if (discardedFrontBufferOnWhite && backBufferOnWhite) {
+        frontOnWhiteLock.emplace(discardedFrontBufferOnWhite, OpenMode::OPEN_READ);
+      }
+
+      // Copy to both backBuffer and backBufferOnWhite if required, or copy to neither.
+      if (frontLock.Succeeded() && (!frontOnWhiteLock || frontOnWhiteLock->Succeeded())) {
         for (auto iter = copyableRegion.RectIter(); !iter.Done(); iter.Next()) {
           const gfx::IntRect rect = iter.Get() - discardedValidRegion.GetBounds().TopLeft();
           const gfx::IntPoint dest = iter.Get().TopLeft() - mTilingOrigin;
           discardedFrontBuffer->CopyToTextureClient(backBuffer, &rect, &dest);
         }
-      }
 
-      if (discardedFrontBufferOnWhite && backBufferOnWhite) {
-        TextureClientAutoLock frontOnWhiteLock(discardedFrontBufferOnWhite,
-                                               OpenMode::OPEN_READ);
-        if (frontOnWhiteLock.Succeeded()) {
+        if (frontOnWhiteLock) {
           for (auto iter = copyableRegion.RectIter(); !iter.Done(); iter.Next()) {
             const gfx::IntRect rect = iter.Get() - discardedValidRegion.GetBounds().TopLeft();
             const gfx::IntPoint dest = iter.Get().TopLeft() - mTilingOrigin;
-
             discardedFrontBufferOnWhite->CopyToTextureClient(backBufferOnWhite,
                                                              &rect, &dest);
           }
         }
+
+        TILING_LOG("TILING %p: Region copied from discarded frontbuffer %s\n", &mPaintedLayer, Stringify(copyableRegion).c_str());
+
+        // We don't need to repaint valid content that was just copied.
+        paintRegion.SubOut(copyableRegion);
       }
-
-      TILING_LOG("TILING %p: Region copied from discarded frontbuffer %s\n", &mPaintedLayer, Stringify(copyableRegion).c_str());
-
-      // We don't need to repaint valid content that was just copied.
-      paintRegion.SubOut(copyableRegion);
     }
   }
 
@@ -235,10 +247,6 @@ ClientSingleTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
 
     aCallback(&mPaintedLayer, ctx, paintRegion, paintRegion, DrawRegionClip::DRAW, nsIntRegion(), aCallbackData);
   }
-
-  // Mark the area we just drew into the back buffer as invalid in the front buffer as they're
-  // now out of sync.
-  mTile.mInvalidFront.OrWith(tileDirtyRegion);
 
   // The new buffer is now validated, remove the dirty region from it.
   mTile.mInvalidBack.SubOut(tileDirtyRegion);

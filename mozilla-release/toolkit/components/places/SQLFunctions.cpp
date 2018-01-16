@@ -18,7 +18,6 @@
 #include "nsNavHistory.h"
 #include "mozilla/Likely.h"
 #include "nsVariant.h"
-#include "mozilla/HashFunctions.h"
 
 // Maximum number of chars to search through.
 // MatchAutoCompleteFunction won't look for matches over this threshold.
@@ -238,7 +237,7 @@ namespace {
 
   static
   MOZ_ALWAYS_INLINE nsDependentCString
-  getSharedString(mozIStorageValueArray* aValues, uint32_t aIndex) {
+  getSharedUTF8String(mozIStorageValueArray* aValues, uint32_t aIndex) {
     uint32_t len;
     const char* str = aValues->AsSharedUTF8String(aIndex, &len);
     if (!str) {
@@ -416,9 +415,9 @@ namespace places {
       (searchBehavior & mozIPlacesAutoComplete::BEHAVIOR_##aBitName)
 
     nsDependentCString searchString =
-      getSharedString(aArguments, kArgSearchString);
+      getSharedUTF8String(aArguments, kArgSearchString);
     nsDependentCString url =
-      getSharedString(aArguments, kArgIndexURL);
+      getSharedUTF8String(aArguments, kArgIndexURL);
 
     int32_t matchBehavior = aArguments->AsInt32(kArgIndexMatchBehavior);
 
@@ -435,7 +434,7 @@ namespace places {
     int32_t visitCount = aArguments->AsInt32(kArgIndexVisitCount);
     bool typed = aArguments->AsInt32(kArgIndexTyped) ? true : false;
     bool bookmark = aArguments->AsInt32(kArgIndexBookmark) ? true : false;
-    nsDependentCString tags = getSharedString(aArguments, kArgIndexTags);
+    nsDependentCString tags = getSharedUTF8String(aArguments, kArgIndexTags);
     int32_t openPageCount = aArguments->AsInt32(kArgIndexOpenPageCount);
     bool matches = false;
     if (HAS_BEHAVIOR(RESTRICT)) {
@@ -472,7 +471,7 @@ namespace places {
     const nsDependentCSubstring& trimmedUrl =
       Substring(fixedUrl, 0, MAX_CHARS_TO_SEARCH_THROUGH);
 
-    nsDependentCString title = getSharedString(aArguments, kArgIndexTitle);
+    nsDependentCString title = getSharedUTF8String(aArguments, kArgIndexTitle);
     // Limit the number of chars we search through.
     const nsDependentCSubstring& trimmedTitle =
       Substring(title, 0, MAX_CHARS_TO_SEARCH_THROUGH);
@@ -765,6 +764,40 @@ namespace places {
   }
 
 ////////////////////////////////////////////////////////////////////////////////
+//// GUID Validation Function
+
+  /* static */
+  nsresult
+  IsValidGUIDFunction::create(mozIStorageConnection *aDBConn)
+  {
+    RefPtr<IsValidGUIDFunction> function = new IsValidGUIDFunction();
+    return aDBConn->CreateFunction(
+      NS_LITERAL_CSTRING("is_valid_guid"), 1, function
+    );
+  }
+
+  NS_IMPL_ISUPPORTS(
+    IsValidGUIDFunction,
+    mozIStorageFunction
+  )
+
+  NS_IMETHODIMP
+  IsValidGUIDFunction::OnFunctionCall(mozIStorageValueArray *aArguments,
+                                      nsIVariant **_result)
+  {
+    // Must have non-null function arguments.
+    MOZ_ASSERT(aArguments);
+
+    nsAutoCString guid;
+    aArguments->GetUTF8String(0, guid);
+
+    RefPtr<nsVariant> result = new nsVariant();
+    result->SetAsBool(IsValidGUID(guid));
+    result.forget(_result);
+    return NS_OK;
+  }
+
+////////////////////////////////////////////////////////////////////////////////
 //// Get Unreversed Host Function
 
   /* static */
@@ -1004,48 +1037,18 @@ namespace places {
     NS_ENSURE_SUCCESS(rv, rv);
     NS_ENSURE_TRUE(numEntries >= 1  && numEntries <= 2, NS_ERROR_FAILURE);
 
-    nsString str;
-    aArguments->GetString(0, str);
+    nsDependentCString str = getSharedUTF8String(aArguments, 0);
     nsAutoCString mode;
     if (numEntries > 1) {
       aArguments->GetUTF8String(1, mode);
     }
 
     RefPtr<nsVariant> result = new nsVariant();
-    if (mode.IsEmpty()) {
-      // URI-like strings (having a prefix before a colon), are handled specially,
-      // as a 48 bit hash, where first 16 bits are the prefix hash, while the
-      // other 32 are the string hash.
-      // The 16 bits have been decided based on the fact hashing all of the IANA
-      // known schemes, plus "places", does not generate collisions.
-      nsAString::const_iterator start, tip, end;
-      str.BeginReading(tip);
-      start = tip;
-      str.EndReading(end);
-      if (FindInReadable(NS_LITERAL_STRING(":"), tip, end)) {
-        const nsDependentSubstring& prefix = Substring(start, tip);
-        uint64_t prefixHash = static_cast<uint64_t>(HashString(prefix) & 0x0000FFFF);
-        // The second half of the url is more likely to be unique, so we add it.
-        uint32_t srcHash = HashString(str);
-        uint64_t hash = (prefixHash << 32) + srcHash;
-        result->SetAsInt64(hash);
-      } else {
-        uint32_t hash = HashString(str);
-        result->SetAsInt64(hash);
-      }
-    } else if (mode.Equals(NS_LITERAL_CSTRING("prefix_lo"))) {
-      // Keep only 16 bits.
-      uint64_t hash = static_cast<uint64_t>(HashString(str) & 0x0000FFFF) << 32;
-      result->SetAsInt64(hash);
-    } else if (mode.Equals(NS_LITERAL_CSTRING("prefix_hi"))) {
-      // Keep only 16 bits.
-      uint64_t hash = static_cast<uint64_t>(HashString(str) & 0x0000FFFF) << 32;
-      // Make this a prefix upper bound by filling the lowest 32 bits.
-      hash +=  0xFFFFFFFF;
-      result->SetAsInt64(hash);
-    } else {
-      return NS_ERROR_FAILURE;
-    }
+    uint64_t hash;
+    rv = HashURL(str, mode, &hash);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = result->SetAsInt64(hash);
+    NS_ENSURE_SUCCESS(rv, rv);
 
     result.forget(_result);
     return NS_OK;

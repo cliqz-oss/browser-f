@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -148,7 +148,7 @@ nsHTMLStyleSheet::LangRule::MapRuleInfoInto(nsRuleData* aRuleData)
   if (aRuleData->mSIDs & NS_STYLE_INHERIT_BIT(Font)) {
     nsCSSValue* lang = aRuleData->ValueForLang();
     if (lang->GetUnit() == eCSSUnit_Null) {
-      nsCOMPtr<nsIAtom> langAtom = mLang;
+      RefPtr<nsAtom> langAtom = mLang;
       lang->SetAtomIdentValue(langAtom.forget());
     }
   }
@@ -235,7 +235,7 @@ struct LangRuleTableEntry : public PLDHashEntryHdr {
 static PLDHashNumber
 LangRuleTable_HashKey(const void *key)
 {
-  auto* lang = static_cast<const nsIAtom*>(key);
+  auto* lang = static_cast<const nsAtom*>(key);
   return lang->hash();
 }
 
@@ -251,7 +251,7 @@ LangRuleTable_ClearEntry(PLDHashTable *table, PLDHashEntryHdr *hdr)
 static bool
 LangRuleTable_MatchEntry(const PLDHashEntryHdr *hdr, const void *key)
 {
-  auto* lang = static_cast<const nsIAtom*>(key);
+  auto* lang = static_cast<const nsAtom*>(key);
   const LangRuleTableEntry *entry = static_cast<const LangRuleTableEntry*>(hdr);
 
   return entry->mRule->mLang == lang;
@@ -260,12 +260,12 @@ LangRuleTable_MatchEntry(const PLDHashEntryHdr *hdr, const void *key)
 static void
 LangRuleTable_InitEntry(PLDHashEntryHdr *hdr, const void *key)
 {
-  auto* lang = static_cast<const nsIAtom*>(key);
+  auto* lang = static_cast<const nsAtom*>(key);
 
   LangRuleTableEntry* entry = new (KnownNotNull, hdr) LangRuleTableEntry();
 
   // Create the unique rule for this language
-  entry->mRule = new nsHTMLStyleSheet::LangRule(const_cast<nsIAtom*>(lang));
+  entry->mRule = new nsHTMLStyleSheet::LangRule(const_cast<nsAtom*>(lang));
 }
 
 static const PLDHashTableOps LangRuleTable_Ops = {
@@ -583,7 +583,7 @@ nsHTMLStyleSheet::CalculateMappedServoDeclarations(nsPresContext* aPresContext)
 }
 
 nsIStyleRule*
-nsHTMLStyleSheet::LangRuleFor(const nsIAtom* aLanguage)
+nsHTMLStyleSheet::LangRuleFor(const nsAtom* aLanguage)
 {
   auto entry =
     static_cast<LangRuleTableEntry*>(mLangRuleTable.Add(aLanguage, fallible));

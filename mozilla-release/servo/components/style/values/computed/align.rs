@@ -46,12 +46,12 @@ impl JustifyItems {
 impl ToComputedValue for specified::JustifyItems {
     type ComputedValue = JustifyItems;
 
-    /// https://drafts.csswg.org/css-align/#valdef-justify-items-legacy
+    /// <https://drafts.csswg.org/css-align/#valdef-justify-items-legacy>
     fn to_computed_value(&self, _context: &Context) -> JustifyItems {
         use values::specified::align;
         let specified = *self;
         let computed =
-            if self.0 != align::ALIGN_AUTO {
+            if self.0 != align::AlignFlags::AUTO {
                 *self
             } else {
                 // If the inherited value of `justify-items` includes the

@@ -2660,7 +2660,7 @@ ParseFunc(WasmParseContext& c, AstModule* module)
 
         if (c.ts.getIf(WasmToken::Export)) {
             AstRef ref = funcName.empty()
-                         ? AstRef(module->funcImportNames().length() + module->funcs().length())
+                         ? AstRef(module->numFuncImports() + module->funcs().length())
                          : AstRef(funcName);
             if (!ParseInlineExport(c, DefinitionKind::Function, module, ref))
                 return false;
@@ -2804,8 +2804,7 @@ ParseLimits(WasmParseContext& c, Limits* limits)
     if (c.ts.getIf(WasmToken::Index, &token))
         maximum.emplace(token.index());
 
-    Limits r = { initial.index(), maximum };
-    *limits = r;
+    *limits = Limits(initial.index(), maximum);
     return true;
 }
 
@@ -2872,8 +2871,7 @@ ParseMemory(WasmParseContext& c, WasmToken token, AstModule* module)
                 return false;
         }
 
-        Limits memory = { uint32_t(pages), Some(uint32_t(pages)) };
-        if (!module->addMemory(name, memory))
+        if (!module->addMemory(name, Limits(pages, Some(pages))))
             return false;
 
         if (!c.ts.match(WasmToken::CloseParen, c.error))
@@ -3165,8 +3163,7 @@ ParseTable(WasmParseContext& c, WasmToken token, AstModule* module)
     if (numElements != elems.length())
         return false;
 
-    Limits r = { numElements, Some(numElements) };
-    if (!module->addTable(name, r))
+    if (!module->addTable(name, Limits(numElements, Some(numElements))))
         return false;
 
     auto* zero = new(c.lifo) AstConst(Val(uint32_t(0)));
@@ -3230,7 +3227,8 @@ ParseGlobal(WasmParseContext& c, AstModule* module)
         }
 
         if (c.ts.getIf(WasmToken::Export)) {
-            AstRef ref = name.empty() ? AstRef(module->globals().length()) : AstRef(name);
+            size_t refIndex = module->numGlobalImports() + module->globals().length();
+            AstRef ref = name.empty() ? AstRef(refIndex) : AstRef(name);
             if (!ParseInlineExport(c, DefinitionKind::Global, module, ref))
                 return false;
             if (!c.ts.match(WasmToken::CloseParen, c.error))

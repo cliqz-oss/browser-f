@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "jsgc.h"
 #include "jsprf.h"
 #include "jsutil.h"
 
@@ -553,6 +554,14 @@ Statistics::renderNurseryJson(JSRuntime* rt) const
 UniqueChars
 Statistics::renderJsonMessage(uint64_t timestamp, bool includeSlices) const
 {
+    /*
+     * The format of the JSON message is specified by the GCMajorMarkerPayload
+     * type in perf.html
+     * https://github.com/devtools-html/perf.html/blob/master/src/types/markers.js#L62
+     *
+     * All the properties listed here are created within the timings property
+     * of the GCMajor marker.
+     */
     if (aborted)
         return DuplicateString("{status:\"aborted\"}"); // May return nullptr
 
@@ -562,10 +571,11 @@ Statistics::renderJsonMessage(uint64_t timestamp, bool includeSlices) const
     JSONPrinter json(printer);
 
     json.beginObject();
+    json.property("status", "completed");
     formatJsonDescription(timestamp, json);
 
     if (includeSlices) {
-        json.beginListProperty("slices");
+        json.beginListProperty("slices_list");
         for (unsigned i = 0; i < slices_.length(); i++)
             formatJsonSlice(i, json);
         json.endList();
@@ -609,11 +619,13 @@ Statistics::formatJsonDescription(uint64_t timestamp, JSONPrinter& json) const
     json.property("scc_sweep_max_pause", sccLongest, JSONPrinter::MILLISECONDS);
 
     json.property("nonincremental_reason", ExplainAbortReason(nonincrementalReason_));
-    json.property("allocated", uint64_t(preBytes) / 1024 / 1024);
+    json.property("allocated", uint64_t(preBytes)/1024/1024);
+    json.property("allocated_bytes", preBytes);
     json.property("added_chunks", getCount(STAT_NEW_CHUNK));
     json.property("removed_chunks", getCount(STAT_DESTROY_CHUNK));
     json.property("major_gc_number", startingMajorGCNumber);
     json.property("minor_gc_number", startingMinorGCNumber);
+    json.property("slice_number", startingSliceNumber);
 }
 
 void
@@ -879,6 +891,7 @@ Statistics::beginGC(JSGCInvocationKind kind)
 
     preBytes = runtime->gc.usage.gcBytes();
     startingMajorGCNumber = runtime->gc.majorGCCount();
+    startingSliceNumber = runtime->gc.gcNumber();
 }
 
 void
@@ -887,7 +900,7 @@ Statistics::endGC()
     TimeDuration sccTotal, sccLongest;
     sccDurations(&sccTotal, &sccLongest);
 
-    runtime->addTelemetry(JS_TELEMETRY_GC_IS_ZONE_GC, !zoneStats.isCollectingAllZones());
+    runtime->addTelemetry(JS_TELEMETRY_GC_IS_ZONE_GC, !zoneStats.isFullCollection());
     TimeDuration markTotal = SumPhase(PhaseKind::MARK, phaseTimes);
     TimeDuration markRootsTotal = SumPhase(PhaseKind::MARK_ROOTS, phaseTimes);
     runtime->addTelemetry(JS_TELEMETRY_GC_MARK_MS, t(markTotal));
@@ -966,7 +979,7 @@ Statistics::beginSlice(const ZoneGCStats& zoneStats, JSGCInvocationKind gckind,
     runtime->addTelemetry(JS_TELEMETRY_GC_REASON, reason);
 
     // Slice callbacks should only fire for the outermost level.
-    bool wasFullGC = zoneStats.isCollectingAllZones();
+    bool wasFullGC = zoneStats.isFullCollection();
     if (sliceCallback) {
         JSContext* cx = TlsContext.get();
         JS::GCDescription desc(!wasFullGC, false, gckind, reason);
@@ -1037,7 +1050,7 @@ Statistics::endSlice()
 
     // Slice callbacks should only fire for the outermost level.
     if (!aborted) {
-        bool wasFullGC = zoneStats.isCollectingAllZones();
+        bool wasFullGC = zoneStats.isFullCollection();
         if (sliceCallback) {
             JSContext* cx = TlsContext.get();
             JS::GCDescription desc(!wasFullGC, last, gckind, slices_.back().reason);
@@ -1319,7 +1332,7 @@ Statistics::printProfileHeader()
     if (!enableProfiling_)
         return;
 
-    fprintf(stderr, "MajorGC:               Reason States SRN  ");
+    fprintf(stderr, "MajorGC:               Reason States FSNR ");
     fprintf(stderr, " %6s", "budget");
     fprintf(stderr, " %6s", "total");
 #define PRINT_PROFILE_HEADER(name, text, phase)                               \
@@ -1347,13 +1360,15 @@ Statistics::printSliceProfile()
     bool shrinking = gckind == GC_SHRINK;
     bool reset = slice.resetReason != AbortReason::None;
     bool nonIncremental = nonincrementalReason_ != AbortReason::None;
+    bool full = zoneStats.isFullCollection();
 
-    fprintf(stderr, "MajorGC: %20s %1d -> %1d %1s%1s%1s  ",
+    fprintf(stderr, "MajorGC: %20s %1d -> %1d %1s%1s%1s%1s ",
             ExplainReason(slice.reason),
             int(slice.initialState), int(slice.finalState),
+            full ? "F": "",
             shrinking ? "S" : "",
-            reset ? "R" : "",
-            nonIncremental ? "N" : "");
+            nonIncremental ? "N" : "",
+            reset ? "R" : "");
 
     if (!nonIncremental && !slice.budget.isUnlimited() && slice.budget.isTimeBudget())
         fprintf(stderr, " %6" PRIi64, static_cast<int64_t>(slice.budget.timeBudget.budget));

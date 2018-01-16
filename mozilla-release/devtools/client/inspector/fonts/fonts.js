@@ -6,8 +6,6 @@
 
 "use strict";
 
-const Services = require("Services");
-const { Task } = require("devtools/shared/task");
 const { getColor } = require("devtools/client/shared/theme");
 
 const { createFactory, createElement } = require("devtools/client/shared/vendor/react");
@@ -15,7 +13,7 @@ const { Provider } = require("devtools/client/shared/vendor/react-redux");
 
 const { gDevTools } = require("devtools/client/framework/devtools");
 
-const App = createFactory(require("./components/App"));
+const FontsApp = createFactory(require("./components/FontsApp"));
 
 const { LocalizationHelper } = require("devtools/shared/l10n");
 const INSPECTOR_L10N =
@@ -24,46 +22,43 @@ const INSPECTOR_L10N =
 const { updateFonts } = require("./actions/fonts");
 const { updatePreviewText, updateShowAllFonts } = require("./actions/font-options");
 
-function FontInspector(inspector, window) {
-  this.document = window.document;
-  this.inspector = inspector;
-  this.pageStyle = this.inspector.pageStyle;
-  this.store = inspector.store;
+class FontInspector {
 
-  this.update = this.update.bind(this);
+  constructor(inspector, window) {
+    this.document = window.document;
+    this.inspector = inspector;
+    this.pageStyle = this.inspector.pageStyle;
+    this.store = this.inspector.store;
 
-  this.onNewNode = this.onNewNode.bind(this);
-  this.onPreviewFonts = this.onPreviewFonts.bind(this);
-  this.onShowAllFont = this.onShowAllFont.bind(this);
-  this.onThemeChanged = this.onThemeChanged.bind(this);
-}
+    this.update = this.update.bind(this);
 
-FontInspector.prototype = {
+    this.onNewNode = this.onNewNode.bind(this);
+    this.onPreviewFonts = this.onPreviewFonts.bind(this);
+    this.onShowAllFont = this.onShowAllFont.bind(this);
+    this.onThemeChanged = this.onThemeChanged.bind(this);
+
+    this.init();
+  }
+
   init() {
     if (!this.inspector) {
       return;
     }
 
-    let app = App({
+    let fontsApp = FontsApp({
       onPreviewFonts: this.onPreviewFonts,
       onShowAllFont: this.onShowAllFont,
     });
 
     let provider = createElement(Provider, {
-      store: this.store,
       id: "fontinspector",
-      title: INSPECTOR_L10N.getStr("inspector.sidebar.fontInspectorTitle"),
       key: "fontinspector",
-    }, app);
+      store: this.store,
+      title: INSPECTOR_L10N.getStr("inspector.sidebar.fontInspectorTitle"),
+    }, fontsApp);
 
-    let defaultTab = Services.prefs.getCharPref("devtools.inspector.activeSidebar");
-
-    this.inspector.addSidebarTab(
-      "fontinspector",
-      INSPECTOR_L10N.getStr("inspector.sidebar.fontInspectorTitle"),
-      provider,
-      defaultTab == "fontinspector"
-    );
+    // Expose the provider to let inspector.js use it in setupSidebar.
+    this.provider = provider;
 
     this.inspector.selection.on("new-node-front", this.onNewNode);
     this.inspector.sidebar.on("fontinspector-selected", this.onNewNode);
@@ -74,13 +69,13 @@ FontInspector.prototype = {
     this.store.dispatch(updatePreviewText(""));
     this.store.dispatch(updateShowAllFonts(false));
     this.update(false, "");
-  },
+  }
 
   /**
    * Destruction function called when the inspector is destroyed. Removes event listeners
    * and cleans up references.
    */
-  destroy: function () {
+  destroy() {
     this.inspector.selection.off("new-node-front", this.onNewNode);
     this.inspector.sidebar.off("fontinspector-selected", this.onNewNode);
     gDevTools.off("theme-switched", this.onThemeChanged);
@@ -89,7 +84,7 @@ FontInspector.prototype = {
     this.inspector = null;
     this.pageStyle = null;
     this.store = null;
-  },
+  }
 
   /**
    * Returns true if the font inspector panel is visible, and false otherwise.
@@ -97,7 +92,7 @@ FontInspector.prototype = {
   isPanelVisible() {
     return this.inspector.sidebar &&
            this.inspector.sidebar.getCurrentTabID() === "fontinspector";
-  },
+  }
 
   /**
    * Selection 'new-node' event handler.
@@ -107,7 +102,23 @@ FontInspector.prototype = {
       this.store.dispatch(updateShowAllFonts(false));
       this.update();
     }
-  },
+  }
+
+  /**
+   * Handler for change in preview input.
+   */
+  onPreviewFonts(value) {
+    this.store.dispatch(updatePreviewText(value));
+    this.update();
+  }
+
+  /**
+   * Handler for click on show all fonts button.
+   */
+  onShowAllFont() {
+    this.store.dispatch(updateShowAllFonts(true));
+    this.update();
+  }
 
   /**
    * Handler for the "theme-switched" event.
@@ -116,25 +127,14 @@ FontInspector.prototype = {
     if (frame === this.document.defaultView) {
       this.update();
     }
-  },
+  }
 
-  /**
-   * Handler for change in preview input.
-   */
-  onPreviewFonts(value) {
-    this.store.dispatch(updatePreviewText(value));
-    this.update();
-  },
+  async update() {
+    // Stop refreshing if the inspector or store is already destroyed.
+    if (!this.inspector || !this.store) {
+      return;
+    }
 
-  /**
-   * Handler for click on show all fonts button.
-   */
-  onShowAllFont() {
-    this.store.dispatch(updateShowAllFonts(true));
-    this.update();
-  },
-
-  update: Task.async(function* () {
     let node = this.inspector.selection.nodeFront;
     let fonts = [];
     let { fontOptions } = this.store.getState();
@@ -158,10 +158,10 @@ FontInspector.prototype = {
     };
 
     if (showAllFonts) {
-      fonts = yield this.pageStyle.getAllUsedFontFaces(options)
+      fonts = await this.pageStyle.getAllUsedFontFaces(options)
                       .catch(console.error);
     } else {
-      fonts = yield this.pageStyle.getUsedFontFaces(node, options)
+      fonts = await this.pageStyle.getUsedFontFaces(node, options)
                       .catch(console.error);
     }
 
@@ -172,7 +172,7 @@ FontInspector.prototype = {
     }
 
     for (let font of fonts) {
-      font.previewUrl = yield font.preview.data.string();
+      font.previewUrl = await font.preview.data.string();
     }
 
     // in case we've been destroyed in the meantime
@@ -183,7 +183,8 @@ FontInspector.prototype = {
     this.store.dispatch(updateFonts(fonts));
 
     this.inspector.emit("fontinspector-updated");
-  })
-};
+  }
+
+}
 
 module.exports = FontInspector;

@@ -29,6 +29,7 @@ class CanvasLayer;
 class CanvasRenderer;
 class Layer;
 class LayerManager;
+class WebRenderCanvasData;
 } // namespace layers
 namespace gfx {
 class SourceSurface;
@@ -44,6 +45,7 @@ public:
   typedef mozilla::layers::CanvasRenderer CanvasRenderer;
   typedef mozilla::layers::Layer Layer;
   typedef mozilla::layers::LayerManager LayerManager;
+  typedef mozilla::layers::WebRenderCanvasData WebRenderCanvasData;
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICANVASRENDERINGCONTEXTINTERNAL_IID)
 
@@ -139,11 +141,11 @@ public:
   // one for the given layer manager if not available.
   virtual already_AddRefed<Layer> GetCanvasLayer(nsDisplayListBuilder* builder,
                                                  Layer *oldLayer,
-                                                 LayerManager *manager,
-                                                 bool aMirror = false) = 0;
+                                                 LayerManager *manager) = 0;
+  virtual bool UpdateWebRenderCanvasData(nsDisplayListBuilder* aBuilder,
+                                         WebRenderCanvasData* aCanvasData) { return false; }
   virtual bool InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
-                                        CanvasRenderer* aRenderer,
-                                        bool aMirror = false) { return true; }
+                                        CanvasRenderer* aRenderer) { return true; }
 
   // Return true if the canvas should be forced to be "inactive" to ensure
   // it can be drawn to the screen even if it's too large to be blitted by

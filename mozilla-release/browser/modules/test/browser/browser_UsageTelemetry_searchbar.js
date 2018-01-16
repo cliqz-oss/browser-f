@@ -90,9 +90,6 @@ add_task(async function setup() {
   let oldCanRecord = Services.telemetry.canRecordExtended;
   Services.telemetry.canRecordExtended = true;
 
-  // Enable Extended Telemetry.
-  await SpecialPowers.pushPrefEnv({"set": [["toolkit.telemetry.enabled", true]]});
-
   // Enable event recording for the events tested here.
   Services.telemetry.setEventRecordingEnabled("navigation", true);
 
@@ -200,8 +197,8 @@ add_task(async function test_oneOff_enterSelection() {
   const url = getRootDirectory(gTestPath) + "usageTelemetrySearchSuggestions.xml";
   let suggestionEngine = await new Promise((resolve, reject) => {
     Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) { resolve(engine) },
-      onError() { reject() }
+      onSuccess(engine) { resolve(engine); },
+      onError() { reject(); }
     });
   });
 
@@ -268,8 +265,8 @@ add_task(async function test_suggestion_click() {
   const url = getRootDirectory(gTestPath) + "usageTelemetrySearchSuggestions.xml";
   let suggestionEngine = await new Promise((resolve, reject) => {
     Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) { resolve(engine) },
-      onError() { reject() }
+      onSuccess(engine) { resolve(engine); },
+      onError() { reject(); }
     });
   });
 
@@ -325,8 +322,8 @@ add_task(async function test_suggestion_enterSelection() {
   const url = getRootDirectory(gTestPath) + "usageTelemetrySearchSuggestions.xml";
   let suggestionEngine = await new Promise((resolve, reject) => {
     Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) { resolve(engine) },
-      onError() { reject() }
+      onSuccess(engine) { resolve(engine); },
+      onError() { reject(); }
     });
   });
 

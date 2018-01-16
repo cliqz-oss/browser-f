@@ -19,6 +19,7 @@
 #include "mozilla/dom/ElementInlines.h"
 #include "nsBlockFrame.h"
 #include "nsBulletFrame.h"
+#include "nsImageFrame.h"
 #include "nsPlaceholderFrame.h"
 #include "nsContentUtils.h"
 #include "nsCSSFrameConstructor.h"
@@ -65,7 +66,7 @@ ExpectedOwnerForChild(const nsIFrame& aFrame)
   }
 
   if (aFrame.IsBulletFrame()) {
-    return parent;
+    return FirstContinuationOrPartOfIBSplit(parent);
   }
 
   if (aFrame.IsLineFrame()) {
@@ -784,7 +785,7 @@ ServoRestyleManager::ProcessPostTraversal(
   // We should really fix the weird primary frame mapping for image maps
   // (bug 135040)...
   if (styleFrame && styleFrame->GetContent() != aElement) {
-    MOZ_ASSERT(styleFrame->IsImageFrame());
+    MOZ_ASSERT(static_cast<nsImageFrame*>(do_QueryFrame(styleFrame)));
     styleFrame = nullptr;
   }
 
@@ -906,7 +907,6 @@ ServoRestyleManager::ProcessPostTraversal(
 
     if (styleFrame) {
       UpdateAdditionalStyleContexts(styleFrame, aRestyleState);
-      styleFrame->UpdateStyleOfOwnedAnonBoxes(childrenRestyleState);
     }
 
     if (!aElement->GetParent()) {
@@ -970,6 +970,10 @@ ServoRestyleManager::ProcessPostTraversal(
     childrenRestyleState.ProcessWrapperRestyles(styleFrame);
 
     if (wasRestyled) {
+      // Make sure to update anon boxes and pseudo bits after updating text,
+      // otherwise we could clobber first-letter styles from
+      // ProcessPostTraversalForText, for example.
+      styleFrame->UpdateStyleOfOwnedAnonBoxes(childrenRestyleState);
       UpdateFramePseudoElementStyles(styleFrame, childrenRestyleState);
     } else if (traverseElementChildren &&
                styleFrame->IsFrameOfType(nsIFrame::eBlockFrame)) {
@@ -1078,25 +1082,7 @@ ServoRestyleManager::SnapshotFor(Element* aElement)
   aElement->SetFlags(ELEMENT_HAS_SNAPSHOT);
 
   // Now that we have a snapshot, make sure a restyle is triggered.
-  //
-  // If we have any later siblings, we need to flag the restyle on the parent,
-  // so that a traversal from the restyle root is guaranteed to reach those
-  // siblings (since the snapshot may generate hints for later siblings).
-  if (aElement->GetNextElementSibling()) {
-    Element* parent = aElement->GetFlattenedTreeParentElementForStyle();
-    MOZ_ASSERT(parent);
-    // The parent will only be outside of the composed doc if we're mid-unbind.
-    //
-    // FIXME(emilio): Make the traversal lazily mark the parent as dirty if
-    // needed to avoid this problem altogether, plus being better perf-wise.
-    if (parent->IsInComposedDoc()) {
-      parent->NoteDirtyForServo();
-      parent->SetHasDirtyDescendantsForServo();
-    }
-  } else {
-    aElement->NoteDirtyForServo();
-  }
-
+  aElement->NoteDirtyForServo();
   return *snapshot;
 }
 
@@ -1225,19 +1211,45 @@ ServoRestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags)
   mAnimationsWithDestroyedFrame->StopAnimationsForElementsWithoutFrames();
 }
 
+#ifdef DEBUG
+static void
+VerifyFlatTree(const nsIContent& aContent)
+{
+  StyleChildrenIterator iter(&aContent);
+
+  for (auto* content = iter.GetNextChild();
+       content;
+       content = iter.GetNextChild()) {
+    MOZ_ASSERT(content->GetFlattenedTreeParentNodeForStyle() == &aContent);
+    VerifyFlatTree(*content);
+  }
+}
+#endif
+
 void
 ServoRestyleManager::ProcessPendingRestyles()
 {
+#ifdef DEBUG
+  if (auto* root = mPresContext->Document()->GetRootElement()) {
+    VerifyFlatTree(*root);
+  }
+#endif
+
   DoProcessPendingRestyles(ServoTraversalFlags::Empty);
 }
 
 void
 ServoRestyleManager::ProcessAllPendingAttributeAndStateInvalidations()
 {
-  AutoTimelineMarker marker(mPresContext->GetDocShell(),
-                            "ProcessAllPendingAttributeAndStateInvalidations");
+  if (mSnapshots.IsEmpty()) {
+    return;
+  }
   for (auto iter = mSnapshots.Iter(); !iter.Done(); iter.Next()) {
-    Servo_ProcessInvalidations(StyleSet()->RawSet(), iter.Key(), &mSnapshots);
+    // Servo data for the element might have been dropped. (e.g. by removing
+    // from its document)
+    if (iter.Key()->HasFlag(ELEMENT_HAS_SNAPSHOT)) {
+      Servo_ProcessInvalidations(StyleSet()->RawSet(), iter.Key(), &mSnapshots);
+    }
   }
   ClearSnapshots();
 }
@@ -1302,7 +1314,7 @@ ServoRestyleManager::ContentStateChanged(nsIContent* aContent,
 
 static inline bool
 AttributeInfluencesOtherPseudoClassState(const Element& aElement,
-                                         const nsIAtom* aAttribute)
+                                         const nsAtom* aAttribute)
 {
   // We must record some state for :-moz-browser-frame and
   // :-moz-table-border-nonzero.
@@ -1321,7 +1333,7 @@ static inline bool
 NeedToRecordAttrChange(const ServoStyleSet& aStyleSet,
                        const Element& aElement,
                        int32_t aNameSpaceID,
-                       nsIAtom* aAttribute,
+                       nsAtom* aAttribute,
                        bool* aInfluencesOtherPseudoClassState)
 {
   *aInfluencesOtherPseudoClassState =
@@ -1359,7 +1371,7 @@ NeedToRecordAttrChange(const ServoStyleSet& aStyleSet,
 void
 ServoRestyleManager::AttributeWillChange(Element* aElement,
                                          int32_t aNameSpaceID,
-                                         nsIAtom* aAttribute, int32_t aModType,
+                                         nsAtom* aAttribute, int32_t aModType,
                                          const nsAttrValue* aNewValue)
 {
   TakeSnapshotForAttributeChange(aElement, aNameSpaceID, aAttribute);
@@ -1375,7 +1387,7 @@ ServoRestyleManager::ClassAttributeWillBeChangedBySMIL(Element* aElement)
 void
 ServoRestyleManager::TakeSnapshotForAttributeChange(Element* aElement,
                                                     int32_t aNameSpaceID,
-                                                    nsIAtom* aAttribute)
+                                                    nsAtom* aAttribute)
 {
   MOZ_ASSERT(!mInStyleRefresh);
 
@@ -1416,7 +1428,7 @@ ServoRestyleManager::TakeSnapshotForAttributeChange(Element* aElement,
 // * lang="" and xml:lang="" can affect all descendants due to :lang()
 //
 static inline bool
-AttributeChangeRequiresSubtreeRestyle(const Element& aElement, nsIAtom* aAttr)
+AttributeChangeRequiresSubtreeRestyle(const Element& aElement, nsAtom* aAttr)
 {
   if (aAttr == nsGkAtoms::cellpadding) {
     return aElement.IsHTMLElement(nsGkAtoms::table);
@@ -1427,7 +1439,7 @@ AttributeChangeRequiresSubtreeRestyle(const Element& aElement, nsIAtom* aAttr)
 
 void
 ServoRestyleManager::AttributeChanged(Element* aElement, int32_t aNameSpaceID,
-                                      nsIAtom* aAttribute, int32_t aModType,
+                                      nsAtom* aAttribute, int32_t aModType,
                                       const nsAttrValue* aOldValue)
 {
   MOZ_ASSERT(!mInStyleRefresh);

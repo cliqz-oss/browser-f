@@ -73,7 +73,7 @@ nsXPConnect::nsXPConnect()
 
     XPCJSContext* xpccx = XPCJSContext::NewXPCJSContext(nullptr);
     if (!xpccx) {
-        NS_RUNTIMEABORT("Couldn't create XPCJSContext.");
+        MOZ_CRASH("Couldn't create XPCJSContext.");
     }
     gPrimaryContext = xpccx;
     mRuntime = xpccx->Runtime();
@@ -141,12 +141,10 @@ nsXPConnect::InitStatics()
     gSelf->mRuntime->InitSingletonScopes();
 }
 
-nsXPConnect*
+already_AddRefed<nsXPConnect>
 nsXPConnect::GetSingleton()
 {
-    nsXPConnect* xpc = nsXPConnect::XPConnect();
-    NS_IF_ADDREF(xpc);
-    return xpc;
+    return do_AddRef(nsXPConnect::XPConnect());
 }
 
 // static
@@ -607,16 +605,14 @@ NativeInterface2JSObject(HandleObject aScope,
                          nsWrapperCache* aCache,
                          const nsIID * aIID,
                          bool aAllowWrapping,
-                         MutableHandleValue aVal,
-                         nsIXPConnectJSObjectHolder** aHolder)
+                         MutableHandleValue aVal)
 {
     AutoJSContext cx;
     JSAutoCompartment ac(cx, aScope);
 
     nsresult rv;
     xpcObjectHelper helper(aCOMObj, aCache);
-    if (!XPCConvert::NativeInterface2JSObject(aVal, aHolder, helper, aIID,
-                                              aAllowWrapping, &rv))
+    if (!XPCConvert::NativeInterface2JSObject(aVal, helper, aIID, aAllowWrapping, &rv))
         return rv;
 
     MOZ_ASSERT(aAllowWrapping || !xpc::WrapperFactory::IsXrayWrapper(&aVal.toObject()),
@@ -639,7 +635,7 @@ nsXPConnect::WrapNative(JSContext * aJSContext,
     RootedObject aScope(aJSContext, aScopeArg);
     RootedValue v(aJSContext);
     nsresult rv = NativeInterface2JSObject(aScope, aCOMObj, nullptr, &aIID,
-                                           true, &v, nullptr);
+                                           true, &v);
     if (NS_FAILED(rv))
         return rv;
 
@@ -648,24 +644,6 @@ nsXPConnect::WrapNative(JSContext * aJSContext,
 
     *aRetVal = v.toObjectOrNull();
     return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXPConnect::WrapNativeHolder(JSContext * aJSContext,
-                              JSObject * aScopeArg,
-                              nsISupports* aCOMObj,
-                              const nsIID & aIID,
-                              nsIXPConnectJSObjectHolder **aHolder)
-{
-    MOZ_ASSERT(aHolder, "bad param");
-    MOZ_ASSERT(aJSContext, "bad param");
-    MOZ_ASSERT(aScopeArg, "bad param");
-    MOZ_ASSERT(aCOMObj, "bad param");
-
-    RootedObject aScope(aJSContext, aScopeArg);
-    RootedValue v(aJSContext);
-    return NativeInterface2JSObject(aScope, aCOMObj, nullptr, &aIID,
-                                    true, &v, aHolder);
 }
 
 NS_IMETHODIMP
@@ -683,7 +661,7 @@ nsXPConnect::WrapNativeToJSVal(JSContext* aJSContext,
 
     RootedObject aScope(aJSContext, aScopeArg);
     return NativeInterface2JSObject(aScope, aCOMObj, aCache, aIID,
-                                    aAllowWrapping, aVal, nullptr);
+                                    aAllowWrapping, aVal);
 }
 
 NS_IMETHODIMP
@@ -821,17 +799,6 @@ nsXPConnect::GetWrappedNativeOfNativeObject(JSContext * aJSContext,
     if (NS_FAILED(rv))
         return NS_ERROR_FAILURE;
     *_retval = static_cast<nsIXPConnectWrappedNative*>(wrapper);
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXPConnect::GetCurrentJSStack(nsIStackFrame * *aCurrentJSStack)
-{
-    MOZ_ASSERT(aCurrentJSStack, "bad param");
-
-    nsCOMPtr<nsIStackFrame> currentStack = dom::GetCurrentJSStack();
-    currentStack.forget(aCurrentJSStack);
-
     return NS_OK;
 }
 

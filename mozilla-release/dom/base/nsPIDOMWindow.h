@@ -639,10 +639,9 @@ protected:
 
   // These members are only used on outer windows.
   nsCOMPtr<mozilla::dom::Element> mFrameElement;
-  // This reference is used by the subclass nsGlobalWindow, and cleared in it's
-  // DetachFromDocShell() method. This method is called by nsDocShell::Destroy(),
-  // which is called before the nsDocShell is destroyed.
-  nsIDocShell* MOZ_NON_OWNING_REF mDocShell;  // Weak Reference
+
+  // This reference is used by nsGlobalWindow.
+  nsCOMPtr<nsIDocShell> mDocShell;
 
   // mPerformance is only used on inner windows.
   RefPtr<mozilla::dom::Performance> mPerformance;
@@ -752,9 +751,6 @@ protected:
 
   // The number of open WebSockets. Inner window only.
   uint32_t mNumOfOpenWebSockets;
-
-  // The number of active user media. Inner window only.
-  uint32_t mNumOfActiveUserMedia;
 };
 
 #define NS_PIDOMWINDOWINNER_IID \
@@ -942,12 +938,6 @@ public:
   // Return true if there are any open WebSockets that could block
   // timeout-throttling.
   bool HasOpenWebSockets() const;
-
-  // Increase/Decrease the number of active user media.
-  void UpdateUserMediaCount(int32_t aDelta);
-
-  // Return true if there are any currently ongoing user media.
-  bool HasActiveUserMedia() const;
 
 protected:
   void CreatePerformanceObjectIfNeeded();

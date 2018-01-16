@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -60,7 +61,9 @@ RestyleTracker::Document() const {
 
 struct RestyleEnumerateData : RestyleTracker::Hints {
   RefPtr<dom::Element> mElement;
+#ifdef MOZ_GECKO_PROFILER
   UniqueProfilerBacktrace mBacktrace;
+#endif
 };
 
 inline void
@@ -106,6 +109,7 @@ RestyleTracker::ProcessOneRestyle(Element* aElement,
 void
 RestyleTracker::DoProcessRestyles()
 {
+#ifdef MOZ_GECKO_PROFILER
   nsAutoCString docURL("N/A");
   if (profiler_is_active()) {
     nsIURI *uri = Document()->GetDocumentURI();
@@ -113,8 +117,9 @@ RestyleTracker::DoProcessRestyles()
       docURL = uri->GetSpecOrDefault();
     }
   }
-  AUTO_PROFILER_LABEL_DYNAMIC("RestyleTracker::DoProcessRestyles", CSS,
-                              docURL.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING(
+    "RestyleTracker::DoProcessRestyles", CSS, docURL);
+#endif
 
   // Create a AnimationsWithDestroyedFrame during restyling process to
   // stop animations and transitions on elements that have no frame at the end
@@ -207,6 +212,10 @@ RestyleTracker::DoProcessRestyles()
           NS_ASSERTION(found, "Where did our entry go?");
           data->mRestyleHint =
             nsRestyleHint(data->mRestyleHint & ~eRestyle_LaterSiblings);
+
+          if (Element* parent = element->GetFlattenedTreeParentElement()) {
+            parent->UnsetFlags(ELEMENT_HAS_CHILD_WITH_LATER_SIBLINGS_HINT);
+          }
         }
 
         LOG_RESTYLE("%d pending restyles after expanding out "
@@ -248,10 +257,12 @@ RestyleTracker::DoProcessRestyles()
           AutoRestyleTimelineMarker marker(
             mRestyleManager->PresContext()->GetDocShell(),
             data->mRestyleHint & eRestyle_AllHintsWithAnimations);
+#ifdef MOZ_GECKO_PROFILER
           Maybe<AutoProfilerTracing> tracing;
           if (profiler_feature_active(ProfilerFeature::Restyle)) {
             tracing.emplace("Paint", "Styles", Move(data->mBacktrace));
           }
+#endif
           ProcessOneRestyle(element, data->mRestyleHint, data->mChangeHint,
                             data->mRestyleHintData);
           AddRestyleRootsIfAwaitingRestyle(data->mDescendants);
@@ -321,7 +332,9 @@ RestyleTracker::DoProcessRestyles()
           // We can move data since we'll be clearing mPendingRestyles after
           // we finish enumerating it.
           restyle->mRestyleHintData = Move(data->mRestyleHintData);
+#ifdef MOZ_GECKO_PROFILER
           restyle->mBacktrace = Move(data->mBacktrace);
+#endif
 
 #ifdef RESTYLE_LOGGING
           count++;
@@ -347,10 +360,13 @@ RestyleTracker::DoProcessRestyles()
                       index++, count);
           LOG_RESTYLE_INDENT();
 
+#ifdef MOZ_GECKO_PROFILER
           Maybe<AutoProfilerTracing> tracing;
           if (profiler_feature_active(ProfilerFeature::Restyle)) {
-            tracing.emplace("Paint", "Styles", Move(currentRestyle->mBacktrace));
+            tracing.emplace("Paint", "Styles",
+                            Move(currentRestyle->mBacktrace));
           }
+#endif
 
           {
             AutoRestyleTimelineMarker marker(

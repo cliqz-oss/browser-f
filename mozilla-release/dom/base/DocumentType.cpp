@@ -21,7 +21,7 @@
 nsresult
 NS_NewDOMDocumentType(nsIDOMDocumentType** aDocType,
                       nsNodeInfoManager *aNodeInfoManager,
-                      nsIAtom *aName,
+                      nsAtom *aName,
                       const nsAString& aPublicId,
                       const nsAString& aSystemId,
                       const nsAString& aInternalSubset)
@@ -35,7 +35,7 @@ NS_NewDOMDocumentType(nsIDOMDocumentType** aDocType,
 
 already_AddRefed<mozilla::dom::DocumentType>
 NS_NewDOMDocumentType(nsNodeInfoManager* aNodeInfoManager,
-                      nsIAtom *aName,
+                      nsAtom *aName,
                       const nsAString& aPublicId,
                       const nsAString& aSystemId,
                       const nsAString& aInternalSubset,
@@ -93,7 +93,7 @@ DocumentType::IsNodeOfType(uint32_t aFlags) const
   // nsGenericDOMDataNode for convinience. Doctypes aren't really
   // data nodes (they have a null .nodeValue and don't implement
   // nsIDOMCharacterData)
-  return !(aFlags & ~eCONTENT);
+  return false;
 }
 
 const nsTextFragment*

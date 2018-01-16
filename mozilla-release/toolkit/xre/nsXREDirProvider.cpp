@@ -426,9 +426,9 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
   else if (!strcmp(aProperty, NS_APP_USER_PROFILES_LOCAL_ROOT_DIR)) {
     rv = GetUserProfilesLocalDir(getter_AddRefs(file), nullptr, nullptr, nullptr);
   }
-  else if (!strcmp(aProperty, XRE_EXECUTABLE_FILE) && gArgv[0]) {
+  else if (!strcmp(aProperty, XRE_EXECUTABLE_FILE)) {
     nsCOMPtr<nsIFile> lf;
-    rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(lf));
+    rv = XRE_GetBinaryPath(getter_AddRefs(lf));
     if (NS_SUCCEEDED(rv))
       file = lf;
   }
@@ -710,7 +710,7 @@ nsXREDirProvider::LoadContentProcessTempDir()
 static bool
 IsContentSandboxDisabled()
 {
-  return !BrowserTabsRemoteAutostart() || (GetEffectiveContentSandboxLevel() < 1);
+  return !BrowserTabsRemoteAutostart() || (!IsContentSandboxEnabled());
 }
 
 //
@@ -890,24 +890,6 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
 
     rv = NS_NewArrayEnumerator(aResult, directories);
   }
-  else if (!strcmp(aProperty, NS_EXT_PREFS_DEFAULTS_DIR_LIST)) {
-    nsCOMArray<nsIFile> directories;
-
-    LoadDirsIntoArray(AddonManagerStartup::GetSingleton().ExtensionPaths(),
-                      kAppendPrefDir, directories);
-
-    if (mProfileDir) {
-      nsCOMPtr<nsIFile> overrideFile;
-      mProfileDir->Clone(getter_AddRefs(overrideFile));
-      overrideFile->AppendNative(NS_LITERAL_CSTRING(PREF_OVERRIDE_DIRNAME));
-
-      bool exists;
-      if (NS_SUCCEEDED(overrideFile->Exists(&exists)) && exists)
-        directories.AppendObject(overrideFile);
-    }
-
-    rv = NS_NewArrayEnumerator(aResult, directories);
-  }
   else if (!strcmp(aProperty, NS_APP_CHROME_DIR_LIST)) {
     // NS_APP_CHROME_DIR_LIST is only used to get default (native) icons
     // for OS window decoration.
@@ -931,7 +913,7 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
 
     if (mozilla::Preferences::GetBool("plugins.load_appdir_plugins", false)) {
       nsCOMPtr<nsIFile> appdir;
-      rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(appdir));
+      rv = XRE_GetBinaryPath(getter_AddRefs(appdir));
       if (NS_SUCCEEDED(rv)) {
         appdir->SetNativeLeafName(NS_LITERAL_CSTRING("plugins"));
         directories.AppendObject(appdir);
@@ -1035,7 +1017,6 @@ nsXREDirProvider::DoStartup()
       NS_WARNING("Failed to create Addons Manager.");
     }
 
-    obsSvc->NotifyObservers(nullptr, "load-extension-defaults", nullptr);
     obsSvc->NotifyObservers(nullptr, "profile-after-change", kStartup);
 
     // Any component that has registered for the profile-after-change category

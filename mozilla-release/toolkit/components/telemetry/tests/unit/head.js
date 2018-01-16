@@ -26,7 +26,7 @@ const gIsMac = AppConstants.platform == "macosx";
 const gIsAndroid = AppConstants.platform == "android";
 const gIsLinux = AppConstants.platform == "linux";
 
-const Telemetry = Cc["@mozilla.org/base/telemetry;1"].getService(Ci.nsITelemetry);
+const Telemetry = Services.telemetry;
 
 const MILLISECONDS_PER_MINUTE = 60 * 1000;
 const MILLISECONDS_PER_HOUR = 60 * MILLISECONDS_PER_MINUTE;
@@ -129,7 +129,7 @@ const PingServer = {
 function decodeRequestPayload(request) {
   let s = request.bodyInputStream;
   let payload = null;
-  let decoder = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON)
+  let decoder = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
 
   if (request.hasHeader("content-encoding") &&
       request.getHeader("content-encoding") == "gzip") {
@@ -341,6 +341,14 @@ if (runningInParent) {
   Services.prefs.setBoolPref("experiments.enabled", false);
   // Turn off Health Ping submission.
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.HealthPingEnabled, false);
+
+  // Non-unified Telemetry (e.g. Fennec on Android) needs the preference to be set
+  // in order to enable Telemetry.
+  if (Services.prefs.getBoolPref(TelemetryUtils.Preferences.Unified, false)) {
+    Services.prefs.setBoolPref(TelemetryUtils.Preferences.OverridePreRelease, true);
+  } else {
+    Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
+  }
 
   fakePingSendTimer((callback, timeout) => {
     Services.tm.dispatchToMainThread(() => callback());

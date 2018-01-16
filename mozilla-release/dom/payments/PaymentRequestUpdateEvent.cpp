@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -68,16 +68,15 @@ PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value
   }
 
   // Validate and canonicalize the details
-  nsresult rv = mRequest->IsValidDetailsUpdate(details);
+  // requestShipping must be true here. PaymentRequestUpdateEvent is only
+  // dispatched when shippingAddress/shippingOption is changed, and it also means
+  // Options.RequestShipping must be true while creating the corresponding
+  // PaymentRequest.
+  nsresult rv = mRequest->IsValidDetailsUpdate(details, true/*aRequestShipping*/);
   if (NS_FAILED(rv)) {
     mRequest->AbortUpdate(rv);
     return;
   }
-
-  // [TODO]
-  // If the data member of modifier is present,
-  // let serializedData be the result of JSON-serializing modifier.data into a string.
-  // null if it is not.
 
   // Update the PaymentRequest with the new details
   if (NS_FAILED(mRequest->UpdatePayment(aCx, details))) {

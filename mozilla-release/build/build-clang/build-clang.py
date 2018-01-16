@@ -10,7 +10,6 @@ import subprocess
 import platform
 import json
 import argparse
-import tempfile
 import glob
 import errno
 import re
@@ -83,6 +82,7 @@ def build_tar_package(tar, name, base, directory):
     # understand it.
     if is_windows():
         name = name.replace('\\', '/')
+
         def f(match):
             return '/' + match.group(1).lower()
         name = re.sub(r'^([A-Za-z]):', f, name)
@@ -195,7 +195,7 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
                   "-DCMAKE_INSTALL_PREFIX=%s" % inst_dir,
                   "-DLLVM_TOOL_LIBCXX_BUILD=%s" % ("ON" if build_libcxx else "OFF"),
                   "-DLIBCXX_LIBCPPABI_VERSION=\"\"",
-                  src_dir];
+                  src_dir]
     if is_windows():
         cmake_args.insert(-1, "-DLLVM_EXPORT_SYMBOLS_FOR_PLUGINS=ON")
         cmake_args.insert(-1, "-DLLVM_USE_CRT_RELEASE=MT")
@@ -209,7 +209,7 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
                        "-DLLVM_ENABLE_THREADS=OFF",
                        "-DLIBCXXABI_LIBCXX_INCLUDES=%s" % libcxx_include_dir,
                        "-DCMAKE_OSX_SYSROOT=%s" % slashify_path(os.getenv("CROSS_SYSROOT")),
-                       "-DCMAKE_FIND_ROOT_PATH=%s" % slashify_path(os.getenv("CROSS_CCTOOLS_PATH")),
+                       "-DCMAKE_FIND_ROOT_PATH=%s" % slashify_path(os.getenv("CROSS_CCTOOLS_PATH")), # noqa
                        "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
                        "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
                        "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
@@ -225,6 +225,7 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
     # installed, so we copy it by ourselves.
     if is_windows():
         install_import_library(build_dir, inst_dir)
+
 
 # Return the absolute path of a build tool.  We first look to see if the
 # variable is defined in the config file, and if so we make sure it's an
@@ -257,6 +258,8 @@ def get_tool(config, key):
 #
 # clang/
 #   bin/
+#     clang-apply-replacements
+#     clang-format
 #     clang-tidy
 #   include/
 #     * (nothing will be deleted here)
@@ -276,10 +279,12 @@ def prune_final_dir_for_clang_tidy(final_dir):
         if os.path.basename(f) not in dirs:
             raise Exception("Found unknown file %s in the final directory" % f)
         if not os.path.isdir(f):
-            raise Exception("Expected %s to be a directory" %f)
+            raise Exception("Expected %s to be a directory" % f)
 
-    # In bin/, only keep clang-tidy.
-    re_clang_tidy = re.compile(r"^clang-tidy(\.exe)?$", re.I)
+    # In bin/, only keep clang-tidy and clang-apply-replacements. The last one
+    # is used to auto-fix some of the issues detected by clang-tidy.
+    re_clang_tidy = re.compile(
+        r"^clang-(apply-replacements|format|tidy)(\.exe)?$", re.I)
     for f in glob.glob("%s/bin/*" % final_dir):
         if re_clang_tidy.search(os.path.basename(f)) is None:
             delete(f)
@@ -318,9 +323,9 @@ def prune_final_dir_for_clang_tidy(final_dir):
 if __name__ == "__main__":
     # The directories end up in the debug info, so the easy way of getting
     # a reproducible build is to run it in a know absolute directory.
-    # We use a directory in /builds/slave because the mozilla infrastructure
-    # cleans it up automatically.
-    base_dir = "/builds/slave/moz-toolchain"
+    # We use a directory that is registered as a volume in the Docker image.
+    base_dir = "/builds/worker/workspace/moz-toolchain"
+
     if is_windows():
         # TODO: Because Windows taskcluster builds are run with distinct
         # user IDs for each job, we can't store things in some globally
@@ -386,7 +391,8 @@ if __name__ == "__main__":
     if "build_type" in config:
         build_type = config["build_type"]
         if build_type not in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
-            raise ValueError("We only know how to do Release, Debug, RelWithDebInfo or MinSizeRel builds")
+            raise ValueError("We only know how to do Release, Debug, RelWithDebInfo or "
+                             "MinSizeRel builds")
     build_libcxx = False
     if "build_libcxx" in config:
         build_libcxx = config["build_libcxx"]
@@ -450,21 +456,21 @@ if __name__ == "__main__":
     for p in config.get("patches", []):
         patch(p, source_dir)
 
-    symlinks = [(source_dir + "/clang",
+    symlinks = [(clang_source_dir,
                  llvm_source_dir + "/tools/clang"),
-                (source_dir + "/extra",
+                (extra_source_dir,
                  llvm_source_dir + "/tools/clang/tools/extra"),
-                (source_dir + "/compiler-rt",
+                (compiler_rt_source_dir,
                  llvm_source_dir + "/projects/compiler-rt"),
-                (source_dir + "/libcxx",
+                (libcxx_source_dir,
                  llvm_source_dir + "/projects/libcxx"),
-                (source_dir + "/libcxxabi",
+                (libcxxabi_source_dir,
                  llvm_source_dir + "/projects/libcxxabi")]
     for l in symlinks:
         # On Windows, we have to re-copy the whole directory every time.
         if not is_windows() and os.path.islink(l[1]):
             continue
-        delete(l[1]);
+        delete(l[1])
         if os.path.exists(l[0]):
             symlink(l[0], l[1])
 
@@ -497,8 +503,9 @@ if __name__ == "__main__":
         extra_asmflags = []
         extra_ldflags = []
 
-        if os.environ.has_key('LD_LIBRARY_PATH'):
-            os.environ['LD_LIBRARY_PATH'] = '%s/lib64/:%s' % (gcc_dir, os.environ['LD_LIBRARY_PATH']);
+        if 'LD_LIBRARY_PATH' in os.environ:
+            os.environ['LD_LIBRARY_PATH'] = ('%s/lib64/:%s' %
+                                             (gcc_dir, os.environ['LD_LIBRARY_PATH']))
         else:
             os.environ['LD_LIBRARY_PATH'] = '%s/lib64/' % gcc_dir
     elif is_windows():
@@ -508,7 +515,7 @@ if __name__ == "__main__":
         # by looking at an MSVC install, but we don't really have that here.
         # Force things on.
         extra_cflags2 = []
-        extra_cxxflags2 = ['-fms-compatibility-version=19.00.24213', '-Xclang', '-std=c++14']
+        extra_cxxflags2 = ['-fms-compatibility-version=19.11.25547', '-Xclang', '-std=c++14']
         extra_asmflags = []
         extra_ldflags = []
 
@@ -520,7 +527,7 @@ if __name__ == "__main__":
         extra_cxxflags2 = ["-stdlib=libc++"]
 
         extra_flags = ["-target", "x86_64-apple-darwin11", "-mlinker-version=137",
-                       "-B", "%s/bin" %  os.getenv("CROSS_CCTOOLS_PATH"),
+                       "-B", "%s/bin" % os.getenv("CROSS_CCTOOLS_PATH"),
                        "-isysroot", os.getenv("CROSS_SYSROOT"),
                        # technically the sysroot flag there should be enough to deduce this,
                        # but clang needs some help to figure this out.
@@ -579,7 +586,5 @@ if __name__ == "__main__":
         prune_final_dir_for_clang_tidy(os.path.join(final_stage_dir, "clang"))
         package_name = "clang-tidy"
 
-    if is_darwin() or is_windows():
-        build_tar_package("tar", package_name + ".tar.bz2", final_stage_dir, "clang")
-    else:
-        build_tar_package("tar", package_name + ".tar.xz", final_stage_dir, "clang")
+    ext = "bz2" if is_darwin() or is_windows() else "xz"
+    build_tar_package("tar", "%s.tar.%s" % (package_name, ext), final_stage_dir, "clang")

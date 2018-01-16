@@ -8,7 +8,6 @@
 
 #include "mozilla/DebugOnly.h"
 
-#include "jsapi.h"
 #include "jscompartment.h"
 #include "jsgc.h"
 #include "jsobj.h"
@@ -316,7 +315,7 @@ StatsZoneCallback(JSRuntime* rt, void* data, Zone* zone)
     // CollectRuntimeStats reserves enough space.
     MOZ_ALWAYS_TRUE(rtStats->zoneStatsVector.growBy(1));
     ZoneStats& zStats = rtStats->zoneStatsVector.back();
-    if (!zStats.initStrings(rt))
+    if (!zStats.initStrings())
         MOZ_CRASH("oom");
     rtStats->initExtraZoneStats(zone, &zStats);
     rtStats->currZoneStats = &zStats;
@@ -341,7 +340,7 @@ StatsCompartmentCallback(JSContext* cx, void* data, JSCompartment* compartment)
     // CollectRuntimeStats reserves enough space.
     MOZ_ALWAYS_TRUE(rtStats->compartmentStatsVector.growBy(1));
     CompartmentStats& cStats = rtStats->compartmentStatsVector.back();
-    if (!cStats.initClasses(cx->runtime()))
+    if (!cStats.initClasses())
         MOZ_CRASH("oom");
     rtStats->initExtraCompartmentStats(compartment, &cStats);
 
@@ -620,10 +619,10 @@ StatsCellCallback(JSRuntime* rt, void* data, void* thing, JS::TraceKind traceKin
 }
 
 bool
-ZoneStats::initStrings(JSRuntime* rt)
+ZoneStats::initStrings()
 {
     isTotals = false;
-    allStrings = rt->new_<StringsHashMap>();
+    allStrings = js_new<StringsHashMap>();
     if (!allStrings || !allStrings->init()) {
         js_delete(allStrings);
         allStrings = nullptr;
@@ -633,10 +632,10 @@ ZoneStats::initStrings(JSRuntime* rt)
 }
 
 bool
-CompartmentStats::initClasses(JSRuntime* rt)
+CompartmentStats::initClasses()
 {
     isTotals = false;
-    allClasses = rt->new_<ClassesHashMap>();
+    allClasses = js_new<ClassesHashMap>();
     if (!allClasses || !allClasses->init()) {
         js_delete(allClasses);
         allClasses = nullptr;

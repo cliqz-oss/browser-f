@@ -493,7 +493,7 @@ class HandleValueArray
     HandleValueArray(size_t len, const Value* elements) : length_(len), elements_(elements) {}
 
   public:
-    explicit HandleValueArray(const RootedValue& value) : length_(1), elements_(value.address()) {}
+    explicit HandleValueArray(HandleValue value) : length_(1), elements_(value.address()) {}
 
     MOZ_IMPLICIT HandleValueArray(const AutoValueVector& values)
       : length_(values.length()), elements_(values.begin()) {}
@@ -875,11 +875,6 @@ static const uint8_t JSPROP_GETTER =           0x10;
 /* property holds setter function */
 static const uint8_t JSPROP_SETTER =           0x20;
 
-/* don't allocate a value slot for this property; don't copy the property on set
-   of the same-named property in an object that delegates to a prototype
-   containing this property */
-static const uint8_t JSPROP_SHARED =           0x40;
-
 /* internal JS engine use only */
 static const uint8_t JSPROP_INTERNAL_USE_BIT = 0x80;
 
@@ -1145,12 +1140,12 @@ class JS_PUBLIC_API(ContextOptions) {
       : baseline_(true),
         ion_(true),
         asmJS_(true),
-        wasm_(false),
-        wasmBaseline_(false),
-        wasmIon_(false),
+        wasm_(true),
+        wasmBaseline_(true),
+        wasmIon_(true),
+        testWasmAwaitTier2_(false),
         throwOnAsmJSValidationFailure_(false),
         nativeRegExp_(true),
-        unboxedArrays_(false),
         asyncStack_(true),
         throwOnDebuggeeWouldRun_(true),
         dumpStackOnDebuggeeWouldRun_(false),
@@ -1235,6 +1230,16 @@ class JS_PUBLIC_API(ContextOptions) {
         return *this;
     }
 
+    bool testWasmAwaitTier2() const { return testWasmAwaitTier2_; }
+    ContextOptions& setTestWasmAwaitTier2(bool flag) {
+        testWasmAwaitTier2_ = flag;
+        return *this;
+    }
+    ContextOptions& toggleTestWasmAwaitTier2() {
+        testWasmAwaitTier2_ = !testWasmAwaitTier2_;
+        return *this;
+    }
+
     bool throwOnAsmJSValidationFailure() const { return throwOnAsmJSValidationFailure_; }
     ContextOptions& setThrowOnAsmJSValidationFailure(bool flag) {
         throwOnAsmJSValidationFailure_ = flag;
@@ -1248,12 +1253,6 @@ class JS_PUBLIC_API(ContextOptions) {
     bool nativeRegExp() const { return nativeRegExp_; }
     ContextOptions& setNativeRegExp(bool flag) {
         nativeRegExp_ = flag;
-        return *this;
-    }
-
-    bool unboxedArrays() const { return unboxedArrays_; }
-    ContextOptions& setUnboxedArrays(bool flag) {
-        unboxedArrays_ = flag;
         return *this;
     }
 
@@ -1319,6 +1318,16 @@ class JS_PUBLIC_API(ContextOptions) {
     }
 #endif
 
+    void disableOptionsForSafeMode() {
+        setBaseline(false);
+        setIon(false);
+        setAsmJS(false);
+        setWasm(false);
+        setWasmBaseline(false);
+        setWasmIon(false);
+        setNativeRegExp(false);
+    }
+
   private:
     bool baseline_ : 1;
     bool ion_ : 1;
@@ -1326,9 +1335,9 @@ class JS_PUBLIC_API(ContextOptions) {
     bool wasm_ : 1;
     bool wasmBaseline_ : 1;
     bool wasmIon_ : 1;
+    bool testWasmAwaitTier2_ : 1;
     bool throwOnAsmJSValidationFailure_ : 1;
     bool nativeRegExp_ : 1;
-    bool unboxedArrays_ : 1;
     bool asyncStack_ : 1;
     bool throwOnDebuggeeWouldRun_ : 1;
     bool dumpStackOnDebuggeeWouldRun_ : 1;
@@ -1439,6 +1448,9 @@ JS_RefreshCrossCompartmentWrappers(JSContext* cx, JS::Handle<JSObject*> obj);
  * enter/leave calls on the context. Furthermore, only the return value of a
  * JS_EnterCompartment call may be passed as the 'oldCompartment' argument of
  * the corresponding JS_LeaveCompartment call.
+ *
+ * Entering a compartment roots the compartment and its global object for the
+ * lifetime of the JSAutoCompartment.
  */
 
 class MOZ_RAII JS_PUBLIC_API(JSAutoCompartment)
@@ -1467,7 +1479,11 @@ class MOZ_RAII JS_PUBLIC_API(JSAutoNullableCompartment)
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-/** NB: This API is infallible; a nullptr return value does not indicate error. */
+/** NB: This API is infallible; a nullptr return value does not indicate error.
+ *
+ * Entering a compartment roots the compartment and its global object until the
+ * matching JS_LeaveCompartment() call.
+ */
 extern JS_PUBLIC_API(JSCompartment*)
 JS_EnterCompartment(JSContext* cx, JSObject* target);
 
@@ -1732,6 +1748,16 @@ JS_RemoveExtraGCRootsTracer(JSContext* cx, JSTraceDataOp traceOp, void* data);
 /*
  * Garbage collector API.
  */
+namespace JS {
+
+extern JS_PUBLIC_API(bool)
+IsIdleGCTaskNeeded(JSRuntime* rt);
+
+extern JS_PUBLIC_API(void)
+RunIdleTimeGCTask(JSRuntime* rt);
+
+} // namespace JS
+
 extern JS_PUBLIC_API(void)
 JS_GC(JSContext* cx);
 
@@ -1819,10 +1845,10 @@ typedef enum JSGCParamKey {
     JSGC_MAX_BYTES          = 0,
 
     /**
-     * Number of JS_malloc bytes before last ditch GC.
+     * Initial value for the malloc bytes threshold.
      *
-     * Pref; javascript.options.mem.high_water_mark
-     * Default: 0xffffffff
+     * Pref: javascript.options.mem.high_water_mark
+     * Default: TuningDefaults::MaxMallocBytes
      */
     JSGC_MAX_MALLOC_BYTES   = 1,
 
@@ -2278,23 +2304,23 @@ inline int CheckIsSetterOp(JSSetterOp op);
  */
 #define JS_PSG(name, getter, flags) \
     JS_PS_ACCESSOR_SPEC(name, JSNATIVE_WRAPPER(getter), JSNATIVE_WRAPPER(nullptr), flags, \
-                        JSPROP_SHARED)
+                        0)
 #define JS_PSGS(name, getter, setter, flags) \
     JS_PS_ACCESSOR_SPEC(name, JSNATIVE_WRAPPER(getter), JSNATIVE_WRAPPER(setter), flags, \
-                         JSPROP_SHARED)
+                        0)
 #define JS_SYM_GET(symbol, getter, flags) \
     JS_PS_ACCESSOR_SPEC(reinterpret_cast<const char*>(uint32_t(::JS::SymbolCode::symbol) + 1), \
-                        JSNATIVE_WRAPPER(getter), JSNATIVE_WRAPPER(nullptr), flags, JSPROP_SHARED)
+                        JSNATIVE_WRAPPER(getter), JSNATIVE_WRAPPER(nullptr), flags, 0)
 #define JS_SELF_HOSTED_GET(name, getterName, flags) \
     JS_PS_ACCESSOR_SPEC(name, SELFHOSTED_WRAPPER(getterName), JSNATIVE_WRAPPER(nullptr), flags, \
-                         JSPROP_SHARED | JSPROP_GETTER)
+                        JSPROP_GETTER)
 #define JS_SELF_HOSTED_GETSET(name, getterName, setterName, flags) \
     JS_PS_ACCESSOR_SPEC(name, SELFHOSTED_WRAPPER(getterName), SELFHOSTED_WRAPPER(setterName), \
-                         flags, JSPROP_SHARED | JSPROP_GETTER | JSPROP_SETTER)
+                         flags, JSPROP_GETTER | JSPROP_SETTER)
 #define JS_SELF_HOSTED_SYM_GET(symbol, getterName, flags) \
     JS_PS_ACCESSOR_SPEC(reinterpret_cast<const char*>(uint32_t(::JS::SymbolCode::symbol) + 1), \
                          SELFHOSTED_WRAPPER(getterName), JSNATIVE_WRAPPER(nullptr), flags, \
-                         JSPROP_SHARED | JSPROP_GETTER)
+                         JSPROP_GETTER)
 #define JS_STRING_PS(name, string, flags) \
     JS_PS_VALUE_SPEC(name, STRINGVALUE_WRAPPER(string), flags)
 #define JS_STRING_SYM_PS(symbol, string, flags) \
@@ -2442,7 +2468,6 @@ class JS_PUBLIC_API(CompartmentCreationOptions)
         mergeable_(false),
         preserveJitCode_(false),
         cloneSingletons_(false),
-        experimentalNumberFormatFormatToPartsEnabled_(false),
         sharedMemoryAndAtomics_(false),
         secureContext_(false)
     {}
@@ -2507,23 +2532,6 @@ class JS_PUBLIC_API(CompartmentCreationOptions)
         return *this;
     }
 
-    // ECMA-402 is considering adding a "formatToParts" NumberFormat method,
-    // that exposes not just a formatted string but its subcomponents.  The
-    // method, its semantics, and its name aren't finalized, so for now it's
-    // exposed *only* if requested.
-    //
-    // Until "formatToParts" is included in a final specification edition, it's
-    // subject to change or removal at any time.  Do *not* rely on it in
-    // mission-critical code that can't be changed if ECMA-402 decides not to
-    // accept the method in its current form.
-    bool experimentalNumberFormatFormatToPartsEnabled() const {
-        return experimentalNumberFormatFormatToPartsEnabled_;
-    }
-    CompartmentCreationOptions& setExperimentalNumberFormatFormatToPartsEnabled(bool flag) {
-        experimentalNumberFormatFormatToPartsEnabled_ = flag;
-        return *this;
-    }
-
     bool getSharedMemoryAndAtomicsEnabled() const;
     CompartmentCreationOptions& setSharedMemoryAndAtomicsEnabled(bool flag);
 
@@ -2546,7 +2554,6 @@ class JS_PUBLIC_API(CompartmentCreationOptions)
     bool mergeable_;
     bool preserveJitCode_;
     bool cloneSingletons_;
-    bool experimentalNumberFormatFormatToPartsEnabled_;
     bool sharedMemoryAndAtomics_;
     bool secureContext_;
 };
@@ -2864,7 +2871,6 @@ class WrappedPtrOperations<JS::PropertyDescriptor, Wrapper>
     }
 
     bool hasGetterOrSetter() const { return desc().getter || desc().setter; }
-    bool isShared() const { return has(JSPROP_SHARED); }
 
     JS::HandleObject object() const {
         return JS::HandleObject::fromMarkedLocation(&desc().obj);
@@ -2881,14 +2887,12 @@ class WrappedPtrOperations<JS::PropertyDescriptor, Wrapper>
                                      JSPROP_IGNORE_VALUE |
                                      JSPROP_GETTER |
                                      JSPROP_SETTER |
-                                     JSPROP_SHARED |
                                      JSPROP_REDEFINE_NONCONFIGURABLE |
                                      JSPROP_RESOLVING |
                                      SHADOWABLE)) == 0);
         MOZ_ASSERT(!hasAll(JSPROP_IGNORE_ENUMERATE | JSPROP_ENUMERATE));
         MOZ_ASSERT(!hasAll(JSPROP_IGNORE_PERMANENT | JSPROP_PERMANENT));
         if (isAccessorDescriptor()) {
-            MOZ_ASSERT(has(JSPROP_SHARED));
             MOZ_ASSERT(!has(JSPROP_READONLY));
             MOZ_ASSERT(!has(JSPROP_IGNORE_READONLY));
             MOZ_ASSERT(!has(JSPROP_IGNORE_VALUE));
@@ -2917,7 +2921,6 @@ class WrappedPtrOperations<JS::PropertyDescriptor, Wrapper>
                                      JSPROP_READONLY |
                                      JSPROP_GETTER |
                                      JSPROP_SETTER |
-                                     JSPROP_SHARED |
                                      JSPROP_REDEFINE_NONCONFIGURABLE |
                                      JSPROP_RESOLVING |
                                      SHADOWABLE)) == 0);
@@ -3018,12 +3021,12 @@ class MutableWrappedPtrOperations<JS::PropertyDescriptor, Wrapper>
     void setGetterObject(JSObject* obj) {
         desc().getter = reinterpret_cast<JSGetterOp>(obj);
         desc().attrs &= ~(JSPROP_IGNORE_VALUE | JSPROP_IGNORE_READONLY | JSPROP_READONLY);
-        desc().attrs |= JSPROP_GETTER | JSPROP_SHARED;
+        desc().attrs |= JSPROP_GETTER;
     }
     void setSetterObject(JSObject* obj) {
         desc().setter = reinterpret_cast<JSSetterOp>(obj);
         desc().attrs &= ~(JSPROP_IGNORE_VALUE | JSPROP_IGNORE_READONLY | JSPROP_READONLY);
-        desc().attrs |= JSPROP_SETTER | JSPROP_SHARED;
+        desc().attrs |= JSPROP_SETTER;
     }
 
     JS::MutableHandleObject getterObject() {
@@ -4959,6 +4962,48 @@ extern JS_PUBLIC_API(void)
 InitDispatchToEventLoop(JSContext* cx, DispatchToEventLoopCallback callback, void* closure);
 
 /**
+ * The ConsumeStreamCallback is called from an active JSContext, passing a
+ * StreamConsumer that wishes to consume the given host object as a stream of
+ * bytes with the given MIME type. On failure, the embedding must report the
+ * appropriate error on 'cx'. On success, the embedding must call
+ * consumer->consumeChunk() repeatedly on any thread until exactly one of:
+ *  - consumeChunk() returns false
+ *  - the embedding calls consumer->streamClosed()
+ * before JS_DestroyContext(cx) or JS::ShutdownAsyncTasks(cx) is called.
+ *
+ * Note: consumeChunk() and streamClosed() may be called synchronously by
+ * ConsumeStreamCallback.
+ */
+
+class JS_PUBLIC_API(StreamConsumer)
+{
+  protected:
+    // AsyncStreamConsumers are created and destroyed by SpiderMonkey.
+    StreamConsumer() = default;
+    virtual ~StreamConsumer() = default;
+
+  public:
+    // Called by the embedding as each chunk of bytes becomes available.
+    // If this function returns 'false', the stream must drop all pointers to
+    // this StreamConsumer.
+    virtual bool consumeChunk(const uint8_t* begin, size_t length) = 0;
+
+    // Called by the embedding when the stream is closed according to the
+    // contract described above.
+    enum CloseReason { EndOfFile, Error };
+    virtual void streamClosed(CloseReason reason) = 0;
+};
+
+enum class MimeType { Wasm };
+
+typedef bool
+(*ConsumeStreamCallback)(JSContext* cx, JS::HandleObject obj, MimeType mimeType,
+                         StreamConsumer* consumer);
+
+extern JS_PUBLIC_API(void)
+InitConsumeStreamCallback(JSContext* cx, ConsumeStreamCallback callback);
+
+/**
  * When a JSRuntime is destroyed it implicitly cancels all async tasks in
  * progress, releasing any roots held by the task. However, this is not soon
  * enough for cycle collection, which needs to have roots dropped earlier so
@@ -6155,15 +6200,6 @@ JS_ErrorFromException(JSContext* cx, JS::HandleObject obj);
 extern JS_PUBLIC_API(JSObject*)
 ExceptionStackOrNull(JS::HandleObject obj);
 
-/*
- * Throws a StopIteration exception on cx.
- */
-extern JS_PUBLIC_API(bool)
-JS_ThrowStopIteration(JSContext* cx);
-
-extern JS_PUBLIC_API(bool)
-JS_IsStopIteration(const JS::Value& v);
-
 /**
  * A JS context always has an "owner thread". The owner thread is set when the
  * context is created (to the current thread) and practically all entry points
@@ -6384,7 +6420,7 @@ enum TranscodeResult
     TranscodeResult_Failure_BadBuildId =          TranscodeResult_Failure | 0x1,
     TranscodeResult_Failure_RunOnceNotSupported = TranscodeResult_Failure | 0x2,
     TranscodeResult_Failure_AsmJSNotSupported =   TranscodeResult_Failure | 0x3,
-    TranscodeResult_Failure_UnknownClassKind =    TranscodeResult_Failure | 0x4,
+    TranscodeResult_Failure_BadDecode =           TranscodeResult_Failure | 0x4,
     TranscodeResult_Failure_WrongCompileOption =  TranscodeResult_Failure | 0x5,
     TranscodeResult_Failure_NotInterpretedFun =   TranscodeResult_Failure | 0x6,
 

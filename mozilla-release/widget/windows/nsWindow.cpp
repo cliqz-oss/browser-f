@@ -4065,18 +4065,46 @@ nsWindow::UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometries)
     clearRegion.Or(clearRegion, gfx::IntRect::Truncate(0, 0, rect.right - rect.left, borderSize));
   }
 
+  mWindowButtonsRect = Nothing();
+
   if (!IsWin10OrLater()) {
     for (size_t i = 0; i < aThemeGeometries.Length(); i++) {
       if (aThemeGeometries[i].mType == nsNativeThemeWin::eThemeGeometryTypeWindowButtons) {
         LayoutDeviceIntRect bounds = aThemeGeometries[i].mRect;
+        // Extend the bounds by one pixel to the right, because that's how much
+        // the actual window button shape extends past the client area of the
+        // window (and overlaps the right window frame).
+        bounds.width += 1;
+        if (!mWindowButtonsRect) {
+          mWindowButtonsRect = Some(bounds);
+        }
         clearRegion.Or(clearRegion, gfx::IntRect::Truncate(bounds.X(), bounds.Y(), bounds.Width(), bounds.Height() - 2.0));
-        clearRegion.Or(clearRegion, gfx::IntRect::Truncate(bounds.X() + 1.0, bounds.YMost() - 2.0, bounds.Width() - 1.0, 1.0));
-        clearRegion.Or(clearRegion, gfx::IntRect::Truncate(bounds.X() + 2.0, bounds.YMost() - 1.0, bounds.Width() - 3.0, 1.0));
+        clearRegion.Or(clearRegion, gfx::IntRect::Truncate(bounds.X() + 1.0, bounds.YMost() - 2.0, bounds.Width() - 2.0, 1.0));
+        clearRegion.Or(clearRegion, gfx::IntRect::Truncate(bounds.X() + 2.0, bounds.YMost() - 1.0, bounds.Width() - 4.0, 1.0));
       }
     }
   }
 
   layerManager->SetRegionToClear(clearRegion);
+}
+
+void
+nsWindow::AddWindowOverlayWebRenderCommands(layers::WebRenderBridgeChild* aWrBridge,
+                                            wr::DisplayListBuilder& aBuilder,
+                                            wr::IpcResourceUpdateQueue& aResources)
+{
+  if (mWindowButtonsRect) {
+    wr::LayoutRect rect = wr::ToLayoutRect(*mWindowButtonsRect);
+    nsTArray<wr::ComplexClipRegion> roundedClip;
+    roundedClip.AppendElement(wr::ToComplexClipRegion(
+      RoundedRect(ThebesRect(mWindowButtonsRect->ToUnknownRect()),
+                  RectCornerRadii(0, 0, 3, 3))));
+    wr::WrClipId clipId =
+      aBuilder.DefineClip(Nothing(), Nothing(), rect, &roundedClip);
+    aBuilder.PushClip(clipId);
+    aBuilder.PushClearRect(rect);
+    aBuilder.PopClip();
+  }
 }
 
 uint32_t
@@ -4286,6 +4314,47 @@ bool nsWindow::DispatchPluginEvent(UINT aMessage,
   return ret;
 }
 
+bool nsWindow::TouchEventShouldStartDrag(EventMessage aEventMessage,
+                                         LayoutDeviceIntPoint aEventPoint)
+{
+  // Allow users to start dragging by double-tapping.
+  if (aEventMessage == eMouseDoubleClick) {
+    return true;
+  }
+
+  // In chrome UI, allow touchdownstartsdrag attributes
+  // to cause any touchdown event to trigger a drag.
+  if (aEventMessage == eMouseDown) {
+    WidgetMouseEvent hittest(true, eMouseHitTest, this,
+                             WidgetMouseEvent::eReal);
+    hittest.mRefPoint = aEventPoint;
+    hittest.mIgnoreRootScrollFrame = true;
+    hittest.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+    DispatchInputEvent(&hittest);
+
+    EventTarget* target = hittest.GetDOMEventTarget();
+    if (target) {
+      nsCOMPtr<nsIContent> node = do_QueryInterface(target);
+
+      // Check if the element or any parent element has the
+      // attribute we're looking for.
+      while (node) {
+        if (node->IsElement()) {
+          nsAutoString startDrag;
+          node->AsElement()->GetAttribute(
+            NS_LITERAL_STRING("touchdownstartsdrag"), startDrag);
+          if (!startDrag.IsEmpty()) {
+            return true;
+          }
+        }
+        node = node->GetParent();
+      }
+    }
+  }
+
+  return false;
+}
+
 // Deal with all sort of mouse event
 bool
 nsWindow::DispatchMouseEvent(EventMessage aEventMessage, WPARAM wParam,
@@ -4337,12 +4406,13 @@ nsWindow::DispatchMouseEvent(EventMessage aEventMessage, WPARAM wParam,
 
     if (mTouchWindow) {
       // If mTouchWindow is true, then we must have APZ enabled and be
-      // feeding it raw touch events. In that case we don't need to
-      // send touch-generated mouse events to content. The only exception is
-      // the touch-generated mouse double-click, which is used to start off the
-      // touch-based drag-and-drop gesture.
+      // feeding it raw touch events. In that case we only want to
+      // send touch-generated mouse events to content if they should
+      // start a touch-based drag-and-drop gesture, such as on
+      // double-tapping or when tapping elements marked with the
+      // touchdownstartsdrag attribute in chrome UI.
       MOZ_ASSERT(mAPZC);
-      if (aEventMessage == eMouseDoubleClick) {
+      if (TouchEventShouldStartDrag(aEventMessage, eventPoint)) {
         aEventMessage = eMouseTouchDrag;
       } else {
         return result;
@@ -7409,7 +7479,7 @@ nsWindow::GetAccessible()
       nsAccessibilityService* accService = GetOrCreateAccService();
       if (accService) {
         a11y::DocAccessible* docAcc =
-          GetAccService()->GetDocAccessible(frame->PresContext()->PresShell());
+          GetAccService()->GetDocAccessible(frame->PresShell());
         if (docAcc) {
           NS_LOG_WMGETOBJECT(this, mWnd,
                              docAcc->GetAccessibleOrDescendant(frame->GetContent()));

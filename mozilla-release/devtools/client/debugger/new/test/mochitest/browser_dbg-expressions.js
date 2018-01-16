@@ -6,6 +6,7 @@
  * 1. add watch expressions
  * 2. edit watch expressions
  * 3. delete watch expressions
+ * 4. expanding properties when not paused
  */
 
 const expressionSelectors = {
@@ -44,7 +45,7 @@ async function addExpression(dbg, input) {
 }
 
 async function editExpression(dbg, input) {
-  info("updating the expression");
+  info("Updating the expression");
   dblClickElement(dbg, "expressionNode", 1);
   // Position cursor reliably at the end of the text.
   pressKey(dbg, "End");
@@ -61,7 +62,7 @@ add_task(async function() {
 
   await addExpression(dbg, "f");
   is(getLabel(dbg, 1), "f");
-  is(getValue(dbg, 1), `"ReferenceError: f is not defined"`);
+  is(getValue(dbg, 1), "(unavailable)");
 
   await editExpression(dbg, "oo");
   is(getLabel(dbg, 1), "foo()");
@@ -79,6 +80,15 @@ add_task(async function() {
 
   await deleteExpression(dbg, "foo");
   await deleteExpression(dbg, "location");
+  is(findAllElements(dbg, "expressionNodes").length, 0);
 
+  // Test expanding properties when the debuggee is active
+  await resume(dbg);
+  await addExpression(dbg, "location");
+  toggleExpression(dbg, 1);
+  await waitForDispatch(dbg, "LOAD_OBJECT_PROPERTIES");
+  is(findAllElements(dbg, "expressionNodes").length, 17);
+
+  await deleteExpression(dbg, "location");
   is(findAllElements(dbg, "expressionNodes").length, 0);
 });

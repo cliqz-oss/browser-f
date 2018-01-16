@@ -36,6 +36,7 @@ this.Preferences = {
         configName += "-" + customFn.name;
       }
       this.configurations[configName] = {};
+      this.configurations[configName].selectors = ["#browser"];
       this.configurations[configName].applyConfig = prefHelper.bind(null, primary, customFn);
     }
   },

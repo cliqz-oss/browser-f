@@ -65,9 +65,10 @@ Object.defineProperty(this, "gCrashReporter", {
 });
 
 // `true` if this is a content process, `false` otherwise.
-// It would be nicer to go through `Services.appInfo`, but some tests need to be
+// It would be nicer to go through `Services.appinfo`, but some tests need to be
 // able to replace that field with a custom implementation before it is first
 // called.
+// eslint-disable-next-line mozilla/use-services
 const isContent = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
 
 // Display timeout warnings after 10 seconds
@@ -338,7 +339,7 @@ function getOrigin(topFrame, filename = null, lineNumber = null, stack = null) {
       filename: "<internal error: could not get origin>",
       lineNumber: -1,
       stack: "<internal error: could not get origin>",
-    }
+    };
   }
 }
 
@@ -704,7 +705,7 @@ function Barrier(name) {
             } catch (ex) {
               reject(ex);
             }
-          }
+          };
         });
       } else {
         // If `condition` is not a function, `trigger` is not particularly

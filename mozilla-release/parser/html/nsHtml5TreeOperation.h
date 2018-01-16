@@ -106,10 +106,10 @@ class nsHtml5TreeOperation final {
      * reobtains dynamic atoms from the Gecko-global atom table.
      *
      * @param aAtom a potentially parser-scoped atom
-     * @return an nsIAtom that's pointer comparable on the main thread with
+     * @return an nsAtom that's pointer comparable on the main thread with
      *         other not-parser atoms.
      */
-    static inline already_AddRefed<nsIAtom> Reget(nsIAtom* aAtom)
+    static inline already_AddRefed<nsAtom> Reget(nsAtom* aAtom)
     {
       if (!aAtom || aAtom->IsStaticAtom()) {
         return dont_AddRef(aAtom);
@@ -151,8 +151,12 @@ class nsHtml5TreeOperation final {
                                   nsHtml5HtmlAttributes* aAttributes,
                                   nsHtml5DocumentBuilder* aBuilder);
 
+    static void SetHTMLElementAttributes(mozilla::dom::Element* aElement,
+                                         nsAtom* aName,
+                                         nsHtml5HtmlAttributes* aAttributes);
+
     static nsIContent* CreateHTMLElement(
-      nsIAtom* aName,
+      nsAtom* aName,
       nsHtml5HtmlAttributes* aAttributes,
       mozilla::dom::FromParser aFromParser,
       nsNodeInfoManager* aNodeInfoManager,
@@ -160,14 +164,14 @@ class nsHtml5TreeOperation final {
       mozilla::dom::HTMLContentCreatorFunction aCreator);
 
     static nsIContent* CreateSVGElement(
-      nsIAtom* aName,
+      nsAtom* aName,
       nsHtml5HtmlAttributes* aAttributes,
       mozilla::dom::FromParser aFromParser,
       nsNodeInfoManager* aNodeInfoManager,
       nsHtml5DocumentBuilder* aBuilder,
       mozilla::dom::SVGContentCreatorFunction aCreator);
 
-    static nsIContent* CreateMathMLElement(nsIAtom* aName,
+    static nsIContent* CreateMathMLElement(nsAtom* aName,
                                            nsHtml5HtmlAttributes* aAttributes,
                                            nsNodeInfoManager* aNodeInfoManager,
                                            nsHtml5DocumentBuilder* aBuilder);
@@ -192,7 +196,7 @@ class nsHtml5TreeOperation final {
                                            int32_t aLength,
                                            nsHtml5DocumentBuilder* aBuilder);
 
-    static nsresult AppendDoctypeToDocument(nsIAtom* aName,
+    static nsresult AppendDoctypeToDocument(nsAtom* aName,
                                             const nsAString& aPublicId,
                                             const nsAString& aSystemId,
                                             nsHtml5DocumentBuilder* aBuilder);
@@ -329,7 +333,7 @@ class nsHtml5TreeOperation final {
     }
 
     inline void Init(int32_t aNamespace,
-                     nsIAtom* aName,
+                     nsAtom* aName,
                      nsHtml5HtmlAttributes* aAttributes,
                      nsIContentHandle* aTarget,
                      nsIContentHandle* aIntendedParent,
@@ -415,7 +419,7 @@ class nsHtml5TreeOperation final {
       mTwo.attributes = aAttributes;
     }
     
-    inline void Init(nsIAtom* aName, 
+    inline void Init(nsAtom* aName, 
                      const nsAString& aPublicId, 
                      const nsAString& aSystemId)
     {
@@ -428,8 +432,8 @@ class nsHtml5TreeOperation final {
     
     inline void Init(nsIContentHandle* aElement,
                      const char* aMsgId,
-                     nsIAtom* aAtom,
-                     nsIAtom* aOtherAtom)
+                     nsAtom* aAtom,
+                     nsAtom* aOtherAtom)
     {
       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
         "Op code must be uninitialized when initializing.");
@@ -442,7 +446,7 @@ class nsHtml5TreeOperation final {
 
     inline void Init(nsIContentHandle* aElement,
                      const char* aMsgId,
-                     nsIAtom* aAtom)
+                     nsAtom* aAtom)
     {
       Init(aElement, aMsgId, aAtom, nullptr);
     }
@@ -542,16 +546,20 @@ class nsHtml5TreeOperation final {
 
     nsresult Perform(nsHtml5TreeOpExecutor* aBuilder,
                      nsIContent** aScriptElement,
-                     bool* aInterrupted);
+                     bool* aInterrupted,
+                     bool* aStreamEnded);
 
   private:
+    nsHtml5TreeOperation(const nsHtml5TreeOperation&) = delete;
+    nsHtml5TreeOperation& operator=(const nsHtml5TreeOperation&) = delete;
+
     // possible optimization:
     // Make the queue take items the size of pointer and make the op code
     // decide how many operands it dequeues after it.
     eHtml5TreeOperation mOpCode;
     union {
       nsIContent**                    node;
-      nsIAtom*                        atom;
+      nsAtom*                        atom;
       nsHtml5HtmlAttributes*          attributes;
       nsHtml5DocumentMode             mode;
       char16_t*                       unicharPtr;

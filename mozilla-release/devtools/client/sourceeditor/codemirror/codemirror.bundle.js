@@ -520,13 +520,18 @@ var CodeMirror =
 	}
 
 	// Returns the value from the range [`from`; `to`] that satisfies
-	// `pred` and is closest to `from`. Assumes that at least `to` satisfies `pred`.
+	// `pred` and is closest to `from`. Assumes that at least `to`
+	// satisfies `pred`. Supports `from` being greater than `to`.
 	function findFirst(pred, from, to) {
+	  // At any point we are certain `to` satisfies `pred`, don't know
+	  // whether `from` does.
+	  var dir = from > to ? -1 : 1
 	  for (;;) {
-	    if (Math.abs(from - to) <= 1) { return pred(from) ? from : to }
-	    var mid = Math.floor((from + to) / 2)
+	    if (from == to) { return from }
+	    var midF = (from + to) / 2, mid = dir < 0 ? Math.ceil(midF) : Math.floor(midF)
+	    if (mid == from) { return pred(mid) ? from : to }
 	    if (pred(mid)) { to = mid }
-	    else { from = mid }
+	    else { from = mid + dir }
 	  }
 	}
 
@@ -1139,12 +1144,12 @@ var CodeMirror =
 	// BIDI HELPERS
 
 	function iterateBidiSections(order, from, to, f) {
-	  if (!order) { return f(from, to, "ltr") }
+	  if (!order) { return f(from, to, "ltr", 0) }
 	  var found = false
 	  for (var i = 0; i < order.length; ++i) {
 	    var part = order[i]
 	    if (part.from < to && part.to > from || from == to && part.to == from) {
-	      f(Math.max(part.from, from), Math.min(part.to, to), part.level == 1 ? "rtl" : "ltr")
+	      f(Math.max(part.from, from), Math.min(part.to, to), part.level == 1 ? "rtl" : "ltr", i)
 	      found = true
 	    }
 	  }
@@ -1325,13 +1330,15 @@ var CodeMirror =
 	        if (pos < i$7) { order.splice(at, 0, new BidiSpan(1, pos, i$7)) }
 	      }
 	    }
-	    if (order[0].level == 1 && (m = str.match(/^\s+/))) {
-	      order[0].from = m[0].length
-	      order.unshift(new BidiSpan(0, 0, m[0].length))
-	    }
-	    if (lst(order).level == 1 && (m = str.match(/\s+$/))) {
-	      lst(order).to -= m[0].length
-	      order.push(new BidiSpan(0, len - m[0].length, len))
+	    if (direction == "ltr") {
+	      if (order[0].level == 1 && (m = str.match(/^\s+/))) {
+	        order[0].from = m[0].length
+	        order.unshift(new BidiSpan(0, 0, m[0].length))
+	      }
+	      if (lst(order).level == 1 && (m = str.match(/\s+$/))) {
+	        lst(order).to -= m[0].length
+	        order.push(new BidiSpan(0, len - m[0].length, len))
+	      }
 	    }
 
 	    return direction == "rtl" ? order.reverse() : order
@@ -1345,112 +1352,6 @@ var CodeMirror =
 	  var order = line.order
 	  if (order == null) { order = line.order = bidiOrdering(line.text, direction) }
 	  return order
-	}
-
-	function moveCharLogically(line, ch, dir) {
-	  var target = skipExtendingChars(line.text, ch + dir, dir)
-	  return target < 0 || target > line.text.length ? null : target
-	}
-
-	function moveLogically(line, start, dir) {
-	  var ch = moveCharLogically(line, start.ch, dir)
-	  return ch == null ? null : new Pos(start.line, ch, dir < 0 ? "after" : "before")
-	}
-
-	function endOfLine(visually, cm, lineObj, lineNo, dir) {
-	  if (visually) {
-	    var order = getOrder(lineObj, cm.doc.direction)
-	    if (order) {
-	      var part = dir < 0 ? lst(order) : order[0]
-	      var moveInStorageOrder = (dir < 0) == (part.level == 1)
-	      var sticky = moveInStorageOrder ? "after" : "before"
-	      var ch
-	      // With a wrapped rtl chunk (possibly spanning multiple bidi parts),
-	      // it could be that the last bidi part is not on the last visual line,
-	      // since visual lines contain content order-consecutive chunks.
-	      // Thus, in rtl, we are looking for the first (content-order) character
-	      // in the rtl chunk that is on the last line (that is, the same line
-	      // as the last (content-order) character).
-	      if (part.level > 0) {
-	        var prep = prepareMeasureForLine(cm, lineObj)
-	        ch = dir < 0 ? lineObj.text.length - 1 : 0
-	        var targetTop = measureCharPrepared(cm, prep, ch).top
-	        ch = findFirst(function (ch) { return measureCharPrepared(cm, prep, ch).top == targetTop; }, (dir < 0) == (part.level == 1) ? part.from : part.to - 1, ch)
-	        if (sticky == "before") { ch = moveCharLogically(lineObj, ch, 1) }
-	      } else { ch = dir < 0 ? part.to : part.from }
-	      return new Pos(lineNo, ch, sticky)
-	    }
-	  }
-	  return new Pos(lineNo, dir < 0 ? lineObj.text.length : 0, dir < 0 ? "before" : "after")
-	}
-
-	function moveVisually(cm, line, start, dir) {
-	  var bidi = getOrder(line, cm.doc.direction)
-	  if (!bidi) { return moveLogically(line, start, dir) }
-	  if (start.ch >= line.text.length) {
-	    start.ch = line.text.length
-	    start.sticky = "before"
-	  } else if (start.ch <= 0) {
-	    start.ch = 0
-	    start.sticky = "after"
-	  }
-	  var partPos = getBidiPartAt(bidi, start.ch, start.sticky), part = bidi[partPos]
-	  if (cm.doc.direction == "ltr" && part.level % 2 == 0 && (dir > 0 ? part.to > start.ch : part.from < start.ch)) {
-	    // Case 1: We move within an ltr part in an ltr editor. Even with wrapped lines,
-	    // nothing interesting happens.
-	    return moveLogically(line, start, dir)
-	  }
-
-	  var mv = function (pos, dir) { return moveCharLogically(line, pos instanceof Pos ? pos.ch : pos, dir); }
-	  var prep
-	  var getWrappedLineExtent = function (ch) {
-	    if (!cm.options.lineWrapping) { return {begin: 0, end: line.text.length} }
-	    prep = prep || prepareMeasureForLine(cm, line)
-	    return wrappedLineExtentChar(cm, line, prep, ch)
-	  }
-	  var wrappedLineExtent = getWrappedLineExtent(start.sticky == "before" ? mv(start, -1) : start.ch)
-
-	  if (cm.doc.direction == "rtl" || part.level == 1) {
-	    var moveInStorageOrder = (part.level == 1) == (dir < 0)
-	    var ch = mv(start, moveInStorageOrder ? 1 : -1)
-	    if (ch != null && (!moveInStorageOrder ? ch >= part.from && ch >= wrappedLineExtent.begin : ch <= part.to && ch <= wrappedLineExtent.end)) {
-	      // Case 2: We move within an rtl part or in an rtl editor on the same visual line
-	      var sticky = moveInStorageOrder ? "before" : "after"
-	      return new Pos(start.line, ch, sticky)
-	    }
-	  }
-
-	  // Case 3: Could not move within this bidi part in this visual line, so leave
-	  // the current bidi part
-
-	  var searchInVisualLine = function (partPos, dir, wrappedLineExtent) {
-	    var getRes = function (ch, moveInStorageOrder) { return moveInStorageOrder
-	      ? new Pos(start.line, mv(ch, 1), "before")
-	      : new Pos(start.line, ch, "after"); }
-
-	    for (; partPos >= 0 && partPos < bidi.length; partPos += dir) {
-	      var part = bidi[partPos]
-	      var moveInStorageOrder = (dir > 0) == (part.level != 1)
-	      var ch = moveInStorageOrder ? wrappedLineExtent.begin : mv(wrappedLineExtent.end, -1)
-	      if (part.from <= ch && ch < part.to) { return getRes(ch, moveInStorageOrder) }
-	      ch = moveInStorageOrder ? part.from : mv(part.to, -1)
-	      if (wrappedLineExtent.begin <= ch && ch < wrappedLineExtent.end) { return getRes(ch, moveInStorageOrder) }
-	    }
-	  }
-
-	  // Case 3a: Look for other bidi parts on the same visual line
-	  var res = searchInVisualLine(partPos + dir, dir, wrappedLineExtent)
-	  if (res) { return res }
-
-	  // Case 3b: Look for other bidi parts on the next visual line
-	  var nextCh = dir > 0 ? wrappedLineExtent.end : mv(wrappedLineExtent.begin, -1)
-	  if (nextCh != null && !(dir > 0 && nextCh == line.text.length)) {
-	    res = searchInVisualLine(dir > 0 ? 0 : bidi.length - 1, dir, getWrappedLineExtent(nextCh))
-	    if (res) { return res }
-	  }
-
-	  // Case 4: Nowhere to move
-	  return null
 	}
 
 	// EVENT HANDLING
@@ -1812,6 +1713,10 @@ var CodeMirror =
 	  var oracle = this.lineOracle
 	  return oracle && oracle.lookAhead(n)
 	};
+	StringStream.prototype.baseToken = function () {
+	  var oracle = this.lineOracle
+	  return oracle && oracle.baseToken(this.pos)
+	};
 
 	var SavedContext = function(state, lookAhead) {
 	  this.state = state
@@ -1823,12 +1728,25 @@ var CodeMirror =
 	  this.doc = doc
 	  this.line = line
 	  this.maxLookAhead = lookAhead || 0
+	  this.baseTokens = null
+	  this.baseTokenPos = 1
 	};
 
 	Context.prototype.lookAhead = function (n) {
 	  var line = this.doc.getLine(this.line + n)
 	  if (line != null && n > this.maxLookAhead) { this.maxLookAhead = n }
 	  return line
+	};
+
+	Context.prototype.baseToken = function (n) {
+	    var this$1 = this;
+
+	  if (!this.baseTokens) { return null }
+	  while (this.baseTokens[this.baseTokenPos] <= n)
+	    { this$1.baseTokenPos += 2 }
+	  var type = this.baseTokens[this.baseTokenPos + 1]
+	  return {type: type && type.replace(/( |^)overlay .*/, ""),
+	          size: this.baseTokens[this.baseTokenPos] - n}
 	};
 
 	Context.prototype.nextLine = function () {
@@ -1864,6 +1782,7 @@ var CodeMirror =
 
 	  // Run overlays, adjust style array.
 	  var loop = function ( o ) {
+	    context.baseTokens = st
 	    var overlay = cm.state.overlays[o], i = 1, at = 0
 	    context.state = true
 	    runMode(cm, line.text, overlay.mode, context, function (end, style) {
@@ -1887,10 +1806,12 @@ var CodeMirror =
 	        }
 	      }
 	    }, lineClasses)
+	    context.state = state
+	    context.baseTokens = null
+	    context.baseTokenPos = 1
 	  };
 
 	  for (var o = 0; o < cm.state.overlays.length; ++o) loop( o );
-	  context.state = state
 
 	  return {styles: st, classes: lineClasses.bgClass || lineClasses.textClass ? lineClasses : null}
 	}
@@ -2961,15 +2882,22 @@ var CodeMirror =
 	  return window.pageYOffset || (document.documentElement || document.body).scrollTop
 	}
 
+	function widgetTopHeight(lineObj) {
+	  var height = 0
+	  if (lineObj.widgets) { for (var i = 0; i < lineObj.widgets.length; ++i) { if (lineObj.widgets[i].above)
+	    { height += widgetHeight(lineObj.widgets[i]) } } }
+	  return height
+	}
+
 	// Converts a {top, bottom, left, right} box from line-local
 	// coordinates into another coordinate system. Context may be one of
 	// "line", "div" (display.lineDiv), "local"./null (editor), "window",
 	// or "page".
 	function intoCoordSystem(cm, lineObj, rect, context, includeWidgets) {
-	  if (!includeWidgets && lineObj.widgets) { for (var i = 0; i < lineObj.widgets.length; ++i) { if (lineObj.widgets[i].above) {
-	    var size = widgetHeight(lineObj.widgets[i])
-	    rect.top += size; rect.bottom += size
-	  } } }
+	  if (!includeWidgets) {
+	    var height = widgetTopHeight(lineObj)
+	    rect.top += height; rect.bottom += height
+	  }
 	  if (context == "line") { return rect }
 	  if (!context) { context = "local" }
 	  var yOff = heightAtLine(lineObj)
@@ -3044,7 +2972,7 @@ var CodeMirror =
 	  if (!order) { return get(sticky == "before" ? ch - 1 : ch, sticky == "before") }
 
 	  function getBidi(ch, partPos, invert) {
-	    var part = order[partPos], right = (part.level % 2) != 0
+	    var part = order[partPos], right = part.level == 1
 	    return get(invert ? ch - 1 : ch, right != invert)
 	  }
 	  var partPos = getBidiPartAt(order, ch, sticky)
@@ -3102,77 +3030,147 @@ var CodeMirror =
 	}
 
 	function wrappedLineExtent(cm, lineObj, preparedMeasure, y) {
-	  var measure = function (ch) { return intoCoordSystem(cm, lineObj, measureCharPrepared(cm, preparedMeasure, ch), "line"); }
+	  y -= widgetTopHeight(lineObj)
 	  var end = lineObj.text.length
-	  var begin = findFirst(function (ch) { return measure(ch - 1).bottom <= y; }, end, 0)
-	  end = findFirst(function (ch) { return measure(ch).top > y; }, begin, end)
+	  var begin = findFirst(function (ch) { return measureCharPrepared(cm, preparedMeasure, ch - 1).bottom <= y; }, end, 0)
+	  end = findFirst(function (ch) { return measureCharPrepared(cm, preparedMeasure, ch).top > y; }, begin, end)
 	  return {begin: begin, end: end}
 	}
 
 	function wrappedLineExtentChar(cm, lineObj, preparedMeasure, target) {
+	  if (!preparedMeasure) { preparedMeasure = prepareMeasureForLine(cm, lineObj) }
 	  var targetTop = intoCoordSystem(cm, lineObj, measureCharPrepared(cm, preparedMeasure, target), "line").top
 	  return wrappedLineExtent(cm, lineObj, preparedMeasure, targetTop)
 	}
 
+	// Returns true if the given side of a box is after the given
+	// coordinates, in top-to-bottom, left-to-right order.
+	function boxIsAfter(box, x, y, left) {
+	  return box.bottom <= y ? false : box.top > y ? true : (left ? box.left : box.right) > x
+	}
+
 	function coordsCharInner(cm, lineObj, lineNo, x, y) {
+	  // Move y into line-local coordinate space
 	  y -= heightAtLine(lineObj)
-	  var begin = 0, end = lineObj.text.length
 	  var preparedMeasure = prepareMeasureForLine(cm, lineObj)
-	  var pos
+	  // When directly calling `measureCharPrepared`, we have to adjust
+	  // for the widgets at this line.
+	  var widgetHeight = widgetTopHeight(lineObj)
+	  var begin = 0, end = lineObj.text.length, ltr = true
+
 	  var order = getOrder(lineObj, cm.doc.direction)
+	  // If the line isn't plain left-to-right text, first figure out
+	  // which bidi section the coordinates fall into.
 	  if (order) {
-	    if (cm.options.lineWrapping) {
-	      ;var assign;
-	      ((assign = wrappedLineExtent(cm, lineObj, preparedMeasure, y), begin = assign.begin, end = assign.end, assign))
-	    }
-	    pos = new Pos(lineNo, Math.floor(begin + (end - begin) / 2))
-	    var beginLeft = cursorCoords(cm, pos, "line", lineObj, preparedMeasure).left
-	    var dir = beginLeft < x ? 1 : -1
-	    var prevDiff, diff = beginLeft - x, prevPos
-	    var steps = Math.ceil((end - begin) / 4)
-	    outer: do {
-	      prevDiff = diff
-	      prevPos = pos
-	      var i = 0
-	      for (; i < steps; ++i) {
-	        var prevPos$1 = pos
-	        pos = moveVisually(cm, lineObj, pos, dir)
-	        if (pos == null || pos.ch < begin || end <= (pos.sticky == "before" ? pos.ch - 1 : pos.ch)) {
-	          pos = prevPos$1
-	          break outer
-	        }
-	      }
-	      diff = cursorCoords(cm, pos, "line", lineObj, preparedMeasure).left - x
-	      if (steps > 1) {
-	        var diff_change_per_step = Math.abs(diff - prevDiff) / steps
-	        steps = Math.min(steps, Math.ceil(Math.abs(diff) / diff_change_per_step))
-	        dir = diff < 0 ? 1 : -1
-	      }
-	    } while (diff != 0 && (steps > 1 || ((dir < 0) != (diff < 0) && (Math.abs(diff) <= Math.abs(prevDiff)))))
-	    if (Math.abs(diff) > Math.abs(prevDiff)) {
-	      if ((diff < 0) == (prevDiff < 0)) { throw new Error("Broke out of infinite loop in coordsCharInner") }
-	      pos = prevPos
-	    }
-	  } else {
-	    var ch = findFirst(function (ch) {
-	      var box = intoCoordSystem(cm, lineObj, measureCharPrepared(cm, preparedMeasure, ch), "line")
-	      if (box.top > y) {
-	        // For the cursor stickiness
-	        end = Math.min(ch, end)
-	        return true
-	      }
-	      else if (box.bottom <= y) { return false }
-	      else if (box.left > x) { return true }
-	      else if (box.right < x) { return false }
-	      else { return (x - box.left < box.right - x) }
-	    }, begin, end)
-	    ch = skipExtendingChars(lineObj.text, ch, 1)
-	    pos = new Pos(lineNo, ch, ch == end ? "before" : "after")
+	    var part = (cm.options.lineWrapping ? coordsBidiPartWrapped : coordsBidiPart)
+	                 (cm, lineObj, lineNo, preparedMeasure, order, x, y)
+	    ltr = part.level != 1
+	    // The awkward -1 offsets are needed because findFirst (called
+	    // on these below) will treat its first bound as inclusive,
+	    // second as exclusive, but we want to actually address the
+	    // characters in the part's range
+	    begin = ltr ? part.from : part.to - 1
+	    end = ltr ? part.to : part.from - 1
 	  }
-	  var coords = cursorCoords(cm, pos, "line", lineObj, preparedMeasure)
-	  if (y < coords.top || coords.bottom < y) { pos.outside = true }
-	  pos.xRel = x < coords.left ? -1 : (x > coords.right ? 1 : 0)
-	  return pos
+
+	  // A binary search to find the first character whose bounding box
+	  // starts after the coordinates. If we run across any whose box wrap
+	  // the coordinates, store that.
+	  var chAround = null, boxAround = null
+	  var ch = findFirst(function (ch) {
+	    var box = measureCharPrepared(cm, preparedMeasure, ch)
+	    box.top += widgetHeight; box.bottom += widgetHeight
+	    if (!boxIsAfter(box, x, y, false)) { return false }
+	    if (box.top <= y && box.left <= x) {
+	      chAround = ch
+	      boxAround = box
+	    }
+	    return true
+	  }, begin, end)
+
+	  var baseX, sticky, outside = false
+	  // If a box around the coordinates was found, use that
+	  if (boxAround) {
+	    // Distinguish coordinates nearer to the left or right side of the box
+	    var atLeft = x - boxAround.left < boxAround.right - x, atStart = atLeft == ltr
+	    ch = chAround + (atStart ? 0 : 1)
+	    sticky = atStart ? "after" : "before"
+	    baseX = atLeft ? boxAround.left : boxAround.right
+	  } else {
+	    // (Adjust for extended bound, if necessary.)
+	    if (!ltr && (ch == end || ch == begin)) { ch++ }
+	    // To determine which side to associate with, get the box to the
+	    // left of the character and compare it's vertical position to the
+	    // coordinates
+	    sticky = ch == 0 ? "after" : ch == lineObj.text.length ? "before" :
+	      (measureCharPrepared(cm, preparedMeasure, ch - (ltr ? 1 : 0)).bottom + widgetHeight <= y) == ltr ?
+	      "after" : "before"
+	    // Now get accurate coordinates for this place, in order to get a
+	    // base X position
+	    var coords = cursorCoords(cm, Pos(lineNo, ch, sticky), "line", lineObj, preparedMeasure)
+	    baseX = coords.left
+	    outside = y < coords.top || y >= coords.bottom
+	  }
+
+	  ch = skipExtendingChars(lineObj.text, ch, 1)
+	  return PosWithInfo(lineNo, ch, sticky, outside, x - baseX)
+	}
+
+	function coordsBidiPart(cm, lineObj, lineNo, preparedMeasure, order, x, y) {
+	  // Bidi parts are sorted left-to-right, and in a non-line-wrapping
+	  // situation, we can take this ordering to correspond to the visual
+	  // ordering. This finds the first part whose end is after the given
+	  // coordinates.
+	  var index = findFirst(function (i) {
+	    var part = order[i], ltr = part.level != 1
+	    return boxIsAfter(cursorCoords(cm, Pos(lineNo, ltr ? part.to : part.from, ltr ? "before" : "after"),
+	                                   "line", lineObj, preparedMeasure), x, y, true)
+	  }, 0, order.length - 1)
+	  var part = order[index]
+	  // If this isn't the first part, the part's start is also after
+	  // the coordinates, and the coordinates aren't on the same line as
+	  // that start, move one part back.
+	  if (index > 0) {
+	    var ltr = part.level != 1
+	    var start = cursorCoords(cm, Pos(lineNo, ltr ? part.from : part.to, ltr ? "after" : "before"),
+	                             "line", lineObj, preparedMeasure)
+	    if (boxIsAfter(start, x, y, true) && start.top > y)
+	      { part = order[index - 1] }
+	  }
+	  return part
+	}
+
+	function coordsBidiPartWrapped(cm, lineObj, _lineNo, preparedMeasure, order, x, y) {
+	  // In a wrapped line, rtl text on wrapping boundaries can do things
+	  // that don't correspond to the ordering in our `order` array at
+	  // all, so a binary search doesn't work, and we want to return a
+	  // part that only spans one line so that the binary search in
+	  // coordsCharInner is safe. As such, we first find the extent of the
+	  // wrapped line, and then do a flat search in which we discard any
+	  // spans that aren't on the line.
+	  var ref = wrappedLineExtent(cm, lineObj, preparedMeasure, y);
+	  var begin = ref.begin;
+	  var end = ref.end;
+	  if (/\s/.test(lineObj.text.charAt(end - 1))) { end-- }
+	  var part = null, closestDist = null
+	  for (var i = 0; i < order.length; i++) {
+	    var p = order[i]
+	    if (p.from >= end || p.to <= begin) { continue }
+	    var ltr = p.level != 1
+	    var endX = measureCharPrepared(cm, preparedMeasure, ltr ? Math.min(end, p.to) - 1 : Math.max(begin, p.from)).right
+	    // Weigh against spans ending before this, so that they are only
+	    // picked if nothing ends after
+	    var dist = endX < x ? x - endX + 1e9 : endX - x
+	    if (!part || closestDist > dist) {
+	      part = p
+	      closestDist = dist
+	    }
+	  }
+	  if (!part) { part = order[order.length - 1] }
+	  // Clip the part to the wrapped line.
+	  if (part.from < begin) { part = {from: begin, to: part.to, level: part.level} }
+	  if (part.to > end) { part = {from: part.from, to: end, level: part.level} }
+	  return part
 	}
 
 	var measureText
@@ -3298,12 +3296,14 @@ var CodeMirror =
 	}
 
 	function prepareSelection(cm, primary) {
+	  if ( primary === void 0 ) primary = true;
+
 	  var doc = cm.doc, result = {}
 	  var curFragment = result.cursors = document.createDocumentFragment()
 	  var selFragment = result.selection = document.createDocumentFragment()
 
 	  for (var i = 0; i < doc.sel.ranges.length; i++) {
-	    if (primary === false && i == doc.sel.primIndex) { continue }
+	    if (!primary && i == doc.sel.primIndex) { continue }
 	    var range = doc.sel.ranges[i]
 	    if (range.from().line >= cm.display.viewTo || range.to().line < cm.display.viewFrom) { continue }
 	    var collapsed = range.empty()
@@ -3334,12 +3334,15 @@ var CodeMirror =
 	  }
 	}
 
+	function cmpCoords(a, b) { return a.top - b.top || a.left - b.left }
+
 	// Draws the given range as a highlighted selection
 	function drawSelectionRange(cm, range, output) {
 	  var display = cm.display, doc = cm.doc
 	  var fragment = document.createDocumentFragment()
 	  var padding = paddingH(cm.display), leftSide = padding.left
 	  var rightSide = Math.max(display.sizerWidth, displayWidth(cm) - display.sizer.offsetLeft) - padding.right
+	  var docLTR = doc.direction == "ltr"
 
 	  function add(left, top, width, bottom) {
 	    if (top < 0) { top = 0 }
@@ -3356,30 +3359,49 @@ var CodeMirror =
 	      return charCoords(cm, Pos(line, ch), "div", lineObj, bias)
 	    }
 
-	    iterateBidiSections(getOrder(lineObj, doc.direction), fromArg || 0, toArg == null ? lineLen : toArg, function (from, to, dir) {
-	      var leftPos = coords(from, "left"), rightPos, left, right
-	      if (from == to) {
-	        rightPos = leftPos
-	        left = right = leftPos.left
-	      } else {
-	        rightPos = coords(to - 1, "right")
-	        if (dir == "rtl") { var tmp = leftPos; leftPos = rightPos; rightPos = tmp }
-	        left = leftPos.left
-	        right = rightPos.right
+	    function wrapX(pos, dir, side) {
+	      var extent = wrappedLineExtentChar(cm, lineObj, null, pos)
+	      var prop = (dir == "ltr") == (side == "after") ? "left" : "right"
+	      var ch = side == "after" ? extent.begin : extent.end - (/\s/.test(lineObj.text.charAt(extent.end - 1)) ? 2 : 1)
+	      return coords(ch, prop)[prop]
+	    }
+
+	    var order = getOrder(lineObj, doc.direction)
+	    iterateBidiSections(order, fromArg || 0, toArg == null ? lineLen : toArg, function (from, to, dir, i) {
+	      var ltr = dir == "ltr"
+	      var fromPos = coords(from, ltr ? "left" : "right")
+	      var toPos = coords(to - 1, ltr ? "right" : "left")
+
+	      var openStart = fromArg == null && from == 0, openEnd = toArg == null && to == lineLen
+	      var first = i == 0, last = !order || i == order.length - 1
+	      if (toPos.top - fromPos.top <= 3) { // Single line
+	        var openLeft = (docLTR ? openStart : openEnd) && first
+	        var openRight = (docLTR ? openEnd : openStart) && last
+	        var left = openLeft ? leftSide : (ltr ? fromPos : toPos).left
+	        var right = openRight ? rightSide : (ltr ? toPos : fromPos).right
+	        add(left, fromPos.top, right - left, fromPos.bottom)
+	      } else { // Multiple lines
+	        var topLeft, topRight, botLeft, botRight
+	        if (ltr) {
+	          topLeft = docLTR && openStart && first ? leftSide : fromPos.left
+	          topRight = docLTR ? rightSide : wrapX(from, dir, "before")
+	          botLeft = docLTR ? leftSide : wrapX(to, dir, "after")
+	          botRight = docLTR && openEnd && last ? rightSide : toPos.right
+	        } else {
+	          topLeft = !docLTR ? leftSide : wrapX(from, dir, "before")
+	          topRight = !docLTR && openStart && first ? rightSide : fromPos.right
+	          botLeft = !docLTR && openEnd && last ? leftSide : toPos.left
+	          botRight = !docLTR ? rightSide : wrapX(to, dir, "after")
+	        }
+	        add(topLeft, fromPos.top, topRight - topLeft, fromPos.bottom)
+	        if (fromPos.bottom < toPos.top) { add(leftSide, fromPos.bottom, null, toPos.top) }
+	        add(botLeft, toPos.top, botRight - botLeft, toPos.bottom)
 	      }
-	      if (fromArg == null && from == 0) { left = leftSide }
-	      if (rightPos.top - leftPos.top > 3) { // Different lines, draw top part
-	        add(left, leftPos.top, null, leftPos.bottom)
-	        left = leftSide
-	        if (leftPos.bottom < rightPos.top) { add(left, leftPos.bottom, null, rightPos.top) }
-	      }
-	      if (toArg == null && to == lineLen) { right = rightSide }
-	      if (!start || leftPos.top < start.top || leftPos.top == start.top && leftPos.left < start.left)
-	        { start = leftPos }
-	      if (!end || rightPos.bottom > end.bottom || rightPos.bottom == end.bottom && rightPos.right > end.right)
-	        { end = rightPos }
-	      if (left < leftSide + 1) { left = leftSide }
-	      add(left, rightPos.top, right - left, rightPos.bottom)
+
+	      if (!start || cmpCoords(fromPos, start) < 0) { start = fromPos }
+	      if (cmpCoords(toPos, start) < 0) { start = toPos }
+	      if (!end || cmpCoords(fromPos, end) < 0) { end = fromPos }
+	      if (cmpCoords(toPos, end) < 0) { end = toPos }
 	    })
 	    return {start: start, end: end}
 	  }
@@ -4009,7 +4031,7 @@ var CodeMirror =
 	  }
 
 	  if (op.updatedDisplay || op.selectionChanged)
-	    { op.preparedSelection = display.input.prepareSelection(op.focus) }
+	    { op.preparedSelection = display.input.prepareSelection() }
 	}
 
 	function endOperation_W2(op) {
@@ -4022,7 +4044,7 @@ var CodeMirror =
 	    cm.display.maxLineChanged = false
 	  }
 
-	  var takeFocus = op.focus && op.focus == activeElt() && (!document.hasFocus || document.hasFocus())
+	  var takeFocus = op.focus && op.focus == activeElt()
 	  if (op.preparedSelection)
 	    { cm.display.input.showSelection(op.preparedSelection, takeFocus) }
 	  if (op.updatedDisplay || op.startHeight != cm.doc.height)
@@ -5611,7 +5633,8 @@ var CodeMirror =
 
 	function replaceRange(doc, code, from, to, origin) {
 	  if (!to) { to = from }
-	  if (cmp(to, from) < 0) { var tmp = to; to = from; from = tmp }
+	  if (cmp(to, from) < 0) { var assign;
+	    (assign = [to, from], from = assign[0], to = assign[1], assign) }
 	  if (typeof code == "string") { code = doc.splitLines(code) }
 	  makeChange(doc, {from: from, to: to, text: code, origin: origin})
 	}
@@ -6973,6 +6996,112 @@ var CodeMirror =
 	  })
 	}
 
+	function moveCharLogically(line, ch, dir) {
+	  var target = skipExtendingChars(line.text, ch + dir, dir)
+	  return target < 0 || target > line.text.length ? null : target
+	}
+
+	function moveLogically(line, start, dir) {
+	  var ch = moveCharLogically(line, start.ch, dir)
+	  return ch == null ? null : new Pos(start.line, ch, dir < 0 ? "after" : "before")
+	}
+
+	function endOfLine(visually, cm, lineObj, lineNo, dir) {
+	  if (visually) {
+	    var order = getOrder(lineObj, cm.doc.direction)
+	    if (order) {
+	      var part = dir < 0 ? lst(order) : order[0]
+	      var moveInStorageOrder = (dir < 0) == (part.level == 1)
+	      var sticky = moveInStorageOrder ? "after" : "before"
+	      var ch
+	      // With a wrapped rtl chunk (possibly spanning multiple bidi parts),
+	      // it could be that the last bidi part is not on the last visual line,
+	      // since visual lines contain content order-consecutive chunks.
+	      // Thus, in rtl, we are looking for the first (content-order) character
+	      // in the rtl chunk that is on the last line (that is, the same line
+	      // as the last (content-order) character).
+	      if (part.level > 0 || cm.doc.direction == "rtl") {
+	        var prep = prepareMeasureForLine(cm, lineObj)
+	        ch = dir < 0 ? lineObj.text.length - 1 : 0
+	        var targetTop = measureCharPrepared(cm, prep, ch).top
+	        ch = findFirst(function (ch) { return measureCharPrepared(cm, prep, ch).top == targetTop; }, (dir < 0) == (part.level == 1) ? part.from : part.to - 1, ch)
+	        if (sticky == "before") { ch = moveCharLogically(lineObj, ch, 1) }
+	      } else { ch = dir < 0 ? part.to : part.from }
+	      return new Pos(lineNo, ch, sticky)
+	    }
+	  }
+	  return new Pos(lineNo, dir < 0 ? lineObj.text.length : 0, dir < 0 ? "before" : "after")
+	}
+
+	function moveVisually(cm, line, start, dir) {
+	  var bidi = getOrder(line, cm.doc.direction)
+	  if (!bidi) { return moveLogically(line, start, dir) }
+	  if (start.ch >= line.text.length) {
+	    start.ch = line.text.length
+	    start.sticky = "before"
+	  } else if (start.ch <= 0) {
+	    start.ch = 0
+	    start.sticky = "after"
+	  }
+	  var partPos = getBidiPartAt(bidi, start.ch, start.sticky), part = bidi[partPos]
+	  if (cm.doc.direction == "ltr" && part.level % 2 == 0 && (dir > 0 ? part.to > start.ch : part.from < start.ch)) {
+	    // Case 1: We move within an ltr part in an ltr editor. Even with wrapped lines,
+	    // nothing interesting happens.
+	    return moveLogically(line, start, dir)
+	  }
+
+	  var mv = function (pos, dir) { return moveCharLogically(line, pos instanceof Pos ? pos.ch : pos, dir); }
+	  var prep
+	  var getWrappedLineExtent = function (ch) {
+	    if (!cm.options.lineWrapping) { return {begin: 0, end: line.text.length} }
+	    prep = prep || prepareMeasureForLine(cm, line)
+	    return wrappedLineExtentChar(cm, line, prep, ch)
+	  }
+	  var wrappedLineExtent = getWrappedLineExtent(start.sticky == "before" ? mv(start, -1) : start.ch)
+
+	  if (cm.doc.direction == "rtl" || part.level == 1) {
+	    var moveInStorageOrder = (part.level == 1) == (dir < 0)
+	    var ch = mv(start, moveInStorageOrder ? 1 : -1)
+	    if (ch != null && (!moveInStorageOrder ? ch >= part.from && ch >= wrappedLineExtent.begin : ch <= part.to && ch <= wrappedLineExtent.end)) {
+	      // Case 2: We move within an rtl part or in an rtl editor on the same visual line
+	      var sticky = moveInStorageOrder ? "before" : "after"
+	      return new Pos(start.line, ch, sticky)
+	    }
+	  }
+
+	  // Case 3: Could not move within this bidi part in this visual line, so leave
+	  // the current bidi part
+
+	  var searchInVisualLine = function (partPos, dir, wrappedLineExtent) {
+	    var getRes = function (ch, moveInStorageOrder) { return moveInStorageOrder
+	      ? new Pos(start.line, mv(ch, 1), "before")
+	      : new Pos(start.line, ch, "after"); }
+
+	    for (; partPos >= 0 && partPos < bidi.length; partPos += dir) {
+	      var part = bidi[partPos]
+	      var moveInStorageOrder = (dir > 0) == (part.level != 1)
+	      var ch = moveInStorageOrder ? wrappedLineExtent.begin : mv(wrappedLineExtent.end, -1)
+	      if (part.from <= ch && ch < part.to) { return getRes(ch, moveInStorageOrder) }
+	      ch = moveInStorageOrder ? part.from : mv(part.to, -1)
+	      if (wrappedLineExtent.begin <= ch && ch < wrappedLineExtent.end) { return getRes(ch, moveInStorageOrder) }
+	    }
+	  }
+
+	  // Case 3a: Look for other bidi parts on the same visual line
+	  var res = searchInVisualLine(partPos + dir, dir, wrappedLineExtent)
+	  if (res) { return res }
+
+	  // Case 3b: Look for other bidi parts on the next visual line
+	  var nextCh = dir > 0 ? wrappedLineExtent.end : mv(wrappedLineExtent.begin, -1)
+	  if (nextCh != null && !(dir > 0 && nextCh == line.text.length)) {
+	    res = searchInVisualLine(dir > 0 ? 0 : bidi.length - 1, dir, getWrappedLineExtent(nextCh))
+	    if (res) { return res }
+	  }
+
+	  // Case 4: Nowhere to move
+	  return null
+	}
+
 	// Commands are parameter-less actions that can be performed on an
 	// editor, mostly used for keybindings.
 	var commands = {
@@ -7534,7 +7663,7 @@ var CodeMirror =
 	        anchor = maxPos(oldRange.to(), range.head)
 	      }
 	      var ranges$1 = startSel.ranges.slice(0)
-	      ranges$1[ourIndex] = new Range(clipPos(doc, anchor), head)
+	      ranges$1[ourIndex] = bidiSimplify(cm, new Range(clipPos(doc, anchor), head))
 	      setSelection(doc, normalizeSelection(ranges$1, ourIndex), sel_mouse)
 	    }
 	  }
@@ -7586,13 +7715,52 @@ var CodeMirror =
 	  on(document, "mouseup", up)
 	}
 
+	// Used when mouse-selecting to adjust the anchor to the proper side
+	// of a bidi jump depending on the visual position of the head.
+	function bidiSimplify(cm, range) {
+	  var anchor = range.anchor;
+	  var head = range.head;
+	  var anchorLine = getLine(cm.doc, anchor.line)
+	  if (cmp(anchor, head) == 0 && anchor.sticky == head.sticky) { return range }
+	  var order = getOrder(anchorLine)
+	  if (!order) { return range }
+	  var index = getBidiPartAt(order, anchor.ch, anchor.sticky), part = order[index]
+	  if (part.from != anchor.ch && part.to != anchor.ch) { return range }
+	  var boundary = index + ((part.from == anchor.ch) == (part.level != 1) ? 0 : 1)
+	  if (boundary == 0 || boundary == order.length) { return range }
+
+	  // Compute the relative visual position of the head compared to the
+	  // anchor (<0 is to the left, >0 to the right)
+	  var leftSide
+	  if (head.line != anchor.line) {
+	    leftSide = (head.line - anchor.line) * (cm.doc.direction == "ltr" ? 1 : -1) > 0
+	  } else {
+	    var headIndex = getBidiPartAt(order, head.ch, head.sticky)
+	    var dir = headIndex - index || (head.ch - anchor.ch) * (part.level == 1 ? -1 : 1)
+	    if (headIndex == boundary - 1 || headIndex == boundary)
+	      { leftSide = dir < 0 }
+	    else
+	      { leftSide = dir > 0 }
+	  }
+
+	  var usePart = order[boundary + (leftSide ? -1 : 0)]
+	  var from = leftSide == (usePart.level == 1)
+	  var ch = from ? usePart.from : usePart.to, sticky = from ? "after" : "before"
+	  return anchor.ch == ch && anchor.sticky == sticky ? range : new Range(new Pos(anchor.line, ch, sticky), head)
+	}
+
 
 	// Determines whether an event happened in the gutter, and fires the
 	// handlers for the corresponding event.
 	function gutterEvent(cm, e, type, prevent) {
 	  var mX, mY
-	  try { mX = e.clientX; mY = e.clientY }
-	  catch(e) { return false }
+	  if (e.touches) {
+	    mX = e.touches[0].clientX
+	    mY = e.touches[0].clientY
+	  } else {
+	    try { mX = e.clientX; mY = e.clientY }
+	    catch(e) { return false }
+	  }
 	  if (mX >= Math.floor(cm.display.gutters.getBoundingClientRect().right)) { return false }
 	  if (prevent) { e_preventDefault(e) }
 
@@ -7930,7 +8098,7 @@ var CodeMirror =
 	    return dx * dx + dy * dy > 20 * 20
 	  }
 	  on(d.scroller, "touchstart", function (e) {
-	    if (!signalDOMEvent(cm, e) && !isMouseLikeTouchEvent(e)) {
+	    if (!signalDOMEvent(cm, e) && !isMouseLikeTouchEvent(e) && !clickInGutter(cm, e)) {
 	      d.input.ensurePolled()
 	      clearTimeout(touchFinished)
 	      var now = +new Date
@@ -9714,7 +9882,7 @@ var CodeMirror =
 
 	addLegacyProps(CodeMirror)
 
-	CodeMirror.version = "5.29.0"
+	CodeMirror.version = "5.31.0"
 
 	return CodeMirror;
 
@@ -10153,6 +10321,7 @@ var CodeMirror =
 	    var state = getSearchState(cm);
 	    if (state.query) return findNext(cm, rev);
 	    var q = cm.getSelection() || state.lastQuery;
+	    if (q instanceof RegExp && q.source == "x^") q = null
 	    if (persistent && cm.openDialog) {
 	      var hiding = null
 	      var searchNext = function(query, event) {
@@ -10462,6 +10631,7 @@ var CodeMirror =
 	      cm.state.closeBrackets = null;
 	    }
 	    if (val) {
+	      ensureBound(getOption(val, "pairs"))
 	      cm.state.closeBrackets = val;
 	      cm.addKeyMap(keyMap);
 	    }
@@ -10473,10 +10643,14 @@ var CodeMirror =
 	    return defaults[name];
 	  }
 
-	  var bind = defaults.pairs + "`";
 	  var keyMap = {Backspace: handleBackspace, Enter: handleEnter};
-	  for (var i = 0; i < bind.length; i++)
-	    keyMap["'" + bind.charAt(i) + "'"] = handler(bind.charAt(i));
+	  function ensureBound(chars) {
+	    for (var i = 0; i < chars.length; i++) {
+	      var ch = chars.charAt(i), key = "'" + ch + "'"
+	      if (!keyMap[key]) keyMap[key] = handler(ch)
+	    }
+	  }
+	  ensureBound(defaults.pairs + "`")
 
 	  function handler(ch) {
 	    return function(cm) { return handleChar(cm, ch); };
@@ -10518,7 +10692,8 @@ var CodeMirror =
 	      if (!around || explode.indexOf(around) % 2 != 0) return CodeMirror.Pass;
 	    }
 	    cm.operation(function() {
-	      cm.replaceSelection("\n\n", null);
+	      var linesep = cm.lineSeparator() || "\n";
+	      cm.replaceSelection(linesep + linesep, null);
 	      cm.execCommand("goCharLeft");
 	      ranges = cm.listSelections();
 	      for (var i = 0; i < ranges.length; i++) {
@@ -10889,13 +11064,13 @@ var CodeMirror =
 
 	  var keywords = function(){
 	    function kw(type) {return {type: type, style: "keyword"};}
-	    var A = kw("keyword a"), B = kw("keyword b"), C = kw("keyword c");
+	    var A = kw("keyword a"), B = kw("keyword b"), C = kw("keyword c"), D = kw("keyword d");
 	    var operator = kw("operator"), atom = {type: "atom", style: "atom"};
 
 	    var jsKeywords = {
 	      "if": kw("if"), "while": A, "with": A, "else": B, "do": B, "try": B, "finally": B,
-	      "return": C, "break": C, "continue": C, "new": kw("new"), "delete": C, "throw": C, "debugger": C,
-	      "var": kw("var"), "const": kw("var"), "let": kw("var"),
+	      "return": D, "break": D, "continue": D, "new": kw("new"), "delete": C, "void": C, "throw": C,
+	      "debugger": kw("debugger"), "var": kw("var"), "const": kw("var"), "let": kw("var"),
 	      "function": kw("function"), "catch": kw("catch"),
 	      "for": kw("for"), "switch": kw("switch"), "case": kw("case"), "default": kw("default"),
 	      "in": operator, "typeof": operator, "instanceof": operator,
@@ -10994,7 +11169,7 @@ var CodeMirror =
 	        stream.match(/^\b(([gimyu])(?![gimyu]*\2))+\b/);
 	        return ret("regexp", "string-2");
 	      } else {
-	        stream.eatWhile(isOperatorChar);
+	        stream.eat("=");
 	        return ret("operator", "operator", stream.current());
 	      }
 	    } else if (ch == "`") {
@@ -11004,8 +11179,14 @@ var CodeMirror =
 	      stream.skipToEnd();
 	      return ret("error", "error");
 	    } else if (isOperatorChar.test(ch)) {
-	      if (ch != ">" || !state.lexical || state.lexical.type != ">")
-	        stream.eatWhile(isOperatorChar);
+	      if (ch != ">" || !state.lexical || state.lexical.type != ">") {
+	        if (stream.eat("=")) {
+	          if (ch == "!" || ch == "=") stream.eat("=")
+	        } else if (/[<>*+\-]/.test(ch)) {
+	          stream.eat(ch)
+	          if (ch == ">") stream.eat(ch)
+	        }
+	      }
 	      return ret("operator", "operator", stream.current());
 	    } else if (wordRE.test(ch)) {
 	      stream.eatWhile(wordRE);
@@ -11217,6 +11398,8 @@ var CodeMirror =
 	    if (type == "var") return cont(pushlex("vardef", value.length), vardef, expect(";"), poplex);
 	    if (type == "keyword a") return cont(pushlex("form"), parenExpr, statement, poplex);
 	    if (type == "keyword b") return cont(pushlex("form"), statement, poplex);
+	    if (type == "keyword d") return cx.stream.match(/^\s*$/, false) ? cont() : cont(pushlex("stat"), maybeexpression, expect(";"), poplex);
+	    if (type == "debugger") return cont(expect(";"));
 	    if (type == "{") return cont(pushlex("}"), block, poplex);
 	    if (type == ";") return cont();
 	    if (type == "if") {
@@ -11264,7 +11447,7 @@ var CodeMirror =
 	  function expressionInner(type, noComma) {
 	    if (cx.state.fatArrowAt == cx.stream.start) {
 	      var body = noComma ? arrowBodyNoComma : arrowBody;
-	      if (type == "(") return cont(pushcontext, pushlex(")"), commasep(pattern, ")"), poplex, expect("=>"), body, popcontext);
+	      if (type == "(") return cont(pushcontext, pushlex(")"), commasep(funarg, ")"), poplex, expect("=>"), body, popcontext);
 	      else if (type == "variable") return pass(pushcontext, pattern, expect("=>"), body, popcontext);
 	    }
 
@@ -11272,7 +11455,7 @@ var CodeMirror =
 	    if (atomicTypes.hasOwnProperty(type)) return cont(maybeop);
 	    if (type == "function") return cont(functiondef, maybeop);
 	    if (type == "class") return cont(pushlex("form"), classExpression, poplex);
-	    if (type == "keyword c" || type == "async") return cont(noComma ? maybeexpressionNoComma : maybeexpression);
+	    if (type == "keyword c" || type == "async") return cont(noComma ? expressionNoComma : expression);
 	    if (type == "(") return cont(pushlex(")"), maybeexpression, expect(")"), poplex, maybeop);
 	    if (type == "operator" || type == "spread") return cont(noComma ? expressionNoComma : expression);
 	    if (type == "[") return cont(pushlex("]"), arrayLiteral, poplex, maybeop);
@@ -11284,10 +11467,6 @@ var CodeMirror =
 	  function maybeexpression(type) {
 	    if (type.match(/[;\}\)\],]/)) return pass();
 	    return pass(expression);
-	  }
-	  function maybeexpressionNoComma(type) {
-	    if (type.match(/[;\}\)\],]/)) return pass();
-	    return pass(expressionNoComma);
 	  }
 
 	  function maybeoperatorComma(type, value) {
@@ -11309,6 +11488,11 @@ var CodeMirror =
 	    if (type == ".") return cont(property, me);
 	    if (type == "[") return cont(pushlex("]"), maybeexpression, expect("]"), poplex, me);
 	    if (isTS && value == "as") { cx.marked = "keyword"; return cont(typeexpr, me) }
+	    if (type == "regexp") {
+	      cx.state.lastType = cx.marked = "operator"
+	      cx.stream.backUp(cx.stream.pos - cx.stream.start - 1)
+	      return cont(expr)
+	    }
 	  }
 	  function quasi(type, value) {
 	    if (type != "quasi") return pass();
@@ -11357,6 +11541,9 @@ var CodeMirror =
 	    } else if (type == "variable" || cx.style == "keyword") {
 	      cx.marked = "property";
 	      if (value == "get" || value == "set") return cont(getterSetter);
+	      var m // Work around fat-arrow-detection complication for detecting typescript typed arrow params
+	      if (isTS && cx.state.fatArrowAt == cx.stream.start && (m = cx.stream.match(/^\s*:\s*/, false)))
+	        cx.state.fatArrowAt = cx.stream.pos + m[0].length
 	      return cont(afterprop);
 	    } else if (type == "number" || type == "string") {
 	      cx.marked = jsonldMode ? "property" : (cx.style + " property");
@@ -11368,7 +11555,10 @@ var CodeMirror =
 	    } else if (type == "[") {
 	      return cont(expression, expect("]"), afterprop);
 	    } else if (type == "spread") {
-	      return cont(expression, afterprop);
+	      return cont(expressionNoComma, afterprop);
+	    } else if (value == "*") {
+	      cx.marked = "keyword";
+	      return cont(objprop);
 	    } else if (type == ":") {
 	      return pass(afterprop)
 	    }
@@ -11416,7 +11606,7 @@ var CodeMirror =
 	    }
 	  }
 	  function typeexpr(type, value) {
-	    if (type == "variable") {
+	    if (type == "variable" || value == "void") {
 	      if (value == "keyof") {
 	        cx.marked = "keyword"
 	        return cont(typeexpr)
@@ -11514,7 +11704,8 @@ var CodeMirror =
 	    if (type == "(") return cont(pushcontext, pushlex(")"), commasep(funarg, ")"), poplex, maybetype, statement, popcontext);
 	    if (isTS && value == "<") return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, functiondef)
 	  }
-	  function funarg(type) {
+	  function funarg(type, value) {
+	    if (value == "@") cont(expression, funarg)
 	    if (type == "spread" || type == "modifier") return cont(funarg);
 	    return pass(pattern, maybetype, maybeAssign);
 	  }
@@ -11540,7 +11731,7 @@ var CodeMirror =
 	      cx.marked = "keyword";
 	      return cont(classBody);
 	    }
-	    if (type == "variable") {
+	    if (type == "variable" || cx.style == "keyword") {
 	      cx.marked = "property";
 	      return cont(isTS ? classfield : functiondef, classBody);
 	    }
@@ -11602,7 +11793,7 @@ var CodeMirror =
 
 	  function expressionAllowed(stream, state, backUp) {
 	    return state.tokenize == tokenBase &&
-	      /^(?:operator|sof|keyword c|case|new|export|default|[\[{}\(,;:]|=>)$/.test(state.lastType) ||
+	      /^(?:operator|sof|keyword [bcd]|case|new|export|default|spread|[\[{}\(,;:]|=>)$/.test(state.lastType) ||
 	      (state.lastType == "quasi" && /\{\s*$/.test(stream.string.slice(0, stream.pos - (backUp || 0))))
 	  }
 
@@ -11671,6 +11862,7 @@ var CodeMirror =
 	    electricInput: /^\s*(?:case .*?:|default:|\{|\})$/,
 	    blockCommentStart: jsonMode ? null : "/*",
 	    blockCommentEnd: jsonMode ? null : "*/",
+	    blockCommentContinue: jsonMode ? null : " * ",
 	    lineComment: jsonMode ? null : "//",
 	    fold: "brace",
 	    closeBrackets: "()[]{}''\"\"``",
@@ -12520,6 +12712,7 @@ var CodeMirror =
 	    electricChars: "}",
 	    blockCommentStart: "/*",
 	    blockCommentEnd: "*/",
+	    blockCommentContinue: " * ",
 	    lineComment: lineComment,
 	    fold: "brace"
 	  };
@@ -14079,6 +14272,7 @@ var CodeMirror =
 	    electricInput: indentSwitch ? /^\s*(?:case .*?:|default:|\{\}?|\})$/ : /^\s*[{}]$/,
 	    blockCommentStart: "/*",
 	    blockCommentEnd: "*/",
+	    blockCommentContinue: " * ",
 	    lineComment: "//",
 	    fold: "brace"
 	  };
@@ -14426,7 +14620,7 @@ var CodeMirror =
 	    multiLineStrings: true,
 	    number: /^(?:0x[a-f\d_]+|0b[01_]+|(?:[\d_]+\.?\d*|\.\d+)(?:e[-+]?[\d_]+)?)(u|ll?|l|f)?/i,
 	    blockKeywords: words("catch class do else finally for if where try while enum"),
-	    defKeywords: words("class val var object package interface fun"),
+	    defKeywords: words("class val var object interface fun"),
 	    atoms: words("true false null this"),
 	    hooks: {
 	      '"': function(stream, state) {
@@ -15627,18 +15821,65 @@ var CodeMirror =
 	    }
 
 	    function detachVimMap(cm, next) {
-	      if (this == CodeMirror.keyMap.vim)
+	      if (this == CodeMirror.keyMap.vim) {
 	        CodeMirror.rmClass(cm.getWrapperElement(), "cm-fat-cursor");
+	        if (cm.getOption("inputStyle") == "contenteditable" && document.body.style.caretColor != null) {
+	          disableFatCursorMark(cm);
+	          cm.getInputField().style.caretColor = "";
+	        }
+	      }
 
 	      if (!next || next.attach != attachVimMap)
 	        leaveVimMode(cm);
 	    }
 	    function attachVimMap(cm, prev) {
-	      if (this == CodeMirror.keyMap.vim)
+	      if (this == CodeMirror.keyMap.vim) {
 	        CodeMirror.addClass(cm.getWrapperElement(), "cm-fat-cursor");
+	        if (cm.getOption("inputStyle") == "contenteditable" && document.body.style.caretColor != null) {
+	          enableFatCursorMark(cm);
+	          cm.getInputField().style.caretColor = "transparent";
+	        }
+	      }
 
 	      if (!prev || prev.attach != attachVimMap)
 	        enterVimMode(cm);
+	    }
+
+	    function fatCursorMarks(cm) {
+	      var ranges = cm.listSelections(), result = []
+	      for (var i = 0; i < ranges.length; i++) {
+	        var range = ranges[i]
+	        if (range.empty()) {
+	          if (range.anchor.ch < cm.getLine(range.anchor.line).length) {
+	            result.push(cm.markText(range.anchor, Pos(range.anchor.line, range.anchor.ch + 1),
+	                                    {className: "cm-fat-cursor-mark"}))
+	          } else {
+	            var widget = document.createElement("span")
+	            widget.textContent = "\u00a0"
+	            widget.className = "cm-fat-cursor-mark"
+	            result.push(cm.setBookmark(range.anchor, {widget: widget}))
+	          }
+	        }
+	      }
+	      return result
+	    }
+
+	    function updateFatCursorMark(cm) {
+	      var marks = cm.state.fatCursorMarks
+	      if (marks) for (var i = 0; i < marks.length; i++) marks[i].clear()
+	      cm.state.fatCursorMarks = fatCursorMarks(cm)
+	    }
+
+	    function enableFatCursorMark(cm) {
+	      cm.state.fatCursorMarks = fatCursorMarks(cm)
+	      cm.on("cursorActivity", updateFatCursorMark)
+	    }
+
+	    function disableFatCursorMark(cm) {
+	      var marks = cm.state.fatCursorMarks
+	      if (marks) for (var i = 0; i < marks.length; i++) marks[i].clear()
+	      cm.state.fatCursorMarks = null
+	      cm.off("cursorActivity", updateFatCursorMark)
 	    }
 
 	    // Deprecated, simply setting the keymap works again.
@@ -17406,7 +17647,8 @@ var CodeMirror =
 	        vimGlobalState.registerController.pushText(
 	            args.registerName, 'delete', text,
 	            args.linewise, vim.visualBlock);
-	        return clipCursorToContent(cm, finalHead);
+	        var includeLineBreak = vim.insertMode
+	        return clipCursorToContent(cm, finalHead, includeLineBreak);
 	      },
 	      indent: function(cm, args, ranges) {
 	        var vim = cm.state.vim;
@@ -18616,7 +18858,7 @@ var CodeMirror =
 	      return cur;
 	    }
 
-	    /**
+	    /*
 	     * Returns the boundaries of the next word. If the cursor in the middle of
 	     * the word, then returns the boundaries of the current word, starting at
 	     * the cursor. If the cursor is at the start/end of a word, and we are going
@@ -19350,6 +19592,15 @@ var CodeMirror =
 	        var history = cm.doc.history.done;
 	        var event = history[history.length - 2];
 	        return event && event.ranges && event.ranges[0].head;
+	      } else if (markName == '.') {
+	        if (cm.doc.history.lastModTime == 0) {
+	          return  // If no changes, bail out; don't bother to copy or reverse history array.
+	        } else {
+	          var changeHistory = cm.doc.history.done.filter(function(el){ if (el.changes !== undefined) { return el } });
+	          changeHistory.reverse();
+	          var lastEditPos = changeHistory[0].changes[0].to;
+	        }
+	        return lastEditPos;
 	      }
 
 	      var mark = vim.marks[markName];
@@ -20160,7 +20411,8 @@ var CodeMirror =
 	      // so as to update the ". register as expected in real vim.
 	      var text = [];
 	      if (!isPlaying) {
-	        var selLength = lastChange.inVisualBlock ? vim.lastSelection.visualBlock.height : 1;
+	        var selLength = lastChange.inVisualBlock && vim.lastSelection ?
+	            vim.lastSelection.visualBlock.height : 1;
 	        var changes = lastChange.changes;
 	        var text = [];
 	        var i = 0;
@@ -20546,11 +20798,8 @@ var CodeMirror =
 	})(function(CodeMirror) {
 	  "use strict";
 
-	  var map = CodeMirror.keyMap.sublime = {fallthrough: "default"};
 	  var cmds = CodeMirror.commands;
 	  var Pos = CodeMirror.Pos;
-	  var mac = CodeMirror.keyMap["default"] == CodeMirror.keyMap.macDefault;
-	  var ctrl = mac ? "Cmd-" : "Ctrl-";
 
 	  // This is not exactly Sublime's algorithm. I couldn't make heads or tails of that.
 	  function findPosSubword(doc, start, dir) {
@@ -20584,16 +20833,10 @@ var CodeMirror =
 	    });
 	  }
 
-	  var goSubwordCombo = mac ? "Ctrl-" : "Alt-";
+	  cmds.goSubwordLeft = function(cm) { moveSubword(cm, -1); };
+	  cmds.goSubwordRight = function(cm) { moveSubword(cm, 1); };
 
-	  cmds[map[goSubwordCombo + "Left"] = "goSubwordLeft"] = function(cm) { moveSubword(cm, -1); };
-	  cmds[map[goSubwordCombo + "Right"] = "goSubwordRight"] = function(cm) { moveSubword(cm, 1); };
-
-	  if (mac) map["Cmd-Left"] = "goLineStartSmart";
-
-	  var scrollLineCombo = mac ? "Ctrl-Alt-" : "Ctrl-";
-
-	  cmds[map[scrollLineCombo + "Up"] = "scrollLineUp"] = function(cm) {
+	  cmds.scrollLineUp = function(cm) {
 	    var info = cm.getScrollInfo();
 	    if (!cm.somethingSelected()) {
 	      var visibleBottomLine = cm.lineAtHeight(info.top + info.clientHeight, "local");
@@ -20602,7 +20845,7 @@ var CodeMirror =
 	    }
 	    cm.scrollTo(null, info.top - cm.defaultTextHeight());
 	  };
-	  cmds[map[scrollLineCombo + "Down"] = "scrollLineDown"] = function(cm) {
+	  cmds.scrollLineDown = function(cm) {
 	    var info = cm.getScrollInfo();
 	    if (!cm.somethingSelected()) {
 	      var visibleTopLine = cm.lineAtHeight(info.top, "local")+1;
@@ -20612,7 +20855,7 @@ var CodeMirror =
 	    cm.scrollTo(null, info.top + cm.defaultTextHeight());
 	  };
 
-	  cmds[map["Shift-" + ctrl + "L"] = "splitSelectionByLine"] = function(cm) {
+	  cmds.splitSelectionByLine = function(cm) {
 	    var ranges = cm.listSelections(), lineRanges = [];
 	    for (var i = 0; i < ranges.length; i++) {
 	      var from = ranges[i].from(), to = ranges[i].to();
@@ -20624,14 +20867,12 @@ var CodeMirror =
 	    cm.setSelections(lineRanges, 0);
 	  };
 
-	  map["Shift-Tab"] = "indentLess";
-
-	  cmds[map["Esc"] = "singleSelectionTop"] = function(cm) {
+	  cmds.singleSelectionTop = function(cm) {
 	    var range = cm.listSelections()[0];
 	    cm.setSelection(range.anchor, range.head, {scroll: false});
 	  };
 
-	  cmds[map[ctrl + "L"] = "selectLine"] = function(cm) {
+	  cmds.selectLine = function(cm) {
 	    var ranges = cm.listSelections(), extended = [];
 	    for (var i = 0; i < ranges.length; i++) {
 	      var range = ranges[i];
@@ -20640,8 +20881,6 @@ var CodeMirror =
 	    }
 	    cm.setSelections(extended);
 	  };
-
-	  map["Shift-Ctrl-K"] = "deleteLine";
 
 	  function insertLine(cm, above) {
 	    if (cm.isReadOnly()) return CodeMirror.Pass
@@ -20661,9 +20900,9 @@ var CodeMirror =
 	    cm.execCommand("indentAuto");
 	  }
 
-	  cmds[map[ctrl + "Enter"] = "insertLineAfter"] = function(cm) { return insertLine(cm, false); };
+	  cmds.insertLineAfter = function(cm) { return insertLine(cm, false); };
 
-	  cmds[map["Shift-" + ctrl + "Enter"] = "insertLineBefore"] = function(cm) { return insertLine(cm, true); };
+	  cmds.insertLineBefore = function(cm) { return insertLine(cm, true); };
 
 	  function wordAt(cm, pos) {
 	    var start = pos.ch, end = start, line = cm.getLine(pos.line);
@@ -20672,7 +20911,7 @@ var CodeMirror =
 	    return {from: Pos(pos.line, start), to: Pos(pos.line, end), word: line.slice(start, end)};
 	  }
 
-	  cmds[map[ctrl + "D"] = "selectNextOccurrence"] = function(cm) {
+	  cmds.selectNextOccurrence = function(cm) {
 	    var from = cm.getCursor("from"), to = cm.getCursor("to");
 	    var fullWord = cm.state.sublimeFindFullWord == cm.doc.sel;
 	    if (CodeMirror.cmpPos(from, to) == 0) {
@@ -20709,10 +20948,8 @@ var CodeMirror =
 	    }
 	    cm.setSelections(newRanges);
 	  }
-
-	  var addCursorToLineCombo = mac ? "Shift-Cmd" : 'Alt-Ctrl';
-	  cmds[map[addCursorToLineCombo + "Up"] = "addCursorToPrevLine"] = function(cm) { addCursorToSelection(cm, -1); };
-	  cmds[map[addCursorToLineCombo + "Down"] = "addCursorToNextLine"] = function(cm) { addCursorToSelection(cm, 1); };
+	  cmds.addCursorToPrevLine = function(cm) { addCursorToSelection(cm, -1); };
+	  cmds.addCursorToNextLine = function(cm) { addCursorToSelection(cm, 1); };
 
 	  function isSelectedRange(ranges, from, to) {
 	    for (var i = 0; i < ranges.length; i++)
@@ -20741,14 +20978,14 @@ var CodeMirror =
 	    return true;
 	  }
 
-	  cmds[map["Shift-" + ctrl + "Space"] = "selectScope"] = function(cm) {
+	  cmds.selectScope = function(cm) {
 	    selectBetweenBrackets(cm) || cm.execCommand("selectAll");
 	  };
-	  cmds[map["Shift-" + ctrl + "M"] = "selectBetweenBrackets"] = function(cm) {
+	  cmds.selectBetweenBrackets = function(cm) {
 	    if (!selectBetweenBrackets(cm)) return CodeMirror.Pass;
 	  };
 
-	  cmds[map[ctrl + "M"] = "goToBracket"] = function(cm) {
+	  cmds.goToBracket = function(cm) {
 	    cm.extendSelectionsBy(function(range) {
 	      var next = cm.scanForBracket(range.head, 1);
 	      if (next && CodeMirror.cmpPos(next.pos, range.head) != 0) return next.pos;
@@ -20757,9 +20994,7 @@ var CodeMirror =
 	    });
 	  };
 
-	  var swapLineCombo = mac ? "Cmd-Ctrl-" : "Shift-Ctrl-";
-
-	  cmds[map[swapLineCombo + "Up"] = "swapLineUp"] = function(cm) {
+	  cmds.swapLineUp = function(cm) {
 	    if (cm.isReadOnly()) return CodeMirror.Pass
 	    var ranges = cm.listSelections(), linesToMove = [], at = cm.firstLine() - 1, newSels = [];
 	    for (var i = 0; i < ranges.length; i++) {
@@ -20786,7 +21021,7 @@ var CodeMirror =
 	    });
 	  };
 
-	  cmds[map[swapLineCombo + "Down"] = "swapLineDown"] = function(cm) {
+	  cmds.swapLineDown = function(cm) {
 	    if (cm.isReadOnly()) return CodeMirror.Pass
 	    var ranges = cm.listSelections(), linesToMove = [], at = cm.lastLine() + 1;
 	    for (var i = ranges.length - 1; i >= 0; i--) {
@@ -20810,11 +21045,11 @@ var CodeMirror =
 	    });
 	  };
 
-	  cmds[map[ctrl + "/"] = "toggleCommentIndented"] = function(cm) {
+	  cmds.toggleCommentIndented = function(cm) {
 	    cm.toggleComment({ indent: true });
 	  }
 
-	  cmds[map[ctrl + "J"] = "joinLines"] = function(cm) {
+	  cmds.joinLines = function(cm) {
 	    var ranges = cm.listSelections(), joined = [];
 	    for (var i = 0; i < ranges.length; i++) {
 	      var range = ranges[i], from = range.from();
@@ -20842,7 +21077,7 @@ var CodeMirror =
 	    });
 	  };
 
-	  cmds[map["Shift-" + ctrl + "D"] = "duplicateLine"] = function(cm) {
+	  cmds.duplicateLine = function(cm) {
 	    cm.operation(function() {
 	      var rangeCount = cm.listSelections().length;
 	      for (var i = 0; i < rangeCount; i++) {
@@ -20856,7 +21091,6 @@ var CodeMirror =
 	    });
 	  };
 
-	  if (!mac) map[ctrl + "T"] = "transposeChars";
 
 	  function sortLines(cm, caseSensitive) {
 	    if (cm.isReadOnly()) return CodeMirror.Pass
@@ -20894,10 +21128,10 @@ var CodeMirror =
 	    });
 	  }
 
-	  cmds[map["F9"] = "sortLines"] = function(cm) { sortLines(cm, true); };
-	  cmds[map[ctrl + "F9"] = "sortLinesInsensitive"] = function(cm) { sortLines(cm, false); };
+	  cmds.sortLines = function(cm) { sortLines(cm, true); };
+	  cmds.sortLinesInsensitive = function(cm) { sortLines(cm, false); };
 
-	  cmds[map["F2"] = "nextBookmark"] = function(cm) {
+	  cmds.nextBookmark = function(cm) {
 	    var marks = cm.state.sublimeBookmarks;
 	    if (marks) while (marks.length) {
 	      var current = marks.shift();
@@ -20909,7 +21143,7 @@ var CodeMirror =
 	    }
 	  };
 
-	  cmds[map["Shift-F2"] = "prevBookmark"] = function(cm) {
+	  cmds.prevBookmark = function(cm) {
 	    var marks = cm.state.sublimeBookmarks;
 	    if (marks) while (marks.length) {
 	      marks.unshift(marks.pop());
@@ -20921,7 +21155,7 @@ var CodeMirror =
 	    }
 	  };
 
-	  cmds[map[ctrl + "F2"] = "toggleBookmark"] = function(cm) {
+	  cmds.toggleBookmark = function(cm) {
 	    var ranges = cm.listSelections();
 	    var marks = cm.state.sublimeBookmarks || (cm.state.sublimeBookmarks = []);
 	    for (var i = 0; i < ranges.length; i++) {
@@ -20941,13 +21175,13 @@ var CodeMirror =
 	    }
 	  };
 
-	  cmds[map["Shift-" + ctrl + "F2"] = "clearBookmarks"] = function(cm) {
+	  cmds.clearBookmarks = function(cm) {
 	    var marks = cm.state.sublimeBookmarks;
 	    if (marks) for (var i = 0; i < marks.length; i++) marks[i].clear();
 	    marks.length = 0;
 	  };
 
-	  cmds[map["Alt-F2"] = "selectBookmarks"] = function(cm) {
+	  cmds.selectBookmarks = function(cm) {
 	    var marks = cm.state.sublimeBookmarks, ranges = [];
 	    if (marks) for (var i = 0; i < marks.length; i++) {
 	      var found = marks[i].find();
@@ -20959,10 +21193,6 @@ var CodeMirror =
 	    if (ranges.length)
 	      cm.setSelections(ranges, 0);
 	  };
-
-	  map["Alt-Q"] = "wrapLines";
-
-	  var cK = ctrl + "K ";
 
 	  function modifyWordOrSelection(cm, mod) {
 	    cm.operation(function() {
@@ -20983,9 +21213,7 @@ var CodeMirror =
 	    });
 	  }
 
-	  map[cK + ctrl + "Backspace"] = "delLineLeft";
-
-	  cmds[map["Backspace"] = "smartBackspace"] = function(cm) {
+	  cmds.smartBackspace = function(cm) {
 	    if (cm.somethingSelected()) return CodeMirror.Pass;
 
 	    cm.operation(function() {
@@ -21013,7 +21241,7 @@ var CodeMirror =
 	    });
 	  };
 
-	  cmds[map[cK + ctrl + "K"] = "delLineRight"] = function(cm) {
+	  cmds.delLineRight = function(cm) {
 	    cm.operation(function() {
 	      var ranges = cm.listSelections();
 	      for (var i = ranges.length - 1; i >= 0; i--)
@@ -21022,22 +21250,22 @@ var CodeMirror =
 	    });
 	  };
 
-	  cmds[map[cK + ctrl + "U"] = "upcaseAtCursor"] = function(cm) {
+	  cmds.upcaseAtCursor = function(cm) {
 	    modifyWordOrSelection(cm, function(str) { return str.toUpperCase(); });
 	  };
-	  cmds[map[cK + ctrl + "L"] = "downcaseAtCursor"] = function(cm) {
+	  cmds.downcaseAtCursor = function(cm) {
 	    modifyWordOrSelection(cm, function(str) { return str.toLowerCase(); });
 	  };
 
-	  cmds[map[cK + ctrl + "Space"] = "setSublimeMark"] = function(cm) {
+	  cmds.setSublimeMark = function(cm) {
 	    if (cm.state.sublimeMark) cm.state.sublimeMark.clear();
 	    cm.state.sublimeMark = cm.setBookmark(cm.getCursor());
 	  };
-	  cmds[map[cK + ctrl + "A"] = "selectToSublimeMark"] = function(cm) {
+	  cmds.selectToSublimeMark = function(cm) {
 	    var found = cm.state.sublimeMark && cm.state.sublimeMark.find();
 	    if (found) cm.setSelection(cm.getCursor(), found);
 	  };
-	  cmds[map[cK + ctrl + "W"] = "deleteToSublimeMark"] = function(cm) {
+	  cmds.deleteToSublimeMark = function(cm) {
 	    var found = cm.state.sublimeMark && cm.state.sublimeMark.find();
 	    if (found) {
 	      var from = cm.getCursor(), to = found;
@@ -21046,7 +21274,7 @@ var CodeMirror =
 	      cm.replaceRange("", from, to);
 	    }
 	  };
-	  cmds[map[cK + ctrl + "X"] = "swapWithSublimeMark"] = function(cm) {
+	  cmds.swapWithSublimeMark = function(cm) {
 	    var found = cm.state.sublimeMark && cm.state.sublimeMark.find();
 	    if (found) {
 	      cm.state.sublimeMark.clear();
@@ -21054,19 +21282,17 @@ var CodeMirror =
 	      cm.setCursor(found);
 	    }
 	  };
-	  cmds[map[cK + ctrl + "Y"] = "sublimeYank"] = function(cm) {
+	  cmds.sublimeYank = function(cm) {
 	    if (cm.state.sublimeKilled != null)
 	      cm.replaceSelection(cm.state.sublimeKilled, null, "paste");
 	  };
 
-	  map[cK + ctrl + "G"] = "clearBookmarks";
-	  cmds[map[cK + ctrl + "C"] = "showInCenter"] = function(cm) {
+	  cmds.showInCenter = function(cm) {
 	    var pos = cm.cursorCoords(null, "local");
 	    cm.scrollTo(null, (pos.top + pos.bottom) / 2 - cm.getScrollInfo().clientHeight / 2);
 	  };
 
-	  var selectLinesCombo = mac ? "Ctrl-Shift-" : "Ctrl-Alt-";
-	  cmds[map[selectLinesCombo + "Up"] = "selectLinesUpward"] = function(cm) {
+	  cmds.selectLinesUpward = function(cm) {
 	    cm.operation(function() {
 	      var ranges = cm.listSelections();
 	      for (var i = 0; i < ranges.length; i++) {
@@ -21076,7 +21302,7 @@ var CodeMirror =
 	      }
 	    });
 	  };
-	  cmds[map[selectLinesCombo + "Down"] = "selectLinesDownward"] = function(cm) {
+	  cmds.selectLinesDownward = function(cm) {
 	    cm.operation(function() {
 	      var ranges = cm.listSelections();
 	      for (var i = 0; i < ranges.length; i++) {
@@ -21115,9 +21341,9 @@ var CodeMirror =
 	        cm.setSelection(target.from, target.to);
 	    }
 	  };
-	  cmds[map[ctrl + "F3"] = "findUnder"] = function(cm) { findAndGoTo(cm, true); };
-	  cmds[map["Shift-" + ctrl + "F3"] = "findUnderPrevious"] = function(cm) { findAndGoTo(cm,false); };
-	  cmds[map["Alt-F3"] = "findAllUnder"] = function(cm) {
+	  cmds.findUnder = function(cm) { findAndGoTo(cm, true); };
+	  cmds.findUnderPrevious = function(cm) { findAndGoTo(cm,false); };
+	  cmds.findAllUnder = function(cm) {
 	    var target = getTarget(cm);
 	    if (!target) return;
 	    var cur = cm.getSearchCursor(target.query);
@@ -21131,17 +21357,134 @@ var CodeMirror =
 	    cm.setSelections(matches, primaryIndex);
 	  };
 
-	  map["Shift-" + ctrl + "["] = "fold";
-	  map["Shift-" + ctrl + "]"] = "unfold";
-	  map[cK + ctrl + "0"] = map[cK + ctrl + "J"] = "unfoldAll";
 
-	  map[ctrl + "I"] = "findIncremental";
-	  map["Shift-" + ctrl + "I"] = "findIncrementalReverse";
-	  map[ctrl + "H"] = "replace";
-	  map["F3"] = "findNext";
-	  map["Shift-F3"] = "findPrev";
+	  var keyMap = CodeMirror.keyMap;
+	  keyMap.macSublime = {
+	    "Cmd-Left": "goLineStartSmart",
+	    "Shift-Tab": "indentLess",
+	    "Shift-Ctrl-K": "deleteLine",
+	    "Alt-Q": "wrapLines",
+	    "Ctrl-Left": "goSubwordLeft",
+	    "Ctrl-Right": "goSubwordRight",
+	    "Ctrl-Alt-Up": "scrollLineUp",
+	    "Ctrl-Alt-Down": "scrollLineDown",
+	    "Cmd-L": "selectLine",
+	    "Shift-Cmd-L": "splitSelectionByLine",
+	    "Esc": "singleSelectionTop",
+	    "Cmd-Enter": "insertLineAfter",
+	    "Shift-Cmd-Enter": "insertLineBefore",
+	    "Cmd-D": "selectNextOccurrence",
+	    "Shift-Cmd-Up": "addCursorToPrevLine",
+	    "Shift-Cmd-Down": "addCursorToNextLine",
+	    "Shift-Cmd-Space": "selectScope",
+	    "Shift-Cmd-M": "selectBetweenBrackets",
+	    "Cmd-M": "goToBracket",
+	    "Cmd-Ctrl-Up": "swapLineUp",
+	    "Cmd-Ctrl-Down": "swapLineDown",
+	    "Cmd-/": "toggleCommentIndented",
+	    "Cmd-J": "joinLines",
+	    "Shift-Cmd-D": "duplicateLine",
+	    "F9": "sortLines",
+	    "Cmd-F9": "sortLinesInsensitive",
+	    "F2": "nextBookmark",
+	    "Shift-F2": "prevBookmark",
+	    "Cmd-F2": "toggleBookmark",
+	    "Shift-Cmd-F2": "clearBookmarks",
+	    "Alt-F2": "selectBookmarks",
+	    "Backspace": "smartBackspace",
+	    "Cmd-K Cmd-K": "delLineRight",
+	    "Cmd-K Cmd-U": "upcaseAtCursor",
+	    "Cmd-K Cmd-L": "downcaseAtCursor",
+	    "Cmd-K Cmd-Space": "setSublimeMark",
+	    "Cmd-K Cmd-A": "selectToSublimeMark",
+	    "Cmd-K Cmd-W": "deleteToSublimeMark",
+	    "Cmd-K Cmd-X": "swapWithSublimeMark",
+	    "Cmd-K Cmd-Y": "sublimeYank",
+	    "Cmd-K Cmd-C": "showInCenter",
+	    "Cmd-K Cmd-G": "clearBookmarks",
+	    "Cmd-K Cmd-Backspace": "delLineLeft",
+	    "Cmd-K Cmd-0": "unfoldAll",
+	    "Cmd-K Cmd-J": "unfoldAll",
+	    "Ctrl-Shift-Up": "selectLinesUpward",
+	    "Ctrl-Shift-Down": "selectLinesDownward",
+	    "Cmd-F3": "findUnder",
+	    "Shift-Cmd-F3": "findUnderPrevious",
+	    "Alt-F3": "findAllUnder",
+	    "Shift-Cmd-[": "fold",
+	    "Shift-Cmd-]": "unfold",
+	    "Cmd-I": "findIncremental",
+	    "Shift-Cmd-I": "findIncrementalReverse",
+	    "Cmd-H": "replace",
+	    "F3": "findNext",
+	    "Shift-F3": "findPrev",
+	    "fallthrough": "macDefault"
+	  };
+	  CodeMirror.normalizeKeyMap(keyMap.macSublime);
 
-	  CodeMirror.normalizeKeyMap(map);
+	  keyMap.pcSublime = {
+	    "Shift-Tab": "indentLess",
+	    "Shift-Ctrl-K": "deleteLine",
+	    "Alt-Q": "wrapLines",
+	    "Ctrl-T": "transposeChars",
+	    "Alt-Left": "goSubwordLeft",
+	    "Alt-Right": "goSubwordRight",
+	    "Ctrl-Up": "scrollLineUp",
+	    "Ctrl-Down": "scrollLineDown",
+	    "Ctrl-L": "selectLine",
+	    "Shift-Ctrl-L": "splitSelectionByLine",
+	    "Esc": "singleSelectionTop",
+	    "Ctrl-Enter": "insertLineAfter",
+	    "Shift-Ctrl-Enter": "insertLineBefore",
+	    "Ctrl-D": "selectNextOccurrence",
+	    "Alt-CtrlUp": "addCursorToPrevLine",
+	    "Alt-CtrlDown": "addCursorToNextLine",
+	    "Shift-Ctrl-Space": "selectScope",
+	    "Shift-Ctrl-M": "selectBetweenBrackets",
+	    "Ctrl-M": "goToBracket",
+	    "Shift-Ctrl-Up": "swapLineUp",
+	    "Shift-Ctrl-Down": "swapLineDown",
+	    "Ctrl-/": "toggleCommentIndented",
+	    "Ctrl-J": "joinLines",
+	    "Shift-Ctrl-D": "duplicateLine",
+	    "F9": "sortLines",
+	    "Ctrl-F9": "sortLinesInsensitive",
+	    "F2": "nextBookmark",
+	    "Shift-F2": "prevBookmark",
+	    "Ctrl-F2": "toggleBookmark",
+	    "Shift-Ctrl-F2": "clearBookmarks",
+	    "Alt-F2": "selectBookmarks",
+	    "Backspace": "smartBackspace",
+	    "Ctrl-K Ctrl-K": "delLineRight",
+	    "Ctrl-K Ctrl-U": "upcaseAtCursor",
+	    "Ctrl-K Ctrl-L": "downcaseAtCursor",
+	    "Ctrl-K Ctrl-Space": "setSublimeMark",
+	    "Ctrl-K Ctrl-A": "selectToSublimeMark",
+	    "Ctrl-K Ctrl-W": "deleteToSublimeMark",
+	    "Ctrl-K Ctrl-X": "swapWithSublimeMark",
+	    "Ctrl-K Ctrl-Y": "sublimeYank",
+	    "Ctrl-K Ctrl-C": "showInCenter",
+	    "Ctrl-K Ctrl-G": "clearBookmarks",
+	    "Ctrl-K Ctrl-Backspace": "delLineLeft",
+	    "Ctrl-K Ctrl-0": "unfoldAll",
+	    "Ctrl-K Ctrl-J": "unfoldAll",
+	    "Ctrl-Alt-Up": "selectLinesUpward",
+	    "Ctrl-Alt-Down": "selectLinesDownward",
+	    "Ctrl-F3": "findUnder",
+	    "Shift-Ctrl-F3": "findUnderPrevious",
+	    "Alt-F3": "findAllUnder",
+	    "Shift-Ctrl-[": "fold",
+	    "Shift-Ctrl-]": "unfold",
+	    "Ctrl-I": "findIncremental",
+	    "Shift-Ctrl-I": "findIncrementalReverse",
+	    "Ctrl-H": "replace",
+	    "F3": "findNext",
+	    "Shift-F3": "findPrev",
+	    "fallthrough": "pcDefault"
+	  };
+	  CodeMirror.normalizeKeyMap(keyMap.pcSublime);
+
+	  var mac = keyMap.default == keyMap.macDefault;
+	  keyMap.sublime = mac ? keyMap.macSublime : keyMap.pcSublime;
 	});
 
 

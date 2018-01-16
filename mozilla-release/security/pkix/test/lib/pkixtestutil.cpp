@@ -34,6 +34,8 @@
 #include "pkixder.h"
 #include "pkixutil.h"
 
+#include "mozilla/Unused.h"
+
 using namespace std;
 
 namespace mozilla { namespace pkix { namespace test {
@@ -249,7 +251,7 @@ Integer(long value)
 enum TimeEncoding { UTCTime = 0, GeneralizedTime = 1 };
 
 // Windows doesn't provide gmtime_r, but it provides something very similar.
-#if defined(WIN32) && !defined(_POSIX_THREAD_SAFE_FUNCTIONS)
+#if defined(WIN32) && (!defined(_POSIX_C_SOURCE) || !defined(_POSIX_THREAD_SAFE_FUNCTIONS))
 static tm*
 gmtime_r(const time_t* t, /*out*/ tm* exploded)
 {
@@ -509,7 +511,7 @@ MaybeLogOutput(const ByteString& result, const char* suffix)
     ++counter;
     ScopedFILE file(OpenFile(logPath, filename, "wb"));
     if (file) {
-      (void) fwrite(result.data(), result.length(), 1, file.get());
+      Unused << fwrite(result.data(), result.length(), 1, file.get());
     }
   }
 }

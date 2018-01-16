@@ -2,7 +2,7 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-"use strict"
+"use strict";
 
 const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
@@ -27,7 +27,9 @@ function Prompt(aOptions) {
 
   if (this.window) {
     let window = GeckoViewUtils.getChromeWindow(this.window);
-    var tab = window &&
+    let tab = window &&
+              window.document.documentElement
+                    .getAttribute("windowtype") === "navigator:browser" &&
               window.BrowserApp &&
               window.BrowserApp.getTabForWindow(this.window);
     if (tab) {
@@ -36,9 +38,9 @@ function Prompt(aOptions) {
   }
 
   if (aOptions.priority === 1)
-    this.msg.type = "Prompt:ShowTop"
+    this.msg.type = "Prompt:ShowTop";
   else
-    this.msg.type = "Prompt:Show"
+    this.msg.type = "Prompt:Show";
 
   if ("title" in aOptions && aOptions.title != null)
     this.msg.title = aOptions.title;
@@ -240,7 +242,7 @@ Prompt.prototype = {
     return this._setListItems(aItems);
   },
 
-}
+};
 
 var DoorHanger = {
   _getTabId: function(aWindow, aBrowserApp) {
@@ -276,7 +278,13 @@ var DoorHanger = {
       buttons: aButtons,
       options: aOptions || {},
       category: aCategory,
+      defaultCallback: (aOptions && aOptions.defaultCallback) ? -1 : undefined,
     }).then(response => {
+      if (response.callback === -1) {
+        // Default case.
+        aOptions.defaultCallback(response.checked, response.inputs);
+        return;
+      }
       // Pass the value of the optional checkbox to the callback
       callbacks[response.callback](response.checked, response.inputs);
     });

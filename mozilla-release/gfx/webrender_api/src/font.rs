@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use {ColorF, ColorU, IdNamespace, LayoutPoint};
+use {ColorF, ColorU, IdNamespace, LayoutPoint, ToBits};
 use app_units::Au;
 #[cfg(target_os = "macos")]
 use core_foundation::string::CFString;
@@ -14,6 +14,8 @@ use dwrote::FontDescriptor;
 use serde::de::{self, Deserialize, Deserializer};
 #[cfg(target_os = "macos")]
 use serde::ser::{Serialize, Serializer};
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 
@@ -49,11 +51,12 @@ impl<'de> Deserialize<'de> for NativeFontHandle {
     }
 }
 
-/// Native fonts are not used on Linux; all fonts are raw.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-#[cfg_attr(not(any(target_os = "macos", target_os = "windows")),
-           derive(Clone, Serialize, Deserialize))]
-pub struct NativeFontHandle;
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NativeFontHandle {
+    pub pathname: String,
+    pub index: u32,
+}
 
 #[cfg(target_os = "windows")]
 pub type NativeFontHandle = FontDescriptor;
@@ -91,6 +94,7 @@ pub enum FontRenderMode {
     Mono = 0,
     Alpha,
     Subpixel,
+    Bitmap,
 }
 
 #[repr(u32)]
@@ -113,7 +117,7 @@ impl FontRenderMode {
         // [0.625, 0.875) -> ThreeQuarters,
         // [0.875, 1.0) -> Zero
         // The unit tests below check for this.
-        let apos = (pos.fract() * 8.0).abs() as i32;
+        let apos = ((pos - pos.floor()) * 8.0) as i32;
 
         match apos {
             0 | 7 => SubpixelOffset::Zero,
@@ -127,8 +131,19 @@ impl FontRenderMode {
     // Combine two font render modes such that the lesser amount of AA limits the AA of the result.
     pub fn limit_by(self, other: FontRenderMode) -> FontRenderMode {
         match (self, other) {
+            (FontRenderMode::Bitmap, _) | (_, FontRenderMode::Bitmap) => FontRenderMode::Bitmap,
             (FontRenderMode::Subpixel, _) | (_, FontRenderMode::Mono) => other,
             _ => self,
+        }
+    }
+}
+
+impl SubpixelDirection {
+    // Limit the subpixel direction to what is supported by the render mode.
+    pub fn limit_by(self, render_mode: FontRenderMode) -> SubpixelDirection {
+        match render_mode {
+            FontRenderMode::Mono | FontRenderMode::Bitmap => SubpixelDirection::None,
+            FontRenderMode::Alpha | FontRenderMode::Subpixel => self,
         }
     }
 }
@@ -154,6 +169,36 @@ impl Into<f64> for SubpixelOffset {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug, PartialOrd, Deserialize, Serialize)]
+pub struct FontVariation {
+    pub tag: u32,
+    pub value: f32,
+}
+
+impl Ord for FontVariation {
+    fn cmp(&self, other: &FontVariation) -> Ordering {
+        self.tag.cmp(&other.tag)
+            .then(self.value._to_bits().cmp(&other.value._to_bits()))
+    }
+}
+
+impl PartialEq for FontVariation {
+    fn eq(&self, other: &FontVariation) -> bool {
+        self.tag == other.tag &&
+        self.value._to_bits() == other.value._to_bits()
+    }
+}
+
+impl Eq for FontVariation {}
+
+impl Hash for FontVariation {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.tag.hash(state);
+        self.value._to_bits().hash(state);
+    }
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct GlyphOptions {
     pub render_mode: FontRenderMode,
@@ -163,14 +208,105 @@ pub struct GlyphOptions {
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct FontInstanceOptions {
     pub render_mode: FontRenderMode,
+    pub subpx_dir: SubpixelDirection,
+    pub synthetic_italics: bool,
+    /// When bg_color.a is != 0 and render_mode is FontRenderMode::Subpixel,
+    /// the text will be rendered with bg_color.r/g/b as an opaque estimated
+    /// background color.
+    pub bg_color: ColorU,
 }
 
+impl Default for FontInstanceOptions {
+    fn default() -> FontInstanceOptions {
+        FontInstanceOptions {
+            render_mode: FontRenderMode::Subpixel,
+            subpx_dir: SubpixelDirection::Horizontal,
+            synthetic_italics: false,
+            bg_color: ColorU::new(0, 0, 0, 0),
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct FontInstancePlatformOptions {
-    // These are currently only used on windows for dwrite fonts.
     pub use_embedded_bitmap: bool,
     pub force_gdi_rendering: bool,
+}
+
+#[cfg(target_os = "windows")]
+impl Default for FontInstancePlatformOptions {
+    fn default() -> FontInstancePlatformOptions {
+        FontInstancePlatformOptions {
+            use_embedded_bitmap: false,
+            force_gdi_rendering: false,
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
+pub struct FontInstancePlatformOptions {
+    pub font_smoothing: bool,
+}
+
+#[cfg(target_os = "macos")]
+impl Default for FontInstancePlatformOptions {
+    fn default() -> FontInstancePlatformOptions {
+        FontInstancePlatformOptions {
+            font_smoothing: true,
+        }
+    }
+}
+
+pub const FONT_FORCE_AUTOHINT: u16  = 0b1;
+pub const FONT_NO_AUTOHINT: u16     = 0b10;
+pub const FONT_EMBEDDED_BITMAP: u16 = 0b100;
+pub const FONT_EMBOLDEN: u16        = 0b1000;
+pub const FONT_VERTICAL_LAYOUT: u16 = 0b10000;
+pub const FONT_SUBPIXEL_BGR: u16    = 0b100000;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize)]
+pub enum FontLCDFilter {
+    None,
+    Default,
+    Light,
+    Legacy,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize)]
+pub enum FontHinting {
+    None,
+    Mono,
+    Light,
+    Normal,
+    LCD,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
+pub struct FontInstancePlatformOptions {
+    pub flags: u16,
+    pub lcd_filter: FontLCDFilter,
+    pub hinting: FontHinting,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl Default for FontInstancePlatformOptions {
+    fn default() -> FontInstancePlatformOptions {
+        FontInstancePlatformOptions {
+            flags: 0,
+            lcd_filter: FontLCDFilter::Default,
+            hinting: FontHinting::LCD,
+        }
+    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Deserialize, Serialize, Ord, PartialOrd)]
@@ -183,34 +319,36 @@ pub struct FontInstance {
     //           or something similar to that.
     pub size: Au,
     pub color: ColorU,
+    pub bg_color: ColorU,
     pub render_mode: FontRenderMode,
     pub subpx_dir: SubpixelDirection,
     pub platform_options: Option<FontInstancePlatformOptions>,
+    pub variations: Vec<FontVariation>,
+    pub synthetic_italics: bool,
 }
 
 impl FontInstance {
     pub fn new(
         font_key: FontKey,
         size: Au,
-        mut color: ColorF,
+        color: ColorF,
+        bg_color: ColorU,
         render_mode: FontRenderMode,
         subpx_dir: SubpixelDirection,
         platform_options: Option<FontInstancePlatformOptions>,
+        variations: Vec<FontVariation>,
+        synthetic_italics: bool,
     ) -> FontInstance {
-        // In alpha/mono mode, the color of the font is irrelevant.
-        // Forcing it to black in those cases saves rasterizing glyphs
-        // of different colors when not needed.
-        if render_mode != FontRenderMode::Subpixel {
-            color = ColorF::new(0.0, 0.0, 0.0, 1.0);
-        }
-
         FontInstance {
             font_key,
             size,
             color: color.into(),
+            bg_color,
             render_mode,
             subpx_dir,
             platform_options,
+            variations,
+            synthetic_italics,
         }
     }
 
@@ -312,8 +450,8 @@ mod test {
         assert_eq!(rm.subpixel_quantize_offset(-1.0), SubpixelOffset::Zero);
         assert_eq!(rm.subpixel_quantize_offset(1.0), SubpixelOffset::Zero);
         assert_eq!(rm.subpixel_quantize_offset(1.5), SubpixelOffset::Half);
-        assert_eq!(rm.subpixel_quantize_offset(-1.625), SubpixelOffset::ThreeQuarters);
-        assert_eq!(rm.subpixel_quantize_offset(-4.33), SubpixelOffset::Quarter);
+        assert_eq!(rm.subpixel_quantize_offset(-1.625), SubpixelOffset::Half);
+        assert_eq!(rm.subpixel_quantize_offset(-4.33), SubpixelOffset::ThreeQuarters);
 
     }
 }

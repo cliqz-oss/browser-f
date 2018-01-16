@@ -540,7 +540,7 @@ PluginModuleChromeParent::OnProcessLaunched(const bool aSucceeded)
     if (!mIsBlocklisted && mIsFlashPlugin &&
         (Preferences::GetBool("dom.ipc.plugins.flash.disable-protected-mode", false) ||
          mSandboxLevel >= 2)) {
-        SendDisableFlashProtectedMode();
+        Unused << SendDisableFlashProtectedMode();
     }
 #endif
 
@@ -1698,7 +1698,6 @@ PluginModuleParent::SetPluginFuncs(NPPluginFuncs* aFuncs)
     aFuncs->setwindow = NPP_SetWindow;
     aFuncs->newstream = NPP_NewStream;
     aFuncs->destroystream = NPP_DestroyStream;
-    aFuncs->asfile = NPP_StreamAsFile;
     aFuncs->writeready = NPP_WriteReady;
     aFuncs->write = NPP_Write;
     aFuncs->print = NPP_Print;
@@ -1794,18 +1793,6 @@ PluginModuleParent::NPP_Write(NPP instance,
 }
 
 void
-PluginModuleParent::NPP_StreamAsFile(NPP instance,
-                                     NPStream* stream,
-                                     const char* fname)
-{
-    BrowserStreamParent* s = StreamCast(instance, stream);
-    if (!s)
-        return;
-
-    s->StreamAsFile(fname);
-}
-
-void
 PluginModuleParent::NPP_Print(NPP instance, NPPrint* platformPrint)
 {
 
@@ -1858,9 +1845,7 @@ PluginModuleChromeParent::AnswerNPN_SetValue_NPPVpluginRequiresAudioDeviceChange
     }
     return IPC_OK();
 #else
-    NS_RUNTIMEABORT("NPPVpluginRequiresAudioDeviceChanges is not valid on this platform.");
-    *result = NPERR_GENERIC_ERROR;
-    return IPC_OK();
+    MOZ_CRASH("NPPVpluginRequiresAudioDeviceChanges is not valid on this platform.");
 #endif
 }
 
@@ -2448,7 +2433,10 @@ PluginModuleParent::NPP_NewInternal(NPMIMEType pluginType, NPP instance,
         if (supportsAsyncRender) {
           // Prefs indicates we want async plugin rendering, make sure
           // the flash module has support.
-          CallModuleSupportsAsyncRender(&supportsAsyncRender);
+          if(!CallModuleSupportsAsyncRender(&supportsAsyncRender)) {
+            *error = NPERR_GENERIC_ERROR;
+            return NS_ERROR_FAILURE;
+          }
         }
 #ifdef _WIN64
         // For 64-bit builds force windowless if the flash library doesn't support
@@ -2592,8 +2580,7 @@ PluginModuleParent::AnswerProcessSomeEvents()
 mozilla::ipc::IPCResult
 PluginModuleParent::AnswerProcessSomeEvents()
 {
-    NS_RUNTIMEABORT("unreached");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("unreached");
 }
 
 #else
@@ -2822,10 +2809,8 @@ mozilla::ipc::IPCResult
 PluginModuleParent::AnswerNPN_SetValue_NPPVpluginRequiresAudioDeviceChanges(
                                         const bool& shouldRegister,
                                         NPError* result) {
-    NS_RUNTIMEABORT("SetValue_NPPVpluginRequiresAudioDeviceChanges is only valid "
-      "with PluginModuleChromeParent");
-    *result = NPERR_GENERIC_ERROR;
-    return IPC_OK();
+    MOZ_CRASH("SetValue_NPPVpluginRequiresAudioDeviceChanges is only valid "
+              "with PluginModuleChromeParent");
 }
 
 #ifdef MOZ_CRASHREPORTER_INJECTOR
@@ -2961,6 +2946,9 @@ PluginModuleChromeParent::AnswerGetFileName(const GetFileNameFunc& aFunc,
         break;
     case SAVE_FUNC:
         *aResult = GetSaveFileName(&ofn);
+        break;
+    default:
+        *aResult = false;
         break;
     }
     if (*aResult) {

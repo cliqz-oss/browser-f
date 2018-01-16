@@ -4,9 +4,9 @@
 
 //! Specified angles.
 
-use cssparser::{Parser, Token, BasicParseError};
+use cssparser::{Parser, Token};
 use parser::{ParserContext, Parse};
-use std::ascii::AsciiExt;
+#[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::fmt;
 use style_traits::{ToCss, ParseError};
 use values::CSSFloat;
@@ -19,9 +19,8 @@ use values::specified::calc::CalcNode;
 /// Computed angles are essentially same as specified ones except for `calc()`
 /// value serialization. Therefore we are storing a computed angle inside
 /// to hold the actual value and its unit.
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf, Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
 pub struct Angle {
     value: ComputedAngle,
     was_calc: bool,
@@ -112,7 +111,7 @@ impl Parse for Angle {
                 return input.parse_nested_block(|i| CalcNode::parse_angle(context, i))
             }
             _ => Err(())
-        }.map_err(|()| BasicParseError::UnexpectedToken(token.clone()).into())
+        }.map_err(|()| input.new_unexpected_token_error(token.clone()))
     }
 }
 
@@ -155,6 +154,6 @@ impl Angle {
                 return input.parse_nested_block(|i| CalcNode::parse_angle(context, i))
             }
             _ => Err(())
-        }.map_err(|()| BasicParseError::UnexpectedToken(token.clone()).into())
+        }.map_err(|()| input.new_unexpected_token_error(token.clone()))
     }
 }

@@ -5,12 +5,27 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
+<<<<<<< HEAD
 #    'activity-stream',
 #    'aushelper',
 #    'e10srollout',
 #    'followonsearch',
 #    'formautofill',
 #    'onboarding',
+||||||| merged common ancestors
+    'activity-stream',
+    'aushelper',
+    'e10srollout',
+    'followonsearch',
+    'formautofill',
+    'onboarding',
+=======
+    'activity-stream',
+    'aushelper',
+    'followonsearch',
+    'formautofill',
+    'onboarding',
+>>>>>>> origin/upstream-releases
     'pdfjs',
 #    'pocket',
 #    'screenshots',

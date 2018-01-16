@@ -122,11 +122,6 @@
 #endif
 #include "mozilla/dom/PeerConnectionObserverEnumsBinding.h"
 
-#ifdef MOZ_WEBRTC_OMX
-#include "OMXVideoCodec.h"
-#include "OMXCodecWrapper.h"
-#endif
-
 #define ICE_PARSING "In RTCConfiguration passed to RTCPeerConnection constructor"
 
 using namespace mozilla;
@@ -134,7 +129,12 @@ using namespace mozilla::dom;
 
 typedef PCObserverString ObString;
 
-static const char* logTag = "PeerConnectionImpl";
+static const char* pciLogTag = "PeerConnectionImpl";
+#ifdef LOGTAG
+#undef LOGTAG
+#endif
+#define LOGTAG pciLogTag
+
 static mozilla::LazyLogModule logModuleInfo("signaling");
 
 // Getting exceptions back down from PCObserver is generally not harmful.
@@ -202,12 +202,12 @@ static nsresult InitNSSInContent()
   }
 
   if (NSS_NoDB_Init(nullptr) != SECSuccess) {
-    CSFLogError(logTag, "NSS_NoDB_Init failed.");
+    CSFLogError(LOGTAG, "NSS_NoDB_Init failed.");
     return NS_ERROR_FAILURE;
   }
 
   if (NS_FAILED(mozilla::psm::InitializeCipherSuite())) {
-    CSFLogError(logTag, "Fail to set up nss cipher suite.");
+    CSFLogError(LOGTAG, "Fail to set up nss cipher suite.");
     return NS_ERROR_FAILURE;
   }
 
@@ -310,6 +310,8 @@ PeerConnectionImpl::PeerConnectionImpl(const GlobalObject* aGlobal)
   , mForceIceTcp(false)
   , mMedia(nullptr)
   , mUuidGen(MakeUnique<PCUuidGenerator>())
+  , mIceRestartCount(0)
+  , mIceRollbackCount(0)
   , mHaveConfiguredCodecs(false)
   , mHaveDataStream(false)
   , mAddCandidateErrorCount(0)
@@ -317,6 +319,8 @@ PeerConnectionImpl::PeerConnectionImpl(const GlobalObject* aGlobal)
   , mNegotiationNeeded(false)
   , mPrivateWindow(false)
   , mActiveOnWindow(false)
+  , mPacketDumpEnabled(false)
+  , mPacketDumpFlagsMutex("Packet dump flags mutex")
 {
   MOZ_ASSERT(NS_IsMainThread());
   auto log = RLogConnector::CreateInstance();
@@ -329,7 +333,7 @@ PeerConnectionImpl::PeerConnectionImpl(const GlobalObject* aGlobal)
     mWindow->AddPeerConnection();
     mActiveOnWindow = true;
   }
-  CSFLogInfo(logTag, "%s: PeerConnectionImpl constructor for %s",
+  CSFLogInfo(LOGTAG, "%s: PeerConnectionImpl constructor for %s",
              __FUNCTION__, mHandle.c_str());
   STAMP_TIMECARD(mTimeCard, "Constructor Completed");
   mAllowIceLoopback = Preferences::GetBool(
@@ -370,10 +374,10 @@ PeerConnectionImpl::~PeerConnectionImpl()
   if (PeerConnectionCtx::isActive()) {
     PeerConnectionCtx::GetInstance()->mPeerConnections.erase(mHandle);
   } else {
-    CSFLogError(logTag, "PeerConnectionCtx is already gone. Ignoring...");
+    CSFLogError(LOGTAG, "PeerConnectionCtx is already gone. Ignoring...");
   }
 
-  CSFLogInfo(logTag, "%s: PeerConnectionImpl destructor invoked for %s",
+  CSFLogInfo(LOGTAG, "%s: PeerConnectionImpl destructor invoked for %s",
              __FUNCTION__, mHandle.c_str());
 
   Close();
@@ -396,7 +400,7 @@ PeerConnectionImpl::MakeMediaStream()
   RefPtr<DOMMediaStream> stream =
     DOMMediaStream::CreateSourceStreamAsInput(GetWindow(), graph);
 
-  CSFLogDebug(logTag, "Created media stream %p, inner: %p", stream.get(), stream->GetInputStream());
+  CSFLogDebug(LOGTAG, "Created media stream %p, inner: %p", stream.get(), stream->GetInputStream());
 
   return stream.forget();
 }
@@ -575,7 +579,7 @@ PeerConnectionConfiguration::AddIceServer(const RTCIceServer &aServer)
 
 nsresult
 PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
-                               nsGlobalWindow* aWindow,
+                               nsGlobalWindowInner* aWindow,
                                const PeerConnectionConfiguration& aConfiguration,
                                nsISupports* aThread)
 {
@@ -683,7 +687,7 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
                      aConfiguration.getTurnServers(),
                      aConfiguration.getIceTransportPolicy());
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: Couldn't initialize media object", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: Couldn't initialize media object", __FUNCTION__);
     return res;
   }
 
@@ -694,7 +698,7 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
 
   res = mJsepSession->Init();
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: Couldn't init JSEP Session, res=%u",
+    CSFLogError(LOGTAG, "%s: Couldn't init JSEP Session, res=%u",
                         __FUNCTION__,
                         static_cast<unsigned>(res));
     return res;
@@ -703,7 +707,7 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
   res = mJsepSession->SetIceCredentials(mMedia->ice_ctx()->ufrag(),
                                         mMedia->ice_ctx()->pwd());
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: Couldn't set ICE credentials, res=%u",
+    CSFLogError(LOGTAG, "%s: Couldn't set ICE credentials, res=%u",
                          __FUNCTION__,
                          static_cast<unsigned>(res));
     return res;
@@ -711,7 +715,7 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
 
   res = mJsepSession->SetBundlePolicy(aConfiguration.getBundlePolicy());
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: Couldn't set bundle policy, res=%u, error=%s",
+    CSFLogError(LOGTAG, "%s: Couldn't set bundle policy, res=%u, error=%s",
                         __FUNCTION__,
                         static_cast<unsigned>(res),
                         mJsepSession->GetLastError().c_str());
@@ -723,7 +727,7 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
 
 void
 PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
-                               nsGlobalWindow& aWindow,
+                               nsGlobalWindowInner& aWindow,
                                const RTCConfiguration& aConfiguration,
                                nsISupports* aThread,
                                ErrorResult &rv)
@@ -735,12 +739,12 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
   PeerConnectionConfiguration converted;
   nsresult res = converted.Init(aConfiguration);
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: Invalid RTCConfiguration", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: Invalid RTCConfiguration", __FUNCTION__);
     rv.Throw(res);
     return;
   }
 
-  res = Initialize(aObserver, &aWindow, converted, aThread);
+  res = Initialize(aObserver, aWindow.AssertInner(), converted, aThread);
   if (NS_FAILED(res)) {
     rv.Throw(res);
     return;
@@ -763,7 +767,7 @@ PeerConnectionImpl::SetCertificate(mozilla::dom::RTCCertificate& aCertificate)
   nsresult rv = CalculateFingerprint(DtlsIdentity::DEFAULT_HASH_ALGORITHM,
                                      &fingerprint);
   if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "%s: Couldn't calculate fingerprint, rv=%u",
+    CSFLogError(LOGTAG, "%s: Couldn't calculate fingerprint, rv=%u",
                 __FUNCTION__, static_cast<unsigned>(rv));
     mCertificate = nullptr;
     return;
@@ -771,7 +775,7 @@ PeerConnectionImpl::SetCertificate(mozilla::dom::RTCCertificate& aCertificate)
   rv = mJsepSession->AddDtlsFingerprint(DtlsIdentity::DEFAULT_HASH_ALGORITHM,
                                         fingerprint);
   if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "%s: Couldn't set DTLS credentials, rv=%u",
+    CSFLogError(LOGTAG, "%s: Couldn't set DTLS credentials, rv=%u",
                 __FUNCTION__, static_cast<unsigned>(rv));
     mCertificate = nullptr;
   }
@@ -825,11 +829,11 @@ class CompareCodecPriority {
 class ConfigureCodec {
   public:
     explicit ConfigureCodec(nsCOMPtr<nsIPrefBranch>& branch) :
-      mHardwareH264Enabled(false),
       mHardwareH264Supported(false),
       mSoftwareH264Enabled(false),
       mH264Enabled(false),
-      mVP9Enabled(false),
+      mVP9Enabled(true),
+      mVP9Preferred(false),
       mH264Level(13), // minimum suggested for WebRTC spec
       mH264MaxBr(0), // Unlimited
       mH264MaxMbps(0), // Unlimited
@@ -841,34 +845,6 @@ class ConfigureCodec {
       mRedUlpfecEnabled(false),
       mDtmfEnabled(false)
     {
-#ifdef MOZ_WEBRTC_OMX
-      // Check to see if what HW codecs are available (not in use) at this moment.
-      // Note that streaming video decode can reserve a decoder
-
-      // XXX See bug 1018791 Implement W3 codec reservation policy
-      // Note that currently, OMXCodecReservation needs to be held by an sp<> because it puts
-      // 'this' into an sp<EventListener> to talk to the resource reservation code
-
-      // This pref is a misnomer; it is solely for h264 _hardware_ support.
-      branch->GetBoolPref("media.peerconnection.video.h264_enabled",
-          &mHardwareH264Enabled);
-
-      if (mHardwareH264Enabled) {
-        // Ok, it is preffed on. Can we actually do it?
-        android::sp<android::OMXCodecReservation> encode = new android::OMXCodecReservation(true);
-        android::sp<android::OMXCodecReservation> decode = new android::OMXCodecReservation(false);
-
-        // Currently we just check if they're available right now, which will fail if we're
-        // trying to call ourself, for example.  It will work for most real-world cases, like
-        // if we try to add a person to a 2-way call to make a 3-way mesh call
-        if (encode->ReserveOMXCodec() && decode->ReserveOMXCodec()) {
-          CSFLogDebug( logTag, "%s: H264 hardware codec available", __FUNCTION__);
-          mHardwareH264Supported = true;
-        }
-      }
-
-#endif // MOZ_WEBRTC_OMX
-
       mSoftwareH264Enabled = PeerConnectionCtx::GetInstance()->gmpHasH264();
 
       mH264Enabled = mHardwareH264Supported || mSoftwareH264Enabled;
@@ -878,15 +854,13 @@ class ConfigureCodec {
 
       branch->GetIntPref("media.navigator.video.h264.max_br", &mH264MaxBr);
 
-#ifdef MOZ_WEBRTC_OMX
-      // Level 1.2; but let's allow CIF@30 or QVGA@30+ by default
-      mH264MaxMbps = 11880;
-#endif
-
       branch->GetIntPref("media.navigator.video.h264.max_mbps", &mH264MaxMbps);
 
       branch->GetBoolPref("media.peerconnection.video.vp9_enabled",
           &mVP9Enabled);
+
+      branch->GetBoolPref("media.peerconnection.video.vp9_preferred",
+          &mVP9Preferred);
 
       branch->GetIntPref("media.navigator.video.max_fs", &mVP8MaxFs);
       if (mVP8MaxFs <= 0) {
@@ -959,9 +933,14 @@ class ConfigureCodec {
             } else if (videoCodec.mName == "ulpfec") {
               videoCodec.mEnabled = mRedUlpfecEnabled;
             } else if (videoCodec.mName == "VP8" || videoCodec.mName == "VP9") {
-              if (videoCodec.mName == "VP9" && !mVP9Enabled) {
-                videoCodec.mEnabled = false;
-                break;
+              if (videoCodec.mName == "VP9") {
+                if (!mVP9Enabled) {
+                  videoCodec.mEnabled = false;
+                  break;
+                }
+                if (mVP9Preferred) {
+                  videoCodec.mStronglyPreferred = true;
+                }
               }
               videoCodec.mConstraints.maxFs = mVP8MaxFs;
               videoCodec.mConstraints.maxFps = mVP8MaxFr;
@@ -983,11 +962,11 @@ class ConfigureCodec {
     }
 
   private:
-    bool mHardwareH264Enabled;
     bool mHardwareH264Supported;
     bool mSoftwareH264Enabled;
     bool mH264Enabled;
     bool mVP9Enabled;
+    bool mVP9Preferred;
     int32_t mH264Level;
     int32_t mH264MaxBr;
     int32_t mH264MaxMbps;
@@ -1041,7 +1020,7 @@ PeerConnectionImpl::ConfigureJsepSessionCodecs() {
     do_GetService("@mozilla.org/preferences-service;1", &res);
 
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: Couldn't get prefs service, res=%u",
+    CSFLogError(LOGTAG, "%s: Couldn't get prefs service, res=%u",
         __FUNCTION__,
         static_cast<unsigned>(res));
     return res;
@@ -1049,7 +1028,7 @@ PeerConnectionImpl::ConfigureJsepSessionCodecs() {
 
   nsCOMPtr<nsIPrefBranch> branch = do_QueryInterface(prefs);
   if (!branch) {
-    CSFLogError(logTag, "%s: Couldn't get prefs branch", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: Couldn't get prefs branch", __FUNCTION__);
     return NS_ERROR_FAILURE;
   }
 
@@ -1105,7 +1084,7 @@ PeerConnectionImpl::EnsureDataConnection(uint16_t aLocalPort,
   PC_AUTO_ENTER_API_CALL(false);
 
   if (mDataConnection) {
-    CSFLogDebug(logTag,"%s DataConnection already connected",__FUNCTION__);
+    CSFLogDebug(LOGTAG,"%s DataConnection already connected",__FUNCTION__);
     mDataConnection->SetMaxMessageSize(aMMSSet, aMaxMessageSize);
     return NS_OK;
   }
@@ -1115,10 +1094,10 @@ PeerConnectionImpl::EnsureDataConnection(uint16_t aLocalPort,
       : nullptr;
   mDataConnection = new DataChannelConnection(this, target);
   if (!mDataConnection->Init(aLocalPort, aNumstreams, aMMSSet, aMaxMessageSize)) {
-    CSFLogError(logTag,"%s DataConnection Init Failed",__FUNCTION__);
+    CSFLogError(LOGTAG,"%s DataConnection Init Failed",__FUNCTION__);
     return NS_ERROR_FAILURE;
   }
-  CSFLogDebug(logTag,"%s DataChannelConnection %p attached to %s",
+  CSFLogDebug(LOGTAG,"%s DataChannelConnection %p attached to %s",
               __FUNCTION__, (void*) mDataConnection.get(), mHandle.c_str());
   return NS_OK;
 }
@@ -1149,7 +1128,7 @@ PeerConnectionImpl::GetDatachannelParameters(
         trackPair.mSending->GetNegotiatedDetails()->GetEncoding(0);
 
       if (encoding.GetCodecs().empty()) {
-        CSFLogError(logTag, "%s: Negotiated m=application with no codec. "
+        CSFLogError(LOGTAG, "%s: Negotiated m=application with no codec. "
                             "This is likely to be broken.",
                             __FUNCTION__);
         return NS_ERROR_FAILURE;
@@ -1157,7 +1136,7 @@ PeerConnectionImpl::GetDatachannelParameters(
 
       for (const JsepCodecDescription* codec : encoding.GetCodecs()) {
         if (codec->mType != SdpMediaSection::kApplication) {
-          CSFLogError(logTag, "%s: Codec type for m=application was %u, this "
+          CSFLogError(LOGTAG, "%s: Codec type for m=application was %u, this "
                               "is a bug.",
                               __FUNCTION__,
                               static_cast<unsigned>(codec->mType));
@@ -1166,7 +1145,7 @@ PeerConnectionImpl::GetDatachannelParameters(
         }
 
         if (codec->mName != "webrtc-datachannel") {
-          CSFLogWarn(logTag, "%s: Codec for m=application was not "
+          CSFLogWarn(LOGTAG, "%s: Codec for m=application was not "
                              "webrtc-datachannel (was instead %s). ",
                              __FUNCTION__,
                              codec->mName.c_str());
@@ -1231,7 +1210,7 @@ PeerConnectionImpl::AddTrackToJsepSession(SdpMediaSection::MediaType type,
 {
   nsresult res = ConfigureJsepSessionCodecs();
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "Failed to configure codecs");
+    CSFLogError(LOGTAG, "Failed to configure codecs");
     return res;
   }
 
@@ -1240,7 +1219,7 @@ PeerConnectionImpl::AddTrackToJsepSession(SdpMediaSection::MediaType type,
 
   if (NS_FAILED(res)) {
     std::string errorString = mJsepSession->GetLastError();
-    CSFLogError(logTag, "%s (%s) : pc = %s, error = %s",
+    CSFLogError(LOGTAG, "%s (%s) : pc = %s, error = %s",
                 __FUNCTION__,
                 type == SdpMediaSection::kAudio ? "audio" : "video",
                 mHandle.c_str(),
@@ -1255,7 +1234,7 @@ nsresult
 PeerConnectionImpl::InitializeDataChannel()
 {
   PC_AUTO_ENTER_API_CALL(false);
-  CSFLogDebug(logTag, "%s", __FUNCTION__);
+  CSFLogDebug(LOGTAG, "%s", __FUNCTION__);
 
   uint32_t channels = 0;
   uint16_t localport = 0;
@@ -1267,7 +1246,7 @@ PeerConnectionImpl::InitializeDataChannel()
                                          &remotemaxmessagesize, &mmsset, &level);
 
   if (NS_FAILED(rv)) {
-    CSFLogDebug(logTag, "%s: We did not negotiate datachannel", __FUNCTION__);
+    CSFLogDebug(LOGTAG, "%s: We did not negotiate datachannel", __FUNCTION__);
     return NS_OK;
   }
 
@@ -1279,7 +1258,7 @@ PeerConnectionImpl::InitializeDataChannel()
   if (NS_SUCCEEDED(rv)) {
     // use the specified TransportFlow
     RefPtr<TransportFlow> flow = mMedia->GetTransportFlow(level, false).get();
-    CSFLogDebug(logTag, "Transportflow[%u] = %p",
+    CSFLogDebug(LOGTAG, "Transportflow[%u] = %p",
                         static_cast<unsigned>(level), flow.get());
     if (flow) {
       if (mDataConnection->ConnectViaTransportFlow(flow,
@@ -1347,7 +1326,7 @@ PeerConnectionImpl::CreateDataChannel(const nsAString& aLabel,
   );
   NS_ENSURE_TRUE(dataChannel,NS_ERROR_FAILURE);
 
-  CSFLogDebug(logTag, "%s: making DOMDataChannel", __FUNCTION__);
+  CSFLogDebug(LOGTAG, "%s: making DOMDataChannel", __FUNCTION__);
 
   if (!mHaveDataStream) {
 
@@ -1370,7 +1349,7 @@ PeerConnectionImpl::CreateDataChannel(const nsAString& aLabel,
 
     rv = mJsepSession->AddTrack(track);
     if (NS_FAILED(rv)) {
-      CSFLogError(logTag, "%s: Failed to add application track.",
+      CSFLogError(LOGTAG, "%s: Failed to add application track.",
                           __FUNCTION__);
       return rv;
     }
@@ -1436,7 +1415,7 @@ PeerConnectionImpl::NotifyDataChannel(already_AddRefed<DataChannel> aChannel)
   DataChannel* channel = aChannel.take();
   MOZ_ASSERT(channel);
 
-  CSFLogDebug(logTag, "%s: channel: %p", __FUNCTION__, channel);
+  CSFLogDebug(LOGTAG, "%s: channel: %p", __FUNCTION__, channel);
 
   nsCOMPtr<nsIDOMDataChannel> domchannel;
   nsresult rv = NS_NewDOMDataChannel(already_AddRefed<DataChannel>(channel),
@@ -1515,7 +1494,7 @@ PeerConnectionImpl::CreateOffer(const JsepOfferOptions& aOptions)
     return NS_OK;
   }
 
-  CSFLogDebug(logTag, "CreateOffer()");
+  CSFLogDebug(LOGTAG, "CreateOffer()");
 
   nsresult nrv;
   if (restartIce &&
@@ -1534,10 +1513,10 @@ PeerConnectionImpl::CreateOffer(const JsepOfferOptions& aOptions)
       FinalizeIceRestart();
     }
 
-    CSFLogInfo(logTag, "Offerer restarting ice");
+    CSFLogInfo(LOGTAG, "Offerer restarting ice");
     nrv = SetupIceRestart();
     if (NS_FAILED(nrv)) {
-      CSFLogError(logTag, "%s: SetupIceRestart failed, res=%u",
+      CSFLogError(LOGTAG, "%s: SetupIceRestart failed, res=%u",
                            __FUNCTION__,
                            static_cast<unsigned>(nrv));
       return nrv;
@@ -1546,7 +1525,7 @@ PeerConnectionImpl::CreateOffer(const JsepOfferOptions& aOptions)
 
   nrv = ConfigureJsepSessionCodecs();
   if (NS_FAILED(nrv)) {
-    CSFLogError(logTag, "Failed to configure codecs");
+    CSFLogError(LOGTAG, "Failed to configure codecs");
     return nrv;
   }
 
@@ -1567,7 +1546,7 @@ PeerConnectionImpl::CreateOffer(const JsepOfferOptions& aOptions)
     }
     std::string errorString = mJsepSession->GetLastError();
 
-    CSFLogError(logTag, "%s: pc = %s, error = %s",
+    CSFLogError(LOGTAG, "%s: pc = %s, error = %s",
                 __FUNCTION__, mHandle.c_str(), errorString.c_str());
     pco->OnCreateOfferError(error, ObString(errorString.c_str()), rv);
   } else {
@@ -1588,7 +1567,7 @@ PeerConnectionImpl::CreateAnswer()
     return NS_OK;
   }
 
-  CSFLogDebug(logTag, "CreateAnswer()");
+  CSFLogDebug(LOGTAG, "CreateAnswer()");
 
   nsresult nrv;
   if (mJsepSession->RemoteIceIsRestarting()) {
@@ -1596,10 +1575,10 @@ PeerConnectionImpl::CreateAnswer()
             PeerConnectionMedia::ICE_RESTART_COMMITTED) {
       FinalizeIceRestart();
     } else if (!mMedia->IsIceRestarting()) {
-      CSFLogInfo(logTag, "Answerer restarting ice");
+      CSFLogInfo(LOGTAG, "Answerer restarting ice");
       nrv = SetupIceRestart();
       if (NS_FAILED(nrv)) {
-        CSFLogError(logTag, "%s: SetupIceRestart failed, res=%u",
+        CSFLogError(LOGTAG, "%s: SetupIceRestart failed, res=%u",
                              __FUNCTION__,
                              static_cast<unsigned>(nrv));
         return nrv;
@@ -1626,7 +1605,7 @@ PeerConnectionImpl::CreateAnswer()
     }
     std::string errorString = mJsepSession->GetLastError();
 
-    CSFLogError(logTag, "%s: pc = %s, error = %s",
+    CSFLogError(LOGTAG, "%s: pc = %s, error = %s",
                 __FUNCTION__, mHandle.c_str(), errorString.c_str());
     pco->OnCreateAnswerError(error, ObString(errorString.c_str()), rv);
   } else {
@@ -1642,7 +1621,7 @@ nsresult
 PeerConnectionImpl::SetupIceRestart()
 {
   if (mMedia->IsIceRestarting()) {
-    CSFLogError(logTag, "%s: ICE already restarting",
+    CSFLogError(LOGTAG, "%s: ICE already restarting",
                          __FUNCTION__);
     return NS_ERROR_UNEXPECTED;
   }
@@ -1650,7 +1629,7 @@ PeerConnectionImpl::SetupIceRestart()
   std::string ufrag = mMedia->ice_ctx()->GetNewUfrag();
   std::string pwd = mMedia->ice_ctx()->GetNewPwd();
   if (ufrag.empty() || pwd.empty()) {
-    CSFLogError(logTag, "%s: Bad ICE credentials (ufrag:'%s'/pwd:'%s')",
+    CSFLogError(LOGTAG, "%s: Bad ICE credentials (ufrag:'%s'/pwd:'%s')",
                          __FUNCTION__,
                          ufrag.c_str(), pwd.c_str());
     return NS_ERROR_UNEXPECTED;
@@ -1663,7 +1642,7 @@ PeerConnectionImpl::SetupIceRestart()
 
   nsresult nrv = mJsepSession->SetIceCredentials(ufrag, pwd);
   if (NS_FAILED(nrv)) {
-    CSFLogError(logTag, "%s: Couldn't set ICE credentials, res=%u",
+    CSFLogError(LOGTAG, "%s: Couldn't set ICE credentials, res=%u",
                          __FUNCTION__,
                          static_cast<unsigned>(nrv));
     return nrv;
@@ -1680,13 +1659,14 @@ PeerConnectionImpl::RollbackIceRestart()
   nsresult nrv = mJsepSession->SetIceCredentials(mPreviousIceUfrag,
                                                  mPreviousIcePwd);
   if (NS_FAILED(nrv)) {
-    CSFLogError(logTag, "%s: Couldn't set ICE credentials, res=%u",
+    CSFLogError(LOGTAG, "%s: Couldn't set ICE credentials, res=%u",
                          __FUNCTION__,
                          static_cast<unsigned>(nrv));
     return nrv;
   }
   mPreviousIceUfrag = "";
   mPreviousIcePwd = "";
+  ++mIceRollbackCount;
 
   return NS_OK;
 }
@@ -1698,6 +1678,7 @@ PeerConnectionImpl::FinalizeIceRestart()
   // clear the previous ice creds since they are no longer needed
   mPreviousIceUfrag = "";
   mPreviousIcePwd = "";
+  ++mIceRestartCount;
 }
 
 NS_IMETHODIMP
@@ -1706,7 +1687,7 @@ PeerConnectionImpl::SetLocalDescription(int32_t aAction, const char* aSDP)
   PC_AUTO_ENTER_API_CALL(true);
 
   if (!aSDP) {
-    CSFLogError(logTag, "%s - aSDP is NULL", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s - aSDP is NULL", __FUNCTION__);
     return NS_ERROR_FAILURE;
   }
 
@@ -1758,7 +1739,7 @@ PeerConnectionImpl::SetLocalDescription(int32_t aAction, const char* aSDP)
     }
 
     std::string errorString = mJsepSession->GetLastError();
-    CSFLogError(logTag, "%s: pc = %s, error = %s",
+    CSFLogError(LOGTAG, "%s: pc = %s, error = %s",
                 __FUNCTION__, mHandle.c_str(), errorString.c_str());
     pco->OnSetLocalDescriptionError(error, ObString(errorString.c_str()), rv);
   } else {
@@ -1806,7 +1787,7 @@ static void StartTrack(MediaStream* aSource,
       // a track "later".
 
       if (current_end != 0L) {
-        CSFLogDebug(logTag, "added track @ %u -> %f",
+        CSFLogDebug(LOGTAG, "added track @ %u -> %f",
                     static_cast<unsigned>(current_end),
                     mStream->StreamTimeToSeconds(current_end));
       }
@@ -1831,7 +1812,7 @@ static void StartTrack(MediaStream* aSource,
 
   aSource->GraphImpl()->AppendMessage(
       MakeUnique<Message>(aSource, aTrackId, Move(aSegment)));
-  CSFLogInfo(logTag, "Dispatched track-add for track id %u on stream %p",
+  CSFLogInfo(LOGTAG, "Dispatched track-add for track id %u on stream %p",
              aTrackId, aSource);
 }
 
@@ -1882,7 +1863,7 @@ PeerConnectionImpl::CreateNewRemoteTracks(RefPtr<PeerConnectionObserver>& aPco)
         return nrv;
       }
 
-      CSFLogDebug(logTag, "Added remote stream %s", info->GetId().c_str());
+      CSFLogDebug(LOGTAG, "Added remote stream %s", info->GetId().c_str());
 
       info->GetMediaStream()->AssignId(NS_ConvertUTF8toUTF16(streamId.c_str()));
       info->GetMediaStream()->SetLogicalStreamStartTime(
@@ -1948,13 +1929,13 @@ PeerConnectionImpl::CreateNewRemoteTracks(RefPtr<PeerConnectionObserver>& aPco)
         StartTrack(info->GetMediaStream()->GetInputStream()->AsSourceStream(),
                    trackID, Move(segment));
         info->AddTrack(webrtcTrackId, domTrack);
-        CSFLogDebug(logTag, "Added remote track %s/%s",
+        CSFLogDebug(LOGTAG, "Added remote track %s/%s",
                     info->GetId().c_str(), webrtcTrackId.c_str());
 
         domTrack->AssignId(NS_ConvertUTF8toUTF16(webrtcTrackId.c_str()));
         aPco->OnAddTrack(*domTrack, streams, jrv);
         if (jrv.Failed()) {
-          CSFLogError(logTag, ": OnAddTrack(%s) failed! Error: %u",
+          CSFLogError(LOGTAG, ": OnAddTrack(%s) failed! Error: %u",
                       webrtcTrackId.c_str(),
                       jrv.ErrorCodeAsInt());
         }
@@ -1964,7 +1945,7 @@ PeerConnectionImpl::CreateNewRemoteTracks(RefPtr<PeerConnectionObserver>& aPco)
     if (newStream) {
       aPco->OnAddStream(*info->GetMediaStream(), jrv);
       if (jrv.Failed()) {
-        CSFLogError(logTag, ": OnAddStream() failed! Error: %u",
+        CSFLogError(LOGTAG, ": OnAddStream() failed! Error: %u",
                     jrv.ErrorCodeAsInt());
       }
     }
@@ -2021,7 +2002,7 @@ PeerConnectionImpl::SetRemoteDescription(int32_t action, const char* aSDP)
   PC_AUTO_ENTER_API_CALL(true);
 
   if (!aSDP) {
-    CSFLogError(logTag, "%s - aSDP is NULL", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s - aSDP is NULL", __FUNCTION__);
     return NS_ERROR_FAILURE;
   }
 
@@ -2046,7 +2027,7 @@ PeerConnectionImpl::SetRemoteDescription(int32_t action, const char* aSDP)
 
     nsresult nrv = ConfigureJsepSessionCodecs();
     if (NS_FAILED(nrv)) {
-      CSFLogError(logTag, "Failed to configure codecs");
+      CSFLogError(LOGTAG, "Failed to configure codecs");
       return nrv;
     }
   }
@@ -2089,7 +2070,7 @@ PeerConnectionImpl::SetRemoteDescription(int32_t action, const char* aSDP)
     }
 
     std::string errorString = mJsepSession->GetLastError();
-    CSFLogError(logTag, "%s: pc = %s, error = %s",
+    CSFLogError(LOGTAG, "%s: pc = %s, error = %s",
                 __FUNCTION__, mHandle.c_str(), errorString.c_str());
     pco->OnSetRemoteDescriptionError(error, ObString(errorString.c_str()), jrv);
   } else {
@@ -2166,7 +2147,7 @@ PeerConnectionImpl::AddIceCandidate(const char* aCandidate, const char* aMid, un
   PC_AUTO_ENTER_API_CALL(true);
 
   if (mForceIceTcp && std::string::npos != std::string(aCandidate).find(" UDP ")) {
-    CSFLogError(logTag, "Blocking remote UDP candidate: %s", aCandidate);
+    CSFLogError(LOGTAG, "Blocking remote UDP candidate: %s", aCandidate);
     return NS_OK;
   }
 
@@ -2178,7 +2159,7 @@ PeerConnectionImpl::AddIceCandidate(const char* aCandidate, const char* aMid, un
 
   STAMP_TIMECARD(mTimeCard, "Add Ice Candidate");
 
-  CSFLogDebug(logTag, "AddIceCandidate: %s", aCandidate);
+  CSFLogDebug(LOGTAG, "AddIceCandidate: %s", aCandidate);
 
   // When remote candidates are added before our ICE ctx is up and running
   // (the transition to New is async through STS, so this is not impossible),
@@ -2220,7 +2201,7 @@ PeerConnectionImpl::AddIceCandidate(const char* aCandidate, const char* aMid, un
 
     std::string errorString = mJsepSession->GetLastError();
 
-    CSFLogError(logTag, "Failed to incorporate remote candidate into SDP:"
+    CSFLogError(LOGTAG, "Failed to incorporate remote candidate into SDP:"
                         " res = %u, candidate = %s, level = %u, error = %s",
                         static_cast<unsigned>(res),
                         aCandidate,
@@ -2263,7 +2244,7 @@ PeerConnectionImpl::SetPeerIdentity(const nsAString& aPeerIdentity)
     mPeerIdentity = new PeerIdentity(aPeerIdentity);
     nsIDocument* doc = GetWindow()->GetExtantDoc();
     if (!doc) {
-      CSFLogInfo(logTag, "Can't update principal on streams; document gone");
+      CSFLogInfo(LOGTAG, "Can't update principal on streams; document gone");
       return NS_ERROR_FAILURE;
     }
     MediaStreamTrack* allTracks = nullptr;
@@ -2285,7 +2266,7 @@ PeerConnectionImpl::SetDtlsConnected(bool aPrivacyRequested)
     // now we know that privacy isn't needed for sure
     nsIDocument* doc = GetWindow()->GetExtantDoc();
     if (!doc) {
-      CSFLogInfo(logTag, "Can't update principal on streams; document gone");
+      CSFLogInfo(LOGTAG, "Can't update principal on streams; document gone");
       return NS_ERROR_FAILURE;
     }
     mMedia->UpdateRemoteStreamPrincipals_m(doc->NodePrincipal());
@@ -2301,7 +2282,7 @@ PeerConnectionImpl::PrincipalChanged(MediaStreamTrack* aTrack) {
   if (doc) {
     mMedia->UpdateSinkIdentity_m(aTrack, doc->NodePrincipal(), mPeerIdentity);
   } else {
-    CSFLogInfo(logTag, "Can't update sink principal; document gone");
+    CSFLogInfo(LOGTAG, "Can't update sink principal; document gone");
   }
 }
 
@@ -2324,8 +2305,71 @@ PeerConnectionImpl::GetStreamId(const DOMMediaStream& aStream)
 void
 PeerConnectionImpl::OnMediaError(const std::string& aError)
 {
-  CSFLogError(logTag, "Encountered media error! %s", aError.c_str());
+  CSFLogError(LOGTAG, "Encountered media error! %s", aError.c_str());
   // TODO: Let content know about this somehow.
+}
+
+bool
+PeerConnectionImpl::ShouldDumpPacket(size_t level, dom::mozPacketDumpType type,
+                                     bool sending) const
+{
+  if (!mPacketDumpEnabled) {
+    return false;
+  }
+
+  MutexAutoLock lock(mPacketDumpFlagsMutex);
+
+  const std::vector<unsigned>* packetDumpFlags;
+
+  if (sending) {
+    packetDumpFlags = &mSendPacketDumpFlags;
+  } else {
+    packetDumpFlags = &mRecvPacketDumpFlags;
+  }
+
+  if (level < packetDumpFlags->size()) {
+    unsigned flag = 1 << (unsigned)type;
+    return flag & packetDumpFlags->at(level);
+  }
+
+  return false;
+}
+
+void
+PeerConnectionImpl::DumpPacket_m(size_t level, dom::mozPacketDumpType type,
+                                 bool sending, UniquePtr<uint8_t[]>& packet,
+                                 size_t size)
+{
+  if (IsClosed()) {
+    return;
+  }
+
+  if (!ShouldDumpPacket(level, type, sending)) {
+    return;
+  }
+
+  RefPtr<PeerConnectionObserver> pco = do_QueryObjectReferent(mPCObserver);
+  if (!pco) {
+    return;
+  }
+
+  // TODO: Is this efficient? Should we try grabbing our JS ctx from somewhere
+  // else?
+  AutoJSAPI jsapi;
+  if(!jsapi.Init(GetWindow())) {
+    return;
+  }
+
+  JS::Rooted<JSObject*> jsobj(jsapi.cx(),
+    JS_NewArrayBufferWithContents(jsapi.cx(), size, packet.release()));
+
+  RootedSpiderMonkeyInterface<ArrayBuffer> arrayBuffer(jsapi.cx());
+  if (!arrayBuffer.Init(jsobj)) {
+    return;
+  }
+
+  JSErrorResult jrv;
+  pco->OnPacket(level, type, sending, arrayBuffer, jrv);
 }
 
 nsresult
@@ -2335,7 +2379,7 @@ PeerConnectionImpl::AddTrack(MediaStreamTrack& aTrack,
   PC_AUTO_ENTER_API_CALL(true);
 
   if (!aStreams.Length()) {
-    CSFLogError(logTag, "%s: At least one stream arg required", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: At least one stream arg required", __FUNCTION__);
     return NS_ERROR_FAILURE;
   }
 
@@ -2353,7 +2397,7 @@ PeerConnectionImpl::AddTrack(MediaStreamTrack& aTrack,
     return res;
   }
 
-  CSFLogDebug(logTag, "Added track (%s) to stream %s",
+  CSFLogDebug(LOGTAG, "Added track (%s) to stream %s",
                       trackId.c_str(), streamId.c_str());
 
   aTrack.AddPrincipalChangeObserver(this);
@@ -2422,6 +2466,52 @@ PeerConnectionImpl::AddRIDFilter(MediaStreamTrack& aRecvTrack,
   return NS_OK;
 }
 
+nsresult
+PeerConnectionImpl::EnablePacketDump(unsigned long level,
+                                     dom::mozPacketDumpType type,
+                                     bool sending)
+{
+  mPacketDumpEnabled = true;
+  std::vector<unsigned>* packetDumpFlags;
+  if (sending) {
+    packetDumpFlags = &mSendPacketDumpFlags;
+  } else {
+    packetDumpFlags = &mRecvPacketDumpFlags;
+  }
+
+  unsigned flag = 1 << (unsigned)type;
+
+  MutexAutoLock lock(mPacketDumpFlagsMutex);
+  if (level >= packetDumpFlags->size()) {
+    packetDumpFlags->resize(level + 1);
+  }
+
+  (*packetDumpFlags)[level] |= flag;
+  return NS_OK;
+}
+
+nsresult
+PeerConnectionImpl::DisablePacketDump(unsigned long level,
+                                      dom::mozPacketDumpType type,
+                                      bool sending)
+{
+  std::vector<unsigned>* packetDumpFlags;
+  if (sending) {
+    packetDumpFlags = &mSendPacketDumpFlags;
+  } else {
+    packetDumpFlags = &mRecvPacketDumpFlags;
+  }
+
+  unsigned flag = 1 << (unsigned)type;
+
+  MutexAutoLock lock(mPacketDumpFlagsMutex);
+  if (level < packetDumpFlags->size()) {
+    (*packetDumpFlags)[level] &= ~flag;
+  }
+
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 PeerConnectionImpl::RemoveTrack(MediaStreamTrack& aTrack) {
   PC_AUTO_ENTER_API_CALL(true);
@@ -2431,8 +2521,8 @@ PeerConnectionImpl::RemoveTrack(MediaStreamTrack& aTrack) {
   nsString wideTrackId;
   aTrack.GetId(wideTrackId);
   for (size_t i = 0; i < mDTMFStates.Length(); ++i) {
-    if (mDTMFStates[i].mTrackId == wideTrackId) {
-      mDTMFStates[i].mSendTimer->Cancel();
+    if (mDTMFStates[i]->mTrackId == wideTrackId) {
+      mDTMFStates[i]->mSendTimer->Cancel();
       mDTMFStates.RemoveElementAt(i);
       break;
     }
@@ -2441,7 +2531,7 @@ PeerConnectionImpl::RemoveTrack(MediaStreamTrack& aTrack) {
   RefPtr<LocalSourceStreamInfo> info = media()->GetLocalStreamByTrackId(trackId);
 
   if (!info) {
-    CSFLogError(logTag, "%s: Unknown stream", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: Unknown stream", __FUNCTION__);
     return NS_ERROR_INVALID_ARG;
   }
 
@@ -2449,7 +2539,7 @@ PeerConnectionImpl::RemoveTrack(MediaStreamTrack& aTrack) {
     mJsepSession->RemoveTrack(info->GetId(), trackId);
 
   if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "%s: Unknown stream/track ids %s %s",
+    CSFLogError(LOGTAG, "%s: Unknown stream/track ids %s %s",
                 __FUNCTION__,
                 info->GetId().c_str(),
                 trackId.c_str());
@@ -2503,21 +2593,20 @@ PeerConnectionImpl::InsertDTMF(mozilla::dom::RTCRtpSender& sender,
   mst->GetId(senderTrackId);
 
   // Attempt to locate state for the DTMFSender
-  DTMFState* state = nullptr;
+  RefPtr<DTMFState> state;
   for (auto& dtmfState : mDTMFStates) {
-    if (dtmfState.mTrackId == senderTrackId) {
-      state = &dtmfState;
+    if (dtmfState->mTrackId == senderTrackId) {
+      state = dtmfState;
       break;
     }
   }
 
   // No state yet, create a new one
   if (!state) {
-    state = mDTMFStates.AppendElement();
+    state = *mDTMFStates.AppendElement(new DTMFState);
     state->mPeerConnectionImpl = this;
     state->mTrackId = senderTrackId;
-    state->mSendTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
-    MOZ_ASSERT(state->mSendTimer);
+    state->mSendTimer = NS_NewTimer();
   }
   MOZ_ASSERT(state);
 
@@ -2538,9 +2627,7 @@ PeerConnectionImpl::InsertDTMF(mozilla::dom::RTCRtpSender& sender,
   state->mDuration = duration;
   state->mInterToneGap = interToneGap;
   if (!state->mTones.IsEmpty()) {
-    state->mSendTimer->InitWithNamedFuncCallback(DTMFSendTimerCallback_m, state, 0,
-                                                 nsITimer::TYPE_ONE_SHOT,
-                                                 "DTMFSendTimerCallback_m");
+    state->mSendTimer->InitWithCallback(state, 0, nsITimer::TYPE_ONE_SHOT);
   }
   return NS_OK;
 }
@@ -2564,8 +2651,8 @@ PeerConnectionImpl::GetDTMFToneBuffer(mozilla::dom::RTCRtpSender& sender,
 
   // Attempt to locate state for the DTMFSender
   for (auto& dtmfState : mDTMFStates) {
-    if (dtmfState.mTrackId == senderTrackId) {
-      outToneBuffer = dtmfState.mTones;
+    if (dtmfState->mTrackId == senderTrackId) {
+      outToneBuffer = dtmfState->mTones;
       break;
     }
   }
@@ -2582,8 +2669,8 @@ PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
   aThisTrack.GetId(trackId);
 
   for (size_t i = 0; i < mDTMFStates.Length(); ++i) {
-    if (mDTMFStates[i].mTrackId == trackId) {
-      mDTMFStates[i].mSendTimer->Cancel();
+    if (mDTMFStates[i]->mTrackId == trackId) {
+      mDTMFStates[i]->mSendTimer->Cancel();
       mDTMFStates.RemoveElementAt(i);
       break;
     }
@@ -2598,7 +2685,7 @@ PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
   if (&aThisTrack == &aWithTrack) {
     pco->OnReplaceTrackSuccess(jrv);
     if (jrv.Failed()) {
-      CSFLogError(logTag, "Error firing replaceTrack success callback");
+      CSFLogError(LOGTAG, "Error firing replaceTrack success callback");
       return NS_ERROR_UNEXPECTED;
     }
     return NS_OK;
@@ -2614,7 +2701,7 @@ PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
                              ObString(mJsepSession->GetLastError().c_str()),
                              jrv);
     if (jrv.Failed()) {
-      CSFLogError(logTag, "Error firing replaceTrack success callback");
+      CSFLogError(LOGTAG, "Error firing replaceTrack success callback");
       return NS_ERROR_UNEXPECTED;
     }
     return NS_OK;
@@ -2625,7 +2712,7 @@ PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
   RefPtr<LocalSourceStreamInfo> info =
     media()->GetLocalStreamByTrackId(origTrackId);
   if (!info) {
-    CSFLogError(logTag, "Could not find stream from trackId");
+    CSFLogError(LOGTAG, "Could not find stream from trackId");
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -2642,7 +2729,7 @@ PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
                              ObString(mJsepSession->GetLastError().c_str()),
                              jrv);
     if (jrv.Failed()) {
-      CSFLogError(logTag, "Error firing replaceTrack error callback");
+      CSFLogError(LOGTAG, "Error firing replaceTrack error callback");
       return NS_ERROR_UNEXPECTED;
     }
     return NS_OK;
@@ -2655,13 +2742,13 @@ PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
                              newTrackId);
 
   if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "Unexpected error in ReplaceTrack: %d",
+    CSFLogError(LOGTAG, "Unexpected error in ReplaceTrack: %d",
                         static_cast<int>(rv));
     pco->OnReplaceTrackError(kInvalidMediastreamTrack,
                              ObString("Failed to replace track"),
                              jrv);
     if (jrv.Failed()) {
-      CSFLogError(logTag, "Error firing replaceTrack error callback");
+      CSFLogError(LOGTAG, "Error firing replaceTrack error callback");
       return NS_ERROR_UNEXPECTED;
     }
     return NS_OK;
@@ -2675,13 +2762,13 @@ PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
   // TODO: We should probably only do this if the source has in fact changed.
 
   if (NS_FAILED((rv = mMedia->UpdateMediaPipelines(*mJsepSession)))) {
-    CSFLogError(logTag, "Error Updating MediaPipelines");
+    CSFLogError(LOGTAG, "Error Updating MediaPipelines");
     return rv;
   }
 
   pco->OnReplaceTrackSuccess(jrv);
   if (jrv.Failed()) {
-    CSFLogError(logTag, "Error firing replaceTrack success callback");
+    CSFLogError(LOGTAG, "Error firing replaceTrack success callback");
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -2718,7 +2805,7 @@ PeerConnectionImpl::SetParameters(
   std::string trackId = PeerConnectionImpl::GetTrackId(aTrack);
   RefPtr<LocalSourceStreamInfo> info = media()->GetLocalStreamByTrackId(trackId);
   if (!info) {
-    CSFLogError(logTag, "%s: Unknown stream", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: Unknown stream", __FUNCTION__);
     return NS_ERROR_INVALID_ARG;
   }
   std::string streamId = info->GetId();
@@ -2755,7 +2842,7 @@ PeerConnectionImpl::GetParameters(
   std::string trackId = PeerConnectionImpl::GetTrackId(aTrack);
   RefPtr<LocalSourceStreamInfo> info = media()->GetLocalStreamByTrackId(trackId);
   if (!info) {
-    CSFLogError(logTag, "%s: Unknown stream", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: Unknown stream", __FUNCTION__);
     return NS_ERROR_INVALID_ARG;
   }
   std::string streamId = info->GetId();
@@ -2776,7 +2863,7 @@ PeerConnectionImpl::CalculateFingerprint(
                                                  &buf[0], sizeof(buf),
                                                  &len);
   if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "Unable to calculate certificate fingerprint, rv=%u",
+    CSFLogError(LOGTAG, "Unable to calculate certificate fingerprint, rv=%u",
                         static_cast<unsigned>(rv));
     return rv;
   }
@@ -2912,11 +2999,11 @@ PeerConnectionImpl::CheckApiState(bool assert_ice_ready) const
              (mIceGatheringState == PCImplIceGatheringState::Complete));
 
   if (IsClosed()) {
-    CSFLogError(logTag, "%s: called API while closed", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: called API while closed", __FUNCTION__);
     return NS_ERROR_FAILURE;
   }
   if (!mMedia) {
-    CSFLogError(logTag, "%s: called API with disposed mMedia", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: called API with disposed mMedia", __FUNCTION__);
     return NS_ERROR_FAILURE;
   }
   return NS_OK;
@@ -2925,7 +3012,7 @@ PeerConnectionImpl::CheckApiState(bool assert_ice_ready) const
 NS_IMETHODIMP
 PeerConnectionImpl::Close()
 {
-  CSFLogDebug(logTag, "%s: for %s", __FUNCTION__, mHandle.c_str());
+  CSFLogDebug(LOGTAG, "%s: for %s", __FUNCTION__, mHandle.c_str());
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
   SetSignalingState_m(PCImplSignalingState::SignalingClosed);
@@ -2943,7 +3030,7 @@ PeerConnectionImpl::PluginCrash(uint32_t aPluginID,
     return false;
   }
 
-  CSFLogError(logTag, "%s: Our plugin %llu crashed", __FUNCTION__, static_cast<unsigned long long>(aPluginID));
+  CSFLogError(LOGTAG, "%s: Our plugin %llu crashed", __FUNCTION__, static_cast<unsigned long long>(aPluginID));
 
   nsCOMPtr<nsIDocument> doc = mWindow->GetExtantDoc();
   if (!doc) {
@@ -3028,7 +3115,7 @@ PeerConnectionImpl::CloseInt()
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
   for (auto& dtmfState : mDTMFStates) {
-    dtmfState.mSendTimer->Cancel();
+    dtmfState->mSendTimer->Cancel();
   }
 
   // We do this at the end of the call because we want to make sure we've waited
@@ -3039,13 +3126,13 @@ PeerConnectionImpl::CloseInt()
     RecordLongtermICEStatistics();
   }
   RecordEndOfCallTelemetry();
-  CSFLogInfo(logTag, "%s: Closing PeerConnectionImpl %s; "
+  CSFLogInfo(LOGTAG, "%s: Closing PeerConnectionImpl %s; "
              "ending call", __FUNCTION__, mHandle.c_str());
   if (mJsepSession) {
     mJsepSession->Close();
   }
   if (mDataConnection) {
-    CSFLogInfo(logTag, "%s: Destroying DataChannelConnection %p for %s",
+    CSFLogInfo(LOGTAG, "%s: Destroying DataChannelConnection %p for %s",
                __FUNCTION__, (void *) mDataConnection.get(), mHandle.c_str());
     mDataConnection->Destroy();
     mDataConnection = nullptr; // it may not go away until the runnables are dead
@@ -3123,7 +3210,7 @@ PeerConnectionImpl::SetSignalingState_m(PCImplSignalingState aSignalingState,
     mMedia->ActivateOrRemoveTransports(*mJsepSession, mForceIceTcp);
     if (!rollback) {
       if (NS_FAILED(mMedia->UpdateMediaPipelines(*mJsepSession))) {
-        CSFLogError(logTag, "Error Updating MediaPipelines");
+        CSFLogError(LOGTAG, "Error Updating MediaPipelines");
         NS_ASSERTION(false, "Error Updating MediaPipelines in SetSignalingState_m()");
         // XXX what now?  Not much we can do but keep going, without major restructuring
       }
@@ -3132,7 +3219,7 @@ PeerConnectionImpl::SetSignalingState_m(PCImplSignalingState aSignalingState,
     }
 
     if (!mJsepSession->AllLocalTracksAreAssigned()) {
-      CSFLogInfo(logTag, "Not all local tracks were assigned to an "
+      CSFLogInfo(LOGTAG, "Not all local tracks were assigned to an "
                  "m-section, either because the offerer did not offer"
                  " to receive enough tracks, or because tracks were "
                  "added after CreateOffer/Answer, but before "
@@ -3295,7 +3382,7 @@ PeerConnectionImpl::CandidateReady(const std::string& candidate,
   PC_AUTO_ENTER_API_CALL_VOID_RETURN(false);
 
   if (mForceIceTcp && std::string::npos != candidate.find(" UDP ")) {
-    CSFLogError(logTag, "Blocking local UDP candidate: %s", candidate.c_str());
+    CSFLogError(LOGTAG, "Blocking local UDP candidate: %s", candidate.c_str());
     return;
   }
 
@@ -3309,7 +3396,7 @@ PeerConnectionImpl::CandidateReady(const std::string& candidate,
   if (NS_FAILED(res)) {
     std::string errorString = mJsepSession->GetLastError();
 
-    CSFLogError(logTag, "Failed to incorporate local candidate into SDP:"
+    CSFLogError(LOGTAG, "Failed to incorporate local candidate into SDP:"
                         " res = %u, candidate = %s, level = %u, error = %s",
                         static_cast<unsigned>(res),
                         candidate.c_str(),
@@ -3319,7 +3406,7 @@ PeerConnectionImpl::CandidateReady(const std::string& candidate,
   }
 
   if (skipped) {
-    CSFLogDebug(logTag, "Skipped adding local candidate %s (level %u) to SDP, "
+    CSFLogDebug(LOGTAG, "Skipped adding local candidate %s (level %u) to SDP, "
                         "this typically happens because the m-section is "
                         "bundled, which means it doesn't make sense for it to "
                         "have its own transport-related attributes.",
@@ -3328,7 +3415,7 @@ PeerConnectionImpl::CandidateReady(const std::string& candidate,
     return;
   }
 
-  CSFLogDebug(logTag, "Passing local candidate to content: %s",
+  CSFLogDebug(LOGTAG, "Passing local candidate to content: %s",
               candidate.c_str());
   SendLocalIceCandidateToContent(level, mid, candidate);
 }
@@ -3386,7 +3473,7 @@ void PeerConnectionImpl::IceConnectionStateChange(
     NrIceCtx::ConnectionState state) {
   PC_AUTO_ENTER_API_CALL_VOID_RETURN(false);
 
-  CSFLogDebug(logTag, "%s", __FUNCTION__);
+  CSFLogDebug(LOGTAG, "%s", __FUNCTION__);
 
   auto domState = toDomIceConnectionState(state);
   if (domState == mIceConnectionState) {
@@ -3473,7 +3560,7 @@ PeerConnectionImpl::IceGatheringStateChange(
 {
   PC_AUTO_ENTER_API_CALL_VOID_RETURN(false);
 
-  CSFLogDebug(logTag, "%s", __FUNCTION__);
+  CSFLogDebug(LOGTAG, "%s", __FUNCTION__);
 
   mIceGatheringState = toDomIceGatheringState(state);
 
@@ -3516,7 +3603,7 @@ PeerConnectionImpl::UpdateDefaultCandidate(const std::string& defaultAddr,
                                            const std::string& defaultRtcpAddr,
                                            uint16_t defaultRtcpPort,
                                            uint16_t level) {
-  CSFLogDebug(logTag, "%s", __FUNCTION__);
+  CSFLogDebug(LOGTAG, "%s", __FUNCTION__);
   mJsepSession->UpdateDefaultCandidate(defaultAddr,
                                        defaultPort,
                                        defaultRtcpAddr,
@@ -3526,7 +3613,7 @@ PeerConnectionImpl::UpdateDefaultCandidate(const std::string& defaultAddr,
 
 void
 PeerConnectionImpl::EndOfLocalCandidates(uint16_t level) {
-  CSFLogDebug(logTag, "%s", __FUNCTION__);
+  CSFLogDebug(LOGTAG, "%s", __FUNCTION__);
   mJsepSession->EndOfLocalCandidates(level);
 }
 
@@ -3540,13 +3627,13 @@ PeerConnectionImpl::BuildStatsQuery_m(
   }
 
   if (!mThread) {
-    CSFLogError(logTag, "Could not build stats query, no MainThread");
+    CSFLogError(LOGTAG, "Could not build stats query, no MainThread");
     return NS_ERROR_UNEXPECTED;
   }
 
   nsresult rv = GetTimeSinceEpoch(&(query->now));
   if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "Could not build stats query, could not get timestamp");
+    CSFLogError(LOGTAG, "Could not build stats query, could not get timestamp");
     return rv;
   }
 
@@ -3556,7 +3643,7 @@ PeerConnectionImpl::BuildStatsQuery_m(
   // accidentally release the Ctx on Mainthread.
   query->iceCtx = mMedia->ice_ctx();
   if (!query->iceCtx) {
-    CSFLogError(logTag, "Could not build stats query, no ice_ctx");
+    CSFLogError(LOGTAG, "Could not build stats query, no ice_ctx");
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -3567,6 +3654,8 @@ PeerConnectionImpl::BuildStatsQuery_m(
 
   query->iceStartTime = mIceStartTime;
   query->failed = isFailed(mIceConnectionState);
+  query->report->mIceRestarts.Construct(mIceRestartCount);
+  query->report->mIceRollbacks.Construct(mIceRollbackCount);
 
   // Populate SDP on main
   if (query->internalStats) {
@@ -3655,7 +3744,7 @@ static void RecordIceStats_s(
   std::vector<NrIceCandidatePair> candPairs;
   nsresult res = mediaStream.GetCandidatePairs(&candPairs);
   if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: Error getting candidate pairs", __FUNCTION__);
+    CSFLogError(LOGTAG, "%s: Error getting candidate pairs", __FUNCTION__);
     return;
   }
 
@@ -4003,7 +4092,7 @@ void PeerConnectionImpl::DeliverStatsReportToPCObserver_m(
       }
 
       if (rv.Failed()) {
-        CSFLogError(logTag, "Error firing stats observer callback");
+        CSFLogError(LOGTAG, "Error firing stats observer callback");
       }
     }
   }
@@ -4068,7 +4157,7 @@ PeerConnectionImpl::IceStreamReady(NrIceMediaStream *aStream)
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
   MOZ_ASSERT(aStream);
 
-  CSFLogDebug(logTag, "%s: %s", __FUNCTION__, aStream->name().c_str());
+  CSFLogDebug(LOGTAG, "%s: %s", __FUNCTION__, aStream->name().c_str());
 }
 
 //Telemetry for when calls start
@@ -4110,63 +4199,63 @@ PeerConnectionImpl::GetRemoteStreams(nsTArray<RefPtr<DOMMediaStream > >& result)
   return NS_OK;
 }
 
-void
-PeerConnectionImpl::DTMFSendTimerCallback_m(nsITimer* timer, void* closure)
+nsresult
+PeerConnectionImpl::DTMFState::Notify(nsITimer* timer)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  auto state = static_cast<DTMFState*>(closure);
-
   nsString eventTone;
-  if (!state->mTones.IsEmpty()) {
-    uint16_t toneChar = state->mTones.CharAt(0);
+  if (!mTones.IsEmpty()) {
+    uint16_t toneChar = mTones.CharAt(0);
     int tone = GetDTMFToneCode(toneChar);
 
     eventTone.Assign(toneChar);
 
-    state->mTones.Cut(0, 1);
+    mTones.Cut(0, 1);
 
     if (tone == -1) {
-      state->mSendTimer->InitWithNamedFuncCallback(DTMFSendTimerCallback_m, state,
-                                                   2000, nsITimer::TYPE_ONE_SHOT,
-                                                   "DTMFSendTimerCallback_m");
+      mSendTimer->InitWithCallback(this, 2000, nsITimer::TYPE_ONE_SHOT);
     } else {
       // Reset delay if necessary
-      state->mSendTimer->InitWithNamedFuncCallback(DTMFSendTimerCallback_m, state,
-                                                   state->mDuration + state->mInterToneGap,
-                                                   nsITimer::TYPE_ONE_SHOT,
-                                                   "DTMFSendTimerCallback_m");
+      mSendTimer->InitWithCallback(this,
+                                   mDuration + mInterToneGap,
+                                   nsITimer::TYPE_ONE_SHOT);
 
       RefPtr<AudioSessionConduit> conduit =
-        state->mPeerConnectionImpl->mMedia->GetAudioConduit(state->mLevel);
+        mPeerConnectionImpl->mMedia->GetAudioConduit(mLevel);
 
       if (conduit) {
-        uint32_t duration = state->mDuration;
-        state->mPeerConnectionImpl->mSTSThread->Dispatch(WrapRunnableNM([conduit, tone, duration] () {
+        uint32_t duration = mDuration;
+        mPeerConnectionImpl->mSTSThread->Dispatch(WrapRunnableNM([conduit, tone, duration] () {
             //Note: We default to channel 0, not inband, and 6dB attenuation.
             //      here. We might want to revisit these choices in the future.
             conduit->InsertDTMFTone(0, tone, true, duration, 6);
           }), NS_DISPATCH_NORMAL);
       }
-
     }
   } else {
-    state->mSendTimer->Cancel();
+    mSendTimer->Cancel();
   }
 
-  RefPtr<PeerConnectionObserver> pco = do_QueryObjectReferent(state->mPeerConnectionImpl->mPCObserver);
+  RefPtr<PeerConnectionObserver> pco = do_QueryObjectReferent(mPeerConnectionImpl->mPCObserver);
   if (!pco) {
     NS_WARNING("Failed to dispatch the RTCDTMFToneChange event!");
-    return;
+    return NS_OK; // Return is ignored anyhow
   }
 
   JSErrorResult jrv;
-  pco->OnDTMFToneChange(state->mTrackId, eventTone, jrv);
+  pco->OnDTMFToneChange(mTrackId, eventTone, jrv);
 
   if (jrv.Failed()) {
     NS_WARNING("Failed to dispatch the RTCDTMFToneChange event!");
-    return;
   }
+
+  return NS_OK;
 }
+
+PeerConnectionImpl::DTMFState::DTMFState() = default;
+PeerConnectionImpl::DTMFState::~DTMFState() = default;
+
+NS_IMPL_ISUPPORTS(PeerConnectionImpl::DTMFState, nsITimerCallback)
 
 }  // end mozilla namespace

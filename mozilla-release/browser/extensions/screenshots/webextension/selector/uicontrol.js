@@ -1,5 +1,5 @@
 /* globals log, catcher, util, ui, slides */
-/* globals shooter, callBackground, selectorLoader, assertIsTrusted */
+/* globals shooter, callBackground, selectorLoader, assertIsTrusted, buildSettings */
 
 "use strict";
 
@@ -45,8 +45,8 @@ this.uicontrol = (function() {
 
   const { watchFunction, watchPromise } = catcher;
 
-  const MAX_PAGE_HEIGHT = 5000;
-  const MAX_PAGE_WIDTH = 5000;
+  const MAX_PAGE_HEIGHT = buildSettings.maxImageHeight;
+  const MAX_PAGE_WIDTH = buildSettings.maxImageWidth;
   // An autoselection smaller than these will be ignored entirely:
   const MIN_DETECT_ABSOLUTE_HEIGHT = 10;
   const MIN_DETECT_ABSOLUTE_WIDTH = 30;
@@ -134,6 +134,9 @@ this.uicontrol = (function() {
     }, download: () => {
       sendEvent("download-shot", "overlay-download-button");
       shooter.downloadShot(selectedPos);
+    }, copy: () => {
+      sendEvent("copy-shot", "overlay-copy-button");
+      shooter.copyShot(selectedPos);
     }
   };
 
@@ -155,27 +158,25 @@ this.uicontrol = (function() {
       selectedPos = new Selection(
         window.scrollX, window.scrollY,
         window.scrollX + window.innerWidth, window.scrollY + window.innerHeight);
-      captureType = 'visible';
+      captureType = "visible";
       setState("previewing");
     },
     onClickFullPage: () => {
       sendEvent("capture-full-page", "selection-button");
-      let width = Math.max(
-        document.body.clientWidth,
-        document.documentElement.clientWidth,
-        document.body.scrollWidth,
-        document.documentElement.scrollWidth);
+      captureType = "fullPage";
+      let width = getDocumentWidth();
+      if (width > MAX_PAGE_WIDTH) {
+        captureType = "fullPageTruncated";
+      }
       width = Math.min(width, MAX_PAGE_WIDTH);
-      let height = Math.max(
-        document.body.clientHeight,
-        document.documentElement.clientHeight,
-        document.body.scrollHeight,
-        document.documentElement.scrollHeight);
+      let height = getDocumentHeight();
+      if (height > MAX_PAGE_HEIGHT) {
+        captureType = "fullPageTruncated";
+      }
       height = Math.min(height, MAX_PAGE_HEIGHT);
       selectedPos = new Selection(
         0, 0,
         width, height);
-      captureType = 'fullPage';
       setState("previewing");
     },
     onSavePreview: () => {
@@ -184,7 +185,20 @@ this.uicontrol = (function() {
     },
     onDownloadPreview: () => {
       sendEvent(`download-${captureType.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}`, "download-preview-button");
+
+      // Downloaded shots don't have dimension limits
+      if (captureType === "fullPageTruncated") {
+        captureType = "fullPage";
+        selectedPos = new Selection(
+          0, 0,
+          getDocumentWidth(), getDocumentHeight());
+      }
+
       shooter.downloadShot(selectedPos);
+    },
+    onCopyPreview: () => {
+      sendEvent(`copy-${captureType.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}`, "copy-preview-button");
+      shooter.copyShot(selectedPos);
     }
   };
 
@@ -368,7 +382,7 @@ this.uicontrol = (function() {
     start() {
       dataUrl = shooter.screenshotPage(selectedPos, captureType);
       ui.iframe.usePreview();
-      ui.Preview.display(dataUrl);
+      ui.Preview.display(dataUrl, captureType == "fullPageTruncated");
     }
   };
 
@@ -453,6 +467,11 @@ this.uicontrol = (function() {
         rect = Selection.getBoundingClientRect(node);
         if (!rect) {
           rect = lastRect;
+          break;
+        }
+        if (rect.width < MIN_DETECT_WIDTH || rect.height < MIN_DETECT_HEIGHT) {
+          // Avoid infinite loop for elements with zero or nearly zero height,
+          // like non-clearfixed float parents with or without borders.
           break;
         }
         if (rect.width > MAX_DETECT_WIDTH || rect.height > MAX_DETECT_HEIGHT) {
@@ -810,28 +829,32 @@ this.uicontrol = (function() {
     }
   };
 
-  let documentWidth = Math.max(
-    document.body && document.body.clientWidth,
-    document.documentElement.clientWidth,
-    document.body && document.body.scrollWidth,
-    document.documentElement.scrollWidth);
-  let documentHeight = Math.max(
-    document.body && document.body.clientHeight,
-    document.documentElement.clientHeight,
-    document.body && document.body.scrollHeight,
-    document.documentElement.scrollHeight);
+  function getDocumentWidth() {
+    return Math.max(
+      document.body && document.body.clientWidth,
+      document.documentElement.clientWidth,
+      document.body && document.body.scrollWidth,
+      document.documentElement.scrollWidth);
+  }
+  function getDocumentHeight() {
+    return Math.max(
+      document.body && document.body.clientHeight,
+      document.documentElement.clientHeight,
+      document.body && document.body.scrollHeight,
+      document.documentElement.scrollHeight);
+  }
 
   function scrollIfByEdge(pageX, pageY) {
     let top = window.scrollY;
     let bottom = top + window.innerHeight;
     let left = window.scrollX;
     let right = left + window.innerWidth;
-    if (pageY + SCROLL_BY_EDGE >= bottom && bottom < documentHeight) {
+    if (pageY + SCROLL_BY_EDGE >= bottom && bottom < getDocumentHeight()) {
       window.scrollBy(0, SCROLL_BY_EDGE);
     } else if (pageY - SCROLL_BY_EDGE <= top) {
       window.scrollBy(0, -SCROLL_BY_EDGE);
     }
-    if (pageX + SCROLL_BY_EDGE >= right && right < documentWidth) {
+    if (pageX + SCROLL_BY_EDGE >= right && right < getDocumentWidth()) {
       window.scrollBy(SCROLL_BY_EDGE, 0);
     } else if (pageX - SCROLL_BY_EDGE <= left) {
       window.scrollBy(-SCROLL_BY_EDGE, 0);
@@ -870,6 +893,7 @@ this.uicontrol = (function() {
 
   exports.deactivate = function() {
     try {
+      sendEvent("internal", "deactivate");
       setState("cancel");
       callBackground('closeSelector');
       selectorLoader.unloadModules();
@@ -942,16 +966,30 @@ this.uicontrol = (function() {
   }
 
   function keyupHandler(event) {
-    if (event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) {
-      // Modified
+    if (event.shiftKey || event.altKey) {
+      // unused modifier keys
       return;
+    }
+    if (event.code === "KeyC" && (event.ctrlKey || event.metaKey)) {
+      callBackground("getPlatformOs").then(os => {
+        if ((event.ctrlKey && os !== "mac") ||
+            (event.metaKey && os === "mac")) {
+          sendEvent("copy-shot", "keyboard-copy");
+          shooter.copyShot(selectedPos);
+        }
+      }).catch(() => {
+        // handled by catcher.watchPromise
+      });
     }
     if ((event.key || event.code) === "Escape") {
       sendEvent("cancel-shot", "keyboard-escape");
       exports.deactivate();
     }
-    if ((event.key || event.code) === "Enter") {
-      if (getState.state === "selected") {
+    if ((event.key || event.code) === "Enter" && getState.state === "selected") {
+      if (ui.isDownloadOnly()) {
+        sendEvent("download-shot", "keyboard-enter");
+        shooter.downloadShot(selectedPos);
+      } else {
         sendEvent("save-shot", "keyboard-enter");
         shooter.takeShot("selection", selectedPos);
       }

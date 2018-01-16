@@ -26,6 +26,12 @@
 class nsIDocument;
 class nsIDOMText;
 
+namespace mozilla {
+namespace dom {
+class HTMLSlotElement;
+} // namespace dom
+} // namespace mozilla
+
 #define DATA_NODE_FLAG_BIT(n_) NODE_FLAG_BIT(NODE_TYPE_SPECIFIC_BITS_OFFSET + (n_))
 
 // Data node specific flags
@@ -127,15 +133,12 @@ public:
   virtual already_AddRefed<nsINodeList> GetChildren(uint32_t aFilter) override;
 
 
-  nsresult SetAttr(int32_t aNameSpaceID, nsIAtom* aName,
-                   const nsAString& aValue, bool aNotify)
-  {
-    return SetAttr(aNameSpaceID, aName, nullptr, aValue, aNotify);
-  }
-  virtual nsresult SetAttr(int32_t aNameSpaceID, nsIAtom* aAttribute,
-                           nsIAtom* aPrefix, const nsAString& aValue,
+  using nsIContent::SetAttr;
+  virtual nsresult SetAttr(int32_t aNameSpaceID, nsAtom* aAttribute,
+                           nsAtom* aPrefix, const nsAString& aValue,
+                           nsIPrincipal* aSubjectPrincipal,
                            bool aNotify) override;
-  virtual nsresult UnsetAttr(int32_t aNameSpaceID, nsIAtom* aAttribute,
+  virtual nsresult UnsetAttr(int32_t aNameSpaceID, nsAtom* aAttribute,
                              bool aNotify) override;
   virtual const nsAttrName* GetAttrNameAt(uint32_t aIndex) const override;
   virtual mozilla::dom::BorrowedAttrInfo GetAttrInfoAt(uint32_t aIndex) const override;
@@ -173,14 +176,16 @@ public:
   virtual nsTArray<nsIContent*> &DestInsertionPoints() override;
   virtual nsTArray<nsIContent*> *GetExistingDestInsertionPoints() const override;
   virtual void SetShadowRoot(mozilla::dom::ShadowRoot* aShadowRoot) override;
-  virtual nsIContent *GetXBLInsertionParent() const override;
-  virtual void SetXBLInsertionParent(nsIContent* aContent) override;
+  virtual mozilla::dom::HTMLSlotElement* GetAssignedSlot() const override;
+  virtual void SetAssignedSlot(mozilla::dom::HTMLSlotElement* aSlot) override;
+  virtual nsIContent *GetXBLInsertionPoint() const override;
+  virtual void SetXBLInsertionPoint(nsIContent* aContent) override;
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
   virtual bool IsLink(nsIURI** aURI) const override;
 
   NS_IMETHOD WalkContentStyleRules(nsRuleWalker* aRuleWalker) override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const;
+  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
@@ -273,9 +278,9 @@ protected:
     nsIContent* mBindingParent;  // [Weak]
 
     /**
-     * @see nsIContent::GetXBLInsertionParent
+     * @see nsIContent::GetXBLInsertionPoint
      */
-    nsCOMPtr<nsIContent> mXBLInsertionParent;
+    nsCOMPtr<nsIContent> mXBLInsertionPoint;
 
     /**
      * @see nsIContent::GetContainingShadow
@@ -286,6 +291,11 @@ protected:
      * @see nsIContent::GetDestInsertionPoints
      */
     nsTArray<nsIContent*> mDestInsertionPoints;
+
+    /**
+     * @see nsIContent::GetAssignedSlot
+     */
+    RefPtr<mozilla::dom::HTMLSlotElement> mAssignedSlot;
   };
 
   // Override from nsINode
@@ -346,7 +356,7 @@ public:
   }
 
 private:
-  already_AddRefed<nsIAtom> GetCurrentValueAtom();
+  already_AddRefed<nsAtom> GetCurrentValueAtom();
 };
 
 #endif /* nsGenericDOMDataNode_h___ */

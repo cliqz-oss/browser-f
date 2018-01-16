@@ -5,7 +5,6 @@
 "use strict";
 
 const Services = require("Services");
-const { Task } = require("devtools/shared/task");
 
 const SwatchColorPickerTooltip = require("devtools/client/shared/widgets/tooltip/SwatchColorPickerTooltip");
 const { throttle } = require("devtools/client/inspector/shared/utils");
@@ -27,8 +26,6 @@ const CSS_GRID_COUNT_HISTOGRAM_ID = "DEVTOOLS_NUMBER_OF_CSS_GRIDS_IN_A_PAGE";
 const SHOW_GRID_AREAS = "devtools.gridinspector.showGridAreas";
 const SHOW_GRID_LINE_NUMBERS = "devtools.gridinspector.showGridLineNumbers";
 const SHOW_INFINITE_LINES_PREF = "devtools.gridinspector.showInfiniteLines";
-// @remove after release 56 (See Bug 1355747)
-const PROMOTE_COUNT_PREF = "devtools.promote.layoutview";
 
 // Default grid colors.
 const GRID_COLORS = [
@@ -46,45 +43,45 @@ const GRID_COLORS = [
   "#005A71"
 ];
 
-function GridInspector(inspector, window) {
-  this.document = window.document;
-  this.highlighters = inspector.highlighters;
-  this.inspector = inspector;
-  this.store = inspector.store;
-  this.telemetry = inspector.telemetry;
-  this.walker = this.inspector.walker;
+class GridInspector {
 
-  this.getSwatchColorPickerTooltip = this.getSwatchColorPickerTooltip.bind(this);
-  this.updateGridPanel = this.updateGridPanel.bind(this);
+  constructor(inspector, window) {
+    this.document = window.document;
+    this.highlighters = inspector.highlighters;
+    this.inspector = inspector;
+    this.store = inspector.store;
+    this.telemetry = inspector.telemetry;
+    this.walker = this.inspector.walker;
 
-  this.onNavigate = this.onNavigate.bind(this);
-  this.onHighlighterChange = this.onHighlighterChange.bind(this);
-  this.onReflow = throttle(this.onReflow, 500, this);
-  this.onSetGridOverlayColor = this.onSetGridOverlayColor.bind(this);
-  this.onShowGridAreaHighlight = this.onShowGridAreaHighlight.bind(this);
-  this.onShowGridCellHighlight = this.onShowGridCellHighlight.bind(this);
-  this.onShowGridLineNamesHighlight = this.onShowGridLineNamesHighlight.bind(this);
-  this.onSidebarSelect = this.onSidebarSelect.bind(this);
-  this.onToggleGridHighlighter = this.onToggleGridHighlighter.bind(this);
-  this.onToggleShowGridAreas = this.onToggleShowGridAreas.bind(this);
-  this.onToggleShowGridLineNumbers = this.onToggleShowGridLineNumbers.bind(this);
-  this.onToggleShowInfiniteLines = this.onToggleShowInfiniteLines.bind(this);
+    this.getSwatchColorPickerTooltip = this.getSwatchColorPickerTooltip.bind(this);
+    this.updateGridPanel = this.updateGridPanel.bind(this);
 
-  this.init();
-}
+    this.onHighlighterChange = this.onHighlighterChange.bind(this);
+    this.onNavigate = this.onNavigate.bind(this);
+    this.onReflow = throttle(this.onReflow, 500, this);
+    this.onSetGridOverlayColor = this.onSetGridOverlayColor.bind(this);
+    this.onShowGridAreaHighlight = this.onShowGridAreaHighlight.bind(this);
+    this.onShowGridCellHighlight = this.onShowGridCellHighlight.bind(this);
+    this.onShowGridLineNamesHighlight = this.onShowGridLineNamesHighlight.bind(this);
+    this.onSidebarSelect = this.onSidebarSelect.bind(this);
+    this.onToggleGridHighlighter = this.onToggleGridHighlighter.bind(this);
+    this.onToggleShowGridAreas = this.onToggleShowGridAreas.bind(this);
+    this.onToggleShowGridLineNumbers = this.onToggleShowGridLineNumbers.bind(this);
+    this.onToggleShowInfiniteLines = this.onToggleShowInfiniteLines.bind(this);
 
-GridInspector.prototype = {
+    this.init();
+  }
 
   /**
    * Initializes the grid inspector by fetching the LayoutFront from the walker, loading
    * the highlighter settings and initalizing the SwatchColorPicker instance.
    */
-  init: Task.async(function* () {
+  async init() {
     if (!this.inspector) {
       return;
     }
 
-    this.layoutInspector = yield this.inspector.walker.getLayoutInspector();
+    this.layoutInspector = await this.inspector.walker.getLayoutInspector();
 
     this.loadHighlighterSettings();
 
@@ -103,7 +100,7 @@ GridInspector.prototype = {
     this.inspector.on("new-root", this.onNavigate);
 
     this.onSidebarSelect();
-  }),
+  }
 
   /**
    * Destruction function called when the inspector is destroyed. Removes event listeners
@@ -130,7 +127,7 @@ GridInspector.prototype = {
     this.store = null;
     this.swatchColorPickerTooltip = null;
     this.walker = null;
-  },
+  }
 
   getComponentProps() {
     return {
@@ -144,7 +141,7 @@ GridInspector.prototype = {
       onToggleShowGridLineNumbers: this.onToggleShowGridLineNumbers,
       onToggleShowInfiniteLines: this.onToggleShowInfiniteLines,
     };
-  },
+  }
 
   /**
    * Returns the initial color linked to a grid container. Will attempt to check the
@@ -171,7 +168,7 @@ GridInspector.prototype = {
     }
 
     return color || fallbackColor;
-  },
+  }
 
   /**
    * Returns the color set for the grid highlighter associated with the provided
@@ -190,7 +187,7 @@ GridInspector.prototype = {
     }
 
     return null;
-  },
+  }
 
   /**
    * Create a highlighter settings object for the provided nodeFront.
@@ -208,14 +205,40 @@ GridInspector.prototype = {
     return Object.assign({}, highlighterSettings, {
       color
     });
-  },
+  }
 
   /**
    * Retrieve the shared SwatchColorPicker instance.
    */
   getSwatchColorPickerTooltip() {
     return this.swatchColorPickerTooltip;
-  },
+  }
+
+  /**
+   * Given a list of new grid fronts, and if we have a currently highlighted grid, check
+   * if its fragments have changed.
+   *
+   * @param  {Array} newGridFronts
+   *         A list of GridFront objects.
+   * @return {Boolean}
+   */
+  haveCurrentFragmentsChanged(newGridFronts) {
+    const currentNode = this.highlighters.gridHighlighterShown;
+    if (!currentNode) {
+      return false;
+    }
+
+    const newGridFront = newGridFronts.find(g => g.containerNodeFront === currentNode);
+    if (!newGridFront) {
+      return false;
+    }
+
+    const { grids } = this.store.getState();
+    const oldFragments = grids.find(g => g.nodeFront === currentNode).gridFragments;
+    const newFragments = newGridFront.gridFragments;
+
+    return !compareFragmentsGeometry(oldFragments, newFragments);
+  }
 
   /**
    * Returns true if the layout panel is visible, and false otherwise.
@@ -224,7 +247,7 @@ GridInspector.prototype = {
     return this.inspector && this.inspector.toolbox && this.inspector.sidebar &&
            this.inspector.toolbox.currentToolId === "inspector" &&
            this.inspector.sidebar.getCurrentTabID() === "layoutview";
-  },
+  }
 
   /**
    * Load the grid highligher display settings into the store from the stored preferences.
@@ -239,7 +262,7 @@ GridInspector.prototype = {
     dispatch(updateShowGridAreas(showGridAreas));
     dispatch(updateShowGridLineNumbers(showGridLineNumbers));
     dispatch(updateShowInfiniteLines(showInfinteLines));
-  },
+  }
 
   showGridHighlighter(node, settings) {
     this.lastHighlighterColor = settings.color;
@@ -247,7 +270,7 @@ GridInspector.prototype = {
     this.lastHighlighterState = true;
 
     this.highlighters.showGridHighlighter(node, settings);
-  },
+  }
 
   toggleGridHighlighter(node, settings) {
     this.lastHighlighterColor = settings.color;
@@ -255,13 +278,13 @@ GridInspector.prototype = {
     this.lastHighlighterState = node !== this.highlighters.gridHighlighterShown;
 
     this.highlighters.toggleGridHighlighter(node, settings, "grid");
-  },
+  }
 
   /**
    * Updates the grid panel by dispatching the new grid data. This is called when the
    * layout view becomes visible or the view needs to be updated with new grid data.
    */
-  updateGridPanel: Task.async(function* () {
+  async updateGridPanel() {
     // Stop refreshing if the inspector or store is already destroyed.
     if (!this.inspector || !this.store) {
       return;
@@ -270,7 +293,7 @@ GridInspector.prototype = {
     // Get all the GridFront from the server if no gridFronts were provided.
     let gridFronts;
     try {
-      gridFronts = yield this.layoutInspector.getAllGrids(this.walker.rootNode);
+      gridFronts = await this.layoutInspector.getAllGrids(this.walker.rootNode);
     } catch (e) {
       // This call might fail if called asynchrously after the toolbox is finished
       // closing.
@@ -295,7 +318,7 @@ GridInspector.prototype = {
       // particular DOM Node in the tree yet, or when we are connected to an older server.
       if (!nodeFront) {
         try {
-          nodeFront = yield this.walker.getNodeFromActor(grid.actorID, ["containerEl"]);
+          nodeFront = await this.walker.getNodeFromActor(grid.actorID, ["containerEl"]);
         } catch (e) {
           // This call might fail if called asynchrously after the toolbox is finished
           // closing.
@@ -317,17 +340,7 @@ GridInspector.prototype = {
     }
 
     this.store.dispatch(updateGrids(grids));
-  }),
-
-  /**
-   * Handler for "new-root" event fired by the inspector, which indicates a page
-   * navigation. Updates grid panel contents.
-   */
-  onNavigate() {
-    if (this.isPanelVisible()) {
-      this.updateGridPanel();
-    }
-  },
+  }
 
   /**
    * Handler for "grid-highlighter-shown" and "grid-highlighter-hidden" events emitted
@@ -360,33 +373,17 @@ GridInspector.prototype = {
     this.lastHighlighterColor = null;
     this.lastHighlighterNode = null;
     this.lastHighlighterState = null;
-  },
+  }
 
   /**
-   * Given a list of new grid fronts, and if we have a currently highlighted grid, check
-   * if its fragments have changed.
-   *
-   * @param  {Array} newGridFronts
-   *         A list of GridFront objects.
-   * @return {Boolean}
+   * Handler for "new-root" event fired by the inspector, which indicates a page
+   * navigation. Updates grid panel contents.
    */
-  haveCurrentFragmentsChanged(newGridFronts) {
-    const currentNode = this.highlighters.gridHighlighterShown;
-    if (!currentNode) {
-      return false;
+  onNavigate() {
+    if (this.isPanelVisible()) {
+      this.updateGridPanel();
     }
-
-    const newGridFront = newGridFronts.find(g => g.containerNodeFront === currentNode);
-    if (!newGridFront) {
-      return false;
-    }
-
-    const { grids } = this.store.getState();
-    const oldFragments = grids.find(g => g.nodeFront === currentNode).gridFragments;
-    const newFragments = newGridFront.gridFragments;
-
-    return !compareFragmentsGeometry(oldFragments, newFragments);
-  },
+  }
 
   /**
    * Handler for the "reflow" event fired by the inspector's reflow tracker. On reflows,
@@ -401,7 +398,7 @@ GridInspector.prototype = {
    * after the reflow, as well as the grid fragment data on the currently highlighted
    * grid.
    */
-  onReflow: Task.async(function* () {
+  async onReflow() {
     if (!this.isPanelVisible()) {
       return;
     }
@@ -412,7 +409,7 @@ GridInspector.prototype = {
     // The new list of grids from the server.
     let newGridFronts;
     try {
-      newGridFronts = yield this.layoutInspector.getAllGrids(this.walker.rootNode);
+      newGridFronts = await this.layoutInspector.getAllGrids(this.walker.rootNode);
     } catch (e) {
       // This call might fail if called asynchrously after the toolbox is finished
       // closing.
@@ -446,7 +443,7 @@ GridInspector.prototype = {
 
     // Either the list of containers or the current fragments have changed, do update.
     this.updateGridPanel(newGridFronts);
-  }),
+  }
 
   /**
    * Handler for a change in the grid overlay color picker for a grid container.
@@ -469,7 +466,7 @@ GridInspector.prototype = {
         this.showGridHighlighter(node, highlighterSettings);
       }
     }
-  },
+  }
 
   /**
    * Highlights the grid area in the CSS Grid Highlighter for the given grid.
@@ -493,7 +490,7 @@ GridInspector.prototype = {
     this.showGridHighlighter(node, highlighterSettings);
 
     this.store.dispatch(updateGridHighlighted(node, true));
-  },
+  }
 
   /**
    * Highlights the grid cell in the CSS Grid Highlighter for the given grid.
@@ -523,7 +520,7 @@ GridInspector.prototype = {
     this.showGridHighlighter(node, highlighterSettings);
 
     this.store.dispatch(updateGridHighlighted(node, true));
-  },
+  }
 
   /**
    * Highlights the grid line in the CSS Grid Highlighter for the given grid.
@@ -556,7 +553,7 @@ GridInspector.prototype = {
     this.showGridHighlighter(node, highlighterSettings);
 
     this.store.dispatch(updateGridHighlighted(node, true));
-  },
+  }
 
   /**
    * Handler for the inspector sidebar "select" event. Starts tracking reflows
@@ -569,12 +566,9 @@ GridInspector.prototype = {
       return;
     }
 
-    // @remove after release 56 (See Bug 1355747)
-    Services.prefs.setIntPref(PROMOTE_COUNT_PREF, 0);
-
     this.inspector.reflowTracker.trackReflows(this, this.onReflow);
     this.updateGridPanel();
-  },
+  }
 
   /**
    * Handler for a change in the input checkboxes in the GridList component.
@@ -590,7 +584,7 @@ GridInspector.prototype = {
 
     this.store.dispatch(updateGridHighlighted(node,
       node !== this.highlighters.gridHighlighterShown));
-  },
+  }
 
   /**
     * Handler for a change in the show grid areas checkbox in the GridDisplaySettings
@@ -616,7 +610,7 @@ GridInspector.prototype = {
         this.highlighters.showGridHighlighter(grid.nodeFront, highlighterSettings);
       }
     }
-  },
+  }
 
   /**
    * Handler for a change in the show grid line numbers checkbox in the
@@ -643,7 +637,7 @@ GridInspector.prototype = {
         this.showGridHighlighter(grid.nodeFront, highlighterSettings);
       }
     }
-  },
+  }
 
   /**
    * Handler for a change in the extend grid lines infinitely checkbox in the
@@ -670,8 +664,8 @@ GridInspector.prototype = {
         this.showGridHighlighter(grid.nodeFront, highlighterSettings);
       }
     }
-  },
+  }
 
-};
+}
 
 module.exports = GridInspector;

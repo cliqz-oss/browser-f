@@ -4,7 +4,7 @@
 
 use devtools_traits::ScriptToDevtoolsControlMsg;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
+use dom::bindings::root::DomRoot;
 use dom::globalscope::GlobalScope;
 use dom::paintworkletglobalscope::PaintWorkletGlobalScope;
 use dom::paintworkletglobalscope::PaintWorkletTask;
@@ -33,14 +33,14 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 #[dom_struct]
-/// https://drafts.css-houdini.org/worklets/#workletglobalscope
+/// <https://drafts.css-houdini.org/worklets/#workletglobalscope>
 pub struct WorkletGlobalScope {
     /// The global for this worklet.
     globalscope: GlobalScope,
     /// The base URL for this worklet.
     base_url: ServoUrl,
     /// Sender back to the script thread
-    #[ignore_heap_size_of = "channels are hard"]
+    #[ignore_malloc_size_of = "channels are hard"]
     to_script_thread_sender: Sender<MainThreadScriptMsg>,
     /// Worklet task executor
     executor: WorkletExecutor,
@@ -86,7 +86,7 @@ impl WorkletGlobalScope {
 
     /// Evaluate a JS script in this global.
     pub fn evaluate_js(&self, script: &str) -> bool {
-        debug!("Evaluating JS.");
+        debug!("Evaluating Dom.");
         rooted!(in (self.globalscope.get_cx()) let mut rval = UndefinedValue());
         self.globalscope.evaluate_js_on_global_with_result(&*script, rval.handle_mut())
     }
@@ -154,8 +154,8 @@ pub struct WorkletGlobalScopeInit {
     pub image_cache: Arc<ImageCache>,
 }
 
-/// https://drafts.css-houdini.org/worklets/#worklet-global-scope-type
-#[derive(Clone, Copy, Debug, HeapSizeOf, JSTraceable)]
+/// <https://drafts.css-houdini.org/worklets/#worklet-global-scope-type>
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf)]
 pub enum WorkletGlobalScopeType {
     /// A servo-specific testing worklet
     Test,
@@ -171,13 +171,13 @@ impl WorkletGlobalScopeType {
                base_url: ServoUrl,
                executor: WorkletExecutor,
                init: &WorkletGlobalScopeInit)
-               -> Root<WorkletGlobalScope>
+               -> DomRoot<WorkletGlobalScope>
     {
         match *self {
             WorkletGlobalScopeType::Test =>
-                Root::upcast(TestWorkletGlobalScope::new(runtime, pipeline_id, base_url, executor, init)),
+                DomRoot::upcast(TestWorkletGlobalScope::new(runtime, pipeline_id, base_url, executor, init)),
             WorkletGlobalScopeType::Paint =>
-                Root::upcast(PaintWorkletGlobalScope::new(runtime, pipeline_id, base_url, executor, init)),
+                DomRoot::upcast(PaintWorkletGlobalScope::new(runtime, pipeline_id, base_url, executor, init)),
         }
     }
 }

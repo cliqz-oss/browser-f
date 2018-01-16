@@ -32,8 +32,6 @@ module.exports = {
   rules: {
     "avoid-Date-timing": require("../lib/rules/avoid-Date-timing"),
     "avoid-removeChild": require("../lib/rules/avoid-removeChild"),
-    "avoid-nsISupportsString-preferences":
-      require("../lib/rules/avoid-nsISupportsString-preferences"),
     "balanced-listeners": require("../lib/rules/balanced-listeners"),
     "import-browser-window-globals":
       require("../lib/rules/import-browser-window-globals"),
@@ -60,12 +58,12 @@ module.exports = {
     "use-default-preference-values":
       require("../lib/rules/use-default-preference-values"),
     "use-ownerGlobal": require("../lib/rules/use-ownerGlobal"),
+    "use-services": require("../lib/rules/use-services"),
     "var-only-at-top-level": require("../lib/rules/var-only-at-top-level")
   },
   rulesConfig: {
     "avoid-Date-timing": "off",
     "avoid-removeChild": "off",
-    "avoid-nsISupportsString-preferences": "off",
     "balanced-listeners": "off",
     "import-browser-window-globals": "off",
     "import-content-task-globals": "off",
@@ -85,6 +83,7 @@ module.exports = {
     "reject-some-requires": "off",
     "use-default-preference-values": "off",
     "use-ownerGlobal": "off",
+    "use-services": "off",
     "var-only-at-top-level": "off"
   }
 };

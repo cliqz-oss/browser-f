@@ -160,6 +160,11 @@ ${helpers.predefined_type("order", "Integer", "0",
                           animation_value_type="ComputedValue",
                           spec="https://drafts.csswg.org/css-flexbox/#order-property")}
 
+// FIXME(emilio): All the sizes stuff, and the MozLength values should be
+// unified with Servo, or at least be less hacky.
+//
+// The block direction ones don't even accept extremum lengths during parsing,
+// and should be converted to just LengthOrPercentage.
 % if product == "gecko":
     // FIXME: Gecko doesn't support content value yet.
     ${helpers.gecko_size_type("flex-basis", "MozLength", "auto()",
@@ -294,17 +299,13 @@ ${helpers.predefined_type("object-position",
     pub type SpecifiedValue = computed_value::T;
 
     pub mod computed_value {
-        #[derive(Clone, Copy, Debug, Eq, PartialEq, ToComputedValue)]
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+        #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, ToComputedValue)]
         pub enum AutoFlow {
             Row,
             Column,
         }
 
-        #[derive(Clone, Copy, Debug, Eq, PartialEq, ToComputedValue)]
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+        #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, ToComputedValue)]
         pub struct T {
             pub autoflow: AutoFlow,
             pub dense: bool,
@@ -340,6 +341,7 @@ ${helpers.predefined_type("object-position",
         let mut dense = false;
 
         while !input.is_exhausted() {
+            let location = input.current_source_location();
             let ident = input.expect_ident()?;
             let success = match_ignore_ascii_case! { &ident,
                 "row" if value.is_none() => {
@@ -357,7 +359,7 @@ ${helpers.predefined_type("object-position",
                 _ => false
             };
             if !success {
-                return Err(SelectorParseError::UnexpectedIdent(ident.clone()).into());
+                return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone())));
             }
         }
 
@@ -367,7 +369,7 @@ ${helpers.predefined_type("object-position",
                 dense: dense,
             })
         } else {
-            Err(StyleParseError::UnspecifiedError.into())
+            Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
     }
 
@@ -465,7 +467,7 @@ ${helpers.predefined_type("object-position",
             }
 
             TemplateAreas::from_vec(strings)
-                .map_err(|()| StyleParseError::UnspecifiedError.into())
+                .map_err(|()| input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
     }
 

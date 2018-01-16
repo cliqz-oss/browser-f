@@ -125,14 +125,6 @@ KeyframeEffectReadOnly::NotifyAnimationTimingUpdated()
     ResetIsRunningOnCompositor();
   }
 
-  // Detect changes to "in effect" status since we need to recalculate the
-  // animation cascade for this element whenever that changes.
-  bool inEffect = IsInEffect();
-  if (inEffect != mInEffectOnLastAnimationTimingUpdate) {
-    MarkCascadeNeedsUpdate();
-    mInEffectOnLastAnimationTimingUpdate = inEffect;
-  }
-
   // Request restyle if necessary.
   if (mAnimation && !mProperties.IsEmpty() && HasComputedTimingChanged()) {
     EffectCompositor::RestyleType restyleType =
@@ -140,6 +132,16 @@ KeyframeEffectReadOnly::NotifyAnimationTimingUpdated()
       EffectCompositor::RestyleType::Throttled :
       EffectCompositor::RestyleType::Standard;
     RequestRestyle(restyleType);
+  }
+
+  // Detect changes to "in effect" status since we need to recalculate the
+  // animation cascade for this element whenever that changes.
+  // Note that updating mInEffectOnLastAnimationTimingUpdate has to be done
+  // after above CanThrottle() call since the function uses the flag inside it.
+  bool inEffect = IsInEffect();
+  if (inEffect != mInEffectOnLastAnimationTimingUpdate) {
+    MarkCascadeNeedsUpdate();
+    mInEffectOnLastAnimationTimingUpdate = inEffect;
   }
 
   // If we're no longer "in effect", our ComposeStyle method will never be
@@ -556,9 +558,7 @@ KeyframeEffectReadOnly::EnsureBaseStyle(
     aBaseStyleContext =
       aPresContext->StyleSet()->AsServo()->GetBaseContextForElement(
           mTarget->mElement,
-          nullptr,
           aPresContext,
-          nullptr,
           aPseudoType,
           aComputedStyle);
   }
@@ -732,6 +732,24 @@ KeyframeEffectReadOnly::ComposeStyle(
                      prop,
                      *segment,
                      computedTiming);
+  }
+
+  // If the animation produces any transform change hint, we need to record the
+  // current time to unthrottle the animation periodically when the animation is
+  // being throttled because it's scrolled out of view.
+  if (mCumulativeChangeHint & (nsChangeHint_UpdatePostTransformOverflow |
+                               nsChangeHint_AddOrRemoveTransform |
+                               nsChangeHint_UpdateTransformLayer)) {
+    nsPresContext* presContext =
+      nsContentUtils::GetContextForContent(mTarget->mElement);
+    if (presContext) {
+      TimeStamp now = presContext->RefreshDriver()->MostRecentRefresh();
+      EffectSet* effectSet =
+        EffectSet::GetEffectSet(mTarget->mElement, mTarget->mPseudoType);
+      MOZ_ASSERT(effectSet, "ComposeStyle should only be called on an effect "
+                            "that is part of an effect set");
+      effectSet->UpdateLastTransformSyncTime(now);
+    }
   }
 }
 
@@ -975,6 +993,11 @@ KeyframeEffectReadOnly::UpdateTargetRegistration()
     effectSet->AddEffect(*this);
     mInEffectSet = true;
     UpdateEffectSet(effectSet);
+    nsIFrame* f = mTarget->mElement->GetPrimaryFrame();
+    while (f) {
+      f->MarkNeedsDisplayItemRebuild();
+      f = f->GetNextContinuation();
+    }
   } else if (!isRelevant && mInEffectSet) {
     UnregisterTarget();
   }
@@ -998,6 +1021,11 @@ KeyframeEffectReadOnly::UnregisterTarget()
     if (effectSet->IsEmpty()) {
       EffectSet::DestroyEffectSet(mTarget->mElement, mTarget->mPseudoType);
     }
+  }
+  nsIFrame* f = mTarget->mElement->GetPrimaryFrame();
+  while (f) {
+    f->MarkNeedsDisplayItemRebuild();
+    f = f->GetNextContinuation();
   }
 }
 
@@ -1027,7 +1055,7 @@ KeyframeEffectReadOnly::GetTargetStyleContext()
   MOZ_ASSERT(mTarget,
              "Should only have a presshell when we have a target element");
 
-  nsIAtom* pseudo = mTarget->mPseudoType < CSSPseudoElementType::Count
+  nsAtom* pseudo = mTarget->mPseudoType < CSSPseudoElementType::Count
                     ? nsCSSPseudoElements::GetPseudoAtom(mTarget->mPseudoType)
                     : nullptr;
 
@@ -1377,12 +1405,22 @@ KeyframeEffectReadOnly::CanThrottle() const
     return true;
   }
 
-  // We can throttle the animation if the animation is paint only and
-  // the target frame is out of view or the document is in background tabs.
-  if (CanIgnoreIfNotVisible()) {
+  // Unless we are newly in-effect, we can throttle the animation if the
+  // animation is paint only and the target frame is out of view or the document
+  // is in background tabs.
+  if (mInEffectOnLastAnimationTimingUpdate && CanIgnoreIfNotVisible()) {
     nsIPresShell* presShell = GetPresShell();
-    if ((presShell && !presShell->IsActive()) ||
-        frame->IsScrolledOutOfView()) {
+    if (presShell && !presShell->IsActive()) {
+      return true;
+    }
+    if (frame->IsScrolledOutOfView()) {
+      // If there are transform change hints, unthrottle the animation
+      // periodically since it might affect the overflow region.
+      if (mCumulativeChangeHint & (nsChangeHint_UpdatePostTransformOverflow |
+                                   nsChangeHint_AddOrRemoveTransform |
+                                   nsChangeHint_UpdateTransformLayer)) {
+        return CanThrottleTransformChanges(*frame);
+      }
       return true;
     }
   }

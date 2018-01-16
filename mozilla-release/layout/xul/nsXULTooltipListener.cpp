@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -195,21 +196,18 @@ nsXULTooltipListener::MouseMove(nsIDOMEvent* aEvent)
       }
     }
 
-    mTooltipTimer = do_CreateInstance("@mozilla.org/timer;1");
-    mTooltipTimer->SetTarget(
+    mTargetNode = do_GetWeakReference(eventTarget);
+    if (mTargetNode) {
+      nsresult rv = NS_NewTimerWithFuncCallback(
+        getter_AddRefs(mTooltipTimer),
+        sTooltipCallback, this,
+        LookAndFeel::GetInt(LookAndFeel::eIntID_TooltipDelay, 500),
+        nsITimer::TYPE_ONE_SHOT,
+        "sTooltipCallback",
         sourceContent->OwnerDoc()->EventTargetFor(TaskCategory::Other));
-    if (mTooltipTimer) {
-      mTargetNode = do_GetWeakReference(eventTarget);
-      if (mTargetNode) {
-        nsresult rv =
-          mTooltipTimer->InitWithNamedFuncCallback(sTooltipCallback, this,
-            LookAndFeel::GetInt(LookAndFeel::eIntID_TooltipDelay, 500),
-            nsITimer::TYPE_ONE_SHOT,
-            "sTooltipCallback");
-        if (NS_FAILED(rv)) {
-          mTargetNode = nullptr;
-          mSourceNode = nullptr;
-        }
+      if (NS_FAILED(rv)) {
+        mTargetNode = nullptr;
+        mSourceNode = nullptr;
       }
     }
     return;
@@ -552,7 +550,7 @@ nsXULTooltipListener::HideTooltip()
 }
 
 static void
-GetImmediateChild(nsIContent* aContent, nsIAtom *aTag, nsIContent** aResult)
+GetImmediateChild(nsIContent* aContent, nsAtom *aTag, nsIContent** aResult)
 {
   *aResult = nullptr;
   uint32_t childCount = aContent->GetChildCount();

@@ -35,6 +35,8 @@ import NEWEST_IA2_IDL;
 #if !defined(MOZILLA_INTERNAL_API)
 
 #include "Accessible2_3.h"
+#include "AccessibleHyperlink.h"
+#include "AccessibleTableCell.h"
 #include "Handler.h"
 #include "mozilla/mscom/StructStream.h"
 #include "mozilla/UniquePtr.h"
@@ -49,6 +51,8 @@ class AccessibleHandler final : public mscom::Handler
                               , public NEWEST_IA2_INTERFACE
                               , public IServiceProvider
                               , public IProvideClassInfo
+                              , public IAccessibleHyperlink
+                              , public IAccessibleTableCell
 {
 public:
   static HRESULT Create(IUnknown* aOuter, REFIID aIid, void** aOutInterface);
@@ -59,6 +63,9 @@ public:
   HRESULT ReadHandlerPayload(IStream* aStream, REFIID aIid) override;
 
   REFIID MarshalAs(REFIID aRequestedIid) override;
+  HRESULT GetMarshalInterface(REFIID aMarshalAsIid, NotNull<IUnknown*> aProxy,
+                              NotNull<IID*> aOutIid,
+                              NotNull<IUnknown**> aOutUnk) override;
   HRESULT GetHandlerPayloadSize(REFIID aIid, DWORD* aOutPayloadSize) override;
   HRESULT WriteHandlerPayload(IStream* aStream, REFIID aIId) override;
 
@@ -149,12 +156,48 @@ public:
   // IProvideClassInfo
   STDMETHODIMP GetClassInfo(ITypeInfo** aOutTypeInfo) override;
 
+  // IAccessibleAction
+  STDMETHODIMP nActions(long* nActions) override;
+  STDMETHODIMP doAction(long actionIndex) override;
+  STDMETHODIMP get_description(long actionIndex, BSTR* description) override;
+  STDMETHODIMP get_keyBinding(long actionIndex,
+                              long nMaxBindings,
+                              BSTR** keyBindings,
+                              long* nBindings) override;
+  STDMETHODIMP get_name(long actionIndex, BSTR* name) override;
+  STDMETHODIMP get_localizedName(long actionIndex,
+                                 BSTR* localizedName) override;
+
+  // IAccessibleHyperlink
+  STDMETHODIMP get_anchor(long index, VARIANT* anchor) override;
+  STDMETHODIMP get_anchorTarget(long index, VARIANT* anchorTarget) override;
+  STDMETHODIMP get_startIndex(long* index) override;
+  STDMETHODIMP get_endIndex(long* index) override;
+  STDMETHODIMP get_valid(boolean* valid) override;
+
+  // IAccessibleTableCell
+  STDMETHODIMP get_columnExtent(long* nColumnsSpanned) override;
+  STDMETHODIMP get_columnHeaderCells(IUnknown*** cellAccessibles,
+                                     long* nColumnHeaderCells) override;
+  STDMETHODIMP get_columnIndex(long* columnIndex) override;
+  STDMETHODIMP get_rowExtent(long* nRowsSpanned) override;
+  STDMETHODIMP get_rowHeaderCells(IUnknown*** cellAccessibles,
+                                  long* nRowHeaderCells) override;
+  STDMETHODIMP get_rowIndex(long* rowIndex) override;
+  STDMETHODIMP get_isSelected(boolean* isSelected) override;
+  STDMETHODIMP get_rowColumnExtents(long* row, long* column,
+                                    long* rowExtents, long* columnExtents,
+                                    boolean* isSelected) override;
+  STDMETHODIMP get_table(IUnknown** table) override;
+
 private:
   AccessibleHandler(IUnknown* aOuter, HRESULT* aResult);
   virtual ~AccessibleHandler();
 
   HRESULT ResolveIA2();
   HRESULT ResolveIDispatch();
+  HRESULT ResolveIAHyperlink();
+  HRESULT ResolveIATableCell();
   HRESULT MaybeUpdateCachedData();
 
   RefPtr<IUnknown>                  mDispatchUnk;
@@ -180,6 +223,8 @@ private:
   IDispatch*                        mDispatch;         // weak
   NEWEST_IA2_INTERFACE*             mIA2PassThru;      // weak
   IServiceProvider*                 mServProvPassThru; // weak
+  IAccessibleHyperlink*             mIAHyperlinkPassThru; // weak
+  IAccessibleTableCell*             mIATableCellPassThru; // weak
   IA2Payload                        mCachedData;
   UniquePtr<mscom::StructToStream>  mSerializer;
   uint32_t                          mCacheGen;

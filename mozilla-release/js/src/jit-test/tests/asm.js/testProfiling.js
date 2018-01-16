@@ -40,7 +40,7 @@ function assertStackContainsSeq(got, expect)
             frame = frame.replace(/fast FFI trampoline to native/g, "N");
             frame = frame.replace(/^call to( asm.js)? native .*\(in wasm\)$/g, "N");
             frame = frame.replace(/(fast|slow) FFI trampoline/g, "<");
-            frame = frame.replace(/entry trampoline/g, ">");
+            frame = frame.replace(/slow entry trampoline/g, ">");
             frame = frame.replace(/(\/[^\/,<]+)*\/testProfiling.js/g, "");
             frame = frame.replace(/testBuiltinD2D/g, "");
             frame = frame.replace(/testBuiltinF2F/g, "");
@@ -200,12 +200,15 @@ assertStackContainsSeq(stacks, ">,f1,>,<,f1,>,>,<,f1,>,f2,>,<,f1,>,<,f2,>,<,f1,>
 
 
 // Ion FFI exit
-for (var i = 0; i < 20; i++)
+var jitOptions = getJitCompilerOptions();
+if (jitOptions['baseline.enable']) {
+    for (var i = 0; i < 20; i++)
+        assertEq(f1(), 32);
+    enableSingleStepProfiling();
     assertEq(f1(), 32);
-enableSingleStepProfiling();
-assertEq(f1(), 32);
-var stacks = disableSingleStepProfiling();
-assertStackContainsSeq(stacks, ">,f1,>,<,f1,>,>,<,f1,>,f2,>,<,f1,>,<,f2,>,<,f1,>,f2,>,<,f1,>,>,<,f1,>,<,f1,>,f1,>,>");
+    var stacks = disableSingleStepProfiling();
+    assertStackContainsSeq(stacks, ">,f1,>,<,f1,>,>,<,f1,>,f2,>,<,f1,>,<,f2,>,<,f1,>,f2,>,<,f1,>,>,<,f1,>,<,f1,>,f1,>,>");
+}
 
 
 if (isSimdAvailable() && typeof SIMD !== 'undefined') {

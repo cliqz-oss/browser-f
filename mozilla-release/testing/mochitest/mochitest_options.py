@@ -474,6 +474,12 @@ class MochitestArguments(ArgumentContainer):
           "default": False,
           "help": "Do not print test log lines unless a failure occurs.",
           }],
+        [["--headless"],
+         {"action": "store_true",
+          "dest": "headless",
+          "default": False,
+          "help": "Run tests in headless mode.",
+          }],
         [["--pidfile"],
          {"dest": "pidFile",
           "default": "",
@@ -580,29 +586,23 @@ class MochitestArguments(ArgumentContainer):
           "help": "File describes all failure patterns of the tests.",
           "suppress": True,
           }],
-        [["--work-path"],
-         {"default": None,
-          "dest": "workPath",
-          "help": "Path to the base dir of all source files.",
-          "suppress": True,
-          }],
-        [["--obj-path"],
-         {"default": None,
-          "dest": "objPath",
-          "help": "Path to the base dir of all object files.",
+        [["--sandbox-read-whitelist"],
+         {"default": [],
+          "dest": "sandboxReadWhitelist",
+          "action": "append",
+          "help": "Path to add to the sandbox whitelist.",
           "suppress": True,
           }],
         [["--verify"],
          {"action": "store_true",
           "default": False,
-          "help": "Test verification mode.",
-          "suppress": True,
+          "help": "Run tests in verification mode: Run many times in different "
+                  "ways, to see if there are intermittent failures.",
           }],
         [["--verify-max-time"],
          {"type": int,
           "default": 3600,
           "help": "Maximum time, in seconds, to run in --verify mode.",
-          "suppress": True,
           }],
     ]
 
@@ -831,10 +831,14 @@ class MochitestArguments(ArgumentContainer):
 
         options.leakThresholds = {
             "default": options.defaultLeakThreshold,
-            "tab": 10000,  # See dependencies of bug 1051230.
+            "tab": options.defaultLeakThreshold,
             # GMP rarely gets a log, but when it does, it leaks a little.
             "geckomediaplugin": 20000,
         }
+
+        # See the dependencies of bug 1401764.
+        if mozinfo.isWin:
+            options.leakThresholds["tab"] = 1000
 
         # XXX We can't normalize test_paths in the non build_obj case here,
         # because testRoot depends on the flavor, which is determined by the
@@ -1017,8 +1021,7 @@ class AndroidArguments(ArgumentContainer):
                 if build_obj.substs.get('MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE'):
                     options.robocopApk = os.path.join(build_obj.topobjdir, 'gradle', 'build',
                                                       'mobile', 'android', 'app', 'outputs', 'apk',
-                                                      'app-official-photon-debug-androidTest-'
-                                                      'unaligned.apk')
+                                                      'app-official-photon-debug-androidTest.apk')
                 else:
                     options.robocopApk = os.path.join(build_obj.topobjdir, 'mobile', 'android',
                                                       'tests', 'browser',

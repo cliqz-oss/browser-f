@@ -21,9 +21,7 @@
         #[cfg(feature = "gecko")]
         use values::specified::url::SpecifiedUrl;
 
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-        #[derive(Clone, Copy, Debug, PartialEq, ToComputedValue, ToCss)]
+        #[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
         pub enum Keyword {
             Auto,
             Cursor(Cursor),
@@ -90,15 +88,16 @@
     impl Parse for computed_value::Keyword {
         fn parse<'i, 't>(_context: &ParserContext, input: &mut Parser<'i, 't>)
                          -> Result<computed_value::Keyword, ParseError<'i>> {
-            use std::ascii::AsciiExt;
+            #[allow(unused_imports)] use std::ascii::AsciiExt;
             use style_traits::cursor::Cursor;
+            let location = input.current_source_location();
             let ident = input.expect_ident()?;
             if ident.eq_ignore_ascii_case("auto") {
                 Ok(computed_value::Keyword::Auto)
             } else {
                 Cursor::from_css_keyword(&ident)
                     .map(computed_value::Keyword::Cursor)
-                    .map_err(|()| SelectorParseError::UnexpectedIdent(ident.clone()).into())
+                    .map_err(|()| location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone())))
             }
         }
     }

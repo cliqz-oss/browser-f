@@ -18,11 +18,6 @@ loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/de
 loader.lazyRequireGetter(this, "HUDService", "devtools/client/webconsole/hudservice", true);
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
 
-// Dependencies required for addon sdk compatibility layer.
-loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
-loader.lazyRequireGetter(this, "DebuggerClient", "devtools/shared/client/main", true);
-loader.lazyImporter(this, "BrowserToolboxProcess", "resource://devtools/client/framework/ToolboxProcess.jsm");
-
 loader.lazyRequireGetter(this, "WebExtensionInspectedWindowFront",
       "devtools/shared/fronts/webextension-inspected-window", true);
 
@@ -42,8 +37,8 @@ const MAX_ORDINAL = 99;
  * set of tools and keeps track of open toolboxes in the browser.
  */
 function DevTools() {
-  this._tools = new Map();     // Map<toolId, tool>
-  this._themes = new Map();    // Map<themeId, theme>
+  this._tools = new Map(); // Map<toolId, tool>
+  this._themes = new Map(); // Map<themeId, theme>
   this._toolboxes = new Map(); // Map<target, toolbox>
   // List of toolboxes that are still in process of creation
   this._creatingToolboxes = new Map(); // Map<target, toolbox Promise>
@@ -104,10 +99,6 @@ DevTools.prototype = {
    *                     A falsy value indicates that it cannot be hidden.
    * - icon: URL pointing to a graphic which will be used as the src for an
    *         16x16 img tag (string|required)
-   * - invertIconForLightTheme: The icon can automatically have an inversion
-   *         filter applied (default is false).  All builtin tools are true, but
-   *         addons may omit this to prevent unwanted changes to the `icon`
-   *         image. filter: invert(1) is applied to the image (boolean|optional)
    * - url: URL pointing to a XUL/XHTML document containing the user interface
    *        (string|required)
    * - label: Localized name for the tool to be displayed to the user
@@ -431,6 +422,12 @@ DevTools.prototype = {
   },
 
   /**
+   * Boolean, true, if we never opened a toolbox.
+   * Used to implement the telemetry tracking toolbox opening.
+   */
+  _firstShowToolbox: true,
+
+  /**
    * Show a Toolbox for a target (either by creating a new one, or if a toolbox
    * already exists for the target, by bring to the front the existing one)
    * If |toolId| is specified then the displayed toolbox will have the
@@ -446,11 +443,14 @@ DevTools.prototype = {
    *        The type of host (bottom, window, side)
    * @param {object} hostOptions
    *        Options for host specifically
+   * @param {Number} startTime
+   *        Optional, indicates the time at which the user event related to this toolbox
+   *        opening started. This is a `performance.now()` timing.
    *
    * @return {Toolbox} toolbox
    *        The toolbox that was opened
    */
-  showToolbox: Task.async(function* (target, toolId, hostType, hostOptions) {
+  showToolbox: Task.async(function* (target, toolId, hostType, hostOptions, startTime) {
     let toolbox = this._toolboxes.get(target);
     if (toolbox) {
       if (hostType != null && toolbox.hostType != hostType) {
@@ -474,9 +474,36 @@ DevTools.prototype = {
       this._creatingToolboxes.set(target, toolboxPromise);
       toolbox = yield toolboxPromise;
       this._creatingToolboxes.delete(target);
+
+      if (startTime) {
+        this.logToolboxOpenTime(toolbox.currentToolId, startTime);
+      }
+      this._firstShowToolbox = false;
     }
     return toolbox;
   }),
+
+  /**
+   * Log telemetry related to toolbox opening.
+   * Two distinct probes are logged. One for cold startup, when we open the very first
+   * toolbox. This one includes devtools framework loading. And a second one for all
+   * subsequent toolbox opening, which should all be faster.
+   * These two probes are indexed by Tool ID.
+   *
+   * @param {String} toolId
+   *        The id of the opened tool.
+   * @param {Number} startTime
+   *        Indicates the time at which the user event related to the toolbox
+   *        opening started. This is a `performance.now()` timing.
+   */
+  logToolboxOpenTime(toolId, startTime) {
+    let { performance } = Services.appShell.hiddenDOMWindow;
+    let delay = performance.now() - startTime;
+    let telemetryKey = this._firstShowToolbox ?
+      "DEVTOOLS_COLD_TOOLBOX_OPEN_DELAY_MS" : "DEVTOOLS_WARM_TOOLBOX_OPEN_DELAY_MS";
+    let histogram = Services.telemetry.getKeyedHistogramById(telemetryKey);
+    histogram.add(toolId, delay);
+  },
 
   createToolbox: Task.async(function* (target, toolId, hostType, hostOptions) {
     let manager = new ToolboxHostManager(target, hostType, hostOptions);
@@ -548,42 +575,6 @@ DevTools.prototype = {
   },
 
   /**
-   * Compatibility layer for addon-sdk. Remove when Firefox 57 hits release.
-   * Initialize the debugger server if needed and and create a connection.
-   *
-   * @return {DebuggerTransport} a client-side DebuggerTransport for communicating with
-   *         the created connection.
-   */
-  connectDebuggerServer: function () {
-    if (!DebuggerServer.initialized) {
-      DebuggerServer.init();
-      DebuggerServer.addBrowserActors();
-    }
-
-    return DebuggerServer.connectPipe();
-  },
-
-  /**
-   * Compatibility layer for addon-sdk. Remove when Firefox 57 hits release.
-   *
-   * Create a connection to the debugger server and return a debugger client for this
-   * new connection.
-   */
-  createDebuggerClient: function () {
-    let transport = this.connectDebuggerServer();
-    return new DebuggerClient(transport);
-  },
-
-  /**
-   * Compatibility layer for addon-sdk. Remove when Firefox 57 hits release.
-   *
-   * Create a BrowserToolbox process linked to the provided addon id.
-   */
-  initBrowserToolboxProcessForAddon: function (addonID) {
-    BrowserToolboxProcess.init({ addonID });
-  },
-
-  /**
    * Compatibility layer for web-extensions. Used by DevToolsShim for
    * browser/components/extensions/ext-devtools.js
    *
@@ -620,13 +611,16 @@ DevTools.prototype = {
    *        An array of CSS selectors to find the target node. Several selectors can be
    *        needed if the element is nested in frames and not directly in the root
    *        document.
+   * @param {Number} startTime
+   *        Optional, indicates the time at which the user event related to this node
+   *        inspection started. This is a `performance.now()` timing.
    * @return {Promise} a promise that resolves when the node is selected in the inspector
    *         markup view.
    */
-  async inspectNode(tab, nodeSelectors) {
+  async inspectNode(tab, nodeSelectors, startTime) {
     let target = TargetFactory.forTab(tab);
 
-    let toolbox = await gDevTools.showToolbox(target, "inspector");
+    let toolbox = await gDevTools.showToolbox(target, "inspector", null, null, startTime);
     let inspector = toolbox.getCurrentPanel();
 
     // new-node-front tells us when the node has been selected, whether the

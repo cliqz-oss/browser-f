@@ -3,28 +3,38 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {DOM, createClass} = require("devtools/client/shared/vendor/react");
+const {DOM, Component, PropTypes} = require("devtools/client/shared/vendor/react");
 const {img, button, span} = DOM;
 
-module.exports = createClass({
-  displayName: "ToolboxTab",
+class ToolboxTab extends Component {
+  // See toolbox-toolbar propTypes for details on the props used here.
+  static get propTypes() {
+    return {
+      currentToolId: PropTypes.string,
+      focusButton: PropTypes.func,
+      focusedButton: PropTypes.string,
+      highlightedTool: PropTypes.string,
+      panelDefinition: PropTypes.object,
+      selectTool: PropTypes.func,
+    };
+  }
+
+  constructor(props) {
+    super(props);
+    this.renderIcon = this.renderIcon.bind(this);
+  }
 
   renderIcon(definition, isHighlighted) {
-    const {icon, highlightedicon} = definition;
+    const {icon} = definition;
     if (!icon) {
       return [];
     }
     return [
       img({
-        className: "default-icon",
         src: icon
       }),
-      img({
-        className: "highlighted-icon",
-        src: highlightedicon || icon
-      })
     ];
-  },
+  }
 
   render() {
     const {panelDefinition, currentToolId, highlightedTool, selectTool,
@@ -34,11 +44,6 @@ module.exports = createClass({
 
     const className = [
       "devtools-tab",
-      panelDefinition.invertIconForLightTheme || panelDefinition.invertIconForDarkTheme
-        ? "icon-invertable"
-        : "",
-      panelDefinition.invertIconForLightTheme ? "icon-invertable-light-theme" : "",
-      panelDefinition.invertIconForDarkTheme ? "icon-invertable-dark-theme" : "",
       currentToolId === id ? "selected" : "",
       highlightedTool === id ? "highlighted" : "",
       iconOnly ? "devtools-tab-icon-only" : ""
@@ -71,4 +76,6 @@ module.exports = createClass({
         )
     );
   }
-});
+}
+
+module.exports = ToolboxTab;

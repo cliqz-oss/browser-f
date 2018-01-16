@@ -3,9 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-const PREF_MATCH_OS_LOCALE = "intl.locale.matchOS";
-const PREF_SELECTED_LOCALE = "general.useragent.locale";
-
 // Disables security checking our updates which haven't been signed
 Services.prefs.setBoolPref("extensions.checkUpdateSecurity", false);
 
@@ -132,7 +129,7 @@ var updateListener = {
     if (--this.pendingCount == 0)
       server.stop(do_test_finished);
   }
-}
+};
 
 var requestHandler = {
   handle(metadata, response) {
@@ -147,7 +144,7 @@ var requestHandler = {
     }
     response.setStatusLine(metadata.httpVersion, 404, "Not Found");
   }
-}
+};
 
 function run_test() {
   do_test_pending();
@@ -160,8 +157,7 @@ function run_test() {
   server.registerPathHandler("/3", requestHandler);
   server.start(4444);
 
-  Services.prefs.setBoolPref(PREF_MATCH_OS_LOCALE, false);
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "en-US");
+  Services.locale.setRequestedLocales(["en-US"]);
 
   startupManager();
   installAllFiles(ADDONS.map(a => do_get_addon(a.addon)), function() {

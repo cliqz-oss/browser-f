@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,8 +12,8 @@
 #include "gfxUtils.h"
 #include "nsSVGDisplayableFrame.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
+#include "mozilla/dom/IDTracker.h"
 #include "mozilla/dom/SVGFilterElement.h"
-#include "nsReferencedElement.h"
 #include "SVGObserverUtils.h"
 #include "nsSVGFilterFrame.h"
 #include "nsSVGUtils.h"
@@ -135,7 +136,7 @@ nsSVGFilterInstance::GetFilterFrame(nsIFrame* aTargetFrame)
   }
 
   // Look up the filter element by URL.
-  nsReferencedElement filterElement;
+  IDTracker filterElement;
   bool watch = false;
   filterElement.Reset(mTargetContent, url, watch);
   Element* element = filterElement.get();

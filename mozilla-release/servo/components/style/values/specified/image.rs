@@ -8,16 +8,16 @@
 //! [image]: https://drafts.csswg.org/css-images/#image-values
 
 use Atom;
-use cssparser::{Parser, Token, BasicParseError};
+use cssparser::{Parser, Token};
 use custom_properties::SpecifiedValue;
 use parser::{Parse, ParserContext};
-use selectors::parser::SelectorParseError;
+use selectors::parser::SelectorParseErrorKind;
 #[cfg(feature = "servo")]
 use servo_url::ServoUrl;
 use std::cmp::Ordering;
 use std::f32::consts::PI;
 use std::fmt;
-use style_traits::{ToCss, ParseError, StyleParseError};
+use style_traits::{ToCss, ParseError, StyleParseErrorKind};
 use values::{Either, None_};
 #[cfg(feature = "gecko")]
 use values::computed::{Context, Position as ComputedPosition, ToComputedValue};
@@ -37,11 +37,11 @@ use values::specified::url::SpecifiedUrl;
 pub type ImageLayer = Either<None_, Image>;
 
 /// Specified values for an image according to CSS-IMAGES.
-/// https://drafts.csswg.org/css-images/#image-values
+/// <https://drafts.csswg.org/css-images/#image-values>
 pub type Image = GenericImage<Gradient, MozImageRect, SpecifiedUrl>;
 
 /// Specified values for a CSS gradient.
-/// https://drafts.csswg.org/css-images/#gradients
+/// <https://drafts.csswg.org/css-images/#gradients>
 #[cfg(not(feature = "gecko"))]
 pub type Gradient = GenericGradient<
     LineDirection,
@@ -53,7 +53,7 @@ pub type Gradient = GenericGradient<
 >;
 
 /// Specified values for a CSS gradient.
-/// https://drafts.csswg.org/css-images/#gradients
+/// <https://drafts.csswg.org/css-images/#gradients>
 #[cfg(feature = "gecko")]
 pub type Gradient = GenericGradient<
     LineDirection,
@@ -85,9 +85,7 @@ pub type GradientKind = GenericGradientKind<
 >;
 
 /// A specified gradient line direction.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq)]
 pub enum LineDirection {
     /// An angular direction.
     Angle(Angle),
@@ -169,10 +167,11 @@ impl Image {
     /// Parses a `-moz-element(# <element-id>)`.
     fn parse_element<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Atom, ParseError<'i>> {
         input.try(|i| i.expect_function_matching("-moz-element"))?;
+        let location = input.current_source_location();
         input.parse_nested_block(|i| {
             match *i.next()? {
                 Token::IDHash(ref id) => Ok(Atom::from(id.as_ref())),
-                ref t => Err(BasicParseError::UnexpectedToken(t.clone()).into()),
+                ref t => Err(location.new_unexpected_token_error(t.clone())),
             }
         })
     }
@@ -236,7 +235,7 @@ impl Parse for Gradient {
 
         let (shape, repeating, mut compat_mode) = match result {
             Some(result) => result,
-            None => return Err(StyleParseError::UnexpectedFunction(func.clone()).into()),
+            None => return Err(input.new_custom_error(StyleParseErrorKind::UnexpectedFunction(func.clone()))),
         };
 
         let (kind, items) = input.parse_nested_block(|i| {
@@ -249,7 +248,7 @@ impl Parse for Gradient {
         })?;
 
         if items.len() < 2 {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
         Ok(Gradient {
@@ -435,7 +434,7 @@ impl Gradient {
                     (kind, reverse_stops)
                 }
             },
-            _ => return Err(SelectorParseError::UnexpectedIdent(ident.clone()).into()),
+            _ => return Err(input.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone()))),
         };
 
         let mut items = input.try(|i| {
@@ -454,11 +453,11 @@ impl Gradient {
                         },
                         "from" => Percentage::zero(),
                         "to" => Percentage::hundred(),
-                        _ => return Err(StyleParseError::UnexpectedFunction(function.clone()).into()),
+                        _ => return Err(i.new_custom_error(StyleParseErrorKind::UnexpectedFunction(function.clone()))),
                     };
                     let color = Color::parse(context, i)?;
                     if color == Color::CurrentColor {
-                        return Err(StyleParseError::UnspecifiedError.into());
+                        return Err(i.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                     }
                     Ok((color.into(), p))
                 })?;
@@ -626,6 +625,32 @@ impl GenericsLineDirection for LineDirection {
                 if compat_mode == CompatMode::Modern => true,
             LineDirection::Vertical(Y::Top)
                 if compat_mode != CompatMode::Modern => true,
+            #[cfg(feature = "gecko")]
+            LineDirection::MozPosition(Some(LegacyPosition {
+                horizontal: ref x,
+                vertical: ref y,
+            }), None) => {
+                use values::computed::Percentage as ComputedPercentage;
+                use values::specified::transform::OriginComponent;
+
+                // `50% 0%` is the default value for line direction.
+                // These percentage values can also be keywords.
+                let x = match *x {
+                    OriginComponent::Center => true,
+                    OriginComponent::Length(LengthOrPercentage::Percentage(ComputedPercentage(val))) => {
+                        val == 0.5
+                    },
+                    _ => false,
+                };
+                let y = match *y {
+                    OriginComponent::Side(Y::Top) => true,
+                    OriginComponent::Length(LengthOrPercentage::Percentage(ComputedPercentage(val))) => {
+                        val == 0.0
+                    },
+                    _ => false,
+                };
+                x && y
+            },
             _ => false,
         }
     }
@@ -702,7 +727,7 @@ impl LineDirection {
                 // There is no `to` keyword in webkit prefixed syntax. If it's consumed,
                 // parsing should throw an error.
                 CompatMode::WebKit if to_ident.is_ok() => {
-                    return Err(SelectorParseError::UnexpectedIdent("to".into()).into())
+                    return Err(i.new_custom_error(SelectorParseErrorKind::UnexpectedIdent("to".into())))
                 },
                 _ => {},
             }
@@ -717,7 +742,7 @@ impl LineDirection {
                     };
 
                     if _angle.is_none() && position.is_none() {
-                        return Err(StyleParseError::UnspecifiedError.into());
+                        return Err(i.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                     }
                     return Ok(LineDirection::MozPosition(position, _angle));
                 }
@@ -841,7 +866,7 @@ impl ShapeExtent {
                                       -> Result<Self, ParseError<'i>> {
         match Self::parse(input)? {
             ShapeExtent::Contain | ShapeExtent::Cover if compat_mode == CompatMode::Modern => {
-                Err(StyleParseError::UnspecifiedError.into())
+                Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             },
             ShapeExtent::Contain => Ok(ShapeExtent::ClosestSide),
             ShapeExtent::Cover => Ok(ShapeExtent::FarthestCorner),
@@ -865,7 +890,7 @@ impl GradientItem {
             ColorStop::parse(context, input).map(GenericGradientItem::ColorStop)
         })?;
         if !seen_stop || items.len() < 2 {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
         Ok(items)
     }
@@ -882,18 +907,18 @@ impl Parse for ColorStop {
 }
 
 impl Parse for PaintWorklet {
-    fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
+    fn parse<'i, 't>(
+        _context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
         input.expect_function_matching("paint")?;
         input.parse_nested_block(|input| {
             let name = Atom::from(&**input.expect_ident()?);
             let arguments = input.try(|input| {
                 input.expect_comma()?;
-                input.parse_comma_separated(|input| Ok(*SpecifiedValue::parse(context, input)?))
+                input.parse_comma_separated(|input| SpecifiedValue::parse(input))
             }).unwrap_or(vec![]);
-            Ok(PaintWorklet {
-                name: name,
-                arguments: arguments,
-            })
+            Ok(PaintWorklet { name, arguments })
         })
     }
 }

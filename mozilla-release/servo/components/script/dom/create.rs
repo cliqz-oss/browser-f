@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::error::{report_pending_exception, throw_dom_exception};
-use dom::bindings::js::Root;
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::DomRoot;
 use dom::customelementregistry::{is_valid_custom_element_name, upgrade_element};
 use dom::document::Document;
 use dom::element::{CustomElementCreationMode, CustomElementState, Element, ElementCreator};
 use dom::globalscope::GlobalScope;
 use dom::htmlanchorelement::HTMLAnchorElement;
-use dom::htmlappletelement::HTMLAppletElement;
 use dom::htmlareaelement::HTMLAreaElement;
 use dom::htmlaudioelement::HTMLAudioElement;
 use dom::htmlbaseelement::HTMLBaseElement;
@@ -87,17 +86,17 @@ use servo_config::prefs::PREFS;
 fn create_svg_element(name: QualName,
                       prefix: Option<Prefix>,
                       document: &Document)
-                      -> Root<Element> {
+                      -> DomRoot<Element> {
     assert!(name.ns == ns!(svg));
 
     macro_rules! make(
         ($ctor:ident) => ({
             let obj = $ctor::new(name.local, prefix, document);
-            Root::upcast(obj)
+            DomRoot::upcast(obj)
         });
         ($ctor:ident, $($arg:expr),+) => ({
             let obj = $ctor::new(name.local, prefix, document, $($arg),+);
-            Root::upcast(obj)
+            DomRoot::upcast(obj)
         })
     );
 
@@ -119,7 +118,7 @@ fn create_html_element(name: QualName,
                        document: &Document,
                        creator: ElementCreator,
                        mode: CustomElementCreationMode)
-                       -> Root<Element> {
+                       -> DomRoot<Element> {
     assert!(name.ns == ns!(html));
 
     // Step 4
@@ -129,7 +128,7 @@ fn create_html_element(name: QualName,
         if definition.is_autonomous() {
             match mode {
                 CustomElementCreationMode::Asynchronous => {
-                    let result = Root::upcast::<Element>(
+                    let result = DomRoot::upcast::<Element>(
                         HTMLElement::new(name.local.clone(), prefix.clone(), document));
                     result.set_custom_element_state(CustomElementState::Undefined);
                     ScriptThread::enqueue_upgrade_reaction(&*result, definition);
@@ -155,7 +154,7 @@ fn create_html_element(name: QualName,
                             }
 
                             // Step 6.1.2
-                            let element = Root::upcast::<Element>(
+                            let element = DomRoot::upcast::<Element>(
                                 HTMLUnknownElement::new(local_name, prefix, document));
                             element.set_custom_element_state(CustomElementState::Failed);
                             element
@@ -191,21 +190,22 @@ fn create_html_element(name: QualName,
     result
 }
 
-pub fn create_native_html_element(name: QualName,
-                                  prefix: Option<Prefix>,
-                                  document: &Document,
-                                  creator: ElementCreator)
-                                  -> Root<Element> {
-    assert!(name.ns == ns!(html));
+pub fn create_native_html_element(
+    name: QualName,
+    prefix: Option<Prefix>,
+    document: &Document,
+    creator: ElementCreator,
+) -> DomRoot<Element> {
+    assert_eq!(name.ns, ns!(html));
 
     macro_rules! make(
         ($ctor:ident) => ({
             let obj = $ctor::new(name.local, prefix, document);
-            Root::upcast(obj)
+            DomRoot::upcast(obj)
         });
         ($ctor:ident, $($arg:expr),+) => ({
             let obj = $ctor::new(name.local, prefix, document, $($arg),+);
-            Root::upcast(obj)
+            DomRoot::upcast(obj)
         })
     );
 
@@ -217,7 +217,6 @@ pub fn create_native_html_element(name: QualName,
         local_name!("abbr")       => make!(HTMLElement),
         local_name!("acronym")    => make!(HTMLElement),
         local_name!("address")    => make!(HTMLElement),
-        local_name!("applet")     => make!(HTMLAppletElement),
         local_name!("area")       => make!(HTMLAreaElement),
         local_name!("article")    => make!(HTMLElement),
         local_name!("aside")      => make!(HTMLElement),
@@ -364,7 +363,7 @@ pub fn create_element(name: QualName,
                       document: &Document,
                       creator: ElementCreator,
                       mode: CustomElementCreationMode)
-                      -> Root<Element> {
+                      -> DomRoot<Element> {
     let prefix = name.prefix.clone();
     match name.ns {
         ns!(html)   => create_html_element(name, prefix, is, document, creator, mode),

@@ -160,6 +160,7 @@ public:
     mozilla::TimeStamp GetDomainLookupStart();
     mozilla::TimeStamp GetDomainLookupEnd();
     mozilla::TimeStamp GetConnectStart();
+    mozilla::TimeStamp GetTcpConnectEnd();
     mozilla::TimeStamp GetSecureConnectionStart();
 
     mozilla::TimeStamp GetConnectEnd();
@@ -435,11 +436,13 @@ private:
     NetAddr                         mPeerAddr;
 
     bool                            m0RTTInProgress;
+    bool                            mDoNotTryEarlyData;
     enum
     {
         EARLY_NONE,
         EARLY_SENT,
-        EARLY_ACCEPTED
+        EARLY_ACCEPTED,
+        EARLY_425
     } mEarlyDataDisposition;
 
     uint8_t mFastOpenStatus;

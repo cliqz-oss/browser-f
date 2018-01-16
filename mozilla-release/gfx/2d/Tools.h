@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -92,6 +93,7 @@ BytesPerPixel(SurfaceFormat aFormat)
   case SurfaceFormat::A8:
     return 1;
   case SurfaceFormat::R5G6B5_UINT16:
+  case SurfaceFormat::A16:
     return 2;
   case SurfaceFormat::R8G8B8:
   case SurfaceFormat::B8G8R8:
@@ -104,6 +106,19 @@ BytesPerPixel(SurfaceFormat aFormat)
   default:
     return 4;
   }
+}
+
+static inline SurfaceFormat
+SurfaceFormatForAlphaBitDepth(uint32_t aBitDepth)
+{
+  if (aBitDepth == 8) {
+    return SurfaceFormat::A8;
+  } else if (aBitDepth == 10 ||
+             aBitDepth == 12) {
+    return SurfaceFormat::A16;
+  }
+  MOZ_ASSERT_UNREACHABLE("Unsupported alpha bit depth");
+  return SurfaceFormat::UNKNOWN;
 }
 
 static inline bool

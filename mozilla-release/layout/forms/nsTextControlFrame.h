@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -38,7 +39,7 @@ public:
   explicit nsTextControlFrame(nsStyleContext* aContext);
   virtual ~nsTextControlFrame();
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   virtual nsIScrollableFrame* GetScrollTargetFrame() override {
     return do_QueryFrame(PrincipalChildList().FirstChild());
@@ -132,7 +133,7 @@ public:
 
 //==== BEGIN NSIFORMCONTROLFRAME
   virtual void SetFocus(bool aOn , bool aRepaint) override;
-  virtual nsresult SetFormProperty(nsIAtom* aName, const nsAString& aValue) override;
+  virtual nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
 
 //==== END NSIFORMCONTROLFRAME
 
@@ -165,10 +166,10 @@ public:
 
   /** handler for attribute changes to mContent */
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
-                                    nsIAtom*        aAttribute,
+                                    nsAtom*        aAttribute,
                                     int32_t         aModType) override;
 
-  nsresult GetText(nsString& aText);
+  void GetText(nsString& aText);
 
   virtual nsresult PeekOffset(nsPeekOffsetStruct *aPos) override;
 
@@ -297,7 +298,7 @@ protected:
    * @param aAtt the attribute to determine the existence of
    * @returns false if it does not exist
    */
-  bool AttributeExists(nsIAtom *aAtt) const
+  bool AttributeExists(nsAtom *aAtt) const
   { return mContent && mContent->HasAttr(kNameSpaceID_None, aAtt); }
 
   /**

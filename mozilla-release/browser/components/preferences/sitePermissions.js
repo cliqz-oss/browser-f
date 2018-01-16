@@ -107,7 +107,7 @@ var gSitePermissionsManager = {
       stringKey = "cannot";
       break;
     case Services.perms.PROMPT_ACTION:
-      stringKey = "prompt"
+      stringKey = "prompt";
       break;
     }
     return this._bundle.getString(stringKey);
@@ -160,8 +160,15 @@ var gSitePermissionsManager = {
     menulist.appendChild(menupopup);
     let states = SitePermissions.getAvailableStates(permission.type);
     for (let state of states) {
-      if (state == SitePermissions.UNKNOWN)
+      // Work around the (rare) edge case when a user has changed their
+      // default permission type back to UNKNOWN while still having a
+      // PROMPT permission set for an origin.
+      if (state == SitePermissions.UNKNOWN &&
+          permission.capability == SitePermissions.PROMPT) {
+        state = SitePermissions.PROMPT;
+      } else if (state == SitePermissions.UNKNOWN) {
         continue;
+      }
       let m = document.createElement("menuitem");
       m.setAttribute("label", this._getCapabilityString(state));
       m.setAttribute("value", state);
@@ -176,7 +183,7 @@ var gSitePermissionsManager = {
     row.appendChild(hbox);
     row.appendChild(menulist);
     richlistitem.appendChild(row);
-    this._list.appendChild(richlistitem)
+    this._list.appendChild(richlistitem);
   },
 
   onWindowKeyPress(event) {

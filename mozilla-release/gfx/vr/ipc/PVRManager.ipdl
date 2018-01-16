@@ -6,7 +6,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 include LayersSurfaces;
-include protocol PTexture;
 include protocol PVRLayer;
 include LayersMessages;
 include GamepadEventTypes;
@@ -33,17 +32,10 @@ namespace gfx {
  */
 sync protocol PVRManager
 {
-  manages PTexture;
   manages PVRLayer;
 
 parent:
-  async PTexture(SurfaceDescriptor aSharedData, LayersBackend aBackend,
-                 TextureFlags aTextureFlags, uint64_t aSerial);
-
-  async PVRLayer(uint32_t aDisplayID, float aLeftEyeX, float aLeftEyeY,
-                 float aLeftEyeWidth, float aLeftEyeHeight, float aRightEyeX,
-                 float aRightEyeY, float aRightEyeWidth, float aRightEyeHeight,
-                 uint32_t aGroup);
+  async PVRLayer(uint32_t aDisplayID, uint32_t aGroup);
 
   // (Re)Enumerate VR Displays.  An updated list of VR displays will be returned
   // asynchronously to children via UpdateDisplayInfo.
@@ -75,9 +67,6 @@ parent:
   async NewPoseMoveToMockController(uint32_t aDeviceID, GamepadPoseState aPose);
 
 child:
-
-  async ParentAsyncMessages(AsyncParentMessageData[] aMessages);
-
   // Notify children of updated VR display enumeration and details.  This will
   // be sent to all children when the parent receives RefreshDisplays, even
   // if no changes have been detected.  This ensures that Promises exposed

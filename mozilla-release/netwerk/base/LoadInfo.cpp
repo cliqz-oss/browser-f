@@ -7,6 +7,7 @@
 #include "mozilla/LoadInfo.h"
 
 #include "mozilla/Assertions.h"
+#include "mozilla/dom/TabChild.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozIThirdPartyUtil.h"
 #include "nsFrameLoader.h"
@@ -57,6 +58,8 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mUpgradeInsecureRequests(false)
   , mVerifySignedContent(false)
   , mEnforceSRI(false)
+  , mForceAllowDataURI(false)
+  , mOriginalFrameSrcLoad(false)
   , mForceInheritPrincipalDropped(false)
   , mInnerWindowID(0)
   , mOuterWindowID(0)
@@ -68,6 +71,7 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mIsThirdPartyContext(false)
   , mForcePreflight(false)
   , mIsPreflight(false)
+  , mLoadTriggeredFromExternal(false)
   , mForceHSTSPriming(false)
   , mMixedContentWouldBlock(false)
   , mIsHSTSPriming(false)
@@ -118,6 +122,9 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
     }
 
     mInnerWindowID = aLoadingContext->OwnerDoc()->InnerWindowID();
+    mAncestorPrincipals = aLoadingContext->OwnerDoc()->AncestorPrincipals();
+    mAncestorOuterWindowIDs = aLoadingContext->OwnerDoc()->AncestorOuterWindowIDs();
+    MOZ_DIAGNOSTIC_ASSERT(mAncestorPrincipals.Length() == mAncestorOuterWindowIDs.Length());
 
     // When the element being loaded is a frame, we choose the frame's window
     // for the window ID and the frame element's window as the parent
@@ -236,6 +243,8 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
   , mUpgradeInsecureRequests(false)
   , mVerifySignedContent(false)
   , mEnforceSRI(false)
+  , mForceAllowDataURI(false)
+  , mOriginalFrameSrcLoad(false)
   , mForceInheritPrincipalDropped(false)
   , mInnerWindowID(0)
   , mOuterWindowID(0)
@@ -247,6 +256,7 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
   , mIsThirdPartyContext(false) // NB: TYPE_DOCUMENT implies not third-party.
   , mForcePreflight(false)
   , mIsPreflight(false)
+  , mLoadTriggeredFromExternal(false)
   , mForceHSTSPriming(false)
   , mMixedContentWouldBlock(false)
   , mIsHSTSPriming(false)
@@ -277,6 +287,9 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
   nsCOMPtr<nsIDocShell> docShell = aOuterWindow->GetDocShell();
   MOZ_ASSERT(docShell);
   mOriginAttributes = nsDocShell::Cast(docShell)->GetOriginAttributes();
+  mAncestorPrincipals = nsDocShell::Cast(docShell)->AncestorPrincipals();
+  mAncestorOuterWindowIDs = nsDocShell::Cast(docShell)->AncestorOuterWindowIDs();
+  MOZ_DIAGNOSTIC_ASSERT(mAncestorPrincipals.Length() == mAncestorOuterWindowIDs.Length());
 
 #ifdef DEBUG
   if (docShell->ItemType() == nsIDocShellTreeItem::typeChrome) {
@@ -300,6 +313,8 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
   , mUpgradeInsecureRequests(rhs.mUpgradeInsecureRequests)
   , mVerifySignedContent(rhs.mVerifySignedContent)
   , mEnforceSRI(rhs.mEnforceSRI)
+  , mForceAllowDataURI(rhs.mForceAllowDataURI)
+  , mOriginalFrameSrcLoad(rhs.mOriginalFrameSrcLoad)
   , mForceInheritPrincipalDropped(rhs.mForceInheritPrincipalDropped)
   , mInnerWindowID(rhs.mInnerWindowID)
   , mOuterWindowID(rhs.mOuterWindowID)
@@ -313,9 +328,12 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
   , mRedirectChainIncludingInternalRedirects(
       rhs.mRedirectChainIncludingInternalRedirects)
   , mRedirectChain(rhs.mRedirectChain)
+  , mAncestorPrincipals(rhs.mAncestorPrincipals)
+  , mAncestorOuterWindowIDs(rhs.mAncestorOuterWindowIDs)
   , mCorsUnsafeHeaders(rhs.mCorsUnsafeHeaders)
   , mForcePreflight(rhs.mForcePreflight)
   , mIsPreflight(rhs.mIsPreflight)
+  , mLoadTriggeredFromExternal(rhs.mLoadTriggeredFromExternal)
   , mForceHSTSPriming(rhs.mForceHSTSPriming)
   , mMixedContentWouldBlock(rhs.mMixedContentWouldBlock)
   , mIsHSTSPriming(rhs.mIsHSTSPriming)
@@ -334,6 +352,7 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
                    bool aUpgradeInsecureRequests,
                    bool aVerifySignedContent,
                    bool aEnforceSRI,
+                   bool aForceAllowDataURI,
                    bool aForceInheritPrincipalDropped,
                    uint64_t aInnerWindowID,
                    uint64_t aOuterWindowID,
@@ -346,9 +365,12 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
                    const OriginAttributes& aOriginAttributes,
                    RedirectHistoryArray& aRedirectChainIncludingInternalRedirects,
                    RedirectHistoryArray& aRedirectChain,
+                   nsTArray<nsCOMPtr<nsIPrincipal>>&& aAncestorPrincipals,
+                   const nsTArray<uint64_t>& aAncestorOuterWindowIDs,
                    const nsTArray<nsCString>& aCorsUnsafeHeaders,
                    bool aForcePreflight,
                    bool aIsPreflight,
+                   bool aLoadTriggeredFromExternal,
                    bool aForceHSTSPriming,
                    bool aMixedContentWouldBlock,
                    bool aIsHSTSPriming,
@@ -363,6 +385,8 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mUpgradeInsecureRequests(aUpgradeInsecureRequests)
   , mVerifySignedContent(aVerifySignedContent)
   , mEnforceSRI(aEnforceSRI)
+  , mForceAllowDataURI(aForceAllowDataURI)
+  , mOriginalFrameSrcLoad(false)
   , mForceInheritPrincipalDropped(aForceInheritPrincipalDropped)
   , mInnerWindowID(aInnerWindowID)
   , mOuterWindowID(aOuterWindowID)
@@ -373,9 +397,12 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mInitialSecurityCheckDone(aInitialSecurityCheckDone)
   , mIsThirdPartyContext(aIsThirdPartyContext)
   , mOriginAttributes(aOriginAttributes)
+  , mAncestorPrincipals(Move(aAncestorPrincipals))
+  , mAncestorOuterWindowIDs(aAncestorOuterWindowIDs)
   , mCorsUnsafeHeaders(aCorsUnsafeHeaders)
   , mForcePreflight(aForcePreflight)
   , mIsPreflight(aIsPreflight)
+  , mLoadTriggeredFromExternal(aLoadTriggeredFromExternal)
   , mForceHSTSPriming (aForceHSTSPriming)
   , mMixedContentWouldBlock(aMixedContentWouldBlock)
   , mIsHSTSPriming(aIsHSTSPriming)
@@ -488,6 +515,26 @@ nsIPrincipal*
 LoadInfo::PrincipalToInherit()
 {
   return mPrincipalToInherit;
+}
+
+nsIPrincipal*
+LoadInfo::FindPrincipalToInherit(nsIChannel* aChannel)
+{
+  if (mPrincipalToInherit) {
+    return mPrincipalToInherit;
+  }
+
+  nsCOMPtr<nsIURI> uri = mResultPrincipalURI;
+  if (!uri) {
+    Unused << aChannel->GetOriginalURI(getter_AddRefs(uri));
+  }
+
+  bool dataInherits = mSecurityFlags & (SEC_REQUIRE_SAME_ORIGIN_DATA_INHERITS |
+                                        SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS |
+                                        SEC_REQUIRE_CORS_DATA_INHERITS);
+
+  auto prin = BasePrincipal::Cast(mTriggeringPrincipal);
+  return prin->PrincipalToInherit(uri, dataInherits);
 }
 
 NS_IMETHODIMP
@@ -714,6 +761,37 @@ LoadInfo::GetEnforceSRI(bool* aResult)
 }
 
 NS_IMETHODIMP
+LoadInfo::SetForceAllowDataURI(bool aForceAllowDataURI)
+{
+  MOZ_ASSERT(!mForceAllowDataURI ||
+             mInternalContentPolicyType == nsIContentPolicy::TYPE_DOCUMENT,
+             "can only allow data URI navigation for TYPE_DOCUMENT");
+  mForceAllowDataURI = aForceAllowDataURI;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::GetForceAllowDataURI(bool* aForceAllowDataURI)
+{
+  *aForceAllowDataURI = mForceAllowDataURI;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::SetOriginalFrameSrcLoad(bool aOriginalFrameSrcLoad)
+{
+  mOriginalFrameSrcLoad = aOriginalFrameSrcLoad;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::GetOriginalFrameSrcLoad(bool* aOriginalFrameSrcLoad)
+{
+  *aOriginalFrameSrcLoad = mOriginalFrameSrcLoad;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 LoadInfo::GetForceInheritPrincipalDropped(bool* aResult)
 {
   *aResult = mForceInheritPrincipalDropped;
@@ -914,6 +992,18 @@ LoadInfo::RedirectChain()
   return mRedirectChain;
 }
 
+const nsTArray<nsCOMPtr<nsIPrincipal>>&
+LoadInfo::AncestorPrincipals()
+{
+  return mAncestorPrincipals;
+}
+
+const nsTArray<uint64_t>&
+LoadInfo::AncestorOuterWindowIDs()
+{
+  return mAncestorOuterWindowIDs;
+}
+
 void
 LoadInfo::SetCorsPreflightInfo(const nsTArray<nsCString>& aHeaders,
                                bool aForcePreflight)
@@ -955,6 +1045,23 @@ NS_IMETHODIMP
 LoadInfo::GetIsPreflight(bool* aIsPreflight)
 {
   *aIsPreflight = mIsPreflight;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::SetLoadTriggeredFromExternal(bool aLoadTriggeredFromExternal)
+{
+  MOZ_ASSERT(!aLoadTriggeredFromExternal ||
+             mInternalContentPolicyType == nsIContentPolicy::TYPE_DOCUMENT,
+             "can only set load triggered from external for TYPE_DOCUMENT");
+  mLoadTriggeredFromExternal = aLoadTriggeredFromExternal;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::GetLoadTriggeredFromExternal(bool* aLoadTriggeredFromExternal)
+{
+  *aLoadTriggeredFromExternal = mLoadTriggeredFromExternal;
   return NS_OK;
 }
 

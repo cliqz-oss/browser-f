@@ -1,4 +1,5 @@
-/* -*-  Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2; -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,7 +10,6 @@
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/ChromeUtilsBinding.h"
-#include "mozilla/dom/ThreadSafeChromeUtilsBinding.h"
 #include "mozilla/ErrorResult.h"
 
 namespace mozilla {
@@ -21,10 +21,12 @@ class HeapSnapshot;
 namespace dom {
 
 class ArrayBufferViewOrArrayBuffer;
+class IdleRequestCallback;
+struct IdleRequestOptions;
 class PrecompiledScript;
 class Promise;
 
-class ThreadSafeChromeUtils
+class ChromeUtils
 {
 private:
   // Implemented in devtools/shared/heapsnapshot/HeapSnapshot.cpp
@@ -73,11 +75,7 @@ public:
                               const Base64URLDecodeOptions& aOptions,
                               JS::MutableHandle<JSObject*> aRetval,
                               ErrorResult& aRv);
-};
 
-class ChromeUtils : public ThreadSafeChromeUtils
-{
-public:
   static void
   OriginAttributesToSuffix(GlobalObject& aGlobal,
                            const dom::OriginAttributesDictionary& aAttrs,
@@ -144,6 +142,11 @@ public:
                            JS::HandleObject aObj,
                            JS::HandleObject aTarget,
                            JS::MutableHandleObject aRetval,
+                           ErrorResult& aRv);
+
+  static void IdleDispatch(const GlobalObject& global,
+                           IdleRequestCallback& callback,
+                           const IdleRequestOptions& options,
                            ErrorResult& aRv);
 };
 

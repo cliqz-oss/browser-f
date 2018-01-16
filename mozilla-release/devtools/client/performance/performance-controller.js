@@ -5,7 +5,7 @@
 
 /* globals window, document, PerformanceView, ToolbarView, RecordingsView, DetailsView */
 
-/* exported Cc, Ci, Cu, Cr, loader */
+/* exported Cc, Ci, Cu, Cr, loader, Promise */
 var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 var BrowserLoaderModule = {};
 Cu.import("resource://devtools/client/shared/browser-loader.js", BrowserLoaderModule);
@@ -17,6 +17,10 @@ var { Task } = require("devtools/shared/task");
 /* exported Heritage, ViewHelpers, WidgetMethods, setNamedTimeout, clearNamedTimeout */
 var { Heritage, ViewHelpers, WidgetMethods, setNamedTimeout, clearNamedTimeout } = require("devtools/client/shared/widgets/view-helpers");
 var { PrefObserver } = require("devtools/client/shared/prefs");
+
+// Use privileged promise in panel documents to prevent having them to freeze
+// during toolbox destruction. See bug 1402779.
+var Promise = require("Promise");
 
 // Events emitted by various objects in the panel.
 var EVENTS = require("devtools/client/performance/events");
@@ -513,18 +517,17 @@ var PerformanceController = {
    * @return {object}
    */
   getMultiprocessStatus: function () {
-    // If testing, set both supported and enabled to true so we
-    // have realtime rendering tests in non-e10s. This function is
-    // overridden wholesale in tests when we want to test multiprocess support
+    // If testing, set enabled to true so we have realtime rendering tests
+    // in non-e10s. This function is overridden wholesale in tests
+    // when we want to test multiprocess support
     // specifically.
     if (flags.testing) {
-      return { supported: true, enabled: true };
+      return { enabled: true };
     }
-    let supported = system.constants.E10S_TESTING_ONLY;
     // This is only checked on tool startup -- requires a restart if
     // e10s subsequently enabled.
     let enabled = this._e10s;
-    return { supported, enabled };
+    return { enabled };
   },
 
   /**
@@ -552,12 +555,9 @@ var PerformanceController = {
    * if e10s is not possible on the platform. If e10s is on, no attribute is set.
    */
   _setMultiprocessAttributes: function () {
-    let { enabled, supported } = this.getMultiprocessStatus();
-    if (!enabled && supported) {
+    let { enabled } = this.getMultiprocessStatus();
+    if (!enabled) {
       $("#performance-view").setAttribute("e10s", "disabled");
-    } else if (!enabled && !supported) {
-      // Could be a chance where the directive goes away yet e10s is still on
-      $("#performance-view").setAttribute("e10s", "unsupported");
     }
   },
 

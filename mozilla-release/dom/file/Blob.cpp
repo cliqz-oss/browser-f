@@ -11,7 +11,6 @@
 #include "MultipartBlobImpl.h"
 #include "nsIInputStream.h"
 #include "nsPIDOMWindow.h"
-#include "TemporaryBlobImpl.h"
 #include "StreamBlobImpl.h"
 #include "StringBlobImpl.h"
 
@@ -90,17 +89,6 @@ Blob::CreateMemoryBlob(nsISupports* aParent, void* aMemoryBuffer,
 {
   RefPtr<Blob> blob = Blob::Create(aParent,
     new MemoryBlobImpl(aMemoryBuffer, aLength, aContentType));
-  MOZ_ASSERT(!blob->mImpl->IsFile());
-  return blob.forget();
-}
-
-/* static */ already_AddRefed<Blob>
-Blob::CreateTemporaryBlob(nsISupports* aParent, PRFileDesc* aFD,
-                          uint64_t aStartPos, uint64_t aLength,
-                          const nsAString& aContentType)
-{
-  RefPtr<Blob> blob = Blob::Create(aParent,
-    new TemporaryBlobImpl(aFD, aStartPos, aLength, aContentType));
   MOZ_ASSERT(!blob->mImpl->IsFile());
   return blob.forget();
 }
@@ -201,11 +189,16 @@ Blob::GetType(nsAString &aType)
 already_AddRefed<Blob>
 Blob::Slice(const Optional<int64_t>& aStart,
             const Optional<int64_t>& aEnd,
-            const nsAString& aContentType,
+            const Optional<nsAString>& aContentType,
             ErrorResult& aRv)
 {
+  nsAutoString contentType;
+  if (aContentType.WasPassed()) {
+    contentType = aContentType.Value();
+  }
+
   RefPtr<BlobImpl> impl =
-    mImpl->Slice(aStart, aEnd, aContentType, aRv);
+    mImpl->Slice(aStart, aEnd, contentType, aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
@@ -287,9 +280,9 @@ Blob::IsMemoryFile() const
 }
 
 void
-Blob::GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv)
+Blob::CreateInputStream(nsIInputStream** aStream, ErrorResult& aRv)
 {
-  mImpl->GetInternalStream(aStream, aRv);
+  mImpl->CreateInputStream(aStream, aRv);
 }
 
 size_t

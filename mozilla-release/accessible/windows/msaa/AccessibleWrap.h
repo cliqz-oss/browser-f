@@ -181,6 +181,12 @@ private:
 
 public:
   /**
+   * Determine whether this is the root accessible for its HWND.
+   */
+  bool
+  IsRootForHWND();
+
+  /**
    * Find an accessible by the given child ID in cached documents.
    */
   MOZ_MUST_USE already_AddRefed<IAccessible>
@@ -198,6 +204,8 @@ public:
   static void ReleaseContentProcessIdFor(dom::ContentParentId aIPCContentId);
 
   static void SetHandlerControl(DWORD aPid, RefPtr<IHandlerControl> aCtrl);
+
+  static void InvalidateHandlers();
 
   bool DispatchTextChangeToHandler(bool aIsInsert, const nsString& aText,
                                    int32_t aStart, uint32_t aLen);

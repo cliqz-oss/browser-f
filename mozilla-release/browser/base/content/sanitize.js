@@ -333,7 +333,7 @@ Sanitizer.prototype = {
               let uri = principal.URI;
               if (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "file") {
                 promises.push(new Promise(r => {
-                  let req = quotaManagerService.clearStoragesForPrincipal(principal, null, true);
+                  let req = quotaManagerService.clearStoragesForPrincipal(principal, null, false);
                   req.callback = () => { r(); };
                 }));
               }
@@ -638,7 +638,7 @@ Sanitizer.prototype = {
               return false;
             }
             return undefined;
-          }
+          };
           newWindow.addEventListener("fullscreen", onFullScreen);
         }
 
@@ -664,7 +664,7 @@ Sanitizer.prototype = {
               TelemetryStopwatch.finish("FX_SANITIZE_OPENWINDOWS", refObj);
               resolve();
             }
-          }
+          };
 
           let numWindowsClosing = windowList.length;
           let onWindowClosed = function() {
@@ -677,7 +677,7 @@ Sanitizer.prototype = {
                 resolve();
               }
             }
-          }
+          };
           Services.obs.addObserver(onWindowOpened, "browser-delayed-startup-finished");
           Services.obs.addObserver(onWindowClosed, "xul-window-destroyed");
         });
@@ -750,8 +750,8 @@ Sanitizer.getClearRange = function(ts) {
       startDate = endDate - 14400000000; // 4*60*60*1000000
       break;
     case Sanitizer.TIMESPAN_TODAY :
-      var d = new Date();  // Start with today
-      d.setHours(0);      // zero us back to midnight...
+      var d = new Date(); // Start with today
+      d.setHours(0); // zero us back to midnight...
       d.setMinutes(0);
       d.setSeconds(0);
       startDate = d.valueOf() * 1000; // convert to epoch usec

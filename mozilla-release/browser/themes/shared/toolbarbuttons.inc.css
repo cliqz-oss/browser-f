@@ -5,6 +5,7 @@
 :root {
   --toolbarbutton-hover-transition-duration: 150ms;
 
+  --toolbarbutton-outer-padding: 2px;
   --toolbarbutton-inner-padding: 6px;
 
   /* These hover and active colors should work on both light and dark
@@ -25,7 +26,7 @@
 }
 
 :root[uidensity=compact] {
-  --toolbarbutton-inner-padding: 5px;
+  --toolbarbutton-outer-padding: 1px;
 }
 
 :root[uidensity=touch] {
@@ -54,12 +55,10 @@ toolbar[brighttext] {
 
 .tabbrowser-arrowscrollbox > .scrollbutton-up[disabled=true],
 .tabbrowser-arrowscrollbox > .scrollbutton-down[disabled=true],
+:root:not([customizing]) .toolbarbutton-1[disabled=true],
 /* specialcase the overflow and the hamburger button so they show up disabled in customize mode. */
-#nav-bar-overflow-button[disabled=true] > .toolbarbutton-icon,
-#PanelUI-menu-button[disabled=true] > .toolbarbutton-badge-stack > .toolbarbutton-icon,
-#main-window:not([customizing]) .toolbarbutton-1[disabled=true] > .toolbarbutton-icon,
-#main-window:not([customizing]) .toolbarbutton-1[disabled=true] > .toolbarbutton-text,
-#main-window:not([customizing]) .toolbarbutton-1[disabled=true] > .toolbarbutton-badge-stack > .toolbarbutton-icon {
+#nav-bar-overflow-button[disabled=true],
+#PanelUI-menu-button[disabled=true] {
   opacity: 0.4;
 }
 
@@ -75,7 +74,7 @@ toolbar[brighttext] {
 #TabsToolbar .toolbarbutton-1,
 .tabbrowser-arrowscrollbox > .scrollbutton-up,
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
-  margin: 0 0 var(--tab-toolbar-navbar-overlap);
+  margin: 0 0 @navbarTabsShadowSize@;
 }
 
 .tabbrowser-arrowscrollbox > .scrollbutton-up,
@@ -100,21 +99,17 @@ toolbar[brighttext] {
 toolbar .toolbarbutton-1 {
   -moz-appearance: none;
   margin: 0;
-  padding: 0 2px;
+  padding: 0 var(--toolbarbutton-outer-padding);
   -moz-box-pack: center;
 }
 
-#PanelUI-menu-button {
+:root:not([uidensity=compact]) #PanelUI-menu-button {
   padding-inline-start: 5px;
   padding-inline-end: 5px;
 }
 
 toolbar .toolbarbutton-1 > menupopup {
   margin-top: -3px;
-}
-
-toolbar .toolbarbutton-1 > menupopup.cui-widget-panel {
-  margin-top: -8px;
 }
 
 .findbar-button > .toolbarbutton-text,
@@ -204,7 +199,7 @@ toolbar .toolbarbutton-1[checked]:not(:active):hover > .toolbarbutton-icon {
 :root:not([uidensity=compact]) #back-button {
   padding-top: 3px;
   padding-bottom: 3px;
-  padding-inline-start: 5px !important;
+  padding-inline-start: 3px;
   padding-inline-end: 0 !important;
   position: relative !important;
   z-index: 1 !important;
@@ -225,8 +220,8 @@ toolbar .toolbarbutton-1[checked]:not(:active):hover > .toolbarbutton-icon {
   background-clip: padding-box;
   border: 1px solid var(--backbutton-border-color);
   border-radius: 10000px;
-  width: 32px;
-  padding: 7px;
+  width: 34px;
+  padding: 8px;
   transition-property: box-shadow;
   transition-duration: var(--toolbarbutton-hover-transition-duration);
 }
@@ -234,6 +229,7 @@ toolbar .toolbarbutton-1[checked]:not(:active):hover > .toolbarbutton-icon {
 :root[uidensity=touch] #back-button {
   padding-top: 1px;
   padding-bottom: 1px;
+  padding-inline-start: 1px;
 }
 
 :root[uidensity=touch] #back-button > .toolbarbutton-icon {
@@ -271,12 +267,13 @@ toolbar .toolbarbutton-1[checked]:not(:active):hover > .toolbarbutton-icon {
 
 toolbarbutton.bookmark-item:not(.subviewbutton) {
   margin: 0 2px;
-  padding: 1px 4px;
+  padding: 2px 4px;
   -moz-appearance: none;
 }
 
 :root[uidensity=compact] toolbarbutton.bookmark-item:not(.subviewbutton) {
   margin: 0 1px;
+  padding: 1px 4px;
 }
 
 :root[uidensity=touch] toolbarbutton.bookmark-item:not(.subviewbutton) {
@@ -303,6 +300,10 @@ toolbarbutton.bookmark-item {
 /* Force the display of the label for bookmarks */
 .bookmark-item > .toolbarbutton-text {
   display: -moz-box !important;
+}
+
+#PlacesToolbarItems > .bookmark-item > .toolbarbutton-icon {
+  margin-inline-end: 0;
 }
 
 #PlacesToolbarItems > .bookmark-item > .toolbarbutton-icon[label]:not([label=""]) {

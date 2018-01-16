@@ -41,34 +41,6 @@ using namespace js::wasm;
 
 using mozilla::IsNaN;
 
-#if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
-// On MIPS, CodeLabels are instruction immediates so InternalLinks only
-// patch instruction immediates.
-LinkDataTier::InternalLink::InternalLink(Kind kind)
-{
-    MOZ_ASSERT(kind == CodeLabel || kind == InstructionImmediate);
-}
-
-bool
-LinkDataTier::InternalLink::isRawPointerPatch()
-{
-    return false;
-}
-#else
-// On the rest, CodeLabels are raw pointers so InternalLinks only patch
-// raw pointers.
-LinkDataTier::InternalLink::InternalLink(Kind kind)
-{
-    MOZ_ASSERT(kind == CodeLabel || kind == RawPointer);
-}
-
-bool
-LinkDataTier::InternalLink::isRawPointerPatch()
-{
-    return true;
-}
-#endif
-
 size_t
 LinkDataTier::SymbolicLinkArray::serializedSize() const
 {
@@ -259,7 +231,7 @@ class Module::Tier2GeneratorTaskImpl : public Tier2GeneratorTask
 
     void execute() override {
         MOZ_ASSERT(!finished_);
-        finished_ = CompileTier2(*module_, *compileArgs_, &cancelled_);
+        finished_ = CompileTier2(*compileArgs_, *module_, &cancelled_);
     }
 };
 
@@ -269,9 +241,9 @@ Module::startTier2(const CompileArgs& args)
     MOZ_ASSERT(!tiering_.lock()->active);
 
     // If a Module initiates tier-2 compilation, we must ensure that eventually
-    // unblockOnTier2GeneratorFinished() is called. Since we must ensure
+    // notifyCompilationListeners() is called. Since we must ensure
     // Tier2GeneratorTaskImpl objects are destroyed *anyway*, we use
-    // ~Tier2GeneratorTaskImpl() to call unblockOnTier2GeneratorFinished() if it
+    // ~Tier2GeneratorTaskImpl() to call notifyCompilationListeners() if it
     // hasn't been already.
 
     UniqueTier2GeneratorTask task(js_new<Tier2GeneratorTaskImpl>(*this, args));
@@ -297,6 +269,8 @@ Module::notifyCompilationListeners()
         tiering->active = false;
 
         Swap(listeners, tiering->listeners);
+
+        tiering.notify_all(/* inactive */);
     }
 
     for (RefPtr<JS::WasmModuleListener>& listener : listeners)
@@ -305,7 +279,7 @@ Module::notifyCompilationListeners()
 
 void
 Module::finishTier2(UniqueLinkDataTier linkData2, UniqueMetadataTier metadata2,
-                    UniqueConstCodeSegment code2, ModuleEnvironment* env2)
+                    UniqueCodeSegment code2, ModuleEnvironment* env2)
 {
     // Install the data in the data structures. They will not be visible yet.
 
@@ -336,6 +310,14 @@ Module::finishTier2(UniqueLinkDataTier linkData2, UniqueMetadataTier metadata2,
 
         jumpTable[cr.funcIndex()] = base + cr.funcTierEntry();
     }
+}
+
+void
+Module::blockOnTier2Complete() const
+{
+    auto tiering = tiering_.lock();
+    while (tiering->active)
+        tiering.wait(/* inactive */);
 }
 
 /* virtual */ size_t
@@ -609,7 +591,7 @@ wasm::DeserializeModule(PRFileDesc* bytecodeFile, PRFileDesc* maybeCompiledFile,
         return nullptr;
 
     UniqueChars error;
-    return CompileInitialTier(*bytecode, *args, &error);
+    return CompileBuffer(*args, *bytecode, &error);
 }
 
 /* virtual */ void
@@ -646,9 +628,8 @@ Module::extractCode(JSContext* cx, Tier tier, MutableHandleValue vp) const
         return false;
 
     // This function is only used for testing purposes so we can simply
-    // busy-wait on tiered compilation to complete.
-    while (!compilationComplete())
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    // block on tiered compilation to complete.
+    blockOnTier2Complete();
 
     if (!code_->hasTier(tier)) {
         vp.setNull();
@@ -748,8 +729,8 @@ Module::initSegments(JSContext* cx,
         uint32_t offset = EvaluateInitExpr(globalImports, seg.offset);
 
         if (offset > tableLength || tableLength - offset < numElems) {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_FIT,
-                                      "elem", "table");
+            JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_FIT,
+                                     "elem", "table");
             return false;
         }
     }
@@ -760,8 +741,8 @@ Module::initSegments(JSContext* cx,
             uint32_t offset = EvaluateInitExpr(globalImports, seg.offset);
 
             if (offset > memoryLength || memoryLength - offset < seg.length) {
-                JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_FIT,
-                                          "data", "memory");
+                JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_FIT,
+                                         "data", "memory");
                 return false;
             }
         }
@@ -851,8 +832,8 @@ Module::instantiateFunctions(JSContext* cx, Handle<FunctionVector> funcImports) 
 
         if (funcExport.sig() != metadata(tier).funcImports[i].sig()) {
             const Import& import = FindImportForFuncImport(imports_, i);
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_SIG,
-                                      import.module.get(), import.field.get());
+            JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMPORT_SIG,
+                                     import.module.get(), import.field.get());
             return false;
         }
     }
@@ -872,12 +853,12 @@ CheckLimits(JSContext* cx, uint32_t declaredMin, const Maybe<uint32_t>& declared
     }
 
     if (actualLength < declaredMin || actualLength > declaredMax.valueOr(UINT32_MAX)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMP_SIZE, kind);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMP_SIZE, kind);
         return false;
     }
 
     if ((actualMax && declaredMax && *actualMax > *declaredMax) || (!actualMax && declaredMax)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMP_MAX, kind);
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_IMP_MAX, kind);
         return false;
     }
 
@@ -1007,9 +988,29 @@ GetGlobalExport(JSContext* cx, const GlobalDescVector& globals, uint32_t globalI
     // Imports are located upfront in the globals array.
     Val val;
     switch (global.kind()) {
-      case GlobalKind::Import:   val = globalImports[globalIndex]; break;
-      case GlobalKind::Variable: MOZ_CRASH("mutable variables can't be exported");
-      case GlobalKind::Constant: val = global.constantValue(); break;
+      case GlobalKind::Import: {
+        val = globalImports[globalIndex];
+        break;
+      }
+      case GlobalKind::Variable: {
+        MOZ_ASSERT(!global.isMutable(), "mutable variables can't be exported");
+        const InitExpr& init = global.initExpr();
+        switch (init.kind()) {
+          case InitExpr::Kind::Constant: {
+            val = init.val();
+            break;
+          }
+          case InitExpr::Kind::GetGlobal: {
+            val = globalImports[init.globalIndex()];
+            break;
+          }
+        }
+        break;
+      }
+      case GlobalKind::Constant: {
+        val = global.constantValue();
+        break;
+      }
     }
 
     switch (global.type()) {
@@ -1239,11 +1240,11 @@ Module::instantiate(JSContext* cx,
             return false;
     }
 
-    uint32_t mode = uint32_t(metadata().isAsmJS() ? Telemetry::ASMJS : Telemetry::WASM);
-    cx->runtime()->addTelemetry(JS_TELEMETRY_AOT_USAGE, mode);
-
     JSUseCounter useCounter = metadata().isAsmJS() ? JSUseCounter::ASMJS : JSUseCounter::WASM;
     cx->runtime()->setUseCounter(instance, useCounter);
+
+    if (cx->options().testWasmAwaitTier2())
+        blockOnTier2Complete();
 
     return true;
 }

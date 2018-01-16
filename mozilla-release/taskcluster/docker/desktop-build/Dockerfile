@@ -5,7 +5,6 @@ MAINTAINER    Dustin J. Mitchell <dustin@mozilla.com>
 VOLUME /builds/worker/workspace
 VOLUME /builds/worker/tooltool-cache
 VOLUME /builds/worker/checkouts
-VOLUME /builds/worker/.tc-vcs
 
 # Add build scripts; these are the entry points from the taskcluster worker, and
 # operate on environment variables
@@ -67,6 +66,9 @@ ADD           buildprops.json /builds/worker/
 # Install the screen package here to use with xvfb.
 # Install bison to build binutils.
 RUN yum install -y bison screen
+
+# For the mingw toolchain & job (scons: nsis, flex: wine, p7zip: ff installer)
+RUN yum install -y scons flex p7zip
 
 # Install libtool.
 RUN yum install -y libtool

@@ -53,7 +53,6 @@ XPIDL_SOURCES += [
     'nsIInputStreamChannel.idl',
     'nsIInputStreamPump.idl',
     'nsIIOService.idl',
-    'nsIIOService2.idl',
     'nsILoadContextInfo.idl',
     'nsILoadGroup.idl',
     'nsILoadGroupChild.idl',
@@ -154,7 +153,6 @@ EXPORTS += [
     'nsSimpleNestedURI.h',
     'nsSimpleURI.h',
     'nsStreamListenerWrapper.h',
-    'nsTemporaryFileInputStream.h',
     'nsURIHashKey.h',
     'nsURLHelper.h',
     'nsURLParsers.h',
@@ -175,6 +173,7 @@ EXPORTS.mozilla.net += [
     'Dashboard.h',
     'DashboardTypes.h',
     'MemoryDownloader.h',
+    'MozURL.h',
     'PartiallySeekableInputStream.h',
     'Predictor.h',
     'ReferrerPolicy.h',
@@ -193,6 +192,7 @@ UNIFIED_SOURCES += [
     'LoadContextInfo.cpp',
     'LoadInfo.cpp',
     'MemoryDownloader.cpp',
+    'MozURL.cpp',
     'NetworkActivityMonitor.cpp',
     'nsAsyncRedirectVerifyHelper.cpp',
     'nsAsyncStreamCopier.cpp',
@@ -236,7 +236,6 @@ UNIFIED_SOURCES += [
     'nsStreamLoader.cpp',
     'nsStreamTransportService.cpp',
     'nsSyncStreamListener.cpp',
-    'nsTemporaryFileInputStream.cpp',
     'nsTransportUtils.cpp',
     'nsUDPSocket.cpp',
     'nsUnicharStreamLoader.cpp',
@@ -256,10 +255,6 @@ UNIFIED_SOURCES += [
     'Tickler.cpp',
     'TLSServerSocket.cpp',
 ]
-
-if CONFIG['MOZ_RUST_URLPARSE']:
-    EXPORTS.mozilla.net += [ 'RustURL.h' ]
-    UNIFIED_SOURCES += [ 'RustURL.cpp' ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     SOURCES += [

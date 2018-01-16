@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* import-globals-from memory.js */
 /* import-globals-from report.js */
 /* eslint mozilla/avoid-Date-timing: "off" */
 
@@ -40,7 +39,6 @@ var timeout = -1;
 var delay = 250;
 var running = false;
 var forceCC = true;
-var reportRSS = true;
 
 var useMozAfterPaint = false;
 var useFNBPaint = false;
@@ -48,9 +46,8 @@ var gPaintWindow = window;
 var gPaintListener = false;
 var loadNoCache = false;
 var scrollTest = false;
-var gDisableE10S = false;
-var gUseE10S = false;
 var profilingInfo = false;
+var baseVsRef = false;
 
 var isIdleCallbackPending = false;
 
@@ -153,10 +150,8 @@ function plInit() {
     if (args.delay) delay = parseInt(args.delay);
     if (args.mozafterpaint) useMozAfterPaint = true;
     if (args.fnbpaint) useFNBPaint = true;
-    if (args.rss) reportRSS = true;
     if (args.loadnocache) loadNoCache = true;
     if (args.scrolltest) scrollTest = true;
-    if (args.disableE10S) gDisableE10S = true;
     if (args.profilinginfo) profilingInfo = JSON.parse(args.profilinginfo)
 
     if (profilingInfo) {
@@ -202,7 +197,6 @@ function plInit() {
     pages = pages.slice(startIndex, endIndex + 1);
     pageUrls = pages.map(function(p) { return p.url.spec.toString(); });
     report = new Report();
-
     if (doRenderTest)
       renderReport = new Report();
 
@@ -237,8 +231,8 @@ function plInit() {
       // able to resize the window and not have it get clobbered
       // by the persisted values
       setTimeout(function() {
-        // For e10s windows, since bug 1261842, the initial browser is remote unless
-        // it attempts to browse to a URI that should be non-remote (landed at bug 1047603).
+        // Since bug 1261842, the initial browser is remote unless it attempts
+        // to browse to a URI that should be non-remote (landed at bug 1047603).
         //
         // However, when it loads a URI that requires a different remote type,
         // we lose the load listener and the injected tpRecordTime.remote,
@@ -247,13 +241,11 @@ function plInit() {
         // instance which adds the load listener and injects tpRecordTime), all the
         // pages should be able to load in the same mode as the initial page - due
         // to this reinitialization on the switch.
-        if (browserWindow.gMultiProcessBrowser) {
-          let remoteType = E10SUtils.getRemoteTypeForURI(pageUrls[0], true);
-          if (remoteType) {
-            browserWindow.XULBrowserWindow.forceInitialBrowserRemote(remoteType);
-          } else {
-            browserWindow.XULBrowserWindow.forceInitialBrowserNonRemote(null);
-          }
+        let remoteType = E10SUtils.getRemoteTypeForURI(pageUrls[0], true);
+        if (remoteType) {
+          browserWindow.XULBrowserWindow.forceInitialBrowserRemote(remoteType);
+        } else {
+          browserWindow.XULBrowserWindow.forceInitialBrowserNonRemote(null);
         }
 
         browserWindow.resizeTo(winWidth, winHeight);
@@ -261,9 +253,6 @@ function plInit() {
         browserWindow.focus();
 
         content = browserWindow.getBrowser();
-        gUseE10S = !gDisableE10S || (plPageFlags() & EXECUTE_SCROLL_TEST) ||
-                    (content.selectedBrowser &&
-                    content.selectedBrowser.getAttribute("remote") == "true")
 
         // Load the frame script for e10s / IPC message support
         let contentScript = "data:,function _contentLoadHandler(e) { " +
@@ -329,11 +318,7 @@ function plInit() {
         content.selectedBrowser.messageManager.loadFrameScript("chrome://pageloader/content/tscroll.js", false, true);
         content.selectedBrowser.messageManager.loadFrameScript("chrome://pageloader/content/Profiler.js", false, true);
 
-        if (reportRSS) {
-          initializeMemoryCollector(plLoadPage, 100);
-        } else {
-          setTimeout(plLoadPage, 100);
-        }
+        setTimeout(plLoadPage, 100);
       }, 500);
     };
 
@@ -400,17 +385,11 @@ function plLoadPage() {
       mm.removeMessageListener("PageLoader:FNBPaintError", ContentListener);
     }
   };
-
   failTimeout.register(loadFail, timeout);
-
   // record which page we are about to open
   TalosParentProfiler.mark("Opening " + pages[pageIndex].url.pathQueryRef);
 
-  if (reportRSS) {
-    collectMemory(startAndLoadURI, pageName);
-  } else {
-    startAndLoadURI(pageName);
-  }
+  startAndLoadURI(pageName);
 }
 
 function startAndLoadURI(pageName) {
@@ -508,11 +487,8 @@ var plNextPage = async function() {
       var tccend = new Date();
       report.recordCCTime(tccend - tccstart);
 
-      // Now asynchronously trigger GC / CC in the content process if we're
-      // in an e10s window.
-      if (browserWindow.gMultiProcessBrowser) {
-        await forceContentGC();
-      }
+      // Now asynchronously trigger GC / CC in the content process
+      await forceContentGC();
     }
 
     setTimeout(plLoadPage, delay);
@@ -565,7 +541,15 @@ function plRecordTime(time) {
   }
   var nextName = pages[i].url.spec;
   if (!recordedName) {
-    recordedName = pageUrls[pageIndex];
+    // when doing base vs ref type of test, add pre 'base' or 'ref' to reported page name;
+    // this is necessary so that if multiple subtests use same reference page, results for
+    // each ref page run will be kept separate for each base vs ref run, and not grouped
+    // into just one set of results values for everytime that reference page was loaded
+    if (baseVsRef) {
+      recordedName = pages[pageIndex].pre + pageUrls[pageIndex];
+    } else {
+      recordedName = pageUrls[pageIndex];
+    }
   }
   if (typeof(time) == "string") {
     var times = time.split(",");
@@ -732,7 +716,7 @@ function _loadHandler(fnbpaint = 0) {
   plNextPage();
 }
 
-// the core handler for remote (e10s) browser
+// the core handler
 function plLoadHandlerMessage(message) {
   let fnbpaint = 0;
   if (message.json.fnbpaint !== undefined) {
@@ -769,7 +753,7 @@ function plLoadHandlerMessage(message) {
   }
 }
 
-// the record time handler used for remote (e10s) browser
+// the record time handler
 function plRecordTimeMessage(message) {
   gTime = message.json.time;
   gStartTime = message.json.startTime;
@@ -810,11 +794,7 @@ function runRenderTest() {
 }
 
 function plStop(force) {
-  if (reportRSS) {
-    collectMemory(plStopAll, force);
-  } else {
-    plStopAll(force);
-  }
+  plStopAll(force);
 }
 
 function plStopAll(force) {
@@ -835,10 +815,6 @@ function plStopAll(force) {
     }
   } catch (e) {
     dumpLine(e);
-  }
-
-  if (reportRSS) {
-    stopMemCollector();
   }
 
   if (content) {
@@ -893,10 +869,11 @@ function plLoadURLsFromURI(manifestUri) {
 
   var lstream = fstream.QueryInterface(Ci.nsILineInputStream);
 
-  var d = [];
+  var url_array = [];
 
   var lineNo = 0;
   var line = {value: null};
+  var baseVsRefIndex = 0;
   var more;
   do {
     lineNo++;
@@ -914,6 +891,7 @@ function plLoadURLsFromURI(manifestUri) {
 
     var flags = 0;
     var urlspec = s;
+    baseVsRefIndex += 1;
 
     // split on whitespace, and figure out if we have any flags
     var items = s.split(/\s+/);
@@ -932,7 +910,7 @@ function plLoadURLsFromURI(manifestUri) {
       var subItems = plLoadURLsFromURI(subManifest);
       if (subItems == null)
         return null;
-      d = d.concat(subItems);
+      url_array = url_array.concat(subItems);
     } else {
       // For scrollTest flag, we accept "normal" pages but treat them as TEST_DOES_OWN_TIMING
       // together with EXECUTE_SCROLL_TEST which makes us run the scroll test on load.
@@ -942,7 +920,7 @@ function plLoadURLsFromURI(manifestUri) {
       // Note that if we have the scrollTest flag but the item already has "%", then we do
       // nothing (the scroll test will not execute, and the page will report with its
       // own tpRecordTime and not the one from the scroll test).
-      if (scrollTest && items.length == 1) {  // scroll enabled and no "%"
+      if (scrollTest && items.length == 1) { // scroll enabled and no "%"
         items.unshift("%");
         flags |= EXECUTE_SCROLL_TEST;
       }
@@ -952,22 +930,58 @@ function plLoadURLsFromURI(manifestUri) {
           flags |= TEST_DOES_OWN_TIMING;
 
         urlspec = items[1];
+      } else if (items.length == 3) {
+        // base vs ref type of talos test
+        // expect each manifest line to be in the format of:
+        // & http://localhost/tests/perf-reftest/base-page.html, http://localhost/tests/perf-reftest/reference-page.html
+        // test will run with the base page, then with the reference page; and ultimately the actual test results will
+        // be the comparison values of those two pages; more than one line will result in base vs ref subtests
+        if (items[0].indexOf("&") != -1) {
+          baseVsRef = true;
+          flags |= TEST_DOES_OWN_TIMING;
+          // for the base, must remove the comma on the end of the actual url
+          var urlspecBase = items[1].slice(0, -1);
+          var urlspecRef = items[2];
+        } else {
+          dumpLine("tp: Error on line " + lineNo + " in " + manifestUri.spec + ": unknown manifest format!");
+          return null;
+        }
       } else if (items.length != 1) {
         dumpLine("tp: Error on line " + lineNo + " in " + manifestUri.spec + ": whitespace must be %-escaped!");
         return null;
       }
 
-      var url = gIOS.newURI(urlspec, null, manifestUri);
+      var url;
 
-      if (pageFilterRegexp && !pageFilterRegexp.test(url.spec))
-        continue;
+      if (!baseVsRef) {
+        url = gIOS.newURI(urlspec, null, manifestUri);
 
-      d.push({   url,
-               flags });
+        if (pageFilterRegexp && !pageFilterRegexp.test(url.spec))
+          continue;
+
+        url_array.push({ url, flags });
+      } else {
+        // base vs ref type of talos test
+        // we add a 'pre' prefix here indicating that this particular page is a base page or a reference
+        // page; later on this 'pre' is used when recording the actual time value/result; because in
+        // the results we use the url as the results key; but we might use the same test page as a reference
+        // page in the same test suite, so we need to add a prefix so this results key is always unique
+        url = gIOS.newURI(urlspecBase, null, manifestUri);
+        if (pageFilterRegexp && !pageFilterRegexp.test(url.spec))
+          continue;
+        var pre = "base_page_" + baseVsRefIndex + "_";
+        url_array.push({ url, flags, pre });
+
+        url = gIOS.newURI(urlspecRef, null, manifestUri);
+        if (pageFilterRegexp && !pageFilterRegexp.test(url.spec))
+          continue;
+        pre = "ref_page_" + baseVsRefIndex + "_";
+        url_array.push({ url, flags, pre });
+      }
     }
   } while (more);
 
-  return d;
+  return url_array;
 }
 
 function dumpLine(str) {

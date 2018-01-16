@@ -29,7 +29,6 @@ py2:
         - probes/trace-gen.py
         - python/devtools
         - python/mach
-        - python/mozboot
         - python/mozbuild
         - python/mozversioncontrol
         - security
@@ -39,10 +38,8 @@ py2:
         - testing/firefox-ui
         - testing/geckodriver
         - testing/gtest
-        - testing/instrumentation/runinstrumentation.py
         - testing/marionette
         - testing/mochitest
-        - testing/mozbase
         - testing/mozharness
         - testing/remotecppunittests.py
         - testing/runcppunittests.py

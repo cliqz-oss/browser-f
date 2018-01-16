@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::BlobBinding::BlobMethods;
 use dom::bindings::codegen::Bindings::WebSocketBinding;
 use dom::bindings::codegen::Bindings::WebSocketBinding::{BinaryType, WebSocketMethods};
@@ -10,9 +10,9 @@ use dom::bindings::codegen::UnionTypes::StringOrStringSequence;
 use dom::bindings::conversions::ToJSValConvertible;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::{DomObject, reflect_dom_object};
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::{DOMString, USVString, is_token};
 use dom::blob::{Blob, BlobImpl};
 use dom::closeevent::CloseEvent;
@@ -20,19 +20,18 @@ use dom::event::{Event, EventBubbles, EventCancelable};
 use dom::eventtarget::EventTarget;
 use dom::globalscope::GlobalScope;
 use dom::messageevent::MessageEvent;
-use dom::urlhelper::UrlHelper;
 use dom_struct::dom_struct;
 use ipc_channel::ipc::{self, IpcReceiver, IpcSender};
 use js::jsapi::JSAutoCompartment;
 use js::jsval::UndefinedValue;
 use js::typedarray::{ArrayBuffer, CreateWith};
-use net_traits::{WebSocketCommunicate, WebSocketConnectData, WebSocketDomAction, WebSocketNetworkEvent};
-use net_traits::CoreResourceMsg::WebsocketConnect;
+use net_traits::{CoreResourceMsg, FetchChannels};
+use net_traits::{WebSocketDomAction, WebSocketNetworkEvent};
 use net_traits::MessageData;
+use net_traits::request::{RequestInit, RequestMode};
 use script_runtime::CommonScriptMsg;
 use script_runtime::ScriptThreadEventCategory::WebSocketEvent;
 use servo_url::ServoUrl;
-use std::ascii::AsciiExt;
 use std::borrow::ToOwned;
 use std::cell::Cell;
 use std::ptr;
@@ -41,7 +40,7 @@ use task::{TaskOnce, TaskCanceller};
 use task_source::TaskSource;
 use task_source::networking::NetworkingTaskSource;
 
-#[derive(Clone, Copy, Debug, HeapSizeOf, JSTraceable, PartialEq)]
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
 enum WebSocketRequestState {
     Connecting = 0,
     Open = 1,
@@ -104,10 +103,10 @@ pub struct WebSocket {
     ready_state: Cell<WebSocketRequestState>,
     buffered_amount: Cell<u64>,
     clearing_buffer: Cell<bool>, //Flag to tell if there is a running thread to clear buffered_amount
-    #[ignore_heap_size_of = "Defined in std"]
-    sender: DOMRefCell<Option<IpcSender<WebSocketDomAction>>>,
+    #[ignore_malloc_size_of = "Defined in std"]
+    sender: DomRefCell<Option<IpcSender<WebSocketDomAction>>>,
     binary_type: Cell<BinaryType>,
-    protocol: DOMRefCell<String>, //Subprotocol selected by server
+    protocol: DomRefCell<String>, //Subprotocol selected by server
 }
 
 impl WebSocket {
@@ -118,22 +117,22 @@ impl WebSocket {
             ready_state: Cell::new(WebSocketRequestState::Connecting),
             buffered_amount: Cell::new(0),
             clearing_buffer: Cell::new(false),
-            sender: DOMRefCell::new(None),
+            sender: DomRefCell::new(None),
             binary_type: Cell::new(BinaryType::Blob),
-            protocol: DOMRefCell::new("".to_owned()),
+            protocol: DomRefCell::new("".to_owned()),
         }
     }
 
-    fn new(global: &GlobalScope, url: ServoUrl) -> Root<WebSocket> {
-        reflect_dom_object(box WebSocket::new_inherited(url),
+    fn new(global: &GlobalScope, url: ServoUrl) -> DomRoot<WebSocket> {
+        reflect_dom_object(Box::new(WebSocket::new_inherited(url)),
                            global, WebSocketBinding::Wrap)
     }
 
-    /// https://html.spec.whatwg.org/multipage/#dom-websocket
+    /// <https://html.spec.whatwg.org/multipage/#dom-websocket>
     pub fn Constructor(global: &GlobalScope,
                        url: DOMString,
                        protocols: Option<StringOrStringSequence>)
-                       -> Fallible<Root<WebSocket>> {
+                       -> Fallible<DomRoot<WebSocket>> {
         // Steps 1-2.
         let url_record = ServoUrl::parse(&url).or(Err(Error::Syntax))?;
 
@@ -176,12 +175,6 @@ impl WebSocket {
         let ws = WebSocket::new(global, url_record.clone());
         let address = Trusted::new(&*ws);
 
-        let connect_data = WebSocketConnectData {
-            resource_url: url_record,
-            origin: UrlHelper::Origin(&global.get_url()).0,
-            protocols: protocols,
-        };
-
         // Create the interface for communication with the resource thread
         let (dom_action_sender, resource_action_receiver):
                 (IpcSender<WebSocketDomAction>,
@@ -190,13 +183,18 @@ impl WebSocket {
                 (IpcSender<WebSocketNetworkEvent>,
                 IpcReceiver<WebSocketNetworkEvent>) = ipc::channel().unwrap();
 
-        let connect = WebSocketCommunicate {
+        // Step 8.
+        let request = RequestInit {
+            url: url_record,
+            origin: global.origin().immutable().clone(),
+            mode: RequestMode::WebSocket { protocols },
+            ..RequestInit::default()
+        };
+        let channels = FetchChannels::WebSocket {
             event_sender: resource_event_sender,
             action_receiver: resource_action_receiver,
         };
-
-        // Step 8.
-        let _ = global.core_resource_thread().send(WebsocketConnect(connect, connect_data));
+        let _ = global.core_resource_thread().send(CoreResourceMsg::Fetch(request, channels));
 
         *ws.sender.borrow_mut() = Some(dom_action_sender);
 
@@ -259,13 +257,14 @@ impl WebSocket {
         if !self.clearing_buffer.get() && self.ready_state.get() == WebSocketRequestState::Open {
             self.clearing_buffer.set(true);
 
-            let task = box BufferedAmountTask {
+            let task = Box::new(BufferedAmountTask {
                 address: address,
-            };
+            });
 
+            let pipeline_id = self.global().pipeline_id();
             self.global()
                 .script_chan()
-                .send(CommonScriptMsg::Task(WebSocketEvent, task))
+                .send(CommonScriptMsg::Task(WebSocketEvent, task, Some(pipeline_id)))
                 .unwrap();
         }
 
@@ -391,14 +390,14 @@ impl WebSocketMethods for WebSocket {
 
 
 /// Task queued when *the WebSocket connection is established*.
-/// https://html.spec.whatwg.org/multipage/#feedback-from-the-protocol:concept-websocket-established
+/// <https://html.spec.whatwg.org/multipage/#feedback-from-the-protocol:concept-websocket-established>
 struct ConnectionEstablishedTask {
     address: Trusted<WebSocket>,
     protocol_in_use: Option<String>,
 }
 
 impl TaskOnce for ConnectionEstablishedTask {
-    /// https://html.spec.whatwg.org/multipage/#feedback-from-the-protocol:concept-websocket-established
+    /// <https://html.spec.whatwg.org/multipage/#feedback-from-the-protocol:concept-websocket-established>
     fn run_once(self) {
         let ws = self.address.root();
 

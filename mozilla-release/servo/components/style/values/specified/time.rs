@@ -4,11 +4,11 @@
 
 //! Specified time values.
 
-use cssparser::{Parser, Token, BasicParseError};
+use cssparser::{Parser, Token};
 use parser::{ParserContext, Parse};
-use std::ascii::AsciiExt;
+#[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::fmt;
-use style_traits::{ToCss, ParseError, StyleParseError};
+use style_traits::{ToCss, ParseError, StyleParseErrorKind};
 use style_traits::values::specified::AllowedNumericType;
 use values::CSSFloat;
 use values::computed::{Context, ToComputedValue};
@@ -16,9 +16,7 @@ use values::computed::time::Time as ComputedTime;
 use values::specified::calc::CalcNode;
 
 /// A time value according to CSS-VALUES § 6.2.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
 pub struct Time {
     seconds: CSSFloat,
     unit: TimeUnit,
@@ -26,9 +24,7 @@ pub struct Time {
 }
 
 /// A time unit.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq)]
 pub enum TimeUnit {
     /// `s`
     Second,
@@ -81,26 +77,27 @@ impl Time {
         input: &mut Parser<'i, 't>,
         clamping_mode: AllowedNumericType
     ) -> Result<Self, ParseError<'i>> {
-        use style_traits::PARSING_MODE_DEFAULT;
+        use style_traits::ParsingMode;
 
+        let location = input.current_source_location();
         // FIXME: remove early returns when lifetimes are non-lexical
         match input.next() {
             // Note that we generally pass ParserContext to is_ok() to check
             // that the ParserMode of the ParserContext allows all numeric
             // values for SMIL regardless of clamping_mode, but in this Time
             // value case, the value does not animate for SMIL at all, so we use
-            // PARSING_MODE_DEFAULT directly.
-            Ok(&Token::Dimension { value, ref unit, .. }) if clamping_mode.is_ok(PARSING_MODE_DEFAULT, value) => {
+            // ParsingMode::DEFAULT directly.
+            Ok(&Token::Dimension { value, ref unit, .. }) if clamping_mode.is_ok(ParsingMode::DEFAULT, value) => {
                 return Time::parse_dimension(value, unit, /* from_calc = */ false)
-                    .map_err(|()| StyleParseError::UnspecifiedError.into())
+                    .map_err(|()| location.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             }
             Ok(&Token::Function(ref name)) if name.eq_ignore_ascii_case("calc") => {}
-            Ok(t) => return Err(BasicParseError::UnexpectedToken(t.clone()).into()),
+            Ok(t) => return Err(location.new_unexpected_token_error(t.clone())),
             Err(e) => return Err(e.into())
         }
         match input.parse_nested_block(|i| CalcNode::parse_time(context, i)) {
-            Ok(time) if clamping_mode.is_ok(PARSING_MODE_DEFAULT, time.seconds) => Ok(time),
-            _ => Err(StyleParseError::UnspecifiedError.into()),
+            Ok(time) if clamping_mode.is_ok(ParsingMode::DEFAULT, time.seconds) => Ok(time),
+            _ => Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
         }
     }
 

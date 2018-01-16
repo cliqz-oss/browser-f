@@ -30,6 +30,7 @@
 #include "jsobjinlines.h"
 #include "jsscriptinlines.h"
 
+#include "gc/Iteration-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -106,7 +107,7 @@ js::StartOffThreadWasmCompile(wasm::CompileTask* task, wasm::CompileMode mode)
 {
     AutoLockHelperThreadState lock;
 
-    if (!HelperThreadState().wasmWorklist(lock, mode).append(task))
+    if (!HelperThreadState().wasmWorklist(lock, mode).pushBack(task))
         return false;
 
     HelperThreadState().notifyOne(GlobalHelperThreadState::PRODUCER, lock);
@@ -180,10 +181,9 @@ js::CancelOffThreadWasmTier2Generator()
 }
 
 bool
-js::StartOffThreadIonCompile(JSContext* cx, jit::IonBuilder* builder)
+js::StartOffThreadIonCompile(JSContext* cx, jit::IonBuilder* builder,
+                             const AutoLockHelperThreadState& lock)
 {
-    AutoLockHelperThreadState lock;
-
     if (!HelperThreadState().ionWorklist(lock).append(builder))
         return false;
 
@@ -700,7 +700,7 @@ EnsureParserCreatedClasses(JSContext* cx, ParseTaskKind kind)
     if (!EnsureConstructor(cx, global, JSProto_RegExp))
         return false; // needed by regular expression literals
 
-    if (!GlobalObject::initStarGenerators(cx, global))
+    if (!GlobalObject::initGenerators(cx, global))
         return false; // needed by function*() {} and generator comprehensions
 
     if (kind == ParseTaskKind::Module && !GlobalObject::ensureModulePrototypesCreated(cx, global))
@@ -1178,6 +1178,14 @@ GlobalHelperThreadState::maxWasmTier2GeneratorThreads() const
 }
 
 size_t
+GlobalHelperThreadState::maxPromiseHelperThreads() const
+{
+    if (IsHelperThreadSimulatingOOM(js::THREAD_TYPE_WASM))
+        return 1;
+    return cpuCount;
+}
+
+size_t
 GlobalHelperThreadState::maxParseThreads() const
 {
     if (IsHelperThreadSimulatingOOM(js::THREAD_TYPE_PARSE))
@@ -1224,26 +1232,35 @@ GlobalHelperThreadState::canStartWasmCompile(const AutoLockHelperThreadState& lo
     if (wasmWorklist(lock, mode).empty())
         return false;
 
-    // For Tier1 and Once compilation, honor the maximum allowed threads to
-    // compile wasm jobs at once, to avoid oversaturating the machine.
-    //
-    // For Tier2 compilation we need to allow other things to happen too, so for
-    // now we only allow one thread.
-    //
-    // TODO: We should investigate more intelligent strategies, see bug 1380033.
-    //
+    // Parallel compilation and background compilation should be disabled on
+    // unicore systems.
+
+    MOZ_RELEASE_ASSERT(cpuCount > 1);
+
     // If Tier2 is very backlogged we must give priority to it, since the Tier2
     // queue holds onto Tier1 tasks.  Indeed if Tier2 is backlogged we will
     // devote more resources to Tier2 and not start any Tier1 work at all.
 
     bool tier2oversubscribed = wasmTier2GeneratorWorklist(lock).length() > 20;
 
+    // For Tier1 and Once compilation, honor the maximum allowed threads to
+    // compile wasm jobs at once, to avoid oversaturating the machine.
+    //
+    // For Tier2 compilation we need to allow other things to happen too, so we
+    // do not allow all logical cores to be used for background work; instead we
+    // wish to use a fraction of the physical cores.  We can't directly compute
+    // the physical cores from the logical cores, but 1/3 of the logical cores
+    // is a safe estimate for the number of physical cores available for
+    // background work.
+
+    size_t physCoresAvailable = size_t(ceil(cpuCount / 3.0));
+
     size_t threads;
     if (mode == wasm::CompileMode::Tier2) {
         if (tier2oversubscribed)
             threads = maxWasmCompilationThreads();
         else
-            threads = 1;
+            threads = physCoresAvailable;
     } else {
         if (tier2oversubscribed)
             threads = 0;
@@ -1268,7 +1285,11 @@ GlobalHelperThreadState::canStartWasmTier2Generator(const AutoLockHelperThreadSt
 bool
 GlobalHelperThreadState::canStartPromiseHelperTask(const AutoLockHelperThreadState& lock)
 {
-    return !promiseHelperTasks(lock).empty();
+    // PromiseHelperTasks can be wasm compilation tasks that in turn block on
+    // wasm compilation so set isMaster = true.
+    return !promiseHelperTasks(lock).empty() &&
+           checkTaskThreadLimit<PromiseHelperTask*>(maxPromiseHelperThreads(),
+                                                    /*isMaster=*/true);
 }
 
 static bool
@@ -1699,9 +1720,9 @@ GlobalHelperThreadState::cancelParseTask(JSRuntime* rt, ParseTaskKind kind, void
 }
 
 JSObject*
-GlobalObject::getStarGeneratorFunctionPrototype()
+GlobalObject::getGeneratorFunctionPrototype()
 {
-    const Value& v = getReservedSlot(STAR_GENERATOR_FUNCTION_PROTO);
+    const Value& v = getReservedSlot(GENERATOR_FUNCTION_PROTO);
     return v.isObject() ? &v.toObject() : nullptr;
 }
 
@@ -1724,7 +1745,7 @@ GlobalHelperThreadState::mergeParseTaskCompartment(JSContext* cx, ParseTask* par
         // different function object, so the IdentifyStandardPrototype trick
         // below won't work.  Just special-case it.
         GlobalObject* parseGlobal = &parseTask->parseGlobal->as<GlobalObject>();
-        JSObject* parseTaskStarGenFunctionProto = parseGlobal->getStarGeneratorFunctionPrototype();
+        JSObject* parseTaskGenFunctionProto = parseGlobal->getGeneratorFunctionPrototype();
 
         // Module objects don't have standard prototypes either.
         JSObject* moduleProto = parseGlobal->maybeGetModulePrototype();
@@ -1749,8 +1770,8 @@ GlobalHelperThreadState::mergeParseTaskCompartment(JSContext* cx, ParseTask* par
                 MOZ_ASSERT(key == JSProto_Object || key == JSProto_Array ||
                            key == JSProto_Function || key == JSProto_RegExp);
                 newProto = GetBuiltinPrototypePure(global, key);
-            } else if (protoObj == parseTaskStarGenFunctionProto) {
-                newProto = global->getStarGeneratorFunctionPrototype();
+            } else if (protoObj == parseTaskGenFunctionProto) {
+                newProto = global->getGeneratorFunctionPrototype();
             } else if (protoObj == moduleProto) {
                 newProto = global->getModulePrototype();
             } else if (protoObj == importEntryProto) {
@@ -1802,7 +1823,7 @@ HelperThread::handleWasmWorkload(AutoLockHelperThreadState& locked, wasm::Compil
     MOZ_ASSERT(HelperThreadState().canStartWasmCompile(locked, mode));
     MOZ_ASSERT(idle());
 
-    currentTask.emplace(HelperThreadState().wasmWorklist(locked, mode).popCopy());
+    currentTask.emplace(HelperThreadState().wasmWorklist(locked, mode).popCopyFront());
 
     wasm::CompileTask* task = wasmTask();
     {
@@ -1850,7 +1871,7 @@ HelperThread::handlePromiseHelperTaskWorkload(AutoLockHelperThreadState& locked)
     {
         AutoUnlockHelperThreadState unlock(locked);
         task->execute();
-        task->dispatchResolve();
+        task->dispatchResolveAndDestroy();
     }
 
     // No active thread should be waiting on the CONSUMER mutex.
@@ -1982,6 +2003,8 @@ HelperThread::handleParseWorkload(AutoLockHelperThreadState& locked)
         AutoCompartment ac(cx, task->parseGlobal);
 
         task->parse(cx);
+
+        cx->frontendCollectionPool().purge();
     }
 
     // The callback is invoked while we are still off thread.
@@ -2094,7 +2117,7 @@ js::CancelOffThreadCompressions(JSRuntime* runtime)
 }
 
 void
-PromiseHelperTask::executeAndResolve(JSContext* cx)
+PromiseHelperTask::executeAndResolveAndDestroy(JSContext* cx)
 {
     execute();
     run(cx, JS::Dispatchable::NotShuttingDown);
@@ -2105,7 +2128,7 @@ js::StartOffThreadPromiseHelperTask(JSContext* cx, UniquePtr<PromiseHelperTask> 
 {
     // Execute synchronously if there are no helper threads.
     if (!CanUseExtraThreads()) {
-        task.release()->executeAndResolve(cx);
+        task.release()->executeAndResolveAndDestroy(cx);
         return true;
     }
 
@@ -2117,6 +2140,20 @@ js::StartOffThreadPromiseHelperTask(JSContext* cx, UniquePtr<PromiseHelperTask> 
     }
 
     Unused << task.release();
+
+    HelperThreadState().notifyOne(GlobalHelperThreadState::PRODUCER, lock);
+    return true;
+}
+
+bool
+js::StartOffThreadPromiseHelperTask(PromiseHelperTask* task)
+{
+    MOZ_ASSERT(CanUseExtraThreads());
+
+    AutoLockHelperThreadState lock;
+
+    if (!HelperThreadState().promiseHelperTasks(lock).append(task))
+        return false;
 
     HelperThreadState().notifyOne(GlobalHelperThreadState::PRODUCER, lock);
     return true;

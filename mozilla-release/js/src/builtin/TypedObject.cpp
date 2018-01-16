@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "builtin/TypedObject.h"
+#include "builtin/TypedObject-inl.h"
 
 #include "mozilla/Casting.h"
 #include "mozilla/CheckedInt.h"
@@ -24,6 +24,7 @@
 #include "jsatominlines.h"
 #include "jsobjinlines.h"
 
+#include "gc/Nursery-inl.h"
 #include "gc/StoreBuffer-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Shape-inl.h"
@@ -1244,7 +1245,7 @@ GlobalObject::initTypedObjectModule(JSContext* cx, Handle<GlobalObject*> global)
         return false;
 
     Rooted<TypedObjectModuleObject*> module(cx);
-    module = NewObjectWithGivenProto<TypedObjectModuleObject>(cx, objProto);
+    module = NewObjectWithGivenProto<TypedObjectModuleObject>(cx, objProto, SingletonObject);
     if (!module)
         return false;
 
@@ -2220,7 +2221,6 @@ const ObjectOps TypedObject::objectOps_ = {
     TypedObject::obj_setProperty,
     TypedObject::obj_getOwnPropertyDescriptor,
     TypedObject::obj_deleteProperty,
-    nullptr, nullptr, /* watch/unwatch */
     nullptr,   /* getElements */
     nullptr, /* thisValue */
 };

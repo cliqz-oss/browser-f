@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -22,8 +23,9 @@ class UnscaledFontMac final : public UnscaledFont
 {
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(UnscaledFontMac, override)
-  explicit UnscaledFontMac(CGFontRef aFont)
+  explicit UnscaledFontMac(CGFontRef aFont, bool aIsDataFont = false)
     : mFont(aFont)
+    , mIsDataFont(aIsDataFont)
   {
     CFRetain(mFont);
   }
@@ -41,15 +43,20 @@ public:
   already_AddRefed<ScaledFont>
     CreateScaledFont(Float aGlyphSize,
                      const uint8_t* aInstanceData,
-                     uint32_t aInstanceDataLength) override;
+                     uint32_t aInstanceDataLength,
+                     const FontVariation* aVariations,
+                     uint32_t aNumVariations) override;
 
   static CGFontRef
     CreateCGFontWithVariations(CGFontRef aFont,
                                uint32_t aVariationCount,
                                const FontVariation* aVariations);
 
+  bool GetWRFontDescriptor(WRFontDescriptorOutput aCb, void* aBaton) override;
+
 private:
   CGFontRef mFont;
+  bool mIsDataFont;
 };
 
 } // namespace gfx

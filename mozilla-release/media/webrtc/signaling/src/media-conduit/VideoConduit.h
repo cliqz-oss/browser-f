@@ -286,7 +286,8 @@ public:
     return mCodecMode;
   }
 
-  explicit WebrtcVideoConduit(RefPtr<WebRtcCallWrapper> aCall);
+  WebrtcVideoConduit(RefPtr<WebRtcCallWrapper> aCall,
+                     UniquePtr<cricket::VideoAdapter>&& aVideoAdapter);
   virtual ~WebrtcVideoConduit();
 
   MediaConduitErrorCode InitMain();
@@ -298,6 +299,7 @@ public:
   bool GetRemoteSSRC(unsigned int* ssrc) override;
   bool SetRemoteSSRC(unsigned int ssrc) override;
   bool SetLocalCNAME(const char* cname) override;
+  bool SetLocalMID(const std::string& mid) override;
 
   bool GetSendPacketTypeStats(
       webrtc::RtcpPacketTypeCounter* aPacketCounts) override;
@@ -493,7 +495,7 @@ private:
 
   // Frame adapter - handle sinks that we feed data to, and handle resolution
   // changes needed for them.
-  cricket::VideoAdapter mVideoAdapter;
+  UniquePtr<cricket::VideoAdapter> mVideoAdapter;
   rtc::VideoBroadcaster mVideoBroadcaster;
 
   // Engine state we are concerned with.

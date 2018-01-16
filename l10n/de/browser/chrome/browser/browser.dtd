@@ -19,10 +19,10 @@
 <!ENTITY navbarOverflow.label                "Mehr Werkzeuge…">
 
 <!-- Tab context menu -->
-<!ENTITY  reloadTab.label        			"Tab neu laden">
-<!ENTITY  reloadTab.accesskey         		"d">
-<!ENTITY  reloadAllTabs.label    			"Alle Tabs neu laden">
-<!ENTITY  reloadAllTabs.accesskey       	"T">
+<!ENTITY  reloadTab.label                    "Tab neu laden">
+<!ENTITY  reloadTab.accesskey                "d">
+<!ENTITY  reloadAllTabs.label                "Alle Tabs neu laden">
+<!ENTITY  reloadAllTabs.accesskey            "T">
 <!-- LOCALIZATION NOTE (duplicateTab.label): This is a command to duplicate
 a tab (i.e. it is a verb, not adjective). -->
 <!ENTITY  duplicateTab.label                 "Tab klonen">
@@ -30,20 +30,20 @@ a tab (i.e. it is a verb, not adjective). -->
 <!-- LOCALIZATION NOTE (closeTabsToTheEnd.label): This should indicate the
 direction in which tabs are closed, i.e. locales that use RTL mode should say
 left instead of right. -->
-<!ENTITY  closeTabsToTheEnd.label           "Rechte Tabs schließen">
-<!ENTITY  closeTabsToTheEnd.accesskey       "R">
-<!ENTITY  closeOtherTabs.label   			"Andere Tabs schließen">
-<!ENTITY  closeOtherTabs.accesskey  		"A">
+<!ENTITY  closeTabsToTheEnd.label            "Rechte Tabs schließen">
+<!ENTITY  closeTabsToTheEnd.accesskey        "R">
+<!ENTITY  closeOtherTabs.label               "Andere Tabs schließen">
+<!ENTITY  closeOtherTabs.accesskey           "A">
 
 <!-- LOCALIZATION NOTE (pinTab.label, unpinTab.label): "Pin" is being
 used as a metaphor for expressing the fact that these tabs are "pinned" to the
 left edge of the tabstrip. Really we just want the string to express the idea
 that this is a lightweight and reversible action that keeps your tab where you
 can reach it easily. -->
-<!ENTITY  pinTab.label                      "Tab anheften">
-<!ENTITY  pinTab.accesskey                  "h">
-<!ENTITY  unpinTab.label                    "Tab ablösen">
-<!ENTITY  unpinTab.accesskey                "b">
+<!ENTITY  pinTab.label                       "Tab anheften">
+<!ENTITY  pinTab.accesskey                   "h">
+<!ENTITY  unpinTab.label                     "Tab ablösen">
+<!ENTITY  unpinTab.accesskey                 "b">
 <!ENTITY  sendTabToDevice.label              "Tab an Gerät senden">
 <!ENTITY  sendTabToDevice.accesskey          "X">
 <!ENTITY  sendPageToDevice.label             "Seite an Gerät senden">
@@ -51,6 +51,7 @@ can reach it easily. -->
 <!ENTITY  sendLinkToDevice.label             "Link an Gerät senden">
 <!ENTITY  sendLinkToDevice.accesskey         "X">
 <!ENTITY  sendToDeviceFeedback.label         "Gesendet!">
+<<<<<<< HEAD
 <!ENTITY  moveToNewWindow.label             "In neues Fenster verschieben">
 <!ENTITY  moveToNewWindow.accesskey         "n">
 <!ENTITY  bookmarkAllTabs.label       		"Lesezeichen für alle Tabs hinzufügen…">
@@ -60,6 +61,25 @@ can reach it easily. -->
 <!ENTITY  closeTab.label         			"Tab schließen">
 <!ENTITY  closeTab.accesskey         		"c">
 <!ENTITY  duplicateTab.label                 "Tab duplizieren">
+||||||| merged common ancestors
+<!ENTITY  moveToNewWindow.label             "In neues Fenster verschieben">
+<!ENTITY  moveToNewWindow.accesskey         "n">
+<!ENTITY  bookmarkAllTabs.label       		"Lesezeichen für alle Tabs hinzufügen…">
+<!ENTITY  bookmarkAllTabs.accesskey   		"L">
+<!ENTITY  undoCloseTab.label          		"Geschlossenen Tab wiederherstellen">
+<!ENTITY  undoCloseTab.accesskey      		"G">
+<!ENTITY  closeTab.label         			"Tab schließen">
+<!ENTITY  closeTab.accesskey         		"c">
+=======
+<!ENTITY  moveToNewWindow.label              "In neues Fenster verschieben">
+<!ENTITY  moveToNewWindow.accesskey          "n">
+<!ENTITY  bookmarkAllTabs.label              "Lesezeichen für alle Tabs hinzufügen…">
+<!ENTITY  bookmarkAllTabs.accesskey          "L">
+<!ENTITY  undoCloseTab.label                 "Geschlossenen Tab wiederherstellen">
+<!ENTITY  undoCloseTab.accesskey             "G">
+<!ENTITY  closeTab.label                     "Tab schließen">
+<!ENTITY  closeTab.accesskey                 "c">
+>>>>>>> origin/upstream-releases
 
 <!ENTITY  listAllTabs.label      "Alle Tabs auflisten">
 
@@ -209,6 +229,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.defaultNotificationAnchor.tooltip         "Ansicht mit Benachrichtigung öffnen">
 <!ENTITY urlbar.geolocationNotificationAnchor.tooltip     "Ansicht mit Standortanfrage öffnen">
 <!ENTITY urlbar.addonsNotificationAnchor.tooltip          "Ansicht mit Anfrage zur Installation eines Add-ons öffnen">
+<!ENTITY urlbar.canvasNotificationAnchor.tooltip          "Erlaubnis zur Abfrage von Canvas-Daten verwalten">
 <!ENTITY urlbar.indexedDBNotificationAnchor.tooltip       "Ansicht über Offline-Speicher öffnen">
 <!ENTITY urlbar.passwordNotificationAnchor.tooltip        "Ansicht über gespeicherte Anmeldedaten öffnen">
 <!ENTITY urlbar.pluginsNotificationAnchor.tooltip         "Plugin-Verwendung verwalten">
@@ -233,6 +254,9 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.webNotificationsBlocked.tooltip  "Du hast das Anzeigen von Benachrichtungen durch diese Website blockiert.">
 <!ENTITY urlbar.persistentStorageBlocked.tooltip "Du hast die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
 
+<!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
+
+
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
 
 <!ENTITY searchItem.title             "Suchen">
@@ -245,8 +269,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY bookmarksSubview.label             "Lesezeichen">
 <!ENTITY bookmarksMenuButton2.label         "Lesezeichen-Menü">
-<!ENTITY bookmarksMenuButton.other.label "Weitere Lesezeichen">
-<!ENTITY bookmarksMenuButton.mobile.label "Mobile Lesezeichen">
+<!ENTITY bookmarksMenuButton.other.label    "Weitere Lesezeichen">
+<!ENTITY bookmarksMenuButton.mobile.label   "Mobile Lesezeichen">
 <!ENTITY viewBookmarksSidebar2.label        "Lesezeichen-Sidebar anzeigen">
 <!ENTITY hideBookmarksSidebar.label         "Lesezeichen-Sidebar ausblenden">
 <!ENTITY viewBookmarksToolbar.label         "Lesezeichen-Symbolleiste anzeigen">
@@ -328,7 +352,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY preferencesCmdUnix.label       "Einstellungen">
 <!ENTITY preferencesCmdUnix.accesskey     "E">
 
-<!ENTITY clearRecentHistory.label            "Neueste Chronik löschen…">
+<!ENTITY clearRecentHistory.label               "Neueste Chronik löschen…">
 
 <!ENTITY privateBrowsingCmd.commandkey          "P">
 
@@ -357,6 +381,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuCustomize.tooltip "Das Menü und die Symbolleisten anpassen">
 <!ENTITY appMenuCustomizeExit.label "Anpassung abschließen">
 <!ENTITY appMenuCustomizeExit.tooltip "Anpassung abschließen">
+
 <!ENTITY appMenuHistory.showAll.label "Gesamte Chronik anzeigen">
 <!ENTITY appMenuHistory.clearRecent.label "Neueste Chronik löschen…">
 <!ENTITY appMenuHistory.restoreSession.label "Vorherige Sitzung wiederherstellen">
@@ -390,6 +415,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
 <!ENTITY appMenuRemoteTabs.managedevices.label "Geräte verwalten…">
 <!ENTITY appMenuRemoteTabs.sidebar.label "Sidebar mit synchronisierten Tabs">
+
 
 <!ENTITY appMenuRecentHighlights.label "Neue wichtige Seiten">
 
@@ -566,11 +592,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY viewBGImageCmd.accesskey     "H">
 <!ENTITY setDesktopBackgroundCmd.label      "Als Hintergrundbild einrichten…">
 <!ENTITY setDesktopBackgroundCmd.accesskey  "A">
-<!ENTITY bookmarkPageCmd2.label        "Lesezeichen für diese Seite hinzufügen">
-<!ENTITY bookmarkThisLinkCmd.label     "Lesezeichen für diesen Link hinzufügen">
-<!ENTITY bookmarkThisLinkCmd.accesskey "L">
-<!ENTITY bookmarkThisFrameCmd.label    "Lesezeichen für diesen Frame hinzufügen">
-<!ENTITY bookmarkThisFrameCmd.accesskey "z">
+<!ENTITY bookmarkPageCmd2.label       "Lesezeichen für diese Seite hinzufügen">
+<!ENTITY bookmarkThisLinkCmd.label      "Lesezeichen für diesen Link hinzufügen">
+<!ENTITY bookmarkThisLinkCmd.accesskey  "L">
+<!ENTITY bookmarkThisFrameCmd.label      "Lesezeichen für diesen Frame hinzufügen">
+<!ENTITY bookmarkThisFrameCmd.accesskey  "z">
 <!ENTITY pageAction.copyLink.label    "Link-Adresse kopieren">
 <!ENTITY copyURLFeedback.label        "Kopiert">
 <!ENTITY emailPageCmd.label           "Link per E-Mail senden…">
@@ -705,7 +731,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY goForwardCmd.commandKey "Ä">
 <!ENTITY quitApplicationCmd.label       "Beenden">
 <!ENTITY quitApplicationCmd.accesskey   "B">
-<!ENTITY quitApplicationCmdMac2.label    "&brandShorterName; beenden">
+<!ENTITY quitApplicationCmdMac2.label   "&brandShorterName; beenden">
 <!ENTITY quitApplicationCmd.key         "Q">
 
 <!ENTITY closeCmd.label                 "Schließen">
@@ -753,6 +779,10 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY editBookmark.done.label                     "Fertig">
 <!ENTITY editBookmark.removeBookmark.accessKey       "L">
 
+<!-- LOCALIZATION NOTE (identity.securityView.label)
+     This is the header of the security subview in the Site Identity panel. -->
+<!ENTITY identity.securityView.label "Website-Sicherheit">
+
 <!ENTITY identity.connectionSecure "Sichere Verbindung">
 <!ENTITY identity.connectionNotSecure "Verbindung ist nicht sicher">
 <!ENTITY identity.connectionFile "Diese Seite ist auf deinem Computer gespeichert.">
@@ -798,7 +828,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The word "toolbar" is appended automatically and should not be contained below! -->
 <!ENTITY tabsToolbar.label "Browser-Tabs">
 
-<!-- LOCALIZATION NOTE (syncTabsMenu3.label): This appears in the history menu and history panel -->
+<!-- LOCALIZATION NOTE (syncTabsMenu3.label): This appears in the history menu -->
 <!ENTITY syncTabsMenu3.label     "Synchronisierte Tabs">
 
 <!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
@@ -813,6 +843,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktiviere das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.searchPlaceholder  "Synchronisierte Tabs durchsuchen">
 
+
 <!-- LOCALIZATION NOTE (syncedTabs.context.open.accesskey,
                         syncedTabs.context.openAllInTabs.accesskey):
      These access keys are identical because their associated menu items are
@@ -825,8 +856,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncedTabs.context.openInNewWindow.accesskey        "F">
 <!ENTITY syncedTabs.context.openInNewPrivateWindow.label     "In neuem privaten Fenster öffnen">
 <!ENTITY syncedTabs.context.openInNewPrivateWindow.accesskey "p">
-<!ENTITY syncedTabs.context.bookmarkSingleTab.label         "Diesen Tab als Lesezeichen hinzufügen…">
-<!ENTITY syncedTabs.context.bookmarkSingleTab.accesskey     "L">
+<!ENTITY syncedTabs.context.bookmarkSingleTab.label          "Diesen Tab als Lesezeichen hinzufügen…">
+<!ENTITY syncedTabs.context.bookmarkSingleTab.accesskey      "L">
 <!ENTITY syncedTabs.context.copy.label                       "Adresse kopieren">
 <!ENTITY syncedTabs.context.copy.accesskey                   "k">
 
@@ -861,7 +892,15 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY customizeMode.lwthemes.menuManage.accessKey "V">
 <!ENTITY customizeMode.lwthemes.menuGetMore "Weitere Themes herunterladen">
 <!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "W">
+<<<<<<< HEAD
 <!ENTITY customizeMode.emptyOverflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
+||||||| merged common ancestors
+<!ENTITY customizeMode.emptyOverflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
+=======
+<!ENTITY customizeMode.emptyOverflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
+<!ENTITY customizeMode.overflowList.title2 "Überhangmenü">
+<!ENTITY customizeMode.overflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
+>>>>>>> origin/upstream-releases
 <!ENTITY customizeMode.uidensity "Dichte">
 <!-- LOCALIZATION NOTE (customizeMode.uidensity.menuNormal.*):
      “Normal” is displayed in the Customize screen, under the Density menu. -->
@@ -980,9 +1019,14 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY updateRestart.cancelButton.accesskey "N">
 <!ENTITY updateRestart.panelUI.label2 "Zum Aktualisieren von &brandShorterName; neu starten">
 
+
 <!ENTITY pageActionButton.tooltip "Aktionen für Seite">
 <!ENTITY pageAction.addToUrlbar.label "Zu Adressleiste hinzufügen">
 <!ENTITY pageAction.removeFromUrlbar.label "Aus Adressleiste entfernen">
+
+<!ENTITY pageAction.allowInUrlbar.label "In Adressleiste anzeigen">
+<!ENTITY pageAction.disallowInUrlbar.label "Nicht in Adressleiste anzeigen">
+<!ENTITY pageAction.manageExtension.label "Erweiterung verwalten…">
 
 <!ENTITY pageAction.sendTabToDevice.label "Tab an Gerät senden">
 <!ENTITY sendToDevice.syncNotReady.label "Geräte werden synchronisiert…">

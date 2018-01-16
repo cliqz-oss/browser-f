@@ -45,7 +45,7 @@ const OBSERVING = [
   "quit-application-granted", "browser-lastwindow-close-granted",
   "quit-application", "browser:purge-session-history",
   "browser:purge-domain-data",
-  "idle-daily",
+  "idle-daily", "clear-origin-attributes-data"
 ];
 
 // A mapping of known internal URLs.
@@ -807,6 +807,13 @@ var SessionStoreInternal = {
         this.onIdleDaily();
         this._notifyOfClosedObjectsChange();
         break;
+      case "clear-origin-attributes-data":
+        let userContextId = 0;
+        try {
+          userContextId = JSON.parse(aData).userContextId;
+        } catch (e) {}
+        if (userContextId)
+          this._forgetTabsWithUserContextId(userContextId);
     }
   },
 
@@ -2007,7 +2014,7 @@ var SessionStoreInternal = {
       title: aTab.label,
       userTypedValue: browser.userTypedValue || "",
       userTypedClear: browser.userTypedClear || 0
-    }
+    };
   },
 
   /**
@@ -2732,6 +2739,33 @@ var SessionStoreInternal = {
     }
   },
 
+  // This method deletes all the closedTabs matching userContextId.
+  _forgetTabsWithUserContextId(userContextId) {
+    let windowsEnum = Services.wm.getEnumerator("navigator:browser");
+    while (windowsEnum.hasMoreElements()) {
+      let window = windowsEnum.getNext();
+      let windowState = this._windows[window.__SSi];
+      if (windowState) {
+        // In order to remove the tabs in the correct order, we store the
+        // indexes, into an array, then we revert the array and remove closed
+        // data from the last one going backward.
+        let indexes = [];
+        windowState._closedTabs.forEach((closedTab, index) => {
+          if (closedTab.state.userContextId == userContextId) {
+            indexes.push(index);
+          }
+        });
+
+        for (let index of indexes.reverse()) {
+          this.removeClosedTabData(windowState._closedTabs, index);
+        }
+      }
+    }
+
+    // Notify of changes to closed objects.
+    this._notifyOfClosedObjectsChange();
+  },
+
   /**
    * Restores the session state stored in LastSession. This will attempt
    * to merge data into the current session. If a window was opened at startup
@@ -2864,7 +2898,7 @@ var SessionStoreInternal = {
     // at this point.
     if (browser.isRemoteBrowser) {
       throw new Error("SessionStore.reviveCrashedTab: " +
-                      "Somehow a crashed browser is still remote.")
+                      "Somehow a crashed browser is still remote.");
     }
 
     // We put the browser at about:blank in case the user is
@@ -3014,7 +3048,7 @@ var SessionStoreInternal = {
     // Don't continue if the tab was closed before TabStateFlusher.flush resolves.
     if (tab.linkedBrowser) {
       let tabState = TabState.collect(tab);
-      return { index: tabState.index - 1, entries: tabState.entries }
+      return { index: tabState.index - 1, entries: tabState.entries };
     }
     return null;
   },
@@ -3168,8 +3202,8 @@ var SessionStoreInternal = {
         // prepend the last non-popup browser window, so that if the user loads more tabs
         // at startup we don't accidentally add them to a popup window
         do {
-          total.unshift(lastClosedWindowsCopy.shift())
-        } while (total[0].isPopup && lastClosedWindowsCopy.length > 0)
+          total.unshift(lastClosedWindowsCopy.shift());
+        } while (total[0].isPopup && lastClosedWindowsCopy.length > 0);
       }
     }
 
@@ -3351,9 +3385,9 @@ var SessionStoreInternal = {
     var tabs = [];
 
     // disable smooth scrolling while adding, moving, removing and selecting tabs
-    let tabstrip = tabbrowser.tabContainer.mTabstrip;
-    let smoothScroll = tabstrip.smoothScroll;
-    tabstrip.smoothScroll = false;
+    let arrowScrollbox = tabbrowser.tabContainer.arrowScrollbox;
+    let smoothScroll = arrowScrollbox.smoothScroll;
+    arrowScrollbox.smoothScroll = false;
 
     // We need to keep track of the initially open tabs so that they
     // can be moved to the end of the restored tabs.
@@ -3495,7 +3529,7 @@ var SessionStoreInternal = {
     }
 
     // set smoothScroll back to the original value
-    tabstrip.smoothScroll = smoothScroll;
+    arrowScrollbox.smoothScroll = smoothScroll;
 
     TelemetryStopwatch.finish("FX_SESSION_RESTORE_RESTORE_WINDOW_MS");
     if (Services.prefs.getIntPref("browser.tabs.restorebutton") != 0 ) {
@@ -4007,13 +4041,11 @@ var SessionStoreInternal = {
       this._windows[aWindow.__SSi].isPopup = true;
       if (aWindow.gURLBar) {
         aWindow.gURLBar.readOnly = true;
-        aWindow.gURLBar.setAttribute("enablehistory", "false");
       }
     } else {
       delete this._windows[aWindow.__SSi].isPopup;
       if (aWindow.gURLBar) {
         aWindow.gURLBar.readOnly = false;
-        aWindow.gURLBar.setAttribute("enablehistory", "true");
       }
     }
 
@@ -4890,7 +4922,7 @@ var TabRestoreQueue = {
         let definition = {value, configurable: true};
         Object.defineProperty(this, "restoreOnDemand", definition);
         return value;
-      }
+      };
 
       const PREF = "browser.sessionstore.restore_on_demand";
       Services.prefs.addObserver(PREF, updateValue);
@@ -4904,7 +4936,7 @@ var TabRestoreQueue = {
         let definition = {value, configurable: true};
         Object.defineProperty(this, "restorePinnedTabsOnDemand", definition);
         return value;
-      }
+      };
 
       const PREF = "browser.sessionstore.restore_pinned_tabs_on_demand";
       Services.prefs.addObserver(PREF, updateValue);
@@ -4918,7 +4950,7 @@ var TabRestoreQueue = {
         let definition = {value, configurable: true};
         Object.defineProperty(this, "restoreHiddenTabs", definition);
         return value;
-      }
+      };
 
       const PREF = "browser.sessionstore.restore_hidden_tabs";
       Services.prefs.addObserver(PREF, updateValue);

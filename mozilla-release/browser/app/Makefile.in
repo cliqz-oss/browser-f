@@ -26,9 +26,7 @@ include $(topsrcdir)/config/config.mk
 # If we are trying to show an error dialog about the lack of SSE2 support,
 # make sure that code itself doesn't use SSE2.
 ifdef MOZ_LINUX_32_SSE2_STARTUP_ERROR
-CXXFLAGS := $(filter-out -march=% -msse -msse2 -mfpmath=sse,$(CXXFLAGS))
 CXX := $(filter-out -march=% -msse -msse2 -mfpmath=sse,$(CXX))
-CXXFLAGS += -mno-sse -mno-sse2 -mfpmath=387
 CXX += -march=pentiumpro
 endif
 
@@ -55,12 +53,21 @@ GARBAGE += $(addprefix $(FINAL_TARGET)/defaults/pref/, firefox.js)
 
 endif
 
+<<<<<<< HEAD
 # channel-prefs.js is handled separate from other prefs due to bug 756325
 CH_PREFS_JS = $(srcdir)/profile/channel-prefs.js
 libs:: $(CH_PREFS_JS) cliqz_distr
 	$(NSINSTALL) -D $(DIST)/bin/defaults/pref
 	$(call py_action,preprocessor,-Fsubstitution $(PREF_PPFLAGS) $(ACDEFINES) $(CH_PREFS_JS) -o $(DIST)/bin/defaults/pref/channel-prefs.js)
 
+||||||| merged common ancestors
+# channel-prefs.js is handled separate from other prefs due to bug 756325
+libs:: $(srcdir)/profile/channel-prefs.js
+	$(NSINSTALL) -D $(DIST)/bin/defaults/pref
+	$(call py_action,preprocessor,-Fsubstitution $(PREF_PPFLAGS) $(ACDEFINES) $^ -o $(DIST)/bin/defaults/pref/channel-prefs.js)
+
+=======
+>>>>>>> origin/upstream-releases
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 
 MAC_APP_NAME = $(MOZ_APP_DISPLAYNAME)
@@ -110,5 +117,11 @@ endif
 
 .PHONY: features
 tools features::
+<<<<<<< HEAD
 	$(PYTHON) -c 'import os, json; listing = {"system": [os.path.splitext(it)[0] for it in os.listdir("$(DIST)/bin/browser/features")]}; print json.dumps(listing)' > $(DIST)/bin/browser/chrome/browser/content/browser/built_in_addons.json
 # Cliqz. We change a way how to generate built_in_addons.json, we need an extension's name without .xpi in the end, because later FF looking for exactly naming match in id node in install.rdf file
+||||||| merged common ancestors
+	$(PYTHON) -c 'import os, json; listing = {"system": os.listdir("$(DIST)/bin/browser/features")}; print json.dumps(listing)' > $(DIST)/bin/browser/chrome/browser/content/browser/built_in_addons.json
+=======
+	$(PYTHON) -c 'import os, json; listing = {"system": sorted(os.listdir("$(DIST)/bin/browser/features"))}; print json.dumps(listing)' > $(DIST)/bin/browser/chrome/browser/content/browser/built_in_addons.json
+>>>>>>> origin/upstream-releases

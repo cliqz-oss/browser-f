@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -96,47 +97,9 @@ SharedPlanarYCbCrImage::CopyData(const PlanarYCbCrData& aData)
   return true;
 }
 
-// needs to be overriden because the parent class sets mBuffer which we
-// do not want to happen.
-uint8_t*
-SharedPlanarYCbCrImage::AllocateAndGetNewBuffer(uint32_t aSize)
-{
-  MOZ_ASSERT(!mTextureClient, "This image already has allocated data");
-  size_t size = ImageDataSerializer::ComputeYCbCrBufferSize(aSize);
-  if (!size) {
-    return nullptr;
-  }
-
-  // XXX Add YUVColorSpace handling. Use YUVColorSpace::BT601 for now.
-  mTextureClient = TextureClient::CreateForYCbCrWithBufferSize(mCompositable->GetForwarder(),
-                                                               size,
-                                                               YUVColorSpace::BT601,
-                                                               mCompositable->GetTextureFlags());
-
-  // get new buffer _without_ setting mBuffer.
-  if (!mTextureClient) {
-    return nullptr;
-  }
-
-  // update buffer size
-  mBufferSize = size;
-
-  MappedYCbCrTextureData mapped;
-  if (mTextureClient->BorrowMappedYCbCrData(mapped)) {
-    // The caller expects a pointer to the beginning of the writable part of the
-    // buffer which is where the y channel starts by default.
-    return mapped.y.data;
-  } else {
-    MOZ_CRASH("GFX: Cannot borrow mapped YCbCr data");
-  }
-}
-
 bool
-SharedPlanarYCbCrImage::AdoptData(const Data &aData)
+SharedPlanarYCbCrImage::AdoptData(const Data& aData)
 {
-  // AdoptData is used to update YUV plane offsets without (re)allocating
-  // memory previously allocated with AllocateAndGetNewBuffer().
-
   MOZ_ASSERT(mTextureClient, "This Image should have already allocated data");
   if (!mTextureClient) {
     return false;
@@ -151,13 +114,21 @@ SharedPlanarYCbCrImage::AdoptData(const Data &aData)
   uint32_t crOffset = aData.mCrChannel - base;
 
   auto fwd = mCompositable->GetForwarder();
-  bool hasIntermediateBuffer = ComputeHasIntermediateBuffer(gfx::SurfaceFormat::YUV,
-                                                            fwd->GetCompositorBackendType());
+  bool hasIntermediateBuffer = ComputeHasIntermediateBuffer(
+    gfx::SurfaceFormat::YUV, fwd->GetCompositorBackendType());
 
-  static_cast<BufferTextureData*>(mTextureClient->GetInternalData())->SetDesciptor(
-    YCbCrDescriptor(aData.mYSize, aData.mCbCrSize, yOffset, cbOffset, crOffset,
-                    aData.mStereoMode, aData.mYUVColorSpace, hasIntermediateBuffer)
-  );
+  static_cast<BufferTextureData*>(mTextureClient->GetInternalData())
+    ->SetDesciptor(YCbCrDescriptor(aData.mYSize,
+                                   aData.mYStride,
+                                   aData.mCbCrSize,
+                                   aData.mCbCrStride,
+                                   yOffset,
+                                   cbOffset,
+                                   crOffset,
+                                   aData.mStereoMode,
+                                   aData.mYUVColorSpace,
+                                   aData.mBitDepth,
+                                   hasIntermediateBuffer));
 
   return true;
 }
@@ -213,18 +184,20 @@ SharedPlanarYCbCrImage::Allocate(PlanarYCbCrData& aData)
   mData.mPicSize = aData.mPicSize;
   mData.mStereoMode = aData.mStereoMode;
   mData.mYUVColorSpace = aData.mYUVColorSpace;
+  mData.mBitDepth = aData.mBitDepth;
   // those members are not always equal to aData's, due to potentially different
   // packing.
   mData.mYSkip = 0;
   mData.mCbSkip = 0;
   mData.mCrSkip = 0;
-  mData.mYStride = mData.mYSize.width;
-  mData.mCbCrStride = mData.mCbCrSize.width;
+  mData.mYStride = aData.mYStride;
+  mData.mCbCrStride = aData.mCbCrStride;
 
   // do not set mBuffer like in PlanarYCbCrImage because the later
   // will try to manage this memory without knowing it belongs to a
   // shmem.
-  mBufferSize = ImageDataSerializer::ComputeYCbCrBufferSize(mData.mYSize, mData.mCbCrSize);
+  mBufferSize = ImageDataSerializer::ComputeYCbCrBufferSize(
+    mData.mYSize, mData.mYStride, mData.mCbCrSize, mData.mCbCrStride);
   mSize = mData.mPicSize;
   mOrigin = gfx::IntPoint(aData.mPicX, aData.mPicY);
 

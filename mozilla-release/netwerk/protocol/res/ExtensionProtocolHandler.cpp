@@ -287,8 +287,8 @@ ExtensionStreamGetter::OnStream(nsIInputStream* aStream)
   }
 
   nsCOMPtr<nsIInputStreamPump> pump;
-  nsresult rv = NS_NewInputStreamPump(getter_AddRefs(pump), aStream, -1, -1, 0,
-                                      0, false, mMainThreadEventTarget);
+  nsresult rv = NS_NewInputStreamPump(getter_AddRefs(pump), aStream, 0, 0,
+                                      false, mMainThreadEventTarget);
   if (NS_FAILED(rv)) {
     CancelRequest(listener, mChannel, rv);
     return;
@@ -338,7 +338,7 @@ ExtensionProtocolHandler::GetSingleton()
     sSingleton = new ExtensionProtocolHandler();
     ClearOnShutdown(&sSingleton);
   }
-  return do_AddRef(sSingleton.get());
+  return do_AddRef(sSingleton);
 }
 
 ExtensionProtocolHandler::ExtensionProtocolHandler()

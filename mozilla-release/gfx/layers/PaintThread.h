@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 sts=2 ts=8 et tw=99 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,6 +12,7 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/layers/TextureClient.h"
+#include "RotatedBuffer.h"
 #include "nsThreadUtils.h"
 
 namespace mozilla {
@@ -28,12 +29,14 @@ class CapturedPaintState {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CapturedPaintState)
 public:
   CapturedPaintState(nsIntRegion& aRegionToDraw,
+                     gfx::DrawTarget* aTargetDual,
                      gfx::DrawTarget* aTarget,
                      gfx::DrawTarget* aTargetOnWhite,
                      const gfx::Matrix& aTargetTransform,
                      SurfaceMode aSurfaceMode,
                      gfxContentType aContentType)
   : mRegionToDraw(aRegionToDraw)
+  , mTargetDual(aTargetDual)
   , mTarget(aTarget)
   , mTargetOnWhite(aTargetOnWhite)
   , mTargetTransform(aTargetTransform)
@@ -45,6 +48,7 @@ public:
   RefPtr<TextureClient> mTextureClient;
   RefPtr<TextureClient> mTextureClientOnWhite;
   RefPtr<gfx::DrawTargetCapture> mCapture;
+  RefPtr<gfx::DrawTarget> mTargetDual;
   RefPtr<gfx::DrawTarget> mTarget;
   RefPtr<gfx::DrawTarget> mTargetOnWhite;
   gfx::Matrix mTargetTransform;
@@ -53,6 +57,62 @@ public:
 
 protected:
   virtual ~CapturedPaintState() {}
+};
+
+// Holds the key operations for a ContentClient to prepare
+// its buffers for painting
+class CapturedBufferState final {
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CapturedBufferState)
+public:
+  struct Copy {
+    Copy(RefPtr<RotatedBuffer> aSource,
+         RefPtr<RotatedBuffer> aDestination,
+         gfx::IntRect aBounds)
+      : mSource(aSource)
+      , mDestination(aDestination)
+      , mBounds(aBounds)
+    {}
+
+    bool CopyBuffer();
+
+    RefPtr<RotatedBuffer> mSource;
+    RefPtr<RotatedBuffer> mDestination;
+    gfx::IntRect mBounds;
+  };
+
+  struct Unrotate {
+    Unrotate(RotatedBuffer::Parameters aParameters,
+             RefPtr<RotatedBuffer> aBuffer)
+      : mParameters(aParameters)
+      , mBuffer(aBuffer)
+    {}
+
+    bool UnrotateBuffer();
+
+    RotatedBuffer::Parameters mParameters;
+    RefPtr<RotatedBuffer> mBuffer;
+  };
+
+  /**
+   * Prepares the rotated buffers for painting by copying a previous frame
+   * into the buffer and/or unrotating the pixels and returns whether the
+   * operations were successful. If this fails a new buffer should be created
+   * for the frame.
+   */
+  bool PrepareBuffer();
+  void GetTextureClients(nsTArray<RefPtr<TextureClient>>& aTextureClients);
+
+  bool HasOperations() const
+  {
+    return mBufferFinalize || mBufferUnrotate || mBufferInitialize;
+  }
+
+  Maybe<Copy> mBufferFinalize;
+  Maybe<Unrotate> mBufferUnrotate;
+  Maybe<Copy> mBufferInitialize;
+
+protected:
+  ~CapturedBufferState() {}
 };
 
 typedef bool (*PrepDrawTargetForPaintingCallback)(CapturedPaintState* aPaintState);
@@ -70,6 +130,14 @@ public:
 
   // Helper for asserts.
   static bool IsOnPaintThread();
+
+  // Must be called on the main thread. Signifies that a new layer transaction
+  // is beginning. This must be called immediately after FlushAsyncPaints, and
+  // before any new painting occurs, as there can't be any async paints queued
+  // or running while this is executing.
+  void BeginLayerTransaction();
+
+  void PrepareBuffer(CapturedBufferState* aState);
 
   void PaintContents(CapturedPaintState* aState,
                      PrepDrawTargetForPaintingCallback aCallback);
@@ -95,10 +163,14 @@ public:
   void AddRef();
 
 private:
+  PaintThread();
+
   bool Init();
   void ShutdownOnPaintThread();
   void InitOnPaintThread();
 
+  void AsyncPrepareBuffer(CompositorBridgeChild* aBridge,
+                          CapturedBufferState* aState);
   void AsyncPaintContents(CompositorBridgeChild* aBridge,
                           CapturedPaintState* aState,
                           PrepDrawTargetForPaintingCallback aCallback);
@@ -109,6 +181,8 @@ private:
   static StaticAutoPtr<PaintThread> sSingleton;
   static StaticRefPtr<nsIThread> sThread;
   static PlatformThreadId sThreadId;
+
+  bool mInAsyncPaintGroup;
 
   // This shouldn't be very many elements, so a list should be fine.
   // Should only be accessed on the paint thread.

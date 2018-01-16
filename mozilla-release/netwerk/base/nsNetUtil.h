@@ -302,8 +302,6 @@ nsresult NS_NewInputStreamChannel(nsIChannel        **outChannel,
 
 nsresult NS_NewInputStreamPump(nsIInputStreamPump **result,
                                nsIInputStream      *stream,
-                               int64_t              streamPos = int64_t(-1),
-                               int64_t              streamLen = int64_t(-1),
                                uint32_t             segsize = 0,
                                uint32_t             segcount = 0,
                                bool                 closeWhenDone = false,
@@ -513,46 +511,48 @@ nsresult NS_NewLocalFileStream(nsIFileStream **result,
                                int32_t         behaviorFlags = 0);
 
 MOZ_MUST_USE nsresult
-NS_NewBufferedInputStream(nsIInputStream **result,
-                          nsIInputStream  *str,
-                          uint32_t         bufferSize);
+NS_NewBufferedInputStream(nsIInputStream** aResult,
+                          already_AddRefed<nsIInputStream> aInputStream,
+                          uint32_t aBufferSize);
 
 // note: the resulting stream can be QI'ed to nsISafeOutputStream iff the
 // provided stream supports it.
-nsresult NS_NewBufferedOutputStream(nsIOutputStream **result,
-                                    nsIOutputStream  *str,
-                                    uint32_t          bufferSize);
-
-/**
- * Attempts to buffer a given stream.  If this fails, it returns the
- * passed-in stream.
- *
- * @param aOutputStream
- *        The output stream we want to buffer.  This cannot be null.
- * @param aBufferSize
- *        The size of the buffer for the buffered output stream.
- * @returns an nsIOutputStream that is buffered with the specified buffer size,
- *          or is aOutputStream if creating the new buffered stream failed.
- */
-already_AddRefed<nsIOutputStream>
-NS_BufferOutputStream(nsIOutputStream *aOutputStream,
-                      uint32_t aBufferSize);
-already_AddRefed<nsIInputStream>
-NS_BufferInputStream(nsIInputStream *aInputStream,
-                      uint32_t aBufferSize);
+nsresult NS_NewBufferedOutputStream(nsIOutputStream** aResult,
+                                    already_AddRefed<nsIOutputStream> aOutputStream,
+                                    uint32_t aBufferSize);
 
 // returns an input stream compatible with nsIUploadChannel::SetUploadStream()
 nsresult NS_NewPostDataStream(nsIInputStream  **result,
                               bool              isFile,
                               const nsACString &data);
 
+/**
+ * This function reads an inputStream and stores its content into a buffer. In
+ * general, you should avoid using this function because, it blocks the current
+ * thread until the operation is done.
+ * If the inputStream is async, the reading happens on an I/O thread.
+ *
+ * @param aInputStream the inputStream.
+ * @param aDest the destination buffer. if *aDest is null, it will be allocated
+ *              with the size of the written data. if aDest is not null, aCount
+ *              must greater than 0.
+ * @param aCount the amount of data to read. Use -1 if you want that all the
+ *               stream is read.
+ * @param aWritten this pointer will be used to store the number of data
+ *                 written in the buffer. If you don't need, pass nullptr.
+ */
 nsresult NS_ReadInputStreamToBuffer(nsIInputStream *aInputStream,
                                     void **aDest,
-                                    uint32_t aCount);
+                                    int64_t aCount,
+                                    uint64_t* aWritten = nullptr);
 
+/**
+ * See the comment for NS_ReadInputStreamToBuffer
+ */
 nsresult NS_ReadInputStreamToString(nsIInputStream *aInputStream,
                                     nsACString &aDest,
-                                    uint32_t aCount);
+                                    int64_t aCount,
+                                    uint64_t* aWritten = nullptr);
 
 nsresult
 NS_LoadPersistentPropertiesFromURISpec(nsIPersistentProperties **outResult,

@@ -12,6 +12,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
+#include "mozilla/Telemetry.h"
 #include "mozilla/css/Loader.h"
 #include "mozilla/dom/SRIMetadata.h"
 #include "MainThreadUtils.h"
@@ -444,6 +445,12 @@ nsLayoutStylesheetCache::InitFromProfile()
 
   LoadSheetFile(contentFile, &mUserContentSheet, eUserSheetFeatures, eLogToConsole);
   LoadSheetFile(chromeFile, &mUserChromeSheet, eUserSheetFeatures, eLogToConsole);
+
+  if (XRE_IsParentProcess()) {
+    // We're interested specifically in potential chrome customizations,
+    // so we only need data points from the parent process
+    Telemetry::Accumulate(Telemetry::USER_CHROME_CSS_LOADED, mUserChromeSheet != nullptr);
+  }
 }
 
 void
@@ -773,7 +780,8 @@ ErrorLoadingSheet(nsIURI* aURI, const char* aMsg, FailureAction aFailureAction)
 #ifdef MOZ_CRASHREPORTER
   AnnotateCrashReport(aURI);
 #endif
-  NS_RUNTIMEABORT(errorMessage.get());
+
+  MOZ_CRASH_UNSAFE_OOL(errorMessage.get());
 }
 
 void

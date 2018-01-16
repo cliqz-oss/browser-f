@@ -26,7 +26,7 @@ EventStore.prototype = {
       this["main-window"].push(event);
     }
   }
-}
+};
 
 var tab1 = null;
 var tab2 = null;
@@ -91,6 +91,7 @@ function focusInChild() {
     content.document.getElementById(message.data.id)[message.data.type]();
   });
 
+  /* eslint-disable mozilla/no-cpows-in-tests */
   addMessageListener("Browser:GetFocusedElement", function getFocusedElement(message) {
     var focusedWindow = {};
     var node = contentFM.getFocusedElementForWindow(content, false, focusedWindow);
@@ -128,6 +129,7 @@ function focusElementInChild(elementid, type) {
     browser.contentDocument.getElementById(elementid)[type]();
   }
 }
+/* eslint-enable mozilla/no-cpows-in-tests */
 
 add_task(async function() {
   tab1 = BrowserTestUtils.addTab(gBrowser);
@@ -465,8 +467,8 @@ function compareFocusResults() {
 
 async function expectFocusShiftAfterTabSwitch(tab, expectedWindow, expectedElement, focusChanged, testid) {
   let tabSwitchPromise = null;
-  await expectFocusShift(() => { tabSwitchPromise = BrowserTestUtils.switchTab(gBrowser, tab) },
-                         expectedWindow, expectedElement, focusChanged, testid)
+  await expectFocusShift(() => { tabSwitchPromise = BrowserTestUtils.switchTab(gBrowser, tab); },
+                         expectedWindow, expectedElement, focusChanged, testid);
   await tabSwitchPromise;
 }
 

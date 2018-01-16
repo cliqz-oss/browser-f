@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,6 +9,7 @@
 #include "PathD2D.h"
 #include "gfxFont.h"
 #include "Logging.h"
+#include "mozilla/webrender/WebRenderTypes.h"
 
 using namespace std;
 
@@ -292,18 +294,121 @@ UnscaledFontDWrite::GetFontFileData(FontFileDataOutput aDataCallback, void *aBat
   return true;
 }
 
+static bool
+GetDWriteName(RefPtr<IDWriteLocalizedStrings> aNames, std::vector<WCHAR>& aOutName)
+{
+  BOOL exists = false;
+  UINT32 index = 0;
+  HRESULT hr = aNames->FindLocaleName(L"en-us", &index, &exists);
+  if (FAILED(hr)) {
+    return false;
+  }
+  if (!exists) {
+    // No english found, use whatever is first in the list.
+    index = 0;
+  }
+
+  UINT32 length;
+  hr = aNames->GetStringLength(index, &length);
+  if (FAILED(hr)) {
+    return false;
+  }
+  aOutName.resize(length + 1);
+  hr = aNames->GetString(index, aOutName.data(), length + 1);
+  return SUCCEEDED(hr);
+}
+
+static bool
+GetDWriteFamilyName(const RefPtr<IDWriteFontFamily>& aFamily, std::vector<WCHAR>& aOutName)
+{
+  RefPtr<IDWriteLocalizedStrings> names;
+  HRESULT hr = aFamily->GetFamilyNames(getter_AddRefs(names));
+  if (FAILED(hr)) {
+    return false;
+  }
+  return GetDWriteName(names, aOutName);
+}
+
+bool
+UnscaledFontDWrite::GetWRFontDescriptor(WRFontDescriptorOutput aCb, void* aBaton)
+{
+  if (!mFont) {
+    return false;
+  }
+
+  RefPtr<IDWriteFontFamily> family;
+  HRESULT hr = mFont->GetFontFamily(getter_AddRefs(family));
+  if (FAILED(hr)) {
+    return false;
+  }
+
+  DWRITE_FONT_WEIGHT weight = mFont->GetWeight();
+  DWRITE_FONT_STRETCH stretch = mFont->GetStretch();
+  DWRITE_FONT_STYLE style = mFont->GetStyle();
+
+  RefPtr<IDWriteFont> match;
+  hr = family->GetFirstMatchingFont(weight, stretch, style, getter_AddRefs(match));
+  if (FAILED(hr) ||
+      match->GetWeight() != weight ||
+      match->GetStretch() != stretch ||
+      match->GetStyle() != style) {
+    return false;
+  }
+
+  std::vector<WCHAR> familyName;
+  if (!GetDWriteFamilyName(family, familyName)) {
+    return false;
+  }
+
+  // The style information that identifies the font can be encoded easily in
+  // less than 32 bits. Since the index is needed for font descriptors, only
+  // the family name and style information, pass along the style in the index
+  // data to avoid requiring a more complicated structure packing for it in
+  // the data payload.
+  uint32_t index = weight | (stretch << 16) | (style << 24);
+  aCb(reinterpret_cast<const uint8_t*>(familyName.data()),
+      (familyName.size() - 1) * sizeof(WCHAR),
+      index, aBaton);
+  return true;
+}
+
 bool
 ScaledFontDWrite::GetFontInstanceData(FontInstanceDataOutput aCb, void* aBaton)
 {
   InstanceData instance(this);
-  aCb(reinterpret_cast<uint8_t*>(&instance), sizeof(instance), aBaton);
+  aCb(reinterpret_cast<uint8_t*>(&instance), sizeof(instance), nullptr, 0, aBaton);
+  return true;
+}
+
+bool
+ScaledFontDWrite::GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* aOutOptions,
+                                           Maybe<wr::FontInstancePlatformOptions>* aOutPlatformOptions,
+                                           std::vector<FontVariation>* aOutVariations)
+{
+  AntialiasMode aaMode = GetDefaultAAMode();
+  if (aaMode != AntialiasMode::SUBPIXEL) {
+    wr::FontInstanceOptions options;
+    options.render_mode =
+      aaMode == AntialiasMode::NONE ? wr::FontRenderMode::Mono : wr::FontRenderMode::Alpha;
+    options.subpx_dir = wr::SubpixelDirection::Horizontal;
+    options.synthetic_italics = false;
+    options.bg_color = wr::ToColorU(Color());
+    *aOutOptions = Some(options);
+  }
+
+  wr::FontInstancePlatformOptions platformOptions;
+  platformOptions.use_embedded_bitmap = UseEmbeddedBitmaps();
+  platformOptions.force_gdi_rendering = ForceGDIMode();
+  *aOutPlatformOptions = Some(platformOptions);
   return true;
 }
 
 already_AddRefed<ScaledFont>
 UnscaledFontDWrite::CreateScaledFont(Float aGlyphSize,
                                      const uint8_t* aInstanceData,
-                                     uint32_t aInstanceDataLength)
+                                     uint32_t aInstanceDataLength,
+                                     const FontVariation* aVariations,
+                                     uint32_t aNumVariations)
 {
   if (aInstanceDataLength < sizeof(ScaledFontDWrite::InstanceData)) {
     gfxWarning() << "DWrite scaled font instance data is truncated.";

@@ -531,18 +531,18 @@ CompilationScope()
     return XPCJSRuntime::Get()->CompilationScope();
 }
 
-nsGlobalWindow*
+nsGlobalWindowInner*
 WindowOrNull(JSObject* aObj)
 {
     MOZ_ASSERT(aObj);
     MOZ_ASSERT(!js::IsWrapper(aObj));
 
-    nsGlobalWindow* win = nullptr;
+    nsGlobalWindowInner* win = nullptr;
     UNWRAP_NON_WRAPPER_OBJECT(Window, aObj, win);
     return win;
 }
 
-nsGlobalWindow*
+nsGlobalWindowInner*
 WindowGlobalOrNull(JSObject* aObj)
 {
     MOZ_ASSERT(aObj);
@@ -551,7 +551,7 @@ WindowGlobalOrNull(JSObject* aObj)
     return WindowOrNull(glob);
 }
 
-nsGlobalWindow*
+nsGlobalWindowInner*
 AddonWindowOrNull(JSObject* aObj)
 {
     if (!IsInAddonScope(aObj))
@@ -571,7 +571,7 @@ AddonWindowOrNull(JSObject* aObj)
     return WindowOrNull(mainGlobal);
 }
 
-nsGlobalWindow*
+nsGlobalWindowInner*
 CurrentWindowOrNull(JSContext* cx)
 {
     JSObject* glob = JS::CurrentGlobalOrNull(cx);
@@ -1730,7 +1730,7 @@ ReportCompartmentStats(const JS::CompartmentStats& cStats,
             // Insert the add-on id as "add-ons/@id@/" after "explicit/" to
             // aggregate add-on compartments.
             static const size_t explicitLength = strlen("explicit/");
-            addonId.Insert(NS_LITERAL_CSTRING("add-ons/"), 0);
+            addonId.InsertLiteral("add-ons/", 0);
             addonId += "/";
             cJSPathPrefix.Insert(addonId, explicitLength);
             cDOMPathPrefix.Insert(addonId, explicitLength);
@@ -2050,7 +2050,8 @@ ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats& rtStats,
     // We don't want to report decommitted memory in "explicit", so we just
     // change the leading "explicit/" to "decommitted/".
     nsCString rtPath2(rtPath);
-    rtPath2.Replace(0, strlen("explicit"), NS_LITERAL_CSTRING("decommitted"));
+    rtPath2.ReplaceLiteral(0, strlen("explicit"), "decommitted");
+
     REPORT_GC_BYTES(rtPath2 + NS_LITERAL_CSTRING("gc-heap/decommitted-arenas"),
         rtStats.gcHeapDecommittedArenas,
         "GC arenas in non-empty chunks that is decommitted, i.e. it takes up "
@@ -2237,7 +2238,7 @@ class XPCJSRuntimeStats : public JS::RuntimeStats
         extras->pathPrefix.AssignLiteral("explicit/js-non-window/zones/");
         RootedObject global(cx, JS::GetRealmGlobalOrNull(realm));
         if (global) {
-            RefPtr<nsGlobalWindow> window;
+            RefPtr<nsGlobalWindowInner> window;
             if (NS_SUCCEEDED(UNWRAP_OBJECT(Window, global, window))) {
                 // The global is a |window| object.  Use the path prefix that
                 // we should have already created for it.
@@ -2277,7 +2278,7 @@ class XPCJSRuntimeStats : public JS::RuntimeStats
         Rooted<Realm*> realm(cx, JS::GetRealmForCompartment(c));
         RootedObject global(cx, JS::GetRealmGlobalOrNull(realm));
         if (global) {
-            RefPtr<nsGlobalWindow> window;
+            RefPtr<nsGlobalWindowInner> window;
             if (NS_SUCCEEDED(UNWRAP_OBJECT(Window, global, window))) {
                 // The global is a |window| object.  Use the path prefix that
                 // we should have already created for it.
@@ -2667,9 +2668,6 @@ AccumulateTelemetryCallback(int id, uint32_t sample, const char* key)
         break;
       case JS_TELEMETRY_ADDON_EXCEPTIONS:
         Telemetry::Accumulate(Telemetry::JS_TELEMETRY_ADDON_EXCEPTIONS, nsDependentCString(key), sample);
-        break;
-      case JS_TELEMETRY_AOT_USAGE:
-        Telemetry::Accumulate(Telemetry::JS_AOT_USAGE, sample);
         break;
       case JS_TELEMETRY_PRIVILEGED_PARSER_COMPILE_LAZY_AFTER_MS:
         Telemetry::Accumulate(Telemetry::JS_PRIVILEGED_PARSER_COMPILE_LAZY_AFTER_MS, sample);

@@ -10,7 +10,7 @@ use app_units::Au;
 use block::{BlockFlow, ISizeAndMarginsComputer};
 use context::LayoutContext;
 use display_list_builder::{BlockFlowDisplayListBuilding, DisplayListBuildState};
-use display_list_builder::{NEVER_CREATES_CONTAINING_BLOCK, StackingContextCollectionState};
+use display_list_builder::{StackingContextCollectionFlags, StackingContextCollectionState};
 use euclid::Point2D;
 use flow::{Flow, FlowClass, OpaqueFlow};
 use fragment::{Fragment, FragmentBorderBoxIterator, Overflow};
@@ -24,7 +24,11 @@ use style::logical_geometry::LogicalSize;
 use style::properties::ComputedValues;
 use table::{ColumnIntrinsicInlineSize, InternalTable, TableLikeFlow};
 
+#[allow(unsafe_code)]
+unsafe impl ::flow::HasBaseFlow for TableRowGroupFlow {}
+
 /// A table formatting context.
+#[repr(C)]
 pub struct TableRowGroupFlow {
     /// Fields common to all block flows.
     pub block_flow: BlockFlow,
@@ -180,7 +184,8 @@ impl Flow for TableRowGroupFlow {
     }
 
     fn collect_stacking_contexts(&mut self, state: &mut StackingContextCollectionState) {
-        self.block_flow.collect_stacking_contexts_for_block(state, NEVER_CREATES_CONTAINING_BLOCK);
+        self.block_flow.collect_stacking_contexts_for_block(state,
+            StackingContextCollectionFlags::NEVER_CREATES_CONTAINING_BLOCK);
     }
 
     fn repair_style(&mut self, new_style: &::ServoArc<ComputedValues>) {

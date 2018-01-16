@@ -120,6 +120,8 @@ DeclarationKindString(DeclarationKind kind)
         return "let";
       case DeclarationKind::Const:
         return "const";
+      case DeclarationKind::Class:
+        return "class";
       case DeclarationKind::Import:
         return "import";
       case DeclarationKind::BodyLevelFunction:
@@ -300,9 +302,8 @@ SharedContext::computeThisBinding(Scope* scope)
         if (si.kind() == ScopeKind::Function) {
             JSFunction* fun = si.scope()->as<FunctionScope>().canonicalFunction();
 
-            // Arrow functions and generator expression lambdas don't have
-            // their own `this` binding.
-            if (fun->isArrow() || fun->nonLazyScript()->isGeneratorExp())
+            // Arrow functions don't have their own `this` binding.
+            if (fun->isArrow())
                 continue;
 
             // Derived class constructors (including nested arrow functions and
@@ -340,22 +341,25 @@ EvalSharedContext::EvalSharedContext(JSContext* cx, JSObject* enclosingEnv,
     computeInWith(enclosingScope);
     computeThisBinding(enclosingScope);
 
-    // Like all things Debugger, Debugger.Frame.eval needs special
-    // handling. Since the environment chain of such evals are non-syntactic
-    // (DebuggerEnvironmentProxy is not an EnvironmentObject), computing the
-    // this binding with respect to enclosingScope is incorrect if the
-    // Debugger.Frame is a function frame. Recompute the this binding if we
-    // are such an eval.
+    // If this eval is in response to Debugger.Frame.eval, we may have been
+    // passed an incomplete scope chain. In order to better determine the 'this'
+    // binding type, we traverse the environment chain, looking for a CallObject
+    // and recompute the binding type based on its body scope.
+    //
+    // NOTE: A non-debug eval in a non-syntactic environment will also trigger
+    // this code. In that case, we should still compute the same binding type.
     if (enclosingEnv && enclosingScope->hasOnChain(ScopeKind::NonSyntactic)) {
-        // For Debugger.Frame.eval with bindings, the environment chain may
-        // have more than the DebugEnvironmentProxy.
         JSObject* env = enclosingEnv;
         while (env) {
+            // Look at target of any DebugEnvironmentProxy, but be sure to use
+            // enclosingEnvironment() of the proxy itself.
+            JSObject* unwrapped = env;
             if (env->is<DebugEnvironmentProxy>())
-                env = &env->as<DebugEnvironmentProxy>().environment();
+                unwrapped = &env->as<DebugEnvironmentProxy>().environment();
 
-            if (env->is<CallObject>()) {
-                computeThisBinding(env->as<CallObject>().callee().nonLazyScript()->bodyScope());
+            if (unwrapped->is<CallObject>()) {
+                JSFunction* callee = &unwrapped->as<CallObject>().callee();
+                computeThisBinding(callee->nonLazyScript()->bodyScope());
                 break;
             }
 
@@ -464,9 +468,8 @@ FunctionBox::FunctionBox(JSContext* cx, LifoAlloc& alloc, ObjectBox* traceListHe
     toStringStart(toStringStart),
     toStringEnd(0),
     length(0),
-    generatorKindBits_(GeneratorKindAsBits(generatorKind)),
+    generatorKind_(GeneratorKindAsBit(generatorKind)),
     asyncKindBits_(AsyncKindAsBits(asyncKind)),
-    isGenexpLambda(false),
     hasDestructuringArgs(false),
     hasParameterExprs(false),
     hasDirectEvalInParameterExpr(false),
@@ -545,10 +548,7 @@ FunctionBox::initWithEnclosingParseContext(ParseContext* enclosing, FunctionSynt
             }
         }
 
-        if (isGenexpLambda)
-            thisBinding_ = sc->thisBinding();
-        else
-            thisBinding_ = ThisBinding::Function;
+        thisBinding_ = ThisBinding::Function;
     }
 
     if (sc->inWith()) {
@@ -1574,6 +1574,7 @@ Parser<ParseHandler, CharT>::noteDeclaredName(HandlePropertyName name, Declarati
 
       case DeclarationKind::Let:
       case DeclarationKind::Const:
+      case DeclarationKind::Class:
         // The BoundNames of LexicalDeclaration and ForDeclaration must not
         // contain 'let'. (CatchParameter is the only lexical binding form
         // without this restriction.)
@@ -2126,27 +2127,6 @@ Parser<FullParseHandler, char16_t>::finishLexicalScope(ParseContext::Scope& scop
     return handler.newLexicalScope(*bindings, body);
 }
 
-static bool
-IsArgumentsUsedInLegacyGenerator(JSContext* cx, Scope* scope)
-{
-    JSAtom* argumentsName = cx->names().arguments;
-    for (ScopeIter si(scope); si; si++) {
-        if (si.scope()->is<LexicalScope>()) {
-            // Using a shadowed lexical 'arguments' is okay.
-            for (::BindingIter bi(si.scope()); bi; bi++) {
-                if (bi.name() == argumentsName)
-                    return false;
-            }
-        } else if (si.scope()->is<FunctionScope>()) {
-            // It's an error to use 'arguments' in a legacy generator expression.
-            JSScript* script = si.scope()->as<FunctionScope>().script();
-            return script->isGeneratorExp() && script->isLegacyGenerator();
-        }
-    }
-
-    return false;
-}
-
 template <>
 ParseNode*
 Parser<FullParseHandler, char16_t>::evalBody(EvalSharedContext* evalsc)
@@ -2176,19 +2156,6 @@ Parser<FullParseHandler, char16_t>::evalBody(EvalSharedContext* evalsc)
         body = finishLexicalScope(lexicalScope, body);
         if (!body)
             return nullptr;
-    }
-
-    // It's an error to use 'arguments' in a legacy generator expression.
-    //
-    // If 'arguments' appears free (i.e. not a declared name) or if the
-    // declaration does not shadow the enclosing script's 'arguments'
-    // binding (i.e. not a lexical declaration), check the enclosing
-    // script.
-    if (hasUsedName(context->names().arguments)) {
-        if (IsArgumentsUsedInLegacyGenerator(context, pc->sc()->compilationEnclosingScope())) {
-            error(JSMSG_BAD_GENEXP_BODY, js_arguments_str);
-            return nullptr;
-        }
     }
 
 #ifdef DEBUG
@@ -2546,7 +2513,7 @@ Parser<SyntaxParseHandler, char16_t>::finishFunction(bool isStandaloneFunction /
 static YieldHandling
 GetYieldHandling(GeneratorKind generatorKind)
 {
-    if (generatorKind == NotGenerator)
+    if (generatorKind == GeneratorKind::NotGenerator)
         return YieldIsName;
     return YieldIsKeyword;
 }
@@ -2584,7 +2551,7 @@ Parser<FullParseHandler, char16_t>::standaloneFunction(HandleFunction fun,
 
     if (!tokenStream.getToken(&tt))
         return null();
-    if (generatorKind == StarGenerator) {
+    if (generatorKind == GeneratorKind::Generator) {
         MOZ_ASSERT(tt == TOK_MUL);
         if (!tokenStream.getToken(&tt))
             return null();
@@ -2751,9 +2718,8 @@ Parser<ParseHandler, CharT>::functionBody(InHandling inHandling, YieldHandling y
     } else {
         MOZ_ASSERT(type == ExpressionBody);
 
-        // Async functions are implemented as star generators, and star
-        // generators are assumed to be statement lists, to prepend initial
-        // `yield`.
+        // Async functions are implemented as generators, and generators are
+        // assumed to be statement lists, to prepend initial `yield`.
         Node stmtList = null();
         if (pc->isAsync()) {
             stmtList = handler.newStatementList(pos());
@@ -2776,23 +2742,11 @@ Parser<ParseHandler, CharT>::functionBody(InHandling inHandling, YieldHandling y
     }
 
     switch (pc->generatorKind()) {
-      case NotGenerator:
+      case GeneratorKind::NotGenerator:
         MOZ_ASSERT_IF(!pc->isAsync(), pc->lastYieldOffset == startYieldOffset);
         break;
 
-      case LegacyGenerator:
-        MOZ_ASSERT(pc->lastYieldOffset != startYieldOffset);
-
-        // These should throw while parsing the yield expression.
-        MOZ_ASSERT(kind != Arrow);
-        MOZ_ASSERT(!IsGetterKind(kind));
-        MOZ_ASSERT(!IsSetterKind(kind));
-        MOZ_ASSERT(!IsConstructorKind(kind));
-        MOZ_ASSERT(kind != Method);
-        MOZ_ASSERT(type != ExpressionBody);
-        break;
-
-      case StarGenerator:
+      case GeneratorKind::Generator:
         MOZ_ASSERT(kind != Arrow);
         MOZ_ASSERT(type == StatementListBody);
         break;
@@ -2838,7 +2792,7 @@ ParserBase::newFunction(HandleAtom atom, FunctionSyntaxKind kind,
 #endif
     switch (kind) {
       case Expression:
-        flags = (generatorKind == NotGenerator && asyncKind == SyncFunction
+        flags = (generatorKind == GeneratorKind::NotGenerator && asyncKind == SyncFunction
                  ? JSFunction::INTERPRETED_LAMBDA
                  : JSFunction::INTERPRETED_LAMBDA_GENERATOR_OR_ASYNC);
         break;
@@ -2847,8 +2801,7 @@ ParserBase::newFunction(HandleAtom atom, FunctionSyntaxKind kind,
         allocKind = gc::AllocKind::FUNCTION_EXTENDED;
         break;
       case Method:
-        MOZ_ASSERT(generatorKind == NotGenerator || generatorKind == StarGenerator);
-        flags = (generatorKind == NotGenerator && asyncKind == SyncFunction
+        flags = (generatorKind == GeneratorKind::NotGenerator && asyncKind == SyncFunction
                  ? JSFunction::INTERPRETED_METHOD
                  : JSFunction::INTERPRETED_METHOD_GENERATOR_OR_ASYNC);
         allocKind = gc::AllocKind::FUNCTION_EXTENDED;
@@ -2876,7 +2829,7 @@ ParserBase::newFunction(HandleAtom atom, FunctionSyntaxKind kind,
             allocKind = gc::AllocKind::FUNCTION_EXTENDED;
         }
 #endif
-        flags = (generatorKind == NotGenerator && asyncKind == SyncFunction
+        flags = (generatorKind == GeneratorKind::NotGenerator && asyncKind == SyncFunction
                  ? JSFunction::INTERPRETED_NORMAL
                  : JSFunction::INTERPRETED_GENERATOR_OR_ASYNC);
     }
@@ -2922,7 +2875,7 @@ Parser<ParseHandler, CharT>::matchOrInsertSemicolonHelper(TokenStream::Modifier 
          *        tried to insert semicolon here
          *
          * Detect this situation and throw an understandable error.  Otherwise
-         * we'd throw a confusing "missing ; before statement" error.
+         * we'd throw a confusing "unexpected token: (unexpected token)" error.
          */
         if (!pc->isAsync() && tokenStream.currentToken().type == TOK_AWAIT) {
             error(JSMSG_AWAIT_OUTSIDE_ASYNC);
@@ -2935,7 +2888,7 @@ Parser<ParseHandler, CharT>::matchOrInsertSemicolonHelper(TokenStream::Modifier 
 
         /* Advance the scanner for proper error location reporting. */
         tokenStream.consumeKnownToken(tt, modifier);
-        error(JSMSG_SEMI_BEFORE_STMNT);
+        error(JSMSG_UNEXPECTED_TOKEN_NO_EXPECT, TokenKindToDesc(tt));
         return false;
     }
     bool matched;
@@ -3293,7 +3246,6 @@ Parser<FullParseHandler, char16_t>::skipLazyInnerFunction(ParseNode* pn, uint32_
     // so we can skip over them after accounting for their free variables.
 
     RootedFunction fun(context, handler.nextLazyInnerFunction());
-    MOZ_ASSERT(!fun->isLegacyGenerator());
     FunctionBox* funbox = newFunctionBox(pn, fun, toStringStart, Directives(/* strict = */ false),
                                          fun->generatorKind(), fun->asyncKind());
     if (!funbox)
@@ -3429,12 +3381,12 @@ Parser<ParseHandler, CharT>::functionDefinition(Node pn, uint32_t toStringStart,
     }
 
     RootedObject proto(context);
-    if (generatorKind == StarGenerator || asyncKind == AsyncFunction) {
+    if (generatorKind == GeneratorKind::Generator || asyncKind == AsyncFunction) {
         // If we are off thread, the generator meta-objects have
         // already been created by js::StartOffThreadParseTask, so cx will not
         // be necessary.
         JSContext* cx = context->helperThread() ? nullptr : context;
-        proto = GlobalObject::getOrCreateStarGeneratorFunctionPrototype(cx, context->global());
+        proto = GlobalObject::getOrCreateGeneratorFunctionPrototype(cx, context->global());
         if (!proto)
             return null();
     }
@@ -3501,8 +3453,12 @@ Parser<FullParseHandler, char16_t>::trySyntaxParseInnerFunction(ParseNode* pn, H
         // parse to avoid the overhead of a lazy syntax-only parse. Although
         // the prediction may be incorrect, IIFEs are common enough that it
         // pays off for lots of code.
-        if (pn->isLikelyIIFE() && generatorKind == NotGenerator && asyncKind == SyncFunction)
+        if (pn->isLikelyIIFE() &&
+            generatorKind == GeneratorKind::NotGenerator &&
+            asyncKind == SyncFunction)
+        {
             break;
+        }
 
         if (!syntaxParser_)
             break;
@@ -3779,7 +3735,7 @@ Parser<ParseHandler, CharT>::functionFormalParametersAndBody(InHandling inHandli
     uint32_t openedPos = 0;
     if (tt != TOK_LC) {
         if (kind != Arrow) {
-            if (funbox->isStarGenerator() || funbox->isAsync() || kind == Method ||
+            if (funbox->isGenerator() || funbox->isAsync() || kind == Method ||
                 kind == GetterNoExpressionClosure || kind == SetterNoExpressionClosure ||
                 IsConstructorKind(kind))
             {
@@ -3908,9 +3864,9 @@ Parser<ParseHandler, CharT>::functionStmt(uint32_t toStringStart, YieldHandling 
     if (!tokenStream.getToken(&tt))
         return null();
 
-    GeneratorKind generatorKind = NotGenerator;
+    GeneratorKind generatorKind = GeneratorKind::NotGenerator;
     if (tt == TOK_MUL) {
-        generatorKind = StarGenerator;
+        generatorKind = GeneratorKind::Generator;
         if (!tokenStream.getToken(&tt))
             return null();
     }
@@ -3935,9 +3891,11 @@ Parser<ParseHandler, CharT>::functionStmt(uint32_t toStringStart, YieldHandling 
         MOZ_ASSERT(declaredInStmt->kind() != StatementKind::Label);
         MOZ_ASSERT(StatementKindIsBraced(declaredInStmt->kind()));
 
-        kind = !pc->sc()->strict() && generatorKind == NotGenerator && asyncKind == SyncFunction
-               ? DeclarationKind::SloppyLexicalFunction
-               : DeclarationKind::LexicalFunction;
+        kind = (!pc->sc()->strict() &&
+                generatorKind == GeneratorKind::NotGenerator &&
+                asyncKind == SyncFunction)
+                ? DeclarationKind::SloppyLexicalFunction
+                : DeclarationKind::LexicalFunction;
     } else {
         kind = pc->atModuleLevel()
                ? DeclarationKind::ModuleBodyLevelFunction
@@ -3973,13 +3931,13 @@ Parser<ParseHandler, CharT>::functionExpr(uint32_t toStringStart, InvokedPredict
     MOZ_ASSERT(tokenStream.isCurrentTokenType(TOK_FUNCTION));
 
     AutoAwaitIsKeyword<Parser> awaitIsKeyword(this, GetAwaitHandling(asyncKind));
-    GeneratorKind generatorKind = NotGenerator;
+    GeneratorKind generatorKind = GeneratorKind::NotGenerator;
     TokenKind tt;
     if (!tokenStream.getToken(&tt))
         return null();
 
     if (tt == TOK_MUL) {
-        generatorKind = StarGenerator;
+        generatorKind = GeneratorKind::Generator;
         if (!tokenStream.getToken(&tt))
             return null();
     }
@@ -4439,7 +4397,7 @@ Parser<ParseHandler, CharT>::bindingInitializer(Node lhs, DeclarationKind kind,
 
     handler.checkAndSetIsDirectRHSAnonFunction(rhs);
 
-    Node assign = handler.newAssignment(PNK_ASSIGN, lhs, rhs, JSOP_NOP);
+    Node assign = handler.newAssignment(PNK_ASSIGN, lhs, rhs);
     if (!assign)
         return null();
 
@@ -4834,7 +4792,7 @@ Parser<ParseHandler, CharT>::declarationPattern(Node decl, DeclarationKind declK
         tokenStream.addModifierException(TokenStream::OperandIsNone);
     }
 
-    return handler.newBinary(PNK_ASSIGN, pattern, init);
+    return handler.newAssignment(PNK_ASSIGN, pattern, init);
 }
 
 template <class ParseHandler, typename CharT>
@@ -5015,26 +4973,22 @@ Parser<ParseHandler, CharT>::declarationList(YieldHandling yieldHandling,
 {
     MOZ_ASSERT(kind == PNK_VAR || kind == PNK_LET || kind == PNK_CONST);
 
-    JSOp op;
     DeclarationKind declKind;
     switch (kind) {
       case PNK_VAR:
-        op = JSOP_DEFVAR;
         declKind = DeclarationKind::Var;
         break;
       case PNK_CONST:
-        op = JSOP_DEFCONST;
         declKind = DeclarationKind::Const;
         break;
       case PNK_LET:
-        op = JSOP_DEFLET;
         declKind = DeclarationKind::Let;
         break;
       default:
         MOZ_CRASH("Unknown declaration kind");
     }
 
-    Node decl = handler.newDeclarationList(kind, pos(), op);
+    Node decl = handler.newDeclarationList(kind, pos());
     if (!decl)
         return null();
 
@@ -5156,7 +5110,7 @@ Parser<FullParseHandler, char16_t>::namedImportsOrNamespaceImport(TokenKind tt, 
             if (!importNameNode)
                 return false;
 
-            Node importSpec = handler.newBinary(PNK_IMPORT_SPEC, importNameNode, bindingName);
+            Node importSpec = handler.newImportSpec(importNameNode, bindingName);
             if (!importSpec)
                 return false;
 
@@ -5202,7 +5156,7 @@ Parser<FullParseHandler, char16_t>::namedImportsOrNamespaceImport(TokenKind tt, 
         // environment.
         pc->varScope().lookupDeclaredName(bindingName)->value()->setClosedOver();
 
-        Node importSpec = handler.newBinary(PNK_IMPORT_SPEC, importName, bindingNameNode);
+        Node importSpec = handler.newImportSpec(importName, bindingNameNode);
         if (!importSpec)
             return false;
 
@@ -5269,7 +5223,7 @@ Parser<FullParseHandler, char16_t>::importDeclaration()
             if (!noteDeclaredName(bindingAtom, DeclarationKind::Import, pos()))
                 return null();
 
-            Node importSpec = handler.newBinary(PNK_IMPORT_SPEC, importName, bindingName);
+            Node importSpec = handler.newImportSpec(importName, bindingName);
             if (!importSpec)
                 return null();
 
@@ -5494,7 +5448,7 @@ Parser<ParseHandler, CharT>::exportBatch(uint32_t begin)
 
     // Handle the form |export *| by adding a special export batch
     // specifier to the list.
-    Node exportSpec = handler.newNullary(PNK_EXPORT_BATCH_SPEC, JSOP_NOP, pos());
+    Node exportSpec = handler.newExportBatchSpec(pos());
     if (!exportSpec)
         return null();
 
@@ -5575,7 +5529,7 @@ Parser<ParseHandler, CharT>::exportClause(uint32_t begin)
         if (!checkExportedNameForClause(exportName))
             return null();
 
-        Node exportSpec = handler.newBinary(PNK_EXPORT_SPEC, bindingName, exportName);
+        Node exportSpec = handler.newExportSpec(bindingName, exportName);
         if (!exportSpec)
             return null();
 
@@ -6694,17 +6648,7 @@ Parser<ParseHandler, CharT>::returnStatement(YieldHandling yieldHandling)
             return null();
     }
 
-    Node pn = handler.newReturnStatement(exprNode, TokenPos(begin, pos().end));
-    if (!pn)
-        return null();
-
-    /* Disallow "return v;" in legacy generators. */
-    if (pc->isLegacyGenerator() && exprNode) {
-        errorAt(begin, JSMSG_BAD_GENERATOR_RETURN);
-        return null();
-    }
-
-    return pn;
+    return handler.newReturnStatement(exprNode, TokenPos(begin, pos().end));
 }
 
 template <class ParseHandler, typename CharT>
@@ -6714,134 +6658,48 @@ Parser<ParseHandler, CharT>::yieldExpression(InHandling inHandling)
     MOZ_ASSERT(tokenStream.isCurrentTokenType(TOK_YIELD));
     uint32_t begin = pos().begin;
 
-    switch (pc->generatorKind()) {
-      case StarGenerator:
-      {
-        MOZ_ASSERT(pc->isFunctionBox());
+    MOZ_ASSERT(pc->isGenerator());
+    MOZ_ASSERT(pc->isFunctionBox());
 
-        pc->lastYieldOffset = begin;
+    pc->lastYieldOffset = begin;
 
-        Node exprNode;
-        ParseNodeKind kind = PNK_YIELD;
-        TokenKind tt = TOK_EOF;
-        if (!tokenStream.peekTokenSameLine(&tt, TokenStream::Operand))
-            return null();
-        switch (tt) {
-          // TOK_EOL is special; it implements the [no LineTerminator here]
-          // quirk in the grammar.
-          case TOK_EOL:
-          // The rest of these make up the complete set of tokens that can
-          // appear after any of the places where AssignmentExpression is used
-          // throughout the grammar.  Conveniently, none of them can also be the
-          // start an expression.
-          case TOK_EOF:
-          case TOK_SEMI:
-          case TOK_RC:
-          case TOK_RB:
-          case TOK_RP:
-          case TOK_COLON:
-          case TOK_COMMA:
-          case TOK_IN:
-            // No value.
-            exprNode = null();
-            tokenStream.addModifierException(TokenStream::NoneIsOperand);
-            break;
-          case TOK_MUL:
-            kind = PNK_YIELD_STAR;
-            tokenStream.consumeKnownToken(TOK_MUL, TokenStream::Operand);
-            MOZ_FALLTHROUGH;
-          default:
-            exprNode = assignExpr(inHandling, YieldIsKeyword, TripledotProhibited);
-            if (!exprNode)
-                return null();
-        }
-        if (kind == PNK_YIELD_STAR)
-            return handler.newYieldStarExpression(begin, exprNode);
-        return handler.newYieldExpression(begin, exprNode);
-      }
-
-      case NotGenerator:
-        // We are in code that has not seen a yield, but we are in JS 1.7 or
-        // later.  Try to transition to being a legacy generator.
-        MOZ_ASSERT(tokenStream.versionNumber() >= JSVERSION_1_7);
-        MOZ_ASSERT(pc->lastYieldOffset == ParseContext::NoYieldOffset);
-
-        if (!abortIfSyntaxParser())
-            return null();
-
-        if (!pc->isFunctionBox()) {
-            error(JSMSG_BAD_RETURN_OR_YIELD, js_yield_str);
-            return null();
-        }
-
-        if (pc->functionBox()->isArrow()) {
-            errorAt(begin, JSMSG_YIELD_IN_ARROW, js_yield_str);
-            return null();
-        }
-
-        if (pc->functionBox()->function()->isMethod() ||
-            pc->functionBox()->function()->isGetter() ||
-            pc->functionBox()->function()->isSetter())
-        {
-            errorAt(begin, JSMSG_YIELD_IN_METHOD, js_yield_str);
-            return null();
-        }
-
-        if (pc->funHasReturnExpr
-#if JS_HAS_EXPR_CLOSURES
-            || pc->functionBox()->isExprBody()
-#endif
-            )
-        {
-            /* As in Python (see PEP-255), disallow return v; in generators. */
-            errorAt(begin, JSMSG_BAD_FUNCTION_YIELD);
-            return null();
-        }
-
-        pc->functionBox()->setGeneratorKind(LegacyGenerator);
-        addTelemetry(DeprecatedLanguageExtension::LegacyGenerator);
-        if (!warnOnceAboutLegacyGenerator())
-            return null();
-
+    Node exprNode;
+    ParseNodeKind kind = PNK_YIELD;
+    TokenKind tt = TOK_EOF;
+    if (!tokenStream.peekTokenSameLine(&tt, TokenStream::Operand))
+        return null();
+    switch (tt) {
+      // TOK_EOL is special; it implements the [no LineTerminator here]
+      // quirk in the grammar.
+      case TOK_EOL:
+      // The rest of these make up the complete set of tokens that can
+      // appear after any of the places where AssignmentExpression is used
+      // throughout the grammar.  Conveniently, none of them can also be the
+      // start an expression.
+      case TOK_EOF:
+      case TOK_SEMI:
+      case TOK_RC:
+      case TOK_RB:
+      case TOK_RP:
+      case TOK_COLON:
+      case TOK_COMMA:
+      case TOK_IN:
+        // No value.
+        exprNode = null();
+        tokenStream.addModifierException(TokenStream::NoneIsOperand);
+        break;
+      case TOK_MUL:
+        kind = PNK_YIELD_STAR;
+        tokenStream.consumeKnownToken(TOK_MUL, TokenStream::Operand);
         MOZ_FALLTHROUGH;
-
-      case LegacyGenerator:
-      {
-        // We are in a legacy generator: a function that has already seen a
-        // yield.
-        MOZ_ASSERT(pc->isFunctionBox());
-
-        pc->lastYieldOffset = begin;
-
-        // Legacy generators do not require a value.
-        Node exprNode;
-        TokenKind tt = TOK_EOF;
-        if (!tokenStream.peekTokenSameLine(&tt, TokenStream::Operand))
+      default:
+        exprNode = assignExpr(inHandling, YieldIsKeyword, TripledotProhibited);
+        if (!exprNode)
             return null();
-        switch (tt) {
-          case TOK_EOF:
-          case TOK_EOL:
-          case TOK_SEMI:
-          case TOK_RC:
-          case TOK_RB:
-          case TOK_RP:
-          case TOK_COLON:
-          case TOK_COMMA:
-            // No value.
-            exprNode = null();
-            tokenStream.addModifierException(TokenStream::NoneIsOperand);
-            break;
-          default:
-            exprNode = assignExpr(inHandling, YieldIsKeyword, TripledotProhibited);
-            if (!exprNode)
-                return null();
-        }
-
-        return handler.newYieldExpression(begin, exprNode);
-      }
     }
-
-    MOZ_CRASH("yieldExpr");
+    if (kind == PNK_YIELD_STAR)
+        return handler.newYieldStarExpression(begin, exprNode);
+    return handler.newYieldExpression(begin, exprNode);
 }
 
 template <class ParseHandler, typename CharT>
@@ -7054,58 +6912,68 @@ Parser<ParseHandler, CharT>::tryStatement(YieldHandling yieldHandling)
 
             /*
              * Legal catch forms are:
-             *   catch (lhs)
-             *   catch (lhs if <boolean_expression>)
+             *   catch (lhs) {
+             *   catch (lhs if <boolean_expression>) {
+             *   catch {
              * where lhs is a name or a destructuring left-hand side.
-             * (the latter is legal only #ifdef JS_HAS_CATCH_GUARD)
+             * The second is legal only #ifdef JS_HAS_CATCH_GUARD.
              */
-            MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_BEFORE_CATCH);
-
-            if (!tokenStream.getToken(&tt))
+            bool omittedBinding;
+            if (!tokenStream.matchToken(&omittedBinding, TOK_LC))
                 return null();
-            Node catchName;
-            switch (tt) {
-              case TOK_LB:
-              case TOK_LC:
-                catchName = destructuringDeclaration(DeclarationKind::CatchParameter,
-                                                     yieldHandling, tt);
-                if (!catchName)
-                    return null();
-                break;
 
-              default: {
-                if (!TokenKindIsPossibleIdentifierName(tt)) {
-                    error(JSMSG_CATCH_IDENTIFIER);
+            Node catchName;
+            Node catchGuard = null();
+
+            if (omittedBinding) {
+                catchName = null();
+            } else {
+                MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_BEFORE_CATCH);
+
+                if (!tokenStream.getToken(&tt))
                     return null();
+                switch (tt) {
+                  case TOK_LB:
+                  case TOK_LC:
+                    catchName = destructuringDeclaration(DeclarationKind::CatchParameter,
+                                                         yieldHandling, tt);
+                    if (!catchName)
+                        return null();
+                    break;
+
+                  default: {
+                    if (!TokenKindIsPossibleIdentifierName(tt)) {
+                        error(JSMSG_CATCH_IDENTIFIER);
+                        return null();
+                    }
+
+                    catchName = bindingIdentifier(DeclarationKind::SimpleCatchParameter,
+                                                  yieldHandling);
+                    if (!catchName)
+                        return null();
+                    break;
+                  }
                 }
 
-                catchName = bindingIdentifier(DeclarationKind::SimpleCatchParameter,
-                                              yieldHandling);
-                if (!catchName)
-                    return null();
-                break;
-              }
-            }
-
-            Node catchGuard = null();
 #if JS_HAS_CATCH_GUARD
-            /*
-             * We use 'catch (x if x === 5)' (not 'catch (x : x === 5)')
-             * to avoid conflicting with the JS2/ECMAv4 type annotation
-             * catchguard syntax.
-             */
-            bool matched;
-            if (!tokenStream.matchToken(&matched, TOK_IF))
-                return null();
-            if (matched) {
-                catchGuard = expr(InAllowed, yieldHandling, TripledotProhibited);
-                if (!catchGuard)
+                /*
+                 * We use 'catch (x if x === 5)' (not 'catch (x : x === 5)')
+                 * to avoid conflicting with the JS2/ECMAv4 type annotation
+                 * catchguard syntax.
+                 */
+                bool matched;
+                if (!tokenStream.matchToken(&matched, TOK_IF))
                     return null();
-            }
+                if (matched) {
+                    catchGuard = expr(InAllowed, yieldHandling, TripledotProhibited);
+                    if (!catchGuard)
+                        return null();
+                }
 #endif
-            MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_CATCH);
+                MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_CATCH);
 
-            MUST_MATCH_TOKEN(TOK_LC, JSMSG_CURLY_BEFORE_CATCH);
+                MUST_MATCH_TOKEN(TOK_LC, JSMSG_CURLY_BEFORE_CATCH);
+            }
 
             Node catchBody = catchBlockStatement(yieldHandling, scope);
             if (!catchBody)
@@ -7214,16 +7082,16 @@ Parser<ParseHandler, CharT>::debuggerStatement()
     return handler.newDebuggerStatement(p);
 }
 
-static JSOp
-JSOpFromPropertyType(PropertyType propType)
+static AccessorType
+ToAccessorType(PropertyType propType)
 {
     switch (propType) {
       case PropertyType::Getter:
       case PropertyType::GetterNoExpressionClosure:
-        return JSOP_INITPROP_GETTER;
+        return AccessorType::Getter;
       case PropertyType::Setter:
       case PropertyType::SetterNoExpressionClosure:
-        return JSOP_INITPROP_SETTER;
+        return AccessorType::Setter;
       case PropertyType::Normal:
       case PropertyType::Method:
       case PropertyType::GeneratorMethod:
@@ -7231,7 +7099,7 @@ JSOpFromPropertyType(PropertyType propType)
       case PropertyType::AsyncGeneratorMethod:
       case PropertyType::Constructor:
       case PropertyType::DerivedConstructor:
-        return JSOP_INITPROP;
+        return AccessorType::None;
       default:
         MOZ_CRASH("unexpected property type");
     }
@@ -7408,8 +7276,8 @@ Parser<ParseHandler, CharT>::classDefinition(YieldHandling yieldHandling,
 
         handler.checkAndSetIsDirectRHSAnonFunction(fn);
 
-        JSOp op = JSOpFromPropertyType(propType);
-        if (!handler.addClassMethodDefinition(classMethods, propName, fn, op, isStatic))
+        AccessorType atype = ToAccessorType(propType);
+        if (!handler.addClassMethodDefinition(classMethods, propName, fn, atype, isStatic))
             return null();
     }
 
@@ -7446,7 +7314,7 @@ Parser<ParseHandler, CharT>::classDefinition(YieldHandling yieldHandling,
         Node outerName = null();
         if (classContext == ClassStatement) {
             // The outer name is mutable.
-            if (!noteDeclaredName(name, DeclarationKind::Let, namePos))
+            if (!noteDeclaredName(name, DeclarationKind::Class, namePos))
                 return null();
 
             outerName = newName(name, namePos);
@@ -7993,41 +7861,6 @@ Parser<ParseHandler, CharT>::expr(InHandling inHandling, YieldHandling yieldHand
     return seq;
 }
 
-static const JSOp ParseNodeKindToJSOp[] = {
-    JSOP_OR,
-    JSOP_AND,
-    JSOP_BITOR,
-    JSOP_BITXOR,
-    JSOP_BITAND,
-    JSOP_STRICTEQ,
-    JSOP_EQ,
-    JSOP_STRICTNE,
-    JSOP_NE,
-    JSOP_LT,
-    JSOP_LE,
-    JSOP_GT,
-    JSOP_GE,
-    JSOP_INSTANCEOF,
-    JSOP_IN,
-    JSOP_LSH,
-    JSOP_RSH,
-    JSOP_URSH,
-    JSOP_ADD,
-    JSOP_SUB,
-    JSOP_MUL,
-    JSOP_DIV,
-    JSOP_MOD,
-    JSOP_POW
-};
-
-static inline JSOp
-BinaryOpParseNodeKindToJSOp(ParseNodeKind pnk)
-{
-    MOZ_ASSERT(pnk >= PNK_BINOP_FIRST);
-    MOZ_ASSERT(pnk <= PNK_BINOP_LAST);
-    return ParseNodeKindToJSOp[pnk - PNK_BINOP_FIRST];
-}
-
 static ParseNodeKind
 BinaryOpTokenKindToParseNodeKind(TokenKind tok)
 {
@@ -8036,33 +7869,34 @@ BinaryOpTokenKindToParseNodeKind(TokenKind tok)
 }
 
 static const int PrecedenceTable[] = {
-    1, /* PNK_OR */
-    2, /* PNK_AND */
-    3, /* PNK_BITOR */
-    4, /* PNK_BITXOR */
-    5, /* PNK_BITAND */
-    6, /* PNK_STRICTEQ */
-    6, /* PNK_EQ */
-    6, /* PNK_STRICTNE */
-    6, /* PNK_NE */
-    7, /* PNK_LT */
-    7, /* PNK_LE */
-    7, /* PNK_GT */
-    7, /* PNK_GE */
-    7, /* PNK_INSTANCEOF */
-    7, /* PNK_IN */
-    8, /* PNK_LSH */
-    8, /* PNK_RSH */
-    8, /* PNK_URSH */
-    9, /* PNK_ADD */
-    9, /* PNK_SUB */
-    10, /* PNK_STAR */
-    10, /* PNK_DIV */
-    10, /* PNK_MOD */
-    11  /* PNK_POW */
+    1, /* PNK_PIPELINE */
+    2, /* PNK_OR */
+    3, /* PNK_AND */
+    4, /* PNK_BITOR */
+    5, /* PNK_BITXOR */
+    6, /* PNK_BITAND */
+    7, /* PNK_STRICTEQ */
+    7, /* PNK_EQ */
+    7, /* PNK_STRICTNE */
+    7, /* PNK_NE */
+    8, /* PNK_LT */
+    8, /* PNK_LE */
+    8, /* PNK_GT */
+    8, /* PNK_GE */
+    8, /* PNK_INSTANCEOF */
+    8, /* PNK_IN */
+    9, /* PNK_LSH */
+    9, /* PNK_RSH */
+    9, /* PNK_URSH */
+    10, /* PNK_ADD */
+    10, /* PNK_SUB */
+    11, /* PNK_STAR */
+    11, /* PNK_DIV */
+    11, /* PNK_MOD */
+    12  /* PNK_POW */
 };
 
-static const int PRECEDENCE_CLASSES = 11;
+static const int PRECEDENCE_CLASSES = 12;
 
 static int
 Precedence(ParseNodeKind pnk) {
@@ -8079,10 +7913,10 @@ Precedence(ParseNodeKind pnk) {
 
 template <class ParseHandler, typename CharT>
 MOZ_ALWAYS_INLINE typename ParseHandler::Node
-Parser<ParseHandler, CharT>::orExpr1(InHandling inHandling, YieldHandling yieldHandling,
-                                     TripledotHandling tripledotHandling,
-                                     PossibleError* possibleError,
-                                     InvokedPrediction invoked /* = PredictUninvoked */)
+Parser<ParseHandler, CharT>::orExpr(InHandling inHandling, YieldHandling yieldHandling,
+                                    TripledotHandling tripledotHandling,
+                                    PossibleError* possibleError,
+                                    InvokedPrediction invoked /* = PredictUninvoked */)
 {
     // Shift-reduce parser for the binary operator part of the JS expression
     // syntax.
@@ -8096,7 +7930,7 @@ Parser<ParseHandler, CharT>::orExpr1(InHandling inHandling, YieldHandling yieldH
     for (;;) {
         pn = unaryExpr(yieldHandling, tripledotHandling, possibleError, invoked);
         if (!pn)
-            return pn;
+            return null();
 
         // If a binary operator follows, consume it and compute the
         // corresponding operator.
@@ -8134,10 +7968,9 @@ Parser<ParseHandler, CharT>::orExpr1(InHandling inHandling, YieldHandling yieldH
         while (depth > 0 && Precedence(kindStack[depth - 1]) >= Precedence(pnk)) {
             depth--;
             ParseNodeKind combiningPnk = kindStack[depth];
-            JSOp combiningOp = BinaryOpParseNodeKindToJSOp(combiningPnk);
-            pn = handler.appendOrCreateList(combiningPnk, nodeStack[depth], pn, pc, combiningOp);
+            pn = handler.appendOrCreateList(combiningPnk, nodeStack[depth], pn, pc);
             if (!pn)
-                return pn;
+                return null();
         }
 
         if (pnk == PNK_LIMIT)
@@ -8149,20 +7982,27 @@ Parser<ParseHandler, CharT>::orExpr1(InHandling inHandling, YieldHandling yieldH
         MOZ_ASSERT(depth <= PRECEDENCE_CLASSES);
     }
 
+    tokenStream.ungetToken();
+
     MOZ_ASSERT(depth == 0);
     return pn;
 }
 
 template <class ParseHandler, typename CharT>
 MOZ_ALWAYS_INLINE typename ParseHandler::Node
-Parser<ParseHandler, CharT>::condExpr1(InHandling inHandling, YieldHandling yieldHandling,
-                                       TripledotHandling tripledotHandling,
-                                       PossibleError* possibleError,
-                                       InvokedPrediction invoked /* = PredictUninvoked */)
+Parser<ParseHandler, CharT>::condExpr(InHandling inHandling, YieldHandling yieldHandling,
+                                      TripledotHandling tripledotHandling,
+                                      PossibleError* possibleError,
+                                      InvokedPrediction invoked /* = PredictUninvoked */)
 {
-    Node condition = orExpr1(inHandling, yieldHandling, tripledotHandling, possibleError, invoked);
+    Node condition = orExpr(inHandling, yieldHandling, tripledotHandling, possibleError, invoked);
+    if (!condition)
+        return null();
 
-    if (!condition || !tokenStream.isCurrentTokenType(TOK_HOOK))
+    bool matched;
+    if (!tokenStream.matchToken(&matched, TOK_HOOK))
+        return null();
+    if (!matched)
         return condition;
 
     Node thenExpr = assignExpr(InAllowed, yieldHandling, TripledotProhibited);
@@ -8175,10 +8015,6 @@ Parser<ParseHandler, CharT>::condExpr1(InHandling inHandling, YieldHandling yiel
     if (!elseExpr)
         return null();
 
-    // Advance to the next token; the caller is responsible for interpreting it.
-    TokenKind ignored;
-    if (!tokenStream.getToken(&ignored))
-        return null();
     return handler.newConditional(condition, thenExpr, elseExpr);
 }
 
@@ -8200,11 +8036,11 @@ Parser<ParseHandler, CharT>::assignExpr(InHandling inHandling, YieldHandling yie
     // numeric arrays, such as some Kraken benchmarks, it happens more often.)
     //
     // In such cases, we can avoid the full expression parsing route through
-    // assignExpr(), condExpr1(), orExpr1(), unaryExpr(), memberExpr(), and
+    // assignExpr(), condExpr(), orExpr(), unaryExpr(), memberExpr(), and
     // primaryExpr().
 
-    TokenKind tt;
-    if (!tokenStream.getToken(&tt, TokenStream::Operand))
+    TokenKind firstToken;
+    if (!tokenStream.getToken(&firstToken, TokenStream::Operand))
         return null();
 
     TokenPos exprPos = pos();
@@ -8214,7 +8050,7 @@ Parser<ParseHandler, CharT>::assignExpr(InHandling inHandling, YieldHandling yie
     // This only handles identifiers that *never* have special meaning anywhere
     // in the language.  Contextual keywords, reserved words in strict mode,
     // and other hard cases are handled outside this fast path.
-    if (tt == TOK_NAME) {
+    if (firstToken == TOK_NAME) {
         if (!tokenStream.nextTokenEndsExpr(&endsExpr))
             return null();
         if (endsExpr) {
@@ -8226,25 +8062,25 @@ Parser<ParseHandler, CharT>::assignExpr(InHandling inHandling, YieldHandling yie
         }
     }
 
-    if (tt == TOK_NUMBER) {
+    if (firstToken == TOK_NUMBER) {
         if (!tokenStream.nextTokenEndsExpr(&endsExpr))
             return null();
         if (endsExpr)
             return newNumber(tokenStream.currentToken());
     }
 
-    if (tt == TOK_STRING) {
+    if (firstToken == TOK_STRING) {
         if (!tokenStream.nextTokenEndsExpr(&endsExpr))
             return null();
         if (endsExpr)
             return stringLiteral();
     }
 
-    if (tt == TOK_YIELD && yieldExpressionsSupported())
+    if (firstToken == TOK_YIELD && yieldExpressionsSupported())
         return yieldExpression(inHandling);
 
     bool maybeAsyncArrow = false;
-    if (tt == TOK_ASYNC) {
+    if (firstToken == TOK_ASYNC) {
         TokenKind nextSameLine = TOK_EOF;
         if (!tokenStream.peekTokenSameLine(&nextSameLine))
             return null();
@@ -8262,49 +8098,51 @@ Parser<ParseHandler, CharT>::assignExpr(InHandling inHandling, YieldHandling yie
 
     PossibleError possibleErrorInner(*this);
     Node lhs;
+    TokenKind tokenAfterLHS;
     if (maybeAsyncArrow) {
         tokenStream.consumeKnownToken(TOK_ASYNC, TokenStream::Operand);
 
-        TokenKind tt;
-        if (!tokenStream.getToken(&tt))
+        TokenKind tokenAfterAsync;
+        if (!tokenStream.getToken(&tokenAfterAsync))
             return null();
-        MOZ_ASSERT(TokenKindIsPossibleIdentifier(tt));
+        MOZ_ASSERT(TokenKindIsPossibleIdentifier(tokenAfterAsync));
 
         // Check yield validity here.
         RootedPropertyName name(context, bindingIdentifier(yieldHandling));
         if (!name)
             return null();
 
-        if (!tokenStream.getToken(&tt))
+        if (!tokenStream.getToken(&tokenAfterLHS))
             return null();
-        if (tt != TOK_ARROW) {
-            error(JSMSG_UNEXPECTED_TOKEN, "'=>' after argument list", TokenKindToDesc(tt));
-
+        if (tokenAfterLHS != TOK_ARROW) {
+            error(JSMSG_UNEXPECTED_TOKEN,
+                  "'=>' after argument list", TokenKindToDesc(tokenAfterLHS));
             return null();
         }
     } else {
-        lhs = condExpr1(inHandling, yieldHandling, tripledotHandling, &possibleErrorInner, invoked);
-        if (!lhs) {
+        lhs = condExpr(inHandling, yieldHandling, tripledotHandling, &possibleErrorInner, invoked);
+        if (!lhs)
             return null();
-        }
+
+        if (!tokenStream.getToken(&tokenAfterLHS))
+            return null();
     }
 
     ParseNodeKind kind;
-    JSOp op;
-    switch (tokenStream.currentToken().type) {
-      case TOK_ASSIGN:       kind = PNK_ASSIGN;       op = JSOP_NOP;    break;
-      case TOK_ADDASSIGN:    kind = PNK_ADDASSIGN;    op = JSOP_ADD;    break;
-      case TOK_SUBASSIGN:    kind = PNK_SUBASSIGN;    op = JSOP_SUB;    break;
-      case TOK_BITORASSIGN:  kind = PNK_BITORASSIGN;  op = JSOP_BITOR;  break;
-      case TOK_BITXORASSIGN: kind = PNK_BITXORASSIGN; op = JSOP_BITXOR; break;
-      case TOK_BITANDASSIGN: kind = PNK_BITANDASSIGN; op = JSOP_BITAND; break;
-      case TOK_LSHASSIGN:    kind = PNK_LSHASSIGN;    op = JSOP_LSH;    break;
-      case TOK_RSHASSIGN:    kind = PNK_RSHASSIGN;    op = JSOP_RSH;    break;
-      case TOK_URSHASSIGN:   kind = PNK_URSHASSIGN;   op = JSOP_URSH;   break;
-      case TOK_MULASSIGN:    kind = PNK_MULASSIGN;    op = JSOP_MUL;    break;
-      case TOK_DIVASSIGN:    kind = PNK_DIVASSIGN;    op = JSOP_DIV;    break;
-      case TOK_MODASSIGN:    kind = PNK_MODASSIGN;    op = JSOP_MOD;    break;
-      case TOK_POWASSIGN:    kind = PNK_POWASSIGN;    op = JSOP_POW;    break;
+    switch (tokenAfterLHS) {
+      case TOK_ASSIGN:       kind = PNK_ASSIGN;       break;
+      case TOK_ADDASSIGN:    kind = PNK_ADDASSIGN;    break;
+      case TOK_SUBASSIGN:    kind = PNK_SUBASSIGN;    break;
+      case TOK_BITORASSIGN:  kind = PNK_BITORASSIGN;  break;
+      case TOK_BITXORASSIGN: kind = PNK_BITXORASSIGN; break;
+      case TOK_BITANDASSIGN: kind = PNK_BITANDASSIGN; break;
+      case TOK_LSHASSIGN:    kind = PNK_LSHASSIGN;    break;
+      case TOK_RSHASSIGN:    kind = PNK_RSHASSIGN;    break;
+      case TOK_URSHASSIGN:   kind = PNK_URSHASSIGN;   break;
+      case TOK_MULASSIGN:    kind = PNK_MULASSIGN;    break;
+      case TOK_DIVASSIGN:    kind = PNK_DIVASSIGN;    break;
+      case TOK_MODASSIGN:    kind = PNK_MODASSIGN;    break;
+      case TOK_POWASSIGN:    kind = PNK_POWASSIGN;    break;
 
       case TOK_ARROW: {
 
@@ -8357,7 +8195,7 @@ Parser<ParseHandler, CharT>::assignExpr(InHandling inHandling, YieldHandling yie
             return null();
 
         Node arrowFunc = functionDefinition(pn, toStringStart, inHandling, yieldHandling, nullptr,
-                                            Arrow, NotGenerator, asyncKind);
+                                            Arrow, GeneratorKind::NotGenerator, asyncKind);
         if (!arrowFunc)
             return null();
 
@@ -8446,7 +8284,7 @@ Parser<ParseHandler, CharT>::assignExpr(InHandling inHandling, YieldHandling yie
     if (kind == PNK_ASSIGN)
         handler.checkAndSetIsDirectRHSAnonFunction(rhs);
 
-    return handler.newAssignment(kind, lhs, rhs, op);
+    return handler.newAssignment(kind, lhs, rhs);
 }
 
 template <class ParseHandler, typename CharT>
@@ -8506,13 +8344,13 @@ Parser<ParseHandler, CharT>::checkIncDecOperand(Node operand, uint32_t operandOf
 
 template <class ParseHandler, typename CharT>
 typename ParseHandler::Node
-Parser<ParseHandler, CharT>::unaryOpExpr(YieldHandling yieldHandling, ParseNodeKind kind, JSOp op,
+Parser<ParseHandler, CharT>::unaryOpExpr(YieldHandling yieldHandling, ParseNodeKind kind,
                                          uint32_t begin)
 {
     Node kid = unaryExpr(yieldHandling, TripledotProhibited);
     if (!kid)
         return null();
-    return handler.newUnary(kind, op, begin, kid);
+    return handler.newUnary(kind, begin, kid);
 }
 
 template <class ParseHandler, typename CharT>
@@ -8531,15 +8369,15 @@ Parser<ParseHandler, CharT>::unaryExpr(YieldHandling yieldHandling,
     uint32_t begin = pos().begin;
     switch (tt) {
       case TOK_VOID:
-        return unaryOpExpr(yieldHandling, PNK_VOID, JSOP_VOID, begin);
+        return unaryOpExpr(yieldHandling, PNK_VOID, begin);
       case TOK_NOT:
-        return unaryOpExpr(yieldHandling, PNK_NOT, JSOP_NOT, begin);
+        return unaryOpExpr(yieldHandling, PNK_NOT, begin);
       case TOK_BITNOT:
-        return unaryOpExpr(yieldHandling, PNK_BITNOT, JSOP_BITNOT, begin);
+        return unaryOpExpr(yieldHandling, PNK_BITNOT, begin);
       case TOK_ADD:
-        return unaryOpExpr(yieldHandling, PNK_POS, JSOP_POS, begin);
+        return unaryOpExpr(yieldHandling, PNK_POS, begin);
       case TOK_SUB:
-        return unaryOpExpr(yieldHandling, PNK_NEG, JSOP_NEG, begin);
+        return unaryOpExpr(yieldHandling, PNK_NEG, begin);
 
       case TOK_TYPEOF: {
         // The |typeof| operator is specially parsed to distinguish its
@@ -8631,313 +8469,6 @@ Parser<ParseHandler, CharT>::unaryExpr(YieldHandling yieldHandling,
     }
 }
 
-
-/*** Comprehensions *******************************************************************************
- *
- * We currently support two flavors of comprehensions, all deprecated:
- *
- *     [for (V of OBJ) if (COND) EXPR]  // ES6-era array comprehension
- *     (for (V of OBJ) if (COND) EXPR)  // ES6-era generator expression
- *
- * (These flavors are called "ES6-era" because they were in ES6 draft
- * specifications for a while. Shortly after this syntax was implemented in SM,
- * TC39 decided to drop it.)
- */
-
-template <class ParseHandler, typename CharT>
-typename ParseHandler::Node
-Parser<ParseHandler, CharT>::generatorComprehensionLambda(unsigned begin)
-{
-    Node genfn = handler.newFunctionExpression(pos());
-    if (!genfn)
-        return null();
-
-    ParseContext* outerpc = pc;
-
-    // If we are off thread, the generator meta-objects have
-    // already been created by js::StartOffThreadParseScript, so cx will not
-    // be necessary.
-    RootedObject proto(context);
-    JSContext* cx = context->helperThread() ? nullptr : context;
-    proto = GlobalObject::getOrCreateStarGeneratorFunctionPrototype(cx, context->global());
-    if (!proto)
-        return null();
-
-    RootedFunction fun(context, newFunction(/* atom = */ nullptr, Expression,
-                                            StarGenerator, SyncFunction, proto));
-    if (!fun)
-        return null();
-
-    // Create box for fun->object early to root it.
-    Directives directives(/* strict = */ outerpc->sc()->strict());
-    FunctionBox* genFunbox = newFunctionBox(genfn, fun, /* toStringStart = */ begin, directives,
-                                            StarGenerator, SyncFunction);
-    if (!genFunbox)
-        return null();
-    genFunbox->isGenexpLambda = true;
-    genFunbox->initWithEnclosingParseContext(outerpc, Expression);
-    genFunbox->setStart(tokenStream, begin);
-
-    SourceParseContext genpc(this, genFunbox, /* newDirectives = */ nullptr);
-    if (!genpc.init())
-        return null();
-    genpc.functionScope().useAsVarScope(&genpc);
-
-    /*
-     * We assume conservatively that any deoptimization flags in pc->sc()
-     * come from the kid. So we propagate these flags into genfn. For code
-     * simplicity we also do not detect if the flags were only set in the
-     * kid and could be removed from pc->sc().
-     */
-    genFunbox->anyCxFlags = outerpc->sc()->anyCxFlags;
-
-    if (!declareDotGeneratorName())
-        return null();
-
-    Node body = handler.newStatementList(TokenPos(begin, pos().end));
-    if (!body)
-        return null();
-
-    Node comp = comprehension(StarGenerator);
-    if (!comp)
-        return null();
-
-    MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_IN_PAREN);
-
-    uint32_t end = pos().end;
-    handler.setBeginPosition(comp, begin);
-    handler.setEndPosition(comp, end);
-    genFunbox->setEnd(tokenStream);
-    handler.addStatementToList(body, comp);
-    handler.setEndPosition(body, end);
-    handler.setBeginPosition(genfn, begin);
-    handler.setEndPosition(genfn, end);
-
-    Node generator = newDotGeneratorName();
-    if (!generator)
-        return null();
-    if (!handler.prependInitialYield(body, generator))
-        return null();
-
-    if (!propagateFreeNamesAndMarkClosedOverBindings(pc->varScope()))
-        return null();
-    if (!finishFunction())
-        return null();
-    if (!leaveInnerFunction(outerpc))
-        return null();
-
-    // Note that if we ever start syntax-parsing generators, we will also
-    // need to propagate the closed-over variable set to the inner
-    // lazyscript.
-    if (!handler.setComprehensionLambdaBody(genfn, body))
-        return null();
-
-    return genfn;
-}
-
-template <class ParseHandler, typename CharT>
-typename ParseHandler::Node
-Parser<ParseHandler, CharT>::comprehensionFor(GeneratorKind comprehensionKind)
-{
-    MOZ_ASSERT(tokenStream.isCurrentTokenType(TOK_FOR));
-
-    uint32_t begin = pos().begin;
-
-    MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_AFTER_FOR);
-
-    // FIXME: Destructuring binding (bug 980828).
-
-    MUST_MATCH_TOKEN_FUNC(TokenKindIsPossibleIdentifier, JSMSG_NO_VARIABLE_NAME);
-    RootedPropertyName name(context, bindingIdentifier(YieldIsKeyword));
-    if (!name)
-        return null();
-    if (name == context->names().let) {
-        error(JSMSG_LET_COMP_BINDING);
-        return null();
-    }
-    TokenPos namePos = pos();
-    Node lhs = newName(name);
-    if (!lhs)
-        return null();
-    bool matched;
-    if (!tokenStream.matchToken(&matched, TOK_OF))
-        return null();
-    if (!matched) {
-        error(JSMSG_OF_AFTER_FOR_NAME);
-        return null();
-    }
-
-    Node rhs = assignExpr(InAllowed, YieldIsKeyword, TripledotProhibited);
-    if (!rhs)
-        return null();
-
-    MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_FOR_OF_ITERABLE);
-
-    TokenPos headPos(begin, pos().end);
-
-    ParseContext::Scope scope(this);
-    if (!scope.init(pc))
-        return null();
-
-    {
-        // Push a temporary ForLoopLexicalHead Statement that allows for
-        // lexical declarations, as they are usually allowed only in braced
-        // statements.
-        ParseContext::Statement forHeadStmt(pc, StatementKind::ForLoopLexicalHead);
-        if (!noteDeclaredName(name, DeclarationKind::Let, namePos))
-            return null();
-    }
-
-    Node decls = handler.newComprehensionBinding(lhs);
-    if (!decls)
-        return null();
-
-    Node tail = comprehensionTail(comprehensionKind);
-    if (!tail)
-        return null();
-
-    // Finish the lexical scope after parsing the tail.
-    Node lexicalScope = finishLexicalScope(scope, decls);
-    if (!lexicalScope)
-        return null();
-
-    Node head = handler.newForInOrOfHead(PNK_FOROF, lexicalScope, rhs, headPos);
-    if (!head)
-        return null();
-
-    return handler.newComprehensionFor(begin, head, tail);
-}
-
-template <class ParseHandler, typename CharT>
-typename ParseHandler::Node
-Parser<ParseHandler, CharT>::comprehensionIf(GeneratorKind comprehensionKind)
-{
-    MOZ_ASSERT(tokenStream.isCurrentTokenType(TOK_IF));
-
-    uint32_t begin = pos().begin;
-
-    MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_BEFORE_COND);
-    Node cond = assignExpr(InAllowed, YieldIsKeyword, TripledotProhibited);
-    if (!cond)
-        return null();
-    MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_COND);
-
-    /* Check for (a = b) and warn about possible (a == b) mistype. */
-    if (handler.isUnparenthesizedAssignment(cond)) {
-        if (!extraWarning(JSMSG_EQUAL_AS_ASSIGN))
-            return null();
-    }
-
-    Node then = comprehensionTail(comprehensionKind);
-    if (!then)
-        return null();
-
-    return handler.newIfStatement(begin, cond, then, null());
-}
-
-template <class ParseHandler, typename CharT>
-typename ParseHandler::Node
-Parser<ParseHandler, CharT>::comprehensionTail(GeneratorKind comprehensionKind)
-{
-    if (!CheckRecursionLimit(context))
-        return null();
-
-    bool matched;
-    if (!tokenStream.matchToken(&matched, TOK_FOR, TokenStream::Operand))
-        return null();
-    if (matched)
-        return comprehensionFor(comprehensionKind);
-
-    if (!tokenStream.matchToken(&matched, TOK_IF, TokenStream::Operand))
-        return null();
-    if (matched)
-        return comprehensionIf(comprehensionKind);
-
-    uint32_t begin = pos().begin;
-
-    Node bodyExpr = assignExpr(InAllowed, YieldIsKeyword, TripledotProhibited);
-    if (!bodyExpr)
-        return null();
-
-    if (comprehensionKind == NotGenerator)
-        return handler.newArrayPush(begin, bodyExpr);
-
-    MOZ_ASSERT(comprehensionKind == StarGenerator);
-    Node yieldExpr = handler.newYieldExpression(begin, bodyExpr);
-    if (!yieldExpr)
-        return null();
-    yieldExpr = handler.parenthesize(yieldExpr);
-
-    return handler.newExprStatement(yieldExpr, pos().end);
-}
-
-// Parse an ES6-era generator or array comprehension, starting at the first
-// `for`. The caller is responsible for matching the ending TOK_RP or TOK_RB.
-template <class ParseHandler, typename CharT>
-typename ParseHandler::Node
-Parser<ParseHandler, CharT>::comprehension(GeneratorKind comprehensionKind)
-{
-    MOZ_ASSERT(tokenStream.isCurrentTokenType(TOK_FOR));
-
-    uint32_t startYieldOffset = pc->lastYieldOffset;
-
-    Node body = comprehensionFor(comprehensionKind);
-    if (!body)
-        return null();
-
-    if (comprehensionKind != NotGenerator && pc->lastYieldOffset != startYieldOffset) {
-        errorAt(pc->lastYieldOffset, JSMSG_BAD_GENEXP_BODY, js_yield_str);
-        return null();
-    }
-
-    return body;
-}
-
-template <class ParseHandler, typename CharT>
-typename ParseHandler::Node
-Parser<ParseHandler, CharT>::arrayComprehension(uint32_t begin)
-{
-    Node inner = comprehension(NotGenerator);
-    if (!inner)
-        return null();
-
-    MUST_MATCH_TOKEN(TOK_RB, JSMSG_BRACKET_AFTER_ARRAY_COMPREHENSION);
-
-    Node comp = handler.newList(PNK_ARRAYCOMP, inner);
-    if (!comp)
-        return null();
-
-    handler.setBeginPosition(comp, begin);
-    handler.setEndPosition(comp, pos().end);
-
-    return comp;
-}
-
-template <class ParseHandler, typename CharT>
-typename ParseHandler::Node
-Parser<ParseHandler, CharT>::generatorComprehension(uint32_t begin)
-{
-    MOZ_ASSERT(tokenStream.isCurrentTokenType(TOK_FOR));
-
-    // We have no problem parsing generator comprehensions inside lazy
-    // functions, but the bytecode emitter currently can't handle them that way,
-    // because when it goes to emit the code for the inner generator function,
-    // it expects outer functions to have non-lazy scripts.
-    if (!abortIfSyntaxParser())
-        return null();
-
-    Node genfn = generatorComprehensionLambda(begin);
-    if (!genfn)
-        return null();
-
-    Node result = handler.newList(PNK_GENEXP, genfn, JSOP_CALL);
-    if (!result)
-        return null();
-    handler.setBeginPosition(result, begin);
-    handler.setEndPosition(result, pos().end);
-
-    return result;
-}
 
 template <class ParseHandler, typename CharT>
 typename ParseHandler::Node
@@ -9141,7 +8672,7 @@ Parser<ParseHandler, CharT>::memberExpr(YieldHandling yieldHandling,
                     return null();
                 }
 
-                nextMember = handler.newList(PNK_SUPERCALL, lhs, JSOP_SUPERCALL);
+                nextMember = handler.newSuperCall(lhs);
                 if (!nextMember)
                     return null();
 
@@ -9289,7 +8820,7 @@ Parser<ParseHandler, CharT>::checkLabelOrIdentifierReference(PropertyName* ident
         return true;
     if (TokenKindIsContextualKeyword(tt)) {
         if (tt == TOK_YIELD) {
-            if (yieldHandling == YieldIsKeyword || versionNumber() >= JSVERSION_1_7) {
+            if (yieldHandling == YieldIsKeyword) {
                 errorAt(offset, JSMSG_RESERVED_ID, "yield");
                 return false;
             }
@@ -9609,10 +9140,6 @@ Parser<ParseHandler, CharT>::arrayInitializer(YieldHandling yieldHandling,
     TokenKind tt;
     if (!tokenStream.getToken(&tt, TokenStream::Operand))
         return null();
-
-    // Handle an ES6-era array comprehension first.
-    if (tt == TOK_FOR)
-        return arrayComprehension(begin);
 
     if (tt == TOK_RB) {
         /*
@@ -10099,7 +9626,7 @@ Parser<ParseHandler, CharT>::objectLiteral(YieldHandling yieldHandling,
 
                 handler.checkAndSetIsDirectRHSAnonFunction(rhs);
 
-                Node propExpr = handler.newAssignment(PNK_ASSIGN, lhs, rhs, JSOP_NOP);
+                Node propExpr = handler.newAssignment(PNK_ASSIGN, lhs, rhs);
                 if (!propExpr)
                     return null();
 
@@ -10123,8 +9650,8 @@ Parser<ParseHandler, CharT>::objectLiteral(YieldHandling yieldHandling,
 
                 handler.checkAndSetIsDirectRHSAnonFunction(fn);
 
-                JSOp op = JSOpFromPropertyType(propType);
-                if (!handler.addObjectMethodDefinition(literal, propName, fn, op))
+                AccessorType atype = ToAccessorType(propType);
+                if (!handler.addObjectMethodDefinition(literal, propName, fn, atype))
                     return null();
 
                 if (possibleError) {
@@ -10195,8 +9722,8 @@ Parser<ParseHandler, CharT>::methodDefinition(uint32_t toStringStart, PropertyTy
 
     GeneratorKind generatorKind = (propType == PropertyType::GeneratorMethod ||
                                    propType == PropertyType::AsyncGeneratorMethod)
-                                  ? StarGenerator
-                                  : NotGenerator;
+                                  ? GeneratorKind::Generator
+                                  : GeneratorKind::NotGenerator;
 
     FunctionAsyncKind asyncKind = (propType == PropertyType::AsyncMethod ||
                                    propType == PropertyType::AsyncGeneratorMethod)
@@ -10302,12 +9829,6 @@ Parser<ParseHandler, CharT>::primaryExpr(YieldHandling yieldHandling,
             // It doesn't matter what; when we reach the =>, we will rewind and
             // reparse the whole arrow function. See Parser::assignExpr.
             return handler.newNullLiteral(pos());
-        }
-
-        if (next == TOK_FOR) {
-            uint32_t begin = pos().begin;
-            tokenStream.consumeKnownToken(next, TokenStream::Operand);
-            return generatorComprehension(begin);
         }
 
         // Pass |possibleError| to support destructuring in arrow parameters.
@@ -10479,20 +10000,6 @@ ParserBase::warnOnceAboutForEach()
         if (!warning(JSMSG_DEPRECATED_FOR_EACH))
             return false;
         context->compartment()->warnedAboutForEach = true;
-    }
-    return true;
-}
-
-bool
-ParserBase::warnOnceAboutLegacyGenerator()
-{
-    if (context->helperThread())
-        return true;
-
-    if (!context->compartment()->warnedAboutLegacyGenerator) {
-        if (!warning(JSMSG_DEPRECATED_LEGACY_GENERATOR))
-            return false;
-        context->compartment()->warnedAboutLegacyGenerator = true;
     }
     return true;
 }

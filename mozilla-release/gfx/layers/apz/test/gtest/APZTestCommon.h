@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -93,7 +93,7 @@ public:
   MOCK_METHOD3(NotifyAPZStateChange, void(const ScrollableLayerGuid& aGuid, APZStateChange aChange, int aArg));
   MOCK_METHOD0(NotifyFlushComplete, void());
   MOCK_METHOD1(NotifyAsyncScrollbarDragRejected, void(const FrameMetrics::ViewID&));
-  MOCK_METHOD1(NotifyAutoscrollHandledByAPZ, void(const FrameMetrics::ViewID&));
+  MOCK_METHOD1(NotifyAsyncAutoscrollRejected, void(const FrameMetrics::ViewID&));
   MOCK_METHOD1(CancelAutoscroll, void(const ScrollableLayerGuid&));
 };
 
@@ -231,39 +231,39 @@ public:
   }
 
   void SetFrameMetrics(const FrameMetrics& metrics) {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     mFrameMetrics = metrics;
   }
 
   FrameMetrics& GetFrameMetrics() {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mFrameMetrics;
   }
 
   ScrollMetadata& GetScrollMetadata() {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mScrollMetadata;
   }
 
   const FrameMetrics& GetFrameMetrics() const {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mFrameMetrics;
   }
 
   using AsyncPanZoomController::GetVelocityVector;
 
   void AssertStateIsReset() const {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     EXPECT_EQ(NOTHING, mState);
   }
 
   void AssertStateIsFling() const {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     EXPECT_EQ(FLING, mState);
   }
 
   void AssertAxisLocked(ScrollDirection aDirection) const {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     switch (aDirection) {
     case ScrollDirection::NONE:
       EXPECT_EQ(PANNING, mState);

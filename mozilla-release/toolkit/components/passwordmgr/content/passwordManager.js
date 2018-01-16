@@ -400,16 +400,13 @@ function DeleteSignon() {
 }
 
 function DeleteAllSignons() {
-  let prompter = Cc["@mozilla.org/embedcomp/prompt-service;1"]
-                           .getService(Ci.nsIPromptService);
-
   // Confirm the user wants to remove all passwords
   let dummy = { value: false };
-  if (prompter.confirmEx(window,
-                         kSignonBundle.getString("removeAllPasswordsTitle"),
-                         kSignonBundle.getString("removeAllPasswordsPrompt"),
-                         prompter.STD_YES_NO_BUTTONS + prompter.BUTTON_POS_1_DEFAULT,
-                         null, null, null, null, dummy) == 1) // 1 == "No" button
+  if (Services.prompt.confirmEx(window,
+    kSignonBundle.getString("removeAllPasswordsTitle"),
+    kSignonBundle.getString("removeAllPasswordsPrompt"),
+    Services.prompt.STD_YES_NO_BUTTONS + Services.prompt.BUTTON_POS_1_DEFAULT,
+    null, null, null, null, dummy) == 1) // 1 == "No" button
     return;
 
   let syncNeeded = signonsTreeView._filterSet.length != 0;
@@ -455,14 +452,13 @@ function TogglePasswordVisible() {
 }
 
 function AskUserShowPasswords() {
-  let prompter = Cc["@mozilla.org/embedcomp/prompt-service;1"].getService(Ci.nsIPromptService);
   let dummy = { value: false };
 
   // Confirm the user wants to display passwords
-  return prompter.confirmEx(window,
+  return Services.prompt.confirmEx(window,
           null,
-          kSignonBundle.getString("noMasterPasswordPrompt"), prompter.STD_YES_NO_BUTTONS,
-          null, null, null, null, dummy) == 0;    // 0=="Yes" button
+          kSignonBundle.getString("noMasterPasswordPrompt"), Services.prompt.STD_YES_NO_BUTTONS,
+          null, null, null, null, dummy) == 0; // 0=="Yes" button
 }
 
 function FinalizeSignonDeletions(syncNeeded) {
@@ -711,7 +707,7 @@ function masterPasswordLogin(noPasswordCallback) {
   // So there's a master password. But since checkPassword didn't succeed, we're logged out (per nsIPK11Token.idl).
   try {
     // Relogin and ask for the master password.
-    token.login(true);  // 'true' means always prompt for token password. User will be prompted until
+    token.login(true); // 'true' means always prompt for token password. User will be prompted until
                         // clicking 'Cancel' or entering the correct password.
   } catch (e) {
     // An exception will be thrown if the user cancels the login prompt dialog.

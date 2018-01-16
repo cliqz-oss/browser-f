@@ -18,7 +18,6 @@
 #include "ds/IdValuePair.h"
 #include "ds/LifoAlloc.h"
 #include "gc/Barrier.h"
-#include "gc/Marking.h"
 #include "jit/IonTypes.h"
 #include "js/UbiNode.h"
 #include "js/Utility.h"
@@ -382,8 +381,8 @@ class TypeSet
 
     static const char* NonObjectTypeString(Type type);
 
-    static const char* TypeString(Type type);
-    static const char* ObjectGroupString(ObjectGroup* group);
+    static UniqueChars TypeString(Type type);
+    static UniqueChars ObjectGroupString(ObjectGroup* group);
 
   protected:
     /* Flags for this type set. */
@@ -905,8 +904,8 @@ class PreliminaryObjectArray
         mozilla::PodZero(this);
     }
 
-    void registerNewObject(JSObject* res);
-    void unregisterObject(JSObject* obj);
+    void registerNewObject(PlainObject* res);
+    void unregisterObject(PlainObject* obj);
 
     JSObject* get(size_t i) const {
         MOZ_ASSERT(i < COUNT);
@@ -1287,6 +1286,20 @@ class TypeScript
 #endif
 };
 
+// Ensures no TypeScripts are purged in the current zone.
+class MOZ_RAII AutoKeepTypeScripts
+{
+    TypeZone& zone_;
+    bool prev_;
+
+    AutoKeepTypeScripts(const AutoKeepTypeScripts&) = delete;
+    void operator=(const AutoKeepTypeScripts&) = delete;
+
+  public:
+    explicit inline AutoKeepTypeScripts(JSContext* cx);
+    inline ~AutoKeepTypeScripts();
+};
+
 void
 FillBytecodeTypeMap(JSScript* script, uint32_t* bytecodeMap);
 
@@ -1361,6 +1374,9 @@ class TypeZone
     static const size_t TYPE_LIFO_ALLOC_PRIMARY_CHUNK_SIZE = 8 * 1024;
     ZoneGroupData<LifoAlloc> typeLifoAlloc_;
 
+    TypeZone(const TypeZone&) = delete;
+    void operator=(const TypeZone&) = delete;
+
   public:
     // Current generation for sweeping.
     ZoneGroupOrGCTaskOrIonCompileData<uint32_t> generation;
@@ -1386,6 +1402,8 @@ class TypeZone
     ZoneGroupData<bool> sweepReleaseTypes;
 
     ZoneGroupData<bool> sweepingTypes;
+
+    ZoneGroupData<bool> keepTypeScripts;
 
     // The topmost AutoEnterAnalysis on the stack, if there is one.
     ZoneGroupData<AutoEnterAnalysis*> activeAnalysis;

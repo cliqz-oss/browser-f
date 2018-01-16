@@ -50,6 +50,8 @@
 #include "ScopedGLHelpers.h"
 #include "VRManagerChild.h"
 #include "mozilla/layers/TextureClientSharedSurface.h"
+#include "mozilla/layers/WebRenderUserData.h"
+#include "mozilla/layers/WebRenderCanvasRenderer.h"
 
 // Local
 #include "CanvasUtils.h"
@@ -110,11 +112,6 @@ WebGLContext::WebGLContext()
     , mNumPerfWarnings(0)
     , mMaxAcceptableFBStatusInvals(gfxPrefs::WebGLMaxAcceptableFBStatusInvals())
     , mDataAllocGLCallCount(0)
-    , mBufferFetchingIsVerified(false)
-    , mBufferFetchingHasPerVertex(false)
-    , mMaxFetchedVertices(0)
-    , mMaxFetchedInstances(0)
-    , mLayerIsMirror(false)
     , mBypassShaderValidation(false)
     , mEmptyTFO(0)
     , mContextLossHandler(this)
@@ -182,8 +179,6 @@ WebGLContext::WebGLContext()
     }
 
     mLastUseIndex = 0;
-
-    InvalidateBufferFetching();
 
     mDisableFragHighP = false;
 
@@ -777,8 +772,12 @@ WebGLContext::CreateAndInitGL(bool forceEnabled,
 
     //////
 
-    if (tryANGLE)
-        return CreateAndInitGLWith(CreateGLWithANGLE, baseCaps, flags, out_failReasons);
+    if (tryANGLE) {
+        // Force enable alpha channel to make sure ANGLE use correct framebuffer formart
+        gl::SurfaceCaps& angleCaps = const_cast<gl::SurfaceCaps&>(baseCaps);
+        angleCaps.alpha = true;
+        return CreateAndInitGLWith(CreateGLWithANGLE, angleCaps, flags, out_failReasons);
+    }
 
     //////
 
@@ -1291,7 +1290,6 @@ WebGLContext::UpdateLastUseIndex()
 }
 
 static uint8_t gWebGLLayerUserData;
-static uint8_t gWebGLMirrorLayerUserData;
 
 class WebGLContextUserData : public LayerUserData
 {
@@ -1327,11 +1325,11 @@ private:
 already_AddRefed<layers::Layer>
 WebGLContext::GetCanvasLayer(nsDisplayListBuilder* builder,
                              Layer* oldLayer,
-                             LayerManager* manager,
-                             bool aMirror /*= false*/)
+                             LayerManager* manager)
 {
     if (!mResetLayer && oldLayer &&
-        oldLayer->HasUserData(aMirror ? &gWebGLMirrorLayerUserData : &gWebGLLayerUserData)) {
+        oldLayer->HasUserData(&gWebGLLayerUserData))
+    {
         RefPtr<layers::Layer> ret = oldLayer;
         return ret.forget();
     }
@@ -1343,38 +1341,55 @@ WebGLContext::GetCanvasLayer(nsDisplayListBuilder* builder,
     }
 
     WebGLContextUserData* userData = nullptr;
-    if (builder->IsPaintingToWindow() && mCanvasElement && !aMirror) {
+    if (builder->IsPaintingToWindow() && mCanvasElement) {
         userData = new WebGLContextUserData(mCanvasElement);
     }
 
-    canvasLayer->SetUserData(aMirror ? &gWebGLMirrorLayerUserData : &gWebGLLayerUserData, userData);
+    canvasLayer->SetUserData(&gWebGLLayerUserData, userData);
 
     CanvasRenderer* canvasRenderer = canvasLayer->CreateOrGetCanvasRenderer();
-    if (!InitializeCanvasRenderer(builder, canvasRenderer, aMirror))
+    if (!InitializeCanvasRenderer(builder, canvasRenderer))
       return nullptr;
 
     uint32_t flags = gl->Caps().alpha ? 0 : Layer::CONTENT_OPAQUE;
     canvasLayer->SetContentFlags(flags);
 
     mResetLayer = false;
-    // We only wish to update mLayerIsMirror when a new layer is returned.
-    // If a cached layer is returned above, aMirror is not changing since
-    // the last cached layer was created and mLayerIsMirror is still valid.
-    mLayerIsMirror = aMirror;
 
     return canvasLayer.forget();
 }
 
 bool
+WebGLContext::UpdateWebRenderCanvasData(nsDisplayListBuilder* aBuilder,
+                                        WebRenderCanvasData* aCanvasData)
+{
+  CanvasRenderer* renderer = aCanvasData->GetCanvasRenderer();
+
+  if(!mResetLayer && renderer) {
+    return true;
+  }
+
+  renderer = aCanvasData->CreateCanvasRenderer();
+  if (!InitializeCanvasRenderer(aBuilder, renderer)) {
+    // Clear CanvasRenderer of WebRenderCanvasData
+    aCanvasData->ClearCanvasRenderer();
+    return false;
+  }
+
+  MOZ_ASSERT(renderer);
+  mResetLayer = false;
+  return true;
+}
+
+bool
 WebGLContext::InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
-                                       CanvasRenderer* aRenderer,
-                                       bool aMirror)
+                                       CanvasRenderer* aRenderer)
 {
     if (IsContextLost())
         return false;
 
     CanvasInitializeData data;
-    if (aBuilder->IsPaintingToWindow() && mCanvasElement && !aMirror) {
+    if (aBuilder->IsPaintingToWindow() && mCanvasElement) {
         // Make the layer tell us whenever a transaction finishes (including
         // the current transaction), so we can clear our invalidation state and
         // start invalidating again. We need to do this for the layer that is
@@ -1397,7 +1412,6 @@ WebGLContext::InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
     data.mSize = nsIntSize(mWidth, mHeight);
     data.mHasAlpha = gl->Caps().alpha;
     data.mIsGLAlphaPremult = IsPremultAlpha() || !data.mHasAlpha;
-    data.mIsMirror = aMirror;
 
     aRenderer->Initialize(data);
     aRenderer->SetDirty();
@@ -1840,7 +1854,7 @@ WebGLContext::UpdateContextLossStatus()
         if (mCanvasElement) {
             nsContentUtils::DispatchTrustedEvent(
                 mCanvasElement->OwnerDoc(),
-                static_cast<nsIDOMHTMLCanvasElement*>(mCanvasElement),
+                static_cast<nsIContent*>(mCanvasElement),
                 kEventName,
                 kCanBubble,
                 kIsCancelable,
@@ -1908,7 +1922,7 @@ WebGLContext::UpdateContextLossStatus()
         if (mCanvasElement) {
             nsContentUtils::DispatchTrustedEvent(
                 mCanvasElement->OwnerDoc(),
-                static_cast<nsIDOMHTMLCanvasElement*>(mCanvasElement),
+                static_cast<nsIContent*>(mCanvasElement),
                 NS_LITERAL_STRING("webglcontextrestored"),
                 true,
                 true);
@@ -2006,7 +2020,6 @@ WebGLContext::GetSurfaceSnapshot(gfxAlphaType* const out_alphaType)
         // Expects Opaque or Premult
         if (alphaType == gfxAlphaType::NonPremult) {
             gfxUtils::PremultiplyDataSurface(surf, surf);
-            alphaType = gfxAlphaType::Premult;
         }
     }
 
@@ -2296,6 +2309,27 @@ Intersect(const int32_t srcSize, const int32_t read0, const int32_t readSize,
     return true;
 }
 
+// --
+
+uint64_t
+AvailGroups(const uint64_t totalAvailItems, const uint64_t firstItemOffset,
+            const uint32_t groupSize, const uint32_t groupStride)
+{
+    MOZ_ASSERT(groupSize && groupStride);
+    MOZ_ASSERT(groupSize <= groupStride);
+
+    if (totalAvailItems <= firstItemOffset)
+        return 0;
+    const size_t availItems = totalAvailItems - firstItemOffset;
+
+    size_t availGroups     = availItems / groupStride;
+    const size_t tailItems = availItems % groupStride;
+    if (tailItems >= groupSize) {
+        availGroups += 1;
+    }
+    return availGroups;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 CheckedUint32
@@ -2346,79 +2380,25 @@ WebGLContext::GetUnpackSize(bool isFunc3D, uint32_t width, uint32_t height,
 already_AddRefed<layers::SharedSurfaceTextureClient>
 WebGLContext::GetVRFrame()
 {
-    if (!mLayerIsMirror) {
-        /**
-         * Do not allow VR frame submission until a mirroring canvas layer has
-         * been returned by GetCanvasLayer
-         */
-        return nullptr;
-    }
+  /**
+   * Swap buffers as though composition has occurred.
+   * We will then share the resulting front buffer to be submitted to the VR
+   * compositor.
+   */
+  BeginComposition();
+  EndComposition();
 
-    VRManagerChild* vrmc = VRManagerChild::Get();
-    if (!vrmc) {
-        return nullptr;
-    }
+  gl::GLScreenBuffer* screen = gl->Screen();
+  if (!screen) {
+      return nullptr;
+  }
 
-    /**
-     * Swap buffers as though composition has occurred.
-     * We will then share the resulting front buffer to be submitted to the VR
-     * compositor.
-     */
-    BeginComposition();
-    EndComposition();
+  RefPtr<SharedSurfaceTextureClient> sharedSurface = screen->Front();
+  if (!sharedSurface) {
+      return nullptr;
+  }
 
-    gl::GLScreenBuffer* screen = gl->Screen();
-    if (!screen) {
-        return nullptr;
-    }
-
-    RefPtr<SharedSurfaceTextureClient> sharedSurface = screen->Front();
-    if (!sharedSurface) {
-        return nullptr;
-    }
-
-    if (sharedSurface && sharedSurface->GetAllocator() != vrmc) {
-        RefPtr<SharedSurfaceTextureClient> dest =
-        screen->Factory()->NewTexClient(sharedSurface->GetSize(), vrmc);
-        if (!dest) {
-            return nullptr;
-        }
-        gl::SharedSurface* destSurf = dest->Surf();
-        destSurf->ProducerAcquire();
-        SharedSurface::ProdCopy(sharedSurface->Surf(), dest->Surf(),
-                                screen->Factory());
-        destSurf->ProducerRelease();
-
-        return dest.forget();
-    }
-
-  return sharedSurface.forget();
-}
-
-bool
-WebGLContext::StartVRPresentation()
-{
-    VRManagerChild* vrmc = VRManagerChild::Get();
-    if (!vrmc) {
-        return false;
-    }
-    gl::GLScreenBuffer* screen = gl->Screen();
-    if (!screen) {
-        return false;
-    }
-    gl::SurfaceCaps caps = screen->mCaps;
-
-    UniquePtr<gl::SurfaceFactory> factory =
-        gl::GLScreenBuffer::CreateFactory(gl,
-            caps,
-            vrmc,
-            vrmc->GetBackendType(),
-            TextureFlags::ORIGIN_BOTTOM_LEFT);
-
-    if (factory) {
-        screen->Morph(Move(factory));
-    }
-    return true;
+    return sharedSurface.forget();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2465,8 +2445,7 @@ WebGLContext::ValidateArrayBufferView(const char* funcName,
     return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// XPCOM goop
+////
 
 void
 WebGLContext::UpdateMaxDrawBuffers()
@@ -2480,6 +2459,9 @@ WebGLContext::UpdateMaxDrawBuffers()
     //  equal to that of the MAX_DRAW_BUFFERS_WEBGL parameter."
     mGLMaxDrawBuffers = std::min(mGLMaxDrawBuffers, mGLMaxColorAttachments);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// XPCOM goop
 
 void
 ImplCycleCollectionTraverse(nsCycleCollectionTraversalCallback& callback,

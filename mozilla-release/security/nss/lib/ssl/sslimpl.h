@@ -229,8 +229,6 @@ struct sslSocketOpsStr {
 #define ssl_SEND_FLAG_FORCE_INTO_BUFFER 0x40000000
 #define ssl_SEND_FLAG_NO_BUFFER 0x20000000
 #define ssl_SEND_FLAG_NO_RETRANSMIT 0x08000000 /* DTLS only */
-#define ssl_SEND_FLAG_CAP_RECORD_VERSION \
-    0x04000000 /* TLS only */
 #define ssl_SEND_FLAG_MASK 0x7f000000
 
 /*
@@ -500,6 +498,7 @@ struct ssl3CipherSpecStr {
     sslSequenceNumber write_seq_num;
     sslSequenceNumber read_seq_num;
     SSL3ProtocolVersion version;
+    SSL3ProtocolVersion recordVersion;
     ssl3KeyMaterial client;
     ssl3KeyMaterial server;
     SECItem msItem;
@@ -553,6 +552,8 @@ struct sslSessionIDStr {
     PRUint32 authKeyBits;
     SSLKEAType keaType;
     PRUint32 keaKeyBits;
+    SSLNamedGroup keaGroup;
+    SSLSignatureScheme sigScheme;
 
     union {
         struct {
@@ -606,6 +607,8 @@ struct sslSessionIDStr {
             /* The NPN/ALPN value negotiated in the original connection.
              * Used for TLS 1.3. */
             SECItem alpnSelection;
+
+            PRBool altHandshakeType;
 
             /* This lock is lazily initialized by CacheSID when a sid is first
              * cached. Before then, there is no need to lock anything because
@@ -884,7 +887,8 @@ typedef struct SSL3HandshakeStateStr {
     ssl3KEADef kea_def_mutable;     /* Used to hold the writable kea_def
                                      * we use for TLS 1.3 */
     PRBool shortHeaders;            /* Assigned if we are doing short headers. */
-    PRBool altHandshakeType;        /* Assigned if we are doing the wrapped handshake. */
+    PRBool altHandshakeType;        /* Alternative ServerHello content type. */
+    SECItem fakeSid;                /* ... (server) the SID the client used. */
 } SSL3HandshakeState;
 
 /*
@@ -1002,6 +1006,8 @@ typedef struct SessionTicketStr {
     PRUint32 authKeyBits;
     SSLKEAType keaType;
     PRUint32 keaKeyBits;
+    SSLNamedGroup originalKeaGroup;
+    SSLSignatureScheme signatureScheme;
     const sslNamedGroupDef *namedCurve; /* For certificate lookup. */
 
     /*
@@ -1018,6 +1024,7 @@ typedef struct SessionTicketStr {
     PRUint32 flags;
     SECItem srvName; /* negotiated server name */
     SECItem alpnSelection;
+    PRBool altHandshakeType;
     PRUint32 maxEarlyData;
 } SessionTicket;
 
@@ -1068,6 +1075,7 @@ struct sslSecurityInfoStr {
     SSLKEAType keaType;
     PRUint32 keaKeyBits;
     const sslNamedGroupDef *keaGroup;
+    const sslNamedGroupDef *originalKeaGroup;
     /* The selected certificate (for servers only). */
     const sslServerCert *serverCert;
 
@@ -1243,6 +1251,7 @@ extern char ssl_debug;
 extern char ssl_trace;
 extern FILE *ssl_trace_iob;
 extern FILE *ssl_keylog_iob;
+extern PZLock *ssl_keylog_lock;
 extern PRUint32 ssl3_sid_timeout;
 extern PRUint32 ssl_ticket_lifetime;
 extern PRUint32 ssl_max_early_data_size;
@@ -1647,6 +1656,10 @@ extern SECStatus ssl_ClientReadVersion(sslSocket *ss, PRUint8 **b,
 extern SECStatus ssl3_NegotiateVersion(sslSocket *ss,
                                        SSL3ProtocolVersion peerVersion,
                                        PRBool allowLargerPeerVersion);
+extern SECStatus ssl_ClientSetCipherSuite(sslSocket *ss,
+                                          SSL3ProtocolVersion version,
+                                          ssl3CipherSuite suite,
+                                          PRBool initHashes);
 
 extern SECStatus ssl_GetPeerInfo(sslSocket *ss);
 
@@ -1820,6 +1833,7 @@ SECStatus ssl3_CompleteHandleCertificateRequest(
     sslSocket *ss, const SSLSignatureScheme *signatureSchemes,
     unsigned int signatureSchemeCount, CERTDistNames *ca_list);
 SECStatus ssl3_SendServerHello(sslSocket *ss);
+SECStatus ssl3_SendChangeCipherSpecsInt(sslSocket *ss);
 SECStatus ssl3_ComputeHandshakeHashes(sslSocket *ss,
                                       ssl3CipherSpec *spec,
                                       SSL3Hashes *hashes,
@@ -1878,6 +1892,9 @@ ssl3_TLSPRFWithMasterSecret(sslSocket *ss, ssl3CipherSpec *spec,
                             const char *label, unsigned int labelLen,
                             const unsigned char *val, unsigned int valLen,
                             unsigned char *out, unsigned int outLen);
+
+extern void
+ssl3_RecordKeyLog(sslSocket *ss, const char *label, PK11SymKey *secret);
 
 PRBool ssl_AlpnTagAllowed(const sslSocket *ss, const SECItem *tag);
 

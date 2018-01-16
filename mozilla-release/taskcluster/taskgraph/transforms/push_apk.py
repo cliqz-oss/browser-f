@@ -10,16 +10,22 @@ from __future__ import absolute_import, print_function, unicode_literals
 import functools
 
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.transforms.task import task_description_schema
 from taskgraph.util.schema import Schema
 from taskgraph.util.scriptworker import get_push_apk_scope, get_push_apk_track, \
     get_push_apk_dry_run_option, get_push_apk_rollout_percentage
 from taskgraph.util.push_apk import fill_labels_tranform, validate_jobs_schema_transform_partial, \
     validate_dependent_tasks_transform, delete_non_required_fields_transform, generate_dependencies
 
-from voluptuous import Required
+from voluptuous import Optional, Required
 
 
 transforms = TransformSequence()
+
+# Voluptuous uses marker objects as dictionary *keys*, but they are not
+# comparable, so we cast all of the keys back to regular strings
+task_description_schema = {str(k): v for k, v in task_description_schema.schema.iteritems()}
+
 
 push_apk_description_schema = Schema({
     # the dependent task (object) for this beetmover job, used to inform beetmover.
@@ -35,6 +41,9 @@ push_apk_description_schema = Schema({
     Required('worker'): object,
     Required('scopes'): None,
     Required('deadline-after'): basestring,
+    Required('shipping-phase'): task_description_schema['shipping-phase'],
+    Required('shipping-product'): task_description_schema['shipping-product'],
+    Optional('extra'): object,
 })
 
 validate_jobs_schema_transform = functools.partial(

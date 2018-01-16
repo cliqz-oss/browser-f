@@ -1,4 +1,5 @@
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -192,7 +193,7 @@ PaymentDetailsModifier::Create(const IPCPaymentDetailsModifier& aIPCModifier,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = items->AppendElement(additionalItem, false);
+      rv = items->AppendElement(additionalItem);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -361,7 +362,7 @@ PaymentDetails::Create(const IPCPaymentDetails& aIPCDetails,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = items->AppendElement(item, false);
+      rv = items->AppendElement(item);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -379,7 +380,7 @@ PaymentDetails::Create(const IPCPaymentDetails& aIPCDetails,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = options->AppendElement(option, false);
+      rv = options->AppendElement(option);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -397,7 +398,7 @@ PaymentDetails::Create(const IPCPaymentDetails& aIPCDetails,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = detailsModifiers->AppendElement(detailsModifier, false);
+      rv = detailsModifiers->AppendElement(detailsModifier);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }

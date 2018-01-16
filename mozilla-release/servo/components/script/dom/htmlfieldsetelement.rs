@@ -6,7 +6,7 @@ use dom::attr::Attr;
 use dom::bindings::codegen::Bindings::HTMLFieldSetElementBinding;
 use dom::bindings::codegen::Bindings::HTMLFieldSetElementBinding::HTMLFieldSetElementMethods;
 use dom::bindings::inheritance::{Castable, ElementTypeId, HTMLElementTypeId, NodeTypeId};
-use dom::bindings::js::{MutNullableJS, Root};
+use dom::bindings::root::{DomRoot, MutNullableDom};
 use dom::document::Document;
 use dom::element::{AttributeMutation, Element};
 use dom::htmlcollection::{CollectionFilter, HTMLCollection};
@@ -19,12 +19,12 @@ use dom::virtualmethods::VirtualMethods;
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use std::default::Default;
-use style::element_state::*;
+use style::element_state::ElementState;
 
 #[dom_struct]
 pub struct HTMLFieldSetElement {
     htmlelement: HTMLElement,
-    form_owner: MutNullableJS<HTMLFormElement>,
+    form_owner: MutNullableDom<HTMLFormElement>,
 }
 
 impl HTMLFieldSetElement {
@@ -33,7 +33,7 @@ impl HTMLFieldSetElement {
                      document: &Document) -> HTMLFieldSetElement {
         HTMLFieldSetElement {
             htmlelement:
-                HTMLElement::new_inherited_with_state(IN_ENABLED_STATE,
+                HTMLElement::new_inherited_with_state(ElementState::IN_ENABLED_STATE,
                                                       local_name, prefix, document),
             form_owner: Default::default(),
         }
@@ -42,8 +42,8 @@ impl HTMLFieldSetElement {
     #[allow(unrooted_must_root)]
     pub fn new(local_name: LocalName,
                prefix: Option<Prefix>,
-               document: &Document) -> Root<HTMLFieldSetElement> {
-        Node::reflect_node(box HTMLFieldSetElement::new_inherited(local_name, prefix, document),
+               document: &Document) -> DomRoot<HTMLFieldSetElement> {
+        Node::reflect_node(Box::new(HTMLFieldSetElement::new_inherited(local_name, prefix, document)),
                            document,
                            HTMLFieldSetElementBinding::Wrap)
     }
@@ -51,8 +51,8 @@ impl HTMLFieldSetElement {
 
 impl HTMLFieldSetElementMethods for HTMLFieldSetElement {
     // https://html.spec.whatwg.org/multipage/#dom-fieldset-elements
-    fn Elements(&self) -> Root<HTMLCollection> {
-        #[derive(HeapSizeOf, JSTraceable)]
+    fn Elements(&self) -> DomRoot<HTMLCollection> {
+        #[derive(JSTraceable, MallocSizeOf)]
         struct ElementsFilter;
         impl CollectionFilter for ElementsFilter {
             fn filter<'a>(&self, elem: &'a Element, _root: &'a Node) -> bool {
@@ -60,13 +60,13 @@ impl HTMLFieldSetElementMethods for HTMLFieldSetElement {
                     .map_or(false, HTMLElement::is_listed_element)
             }
         }
-        let filter = box ElementsFilter;
+        let filter = Box::new(ElementsFilter);
         let window = window_from_node(self);
         HTMLCollection::create(&window, self.upcast(), filter)
     }
 
     // https://html.spec.whatwg.org/multipage/#dom-cva-validity
-    fn Validity(&self) -> Root<ValidityState> {
+    fn Validity(&self) -> DomRoot<ValidityState> {
         let window = window_from_node(self);
         ValidityState::new(&window, self.upcast())
     }
@@ -78,7 +78,7 @@ impl HTMLFieldSetElementMethods for HTMLFieldSetElement {
     make_bool_setter!(SetDisabled, "disabled");
 
     // https://html.spec.whatwg.org/multipage/#dom-fae-form
-    fn GetForm(&self) -> Option<Root<HTMLFormElement>> {
+    fn GetForm(&self) -> Option<DomRoot<HTMLFormElement>> {
         self.form_owner()
     }
 }
@@ -159,7 +159,7 @@ impl VirtualMethods for HTMLFieldSetElement {
 }
 
 impl FormControl for HTMLFieldSetElement {
-    fn form_owner(&self) -> Option<Root<HTMLFormElement>> {
+    fn form_owner(&self) -> Option<DomRoot<HTMLFormElement>> {
         self.form_owner.get()
     }
 

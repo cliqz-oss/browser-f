@@ -69,7 +69,7 @@ impl<T> Clone for PersistentList<T> where T: Send + Sync {
     }
 }
 
-pub struct PersistentListIterator<'a,T> where T: 'a + Send + Sync {
+pub struct PersistentListIterator<'a, T> where T: 'a + Send + Sync {
     entry: Option<&'a PersistentListEntry<T>>,
 }
 
@@ -78,10 +78,7 @@ impl<'a, T> Iterator for PersistentListIterator<'a, T> where T: Send + Sync + 's
 
     #[inline]
     fn next(&mut self) -> Option<&'a T> {
-        let entry = match self.entry {
-            None => return None,
-            Some(entry) => entry,
-        };
+        let entry = self.entry?;
         let value = &entry.value;
         self.entry = match entry.next {
             None => None,

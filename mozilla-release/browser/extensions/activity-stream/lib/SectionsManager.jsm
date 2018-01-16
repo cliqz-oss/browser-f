@@ -6,8 +6,10 @@
 const {utils: Cu} = Components;
 Cu.import("resource://gre/modules/EventEmitter.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
-const {Dedupe} = Cu.import("resource://activity-stream/common/Dedupe.jsm", {});
+
+XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
 
 /*
  * Generators for built in sections, keyed by the pref name for their feed.
@@ -19,12 +21,26 @@ const BUILT_IN_SECTIONS = {
     id: "topstories",
     pref: {
       titleString: {id: "header_recommended_by", values: {provider: options.provider_name}},
-      descString: {id: options.provider_description || "pocket_feedback_body"}
+      descString: {id: options.provider_description || "pocket_feedback_body"},
+      nestedPrefs: options.show_spocs ? [{
+        name: "showSponsored",
+        titleString: {id: "settings_pane_topstories_options_sponsored"},
+        icon: "icon-info"
+      }] : []
     },
-    shouldHidePref:  options.hidden,
+    shouldHidePref: options.hidden,
     eventSource: "TOP_STORIES",
     icon: options.provider_icon,
     title: {id: "header_recommended_by", values: {provider: options.provider_name}},
+    disclaimer: {
+      text: {id: options.disclaimer_text || "section_disclaimer_topstories"},
+      link: {
+        // The href fallback is temporary so users in existing Shield studies get this configuration as well
+        href: options.disclaimer_link || "https://getpocket.cdn.mozilla.net/firefox/new_tab_learn_more",
+        id: options.disclaimer_linktext || "section_disclaimer_topstories_linktext"
+      },
+      button: {id: options.disclaimer_buttontext || "section_disclaimer_topstories_buttontext"}
+    },
     maxRows: 1,
     availableContextMenuOptions: ["CheckBookmark", "SaveToPocket", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl"],
     infoOption: {
@@ -74,12 +90,20 @@ const SectionsManager = {
     for (const feedPrefName of Object.keys(BUILT_IN_SECTIONS)) {
       const optionsPrefName = `${feedPrefName}.options`;
       this.addBuiltInSection(feedPrefName, prefs[optionsPrefName]);
+
+      this._dedupeConfiguration = [];
+      this.sections.forEach(section => {
+        if (section.dedupeFrom) {
+          this._dedupeConfiguration.push({
+            id: section.id,
+            dedupeFrom: section.dedupeFrom
+          });
+        }
+      });
     }
 
     Object.keys(this.CONTEXT_MENU_PREFS).forEach(k =>
       Services.prefs.addObserver(this.CONTEXT_MENU_PREFS[k], this));
-
-    this.dedupe = new Dedupe(site => site && site.url);
 
     this.initialized = true;
     this.emit(this.INIT);
@@ -129,33 +153,41 @@ const SectionsManager = {
   },
   updateSection(id, options, shouldBroadcast) {
     this.updateSectionContextMenuOptions(options);
-
     if (this.sections.has(id)) {
-      const dedupedOptions = this.dedupeRows(id, options);
-      this.sections.set(id, Object.assign(this.sections.get(id), dedupedOptions));
-      this.emit(this.UPDATE_SECTION, id, dedupedOptions, shouldBroadcast);
-
-      // Update any sections that dedupe from the updated section
-      this.sections.forEach(section => {
-        if (section.dedupeFrom && section.dedupeFrom.includes(id)) {
-          this.updateSection(section.id, section, shouldBroadcast);
-        }
-      });
+      const optionsWithDedupe = Object.assign({}, options, {dedupeConfigurations: this._dedupeConfiguration});
+      this.sections.set(id, Object.assign(this.sections.get(id), options));
+      this.emit(this.UPDATE_SECTION, id, optionsWithDedupe, shouldBroadcast);
     }
   },
-  dedupeRows(id, options) {
-    const newOptions = Object.assign({}, options);
-    const dedupeFrom = this.sections.get(id).dedupeFrom;
-    if (dedupeFrom && dedupeFrom.length > 0 && options.rows) {
-      for (const sectionId of dedupeFrom) {
-        const section = this.sections.get(sectionId);
-        if (section && section.rows) {
-          const [, newRows] = this.dedupe.group(section.rows, options.rows);
-          newOptions.rows = newRows;
-        }
+
+  /**
+   * Save metadata to places db and add a visit for that URL.
+   */
+  updateBookmarkMetadata({url}) {
+    this.sections.forEach((section, id) => {
+      if (id === "highlights") {
+        // Skip Highlights cards, we already have that metadata.
+        return;
       }
-    }
-    return newOptions;
+      if (section.rows) {
+        section.rows.forEach(card => {
+          if (card.url === url && card.description && card.title && card.image) {
+            PlacesUtils.history.update({
+              url: card.url,
+              title: card.title,
+              description: card.description,
+              previewImageURL: card.image
+            });
+            // Highlights query skips bookmarks with no visits.
+            PlacesUtils.history.insert({
+              url,
+              title: card.title,
+              visits: [{}]
+            });
+          }
+        });
+      }
+    });
   },
 
   /**
@@ -292,6 +324,9 @@ class SectionsFeed {
         }
         break;
       }
+      case at.PLACES_BOOKMARK_ADDED:
+        SectionsManager.updateBookmarkMetadata(action.data);
+        break;
       case at.SECTION_DISABLE:
         SectionsManager.disableSection(action.data);
         break;

@@ -9,6 +9,7 @@ DIRS += [
 ]
 
 DevToolsModules(
+<<<<<<< HEAD
 # DB-1276. For hiding addons on about:debugging page in release build
 # Processing for this file moved to devtools/client/jar.mn
 #   'aboutdebugging.js',
@@ -16,4 +17,17 @@ DevToolsModules(
     'panel-menu-entry.js',
     'panel-menu.js',
     'target-list.js',
+||||||| merged common ancestors
+    'aboutdebugging.js',
+    'panel-header.js',
+    'panel-menu-entry.js',
+    'panel-menu.js',
+    'target-list.js',
+=======
+    'Aboutdebugging.js',
+    'PanelHeader.js',
+    'PanelMenu.js',
+    'PanelMenuEntry.js',
+    'TargetList.js',
+>>>>>>> origin/upstream-releases
 )

@@ -3,11 +3,47 @@ Change log
 
 All notable changes to this program is documented in this file.
 
+Unreleased
+----------
+
+### Changed
+
+- HTTP status code for the [`StaleElementReference`] error changed
+  from 400 (Bad Request) to 404 (Not Found)
+
+- Backtraces from geckodriver no longer substitute for missing
+  Marionette stacktraces
+
+- `Delete Session` now allows Firefox to safely shutdown within 130s before
+  force-killing the process
+
+
+0.19.1 (2017-10-30)
+-------------------
+
+### Changed
+
+- Search suggestions in the location bar turned off as not to
+  trigger network connections
+
+- Block addons incompatible with E10s
+
+### Fixed
+
+- Marionette stacktraces are now correctly propagated
+
+- Some error messages have been clarified
+
+### Removed
+
+- Removed obsolete `socksUsername` and `socksPassword` proxy
+  configuration keys because neither were picked up or recognised
+
 
 0.19.0 (2017-09-16)
 -------------------
 
-Note that with geckodriver v0.19.0 the following versions are recommended:
+Note that with geckodriver 0.19.0 the following versions are recommended:
 - Firefox 55.0 (and greater)
 - Selenium 3.5 (and greater)
 
@@ -17,11 +53,11 @@ Note that with geckodriver v0.19.0 the following versions are recommended:
   - POST `/session/{session id}/window/minimize` for the [Minimize Window]
     command
 
-- Added preference `extensions.shield-recipe-client.api_url` to disable shield
-  studies which could unexpectedly change the behavior of Firefox
+- Added preference `extensions.shield-recipe-client.api_url` to disable
+  shield studies which could unexpectedly change the behavior of Firefox
 
-- Introduced the temporary, boolean capability `moz:webdriverClick` to enable
-  the WebDriver conforming behavior of the [Element Click] command.
+- Introduced the temporary, boolean capability `moz:webdriverClick` to
+  enable the WebDriver conforming behavior of the [Element Click] command
 
 - Added crashreporter environment variables to better control the browser
   in case of crashes
@@ -760,6 +796,7 @@ and greater.
 [`SessionNotCreated`]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html#variant.SessionNotCreated
 [`SetTimeouts`]: https://docs.rs/webdriver/newest/webdriver/command/enum.WebDriverCommand.html#variant.SetTimeouts
 [`SetWindowRect`]: https://docs.rs/webdriver/newest/webdriver/command/enum.WebDriverCommand.html#variant.SetWindowRect
+[`StaleElementReference`]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html#variant.StaleElementReference
 [`UnableToCaptureScreen`]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html#variant.UnableToCaptureScreen
 [`UnknownCommand`]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html#variant.UnknownCommand
 [`UnknownError`]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html#variant.UnknownError

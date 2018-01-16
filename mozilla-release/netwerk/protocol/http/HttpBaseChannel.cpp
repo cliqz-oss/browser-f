@@ -193,6 +193,7 @@ HttpBaseChannel::HttpBaseChannel()
   , mHttpHandler(gHttpHandler)
   , mReferrerPolicy(NS_GetDefaultReferrerPolicy())
   , mRedirectCount(0)
+  , mInternalRedirectCount(0)
   , mForcePending(false)
   , mCorsIncludeCredentials(false)
   , mCorsMode(nsIHttpChannelInternal::CORS_MODE_NO_CORS)
@@ -771,7 +772,7 @@ HttpBaseChannel::GetContentLength(int64_t *aContentLength)
 NS_IMETHODIMP
 HttpBaseChannel::SetContentLength(int64_t value)
 {
-  NS_NOTYETIMPLEMENTED("HttpBaseChannel::SetContentLength");
+  MOZ_ASSERT_UNREACHABLE("HttpBaseChannel::SetContentLength");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -928,7 +929,8 @@ HttpBaseChannel::EnsureUploadStreamIsCloneable(nsIRunnable* aCallback)
   if (NS_InputStreamIsBuffered(mUploadStream)) {
     source = mUploadStream;
   } else {
-    rv = NS_NewBufferedInputStream(getter_AddRefs(source), mUploadStream, 4096);
+    rv = NS_NewBufferedInputStream(getter_AddRefs(source),
+                                   mUploadStream.forget(), 4096);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -1067,7 +1069,8 @@ HttpBaseChannel::ExplicitSetUploadStream(nsIInputStream *aStream,
 
   nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(aStream);
   if (!seekable) {
-    aStream = new PartiallySeekableInputStream(aStream);
+    nsCOMPtr<nsIInputStream> stream = aStream;
+    aStream = new PartiallySeekableInputStream(stream.forget());
   }
 
   mUploadStream = aStream;
@@ -1234,11 +1237,11 @@ HttpBaseChannel::DoApplyContentConversions(nsIStreamListener* aNextListener,
       LOG(("converter removed '%s' content-encoding\n", val));
       if (gHttpHandler->IsTelemetryEnabled()) {
         int mode = 0;
-        if (from.Equals("gzip") || from.Equals("x-gzip")) {
+        if (from.EqualsLiteral("gzip") || from.EqualsLiteral("x-gzip")) {
           mode = 1;
-        } else if (from.Equals("deflate") || from.Equals("x-deflate")) {
+        } else if (from.EqualsLiteral("deflate") || from.EqualsLiteral("x-deflate")) {
           mode = 2;
-        } else if (from.Equals("br")) {
+        } else if (from.EqualsLiteral("br")) {
           mode = 3;
         }
         Telemetry::Accumulate(Telemetry::HTTP_CONTENT_ENCODING, mode);
@@ -3322,6 +3325,23 @@ HttpBaseChannel::AddCookiesToRequest()
   SetRequestHeader(nsDependentCString(nsHttp::Cookie), cookie, false);
 }
 
+/* static */
+void
+HttpBaseChannel::PropagateReferenceIfNeeded(nsIURI* aURI, nsIURI* aRedirectURI)
+{
+  bool hasRef = false;
+  nsresult rv = aRedirectURI->GetHasRef(&hasRef);
+  if (NS_SUCCEEDED(rv) && !hasRef) {
+    nsAutoCString ref;
+    aURI->GetRef(ref);
+    if (!ref.IsEmpty()) {
+      // NOTE: SetRef will fail if mRedirectURI is immutable
+      // (e.g. an about: URI)... Oh well.
+      aRedirectURI->SetRef(ref);
+    }
+  }
+}
+
 bool
 HttpBaseChannel::ShouldRewriteRedirectToGET(uint32_t httpStatus,
                                             nsHttpRequestHead::ParsedMethodType method)
@@ -3488,13 +3508,6 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
   // convey the mAllowSTS flags
   rv = httpChannel->SetAllowSTS(mAllowSTS);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
-  // convey the new redirection limit
-  // make sure we don't underflow
-  uint32_t redirectionLimit = mRedirectionLimit
-    ? mRedirectionLimit - 1
-    : 0;
-  rv = httpChannel->SetRedirectionLimit(redirectionLimit);
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   // convey the Accept header value
   {
@@ -3602,23 +3615,42 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
       do_QueryInterface(static_cast<nsIHttpChannel*>(this)));
   if (oldTimedChannel && newTimedChannel) {
     newTimedChannel->SetTimingEnabled(mTimingEnabled);
-    newTimedChannel->SetRedirectCount(mRedirectCount + 1);
+
+    if (redirectFlags & nsIChannelEventSink::REDIRECT_INTERNAL) {
+      newTimedChannel->SetRedirectCount(mRedirectCount);
+      int8_t newCount = mInternalRedirectCount + 1;
+      newTimedChannel->SetInternalRedirectCount(
+        std::max(newCount, mInternalRedirectCount));
+    } else {
+      int8_t newCount = mRedirectCount + 1;
+      newTimedChannel->SetRedirectCount(
+        std::max(newCount, mRedirectCount));
+      newTimedChannel->SetInternalRedirectCount(mInternalRedirectCount);
+    }
 
     // If the RedirectStart is null, we will use the AsyncOpen value of the
     // previous channel (this is the first redirect in the redirects chain).
     if (mRedirectStartTimeStamp.IsNull()) {
-      TimeStamp asyncOpen;
-      oldTimedChannel->GetAsyncOpen(&asyncOpen);
-      newTimedChannel->SetRedirectStart(asyncOpen);
-    }
-    else {
+      // Only do this for real redirects.  Internal redirects should be hidden.
+      if (!(redirectFlags & nsIChannelEventSink::REDIRECT_INTERNAL)) {
+        TimeStamp asyncOpen;
+        oldTimedChannel->GetAsyncOpen(&asyncOpen);
+        newTimedChannel->SetRedirectStart(asyncOpen);
+      }
+    } else {
       newTimedChannel->SetRedirectStart(mRedirectStartTimeStamp);
     }
 
-    // The RedirectEnd timestamp is equal to the previous channel response end.
-    TimeStamp prevResponseEnd;
-    oldTimedChannel->GetResponseEnd(&prevResponseEnd);
-    newTimedChannel->SetRedirectEnd(prevResponseEnd);
+    // For internal redirects just propagate the last redirect end time
+    // forward.  Otherwise the new redirect end time is the last response
+    // end time.
+    TimeStamp newRedirectEnd;
+    if (redirectFlags & nsIChannelEventSink::REDIRECT_INTERNAL) {
+      oldTimedChannel->GetRedirectEnd(&newRedirectEnd);
+    } else {
+      oldTimedChannel->GetResponseEnd(&newRedirectEnd);
+    }
+    newTimedChannel->SetRedirectEnd(newRedirectEnd);
 
     nsAutoString initiatorType;
     oldTimedChannel->GetInitiatorType(initiatorType);
@@ -3640,6 +3672,16 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
         mAllRedirectsPassTimingAllowCheck &&
         oldTimedChannel->TimingAllowCheck(principal));
     }
+
+    // Propagate service worker measurements across redirects.  The
+    // PeformanceResourceTiming.workerStart API expects to see the
+    // worker start time after a redirect.
+    newTimedChannel->SetLaunchServiceWorkerStart(mLaunchServiceWorkerStart);
+    newTimedChannel->SetLaunchServiceWorkerEnd(mLaunchServiceWorkerEnd);
+    newTimedChannel->SetDispatchFetchEventStart(mDispatchFetchEventStart);
+    newTimedChannel->SetDispatchFetchEventEnd(mDispatchFetchEventEnd);
+    newTimedChannel->SetHandleFetchEventStart(mHandleFetchEventStart);
+    newTimedChannel->SetHandleFetchEventEnd(mHandleFetchEventEnd);
   }
 
   // Pass the preferred alt-data type on to the new channel.
@@ -3690,21 +3732,21 @@ HttpBaseChannel::GetMatchedProvider(nsACString& aProvider)
 }
 
 NS_IMETHODIMP
-HttpBaseChannel::GetMatchedPrefix(nsACString& aPrefix)
+HttpBaseChannel::GetMatchedFullHash(nsACString& aFullHash)
 {
-  aPrefix = mMatchedPrefix;
+  aFullHash = mMatchedFullHash;
   return NS_OK;
 }
 
 NS_IMETHODIMP
 HttpBaseChannel::SetMatchedInfo(const nsACString& aList,
                                 const nsACString& aProvider,
-                                const nsACString& aPrefix) {
+                                const nsACString& aFullHash) {
   NS_ENSURE_ARG(!aList.IsEmpty());
 
   mMatchedList = aList;
   mMatchedProvider = aProvider;
-  mMatchedPrefix = aPrefix;
+  mMatchedFullHash = aFullHash;
   return NS_OK;
 }
 
@@ -3741,16 +3783,30 @@ HttpBaseChannel::GetAsyncOpen(TimeStamp* _retval) {
  * redirects. This check must be done by the consumers.
  */
 NS_IMETHODIMP
-HttpBaseChannel::GetRedirectCount(uint16_t *aRedirectCount)
+HttpBaseChannel::GetRedirectCount(uint8_t *aRedirectCount)
 {
   *aRedirectCount = mRedirectCount;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-HttpBaseChannel::SetRedirectCount(uint16_t aRedirectCount)
+HttpBaseChannel::SetRedirectCount(uint8_t aRedirectCount)
 {
   mRedirectCount = aRedirectCount;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetInternalRedirectCount(uint8_t *aRedirectCount)
+{
+  *aRedirectCount = mInternalRedirectCount;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetInternalRedirectCount(uint8_t aRedirectCount)
+{
+  mInternalRedirectCount = aRedirectCount;
   return NS_OK;
 }
 
@@ -3961,6 +4017,12 @@ HttpBaseChannel::GetConnectStart(TimeStamp* _retval) {
 }
 
 NS_IMETHODIMP
+HttpBaseChannel::GetTcpConnectEnd(TimeStamp* _retval) {
+  *_retval = mTransactionTimings.tcpConnectEnd;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 HttpBaseChannel::GetSecureConnectionStart(TimeStamp* _retval) {
   *_retval = mTransactionTimings.secureConnectionStart;
   return NS_OK;
@@ -4041,6 +4103,7 @@ IMPL_TIMING_ATTR(HandleFetchEventEnd)
 IMPL_TIMING_ATTR(DomainLookupStart)
 IMPL_TIMING_ATTR(DomainLookupEnd)
 IMPL_TIMING_ATTR(ConnectStart)
+IMPL_TIMING_ATTR(TcpConnectEnd)
 IMPL_TIMING_ATTR(SecureConnectionStart)
 IMPL_TIMING_ATTR(ConnectEnd)
 IMPL_TIMING_ATTR(RequestStart)
@@ -4301,6 +4364,50 @@ HttpBaseChannel::SetLastRedirectFlags(uint32_t aValue)
 {
   mLastRedirectFlags = aValue;
   return NS_OK;
+}
+
+nsresult
+HttpBaseChannel::CheckRedirectLimit(uint32_t aRedirectFlags) const
+{
+  if (aRedirectFlags & nsIChannelEventSink::REDIRECT_INTERNAL) {
+    // Some platform features, like Service Workers, depend on internal
+    // redirects.  We should allow some number of internal redirects above
+    // and beyond the normal redirect limit so these features continue
+    // to work.
+    static const int8_t kMinInternalRedirects = 5;
+
+    if (mInternalRedirectCount >= (mRedirectionLimit + kMinInternalRedirects)) {
+      LOG(("internal redirection limit reached!\n"));
+      return NS_ERROR_REDIRECT_LOOP;
+    }
+    return NS_OK;
+  }
+
+  MOZ_ASSERT(aRedirectFlags & (nsIChannelEventSink::REDIRECT_TEMPORARY |
+                               nsIChannelEventSink::REDIRECT_PERMANENT |
+                               nsIChannelEventSink::REDIRECT_STS_UPGRADE));
+
+  if (mRedirectCount >= mRedirectionLimit) {
+    LOG(("redirection limit reached!\n"));
+    return NS_ERROR_REDIRECT_LOOP;
+  }
+
+  return NS_OK;
+}
+
+// NOTE: This function duplicates code from nsBaseChannel. This will go away
+// once HTTP uses nsBaseChannel (part of bug 312760)
+/* static */ void
+HttpBaseChannel::CallTypeSniffers(void *aClosure, const uint8_t *aData,
+                                  uint32_t aCount)
+{
+  nsIChannel *chan = static_cast<nsIChannel*>(aClosure);
+
+  nsAutoCString newType;
+  NS_SniffContent(NS_CONTENT_SNIFFER_CATEGORY, chan, aData, aCount, newType);
+  if (!newType.IsEmpty()) {
+    chan->SetContentType(newType);
+  }
 }
 
 } // namespace net

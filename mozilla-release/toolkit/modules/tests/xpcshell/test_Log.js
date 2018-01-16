@@ -347,7 +347,7 @@ add_task(async function log_message_with_params() {
 
   // Numbers are substituted.
   do_check_eq(formatMessage("Number is ${number}", {number: 47}),
-              "Number is 47")
+              "Number is 47");
 
   // The entire params object is JSON-formatted and substituted.
   do_check_eq(formatMessage("Object is ${}", {foo: "bar"}),
@@ -368,23 +368,23 @@ add_task(async function log_message_with_params() {
 
   // If an object has a .toJSON method, the formatter uses it.
   let ob = function() {};
-  ob.toJSON = function() {return {sneaky: "value"}};
+  ob.toJSON = function() {return {sneaky: "value"};};
   do_check_eq(formatMessage("JSON is ${sub}", {sub: ob}),
               'JSON is {"sneaky":"value"}');
 
   // Fall back to .toSource() if JSON.stringify() fails on an object.
   ob = function() {};
-  ob.toJSON = function() {throw "oh noes JSON"};
+  ob.toJSON = function() {throw "oh noes JSON";};
   do_check_eq(formatMessage("Fail is ${sub}", {sub: ob}),
               "Fail is (function() {})");
 
   // Fall back to .toString if both .toJSON and .toSource fail.
-  ob.toSource = function() {throw "oh noes SOURCE"};
+  ob.toSource = function() {throw "oh noes SOURCE";};
   do_check_eq(formatMessage("Fail is ${sub}", {sub: ob}),
               "Fail is function() {}");
 
   // Fall back to '[object]' if .toJSON, .toSource and .toString fail.
-  ob.toString = function() {throw "oh noes STRING"};
+  ob.toString = function() {throw "oh noes STRING";};
   do_check_eq(formatMessage("Fail is ${sub}", {sub: ob}),
               "Fail is [object]");
 
@@ -444,9 +444,9 @@ add_task(async function log_message_with_params() {
   // We use object.valueOf() internally; make sure a broken valueOf() method
   // doesn't cause the logger to fail.
   /* eslint-disable object-shorthand */
-  let vOf = {a: 1, valueOf: function() {throw "oh noes valueOf"}};
+  let vOf = {a: 1, valueOf: function() {throw "oh noes valueOf";}};
   do_check_eq(formatMessage("Broken valueOf ${}", vOf),
-              'Broken valueOf ({a:1, valueOf:(function() {throw "oh noes valueOf"})})');
+              'Broken valueOf ({a:1, valueOf:(function() {throw "oh noes valueOf";})})');
   /* eslint-enable object-shorthand */
 
   // Test edge cases of bad data to formatter:
@@ -572,12 +572,12 @@ add_task(function* format_errors() {
 
   // Test that JS-generated Errors are recognized and formatted.
   try {
-    yield Promise.resolve();  // Scrambles the stack
+    yield Promise.resolve(); // Scrambles the stack
     // eslint-disable-next-line no-eval
     eval("javascript syntax error");
   } catch (e) {
     str = pFormat.format(e);
-    do_check_true(str.includes("SyntaxError: missing ;"));
+    do_check_true(str.includes("SyntaxError: unexpected token"));
     // Make sure we identified it as an Error and formatted the error location as
     // lineNumber:columnNumber.
     do_check_true(str.includes(":1:11)"));

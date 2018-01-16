@@ -11,7 +11,7 @@
 // Disable automatic network detection, so tests work correctly when
 // not connected to a network.
 var ios = Cc["@mozilla.org/network/io-service;1"]
-          .getService(Ci.nsIIOService2);
+            .getService(Ci.nsIIOService);
 ios.manageOfflineStatus = false;
 ios.offline = false;
 
@@ -222,6 +222,7 @@ function createMochitestServer(serverBasePath)
   server.registerContentType("dat", "text/plain; charset=utf-8");
   server.registerContentType("frag", "text/plain"); // .frag == WebGL fragment shader
   server.registerContentType("vert", "text/plain"); // .vert == WebGL vertex shader
+  server.registerContentType("wasm", "application/wasm");
   server.setIndexHandler(defaultDirHandler);
 
   var serverRoot =

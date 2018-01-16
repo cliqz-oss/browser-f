@@ -1406,7 +1406,7 @@ PlacesTreeView.prototype = {
 
         // Avoid the potentially expensive call to getChildIndex
         // if we know this container doesn't allow insertion.
-        if (PlacesControllerDragHelper.disallowInsertion(container))
+        if (PlacesControllerDragHelper.disallowInsertion(container, this._tree.element))
           return null;
 
         let queryOptions = PlacesUtils.asQuery(this._result.root).queryOptions;
@@ -1429,7 +1429,7 @@ PlacesTreeView.prototype = {
       }
     }
 
-    if (PlacesControllerDragHelper.disallowInsertion(container))
+    if (PlacesControllerDragHelper.disallowInsertion(container, this._tree.element))
       return null;
 
     // TODO (Bug 1160193): properly support dropping on a tag root.
@@ -1453,11 +1453,14 @@ PlacesTreeView.prototype = {
     // since this information is specific to the tree view.
     let ip = this._getInsertionPoint(aRow, aOrientation);
     if (ip) {
-      PlacesControllerDragHelper.onDrop(ip, aDataTransfer)
-                                .catch(Components.utils.reportError);
+      PlacesControllerDragHelper.onDrop(ip, aDataTransfer, this._tree.element)
+                                .catch(Components.utils.reportError)
+                                .then(() => {
+                                  // We should only clear the drop target once
+                                  // the onDrop is complete, as it is an async function.
+                                  PlacesControllerDragHelper.currentDropTarget = null;
+                                });
     }
-
-    PlacesControllerDragHelper.currentDropTarget = null;
   },
 
   getParentIndex: function PTV_getParentIndex(aRow) {

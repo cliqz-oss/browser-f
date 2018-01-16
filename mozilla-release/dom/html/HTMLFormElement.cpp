@@ -66,13 +66,13 @@
 
 #include "nsIConstraintValidation.h"
 
-#include "nsIDOMHTMLButtonElement.h"
 #include "nsSandboxFlags.h"
 
 #include "nsIContentSecurityPolicy.h"
 
 // images
 #include "mozilla/dom/HTMLImageElement.h"
+#include "mozilla/dom/HTMLButtonElement.h"
 
 // construction, destruction
 NS_IMPL_NS_NEW_HTML_ELEMENT(Form)
@@ -184,7 +184,7 @@ HTMLFormElement::GetElements(nsIDOMHTMLCollection** aElements)
 }
 
 nsresult
-HTMLFormElement::BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLFormElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                const nsAttrValueOrString* aValue, bool aNotify)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -209,9 +209,11 @@ HTMLFormElement::BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
 }
 
 nsresult
-HTMLFormElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+HTMLFormElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                               const nsAttrValue* aValue,
-                              const nsAttrValue* aOldValue, bool aNotify)
+                              const nsAttrValue* aOldValue,
+                              nsIPrincipal* aSubjectPrincipal,
+                              bool aNotify)
 {
   if (aName == nsGkAtoms::novalidate && aNameSpaceID == kNameSpaceID_None) {
     // Update all form elements states because they might be [no longer]
@@ -228,7 +230,7 @@ HTMLFormElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNameSpaceID, aName, aValue,
-                                            aOldValue, aNotify);
+                                            aOldValue, aSubjectPrincipal, aNotify);
 }
 
 NS_IMPL_STRING_ATTR(HTMLFormElement, AcceptCharset, acceptcharset)
@@ -283,7 +285,7 @@ HTMLFormElement::CheckValidity(bool* retVal)
 
 bool
 HTMLFormElement::ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult)
 {
@@ -793,14 +795,17 @@ HTMLFormElement::SubmitSubmission(HTMLFormSubmission* aFormSubmission)
                                        nullptr, doc);
 
     nsCOMPtr<nsIInputStream> postDataStream;
+    int64_t postDataStreamLength = -1;
     rv = aFormSubmission->GetEncodedSubmission(actionURI,
-                                               getter_AddRefs(postDataStream));
+                                               getter_AddRefs(postDataStream),
+                                               &postDataStreamLength);
     NS_ENSURE_SUBMIT_SUCCESS(rv);
 
     rv = linkHandler->OnLinkClickSync(this, actionURI,
                                       target.get(),
-                                      NullString(),
-                                      postDataStream, nullptr, false,
+                                      VoidString(),
+                                      postDataStream, postDataStreamLength,
+                                      nullptr, false,
                                       getter_AddRefs(docShell),
                                       getter_AddRefs(mSubmittingRequest));
     NS_ENSURE_SUBMIT_SUCCESS(rv);
@@ -1289,10 +1294,11 @@ HTMLFormElement::AddElement(nsGenericHTMLFormElement* aChild,
       }
       *firstSubmitSlot = aChild;
     }
-    NS_POSTCONDITION(mDefaultSubmitElement == mFirstSubmitInElements ||
-                     mDefaultSubmitElement == mFirstSubmitNotInElements ||
-                     !mDefaultSubmitElement,
-                     "What happened here?");
+
+    MOZ_ASSERT(mDefaultSubmitElement == mFirstSubmitInElements ||
+               mDefaultSubmitElement == mFirstSubmitNotInElements ||
+               !mDefaultSubmitElement,
+               "What happened here?");
 
     // Notify that the state of the previous default submit element has changed
     // if the element which is the default submit element has changed.  The new
@@ -1425,9 +1431,9 @@ HTMLFormElement::HandleDefaultSubmitRemoval()
       mFirstSubmitInElements : mFirstSubmitNotInElements;
   }
 
-  NS_POSTCONDITION(mDefaultSubmitElement == mFirstSubmitInElements ||
-                   mDefaultSubmitElement == mFirstSubmitNotInElements,
-                   "What happened here?");
+  MOZ_ASSERT(mDefaultSubmitElement == mFirstSubmitInElements ||
+             mDefaultSubmitElement == mFirstSubmitNotInElements,
+             "What happened here?");
 
   // Notify about change if needed.
   if (mDefaultSubmitElement) {
@@ -1643,7 +1649,7 @@ HTMLFormElement::GetActionURL(nsIURI** aActionURL,
     if (inputElement) {
       inputElement->GetFormAction(action);
     } else {
-      nsCOMPtr<nsIDOMHTMLButtonElement> buttonElement = do_QueryInterface(aOriginatingElement);
+      auto buttonElement = HTMLButtonElement::FromContent(aOriginatingElement);
       if (buttonElement) {
         buttonElement->GetFormAction(action);
       } else {
@@ -1825,12 +1831,25 @@ HTMLFormElement::ImplicitSubmissionIsDisabled() const
   uint32_t numDisablingControlsFound = 0;
   uint32_t length = mControls->mElements.Length();
   for (uint32_t i = 0; i < length && numDisablingControlsFound < 2; ++i) {
-    if (mControls->mElements[i]->IsSingleLineTextControl(false) ||
-        mControls->mElements[i]->ControlType() == NS_FORM_INPUT_NUMBER) {
+    if (mControls->mElements[i]->IsSingleLineTextOrNumberControl(false)) {
       numDisablingControlsFound++;
     }
   }
   return numDisablingControlsFound != 1;
+}
+
+bool
+HTMLFormElement::IsLastActiveElement(const nsIFormControl* aControl) const
+{
+  NS_PRECONDITION(aControl, "Unexpected call");
+
+  for (auto* element : Reversed(mControls->mElements)) {
+    if (element->IsSingleLineTextOrNumberControl(false) &&
+        !element->IsDisabled()) {
+      return element == aControl;
+    }
+  }
+  return false;
 }
 
 NS_IMETHODIMP
@@ -1899,8 +1918,7 @@ HTMLFormElement::CheckFormValidity(nsIMutableArray* aInvalidElements) const
       // Add all unhandled invalid controls to aInvalidElements if the caller
       // requested them.
       if (defaultAction && aInvalidElements) {
-        aInvalidElements->AppendElement(ToSupports(sortedControls[i]),
-                                        false);
+        aInvalidElements->AppendElement(ToSupports(sortedControls[i]));
       }
     }
   }

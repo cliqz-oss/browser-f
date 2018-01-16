@@ -212,7 +212,7 @@ var Settings = {
 
   getStatusStringForSetting(setting) {
     let enabled = Preferences.get(setting.pref, setting.defaultPrefValue);
-    let status = bundle.GetStringFromName(enabled ? "telemetryEnabled" : "telemetryDisabled");
+    let status = bundle.GetStringFromName(enabled ? "telemetryUploadEnabled" : "telemetryUploadDisabled");
     return status;
   },
 
@@ -220,18 +220,20 @@ var Settings = {
    * Updates the button & text at the top of the page to reflect Telemetry state.
    */
   render() {
-    let homeExplanation = document.getElementById("home-explanation");
-    let fhrEnabled = Preferences.get(this.SETTINGS[0].pref, this.SETTINGS[0].defaultPrefValue);
-    fhrEnabled = bundle.GetStringFromName(fhrEnabled ? "telemetryEnabled" : "telemetryDisabled");
-    let extendedEnabled = Preferences.get(this.SETTINGS[1].pref, this.SETTINGS[1].defaultPrefValue);
-    extendedEnabled = bundle.GetStringFromName(extendedEnabled ? "extendedTelemetryEnabled" : "extendedTelemetryDisabled");
-    let parameters = [fhrEnabled, extendedEnabled].map(this.convertStringToLink);
+    let settingsExplanation = document.getElementById("settings-explanation");
+    let uploadEnabled = this.getStatusStringForSetting(this.SETTINGS[0]);
+    let extendedEnabled = Services.telemetry.canRecordExtended;
+    let collectedData = bundle.GetStringFromName(extendedEnabled ? "prereleaseData" : "releaseData");
 
-    let explanation = bundle.formatStringFromName("homeExplanation", parameters, 2);
+    let parameters = [
+      collectedData,
+      this.convertStringToLink(uploadEnabled),
+    ];
+    let explanation = bundle.formatStringFromName("settingsExplanation", parameters, 2);
 
     // eslint-disable-next-line no-unsanitized/property
-    homeExplanation.innerHTML = explanation;
-    this.attachObservers()
+    settingsExplanation.innerHTML = explanation;
+    this.attachObservers();
   },
 
   convertStringToLink(string) {
@@ -290,7 +292,7 @@ var PingPicker = {
         if (!pingPicker.classList.contains("hidden")) {
           pingPicker.classList.add("hidden");
         } else {
-          pingPicker.classList.remove("hidden")
+          pingPicker.classList.remove("hidden");
           event.stopPropagation();
         }
       });
@@ -342,9 +344,10 @@ var PingPicker = {
 
     // eslint-disable-next-line no-unsanitized/property
     pingExplanation.innerHTML = explanation;
-    pingExplanation.querySelector(".change-ping").addEventListener("click", () =>
-      document.getElementById("ping-picker").classList.remove("hidden")
-    );
+    pingExplanation.querySelector(".change-ping").addEventListener("click", (ev) => {
+      document.getElementById("ping-picker").classList.remove("hidden");
+      ev.stopPropagation();
+    });
 
     GenericSubsection.deleteAllSubSections();
   },
@@ -938,7 +941,7 @@ var StackRenderer = {
     for (let i = 0; i < aStacks.length; ++i) {
       let stack = aStacks[i];
       aRenderHeader(i);
-      this.renderStack(div, stack)
+      this.renderStack(div, stack);
     }
   },
 
@@ -1048,7 +1051,7 @@ function SymbolicationRequest_fetchSymbols() {
   this.symbolRequest.setRequestHeader("Connection", "close");
   this.symbolRequest.onreadystatechange = this.handleSymbolResponse.bind(this);
   this.symbolRequest.send(requestJSON);
-}
+};
 
 var ChromeHangs = {
 
@@ -1275,6 +1278,8 @@ var Histogram = {
 
 var Search = {
 
+  HASH_SEARCH: "search=",
+
   // A list of ids of sections that do not support search.
   blacklist: [
     "raw-payload-section"
@@ -1313,7 +1318,7 @@ var Search = {
         };
       }
     }
-    return [isPassFunc, filter]
+    return [isPassFunc, filter];
   },
 
   filterElements(elements, filterText) {
@@ -1405,7 +1410,7 @@ var Search = {
       let keyedSubSections = [];
       let subsections = section.querySelectorAll(".sub-section");
       for (let section of subsections) {
-        let datas = section.querySelector("table").rows
+        let datas = section.querySelector("table").rows;
         keyedSubSections.push({key: section, datas});
       }
       noSearchResults = this.filterKeyedElements(keyedSubSections, text);
@@ -1418,6 +1423,8 @@ var Search = {
         }
       }
     }
+
+    changeUrlSearch(text);
 
     if (!sectionParam) { // If we are not searching in all section.
       this.updateNoResults(text, noSearchResults);
@@ -1452,6 +1459,7 @@ var Search = {
   },
 
   homeSearch(text) {
+    changeUrlSearch(text);
     if (text === "") {
       this.resetHome();
       return;
@@ -1473,7 +1481,7 @@ var Search = {
     });
     this.updateNoResults(text, noSearchResults);
   }
-}
+};
 
 /*
  * Helper function to render JS objects with white space between top level elements
@@ -1516,7 +1524,7 @@ var GenericSubsection = {
       let section = ev.target;
       showSubSection(section);
     });
-    subCategory.appendChild(document.createTextNode(title))
+    subCategory.appendChild(document.createTextNode(title));
     category.appendChild(subCategory);
   },
 
@@ -1558,10 +1566,10 @@ var GenericSubsection = {
     let subsections = document.querySelectorAll(".category-subsection");
     subsections.forEach((el) => {
       el.parentElement.removeChild(el);
-    })
+    });
   },
 
-}
+};
 
 var GenericTable = {
 
@@ -1679,7 +1687,7 @@ var AddonDetails = {
       let titleText = bundle.formatStringFromName("addonProvider", [provider], 1);
       providerSection.appendChild(document.createTextNode(titleText));
 
-      let headingStrings = [this.tableIDTitle, this.tableDetailsTitle ]
+      let headingStrings = [this.tableIDTitle, this.tableDetailsTitle ];
       let table = GenericTable.render(explodeObject(addonDetails[provider]),
                                       headingStrings);
       table.appendChild(providerSection);
@@ -1918,6 +1926,29 @@ function changeUrlPath(selectedSection, subSection) {
 }
 
 /**
+ * Change the url according to the current search text
+ */
+function changeUrlSearch(searchText) {
+  let currentHash = window.location.hash;
+  let hashWithoutSearch = currentHash.split(Search.HASH_SEARCH)[0];
+  let hash = "";
+
+  if (!currentHash && !searchText) {
+    return;
+  }
+  if (!currentHash.includes(Search.HASH_SEARCH) && hashWithoutSearch) {
+    hashWithoutSearch += "_";
+  }
+  if (searchText) {
+    hash = hashWithoutSearch + Search.HASH_SEARCH + searchText.replace(/ /g, "+");
+  } else if (hashWithoutSearch) {
+    hash = hashWithoutSearch.slice(0, hashWithoutSearch.length - 1);
+  }
+
+  window.location.hash = hash;
+}
+
+/**
  * Change the section displayed
  */
 function show(selected) {
@@ -1947,7 +1978,7 @@ function show(selected) {
   selected.classList.add("selected");
 
   document.querySelectorAll("section").forEach((section) => {
-    section.classList.remove("active")
+    section.classList.remove("active");
   });
   selected_section.classList.add("active");
 
@@ -1961,6 +1992,9 @@ function show(selected) {
 }
 
 function showSubSection(selected) {
+  if (!selected) {
+    return;
+  }
   let current_selection = document.querySelector(".category-subsection.selected");
   if (current_selection)
     current_selection.classList.remove("selected");
@@ -1990,7 +2024,7 @@ function setupListeners() {
   let menu = document.getElementById("categories");
   menu.addEventListener("click", (e) => {
     if (e.target && e.target.parentNode == menu) {
-      show(e.target)
+      show(e.target);
     }
   });
 
@@ -2072,10 +2106,10 @@ function setupListeners() {
   });
 }
 
-// Restore sections states
-function urlStateRestore() {
-  if (window.location.hash) {
-    let section = window.location.hash.slice(1).replace("-tab", "-section");
+// Restores the sections states
+function urlSectionRestore(hash) {
+  if (hash) {
+    let section = hash.replace("-tab", "-section");
     let subsection = section.split("_")[1];
     section = section.split("_")[0];
     let category = document.querySelector(".category[value=" + section + "]");
@@ -2087,6 +2121,24 @@ function urlStateRestore() {
         showSubSection(subcategory);
       }
     }
+  }
+}
+
+// Restore sections states and search terms
+function urlStateRestore() {
+  let hash = window.location.hash;
+  let searchQuery = "";
+  if (hash) {
+    hash = hash.slice(1);
+    if (hash.includes(Search.HASH_SEARCH)) {
+      searchQuery = hash.split(Search.HASH_SEARCH)[1].replace(/[+]/g, " ");
+      hash = hash.split(Search.HASH_SEARCH)[0];
+    }
+    urlSectionRestore(hash);
+  }
+  if (searchQuery) {
+    let search = document.getElementById("search");
+    search.value = searchQuery;
   }
 }
 
@@ -2115,8 +2167,8 @@ function onLoad() {
 
   // Update ping data when async Telemetry init is finished.
   Telemetry.asyncFetchTelemetryData(async () => {
-    urlStateRestore();
     await PingPicker.update();
+    urlStateRestore();
   });
 }
 
@@ -2171,7 +2223,7 @@ var HistogramSection = {
       }
     }
   },
-}
+};
 
 var KeyedHistogramSection = {
   render(aPayload) {
@@ -2206,7 +2258,7 @@ var KeyedHistogramSection = {
       }
     }
   },
-}
+};
 
 var SessionInformation = {
   render(aPayload) {
@@ -2221,7 +2273,7 @@ var SessionInformation = {
       infoSection.appendChild(table);
     }
   },
-}
+};
 
 var SimpleMeasurements = {
   render(aPayload) {
@@ -2282,7 +2334,7 @@ var SimpleMeasurements = {
 
     return result;
   },
-}
+};
 
 function renderProcessList(ping, selectEl) {
   removeAllChildNodes(selectEl);
@@ -2329,7 +2381,7 @@ function renderPayloadList(ping) {
 
   if (!ping.payload.childPayloads) {
     listEl.disabled = true;
-    return
+    return;
   }
   listEl.disabled = false;
 

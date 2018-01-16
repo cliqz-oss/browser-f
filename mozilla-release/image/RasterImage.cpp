@@ -79,7 +79,7 @@ RasterImage::RasterImage(ImageURL* aURI /* = nullptr */) :
 #ifdef DEBUG
   mFramesNotified(0),
 #endif
-  mSourceBuffer(WrapNotNull(new SourceBuffer())),
+  mSourceBuffer(MakeNotNull<SourceBuffer*>()),
   mHasSize(false),
   mTransient(false),
   mSyncLoad(false),
@@ -1008,7 +1008,6 @@ RasterImage::OnImageDataComplete(nsIRequest*, nsISupports*, nsresult aStatus,
     // We don't have our size yet, so we'll fire the load event in SetSize().
     MOZ_ASSERT(!canSyncDecodeMetadata,
                "Firing load async after metadata sync decode?");
-    NotifyProgress(FLAG_ONLOAD_BLOCKED);
     mLoadProgress = Some(loadProgress);
     return finalStatus;
   }
@@ -1700,6 +1699,12 @@ RasterImage::NotifyDrawingObservers()
     return;
   }
 
+  bool match = false;
+  if ((NS_FAILED(mURI->SchemeIs("resource", &match)) || !match) &&
+      (NS_FAILED(mURI->SchemeIs("chrome", &match)) || !match)) {
+    return;
+  }
+
   // Record the image drawing for startup performance testing.
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
   NS_WARNING_ASSERTION(obs, "Can't get an observer service handle");
@@ -1837,7 +1842,6 @@ RasterImage::NotifyDecodeComplete(const DecoderFinalStatus& aStatus,
     if (mLoadProgress) {
       NotifyForLoadEvent(*mLoadProgress);
       mLoadProgress = Nothing();
-      NotifyProgress(FLAG_ONLOAD_UNBLOCKED);
     }
 
     // If we were a metadata decode and a full decode was requested, do it.

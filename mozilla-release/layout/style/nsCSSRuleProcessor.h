@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:tabstop=2:expandtab:shiftwidth=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -86,7 +86,7 @@ public:
   static void InitSystemMetrics();
   static void Shutdown();
   static void FreeSystemMetrics();
-  static bool HasSystemMetric(nsIAtom* aMetric);
+  static bool HasSystemMetric(nsAtom* aMetric);
 
   /*
    * Returns true if the given aElement matches one of the
@@ -154,12 +154,8 @@ public:
    * @param aPseudo The name of the pseudoselector
    * @param aString The identifier inside the pseudoselector (cannot be null)
    * @param aDocument The document
-   * @param aForStyling Is this matching operation for the creation of a style context?
-   *                    (For setting the slow selector flag)
    * @param aStateMask Mask containing states which we should exclude.
    *                   Ignored if aDependence is null
-   * @param aSetSlowSelectorFlag Outparam, set if the caller is
-   *                             supposed to set the slow selector flag.
    * @param aDependence Pointer to be set to true if we ignored a state due to
    *                    aStateMask. Can be null.
    */
@@ -167,13 +163,11 @@ public:
                                   mozilla::CSSPseudoClassType aPseudo,
                                   const char16_t* aString,
                                   const nsIDocument* aDocument,
-                                  bool aForStyling,
                                   mozilla::EventStates aStateMask,
-                                  bool* aSetSlowSelectorFlag,
                                   bool* const aDependence = nullptr);
 
   static bool LangPseudoMatches(const mozilla::dom::Element* aElement,
-                                const nsIAtom* aOverrideLang,
+                                const nsAtom* aOverrideLang,
                                 bool aHasOverrideLang,
                                 const char16_t* aString,
                                 const nsIDocument* aDocument);
@@ -218,10 +212,10 @@ public:
                            nsTArray<nsFontFaceRuleContainer>& aArray);
 
   nsCSSKeyframesRule* KeyframesRuleForName(nsPresContext* aPresContext,
-                                           const nsString& aName);
+                                           const nsAtom* aName);
 
   nsCSSCounterStyleRule* CounterStyleRuleForName(nsPresContext* aPresContext,
-                                                 nsIAtom* aName);
+                                                 nsAtom* aName);
 
   bool AppendPageRules(nsPresContext* aPresContext,
                        nsTArray<nsCSSPageRule*>& aArray);

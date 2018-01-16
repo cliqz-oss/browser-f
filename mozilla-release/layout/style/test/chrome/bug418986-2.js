@@ -4,6 +4,8 @@
 /* jshint loopfunc:true */
 /* global window, screen, ok, SpecialPowers, matchMedia */
 
+const is_chrome_window = window.location.protocol === "chrome:";
+
 // Expected values. Format: [name, pref_off_value, pref_on_value]
 // If pref_*_value is an array with two values, then we will match
 // any value in between those two values. If a value is null, then
@@ -49,6 +51,14 @@ var suppressed_toggles = [
   "-moz-windows-compositor",
   "-moz-windows-default-theme",
   "-moz-windows-glass",
+  "-moz-gtk-csd-available",
+  "-moz-gtk-csd-minimize-button",
+  "-moz-gtk-csd-maximize-button",
+  "-moz-gtk-csd-close-button",
+];
+
+var toggles_enabled_in_content = [
+  "-moz-touch-enabled",
 ];
 
 // Possible values for '-moz-os-version'
@@ -104,7 +114,7 @@ var testToggles = function (resisting) {
   suppressed_toggles.forEach(
     function (key) {
       var exists = keyValMatches(key, 0) || keyValMatches(key, 1);
-      if (resisting) {
+      if (resisting || (toggles_enabled_in_content.indexOf(key) === -1 && !is_chrome_window)) {
          ok(!exists, key + " should not exist.");
       } else {
          ok(exists, key + " should exist.");
@@ -121,7 +131,7 @@ var testWindowsSpecific = function (resisting, queryName, possibleValues) {
       foundValue = val;
     }
   });
-  if (resisting) {
+  if (resisting || !is_chrome_window) {
     ok(!foundValue, queryName + " should have no match");
   } else {
     ok(foundValue, foundValue ? ("Match found: '" + queryName + ":" + foundValue + "'")
@@ -200,7 +210,11 @@ var generateCSSLines = function (resisting) {
   lines += ".suppress { background-color: " + (resisting ? "green" : "red") + ";}\n";
   suppressed_toggles.forEach(
     function (key) {
-      lines += suppressedMediaQueryCSSLine(key, resisting ? "red" : "green");
+      if (toggles_enabled_in_content.indexOf(key) === -1 && !resisting && !is_chrome_window) {
+        lines += "#" + key + " { background-color: green; }\n";
+      } else {
+        lines += suppressedMediaQueryCSSLine(key, resisting ? "red" : "green");
+      }
     });
   if (OS === "WINNT") {
     lines += ".windows { background-color: " + (resisting ? "green" : "red") + ";}\n";

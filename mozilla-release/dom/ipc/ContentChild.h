@@ -399,6 +399,8 @@ public:
 
   virtual mozilla::ipc::IPCResult RecvUpdateDictionaryList(InfallibleTArray<nsString>&& aDictionaries) override;
 
+  virtual mozilla::ipc::IPCResult RecvUpdateFontList(InfallibleTArray<SystemFontListEntry>&& aFontList) override;
+
   virtual mozilla::ipc::IPCResult RecvUpdateAppLocales(nsTArray<nsCString>&& aAppLocales) override;
   virtual mozilla::ipc::IPCResult RecvUpdateRequestedLocales(nsTArray<nsCString>&& aRequestedLocales) override;
 
@@ -603,7 +605,7 @@ public:
   RecvSetXPCOMProcessAttributes(const XPCOMInitData& aXPCOMInit,
                                 const StructuredCloneData& aInitialData,
                                 nsTArray<LookAndFeelInt>&& aLookAndFeelIntCache,
-                                nsTArray<FontFamilyListEntry>&& aFontFamilyList) override;
+                                nsTArray<SystemFontListEntry>&& aFontList) override;
 
   virtual mozilla::ipc::IPCResult
   RecvProvideAnonymousTemporaryFile(const uint64_t& aID, const FileDescOrError& aFD) override;
@@ -633,16 +635,19 @@ public:
   virtual mozilla::ipc::IPCResult
   RecvResumeInputEventQueue() override;
 
+  virtual mozilla::ipc::IPCResult
+  RecvAddDynamicScalars(nsTArray<DynamicScalarDefinition>&& aDefs) override;
+
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
   bool
   SendGetA11yContentId();
 #endif // defined(XP_WIN) && defined(ACCESSIBILITY)
 
-  // Get a reference to the font family list passed from the chrome process,
+  // Get a reference to the font list passed from the chrome process,
   // for use during gfx initialization.
-  InfallibleTArray<mozilla::dom::FontFamilyListEntry>&
-  SystemFontFamilyList() {
-    return mFontFamilies;
+  InfallibleTArray<mozilla::dom::SystemFontListEntry>&
+  SystemFontList() {
+    return mFontList;
   }
 
   // PURLClassifierChild
@@ -693,6 +698,16 @@ public:
                     nsTArray<PluginTag>&& aPluginTags,
                     nsTArray<FakePluginTag>&& aFakePluginTags) override;
 
+  virtual PClientOpenWindowOpChild*
+  AllocPClientOpenWindowOpChild(const ClientOpenWindowArgs& aArgs) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvPClientOpenWindowOpConstructor(PClientOpenWindowOpChild* aActor,
+                                     const ClientOpenWindowArgs& aArgs) override;
+
+  virtual bool
+  DeallocPClientOpenWindowOpChild(PClientOpenWindowOpChild* aActor) override;
+
 #ifdef NIGHTLY_BUILD
   // Fetch the current number of pending input events.
   //
@@ -736,10 +751,10 @@ private:
 
   InfallibleTArray<nsString> mAvailableDictionaries;
 
-  // Temporary storage for a list of available font families, passed from the
+  // Temporary storage for a list of available fonts, passed from the
   // parent process and used to initialize gfx in the child. Currently used
-  // only on MacOSX.
-  InfallibleTArray<mozilla::dom::FontFamilyListEntry> mFontFamilies;
+  // only on MacOSX and Linux.
+  InfallibleTArray<mozilla::dom::SystemFontListEntry> mFontList;
   // Temporary storage for nsXPLookAndFeel flags.
   nsTArray<LookAndFeelInt> mLookAndFeelCache;
 
@@ -768,7 +783,7 @@ private:
   AppInfo mAppInfo;
 
   bool mIsForBrowser;
-  nsString mRemoteType = NullString();
+  nsString mRemoteType = VoidString();
   bool mIsAlive;
   nsString mProcessName;
 

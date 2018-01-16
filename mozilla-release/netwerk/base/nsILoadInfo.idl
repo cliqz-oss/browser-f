@@ -7,6 +7,7 @@
 #include "nsISupports.idl"
 #include "nsIContentPolicy.idl"
 
+interface nsIChannel;
 interface nsIDOMDocument;
 interface nsINode;
 interface nsIPrincipal;
@@ -23,6 +24,8 @@ interface nsIURI;
 native OriginAttributes(mozilla::OriginAttributes);
 [ref] native const_OriginAttributesRef(const mozilla::OriginAttributes);
 [ref] native StringArrayRef(const nsTArray<nsCString>);
+[ref] native Uint64ArrayRef(const nsTArray<uint64_t>);
+[ref] native PrincipalArrayRef(const nsTArray<nsCOMPtr<nsIPrincipal>>);
 
 typedef unsigned long nsSecurityFlags;
 
@@ -298,6 +301,13 @@ interface nsILoadInfo : nsISupports
   nsIPrincipal binaryPrincipalToInherit();
 
   /**
+   * Finds the correct principal to inherit for the given channel, based on
+   * the values of PrincipalToInherit and TriggeringPrincipal.
+   */
+  [noscript, notxpcom, nostdcall]
+  nsIPrincipal FindPrincipalToInherit(in nsIChannel aChannel);
+
+  /**
    * This is the ownerDocument of the LoadingNode. Unless the LoadingNode
    * is a Document, in which case the LoadingDocument is the same as the
    * LoadingNode.
@@ -497,6 +507,16 @@ interface nsILoadInfo : nsISupports
   [infallible] attribute boolean enforceSRI;
 
   /**
+   * If true, toplevel data: URI navigation is allowed
+   */
+  [infallible] attribute boolean forceAllowDataURI;
+
+  /**
+   * If true, this is the load of a frame's original src attribute
+   */
+  [infallible] attribute boolean originalFrameSrcLoad;
+
+  /**
    * The SEC_FORCE_INHERIT_PRINCIPAL flag may be dropped when a load info
    * object is created.  Specifically, it will be dropped if the SEC_SANDBOXED
    * flag is also present.  This flag is set if SEC_FORCE_INHERIT_PRINCIPAL was
@@ -597,6 +617,13 @@ interface nsILoadInfo : nsISupports
   [infallible] attribute boolean initialSecurityCheckDone;
 
   /**
+   * Returns true if the load was triggered from an external application
+   * (e.g. Thunderbird). Please note that this flag will only ever be true
+   * if the load is of TYPE_DOCUMENT. 
+   */
+  [infallible] attribute boolean loadTriggeredFromExternal;
+
+  /**
    * Whenever a channel gets redirected, append the redirect history entry of
    * the channel which contains principal referrer and remote address [before
    * the channels got redirected] to the loadinfo, so that at every point this
@@ -641,6 +668,36 @@ interface nsILoadInfo : nsISupports
    */
   [noscript, notxpcom, nostdcall, binaryname(RedirectChain)]
   nsIRedirectHistoryEntryArray binaryRedirectChain();
+
+  /**
+   * An array of nsIPrincipals which stores the principals of the parent frames,
+   * not including the frame loading this request.  The closest ancestor is at
+   * index zero and the top level ancestor is at the last index.
+   *
+   * The ancestorPrincipals[0] entry for an iframe load will be the principal of
+   * the iframe element's owner document.
+   * The ancestorPrincipals[0] entry for an image loaded in an iframe will be the
+   * principal of the iframe element's owner document.
+   *
+   * See nsIDocument::AncestorPrincipals for more information.
+   *
+   * Please note that this array has the same lifetime as the
+   * loadInfo object - use with caution!
+   */
+  [noscript, notxpcom, nostdcall]
+  PrincipalArrayRef AncestorPrincipals();
+
+
+  /**
+   * An array of outerWindowIDs which correspond to nsILoadInfo::AncestorPrincipals
+   * above.  AncestorOuterWindowIDs[0] is the outerWindowID of the frame
+   * associated with the principal at ancestorPrincipals[0], and so forth.
+   *
+   * Please note that this array has the same lifetime as the
+   * loadInfo object - use with caution!
+   */
+  [noscript, notxpcom, nostdcall]
+  Uint64ArrayRef AncestorOuterWindowIDs();
 
   /**
    * Sets the list of unsafe headers according to CORS spec, as well as

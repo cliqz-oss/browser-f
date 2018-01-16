@@ -1,0 +1,22 @@
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
+/* Any copyright is dedicated to the Public Domain.
+ * http://creativecommons.org/publicdomain/zero/1.0/ */
+
+// Tests that, when the user types an extraneous closing bracket, no error
+// appears. See Bug 592442.
+
+"use strict";
+
+const TEST_URI = "data:text/html;charset=utf-8,test for bug 592442";
+
+add_task(async function () {
+  let { jsterm } = await openNewTabAndConsole(TEST_URI);
+
+  try {
+    await jstermSetValueAndComplete(jsterm, "document.getElementById)");
+    ok(true, "no error was thrown when an extraneous bracket was inserted");
+  } catch (ex) {
+    ok(false, "an error was thrown when an extraneous bracket was inserted")
+  }
+});

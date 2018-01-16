@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BorderRadius, ComplexClipRegion, ImageMask, ImageRendering};
-use api::{DeviceIntRect, LayerPoint, LayerRect, LayerSize, LayerToWorldTransform, LocalClip};
+use api::{BorderRadius, ComplexClipRegion, DeviceIntRect, ImageMask, ImageRendering, LayerPoint};
+use api::{ClipMode, LayerRect, LayerSize};
+use api::{LayerToWorldTransform, LayoutPoint, LayoutVector2D, LocalClip};
 use border::BorderCornerClipSource;
+use ellipse::Ellipse;
 use freelist::{FreeList, FreeListHandle, WeakFreeListHandle};
 use gpu_cache::{GpuCache, GpuCacheHandle, ToGpuBlocks};
 use prim_store::{ClipData, ImageMaskData};
 use resource_cache::ResourceCache;
-use std::ops::Not;
 use util::{extract_inner_rect_safe, TransformedRect};
 
 const MAX_CLIP: f32 = 1000000.0;
@@ -20,7 +21,6 @@ pub type ClipSourcesWeakHandle = WeakFreeListHandle<ClipSources>;
 
 #[derive(Clone, Debug)]
 pub struct ClipRegion {
-    pub origin: LayerPoint,
     pub main: LayerRect,
     pub image_mask: Option<ImageMask>,
     pub complex_clips: Vec<ComplexClipRegion>,
@@ -31,50 +31,39 @@ impl ClipRegion {
         rect: LayerRect,
         mut complex_clips: Vec<ComplexClipRegion>,
         mut image_mask: Option<ImageMask>,
+        reference_frame_relative_offset: &LayoutVector2D,
     ) -> ClipRegion {
-        // All the coordinates we receive are relative to the stacking context, but we want
-        // to convert them to something relative to the origin of the clip.
-        let negative_origin = -rect.origin.to_vector();
+        let rect = rect.translate(reference_frame_relative_offset);
+
         if let Some(ref mut image_mask) = image_mask {
-            image_mask.rect = image_mask.rect.translate(&negative_origin);
+            image_mask.rect = image_mask.rect.translate(reference_frame_relative_offset);
         }
 
         for complex_clip in complex_clips.iter_mut() {
-            complex_clip.rect = complex_clip.rect.translate(&negative_origin);
+            complex_clip.rect = complex_clip.rect.translate(reference_frame_relative_offset);
         }
 
         ClipRegion {
-            origin: rect.origin,
-            main: LayerRect::new(LayerPoint::zero(), rect.size),
+            main: rect,
             image_mask,
             complex_clips,
         }
     }
 
-    pub fn create_for_clip_node_with_local_clip(local_clip: &LocalClip) -> ClipRegion {
+    pub fn create_for_clip_node_with_local_clip(
+        local_clip: &LocalClip,
+        reference_frame_relative_offset: &LayoutVector2D
+    ) -> ClipRegion {
         let complex_clips = match local_clip {
             &LocalClip::Rect(_) => Vec::new(),
             &LocalClip::RoundedRect(_, ref region) => vec![region.clone()],
         };
-        ClipRegion::create_for_clip_node(*local_clip.clip_rect(), complex_clips, None)
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum ClipMode {
-    Clip,    // Pixels inside the region are visible.
-    ClipOut, // Pixels outside the region are visible.
-}
-
-impl Not for ClipMode {
-    type Output = ClipMode;
-
-    fn not(self) -> ClipMode {
-        match self {
-            ClipMode::Clip => ClipMode::ClipOut,
-            ClipMode::ClipOut => ClipMode::Clip,
-        }
+        ClipRegion::create_for_clip_node(
+            *local_clip.clip_rect(),
+            complex_clips,
+            None,
+            reference_frame_relative_offset
+        )
     }
 }
 
@@ -104,12 +93,28 @@ impl From<ClipRegion> for ClipSources {
             clips.push(ClipSource::RoundedRectangle(
                 complex.rect,
                 complex.radii,
-                ClipMode::Clip,
+                complex.mode,
             ));
         }
 
         ClipSources::new(clips)
     }
+}
+
+impl ClipSource {
+    pub fn contains(&self, point: &LayerPoint) -> bool {
+        // We currently do not handle all types of clip sources, because they
+        // aren't used for ClipScrollNodes and this method is only used during hit testing.
+        match self {
+            &ClipSource::Rectangle(ref rectangle) => rectangle.contains(point),
+            &ClipSource::RoundedRectangle(rect, radii, ClipMode::Clip) =>
+                rounded_rectangle_contains_point(point, &rect, &radii),
+            &ClipSource::RoundedRectangle(rect, radii, ClipMode::ClipOut) =>
+                !rounded_rectangle_contains_point(point, &rect, &radii),
+            _ => unreachable!("Tried to call contains on an unsupported ClipSource."),
+        }
+    }
+
 }
 
 #[derive(Debug)]
@@ -287,4 +292,63 @@ impl MaskBounds {
             inner.device_rect = transformed.inner_rect;
         }
     }
+}
+
+pub trait Contains {
+    fn contains(&self, point: &LayoutPoint) -> bool;
+}
+
+impl Contains for LocalClip {
+    fn contains(&self, point: &LayoutPoint) -> bool {
+        if !self.clip_rect().contains(point) {
+            return false;
+        }
+        match self {
+            &LocalClip::Rect(..) => true,
+            &LocalClip::RoundedRect(_, complex_clip) => complex_clip.contains(point),
+        }
+    }
+}
+
+impl Contains for ComplexClipRegion {
+    fn contains(&self, point: &LayoutPoint) -> bool {
+        rounded_rectangle_contains_point(point, &self.rect, &self.radii)
+    }
+}
+
+fn rounded_rectangle_contains_point(point: &LayoutPoint,
+                                    rect: &LayerRect,
+                                    radii: &BorderRadius)
+                                    -> bool {
+    if !rect.contains(point) {
+        return false;
+    }
+
+    let top_left_center = rect.origin + radii.top_left.to_vector();
+    if top_left_center.x > point.x && top_left_center.y > point.y &&
+       !Ellipse::new(radii.top_left).contains(*point - top_left_center.to_vector()) {
+        return false;
+    }
+
+    let bottom_right_center = rect.bottom_right() - radii.bottom_right.to_vector();
+    if bottom_right_center.x < point.x && bottom_right_center.y < point.y &&
+       !Ellipse::new(radii.bottom_right).contains(*point - bottom_right_center.to_vector()) {
+        return false;
+    }
+
+    let top_right_center = rect.top_right() +
+                           LayoutVector2D::new(-radii.top_right.width, radii.top_right.height);
+    if top_right_center.x < point.x && top_right_center.y > point.y &&
+       !Ellipse::new(radii.top_right).contains(*point - top_right_center.to_vector()) {
+        return false;
+    }
+
+    let bottom_left_center = rect.bottom_left() +
+                             LayoutVector2D::new(radii.bottom_left.width, -radii.bottom_left.height);
+    if bottom_left_center.x > point.x && bottom_left_center.y < point.y &&
+       !Ellipse::new(radii.bottom_left).contains(*point - bottom_left_center.to_vector()) {
+        return false;
+    }
+
+    true
 }

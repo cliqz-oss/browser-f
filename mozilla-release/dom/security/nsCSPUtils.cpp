@@ -142,7 +142,7 @@ CSP_LogMessage(const nsAString& aMessage,
 
   // Prepending CSP to the outgoing console message
   nsString cspMsg;
-  cspMsg.Append(NS_LITERAL_STRING("Content Security Policy: "));
+  cspMsg.AppendLiteral(u"Content Security Policy: ");
   cspMsg.Append(aMessage);
 
   // Currently 'aSourceLine' is not logged to the console, because similar
@@ -152,9 +152,9 @@ CSP_LogMessage(const nsAString& aMessage,
   // E.g. 'aSourceLine' might be: 'onclick attribute on DIV element'.
   // In such cases we append 'aSourceLine' directly to the error message.
   if (!aSourceLine.IsEmpty()) {
-    cspMsg.Append(NS_LITERAL_STRING(" Source: "));
+    cspMsg.AppendLiteral(" Source: ");
     cspMsg.Append(aSourceLine);
-    cspMsg.Append(NS_LITERAL_STRING("."));
+    cspMsg.AppendLiteral(u".");
   }
 
   nsresult rv;
@@ -232,7 +232,7 @@ CSP_ContentTypeToDirective(nsContentPolicyType aType)
     case nsIContentPolicy::TYPE_INTERNAL_WORKER:
     case nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER:
     case nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER:
-      return nsIContentSecurityPolicy::CHILD_SRC_DIRECTIVE;
+      return nsIContentSecurityPolicy::WORKER_SRC_DIRECTIVE;
 
     case nsIContentPolicy::TYPE_SUBDOCUMENT:
       return nsIContentSecurityPolicy::FRAME_SRC_DIRECTIVE;
@@ -322,7 +322,7 @@ CSP_IsDirective(const nsAString& aValue, CSPDirective aDir)
 bool
 CSP_IsKeyword(const nsAString& aValue, enum CSPKeyword aKey)
 {
-  return aValue.LowerCaseEqualsASCII(CSP_EnumToKeyword(aKey));
+  return aValue.LowerCaseEqualsASCII(CSP_EnumToUTF8Keyword(aKey));
 }
 
 bool
@@ -331,14 +331,10 @@ CSP_IsQuotelessKeyword(const nsAString& aKey)
   nsString lowerKey = PromiseFlatString(aKey);
   ToLowerCase(lowerKey);
 
-  static_assert(CSP_LAST_KEYWORD_VALUE ==
-                (sizeof(CSPStrKeywords) / sizeof(CSPStrKeywords[0])),
-                "CSP_LAST_KEYWORD_VALUE does not match length of CSPStrKeywords");
-
   nsAutoString keyword;
   for (uint32_t i = 0; i < CSP_LAST_KEYWORD_VALUE; i++) {
     // skipping the leading ' and trimming the trailing '
-    keyword.AssignASCII(CSPStrKeywords[i] + 1);
+    keyword.AssignASCII(gCSPUTF8Keywords[i] + 1);
     keyword.Trim("'", false, true);
     if (lowerKey.Equals(keyword)) {
       return true;
@@ -482,7 +478,7 @@ nsCSPBaseSrc::allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
                      bool aParserCreated) const
 {
   CSPUTILSLOG(("nsCSPBaseSrc::allows, aKeyWord: %s, a HashOrNonce: %s",
-              aKeyword == CSP_HASH ? "hash" : CSP_EnumToKeyword(aKeyword),
+              aKeyword == CSP_HASH ? "hash" : CSP_EnumToUTF8Keyword(aKeyword),
               NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
   return false;
 }
@@ -827,7 +823,7 @@ nsCSPKeywordSrc::allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
                         bool aParserCreated) const
 {
   CSPUTILSLOG(("nsCSPKeywordSrc::allows, aKeyWord: %s, aHashOrNonce: %s, mInvalidated: %s",
-              CSP_EnumToKeyword(aKeyword),
+              CSP_EnumToUTF8Keyword(aKeyword),
               NS_ConvertUTF16toUTF8(aHashOrNonce).get(),
               mInvalidated ? "yes" : "false"));
 
@@ -853,7 +849,7 @@ nsCSPKeywordSrc::visit(nsCSPSrcVisitor* aVisitor) const
 void
 nsCSPKeywordSrc::toString(nsAString& outStr) const
 {
-  outStr.AppendASCII(CSP_EnumToKeyword(mKeyword));
+  outStr.Append(CSP_EnumToUTF16Keyword(mKeyword));
 }
 
 /* ===== nsCSPNonceSrc ==================== */
@@ -886,7 +882,8 @@ nsCSPNonceSrc::allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
                       bool aParserCreated) const
 {
   CSPUTILSLOG(("nsCSPNonceSrc::allows, aKeyWord: %s, a HashOrNonce: %s",
-              CSP_EnumToKeyword(aKeyword), NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
+              CSP_EnumToUTF8Keyword(aKeyword),
+              NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
 
   if (aKeyword != CSP_NONCE) {
     return false;
@@ -904,7 +901,7 @@ nsCSPNonceSrc::visit(nsCSPSrcVisitor* aVisitor) const
 void
 nsCSPNonceSrc::toString(nsAString& outStr) const
 {
-  outStr.AppendASCII(CSP_EnumToKeyword(CSP_NONCE));
+  outStr.Append(CSP_EnumToUTF16Keyword(CSP_NONCE));
   outStr.Append(mNonce);
   outStr.AppendASCII("'");
 }
@@ -928,7 +925,8 @@ nsCSPHashSrc::allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
                      bool aParserCreated) const
 {
   CSPUTILSLOG(("nsCSPHashSrc::allows, aKeyWord: %s, a HashOrNonce: %s",
-              CSP_EnumToKeyword(aKeyword), NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
+              CSP_EnumToUTF8Keyword(aKeyword),
+              NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
 
   if (aKeyword != CSP_HASH) {
     return false;
@@ -1061,7 +1059,8 @@ nsCSPDirective::allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
                        bool aParserCreated) const
 {
   CSPUTILSLOG(("nsCSPDirective::allows, aKeyWord: %s, a HashOrNonce: %s",
-              CSP_EnumToKeyword(aKeyword), NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
+              CSP_EnumToUTF8Keyword(aKeyword),
+              NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
 
   for (uint32_t i = 0; i < mSrcs.Length(); i++) {
     if (mSrcs[i]->allows(aKeyword, aHashOrNonce, aParserCreated)) {
@@ -1191,6 +1190,11 @@ nsCSPDirective::toDomCSPStruct(mozilla::dom::CSP& outCSP) const
       outCSP.mSandbox.Value() = mozilla::Move(srcs);
       return;
 
+    case nsIContentSecurityPolicy::WORKER_SRC_DIRECTIVE:
+      outCSP.mWorker_src.Construct();
+      outCSP.mWorker_src.Value() = mozilla::Move(srcs);
+      return;
+
     // REFERRER_DIRECTIVE and REQUIRE_SRI_FOR are handled in nsCSPPolicy::toDomCSPStruct()
 
     default:
@@ -1243,7 +1247,8 @@ bool nsCSPDirective::equals(CSPDirective aDirective) const
 
 nsCSPChildSrcDirective::nsCSPChildSrcDirective(CSPDirective aDirective)
   : nsCSPDirective(aDirective)
-  , mHandleFrameSrc(false)
+  , mRestrictFrames(false)
+  , mRestrictWorkers(false)
 {
 }
 
@@ -1251,30 +1256,58 @@ nsCSPChildSrcDirective::~nsCSPChildSrcDirective()
 {
 }
 
-void nsCSPChildSrcDirective::setHandleFrameSrc()
-{
-  mHandleFrameSrc = true;
-}
-
 bool nsCSPChildSrcDirective::restrictsContentType(nsContentPolicyType aContentType) const
 {
   if (aContentType == nsIContentPolicy::TYPE_SUBDOCUMENT) {
-    return mHandleFrameSrc;
+    return mRestrictFrames;
   }
-
-  return (aContentType == nsIContentPolicy::TYPE_INTERNAL_WORKER
-      || aContentType == nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER
-      || aContentType == nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER
-      );
+  if (aContentType == nsIContentPolicy::TYPE_INTERNAL_WORKER ||
+      aContentType == nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER ||
+      aContentType == nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER) {
+    return mRestrictWorkers;
+  }
+  return false;
 }
 
 bool nsCSPChildSrcDirective::equals(CSPDirective aDirective) const
 {
   if (aDirective == nsIContentSecurityPolicy::FRAME_SRC_DIRECTIVE) {
-    return mHandleFrameSrc;
+    return mRestrictFrames;
   }
+  if (aDirective == nsIContentSecurityPolicy::WORKER_SRC_DIRECTIVE) {
+    return mRestrictWorkers;
+  }
+  return (mDirective == aDirective);
+}
 
-  return (aDirective == nsIContentSecurityPolicy::CHILD_SRC_DIRECTIVE);
+/* =============== nsCSPScriptSrcDirective ============= */
+
+nsCSPScriptSrcDirective::nsCSPScriptSrcDirective(CSPDirective aDirective)
+  : nsCSPDirective(aDirective)
+  , mRestrictWorkers(false)
+{
+}
+
+nsCSPScriptSrcDirective::~nsCSPScriptSrcDirective()
+{
+}
+
+bool nsCSPScriptSrcDirective::restrictsContentType(nsContentPolicyType aContentType) const
+{
+  if (aContentType == nsIContentPolicy::TYPE_INTERNAL_WORKER ||
+      aContentType == nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER ||
+      aContentType == nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER) {
+    return mRestrictWorkers;
+  }
+  return mDirective == CSP_ContentTypeToDirective(aContentType);
+}
+
+bool nsCSPScriptSrcDirective::equals(CSPDirective aDirective) const
+{
+  if (aDirective == nsIContentSecurityPolicy::WORKER_SRC_DIRECTIVE) {
+    return mRestrictWorkers;
+  }
+  return (mDirective == aDirective);
 }
 
 /* =============== nsBlockAllMixedContentDirective ============= */
@@ -1450,7 +1483,8 @@ nsCSPPolicy::allows(nsContentPolicyType aContentType,
                     bool aParserCreated) const
 {
   CSPUTILSLOG(("nsCSPPolicy::allows, aKeyWord: %s, a HashOrNonce: %s",
-              CSP_EnumToKeyword(aKeyword), NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
+              CSP_EnumToUTF8Keyword(aKeyword),
+              NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
 
   nsCSPDirective* defaultDir = nullptr;
 

@@ -12,7 +12,7 @@ use webrender_api::ScrollLocation;
 use wrappers::CefWrap;
 
 use compositing::windowing::{WindowEvent, MouseWindowEvent};
-use euclid::{TypedPoint2D, TypedVector2D, TypedSize2D};
+use euclid::{TypedPoint2D, TypedVector2D};
 use libc::{c_double, c_int};
 use msg::constellation_msg::{self, KeyModifiers, KeyState};
 use script_traits::{MouseButton, TouchEventType};
@@ -384,8 +384,7 @@ full_cef_class_impl! {
                     .get_render_handler()
                     .get_view_rect(this.downcast().browser.borrow().clone().unwrap(), &mut rect);
                }
-            let size = TypedSize2D::new(rect.width as u32, rect.height as u32);
-            this.downcast().send_window_event(WindowEvent::Resize(size));
+            this.downcast().send_window_event(WindowEvent::Resize);
         }}
 
         fn close_browser(&this, _force: c_int [c_int],) -> () {{
@@ -417,13 +416,13 @@ full_cef_class_impl! {
             };
             let mut key_modifiers = KeyModifiers::empty();
             if (*event).modifiers & EVENTFLAG_SHIFT_DOWN as u32 != 0 {
-               key_modifiers = key_modifiers | constellation_msg::SHIFT;
+               key_modifiers = key_modifiers | constellation_msg::KeyModifiers::SHIFT;
             }
             if (*event).modifiers & EVENTFLAG_CONTROL_DOWN as u32 != 0 {
-               key_modifiers = key_modifiers | constellation_msg::CONTROL;
+               key_modifiers = key_modifiers | constellation_msg::KeyModifiers::CONTROL;
             }
             if (*event).modifiers & EVENTFLAG_ALT_DOWN as u32 != 0 {
-               key_modifiers = key_modifiers | constellation_msg::ALT;
+               key_modifiers = key_modifiers | constellation_msg::KeyModifiers::ALT;
             }
             let ch = char::from_u32((*event).character as u32);
             this.downcast().send_window_event(WindowEvent::KeyEvent(ch, key, key_state, key_modifiers))

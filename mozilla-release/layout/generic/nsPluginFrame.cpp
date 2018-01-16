@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:set ts=2 sts=2 sw=2 et cin:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -192,10 +192,10 @@ nsPluginFrame::Init(nsIContent*       aContent,
 }
 
 void
-nsPluginFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsPluginFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (mReflowCallbackPosted) {
-    PresContext()->PresShell()->CancelReflowCallback(this);
+    PresShell()->CancelReflowCallback(this);
   }
 
   // Ensure our DidComposite observer is gone.
@@ -217,7 +217,7 @@ nsPluginFrame::DestroyFrom(nsIFrame* aDestructRoot)
     mBackgroundSink->Destroy();
   }
 
-  nsFrame::DestroyFrom(aDestructRoot);
+  nsFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 /* virtual */ void
@@ -359,7 +359,7 @@ nsPluginFrame::PrepForDrawing(nsIWidget *aWidget)
 #ifdef ACCESSIBILITY
   nsAccessibilityService* accService = nsIPresShell::AccService();
   if (accService) {
-    accService->RecreateAccessible(PresContext()->PresShell(), mContent);
+    accService->RecreateAccessible(PresShell(), mContent);
   }
 #endif
 
@@ -871,7 +871,7 @@ nsPluginFrame::PaintPrintPlugin(nsIFrame* aFrame, gfxContext* aCtx,
     nsLayoutUtils::PointToGfxPoint(pt, aFrame->PresContext()->AppUnitsPerDevPixel());
 
   gfxContextMatrixAutoSaveRestore autoSR(aCtx);
-  aCtx->SetMatrix(aCtx->CurrentMatrix().PreTranslate(devPixelPt));
+  aCtx->SetMatrixDouble(aCtx->CurrentMatrixDouble().PreTranslate(devPixelPt));
 
   // FIXME - Bug 385435: Doesn't aDirtyRect need translating too?
 
@@ -914,6 +914,11 @@ public:
                                    const ContainerLayerParameters& aParameters) override
   {
     return LAYER_ACTIVE;
+  }
+
+  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override
+  {
+    return new nsDisplayPluginGeometry(this, aBuilder);
   }
 };
 
@@ -1444,8 +1449,8 @@ nsPluginFrame::CreateWebRenderCommands(nsDisplayItem* aItem,
   }
   lm->AddDidCompositeObserver(mDidCompositeObserver.get());
 
-  LayerRect dest(r.x, r.y, size.width, size.height);
-  return aManager->PushImage(aItem, container, aBuilder, aResources, aSc, dest);
+  LayoutDeviceRect dest(r.x, r.y, size.width, size.height);
+  return aManager->CommandBuilder().PushImage(aItem, container, aBuilder, aResources, aSc, dest);
 }
 
 

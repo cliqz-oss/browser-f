@@ -13,6 +13,7 @@ EXPORTS += [
     'VRDisplayClient.h',
     'VRDisplayPresentation.h',
     'VRManager.h',
+    'VRThread.h',
 ]
 
 LOCAL_INCLUDES += [
@@ -31,6 +32,7 @@ UNIFIED_SOURCES += [
     'VRDisplayClient.cpp',
     'VRDisplayPresentation.cpp',
     'VRManager.cpp',
+    'VRThread.cpp',
 ]
 
 # VRDisplayHost includes MacIOSurface.h which includes Mac headers
@@ -54,6 +56,14 @@ if CONFIG['OS_TARGET'] == 'WINNT':
     SOURCES += [
         'gfxVROculus.cpp',
     ]
+
+if CONFIG['MOZ_ANDROID_GOOGLE_VR']:
+    SOURCES += [
+        'gfxVRGVR.cpp',
+        'jni/gfxGVRJNI.cpp',
+    ]
+    CXXFLAGS += ['-I%s' % CONFIG['MOZ_ANDROID_GOOGLE_VR_INCLUDE']]
+    LOCAL_INCLUDES += ['/widget/android']
 
 IPDL_SOURCES = [
     'ipc/PVRLayer.ipdl',
