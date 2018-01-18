@@ -143,25 +143,11 @@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
 #endif
 @RESPATH@/browser/blocklist.xml
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
 #if CQZ_ADULT_DOMAINS_BF
 @RESPATH@/browser/adult-domains.bin
 #endif  ; CQZ_ADULT_DOMAINS_BF
 #endif  ; CQZ_AUTO_PRIVATE_TAB
-#ifdef XP_UNIX
-#ifndef XP_MACOSX
-@RESPATH@/run-mozilla.sh
-#endif
-#endif
-||||||| merged common ancestors
-#ifdef XP_UNIX
-#ifndef XP_MACOSX
-@RESPATH@/run-mozilla.sh
-#endif
-#endif
-=======
->>>>>>> origin/upstream-releases
 #ifdef XP_WIN
 #ifdef _AMD64_
 @BINPATH@/@DLL_PREFIX@qipcap64@DLL_SUFFIX@
@@ -868,14 +854,10 @@ bin/libfreebl_32int64_3.so
 @RESPATH@/components/BHRTelemetryService.js
 @RESPATH@/components/BHRTelemetryService.manifest
 #endif
-<<<<<<< HEAD
-
-; Extra distrubution files
-@RESPATH@/cliqz.cfg
-||||||| merged common ancestors
-=======
 
 #ifdef PKG_LOCALE_MANIFEST
 #include @PKG_LOCALE_MANIFEST@
 #endif
->>>>>>> origin/upstream-releases
+
+; Extra distrubution files
+@RESPATH@/cliqz.cfg

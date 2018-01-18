@@ -557,7 +557,6 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   margin: 0;
   padding: 0;
 }
-<<<<<<< HEAD
 
 /* Cliqz. Hide:
  * 1. Search panel from the toolbar
@@ -566,8 +565,6 @@ toolbarpaletteitem#wrapper-search-container,
 #customization-uidensity-menuitem-compact {
   display: none!important;
 }
-||||||| merged common ancestors
-=======
 
 #whimsy-button {
   /* Don't need HiDPI versions since the size used will be scaled down to 20x20. */
@@ -699,4 +696,3 @@ toolbarpaletteitem#wrapper-search-container,
   80% { border-color: rgb(20,155,249); color: rgb(20,155,249); }
   100% { border-color: rgb(195,17,206); color: rgb(195,17,206); }
 }
->>>>>>> origin/upstream-releases

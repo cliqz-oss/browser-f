@@ -2102,42 +2102,12 @@ var gHeader = {
 
       gViewController.loadView("addons://search/" + encodeURIComponent(query));
     });
-<<<<<<< HEAD
-
-    function updateNavButtonVisibility() {
-      var shouldShow = gHeader.shouldShowNavButtons;
-      document.getElementById("back-btn").hidden = !shouldShow;
-      document.getElementById("forward-btn").hidden = !shouldShow;
-    }
-
-    window.addEventListener("focus", function(aEvent) {
-      if (aEvent.target == window)
-        updateNavButtonVisibility();
-    });
-
-    updateNavButtonVisibility();
 
     const SETTINGS_PREF_NAME = 'extensions.cliqz.listed';
     if(Services.prefs.getPrefType(SETTINGS_PREF_NAME) === 128 &&
       Services.prefs.getBoolPref(SETTINGS_PREF_NAME)) {
       document.getElementById("settings-icon").hidden = false;
     }
-||||||| merged common ancestors
-
-    function updateNavButtonVisibility() {
-      var shouldShow = gHeader.shouldShowNavButtons;
-      document.getElementById("back-btn").hidden = !shouldShow;
-      document.getElementById("forward-btn").hidden = !shouldShow;
-    }
-
-    window.addEventListener("focus", function(aEvent) {
-      if (aEvent.target == window)
-        updateNavButtonVisibility();
-    });
-
-    updateNavButtonVisibility();
-=======
->>>>>>> origin/upstream-releases
   },
 
   focusSearchBox() {

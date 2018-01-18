@@ -346,13 +346,7 @@ var CustomizableUIInternal = {
         "preferences-button",
         "add-ons-button",
         "sync-button",
-<<<<<<< HEAD
-        "e10s-button",
         "mobilepairing_btn", // Cliqz connect/pairing
-||||||| merged common ancestors
-        "e10s-button",
-=======
->>>>>>> origin/upstream-releases
       ];
 
       if (!AppConstants.MOZ_DEV_EDITION) {
@@ -461,7 +455,6 @@ var CustomizableUIInternal = {
         }
       }
     }
-<<<<<<< HEAD
 
     // Cliqz
     // Make sure no "search-container" is in navbar left from previous versions
@@ -472,8 +465,6 @@ var CustomizableUIInternal = {
         navbarPlacements.splice(searchContainerIndex, 1);
       }
     }
-||||||| merged common ancestors
-=======
 
     // Remove the old placements from the now-gone Nightly-only
     // "New non-e10s window" button.
@@ -485,7 +476,6 @@ var CustomizableUIInternal = {
         }
       }
     }
->>>>>>> origin/upstream-releases
   },
 
   /**

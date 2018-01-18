@@ -304,12 +304,6 @@ devtools.jar:
     skin/images/firebug/command-measure.svg (themes/images/firebug/command-measure.svg)
     skin/images/firebug/command-rulers.svg (themes/images/firebug/command-rulers.svg)
     skin/images/firebug/command-noautohide.svg (themes/images/firebug/command-noautohide.svg)
-<<<<<<< HEAD
-
-    # DB-1276. For hiding addons on about:debugging page in release build
-*   modules/devtools/client/aboutdebugging/components/aboutdebugging.js (aboutdebugging/components/aboutdebugging.js)
-||||||| merged common ancestors
-=======
 
     # Debugger
     skin/images/debugger/arrow.svg (themes/images/debugger/arrow.svg)
@@ -324,4 +318,6 @@ devtools.jar:
     skin/images/debugger/stepIn.svg (themes/images/debugger/stepIn.svg)
     skin/images/debugger/stepOut.svg (themes/images/debugger/stepOut.svg)
     skin/images/debugger/stepOver.svg (themes/images/debugger/stepOver.svg)
->>>>>>> origin/upstream-releases
+
+    # DB-1276. For hiding addons on about:debugging page in release build
+*   modules/devtools/client/aboutdebugging/components/Aboutdebugging.js (aboutdebugging/components/Aboutdebugging.js)

@@ -15,16 +15,10 @@ Cu.import("resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "AboutNewTab",
                                   "resource:///modules/AboutNewTab.jsm");
 
-<<<<<<< HEAD
 //const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
 const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
-||||||| merged common ancestors
-const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
-=======
-const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_LOCALES_CHANGE = "intl:requested-locales-changed";
->>>>>>> origin/upstream-releases
 
 // Automated tests ensure packaged locales are in this list. Copied output of:
 // https://github.com/mozilla/activity-stream/blob/master/bin/render-activity-stream-html.js

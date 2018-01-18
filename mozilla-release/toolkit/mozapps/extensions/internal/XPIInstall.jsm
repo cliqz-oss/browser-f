@@ -1636,24 +1636,12 @@ class AddonInstall {
         if (state == AddonManager.SIGNEDSTATE_MISSING ||
             state == AddonManager.SIGNEDSTATE_UNKNOWN)
           return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-<<<<<<< HEAD
                                  "signature is required but missing",
                                  manifest]);
-||||||| merged common ancestors
-                                 "signature is required but missing"])
-=======
-                                 "signature is required but missing"]);
->>>>>>> origin/upstream-releases
 
         return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-<<<<<<< HEAD
                                "signature verification failed",
                                manifest]);
-||||||| merged common ancestors
-                               "signature verification failed"])
-=======
-                               "signature verification failed"]);
->>>>>>> origin/upstream-releases
       }
     }
 

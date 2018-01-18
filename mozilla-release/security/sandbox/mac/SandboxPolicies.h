@@ -286,78 +286,11 @@ static const char contentSandboxRules[] = R"(
 ;          no read/write access to $PROFILE,
 ;          read access permitted to $PROFILE/{extensions,features,chrome}
   (if (string=? sandbox-level-2 "TRUE")
-<<<<<<< HEAD
-    (if (string=? hasFilePrivileges "TRUE")
-      ; This process has blanket file read privileges
-      (allow file-read*)
-      ; This process does not have blanket file read privileges
-      (begin
-        ; bug 1201935
-        (allow file-read* (home-subpath "/Library/Caches/TemporaryItems"))
-        (if (string=? hasProfileDir "TRUE")
-          ; we have a profile dir
-          (begin
-            (allow file-read* (require-all
-                (require-not (home-subpath "/Library"))
-                (require-not (subpath profileDir))))
-            (allow file-read*
-                (profile-subpath "/extensions")
-                (profile-subpath "/features")
-                (profile-subpath "/chrome")))
-          ; we don't have a profile dir
-          (allow file-read* (require-not (home-subpath "/Library")))))))
-
-  ; level 3: no global read/write access,
-  ;          read access permitted to $PROFILE/{extensions,features,chrome}
-  (if (string=? sandbox-level-3 "TRUE")
-    (if (string=? hasFilePrivileges "TRUE")
-      ; This process has blanket file read privileges
-      (allow file-read*)
-      ; This process does not have blanket file read privileges
-||||||| merged common ancestors
-    (if (string=? hasFilePrivileges "TRUE")
-      ; This process has blanket file read privileges
-      (allow file-read*)
-      ; This process does not have blanket file read privileges
-      (begin
-        ; bug 1201935
-        (allow file-read* (home-subpath "/Library/Caches/TemporaryItems"))
-        (if (string=? hasProfileDir "TRUE")
-          ; we have a profile dir
-          (begin
-            (allow file-read* (require-all
-                (require-not (home-subpath "/Library"))
-                (require-not (subpath profileDir))))
-            (allow file-read*
-                (profile-subpath "/extensions")
-                (profile-subpath "/chrome")))
-          ; we don't have a profile dir
-          (allow file-read* (require-not (home-subpath "/Library")))))))
-
-  ; level 3: no global read/write access,
-  ;          read access permitted to $PROFILE/{extensions,chrome}
-  (if (string=? sandbox-level-3 "TRUE")
-    (if (string=? hasFilePrivileges "TRUE")
-      ; This process has blanket file read privileges
-      (allow file-read*)
-      ; This process does not have blanket file read privileges
-=======
     (begin
       ; bug 1201935
       (allow file-read* (home-subpath "/Library/Caches/TemporaryItems"))
->>>>>>> origin/upstream-releases
       (if (string=? hasProfileDir "TRUE")
         ; we have a profile dir
-<<<<<<< HEAD
-          (allow file-read*
-            (profile-subpath "/extensions")
-            (profile-subpath "/features")
-            (profile-subpath "/chrome")))))
-||||||| merged common ancestors
-          (allow file-read*
-            (profile-subpath "/extensions")
-            (profile-subpath "/chrome")))))
-=======
         (allow file-read* (require-all
           (require-not (home-subpath "/Library"))
           (require-not (subpath profileDir))))
@@ -366,7 +299,7 @@ static const char contentSandboxRules[] = R"(
 
   ; level 3: Does not have any of it's own rules. The global rules provide:
   ;          no global read/write access,
-  ;          read access permitted to $PROFILE/{extensions,chrome}
+  ;          read access permitted to $PROFILE/{extensions,features,chrome}
   (if (string=? hasFilePrivileges "TRUE")
     ; This process has blanket file read privileges
     (allow file-read*))
@@ -375,8 +308,8 @@ static const char contentSandboxRules[] = R"(
     ; we have a profile dir
     (allow file-read*
       (profile-subpath "/extensions")
+      (profile-subpath "/features")
       (profile-subpath "/chrome")))
->>>>>>> origin/upstream-releases
 
 ; accelerated graphics
   (allow-shared-preferences-read "com.apple.opengl")

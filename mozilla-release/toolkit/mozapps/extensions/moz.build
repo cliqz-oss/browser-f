@@ -37,15 +37,9 @@ EXTRA_PP_COMPONENTS += [
 EXTRA_JS_MODULES += [
     'AddonManager.jsm',
     'ChromeManifestParser.jsm',
-<<<<<<< HEAD
-    'DeferredSave.jsm',
 ]
 
 EXTRA_PP_JS_MODULES += [
-||||||| merged common ancestors
-    'DeferredSave.jsm',
-=======
->>>>>>> origin/upstream-releases
     'LightweightThemeManager.jsm',
 ]
 

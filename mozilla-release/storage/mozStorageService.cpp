@@ -803,12 +803,6 @@ Service::Observe(nsISupports *, const char *aTopic, const char16_t *)
       getConnections(connections);
       for (uint32_t i = 0, n = connections.Length(); i < n; i++) {
         if (!connections[i]->isClosed()) {
-<<<<<<< HEAD
-          MOZ_LOG(gStorageServiceLog, LogLevel::Error,
-                  ("Leaked connection to %s",
-                   connections[i]->getFilename().get()));
-||||||| merged common ancestors
-=======
 #ifdef MOZ_CRASHREPORTER
           // getFilename is only the leaf name for the database file,
           // so it shouldn't contain privacy-sensitive information.
@@ -820,7 +814,6 @@ Service::Observe(nsISupports *, const char *aTopic, const char16_t *)
           printf_stderr("Storage connection not closed: %s",
                         connections[i]->getFilename().get());
 #endif
->>>>>>> origin/upstream-releases
           MOZ_CRASH();
         }
       }

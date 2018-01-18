@@ -51,26 +51,6 @@ can reach it easily. -->
 <!ENTITY  sendLinkToDevice.label             "Link an Gerät senden">
 <!ENTITY  sendLinkToDevice.accesskey         "X">
 <!ENTITY  sendToDeviceFeedback.label         "Gesendet!">
-<<<<<<< HEAD
-<!ENTITY  moveToNewWindow.label             "In neues Fenster verschieben">
-<!ENTITY  moveToNewWindow.accesskey         "n">
-<!ENTITY  bookmarkAllTabs.label       		"Lesezeichen für alle Tabs hinzufügen…">
-<!ENTITY  bookmarkAllTabs.accesskey   		"L">
-<!ENTITY  undoCloseTab.label          		"Geschlossenen Tab wiederherstellen">
-<!ENTITY  undoCloseTab.accesskey      		"G">
-<!ENTITY  closeTab.label         			"Tab schließen">
-<!ENTITY  closeTab.accesskey         		"c">
-<!ENTITY  duplicateTab.label                 "Tab duplizieren">
-||||||| merged common ancestors
-<!ENTITY  moveToNewWindow.label             "In neues Fenster verschieben">
-<!ENTITY  moveToNewWindow.accesskey         "n">
-<!ENTITY  bookmarkAllTabs.label       		"Lesezeichen für alle Tabs hinzufügen…">
-<!ENTITY  bookmarkAllTabs.accesskey   		"L">
-<!ENTITY  undoCloseTab.label          		"Geschlossenen Tab wiederherstellen">
-<!ENTITY  undoCloseTab.accesskey      		"G">
-<!ENTITY  closeTab.label         			"Tab schließen">
-<!ENTITY  closeTab.accesskey         		"c">
-=======
 <!ENTITY  moveToNewWindow.label              "In neues Fenster verschieben">
 <!ENTITY  moveToNewWindow.accesskey          "n">
 <!ENTITY  bookmarkAllTabs.label              "Lesezeichen für alle Tabs hinzufügen…">
@@ -79,7 +59,7 @@ can reach it easily. -->
 <!ENTITY  undoCloseTab.accesskey             "G">
 <!ENTITY  closeTab.label                     "Tab schließen">
 <!ENTITY  closeTab.accesskey                 "c">
->>>>>>> origin/upstream-releases
+<!ENTITY  duplicateTab.label                 "Tab duplizieren">
 
 <!ENTITY  listAllTabs.label      "Alle Tabs auflisten">
 
@@ -892,15 +872,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY customizeMode.lwthemes.menuManage.accessKey "V">
 <!ENTITY customizeMode.lwthemes.menuGetMore "Weitere Themes herunterladen">
 <!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "W">
-<<<<<<< HEAD
 <!ENTITY customizeMode.emptyOverflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
-||||||| merged common ancestors
-<!ENTITY customizeMode.emptyOverflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
-=======
-<!ENTITY customizeMode.emptyOverflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
 <!ENTITY customizeMode.overflowList.title2 "Überhangmenü">
-<!ENTITY customizeMode.overflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
->>>>>>> origin/upstream-releases
+<!ENTITY customizeMode.overflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
 <!ENTITY customizeMode.uidensity "Dichte">
 <!-- LOCALIZATION NOTE (customizeMode.uidensity.menuNormal.*):
      “Normal” is displayed in the Customize screen, under the Density menu. -->

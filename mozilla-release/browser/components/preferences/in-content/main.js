@@ -11,13 +11,7 @@ Components.utils.import("resource://gre/modules/Downloads.jsm");
 Components.utils.import("resource://gre/modules/FileUtils.jsm");
 Components.utils.import("resource:///modules/ShellService.jsm");
 Components.utils.import("resource:///modules/TransientPrefs.jsm");
-<<<<<<< HEAD
-Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/AddonManager.jsm");
-||||||| merged common ancestors
-Components.utils.import("resource://gre/modules/Services.jsm");
-=======
->>>>>>> origin/upstream-releases
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
 Components.utils.import("resource://gre/modules/LoadContextInfo.jsm");
@@ -229,13 +223,9 @@ var gMainPane = {
     this._updateUseCurrentButton();
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this));
 
-<<<<<<< HEAD
-||||||| merged common ancestors
+#if 0
     this.updateBrowserStartupLastSession();
-
-=======
-    this.updateBrowserStartupLastSession();
-
+#endif
     handleControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY);
     let newTabObserver = {
       observe(subject, topic, data) {
@@ -247,7 +237,6 @@ var gMainPane = {
       Services.obs.removeObserver(newTabObserver, "newtab-url-changed");
     });
 
->>>>>>> origin/upstream-releases
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
       try {
@@ -280,14 +269,8 @@ var gMainPane = {
       gMainPane.restoreDefaultHomePage);
 #if 0
     setEventListener("disableHomePageExtension", "command",
-<<<<<<< HEAD
-                     gMainPane.makeDisableControllingExtension("homepage_override"));
-#endif
-||||||| merged common ancestors
-                     gMainPane.makeDisableControllingExtension("homepage_override"));
-=======
                      makeDisableControllingExtension(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY));
->>>>>>> origin/upstream-releases
+#endif
     setEventListener("disableContainersExtension", "command",
                      makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
     setEventListener("disableNewTabExtension", "command",

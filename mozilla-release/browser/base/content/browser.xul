@@ -107,23 +107,7 @@
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
-<<<<<<< HEAD
-#ifdef E10S_TESTING_ONLY
-      <menuitem id="context_openNonRemoteWindow" label="Open in new non-e10s window"
-                tbattr="tabbrowser-remote"
-                hidden="true"
-                oncommand="gBrowser.openNonRemoteWindow(TabContextMenu.contextTab);"/>
-#endif
 #if 0
-||||||| merged common ancestors
-#ifdef E10S_TESTING_ONLY
-      <menuitem id="context_openNonRemoteWindow" label="Open in new non-e10s window"
-                tbattr="tabbrowser-remote"
-                hidden="true"
-                oncommand="gBrowser.openNonRemoteWindow(TabContextMenu.contextTab);"/>
-#endif
-=======
->>>>>>> origin/upstream-releases
       <menuseparator id="context_sendTabToDevice_separator"/>
       <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
             accesskey="&sendTabToDevice.accesskey;">

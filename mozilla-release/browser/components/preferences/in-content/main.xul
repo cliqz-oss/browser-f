@@ -338,17 +338,13 @@
              value="3"
              id="browserStartupLastSession"/>
     </radiogroup>
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
     <hbox id="browserNewTabExtensionContent" align="center" hidden="true">
       <description control="disableNewTabExtension" flex="1" />
       <button id="disableNewTabExtension"
               class="extension-controlled-button accessory-button"
               label="&disableExtension.label;" />
     </hbox>
->>>>>>> origin/upstream-releases
+#endif
   </vbox>
 #if 0
 </groupbox>
@@ -358,15 +354,8 @@
           data-category="paneGeneral"
           hidden="true">
   <caption><label>&homepage2.label;</label></caption>
-<<<<<<< HEAD
-  <hbox id="browserHomePageExtensionContent" align="center">
-||||||| merged common ancestors
-
-  <hbox id="browserHomePageExtensionContent" align="center">
-=======
 
   <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
->>>>>>> origin/upstream-releases
     <description control="disableHomePageExtension" flex="1" />
     <button id="disableHomePageExtension"
             class="extension-controlled-button accessory-button"

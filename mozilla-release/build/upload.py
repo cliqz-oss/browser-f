@@ -204,14 +204,8 @@ def GetUrlProperties(output, package):
         ('testPackagesUrl', lambda m: m.endswith('test_packages.json')),
         ('packageUrl', lambda m: m.endswith(package)),
     ]
-<<<<<<< HEAD
-    url_re = re.compile(r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|deb|mar|tar\.gz|json))$''')
-||||||| merged common ancestors
-    url_re = re.compile(r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|mar|tar\.gz|json))$''')
-=======
     url_re = re.compile(
-        r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|mar|tar\.gz|json))$''')
->>>>>>> origin/upstream-releases
+        r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|deb|mar|tar\.gz|json))$''')
     properties = {}
 
     try:
@@ -230,13 +224,13 @@ def GetUrlProperties(output, package):
                       in property_conditions}
     return properties
 
-<<<<<<< HEAD
 def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
     """Upload only mar file(s) from the list to s3_bucket/s3_path/.
     If verbose is True, print status updates while working."""
 
     s3 = boto.connect_s3()
-    s3 = boto.s3.connection.S3Connection(calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
+    s3 = boto.s3.connection.S3Connection(
+        calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
     bucket = s3.get_bucket(s3_bucket)
     properties = {}
 
@@ -281,7 +275,8 @@ def UploadServiceFilesToS3(s3_bucket, s3_path, files, verbose=False):
     If verbose is True, print status updates while working."""
 
     s3 = boto.connect_s3()
-    s3 = boto.s3.connection.S3Connection(calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
+    s3 = boto.s3.connection.S3Connection(
+        calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
     bucket = s3.get_bucket(s3_bucket)
 
     for source_file in files:
@@ -305,14 +300,8 @@ def UploadServiceFilesToS3(s3_bucket, s3_path, files, verbose=False):
     if verbose:
         print "Upload service files complete"
 
-def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None, package=None):
-||||||| merged common ancestors
-def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None, package=None):
-=======
-
 def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None,
                 upload_to_temp_dir=False, post_upload_command=None, package=None):
->>>>>>> origin/upstream-releases
     """Upload each file in the list files to user@host:path. Optionally pass
     port and ssh_key to the ssh commands. If base_path is not None, upload
     files including their path relative to base_path. If upload_to_temp_dir is
@@ -462,35 +451,15 @@ if __name__ == '__main__':
         print("You must specify a --properties-file")
         sys.exit(1)
 
-<<<<<<< HEAD
     if not s3_bucket:
         if host == "localhost":
             if upload_to_temp_dir:
-                print "Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost"
+                print("Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost")
                 sys.exit(1)
             if post_upload_command:
                 # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
                 # scripts, so just ignore it until it's no longer used anywhere
-                print "Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost"
-||||||| merged common ancestors
-    if host == "localhost":
-        if upload_to_temp_dir:
-            print "Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost"
-            sys.exit(1)
-        if post_upload_command:
-            # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
-            # scripts, so just ignore it until it's no longer used anywhere
-            print "Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost"
-=======
-    if host == "localhost":
-        if upload_to_temp_dir:
-            print("Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost")
-            sys.exit(1)
-        if post_upload_command:
-            # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
-            # scripts, so just ignore it until it's no longer used anywhere
-            print("Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost")
->>>>>>> origin/upstream-releases
+                print("Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost")
 
     try:
         if s3_bucket:
@@ -500,7 +469,6 @@ if __name__ == '__main__':
             if s3_service_path and s3_bucket_service:
                 UploadServiceFilesToS3(s3_bucket_service, s3_service_path, args, verbose=True)
         else:
-<<<<<<< HEAD
             if host == "localhost":
                 CopyFilesLocally(path, args, base_path=options.base_path,
                                  package=options.package,
@@ -513,32 +481,9 @@ if __name__ == '__main__':
                                              package=options.package, verbose=True)
 
         if url_properties:
-            WriteProperties(args, options.properties_file, url_properties, options.package)
-
-    except IOError, (strerror):
-        print strerror
-||||||| merged common ancestors
-
-            url_properties = UploadFiles(user, host, path, args,
-                                         base_path=options.base_path, port=port, ssh_key=key,
-                                         upload_to_temp_dir=upload_to_temp_dir,
-                                         post_upload_command=post_upload_command,
-                                         package=options.package, verbose=True)
-
-            WriteProperties(args, options.properties_file, url_properties, options.package)
-    except IOError, (strerror):
-        print strerror
-=======
-
-            url_properties = UploadFiles(user, host, path, args,
-                                         base_path=options.base_path, port=port, ssh_key=key,
-                                         upload_to_temp_dir=upload_to_temp_dir,
-                                         post_upload_command=post_upload_command,
-                                         package=options.package, verbose=True)
-
             WriteProperties(args, options.properties_file,
                             url_properties, options.package)
+
     except IOError as strerror:
         print(strerror)
->>>>>>> origin/upstream-releases
         sys.exit(1)

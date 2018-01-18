@@ -180,21 +180,8 @@ function restoreSession() {
 }
 
 function startNewSession() {
-<<<<<<< HEAD
-  var prefBranch =
-      Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
-  let addNTP = prefBranch.getBoolPref("browser.startup.addFreshTab");
+  let addNTP = Services.prefs.getBoolPref("browser.startup.addFreshTab");
   if (addNTP)
-||||||| merged common ancestors
-  var prefBranch = Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
-  if (prefBranch.getIntPref("browser.startup.page") == 0)
-    getBrowserWindow().gBrowser.loadURI("about:blank");
-  else
-=======
-  if (Services.prefs.getIntPref("browser.startup.page") == 0)
-    getBrowserWindow().gBrowser.loadURI("about:blank");
-  else
->>>>>>> origin/upstream-releases
     getBrowserWindow().BrowserHome();
 }
 

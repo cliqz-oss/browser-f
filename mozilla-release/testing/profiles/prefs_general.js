@@ -342,16 +342,7 @@ user_pref("media.eme.chromium-api.video-shmems", 0);
 user_pref("media.autoplay.enabled", true);
 
 // Don't use auto-enabled e10s
-<<<<<<< HEAD
 user_pref("browser.tabs.remote.autostart", false);
-user_pref("browser.tabs.remote.autostart.1", false);
-user_pref("browser.tabs.remote.autostart.2", false);
-||||||| merged common ancestors
-user_pref("browser.tabs.remote.autostart.1", false);
-user_pref("browser.tabs.remote.autostart.2", false);
-=======
-user_pref("browser.tabs.remote.autostart", false);
->>>>>>> origin/upstream-releases
 // Don't show a delay when hiding the audio indicator during tests
 user_pref("browser.tabs.delayHidingAudioPlayingIconMS", 0);
 // Don't forceably kill content processes after a timeout

@@ -13874,19 +13874,6 @@
     "keyed": true,
     "bug_numbers": [1341569],
     "description": "Milliseconds between starting to fill an autofill-eligible form field and submitting the form, keyed by the combination of form type and filling type."
-<<<<<<< HEAD
-  },
-  "REPORT_DECEPTIVE_SITE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": [],
-    "expires_in_version": "never",
-    "bug_numbers": [],
-    "kind": "enumerated",
-    "n_values": 3,
-    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
-    "releaseChannelCollection": "opt-out"
-||||||| merged common ancestors
-=======
   },
   "GFX_OMTP_PAINT_WAIT_TIME": {
     "record_in_processes": ["content"],
@@ -13897,6 +13884,15 @@
     "n_buckets": 50,
     "description": "Amount of time in milliseconds the main thread spends waiting for the paint thread to complete, if the time was greater than 200us.",
     "bug_numbers": [1386968]
->>>>>>> origin/upstream-releases
+  },
+  "REPORT_DECEPTIVE_SITE": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
+    "releaseChannelCollection": "opt-out"
   }
 }

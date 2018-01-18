@@ -1,16 +1,10 @@
 /*.app/***
 /*.dylib
 /certutil
-<<<<<<< HEAD
 /*-bin
-||||||| merged common ancestors
-/firefox-bin
-=======
-/firefox-bin
 #if defined(MOZ_GECKODRIVER)
 /geckodriver
 #endif
->>>>>>> origin/upstream-releases
 /gtest/***
 #if defined(MOZ_ASAN) || defined(MOZ_TSAN)
 /llvm-symbolizer

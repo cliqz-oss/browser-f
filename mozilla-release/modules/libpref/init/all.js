@@ -5369,31 +5369,12 @@ pref("dom.flyweb.enabled", false);
 // Enable mapped array buffer by default.
 pref("dom.mapped_arraybuffer.enabled", true);
 
-<<<<<<< HEAD
-// The tables used for Safebrowsing phishing and malware checks.
-pref("urlclassifier.malwareTable", "goog-malware-proto,goog-unwanted-proto,test-malware-simple,test-unwanted-simple");
-
-||||||| merged common ancestors
-// The tables used for Safebrowsing phishing and malware checks
-pref("urlclassifier.malwareTable", "goog-malware-shavar,goog-unwanted-shavar,test-harmful-simple,test-malware-simple,test-unwanted-simple");
-=======
 // The tables used for Safebrowsing phishing and malware checks
 pref("urlclassifier.malwareTable", "goog-malware-proto,goog-unwanted-proto,test-harmful-simple,test-malware-simple,test-unwanted-simple");
->>>>>>> origin/upstream-releases
 #ifdef MOZILLA_OFFICIAL
-<<<<<<< HEAD
-// In the official build, we are allowed to use google's private
-// phishing list "goog-phish-shavar". See Bug 1288840.
-pref("urlclassifier.phishTable", "goog-phish-proto,test-phish-simple");
-||||||| merged common ancestors
-// In the official build, we are allowed to use google's private
-// phishing list "goog-phish-shavar". See Bug 1288840.
-pref("urlclassifier.phishTable", "goog-phish-shavar,test-phish-simple");
-=======
 // In official builds, we are allowed to use Google's private phishing
 // list (see bug 1288840).
 pref("urlclassifier.phishTable", "goog-phish-proto,test-phish-simple");
->>>>>>> origin/upstream-releases
 #else
 pref("urlclassifier.phishTable", "googpub-phish-proto,test-phish-simple");
 #endif
