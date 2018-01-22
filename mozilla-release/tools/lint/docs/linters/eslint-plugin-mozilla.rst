@@ -59,11 +59,6 @@ avoid-removeChild
 Rejects using element.parentNode.removeChild(element) when element.remove()
 can be used instead.
 
-avoid-nsISupportsString-preferences
------------------------------------
-
-Rejects using getComplexValue and setComplexValue with nsISupportsString.
-
 balanced-listeners
 ------------------
 
@@ -257,6 +252,11 @@ use-ownerGlobal
 
 Require .ownerGlobal instead of .ownerDocument.defaultView.
 
+use-services
+------------
+
+Requires the use of Services.jsm rather than Cc[].getService() where a service
+is already defined in Services.jsm.
 
 var-only-at-top-level
 ---------------------

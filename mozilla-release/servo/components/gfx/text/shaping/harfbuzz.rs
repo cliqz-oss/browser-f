@@ -6,8 +6,7 @@
 
 use app_units::Au;
 use euclid::Point2D;
-use font::{DISABLE_KERNING_SHAPING_FLAG, Font, FontTableMethods, FontTableTag};
-use font::{IGNORE_LIGATURES_SHAPING_FLAG, KERN, RTL_FLAG, ShapingOptions};
+use font::{ShapingFlags, Font, FontTableMethods, FontTableTag, ShapingOptions, KERN};
 use harfbuzz::{HB_DIRECTION_LTR, HB_DIRECTION_RTL, HB_MEMORY_MODE_READONLY};
 use harfbuzz::{hb_blob_create, hb_face_create_for_tables};
 use harfbuzz::{hb_buffer_create, hb_font_destroy};
@@ -164,7 +163,7 @@ impl Shaper {
                               Shaper::float_to_fixed(pt_size) as c_int);
 
             // configure static function callbacks.
-            hb_font_set_funcs(hb_font, HB_FONT_FUNCS.as_ptr(), font as *mut Font as *mut c_void, None);
+            hb_font_set_funcs(hb_font, HB_FONT_FUNCS.0, font as *mut Font as *mut c_void, None);
 
             Shaper {
                 hb_face: hb_face,
@@ -189,7 +188,7 @@ impl ShaperMethods for Shaper {
     fn shape_text(&self, text: &str, options: &ShapingOptions, glyphs: &mut GlyphStore) {
         unsafe {
             let hb_buffer: *mut hb_buffer_t = hb_buffer_create();
-            hb_buffer_set_direction(hb_buffer, if options.flags.contains(RTL_FLAG) {
+            hb_buffer_set_direction(hb_buffer, if options.flags.contains(ShapingFlags::RTL_FLAG) {
                 HB_DIRECTION_RTL
             } else {
                 HB_DIRECTION_LTR
@@ -204,7 +203,7 @@ impl ShaperMethods for Shaper {
                                text.len() as c_int);
 
             let mut features = Vec::new();
-            if options.flags.contains(IGNORE_LIGATURES_SHAPING_FLAG) {
+            if options.flags.contains(ShapingFlags::IGNORE_LIGATURES_SHAPING_FLAG) {
                 features.push(hb_feature_t {
                     tag: LIGA,
                     value: 0,
@@ -212,7 +211,7 @@ impl ShaperMethods for Shaper {
                     end: hb_buffer_get_length(hb_buffer),
                 })
             }
-            if options.flags.contains(DISABLE_KERNING_SHAPING_FLAG) {
+            if options.flags.contains(ShapingFlags::DISABLE_KERNING_SHAPING_FLAG) {
                 features.push(hb_feature_t {
                     tag: KERN,
                     value: 0,
@@ -306,8 +305,8 @@ impl Shaper {
                 // have found a contiguous "cluster" and can stop extending it.
                 let mut all_glyphs_are_within_cluster: bool = true;
                 for j in glyph_span.clone() {
-                    let loc = glyph_data.byte_offset_of_glyph(j);
-                    if !byte_range.contains(loc as usize) {
+                    let loc = glyph_data.byte_offset_of_glyph(j) as usize;
+                    if !(byte_range.start <= loc && loc < byte_range.end) {
                         all_glyphs_are_within_cluster = false;
                         break
                     }
@@ -411,9 +410,13 @@ impl Shaper {
     }
 }
 
-// Callbacks from Harfbuzz when font map and glyph advance lookup needed.
+/// Callbacks from Harfbuzz when font map and glyph advance lookup needed.
+struct FontFuncs(*mut hb_font_funcs_t);
+
+unsafe impl Sync for FontFuncs {}
+
 lazy_static! {
-    static ref HB_FONT_FUNCS: ptr::Unique<hb_font_funcs_t> = unsafe {
+    static ref HB_FONT_FUNCS: FontFuncs = unsafe {
         let hb_funcs = hb_font_funcs_create();
         hb_font_funcs_set_glyph_func(hb_funcs, Some(glyph_func), ptr::null_mut(), None);
         hb_font_funcs_set_glyph_h_advance_func(
@@ -421,7 +424,7 @@ lazy_static! {
         hb_font_funcs_set_glyph_h_kerning_func(
             hb_funcs, Some(glyph_h_kerning_func), ptr::null_mut(), None);
 
-        ptr::Unique::new_unchecked(hb_funcs)
+        FontFuncs(hb_funcs)
     };
 }
 
@@ -505,7 +508,7 @@ extern fn font_table_func(_: *mut hb_face_t,
                 // `Box::into_raw` intentionally leaks the FontTable so we don't destroy the buffer
                 // while HarfBuzz is using it.  When HarfBuzz is done with the buffer, it will pass
                 // this raw pointer back to `destroy_blob_func` which will deallocate the Box.
-                let font_table_ptr = Box::into_raw(box font_table);
+                let font_table_ptr = Box::into_raw(Box::new(font_table));
 
                 let buf = (*font_table_ptr).buffer();
                 // HarfBuzz calls `destroy_blob_func` when the buffer is no longer needed.

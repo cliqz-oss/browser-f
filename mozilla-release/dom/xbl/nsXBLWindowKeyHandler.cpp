@@ -8,7 +8,7 @@
 #include "nsXBLPrototypeHandler.h"
 #include "nsXBLWindowKeyHandler.h"
 #include "nsIContent.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIDOMKeyEvent.h"
 #include "nsXBLService.h"
 #include "nsIServiceManager.h"
@@ -211,8 +211,16 @@ BuildHandlerChain(nsIContent* aContent, nsXBLPrototypeHandler** aResult)
           valKey.IsEmpty() && valCharCode.IsEmpty() && valKeyCode.IsEmpty())
         continue;
 
-      bool reserved = key->AttrValueIs(kNameSpaceID_None, nsGkAtoms::reserved,
-                                       nsGkAtoms::_true, eCaseMatters);
+      // reserved="pref" is the default for <key> elements.
+      XBLReservedKey reserved = XBLReservedKey_Unset;
+      if (key->AttrValueIs(kNameSpaceID_None, nsGkAtoms::reserved,
+                           nsGkAtoms::_true, eCaseMatters)) {
+        reserved = XBLReservedKey_True;
+      } else if (key->AttrValueIs(kNameSpaceID_None, nsGkAtoms::reserved,
+                                   nsGkAtoms::_false, eCaseMatters)) {
+        reserved = XBLReservedKey_False;
+      }
+
       nsXBLPrototypeHandler* handler = new nsXBLPrototypeHandler(key, reserved);
 
       handler->SetNextHandler(*aResult);
@@ -255,7 +263,7 @@ nsXBLWindowKeyHandler::EnsureHandlers()
 }
 
 nsresult
-nsXBLWindowKeyHandler::WalkHandlers(nsIDOMKeyEvent* aKeyEvent, nsIAtom* aEventType)
+nsXBLWindowKeyHandler::WalkHandlers(nsIDOMKeyEvent* aKeyEvent, nsAtom* aEventType)
 {
   bool prevent;
   aKeyEvent->AsEvent()->GetDefaultPrevented(&prevent);
@@ -443,7 +451,7 @@ nsXBLWindowKeyHandler::CollectKeyboardShortcuts()
   return KeyboardMap(mozilla::Move(shortcuts));
 }
 
-nsIAtom*
+nsAtom*
 nsXBLWindowKeyHandler::ConvertEventToDOMEventType(
                          const WidgetKeyboardEvent& aWidgetKeyboardEvent) const
 {
@@ -510,7 +518,7 @@ nsXBLWindowKeyHandler::HandleEvent(nsIDOMEvent* aEvent)
     return NS_OK;
   }
 
-  nsCOMPtr<nsIAtom> eventTypeAtom =
+  RefPtr<nsAtom> eventTypeAtom =
     ConvertEventToDOMEventType(*widgetKeyboardEvent);
   return WalkHandlers(keyEvent, eventTypeAtom);
 }
@@ -619,7 +627,7 @@ nsXBLWindowKeyHandler::IsHTMLEditableFieldFocused()
 //
 bool
 nsXBLWindowKeyHandler::WalkHandlersInternal(nsIDOMKeyEvent* aKeyEvent,
-                                            nsIAtom* aEventType,
+                                            nsAtom* aEventType,
                                             nsXBLPrototypeHandler* aHandler,
                                             bool aExecute,
                                             bool* aOutReservedForChrome)
@@ -653,7 +661,7 @@ nsXBLWindowKeyHandler::WalkHandlersInternal(nsIDOMKeyEvent* aKeyEvent,
 bool
 nsXBLWindowKeyHandler::WalkHandlersAndExecute(
                          nsIDOMKeyEvent* aKeyEvent,
-                         nsIAtom* aEventType,
+                         nsAtom* aEventType,
                          nsXBLPrototypeHandler* aFirstHandler,
                          uint32_t aCharCode,
                          const IgnoreModifierState& aIgnoreModifierState,
@@ -725,11 +733,6 @@ nsXBLWindowKeyHandler::WalkHandlersAndExecute(
       continue;
     }
 
-    bool isReserved = handler->GetIsReserved();
-    if (aOutReservedForChrome) {
-      *aOutReservedForChrome = isReserved;
-    }
-
     if (commandElement) {
       if (aExecute && !IsExecutableElement(commandElement)) {
         continue;
@@ -738,23 +741,37 @@ nsXBLWindowKeyHandler::WalkHandlersAndExecute(
 
     if (!aExecute) {
       if (handler->EventTypeEquals(aEventType)) {
+        if (aOutReservedForChrome) {
+          *aOutReservedForChrome = IsReservedKey(widgetKeyboardEvent, handler);
+        }
+
         return true;
       }
+
       // If the command is reserved and the event is keydown, check also if
       // the handler is for keypress because if following keypress event is
       // reserved, we shouldn't dispatch the event into web contents.
-      if (isReserved &&
-          aEventType == nsGkAtoms::keydown &&
+      if (aEventType == nsGkAtoms::keydown &&
           handler->EventTypeEquals(nsGkAtoms::keypress)) {
-        return true;
+        if (IsReservedKey(widgetKeyboardEvent, handler)) {
+          if (aOutReservedForChrome) {
+            *aOutReservedForChrome = true;
+          }
+
+          return true;
+        }
       }
       // Otherwise, we've not found a handler for the event yet.
       continue;
     }
 
+    // This should only be assigned when aExecute is false.
+    MOZ_ASSERT(!aOutReservedForChrome);
+
     // If it's not reserved and the event is a key event on a plugin,
     // the handler shouldn't be executed.
-    if (!isReserved && widgetKeyboardEvent->IsKeyEventOnPlugin()) {
+    if (widgetKeyboardEvent->IsKeyEventOnPlugin() &&
+        !IsReservedKey(widgetKeyboardEvent, handler)) {
       return false;
     }
 
@@ -792,6 +809,25 @@ nsXBLWindowKeyHandler::WalkHandlersAndExecute(
 }
 
 bool
+nsXBLWindowKeyHandler::IsReservedKey(WidgetKeyboardEvent* aKeyEvent,
+                                     nsXBLPrototypeHandler* aHandler)
+{
+  XBLReservedKey reserved = aHandler->GetIsReserved();
+  // reserved="true" means that the key is always reserved. reserved="false"
+  // means that the key is never reserved. Otherwise, we check site-specific
+  // permissions.
+  if (reserved == XBLReservedKey_False) {
+    return false;
+  }
+
+  if (reserved == XBLReservedKey_True) {
+    return true;
+  }
+
+  return nsContentUtils::ShouldBlockReservedKeys(aKeyEvent);
+}
+
+bool
 nsXBLWindowKeyHandler::HasHandlerForEvent(nsIDOMKeyEvent* aEvent,
                                           bool* aOutReservedForChrome)
 {
@@ -810,7 +846,7 @@ nsXBLWindowKeyHandler::HasHandlerForEvent(nsIDOMKeyEvent* aEvent,
     return false;
   }
 
-  nsCOMPtr<nsIAtom> eventTypeAtom =
+  RefPtr<nsAtom> eventTypeAtom =
     ConvertEventToDOMEventType(*widgetKeyboardEvent);
   return WalkHandlersInternal(aEvent, eventTypeAtom, mHandler, false,
                               aOutReservedForChrome);

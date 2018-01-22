@@ -28,13 +28,11 @@ using namespace js;
 using namespace wasm;
 
 Compartment::Compartment(Zone* zone)
-  : mutatingInstances_(false)
 {}
 
 Compartment::~Compartment()
 {
     MOZ_ASSERT(instances_.empty());
-    MOZ_ASSERT(!mutatingInstances_);
 }
 
 struct InstanceComparator
@@ -70,22 +68,16 @@ Compartment::registerInstance(JSContext* cx, HandleWasmInstanceObject instanceOb
 
     instance.ensureProfilingLabels(cx->runtime()->geckoProfiler().enabled());
 
-    if (instance.debugEnabled() &&
-        instance.compartment()->debuggerObservesAllExecution())
-    {
+    if (instance.debugEnabled() && instance.compartment()->debuggerObservesAllExecution())
         instance.ensureEnterFrameTrapsState(cx, true);
-    }
 
     size_t index;
     if (BinarySearchIf(instances_, 0, instances_.length(), InstanceComparator(instance), &index))
         MOZ_CRASH("duplicate registration");
 
-    {
-        AutoMutateInstances guard(*this);
-        if (!instances_.insert(instances_.begin() + index, &instance)) {
-            ReportOutOfMemory(cx);
-            return false;
-        }
+    if (!instances_.insert(instances_.begin() + index, &instance)) {
+        ReportOutOfMemory(cx);
+        return false;
     }
 
     Debugger::onNewWasmInstance(cx, instanceObj);
@@ -98,37 +90,7 @@ Compartment::unregisterInstance(Instance& instance)
     size_t index;
     if (!BinarySearchIf(instances_, 0, instances_.length(), InstanceComparator(instance), &index))
         return;
-
-    AutoMutateInstances guard(*this);
     instances_.erase(instances_.begin() + index);
-}
-
-const Code*
-Compartment::lookupCode(const void* pc, const CodeSegment** segmentp) const
-{
-    // lookupCode() can be called asynchronously from the interrupt signal
-    // handler. In that case, the signal handler is just asking whether the pc
-    // is in wasm code. If instances_ is being mutated then we can't be
-    // executing wasm code so returning nullptr is fine.
-    if (mutatingInstances_)
-        return nullptr;
-
-    // Linear search because instances are only ordered by their first tiers,
-    // but may have two.  This code should not be hot anyway, we avoid
-    // lookupCode when we can.
-    for (auto i : instances_) {
-        const Code& code = i->code();
-        for (auto t : code.tiers()) {
-            const CodeSegment& segment = code.segment(t);
-            if (segment.containsCodePC(pc)) {
-                if (segmentp)
-                    *segmentp = &segment;
-                return &code;
-            }
-        }
-    }
-
-    return nullptr;
 }
 
 void

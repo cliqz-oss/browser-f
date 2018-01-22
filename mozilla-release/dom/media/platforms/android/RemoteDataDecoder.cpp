@@ -12,10 +12,12 @@
 #include "VideoUtils.h"
 #include "VPXDecoder.h"
 
+#include "mozilla/Telemetry.h"
 #include "nsIGfxInfo.h"
 #include "nsPromiseFlatString.h"
 #include "nsThreadUtils.h"
 #include "prlog.h"
+
 #include <jni.h>
 
 #undef LOG
@@ -207,6 +209,8 @@ public:
     }
     mIsCodecSupportAdaptivePlayback =
       mJavaDecoder->IsAdaptivePlaybackSupported();
+    Telemetry::Accumulate(Telemetry::MEDIA_ANDROID_VIDEO_TUNNELING_SUPPORT,
+                          mJavaDecoder->IsTunneledPlaybackSupported());
 
     return InitPromise::CreateAndResolve(TrackInfo::kVideoTrack, __func__);
   }
@@ -539,6 +543,69 @@ RemoteDataDecoder::ProcessShutdown()
   return ShutdownPromise::CreateAndResolve(true, __func__);
 }
 
+static CryptoInfo::LocalRef
+GetCryptoInfoFromSample(const MediaRawData* aSample)
+{
+  auto& cryptoObj = aSample->mCrypto;
+
+  if (!cryptoObj.mValid) {
+    return nullptr;
+  }
+
+  CryptoInfo::LocalRef cryptoInfo;
+  nsresult rv = CryptoInfo::New(&cryptoInfo);
+  NS_ENSURE_SUCCESS(rv, nullptr);
+
+  uint32_t numSubSamples = std::min<uint32_t>(
+    cryptoObj.mPlainSizes.Length(), cryptoObj.mEncryptedSizes.Length());
+
+  uint32_t totalSubSamplesSize = 0;
+  for (auto& size : cryptoObj.mEncryptedSizes) {
+    totalSubSamplesSize += size;
+  }
+
+  // mPlainSizes is uint16_t, need to transform to uint32_t first.
+  nsTArray<uint32_t> plainSizes;
+  for (auto& size : cryptoObj.mPlainSizes) {
+    totalSubSamplesSize += size;
+    plainSizes.AppendElement(size);
+  }
+
+  uint32_t codecSpecificDataSize = aSample->Size() - totalSubSamplesSize;
+  // Size of codec specific data("CSD") for Android MediaCodec usage should be
+  // included in the 1st plain size.
+  plainSizes[0] += codecSpecificDataSize;
+
+  static const int kExpectedIVLength = 16;
+  auto tempIV(cryptoObj.mIV);
+  auto tempIVLength = tempIV.Length();
+  MOZ_ASSERT(tempIVLength <= kExpectedIVLength);
+  for (size_t i = tempIVLength; i < kExpectedIVLength; i++) {
+    // Padding with 0
+    tempIV.AppendElement(0);
+  }
+
+  auto numBytesOfPlainData = mozilla::jni::IntArray::New(
+    reinterpret_cast<int32_t*>(&plainSizes[0]), plainSizes.Length());
+
+  auto numBytesOfEncryptedData = mozilla::jni::IntArray::New(
+    reinterpret_cast<const int32_t*>(&cryptoObj.mEncryptedSizes[0]),
+    cryptoObj.mEncryptedSizes.Length());
+  auto iv = mozilla::jni::ByteArray::New(reinterpret_cast<int8_t*>(&tempIV[0]),
+                                         tempIV.Length());
+  auto keyId = mozilla::jni::ByteArray::New(
+    reinterpret_cast<const int8_t*>(&cryptoObj.mKeyId[0]),
+    cryptoObj.mKeyId.Length());
+  cryptoInfo->Set(numSubSamples,
+                  numBytesOfPlainData,
+                  numBytesOfEncryptedData,
+                  keyId,
+                  iv,
+                  MediaCodec::CRYPTO_MODE_AES_CTR);
+
+  return cryptoInfo;
+}
+
 RefPtr<MediaDataDecoder::DecodePromise>
 RemoteDataDecoder::Decode(MediaRawData* aSample)
 {
@@ -546,7 +613,7 @@ RemoteDataDecoder::Decode(MediaRawData* aSample)
 
   RefPtr<RemoteDataDecoder> self = this;
   RefPtr<MediaRawData> sample = aSample;
-  return InvokeAsync(mTaskQueue, __func__, [self, sample, this]() {
+  return InvokeAsync(mTaskQueue, __func__, [self, sample]() {
     jni::ByteBuffer::LocalRef bytes = jni::ByteBuffer::New(
       const_cast<uint8_t*>(sample->Data()), sample->Size());
 
@@ -558,9 +625,9 @@ RemoteDataDecoder::Decode(MediaRawData* aSample)
     }
     bufferInfo->Set(0, sample->Size(), sample->mTime.ToMicroseconds(), 0);
 
-    mDrainStatus = DrainStatus::DRAINABLE;
-    return mJavaDecoder->Input(bytes, bufferInfo, GetCryptoInfoFromSample(sample))
-           ? mDecodePromise.Ensure(__func__)
+    self->mDrainStatus = DrainStatus::DRAINABLE;
+    return self->mJavaDecoder->Input(bytes, bufferInfo, GetCryptoInfoFromSample(sample))
+           ? self->mDecodePromise.Ensure(__func__)
            : DecodePromise::CreateAndReject(
                MediaResult(NS_ERROR_OUT_OF_MEMORY, __func__), __func__);
 

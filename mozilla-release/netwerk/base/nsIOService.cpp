@@ -351,28 +351,23 @@ nsIOService::InitializeProtocolProxyService()
     return rv;
 }
 
-nsIOService*
+already_AddRefed<nsIOService>
 nsIOService::GetInstance() {
     if (!gIOService) {
-        gIOService = new nsIOService();
-        if (!gIOService)
-            return nullptr;
-        NS_ADDREF(gIOService);
-
-        nsresult rv = gIOService->Init();
-        if (NS_FAILED(rv)) {
-            NS_RELEASE(gIOService);
+        RefPtr<nsIOService> ios = new nsIOService();
+        gIOService = ios.get();
+        if (NS_FAILED(ios->Init())) {
+            gIOService = nullptr;
             return nullptr;
         }
-        return gIOService;
+
+        return ios.forget();
     }
-    NS_ADDREF(gIOService);
-    return gIOService;
+    return do_AddRef(gIOService);
 }
 
 NS_IMPL_ISUPPORTS(nsIOService,
                   nsIIOService,
-                  nsIIOService2,
                   nsINetUtil,
                   nsISpeculativeConnect,
                   nsIObserver,
@@ -945,46 +940,6 @@ nsIOService::NewChannelFromURIWithProxyFlags2(nsIURI* aURI,
                                                    result);
 }
 
-/*  ***** DEPRECATED *****
- * please use NewChannelFromURIWithProxyFlags2 providing the right arguments for:
- *        * aLoadingNode
- *        * aLoadingPrincipal
- *        * aTriggeringPrincipal
- *        * aSecurityFlags
- *        * aContentPolicyType
- *
- * See nsIIoService.idl for a detailed description of those arguments
- */
-NS_IMETHODIMP
-nsIOService::NewChannelFromURIWithProxyFlags(nsIURI *aURI,
-                                             nsIURI *aProxyURI,
-                                             uint32_t aProxyFlags,
-                                             nsIChannel **result)
-{
-  NS_ASSERTION(false, "Deprecated, use NewChannelFromURIWithProxyFlags2 providing loadInfo arguments!");
-
-  const char16_t* params[] = {
-    u"nsIOService::NewChannelFromURIWithProxyFlags()",
-    u"nsIOService::NewChannelFromURIWithProxyFlags2()"
-  };
-  nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
-                                  NS_LITERAL_CSTRING("Security by Default"),
-                                  nullptr, // aDocument
-                                  nsContentUtils::eNECKO_PROPERTIES,
-                                  "APIDeprecationWarning",
-                                  params, ArrayLength(params));
-
-  return NewChannelFromURIWithProxyFlags2(aURI,
-                                          aProxyURI,
-                                          aProxyFlags,
-                                          nullptr, // aLoadingNode
-                                          nsContentUtils::GetSystemPrincipal(),
-                                          nullptr, // aTriggeringPrincipal
-                                          nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
-                                          nsIContentPolicy::TYPE_OTHER,
-                                          result);
-}
-
 NS_IMETHODIMP
 nsIOService::NewChannel2(const nsACString& aSpec,
                          const char* aCharset,
@@ -1143,10 +1098,6 @@ nsIOService::SetOffline(bool offline)
             InitializeSocketTransportService();
             mOffline = false;    // indicate success only AFTER we've
                                     // brought up the services
-
-            // trigger a PAC reload when we come back online
-            if (mProxyService)
-                mProxyService->ReloadPAC();
 
             mLastOfflineStateChange = PR_IntervalNow();
             // don't care if notification fails
@@ -1368,10 +1319,10 @@ nsIOService::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
 void
 nsIOService::ParsePortList(nsIPrefBranch *prefBranch, const char *pref, bool remove)
 {
-    nsCString portList;
+    nsAutoCString portList;
 
     // Get a pref string and chop it up into a list of ports.
-    prefBranch->GetCharPref(pref, getter_Copies(portList));
+    prefBranch->GetCharPref(pref, portList);
     if (!portList.IsVoid()) {
         nsTArray<nsCString> portListArray;
         ParseString(portList, ',', portListArray);
@@ -1493,6 +1444,11 @@ nsIOService::Observe(nsISupports *subject,
             nsCOMPtr<nsIPrefBranch> prefBranch;
             GetPrefBranch(getter_AddRefs(prefBranch));
             PrefsChanged(prefBranch, MANAGE_OFFLINE_STATUS_PREF);
+
+            // Bug 870460 - Read cookie database at an early-as-possible time
+            // off main thread. Hence, we have more chance to finish db query
+            // before something calls into the cookie service.
+            nsCOMPtr<nsISupports> cookieServ = do_GetService(NS_COOKIESERVICE_CONTRACTID);
         }
     } else if (!strcmp(topic, NS_XPCOM_SHUTDOWN_OBSERVER_ID)) {
         // Remember we passed XPCOM shutdown notification to prevent any
@@ -1512,8 +1468,6 @@ nsIOService::Observe(nsISupports *subject,
             mCaptivePortalService = nullptr;
         }
 
-        // Break circular reference.
-        mProxyService = nullptr;
     } else if (!strcmp(topic, NS_NETWORK_LINK_TOPIC)) {
         OnNetworkLinkEvent(NS_ConvertUTF16toUTF8(data).get());
     } else if (!strcmp(topic, NS_WIDGET_WAKE_OBSERVER_TOPIC)) {

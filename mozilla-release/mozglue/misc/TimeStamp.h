@@ -138,7 +138,7 @@ public:
     return FromMilliseconds(aMicroseconds / 1000.0);
   }
 
-  static BaseTimeDuration Forever()
+  static constexpr BaseTimeDuration Forever()
   {
     return FromTicks(INT64_MAX);
   }
@@ -422,9 +422,11 @@ public:
    * False on Windows 7
    * Android's event time uses CLOCK_MONOTONIC via SystemClock.uptimeMilles.
    * So it is same value of TimeStamp posix implementation.
+   * Wayland/GTK event time also uses CLOCK_MONOTONIC on Weston/Mutter
+   * compositors.
    * UNTESTED ON OTHER PLATFORMS
    */
-#if defined(XP_DARWIN) || defined(MOZ_WIDGET_ANDROID)
+#if defined(XP_DARWIN) || defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
   static TimeStamp FromSystemTime(int64_t aSystemTime)
   {
     static_assert(sizeof(aSystemTime) == sizeof(TimeStampValue),

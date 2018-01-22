@@ -1,4 +1,6 @@
-/* global ThreadSafeChromeUtils */
+/* global ChromeUtils */
+
+Components.utils.import("resource://gre/modules/Services.jsm");
 
 try {
   // We might be running without privileges, in which case it's up to the
@@ -24,7 +26,7 @@ ResourceCleaner.prototype = {
     return v;
   },
   cleanup: function ResourceCleaner_cleanup() {
-    let keys = ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(this._map);
+    let keys = ChromeUtils.nondeterministicGetWeakMapKeys(this._map);
     keys.forEach(k => {
       try {
         k.dispose();
@@ -128,5 +130,5 @@ function must_throw(f, expected) {
 }
 
 function get_os() {
-  return Components.classes["@mozilla.org/xre/app-info;1"].getService(Components.interfaces.nsIXULRuntime).OS;
+  return Services.appinfo.OS;
 }

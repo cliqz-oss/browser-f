@@ -707,7 +707,7 @@ protected:
     }
     const PendingAction& pendingLastAction = mPendingActions.LastElement();
     if (pendingLastAction.mType != PendingAction::COMPOSITION_END ||
-        pendingLastAction.mData.Length() != aLength) {
+        pendingLastAction.mData.Length() != ULONG(aLength)) {
       return false;
     }
     const PendingAction& pendingPreLastAction =

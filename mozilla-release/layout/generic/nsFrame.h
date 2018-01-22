@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -159,7 +160,7 @@ public:
   void Init(nsIContent*       aContent,
             nsContainerFrame* aParent,
             nsIFrame*         aPrevInFlow) override;
-  void DestroyFrom(nsIFrame* aDestructRoot) override;
+  void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
   nsStyleContext* GetAdditionalStyleContext(int32_t aIndex) const override;
   void SetAdditionalStyleContext(int32_t aIndex,
                                  nsStyleContext* aStyleContext) override;
@@ -194,7 +195,7 @@ public:
 
   nsresult CharacterDataChanged(CharacterDataChangeInfo* aInfo) override;
   nsresult AttributeChanged(int32_t  aNameSpaceID,
-                            nsIAtom* aAttribute,
+                            nsAtom* aAttribute,
                             int32_t aModType) override;
   nsSplittableType GetSplittableType() const override;
   nsIFrame* GetPrevContinuation() const override;
@@ -496,17 +497,6 @@ public:
 
   static void XMLQuote(nsString& aString);
 
-  /**
-   * Dump out the "base classes" regression data. This should dump
-   * out the interior data, not the "frame" XML container. And it
-   * should call the base classes same named method before doing
-   * anything specific in a derived class. This means that derived
-   * classes need not override DumpRegressionData unless they need
-   * some custom behavior that requires changing how the outer "frame"
-   * XML container is dumped.
-   */
-  virtual void DumpBaseRegressionData(nsPresContext* aPresContext, FILE* out, int32_t aIndent);
-
   // Display Reflow Debugging
   static void* DisplayReflowEnter(nsPresContext*          aPresContext,
                                   nsIFrame*                aFrame,
@@ -582,7 +572,7 @@ public:
    * @param aChildPseudo the child's pseudo type, if any.
    */
   static nsIFrame*
-  CorrectStyleParentFrame(nsIFrame* aProspectiveParent, nsIAtom* aChildPseudo);
+  CorrectStyleParentFrame(nsIFrame* aProspectiveParent, nsAtom* aChildPseudo);
 
 protected:
   // Protected constructor and destructor
@@ -743,17 +733,6 @@ public:
    * is, those bits which indicate a real difference when they differ
    */
   nsFrameState GetDebugStateBits() const override;
-  /**
-   * Called to dump out regression data that describes the layout
-   * of the frame and its children, and so on. The format of the
-   * data is dictated to be XML (using a specific DTD); the
-   * specific kind of data dumped is up to the frame itself, with
-   * the caveat that some base types are defined.
-   * For more information, see XXX.
-   */
-  nsresult DumpRegressionData(nsPresContext* aPresContext,
-                              FILE* out, int32_t aIndent) override;
-
   /**
    * See if style tree verification is enabled. To enable style tree
    * verification add "styleverifytree:1" to your MOZ_LOG

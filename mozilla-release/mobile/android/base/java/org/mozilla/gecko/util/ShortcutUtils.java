@@ -5,6 +5,7 @@
 package org.mozilla.gecko.util;
 
 import android.annotation.TargetApi;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
@@ -15,7 +16,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.net.Uri;
 import android.util.Log;
 
 import org.mozilla.gecko.AppConstants.Versions;
@@ -25,7 +25,6 @@ import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.db.UrlAnnotations;
 import org.mozilla.gecko.gfx.BitmapUtils;
 
-import java.lang.reflect.Method;
 import java.lang.reflect.Constructor;
 
 public class ShortcutUtils {
@@ -89,10 +88,15 @@ public class ShortcutUtils {
             Object info = builderCls.getDeclaredMethod("build")
                 .invoke(builder);
 
+            final Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_HOME);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            final PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+            final IntentSender intentSender = pendingIntent.getIntentSender();
             mgrCls.getDeclaredMethod("requestPinShortcut",
                                      info.getClass(),
                                      IntentSender.class)
-                .invoke(mgr, info, null);
+                .invoke(mgr, info, intentSender);
         } catch (Exception e) {
             Log.e(LOG_TAG, "Failed to pin shortcut: ", e);
         }
@@ -108,6 +112,29 @@ public class ShortcutUtils {
         //     .build();
 
         // mgr.requestPinShortcut(info, null);
+    }
+
+    public static boolean isPinShortcutSupported() {
+        if (Versions.feature26Plus) {
+            return isPinShortcutSupported26();
+        }
+        return true;
+    }
+
+    @TargetApi(26)
+    private static boolean isPinShortcutSupported26() {
+        final Context context = GeckoAppShell.getApplicationContext();
+        try {
+            final Class<?> mgrCls = Class.forName("android.content.pm.ShortcutManager");
+            final Object mgr = context.getSystemService(mgrCls);
+
+            final boolean supported = (boolean)
+                mgrCls.getDeclaredMethod("isRequestPinShortcutSupported")
+                .invoke(mgr);
+            return supported;
+        } catch (final Exception e) {
+            return false;
+        }
     }
 
     private static Bitmap getLauncherIcon(Bitmap aSource, int size) {
@@ -135,7 +162,7 @@ public class ShortcutUtils {
         } else {
             // Otherwise, use the dominant color from the icon +
             // a layer of transparent white to lighten it somewhat.
-            final int color = BitmapUtils.getDominantColor(aSource);
+            final int color = BitmapUtils.getDominantColorCustomImplementation(aSource);
             paint.setColor(color);
             canvas.drawRoundRect(new RectF(kOffset, kOffset, size - kOffset, size - kOffset),
                                            kRadius, kRadius, paint);

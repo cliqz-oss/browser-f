@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,8 +33,7 @@ static mozilla::LazyLogModule gU2FManagerLog("u2fmanager");
 
 NS_NAMED_LITERAL_STRING(kVisibilityChange, "visibilitychange");
 
-NS_IMPL_ISUPPORTS(U2FManager, nsIIPCBackgroundChildCreateCallback,
-                  nsIDOMEventListener);
+NS_IMPL_ISUPPORTS(U2FManager, nsIDOMEventListener);
 
 /***********************************************************************
  * Utility Functions
@@ -98,14 +97,42 @@ U2FManager::U2FManager()
 }
 
 void
-U2FManager::MaybeClearTransaction()
+U2FManager::ClearTransaction()
 {
-  mClientData.reset();
-  mInfo.reset();
-  mTransactionPromise.RejectIfExists(ErrorCode::OTHER_ERROR, __func__);
-  if (mCurrentParent) {
-    StopListeningForVisibilityEvents(mCurrentParent, this);
-    mCurrentParent = nullptr;
+  if (!NS_WARN_IF(mTransaction.isNothing())) {
+    StopListeningForVisibilityEvents(mTransaction.ref().mParent, this);
+  }
+
+  mTransaction.reset();
+}
+
+void
+U2FManager::RejectTransaction(const nsresult& aError)
+{
+  if (!NS_WARN_IF(mTransaction.isNothing())) {
+    ErrorCode code = ConvertNSResultToErrorCode(aError);
+    mTransaction.ref().mPromise.Reject(code, __func__);
+  }
+
+  ClearTransaction();
+}
+
+void
+U2FManager::CancelTransaction(const nsresult& aError)
+{
+  if (!NS_WARN_IF(!mChild || mTransaction.isNothing())) {
+    mChild->SendRequestCancel(mTransaction.ref().mId);
+  }
+
+  RejectTransaction(aError);
+}
+
+U2FManager::~U2FManager()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mTransaction.isSome()) {
+    RejectTransaction(NS_ERROR_ABORT);
   }
 
   if (mChild) {
@@ -115,30 +142,32 @@ U2FManager::MaybeClearTransaction()
   }
 }
 
-U2FManager::~U2FManager()
-{
-  MaybeClearTransaction();
-}
-
-RefPtr<U2FManager::BackgroundActorPromise>
-U2FManager::GetOrCreateBackgroundActor()
+bool
+U2FManager::MaybeCreateBackgroundActor()
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  PBackgroundChild *actor = BackgroundChild::GetForCurrentThread();
-  RefPtr<U2FManager::BackgroundActorPromise> promise =
-    mPBackgroundCreationPromise.Ensure(__func__);
-
-  if (actor) {
-    ActorCreated(actor);
-  } else {
-    bool ok = BackgroundChild::GetOrCreateForCurrentThread(this);
-    if (NS_WARN_IF(!ok)) {
-      ActorFailed();
-    }
+  if (mChild) {
+    return true;
   }
 
-  return promise;
+  PBackgroundChild* actorChild = BackgroundChild::GetOrCreateForCurrentThread();
+  if (NS_WARN_IF(!actorChild)) {
+    return false;
+  }
+
+  RefPtr<U2FTransactionChild> mgr(new U2FTransactionChild());
+  PWebAuthnTransactionChild* constructedMgr =
+    actorChild->SendPWebAuthnTransactionConstructor(mgr);
+
+  if (NS_WARN_IF(!constructedMgr)) {
+    return false;
+  }
+
+  MOZ_ASSERT(constructedMgr == mgr);
+  mChild = mgr.forget();
+
+  return true;
 }
 
 //static
@@ -163,14 +192,13 @@ U2FManager::Get()
   return gU2FManager;
 }
 
+//static
 nsresult
-U2FManager::PopulateTransactionInfo(const nsCString& aRpId,
-                      const nsCString& aClientDataJSON,
-                      const uint32_t& aTimeoutMillis,
-                      const nsTArray<WebAuthnScopedCredentialDescriptor>& aList)
+U2FManager::BuildTransactionHashes(const nsCString& aRpId,
+                                   const nsCString& aClientDataJSON,
+                                   /* out */ CryptoBuffer& aRpIdHash,
+                                   /* out */ CryptoBuffer& aClientDataHash)
 {
-  MOZ_ASSERT(mInfo.isNothing());
-
   nsresult srv;
   nsCOMPtr<nsICryptoHash> hashService =
     do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &srv);
@@ -178,27 +206,25 @@ U2FManager::PopulateTransactionInfo(const nsCString& aRpId,
     return srv;
   }
 
-  CryptoBuffer rpIdHash;
-  if (!rpIdHash.SetLength(SHA256_LENGTH, fallible)) {
+  if (!aRpIdHash.SetLength(SHA256_LENGTH, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
-  srv = HashCString(hashService, aRpId, rpIdHash);
+  srv = HashCString(hashService, aRpId, aRpIdHash);
   if (NS_WARN_IF(NS_FAILED(srv))) {
     return NS_ERROR_FAILURE;
   }
 
-  CryptoBuffer clientDataHash;
-  if (!clientDataHash.SetLength(SHA256_LENGTH, fallible)) {
+  if (!aClientDataHash.SetLength(SHA256_LENGTH, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
-  srv = HashCString(hashService, aClientDataJSON, clientDataHash);
+  srv = HashCString(hashService, aClientDataJSON, aClientDataHash);
   if (NS_WARN_IF(NS_FAILED(srv))) {
     return NS_ERROR_FAILURE;
   }
 
   if (MOZ_LOG_TEST(gU2FLog, LogLevel::Debug)) {
     nsString base64;
-    Unused << NS_WARN_IF(NS_FAILED(rpIdHash.ToJwkBase64(base64)));
+    Unused << NS_WARN_IF(NS_FAILED(aRpIdHash.ToJwkBase64(base64)));
 
     MOZ_LOG(gU2FLog, LogLevel::Debug,
             ("dom::U2FManager::RpID: %s", aRpId.get()));
@@ -207,7 +233,7 @@ U2FManager::PopulateTransactionInfo(const nsCString& aRpId,
             ("dom::U2FManager::Rp ID Hash (base64): %s",
               NS_ConvertUTF16toUTF8(base64).get()));
 
-    Unused << NS_WARN_IF(NS_FAILED(clientDataHash.ToJwkBase64(base64)));
+    Unused << NS_WARN_IF(NS_FAILED(aClientDataHash.ToJwkBase64(base64)));
 
     MOZ_LOG(gU2FLog, LogLevel::Debug,
             ("dom::U2FManager::Client Data JSON: %s", aClientDataJSON.get()));
@@ -217,18 +243,8 @@ U2FManager::PopulateTransactionInfo(const nsCString& aRpId,
               NS_ConvertUTF16toUTF8(base64).get()));
   }
 
-  // Always blank for U2F
-  nsTArray<WebAuthnExtension> extensions;
-
-  WebAuthnTransactionInfo info(rpIdHash,
-                               clientDataHash,
-                               aTimeoutMillis,
-                               aList,
-                               extensions);
-  mInfo = Some(info);
   return NS_OK;
 }
-
 
 already_AddRefed<U2FPromise>
 U2FManager::Register(nsPIDOMWindowInner* aParent, const nsCString& aRpId,
@@ -236,35 +252,39 @@ U2FManager::Register(nsPIDOMWindowInner* aParent, const nsCString& aRpId,
                const uint32_t& aTimeoutMillis,
                const nsTArray<WebAuthnScopedCredentialDescriptor>& aExcludeList)
 {
+  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aParent);
 
-  MaybeClearTransaction();
+  if (mTransaction.isSome()) {
+    CancelTransaction(NS_ERROR_ABORT);
+  }
 
-  if (NS_FAILED(PopulateTransactionInfo(aRpId, aClientDataJSON, aTimeoutMillis,
-                                        aExcludeList))) {
+  CryptoBuffer rpIdHash, clientDataHash;
+  if (NS_FAILED(BuildTransactionHashes(aRpId, aClientDataJSON,
+                                       rpIdHash, clientDataHash))) {
     return U2FPromise::CreateAndReject(ErrorCode::OTHER_ERROR, __func__).forget();
   }
 
-  RefPtr<MozPromise<nsresult, nsresult, false>> p = GetOrCreateBackgroundActor();
-  p->Then(GetMainThreadSerialEventTarget(), __func__,
-          []() {
-            U2FManager* mgr = U2FManager::Get();
-            if (!mgr) {
-              return;
-            }
-            mgr->StartRegister();
-          },
-          []() {
-            // This case can't actually happen, we'll have crashed if the child
-            // failed to create.
-          });
+  if (!MaybeCreateBackgroundActor()) {
+    return U2FPromise::CreateAndReject(ErrorCode::OTHER_ERROR, __func__).forget();
+  }
 
-  // Only store off the promise if we've succeeded in sending the IPC event.
-  RefPtr<U2FPromise> promise = mTransactionPromise.Ensure(__func__);
-  mClientData = Some(aClientDataJSON);
-  mCurrentParent = aParent;
   ListenForVisibilityEvents(aParent, this);
-  return promise.forget();
+
+  // Always blank for U2F
+  nsTArray<WebAuthnExtension> extensions;
+
+  WebAuthnTransactionInfo info(rpIdHash,
+                               clientDataHash,
+                               aTimeoutMillis,
+                               aExcludeList,
+                               extensions);
+
+  MOZ_ASSERT(mTransaction.isNothing());
+  mTransaction = Some(U2FTransaction(aParent, Move(info), aClientDataJSON));
+
+  mChild->SendRequestRegister(mTransaction.ref().mId, mTransaction.ref().mInfo);
+  return mTransaction.ref().mPromise.Ensure(__func__);
 }
 
 already_AddRefed<U2FPromise>
@@ -274,73 +294,61 @@ U2FManager::Sign(nsPIDOMWindowInner* aParent,
                  const uint32_t& aTimeoutMillis,
                  const nsTArray<WebAuthnScopedCredentialDescriptor>& aAllowList)
 {
+  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aParent);
 
-  MaybeClearTransaction();
+  if (mTransaction.isSome()) {
+    CancelTransaction(NS_ERROR_ABORT);
+  }
 
-  if (NS_FAILED(PopulateTransactionInfo(aRpId, aClientDataJSON, aTimeoutMillis,
-                                        aAllowList))) {
+  CryptoBuffer rpIdHash, clientDataHash;
+  if (NS_FAILED(BuildTransactionHashes(aRpId, aClientDataJSON,
+                                       rpIdHash, clientDataHash))) {
     return U2FPromise::CreateAndReject(ErrorCode::OTHER_ERROR, __func__).forget();
   }
 
-  RefPtr<MozPromise<nsresult, nsresult, false>> p = GetOrCreateBackgroundActor();
-  p->Then(GetMainThreadSerialEventTarget(), __func__,
-          []() {
-            U2FManager* mgr = U2FManager::Get();
-            if (!mgr) {
-              return;
-            }
-            mgr->StartSign();
-          },
-          []() {
-            // This case can't actually happen, we'll have crashed if the child
-            // failed to create.
-          });
+  if (!MaybeCreateBackgroundActor()) {
+    return U2FPromise::CreateAndReject(ErrorCode::OTHER_ERROR, __func__).forget();
+  }
 
-  // Only store off the promise if we've succeeded in sending the IPC event.
-  RefPtr<U2FPromise> promise = mTransactionPromise.Ensure(__func__);
-  mClientData = Some(aClientDataJSON);
-  mCurrentParent = aParent;
   ListenForVisibilityEvents(aParent, this);
-  return promise.forget();
+
+  // Always blank for U2F
+  nsTArray<WebAuthnExtension> extensions;
+
+  WebAuthnTransactionInfo info(rpIdHash,
+                               clientDataHash,
+                               aTimeoutMillis,
+                               aAllowList,
+                               extensions);
+
+  MOZ_ASSERT(mTransaction.isNothing());
+  mTransaction = Some(U2FTransaction(aParent, Move(info), aClientDataJSON));
+
+  mChild->SendRequestSign(mTransaction.ref().mId, mTransaction.ref().mInfo);
+  return mTransaction.ref().mPromise.Ensure(__func__);
 }
 
 void
-U2FManager::StartRegister() {
-  if (mChild) {
-    mChild->SendRequestRegister(mInfo.ref());
-  }
-}
-
-void
-U2FManager::StartSign() {
-  if (mChild) {
-    mChild->SendRequestSign(mInfo.ref());
-  }
-}
-
-void
-U2FManager::StartCancel() {
-  if (mChild) {
-    mChild->SendRequestCancel();
-  }
-}
-
-void
-U2FManager::FinishRegister(nsTArray<uint8_t>& aRegBuffer)
+U2FManager::FinishRegister(const uint64_t& aTransactionId,
+                           nsTArray<uint8_t>& aRegBuffer)
 {
-  MOZ_ASSERT(!mTransactionPromise.IsEmpty());
-  MOZ_ASSERT(mInfo.isSome());
+  MOZ_ASSERT(NS_IsMainThread());
+
+  // Check for a valid transaction.
+  if (mTransaction.isNothing() || mTransaction.ref().mId != aTransactionId) {
+    return;
+  }
 
   CryptoBuffer clientDataBuf;
-  if (NS_WARN_IF(!clientDataBuf.Assign(mClientData.ref()))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+  if (NS_WARN_IF(!clientDataBuf.Assign(mTransaction.ref().mClientData))) {
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
   CryptoBuffer regBuf;
   if (NS_WARN_IF(!regBuf.Assign(aRegBuffer))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
@@ -351,7 +359,7 @@ U2FManager::FinishRegister(nsTArray<uint8_t>& aRegBuffer)
 
   if (NS_WARN_IF(NS_FAILED(rvClientData)) ||
       NS_WARN_IF(NS_FAILED(rvRegistrationData))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
@@ -364,36 +372,41 @@ U2FManager::FinishRegister(nsTArray<uint8_t>& aRegBuffer)
 
   nsString responseStr;
   if (NS_WARN_IF(!response.ToJSON(responseStr))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
-  mTransactionPromise.Resolve(responseStr, __func__);
-  MaybeClearTransaction();
+  mTransaction.ref().mPromise.Resolve(responseStr, __func__);
+  ClearTransaction();
 }
 
 void
-U2FManager::FinishSign(nsTArray<uint8_t>& aCredentialId,
+U2FManager::FinishSign(const uint64_t& aTransactionId,
+                       nsTArray<uint8_t>& aCredentialId,
                        nsTArray<uint8_t>& aSigBuffer)
 {
-  MOZ_ASSERT(!mTransactionPromise.IsEmpty());
-  MOZ_ASSERT(mInfo.isSome());
+  MOZ_ASSERT(NS_IsMainThread());
+
+  // Check for a valid transaction.
+  if (mTransaction.isNothing() || mTransaction.ref().mId != aTransactionId) {
+    return;
+  }
 
   CryptoBuffer clientDataBuf;
-  if (NS_WARN_IF(!clientDataBuf.Assign(mClientData.ref()))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+  if (NS_WARN_IF(!clientDataBuf.Assign(mTransaction.ref().mClientData))) {
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
   CryptoBuffer credBuf;
   if (NS_WARN_IF(!credBuf.Assign(aCredentialId))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
   CryptoBuffer sigBuf;
   if (NS_WARN_IF(!sigBuf.Assign(aSigBuffer))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
@@ -407,7 +420,7 @@ U2FManager::FinishSign(nsTArray<uint8_t>& aCredentialId,
   if (NS_WARN_IF(NS_FAILED(rvClientData)) ||
       NS_WARN_IF(NS_FAILED(rvSignatureData) ||
       NS_WARN_IF(NS_FAILED(rvKeyHandle)))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
@@ -419,31 +432,29 @@ U2FManager::FinishSign(nsTArray<uint8_t>& aCredentialId,
 
   nsString responseStr;
   if (NS_WARN_IF(!response.ToJSON(responseStr))) {
-    mTransactionPromise.Reject(ErrorCode::OTHER_ERROR, __func__);
+    RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
-  mTransactionPromise.Resolve(responseStr, __func__);
-  MaybeClearTransaction();
+  mTransaction.ref().mPromise.Resolve(responseStr, __func__);
+  ClearTransaction();
 }
 
 void
-U2FManager::Cancel(const nsresult& aError)
+U2FManager::RequestAborted(const uint64_t& aTransactionId,
+                           const nsresult& aError)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  ErrorCode code = ConvertNSResultToErrorCode(aError);
-
-  if (!mTransactionPromise.IsEmpty()) {
-    mTransactionPromise.RejectIfExists(code, __func__);
+  if (mTransaction.isSome() && mTransaction.ref().mId == aTransactionId) {
+    RejectTransaction(aError);
   }
-
-  MaybeClearTransaction();
 }
 
 NS_IMETHODIMP
 U2FManager::HandleEvent(nsIDOMEvent* aEvent)
 {
+  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aEvent);
 
   nsAutoString type;
@@ -454,52 +465,25 @@ U2FManager::HandleEvent(nsIDOMEvent* aEvent)
 
   nsCOMPtr<nsIDocument> doc =
     do_QueryInterface(aEvent->InternalDOMEvent()->GetTarget());
-  MOZ_ASSERT(doc);
+  if (NS_WARN_IF(!doc)) {
+    return NS_ERROR_FAILURE;
+  }
 
-  if (doc && doc->Hidden()) {
+  if (doc->Hidden()) {
     MOZ_LOG(gU2FManagerLog, LogLevel::Debug,
             ("Visibility change: U2F window is hidden, cancelling job."));
 
-    StartCancel();
-    Cancel(NS_ERROR_DOM_TIMEOUT_ERR);
+    CancelTransaction(NS_ERROR_ABORT);
   }
 
   return NS_OK;
 }
 
 void
-U2FManager::ActorCreated(PBackgroundChild* aActor)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aActor);
-
-  if (mChild) {
-    return;
-  }
-
-  RefPtr<U2FTransactionChild> mgr(new U2FTransactionChild());
-  PWebAuthnTransactionChild* constructedMgr =
-    aActor->SendPWebAuthnTransactionConstructor(mgr);
-
-  if (NS_WARN_IF(!constructedMgr)) {
-    ActorFailed();
-    return;
-  }
-  MOZ_ASSERT(constructedMgr == mgr);
-  mChild = mgr.forget();
-  mPBackgroundCreationPromise.Resolve(NS_OK, __func__);
-}
-
-void
 U2FManager::ActorDestroyed()
 {
+  MOZ_ASSERT(NS_IsMainThread());
   mChild = nullptr;
-}
-
-void
-U2FManager::ActorFailed()
-{
-  MOZ_CRASH("We shouldn't be here!");
 }
 
 } // namespace dom

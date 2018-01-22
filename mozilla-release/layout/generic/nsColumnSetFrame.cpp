@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -110,26 +111,24 @@ nsDisplayColumnRule::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aB
                                              mozilla::layers::WebRenderLayerManager* aManager,
                                              nsDisplayListBuilder* aDisplayListBuilder)
 {
-  if (aManager->IsLayersFreeTransaction()) {
-    RefPtr<gfxContext> screenRefCtx = gfxContext::CreateOrNull(
-      gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget().get());
+  RefPtr<gfxContext> screenRefCtx = gfxContext::CreateOrNull(
+    gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget().get());
 
-    static_cast<nsColumnSetFrame*>(mFrame)->
-      CreateBorderRenderers(mBorderRenderers, screenRefCtx, mVisibleRect, ToReferenceFrame());
+  static_cast<nsColumnSetFrame*>(mFrame)->
+    CreateBorderRenderers(mBorderRenderers, screenRefCtx, mVisibleRect, ToReferenceFrame());
 
-    if (mBorderRenderers.IsEmpty()) {
+  if (mBorderRenderers.IsEmpty()) {
+    return true;
+  }
+
+  for (auto iter = mBorderRenderers.begin(); iter != mBorderRenderers.end(); iter++) {
+    if (!iter->CanCreateWebRenderCommands()) {
       return false;
-    }
-
-    for (auto iter = mBorderRenderers.begin(); iter != mBorderRenderers.end(); iter++) {
-      if (!iter->CanCreateWebRenderCommands()) {
-        return false;
-      }
     }
   }
 
   for (auto iter = mBorderRenderers.begin(); iter != mBorderRenderers.end(); iter++) {
-    iter->CreateWebRenderCommands(aBuilder, aResources, aSc);
+    iter->CreateWebRenderCommands(this, aBuilder, aResources, aSc);
   }
 
   return true;
@@ -285,12 +284,16 @@ nsColumnSetFrame::CreateBorderRenderers(nsTArray<nsCSSBorderRenderer>& aBorderRe
                   MOZ_ASSERT(border.mBorderImageSource.GetType() == eStyleImageType_Null);
 
                   gfx::DrawTarget* dt = aCtx ? aCtx->GetDrawTarget() : nullptr;
+                  bool borderIsEmpty = false;
                   Maybe<nsCSSBorderRenderer> br =
                     nsCSSRendering::CreateBorderRendererWithStyleBorder(presContext, dt,
                                                                         this, aDirtyRect,
                                                                         aLineRect, border,
-                                                                        StyleContext(), skipSides);
+                                                                        StyleContext(),
+                                                                        &borderIsEmpty,
+                                                                        skipSides);
                   if (br.isSome()) {
+                    MOZ_ASSERT(!borderIsEmpty);
                     aBorderRenderers.AppendElement(br.value());
                   }
                 }, aPt);

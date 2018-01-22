@@ -22,7 +22,7 @@ registerCleanupFunction(function() {
  */
 add_task(async function redirector_ignores_override() {
   let overrides = [
-    "chrome://browser/content/downloads/contentAreaDownloadsView.xul",
+    "chrome://browser/content/aboutRobots.xhtml",
     "about:home",
   ];
 
@@ -53,7 +53,7 @@ add_task(async function redirector_ignores_override() {
           Services.scriptSecurityManager.getSystemPrincipal(),
           "nodePrincipal should match systemPrincipal");
       });
-    });  // jshint ignore:line
+    }); // jshint ignore:line
   }
 });
 
@@ -62,7 +62,7 @@ add_task(async function redirector_ignores_override() {
  */
 add_task(async function override_loads_in_browser() {
   let overrides = [
-    "chrome://browser/content/downloads/contentAreaDownloadsView.xul",
+    "chrome://browser/content/aboutRobots.xhtml",
     "about:home",
     " about:home",
   ];
@@ -75,7 +75,7 @@ add_task(async function override_loads_in_browser() {
     Assert.ok(aboutNewTabService.overridden, "url has been overridden");
 
     // simulate a newtab open as a user would
-    BrowserOpenTab();  // jshint ignore:line
+    BrowserOpenTab(); // jshint ignore:line
 
     let browser = gBrowser.selectedBrowser;
     await BrowserTestUtils.browserLoaded(browser);
@@ -83,7 +83,7 @@ add_task(async function override_loads_in_browser() {
     await ContentTask.spawn(browser, {url: overrideURL}, async function(args) {
       Assert.equal(content.location.href, args.url.trim(), "Got right URL");
       Assert.equal(content.document.location.href, args.url.trim(), "Got right URL");
-    });  // jshint ignore:line
+    }); // jshint ignore:line
     await BrowserTestUtils.removeTab(gBrowser.selectedTab);
   }
 });
@@ -107,7 +107,7 @@ add_task(async function override_blank_loads_in_browser() {
     Assert.ok(aboutNewTabService.overridden, "url has been overridden");
 
     // simulate a newtab open as a user would
-    BrowserOpenTab();  // jshint ignore:line
+    BrowserOpenTab(); // jshint ignore:line
 
     let browser = gBrowser.selectedBrowser;
     await BrowserTestUtils.browserLoaded(browser);
@@ -115,13 +115,13 @@ add_task(async function override_blank_loads_in_browser() {
     await ContentTask.spawn(browser, {}, async function() {
       Assert.equal(content.location.href, "about:blank", "Got right URL");
       Assert.equal(content.document.location.href, "about:blank", "Got right URL");
-    });  // jshint ignore:line
+    }); // jshint ignore:line
     await BrowserTestUtils.removeTab(gBrowser.selectedTab);
   }
 });
 
 function nextChangeNotificationPromise(aNewURL, testMessage) {
-  return TestUtils.topicObserved("newtab-url-changed", function observer(aSubject, aData) {  // jshint unused:false
+  return TestUtils.topicObserved("newtab-url-changed", function observer(aSubject, aData) { // jshint unused:false
       Assert.equal(aData, aNewURL, testMessage);
       return true;
   });

@@ -9,16 +9,20 @@
 #include "mozilla/a11y/HandlerProvider.h"
 
 #include "Accessible2_3.h"
+#include "AccessibleDocument.h"
 #include "AccessibleTable.h"
 #include "AccessibleTable2.h"
+#include "AccessibleTableCell.h"
 #include "HandlerData.h"
 #include "HandlerData_i.c"
 #include "mozilla/Assertions.h"
 #include "mozilla/a11y/AccessibleWrap.h"
+#include "mozilla/a11y/HandlerDataCleanup.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/Move.h"
 #include "mozilla/mscom/AgileReference.h"
 #include "mozilla/mscom/FastMarshaler.h"
+#include "mozilla/mscom/Interceptor.h"
 #include "mozilla/mscom/MainThreadInvoker.h"
 #include "mozilla/mscom/Ptr.h"
 #include "mozilla/mscom/StructStream.h"
@@ -95,7 +99,8 @@ HandlerProvider::GetHandler(NotNull<CLSID*> aHandlerClsid)
 }
 
 void
-HandlerProvider::GetAndSerializePayload(const MutexAutoLock&)
+HandlerProvider::GetAndSerializePayload(const MutexAutoLock&,
+    NotNull<mscom::IInterceptor*> aInterceptor)
 {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
 
@@ -105,10 +110,11 @@ HandlerProvider::GetAndSerializePayload(const MutexAutoLock&)
 
   IA2Payload payload{};
 
-  if (!mscom::InvokeOnMainThread("HandlerProvider::BuildIA2Data",
-                                 this, &HandlerProvider::BuildIA2Data,
-                                 &payload.mData) ||
-      !payload.mData.mUniqueId) {
+  if (!mscom::InvokeOnMainThread("HandlerProvider::BuildInitialIA2Data",
+                                 this, &HandlerProvider::BuildInitialIA2Data,
+                                 aInterceptor,
+                                 &payload.mStaticData, &payload.mDynamicData) ||
+      !payload.mDynamicData.mUniqueId) {
     return;
   }
 
@@ -122,13 +128,16 @@ HandlerProvider::GetAndSerializePayload(const MutexAutoLock&)
 
   mSerializer = MakeUnique<mscom::StructToStream>(payload, &IA2Payload_Encode);
 
-  // Now that we have serialized payload, we should free any BSTRs that were
-  // allocated in BuildIA2Data.
-  ClearIA2Data(payload.mData);
+  // Now that we have serialized payload, we should clean up any
+  // BSTRs, interfaces, etc. fetched in BuildInitialIA2Data.
+  CleanupStaticIA2Data(payload.mStaticData);
+  // No need to zero memory, since payload is going out of scope.
+  CleanupDynamicIA2Data(payload.mDynamicData, false);
 }
 
 HRESULT
-HandlerProvider::GetHandlerPayloadSize(NotNull<DWORD*> aOutPayloadSize)
+HandlerProvider::GetHandlerPayloadSize(NotNull<mscom::IInterceptor*> aInterceptor,
+                                       NotNull<DWORD*> aOutPayloadSize)
 {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
 
@@ -139,7 +148,7 @@ HandlerProvider::GetHandlerPayloadSize(NotNull<DWORD*> aOutPayloadSize)
 
   MutexAutoLock lock(mMutex);
 
-  GetAndSerializePayload(lock);
+  GetAndSerializePayload(lock, aInterceptor);
 
   if (!mSerializer || !(*mSerializer)) {
     // Failed payload serialization is non-fatal
@@ -151,40 +160,295 @@ HandlerProvider::GetHandlerPayloadSize(NotNull<DWORD*> aOutPayloadSize)
   return S_OK;
 }
 
+template <typename CondFnT, typename ExeFnT>
+class MOZ_RAII ExecuteWhen final
+{
+public:
+  ExecuteWhen(CondFnT& aCondFn, ExeFnT& aExeFn)
+    : mCondFn(aCondFn)
+    , mExeFn(aExeFn)
+  {
+  }
+
+  ~ExecuteWhen()
+  {
+    if (mCondFn()) {
+      mExeFn();
+    }
+  }
+
+  ExecuteWhen(const ExecuteWhen&) = delete;
+  ExecuteWhen(ExecuteWhen&&) = delete;
+  ExecuteWhen& operator=(const ExecuteWhen&) = delete;
+  ExecuteWhen& operator=(ExecuteWhen&&) = delete;
+
+private:
+  CondFnT&  mCondFn;
+  ExeFnT&   mExeFn;
+};
+
 void
-HandlerProvider::BuildIA2Data(IA2Data* aOutIA2Data)
+HandlerProvider::BuildStaticIA2Data(
+  NotNull<mscom::IInterceptor*> aInterceptor,
+  StaticIA2Data* aOutData)
+{
+  MOZ_ASSERT(aOutData);
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(mTargetUnk);
+  MOZ_ASSERT(IsTargetInterfaceCacheable());
+
+  // Include interfaces the client is likely to request.
+  // This is cheap here and saves multiple cross-process calls later.
+  // These interfaces must be released in CleanupStaticIA2Data!
+
+  // If the target is already an IAccessible2, this pointer is redundant.
+  // However, the target might be an IAccessibleHyperlink, etc., in which
+  // case the client will almost certainly QI for IAccessible2.
+  HRESULT hr = aInterceptor->GetInterceptorForIID(NEWEST_IA2_IID,
+                                          (void**)&aOutData->mIA2);
+  if (FAILED(hr)) {
+    // IA2 should always be present, so something has
+    // gone very wrong if this fails.
+    aOutData->mIA2 = nullptr;
+    return;
+  }
+
+  // Some of these interfaces aren't present on all accessibles,
+  // so it's not a failure if these interfaces can't be fetched.
+  hr = aInterceptor->GetInterceptorForIID(IID_IEnumVARIANT,
+                                          (void**)&aOutData->mIEnumVARIANT);
+  if (FAILED(hr)) {
+    aOutData->mIEnumVARIANT = nullptr;
+  }
+
+  hr = aInterceptor->GetInterceptorForIID(IID_IAccessibleHypertext2,
+                                          (void**)&aOutData->mIAHypertext);
+  if (FAILED(hr)) {
+    aOutData->mIAHypertext = nullptr;
+  }
+
+  hr = aInterceptor->GetInterceptorForIID(IID_IAccessibleHyperlink,
+                                          (void**)&aOutData->mIAHyperlink);
+  if (FAILED(hr)) {
+    aOutData->mIAHyperlink = nullptr;
+  }
+
+  hr = aInterceptor->GetInterceptorForIID(IID_IAccessibleTable,
+                                          (void**)&aOutData->mIATable);
+  if (FAILED(hr)) {
+    aOutData->mIATable = nullptr;
+  }
+
+  hr = aInterceptor->GetInterceptorForIID(IID_IAccessibleTable2,
+                                          (void**)&aOutData->mIATable2);
+  if (FAILED(hr)) {
+    aOutData->mIATable2 = nullptr;
+  }
+
+  hr = aInterceptor->GetInterceptorForIID(IID_IAccessibleTableCell,
+                                          (void**)&aOutData->mIATableCell);
+  if (FAILED(hr)) {
+    aOutData->mIATableCell = nullptr;
+  }
+}
+
+void
+HandlerProvider::BuildDynamicIA2Data(DynamicIA2Data* aOutIA2Data)
 {
   MOZ_ASSERT(aOutIA2Data);
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mTargetUnk);
   MOZ_ASSERT(IsTargetInterfaceCacheable());
 
-  RefPtr<NEWEST_IA2_INTERFACE>
-    target(static_cast<NEWEST_IA2_INTERFACE*>(mTargetUnk.get()));
+  RefPtr<NEWEST_IA2_INTERFACE> target;
+  HRESULT hr = mTargetUnk.get()->QueryInterface(NEWEST_IA2_IID,
+    getter_AddRefs(target));
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = E_UNEXPECTED;
+
+  auto hasFailed = [&hr]() -> bool {
+    return FAILED(hr);
+  };
+
+  auto cleanup = [this, aOutIA2Data]() -> void {
+    CleanupDynamicIA2Data(*aOutIA2Data);
+  };
+
+  ExecuteWhen<decltype(hasFailed), decltype(cleanup)> onFail(hasFailed, cleanup);
+
+  const VARIANT kChildIdSelf = {VT_I4};
+  VARIANT varVal;
+
+  hr = target->accLocation(&aOutIA2Data->mLeft, &aOutIA2Data->mTop,
+                           &aOutIA2Data->mWidth, &aOutIA2Data->mHeight,
+                           kChildIdSelf);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_accRole(kChildIdSelf, &aOutIA2Data->mRole);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_accState(kChildIdSelf, &varVal);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  aOutIA2Data->mState = varVal.lVal;
+
+  hr = target->get_accKeyboardShortcut(kChildIdSelf,
+                                       &aOutIA2Data->mKeyboardShortcut);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_accName(kChildIdSelf, &aOutIA2Data->mName);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_accDescription(kChildIdSelf, &aOutIA2Data->mDescription);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_accDefaultAction(kChildIdSelf, &aOutIA2Data->mDefaultAction);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_accChildCount(&aOutIA2Data->mChildCount);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_accValue(kChildIdSelf, &aOutIA2Data->mValue);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_states(&aOutIA2Data->mIA2States);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->get_attributes(&aOutIA2Data->mAttributes);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  HWND hwnd;
+  hr = target->get_windowHandle(&hwnd);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  aOutIA2Data->mHwnd = PtrToLong(hwnd);
+
+  hr = target->get_locale(&aOutIA2Data->mIA2Locale);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = target->role(&aOutIA2Data->mIA2Role);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  RefPtr<IAccessibleAction> action;
+  // It is not an error if this fails.
+  hr = mTargetUnk.get()->QueryInterface(IID_IAccessibleAction,
+    getter_AddRefs(action));
+  if (SUCCEEDED(hr)) {
+    hr = action->nActions(&aOutIA2Data->mNActions);
+    if (FAILED(hr)) {
+      return;
+    }
+  }
+
+  RefPtr<IAccessibleTableCell> cell;
+  // It is not an error if this fails.
+  hr = mTargetUnk.get()->QueryInterface(IID_IAccessibleTableCell,
+    getter_AddRefs(cell));
+  if (SUCCEEDED(hr)) {
+    hr = cell->get_rowColumnExtents(&aOutIA2Data->mRowIndex,
+                                    &aOutIA2Data->mColumnIndex,
+                                    &aOutIA2Data->mRowExtent,
+                                    &aOutIA2Data->mColumnExtent,
+                                    &aOutIA2Data->mCellIsSelected);
+    if (FAILED(hr)) {
+      return;
+    }
+  }
 
   // NB: get_uniqueID should be the final property retrieved in this method,
   // as its presence is used to determine whether the rest of this data
   // retrieval was successful.
-  HRESULT hr = target->get_uniqueID(&aOutIA2Data->mUniqueId);
-  if (FAILED(hr)) {
-    ClearIA2Data(*aOutIA2Data);
-  }
+  hr = target->get_uniqueID(&aOutIA2Data->mUniqueId);
 }
 
 void
-HandlerProvider::ClearIA2Data(IA2Data& aData)
+HandlerProvider::CleanupStaticIA2Data(StaticIA2Data& aData)
 {
-  ZeroMemory(&aData, sizeof(IA2Data));
+  // When CoMarshalInterface writes interfaces out to a stream, it AddRefs.
+  // Therefore, we must release our references after this.
+  if (aData.mIA2) {
+    aData.mIA2->Release();
+  }
+  if (aData.mIEnumVARIANT) {
+    aData.mIEnumVARIANT->Release();
+  }
+  if (aData.mIAHypertext) {
+    aData.mIAHypertext->Release();
+  }
+  if (aData.mIAHyperlink) {
+    aData.mIAHyperlink->Release();
+  }
+  if (aData.mIATable) {
+    aData.mIATable->Release();
+  }
+  if (aData.mIATable2) {
+    aData.mIATable2->Release();
+  }
+  if (aData.mIATableCell) {
+    aData.mIATableCell->Release();
+  }
+  ZeroMemory(&aData, sizeof(StaticIA2Data));
+}
+
+void
+HandlerProvider::BuildInitialIA2Data(
+  NotNull<mscom::IInterceptor*> aInterceptor,
+  StaticIA2Data* aOutStaticData,
+  DynamicIA2Data* aOutDynamicData)
+{
+  BuildStaticIA2Data(aInterceptor, aOutStaticData);
+  if (!aOutStaticData->mIA2) {
+    return;
+  }
+  BuildDynamicIA2Data(aOutDynamicData);
+  if (!aOutDynamicData->mUniqueId) {
+    // Building dynamic data failed, which means building the payload failed.
+    // However, we've already built static data, so we must clean this up.
+    CleanupStaticIA2Data(*aOutStaticData);
+  }
 }
 
 bool
 HandlerProvider::IsTargetInterfaceCacheable()
 {
-  return MarshalAs(mTargetUnkIid) == NEWEST_IA2_IID;
+  return MarshalAs(mTargetUnkIid) == NEWEST_IA2_IID ||
+         mTargetUnkIid == IID_IAccessibleHyperlink;
 }
 
 HRESULT
-HandlerProvider::WriteHandlerPayload(NotNull<IStream*> aStream)
+HandlerProvider::WriteHandlerPayload(NotNull<mscom::IInterceptor*> aInterceptor,
+                                     NotNull<IStream*> aStream)
 {
   MutexAutoLock lock(mMutex);
 
@@ -220,8 +484,20 @@ REFIID
 HandlerProvider::GetEffectiveOutParamIid(REFIID aCallIid,
                                          ULONG aCallMethod)
 {
-  if (aCallIid == IID_IAccessibleTable || aCallIid == IID_IAccessibleTable2) {
-    return IID_IAccessible2_3;
+  if (aCallIid == IID_IAccessibleTable ||
+      aCallIid == IID_IAccessibleTable2 ||
+      aCallIid == IID_IAccessibleDocument ||
+      aCallIid == IID_IAccessibleTableCell ||
+      aCallIid == IID_IAccessibleRelation) {
+    return NEWEST_IA2_IID;
+  }
+
+  // IAccessible2_2::accessibleWithCaret
+  static_assert(&NEWEST_IA2_IID == &IID_IAccessible2_3,
+                "You have modified NEWEST_IA2_IID. This code needs updating.");
+  if ((aCallIid == IID_IAccessible2_2 || aCallIid == IID_IAccessible2_3) &&
+      aCallMethod == 47) {
+    return NEWEST_IA2_IID;
   }
 
   MOZ_ASSERT(false);
@@ -273,12 +549,12 @@ HandlerProvider::put_HandlerControl(long aPid, IHandlerControl* aCtrl)
 }
 
 HRESULT
-HandlerProvider::Refresh(IA2Data* aOutData)
+HandlerProvider::Refresh(DynamicIA2Data* aOutData)
 {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
 
-  if (!mscom::InvokeOnMainThread("HandlerProvider::BuildIA2Data",
-                                 this, &HandlerProvider::BuildIA2Data,
+  if (!mscom::InvokeOnMainThread("HandlerProvider::BuildDynamicIA2Data",
+                                 this, &HandlerProvider::BuildDynamicIA2Data,
                                  aOutData)) {
     return E_FAIL;
   }

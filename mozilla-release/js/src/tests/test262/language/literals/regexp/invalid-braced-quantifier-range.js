@@ -10,7 +10,7 @@ info: |
         ^$\.*+?()[]{}|
 
     PatternCharacter ::
-        SourceCharacterbut not SyntaxCharacter
+        SourceCharacter but not SyntaxCharacter
 
     Although Annex B extends the definition of Term to include
     ExtendedPatternCharacter, it also introduces the InvalidBracedQuantifier
@@ -20,5 +20,7 @@ negative:
   phase: early
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 /{2,3}/;

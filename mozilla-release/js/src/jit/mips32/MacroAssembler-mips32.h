@@ -858,9 +858,8 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
     void load32(AbsoluteAddress address, Register dest);
     void load32(wasm::SymbolicAddress address, Register dest);
     void load64(const Address& address, Register64 dest) {
-        load32(Address(address.base, address.offset + INT64LOW_OFFSET), dest.low);
-        int32_t highOffset = (address.offset < 0) ? -int32_t(INT64HIGH_OFFSET) : INT64HIGH_OFFSET;
-        load32(Address(address.base, address.offset + highOffset), dest.high);
+        load32(LowWord(address), dest.low);
+        load32(HighWord(address), dest.high);
     }
 
     void loadPtr(const Address& address, Register dest);
@@ -905,7 +904,8 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
 
     void loadDouble(const Address& addr, FloatRegister dest);
     void loadDouble(const BaseIndex& src, FloatRegister dest);
-    void loadUnalignedDouble(const BaseIndex& src, Register temp, FloatRegister dest);
+    void loadUnalignedDouble(const wasm::MemoryAccessDesc& access, const BaseIndex& src,
+                             Register temp, FloatRegister dest);
 
     // Load a float value into a register, then expand it to a double.
     void loadFloatAsDouble(const Address& addr, FloatRegister dest);
@@ -913,7 +913,8 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
 
     void loadFloat32(const Address& addr, FloatRegister dest);
     void loadFloat32(const BaseIndex& src, FloatRegister dest);
-    void loadUnalignedFloat32(const BaseIndex& src, Register temp, FloatRegister dest);
+    void loadUnalignedFloat32(const wasm::MemoryAccessDesc& access, const BaseIndex& src,
+                              Register temp, FloatRegister dest);
 
     void store8(Register src, const Address& address);
     void store8(Imm32 imm, const Address& address);
@@ -954,8 +955,10 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
     void storePtr(Register src, const BaseIndex& address);
     void storePtr(Register src, AbsoluteAddress dest);
 
-    void storeUnalignedFloat32(FloatRegister src, Register temp, const BaseIndex& dest);
-    void storeUnalignedDouble(FloatRegister src, Register temp, const BaseIndex& dest);
+    void storeUnalignedFloat32(const wasm::MemoryAccessDesc& access, FloatRegister src,
+                               Register temp, const BaseIndex& dest);
+    void storeUnalignedDouble(const wasm::MemoryAccessDesc& access, FloatRegister src,
+                              Register temp, const BaseIndex& dest);
 
     void moveDouble(FloatRegister src, FloatRegister dest) {
         as_movd(dest, src);

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -20,28 +21,13 @@
 namespace mozilla {
 namespace gfx {
 
-class GlyphRenderingOptionsCG : public GlyphRenderingOptions
-{
-public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GlyphRenderingOptionsCG, override)
-
-  explicit GlyphRenderingOptionsCG(const Color &aFontSmoothingBackgroundColor)
-    : mFontSmoothingBackgroundColor(aFontSmoothingBackgroundColor)
-  {}
-
-  const Color &FontSmoothingBackgroundColor() const { return mFontSmoothingBackgroundColor; }
-
-  virtual FontType GetType() const override { return FontType::MAC; }
-
-private:
-  Color mFontSmoothingBackgroundColor;
-};
-
 class ScaledFontMac : public ScaledFontBase
 {
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(ScaledFontMac, override)
-  ScaledFontMac(CGFontRef aFont, const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize, bool aOwnsFont = false);
+  ScaledFontMac(CGFontRef aFont, const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize,
+                const Color &aFontSmoothingBackgroundColor = Color(),
+                bool aUseFontSmoothing = true, bool aOwnsFont = false);
   ~ScaledFontMac();
 
   FontType GetType() const override { return FontType::MAC; }
@@ -52,7 +38,13 @@ public:
 
   bool GetFontInstanceData(FontInstanceDataOutput aCb, void* aBaton) override;
 
+  bool GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* aOutOptions,
+                                Maybe<wr::FontInstancePlatformOptions>* aOutPlatformOptions,
+                                std::vector<FontVariation>* aOutVariations) override;
+
   bool CanSerialize() override { return true; }
+
+  Color FontSmoothingBackgroundColor() { return mFontSmoothingBackgroundColor; }
 
 #ifdef USE_CAIRO_SCALED_FONT
   cairo_font_face_t* GetCairoFontFace() override;
@@ -62,6 +54,8 @@ private:
   friend class DrawTargetSkia;
   CGFontRef mFont;
   CTFontRef mCTFont; // only created if CTFontDrawGlyphs is available, otherwise null
+  Color mFontSmoothingBackgroundColor;
+  bool mUseFontSmoothing;
 
   typedef void (CTFontDrawGlyphsFuncT)(CTFontRef,
                                        const CGGlyph[], const CGPoint[],

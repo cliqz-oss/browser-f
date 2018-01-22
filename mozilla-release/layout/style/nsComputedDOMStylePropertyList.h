@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -340,7 +341,6 @@ COMPUTED_STYLE_PROP(marker_end,                    MarkerEnd)
 COMPUTED_STYLE_PROP(marker_mid,                    MarkerMid)
 COMPUTED_STYLE_PROP(marker_start,                  MarkerStart)
 COMPUTED_STYLE_PROP(mask,                          Mask)
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
 COMPUTED_STYLE_PROP(mask_clip,                     MaskClip)
 COMPUTED_STYLE_PROP(mask_composite,                MaskComposite)
 COMPUTED_STYLE_PROP(mask_image,                    MaskImage)
@@ -351,7 +351,6 @@ COMPUTED_STYLE_PROP(mask_position_x,               MaskPositionX)
 COMPUTED_STYLE_PROP(mask_position_y,               MaskPositionY)
 COMPUTED_STYLE_PROP(mask_repeat,                   MaskRepeat)
 COMPUTED_STYLE_PROP(mask_size,                     MaskSize)
-#endif
 COMPUTED_STYLE_PROP(mask_type,                     MaskType)
 COMPUTED_STYLE_PROP(paint_order,                   PaintOrder)
 COMPUTED_STYLE_PROP(shape_rendering,               ShapeRendering)

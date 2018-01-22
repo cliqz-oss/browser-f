@@ -194,6 +194,8 @@ EXPORTS.mozilla.layers += [
     'ipc/ShadowLayers.h',
     'ipc/SharedPlanarYCbCrImage.h',
     'ipc/SharedRGBImage.h',
+    'ipc/SharedSurfacesChild.h',
+    'ipc/SharedSurfacesParent.h',
     'ipc/SynchronousTask.h',
     'ipc/TextureForwarder.h',
     'ipc/UiCompositorControllerChild.h',
@@ -221,6 +223,7 @@ EXPORTS.mozilla.layers += [
     'PaintThread.h',
     'PersistentBufferProvider.h',
     'RenderTrace.h',
+    'RotatedBuffer.h',
     'ShareableCanvasRenderer.h',
     'SourceSurfaceSharedData.h',
     'SourceSurfaceVolatileData.h',
@@ -236,9 +239,8 @@ EXPORTS.mozilla.layers += [
     'wr/WebRenderBridgeChild.h',
     'wr/WebRenderBridgeParent.h',
     'wr/WebRenderCanvasRenderer.h',
-    'wr/WebRenderDisplayItemLayer.h',
+    'wr/WebRenderCommandBuilder.h',
     'wr/WebRenderImageHost.h',
-    'wr/WebRenderLayer.h',
     'wr/WebRenderLayerManager.h',
     'wr/WebRenderLayersLogging.h',
     'wr/WebRenderMessageUtils.h',
@@ -417,6 +419,8 @@ UNIFIED_SOURCES += [
     'ipc/ShadowLayers.cpp',
     'ipc/SharedPlanarYCbCrImage.cpp',
     'ipc/SharedRGBImage.cpp',
+    'ipc/SharedSurfacesChild.cpp',
+    'ipc/SharedSurfacesParent.cpp',
     'ipc/UiCompositorControllerChild.cpp',
     'ipc/UiCompositorControllerParent.cpp',
     'ipc/VideoBridgeChild.cpp',
@@ -451,7 +455,6 @@ UNIFIED_SOURCES += [
     'opengl/TextureHostOGL.cpp',
     'opengl/TexturePoolOGL.cpp',
     'PaintThread.cpp',
-    'protobuf/LayerScopePacket.pb.cc',
     'ReadbackProcessor.cpp',
     'RenderTrace.cpp',
     'RotatedBuffer.cpp',
@@ -467,20 +470,12 @@ UNIFIED_SOURCES += [
     'wr/StackingContextHelper.cpp',
     'wr/WebRenderBridgeChild.cpp',
     'wr/WebRenderBridgeParent.cpp',
-    'wr/WebRenderCanvasLayer.cpp',
     'wr/WebRenderCanvasRenderer.cpp',
-    'wr/WebRenderColorLayer.cpp',
-    'wr/WebRenderContainerLayer.cpp',
-    'wr/WebRenderDisplayItemLayer.cpp',
+    'wr/WebRenderCommandBuilder.cpp',
     'wr/WebRenderImageHost.cpp',
-    'wr/WebRenderImageLayer.cpp',
-    'wr/WebRenderLayer.cpp',
     'wr/WebRenderLayerManager.cpp',
     'wr/WebRenderLayersLogging.cpp',
-    'wr/WebRenderPaintedLayer.cpp',
-    'wr/WebRenderPaintedLayerBlob.cpp',
     'wr/WebRenderScrollData.cpp',
-    'wr/WebRenderTextLayer.cpp',
     'wr/WebRenderUserData.cpp',
     # XXX here are some unified build error.
     #'wr/WebRenderTextureHost.cpp'
@@ -492,11 +487,12 @@ SOURCES += [
     'Layers.cpp',
     'LayerTreeInvalidation.cpp',
     'PersistentBufferProvider.cpp',
+    'protobuf/LayerScopePacket.pb.cc',
     'wr/WebRenderTextureHost.cpp',
 ]
 
-# Disable RTTI in google protocol buffer
 DEFINES['GOOGLE_PROTOBUF_NO_RTTI'] = True
+DEFINES['GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER'] = True
 
 # Workaround compiler bug (Bug 795594)
 if CONFIG['_MSC_VER'] and CONFIG['CPU_ARCH'] == 'x86_64':
@@ -572,6 +568,10 @@ LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
 if CONFIG['GNU_CXX']:
     CXXFLAGS += ['-Wno-error=shadow']
+    # Suppress warnings in third-party code.
+    CXXFLAGS += [
+        '-Wno-maybe-uninitialized'
+    ]
 
 if CONFIG['MOZ_ENABLE_SKIA']:
   UNIFIED_SOURCES += [

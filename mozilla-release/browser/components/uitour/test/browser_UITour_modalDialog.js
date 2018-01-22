@@ -26,7 +26,7 @@ var observer = SpecialPowers.wrapCallbackObject({
         const interfaces = [Ci.nsIObserver,
                             Ci.nsISupports, Ci.nsISupportsWeakReference];
 
-        if (!interfaces.some( function(v) { return iid.equals(v) } ))
+        if (!interfaces.some( function(v) { return iid.equals(v); } ))
             throw SpecialPowers.Components.results.NS_ERROR_NO_INTERFACE;
         return this;
     },
@@ -43,10 +43,9 @@ var observer = SpecialPowers.wrapCallbackObject({
 function getDialogDoc() {
   // Find the <browser> which contains notifyWindow, by looking
   // through all the open windows and all the <browsers> in each.
-  var wm = Cc["@mozilla.org/appshell/window-mediator;1"].
-           getService(Ci.nsIWindowMediator);
+
   // var enumerator = wm.getEnumerator("navigator:browser");
-  var enumerator = wm.getXULWindowEnumerator(null);
+  var enumerator = Services.wm.getXULWindowEnumerator(null);
 
   while (enumerator.hasMoreElements()) {
     var win = enumerator.getNext();

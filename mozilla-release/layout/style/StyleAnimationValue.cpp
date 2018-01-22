@@ -2132,20 +2132,6 @@ AddTransformScale(double aCoeff1, const nsCSSValue &aValue1,
   aResult.SetFloatValue(EnsureNotNan(result + 1.0f), eCSSUnit_Number);
 }
 
-/* static */ already_AddRefed<nsCSSValue::Array>
-StyleAnimationValue::AppendTransformFunction(nsCSSKeyword aTransformFunction,
-                                             nsCSSValueList**& aListTail)
-{
-  RefPtr<nsCSSValue::Array> arr = AppendFunction(aTransformFunction);
-  nsCSSValueList *item = new nsCSSValueList;
-  item->mValue.SetArrayValue(arr, eCSSUnit_Function);
-
-  *aListTail = item;
-  aListTail = &item->mNext;
-
-  return arr.forget();
-}
-
 static nsCSSValueList*
 AddDifferentTransformLists(double aCoeff1, const nsCSSValueList* aList1,
                            double aCoeff2, const nsCSSValueList* aList2,
@@ -2155,9 +2141,7 @@ AddDifferentTransformLists(double aCoeff1, const nsCSSValueList* aList1,
   nsCSSValueList **resultTail = getter_Transfers(result);
 
   RefPtr<nsCSSValue::Array> arr;
-  arr =
-    StyleAnimationValue::AppendTransformFunction(aOperatorType,
-                                                 resultTail);
+  arr = AnimationValue::AppendTransformFunction(aOperatorType, resultTail);
 
   if (aCoeff1 == 0) {
     // If the first coeffient is zero, we don't need to care about the first
@@ -2617,7 +2601,7 @@ AddTransformLists(double aCoeff1, const nsCSSValueList* aList1,
         tfunc != eCSSKeyword_interpolatematrix &&
         tfunc != eCSSKeyword_rotate3d &&
         tfunc != eCSSKeyword_perspective) {
-      arr = StyleAnimationValue::AppendTransformFunction(tfunc, resultTail);
+      arr = AnimationValue::AppendTransformFunction(tfunc, resultTail);
     }
 
     switch (tfunc) {
@@ -2701,7 +2685,7 @@ AddTransformLists(double aCoeff1, const nsCSSValueList* aList1,
         if (vector1 == vector2) {
           // We skipped appending a transform function above for rotate3d,
           // so do it now.
-          arr = StyleAnimationValue::AppendTransformFunction(tfunc, resultTail);
+          arr = AnimationValue::AppendTransformFunction(tfunc, resultTail);
           arr->Item(1).SetFloatValue(vector1.x, eCSSUnit_Number);
           arr->Item(2).SetFloatValue(vector1.y, eCSSUnit_Number);
           arr->Item(3).SetFloatValue(vector1.z, eCSSUnit_Number);
@@ -2718,7 +2702,7 @@ AddTransformLists(double aCoeff1, const nsCSSValueList* aList1,
         if (aCoeff1 == 0.0 && aCoeff2 == 0.0) {
           // Special case. If both coefficients are 0.0, we should apply an
           // identity transform function.
-          arr = StyleAnimationValue::AppendTransformFunction(tfunc, resultTail);
+          arr = AnimationValue::AppendTransformFunction(tfunc, resultTail);
 
           if (tfunc == eCSSKeyword_rotate3d) {
             arr->Item(1).SetFloatValue(0.0, eCSSUnit_Number);
@@ -4158,7 +4142,7 @@ StyleShapeSourceToCSSArray(const StyleShapeSource& aShapeSource,
   MOZ_ASSERT(aResult->Count() == 2,
              "Expected array to be presized for a function and the sizing-box");
 
-  const StyleBasicShape* shape = aShapeSource.GetBasicShape();
+  const UniquePtr<StyleBasicShape>& shape = aShapeSource.GetBasicShape();
   nsCSSKeyword functionName = shape->GetShapeTypeName();
   RefPtr<nsCSSValue::Array> functionArray;
   switch (shape->GetShapeType()) {
@@ -4545,13 +4529,14 @@ StyleAnimationValue::ExtractComputedValue(nsCSSPropertyID aProperty,
           ExtractImageLayerPositionYList(layers, aComputedValue);
           break;
         }
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
+
         case eCSSProperty_mask_position_x: {
           const nsStyleImageLayers& layers =
             static_cast<const nsStyleSVGReset*>(styleStruct)->mMask;
           ExtractImageLayerPositionXList(layers, aComputedValue);
           break;
         }
+
         case eCSSProperty_mask_position_y: {
           const nsStyleImageLayers& layers =
             static_cast<const nsStyleSVGReset*>(styleStruct)->mMask;
@@ -4559,21 +4544,20 @@ StyleAnimationValue::ExtractComputedValue(nsCSSPropertyID aProperty,
 
           break;
         }
-#endif
+
         case eCSSProperty_background_size: {
           const nsStyleImageLayers& layers =
             static_cast<const nsStyleBackground*>(styleStruct)->mImage;
           ExtractImageLayerSizePairList(layers, aComputedValue);
           break;
         }
-#ifdef MOZ_ENABLE_MASK_AS_SHORTHAND
+
         case eCSSProperty_mask_size: {
           const nsStyleImageLayers& layers =
             static_cast<const nsStyleSVGReset*>(styleStruct)->mMask;
           ExtractImageLayerSizePairList(layers, aComputedValue);
           break;
         }
-#endif
 
         case eCSSProperty_clip_path: {
           const nsStyleSVGReset* svgReset =
@@ -5354,8 +5338,27 @@ float
 AnimationValue::GetOpacity() const
 {
   MOZ_ASSERT(!mServo != mGecko.IsNull());
+  MOZ_ASSERT(mServo || mGecko.GetUnit() == StyleAnimationValue::eUnit_Float,
+             "Should have the correct unit on Gecko backend");
   return mServo ? Servo_AnimationValue_GetOpacity(mServo)
                 : mGecko.GetFloatValue();
+}
+
+already_AddRefed<const nsCSSValueSharedList>
+AnimationValue::GetTransformList() const
+{
+  MOZ_ASSERT(!mServo != mGecko.IsNull());
+  MOZ_ASSERT(mServo || mGecko.GetUnit() == StyleAnimationValue::eUnit_Transform,
+             "The unit of interpolated value for transform should be "
+             "transform on Gecko backend");
+
+  RefPtr<nsCSSValueSharedList> transform;
+  if (mServo) {
+    Servo_AnimationValue_GetTransform(mServo, &transform);
+  } else {
+    transform = mGecko.GetCSSValueSharedListValue();
+  }
+  return transform.forget();
 }
 
 gfxSize
@@ -5492,4 +5495,55 @@ AnimationValue::FromString(nsCSSPropertyID aProperty,
     MOZ_ASSERT(result.IsNull());
   }
   return result;
+}
+
+/* static */ AnimationValue
+AnimationValue::Opacity(StyleBackendType aBackendType, float aOpacity)
+{
+  AnimationValue result;
+
+  switch (aBackendType) {
+    case StyleBackendType::Servo:
+      result.mServo = Servo_AnimationValue_Opacity(aOpacity).Consume();
+      break;
+    case StyleBackendType::Gecko:
+      result.mGecko.SetFloatValue(aOpacity);
+      break;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unsupported style backend");
+  }
+  return result;
+}
+
+/* static */ AnimationValue
+AnimationValue::Transform(StyleBackendType aBackendType,
+                          nsCSSValueSharedList& aList)
+{
+  AnimationValue result;
+
+  switch (aBackendType) {
+    case StyleBackendType::Servo:
+      result.mServo = Servo_AnimationValue_Transform(aList).Consume();
+      break;
+    case StyleBackendType::Gecko:
+      result.mGecko.SetTransformValue(&aList);
+      break;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unsupported style backend");
+  }
+  return result;
+}
+
+/* static */ already_AddRefed<nsCSSValue::Array>
+AnimationValue::AppendTransformFunction(nsCSSKeyword aTransformFunction,
+                                        nsCSSValueList**& aListTail)
+{
+  RefPtr<nsCSSValue::Array> arr = AppendFunction(aTransformFunction);
+  nsCSSValueList *item = new nsCSSValueList;
+  item->mValue.SetArrayValue(arr, eCSSUnit_Function);
+
+  *aListTail = item;
+  aListTail = &item->mNext;
+
+  return arr.forget();
 }

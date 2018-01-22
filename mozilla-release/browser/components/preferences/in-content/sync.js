@@ -153,12 +153,14 @@ var gSyncPane = {
       document.getElementById("verifiedManage").setAttribute("href", accountsManageURI);
     });
 
+    fxAccounts.promiseAccountsSignUpURI(this._getEntryPoint()).then(signUpURI => {
+      document.getElementById("noFxaSignUp").setAttribute("href", signUpURI);
+    });
+
     this.updateWeavePrefs();
 
     // Notify observers that the UI is now ready
-    Components.classes["@mozilla.org/observer-service;1"]
-      .getService(Components.interfaces.nsIObserverService)
-      .notifyObservers(window, "sync-pane-loaded");
+    Services.obs.notifyObservers(window, "sync-pane-loaded");
   },
 
   _toggleComputerNameControls(editMode) {
@@ -299,7 +301,7 @@ var gSyncPane = {
         label.value = data.email;
       });
       this._populateComputerName(Weave.Service.clientsEngine.localName);
-      let engines = document.getElementById("fxaSyncEngines")
+      let engines = document.getElementById("fxaSyncEngines");
       for (let checkbox of engines.querySelectorAll("checkbox")) {
         checkbox.disabled = !syncReady;
       }
@@ -357,17 +359,6 @@ var gSyncPane = {
     return params.get("entrypoint") || "preferences";
   },
 
-  _openAboutAccounts(action) {
-    let entryPoint = this._getEntryPoint();
-    let params = new URLSearchParams();
-    if (action) {
-      params.set("action", action);
-    }
-    params.set("entrypoint", entryPoint);
-
-    this.replaceTabWithUrl("about:accounts?" + params);
-  },
-
   openContentInBrowser(url, options) {
     let win = Services.wm.getMostRecentWindow("navigator:browser");
     if (!win) {
@@ -388,16 +379,14 @@ var gSyncPane = {
     browser.loadURI(url);
   },
 
-  signUp() {
-    this._openAboutAccounts("signup");
+  async signIn() {
+    const url = await fxAccounts.promiseAccountsSignInURI(this._getEntryPoint());
+    this.replaceTabWithUrl(url);
   },
 
-  signIn() {
-    this._openAboutAccounts("signin");
-  },
-
-  reSignIn() {
-    this._openAboutAccounts("reauth");
+  async reSignIn() {
+    const url = await fxAccounts.promiseAccountsForceSigninURI(this._getEntryPoint());
+    this.replaceTabWithUrl(url);
   },
 
 
@@ -449,8 +438,8 @@ var gSyncPane = {
       let title = sb.GetStringFromName("verification" + maybeNot + "SentTitle");
       let email = !isError && data ? data.email : "";
       let body = sb.formatStringFromName("verification" + maybeNot + "SentBody", [email], 1);
-      new Notification(title, { body })
-    }
+      new Notification(title, { body });
+    };
 
     let onError = () => {
       showVerifyNotification();
@@ -471,7 +460,6 @@ var gSyncPane = {
 
   unlinkFirefoxAccount(confirm) {
     if (confirm) {
-      // We use a string bundle shared with aboutAccounts.
       let sb = Services.strings.createBundle("chrome://browser/locale/syncSetup.properties");
       let disconnectLabel = sb.GetStringFromName("disconnect.label");
       let title = sb.GetStringFromName("disconnect.verify.title");

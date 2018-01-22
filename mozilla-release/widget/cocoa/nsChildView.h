@@ -170,7 +170,7 @@ class WidgetRenderingContext;
 
   NSOpenGLContext *mGLContext;
 
-  // Simple gestures support
+  // Gestures support
   //
   // mGestureState is used to detect when Cocoa has called both
   // magnifyWithEvent and rotateWithEvent within the same
@@ -242,16 +242,15 @@ class WidgetRenderingContext;
 
 - (NSColor*)vibrancyFillColorForThemeGeometryType:(nsITheme::ThemeGeometryType)aThemeGeometryType;
 
-// Simple gestures support
-//
-// XXX - The swipeWithEvent, beginGestureWithEvent, magnifyWithEvent,
-// rotateWithEvent, and endGestureWithEvent methods are part of a
-// PRIVATE interface exported by nsResponder and reverse-engineering
-// was necessary to obtain the methods' prototypes. Thus, Apple may
-// change the interface in the future without notice.
-//
-// The prototypes were obtained from the following link:
-// http://cocoadex.com/2008/02/nsevent-modifications-swipe-ro.html
+/*
+ * Gestures support
+ *
+ * The prototypes swipeWithEvent, beginGestureWithEvent, smartMagnifyWithEvent,
+ * rotateWithEvent and endGestureWithEvent were obtained from the following
+ * links:
+ * https://developer.apple.com/library/mac/#documentation/Cocoa/Reference/ApplicationKit/Classes/NSResponder_Class/Reference/Reference.html
+ * https://developer.apple.com/library/mac/#releasenotes/Cocoa/AppKit.html
+ */
 - (void)swipeWithEvent:(NSEvent *)anEvent;
 - (void)beginGestureWithEvent:(NSEvent *)anEvent;
 - (void)magnifyWithEvent:(NSEvent *)anEvent;
@@ -458,9 +457,6 @@ public:
   virtual void AddWindowOverlayWebRenderCommands(mozilla::layers::WebRenderBridgeChild* aWrBridge,
                                                  mozilla::wr::DisplayListBuilder& aBuilder,
                                                  mozilla::wr::IpcResourceUpdateQueue& aResourceUpdates) override;
-
-  virtual void CleanupWebRenderWindowOverlay(mozilla::layers::WebRenderBridgeChild* aWrBridge,
-                                             mozilla::wr::IpcResourceUpdateQueue& aResources) override;
 
   virtual bool PreRender(mozilla::widget::WidgetRenderingContext* aContext) override;
   virtual void PostRender(mozilla::widget::WidgetRenderingContext* aContext) override;

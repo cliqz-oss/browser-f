@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -31,7 +32,7 @@ using namespace mozilla::image;
 //
 
 static int8_t
-ParseStyleValue(nsIAtom* aAttribute, const nsAString& aAttributeValue)
+ParseStyleValue(nsAtom* aAttribute, const nsAString& aAttributeValue)
 {
   if (aAttribute == nsGkAtoms::rowalign_) {
     if (aAttributeValue.EqualsLiteral("top"))
@@ -66,7 +67,7 @@ ParseStyleValue(nsIAtom* aAttribute, const nsAString& aAttributeValue)
 
 static nsTArray<int8_t>*
 ExtractStyleValues(const nsAString& aString,
-                   nsIAtom* aAttribute,
+                   nsAtom* aAttribute,
                    bool aAllowMultiValues)
 {
   nsTArray<int8_t>* styleArray = nullptr;
@@ -141,7 +142,7 @@ NS_DECLARE_FRAME_PROPERTY_DELETABLE(ColumnAlignProperty, nsTArray<int8_t>)
 NS_DECLARE_FRAME_PROPERTY_DELETABLE(ColumnLinesProperty, nsTArray<int8_t>)
 
 static const FramePropertyDescriptor<nsTArray<int8_t>>*
-AttributeToProperty(nsIAtom* aAttribute)
+AttributeToProperty(nsAtom* aAttribute)
 {
   if (aAttribute == nsGkAtoms::rowalign_)
     return RowAlignProperty();
@@ -183,10 +184,8 @@ static void
 ApplyBorderToStyle(const nsMathMLmtdFrame* aFrame,
                    nsStyleBorder& aStyleBorder)
 {
-  int32_t rowIndex;
-  int32_t columnIndex;
-  aFrame->GetRowIndex(rowIndex);
-  aFrame->GetColIndex(columnIndex);
+  uint32_t rowIndex = aFrame->RowIndex();
+  uint32_t columnIndex = aFrame->ColIndex();
 
   nscoord borderWidth =
     nsPresContext::GetBorderWidthForKeyword(NS_STYLE_BORDER_WIDTH_THIN);
@@ -201,7 +200,7 @@ ApplyBorderToStyle(const nsMathMLmtdFrame* aFrame,
   if (rowIndex > 0 && rowLinesList) {
     // If the row number is greater than the number of provided rowline
     // values, we simply repeat the last value.
-    int32_t listLength = rowLinesList->Length();
+    uint32_t listLength = rowLinesList->Length();
     if (rowIndex < listLength) {
       aStyleBorder.SetBorderStyle(eSideTop,
                     rowLinesList->ElementAt(rowIndex - 1));
@@ -216,7 +215,7 @@ ApplyBorderToStyle(const nsMathMLmtdFrame* aFrame,
   if (columnIndex > 0 && columnLinesList) {
     // If the column number is greater than the number of provided columline
     // values, we simply repeat the last value.
-    int32_t listLength = columnLinesList->Length();
+    uint32_t listLength = columnLinesList->Length();
     if (columnIndex < listLength) {
       aStyleBorder.SetBorderStyle(eSideLeft,
                     columnLinesList->ElementAt(columnIndex - 1));
@@ -332,6 +331,15 @@ public:
 
     nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, result);
   }
+
+  bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                               mozilla::wr::IpcResourceUpdateQueue& aResources,
+                               const StackingContextHelper& aSc,
+                               mozilla::layers::WebRenderLayerManager* aManager,
+                               nsDisplayListBuilder* aDisplayListBuilder) override
+  {
+    return false;
+  }
 };
 
 #ifdef DEBUG
@@ -344,7 +352,7 @@ public:
 
 static void
 ParseFrameAttribute(nsIFrame* aFrame,
-                    nsIAtom* aAttribute,
+                    nsAtom* aAttribute,
                     bool aAllowMultiValues)
 {
   nsAutoString attrValue;
@@ -433,7 +441,7 @@ static const float kDefaultFramespacingArg1Ex = 0.5f;
 
 static void
 ExtractSpacingValues(const nsAString&   aString,
-                     nsIAtom*           aAttribute,
+                     nsAtom*           aAttribute,
                      nsTArray<nscoord>& aSpacingArray,
                      nsIFrame*          aFrame,
                      nscoord            aDefaultValue0,
@@ -488,7 +496,7 @@ ExtractSpacingValues(const nsAString&   aString,
 }
 
 static void
-ParseSpacingAttribute(nsMathMLmtableFrame* aFrame, nsIAtom* aAttribute)
+ParseSpacingAttribute(nsMathMLmtableFrame* aFrame, nsAtom* aAttribute)
 {
   NS_ASSERTION(aAttribute == nsGkAtoms::rowspacing_ ||
                aAttribute == nsGkAtoms::columnspacing_ ||
@@ -707,7 +715,7 @@ nsMathMLmtableWrapperFrame::~nsMathMLmtableWrapperFrame()
 
 nsresult
 nsMathMLmtableWrapperFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                             nsIAtom* aAttribute,
+                                             nsAtom* aAttribute,
                                              int32_t  aModType)
 {
   // Attributes specific to <mtable>:
@@ -735,7 +743,7 @@ nsMathMLmtableWrapperFrame::AttributeChanged(int32_t  aNameSpaceID,
 
   // align - just need to issue a dirty (resize) reflow command
   if (aAttribute == nsGkAtoms::align) {
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eResize, NS_FRAME_IS_DIRTY);
     return NS_OK;
   }
@@ -747,7 +755,7 @@ nsMathMLmtableWrapperFrame::AttributeChanged(int32_t  aNameSpaceID,
     nsMathMLContainerFrame::RebuildAutomaticDataForChildren(GetParent());
     // Need to reflow the parent, not us, because this can actually
     // affect siblings.
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(GetParent(), nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
     return NS_OK;
   }
@@ -1106,7 +1114,7 @@ nsMathMLmtrFrame::~nsMathMLmtrFrame()
 
 nsresult
 nsMathMLmtrFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                   nsIAtom* aAttribute,
+                                   nsAtom* aAttribute,
                                    int32_t  aModType)
 {
   // Attributes specific to <mtr>:
@@ -1166,7 +1174,7 @@ nsMathMLmtdFrame::Init(nsIContent*       aContent,
 
 nsresult
 nsMathMLmtdFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                   nsIAtom* aAttribute,
+                                   nsAtom* aAttribute,
                                    int32_t  aModType)
 {
   // Attributes specific to <mtd>:
@@ -1206,12 +1214,11 @@ nsMathMLmtdFrame::GetVerticalAlign() const
   nsTArray<int8_t>* alignmentList = FindCellProperty(this, RowAlignProperty());
 
   if (alignmentList) {
-    int32_t rowIndex;
-    GetRowIndex(rowIndex);
+    uint32_t rowIndex = RowIndex();
 
     // If the row number is greater than the number of provided rowalign values,
     // we simply repeat the last value.
-    if (rowIndex < (int32_t)alignmentList->Length())
+    if (rowIndex < alignmentList->Length())
       alignment = alignmentList->ElementAt(rowIndex);
     else
       alignment = alignmentList->ElementAt(alignmentList->Length() - 1);
@@ -1298,12 +1305,11 @@ nsStyleText* nsMathMLmtdInnerFrame::StyleTextForLineLayout()
 
   if (alignmentList) {
     nsMathMLmtdFrame* cellFrame = (nsMathMLmtdFrame*)GetParent();
-    int32_t columnIndex;
-    cellFrame->GetColIndex(columnIndex);
+    uint32_t columnIndex = cellFrame->ColIndex();
 
     // If the column number is greater than the number of provided columalign
     // values, we simply repeat the last value.
-    if (columnIndex < (int32_t)alignmentList->Length())
+    if (columnIndex < alignmentList->Length())
       alignment = alignmentList->ElementAt(columnIndex);
     else
       alignment = alignmentList->ElementAt(alignmentList->Length() - 1);

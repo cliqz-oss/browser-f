@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -31,7 +32,6 @@
 #include "nsILoadGroup.h"
 #include "nsContainerFrame.h"
 #include "nsCSSRendering.h"
-#include "nsIDOMHTMLImageElement.h"
 #include "nsNameSpaceManager.h"
 #include "nsTextFragment.h"
 #include "nsTransform2D.h"
@@ -141,7 +141,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsImageBoxFrame)
 
 nsresult
 nsImageBoxFrame::AttributeChanged(int32_t aNameSpaceID,
-                                  nsIAtom* aAttribute,
+                                  nsAtom* aAttribute,
                                   int32_t aModType)
 {
   nsresult rv = nsLeafBoxFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -149,7 +149,7 @@ nsImageBoxFrame::AttributeChanged(int32_t aNameSpaceID,
 
   if (aAttribute == nsGkAtoms::src) {
     UpdateImage();
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
   }
   else if (aAttribute == nsGkAtoms::validate)
@@ -182,7 +182,7 @@ nsImageBoxFrame::MarkIntrinsicISizesDirty()
 }
 
 void
-nsImageBoxFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsImageBoxFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (mImageRequest) {
     nsLayoutUtils::DeregisterImageRequest(PresContext(), mImageRequest,
@@ -195,7 +195,7 @@ nsImageBoxFrame::DestroyFrom(nsIFrame* aDestructRoot)
   if (mListener)
     reinterpret_cast<nsImageBoxListener*>(mListener.get())->SetFrame(nullptr); // set the frame to null so we don't send messages to a dead object.
 
-  nsLeafBoxFrame::DestroyFrom(aDestructRoot);
+  nsLeafBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 
@@ -240,10 +240,12 @@ nsImageBoxFrame::UpdateImage()
     nsIDocument* doc = mContent->GetComposedDoc();
     if (doc) {
       nsContentPolicyType contentPolicyType;
-      nsCOMPtr<nsIPrincipal> loadingPrincipal;
+      nsCOMPtr<nsIPrincipal> triggeringPrincipal;
+      uint64_t requestContextID = 0;
       nsContentUtils::GetContentPolicyTypeForUIImageLoading(mContent,
-                                                            getter_AddRefs(loadingPrincipal),
-                                                            contentPolicyType);
+                                                            getter_AddRefs(triggeringPrincipal),
+                                                            contentPolicyType,
+                                                            &requestContextID);
 
       nsCOMPtr<nsIURI> baseURI = mContent->GetBaseURI();
       nsCOMPtr<nsIURI> uri;
@@ -252,10 +254,14 @@ nsImageBoxFrame::UpdateImage()
                                                 doc,
                                                 baseURI);
       if (uri) {
-        nsresult rv = nsContentUtils::LoadImage(uri, mContent, doc, loadingPrincipal,
-                                                doc->GetDocumentURI(), doc->GetReferrerPolicy(),
+        nsresult rv = nsContentUtils::LoadImage(uri, mContent, doc,
+                                                triggeringPrincipal,
+                                                requestContextID,
+                                                doc->GetDocumentURI(),
+                                                doc->GetReferrerPolicy(),
                                                 mListener, mLoadFlags,
-                                                EmptyString(), getter_AddRefs(mImageRequest),
+                                                EmptyString(),
+                                                getter_AddRefs(mImageRequest),
                                                 contentPolicyType);
 
         if (NS_SUCCEEDED(rv) && mImageRequest) {
@@ -338,7 +344,7 @@ nsImageBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   DisplayListClipState::AutoClipContainingBlockDescendantsToContentBox
     clip(aBuilder, this, clipFlags);
 
-  nsDisplayList list;
+  nsDisplayList list(aBuilder);
   list.AppendNewToTop(
     new (aBuilder) nsDisplayXULImage(aBuilder, this));
 
@@ -447,9 +453,9 @@ nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
   }
 
   gfx::IntSize size;
-  Maybe<wr::ImageKey> key = aManager->CreateImageKey(aItem, container,
-                                                     aBuilder, aResources,
-                                                     aSc, size);
+  Maybe<wr::ImageKey> key = aManager->CommandBuilder().CreateImageKey(aItem, container,
+                                                                      aBuilder, aResources,
+                                                                      aSc, size, Nothing());
   if (key.isNothing()) {
     return DrawResult::BAD_IMAGE;
   }
@@ -558,11 +564,9 @@ nsDisplayXULImage::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBui
                                            mozilla::layers::WebRenderLayerManager* aManager,
                                            nsDisplayListBuilder* aDisplayListBuilder)
 {
-  if (aManager->IsLayersFreeTransaction()) {
-    ContainerLayerParameters parameter;
-    if (GetLayerState(aDisplayListBuilder, aManager, parameter) != LAYER_ACTIVE) {
-      return false;
-    }
+  ContainerLayerParameters parameter;
+  if (GetLayerState(aDisplayListBuilder, aManager, parameter) != LAYER_ACTIVE) {
+    return false;
   }
 
   uint32_t flags = imgIContainer::FLAG_SYNC_DECODE_IF_FAST;
@@ -857,7 +861,7 @@ nsImageBoxFrame::OnSizeAvailable(imgIRequest* aRequest, imgIContainer* aImage)
                         nsPresContext::CSSPixelsToAppUnits(h));
 
   if (!(GetStateBits() & NS_FRAME_FIRST_REFLOW)) {
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
   }
 
@@ -881,7 +885,7 @@ nsImageBoxFrame::OnLoadComplete(imgIRequest* aRequest, nsresult aStatus)
   } else {
     // Fire an onerror DOM event.
     mIntrinsicSize.SizeTo(0, 0);
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
     FireImageDOMEvent(mContent, eLoadError);
   }
@@ -911,7 +915,7 @@ nsImageBoxFrame::OnFrameUpdate(imgIRequest* aRequest)
   return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS(nsImageBoxListener, imgINotificationObserver, imgIOnloadBlocker)
+NS_IMPL_ISUPPORTS(nsImageBoxListener, imgINotificationObserver)
 
 nsImageBoxListener::nsImageBoxListener()
 {
@@ -928,24 +932,4 @@ nsImageBoxListener::Notify(imgIRequest *request, int32_t aType, const nsIntRect*
     return NS_OK;
 
   return mFrame->Notify(request, aType, aData);
-}
-
-NS_IMETHODIMP
-nsImageBoxListener::BlockOnload(imgIRequest *aRequest)
-{
-  if (mFrame && mFrame->GetContent() && mFrame->GetContent()->GetUncomposedDoc()) {
-    mFrame->GetContent()->GetUncomposedDoc()->BlockOnload();
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsImageBoxListener::UnblockOnload(imgIRequest *aRequest)
-{
-  if (mFrame && mFrame->GetContent() && mFrame->GetContent()->GetUncomposedDoc()) {
-    mFrame->GetContent()->GetUncomposedDoc()->UnblockOnload(false);
-  }
-
-  return NS_OK;
 }

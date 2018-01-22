@@ -299,27 +299,18 @@ class RefTest(object):
             self.log.info("Setting reftest.startAfter to %s" % startAfter)
             prefs['reftest.startAfter'] = startAfter
 
+        # Unconditionally update the e10s pref.
         if options.e10s:
             prefs['browser.tabs.remote.autostart'] = True
-            prefs['extensions.e10sBlocksEnabling'] = False
+        else:
+            prefs['browser.tabs.remote.autostart'] = False
 
         # Bug 1262954: For winXP + e10s disable acceleration
         if platform.system() in ("Windows", "Microsoft") and \
            '5.1' in platform.version() and options.e10s:
             prefs['layers.acceleration.disabled'] = True
 
-        sandbox_whitelist_paths = [SCRIPT_DIRECTORY]
-        try:
-            if options.workPath:
-                sandbox_whitelist_paths.append(options.workPath)
-        except AttributeError:
-            pass
-        if platform.system() == "Linux":
-            try:
-                if options.objPath:
-                    sandbox_whitelist_paths.append(options.objPath)
-            except AttributeError:
-                pass
+        sandbox_whitelist_paths = options.sandboxReadWhitelist
         if (platform.system() == "Linux" or
             platform.system() in ("Windows", "Microsoft")):
             # Trailing slashes are needed to indicate directories on Linux and Windows
@@ -335,6 +326,10 @@ class RefTest(object):
         if options.marionette:
             port = options.marionette.split(':')[1]
             prefs['marionette.defaultPrefs.port'] = int(port)
+
+            # Enable tracing output for detailed failures in case of
+            # failing connection attempts, and hangs (bug 1397201)
+            prefs['marionette.logging'] = "TRACE"
 
         preference_file = os.path.join(here, 'reftest-preferences.js')
         prefs.update(mozprofile.Preferences.read_prefs(preference_file))
@@ -429,9 +424,9 @@ class RefTest(object):
         self._populate_logger(options)
 
         # Number of times to repeat test(s) when running with --repeat
-        VERIFY_REPEAT = 20
+        VERIFY_REPEAT = 10
         # Number of times to repeat test(s) when running test in separate browser
-        VERIFY_REPEAT_SINGLE_BROWSER = 10
+        VERIFY_REPEAT_SINGLE_BROWSER = 5
 
         def step1():
             stepOptions = copy.deepcopy(options)
@@ -448,12 +443,34 @@ class RefTest(object):
                     break
             return result
 
+        def step3():
+            stepOptions = copy.deepcopy(options)
+            stepOptions.repeat = VERIFY_REPEAT
+            stepOptions.runUntilFailure = True
+            stepOptions.environment.append("MOZ_CHAOSMODE=3")
+            result = self.runTests(tests, stepOptions)
+            return result
+
+        def step4():
+            stepOptions = copy.deepcopy(options)
+            stepOptions.environment.append("MOZ_CHAOSMODE=3")
+            for i in xrange(VERIFY_REPEAT_SINGLE_BROWSER):
+                result = self.runTests(tests, stepOptions)
+                if result != 0:
+                    break
+            return result
+
         steps = [
             ("1. Run each test %d times in one browser." % VERIFY_REPEAT,
              step1),
             ("2. Run each test %d times in a new browser each time." %
              VERIFY_REPEAT_SINGLE_BROWSER,
              step2),
+            ("3. Run each test %d times in one browser, in chaos mode." % VERIFY_REPEAT,
+             step3),
+            ("4. Run each test %d times in a new browser each time, in chaos mode." %
+             VERIFY_REPEAT_SINGLE_BROWSER,
+             step4),
         ]
 
         stepResults = {}
@@ -778,10 +795,18 @@ class RefTest(object):
                 status, startAfter = self.runApp(profile,
                                                  binary=options.app,
                                                  cmdargs=cmdargs,
-                                                 # give the JS harness 30 seconds to deal with
-                                                 # its own timeouts
                                                  env=browserEnv,
-                                                 timeout=options.timeout + 30.0,
+                                                 # We generally want the JS harness or marionette
+                                                 # to handle timeouts if they can.
+                                                 # The default JS harness timeout is currently
+                                                 # 300 seconds (default options.timeout).
+                                                 # The default Marionette socket timeout is
+                                                 # currently 360 seconds.
+                                                 # Give the JS harness extra time to deal with
+                                                 # its own timeouts and try to usually exceed
+                                                 # the 360 second marionette socket timeout.
+                                                 # See bug 479518 and bug 1414063.
+                                                 timeout=options.timeout + 70.0,
                                                  symbolsPath=options.symbolsPath,
                                                  options=options,
                                                  debuggerInfo=debuggerInfo)

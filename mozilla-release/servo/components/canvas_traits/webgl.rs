@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use core::nonzero::NonZero;
 use euclid::Size2D;
+use nonzero::NonZero;
 use offscreen_gl_context::{GLContextAttributes, GLLimits};
 use std::fmt;
-use webrender_api;
+use webrender_api::{DocumentId, ImageKey, PipelineId};
 
 /// Sender type used in WebGLCommands.
 pub use ::webgl_channel::WebGLSender;
@@ -25,7 +25,8 @@ pub use ::webgl_channel::WebGLChan;
 #[derive(Clone, Deserialize, Serialize)]
 pub enum WebGLMsg {
     /// Creates a new WebGLContext.
-    CreateContext(Size2D<i32>, GLContextAttributes, WebGLSender<Result<(WebGLCreateContextResult), String>>),
+    CreateContext(WebGLVersion, Size2D<i32>, GLContextAttributes,
+                  WebGLSender<Result<(WebGLCreateContextResult), String>>),
     /// Resizes a WebGLContext.
     ResizeContext(WebGLContextId, Size2D<i32>, WebGLSender<Result<(), String>>),
     /// Drops a WebGLContext.
@@ -46,7 +47,9 @@ pub enum WebGLMsg {
     /// Unlock messages are always sent after a Lock message.
     Unlock(WebGLContextId),
     /// Creates or updates the image keys required for WebRender.
-    UpdateWebRenderImage(WebGLContextId, WebGLSender<webrender_api::ImageKey>),
+    UpdateWebRenderImage(WebGLContextId, WebGLSender<ImageKey>),
+    /// Commands used for the DOMToTexture feature.
+    DOMToTextureCommand(DOMToTextureCommand),
     /// Frees all resources and closes the thread.
     Exit,
 }
@@ -62,7 +65,7 @@ pub struct WebGLCreateContextResult {
     pub share_mode: WebGLContextShareMode,
 }
 
-#[derive(Clone, Copy, Deserialize, HeapSizeOf, Serialize)]
+#[derive(Clone, Copy, Deserialize, MallocSizeOf, Serialize)]
 pub enum WebGLContextShareMode {
     /// Fast: a shared texture_id is used in WebRender.
     SharedTexture,
@@ -70,11 +73,22 @@ pub enum WebGLContextShareMode {
     Readback,
 }
 
+/// Defines the WebGL version
+#[derive(Clone, Copy, Deserialize, Eq, MallocSizeOf, PartialEq, Serialize)]
+pub enum WebGLVersion {
+    /// https://www.khronos.org/registry/webgl/specs/1.0.2/
+    /// Conforms closely to the OpenGL ES 2.0 API
+    WebGL1,
+    /// https://www.khronos.org/registry/webgl/specs/latest/2.0/
+    /// Conforms closely to the OpenGL ES 3.0 API
+    WebGL2,
+}
+
 /// Helper struct to send WebGLCommands to a specific WebGLContext.
-#[derive(Clone, Deserialize, HeapSizeOf, Serialize)]
+#[derive(Clone, Deserialize, MallocSizeOf, Serialize)]
 pub struct WebGLMsgSender {
     ctx_id: WebGLContextId,
-    #[ignore_heap_size_of = "channels are hard"]
+    #[ignore_malloc_size_of = "channels are hard"]
     sender: WebGLChan,
 }
 
@@ -84,6 +98,11 @@ impl WebGLMsgSender {
             ctx_id: id,
             sender: sender,
         }
+    }
+
+    /// Returns the WebGLContextId associated to this sender
+    pub fn context_id(&self) -> WebGLContextId {
+        self.ctx_id
     }
 
     /// Send a WebGLCommand message
@@ -113,8 +132,12 @@ impl WebGLMsgSender {
     }
 
     #[inline]
-    pub fn send_update_wr_image(&self, sender: WebGLSender<webrender_api::ImageKey>) -> WebGLSendResult {
+    pub fn send_update_wr_image(&self, sender: WebGLSender<ImageKey>) -> WebGLSendResult {
         self.sender.send(WebGLMsg::UpdateWebRenderImage(self.ctx_id, sender))
+    }
+
+    pub fn send_dom_to_texture(&self, command: DOMToTextureCommand) -> WebGLSendResult {
+        self.sender.send(WebGLMsg::DOMToTextureCommand(command))
     }
 }
 
@@ -302,8 +325,8 @@ macro_rules! define_resource_id {
             }
         }
 
-        impl ::heapsize::HeapSizeOf for $name {
-            fn heap_size_of_children(&self) -> usize { 0 }
+        impl ::malloc_size_of::MallocSizeOf for $name {
+            fn size_of(&self, _ops: &mut ::malloc_size_of::MallocSizeOfOps) -> usize { 0 }
         }
     }
 }
@@ -316,12 +339,9 @@ define_resource_id!(WebGLProgramId);
 define_resource_id!(WebGLShaderId);
 define_resource_id!(WebGLVertexArrayId);
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, Ord)]
+#[derive(PartialEq, PartialOrd, Serialize)]
 pub struct WebGLContextId(pub usize);
-
-impl ::heapsize::HeapSizeOf for WebGLContextId {
-    fn heap_size_of_children(&self) -> usize { 0 }
-}
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum WebGLError {
@@ -377,6 +397,17 @@ pub enum WebVRCommand {
 // Receives the texture id and size associated to the WebGLContext.
 pub trait WebVRRenderHandler: Send {
     fn handle(&mut self, command: WebVRCommand, texture: Option<(u32, Size2D<i32>)>);
+}
+
+/// WebGL commands required to implement DOMToTexture feature.
+#[derive(Clone, Deserialize, Serialize)]
+pub enum DOMToTextureCommand {
+    /// Attaches a HTMLIFrameElement to a WebGLTexture.
+    Attach(WebGLContextId, WebGLTextureId, DocumentId, PipelineId, Size2D<i32>),
+    /// Releases the HTMLIFrameElement to WebGLTexture attachment.
+    Detach(WebGLTextureId),
+    /// Lock message used for a correct synchronization with WebRender GL flow.
+    Lock(PipelineId, usize, WebGLSender<Option<(u32, Size2D<i32>)>>),
 }
 
 impl fmt::Debug for WebGLCommand {

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -209,8 +210,6 @@ CompositorOGL::CleanupResources()
   mGLContext->MakeCurrent();
 
   mBlitTextureImageHelper = nullptr;
-
-  mContextStateTracker.DestroyOGL(mGLContext);
 
   // On the main thread the Widget will be destroyed soon and calling MakeCurrent
   // after that could cause a crash (at least with GLX, see bug 1059793), unless
@@ -588,10 +587,6 @@ CompositorOGL::SetRenderTarget(CompositingRenderTarget *aSurface)
     = static_cast<CompositingRenderTargetOGL*>(aSurface);
   if (mCurrentRenderTarget != surface) {
     mCurrentRenderTarget = surface;
-    if (mCurrentRenderTarget) {
-      mContextStateTracker.PopOGLSection(gl(), "Frame");
-    }
-    mContextStateTracker.PushOGLSection(gl(), "Frame");
     surface->BindRenderTarget();
   }
 
@@ -832,8 +827,18 @@ CompositorOGL::GetShaderConfigFor(Effect *aEffect,
     config.SetRenderColor(true);
     break;
   case EffectTypes::YCBCR:
+  {
     config.SetYCbCr(true);
+    EffectYCbCr* effectYCbCr =
+      static_cast<EffectYCbCr*>(aEffect);
+    uint32_t pixelBits = (8 * BytesPerPixel(SurfaceFormatForAlphaBitDepth(effectYCbCr->mBitDepth)));
+    uint32_t paddingBits = pixelBits - effectYCbCr->mBitDepth;
+    // OpenGL expects values between [0,255], this range needs to be adjusted
+    // according to the bit depth.
+    // So we will scale the YUV values by this amount.
+    config.SetColorMultiplier(pow(2, paddingBits));
     break;
+  }
   case EffectTypes::NV12:
     config.SetNV12(true);
     config.SetTextureTarget(LOCAL_GL_TEXTURE_RECTANGLE_ARB);
@@ -861,7 +866,10 @@ CompositorOGL::GetShaderConfigFor(Effect *aEffect,
     TextureSourceOGL* source = texturedEffect->mTexture->AsSourceOGL();
     MOZ_ASSERT_IF(source->GetTextureTarget() == LOCAL_GL_TEXTURE_EXTERNAL,
                   source->GetFormat() == gfx::SurfaceFormat::R8G8B8A8 ||
-                  source->GetFormat() == gfx::SurfaceFormat::R8G8B8X8);
+                  source->GetFormat() == gfx::SurfaceFormat::R8G8B8X8 ||
+                  source->GetFormat() == gfx::SurfaceFormat::B8G8R8A8 ||
+                  source->GetFormat() == gfx::SurfaceFormat::B8G8R8X8 ||
+                  source->GetFormat() == gfx::SurfaceFormat::R5G6B5_UINT16);
     MOZ_ASSERT_IF(source->GetTextureTarget() == LOCAL_GL_TEXTURE_RECTANGLE_ARB,
                   source->GetFormat() == gfx::SurfaceFormat::R8G8B8A8 ||
                   source->GetFormat() == gfx::SurfaceFormat::R8G8B8X8 ||
@@ -1596,8 +1604,6 @@ CompositorOGL::EndFrame()
     }
   }
 #endif
-
-  mContextStateTracker.PopOGLSection(gl(), "Frame");
 
   mFrameInProgress = false;
 

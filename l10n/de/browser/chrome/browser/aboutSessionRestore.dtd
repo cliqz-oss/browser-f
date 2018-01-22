@@ -10,6 +10,9 @@
 <!ENTITY restorepage.problemDesc2   "Beim Wiederherstellen deiner letzten Browser-Sitzung ist ein Problem aufgetreten. Wähle &quot;Sitzung wiederherstellen&quot;, um es erneut zu versuchen.">
 <!ENTITY restorepage.tryThis2       "Falls die Wiederherstellung noch immer nicht funktioniert, so kann dies durch einen bestimmten Tab verursacht werden. Sieh dir die Liste mit den früheren Tabs an, entferne den Haken von den Tabs, die du nicht benötigst, und lass dann die Sitzung wiederherstellen.">
 
+<!ENTITY restorepage.hideTabs       "Tabs der letzten Sitzung ausblenden">
+<!ENTITY restorepage.showTabs       "Tabs der letzten Sitzung anzeigen">
+
 <!ENTITY restorepage.tryagainButton2 "Sitzung wiederherstellen">
 <!ENTITY restorepage.restore.access2 "w">
 <!ENTITY restorepage.closeButton2    "Neue Sitzung starten">

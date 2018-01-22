@@ -522,9 +522,9 @@ nsGeolocationRequest::SetTimeoutTimer()
   StopTimeoutTimer();
 
   if (mOptions && mOptions->mTimeout != 0 && mOptions->mTimeout != 0x7fffffff) {
-    mTimeoutTimer = do_CreateInstance("@mozilla.org/timer;1");
     RefPtr<TimerCallbackHolder> holder = new TimerCallbackHolder(this);
-    mTimeoutTimer->InitWithCallback(holder, mOptions->mTimeout, nsITimer::TYPE_ONE_SHOT);
+    NS_NewTimerWithCallback(getter_AddRefs(mTimeoutTimer),
+                            holder, mOptions->mTimeout, nsITimer::TYPE_ONE_SHOT);
   }
 }
 
@@ -867,7 +867,7 @@ void
 nsGeolocationService::SetDisconnectTimer()
 {
   if (!mDisconnectTimer) {
-    mDisconnectTimer = do_CreateInstance("@mozilla.org/timer;1");
+    mDisconnectTimer = NS_NewTimer();
   } else {
     mDisconnectTimer->Cancel();
   }
@@ -1195,7 +1195,7 @@ Geolocation::ShouldBlockInsecureRequests() const
     return false;
   }
 
-  if (!nsGlobalWindow::Cast(win)->IsSecureContextIfOpenerIgnored()) {
+  if (!nsGlobalWindowInner::Cast(win)->IsSecureContextIfOpenerIgnored()) {
     nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
                                     NS_LITERAL_CSTRING("DOM"), doc,
                                     nsContentUtils::eDOM_PROPERTIES,

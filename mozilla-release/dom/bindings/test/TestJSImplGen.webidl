@@ -643,11 +643,11 @@ interface TestJSImplInterface {
   void exerciseTypedefInterfaces3(YetAnotherNameForTestJSImplInterface arg);
 
   // Deprecated methods and attributes
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   attribute byte deprecatedAttribute;
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   byte deprecatedMethod();
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   void deprecatedMethodWithContext(any arg);
 
   // Static methods and attributes
@@ -658,11 +658,11 @@ interface TestJSImplInterface {
   static void staticMethodWithContext(any arg);
 
   // Deprecated static methods and attributes
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static attribute byte staticDeprecatedAttribute;
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static byte staticDeprecatedMethod();
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static byte staticDeprecatedMethodWithContext();
   */
 
@@ -829,6 +829,10 @@ interface TestJSImplInterface {
   const boolean nonEnumerableConst = true;
   [NonEnumerable]
   void nonEnumerableMethod();
+
+  // [NeedsWindowsUndef] test generation
+  [NeedsWindowsUndef]
+  const unsigned long NO_ERROR = 0xffffffff;
 
   // If you add things here, add them to TestCodeGen as well
 };

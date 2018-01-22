@@ -1,3 +1,6 @@
+from __future__ import absolute_import, print_function
+
+
 from ConfigParser import (
     ConfigParser,
     RawConfigParser
@@ -7,11 +10,9 @@ import os
 import posixpath
 import re
 import shutil
-import socket
 import subprocess
 import tempfile
 import time
-import traceback
 
 from mozdevice import DMError
 from mozprocess import ProcessHandler
@@ -89,7 +90,7 @@ class Device(object):
                 break
             time.sleep(1)
         else:
-            print "timed out waiting for profiles.ini"
+            print("timed out waiting for profiles.ini")
 
         local_profiles_ini = tempfile.NamedTemporaryFile()
         self.dm.getFile(self.app_ctx.remote_profiles_ini, local_profiles_ini.name)
@@ -175,7 +176,7 @@ class Device(object):
         :param busybox: Path to busybox binary to install.
         """
         self.dm.remount()
-        print 'pushing %s' % self.app_ctx.remote_busybox
+        print('pushing %s' % self.app_ctx.remote_busybox)
         self.dm.pushFile(busybox, self.app_ctx.remote_busybox, retryLimit=10)
         # TODO for some reason using dm.shellCheckOutput doesn't work,
         #      while calling adb shell directly does.
@@ -202,21 +203,6 @@ class Device(object):
             time_out += 1
             time.sleep(1)
         return active
-
-    def wait_for_port(self, port, timeout=300):
-        starttime = datetime.datetime.now()
-        while datetime.datetime.now() - starttime < datetime.timedelta(seconds=timeout):
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect(('localhost', port))
-                data = sock.recv(16)
-                sock.close()
-                if ':' in data:
-                    return True
-            except:
-                traceback.print_exc()
-            time.sleep(1)
-        return False
 
     def backup_file(self, remote_path):
         if not self.restore:

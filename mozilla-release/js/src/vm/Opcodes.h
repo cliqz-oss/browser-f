@@ -1282,17 +1282,7 @@
      *   Stack: propval, receiver, obj => obj[propval]
      */ \
     macro(JSOP_GETELEM_SUPER, 125, "getelem-super", NULL, 1,  3,  1, JOF_BYTE|JOF_ELEM|JOF_TYPESET|JOF_LEFTASSOC) \
-    /*
-     * Pushes newly created array for a spread call onto the stack. This has
-     * the same semantics as JSOP_NEWARRAY, but is distinguished to avoid
-     * using unboxed arrays in spread calls, which would make compiling spread
-     * calls in baseline more complex.
-     *   Category: Literals
-     *   Type: Array
-     *   Operands: uint32_t length
-     *   Stack: => obj
-     */ \
-    macro(JSOP_SPREADCALLARRAY, 126, "spreadcallarray", NULL, 5,  0,  1, JOF_UINT32) \
+    macro(JSOP_UNUSED126, 126, "unused126", NULL, 5,  0,  1, JOF_UINT32) \
     \
     /*
      * Defines the given function on the current scope.
@@ -2116,17 +2106,8 @@
      *   Stack: gen, val => rval
      */ \
     macro(JSOP_RESUME,        205,"resume",      NULL,    3,  2,  1,  JOF_UINT8|JOF_INVOKE) \
-    /*
-     * Pops the top two values on the stack as 'obj' and 'v', pushes 'v' to
-     * 'obj'.
-     *
-     * This opcode is used for Array Comprehension.
-     *   Category: Literals
-     *   Type: Array
-     *   Operands:
-     *   Stack: v, obj =>
-     */ \
-    macro(JSOP_ARRAYPUSH,     206,"arraypush",   NULL,    1,  2,  0,  JOF_BYTE) \
+    \
+    macro(JSOP_UNUSED206,     206,"unused206",   NULL,    1,  0,  0,  JOF_BYTE) \
     \
     /*
      * No-op bytecode only emitted in some self-hosted functions. Not handled by

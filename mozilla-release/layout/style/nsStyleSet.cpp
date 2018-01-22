@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -874,7 +875,7 @@ nsStyleSet::GetContext(GeckoStyleContext* aParentContext,
                        // because aParentContext has one, then aRuleNode
                        // should be used.)
                        nsRuleNode* aVisitedRuleNode,
-                       nsIAtom* aPseudoTag,
+                       nsAtom* aPseudoTag,
                        CSSPseudoElementType aPseudoType,
                        Element* aElementForAnimation,
                        uint32_t aFlags)
@@ -2029,7 +2030,7 @@ nsStyleSet::ProbePseudoElementStyle(Element* aParentElement,
                "must have pseudo element type");
   NS_ASSERTION(aParentElement, "aParentElement must not be null");
 
-  nsIAtom* pseudoTag = nsCSSPseudoElements::GetPseudoAtom(aType);
+  nsAtom* pseudoTag = nsCSSPseudoElements::GetPseudoAtom(aType);
   nsRuleWalker ruleWalker(mRuleTree, mAuthorStyleDisabled);
   aTreeMatchContext.ResetForUnvisitedMatching();
   PseudoElementRuleProcessorData data(PresContext(), aParentElement,
@@ -2095,7 +2096,7 @@ nsStyleSet::ProbePseudoElementStyle(Element* aParentElement,
 }
 
 already_AddRefed<GeckoStyleContext>
-nsStyleSet::ResolveInheritingAnonymousBoxStyle(nsIAtom* aPseudoTag,
+nsStyleSet::ResolveInheritingAnonymousBoxStyle(nsAtom* aPseudoTag,
                                                GeckoStyleContext* aParentContext)
 {
   NS_ENSURE_FALSE(mInShutdown, nullptr);
@@ -2141,7 +2142,7 @@ nsStyleSet::ResolveInheritingAnonymousBoxStyle(nsIAtom* aPseudoTag,
 }
 
 already_AddRefed<GeckoStyleContext>
-nsStyleSet::ResolveNonInheritingAnonymousBoxStyle(nsIAtom* aPseudoTag)
+nsStyleSet::ResolveNonInheritingAnonymousBoxStyle(nsAtom* aPseudoTag)
 {
   NS_ENSURE_FALSE(mInShutdown, nullptr);
 
@@ -2186,7 +2187,7 @@ already_AddRefed<GeckoStyleContext>
 nsStyleSet::ResolveXULTreePseudoStyle(Element* aParentElement,
                                       nsICSSAnonBoxPseudo* aPseudoTag,
                                       GeckoStyleContext* aParentContext,
-                                      nsICSSPseudoComparator* aComparator)
+                                      const mozilla::AtomArray& aInputWord)
 {
   NS_ENSURE_FALSE(mInShutdown, nullptr);
 
@@ -2199,7 +2200,7 @@ nsStyleSet::ResolveXULTreePseudoStyle(Element* aParentElement,
                                aParentElement->OwnerDoc());
   InitStyleScopes(treeContext, aParentElement);
   XULTreeRuleProcessorData data(PresContext(), aParentElement, &ruleWalker,
-                                aPseudoTag, aComparator, treeContext);
+                                aPseudoTag, aInputWord, treeContext);
   FileRules(EnumRulesMatching<XULTreeRuleProcessorData>, &data, aParentElement,
             &ruleWalker);
 
@@ -2241,7 +2242,7 @@ nsStyleSet::AppendFontFaceRules(nsTArray<nsFontFaceRuleContainer>& aArray)
 }
 
 nsCSSKeyframesRule*
-nsStyleSet::KeyframesRuleForName(const nsString& aName)
+nsStyleSet::KeyframesRuleForName(nsAtom* aName)
 {
   NS_ENSURE_FALSE(mInShutdown, nullptr);
   NS_ASSERTION(mBatching == 0, "rule processors out of date");
@@ -2263,7 +2264,7 @@ nsStyleSet::KeyframesRuleForName(const nsString& aName)
 }
 
 nsCSSCounterStyleRule*
-nsStyleSet::CounterStyleRuleForName(nsIAtom* aName)
+nsStyleSet::CounterStyleRuleForName(nsAtom* aName)
 {
   NS_ENSURE_FALSE(mInShutdown, nullptr);
   NS_ASSERTION(mBatching == 0, "rule processors out of date");
@@ -2296,7 +2297,7 @@ nsStyleSet::BuildFontFeatureValueSet()
 
   RefPtr<gfxFontFeatureValueSet> set = new gfxFontFeatureValueSet();
   for (nsCSSFontFeatureValuesRule* rule : rules) {
-    const nsTArray<FontFamilyName>& familyList = rule->GetFamilyList().GetFontlist();
+    const nsTArray<FontFamilyName>& familyList = rule->GetFamilyList()->mNames;
     const nsTArray<gfxFontFeatureValueSet::FeatureValues>&
       featureValues = rule->GetFeatureValues();
 
@@ -2467,7 +2468,7 @@ nsStyleSet::ReparentStyleContext(GeckoStyleContext* aStyleContext,
     return ret.forget();
   }
 
-  nsIAtom* pseudoTag = aStyleContext->GetPseudo();
+  nsAtom* pseudoTag = aStyleContext->GetPseudo();
   CSSPseudoElementType pseudoType = aStyleContext->GetPseudoType();
   nsRuleNode* ruleNode = aStyleContext->RuleNode();
 
@@ -2618,7 +2619,7 @@ nsStyleSet::HasStateDependentStyle(Element* aElement,
 
 struct MOZ_STACK_CLASS AttributeData : public AttributeRuleProcessorData {
   AttributeData(nsPresContext* aPresContext, Element* aElement,
-                int32_t aNameSpaceID, nsIAtom* aAttribute, int32_t aModType,
+                int32_t aNameSpaceID, nsAtom* aAttribute, int32_t aModType,
                 bool aAttrHasChanged, const nsAttrValue* aOtherValue,
                 TreeMatchContext& aTreeMatchContext)
     : AttributeRuleProcessorData(aPresContext, aElement, aNameSpaceID,
@@ -2644,7 +2645,7 @@ SheetHasAttributeStyle(nsIStyleRuleProcessor* aProcessor, void *aData)
 nsRestyleHint
 nsStyleSet::HasAttributeDependentStyle(Element*       aElement,
                                        int32_t        aNameSpaceID,
-                                       nsIAtom*       aAttribute,
+                                       nsAtom*       aAttribute,
                                        int32_t        aModType,
                                        bool           aAttrHasChanged,
                                        const nsAttrValue* aOtherValue,
@@ -2729,7 +2730,15 @@ nsStyleSet::EnsureUniqueInnerOnCSSSheets()
     StyleSheet* sheet = queue[idx];
     queue.RemoveElementAt(idx);
 
-    sheet->EnsureUniqueInner();
+    // Only call EnsureUniqueInner for complete sheets. If we do call it on
+    // incomplete sheets, we'll cause problems when the sheet is actually
+    // loaded. We don't care about incomplete sheets here anyway, because this
+    // method is only invoked by nsPresContext::EnsureSafeToHandOutCSSRules.
+    // The CSSRule objects we are handing out won't contain any rules derived
+    // from incomplete sheets (because they aren't yet applied in styling).
+    if (sheet->IsComplete()) {
+      sheet->EnsureUniqueInner();
+    }
 
     // Enqueue all the sheet's children.
     sheet->AppendAllChildSheets(queue);

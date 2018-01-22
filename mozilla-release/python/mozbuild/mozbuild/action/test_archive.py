@@ -35,6 +35,7 @@ TEST_HARNESS_BINS = [
     'BadCertServer',
     'GenerateOCSPResponse',
     'OCSPStaplingServer',
+    'SymantecSanctionsServer',
     'SmokeDMD',
     'certutil',
     'crashinject',
@@ -369,6 +370,12 @@ ARCHIVE_FILES = {
             'source': buildconfig.topsrcdir,
             'base': 'testing',
             'pattern': 'talos/**',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'third_party/webkit/PerformanceTests',
+            'pattern': '**',
+            'dest': 'talos/talos/tests/webkit/PerformanceTests/',
         },
     ],
     'awsy': [

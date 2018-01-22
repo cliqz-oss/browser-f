@@ -36,7 +36,6 @@ static mozilla::LazyLogModule gStreamPumpLog("nsStreamPump");
 nsInputStreamPump::nsInputStreamPump()
     : mState(STATE_IDLE)
     , mStreamOffset(0)
-    , mStreamLength(UINT64_MAX)
     , mStatus(NS_OK)
     , mSuspendCount(0)
     , mLoadFlags(LOAD_NORMAL)
@@ -44,6 +43,7 @@ nsInputStreamPump::nsInputStreamPump()
     , mWaitingForInputStreamReady(false)
     , mCloseWhenDone(false)
     , mRetargeting(false)
+    , mAsyncStreamIsBuffered(false)
     , mMutex("nsInputStreamPump")
 {
 }
@@ -55,8 +55,6 @@ nsInputStreamPump::~nsInputStreamPump()
 nsresult
 nsInputStreamPump::Create(nsInputStreamPump  **result,
                           nsIInputStream      *stream,
-                          int64_t              streamPos,
-                          int64_t              streamLen,
                           uint32_t             segsize,
                           uint32_t             segcount,
                           bool                 closeWhenDone,
@@ -65,8 +63,8 @@ nsInputStreamPump::Create(nsInputStreamPump  **result,
     nsresult rv = NS_ERROR_OUT_OF_MEMORY;
     RefPtr<nsInputStreamPump> pump = new nsInputStreamPump();
     if (pump) {
-        rv = pump->Init(stream, streamPos, streamLen,
-                        segsize, segcount, closeWhenDone, mainThreadTarget);
+        rv = pump->Init(stream, segsize, segcount, closeWhenDone,
+                        mainThreadTarget);
         if (NS_SUCCEEDED(rv)) {
             pump.forget(result);
         }
@@ -101,23 +99,23 @@ nsInputStreamPump::PeekStream(PeekSegmentFun callback, void* closure)
 {
   RecursiveMutexAutoLock lock(mMutex);
 
-  NS_ASSERTION(mAsyncStream, "PeekStream called without stream");
+  MOZ_ASSERT(mAsyncStream, "PeekStream called without stream");
 
   nsresult rv = CreateBufferedStreamIfNeeded();
   NS_ENSURE_SUCCESS(rv, rv);
 
   // See if the pipe is closed by checking the return of Available.
   uint64_t dummy64;
-  rv = mBufferedStream->Available(&dummy64);
+  rv = mAsyncStream->Available(&dummy64);
   if (NS_FAILED(rv))
     return rv;
   uint32_t dummy = (uint32_t)std::min(dummy64, (uint64_t)UINT32_MAX);
 
   PeekData data(callback, closure);
-  return mBufferedStream->ReadSegments(CallPeekFunc,
-                                       &data,
-                                       nsIOService::gDefaultSegmentSize,
-                                       &dummy);
+  return mAsyncStream->ReadSegments(CallPeekFunc,
+                                    &data,
+                                    nsIOService::gDefaultSegmentSize,
+                                    &dummy);
 }
 
 nsresult
@@ -297,15 +295,11 @@ nsInputStreamPump::SetLoadGroup(nsILoadGroup *aLoadGroup)
 
 NS_IMETHODIMP
 nsInputStreamPump::Init(nsIInputStream *stream,
-                        int64_t streamPos, int64_t streamLen,
                         uint32_t segsize, uint32_t segcount,
                         bool closeWhenDone, nsIEventTarget *mainThreadTarget)
 {
     NS_ENSURE_TRUE(mState == STATE_IDLE, NS_ERROR_IN_PROGRESS);
 
-    mStreamOffset = uint64_t(streamPos);
-    if (int64_t(streamLen) >= int64_t(0))
-        mStreamLength = uint64_t(streamLen);
     mStream = stream;
     mSegSize = segsize;
     mSegCount = segcount;
@@ -338,17 +332,6 @@ nsInputStreamPump::AsyncRead(nsIStreamListener *listener, nsISupports *ctxt)
 
     if (nonBlocking) {
         mAsyncStream = do_QueryInterface(mStream);
-        //
-        // if the stream supports nsIAsyncInputStream, and if we need to seek
-        // to a starting offset, then we must do so here.  in the non-async
-        // stream case, the stream transport service will take care of seeking
-        // for us.
-        //
-        if (mAsyncStream && (mStreamOffset != UINT64_MAX)) {
-            nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mStream);
-            if (seekable)
-                seekable->Seek(nsISeekableStream::NS_SEEK_SET, mStreamOffset);
-        }
     }
 
     if (!mAsyncStream) {
@@ -358,8 +341,7 @@ nsInputStreamPump::AsyncRead(nsIStreamListener *listener, nsISupports *ctxt)
         if (NS_FAILED(rv)) return rv;
 
         nsCOMPtr<nsITransport> transport;
-        rv = sts->CreateInputTransport(mStream, mStreamOffset, mStreamLength,
-                                       mCloseWhenDone, getter_AddRefs(transport));
+        rv = sts->CreateInputTransport(mStream, mCloseWhenDone, getter_AddRefs(transport));
         if (NS_FAILED(rv)) return rv;
 
         nsCOMPtr<nsIInputStream> wrapper;
@@ -374,8 +356,7 @@ nsInputStreamPump::AsyncRead(nsIStreamListener *listener, nsISupports *ctxt)
     // we only reference the "stream" via mAsyncStream.
     mStream = nullptr;
 
-    // mStreamOffset now holds the number of bytes currently read.  we use this
-    // to enforce the mStreamLength restriction.
+    // mStreamOffset now holds the number of bytes currently read.
     mStreamOffset = 0;
 
     // grab event queue (we must do this here by contract, since all notifications
@@ -564,7 +545,7 @@ nsInputStreamPump::OnStateTransfer()
     }
 
     uint64_t avail;
-    rv = mBufferedStream->Available(&avail);
+    rv = mAsyncStream->Available(&avail);
     LOG(("  Available returned [stream=%p rv=%" PRIx32 " avail=%" PRIu64 "]\n", mAsyncStream.get(),
          static_cast<uint32_t>(rv), avail));
 
@@ -573,76 +554,70 @@ nsInputStreamPump::OnStateTransfer()
         avail = 0;
     }
     else if (NS_SUCCEEDED(rv) && avail) {
-        // figure out how much data to report (XXX detect overflow??)
-        if (avail > mStreamLength - mStreamOffset)
-            avail = mStreamLength - mStreamOffset;
+        // we used to limit avail to 16K - we were afraid some ODA handlers
+        // might assume they wouldn't get more than 16K at once
+        // we're removing that limit since it speeds up local file access.
+        // Now there's an implicit 64K limit of 4 16K segments
+        // NOTE: ok, so the story is as follows.  OnDataAvailable impls
+        //       are by contract supposed to consume exactly |avail| bytes.
+        //       however, many do not... mailnews... stream converters...
+        //       cough, cough.  the input stream pump is fairly tolerant
+        //       in this regard; however, if an ODA does not consume any
+        //       data from the stream, then we could potentially end up in
+        //       an infinite loop.  we do our best here to try to catch
+        //       such an error.  (see bug 189672)
 
-        if (avail) {
-            // we used to limit avail to 16K - we were afraid some ODA handlers
-            // might assume they wouldn't get more than 16K at once
-            // we're removing that limit since it speeds up local file access.
-            // Now there's an implicit 64K limit of 4 16K segments
-            // NOTE: ok, so the story is as follows.  OnDataAvailable impls
-            //       are by contract supposed to consume exactly |avail| bytes.
-            //       however, many do not... mailnews... stream converters...
-            //       cough, cough.  the input stream pump is fairly tolerant
-            //       in this regard; however, if an ODA does not consume any
-            //       data from the stream, then we could potentially end up in
-            //       an infinite loop.  we do our best here to try to catch
-            //       such an error.  (see bug 189672)
+        // in most cases this QI will succeed (mAsyncStream is almost always
+        // a nsPipeInputStream, which implements nsISeekableStream::Tell).
+        int64_t offsetBefore;
+        nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mAsyncStream);
+        if (seekable && NS_FAILED(seekable->Tell(&offsetBefore))) {
+            NS_NOTREACHED("Tell failed on readable stream");
+            offsetBefore = 0;
+        }
 
-            // in most cases this QI will succeed (mAsyncStream is almost always
-            // a nsPipeInputStream, which implements nsISeekableStream::Tell).
-            int64_t offsetBefore;
-            nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mBufferedStream);
-            if (seekable && NS_FAILED(seekable->Tell(&offsetBefore))) {
-                NS_NOTREACHED("Tell failed on readable stream");
-                offsetBefore = 0;
-            }
+        uint32_t odaAvail =
+            avail > UINT32_MAX ?
+            UINT32_MAX : uint32_t(avail);
 
-            uint32_t odaAvail =
-                avail > UINT32_MAX ?
-                UINT32_MAX : uint32_t(avail);
+        LOG(("  calling OnDataAvailable [offset=%" PRIu64 " count=%" PRIu64 "(%u)]\n",
+            mStreamOffset, avail, odaAvail));
 
-            LOG(("  calling OnDataAvailable [offset=%" PRIu64 " count=%" PRIu64 "(%u)]\n",
-                mStreamOffset, avail, odaAvail));
+        {
+            // Note: Must exit mutex for call to OnStartRequest to avoid
+            // deadlocks when calls to RetargetDeliveryTo for multiple
+            // nsInputStreamPumps are needed (e.g. nsHttpChannel).
+            RecursiveMutexAutoUnlock unlock(mMutex);
+            rv = mListener->OnDataAvailable(this, mListenerContext,
+                                            mAsyncStream, mStreamOffset,
+                                            odaAvail);
+        }
 
-            {
-                // Note: Must exit mutex for call to OnStartRequest to avoid
-                // deadlocks when calls to RetargetDeliveryTo for multiple
-                // nsInputStreamPumps are needed (e.g. nsHttpChannel).
-                RecursiveMutexAutoUnlock unlock(mMutex);
-                rv = mListener->OnDataAvailable(this, mListenerContext,
-                                                mBufferedStream, mStreamOffset,
-                                                odaAvail);
-            }
-
-            // don't enter this code if ODA failed or called Cancel
-            if (NS_SUCCEEDED(rv) && NS_SUCCEEDED(mStatus)) {
-                // test to see if this ODA failed to consume data
-                if (seekable) {
-                    // NOTE: if Tell fails, which can happen if the stream is
-                    // now closed, then we assume that everything was read.
-                    int64_t offsetAfter;
-                    if (NS_FAILED(seekable->Tell(&offsetAfter)))
-                        offsetAfter = offsetBefore + odaAvail;
-                    if (offsetAfter > offsetBefore)
-                        mStreamOffset += (offsetAfter - offsetBefore);
-                    else if (mSuspendCount == 0) {
-                        //
-                        // possible infinite loop if we continue pumping data!
-                        //
-                        // NOTE: although not allowed by nsIStreamListener, we
-                        // will allow the ODA impl to Suspend the pump.  IMAP
-                        // does this :-(
-                        //
-                        NS_ERROR("OnDataAvailable implementation consumed no data");
-                        mStatus = NS_ERROR_UNEXPECTED;
-                    }
+        // don't enter this code if ODA failed or called Cancel
+        if (NS_SUCCEEDED(rv) && NS_SUCCEEDED(mStatus)) {
+            // test to see if this ODA failed to consume data
+            if (seekable) {
+                // NOTE: if Tell fails, which can happen if the stream is
+                // now closed, then we assume that everything was read.
+                int64_t offsetAfter;
+                if (NS_FAILED(seekable->Tell(&offsetAfter)))
+                    offsetAfter = offsetBefore + odaAvail;
+                if (offsetAfter > offsetBefore)
+                    mStreamOffset += (offsetAfter - offsetBefore);
+                else if (mSuspendCount == 0) {
+                    //
+                    // possible infinite loop if we continue pumping data!
+                    //
+                    // NOTE: although not allowed by nsIStreamListener, we
+                    // will allow the ODA impl to Suspend the pump.  IMAP
+                    // does this :-(
+                    //
+                    NS_ERROR("OnDataAvailable implementation consumed no data");
+                    mStatus = NS_ERROR_UNEXPECTED;
                 }
-                else
-                    mStreamOffset += odaAvail; // assume ODA behaved well
             }
+            else
+                mStreamOffset += odaAvail; // assume ODA behaved well
         }
     }
 
@@ -657,7 +632,7 @@ nsInputStreamPump::OnStateTransfer()
             // Available may return 0 bytes available at the moment; that
             // would not mean that we are done.
             // XXX async streams should have a GetStatus method!
-            rv = mBufferedStream->Available(&avail);
+            rv = mAsyncStream->Available(&avail);
             if (NS_SUCCEEDED(rv))
                 return STATE_TRANSFER;
             if (rv != NS_BASE_STREAM_CLOSED)
@@ -719,7 +694,6 @@ nsInputStreamPump::OnStateStop()
         mAsyncStream->Close();
 
     mAsyncStream = nullptr;
-    mBufferedStream = nullptr;
     mTargetThread = nullptr;
     mIsPending = false;
     {
@@ -741,7 +715,7 @@ nsInputStreamPump::OnStateStop()
 nsresult
 nsInputStreamPump::CreateBufferedStreamIfNeeded()
 {
-  if (mBufferedStream) {
+  if (mAsyncStreamIsBuffered) {
     return NS_OK;
   }
 
@@ -749,13 +723,19 @@ nsInputStreamPump::CreateBufferedStreamIfNeeded()
   // it, we wrap a nsIBufferedInputStream around it, if needed.
 
   if (NS_InputStreamIsBuffered(mAsyncStream)) {
-    mBufferedStream = mAsyncStream;
+    mAsyncStreamIsBuffered = true;
     return NS_OK;
   }
 
-  nsresult rv = NS_NewBufferedInputStream(getter_AddRefs(mBufferedStream),
-                                          mAsyncStream, 4096);
+  nsCOMPtr<nsIInputStream> stream;
+  nsresult rv = NS_NewBufferedInputStream(getter_AddRefs(stream),
+                                          mAsyncStream.forget(), 4096);
   NS_ENSURE_SUCCESS(rv, rv);
+
+  // A buffered inputStream must implement nsIAsyncInputStream.
+  mAsyncStream = do_QueryInterface(stream);
+  MOZ_DIAGNOSTIC_ASSERT(mAsyncStream);
+  mAsyncStreamIsBuffered = true;
 
   return NS_OK;
 }

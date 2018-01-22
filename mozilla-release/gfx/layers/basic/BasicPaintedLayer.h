@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,7 +8,7 @@
 #define GFX_BASICPAINTEDLAYER_H
 
 #include "Layers.h"                     // for PaintedLayer, LayerManager, etc
-#include "RotatedBuffer.h"              // for RotatedContentBuffer, etc
+#include "RotatedBuffer.h"              // for RotatedBuffer, etc
 #include "BasicImplData.h"              // for BasicImplData
 #include "BasicLayers.h"                // for BasicLayerManager
 #include "gfxPoint.h"                   // for gfxPoint
@@ -27,8 +28,8 @@ class ReadbackProcessor;
 
 class BasicPaintedLayer : public PaintedLayer, public BasicImplData {
 public:
-  typedef RotatedContentBuffer::PaintState PaintState;
-  typedef RotatedContentBuffer::ContentType ContentType;
+  typedef ContentClient::PaintState PaintState;
+  typedef ContentClient::ContentType ContentType;
 
   explicit BasicPaintedLayer(BasicLayerManager* aLayerManager, gfx::BackendType aBackend) :
     PaintedLayer(aLayerManager, static_cast<BasicImplData*>(this)),
@@ -103,7 +104,6 @@ protected:
               const nsIntRegion& aRegionToDraw,
               const nsIntRegion& aExtendedRegionToDraw,
               const nsIntRegion& aRegionToInvalidate,
-              bool aDidSelfCopy,
               DrawRegionClip aClip,
               LayerManager::DrawPaintedLayerCallback aCallback,
               void* aCallbackData)

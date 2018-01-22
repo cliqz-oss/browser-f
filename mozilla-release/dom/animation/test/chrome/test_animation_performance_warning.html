@@ -31,8 +31,10 @@ var gStringBundle;
 
 W3CTest.runner.requestLongerTimeout(2);
 
+const { Services } = SpecialPowers.Cu.import("resource://gre/modules/Services.jsm");
+Services.locale.setRequestedLocales(["en-US"]);
+
 SpecialPowers.pushPrefEnv({ "set": [
-                            ["general.useragent.locale", "en-US"],
                             // Need to set devPixelsPerPx explicitly to gain
                             // consistent pixel values in warning messages
                             // regardless of platform DPIs.
@@ -176,10 +178,10 @@ function testBasicOperation() {
       ]
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
       var animation = addDivAndAnimate(t, { class: 'compositable' },
                                        subtest.frames, 100 * MS_PER_SEC);
-      return animation.ready.then(function() {
+      return waitForPaints().then(() => {
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
           subtest.expected);
@@ -251,15 +253,15 @@ function testKeyframesWithGeometricProperties() {
       }
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
       var animation = addDivAndAnimate(t, { class: 'compositable' },
                                        subtest.frames, 100 * MS_PER_SEC);
-      return animation.ready.then(function() {
+      return waitForPaints().then(() => {
         // First, a transform animation is running on compositor.
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
           subtest.expected.withoutGeometric);
-      }).then(function() {
+      }).then(() => {
         // Add a 'width' property.
         var keyframes = animation.effect.getKeyframes();
 
@@ -268,13 +270,13 @@ function testKeyframesWithGeometricProperties() {
 
         animation.effect.setKeyframes(keyframes);
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         // Now the transform animation is not running on compositor because of
         // the 'width' property.
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
           subtest.expected.withGeometric);
-      }).then(function() {
+      }).then(() => {
         // Remove the 'width' property.
         var keyframes = animation.effect.getKeyframes();
 
@@ -283,7 +285,7 @@ function testKeyframesWithGeometricProperties() {
 
         animation.effect.setKeyframes(keyframes);
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         // Finally, the transform animation is running on compositor.
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
@@ -304,7 +306,7 @@ function testSetOfGeometricProperties() {
   ];
 
   geometricProperties.forEach(property => {
-    promise_test(function(t) {
+    promise_test(t => {
       const keyframes = {
         [propertyToIDL(property)]: [ '100px', '200px' ],
         transform: [ 'translate(0px)', 'translate(100px)' ]
@@ -312,7 +314,7 @@ function testSetOfGeometricProperties() {
       var animation = addDivAndAnimate(t, { class: 'compositable' },
                                        keyframes, 100 * MS_PER_SEC);
 
-      return animation.ready.then(function() {
+      return waitForPaints().then(() => {
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
           [
@@ -401,22 +403,22 @@ function testStyleChanges() {
       ]
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
       var animation = addDivAndAnimate(t, { class: 'compositable' },
                                        subtest.frames, 100 * MS_PER_SEC);
-      return animation.ready.then(function() {
+      return waitForPaints().then(() => {
         assert_all_properties_running_on_compositor(
           animation.effect.getProperties(),
           subtest.expected);
         animation.effect.target.style = subtest.style;
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
           subtest.expected);
         animation.effect.target.style = '';
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         assert_all_properties_running_on_compositor(
           animation.effect.getProperties(),
           subtest.expected);
@@ -444,26 +446,26 @@ function testIdChanges() {
       ]
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
       if (subtest.createelement) {
         addDiv(t, { style: subtest.createelement });
       }
 
       var animation = addDivAndAnimate(t, { class: 'compositable' },
                                        subtest.frames, 100 * MS_PER_SEC);
-      return animation.ready.then(function() {
+      return waitForPaints().then(() => {
         assert_all_properties_running_on_compositor(
           animation.effect.getProperties(),
           subtest.expected);
         animation.effect.target.id = subtest.id;
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
           subtest.expected);
         animation.effect.target.id = '';
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         assert_all_properties_running_on_compositor(
           animation.effect.getProperties(),
           subtest.expected);
@@ -533,16 +535,16 @@ function testMultipleAnimations() {
       ],
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
       var div = addDiv(t, { class: 'compositable' });
-      var animations = subtest.animations.map(function(anim) {
+      var animations = subtest.animations.map(anim => {
         var animation = div.animate(anim.frames, 100 * MS_PER_SEC);
 
         // Bind expected values to animation object.
         animation.expected = anim.expected;
         return animation;
       });
-      return waitForAllAnimations(animations).then(function() {
+      return waitForPaints().then(() => {
         animations.forEach(anim => {
           assert_all_properties_running_on_compositor(
             anim.effect.getProperties(),
@@ -550,7 +552,7 @@ function testMultipleAnimations() {
         });
         div.style = subtest.style;
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         animations.forEach(anim => {
           assert_animation_property_state_equals(
             anim.effect.getProperties(),
@@ -558,7 +560,7 @@ function testMultipleAnimations() {
         });
         div.style = '';
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         animations.forEach(anim => {
           assert_all_properties_running_on_compositor(
             anim.effect.getProperties(),
@@ -671,23 +673,23 @@ function testMultipleAnimationsWithGeometricKeyframes() {
       ]
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
       var div = addDiv(t, { class: 'compositable' });
-      var animations = subtest.animations.map(function(anim) {
+      var animations = subtest.animations.map(anim => {
         var animation = div.animate(anim.frames, 100 * MS_PER_SEC);
 
         // Bind expected values to animation object.
         animation.expected = anim.expected;
         return animation;
       });
-      return waitForAllAnimations(animations).then(function() {
+      return waitForPaints().then(() => {
         // First, all animations are running on compositor.
         animations.forEach(anim => {
           assert_animation_property_state_equals(
             anim.effect.getProperties(),
             anim.expected.withoutGeometric);
         });
-      }).then(function() {
+      }).then(() => {
         // Add a 'width' property to animations[1].
         var keyframes = animations[1].effect.getKeyframes();
 
@@ -696,7 +698,7 @@ function testMultipleAnimationsWithGeometricKeyframes() {
 
         animations[1].effect.setKeyframes(keyframes);
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         // Now the transform animation is not running on compositor because of
         // the 'width' property.
         animations.forEach(anim => {
@@ -704,7 +706,7 @@ function testMultipleAnimationsWithGeometricKeyframes() {
             anim.effect.getProperties(),
             anim.expected.withGeometric);
         });
-      }).then(function() {
+      }).then(() => {
         // Remove the 'width' property from animations[1].
         var keyframes = animations[1].effect.getKeyframes();
 
@@ -713,7 +715,7 @@ function testMultipleAnimationsWithGeometricKeyframes() {
 
         animations[1].effect.setKeyframes(keyframes);
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         // Finally, all animations are running on compositor.
         animations.forEach(anim => {
           assert_animation_property_state_equals(
@@ -791,9 +793,9 @@ function testMultipleAnimationsWithGeometricAnimations() {
       ],
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
       var div = addDiv(t, { class: 'compositable' });
-      var animations = subtest.animations.map(function(anim) {
+      var animations = subtest.animations.map(anim => {
         var animation = div.animate(anim.frames, 100 * MS_PER_SEC);
 
         // Bind expected values to animation object.
@@ -803,18 +805,18 @@ function testMultipleAnimationsWithGeometricAnimations() {
 
       var widthAnimation;
 
-      return waitForAllAnimations(animations).then(function() {
+      return waitForPaints().then(() => {
         animations.forEach(anim => {
           assert_all_properties_running_on_compositor(
             anim.effect.getProperties(),
             anim.expected);
         });
-      }).then(function() {
+      }).then(() => {
         // Append 'width' animation on the same element.
         widthAnimation = div.animate({ width: ['100px', '200px'] },
                                      100 * MS_PER_SEC);
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         // Now transform animations are not running on compositor because of
         // the 'width' animation.
         animations.forEach(anim => {
@@ -825,7 +827,7 @@ function testMultipleAnimationsWithGeometricAnimations() {
         // Remove the 'width' animation.
         widthAnimation.cancel();
         return waitForFrame();
-      }).then(function() {
+      }).then(() => {
         // Now all animations are running on compositor.
         animations.forEach(anim => {
           assert_all_properties_running_on_compositor(
@@ -873,10 +875,10 @@ function testSmallElements() {
       ]
     },
   ].forEach(subtest => {
-    promise_test(function(t) {
+    promise_test(t => {
     var div = addDiv(t, subtest.style);
     var animation = div.animate(subtest.frames, 100 * MS_PER_SEC);
-      return animation.ready.then(function() {
+      return waitForPaints().then(() => {
         assert_animation_property_state_equals(
           animation.effect.getProperties(),
           subtest.expected);
@@ -886,7 +888,7 @@ function testSmallElements() {
 }
 
 function testSynchronizedAnimations() {
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -896,7 +898,7 @@ function testSynchronizedAnimations() {
     const animB = elemB.animate({ marginLeft: [ '0px', '100px' ] },
                                 100 * MS_PER_SEC);
 
-    return Promise.all([animA.ready, animB.ready])
+    return waitForPaints()
       .then(() => {
         assert_animation_property_state_equals(
           animA.effect.getProperties(),
@@ -908,7 +910,7 @@ function testSynchronizedAnimations() {
   }, 'Animations created within the same tick are synchronized'
      + ' (compositor animation created first)');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -918,7 +920,7 @@ function testSynchronizedAnimations() {
                                                'translate(100px)' ] },
                                 100 * MS_PER_SEC);
 
-    return Promise.all([animA.ready, animB.ready])
+    return waitForPaints()
       .then(() => {
         assert_animation_property_state_equals(
           animB.effect.getProperties(),
@@ -930,7 +932,7 @@ function testSynchronizedAnimations() {
   }, 'Animations created within the same tick are synchronized'
      + ' (compositor animation created second)');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const attrs = { class: 'compositable',
                     style: 'transition: all 100s' };
     const elemA = addDiv(t, attrs);
@@ -978,7 +980,7 @@ function testSynchronizedAnimations() {
       });
   }, 'Transitions created before and after a tick are synchronized');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -989,7 +991,7 @@ function testSynchronizedAnimations() {
     const animB = elemB.animate({ marginLeft: [ '0px', '100px' ] },
                                 100 * MS_PER_SEC);
 
-    return Promise.all([animA.ready, animB.ready])
+    return waitForPaints()
       .then(() => {
         assert_animation_property_state_equals(
           animA.effect.getProperties(),
@@ -1005,7 +1007,7 @@ function testSynchronizedAnimations() {
      + ' compositor when transform animations are synchronized with geometric'
      + ' animations');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -1013,7 +1015,7 @@ function testSynchronizedAnimations() {
                                 100 * MS_PER_SEC);
     let animB;
 
-    return waitForFrame()
+    return waitForPaints()
       .then(() => {
         animB = elemB.animate({ transform: [ 'translate(0px)',
                                              'translate(100px)' ] },
@@ -1028,7 +1030,7 @@ function testSynchronizedAnimations() {
   }, 'Transform animations are NOT synchronized with geometric animations'
      + ' started in the previous frame');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -1037,7 +1039,7 @@ function testSynchronizedAnimations() {
                                 100 * MS_PER_SEC);
     let animB;
 
-    return waitForFrame()
+    return waitForPaints()
       .then(() => {
         animB = elemB.animate({ marginLeft: [ '0px', '100px' ] },
                               100 * MS_PER_SEC);
@@ -1051,7 +1053,7 @@ function testSynchronizedAnimations() {
   }, 'Transform animations are NOT synchronized with geometric animations'
      + ' started in the next frame');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -1062,7 +1064,7 @@ function testSynchronizedAnimations() {
                                 100 * MS_PER_SEC);
     animB.pause();
 
-    return Promise.all([animA.ready, animB.ready])
+    return waitForPaints()
       .then(() => {
         assert_animation_property_state_equals(
           animA.effect.getProperties(),
@@ -1070,7 +1072,7 @@ function testSynchronizedAnimations() {
       });
   }, 'Paused animations are not synchronized');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -1083,7 +1085,7 @@ function testSynchronizedAnimations() {
     // Seek one of the animations so that their start times will differ
     animA.currentTime = 5000;
 
-    return Promise.all([animA.ready, animB.ready])
+    return waitForPaints()
       .then(() => {
         assert_not_equals(animA.startTime, animB.startTime,
                           'Animations should have different start times');
@@ -1097,7 +1099,7 @@ function testSynchronizedAnimations() {
   }, 'Animations are synchronized based on when they are started'
      + ' and NOT their start time');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -1107,7 +1109,7 @@ function testSynchronizedAnimations() {
     const animB = elemB.animate({ marginLeft: [ '0px', '100px' ] },
                                 100 * MS_PER_SEC);
 
-    return Promise.all([animA.ready, animB.ready])
+    return waitForPaints()
       .then(() => {
         assert_animation_property_state_equals(
           animA.effect.getProperties(),
@@ -1125,7 +1127,7 @@ function testSynchronizedAnimations() {
       });
   }, 'An initially synchronized animation may be unsynchronized if restarted');
 
-  promise_test(function(t) {
+  promise_test(t => {
     const elemA = addDiv(t, { class: 'compositable' });
     const elemB = addDiv(t, { class: 'compositable' });
 
@@ -1138,7 +1140,7 @@ function testSynchronizedAnimations() {
     // Clear target effect
     animB.effect.target = null;
 
-    return Promise.all([animA.ready, animB.ready])
+    return waitForPaints()
       .then(() => {
         assert_animation_property_state_equals(
           animA.effect.getProperties(),
@@ -1165,19 +1167,19 @@ function start() {
   testSmallElements();
   testSynchronizedAnimations();
 
-  promise_test(function(t) {
+  promise_test(t => {
     var animation = addDivAndAnimate(t,
                                      { class: 'compositable' },
                                      { transform: [ 'translate(0px)',
                                                     'translate(100px)'] },
                                      100 * MS_PER_SEC);
-    return animation.ready.then(function() {
+    return waitForPaints().then(() => {
       assert_animation_property_state_equals(
         animation.effect.getProperties(),
         [ { property: 'transform', runningOnCompositor: true } ]);
       animation.effect.target.style = 'width: 5200px; height: 5200px';
       return waitForFrame();
-    }).then(function() {
+    }).then(() => {
       // viewport depends on test environment.
       var expectedWarning = new RegExp(
         "Animation cannot be run on the compositor because the area of the frame " +
@@ -1192,7 +1194,7 @@ function start() {
         } ]);
       animation.effect.target.style = 'width: 100px; height: 100px';
       return waitForFrame();
-    }).then(function() {
+    }).then(() => {
       // FIXME: Bug 1253164: the animation should get back on compositor.
       assert_animation_property_state_equals(
         animation.effect.getProperties(),
@@ -1200,19 +1202,19 @@ function start() {
     });
   }, 'transform on too big element - area');
 
-  promise_test(function(t) {
+  promise_test(t => {
     var animation = addDivAndAnimate(t,
                                      { class: 'compositable' },
                                      { transform: [ 'translate(0px)',
                                                     'translate(100px)'] },
                                      100 * MS_PER_SEC);
-    return animation.ready.then(function() {
+    return waitForPaints().then(() => {
       assert_animation_property_state_equals(
         animation.effect.getProperties(),
         [ { property: 'transform', runningOnCompositor: true } ]);
       animation.effect.target.style = 'width: 5200px; height: 1px';
       return waitForFrame();
-    }).then(function() {
+    }).then(() => {
       // viewport depends on test environment.
       var expectedWarning = new RegExp(
         "Animation cannot be run on the compositor because the frame size " +
@@ -1228,7 +1230,7 @@ function start() {
         } ]);
       animation.effect.target.style = 'width: 100px; height: 100px';
       return waitForFrame();
-    }).then(function() {
+    }).then(() => {
       // FIXME: Bug 1253164: the animation should get back on compositor.
       assert_animation_property_state_equals(
         animation.effect.getProperties(),
@@ -1236,7 +1238,7 @@ function start() {
     });
   }, 'transform on too big element - dimensions');
 
-  promise_test(function(t) {
+  promise_test(t => {
     var svg  = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', '100');
     svg.setAttribute('height', '100');
@@ -1246,19 +1248,19 @@ function start() {
     rect.setAttribute('fill', 'red');
     svg.appendChild(rect);
     document.body.appendChild(svg);
-    t.add_cleanup(function() {
+    t.add_cleanup(() => {
       svg.remove();
     });
 
     var animation = svg.animate(
       { transform: ['translate(0px)', 'translate(100px)'] }, 100 * MS_PER_SEC);
-    return animation.ready.then(function() {
+    return waitForPaints().then(() => {
       assert_animation_property_state_equals(
         animation.effect.getProperties(),
         [ { property: 'transform', runningOnCompositor: true } ]);
       svg.setAttribute('transform', 'translate(10, 20)');
       return waitForFrame();
-    }).then(function() {
+    }).then(() => {
       assert_animation_property_state_equals(
         animation.effect.getProperties(),
         [ {
@@ -1268,19 +1270,19 @@ function start() {
         } ]);
       svg.removeAttribute('transform');
       return waitForFrame();
-    }).then(function() {
+    }).then(() => {
       assert_animation_property_state_equals(
         animation.effect.getProperties(),
         [ { property: 'transform', runningOnCompositor: true } ]);
     });
   }, 'transform of nsIFrame with SVG transform');
 
-  promise_test(function(t) {
+  promise_test(t => {
     var div = addDiv(t, { class: 'compositable',
                           style: 'animation: fade 100s' });
     var cssAnimation = div.getAnimations()[0];
     var scriptAnimation = div.animate({ opacity: [ 1, 0 ] }, 100 * MS_PER_SEC);
-    return scriptAnimation.ready.then(function() {
+    return waitForPaints().then(() => {
       assert_animation_property_state_equals(
         cssAnimation.effect.getProperties(),
         [ { property: 'opacity', runningOnCompositor: true } ]);

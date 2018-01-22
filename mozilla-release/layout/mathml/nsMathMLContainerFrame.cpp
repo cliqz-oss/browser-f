@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -704,7 +705,7 @@ nsMathMLContainerFrame::ReLayoutChildren(nsIFrame* aParentFrame)
   if (!parent)
     return NS_OK;
 
-  frame->PresContext()->PresShell()->
+  frame->PresShell()->
     FrameNeedsReflow(frame, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -763,13 +764,13 @@ nsMathMLContainerFrame::RemoveFrame(ChildListID     aListID,
 
 nsresult
 nsMathMLContainerFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                         nsIAtom*        aAttribute,
+                                         nsAtom*        aAttribute,
                                          int32_t         aModType)
 {
   // XXX Since they are numerous MathML attributes that affect layout, and
   // we can't check all of them here, play safe by requesting a reflow.
   // XXXldb This should only do work for attributes that cause changes!
-  PresContext()->PresShell()->
+  PresShell()->
     FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -1536,7 +1537,7 @@ nsMathMLContainerFrame::ReportChildCountError()
 }
 
 nsresult
-nsMathMLContainerFrame::ReportInvalidChildError(nsIAtom* aChildTag)
+nsMathMLContainerFrame::ReportInvalidChildError(nsAtom* aChildTag)
 {
   const char16_t* argv[] =
     { aChildTag->GetUTF16String(),
@@ -1549,7 +1550,9 @@ nsMathMLContainerFrame::ReportInvalidChildError(nsIAtom* aChildTag)
 nsContainerFrame*
 NS_NewMathMLmathBlockFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
 {
-  return new (aPresShell) nsMathMLmathBlockFrame(aContext);
+  auto newFrame = new (aPresShell) nsMathMLmathBlockFrame(aContext);
+  newFrame->AddStateBits(NS_BLOCK_FORMATTING_CONTEXT_STATE_BITS);
+  return newFrame;
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmathBlockFrame)

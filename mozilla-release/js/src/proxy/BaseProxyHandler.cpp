@@ -195,10 +195,8 @@ js::SetPropertyIgnoringNamedGetter(JSContext* cx, HandleObject obj, HandleId id,
         RootedObject receiverObj(cx, &receiver.toObject());
 
         // Nonstandard SpiderMonkey special case: setter ops.
-        if (SetterOp setter = ownDesc.setter()) {
-            RootedValue valCopy(cx, v);
-            return CallJSSetterOp(cx, setter, receiverObj, id, &valCopy, result);
-        }
+        if (SetterOp setter = ownDesc.setter())
+            return CallJSSetterOp(cx, setter, receiverObj, id, v, result);
 
         // Steps 5.c-d.
         Rooted<PropertyDescriptor> existingDescriptor(cx);
@@ -407,20 +405,6 @@ bool
 BaseProxyHandler::setImmutablePrototype(JSContext* cx, HandleObject proxy, bool* succeeded) const
 {
     *succeeded = false;
-    return true;
-}
-
-bool
-BaseProxyHandler::watch(JSContext* cx, HandleObject proxy, HandleId id, HandleObject callable) const
-{
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_CANT_WATCH,
-                              proxy->getClass()->name);
-    return false;
-}
-
-bool
-BaseProxyHandler::unwatch(JSContext* cx, HandleObject proxy, HandleId id) const
-{
     return true;
 }
 

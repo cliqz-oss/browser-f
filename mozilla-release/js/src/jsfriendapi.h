@@ -71,9 +71,6 @@ JS_NewObjectWithoutMetadata(JSContext* cx, const JSClass* clasp, JS::Handle<JSOb
 extern JS_FRIEND_API(uint32_t)
 JS_ObjectCountDynamicSlots(JS::HandleObject obj);
 
-extern JS_FRIEND_API(size_t)
-JS_SetProtoCalled(JSContext* cx);
-
 extern JS_FRIEND_API(bool)
 JS_NondeterministicGetWeakMapKeys(JSContext* cx, JS::HandleObject obj, JS::MutableHandleObject ret);
 
@@ -157,7 +154,6 @@ enum {
     JS_TELEMETRY_DEPRECATED_LANGUAGE_EXTENSIONS_IN_CONTENT,
     JS_TELEMETRY_DEPRECATED_LANGUAGE_EXTENSIONS_IN_ADDONS,
     JS_TELEMETRY_ADDON_EXCEPTIONS,
-    JS_TELEMETRY_AOT_USAGE,
     JS_TELEMETRY_PRIVILEGED_PARSER_COMPILE_LAZY_AFTER_MS,
     JS_TELEMETRY_WEB_PARSER_COMPILE_LAZY_AFTER_MS,
     JS_TELEMETRY_END
@@ -435,7 +431,7 @@ ForgetSourceHook(JSContext* cx);
  * right time(s), such as after evaluation of a script has run to completion.
  */
 extern JS_FRIEND_API(bool)
-UseInternalJobQueues(JSContext* cx);
+UseInternalJobQueues(JSContext* cx, bool cooperative = false);
 
 /**
  * Instruct the runtime to stop draining the internal job queue.
@@ -533,7 +529,7 @@ IterateGrayObjects(JS::Zone* zone, GCThingCallback cellCallback, void* data);
 extern JS_FRIEND_API(void)
 IterateGrayObjectsUnderCC(JS::Zone* zone, GCThingCallback cellCallback, void* data);
 
-#ifdef DEBUG
+#if defined(JS_GC_ZEAL) || defined(DEBUG)
 // Trace the heap and check there are no black to gray edges. These are
 // not allowed since the cycle collector could throw away the gray thing and
 // leave a dangling pointer.
@@ -1052,6 +1048,9 @@ MOZ_ALWAYS_INLINE bool
 CheckRecursionLimit(JSContext* cx, uintptr_t limit)
 {
     int stackDummy;
+
+    JS_STACK_OOM_POSSIBLY_FAIL_REPORT();
+
     if (!JS_CHECK_STACK_SIZE(limit, &stackDummy)) {
         ReportOverRecursed(cx);
         return false;
@@ -1063,12 +1062,17 @@ MOZ_ALWAYS_INLINE bool
 CheckRecursionLimitDontReport(JSContext* cx, uintptr_t limit)
 {
     int stackDummy;
+
+    JS_STACK_OOM_POSSIBLY_FAIL();
+
     return JS_CHECK_STACK_SIZE(limit, &stackDummy);
 }
 
 MOZ_ALWAYS_INLINE bool
 CheckRecursionLimit(JSContext* cx)
 {
+    JS_STACK_OOM_POSSIBLY_FAIL_REPORT();
+
     // GetNativeStackLimit(cx) is pretty slow because it has to do an uninlined
     // call to RunningWithTrustedPrincipals to determine which stack limit to
     // use. To work around this, check the untrusted limit first to avoid the
@@ -1088,12 +1092,16 @@ CheckRecursionLimitDontReport(JSContext* cx)
 MOZ_ALWAYS_INLINE bool
 CheckRecursionLimitWithStackPointerDontReport(JSContext* cx, void* sp)
 {
+    JS_STACK_OOM_POSSIBLY_FAIL();
+
     return JS_CHECK_STACK_SIZE(GetNativeStackLimit(cx), sp);
 }
 
 MOZ_ALWAYS_INLINE bool
 CheckRecursionLimitWithStackPointer(JSContext* cx, void* sp)
 {
+    JS_STACK_OOM_POSSIBLY_FAIL_REPORT();
+
     if (!JS_CHECK_STACK_SIZE(GetNativeStackLimit(cx), sp)) {
         ReportOverRecursed(cx);
         return false;
@@ -2250,36 +2258,11 @@ JS_FRIEND_API(void*)
 JS_GetDataViewData(JSObject* obj, bool* isSharedMemory, const JS::AutoRequireNoGC&);
 
 namespace js {
-
-/**
- * Add a watchpoint -- in the Object.prototype.watch sense -- to |obj| for the
- * property |id|, using the callable object |callable| as the function to be
- * called for notifications.
- *
- * This is an internal function exposed -- temporarily -- only so that DOM
- * proxies can be watchable.  Don't use it!  We'll soon kill off the
- * Object.prototype.{,un}watch functions, at which point this will go too.
- */
-extern JS_FRIEND_API(bool)
-WatchGuts(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleObject callable);
-
-/**
- * Remove a watchpoint -- in the Object.prototype.watch sense -- from |obj| for
- * the property |id|.
- *
- * This is an internal function exposed -- temporarily -- only so that DOM
- * proxies can be watchable.  Don't use it!  We'll soon kill off the
- * Object.prototype.{,un}watch functions, at which point this will go too.
- */
-extern JS_FRIEND_API(bool)
-UnwatchGuts(JSContext* cx, JS::HandleObject obj, JS::HandleId id);
-
 namespace jit {
 
 enum class InlinableNative : uint16_t;
 
 } // namespace jit
-
 } // namespace js
 
 /**
@@ -3078,12 +3061,6 @@ ToWindowProxyIfWindow(JSObject* obj)
 extern JS_FRIEND_API(JSObject*)
 ToWindowIfWindowProxy(JSObject* obj);
 
-// Create and add the Intl.PluralRules constructor function to the provided
-// object.  This function throws if called more than once per realm/global
-// object.
-extern bool
-AddPluralRulesConstructor(JSContext* cx, JS::Handle<JSObject*> intl);
-
 // Create and add the Intl.MozDateTimeFormat constructor function to the provided
 // object.
 //
@@ -3098,6 +3075,12 @@ AddPluralRulesConstructor(JSContext* cx, JS::Handle<JSObject*> intl);
 // standardize, that will also need to be resolved to ship this.)
 extern bool
 AddMozDateTimeFormatConstructor(JSContext* cx, JS::Handle<JSObject*> intl);
+
+// Create and add the Intl.RelativeTimeFormat constructor function to the provided
+// object.  This function throws if called more than once per realm/global
+// object.
+extern bool
+AddRelativeTimeFormatConstructor(JSContext* cx, JS::Handle<JSObject*> intl);
 
 class MOZ_STACK_CLASS JS_FRIEND_API(AutoAssertNoContentJS)
 {

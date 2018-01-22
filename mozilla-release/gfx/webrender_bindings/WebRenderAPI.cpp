@@ -1,9 +1,11 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "WebRenderAPI.h"
+#include "DisplayItemClipChain.h"
 #include "LayersLogging.h"
 #include "mozilla/webrender/RendererOGL.h"
 #include "mozilla/gfx/gfxVars.h"
@@ -136,9 +138,21 @@ private:
   layers::SynchronousTask* mTask;
 };
 
+/*static*/ void
+WebRenderAPI::InitExternalLogHandler()
+{
+  // Redirect the webrender's log to gecko's log system.
+  // The current log level is "error".
+  mozilla::wr::wr_init_external_log_handler(wr::LogLevelFilter::Error);
+}
 
-//static
-already_AddRefed<WebRenderAPI>
+/*static*/ void
+WebRenderAPI::ShutdownExternalLogHandler()
+{
+  mozilla::wr::wr_shutdown_external_log_handler();
+}
+
+/*static*/ already_AddRefed<WebRenderAPI>
 WebRenderAPI::Create(layers::CompositorBridgeParentBase* aBridge,
                      RefPtr<widget::CompositorWidget>&& aWidget,
                      LayoutDeviceIntSize aSize)
@@ -430,6 +444,12 @@ WebRenderAPI::UpdateResources(ResourceUpdateQueue& aUpdates)
   wr_api_update_resources(mDocHandle, aUpdates.Raw());
 }
 
+void
+WebRenderAPI::UpdatePipelineResources(ResourceUpdateQueue& aUpdates, PipelineId aPipeline, Epoch aEpoch)
+{
+  wr_api_update_pipeline_resources(mDocHandle, aPipeline, aEpoch, aUpdates.Raw());
+}
+
 ResourceUpdateQueue::ResourceUpdateQueue()
 {
   mUpdates = wr_resource_updates_new();
@@ -522,12 +542,14 @@ ResourceUpdateQueue::UpdateImageBuffer(ImageKey aKey,
 void
 ResourceUpdateQueue::UpdateBlobImage(ImageKey aKey,
                                      const ImageDescriptor& aDescriptor,
-                                     wr::Vec_u8& aBytes)
+                                     wr::Vec_u8& aBytes,
+                                     const wr::DeviceUintRect& aDirtyRect)
 {
   wr_resource_updates_update_blob_image(mUpdates,
                                         aKey,
                                         &aDescriptor,
-                                        &aBytes.inner);
+                                        &aBytes.inner,
+                                        aDirtyRect);
 }
 
 void
@@ -558,6 +580,12 @@ ResourceUpdateQueue::AddRawFont(wr::FontKey aKey, wr::Vec_u8& aBytes, uint32_t a
 }
 
 void
+ResourceUpdateQueue::AddFontDescriptor(wr::FontKey aKey, wr::Vec_u8& aBytes, uint32_t aIndex)
+{
+  wr_resource_updates_add_font_descriptor(mUpdates, aKey, &aBytes.inner, aIndex);
+}
+
+void
 ResourceUpdateQueue::DeleteFont(wr::FontKey aKey)
 {
   wr_resource_updates_delete_font(mUpdates, aKey);
@@ -568,10 +596,12 @@ ResourceUpdateQueue::AddFontInstance(wr::FontInstanceKey aKey,
                                      wr::FontKey aFontKey,
                                      float aGlyphSize,
                                      const wr::FontInstanceOptions* aOptions,
-                                     const wr::FontInstancePlatformOptions* aPlatformOptions)
+                                     const wr::FontInstancePlatformOptions* aPlatformOptions,
+                                     wr::Vec_u8& aVariations)
 {
   wr_resource_updates_add_font_instance(mUpdates, aKey, aFontKey, aGlyphSize,
-                                        aOptions, aPlatformOptions);
+                                        aOptions, aPlatformOptions,
+                                        &aVariations.inner);
 }
 
 void
@@ -621,10 +651,11 @@ WebRenderAPI::RunOnRenderThread(UniquePtr<RendererEvent> aEvent)
 }
 
 DisplayListBuilder::DisplayListBuilder(PipelineId aId,
-                                       const wr::LayoutSize& aContentSize)
+                                       const wr::LayoutSize& aContentSize,
+                                       size_t aCapacity)
 {
   MOZ_COUNT_CTOR(DisplayListBuilder);
-  mWrState = wr_state_new(aId, aContentSize);
+  mWrState = wr_state_new(aId, aContentSize, aCapacity);
 }
 
 DisplayListBuilder::~DisplayListBuilder()
@@ -633,17 +664,9 @@ DisplayListBuilder::~DisplayListBuilder()
   wr_state_delete(mWrState);
 }
 
-void
-DisplayListBuilder::Begin(const LayerIntSize& aSize)
-{
-  wr_dp_begin(mWrState, aSize.width, aSize.height);
-}
-
-void
-DisplayListBuilder::End()
-{
-  wr_dp_end(mWrState);
-}
+void DisplayListBuilder::Save() { wr_dp_save(mWrState); }
+void DisplayListBuilder::Restore() { wr_dp_restore(mWrState); }
+void DisplayListBuilder::ClearSave() { wr_dp_clear_save(mWrState); }
 
 void
 DisplayListBuilder::Finalize(wr::LayoutSize& aOutContentSize,
@@ -691,75 +714,185 @@ DisplayListBuilder::PopStackingContext()
 }
 
 wr::WrClipId
-DisplayListBuilder::DefineClip(const wr::LayoutRect& aClipRect,
-                               const nsTArray<wr::WrComplexClipRegion>* aComplex,
+DisplayListBuilder::DefineClip(const Maybe<layers::FrameMetrics::ViewID>& aAncestorScrollId,
+                               const Maybe<wr::WrClipId>& aAncestorClipId,
+                               const wr::LayoutRect& aClipRect,
+                               const nsTArray<wr::ComplexClipRegion>* aComplex,
                                const wr::WrImageMask* aMask)
 {
-  uint64_t clip_id = wr_dp_define_clip(mWrState, aClipRect,
+  const uint64_t* ancestorClipId = nullptr;
+  if (aAncestorClipId) {
+    ancestorClipId = &(aAncestorClipId.ref().id);
+  }
+  uint64_t clip_id = wr_dp_define_clip(mWrState,
+      aAncestorScrollId.ptrOr(nullptr), ancestorClipId,
+      aClipRect,
       aComplex ? aComplex->Elements() : nullptr,
       aComplex ? aComplex->Length() : 0,
       aMask);
-  WRDL_LOG("DefineClip id=%" PRIu64 " r=%s m=%p b=%s complex=%zu\n", mWrState,
-      clip_id, Stringify(aClipRect).c_str(), aMask,
+  WRDL_LOG("DefineClip id=%" PRIu64 " as=%s ac=%s r=%s m=%p b=%s complex=%zu\n", mWrState,
+      clip_id,
+      aAncestorScrollId ? Stringify(aAncestorScrollId.ref()).c_str() : "(nil)",
+      aAncestorClipId ? Stringify(aAncestorClipId.ref().id).c_str() : "(nil)",
+      Stringify(aClipRect).c_str(), aMask,
       aMask ? Stringify(aMask->rect).c_str() : "none",
       aComplex ? aComplex->Length() : 0);
   return wr::WrClipId { clip_id };
 }
 
 void
-DisplayListBuilder::PushClip(const wr::WrClipId& aClipId, bool aRecordInStack)
+DisplayListBuilder::PushClip(const wr::WrClipId& aClipId,
+                             const DisplayItemClipChain* aParent)
 {
   wr_dp_push_clip(mWrState, aClipId.id);
   WRDL_LOG("PushClip id=%" PRIu64 "\n", mWrState, aClipId.id);
-  if (aRecordInStack) {
-    mClipIdStack.push_back(aClipId);
+  if (!aParent) {
+    mClipStack.push_back(wr::ScrollOrClipId(aClipId));
+  } else {
+    PushCacheOverride(aParent, aClipId);
   }
 }
 
 void
-DisplayListBuilder::PopClip(bool aRecordInStack)
+DisplayListBuilder::PopClip(const DisplayItemClipChain* aParent)
 {
-  WRDL_LOG("PopClip id=%" PRIu64 "\n", mWrState, mClipIdStack.back().id);
-  if (aRecordInStack) {
-    mClipIdStack.pop_back();
+  WRDL_LOG("PopClip\n", mWrState);
+  if (!aParent) {
+    MOZ_ASSERT(mClipStack.back().is<wr::WrClipId>());
+    mClipStack.pop_back();
+  } else {
+    PopCacheOverride(aParent);
   }
   wr_dp_pop_clip(mWrState);
 }
 
 void
-DisplayListBuilder::PushBuiltDisplayList(BuiltDisplayList &dl)
+DisplayListBuilder::PushCacheOverride(const DisplayItemClipChain* aParent,
+                                      const wr::WrClipId& aClipId)
 {
-  WRDL_LOG("PushBuiltDisplayList\n", mWrState);
-  wr_dp_push_built_display_list(mWrState,
-                                dl.dl_desc,
-                                &dl.dl.inner);
+  // We need to walk the entire clip chain from aParent up and install aClipId
+  // as an override for all of them. This is so that nested display items end up
+  // with the correct parent clip regardless of which outside clip their clip
+  // chains are attached to. Example:
+  // nsDisplayStickyPosition with clipChain D -> C -> B -> A -> nullptr
+  //   nsDisplayItem with clipChain F -> E -> B -> A -> nullptr
+  // In this case the sticky clip that is generated by the sticky display item
+  // is defined as a child of D, which is a child of C and so on. When we go
+  // to define E for the nested display item, we want to make sure that it
+  // is defined as a child of sticky clip, regardless of which of {D, C, B, A}
+  // it has as a parent. {D, C, B, A} are what I refer to as the "outside clips"
+  // because they are "outside" the sticky clip, and if we define E as a child
+  // of any of those clips directly, then we end up losing the sticky clip from
+  // the WR clip chain of the nested item. This is why we install cache
+  // overrides for all of them so that when we walk the nested item's clip chain
+  // from E to B we discover that really we want to use the sticky clip as E's
+  // parent.
+  for (const DisplayItemClipChain* i = aParent; i; i = i->mParent) {
+    auto it = mCacheOverride.insert({ i, std::vector<wr::WrClipId>() });
+    it.first->second.push_back(aClipId);
+    WRDL_LOG("Pushing override %p -> %" PRIu64 "\n", mWrState, i, aClipId.id);
+  }
+}
+
+void
+DisplayListBuilder::PopCacheOverride(const DisplayItemClipChain* aParent)
+{
+  for (const DisplayItemClipChain* i = aParent; i; i = i->mParent) {
+    auto it = mCacheOverride.find(i);
+    MOZ_ASSERT(it != mCacheOverride.end());
+    MOZ_ASSERT(!(it->second.empty()));
+    WRDL_LOG("Popping override %p -> %" PRIu64 "\n", mWrState, i, it->second.back().id);
+    it->second.pop_back();
+    if (it->second.empty()) {
+      mCacheOverride.erase(it);
+    }
+  }
+}
+
+Maybe<wr::WrClipId>
+DisplayListBuilder::GetCacheOverride(const DisplayItemClipChain* aParent)
+{
+  auto it = mCacheOverride.find(aParent);
+  return it == mCacheOverride.end() ? Nothing() : Some(it->second.back());
+}
+
+wr::WrStickyId
+DisplayListBuilder::DefineStickyFrame(const wr::LayoutRect& aContentRect,
+                                      const float* aTopMargin,
+                                      const float* aRightMargin,
+                                      const float* aBottomMargin,
+                                      const float* aLeftMargin,
+                                      const StickyOffsetBounds& aVerticalBounds,
+                                      const StickyOffsetBounds& aHorizontalBounds,
+                                      const wr::LayoutVector2D& aAppliedOffset)
+{
+  uint64_t id = wr_dp_define_sticky_frame(mWrState, aContentRect, aTopMargin,
+      aRightMargin, aBottomMargin, aLeftMargin, aVerticalBounds, aHorizontalBounds,
+      aAppliedOffset);
+  WRDL_LOG("DefineSticky id=%" PRIu64 " c=%s t=%s r=%s b=%s l=%s v=%s h=%s a=%s\n",
+      mWrState, id,
+      Stringify(aContentRect).c_str(),
+      aTopMargin ? Stringify(*aTopMargin).c_str() : "none",
+      aRightMargin ? Stringify(*aRightMargin).c_str() : "none",
+      aBottomMargin ? Stringify(*aBottomMargin).c_str() : "none",
+      aLeftMargin ? Stringify(*aLeftMargin).c_str() : "none",
+      Stringify(aVerticalBounds).c_str(),
+      Stringify(aHorizontalBounds).c_str(),
+      Stringify(aAppliedOffset).c_str());
+  return wr::WrStickyId { id };
+}
+
+void
+DisplayListBuilder::PushStickyFrame(const wr::WrStickyId& aStickyId,
+                                    const DisplayItemClipChain* aParent)
+{
+  wr_dp_push_clip(mWrState, aStickyId.id);
+  WRDL_LOG("PushSticky id=%" PRIu64 "\n", mWrState, aStickyId.id);
+  // inside WR, a sticky id is just a regular clip id. so we can do some
+  // handwaving here and turn the WrStickyId into a WrclipId and treat it
+  // like any other out-of-band clip.
+  wr::WrClipId stickyIdAsClipId;
+  stickyIdAsClipId.id = aStickyId.id;
+  PushCacheOverride(aParent, stickyIdAsClipId);
+}
+
+void
+DisplayListBuilder::PopStickyFrame(const DisplayItemClipChain* aParent)
+{
+  WRDL_LOG("PopSticky\n", mWrState);
+  PopCacheOverride(aParent);
+  wr_dp_pop_clip(mWrState);
 }
 
 bool
 DisplayListBuilder::IsScrollLayerDefined(layers::FrameMetrics::ViewID aScrollId) const
 {
-  return mScrollParents.find(aScrollId) != mScrollParents.end();
+  return mScrollIdsDefined.find(aScrollId) != mScrollIdsDefined.end();
 }
 
 void
 DisplayListBuilder::DefineScrollLayer(const layers::FrameMetrics::ViewID& aScrollId,
+                                      const Maybe<layers::FrameMetrics::ViewID>& aAncestorScrollId,
+                                      const Maybe<wr::WrClipId>& aAncestorClipId,
                                       const wr::LayoutRect& aContentRect,
                                       const wr::LayoutRect& aClipRect)
 {
-  WRDL_LOG("DefineScrollLayer id=%" PRIu64 " co=%s cl=%s\n", mWrState,
-      aScrollId, Stringify(aContentRect).c_str(), Stringify(aClipRect).c_str());
+  WRDL_LOG("DefineScrollLayer id=%" PRIu64 " as=%s ac=%s co=%s cl=%s\n", mWrState,
+      aScrollId,
+      aAncestorScrollId ? Stringify(aAncestorScrollId.ref()).c_str() : "(nil)",
+      aAncestorClipId ? Stringify(aAncestorClipId.ref().id).c_str() : "(nil)",
+      Stringify(aContentRect).c_str(), Stringify(aClipRect).c_str());
 
-  Maybe<layers::FrameMetrics::ViewID> parent =
-      mScrollIdStack.empty() ? Nothing() : Some(mScrollIdStack.back());
-  auto it = mScrollParents.insert({aScrollId, parent});
+  auto it = mScrollIdsDefined.insert(aScrollId);
   if (it.second) {
     // An insertion took place, which means we haven't defined aScrollId before.
     // So let's define it now.
-    wr_dp_define_scroll_layer(mWrState, aScrollId, aContentRect, aClipRect);
-  } else {
-    // aScrollId was already a key in mScrollParents so check that the parent
-    // value is the same.
-    MOZ_ASSERT(it.first->second == parent);
+    const uint64_t* ancestorClipId = nullptr;
+    if (aAncestorClipId) {
+      ancestorClipId = &(aAncestorClipId.ref().id);
+    }
+    wr_dp_define_scroll_layer(mWrState, aScrollId, aAncestorScrollId.ptrOr(nullptr),
+        ancestorClipId, aContentRect, aClipRect);
   }
 }
 
@@ -768,14 +901,15 @@ DisplayListBuilder::PushScrollLayer(const layers::FrameMetrics::ViewID& aScrollI
 {
   WRDL_LOG("PushScrollLayer id=%" PRIu64 "\n", mWrState, aScrollId);
   wr_dp_push_scroll_layer(mWrState, aScrollId);
-  mScrollIdStack.push_back(aScrollId);
+  mClipStack.push_back(wr::ScrollOrClipId(aScrollId));
 }
 
 void
 DisplayListBuilder::PopScrollLayer()
 {
-  WRDL_LOG("PopScrollLayer id=%" PRIu64 "\n", mWrState, mScrollIdStack.back());
-  mScrollIdStack.pop_back();
+  MOZ_ASSERT(mClipStack.back().is<layers::FrameMetrics::ViewID>());
+  WRDL_LOG("PopScrollLayer id=%" PRIu64 "\n", mWrState, mClipStack.back().as<layers::FrameMetrics::ViewID>());
+  mClipStack.pop_back();
   wr_dp_pop_scroll_layer(mWrState);
 }
 
@@ -787,14 +921,15 @@ DisplayListBuilder::PushClipAndScrollInfo(const layers::FrameMetrics::ViewID& aS
       aClipId ? Stringify(aClipId->id).c_str() : "none");
   wr_dp_push_clip_and_scroll_info(mWrState, aScrollId,
       aClipId ? &(aClipId->id) : nullptr);
-  mScrollIdStack.push_back(aScrollId);
+  mClipStack.push_back(wr::ScrollOrClipId(aScrollId));
 }
 
 void
 DisplayListBuilder::PopClipAndScrollInfo()
 {
+  MOZ_ASSERT(mClipStack.back().is<layers::FrameMetrics::ViewID>());
   WRDL_LOG("PopClipAndScroll\n", mWrState);
-  mScrollIdStack.pop_back();
+  mClipStack.pop_back();
   wr_dp_pop_clip_and_scroll_info(mWrState);
 }
 
@@ -809,6 +944,14 @@ DisplayListBuilder::PushRect(const wr::LayoutRect& aBounds,
       Stringify(aClip).c_str(),
       Stringify(aColor).c_str());
   wr_dp_push_rect(mWrState, aBounds, aClip, aIsBackfaceVisible, aColor);
+}
+
+void
+DisplayListBuilder::PushClearRect(const wr::LayoutRect& aBounds)
+{
+  WRDL_LOG("PushClearRect b=%s\n", mWrState,
+      Stringify(aBounds).c_str());
+  wr_dp_push_clear_rect(mWrState, aBounds);
 }
 
 void
@@ -1013,13 +1156,13 @@ void
 DisplayListBuilder::PushText(const wr::LayoutRect& aBounds,
                              const wr::LayoutRect& aClip,
                              bool aIsBackfaceVisible,
-                             const gfx::Color& aColor,
+                             const wr::ColorF& aColor,
                              wr::FontInstanceKey aFontKey,
                              Range<const wr::GlyphInstance> aGlyphBuffer,
                              const wr::GlyphOptions* aGlyphOptions)
 {
   wr_dp_push_text(mWrState, aBounds, aClip, aIsBackfaceVisible,
-                  ToColorF(aColor),
+                  aColor,
                   aFontKey,
                   &aGlyphBuffer[0], aGlyphBuffer.length(),
                   aGlyphOptions);
@@ -1030,40 +1173,24 @@ DisplayListBuilder::PushLine(const wr::LayoutRect& aClip,
                              bool aIsBackfaceVisible,
                              const wr::Line& aLine)
 {
- wr_dp_push_line(mWrState, aClip, aIsBackfaceVisible, aLine.baseline, aLine.start, aLine.end,
-                 aLine.orientation, aLine.width, aLine.color, aLine.style);
-
-/* TODO(Gankro): remove this
-  LayoutRect rect;
-  if (aLine.orientation == wr::LineOrientation::Horizontal) {
-    rect.origin.x = aLine.start;
-    rect.origin.y = aLine.baseline;
-    rect.size.width = aLine.end - aLine.start;
-    rect.size.height = aLine.width;
-  } else {
-    rect.origin.x = aLine.baseline;
-    rect.origin.y = aLine.start;
-    rect.size.width = aLine.width;
-    rect.size.height = aLine.end - aLine.start;
-  }
-
-  PushRect(rect, aClip, aLine.color);
-*/
+ wr_dp_push_line(mWrState, &aClip, aIsBackfaceVisible,
+                 &aLine.bounds, aLine.wavyLineThickness, aLine.orientation,
+                 &aLine.color, aLine.style);
 }
 
 void
-DisplayListBuilder::PushTextShadow(const wr::LayoutRect& aRect,
-                                   const wr::LayoutRect& aClip,
-                                   bool aIsBackfaceVisible,
-                                   const wr::TextShadow& aShadow)
+DisplayListBuilder::PushShadow(const wr::LayoutRect& aRect,
+                               const wr::LayoutRect& aClip,
+                               bool aIsBackfaceVisible,
+                               const wr::Shadow& aShadow)
 {
-  wr_dp_push_text_shadow(mWrState, aRect, aClip, aIsBackfaceVisible, aShadow);
+  wr_dp_push_shadow(mWrState, aRect, aClip, aIsBackfaceVisible, aShadow);
 }
 
 void
-DisplayListBuilder::PopTextShadow()
+DisplayListBuilder::PopAllShadows()
 {
-  wr_dp_pop_text_shadow(mWrState);
+  wr_dp_pop_all_shadows(mWrState);
 }
 
 void
@@ -1075,7 +1202,7 @@ DisplayListBuilder::PushBoxShadow(const wr::LayoutRect& aRect,
                                   const wr::ColorF& aColor,
                                   const float& aBlurRadius,
                                   const float& aSpreadRadius,
-                                  const float& aBorderRadius,
+                                  const wr::BorderRadius& aBorderRadius,
                                   const wr::BoxShadowClipMode& aClipMode)
 {
   wr_dp_push_box_shadow(mWrState, aRect, aClip, aIsBackfaceVisible,
@@ -1087,26 +1214,32 @@ DisplayListBuilder::PushBoxShadow(const wr::LayoutRect& aRect,
 Maybe<wr::WrClipId>
 DisplayListBuilder::TopmostClipId()
 {
-  if (mClipIdStack.empty()) {
-    return Nothing();
+  for (auto it = mClipStack.crbegin(); it != mClipStack.crend(); it++) {
+    if (it->is<wr::WrClipId>()) {
+      return Some(it->as<wr::WrClipId>());
+    }
   }
-  return Some(mClipIdStack.back());
+  return Nothing();
 }
 
 layers::FrameMetrics::ViewID
 DisplayListBuilder::TopmostScrollId()
 {
-  if (mScrollIdStack.empty()) {
-    return layers::FrameMetrics::NULL_SCROLL_ID;
+  for (auto it = mClipStack.crbegin(); it != mClipStack.crend(); it++) {
+    if (it->is<layers::FrameMetrics::ViewID>()) {
+      return it->as<layers::FrameMetrics::ViewID>();
+    }
   }
-  return mScrollIdStack.back();
+  return layers::FrameMetrics::NULL_SCROLL_ID;
 }
 
-Maybe<layers::FrameMetrics::ViewID>
-DisplayListBuilder::ParentScrollIdFor(layers::FrameMetrics::ViewID aScrollId)
+bool
+DisplayListBuilder::TopmostIsClip()
 {
-  auto it = mScrollParents.find(aScrollId);
-  return (it == mScrollParents.end() ? Nothing() : it->second);
+  if (mClipStack.empty()) {
+    return false;
+  }
+  return mClipStack.back().is<wr::WrClipId>();
 }
 
 } // namespace wr

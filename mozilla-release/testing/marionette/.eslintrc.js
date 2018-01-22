@@ -12,11 +12,13 @@ module.exports = {
     }],
     "max-len": ["error", 78, {
       "ignoreStrings": true,
+      "ignoreTemplateLiterals": true,
       "ignoreUrls": true,
     }],
     "no-fallthrough": "error",
     "no-new-object": "error",
     "no-undef-init": "error",
+    "no-unused-vars": ["error", {}],
     "no-var": "error",
     "object-curly-spacing": ["error", "never"],
     "semi": "error",

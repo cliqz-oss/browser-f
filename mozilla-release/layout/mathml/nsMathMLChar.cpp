@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -58,7 +59,11 @@ static void
 NormalizeDefaultFont(nsFont& aFont, float aFontSizeInflation)
 {
   if (aFont.fontlist.GetDefaultFontType() != eFamily_none) {
-    aFont.fontlist.Append(FontFamilyName(aFont.fontlist.GetDefaultFontType()));
+    nsTArray<FontFamilyName> names;
+    names.AppendElements(aFont.fontlist.GetFontlist()->mNames);
+    names.AppendElement(FontFamilyName(aFont.fontlist.GetDefaultFontType()));
+
+    aFont.fontlist.SetFontlist(Move(names));
     aFont.fontlist.SetDefaultFontType(eFamily_none);
   }
   aFont.size = NSToCoordRound(aFont.size * aFontSizeInflation);
@@ -583,10 +588,9 @@ nsOpenTypeTable::MakeTextRun(DrawTarget*        aDrawTarget,
     NSToCoordRound(aAppUnitsPerDevPixel *
                    aFontGroup->GetFirstValidFont()->
                    GetGlyphHAdvance(aDrawTarget, aGlyph.glyphID));
-  detailedGlyph.mXOffset = detailedGlyph.mYOffset = 0;
-  gfxShapedText::CompressedGlyph g;
-  g.SetComplex(true, true, 1);
-  textRun->SetGlyphs(0, g, &detailedGlyph);
+  textRun->SetGlyphs(0,
+                     gfxShapedText::CompressedGlyph::MakeComplex(true, true, 1),
+                     &detailedGlyph);
 
   return textRun.forget();
 }
@@ -974,7 +978,9 @@ nsMathMLChar::SetFontFamily(nsPresContext*          aPresContext,
   FontFamilyList glyphCodeFont;
 
   if (aGlyphCode.font) {
-    glyphCodeFont.Append(aGlyphTable->FontNameFor(aGlyphCode));
+    nsTArray<FontFamilyName> names;
+    names.AppendElement(aGlyphTable->FontNameFor(aGlyphCode));
+    glyphCodeFont.SetFontlist(Move(names));
   }
 
   const FontFamilyList& familyList =
@@ -994,9 +1000,8 @@ nsMathMLChar::SetFontFamily(nsPresContext*          aPresContext,
     // Set the font if it is an unicode table
     // or if the same family name has been found
     gfxFont *firstFont = fm->GetThebesFontGroup()->GetFirstValidFont();
-    FontFamilyList firstFontList;
-    firstFontList.Append(
-      FontFamilyName(firstFont->GetFontEntry()->FamilyName(), eUnquotedName));
+    FontFamilyList firstFontList(
+      firstFont->GetFontEntry()->FamilyName(), eUnquotedName);
     if (aGlyphTable == &gGlyphTableList->mUnicodeTable ||
         firstFontList == familyList) {
       aFont.fontlist = familyList;
@@ -1418,8 +1423,7 @@ nsMathMLChar::StretchEnumContext::EnumCallback(const FontFamilyName& aFamily,
   nsFont font = sc->StyleFont()->mFont;
   NormalizeDefaultFont(font, context->mFontSizeInflation);
   RefPtr<gfxFontGroup> fontGroup;
-  FontFamilyList family;
-  family.Append(unquotedFamilyName);
+  FontFamilyList family(unquotedFamilyName);
   if (!aGeneric && !context->mChar->SetFontFamily(context->mPresContext,
                                                   nullptr, kNullGlyph, family,
                                                   font, &fontGroup))
@@ -1469,30 +1473,36 @@ nsMathMLChar::StretchEnumContext::EnumCallback(const FontFamilyName& aFamily,
   return true; // true means continue
 }
 
+static void
+AppendFallbacks(nsTArray<FontFamilyName>& aNames,
+                const nsTArray<nsString>& aFallbacks)
+{
+  for (const nsString& fallback : aFallbacks) {
+    aNames.AppendElement(FontFamilyName(fallback, eUnquotedName));
+  }
+}
+
 // insert math fallback families just before the first generic or at the end
 // when no generic present
 static void
 InsertMathFallbacks(FontFamilyList& aFamilyList,
                     nsTArray<nsString>& aFallbacks)
 {
-  FontFamilyList aMergedList;
+  nsTArray<FontFamilyName> mergedList;
 
   bool inserted = false;
-  const nsTArray<FontFamilyName>& fontlist = aFamilyList.GetFontlist();
-  uint32_t i, num = fontlist.Length();
-  for (i = 0; i < num; i++) {
-    const FontFamilyName& name = fontlist[i];
+  for (const FontFamilyName& name : aFamilyList.GetFontlist()->mNames) {
     if (!inserted && name.IsGeneric()) {
       inserted = true;
-      aMergedList.Append(aFallbacks);
+      AppendFallbacks(mergedList, aFallbacks);
     }
-    aMergedList.Append(name);
+    mergedList.AppendElement(name);
   }
 
   if (!inserted) {
-    aMergedList.Append(aFallbacks);
+    AppendFallbacks(mergedList, aFallbacks);
   }
-  aFamilyList = aMergedList;
+  aFamilyList.SetFontlist(Move(mergedList));
 }
 
 nsresult
@@ -1656,7 +1666,7 @@ nsMathMLChar::StretchInternal(nsIFrame*                aForFrame,
                                 aDesiredStretchSize, font.fontlist, glyphFound);
     enumData.mTryParts = !largeopOnly;
 
-    const nsTArray<FontFamilyName>& fontlist = font.fontlist.GetFontlist();
+    const nsTArray<FontFamilyName>& fontlist = font.fontlist.GetFontlist()->mNames;
     uint32_t i, num = fontlist.Length();
     bool next = true;
     for (i = 0; i < num && next; i++) {
@@ -2015,16 +2025,16 @@ nsMathMLChar::ApplyTransforms(gfxContext* aThebesContext,
     nsPoint pt = r.TopRight();
     gfxPoint devPixelOffset(NSAppUnitsToFloatPixels(pt.x, aAppUnitsPerGfxUnit),
                             NSAppUnitsToFloatPixels(pt.y, aAppUnitsPerGfxUnit));
-    aThebesContext->SetMatrix(
-      aThebesContext->CurrentMatrix().PreTranslate(devPixelOffset).
-                                      PreScale(-mScaleX, mScaleY));
+    aThebesContext->SetMatrixDouble(
+      aThebesContext->CurrentMatrixDouble().PreTranslate(devPixelOffset).
+                                            PreScale(-mScaleX, mScaleY));
   } else {
     nsPoint pt = r.TopLeft();
     gfxPoint devPixelOffset(NSAppUnitsToFloatPixels(pt.x, aAppUnitsPerGfxUnit),
                             NSAppUnitsToFloatPixels(pt.y, aAppUnitsPerGfxUnit));
-    aThebesContext->SetMatrix(
-      aThebesContext->CurrentMatrix().PreTranslate(devPixelOffset).
-                                      PreScale(mScaleX, mScaleY));
+    aThebesContext->SetMatrixDouble(
+      aThebesContext->CurrentMatrixDouble().PreTranslate(devPixelOffset).
+                                            PreScale(mScaleX, mScaleY));
   }
 
   // update the bounding rectangle.
@@ -2069,7 +2079,8 @@ nsMathMLChar::PaintForeground(nsIFrame* aForFrame,
       // draw a single glyph (base size or size variant)
       // XXXfredw verify if mGlyphs[0] is non-null to workaround bug 973322.
       if (mGlyphs[0]) {
-        mGlyphs[0]->Draw(Range(mGlyphs[0].get()), gfxPoint(0.0, mUnscaledAscent),
+        mGlyphs[0]->Draw(Range(mGlyphs[0].get()),
+                         gfx::Point(0.0, mUnscaledAscent),
                          gfxTextRun::DrawParams(&aRenderingContext));
       }
       break;
@@ -2227,7 +2238,7 @@ nsMathMLChar::PaintVertically(nsPresContext* aPresContext,
       }
       if (!clipRect.IsEmpty()) {
         AutoPushClipRect clip(aThebesContext, oneDevPixel, clipRect);
-        mGlyphs[i]->Draw(Range(mGlyphs[i].get()), gfxPoint(dx, dy), params);
+        mGlyphs[i]->Draw(Range(mGlyphs[i].get()), gfx::Point(dx, dy), params);
       }
     }
   }
@@ -2293,7 +2304,7 @@ nsMathMLChar::PaintVertically(nsPresContext* aPresContext,
         clipRect.height = std::min(bm.ascent + bm.descent, fillEnd - dy);
         AutoPushClipRect clip(aThebesContext, oneDevPixel, clipRect);
         dy += bm.ascent;
-        mGlyphs[3]->Draw(Range(mGlyphs[3].get()), gfxPoint(dx, dy), params);
+        mGlyphs[3]->Draw(Range(mGlyphs[3].get()), gfx::Point(dx, dy), params);
         dy += bm.descent;
       }
     }
@@ -2397,7 +2408,7 @@ nsMathMLChar::PaintHorizontally(nsPresContext* aPresContext,
       }
       if (!clipRect.IsEmpty()) {
         AutoPushClipRect clip(aThebesContext, oneDevPixel, clipRect);
-        mGlyphs[i]->Draw(Range(mGlyphs[i].get()), gfxPoint(dx, dy), params);
+        mGlyphs[i]->Draw(Range(mGlyphs[i].get()), gfx::Point(dx, dy), params);
       }
     }
   }
@@ -2461,7 +2472,7 @@ nsMathMLChar::PaintHorizontally(nsPresContext* aPresContext,
         clipRect.width = std::min(bm.rightBearing - bm.leftBearing, fillEnd - dx);
         AutoPushClipRect clip(aThebesContext, oneDevPixel, clipRect);
         dx -= bm.leftBearing;
-        mGlyphs[3]->Draw(Range(mGlyphs[3].get()), gfxPoint(dx, dy), params);
+        mGlyphs[3]->Draw(Range(mGlyphs[3].get()), gfx::Point(dx, dy), params);
         dx += bm.rightBearing;
       }
     }

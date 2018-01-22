@@ -19,12 +19,12 @@
 #include "nsFocusManager.h"
 #include "nsIContent.h"
 #include "nsIDOMHTMLInputElement.h"
-#include "nsIDOMHTMLTextAreaElement.h"
 #include "nsIControllers.h"
 #include "nsIController.h"
 #include "xpcpublic.h"
 #include "nsCycleCollectionParticipant.h"
 #include "mozilla/dom/TabParent.h"
+#include "mozilla/dom/HTMLTextAreaElement.h"
 
 #ifdef MOZ_XUL
 #include "nsXULElement.h"
@@ -234,8 +234,8 @@ nsWindowRoot::GetControllers(bool aForVisibleWindow,
     }
 #endif
 
-    nsCOMPtr<nsIDOMHTMLTextAreaElement> htmlTextArea =
-      do_QueryInterface(focusedContent);
+    HTMLTextAreaElement* htmlTextArea =
+      HTMLTextAreaElement::FromContent(focusedContent);
     if (htmlTextArea)
       return htmlTextArea->GetControllers(aResult);
 
@@ -295,7 +295,7 @@ nsWindowRoot::GetControllerForCommand(const char* aCommand,
     }
 
     // XXXndeakin P3 is this casting safe?
-    nsGlobalWindow *win = nsGlobalWindow::Cast(focusedWindow);
+    nsGlobalWindowOuter *win = nsGlobalWindowOuter::Cast(focusedWindow);
     focusedWindow = win->GetPrivateParent();
   }
 
@@ -367,7 +367,7 @@ nsWindowRoot::GetEnabledDisabledCommands(nsTArray<nsCString>& aEnabledCommands,
                                                aEnabledCommands, aDisabledCommands);
     }
 
-    nsGlobalWindow* win = nsGlobalWindow::Cast(focusedWindow);
+    nsGlobalWindowOuter* win = nsGlobalWindowOuter::Cast(focusedWindow);
     focusedWindow = win->GetPrivateParent();
   }
 }

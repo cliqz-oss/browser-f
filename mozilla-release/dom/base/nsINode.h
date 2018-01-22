@@ -36,7 +36,7 @@
 #endif
 
 class nsAttrAndChildArray;
-class nsChildContentList;
+class nsAttrChildContentList;
 struct nsCSSSelectorList;
 class nsDOMAttributeMap;
 class nsIAnimationObserver;
@@ -55,6 +55,7 @@ class nsNodeSupportsWeakRefTearoff;
 class nsNodeWeakReference;
 class nsDOMMutationObserver;
 class nsRange;
+struct RawServoSelectorList;
 
 namespace mozilla {
 class EventListenerManager;
@@ -373,8 +374,6 @@ public:
    * Bit-flags to pass (or'ed together) to IsNodeOfType()
    */
   enum {
-    /** nsIContent nodes */
-    eCONTENT             = 1 << 0,
     /** nsIDocument nodes */
     eDOCUMENT            = 1 << 1,
     /** nsIAttribute nodes */
@@ -634,7 +633,7 @@ public:
     return IsElement() && IsInNamespace(kNameSpaceID_XHTML);
   }
 
-  inline bool IsHTMLElement(nsIAtom* aTag) const
+  inline bool IsHTMLElement(nsAtom* aTag) const
   {
     return IsElement() && mNodeInfo->Equals(aTag, kNameSpaceID_XHTML);
   }
@@ -650,7 +649,7 @@ public:
     return IsElement() && IsInNamespace(kNameSpaceID_SVG);
   }
 
-  inline bool IsSVGElement(nsIAtom* aTag) const
+  inline bool IsSVGElement(nsAtom* aTag) const
   {
     return IsElement() && mNodeInfo->Equals(aTag, kNameSpaceID_SVG);
   }
@@ -666,7 +665,7 @@ public:
     return IsElement() && IsInNamespace(kNameSpaceID_XUL);
   }
 
-  inline bool IsXULElement(nsIAtom* aTag) const
+  inline bool IsXULElement(nsAtom* aTag) const
   {
     return IsElement() && mNodeInfo->Equals(aTag, kNameSpaceID_XUL);
   }
@@ -682,7 +681,7 @@ public:
     return IsElement() && IsInNamespace(kNameSpaceID_MathML);
   }
 
-  inline bool IsMathMLElement(nsIAtom* aTag) const
+  inline bool IsMathMLElement(nsAtom* aTag) const
   {
     return IsElement() && mNodeInfo->Equals(aTag, kNameSpaceID_MathML);
   }
@@ -763,7 +762,7 @@ public:
    *                       (though a null return value does not imply the
    *                       property was not set, i.e. it can be set to null).
    */
-  void* GetProperty(nsIAtom *aPropertyName,
+  void* GetProperty(nsAtom *aPropertyName,
                     nsresult *aStatus = nullptr) const
   {
     return GetProperty(0, aPropertyName, aStatus);
@@ -781,7 +780,7 @@ public:
    *                       (though a null return value does not imply the
    *                       property was not set, i.e. it can be set to null).
    */
-  void* GetProperty(uint16_t aCategory, nsIAtom *aPropertyName,
+  void* GetProperty(uint16_t aCategory, nsAtom *aPropertyName,
                     nsresult *aStatus = nullptr) const;
 
   /**
@@ -801,7 +800,7 @@ public:
    *                                       was already set
    * @throws NS_ERROR_OUT_OF_MEMORY if that occurs
    */
-  nsresult SetProperty(nsIAtom *aPropertyName, void *aValue,
+  nsresult SetProperty(nsAtom *aPropertyName, void *aValue,
                        NSPropertyDtorFunc aDtor = nullptr,
                        bool aTransfer = false)
   {
@@ -828,7 +827,7 @@ public:
    * @throws NS_ERROR_OUT_OF_MEMORY if that occurs
    */
   nsresult SetProperty(uint16_t aCategory,
-                       nsIAtom *aPropertyName, void *aValue,
+                       nsAtom *aPropertyName, void *aValue,
                        NSPropertyDtorFunc aDtor = nullptr,
                        bool aTransfer = false,
                        void **aOldValue = nullptr);
@@ -837,7 +836,7 @@ public:
    * A generic destructor for property values allocated with new.
    */
   template<class T>
-  static void DeleteProperty(void *, nsIAtom *, void *aPropertyValue, void *)
+  static void DeleteProperty(void *, nsAtom *, void *aPropertyValue, void *)
   {
     delete static_cast<T *>(aPropertyValue);
   }
@@ -848,7 +847,7 @@ public:
    *
    * @param aPropertyName  name of property to destroy.
    */
-  void DeleteProperty(nsIAtom *aPropertyName)
+  void DeleteProperty(nsAtom *aPropertyName)
   {
     DeleteProperty(0, aPropertyName);
   }
@@ -860,7 +859,7 @@ public:
    * @param aCategory      category of property to destroy.
    * @param aPropertyName  name of property to destroy.
    */
-  void DeleteProperty(uint16_t aCategory, nsIAtom *aPropertyName);
+  void DeleteProperty(uint16_t aCategory, nsAtom *aPropertyName);
 
   /**
    * Unset a property associated with this node. The value will not be
@@ -875,7 +874,7 @@ public:
    *                       (though a null return value does not imply the
    *                       property was not set, i.e. it can be set to null).
    */
-  void* UnsetProperty(nsIAtom  *aPropertyName,
+  void* UnsetProperty(nsAtom  *aPropertyName,
                       nsresult *aStatus = nullptr)
   {
     return UnsetProperty(0, aPropertyName, aStatus);
@@ -895,7 +894,7 @@ public:
    *                       (though a null return value does not imply the
    *                       property was not set, i.e. it can be set to null).
    */
-  void* UnsetProperty(uint16_t aCategory, nsIAtom *aPropertyName,
+  void* UnsetProperty(uint16_t aCategory, nsAtom *aPropertyName,
                       nsresult *aStatus = nullptr);
 
   bool HasProperties() const
@@ -1113,7 +1112,7 @@ public:
      * @see nsIDOMNodeList
      * @see nsGenericHTMLElement::GetChildNodes
      */
-    RefPtr<nsChildContentList> mChildNodes;
+    RefPtr<nsAttrChildContentList> mChildNodes;
 
     /**
      * Weak reference to this node.  This is cleared by the destructor of
@@ -1154,7 +1153,7 @@ public:
                                   NODE_DESCENDANTS_NEED_FRAMES |
                                   NODE_NEEDS_FRAME |
                                   NODE_CHROME_ONLY_ACCESS)) ||
-                 IsNodeOfType(eCONTENT),
+                 IsContent(),
                  "Flag only permitted on nsIContent nodes");
     nsWrapperCache::SetFlags(aFlagsToSet);
   }
@@ -1769,7 +1768,7 @@ protected:
   void SetSubtreeRootPointer(nsINode* aSubtreeRoot)
   {
     NS_ASSERTION(aSubtreeRoot, "aSubtreeRoot can never be null!");
-    NS_ASSERTION(!(IsNodeOfType(eCONTENT) && IsInUncomposedDoc()) &&
+    NS_ASSERTION(!(IsContent() && IsInUncomposedDoc()) &&
                  !IsInShadowTree(), "Shouldn't be here!");
     mSubtreeRoot = aSubtreeRoot;
   }
@@ -1800,8 +1799,7 @@ public:
   void GetNodeName(mozilla::dom::DOMString& aNodeName)
   {
     const nsString& nodeName = NodeName();
-    aNodeName.SetStringBuffer(nsStringBuffer::FromString(nodeName),
-                              nodeName.Length());
+    aNodeName.SetOwnedString(nodeName);
   }
   MOZ_MUST_USE nsresult GetBaseURI(nsAString& aBaseURI) const;
   // Return the base URI for the document.
@@ -1865,12 +1863,7 @@ public:
   void GetLocalName(mozilla::dom::DOMString& aLocalName) const
   {
     const nsString& localName = LocalName();
-    if (localName.IsVoid()) {
-      aLocalName.SetNull();
-    } else {
-      aLocalName.SetStringBuffer(nsStringBuffer::FromString(localName),
-                                 localName.Length());
-    }
+    aLocalName.SetOwnedString(localName);
   }
 
   nsDOMAttributeMap* GetAttributes();
@@ -1985,6 +1978,12 @@ protected:
     return HasSlots() ? &GetExistingSlots()->mMutationObservers : nullptr;
   }
 
+  /**
+   * Invalidate cached child array inside mChildNodes
+   * of type nsParentNodeChildContentList.
+   */
+  void InvalidateChildNodes();
+
   bool IsEditableInternal() const;
   virtual bool IsEditableExternal() const
   {
@@ -2066,9 +2065,45 @@ protected:
    * contained pseudo-element selectors.
    *
    * A failing aRv means the string was not a valid selector.
+   *
+   * Note that the selector list returned here is owned by the owner doc's
+   * selector cache.
    */
   nsCSSSelectorList* ParseSelectorList(const nsAString& aSelectorString,
                                        mozilla::ErrorResult& aRv);
+
+  /**
+   * Parse the given selector string into a servo SelectorList.
+   *
+   * Never returns null if aRv is not failing.
+   *
+   * Note that the selector list returned here is owned by the owner doc's
+   * selector cache.
+   */
+  const RawServoSelectorList* ParseServoSelectorList(
+    const nsAString& aSelectorString,
+    mozilla::ErrorResult& aRv);
+
+  /**
+   * Parse the given selector string a SelectorList, depending on whether we're
+   * in a Servo or Gecko-backed document, and execute either aServoFunctor or
+   * aGeckoFunctor on it.
+   *
+   * Note that the selector list is owned by the owner doc's selector cache
+   * which can get expired, so you shouldn't keep it around for long.
+   */
+  template<typename Ret, typename ServoFunctor, typename GeckoFunctor>
+  Ret WithSelectorList(
+    const nsAString& aSelectorString,
+    mozilla::ErrorResult& aRv,
+    const ServoFunctor& aServoFunctor,
+    const GeckoFunctor& aGeckoFunctor)
+  {
+    if (false) {
+      return aServoFunctor(ParseServoSelectorList(aSelectorString, aRv));
+    }
+    return aGeckoFunctor(ParseSelectorList(aSelectorString, aRv));
+  }
 
 public:
   /* Event stuff that documents and elements share.  This needs to be

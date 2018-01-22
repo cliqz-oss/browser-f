@@ -53,7 +53,7 @@
 
 #include "gfxPrefs.h"
 #include "mozilla/layers/StackingContextHelper.h"
-#include "mozilla/layers/WebRenderDisplayItemLayer.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 
 using namespace mozilla;
 using namespace mozilla::image;
@@ -201,10 +201,10 @@ nsTableFrame::~nsTableFrame()
 }
 
 void
-nsTableFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTableFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  mColGroups.DestroyFramesFrom(aDestructRoot);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  mColGroups.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 // Make sure any views are positioned properly
@@ -364,9 +364,8 @@ nsTableFrame::RowOrColSpanChanged(nsTableCellFrame* aCellFrame)
     nsTableCellMap* cellMap = GetCellMap();
     if (cellMap) {
       // for now just remove the cell from the map and reinsert it
-      int32_t rowIndex, colIndex;
-      aCellFrame->GetRowIndex(rowIndex);
-      aCellFrame->GetColIndex(colIndex);
+      uint32_t rowIndex = aCellFrame->RowIndex();
+      uint32_t colIndex = aCellFrame->ColIndex();
       RemoveCell(aCellFrame, rowIndex);
       AutoTArray<nsTableCellFrame*, 1> cells;
       cells.AppendElement(aCellFrame);
@@ -374,7 +373,7 @@ nsTableFrame::RowOrColSpanChanged(nsTableCellFrame* aCellFrame)
 
       // XXX Should this use eStyleChange?  It currently doesn't need
       // to, but it might given more optimization.
-      PresContext()->PresShell()->
+      PresShell()->
         FrameNeedsReflow(this, nsIPresShell::eTreeChange, NS_FRAME_IS_DIRTY);
     }
   }
@@ -442,9 +441,7 @@ nsTableFrame::GetEffectiveRowSpan(int32_t                 aRowIndex,
   nsTableCellMap* cellMap = GetCellMap();
   NS_PRECONDITION (nullptr != cellMap, "bad call, cellMap not yet allocated.");
 
-  int32_t colIndex;
-  aCell.GetColIndex(colIndex);
-  return cellMap->GetEffectiveRowSpan(aRowIndex, colIndex);
+  return cellMap->GetEffectiveRowSpan(aRowIndex, aCell.ColIndex());
 }
 
 int32_t
@@ -453,9 +450,8 @@ nsTableFrame::GetEffectiveRowSpan(const nsTableCellFrame& aCell,
 {
   nsTableCellMap* tableCellMap = GetCellMap(); if (!tableCellMap) ABORT1(1);
 
-  int32_t colIndex, rowIndex;
-  aCell.GetColIndex(colIndex);
-  aCell.GetRowIndex(rowIndex);
+  uint32_t colIndex = aCell.ColIndex();
+  uint32_t rowIndex = aCell.RowIndex();
 
   if (aCellMap)
     return aCellMap->GetRowSpan(rowIndex, colIndex, true);
@@ -469,9 +465,8 @@ nsTableFrame::GetEffectiveColSpan(const nsTableCellFrame& aCell,
 {
   nsTableCellMap* tableCellMap = GetCellMap(); if (!tableCellMap) ABORT1(1);
 
-  int32_t colIndex, rowIndex;
-  aCell.GetColIndex(colIndex);
-  aCell.GetRowIndex(rowIndex);
+  uint32_t colIndex = aCell.ColIndex();
+  uint32_t rowIndex = aCell.RowIndex();
 
   if (aCellMap)
     return aCellMap->GetEffectiveColSpan(*tableCellMap, rowIndex, colIndex);
@@ -731,7 +726,7 @@ nsTableFrame::AppendAnonymousColFrames(nsTableColGroupFrame* aColGroupFrame,
   NS_PRECONDITION(aColType != eColAnonymousCol, "Shouldn't happen");
   MOZ_ASSERT(aNumColsToAdd > 0, "We should be adding _something_.");
 
-  nsIPresShell *shell = PresContext()->PresShell();
+  nsIPresShell *shell = PresShell();
 
   // Get the last col frame
   nsFrameList newColFrames;
@@ -1224,7 +1219,7 @@ nsDisplayItemGeometry*
 nsDisplayTableItem::AllocateGeometry(nsDisplayListBuilder* aBuilder)
 {
   return new nsDisplayTableItemGeometry(this, aBuilder,
-      mFrame->GetOffsetTo(mFrame->PresContext()->PresShell()->GetRootFrame()));
+      mFrame->GetOffsetTo(mFrame->PresShell()->GetRootFrame()));
 }
 
 void
@@ -1238,7 +1233,7 @@ nsDisplayTableItem::ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
   bool invalidateForAttachmentFixed = false;
   if (mDrawsBackground && mPartHasFixedBackground) {
     nsPoint frameOffsetToViewport = mFrame->GetOffsetTo(
-        mFrame->PresContext()->PresShell()->GetRootFrame());
+        mFrame->PresShell()->GetRootFrame());
     invalidateForAttachmentFixed =
         frameOffsetToViewport != geometry->mFrameOffsetToViewport;
   }
@@ -1319,13 +1314,6 @@ nsDisplayTableBorderCollapse::CreateWebRenderCommands(mozilla::wr::DisplayListBu
                                                       mozilla::layers::WebRenderLayerManager* aManager,
                                                       nsDisplayListBuilder* aDisplayListBuilder)
 {
-  if (aManager->IsLayersFreeTransaction()) {
-    ContainerLayerParameters parameter;
-    if (GetLayerState(aDisplayListBuilder, aManager, parameter) != LAYER_ACTIVE) {
-      return false;
-    }
-  }
-
   static_cast<nsTableFrame *>(mFrame)->CreateWebRenderCommandsForBCBorders(aBuilder,
                                                                           aSc,
                                                                           ToReferenceFrame());
@@ -1410,33 +1398,41 @@ PaintRowGroupBackgroundByColIdx(nsTableRowGroupFrame* aRowGroup,
                                 nsIFrame* aFrame,
                                 nsDisplayListBuilder* aBuilder,
                                 const nsDisplayListSet& aLists,
-                                const nsTArray<int32_t>& aColIdx,
+                                const nsTArray<uint32_t>& aColIdx,
                                 const nsPoint& aOffset)
 {
+  MOZ_DIAGNOSTIC_ASSERT(!aColIdx.IsEmpty(),
+                        "Must be painting backgrounds for something");
+
   for (nsTableRowFrame* row = aRowGroup->GetFirstRow(); row; row = row->GetNextRow()) {
     auto rowPos = row->GetNormalPosition() + aOffset;
     if (!aBuilder->GetDirtyRect().Intersects(nsRect(rowPos, row->GetSize()))) {
       continue;
     }
     for (nsTableCellFrame* cell = row->GetFirstCell(); cell; cell = cell->GetNextCell()) {
+      uint32_t curColIdx = cell->ColIndex();
+      if (!aColIdx.ContainsSorted(curColIdx)) {
+        if (curColIdx > aColIdx.LastElement()) {
+          // We can just stop looking at this row.
+          break;
+        }
+        continue;
+      }
+
       if (!cell->ShouldPaintBackground(aBuilder)) {
         continue;
       }
 
-      int32_t curColIdx;
-      cell->GetColIndex(curColIdx);
-      if (aColIdx.Contains(curColIdx)) {
-        auto cellPos = cell->GetNormalPosition() + rowPos;
-        auto cellRect = nsRect(cellPos, cell->GetSize());
-        if (!aBuilder->GetDirtyRect().Intersects(cellRect)) {
-          continue;
-        }
-        nsDisplayBackgroundImage::AppendBackgroundItemsToTop(aBuilder, aFrame, cellRect,
-                                                             aLists.BorderBackground(),
-                                                             false, nullptr,
-                                                             aFrame->GetRectRelativeToSelf(),
-                                                             cell);
+      auto cellPos = cell->GetNormalPosition() + rowPos;
+      auto cellRect = nsRect(cellPos, cell->GetSize());
+      if (!aBuilder->GetDirtyRect().Intersects(cellRect)) {
+        continue;
       }
+      nsDisplayBackgroundImage::AppendBackgroundItemsToTop(aBuilder, aFrame, cellRect,
+                                                           aLists.BorderBackground(),
+                                                           false, nullptr,
+                                                           aFrame->GetRectRelativeToSelf(),
+                                                           cell);
     }
   }
 }
@@ -1554,25 +1550,30 @@ nsTableFrame::DisplayGenericTablePart(nsDisplayListBuilder* aBuilder,
     // Compute background rect by iterating all cell frame.
     nsTableColGroupFrame* colGroup = static_cast<nsTableColGroupFrame*>(aFrame);
     // Collecting column index.
-    AutoTArray<int32_t, 1> colIdx;
+    AutoTArray<uint32_t, 1> colIdx;
     for (nsTableColFrame* col = colGroup->GetFirstColumn(); col; col = col->GetNextCol()) {
+      MOZ_ASSERT(colIdx.IsEmpty() ||
+                 static_cast<uint32_t>(col->GetColIndex()) > colIdx.LastElement());
       colIdx.AppendElement(col->GetColIndex());
     }
 
-    nsTableFrame* table = colGroup->GetTableFrame();
-    RowGroupArray rowGroups;
-    table->OrderRowGroups(rowGroups);
-    for (nsTableRowGroupFrame* rowGroup : rowGroups) {
-      auto offset = rowGroup->GetNormalPosition() - colGroup->GetNormalPosition();
-      if (!aBuilder->GetDirtyRect().Intersects(nsRect(offset, rowGroup->GetSize()))) {
-        continue;
+    if (!colIdx.IsEmpty()) {
+      // We have some actual cells that live inside this rowgroup.
+      nsTableFrame* table = colGroup->GetTableFrame();
+      RowGroupArray rowGroups;
+      table->OrderRowGroups(rowGroups);
+      for (nsTableRowGroupFrame* rowGroup : rowGroups) {
+        auto offset = rowGroup->GetNormalPosition() - colGroup->GetNormalPosition();
+        if (!aBuilder->GetDirtyRect().Intersects(nsRect(offset, rowGroup->GetSize()))) {
+          continue;
+        }
+        PaintRowGroupBackgroundByColIdx(rowGroup, aFrame, aBuilder, aLists, colIdx, offset);
       }
-      PaintRowGroupBackgroundByColIdx(rowGroup, aFrame, aBuilder, aLists, colIdx, offset);
     }
   } else if (aFrame->IsTableColFrame()) {
     // Compute background rect by iterating all cell frame.
     nsTableColFrame* col = static_cast<nsTableColFrame*>(aFrame);
-    AutoTArray<int32_t, 1> colIdx;
+    AutoTArray<uint32_t, 1> colIdx;
     colIdx.AppendElement(col->GetColIndex());
 
     nsTableFrame* table = col->GetTableFrame();
@@ -2576,8 +2577,8 @@ nsTableFrame::AppendFrames(ChildListID     aListID,
   printf("=== TableFrame::AppendFrames\n");
   Dump(true, true, true);
 #endif
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
   SetGeometryDirty();
 }
 
@@ -2748,8 +2749,8 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
     return;
   }
 
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
   SetGeometryDirty();
 #ifdef DEBUG_TABLE_CELLMAP
   printf("=== TableFrame::InsertFrames\n");
@@ -2837,7 +2838,7 @@ nsTableFrame::RemoveFrame(ChildListID     aListID,
                mozilla::StyleDisplay::TableColumnGroup !=
                  aOldFrame->StyleDisplay()->mDisplay,
                "Wrong list name; use kColGroupList iff colgroup");
-  nsIPresShell* shell = PresContext()->PresShell();
+  nsIPresShell* shell = PresShell();
   nsTableFrame* lastParent = nullptr;
   while (aOldFrame) {
     nsIFrame* oldFrameNextContinuation = aOldFrame->GetNextContinuation();
@@ -4232,9 +4233,8 @@ nsTableFrame::DumpRowGroup(nsIFrame* aKidFrame)
       for (nsIFrame* childFrame : cFrame->PrincipalChildList()) {
         nsTableCellFrame *cellFrame = do_QueryFrame(childFrame);
         if (cellFrame) {
-          int32_t colIndex;
-          cellFrame->GetColIndex(colIndex);
-          printf("cell(%d)=%p ", colIndex, static_cast<void*>(childFrame));
+          uint32_t colIndex = cellFrame->ColIndex();
+          printf("cell(%u)=%p ", colIndex, static_cast<void*>(childFrame));
         }
       }
       printf("\n");
@@ -8089,7 +8089,8 @@ nsTableFrame::UpdateStyleOfOwnedAnonBoxesForTableWrapper(
   nsChangeHint wrapperHint = aWrapperFrame->StyleContext()->CalcStyleDifference(
     newContext,
     &equalStructs,
-    &samePointerStructs);
+    &samePointerStructs,
+    /* aIgnoreVariables = */ true);
 
   // CalcStyleDifference will handle caching structs on the new style context,
   // but only if we're not on a style worker thread.

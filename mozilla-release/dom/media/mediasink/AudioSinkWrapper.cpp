@@ -6,6 +6,8 @@
 
 #include "AudioSink.h"
 #include "AudioSinkWrapper.h"
+#include "nsPrintfCString.h"
+#include "VideoUtils.h"
 
 namespace mozilla {
 namespace media {
@@ -242,6 +244,21 @@ AudioSinkWrapper::OnAudioEnded()
     mPlayStartTime = TimeStamp::Now();
   }
   mAudioEnded = true;
+}
+
+nsCString
+AudioSinkWrapper::GetDebugInfo()
+{
+  AssertOwnerThread();
+  auto str =
+    nsPrintfCString("AudioSinkWrapper: IsStarted=%d IsPlaying=%d AudioEnded=%d",
+                    IsStarted(),
+                    IsPlaying(),
+                    mAudioEnded);
+  if (mAudioSink) {
+    AppendStringIfNotEmpty(str, mAudioSink->GetDebugInfo());
+  }
+  return str;
 }
 
 } // namespace media

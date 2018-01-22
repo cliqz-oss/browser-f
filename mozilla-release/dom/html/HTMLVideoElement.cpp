@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsIDOMHTMLSourceElement.h"
 #include "mozilla/dom/HTMLVideoElement.h"
 #include "mozilla/dom/HTMLVideoElementBinding.h"
 #include "nsGenericHTMLElement.h"
@@ -85,7 +84,7 @@ nsresult HTMLVideoElement::GetVideoSize(nsIntSize* size)
 
 bool
 HTMLVideoElement::ParseAttribute(int32_t aNamespaceID,
-                                 nsIAtom* aAttribute,
+                                 nsAtom* aAttribute,
                                  const nsAString& aValue,
                                  nsAttrValue& aResult)
 {
@@ -106,7 +105,7 @@ HTMLVideoElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
 }
 
 NS_IMETHODIMP_(bool)
-HTMLVideoElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLVideoElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
     { &nsGkAtoms::width },

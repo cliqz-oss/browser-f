@@ -65,10 +65,6 @@
   list-style-image: url(chrome://browser/skin/notification-icons/indexedDB.svg);
 }
 
-.indexedDB-icon.blocked-permission-icon {
-  list-style-image: url(chrome://browser/skin/notification-icons/indexedDB-blocked.svg);
-}
-
 .login-icon {
   list-style-image: url(chrome://browser/skin/notification-icons/login.svg);
 }
@@ -117,6 +113,11 @@
   list-style-image: url(chrome://browser/skin/notification-icons/screen-blocked.svg);
 }
 
+#canvas-notification-icon,
+.popup-notification-icon[popupid="canvas-permissions-prompt"] {
+  list-style-image: url(chrome://browser/skin/notification-icons/canvas.svg);
+}
+
 #webRTC-preview:not([hidden]) {
   display: -moz-stack;
   border-radius: 4px;
@@ -148,6 +149,15 @@ html|*#webRTC-previewVideo {
 /* This icon has a block sign in it, so we don't need a blocked version. */
 .popup-icon {
   list-style-image: url("chrome://browser/skin/notification-icons/popup.svg");
+}
+
+.popup-subitem {
+  list-style-image: url("chrome://browser/skin/notification-icons/popup-subitem.svg");
+  margin-inline-start: 30px;
+}
+
+.identity-popup-popup-menulist {
+  min-width: 6.5em;
 }
 
 /* EME */
@@ -203,11 +213,6 @@ html|*#webRTC-previewVideo {
 .popup-notification-icon[popupid="addon-install-restart"] {
   list-style-image: url(chrome://browser/skin/addons/addon-install-restart.svg);
 }
-
-.popup-notification-icon[popupid="click-to-play-plugins"] {
-  list-style-image: url(chrome://mozapps/skin/plugins/pluginBlocked.svg);
-}
-
 /* OFFLINE APPS */
 
 .popup-notification-icon[popupid*="offline-app-requested"],
@@ -218,7 +223,12 @@ html|*#webRTC-previewVideo {
 /* PLUGINS */
 
 .plugin-icon {
-  list-style-image: url(chrome://browser/skin/notification-icons/plugin.svg);
+  list-style-image: url(chrome://mozapps/skin/plugins/plugin.svg);
+  transition: fill 1.5s;
+}
+
+.plugin-blocked-icon {
+  list-style-image: url(chrome://mozapps/skin/plugins/plugin-blocked.svg);
   transition: fill 1.5s;
 }
 
@@ -250,7 +260,7 @@ html|*#webRTC-previewVideo {
 }
 
 .plugin-blocked > .plugin-icon {
-  list-style-image: url(chrome://browser/skin/notification-icons/plugin-blocked.svg);
+  list-style-image: url(chrome://mozapps/skin/plugins/plugin-blocked.svg);
   fill: #d92215 !important;
 }
 

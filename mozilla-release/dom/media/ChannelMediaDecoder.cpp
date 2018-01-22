@@ -8,7 +8,7 @@
 #include "DecoderTraits.h"
 #include "MediaDecoderStateMachine.h"
 #include "MediaFormatReader.h"
-#include "MediaResource.h"
+#include "BaseMediaResource.h"
 #include "MediaShutdownManager.h"
 
 namespace mozilla {
@@ -30,8 +30,7 @@ ChannelMediaDecoder::ResourceCallback::Connect(ChannelMediaDecoder* aDecoder)
 {
   MOZ_ASSERT(NS_IsMainThread());
   mDecoder = aDecoder;
-  mTimer = do_CreateInstance("@mozilla.org/timer;1");
-  mTimer->SetTarget(mAbstractMainThread->AsEventTarget());
+  mTimer = NS_NewTimer(mAbstractMainThread->AsEventTarget());
 }
 
 void
@@ -59,11 +58,12 @@ ChannelMediaDecoder::ResourceCallback::GetMediaOwner() const
 }
 
 void
-ChannelMediaDecoder::ResourceCallback::NotifyNetworkError()
+ChannelMediaDecoder::ResourceCallback::NotifyNetworkError(
+  const MediaResult& aError)
 {
   MOZ_ASSERT(NS_IsMainThread());
   if (mDecoder) {
-    mDecoder->NetworkError();
+    mDecoder->NetworkError(aError);
   }
 }
 
@@ -171,6 +171,28 @@ ChannelMediaDecoder::ChannelMediaDecoder(MediaDecoderInit& aInit)
 
   // mIgnoreProgressData
   mWatchManager.Watch(mLogicallySeeking, &ChannelMediaDecoder::SeekingChanged);
+}
+
+/* static */
+already_AddRefed<ChannelMediaDecoder>
+ChannelMediaDecoder::Create(MediaDecoderInit& aInit,
+                            DecoderDoctorDiagnostics* aDiagnostics)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<ChannelMediaDecoder> decoder;
+
+  const MediaContainerType& type = aInit.mContainerType;
+  if (DecoderTraits::IsSupportedType(type)) {
+    decoder = new ChannelMediaDecoder(aInit);
+    return decoder.forget();
+  }
+
+  if (DecoderTraits::IsHttpLiveStreamingType(type)) {
+    // We don't have an HLS decoder.
+    Telemetry::Accumulate(Telemetry::MEDIA_HLS_DECODER_SUCCESS, false);
+  }
+
+  return nullptr;
 }
 
 bool
@@ -303,7 +325,7 @@ ChannelMediaDecoder::NotifyDownloadEnded(nsresult aStatus)
     // Also NotifySuspendedStatusChanged() will be called to update readyState
     // if download ended with success.
   } else if (aStatus != NS_BASE_STREAM_CLOSED) {
-    NetworkError();
+    NetworkError(MediaResult(aStatus, "Download aborted"));
   }
 }
 
@@ -558,6 +580,16 @@ ChannelMediaDecoder::MetadataLoaded(
   MediaDecoder::MetadataLoaded(Move(aInfo), Move(aTags), aEventVisibility);
   // Set mode to PLAYBACK after reading metadata.
   mResource->SetReadMode(MediaCacheStream::MODE_PLAYBACK);
+}
+
+nsCString
+ChannelMediaDecoder::GetDebugInfo()
+{
+  auto&& str = MediaDecoder::GetDebugInfo();
+  if (mResource) {
+    AppendStringIfNotEmpty(str, mResource->GetDebugInfo());
+  }
+  return str;
 }
 
 } // namespace mozilla

@@ -213,9 +213,9 @@ public:
    *
    * This code should be called only in the server mode..
    */
-  void OnAvailableLocalesChanged();
-  void OnRequestedLocalesChanged();
-  void OnLocalesChanged();
+  void AvailableLocalesChanged();
+  void RequestedLocalesChanged();
+  void LocalesChanged();
 
   /**
    * Negotiates the best locales out of an ordered list of requested locales and
@@ -306,6 +306,7 @@ private:
 
   virtual ~LocaleService();
 
+  nsAutoCStringN<16>  mDefaultLocale;
   nsTArray<nsCString> mAppLocales;
   nsTArray<nsCString> mRequestedLocales;
   nsTArray<nsCString> mAvailableLocales;

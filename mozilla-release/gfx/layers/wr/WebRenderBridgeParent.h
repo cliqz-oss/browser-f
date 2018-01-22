@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=4 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -91,21 +91,15 @@ public:
                                              const wr::IdNamespace& aIdNamespace,
                                              const TimeStamp& aTxnStartTime,
                                              const TimeStamp& aFwdTime) override;
-  mozilla::ipc::IPCResult RecvSetDisplayListSync(const gfx::IntSize& aSize,
-                                                 InfallibleTArray<WebRenderParentCommand>&& aCommands,
-                                                 InfallibleTArray<OpDestroy>&& aToDestroy,
-                                                 const uint64_t& aFwdTransactionId,
-                                                 const uint64_t& aTransactionId,
-                                                 const wr::LayoutSize& aContentSize,
-                                                 const wr::ByteBuffer& dl,
-                                                 const wr::BuiltDisplayListDescriptor& dlDesc,
-                                                 const WebRenderScrollData& aScrollData,
-                                                 nsTArray<OpUpdateResource>&& aResourceUpdates,
-                                                 nsTArray<ipc::Shmem>&& aSmallShmems,
-                                                 nsTArray<ipc::Shmem>&& aLargeShmems,
-                                                 const wr::IdNamespace& aIdNamespace,
-                                                 const TimeStamp& aTxnStartTime,
-                                                 const TimeStamp& aFwdTime) override;
+  mozilla::ipc::IPCResult RecvEmptyTransaction(const FocusTarget& aFocusTarget,
+                                               InfallibleTArray<WebRenderParentCommand>&& aCommands,
+                                               InfallibleTArray<OpDestroy>&& aToDestroy,
+                                               const uint64_t& aFwdTransactionId,
+                                               const uint64_t& aTransactionId,
+                                               const wr::IdNamespace& aIdNamespace,
+                                               const TimeStamp& aTxnStartTime,
+                                               const TimeStamp& aFwdTime) override;
+  mozilla::ipc::IPCResult RecvSetFocusTarget(const FocusTarget& aFocusTarget) override;
   mozilla::ipc::IPCResult RecvParentCommands(nsTArray<WebRenderParentCommand>&& commands) override;
   mozilla::ipc::IPCResult RecvGetSnapshot(PTextureParent* aTexture) override;
 
@@ -174,7 +168,7 @@ public:
     return mIdNamespace;
   }
 
-  void UpdateAPZ();
+  void UpdateAPZ(bool aUpdateHitTestingTree);
   const WebRenderScrollData& GetScrollData() const;
 
   void FlushRendering(bool aIsSync);
@@ -200,8 +194,7 @@ private:
                         wr::ResourceUpdateQueue& aResources);
 
   uint64_t GetLayersId() const;
-  void ProcessWebRenderParentCommands(const InfallibleTArray<WebRenderParentCommand>& aCommands,
-                                      wr::ResourceUpdateQueue& aResources);
+  void ProcessWebRenderParentCommands(const InfallibleTArray<WebRenderParentCommand>& aCommands);
 
   void ClearResources();
   uint64_t GetChildLayerObserverEpoch() const { return mChildLayerObserverEpoch; }

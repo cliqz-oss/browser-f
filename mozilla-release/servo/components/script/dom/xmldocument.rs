@@ -2,20 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use core::nonzero::NonZero;
 use document_loader::DocumentLoader;
 use dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use dom::bindings::codegen::Bindings::XMLDocumentBinding::{self, XMLDocumentMethods};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
+use dom::bindings::nonnull::NonNullJSObjectPtr;
 use dom::bindings::reflector::reflect_dom_object;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::document::{Document, DocumentSource, HasBrowsingContext, IsHTMLDocument};
 use dom::location::Location;
 use dom::node::Node;
 use dom::window::Window;
 use dom_struct::dom_struct;
-use js::jsapi::{JSContext, JSObject};
+use js::jsapi::JSContext;
 use script_traits::DocumentActivity;
 use servo_url::{MutableOrigin, ServoUrl};
 
@@ -62,20 +62,23 @@ impl XMLDocument {
                activity: DocumentActivity,
                source: DocumentSource,
                doc_loader: DocumentLoader)
-               -> Root<XMLDocument> {
+               -> DomRoot<XMLDocument> {
         let doc = reflect_dom_object(
-            box XMLDocument::new_inherited(window,
-                                           has_browsing_context,
-                                           url,
-                                           origin,
-                                           doctype,
-                                           content_type,
-                                           last_modified,
-                                           activity,
-                                           source,
-                                           doc_loader),
+            Box::new(XMLDocument::new_inherited(
+                window,
+                has_browsing_context,
+                url,
+                origin,
+                doctype,
+                content_type,
+                last_modified,
+                activity,
+                source,
+                doc_loader
+            )),
             window,
-            XMLDocumentBinding::Wrap);
+            XMLDocumentBinding::Wrap
+        );
         {
             let node = doc.upcast::<Node>();
             node.set_owner_doc(&doc.document);
@@ -86,7 +89,7 @@ impl XMLDocument {
 
 impl XMLDocumentMethods for XMLDocument {
     // https://html.spec.whatwg.org/multipage/#dom-document-location
-    fn GetLocation(&self) -> Option<Root<Location>> {
+    fn GetLocation(&self) -> Option<DomRoot<Location>> {
         self.upcast::<Document>().GetLocation()
     }
 
@@ -97,7 +100,7 @@ impl XMLDocumentMethods for XMLDocument {
 
     #[allow(unsafe_code)]
     // https://html.spec.whatwg.org/multipage/#dom-tree-accessors:dom-document-nameditem-filter
-    unsafe fn NamedGetter(&self, _cx: *mut JSContext, name: DOMString) -> Option<NonZero<*mut JSObject>> {
+    unsafe fn NamedGetter(&self, _cx: *mut JSContext, name: DOMString) -> Option<NonNullJSObjectPtr> {
         self.upcast::<Document>().NamedGetter(_cx, name)
     }
 }

@@ -69,10 +69,16 @@
 
 using namespace mozilla;
 
-/* static */ Thread::tid_t
+/* static */ int
 Thread::GetCurrentId()
 {
   return gettid();
+}
+
+void*
+GetStackTop(void* aGuess)
+{
+  return aGuess;
 }
 
 static void
@@ -102,6 +108,11 @@ PopulateRegsFromContext(Registers& aRegs, ucontext_t* aContext)
   aRegs.mSP = reinterpret_cast<Address>(mcontext.sp);
   aRegs.mFP = reinterpret_cast<Address>(mcontext.regs[29]);
   aRegs.mLR = reinterpret_cast<Address>(mcontext.regs[30]);
+#elif defined(GP_ARCH_mips64)
+  aRegs.mPC = reinterpret_cast<Address>(mcontext.pc);
+  aRegs.mSP = reinterpret_cast<Address>(mcontext.gregs[29]);
+  aRegs.mFP = reinterpret_cast<Address>(mcontext.gregs[30]);
+
 #else
 # error "bad platform"
 #endif
@@ -360,7 +371,7 @@ Sampler::SuspendAndSampleAndResumeThread(PSLockRef aLock,
     }
     MOZ_ASSERT(r == 0);
     break;
-   }
+  }
 
   // The profiler's critical section ends here.  After this point, none of the
   // critical section limitations documented above apply.

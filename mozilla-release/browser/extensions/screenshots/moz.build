@@ -57,6 +57,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/bn_BD/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["bs"] += [
+  'webextension/_locales/bs/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ca"] += [
   'webextension/_locales/ca/messages.json'
 ]
@@ -129,6 +133,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/fa/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ff"] += [
+  'webextension/_locales/ff/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["fi"] += [
   'webextension/_locales/fi/messages.json'
 ]
@@ -173,6 +181,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/hy_AM/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ia"] += [
+  'webextension/_locales/ia/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["id"] += [
   'webextension/_locales/id/messages.json'
 ]
@@ -199,6 +211,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["km"] += [
   'webextension/_locales/km/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["kn"] += [
+  'webextension/_locales/kn/messages.json'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ko"] += [
@@ -364,12 +380,13 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["icons"] 
   'webextension/icons/cancel.svg',
   'webextension/icons/cloud.svg',
   'webextension/icons/copy.png',
+  'webextension/icons/copy.svg',
   'webextension/icons/done.svg',
   'webextension/icons/download.svg',
+  'webextension/icons/help-16.svg',
   'webextension/icons/icon-16-v2.svg',
   'webextension/icons/icon-32-v2.svg',
   'webextension/icons/icon-highlight-32-v2.svg',
-  'webextension/icons/icon-starred-32-v2.svg',
   'webextension/icons/icon-welcome-face-without-eyes.svg',
   'webextension/icons/menu-fullpage.svg',
   'webextension/icons/menu-myshot-white.svg',

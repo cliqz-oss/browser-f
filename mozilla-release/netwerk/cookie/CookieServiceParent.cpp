@@ -91,6 +91,8 @@ GetInfoFromCookie(nsCookie         *aCookie,
   aCookieStruct.creationTime() = aCookie->CreationTime();
   aCookieStruct.isSession() = aCookie->IsSession();
   aCookieStruct.isSecure() = aCookie->IsSecure();
+  aCookieStruct.isHttpOnly() = aCookie->IsHttpOnly();
+  aCookieStruct.sameSite() = aCookie->SameSite();
 }
 
 void
@@ -139,9 +141,7 @@ CookieServiceParent::AddCookie(nsICookie *aCookie)
   OriginAttributes attrs = cookie->OriginAttributesRef();
   CookieStruct cookieStruct;
   GetInfoFromCookie(cookie, cookieStruct);
-  if (!cookie->IsHttpOnly()) {
-    Unused << SendAddCookie(cookieStruct, attrs);
-  }
+  Unused << SendAddCookie(cookieStruct, attrs);
 }
 
 void
@@ -186,6 +186,7 @@ CookieServiceParent::SerialializeCookieList(const nsTArray<nsCookie*> &aFoundCoo
     cookieStruct->creationTime() = cookie->CreationTime();
     cookieStruct->isSession() = cookie->IsSession();
     cookieStruct->isSecure() = cookie->IsSecure();
+    cookieStruct->sameSite() = cookie->SameSite();
   }
 }
 

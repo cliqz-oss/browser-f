@@ -137,6 +137,7 @@ nsFaviconService::nsFaviconService()
   : mFailedFaviconSerial(0)
   , mFailedFavicons(MAX_FAILED_FAVICONS / 2)
   , mUnassociatedIcons(UNASSOCIATED_FAVICONS_LENGTH)
+  , mDefaultIconURIPreferredSize(UINT16_MAX)
 {
   NS_ASSERTION(!gFaviconService,
                "Attempting to create two instances of the service!");
@@ -167,7 +168,7 @@ nsFaviconService::Init()
   mDB = Database::GetDatabase();
   NS_ENSURE_STATE(mDB);
 
-  mExpireUnassociatedIconsTimer = do_CreateInstance("@mozilla.org/timer;1");
+  mExpireUnassociatedIconsTimer = NS_NewTimer();
   NS_ENSURE_STATE(mExpireUnassociatedIconsTimer);
 
   // Check if there are still icon payloads to be converted.
@@ -317,6 +318,7 @@ nsFaviconService::SetAndFetchFaviconForPage(nsIURI* aPageURI,
                                             uint32_t aFaviconLoadType,
                                             nsIFaviconDataCallback* aCallback,
                                             nsIPrincipal* aLoadingPrincipal,
+                                            uint64_t aRequestContextID,
                                             mozIPlacesPendingOperation **_canceler)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -401,13 +403,14 @@ nsFaviconService::SetAndFetchFaviconForPage(nsIURI* aPageURI,
   // for database size and UX concerns.
   // Don't store favicons for error pages too.
   if (icon.spec.Equals(page.spec) ||
-      icon.spec.Equals(FAVICON_ERRORPAGE_URL)) {
+      icon.spec.EqualsLiteral(FAVICON_ERRORPAGE_URL)) {
     return NS_OK;
   }
 
   RefPtr<AsyncFetchAndSetIconForPage> event =
     new AsyncFetchAndSetIconForPage(icon, page, loadPrivate,
-                                    aCallback, aLoadingPrincipal);
+                                    aCallback, aLoadingPrincipal,
+                                    aRequestContextID);
 
   // Get the target thread and start the work.
   // DB will be updated and observers notified when data has finished loading.
@@ -928,9 +931,15 @@ nsFaviconService::ConvertUnsupportedPayloads(mozIStorageConnection* aDBConn)
 }
 
 NS_IMETHODIMP
+nsFaviconService::SetDefaultIconURIPreferredSize(uint16_t aDefaultSize) {
+  mDefaultIconURIPreferredSize = aDefaultSize > 0 ? aDefaultSize : UINT16_MAX;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsFaviconService::PreferredSizeFromURI(nsIURI* aURI, uint16_t* _size)
 {
-  *_size = UINT16_MAX;
+  *_size = mDefaultIconURIPreferredSize;
   nsAutoCString ref;
   // Check for a ref first.
   if (NS_FAILED(aURI->GetRef(ref)) || ref.Length() == 0)

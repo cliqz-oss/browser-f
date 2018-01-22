@@ -228,7 +228,7 @@ HashCompleter.prototype = {
       // Using the V4 backoff algorithm for both V2 and V4. See bug 1273398.
       this._backoffs[aGethashUrl] = new jslib.RequestBackoffV4(
         10 /* keep track of max requests */,
-        0  /* don't throttle on successful requests per time period */);
+        0 /* don't throttle on successful requests per time period */);
     }
 
     if (!this._nextGethashTimeMs[aGethashUrl]) {
@@ -322,6 +322,7 @@ function HashCompleterRequest(aCompleter, aGethashUrl) {
   this._shuttingDown = false;
   this.gethashUrl = aGethashUrl;
 
+  this.provider = "";
   // Multiple partial hashes can be associated with the same tables
   // so we use a map here.
   this.tableNames = new Map();
@@ -357,6 +358,10 @@ HashCompleterRequest.prototype = {
       this.tableNames.set(aTableName);
 
       // Assuming all tables with the same gethash URL have the same provider
+      if (this.provider == "") {
+        this.provider = gUrlUtil.getProvider(aTableName);
+      }
+
       if (this.telemetryProvider == "") {
         this.telemetryProvider = gUrlUtil.getTelemetryProvider(aTableName);
       }
@@ -430,16 +435,20 @@ HashCompleterRequest.prototype = {
     let loadFlags = Ci.nsIChannel.INHIBIT_CACHING |
                     Ci.nsIChannel.LOAD_BYPASS_CACHE;
 
-    this.actualGethashUrl = this.gethashUrl;
+    this.request = {
+      url: this.gethashUrl,
+      body: ""
+    };
+
     if (this.isV4) {
       // As per spec, we add the request payload to the gethash url.
-      this.actualGethashUrl += "&$req=" + this.buildRequestV4();
+      this.request.url += "&$req=" + this.buildRequestV4();
     }
 
-    log("actualGethashUrl: " + this.actualGethashUrl);
+    log("actualGethashUrl: " + this.request.url);
 
     let channel = NetUtil.newChannel({
-      uri: this.actualGethashUrl,
+      uri: this.request.url,
       loadUsingSystemPrincipal: true
     });
     channel.loadFlags = loadFlags;
@@ -669,6 +678,13 @@ HashCompleterRequest.prototype = {
   // This adds a complete hash to any entry in |this._requests| that matches
   // the hash.
   handleItem: function HCR_handleItem(aData) {
+    let provider = gUrlUtil.getProvider(aData.tableName);
+    if (provider != this.provider) {
+      log("Ignoring table " + aData.tableName + " since it belongs to " + provider +
+          " while the response came from " + this.provider + ".");
+      return;
+    }
+
     for (let i = 0; i < this._requests.length; i++) {
       let request = this._requests[i];
       if (aData.completeHash.startsWith(request.partialHash)) {
@@ -764,13 +780,14 @@ HashCompleterRequest.prototype = {
       }
     }
     let success = Components.isSuccessCode(aStatusCode);
-    log("Received a " + httpStatus + " status code from the gethash server (success=" + success + ").");
+    log("Received a " + httpStatus + " status code from the " + this.provider +
+        " gethash server (success=" + success + ").");
 
     Services.telemetry.getKeyedHistogramById("URLCLASSIFIER_COMPLETE_REMOTE_STATUS2").
       add(this.telemetryProvider, httpStatusToBucket(httpStatus));
     if (httpStatus == 400) {
       dump("Safe Browsing server returned a 400 during completion: request= " +
-           this.actualGethashUrl + "\n");
+           this.request.url + ",payload= " + this.request.body + "\n");
     }
 
     Services.telemetry.getKeyedHistogramById("URLCLASSIFIER_COMPLETE_TIMEOUT2").

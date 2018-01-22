@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -318,7 +318,7 @@ nsBoxFrame::GetInitialHAlignment(nsBoxFrame::Halignment& aHalign)
   // Now that the deprecated stuff is out of the way, we move on to check the appropriate
   // attribute.  For horizontal boxes, we are checking the PACK attribute.  For vertical boxes
   // we are checking the ALIGN attribute.
-  nsIAtom* attrName = IsXULHorizontal() ? nsGkAtoms::pack : nsGkAtoms::align;
+  nsAtom* attrName = IsXULHorizontal() ? nsGkAtoms::pack : nsGkAtoms::align;
   static nsIContent::AttrValuesArray strings[] =
     {&nsGkAtoms::_empty, &nsGkAtoms::start, &nsGkAtoms::center, &nsGkAtoms::end, nullptr};
   static const Halignment values[] =
@@ -393,7 +393,7 @@ nsBoxFrame::GetInitialVAlignment(nsBoxFrame::Valignment& aValign)
   // Now that the deprecated stuff is out of the way, we move on to check the appropriate
   // attribute.  For horizontal boxes, we are checking the ALIGN attribute.  For vertical boxes
   // we are checking the PACK attribute.
-  nsIAtom* attrName = IsXULHorizontal() ? nsGkAtoms::align : nsGkAtoms::pack;
+  nsAtom* attrName = IsXULHorizontal() ? nsGkAtoms::align : nsGkAtoms::pack;
   static nsIContent::AttrValuesArray strings[] =
     {&nsGkAtoms::_empty, &nsGkAtoms::start, &nsGkAtoms::center,
      &nsGkAtoms::baseline, &nsGkAtoms::end, nullptr};
@@ -956,7 +956,7 @@ nsBoxFrame::DoXULLayout(nsBoxLayoutState& aState)
 }
 
 void
-nsBoxFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsBoxFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   // unregister access key
   RegUnregAccessKey(false);
@@ -964,7 +964,7 @@ nsBoxFrame::DestroyFrom(nsIFrame* aDestructRoot)
   // clean up the container box's layout manager and child boxes
   SetXULLayoutManager(nullptr);
 
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 #ifdef DEBUG_LAYOUT
@@ -1030,9 +1030,8 @@ nsBoxFrame::RemoveFrame(ChildListID     aListID,
   aOldFrame->Destroy();
 
   // mark us dirty and generate a reflow command
-  PresContext()->PresShell()->
-    FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                     NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
 void
@@ -1067,9 +1066,8 @@ nsBoxFrame::InsertFrames(ChildListID     aListID,
        SetDebugOnChildList(state, mFrames.FirstChild(), true);
 #endif
 
-   PresContext()->PresShell()->
-     FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                      NS_FRAME_HAS_DIRTY_CHILDREN);
+   PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                 NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
 
@@ -1101,9 +1099,8 @@ nsBoxFrame::AppendFrames(ChildListID     aListID,
 
    // XXXbz why is this NS_FRAME_FIRST_REFLOW check here?
    if (!(GetStateBits() & NS_FRAME_FIRST_REFLOW)) {
-     PresContext()->PresShell()->
-       FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                        NS_FRAME_HAS_DIRTY_CHILDREN);
+     PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                   NS_FRAME_HAS_DIRTY_CHILDREN);
    }
 }
 
@@ -1117,7 +1114,7 @@ nsBoxFrame::GetContentInsertionFrame()
 
 nsresult
 nsBoxFrame::AttributeChanged(int32_t aNameSpaceID,
-                             nsIAtom* aAttribute,
+                             nsAtom* aAttribute,
                              int32_t aModType)
 {
   nsresult rv = nsContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -1228,8 +1225,8 @@ nsBoxFrame::AttributeChanged(int32_t aNameSpaceID,
       UpdateMouseThrough();
     }
 
-    PresContext()->PresShell()->
-      FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eStyleChange,
+                                  NS_FRAME_IS_DIRTY);
   }
   else if (aAttribute == nsGkAtoms::ordinal) {
     nsIFrame* parent = GetParentXULBox(this);
@@ -1242,9 +1239,8 @@ nsBoxFrame::AttributeChanged(int32_t aNameSpaceID,
         StyleDisplay()->mDisplay != mozilla::StyleDisplay::MozPopup) {
       parent->XULRelayoutChildAtOrdinal(this);
       // XXXldb Should this instead be a tree change on the child or parent?
-      PresContext()->PresShell()->
-        FrameNeedsReflow(parent, nsIPresShell::eStyleChange,
-                         NS_FRAME_IS_DIRTY);
+      PresShell()->FrameNeedsReflow(parent, nsIPresShell::eStyleChange,
+                                    NS_FRAME_IS_DIRTY);
     }
   }
   // If the accesskey changed, register for the new value
@@ -1256,8 +1252,8 @@ nsBoxFrame::AttributeChanged(int32_t aNameSpaceID,
            mContent->IsXULElement(nsGkAtoms::tree)) {
     // Reflow ourselves and all our children if "rows" changes, since
     // nsTreeBodyFrame's layout reads this from its parent (this frame).
-    PresContext()->PresShell()->
-      FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
+    PresShell()->FrameNeedsReflow(this, nsIPresShell::eStyleChange,
+                                  NS_FRAME_IS_DIRTY);
   }
 
   return rv;
@@ -1330,7 +1326,7 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
   }
 
-  nsDisplayListCollection tempLists;
+  nsDisplayListCollection tempLists(aBuilder);
   const nsDisplayListSet& destination = forceLayer ? tempLists : aLists;
 
   DisplayBorderBackgroundOutline(aBuilder, destination);
@@ -1360,7 +1356,7 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     // and merge them into a single Content() list. This can cause us
     // to violate CSS stacking order, but forceLayer is a magic
     // XUL-only extension anyway.
-    nsDisplayList masterList;
+    nsDisplayList masterList(aBuilder);
     masterList.AppendToTop(tempLists.BorderBackground());
     masterList.AppendToTop(tempLists.BlockBorderBackgrounds());
     masterList.AppendToTop(tempLists.Floats());
@@ -1371,11 +1367,12 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     const ActiveScrolledRoot* ownLayerASR = contASRTracker->GetContainerASR();
 
     DisplayListClipState::AutoSaveRestore ownLayerClipState(aBuilder);
-    ownLayerClipState.ClearUpToASR(ownLayerASR);
 
     // Wrap the list to make it its own layer
     aLists.Content()->AppendNewToTop(new (aBuilder)
-      nsDisplayOwnLayer(aBuilder, this, &masterList, ownLayerASR));
+      nsDisplayOwnLayer(aBuilder, this, &masterList, ownLayerASR, 0,
+                        mozilla::layers::FrameMetrics::NULL_SCROLL_ID,
+                        mozilla::layers::ScrollThumbData{}, true, true));
   }
 }
 

@@ -706,9 +706,6 @@ var Util = function UtilClosure() {
     }
     return result;
   };
-  Util.sign = function Util_sign(num) {
-    return num < 0 ? -1 : 1;
-  };
   var ROMAN_NUMBER_MAP = ['', 'C', 'CC', 'CCC', 'CD', 'D', 'DC', 'DCC', 'DCCC', 'CM', '', 'X', 'XX', 'XXX', 'XL', 'L', 'LX', 'LXX', 'LXXX', 'XC', '', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'];
   Util.toRoman = function Util_toRoman(number, lowerCase) {
     assert(Number.isInteger(number) && number > 0, 'The number should be a positive integer.');
@@ -1459,7 +1456,7 @@ exports.unreachable = unreachable;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.SimpleXMLParser = exports.DOMSVGFactory = exports.DOMCMapReaderFactory = exports.DOMCanvasFactory = exports.DEFAULT_LINK_REL = exports.getDefaultSetting = exports.LinkTarget = exports.getFilenameFromUrl = exports.isValidUrl = exports.isExternalLinkTargetSet = exports.addLinkAttributes = exports.RenderingCancelledException = exports.CustomStyle = undefined;
+exports.SimpleXMLParser = exports.DOMSVGFactory = exports.DOMCMapReaderFactory = exports.DOMCanvasFactory = exports.DEFAULT_LINK_REL = exports.getDefaultSetting = exports.LinkTarget = exports.getFilenameFromUrl = exports.isExternalLinkTargetSet = exports.addLinkAttributes = exports.RenderingCancelledException = exports.CustomStyle = undefined;
 
 var _util = __w_pdfjs_require__(0);
 
@@ -1511,6 +1508,9 @@ class DOMCMapReaderFactory {
     this.isCompressed = isCompressed;
   }
   fetch({ name }) {
+    if (!this.baseUrl) {
+      return Promise.reject(new Error('CMap baseUrl must be specified, ' + 'see "PDFJS.cMapUrl" (and also "PDFJS.cMapPacked").'));
+    }
     if (!name) {
       return Promise.reject(new Error('CMap name must be specified.'));
     }
@@ -1789,8 +1789,6 @@ function getDefaultSetting(id) {
       return globalSettings ? globalSettings.externalLinkRel : DEFAULT_LINK_REL;
     case 'enableStats':
       return !!(globalSettings && globalSettings.enableStats);
-    case 'pdfjsNext':
-      return !!(globalSettings && globalSettings.pdfjsNext);
     default:
       throw new Error('Unknown default setting: ' + id);
   }
@@ -1807,16 +1805,10 @@ function isExternalLinkTargetSet() {
       return true;
   }
 }
-function isValidUrl(url, allowRelative) {
-  (0, _util.deprecated)('isValidUrl(), please use createValidAbsoluteUrl() instead.');
-  var baseUrl = allowRelative ? 'http://example.com' : null;
-  return (0, _util.createValidAbsoluteUrl)(url, baseUrl) !== null;
-}
 exports.CustomStyle = CustomStyle;
 exports.RenderingCancelledException = RenderingCancelledException;
 exports.addLinkAttributes = addLinkAttributes;
 exports.isExternalLinkTargetSet = isExternalLinkTargetSet;
-exports.isValidUrl = isValidUrl;
 exports.getFilenameFromUrl = getFilenameFromUrl;
 exports.LinkTarget = LinkTarget;
 exports.getDefaultSetting = getDefaultSetting;
@@ -1845,7 +1837,7 @@ module.exports = typeof window !== 'undefined' && window.Math === Math ? window 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.build = exports.version = exports._UnsupportedManager = exports.setPDFNetworkStreamClass = exports.PDFPageProxy = exports.PDFDocumentProxy = exports.PDFWorker = exports.PDFDataRangeTransport = exports.LoopbackPort = exports.getDocument = undefined;
+exports.build = exports.version = exports.setPDFNetworkStreamClass = exports.PDFPageProxy = exports.PDFDocumentProxy = exports.PDFWorker = exports.PDFDataRangeTransport = exports.LoopbackPort = exports.getDocument = undefined;
 
 var _util = __w_pdfjs_require__(0);
 
@@ -1877,25 +1869,8 @@ var PDFNetworkStream;
 function setPDFNetworkStreamClass(cls) {
   PDFNetworkStream = cls;
 }
-function getDocument(src, pdfDataRangeTransport, passwordCallback, progressCallback) {
+function getDocument(src) {
   var task = new PDFDocumentLoadingTask();
-  if (arguments.length > 1) {
-    (0, _util.deprecated)('getDocument is called with pdfDataRangeTransport, ' + 'passwordCallback or progressCallback argument');
-  }
-  if (pdfDataRangeTransport) {
-    if (!(pdfDataRangeTransport instanceof PDFDataRangeTransport)) {
-      pdfDataRangeTransport = Object.create(pdfDataRangeTransport);
-      pdfDataRangeTransport.length = src.length;
-      pdfDataRangeTransport.initialData = src.initialData;
-      if (!pdfDataRangeTransport.abort) {
-        pdfDataRangeTransport.abort = function () {};
-      }
-    }
-    src = Object.create(src);
-    src.range = pdfDataRangeTransport;
-  }
-  task.onPassword = passwordCallback || null;
-  task.onProgress = progressCallback || null;
   var source;
   if (typeof src === 'string') {
     source = { url: src };
@@ -1946,12 +1921,8 @@ function getDocument(src, pdfDataRangeTransport, passwordCallback, progressCallb
   }
   params.rangeChunkSize = params.rangeChunkSize || DEFAULT_RANGE_CHUNK_SIZE;
   params.ignoreErrors = params.stopAtErrors !== true;
-  if (params.disableNativeImageDecoder !== undefined) {
-    (0, _util.deprecated)('parameter disableNativeImageDecoder, ' + 'use nativeImageDecoderSupport instead');
-  }
-  params.nativeImageDecoderSupport = params.nativeImageDecoderSupport || (params.disableNativeImageDecoder === true ? _util.NativeImageDecoding.NONE : _util.NativeImageDecoding.DECODE);
-  if (params.nativeImageDecoderSupport !== _util.NativeImageDecoding.DECODE && params.nativeImageDecoderSupport !== _util.NativeImageDecoding.NONE && params.nativeImageDecoderSupport !== _util.NativeImageDecoding.DISPLAY) {
-    (0, _util.warn)('Invalid parameter nativeImageDecoderSupport: ' + 'need a state of enum {NativeImageDecoding}');
+  const nativeImageDecoderValues = Object.values(_util.NativeImageDecoding);
+  if (params.nativeImageDecoderSupport === undefined || !nativeImageDecoderValues.includes(params.nativeImageDecoderSupport)) {
     params.nativeImageDecoderSupport = _util.NativeImageDecoding.DECODE;
   }
   if (!worker) {
@@ -1990,6 +1961,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
   if (worker.destroyed) {
     return Promise.reject(new Error('Worker was destroyed'));
   }
+  let apiVersion = '2.0.106';
   source.disableAutoFetch = (0, _dom_utils.getDefaultSetting)('disableAutoFetch');
   source.disableStream = (0, _dom_utils.getDefaultSetting)('disableStream');
   source.chunkedViewerLoading = !!pdfDataRangeTransport;
@@ -1999,6 +1971,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
   }
   return worker.messageHandler.sendWithPromise('GetDocRequest', {
     docId,
+    apiVersion,
     source: {
       data: source.data,
       url: source.url,
@@ -2140,7 +2113,7 @@ var PDFDocumentProxy = function PDFDocumentProxyClosure() {
     getAttachments: function PDFDocumentProxy_getAttachments() {
       return this.transport.getAttachments();
     },
-    getJavaScript: function PDFDocumentProxy_getJavaScript() {
+    getJavaScript() {
       return this.transport.getJavaScript();
     },
     getOutline: function PDFDocumentProxy_getOutline() {
@@ -2260,10 +2233,6 @@ var PDFPageProxy = function PDFPageProxyClosure() {
       }
       intentState.renderTasks.push(internalRenderTask);
       var renderTask = internalRenderTask.task;
-      if (params.continueCallback) {
-        (0, _util.deprecated)('render is used with continueCallback parameter');
-        renderTask.onContinue = params.continueCallback;
-      }
       intentState.displayReadyCapability.promise.then(transparency => {
         if (this.pendingCleanup) {
           complete();
@@ -2365,10 +2334,6 @@ var PDFPageProxy = function PDFPageProxyClosure() {
       this.annotationsPromise = null;
       this.pendingCleanup = false;
       return Promise.all(waitOn);
-    },
-    destroy() {
-      (0, _util.deprecated)('page destroy method, use cleanup() instead');
-      this.cleanup();
     },
     cleanup: function PDFPageProxy_cleanup() {
       this.pendingCleanup = true;
@@ -2882,7 +2847,7 @@ var WorkerTransport = function WorkerTransportClosure() {
               };
             }
             var font = new _font_loader.FontFaceObject(exportedData, {
-              isEvalSuported: (0, _dom_utils.getDefaultSetting)('isEvalSupported'),
+              isEvalSupported: (0, _dom_utils.getDefaultSetting)('isEvalSupported'),
               disableFontFace: (0, _dom_utils.getDefaultSetting)('disableFontFace'),
               fontRegistry
             });
@@ -2957,16 +2922,14 @@ var WorkerTransport = function WorkerTransportClosure() {
           }
         }
       }, this);
-      messageHandler.on('UnsupportedFeature', function transportUnsupportedFeature(data) {
+      messageHandler.on('UnsupportedFeature', function (data) {
         if (this.destroyed) {
           return;
         }
-        var featureId = data.featureId;
-        var loadingTask = this.loadingTask;
+        let loadingTask = this.loadingTask;
         if (loadingTask.onUnsupportedFeature) {
-          loadingTask.onUnsupportedFeature(featureId);
+          loadingTask.onUnsupportedFeature(data.featureId);
         }
-        _UnsupportedManager.notify(featureId);
       }, this);
       messageHandler.on('JpegDecode', function (data) {
         if (this.destroyed) {
@@ -3293,24 +3256,10 @@ var InternalRenderTask = function InternalRenderTaskClosure() {
   };
   return InternalRenderTask;
 }();
-var _UnsupportedManager = function UnsupportedManagerClosure() {
-  var listeners = [];
-  return {
-    listen(cb) {
-      (0, _util.deprecated)('Global UnsupportedManager.listen is used: ' + ' use PDFDocumentLoadingTask.onUnsupportedFeature instead');
-      listeners.push(cb);
-    },
-    notify(featureId) {
-      for (var i = 0, ii = listeners.length; i < ii; i++) {
-        listeners[i](featureId);
-      }
-    }
-  };
-}();
 var version, build;
 {
-  exports.version = version = '1.9.583';
-  exports.build = build = 'd7b37ae7';
+  exports.version = version = '2.0.106';
+  exports.build = build = '0052dc2b';
 }
 exports.getDocument = getDocument;
 exports.LoopbackPort = LoopbackPort;
@@ -3319,7 +3268,6 @@ exports.PDFWorker = PDFWorker;
 exports.PDFDocumentProxy = PDFDocumentProxy;
 exports.PDFPageProxy = PDFPageProxy;
 exports.setPDFNetworkStreamClass = setPDFNetworkStreamClass;
-exports._UnsupportedManager = _UnsupportedManager;
 exports.version = version;
 exports.build = build;
 
@@ -3768,10 +3716,6 @@ class Metadata {
   has(name) {
     return typeof this._metadata[name] !== 'undefined';
   }
-  get metadata() {
-    (0, _util.deprecated)('`metadata` getter; use `getAll()` instead.');
-    return this.getAll();
-  }
 }
 exports.Metadata = Metadata;
 
@@ -3824,6 +3768,10 @@ class AnnotationElementFactory {
         return new SquareAnnotationElement(parameters);
       case _util.AnnotationType.CIRCLE:
         return new CircleAnnotationElement(parameters);
+      case _util.AnnotationType.POLYLINE:
+        return new PolylineAnnotationElement(parameters);
+      case _util.AnnotationType.POLYGON:
+        return new PolygonAnnotationElement(parameters);
       case _util.AnnotationType.HIGHLIGHT:
         return new HighlightAnnotationElement(parameters);
       case _util.AnnotationType.UNDERLINE:
@@ -4129,7 +4077,7 @@ class PopupAnnotationElement extends AnnotationElement {
     super(parameters, isRenderable);
   }
   render() {
-    const IGNORE_TYPES = ['Line', 'Square', 'Circle'];
+    const IGNORE_TYPES = ['Line', 'Square', 'Circle', 'PolyLine', 'Polygon'];
     this.container.className = 'popupAnnotation';
     if (IGNORE_TYPES.indexOf(this.data.parentType) >= 0) {
       return this.container;
@@ -4303,6 +4251,46 @@ class CircleAnnotationElement extends AnnotationElement {
     this.container.append(svg);
     this._createPopup(this.container, circle, data);
     return this.container;
+  }
+}
+class PolylineAnnotationElement extends AnnotationElement {
+  constructor(parameters) {
+    let isRenderable = !!(parameters.data.hasPopup || parameters.data.title || parameters.data.contents);
+    super(parameters, isRenderable, true);
+    this.containerClassName = 'polylineAnnotation';
+    this.svgElementName = 'svg:polyline';
+  }
+  render() {
+    this.container.className = this.containerClassName;
+    let data = this.data;
+    let width = data.rect[2] - data.rect[0];
+    let height = data.rect[3] - data.rect[1];
+    let svg = this.svgFactory.create(width, height);
+    let vertices = data.vertices;
+    let points = [];
+    for (let i = 0, ii = vertices.length; i < ii; i++) {
+      let x = vertices[i].x - data.rect[0];
+      let y = data.rect[3] - vertices[i].y;
+      points.push(x + ',' + y);
+    }
+    points = points.join(' ');
+    let borderWidth = data.borderStyle.width;
+    let polyline = this.svgFactory.createElement(this.svgElementName);
+    polyline.setAttribute('points', points);
+    polyline.setAttribute('stroke-width', borderWidth);
+    polyline.setAttribute('stroke', 'transparent');
+    polyline.setAttribute('fill', 'none');
+    svg.appendChild(polyline);
+    this.container.append(svg);
+    this._createPopup(this.container, polyline, data);
+    return this.container;
+  }
+}
+class PolygonAnnotationElement extends PolylineAnnotationElement {
+  constructor(parameters) {
+    super(parameters);
+    this.containerClassName = 'polygonAnnotation';
+    this.svgElementName = 'svg:polygon';
   }
 }
 class HighlightAnnotationElement extends AnnotationElement {
@@ -5005,8 +4993,8 @@ exports.SVGGraphics = SVGGraphics;
 "use strict";
 
 
-var pdfjsVersion = '1.9.583';
-var pdfjsBuild = 'd7b37ae7';
+var pdfjsVersion = '2.0.106';
+var pdfjsBuild = '0052dc2b';
 var pdfjsSharedUtil = __w_pdfjs_require__(0);
 var pdfjsDisplayGlobal = __w_pdfjs_require__(13);
 var pdfjsDisplayAPI = __w_pdfjs_require__(3);
@@ -5034,7 +5022,6 @@ exports.NativeImageDecoding = pdfjsSharedUtil.NativeImageDecoding;
 exports.UnexpectedResponseException = pdfjsSharedUtil.UnexpectedResponseException;
 exports.OPS = pdfjsSharedUtil.OPS;
 exports.UNSUPPORTED_FEATURES = pdfjsSharedUtil.UNSUPPORTED_FEATURES;
-exports.isValidUrl = pdfjsDisplayDOMUtils.isValidUrl;
 exports.createValidAbsoluteUrl = pdfjsSharedUtil.createValidAbsoluteUrl;
 exports.createObjectURL = pdfjsSharedUtil.createObjectURL;
 exports.removeNullCharacters = pdfjsSharedUtil.removeNullCharacters;
@@ -8104,13 +8091,13 @@ if (isReadableStreamSupported) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.PDFJS = exports.isWorker = exports.globalScope = undefined;
-
-var _api = __w_pdfjs_require__(3);
+exports.PDFJS = exports.globalScope = undefined;
 
 var _dom_utils = __w_pdfjs_require__(1);
 
 var _util = __w_pdfjs_require__(0);
+
+var _api = __w_pdfjs_require__(3);
 
 var _annotation_layer = __w_pdfjs_require__(6);
 
@@ -8126,14 +8113,13 @@ var _svg = __w_pdfjs_require__(8);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-var isWorker = typeof window === 'undefined';
 if (!_global_scope2.default.PDFJS) {
   _global_scope2.default.PDFJS = {};
 }
 var PDFJS = _global_scope2.default.PDFJS;
 {
-  PDFJS.version = '1.9.583';
-  PDFJS.build = 'd7b37ae7';
+  PDFJS.version = '2.0.106';
+  PDFJS.build = '0052dc2b';
 }
 PDFJS.pdfBug = false;
 if (PDFJS.verbosity !== undefined) {
@@ -8193,13 +8179,10 @@ PDFJS.disableWebGL = PDFJS.disableWebGL === undefined ? true : PDFJS.disableWebG
 PDFJS.externalLinkTarget = PDFJS.externalLinkTarget === undefined ? _dom_utils.LinkTarget.NONE : PDFJS.externalLinkTarget;
 PDFJS.externalLinkRel = PDFJS.externalLinkRel === undefined ? _dom_utils.DEFAULT_LINK_REL : PDFJS.externalLinkRel;
 PDFJS.isEvalSupported = PDFJS.isEvalSupported === undefined ? true : PDFJS.isEvalSupported;
-PDFJS.pdfjsNext = PDFJS.pdfjsNext === undefined ? false : PDFJS.pdfjsNext;
-;
 PDFJS.getDocument = _api.getDocument;
 PDFJS.LoopbackPort = _api.LoopbackPort;
 PDFJS.PDFDataRangeTransport = _api.PDFDataRangeTransport;
 PDFJS.PDFWorker = _api.PDFWorker;
-PDFJS.hasCanvasTypedArrays = true;
 PDFJS.CustomStyle = _dom_utils.CustomStyle;
 PDFJS.LinkTarget = _dom_utils.LinkTarget;
 PDFJS.addLinkAttributes = _dom_utils.addLinkAttributes;
@@ -8209,9 +8192,7 @@ PDFJS.AnnotationLayer = _annotation_layer.AnnotationLayer;
 PDFJS.renderTextLayer = _text_layer.renderTextLayer;
 PDFJS.Metadata = _metadata.Metadata;
 PDFJS.SVGGraphics = _svg.SVGGraphics;
-PDFJS.UnsupportedManager = _api._UnsupportedManager;
 exports.globalScope = _global_scope2.default;
-exports.isWorker = isWorker;
 exports.PDFJS = PDFJS;
 
 /***/ }),

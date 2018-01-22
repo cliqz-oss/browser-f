@@ -104,8 +104,6 @@ extern nsresult nsStringInputStreamConstructor(nsISupports*, REFNSIID, void**);
 #include "nsSecurityConsoleMessage.h"
 #include "nsMessageLoop.h"
 
-#include "nsStatusReporterManager.h"
-
 #include <locale.h>
 #include "mozilla/Services.h"
 #include "mozilla/Omnijar.h"
@@ -130,7 +128,6 @@ extern nsresult nsStringInputStreamConstructor(nsISupports*, REFNSIID, void**);
 #include "mozilla/AvailableMemoryTracker.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/CountingAllocatorBase.h"
-#include "mozilla/SystemMemoryReporter.h"
 #include "mozilla/UniquePtr.h"
 
 #include "mozilla/ipc/GeckoChildProcessHost.h"
@@ -227,8 +224,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsSystemInfo, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsMemoryReporterManager, Init)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsMemoryInfoDumper)
-
-NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsStatusReporterManager, Init)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsIOUtil)
 
@@ -675,7 +670,7 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
   // Initialize the JS engine.
   const char* jsInitFailureReason = JS_InitWithFailureDiagnostic();
   if (jsInitFailureReason) {
-    NS_RUNTIMEABORT(jsInitFailureReason);
+    MOZ_CRASH_UNSAFE_OOL(jsInitFailureReason);
   }
   sInitializedJS = true;
 
@@ -719,13 +714,6 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
 #ifdef XP_WIN
   CreateAnonTempFileRemover();
 #endif
-
-  // We only want the SystemMemoryReporter running in one process, because it
-  // profiles the entire system.  The main process is the obvious place for
-  // it.
-  if (XRE_IsParentProcess()) {
-    mozilla::SystemMemoryReporter::Init();
-  }
 
   // The memory reporter manager is up and running -- register our reporters.
   RegisterStrongMemoryReporter(new ICUReporter());
@@ -984,7 +972,7 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
 #endif
   nsCycleCollector_shutdown(shutdownCollect);
 
-  profiler_add_marker("Shutdown xpcom");
+  PROFILER_ADD_MARKER("Shutdown xpcom");
   // If we are doing any shutdown checks, poison writes.
   if (gShutdownChecks != SCM_NOTHING) {
 #ifdef XP_MACOSX
@@ -1016,7 +1004,7 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
   // JS pseudo-stack's internal reference to the main thread JSContext,
   // duplicating the call in XPCJSContext::~XPCJSContext() in case that
   // never fired.
-  profiler_clear_js_context();
+  PROFILER_CLEAR_JS_CONTEXT();
 
   if (sInitializedJS) {
     // Shut down the JS engine.

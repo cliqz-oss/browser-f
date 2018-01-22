@@ -11,7 +11,7 @@ use Atom;
 use LocalName as SelectorLocalName;
 use dom::{TElement, TNode};
 use fnv::FnvHashSet;
-use invalidation::element::restyle_hints::{RESTYLE_SELF, RestyleHint};
+use invalidation::element::restyle_hints::RestyleHint;
 use media_queries::Device;
 use selector_parser::SelectorImpl;
 use selectors::attr::CaseSensitivity;
@@ -24,7 +24,7 @@ use stylesheets::{CssRule, StylesheetInDocument};
 /// element is determined by whether the invalidation is stored in the
 /// StylesheetInvalidationSet's invalid_scopes or invalid_elements table.
 #[derive(Debug, Eq, Hash, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 enum Invalidation {
     /// An element with a given id.
     ID(Atom),
@@ -75,7 +75,7 @@ impl Invalidation {
 ///
 /// TODO(emilio): We might be able to do the same analysis for media query
 /// changes too (or even selector changes?).
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub struct StylesheetInvalidationSet {
     /// The subtrees we know we have to restyle so far.
     invalid_scopes: FnvHashSet<Invalidation>,
@@ -223,12 +223,12 @@ impl StylesheetInvalidationSet {
 
         let mut self_invalid = false;
 
-        if !data.hint.contains(RESTYLE_SELF) {
+        if !data.hint.contains(RestyleHint::RESTYLE_SELF) {
             for invalidation in &self.invalid_elements {
                 if invalidation.matches(element) {
                     debug!("process_invalidations_in_subtree: {:?} matched self {:?}",
                            element, invalidation);
-                    data.hint.insert(RESTYLE_SELF);
+                    data.hint.insert(RestyleHint::RESTYLE_SELF);
                     self_invalid = true;
                     break;
                 }
@@ -237,7 +237,7 @@ impl StylesheetInvalidationSet {
 
         let mut any_children_invalid = false;
 
-        for child in element.as_node().traversal_children() {
+        for child in element.traversal_children() {
             let child = match child.as_element() {
                 Some(e) => e,
                 None => continue,

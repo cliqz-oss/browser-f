@@ -115,7 +115,7 @@ function test_clicks(type, clicks) {
 }
 
 function test_TestEventListeners() {
-  let e = test_helper1;  // easier to type this name
+  let e = test_helper1; // easier to type this name
 
   // Swipe gesture animation events
   e("MozSwipeGestureStart", 0, -0.7, 0);
@@ -611,7 +611,7 @@ function test_rotateGesturesOnTab() {
     if (rotation < 0)
       rotation += 360;
     return rotation;
-  }
+  };
 
   for (var initRot = 0; initRot < 360; initRot += 90) {
     // Test each case: at each 90 degree snap; cl/ccl;

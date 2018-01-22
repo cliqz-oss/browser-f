@@ -492,20 +492,21 @@ this.BrowserUtils = {
     let selectionStr = selection.toString();
     let fullText;
 
-    let collapsed = selection.isCollapsed;
-
     let url;
     let linkText;
 
     // try getting a selected text in text input.
     if (!selectionStr && focusedElement instanceof Ci.nsIDOMNSEditableElement) {
       // Don't get the selection for password fields. See bug 565717.
-      if (focusedElement instanceof Ci.nsIDOMHTMLTextAreaElement ||
+      if (ChromeUtils.getClassName(focusedElement) === "HTMLTextAreaElement" ||
           (focusedElement instanceof Ci.nsIDOMHTMLInputElement &&
            focusedElement.mozIsTextField(true))) {
-        selectionStr = focusedElement.editor.selection.toString();
+        selection = focusedElement.editor.selection;
+        selectionStr = selection.toString();
       }
     }
+
+    let collapsed = selection.isCollapsed;
 
     if (selectionStr) {
       // Have some text, let's figure out if it looks like a URL that isn't
@@ -610,7 +611,7 @@ this.BrowserUtils = {
    * @throws if nor url nor postData accept a param, but a param was provided.
    */
   async parseUrlAndPostData(url, postData, param) {
-    let hasGETParam = /%s/i.test(url)
+    let hasGETParam = /%s/i.test(url);
     let decodedPostData = postData ? unescape(postData) : "";
     let hasPOSTParam = /%s/i.test(decodedPostData);
 

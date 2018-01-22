@@ -51,7 +51,7 @@ var Assert = new AssertCls(function(err, message, stack) {
   } else {
     do_report_result(true, message, stack);
   }
-});
+}, true);
 
 var _add_params = function(params) {
   if (typeof _XPCSHELL_PROCESS != "undefined") {
@@ -70,7 +70,7 @@ var _testLogger = new _LoggerClass("xpcshell/head.js", _dumpLog, [_add_params]);
 // not connected to a network.
 {
   let ios = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService2);
+                      .getService(Components.interfaces.nsIIOService);
   ios.manageOfflineStatus = false;
   ios.offline = false;
 }
@@ -510,7 +510,6 @@ function _execute_test() {
   _fakeIdleService.activate();
 
   _PromiseTestUtils.init();
-  _PromiseTestUtils.Assert = Assert;
 
   let coverageCollector = null;
   if (typeof _JSCOV_DIR === "string") {

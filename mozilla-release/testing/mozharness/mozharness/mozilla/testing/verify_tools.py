@@ -7,7 +7,9 @@
 
 import argparse
 import os
+import posixpath
 import re
+import sys
 import mozinfo
 from manifestparser import TestManifest
 from mozharness.base.script import PostScriptAction
@@ -28,6 +30,7 @@ class VerifyToolsMixin(object):
     def __init__(self):
         self.verify_suites = {}
         self.verify_downloaded = False
+        self.reftest_test_dir = None
 
     @PostScriptAction('download-and-extract')
     def find_tests_for_verification(self, action, success=None):
@@ -54,6 +57,13 @@ class VerifyToolsMixin(object):
             return response
 
         dirs = self.query_abs_dirs()
+        mozinfo.find_and_update_from_json(dirs['abs_test_install_dir'])
+        if self.config.get('e10s') == True:
+            mozinfo.update({"e10s": True})
+            # Additional mozinfo properties like "headless" and "coverage" are
+            # also normally updated dynamically in the harness, but neither of
+            # these apply to the test-verify task.
+
         manifests = [
             (os.path.join(dirs['abs_mochitest_dir'], 'tests', 'mochitest.ini'), 'plain'),
             (os.path.join(dirs['abs_mochitest_dir'], 'chrome', 'chrome.ini'), 'chrome'),
@@ -61,13 +71,27 @@ class VerifyToolsMixin(object):
             (os.path.join(dirs['abs_mochitest_dir'], 'a11y', 'a11y.ini'), 'a11y'),
             (os.path.join(dirs['abs_xpcshell_dir'], 'tests', 'xpcshell.ini'), 'xpcshell'),
         ]
-
         tests_by_path = {}
         for (path, suite) in manifests:
             if os.path.exists(path):
                 man = TestManifest([path], strict=False)
                 active = man.active_tests(exists=False, disabled=False, filters=[], **mozinfo.info)
                 tests_by_path.update({t['relpath']:(suite,t.get('subsuite')) for t in active})
+                self.info("Verification updated with manifest %s" % path)
+
+        ref_manifests = [
+            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'layout', 'reftests', 'reftest.list'), 'reftest'),
+            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'testing', 'crashtest', 'crashtests.list'), 'crashtest'),
+            # TODO (os.path.join(dirs['abs_test_install_dir'], 'jsreftest', 'tests', 'jstests.list'), 'jstestbrowser'),
+        ]
+        sys.path.append(dirs['abs_reftest_dir'])
+        import manifest
+        self.reftest_test_dir = os.path.join(dirs['abs_reftest_dir'], 'tests')
+        for (path, suite) in ref_manifests:
+            if os.path.exists(path):
+                man = manifest.ReftestManifest()
+                man.load(path)
+                tests_by_path.update({os.path.relpath(t,self.reftest_test_dir):(suite,None) for t in man.files})
                 self.info("Verification updated with manifest %s" % path)
 
         # determine which files were changed on this push
@@ -82,6 +106,9 @@ class VerifyToolsMixin(object):
 
         # for each changed file, determine if it is a test file, and what suite it is in
         for file in changed_files:
+            # manifest paths use os.sep (like backslash on Windows) but
+            # automation-relevance uses posixpath.sep
+            file = file.replace(posixpath.sep, os.sep)
             entry = tests_by_path.get(file)
             if entry:
                 self.info("Verification found test %s" % file)
@@ -128,9 +155,22 @@ class VerifyToolsMixin(object):
             args = []
             # otherwise, run once for each file in requested suite
             files = self.verify_suites.get(suite)
+            references = re.compile(r"(-ref|-noref|-noref.)\.")
             for file in files:
-                args.append(['--verify-max-time=%d' % MAX_TIME_PER_TEST, '--verify', file])
-            self.info("Verification file for '%s': %s" % (suite, files))
+                if suite in ['reftest', 'crashtest']:
+                    file = os.path.join(self.reftest_test_dir, file)
+                if suite == 'reftest':
+                    # Special handling for modified reftest reference files:
+                    #  - if both test and reference modified, verify the test file
+                    #  - if only reference modified, verify the test file
+                    nonref = references.sub('.', file)
+                    if nonref != file:
+                        file = None
+                        if nonref not in files and os.path.exists(nonref):
+                            file = nonref
+                if file:
+                    args.append(['--verify-max-time=%d' % MAX_TIME_PER_TEST, '--verify', file])
+            self.info("Verification file(s) for '%s': %s" % (suite, files))
         return args
 
     def query_verify_category_suites(self, category, all_suites):
@@ -148,7 +188,7 @@ class VerifyToolsMixin(object):
                 # so it is not possible to determine which suites are active/
                 # required for verification; assume all suites from supported
                 # suite categories are required.
-                if category in ['mochitest', 'xpcshell']:
+                if category in ['mochitest', 'xpcshell', 'reftest']:
                     suites = all_suites
         return suites
 

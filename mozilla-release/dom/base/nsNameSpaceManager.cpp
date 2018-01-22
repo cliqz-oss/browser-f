@@ -99,7 +99,7 @@ nsNameSpaceManager::RegisterNameSpace(const nsAString& aURI,
     return NS_OK;
   }
 
-  nsCOMPtr<nsIAtom> atom = NS_Atomize(aURI);
+  RefPtr<nsAtom> atom = NS_Atomize(aURI);
   nsresult rv = NS_OK;
   if (!mURIToIDTable.Get(atom, &aNameSpaceID)) {
     aNameSpaceID = mURIArray.Length();
@@ -110,7 +110,7 @@ nsNameSpaceManager::RegisterNameSpace(const nsAString& aURI,
     }
   }
 
-  NS_POSTCONDITION(aNameSpaceID >= -1, "Bogus namespace ID");
+  MOZ_ASSERT(aNameSpaceID >= -1, "Bogus namespace ID");
 
   return rv;
 }
@@ -141,12 +141,12 @@ nsNameSpaceManager::GetNameSpaceID(const nsAString& aURI,
     return kNameSpaceID_None; // xmlns="", see bug 75700 for details
   }
 
-  nsCOMPtr<nsIAtom> atom = NS_Atomize(aURI);
+  RefPtr<nsAtom> atom = NS_Atomize(aURI);
   return GetNameSpaceID(atom, aInChromeDoc);
 }
 
 int32_t
-nsNameSpaceManager::GetNameSpaceID(nsIAtom* aURI,
+nsNameSpaceManager::GetNameSpaceID(nsAtom* aURI,
                                    bool aInChromeDoc)
 {
   if (aURI == nsGkAtoms::_empty) {
@@ -159,11 +159,11 @@ nsNameSpaceManager::GetNameSpaceID(nsIAtom* aURI,
       && mDisabledURIToIDTable.Get(aURI, &nameSpaceID)
       && ((mMathMLDisabled && kNameSpaceID_disabled_MathML == nameSpaceID) ||
       (mSVGDisabled && kNameSpaceID_disabled_SVG == nameSpaceID))) {
-    NS_POSTCONDITION(nameSpaceID >= 0, "Bogus namespace ID");
+    MOZ_ASSERT(nameSpaceID >= 0, "Bogus namespace ID");
     return nameSpaceID;
   }
   if (mURIToIDTable.Get(aURI, &nameSpaceID)) {
-    NS_POSTCONDITION(nameSpaceID >= 0, "Bogus namespace ID");
+    MOZ_ASSERT(nameSpaceID >= 0, "Bogus namespace ID");
     return nameSpaceID;
   }
 
@@ -231,10 +231,10 @@ nsNameSpaceManager::HasElementCreator(int32_t aNameSpaceID)
          false;
 }
 
-nsresult nsNameSpaceManager::AddNameSpace(already_AddRefed<nsIAtom> aURI,
+nsresult nsNameSpaceManager::AddNameSpace(already_AddRefed<nsAtom> aURI,
                                           const int32_t aNameSpaceID)
 {
-  nsCOMPtr<nsIAtom> uri = aURI;
+  RefPtr<nsAtom> uri = aURI;
   if (aNameSpaceID < 0) {
     // We've wrapped...  Can't do anything else here; just bail.
     return NS_ERROR_OUT_OF_MEMORY;
@@ -248,10 +248,10 @@ nsresult nsNameSpaceManager::AddNameSpace(already_AddRefed<nsIAtom> aURI,
 }
 
 nsresult
-nsNameSpaceManager::AddDisabledNameSpace(already_AddRefed<nsIAtom> aURI,
+nsNameSpaceManager::AddDisabledNameSpace(already_AddRefed<nsAtom> aURI,
                                          const int32_t aNameSpaceID)
 {
-  nsCOMPtr<nsIAtom> uri = aURI;
+  RefPtr<nsAtom> uri = aURI;
   if (aNameSpaceID < 0) {
     // We've wrapped...  Can't do anything else here; just bail.
     return NS_ERROR_OUT_OF_MEMORY;

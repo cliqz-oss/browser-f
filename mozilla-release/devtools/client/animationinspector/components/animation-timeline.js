@@ -89,7 +89,7 @@ AnimationsTimeline.prototype = {
     const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
 
     const SplitBox = React.createFactory(
-      browserRequire("devtools/client/shared/components/splitter/split-box"));
+      browserRequire("devtools/client/shared/components/splitter/SplitBox"));
 
     const splitter = SplitBox({
       className: "animation-root",
@@ -328,12 +328,15 @@ AnimationsTimeline.prototype = {
         continue;
       }
       if (i === index) {
-        // Already the animation is selected.
-        this.emit("animation-already-selected", this.animations[i]);
-        return;
+        if (this.animationRootEl.classList.contains("animation-detail-visible")) {
+          // Already the animation is selected.
+          this.emit("animation-already-selected", this.animations[i]);
+          return;
+        }
+      } else {
+        animationEl.classList.remove("selected");
+        this.emit("animation-unselected", this.animations[i]);
       }
-      animationEl.classList.remove("selected");
-      this.emit("animation-unselected", this.animations[i]);
       break;
     }
 

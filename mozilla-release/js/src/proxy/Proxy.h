@@ -67,9 +67,6 @@ class Proxy
     static RegExpShared* regexp_toShared(JSContext* cx, HandleObject proxy);
     static bool boxedValue_unbox(JSContext* cx, HandleObject proxy, MutableHandleValue vp);
 
-    static bool watch(JSContext* cx, HandleObject proxy, HandleId id, HandleObject callable);
-    static bool unwatch(JSContext* cx, HandleObject proxy, HandleId id);
-
     static bool getElements(JSContext* cx, HandleObject obj, uint32_t begin, uint32_t end,
                             ElementAdder* adder);
 
@@ -84,6 +81,9 @@ size_t
 proxy_ObjectMoved(JSObject* obj, JSObject* old);
 
 // These functions are used by JIT code
+
+bool
+ProxyHas(JSContext* cx, HandleObject proxy, HandleValue idVal, MutableHandleValue result);
 
 bool
 ProxyHasOwn(JSContext* cx, HandleObject proxy, HandleValue idVal, MutableHandleValue result);

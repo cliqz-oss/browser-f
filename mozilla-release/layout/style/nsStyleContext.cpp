@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -78,13 +79,10 @@ const uint32_t nsStyleContext::sDependencyTable[] = {
 
 #endif
 
-nsStyleContext::nsStyleContext(nsIAtom* aPseudoTag,
+nsStyleContext::nsStyleContext(nsAtom* aPseudoTag,
                                CSSPseudoElementType aPseudoType)
   : mPseudoTag(aPseudoTag)
   , mBits(((uint64_t)aPseudoType) << NS_STYLE_CONTEXT_TYPE_SHIFT)
-#ifdef DEBUG
-  , mFrameRefCnt(0)
-#endif
 {
   // This check has to be done "backward", because if it were written the
   // more natural way it wouldn't fail even when it needed to.
@@ -105,23 +103,20 @@ nsStyleContext::nsStyleContext(nsIAtom* aPseudoTag,
 #endif
 }
 
+// TODO(stylo-everywhere): Remove aSamePointerStructs.
 nsChangeHint
 nsStyleContext::CalcStyleDifference(nsStyleContext* aNewContext,
                                     uint32_t* aEqualStructs,
                                     uint32_t* aSamePointerStructs,
-                                    uint32_t aRelevantStructs)
+                                    bool aIgnoreVariables)
 {
   AUTO_PROFILER_LABEL("nsStyleContext::CalcStyleDifference", CSS);
 
   static_assert(nsStyleStructID_Length <= 32,
                 "aEqualStructs is not big enough");
 
-  MOZ_ASSERT(aRelevantStructs == kAllResolvedStructs || IsServo(),
-             "aRelevantStructs must be kAllResolvedStructs for Gecko contexts");
-
-  if (aRelevantStructs == kAllResolvedStructs) {
-    aRelevantStructs = mBits & NS_STYLE_INHERIT_MASK;
-  }
+  MOZ_ASSERT(!aIgnoreVariables || IsServo(),
+             "aIgnoreVariables must be false for Gecko contexts");
 
   *aEqualStructs = 0;
   *aSamePointerStructs = 0;
@@ -161,7 +156,8 @@ nsStyleContext::CalcStyleDifference(nsStyleContext* aNewContext,
       *aEqualStructs |= NS_STYLE_INHERIT_BIT(Variables);
     }
   } else {
-    if (Servo_ComputedValues_EqualCustomProperties(
+    if (aIgnoreVariables ||
+        Servo_ComputedValues_EqualCustomProperties(
           AsServo()->ComputedData(),
           aNewContext->ComputedData())) {
       *aEqualStructs |= NS_STYLE_INHERIT_BIT(Variables);
@@ -307,8 +303,13 @@ nsStyleContext::CalcStyleDifference(nsStyleContext* aNewContext,
   if (!thisVis != !otherVis) {
     // One style context has a style-if-visited and the other doesn't.
     // Presume a difference.
+#define STYLE_STRUCT(name_, fields_)                                \
+    *aSamePointerStructs &= ~NS_STYLE_INHERIT_BIT(name_);           \
+    *aEqualStructs &= ~NS_STYLE_INHERIT_BIT(name_);
+#include "nsCSSVisitedDependentPropList.h"
+#undef STYLE_STRUCT
     hint |= nsChangeHint_RepaintFrame;
-  } else if (thisVis && !NS_IsHintSubset(nsChangeHint_RepaintFrame, hint)) {
+  } else if (thisVis) {
     // Both style contexts have a style-if-visited.
     bool change = false;
 
@@ -319,12 +320,14 @@ nsStyleContext::CalcStyleDifference(nsStyleContext* aNewContext,
     // not having a style-if-visited), but not the other way around.
 #define STYLE_FIELD(name_) thisVisStruct->name_ != otherVisStruct->name_
 #define STYLE_STRUCT(name_, fields_)                                    \
-    if (!change && (PEEK(name_) != nullptr)) {                          \
+    if (PEEK(name_)) {                                                  \
       const nsStyle##name_* thisVisStruct =                             \
         thisVis->ThreadsafeStyle##name_();                              \
       const nsStyle##name_* otherVisStruct =                            \
         otherVis->ThreadsafeStyle##name_();                             \
       if (MOZ_FOR_EACH_SEPARATED(STYLE_FIELD, (||), (), fields_)) {     \
+        *aSamePointerStructs &= ~NS_STYLE_INHERIT_BIT(name_);           \
+        *aEqualStructs &= ~NS_STYLE_INHERIT_BIT(name_);                 \
         change = true;                                                  \
       }                                                                 \
     }
@@ -440,7 +443,7 @@ void nsStyleContext::List(FILE* out, int32_t aIndent, bool aListDescendants)
 
 already_AddRefed<GeckoStyleContext>
 NS_NewStyleContext(GeckoStyleContext* aParentContext,
-                   nsIAtom* aPseudoTag,
+                   nsAtom* aPseudoTag,
                    CSSPseudoElementType aPseudoType,
                    nsRuleNode* aRuleNode,
                    bool aSkipParentDisplayBasedStyleFixup)
@@ -566,5 +569,21 @@ nsStyleContext::LookupStruct(const nsACString& aName, nsStyleStructID& aResult)
   else
     return false;
   return true;
+}
+
+void
+nsStyleContext::FrameAddRef()
+{
+  if (auto gecko = GetAsGecko()) {
+    gecko->FrameAddRef();
+  }
+}
+
+void
+nsStyleContext::FrameRelease()
+{
+  if (auto gecko = GetAsGecko()) {
+    gecko->FrameRelease();
+  }
 }
 #endif

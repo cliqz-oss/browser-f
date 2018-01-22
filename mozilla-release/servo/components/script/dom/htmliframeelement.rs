@@ -4,7 +4,7 @@
 
 use document_loader::{LoadBlocker, LoadType};
 use dom::attr::Attr;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::BrowserElementBinding::BrowserElementErrorEventDetail;
 use dom::bindings::codegen::Bindings::BrowserElementBinding::BrowserElementIconChangeEventDetail;
 use dom::bindings::codegen::Bindings::BrowserElementBinding::BrowserElementLocationChangeEventDetail;
@@ -19,9 +19,9 @@ use dom::bindings::codegen::Bindings::WindowBinding::WindowBinding::WindowMethod
 use dom::bindings::conversions::ToJSValConvertible;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{LayoutJS, MutNullableJS, Root};
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::{LayoutDom, DomRoot, MutNullableDom};
 use dom::bindings::str::DOMString;
 use dom::customevent::CustomEvent;
 use dom::document::Document;
@@ -42,7 +42,7 @@ use js::jsapi::{JSAutoCompartment, JSContext, MutableHandleValue};
 use js::jsval::{NullValue, UndefinedValue};
 use msg::constellation_msg::{FrameType, BrowsingContextId, PipelineId, TopLevelBrowsingContextId, TraversalDirection};
 use net_traits::response::HttpsState;
-use script_layout_interface::message::ReflowQueryType;
+use script_layout_interface::message::ReflowGoal;
 use script_thread::ScriptThread;
 use script_traits::{IFrameLoadInfo, IFrameLoadInfoWithData, JsEvalResult, LoadData, UpdatePipelineIdReason};
 use script_traits::{MozBrowserEvent, NewLayoutInfo, ScriptMsg};
@@ -53,19 +53,18 @@ use servo_config::servo_version;
 use servo_url::ServoUrl;
 use std::cell::Cell;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
-use style::context::ReflowGoal;
 use task_source::TaskSource;
 
 bitflags! {
-    #[derive(HeapSizeOf, JSTraceable)]
-    flags SandboxAllowance: u8 {
-        const ALLOW_NOTHING = 0x00,
-        const ALLOW_SAME_ORIGIN = 0x01,
-        const ALLOW_TOP_NAVIGATION = 0x02,
-        const ALLOW_FORMS = 0x04,
-        const ALLOW_SCRIPTS = 0x08,
-        const ALLOW_POINTER_LOCK = 0x10,
-        const ALLOW_POPUPS = 0x20
+    #[derive(JSTraceable, MallocSizeOf)]
+    struct SandboxAllowance: u8 {
+        const ALLOW_NOTHING = 0x00;
+        const ALLOW_SAME_ORIGIN = 0x01;
+        const ALLOW_TOP_NAVIGATION = 0x02;
+        const ALLOW_FORMS = 0x04;
+        const ALLOW_SCRIPTS = 0x08;
+        const ALLOW_POINTER_LOCK = 0x10;
+        const ALLOW_POPUPS = 0x20;
     }
 }
 
@@ -88,9 +87,9 @@ pub struct HTMLIFrameElement {
     browsing_context_id: Cell<Option<BrowsingContextId>>,
     pipeline_id: Cell<Option<PipelineId>>,
     pending_pipeline_id: Cell<Option<PipelineId>>,
-    sandbox: MutNullableJS<DOMTokenList>,
+    sandbox: MutNullableDom<DOMTokenList>,
     sandbox_allowance: Cell<Option<SandboxAllowance>>,
-    load_blocker: DOMRefCell<Option<LoadBlocker>>,
+    load_blocker: DomRefCell<Option<LoadBlocker>>,
     visibility: Cell<bool>,
 }
 
@@ -224,7 +223,7 @@ impl HTMLIFrameElement {
         }
     }
 
-    /// https://html.spec.whatwg.org/multipage/#process-the-iframe-attributes
+    /// <https://html.spec.whatwg.org/multipage/#process-the-iframe-attributes>
     fn process_the_iframe_attributes(&self, mode: ProcessingMode) {
         // TODO: srcdoc
 
@@ -313,9 +312,7 @@ impl HTMLIFrameElement {
 
         self.upcast::<Node>().dirty(NodeDamage::OtherNodeDamage);
         let window = window_from_node(self);
-        window.reflow(ReflowGoal::ForDisplay,
-                      ReflowQueryType::NoQuery,
-                      ReflowReason::FramedContentChanged);
+        window.reflow(ReflowGoal::Full, ReflowReason::FramedContentChanged);
     }
 
     fn new_inherited(local_name: LocalName,
@@ -329,7 +326,7 @@ impl HTMLIFrameElement {
             pending_pipeline_id: Cell::new(None),
             sandbox: Default::default(),
             sandbox_allowance: Cell::new(None),
-            load_blocker: DOMRefCell::new(None),
+            load_blocker: DomRefCell::new(None),
             visibility: Cell::new(true),
         }
     }
@@ -337,8 +334,8 @@ impl HTMLIFrameElement {
     #[allow(unrooted_must_root)]
     pub fn new(local_name: LocalName,
                prefix: Option<Prefix>,
-               document: &Document) -> Root<HTMLIFrameElement> {
-        Node::reflect_node(box HTMLIFrameElement::new_inherited(local_name, prefix, document),
+               document: &Document) -> DomRoot<HTMLIFrameElement> {
+        Node::reflect_node(Box::new(HTMLIFrameElement::new_inherited(local_name, prefix, document)),
                            document,
                            HTMLIFrameElementBinding::Wrap)
     }
@@ -396,9 +393,7 @@ impl HTMLIFrameElement {
         // TODO Step 5 - unset child document `mut iframe load` flag
 
         let window = window_from_node(self);
-        window.reflow(ReflowGoal::ForDisplay,
-                      ReflowQueryType::NoQuery,
-                      ReflowReason::IFrameLoadEvent);
+        window.reflow(ReflowGoal::Full, ReflowReason::IFrameLoadEvent);
     }
 
     /// Check whether the iframe has the mozprivatebrowsing attribute set
@@ -419,7 +414,7 @@ pub trait HTMLIFrameElementLayoutMethods {
     fn get_height(&self) -> LengthOrPercentageOrAuto;
 }
 
-impl HTMLIFrameElementLayoutMethods for LayoutJS<HTMLIFrameElement> {
+impl HTMLIFrameElementLayoutMethods for LayoutDom<HTMLIFrameElement> {
     #[inline]
     #[allow(unsafe_code)]
     fn pipeline_id(&self) -> Option<PipelineId> {
@@ -461,7 +456,7 @@ impl HTMLIFrameElementLayoutMethods for LayoutJS<HTMLIFrameElement> {
 }
 
 #[allow(unsafe_code)]
-pub fn build_mozbrowser_custom_event(window: &Window, event: MozBrowserEvent) -> Root<CustomEvent> {
+pub fn build_mozbrowser_custom_event(window: &Window, event: MozBrowserEvent) -> DomRoot<CustomEvent> {
     // TODO(gw): Support mozbrowser event types that have detail which is not a string.
     // See https://developer.mozilla.org/en-US/docs/Web/API/Using_the_Browser_API
     // for a list of mozbrowser events.
@@ -573,41 +568,33 @@ pub fn Navigate(iframe: &HTMLIFrameElement, direction: TraversalDirection) -> Er
 
 impl HTMLIFrameElementMethods for HTMLIFrameElement {
     // https://html.spec.whatwg.org/multipage/#dom-iframe-src
-    fn Src(&self) -> DOMString {
-        self.upcast::<Element>().get_string_attribute(&local_name!("src"))
-    }
+    make_url_getter!(Src, "src");
 
     // https://html.spec.whatwg.org/multipage/#dom-iframe-src
-    fn SetSrc(&self, src: DOMString) {
-        self.upcast::<Element>().set_url_attribute(&local_name!("src"), src)
-    }
+    make_setter!(SetSrc, "src");
 
     // https://html.spec.whatwg.org/multipage/#dom-iframe-sandbox
-    fn Sandbox(&self) -> Root<DOMTokenList> {
+    fn Sandbox(&self) -> DomRoot<DOMTokenList> {
         self.sandbox.or_init(|| DOMTokenList::new(self.upcast::<Element>(), &local_name!("sandbox")))
     }
 
     // https://html.spec.whatwg.org/multipage/#dom-iframe-contentwindow
-    fn GetContentWindow(&self) -> Option<Root<WindowProxy>> {
+    fn GetContentWindow(&self) -> Option<DomRoot<WindowProxy>> {
         self.browsing_context_id.get()
             .and_then(|browsing_context_id| ScriptThread::find_window_proxy(browsing_context_id))
     }
 
     // https://html.spec.whatwg.org/multipage/#dom-iframe-contentdocument
     // https://html.spec.whatwg.org/multipage/#concept-bcc-content-document
-    fn GetContentDocument(&self) -> Option<Root<Document>> {
+    fn GetContentDocument(&self) -> Option<DomRoot<Document>> {
         // Step 1.
-        let pipeline_id = match self.pipeline_id.get() {
-            None => return None,
-            Some(pipeline_id) => pipeline_id,
-        };
+        let pipeline_id = self.pipeline_id.get()?;
+
         // Step 2-3.
         // Note that this lookup will fail if the document is dissimilar-origin,
         // so we should return None in that case.
-        let document = match ScriptThread::find_document(pipeline_id) {
-            None => return None,
-            Some(document) => document,
-        };
+        let document = ScriptThread::find_document(pipeline_id)?;
+
         // Step 4.
         let current = GlobalScope::current().expect("No current global object").as_window().Document();
         if !current.origin().same_origin_domain(document.origin()) {
@@ -735,16 +722,16 @@ impl VirtualMethods for HTMLIFrameElement {
         match attr.local_name() {
             &local_name!("sandbox") => {
                 self.sandbox_allowance.set(mutation.new_value(attr).map(|value| {
-                    let mut modes = ALLOW_NOTHING;
+                    let mut modes = SandboxAllowance::ALLOW_NOTHING;
                     for token in value.as_tokens() {
                         modes |= match &*token.to_ascii_lowercase() {
-                            "allow-same-origin" => ALLOW_SAME_ORIGIN,
-                            "allow-forms" => ALLOW_FORMS,
-                            "allow-pointer-lock" => ALLOW_POINTER_LOCK,
-                            "allow-popups" => ALLOW_POPUPS,
-                            "allow-scripts" => ALLOW_SCRIPTS,
-                            "allow-top-navigation" => ALLOW_TOP_NAVIGATION,
-                            _ => ALLOW_NOTHING
+                            "allow-same-origin" => SandboxAllowance::ALLOW_SAME_ORIGIN,
+                            "allow-forms" => SandboxAllowance::ALLOW_FORMS,
+                            "allow-pointer-lock" => SandboxAllowance::ALLOW_POINTER_LOCK,
+                            "allow-popups" => SandboxAllowance::ALLOW_POPUPS,
+                            "allow-scripts" => SandboxAllowance::ALLOW_SCRIPTS,
+                            "allow-top-navigation" => SandboxAllowance::ALLOW_TOP_NAVIGATION,
+                            _ => SandboxAllowance::ALLOW_NOTHING
                         };
                     }
                     modes

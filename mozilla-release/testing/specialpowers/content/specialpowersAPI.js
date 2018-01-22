@@ -1447,6 +1447,9 @@ SpecialPowersAPI.prototype = {
   getFullZoom(window) {
     return this._getMUDV(window).fullZoom;
   },
+  getDeviceFullZoom(window) {
+    return this._getMUDV(window).deviceFullZoom;
+  },
   setFullZoom(window, zoom) {
     this._getMUDV(window).fullZoom = zoom;
   },
@@ -1553,6 +1556,14 @@ SpecialPowersAPI.prototype = {
     }
 
     Cu.schedulePreciseGC(genGCCallback(callback));
+  },
+
+  getMemoryReports() {
+    try {
+      Cc["@mozilla.org/memory-reporter-manager;1"]
+        .getService(Ci.nsIMemoryReporterManager)
+        .getReports(() => {}, null, () => {}, null, false);
+    } catch (e) { }
   },
 
   setGCZeal(zeal) {

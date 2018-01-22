@@ -1,8 +1,8 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
-/* This Source Code is subject to the terms of the Mozilla Public License
- * version 2.0 (the "License"). You can obtain a copy of the License at
- * http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* rendering object for CSS "display: ruby" */
 
@@ -115,7 +115,8 @@ nsRubyFrame::Reflow(nsPresContext* aPresContext,
   }
 
   // Grab overflow frames from prev-in-flow and its own.
-  MoveOverflowToChildList();
+  MoveInlineOverflowToChildList(
+    aReflowInput.mLineLayout->LineContainerFrame());
 
   // Clear leadings
   mLeadings.Reset();
@@ -228,7 +229,7 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
       aStatus.Reset();
       aStatus.SetInlineLineBreakAfter();
       aStatus.SetIncomplete();
-      PushChildren(aBaseContainer, aBaseContainer->GetPrevSibling());
+      PushChildrenToOverflow(aBaseContainer, aBaseContainer->GetPrevSibling());
       aReflowInput.mLineLayout->SetDirtyNextLine();
     }
     // This base container is not placed at all, we can skip all
@@ -274,7 +275,7 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
       // Always push the next frame after the last child in this segment.
       // It is possible that we pulled it back before our next-in-flow
       // drain our overflow.
-      PushChildren(lastChild->GetNextSibling(), lastChild);
+      PushChildrenToOverflow(lastChild->GetNextSibling(), lastChild);
       aReflowInput.mLineLayout->SetDirtyNextLine();
     }
   } else {

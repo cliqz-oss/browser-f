@@ -1,4 +1,5 @@
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -43,7 +44,7 @@ struct AnimationEventInfo {
   AnimationEventInfo(dom::Element* aElement,
                      CSSPseudoElementType aPseudoType,
                      EventMessage aMessage,
-                     const nsAString& aAnimationName,
+                     nsAtom* aAnimationName,
                      const StickyTimeDuration& aElapsedTime,
                      const TimeStamp& aTimeStamp,
                      dom::Animation* aAnimation)
@@ -53,7 +54,7 @@ struct AnimationEventInfo {
     , mTimeStamp(aTimeStamp)
   {
     // XXX Looks like nobody initialize WidgetEvent::time
-    mEvent.mAnimationName = aAnimationName;
+    aAnimationName->ToString(mEvent.mAnimationName);
     mEvent.mElapsedTime =
       nsRFPService::ReduceTimePrecisionAsSecs(aElapsedTime.ToSeconds());
     mEvent.mPseudoElement =
@@ -78,7 +79,7 @@ class CSSAnimation final : public Animation
 {
 public:
  explicit CSSAnimation(nsIGlobalObject* aGlobal,
-                       const nsAString& aAnimationName)
+                       nsAtom* aAnimationName)
     : dom::Animation(aGlobal)
     , mAnimationName(aAnimationName)
     , mIsStylePaused(false)
@@ -90,7 +91,8 @@ public:
     // We might need to drop this assertion once we add a script-accessible
     // constructor but for animations generated from CSS markup the
     // animation-name should never be empty.
-    MOZ_ASSERT(!mAnimationName.IsEmpty(), "animation-name should not be empty");
+    MOZ_ASSERT(mAnimationName != nsGkAtoms::_empty,
+               "animation-name should not be 'none'");
   }
 
   JSObject* WrapObject(JSContext* aCx,
@@ -100,11 +102,12 @@ public:
   const CSSAnimation* AsCSSAnimation() const override { return this; }
 
   // CSSAnimation interface
-  void GetAnimationName(nsString& aRetVal) const { aRetVal = mAnimationName; }
+  void GetAnimationName(nsString& aRetVal) const
+  {
+    mAnimationName->ToString(aRetVal);
+  }
 
-  // Alternative to GetAnimationName that returns a reference to the member
-  // for more efficient internal usage.
-  const nsString& AnimationName() const { return mAnimationName; }
+  nsAtom* AnimationName() const { return mAnimationName; }
 
   // Animation interface overrides
   virtual Promise* GetReady(ErrorResult& aRv) override;
@@ -203,7 +206,7 @@ protected:
            TimeDuration();
   }
 
-  nsString mAnimationName;
+  RefPtr<nsAtom> mAnimationName;
 
   // The (pseudo-)element whose computed animation-name refers to this
   // animation (if any).
@@ -292,15 +295,15 @@ protected:
 template <>
 struct AnimationTypeTraits<dom::CSSAnimation>
 {
-  static nsIAtom* ElementPropertyAtom()
+  static nsAtom* ElementPropertyAtom()
   {
     return nsGkAtoms::animationsProperty;
   }
-  static nsIAtom* BeforePropertyAtom()
+  static nsAtom* BeforePropertyAtom()
   {
     return nsGkAtoms::animationsOfBeforeProperty;
   }
-  static nsIAtom* AfterPropertyAtom()
+  static nsAtom* AfterPropertyAtom()
   {
     return nsGkAtoms::animationsOfAfterProperty;
   }

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -4925,12 +4925,9 @@ GetFileForPath(const nsAString& aPath)
 {
   MOZ_ASSERT(!aPath.IsEmpty());
 
-  nsCOMPtr<nsIFile> file = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
-  if (NS_WARN_IF(!file)) {
-    return nullptr;
-  }
-
-  if (NS_WARN_IF(NS_FAILED(file->InitWithPath(aPath)))) {
+  nsCOMPtr<nsIFile> file;
+  if (NS_WARN_IF(NS_FAILED(NS_NewLocalFile(aPath, false,
+                                           getter_AddRefs(file))))) {
     return nullptr;
   }
 
@@ -6826,7 +6823,7 @@ DatabaseFile::GetInputStream(ErrorResult &rv) const
   }
 
   nsCOMPtr<nsIInputStream> inputStream;
-  mBlobImpl->GetInternalStream(getter_AddRefs(inputStream), rv);
+  mBlobImpl->CreateInputStream(getter_AddRefs(inputStream), rv);
   if (rv.Failed()) {
     return nullptr;
   }
@@ -7715,12 +7712,10 @@ private:
   void
   SendResults() override;
 
-#ifdef ENABLE_INTL_API
   static nsresult
   UpdateLocaleAwareIndex(mozIStorageConnection* aConnection,
                          const IndexMetadata& aIndexMetadata,
                          const nsCString& aLocale);
-#endif
 };
 
 class OpenDatabaseOp::VersionChangeOp final
@@ -11257,13 +11252,8 @@ DatabaseConnection::GetFileSize(const nsAString& aPath, int64_t* aResult)
   MOZ_ASSERT(!aPath.IsEmpty());
   MOZ_ASSERT(aResult);
 
-  nsresult rv;
-  nsCOMPtr<nsIFile> file = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = file->InitWithPath(aPath);
+  nsCOMPtr<nsIFile> file;
+  nsresult rv = NS_NewLocalFile(aPath, false, getter_AddRefs(file));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -11994,7 +11984,7 @@ DatabaseUpdateFunction::UpdateInternal(int64_t aId,
 
 ConnectionPool::ConnectionPool()
   : mDatabasesMutex("ConnectionPool::mDatabasesMutex")
-  , mIdleTimer(do_CreateInstance(NS_TIMER_CONTRACTID))
+  , mIdleTimer(NS_NewTimer())
   , mNextTransactionId(0)
   , mTotalThreadCount(0)
   , mShutdownRequested(false)
@@ -17378,7 +17368,7 @@ FileManager::InitDirectory(nsIFile* aDirectory,
       nsCOMPtr<mozIStorageConnection> connection;
       rv = CreateStorageConnection(aDatabaseFile,
                                    aDirectory,
-                                   NullString(),
+                                   VoidString(),
                                    aPersistenceType,
                                    aGroup,
                                    aOrigin,
@@ -17994,9 +17984,20 @@ QuotaClient::ShutdownWorkThreads()
 
   mShutdownRequested = true;
 
+  // Shutdown maintenance thread pool (this spins the event loop until all
+  // threads are gone). This should release any maintenance related quota
+  // objects.
   if (mMaintenanceThreadPool) {
     mMaintenanceThreadPool->Shutdown();
     mMaintenanceThreadPool = nullptr;
+  }
+
+  // Let any runnables dispatched from dying maintenance threads to be
+  // processed. This should release any maintenance related directory locks.
+  if (mCurrentMaintenance) {
+    MOZ_ALWAYS_TRUE(SpinEventLoopUntil([&]() {
+      return !mCurrentMaintenance;
+    }));
   }
 
   RefPtr<ConnectionPool> connectionPool = gConnectionPool.get();
@@ -18322,7 +18323,8 @@ Maintenance::Start()
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(mState == State::Initial);
 
-  if (IsAborted()) {
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnBackgroundThread()) ||
+      IsAborted()) {
     return NS_ERROR_ABORT;
   }
 
@@ -18346,7 +18348,8 @@ Maintenance::CreateIndexedDatabaseManager()
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mState == State::CreateIndexedDatabaseManager);
 
-  if (IsAborted()) {
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+      IsAborted()) {
     return NS_ERROR_ABORT;
   }
 
@@ -18371,7 +18374,8 @@ Maintenance::OpenDirectory()
   MOZ_ASSERT(!mDirectoryLock);
   MOZ_ASSERT(QuotaManager::Get());
 
-  if (IsAborted()) {
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnBackgroundThread()) ||
+      IsAborted()) {
     return NS_ERROR_ABORT;
   }
 
@@ -18395,7 +18399,8 @@ Maintenance::DirectoryOpen()
   MOZ_ASSERT(mState == State::DirectoryOpenPending);
   MOZ_ASSERT(mDirectoryLock);
 
-  if (IsAborted()) {
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnBackgroundThread()) ||
+      IsAborted()) {
     return NS_ERROR_ABORT;
   }
 
@@ -18425,7 +18430,8 @@ Maintenance::DirectoryWork()
   // We have to find all database files that match any persistence type and any
   // origin. We ignore anything out of the ordinary for now.
 
-  if (IsAborted()) {
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+      IsAborted()) {
     return NS_ERROR_ABORT;
   }
 
@@ -18612,6 +18618,7 @@ Maintenance::DirectoryWork()
         continue;
       }
 
+      nsCString suffix;
       nsCString group;
       nsCString origin;
       nsTArray<nsString> databasePaths;
@@ -18669,17 +18676,17 @@ Maintenance::DirectoryWork()
 
         // Found a database.
         if (databasePaths.IsEmpty()) {
+          MOZ_ASSERT(suffix.IsEmpty());
           MOZ_ASSERT(group.IsEmpty());
           MOZ_ASSERT(origin.IsEmpty());
 
           int64_t dummyTimeStamp;
           bool dummyPersisted;
-          nsCString dummySuffix;
           if (NS_WARN_IF(NS_FAILED(
                 quotaManager->GetDirectoryMetadata2(originDir,
                                                     &dummyTimeStamp,
                                                     &dummyPersisted,
-                                                    dummySuffix,
+                                                    suffix,
                                                     group,
                                                     origin)))) {
             // Not much we can do here...
@@ -18697,6 +18704,21 @@ Maintenance::DirectoryWork()
                                                     group,
                                                     origin,
                                                     Move(databasePaths)));
+
+        nsCOMPtr<nsIFile> directory;
+
+        // Idle maintenance may occur before origin is initailized.
+        // Ensure origin is initialized first. It will initialize all origins
+        // for temporary storage including IDB origins.
+        rv = quotaManager->EnsureOriginIsInitialized(persistenceType,
+                                                     suffix,
+                                                     group,
+                                                     origin,
+                                                     getter_AddRefs(directory));
+
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          return rv;
+        }
       }
     }
   }
@@ -18747,6 +18769,11 @@ Maintenance::BeginDatabaseMaintenance()
       return true;
     }
   };
+
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnBackgroundThread()) ||
+      IsAborted()) {
+    return NS_ERROR_ABORT;
+  }
 
   RefPtr<nsThreadPool> threadPool;
 
@@ -18934,6 +18961,11 @@ DatabaseMaintenance::PerformMaintenanceOnDatabase()
     }
   };
 
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+      mMaintenance->IsAborted()) {
+    return;
+  }
+
   nsCOMPtr<nsIFile> databaseFile = GetFileForPath(mDatabasePath);
   MOZ_ASSERT(databaseFile);
 
@@ -18949,10 +18981,6 @@ DatabaseMaintenance::PerformMaintenanceOnDatabase()
   }
 
   AutoClose autoClose(connection);
-
-  if (mMaintenance->IsAborted()) {
-    return;
-  }
 
   AutoProgressHandler progressHandler(mMaintenance);
   if (NS_WARN_IF(NS_FAILED(progressHandler.Register(connection)))) {
@@ -18972,17 +19000,9 @@ DatabaseMaintenance::PerformMaintenanceOnDatabase()
     return;
   }
 
-  if (mMaintenance->IsAborted()) {
-    return;
-  }
-
   MaintenanceAction maintenanceAction;
   rv = DetermineMaintenanceAction(connection, databaseFile, &maintenanceAction);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
-  if (mMaintenance->IsAborted()) {
     return;
   }
 
@@ -19011,6 +19031,11 @@ DatabaseMaintenance::CheckIntegrity(mozIStorageConnection* aConnection,
   MOZ_ASSERT(!IsOnBackgroundThread());
   MOZ_ASSERT(aConnection);
   MOZ_ASSERT(aOk);
+
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+      mMaintenance->IsAborted()) {
+    return NS_ERROR_ABORT;
+  }
 
   nsresult rv;
 
@@ -19128,6 +19153,11 @@ DatabaseMaintenance::DetermineMaintenanceAction(
   MOZ_ASSERT(aConnection);
   MOZ_ASSERT(aDatabaseFile);
   MOZ_ASSERT(aMaintenanceAction);
+
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+      mMaintenance->IsAborted()) {
+    return NS_ERROR_ABORT;
+  }
 
   int32_t schemaVersion;
   nsresult rv = aConnection->GetSchemaVersion(&schemaVersion);
@@ -19338,6 +19368,11 @@ DatabaseMaintenance::IncrementalVacuum(mozIStorageConnection* aConnection)
   MOZ_ASSERT(!IsOnBackgroundThread());
   MOZ_ASSERT(aConnection);
 
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+      mMaintenance->IsAborted()) {
+    return;
+  }
+
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
     "PRAGMA incremental_vacuum;"
   ));
@@ -19354,6 +19389,11 @@ DatabaseMaintenance::FullVacuum(mozIStorageConnection* aConnection,
   MOZ_ASSERT(!IsOnBackgroundThread());
   MOZ_ASSERT(aConnection);
   MOZ_ASSERT(aDatabaseFile);
+
+  if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+      mMaintenance->IsAborted()) {
+    return;
+  }
 
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
     "VACUUM;"
@@ -19914,9 +19954,6 @@ DatabaseOperationBase::BindKeyRangeToStatement(
                                             mozIStorageStatement* aStatement,
                                             const nsCString& aLocale)
 {
-#ifndef ENABLE_INTL_API
-  return BindKeyRangeToStatement(aKeyRange, aStatement);
-#else
   MOZ_ASSERT(!IsOnBackgroundThread());
   MOZ_ASSERT(aStatement);
   MOZ_ASSERT(!aLocale.IsEmpty());
@@ -19954,7 +19991,6 @@ DatabaseOperationBase::BindKeyRangeToStatement(
   }
 
   return NS_OK;
-#endif
 }
 
 // static
@@ -22030,7 +22066,6 @@ OpenDatabaseOp::LoadDatabaseInformation(mozIStorageConnection* aConnection)
 
     indexMetadata->mCommonMetadata.multiEntry() = !!scratch;
 
-#ifdef ENABLE_INTL_API
     const bool localeAware = !stmt->IsNull(6);
     if (localeAware) {
       rv = stmt->GetUTF8String(6, indexMetadata->mCommonMetadata.locale());
@@ -22060,7 +22095,6 @@ OpenDatabaseOp::LoadDatabaseInformation(mozIStorageConnection* aConnection)
         }
       }
     }
-#endif
 
     if (NS_WARN_IF(!objectStoreMetadata->mIndexes.Put(indexId, indexMetadata,
                                                       fallible))) {
@@ -22086,7 +22120,6 @@ OpenDatabaseOp::LoadDatabaseInformation(mozIStorageConnection* aConnection)
   return NS_OK;
 }
 
-#ifdef ENABLE_INTL_API
 /* static */
 nsresult
 OpenDatabaseOp::UpdateLocaleAwareIndex(mozIStorageConnection* aConnection,
@@ -22204,7 +22237,6 @@ OpenDatabaseOp::UpdateLocaleAwareIndex(mozIStorageConnection* aConnection,
   rv = metaStmt->Execute();
   return rv;
 }
-#endif
 
 nsresult
 OpenDatabaseOp::BeginVersionChange()
@@ -27979,15 +28011,12 @@ OpenOp::GetRangeKeyInfo(bool aLowerBound, Key* aKey, bool* aOpen)
     if (range.isOnly()) {
       *aKey = range.lower();
       *aOpen = false;
-#ifdef ENABLE_INTL_API
       if (mCursor->IsLocaleAware()) {
         range.lower().ToLocaleBasedKey(*aKey, mCursor->mLocale);
       }
-#endif
     } else {
       *aKey = aLowerBound ? range.lower() : range.upper();
       *aOpen = aLowerBound ? range.lowerOpen() : range.upperOpen();
-#ifdef ENABLE_INTL_API
       if (mCursor->IsLocaleAware()) {
         if (aLowerBound) {
           range.lower().ToLocaleBasedKey(*aKey, mCursor->mLocale);
@@ -27995,7 +28024,6 @@ OpenOp::GetRangeKeyInfo(bool aLowerBound, Key* aKey, bool* aOpen)
           range.upper().ToLocaleBasedKey(*aKey, mCursor->mLocale);
         }
       }
-#endif
     }
   } else {
     *aOpen = false;

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -210,7 +211,7 @@ nsSplitterFrame::nsSplitterFrame(nsStyleContext* aContext)
 }
 
 void
-nsSplitterFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsSplitterFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (mInner) {
     mInner->RemoveListener();
@@ -218,7 +219,7 @@ nsSplitterFrame::DestroyFrom(nsIFrame* aDestructRoot)
     mInner->Release();
     mInner = nullptr;
   }
-  nsBoxFrame::DestroyFrom(aDestructRoot);
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 
@@ -240,7 +241,7 @@ nsSplitterFrame::GetCursor(const nsPoint&    aPoint,
 
 nsresult
 nsSplitterFrame::AttributeChanged(int32_t aNameSpaceID,
-                                  nsIAtom* aAttribute,
+                                  nsAtom* aAttribute,
                                   int32_t aModType)
 {
   nsresult rv = nsBoxFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -588,7 +589,7 @@ nsSplitterFrameInner::HandleEvent(nsIDOMEvent* aEvent)
       eventType.EqualsLiteral("mouseout"))
     return MouseMove(aEvent);
 
-  NS_ABORT();
+  MOZ_ASSERT_UNREACHABLE("Unexpected eventType");
   return NS_OK;
 }
 
@@ -670,7 +671,7 @@ nsSplitterFrameInner::MouseDown(nsIDOMEvent* aMouseEvent)
     nsIContent* content = childBox->GetContent();
     nsIDocument* doc = content->OwnerDoc();
     int32_t dummy;
-    nsIAtom* atom = doc->BindingManager()->ResolveTag(content, &dummy);
+    nsAtom* atom = doc->BindingManager()->ResolveTag(content, &dummy);
 
     // skip over any splitters
     if (atom != nsGkAtoms::splitter) {
@@ -962,7 +963,7 @@ nsSplitterFrameInner::SetPreferredSize(nsBoxLayoutState& aState, nsIFrame* aChil
   nsMargin margin(0,0,0,0);
   aChildBox->GetXULMargin(margin);
 
-  nsCOMPtr<nsIAtom> attribute;
+  RefPtr<nsAtom> attribute;
 
   if (aIsHorizontal) {
     pref -= (margin.left + margin.right);

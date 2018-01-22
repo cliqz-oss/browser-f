@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,7 +7,7 @@
 #include "nsMenuBarFrame.h"
 #include "nsIServiceManager.h"
 #include "nsIContent.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsPresContext.h"
 #include "nsStyleContext.h"
 #include "nsCSSRendering.h"
@@ -161,7 +162,7 @@ nsMenuBarFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent)
     return nullptr; // no character was pressed so just return
 
   // Enumerate over our list of frames.
-  auto insertion = PresContext()->PresShell()->FrameConstructor()->
+  auto insertion = PresShell()->FrameConstructor()->
     GetInsertionPoint(GetContent(), nullptr);
   nsContainerFrame* immediateParent = insertion.mParentFrame;
   if (!immediateParent)
@@ -395,7 +396,7 @@ nsMenuBarFrame::RemoveKeyboardNavigator()
 }
 
 void
-nsMenuBarFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsMenuBarFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
   if (pm)
@@ -404,5 +405,5 @@ nsMenuBarFrame::DestroyFrom(nsIFrame* aDestructRoot)
   mMenuBarListener->OnDestroyMenuBarFrame();
   mMenuBarListener = nullptr;
 
-  nsBoxFrame::DestroyFrom(aDestructRoot);
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }

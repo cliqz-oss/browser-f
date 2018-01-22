@@ -13,6 +13,7 @@
 #endif
 #include "mozilla/media/MediaParent.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/dom/ClientManagerActors.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/FileSystemBase.h"
@@ -28,6 +29,7 @@
 #include "mozilla/dom/indexedDB/ActorsParent.h"
 #include "mozilla/dom/ipc/IPCBlobInputStreamParent.h"
 #include "mozilla/dom/ipc/PendingIPCBlobParent.h"
+#include "mozilla/dom/ipc/TemporaryIPCBlobParent.h"
 #include "mozilla/dom/quota/ActorsParent.h"
 #include "mozilla/dom/StorageIPC.h"
 #include "mozilla/ipc/BackgroundParent.h"
@@ -314,6 +316,27 @@ BackgroundParentImpl::DeallocPPendingIPCBlobParent(PPendingIPCBlobParent* aActor
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(aActor);
 
+  delete aActor;
+  return true;
+}
+
+PTemporaryIPCBlobParent*
+BackgroundParentImpl::AllocPTemporaryIPCBlobParent()
+{
+  return new mozilla::dom::TemporaryIPCBlobParent();
+}
+
+mozilla::ipc::IPCResult
+BackgroundParentImpl::RecvPTemporaryIPCBlobConstructor(PTemporaryIPCBlobParent* aActor)
+{
+  mozilla::dom::TemporaryIPCBlobParent* actor =
+    static_cast<mozilla::dom::TemporaryIPCBlobParent*>(aActor);
+  return actor->CreateAndShareFile();
+}
+
+bool
+BackgroundParentImpl::DeallocPTemporaryIPCBlobParent(PTemporaryIPCBlobParent* aActor)
+{
   delete aActor;
   return true;
 }
@@ -943,6 +966,18 @@ BackgroundParentImpl::DeallocPHttpBackgroundChannelParent(
     dont_AddRef(static_cast<net::HttpBackgroundChannelParent*>(aActor));
 
   return true;
+}
+
+mozilla::dom::PClientManagerParent*
+BackgroundParentImpl::AllocPClientManagerParent()
+{
+  return mozilla::dom::AllocClientManagerParent();
+}
+
+bool
+BackgroundParentImpl::DeallocPClientManagerParent(mozilla::dom::PClientManagerParent* aActor)
+{
+  return mozilla::dom::DeallocClientManagerParent(aActor);
 }
 
 } // namespace ipc

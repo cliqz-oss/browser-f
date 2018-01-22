@@ -508,14 +508,20 @@ nsCString
 VideoSink::GetDebugInfo()
 {
   AssertOwnerThread();
-  return nsPrintfCString(
-    "VideoSink Status: IsStarted=%d IsPlaying=%d VideoQueue(finished=%d "
+  auto str = nsPrintfCString(
+    "VideoSink: IsStarted=%d IsPlaying=%d VideoQueue(finished=%d "
     "size=%zu) mVideoFrameEndTime=%" PRId64 " mHasVideo=%d "
-    "mVideoSinkEndRequest.Exists()=%d mEndPromiseHolder.IsEmpty()=%d\n",
-    IsStarted(), IsPlaying(), VideoQueue().IsFinished(),
-    VideoQueue().GetSize(), mVideoFrameEndTime.ToMicroseconds(), mHasVideo,
-    mVideoSinkEndRequest.Exists(), mEndPromiseHolder.IsEmpty())
-    + mAudioSink->GetDebugInfo();
+    "mVideoSinkEndRequest.Exists()=%d mEndPromiseHolder.IsEmpty()=%d",
+    IsStarted(),
+    IsPlaying(),
+    VideoQueue().IsFinished(),
+    VideoQueue().GetSize(),
+    mVideoFrameEndTime.ToMicroseconds(),
+    mHasVideo,
+    mVideoSinkEndRequest.Exists(),
+    mEndPromiseHolder.IsEmpty());
+  AppendStringIfNotEmpty(str, mAudioSink->GetDebugInfo());
+  return str;
 }
 
 } // namespace media

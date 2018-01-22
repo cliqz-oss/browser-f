@@ -74,6 +74,9 @@ scheme host and port.""")
     mode_group.add_argument("--list-tests", action="store_true",
                             default=False,
                             help="List all tests that will run")
+    mode_group.add_argument("--verify", action="store_true",
+                            default=False,
+                            help="Run a stability check on the selected tests")
 
     test_selection_group = parser.add_argument_group("Test Selection")
     test_selection_group.add_argument("--test-types", action="store",
@@ -86,6 +89,8 @@ scheme host and port.""")
                                       help="URL prefix to exclude")
     test_selection_group.add_argument("--include-manifest", type=abs_path,
                                       help="Path to manifest listing tests to include")
+    test_selection_group.add_argument("--skip-timeout", action="store_true",
+                                      help="Skip tests that are expected to time out")
     test_selection_group.add_argument("--tag", action="append", dest="tags",
                                       help="Labels applied to tests to include in the run. Labels starting dir: are equivalent to top-level directories.")
 
@@ -93,8 +98,10 @@ scheme host and port.""")
     debugging_group.add_argument('--debugger', const="__default__", nargs="?",
                                  help="run under a debugger, e.g. gdb or valgrind")
     debugging_group.add_argument('--debugger-args', help="arguments to the debugger")
+    debugging_group.add_argument("--rerun", action="store", type=int, default=1,
+                                 help="Number of times to re run each test without restarts")
     debugging_group.add_argument("--repeat", action="store", type=int, default=1,
-                                 help="Number of times to run the tests")
+                                 help="Number of times to run the tests, restarting between each run")
     debugging_group.add_argument("--repeat-until-unexpected", action="store_true", default=None,
                                  help="Run tests in a loop until one returns an unexpected result")
     debugging_group.add_argument('--pause-after-test', action="store_true", default=None,
@@ -138,6 +145,11 @@ scheme host and port.""")
                               default=None, help="Browser against which to run tests")
     config_group.add_argument("--config", action="store", type=abs_path, dest="config",
                               help="Path to config file")
+    config_group.add_argument("--install-fonts", action="store_true",
+                              default=None,
+                              help="Allow the wptrunner to install fonts on your system")
+    config_group.add_argument("--font-dir", action="store", type=abs_path, dest="font_dir",
+                              help="Path to local font installation directory", default=None)
 
     build_type = parser.add_mutually_exclusive_group()
     build_type.add_argument("--debug-build", dest="debug", action="store_true",
@@ -194,6 +206,11 @@ scheme host and port.""")
     gecko_group.add_argument("--reftest-screenshot", dest="reftest_screenshot", action="store",
                              choices=["always", "fail", "unexpected"], default="unexpected",
                              help="With --reftest-internal, when to take a screenshot")
+    gecko_group.add_argument("--chaos", dest="chaos_mode_flags", action="store",
+                             nargs="?", const=0xFFFFFFFF, type=int,
+                             help="Enable chaos mode with the specified feature flag "
+                             "(see http://searchfox.org/mozilla-central/source/mfbt/ChaosMode.h for "
+                             "details). If no value is supplied, all features are activated")
 
     servo_group = parser.add_argument_group("Servo-specific")
     servo_group.add_argument("--user-stylesheet",
@@ -297,8 +314,10 @@ def exe_path(name):
         return
 
     path = find_executable(name)
-    if os.access(path, os.X_OK):
+    if path and os.access(path, os.X_OK):
         return path
+    else:
+        return None
 
 
 def check_args(kwargs):
@@ -456,6 +475,9 @@ def create_parser_update(product_choices=None):
     parser.add_argument("--sync", dest="sync", action="store_true", default=False,
                         help="Sync the tests with the latest from upstream (implies --patch)")
     parser.add_argument("--ignore-existing", action="store_true", help="When updating test results only consider results from the logfiles provided, not existing expectations.")
+    parser.add_argument("--stability", nargs="?", action="store", const="unstable", default=None,
+        help=("Reason for disabling tests. When updating test results, disable tests that have "
+              "inconsistent results across many runs with the given reason."))
     parser.add_argument("--continue", action="store_true", help="Continue a previously started run of the update script")
     parser.add_argument("--abort", action="store_true", help="Clear state from a previous incomplete run of the update script")
     parser.add_argument("--exclude", action="store", nargs="*",

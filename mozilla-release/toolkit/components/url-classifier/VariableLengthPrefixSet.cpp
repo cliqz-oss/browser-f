@@ -239,7 +239,10 @@ VariableLengthPrefixSet::LoadFromFile(nsIFile* aFile)
                                            MAX_BUFFER_SIZE);
 
   // Convert to buffered stream
-  nsCOMPtr<nsIInputStream> in = NS_BufferInputStream(localInFile, bufferSize);
+  nsCOMPtr<nsIInputStream> in;
+  rv = NS_NewBufferedInputStream(getter_AddRefs(in), localInFile.forget(),
+                                 bufferSize);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   rv = mFixedPrefixSet->LoadPrefixes(in);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -275,8 +278,10 @@ VariableLengthPrefixSet::StoreToFile(nsIFile* aFile)
   }
 
   // Convert to buffered stream
-  nsCOMPtr<nsIOutputStream> out =
-    NS_BufferOutputStream(localOutFile, std::min(fileSize, MAX_BUFFER_SIZE));
+  nsCOMPtr<nsIOutputStream> out;
+  rv = NS_NewBufferedOutputStream(getter_AddRefs(out), localOutFile.forget(),
+                                  std::min(fileSize, MAX_BUFFER_SIZE));
+  NS_ENSURE_SUCCESS(rv, rv);
 
   rv = mFixedPrefixSet->WritePrefixes(out);
   NS_ENSURE_SUCCESS(rv, rv);

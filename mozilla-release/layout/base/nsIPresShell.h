@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -359,16 +360,30 @@ public:
    */
   virtual nsresult Initialize(nscoord aWidth, nscoord aHeight) = 0;
 
+  enum class ResizeReflowOptions : uint32_t {
+    // the resulting BSize should be exactly as given
+    eBSizeExact,
+    // the resulting BSize can be less than the given one, producing
+    // shrink-to-fit sizing in the block dimension
+    eBSizeLimit
+  };
   /**
    * Reflow the frame model into a new width and height.  The
    * coordinates for aWidth and aHeight must be in standard nscoord's.
    */
-  virtual nsresult ResizeReflow(nscoord aWidth, nscoord aHeight, nscoord aOldWidth = 0, nscoord aOldHeight = 0) = 0;
+  virtual nsresult ResizeReflow(nscoord aWidth, nscoord aHeight,
+                                nscoord aOldWidth = 0, nscoord aOldHeight = 0,
+                                ResizeReflowOptions aOptions =
+                                  ResizeReflowOptions::eBSizeExact) = 0;
   /**
    * Do the same thing as ResizeReflow but even if ResizeReflowOverride was
    * called previously.
    */
-  virtual nsresult ResizeReflowIgnoreOverride(nscoord aWidth, nscoord aHeight, nscoord aOldWidth, nscoord aOldHeight) = 0;
+  virtual nsresult ResizeReflowIgnoreOverride(
+                     nscoord aWidth, nscoord aHeight,
+                     nscoord aOldWidth, nscoord aOldHeight,
+                     ResizeReflowOptions aOptions =
+                       ResizeReflowOptions::eBSizeExact) = 0;
 
   /**
    * Returns true if ResizeReflowOverride has been called.
@@ -514,7 +529,7 @@ public:
    *
    * Note that this may destroy frames for an ancestor instead.
    */
-  virtual void DestroyFramesFor(mozilla::dom::Element* aElement) = 0;
+  virtual void DestroyFramesForAndRestyle(mozilla::dom::Element* aElement) = 0;
 
   void PostRecreateFramesFor(mozilla::dom::Element* aElement);
   void RestyleForAnimation(mozilla::dom::Element* aElement,
@@ -526,11 +541,9 @@ public:
   virtual void RecordShadowStyleChange(mozilla::dom::ShadowRoot* aShadowRoot) = 0;
 
   /**
-   * Determine if it is safe to flush all pending notifications
-   * @param aIsSafeToFlush true if it is safe, false otherwise.
-   *
+   * Determine if it is safe to flush all pending notifications.
    */
-  virtual bool IsSafeToFlush() const = 0;
+  bool IsSafeToFlush() const;
 
   /**
    * Flush pending notifications of the type specified.  This method
@@ -672,9 +685,9 @@ public:
   /**
    * @param aWhere: Either a percentage or a special value.
    *                nsIPresShell defines:
-   *                * (Default) SCROLL_MINIMUM = -1: The visible area is
-   *                scrolled to show the entire frame. If the frame is too
-   *                large, the top and left edges are given precedence.
+   *                * (Default) SCROLL_MINIMUM = -1: The visible area is scrolled
+   *                the minimum amount to show as much as possible of the frame.
+   *                This won't hide any initially visible part of the frame.
    *                * SCROLL_TOP = 0: The frame's upper edge is aligned with the
    *                top edge of the visible area.
    *                * SCROLL_BOTTOM = 100: The frame's bottom edge is aligned
@@ -1248,76 +1261,6 @@ public:
   // mouse capturing
   static CapturingContentInfo gCaptureInfo;
 
-  class PointerCaptureInfo final
-  {
-  public:
-    nsCOMPtr<nsIContent> mPendingContent;
-    nsCOMPtr<nsIContent> mOverrideContent;
-
-    explicit PointerCaptureInfo(nsIContent* aPendingContent)
-      : mPendingContent(aPendingContent)
-    {
-      MOZ_COUNT_CTOR(PointerCaptureInfo);
-    }
-
-    ~PointerCaptureInfo()
-    {
-      MOZ_COUNT_DTOR(PointerCaptureInfo);
-    }
-
-    bool Empty()
-    {
-      return !(mPendingContent || mOverrideContent);
-    }
-  };
-
-  class PointerInfo final
-  {
-  public:
-    uint16_t mPointerType;
-    bool mActiveState;
-    bool mPrimaryState;
-    bool mPreventMouseEventByContent;
-    explicit PointerInfo(bool aActiveState, uint16_t aPointerType,
-                         bool aPrimaryState)
-      : mPointerType(aPointerType)
-      , mActiveState(aActiveState)
-      , mPrimaryState(aPrimaryState)
-      , mPreventMouseEventByContent(false)
-    {
-    }
-  };
-
-  static void DispatchGotOrLostPointerCaptureEvent(
-                bool aIsGotCapture,
-                const mozilla::WidgetPointerEvent* aPointerEvent,
-                nsIContent* aCaptureTarget);
-
-  static PointerCaptureInfo* GetPointerCaptureInfo(uint32_t aPointerId);
-  static void SetPointerCapturingContent(uint32_t aPointerId,
-                                         nsIContent* aContent);
-  static void ReleasePointerCapturingContent(uint32_t aPointerId);
-  static nsIContent* GetPointerCapturingContent(uint32_t aPointerId);
-
-  // CheckPointerCaptureState checks cases, when got/lostpointercapture events
-  // should be fired.
-  static void CheckPointerCaptureState(
-                const mozilla::WidgetPointerEvent* aPointerEvent);
-
-  // GetPointerInfo returns true if pointer with aPointerId is situated in
-  // device, false otherwise.
-  // aActiveState is additional information, which shows state of pointer like
-  // button state for mouse.
-  static bool GetPointerInfo(uint32_t aPointerId, bool& aActiveState);
-
-  // GetPointerType returns pointer type like mouse, pen or touch for pointer
-  // event with pointerId
-  static uint16_t GetPointerType(uint32_t aPointerId);
-
-  // GetPointerPrimaryState returns state of attribute isPrimary for pointer
-  // event with pointerId
-  static bool GetPointerPrimaryState(uint32_t aPointerId);
-
   /**
    * When capturing content is set, it traps all mouse events and retargets
    * them at this content node. If capturing is not allowed
@@ -1562,24 +1505,14 @@ public:
     return mFontSizeInflationDisabledInMasterProcess;
   }
 
-  /**
-   * Determine if font size inflation is enabled. This value is cached until
-   * it becomes dirty.
-   *
-   * @returns true, if font size inflation is enabled; false otherwise.
-   */
-  bool FontSizeInflationEnabled();
+  bool FontSizeInflationEnabled() const {
+    return mFontSizeInflationEnabled;
+  }
 
   /**
-   * Notify the pres shell that an event occurred making the current value of
-   * mFontSizeInflationEnabled invalid. This will schedule a recomputation of
-   * whether font size inflation is enabled on the next call to
-   * FontSizeInflationEnabled().
+   * Recomputes whether font-size inflation is enabled.
    */
-  void NotifyFontSizeInflationEnabledIsDirty()
-  {
-    mFontSizeInflationEnabledIsDirty = true;
-  }
+  void RecomputeFontSizeInflationEnabled();
 
   /**
    * Return true if the most recent interruptible reflow was interrupted.
@@ -1638,6 +1571,11 @@ public:
                                                    bool* aRetVal);
 
   /**
+   * Returns whether or not the document has ever handled user input
+   */
+  virtual bool HasHandledUserInput() const = 0;
+
+  /**
    * Refresh observer management.
    */
 protected:
@@ -1645,22 +1583,10 @@ protected:
   void DoObserveLayoutFlushes();
 
   /**
-   * Do computations necessary to determine if font size inflation is enabled.
-   * This value is cached after computation, as the computation is somewhat
-   * expensive.
-   */
-  void RecomputeFontSizeInflationEnabled();
-
-  /**
-   * Does the actual work of figuring out the current state of font size inflation.
+   * Does the actual work of figuring out the current state of font size
+   * inflation.
    */
   bool DetermineFontSizeInflationState();
-
-  /**
-   * Apply the system font scale from the corresponding pref to the PresContext,
-   * taking into account the current state of font size inflation.
-   */
-  void HandleSystemFontScale();
 
   void RecordAlloc(void* aPtr) {
 #ifdef DEBUG
@@ -1684,12 +1610,6 @@ public:
 
   virtual bool AddPostRefreshObserver(nsAPostRefreshObserver* aObserver);
   virtual bool RemovePostRefreshObserver(nsAPostRefreshObserver* aObserver);
-
-  /**
-   * Initialize and shut down static variables.
-   */
-  static void InitializeStatics();
-  static void ReleaseStatics();
 
   // If a frame in the subtree rooted at aFrame is capturing the mouse then
   // clears that capture.
@@ -1790,6 +1710,11 @@ protected:
   mozilla::Maybe<float>     mResolution;
 
   int16_t                   mSelectionFlags;
+
+  // This is used to protect ourselves from triggering reflow while in the
+  // middle of frame construction and the like... it really shouldn't be
+  // needed, one hopes, but it is for now.
+  uint16_t                  mChangeNestCount;
 
   // Flags controlling how our document is rendered.  These persist
   // between paints and so are tied with retained layer pixels.

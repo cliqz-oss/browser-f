@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -51,7 +52,19 @@ public:
   static void
   AppendEscapedCSSFontFamilyList(const mozilla::FontFamilyList& aFamilyList,
                                  nsAString& aResult);
+  static void
+  AppendEscapedCSSFontFamilyList(mozilla::SharedFontList* aFontlist,
+                                 nsAString& aResult)
+  {
+    AppendEscapedCSSFontFamilyList(aFontlist->mNames, aResult);
+  }
 
+private:
+  static void
+  AppendEscapedCSSFontFamilyList(const nsTArray<mozilla::FontFamilyName>& aNames,
+                                 nsAString& aResult);
+
+public:
   // Append a bitmask-valued property's value(s) (space-separated) to aResult.
   static void AppendBitmaskCSSValue(nsCSSPropertyID aProperty,
                                     int32_t aMaskedValue,
@@ -204,7 +217,7 @@ public:
   }
 
   template<size_t N>
-  static bool MatchesLanguagePrefix(const nsIAtom* aLang,
+  static bool MatchesLanguagePrefix(const nsAtom* aLang,
                                     const char16_t (&aPrefix)[N])
   {
     MOZ_ASSERT(aLang);

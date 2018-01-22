@@ -292,11 +292,11 @@ class CallFrameInfo::Rule {
  public:
   virtual ~Rule() { }
 
-  // Tell HANDLER that, at ADDRESS in the program, REGISTER can be
-  // recovered using this rule. If REGISTER is kCFARegister, then this rule
+  // Tell HANDLER that, at ADDRESS in the program, REG can be
+  // recovered using this rule. If REG is kCFARegister, then this rule
   // describes how to compute the canonical frame address. Return what the
   // HANDLER member function returned.
-  virtual bool Handle(Handler *handler, uint64 address, int register) const = 0;
+  virtual bool Handle(Handler *handler, uint64 address, int reg) const = 0;
 
   // Equality on rules. We use these to decide which rules we need
   // to report after a DW_CFA_restore_state instruction.
@@ -1854,6 +1854,21 @@ unsigned int DwarfCFIToModule::RegisterNames::ARM() {
    8 "f0",  "f1",  "f2",  "f3",  "f4",  "f5",  "f6",  "f7"
   */
   return 13 * 8;
+}
+
+unsigned int DwarfCFIToModule::RegisterNames::MIPS() {
+  /*
+   8 "$zero", "$at",  "$v0",  "$v1",  "$a0",   "$a1",  "$a2",  "$a3",
+   8 "$t0",   "$t1",  "$t2",  "$t3",  "$t4",   "$t5",  "$t6",  "$t7",
+   8 "$s0",   "$s1",  "$s2",  "$s3",  "$s4",   "$s5",  "$s6",  "$s7",
+   8 "$t8",   "$t9",  "$k0",  "$k1",  "$gp",   "$sp",  "$fp",  "$ra",
+   9 "$lo",   "$hi",  "$pc",  "$f0",  "$f1",   "$f2",  "$f3",  "$f4",  "$f5",
+   8 "$f6",   "$f7",  "$f8",  "$f9",  "$f10",  "$f11", "$f12", "$f13",
+   7 "$f14",  "$f15", "$f16", "$f17", "$f18",  "$f19", "$f20",
+   7 "$f21",  "$f22", "$f23", "$f24", "$f25",  "$f26", "$f27",
+   6 "$f28",  "$f29", "$f30", "$f31", "$fcsr", "$fir"
+  */
+  return 8 + 8 + 8 + 8 + 9 + 8 + 7 + 7 + 6;
 }
 
 // See prototype for comments.

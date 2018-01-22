@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -238,12 +238,13 @@ AsyncCanvasRenderer::GetSurface()
   MutexAutoLock lock(mMutex);
   if (mSurfaceForBasic) {
     // Since SourceSurface isn't thread-safe, we need copy to a new SourceSurface.
+    gfx::DataSourceSurface::ScopedMap srcMap(mSurfaceForBasic, gfx::DataSourceSurface::READ);
+
     RefPtr<gfx::DataSourceSurface> result =
       gfx::Factory::CreateDataSourceSurfaceWithStride(mSurfaceForBasic->GetSize(),
                                                       mSurfaceForBasic->GetFormat(),
-                                                      mSurfaceForBasic->Stride());
+                                                      srcMap.GetStride());
 
-    gfx::DataSourceSurface::ScopedMap srcMap(mSurfaceForBasic, gfx::DataSourceSurface::READ);
     gfx::DataSourceSurface::ScopedMap dstMap(result, gfx::DataSourceSurface::WRITE);
 
     if (NS_WARN_IF(!srcMap.IsMapped()) ||
@@ -271,8 +272,10 @@ AsyncCanvasRenderer::GetInputStream(const char *aMimeType,
     return NS_ERROR_FAILURE;
   }
 
+  gfx::DataSourceSurface::ScopedMap map(surface, gfx::DataSourceSurface::READ);
+
   // Handle y flip.
-  RefPtr<gfx::DataSourceSurface> dataSurf = gl::YInvertImageSurface(surface);
+  RefPtr<gfx::DataSourceSurface> dataSurf = gl::YInvertImageSurface(surface, map.GetStride());
 
   return gfxUtils::GetInputStream(dataSurf, false, aMimeType, aEncoderOptions, aStream);
 }

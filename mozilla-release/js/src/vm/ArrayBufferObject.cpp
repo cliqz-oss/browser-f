@@ -39,7 +39,6 @@
 
 #include "builtin/DataViewObject.h"
 #include "gc/Barrier.h"
-#include "gc/Marking.h"
 #include "gc/Memory.h"
 #include "js/Conversions.h"
 #include "js/MemoryMetrics.h"
@@ -52,6 +51,8 @@
 
 #include "jsatominlines.h"
 
+#include "gc/Marking-inl.h"
+#include "gc/Nursery-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Shape-inl.h"
 
@@ -304,7 +305,7 @@ ArrayBufferObject::class_constructor(JSContext* cx, unsigned argc, Value* vp)
 static ArrayBufferObject::BufferContents
 AllocateArrayBufferContents(JSContext* cx, uint32_t nbytes)
 {
-    uint8_t* p = cx->runtime()->pod_callocCanGC<uint8_t>(nbytes);
+    uint8_t* p = cx->zone()->pod_callocCanGC<uint8_t>(nbytes);
     if (!p)
         ReportOutOfMemory(cx);
 
@@ -756,7 +757,7 @@ ArrayBufferObject::createForWasm(JSContext* cx, uint32_t initialSize,
 
     auto contents = BufferContents::create<WASM>(wasmBuf->dataPointer());
     buffer->initialize(initialSize, contents, OwnsData);
-    cx->zone()->updateMallocCounter(wasmBuf->mappedSize());
+    cx->updateMallocCounter(wasmBuf->mappedSize());
     return buffer;
 }
 
@@ -801,7 +802,7 @@ ArrayBufferObject::prepareForAsmJS(JSContext* cx, Handle<ArrayBufferObject*> buf
         buffer->changeContents(cx, BufferContents::create<WASM>(data), OwnsData);
         buffer->setIsPreparedForAsmJS();
         MOZ_ASSERT(data == buffer->dataPointer());
-        cx->zone()->updateMallocCounter(wasmBuf->mappedSize());
+        cx->updateMallocCounter(wasmBuf->mappedSize());
         return true;
     }
 
@@ -1061,7 +1062,7 @@ ArrayBufferObject::create(JSContext* cx, uint32_t nbytes, BufferContents content
                 nAllocated = JS_ROUNDUP(nbytes, js::gc::SystemPageSize());
             else if (contents.kind() == WASM)
                 nAllocated = contents.wasmBuffer()->allocatedBytes();
-            cx->zone()->updateMallocCounter(nAllocated);
+            cx->updateMallocCounter(nAllocated);
         }
     } else {
         MOZ_ASSERT(ownsState == OwnsData);

@@ -16,7 +16,7 @@ var { gDevTools } = require("devtools/client/framework/devtools");
 var { TargetFactory } = require("devtools/client/framework/target");
 var { Toolbox } = require("devtools/client/framework/toolbox");
 var Services = require("Services");
-var { DebuggerClient } = require("devtools/shared/client/main");
+var { DebuggerClient } = require("devtools/shared/client/debugger-client");
 var { PrefsHelper } = require("devtools/client/shared/prefs");
 var { Task } = require("devtools/shared/task");
 
@@ -76,7 +76,6 @@ function setPrefDefaults() {
   // Bug 1225160 - Using source maps with browser debugging can lead to a crash
   Services.prefs.setBoolPref("devtools.debugger.source-maps-enabled", false);
   Services.prefs.setBoolPref("devtools.debugger.new-debugger-frontend", true);
-  Services.prefs.setBoolPref("devtools.debugger.client-source-maps-enabled", true);
   Services.prefs.setBoolPref("devtools.webconsole.new-frontend-enabled", false);
 }
 window.addEventListener("load", function () {

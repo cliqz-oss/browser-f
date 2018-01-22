@@ -545,7 +545,8 @@ VRDisplay::RequestPresent(const nsTArray<VRLayer>& aLayers,
   if (!EventStateManager::IsHandlingUserInput() &&
       !isChromePresentation &&
       !IsHandlingVRNavigationEvent() &&
-      gfxPrefs::VRRequireGesture()) {
+      gfxPrefs::VRRequireGesture() &&
+      !IsPresenting()) {
     // The WebVR API states that if called outside of a user gesture, the
     // promise must be rejected.  We allow VR presentations to start within
     // trusted events such as vrdisplayactivate, which triggers in response to
@@ -564,7 +565,11 @@ VRDisplay::RequestPresent(const nsTArray<VRLayer>& aLayers,
     // use cases.
     promise->MaybeRejectWithUndefined();
   } else {
-    mPresentation = mClient->BeginPresentation(aLayers, presentationGroup);
+    if (mPresentation) {
+      mPresentation->UpdateLayers(aLayers);
+    } else {
+      mPresentation = mClient->BeginPresentation(aLayers, presentationGroup);
+    }
     mFrameInfo.Clear();
     promise->MaybeResolve(JS::UndefinedHandleValue);
   }
@@ -651,7 +656,12 @@ VRDisplay::GetLayers(nsTArray<VRLayer>& result)
 void
 VRDisplay::SubmitFrame()
 {
-  AutoProfilerTracing tracing("VR", "SubmitFrameAtVRDisplay");
+  AUTO_PROFILER_TRACING("VR", "SubmitFrameAtVRDisplay");
+
+  if (mClient && !mClient->IsPresentationGenerationCurrent()) {
+    mPresentation = nullptr;
+    mClient->MakePresentationGenerationCurrent();
+  }
 
   if (mPresentation) {
     mPresentation->SubmitFrame();
@@ -898,29 +908,6 @@ VRFrameInfo::Update(const gfx::VRDisplayInfo& aInfo,
   }
   mVRState.timestamp = aState.timestamp + mTimeStampOffset;
 
-  gfx::Quaternion qt;
-  if (mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Orientation) {
-    qt.x = mVRState.orientation[0];
-    qt.y = mVRState.orientation[1];
-    qt.z = mVRState.orientation[2];
-    qt.w = mVRState.orientation[3];
-  }
-  gfx::Point3D pos;
-  if (mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Position) {
-    pos.x = -mVRState.position[0];
-    pos.y = -mVRState.position[1];
-    pos.z = -mVRState.position[2];
-  }
-  gfx::Matrix4x4 matHead;
-  matHead.SetRotationFromQuaternion(qt);
-  matHead.PreTranslate(pos);
-
-  mLeftView = matHead;
-  mLeftView.PostTranslate(-aInfo.mEyeTranslation[gfx::VRDisplayInfo::Eye_Left]);
-
-  mRightView = matHead;
-  mRightView.PostTranslate(-aInfo.mEyeTranslation[gfx::VRDisplayInfo::Eye_Right]);
-
   // Avoid division by zero within ConstructProjectionMatrix
   const float kEpsilon = 0.00001f;
   if (fabs(aDepthFar - aDepthNear) < kEpsilon) {
@@ -931,6 +918,8 @@ VRFrameInfo::Update(const gfx::VRDisplayInfo& aInfo,
   mLeftProjection = leftFOV.ConstructProjectionMatrix(aDepthNear, aDepthFar, true);
   const gfx::VRFieldOfView rightFOV = aInfo.mEyeFOV[gfx::VRDisplayInfo::Eye_Right];
   mRightProjection = rightFOV.ConstructProjectionMatrix(aDepthNear, aDepthFar, true);
+  memcpy(mLeftView.components, aState.leftViewMatrix, sizeof(aState.leftViewMatrix));
+  memcpy(mRightView.components, aState.rightViewMatrix, sizeof(aState.rightViewMatrix));
 }
 
 VRFrameInfo::VRFrameInfo()
@@ -981,7 +970,7 @@ VRSubmitFrameResult::WrapObject(JSContext* aCx,
 }
 
 void
-VRSubmitFrameResult::Update(uint32_t aFrameNum, const nsACString& aBase64Image)
+VRSubmitFrameResult::Update(uint64_t aFrameNum, const nsACString& aBase64Image)
 {
   mFrameNum = aFrameNum;
   mBase64Image = NS_ConvertASCIItoUTF16(aBase64Image);

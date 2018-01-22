@@ -25,6 +25,8 @@ var gExceptionPaths = [
 
   // https://github.com/mozilla/activity-stream/issues/3053
   "resource://activity-stream/data/content/tippytop/images/",
+  // https://github.com/mozilla/activity-stream/issues/3758
+  "resource://activity-stream/prerendered/",
 
   // browser/extensions/pdfjs/content/build/pdf.js#1999
   "resource://pdf.js/web/images/",
@@ -47,7 +49,6 @@ var whitelist = [
   {file: "chrome://browser/content/newtab/alternativeDefaultSites.json"},
 
   // Add-on compat
-  {file: "chrome://browser/skin/devtools/common.css"},
   {file: "chrome://global/content/XPCNativeWrapper.js"},
   {file: "chrome://global/locale/brand.dtd"},
 
@@ -59,10 +60,6 @@ var whitelist = [
   {file: "chrome://global/locale/printPreviewProgress.dtd",
    platforms: ["macosx"]},
   {file: "chrome://global/locale/printProgress.dtd", platforms: ["macosx"]},
-  {file: "chrome://global/locale/printdialog.dtd",
-   platforms: ["macosx", "win"]},
-  {file: "chrome://global/locale/printjoboptions.dtd",
-   platforms: ["macosx", "win"]},
 
   // devtools/client/inspector/bin/dev-server.js
   {file: "chrome://devtools/content/inspector/markup/markup.xhtml",
@@ -125,9 +122,6 @@ var whitelist = [
   {file: "resource://shield-recipe-client-content/shield-content-frame.js"},
   {file: "resource://shield-recipe-client-content/shield-content-process.js"},
 
-  // New L10n API that is not yet used in production
-  {file: "resource://gre/modules/DOMLocalization.jsm"},
-
   // Starting from here, files in the whitelist are bugs that need fixing.
   // Bug 1339424 (wontfix?)
   {file: "chrome://browser/locale/taskbar.properties",
@@ -162,8 +156,6 @@ var whitelist = [
   {file: "chrome://pippki/content/resetpassword.xul"},
   // Bug 1351078
   {file: "resource://gre/modules/Battery.jsm"},
-  // Bug 1351079
-  {file: "resource://gre/modules/ISO8601DateUtils.jsm"},
   // Bug 1337345
   {file: "resource://gre/modules/Manifest.jsm"},
   // Bug 1351097
@@ -348,7 +340,7 @@ function parseCodeFile(fileUri) {
                 if (!/\.(properties|js|jsm|json|css)$/.test(path))
                   path += ".js";
                 gReferencesFromCode.add(path);
-                break
+                break;
               }
             }
           }
@@ -582,12 +574,12 @@ add_task(async function checkAllTheFiles() {
     // running the test on a local non-packaged build.
 
     if (/resource:\/\/app\/features\/[^/]+\/bootstrap\.js/.test(file)) {
-      info("not reporting feature boostrap file: " + file)
+      info("not reporting feature boostrap file: " + file);
       return false;
     }
     // Bug 1351892 - can stop shipping these?
     if (/resource:\/\/app\/features\/[^/]+\/chrome\/skin\//.test(file)) {
-      info("not reporting feature skin file that may be for another platform: " + file)
+      info("not reporting feature skin file that may be for another platform: " + file);
       return false;
     }
     return true;

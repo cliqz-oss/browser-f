@@ -8,10 +8,19 @@ AC_DEFUN([MOZ_ANDROID_NDK],
 case "$target" in
 *-android*|*-linuxandroid*)
     dnl $android_platform will be set for us by Python configure.
-    CPPFLAGS="-idirafter $android_platform/usr/include $CPPFLAGS"
+    directory_include_args="-isystem $android_platform/usr/include"
+
+    # clang will do any number of interesting things with host tools unless we tell
+    # it to use the NDK tools.
+    extra_opts="-gcc-toolchain $(dirname $(dirname $TOOLCHAIN_PREFIX))"
+    CPPFLAGS="$extra_opts $CPPFLAGS"
+    ASFLAGS="$extra_opts $ASFLAGS"
+    LDFLAGS="$extra_opts $LDFLAGS"
+
+    CPPFLAGS="$directory_include_args $CPPFLAGS"
     CFLAGS="-fno-short-enums -fno-exceptions $CFLAGS"
-    CXXFLAGS="-fno-short-enums -fno-exceptions $CXXFLAGS"
-    ASFLAGS="-idirafter $android_platform/usr/include -DANDROID $ASFLAGS"
+    CXXFLAGS="-fno-short-enums -fno-exceptions $CXXFLAGS $stlport_cppflags"
+    ASFLAGS="$directory_include_args -DANDROID $ASFLAGS"
 
     dnl Add --allow-shlib-undefined, because libGLESv2 links to an
     dnl undefined symbol (present on the hardware, just not in the
@@ -57,38 +66,17 @@ AC_DEFUN([MOZ_ANDROID_STLPORT],
 [
 
 if test "$OS_TARGET" = "Android"; then
-    if test -z "$STLPORT_CPPFLAGS$STLPORT_LIBS"; then
+    if test -z "$STLPORT_LIBS"; then
         # android-ndk-r8b and later
-        ndk_base="$android_ndk/sources/cxx-stl"
-        cxx_base="$ndk_base/llvm-libc++"
-        cxx_libs="$cxx_base/libs/$ANDROID_CPU_ARCH"
+        cxx_libs="$android_ndk/sources/cxx-stl/llvm-libc++/libs/$ANDROID_CPU_ARCH"
         # NDK r12 removed the arm/thumb library split and just made
         # everything thumb by default.  Attempt to compensate.
         if test "$MOZ_THUMB2" = 1 -a -d "$cxx_libs/thumb"; then
             cxx_libs="$cxx_libs/thumb"
         fi
-        cxx_include="$cxx_base/libcxx/include"
-        cxxabi_base="$ndk_base/llvm-libc++abi"
-        cxxabi_include="$cxxabi_base/libcxxabi/include"
 
         if ! test -e "$cxx_libs/libc++_static.a"; then
             AC_MSG_ERROR([Couldn't find path to llvm-libc++ in the android ndk])
-        fi
-
-        if ! test -e "$cxx_include"; then
-            # NDK r13 removes the inner "libcxx" directory.
-            cxx_include="$cxx_base/include"
-            if ! test -e "$cxx_include"; then
-                AC_MSG_ERROR([Couldn't find path to libc++ includes in the android ndk])
-            fi
-        fi
-
-        if ! test -e "$cxxabi_include"; then
-            # NDK r13 removes the inner "libcxxabi" directory.
-            cxxabi_include="$cxxabi_base/include"
-            if ! test -e "$cxxabi_include"; then
-                AC_MSG_ERROR([Couldn't find path to libc++abi includes in the android ndk])
-            fi
         fi
 
         STLPORT_LIBS="-L$cxx_libs -lc++_static"
@@ -98,12 +86,7 @@ if test "$OS_TARGET" = "Android"; then
                  STLPORT_LIBS="$STLPORT_LIBS -l${lib}"
             fi
         done
-        # Add android/support/include/ for prototyping long double math
-        # functions, locale-specific C library functions, multibyte support,
-        # etc.
-        STLPORT_CPPFLAGS="-I$cxx_include -I$android_ndk/sources/android/support/include -I$cxxabi_include"
     fi
-    CXXFLAGS="$CXXFLAGS $STLPORT_CPPFLAGS"
 fi
 AC_SUBST([STLPORT_LIBS])
 
@@ -289,9 +272,16 @@ case "$target" in
         AC_MSG_ERROR([You must install the Android tools.  Try |mach bootstrap|.  (Looked for $android_tools)])
     fi
 
-    MOZ_PATH_PROG(EMULATOR, emulator, :, [$android_tools])
+    dnl Android Tools 26 changes emulator path.
+    dnl Although android_sdk_root/tools still has emulator command,
+    dnl it doesn't work correctly
+    MOZ_PATH_PROG(EMULATOR, emulator, :, [$android_sdk_root/emulator])
     if test -z "$EMULATOR" -o "$EMULATOR" = ":"; then
-      AC_MSG_ERROR([The program emulator was not found.  Try |mach bootstrap|.])
+        dnl old emulator path until Android Tools 25.x
+        MOZ_PATH_PROG(EMULATOR, emulator, :, [$android_tools])
+        if test -z "$EMULATOR" -o "$EMULATOR" = ":"; then
+            AC_MSG_ERROR([The program emulator was not found.  Try |mach bootstrap|.])
+        fi
     fi
 
     # `compileSdkVersion ANDROID_COMPILE_SDK_VERSION` is Gradle-only,
@@ -342,6 +332,7 @@ for version in $4; do
         ANDROID_LINT_CLASSPATH="$ANDROID_LINT_CLASSPATH $ANDROID_SDK_ROOT/tools/lib/repository-$version.jar"
         ANDROID_LINT_CLASSPATH="$ANDROID_LINT_CLASSPATH $ANDROID_SDK_ROOT/tools/lib/common-$version.jar"
         ANDROID_LINT_CLASSPATH="$ANDROID_LINT_CLASSPATH $ANDROID_SDK_ROOT/tools/lib/lint-api-$version.jar"
+        ANDROID_LINT_CLASSPATH="$ANDROID_LINT_CLASSPATH $ANDROID_SDK_ROOT/tools/lib/manifest-merger-$version.jar"
         break
     fi
 done

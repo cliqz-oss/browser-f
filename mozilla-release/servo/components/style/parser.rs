@@ -8,8 +8,6 @@ use context::QuirksMode;
 use cssparser::{Parser, SourceLocation, UnicodeRange};
 use error_reporting::{ParseErrorReporter, ContextualParseError};
 use style_traits::{OneOrMoreSeparated, ParseError, ParsingMode, Separator};
-#[cfg(feature = "gecko")]
-use style_traits::{PARSING_MODE_DEFAULT, PARSING_MODE_ALLOW_UNITLESS_LENGTH, PARSING_MODE_ALLOW_ALL_NUMERIC_VALUES};
 use stylesheets::{CssRuleType, Origin, UrlExtraData, Namespaces};
 
 /// Asserts that all ParsingMode flags have a matching ParsingMode value in gecko.
@@ -19,7 +17,7 @@ pub fn assert_parsing_mode_match() {
     use gecko_bindings::structs;
 
     macro_rules! check_parsing_modes {
-        ( $( $a:ident => $b:ident ),*, ) => {
+        ( $( $a:ident => $b:path ),*, ) => {
             if cfg!(debug_assertions) {
                 let mut modes = ParsingMode::all();
                 $(
@@ -32,9 +30,9 @@ pub fn assert_parsing_mode_match() {
     }
 
     check_parsing_modes! {
-        ParsingMode_Default => PARSING_MODE_DEFAULT,
-        ParsingMode_AllowUnitlessLength => PARSING_MODE_ALLOW_UNITLESS_LENGTH,
-        ParsingMode_AllowAllNumericValues => PARSING_MODE_ALLOW_ALL_NUMERIC_VALUES,
+        ParsingMode_Default => ParsingMode::DEFAULT,
+        ParsingMode_AllowUnitlessLength => ParsingMode::ALLOW_UNITLESS_LENGTH,
+        ParsingMode_AllowAllNumericValues => ParsingMode::ALLOW_ALL_NUMERIC_VALUES,
     }
 }
 
@@ -69,13 +67,13 @@ impl<'a> ParserContext<'a> {
         rule_type: Option<CssRuleType>,
         parsing_mode: ParsingMode,
         quirks_mode: QuirksMode,
-    ) -> ParserContext<'a> {
+    ) -> Self {
         ParserContext {
-            stylesheet_origin: stylesheet_origin,
-            url_data: url_data,
-            rule_type: rule_type,
-            parsing_mode: parsing_mode,
-            quirks_mode: quirks_mode,
+            stylesheet_origin,
+            url_data,
+            rule_type,
+            parsing_mode,
+            quirks_mode,
             namespaces: None,
         }
     }
@@ -85,8 +83,8 @@ impl<'a> ParserContext<'a> {
         url_data: &'a UrlExtraData,
         rule_type: Option<CssRuleType>,
         parsing_mode: ParsingMode,
-        quirks_mode: QuirksMode
-    ) -> ParserContext<'a> {
+        quirks_mode: QuirksMode,
+    ) -> Self {
         Self::new(
             Origin::Author,
             url_data,
@@ -118,17 +116,25 @@ impl<'a> ParserContext<'a> {
     }
 
     /// Record a CSS parse error with this context’s error reporting.
-    pub fn log_css_error<R>(&self,
-                            context: &ParserErrorContext<R>,
-                            location: SourceLocation,
-                            error: ContextualParseError)
-        where R: ParseErrorReporter
+    pub fn log_css_error<R>(
+        &self,
+        context: &ParserErrorContext<R>,
+        location: SourceLocation,
+        error: ContextualParseError,
+    )
+    where
+        R: ParseErrorReporter,
     {
         let location = SourceLocation {
             line: location.line,
             column: location.column,
         };
         context.error_reporter.report_error(self.url_data, location, error)
+    }
+
+    /// Returns whether this is a chrome stylesheets.
+    pub fn in_chrome_stylesheet(&self) -> bool {
+        self.url_data.is_chrome()
     }
 }
 

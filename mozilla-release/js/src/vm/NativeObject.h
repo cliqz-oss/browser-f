@@ -390,20 +390,24 @@ extern HeapSlot* const emptyObjectElements;
 extern HeapSlot* const emptyObjectElementsShared;
 
 struct Class;
+class AutoCheckShapeConsistency;
 class GCMarker;
 class Shape;
 
 class NewObjectCache;
 
 // Operations which change an object's dense elements can either succeed, fail,
-// or be unable to complete. For native objects, the latter is used when the
-// object's elements must become sparse instead. The enum below is used for
-// such operations, and for similar operations on unboxed arrays and methods
-// that work on both kinds of objects.
+// or be unable to complete. The latter is used when the object's elements must
+// become sparse instead. The enum below is used for such operations.
 enum class DenseElementResult {
     Failure,
     Success,
     Incomplete
+};
+
+enum class ShouldUpdateTypes {
+    Update,
+    DontUpdate
 };
 
 /*
@@ -548,6 +552,7 @@ class NativeObject : public ShapedObject
 
   protected:
 #ifdef DEBUG
+    friend class js::AutoCheckShapeConsistency;
     void checkShapeConsistency();
 #else
     void checkShapeConsistency() { }
@@ -728,9 +733,6 @@ class NativeObject : public ShapedObject
         MOZ_ASSERT(flags);
         return shape_->hasAllObjectFlags(flags);
     }
-    bool watched() const {
-        return hasAllFlags(js::BaseShape::WATCHED);
-    }
     bool nonProxyIsExtensible() const {
         return !hasAllFlags(js::BaseShape::NOT_EXTENSIBLE);
     }
@@ -845,35 +847,35 @@ class NativeObject : public ShapedObject
     void freeSlot(JSContext* cx, uint32_t slot);
 
   private:
-    static MOZ_ALWAYS_INLINE Shape* getChildProperty(JSContext* cx, HandleNativeObject obj,
-                                                     HandleShape parent,
-                                                     MutableHandle<StackShape> child);
+    static MOZ_ALWAYS_INLINE Shape* getChildDataProperty(JSContext* cx, HandleNativeObject obj,
+                                                         HandleShape parent,
+                                                         MutableHandle<StackShape> child);
+    static MOZ_ALWAYS_INLINE Shape* getChildAccessorProperty(JSContext* cx, HandleNativeObject obj,
+                                                             HandleShape parent,
+                                                             MutableHandle<StackShape> child);
 
   public:
     /* Add a property whose id is not yet in this scope. */
-    static MOZ_ALWAYS_INLINE Shape* addProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
-                                                JSGetterOp getter, JSSetterOp setter,
-                                                uint32_t slot, unsigned attrs, unsigned flags,
-                                                bool allowDictionary = true);
+    static MOZ_ALWAYS_INLINE Shape* addDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
+                                                    uint32_t slot, unsigned attrs);
+
+    static MOZ_ALWAYS_INLINE Shape* addAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
+                                                        JSGetterOp getter, JSSetterOp setter,
+                                                        unsigned attrs);
+
     static Shape* addEnumerableDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id);
 
     /* Add a data property whose id is not yet in this scope. */
-    static Shape* addDataProperty(JSContext* cx, HandleNativeObject obj,
-                                  jsid id_, uint32_t slot, unsigned attrs);
     static Shape* addDataProperty(JSContext* cx, HandleNativeObject obj,
                                   HandlePropertyName name, uint32_t slot, unsigned attrs);
 
     /* Add or overwrite a property for id in this scope. */
     static Shape*
-    putProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
-                JSGetterOp getter, JSSetterOp setter,
-                uint32_t slot, unsigned attrs,
-                unsigned flags);
-    static inline Shape*
-    putProperty(JSContext* cx, HandleObject obj, PropertyName* name,
-                JSGetterOp getter, JSSetterOp setter,
-                uint32_t slot, unsigned attrs,
-                unsigned flags);
+    putDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id, unsigned attrs);
+
+    static Shape*
+    putAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
+                        JSGetterOp getter, JSSetterOp setter, unsigned attrs);
 
     /* Change the given property into a sibling with the same id in this scope. */
     static Shape*
@@ -895,10 +897,14 @@ class NativeObject : public ShapedObject
      * 2. Checks for non-extensibility must be done by callers.
      */
     static Shape*
-    addPropertyInternal(JSContext* cx, HandleNativeObject obj, HandleId id,
-                        JSGetterOp getter, JSSetterOp setter, uint32_t slot, unsigned attrs,
-                        unsigned flags, ShapeTable::Entry* entry, bool allowDictionary,
-                        const AutoKeepShapeTables& keep);
+    addDataPropertyInternal(JSContext* cx, HandleNativeObject obj, HandleId id,
+                            uint32_t slot, unsigned attrs, ShapeTable::Entry* entry,
+                            const AutoKeepShapeTables& keep);
+
+    static Shape*
+    addAccessorPropertyInternal(JSContext* cx, HandleNativeObject obj, HandleId id,
+                                JSGetterOp getter, JSSetterOp setter, unsigned attrs,
+                                ShapeTable::Entry* entry, const AutoKeepShapeTables& keep);
 
     static MOZ_MUST_USE bool fillInAfterSwap(JSContext* cx, HandleNativeObject obj,
                                              const Vector<Value>& values, void* priv);
@@ -1224,9 +1230,14 @@ class NativeObject : public ShapedObject
     inline Value getDenseOrTypedArrayElement(uint32_t idx);
 
     inline void copyDenseElements(uint32_t dstStart, const Value* src, uint32_t count);
-    inline void initDenseElements(uint32_t dstStart, const Value* src, uint32_t count);
+    inline void initDenseElements(const Value* src, uint32_t count);
+    inline void initDenseElements(NativeObject* src, uint32_t srcStart, uint32_t count);
     inline void moveDenseElements(uint32_t dstStart, uint32_t srcStart, uint32_t count);
     inline void moveDenseElementsNoPreBarrier(uint32_t dstStart, uint32_t srcStart, uint32_t count);
+
+    inline DenseElementResult
+    setOrExtendDenseElements(JSContext* cx, uint32_t start, const Value* vp, uint32_t count,
+                             ShouldUpdateTypes updateTypes = ShouldUpdateTypes::Update);
 
     bool shouldConvertDoubleElements() {
         return getElementsHeader()->shouldConvertDoubleElements();
@@ -1392,6 +1403,9 @@ class NativeObject : public ShapedObject
     copy(JSContext* cx, gc::AllocKind kind, gc::InitialHeap heap,
          HandleNativeObject templateObject);
 
+    /* Return the allocKind we would use if we were to tenure this object. */
+    inline js::gc::AllocKind allocKindForTenure() const;
+
     void updateShapeAfterMovingGC();
     void sweepDictionaryListPointer();
     void updateDictionaryListPointerAfterMinorGC(NativeObject* old);
@@ -1415,6 +1429,9 @@ class PlainObject : public NativeObject
 {
   public:
     static const js::Class class_;
+
+    /* Return the allocKind we would use if we were to tenure this object. */
+    inline js::gc::AllocKind allocKindForTenure() const;
 };
 
 inline void

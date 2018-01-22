@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -39,7 +40,7 @@ BuildCrashGuardPrefName(CrashGuardType aType, nsCString& aOutPrefName)
   MOZ_ASSERT(aType < CrashGuardType::NUM_TYPES);
   MOZ_ASSERT(sCrashGuardNames[size_t(aType)]);
 
-  aOutPrefName.Assign("gfx.crash-guard.status.");
+  aOutPrefName.AssignLiteral("gfx.crash-guard.status.");
   aOutPrefName.Append(sCrashGuardNames[size_t(aType)]);
 }
 
@@ -191,7 +192,7 @@ DriverCrashGuard::GetGuardFile()
 
   nsCString filename;
   filename.Assign(sCrashGuardNames[size_t(mType)]);
-  filename.Append(".guard");
+  filename.AppendLiteral(".guard");
 
   nsCOMPtr<nsIFile> file;
   NS_GetSpecialDirectory(NS_APP_USER_PROFILE_LOCAL_50_DIR, getter_AddRefs(file));

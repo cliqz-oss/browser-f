@@ -1,4 +1,4 @@
-"use strict"
+"use strict";
 
 add_task(async function() {
   info("Bug 475529 - Add is the default button for the new folder dialog + " +
@@ -30,7 +30,7 @@ add_task(async function() {
         tree.controller.doCommand("placesCmd_new:folder");
       },
       async function test(dialogWin) {
-        let promiseTitleChangeNotification = promiseBookmarksNotification(
+        let promiseTitleChangeNotification = PlacesTestUtils.waitForNotification(
           "onItemChanged", (itemId, prop, isAnno, val) => prop == "title" && val == "n");
 
         fillBookmarkTextField("editBMPanel_namePicker", "n", dialogWin, false);

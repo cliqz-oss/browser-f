@@ -93,9 +93,9 @@
             #[allow(unused_imports)]
             use properties::ShorthandId;
             #[allow(unused_imports)]
-            use selectors::parser::SelectorParseError;
+            use selectors::parser::SelectorParseErrorKind;
             #[allow(unused_imports)]
-            use style_traits::{ParseError, StyleParseError};
+            use style_traits::{ParseError, StyleParseErrorKind};
             #[allow(unused_imports)]
             use values::computed::{Context, ToComputedValue};
             #[allow(unused_imports)]
@@ -117,9 +117,7 @@
             use values::computed::ComputedVecIter;
 
             /// The computed value, effectively a list of single values.
-            #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-            #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-            #[derive(Clone, Debug, PartialEq)]
+            #[derive(Clone, Debug, MallocSizeOf, PartialEq)]
             % if need_animatable or animation_value_type == "ComputedValue":
             #[derive(Animate, ComputeSquaredDistance)]
             % endif
@@ -178,9 +176,7 @@
         }
 
         /// The specified value of ${name}.
-        #[derive(Clone, Debug, PartialEq)]
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+        #[derive(Clone, Debug, MallocSizeOf, PartialEq)]
         pub struct SpecifiedValue(pub Vec<single_value::SpecifiedValue>);
 
         impl ToCss for SpecifiedValue {
@@ -285,11 +281,11 @@
         #[allow(unused_imports)]
         use properties::style_structs;
         #[allow(unused_imports)]
-        use selectors::parser::SelectorParseError;
+        use selectors::parser::SelectorParseErrorKind;
         #[allow(unused_imports)]
         use servo_arc::Arc;
         #[allow(unused_imports)]
-        use style_traits::{ParseError, StyleParseError};
+        use style_traits::{ParseError, StyleParseErrorKind};
         #[allow(unused_imports)]
         use values::computed::{Context, ToComputedValue};
         #[allow(unused_imports)]
@@ -360,7 +356,7 @@
                             let computed = specified_value.to_computed_value(context);
                             % endif
                             % if property.ident == "font_size":
-                                 longhands::font_size::cascade_specified_font_size(
+                                 specified::FontSize::cascade_specified_font_size(
                                      context,
                                      &specified_value,
                                      computed,
@@ -377,7 +373,7 @@
                         % endif
                         CSSWideKeyword::Initial => {
                             % if property.ident == "font_size":
-                                longhands::font_size::cascade_initial_font_size(context);
+                                computed::FontSize::cascade_initial_font_size(context);
                             % else:
                                 context.builder.reset_${property.ident}();
                             % endif
@@ -390,7 +386,7 @@
                                 context.rule_cache_conditions.borrow_mut().set_uncacheable();
                             % endif
                             % if property.ident == "font_size":
-                                longhands::font_size::cascade_inherit_font_size(context);
+                                computed::FontSize::cascade_inherit_font_size(context);
                             % else:
                                 context.builder.inherit_${property.ident}();
                             % endif
@@ -406,22 +402,19 @@
             % endif
         }
         % if not property.derived_from:
-            pub fn parse_specified<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                % if property.boxed:
-                                   -> Result<Box<SpecifiedValue>, ParseError<'i>> {
-                    parse(context, input).map(|result| Box::new(result))
+            pub fn parse_declared<'i, 't>(
+                context: &ParserContext,
+                input: &mut Parser<'i, 't>,
+            ) -> Result<PropertyDeclaration, ParseError<'i>> {
+                % if property.allow_quirks:
+                    parse_quirky(context, input, specified::AllowQuirks::Yes)
                 % else:
-                                   -> Result<SpecifiedValue, ParseError<'i>> {
-                    % if property.allow_quirks:
-                        parse_quirky(context, input, specified::AllowQuirks::Yes)
-                    % else:
-                        parse(context, input)
-                    % endif
+                    parse(context, input)
                 % endif
-            }
-            pub fn parse_declared<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                                          -> Result<PropertyDeclaration, ParseError<'i>> {
-                parse_specified(context, input).map(PropertyDeclaration::${property.camel_case})
+                % if property.boxed:
+                    .map(Box::new)
+                % endif
+                    .map(PropertyDeclaration::${property.camel_case})
             }
         % endif
     }
@@ -443,7 +436,7 @@
             use cssparser::Parser;
             use parser::{Parse, ParserContext};
 
-            use style_traits::{ToCss, ParseError};
+            use style_traits::ParseError;
             define_css_keyword_enum! { T:
                 % for value in keyword.values_for(product):
                     "${value}" => ${to_rust_ident(value)},
@@ -618,7 +611,6 @@
 
     <%def name="inner_body(keyword, extra_specified=None, needs_conversion=False)">
         % if extra_specified or keyword.aliases_for(product):
-            use style_traits::ToCss;
             define_css_keyword_enum! { SpecifiedValue:
                 values {
                     % for value in keyword.values_for(product) + (extra_specified or "").split():
@@ -635,7 +627,6 @@
             pub use self::computed_value::T as SpecifiedValue;
         % endif
         pub mod computed_value {
-            use style_traits::ToCss;
             define_css_keyword_enum! { T:
                 % for value in data.longhands_by_name[name].keyword.values_for(product):
                     "${value}" => ${to_rust_ident(value)},
@@ -699,11 +690,11 @@
         use parser::ParserContext;
         use properties::{PropertyDeclaration, SourcePropertyDeclaration, MaybeBoxed, longhands};
         #[allow(unused_imports)]
-        use selectors::parser::SelectorParseError;
+        use selectors::parser::SelectorParseErrorKind;
         #[allow(unused_imports)]
         use std::fmt;
         #[allow(unused_imports)]
-        use style_traits::{ParseError, StyleParseError};
+        use style_traits::{ParseError, StyleParseErrorKind};
         #[allow(unused_imports)]
         use style_traits::ToCss;
 
@@ -936,6 +927,8 @@
 
 // Define property that supports prefixed intrinsic size keyword values for gecko.
 // E.g. -moz-max-content, -moz-min-content, etc.
+//
+// FIXME(emilio): This feels a lot like a huge hack, get rid of this.
 <%def name="gecko_size_type(name, length_type, initial_value, logical, **kwargs)">
     <%call expr="longhand(name,
                           predefined_type=length_type,
@@ -950,9 +943,7 @@
             pub type T = ::values::computed::${length_type};
         }
 
-        #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-        #[derive(Clone, Debug, PartialEq, ToCss)]
+        #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToCss)]
         pub struct SpecifiedValue(pub ${length_type});
 
         % if length_type == "MozLength":
@@ -982,20 +973,32 @@
             use values::computed::${length_type};
             ${length_type}::${initial_value}
         }
-        fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                         -> Result<SpecifiedValue, ParseError<'i>> {
-            % if logical:
-            let ret = ${length_type}::parse(context, input);
-            % else:
-            let ret = ${length_type}::parse_quirky(context, input, AllowQuirks::Yes);
-            % endif
-            // Keyword values don't make sense in the block direction; don't parse them
-            % if "block" in name:
-                if let Ok(${length_type}::ExtremumLength(..)) = ret {
-                    return Err(StyleParseError::UnspecifiedError.into())
-                }
-            % endif
-            ret.map(SpecifiedValue)
+
+        impl Parse for SpecifiedValue {
+            fn parse<'i, 't>(
+                context: &ParserContext,
+                input: &mut Parser<'i, 't>,
+            ) -> Result<SpecifiedValue, ParseError<'i>> {
+                % if logical:
+                let ret = ${length_type}::parse(context, input);
+                % else:
+                let ret = ${length_type}::parse_quirky(context, input, AllowQuirks::Yes);
+                % endif
+                // Keyword values don't make sense in the block direction; don't parse them
+                % if "block" in name:
+                    if let Ok(${length_type}::ExtremumLength(..)) = ret {
+                        return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
+                    }
+                % endif
+                ret.map(SpecifiedValue)
+            }
+        }
+
+        fn parse<'i, 't>(
+            context: &ParserContext,
+            input: &mut Parser<'i, 't>,
+        ) -> Result<SpecifiedValue, ParseError<'i>> {
+            SpecifiedValue::parse(context, input)
         }
 
         impl ToComputedValue for SpecifiedValue {

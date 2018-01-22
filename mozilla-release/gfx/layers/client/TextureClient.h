@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-//  * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -139,6 +140,7 @@ struct MappedYCbCrChannelData
   gfx::IntSize size;
   int32_t stride;
   int32_t skip;
+  uint32_t bytesPerPixel;
 
   bool CopyInto(MappedYCbCrChannelData& aDst);
 };
@@ -223,6 +225,7 @@ public:
 
 #ifdef XP_WIN
 class D3D11TextureData;
+class DXGIYCbCrTextureData;
 #endif
 
 class TextureData {
@@ -234,6 +237,7 @@ public:
     bool hasSynchronization;
     bool supportsMoz2D;
     bool canExposeMappedData;
+    bool canConcurrentlyReadLock;
 
     Info()
     : format(gfx::SurfaceFormat::UNKNOWN)
@@ -241,6 +245,7 @@ public:
     , hasSynchronization(false)
     , supportsMoz2D(false)
     , canExposeMappedData(false)
+    , canConcurrentlyReadLock(true)
     {}
   };
 
@@ -268,6 +273,8 @@ public:
   virtual bool Serialize(SurfaceDescriptor& aDescriptor) = 0;
   virtual void GetSubDescriptor(GPUVideoSubDescriptor* aOutDesc) { }
 
+  virtual void OnForwardedToHost() {}
+
   virtual TextureData*
   CreateSimilar(LayersIPCChannel* aAllocator,
                 LayersBackend aLayersBackend,
@@ -284,6 +291,9 @@ public:
 
 #ifdef XP_WIN
   virtual D3D11TextureData* AsD3D11TextureData() {
+    return nullptr;
+  }
+  virtual DXGIYCbCrTextureData* AsDXGIYCbCrTextureData() {
     return nullptr;
   }
 #endif
@@ -347,9 +357,12 @@ public:
   static already_AddRefed<TextureClient>
   CreateForYCbCr(KnowsCompositor* aAllocator,
                  gfx::IntSize aYSize,
+                 uint32_t aYStride,
                  gfx::IntSize aCbCrSize,
+                 uint32_t aCbCrStride,
                  StereoMode aStereoMode,
                  YUVColorSpace aYUVColorSpace,
+                 uint32_t aBitDepth,
                  TextureFlags aTextureFlags);
 
   // Creates and allocates a TextureClient (can be accessed through raw
@@ -369,6 +382,7 @@ public:
   CreateForYCbCrWithBufferSize(KnowsCompositor* aAllocator,
                                size_t aSize,
                                YUVColorSpace aYUVColorSpace,
+                               uint32_t aBitDepth,
                                TextureFlags aTextureFlags);
 
   // Creates and allocates a TextureClient of the same type.

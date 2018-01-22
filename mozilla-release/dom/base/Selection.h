@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +10,7 @@
 #include "nsIWeakReference.h"
 
 #include "mozilla/AutoRestore.h"
+#include "mozilla/RangeBoundary.h"
 #include "mozilla/TextRange.h"
 #include "mozilla/UniquePtr.h"
 #include "nsISelection.h"
@@ -132,7 +133,19 @@ public:
   nsresult      RemoveItem(nsRange* aRange);
   nsresult      RemoveCollapsedRanges();
   nsresult      Clear(nsPresContext* aPresContext);
-  nsresult      Collapse(nsINode* aContainer, int32_t aOffset);
+  nsresult      Collapse(nsINode* aContainer, int32_t aOffset)
+  {
+    if (!aContainer) {
+      return NS_ERROR_INVALID_ARG;
+    }
+    return Collapse(RawRangeBoundary(aContainer, aOffset));
+  }
+  nsresult      Collapse(const RawRangeBoundary& aPoint)
+  {
+    ErrorResult result;
+    Collapse(aPoint, result);
+    return result.StealNSResult();
+  }
   nsresult      Extend(nsINode* aContainer, int32_t aOffset);
   nsRange*      GetRangeAt(int32_t aIndex) const;
 
@@ -178,6 +191,7 @@ public:
   uint32_t     FocusOffset();
 
   nsIContent*  GetChildAtAnchorOffset();
+  nsIContent*  GetChildAtFocusOffset();
 
   /*
    * IsCollapsed -- is the whole selection just one point, or unset?
@@ -290,7 +304,11 @@ public:
   void ResetColors(mozilla::ErrorResult& aRv);
 
   // Non-JS callers should use the following methods.
-  void Collapse(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv);
+  void Collapse(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv)
+  {
+    Collapse(RawRangeBoundary(&aContainer, aOffset), aRv);
+  }
+  void Collapse(const RawRangeBoundary& aPoint, ErrorResult& aRv);
   void CollapseToStart(mozilla::ErrorResult& aRv);
   void CollapseToEnd(mozilla::ErrorResult& aRv);
   void Extend(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv);

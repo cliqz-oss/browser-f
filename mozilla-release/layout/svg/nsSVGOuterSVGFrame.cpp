@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,7 +11,6 @@
 #include "gfxContext.h"
 #include "nsDisplayList.h"
 #include "nsIDocument.h"
-#include "nsIDOMHTMLIFrameElement.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIObjectLoadingContent.h"
 #include "nsSVGIntegrationUtils.h"
@@ -131,7 +131,7 @@ nsSVGOuterSVGFrame::Init(nsIContent*       aContent,
           // has had its first reflow, and that its size depends on our
           // intrinsic size.  We need it to resize itself to use our (now
           // available) intrinsic size:
-          embeddingFrame->PresContext()->PresShell()->
+          embeddingFrame->PresShell()->
             FrameNeedsReflow(embeddingFrame, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
         }
       }
@@ -514,7 +514,7 @@ nsSVGOuterSVGFrame::DidReflow(nsPresContext*   aPresContext,
 
   // Make sure elements styled by :hover get updated if script/animation moves
   // them under or out from under the pointer:
-  PresContext()->PresShell()->SynthesizeMouseMove(false);
+  PresShell()->SynthesizeMouseMove(false);
 }
 
 /* virtual */ void
@@ -685,7 +685,7 @@ nsDisplayOuterSVG::ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
 
 nsresult
 nsSVGOuterSVGFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                     nsIAtom* aAttribute,
+                                     nsAtom* aAttribute,
                                      int32_t  aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None &&
@@ -716,14 +716,14 @@ nsSVGOuterSVGFrame::AttributeChanged(int32_t  aNameSpaceID,
         if (DependsOnIntrinsicSize(embeddingFrame)) {
           // Tell embeddingFrame's presShell it needs to be reflowed (which takes
           // care of reflowing us too).
-          embeddingFrame->PresContext()->PresShell()->
+          embeddingFrame->PresShell()->
             FrameNeedsReflow(embeddingFrame, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
         }
         // else our width and height is overridden - don't reflow anything
       } else {
         // We are not embedded by reference, so our 'width' and 'height'
         // attributes are not overridden - we need to reflow.
-        PresContext()->PresShell()->
+        PresShell()->
           FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
       }
     }
@@ -783,10 +783,11 @@ nsSVGOuterSVGFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
        NS_SVGDisplayListHitTestingEnabled()) ||
       (!aBuilder->IsForEventDelivery() &&
        NS_SVGDisplayListPaintingEnabled())) {
-    nsDisplayList *contentList = aLists.Content();
-    nsDisplayListSet set(contentList, contentList, contentList,
-                         contentList, contentList, contentList);
+    nsDisplayList newList(aBuilder);
+    nsDisplayListSet set(&newList, &newList, &newList,
+                         &newList, &newList, &newList);
     BuildDisplayListForNonBlockChildren(aBuilder, set);
+    aLists.Content()->AppendNewToTop(new (aBuilder) nsDisplaySVGWrapper(aBuilder, this, &newList));
   } else if (IsVisibleForPainting(aBuilder) || !aBuilder->IsForPainting()) {
     aLists.Content()->AppendNewToTop(
       new (aBuilder) nsDisplayOuterSVG(aBuilder, this));
@@ -928,14 +929,13 @@ nsSVGOuterSVGFrame::IsRootOfReplacedElementSubDoc(nsIFrame **aEmbeddingFrame)
 
     if (window) {
       nsCOMPtr<nsIDOMElement> frameElement = window->GetFrameElement();
-      nsCOMPtr<nsIObjectLoadingContent> olc = do_QueryInterface(frameElement);
-      nsCOMPtr<nsIDOMHTMLIFrameElement> iframeElement =
-        do_QueryInterface(frameElement);
-      if (olc || iframeElement) {
+      nsCOMPtr<nsIContent> content = do_QueryInterface(frameElement);
+      if (content && content->IsAnyOfHTMLElements(nsGkAtoms::object,
+                                                  nsGkAtoms::embed,
+                                                  nsGkAtoms::iframe)) {
         // Our document is inside an HTML 'object', 'embed' or 'iframe' element
         if (aEmbeddingFrame) {
-          nsCOMPtr<nsIContent> element = do_QueryInterface(frameElement);
-          *aEmbeddingFrame = element->GetPrimaryFrame();
+          *aEmbeddingFrame = content->GetPrimaryFrame();
           NS_ASSERTION(*aEmbeddingFrame, "Yikes, no embedding frame!");
         }
         return true;

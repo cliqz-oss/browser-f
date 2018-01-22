@@ -40,7 +40,6 @@ namespace mozilla {
 class DeclarationBlock;
 namespace dom {
 struct CustomElementData;
-class DOMIntersectionObserver;
 class Element;
 } // namespace dom
 } // namespace mozilla
@@ -156,8 +155,10 @@ public:
   virtual nsTArray<nsIContent*> &DestInsertionPoints() override;
   virtual nsTArray<nsIContent*> *GetExistingDestInsertionPoints() const override;
   virtual void SetShadowRoot(ShadowRoot* aBinding) override;
-  virtual nsIContent *GetXBLInsertionParent() const override;
-  virtual void SetXBLInsertionParent(nsIContent* aContent) override;
+  virtual mozilla::dom::HTMLSlotElement* GetAssignedSlot() const override;
+  virtual void SetAssignedSlot(mozilla::dom::HTMLSlotElement* aSlot) override;
+  virtual nsIContent *GetXBLInsertionPoint() const override;
+  virtual void SetXBLInsertionPoint(nsIContent* aContent) override;
   virtual bool IsLink(nsIURI** aURI) const override;
 
   virtual void DestroyContent() override;
@@ -222,13 +223,13 @@ public:
   static void RemoveBlackMarkedNode(nsINode* aNode);
   static void MarkNodeChildren(nsINode* aNode);
   static void InitCCCallbacks();
-  static void MarkUserData(void* aObject, nsIAtom* aKey, void* aChild,
+  static void MarkUserData(void* aObject, nsAtom* aKey, void* aChild,
                            void *aData);
 
   /**
    * Is the HTML local name a void element?
    */
-  static bool IsHTMLVoid(nsIAtom* aLocalName);
+  static bool IsHTMLVoid(nsAtom* aLocalName);
 protected:
   virtual ~FragmentOrElement();
 
@@ -299,25 +300,24 @@ public:
     nsTArray<nsIContent*> mDestInsertionPoints;
 
     /**
+     * The assigned slot associated with this element.
+     */
+    RefPtr<mozilla::dom::HTMLSlotElement> mAssignedSlot;
+
+    /**
      * XBL binding installed on the element.
      */
     RefPtr<nsXBLBinding> mXBLBinding;
 
     /**
-     * XBL binding installed on the lement.
+     * XBL binding insertion point.
      */
-    nsCOMPtr<nsIContent> mXBLInsertionParent;
+    nsCOMPtr<nsIContent> mXBLInsertionPoint;
 
     /**
      * Web components custom element data.
      */
     RefPtr<CustomElementData> mCustomElementData;
-
-    /**
-     * Registered Intersection Observers on the element.
-     */
-    nsDataHashtable<nsRefPtrHashKey<DOMIntersectionObserver>, int32_t>
-      mRegisteredIntersectionObservers;
 
     /**
      * For XUL to hold either frameloader or opener.

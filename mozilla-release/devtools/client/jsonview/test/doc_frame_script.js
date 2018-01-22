@@ -58,6 +58,13 @@ addMessageListener("Test:JsonView:GetElementVisibleText", function (msg) {
   sendAsyncMessage(msg.name, {text: text});
 });
 
+addMessageListener("Test:JsonView:GetElementAttr", function (msg) {
+  let {selector, attr} = msg.data;
+  let element = content.document.querySelector(selector);
+  let text = element ? element.getAttribute(attr) : null;
+  sendAsyncMessage(msg.name, {text: text});
+});
+
 addMessageListener("Test:JsonView:FocusElement", function (msg) {
   let {selector} = msg.data;
   let element = content.document.querySelector(selector);
@@ -107,3 +114,13 @@ addMessageListener("Test:JsonView:WaitForFilter", function (msg) {
 
   observer.observe(firstRow, { attributes: true });
 });
+
+addMessageListener("Test:JsonView:Eval", function (msg) {
+  let result = content.eval(msg.data.code);
+  sendAsyncMessage(msg.name, {result});
+});
+
+Components.utils.exportFunction(content.document.querySelector.bind(content.document),
+  content, {defineAs: "$"});
+Components.utils.exportFunction(content.document.querySelectorAll.bind(content.document),
+  content, {defineAs: "$$"});

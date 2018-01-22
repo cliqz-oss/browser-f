@@ -7,17 +7,15 @@
 use context::{ElementCascadeInputs, StyleContext, SharedStyleContext};
 use data::{ElementData, ElementStyles};
 use dom::{NodeInfo, OpaqueNode, TElement, TNode};
-use invalidation::element::restyle_hints::{RECASCADE_SELF, RECASCADE_DESCENDANTS, RestyleHint};
+use invalidation::element::restyle_hints::RestyleHint;
 use matching::{ChildCascadeRequirement, MatchMethods};
 use selector_parser::PseudoElement;
+use selectors::NthIndexCache;
 use sharing::StyleSharingTarget;
 use smallvec::SmallVec;
 use style_resolver::{PseudoElementResolution, StyleResolverForElement};
-#[cfg(feature = "servo")] use style_traits::ToCss;
 use stylist::RuleInclusion;
-use traversal_flags::{TraversalFlags, self};
-#[cfg(feature = "servo")] use values::Either;
-#[cfg(feature = "servo")] use values::generics::image::Image;
+use traversal_flags::TraversalFlags;
 
 /// A per-traversal-level chunk of data. This is sent down by the traversal, and
 /// currently only holds the dom depth for the bloom filter.
@@ -34,10 +32,17 @@ pub struct PerLevelTraversalData {
 
 /// We use this structure, rather than just returning a boolean from pre_traverse,
 /// to enfore that callers process root invalidations before starting the traversal.
-pub struct PreTraverseToken(bool);
-impl PreTraverseToken {
+pub struct PreTraverseToken<E: TElement>(Option<E>);
+impl<E: TElement> PreTraverseToken<E> {
     /// Whether we should traverse children.
-    pub fn should_traverse(&self) -> bool { self.0 }
+    pub fn should_traverse(&self) -> bool {
+        self.0.is_some()
+    }
+
+    /// Returns the traversal root for the current traversal.
+    pub(crate) fn traversal_root(self) -> Option<E> {
+        self.0
+    }
 }
 
 #[cfg(feature = "servo")]
@@ -139,36 +144,52 @@ pub trait DomTraversal<E: TElement> : Sync {
     fn pre_traverse(
         root: E,
         shared_context: &SharedStyleContext,
-        traversal_flags: TraversalFlags,
-    ) -> PreTraverseToken {
+    ) -> PreTraverseToken<E> {
+        let traversal_flags = shared_context.traversal_flags;
+
         // If this is an unstyled-only traversal, the caller has already verified
         // that there's something to traverse, and we don't need to do any
         // invalidation since we're not doing any restyling.
-        if traversal_flags.contains(traversal_flags::UnstyledOnly) {
-            return PreTraverseToken(true)
+        if traversal_flags.contains(TraversalFlags::UnstyledOnly) {
+            return PreTraverseToken(Some(root))
         }
 
-        let flags = shared_context.traversal_flags;
         let mut data = root.mutate_data();
         let mut data = data.as_mut().map(|d| &mut **d);
-
-        if let Some(ref mut data) = data {
-            // Invalidate our style, and the one of our siblings and descendants
-            // as needed.
-            data.invalidate_style_if_needed(root, shared_context, None);
-
-            // Make sure we don't have any stale RECONSTRUCTED_ANCESTOR bits from
-            // the last traversal (at a potentially-higher root). From the
-            // perspective of this traversal, the root cannot have reconstructed
-            // ancestors.
-            data.set_reconstructed_ancestor(false);
-        };
-
         let parent = root.traversal_parent();
         let parent_data = parent.as_ref().and_then(|p| p.borrow_data());
+
+        if let Some(ref mut data) = data {
+            // Make sure we don't have any stale RECONSTRUCTED_ANCESTOR bits
+            // from the last traversal (at a potentially-higher root).
+            //
+            // From the perspective of this traversal, the root cannot have
+            // reconstructed ancestors.
+            data.set_reconstructed_ancestor(false);
+
+            if !traversal_flags.for_animation_only() {
+                // Invalidate our style, and that of our siblings and
+                // descendants as needed.
+                let invalidation_result = data.invalidate_style_if_needed(
+                    root,
+                    shared_context,
+                    None,
+                    &mut NthIndexCache::default(),
+                );
+
+                if invalidation_result.has_invalidated_siblings() {
+                    let actual_root =
+                        parent.expect("How in the world can you invalidate \
+                                       siblings without a parent?");
+                    unsafe { actual_root.set_dirty_descendants() }
+                    return PreTraverseToken(Some(actual_root));
+                }
+            }
+        }
+
         let should_traverse = Self::element_needs_traversal(
             root,
-            flags,
+            traversal_flags,
             data.as_mut().map(|d| &**d),
             parent_data.as_ref().map(|d| &**d)
         );
@@ -176,10 +197,10 @@ pub trait DomTraversal<E: TElement> : Sync {
         // If we're not going to traverse at all, we may need to clear some state
         // off the root (which would normally be done at the end of recalc_style_at).
         if !should_traverse && data.is_some() {
-            clear_state_after_traversing(root, data.unwrap(), flags);
+            clear_state_after_traversing(root, data.unwrap(), traversal_flags);
         }
 
-        PreTraverseToken(should_traverse)
+        PreTraverseToken(if should_traverse { Some(root) } else { None })
     }
 
     /// Returns true if traversal should visit a text node. The style system
@@ -203,7 +224,7 @@ pub trait DomTraversal<E: TElement> : Sync {
         debug!("element_needs_traversal({:?}, {:?}, {:?}, {:?})",
                el, traversal_flags, data, parent_data);
 
-        if traversal_flags.contains(traversal_flags::UnstyledOnly) {
+        if traversal_flags.contains(TraversalFlags::UnstyledOnly) {
             return data.map_or(true, |d| !d.has_styles()) || el.has_dirty_descendants();
         }
 
@@ -454,12 +475,12 @@ where
     F: FnMut(E::ConcreteNode),
 {
     use std::cmp;
-    use traversal_flags::*;
+    use traversal_flags::TraversalFlags;
 
     let flags = context.shared.traversal_flags;
     context.thread_local.begin_element(element, data);
     context.thread_local.statistics.elements_traversed += 1;
-    debug_assert!(flags.intersects(AnimationOnly | UnstyledOnly) ||
+    debug_assert!(flags.intersects(TraversalFlags::AnimationOnly | TraversalFlags::UnstyledOnly) ||
                   !element.has_snapshot() || element.handled_snapshot(),
                   "Should've handled snapshots here already");
 
@@ -506,7 +527,7 @@ where
     // those operations and compute the propagated restyle hint (unless we're
     // not processing invalidations, in which case don't need to propagate it
     // and must avoid clearing it).
-    let propagated_hint = if flags.contains(UnstyledOnly) {
+    let propagated_hint = if flags.contains(TraversalFlags::UnstyledOnly) {
         RestyleHint::empty()
     } else {
         debug_assert!(flags.for_animation_only() ||
@@ -577,7 +598,7 @@ where
     }
 
     debug_assert!(flags.for_animation_only() ||
-                  !flags.contains(ClearDirtyBits) ||
+                  !flags.contains(TraversalFlags::ClearDirtyBits) ||
                   !element.has_animation_only_dirty_descendants(),
                   "Should have cleared animation bits already");
     clear_state_after_traversing(element, data, flags);
@@ -593,21 +614,19 @@ fn clear_state_after_traversing<E>(
 where
     E: TElement,
 {
-    use traversal_flags::*;
-
     // If we are in a forgetful traversal, drop the existing restyle
     // data here, since we won't need to perform a post-traversal to pick up
     // any change hints.
-    if flags.contains(Forgetful) {
+    if flags.contains(TraversalFlags::Forgetful) {
         data.clear_restyle_flags_and_damage();
     }
 
     // Clear dirty bits as appropriate.
     if flags.for_animation_only() {
-        if flags.intersects(ClearDirtyBits | ClearAnimationOnlyDirtyDescendants) {
+        if flags.intersects(TraversalFlags::ClearDirtyBits | TraversalFlags::ClearAnimationOnlyDirtyDescendants) {
             unsafe { element.unset_animation_only_dirty_descendants(); }
         }
-    } else if flags.contains(ClearDirtyBits) {
+    } else if flags.contains(TraversalFlags::ClearDirtyBits) {
         // The animation traversal happens first, so we don't need to guard against
         // clearing the animation bit on the regular traversal.
         unsafe { element.clear_dirty_bits(); }
@@ -764,6 +783,10 @@ fn notify_paint_worklet<E>(context: &StyleContext<E>, data: &ElementData)
 where
     E: TElement,
 {
+    use style_traits::ToCss;
+    use values::Either;
+    use values::generics::image::Image;
+
     // We speculatively evaluate any paint worklets during styling.
     // This allows us to run paint worklets in parallel with style and layout.
     // Note that this is wasted effort if the size of the node has
@@ -818,7 +841,7 @@ where
     let is_initial_style = context.thread_local.is_initial_style();
 
     // Loop over all the traversal children.
-    for child_node in element.as_node().traversal_children() {
+    for child_node in element.traversal_children() {
         let child = match child_node.as_element() {
             Some(el) => el,
             None => {
@@ -840,7 +863,7 @@ where
 
         // Make sure to not run style invalidation of styled elements in an
         // unstyled-children-only traversal.
-        if child_data.is_some() && flags.intersects(traversal_flags::UnstyledOnly) {
+        if child_data.is_some() && flags.intersects(TraversalFlags::UnstyledOnly) {
             continue;
         }
 
@@ -853,16 +876,16 @@ where
             match cascade_requirement {
                 ChildCascadeRequirement::CanSkipCascade => {}
                 ChildCascadeRequirement::MustCascadeDescendants => {
-                    child_hint |= RECASCADE_SELF | RECASCADE_DESCENDANTS;
+                    child_hint |= RestyleHint::RECASCADE_SELF | RestyleHint::RECASCADE_DESCENDANTS;
                 }
                 ChildCascadeRequirement::MustCascadeChildrenIfInheritResetStyle => {
-                    use properties::computed_value_flags::INHERITS_RESET_STYLE;
-                    if child_data.styles.primary().flags.contains(INHERITS_RESET_STYLE) {
-                        child_hint |= RECASCADE_SELF;
+                    use properties::computed_value_flags::ComputedValueFlags;
+                    if child_data.styles.primary().flags.contains(ComputedValueFlags::INHERITS_RESET_STYLE) {
+                        child_hint |= RestyleHint::RECASCADE_SELF;
                     }
                 }
                 ChildCascadeRequirement::MustCascadeChildren => {
-                    child_hint |= RECASCADE_SELF;
+                    child_hint |= RestyleHint::RECASCADE_SELF;
                 }
             }
 
@@ -875,7 +898,8 @@ where
             child_data.invalidate_style_if_needed(
                 child,
                 &context.shared,
-                Some(&context.thread_local.stack_limit_checker)
+                Some(&context.thread_local.stack_limit_checker),
+                &mut context.thread_local.nth_index_cache,
             );
         }
 
@@ -909,7 +933,7 @@ where
     let mut parents = SmallVec::<[E; 32]>::new();
     parents.push(root);
     while let Some(p) = parents.pop() {
-        for kid in p.as_node().traversal_children() {
+        for kid in p.traversal_children() {
             if let Some(kid) = kid.as_element() {
                 // We maintain an invariant that, if an element has data, all its
                 // ancestors have data as well.

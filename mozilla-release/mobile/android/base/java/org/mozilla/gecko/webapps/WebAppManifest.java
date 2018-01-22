@@ -39,7 +39,7 @@ public class WebAppManifest {
     private String mDisplayMode;
     private String mOrientation;
 
-    public static WebAppManifest fromFile(final String url, final String path) {
+    public static WebAppManifest fromFile(final String url, final String path) throws IOException, JSONException, IllegalArgumentException {
         if (url == null || TextUtils.isEmpty(url)) {
             throw new IllegalArgumentException("Must pass a non-empty manifest URL");
         }
@@ -53,12 +53,20 @@ public class WebAppManifest {
             throw new IllegalArgumentException("Must pass a valid manifest URL");
         }
 
-        try {
-            final File manifestFile = new File(path);
+        final File manifestFile = new File(path);
 
-            // Gecko adds some add some additional data, such as cached_icon, in
-            // the toplevel object. The actual webapp manifest is in the "manifest" field.
-            final JSONObject manifest = FileUtils.readJSONObjectFromFile(manifestFile);
+        // Gecko adds some add some additional data, such as cached_icon, in
+        // the toplevel object. The actual webapp manifest is in the "manifest" field.
+        final JSONObject manifest = FileUtils.readJSONObjectFromFile(manifestFile);
+        final JSONObject manifestField = manifest.getJSONObject("manifest");
+
+        return new WebAppManifest(manifestUri, manifest, manifestField);
+    }
+
+    public static WebAppManifest fromString(final String url, final String input) {
+        try {
+            final Uri manifestUri = Uri.parse(url);
+            final JSONObject manifest = new JSONObject(input);
             final JSONObject manifestField = manifest.getJSONObject("manifest");
 
             return new WebAppManifest(manifestUri, manifest, manifestField);
@@ -173,6 +181,13 @@ public class WebAppManifest {
         return loadIconResult.getBestBitmap(GeckoAppShell.getPreferredIconSize());
     }
 
+    private static Uri stripPath(final Uri uri) {
+        return new Uri.Builder()
+            .scheme(uri.getScheme())
+            .authority(uri.getAuthority())
+            .build();
+    }
+
     private static Uri stripLastPathSegment(final Uri uri) {
         final Uri.Builder builder = new Uri.Builder()
             .scheme(uri.getScheme())
@@ -187,7 +202,7 @@ public class WebAppManifest {
     }
 
     private Uri readScope(final JSONObject manifest) {
-        final Uri defaultScope = stripLastPathSegment(mStartUri);
+        final Uri defaultScope = stripPath(mStartUri);
         final String scopeStr = manifest.optString("scope", null);
         if (scopeStr == null) {
             return defaultScope;

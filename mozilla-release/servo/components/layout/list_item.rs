@@ -22,10 +22,14 @@ use inline::InlineFlow;
 use style::computed_values::{list_style_type, position};
 use style::logical_geometry::LogicalSize;
 use style::properties::ComputedValues;
-use style::servo::restyle_damage::RESOLVE_GENERATED_CONTENT;
+use style::servo::restyle_damage::ServoRestyleDamage;
+
+#[allow(unsafe_code)]
+unsafe impl ::flow::HasBaseFlow for ListItemFlow {}
 
 /// A block with the CSS `display` property equal to `list-item`.
 #[derive(Debug)]
+#[repr(C)]
 pub struct ListItemFlow {
     /// Data common to all block flows.
     pub block_flow: BlockFlow,
@@ -52,7 +56,7 @@ impl ListItemFlow {
                 list_style_type::T::square |
                 list_style_type::T::disclosure_open |
                 list_style_type::T::disclosure_closed => {}
-                _ => this.block_flow.base.restyle_damage.insert(RESOLVE_GENERATED_CONTENT),
+                _ => this.block_flow.base.restyle_damage.insert(ServoRestyleDamage::RESOLVE_GENERATED_CONTENT),
             }
         }
 
@@ -235,7 +239,7 @@ impl ListStyleTypeContent {
                 let text = generated_content::static_representation(list_style_type);
                 ListStyleTypeContent::StaticText(text)
             }
-            _ => ListStyleTypeContent::GeneratedContent(box GeneratedContentInfo::ListItem),
+            _ => ListStyleTypeContent::GeneratedContent(Box::new(GeneratedContentInfo::ListItem)),
         }
     }
 }

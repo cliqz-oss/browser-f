@@ -35,7 +35,6 @@ using mozilla::DefaultXDisplay;
 #include "nsIPluginWidget.h"
 #include "nsViewManager.h"
 #include "nsIDocShellTreeOwner.h"
-#include "nsIDOMHTMLObjectElement.h"
 #include "nsIAppShell.h"
 #include "nsIObjectLoadingContent.h"
 #include "nsObjectLoadingContent.h"
@@ -491,8 +490,8 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetURL(const char *aURL,
     triggeringPrincipal = BasePrincipal::CreateCodebasePrincipal(uri, attrs);
   }
 
-  rv = lh->OnLinkClick(content, uri, unitarget.get(), NullString(),
-                       aPostStream, headersDataStream, true, triggeringPrincipal);
+  rv = lh->OnLinkClick(content, uri, unitarget.get(), VoidString(),
+                       aPostStream, -1, headersDataStream, true, triggeringPrincipal);
 
   return rv;
 }
@@ -1288,8 +1287,7 @@ NPEventModel nsPluginInstanceOwner::GetEventModel()
 }
 
 #define DEFAULT_REFRESH_RATE 20 // 50 FPS
-
-nsCOMPtr<nsITimer>               *nsPluginInstanceOwner::sCATimer = nullptr;
+StaticRefPtr<nsITimer>            nsPluginInstanceOwner::sCATimer;
 nsTArray<nsPluginInstanceOwner*> *nsPluginInstanceOwner::sCARefreshListeners = nullptr;
 
 void nsPluginInstanceOwner::CARefresh(nsITimer *aTimer, void *aClosure) {
@@ -1335,15 +1333,13 @@ void nsPluginInstanceOwner::AddToCARefreshTimer() {
 
   sCARefreshListeners->AppendElement(this);
 
-  if (!sCATimer) {
-    sCATimer = new nsCOMPtr<nsITimer>();
-  }
-
   if (sCARefreshListeners->Length() == 1) {
-    *sCATimer = do_CreateInstance("@mozilla.org/timer;1");
-    (*sCATimer)->InitWithNamedFuncCallback(CARefresh, nullptr,
-                                           DEFAULT_REFRESH_RATE, nsITimer::TYPE_REPEATING_SLACK,
-                                           "nsPluginInstanceOwner::CARefresh");
+    nsCOMPtr<nsITimer> timer;
+    NS_NewTimerWithFuncCallback(getter_AddRefs(timer),
+                                CARefresh, nullptr,
+                                DEFAULT_REFRESH_RATE, nsITimer::TYPE_REPEATING_SLACK,
+                                "nsPluginInstanceOwner::CARefresh");
+    sCATimer = timer.forget();
   }
 }
 
@@ -1356,8 +1352,7 @@ void nsPluginInstanceOwner::RemoveFromCARefreshTimer() {
 
   if (sCARefreshListeners->Length() == 0) {
     if (sCATimer) {
-      (*sCATimer)->Cancel();
-      delete sCATimer;
+      sCATimer->Cancel();
       sCATimer = nullptr;
     }
     delete sCARefreshListeners;
@@ -2649,8 +2644,8 @@ void nsPluginInstanceOwner::Paint(gfxContext* aContext,
 
   // Renderer::Draw() draws a rectangle with top-left at the aContext origin.
   gfxContextAutoSaveRestore autoSR(aContext);
-  aContext->SetMatrix(
-    aContext->CurrentMatrix().PreTranslate(pluginRect.TopLeft()));
+  aContext->SetMatrixDouble(
+    aContext->CurrentMatrixDouble().PreTranslate(pluginRect.TopLeft()));
 
   Renderer renderer(window, this, pluginSize, pluginDirtyRect);
 

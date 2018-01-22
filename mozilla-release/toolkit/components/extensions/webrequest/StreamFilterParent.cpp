@@ -45,7 +45,7 @@ public:
 
   already_AddRefed<nsIEventTarget> GetEventTarget() override
   {
-    return do_AddRef(mTarget.get());
+    return do_AddRef(mTarget);
   }
 
 protected:
@@ -130,8 +130,8 @@ StreamFilterParent::Create(dom::ContentParent* aContentParent, uint64_t aChannel
 
   auto& webreq = WebRequestService::GetSingleton();
 
-  nsCOMPtr<nsIAtom> addonId = NS_Atomize(aAddonId);
-  nsCOMPtr<nsIChannel> channel = webreq.GetTraceableChannel(aChannelId, addonId, aContentParent);
+  RefPtr<nsAtom> addonId = NS_Atomize(aAddonId);
+  nsCOMPtr<nsITraceableChannel> channel = webreq.GetTraceableChannel(aChannelId, addonId, aContentParent);
 
   RefPtr<nsHttpChannel> chan = do_QueryObject(channel);
   NS_ENSURE_TRUE(chan, false);

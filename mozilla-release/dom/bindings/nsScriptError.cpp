@@ -12,6 +12,7 @@
 #include "jsprf.h"
 #include "MainThreadUtils.h"
 #include "mozilla/Assertions.h"
+#include "nsContentUtils.h"
 #include "nsGlobalWindow.h"
 #include "nsNetUtil.h"
 #include "nsPIDOMWindow.h"
@@ -60,8 +61,8 @@ nsScriptErrorBase::InitializeOnMainThread()
     MOZ_ASSERT(!mInitializedOnMainThread);
 
     if (mInnerWindowID) {
-        nsGlobalWindow* window =
-          nsGlobalWindow::GetInnerWindowWithId(mInnerWindowID);
+        nsGlobalWindowInner* window =
+          nsGlobalWindowInner::GetInnerWindowWithId(mInnerWindowID);
         if (window) {
             nsPIDOMWindowOuter* outer = window->GetOuterWindow();
             if (outer)
@@ -432,7 +433,7 @@ nsScriptErrorBase::GetNotes(nsIArray** aNotes)
 
     uint32_t len = mNotes.Length();
     for (uint32_t i = 0; i < len; i++)
-        array->AppendElement(mNotes[i], false);
+        array->AppendElement(mNotes[i]);
     array.forget(aNotes);
 
     return NS_OK;

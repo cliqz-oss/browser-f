@@ -26,7 +26,6 @@ const PREF_LOGGING_LEVEL        = "experiments.logging.level";
 const PREF_LOGGING_DUMP         = "experiments.logging.dump";
 const PREF_MANIFEST_URI         = "experiments.manifest.uri";
 const PREF_FETCHINTERVAL        = "experiments.manifest.fetchIntervalSeconds";
-const PREF_TELEMETRY_ENABLED    = "toolkit.telemetry.enabled";
 
 function getExperimentPath(base) {
   let p = do_get_cwd();
@@ -68,7 +67,7 @@ const EXPERIMENT1A_NAME     = "Test experiment 1.1";
 const EXPERIMENT1A_PATH     = getExperimentPath(EXPERIMENT1A_XPI_NAME);
 const EXPERIMENT1A_XPI_SHA1 = "sha1:" + sha1File(EXPERIMENT1A_PATH);
 
-const EXPERIMENT2_ID       = "test-experiment-2@tests.mozilla.org"
+const EXPERIMENT2_ID       = "test-experiment-2@tests.mozilla.org";
 const EXPERIMENT2_XPI_NAME = "experiment-2.xpi";
 const EXPERIMENT2_PATH     = getExperimentPath(EXPERIMENT2_XPI_NAME);
 const EXPERIMENT2_XPI_SHA1 = "sha1:" + sha1File(EXPERIMENT2_PATH);
@@ -193,6 +192,4 @@ function replaceExperiments(experiment, list) {
   });
 }
 
-// Experiments require Telemetry to be enabled, and that's not true for debug
-// builds. Let's just enable it here instead of going through each test.
-Services.prefs.setBoolPref(PREF_TELEMETRY_ENABLED, true);
+Services.telemetry.canRecordExtended = true;

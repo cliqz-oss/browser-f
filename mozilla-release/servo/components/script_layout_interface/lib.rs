@@ -7,26 +7,24 @@
 //! to depend on script.
 
 #![deny(unsafe_code)]
-#![feature(box_syntax)]
-#![feature(nonzero)]
 
 extern crate app_units;
 extern crate atomic_refcell;
 extern crate canvas_traits;
-extern crate core;
 extern crate cssparser;
 extern crate euclid;
 extern crate gfx_traits;
-extern crate heapsize;
-#[macro_use] extern crate heapsize_derive;
 #[macro_use] extern crate html5ever;
 extern crate ipc_channel;
 extern crate libc;
 #[macro_use]
 extern crate log;
+extern crate malloc_size_of;
+#[macro_use] extern crate malloc_size_of_derive;
 extern crate metrics;
 extern crate msg;
 extern crate net_traits;
+extern crate nonzero;
 extern crate profile_traits;
 extern crate range;
 extern crate script_traits;
@@ -44,10 +42,10 @@ pub mod wrapper_traits;
 
 use atomic_refcell::AtomicRefCell;
 use canvas_traits::canvas::CanvasMsg;
-use core::nonzero::NonZero;
 use ipc_channel::ipc::IpcSender;
 use libc::c_void;
 use net_traits::image_cache::PendingImageId;
+use nonzero::NonZero;
 use script_traits::UntrustedNodeAddress;
 use servo_url::ServoUrl;
 use std::sync::atomic::AtomicIsize;
@@ -74,19 +72,19 @@ impl StyleData {
     }
 }
 
-#[derive(Clone, Copy, HeapSizeOf)]
+#[derive(Clone, Copy, MallocSizeOf)]
 pub struct OpaqueStyleAndLayoutData {
     // NB: We really store a `StyleAndLayoutData` here, so be careful!
-    #[ignore_heap_size_of = "TODO(#6910) Box value that should be counted but \
-                             the type lives in layout"]
-    pub ptr: NonZero<*mut StyleData>
+    #[ignore_malloc_size_of = "TODO(#6910) Box value that should be counted but \
+                               the type lives in layout"]
+    pub ptr: NonZero<*mut StyleData>,
 }
 
 #[allow(unsafe_code)]
 unsafe impl Send for OpaqueStyleAndLayoutData {}
 
 /// Information that we need stored in each DOM node.
-#[derive(HeapSizeOf)]
+#[derive(MallocSizeOf)]
 pub struct DomParallelInfo {
     /// The number of children remaining to process during bottom-up traversal.
     pub children_to_process: AtomicIsize,

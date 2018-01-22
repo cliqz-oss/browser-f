@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -24,6 +25,7 @@
 #include "nsPrintfCString.h"
 #include "mozilla/dom/AnonymousContent.h"
 #include "mozilla/layers/StackingContextHelper.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/PresShell.h"
 // for focus
 #include "nsIScrollableFrame.h"
@@ -130,7 +132,7 @@ nsCanvasFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements, uint32
 }
 
 void
-nsCanvasFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsCanvasFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   nsIScrollableFrame* sf =
     PresContext()->GetPresShell()->GetRootScrollFrameAsScrollable();
@@ -153,9 +155,9 @@ nsCanvasFrame::DestroyFrom(nsIFrame* aDestructRoot)
       content->SetContentNode(clonedElement->AsElement());
     }
   }
-  DestroyAnonymousContent(mCustomContentContainer.forget());
+  aPostDestroyData.AddAnonymousContent(mCustomContentContainer.forget());
 
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
@@ -312,11 +314,9 @@ nsDisplayCanvasBackgroundColor::CreateWebRenderCommands(mozilla::wr::DisplayList
                                                         WebRenderLayerManager* aManager,
                                                         nsDisplayListBuilder* aDisplayListBuilder)
 {
-  if (aManager->IsLayersFreeTransaction()) {
-    ContainerLayerParameters parameter;
-    if (GetLayerState(aDisplayListBuilder, aManager, parameter) != LAYER_ACTIVE) {
-      return false;
-    }
+  ContainerLayerParameters parameter;
+  if (GetLayerState(aDisplayListBuilder, aManager, parameter) != LAYER_ACTIVE) {
+    return false;
   }
 
   nsCanvasFrame *frame = static_cast<nsCanvasFrame *>(mFrame);
@@ -383,9 +383,9 @@ nsDisplayCanvasBackgroundImage::Paint(nsDisplayListBuilder* aBuilder,
       return;
     }
 
-    dt = destDT->CreateSimilarDrawTarget(IntSize::Ceil(destRect.width,
-                                                       destRect.height),
-                                         SurfaceFormat::B8G8R8A8);
+    dt = destDT->CreateSimilarRasterTarget(IntSize::Ceil(destRect.width,
+                                                         destRect.height),
+                                           SurfaceFormat::B8G8R8A8);
     if (dt && dt->IsValid()) {
       RefPtr<gfxContext> ctx = gfxContext::CreateOrNull(dt);
       MOZ_ASSERT(ctx); // already checked draw target above
@@ -499,11 +499,14 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   // the overflow area, so just add nsDisplayCanvasBackground instead of
   // calling DisplayBorderBackgroundOutline.
   if (IsVisibleForPainting(aBuilder)) {
-    nsStyleContext* bgSC;
     const nsStyleBackground* bg = nullptr;
+    nsIFrame* dependentFrame = nullptr;
     bool isThemed = IsThemed();
-    if (!isThemed && nsCSSRendering::FindBackground(this, &bgSC)) {
-      bg = bgSC->StyleBackground();
+    if (!isThemed && nsCSSRendering::FindBackgroundFrame(this, &dependentFrame)) {
+      bg = dependentFrame->StyleContext()->StyleBackground();
+      if (dependentFrame == this) {
+        dependentFrame = nullptr;
+      }
     }
     aLists.BorderBackground()->AppendNewToTop(
         new (aBuilder) nsDisplayCanvasBackgroundColor(aBuilder, this));
@@ -537,7 +540,7 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
       nsRect bgRect = GetRectRelativeToSelf() + aBuilder->ToReferenceFrame(this);
 
       const ActiveScrolledRoot* thisItemASR = asr;
-      nsDisplayList thisItemList;
+      nsDisplayList thisItemList(aBuilder);
       nsDisplayBackgroundImage::InitData bgData =
         nsDisplayBackgroundImage::GetInitData(aBuilder, this, i, bgRect, bg,
                                               nsDisplayBackgroundImage::LayerizeFixed::ALWAYS_LAYERIZE_FIXED_BACKGROUND);
@@ -546,12 +549,13 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
         auto* displayData = aBuilder->GetCurrentFixedBackgroundDisplayData();
         nsDisplayListBuilder::AutoBuildingDisplayList
-          buildingDisplayList(aBuilder, this, aBuilder->GetDirtyRect(), false);
+          buildingDisplayList(aBuilder, this, aBuilder->GetVisibleRect(), aBuilder->GetDirtyRect(), false);
 
         DisplayListClipState::AutoSaveRestore clipState(aBuilder);
         nsDisplayListBuilder::AutoCurrentActiveScrolledRootSetter asrSetter(aBuilder);
         if (displayData) {
           nsPoint offset = GetOffsetTo(PresContext()->GetPresShell()->GetRootFrame());
+          aBuilder->SetVisibleRect(displayData->mVisibleRect + offset);
           aBuilder->SetDirtyRect(displayData->mDirtyRect + offset);
 
           clipState.SetClipChainForContainingBlockDescendants(
@@ -565,17 +569,19 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
           DisplayListClipState::AutoSaveRestore bgImageClip(aBuilder);
           bgImageClip.Clear();
           bgItem = new (aBuilder) nsDisplayCanvasBackgroundImage(bgData);
+          bgItem->SetDependentFrame(aBuilder, dependentFrame);
         }
         thisItemList.AppendNewToTop(
           nsDisplayFixedPosition::CreateForFixedBackground(aBuilder, this, bgItem, i));
 
       } else {
-        thisItemList.AppendNewToTop(new (aBuilder) nsDisplayCanvasBackgroundImage(bgData));
+        nsDisplayCanvasBackgroundImage* bgItem = new (aBuilder) nsDisplayCanvasBackgroundImage(bgData);
+        bgItem->SetDependentFrame(aBuilder, dependentFrame);
+        thisItemList.AppendNewToTop(bgItem);
       }
 
       if (layers.mLayers[i].mBlendMode != NS_STYLE_BLEND_NORMAL) {
         DisplayListClipState::AutoSaveRestore blendClip(aBuilder);
-        blendClip.ClearUpToASR(thisItemASR);
         thisItemList.AppendNewToTop(
           new (aBuilder) nsDisplayBlendMode(aBuilder, this, &thisItemList,
                                             layers.mLayers[i].mBlendMode,
@@ -587,7 +593,6 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     if (needBlendContainer) {
       const ActiveScrolledRoot* containerASR = contASRTracker.GetContainerASR();
       DisplayListClipState::AutoSaveRestore blendContainerClip(aBuilder);
-      blendContainerClip.ClearUpToASR(containerASR);
       aLists.BorderBackground()->AppendNewToTop(
         nsDisplayBlendContainer::CreateForBackgroundBlendMode(aBuilder, this,
                                                               aLists.BorderBackground(),

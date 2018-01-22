@@ -11,6 +11,7 @@ include protocol PBroadcastChannel;
 include protocol PCache;
 include protocol PCacheStorage;
 include protocol PCacheStreamControl;
+include protocol PClientManager;
 include protocol PFileDescriptorSet;
 include protocol PFileSystemRequest;
 include protocol PGamepadEventChannel;
@@ -18,6 +19,7 @@ include protocol PGamepadTestChannel;
 include protocol PHttpBackgroundChannel;
 include protocol PIPCBlobInputStream;
 include protocol PPendingIPCBlob;
+include protocol PTemporaryIPCBlob;
 include protocol PMessagePort;
 include protocol PCameras;
 include protocol PQuota;
@@ -60,6 +62,7 @@ sync protocol PBackground
   manages PCache;
   manages PCacheStorage;
   manages PCacheStreamControl;
+  manages PClientManager;
   manages PFileDescriptorSet;
   manages PFileSystemRequest;
   manages PGamepadEventChannel;
@@ -67,6 +70,7 @@ sync protocol PBackground
   manages PHttpBackgroundChannel;
   manages PIPCBlobInputStream;
   manages PPendingIPCBlob;
+  manages PTemporaryIPCBlob;
   manages PMessagePort;
   manages PCameras;
   manages PQuota;
@@ -131,6 +135,10 @@ parent:
   async PHttpBackgroundChannel(uint64_t channelId);
 
   async PWebAuthnTransaction();
+
+  async PTemporaryIPCBlob();
+
+  async PClientManager();
 
 child:
   async PCache();

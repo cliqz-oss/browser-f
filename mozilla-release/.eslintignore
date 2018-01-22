@@ -1,43 +1,41 @@
 # Always ignore node_modules.
 **/node_modules/**/*.*
 
+# Always ignore crashtests - specially crafted files that originally caused a
+# crash.
+**/crashtests/**
+
 # Exclude expected objdirs.
 obj*/**
 
 # We ignore all these directories by default, until we get them enabled.
 # If you are enabling a directory, please add directory specific exclusions
 # below.
-chrome/**
-config/**
 docshell/**
 editor/**
-embedding/**
 extensions/cookie/**
 extensions/spellcheck/**
 extensions/universalchardet/**
 gfx/**
 image/**
 intl/**
-ipc/**
 layout/**
 media/**
 memory/**
 modules/**
 netwerk/**
 parser/**
-python/**
 rdf/**
-servo/**
 tools/update-packaging/**
 uriloader/**
-view/**
 widget/**
-xpcom/**
 
 # We currently have no js files in these directories, so we ignore them by
 # default to aid ESLint's performance.
 build/**
+config/**
 db/**
+embedding/**
 gradle/**
 hal/**
 mfbt/**
@@ -47,6 +45,10 @@ other-licenses/**
 probes/**
 startupcache/**
 xpfe/**
+
+# These directories only contain crashtests, but we still skip the whole
+# directory to aid performance.
+view/**
 
 # browser/ exclusions
 browser/app/**
@@ -96,7 +98,6 @@ devtools/client/memory/test/chrome/*.html
 devtools/client/performance/components/test/test_jit_optimizations_01.html
 devtools/client/projecteditor/**
 devtools/client/responsive.html/test/browser/touch.html
-devtools/client/responsivedesign/**
 devtools/client/scratchpad/**
 devtools/client/shadereditor/**
 devtools/client/shared/*.jsm
@@ -121,6 +122,7 @@ devtools/client/storage/test/*.html
 !devtools/client/storage/test/storage-unsecured-iframe-usercontextid.html
 devtools/client/webaudioeditor/**
 devtools/client/webconsole/net/**
+devtools/client/webconsole/new-console-output/test/mochitest/**
 devtools/client/webconsole/test/**
 devtools/client/webconsole/hudservice.js
 devtools/client/webconsole/webconsole-connection-proxy.js
@@ -131,7 +133,7 @@ devtools/server/tests/browser/storage-*.html
 !devtools/server/tests/browser/storage-unsecured-iframe.html
 devtools/server/tests/browser/stylesheets-nested-iframes.html
 devtools/server/tests/unit/xpcshell_debugging_script.js
-devtools/shared/platform/content/test/test_clipboard.html
+devtools/client/shared/webpack/shims/test/test_clipboard.html
 devtools/shared/qrcode/tests/mochitest/test_decode.html
 devtools/shared/tests/mochitest/*.html
 devtools/shared/webconsole/test/test_*.html
@@ -179,6 +181,7 @@ devtools/server/tests/unit/setBreakpoint*
 devtools/server/tests/unit/sourcemapped.js
 
 # dom/ exclusions
+dom/abort/**
 dom/animation/**
 dom/archivereader/**
 dom/asmjscache/**
@@ -243,6 +246,7 @@ dom/vr/**
 dom/webauthn/**
 dom/webbrowserpersist/**
 dom/webidl/**
+dom/websocket/**
 dom/workers/**
 dom/worklet/**
 dom/xbl/**
@@ -284,6 +288,9 @@ mobile/android/locales/
 mobile/android/chrome/content/browser.js
 mobile/android/components/Snippets.js
 
+# Only contains non-standard test files.
+python/**
+
 # security/ exclusions (pref files).
 security/manager/ssl/security-prefs.js
 
@@ -295,6 +302,9 @@ security/nss/**
 # Uses `#filter substitution`
 services/sync/modules/constants.js
 services/sync/services-sync.js
+
+# Servo is imported.
+servo/**
 
 # Remote protocol exclusions
 testing/marionette/test_*.js
@@ -326,7 +336,6 @@ testing/xpcshell/node-http2/**
 # Third party services
 services/common/kinto-http-client.js
 services/common/kinto-offline-client.js
-services/sync/tps/extensions/mozmill
 
 # toolkit/ exclusions
 

@@ -107,12 +107,8 @@ impl CompositorReceiver {
     }
 }
 
-pub trait RenderListener {
-    fn recomposite(&mut self, reason: CompositingReason);
-}
-
-impl RenderListener for CompositorProxy {
-    fn recomposite(&mut self, reason: CompositingReason) {
+impl CompositorProxy {
+    pub fn recomposite(&self, reason: CompositingReason) {
         self.send(Msg::Recomposite(reason));
     }
 }
@@ -158,8 +154,6 @@ pub enum Msg {
     /// (e.g. SetFrameTree) at the time that we send it an ExitMsg.
     ShutdownComplete,
 
-    /// Scroll a page in a window
-    ScrollFragmentPoint(webrender_api::ClipId, Point2D<f32>, bool),
     /// Alerts the compositor that the given pipeline has changed whether it is running animations.
     ChangeRunningAnimationsState(PipelineId, AnimationState),
     /// Replaces the current frame tree, typically called during main frame navigation.
@@ -195,6 +189,7 @@ pub enum Msg {
     PendingPaintMetric(PipelineId, Epoch),
     /// The load of a page has completed
     LoadComplete(TopLevelBrowsingContextId),
+
 }
 
 impl Debug for Msg {
@@ -202,7 +197,6 @@ impl Debug for Msg {
         match *self {
             Msg::Exit => write!(f, "Exit"),
             Msg::ShutdownComplete => write!(f, "ShutdownComplete"),
-            Msg::ScrollFragmentPoint(..) => write!(f, "ScrollFragmentPoint"),
             Msg::ChangeRunningAnimationsState(..) => write!(f, "ChangeRunningAnimationsState"),
             Msg::SetFrameTree(..) => write!(f, "SetFrameTree"),
             Msg::Recomposite(..) => write!(f, "Recomposite"),

@@ -71,7 +71,7 @@ class ReftestArgumentsParser(argparse.ArgumentParser):
                           action="store",
                           dest="timeout",
                           type=int,
-                          default=5 * 60,  # 5 minutes per bug 479518
+                          default=300,  # 5 minutes per bug 479518
                           help="reftest will timeout in specified number of seconds. "
                                "[default %(default)s].")
 
@@ -237,20 +237,17 @@ class ReftestArgumentsParser(argparse.ArgumentParser):
                           nargs="*",
                           help="Path to test file, manifest file, or directory containing tests")
 
-        self.add_argument("--work-path",
-                          action="store",
-                          dest="workPath",
-                          help="Path to the base dir of all source files.")
-
-        self.add_argument("--obj-path",
-                          action="store",
-                          dest="objPath",
-                          help="Path to the base dir of all object files.")
+        self.add_argument("--sandbox-read-whitelist",
+                          action="append",
+                          dest="sandboxReadWhitelist",
+                          default=[],
+                          help="Path to add to the sandbox whitelist.")
 
         self.add_argument("--verify",
                           action="store_true",
                           default=False,
-                          help="Test verification mode.")
+                          help="Run tests in verification mode: Run many times in different "
+                               "ways, to see if there are intermittent failures.")
 
         self.add_argument("--verify-max-time",
                           type=int,
@@ -333,8 +330,16 @@ class ReftestArgumentsParser(argparse.ArgumentParser):
 
         options.leakThresholds = {
             "default": options.defaultLeakThreshold,
-            "tab": 5000,  # See dependencies of bug 1051230.
+            "tab": options.defaultLeakThreshold,
         }
+
+        if mozinfo.isWin:
+            if mozinfo.info['bits'] == 32:
+                # See bug 1408554.
+                options.leakThresholds["tab"] = 3000
+            else:
+                # See bug 1404482.
+                options.leakThresholds["tab"] = 100
 
 
 class DesktopArgumentsParser(ReftestArgumentsParser):
@@ -413,7 +418,7 @@ class RemoteArgumentsParser(ReftestArgumentsParser):
                           action="store",
                           type=str,
                           dest="adb_path",
-                          default="adb",
+                          default=None,
                           help="path to adb")
 
         self.add_argument("--deviceIP",

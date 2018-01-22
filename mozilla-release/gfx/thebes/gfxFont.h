@@ -19,7 +19,7 @@
 #include "gfxRect.h"
 #include "nsExpirationTracker.h"
 #include "gfxPlatform.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "mozilla/HashFunctions.h"
 #include "nsIMemoryReporter.h"
 #include "nsIObserver.h"
@@ -72,18 +72,12 @@ struct gfxTextRunDrawCallbacks;
 
 namespace mozilla {
 class SVGContextPaint;
-namespace gfx {
-class GlyphRenderingOptions;
-} // namespace gfx
-namespace layout {
-class TextDrawTarget;
-} // namespace layout
 } // namespace mozilla
 
 struct gfxFontStyle {
     gfxFontStyle();
     gfxFontStyle(uint8_t aStyle, uint16_t aWeight, int16_t aStretch,
-                 gfxFloat aSize, nsIAtom *aLanguage, bool aExplicitLanguage,
+                 gfxFloat aSize, nsAtom *aLanguage, bool aExplicitLanguage,
                  float aSizeAdjust, bool aSystemFont,
                  bool aPrinterFont,
                  bool aWeightSynthesis, bool aStyleSynthesis,
@@ -92,7 +86,7 @@ struct gfxFontStyle {
     // the language (may be an internal langGroup code rather than an actual
     // language code) specified in the document or element's lang property,
     // or inferred from the charset
-    RefPtr<nsIAtom> language;
+    RefPtr<nsAtom> language;
 
     // Features are composed of (1) features from style rules (2) features
     // from feature settings rules and (3) family-specific features.  (1) and
@@ -137,6 +131,10 @@ struct gfxFontStyle {
     // use font-language-override to request the Serbian option in the font
     // in order to get correct glyph shapes.)
     uint32_t languageOverride;
+
+    // The estimated background color behind the text. Enables a special
+    // rendering mode when NS_GET_A(.) > 0. Only used for text in the chrome.
+    nscolor fontSmoothingBackgroundColor;
 
     // The weight of the font: 100, 200, ... 900.
     uint16_t weight;
@@ -188,7 +186,7 @@ struct gfxFontStyle {
     PLDHashNumber Hash() const {
         return ((style + (systemFont << 7) +
             (weight << 8)) + uint32_t(size*1000) + uint32_t(sizeAdjust*1000)) ^
-            nsISupportsHashKey::HashKey(language);
+            nsRefPtrHashKey<nsAtom>::HashKey(language);
     }
 
     int8_t ComputeWeight() const;
@@ -220,7 +218,8 @@ struct gfxFontStyle {
             (alternateValues == other.alternateValues) &&
             (featureValueLookup == other.featureValueLookup) &&
             (variationSettings == other.variationSettings) &&
-            (languageOverride == other.languageOverride);
+            (languageOverride == other.languageOverride) &&
+            (fontSmoothingBackgroundColor == other.fontSmoothingBackgroundColor);
     }
 };
 
@@ -764,8 +763,6 @@ public:
      */
     class CompressedGlyph {
     public:
-        CompressedGlyph() { mValue = 0; }
-
         enum {
             // Indicates that a cluster and ligature group starts at this
             // character; this character has a single glyph with a reasonable
@@ -895,25 +892,52 @@ public:
             return toggle;
         }
 
-        CompressedGlyph& SetSimpleGlyph(uint32_t aAdvanceAppUnits, uint32_t aGlyph) {
+        // Create a CompressedGlyph value representing a simple glyph with
+        // no extra flags (line-break or is_space) set.
+        static CompressedGlyph
+        MakeSimpleGlyph(uint32_t aAdvanceAppUnits, uint32_t aGlyph) {
             NS_ASSERTION(IsSimpleAdvance(aAdvanceAppUnits), "Advance overflow");
             NS_ASSERTION(IsSimpleGlyphID(aGlyph), "Glyph overflow");
+            CompressedGlyph g;
+            g.mValue = FLAG_IS_SIMPLE_GLYPH |
+                       (aAdvanceAppUnits << ADVANCE_SHIFT) |
+                       aGlyph;
+            return g;
+        }
+
+        // Assign a simple glyph value to an existing CompressedGlyph record,
+        // preserving line-break/is-space flags if present.
+        CompressedGlyph& SetSimpleGlyph(uint32_t aAdvanceAppUnits,
+                                        uint32_t aGlyph) {
             NS_ASSERTION(!CharTypeFlags(), "Char type flags lost");
             mValue = (mValue & (FLAGS_CAN_BREAK_BEFORE | FLAG_CHAR_IS_SPACE)) |
-                FLAG_IS_SIMPLE_GLYPH |
-                (aAdvanceAppUnits << ADVANCE_SHIFT) | aGlyph;
+                MakeSimpleGlyph(aAdvanceAppUnits, aGlyph).mValue;
             return *this;
         }
+
+        // Create a CompressedGlyph value representing a complex glyph record,
+        // without any line-break or char-type flags.
+        static CompressedGlyph
+        MakeComplex(bool aClusterStart, bool aLigatureStart,
+                    uint32_t aGlyphCount) {
+            CompressedGlyph g;
+            g.mValue = FLAG_NOT_MISSING |
+                       (aClusterStart ? 0 : FLAG_NOT_CLUSTER_START) |
+                       (aLigatureStart ? 0 : FLAG_NOT_LIGATURE_GROUP_START) |
+                       (aGlyphCount << GLYPH_COUNT_SHIFT);
+            return g;
+        }
+
+        // Assign a complex glyph value to an existing CompressedGlyph record,
+        // preserving line-break/char-type flags if present.
         CompressedGlyph& SetComplex(bool aClusterStart, bool aLigatureStart,
-                uint32_t aGlyphCount) {
+                                    uint32_t aGlyphCount) {
             mValue = (mValue & (FLAGS_CAN_BREAK_BEFORE | FLAG_CHAR_IS_SPACE)) |
-                FLAG_NOT_MISSING |
                 CharTypeFlags() |
-                (aClusterStart ? 0 : FLAG_NOT_CLUSTER_START) |
-                (aLigatureStart ? 0 : FLAG_NOT_LIGATURE_GROUP_START) |
-                (aGlyphCount << GLYPH_COUNT_SHIFT);
+                MakeComplex(aClusterStart, aLigatureStart, aGlyphCount).mValue;
             return *this;
         }
+
         /**
          * Missing glyphs are treated as ligature group starts; don't mess with
          * the cluster-start flag (see bugs 618870 and 619286).
@@ -960,15 +984,17 @@ public:
      * in SimpleGlyph format, we use an array of DetailedGlyphs instead.
      */
     struct DetailedGlyph {
-        /** The glyphID, or the Unicode character
-         * if this is a missing glyph */
+        // The glyphID, or the Unicode character if this is a missing glyph
         uint32_t mGlyphID;
-        /** The advance, x-offset and y-offset of the glyph, in appunits
-         *  mAdvance is in the text direction (RTL or LTR)
-         *  mXOffset is always from left to right
-         *  mYOffset is always from top to bottom */   
+        // The advance of the glyph, in appunits.
+        // mAdvance is in the text direction (RTL or LTR),
+        // and will normally be non-negative (although this is not guaranteed)
         int32_t  mAdvance;
-        float    mXOffset, mYOffset;
+        // The offset from the glyph's default position, in line-relative
+        // coordinates (so mOffset.x is an offset in the line-right direction,
+        // and mOffset.y is an offset in line-downwards direction).
+        // These values are in floating-point appUnits.
+        mozilla::gfx::Point mOffset;
     };
 
     void SetGlyphs(uint32_t aCharIndex, CompressedGlyph aGlyph,
@@ -1086,7 +1112,7 @@ protected:
             DetailedGlyph details = {
                 aGlyph.GetSimpleGlyph(),
                 (int32_t) aGlyph.GetSimpleAdvance(),
-                0, 0
+                mozilla::gfx::Point()
             };
             SetGlyphs(aIndex, CompressedGlyph().SetComplex(true, true, 1),
                       &details);
@@ -1581,11 +1607,6 @@ public:
     // Return the horizontal advance of a glyph.
     gfxFloat GetGlyphHAdvance(DrawTarget* aDrawTarget, uint16_t aGID);
 
-    // Return Azure GlyphRenderingOptions for drawing this font.
-    virtual already_AddRefed<mozilla::gfx::GlyphRenderingOptions>
-      GetGlyphRenderingOptions(const TextRunDrawParams* aRunParams = nullptr)
-    { return nullptr; }
-
     gfxFloat SynthesizeSpaceWidth(uint32_t aCh);
 
     // Work out whether cairo will snap inter-glyph spacing to pixels
@@ -1704,7 +1725,7 @@ public:
      * -- all glyphs use this font
      */
     void Draw(const gfxTextRun *aTextRun, uint32_t aStart, uint32_t aEnd,
-              gfxPoint *aPt, const TextRunDrawParams& aRunParams,
+              mozilla::gfx::Point* aPt, const TextRunDrawParams& aRunParams,
               mozilla::gfx::ShapedTextFlags aOrientation);
 
     /**
@@ -1713,7 +1734,8 @@ public:
      * @param aPt the baseline origin of the emphasis marks.
      * @param aParams some drawing parameters, see EmphasisMarkDrawParams.
      */
-    void DrawEmphasisMarks(const gfxTextRun* aShapedText, gfxPoint* aPt,
+    void DrawEmphasisMarks(const gfxTextRun* aShapedText,
+                           mozilla::gfx::Point* aPt,
                            uint32_t aOffset, uint32_t aCount,
                            const EmphasisMarkDrawParams& aParams);
 
@@ -1829,7 +1851,7 @@ public:
                              uint32_t aRunStart,
                              uint32_t aRunLength,
                              Script aRunScript,
-                             bool aVertical);
+                             mozilla::gfx::ShapedTextFlags aOrientation);
 
     // Get a ShapedWord representing the given text (either 8- or 16-bit)
     // for use in setting up a gfxTextRun.
@@ -1954,25 +1976,43 @@ protected:
 
     mozilla::UniquePtr<const Metrics> CreateVerticalMetrics();
 
-    // Output a single glyph at *aPt, which is updated by the glyph's advance.
-    // Normal glyphs are simply accumulated in aBuffer until it is full and
-    // gets flushed, but SVG or color-font glyphs will instead be rendered
-    // directly to the destination (found from the buffer's parameters).
-    void DrawOneGlyph(uint32_t           aGlyphID,
-                      double             aAdvance,
-                      gfxPoint          *aPt,
-                      GlyphBufferAzure&  aBuffer,
-                      bool              *aEmittedGlyphs) const;
+    // Template parameters for DrawGlyphs/DrawOneGlyph, used to select
+    // simplified versions of the methods in the most common cases.
+    enum class FontComplexityT {
+        SimpleFont,
+        ComplexFont
+    };
+    enum class SpacingT {
+        NoSpacing,
+        HasSpacing
+    };
 
     // Output a run of glyphs at *aPt, which is updated to follow the last glyph
     // in the run. This method also takes account of any letter-spacing provided
     // in aRunParams.
-    bool DrawGlyphs(const gfxShapedText      *aShapedText,
-                    uint32_t                  aOffset, // offset in the textrun
-                    uint32_t                  aCount, // length of run to draw
-                    gfxPoint                 *aPt,
-                    const TextRunDrawParams&  aRunParams,
-                    const FontDrawParams&     aFontParams);
+    template<FontComplexityT FC, SpacingT S>
+    bool DrawGlyphs(const gfxShapedText*     aShapedText,
+                    uint32_t                 aOffset, // offset in the textrun
+                    uint32_t                 aCount, // length of run to draw
+                    mozilla::gfx::Point*     aPt,
+                    GlyphBufferAzure&        aBuffer);
+
+    // Output a single glyph at *aPt.
+    // Normal glyphs are simply accumulated in aBuffer until it is full and
+    // gets flushed, but SVG or color-font glyphs will instead be rendered
+    // directly to the destination (found from the buffer's parameters).
+    template<FontComplexityT FC>
+    void DrawOneGlyph(uint32_t                   aGlyphID,
+                      const mozilla::gfx::Point& aPt,
+                      GlyphBufferAzure&          aBuffer,
+                      bool*                      aEmittedGlyphs) const;
+
+    // Helper for DrawOneGlyph to handle missing glyphs, rendering either
+    // nothing (for default-ignorables) or a missing-glyph hexbox.
+    bool DrawMissingGlyph(const TextRunDrawParams&            aRunParams,
+                          const FontDrawParams&               aFontParams,
+                          const gfxShapedText::DetailedGlyph* aDetails,
+                          const mozilla::gfx::Point&          aPt);
 
     // set the font size and offset used for
     // synthetic subscript/superscript glyphs
@@ -2246,9 +2286,9 @@ protected:
     // if this font has bad underline offset, aIsBadUnderlineFont should be true.
     void SanitizeMetrics(Metrics *aMetrics, bool aIsBadUnderlineFont);
 
-    bool RenderSVGGlyph(gfxContext *aContext, gfxPoint aPoint,
+    bool RenderSVGGlyph(gfxContext *aContext, mozilla::gfx::Point aPoint,
                         uint32_t aGlyphId, SVGContextPaint* aContextPaint) const;
-    bool RenderSVGGlyph(gfxContext *aContext, gfxPoint aPoint,
+    bool RenderSVGGlyph(gfxContext *aContext, mozilla::gfx::Point aPoint,
                         uint32_t aGlyphId, SVGContextPaint* aContextPaint,
                         gfxTextRunDrawCallbacks *aCallbacks,
                         bool& aEmittedGlyphs) const;
@@ -2256,7 +2296,6 @@ protected:
     bool RenderColorGlyph(DrawTarget* aDrawTarget,
                           gfxContext* aContext,
                           mozilla::gfx::ScaledFont* scaledFont,
-                          mozilla::gfx::GlyphRenderingOptions* renderingOptions,
                           mozilla::gfx::DrawOptions drawOptions,
                           const mozilla::gfx::Point& aPoint,
                           uint32_t aGlyphId) const;
@@ -2268,7 +2307,7 @@ protected:
     // the second draw occurs at a constant offset in device pixels.
     // This helper calculates the scale factor we need to apply to the
     // synthetic-bold offset.
-    static double CalcXScale(DrawTarget* aDrawTarget);
+    static mozilla::gfx::Float CalcXScale(DrawTarget* aDrawTarget);
 };
 
 // proportion of ascent used for x-height, if unable to read value from font
@@ -2284,8 +2323,7 @@ struct MOZ_STACK_CLASS TextRunDrawParams {
     gfxFont::Spacing        *spacing;
     gfxTextRunDrawCallbacks *callbacks;
     mozilla::SVGContextPaint *runContextPaint;
-    mozilla::gfx::Color      fontSmoothingBGColor;
-    gfxFloat                 direction;
+    mozilla::gfx::Float      direction;
     double                   devPerApp;
     nscolor                  textStrokeColor;
     gfxPattern              *textStrokePattern;
@@ -2299,11 +2337,10 @@ struct MOZ_STACK_CLASS TextRunDrawParams {
 
 struct MOZ_STACK_CLASS FontDrawParams {
     RefPtr<mozilla::gfx::ScaledFont>            scaledFont;
-    RefPtr<mozilla::gfx::GlyphRenderingOptions> renderingOptions;
     mozilla::SVGContextPaint *contextPaint;
     mozilla::gfx::Matrix     *passedInvMatrix;
     mozilla::gfx::Matrix      matInv;
-    double                    synBoldOnePixelOffset;
+    mozilla::gfx::Float       synBoldOnePixelOffset;
     int32_t                   extraStrikes;
     mozilla::gfx::DrawOptions drawOptions;
     bool                      isVerticalFont;
@@ -2313,7 +2350,6 @@ struct MOZ_STACK_CLASS FontDrawParams {
 
 struct MOZ_STACK_CLASS EmphasisMarkDrawParams {
     gfxContext* context;
-    mozilla::layout::TextDrawTarget* textDrawer = nullptr;
     gfxFont::Spacing* spacing;
     gfxTextRun* mark;
     gfxFloat advance;

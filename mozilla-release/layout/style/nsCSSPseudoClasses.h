@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -27,7 +28,7 @@
 #define CSS_PSEUDO_CLASS_ENABLED_IN_UA_SHEETS_AND_CHROME \
   (CSS_PSEUDO_CLASS_ENABLED_IN_UA_SHEETS | CSS_PSEUDO_CLASS_ENABLED_IN_CHROME)
 
-class nsIAtom;
+class nsAtom;
 
 namespace mozilla {
 namespace dom {
@@ -58,7 +59,7 @@ class nsCSSPseudoClasses
 public:
   static void AddRefAtoms();
 
-  static Type GetPseudoType(nsIAtom* aAtom, EnabledState aEnabledState);
+  static Type GetPseudoType(nsAtom* aAtom, EnabledState aEnabledState);
   static bool HasStringArg(Type aType);
   static bool HasNthPairArg(Type aType);
   static bool HasSelectorListArg(Type aType) {

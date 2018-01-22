@@ -5,21 +5,21 @@
 use CompositionPipeline;
 use SendableFrameTree;
 use compositor_thread::{CompositorProxy, CompositorReceiver};
-use compositor_thread::{InitialCompositorState, Msg, RenderListener};
-use core::nonzero::NonZero;
-use euclid::{Point2D, TypedPoint2D, TypedVector2D, ScaleFactor};
+use compositor_thread::{InitialCompositorState, Msg};
+use euclid::{TypedPoint2D, TypedVector2D, ScaleFactor};
 use gfx_traits::Epoch;
 use gleam::gl;
 use image::{DynamicImage, ImageFormat, RgbImage};
 use ipc_channel::ipc::{self, IpcSharedMemory};
+use libc::c_void;
 use msg::constellation_msg::{PipelineId, PipelineIndex, PipelineNamespaceId};
 use net_traits::image::base::{Image, PixelFormat};
+use nonzero::NonZero;
 use profile_traits::time::{self, ProfilerCategory, profile};
-use script_traits::{AnimationState, AnimationTickType, ConstellationControlMsg};
-use script_traits::{ConstellationMsg, LayoutControlMsg, MouseButton};
-use script_traits::{MouseEventType, ScrollState};
-use script_traits::{TouchpadPressurePhase, TouchEventType, TouchId, WindowSizeData, WindowSizeType};
-use script_traits::CompositorEvent::{self, MouseMoveEvent, MouseButtonEvent, TouchEvent, TouchpadPressureEvent};
+use script_traits::{AnimationState, AnimationTickType, ConstellationMsg, LayoutControlMsg};
+use script_traits::{MouseButton, MouseEventType, ScrollState, TouchEventType, TouchId};
+use script_traits::{TouchpadPressurePhase, UntrustedNodeAddress, WindowSizeData, WindowSizeType};
+use script_traits::CompositorEvent::{MouseMoveEvent, MouseButtonEvent, TouchEvent, TouchpadPressureEvent};
 use servo_config::opts;
 use servo_config::prefs::PREFS;
 use servo_geometry::DeviceIndependentPixel;
@@ -29,12 +29,13 @@ use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 use style_traits::{CSSPixel, DevicePixel, PinchZoomFactor};
+use style_traits::cursor::Cursor;
 use style_traits::viewport::ViewportConstraints;
 use time::{precise_time_ns, precise_time_s};
 use touch::{TouchHandler, TouchAction};
 use webrender;
-use webrender_api::{self, ClipId, DeviceUintRect, DeviceUintSize, LayoutPoint, LayoutVector2D};
-use webrender_api::{ScrollEventPhase, ScrollLocation, ScrollClamping};
+use webrender_api::{self, DeviceUintRect, DeviceUintSize, HitTestFlags, HitTestResult};
+use webrender_api::{LayoutVector2D, ScrollEventPhase, ScrollLocation};
 use windowing::{self, MouseWindowEvent, WebRenderDebugOption, WindowMethods};
 
 #[derive(Debug, PartialEq)]
@@ -127,8 +128,6 @@ pub struct IOCompositor<Window: WindowMethods> {
 
     /// The device pixel ratio for this window.
     scale_factor: ScaleFactor<f32, DeviceIndependentPixel, DevicePixel>,
-
-    channel_to_self: CompositorProxy,
 
     /// The type of composition to perform
     composite_target: CompositeTarget,
@@ -312,13 +311,13 @@ fn initialize_png(gl: &gl::Gl, width: usize, height: usize) -> RenderTargetInfo 
     }
 }
 
-struct RenderNotifier {
+#[derive(Clone)]
+pub struct RenderNotifier {
     compositor_proxy: CompositorProxy,
 }
 
 impl RenderNotifier {
-    fn new(compositor_proxy: CompositorProxy,
-           _: Sender<ConstellationMsg>) -> RenderNotifier {
+    pub fn new(compositor_proxy: CompositorProxy) -> RenderNotifier {
         RenderNotifier {
             compositor_proxy: compositor_proxy,
         }
@@ -326,11 +325,15 @@ impl RenderNotifier {
 }
 
 impl webrender_api::RenderNotifier for RenderNotifier {
-    fn new_frame_ready(&mut self) {
+    fn clone(&self) -> Box<webrender_api::RenderNotifier> {
+        Box::new(RenderNotifier::new(self.compositor_proxy.clone()))
+    }
+
+    fn new_frame_ready(&self) {
         self.compositor_proxy.recomposite(CompositingReason::NewWebRenderFrame);
     }
 
-    fn new_scroll_frame_ready(&mut self, composite_needed: bool) {
+    fn new_scroll_frame_ready(&self, composite_needed: bool) {
         self.compositor_proxy.send(Msg::NewScrollFrameReady(composite_needed));
     }
 }
@@ -356,7 +359,6 @@ impl<Window: WindowMethods> IOCompositor<Window> {
             window_rect: window_rect,
             scale: ScaleFactor::new(1.0),
             scale_factor: scale_factor,
-            channel_to_self: state.sender.clone(),
             composition_request: CompositionRequest::NoCompositingNecessary,
             touch_handler: TouchHandler::new(),
             pending_scroll_zoom_events: Vec::new(),
@@ -385,12 +387,6 @@ impl<Window: WindowMethods> IOCompositor<Window> {
 
     pub fn create(window: Rc<Window>, state: InitialCompositorState) -> IOCompositor<Window> {
         let mut compositor = IOCompositor::new(window, state);
-
-        let compositor_proxy_for_webrender = compositor.channel_to_self
-                                                       .clone();
-        let render_notifier = RenderNotifier::new(compositor_proxy_for_webrender,
-                                                  compositor.constellation_chan.clone());
-        compositor.webrender.set_render_notifier(Box::new(render_notifier));
 
         // Set the size of the root layer.
         compositor.update_zoom_transform();
@@ -462,11 +458,6 @@ impl<Window: WindowMethods> IOCompositor<Window> {
              ShutdownState::NotShuttingDown) => {
                 self.set_frame_tree(&frame_tree);
                 self.send_viewport_rects();
-            }
-
-            (Msg::ScrollFragmentPoint(scroll_root_id, point, _),
-             ShutdownState::NotShuttingDown) => {
-                self.scroll_fragment_to_point(scroll_root_id, point);
             }
 
             (Msg::Recomposite(reason), ShutdownState::NotShuttingDown) => {
@@ -656,15 +647,8 @@ impl<Window: WindowMethods> IOCompositor<Window> {
         }
     }
 
-    fn scroll_fragment_to_point(&mut self, id: ClipId, point: Point2D<f32>) {
-        self.webrender_api.scroll_node_with_id(self.webrender_document,
-                                               LayoutPoint::from_untyped(&point),
-                                               id,
-                                               ScrollClamping::ToContentBounds);
-    }
-
-    pub fn on_resize_window_event(&mut self, new_size: DeviceUintSize) {
-        debug!("compositor resizing to {:?}", new_size.to_untyped());
+    pub fn on_resize_window_event(&mut self) {
+        debug!("compositor resize requested");
 
         // A size change could also mean a resolution change.
         let new_scale_factor = self.window.hidpi_factor();
@@ -681,7 +665,7 @@ impl<Window: WindowMethods> IOCompositor<Window> {
             return;
         }
 
-        self.frame_size = new_size;
+        self.frame_size = self.window.framebuffer_size();
         self.window_rect = new_window_rect;
 
         self.send_window_size(WindowSizeType::Resize);
@@ -707,30 +691,45 @@ impl<Window: WindowMethods> IOCompositor<Window> {
             MouseWindowEvent::MouseUp(_, p) => p,
         };
 
-        let root_pipeline_id = match self.get_root_pipeline_id() {
-            Some(root_pipeline_id) => root_pipeline_id,
+        let results = self.hit_test_at_point(point);
+        let result = match results.items.first() {
+            Some(result) => result,
             None => return,
         };
 
-        if let Some(pipeline) = self.pipeline(root_pipeline_id) {
-            let dppx = self.page_zoom * self.hidpi_factor();
-            let translated_point = (point / dppx).to_untyped();
-            let event_to_send = match mouse_window_event {
-                MouseWindowEvent::Click(button, _) => {
-                    MouseButtonEvent(MouseEventType::Click, button, translated_point)
-                }
-                MouseWindowEvent::MouseDown(button, _) => {
-                    MouseButtonEvent(MouseEventType::MouseDown, button, translated_point)
-                }
-                MouseWindowEvent::MouseUp(button, _) => {
-                    MouseButtonEvent(MouseEventType::MouseUp, button, translated_point)
-                }
-            };
-            let msg = ConstellationControlMsg::SendEvent(root_pipeline_id, event_to_send);
-            if let Err(e) = pipeline.script_chan.send(msg) {
-                warn!("Sending control event to script failed ({}).", e);
-            }
+        let (button, event_type) = match mouse_window_event {
+            MouseWindowEvent::Click(button, _) => (button, MouseEventType::Click),
+            MouseWindowEvent::MouseDown(button, _) => (button, MouseEventType::MouseDown),
+            MouseWindowEvent::MouseUp(button, _) => (button, MouseEventType::MouseUp),
+        };
+
+        let event_to_send = MouseButtonEvent(
+            event_type,
+            button,
+            result.point_in_viewport.to_untyped(),
+            Some(UntrustedNodeAddress(result.tag.0 as *const c_void)),
+            Some(result.point_relative_to_item.to_untyped()),
+        );
+
+        let pipeline_id = PipelineId::from_webrender(result.pipeline);
+        let msg = ConstellationMsg::ForwardEvent(pipeline_id, event_to_send);
+        if let Err(e) = self.constellation_chan.send(msg) {
+            warn!("Sending event to constellation failed ({}).", e);
         }
+    }
+
+    fn hit_test_at_point(&self, point: TypedPoint2D<f32, DevicePixel>) -> HitTestResult {
+        let dppx = self.page_zoom * self.hidpi_factor();
+        let scaled_point = (point / dppx).to_untyped();
+
+        let world_cursor = webrender_api::WorldPoint::from_untyped(&scaled_point);
+        self.webrender_api.hit_test(
+            self.webrender_document,
+            None,
+            world_cursor,
+            HitTestFlags::empty()
+        )
+
     }
 
     pub fn on_mouse_window_move_event_class(&mut self, cursor: TypedPoint2D<f32, DevicePixel>) {
@@ -751,26 +750,43 @@ impl<Window: WindowMethods> IOCompositor<Window> {
             return;
         }
 
-        let dppx = self.page_zoom * self.hidpi_factor();
-        let event_to_send = MouseMoveEvent(Some((cursor / dppx).to_untyped()));
-        let msg = ConstellationControlMsg::SendEvent(root_pipeline_id, event_to_send);
-        if let Some(pipeline) = self.pipeline(root_pipeline_id) {
-            if let Err(e) = pipeline.script_chan.send(msg) {
-                warn!("Sending mouse control event to script failed ({}).", e);
+        let results = self.hit_test_at_point(cursor);
+        if let Some(item) = results.items.first() {
+            let node_address = Some(UntrustedNodeAddress(item.tag.0 as *const c_void));
+            let event = MouseMoveEvent(Some(item.point_in_viewport.to_untyped()), node_address);
+            let pipeline_id = PipelineId::from_webrender(item.pipeline);
+            let msg = ConstellationMsg::ForwardEvent(pipeline_id, event);
+            if let Err(e) = self.constellation_chan.send(msg) {
+                warn!("Sending event to constellation failed ({}).", e);
+            }
+
+            if let Some(cursor) =  Cursor::from_u8(item.tag.1).ok() {
+                let msg = ConstellationMsg::SetCursor(cursor);
+                if let Err(e) = self.constellation_chan.send(msg) {
+                    warn!("Sending event to constellation failed ({}).", e);
+                }
             }
         }
     }
 
-    fn send_event_to_root_pipeline(&self, event: CompositorEvent) {
-        let root_pipeline_id = match self.get_root_pipeline_id() {
-            Some(root_pipeline_id) => root_pipeline_id,
-            None => return,
-        };
-
-        if let Some(pipeline) = self.pipeline(root_pipeline_id) {
-            let msg = ConstellationControlMsg::SendEvent(root_pipeline_id, event);
-            if let Err(e) = pipeline.script_chan.send(msg) {
-                warn!("Sending control event to script failed ({}).", e);
+    fn send_touch_event(
+        &self,
+        event_type: TouchEventType,
+        identifier: TouchId,
+        point: TypedPoint2D<f32, DevicePixel>)
+    {
+        let results = self.hit_test_at_point(point);
+        if let Some(item) = results.items.first() {
+            let event = TouchEvent(
+                event_type,
+                identifier,
+                item.point_in_viewport.to_untyped(),
+                Some(UntrustedNodeAddress(item.tag.0 as *const c_void)),
+            );
+            let pipeline_id = PipelineId::from_webrender(item.pipeline);
+            let msg = ConstellationMsg::ForwardEvent(pipeline_id, event);
+            if let Err(e) = self.constellation_chan.send(msg) {
+                warn!("Sending event to constellation failed ({}).", e);
             }
         }
     }
@@ -789,11 +805,7 @@ impl<Window: WindowMethods> IOCompositor<Window> {
 
     fn on_touch_down(&mut self, identifier: TouchId, point: TypedPoint2D<f32, DevicePixel>) {
         self.touch_handler.on_touch_down(identifier, point);
-        let dppx = self.page_zoom * self.hidpi_factor();
-        let translated_point = (point / dppx).to_untyped();
-        self.send_event_to_root_pipeline(TouchEvent(TouchEventType::Down,
-                                                    identifier,
-                                                    translated_point));
+        self.send_touch_event(TouchEventType::Down, identifier, point);
     }
 
     fn on_touch_move(&mut self, identifier: TouchId, point: TypedPoint2D<f32, DevicePixel>) {
@@ -821,22 +833,15 @@ impl<Window: WindowMethods> IOCompositor<Window> {
                 });
             }
             TouchAction::DispatchEvent => {
-                let dppx = self.page_zoom * self.hidpi_factor();
-                let translated_point = (point / dppx).to_untyped();
-                self.send_event_to_root_pipeline(TouchEvent(TouchEventType::Move,
-                                                            identifier,
-                                                            translated_point));
+                self.send_touch_event(TouchEventType::Move, identifier, point);
             }
             _ => {}
         }
     }
 
     fn on_touch_up(&mut self, identifier: TouchId, point: TypedPoint2D<f32, DevicePixel>) {
-        let dppx = self.page_zoom * self.hidpi_factor();
-        let translated_point = (point / dppx).to_untyped();
-        self.send_event_to_root_pipeline(TouchEvent(TouchEventType::Up,
-                                                    identifier,
-                                                    translated_point));
+        self.send_touch_event(TouchEventType::Up, identifier, point);
+
         if let TouchAction::Click = self.touch_handler.on_touch_up(identifier, point) {
             self.simulate_mouse_click(point);
         }
@@ -845,27 +850,35 @@ impl<Window: WindowMethods> IOCompositor<Window> {
     fn on_touch_cancel(&mut self, identifier: TouchId, point: TypedPoint2D<f32, DevicePixel>) {
         // Send the event to script.
         self.touch_handler.on_touch_cancel(identifier, point);
-        let dppx = self.page_zoom * self.hidpi_factor();
-        let translated_point = (point / dppx).to_untyped();
-        self.send_event_to_root_pipeline(TouchEvent(TouchEventType::Cancel,
-                                                    identifier,
-                                                    translated_point));
+        self.send_touch_event(TouchEventType::Cancel, identifier, point);
     }
 
     pub fn on_touchpad_pressure_event(&self,
                                   point: TypedPoint2D<f32, DevicePixel>,
                                   pressure: f32,
                                   phase: TouchpadPressurePhase) {
-        if let Some(true) = PREFS.get("dom.forcetouch.enabled").as_boolean() {
-            let dppx = self.page_zoom * self.hidpi_factor();
-            let translated_point = (point / dppx).to_untyped();
-            self.send_event_to_root_pipeline(TouchpadPressureEvent(translated_point,
-                                                                   pressure,
-                                                                   phase));
+        match PREFS.get("dom.forcetouch.enabled").as_boolean() {
+            Some(true) => {},
+            _ => return,
+        }
+
+        let results = self.hit_test_at_point(point);
+        if let Some(item) = results.items.first() {
+            let event = TouchpadPressureEvent(
+                item.point_in_viewport.to_untyped(),
+                pressure,
+                phase,
+                Some(UntrustedNodeAddress(item.tag.0 as *const c_void)),
+            );
+            let pipeline_id = PipelineId::from_webrender(item.pipeline);
+            let msg = ConstellationMsg::ForwardEvent(pipeline_id, event);
+            if let Err(e) = self.constellation_chan.send(msg) {
+                warn!("Sending event to constellation failed ({}).", e);
+            }
         }
     }
 
-    /// http://w3c.github.io/touch-events/#mouse-events
+    /// <http://w3c.github.io/touch-events/#mouse-events>
     fn simulate_mouse_click(&mut self, p: TypedPoint2D<f32, DevicePixel>) {
         let button = MouseButton::Left;
         self.dispatch_mouse_window_move_event_class(p);
@@ -1298,7 +1311,7 @@ impl<Window: WindowMethods> IOCompositor<Window> {
         // we get the current time, inform the layout thread about it and remove the
         // pending metric from the list.
         if !self.pending_paint_metrics.is_empty() {
-            let paint_time = precise_time_ns() as f64;
+            let paint_time = precise_time_ns();
             let mut to_remove = Vec::new();
             // For each pending paint metrics pipeline id
             for (id, pending_epoch) in &self.pending_paint_metrics {
@@ -1502,9 +1515,9 @@ impl<Window: WindowMethods> IOCompositor<Window> {
     pub fn toggle_webrender_debug(&mut self, option: WebRenderDebugOption) {
         let mut flags = self.webrender.get_debug_flags();
         let flag = match option {
-            WebRenderDebugOption::Profiler => webrender::PROFILER_DBG,
-            WebRenderDebugOption::TextureCacheDebug => webrender::TEXTURE_CACHE_DBG,
-            WebRenderDebugOption::RenderTargetDebug => webrender::RENDER_TARGET_DBG,
+            WebRenderDebugOption::Profiler => webrender::DebugFlags::PROFILER_DBG,
+            WebRenderDebugOption::TextureCacheDebug => webrender::DebugFlags::TEXTURE_CACHE_DBG,
+            WebRenderDebugOption::RenderTargetDebug => webrender::DebugFlags::RENDER_TARGET_DBG,
         };
         flags.toggle(flag);
         self.webrender.set_debug_flags(flags);

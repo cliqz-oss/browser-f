@@ -17,9 +17,9 @@
 const int32_t txExecutionState::kMaxRecursionDepth = 20000;
 
 nsresult
-txLoadedDocumentsHash::init(txXPathNode* aSourceDocument)
+txLoadedDocumentsHash::init(const txXPathNode& aSource)
 {
-    mSourceDocument = aSourceDocument;
+    mSourceDocument = txXPathNodeUtils::getOwnerDocument(aSource);
 
     nsAutoString baseURI;
     nsresult rv = txXPathNodeUtils::getBaseURI(*mSourceDocument, baseURI);
@@ -27,7 +27,14 @@ txLoadedDocumentsHash::init(txXPathNode* aSourceDocument)
         return rv;
     }
 
-    PutEntry(baseURI)->mDocument = mSourceDocument;
+    // Technically the hash holds documents, but we allow any node that we're transforming
+    // from. In particular, the document() function uses this hash and it can return the
+    // source document, but if we're transforming from a document fragment (through
+    // txMozillaXSLTProcessor::SetSourceContentModel/txMozillaXSLTProcessor::DoTransform)
+    // or from another type of node (through txMozillaXSLTProcessor::TransformToDocument
+    // or txMozillaXSLTProcessor::TransformToFragment) it makes more sense to return the
+    // real root of the source tree, which is the node where the transform started.
+    PutEntry(baseURI)->mDocument = txXPathNativeNode::createXPathNode(txXPathNativeNode::getNode(aSource));
     return NS_OK;
 }
 
@@ -90,11 +97,6 @@ txExecutionState::~txExecutionState()
         delete (txAXMLEventHandler*)handlerIter.next();
     }
 
-    txStackIterator paramIter(&mParamStack);
-    while (paramIter.hasNext()) {
-        delete (txVariableMap*)paramIter.next();
-    }
-
     delete mInitialEvalContext;
 }
 
@@ -121,7 +123,7 @@ txExecutionState::init(const txXPathNode& aNode,
     mOutputHandler->startDocument();
 
     // Set up loaded-documents-hash
-    rv = mLoadedDocuments.init(txXPathNodeUtils::getOwnerDocument(aNode));
+    rv = mLoadedDocuments.init(aNode);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Init members
@@ -174,7 +176,7 @@ txExecutionState::popAndDeleteEvalContextUntil(txIEvalContext* aContext)
 }
 
 nsresult
-txExecutionState::getVariable(int32_t aNamespace, nsIAtom* aLName,
+txExecutionState::getVariable(int32_t aNamespace, nsAtom* aLName,
                               txAExprResult*& aResult)
 {
     nsresult rv = NS_OK;
@@ -381,7 +383,7 @@ txExecutionState::popResultHandler()
 void
 txExecutionState::pushTemplateRule(txStylesheet::ImportFrame* aFrame,
                                    const txExpandedName& aMode,
-                                   txVariableMap* aParams)
+                                   txParameterMap* aParams)
 {
     TemplateRule* rule = mTemplateRules.AppendElement();
     rule->mFrame = aFrame;
@@ -521,23 +523,19 @@ txExecutionState::removeVariable(const txExpandedName& aName)
     mLocalVariables->removeVariable(aName);
 }
 
-nsresult
-txExecutionState::pushParamMap(txVariableMap* aParams)
+void
+txExecutionState::pushParamMap(txParameterMap* aParams)
 {
-    nsresult rv = mParamStack.push(mTemplateParams);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    mTemplateParams.forget();
+    mParamStack.AppendElement(mTemplateParams.forget());
     mTemplateParams = aParams;
-
-    return NS_OK;
 }
 
-txVariableMap*
+already_AddRefed<txParameterMap>
 txExecutionState::popParamMap()
 {
-    txVariableMap* oldParams = mTemplateParams.forget();
-    mTemplateParams = (txVariableMap*)mParamStack.pop();
+    RefPtr<txParameterMap> oldParams = mTemplateParams.forget();
+    mTemplateParams = mParamStack.LastElement();
+    mParamStack.RemoveElementAt(mParamStack.Length() - 1);
 
-    return oldParams;
+    return oldParams.forget();
 }

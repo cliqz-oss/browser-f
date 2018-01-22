@@ -58,7 +58,6 @@ var ecmaGlobals =
     "Set",
     {name: "SharedArrayBuffer", disabled: true},
     {name: "SIMD", nightly: true},
-    "StopIteration",
     "String",
     "Symbol",
     "SyntaxError",

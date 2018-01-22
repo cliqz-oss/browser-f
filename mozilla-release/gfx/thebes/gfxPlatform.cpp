@@ -8,6 +8,8 @@
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/ISurfaceAllocator.h"     // for GfxMemoryImageReporter
 #include "mozilla/webrender/RenderThread.h"
+#include "mozilla/webrender/WebRenderAPI.h"
+#include "mozilla/webrender/webrender_ffi.h"
 #include "mozilla/layers/PaintThread.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUProcessManager.h"
@@ -28,6 +30,7 @@
 #include "gfxUserFontSet.h"
 #include "gfxConfig.h"
 #include "MediaPrefs.h"
+#include "VRThread.h"
 
 #ifdef XP_WIN
 #include <process.h>
@@ -608,11 +611,14 @@ WebRenderDebugPrefChangeCallback(const char* aPrefName, void*)
   if (Preferences::GetBool(WR_DEBUG_PREF".profiler", false)) {
     flags |= (1 << 0);
   }
-  if (Preferences::GetBool(WR_DEBUG_PREF".texture-cache", false)) {
+  if (Preferences::GetBool(WR_DEBUG_PREF".render-targets", false)) {
     flags |= (1 << 1);
   }
-  if (Preferences::GetBool(WR_DEBUG_PREF".render-targets", false)) {
+  if (Preferences::GetBool(WR_DEBUG_PREF".texture-cache", false)) {
     flags |= (1 << 2);
+  }
+  if (Preferences::GetBool(WR_DEBUG_PREF".alpha-primitives", false)) {
+    flags |= (1 << 3);
   }
 
   gfx::gfxVars::SetWebRenderDebugFlags(flags);
@@ -1025,6 +1031,10 @@ gfxPlatform::InitLayersIPC()
   }
   sLayersIPCIsUp = true;
 
+  if (gfxVars::UseWebRender()) {
+    wr::WebRenderAPI::InitExternalLogHandler();
+  }
+
   if (XRE_IsContentProcess()) {
     if (gfxVars::UseOMTP()) {
       layers::PaintThread::Start();
@@ -1035,6 +1045,7 @@ gfxPlatform::InitLayersIPC()
     }
 
     layers::CompositorThreadHolder::Start();
+    gfx::VRListenerThreadHolder::Start();
   }
 }
 
@@ -1063,6 +1074,7 @@ gfxPlatform::ShutdownLayersIPC()
         layers::ImageBridgeChild::ShutDown();
         // This has to happen after shutting down the child protocols.
         layers::CompositorThreadHolder::Shutdown();
+        gfx::VRListenerThreadHolder::Shutdown();
         if (gfxVars::UseWebRender()) {
           wr::RenderThread::ShutDown();
 
@@ -1072,6 +1084,10 @@ gfxPlatform::ShutdownLayersIPC()
     } else {
       // TODO: There are other kind of processes and we should make sure gfx
       // stuff is either not created there or shut down properly.
+    }
+
+    if (gfxVars::UseWebRender()) {
+      wr::WebRenderAPI::ShutdownExternalLogHandler();
     }
 }
 
@@ -1611,7 +1627,7 @@ gfxPlatform::BackendTypeForName(const nsCString& aName)
 }
 
 nsresult
-gfxPlatform::GetFontList(nsIAtom *aLangGroup,
+gfxPlatform::GetFontList(nsAtom *aLangGroup,
                          const nsACString& aGenericFamily,
                          nsTArray<nsString>& aListOfFonts)
 {
@@ -2352,7 +2368,7 @@ gfxPlatform::InitAcceleration()
 
   if (Preferences::GetBool("media.hardware-video-decoding.enabled", false) &&
 #ifdef XP_WIN
-    Preferences::GetBool("media.windows-media-foundation.use-dxva", true) &&
+      Preferences::GetBool("media.wmf.dxva.enabled", true) &&
 #endif
       NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING,
                                                discardFailureId, &status))) {
@@ -2541,6 +2557,13 @@ gfxPlatform::InitWebRenderConfig()
   }
 #endif
 
+#ifdef MOZ_WIDGET_ANDROID
+  featureWebRender.ForceDisable(
+    FeatureStatus::Unavailable,
+    "WebRender not ready for use on Android",
+    NS_LITERAL_CSTRING("FEATURE_FAILURE_ANDROID"));
+#endif
+
   // gfxFeature is not usable in the GPU process, so we use gfxVars to transmit this feature
   if (gfxConfig::IsEnabled(Feature::WEBRENDER)) {
     gfxVars::SetUseWebRender(true);
@@ -2556,14 +2579,9 @@ gfxPlatform::InitWebRenderConfig()
 void
 gfxPlatform::InitOMTPConfig()
 {
-  bool prefEnabled = Preferences::GetBool("layers.omtp.enabled", false);
+  ScopedGfxFeatureReporter reporter("OMTP");
 
-  // We don't want to report anything for this feature when turned off, as it is still early in development
-  if (!prefEnabled) {
-    return;
-  }
-
-  ScopedGfxFeatureReporter reporter("OMTP", prefEnabled);
+  FeatureState& omtp = gfxConfig::GetFeature(Feature::OMTP);
 
   if (!XRE_IsParentProcess()) {
     // The parent process runs through all the real decision-making code
@@ -2575,21 +2593,25 @@ gfxPlatform::InitOMTPConfig()
     return;
   }
 
-  FeatureState& featureOMTP = gfxConfig::GetFeature(Feature::OMTP);
+  omtp.SetDefaultFromPref(
+    "layers.omtp.enabled",
+    true,
+    Preferences::GetDefaultBool("layers.omtp.enabled", false));
 
-  featureOMTP.DisableByDefault(
-      FeatureStatus::OptIn,
-      "OMTP is an opt-in feature",
-      NS_LITERAL_CSTRING("FEATURE_FAILURE_DEFAULT_OFF"));
-
-  featureOMTP.UserEnable("Enabled by pref");
-
-  if (InSafeMode()) {
-    featureOMTP.ForceDisable(FeatureStatus::Blocked, "OMTP blocked by safe-mode",
-                         NS_LITERAL_CSTRING("FEATURE_FAILURE_COMP_SAFEMODE"));
+  if (mContentBackend == BackendType::CAIRO) {
+    omtp.ForceDisable(FeatureStatus::Broken, "OMTP is not supported when using cairo",
+      NS_LITERAL_CSTRING("FEATURE_FAILURE_COMP_PREF"));
   }
 
-  if (gfxConfig::IsEnabled(Feature::OMTP)) {
+  if (InSafeMode()) {
+    omtp.ForceDisable(FeatureStatus::Blocked, "OMTP blocked by safe-mode",
+                      NS_LITERAL_CSTRING("FEATURE_FAILURE_COMP_SAFEMODE"));
+  } else if (gfxPrefs::LayersTilesEnabled()) {
+    omtp.ForceDisable(FeatureStatus::Blocked, "OMTP does not yet support tiling",
+                      NS_LITERAL_CSTRING("FEATURE_FAILURE_OMTP_TILING"));
+  }
+
+  if (omtp.IsEnabled()) {
     gfxVars::SetUseOMTP(true);
     reporter.SetSuccessful();
   }

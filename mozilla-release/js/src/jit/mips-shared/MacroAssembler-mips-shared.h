@@ -85,6 +85,14 @@ class MacroAssemblerMIPSShared : public Assembler
 
     void ma_not(Register rd, Register rs);
 
+    // Bit extract/insert
+    void ma_ext(Register rt, Register rs, uint16_t pos, uint16_t size);
+    void ma_ins(Register rt, Register rs, uint16_t pos, uint16_t size);
+
+    // Sign extend
+    void ma_seb(Register rd, Register rt);
+    void ma_seh(Register rd, Register rt);
+
     // and
     void ma_and(Register rd, Register rs);
     void ma_and(Register rd, Imm32 imm);
@@ -105,7 +113,7 @@ class MacroAssemblerMIPSShared : public Assembler
     // load
     void ma_load(Register dest, const BaseIndex& src, LoadStoreSize size = SizeWord,
                  LoadStoreExtension extension = SignExtend);
-    void ma_load_unaligned(Register dest, const BaseIndex& src, Register temp,
+    void ma_load_unaligned(const wasm::MemoryAccessDesc& access, Register dest, const BaseIndex& src, Register temp,
                            LoadStoreSize size, LoadStoreExtension extension);
 
     // store
@@ -113,7 +121,7 @@ class MacroAssemblerMIPSShared : public Assembler
                   LoadStoreExtension extension = SignExtend);
     void ma_store(Imm32 imm, const BaseIndex& dest, LoadStoreSize size = SizeWord,
                   LoadStoreExtension extension = SignExtend);
-    void ma_store_unaligned(Register data, const BaseIndex& dest, Register temp,
+    void ma_store_unaligned(const wasm::MemoryAccessDesc& access, Register data, const BaseIndex& dest, Register temp,
                             LoadStoreSize size, LoadStoreExtension extension);
 
     // arithmetic based ops

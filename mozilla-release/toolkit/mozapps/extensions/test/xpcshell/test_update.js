@@ -4,8 +4,6 @@
 
 // This verifies that add-on update checks work
 
-const PREF_MATCH_OS_LOCALE = "intl.locale.matchOS";
-const PREF_SELECTED_LOCALE = "general.useragent.locale";
 const PREF_GETADDONS_CACHE_ENABLED = "extensions.getAddons.cache.enabled";
 
 // The test extension uses an insecure update url.
@@ -38,8 +36,7 @@ var originalSyncGUID;
 function run_test() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1");
 
-  Services.prefs.setBoolPref(PREF_MATCH_OS_LOCALE, false);
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "fr-FR");
+  Services.locale.setRequestedLocales(["fr-FR"]);
 
   run_next_test();
 }
@@ -302,7 +299,7 @@ for (let test of testParams) {
 
       run_next_test();
     });
-  }
+  };
 
   // Checks that we see no compatibility information when there is none.
   add_test(function run_test_4() {
@@ -384,7 +381,7 @@ for (let test of testParams) {
       a3.uninstall();
       run_next_test();
     });
-  }
+  };
 
   // Test that background update checks work
   let continue_test_6;
@@ -426,7 +423,7 @@ for (let test of testParams) {
       "onInstallStarted",
       "onInstallEnded",
     ], callback_soon(check_test_6));
-  }
+  };
 
   check_test_6 = (install) => {
     do_check_eq(install.existingAddon.pendingUpgrade.install, install);
@@ -439,7 +436,7 @@ for (let test of testParams) {
       a1.uninstall();
       run_next_test();
     });
-  }
+  };
 
   // Verify the parameter escaping in update urls.
   add_test(function run_test_8() {
@@ -766,7 +763,7 @@ for (let test of testParams) {
       a7.uninstall();
       run_next_test();
     });
-  }
+  };
 
   // Test that background update checks doesn't update an add-on that isn't
   // allowed to update automatically.
@@ -866,7 +863,7 @@ for (let test of testParams) {
 
       run_next_test();
     });
-  }
+  };
 
   // Test that background update checks doesn't update an add-on that is
   // pending uninstall
@@ -963,7 +960,7 @@ for (let test of testParams) {
 
       run_next_test();
     });
-  }
+  };
 
   add_test(function run_test_16() {
     restartManager();
@@ -1163,7 +1160,7 @@ for (let test of testParams) {
       "onInstallStarted",
       "onInstallEnded",
     ], callback_soon(check_test_20));
-  }
+  };
 
   check_test_20 = (install) => {
     do_check_eq(install.existingAddon.pendingUpgrade.install, install);
@@ -1177,10 +1174,10 @@ for (let test of testParams) {
 
       do_execute_soon(() => {
         restartManager();
-        run_next_test()
+        run_next_test();
       });
     });
-  }
+  };
 
   add_task(async function cleanup() {
     let addons = await AddonManager.getAddonsByTypes(["extension"]);

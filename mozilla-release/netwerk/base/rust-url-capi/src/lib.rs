@@ -40,16 +40,34 @@ fn default_port(scheme: &str) -> Option<u32> {
 }
 
 #[no_mangle]
-pub extern "C" fn rusturl_new(spec: &nsACString) -> *mut Url {
+pub extern "C" fn rusturl_new(spec: &nsACString, baseptr: Option<&Url>) -> *mut Url {
   let url_spec = match str::from_utf8(spec) {
     Ok(spec) => spec,
     Err(_) => return ptr::null_mut(),
   };
 
+  if let Some(base) = baseptr {
+    match base.join(url_spec) {
+         Ok(url) => return Box::into_raw(Box::new(url)),
+         Err(_) => return ptr::null_mut()
+    };
+  }
+
   match parser().parse(url_spec) {
     Ok(url) => Box::into_raw(Box::new(url)),
     Err(_) => return ptr::null_mut(),
   }
+}
+
+#[no_mangle]
+pub extern "C" fn rusturl_clone(urlptr: Option<&Url>) -> *mut Url {
+  let url = if let Some(url) = urlptr {
+    url
+  } else {
+    return ptr::null_mut();
+  };
+
+  return Box::into_raw(Box::new(url.clone()));
 }
 
 #[no_mangle]
@@ -145,6 +163,18 @@ pub extern "C" fn rusturl_get_port(urlptr: Option<&Url>, port: &mut i32) -> nsre
 }
 
 #[no_mangle]
+pub extern "C" fn rusturl_get_filepath(urlptr: Option<&Url>, cont: &mut nsACString) -> nsresult {
+  let url = if let Some(url) = urlptr {
+    url
+  } else {
+    return NS_ERROR_INVALID_ARG;
+  };
+
+  cont.assign(&url.path());
+  NS_OK
+}
+
+#[no_mangle]
 pub extern "C" fn rusturl_get_path(urlptr: Option<&Url>, cont: &mut nsACString) -> nsresult {
   let url = if let Some(url) = urlptr {
     url
@@ -152,11 +182,7 @@ pub extern "C" fn rusturl_get_path(urlptr: Option<&Url>, cont: &mut nsACString) 
     return NS_ERROR_INVALID_ARG;
   };
 
-  if url.cannot_be_a_base() {
-      cont.assign("");
-  } else {
-      cont.assign(&url[Position::BeforePath..]);
-  }
+  cont.assign(&url[Position::BeforePath..]);
   NS_OK
 }
 
@@ -197,6 +223,18 @@ pub extern "C" fn rusturl_has_fragment(urlptr: Option<&Url>, has_fragment: &mut 
 }
 
 #[no_mangle]
+pub extern "C" fn rusturl_get_origin(urlptr: Option<&Url>, origin: &mut nsACString) -> nsresult {
+  let url = if let Some(url) = urlptr {
+    url
+  } else {
+    return NS_ERROR_INVALID_ARG;
+  };
+
+  origin.assign(&url.origin().ascii_serialization());
+  NS_OK
+}
+
+#[no_mangle]
 pub extern "C" fn rusturl_set_scheme(urlptr: Option<&mut Url>, scheme: &nsACString) -> nsresult {
   let url = if let Some(url) = urlptr {
     url
@@ -229,7 +267,7 @@ pub extern "C" fn rusturl_set_username(urlptr: Option<&mut Url>, username: &nsAC
     Err(_) => return NS_ERROR_MALFORMED_URI, // utf-8 failed
   };
 
-  match quirks::set_protocol(url, username_) {
+  match quirks::set_username(url, username_) {
     Ok(()) => NS_OK,
     Err(()) => NS_ERROR_MALFORMED_URI,
   }

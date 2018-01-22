@@ -70,6 +70,17 @@ public:
     }
   }
 
+  void NotifyEvent(MediaStreamGraph* aGraph, MediaStreamGraphEvent aEvent) override
+  {
+    if (aEvent == MediaStreamGraphEvent::EVENT_REMOVED) {
+      EndStream();
+      mSourceStream->EndAllTrackAndFinish();
+
+      MutexAutoLock lock(mMutex);
+      mImage = nullptr;
+    }
+  }
+
 protected:
   ~StreamListener() { }
 
@@ -140,15 +151,12 @@ public:
       return;
     }
 
-    mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
-    if (!mTimer) {
-      return;
-    }
-    mTimer->InitWithNamedFuncCallback(&TimerTick,
-                                      this,
-                                      int(1000 / mFPS),
-                                      nsITimer::TYPE_REPEATING_SLACK,
-                                      "dom::TimerDriver::TimerDriver");
+    NS_NewTimerWithFuncCallback(getter_AddRefs(mTimer),
+                                &TimerTick,
+                                this,
+                                int(1000 / mFPS),
+                                nsITimer::TYPE_REPEATING_SLACK,
+                                "dom::TimerDriver::TimerDriver");
   }
 
   static void TimerTick(nsITimer* aTimer, void* aClosure)

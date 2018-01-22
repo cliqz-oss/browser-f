@@ -11,7 +11,7 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/RefCounted.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/utils.h"
+#include "double-conversion/utils.h" // for DISALLOW_COPY_AND_ASSIGN
 #include "CodecConfig.h"
 #include "VideoTypes.h"
 #include "MediaConduitErrors.h"
@@ -228,6 +228,8 @@ public:
   virtual bool GetRemoteSSRC(unsigned int* ssrc) = 0;
   virtual bool SetRemoteSSRC(unsigned int ssrc) = 0;
   virtual bool SetLocalCNAME(const char* cname) = 0;
+
+  virtual bool SetLocalMID(const std::string& mid) = 0;
 
   /**
    * Functions returning stats needed by w3c stats model.
@@ -514,6 +516,7 @@ public:
     * NOTE: See AudioConduit for more information
     */
   virtual MediaConduitErrorCode EnableAudioLevelExtension(bool enabled, uint8_t id) = 0;
+  virtual MediaConduitErrorCode EnableMIDExtension(bool enabled, uint8_t id) = 0;
 
   virtual bool SetDtmfPayloadType(unsigned char type, int freq) = 0;
 

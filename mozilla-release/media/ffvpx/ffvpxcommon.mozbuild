@@ -9,8 +9,8 @@ ASFLAGS += CONFIG['FFVPX_ASFLAGS']
 ASFLAGS += ['-I%s/media/ffvpx' % TOPSRCDIR]
 
 if CONFIG['FFVPX_ASFLAGS']:
-    USE_YASM = True
     if CONFIG['OS_ARCH'] == 'WINNT':
+        USE_YASM = True
        # Fix inline symbols and math defines for windows.
         DEFINES['_USE_MATH_DEFINES'] = True
         DEFINES['inline'] = "__inline"
@@ -21,19 +21,33 @@ if CONFIG['FFVPX_ASFLAGS']:
         else:
             ASFLAGS += ['-Pconfig_win64.asm']
     elif CONFIG['OS_ARCH'] == 'Darwin':
+        USE_YASM = True
         # 32/64-bit macosx assemblers need to prefix symbols with an underscore.
         ASFLAGS += [
             '-Pconfig_darwin64.asm',
             '-DPREFIX'
         ]
-    else:
+    elif CONFIG['CPU_ARCH'] != 'arm' and CONFIG['CPU_ARCH'] != 'aarch4':
+        USE_YASM = True
         # Default to unix, similar to how ASFLAGS setup works in configure.in
         ASFLAGS += ['-Pconfig_unix64.asm']
+
+    if USE_YASM:
+        # default disabled components
+        ASFLAGS += ['-Pdefaults_disabled.asm']
+        if int(CONFIG['YASM_MAJOR_VERSION']) == 1 and int(CONFIG['YASM_MINOR_VERSION']) < 2:
+            DEFINES['YASM_MISSING_AVX2'] = True
+            ASFLAGS += [
+                '-DHAVE_AVX2=0',
+                '-DHAVE_AVX2_INTERNAL=0',
+                '-DHAVE_AVX2_EXTERNAL=0',
+            ]
+
 
 LOCAL_INCLUDES += ['/media/ffvpx']
 
 # We allow warnings for third-party code that can be updated from upstream.
-ALLOW_COMPILER_WARNINGS = True
+AllowCompilerWarnings()
 
 # Suppress warnings in third-party code.
 if CONFIG['GNU_CC']:
@@ -88,7 +102,7 @@ elif CONFIG['_MSC_VER']:
         '-wd4057', '-wd4204', '-wd4706', '-wd4305', '-wd4152', '-wd4324',
         '-we4013', '-wd4100', '-wd4214', '-wd4307', '-wd4273', '-wd4554',
     ]
-
+    LOCAL_INCLUDES += ['/media/ffvpx/compat/atomics/win32']
 DEFINES['HAVE_AV_CONFIG_H'] = True
 
 if CONFIG['MOZ_DEBUG']:

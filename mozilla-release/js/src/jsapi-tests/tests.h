@@ -33,6 +33,7 @@ class JSAPITestString {
     const char* begin() const { return chars.begin(); }
     const char* end() const { return chars.end(); }
     size_t length() const { return chars.length(); }
+    void clear() { chars.clearAndFree(); }
 
     JSAPITestString& operator +=(const char* s) {
         if (!chars.append(s, strlen(s)))
@@ -465,6 +466,7 @@ class AutoLeaveZeal
         JS::GCForReason(cx_, GC_SHRINK, JS::gcreason::DEBUG_GC);
     }
     ~AutoLeaveZeal() {
+        JS_SetGCZeal(cx_, 0, 0);
         for (size_t i = 0; i < sizeof(zealBits_) * 8; i++) {
             if (zealBits_ & (1 << i))
                 JS_SetGCZeal(cx_, i, frequency_);

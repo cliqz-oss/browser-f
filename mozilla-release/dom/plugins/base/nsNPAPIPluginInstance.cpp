@@ -43,8 +43,6 @@ using namespace mozilla;
 using namespace mozilla::plugins::parent;
 using namespace mozilla::layers;
 
-static NS_DEFINE_IID(kIOutputStreamIID, NS_IOUTPUTSTREAM_IID);
-
 NS_IMPL_ISUPPORTS(nsNPAPIPluginInstance, nsIAudioChannelAgentCallback)
 
 nsNPAPIPluginInstance::nsNPAPIPluginInstance()
@@ -166,15 +164,8 @@ nsresult nsNPAPIPluginInstance::Stop()
     return NS_OK;
   }
 
-  // Make sure we lock while we're writing to mRunning after we've
-  // started as other threads might be checking that inside a lock.
-  {
-    AsyncCallbackAutoLock lock;
-    mRunning = DESTROYING;
-    mStopTime = TimeStamp::Now();
-  }
-
-  OnPluginDestroy(&mNPP);
+  mRunning = DESTROYING;
+  mStopTime = TimeStamp::Now();
 
   // clean up open streams
   while (mStreamListeners.Length() > 0) {
@@ -1040,18 +1031,17 @@ nsNPAPIPluginInstance::ScheduleTimer(uint32_t interval, NPBool repeat, void (*ti
 
   // create new xpcom timer, scheduled correctly
   nsresult rv;
-  nsCOMPtr<nsITimer> xpcomTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
+  const short timerType = (repeat ? (short)nsITimer::TYPE_REPEATING_SLACK : (short)nsITimer::TYPE_ONE_SHOT);
+  rv = NS_NewTimerWithFuncCallback(getter_AddRefs(newTimer->timer),
+                                   PluginTimerCallback,
+                                   newTimer,
+                                   interval,
+                                   timerType,
+                                   "nsNPAPIPluginInstance::ScheduleTimer");
   if (NS_FAILED(rv)) {
     delete newTimer;
     return 0;
   }
-  const short timerType = (repeat ? (short)nsITimer::TYPE_REPEATING_SLACK : (short)nsITimer::TYPE_ONE_SHOT);
-  xpcomTimer->InitWithNamedFuncCallback(PluginTimerCallback,
-                                        newTimer,
-                                        interval,
-                                        timerType,
-                                        "nsNPAPIPluginInstance::ScheduleTimer");
-  newTimer->timer = xpcomTimer;
 
   // save callback function
   newTimer->callback = timerFunc;

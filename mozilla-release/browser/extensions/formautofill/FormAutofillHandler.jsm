@@ -19,6 +19,8 @@ Cu.import("resource://formautofill/FormAutofillUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "FormAutofillHeuristics",
                                   "resource://formautofill/FormAutofillHeuristics.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "FormLikeFactory",
+                                  "resource://gre/modules/FormLikeFactory.jsm");
 
 this.log = null;
 FormAutofillUtils.defineLazyLogGetter(this, this.EXPORTED_SYMBOLS[0]);
@@ -28,8 +30,7 @@ FormAutofillUtils.defineLazyLogGetter(this, this.EXPORTED_SYMBOLS[0]);
  * @param {FormLike} form Form that need to be auto filled
  */
 function FormAutofillHandler(form) {
-  this.form = form;
-  this.fieldDetails = [];
+  this._updateForm(form);
   this.winUtils = this.form.rootElement.ownerGlobal.QueryInterface(Ci.nsIInterfaceRequestor)
     .getInterface(Ci.nsIDOMWindowUtils);
 
@@ -67,8 +68,6 @@ FormAutofillHandler.prototype = {
    * DOM Form element to which this object is attached.
    */
   form: null,
-
-  _formFieldCount: 0,
 
   /**
    * Array of collected data about relevant form fields.  Each item is an object
@@ -112,18 +111,70 @@ FormAutofillHandler.prototype = {
     PREVIEW: "-moz-autofill-preview",
   },
 
-  get isFormChangedSinceLastCollection() {
-    // When the number of form controls is the same with last collection, it
-    // can be recognized as there is no element changed. However, we should
-    // improve the function to detect the element changes. e.g. a tel field
-    // is changed from type="hidden" to type="tel".
-    return this._formFieldCount != this.form.elements.length;
-  },
-
   /**
    * Time in milliseconds since epoch when a user started filling in the form.
    */
   timeStartedFillingMS: null,
+
+  /**
+  * Check the form is necessary to be updated. This function should be able to
+  * detect any changes including all control elements in the form.
+  * @param {HTMLElement} element The element supposed to be in the form.
+  * @returns {boolean} FormAutofillHandler.form is updated or not.
+  */
+  updateFormIfNeeded(element) {
+    // When the following condition happens, FormAutofillHandler.form should be
+    // updated:
+    // * The count of form controls is changed.
+    // * When the element can not be found in the current form.
+    //
+    // However, we should improve the function to detect the element changes.
+    // e.g. a tel field is changed from type="hidden" to type="tel".
+
+    let _formLike;
+    let getFormLike = () => {
+      if (!_formLike) {
+        _formLike = FormLikeFactory.createFromField(element);
+      }
+      return _formLike;
+    };
+
+    let currentForm = element.form;
+    if (!currentForm) {
+      currentForm = getFormLike();
+    }
+
+    if (currentForm.elements.length != this.form.elements.length) {
+      log.debug("The count of form elements is changed.");
+      this._updateForm(getFormLike());
+      return true;
+    }
+
+    if (this.form.elements.indexOf(element) === -1) {
+      log.debug("The element can not be found in the current form.");
+      this._updateForm(getFormLike());
+      return true;
+    }
+
+    return false;
+  },
+
+  /**
+  * Update the form with a new FormLike, and the related fields should be
+  * updated or clear to ensure the data consistency.
+  * @param {FormLike} form a new FormLike to replace the original one.
+  */
+  _updateForm(form) {
+    this.form = form;
+    this.fieldDetails = [];
+
+    if (this.address) {
+      this.address.fieldDetails = [];
+    }
+    if (this.creditCard) {
+      this.creditCard.fieldDetails = [];
+    }
+  },
 
   /**
    * Set fieldDetails from the form about fields that can be autofilled.
@@ -135,7 +186,6 @@ FormAutofillHandler.prototype = {
    */
   collectFormFields(allowDuplicates = false) {
     this._cacheValue.allFieldNames = null;
-    this._formFieldCount = this.form.elements.length;
     let fieldDetails = FormAutofillHeuristics.getFormInfo(this.form, allowDuplicates);
     this.fieldDetails = fieldDetails ? fieldDetails : [];
     log.debug("Collected details on", this.fieldDetails.length, "fields");
@@ -154,10 +204,11 @@ FormAutofillHandler.prototype = {
       this.address.fieldDetails = [];
     }
 
-    if (!this.creditCard.fieldDetails.some(i => i.fieldName == "cc-number")) {
-      log.debug("Ignoring credit card related fields since it's without credit card number field");
+    if (!this._isValidCreditCardForm(this.creditCard.fieldDetails)) {
+      log.debug("Invalid credit card form");
       this.creditCard.fieldDetails = [];
     }
+
     let validDetails = Array.of(...(this.address.fieldDetails),
                                 ...(this.creditCard.fieldDetails));
     for (let detail of validDetails) {
@@ -169,6 +220,28 @@ FormAutofillHandler.prototype = {
     }
 
     return validDetails;
+  },
+
+  _isValidCreditCardForm(fieldDetails) {
+    let ccNumberReason = "";
+    let hasCCNumber = false;
+    let hasExpiryDate = false;
+
+    for (let detail of fieldDetails) {
+      switch (detail.fieldName) {
+        case "cc-number":
+          hasCCNumber = true;
+          ccNumberReason = detail._reason;
+          break;
+        case "cc-exp":
+        case "cc-exp-month":
+        case "cc-exp-year":
+          hasExpiryDate = true;
+          break;
+      }
+    }
+
+    return hasCCNumber && (ccNumberReason == "autocomplete" || hasExpiryDate);
   },
 
   getFieldDetailByName(fieldName) {
@@ -236,6 +309,60 @@ FormAutofillHandler.prototype = {
     }
   },
 
+  /**
+   * Replace tel with tel-national if tel violates the input element's
+   * restriction.
+   * @param {Object} profile
+   *        A profile to be converted.
+   */
+  _telTransformer(profile) {
+    if (!profile.tel || !profile["tel-national"]) {
+      return;
+    }
+
+    let detail = this.getFieldDetailByName("tel");
+    if (!detail) {
+      return;
+    }
+
+    let element = detail.elementWeakRef.get();
+    let _pattern;
+    let testPattern = str => {
+      if (!_pattern) {
+        // The pattern has to match the entire value.
+        _pattern = new RegExp("^(?:" + element.pattern + ")$", "u");
+      }
+      return _pattern.test(str);
+    };
+    if (element.pattern) {
+      if (testPattern(profile.tel)) {
+        return;
+      }
+    } else if (element.maxLength) {
+      if (detail._reason == "autocomplete" && profile.tel.length <= element.maxLength) {
+        return;
+      }
+    }
+
+    if (detail._reason != "autocomplete") {
+      // Since we only target people living in US and using en-US websites in
+      // MVP, it makes more sense to fill `tel-national` instead of `tel`
+      // if the field is identified by heuristics and no other clues to
+      // determine which one is better.
+      // TODO: [Bug 1407545] This should be improved once more countries are
+      // supported.
+      profile.tel = profile["tel-national"];
+    } else if (element.pattern) {
+      if (testPattern(profile["tel-national"])) {
+        profile.tel = profile["tel-national"];
+      }
+    } else if (element.maxLength) {
+      if (profile["tel-national"].length <= element.maxLength) {
+        profile.tel = profile["tel-national"];
+      }
+    }
+  },
+
   _matchSelectOptions(profile) {
     if (!this._cacheValue.matchingSelectOption) {
       this._cacheValue.matchingSelectOption = new WeakMap();
@@ -248,7 +375,7 @@ FormAutofillHandler.prototype = {
       }
 
       let element = fieldDetail.elementWeakRef.get();
-      if (!(element instanceof Ci.nsIDOMHTMLSelectElement)) {
+      if (ChromeUtils.getClassName(element) !== "HTMLSelectElement") {
         continue;
       }
 
@@ -274,10 +401,48 @@ FormAutofillHandler.prototype = {
     }
   },
 
+  _creditCardExpDateTransformer(profile) {
+    if (!profile["cc-exp"]) {
+      return;
+    }
+
+    let detail = this.getFieldDetailByName("cc-exp");
+    if (!detail) {
+      return;
+    }
+
+    let element = detail.elementWeakRef.get();
+    if (element.tagName != "INPUT" || !element.placeholder) {
+      return;
+    }
+
+    let result,
+      ccExpMonth = profile["cc-exp-month"],
+      ccExpYear = profile["cc-exp-year"],
+      placeholder = element.placeholder;
+
+    result = /(?:[^m]|\b)(m{1,2})\s*([-/\\]*)\s*(y{2,4})(?!y)/i.exec(placeholder);
+    if (result) {
+      profile["cc-exp"] = String(ccExpMonth).padStart(result[1].length, "0") +
+                          result[2] +
+                          String(ccExpYear).substr(-1 * result[3].length);
+      return;
+    }
+
+    result = /(?:[^y]|\b)(y{2,4})\s*([-/\\]*)\s*(m{1,2})(?!m)/i.exec(placeholder);
+    if (result) {
+      profile["cc-exp"] = String(ccExpYear).substr(-1 * result[1].length) +
+                          result[2] +
+                          String(ccExpMonth).padStart(result[3].length, "0");
+    }
+  },
+
   getAdaptedProfiles(originalProfiles) {
     for (let profile of originalProfiles) {
       this._addressTransformer(profile);
+      this._telTransformer(profile);
       this._matchSelectOptions(profile);
+      this._creditCardExpDateTransformer(profile);
     }
     return originalProfiles;
   },
@@ -288,14 +453,15 @@ FormAutofillHandler.prototype = {
    *
    * @param {Object} profile
    *        A profile to be filled in.
-   * @param {Object} focusedInput
+   * @param {HTMLElement} focusedInput
    *        A focused input element needed to determine the address or credit
    *        card field.
    */
   async autofillFormFields(profile, focusedInput) {
-    let focusedDetail = this.fieldDetails.find(
-      detail => detail.elementWeakRef.get() == focusedInput
-    );
+    let focusedDetail = this.getFieldDetailByElement(focusedInput);
+    if (!focusedDetail) {
+      throw new Error("No fieldDetail for the focused input.");
+    }
     let targetSet;
     if (FormAutofillUtils.isCreditCardField(focusedDetail.fieldName)) {
       // When Master Password is enabled by users, the decryption process
@@ -349,7 +515,7 @@ FormAutofillHandler.prototype = {
         }
       }
 
-      if (element instanceof Ci.nsIDOMHTMLSelectElement) {
+      if (ChromeUtils.getClassName(element) === "HTMLSelectElement") {
         let cache = this._cacheValue.matchingSelectOption.get(element) || {};
         let option = cache[value] && cache[value].get();
         if (!option) {
@@ -407,7 +573,7 @@ FormAutofillHandler.prototype = {
    *
    * @param {Object} profile
    *        A profile to be previewed with
-   * @param {Object} focusedInput
+   * @param {HTMLElement} focusedInput
    *        A focused input element for determining credit card or address fields.
    */
   previewFormFields(profile, focusedInput) {
@@ -429,7 +595,7 @@ FormAutofillHandler.prototype = {
         continue;
       }
 
-      if (element instanceof Ci.nsIDOMHTMLSelectElement) {
+      if (ChromeUtils.getClassName(element) === "HTMLSelectElement") {
         // Unlike text input, select element is always previewed even if
         // the option is already selected.
         if (value) {
@@ -453,7 +619,7 @@ FormAutofillHandler.prototype = {
   /**
    * Clear preview text and background highlight of all fields.
    *
-   * @param {Object} focusedInput
+   * @param {HTMLElement} focusedInput
    *        A focused input element for determining credit card or address fields.
    */
   clearPreviewedFormFields(focusedInput) {
@@ -579,7 +745,7 @@ FormAutofillHandler.prototype = {
         // Try to abbreviate the value of select element.
         if (type == "address" &&
             detail.fieldName == "address-level1" &&
-            element instanceof Ci.nsIDOMHTMLSelectElement) {
+            ChromeUtils.getClassName(element) === "HTMLSelectElement") {
           // Don't save the record when the option value is empty *OR* there
           // are multiple options being selected. The empty option is usually
           // assumed to be default along with a meaningless text to users.

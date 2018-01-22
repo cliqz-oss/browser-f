@@ -48,6 +48,10 @@
 #define MASK_3F3R_LFE   (MASK_3F2_LFE | (1 << AudioConfig::CHANNEL_RCENTER))
 #define MASK_3F4_LFE    (MASK_3F2_LFE | (1 << AudioConfig::CHANNEL_RLS) | (1 << AudioConfig::CHANNEL_RRS))
 
+#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+#define MOZ_CUBEB_REMOTING
+#endif
+
 extern "C" {
 // These functions are provided by audioipc-server crate
 extern void* audioipc_server_start();
@@ -106,9 +110,9 @@ enum class CubebState {
   Shutdown
 } sCubebState = CubebState::Uninitialized;
 cubeb* sCubebContext;
-double sVolumeScale;
-uint32_t sCubebPlaybackLatencyInMilliseconds;
-uint32_t sCubebMSGLatencyInFrames;
+double sVolumeScale = 1.0;
+uint32_t sCubebPlaybackLatencyInMilliseconds = 100;
+uint32_t sCubebMSGLatencyInFrames = 512;
 bool sCubebPlaybackLatencyPrefSet;
 bool sCubebMSGLatencyPrefSet;
 bool sAudioStreamInitEverSucceeded = false;
@@ -188,8 +192,6 @@ uint32_t sPreferredSampleRate;
 cubeb_channel_layout sPreferredChannelLayout;
 
 } // namespace
-
-extern LazyLogModule gAudioStreamLog;
 
 static const uint32_t CUBEB_NORMAL_LATENCY_MS = 100;
 // Consevative default that can work on all platforms.

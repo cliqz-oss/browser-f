@@ -140,17 +140,29 @@ StyleSetHandle::Ptr::ResolvePseudoElementStyle(dom::Element* aParentElement,
 }
 
 already_AddRefed<nsStyleContext>
-StyleSetHandle::Ptr::ResolveInheritingAnonymousBoxStyle(nsIAtom* aPseudoTag,
+StyleSetHandle::Ptr::ResolveInheritingAnonymousBoxStyle(nsAtom* aPseudoTag,
                                                         nsStyleContext* aParentContext)
 {
   FORWARD_WITH_PARENT(ResolveInheritingAnonymousBoxStyle, aParentContext, (aPseudoTag, parent));
 }
 
 already_AddRefed<nsStyleContext>
-StyleSetHandle::Ptr::ResolveNonInheritingAnonymousBoxStyle(nsIAtom* aPseudoTag)
+StyleSetHandle::Ptr::ResolveNonInheritingAnonymousBoxStyle(nsAtom* aPseudoTag)
 {
   FORWARD(ResolveNonInheritingAnonymousBoxStyle, (aPseudoTag));
 }
+
+#ifdef MOZ_XUL
+already_AddRefed<nsStyleContext>
+StyleSetHandle::Ptr::ResolveXULTreePseudoStyle(dom::Element* aParentElement,
+                                               nsICSSAnonBoxPseudo* aPseudoTag,
+                                               nsStyleContext* aParentContext,
+                                               const AtomArray& aInputWord)
+{
+  FORWARD_WITH_PARENT(ResolveXULTreePseudoStyle, aParentContext,
+                      (aParentElement, aPseudoTag, parent, aInputWord));
+}
+#endif
 
 // manage the set of style sheets in the style set
 nsresult
@@ -320,7 +332,7 @@ AppendFontFaceRules(nsTArray<nsFontFaceRuleContainer>& aArray)
 }
 
 nsCSSCounterStyleRule*
-StyleSetHandle::Ptr::CounterStyleRuleForName(nsIAtom* aName)
+StyleSetHandle::Ptr::CounterStyleRuleForName(nsAtom* aName)
 {
   FORWARD(CounterStyleRuleForName, (aName));
 }

@@ -11,8 +11,8 @@
 <!ENTITY  notificationsDoNotDisturb.accesskey  "n">
 <!ENTITY  notificationsDoNotDisturbDetails.value "Bis zum Neustart von &brandShortName; werden keine Benachrichtigungen angezeigt.">
 
-<!ENTITY  popupExceptions.label       "Ausnahmen…">
-<!ENTITY  popupExceptions.accesskey   "A">
+<!ENTITY  popupExceptions.label                                 "Ausnahmen…">
+<!ENTITY  popupExceptions.accesskey                             "A">
 
 <!ENTITY  notificationPermissions.label                         "Benachrichtigungen">
 <!ENTITY  notificationSettingsButton.label                      "Einstellungen…">
@@ -46,9 +46,9 @@
 
 
 <!ENTITY language2.label              "Sprache">
-<!ENTITY chooseLanguage.label            "Bevorzugte Sprachen für die Darstellung von Websites wählen">
-<!ENTITY chooseButton.label              "Wählen…">
-<!ENTITY chooseButton.accesskey          "W">
+<!ENTITY chooseLanguage.label         "Bevorzugte Sprachen für die Darstellung von Websites wählen">
+<!ENTITY chooseButton.label           "Wählen…">
+<!ENTITY chooseButton.accesskey       "W">
 
 <!ENTITY translateWebPages.label      "Web-Inhalte übersetzen">
 <!ENTITY translateWebPages.accesskey  "z">

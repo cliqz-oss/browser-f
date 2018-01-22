@@ -103,6 +103,7 @@ private:
            bool aUpgradeInsecureRequests,
            bool aVerifySignedContent,
            bool aEnforceSRI,
+           bool aForceAllowDataURI,
            bool aForceInheritPrincipalDropped,
            uint64_t aInnerWindowID,
            uint64_t aOuterWindowID,
@@ -115,9 +116,12 @@ private:
            const OriginAttributes& aOriginAttributes,
            RedirectHistoryArray& aRedirectChainIncludingInternalRedirects,
            RedirectHistoryArray& aRedirectChain,
+           nsTArray<nsCOMPtr<nsIPrincipal>>&& aAncestorPrincipals,
+           const nsTArray<uint64_t>& aAncestorOuterWindowIDs,
            const nsTArray<nsCString>& aUnsafeHeaders,
            bool aForcePreflight,
            bool aIsPreflight,
+           bool aLoadTriggeredFromExternal,
            bool aForceHSTSPriming,
            bool aMixedContentWouldBlock,
            bool aIsHSTSPriming,
@@ -156,6 +160,8 @@ private:
   bool                             mUpgradeInsecureRequests;
   bool                             mVerifySignedContent;
   bool                             mEnforceSRI;
+  bool                             mForceAllowDataURI;
+  bool                             mOriginalFrameSrcLoad;
   bool                             mForceInheritPrincipalDropped;
   uint64_t                         mInnerWindowID;
   uint64_t                         mOuterWindowID;
@@ -168,9 +174,12 @@ private:
   OriginAttributes                 mOriginAttributes;
   RedirectHistoryArray             mRedirectChainIncludingInternalRedirects;
   RedirectHistoryArray             mRedirectChain;
+  nsTArray<nsCOMPtr<nsIPrincipal>> mAncestorPrincipals;
+  nsTArray<uint64_t>               mAncestorOuterWindowIDs;
   nsTArray<nsCString>              mCorsUnsafeHeaders;
   bool                             mForcePreflight;
   bool                             mIsPreflight;
+  bool                             mLoadTriggeredFromExternal;
 
   bool                             mForceHSTSPriming : 1;
   bool                             mMixedContentWouldBlock : 1;

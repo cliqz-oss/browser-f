@@ -27,12 +27,14 @@ this.LightweightThemes = {
 
   configurations: {
     noLWT: {
+      selectors: ["#navigator-toolbox"],
       async applyConfig() {
         LightweightThemeManager.currentTheme = null;
       },
     },
 
     darkLWT: {
+      selectors: ["#navigator-toolbox"],
       applyConfig() {
         LightweightThemeManager.setLocalTheme({
           id:          "black",
@@ -52,6 +54,7 @@ this.LightweightThemes = {
     },
 
     lightLWT: {
+      selectors: ["#navigator-toolbox"],
       applyConfig() {
         LightweightThemeManager.setLocalTheme({
           id:          "white",
@@ -66,6 +69,20 @@ this.LightweightThemes = {
             resolve("lightLWT");
           }, 500);
         });
+      },
+    },
+
+    compactLight: {
+      selectors: ["#navigator-toolbox"],
+      applyConfig() {
+        LightweightThemeManager.currentTheme = LightweightThemeManager.getUsedTheme("firefox-compact-light@mozilla.org");
+      },
+    },
+
+    compactDark: {
+      selectors: ["#navigator-toolbox"],
+      applyConfig() {
+        LightweightThemeManager.currentTheme = LightweightThemeManager.getUsedTheme("firefox-compact-dark@mozilla.org");
       },
     },
   },

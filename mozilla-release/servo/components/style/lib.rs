@@ -23,7 +23,6 @@
 //! [cssparser]: ../cssparser/index.html
 //! [selectors]: ../selectors/index.html
 
-#![deny(warnings)]
 #![deny(missing_docs)]
 
 // FIXME(bholley): We need to blanket-allow unsafe code in order to make the
@@ -50,8 +49,6 @@ extern crate fallible;
 extern crate fnv;
 #[cfg(feature = "gecko")] #[macro_use] pub mod gecko_string_cache;
 extern crate hashglobe;
-#[cfg(feature = "servo")] extern crate heapsize;
-#[cfg(feature = "servo")] #[macro_use] extern crate heapsize_derive;
 extern crate itertools;
 extern crate itoa;
 #[cfg(feature = "servo")] #[macro_use] extern crate html5ever;
@@ -60,21 +57,19 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 extern crate lru_cache;
-#[cfg(feature = "gecko")] #[macro_use] extern crate malloc_size_of;
-#[cfg(feature = "gecko")] #[macro_use] extern crate malloc_size_of_derive;
+#[macro_use] extern crate malloc_size_of;
+#[macro_use] extern crate malloc_size_of_derive;
 #[allow(unused_extern_crates)]
 #[macro_use]
 extern crate matches;
 #[cfg(feature = "gecko")]
-#[macro_use]
-pub extern crate nsstring_vendor as nsstring;
+pub extern crate nsstring;
 #[cfg(feature = "gecko")] extern crate num_cpus;
 extern crate num_integer;
 extern crate num_traits;
 extern crate ordered_float;
 extern crate owning_ref;
 extern crate parking_lot;
-extern crate pdqsort;
 extern crate precomputed_hash;
 extern crate rayon;
 extern crate selectors;
@@ -108,6 +103,7 @@ pub mod counter_style;
 pub mod custom_properties;
 pub mod data;
 pub mod dom;
+pub mod dom_apis;
 pub mod driver;
 pub mod element_state;
 #[cfg(feature = "servo")] mod encoding_support;

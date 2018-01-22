@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,7 +14,7 @@
 #include "nsContentUtils.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCSSRendering.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsNameSpaceManager.h"
@@ -94,7 +95,7 @@ nsRangeFrame::Init(nsIContent*       aContent,
 }
 
 void
-nsRangeFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsRangeFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   NS_ASSERTION(!GetPrevContinuation() && !GetNextContinuation(),
                "nsRangeFrame should not have continuations; if it does we "
@@ -102,11 +103,11 @@ nsRangeFrame::DestroyFrom(nsIFrame* aDestructRoot)
 
   mContent->RemoveEventListener(NS_LITERAL_STRING("touchstart"), mDummyTouchListener, false);
 
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  DestroyAnonymousContent(mTrackDiv.forget());
-  DestroyAnonymousContent(mProgressDiv.forget());
-  DestroyAnonymousContent(mThumbDiv.forget());
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  aPostDestroyData.AddAnonymousContent(mTrackDiv.forget());
+  aPostDestroyData.AddAnonymousContent(mProgressDiv.forget());
+  aPostDestroyData.AddAnonymousContent(mThumbDiv.forget());
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nsresult
@@ -326,7 +327,7 @@ nsRangeFrame::Reflow(nsPresContext*           aPresContext,
                "need to call RegUnregAccessKey only for the first.");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   WritingMode wm = aReflowInput.GetWritingMode();
@@ -629,7 +630,7 @@ nsRangeFrame::UpdateForValueChange()
 #ifdef ACCESSIBILITY
   nsAccessibilityService* accService = nsIPresShell::AccService();
   if (accService) {
-    accService->RangeValueChanged(PresContext()->PresShell(), mContent);
+    accService->RangeValueChanged(PresShell(), mContent);
   }
 #endif
 
@@ -728,7 +729,7 @@ nsRangeFrame::DoUpdateRangeProgressFrame(nsIFrame* aRangeProgressFrame,
 
 nsresult
 nsRangeFrame::AttributeChanged(int32_t  aNameSpaceID,
-                               nsIAtom* aAttribute,
+                               nsAtom* aAttribute,
                                int32_t  aModType)
 {
   NS_ASSERTION(mTrackDiv, "The track div must exist!");
@@ -759,8 +760,8 @@ nsRangeFrame::AttributeChanged(int32_t  aNameSpaceID,
         UpdateForValueChange();
       }
     } else if (aAttribute == nsGkAtoms::orient) {
-      PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eResize,
-                                                   NS_FRAME_IS_DIRTY);
+      PresShell()->FrameNeedsReflow(this, nsIPresShell::eResize,
+                                    NS_FRAME_IS_DIRTY);
     }
   }
 

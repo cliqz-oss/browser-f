@@ -90,10 +90,10 @@ MacroAssembler::call(const wasm::CallSiteDesc& desc, const Register reg)
 }
 
 void
-MacroAssembler::call(const wasm::CallSiteDesc& desc, uint32_t funcDefIndex)
+MacroAssembler::call(const wasm::CallSiteDesc& desc, uint32_t funcIndex)
 {
     CodeOffset l = callWithPatch();
-    append(desc, l, funcDefIndex);
+    append(desc, l, funcIndex);
 }
 
 void
@@ -829,6 +829,17 @@ MacroAssembler::storeCallBoolResult(Register reg)
     // C++ compilers like to only use the bottom byte for bools, but we
     // need to maintain the entire register.
     and32(Imm32(0xFF), reg);
+}
+
+void
+MacroAssembler::storeCallInt32Result(Register reg)
+{
+#if JS_BITS_PER_WORD == 32
+    storeCallPointerResult(reg);
+#else
+    // Ensure the upper 32 bits are cleared.
+    move32(ReturnReg, reg);
+#endif
 }
 
 void

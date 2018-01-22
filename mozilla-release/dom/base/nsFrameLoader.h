@@ -109,9 +109,20 @@ public:
 
   already_AddRefed<nsILoadContext> LoadContext();
 
-  void LoadFrame(mozilla::ErrorResult& aRv);
+  void LoadFrame(bool aOriginalSrc, mozilla::ErrorResult& aRv);
 
-  void LoadURI(nsIURI* aURI, mozilla::ErrorResult& aRv);
+  void LoadURI(nsIURI* aURI, bool aOriginalSrc, mozilla::ErrorResult& aRv);
+
+  /**
+   * Triggers a load of the given URI.
+   *
+   * @param aURI The URI to load.
+   * @param aTriggeringPrincipal The triggering principal for the load. May be
+   *        null, in which case the node principal of the owner content will be
+   *        used.
+   */
+  nsresult LoadURI(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal,
+                   bool aOriginalSrc);
 
   void SetIsPrerendered(mozilla::ErrorResult& aRv);
 
@@ -154,6 +165,8 @@ public:
   void RequestNotifyAfterRemotePaint(mozilla::ErrorResult& aRv);
 
   void RequestFrameLoaderClose(mozilla::ErrorResult& aRv);
+
+  void RequestUpdatePosition(mozilla::ErrorResult& aRv);
 
   void Print(uint64_t aOuterWindowID,
              nsIPrintSettings* aPrintSettings,
@@ -324,7 +337,7 @@ public:
    */
   void ApplySandboxFlags(uint32_t sandboxFlags);
 
-  void GetURL(nsString& aURL);
+  void GetURL(nsString& aURL, nsIPrincipal** aTriggeringPrincipal);
 
   // Properly retrieves documentSize of any subdocument type.
   nsresult GetWindowDimensions(nsIntRect& aRect);
@@ -384,7 +397,16 @@ private:
   // Updates the subdocument position and size. This gets called only
   // when we have our own in-process DocShell.
   void UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame);
-  nsresult CheckURILoad(nsIURI* aURI);
+
+  /**
+   * Checks whether a load of the given URI should be allowed, and returns an
+   * error result if it should not.
+   *
+   * @param aURI The URI to check.
+   * @param aTriggeringPrincipal The triggering principal for the load. May be
+   *        null, in which case the node principal of the owner content is used.
+   */
+  nsresult CheckURILoad(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal);
   void FireErrorEvent();
   nsresult ReallyStartLoadingInternal();
 
@@ -400,7 +422,7 @@ private:
                               int32_t aParentType,
                               nsIDocShell* aParentNode);
 
-  nsIAtom* TypeAttrName() const {
+  nsAtom* TypeAttrName() const {
     return mOwnerContent->IsXULElement()
              ? nsGkAtoms::type : nsGkAtoms::mozframetype;
   }
@@ -430,6 +452,7 @@ private:
 
   nsCOMPtr<nsIDocShell> mDocShell;
   nsCOMPtr<nsIURI> mURIToLoad;
+  nsCOMPtr<nsIPrincipal> mTriggeringPrincipal;
   mozilla::dom::Element* mOwnerContent; // WEAK
 
   // After the frameloader has been removed from the DOM but before all of the
@@ -480,6 +503,10 @@ private:
   // created using NS_FROM_PARSER_NETWORK flag. If the element is modified,
   // it may lose the flag.
   bool mNetworkCreated : 1;
+
+  // True if a pending load corresponds to the original src (or srcdoc)
+  // attribute of the frame element.
+  bool mLoadingOriginalSrc : 1;
 
   bool mRemoteBrowserShown : 1;
   bool mRemoteFrame : 1;

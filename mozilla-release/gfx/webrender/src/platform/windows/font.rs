@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{FontInstance, FontInstancePlatformOptions, FontKey, FontRenderMode};
-use api::{GlyphDimensions, GlyphKey};
+use api::{ColorU, GlyphDimensions, GlyphKey, SubpixelDirection};
 use dwrote;
-use gamma_lut::{Color as ColorLut, GammaLut};
+use gamma_lut::{ColorLut, GammaLut};
+use glyph_rasterizer::{GlyphFormat, RasterizedGlyph};
 use internal_types::FastHashMap;
 use std::sync::Arc;
 
@@ -28,17 +29,9 @@ pub struct FontContext {
 // all hidden inside their font context.
 unsafe impl Send for FontContext {}
 
-pub struct RasterizedGlyph {
-    pub top: f32,
-    pub left: f32,
-    pub width: u32,
-    pub height: u32,
-    pub bytes: Vec<u8>,
-}
-
 fn dwrite_texture_type(render_mode: FontRenderMode) -> dwrote::DWRITE_TEXTURE_TYPE {
     match render_mode {
-        FontRenderMode::Mono => dwrote::DWRITE_TEXTURE_ALIASED_1x1,
+        FontRenderMode::Mono | FontRenderMode::Bitmap => dwrote::DWRITE_TEXTURE_ALIASED_1x1,
         FontRenderMode::Alpha | FontRenderMode::Subpixel => dwrote::DWRITE_TEXTURE_CLEARTYPE_3x1,
     }
 }
@@ -56,7 +49,7 @@ fn dwrite_measure_mode(
     }
 
     match render_mode {
-        FontRenderMode::Mono => dwrote::DWRITE_MEASURING_MODE_GDI_NATURAL,
+        FontRenderMode::Mono | FontRenderMode::Bitmap => dwrote::DWRITE_MEASURING_MODE_GDI_NATURAL,
         FontRenderMode::Alpha | FontRenderMode::Subpixel => dwrote::DWRITE_MEASURING_MODE_NATURAL,
     }
 }
@@ -77,7 +70,7 @@ fn dwrite_render_mode(
     }
 
     let dwrite_render_mode = match render_mode {
-        FontRenderMode::Mono => dwrote::DWRITE_RENDERING_MODE_ALIASED,
+        FontRenderMode::Mono | FontRenderMode::Bitmap => dwrote::DWRITE_RENDERING_MODE_ALIASED,
         FontRenderMode::Alpha | FontRenderMode::Subpixel => {
             font_face.get_recommended_rendering_mode_default_params(em_size, 1.0, measure_mode)
         }
@@ -260,43 +253,68 @@ impl FontContext {
             })
     }
 
-    // DWRITE gives us values in RGB. WR doesn't really touch it after. Note, CG returns in BGR
-    // TODO: Decide whether all fonts should return RGB or BGR
-    fn convert_to_rgba(&self, pixels: &[u8], render_mode: FontRenderMode) -> Vec<u8> {
+    // DWrite ClearType gives us values in RGB, but WR expects BGRA.
+    fn convert_to_bgra(&self, pixels: &[u8], render_mode: FontRenderMode) -> Vec<u8> {
         match render_mode {
+            FontRenderMode::Bitmap => {
+                unreachable!("TODO: bitmap fonts");
+            }
             FontRenderMode::Mono => {
-                let mut rgba_pixels: Vec<u8> = vec![0; pixels.len() * 4];
+                let mut bgra_pixels: Vec<u8> = vec![0; pixels.len() * 4];
                 for i in 0 .. pixels.len() {
-                    rgba_pixels[i * 4 + 0] = pixels[i];
-                    rgba_pixels[i * 4 + 1] = pixels[i];
-                    rgba_pixels[i * 4 + 2] = pixels[i];
-                    rgba_pixels[i * 4 + 3] = pixels[i];
+                    let alpha = pixels[i];
+                    bgra_pixels[i * 4 + 0] = alpha;
+                    bgra_pixels[i * 4 + 1] = alpha;
+                    bgra_pixels[i * 4 + 2] = alpha;
+                    bgra_pixels[i * 4 + 3] = alpha;
                 }
-                rgba_pixels
+                bgra_pixels
             }
             FontRenderMode::Alpha => {
                 let length = pixels.len() / 3;
-                let mut rgba_pixels: Vec<u8> = vec![0; length * 4];
+                let mut bgra_pixels: Vec<u8> = vec![0; length * 4];
                 for i in 0 .. length {
                     // Only take the G channel, as its closest to D2D
                     let alpha = pixels[i * 3 + 1] as u8;
-                    rgba_pixels[i * 4 + 0] = alpha;
-                    rgba_pixels[i * 4 + 1] = alpha;
-                    rgba_pixels[i * 4 + 2] = alpha;
-                    rgba_pixels[i * 4 + 3] = alpha;
+                    bgra_pixels[i * 4 + 0] = alpha;
+                    bgra_pixels[i * 4 + 1] = alpha;
+                    bgra_pixels[i * 4 + 2] = alpha;
+                    bgra_pixels[i * 4 + 3] = alpha;
                 }
-                rgba_pixels
+                bgra_pixels
             }
             FontRenderMode::Subpixel => {
                 let length = pixels.len() / 3;
-                let mut rgba_pixels: Vec<u8> = vec![0; length * 4];
+                let mut bgra_pixels: Vec<u8> = vec![0; length * 4];
                 for i in 0 .. length {
-                    rgba_pixels[i * 4 + 0] = pixels[i * 3 + 0];
-                    rgba_pixels[i * 4 + 1] = pixels[i * 3 + 1];
-                    rgba_pixels[i * 4 + 2] = pixels[i * 3 + 2];
-                    rgba_pixels[i * 4 + 3] = 0xff;
+                    bgra_pixels[i * 4 + 0] = pixels[i * 3 + 2];
+                    bgra_pixels[i * 4 + 1] = pixels[i * 3 + 1];
+                    bgra_pixels[i * 4 + 2] = pixels[i * 3 + 0];
+                    bgra_pixels[i * 4 + 3] = 0xff;
                 }
-                rgba_pixels
+                bgra_pixels
+            }
+        }
+    }
+
+    pub fn is_bitmap_font(&mut self, _font: &FontInstance) -> bool {
+        // TODO(gw): Support bitmap fonts in DWrite.
+        false
+    }
+
+    pub fn prepare_font(font: &mut FontInstance) {
+        match font.render_mode {
+            FontRenderMode::Mono | FontRenderMode::Bitmap => {
+                // In mono/bitmap modes the color of the font is irrelevant.
+                font.color = ColorU::new(255, 255, 255, 255);
+                // Subpixel positioning is disabled in mono and bitmap modes.
+                font.subpx_dir = SubpixelDirection::None;
+            }
+            FontRenderMode::Alpha => {
+                font.color = font.color.luminance_color().quantize();
+            }
+            FontRenderMode::Subpixel => {
+                font.color = font.color.quantize();
             }
         }
     }
@@ -310,8 +328,8 @@ impl FontContext {
         let texture_type = dwrite_texture_type(font.render_mode);
 
         let bounds = analysis.get_alpha_texture_bounds(texture_type);
-        let width = (bounds.right - bounds.left) as usize;
-        let height = (bounds.bottom - bounds.top) as usize;
+        let width = (bounds.right - bounds.left) as u32;
+        let height = (bounds.bottom - bounds.top) as u32;
 
         // Alpha texture bounds can sometimes return an empty rect
         // Such as for spaces
@@ -319,34 +337,33 @@ impl FontContext {
             return None;
         }
 
-        let mut pixels = analysis.create_alpha_texture(texture_type, bounds);
+        let pixels = analysis.create_alpha_texture(texture_type, bounds);
+        let mut bgra_pixels = self.convert_to_bgra(&pixels, font.render_mode);
 
-        if font.render_mode != FontRenderMode::Mono {
-            let lut_correction = match font.platform_options {
-                Some(option) => if option.force_gdi_rendering {
-                    &self.gdi_gamma_lut
-                } else {
-                    &self.gamma_lut
-                },
-                None => &self.gamma_lut,
-            };
+        match font.render_mode {
+            FontRenderMode::Mono | FontRenderMode::Bitmap => {}
+            FontRenderMode::Alpha | FontRenderMode::Subpixel => {
+                let lut_correction = match font.platform_options {
+                    Some(option) => if option.force_gdi_rendering {
+                        &self.gdi_gamma_lut
+                    } else {
+                        &self.gamma_lut
+                    },
+                    None => &self.gamma_lut,
+                };
 
-            lut_correction.preblend_rgb(
-                &mut pixels,
-                width,
-                height,
-                ColorLut::new(font.color.r, font.color.g, font.color.b, font.color.a),
-            );
+                lut_correction.preblend(&mut bgra_pixels, font.color);
+            }
         }
-
-        let rgba_pixels = self.convert_to_rgba(&mut pixels, font.render_mode);
 
         Some(RasterizedGlyph {
             left: bounds.left as f32,
             top: -bounds.top as f32,
-            width: width as u32,
-            height: height as u32,
-            bytes: rgba_pixels,
+            width,
+            height,
+            scale: 1.0,
+            format: GlyphFormat::from(font.render_mode),
+            bytes: bgra_pixels,
         })
     }
 }

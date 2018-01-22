@@ -84,8 +84,13 @@ class TestResults(object):
         """
 
         # convert to a results class via parsing the browser log
+        format_pagename = True
+        if not self.test_config['format_pagename']:
+            format_pagename = False
+
         browserLog = BrowserLogResults(
             results,
+            format_pagename=format_pagename,
             counter_results=counter_results,
             global_counters=self.global_counters
         )
@@ -160,7 +165,7 @@ class TsResults(Results):
 
     format = 'tsformat'
 
-    def __init__(self, string, counter_results=None):
+    def __init__(self, string, counter_results=None, format_pagename=True):
         self.counter_results = counter_results
 
         string = string.strip()
@@ -213,7 +218,7 @@ class PageloaderResults(Results):
 
     format = 'tpformat'
 
-    def __init__(self, string, counter_results=None):
+    def __init__(self, string, counter_results=None, format_pagename=True):
         """
         - string : string of relevent part of browser dump
         - counter_results : counter results dictionary
@@ -243,7 +248,8 @@ class PageloaderResults(Results):
             result['runs'] = [float(i) for i in r[2:]]
 
             # fix up page
-            result['page'] = self.format_pagename(result['page'])
+            if format_pagename:
+                result['page'] = self.format_pagename(result['page'])
 
             self.results.append(result)
 
@@ -253,7 +259,12 @@ class PageloaderResults(Results):
         """
         page = page.rstrip('/')
         if '/' in page:
-            page = page.split('/')[0]
+            if 'base_page' in page or 'ref_page' in page:
+                # for base vs ref type test, the page name is different format, i.e.
+                # base_page_1_http://localhost:53309/tests/perf-reftest/bloom-basic.html
+                page = page.split('/')[-1]
+            else:
+                page = page.split('/')[0]
         return page
 
 
@@ -280,9 +291,6 @@ class BrowserLogResults(object):
     RESULTS_REGEX_FAIL = re.compile('__FAIL(.*?)__FAIL',
                                     re.DOTALL | re.MULTILINE)
 
-    # regular expression for RSS results
-    RSS_REGEX = re.compile('RSS:\s+([a-zA-Z0-9]+):\s+([0-9]+)$')
-
     # regular expression for responsiveness results
     RESULTS_RESPONSIVENESS_REGEX = re.compile(
         'MOZ_EVENT_TRACE\ssample\s\d*?\s(\d*\.?\d*)$',
@@ -297,7 +305,7 @@ class BrowserLogResults(object):
     # xperf counters
     using_xperf = False
 
-    def __init__(self, results_raw, counter_results=None,
+    def __init__(self, results_raw, format_pagename=True, counter_results=None,
                  global_counters=None):
         """
         - shutdown : whether to record shutdown results or not
@@ -305,7 +313,7 @@ class BrowserLogResults(object):
 
         self.counter_results = counter_results
         self.global_counters = global_counters
-
+        self.format_pagename = format_pagename
         self.results_raw = results_raw
 
         # parse the results
@@ -391,15 +399,13 @@ class BrowserLogResults(object):
                 % repr(self.format)
             )
 
-        return self.classes[self.format](self.browser_results)
+        return self.classes[self.format](self.browser_results,
+                                         format_pagename=self.format_pagename)
 
     # methods for counters
 
     def counters(self, counter_results=None, global_counters=None):
         """accumulate all counters"""
-
-        if counter_results is not None:
-            self.rss(counter_results)
 
         if global_counters is not None:
             if 'shutdown' in global_counters:
@@ -486,23 +492,6 @@ class BrowserLogResults(object):
                         counter_results.setdefault(mainthread_counter, [])\
                             .append([int(values[mainthread_counter_keys[i]]),
                                      values['filename']])
-
-    def rss(self, counter_results):
-        """record rss counters in counter_results dictionary"""
-
-        counters = ['Main', 'Content']
-        if not set(['%s_RSS' % i for i in counters])\
-                .intersection(counter_results.keys()):
-            # no RSS counters to accumulate
-            return
-        for line in self.results_raw.split('\n'):
-            rssmatch = self.RSS_REGEX.search(line)
-            if rssmatch:
-                (type, value) = (rssmatch.group(1), rssmatch.group(2))
-                # type will be 'Main' or 'Content'
-                counter_name = '%s_RSS' % type
-                if counter_name in counter_results:
-                    counter_results[counter_name].append(value)
 
     def mainthread_io(self, counter_results):
         """record mainthread IO counters in counter_results dictionary"""

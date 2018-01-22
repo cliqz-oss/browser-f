@@ -9,30 +9,25 @@ const Ci = Components.interfaces;
 const Cu = Components.utils;
 const Cr = Components.results;
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
-/* globals AddonManagerPrivate*/
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredSave",
-                                  "resource://gre/modules/DeferredSave.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonRepository_SQLiteMigrator",
-                                  "resource://gre/modules/addons/AddonRepository_SQLiteMigrator.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
-                                  "resource://gre/modules/Preferences.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ServiceRequest",
-                                  "resource://gre/modules/ServiceRequest.jsm");
-
+XPCOMUtils.defineLazyModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.jsm",
+  AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
+  AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
+  DeferredTask: "resource://gre/modules/DeferredTask.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+  ServiceRequest: "resource://gre/modules/ServiceRequest.jsm",
+  NetUtil: "resource://gre/modules/NetUtil.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  Preferences: "resource://gre/modules/Preferences.jsm",
+});
 
 this.EXPORTED_SYMBOLS = [ "AddonRepository" ];
 
 const PREF_GETADDONS_CACHE_ENABLED       = "extensions.getAddons.cache.enabled";
 const PREF_GETADDONS_CACHE_TYPES         = "extensions.getAddons.cache.types";
-const PREF_GETADDONS_CACHE_ID_ENABLED    = "extensions.%ID%.getAddons.cache.enabled"
+const PREF_GETADDONS_CACHE_ID_ENABLED    = "extensions.%ID%.getAddons.cache.enabled";
 const PREF_GETADDONS_BROWSEADDONS        = "extensions.getAddons.browseAddons";
 const PREF_GETADDONS_BYIDS               = "extensions.getAddons.get.url";
 const PREF_GETADDONS_BYIDS_PERFORMANCE   = "extensions.getAddons.getWithPerformance.url";
@@ -40,11 +35,11 @@ const PREF_GETADDONS_BROWSERECOMMENDED   = "extensions.getAddons.recommended.bro
 const PREF_GETADDONS_GETRECOMMENDED      = "extensions.getAddons.recommended.url";
 const PREF_GETADDONS_BROWSESEARCHRESULTS = "extensions.getAddons.search.browseURL";
 const PREF_GETADDONS_GETSEARCHRESULTS    = "extensions.getAddons.search.url";
-const PREF_GETADDONS_DB_SCHEMA           = "extensions.getAddons.databaseSchema"
+const PREF_GETADDONS_DB_SCHEMA           = "extensions.getAddons.databaseSchema";
 
 const PREF_METADATA_LASTUPDATE           = "extensions.getAddons.cache.lastUpdate";
 const PREF_METADATA_UPDATETHRESHOLD_SEC  = "extensions.getAddons.cache.updateThreshold";
-const DEFAULT_METADATA_UPDATETHRESHOLD_SEC = 172800;  // two days
+const DEFAULT_METADATA_UPDATETHRESHOLD_SEC = 172800; // two days
 
 const XMLURI_PARSE_ERROR  = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
 
@@ -61,7 +56,7 @@ const BLANK_DB = function() {
     addons: new Map(),
     schema: DB_SCHEMA
   };
-}
+};
 
 const TOOLKIT_ID     = "toolkit@mozilla.org";
 
@@ -122,7 +117,7 @@ async function getAddonsToCache(aIds) {
 
   types = types.split(",");
 
-  let addons = await AddonManager.getAddonsByIDs(aIds)
+  let addons = await AddonManager.getAddonsByIDs(aIds);
   let enabledIds = [];
 
   for (let [i, addon] of addons.entries()) {
@@ -456,7 +451,7 @@ AddonSearchResult.prototype = {
 
     return json;
   }
-}
+};
 
 /**
  * The add-on repository is a source of add-ons that can be installed. It can
@@ -847,7 +842,7 @@ this.AddonRepository = {
 
       // aTotalResults irrelevant
       this._reportSuccess(results, -1);
-    }
+    };
 
     this._beginSearch(url, ids.length, aCallback, handleResults, aTimeout);
   },
@@ -887,7 +882,7 @@ this.AddonRepository = {
         // aTotalResults irrelevant
         this._parseAddons(aElements, -1, aLocalAddonIds);
       });
-    }
+    };
 
     this._beginSearch(url, aMaxResults, aCallback, handleResults);
   },
@@ -924,7 +919,7 @@ this.AddonRepository = {
       this._getLocalAddonIds(aLocalAddonIds => {
         this._parseAddons(aElements, aTotalResults, aLocalAddonIds);
       });
-    }
+    };
 
     this._beginSearch(url, aMaxResults, aCallback, handleResults);
   },
@@ -1145,7 +1140,7 @@ this.AddonRepository = {
             addon.contributionURL = meetDevelopers;
             addon.contributionAmount = suggestedAmount;
           }
-          break
+          break;
         case "payment_data":
           let link = this._getDescendantTextContent(node, "link");
           let amountTag = this._getUniqueDescendant(node, "amount");
@@ -1156,7 +1151,7 @@ this.AddonRepository = {
             addon.purchaseAmount = amount;
             addon.purchaseDisplayAmount = displayAmount;
           }
-          break
+          break;
         case "rating":
           let averageRating = parseInt(this._getTextContent(node));
           if (averageRating >= 0)
@@ -1308,7 +1303,7 @@ this.AddonRepository = {
         pendingResults--;
         if (pendingResults == 0)
           this._reportSuccess(results, aTotalResults);
-      }
+      };
 
       if (result.xpiURL) {
         AddonManager.getInstallForURL(result.xpiURL, callback,
@@ -1529,6 +1524,9 @@ this.AddonRepository = {
 
 var AddonDatabase = {
   connectionPromise: null,
+  _saveTask: null,
+  _blockerAdded: false,
+
   // the in-memory database
   DB: BLANK_DB(),
 
@@ -1552,7 +1550,7 @@ var AddonDatabase = {
        let inputDB, schema;
 
        try {
-         let data = await OS.File.read(this.jsonFile, { encoding: "utf-8"})
+         let data = await OS.File.read(this.jsonFile, { encoding: "utf-8"});
          inputDB = JSON.parse(data);
 
          if (!inputDB.hasOwnProperty("addons") ||
@@ -1578,20 +1576,7 @@ var AddonDatabase = {
          }
 
          // Create a blank addons.json file
-         this._saveDBToDisk();
-
-         let dbSchema = Services.prefs.getIntPref(PREF_GETADDONS_DB_SCHEMA, 0);
-
-         if (dbSchema < DB_MIN_JSON_SCHEMA) {
-           let results = await new Promise((resolve, reject) => {
-             AddonRepository_SQLiteMigrator.migrate(resolve);
-           });
-
-           if (results.length) {
-             await this._insertAddons(results);
-           }
-
-         }
+         this.save();
 
          Services.prefs.setIntPref(PREF_GETADDONS_DB_SCHEMA, DB_SCHEMA);
          return this.DB;
@@ -1614,13 +1599,6 @@ var AddonDatabase = {
   },
 
   /**
-   * A lazy getter for the database connection.
-   */
-  get connection() {
-    return this.openConnection();
-  },
-
-  /**
    * Asynchronously shuts down the database connection and releases all
    * cached objects
    *
@@ -1637,10 +1615,13 @@ var AddonDatabase = {
 
     this.connectionPromise = null;
 
-    if (aSkipFlush) {
+    if (aSkipFlush || !this._saveTask) {
       return Promise.resolve();
     }
-    return this.Writer.flush();
+
+    let promise = this._saveTask.finalize();
+    this._saveTask = null;
+    return promise;
   },
 
   /**
@@ -1654,10 +1635,13 @@ var AddonDatabase = {
   delete(aCallback) {
     this.DB = BLANK_DB();
 
-    this._deleting = this.Writer.flush()
-      .catch(() => {})
-      // shutdown(true) never rejects
-      .then(() => this.shutdown(true))
+    if (this._saveTask) {
+      this._saveTask.disarm();
+      this._saveTask = null;
+    }
+
+    // shutdown(true) never rejects
+    this._deleting = this.shutdown(true)
       .then(() => OS.File.remove(this.jsonFile, {}))
       .catch(error => logger.error("Unable to delete Addon Repository file " +
                                  this.jsonFile, error))
@@ -1666,31 +1650,37 @@ var AddonDatabase = {
     return this._deleting;
   },
 
-  toJSON() {
+  async _saveNow() {
     let json = {
       schema: this.DB.schema,
       addons: []
-    }
+    };
 
     for (let [, value] of this.DB.addons)
       json.addons.push(value);
 
-    return json;
+    await OS.File.writeAtomic(this.jsonFile, JSON.stringify(json),
+                              {tmpPath: `${this.jsonFile}.tmp`});
   },
 
-  /*
-   * This is a deferred task writer that is used
-   * to batch operations done within 50ms of each
-   * other and thus generating only one write to disk
-   */
-  get Writer() {
-    delete this.Writer;
-    this.Writer = new DeferredSave(
-      this.jsonFile,
-      () => { return JSON.stringify(this); },
-      DB_BATCH_TIMEOUT_MS
-    );
-    return this.Writer;
+  save() {
+    if (!this._saveTask) {
+      this._saveTask = new DeferredTask(() => this._saveNow(), DB_BATCH_TIMEOUT_MS);
+
+      if (!this._blockerAdded) {
+        AsyncShutdown.profileBeforeChange.addBlocker(
+          "Flush AddonRepository",
+          async () => {
+            if (!this._saveTask) {
+              return;
+            }
+            await this._saveTask.finalize();
+            this._saveTask = null;
+          });
+        this._blockerAdded = true;
+      }
+    }
+    this._saveTask.arm();
   },
 
   /**
@@ -1703,7 +1693,14 @@ var AddonDatabase = {
     if (this._deleting) {
       return this._deleting;
     }
-    return this.Writer.flush();
+
+    if (this._saveTask) {
+      let promise = this._saveTask.finalize();
+      this._saveTask = null;
+      return promise;
+    }
+
+    return Promise.resolve();
   },
 
   /**
@@ -1745,15 +1742,12 @@ var AddonDatabase = {
    */
   async insertAddons(aAddons, aCallback) {
     await this.openConnection();
-    await this._insertAddons(aAddons, aCallback);
-  },
 
-  async _insertAddons(aAddons, aCallback) {
     for (let addon of aAddons) {
       this._insertAddon(addon);
     }
 
-    await this._saveDBToDisk();
+    this.save();
     aCallback && aCallback();
   },
 
@@ -1887,18 +1881,6 @@ var AddonDatabase = {
     }
 
     return addon;
-  },
-
-  /**
-   * Write the in-memory DB to disk, after waiting for
-   * the DB_BATCH_TIMEOUT_MS timeout.
-   *
-   * @return Promise A promise that resolves after the
-   *                 write to disk has completed.
-   */
-  _saveDBToDisk() {
-    return this.Writer.saveChanges().catch(
-      e => logger.error("SaveDBToDisk failed", e));
   },
 
   /**

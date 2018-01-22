@@ -9,6 +9,7 @@
 
 #include "HTMLEditUtils.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/EditorDOMPoint.h"
 #include "mozilla/EditorUtils.h"
 #include "mozilla/FlushType.h"
 #include "mozilla/dom/Selection.h"
@@ -19,7 +20,7 @@
 #include "nsDebug.h"
 #include "nsError.h"
 #include "nsGkAtoms.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIContent.h"
 #include "nsIDOMElement.h"
 #include "nsIDOMNode.h"
@@ -1961,8 +1962,8 @@ HTMLEditor::SwitchTableCellHeaderType(nsIDOMElement* aSourceCell,
   AutoSelectionRestorer selectionRestorer(selection, this);
 
   // Set to the opposite of current type
-  nsCOMPtr<nsIAtom> atom = EditorBase::GetTag(aSourceCell);
-  nsIAtom* newCellType = atom == nsGkAtoms::td ? nsGkAtoms::th : nsGkAtoms::td;
+  nsAtom* newCellType =
+    sourceCell->IsHTMLElement(nsGkAtoms::td) ? nsGkAtoms::th : nsGkAtoms::td;
 
   // This creates new node, moves children, copies attributes (true)
   //   and manages the selection!
@@ -2716,8 +2717,8 @@ HTMLEditor::GetCellDataAt(nsIDOMElement* aTable,
   }
 
   *aIsSelected = cellFrame->IsSelected();
-  cellFrame->GetRowIndex(*aStartRowIndex);
-  cellFrame->GetColIndex(*aStartColIndex);
+  *aStartRowIndex = cellFrame->RowIndex();
+  *aStartColIndex = cellFrame->ColIndex();
   *aRowSpan = cellFrame->GetRowSpan();
   *aColSpan = cellFrame->GetColSpan();
   *aActualRowSpan = tableFrame->GetEffectiveRowSpanAt(aRowIndex, aColIndex);
@@ -3157,8 +3158,15 @@ HTMLEditor::SetSelectionAfterTableEdit(nsIDOMElement* aTable,
   nsCOMPtr<nsIDOMNode> tableParent;
   nsresult rv = aTable->GetParentNode(getter_AddRefs(tableParent));
   if (NS_SUCCEEDED(rv) && tableParent) {
-    int32_t tableOffset = GetChildOffset(aTable, tableParent);
-    selection->Collapse(tableParent, tableOffset);
+    nsCOMPtr<nsIContent> table = do_QueryInterface(aTable);
+    if (NS_WARN_IF(!table)) {
+      return;
+    }
+    EditorRawDOMPoint atTable(table);
+    if (NS_WARN_IF(!atTable.IsSetAndValid())) {
+      return;
+    }
+    selection->Collapse(atTable);
     return;
   }
   // Last resort: Set selection to start of doc

@@ -10,9 +10,7 @@ function test() {
   waitForExplicitFinish();
 
   // read the sessionstore.js mtime (picked from browser_248970_a.js)
-  let profilePath = Cc["@mozilla.org/file/directory_service;1"].
-                    getService(Ci.nsIProperties).
-                    get("ProfD", Ci.nsIFile);
+  let profilePath = Services.dirsvc.get("ProfD", Ci.nsIFile);
   function getSessionstoreFile() {
     let sessionStoreJS = profilePath.clone();
     sessionStoreJS.append("sessionstore.jsonlz4");
@@ -34,7 +32,7 @@ function test() {
 
   // test content URL
   const TEST_URL = "data:text/html;charset=utf-8,"
-    + "<body style='width: 100000px; height: 100000px;'><p>top</p></body>"
+    + "<body style='width: 100000px; height: 100000px;'><p>top</p></body>";
 
   // preferences that we use
   const PREF_INTERVAL = "browser.sessionstore.interval";

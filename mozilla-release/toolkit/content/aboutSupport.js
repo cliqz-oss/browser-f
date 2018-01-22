@@ -49,6 +49,7 @@ var snapshotFormatters = {
     $("buildid-box").textContent = data.buildID;
     if (data.updateChannel)
       $("updatechannel-box").textContent = data.updateChannel;
+    $("profile-dir-box").textContent = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
 
     let statusText = strings.GetStringFromName("multiProcessStatus.unknown");
 
@@ -80,21 +81,27 @@ var snapshotFormatters = {
       $("contentprocesses-row").hidden = true;
     }
 
-    let styloReason;
-    if (!data.styloBuild) {
-      styloReason = strings.GetStringFromName("disabledByBuild");
-    } else if (data.styloResult != data.styloDefault) {
-      if (data.styloResult) {
-        styloReason = strings.GetStringFromName("enabledByUser");
-      } else {
-        styloReason = strings.GetStringFromName("disabledByUser");
+    function getReasonStringName(resultValue, defaultValue) {
+      if (resultValue != defaultValue) {
+        return resultValue ? "enabledByUser" : "disabledByUser";
       }
-    } else if (data.styloDefault) {
-      styloReason = strings.GetStringFromName("enabledByDefault");
-    } else {
-      styloReason = strings.GetStringFromName("disabledByDefault");
+      return resultValue ? "enabledByDefault" : "disabledByDefault";
     }
-    $("stylo-box").textContent = `${data.styloResult} (${styloReason})`;
+    let styloReason;
+    let styloChromeReason;
+    if (!data.styloBuild) {
+      styloReason = "disabledByBuild";
+      styloChromeReason = "disabledByBuild";
+    } else {
+      styloReason = getReasonStringName(data.styloResult, data.styloDefault);
+      styloChromeReason = getReasonStringName(data.styloChromeResult,
+                                              data.styloChromeDefault);
+    }
+    styloReason = strings.GetStringFromName(styloReason);
+    styloChromeReason = strings.GetStringFromName(styloChromeReason);
+    $("stylo-box").textContent =
+      `content = ${data.styloResult} (${styloReason}), ` +
+      `chrome = ${data.styloChromeResult} (${styloChromeReason})`;
 
     let keyGoogleFound = data.keyGoogleFound ? "found" : "missing";
     $("key-google-box").textContent = strings.GetStringFromName(keyGoogleFound);
@@ -606,6 +613,7 @@ var snapshotFormatters = {
         let th = $.new("th", strings.GetStringFromName(key), "column");
         let td = $.new("td", value);
         td.style["white-space"] = "pre-wrap";
+        td.colSpan = 8;
         return $.new("tr", [th, td]);
       }
       $.append($("media-info-tbody"), [createRow(key, value)]);
@@ -799,6 +807,24 @@ var snapshotFormatters = {
       }
     }
   },
+
+  intl: function intl(data) {
+    $("intl-locale-requested").textContent =
+      JSON.stringify(data.localeService.requested);
+    $("intl-locale-available").textContent =
+      JSON.stringify(data.localeService.available);
+    $("intl-locale-supported").textContent =
+      JSON.stringify(data.localeService.supported);
+    $("intl-locale-regionalprefs").textContent =
+      JSON.stringify(data.localeService.regionalPrefs);
+    $("intl-locale-default").textContent =
+      JSON.stringify(data.localeService.defaultLocale);
+
+    $("intl-osprefs-systemlocales").textContent =
+      JSON.stringify(data.osPrefs.systemLocales);
+    $("intl-osprefs-regionalprefs").textContent =
+      JSON.stringify(data.osPrefs.regionalPrefsLocales);
+  }
 };
 
 var $ = document.getElementById.bind(document);

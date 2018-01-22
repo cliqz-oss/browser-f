@@ -128,7 +128,8 @@ def add_common_arguments(parser):
                         help="Paths of tests to run.")
     parser.add_argument("--verify",
                         action="store_true", default=False,
-                        help="Verify test(s) by running multiple times.")
+                        help="Run tests in verification mode: Run many times in different "
+                             "ways, to see if there are intermittent failures.")
     parser.add_argument("--verify-max-time",
                         dest="verifyMaxTime",
                         type=int, default=3600,
@@ -147,6 +148,9 @@ def add_remote_arguments(parser):
 
     parser.add_argument("--apk", action="store", type=str, dest="localAPK",
                         help="local path to Fennec APK")
+
+    parser.add_argument("--adbPath", action="store", type=str, dest="adbPath",
+                        help="Path to adb")
 
     parser.add_argument("--noSetup", action="store_false", dest="setup", default=True,
                         help="do not copy any files to device (to be used only if "

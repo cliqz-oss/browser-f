@@ -7,7 +7,7 @@
  * after delayed init.
  */
 
-"use strict"
+"use strict";
 
 Cu.import("resource://gre/modules/Services.jsm", this);
 Cu.import("resource://gre/modules/TelemetryStorage.jsm", this);
@@ -148,7 +148,6 @@ add_task(async function test_setup() {
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
 
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   Services.prefs.setCharPref(TelemetryUtils.Preferences.Server,
                               "http://localhost:" + PingServer.port);
 });

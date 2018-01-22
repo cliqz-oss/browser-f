@@ -217,12 +217,6 @@ OggDemuxer::Init()
   return InitPromise::CreateAndResolve(NS_OK, __func__);
 }
 
-bool
-OggDemuxer::HasTrackType(TrackInfo::TrackType aType) const
-{
-  return !!GetNumberTracks(aType);
-}
-
 OggCodecState*
 OggDemuxer::GetTrackCodecState(TrackInfo::TrackType aType) const
 {
@@ -1354,13 +1348,16 @@ OggTrackDemuxer::NextSample()
   if (mType == TrackInfo::kAudioTrack) {
     data->mTrackInfo = mParent->mSharedAudioTrackInfo;
   }
+  // mDecodedAudioDuration gets adjusted during ReadOggChain().
+  TimeUnit totalDuration = mParent->mDecodedAudioDuration;
   if (eos) {
     // We've encountered an end of bitstream packet; check for a chained
     // bitstream following this one.
     // This will also update mSharedAudioTrackInfo.
     mParent->ReadOggChain(data->GetEndTime());
   }
-  data->mTime += mParent->mDecodedAudioDuration;
+  // We adjust the start time of the sample to account for the potential ogg chaining.
+  data->mTime += totalDuration;
   return data;
 }
 

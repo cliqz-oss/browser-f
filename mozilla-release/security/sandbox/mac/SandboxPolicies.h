@@ -23,12 +23,6 @@ static const char pluginSandboxRules[] = R"(
   (allow signal (target self))
   (allow sysctl-read)
   (allow iokit-open (iokit-user-client-class "IOHIDParamUserClient"))
-  (allow mach-lookup
-      (global-name "com.apple.cfprefsd.agent")
-      (global-name "com.apple.cfprefsd.daemon")
-      (global-name "com.apple.system.opendirectoryd.libinfo")
-      (global-name "com.apple.system.logger")
-      (global-name "com.apple.ls.boxd"))
   (allow file-read*
       (literal "/etc")
       (literal "/dev/random")
@@ -77,19 +71,19 @@ static const char contentSandboxRules[] = R"(
   ; Allow read access to standard system paths.
   (allow file-read*
     (require-all (file-mode #o0004)
-      (require-any (subpath "/Library/Filesystems/NetFSPlugins")
+      (require-any
+        (subpath "/Library/Filesystems/NetFSPlugins")
+        (subpath "/Library/GPUBundles")
         (subpath "/System")
         (subpath "/usr/lib")
         (subpath "/usr/share"))))
 
+  ; Top-level directory metadata access (bug 1404298)
+  (allow file-read-metadata (regex #"^/[^/]+$"))
+
   (allow file-read-metadata
-    (literal "/etc")
-    (literal "/tmp")
-    (literal "/var")
     (literal "/private/etc/localtime")
-    (literal "/home")
-    (literal "/net")
-    (regex "^/private/tmp/KSInstallAction\."))
+    (regex #"^/private/tmp/KSInstallAction\."))
 
   ; Allow read access to standard special files.
   (allow file-read*
@@ -136,6 +130,7 @@ static const char contentSandboxRules[] = R"(
       (sysctl-name "hw.cpufrequency_max")
       (sysctl-name "hw.l2cachesize")
       (sysctl-name "hw.l3cachesize")
+      (sysctl-name "hw.cachelinesize")
       (sysctl-name "hw.cachelinesize_compat")
       (sysctl-name "hw.tbfrequency_compat")
       (sysctl-name "hw.vectorunit")
@@ -176,9 +171,9 @@ static const char contentSandboxRules[] = R"(
            (home-regex (string-append "/Library/Preferences/" (regex-quote domain)))))
 
   (allow ipc-posix-shm-read-data ipc-posix-shm-write-data
-    (ipc-posix-name-regex "^CFPBS:"))
+    (ipc-posix-name-regex #"^CFPBS:"))
   (allow ipc-posix-shm-read* ipc-posix-shm-write-data
-    (ipc-posix-name-regex "^AudioIO"))
+    (ipc-posix-name-regex #"^AudioIO"))
 
   (allow signal (target self))
 
@@ -197,6 +192,12 @@ static const char contentSandboxRules[] = R"(
 ; bug 1312273
   (if (= macosMinorVersion 9)
      (allow mach-lookup (global-name "com.apple.xpcd")))
+
+  ; File content processes need access to iconservices to draw file icons in
+  ; directory listings
+  (if (string=? hasFilePrivileges "TRUE")
+    (allow mach-lookup
+      (global-name "com.apple.iconservices")))
 
   (allow iokit-open
      (iokit-user-client-class "IOHIDParamUserClient")
@@ -257,10 +258,6 @@ static const char contentSandboxRules[] = R"(
           (subpath debugWriteDir)
           (vnode-type REGULAR-FILE)))))
 
-  ; bug 1324610
-  (allow network-outbound file-read*
-    (literal "/private/var/run/cupsd"))
-
   (allow-shared-list "org.mozilla.plugincontainer")
 
 ; the following rule should be removed when microphone access
@@ -269,8 +266,8 @@ static const char contentSandboxRules[] = R"(
 
 ; Per-user and system-wide Extensions dir
   (allow file-read*
-      (home-regex "/Library/Application Support/[^/]+/Extensions/[^/]/")
-      (regex "/Library/Application Support/[^/]+/Extensions/[^/]/"))
+      (home-regex "/Library/Application Support/[^/]+/Extensions/")
+      (regex "^/Library/Application Support/[^/]+/Extensions/"))
 
 ; bug 1393805
   (allow file-read*
@@ -289,39 +286,30 @@ static const char contentSandboxRules[] = R"(
 ;          no read/write access to $PROFILE,
 ;          read access permitted to $PROFILE/{extensions,features,chrome}
   (if (string=? sandbox-level-2 "TRUE")
-    (if (string=? hasFilePrivileges "TRUE")
-      ; This process has blanket file read privileges
-      (allow file-read*)
-      ; This process does not have blanket file read privileges
-      (begin
-        ; bug 1201935
-        (allow file-read* (home-subpath "/Library/Caches/TemporaryItems"))
-        (if (string=? hasProfileDir "TRUE")
-          ; we have a profile dir
-          (begin
-            (allow file-read* (require-all
-                (require-not (home-subpath "/Library"))
-                (require-not (subpath profileDir))))
-            (allow file-read*
-                (profile-subpath "/extensions")
-                (profile-subpath "/features")
-                (profile-subpath "/chrome")))
-          ; we don't have a profile dir
-          (allow file-read* (require-not (home-subpath "/Library")))))))
-
-  ; level 3: no global read/write access,
-  ;          read access permitted to $PROFILE/{extensions,features,chrome}
-  (if (string=? sandbox-level-3 "TRUE")
-    (if (string=? hasFilePrivileges "TRUE")
-      ; This process has blanket file read privileges
-      (allow file-read*)
-      ; This process does not have blanket file read privileges
+    (begin
+      ; bug 1201935
+      (allow file-read* (home-subpath "/Library/Caches/TemporaryItems"))
       (if (string=? hasProfileDir "TRUE")
         ; we have a profile dir
-          (allow file-read*
-            (profile-subpath "/extensions")
-            (profile-subpath "/features")
-            (profile-subpath "/chrome")))))
+        (allow file-read* (require-all
+          (require-not (home-subpath "/Library"))
+          (require-not (subpath profileDir))))
+        ; we don't have a profile dir
+        (allow file-read* (require-not (home-subpath "/Library"))))))
+
+  ; level 3: Does not have any of it's own rules. The global rules provide:
+  ;          no global read/write access,
+  ;          read access permitted to $PROFILE/{extensions,features,chrome}
+  (if (string=? hasFilePrivileges "TRUE")
+    ; This process has blanket file read privileges
+    (allow file-read*))
+
+  (if (string=? hasProfileDir "TRUE")
+    ; we have a profile dir
+    (allow file-read*
+      (profile-subpath "/extensions")
+      (profile-subpath "/features")
+      (profile-subpath "/chrome")))
 
 ; accelerated graphics
   (allow-shared-preferences-read "com.apple.opengl")
@@ -334,10 +322,8 @@ static const char contentSandboxRules[] = R"(
       (iokit-user-client-class "IOSurfaceRootUserClient")
       (iokit-user-client-class "IOSurfaceSendRight")
       (iokit-user-client-class "IOFramebufferSharedUserClient")
-      (iokit-user-client-class "AppleSNBFBUserClient")
       (iokit-user-client-class "AGPMClient")
-      (iokit-user-client-class "AppleGraphicsControlClient")
-      (iokit-user-client-class "AppleGraphicsPolicyClient"))
+      (iokit-user-client-class "AppleGraphicsControlClient"))
 
 ; bug 1153809
   (allow iokit-open
@@ -350,9 +336,7 @@ static const char contentSandboxRules[] = R"(
   (allow file-write-create
     (require-all
       (subpath appTempDir)
-      (require-any
-        (vnode-type REGULAR-FILE)
-        (vnode-type DIRECTORY))))
+      (vnode-type REGULAR-FILE)))
 
   ; bug 1382260
   ; We may need to load fonts from outside of the standard

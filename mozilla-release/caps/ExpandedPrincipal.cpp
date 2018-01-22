@@ -75,7 +75,7 @@ ExpandedPrincipal::Create(nsTArray<nsCOMPtr<nsIPrincipal>>& aWhiteList,
     MOZ_ASSERT(NS_SUCCEEDED(rv));
     origin.Append(subOrigin);
   }
-  origin.Append("]]");
+  origin.AppendLiteral("]]");
 
   ep->FinishInit(origin, aAttrs);
   return ep.forget();
@@ -100,15 +100,14 @@ ExpandedPrincipal::SubsumesInternal(nsIPrincipal* aOther,
 {
   // If aOther is an ExpandedPrincipal too, we break it down into its component
   // nsIPrincipals, and check subsumes on each one.
-  nsCOMPtr<nsIExpandedPrincipal> expanded = do_QueryInterface(aOther);
-  if (expanded) {
-    nsTArray< nsCOMPtr<nsIPrincipal> >* otherList;
-    expanded->GetWhiteList(&otherList);
-    for (uint32_t i = 0; i < otherList->Length(); ++i){
+  if (Cast(aOther)->Is<ExpandedPrincipal>()) {
+    auto* expanded = Cast(aOther)->As<ExpandedPrincipal>();
+
+    for (auto& other : expanded->WhiteList()) {
       // Use SubsumesInternal rather than Subsumes here, since OriginAttribute
       // checks are only done between non-expanded sub-principals, and we don't
       // need to incur the extra virtual call overhead.
-      if (!SubsumesInternal((*otherList)[i], aConsideration)) {
+      if (!SubsumesInternal(other, aConsideration)) {
         return false;
       }
     }
@@ -151,11 +150,10 @@ ExpandedPrincipal::GetURI(nsIURI** aURI)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-ExpandedPrincipal::GetWhiteList(nsTArray<nsCOMPtr<nsIPrincipal> >** aWhiteList)
+const nsTArray<nsCOMPtr<nsIPrincipal>>&
+ExpandedPrincipal::WhiteList()
 {
-  *aWhiteList = &mPrincipals;
-  return NS_OK;
+  return mPrincipals;
 }
 
 NS_IMETHODIMP
@@ -172,7 +170,7 @@ ExpandedPrincipal::GetAddonId(nsAString& aAddonId)
 };
 
 bool
-ExpandedPrincipal::AddonHasPermission(const nsIAtom* aPerm)
+ExpandedPrincipal::AddonHasPermission(const nsAtom* aPerm)
 {
   for (size_t i = 0; i < mPrincipals.Length(); ++i) {
     if (BasePrincipal::Cast(mPrincipals[i])->AddonHasPermission(aPerm)) {
@@ -182,10 +180,25 @@ ExpandedPrincipal::AddonHasPermission(const nsIAtom* aPerm)
   return false;
 }
 
+nsIPrincipal*
+ExpandedPrincipal::PrincipalToInherit(nsIURI* aRequestedURI,
+                                      bool aAllowIfInheritsPrincipal)
+{
+  if (aRequestedURI) {
+    for (const auto& principal : mPrincipals) {
+      if (NS_SUCCEEDED(principal->CheckMayLoad(aRequestedURI, false,
+                                               aAllowIfInheritsPrincipal))) {
+        return principal;
+      }
+    }
+  }
+  return mPrincipals.LastElement();
+}
+
 nsresult
 ExpandedPrincipal::GetScriptLocation(nsACString& aStr)
 {
-  aStr.Assign("[Expanded Principal [");
+  aStr.AssignLiteral("[Expanded Principal [");
   for (size_t i = 0; i < mPrincipals.Length(); ++i) {
     if (i != 0) {
       aStr.AppendLiteral(", ");
@@ -198,7 +211,7 @@ ExpandedPrincipal::GetScriptLocation(nsACString& aStr)
 
     aStr.Append(spec);
   }
-  aStr.Append("]]");
+  aStr.AppendLiteral("]]");
   return NS_OK;
 }
 

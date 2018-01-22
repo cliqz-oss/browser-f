@@ -164,7 +164,9 @@ WebrtcGmpVideoEncoder::InitEncode(const webrtc::VideoCodec* aCodecSettings,
   codecParams.mMaxFramerate = aCodecSettings->maxFramerate;
   mMaxPayloadSize = aMaxPayloadSize;
 
-  memset(&mCodecSpecificInfo, 0, sizeof(webrtc::CodecSpecificInfo));
+  memset(&mCodecSpecificInfo.codecSpecific,
+         0,
+         sizeof(mCodecSpecificInfo.codecSpecific));
   mCodecSpecificInfo.codecType = webrtc::kVideoCodecH264;
   mCodecSpecificInfo.codecSpecific.H264.packetization_mode =
     aCodecSettings->H264().packetizationMode == 1 ?
@@ -317,13 +319,12 @@ WebrtcGmpVideoEncoder::Encode(const webrtc::VideoFrame& aInputImage,
   // Would be really nice to avoid this sync dispatch, but it would require a
   // copy of the frame, since it doesn't appear to actually have a refcount.
   // Passing 'this' is safe since this is synchronous.
-  mGMPThread->Dispatch(
+  mozilla::SyncRunnable::DispatchToThread(mGMPThread,
       WrapRunnable(this,
                    &WebrtcGmpVideoEncoder::Encode_g,
                    &aInputImage,
                    aCodecSpecificInfo,
-                   aFrameTypes),
-      NS_DISPATCH_SYNC);
+                   aFrameTypes));
 
   return WEBRTC_VIDEO_CODEC_OK;
 }
@@ -922,6 +923,8 @@ int32_t
 WebrtcGmpVideoDecoder::ReleaseGmp()
 {
   LOGD(("GMP Released:"));
+  RegisterDecodeCompleteCallback(nullptr);
+
   if (mGMPThread) {
     mGMPThread->Dispatch(
         WrapRunnableNM(&WebrtcGmpVideoDecoder::ReleaseGmp_g,

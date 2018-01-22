@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -24,7 +25,7 @@ namespace layers {
 class StackingContextHelper;
 } // namespace layers
 namespace wr {
-struct WrComplexClipRegion;
+struct ComplexClipRegion;
 } // namepsace wr
 } // namespace mozilla
 
@@ -80,7 +81,7 @@ public:
   // Apply this |DisplayItemClip| to the given gfxContext.  Any saving of state
   // or clearing of other clips must be done by the caller.
   // See aBegin/aEnd note on ApplyRoundedRectsTo.
-  void ApplyTo(gfxContext* aContext, nsPresContext* aPresContext,
+  void ApplyTo(gfxContext* aContext, int32_t A2D,
                uint32_t aBegin = 0, uint32_t aEnd = UINT32_MAX);
 
   void ApplyRectTo(gfxContext* aContext, int32_t A2D) const;
@@ -180,9 +181,9 @@ public:
   uint32_t GetRoundedRectCount() const { return mRoundedClipRects.Length(); }
   void AppendRoundedRects(nsTArray<RoundedRect>* aArray, uint32_t aCount) const;
 
-  void ToWrComplexClipRegions(int32_t aAppUnitsPerDevPixel,
+  void ToComplexClipRegions(int32_t aAppUnitsPerDevPixel,
                               const layers::StackingContextHelper& aSc,
-                              nsTArray<wr::WrComplexClipRegion>& aOutArray) const;
+                              nsTArray<wr::ComplexClipRegion>& aOutArray) const;
 
   static const DisplayItemClip& NoClip();
 

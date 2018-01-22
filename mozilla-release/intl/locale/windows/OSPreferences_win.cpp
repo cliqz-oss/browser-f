@@ -61,25 +61,6 @@ OSPreferences::ReadRegionalPrefsLocales(nsTArray<nsCString>& aLocaleList)
   return false;
 }
 
-/**
- * Windows distinguishes between System Locale (the locale OS is in), and
- * User Locale (the locale used for regional settings etc.).
- *
- * For DateTimePattern, we want to retrieve the User Locale.
- */
-static void
-ReadUserLocale(nsCString& aRetVal)
-{
-  WCHAR locale[LOCALE_NAME_MAX_LENGTH];
-  if (NS_WARN_IF(!LCIDToLocaleName(LOCALE_USER_DEFAULT, locale,
-                                   LOCALE_NAME_MAX_LENGTH, 0))) {
-    aRetVal.Assign("en-US");
-    return;
-  }
-
-  LossyCopyUTF16toASCII(locale, aRetVal);
-}
-
 static LCTYPE
 ToDateLCType(OSPreferences::DateTimeFormatStyle aFormatStyle)
 {
@@ -122,29 +103,6 @@ ToTimeLCType(OSPreferences::DateTimeFormatStyle aFormatStyle)
   }
 }
 
-LPWSTR
-GetWindowsLocaleFor(const nsACString& aLocale, LPWSTR aBuffer)
-{
-  nsAutoCString reqLocale;
-  nsAutoCString userLocale;
-  ReadUserLocale(userLocale);
-
-  if (aLocale.IsEmpty()) {
-    LocaleService::GetInstance()->GetAppLocaleAsBCP47(reqLocale);
-  } else {
-    reqLocale.Assign(aLocale);
-  }
-
-  bool match = LocaleService::LanguagesMatch(reqLocale, userLocale);
-  if (match || reqLocale.Length() >= LOCALE_NAME_MAX_LENGTH) {
-    UTF8ToUnicodeBuffer(userLocale, (char16_t*)aBuffer);
-  } else {
-    UTF8ToUnicodeBuffer(reqLocale, (char16_t*)aBuffer);
-  }
-
-  return aBuffer;
-}
-
 /**
  * Windows API includes regional preferences from the user only
  * if we pass empty locale string or if the locale string matches
@@ -167,9 +125,8 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
                                    DateTimeFormatStyle aTimeStyle,
                                    const nsACString& aLocale, nsAString& aRetVal)
 {
-  WCHAR buffer[LOCALE_NAME_MAX_LENGTH];
-
-  LPWSTR localeName = GetWindowsLocaleFor(aLocale, buffer);
+  WCHAR localeName[LOCALE_NAME_MAX_LENGTH];
+  UTF8ToUnicodeBuffer(aLocale, (char16_t*)localeName);
 
   bool isDate = aDateStyle != DateTimeFormatStyle::None &&
                 aDateStyle != DateTimeFormatStyle::Invalid;
@@ -218,9 +175,12 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
     start = str->BeginReading(pos);
     str->EndReading(end);
     if (FindInReadable(NS_LITERAL_STRING("dddd"), pos, end)) {
-      str->Replace(pos - start, 4, NS_LITERAL_STRING("EEEE"));
-    } else if (FindInReadable(NS_LITERAL_STRING("ddd"), pos, end)) {
-      str->Replace(pos - start, 3, NS_LITERAL_STRING("EEE"));
+      str->ReplaceLiteral(pos - start, 4, u"EEEE");
+    } else {
+      pos = start;
+      if (FindInReadable(NS_LITERAL_STRING("ddd"), pos, end)) {
+        str->ReplaceLiteral(pos - start, 3, u"EEE");
+      }
     }
 
     // Also, Windows uses lowercase "g" or "gg" for era, but ICU wants uppercase "G"

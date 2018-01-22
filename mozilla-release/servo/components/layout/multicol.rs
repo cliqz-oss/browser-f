@@ -24,6 +24,10 @@ use style::properties::ComputedValues;
 use style::values::Either;
 use style::values::computed::{LengthOrPercentageOrAuto, LengthOrPercentageOrNone};
 
+#[allow(unsafe_code)]
+unsafe impl ::flow::HasBaseFlow for MulticolFlow {}
+
+#[repr(C)]
 pub struct MulticolFlow {
     pub block_flow: BlockFlow,
 
@@ -32,6 +36,10 @@ pub struct MulticolFlow {
     pub column_pitch: Au,
 }
 
+#[allow(unsafe_code)]
+unsafe impl ::flow::HasBaseFlow for MulticolColumnFlow {}
+
+#[repr(C)]
 pub struct MulticolColumnFlow {
     pub block_flow: BlockFlow,
 }
@@ -97,10 +105,10 @@ impl Flow for MulticolFlow {
         {
             let column_style = self.block_flow.fragment.style.get_column();
 
-            let column_gap = Au::from(match column_style.column_gap {
-                Either::First(len) => len,
-                Either::Second(_normal) => self.block_flow.fragment.style.get_font().font_size,
-            });
+            let column_gap = match column_style.column_gap {
+                Either::First(len) => len.into(),
+                Either::Second(_normal) => self.block_flow.fragment.style.get_font().font_size.size(),
+            };
 
             let mut column_count;
             if let Either::First(column_width) = column_style.column_width {

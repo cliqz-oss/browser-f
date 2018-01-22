@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -54,7 +55,7 @@ class WebRenderScrollData;
  * ****************** NOTE ON LOCK ORDERING IN APZ **************************
  *
  * There are two kinds of locks used by APZ: APZCTreeManager::mTreeLock
- * ("the tree lock") and AsyncPanZoomController::mMonitor ("APZC locks").
+ * ("the tree lock") and AsyncPanZoomController::mRecursiveMutex ("APZC locks").
  *
  * To avoid deadlock, we impose a lock ordering between these locks, which is:
  *
@@ -433,7 +434,7 @@ public:
       const ScrollableLayerGuid& aGuid,
       const AsyncDragMetrics& aDragMetrics) override;
 
-  void StartAutoscroll(const ScrollableLayerGuid& aGuid,
+  bool StartAutoscroll(const ScrollableLayerGuid& aGuid,
                        const ScreenPoint& aAnchorLocation) override;
 
   void StopAutoscroll(const ScrollableLayerGuid& aGuid) override;
@@ -605,6 +606,7 @@ private:
                      const AsyncPanZoomController* apzc);
 
   void NotifyScrollbarDragRejected(const ScrollableLayerGuid& aGuid) const;
+  void NotifyAutoscrollRejected(const ScrollableLayerGuid& aGuid) const;
 
   // Requires the caller to hold mTreeLock.
   LayerToParentLayerMatrix4x4 ComputeTransformForNode(const HitTestingTreeNode* aNode) const;

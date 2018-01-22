@@ -13,6 +13,7 @@
 #include "nsIStandardURL.h"
 
 #include "ContentPrincipal.h"
+#include "ExpandedPrincipal.h"
 #include "nsNetUtil.h"
 #include "nsIURIWithPrincipal.h"
 #include "NullPrincipal.h"
@@ -53,7 +54,8 @@ NS_IMETHODIMP
 BasePrincipal::GetOriginNoSuffix(nsACString& aOrigin)
 {
   MOZ_ASSERT(mInitialized);
-  return mOriginNoSuffix->ToUTF8String(aOrigin);
+  mOriginNoSuffix->ToUTF8String(aOrigin);
+  return NS_OK;
 }
 
 bool
@@ -293,7 +295,8 @@ NS_IMETHODIMP
 BasePrincipal::GetOriginSuffix(nsACString& aOriginAttributes)
 {
   MOZ_ASSERT(mOriginSuffix);
-  return mOriginSuffix->ToUTF8String(aOriginAttributes);
+  mOriginSuffix->ToUTF8String(aOriginAttributes);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -347,12 +350,23 @@ BasePrincipal::AddonPolicy()
 }
 
 bool
-BasePrincipal::AddonHasPermission(const nsIAtom* aPerm)
+BasePrincipal::AddonHasPermission(const nsAtom* aPerm)
 {
   if (auto policy = AddonPolicy()) {
     return policy->HasPermission(aPerm);
   }
   return false;
+}
+
+nsIPrincipal*
+BasePrincipal::PrincipalToInherit(nsIURI* aRequestedURI,
+                                  bool aAllowIfInheritsPrincipal)
+{
+  if (Is<ExpandedPrincipal>()) {
+    return As<ExpandedPrincipal>()->PrincipalToInherit(aRequestedURI,
+                                                       aAllowIfInheritsPrincipal);
+  }
+  return this;
 }
 
 already_AddRefed<BasePrincipal>

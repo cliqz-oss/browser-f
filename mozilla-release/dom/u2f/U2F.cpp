@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,10 +7,18 @@
 #include "mozilla/dom/U2F.h"
 #include "mozilla/dom/WebCryptoCommon.h"
 #include "nsContentUtils.h"
+#include "nsIEffectiveTLDService.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsURLParsers.h"
 #include "U2FManager.h"
+
+// Forward decl because of nsHTMLDocument.h's complex dependency on /layout/style
+class nsHTMLDocument {
+public:
+  bool IsRegistrableDomainSuffixOfOrEqualTo(const nsAString& aHostSuffixString,
+                                            const nsACString& aOrigHost);
+};
 
 namespace mozilla {
 namespace dom {
@@ -90,7 +98,8 @@ RegisteredKeysToScopedCredentialList(const nsAString& aAppId,
 }
 
 static ErrorCode
-EvaluateAppID(const nsString& aOrigin, /* in/out */ nsString& aAppId)
+EvaluateAppID(nsPIDOMWindowInner* aParent, const nsString& aOrigin,
+              /* in/out */ nsString& aAppId)
 {
   // Facet is the specification's way of referring to the web origin.
   nsAutoCString facetString = NS_ConvertUTF16toUTF8(aOrigin);
@@ -124,20 +133,43 @@ EvaluateAppID(const nsString& aOrigin, /* in/out */ nsString& aAppId)
     return ErrorCode::BAD_REQUEST;
   }
 
-  // If the facetId and the appId hosts match, accept
-  nsAutoCString facetHost;
-  if (NS_FAILED(facetUri->GetHost(facetHost))) {
+  // Run the HTML5 algorithm to relax the same-origin policy, copied from W3C
+  // Web Authentication. See Bug 1244959 comment #8 for context on why we are
+  // doing this instead of implementing the external-fetch FacetID logic.
+  nsCOMPtr<nsIDocument> document = aParent->GetDoc();
+  if (!document || !document->IsHTMLDocument()) {
+    return ErrorCode::BAD_REQUEST;
+  }
+  nsHTMLDocument* html = document->AsHTMLDocument();
+  if (NS_WARN_IF(!html)) {
+    return ErrorCode::BAD_REQUEST;
+  }
+
+  // Use the base domain as the facet for evaluation. This lets this algorithm
+  // relax the whole eTLD+1.
+  nsCOMPtr<nsIEffectiveTLDService> tldService =
+    do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
+  if (!tldService) {
+    return ErrorCode::BAD_REQUEST;
+  }
+
+  nsAutoCString lowestFacetHost;
+  if (NS_FAILED(tldService->GetBaseDomain(facetUri, 0, lowestFacetHost))) {
     return ErrorCode::BAD_REQUEST;
   }
   nsAutoCString appIdHost;
-  if (NS_FAILED(appIdUri->GetHost(appIdHost))) {
+  if (NS_FAILED(appIdUri->GetAsciiHost(appIdHost))) {
     return ErrorCode::BAD_REQUEST;
   }
-  if (facetHost.Equals(appIdHost)) {
+
+  MOZ_LOG(gU2FLog, LogLevel::Debug,
+          ("AppId %s Facet %s", appIdHost.get(), lowestFacetHost.get()));
+
+  if (html->IsRegistrableDomainSuffixOfOrEqualTo(NS_ConvertUTF8toUTF16(lowestFacetHost),
+                                                 appIdHost)) {
     return ErrorCode::OK;
   }
 
-  // TODO(Bug 1244959) Implement the remaining algorithm.
   return ErrorCode::BAD_REQUEST;
 }
 
@@ -150,13 +182,16 @@ ExecuteCallback(T& aResp, Maybe<nsMainThreadPtrHandle<C>>& aCb)
     return;
   }
 
-  ErrorResult error;
-  aCb.ref()->Call(aResp, error);
-  NS_WARNING_ASSERTION(!error.Failed(), "dom::U2F::Promise callback failed");
-  error.SuppressException(); // Useful exceptions already emitted
-
+  // reset callback earlier to allow reentry from callback.
+  nsMainThreadPtrHandle<C> callback(aCb.ref());
   aCb.reset();
   MOZ_ASSERT(aCb.isNothing());
+  MOZ_ASSERT(!!callback);
+
+  ErrorResult error;
+  callback->Call(aResp, error);
+  NS_WARNING_ASSERTION(!error.Failed(), "dom::U2F::Promise callback failed");
+  error.SuppressException(); // Useful exceptions already emitted
 }
 
 U2F::U2F(nsPIDOMWindowInner* aParent)
@@ -215,14 +250,8 @@ U2F::Register(const nsAString& aAppId,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  RefPtr<U2FManager> mgr = U2FManager::GetOrCreate();
-  MOZ_ASSERT(mgr);
-  if (!mgr || mRegisterCallback.isSome()) {
-    aRv.Throw(NS_ERROR_FAILURE);
-    return;
-  }
-
   Cancel();
+
   MOZ_ASSERT(mRegisterCallback.isNothing());
   mRegisterCallback = Some(nsMainThreadPtrHandle<U2FRegisterCallback>(
                         new nsMainThreadPtrHolder<U2FRegisterCallback>(
@@ -233,7 +262,7 @@ U2F::Register(const nsAString& aAppId,
   // Evaluate the AppID
   nsString adjustedAppId;
   adjustedAppId.Assign(aAppId);
-  ErrorCode appIdResult = EvaluateAppID(mOrigin, adjustedAppId);
+  ErrorCode appIdResult = EvaluateAppID(mParent, mOrigin, adjustedAppId);
   if (appIdResult != ErrorCode::OK) {
     RegisterResponse response;
     response.mErrorCode.Construct(static_cast<uint32_t>(appIdResult));
@@ -275,6 +304,7 @@ U2F::Register(const nsAString& aAppId,
 
   auto& localReqHolder = mPromiseHolder;
   auto& localCb = mRegisterCallback;
+  RefPtr<U2FManager> mgr = U2FManager::GetOrCreate();
   RefPtr<U2FPromise> p = mgr->Register(mParent, cAppId,
                                        NS_ConvertUTF16toUTF8(clientDataJSON),
                                        adjustedTimeoutMillis, excludeList);
@@ -286,8 +316,10 @@ U2F::Register(const nsAString& aAppId,
               RegisterResponse response;
               response.Init(aResponse);
 
-              ExecuteCallback(response, localCb);
+              // U2F could be reentered from microtask-checkpoint while calling
+              // ExecuteCallback(), so we should mark Complete() earlier.
               localReqHolder.Complete();
+              ExecuteCallback(response, localCb);
           },
           [&localCb, &localReqHolder](ErrorCode aErrorCode) {
               MOZ_LOG(gU2FLog, LogLevel::Debug,
@@ -296,8 +328,10 @@ U2F::Register(const nsAString& aAppId,
               RegisterResponse response;
               response.mErrorCode.Construct(static_cast<uint32_t>(aErrorCode));
 
-              ExecuteCallback(response, localCb);
+              // U2F could be reentered from microtask-checkpoint while calling
+              // ExecuteCallback(), so we should mark Complete() earlier.
               localReqHolder.Complete();
+              ExecuteCallback(response, localCb);
           })
   ->Track(mPromiseHolder);
 }
@@ -312,14 +346,8 @@ U2F::Sign(const nsAString& aAppId,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  RefPtr<U2FManager> mgr = U2FManager::GetOrCreate();
-  MOZ_ASSERT(mgr);
-  if (!mgr || mSignCallback.isSome()) {
-    aRv.Throw(NS_ERROR_FAILURE);
-    return;
-  }
-
   Cancel();
+
   MOZ_ASSERT(mSignCallback.isNothing());
   mSignCallback = Some(nsMainThreadPtrHandle<U2FSignCallback>(
                     new nsMainThreadPtrHolder<U2FSignCallback>(
@@ -330,7 +358,7 @@ U2F::Sign(const nsAString& aAppId,
   // Evaluate the AppID
   nsString adjustedAppId;
   adjustedAppId.Assign(aAppId);
-  ErrorCode appIdResult = EvaluateAppID(mOrigin, adjustedAppId);
+  ErrorCode appIdResult = EvaluateAppID(mParent, mOrigin, adjustedAppId);
   if (appIdResult != ErrorCode::OK) {
     SignResponse response;
     response.mErrorCode.Construct(static_cast<uint32_t>(appIdResult));
@@ -357,6 +385,7 @@ U2F::Sign(const nsAString& aAppId,
                                        permittedList);
   auto& localReqHolder = mPromiseHolder;
   auto& localCb = mSignCallback;
+  RefPtr<U2FManager> mgr = U2FManager::GetOrCreate();
   RefPtr<U2FPromise> p = mgr->Sign(mParent, cAppId,
                                    NS_ConvertUTF16toUTF8(clientDataJSON),
                                    adjustedTimeoutMillis, permittedList);
@@ -368,8 +397,10 @@ U2F::Sign(const nsAString& aAppId,
               SignResponse response;
               response.Init(aResponse);
 
-              ExecuteCallback(response, localCb);
+              // U2F could be reentered from microtask-checkpoint while calling
+              // ExecuteCallback(), so we should mark Complete() earlier.
               localReqHolder.Complete();
+              ExecuteCallback(response, localCb);
           },
           [&localCb, &localReqHolder](ErrorCode aErrorCode) {
               MOZ_LOG(gU2FLog, LogLevel::Debug,
@@ -378,8 +409,10 @@ U2F::Sign(const nsAString& aAppId,
               SignResponse response;
               response.mErrorCode.Construct(static_cast<uint32_t>(aErrorCode));
 
-              ExecuteCallback(response, localCb);
+              // U2F could be reentered from microtask-checkpoint while calling
+              // ExecuteCallback(), so we should mark Complete() earlier.
               localReqHolder.Complete();
+              ExecuteCallback(response, localCb);
           })
   ->Track(mPromiseHolder);
 }
@@ -405,7 +438,7 @@ U2F::Cancel()
 
   RefPtr<U2FManager> mgr = U2FManager::Get();
   if (mgr) {
-    mgr->Cancel(NS_ERROR_DOM_OPERATION_ERR);
+    mgr->MaybeCancelTransaction(NS_ERROR_DOM_OPERATION_ERR);
   }
 
   mPromiseHolder.DisconnectIfExists();

@@ -75,7 +75,7 @@ namespace {
 //          0 means no override 1->4 are 1.0, 1.1, 1.2, 1.3, 4->7 unused
 // bits 3-5 (mask 0x38) specify the tls fallback limit
 //          0 means no override, values 1->4 match prefs
-// bit    6 (mask 0x40) specifies use of SSL_AltServerHelloType on handshake
+// bit    6 (mask 0x40) specifies use of SSL_AltHandshakeType on handshake
 
 enum {
   kTLSProviderFlagMaxVersion10   = 0x01,
@@ -94,7 +94,7 @@ static uint32_t getTLSProviderFlagFallbackLimit(uint32_t flags)
   return (flags & 0x38) >> 3;
 }
 
-static bool getTLSProviderFlagAltServerHello(uint32_t flags)
+static bool getTLSProviderFlagAltHandshake(uint32_t flags)
 {
   return (flags & 0x40);
 }
@@ -316,23 +316,25 @@ nsNSSSocketInfo::SetHandshakeCompleted()
     Telemetry::Accumulate(Telemetry::SSL_HANDSHAKE_TYPE, handshakeType);
   }
 
-
-    // Remove the plain text layer as it is not needed anymore.
-    // The plain text layer is not always present - so its not a fatal error
-    // if it cannot be removed
+  // Remove the plaintext layer as it is not needed anymore.
+  // The plaintext layer is not always present - so it's not a fatal error if it
+  // cannot be removed.
+  // Note that PR_PopIOLayer may modify its stack, so a pointer returned by
+  // PR_GetIdentitiesLayer may not point to what we think it points to after
+  // calling PR_PopIOLayer. We must operate on the pointer returned by
+  // PR_PopIOLayer.
+  if (PR_GetIdentitiesLayer(mFd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity)) {
     PRFileDesc* poppedPlaintext =
-      PR_GetIdentitiesLayer(mFd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity);
-    if (poppedPlaintext) {
       PR_PopIOLayer(mFd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity);
-      poppedPlaintext->dtor(poppedPlaintext);
-    }
+    poppedPlaintext->dtor(poppedPlaintext);
+  }
 
-    mHandshakeCompleted = true;
+  mHandshakeCompleted = true;
 
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("[%p] nsNSSSocketInfo::SetHandshakeCompleted\n", (void*) mFd));
+  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+          ("[%p] nsNSSSocketInfo::SetHandshakeCompleted\n", (void*) mFd));
 
-    mIsFullHandshake = false; // reset for next handshake on this connection
+  mIsFullHandshake = false; // reset for next handshake on this connection
 }
 
 void
@@ -990,12 +992,15 @@ nsNSSSocketInfo::CloseSocketAndDestroy(
                popped->identity == nsSSLIOLayerHelpers::nsSSLIOLayerIdentity,
              "SSL Layer not on top of stack");
 
-  // The plain text layer is not always present - so its not a fatal error
-  // if it cannot be removed
-  PRFileDesc* poppedPlaintext =
-    PR_GetIdentitiesLayer(mFd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity);
-  if (poppedPlaintext) {
-    PR_PopIOLayer(mFd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity);
+  // The plaintext layer is not always present - so it's not a fatal error if it
+  // cannot be removed.
+  // Note that PR_PopIOLayer may modify its stack, so a pointer returned by
+  // PR_GetIdentitiesLayer may not point to what we think it points to after
+  // calling PR_PopIOLayer. We must operate on the pointer returned by
+  // PR_PopIOLayer.
+  if (PR_GetIdentitiesLayer(mFd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity)) {
+    PRFileDesc* poppedPlaintext =
+      PR_PopIOLayer(mFd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity);
     poppedPlaintext->dtor(poppedPlaintext);
   }
 
@@ -2228,6 +2233,14 @@ ClientAuthDataRunnable::RunOnTargetThread()
   void* wincx = mSocketInfo;
   nsresult rv;
 
+  if (NS_FAILED(CheckForSmartCardChanges())) {
+    mRV = SECFailure;
+    *mPRetCert = nullptr;
+    *mPRetKey = nullptr;
+    mErrorCodeToReport = SEC_ERROR_LIBRARY_FAILURE;
+    return;
+  }
+
   nsCOMPtr<nsIX509Cert> socketClientCert;
   mSocketInfo->GetClientCert(getter_AddRefs(socketClientCert));
 
@@ -2415,7 +2428,7 @@ ClientAuthDataRunnable::RunOnTargetThread()
           goto loser;
         }
 
-        rv = certArray->AppendElement(tempCert, false);
+        rv = certArray->AppendElement(tempCert);
         if (NS_FAILED(rv)) {
           goto loser;
         }
@@ -2588,13 +2601,13 @@ nsSSLIOLayerSetOptions(PRFileDesc* fd, bool forSTARTTLS,
     }
   }
 
-  // enabling alternative server hello
-  if (getTLSProviderFlagAltServerHello(infoObject->GetProviderTlsFlags())) {
+  // enabling alternative handshake
+  if (getTLSProviderFlagAltHandshake(infoObject->GetProviderTlsFlags())) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("[%p] nsSSLIOLayerSetOptions: Use AltServerHello\n", fd));
+            ("[%p] nsSSLIOLayerSetOptions: Use AltHandshake\n", fd));
     if (SECSuccess != SSL_UseAltServerHelloType(fd, PR_TRUE)) {
           MOZ_LOG(gPIPNSSLog, LogLevel::Error,
-                  ("[%p] nsSSLIOLayerSetOptions: Use AltServerHello failed\n", fd));
+                  ("[%p] nsSSLIOLayerSetOptions: Use AltHandshake failed\n", fd));
           // continue on default path
     }
   }
@@ -2615,6 +2628,15 @@ nsSSLIOLayerSetOptions(PRFileDesc* fd, bool forSTARTTLS,
          ("[%p] nsSSLIOLayerSetOptions: using TLS version range (0x%04x,0x%04x)\n",
           fd, static_cast<unsigned int>(range.min),
               static_cast<unsigned int>(range.max)));
+
+  // If the user has set their minimum version to something higher than what
+  // we've now set the maximum to, this will result in an inconsistent version
+  // range unless we fix it up. This will override their preference, but we only
+  // do this for sites critical to the operation of the browser (e.g. update
+  // servers) and telemetry experiments.
+  if (range.min > range.max) {
+    range.min = range.max;
+  }
 
   if (SSL_VersionRangeSet(fd, &range) != SECSuccess) {
     return NS_ERROR_FAILURE;
@@ -2817,7 +2839,11 @@ nsSSLIOLayerAddToSocket(int32_t family,
     layer->dtor(layer);
   }
   if (plaintextLayer) {
-    PR_PopIOLayer(fd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity);
+    // Note that PR_*IOLayer operations may modify the stack of fds, so a
+    // previously-valid pointer may no longer point to what we think it points
+    // to after calling PR_PopIOLayer. We must operate on the pointer returned
+    // by PR_PopIOLayer.
+    plaintextLayer = PR_PopIOLayer(fd, nsSSLIOLayerHelpers::nsSSLPlaintextLayerIdentity);
     plaintextLayer->dtor(plaintextLayer);
   }
   return NS_ERROR_FAILURE;

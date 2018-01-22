@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,6 +8,7 @@
 #define NSSVGEFFECTS_H_
 
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/IDTracker.h"
 #include "FrameProperties.h"
 #include "mozilla/dom/Element.h"
 #include "nsHashKeys.h"
@@ -16,14 +18,13 @@
 #include "nsInterfaceHashtable.h"
 #include "nsISupportsBase.h"
 #include "nsISupportsImpl.h"
-#include "nsReferencedElement.h"
 #include "nsStubMutationObserver.h"
 #include "nsSVGUtils.h"
 #include "nsTHashtable.h"
 #include "nsURIHashKey.h"
 #include "nsCycleCollectionParticipant.h"
 
-class nsIAtom;
+class nsAtom;
 class nsIPresShell;
 class nsIURI;
 class nsSVGClipPathFrame;
@@ -38,10 +39,10 @@ class nsSVGFilterChainObserver;
  *
  * Concrete implementations of this interface need to implement
  * "GetTarget()" to specify the piece of SVG content that they'd like to
- * monitor, and they need to implement "DoUpdate" to specify how we'll react
- * when that content gets re-rendered. They also need to implement a
- * constructor and destructor, which should call StartListening and
- * StopListening, respectively.
+ * monitor, and they need to implement "OnRenderingChange" to specify how
+ * we'll react when that content gets re-rendered. They also need to implement
+ * a constructor and destructor, which should call StartObserving and
+ * StopObserving, respectively.
  */
 class nsSVGRenderingObserver : public nsStubMutationObserver
 {
@@ -62,7 +63,15 @@ public:
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
 
-  void InvalidateViaReferencedElement();
+  /**
+   * Called when non-DOM-mutation changes to the observed element should likely
+   * cause the rendering of our observer to change.  This includes changes to
+   * CSS computed values, but also changes to rendering observers that the
+   * observed element itself may have (for example, when we're being used to
+   * observe an SVG pattern, and an element in that pattern references and
+   * observes a gradient that has changed).
+   */
+  void OnNonDOMMutationRenderingChange();
 
   // When a nsSVGRenderingObserver list gets forcibly cleared, it uses this
   // callback to notify every observer that's cleared from it, so they can
@@ -83,12 +92,22 @@ public:
   virtual bool ObservesReflow() { return true; }
 
 protected:
-  // Non-virtual protected methods
-  void StartListening();
-  void StopListening();
+  void StartObserving();
+  void StopObserving();
 
-  // Virtual protected methods
-  virtual void DoUpdate() = 0; // called when the referenced resource changes.
+  /**
+   * Called whenever the rendering of the observed element may have changed.
+   *
+   * More specifically, this method is called whenever DOM mutation occurs in
+   * the observed element's subtree, or whenever
+   * SVGObserverUtils::InvalidateRenderingObservers or
+   * SVGObserverUtils::InvalidateDirectRenderingObservers is called for the
+   * observed element's frame.
+   *
+   * Subclasses should override this method to handle rendering changes
+   * appropriately.
+   */
+  virtual void OnRenderingChange() = 0;
 
   // This is an internally-used version of GetReferencedElement that doesn't
   // forcibly add us as an observer. (whereas GetReferencedElement does)
@@ -113,26 +132,34 @@ class nsSVGIDRenderingObserver : public nsSVGRenderingObserver
 {
 public:
   typedef mozilla::dom::Element Element;
+  typedef mozilla::dom::IDTracker IDTracker;
+
   nsSVGIDRenderingObserver(nsIURI* aURI, nsIContent* aObservingContent,
                          bool aReferenceImage);
   virtual ~nsSVGIDRenderingObserver();
 
 protected:
-  Element* GetTarget() override { return mElement.get(); }
+  Element* GetTarget() override { return mObservedElementTracker.get(); }
 
-  // This is called when the referenced resource changes.
-  virtual void DoUpdate() override;
+  void OnRenderingChange() override;
 
-  class SourceReference : public nsReferencedElement
+  /**
+   * Helper that provides a reference to the element with the ID that our
+   * observer wants to observe, and that will invalidate our observer if the
+   * element that that ID identifies changes to a different element (or none).
+   */
+  class ElementTracker final : public IDTracker
   {
   public:
-    explicit SourceReference(nsSVGIDRenderingObserver* aContainer) : mContainer(aContainer) {}
+    explicit ElementTracker(nsSVGIDRenderingObserver* aOwningObserver)
+      : mOwningObserver(aOwningObserver)
+    {}
   protected:
     virtual void ElementChanged(Element* aFrom, Element* aTo) override {
-      mContainer->StopListening();
-      nsReferencedElement::ElementChanged(aFrom, aTo);
-      mContainer->StartListening();
-      mContainer->DoUpdate();
+      mOwningObserver->StopObserving(); // stop observing the old element
+      IDTracker::ElementChanged(aFrom, aTo);
+      mOwningObserver->StartObserving(); // start observing the new element
+      mOwningObserver->OnRenderingChange();
     }
     /**
      * Override IsPersistent because we want to keep tracking the element
@@ -140,17 +167,17 @@ protected:
      */
     virtual bool IsPersistent() override { return true; }
   private:
-    nsSVGIDRenderingObserver* mContainer;
+    nsSVGIDRenderingObserver* mOwningObserver;
   };
 
-  SourceReference mElement;
+  ElementTracker mObservedElementTracker;
 };
 
 struct nsSVGFrameReferenceFromProperty
 {
   explicit nsSVGFrameReferenceFromProperty(nsIFrame* aFrame)
     : mFrame(aFrame)
-    , mFramePresShell(aFrame->PresContext()->PresShell())
+    , mFramePresShell(aFrame->PresShell())
   {}
 
   // Clear our reference to the frame.
@@ -186,7 +213,7 @@ public:
 protected:
   virtual ~nsSVGRenderingObserverProperty() {}
 
-  virtual void DoUpdate() override;
+  virtual void OnRenderingChange() override;
 
   nsSVGFrameReferenceFromProperty mFrameReference;
 };
@@ -229,13 +256,13 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsSVGFilterReference, nsSVGIDRenderingObserver)
 
   // nsISVGFilterReference
-  virtual void Invalidate() override { DoUpdate(); };
+  virtual void Invalidate() override { OnRenderingChange(); };
 
 protected:
   virtual ~nsSVGFilterReference() {}
 
   // nsSVGIDRenderingObserver
-  virtual void DoUpdate() override;
+  virtual void OnRenderingChange() override;
 
 private:
   nsSVGFilterChainObserver* mFilterChainObserver;
@@ -260,7 +287,7 @@ public:
 
   bool ReferencesValidResources();
   bool IsInObserverLists() const;
-  void Invalidate() { DoUpdate(); }
+  void Invalidate() { OnRenderingChange(); }
 
   // nsISupports
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -269,7 +296,7 @@ public:
 protected:
   virtual ~nsSVGFilterChainObserver();
 
-  virtual void DoUpdate() = 0;
+  virtual void OnRenderingChange() = 0;
 
 private:
 
@@ -296,7 +323,7 @@ public:
   void DetachFromFrame() { mFrameReference.Detach(); }
 
 protected:
-  virtual void DoUpdate() override;
+  virtual void OnRenderingChange() override;
 
   nsSVGFrameReferenceFromProperty mFrameReference;
 };
@@ -308,7 +335,7 @@ public:
     : nsSVGRenderingObserverProperty(aURI, aFrame, aReferenceImage) {}
 
 protected:
-  virtual void DoUpdate() override;
+  virtual void OnRenderingChange() override;
 };
 
 class nsSVGTextPathProperty final : public nsSVGRenderingObserverProperty
@@ -321,7 +348,7 @@ public:
   virtual bool ObservesReflow() override { return false; }
 
 protected:
-  virtual void DoUpdate() override;
+  virtual void OnRenderingChange() override;
 
 private:
   /**
@@ -339,7 +366,7 @@ public:
     : nsSVGRenderingObserverProperty(aURI, aFrame, aReferenceImage) {}
 
 protected:
-  virtual void DoUpdate() override;
+  virtual void OnRenderingChange() override;
 };
 
 class nsSVGMaskProperty final : public nsISupports
@@ -368,7 +395,7 @@ private:
  * nsSVGRenderingObservers can be added or removed. They are not strongly
  * referenced so an observer must be removed before it dies.
  * When InvalidateAll is called, all outstanding references get
- * InvalidateViaReferencedElement()
+ * OnNonDOMMutationRenderingChange()
  * called on them and the list is cleared. The intent is that
  * the observer will force repainting of whatever part of the document
  * is needed, and then at paint time the observer will do a clean lookup

@@ -2,20 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::KeyboardEventBinding;
 use dom::bindings::codegen::Bindings::KeyboardEventBinding::{KeyboardEventConstants, KeyboardEventMethods};
 use dom::bindings::codegen::Bindings::UIEventBinding::UIEventMethods;
 use dom::bindings::error::Fallible;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{Root, RootedReference};
 use dom::bindings::reflector::reflect_dom_object;
+use dom::bindings::root::{DomRoot, RootedReference};
 use dom::bindings::str::DOMString;
 use dom::event::Event;
 use dom::uievent::UIEvent;
 use dom::window::Window;
 use dom_struct::dom_struct;
-use msg::constellation_msg;
 use msg::constellation_msg::{Key, KeyModifiers};
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -26,8 +25,8 @@ unsafe_no_jsmanaged_fields!(Key);
 pub struct KeyboardEvent {
     uievent: UIEvent,
     key: Cell<Option<Key>>,
-    key_string: DOMRefCell<DOMString>,
-    code: DOMRefCell<DOMString>,
+    key_string: DomRefCell<DOMString>,
+    code: DomRefCell<DOMString>,
     location: Cell<u32>,
     ctrl: Cell<bool>,
     alt: Cell<bool>,
@@ -45,8 +44,8 @@ impl KeyboardEvent {
         KeyboardEvent {
             uievent: UIEvent::new_inherited(),
             key: Cell::new(None),
-            key_string: DOMRefCell::new(DOMString::new()),
-            code: DOMRefCell::new(DOMString::new()),
+            key_string: DomRefCell::new(DOMString::new()),
+            code: DomRefCell::new(DOMString::new()),
             location: Cell::new(0),
             ctrl: Cell::new(false),
             alt: Cell::new(false),
@@ -60,8 +59,8 @@ impl KeyboardEvent {
         }
     }
 
-    pub fn new_uninitialized(window: &Window) -> Root<KeyboardEvent> {
-        reflect_dom_object(box KeyboardEvent::new_inherited(),
+    pub fn new_uninitialized(window: &Window) -> DomRoot<KeyboardEvent> {
+        reflect_dom_object(Box::new(KeyboardEvent::new_inherited()),
                            window,
                            KeyboardEventBinding::Wrap)
     }
@@ -84,7 +83,7 @@ impl KeyboardEvent {
                shift_key: bool,
                meta_key: bool,
                char_code: Option<u32>,
-               key_code: u32) -> Root<KeyboardEvent> {
+               key_code: u32) -> DomRoot<KeyboardEvent> {
         let ev = KeyboardEvent::new_uninitialized(window);
         ev.InitKeyboardEvent(type_, can_bubble, cancelable, view, key_string, location,
                              DOMString::new(), repeat, DOMString::new());
@@ -103,7 +102,7 @@ impl KeyboardEvent {
 
     pub fn Constructor(window: &Window,
                        type_: DOMString,
-                       init: &KeyboardEventBinding::KeyboardEventInit) -> Fallible<Root<KeyboardEvent>> {
+                       init: &KeyboardEventBinding::KeyboardEventInit) -> Fallible<DomRoot<KeyboardEvent>> {
         let event = KeyboardEvent::new(window,
                                        type_,
                                        init.parent.parent.parent.bubbles,
@@ -144,16 +143,16 @@ impl KeyboardEvent {
     pub fn get_key_modifiers(&self) -> KeyModifiers {
         let mut result = KeyModifiers::empty();
         if self.shift.get() {
-            result = result | constellation_msg::SHIFT;
+            result = result | KeyModifiers::SHIFT;
         }
         if self.ctrl.get() {
-            result = result | constellation_msg::CONTROL;
+            result = result | KeyModifiers::CONTROL;
         }
         if self.alt.get() {
-            result = result | constellation_msg::ALT;
+            result = result | KeyModifiers::ALT;
         }
         if self.meta.get() {
-            result = result | constellation_msg::SUPER;
+            result = result | KeyModifiers::SUPER;
         }
         result
     }
@@ -165,7 +164,7 @@ pub fn key_value(ch: Option<char>, key: Key, mods: KeyModifiers) -> Cow<'static,
         return Cow::from(format!("{}", ch));
     }
 
-    let shift = mods.contains(constellation_msg::SHIFT);
+    let shift = mods.contains(KeyModifiers::SHIFT);
     Cow::from(match key {
         Key::Space => " ",
         Key::Apostrophe if shift => "\"",
@@ -742,7 +741,7 @@ fn key_keycode(key: Key) -> u32 {
     }
 }
 
-#[derive(HeapSizeOf)]
+#[derive(MallocSizeOf)]
 pub struct KeyEventProperties {
     pub key_string: Cow<'static, str>,
     pub code: &'static str,

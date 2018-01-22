@@ -29,6 +29,7 @@
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/StructuredCloneTags.h"
 #include "mozilla/dom/WindowBinding.h"
+#include "mozilla/Scheduler.h"
 #include "nsZipArchive.h"
 #include "nsIDOMFileList.h"
 #include "nsWindowMemoryReporter.h"
@@ -78,8 +79,7 @@ JSValIsInterfaceOfType(JSContext* cx, HandleValue v, REFNSIID iid)
 char*
 xpc::CloneAllAccess()
 {
-    static const char allAccess[] = "AllAccess";
-    return (char*)nsMemory::Clone(allAccess, sizeof(allAccess));
+    return moz_xstrdup("AllAccess");
 }
 
 char*
@@ -124,33 +124,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_Interfaces::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_Interfaces)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_Interfaces).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -161,18 +141,17 @@ nsXPCComponents_Interfaces::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Interfaces::GetContractID(char * *aContractID)
+nsXPCComponents_Interfaces::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Interfaces::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_Interfaces::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_Interfaces";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_Interfaces");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -349,33 +328,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_InterfacesByID::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_InterfacesByID)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_InterfacesByID).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -386,18 +345,18 @@ nsXPCComponents_InterfacesByID::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_InterfacesByID::GetContractID(char * *aContractID)
+nsXPCComponents_InterfacesByID::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_InterfacesByID::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_InterfacesByID::GetClassDescription(
+    nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_InterfacesByID";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_InterfacesByID");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -576,33 +535,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_Classes::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_Classes)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_Classes).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -613,18 +552,17 @@ nsXPCComponents_Classes::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Classes::GetContractID(char * *aContractID)
+nsXPCComponents_Classes::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Classes::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_Classes::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_Classes";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_Classes");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -791,33 +729,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_ClassesByID::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_ClassesByID)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_ClassesByID).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -828,18 +746,17 @@ nsXPCComponents_ClassesByID::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_ClassesByID::GetContractID(char * *aContractID)
+nsXPCComponents_ClassesByID::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_ClassesByID::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_ClassesByID::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_ClassesByID";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_ClassesByID");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1021,33 +938,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_Results::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_Results)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_Results).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -1058,18 +955,17 @@ nsXPCComponents_Results::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Results::GetContractID(char * *aContractID)
+nsXPCComponents_Results::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Results::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_Results::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_Results";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_Results");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1211,33 +1107,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_ID::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_ID)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_ID).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -1248,18 +1124,17 @@ nsXPCComponents_ID::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_ID::GetContractID(char * *aContractID)
+nsXPCComponents_ID::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_ID::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_ID::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_ID";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_ID");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1408,33 +1283,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_Exception::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_Exception)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_Exception).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -1445,18 +1300,17 @@ nsXPCComponents_Exception::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Exception::GetContractID(char * *aContractID)
+nsXPCComponents_Exception::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Exception::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_Exception::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_Exception";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_Exception");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1772,33 +1626,13 @@ private:
 NS_IMETHODIMP
 nsXPCConstructor::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCConstructor)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCConstructor).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -1809,18 +1643,17 @@ nsXPCConstructor::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCConstructor::GetContractID(char * *aContractID)
+nsXPCConstructor::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCConstructor::GetClassDescription(char * *aClassDescription)
+nsXPCConstructor::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCConstructor";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCConstructor");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1849,9 +1682,7 @@ nsXPCConstructor::nsXPCConstructor(nsIJSCID* aClassID,
     : mClassID(aClassID),
       mInterfaceID(aInterfaceID)
 {
-    mInitializer = aInitializer ?
-        (char*) nsMemory::Clone(aInitializer, strlen(aInitializer)+1) :
-        nullptr;
+    mInitializer = aInitializer ? moz_xstrdup(aInitializer) : nullptr;
 }
 
 nsXPCConstructor::~nsXPCConstructor()
@@ -1996,33 +1827,13 @@ private:
 NS_IMETHODIMP
 nsXPCComponents_Constructor::GetInterfaces(uint32_t* aCount, nsIID * **aArray)
 {
-    const uint32_t count = 2;
-    *aCount = count;
-    nsIID** array;
-    *aArray = array = static_cast<nsIID**>(moz_xmalloc(count * sizeof(nsIID*)));
-    if (!array)
-        return NS_ERROR_OUT_OF_MEMORY;
+    *aCount = 2;
+    nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
+    *aArray = array;
 
-    uint32_t index = 0;
-    nsIID* clone;
-#define PUSH_IID(id)                                                          \
-    clone = static_cast<nsIID*>(nsMemory::Clone(&NS_GET_IID( id ),           \
-                                                 sizeof(nsIID)));             \
-    if (!clone)                                                               \
-        goto oom;                                                             \
-    array[index++] = clone;
-
-    PUSH_IID(nsIXPCComponents_Constructor)
-    PUSH_IID(nsIXPCScriptable)
-#undef PUSH_IID
-
+    array[0] = NS_GET_IID(nsIXPCComponents_Constructor).Clone();
+    array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
     return NS_OK;
-oom:
-    while (index)
-        free(array[--index]);
-    free(array);
-    *aArray = nullptr;
-    return NS_ERROR_OUT_OF_MEMORY;
 }
 
 NS_IMETHODIMP
@@ -2033,18 +1844,17 @@ nsXPCComponents_Constructor::GetScriptableHelper(nsIXPCScriptable** retval)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Constructor::GetContractID(char * *aContractID)
+nsXPCComponents_Constructor::GetContractID(nsACString& aContractID)
 {
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Constructor::GetClassDescription(char * *aClassDescription)
+nsXPCComponents_Constructor::GetClassDescription(nsACString& aClassDescription)
 {
-    static const char classDescription[] = "XPCComponents_Constructor";
-    *aClassDescription = (char*)nsMemory::Clone(classDescription, sizeof(classDescription));
-    return *aClassDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+    aClassDescription.AssignLiteral("XPCComponents_Constructor");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -2309,7 +2119,7 @@ nsXPCComponents_Utils::ReportError(HandleValue error, JSContext* cx)
     if (!console)
         return NS_OK;
 
-    nsGlobalWindow* globalWin = CurrentWindowOrNull(cx);
+    nsGlobalWindowInner* globalWin = CurrentWindowOrNull(cx);
     nsPIDOMWindowInner* win = globalWin ? globalWin->AsInner() : nullptr;
     const uint64_t innerWindowID = win ? win->WindowID() : 0;
 
@@ -2426,13 +2236,8 @@ nsXPCComponents_Utils::EvalInSandbox(const nsAString& source,
     if (!filenameArg.IsVoid()) {
         filename.Assign(filenameArg);
     } else {
-        // Get the current source info from xpc.
-        nsresult rv;
-        nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID(), &rv);
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        nsCOMPtr<nsIStackFrame> frame;
-        xpc->GetCurrentJSStack(getter_AddRefs(frame));
+        // Get the current source info.
+        nsCOMPtr<nsIStackFrame> frame = dom::GetCurrentJSStack();
         if (frame) {
             nsString frameFile;
             frame->GetFilename(cx, frameFile);
@@ -2504,9 +2309,8 @@ nsXPCComponents_Utils::Import(const nsACString& registryLocation,
     RefPtr<mozJSComponentLoader> moduleloader = mozJSComponentLoader::Get();
     MOZ_ASSERT(moduleloader);
 
-    const nsCString& flatLocation = PromiseFlatCString(registryLocation);
-    AUTO_PROFILER_LABEL_DYNAMIC("nsXPCComponents_Utils::Import", OTHER,
-                                flatLocation.get());
+    AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING(
+      "nsXPCComponents_Utils::Import", OTHER, registryLocation);
 
     return moduleloader->Import(registryLocation, targetObj, cx, optionalArgc, retval);
 }
@@ -2535,7 +2339,7 @@ nsXPCComponents_Utils::ImportGlobalProperties(HandleValue aPropertyList,
     MOZ_ASSERT(global);
 
     // Don't allow doing this if the global is a Window
-    nsGlobalWindow* win;
+    nsGlobalWindowInner* win;
     if (NS_SUCCEEDED(UNWRAP_OBJECT(Window, &global, win))) {
         return NS_ERROR_NOT_AVAILABLE;
     }
@@ -3249,12 +3053,7 @@ nsXPCComponents_Utils::GetJSEngineTelemetryValue(JSContext* cx, MutableHandleVal
     if (!obj)
         return NS_ERROR_OUT_OF_MEMORY;
 
-    unsigned attrs = JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT;
-
-    size_t i = JS_SetProtoCalled(cx);
-    RootedValue v(cx, DoubleValue(i));
-    if (!JS_DefineProperty(cx, obj, "setProto", v, attrs))
-        return NS_ERROR_OUT_OF_MEMORY;
+    // No JS engine telemetry in use at the moment.
 
     rval.setObject(*obj);
     return NS_OK;
@@ -3414,6 +3213,20 @@ nsXPCComponents_Utils::Now(double* aRetval)
     return NS_OK;
 }
 
+NS_IMETHODIMP
+nsXPCComponents_Utils::BlockThreadedExecution(nsIBlockThreadedExecutionCallback* aCallback)
+{
+    Scheduler::BlockThreadedExecution(aCallback);
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXPCComponents_Utils::UnblockThreadedExecution()
+{
+    Scheduler::UnblockThreadedExecution();
+    return NS_OK;
+}
+
 /***************************************************************************/
 /***************************************************************************/
 /***************************************************************************/
@@ -3491,12 +3304,11 @@ nsXPCComponentsBase::IsSuccessCode(nsresult result, bool* out)
 }
 
 NS_IMETHODIMP
-nsXPCComponents::GetStack(nsIStackFrame * *aStack)
+nsXPCComponents::GetStack(nsIStackFrame** aStack)
 {
-    nsresult rv;
-    nsXPConnect* xpc = nsXPConnect::XPConnect();
-    rv = xpc->GetCurrentJSStack(aStack);
-    return rv;
+    nsCOMPtr<nsIStackFrame> frame = dom::GetCurrentJSStack();
+    frame.forget(aStack);
+    return NS_OK;
 }
 
 NS_IMETHODIMP

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,7 +19,7 @@
 #include "mozilla/css/Declaration.h"
 #include "mozilla/dom/CSSStyleRuleBinding.h"
 #include "nsIDocument.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsString.h"
 #include "nsStyleUtil.h"
 #include "nsDOMCSSDeclaration.h"
@@ -56,7 +57,7 @@ using namespace mozilla;
 
 /* ************************************************************************** */
 
-nsAtomList::nsAtomList(nsIAtom* aAtom)
+nsAtomList::nsAtomList(nsAtom* aAtom)
   : mAtom(aAtom),
     mNext(nullptr)
 {
@@ -254,8 +255,8 @@ nsAttrSelector::nsAttrSelector(int32_t aNameSpace, const nsString& aAttr, uint8_
   mLowercaseAttr = NS_Atomize(lowercase);
 }
 
-nsAttrSelector::nsAttrSelector(int32_t aNameSpace,  nsIAtom* aLowercaseAttr,
-                               nsIAtom* aCasedAttr, uint8_t aFunction,
+nsAttrSelector::nsAttrSelector(int32_t aNameSpace,  nsAtom* aLowercaseAttr,
+                               nsAtom* aCasedAttr, uint8_t aFunction,
                                const nsString& aValue,
                                ValueCaseSensitivity aValueCaseSensitivity)
   : mValue(aValue),
@@ -728,7 +729,7 @@ nsCSSSelector::AppendToStringWithoutCombinatorsOrNegations
     } else if (mNameSpace != kNameSpaceID_Unknown) {
       NS_ASSERTION(CanBeNamespaced(aIsNegated),
                    "How did we end up with this namespace?");
-      nsIAtom *prefixAtom = sheetNS->FindPrefix(mNameSpace);
+      nsAtom *prefixAtom = sheetNS->FindPrefix(mNameSpace);
       NS_ASSERTION(prefixAtom, "how'd we get a non-default namespace "
                    "without a prefix?");
       nsStyleUtil::AppendEscapedCSSIdent(nsDependentAtomString(prefixAtom),
@@ -837,7 +838,7 @@ nsCSSSelector::AppendToStringWithoutCombinatorsOrNegations
 #endif
         } else if (aSheet) {
           nsXMLNameSpaceMap *sheetNS = aSheet->GetNameSpaceMap();
-          nsIAtom *prefixAtom = sheetNS->FindPrefix(list->mNameSpace);
+          nsAtom *prefixAtom = sheetNS->FindPrefix(list->mNameSpace);
           // Default namespaces don't apply to attribute selectors, so
           // we must have a useful prefix.
           NS_ASSERTION(prefixAtom,
@@ -873,7 +874,7 @@ nsCSSSelector::AppendToStringWithoutCombinatorsOrNegations
 
         if (list->mValueCaseSensitivity ==
               nsAttrSelector::ValueCaseSensitivity::CaseInsensitive) {
-          aString.Append(NS_LITERAL_STRING(" i"));
+          aString.AppendLiteral(u" i");
         }
       }
 
@@ -1343,11 +1344,11 @@ StyleRule::List(FILE* out, int32_t aIndent) const
     if (sheet) {
       nsIURI* uri = sheet->GetSheetURI();
       if (uri) {
-        str.Append(" /* ");
+        str.AppendLiteral(" /* ");
         str.Append(uri->GetSpecOrDefault());
         str.Append(':');
         str.AppendInt(mLineNumber);
-        str.Append(" */");
+        str.AppendLiteral(" */");
       }
     }
   }
@@ -1489,7 +1490,7 @@ StyleRule::SelectorMatchesElement(Element* aElement,
   if (!aPseudo.IsEmpty()) {
     // We need to make sure that the requested pseudo element type
     // matches the selector pseudo element type before proceeding.
-    nsCOMPtr<nsIAtom> pseudoElt = NS_Atomize(aPseudo);
+    RefPtr<nsAtom> pseudoElt = NS_Atomize(aPseudo);
     if (sel->mSelectors->PseudoType() != nsCSSPseudoElements::
           GetPseudoType(pseudoElt, CSSEnabledState::eIgnoreEnabledState)) {
       *aMatches = false;
@@ -1511,6 +1512,12 @@ StyleRule::SelectorMatchesElement(Element* aElement,
   *aMatches = nsCSSRuleProcessor::SelectorListMatches(aElement, matchingContext,
                                                       sel);
   return NS_OK;
+}
+
+NotNull<DeclarationBlock*>
+StyleRule::GetDeclarationBlock() const
+{
+  return WrapNotNull(mDeclaration);
 }
 
 } // namespace css

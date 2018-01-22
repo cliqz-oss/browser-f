@@ -344,6 +344,8 @@ SpinEventLoopUntil(Pred&& aPredicate, nsIThread* aThread = nullptr)
  */
 extern bool NS_IsInCompositorThread();
 
+extern bool NS_IsInVRThread();
+
 //-----------------------------------------------------------------------------
 // Helpers that work with nsCOMPtr:
 
@@ -638,8 +640,6 @@ NS_NewRunnableFunction(const char* aName, Function&& aFunction)
 namespace mozilla {
 namespace detail {
 
-already_AddRefed<nsITimer> CreateTimer();
-
 template <RunnableKind Kind>
 class TimerBehaviour
 {
@@ -658,7 +658,7 @@ public:
   nsITimer* GetTimer()
   {
     if (!mTimer) {
-      mTimer = CreateTimer();
+      mTimer = NS_NewTimer();
     }
 
     return mTimer;
@@ -1631,6 +1631,13 @@ private:
 
   RefPtr<T> mEvent;
 };
+
+template <class T>
+inline already_AddRefed<T>
+do_AddRef(nsRevocableEventPtr<T>& aObj)
+{
+  return do_AddRef(aObj.get());
+}
 
 /**
  * A simple helper to suffix thread pool name

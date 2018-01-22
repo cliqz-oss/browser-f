@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -159,7 +160,7 @@ public:
   bool IsRepeatTransaction() { return mIsRepeatTransaction; }
 
   void SetTransactionIncomplete() { mTransactionIncomplete = true; }
-  void SetNeedTextureSyncOnPaintThread() { mTextureSyncOnPaintThread = true; }
+  void SetQueuedAsyncPaints() { mQueuedAsyncPaints = true; }
 
   bool HasShadowTarget() { return !!mShadowTarget; }
 
@@ -350,7 +351,7 @@ private:
   bool mTransactionIncomplete;
   bool mCompositorMightResample;
   bool mNeedsComposite;
-  bool mTextureSyncOnPaintThread;
+  bool mQueuedAsyncPaints;
 
   // An incrementing sequence number for paints.
   // Incremented in BeginTransaction(), but not for repeat transactions.

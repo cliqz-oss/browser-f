@@ -22,6 +22,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.schema import resolve_keyed_by
 from taskgraph.util.treeherder import split_symbol, join_symbol
+from taskgraph.util.platforms import platform_family
 from taskgraph.util.schema import (
     validate_schema,
     optionally_keyed_by,
@@ -40,7 +41,6 @@ import logging
 LINUX_WORKER_TYPES = {
     'large': 'aws-provisioner-v1/gecko-t-linux-large',
     'xlarge': 'aws-provisioner-v1/gecko-t-linux-xlarge',
-    'legacy': 'aws-provisioner-v1/gecko-t-linux-medium',
     'default': 'aws-provisioner-v1/gecko-t-linux-large',
 }
 
@@ -167,6 +167,9 @@ test_description_schema = Schema({
     # common attributes)
     Optional('attributes'): {basestring: object},
 
+    # relative path (from config.path) to the file task was defined in
+    Optional('job-from'): basestring,
+
     # The `run_on_projects` attribute, defaulting to "all".  This dictates the
     # projects on which this task should be included in the target task set.
     # See the attributes documentation for details.
@@ -208,7 +211,7 @@ test_description_schema = Schema({
     # The EC2 instance size to run these tests on.
     Required('instance-size', default='default'): optionally_keyed_by(
         'test-platform',
-        Any('default', 'large', 'xlarge', 'legacy')),
+        Any('default', 'large', 'xlarge')),
 
     # type of virtualization or hardware required by test.
     Required('virtualization', default='virtual'): optionally_keyed_by(
@@ -259,76 +262,76 @@ test_description_schema = Schema({
         Any(False, 'always', 'on-exception', 'on-failure'),
 
     # What to run
-    Required('mozharness'): optionally_keyed_by(
-        'test-platform', {
-            # the mozharness script used to run this task
-            Required('script'): basestring,
+    Required('mozharness'): {
+        # the mozharness script used to run this task
+        Required('script'): optionally_keyed_by(
+            'test-platform',
+            basestring),
 
-            # the config files required for the task
-            Required('config'): optionally_keyed_by(
-                'test-platform',
-                [basestring]),
+        # the config files required for the task
+        Required('config'): optionally_keyed_by(
+            'test-platform',
+            [basestring]),
 
-            # mochitest flavor for mochitest runs
-            Optional('mochitest-flavor'): basestring,
+        # mochitest flavor for mochitest runs
+        Optional('mochitest-flavor'): basestring,
 
-            # any additional actions to pass to the mozharness command
-            Optional('actions'): [basestring],
+        # any additional actions to pass to the mozharness command
+        Optional('actions'): [basestring],
 
-            # additional command-line options for mozharness, beyond those
-            # automatically added
-            Required('extra-options', default=[]): optionally_keyed_by(
-                'test-platform',
-                [basestring]),
+        # additional command-line options for mozharness, beyond those
+        # automatically added
+        Required('extra-options', default=[]): optionally_keyed_by(
+            'test-platform',
+            [basestring]),
 
-            # the artifact name (including path) to test on the build task; this is
-            # generally set in a per-kind transformation
-            Optional('build-artifact-name'): basestring,
+        # the artifact name (including path) to test on the build task; this is
+        # generally set in a per-kind transformation
+        Optional('build-artifact-name'): basestring,
 
-            # If true, tooltool downloads will be enabled via relengAPIProxy.
-            Required('tooltool-downloads', default=False): bool,
+        # If true, tooltool downloads will be enabled via relengAPIProxy.
+        Required('tooltool-downloads', default=False): bool,
 
-            # This mozharness script also runs in Buildbot and tries to read a
-            # buildbot config file, so tell it not to do so in TaskCluster
-            Required('no-read-buildbot-config', default=False): bool,
+        # This mozharness script also runs in Buildbot and tries to read a
+        # buildbot config file, so tell it not to do so in TaskCluster
+        Required('no-read-buildbot-config', default=False): bool,
 
-            # Add --blob-upload-branch=<project> mozharness parameter
-            Optional('include-blob-upload-branch'): bool,
+        # Add --blob-upload-branch=<project> mozharness parameter
+        Optional('include-blob-upload-branch'): bool,
 
-            # The setting for --download-symbols (if omitted, the option will not
-            # be passed to mozharness)
-            Optional('download-symbols'): Any(True, 'ondemand'),
+        # The setting for --download-symbols (if omitted, the option will not
+        # be passed to mozharness)
+        Optional('download-symbols'): Any(True, 'ondemand'),
 
-            # If set, then MOZ_NODE_PATH=/usr/local/bin/node is included in the
-            # environment.  This is more than just a helpful path setting -- it
-            # causes xpcshell tests to start additional servers, and runs
-            # additional tests.
-            Required('set-moz-node-path', default=False): bool,
+        # If set, then MOZ_NODE_PATH=/usr/local/bin/node is included in the
+        # environment.  This is more than just a helpful path setting -- it
+        # causes xpcshell tests to start additional servers, and runs
+        # additional tests.
+        Required('set-moz-node-path', default=False): bool,
 
-            # If true, include chunking information in the command even if the number
-            # of chunks is 1
-            Required('chunked', default=False): optionally_keyed_by(
-                'test-platform',
-                bool),
+        # If true, include chunking information in the command even if the number
+        # of chunks is 1
+        Required('chunked', default=False): optionally_keyed_by(
+            'test-platform',
+            bool),
 
-            # The chunking argument format to use
-            Required('chunking-args', default='this-chunk'): Any(
-                # Use the usual --this-chunk/--total-chunk arguments
-                'this-chunk',
-                # Use --test-suite=<suite>-<chunk-suffix>; see chunk-suffix, below
-                'test-suite-suffix',
-            ),
+        # The chunking argument format to use
+        Required('chunking-args', default='this-chunk'): Any(
+            # Use the usual --this-chunk/--total-chunk arguments
+            'this-chunk',
+            # Use --test-suite=<suite>-<chunk-suffix>; see chunk-suffix, below
+            'test-suite-suffix',
+        ),
 
-            # the string to append to the `--test-suite` arugment when
-            # chunking-args = test-suite-suffix; "<CHUNK>" in this string will
-            # be replaced with the chunk number.
-            Optional('chunk-suffix'): basestring,
+        # the string to append to the `--test-suite` arugment when
+        # chunking-args = test-suite-suffix; "<CHUNK>" in this string will
+        # be replaced with the chunk number.
+        Optional('chunk-suffix'): basestring,
 
-            Required('requires-signed-builds', default=False): optionally_keyed_by(
-                'test-platform',
-                bool),
-        }
-    ),
+        Required('requires-signed-builds', default=False): optionally_keyed_by(
+            'test-platform',
+            bool),
+    },
 
     # The current chunk; this is filled in by `all_kinds.py`
     Optional('this-chunk'): int,
@@ -363,10 +366,11 @@ test_description_schema = Schema({
     # the product name, defaults to firefox
     Optional('product'): basestring,
 
-    # conditional files to determine when these tests should be run
-    Optional('when'): Any({
-        Optional('files-changed'): [basestring],
-    }),
+    Optional('when'): {
+        # Run this test when the given SCHEDULES components have changed; the
+        # test suite and platform family are added to this list automatically.
+        Optional('schedules'): [basestring],
+    },
 
     Optional('worker-type'): optionally_keyed_by(
         'test-platform',
@@ -453,7 +457,7 @@ def setup_talos(config, tests):
         # name is only required for try
         if config.params['project'] == 'try':
             extra_options.append('--branch-name')
-            extra_options.append('Try')
+            extra_options.append('try')
 
         yield test
 
@@ -554,6 +558,8 @@ def set_tier(config, tests):
                                          'windows10-64-stylo-disabled/opt',
                                          'macosx64/opt',
                                          'macosx64/debug',
+                                         'macosx64-nightly/opt',
+                                         'macosx64-devedition/opt',
                                          'macosx64-stylo-disabled/debug',
                                          'macosx64-stylo-disabled/opt',
                                          'android-4.3-arm7-api-16/opt',
@@ -611,12 +617,43 @@ def handle_keyed_by(config, tests):
         'mozharness.config',
         'mozharness.extra-options',
         'mozharness.requires-signed-builds',
+        'mozharness.script',
         'worker-type',
     ]
     for test in tests:
         for field in fields:
             resolve_keyed_by(test, field, item_name=test['test-name'],
                              project=config.params['project'])
+        yield test
+
+
+@transforms.add
+def handle_suite_category(config, tests):
+    for test in tests:
+        if '/' in test['suite']:
+            suite, flavor = test['suite'].split('/', 1)
+        else:
+            suite = flavor = test['suite']
+
+        test.setdefault('attributes', {})
+        test['attributes']['unittest_suite'] = suite
+        test['attributes']['unittest_flavor'] = flavor
+
+        script = test['mozharness']['script']
+        category_arg = None
+        if suite == 'test-verify':
+            pass
+        elif script == 'android_emulator_unittest.py':
+            category_arg = '--test-suite'
+        elif script == 'desktop_unittest.py':
+            category_arg = '--{}-suite'.format(suite)
+
+        if category_arg:
+            test['mozharness'].setdefault('extra-options', [])
+            extra = test['mozharness']['extra-options']
+            if not any(arg.startswith(category_arg) for arg in extra):
+                extra.append('{}={}'.format(category_arg, flavor))
+
         yield test
 
 
@@ -629,7 +666,10 @@ def enable_code_coverage(config, tests):
             test['mozharness'].setdefault('extra-options', []).append('--code-coverage')
             test['when'] = {}
             test['instance-size'] = 'xlarge'
-            test['run-on-projects'] = ['mozilla-central']
+            # Ensure we don't run on inbound/autoland/beta, but if the test is try only, ignore it
+            if 'mozilla-central' in test['run-on-projects'] or \
+                    test['run-on-projects'] == 'built-projects':
+                test['run-on-projects'] = ['mozilla-central', 'try']
 
             if test['test-name'].startswith('talos'):
                 test['max-run-time'] = 7200
@@ -644,7 +684,11 @@ def enable_code_coverage(config, tests):
                 test['mozharness']['extra-options'].append('--add-option')
                 test['mozharness']['extra-options'].append('--tptimeout,15000')
         elif test['build-platform'] == 'linux64-jsdcov/opt':
-            test['run-on-projects'] = ['mozilla-central']
+            # Ensure we don't run on inbound/autoland/beta, but if the test is try only, ignore it
+            if 'mozilla-central' in test['run-on-projects'] or \
+                    test['run-on-projects'] == 'built-projects':
+                test['run-on-projects'] = ['mozilla-central', 'try']
+            test['mozharness'].setdefault('extra-options', []).append('--jsd-code-coverage')
         yield test
 
 
@@ -662,7 +706,6 @@ def split_e10s(config, tests):
     for test in tests:
         e10s = test['e10s']
 
-        test.setdefault('attributes', {})
         test['e10s'] = False
         test['attributes']['e10s'] = False
 
@@ -728,9 +771,6 @@ def allow_software_gl_layers(config, tests):
     """
     for test in tests:
         if test.get('allow-software-gl-layers'):
-            assert test['instance-size'] != 'legacy',\
-                'Software GL layers on a legacy instance is disallowed (bug 1296086).'
-
             # This should be set always once bug 1296086 is resolved.
             test['mozharness'].setdefault('extra-options', [])\
                               .append("--allow-software-gl-layers")
@@ -764,8 +804,11 @@ def set_retry_exit_status(config, tests):
 @transforms.add
 def set_profile(config, tests):
     """Set profiling mode for tests."""
+    profile = None
+    if config.params['try_mode'] == 'try_option_syntax':
+        profile = config.params['try_options']['profile']
     for test in tests:
-        if config.config['args'].profile and test['suite'] == 'talos':
+        if profile and test['suite'] == 'talos':
             test['mozharness']['extra-options'].append('--geckoProfile')
         yield test
 
@@ -773,8 +816,10 @@ def set_profile(config, tests):
 @transforms.add
 def set_tag(config, tests):
     """Set test for a specific tag."""
+    tag = None
+    if config.params['try_mode'] == 'try_option_syntax':
+        tag = config.params['try_options']['tag']
     for test in tests:
-        tag = config.config['args'].tag
         if tag:
             test['mozharness']['extra-options'].extend(['--tag', tag])
         yield test
@@ -826,21 +871,26 @@ def set_worker_type(config, tests):
         # during the taskcluster migration, this is a bit tortured, but it
         # will get simpler eventually!
         test_platform = test['test-platform']
+        try_options = config.params['try_options'] if config.params['try_options'] else {}
         if test.get('worker-type'):
             # This test already has its worker type defined, so just use that (yields below)
             pass
         elif test_platform.startswith('macosx'):
             test['worker-type'] = MACOSX_WORKER_TYPES['macosx64']
         elif test_platform.startswith('win'):
-            if test.get('suite', '') == 'talos' and \
-                    not any('taskcluster' in cfg for cfg in test['mozharness']['config']):
-                test['worker-type'] = 'buildbot-bridge/buildbot-bridge'
+            win_worker_type_platform = WINDOWS_WORKER_TYPES[
+                test_platform.split('/')[0]
+            ]
+            if test.get('suite', '') == 'talos':
+                if try_options.get('taskcluster_worker'):
+                    test['worker-type'] = win_worker_type_platform['hardware']
+                else:
+                    test['worker-type'] = 'buildbot-bridge/buildbot-bridge'
             else:
-                test['worker-type'] = \
-                    WINDOWS_WORKER_TYPES[test_platform.split('/')[0]][test['virtualization']]
+                test['worker-type'] = win_worker_type_platform[test['virtualization']]
         elif test_platform.startswith('linux') or test_platform.startswith('android'):
             if test.get('suite', '') == 'talos' and test['build-platform'] != 'linux64-ccov/opt':
-                if config.config['args'].taskcluster_worker:
+                if try_options.get('taskcluster_worker'):
                     test['worker-type'] = 'releng-hardware/gecko-t-linux-talos'
                 else:
                     test['worker-type'] = 'buildbot-bridge/buildbot-bridge'
@@ -884,20 +934,12 @@ def make_job_description(config, tests):
 
         attr_build_platform, attr_build_type = test['build-platform'].split('/', 1)
 
-        suite = test['suite']
-        if '/' in suite:
-            suite, flavor = suite.split('/', 1)
-        else:
-            flavor = suite
-
         attributes = test.get('attributes', {})
         attributes.update({
             'build_platform': attr_build_platform,
             'build_type': attr_build_type,
             'test_platform': test['test-platform'],
             'test_chunk': str(test['this-chunk']),
-            'unittest_suite': suite,
-            'unittest_flavor': flavor,
             attr_try_name: try_name,
         })
 
@@ -906,7 +948,6 @@ def make_job_description(config, tests):
         jobdesc['name'] = name
         jobdesc['label'] = label
         jobdesc['description'] = test['description']
-        jobdesc['when'] = test.get('when', {})
         jobdesc['attributes'] = attributes
         jobdesc['dependencies'] = {'build': build_label}
 
@@ -924,8 +965,8 @@ def make_job_description(config, tests):
                 'total': test['chunks'],
             },
             'suite': {
-                'name': suite,
-                'flavor': flavor,
+                'name': attributes['unittest_suite'],
+                'flavor': attributes['unittest_flavor'],
             },
         }
         jobdesc['treeherder'] = {
@@ -935,10 +976,16 @@ def make_job_description(config, tests):
             'platform': test.get('treeherder-machine-platform', test['build-platform']),
         }
 
-        # run SETA unless this is a try push
-        jobdesc['optimizations'] = optimizations = []
+        schedules = [attributes['unittest_suite'], platform_family(test['build-platform'])]
+        when = test.get('when')
+        if when and 'schedules' in when:
+            schedules.extend(when['schedules'])
         if config.params['project'] != 'try':
-            optimizations.append(['seta'])
+            # for non-try branches, include SETA
+            jobdesc['optimization'] = {'skip-unless-schedules-or-seta': schedules}
+        else:
+            # otherwise just use skip-unless-schedules
+            jobdesc['optimization'] = {'skip-unless-schedules': schedules}
 
         run = jobdesc['run'] = {}
         run['using'] = 'mozharness-test'

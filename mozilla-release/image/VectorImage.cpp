@@ -62,7 +62,7 @@ public:
     MOZ_ASSERT(mDocWrapper, "Need a non-null SVG document wrapper");
     MOZ_ASSERT(mVectorImage, "Need a non-null VectorImage");
 
-    StartListening();
+    StartObserving();
     Element* elem = GetTarget();
     MOZ_ASSERT(elem, "no root SVG node for us to observe");
 
@@ -79,7 +79,7 @@ public:
 protected:
   virtual ~SVGRootRenderingObserver()
   {
-    StopListening();
+    StopObserving();
   }
 
   virtual Element* GetTarget() override
@@ -87,14 +87,14 @@ protected:
     return mDocWrapper->GetRootSVGElem();
   }
 
-  virtual void DoUpdate() override
+  virtual void OnRenderingChange() override
   {
     Element* elem = GetTarget();
     MOZ_ASSERT(elem, "missing root SVG node");
 
     if (mHonoringInvalidations && !mDocWrapper->ShouldIgnoreInvalidation()) {
       nsIFrame* frame = elem->GetPrimaryFrame();
-      if (!frame || frame->PresContext()->PresShell()->IsDestroying()) {
+      if (!frame || frame->PresShell()->IsDestroying()) {
         // We're being destroyed. Bail out.
         return;
       }
@@ -302,10 +302,10 @@ SVGDrawingCallback::operator()(gfxContext* aContext,
   if (!matrix.Invert()) {
     return false;
   }
-  aContext->SetMatrix(
-    aContext->CurrentMatrix().PreMultiply(matrix).
-                              PreScale(double(mSize.width) / mViewportSize.width,
-                                       double(mSize.height) / mViewportSize.height));
+  aContext->SetMatrixDouble(
+    aContext->CurrentMatrixDouble().PreMultiply(matrix).
+                                    PreScale(double(mSize.width) / mViewportSize.width,
+                                             double(mSize.height) / mViewportSize.height));
 
   nsPresContext* presContext = presShell->GetPresContext();
   MOZ_ASSERT(presContext, "pres shell w/out pres context");
@@ -969,7 +969,7 @@ VectorImage::CreateSurfaceAndShow(const SVGDrawingParameters& aParams, BackendTy
 
   // Try to create an imgFrame, initializing the surface it contains by drawing
   // our gfxDrawable into it. (We use FILTER_NEAREST since we never scale here.)
-  NotNull<RefPtr<imgFrame>> frame = WrapNotNull(new imgFrame);
+  auto frame = MakeNotNull<RefPtr<imgFrame>>();
   nsresult rv =
     frame->InitWithDrawable(svgDrawable, aParams.size,
                             SurfaceFormat::B8G8R8A8,
@@ -993,7 +993,7 @@ VectorImage::CreateSurfaceAndShow(const SVGDrawingParameters& aParams, BackendTy
   // Attempt to cache the frame.
   SurfaceKey surfaceKey = VectorSurfaceKey(aParams.size, aParams.svgContext);
   NotNull<RefPtr<ISurfaceProvider>> provider =
-    WrapNotNull(new SimpleSurfaceProvider(ImageKey(this), surfaceKey, frame));
+    MakeNotNull<SimpleSurfaceProvider*>(ImageKey(this), surfaceKey, frame);
   SurfaceCache::Insert(provider);
 
   // Draw.
@@ -1197,16 +1197,6 @@ VectorImage::OnStartRequest(nsIRequest* aRequest, nsISupports* aCtxt)
     return rv;
   }
 
-  // ProgressTracker::SyncNotifyProgress may release us, so ensure we
-  // stick around long enough to complete our work.
-  RefPtr<VectorImage> kungFuDeathGrip(this);
-
-  // Block page load until the document's ready.  (We unblock it in
-  // OnSVGDocumentLoaded or OnSVGDocumentError.)
-  if (mProgressTracker) {
-    mProgressTracker->SyncNotifyProgress(FLAG_ONLOAD_BLOCKED);
-  }
-
   // Create a listener to wait until the SVG document is fully loaded, which
   // will signal that this image is ready to render. Certain error conditions
   // will prevent us from ever getting this notification, so we also create a
@@ -1290,8 +1280,7 @@ VectorImage::OnSVGDocumentLoaded()
     Progress progress = FLAG_SIZE_AVAILABLE |
                         FLAG_HAS_TRANSPARENCY |
                         FLAG_FRAME_COMPLETE |
-                        FLAG_DECODE_COMPLETE |
-                        FLAG_ONLOAD_UNBLOCKED;
+                        FLAG_DECODE_COMPLETE;
 
     if (mHaveAnimations) {
       progress |= FLAG_IS_ANIMATED;
@@ -1318,7 +1307,7 @@ VectorImage::OnSVGDocumentError()
 
   if (mProgressTracker) {
     // Notify observers about the error and unblock page load.
-    Progress progress = FLAG_ONLOAD_UNBLOCKED | FLAG_HAS_ERROR;
+    Progress progress = FLAG_HAS_ERROR;
 
     // Merge in any saved progress from OnImageDataComplete.
     if (mLoadProgress) {

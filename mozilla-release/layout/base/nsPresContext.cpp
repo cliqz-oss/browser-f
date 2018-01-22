@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,6 +26,7 @@
 #include "nsIContent.h"
 #include "nsIFrame.h"
 #include "nsIDocument.h"
+#include "nsIDocumentInlines.h"
 #include "nsIPrintSettings.h"
 #include "nsLanguageAtomService.h"
 #include "mozilla/LookAndFeel.h"
@@ -56,6 +58,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/Element.h"
 #include "nsIMessageManager.h"
+#include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/dom/MediaQueryList.h"
 #include "nsSMILAnimationController.h"
 #include "mozilla/css/ImageLoader.h"
@@ -95,6 +98,7 @@
 #include "nsBidi.h"
 
 #include "mozilla/dom/URL.h"
+#include "mozilla/ServoCSSParser.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -146,17 +150,29 @@ private:
 nscolor
 nsPresContext::MakeColorPref(const nsString& aColor)
 {
-  nsCSSParser parser;
-  nsCSSValue value;
-  if (!parser.ParseColorString(aColor, nullptr, 0, value)) {
-    // Any better choices?
-    return NS_RGB(0, 0, 0);
+  bool ok;
+  nscolor result;
+
+  ServoStyleSet* servoStyleSet = mShell && mShell->StyleSet()
+    ? mShell->StyleSet()->GetAsServo()
+    : nullptr;
+
+  if (servoStyleSet) {
+    ok = ServoCSSParser::ComputeColor(servoStyleSet, NS_RGB(0, 0, 0), aColor,
+                                      &result);
+  } else {
+    nsCSSParser parser;
+    nsCSSValue value;
+    ok = parser.ParseColorString(aColor, nullptr, 0, value) &&
+         nsRuleNode::ComputeColor(value, this, nullptr, result);
   }
 
-  nscolor color;
-  return nsRuleNode::ComputeColor(value, this, nullptr, color)
-    ? color
-    : NS_RGB(0, 0, 0);
+  if (!ok) {
+    // Any better choices?
+    result = NS_RGB(0, 0, 0);
+  }
+
+  return result;
 }
 
 bool
@@ -221,6 +237,10 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
     mLastFontInflationScreenSize(gfxSize(-1.0, -1.0)),
     mCurAppUnitsPerDevPixel(0),
     mAutoQualityMinFontSizePixelsPref(0),
+    // origin nscoord_MIN is impossible, so the first ResizeReflow always fires
+    mLastResizeEventVisibleArea(nsRect(nscoord_MIN, nscoord_MIN,
+                                       NS_UNCONSTRAINEDSIZE,
+                                       NS_UNCONSTRAINEDSIZE)),
     mPageSize(-1, -1),
     mPageScale(0.0),
     mPPScale(1.0f),
@@ -1323,7 +1343,7 @@ nsPresContext::SetImageAnimationMode(uint16_t aMode)
   mImageAnimationMode = aMode;
 }
 
-already_AddRefed<nsIAtom>
+already_AddRefed<nsAtom>
 nsPresContext::GetContentLanguage() const
 {
   nsAutoString language;
@@ -1356,12 +1376,21 @@ nsPresContext::UpdateEffectiveTextZoom()
 
   mEffectiveTextZoom = newZoom;
 
-  if (HasCachedStyleData()) {
+  // In case of servo, stylist.device might have already generated the default
+  // computed values with the previous effective text zoom value even if the
+  // pres shell has not initialized yet.
+  if (mDocument->IsStyledByServo() || HasCachedStyleData()) {
     // Media queries could have changed, since we changed the meaning
     // of 'em' units in them.
     MediaFeatureValuesChanged(eRestyle_ForceDescendants,
                               NS_STYLE_HINT_REFLOW);
   }
+}
+
+float
+nsPresContext::GetDeviceFullZoom()
+{
+  return mDeviceContext->GetFullZoom();
 }
 
 void
@@ -1490,13 +1519,14 @@ GetPropagatedScrollbarStylesForViewport(nsPresContext* aPresContext,
     return nullptr;
   }
 
-  Element* bodyElement = htmlDoc->GetBody();
-
-  if (!bodyElement ||
-      !bodyElement->NodeInfo()->Equals(nsGkAtoms::body)) {
-    // The body is not a <body> tag, it's a <frameset>.
+  Element* bodyElement = htmlDoc->GetBodyElement();
+  if (!bodyElement) {
+    // No body, nothing to do here.
     return nullptr;
   }
+
+  MOZ_ASSERT(bodyElement->IsHTMLElement(nsGkAtoms::body),
+             "GetBodyElement returned something bogus");
 
   RefPtr<nsStyleContext> bodyStyle =
     styleSet->ResolveStyleFor(bodyElement, rootStyle,
@@ -1862,16 +1892,17 @@ nsPresContext::SysColorChangedInternal()
 void
 nsPresContext::RefreshSystemMetrics()
 {
-  // This will force the system metrics to be generated the next time they're used
+  // This will force the system metrics to be generated the next time they're
+  // used.
   nsCSSRuleProcessor::FreeSystemMetrics();
 
-  // Changes to system metrics can change media queries on them, or
-  // :-moz-system-metric selectors (which requires eRestyle_Subtree).
+  // Changes to system metrics can change media queries on them.
+  //
   // Changes in theme can change system colors (whose changes are
   // properly reflected in computed style data), system fonts (whose
   // changes are not), and -moz-appearance (whose changes likewise are
-  // not), so we need to reflow.
-  MediaFeatureValuesChanged(eRestyle_Subtree, NS_STYLE_HINT_REFLOW);
+  // not), so we need to recascade for the first, and reflow for the rest.
+  MediaFeatureValuesChanged(eRestyle_ForceDescendants, NS_STYLE_HINT_REFLOW);
 }
 
 void
@@ -1963,7 +1994,7 @@ nsPresContext::UIResolutionChangedInternalScale(double aScale)
 void
 nsPresContext::EmulateMedium(const nsAString& aMediaType)
 {
-  nsIAtom* previousMedium = Medium();
+  nsAtom* previousMedium = Medium();
   mIsEmulatingMedia = true;
 
   nsAutoString mediaType;
@@ -1977,7 +2008,7 @@ nsPresContext::EmulateMedium(const nsAString& aMediaType)
 
 void nsPresContext::StopEmulatingMedium()
 {
-  nsIAtom* previousMedium = Medium();
+  nsAtom* previousMedium = Medium();
   mIsEmulatingMedia = false;
   if (Medium() != previousMedium) {
     MediaFeatureValuesChanged(nsRestyleHint(0), nsChangeHint(0));
@@ -1985,7 +2016,7 @@ void nsPresContext::StopEmulatingMedium()
 }
 
 void
-nsPresContext::ForceCacheLang(nsIAtom *aLanguage)
+nsPresContext::ForceCacheLang(nsAtom *aLanguage)
 {
   // force it to be cached
   GetDefaultFont(kPresContext_DefaultVariableFont_ID, aLanguage);
@@ -1996,7 +2027,7 @@ void
 nsPresContext::CacheAllLangs()
 {
   if (mFontGroupCacheDirty) {
-    nsCOMPtr<nsIAtom> thisLang = nsStyleFont::GetLanguage(this);
+    RefPtr<nsAtom> thisLang = nsStyleFont::GetLanguage(this);
     GetDefaultFont(kPresContext_DefaultVariableFont_ID, thisLang.get());
     GetDefaultFont(kPresContext_DefaultVariableFont_ID, nsGkAtoms::x_math);
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1362599#c12
@@ -2092,6 +2123,10 @@ nsPresContext::MediaFeatureValuesChanged(nsRestyleHint aRestyleHint,
 
   mPendingViewportChange = false;
 
+  if (!mShell || !mShell->DidInitialize()) {
+    return;
+  }
+
   if (mDocument->IsBeingUsedAsImage()) {
     MOZ_ASSERT(mDocument->MediaQueryLists().isEmpty());
     return;
@@ -2099,7 +2134,7 @@ nsPresContext::MediaFeatureValuesChanged(nsRestyleHint aRestyleHint,
 
   mDocument->NotifyMediaFeatureValuesChanged();
 
-  MOZ_ASSERT(nsContentUtils::IsSafeToRunScript());
+  MOZ_DIAGNOSTIC_ASSERT(nsContentUtils::IsSafeToRunScript());
 
   // Media query list listeners should be notified from a queued task
   // (in HTML5 terms), although we also want to notify them on certain
@@ -2111,7 +2146,16 @@ nsPresContext::MediaFeatureValuesChanged(nsRestyleHint aRestyleHint,
   if (!mDocument->MediaQueryLists().isEmpty()) {
     // We build a list of all the notifications we're going to send
     // before we send any of them.
-    for (auto mql : mDocument->MediaQueryLists()) {
+
+    // Copy pointers to all the lists into a new array, in case one of our
+    // notifications modifies the list.
+    nsTArray<RefPtr<mozilla::dom::MediaQueryList>> localMediaQueryLists;
+    for (auto* mql : mDocument->MediaQueryLists()) {
+      localMediaQueryLists.AppendElement(mql);
+    }
+
+    // Now iterate our local array of the lists.
+    for (const auto& mql : localMediaQueryLists) {
       nsAutoMicroTask mt;
       mql->MaybeNotify();
     }
@@ -2238,16 +2282,29 @@ nsPresContext::HasAuthorSpecifiedRules(const nsIFrame* aFrame,
   }
   Element* elem = aFrame->GetContent()->AsElement();
 
-  MOZ_ASSERT(elem->GetPseudoElementType() ==
-             aFrame->StyleContext()->GetPseudoType());
-  if (elem->HasServoData()) {
-    return Servo_HasAuthorSpecifiedRules(elem,
-                                         aRuleTypeMask,
-                                         UseDocumentColors());
-  } else {
+  // We need to handle non-generated content pseudos too, so we use
+  // the parent of generated content pseudo to be consistent.
+  if (elem->GetPseudoElementType() != CSSPseudoElementType::NotPseudo) {
+    MOZ_ASSERT(elem->GetParent(), "Pseudo element has no parent element?");
+    elem = elem->GetParent()->AsElement();
+  }
+  if (MOZ_UNLIKELY(!elem->HasServoData())) {
     // Probably shouldn't happen, but does. See bug 1387953
     return false;
   }
+
+  nsStyleContext* styleContext = aFrame->StyleContext();
+  CSSPseudoElementType pseudoType = styleContext->GetPseudoType();
+  // Anonymous boxes are more complicated, and we just assume that they
+  // cannot have any author-specified rules here.
+  if (pseudoType == CSSPseudoElementType::InheritingAnonBox ||
+      pseudoType == CSSPseudoElementType::NonInheritingAnonBox) {
+    return false;
+  }
+  return Servo_HasAuthorSpecifiedRules(styleContext->AsServo(),
+                                       elem, pseudoType,
+                                       aRuleTypeMask,
+                                       UseDocumentColors());
 }
 
 gfxUserFontSet*
@@ -2753,18 +2810,13 @@ nsPresContext::CreateTimer(nsTimerCallbackFunc aCallback,
                            const char* aName,
                            uint32_t aDelay)
 {
-  nsCOMPtr<nsITimer> timer = do_CreateInstance("@mozilla.org/timer;1");
-  timer->SetTarget(Document()->EventTargetFor(TaskCategory::Other));
-  if (timer) {
-    nsresult rv = timer->InitWithNamedFuncCallback(aCallback, this, aDelay,
-                                                   nsITimer::TYPE_ONE_SHOT,
-                                                   aName);
-    if (NS_SUCCEEDED(rv)) {
-      return timer.forget();
-    }
-  }
-
-  return nullptr;
+  nsCOMPtr<nsITimer> timer;
+  NS_NewTimerWithFuncCallback(getter_AddRefs(timer),
+                              aCallback, this, aDelay,
+                              nsITimer::TYPE_ONE_SHOT,
+                              aName,
+                              Document()->EventTargetFor(TaskCategory::Other));
+  return timer.forget();
 }
 
 static bool sGotInterruptEnv = false;
@@ -3401,21 +3453,20 @@ nsRootPresContext::EnsureEventualDidPaintEvent(uint64_t aTransactionId)
     }
   }
 
-  nsCOMPtr<nsITimer> timer = do_CreateInstance("@mozilla.org/timer;1");
-  timer->SetTarget(Document()->EventTargetFor(TaskCategory::Other));
-  if (timer) {
-    RefPtr<nsRootPresContext> self = this;
-    nsresult rv = timer->InitWithCallback(
-      NewNamedTimerCallback([self, aTransactionId](){
-        nsAutoScriptBlocker blockScripts;
-        self->NotifyDidPaintForSubtree(aTransactionId);
-    }, "NotifyDidPaintForSubtree"), 100, nsITimer::TYPE_ONE_SHOT);
+  nsCOMPtr<nsITimer> timer;
+  RefPtr<nsRootPresContext> self = this;
+  nsresult rv = NS_NewTimerWithCallback(
+    getter_AddRefs(timer),
+    NewNamedTimerCallback([self, aTransactionId](){
+      nsAutoScriptBlocker blockScripts;
+      self->NotifyDidPaintForSubtree(aTransactionId);
+     }, "NotifyDidPaintForSubtree"), 100, nsITimer::TYPE_ONE_SHOT,
+    Document()->EventTargetFor(TaskCategory::Other));
 
-    if (NS_SUCCEEDED(rv)) {
-      NotifyDidPaintTimer* t = mNotifyDidPaintTimers.AppendElement();
-      t->mTransactionId = aTransactionId;
-      t->mTimer = timer;
-    }
+  if (NS_SUCCEEDED(rv)) {
+    NotifyDidPaintTimer* t = mNotifyDidPaintTimers.AppendElement();
+    t->mTransactionId = aTransactionId;
+    t->mTimer = timer;
   }
 }
 
@@ -3448,7 +3499,7 @@ nsRootPresContext::AddWillPaintObserver(nsIRunnable* aRunnable)
   if (!mWillPaintFallbackEvent.IsPending()) {
     mWillPaintFallbackEvent = new RunWillPaintObservers(this);
     Document()->Dispatch(TaskCategory::Other,
-                         do_AddRef(mWillPaintFallbackEvent.get()));
+                         do_AddRef(mWillPaintFallbackEvent));
   }
   mWillPaintObservers.AppendElement(aRunnable);
 }

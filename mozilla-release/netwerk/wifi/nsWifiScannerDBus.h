@@ -10,8 +10,6 @@
 #define DBUS_API_SUBJECT_TO_CHANGE
 #include <dbus/dbus.h>
 
-#include "mozilla/ipc/DBusConnectionRefPtr.h"
-
 class nsWifiAccessPoint;
 
 namespace mozilla {
@@ -25,9 +23,10 @@ public:
   nsresult Scan();
 
 private:
-  nsresult SendMessage(const char* aInterface,
-                       const char* aPath,
-                       const char* aFuncCall);
+  nsresult SendGetDevices();
+  nsresult SendGetDeviceType(const char* aPath);
+  nsresult SendGetAccessPoints(const char* aPath);
+  nsresult SendGetAPProperties(const char* aPath);
   nsresult IdentifyDevices(DBusMessage* aMsg);
   nsresult IdentifyDeviceType(DBusMessage* aMsg, const char* aDevicePath);
   nsresult IdentifyAccessPoints(DBusMessage* aMsg);

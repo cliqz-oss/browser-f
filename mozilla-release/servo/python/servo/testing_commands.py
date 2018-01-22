@@ -14,12 +14,16 @@ import re
 import sys
 import os
 import os.path as path
+import platform
 import copy
 from collections import OrderedDict
 from time import time
 import json
 import urllib2
+import urllib
 import base64
+import shutil
+import subprocess
 
 from mach.registrar import Registrar
 from mach.decorators import (
@@ -51,9 +55,6 @@ TEST_SUITES = OrderedDict([
     ("wpt", {"kwargs": {"release": False},
              "paths": [path.abspath(WEB_PLATFORM_TESTS_PATH),
                        path.abspath(SERVO_TESTS_PATH)],
-             "include_arg": "include"}),
-    ("css", {"kwargs": {"release": False},
-             "paths": [path.abspath(path.join("tests", "wpt", "css-tests"))],
              "include_arg": "include"}),
     ("unit", {"kwargs": {},
               "paths": [path.abspath(path.join("tests", "unit"))],
@@ -115,7 +116,6 @@ class MachCommands(CommandBase):
         suites["tidy"]["kwargs"] = {"all_files": tidy_all, "no_progress": no_progress, "self_test": self_test,
                                     "stylo": False}
         suites["wpt"]["kwargs"] = {"release": release}
-        suites["css"]["kwargs"] = {"release": release}
         suites["unit"]["kwargs"] = {}
         suites["compiletest"]["kwargs"] = {"release": release}
 
@@ -496,14 +496,12 @@ class MachCommands(CommandBase):
              description='Update the web platform tests',
              category='testing',
              parser=updatecommandline.create_parser())
-    @CommandArgument('--patch', action='store_true', default=False,
-                     help='Create an mq patch or git commit containing the changes')
-    def update_wpt(self, patch, **kwargs):
+    def update_wpt(self, **kwargs):
         self.ensure_bootstrapped()
         run_file = path.abspath(path.join("tests", "wpt", "update.py"))
-        kwargs["no_patch"] = not patch
+        patch = kwargs.get("patch", False)
 
-        if kwargs["no_patch"] and kwargs["sync"]:
+        if not patch and kwargs["sync"]:
             print("Are you sure you don't want a patch?")
             return 1
 
@@ -522,9 +520,11 @@ class MachCommands(CommandBase):
                      help='Print intermittents to file')
     @CommandArgument('--auth', default=None,
                      help='File containing basic authorization credentials for Github API (format `username:password`)')
-    @CommandArgument('--use-tracker', default=False, action='store_true',
-                     help='Use https://www.joshmatthews.net/intermittent-tracker')
-    def filter_intermittents(self, summary, log_filteredsummary, log_intermittents, auth, use_tracker):
+    @CommandArgument('--tracker-api', default=None, action='store',
+                     help='The API endpoint for tracking known intermittent failures.')
+    @CommandArgument('--reporter-api', default=None, action='store',
+                     help='The API endpoint for reporting tracked intermittent failures.')
+    def filter_intermittents(self, summary, log_filteredsummary, log_intermittents, auth, tracker_api, reporter_api):
         encoded_auth = None
         if auth:
             with open(auth, "r") as file:
@@ -538,9 +538,14 @@ class MachCommands(CommandBase):
         actual_failures = []
         intermittents = []
         for failure in failures:
-            if use_tracker:
+            if tracker_api:
+                if tracker_api == 'default':
+                    tracker_api = "http://build.servo.org/intermittent-tracker"
+                elif tracker_api.endswith('/'):
+                    tracker_api = tracker_api[0:-1]
+
                 query = urllib2.quote(failure['test'], safe='')
-                request = urllib2.Request("http://build.servo.org/intermittent-tracker/query.py?name=%s" % query)
+                request = urllib2.Request("%s/query.py?name=%s" % (tracker_api, query))
                 search = urllib2.urlopen(request)
                 data = json.load(search)
                 if len(data) == 0:
@@ -560,6 +565,39 @@ class MachCommands(CommandBase):
                     actual_failures += [failure]
                 else:
                     intermittents += [failure]
+
+        if reporter_api:
+            if reporter_api == 'default':
+                reporter_api = "http://build.servo.org/intermittent-failure-tracker"
+            if reporter_api.endswith('/'):
+                reporter_api = reporter_api[0:-1]
+            reported = set()
+
+            proc = subprocess.Popen(
+                ["git", "log", "--merges", "--oneline", "-1"],
+                stdout=subprocess.PIPE)
+            (last_merge, _) = proc.communicate()
+
+            # Extract the issue reference from "abcdef Auto merge of #NNN"
+            pull_request = int(last_merge.split(' ')[4][1:])
+
+            for intermittent in intermittents:
+                if intermittent['test'] in reported:
+                    continue
+                reported.add(intermittent['test'])
+
+                data = {
+                    'test_file': intermittent['test'],
+                    'platform': platform.system(),
+                    'builder': os.environ.get('BUILDER_NAME', 'BUILDER NAME MISSING'),
+                    'number': pull_request,
+                }
+                request = urllib2.Request("%s/record.py" % reporter_api, urllib.urlencode(data))
+                request.add_header('Accept', 'application/json')
+                response = urllib2.urlopen(request)
+                data = json.load(response)
+                if data['status'] != "success":
+                    print('Error reporting test failure: ' + data['error'])
 
         if log_intermittents:
             with open(log_intermittents, "w") as intermittents_file:
@@ -610,41 +648,6 @@ class MachCommands(CommandBase):
                      help='Run the dev build')
     def update_jquery(self, release, dev):
         return self.jquery_test_runner("update", release, dev)
-
-    @Command('test-css',
-             description='Run the web platform CSS tests',
-             category='testing',
-             parser=create_parser_wpt)
-    def test_css(self, **kwargs):
-        self.ensure_bootstrapped()
-        ret = self.run_test_list_or_dispatch(kwargs["test_list"], "css", self._test_css, **kwargs)
-        if kwargs["always_succeed"]:
-            return 0
-        else:
-            return ret
-
-    def _test_css(self, **kwargs):
-        run_file = path.abspath(path.join("tests", "wpt", "run_css.py"))
-        return self.wptrunner(run_file, **kwargs)
-
-    @Command('update-css',
-             description='Update the web platform CSS tests',
-             category='testing',
-             parser=updatecommandline.create_parser())
-    @CommandArgument('--patch', action='store_true', default=False,
-                     help='Create an mq patch or git commit containing the changes')
-    def update_css(self, patch, **kwargs):
-        self.ensure_bootstrapped()
-        run_file = path.abspath(path.join("tests", "wpt", "update_css.py"))
-        kwargs["no_patch"] = not patch
-
-        if kwargs["no_patch"] and kwargs["sync"]:
-            print("Are you sure you don't want a patch?")
-            return 1
-
-        run_globals = {"__file__": run_file}
-        execfile(run_file, run_globals)
-        return run_globals["update_tests"](**kwargs)
 
     @Command('compare_dromaeo',
              description='Compare outputs of two runs of ./mach test-dromaeo command',
@@ -931,3 +934,24 @@ testing/web-platform/mozilla/tests for Servo-only tests""" % reference_path)
         run_globals = {"__file__": run_file}
         execfile(run_file, run_globals)
         return run_globals["update_test_file"](cache_dir)
+
+    @Command('update-webgl',
+             description='Update the WebGL conformance suite tests from Khronos repo',
+             category='testing')
+    @CommandArgument('--version', default='2.0.0',
+                     help='WebGL conformance suite version')
+    def update_webgl(self, version=None):
+        self.ensure_bootstrapped()
+
+        base_dir = path.abspath(path.join(PROJECT_TOPLEVEL_PATH,
+                                "tests", "wpt", "mozilla", "tests", "webgl"))
+        run_file = path.join(base_dir, "tools", "import-conformance-tests.py")
+        dest_folder = path.join(base_dir, "conformance-%s" % version)
+        patches_dir = path.join(base_dir, "tools")
+        # Clean dest folder if exists
+        if os.path.exists(dest_folder):
+            shutil.rmtree(dest_folder)
+
+        run_globals = {"__file__": run_file}
+        execfile(run_file, run_globals)
+        return run_globals["update_conformance"](version, dest_folder, None, patches_dir)

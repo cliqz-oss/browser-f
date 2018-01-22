@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@
 #include "nsIPresShell.h"
 #include "nsFocusManager.h"
 #include "nsFontMetrics.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsGkAtoms.h"
 #include "nsNameSpaceManager.h"
 #include "nsThemeConstants.h"
@@ -55,14 +56,14 @@ nsNumberControlFrame::nsNumberControlFrame(nsStyleContext* aContext)
 }
 
 void
-nsNumberControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsNumberControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   NS_ASSERTION(!GetPrevContinuation() && !GetNextContinuation(),
                "nsNumberControlFrame should not have continuations; if it does we "
                "need to call RegUnregAccessKey only for the first");
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  DestroyAnonymousContent(mOuterWrapper.forget());
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  aPostDestroyData.AddAnonymousContent(mOuterWrapper.forget());
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nscoord
@@ -123,7 +124,7 @@ nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
                "We expect at most one direct child frame");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   const WritingMode myWM = aReflowInput.GetWritingMode();
@@ -261,7 +262,7 @@ nsNumberControlFrame::SyncDisabledState()
 
 nsresult
 nsNumberControlFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                       nsIAtom* aAttribute,
+                                       nsAtom* aAttribute,
                                        int32_t  aModType)
 {
   // nsGkAtoms::disabled is handled by SyncDisabledState
@@ -326,7 +327,7 @@ private:
 nsresult
 nsNumberControlFrame::MakeAnonymousElement(Element** aResult,
                                            nsTArray<ContentInfo>& aElements,
-                                           nsIAtom* aTagName,
+                                           nsAtom* aTagName,
                                            CSSPseudoElementType aPseudoType)
 {
   // Get the NodeInfoManager and tag necessary to create the anonymous divs.
@@ -457,7 +458,7 @@ nsNumberControlFrame::SetFocus(bool aOn, bool aRepaint)
 }
 
 nsresult
-nsNumberControlFrame::SetFormProperty(nsIAtom* aName, const nsAString& aValue)
+nsNumberControlFrame::SetFormProperty(nsAtom* aName, const nsAString& aValue)
 {
   return GetTextFieldFrame()->SetFormProperty(aName, aValue);
 }
@@ -591,15 +592,17 @@ nsNumberControlFrame::HandleFocusEvent(WidgetEvent* aEvent)
 {
   if (aEvent->mOriginalTarget != mTextField) {
     // Move focus to our text field
+    RefPtr<HTMLInputElement> textField = HTMLInputElement::FromContent(mTextField);
     IgnoredErrorResult ignored;
-    HTMLInputElement::FromContent(mTextField)->Focus(ignored);
+    textField->Focus(ignored);
   }
 }
 
 void
 nsNumberControlFrame::HandleSelectCall()
 {
-  HTMLInputElement::FromContent(mTextField)->Select();
+  RefPtr<HTMLInputElement> textField = HTMLInputElement::FromContent(mTextField);
+  textField->Select();
 }
 
 #define STYLES_DISABLING_NATIVE_THEMING \
@@ -657,14 +660,12 @@ nsNumberControlFrame::SetValueOfAnonTextControl(const nsAString& aValue)
   // state will be set to invalid) or if aValue can't be localized:
   nsAutoString localizedValue(aValue);
 
-#ifdef ENABLE_INTL_API
   // Try and localize the value we will set:
   Decimal val = HTMLInputElement::StringToDecimal(aValue);
   if (val.isFinite()) {
     ICUUtils::LanguageTagIterForContent langTagIter(mContent);
     ICUUtils::LocalizeNumber(val.toDouble(), langTagIter, localizedValue);
   }
-#endif
 
   // We need to update the value of our anonymous text control here. Note that
   // this must be its value, and not its 'value' attribute (the default value),
@@ -690,7 +691,6 @@ nsNumberControlFrame::GetValueOfAnonTextControl(nsAString& aValue)
 
   HTMLInputElement::FromContent(mTextField)->GetValue(aValue, CallerType::System);
 
-#ifdef ENABLE_INTL_API
   // Here we need to de-localize any number typed in by the user. That is, we
   // need to convert it from the number format of the user's language, region,
   // etc. to the format that the HTML 5 spec defines to be a "valid
@@ -731,7 +731,6 @@ nsNumberControlFrame::GetValueOfAnonTextControl(nsAString& aValue)
   // as 12.345, but HTMLInputElement::StringToDecimal would parse it to NaN.
   aValue.Truncate();
   aValue.AppendFloat(value);
-#endif
 }
 
 bool

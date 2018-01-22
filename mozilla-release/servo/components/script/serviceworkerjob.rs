@@ -7,17 +7,15 @@
 //! the script thread. The script thread contains a JobQueue, which stores all scheduled Jobs
 //! by multiple service worker clients in a Vec.
 
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::error::Error;
-use dom::bindings::js::JS;
 use dom::bindings::refcounted::{Trusted, TrustedPromise};
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::Dom;
 use dom::client::Client;
-use dom::globalscope::GlobalScope;
 use dom::promise::Promise;
 use dom::serviceworkerregistration::ServiceWorkerRegistration;
 use dom::urlhelper::UrlHelper;
-use js::jsapi::JSAutoCompartment;
 use script_thread::ScriptThread;
 use servo_url::ServoUrl;
 use std::cmp::PartialEq;
@@ -48,7 +46,7 @@ pub struct Job {
     pub promise: Rc<Promise>,
     pub equivalent_jobs: Vec<Job>,
     // client can be a window client, worker client so `Client` will be an enum in future
-    pub client: JS<Client>,
+    pub client: Dom<Client>,
     pub referrer: ServoUrl
 }
 
@@ -66,7 +64,7 @@ impl Job {
             script_url: script_url,
             promise: promise,
             equivalent_jobs: vec![],
-            client: JS::from_ref(client),
+            client: Dom::from_ref(client),
             referrer: client.creation_url()
         }
     }
@@ -95,11 +93,11 @@ impl PartialEq for Job {
 
 #[must_root]
 #[derive(JSTraceable)]
-pub struct JobQueue(pub DOMRefCell<HashMap<ServoUrl, Vec<Job>>>);
+pub struct JobQueue(pub DomRefCell<HashMap<ServoUrl, Vec<Job>>>);
 
 impl JobQueue {
     pub fn new() -> JobQueue {
-        JobQueue(DOMRefCell::new(HashMap::new()))
+        JobQueue(DomRefCell::new(HashMap::new()))
     }
     #[allow(unrooted_must_root)]
     // https://w3c.github.io/ServiceWorker/#schedule-job-algorithm
@@ -116,7 +114,7 @@ impl JobQueue {
         } else {
             // Step 2
             let mut last_job = job_queue.pop().unwrap();
-            if job == last_job && !last_job.promise.is_settled() {
+            if job == last_job && !last_job.promise.is_fulfilled() {
                 last_job.append_equivalent_job(job);
                 job_queue.push(last_job);
                 debug!("appended equivalent job");
@@ -155,19 +153,21 @@ impl JobQueue {
     // https://w3c.github.io/ServiceWorker/#register-algorithm
     fn run_register(&self, job: &Job, scope_url: ServoUrl, script_thread: &ScriptThread) {
         debug!("running register job");
+        let global = &*job.client.global();
+        let pipeline_id = global.pipeline_id();
         // Step 1-3
         if !UrlHelper::is_origin_trustworthy(&job.script_url) {
             // Step 1.1
             reject_job_promise(job,
                                Error::Type("Invalid script ServoURL".to_owned()),
-                               script_thread.dom_manipulation_task_source());
+                               &script_thread.dom_manipulation_task_source(pipeline_id));
             // Step 1.2 (see run_job)
             return;
         } else if job.script_url.origin() != job.referrer.origin() || job.scope_url.origin() != job.referrer.origin() {
             // Step 2.1/3.1
             reject_job_promise(job,
                                Error::Security,
-                               script_thread.dom_manipulation_task_source());
+                               &script_thread.dom_manipulation_task_source(pipeline_id));
             // Step 2.2/3.2 (see run_job)
             return;
         }
@@ -182,17 +182,15 @@ impl JobQueue {
             if let Some(ref newest_worker) = reg.get_newest_worker() {
                 if (&*newest_worker).get_script_url() == job.script_url {
                     // Step 5.3.1
-                    resolve_job_promise(job, &*reg, script_thread.dom_manipulation_task_source());
+                    resolve_job_promise(job, &*reg, &script_thread.dom_manipulation_task_source(pipeline_id));
                     // Step 5.3.2 (see run_job)
                     return;
                 }
             }
         } else {
             // Step 6.1
-            let global = &*job.client.global();
-            let pipeline = global.pipeline_id();
             let new_reg = ServiceWorkerRegistration::new(&*global, &job.script_url, scope_url);
-            script_thread.handle_serviceworker_registration(&job.scope_url, &*new_reg, pipeline);
+            script_thread.handle_serviceworker_registration(&job.scope_url, &*new_reg, pipeline_id);
         }
         // Step 7
         self.update(job, script_thread)
@@ -220,13 +218,16 @@ impl JobQueue {
     // https://w3c.github.io/ServiceWorker/#update-algorithm
     fn update(&self, job: &Job, script_thread: &ScriptThread) {
         debug!("running update job");
+
+        let global = &*job.client.global();
+        let pipeline_id = global.pipeline_id();
         // Step 1
         let reg = match script_thread.handle_get_registration(&job.scope_url) {
             Some(reg) => reg,
             None => {
                 let err_type = Error::Type("No registration to update".to_owned());
                 // Step 2.1
-                reject_job_promise(job, err_type, script_thread.dom_manipulation_task_source());
+                reject_job_promise(job, err_type, &script_thread.dom_manipulation_task_source(pipeline_id));
                 // Step 2.2 (see run_job)
                 return;
             }
@@ -235,7 +236,7 @@ impl JobQueue {
         if reg.get_uninstalling() {
             let err_type = Error::Type("Update called on an uninstalling registration".to_owned());
             // Step 2.1
-            reject_job_promise(job, err_type, script_thread.dom_manipulation_task_source());
+            reject_job_promise(job, err_type, &script_thread.dom_manipulation_task_source(pipeline_id));
             // Step 2.2 (see run_job)
             return;
         }
@@ -246,7 +247,7 @@ impl JobQueue {
         if newest_worker_url.as_ref() == Some(&job.script_url)  && job.job_type == JobType::Update {
             let err_type = Error::Type("Invalid script ServoURL".to_owned());
             // Step 4.1
-            reject_job_promise(job, err_type, script_thread.dom_manipulation_task_source());
+            reject_job_promise(job, err_type, &script_thread.dom_manipulation_task_source(pipeline_id));
             // Step 4.2 (see run_job)
             return;
         }
@@ -254,18 +255,17 @@ impl JobQueue {
         if let Some(newest_worker) = newest_worker {
             job.client.set_controller(&*newest_worker);
             // Step 8.1
-            resolve_job_promise(job, &*reg, script_thread.dom_manipulation_task_source());
+            resolve_job_promise(job, &*reg, &script_thread.dom_manipulation_task_source(pipeline_id));
             // Step 8.2 present in run_job
         }
         // TODO Step 9 (create new service worker)
     }
 }
 
-fn settle_job_promise(global: &GlobalScope, promise: &Promise, settle: SettleType) {
-    let _ac = JSAutoCompartment::new(global.get_cx(), promise.reflector().get_jsobject().get());
+fn settle_job_promise(promise: &Promise, settle: SettleType) {
     match settle {
-        SettleType::Resolve(reg) => promise.resolve_native(global.get_cx(), &*reg.root()),
-        SettleType::Reject(err) => promise.reject_error(global.get_cx(), err),
+        SettleType::Resolve(reg) => promise.resolve_native(&*reg.root()),
+        SettleType::Reject(err) => promise.reject_error(err),
     };
 }
 
@@ -277,7 +277,7 @@ fn queue_settle_promise_for_job(job: &Job, settle: SettleType, task_source: &DOM
     let _ = task_source.queue(
         task!(settle_promise_for_job: move || {
             let promise = promise.root();
-            settle_job_promise(&promise.global(), &promise, settle)
+            settle_job_promise(&promise, settle)
         }),
         &*global,
     );

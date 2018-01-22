@@ -4,10 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "gc/Iteration-inl.h"
+
 #include "mozilla/DebugOnly.h"
 
 #include "jscompartment.h"
-#include "jsgc.h"
 
 #include "gc/GCInternals.h"
 #include "js/HashTable.h"
@@ -75,8 +76,9 @@ void
 js::IterateChunks(JSContext* cx, void* data, IterateChunkCallback chunkCallback)
 {
     AutoPrepareForTracing prep(cx, SkipAtoms);
+    AutoLockGC lock(cx->runtime());
 
-    for (auto chunk = cx->runtime()->gc.allNonEmptyChunks(); !chunk.done(); chunk.next())
+    for (auto chunk = cx->runtime()->gc.allNonEmptyChunks(lock); !chunk.done(); chunk.next())
         chunkCallback(cx->runtime(), data, chunk);
 }
 

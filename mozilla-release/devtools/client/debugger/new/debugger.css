@@ -2,6 +2,141 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+menu {
+  display: inline;
+  padding: 0;
+}
+
+menu > menuitem::after {
+  content: "\25BA";
+  float: right;
+  padding-left: 5px;
+}
+
+menu > menupopup {
+  display: none;
+}
+
+menu > menuitem:hover + menupopup,
+menu > menupopup:hover {
+  display: block;
+}
+
+menupopup {
+  position: fixed;
+  z-index: 10000;
+  background: white;
+  border: 1px solid #cccccc;
+  padding: 5px 0;
+  background: #f2f2f2;
+  border-radius: 5px;
+  color: #585858;
+  box-shadow: 0 0 4px 0 rgba(190, 190, 190, 0.8);
+  min-width: 130px;
+}
+
+menuitem {
+  display: block;
+  padding: 0 20px;
+  line-height: 20px;
+  font-weight: 500;
+  font-size: 13px;
+  -moz-user-select: none;
+  user-select: none;
+}
+
+menuitem:hover {
+  background: #3780fb;
+  color: white;
+  cursor: pointer;
+}
+
+menuitem[disabled=true] {
+  color: #cccccc;
+}
+
+menuitem[disabled=true]:hover {
+  background-color: transparent;
+  cursor: default;
+}
+
+menuitem[type=checkbox]::before {
+  content: "";
+  width: 10px;
+  display: inline-block;
+}
+
+menuitem[type=checkbox][checked=true]::before {
+  content: "\2713";
+  left: -8px;
+  position: relative;
+}
+
+menuseparator {
+  border-bottom: 1px solid #cacdd3;
+  width: 100%;
+  height: 5px;
+  display: block;
+  margin-bottom: 5px;
+}
+
+#contextmenu-mask.show {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 999;
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:root.theme-light,
+:root .theme-light {
+  --theme-search-overlays-semitransparent: rgba(221, 225, 228, 0.66);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+#mount {
+  display: flex;
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  border-radius: 8px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: rgba(113, 113, 113, 0.5);
+}
+
+:root.theme-dark .CodeMirror-scrollbar-filler {
+  background: transparent;
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 .landing-page {
   flex: 1;
   display: flex;
@@ -36,7 +171,7 @@
   padding-bottom: var(--base-spacing);
 }
 
-.landing-page .panel header input[type=search] {
+.landing-page .panel header input[type="search"] {
   flex: 1;
   background-color: var(--theme-tab-toolbar-background);
   color: var(--theme-comment);
@@ -115,11 +250,9 @@
   color: var(--theme-comment);
   font-size: calc(var(--ui-element-font-size) / 1);
   margin: var(--base-spacing) auto;
-  line-height: 1.4em;
-}
-
-.landing-page .panel .under-construction .under-construction-message {
   max-width: 350px;
+
+  line-height: 1.4em;
 }
 
 .landing-page .panel .under-construction .github-link {
@@ -255,160 +388,149 @@
   padding-left: var(--base-spacing);
 }
 
-.landing-page .sidebar .title-wrapper  .launchpad-container .launchpad-container-icon {
+.landing-page
+  .sidebar
+  .title-wrapper
+  .launchpad-container
+  .launchpad-container-icon {
   display: inline-block;
 }
 
-.landing-page .sidebar .title-wrapper  .launchpad-container svg {
-  width: 24px;
-  height: 24px;
+.landing-page .sidebar .title-wrapper .launchpad-container .rocket svg {
+  width: 18px;
+  height: 18px;
 }
 
-.landing-page .sidebar .title-wrapper  .launchpad-container svg path {
-  width: 24px;
-  height: 24px;
-  fill: var(--theme-body-color);
-}
-
-.landing-page .sidebar .title-wrapper .launchpad-container .launchpad-container-title {
+.landing-page
+  .sidebar
+  .title-wrapper
+  .launchpad-container
+  .launchpad-container-title {
   display: inline;
   padding-left: 3px;
+  font-weight: normal;
 }
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-menu {
-  display: inline;
-  padding: 0;
-}
-
-menu > menuitem::after {
-  content: "\25BA";
-  float: right;
-  padding-left: 5px;
-}
-
-menu > menupopup {
-  display: none;
-}
-
-menu > menuitem:hover + menupopup,
-menu > menupopup:hover {
-  display: block;
-}
-
-menupopup {
+.modal-wrapper {
   position: fixed;
-  z-index: 10000;
-  background: white;
-  border: 1px solid #cccccc;
-  padding: 5px 0;
-  background: #f2f2f2;
-  border-radius: 5px;
-  color: #585858;
-  box-shadow: 0 0 4px 0 rgba(190, 190, 190, 0.8);
-  min-width: 130px;
-}
-
-menuitem {
-  display: block;
-  padding: 0 20px;
-  line-height: 20px;
-  font-weight: 500;
-  font-size: 13px;
-  -moz-user-select: none;
-  user-select: none;
-}
-
-menuitem:hover {
-  background: #3780fb;
-  color: white;
-  cursor: pointer;
-}
-
-menuitem[disabled=true] {
-  color: #cccccc;
-}
-
-menuitem[disabled=true]:hover {
-  background-color: transparent;
-  cursor: default;
-}
-
-menuitem[type=checkbox]::before {
-  content: "";
-  width: 10px;
-  display: inline-block;
-}
-
-menuitem[type=checkbox][checked=true]::before {
-  content: "\2713";
-  left: -8px;
-  position: relative;
-}
-
-menuseparator {
-  border-bottom: 1px solid #cacdd3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   width: 100%;
-  height: 5px;
-  display: block;
-  margin-bottom: 5px;
-}
-
-#contextmenu-mask.show {
-  position: fixed;
+  height: 100%;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 999;
+  transition: z-index 200ms;
+  z-index: 100;
+}
+
+.modal {
+  width: 80%;
+  height: auto;
+  overflow-y: auto;
+  background-color: var(--theme-toolbar-background);
+  transition: transform 150ms cubic-bezier(0.07, 0.95, 0, 1);
+  box-shadow: 1px 1px 3px 1px var(--popup-shadow-color);
+}
+
+.modal .input-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.modal .close-btn {
+  padding: 6px;
+}
+
+.modal .result-list {
+  height: calc(100% - 28px);
+  overflow-y: auto;
+}
+
+.modal.entering,
+.modal.exited {
+  transform: translateY(-101%);
+}
+
+.modal.entered,
+.modal.exiting {
+  transform: translateY(5px);
+}
+
+/* This rule is active when the screen is not short and narrow */
+@media (min-width: 580px) and (min-height: 340px) {
+  .modal {
+    width: 50%;
+  }
+}
+
+@media (min-height: 340px) {
+  .modal {
+    height: auto;
+    max-height: 80vh;
+  }
+  .modal.entered,
+  .modal.exiting {
+    transform: translateY(30px);
+  }
 }
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-:root.theme-light,
-:root .theme-light {
-  --theme-search-overlays-semitransparent: rgba(221, 225, 228, 0.66);
+.shortcuts-content {
+  padding: 15px;
+  -moz-column-width: 250px;
+  -webkit-column-width: 250px;
+  column-width: 250px;
 }
 
-* {
-  box-sizing: border-box;
+.shortcuts-content h2 {
+  margin-top: 2px;
+  margin-bottom: 2px;
+  color: var(--theme-content-color1);
 }
 
-html,
-body {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  width: 100%;
+.shortcuts-section {
+  display: inline-block;
+  margin: 5px;
+  margin-bottom: 15px;
+  width: 250px;
 }
 
-#mount {
+.shortcuts-list {
+  list-style: none;
+  margin: 0px;
+  padding: 0px;
+  overflow: auto;
+  width: calc(100% - 1px); /* 1px fixes the hidden right border */
+}
+
+.shortcuts-list li {
+  font-size: 12px;
+  color: var(--theme-body-color);
+  padding-top: 5px;
   display: flex;
-  height: 100%;
+  justify-content: space-between;
+  border: 1px solid transparent;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-  background: transparent;
+@media (max-width: 640px) {
+  .shortcuts-section {
+    width: 100%;
+  }
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+:root {
+  --arrow-width: 10px;
 }
 
-::-webkit-scrollbar-track {
-  border-radius: 8px;
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  border-radius: 8px;
-  background: rgba(113, 113, 113, 0.5);
-}
-
-:root.theme-dark .CodeMirror-scrollbar-filler {
-  background: transparent;
-}
 :root.theme-light,
 :root .theme-light {
   --search-overlays-semitransparent: rgba(221, 225, 228, 0.66);
@@ -420,8 +542,23 @@ body {
   --search-overlays-semitransparent: rgba(42, 46, 56, 0.66);
   --popup-shadow-color: #5c667b;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 * {
   box-sizing: border-box;
+}
+
+button {
+  background: transparent;
+  outline: none;
+  border: none;
+}
+
+button:hover,
+button:focus {
+  background-color: var(--theme-toolbar-background-hover);
 }
 
 .debugger {
@@ -467,6 +604,10 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 menupopup {
   position: fixed;
   z-index: 10000;
@@ -787,14 +928,22 @@ menuseparator {
 .split-box.dragging > .uncontrolled {
   pointer-events: none;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .arrow,
-.folder,
-.domain,
-.file,
 .worker,
 .refresh,
+.shortcut,
 .add-button {
   fill: var(--theme-splitter-color);
+}
+
+.file,
+.folder,
+.domain {
+  background-color: var(--theme-splitter-color);
 }
 
 .worker,
@@ -812,31 +961,59 @@ menuseparator {
   top: 1px;
 }
 
-.domain svg,
-.folder svg,
 .worker svg,
 .refresh svg,
+.shortcut svg,
 .add-button svg {
   width: 15px;
 }
 
-.file svg {
-  width: 13px;
+img.domain,
+img.folder {
+  width: 15px;
+  height: 15px;
 }
 
-.file svg,
-.domain svg,
-.folder svg,
+img.domain {
+  mask: url("chrome://devtools/skin/images/debugger/domain.svg") no-repeat;
+}
+
+img.folder {
+  mask: url("chrome://devtools/skin/images/debugger/folder.svg") no-repeat;
+}
+
+img.file {
+  mask: url("chrome://devtools/skin/images/debugger/file.svg") no-repeat;
+  width: 13px;
+  height: 13px;
+}
+
+img.domain,
+img.folder,
+img.file {
+  mask-size: 100%;
+  margin-inline-end: 5px;
+  display: inline-block;
+}
+
 .refresh svg,
+.shortcut svg,
 .worker svg {
   margin-inline-end: 5px;
 }
 
-.arrow svg {
-  fill: var(--theme-splitter-color);
+img.arrow {
+  mask: url("chrome://devtools/skin/images/debugger/arrow.svg");
   margin-top: 3px;
-  transition: transform 0.25s ease;
-  width: 10px;
+  width: 9px;
+  height: 9px;
+  padding-top: 9px;
+  background: var(--theme-splitter-color);
+  mask-size: 100%;
+  display: inline-block;
+  margin-bottom: 1px;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
 }
 
 html:not([dir="rtl"]) .arrow svg {
@@ -857,6 +1034,21 @@ html .arrow.expanded svg {
 .arrow.hidden {
   visibility: hidden;
 }
+
+.webpack svg {
+  width: 15px;
+  height: 15px;
+  margin-right: 5px;
+  vertical-align: sub;
+}
+
+.theme-dark .webpack {
+  opacity: 0.5;
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .managed-tree .tree {
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -898,6 +1090,10 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 .managed-tree .tree-node button {
   position: fixed;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .close-btn path {
   fill: var(--theme-comment-alt);
 }
@@ -945,6 +1141,10 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 .close-btn.big .close svg {
   width: 9px;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .search-field {
   width: calc(100% - 1px);
   height: 27px;
@@ -1051,6 +1251,10 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 .search-field .search-nav-buttons .nav-btn path {
   fill: var(--theme-comment);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .project-text-search {
   flex-grow: 1;
   display: flex;
@@ -1139,107 +1343,10 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 .project-text-search .managed-tree .tree {
   height: 100%;
 }
-.autocomplete {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-.autocomplete .no-result-msg {
-  color: var(--theme-body-color-inactive);
-  font-size: 24px;
-  padding: 4px;
-  word-break: break-all;
-}
-.result-list {
-  list-style: none;
-  margin: 0px;
-  padding: 0px;
-  overflow: auto;
-  width: calc(100% - 1px); /* 1px fixes the hidden right border */
-}
-
-.result-list.big {
-  max-height: calc(100% - 32px);
-}
-
-.result-list * {
-  -moz-user-select: none;
-  user-select: none;
-}
-
-.result-list li {
-  color: var(--theme-body-color);
-  padding: 4px 13px;
-  display: flex;
-  justify-content: space-between;
-  border: 1px solid transparent;
-}
-
-.result-list.big li {
-  padding: 10px;
-  flex-direction: column;
-  border-bottom: 1px solid var(--theme-splitter-color);
-}
-
-.result-list li:hover {
-  background: var(--theme-tab-toolbar-background);
-}
-
-.result-list li.selected {
-  border-color: var(--theme-selection-background);
-}
-
-.result-list.small li.selected {
-  background-color: var(--theme-selection-background);
-  color: white;
-}
-
-.theme-dark .result-list.small li.selected {
-  background-color: var(--theme-body-background);
-}
-
-.theme-dark .result-list li:hover {
-  background: var(--grey-70);
-}
-
-.theme-dark .result-list li.selected {
-  background: var(--grey-70);
-}
-
-.result-list li .title {
-  line-height: 1.5em;
-  word-break: break-all;
-}
-
-.result-list li.selected .title {
-  color: white;
-}
-
-.result-list.big li.selected .title {
-  color: var(--theme-body-color);
-}
-
-.result-list.big li .subtitle {
-  word-break: break-all;
-  color: var(--theme-body-color-inactive);
-}
-
-.result-list.big li .subtitle {
-  line-height: 1.5em;
-}
-
-.search-bar .result-list li.selected .subtitle {
-  color: white;
-}
-
-.search-bar .result-list {
-  border-bottom: 1px solid var(--theme-splitter-color);
-}
-
-.theme-dark .result-list {
-  background-color: var(--theme-body-background);
-}
 .search-container {
   position: absolute;
   top: 30px;
@@ -1248,45 +1355,14 @@ html[dir="rtl"] .managed-tree .tree .node > div {
   height: calc(100% - 31px);
   display: flex;
   flex-direction: column;
-  z-index: 200;
+  z-index: 20;
   background-color: var(--theme-body-background);
   overflow-y: hidden;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-.searchinput-container {
-  display: flex;
-  border-bottom: 1px solid var(--theme-splitter-color);
-}
-
-.theme-dark .result-list li .subtitle {
-  color: var(--theme-comment-alt);
-}
-
-.toggle-search {
-  background-color: var(--theme-toolbar-background);
-  border-bottom: 1px solid var(--theme-splitter-color);
-  color: var(--theme-comment-alt);
-  display: flex;
-  flex-shrink: 0;
-  justify-content: flex-start;
-  line-height: 40px;
-  padding: 0 13px;
-  width: calc(100% - 1px);
-}
-
-.toggle-search .title {
-  font-weight: 500;
-  font-size: 120%;
-}
-
-.toggle-search .text {
-  margin-left: 1em;
-  cursor: default;
-}
-
-.toggle-search .active {
-  color: var(--theme-selection-background);
-}
 .sources-panel {
   background-color: var(--theme-sidebar-background);
   display: flex;
@@ -1301,43 +1377,12 @@ html[dir="rtl"] .managed-tree .tree .node > div {
   user-select: none;
 }
 
-.sources-header {
-  height: 29px;
-  background-color: var(--theme-toolbar-background);
-  border-bottom: 1px solid var(--theme-splitter-color);
-  padding-top: 0px;
-  padding-bottom: 0px;
-  line-height: 30px;
-  font-size: 1.2em;
-  display: flex;
-  align-items: baseline;
-  -moz-user-select: none;
-  user-select: none;
-  justify-content: flex-end;
-}
-
-.theme-dark .sources-header {
-  background-color: var(--theme-tab-toolbar-background);
-}
-
-.sources-header {
-  padding-inline-start: 10px;
-}
-
-.sources-header-info {
-  font-size: 12px;
-  color: var(--theme-comment-alt);
-  font-weight: lighter;
-  white-space: nowrap;
-  padding-inline-end: 10px;
-  cursor: default;
-}
-
 .sources-list {
   flex: 1;
   display: flex;
   overflow-x: hidden;
   overflow-y: auto;
+  padding-top: 11px;
 }
 
 .sources-list .managed-tree {
@@ -1347,27 +1392,53 @@ html[dir="rtl"] .managed-tree .tree .node > div {
   overflow-y: auto;
 }
 
-.theme-dark .sources-list .tree .node:not(.focused) svg {
-  fill: var(--theme-content-color3);
+.sources-list .managed-tree .tree .node {
+  padding: 0px 0px 0px 3px;
+}
+
+.sources-list .tree img.arrow {
+  margin-right: 5px;
+}
+
+.sources-list .tree .focused img.arrow {
+  background-color: white;
+}
+
+.sources-list .tree img.arrow.expanded {
+  transform: rotate(0deg);
+}
+
+.theme-dark .sources-list .tree .node:not(.focused) img.arrow {
+  background: var(--theme-content-color3);
 }
 
 .theme-dark .source-list .tree .node.focused {
   background-color: var(--theme-tab-toolbar-background);
 }
 
-.no-sources-message {
-  font-size: 12px;
-  color: var(--theme-comment-alt);
-  font-weight: lighter;
-  padding-top: 5px;
-  flex-grow: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.sources-list .tree .focused .label {
+  background-color: var(--theme-selection-background);
 }
 
-.sources-panel .source-footer {
-  position: relative;
+.sources-list .tree .label {
+  padding: 3px 0px 3px 0px;
+  display: inline-block;
+}
+
+.sources-list .tree .node .no-arrow {
+  width: 10px;
+  display: inline-block;
+}
+
+.no-sources-message {
+  width: 100%;
+  font-style: italic;
+  text-align: center;
+  padding: 0.5em;
+  font-size: 12px;
+  user-select: none;
+  justify-content: center;
+  align-items: center;
 }
 
 .sources-panel .outline {
@@ -1375,49 +1446,87 @@ html[dir="rtl"] .managed-tree .tree .node > div {
   flex: 1;
 }
 
-.sources-panel .outline.hidden {
-  display: none;
-}
-
-.hidden {
-  display: none;
-}
-
-.source-footer {
+.source-outline-tabs {
   width: 100%;
+  background: var(--theme-body-background);
+  border-top: 1px solid var(--theme-splitter-color);
+  display: flex;
+  -moz-user-select: none;
+  user-select: none;
+  box-sizing: border-box;
+  height: 29px;
 }
 
-.source-footer .tab {
+.source-outline-tabs .tab {
   flex: 1;
   justify-content: center;
-  border: 1px solid transparent;
-  border-bottom-left-radius: 2px;
-  border-bottom-right-radius: 2px;
+  border-bottom: 1px solid transparent;
+  border-left: 1px solid transparent;
   display: inline-flex;
   position: relative;
   transition: all 0.25s ease;
   overflow: hidden;
-  padding: 5px;
+  padding: 8px 8px 7px 8px;
   margin-bottom: 0px;
   margin-top: -1px;
   cursor: default;
 }
 
-.source-footer .tab:hover {
+.source-outline-tabs .tab:first-child {
+  border-left: 0;
+}
+
+.source-outline-tabs .tab:hover {
   background-color: var(--theme-toolbar-background-alt);
   border-color: var(--theme-splitter-color);
 }
 
-.source-footer .tab.active {
+.source-outline-tabs .tab {
   color: var(--theme-body-color);
   background-color: var(--theme-toolbar-background);
   border-color: var(--theme-splitter-color);
 }
 
-.source-footer .tab.active path,
-.source-footer .tab:hover path {
+.source-outline-tabs .tab.active {
+  background-color: var(--theme-body-background);
+  border-bottom-color: transparent;
+}
+
+.source-outline-tabs .tab.active path,
+.source-outline-tabs .tab:hover path {
   fill: var(--theme-body-color);
 }
+
+.sources-list .managed-tree .tree .node img.blackBox {
+  mask: url("chrome://devtools/skin/images/debugger/blackBox.svg") no-repeat;
+  mask-size: 100%;
+  background-color: var(--theme-highlight-blue);
+  width: 13px;
+  height: 13px;
+  display: inline-block;
+  margin-inline-end: 5px;
+  margin-bottom: -2px;
+}
+
+.sources-list .managed-tree .tree .node.focused img.blackBox {
+  background-color: white;
+}
+
+.theme-dark .sources-list .managed-tree .tree .node:not(.focused) img.blackBox {
+  background-color: var(--theme-content-color3);
+}
+
+.theme-dark .sources-list .managed-tree .tree .node img.blackBox {
+  background-color: var(--theme-body-color);
+}
+
+.theme-dark .sources-list .managed-tree .tree .node.focused img.blackBox {
+  background-color: white;
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .outline {
   overflow-y: auto;
 }
@@ -1433,14 +1542,28 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 
 .outline-list {
   list-style-type: none;
-  padding-left: 0px;
   width: 100%;
+  padding: 10px;
+  margin: 0;
+}
+
+.outline-list__class-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  padding-left: 10px;
+}
+
+.outline-list h2 {
+  font-weight: normal;
+  font-size: 1em;
+  margin: 10px 0;
+  color: var(--theme-body-color);
 }
 
 .outline-list__element {
   color: blue;
   padding-bottom: 0.2rem;
-  padding-left: 1rem;
   padding-right: 0.5rem;
   padding-top: 0.2rem;
   cursor: default;
@@ -1449,6 +1572,10 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 .outline-list__element:hover {
   background: var(--theme-toolbar-background-hover);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .function-signature {
   align-self: center;
 }
@@ -1468,50 +1595,20 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 .function-signature .comma {
   color: var(--object-color);
 }
-.conditional-breakpoint-panel {
-  cursor: initial;
-  margin: 1em 0;
-  position: relative;
-  display: flex;
-  align-items: center;
-  background: var(--theme-toolbar-background);
-  border-top: 1px solid var(--theme-splitter-color);
-  border-bottom: 1px solid var(--theme-splitter-color);
-}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-.conditional-breakpoint-panel .prompt {
-  font-size: 1.8em;
-  color: var(--theme-conditional-breakpoint-color);
-  padding-left: 3px;
-  padding-right: 3px;
-  padding-bottom: 3px;
-  text-align: right;
-  width: 30px;
-}
-
-.conditional-breakpoint-panel input {
-  margin: 5px 10px;
-  width: calc(100% - 4em);
-  border: none;
-  background: var(--theme-toolbar-background);
-  font-size: 14px;
-  color: var(--theme-conditional-breakpoint-color);
-  line-height: 30px;
-}
-
-.conditional-breakpoint-panel input:focus {
-  outline-width: 0;
-}
 .toggle-button-start,
 .toggle-button-end {
-  transform: translate(0, 2px);
+  transform: translate(0, 0px);
   transition: transform 0.25s ease-in-out;
-  padding: 5px 2px;
+  padding: 5px;
 }
 
 .toggle-button-start.vertical,
 .toggle-button-end.vertical {
-  padding: 4px 2px;
+  padding: 2.5px 2.5px;
 }
 
 .toggle-button-start svg,
@@ -1526,12 +1623,12 @@ html[dir="rtl"] .managed-tree .tree .node > div {
 }
 
 .toggle-button-end {
-  margin-inline-end: 5px;
+  margin-inline-end: 0px;
   margin-inline-start: auto;
 }
 
 .toggle-button-start {
-  margin-inline-start: 5px;
+  margin-inline-start: 0px;
 }
 
 html:not([dir="rtl"]) .toggle-button-end svg,
@@ -1547,6 +1644,10 @@ html .toggle-button-end.vertical svg {
 .toggle-button-end.collapsed {
   transform: rotate(180deg);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .source-footer {
   background: var(--theme-body-background);
   border-top: 1px solid var(--theme-splitter-color);
@@ -1554,7 +1655,7 @@ html .toggle-button-end.vertical svg {
   display: flex;
   bottom: 0;
   left: 0;
-  right: 1px;
+  right: 0;
   opacity: 1;
   z-index: 1;
   -moz-user-select: none;
@@ -1580,10 +1681,10 @@ html .toggle-button-end.vertical svg {
   transition: opacity 200ms;
   border: none;
   background: transparent;
-  padding: 6px 0.7em;
+  padding: 6px;
 }
 
-.source-footer > .commands > .action i {
+.source-footer > .commands > .action img {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -1602,9 +1703,18 @@ html .toggle-button-end.vertical svg {
   fill: var(--theme-selection-color);
 }
 
-.source-footer > .commands > .action svg {
+.source-footer > .commands > .action > img.prettyPrint {
+  mask: url("chrome://devtools/skin/images/debugger/prettyPrint.svg") no-repeat;
   height: 16px;
   width: 16px;
+  background: var(--theme-body-color);
+}
+
+.source-footer > .commands > .action > img.blackBox {
+  mask: url("chrome://devtools/skin/images/debugger/blackBox.svg") no-repeat;
+  height: 16px;
+  width: 16px;
+  background: var(--theme-body-color);
 }
 
 .source-footer .commands .coverage {
@@ -1617,13 +1727,17 @@ html .toggle-button-end.vertical svg {
   border-radius: 2px;
 }
 
-.source-footer .black-box.blackboxed svg {
-  fill: var(--theme-highlight-blue);
+.source-footer > .commands > .blackboxed > img.blackBox {
+  background: var(--theme-highlight-blue);
 }
 
 .source-footer .blackbox-summary {
   color: var(--theme-body-color);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .search-bar {
   display: flex;
   flex-direction: column;
@@ -1646,7 +1760,7 @@ html .toggle-button-end.vertical svg {
 .search-bottom-bar {
   display: flex;
   flex-shrink: 0;
-  justify-content: space-between;
+  justify-content: flex-end;
   width: calc(100% - 1px);
   height: var(--editor-second-searchbar-height);
   background-color: var(--theme-toolbar-background);
@@ -2004,6 +2118,10 @@ html[dir="rtl"] .arrow svg,
   opacity: 0.6;
 }
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .bracket-arrow {
   position: absolute;
 }
@@ -2046,6 +2164,10 @@ html[dir="rtl"] .arrow svg,
   border-top-color: var(--theme-body-background);
   top: -1px;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .popover {
   position: fixed;
   z-index: 100;
@@ -2055,6 +2177,10 @@ html[dir="rtl"] .arrow svg,
   height: 5px;
   padding-top: 5px;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .popover .preview-popup {
   background: var(--theme-body-background);
   width: 350px;
@@ -2072,12 +2198,19 @@ html[dir="rtl"] .arrow svg,
   box-shadow: 1px 2px 3px var(--popup-shadow-color);
 }
 
-.popover .preview-popup .header {
+.popover .preview-popup .header-container {
   width: 100%;
   line-height: 20px;
-  border-bottom: 1px solid #cccccc;
   display: flex;
   flex-direction: column;
+  margin-bottom: 5px;
+}
+
+.popover .preview-popup .header-container h3 {
+  margin: 0;
+  margin-bottom: 5px;
+  font-weight: normal;
+  font-size: 14px;
 }
 
 .popover .preview-popup .header .link {
@@ -2172,6 +2305,10 @@ html[dir="rtl"] .arrow svg,
   font-size: 14px;
   color: var(--theme-content-color3);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .call-site {
   background: #f0f9ff;
   position: relative;
@@ -2217,14 +2354,63 @@ html[dir="rtl"] .arrow svg,
 .theme-dark .call-site-bp::before {
   border-bottom-color: #dd4d4d;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .empty-line .CodeMirror-linenumber {
   opacity: 0.5;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+.conditional-breakpoint-panel {
+  cursor: initial;
+  margin: 1em 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--theme-toolbar-background);
+  border-top: 1px solid var(--theme-splitter-color);
+  border-bottom: 1px solid var(--theme-splitter-color);
+}
+
+.conditional-breakpoint-panel .prompt {
+  font-size: 1.8em;
+  color: var(--theme-conditional-breakpoint-color);
+  padding-left: 3px;
+  padding-right: 3px;
+  padding-bottom: 3px;
+  text-align: right;
+  width: 30px;
+}
+
+.conditional-breakpoint-panel input {
+  margin: 5px 10px;
+  width: calc(100% - 4em);
+  border: none;
+  background: var(--theme-toolbar-background);
+  font-size: 14px;
+  color: var(--theme-conditional-breakpoint-color);
+  line-height: 30px;
+}
+
+.conditional-breakpoint-panel input:focus {
+  outline-width: 0;
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .editor-wrapper {
   --debug-line-border: rgb(145, 188, 219);
   --debug-expression-background: rgba(202, 227, 255, 0.5);
   --editor-searchbar-height: 27px;
   --editor-second-searchbar-height: 27px;
+  --debug-line-error-border: rgb(255, 0, 0);
+  --debug-expression-error-background: rgba(231, 116, 113, 0.3);
+  --editor-header-height: 30px;
 }
 
 .theme-dark .editor-wrapper {
@@ -2244,25 +2430,15 @@ html[dir="rtl"] .arrow svg,
   --theme-conditional-breakpoint-color: var(--theme-body-color);
 }
 
-.paused .in-scope .CodeMirror-line,
-.paused .in-scope .CodeMirror-linenumber {
-  opacity: 1;
-}
-
-.paused .CodeMirror-line,
-.paused .CodeMirror-linenumber {
-  opacity: 0.7;
-}
-
 /**
  * There's a known codemirror flex issue with chrome that this addresses.
  * BUG https://github.com/devtools-html/debugger.html/issues/63
  */
 .editor-wrapper {
   position: absolute;
-  height: calc(100% - 31px);
-  width: calc(100% - 1.5px);
-  top: 30px;
+  height: calc(100% - var(--editor-header-height));
+  width: calc(100% - 1px);
+  top: var(--editor-header-height);
   left: 0px;
   --editor-footer-height: 24px;
 }
@@ -2383,6 +2559,10 @@ html[dir="rtl"] .editor-mount {
   background-color: var(--debug-expression-background);
 }
 
+debug-expression-error {
+  background-color: var(--debug-expression-error-background);
+}
+
 .new-debug-line .CodeMirror-line {
   background-color: transparent !important;
   outline: var(--debug-line-border) solid 1px;
@@ -2391,6 +2571,17 @@ html[dir="rtl"] .editor-mount {
 /* Don't display the highlight color since the debug line
    is already highlighted */
 .new-debug-line .CodeMirror-activeline-background {
+  display: none;
+}
+
+.new-debug-line-error .CodeMirror-line {
+  background-color: var(--debug-expression-error-background) !important;
+  outline: var(--debug-line-error-border) solid 1px;
+}
+
+/* Don't display the highlight color since the debug line
+  is already highlighted */
+.new-debug-line-error .CodeMirror-activeline-background {
   display: none;
 }
 
@@ -2427,6 +2618,10 @@ html[dir="rtl"] .editor-mount {
 .visible {
   visibility: visible;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .cm-highlight {
   position: relative;
 }
@@ -2452,12 +2647,15 @@ html[dir="rtl"] .editor-mount {
   border-radius: 2px;
   margin: 0 -1px -1px -1px;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .breakpoints-toggle {
   margin: 2px 3px;
 }
 
 .breakpoints-list * {
-  -moz-user-select: none;
   user-select: none;
 }
 
@@ -2508,16 +2706,25 @@ html .breakpoints-list .breakpoint.paused {
   border-color: var(--breakpoint-active-color-hover);
 }
 
-.breakpoints-list .breakpoint-checkbox {
-  margin-inline-start: 0;
-  vertical-align: -2px;
-}
-
 .breakpoints-list .breakpoint-label {
+  max-width: calc(100% - var(--breakpoint-expression-right-clear-space));
   display: inline-block;
   padding-inline-start: 2px;
-  padding-bottom: 4px;
   cursor: default;
+}
+
+.breakpoint-label .breakpoint-checkbox {
+  margin-inline-start: 0;
+  vertical-align: text-bottom;
+}
+
+.breakpoint-label .location {
+  width: 100%;
+  display: inline-block;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 0;
+  vertical-align: bottom;
 }
 
 .breakpoints-list .pause-indicator {
@@ -2556,6 +2763,10 @@ html .breakpoints-list .breakpoint.paused {
 .breakpoint:hover .close {
   visibility: visible;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .input-expression {
   width: 100%;
   margin: 0px;
@@ -2621,8 +2832,13 @@ html .breakpoints-list .breakpoint.paused {
   position: relative;
 }
 
-.expression-container .close-btn {
-  display: none;
+.expression-content .tree {
+  overflow-x: hidden;
+  max-width: calc(100% - var(--breakpoint-expression-right-clear-space));
+}
+
+.expression-content .tree-node {
+  overflow-x: hidden;
 }
 
 .expression-container:hover .close-btn {
@@ -2632,6 +2848,10 @@ html .breakpoints-list .breakpoint.paused {
 .expression-input {
   max-width: 50%;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .frames ul .frames-group .group,
 .frames ul .frames-group .group .location {
   font-weight: 500;
@@ -2655,6 +2875,10 @@ html .breakpoints-list .breakpoint.paused {
   border-top: 1px solid var(--theme-splitter-color);
   border-bottom: 1px solid var(--theme-splitter-color);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .why-paused {
   background-color: var(--theme-body-background);
   color: var(--theme-body-color);
@@ -2679,9 +2903,14 @@ html .breakpoints-list .breakpoint.paused {
 
 .why-paused .message.warning {
   font-size: 10px;
-  color: var(--theme-graphs-full-red);
+  color: var(--theme-graphs-red);
   font-weight: bold;
+  font-style: normal;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .frames ul {
   list-style: none;
   margin: 0;
@@ -2774,6 +3003,10 @@ html .breakpoints-list .breakpoint.paused {
 :root.theme-dark .annotation-logo svg path {
   fill: var(--theme-highlight-blue);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .event-listeners {
   list-style: none;
   margin: 0;
@@ -2819,6 +3052,25 @@ html .breakpoints-list .breakpoint.paused {
 .event-listeners .listener:hover .close {
   display: block;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+.workers-list * {
+  user-select: none;
+}
+
+.workers-list .worker {
+  font-size: 12px;
+  color: var(--theme-content-color1);
+  padding: 0.5em 1em 0.5em 0.5em;
+  line-height: 1em;
+  position: relative;
+  transition: all 0.25s ease;
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 :root {
   --accordion-header-background: var(--theme-toolbar-background);
@@ -2896,20 +3148,17 @@ html .breakpoints-list .breakpoint.paused {
 .accordion .header-buttons button::-moz-focus-inner {
   border: none;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .command-bar {
   flex: 0 0 29px;
   border-bottom: 1px solid var(--theme-splitter-color);
   display: flex;
-  height: 29px;
   overflow: hidden;
-  position: sticky;
-  top: 0;
   z-index: 1;
   background-color: var(--theme-toolbar-background);
-}
-
-.command-bar.vertical {
-  width: 100vw;
 }
 
 html[dir="rtl"] .command-bar {
@@ -2942,7 +3191,7 @@ html[dir="rtl"] .command-bar {
 }
 
 .command-bar > button {
-  margin-inline-end: 0.7em;
+  margin-inline-end: 0.3em;
 }
 
 .command-bar > button:focus {
@@ -2954,32 +3203,87 @@ html .command-bar > button:disabled {
   cursor: default;
 }
 
-.command-bar > button > i {
-  height: 100%;
-  width: 100%;
-  display: block;
+img.pause,
+img.stepOver,
+img.stepIn,
+img.stepOut,
+img.resume {
+  background-color: var(--theme-body-color);
 }
 
-.command-bar > button > i > svg {
+.command-bar > button > img {
   width: 16px;
   height: 16px;
+  display: inline-block;
 }
 
-.command-bar button.pause-exceptions {
-  margin-inline-start: 0.5em;
+.command-bar > button > img.pause {
+  mask: url("chrome://devtools/skin/images/debugger/pause.svg") no-repeat;
+}
+
+.command-bar > button > img.stepOver {
+  mask: url("chrome://devtools/skin/images/debugger/stepOver.svg") no-repeat;
+}
+
+.command-bar > button > img.stepIn {
+  mask: url("chrome://devtools/skin/images/debugger/stepIn.svg") no-repeat;
+}
+
+.command-bar > button > img.stepOut {
+  mask: url("chrome://devtools/skin/images/debugger/stepOut.svg") no-repeat;
+}
+
+.command-bar > button > img.resume {
+  mask: url("chrome://devtools/skin/images/debugger/resume.svg") no-repeat;
+}
+
+.command-bar > button.pause-exceptions.uncaught.enabled > img.pause-exceptions {
+  background-color: var(--theme-highlight-purple);
+}
+
+.command-bar > button.pause-exceptions.all.enabled > img.pause-exceptions {
+  background-color: var(--theme-highlight-blue);
+}
+
+.command-bar > button.pause-exceptions.enabled > img.pause-exceptions {
+  background-color: var(--theme-body-color);
+}
+
+.command-bar > button > img.pause-exceptions {
+  mask: url("chrome://devtools/skin/images/debugger/pause-exceptions.svg") no-repeat;
+  margin-inline-start: 0.2em;
 }
 
 .command-bar .subSettings {
   float: right;
 }
 
-.command-bar button.pause-exceptions.uncaught {
-  color: var(--theme-highlight-purple);
+.bottom {
+  border-bottom: none;
+  background-color: var(--theme-body-background);
+  border-top: 1px solid var(--theme-splitter-color);
+  flex: 0 0 27px;
 }
 
-.command-bar button.pause-exceptions.all {
-  color: var(--theme-highlight-blue);
+.command-bar > button {
+  padding: 6px 5px;
 }
+
+.command-bar.bottom {
+  justify-content: flex-end;
+}
+
+.command-bar.bottom > button {
+  color: var(--theme-comment);
+  width: 26px;
+}
+.command-bar.bottom > button:hover {
+  color: var(--theme-body-color);
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .object-node.default-property {
   opacity: 0.6;
 }
@@ -3010,11 +3314,17 @@ html .command-bar > button:disabled {
 .scopes-list .function-signature {
   display: inline-block;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .secondary-panes {
+  overflow: auto;
   display: flex;
   flex-direction: column;
   flex: 1;
   white-space: nowrap;
+  --breakpoint-expression-right-clear-space: 36px;
 }
 
 /*
@@ -3024,8 +3334,12 @@ html .command-bar > button:disabled {
   the wrapper.
   Ref: https://github.com/devtools-html/debugger.html/issues/3426
 */
-.secondary-panes--sticky-commandbar {
-  overflow-y: scroll;
+
+.secondary-panes-wrapper {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .secondary-panes .accordion {
@@ -3048,6 +3362,10 @@ html .command-bar > button:disabled {
 .theme-dark .secondary-panes .accordion .arrow svg {
   fill: var(--theme-content-color3);
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .welcomebox {
   width: calc(100% - 1px);
 
@@ -3062,7 +3380,7 @@ html .command-bar > button:disabled {
   color: var(--theme-comment-alt);
   background-color: var(--theme-toolbar-background);
   font-weight: lighter;
-  z-index: 100;
+  z-index: 10;
   user-select: none;
 }
 
@@ -3082,9 +3400,23 @@ html .command-bar > button:disabled {
   offset-inline-start: auto;
 }
 
+.welcomebox .small-size-layout {
+  display: none;
+}
+
+.welcomebox .normal-layout {
+  display: inline-block;
+}
+
 .shortcutKeys {
   text-align: right;
   float: left;
+  font-family: Courier;
+}
+
+.shortcutKey {
+  display: inline-block;
+  margin-right: 10px;
   font-family: Courier;
 }
 
@@ -3097,6 +3429,28 @@ html .command-bar > button:disabled {
 html .welcomebox .toggle-button-end.collapsed {
   bottom: 1px;
 }
+
+@media (max-width: 430px) {
+  .welcomebox .small-size-layout {
+    display: inline-block;
+  }
+
+  .welcomebox .normal-layout {
+    display: none;
+  }
+
+  .shortcutFunction {
+    margin-left: 0;
+  }
+
+  .shortcutKey {
+    display: block;
+  }
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .source-header {
   border-bottom: 1px solid var(--theme-splitter-color);
   width: 100%;
@@ -3149,6 +3503,10 @@ html .welcomebox .toggle-button-end.collapsed {
   cursor: default;
 }
 
+.source-tab:first-child {
+  margin-inline-start: 0;
+}
+
 .source-tab:hover {
   background-color: var(--theme-toolbar-background-alt);
   border-color: var(--theme-splitter-color);
@@ -3166,13 +3524,13 @@ html .welcomebox .toggle-button-end.collapsed {
   fill: var(--theme-body-color);
 }
 
-.source-tab .prettyPrint {
-  line-height: 0;
-}
-
-.source-tab .prettyPrint svg {
+.source-tab img.prettyPrint {
+  mask: url("chrome://devtools/skin/images/debugger/prettyPrint.svg") no-repeat;
+  mask-size: 100%;
+  padding-top: 12px;
   height: 12px;
   width: 12px;
+  background: var(--theme-highlight-blue);
 }
 
 .source-tab .prettyPrint path {
@@ -3181,13 +3539,16 @@ html .welcomebox .toggle-button-end.collapsed {
 
 .source-tab .blackBox,
 .source-tab .prettyPrint {
-  line-height: 0;
   align-self: center;
 }
 
-.source-tab .blackBox svg {
+.source-tab img.blackBox {
+  mask: url("chrome://devtools/skin/images/debugger/blackBox.svg") no-repeat;
+  mask-size: 100%;
+  padding-top: 12px;
   height: 12px;
   width: 12px;
+  background: var(--theme-highlight-blue);
 }
 
 .source-tab .blackBox path {
@@ -3218,6 +3579,10 @@ html .welcomebox .toggle-button-end.collapsed {
 .source-tab:hover .close-btn {
   visibility: visible;
 }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 .dropdown {
   --width: 150px;
   background: var(--theme-body-background);
@@ -3281,73 +3646,96 @@ html[dir="rtl"] .dropdown {
   left: 0;
   top: 0;
 }
-.modal-wrapper {
-  position: fixed;
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+.result-list {
+  list-style: none;
+  margin: 0px;
+  padding: 0px;
+  overflow: auto;
+  width: calc(100% - 1px); /* 1px fixes the hidden right border */
+}
+
+.result-list * {
+  -moz-user-select: none;
+  user-select: none;
+}
+
+.result-list li {
+  color: var(--theme-body-color);
+  padding: 4px 13px;
   display: flex;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  transition: z-index 200ms;
-  z-index: 9;
+  justify-content: space-between;
+  border: 1px solid transparent;
 }
 
-.modal {
-  top: 0;
-  z-index: 10;
-  width: 500px;
-  height: 230px;
-  background-color: var(--theme-codemirror-gutter-background);
-  transform: translateY(-250px);
-  transition: transform 150ms cubic-bezier(0.07, 0.95, 0, 1);
-  box-shadow: 2px 4px 6px var(--popup-shadow-color);
+.result-list.big li {
+  padding: 10px;
+  flex-direction: column;
+  border-bottom: 1px solid var(--theme-splitter-color);
 }
 
-.modal.entering,
-.modal.exited {
-  transform: translateY(-250px);
+.result-list li:hover {
+  background: var(--theme-tab-toolbar-background);
 }
 
-.modal.entered,
-.modal.exiting {
-  transform: translateY(30px);
+.result-list li.selected {
+  border-color: var(--theme-selection-background);
 }
 
-@media (max-width: 520px) {
-  .modal {
-    width: 80%;
-    left: 10%;
-  }
-}
-.symbol-modal-wrapper {
-  position: fixed;
-  width: 100%;
-  height: 100%;
-  z-index: 9;
+.result-list.small li.selected {
+  background-color: var(--theme-selection-background);
+  color: white;
 }
 
-.symbol-modal {
-  position: absolute;
-  left: calc(50% - 250px);
-  z-index: 10;
-  width: 500px;
-  height: 230px;
-  background-color: var(--theme-codemirror-gutter-background);
-  top: 30px;
+.theme-dark .result-list.small li.selected {
+  background-color: var(--theme-body-background);
 }
 
-.symbol-modal .input-wrapper,
-.modal .input-wrapper {
-  display: flex;
-  justify-content: center;
+.theme-dark .result-list li:hover {
+  background: var(--grey-70);
 }
 
-.modal .close-btn {
-  padding: 6px;
+.theme-dark .result-list li.selected {
+  background: var(--grey-70);
 }
 
-.modal .result-list {
-  height: calc(100% - 28px);
-  overflow-y: auto;
+.result-list li .title {
+  line-height: 1.5em;
+  word-break: break-all;
+}
+
+.result-list li.selected .title {
+  color: white;
+}
+
+.result-list.big li.selected .title {
+  color: var(--theme-body-color);
+}
+
+.result-list.big li .subtitle {
+  word-break: break-all;
+  color: var(--theme-body-color-inactive);
+}
+
+.result-list.big li .subtitle {
+  line-height: 1.5em;
+}
+
+.theme-dark .result-list.big li .subtitle {
+  color: var(--theme-comment-alt);
+}
+
+.search-bar .result-list li.selected .subtitle {
+  color: white;
+}
+
+.search-bar .result-list {
+  border-bottom: 1px solid var(--theme-splitter-color);
+}
+
+.theme-dark .result-list {
+  background-color: var(--theme-body-background);
 }

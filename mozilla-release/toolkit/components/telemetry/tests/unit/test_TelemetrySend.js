@@ -17,6 +17,8 @@ Cu.import("resource://gre/modules/Services.jsm", this);
 Cu.import("resource://gre/modules/osfile.jsm", this);
 Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
+Cu.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
+
 XPCOMUtils.defineLazyModuleGetter(this, "TelemetryHealthPing",
   "resource://gre/modules/TelemetryHealthPing.jsm");
 
@@ -82,8 +84,8 @@ add_task(async function test_setup() {
   do_get_profile(true);
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.HealthPingEnabled, true);
+  TelemetryStopwatch.setTestModeEnabled(true);
 });
 
 // Test the ping sending logic.
@@ -411,6 +413,25 @@ add_task(async function test_evictedOnServerErrors() {
   Assert.equal(histogramValueCount(histSendTimeFail.snapshot()), 0);
 });
 
+add_task(async function test_tooLateToSend() {
+  Assert.ok(true, "TEST BEGIN");
+  const TEST_TYPE = "test-too-late-to-send";
+
+  await TelemetrySend.reset();
+  PingServer.start();
+  PingServer.registerPingHandler(() => Assert.ok(false, "Should not have received any pings now"));
+
+  Assert.equal(TelemetrySend.pendingPingCount, 0, "Should have no pending pings yet");
+
+  TelemetrySend.testTooLateToSend(true);
+
+  TelemetryController.submitExternalPing(TEST_TYPE, {});
+  Assert.equal(TelemetrySend.pendingPingCount, 1, "Should not send the ping, should pend delivery");
+
+  Assert.equal(Telemetry.getHistogramById("TELEMETRY_SEND_FAILURE_TYPE").snapshot().counts[7], 1,
+    "Should have registered the failed attempt to send");
+});
+
 // Test that the current, non-persisted pending pings are properly saved on shutdown.
 add_task(async function test_persistCurrentPingsOnShutdown() {
   const TEST_TYPE = "test-persistCurrentPingsOnShutdown";
@@ -534,10 +555,14 @@ add_task(async function test_pref_observer() {
 
   await TelemetrySend.setup(true);
 
+  const IS_UNIFIED_TELEMETRY = Services.prefs.getBoolPref(TelemetryUtils.Preferences.Unified, false);
+
   let origTelemetryEnabled = Services.prefs.getBoolPref(TelemetryUtils.Preferences.TelemetryEnabled);
   let origFhrUploadEnabled = Services.prefs.getBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled);
 
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
+  if (!IS_UNIFIED_TELEMETRY) {
+    Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
+  }
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, true);
 
   function waitAnnotateCrashReport(expectedValue, trigger) {
@@ -580,17 +605,13 @@ add_task(async function test_pref_observer() {
     });
   }
 
-  const IS_UNIFIED_TELEMETRY = Services.prefs.getBoolPref(TelemetryUtils.Preferences.Unified, false);
-
-  await waitAnnotateCrashReport(IS_UNIFIED_TELEMETRY, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, false));
-
-  await waitAnnotateCrashReport(true, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true));
-
   await waitAnnotateCrashReport(!IS_UNIFIED_TELEMETRY, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, false));
 
   await waitAnnotateCrashReport(true, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, true));
 
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, origTelemetryEnabled);
+  if (!IS_UNIFIED_TELEMETRY) {
+    Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, origTelemetryEnabled);
+  }
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, origFhrUploadEnabled);
 });
 

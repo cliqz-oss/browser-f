@@ -69,6 +69,9 @@ const TileSchema = Joi.object().keys({
 
 const ImpressionStatsPing = Joi.object().keys(Object.assign({}, baseKeys, {
   source: Joi.string().required(),
+  impression_id: Joi.string().required(),
+  client_id: Joi.valid("n/a").required(),
+  session_id: Joi.valid("n/a").required(),
   action: Joi.valid("activity_stream_impression_stats").required(),
   tiles: Joi.array().items(TileSchema).required(),
   click: Joi.number().integer(),
@@ -89,6 +92,9 @@ const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
   session_duration: Joi.number().integer(),
   action: Joi.valid("activity_stream_session").required(),
   perf: Joi.object().keys({
+    // How long it took in ms for data to be ready for display.
+    highlights_data_late_by_ms: Joi.number().positive(),
+
     // Timestamp of the action perceived by the user to trigger the load
     // of this page.
     //
@@ -105,12 +111,24 @@ const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
       "menu_plus_or_keyboard", "unexpected"])
       .notes(["server counter", "server counter alert"]).required(),
 
+    // How long it took in ms for data to be ready for display.
+    topsites_data_late_by_ms: Joi.number().positive(),
+
     // When did the topsites element finish painting?  Note that, at least for
     // the first tab to be loaded, and maybe some others, this will be before
     // topsites has yet to receive screenshots updates from the add-on code,
     // and is therefore just showing placeholder screenshots.
     topsites_first_painted_ts: Joi.number().positive()
       .notes(["server counter", "server counter alert"]),
+
+    // Information about the quality of TopSites images and icons.
+    topsites_icon_stats: Joi.object().keys({
+      rich_icon: Joi.number(),
+      screenshot: Joi.number(),
+      screenshot_with_icon: Joi.number(),
+      tippytop: Joi.number(),
+      no_image: Joi.number()
+    }),
 
     // When the page itself receives an event that document.visibilityState
     // == visible.
@@ -119,7 +137,13 @@ const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
     // visibility_event doesn't fire.  (It's not clear whether this
     // can happen in practice, but if it does, we'd like to know about it).
     visibility_event_rcvd_ts: Joi.number().positive()
-      .notes(["server counter", "server counter alert"])
+      .notes(["server counter", "server counter alert"]),
+
+    // The boolean to signify whether the page is preloaded or not.
+    is_preloaded: Joi.bool().required(),
+
+    // The boolean to signify whether the page is prerendered or not.
+    is_prerendered: Joi.bool().required()
   }).required()
 }));
 

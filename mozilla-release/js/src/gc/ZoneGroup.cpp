@@ -65,7 +65,7 @@ ZoneGroup::enter(JSContext* cx)
     if (ownerContext().context() == cx) {
         MOZ_ASSERT(enterCount);
     } else {
-        if (useExclusiveLocking) {
+        if (useExclusiveLocking()) {
             MOZ_ASSERT(!usedByHelperThread());
             while (ownerContext().context() != nullptr) {
                 cx->yieldToEmbedding();
@@ -92,6 +92,12 @@ ZoneGroup::leave()
     MOZ_ASSERT(enterCount);
     if (--enterCount == 0)
         ownerContext_ = CooperatingContext(nullptr);
+}
+
+bool
+ZoneGroup::canEnterWithoutYielding(JSContext* cx)
+{
+    return ownerContext().context() == cx || ownerContext().context() == nullptr;
 }
 
 bool

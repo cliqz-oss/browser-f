@@ -3,9 +3,10 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* import-globals-from ../../../../framework/test/shared-head.js */
-/* exported WCUL10n, openNewTabAndConsole, waitForMessages, waitFor, findMessage,
-   openContextMenu, hideContextMenu, loadDocument,
-   waitForNodeMutation, testOpenInDebugger, checkClickOnNode */
+/* exported WCUL10n, openNewTabAndConsole, waitForMessages, waitForMessage, waitFor,
+   findMessage, openContextMenu, hideContextMenu, loadDocument, hasFocus,
+   waitForNodeMutation, testOpenInDebugger, checkClickOnNode, jstermSetValueAndComplete,
+   openDebugger, openConsole */
 
 "use strict";
 
@@ -15,11 +16,13 @@ Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
   this);
 
+var {HUDService} = require("devtools/client/webconsole/hudservice");
 var WCUL10n = require("devtools/client/webconsole/webconsole-l10n");
 
 Services.prefs.setBoolPref("devtools.webconsole.new-frontend-enabled", true);
 registerCleanupFunction(function* () {
   Services.prefs.clearUserPref("devtools.webconsole.new-frontend-enabled");
+  Services.prefs.clearUserPref("devtools.webconsole.ui.filterbar");
 
   // Reset all filter prefs between tests. First flushPrefEnv in case one of the
   // filter prefs has been pushed for the test
@@ -41,16 +44,24 @@ registerCleanupFunction(function* () {
  *
  * @param string url
  *        The URL for the tab to be opened.
+ * @param Boolean clearJstermHistory
+ *        true (default) if the jsterm history should be cleared.
  * @return Promise
  *         Resolves when the tab has been added, loaded and the toolbox has been opened.
  *         Resolves to the toolbox.
  */
-var openNewTabAndConsole = Task.async(function* (url) {
-  let toolbox = yield openNewTabAndToolbox(url, "webconsole");
+async function openNewTabAndConsole(url, clearJstermHistory = true) {
+  let toolbox = await openNewTabAndToolbox(url, "webconsole");
   let hud = toolbox.getCurrentPanel().hud;
   hud.jsterm._lazyVariablesView = false;
+
+  if (clearJstermHistory) {
+    // Clearing history that might have been set in previous tests.
+    await hud.jsterm.clearHistory();
+  }
+
   return hud;
-});
+}
 
 /**
  * Wait for messages in the web console output, resolving once they are received.
@@ -59,12 +70,12 @@ var openNewTabAndConsole = Task.async(function* (url) {
  *        - hud: the webconsole
  *        - messages: Array[Object]. An array of messages to match.
             Current supported options:
- *            - text: Exact text match in .message-body
+ *            - text: Partial text match in .message-body
  */
 function waitForMessages({ hud, messages }) {
   return new Promise(resolve => {
-    let numMatched = 0;
-    let receivedLog = hud.ui.on("new-messages",
+    const matchedMessages = [];
+    hud.ui.on("new-messages",
       function messagesReceived(e, newMessages) {
         for (let message of messages) {
           if (message.matched) {
@@ -74,22 +85,36 @@ function waitForMessages({ hud, messages }) {
           for (let newMessage of newMessages) {
             let messageBody = newMessage.node.querySelector(".message-body");
             if (messageBody.textContent.includes(message.text)) {
-              numMatched++;
+              matchedMessages.push(newMessage);
               message.matched = true;
-              info("Matched a message with text: " + message.text +
-                ", still waiting for " + (messages.length - numMatched) + " messages");
+              const messagesLeft = messages.length - matchedMessages.length;
+              info(`Matched a message with text: "${message.text}", ` + (messagesLeft > 0
+                ? `still waiting for ${messagesLeft} messages.`
+                : `all messages received.`)
+              );
               break;
             }
           }
 
-          if (numMatched === messages.length) {
+          if (matchedMessages.length === messages.length) {
             hud.ui.off("new-messages", messagesReceived);
-            resolve(receivedLog);
+            resolve(matchedMessages);
             return;
           }
         }
       });
   });
+}
+
+/**
+ * Wait for a single message in the web console output, resolving once it is received.
+ *
+ * @param {Object} hud : the webconsole
+ * @param {String} text : text included in .message-body
+ */
+async function waitForMessage(hud, text) {
+  const messages = await waitForMessages({hud, messages: [{text}]});
+  return messages[0];
 }
 
 /**
@@ -219,18 +244,18 @@ function waitForNodeMutation(node, observeConfig = {}) {
  *        The text to search for.  This should be contained in the
  *        message.  The searching is done with @see findMessage.
  */
-function* testOpenInDebugger(hud, toolbox, text) {
+async function testOpenInDebugger(hud, toolbox, text) {
   info(`Finding message for open-in-debugger test; text is "${text}"`);
-  let messageNode = yield waitFor(() => findMessage(hud, text));
+  let messageNode = await waitFor(() => findMessage(hud, text));
   let frameLinkNode = messageNode.querySelector(".message-location .frame-link");
   ok(frameLinkNode, "The message does have a location link");
-  yield checkClickOnNode(hud, toolbox, frameLinkNode);
+  await checkClickOnNode(hud, toolbox, frameLinkNode);
 }
 
 /**
  * Helper function for testOpenInDebugger.
  */
-function* checkClickOnNode(hud, toolbox, frameLinkNode) {
+async function checkClickOnNode(hud, toolbox, frameLinkNode) {
   info("checking click on node location");
 
   let url = frameLinkNode.getAttribute("data-url");
@@ -244,7 +269,7 @@ function* checkClickOnNode(hud, toolbox, frameLinkNode) {
   EventUtils.sendMouseEvent({ type: "click" },
     frameLinkNode.querySelector(".frame-link-filename"));
 
-  yield onSourceInDebuggerOpened;
+  await onSourceInDebuggerOpened;
 
   let dbg = toolbox.getPanel("jsdebugger");
   is(
@@ -253,3 +278,89 @@ function* checkClickOnNode(hud, toolbox, frameLinkNode) {
     "expected source url"
   );
 }
+
+/**
+ * Returns true if the give node is currently focused.
+ */
+function hasFocus(node) {
+  return node.ownerDocument.activeElement == node
+    && node.ownerDocument.hasFocus();
+}
+
+/**
+ * Set the value of the JsTerm and its caret position, and fire a completion request.
+ *
+ * @param {JsTerm} jsterm
+ * @param {String} value : The value to set the jsterm to.
+ * @param {Integer} caretIndexOffset : A number that will be added to value.length
+ *                  when setting the caret. A negative number will place the caret
+ *                  in (end - offset) position. Default to 0 (caret set at the end)
+ * @returns {Promise} resolves when the jsterm is completed.
+ */
+function jstermSetValueAndComplete(jsterm, value, caretIndexOffset = 0) {
+  const {inputNode} = jsterm;
+  inputNode.value = value;
+  let index = value.length + caretIndexOffset;
+  inputNode.setSelectionRange(index, index);
+
+  const updated = jsterm.once("autocomplete-updated");
+  jsterm.complete(jsterm.COMPLETE_HINT_ONLY);
+  return updated;
+}
+
+/**
+ * Open the JavaScript debugger.
+ *
+ * @param object options
+ *        Options for opening the debugger:
+ *        - tab: the tab you want to open the debugger for.
+ * @return object
+ *         A promise that is resolved once the debugger opens, or rejected if
+ *         the open fails. The resolution callback is given one argument, an
+ *         object that holds the following properties:
+ *         - target: the Target object for the Tab.
+ *         - toolbox: the Toolbox instance.
+ *         - panel: the jsdebugger panel instance.
+ */
+async function openDebugger(options = {}) {
+  if (!options.tab) {
+    options.tab = gBrowser.selectedTab;
+  }
+
+  let target = TargetFactory.forTab(options.tab);
+  let toolbox = gDevTools.getToolbox(target);
+  let dbgPanelAlreadyOpen = toolbox && toolbox.getPanel("jsdebugger");
+  if (dbgPanelAlreadyOpen) {
+    await toolbox.selectTool("jsdebugger");
+
+    return {
+      target,
+      toolbox,
+      panel: toolbox.getCurrentPanel()
+    };
+  }
+
+  toolbox = await gDevTools.showToolbox(target, "jsdebugger");
+  let panel = toolbox.getCurrentPanel();
+
+  // Do not clear VariableView lazily so it doesn't disturb test ending.
+  panel._view.Variables.lazyEmpty = false;
+
+  await panel.panelWin.DebuggerController.waitForSourcesLoaded();
+  return {target, toolbox, panel};
+}
+
+/**
+ * Open the Web Console for the given tab, or the current one if none given.
+ *
+ * @param nsIDOMElement tab
+ *        Optional tab element for which you want open the Web Console.
+ *        Defaults to current selected tab.
+ * @return Promise
+ *         A promise that is resolved with the console hud once the web console is open.
+ */
+async function openConsole(tab) {
+  let target = TargetFactory.forTab(tab || gBrowser.selectedTab);
+  const toolbox = await gDevTools.showToolbox(target, "webconsole");
+  return toolbox.getCurrentPanel().hud;
+};

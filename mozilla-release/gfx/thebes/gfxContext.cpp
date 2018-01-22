@@ -23,6 +23,7 @@
 #include "mozilla/gfx/PathHelpers.h"
 #include "mozilla/gfx/DrawTargetTiled.h"
 #include <algorithm>
+#include "TextDrawTarget.h"
 
 #if XP_WIN
 #include "gfxWindowsPlatform.h"
@@ -111,7 +112,7 @@ gfxContext::CreatePreservingTransformOrNull(DrawTarget* aTarget)
 
   Matrix transform = aTarget->GetTransform();
   RefPtr<gfxContext> result = new gfxContext(aTarget);
-  result->SetMatrix(ThebesMatrix(transform));
+  result->SetMatrix(transform);
   return result.forget();
 }
 
@@ -122,6 +123,15 @@ gfxContext::~gfxContext()
       mStateStack[i].drawTarget->PopClip();
     }
   }
+}
+
+mozilla::layout::TextDrawTarget*
+gfxContext::GetTextDrawer()
+{
+  if (mDT->GetBackendType() == BackendType::WEBRENDER_TEXT) {
+    return static_cast<mozilla::layout::TextDrawTarget*>(&*mDT);
+  }
+  return nullptr;
 }
 
 void
@@ -308,16 +318,28 @@ gfxContext::Multiply(const gfxMatrix& matrix)
 }
 
 void
-gfxContext::SetMatrix(const gfxMatrix& matrix)
+gfxContext::SetMatrix(const gfx::Matrix& matrix)
 {
   CURRENTSTATE_CHANGED()
-  ChangeTransform(ToMatrix(matrix));
+  ChangeTransform(matrix);
+}
+
+void
+gfxContext::SetMatrixDouble(const gfxMatrix& matrix)
+{
+  SetMatrix(ToMatrix(matrix));
+}
+
+gfx::Matrix
+gfxContext::CurrentMatrix() const
+{
+  return mTransform;
 }
 
 gfxMatrix
-gfxContext::CurrentMatrix() const
+gfxContext::CurrentMatrixDouble() const
 {
-  return ThebesMatrix(mTransform);
+  return ThebesMatrix(CurrentMatrix());
 }
 
 gfxPoint
@@ -739,19 +761,6 @@ gfxContext::GetPattern()
     pat = new gfxPattern(state.color);
   }
   return pat.forget();
-}
-
-void
-gfxContext::SetFontSmoothingBackgroundColor(const Color& aColor)
-{
-  CURRENTSTATE_CHANGED()
-  CurrentState().fontSmoothingBackgroundColor = aColor;
-}
-
-Color
-gfxContext::GetFontSmoothingBackgroundColor()
-{
-  return CurrentState().fontSmoothingBackgroundColor;
 }
 
 // masking

@@ -18,6 +18,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Base64.h"
 #include "mozilla/BasicEvents.h"
+#include "mozilla/EditorDOMPoint.h"
 #include "mozilla/EditorUtils.h"
 #include "mozilla/OwningNonNull.h"
 #include "mozilla/Preferences.h"
@@ -39,14 +40,7 @@
 #include "nsIDOMDocument.h"
 #include "nsIDOMDocumentFragment.h"
 #include "nsIDOMElement.h"
-#include "nsIDOMHTMLAnchorElement.h"
-#include "nsIDOMHTMLFrameElement.h"
-#include "nsIDOMHTMLIFrameElement.h"
-#include "nsIDOMHTMLImageElement.h"
 #include "nsIDOMHTMLInputElement.h"
-#include "nsIDOMHTMLLinkElement.h"
-#include "nsIDOMHTMLObjectElement.h"
-#include "nsIDOMHTMLScriptElement.h"
 #include "nsIDOMNode.h"
 #include "nsIDocument.h"
 #include "nsIEditRules.h"
@@ -78,7 +72,7 @@
 #include "nscore.h"
 #include "nsContentUtils.h"
 
-class nsIAtom;
+class nsAtom;
 class nsILoadContext;
 class nsISupports;
 
@@ -432,8 +426,8 @@ HTMLEditor::DoInsertHTMLWithContext(const nsAString& aInputString,
     NS_ENSURE_STATE(parentNodeNode || !parentNode);
     if (IsBlockNode(parentNodeNode)) {
       parentBlock = parentNode;
-    } else {
-      parentBlock = GetBlockNodeParent(parentNode);
+    } else if (parentNodeNode) {
+      parentBlock = GetAsDOMNode(GetBlockNodeParent(parentNodeNode));
     }
 
     int32_t listCount = nodeList.Length();
@@ -448,7 +442,11 @@ HTMLEditor::DoInsertHTMLWithContext(const nsAString& aInputString,
       if (insertedContextParent) {
         // if we had to insert something higher up in the paste hierarchy, we want to
         // skip any further paste nodes that descend from that.  Else we will paste twice.
-        if (EditorUtils::IsDescendantOf(curNode, insertedContextParent)) {
+        nsCOMPtr<nsINode> insertedContextParentNode =
+          do_QueryInterface(insertedContextParent);
+        if (NS_WARN_IF(!insertedContextParentNode) ||
+            EditorUtils::IsDescendantOf(*nodeList[j],
+                                        *insertedContextParentNode)) {
           continue;
         }
       }
@@ -548,11 +546,15 @@ HTMLEditor::DoInsertHTMLWithContext(const nsAString& aInputString,
         while (NS_FAILED(rv) && curNode) {
           curNode->GetParentNode(getter_AddRefs(parent));
           if (parent && !TextEditUtils::IsBody(parent)) {
-            rv = InsertNodeAtPoint(parent, address_of(parentNode), &offsetOfNewNode, true);
+            rv = InsertNodeAtPoint(parent, address_of(parentNode), &offsetOfNewNode, true,
+                                   address_of(lastInsertNode));
             if (NS_SUCCEEDED(rv)) {
               bDidInsert = true;
               insertedContextParent = parent;
-              lastInsertNode = GetChildAt(parentNode, offsetOfNewNode);
+#ifdef DEBUG
+              nsCOMPtr<nsINode> node = do_QueryInterface(parentNode);
+              MOZ_ASSERT(lastInsertNode == GetAsDOMNode(node->GetChildAt(offsetOfNewNode)));
+#endif
             }
           }
           curNode = parent;
@@ -655,8 +657,10 @@ HTMLEditor::DoInsertHTMLWithContext(const nsAString& aInputString,
         SplitNodeDeep(*linkContent, *selContent, selOffset,
                       EmptyContainers::no, getter_AddRefs(leftLink));
         if (leftLink) {
-          selNode = GetNodeLocation(GetAsDOMNode(leftLink), &selOffset);
-          selection->Collapse(selNode, selOffset+1);
+          EditorRawDOMPoint afterLeftLink(leftLink);
+          if (afterLeftLink.AdvanceOffset()) {
+            selection->Collapse(afterLeftLink);
+          }
         }
       }
     }
@@ -1896,10 +1900,9 @@ HTMLEditor::InsertAsPlaintextQuotation(const nsAString& aQuotedText,
 
   // Set the selection to just after the inserted node:
   if (NS_SUCCEEDED(rv) && newNode) {
-    nsCOMPtr<nsINode> parent = newNode->GetParentNode();
-    int32_t offset = parent ? parent->IndexOf(newNode) : -1;
-    if (parent) {
-      selection->Collapse(parent, offset + 1);
+    EditorRawDOMPoint afterNewNode(newNode);
+    if (afterNewNode.AdvanceOffset()) {
+      selection->Collapse(afterNewNode);
     }
   }
   return rv;
@@ -1976,10 +1979,9 @@ HTMLEditor::InsertAsCitedQuotation(const nsAString& aQuotedText,
 
   // Set the selection to just after the inserted node:
   if (NS_SUCCEEDED(rv) && newNode) {
-    nsCOMPtr<nsINode> parent = newNode->GetParentNode();
-    int32_t offset = parent ? parent->IndexOf(newNode) : -1;
-    if (parent) {
-      selection->Collapse(parent, offset + 1);
+    EditorRawDOMPoint afterNewNode(newNode);
+    if (afterNewNode.AdvanceOffset()) {
+      selection->Collapse(afterNewNode);
     }
   }
   return rv;
@@ -2119,7 +2121,7 @@ HTMLEditor::CreateDOMFragmentFromPaste(const nsAString& aInputString,
   MOZ_ASSERT_IF(contextLeaf, contextLeafAsContent);
 
   // create fragment for pasted html
-  nsIAtom* contextAtom;
+  nsAtom* contextAtom;
   if (contextLeafAsContent) {
     contextAtom = contextLeafAsContent->NodeInfo()->NameAtom();
     if (contextLeafAsContent->IsHTMLElement(nsGkAtoms::html)) {
@@ -2193,7 +2195,7 @@ HTMLEditor::CreateDOMFragmentFromPaste(const nsAString& aInputString,
 
 nsresult
 HTMLEditor::ParseFragment(const nsAString& aFragStr,
-                          nsIAtom* aContextLocalName,
+                          nsAtom* aContextLocalName,
                           nsIDocument* aTargetDocument,
                           DocumentFragment** aFragment,
                           bool aTrustedInput)
@@ -2382,7 +2384,7 @@ HTMLEditor::ReplaceOrphanedStructure(
       (i - removedCount) : (originalLength - i - 1);
     OwningNonNull<nsINode> endpoint = aNodeArray[idx];
     if (endpoint == replaceNode ||
-        EditorUtils::IsDescendantOf(endpoint, replaceNode)) {
+        EditorUtils::IsDescendantOf(*endpoint, *replaceNode)) {
       aNodeArray.RemoveElementAt(idx);
       removedCount++;
     }

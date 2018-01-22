@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -51,7 +52,7 @@ NS_IMETHODIMP
 nsReflowFrameRunnable::Run()
 {
   if (mWeakFrame.IsAlive()) {
-    mWeakFrame->PresContext()->PresShell()->
+    mWeakFrame->PresShell()->
       FrameNeedsReflow(mWeakFrame, mIntrinsicDirty, mBitToAdd);
   }
   return NS_OK;
@@ -111,7 +112,7 @@ nsProgressMeterFrame::DoXULLayout(nsBoxLayoutState& aState)
   if (mNeedsReflowCallback) {
     nsIReflowCallback* cb = new nsAsyncProgressMeterInit(this);
     if (cb) {
-      PresContext()->PresShell()->PostReflowCallback(cb);
+      PresShell()->PostReflowCallback(cb);
     }
     mNeedsReflowCallback = false;
   }
@@ -120,7 +121,7 @@ nsProgressMeterFrame::DoXULLayout(nsBoxLayoutState& aState)
 
 nsresult
 nsProgressMeterFrame::AttributeChanged(int32_t aNameSpaceID,
-                                       nsIAtom* aAttribute,
+                                       nsAtom* aAttribute,
                                        int32_t aModType)
 {
   NS_ASSERTION(!nsContentUtils::IsSafeToRunScript(),

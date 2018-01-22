@@ -9,17 +9,17 @@
  */
 
 #include "nsAtomListUtils.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsStaticAtom.h"
 
 /* static */ bool
-nsAtomListUtils::IsMember(nsIAtom *aAtom,
-                          const nsStaticAtom* aInfo,
-                          uint32_t aInfoCount)
+nsAtomListUtils::IsMember(nsAtom *aAtom,
+                          const nsStaticAtomSetup* aSetup,
+                          uint32_t aCount)
 {
-    for (const nsStaticAtom *info = aInfo, *info_end = aInfo + aInfoCount;
-         info != info_end; ++info) {
-        if (aAtom == *(info->mAtom))
+    for (const nsStaticAtomSetup *setup = aSetup, *setup_end = aSetup + aCount;
+         setup != setup_end; ++setup) {
+        if (aAtom == *(setup->mAtom))
             return true;
     }
     return false;

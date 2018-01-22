@@ -63,26 +63,28 @@ const openOAuthWindow = (details, redirectURI) => {
     // If the user just closes the window we need to reject
     function unloadlistener() {
       window.removeEventListener("unload", unloadlistener);
-      window.gBrowser.removeTabsProgressListener(wpl);
+      window.gBrowser.removeProgressListener(wpl);
       reject({message: "User cancelled or denied access."});
     }
 
     wpl = {
-      onLocationChange(browser, webProgress, request, locationURI) {
-        if (locationURI.spec.startsWith(redirectURI)) {
-          resolve(locationURI.spec);
+      onStateChange(progress, request, flags, status) {
+        // "request" is now a RemoteWebProgressRequest and is not cancelable
+        // using request.cancel.  We can however, stop everything using
+        // webNavigation.
+        if (request && request.URI &&
+          request.URI.spec.startsWith(redirectURI)) {
+          window.gBrowser.webNavigation.stop(Ci.nsIWebNavigation.STOP_ALL);
           window.removeEventListener("unload", unloadlistener);
-          window.gBrowser.removeTabsProgressListener(wpl);
+          window.gBrowser.removeProgressListener(wpl);
           window.close();
+          resolve(request.URI.spec);
         }
       },
-      onProgressChange() {},
-      onStatusChange() {},
-      onSecurityChange() {},
     };
 
     promiseDocumentLoaded(window.document).then(() => {
-      window.gBrowser.addTabsProgressListener(wpl);
+      window.gBrowser.addProgressListener(wpl);
       window.addEventListener("unload", unloadlistener);
     });
   });

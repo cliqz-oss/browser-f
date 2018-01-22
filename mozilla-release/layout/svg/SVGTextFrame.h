@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -203,7 +204,8 @@ protected:
     , mLastContextScale(1.0f)
     , mLengthAdjustScaleFactor(1.0f)
   {
-    AddStateBits(NS_STATE_SVG_POSITIONING_DIRTY);
+    AddStateBits(NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY |
+                 NS_STATE_SVG_POSITIONING_DIRTY);
   }
 
   ~SVGTextFrame() {}
@@ -218,7 +220,7 @@ public:
                     nsIFrame*         aPrevInFlow) override;
 
   virtual nsresult AttributeChanged(int32_t aNamespaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t aModType) override;
 
   virtual nsContainerFrame* GetContentInsertionFrame() override
@@ -282,7 +284,7 @@ public:
    */
   void HandleAttributeChangeInDescendant(mozilla::dom::Element* aElement,
                                          int32_t aNameSpaceID,
-                                         nsIAtom* aAttribute);
+                                         nsAtom* aAttribute);
 
   /**
    * Schedules mPositions to be recomputed and the covered region to be
@@ -416,6 +418,18 @@ private:
    * within the <text>.
    */
   void DoGlyphPositioning();
+
+  /**
+   * This fallback version of GetSubStringLength that flushes layout and takes
+   * into account glyph positioning.  As per the SVG 2 spec, typically glyph
+   * positioning does not affect the results of getSubStringLength, but one
+   * exception is text in a textPath where we need to ignore characters that
+   * fall off the end of the textPath path.
+   */
+  nsresult GetSubStringLengthSlowFallback(nsIContent* aContent,
+                                          uint32_t charnum,
+                                          uint32_t nchars,
+                                          float* aResult);
 
   /**
    * Converts the specified index into mPositions to an addressable

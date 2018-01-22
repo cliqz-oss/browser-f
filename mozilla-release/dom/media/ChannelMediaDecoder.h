@@ -9,6 +9,7 @@
 
 #include "MediaDecoder.h"
 #include "MediaResourceCallback.h"
+#include "MediaChannelStatistics.h"
 
 class nsIChannel;
 class nsIStreamListener;
@@ -38,7 +39,7 @@ class ChannelMediaDecoder : public MediaDecoder
     /* MediaResourceCallback functions */
     AbstractThread* AbstractMainThread() const override;
     MediaDecoderOwner* GetMediaOwner() const override;
-    void NotifyNetworkError() override;
+    void NotifyNetworkError(const MediaResult& aError) override;
     void NotifyDataArrived() override;
     void NotifyDataEnded(nsresult aStatus) override;
     void NotifyPrincipalChanged() override;
@@ -65,8 +66,18 @@ protected:
   RefPtr<ResourceCallback> mResourceCallback;
   RefPtr<BaseMediaResource> mResource;
 
-public:
   explicit ChannelMediaDecoder(MediaDecoderInit& aInit);
+
+  nsCString GetDebugInfo() override;
+
+public:
+
+  // Create a decoder for the given aType. Returns null if we were unable
+  // to create the decoder, for example because the requested MIME type in
+  // the init struct was unsupported.
+  static already_AddRefed<ChannelMediaDecoder> Create(
+    MediaDecoderInit& aInit,
+    DecoderDoctorDiagnostics* aDiagnostics);
 
   void Shutdown() override;
 

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -81,8 +82,9 @@ BufferRecycleBin::GetBuffer(uint32_t aSize)
 {
   MutexAutoLock lock(mLock);
 
-  if (mRecycledBuffers.IsEmpty() || mRecycledBufferSize != aSize)
-    return MakeUnique<uint8_t[]>(aSize);
+  if (mRecycledBuffers.IsEmpty() || mRecycledBufferSize != aSize) {
+    return UniquePtr<uint8_t[]>(new (fallible) uint8_t[aSize]);
+  }
 
   uint32_t last = mRecycledBuffers.Length() - 1;
   UniquePtr<uint8_t[]> result = Move(mRecycledBuffers[last]);
@@ -126,6 +128,15 @@ ImageContainerListener::ClearImageContainer()
   mImageContainer = nullptr;
 }
 
+void
+ImageContainerListener::DropImageClient()
+{
+  MutexAutoLock lock(mLock);
+  if (mImageContainer) {
+    mImageContainer->DropImageClient();
+  }
+}
+
 already_AddRefed<ImageClient>
 ImageContainer::GetImageClient()
 {
@@ -133,6 +144,16 @@ ImageContainer::GetImageClient()
   EnsureImageClient();
   RefPtr<ImageClient> imageClient = mImageClient;
   return imageClient.forget();
+}
+
+void
+ImageContainer::DropImageClient()
+{
+  RecursiveMutexAutoLock mon(mRecursiveMutex);
+  if (mImageClient) {
+    mImageClient->ClearCachedResources();
+    mImageClient = nullptr;
+  }
 }
 
 void
@@ -152,12 +173,10 @@ ImageContainer::EnsureImageClient()
     mImageClient = imageBridge->CreateImageClient(CompositableType::IMAGE, this);
     if (mImageClient) {
       mAsyncContainerHandle = mImageClient->GetAsyncHandle();
-      mNotifyCompositeListener = new ImageContainerListener(this);
     } else {
       // It's okay to drop the async container handle since the ImageBridgeChild
       // is going to die anyway.
       mAsyncContainerHandle = CompositableHandle();
-      mNotifyCompositeListener = nullptr;
     }
   }
 }
@@ -173,6 +192,7 @@ ImageContainer::ImageContainer(Mode flag)
   mCurrentProducerID(-1)
 {
   if (flag == ASYNCHRONOUS) {
+    mNotifyCompositeListener = new ImageContainerListener(this);
     EnsureImageClient();
   }
 }
@@ -371,6 +391,7 @@ CompositableHandle ImageContainer::GetAsyncContainerHandle()
 {
   NS_ASSERTION(IsAsync(), "Shared image ID is only relevant to async ImageContainers");
   NS_ASSERTION(mAsyncContainerHandle, "Should have a shared image ID");
+  RecursiveMutexAutoLock mon(mRecursiveMutex);
   EnsureImageClient();
   return mAsyncContainerHandle;
 }
@@ -588,24 +609,12 @@ PlanarYCbCrImage::GetOffscreenFormat()
 }
 
 bool
-PlanarYCbCrImage::AdoptData(const Data &aData)
+PlanarYCbCrImage::AdoptData(const Data& aData)
 {
   mData = aData;
   mSize = aData.mPicSize;
   mOrigin = gfx::IntPoint(aData.mPicX, aData.mPicY);
   return true;
-}
-
-uint8_t*
-RecyclingPlanarYCbCrImage::AllocateAndGetNewBuffer(uint32_t aSize)
-{
-  // get new buffer
-  mBuffer = AllocateBuffer(aSize);
-  if (mBuffer) {
-    // update buffer size
-    mBufferSize = aSize;
-  }
-  return mBuffer.get();
 }
 
 already_AddRefed<gfx::SourceSurface>

@@ -443,7 +443,8 @@ WebConsoleActor.prototype =
    *         Debuggee value for |value|.
    */
   makeDebuggeeValue: function (value, useObjectGlobal) {
-    if (useObjectGlobal && typeof value == "object") {
+    let isObject = Object(value) === value;
+    if (useObjectGlobal && isObject) {
       try {
         let global = Cu.getGlobalForObject(value);
         let dbgGlobal = this.dbg.makeGlobalObjectReference(global);
@@ -810,8 +811,8 @@ WebConsoleActor.prototype =
           }
 
           // See `window` definition. It isn't always a DOM Window.
-          let requestStartTime = this.window && this.window.performance ?
-            this.window.performance.timing.requestStart : 0;
+          let winStartTime = this.window && this.window.performance ?
+            this.window.performance.timing.navigationStart : 0;
 
           let cache = this.consoleAPIListener
                       .getCachedMessages(!this.parentActor.isRootActor);
@@ -819,7 +820,7 @@ WebConsoleActor.prototype =
             // Filter out messages that came from a ServiceWorker but happened
             // before the page was requested.
             if (cachedMessage.innerID === "ServiceWorker" &&
-                requestStartTime > cachedMessage.timeStamp) {
+                winStartTime > cachedMessage.timeStamp) {
               return;
             }
 
@@ -2123,7 +2124,8 @@ NetworkEventActor.prototype =
     return {
       from: this.actorID,
       timings: this._timings,
-      totalTime: this._totalTime
+      totalTime: this._totalTime,
+      offsets: this._offsets
     };
   },
 
@@ -2332,9 +2334,10 @@ NetworkEventActor.prototype =
    * @param object timings
    *        Timing details about the network event.
    */
-  addEventTimings: function (total, timings) {
+  addEventTimings: function (total, timings, offsets) {
     this._totalTime = total;
     this._timings = timings;
+    this._offsets = offsets;
 
     let packet = {
       from: this.actorID,

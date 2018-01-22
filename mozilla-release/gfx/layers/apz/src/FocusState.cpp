@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -43,10 +44,10 @@ FocusState::Update(uint64_t aRootLayerTreeId,
                    uint64_t aOriginatingLayersId,
                    const FocusTarget& aState)
 {
-  FS_LOG("Update with rlt=%" PRIu64 ", olt=%" PRIu64 ", ft=(%d, %" PRIu64 ")\n",
+  FS_LOG("Update with rlt=%" PRIu64 ", olt=%" PRIu64 ", ft=(%s, %" PRIu64 ")\n",
          aRootLayerTreeId,
          aOriginatingLayersId,
-         static_cast<int>(aState.mType),
+         aState.Type(),
          aState.mSequenceNumber);
 
   // Update the focus tree with the latest target

@@ -218,7 +218,7 @@ var gMenuBuilder = {
       element.setAttribute("disabled", "true");
     }
 
-    element.addEventListener("command", event => {  // eslint-disable-line mozilla/balanced-listeners
+    element.addEventListener("command", event => { // eslint-disable-line mozilla/balanced-listeners
       if (event.target !== event.currentTarget) {
         return;
       }
@@ -238,7 +238,7 @@ var gMenuBuilder = {
 
       item.tabManager.addActiveTabPermission();
 
-      let tab = item.tabManager.convert(contextData.tab);
+      let tab = contextData.tab && item.tabManager.convert(contextData.tab);
       let info = item.getClickInfo(contextData, wasChecked);
 
       const map = {shiftKey: "Shift", altKey: "Alt", metaKey: "Command", ctrlKey: "Ctrl"};
@@ -673,7 +673,8 @@ this.menusInternal = class extends ExtensionAPI {
 
         onClicked: new EventManager(context, "menusInternal.onClicked", fire => {
           let listener = (event, info, tab) => {
-            context.withPendingBrowser(tab.linkedBrowser,
+            let {linkedBrowser} = tab || tabTracker.activeTab;
+            context.withPendingBrowser(linkedBrowser,
                                        () => fire.sync(info, tab));
           };
 

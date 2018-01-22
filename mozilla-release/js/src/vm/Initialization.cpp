@@ -82,6 +82,8 @@ JS::detail::InitWithFailureDiagnostic(bool isDebugBuild)
     MOZ_ASSERT(!JSRuntime::hasLiveRuntimes(),
                "how do we have live runtimes before JS_Init?");
 
+    libraryInitState = InitState::Initializing;
+
     PRMJ_NowInit();
 
     // The first invocation of `ProcessCreation` creates a temporary thread
@@ -98,8 +100,9 @@ JS::detail::InitWithFailureDiagnostic(bool isDebugBuild)
 
 #if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
     RETURN_IF_FAIL(js::oom::InitThreadType());
-    js::oom::SetThreadType(js::THREAD_TYPE_COOPERATING);
 #endif
+
+    js::InitMallocAllocator();
 
     RETURN_IF_FAIL(js::Mutex::Init());
 
@@ -109,7 +112,7 @@ JS::detail::InitWithFailureDiagnostic(bool isDebugBuild)
 
     RETURN_IF_FAIL(js::jit::InitProcessExecutableMemory());
 
-    MOZ_ALWAYS_TRUE(js::MemoryProtectionExceptionHandler::install());
+    RETURN_IF_FAIL(js::MemoryProtectionExceptionHandler::install());
 
     RETURN_IF_FAIL(js::jit::InitializeIon());
 
@@ -171,6 +174,7 @@ JS_ShutDown(void)
     js::MemoryProtectionExceptionHandler::uninstall();
 
     js::wasm::ShutDownInstanceStaticData();
+    js::wasm::ShutDownProcessStaticData();
 
     js::Mutex::ShutDown();
 
@@ -199,6 +203,8 @@ JS_ShutDown(void)
         js::wasm::ReleaseBuiltinThunks();
         js::jit::ReleaseProcessExecutableMemory();
     }
+
+    js::ShutDownMallocAllocator();
 
     libraryInitState = InitState::ShutDown;
 }

@@ -42,13 +42,15 @@ struct CompileArgs : ShareableBase<CompileArgs>
     bool baselineEnabled;
     bool debugEnabled;
     bool ionEnabled;
+    bool testTiering;
 
     CompileArgs(Assumptions&& assumptions, ScriptedCaller&& scriptedCaller)
       : assumptions(Move(assumptions)),
         scriptedCaller(Move(scriptedCaller)),
         baselineEnabled(false),
         debugEnabled(false),
-        ionEnabled(false)
+        ionEnabled(false),
+        testTiering(false)
     {}
 
     // If CompileArgs is constructed without arguments, initFromContext() must
@@ -60,6 +62,12 @@ struct CompileArgs : ShareableBase<CompileArgs>
 typedef RefPtr<CompileArgs> MutableCompileArgs;
 typedef RefPtr<const CompileArgs> SharedCompileArgs;
 
+// Return the estimated compiled (machine) code size for the given bytecode size
+// compiled at the given tier.
+
+double
+EstimateCompiledCodeSize(Tier tier, size_t bytecodeSize);
+
 // Compile the given WebAssembly bytecode with the given arguments into a
 // wasm::Module. On success, the Module is returned. On failure, the returned
 // SharedModule pointer is null and either:
@@ -67,13 +75,42 @@ typedef RefPtr<const CompileArgs> SharedCompileArgs;
 //  - *error is null and the caller should report out-of-memory.
 
 SharedModule
-CompileInitialTier(const ShareableBytes& bytecode, const CompileArgs& args, UniqueChars* error);
+CompileBuffer(const CompileArgs& args, const ShareableBytes& bytecode, UniqueChars* error);
 
 // Attempt to compile the second tier of the given wasm::Module, returning whether
 // tier-2 compilation succeeded and Module::finishTier2 was called.
 
 bool
-CompileTier2(Module& module, const CompileArgs& args, Atomic<bool>* cancelled);
+CompileTier2(const CompileArgs& args, Module& module, Atomic<bool>* cancelled);
+
+// Compile the given WebAssembly module which has been broken into three
+// partitions:
+//  - envBytes contains a complete ModuleEnvironment that has already been
+//    copied in from the stream.
+//  - codeBytes is pre-sized to hold the complete code section when the stream
+//    completes.
+//  - The range [codeBytes.begin(), codeStreamEnd) contains the bytes currently
+//    read from the stream and codeStreamEnd will advance until either
+//    the stream is cancelled or codeStreamEnd == codeBytes.end().
+//  - tailBytesPtr is null until the module has finished streaming at which
+//    point tailBytesPtr will point to the complete tail bytes.
+// The ExclusiveWaitableData are notified when CompileStreaming() can make
+// progress (i.e., codeStreamEnd advances or tailBytes is set to non-null).
+// If cancelled is set to true, compilation aborts and returns null. After
+// cancellation is set, both ExclusiveWaitableData will be notified and so every
+// wait() loop must check cancelled.
+
+typedef ExclusiveWaitableData<const uint8_t*> ExclusiveStreamEnd;
+typedef ExclusiveWaitableData<const Bytes*> ExclusiveTailBytesPtr;
+
+SharedModule
+CompileStreaming(const CompileArgs& args,
+                 const Bytes& envBytes,
+                 const Bytes& codeBytes,
+                 const ExclusiveStreamEnd& codeStreamEnd,
+                 const ExclusiveTailBytesPtr& tailBytesPtr,
+                 const Atomic<bool>& cancelled,
+                 UniqueChars* error);
 
 }  // namespace wasm
 }  // namespace js

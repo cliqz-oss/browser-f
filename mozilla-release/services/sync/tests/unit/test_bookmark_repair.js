@@ -13,11 +13,6 @@ Cu.import("resource://services-sync/engines/clients.js");
 Cu.import("resource://services-sync/engines/bookmarks.js");
 Cu.import("resource://testing-common/services/sync/utils.js");
 
-initTestLogging("Trace");
-Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace
-Log.repository.getLogger("Sync.Engine.Clients").level = Log.Level.Trace
-Log.repository.getLogger("Sqlite").level = Log.Level.Info; // less noisy
-
 const LAST_BOOKMARK_SYNC_PREFS = [
   "bookmarks.lastSync",
   "bookmarks.lastSyncLocal",
@@ -38,13 +33,19 @@ var recordedEvents = [];
 
 add_task(async function setup() {
   clientsEngine = Service.clientsEngine;
+  clientsEngine.ignoreLastModifiedOnProcessCommands = true;
   bookmarksEngine = Service.engineManager.get("bookmarks");
 
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   Service.recordTelemetryEvent = (object, method, value, extra = undefined) => {
     recordedEvents.push({ object, method, value, extra });
   };
+
+  initTestLogging("Trace");
+  Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace;
+  Log.repository.getLogger("Sync.Engine.Clients").level = Log.Level.Trace;
+  Log.repository.getLogger("Sqlite").level = Log.Level.Info; // less noisy
 });
 
 function checkRecordedEvents(expected, message) {
@@ -93,7 +94,7 @@ add_task(async function test_bookmark_repair_integration() {
 
   _("Ensure that a validation error triggers a repair request.");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let user = server.user("foo");
@@ -200,6 +201,7 @@ add_task(async function test_bookmark_repair_integration() {
     // so now let's take over the role of that other client!
     _("Create new clients engine pretending to be remote client");
     let remoteClientsEngine = Service.clientsEngine = new ClientEngine(Service);
+    remoteClientsEngine.ignoreLastModifiedOnProcessCommands = true;
     await remoteClientsEngine.initialize();
     remoteClientsEngine.localID = remoteID;
 
@@ -307,6 +309,7 @@ add_task(async function test_bookmark_repair_integration() {
   } finally {
     await cleanup(server);
     clientsEngine = Service.clientsEngine = new ClientEngine(Service);
+    clientsEngine.ignoreLastModifiedOnProcessCommands = true;
     clientsEngine.initialize();
   }
 });
@@ -316,7 +319,7 @@ add_task(async function test_repair_client_missing() {
 
   _("Ensure that a record missing from the client only will get re-downloaded from the server");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let remoteID = Utils.makeGUID();
@@ -345,7 +348,7 @@ add_task(async function test_repair_client_missing() {
     _("Syncing.");
     await Service.sync();
     // should have 2 clients
-    equal(clientsEngine.stats.numClients, 2)
+    equal(clientsEngine.stats.numClients, 2);
     await validationPromise;
 
     // Delete the bookmark localy, but cheat by telling places that Sync did
@@ -385,7 +388,7 @@ add_task(async function test_repair_server_missing() {
 
   _("Ensure that a record missing from the server only will get re-upload from the client");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let user = server.user("foo");
@@ -416,7 +419,7 @@ add_task(async function test_repair_server_missing() {
     _("Syncing.");
     await Service.sync();
     // should have 2 clients
-    equal(clientsEngine.stats.numClients, 2)
+    equal(clientsEngine.stats.numClients, 2);
     await validationPromise;
 
     // Now we will reach into the server and hard-delete the bookmark
@@ -449,7 +452,7 @@ add_task(async function test_repair_server_deleted() {
 
   _("Ensure that a record marked as deleted on the server but present on the client will get deleted on the client");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let remoteID = Utils.makeGUID();
@@ -478,7 +481,7 @@ add_task(async function test_repair_server_deleted() {
     _("Syncing.");
     await Service.sync();
     // should have 2 clients
-    equal(clientsEngine.stats.numClients, 2)
+    equal(clientsEngine.stats.numClients, 2);
     await validationPromise;
 
     // Now we will reach into the server and create a tombstone for that bookmark

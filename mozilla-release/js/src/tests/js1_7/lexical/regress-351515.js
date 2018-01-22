@@ -16,7 +16,7 @@ test();
 
 try
 {
-  expect = "SyntaxError";
+  expect = "No Error";
   eval('yield = 1;');
   actual = 'No Error';
 }
@@ -28,7 +28,7 @@ reportCompare(expect, actual, summary + ': global: yield = 1');
 
 try
 {
-  expect = "SyntaxError";
+  expect = "No Error";
   eval('(function(){yield = 1;})');
   actual = 'No Error';
 }
@@ -52,13 +52,12 @@ reportCompare(expect, actual, summary + ': global: let = 1');
 
 function test()
 {
-  enterFunc ('test');
   printBugNumber(BUGNUMBER);
   printStatus (summary);
  
   try
   {
-    expect = "SyntaxError";
+    expect = "No Error";
     eval('function f(yield, let) { return yield+let; }');
     actual = 'No Error';
   }
@@ -71,7 +70,7 @@ function test()
 
   try
   {
-    expect = "SyntaxError";
+    expect = "No Error";
     eval('var yield = 1;');
     actual = 'No Error';
   }
@@ -92,6 +91,4 @@ function test()
     actual = ex.name;
   }
   reportCompare(expect, actual, summary + ': function () { var let;}');
-
-  exitFunc ('test');
 }

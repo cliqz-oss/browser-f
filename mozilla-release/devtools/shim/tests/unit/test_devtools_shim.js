@@ -6,6 +6,7 @@
 
 const { DevToolsShim } =
     Components.utils.import("chrome://devtools-shim/content/DevToolsShim.jsm", {});
+const { Services } = Components.utils.import("resource://gre/modules/Services.jsm", {});
 
 // Test the DevToolsShim
 
@@ -17,10 +18,6 @@ function createMockDevTools() {
   let methods = [
     "on",
     "off",
-    "registerTool",
-    "registerTheme",
-    "unregisterTool",
-    "unregisterTheme",
     "emit",
     "saveDevToolsSession",
     "restoreDevToolsSession",
@@ -39,15 +36,6 @@ function createMockDevTools() {
   }
 
   return mock;
-}
-
-let isInstalledMethodBackup = DevToolsShim.isInstalled;
-function mockDevToolsInstalled(isInstalled) {
-  DevToolsShim.isInstalled = () => isInstalled;
-}
-
-function restoreDevToolsInstalled() {
-  DevToolsShim.isInstalled = isInstalledMethodBackup;
 }
 
 /**
@@ -71,8 +59,6 @@ function checkCalls(mock, method, length, lastArgs) {
 }
 
 function test_register_unregister() {
-  mockDevToolsInstalled(true);
-
   ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
 
   DevToolsShim.register(createMockDevTools());
@@ -80,8 +66,6 @@ function test_register_unregister() {
 
   DevToolsShim.unregister();
   ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
-
-  restoreDevToolsInstalled();
 }
 
 function test_on_is_forwarded_to_devtools() {
@@ -97,13 +81,9 @@ function test_on_is_forwarded_to_devtools() {
 
   DevToolsShim.on("other_event", cb2);
   checkCalls(mock, "on", 2, ["other_event", cb2]);
-
-  restoreDevToolsInstalled();
 }
 
 function test_off_called_before_registering_devtools() {
-  mockDevToolsInstalled(true);
-
   ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
 
   function cb1() {}
@@ -114,13 +94,9 @@ function test_off_called_before_registering_devtools() {
 
   DevToolsShim.register(mock);
   checkCalls(mock, "on", 0);
-
-  restoreDevToolsInstalled();
 }
 
 function test_off_called_before_with_bad_callback() {
-  mockDevToolsInstalled(true);
-
   ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
 
   function cb1() {}
@@ -135,79 +111,9 @@ function test_off_called_before_with_bad_callback() {
   checkCalls(mock, "on", 1, ["test_event", cb1]);
   // Calls to off should not be held and forwarded.
   checkCalls(mock, "off", 0);
-
-  restoreDevToolsInstalled();
-}
-
-function test_registering_tool() {
-  mockDevToolsInstalled(true);
-
-  ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
-
-  let tool1 = {};
-  let tool2 = {};
-  let tool3 = {};
-  let mock = createMockDevTools();
-
-  // Pre-register tool1
-  DevToolsShim.registerTool(tool1);
-
-  // Pre-register tool3, but unregister right after
-  DevToolsShim.registerTool(tool3);
-  DevToolsShim.unregisterTool(tool3);
-
-  DevToolsShim.register(mock);
-  checkCalls(mock, "registerTool", 1, [tool1]);
-
-  DevToolsShim.registerTool(tool2);
-  checkCalls(mock, "registerTool", 2, [tool2]);
-
-  DevToolsShim.unregister();
-
-  // Create a new mock and check the tools are not added once again.
-  mock = createMockDevTools();
-  DevToolsShim.register(mock);
-  checkCalls(mock, "registerTool", 0);
-
-  restoreDevToolsInstalled();
-}
-
-function test_registering_theme() {
-  mockDevToolsInstalled(true);
-
-  ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
-
-  let theme1 = {};
-  let theme2 = {};
-  let theme3 = {};
-  let mock = createMockDevTools();
-
-  // Pre-register theme1
-  DevToolsShim.registerTheme(theme1);
-
-  // Pre-register theme3, but unregister right after
-  DevToolsShim.registerTheme(theme3);
-  DevToolsShim.unregisterTheme(theme3);
-
-  DevToolsShim.register(mock);
-  checkCalls(mock, "registerTheme", 1, [theme1]);
-
-  DevToolsShim.registerTheme(theme2);
-  checkCalls(mock, "registerTheme", 2, [theme2]);
-
-  DevToolsShim.unregister();
-
-  // Create a new mock and check the themes are not added once again.
-  mock = createMockDevTools();
-  DevToolsShim.register(mock);
-  checkCalls(mock, "registerTheme", 0);
-
-  restoreDevToolsInstalled();
 }
 
 function test_events() {
-  mockDevToolsInstalled(true);
-
   ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
 
   let mock = createMockDevTools();
@@ -221,53 +127,55 @@ function test_events() {
   // Check emit is called once with the devtools-unregistered event.
   DevToolsShim.unregister();
   checkCalls(mock, "emit", 2, ["devtools-unregistered"]);
-
-  restoreDevToolsInstalled();
 }
 
-function test_scratchpad_apis() {
-  mockDevToolsInstalled(false);
+function test_restore_session_apis() {
+  // Backup method and preferences that will be updated for the test.
+  let initDevToolsBackup = DevToolsShim.initDevTools;
+  let devtoolsEnabledValue = Services.prefs.getBoolPref("devtools.enabled");
 
-  ok(!DevToolsShim.isInstalled(), "DevTools are not installed");
-  ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
-
-  // Ensure that saveDevToolsSession doesn't initialize the tools
-  DevToolsShim.saveDevToolsSession({});
-
-  ok(!DevToolsShim.isInstalled(), "DevTools are not installed");
-  ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
-
-  // Check that restoreDevToolsSession doesn't crash.
-  DevToolsShim.restoreDevToolsSession({
+  // Create fake session objects to restore.
+  let sessionWithoutDevTools = {};
+  let sessionWithDevTools = {
     scratchpads: [{}],
     browserConsole: true,
-  });
+  };
 
-  // Check that saveDevToolsSession doesn't crash.
+  Services.prefs.setBoolPref("devtools.enabled", false);
+  ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
+  ok(!DevToolsShim.isEnabled(), "DevTools are not enabled");
+
+  // Check that save & restore DevToolsSession don't initialize the tools and don't crash.
   DevToolsShim.saveDevToolsSession({});
+  DevToolsShim.restoreDevToolsSession(sessionWithDevTools);
 
-  mockDevToolsInstalled(true);
-
-  ok(DevToolsShim.isInstalled(), "DevTools are installed");
+  Services.prefs.setBoolPref("devtools.enabled", true);
+  ok(DevToolsShim.isEnabled(), "DevTools are enabled");
   ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
 
+  // Check that DevTools are not initialized when calling restoreDevToolsSession without
+  // DevTools related data.
+  DevToolsShim.restoreDevToolsSession(sessionWithoutDevTools);
+  ok(!DevToolsShim.isInitialized(), "DevTools are still not initialized");
+
   let mock = createMockDevTools();
-  DevToolsShim._initDevTools = () => {
+  DevToolsShim.initDevTools = () => {
     // Next call to restoreDevToolsSession is expected to initialize DevTools, which we
     // simulate here by registering our mock.
     DevToolsShim.register(mock);
   };
 
-  let scratchpadSessions = [{}];
-  DevToolsShim.restoreDevToolsSession(scratchpadSessions);
-  checkCalls(mock, "restoreDevToolsSession", 1, [scratchpadSessions]);
+  DevToolsShim.restoreDevToolsSession(sessionWithDevTools);
+  checkCalls(mock, "restoreDevToolsSession", 1, [sessionWithDevTools]);
 
   ok(DevToolsShim.isInitialized(), "DevTools are initialized");
 
   DevToolsShim.saveDevToolsSession({});
   checkCalls(mock, "saveDevToolsSession", 1, []);
 
-  restoreDevToolsInstalled();
+  // Restore initial backups.
+  DevToolsShim.initDevTools = initDevToolsBackup;
+  Services.prefs.setBoolPref("devtools.enabled", devtoolsEnabledValue);
 }
 
 function run_test() {
@@ -283,13 +191,7 @@ function run_test() {
   test_off_called_before_with_bad_callback();
   DevToolsShim.unregister();
 
-  test_registering_tool();
-  DevToolsShim.unregister();
-
-  test_registering_theme();
-  DevToolsShim.unregister();
-
-  test_scratchpad_apis();
+  test_restore_session_apis();
   DevToolsShim.unregister();
 
   test_events();

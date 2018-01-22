@@ -993,8 +993,6 @@ function createItemsFromBookmarksTree(tree, restoring = false,
         if ("tags" in item) {
           PlacesUtils.tagging.tagURI(Services.io.newURI(item.uri),
                                      item.tags.split(","));
-          if (restoring)
-            shouldResetLastModified = true;
         }
         break;
       }
@@ -1041,9 +1039,8 @@ function createItemsFromBookmarksTree(tree, restoring = false,
 
       if (annos.length > 0) {
         let itemId = await PlacesUtils.promiseItemId(guid);
-        PlacesUtils.setAnnotationsForItem(itemId, annos);
-        if (restoring)
-          shouldResetLastModified = true;
+        PlacesUtils.setAnnotationsForItem(itemId, annos,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
     }
 
@@ -1092,7 +1089,8 @@ PT.NewBookmark.prototype = Object.seal({
       info = await PlacesUtils.bookmarks.insert(info);
       if (annotations.length > 0) {
         let itemId = await PlacesUtils.promiseItemId(info.guid);
-        PlacesUtils.setAnnotationsForItem(itemId, annotations);
+        PlacesUtils.setAnnotationsForItem(itemId, annotations,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
       if (tags.length > 0) {
         PlacesUtils.tagging.tagURI(Services.io.newURI(url.href), tags);
@@ -1111,10 +1109,6 @@ PT.NewBookmark.prototype = Object.seal({
     };
     this.redo = async function() {
       await createItem();
-      // CreateItem will update the lastModified value if tags or annotations
-      // are present, but we don't care to restore it. The likely of a user
-      // creating a bookmark, undoing and redoing that, and still caring
-      // about lastModified is basically non-existant.
     };
     return info.guid;
   }
@@ -1135,6 +1129,8 @@ PT.NewFolder.prototype = Object.seal({
     let folderGuid;
     let info = {
       children: [{
+        // Ensure to specify a guid to be restored on redo.
+        guid: PlacesUtils.history.makeGuid(),
         title,
         type: PlacesUtils.bookmarks.TYPE_FOLDER,
       }],
@@ -1144,7 +1140,11 @@ PT.NewFolder.prototype = Object.seal({
     };
 
     if (children && children.length > 0) {
-      info.children[0].children = children;
+      // Ensure to specify a guid for each child to be restored on redo.
+      info.children[0].children = children.map(c => {
+        c.guid = PlacesUtils.history.makeGuid();
+        return c;
+      });
     }
 
     async function createItem() {
@@ -1165,7 +1165,8 @@ PT.NewFolder.prototype = Object.seal({
 
       if (annotations.length > 0) {
         let itemId = await PlacesUtils.promiseItemId(folderGuid);
-        PlacesUtils.setAnnotationsForItem(itemId, annotations);
+        PlacesUtils.setAnnotationsForItem(itemId, annotations,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
     }
     await createItem();
@@ -1175,8 +1176,6 @@ PT.NewFolder.prototype = Object.seal({
     };
     this.redo = async function() {
       await createItem();
-      // See the reasoning in CreateItem for why we don't care
-      // about precisely resetting the lastModified value.
     };
     return folderGuid;
   }
@@ -1224,7 +1223,8 @@ PT.NewLivemark.prototype = Object.seal({
     let createItem = async function() {
       let livemark = await PlacesUtils.livemarks.addLivemark(livemarkInfo);
       if (annotations.length > 0) {
-        PlacesUtils.setAnnotationsForItem(livemark.id, annotations);
+        PlacesUtils.setAnnotationsForItem(livemark.id, annotations,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
       return livemark;
     };
@@ -1256,7 +1256,7 @@ PT.Move.prototype = Object.seal({
     let originalInfo = await PlacesUtils.bookmarks.fetch(guid);
     if (!originalInfo)
       throw new Error("Cannot move a non-existent item");
-    let updateInfo = { guid, parentGuid: newParentGuid, index: newIndex }
+    let updateInfo = { guid, parentGuid: newParentGuid, index: newIndex };
     updateInfo = await PlacesUtils.bookmarks.update(updateInfo);
 
     // Moving down in the same parent takes in count removal of the item
@@ -1489,28 +1489,32 @@ PT.SortByName.prototype = {
 PT.Remove = DefineTransaction(["guids"]);
 PT.Remove.prototype = {
   async execute({ guids }) {
-    let promiseBookmarksTree = async function(guid) {
-      let tree;
+    let removedItems = [];
+
+    for (let guid of guids) {
       try {
-        tree = await PlacesUtils.promiseBookmarksTree(guid);
+        // Although we don't strictly need to get this information for the remove,
+        // we do need it for the possibility of undo().
+        removedItems.push(await PlacesUtils.promiseBookmarksTree(guid));
       } catch (ex) {
         throw new Error("Failed to get info for the specified item (guid: " +
                           guid + "): " + ex);
       }
-      return tree;
-    };
-    let removedItems = [];
-    for (let guid of guids) {
-      removedItems.push(await promiseBookmarksTree(guid));
     }
+
     let removeThem = async function() {
+      let bmsToRemove = [];
       for (let info of removedItems) {
         if (info.annos &&
             info.annos.some(anno => anno.name == PlacesUtils.LMANNO_FEEDURI)) {
           await PlacesUtils.livemarks.removeLivemark({ guid: info.guid });
         } else {
-          await PlacesUtils.bookmarks.remove({ guid: info.guid });
+          bmsToRemove.push({guid: info.guid});
         }
+      }
+
+      if (bmsToRemove.length) {
+        await PlacesUtils.bookmarks.remove(bmsToRemove);
       }
     };
     await removeThem();
@@ -1548,13 +1552,15 @@ PT.Tag.prototype = {
         let uri = Services.io.newURI(url.href);
         let currentTags = PlacesUtils.tagging.getTagsForURI(uri);
         let newTags = tags.filter(t => !currentTags.includes(t));
-        PlacesUtils.tagging.tagURI(uri, newTags);
-        onUndo.unshift(() => {
-          PlacesUtils.tagging.untagURI(uri, newTags);
-        });
-        onRedo.push(() => {
+        if (newTags.length) {
           PlacesUtils.tagging.tagURI(uri, newTags);
-        });
+          onUndo.unshift(() => {
+            PlacesUtils.tagging.untagURI(uri, newTags);
+          });
+          onRedo.push(() => {
+            PlacesUtils.tagging.tagURI(uri, newTags);
+          });
+        }
       }
     }
     this.undo = async function() {
@@ -1649,7 +1655,7 @@ PT.Copy.prototype = {
     };
     this.redo = async function() {
       await createItemsFromBookmarksTree(newItemInfo, true);
-    }
+    };
 
     return newItemGuid;
   }

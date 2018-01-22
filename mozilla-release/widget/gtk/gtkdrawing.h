@@ -17,6 +17,7 @@
 
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
+#include <algorithm>
 
 #if (MOZ_WIDGET_GTK == 2)
 #ifdef __cplusplus
@@ -82,6 +83,12 @@ typedef struct {
     GtkBorder track;
   } border;
 } ScrollbarGTKMetrics;
+
+typedef struct {
+  bool initialized;
+  MozGtkSize minSizeWithBorder;
+  GtkBorder borderAndPadding;
+} ToggleGTKMetrics;
 
 typedef enum {
   MOZ_GTK_STEPPER_DOWN        = 1 << 0,
@@ -268,6 +275,8 @@ typedef enum {
   MOZ_GTK_SPLITTER_SEPARATOR_VERTICAL,
   /* Paints the background of a window, dialog or page. */
   MOZ_GTK_WINDOW,
+  /* Used only as a container for MOZ_GTK_HEADER_BAR_MAXIMIZED. */
+  MOZ_GTK_WINDOW_MAXIMIZED,
   /* Window container for all widgets */
   MOZ_GTK_WINDOW_CONTAINER,
   /* Paints a GtkInfoBar, for notifications. */
@@ -290,6 +299,14 @@ typedef enum {
   MOZ_GTK_COMBOBOX_ENTRY_ARROW,
   /* Used for scrolled window shell. */
   MOZ_GTK_SCROLLED_WINDOW,
+  /* Paints a GtkHeaderBar */
+  MOZ_GTK_HEADER_BAR,
+  /* Paints a GtkHeaderBar in maximized state */
+  MOZ_GTK_HEADER_BAR_MAXIMIZED,
+  /* Paints GtkHeaderBar title buttons */
+  MOZ_GTK_HEADER_BAR_BUTTON_CLOSE,
+  MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE,
+  MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE,
 
   MOZ_GTK_WIDGET_NODE_COUNT
 } WidgetNodeType;
@@ -390,6 +407,14 @@ moz_gtk_get_tab_border(gint* left, gint* top, gint* right, gint* bottom,
  */
 gint
 moz_gtk_checkbox_get_metrics(gint* indicator_size, gint* indicator_spacing);
+
+/**
+ * Get metrics of the toggle (radio or checkbox)
+ * isRadio:            [IN] true when requesting metrics for the radio button
+ * returns:    pointer to ToggleGTKMetrics struct
+ */
+const ToggleGTKMetrics*
+GetToggleMetrics(bool isRadio);
 
 /**
  * Get the desired size of a GtkRadioButton

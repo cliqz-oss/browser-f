@@ -25,28 +25,14 @@ public class Experiments {
     // Show a system notification linking to a "What's New" page on app update.
     public static final String WHATSNEW_NOTIFICATION = "whatsnew-notification";
 
-    // Onboarding: "Features and Story". These experiments are determined
-    // on the client, they are not part of the server config.
-    public static final String ONBOARDING3_A = "onboarding3-a"; // Control: No first run
-    public static final String ONBOARDING3_B = "onboarding3-b"; // 4 static Feature + 1 dynamic slides
-    public static final String ONBOARDING3_C = "onboarding3-c"; // Differentiating features slides
-
     // Synchronizing the catalog of downloadable content from Kinto
     public static final String DOWNLOAD_CONTENT_CATALOG_SYNC = "download-content-catalog-sync";
 
     // Promotion for "Add to homescreen"
     public static final String PROMOTE_ADD_TO_HOMESCREEN = "promote-add-to-homescreen";
 
-    public static final String PREF_ONBOARDING_VERSION = "onboarding_version";
-
     // Promotion to bookmark reader-view items after entering reader view three times (Bug 1247689)
     public static final String TRIPLE_READERVIEW_BOOKMARK_PROMPT = "triple-readerview-bookmark-prompt";
-
-    // Only show origin in URL bar instead of full URL (Bug 1236431)
-    public static final String URLBAR_SHOW_ORIGIN_ONLY = "urlbar-show-origin-only";
-
-    // Show name of organization (EV cert) instead of full URL in URL bar (Bug 1249594).
-    public static final String URLBAR_SHOW_EV_CERT_OWNER = "urlbar-show-ev-cert-owner";
 
     // Play HLS videos in a VideoView (Bug 1313391)
     public static final String HLS_VIDEO_PLAYBACK = "hls-video-playback";
@@ -76,13 +62,6 @@ public class Experiments {
     public static List<String> getActiveExperiments(Context c) {
         final List<String> experiments = new LinkedList<>();
         experiments.addAll(SwitchBoard.getActiveExperiments(c));
-
-        // Add onboarding version.
-        final String onboardingExperiment = GeckoSharedPrefs.forProfile(c).getString(Experiments.PREF_ONBOARDING_VERSION, null);
-        if (!TextUtils.isEmpty(onboardingExperiment)) {
-            experiments.add(onboardingExperiment);
-        }
-
         return experiments;
     }
 

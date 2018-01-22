@@ -51,8 +51,9 @@ nsresult
 MediaEngineTabVideoSource::StartRunnable::Run()
 {
   mVideoSource->Draw();
-  mVideoSource->mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
-  mVideoSource->mTimer->InitWithCallback(mVideoSource, mVideoSource->mTimePerFrame, nsITimer:: TYPE_REPEATING_SLACK);
+  NS_NewTimerWithCallback(getter_AddRefs(mVideoSource->mTimer),
+                          mVideoSource, mVideoSource->mTimePerFrame,
+                          nsITimer::TYPE_REPEATING_SLACK);
   if (mVideoSource->mTabSource) {
     mVideoSource->mTabSource->NotifyStreamStart(mVideoSource->mWindow);
   }
@@ -88,8 +89,8 @@ nsresult
 MediaEngineTabVideoSource::InitRunnable::Run()
 {
   if (mVideoSource->mWindowId != -1) {
-    nsGlobalWindow* globalWindow =
-      nsGlobalWindow::GetOuterWindowWithId(mVideoSource->mWindowId);
+    nsGlobalWindowOuter* globalWindow =
+      nsGlobalWindowOuter::GetOuterWindowWithId(mVideoSource->mWindowId);
     if (!globalWindow) {
       // We can't access the window, just send a blacked out screen.
       mVideoSource->mWindow = nullptr;

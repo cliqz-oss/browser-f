@@ -72,11 +72,12 @@ add_task(async function click_on_focused() {
   gURLBar.blur();
   // Won't show the hint since it's not user initiated.
   gURLBar.focus();
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, 1000));
   Assert.ok(!gURLBar.popup.popupOpen, "popup should be closed");
+  Assert.ok(gURLBar.focused, "The input field should be focused");
 
   let popupPromise = promisePopupShown(gURLBar.popup);
-  EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, { button: 0, type: "mousedown" });
+  EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
   await popupPromise;
 
   Assert.ok(gURLBar.popup.popupOpen, "popup should be open");
@@ -136,23 +137,6 @@ function setupVisibleHint() {
   // Toggle to reset the whichNotification cache.
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, false);
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, true);
-}
-
-function suggestionsPresent() {
-  let controller = gURLBar.popup.input.controller;
-  let matchCount = controller.matchCount;
-  for (let i = 0; i < matchCount; i++) {
-    let url = controller.getValueAt(i);
-    let mozActionMatch = url.match(/^moz-action:([^,]+),(.*)$/);
-    if (mozActionMatch) {
-      let [, type, paramStr] = mozActionMatch;
-      let params = JSON.parse(paramStr);
-      if (type == "searchengine" && "searchSuggestion" in params) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 function assertVisible(visible, win = window) {

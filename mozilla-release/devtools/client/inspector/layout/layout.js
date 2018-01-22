@@ -4,36 +4,27 @@
 
 "use strict";
 
-const Services = require("Services");
-
 const { createFactory, createElement } = require("devtools/client/shared/vendor/react");
 const { Provider } = require("devtools/client/shared/vendor/react-redux");
 
-const App = createFactory(require("./components/App"));
+const LayoutApp = createFactory(require("./components/LayoutApp"));
 
 const { LocalizationHelper } = require("devtools/shared/l10n");
 const INSPECTOR_L10N =
   new LocalizationHelper("devtools/client/locales/inspector.properties");
 
-// @remove after release 56 (See Bug 1355747)
-const PROMOTE_COUNT_PREF = "devtools.promote.layoutview";
-
-// @remove after release 56 (See Bug 1355747)
-const GRID_LINK = "https://www.mozilla.org/en-US/developer/css-grid/?utm_source=gridtooltip&utm_medium=devtools&utm_campaign=cssgrid_layout";
-
+loader.lazyRequireGetter(this, "FlexboxInspector", "devtools/client/inspector/flexbox/flexbox");
 loader.lazyRequireGetter(this, "GridInspector", "devtools/client/inspector/grids/grid-inspector");
 
-function LayoutView(inspector, window) {
-  this.document = window.document;
-  this.inspector = inspector;
-  this.store = inspector.store;
+class LayoutView {
 
-  this.onPromoteLearnMoreClick = this.onPromoteLearnMoreClick.bind(this);
+  constructor(inspector, window) {
+    this.document = window.document;
+    this.inspector = inspector;
+    this.store = inspector.store;
 
-  this.init();
-}
-
-LayoutView.prototype = {
+    this.init();
+  }
 
   init() {
     if (!this.inspector) {
@@ -65,11 +56,7 @@ LayoutView.prototype = {
       onToggleShowInfiniteLines,
     } = this.gridInspector.getComponentProps();
 
-    let {
-      onPromoteLearnMoreClick,
-    } = this;
-
-    let app = App({
+    let layoutApp = LayoutApp({
       getSwatchColorPickerTooltip,
       setSelectedNode,
       /**
@@ -78,7 +65,6 @@ LayoutView.prototype = {
        */
       showBoxModelProperties: true,
       onHideBoxModelHighlighter,
-      onPromoteLearnMoreClick,
       onSetGridOverlayColor,
       onShowBoxModelEditor,
       onShowBoxModelHighlighter,
@@ -98,15 +84,11 @@ LayoutView.prototype = {
       key: "layoutview",
       store: this.store,
       title: INSPECTOR_L10N.getStr("inspector.sidebar.layoutViewTitle2"),
-      // @remove after release 56 (See Bug 1355747)
-      badge: Services.prefs.getIntPref(PROMOTE_COUNT_PREF) > 0 ?
-        INSPECTOR_L10N.getStr("inspector.sidebar.newBadge") : null,
-      showBadge: () => Services.prefs.getIntPref(PROMOTE_COUNT_PREF) > 0,
-    }, app);
+    }, layoutApp);
 
     // Expose the provider to let inspector.js use it in setupSidebar.
     this.provider = provider;
-  },
+  }
 
   /**
    * Destruction function called when the inspector is destroyed. Cleans up references.
@@ -117,13 +99,8 @@ LayoutView.prototype = {
     this.document = null;
     this.inspector = null;
     this.store = null;
-  },
-
-  onPromoteLearnMoreClick() {
-    let browserWin = this.inspector.target.tab.ownerDocument.defaultView;
-    browserWin.openUILinkIn(GRID_LINK, "current");
   }
 
-};
+}
 
 module.exports = LayoutView;

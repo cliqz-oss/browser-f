@@ -460,10 +460,13 @@ FTPChannelParent::OnStartRequest(nsIRequest* aRequest, nsISupports* aContext)
 
   // Send down any permissions which are relevant to this URL if we are
   // performing a document load.
-  PContentParent* pcp = Manager()->Manager();
-  DebugOnly<nsresult> rv =
-    static_cast<ContentParent*>(pcp)->AboutToLoadHttpFtpWyciwygDocumentForChild(chan);
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  if (!mIPCClosed) {
+    PContentParent* pcp = Manager()->Manager();
+    MOZ_ASSERT(pcp, "We should have a manager if our IPC isn't closed");
+    DebugOnly<nsresult> rv =
+      static_cast<ContentParent*>(pcp)->AboutToLoadHttpFtpWyciwygDocumentForChild(chan);
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+  }
 
   int64_t contentLength;
   chan->GetContentLength(&contentLength);
@@ -484,8 +487,7 @@ FTPChannelParent::OnStartRequest(nsIRequest* aRequest, nsISupports* aContext)
   }
   nsCOMPtr<nsIHttpChannelInternal> httpChan = do_QueryInterface(aRequest);
   if (httpChan) {
-    DebugOnly<nsresult> rv = httpChan->GetLastModifiedTime(&lastModified);
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
+    Unused << httpChan->GetLastModifiedTime(&lastModified);
   }
 
   URIParams uriparam;
@@ -581,7 +583,7 @@ FTPChannelParent::NotifyTrackingResource()
 NS_IMETHODIMP
 FTPChannelParent::SetClassifierMatchedInfo(const nsACString& aList,
                                            const nsACString& aProvider,
-                                           const nsACString& aPrefix)
+                                           const nsACString& aFullHash)
 {
   // One day, this should probably be filled in.
   return NS_OK;

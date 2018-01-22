@@ -84,6 +84,7 @@ ProxyStream::ProxyStream(REFIID aIID, const BYTE* aInitBuf,
 #if defined(ACCESSIBILITY) && defined(MOZ_CRASHREPORTER)
   const uint32_t expectedStreamLen = GetOBJREFSize(WrapNotNull(mStream));
   nsAutoCString strActCtx;
+  nsAutoString manifestPath;
 #endif // defined(ACCESSIBILITY) && defined(MOZ_CRASHREPORTER)
 
   HRESULT unmarshalResult = S_OK;
@@ -93,7 +94,7 @@ ProxyStream::ProxyStream(REFIID aIID, const BYTE* aInitBuf,
   // actual interface later.
 
 #if defined(ACCESSIBILITY) && defined(MOZ_CRASHREPORTER)
-  auto marshalFn = [this, &strActCtx, &unmarshalResult, &aIID, aEnv]() -> void
+  auto marshalFn = [this, &strActCtx, &manifestPath, &unmarshalResult, &aIID, aEnv]() -> void
 #else
   auto marshalFn = [this, &unmarshalResult, &aIID, aEnv]() -> void
 #endif // defined(ACCESSIBILITY) && defined(MOZ_CRASHREPORTER)
@@ -122,6 +123,8 @@ ProxyStream::ProxyStream(REFIID aIID, const BYTE* aInitBuf,
     } else {
       strActCtx.AppendPrintf("HRESULT 0x%08X", curActCtx.unwrapErr());
     }
+
+    ActivationContext::GetCurrentManifestPath(manifestPath);
 #endif // defined(ACCESSIBILITY) && defined(MOZ_CRASHREPORTER)
 
     unmarshalResult =
@@ -155,6 +158,8 @@ ProxyStream::ProxyStream(REFIID aIID, const BYTE* aInitBuf,
     AnnotateClassRegistration(CLSID_AccessibleHandler);
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("UnmarshalActCtx"),
                                        strActCtx);
+    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("UnmarshalActCtxManifestPath"),
+                                       NS_ConvertUTF16toUTF8(manifestPath));
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("A11yHandlerRegistered"),
                                        a11y::IsHandlerRegistered() ?
                                        NS_LITERAL_CSTRING("true") :
@@ -303,9 +308,17 @@ ProxyStream::ProxyStream(REFIID aIID, IUnknown* aObject, Environment* aEnv,
   HRESULT statResult = S_OK;
   HRESULT getHGlobalResult = S_OK;
 
+#if defined(MOZ_CRASHREPORTER)
+  nsAutoString manifestPath;
+
+  auto marshalFn = [this, &aIID, aObject, mshlFlags, &stream, &streamSize,
+                    &hglobal, &createStreamResult, &marshalResult, &statResult,
+                    &getHGlobalResult, aEnv, &manifestPath]() -> void
+#else
   auto marshalFn = [this, &aIID, aObject, mshlFlags, &stream, &streamSize,
                     &hglobal, &createStreamResult, &marshalResult, &statResult,
                     &getHGlobalResult, aEnv]() -> void
+#endif // defined(MOZ_CRASHREPORTER)
   {
     if (aEnv) {
       bool pushOk = aEnv->Push();
@@ -330,9 +343,15 @@ ProxyStream::ProxyStream(REFIID aIID, IUnknown* aObject, Environment* aEnv,
       return;
     }
 
+#if defined(ACCESSIBILITY) && defined(MOZ_CRASHREPORTER)
+    ActivationContext::GetCurrentManifestPath(manifestPath);
+#endif // defined(MOZ_CRASHREPORTER)
+
     marshalResult = ::CoMarshalInterface(stream, aIID, aObject, MSHCTX_LOCAL,
                                          nullptr, mshlFlags);
+#if !defined(MOZ_DEV_EDITION)
     MOZ_DIAGNOSTIC_ASSERT(marshalResult != E_INVALIDARG);
+#endif // !defined(MOZ_DEV_EDITION)
     if (FAILED(marshalResult)) {
       return;
     }
@@ -371,6 +390,8 @@ ProxyStream::ProxyStream(REFIID aIID, IUnknown* aObject, Environment* aEnv,
     nsPrintfCString hrAsStr("0x%08X", marshalResult);
     CrashReporter::AnnotateCrashReport(
         NS_LITERAL_CSTRING("CoMarshalInterfaceFailure"), hrAsStr);
+    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("MarshalActCtxManifestPath"),
+                                       NS_ConvertUTF16toUTF8(manifestPath));
   }
 
   if (FAILED(statResult)) {

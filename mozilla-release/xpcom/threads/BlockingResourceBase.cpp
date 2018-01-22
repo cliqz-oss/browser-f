@@ -271,7 +271,7 @@ void
 BlockingResourceBase::CheckAcquire()
 {
   if (mType == eCondVar) {
-    NS_NOTYETIMPLEMENTED(
+    MOZ_ASSERT_UNREACHABLE(
       "FIXME bug 456272: annots. to allow CheckAcquire()ing condvars");
     return;
   }
@@ -315,7 +315,7 @@ void
 BlockingResourceBase::Acquire()
 {
   if (mType == eCondVar) {
-    NS_NOTYETIMPLEMENTED(
+    MOZ_ASSERT_UNREACHABLE(
       "FIXME bug 456272: annots. to allow Acquire()ing condvars");
     return;
   }
@@ -340,7 +340,7 @@ void
 BlockingResourceBase::Release()
 {
   if (mType == eCondVar) {
-    NS_NOTYETIMPLEMENTED(
+    MOZ_ASSERT_UNREACHABLE(
       "FIXME bug 456272: annots. to allow Release()ing condvars");
     return;
   }
@@ -506,18 +506,14 @@ ReentrantMonitor::Wait(PRIntervalTime aInterval)
   mChainPrev = 0;
 
   nsresult rv;
-#if defined(MOZILLA_INTERNAL_API)
   {
-    AutoProfilerThreadSleep sleep;
-#endif //MOZILLA_INTERNAL_API
-
+#if defined(MOZILLA_INTERNAL_API)
+    AUTO_PROFILER_THREAD_SLEEP;
+#endif
     // give up the monitor until we're back from Wait()
     rv = PR_Wait(mReentrantMonitor, aInterval) == PR_SUCCESS ? NS_OK :
                                                                NS_ERROR_FAILURE;
-
-#if defined(MOZILLA_INTERNAL_API)
   }
-#endif //MOZILLA_INTERNAL_API
 
   // restore saved state
   mEntryCount = savedEntryCount;

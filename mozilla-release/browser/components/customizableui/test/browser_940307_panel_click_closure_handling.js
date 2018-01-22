@@ -23,51 +23,6 @@ add_task(async function plain_button() {
   button.remove();
 });
 
-/* Clicking a menu button should close the panel, opening the popup shouldn't.  */
-add_task(async function menu_button_popup() {
-  menuButton = document.createElement("toolbarbutton");
-  menuButton.setAttribute("type", "menu-button");
-  menuButton.id = "browser_940307_menubutton";
-  menuButton.setAttribute("label", "Menu button");
-
-  let menuPopup = document.createElement("menupopup");
-  menuPopup.id = "browser_940307_menupopup";
-
-  let menuItem = document.createElement("menuitem");
-  menuItem.setAttribute("label", "Menu item");
-  menuItem.id = "browser_940307_menuitem";
-
-  menuPopup.appendChild(menuItem);
-  menuButton.appendChild(menuPopup);
-  gNavToolbox.palette.appendChild(menuButton);
-  CustomizableUI.addWidgetToArea(menuButton.id, CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
-
-  await waitForOverflowButtonShown();
-
-  await document.getElementById("nav-bar").overflowable.show();
-  let hiddenAgain = promiseOverflowHidden(window);
-  let innerButton = document.getAnonymousElementByAttribute(menuButton, "anonid", "button");
-  EventUtils.synthesizeMouseAtCenter(innerButton, {});
-  await hiddenAgain;
-
-  // Now click the dropmarker to show the menu
-  await document.getElementById("nav-bar").overflowable.show();
-  hiddenAgain = promiseOverflowHidden(window);
-  let menuShown = promisePanelElementShown(window, menuPopup);
-  let dropmarker = document.getAnonymousElementByAttribute(menuButton, "type", "menu-button");
-  EventUtils.synthesizeMouseAtCenter(dropmarker, {});
-  await menuShown;
-  // Panel should stay open:
-  ok(isOverflowOpen(), "Panel should still be open");
-  let menuHidden = promisePanelElementHidden(window, menuPopup);
-  // Then click the menu item to close all the things
-  EventUtils.synthesizeMouseAtCenter(menuItem, {});
-  await menuHidden;
-  await hiddenAgain;
-  CustomizableUI.removeWidgetFromArea(menuButton.id);
-  menuButton.remove();
-});
-
 add_task(async function searchbar_in_panel() {
   CustomizableUI.addWidgetToArea("search-container",
                                  CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
@@ -83,6 +38,9 @@ add_task(async function searchbar_in_panel() {
   // autocomplete panel and search for suggestions, which would
   // trigger network requests. Temporarily disable suggestions.
   await SpecialPowers.pushPrefEnv({set: [["browser.search.suggest.enabled", false]]});
+  let dontShowPopup = e => e.preventDefault();
+  let searchbarPopup = searchbar.textbox.popup;
+  searchbarPopup.addEventListener("popupshowing", dontShowPopup);
 
   searchbar.value = "foo";
   searchbar.focus();
@@ -100,15 +58,15 @@ add_task(async function searchbar_in_panel() {
   EventUtils.synthesizeMouseAtCenter(selectAll, {});
   await contextMenuHidden;
 
-  // Hide the suggestion panel.
-  searchbar.textbox.popup.hidePopup();
-
   ok(isOverflowOpen(), "Panel should still be open");
 
   let hiddenPanelPromise = promiseOverflowHidden(window);
   EventUtils.synthesizeKey("VK_ESCAPE", {});
   await hiddenPanelPromise;
   ok(!isOverflowOpen(), "Panel should no longer be open");
+
+  // Allow search bar popup to show again.
+  searchbarPopup.removeEventListener("popupshowing", dontShowPopup);
 
   // We focused the search bar earlier - ensure we don't keep doing that.
   gURLBar.select();

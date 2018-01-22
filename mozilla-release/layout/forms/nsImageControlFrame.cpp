@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,7 +9,7 @@
 #include "nsPresContext.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsLayoutUtils.h"
 #include "mozilla/MouseEvents.h"
 #include "nsIContent.h"
@@ -22,7 +23,7 @@ public:
   explicit nsImageControlFrame(nsStyleContext* aContext);
   ~nsImageControlFrame();
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
@@ -53,7 +54,7 @@ public:
                              nsIFrame::Cursor& aCursor) override;
   // nsIFormContromFrame
   virtual void SetFocus(bool aOn, bool aRepaint) override;
-  virtual nsresult SetFormProperty(nsIAtom* aName,
+  virtual nsresult SetFormProperty(nsAtom* aName,
                                    const nsAString& aValue) override;
 };
 
@@ -67,12 +68,12 @@ nsImageControlFrame::~nsImageControlFrame()
 }
 
 void
-nsImageControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsImageControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (!GetPrevInFlow()) {
-    nsFormControlFrame::RegUnRegAccessKey(this, false);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, false);
   }
-  nsImageFrame::DestroyFrom(aDestructRoot);
+  nsImageFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nsIFrame*
@@ -125,7 +126,7 @@ nsImageControlFrame::Reflow(nsPresContext*           aPresContext,
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   if (!GetPrevInFlow() && (mState & NS_FRAME_FIRST_REFLOW)) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
   return nsImageFrame::Reflow(aPresContext, aDesiredSize, aReflowInput, aStatus);
 }
@@ -191,7 +192,7 @@ nsImageControlFrame::GetCursor(const nsPoint&    aPoint,
 }
 
 nsresult
-nsImageControlFrame::SetFormProperty(nsIAtom* aName,
+nsImageControlFrame::SetFormProperty(nsAtom* aName,
                                      const nsAString& aValue)
 {
   return NS_OK;

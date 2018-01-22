@@ -486,6 +486,18 @@ class HostRustProgram(BaseRustProgram):
     TARGET_SUBST_VAR = 'RUST_HOST_TARGET'
 
 
+class RustTest(ContextDerived):
+    __slots__ = (
+        'name',
+        'features',
+    )
+
+    def __init__(self, context, name, features):
+        ContextDerived.__init__(self, context)
+        self.name = name
+        self.features = features
+
+
 class BaseLibrary(Linkable):
     """Generic context derived container object for libraries."""
     __slots__ = (
@@ -887,7 +899,7 @@ class UnifiedSources(BaseSources):
         'unified_source_mapping'
     )
 
-    def __init__(self, context, files, canonical_suffix, files_per_unified_file=16):
+    def __init__(self, context, files, canonical_suffix, files_per_unified_file):
         BaseSources.__init__(self, context, files, canonical_suffix)
 
         self.have_unified_mapping = files_per_unified_file > 1

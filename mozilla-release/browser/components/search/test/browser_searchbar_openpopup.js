@@ -4,9 +4,7 @@
 // Instead of loading EventUtils.js into the test scope in browser-test.js for all tests,
 // we only need EventUtils.js for a few files which is why we are using loadSubScript.
 var EventUtils = {};
-this._scriptLoader = Cc["@mozilla.org/moz/jssubscript-loader;1"].
-                     getService(Ci.mozIJSSubScriptLoader);
-this._scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
+Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
 
 const searchPopup = document.getElementById("PopupSearchAutoComplete");
 const kValues = ["long text", "long text 2", "long text 3"];
@@ -90,7 +88,7 @@ add_task(async function init() {
     let addOps = kValues.map(value => {
  return {op: "add",
                                              fieldname: "searchbar-history",
-                                             value}
+                                             value};
                                    });
     searchbar.FormHistory.update(addOps, {
       handleCompletion() {
@@ -100,7 +98,7 @@ add_task(async function init() {
             kValues.map(value => {
  return {op: "remove",
                                            fieldname: "searchbar-history",
-                                           value}
+                                           value};
                                  });
           searchbar.FormHistory.update(removeOps);
         });

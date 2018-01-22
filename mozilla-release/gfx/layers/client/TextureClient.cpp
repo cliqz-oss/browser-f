@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -501,8 +502,11 @@ TextureClient::Lock(OpenMode aMode)
     return mOpenMode == aMode;
   }
 
-  if (aMode & OpenMode::OPEN_WRITE && !TryReadLock()) {
-    NS_WARNING("Attempt to Lock a texture that is being read by the compositor!");
+  if ((aMode & OpenMode::OPEN_WRITE || !mInfo.canConcurrentlyReadLock) && !TryReadLock()) {
+    // Only warn if attempting to write. Attempting to read is acceptable usage.
+    if (aMode & OpenMode::OPEN_WRITE) {
+      NS_WARNING("Attempt to Lock a texture that is being read by the compositor!");
+    }
     return false;
   }
 
@@ -593,6 +597,10 @@ TextureClient::EnableReadLock()
 bool
 TextureClient::SerializeReadLock(ReadLockDescriptor& aDescriptor)
 {
+  if (mData) {
+    mData->OnForwardedToHost();
+  }
+
   if (mReadLock && mUpdated) {
     // Take a read lock on behalf of the TextureHost. The latter will unlock
     // after the shared data is available again for drawing.
@@ -681,10 +689,6 @@ TextureClient::BorrowDrawTarget()
   //MOZ_ASSERT(mOpenMode & OpenMode::OPEN_WRITE);
 
   if (!IsValid() || !mIsLocked) {
-    return nullptr;
-  }
-
-  if (!NS_IsMainThread()) {
     return nullptr;
   }
 
@@ -1123,13 +1127,14 @@ TextureClient::CreateForDrawing(TextureForwarder* aAllocator,
   }
 #endif
 
+#ifdef MOZ_WIDGET_ANDROID
+  if (!data && gfxPrefs::UseSurfaceTextureTextures()) {
+    data = AndroidNativeWindowTextureData::Create(aSize, aFormat);
+  }
+#endif
+
   if (data) {
     return MakeAndAddRef<TextureClient>(data, aTextureFlags, aAllocator);
-  }
-
-  if (moz2DBackend == BackendType::SKIA && aFormat == SurfaceFormat::B8G8R8X8) {
-    // Skia doesn't support RGBX, so ensure we clear the buffer for the proper alpha values.
-    aAllocFlags = TextureAllocationFlags(aAllocFlags | ALLOC_CLEAR_BUFFER);
   }
 
   // Can't do any better than a buffer texture client.
@@ -1236,13 +1241,20 @@ TextureClient::CreateForRawBufferAccess(LayersIPCChannel* aAllocator,
     return nullptr;
   }
 
-  // D2D backend does not support CreateDrawTargetForData(). Use CAIRO instead.
-  if (aMoz2DBackend == gfx::BackendType::DIRECT2D ||
-      aMoz2DBackend == gfx::BackendType::DIRECT2D1_1) {
-    aMoz2DBackend = gfx::BackendType::CAIRO;
+  if (aFormat == SurfaceFormat::B8G8R8X8) {
+    // Skia doesn't support RGBX, so ensure we clear the buffer for the proper alpha values.
+    aAllocFlags = TextureAllocationFlags(aAllocFlags | ALLOC_CLEAR_BUFFER);
   }
 
-  TextureData* texData = BufferTextureData::Create(aSize, aFormat, aMoz2DBackend,
+  // Note that we ignore the backend type if we get here. It should only be D2D
+  // or Skia, and D2D does not support data surfaces. Therefore it is safe to
+  // force the buffer to be Skia.
+  NS_WARNING_ASSERTION(aMoz2DBackend != gfx::BackendType::SKIA &&
+                       aMoz2DBackend != gfx::BackendType::DIRECT2D &&
+                       aMoz2DBackend != gfx::BackendType::DIRECT2D1_1,
+                       "Unsupported TextureClient backend type");
+
+  TextureData* texData = BufferTextureData::Create(aSize, aFormat, gfx::BackendType::SKIA,
                                                    aLayersBackend, aTextureFlags,
                                                    aAllocFlags, aAllocator);
   if (!texData) {
@@ -1256,9 +1268,12 @@ TextureClient::CreateForRawBufferAccess(LayersIPCChannel* aAllocator,
 already_AddRefed<TextureClient>
 TextureClient::CreateForYCbCr(KnowsCompositor* aAllocator,
                               gfx::IntSize aYSize,
+                              uint32_t aYStride,
                               gfx::IntSize aCbCrSize,
+                              uint32_t aCbCrStride,
                               StereoMode aStereoMode,
                               YUVColorSpace aYUVColorSpace,
+                              uint32_t aBitDepth,
                               TextureFlags aTextureFlags)
 {
   if (!aAllocator || !aAllocator->GetLayersIPCActor()->IPCOpen()) {
@@ -1269,9 +1284,12 @@ TextureClient::CreateForYCbCr(KnowsCompositor* aAllocator,
     return nullptr;
   }
 
-  TextureData* data = BufferTextureData::CreateForYCbCr(aAllocator, aYSize, aCbCrSize,
-                                                        aStereoMode, aYUVColorSpace,
-                                                        aTextureFlags);
+  TextureData* data =
+    BufferTextureData::CreateForYCbCr(aAllocator,
+                                      aYSize, aYStride,
+                                      aCbCrSize, aCbCrStride,
+                                      aStereoMode, aYUVColorSpace,
+                                      aBitDepth, aTextureFlags);
   if (!data) {
     return nullptr;
   }
@@ -1285,15 +1303,15 @@ already_AddRefed<TextureClient>
 TextureClient::CreateForYCbCrWithBufferSize(KnowsCompositor* aAllocator,
                                             size_t aSize,
                                             YUVColorSpace aYUVColorSpace,
+                                            uint32_t aBitDepth,
                                             TextureFlags aTextureFlags)
 {
   if (!aAllocator || !aAllocator->GetLayersIPCActor()->IPCOpen()) {
     return nullptr;
   }
 
-  TextureData* data =
-    BufferTextureData::CreateForYCbCrWithBufferSize(aAllocator, aSize, aYUVColorSpace,
-                                                    aTextureFlags);
+  TextureData* data = BufferTextureData::CreateForYCbCrWithBufferSize(
+    aAllocator, aSize, aYUVColorSpace, aBitDepth, aTextureFlags);
   if (!data) {
     return nullptr;
   }
@@ -1302,26 +1320,28 @@ TextureClient::CreateForYCbCrWithBufferSize(KnowsCompositor* aAllocator,
                                       aAllocator->GetTextureForwarder());
 }
 
-TextureClient::TextureClient(TextureData* aData, TextureFlags aFlags, LayersIPCChannel* aAllocator)
-: AtomicRefCountedWithFinalize("TextureClient")
-, mAllocator(aAllocator)
-, mActor(nullptr)
-, mData(aData)
-, mFlags(aFlags)
-, mOpenMode(OpenMode::OPEN_NONE)
+TextureClient::TextureClient(TextureData* aData,
+                             TextureFlags aFlags,
+                             LayersIPCChannel* aAllocator)
+  : AtomicRefCountedWithFinalize("TextureClient")
+  , mAllocator(aAllocator)
+  , mActor(nullptr)
+  , mData(aData)
+  , mFlags(aFlags)
+  , mOpenMode(OpenMode::OPEN_NONE)
 #ifdef DEBUG
-, mExpectedDtRefs(0)
+  , mExpectedDtRefs(0)
 #endif
-, mIsLocked(false)
-, mIsReadLocked(false)
-, mUpdated(false)
-, mAddedToCompositableClient(false)
-, mWorkaroundAnnoyingSharedSurfaceLifetimeIssues(false)
-, mWorkaroundAnnoyingSharedSurfaceOwnershipIssues(false)
-, mFwdTransactionId(0)
-, mSerial(++sSerialCounter)
+  , mIsLocked(false)
+  , mIsReadLocked(false)
+  , mUpdated(false)
+  , mAddedToCompositableClient(false)
+  , mWorkaroundAnnoyingSharedSurfaceLifetimeIssues(false)
+  , mWorkaroundAnnoyingSharedSurfaceOwnershipIssues(false)
+  , mFwdTransactionId(0)
+  , mSerial(++sSerialCounter)
 #ifdef GFX_DEBUG_TRACK_CLIENTS_IN_POOL
-, mPoolTracker(nullptr)
+  , mPoolTracker(nullptr)
 #endif
 {
   mData->FillInfo(mInfo);
@@ -1388,8 +1408,7 @@ TextureClient::PrintInfo(std::stringstream& aStream, const char* aPrefix)
   AppendToString(aStream, mFlags, " [flags=", "]");
 
 #ifdef MOZ_DUMP_PAINTING
-  if (gfxPrefs::LayersDumpTexture() ||
-      profiler_feature_active(ProfilerFeature::LayersDump)) {
+  if (gfxPrefs::LayersDumpTexture()) {
     nsAutoCString pfx(aPrefix);
     pfx += "  ";
 
@@ -1757,14 +1776,18 @@ UpdateYCbCrTextureClient(TextureClient* aTexture, const PlanarYCbCrData& aData)
   srcData.y.size = aData.mYSize;
   srcData.y.stride = aData.mYStride;
   srcData.y.skip = aData.mYSkip;
+  MOZ_ASSERT(aData.mBitDepth == 8 || (aData.mBitDepth > 8 && aData.mBitDepth <= 16));
+  srcData.y.bytesPerPixel = (aData.mBitDepth > 8) ? 2 : 1;
   srcData.cb.data = aData.mCbChannel;
   srcData.cb.size = aData.mCbCrSize;
   srcData.cb.stride = aData.mCbCrStride;
   srcData.cb.skip = aData.mCbSkip;
+  srcData.cb.bytesPerPixel = (aData.mBitDepth > 8) ? 2 : 1;
   srcData.cr.data = aData.mCrChannel;
   srcData.cr.size = aData.mCbCrSize;
   srcData.cr.stride = aData.mCbCrStride;
   srcData.cr.skip = aData.mCrSkip;
+  srcData.cr.bytesPerPixel = (aData.mBitDepth > 8) ? 2 : 1;
   srcData.metadata = nullptr;
 
   if (!srcData.CopyInto(mapped)) {
@@ -1809,15 +1832,19 @@ MappedYCbCrChannelData::CopyInto(MappedYCbCrChannelData& aDst)
       // fast-ish path
       memcpy(aDst.data + i * aDst.stride,
              data + i * stride,
-             size.width);
+             size.width * bytesPerPixel);
     } else {
       // slow path
       uint8_t* src = data + i * stride;
       uint8_t* dst = aDst.data + i * aDst.stride;
       for (int32_t j = 0; j < size.width; ++j) {
-        *dst = *src;
-        src += 1 + skip;
-        dst += 1 + aDst.skip;
+        for (uint32_t k = 0; k < bytesPerPixel; ++k) {
+          *dst = *src;
+          src += 1;
+          dst += 1;
+        }
+        src += skip;
+        dst += aDst.skip;
       }
     }
   }

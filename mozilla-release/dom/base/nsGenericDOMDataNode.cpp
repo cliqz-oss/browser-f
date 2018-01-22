@@ -15,6 +15,7 @@
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/HTMLSlotElement.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "nsIDocument.h"
 #include "nsIDOMDocument.h"
@@ -297,7 +298,7 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
       NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED,
       this);
 
-  nsCOMPtr<nsIAtom> oldValue;
+  RefPtr<nsAtom> oldValue;
   if (haveMutationListeners) {
     oldValue = GetCurrentValueAtom();
   }
@@ -569,10 +570,10 @@ nsGenericDOMDataNode::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 
   UpdateEditableState(false);
 
-  NS_POSTCONDITION(aDocument == GetUncomposedDoc(), "Bound to wrong document");
-  NS_POSTCONDITION(aParent == GetParent(), "Bound to wrong parent");
-  NS_POSTCONDITION(aBindingParent == GetBindingParent(),
-                   "Bound to wrong binding parent");
+  MOZ_ASSERT(aDocument == GetUncomposedDoc(), "Bound to wrong document");
+  MOZ_ASSERT(aParent == GetParent(), "Bound to wrong parent");
+  MOZ_ASSERT(aBindingParent == GetBindingParent(),
+             "Bound to wrong binding parent");
 
   return NS_OK;
 }
@@ -637,15 +638,16 @@ nsGenericDOMDataNode::GetChildren(uint32_t aFilter)
 }
 
 nsresult
-nsGenericDOMDataNode::SetAttr(int32_t aNameSpaceID, nsIAtom* aAttr,
-                              nsIAtom* aPrefix, const nsAString& aValue,
+nsGenericDOMDataNode::SetAttr(int32_t aNameSpaceID, nsAtom* aAttr,
+                              nsAtom* aPrefix, const nsAString& aValue,
+                              nsIPrincipal* aContentPrincipal,
                               bool aNotify)
 {
   return NS_OK;
 }
 
 nsresult
-nsGenericDOMDataNode::UnsetAttr(int32_t aNameSpaceID, nsIAtom* aAttr,
+nsGenericDOMDataNode::UnsetAttr(int32_t aNameSpaceID, nsAtom* aAttr,
                                 bool aNotify)
 {
   return NS_OK;
@@ -738,6 +740,20 @@ nsGenericDOMDataNode::GetExistingDestInsertionPoints() const
   return nullptr;
 }
 
+HTMLSlotElement*
+nsGenericDOMDataNode::GetAssignedSlot() const
+{
+  nsDataSlots *slots = GetExistingDataSlots();
+  return slots ? slots->mAssignedSlot.get() : nullptr;
+}
+
+void
+nsGenericDOMDataNode::SetAssignedSlot(HTMLSlotElement* aSlot)
+{
+  nsDataSlots *slots = DataSlots();
+  slots->mAssignedSlot = aSlot;
+}
+
 nsXBLBinding *
 nsGenericDOMDataNode::GetXBLBinding() const
 {
@@ -751,12 +767,12 @@ nsGenericDOMDataNode::SetXBLBinding(nsXBLBinding* aBinding,
 }
 
 nsIContent *
-nsGenericDOMDataNode::GetXBLInsertionParent() const
+nsGenericDOMDataNode::GetXBLInsertionPoint() const
 {
   if (HasFlag(NODE_MAY_BE_IN_BINDING_MNGR)) {
     nsDataSlots *slots = GetExistingDataSlots();
     if (slots) {
-      return slots->mXBLInsertionParent;
+      return slots->mXBLInsertionPoint;
     }
   }
 
@@ -764,16 +780,16 @@ nsGenericDOMDataNode::GetXBLInsertionParent() const
 }
 
 void
-nsGenericDOMDataNode::SetXBLInsertionParent(nsIContent* aContent)
+nsGenericDOMDataNode::SetXBLInsertionPoint(nsIContent* aContent)
 {
   if (aContent) {
     nsDataSlots *slots = DataSlots();
     SetFlags(NODE_MAY_BE_IN_BINDING_MNGR);
-    slots->mXBLInsertionParent = aContent;
+    slots->mXBLInsertionPoint = aContent;
   } else {
     nsDataSlots *slots = GetExistingDataSlots();
     if (slots) {
-      slots->mXBLInsertionParent = nullptr;
+      slots->mXBLInsertionPoint = nullptr;
     }
   }
 }
@@ -781,7 +797,7 @@ nsGenericDOMDataNode::SetXBLInsertionParent(nsIContent* aContent)
 bool
 nsGenericDOMDataNode::IsNodeOfType(uint32_t aFlags) const
 {
-  return !(aFlags & ~(eCONTENT | eDATA_NODE));
+  return !(aFlags & ~eDATA_NODE);
 }
 
 void
@@ -823,18 +839,22 @@ nsGenericDOMDataNode::nsDataSlots::nsDataSlots()
 void
 nsGenericDOMDataNode::nsDataSlots::Traverse(nsCycleCollectionTraversalCallback &cb)
 {
-  NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mSlots->mXBLInsertionParent");
-  cb.NoteXPCOMChild(mXBLInsertionParent.get());
+  NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mSlots->mXBLInsertionPoint");
+  cb.NoteXPCOMChild(mXBLInsertionPoint.get());
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mSlots->mContainingShadow");
   cb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsIContent*, mContainingShadow));
+
+  NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mSlots->mAssignedSlot");
+  cb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsIContent*, mAssignedSlot.get()));
 }
 
 void
 nsGenericDOMDataNode::nsDataSlots::Unlink()
 {
-  mXBLInsertionParent = nullptr;
+  mXBLInsertionPoint = nullptr;
   mContainingShadow = nullptr;
+  mAssignedSlot = nullptr;
 }
 
 //----------------------------------------------------------------------
@@ -1095,7 +1115,7 @@ nsGenericDOMDataNode::AppendTextTo(nsAString& aResult,
   return mText.AppendTo(aResult, aFallible);
 }
 
-already_AddRefed<nsIAtom>
+already_AddRefed<nsAtom>
 nsGenericDOMDataNode::GetCurrentValueAtom()
 {
   nsAutoString val;
@@ -1110,13 +1130,13 @@ nsGenericDOMDataNode::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
 }
 
 NS_IMETHODIMP_(bool)
-nsGenericDOMDataNode::IsAttributeMapped(const nsIAtom* aAttribute) const
+nsGenericDOMDataNode::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   return false;
 }
 
 nsChangeHint
-nsGenericDOMDataNode::GetAttributeChangeHint(const nsIAtom* aAttribute,
+nsGenericDOMDataNode::GetAttributeChangeHint(const nsAtom* aAttribute,
                                              int32_t aModType) const
 {
   NS_NOTREACHED("Shouldn't be calling this!");

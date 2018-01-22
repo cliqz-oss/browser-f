@@ -53,7 +53,7 @@ parent:
   // For document loads we keep this protocol open after child's
   // OnStopRequest, and send this msg (instead of __delete__) to allow
   // partial cleanup on parent.
-  async DocumentChannelCleanup();
+  async DocumentChannelCleanup(bool clearCacheEntry);
 
   // This might have to be sync. If this fails we must fail the document load
   // to avoid endless loop.
@@ -99,6 +99,7 @@ child:
                        nsHttpHeaderArray   requestHeaders,
                        bool                isFromCache,
                        bool                cacheEntryAvailable,
+                       uint64_t            cacheEntryId,
                        int32_t             cacheFetchCount,
                        uint32_t            cacheExpirationTime,
                        nsCString           cachedCharset,

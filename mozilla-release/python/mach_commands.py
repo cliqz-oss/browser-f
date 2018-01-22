@@ -112,7 +112,7 @@ class MachCommands(MachCommandBase):
         # which produces output in the format Mozilla infrastructure expects.
         # Some tests are run via pytest.
         if test_objects is None:
-            from mozbuild.testing import TestResolver
+            from moztest.resolve import TestResolver
             resolver = self._spawn(TestResolver)
             if tests:
                 # If we were given test paths, try to find tests matching them.
@@ -125,12 +125,6 @@ class MachCommands(MachCommandBase):
         mp = TestManifest()
         mp.tests.extend(test_objects)
 
-        if not mp.tests:
-            message = 'TEST-UNEXPECTED-FAIL | No tests collected ' + \
-                      '(Not in PYTHON_UNITTEST_MANIFESTS?)'
-            self.log(logging.WARN, 'python-test', {}, message)
-            return 1
-
         filters = []
         if subsuite == 'default':
             filters.append(mpf.subsuite(None))
@@ -138,6 +132,14 @@ class MachCommands(MachCommandBase):
             filters.append(mpf.subsuite(subsuite))
 
         tests = mp.active_tests(filters=filters, disabled=False, **mozinfo.info)
+
+        if not tests:
+            submsg = "for subsuite '{}' ".format(subsuite) if subsuite else ""
+            message = "TEST-UNEXPECTED-FAIL | No tests collected " + \
+                      "{}(Not in PYTHON_UNITTEST_MANIFESTS?)".format(submsg)
+            self.log(logging.WARN, 'python-test', {}, message)
+            return 1
+
         parallel = []
         sequential = []
         for test in tests:

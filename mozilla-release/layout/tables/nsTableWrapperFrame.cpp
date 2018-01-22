@@ -64,11 +64,11 @@ nsTableWrapperFrame::AccessibleType()
 #endif
 
 void
-nsTableWrapperFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTableWrapperFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  DestroyAbsoluteFrames(aDestructRoot);
-  mCaptionFrames.DestroyFramesFrom(aDestructRoot);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  DestroyAbsoluteFrames(aDestructRoot, aPostDestroyData);
+  mCaptionFrames.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 const nsFrameList&
@@ -121,8 +121,8 @@ nsTableWrapperFrame::AppendFrames(ChildListID     aListID,
 
   // Reflow the new caption frame. It's already marked dirty, so
   // just tell the pres shell.
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
 void
@@ -140,8 +140,8 @@ nsTableWrapperFrame::InsertFrames(ChildListID     aListID,
 
   // Reflow the new caption frame. It's already marked dirty, so
   // just tell the pres shell.
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
 void
@@ -161,9 +161,8 @@ nsTableWrapperFrame::RemoveFrame(ChildListID  aListID,
   // Remove the frame and destroy it
   mCaptionFrames.DestroyFrame(aOldFrame);
 
-  PresContext()->PresShell()->
-    FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                     NS_FRAME_HAS_DIRTY_CHILDREN); // also means child removed
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
 void
@@ -180,7 +179,7 @@ nsTableWrapperFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     return;
   }
 
-  nsDisplayListCollection set;
+  nsDisplayListCollection set(aBuilder);
   BuildDisplayListForInnerTable(aBuilder, set);
 
   nsDisplayListSet captionSet(set, set.BlockBorderBackgrounds());

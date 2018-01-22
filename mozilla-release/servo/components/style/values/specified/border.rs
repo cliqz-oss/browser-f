@@ -19,9 +19,7 @@ use values::specified::{AllowQuirks, Number, NumberOrPercentage};
 use values::specified::length::{Length, LengthOrPercentage, NonNegativeLength};
 
 /// A specified value for a single side of the `border-width` property.
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Debug, PartialEq, ToCss)]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToCss)]
 pub enum BorderSideWidth {
     /// `thin`
     Thin,
@@ -62,7 +60,7 @@ impl BorderSideWidth {
         if let Ok(length) = input.try(|i| Length::parse_non_negative_quirky(context, i, allow_quirks)) {
             return Ok(BorderSideWidth::Length(length));
         }
-        try_match_ident_ignore_ascii_case! { input.expect_ident()?,
+        try_match_ident_ignore_ascii_case! { input,
             "thin" => Ok(BorderSideWidth::Thin),
             "medium" => Ok(BorderSideWidth::Medium),
             "thick" => Ok(BorderSideWidth::Thick),

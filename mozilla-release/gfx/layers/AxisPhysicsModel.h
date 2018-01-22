@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +7,6 @@
 #ifndef mozilla_layers_AxisPhysicsModel_h
 #define mozilla_layers_AxisPhysicsModel_h
 
-#include "AxisPhysicsModel.h"
 #include <sys/types.h>                  // for int32_t
 #include "mozilla/TimeStamp.h"          // for TimeDuration
 
@@ -38,7 +37,7 @@ public:
   /**
    * Gets the raw velocity of this axis at this moment.
    */
-  double GetVelocity();
+  double GetVelocity() const;
 
   /**
    * Sets the raw velocity of this axis at this moment.
@@ -48,7 +47,7 @@ public:
   /**
    * Gets the raw position of this axis at this moment.
    */
-  double GetPosition();
+  double GetPosition() const;
 
   /**
    * Sets the raw position of this axis at this moment.

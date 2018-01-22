@@ -266,7 +266,7 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsFtpProtocolHandler, Init)
 namespace mozilla {
 namespace net {
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsHttpNTLMAuth)
-NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHttpHandler, Init)
+NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsHttpHandler, nsHttpHandler::GetInstance)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHttpsHandler, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHttpAuthManager, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsHttpChannelAuthProvider)
@@ -305,10 +305,6 @@ NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(ExtensionProtocolHandler,
     ExtensionProtocolHandler::GetSingleton)
 NS_GENERIC_FACTORY_CONSTRUCTOR(SubstitutingURL)
 } // namespace mozilla
-
-#include "nsDeviceProtocolHandler.h"
-typedef mozilla::net::nsDeviceProtocolHandler nsDeviceProtocolHandler;
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsDeviceProtocolHandler)
 
 #include "nsViewSourceHandler.h"
 typedef mozilla::net::nsViewSourceHandler nsViewSourceHandler;
@@ -375,12 +371,6 @@ typedef mozilla::net::nsStandardURL nsStandardURL;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsStandardURL)
 typedef mozilla::net::nsSimpleURI nsSimpleURI;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSimpleURI)
-
-#ifdef MOZ_RUST_URLPARSE
-#include "mozilla/net/RustURL.h"
-typedef mozilla::net::RustURL RustURL;
-NS_GENERIC_FACTORY_CONSTRUCTOR(RustURL)
-#endif // MOZ_RUST_URLPARSE
 
 typedef mozilla::net::nsSimpleNestedURI nsSimpleNestedURI;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSimpleNestedURI)
@@ -729,9 +719,6 @@ NS_DEFINE_NAMED_CID(NS_STDURLPARSER_CID);
 NS_DEFINE_NAMED_CID(NS_NOAUTHURLPARSER_CID);
 NS_DEFINE_NAMED_CID(NS_AUTHURLPARSER_CID);
 NS_DEFINE_NAMED_CID(NS_STANDARDURL_CID);
-#ifdef MOZ_RUST_URLPARSE
-NS_DEFINE_NAMED_CID(NS_RUSTURL_CID);
-#endif
 NS_DEFINE_NAMED_CID(NS_ARRAYBUFFERINPUTSTREAM_CID);
 NS_DEFINE_NAMED_CID(NS_BUFFEREDINPUTSTREAM_CID);
 NS_DEFINE_NAMED_CID(NS_BUFFEREDOUTPUTSTREAM_CID);
@@ -792,7 +779,6 @@ NS_DEFINE_NAMED_CID(NS_COOKIESERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_WIFI_MONITOR_COMPONENT_CID);
 #endif
 NS_DEFINE_NAMED_CID(NS_DATAPROTOCOLHANDLER_CID);
-NS_DEFINE_NAMED_CID(NS_DEVICEPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_VIEWSOURCEHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_WYCIWYGPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_WEBSOCKETPROTOCOLHANDLER_CID);
@@ -856,9 +842,6 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_NOAUTHURLPARSER_CID, false, nullptr, nsNoAuthURLParserConstructor },
     { &kNS_AUTHURLPARSER_CID, false, nullptr, nsAuthURLParserConstructor },
     { &kNS_STANDARDURL_CID, false, nullptr, nsStandardURLConstructor },
-#ifdef MOZ_RUST_URLPARSE
-    { &kNS_RUSTURL_CID, false, nullptr, RustURLConstructor },
-#endif
     { &kNS_ARRAYBUFFERINPUTSTREAM_CID, false, nullptr, ArrayBufferInputStreamConstructor },
     { &kNS_BUFFEREDINPUTSTREAM_CID, false, nullptr, nsBufferedInputStream::Create },
     { &kNS_BUFFEREDOUTPUTSTREAM_CID, false, nullptr, nsBufferedOutputStream::Create },
@@ -919,7 +902,6 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_WIFI_MONITOR_COMPONENT_CID, false, nullptr, nsWifiMonitorConstructor },
 #endif
     { &kNS_DATAPROTOCOLHANDLER_CID, false, nullptr, nsDataHandler::Create },
-    { &kNS_DEVICEPROTOCOLHANDLER_CID, false, nullptr, nsDeviceProtocolHandlerConstructor},
     { &kNS_VIEWSOURCEHANDLER_CID, false, nullptr, nsViewSourceHandlerConstructor },
     { &kNS_WYCIWYGPROTOCOLHANDLER_CID, false, nullptr, nsWyciwygProtocolHandlerConstructor },
     { &kNS_WEBSOCKETPROTOCOLHANDLER_CID, false, nullptr,
@@ -985,9 +967,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_NOAUTHURLPARSER_CONTRACTID, &kNS_NOAUTHURLPARSER_CID },
     { NS_AUTHURLPARSER_CONTRACTID, &kNS_AUTHURLPARSER_CID },
     { NS_STANDARDURL_CONTRACTID, &kNS_STANDARDURL_CID },
-#ifdef MOZ_RUST_URLPARSE
-    { NS_RUSTURL_CONTRACTID, &kNS_RUSTURL_CID },
-#endif
     { NS_ARRAYBUFFERINPUTSTREAM_CONTRACTID, &kNS_ARRAYBUFFERINPUTSTREAM_CID },
     { NS_BUFFEREDINPUTSTREAM_CONTRACTID, &kNS_BUFFEREDINPUTSTREAM_CID },
     { NS_BUFFEREDOUTPUTSTREAM_CONTRACTID, &kNS_BUFFEREDOUTPUTSTREAM_CID },
@@ -1054,7 +1033,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_WIFI_MONITOR_CONTRACTID, &kNS_WIFI_MONITOR_COMPONENT_CID },
 #endif
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "data", &kNS_DATAPROTOCOLHANDLER_CID },
-    { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "moz-device", &kNS_DEVICEPROTOCOLHANDLER_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "view-source", &kNS_VIEWSOURCEHANDLER_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "wyciwyg", &kNS_WYCIWYGPROTOCOLHANDLER_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "ws", &kNS_WEBSOCKETPROTOCOLHANDLER_CID },

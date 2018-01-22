@@ -15,7 +15,6 @@ module.exports = {
     "CheckerboardReportService": false,
     // Specific to Firefox (Chrome code only).
     "ChromeUtils": false,
-    "ChromeWindow": false,
     "ChromeWorker": false,
     "Components": false,
     "DOMRequest": false,
@@ -138,7 +137,6 @@ module.exports = {
     // Maximum depth callbacks can be nested.
     "max-nested-callbacks": ["error", 10],
 
-    "mozilla/avoid-nsISupportsString-preferences": "error",
     "mozilla/avoid-removeChild": "error",
     "mozilla/import-browser-window-globals": "error",
     "mozilla/import-globals": "error",

@@ -256,7 +256,7 @@ function ensureTimestampsUpdated(aGuid, aCheckDateAdded = false) {
   do_check_true(observer.itemsChanged.has(aGuid));
   let changes = observer.itemsChanged.get(aGuid);
   if (aCheckDateAdded)
-    do_check_true(changes.has("dateAdded"))
+    do_check_true(changes.has("dateAdded"));
   do_check_true(changes.has("lastModified"));
 }
 
@@ -685,8 +685,8 @@ add_task(async function test_move_items_to_folder() {
   ensureUndo();
 
   // Clean up
-  await PT.undo();  // folder_b_txn
-  await PT.undo();  // folder_a_txn + the bookmarks;
+  await PT.undo(); // folder_b_txn
+  await PT.undo(); // folder_a_txn + the bookmarks;
   do_check_eq(observer.itemsRemoved.size, 4);
   ensureUndoState([ [moveTxn],
                     [folder_b_txn],
@@ -1276,6 +1276,8 @@ add_task(async function test_tag_uri() {
   await doTest({ urls: [bm_info_a.url], tag: "MyTag" });
   await doTest({ urls: [bm_info_a.url, bm_info_b.url], tags: ["A, B"] });
   await doTest({ urls: [bm_info_a.url, unbookmarked_uri], tag: "C" });
+  // Duplicate URLs listed.
+  await doTest({ urls: [bm_info_a.url, bm_info_b.url, bm_info_a.url], tag: "D" });
 
   // Cleanup
   observer.reset();
@@ -1545,7 +1547,7 @@ add_task(async function test_livemark_txns() {
     ensureLivemarkRemoved();
   }
 
-  await _testDoUndoRedoUndo()
+  await _testDoUndoRedoUndo();
   livemark_info.siteUrl = NetUtil.newURI("http://feed.site.uri");
   await _testDoUndoRedoUndo();
 
@@ -1644,7 +1646,7 @@ add_task(async function test_array_input_for_batch() {
   await ensureChildCount(2);
   await PT.undo();
   await ensureChildCount(0);
-  await PT.redo()
+  await PT.redo();
   await ensureChildCount(2);
   await PT.undo();
   await ensureChildCount(0);
@@ -1658,7 +1660,7 @@ add_task(async function test_array_input_for_batch() {
 
 add_task(async function test_copy_excluding_annotations() {
   let folderInfo = createTestFolderInfo();
-  let anno = n => { return { name: n, value: 1 } };
+  let anno = n => { return { name: n, value: 1 }; };
   folderInfo.annotations = [anno("a"), anno("b"), anno("c")];
   let folderGuid = await PT.NewFolder(folderInfo).transact();
 

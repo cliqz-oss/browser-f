@@ -140,7 +140,9 @@ public:
    *                  affect the return value.
    */
   bool SetContentState(nsIContent* aContent, EventStates aState);
-  void ContentRemoved(nsIDocument* aDocument, nsIContent* aContent);
+  void ContentRemoved(nsIDocument* aDocument, nsIContent* aMaybeContainer,
+                      nsIContent* aContent);
+
   bool EventStatusOK(WidgetGUIEvent* aEvent);
 
   /**
@@ -231,22 +233,17 @@ public:
                      bool aHaveHotspot, float aHotspotX, float aHotspotY,
                      nsIWidget* aWidget, bool aLockCursor);
 
-  static void StartHandlingUserInput()
-  {
-    ++sUserInputEventDepth;
-    ++sUserInputCounter;
-    if (sUserInputEventDepth == 1) {
-      sLatestUserInputStart = sHandlingInputStart = TimeStamp::Now();
-    }
-  }
-
-  static void StopHandlingUserInput()
-  {
-    --sUserInputEventDepth;
-    if (sUserInputEventDepth == 0) {
-      sHandlingInputStart = TimeStamp();
-    }
-  }
+  /**
+   * StartHandlingUserInput() is called when we start to handle a user input.
+   * StopHandlingUserInput() is called when we finish handling a user input.
+   * If the caller knows which input event caused that, it should set
+   * aMessage to the event message.  Otherwise, set eVoidEvent.
+   * Note that StopHandlingUserInput() caller should call it with exactly same
+   * event message as its corresponding StartHandlingUserInput() call because
+   * these methods may count the number of specific event message.
+   */
+  static void StartHandlingUserInput(EventMessage aMessage);
+  static void StopHandlingUserInput(EventMessage aMessage);
 
   static TimeStamp GetHandlingInputStart() {
     return sHandlingInputStart;
@@ -254,12 +251,14 @@ public:
 
   /**
    * Returns true if the current code is being executed as a result of
-   * user input.  This includes anything that is initiated by user,
-   * with the exception of page load events or mouse over events. If
-   * this method is called from asynchronously executed code, such as
-   * during layout reflows, it will return false.
+   * user input or keyboard input.  The former includes anything that is
+   * initiated by user, with the exception of page load events or mouse
+   * over events.  And the latter returns true when one of the user inputs
+   * is an input from keyboard.  If these methods are called from asynchronously
+   * executed code, such as during layout reflows, it will return false.
    */
   static bool IsHandlingUserInput();
+  static bool IsHandlingKeyboardInput();
 
   /**
    * Get the number of user inputs handled since process start. This
@@ -302,10 +301,14 @@ public:
   static bool IsRemoteTarget(nsIContent* aTarget);
 
   // Returns true if the given WidgetWheelEvent will resolve to a scroll action.
-  static bool WheelEventIsScrollAction(WidgetWheelEvent* aEvent);
+  static bool WheelEventIsScrollAction(const WidgetWheelEvent* aEvent);
+
+  // Returns true if the given WidgetWheelEvent will resolve to a horizontal
+  // scroll action but it's a vertical wheel operation.
+  static bool WheelEventIsHorizontalScrollAction(const WidgetWheelEvent* aEvet);
 
   // Returns user-set multipliers for a wheel event.
-  static void GetUserPrefsForWheelEvent(WidgetWheelEvent* aEvent,
+  static void GetUserPrefsForWheelEvent(const WidgetWheelEvent* aEvent,
                                         double* aOutMultiplierX,
                                         double* aOutMultiplierY);
 
@@ -536,7 +539,7 @@ protected:
      * Returns whether or not ApplyUserPrefsToDelta() would change the delta
      * values of an event.
      */
-    void GetUserPrefsForEvent(WidgetWheelEvent* aEvent,
+    void GetUserPrefsForEvent(const WidgetWheelEvent* aEvent,
                               double* aOutMultiplierX,
                               double* aOutMultiplierY);
 
@@ -556,25 +559,26 @@ protected:
       ACTION_SCROLL,
       ACTION_HISTORY,
       ACTION_ZOOM,
-      ACTION_LAST = ACTION_ZOOM,
+      ACTION_HORIZONTAL_SCROLL,
+      ACTION_LAST = ACTION_HORIZONTAL_SCROLL,
       // Following actions are used only by internal processing.  So, cannot
       // specified by prefs.
-      ACTION_SEND_TO_PLUGIN
+      ACTION_SEND_TO_PLUGIN,
     };
-    Action ComputeActionFor(WidgetWheelEvent* aEvent);
+    Action ComputeActionFor(const WidgetWheelEvent* aEvent);
 
     /**
      * NeedToComputeLineOrPageDelta() returns if the aEvent needs to be
      * computed the lineOrPageDelta values.
      */
-    bool NeedToComputeLineOrPageDelta(WidgetWheelEvent* aEvent);
+    bool NeedToComputeLineOrPageDelta(const WidgetWheelEvent* aEvent);
 
     /**
      * IsOverOnePageScrollAllowed*() checks whether wheel scroll amount should
      * be rounded down to the page width/height (false) or not (true).
      */
-    bool IsOverOnePageScrollAllowedX(WidgetWheelEvent* aEvent);
-    bool IsOverOnePageScrollAllowedY(WidgetWheelEvent* aEvent);
+    bool IsOverOnePageScrollAllowedX(const WidgetWheelEvent* aEvent);
+    bool IsOverOnePageScrollAllowedY(const WidgetWheelEvent* aEvent);
 
     /**
      * WheelEventsEnabledOnPlugins() returns true if user wants to use mouse
@@ -607,7 +611,7 @@ protected:
      * default index which is used at either no modifier key is pressed or
      * two or modifier keys are pressed.
      */
-    Index GetIndexFor(WidgetWheelEvent* aEvent);
+    Index GetIndexFor(const WidgetWheelEvent* aEvent);
 
     /**
      * GetPrefNameBase() returns the base pref name for aEvent.
@@ -622,6 +626,25 @@ protected:
     void Init(Index aIndex);
 
     void Reset();
+
+    /**
+     * Retrieve multiplier for aEvent->mDeltaX and aEvent->mDeltaY.
+     * If the default action is ACTION_HORIZONTAL_SCROLL and the delta values
+     * are adjusted by AutoWheelDeltaAdjuster(), this treats mMultiplierX as
+     * multiplier for deltaY and mMultiplierY as multiplier for deltaY.
+     *
+     * @param aEvent    The event which is being handled.
+     * @param aIndex    The index of mMultiplierX and mMultiplierY.
+     *                  Should be result of GetIndexFor(aEvent).
+     * @param aMultiplierForDeltaX      Will be set to multiplier for
+     *                                  aEvent->mDeltaX.
+     * @param aMultiplierForDeltaY      Will be set to multiplier for
+     *                                  aEvent->mDeltaY.
+     */
+    void GetMultiplierForDeltaXAndY(const WidgetWheelEvent* aEvent,
+                                    Index aIndex,
+                                    double* aMultiplierForDeltaX,
+                                    double* aMultiplierForDeltaY);
 
     bool mInit[COUNT_OF_MULTIPLIERS];
     double mMultiplierX[COUNT_OF_MULTIPLIERS];
@@ -971,6 +994,20 @@ private:
                                       RefPtr<OverOutElementsWrapper>& aChunk,
                                       nsIContent* aClosure);
 
+  /**
+   * Update the attribute mLastRefPoint of the mouse event. It should be
+   *     the center of the window while the pointer is locked.
+   *     the same value as mRefPoint while there is no known last ref point.
+   *     the same value as the last known mRefPoint.
+   */
+  static void UpdateLastRefPointOfMouseEvent(WidgetMouseEvent* aMouseEvent);
+
+  static void ResetPointerToWindowCenterWhilePointerLocked(
+                WidgetMouseEvent* aMouseEvent);
+
+  // Update the last known ref point to the current event's mRefPoint.
+  static void UpdateLastPointerPosition(WidgetMouseEvent* aMouseEvent);
+
   int32_t     mLockCursor;
   bool mLastFrameConsumedSetCursor;
 
@@ -1052,12 +1089,14 @@ public:
   // of page load events or mouse over events.
   static uint64_t sUserInputCounter;
 
-  // The current depth of user inputs. This includes anything that is
-  // initiated by user, with the exception of page load events or
-  // mouse over events. Incremented whenever we start handling a user
-  // input, decremented when we have finished handling a user
-  // input. This depth is *not* reset in case of nested event loops.
+  // The current depth of user and keyboard inputs. sUserInputEventDepth
+  // is the number of any user input events, page load events and mouse over
+  // events.  sUserKeyboardEventDepth is the number of keyboard input events.
+  // Incremented whenever we start handling a user input, decremented when we
+  // have finished handling a user input. This depth is *not* reset in case
+  // of nested event loops.
   static int32_t sUserInputEventDepth;
+  static int32_t sUserKeyboardEventDepth;
 
   static bool sNormalLMouseEventInProcess;
 
@@ -1090,11 +1129,14 @@ public:
   ~AutoHandlingUserInputStatePusher();
 
 protected:
-  bool mIsHandlingUserInput;
-  bool mIsMouseDown;
-  bool mResetFMMouseButtonHandlingState;
-
   nsCOMPtr<nsIDocument> mMouseButtonEventHandlingDocument;
+  EventMessage mMessage;
+  bool mIsHandlingUserInput;
+
+  bool NeedsToResetFocusManagerMouseButtonHandlingState() const
+  {
+    return mMessage == eMouseDown || mMessage == eMouseUp;
+  }
 
 private:
   // Hide so that this class can only be stack-allocated

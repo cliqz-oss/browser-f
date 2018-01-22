@@ -23,6 +23,7 @@ from mach.decorators import (
 
 from servo.command_base import CommandBase, cd, call
 from servo.build_commands import notify_build_done
+from servo.util import STATIC_RUST_LANG_ORG_DIST, URLOPEN_KWARGS
 
 
 @CommandProvider
@@ -32,7 +33,7 @@ class MachCommands(CommandBase):
             self.set_use_stable_rust()
             crate_dir = path.join('ports', 'geckolib')
         else:
-            crate_dir = path.join('components', 'servo')
+            crate_dir = path.join('ports', 'servo')
 
         self.ensure_bootstrapped()
         self.ensure_clobbered()
@@ -262,8 +263,8 @@ class MachCommands(CommandBase):
              description='Update the Rust version to latest Nightly',
              category='devenv')
     def rustup(self):
-        url = "https://static-rust-lang-org.s3.amazonaws.com/dist/channel-rust-nightly-date.txt"
-        nightly_date = urllib2.urlopen(url).read()
+        url = STATIC_RUST_LANG_ORG_DIST + "/channel-rust-nightly-date.txt"
+        nightly_date = urllib2.urlopen(url, **URLOPEN_KWARGS).read()
         filename = path.join(self.context.topdir, "rust-toolchain")
         with open(filename, "w") as f:
             f.write("nightly-%s\n" % nightly_date)
@@ -285,29 +286,3 @@ class MachCommands(CommandBase):
         # Fetch Cargo dependencies
         with cd(self.context.topdir):
             call(["cargo", "fetch"], env=self.build_env())
-
-    @Command('wptrunner-upgrade',
-             description='upgrade wptrunner.',
-             category='devenv')
-    def upgrade_wpt_runner(self):
-        env = self.build_env()
-        with cd(path.join(self.context.topdir, 'tests', 'wpt', 'harness')):
-            code = call(["git", "init"], env=env)
-            if code:
-                return code
-            # No need to report an error if this fails, as it will for the first use
-            call(["git", "remote", "rm", "upstream"], env=env)
-            code = call(
-                ["git", "remote", "add", "upstream", "https://github.com/w3c/wptrunner.git"], env=env)
-            if code:
-                return code
-            code = call(["git", "fetch", "upstream"], env=env)
-            if code:
-                return code
-            code = call(["git", "reset", "--hard", "remotes/upstream/master"], env=env)
-            if code:
-                return code
-            code = call(["rm", "-rf", ".git"], env=env)
-            if code:
-                return code
-            return 0

@@ -7,11 +7,13 @@ loader: taskgraph.loader.single_dep:loader
 
 transforms:
    - taskgraph.transforms.l10n:transforms
+   - taskgraph.transforms.use_toolchains:transforms
    - taskgraph.transforms.job:transforms
    - taskgraph.transforms.task:transforms
 
 kind-dependencies:
    - build
+   - toolchain
 
 only-for-build-platforms:
    - linux64/opt
@@ -26,7 +28,7 @@ job-template:
          android-api-16-l10n: Single Locale Repack
    locales-file:
       by-build-platform:
-         default: browser/locales/all-locales
+         default: browser/locales/l10n-changesets.json
          android-api-16-l10n: mobile/locales/l10n-changesets.json
    ignore-locales:
       by-build-platform:
@@ -37,6 +39,24 @@ job-template:
       by-build-platform:
          default: 36000
          android-api-16-l10n: 18000
+   docker-image:
+      by-build-platform:
+         default:
+           in-tree: desktop-build
+         android-api-16-l10n:
+           in-tree: android-build
+         win.*: null
+   secrets:
+      by-build-platform:
+         default: false
+         android-api-16-l10n: true
+   toolchains:
+      by-build-platform:
+         default: []
+         android-api-16-l10n:
+            - android-gradle-dependencies
+            - android-sdk-linux
+            - proguard-jar
    tooltool:
       by-build-platform:
          default: public
@@ -94,7 +114,8 @@ job-template:
       actions:
          by-build-platform:
             default: [clone-locales list-locales setup repack summary]
-            android-api-16-l10n: [clone-locales list-locales setup repack
+            android-api-16-l10n: [get-secrets
+                                  clone-locales list-locales setup repack
                                   upload-repacks summary]
       script:
          by-build-platform:
@@ -102,7 +123,8 @@ job-template:
             android-api-16-l10n: mozharness/scripts/mobile_l10n.py
    when:
       files-changed:
-         - browser/locales/all-locales
+         - browser/locales/l10n-changesets.json
+         - mobile/locales/l10n-changesets.json
          - testing/mozharness/configs/single_locale/**
          - testing/mozharness/mozharness/mozilla/l10n/locales.py
          - testing/mozharness/scripts/desktop_l10n.py

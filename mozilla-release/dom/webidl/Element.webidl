@@ -40,9 +40,9 @@ interface Element : Node {
   DOMString? getAttribute(DOMString name);
   [Pure]
   DOMString? getAttributeNS(DOMString? namespace, DOMString localName);
-  [CEReactions, Throws]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   void setAttribute(DOMString name, DOMString value);
-  [CEReactions, Throws]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   void setAttributeNS(DOMString? namespace, DOMString name, DOMString value);
   [CEReactions, Throws]
   void removeAttribute(DOMString name);
@@ -171,9 +171,10 @@ interface Element : Node {
 };
 
 // http://dev.w3.org/csswg/cssom-view/
-enum ScrollLogicalPosition { "start", "end" };
+enum ScrollLogicalPosition { "start", "center", "end", "nearest" };
 dictionary ScrollIntoViewOptions : ScrollOptions {
   ScrollLogicalPosition block = "start";
+  ScrollLogicalPosition inline = "nearest";
 };
 
 // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-element-interface
@@ -182,8 +183,7 @@ partial interface Element {
   DOMRect getBoundingClientRect();
 
   // scrolling
-  void scrollIntoView(boolean top);
-  void scrollIntoView(optional ScrollIntoViewOptions options);
+  void scrollIntoView(optional (boolean or ScrollIntoViewOptions) arg);
   // None of the CSSOM attributes are [Pure], because they flush
            attribute long scrollTop;   // scroll on setting
            attribute long scrollLeft;  // scroll on setting
@@ -235,14 +235,28 @@ partial interface Element {
   NodeList  querySelectorAll(DOMString selectors);
 };
 
-// http://w3c.github.io/webcomponents/spec/shadow/#extensions-to-element-interface
+// https://dom.spec.whatwg.org/#dictdef-shadowrootinit
+dictionary ShadowRootInit {
+  required ShadowRootMode mode;
+};
+
+// https://dom.spec.whatwg.org/#element
 partial interface Element {
-  [Throws,Func="nsDocument::IsWebComponentsEnabled"]
-  ShadowRoot createShadowRoot();
-  [Func="nsDocument::IsWebComponentsEnabled"]
-  NodeList getDestinationInsertionPoints();
-  [Func="nsDocument::IsWebComponentsEnabled"]
+  // Shadow DOM v1
+  [Throws, Pref="dom.webcomponents.enabled"]
+  ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
+  [BinaryName="shadowRootByMode", Pref="dom.webcomponents.enabled"]
   readonly attribute ShadowRoot? shadowRoot;
+  [BinaryName="assignedSlotByMode", Pref="dom.webcomponents.enabled"]
+  readonly attribute HTMLSlotElement? assignedSlot;
+  [CEReactions, Unscopable, SetterThrows, Pref="dom.webcomponents.enabled"]
+           attribute DOMString slot;
+
+  // [deprecated] Shadow DOM v0
+  [Throws, Pref="dom.webcomponents.enabled"]
+  ShadowRoot createShadowRoot();
+  [Pref="dom.webcomponents.enabled"]
+  NodeList getDestinationInsertionPoints();
 };
 
 Element implements ChildNode;

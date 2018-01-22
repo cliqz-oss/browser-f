@@ -14,6 +14,8 @@ const DEFAULT_ADDRESS_RECORD = {
   "address-line3": "line3",
   "address-level1": "CA",
   "country": "US",
+  "tel": "+19876543210",
+  "tel-national": "9876543210",
 };
 
 const DEFAULT_CREDITCARD_RECORD = {
@@ -39,6 +41,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
   },
   {
@@ -59,6 +63,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
   },
   {
@@ -77,6 +83,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
   },
   {
@@ -96,6 +104,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
   },
   {
@@ -115,6 +125,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
   },
   {
@@ -139,6 +151,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
     expectedOptionElements: [{
       "address-level1": "option-address-level1-CA",
@@ -167,6 +181,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
     expectedOptionElements: [{
       "address-level1": "option-address-level1-OO",
@@ -195,6 +211,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
     expectedOptionElements: [{
       "address-level1": "option-address-level1-2",
@@ -223,6 +241,8 @@ const TESTCASES = [
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
     }],
     expectedOptionElements: [{
       "address-level1": "option-address-level1-same2",
@@ -249,6 +269,197 @@ const TESTCASES = [
       "address-line1": "2 Harrison St",
       "address-line2": "line2",
       "address-line3": "line3",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "Change the tel value of a profile to tel-national for a field without pattern and maxlength.",
+    document: `<form>
+               <input id="telephone">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "9876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "Do not change the profile for an autocomplete=\"tel\" field without patern and maxlength.",
+    document: `<form>
+               <input id="tel" autocomplete="tel">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "autocomplete=\"tel\" field with `maxlength` can be filled with `tel` value.",
+    document: `<form>
+               <input id="telephone" autocomplete="tel" maxlength="12">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "Still fill `tel-national` in a `tel` field with `maxlength` can be filled with `tel` value.",
+    document: `<form>
+               <input id="telephone" maxlength="12">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "9876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "`tel` field with `maxlength` can be filled with `tel-national` value.",
+    document: `<form>
+               <input id="telephone" maxlength="10">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "9876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "`tel` field with `pattern` attr can be filled with `tel` value.",
+    document: `<form>
+               <input id="telephone" pattern="[+][0-9]+">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "Change the tel value of a profile to tel-national one when the pattern is matched.",
+    document: `<form>
+               <input id="telephone" pattern="\d*">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "9876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "Matching pattern when a field is with autocomplete=\"tel\".",
+    document: `<form>
+               <input id="tel" autocomplete="tel" pattern="[0-9]+">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "9876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "Checking maxlength first when a field is with maxlength.",
+    document: `<form>
+               <input id="tel" autocomplete="tel" maxlength="10">
+               <input id="line1" autocomplete="address-line1">
+               <input id="line2" autocomplete="address-line2">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St\nline2\nline3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      "address-line1": "2 Harrison St",
+      "address-line2": "line2 line3",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "9876543210",
+      "tel-national": "9876543210",
     }],
   },
   {
@@ -467,6 +678,156 @@ const TESTCASES = [
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [DEFAULT_CREDITCARD_RECORD],
     expectedOptionElements: [{"cc-exp": "selected-cc-exp"}],
+  },
+  {
+    description: "Fill a cc-exp without cc-exp-month value in the profile",
+    document: `<form><select autocomplete="cc-exp">
+                 <option value="03/17">03/17</option>
+                 <option value="01/25">01/25</option>
+               </select></form>`,
+    profileData: [Object.assign({}, {
+      "guid": "123",
+      "cc-exp-year": 2025,
+    })],
+    expectedResult: [{
+      "guid": "123",
+      "cc-exp-year": 2025,
+    }],
+    expectedOptionElements: [],
+  },
+  {
+    description: "Fill a cc-exp without cc-exp-year value in the profile",
+    document: `<form><select autocomplete="cc-exp">
+                 <option value="03/17">03/17</option>
+                 <option value="01/25">01/25</option>
+               </select></form>`,
+    profileData: [Object.assign({}, {
+      "guid": "123",
+      "cc-exp-month": 1,
+    })],
+    expectedResult: [{
+      "guid": "123",
+      "cc-exp-month": 1,
+    }],
+    expectedOptionElements: [],
+  },
+  {
+    description: "Fill a cc-exp* without cc-exp-month value in the profile",
+    document: `<form>
+               <select autocomplete="cc-exp-month">
+                 <option value="03">03</option>
+                 <option value="01">01</option>
+               </select>
+               <select autocomplete="cc-exp-year">
+                 <option value="17">2017</option>
+                 <option value="25">2025</option>
+               </select>
+               </form>`,
+    profileData: [Object.assign({}, {
+      "guid": "123",
+      "cc-exp-year": 2025,
+    })],
+    expectedResult: [{
+      "guid": "123",
+      "cc-exp-year": 2025,
+    }],
+    expectedOptionElements: [],
+  },
+  {
+    description: "Fill a cc-exp* without cc-exp-year value in the profile",
+    document: `<form>
+               <select autocomplete="cc-exp-month">
+                 <option value="03">03</option>
+                 <option value="01">01</option>
+               </select>
+               <select autocomplete="cc-exp-year">
+                 <option value="17">2017</option>
+                 <option value="25">2025</option>
+               </select>
+               </form>`,
+    profileData: [Object.assign({}, {
+      "guid": "123",
+      "cc-exp-month": 1,
+    })],
+    expectedResult: [{
+      "guid": "123",
+      "cc-exp-month": 1,
+    }],
+    expectedOptionElements: [],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [mm/yy].",
+    document: `<form><input placeholder="mm/yy" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
+      "cc-exp": "01/25",
+    })],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [mm / yy].",
+    document: `<form><input placeholder="mm / yy" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
+      "cc-exp": "01/25",
+    })],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [MM / YY].",
+    document: `<form><input placeholder="MM / YY" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
+      "cc-exp": "01/25",
+    })],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [mm / yyyy].",
+    document: `<form><input placeholder="mm / yyyy" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
+      "cc-exp": "01/2025",
+    })],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [mm - yyyy].",
+    document: `<form><input placeholder="mm - yyyy" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
+      "cc-exp": "01-2025",
+    })],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [yyyy-mm].",
+    document: `<form><input placeholder="yyyy-mm" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
+      "cc-exp": "2025-01",
+    })],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [yyy-mm].",
+    document: `<form><input placeholder="yyy-mm" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
+      "cc-exp": "025-01",
+    })],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [mmm yyyy].",
+    document: `<form><input placeholder="mmm yyyy" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [mm foo yyyy].",
+    document: `<form><input placeholder="mm foo yyyy" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+  },
+  {
+    description: "Use placeholder to adjust cc-exp format [mm - - yyyy].",
+    document: `<form><input placeholder="mm - - yyyy" autocomplete="cc-exp"></form>`,
+    profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
+    expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
   },
 ];
 

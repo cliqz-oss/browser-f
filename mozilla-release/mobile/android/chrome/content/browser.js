@@ -31,9 +31,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "Manifests",
 XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
                                   "resource://gre/modules/FileUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "JNI",
-                                  "resource://gre/modules/JNI.jsm");
-
 XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry",
                                   "resource://gre/modules/UITelemetry.jsm");
 
@@ -372,6 +369,7 @@ var BrowserApp = {
       "Tab:Selected",
       "Tab:Closed",
       "Tab:Move",
+      "Tab:OpenUri",
     ]);
 
     GlobalEventDispatcher.registerListener(this, [
@@ -754,7 +752,7 @@ var BrowserApp = {
 
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         let title = aTarget.textContent || aTarget.title || url;
-        WindowEventDispatcher.sendRequest({
+        GlobalEventDispatcher.sendRequest({
           type: "Bookmark:Insert",
           url: url,
           title: title
@@ -895,7 +893,7 @@ var BrowserApp = {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_background_image");
 
         let src = aTarget.src;
-        WindowEventDispatcher.sendRequest({
+        GlobalEventDispatcher.sendRequest({
           type: "Image:SetAs",
           url: src
         });
@@ -1931,6 +1929,14 @@ var BrowserApp = {
         break;
       }
 
+      case "Tab:OpenUri":
+        window.browserDOMWindow.openURI(Services.io.newURI(data.uri),
+                                        /* opener */ null,
+                                        Ci.nsIBrowserDOMWindow[data.flags],
+                                        Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL,
+                                        /* triggeringPrincipal */ null);
+        break;
+
       case "Tab:Selected":
         this._handleTabSelected(this.getTabForId(data.id));
         break;
@@ -2344,6 +2350,10 @@ var NativeWindow = {
    *                       type: <type>,
    *                       bundle: <blob-object> }
    *
+   *        defaultCallback:
+   *                     Callback invoked when the doorhanger is dismissed without
+   *                     pressing a button.
+   *
    * @param aCategory
    *        Doorhanger type to display (e.g., LOGIN)
    */
@@ -2363,6 +2373,16 @@ var NativeWindow = {
         this._callbacksId++;
       });
 
+      this._callbacks[this._callbacksId] = {
+        cb: aOptions && aOptions.defaultCallback,
+        prompt: this._promptId,
+      };
+      if (aOptions && aOptions.defaultCallback) {
+        aOptions.defaultCallback = undefined;
+      }
+      let defaultCallback = this._callbacksId;
+      this._callbacksId++;
+
       this._promptId++;
       let json = {
         type: "Doorhanger:Add",
@@ -2372,7 +2392,8 @@ var NativeWindow = {
         // use the current tab if none is provided
         tabID: aTabID || BrowserApp.selectedTab.id,
         options: aOptions || {},
-        category: aCategory
+        category: aCategory,
+        defaultCallback: defaultCallback,
       };
       WindowEventDispatcher.sendRequest(json);
     },
@@ -2392,8 +2413,10 @@ var NativeWindow = {
 
       if (this.doorhanger._callbacks[reply_id]) {
         // Pass the value of the optional checkbox to the callback
-        let checked = data["checked"];
-        this.doorhanger._callbacks[reply_id].cb(checked, data.inputs);
+        if (this.doorhanger._callbacks[reply_id].cb) {
+          let checked = data["checked"];
+          this.doorhanger._callbacks[reply_id].cb(checked, data.inputs);
+        }
 
         let prompt = this.doorhanger._callbacks[reply_id].prompt;
         for (let id in this.doorhanger._callbacks) {
@@ -2536,7 +2559,7 @@ var NativeWindow = {
 
     imageLocationCopyableContext: {
       matches: function imageLinkCopyableContextMatches(aElement) {
-        if (aElement instanceof Ci.nsIDOMHTMLImageElement) {
+        if (ChromeUtils.getClassName(aElement) === "HTMLImageElement") {
           // The image is blocked by Tap-to-load Images
           if (aElement.hasAttribute("data-ctv-src") && !aElement.hasAttribute("data-ctv-show")) {
             return false;
@@ -2548,7 +2571,7 @@ var NativeWindow = {
 
     imageSaveableContext: {
       matches: function imageSaveableContextMatches(aElement) {
-        if (aElement instanceof Ci.nsIDOMHTMLImageElement) {
+        if (ChromeUtils.getClassName(aElement) === "HTMLImageElement") {
           // The image is blocked by Tap-to-load Images
           if (aElement.hasAttribute("data-ctv-src") && !aElement.hasAttribute("data-ctv-show")) {
             return false;
@@ -2566,7 +2589,7 @@ var NativeWindow = {
     imageShareableContext: {
       matches: aElement => {
         let imgSrc = '';
-        if (aElement instanceof Ci.nsIDOMHTMLImageElement) {
+        if (ChromeUtils.getClassName(aElement) === "HTMLImageElement") {
           imgSrc = aElement.src;
         } else if (aElement instanceof Ci.nsIImageLoadingContent &&
             aElement.currentURI &&
@@ -2596,7 +2619,8 @@ var NativeWindow = {
 
     imageBlockingPolicyContext: {
       matches: function imageBlockingPolicyContextMatches(aElement) {
-        if (aElement instanceof Ci.nsIDOMHTMLImageElement && aElement.getAttribute("data-ctv-src")) {
+        if (ChromeUtils.getClassName(aElement) === "HTMLImageElement" &&
+            aElement.getAttribute("data-ctv-src")) {
           // Only show the menuitem if we are blocking the image
           if (aElement.getAttribute("data-ctv-show") == "true") {
             return false;
@@ -2743,7 +2767,7 @@ var NativeWindow = {
      */
     _getContextType: function(element) {
       // For anchor nodes, we try to use the scheme to pick a string
-      if (element instanceof Ci.nsIDOMHTMLAnchorElement) {
+      if (ChromeUtils.getClassName(element) === "HTMLAnchorElement") {
         let uri = this.makeURI(this._getLinkURL(element));
         try {
           return Strings.browser.GetStringFromName("browser.menu.context." + uri.scheme);
@@ -2828,8 +2852,8 @@ var NativeWindow = {
 
     // Returns a url associated with a node
     _getUrl: function(node) {
-      if ((node instanceof Ci.nsIDOMHTMLAnchorElement && node.href) ||
-          (node instanceof Ci.nsIDOMHTMLAreaElement && node.href)) {
+      if ((ChromeUtils.getClassName(node) === "HTMLAnchorElement" && node.href) ||
+          (ChromeUtils.getClassName(node) === "HTMLAreaElement" && node.href)) {
         return this._getLinkURL(node);
       } else if (node instanceof Ci.nsIImageLoadingContent && node.currentURI) {
         // The image is blocked by Tap-to-load Images
@@ -3059,10 +3083,10 @@ var NativeWindow = {
 
     _getLink: function(aElement) {
       if (aElement.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
-          ((aElement instanceof Ci.nsIDOMHTMLAnchorElement && aElement.href) ||
-          (aElement instanceof Ci.nsIDOMHTMLAreaElement && aElement.href) ||
-          aElement instanceof Ci.nsIDOMHTMLLinkElement ||
-          aElement.getAttributeNS(kXLinkNamespace, "type") == "simple")) {
+          ((ChromeUtils.getClassName(aElement) === "HTMLAnchorElement" && aElement.href) ||
+           (ChromeUtils.getClassName(aElement) === "HTMLAreaElement" && aElement.href) ||
+           ChromeUtils.getClassName(aElement) === "HTMLLinkElement" ||
+           aElement.getAttributeNS(kXLinkNamespace, "type") == "simple")) {
         try {
           let url = this._getLinkURL(aElement);
           return Services.io.newURI(url);
@@ -3478,6 +3502,12 @@ nsBrowserAccess.prototype = {
     return this._getBrowser(aURI, null, aWhere, aFlags, null);
   },
 
+  createContentWindowInFrame: function browser_createContentWindowInFrame(
+                              aURI, aParams, aWhere, aFlags,
+                              aNextTabParentId, aName) {
+    return this._getBrowser(null, null, aWhere, aFlags, null);
+  },
+
   isTabContentWindow: function(aWindow) {
     return BrowserApp.getBrowserForWindow(aWindow) != null;
   },
@@ -3602,14 +3632,10 @@ Tab.prototype = {
         this.id = aParams.tabID;
         stub = true;
       } else {
-        let jenv = JNI.GetForThread();
-        let jTabs = JNI.LoadClass(jenv, "org.mozilla.gecko.Tabs", {
-          static_methods: [
-            { name: "getNextTabId", sig: "()I" }
-          ],
+        // Send a synchronous Gecko thread event.
+        GlobalEventDispatcher.dispatch("Tab:GetNextTabId", null, {
+          onSuccess: response => this.id = response,
         });
-        this.id = jTabs.getNextTabId();
-        JNI.UnloadClasses(jenv);
       }
 
       this.desktopMode = ("desktopMode" in aParams) ? aParams.desktopMode : false;
@@ -3952,12 +3978,20 @@ Tab.prototype = {
     }
   },
 
-  makeManifestMessage: function(target) {
-    return {
-      type: "Link:Manifest",
-      href: target.href,
-      tabID: this.id
-    };
+  makeManifestMessage: async function(target) {
+    try {
+        const manifest = await Manifests.getManifest(this.browser, target.href);
+        const data = await manifest.prefetch(this.browser);
+        var cache = {
+          type: "Link:Manifest",
+          href: target.href,
+          manifest: JSON.stringify(data),
+          tabID: this.id
+        };
+        GlobalEventDispatcher.sendRequest(cache);
+      } catch (err) {
+        Log.e("Browser", "error when makeManifestMessage:" + err);
+      }
   },
 
   sendOpenSearchMessage: function(eventTarget) {
@@ -4049,18 +4083,6 @@ Tab.prototype = {
         if (target != this.browser.contentDocument)
           return;
 
-        // Sample the background color of the page and pass it along. (This is used to draw the
-        // checkerboard.) Right now we don't detect changes in the background color after this
-        // event fires; it's not clear that doing so is worth the effort.
-        var backgroundColor = null;
-        try {
-          let { contentDocument, contentWindow } = this.browser;
-          let computedStyle = contentWindow.getComputedStyle(contentDocument.body);
-          backgroundColor = computedStyle.backgroundColor;
-        } catch (e) {
-          // Ignore. Catching and ignoring exceptions here ensures that Talos succeeds.
-        }
-
         let docURI = target.documentURI;
         let errorType = "";
         if (docURI.startsWith("about:certerror")) {
@@ -4104,12 +4126,10 @@ Tab.prototype = {
         GlobalEventDispatcher.sendRequest({
           type: "Content:DOMContentLoaded",
           tabID: this.id,
-          bgColor: backgroundColor,
           errorType: errorType,
           metadata: this.metatags,
         });
 
-        // Reset isSearch so that the userRequested term will be erased on next page load
         this.metatags = null;
 
         if (docURI.startsWith("about:certerror") || docURI.startsWith("about:blocked")) {
@@ -4191,9 +4211,9 @@ Tab.prototype = {
         } else if (list.indexOf("[search]") != -1 && aEvent.type == "DOMLinkAdded") {
           this.sendOpenSearchMessage(target);
         } else if (list.indexOf("[manifest]") != -1 &&
-                   aEvent.type == "DOMLinkAdded" &&
-                   SharedPreferences.forApp().getBoolPref("android.not_a_preference.pwa")){
-          jsonMessage = this.makeManifestMessage(target);
+                   aEvent.type == "DOMLinkAdded"){
+          this.makeManifestMessage(target);
+          return;
         }
         if (!jsonMessage)
          return;
@@ -4303,21 +4323,12 @@ Tab.prototype = {
         if (aEvent.originalTarget.defaultView != this.browser.contentWindow)
           return;
 
-        let target = aEvent.originalTarget;
-        let docURI = target.documentURI;
-        if (!docURI.startsWith("about:neterror") && !this.isSearch) {
-          // If this wasn't an error page and the user isn't search, don't retain the typed entry
-          this.userRequested = "";
-        }
-
         GlobalEventDispatcher.sendRequest({
           type: "Content:PageShow",
           tabID: this.id,
           userRequested: this.userRequested,
           fromCache: Tabs.useCache
         });
-
-        this.isSearch = false;
 
         if (!aEvent.persisted && Services.prefs.getBoolPref("browser.ui.linkify.phone")) {
           if (!this._linkifier)
@@ -4428,7 +4439,9 @@ Tab.prototype = {
 
     // In restricted profiles, we refuse to let you open various urls.
     if (!ParentalControls.isAllowed(ParentalControls.BROWSE, fixedURI)) {
-      aRequest.cancel(Cr.NS_BINDING_ABORTED);
+      if (aRequest) {
+        aRequest.cancel(Cr.NS_BINDING_ABORTED);
+      }
 
       this.browser.docShell.displayLoadError(Cr.NS_ERROR_UNKNOWN_PROTOCOL, fixedURI, null);
     }
@@ -4473,10 +4486,16 @@ Tab.prototype = {
       try {
         originHost = Services.io.newURI(appOrigin).host;
       } catch (e if (e.result == Cr.NS_ERROR_FAILURE)) {
-        // NS_ERROR_FAILURE can be thrown by nsIURI.host if the URI scheme does not possess a host - in this case
-        // we just act as if we have an empty host.
+        // NS_ERROR_FAILURE can be thrown by nsIURI.host if the URI scheme does not possess a host -
+        // in this case we just act as if we have an empty host.
       }
-      if (originHost != aLocationURI.host) {
+      let locationHost = "";
+      try {
+        locationHost = aLocationURI.host;
+      } catch (e if (e.result == Cr.NS_ERROR_FAILURE)) {
+        // Ditto.
+      }
+      if (originHost != locationHost || originHost == "") {
         // Note: going 'back' will not make this tab pinned again
         ss.deleteTabValue(this, "appOrigin");
       }
@@ -4485,6 +4504,13 @@ Tab.prototype = {
     // Update the page actions URI for helper apps.
     if (BrowserApp.selectedTab == this) {
       ExternalApps.updatePageActionUri(fixedURI);
+    }
+
+    if ((!aRequest || Components.isSuccessCode(aRequest.status)) &&
+        !fixedURI.displaySpec.startsWith("about:neterror") && !this.isSearch) {
+      // If this won't end up in an error page and the user isn't searching,
+      // don't retain the typed entry.
+      this.userRequested = "";
     }
 
     let message = {
@@ -4503,6 +4529,9 @@ Tab.prototype = {
     GlobalEventDispatcher.sendRequest(message);
 
     notifyManifestStatus(this);
+
+    // Reset isSearch so that the userRequested term will be erased on next location change.
+    this.isSearch = false;
 
     if (!sameDocument) {
       // XXX This code assumes that this is the earliest hook we have at which
@@ -4783,8 +4812,8 @@ var BrowserEventHandler = {
 
   _getLinkURI: function(aElement) {
     if (aElement.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
-        ((aElement instanceof Ci.nsIDOMHTMLAnchorElement && aElement.href) ||
-        (aElement instanceof Ci.nsIDOMHTMLAreaElement && aElement.href))) {
+        ((ChromeUtils.getClassName(aElement) === "HTMLAnchorElement" && aElement.href) ||
+         (ChromeUtils.getClassName(aElement) === "HTMLAreaElement" && aElement.href))) {
       try {
         return Services.io.newURI(aElement.href);
       } catch (e) {}

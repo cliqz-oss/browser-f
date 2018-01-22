@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,12 +21,13 @@
 #include "nsILoadContext.h"
 #include "nsIDocument.h"
 #include "mozilla/AutoRestore.h"
+#include "mozilla/AtomArray.h"
 #include "mozilla/BloomFilter.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/GuardObjects.h"
 #include "mozilla/dom/Element.h"
 
-class nsIAtom;
+class nsAtom;
 class nsIContent;
 class nsICSSPseudoComparator;
 struct TreeMatchContext;
@@ -69,7 +71,7 @@ class MOZ_STACK_CLASS AncestorFilter {
   // less even with several hundred things in the filter.  Note that
   // we allocate the filter lazily, because not all tree match
   // contexts can use one effectively.
-  typedef mozilla::BloomFilter<12, nsIAtom> Filter;
+  typedef mozilla::BloomFilter<12, nsAtom> Filter;
   nsAutoPtr<Filter> mFilter;
 
   // Stack of indices to pop to.  These are indices into mHashes.
@@ -532,7 +534,7 @@ struct MOZ_STACK_CLASS PseudoElementRuleProcessorData :
 
 struct MOZ_STACK_CLASS AnonBoxRuleProcessorData : public RuleProcessorData {
   AnonBoxRuleProcessorData(nsPresContext* aPresContext,
-                           nsIAtom* aPseudoTag,
+                           nsAtom* aPseudoTag,
                            nsRuleWalker* aRuleWalker)
     : RuleProcessorData(aPresContext, aRuleWalker),
       mPseudoTag(aPseudoTag)
@@ -541,7 +543,7 @@ struct MOZ_STACK_CLASS AnonBoxRuleProcessorData : public RuleProcessorData {
     NS_PRECONDITION(aRuleWalker, "Must have rule walker");
   }
 
-  nsIAtom* mPseudoTag;
+  nsAtom* mPseudoTag;
 };
 
 #ifdef MOZ_XUL
@@ -550,22 +552,21 @@ struct MOZ_STACK_CLASS XULTreeRuleProcessorData :
   XULTreeRuleProcessorData(nsPresContext* aPresContext,
                            mozilla::dom::Element* aParentElement,
                            nsRuleWalker* aRuleWalker,
-                           nsIAtom* aPseudoTag,
-                           nsICSSPseudoComparator* aComparator,
+                           nsAtom* aPseudoTag,
+                           const mozilla::AtomArray& aInputWord,
                            TreeMatchContext& aTreeMatchContext)
     : ElementDependentRuleProcessorData(aPresContext, aParentElement,
                                         aRuleWalker, aTreeMatchContext),
       mPseudoTag(aPseudoTag),
-      mComparator(aComparator)
+      mInputWord(aInputWord)
   {
     NS_PRECONDITION(aPseudoTag, "null pointer");
     NS_PRECONDITION(aRuleWalker, "Must have rule walker");
-    NS_PRECONDITION(aComparator, "must have a comparator");
     NS_PRECONDITION(aTreeMatchContext.mForStyling, "Styling here!");
   }
 
-  nsIAtom*                 mPseudoTag;
-  nsICSSPseudoComparator*  mComparator;
+  nsAtom*                 mPseudoTag;
+  const mozilla::AtomArray& mInputWord;
 };
 #endif
 
@@ -614,7 +615,7 @@ struct MOZ_STACK_CLASS AttributeRuleProcessorData :
   AttributeRuleProcessorData(nsPresContext* aPresContext,
                              mozilla::dom::Element* aElement,
                              int32_t aNameSpaceID,
-                             nsIAtom* aAttribute,
+                             nsAtom* aAttribute,
                              int32_t aModType,
                              bool aAttrHasChanged,
                              const nsAttrValue* aOtherValue,
@@ -630,7 +631,7 @@ struct MOZ_STACK_CLASS AttributeRuleProcessorData :
     NS_PRECONDITION(!aTreeMatchContext.mForStyling, "Not styling here!");
   }
   int32_t mNameSpaceID; // Namespace of the attribute involved.
-  nsIAtom* mAttribute; // |HasAttributeDependentStyle| for which attribute?
+  nsAtom* mAttribute; // |HasAttributeDependentStyle| for which attribute?
   // non-null if we have the value.
   const nsAttrValue* mOtherValue;
   int32_t mModType;    // The type of modification (see nsIDOMMutationEvent).

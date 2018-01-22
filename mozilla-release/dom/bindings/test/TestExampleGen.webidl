@@ -632,11 +632,11 @@ interface TestExampleInterface {
   void exerciseTypedefInterfaces3(YetAnotherNameForTestInterface arg);
 
   // Deprecated methods and attributes
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   attribute boolean deprecatedAttribute;
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   void deprecatedMethod(boolean arg);
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   void deprecatedMethodWithContext(any arg);
 
   // Static methods and attributes
@@ -645,11 +645,11 @@ interface TestExampleInterface {
   static void staticMethodWithContext(any arg);
 
   // Deprecated methods and attributes;
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static attribute boolean staticDeprecatedAttribute;
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static void staticDeprecatedMethod(boolean arg);
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static void staticDeprecatedMethodWithContext(any arg);
 
   // Overload resolution tests
@@ -783,6 +783,8 @@ interface TestExampleInterface {
   [SetterCanOOM] attribute boolean canOOMSetterAttr;
   [NeedsSubjectPrincipal] void needsSubjectPrincipalMethod();
   [NeedsSubjectPrincipal] attribute boolean needsSubjectPrincipalAttr;
+  [NeedsSubjectPrincipal=NonSystem] void needsNonSystemSubjectPrincipalMethod();
+  [NeedsSubjectPrincipal=NonSystem] attribute boolean needsNonSystemSubjectPrincipalAttr;
   [NeedsCallerType] void needsCallerTypeMethod();
   [NeedsCallerType] attribute boolean needsCallerTypeAttr;
   [CEReactions] void ceReactionsMethod();
@@ -810,17 +812,21 @@ interface TestExampleInterface {
   [NonEnumerable]
   void nonEnumerableMethod();
 
+  // [NeedsWindowsUndef] test generation
+  [NeedsWindowsUndef]
+  const unsigned long NO_ERROR = 0xffffffff;
+
   // If you add things here, add them to TestCodeGen and TestJSImplGen as well
 };
 
 interface TestExampleProxyInterface {
   getter long longIndexedGetter(unsigned long ix);
-  setter creator void longIndexedSetter(unsigned long y, long z);
+  setter void longIndexedSetter(unsigned long y, long z);
   readonly attribute unsigned long length;
   stringifier DOMString myStringifier();
   getter short shortNameGetter(DOMString nom);
   deleter void (DOMString nomnom);
-  setter creator void shortNamedSetter(DOMString me, short value);
+  setter void shortNamedSetter(DOMString me, short value);
 };
 
 [Exposed=(Window,Worker)]
@@ -829,4 +835,6 @@ interface TestExampleWorkerInterface {
   [NeedsSubjectPrincipal] attribute boolean needsSubjectPrincipalAttr;
   [NeedsCallerType] void needsCallerTypeMethod();
   [NeedsCallerType] attribute boolean needsCallerTypeAttr;
+  [NeedsSubjectPrincipal=NonSystem] void needsNonSystemSubjectPrincipalMethod();
+  [NeedsSubjectPrincipal=NonSystem] attribute boolean needsNonSystemSubjectPrincipalAttr;
 };

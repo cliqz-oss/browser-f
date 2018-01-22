@@ -12,20 +12,14 @@
 #include "mozilla/Sprintf.h"
 #include "nsUnicodeProperties.h"
 #include "nsUnicodeScriptCodes.h"
-#include "nsUnicodeNormalizer.h"
 
 #include "harfbuzz/hb.h"
 #include "harfbuzz/hb-ot.h"
 
-#if ENABLE_INTL_API // ICU is available: we'll use it for Unicode composition
-                    // and decomposition in preference to nsUnicodeNormalizer.
 #include "unicode/unorm.h"
 #include "unicode/utext.h"
-#define MOZ_HB_SHAPER_USE_ICU_NORMALIZATION 1
-static const UNormalizer2 * sNormalizer = nullptr;
-#else
-#undef MOZ_HB_SHAPER_USE_ICU_NORMALIZATION
-#endif
+
+static const UNormalizer2* sNormalizer = nullptr;
 
 #include <algorithm>
 
@@ -398,7 +392,11 @@ gfxHarfBuzzShaper::HBGetGlyphVAdvance(hb_font_t *font, void *font_data,
     // and provide hinted platform-specific vertical advances (analogous to the
     // GetGlyphWidth method for horizontal advances). If that proves necessary,
     // we'll add a new gfxFont method and call it from here.
-    return fcd->mShaper->GetGlyphVAdvance(glyph);
+    //
+    // We negate the value from GetGlyphVAdvance here because harfbuzz shapes
+    // with a coordinate system where positive is upwards, whereas the inline
+    // direction in which glyphs advance is downwards.
+    return -fcd->mShaper->GetGlyphVAdvance(glyph);
 }
 
 struct VORG {
@@ -430,7 +428,7 @@ void
 gfxHarfBuzzShaper::GetGlyphVOrigin(hb_codepoint_t aGlyph,
                                    hb_position_t *aX, hb_position_t *aY) const
 {
-    *aX = -0.5 * GetGlyphHAdvance(aGlyph);
+    *aX = 0.5 * GetGlyphHAdvance(aGlyph);
 
     if (mVORGTable) {
         // We checked in Initialize() that the VORG table is safely readable,
@@ -451,11 +449,11 @@ gfxHarfBuzzShaper::GetGlyphVOrigin(hb_codepoint_t aGlyph,
         }
 
         if (lo < limit && uint16_t(lo->glyphIndex) == aGlyph) {
-            *aY = -FloatToFixed(GetFont()->FUnitsToDevUnitsFactor() *
-                                int16_t(lo->vertOriginY));
+            *aY = FloatToFixed(GetFont()->FUnitsToDevUnitsFactor() *
+                               int16_t(lo->vertOriginY));
         } else {
-            *aY = -FloatToFixed(GetFont()->FUnitsToDevUnitsFactor() *
-                                int16_t(vorg->defaultVertOriginY));
+            *aY = FloatToFixed(GetFont()->FUnitsToDevUnitsFactor() *
+                               int16_t(vorg->defaultVertOriginY));
         }
         return;
     }
@@ -483,8 +481,8 @@ gfxHarfBuzzShaper::GetGlyphVOrigin(hb_codepoint_t aGlyph,
                         (&metrics->metrics[mNumLongVMetrics]);
                 lsb = int16_t(sidebearings[aGlyph - mNumLongVMetrics]);
             }
-            *aY = -FloatToFixed(mFont->FUnitsToDevUnitsFactor() *
-                                (lsb + int16_t(glyf->yMax)));
+            *aY = FloatToFixed(mFont->FUnitsToDevUnitsFactor() *
+                               (lsb + int16_t(glyf->yMax)));
             return;
         } else {
             // XXX TODO: not a truetype font; need to get glyph extents
@@ -507,13 +505,13 @@ gfxHarfBuzzShaper::GetGlyphVOrigin(hb_codepoint_t aGlyph,
             // to ascender:descender from the hhea table
             int16_t a = int16_t(hhea->ascender);
             int16_t d = int16_t(hhea->descender);
-            *aY = -FloatToFixed(GetFont()->GetAdjustedSize() * a / (a - d));
+            *aY = FloatToFixed(GetFont()->GetAdjustedSize() * a / (a - d));
             return;
         }
     }
 
     NS_NOTREACHED("we shouldn't be here!");
-    *aY = -FloatToFixed(GetFont()->GetAdjustedSize() / 2);
+    *aY = FloatToFixed(GetFont()->GetAdjustedSize() / 2);
 }
 
 static hb_bool_t
@@ -1099,8 +1097,6 @@ HBUnicodeCompose(hb_unicode_funcs_t *ufuncs,
                  hb_codepoint_t     *ab,
                  void               *user_data)
 {
-#if MOZ_HB_SHAPER_USE_ICU_NORMALIZATION
-
     if (sNormalizer) {
         UChar32 ch = unorm2_composePair(sNormalizer, a, b);
         if (ch >= 0) {
@@ -1108,14 +1104,6 @@ HBUnicodeCompose(hb_unicode_funcs_t *ufuncs,
             return true;
         }
     }
-
-#else // no ICU available, use the old nsUnicodeNormalizer
-
-    if (nsUnicodeNormalizer::Compose(a, b, ab)) {
-        return true;
-    }
-
-#endif
 
     return false;
 }
@@ -1136,8 +1124,6 @@ HBUnicodeDecompose(hb_unicode_funcs_t *ufuncs,
         return true;
     }
 #endif
-
-#if MOZ_HB_SHAPER_USE_ICU_NORMALIZATION
 
     if (!sNormalizer) {
         return false;
@@ -1170,12 +1156,6 @@ HBUnicodeDecompose(hb_unicode_funcs_t *ufuncs,
     utext_close(&text);
 
     return *b != 0 || *a != ab;
-
-#else // no ICU available, use the old nsUnicodeNormalizer
-
-    return nsUnicodeNormalizer::DecomposeNonRecursively(ab, a, b);
-
-#endif
 }
 
 static void
@@ -1258,11 +1238,9 @@ gfxHarfBuzzShaper::Initialize()
                                             HBUnicodeDecompose,
                                             nullptr, nullptr);
 
-#if MOZ_HB_SHAPER_USE_ICU_NORMALIZATION
         UErrorCode error = U_ZERO_ERROR;
         sNormalizer = unorm2_getNFCInstance(&error);
-        NS_ASSERTION(U_SUCCESS(error), "failed to get ICU normalizer");
-#endif
+        MOZ_ASSERT(U_SUCCESS(error), "failed to get ICU normalizer");
     }
 
     gfxFontEntry *entry = mFont->GetFontEntry();
@@ -1301,6 +1279,15 @@ gfxHarfBuzzShaper::Initialize()
     hb_font_set_ppem(mHBFont, mFont->GetAdjustedSize(), mFont->GetAdjustedSize());
     uint32_t scale = FloatToFixed(mFont->GetAdjustedSize()); // 16.16 fixed-point
     hb_font_set_scale(mHBFont, scale, scale);
+
+    const auto& vars = mFont->GetStyle()->variationSettings;
+    size_t len = vars.Length();
+    if (len > 0) {
+        // Fortunately, the hb_variation_t struct is compatible with our
+        // gfxFontFeature, so we can simply cast here.
+        auto hbVars = reinterpret_cast<const hb_variation_t*>(vars.Elements());
+        hb_font_set_variations(mHBFont, hbVars, len);
+    }
 
     return true;
 }
@@ -1542,6 +1529,8 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
                                     bool            aVertical,
                                     RoundingFlags   aRounding)
 {
+    typedef gfxShapedText::CompressedGlyph CompressedGlyph;
+
     uint32_t numGlyphs;
     const hb_glyph_info_t *ginfo = hb_buffer_get_glyph_infos(mBuffer, &numGlyphs);
     if (numGlyphs == 0) {
@@ -1582,8 +1571,7 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
     }
 
     int32_t appUnitsPerDevUnit = aShapedText->GetAppUnitsPerDevUnit();
-    gfxShapedText::CompressedGlyph *charGlyphs =
-        aShapedText->GetCharacterGlyphs() + aOffset;
+    CompressedGlyph* charGlyphs = aShapedText->GetCharacterGlyphs() + aOffset;
 
     // factor to convert 16.16 fixed-point pixels to app units
     // (only used if not rounding)
@@ -1703,10 +1691,12 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
         hb_position_t i_offset, i_advance; // inline-direction offset/advance
         hb_position_t b_offset, b_advance; // block-direction offset/advance
         if (aVertical) {
-            i_offset = posInfo[glyphStart].y_offset;
-            i_advance = posInfo[glyphStart].y_advance;
-            b_offset = posInfo[glyphStart].x_offset;
-            b_advance = posInfo[glyphStart].x_advance;
+            // our coordinate directions are the opposite of harfbuzz's
+            // when doing top-to-bottom shaping
+            i_offset = -posInfo[glyphStart].y_offset;
+            i_advance = -posInfo[glyphStart].y_advance;
+            b_offset = -posInfo[glyphStart].x_offset;
+            b_advance = -posInfo[glyphStart].x_advance;
         } else {
             i_offset = posInfo[glyphStart].x_offset;
             i_advance = posInfo[glyphStart].x_advance;
@@ -1729,8 +1719,8 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
         }
         // Check if it's a simple one-to-one mapping
         if (glyphsInClump == 1 &&
-            gfxTextRun::CompressedGlyph::IsSimpleGlyphID(ginfo[glyphStart].codepoint) &&
-            gfxTextRun::CompressedGlyph::IsSimpleAdvance(advance) &&
+            CompressedGlyph::IsSimpleGlyphID(ginfo[glyphStart].codepoint) &&
+            CompressedGlyph::IsSimpleAdvance(advance) &&
             charGlyphs[baseCharIndex].IsClusterStart() &&
             iOffset == 0 && b_offset == 0 &&
             b_advance == 0 && bPos == 0)
@@ -1742,25 +1732,24 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
             // there must be at least one in the clump, and we already measured
             // its advance, hence the placement of the loop-exit test and the
             // measurement of the next glyph.
-            // For vertical orientation, we add a "base offset" to compensate
-            // for the positioning within the cluster being based on horizontal
-            // glyph origin/offset.
-            hb_position_t baseIOffset, baseBOffset;
-            if (aVertical) {
-                baseIOffset = 2 * (i_offset - i_advance);
-                baseBOffset = GetGlyphHAdvance(ginfo[glyphStart].codepoint);
-            }
             while (1) {
                 gfxTextRun::DetailedGlyph* details =
                     detailedGlyphs.AppendElement();
                 details->mGlyphID = ginfo[glyphStart].codepoint;
 
-                details->mXOffset = iOffset;
                 details->mAdvance = advance;
 
-                details->mYOffset = bPos -
-                    (roundB ? appUnitsPerDevUnit * FixedToIntRound(b_offset)
-                     : floor(hb2appUnits * b_offset + 0.5));
+                if (aVertical) {
+                    details->mOffset.x = bPos -
+                        (roundB ? appUnitsPerDevUnit * FixedToIntRound(b_offset)
+                         : floor(hb2appUnits * b_offset + 0.5));
+                    details->mOffset.y = iOffset;
+                } else {
+                    details->mOffset.x = iOffset;
+                    details->mOffset.y = bPos -
+                        (roundB ? appUnitsPerDevUnit * FixedToIntRound(b_offset)
+                         : floor(hb2appUnits * b_offset + 0.5));
+                }
 
                 if (b_advance != 0) {
                     bPos -=
@@ -1772,10 +1761,10 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
                 }
 
                 if (aVertical) {
-                    i_offset = baseIOffset - posInfo[glyphStart].y_offset;
-                    i_advance = posInfo[glyphStart].y_advance;
-                    b_offset = baseBOffset - posInfo[glyphStart].x_offset;
-                    b_advance = posInfo[glyphStart].x_advance;
+                    i_offset = -posInfo[glyphStart].y_offset;
+                    i_advance = -posInfo[glyphStart].y_advance;
+                    b_offset = -posInfo[glyphStart].x_offset;
+                    b_advance = -posInfo[glyphStart].x_advance;
                 } else {
                     i_offset = posInfo[glyphStart].x_offset;
                     i_advance = posInfo[glyphStart].x_advance;
@@ -1801,11 +1790,12 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
                 }
             }
 
-            gfxShapedText::CompressedGlyph g;
-            g.SetComplex(charGlyphs[baseCharIndex].IsClusterStart(),
-                         true, detailedGlyphs.Length());
+            bool isClusterStart = charGlyphs[baseCharIndex].IsClusterStart();
             aShapedText->SetGlyphs(aOffset + baseCharIndex,
-                                   g, detailedGlyphs.Elements());
+                                   CompressedGlyph::MakeComplex(isClusterStart,
+                                                                true,
+                                                                detailedGlyphs.Length()),
+                                   detailedGlyphs.Elements());
 
             detailedGlyphs.Clear();
         }
@@ -1814,7 +1804,7 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxShapedText  *aShapedText,
         // no associated glyphs
         while (++baseCharIndex != endCharIndex &&
                baseCharIndex < int32_t(wordLength)) {
-            gfxShapedText::CompressedGlyph &g = charGlyphs[baseCharIndex];
+            CompressedGlyph &g = charGlyphs[baseCharIndex];
             NS_ASSERTION(!g.IsSimpleGlyph(), "overwriting a simple glyph");
             g.SetComplex(g.IsClusterStart(), false, 0);
         }

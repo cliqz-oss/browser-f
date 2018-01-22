@@ -32,6 +32,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "InsecurePasswordUtils",
 
 const formFillController = Cc["@mozilla.org/satchel/form-fill-controller;1"]
                              .getService(Ci.nsIFormFillController);
+const autocompleteController = Cc["@mozilla.org/autocomplete/controller;1"]
+                             .getService(Ci.nsIAutoCompleteController);
+
 const {ADDRESSES_COLLECTION_NAME, CREDITCARDS_COLLECTION_NAME} = FormAutofillUtils;
 
 // Register/unregister a constructor as a factory.
@@ -116,6 +119,12 @@ AutofillProfileAutoCompleteSearch.prototype = {
     //   - (address only) less than 3 inputs are covered by all saved fields in the storage.
     if (!searchPermitted || !savedFieldNames.has(info.fieldName) || filledRecordGUID || (isAddressField &&
         allFieldNames.filter(field => savedFieldNames.has(field)).length < FormAutofillUtils.AUTOFILL_FIELDS_THRESHOLD)) {
+      if (focusedInput.autocomplete == "off") {
+        // Create a dummy AddressResult as an empty search result.
+        let result = new AddressResult("", "", [], [], {});
+        listener.onSearchResult(this, result);
+        return;
+      }
       let formHistory = Cc["@mozilla.org/autocomplete/search;1?name=form-history"]
                           .createInstance(Ci.nsIAutoCompleteSearch);
       formHistory.startSearch(searchString, searchParam, previousResult, {
@@ -285,9 +294,12 @@ let ProfileAutocomplete = {
     }
 
     let profile = JSON.parse(this.lastProfileAutoCompleteResult.getCommentAt(selectedIndex));
+    let {fieldName} = FormAutofillContent.getInputDetails(focusedInput);
     let formHandler = FormAutofillContent.getFormHandler(focusedInput);
 
-    formHandler.autofillFormFields(profile, focusedInput);
+    formHandler.autofillFormFields(profile, focusedInput).then(() => {
+      autocompleteController.searchString = profile[fieldName];
+    });
   },
 
   _clearProfilePreview() {
@@ -490,7 +502,7 @@ var FormAutofillContent = {
     if (!formHandler) {
       let formLike = FormLikeFactory.createFromField(element);
       formHandler = new FormAutofillHandler(formLike);
-    } else if (!formHandler.isFormChangedSinceLastCollection) {
+    } else if (!formHandler.updateFormIfNeeded(element)) {
       this.log.debug("No control is removed or inserted since last collection.");
       return;
     }
@@ -538,7 +550,6 @@ var FormAutofillContent = {
 
   onPopupClosed() {
     ProfileAutocomplete._clearProfilePreview();
-    ProfileAutocomplete.lastProfileAutoCompleteResult = null;
   },
 
   _markAsAutofillField(field) {

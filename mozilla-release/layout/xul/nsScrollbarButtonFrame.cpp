@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -236,7 +237,7 @@ nsScrollbarButtonFrame::MouseClicked(WidgetGUIEvent* aEvent)
 }
 
 nsresult
-nsScrollbarButtonFrame::GetChildWithTag(nsIAtom* atom, nsIFrame* start,
+nsScrollbarButtonFrame::GetChildWithTag(nsAtom* atom, nsIFrame* start,
                                         nsIFrame*& result)
 {
   // recursively search our children
@@ -266,7 +267,7 @@ nsScrollbarButtonFrame::GetChildWithTag(nsIAtom* atom, nsIFrame* start,
 }
 
 nsresult
-nsScrollbarButtonFrame::GetParentWithTag(nsIAtom* toFind, nsIFrame* start,
+nsScrollbarButtonFrame::GetParentWithTag(nsAtom* toFind, nsIFrame* start,
                                          nsIFrame*& result)
 {
    while (start)
@@ -289,10 +290,10 @@ nsScrollbarButtonFrame::GetParentWithTag(nsIAtom* toFind, nsIFrame* start,
 }
 
 void
-nsScrollbarButtonFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsScrollbarButtonFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   // Ensure our repeat service isn't going... it's possible that a scrollbar can disappear out
   // from under you while you're in the process of scrolling.
   StopRepeat();
-  nsButtonBoxFrame::DestroyFrom(aDestructRoot);
+  nsButtonBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }

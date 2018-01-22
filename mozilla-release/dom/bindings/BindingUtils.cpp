@@ -39,8 +39,6 @@
 
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/CustomElementRegistry.h"
-#include "mozilla/dom/DOMError.h"
-#include "mozilla/dom/DOMErrorBinding.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/ElementBinding.h"
 #include "mozilla/dom/HTMLObjectElement.h"
@@ -1047,7 +1045,7 @@ NativeInterface2JSObjectAndThrowIfFailed(JSContext* aCx,
 
   MOZ_ASSERT(NS_IsMainThread());
 
-  if (!XPCConvert::NativeInterface2JSObject(aRetval, nullptr, aHelper, aIID,
+  if (!XPCConvert::NativeInterface2JSObject(aRetval, aHelper, aIID,
                                             aAllowNativeWrapper, &rv)) {
     // I can't tell if NativeInterface2JSObject throws JS exceptions
     // or not.  This is a sloppy stab at the right semantics; the
@@ -1657,8 +1655,9 @@ XrayResolveOwnProperty(JSContext* cx, JS::Handle<JSObject*> wrapper,
     nativePropertyHooks->mResolveOwnProperty;
 
   if (type == eNamedPropertiesObject) {
-    // None of these should be cached on the holder, since they're dynamic.
-    return resolveOwnProperty(cx, wrapper, obj, id, desc);
+    MOZ_ASSERT(!resolveOwnProperty,
+               "Shouldn't have any Xray-visible properties");
+    return true;
   }
 
   const NativePropertiesHolder& nativePropertiesHolder =
@@ -1968,7 +1967,9 @@ XrayOwnPropertyKeys(JSContext* cx, JS::Handle<JSObject*> wrapper,
     nativePropertyHooks->mEnumerateOwnProperties;
 
   if (type == eNamedPropertiesObject) {
-    return enumerateOwnProperties(cx, wrapper, obj, props);
+    MOZ_ASSERT(!enumerateOwnProperties,
+               "Shouldn't have any Xray-visible properties");
+    return true;
   }
 
   if (IsInstance(type)) {
@@ -2066,8 +2067,6 @@ const js::ObjectOps sInterfaceObjectClassObjectOps = {
   nullptr, /* setProperty */
   nullptr, /* getOwnPropertyDescriptor */
   nullptr, /* deleteProperty */
-  nullptr, /* watch */
-  nullptr, /* unwatch */
   nullptr, /* getElements */
   InterfaceObjectToString, /* funToString */
 };
@@ -2861,7 +2860,7 @@ EnforceNotInPrerendering(JSContext* aCx, JSObject* aObj)
     // Without a this object, we cannot check the safety.
     return true;
   }
-  nsGlobalWindow* window = xpc::WindowGlobalOrNull(thisObj);
+  nsGlobalWindowInner* window = xpc::WindowGlobalOrNull(thisObj);
   if (!window) {
     // Without a window, we cannot check the safety.
     return true;
@@ -3152,7 +3151,7 @@ ConvertExceptionToPromise(JSContext* cx,
 
 /* static */
 void
-CreateGlobalOptions<nsGlobalWindow>::TraceGlobal(JSTracer* aTrc, JSObject* aObj)
+CreateGlobalOptions<nsGlobalWindowInner>::TraceGlobal(JSTracer* aTrc, JSObject* aObj)
 {
   xpc::TraceXPCGlobal(aTrc, aObj);
 }
@@ -3182,8 +3181,8 @@ RegisterDOMNames()
 
 /* static */
 bool
-CreateGlobalOptions<nsGlobalWindow>::PostCreateGlobal(JSContext* aCx,
-                                                      JS::Handle<JSObject*> aGlobal)
+CreateGlobalOptions<nsGlobalWindowInner>::PostCreateGlobal(JSContext* aCx,
+                                                           JS::Handle<JSObject*> aGlobal)
 {
   nsresult rv = RegisterDOMNames();
   if (NS_FAILED(rv)) {
@@ -3535,7 +3534,7 @@ GetCustomElementReactionsStack(JS::Handle<JSObject*> aObj)
     return nullptr;
   }
 
-  nsGlobalWindow* window = xpc::WindowGlobalOrNull(obj);
+  nsGlobalWindowInner* window = xpc::WindowGlobalOrNull(obj);
   if (!window) {
     return nullptr;
   }
@@ -3668,6 +3667,8 @@ CreateHTMLElement(const GlobalObject& aGlobal, const JS::CallArgs& aCallArgs,
     newElement->SetCustomElementData(
       new CustomElementData(definition->mType, CustomElementData::State::eCustom));
 
+    newElement->SetCustomElementDefinition(definition);
+
     return newElement.forget();
   }
 
@@ -3731,7 +3732,7 @@ AssertReflectorHasGivenProto(JSContext* aCx, JSObject* aReflector,
 void
 SetDocumentAndPageUseCounter(JSObject* aObject, UseCounter aUseCounter)
 {
-  nsGlobalWindow* win = xpc::WindowGlobalOrNull(js::UncheckedUnwrap(aObject));
+  nsGlobalWindowInner* win = xpc::WindowGlobalOrNull(js::UncheckedUnwrap(aObject));
   if (win && win->GetDocument()) {
     win->GetDocument()->SetDocumentAndPageUseCounter(aUseCounter);
   }

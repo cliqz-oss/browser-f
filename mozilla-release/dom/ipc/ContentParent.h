@@ -269,6 +269,8 @@ public:
 
   static void NotifyUpdatedDictionaries();
 
+  static void NotifyUpdatedFonts();
+
 #if defined(XP_WIN)
   /**
    * Windows helper for firing off an update window request to a plugin
@@ -532,6 +534,7 @@ public:
                    const bool& aCalledFromJS,
                    const bool& aPositionSpecified,
                    const bool& aSizeSpecified,
+                   const OptionalURIParams& aURIToLoad,
                    const nsCString& aFeatures,
                    const nsCString& aBaseURI,
                    const float& aFullZoom,
@@ -635,6 +638,12 @@ public:
 
   void OnCompositorDeviceReset() override;
 
+  virtual PClientOpenWindowOpParent*
+  AllocPClientOpenWindowOpParent(const ClientOpenWindowArgs& aArgs) override;
+
+  virtual bool
+  DeallocPClientOpenWindowOpParent(PClientOpenWindowOpParent* aActor) override;
+
   // Control the priority of the IPC messages for input events.
   void SetInputPriorityEventEnabled(bool aEnabled);
   bool IsInputPriorityEventEnabled()
@@ -687,6 +696,9 @@ private:
       const bool& aIsForBrowser) override;
   using PContentParent::SendPTestShellConstructor;
 
+  // Set aLoadUri to true to load aURIToLoad and to false to only create the
+  // window. aURIToLoad should always be provided, if available, to ensure
+  // compatibility with GeckoView.
   mozilla::ipc::IPCResult
   CommonCreateWindow(PBrowserParent* aThisTab,
                      bool aSetOpener,
@@ -703,7 +715,8 @@ private:
                      nsresult& aResult,
                      nsCOMPtr<nsITabParent>& aNewTabParent,
                      bool* aWindowIsNew,
-                     nsIPrincipal* aTriggeringPrincipal);
+                     nsIPrincipal* aTriggeringPrincipal,
+                     bool aLoadUri);
 
   FORWARD_SHMEM_ALLOCATOR_TO(PContentParent)
 

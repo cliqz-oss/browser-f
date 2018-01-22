@@ -50,6 +50,8 @@
 #include "jsobjinlines.h"
 #include "jsscriptinlines.h"
 
+#include "gc/Iteration-inl.h"
+
 using namespace js;
 using namespace js::gc;
 
@@ -2028,9 +2030,6 @@ ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex)
 
           case JSOP_RESUME:
             return write("RVAL");
-
-          case JSOP_SPREADCALLARRAY:
-            return write("[]");
 
           case JSOP_SUPERBASE:
             return write("HOMEOBJECTPROTO");

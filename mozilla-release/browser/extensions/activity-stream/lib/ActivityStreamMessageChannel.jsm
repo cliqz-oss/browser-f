@@ -23,7 +23,6 @@ const DEFAULT_OPTIONS = {
 };
 
 this.ActivityStreamMessageChannel = class ActivityStreamMessageChannel {
-
   /**
    * ActivityStreamMessageChannel - This module connects a Redux store to a RemotePageManager in Firefox.
    *                  Call .createChannel to start the connection, and .destroyChannel to destroy it.
@@ -138,10 +137,12 @@ this.ActivityStreamMessageChannel = class ActivityStreamMessageChannel {
     this.channel.addMessageListener("RemotePage:Load", this.onNewTabLoad);
     this.channel.addMessageListener("RemotePage:Unload", this.onNewTabUnload);
     this.channel.addMessageListener(this.incomingMessageName, this.onMessage);
+  }
 
+  simulateMessagesForExistingTabs() {
     // Some pages might have already loaded, so we won't get the usual message
     for (const target of this.channel.messagePorts) {
-      const simulatedMsg = {target};
+      const simulatedMsg = {target: Object.assign({simulated: true}, target)};
       this.onNewTabInit(simulatedMsg);
       if (target.loaded) {
         this.onNewTabLoad(simulatedMsg);

@@ -13,7 +13,8 @@ integration branches are at SCM level 3.
 Scheduling a Task on Try
 ------------------------
 
-There are two methods for scheduling a task on try.
+There are three methods for scheduling a task on try: legacy try option syntax,
+try task config, and an empty try.
 
 Try Option Syntax
 :::::::::::::::::
@@ -105,32 +106,33 @@ be applied to every task no matter what. If the template should only be applied
 to certain kinds of tasks, this needs to be specified in the template itself
 using JSON-e `condition statements`_.
 
-The context available to the JSON-e render aims to match that of ``actions``.
-It looks like this:
+The context available to the JSON-e render contains attributes from the
+:py:class:`taskgraph.task.Task` class. It looks like this:
 
 .. parsed-literal::
 
     {
-      "task": {
-        "payload": {
-          "env": { ... },
-          ...
-        }
-        "extra": {
-          "treeherder": { ... },
-          ...
-        },
-        "tags": { "kind": "<kind>", ... },
-        ...
-      },
-      "input": {
-        "enabled": 1,
-        ...
-      },
-      "taskId": "<task id>"
+      "attributes": task.attributes,
+      "kind": task.kind,
+      "label": task.label,
+      "target_tasks": [<tasks from try_task_config.json>],
+      "task": task.task,
+      "taskId": task.task_id,
+      "input": ...
     }
 
-See the `existing templates`_ for examples.
+The ``input`` context can be any arbitrary value or object. What it contains
+depends on each specific template. Templates must return objects that have have
+either ``attributes`` or ``task`` as a top level key. All other top level keys
+will be ignored. See the `existing templates`_ for examples.
+
+Empty Try
+:::::::::
+
+If there is no try syntax or ``try_task_config.json``, the ``try_mode``
+parameter is None and no tasks are selected to run.  The resulting push will
+only have a decision task, but one with an "add jobs" action that can be used
+to add the desired jobs to the try push.
 
 .. _tryselect: https://dxr.mozilla.org/mozilla-central/source/tools/tryselect
 .. _JSON-e: https://taskcluster.github.io/json-e/

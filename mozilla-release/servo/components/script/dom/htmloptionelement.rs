@@ -9,7 +9,7 @@ use dom::bindings::codegen::Bindings::HTMLOptionElementBinding::HTMLOptionElemen
 use dom::bindings::codegen::Bindings::HTMLSelectElementBinding::HTMLSelectElementBinding::HTMLSelectElementMethods;
 use dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::characterdata::CharacterData;
 use dom::document::Document;
@@ -25,17 +25,17 @@ use dom::virtualmethods::VirtualMethods;
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use std::cell::Cell;
-use style::element_state::*;
+use style::element_state::ElementState;
 use style::str::{split_html_space_chars, str_join};
 
 #[dom_struct]
 pub struct HTMLOptionElement {
     htmlelement: HTMLElement,
 
-    /// https://html.spec.whatwg.org/multipage/#attr-option-selected
+    /// <https://html.spec.whatwg.org/multipage/#attr-option-selected>
     selectedness: Cell<bool>,
 
-    /// https://html.spec.whatwg.org/multipage/#concept-option-dirtiness
+    /// <https://html.spec.whatwg.org/multipage/#concept-option-dirtiness>
     dirtiness: Cell<bool>,
 }
 
@@ -45,7 +45,7 @@ impl HTMLOptionElement {
                      document: &Document) -> HTMLOptionElement {
         HTMLOptionElement {
             htmlelement:
-                HTMLElement::new_inherited_with_state(IN_ENABLED_STATE,
+                HTMLElement::new_inherited_with_state(ElementState::IN_ENABLED_STATE,
                                                       local_name, prefix, document),
             selectedness: Cell::new(false),
             dirtiness: Cell::new(false),
@@ -55,8 +55,8 @@ impl HTMLOptionElement {
     #[allow(unrooted_must_root)]
     pub fn new(local_name: LocalName,
                prefix: Option<Prefix>,
-               document: &Document) -> Root<HTMLOptionElement> {
-        Node::reflect_node(box HTMLOptionElement::new_inherited(local_name, prefix, document),
+               document: &Document) -> DomRoot<HTMLOptionElement> {
+        Node::reflect_node(Box::new(HTMLOptionElement::new_inherited(local_name, prefix, document)),
                            document,
                            HTMLOptionElementBinding::Wrap)
     }
@@ -71,7 +71,7 @@ impl HTMLOptionElement {
 
     fn pick_if_selected_and_reset(&self) {
         if let Some(select) = self.upcast::<Node>().ancestors()
-                .filter_map(Root::downcast::<HTMLSelectElement>)
+                .filter_map(DomRoot::downcast::<HTMLSelectElement>)
                 .next() {
             if self.Selected() {
                 select.pick_option(self);
@@ -119,7 +119,7 @@ impl HTMLOptionElementMethods for HTMLOptionElement {
     }
 
     // https://html.spec.whatwg.org/multipage/#dom-option-form
-    fn GetForm(&self) -> Option<Root<HTMLFormElement>> {
+    fn GetForm(&self) -> Option<DomRoot<HTMLFormElement>> {
         let parent = self.upcast::<Node>().GetParentNode().and_then(|p|
             if p.is::<HTMLOptGroupElement>() {
                 p.upcast::<Node>().GetParentNode()
@@ -234,7 +234,7 @@ impl VirtualMethods for HTMLOptionElement {
         self.super_type().unwrap().unbind_from_tree(context);
 
         if let Some(select) = context.parent.inclusive_ancestors()
-                .filter_map(Root::downcast::<HTMLSelectElement>)
+                .filter_map(DomRoot::downcast::<HTMLSelectElement>)
                 .next() {
             select.ask_for_reset();
         }

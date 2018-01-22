@@ -89,12 +89,13 @@ TransportSecurityInfo::SetOriginAttributes(
   mOriginAttributes = aOriginAttributes;
 }
 
-PRErrorCode
-TransportSecurityInfo::GetErrorCode() const
+NS_IMETHODIMP
+TransportSecurityInfo::GetErrorCode(int32_t* state)
 {
   MutexAutoLock lock(mMutex);
 
-  return mErrorCode;
+  *state = mErrorCode;
+  return NS_OK;
 }
 
 void
@@ -254,13 +255,6 @@ TransportSecurityInfo::formatErrorMessage(const MutexAutoLock& /*proofOfLock*/,
   }
 
   return rv;
-}
-
-NS_IMETHODIMP
-TransportSecurityInfo::GetErrorCode(int32_t* state)
-{
-  *state = GetErrorCode();
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -438,16 +432,16 @@ TransportSecurityInfo::GetScriptableHelper(nsIXPCScriptable **_retval)
 }
 
 NS_IMETHODIMP
-TransportSecurityInfo::GetContractID(char * *aContractID)
+TransportSecurityInfo::GetContractID(nsACString& aContractID)
 {
-  *aContractID = nullptr;
+  aContractID.SetIsVoid(true);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-TransportSecurityInfo::GetClassDescription(char * *aClassDescription)
+TransportSecurityInfo::GetClassDescription(nsACString& aClassDescription)
 {
-  *aClassDescription = nullptr;
+  aClassDescription.SetIsVoid(true);
   return NS_OK;
 }
 
@@ -1018,6 +1012,7 @@ TransportSecurityInfo::SetStatusErrorBits(nsNSSCertificate* cert,
   }
 
   mSSLStatus->SetServerCert(cert, EVStatus::NotEV);
+  mSSLStatus->SetFailedCertChain(mFailedCertChain);
 
   mSSLStatus->mHaveCertErrorBits = true;
   mSSLStatus->mIsDomainMismatch =

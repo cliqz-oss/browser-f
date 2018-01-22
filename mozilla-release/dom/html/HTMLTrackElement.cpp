@@ -68,7 +68,7 @@ static constexpr nsAttrValue::EnumTable kKindTable[] = {
 
 // Invalid values are treated as "metadata" in ParseAttribute, but if no value
 // at all is specified, it's treated as "subtitles" in GetKind
-static constexpr const nsAttrValue::EnumTable* kKindTableInvalidValueDefault = &kKindTable[4];
+static const nsAttrValue::EnumTable* const kKindTableInvalidValueDefault = &kKindTable[4];
 
 class WindowDestroyObserver final : public nsIObserver
 {
@@ -146,14 +146,11 @@ HTMLTrackElement::~HTMLTrackElement()
 
 NS_IMPL_ELEMENT_CLONE(HTMLTrackElement)
 
-NS_IMPL_ADDREF_INHERITED(HTMLTrackElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLTrackElement, Element)
-
 NS_IMPL_CYCLE_COLLECTION_INHERITED(HTMLTrackElement, nsGenericHTMLElement,
                                    mTrack, mMediaParent, mListener)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(HTMLTrackElement)
-NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(HTMLTrackElement,
+                                               nsGenericHTMLElement)
 
 void
 HTMLTrackElement::GetKind(DOMString& aKind) const
@@ -219,7 +216,7 @@ HTMLTrackElement::CreateTextTrack()
 
 bool
 HTMLTrackElement::ParseAttribute(int32_t aNamespaceID,
-                                 nsIAtom* aAttribute,
+                                 nsAtom* aAttribute,
                                  const nsAString& aValue,
                                  nsAttrValue& aResult)
 {

@@ -18,6 +18,8 @@ jobs:
         attributes:
             build_platform: android-nightly
             nightly: true
+        shipping-phase: ship
+        shipping-product: fennec
         worker-type: scriptworker-prov-v1/pushapk-v1
         worker:
             upstream-artifacts: # see transforms
@@ -32,3 +34,5 @@ jobs:
             kind: other
         run-on-projects: ['mozilla-central', 'mozilla-beta', 'mozilla-release']
         deadline-after: 5 days
+        extra:
+            product: fennec

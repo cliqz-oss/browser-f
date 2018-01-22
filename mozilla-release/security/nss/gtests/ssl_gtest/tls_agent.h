@@ -66,7 +66,6 @@ class TlsAgent : public PollTarget {
   static const std::string kServerRsaSign;
   static const std::string kServerRsaPss;
   static const std::string kServerRsaDecrypt;
-  static const std::string kServerRsaChain;  // A cert that requires a chain.
   static const std::string kServerEcdsa256;
   static const std::string kServerEcdsa384;
   static const std::string kServerEcdsa521;
@@ -95,6 +94,7 @@ class TlsAgent : public PollTarget {
   void StartConnect(PRFileDesc* model = nullptr);
   void CheckKEA(SSLKEAType kea_type, SSLNamedGroup group,
                 size_t kea_size = 0) const;
+  void CheckOriginalKEA(SSLNamedGroup kea_group) const;
   void CheckAuthType(SSLAuthType auth_type,
                      SSLSignatureScheme sig_scheme) const;
 

@@ -1,4 +1,5 @@
-
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -425,6 +426,25 @@ Factory::CreateCaptureDrawTarget(BackendType aBackend, const IntSize& aSize, Sur
   return MakeAndAddRef<DrawTargetCaptureImpl>(aBackend, aSize, aFormat);
 }
 
+already_AddRefed<DrawTargetCapture>
+Factory::CreateCaptureDrawTargetForData(BackendType aBackend,
+                                        const IntSize &aSize,
+                                        SurfaceFormat aFormat,
+                                        int32_t aStride,
+                                        size_t aSurfaceAllocationSize)
+{
+  MOZ_ASSERT(aSurfaceAllocationSize && aStride);
+
+  BackendType type = aBackend;
+  if (!Factory::DoesBackendSupportDataDrawtarget(aBackend)) {
+    type = BackendType::SKIA;
+  }
+
+  RefPtr<DrawTargetCaptureImpl> dt = new DrawTargetCaptureImpl(type, aSize, aFormat);
+  dt->InitForData(aStride, aSurfaceAllocationSize);
+  return dt.forget();
+}
+
 already_AddRefed<DrawTarget>
 Factory::CreateDrawTargetForData(BackendType aBackend,
                                  unsigned char *aData,
@@ -501,6 +521,7 @@ Factory::DoesBackendSupportDataDrawtarget(BackendType aType)
   case BackendType::RECORDING:
   case BackendType::NONE:
   case BackendType::BACKEND_LAST:
+  case BackendType::WEBRENDER_TEXT:
     return false;
   case BackendType::CAIRO:
   case BackendType::SKIA:
@@ -593,16 +614,16 @@ Factory::CreateNativeFontResource(uint8_t *aData, uint32_t aSize, BackendType aB
 }
 
 already_AddRefed<UnscaledFont>
-Factory::CreateUnscaledFontFromFontDescriptor(FontType aType, const uint8_t* aData, uint32_t aDataLength)
+Factory::CreateUnscaledFontFromFontDescriptor(FontType aType, const uint8_t* aData, uint32_t aDataLength, uint32_t aIndex)
 {
   switch (aType) {
 #ifdef WIN32
   case FontType::GDI:
-    return UnscaledFontGDI::CreateFromFontDescriptor(aData, aDataLength);
+    return UnscaledFontGDI::CreateFromFontDescriptor(aData, aDataLength, aIndex);
 #endif
 #ifdef MOZ_WIDGET_GTK
   case FontType::FONTCONFIG:
-    return UnscaledFontFontconfig::CreateFromFontDescriptor(aData, aDataLength);
+    return UnscaledFontFontconfig::CreateFromFontDescriptor(aData, aDataLength, aIndex);
 #endif
   default:
     gfxWarning() << "Invalid type specified for UnscaledFont font descriptor";
@@ -635,6 +656,20 @@ Factory::CreateScaledFontForFontconfigFont(cairo_scaled_font_t* aScaledFont, FcP
                                            const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize)
 {
   return MakeAndAddRef<ScaledFontFontconfig>(aScaledFont, aPattern, aUnscaledFont, aSize);
+}
+#endif
+
+#ifdef XP_DARWIN
+already_AddRefed<ScaledFont>
+Factory::CreateScaledFontForMacFont(CGFontRef aCGFont,
+                                    const RefPtr<UnscaledFont>& aUnscaledFont,
+                                    Float aSize,
+                                    const Color& aFontSmoothingBackgroundColor,
+                                    bool aUseFontSmoothing)
+{
+  return MakeAndAddRef<ScaledFontMac>(
+    aCGFont, aUnscaledFont, aSize,
+    aFontSmoothingBackgroundColor, aUseFontSmoothing);
 }
 #endif
 
@@ -1020,14 +1055,6 @@ Factory::CreateWrappingDataSourceSurface(uint8_t *aData,
 
   return newSurf.forget();
 }
-
-#ifdef XP_DARWIN
-already_AddRefed<GlyphRenderingOptions>
-Factory::CreateCGGlyphRenderingOptions(const Color &aFontSmoothingBackgroundColor)
-{
-  return MakeAndAddRef<GlyphRenderingOptionsCG>(aFontSmoothingBackgroundColor);
-}
-#endif
 
 already_AddRefed<DataSourceSurface>
 Factory::CreateDataSourceSurface(const IntSize &aSize,

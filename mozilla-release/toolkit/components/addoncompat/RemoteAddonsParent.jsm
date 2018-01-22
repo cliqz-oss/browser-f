@@ -438,10 +438,15 @@ var EventTargetParent = {
         return target.linkedBrowser;
       }
 
-      // Check if |target| is somewhere on the patch from the
+      // Check if |target| is somewhere on the path from the
       // <tabbrowser> up to the root element.
       let window = target.ownerGlobal;
-      if (window && target.contains(window.gBrowser)) {
+
+      // Some non-browser windows define gBrowser globals which are not elements
+      // and can't be passed to target.contains().
+      if (window &&
+          window.gBrowser instanceof Ci.nsIDOMXULElement &&
+          target.contains(window.gBrowser)) {
         return window;
       }
     }
@@ -555,7 +560,7 @@ var EventTargetParent = {
               return knownProps[name];
             return event[name];
           }
-        }
+        };
         let proxyEvent = new Proxy({
           currentTarget: target,
           target: eventTarget,
@@ -853,7 +858,7 @@ RemoteBrowserElementInterposition.getters.sessionHistory = function(addon, targe
                      addon, CompatWarning.warnings.content);
 
   return getSessionHistory(target);
-}
+};
 
 // We use this in place of the real browser.contentWindow if we
 // haven't yet received a CPOW for the child process's window. This
@@ -1049,7 +1054,7 @@ RemoteWebNavigationInterposition.getters.sessionHistory = function(addon, target
   let browser = impl._browser;
 
   return getSessionHistory(browser);
-}
+};
 
 var RemoteAddonsParent = {
   init() {

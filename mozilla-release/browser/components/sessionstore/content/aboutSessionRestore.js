@@ -17,6 +17,17 @@ var gTreeData;
 // Page initialization
 
 window.onload = function() {
+  let toggleTabs = document.getElementById("tabsToggle");
+  if (toggleTabs) {
+    let treeContainer = document.querySelector(".tree-container");
+
+    let toggleHiddenTabs = () => {
+      toggleTabs.classList.toggle("show-tabs");
+      treeContainer.classList.toggle("expanded");
+    };
+    toggleTabs.onclick = toggleHiddenTabs;
+  }
+
   // pages used by this script may have a link that needs to be updated to
   // the in-product link.
   let anchor = document.getElementById("linkMoreTroubleshooting");
@@ -154,13 +165,12 @@ function restoreSession() {
   // restore the session into a new window and close the current tab
   var newWindow = top.openDialog(top.location, "_blank", "chrome,dialog=no,all");
 
-  var obs = Cc["@mozilla.org/observer-service;1"].getService(Ci.nsIObserverService);
-  obs.addObserver(function observe(win, topic) {
+  Services.obs.addObserver(function observe(win, topic) {
     if (win != newWindow) {
       return;
     }
 
-    obs.removeObserver(observe, topic);
+    Services.obs.removeObserver(observe, topic);
     ss.setWindowState(newWindow, stateString, true);
 
     var tabbrowser = top.gBrowser;
@@ -170,9 +180,7 @@ function restoreSession() {
 }
 
 function startNewSession() {
-  var prefBranch =
-      Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
-  let addNTP = prefBranch.getBoolPref("browser.startup.addFreshTab");
+  let addNTP = Services.prefs.getBoolPref("browser.startup.addFreshTab");
   if (addNTP)
     getBrowserWindow().BrowserHome();
 }
@@ -269,8 +277,7 @@ function restoreSingleTab(aIx, aShifted) {
   ss.setTabState(newTab, JSON.stringify(tabState));
 
   // respect the preference as to whether to select the tab (the Shift key inverses)
-  var prefBranch = Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
-  if (prefBranch.getBoolPref("browser.tabs.loadInBackground") != !aShifted)
+  if (Services.prefs.getBoolPref("browser.tabs.loadInBackground") != !aShifted)
     tabbrowser.selectedTab = newTab;
 }
 

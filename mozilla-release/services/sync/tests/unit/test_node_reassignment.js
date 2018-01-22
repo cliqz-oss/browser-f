@@ -16,7 +16,6 @@ Cu.import("resource://gre/modules/PromiseUtils.jsm");
 
 
 add_task(async function setup() {
-  Log.repository.getLogger("Sync.AsyncResource").level = Log.Level.Trace;
   Log.repository.getLogger("Sync.ErrorHandler").level  = Log.Level.Trace;
   Log.repository.getLogger("Sync.Resource").level      = Log.Level.Trace;
   Log.repository.getLogger("Sync.RESTRequest").level   = Log.Level.Trace;
@@ -150,7 +149,7 @@ add_task(async function test_momentary_401_engine() {
   let global = {syncID: Service.syncID,
                 storageVersion: STORAGE_VERSION,
                 rotary: {version: engine.version,
-                         syncID:  engine.syncID}}
+                         syncID:  engine.syncID}};
   john.createCollection("meta").insert("global", global);
 
   _("First sync to prepare server contents.");
@@ -223,7 +222,7 @@ add_task(async function test_momentary_401_storage_loggedin() {
     "Resolved by reassignment.");
   let server = await prepareServer();
 
-  _("Performing initial sync to ensure we are logged in.")
+  _("Performing initial sync to ensure we are logged in.");
   await Service.sync();
 
   // Return a 401 for all storage requests.
@@ -397,7 +396,7 @@ add_task(async function test_loop_avoidance_engine() {
   let global = {syncID: Service.syncID,
                 storageVersion: STORAGE_VERSION,
                 rotary: {version: engine.version,
-                         syncID:  engine.syncID}}
+                         syncID:  engine.syncID}};
   john.createCollection("meta").insert("global", global);
 
   _("First sync to prepare server contents.");

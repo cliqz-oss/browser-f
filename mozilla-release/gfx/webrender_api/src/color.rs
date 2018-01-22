@@ -16,7 +16,6 @@ pub struct ColorF {
     pub b: f32,
     pub a: f32,
 }
-known_heap_size!(0, ColorF);
 
 impl ColorF {
     /// Constructs a new `ColorF` from its components.
@@ -60,7 +59,7 @@ impl Hash for ColorF {
 }
 
 // FIXME: remove this when Rust 1.21 is stable (float_bits_conv)
-trait ToBits {
+pub trait ToBits {
     fn _to_bits(self) -> u32;
 }
 impl ToBits for f32 {

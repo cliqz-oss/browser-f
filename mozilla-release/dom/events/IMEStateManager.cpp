@@ -193,6 +193,9 @@ IMEStateManager::Shutdown()
   MOZ_ASSERT(!sTextCompositions || !sTextCompositions->Length());
   delete sTextCompositions;
   sTextCompositions = nullptr;
+  // All string instances in the global space need to be empty after XPCOM
+  // shutdown.
+  sActiveChildInputContext.ShutDown();
 }
 
 // static
@@ -1276,6 +1279,9 @@ IMEStateManager::SetIMEState(const IMEState& aState,
   context.mMayBeIMEUnaware = context.mIMEState.IsEditable() &&
     sCheckForIMEUnawareWebApps && MayBeIMEUnawareWebApp(aContent);
 
+  context.mHasHandledUserInput =
+    aPresContext && aPresContext->PresShell()->HasHandledUserInput();
+
   context.mInPrivateBrowsing =
     aPresContext &&
     nsContentUtils::IsInPrivateBrowsing(aPresContext->Document());
@@ -1335,11 +1341,16 @@ IMEStateManager::SetIMEState(const IMEState& aState,
         if ((form = do_QueryInterface(formElement)) &&
             form->GetDefaultSubmitElement()) {
           willSubmit = true;
-        // is this an html form and does it only have a single text input element?
-        } else if (formElement && formElement->IsHTMLElement(nsGkAtoms::form) &&
-                   !static_cast<dom::HTMLFormElement*>(formElement)->
-                     ImplicitSubmissionIsDisabled()) {
-          willSubmit = true;
+        // is this an html form...
+        } else if (formElement && formElement->IsHTMLElement(nsGkAtoms::form)) {
+          dom::HTMLFormElement* htmlForm =
+            static_cast<dom::HTMLFormElement*>(formElement);
+          // ... and does it only have a single text input element ?
+          if (!htmlForm->ImplicitSubmissionIsDisabled() ||
+              // ... or is this the last non-disabled element?
+              htmlForm->IsLastActiveElement(control)) {
+            willSubmit = true;
+          }
         }
       }
       context.mActionHint.Assign(
@@ -1355,6 +1366,14 @@ IMEStateManager::SetIMEState(const IMEState& aState,
   if (aAction.mCause == InputContextAction::CAUSE_UNKNOWN &&
       !XRE_IsContentProcess()) {
     aAction.mCause = InputContextAction::CAUSE_UNKNOWN_CHROME;
+  }
+
+  if ((aAction.mCause == InputContextAction::CAUSE_UNKNOWN ||
+       aAction.mCause == InputContextAction::CAUSE_UNKNOWN_CHROME) &&
+      EventStateManager::IsHandlingUserInput()) {
+    aAction.mCause = EventStateManager::IsHandlingKeyboardInput() ?
+      InputContextAction::CAUSE_UNKNOWN_DURING_KEYBOARD_INPUT :
+      InputContextAction::CAUSE_UNKNOWN_DURING_NON_KEYBOARD_INPUT;
   }
 
   SetInputContext(aWidget, context, aAction);

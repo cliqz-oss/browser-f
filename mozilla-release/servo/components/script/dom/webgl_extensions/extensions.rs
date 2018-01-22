@@ -2,31 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use canvas_traits::webgl::WebGLError;
-use core::iter::FromIterator;
-use core::nonzero::NonZero;
-use dom::bindings::cell::DOMRefCell;
+use canvas_traits::webgl::{WebGLError, WebGLVersion};
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::OESStandardDerivativesBinding::OESStandardDerivativesConstants;
 use dom::bindings::codegen::Bindings::OESTextureHalfFloatBinding::OESTextureHalfFloatConstants;
 use dom::bindings::codegen::Bindings::WebGLRenderingContextBinding::WebGLRenderingContextConstants as constants;
-use dom::bindings::js::Root;
+use dom::bindings::nonnull::NonNullJSObjectPtr;
+use dom::bindings::root::DomRoot;
 use dom::bindings::trace::JSTraceable;
 use dom::webglrenderingcontext::WebGLRenderingContext;
 use fnv::{FnvHashMap, FnvHashSet};
 use gleam::gl::GLenum;
-use heapsize::HeapSizeOf;
-use js::jsapi::{JSContext, JSObject};
+use js::jsapi::JSContext;
 use js::jsval::JSVal;
+use malloc_size_of::MallocSizeOf;
 use ref_filter_map::ref_filter_map;
 use std::cell::Ref;
 use std::collections::HashMap;
-use super::{ext, WebGLExtension};
+use std::iter::FromIterator;
+use super::{ext, WebGLExtension, WebGLExtensionSpec};
 use super::wrapper::{WebGLExtensionWrapper, TypedWebGLExtensionWrapper};
 
-// Data types that are implemented for texImage2D and texSubImage2D in WebGLRenderingContext
+// Data types that are implemented for texImage2D and texSubImage2D in a WebGL 1.0 context
 // but must trigger a InvalidValue error until the related WebGL Extensions are enabled.
 // Example: https://www.khronos.org/registry/webgl/extensions/OES_texture_float/
-const DEFAULT_DISABLED_TEX_TYPES: [GLenum; 2] = [
+const DEFAULT_DISABLED_TEX_TYPES_WEBGL1: [GLenum; 2] = [
     constants::FLOAT, OESTextureHalfFloatConstants::HALF_FLOAT_OES
 ];
 
@@ -37,15 +37,15 @@ const DEFAULT_NOT_FILTERABLE_TEX_TYPES: [GLenum; 2] = [
     constants::FLOAT, OESTextureHalfFloatConstants::HALF_FLOAT_OES
 ];
 
-// Param names that are implemented for getParameter WebGL function
+// Param names that are implemented for glGetParameter in a WebGL 1.0 context
 // but must trigger a InvalidEnum error until the related WebGL Extensions are enabled.
 // Example: https://www.khronos.org/registry/webgl/extensions/OES_standard_derivatives/
-const DEFAULT_DISABLED_GET_PARAMETER_NAMES: [GLenum; 1] = [
+const DEFAULT_DISABLED_GET_PARAMETER_NAMES_WEBGL1: [GLenum; 1] = [
     OESStandardDerivativesConstants::FRAGMENT_SHADER_DERIVATIVE_HINT_OES
 ];
 
 /// WebGL features that are enabled/disabled by WebGL Extensions.
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 struct WebGLExtensionFeatures {
     gl_extensions: FnvHashSet<String>,
     disabled_tex_types: FnvHashSet<GLenum>,
@@ -58,33 +58,44 @@ struct WebGLExtensionFeatures {
     disabled_get_parameter_names: FnvHashSet<GLenum>,
 }
 
-impl Default for WebGLExtensionFeatures {
-    fn default() -> WebGLExtensionFeatures {
-        WebGLExtensionFeatures {
+impl WebGLExtensionFeatures {
+    fn new(webgl_version: WebGLVersion) -> Self {
+        let (disabled_tex_types, disabled_get_parameter_names) = match webgl_version {
+            WebGLVersion::WebGL1 => {
+                (DEFAULT_DISABLED_TEX_TYPES_WEBGL1.iter().cloned().collect(),
+                 DEFAULT_DISABLED_GET_PARAMETER_NAMES_WEBGL1.iter().cloned().collect())
+            },
+            WebGLVersion::WebGL2 => {
+                (Default::default(), Default::default())
+            }
+        };
+        Self {
             gl_extensions: Default::default(),
-            disabled_tex_types: DEFAULT_DISABLED_TEX_TYPES.iter().cloned().collect(),
+            disabled_tex_types,
             not_filterable_tex_types: DEFAULT_NOT_FILTERABLE_TEX_TYPES.iter().cloned().collect(),
             effective_tex_internal_formats: Default::default(),
             query_parameter_handlers: Default::default(),
             hint_targets: Default::default(),
-            disabled_get_parameter_names: DEFAULT_DISABLED_GET_PARAMETER_NAMES.iter().cloned().collect(),
+            disabled_get_parameter_names,
         }
     }
 }
 
 /// Handles the list of implemented, supported and enabled WebGL extensions.
 #[must_root]
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 pub struct WebGLExtensions {
-    extensions: DOMRefCell<HashMap<String, Box<WebGLExtensionWrapper>>>,
-    features: DOMRefCell<WebGLExtensionFeatures>,
+    extensions: DomRefCell<HashMap<String, Box<WebGLExtensionWrapper>>>,
+    features: DomRefCell<WebGLExtensionFeatures>,
+    webgl_version: WebGLVersion,
 }
 
 impl WebGLExtensions {
-    pub fn new() -> WebGLExtensions {
+    pub fn new(webgl_version: WebGLVersion) -> WebGLExtensions {
         Self {
-            extensions: DOMRefCell::new(HashMap::new()),
-            features: DOMRefCell::new(Default::default())
+            extensions: DomRefCell::new(HashMap::new()),
+            features: DomRefCell::new(WebGLExtensionFeatures::new(webgl_version)),
+            webgl_version
         }
     }
 
@@ -97,19 +108,26 @@ impl WebGLExtensions {
         }
     }
 
-    pub fn register<T:'static + WebGLExtension + JSTraceable + HeapSizeOf>(&self) {
+    pub fn register<T:'static + WebGLExtension + JSTraceable + MallocSizeOf>(&self) {
         let name = T::name().to_uppercase();
-        self.extensions.borrow_mut().insert(name, box TypedWebGLExtensionWrapper::<T>::new());
+        self.extensions.borrow_mut().insert(name, Box::new(TypedWebGLExtensionWrapper::<T>::new()));
     }
 
     pub fn get_suported_extensions(&self) -> Vec<&'static str> {
         self.extensions.borrow().iter()
-                                .filter(|ref v| v.1.is_supported(&self))
+                                .filter(|ref v| {
+                                    if let WebGLExtensionSpec::Specific(version) = v.1.spec() {
+                                        if self.webgl_version != version {
+                                            return false;
+                                        }
+                                    }
+                                    v.1.is_supported(&self)
+                                })
                                 .map(|ref v| v.1.name())
                                 .collect()
     }
 
-    pub fn get_or_init_extension(&self, name: &str, ctx: &WebGLRenderingContext) -> Option<NonZero<*mut JSObject>> {
+    pub fn get_or_init_extension(&self, name: &str, ctx: &WebGLRenderingContext) -> Option<NonNullJSObjectPtr> {
         let name = name.to_uppercase();
         self.extensions.borrow().get(&name).and_then(|extension| {
             if extension.is_supported(self) {
@@ -122,15 +140,15 @@ impl WebGLExtensions {
 
     pub fn is_enabled<T>(&self) -> bool
     where
-        T: 'static + WebGLExtension + JSTraceable + HeapSizeOf
+        T: 'static + WebGLExtension + JSTraceable + MallocSizeOf
     {
         let name = T::name().to_uppercase();
         self.extensions.borrow().get(&name).map_or(false, |ext| { ext.is_enabled() })
     }
 
-    pub fn get_dom_object<T>(&self) -> Option<Root<T::Extension>>
+    pub fn get_dom_object<T>(&self) -> Option<DomRoot<T::Extension>>
     where
-        T: 'static + WebGLExtension + JSTraceable + HeapSizeOf
+        T: 'static + WebGLExtension + JSTraceable + MallocSizeOf
     {
         let name = T::name().to_uppercase();
         self.extensions.borrow().get(&name).and_then(|extension| {
@@ -224,15 +242,15 @@ impl WebGLExtensions {
 }
 
 // Helper structs
-#[derive(Eq, Hash, HeapSizeOf, JSTraceable, PartialEq)]
+#[derive(Eq, Hash, JSTraceable, MallocSizeOf, PartialEq)]
 struct TexFormatType(u32, u32);
 
 type WebGLQueryParameterFunc = Fn(*mut JSContext, &WebGLRenderingContext)
                                -> Result<JSVal, WebGLError>;
 
-#[derive(HeapSizeOf)]
+#[derive(MallocSizeOf)]
 struct WebGLQueryParameterHandler {
-    #[ignore_heap_size_of = "Closures are hard"]
+    #[ignore_malloc_size_of = "Closures are hard"]
     func: Box<WebGLQueryParameterFunc>
 }
 

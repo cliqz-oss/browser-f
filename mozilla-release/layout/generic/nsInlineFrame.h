@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -60,7 +61,7 @@ public:
                       PeekOffsetCharacterOptions aOptions =
                         PeekOffsetCharacterOptions()) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
   virtual nsresult StealFrame(nsIFrame* aChild) override;
 
   // nsIHTMLReflow overrides
@@ -84,7 +85,7 @@ public:
                       nsReflowStatus& aStatus) override;
 
   virtual nsresult AttributeChanged(int32_t aNameSpaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t aModType) override;
 
   virtual bool CanContinueTextRun() const override;
@@ -158,15 +159,6 @@ protected:
                          nsIFrame* aFrame,
                          nsReflowStatus& aStatus);
 
-  /**
-   * Reparent floats whose placeholders are inline descendants of aFrame from
-   * whatever block they're currently parented by to aOurBlock.
-   * @param aReparentSiblings if this is true, we follow aFrame's
-   * GetNextSibling chain reparenting them all
-   */
-  void ReparentFloatsForInlineChild(nsIFrame* aOurBlock, nsIFrame* aFrame,
-                                    bool aReparentSiblings);
-
   virtual nsIFrame* PullOneFrame(nsPresContext* aPresContext,
                                  InlineReflowInput& rs,
                                  bool* aIsComplete);
@@ -186,18 +178,13 @@ private:
   enum DrainFlags {
     eDontReparentFrames = 1, // skip reparenting the overflow list frames
     eInFirstLine = 2, // the request is for an inline descendant of a nsFirstLineFrame
-    eForDestroy = 4, // the request is from DestroyFrom; in this case we do the
-                     // minimal work required since the frame is about to be
-                     // destroyed (just fixup parent pointers)
   };
   /**
    * Move any frames on our overflow list to the end of our principal list.
    * @param aFlags one or more of the above DrainFlags
-   * @param aLineContainer the nearest line container ancestor
    * @return true if there were any overflow frames
    */
-  bool DrainSelfOverflowListInternal(DrainFlags aFlags,
-                                     nsIFrame* aLineContainer);
+  bool DrainSelfOverflowListInternal(DrainFlags aFlags);
 protected:
   nscoord mBaseline;
 };

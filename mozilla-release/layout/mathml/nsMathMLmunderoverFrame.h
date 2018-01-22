@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -35,10 +36,10 @@ public:
   NS_IMETHOD UpdatePresentationData(uint32_t aFlagsValues,
                                     uint32_t aFlagsToUpdate) override;
 
-  void DestroyFrom(nsIFrame* aRoot) override;
+  void DestroyFrom(nsIFrame* aRoot, PostDestroyData& aPostDestroyData) override;
 
   nsresult AttributeChanged(int32_t aNameSpaceID,
-                            nsIAtom* aAttribute,
+                            nsAtom* aAttribute,
                             int32_t aModType) override;
 
   uint8_t ScriptIncrement(nsIFrame* aFrame) override;

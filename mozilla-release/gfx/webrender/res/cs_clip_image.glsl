@@ -16,13 +16,15 @@ struct ImageMaskData {
 
 ImageMaskData fetch_mask_data(ivec2 address) {
     vec4 data = fetch_from_resource_cache_1_direct(address);
-    return ImageMaskData(RectWithSize(data.xy, data.zw));
+    RectWithSize local_rect = RectWithSize(data.xy, data.zw);
+    ImageMaskData mask_data = ImageMaskData(local_rect);
+    return mask_data;
 }
 
 void main(void) {
     ClipMaskInstance cmi = fetch_clip_item();
     ClipArea area = fetch_clip_area(cmi.render_task_address);
-    Layer layer = fetch_layer(cmi.layer_address);
+    Layer layer = fetch_layer(cmi.layer_address, cmi.layer_address);
     ImageMaskData mask = fetch_mask_data(cmi.clip_data_address);
     RectWithSize local_rect = mask.local_rect;
     ImageResource res = fetch_image_resource_direct(cmi.resource_address);
@@ -56,6 +58,6 @@ void main(void) {
         vClipMaskUvInnerRect.xy, vClipMaskUvInnerRect.zw);
     float clip_alpha = texture(sColor0, vec3(source_uv, vLayer)).r; //careful: texture has type A8
 
-    oFragColor = vec4(min(alpha, clip_alpha), 1.0, 1.0, 1.0);
+    oFragColor = vec4(alpha * clip_alpha, 1.0, 1.0, 1.0);
 }
 #endif

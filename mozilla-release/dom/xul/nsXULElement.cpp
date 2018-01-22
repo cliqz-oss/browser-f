@@ -8,7 +8,7 @@
 #include "nsError.h"
 #include "nsDOMString.h"
 #include "nsIDOMEvent.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIBaseWindow.h"
 #include "nsIDOMAttr.h"
 #include "nsIDOMDocument.h"
@@ -96,6 +96,7 @@
 #include "nsIDOMXULCommandEvent.h"
 #include "nsCCUncollectableMarker.h"
 #include "nsICSSDeclaration.h"
+#include "nsLayoutUtils.h"
 
 #include "mozilla/dom/XULElementBinding.h"
 #include "mozilla/dom/BoxObject.h"
@@ -384,7 +385,7 @@ already_AddRefed<nsINodeList>
 nsXULElement::GetElementsByAttribute(const nsAString& aAttribute,
                                      const nsAString& aValue)
 {
-    nsCOMPtr<nsIAtom> attrAtom(NS_Atomize(aAttribute));
+    RefPtr<nsAtom> attrAtom(NS_Atomize(aAttribute));
     void* attrValue = new nsString(aValue);
     RefPtr<nsContentList> list =
         new nsContentList(this,
@@ -403,7 +404,7 @@ nsXULElement::GetElementsByAttributeNS(const nsAString& aNamespaceURI,
                                        const nsAString& aValue,
                                        ErrorResult& rv)
 {
-    nsCOMPtr<nsIAtom> attrAtom(NS_Atomize(aAttribute));
+    RefPtr<nsAtom> attrAtom(NS_Atomize(aAttribute));
 
     int32_t nameSpaceId = kNameSpaceID_Wildcard;
     if (!aNamespaceURI.EqualsLiteral("*")) {
@@ -429,7 +430,7 @@ nsXULElement::GetElementsByAttributeNS(const nsAString& aNamespaceURI,
 }
 
 EventListenerManager*
-nsXULElement::GetEventListenerManagerForAttr(nsIAtom* aAttrName, bool* aDefer)
+nsXULElement::GetEventListenerManagerForAttr(nsAtom* aAttrName, bool* aDefer)
 {
     // XXXbz sXBL/XBL2 issue: should we instead use GetComposedDoc()
     // here, override BindToTree for those classes and munge event
@@ -641,7 +642,7 @@ nsXULElement::AddListenerFor(const nsAttrName& aName,
     // new element, change an attribute's value, etc.
     // Eventlistenener-attributes are always in the null namespace
     if (aName.IsAtom()) {
-        nsIAtom *attr = aName.Atom();
+        nsAtom *attr = aName.Atom();
         MaybeAddPopupListener(attr);
         if (aCompileEventHandlers &&
             nsContentUtils::IsEventAttributeName(attr, EventNameType_XUL)) {
@@ -653,7 +654,7 @@ nsXULElement::AddListenerFor(const nsAttrName& aName,
 }
 
 void
-nsXULElement::MaybeAddPopupListener(nsIAtom* aLocalName)
+nsXULElement::MaybeAddPopupListener(nsAtom* aLocalName)
 {
     // If appropriate, add a popup listener. Called when we change the
     // element's document, create a new element, change an attribute's
@@ -686,7 +687,7 @@ nsXULElement::UpdateEditableState(bool aNotify)
  * Returns true if the user-agent style sheet rules for this XUL element are
  * in minimal-xul.css instead of xul.css.
  */
-static inline bool XULElementsRulesInMinimalXULSheet(nsIAtom* aTag)
+static inline bool XULElementsRulesInMinimalXULSheet(nsAtom* aTag)
 {
   return // scrollbar parts:
          aTag == nsGkAtoms::scrollbar ||
@@ -736,7 +737,7 @@ IsInFeedSubscribeLine(nsXULElement* aElement)
     while (bindingParent->GetBindingParent()) {
       bindingParent = bindingParent->GetBindingParent();
     }
-    nsIAtom* idAtom = bindingParent->GetID();
+    nsAtom* idAtom = bindingParent->GetID();
     if (idAtom && idAtom->Equals(NS_LITERAL_STRING("feedSubscribeLine"))) {
       return true;
     }
@@ -982,7 +983,7 @@ nsXULElement::UnregisterAccessKey(const nsAString& aOldValue)
 }
 
 nsresult
-nsXULElement::BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+nsXULElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                             const nsAttrValueOrString* aValue, bool aNotify)
 {
     if (aNamespaceID == kNameSpaceID_None && aName == nsGkAtoms::accesskey &&
@@ -1028,9 +1029,11 @@ nsXULElement::BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
 }
 
 nsresult
-nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                            const nsAttrValue* aValue,
-                           const nsAttrValue* aOldValue, bool aNotify)
+                           const nsAttrValue* aOldValue,
+                           nsIPrincipal* aSubjectPrincipal,
+                           bool aNotify)
 {
     if (aNamespaceID == kNameSpaceID_None) {
         if (aValue) {
@@ -1151,12 +1154,12 @@ nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
     }
 
     return nsStyledElement::AfterSetAttr(aNamespaceID, aName,
-                                         aValue, aOldValue, aNotify);
+                                         aValue, aOldValue, aSubjectPrincipal, aNotify);
 }
 
 bool
 nsXULElement::ParseAttribute(int32_t aNamespaceID,
-                             nsIAtom* aAttribute,
+                             nsAtom* aAttribute,
                              const nsAString& aValue,
                              nsAttrValue& aResult)
 {
@@ -1381,7 +1384,7 @@ nsXULElement::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
 }
 
 nsChangeHint
-nsXULElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
+nsXULElement::GetAttributeChangeHint(const nsAtom* aAttribute,
                                      int32_t aModType) const
 {
     nsChangeHint retval(nsChangeHint(0));
@@ -1409,7 +1412,7 @@ nsXULElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
 }
 
 NS_IMETHODIMP_(bool)
-nsXULElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+nsXULElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
     return false;
 }
@@ -1490,7 +1493,7 @@ nsXULElement::LoadSrc()
         }
     }
 
-    return frameLoader->LoadFrame();
+    return frameLoader->LoadFrame(false);
 }
 
 nsresult
@@ -1679,11 +1682,11 @@ nsXULElement::GetBindingParent() const
 bool
 nsXULElement::IsNodeOfType(uint32_t aFlags) const
 {
-    return !(aFlags & ~eCONTENT);
+    return false;
 }
 
 nsresult
-nsXULElement::AddPopupListener(nsIAtom* aName)
+nsXULElement::AddPopupListener(nsAtom* aName)
 {
     // Add a popup listener to the element
     bool isContext = (aName == nsGkAtoms::context ||
@@ -1954,7 +1957,7 @@ nsXULElement::ResetChromeMargins()
 }
 
 bool
-nsXULElement::BoolAttrIsTrue(nsIAtom* aName) const
+nsXULElement::BoolAttrIsTrue(nsAtom* aName) const
 {
     const nsAttrValue* attr =
         GetAttrInfo(kNameSpaceID_None, aName).mValue;
@@ -1975,7 +1978,7 @@ nsXULElement::RecompileScriptEventListeners()
             continue;
         }
 
-        nsIAtom *attr = name->Atom();
+        nsAtom *attr = name->Atom();
         if (!nsContentUtils::IsEventAttributeName(attr, EventNameType_XUL)) {
             continue;
         }
@@ -1987,7 +1990,7 @@ nsXULElement::RecompileScriptEventListeners()
 }
 
 bool
-nsXULElement::IsEventAttributeNameInternal(nsIAtom *aName)
+nsXULElement::IsEventAttributeNameInternal(nsAtom *aName)
 {
   return nsContentUtils::IsEventAttributeName(aName, EventNameType_XUL);
 }
@@ -2329,18 +2332,26 @@ nsXULPrototypeElement::SetAttrAt(uint32_t aPos, const nsAString& aValue,
         mHasStyleAttribute = true;
         // Parse the element's 'style' attribute
 
-        nsCSSParser parser;
-
+        // This is basically duplicating what nsINode::NodePrincipal() does
+        nsIPrincipal* principal =
+          mNodeInfo->NodeInfoManager()->DocumentPrincipal();
         // XXX Get correct Base URI (need GetBaseURI on *prototype* element)
         // TODO: If we implement Content Security Policy for chrome documents
         // as has been discussed, the CSP should be checked here to see if
         // inline styles are allowed to be applied.
-        RefPtr<css::Declaration> declaration =
-          parser.ParseStyleAttribute(aValue, aDocumentURI, aDocumentURI,
-                                     // This is basically duplicating what
-                                     // nsINode::NodePrincipal() does
-                                     mNodeInfo->NodeInfoManager()->
-                                       DocumentPrincipal());
+
+        RefPtr<DeclarationBlock> declaration;
+        if (nsLayoutUtils::StyloEnabled() &&
+            nsLayoutUtils::ShouldUseStylo(aDocumentURI, principal)) {
+          RefPtr<URLExtraData> data =
+            new URLExtraData(aDocumentURI, aDocumentURI, principal);
+          declaration = ServoDeclarationBlock::FromCssText(
+              aValue, data, eCompatibility_FullStandards, nullptr);
+        } else {
+          nsCSSParser parser;
+          declaration = parser.ParseStyleAttribute(aValue, aDocumentURI,
+                                                   aDocumentURI, principal);
+        }
         if (declaration) {
             mAttributes[aPos].mValue.SetTo(declaration.forget(), &aValue);
 

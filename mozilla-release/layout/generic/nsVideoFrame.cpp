@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,7 +13,6 @@
 
 #include "mozilla/dom/HTMLVideoElement.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
-#include "nsIDOMHTMLImageElement.h"
 #include "nsDisplayList.h"
 #include "nsGenericHTMLElement.h"
 #include "nsPresContext.h"
@@ -174,12 +173,12 @@ nsVideoFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
 }
 
 void
-nsVideoFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsVideoFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  DestroyAnonymousContent(mCaptionDiv.forget());
-  DestroyAnonymousContent(mVideoControls.forget());
-  DestroyAnonymousContent(mPosterImage.forget());
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  aPostDestroyData.AddAnonymousContent(mCaptionDiv.forget());
+  aPostDestroyData.AddAnonymousContent(mVideoControls.forget());
+  aPostDestroyData.AddAnonymousContent(mPosterImage.forget());
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 already_AddRefed<Layer>
@@ -497,8 +496,8 @@ public:
     SwapScaleWidthHeightForRotation(scaleHint, rotationDeg);
     container->SetScaleHint(scaleHint);
 
-    LayerRect rect(destGFXRect.x, destGFXRect.y, destGFXRect.width, destGFXRect.height);
-    return aManager->PushImage(this, container, aBuilder, aResources, aSc, rect);
+    LayoutDeviceRect rect(destGFXRect.x, destGFXRect.y, destGFXRect.width, destGFXRect.height);
+    return aManager->CommandBuilder().PushImage(this, container, aBuilder, aResources, aSc, rect);
   }
 
   // It would be great if we could override GetOpaqueRegion to return nonempty here,
@@ -585,6 +584,7 @@ nsVideoFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
       nsDisplayListBuilder::AutoBuildingDisplayList
         buildingForChild(aBuilder, child,
+                         aBuilder->GetVisibleRect() - child->GetOffsetTo(this),
                          aBuilder->GetDirtyRect() - child->GetOffsetTo(this),
                          aBuilder->IsAtRootOfPseudoStackingContext());
 
@@ -795,7 +795,7 @@ nsVideoFrame::UpdatePosterSource(bool aNotify)
 
 nsresult
 nsVideoFrame::AttributeChanged(int32_t aNameSpaceID,
-                               nsIAtom* aAttribute,
+                               nsAtom* aAttribute,
                                int32_t aModType)
 {
   if (aAttribute == nsGkAtoms::poster && HasVideoElement()) {

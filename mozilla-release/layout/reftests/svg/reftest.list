@@ -52,7 +52,7 @@ pref(layout.css.mix-blend-mode.enabled,true) == blend-normal.svg blend-normal-re
 #skip-if(Android)  pref(layout.css.mix-blend-mode.enabled,true) == blend-saturation.svg blend-saturation-ref.svg
 #skip-if(Android) pref(layout.css.mix-blend-mode.enabled,true) == blend-screen.svg blend-screen-ref.svg
 #skip-if(Android) pref(layout.css.mix-blend-mode.enabled,true) == blend-soft-light.svg blend-soft-light-ref.svg
-skip-if(Android) pref(layout.css.mix-blend-mode.enabled,true) == blend-difference-stacking.html blend-difference-stacking-ref.html
+skip-if(Android) pref(layout.css.mix-blend-mode.enabled,true) fails-if(webrender) == blend-difference-stacking.html blend-difference-stacking-ref.html
 
 == border-radius-01.html pass.svg
 
@@ -203,7 +203,7 @@ fails-if(Android) pref(security.fileuri.strict_origin_policy,true) == filter-ext
 == filter-foreignObject-01.svg pass.svg
 == filter-in-mask-01.svg pass.svg
 == filter-invalidation-01.svg pass.svg
-fuzzy(71,817) fails-if(winWidget&&stylo) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
+fuzzy(71,817) fails-if(winWidget&&stylo) fails-if(webrender) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
 == filter-result-01.svg filter-result-01-ref.svg
 == filter-scaled-01.svg pass.svg
 fuzzy-if(skiaContent,1,500) == filter-scaled-02.html filter-scaled-02-ref.html
@@ -217,6 +217,7 @@ fuzzy-if(skiaContent,1,800000) == filters-and-group-opacity-01.svg filters-and-g
 == foreignObject-change-transform-01.svg pass.svg
 == foreignObject-display-01.svg pass.svg
 fuzzy-if(webrender,1,35) == foreignObject-form-theme.svg foreignObject-form-theme-ref.html
+== foreignObject-img.html foreignObject-img-ref.html
 == foreignObject-img-form-theme.html foreignObject-img-form-theme-ref.html
 == foreignObject-move-repaint-01.svg pass.svg
 == foreignObject-overflow-01.svg pass.svg
@@ -260,12 +261,12 @@ fuzzy-if(skiaContent,1,800000) == markers-and-group-opacity-01.svg markers-and-g
 == marker-dynamic-opacity.html marker-dynamic-opacity-ref.html
 == marker-effects-01.svg marker-effects-01-ref.svg
 fuzzy-if(skiaContent,1,100) == marker-viewBox-01.svg marker-viewBox-01-ref.svg
-fuzzy-if(skiaContent,1,100) == marker-orientation-01.svg marker-orientation-01-ref.svg
-fuzzy-if(skiaContent,1,5) pref(svg.marker-improvements.enabled,true) == marker-orientation-02.svg marker-orientation-02-ref.svg
+fuzzy-if(skiaContent,1,100) fails-if(webrender) == marker-orientation-01.svg marker-orientation-01-ref.svg
+fuzzy-if(skiaContent,1,5) pref(svg.marker-improvements.enabled,true) fails-if(webrender) == marker-orientation-02.svg marker-orientation-02-ref.svg
 == marker-orientation-03.svg pass.svg
 == marker-orientation-04.svg pass.svg
 
-fuzzy(28,28) == mask-and-clipPath.html mask-and-clipPath-ref.html
+fuzzy(28,28) fails-if(webrender) == mask-and-clipPath.html mask-and-clipPath-ref.html
 == mask-and-clipPath-2.svg pass.svg
 == mask-ref-loop-01.svg pass.svg
 == mask-basic-01.svg pass.svg
@@ -297,7 +298,7 @@ fuzzy-if(d2d||skiaContent,1,6400) == mask-type-04.svg mask-type-01-ref.svg
 == nested-viewBox-01.svg pass.svg
 fuzzy-if(skiaContent,3,448000) == nesting-invalid-01.svg nesting-invalid-01-ref.svg
 
-fuzzy-if(d2d&&/^Windows\x20NT\x20(6\.1|10\.0)/.test(http.oscpu),63,168) fuzzy-if(cocoaWidget,1,122) fuzzy-if(skiaContent,2,1000) == non-scaling-stroke-01.svg non-scaling-stroke-01-ref.svg # bug 1074161 for Win7 and OSX 10.8
+fuzzy-if(d2d&&/^Windows\x20NT\x20(6\.1|10\.0)/.test(http.oscpu),63,168) fuzzy-if(cocoaWidget,1,122) fuzzy-if(skiaContent,2,1000) fails-if(webrender) == non-scaling-stroke-01.svg non-scaling-stroke-01-ref.svg # bug 1074161 for Win7 and OSX 10.8
 fuzzy-if(gtkWidget,1,99) fuzzy-if(!contentSameGfxBackendAsCanvas,9,99) fuzzy-if(Android,9,586) == non-scaling-stroke-02.svg non-scaling-stroke-02-ref.svg
 == non-scaling-stroke-03.svg non-scaling-stroke-03-ref.svg
 
@@ -320,7 +321,7 @@ fuzzy-if(skiaContent,1,10000) == opacity-and-transform-01.svg opacity-and-transf
 
 fuzzy-if(Android,8,200) == outer-svg-border-and-padding-01.svg outer-svg-border-and-padding-01-ref.svg
 
-fuzzy-if(skiaContent,7,175) fuzzy-if(skiaContent&&webrender,7-7,154-154) == outline.html outline-ref.html
+fuzzy-if(skiaContent,7,175) == outline.html outline-ref.html
 
 == overflow-on-outer-svg-01.svg overflow-on-outer-svg-01-ref.svg
 == overflow-on-outer-svg-02a.xhtml overflow-on-outer-svg-02-ref.xhtml
@@ -334,7 +335,7 @@ fuzzy-if(skiaContent,7,175) fuzzy-if(skiaContent&&webrender,7-7,154-154) == outl
 == paint-on-maskLayer-1b.html paint-on-maskLayer-1-ref.html
 == paint-on-maskLayer-1c.html paint-on-maskLayer-1-ref.html
 pref(svg.paint-order.enabled,true) == paint-order-01.svg paint-order-01-ref.svg
-pref(svg.paint-order.enabled,true) fuzzy-if(webrender,1-1,112-112) == paint-order-02.svg paint-order-02-ref.svg
+pref(svg.paint-order.enabled,true) == paint-order-02.svg paint-order-02-ref.svg
 pref(svg.paint-order.enabled,true) == paint-order-03.svg paint-order-03-ref.svg
 
 #fuzzy(23,60) fails-if(d2d) == path-01.svg path-01-ref.svg
@@ -358,7 +359,7 @@ fuzzy-if(skiaContent,1,5) == pattern-live-01c.svg pattern-live-01-ref.svg
 fuzzy-if(skiaContent,1,5) == pattern-scale-01a.svg pattern-scale-01-ref.svg
 == pattern-scale-01b.svg pattern-scale-01-ref.svg
 fuzzy-if(skiaContent,3,5) == pattern-scale-01c.svg pattern-scale-01-ref.svg
-== pattern-transform-presence-01.svg pattern-transform-presence-01-ref.svg
+fuzzy-if(webrender,0-2,0-227) == pattern-transform-presence-01.svg pattern-transform-presence-01-ref.svg
 == pattern-transformed-01.svg pattern-transformed-01-ref.svg
 
 == polygon-01.svg polygon-01-ref.svg
@@ -377,7 +378,7 @@ fuzzy-if(skiaContent,3,5) == pattern-scale-01c.svg pattern-scale-01-ref.svg
 fuzzy-if(cocoaWidget,4,15982) fuzzy-if(winWidget,4,92) fuzzy-if(skiaContent,4,60) == radialGradient-basic-03.svg radialGradient-basic-03-ref.svg
 == radialGradient-basic-04.svg pass.svg
 == radialGradient-fr-01.svg pass.svg
-fuzzy(1,3235) fuzzy-if(winWidget,1,6704) fuzzy-if(winWidget&&stylo,1,6711) == radialGradient-fr-02.svg radialGradient-fr-02-ref.svg
+fuzzy(1,3235) fuzzy-if(winWidget,1,6711) == radialGradient-fr-02.svg radialGradient-fr-02-ref.svg
 
 fuzzy-if(skiaContent,1,3600) == rect-01.svg pass.svg
 == rect-02.svg pass.svg
@@ -440,7 +441,7 @@ random-if(gtkWidget) == text-font-weight-01.svg text-font-weight-01-ref.svg # bu
 == text-gradient-01.svg text-gradient-01-ref.svg
 random-if(winWidget) == text-gradient-02.svg text-gradient-02-ref.svg # see bug 590101
 fuzzy-if(skiaContent,1,5500) == text-gradient-03.svg pass.svg
-HTTP(..) == text-gradient-04.svg text-gradient-04-ref.svg
+== text-gradient-04.svg text-gradient-04-ref.svg
 == text-in-link-01.svg text-in-link-01-ref.svg
 == text-in-link-02.svg text-in-link-02-ref.svg
 == text-in-link-03.svg text-in-link-03-ref.svg
@@ -456,8 +457,8 @@ fuzzy-if(cocoaWidget&&layersGPUAccelerated,1,3) == text-layout-06.svg text-layou
 == text-layout-07.svg text-layout-07-ref.svg
 == text-layout-08.svg text-layout-08-ref.svg
 == text-scale-01.svg text-scale-01-ref.svg
-fuzzy-if(skiaContent,2,1000) HTTP(..) == text-scale-02.svg text-scale-02-ref.svg
-HTTP(..) == text-scale-03.svg text-scale-03-ref.svg
+fuzzy-if(skiaContent,2,1000) == text-scale-02.svg text-scale-02-ref.svg
+== text-scale-03.svg text-scale-03-ref.svg
 
 == text-style-01a.svg text-style-01-ref.svg
 == text-style-01b.svg text-style-01-ref.svg

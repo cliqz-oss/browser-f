@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -203,16 +204,14 @@ struct MOZ_STACK_CLASS BidiParagraphData
   {
     nsBidiLevel paraLevel = mParaLevel;
     if (paraLevel == NSBIDI_DEFAULT_LTR || paraLevel == NSBIDI_DEFAULT_RTL) {
-      mPresContext->GetBidiEngine().GetParaLevel(&paraLevel);
+      paraLevel = mPresContext->GetBidiEngine().GetParaLevel();
     }
     return paraLevel;
   }
 
   nsBidiDirection GetDirection()
   {
-    nsBidiDirection dir;
-    mPresContext->GetBidiEngine().GetDirection(&dir);
-    return dir;
+    return mPresContext->GetBidiEngine().GetDirection();
   }
 
   nsresult CountRuns(int32_t *runCount)
@@ -220,16 +219,15 @@ struct MOZ_STACK_CLASS BidiParagraphData
     return mPresContext->GetBidiEngine().CountRuns(runCount);
   }
 
-  nsresult GetLogicalRun(int32_t aLogicalStart,
-                         int32_t* aLogicalLimit,
-                         nsBidiLevel* aLevel)
+  void GetLogicalRun(int32_t aLogicalStart,
+                     int32_t* aLogicalLimit,
+                     nsBidiLevel* aLevel)
   {
-    nsresult rv =
-      mPresContext->GetBidiEngine().GetLogicalRun(aLogicalStart,
-                                                   aLogicalLimit, aLevel);
-    if (mIsVisual || NS_FAILED(rv))
+    mPresContext->GetBidiEngine().GetLogicalRun(aLogicalStart,
+                                                aLogicalLimit, aLevel);
+    if (mIsVisual) {
       *aLevel = GetParaLevel();
-    return rv;
+    }
   }
 
   void ResetData()
@@ -890,13 +888,17 @@ nsBidiPresUtils::ResolveParagraph(BidiParagraphData* aBpd)
     if (runLength <= 0) {
       // Get the next run of text from the Bidi engine
       if (++numRun >= runCount) {
+        // We've run out of runs of text; but don't forget to store bidi data
+        // to the frame before breaking out of the loop (bug 1426042).
+        storeBidiDataToFrame();
+        if (isTextFrame) {
+          frame->AdjustOffsetsForBidi(contentOffset,
+                                      contentOffset + fragmentLength);
+        }
         break;
       }
       int32_t lineOffset = logicalLimit;
-      if (NS_FAILED(aBpd->GetLogicalRun(
-              lineOffset, &logicalLimit, &embeddingLevel) ) ) {
-        break;
-      }
+      aBpd->GetLogicalRun(lineOffset, &logicalLimit, &embeddingLevel);
       runLength = logicalLimit - lineOffset;
     } // if (runLength <= 0)
 
@@ -2125,15 +2127,10 @@ nsresult nsBidiPresUtils::ProcessText(const char16_t*       aText,
   }
 
   for (i = 0; i < runCount; i++) {
-    nsBidiDirection dir;
-    rv = aBidiEngine->GetVisualRun(i, &start, &length, &dir);
-    if (NS_FAILED(rv))
-      return rv;
+    nsBidiDirection dir = aBidiEngine->GetVisualRun(i, &start, &length);
 
     nsBidiLevel level;
-    rv = aBidiEngine->GetLogicalRun(start, &limit, &level);
-    if (NS_FAILED(rv))
-      return rv;
+    aBidiEngine->GetLogicalRun(start, &limit, &level);
 
     dir = DIRECTION_FROM_LEVEL(level);
     int32_t subRunLength = limit - start;

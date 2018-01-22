@@ -213,12 +213,6 @@ popupnotification {
   display: none;
 }
 
-/********** image **********/
-
-image {
-  -moz-binding: url("chrome://global/content/bindings/general.xml#image");
-}
-
 /********** checkbox **********/
 
 checkbox {
@@ -838,10 +832,6 @@ panel[type="autocomplete"] {
   -moz-binding: url("chrome://global/content/autocomplete.xml#autocomplete-treebody");
 }
 
-.autocomplete-history-dropmarker {
-  -moz-binding: url("chrome://global/content/autocomplete.xml#history-dropmarker");
-}
-
 panel[type="autocomplete-richlistbox"] {
   -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup");
 }
@@ -903,15 +893,6 @@ panel[type="autocomplete-richlistbox"] {
 
 .autocomplete-treerows {
   -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-treerows");
-}
-
-.autocomplete-history-dropmarker {
-  display: none;
-}
-
-.autocomplete-history-dropmarker[enablehistory="true"] {
-  display: -moz-box;
-  -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#history-dropmarker");
 }
 
 %endif

@@ -143,13 +143,13 @@ const PROP_LOCALE_SINGLE = ["name", "description", "creator", "homepageURL"];
 const PROP_LOCALE_MULTI  = ["developers", "translators", "contributors"];
 const PROP_TARGETAPP     = ["id", "minVersion", "maxVersion"];
 
-// Map new string type identifiers to old style nsIUpdateItem types
-// Type 32 was previously used for multipackage xpi files so it should
-// not be re-used since old files with that type may be floating around.
+// Map new string type identifiers to old style nsIUpdateItem types.
+// Retired values:
+// 32 = multipackage xpi file
+// 8 = locale
 const TYPES = {
   extension: 2,
   theme: 4,
-  locale: 8,
   dictionary: 64,
   experiment: 128,
   apiextension: 256,
@@ -164,7 +164,6 @@ const RESTARTLESS_TYPES = new Set([
   "apiextension",
   "dictionary",
   "experiment",
-  "locale",
   "webextension",
   "webextension-theme",
 ]);
@@ -366,6 +365,7 @@ async function loadManifestFromWebManifest(aUri) {
   addon.optionsType = null;
   addon.aboutURL = null;
   addon.dependencies = Object.freeze(Array.from(extension.dependencies));
+  addon.startupData = extension.startupData;
 
   if (manifest.options_ui) {
     // Store just the relative path here, the AddonWrapper getURL
@@ -522,7 +522,7 @@ async function loadManifestFromRDF(aUri, aStream) {
   }
 
   let rdfParser = Cc["@mozilla.org/rdf/xml-parser;1"].
-                  createInstance(Ci.nsIRDFXMLParser)
+                  createInstance(Ci.nsIRDFXMLParser);
   let ds = Cc["@mozilla.org/rdf/datasource;1?name=in-memory-datasource"].
            createInstance(Ci.nsIRDFDataSource);
   let listener = rdfParser.parseAsync(ds, aUri);
@@ -974,7 +974,7 @@ this.loadManifestFromFile = function(aFile, aInstallLocation) {
   if (aFile.isFile())
     return loadManifestFromZipFile(aFile, aInstallLocation);
   return loadManifestFromDir(aFile, aInstallLocation);
-}
+};
 
 /**
  * Creates a jar: URI for a file inside a ZIP file.
@@ -1206,7 +1206,7 @@ this.verifyBundleSignedState = function(aBundle, aAddon) {
   let promise = aBundle.isFile() ? verifyZipSignedState(aBundle, aAddon)
       : verifyDirSignedState(aBundle, aAddon);
   return promise.then(({signedState}) => signedState);
-}
+};
 
 /**
  * Replaces %...% strings in an addon url (update and updateInfo) with
@@ -1339,7 +1339,7 @@ function getDirectoryEntries(aDir, aSortEntries) {
       });
     }
 
-    return entries
+    return entries;
   } catch (e) {
     if (aDir.exists()) {
       logger.warn("Can't iterate directory " + aDir.path, e);
@@ -1358,7 +1358,7 @@ function getHashStringForCrypto(aCrypto) {
 
   // convert the binary hash data to a hex string.
   let binary = aCrypto.finish(false);
-  let hash = Array.from(binary, c => toHexString(c.charCodeAt(0)))
+  let hash = Array.from(binary, c => toHexString(c.charCodeAt(0)));
   return hash.join("").toLowerCase();
 }
 
@@ -1734,7 +1734,7 @@ class AddonInstall {
         logger.info(`${this.addon.id} has resumed a previously postponed upgrade`);
         this.state = AddonManager.STATE_READY;
         this.install();
-      }
+      };
       this.postpone(resumeFn);
       return;
     }
@@ -1756,7 +1756,7 @@ class AddonInstall {
       this.state = AddonManager.STATE_DOWNLOADED;
       XPIProvider.removeActiveInstall(this);
       AddonManagerPrivate.callInstallListeners("onInstallCancelled",
-                                               this.listeners, this.wrapper)
+                                               this.listeners, this.wrapper);
       return;
     }
 
@@ -1805,11 +1805,14 @@ class AddonInstall {
 
         // Deactivate and remove the old add-on as necessary
         let reason = BOOTSTRAP_REASONS.ADDON_INSTALL;
+        let callUpdate = false;
         if (this.existingAddon) {
           if (Services.vc.compare(this.existingAddon.version, this.addon.version) < 0)
             reason = BOOTSTRAP_REASONS.ADDON_UPGRADE;
           else
             reason = BOOTSTRAP_REASONS.ADDON_DOWNGRADE;
+
+          callUpdate = isWebExtension(this.addon.type) && isWebExtension(this.existingAddon.type);
 
           if (this.existingAddon.bootstrap) {
             let file = this.existingAddon._sourceBundle;
@@ -1819,9 +1822,11 @@ class AddonInstall {
                                               { newVersion: this.addon.version });
             }
 
-            XPIProvider.callBootstrapMethod(this.existingAddon, file,
-                                            "uninstall", reason,
-                                            { newVersion: this.addon.version });
+            if (!callUpdate) {
+              XPIProvider.callBootstrapMethod(this.existingAddon, file,
+                                              "uninstall", reason,
+                                              { newVersion: this.addon.version });
+            }
             XPIProvider.unloadBootstrapScope(this.existingAddon.id);
             flushChromeCaches();
           }
@@ -1867,7 +1872,8 @@ class AddonInstall {
         }
 
         if (this.addon.bootstrap) {
-          XPIProvider.callBootstrapMethod(this.addon, file, "install",
+          let method = callUpdate ? "update" : "install";
+          XPIProvider.callBootstrapMethod(this.addon, file, method,
                                           reason, extraParams);
         }
 
@@ -1990,7 +1996,7 @@ class AddonInstall {
     await this.stageInstall(true, stagedAddon, true);
 
     AddonManagerPrivate.callInstallListeners("onInstallPostponed",
-                                             this.listeners, this.wrapper)
+                                             this.listeners, this.wrapper);
 
     // upgrade has been staged for restart, provide a way for it to call the
     // resume function.
@@ -2127,7 +2133,7 @@ this.LocalAddonInstall = class extends AddonInstall {
     }
     super.install();
   }
-}
+};
 
 this.DownloadAddonInstall = class extends AddonInstall {
   /**
@@ -2221,7 +2227,7 @@ this.DownloadAddonInstall = class extends AddonInstall {
       this.state = AddonManager.STATE_CANCELLED;
       XPIProvider.removeActiveInstall(this);
       AddonManagerPrivate.callInstallListeners("onDownloadCancelled",
-                                               this.listeners, this.wrapper)
+                                               this.listeners, this.wrapper);
       return;
     }
 
@@ -2536,7 +2542,7 @@ this.DownloadAddonInstall = class extends AddonInstall {
 
     return this.badCertHandler.getInterface(iid);
   }
-}
+};
 
 /**
  * This class exists just for the specific case of staged add-ons that
@@ -2564,7 +2570,7 @@ this.StagedAddonInstall = class extends AddonInstall {
 
     this.state = AddonManager.STATE_INSTALLED;
   }
-}
+};
 
 /**
  * Creates a new AddonInstall for an update.
@@ -2727,7 +2733,7 @@ this.UpdateChecker = function(aAddon, aListener, aReason, aAppVersion, aPlatform
   let url = escapeAddonURI(aAddon, updateURL, aReason, aAppVersion);
   this._parser = AddonUpdateChecker.checkForUpdates(aAddon.id, aAddon.updateKey,
                                                     url, this);
-}
+};
 
 UpdateChecker.prototype = {
   addon: null,

@@ -26,24 +26,24 @@ import org.mozilla.gecko.activitystream.homepanel.model.WebpageModel;
     private final PopupWindow popupWindow;
     private final NavigationView navigationView;
 
-    private final View anchor;
+    private final View contextMenuAnchor;
 
-    public PopupContextMenu(final Context context,
-                            View anchor,
+    public PopupContextMenu(final View contextMenuAnchor,
+                            final View snackbarAnchor,
                             final ActivityStreamTelemetry.Extras.Builder telemetryExtraBuilder,
                             final MenuMode mode,
                             final WebpageModel item,
                             HomePager.OnUrlOpenListener onUrlOpenListener,
                             HomePager.OnUrlOpenInBackgroundListener onUrlOpenInBackgroundListener) {
-        super(context,
-                anchor,
+        super(snackbarAnchor,
                 telemetryExtraBuilder,
                 mode,
                 item,
                 onUrlOpenListener,
                 onUrlOpenInBackgroundListener);
+        final Context context = contextMenuAnchor.getContext();
 
-        this.anchor = anchor;
+        this.contextMenuAnchor = contextMenuAnchor;
 
         final LayoutInflater inflater = LayoutInflater.from(context);
 
@@ -77,9 +77,9 @@ import org.mozilla.gecko.activitystream.homepanel.model.WebpageModel;
     public void show() {
         // By default popupWindow follows the pre-material convention of displaying the popup
         // below a View. We need to shift it over the view:
-        popupWindow.showAsDropDown(anchor,
+        popupWindow.showAsDropDown(contextMenuAnchor,
                 0,
-                -(anchor.getHeight() + anchor.getPaddingBottom()));
+                -(contextMenuAnchor.getHeight() + contextMenuAnchor.getPaddingBottom()));
     }
 
     public void dismiss() {

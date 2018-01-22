@@ -70,12 +70,7 @@ pref("browser.cache.disk.max_entry_size", 4096); // kilobytes
 pref("browser.cache.disk.smart_size.enabled", true);
 pref("browser.cache.disk.smart_size.first_run", true);
 
-#ifdef MOZ_PKG_SPECIAL
-// low memory devices
-pref("browser.cache.memory.enable", false);
-#else
 pref("browser.cache.memory.enable", true);
-#endif
 pref("browser.cache.memory.capacity", 1024); // kilobytes
 
 pref("browser.cache.memory_limit", 5120); // 5 MB
@@ -123,9 +118,6 @@ pref("network.predictor.preserve", 50); // percentage of predictor data to keep 
 
 // Use JS mDNS as a fallback
 pref("network.mdns.use_js_fallback", false);
-
-/* history max results display */
-pref("browser.display.history.maxresults", 100);
 
 /* How many times should have passed before the remote tabs list is refreshed */
 pref("browser.display.remotetabs.timeout", 10);
@@ -184,7 +176,8 @@ pref("browser.formfill.enable", true);
 pref("layout.spellcheckDefault", 0);
 
 /* new html5 forms */
-pref("dom.experimental_forms", true);
+pref("dom.forms.datetime", true);
+pref("dom.forms.datetime.others", true);
 pref("dom.forms.number", true);
 
 /* extension manager and xpinstall */
@@ -337,8 +330,8 @@ pref("gfx.displayport.strategy_pb.threshold", -1); // velocity threshold in inch
 // Allow 24-bit colour when the hardware supports it
 pref("gfx.android.rgb16.force", false);
 
-// Allow GLContexts to be attached/detached from SurfaceTextures
-pref("gfx.SurfaceTexture.detach.enabled", true);
+// Use SurfaceTextures as preferred backend for TextureClient/Host
+pref("gfx.use-surfacetexture-textures", false);
 
 // don't allow JS to move and resize existing windows
 pref("dom.disable_window_move_resize", true);
@@ -385,20 +378,7 @@ pref("geo.enabled", true);
 // browser (bug 669346).
 pref("javascript.options.gc_on_memory_pressure", false);
 
-#ifdef MOZ_PKG_SPECIAL
-// low memory devices
-pref("javascript.options.mem.gc_high_frequency_heap_growth_max", 120);
-pref("javascript.options.mem.gc_high_frequency_heap_growth_min", 120);
-pref("javascript.options.mem.gc_high_frequency_high_limit_mb", 40);
-pref("javascript.options.mem.gc_high_frequency_low_limit_mb", 10);
-pref("javascript.options.mem.gc_low_frequency_heap_growth", 120);
-pref("javascript.options.mem.high_water_mark", 16);
-pref("javascript.options.mem.gc_allocation_threshold_mb", 3);
-pref("javascript.options.mem.gc_min_empty_chunk_count", 1);
-pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
-#else
 pref("javascript.options.mem.high_water_mark", 32);
-#endif
 
 pref("dom.max_chrome_script_run_time", 0); // disable slow script dialog for chrome
 pref("dom.max_script_run_time", 20);
@@ -421,14 +401,6 @@ pref("browser.ui.zoom.force-user-scalable", false);
 pref("ui.bookmark.mobilefolder.enabled", true);
 #else
 pref("ui.bookmark.mobilefolder.enabled", false);
-#endif
-
-#if MOZ_UPDATE_CHANNEL == nightly
-pref("mma.enabled", true);
-#elif MOZ_UPDATE_CHANNEL == beta
-pref("mma.enabled", true);
-#else
-pref("mma.enabled", true);
 #endif
 
 
@@ -569,17 +541,12 @@ pref("apz.fling_curve_threshold_inches_per_ms", "0.01");
 // apz.fling_friction and apz.fling_stopped_threshold are currently ignored by Fennec.
 pref("apz.fling_friction", "0.004");
 pref("apz.fling_stopped_threshold", "0.0");
+pref("apz.frame_delay.enabled", true);
 pref("apz.max_velocity_inches_per_ms", "0.07");
 pref("apz.overscroll.enabled", true);
 pref("apz.second_tap_tolerance", "0.3");
 pref("apz.touch_move_tolerance", "0.03");
 pref("apz.touch_start_tolerance", "0.06");
-
-#ifdef NIGHTLY_BUILD
-pref("apz.frame_delay.enabled", true);
-#else
-pref("apz.frame_delay.enabled", false);
-#endif
 
 pref("layers.progressive-paint", true);
 pref("layers.low-precision-buffer", true);
@@ -652,7 +619,15 @@ pref("media.suspend-bkgnd-video.enabled", true);
 // optimize images memory usage
 pref("image.downscale-during-decode.enabled", true);
 
+// The download protection UI is not implemented yet (bug 1239094).
 pref("browser.safebrowsing.downloads.enabled", false);
+
+// The application reputation lists are not available on Android.
+pref("urlclassifier.downloadAllowTable", "");
+pref("urlclassifier.downloadBlockTable", "");
+
+// The Potentially Harmful Apps list replaces the malware one on Android.
+pref("urlclassifier.malwareTable", "goog-harmful-proto,goog-unwanted-proto,test-harmful-simple,test-malware-simple,test-unwanted-simple");
 
 // True if this is the first time we are showing about:firstrun
 pref("browser.firstrun.show.uidiscovery", true);
@@ -732,9 +707,6 @@ pref("network.tickle-wifi.enabled", true);
 // Mobile manages state by autodetection
 pref("network.manage-offline-status", true);
 
-// increase the timeout clamp for background tabs to 15 minutes
-pref("dom.min_background_timeout_value", 900000);
-
 // Media plugins for libstagefright playback on android
 pref("media.plugins.enabled", true);
 
@@ -757,12 +729,6 @@ pref("browser.chrome.dynamictoolbar", true);
 
 // Hide common parts of URLs like "www." or "http://"
 pref("browser.urlbar.trimURLs", true);
-
-#ifdef MOZ_PKG_SPECIAL
-// Disable webgl on ARMv6 because running the reftests takes
-// too long for some reason (bug 843738)
-pref("webgl.disabled", true);
-#endif
 
 // initial web feed readers list
 pref("browser.contentHandlers.types.0.title", "chrome://browser/locale/region.properties");

@@ -11,7 +11,6 @@
 
 #include "jscntxt.h"
 #include "jscompartment.h"
-#include "jsgc.h"
 #include "jsopcode.h"
 
 #include "builtin/TypedObject.h"
@@ -432,12 +431,7 @@ class ICGetElem_Fallback : public ICMonitoredFallbackStub
         { }
 
         ICStub* getStub(ICStubSpace* space) {
-            ICGetElem_Fallback* stub = newStub<ICGetElem_Fallback>(space, getStubCode());
-            if (!stub)
-                return nullptr;
-            if (!stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+            return newStub<ICGetElem_Fallback>(space, getStubCode());
         }
     };
 };
@@ -563,10 +557,7 @@ class ICGetName_Fallback : public ICMonitoredFallbackStub
         { }
 
         ICStub* getStub(ICStubSpace* space) {
-            ICGetName_Fallback* stub = newStub<ICGetName_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+            return newStub<ICGetName_Fallback>(space, getStubCode());
         }
     };
 };
@@ -618,11 +609,7 @@ class ICGetIntrinsic_Fallback : public ICMonitoredFallbackStub
         { }
 
         ICStub* getStub(ICStubSpace* space) {
-            ICGetIntrinsic_Fallback* stub =
-                newStub<ICGetIntrinsic_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+            return newStub<ICGetIntrinsic_Fallback>(space, getStubCode());
         }
     };
 };
@@ -800,10 +787,7 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
         { }
 
         ICStub* getStub(ICStubSpace* space) {
-            ICCall_Fallback* stub = newStub<ICCall_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+            return newStub<ICCall_Fallback>(space, getStubCode());
         }
     };
 };
@@ -1231,10 +1215,10 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
     uint32_t pcOffset_;
     GCPtrString expectedStr_;
     GCPtrString expectedSep_;
-    GCPtrObject templateObject_;
+    GCPtrArrayObject templateObject_;
 
     ICCall_ConstStringSplit(JitCode* stubCode, ICStub* firstMonitorStub, uint32_t pcOffset,
-                            JSString* str, JSString* sep, JSObject* templateObject)
+                            JSString* str, JSString* sep, ArrayObject* templateObject)
       : ICMonitoredStub(ICStub::Call_ConstStringSplit, stubCode, firstMonitorStub),
         pcOffset_(pcOffset), expectedStr_(str), expectedSep_(sep),
         templateObject_(templateObject)
@@ -1261,7 +1245,7 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
         return expectedSep_;
     }
 
-    GCPtrObject& templateObject() {
+    GCPtrArrayObject& templateObject() {
         return templateObject_;
     }
 
@@ -1271,7 +1255,7 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
         uint32_t pcOffset_;
         RootedString expectedStr_;
         RootedString expectedSep_;
-        RootedObject templateObject_;
+        RootedArrayObject templateObject_;
 
         MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
 
@@ -1282,13 +1266,13 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
 
       public:
         Compiler(JSContext* cx, ICStub* firstMonitorStub, uint32_t pcOffset, HandleString str,
-                 HandleString sep, HandleValue templateObject)
+                 HandleString sep, HandleArrayObject templateObject)
           : ICCallStubCompiler(cx, ICStub::Call_ConstStringSplit),
             firstMonitorStub_(firstMonitorStub),
             pcOffset_(pcOffset),
             expectedStr_(cx, str),
             expectedSep_(cx, sep),
-            templateObject_(cx, &templateObject.toObject())
+            templateObject_(cx, templateObject)
         { }
 
         ICStub* getStub(ICStubSpace* space) {
@@ -1299,13 +1283,13 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
    };
 };
 
-class ICCall_IsSuspendedStarGenerator : public ICStub
+class ICCall_IsSuspendedGenerator : public ICStub
 {
     friend class ICStubSpace;
 
   protected:
-    explicit ICCall_IsSuspendedStarGenerator(JitCode* stubCode)
-      : ICStub(ICStub::Call_IsSuspendedStarGenerator, stubCode)
+    explicit ICCall_IsSuspendedGenerator(JitCode* stubCode)
+      : ICStub(ICStub::Call_IsSuspendedGenerator, stubCode)
     {}
 
   public:
@@ -1315,10 +1299,10 @@ class ICCall_IsSuspendedStarGenerator : public ICStub
 
       public:
         explicit Compiler(JSContext* cx)
-          : ICStubCompiler(cx, ICStub::Call_IsSuspendedStarGenerator, Engine::Baseline)
+          : ICStubCompiler(cx, ICStub::Call_IsSuspendedGenerator, Engine::Baseline)
         {}
         ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICCall_IsSuspendedStarGenerator>(space, getStubCode());
+            return newStub<ICCall_IsSuspendedGenerator>(space, getStubCode());
         }
    };
 };

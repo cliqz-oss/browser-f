@@ -24,7 +24,7 @@ from mach.decorators import (
     Command,
 )
 
-from servo.command_base import CommandBase, cd, call, check_call, BIN_SUFFIX
+from servo.command_base import CommandBase, cd, call, check_call, BIN_SUFFIX, is_macosx
 from servo.util import host_triple
 
 
@@ -176,11 +176,13 @@ class MachCommands(CommandBase):
     def build(self, target=None, release=False, dev=False, jobs=None,
               features=None, android=None, verbose=False, debug_mozjs=False, params=None,
               with_debug_assertions=False):
+
+        opts = params or []
+        opts += ["--manifest-path", self.servo_manifest()]
+
         if android is None:
             android = self.config["build"]["android"]
         features = features or self.servo_features()
-
-        opts = params or []
 
         base_path = self.get_target_dir()
         release_path = path.join(base_path, "release", "servo")
@@ -243,7 +245,7 @@ class MachCommands(CommandBase):
         env = self.build_env(target=target, is_build=True)
 
         if with_debug_assertions:
-            env["RUSTFLAGS"] = "-C debug_assertions"
+            env['RUSTFLAGS'] = env.get('RUSTFLAGS', "") + " -C debug_assertions"
 
         if android:
             android_platform = self.config["android"]["platform"]
@@ -261,7 +263,14 @@ class MachCommands(CommandBase):
                 os.makedirs(openssl_dir)
             shutil.copy(path.join(self.android_support_dir(), "openssl.makefile"), openssl_dir)
             shutil.copy(path.join(self.android_support_dir(), "openssl.sh"), openssl_dir)
-            env["ANDROID_NDK_ROOT"] = env["ANDROID_NDK"]
+
+            # Check if the NDK version is 12
+            with open(path.join(env["ANDROID_NDK"], 'source.properties')) as ndk_properties:
+                lines = ndk_properties.readlines()
+                if lines[1].split(' = ')[1].split('.')[0] != '12':
+                    print("Currently only support NDK 12.")
+                    sys.exit(1)
+
             env["RUST_TARGET"] = target
             with cd(openssl_dir):
                 status = call(
@@ -309,12 +318,16 @@ class MachCommands(CommandBase):
             env['CPPFLAGS'] = ' '.join(["--sysroot", env['ANDROID_SYSROOT']])
             env["CMAKE_ANDROID_ARCH_ABI"] = self.config["android"]["lib"]
             env["CMAKE_TOOLCHAIN_FILE"] = path.join(self.android_support_dir(), "toolchain.cmake")
+            # Set output dir for gradle aar files
+            aar_out_dir = self.android_aar_dir()
+            if not os.path.exists(aar_out_dir):
+                os.makedirs(aar_out_dir)
+            env["AAR_OUT_DIR"] = aar_out_dir
 
         cargo_binary = "cargo" + BIN_SUFFIX
 
         status = call(
-            [cargo_binary, "build"] + opts,
-            env=env, cwd=self.servo_crate(), verbose=verbose)
+            [cargo_binary, "build"] + opts, env=env, verbose=verbose)
         elapsed = time() - build_start
 
         # Do some additional things if the build succeeded
@@ -379,6 +392,8 @@ class MachCommands(CommandBase):
 
         ret = None
         opts = []
+        opts += ["--manifest-path", self.cef_manifest()]
+
         if jobs is not None:
             opts += ["-j", jobs]
         if verbose:
@@ -396,10 +411,13 @@ class MachCommands(CommandBase):
         if with_debug_assertions:
             env["RUSTFLAGS"] = "-C debug_assertions"
 
-        with cd(path.join("ports", "cef")):
-            ret = call(["cargo", "build"] + opts,
-                       env=env,
-                       verbose=verbose)
+        if is_macosx():
+            # Unlike RUSTFLAGS, these are only passed in the final rustc invocation
+            # so that `./mach build` followed by `./mach build-cef` both build
+            # common dependencies with the same flags.
+            opts += ["--", "-C", "link-args=-Xlinker -undefined -Xlinker dynamic_lookup"]
+
+        ret = call(["cargo", "rustc"] + opts, env=env, verbose=verbose)
         elapsed = time() - build_start
 
         # Generate Desktop Notification if elapsed-time > some threshold value
@@ -430,22 +448,20 @@ class MachCommands(CommandBase):
 
         ret = None
         opts = []
+        opts += ["--manifest-path", self.geckolib_manifest()]
         features = []
+
         if jobs is not None:
             opts += ["-j", jobs]
         if verbose:
             opts += ["-v"]
         if release:
             opts += ["--release"]
-        else:
-            features += ["gecko_debug"]
-
         if features:
             opts += ["--features", ' '.join(features)]
 
         build_start = time()
-        with cd(path.join("ports", "geckolib")):
-            ret = call(["cargo", "build"] + opts, env=env, verbose=verbose)
+        ret = call(["cargo", "build"] + opts, env=env, verbose=verbose)
         elapsed = time() - build_start
 
         # Generate Desktop Notification if elapsed-time > some threshold value

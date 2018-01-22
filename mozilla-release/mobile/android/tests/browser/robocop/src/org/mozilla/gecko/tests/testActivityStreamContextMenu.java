@@ -30,7 +30,7 @@ import org.mozilla.gecko.activitystream.homepanel.model.TopSite;
  * This test is unfortunately closely coupled to the current implementation, however it is still
  * useful in that it tests the bookmark/history/pinned state specific menu items for correctness.
  */
-public class testActivityStreamContextMenu extends BaseTest {
+public class testActivityStreamContextMenu extends OldBaseTest {
     private static final String TEST_URL = "http://example.com/test/url";
 
     private BrowserDB db;
@@ -231,7 +231,7 @@ public class testActivityStreamContextMenu extends BaseTest {
     private void testMenuForItem(WebpageModel item, boolean bookmarked, boolean pinned, boolean visited) {
         final View anchor = new View(getActivity());
         final ActivityStreamContextMenu menu = ActivityStreamContextMenu.show(
-                getActivity(), anchor, ActivityStreamTelemetry.Extras.builder(),
+                anchor, anchor, ActivityStreamTelemetry.Extras.builder(),
                 ActivityStreamContextMenu.MenuMode.HIGHLIGHT, item,
                 false, null, null, 100, 100);
 

@@ -8,9 +8,6 @@ package org.mozilla.gecko.mozglue;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.text.NumberFormat;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -123,6 +120,13 @@ public final class GeckoLoader {
             if (envList.size() > 0) {
               sEnvList = envList.toArray(new String[envList.size()]);
             }
+        }
+
+        try {
+            final File dataDir = new File(context.getApplicationInfo().dataDir);
+            putenv("MOZ_ANDROID_DATA_DIR=" + dataDir.getCanonicalPath());
+        } catch (final java.io.IOException e) {
+            Log.e(LOGTAG, "Failed to resolve app data directory");
         }
 
         putenv("MOZ_ANDROID_PACKAGE_NAME=" + context.getPackageName());
@@ -466,15 +470,6 @@ public final class GeckoLoader {
 
     private static void setupLocaleEnvironment() {
         putenv("LANG=" + Locale.getDefault().toString());
-        NumberFormat nf = NumberFormat.getInstance();
-        if (nf instanceof DecimalFormat) {
-            DecimalFormat df = (DecimalFormat)nf;
-            DecimalFormatSymbols dfs = df.getDecimalFormatSymbols();
-
-            putenv("LOCALE_DECIMAL_POINT=" + dfs.getDecimalSeparator());
-            putenv("LOCALE_THOUSANDS_SEP=" + dfs.getGroupingSeparator());
-            putenv("LOCALE_GROUPING=" + (char)df.getGroupingSize());
-        }
     }
 
     @SuppressWarnings("serial")

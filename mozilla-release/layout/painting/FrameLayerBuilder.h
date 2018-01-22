@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -64,7 +65,7 @@ public:
   friend class FrameLayerBuilder;
 
   uint32_t GetDisplayItemKey() { return mDisplayItemKey; }
-  layers::Layer* GetLayer() { return mLayer; }
+  layers::Layer* GetLayer() const { return mLayer; }
   nsDisplayItemGeometry* GetGeometry() const { return mGeometry.get(); }
   void Invalidate() { mIsInvalid = true; }
   void ClearAnimationCompositorState();
@@ -340,6 +341,7 @@ public:
 
   void Init(nsDisplayListBuilder* aBuilder, LayerManager* aManager,
             PaintedLayerData* aLayerData = nullptr,
+            bool aIsInactiveLayerManager = false,
             const DisplayItemClip* aInactiveLayerClip = nullptr);
 
   /**
@@ -503,7 +505,7 @@ public:
 
   void ClearCachedGeometry(nsDisplayItem* aItem);
 
-  static Layer* GetDebugOldLayerFor(nsIFrame* aFrame, uint32_t aDisplayItemKey);
+  static DisplayItemData* GetOldDataFor(nsDisplayItem* aItem);
 
   /**
    * Return the layer that all display items of aFrame were assigned to in the
@@ -730,7 +732,7 @@ public:
 
   bool IsBuildingRetainedLayers()
   {
-    return !mContainingPaintedLayer && mRetainingManager;
+    return !mIsInactiveLayerManager && mRetainingManager;
   }
 
   /**
@@ -798,6 +800,8 @@ protected:
   bool                                mInvalidateAllLayers;
 
   bool                                mInLayerTreeCompressionMode;
+
+  bool                                mIsInactiveLayerManager;
 
   uint32_t                            mContainerLayerGeneration;
   uint32_t                            mMaxContainerLayerGeneration;

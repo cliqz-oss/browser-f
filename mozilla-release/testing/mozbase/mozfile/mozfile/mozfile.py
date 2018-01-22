@@ -6,7 +6,7 @@
 
 # We don't import all modules at the top for performance reasons. See Bug 1008943
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
 from contextlib import contextmanager
 import errno
@@ -55,23 +55,14 @@ def extract_zip(src, dest):
         try:
             bundle = zipfile.ZipFile(src)
         except Exception:
-            print "src: %s" % src
+            print("src: %s" % src)
             raise
 
     namelist = bundle.namelist()
 
     for name in namelist:
+        bundle.extract(name, dest)
         filename = os.path.realpath(os.path.join(dest, name))
-        if name.endswith('/'):
-            if not os.path.isdir(filename):
-                os.makedirs(filename)
-        else:
-            path = os.path.dirname(filename)
-            if not os.path.isdir(path):
-                os.makedirs(path)
-            _dest = open(filename, 'wb')
-            _dest.write(bundle.read(name))
-            _dest.close()
         mode = bundle.getinfo(name).external_attr >> 16 & 0x1FF
         # Only update permissions if attributes are set. Otherwise fallback to the defaults.
         if mode:
@@ -161,8 +152,8 @@ def _call_windows_retry(func, args=(), retry_max=5, retry_delay=0.5):
 
             retry_count += 1
 
-            print '%s() failed for "%s". Reason: %s (%s). Retrying...' % \
-                (func.__name__, args, e.strerror, e.errno)
+            print('%s() failed for "%s". Reason: %s (%s). Retrying...' %
+                  (func.__name__, args, e.strerror, e.errno))
             time.sleep(retry_count * retry_delay)
         else:
             # If no exception has been thrown it should be done

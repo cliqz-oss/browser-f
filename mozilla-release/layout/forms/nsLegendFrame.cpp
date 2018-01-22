@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,7 +11,7 @@
 #include "nsHTMLParts.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 
 nsIFrame*
 NS_NewLegendFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
@@ -29,10 +30,10 @@ NS_NewLegendFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
 NS_IMPL_FRAMEARENA_HELPERS(nsLegendFrame)
 
 void
-nsLegendFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsLegendFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsBlockFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  nsBlockFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 NS_QUERYFRAME_HEAD(nsLegendFrame)
@@ -49,7 +50,7 @@ nsLegendFrame::Reflow(nsPresContext*          aPresContext,
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), true);
   }
   return nsBlockFrame::Reflow(aPresContext, aDesiredSize, aReflowInput, aStatus);
 }

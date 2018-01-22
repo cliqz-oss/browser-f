@@ -32,7 +32,7 @@
         }
 
         if direction.is_none() && wrap.is_none() {
-            return Err(StyleParseError::UnspecifiedError.into())
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
         Ok(expanded! {
             flex_direction: unwrap_or_initial!(flex_direction, direction),
@@ -48,6 +48,7 @@
                     spec="https://drafts.csswg.org/css-flexbox/#flex-property">
     use parser::Parse;
     use values::specified::NonNegativeNumber;
+    use properties::longhands::flex_basis::SpecifiedValue as FlexBasis;
 
     fn parse_flexibility<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
                                  -> Result<(NonNegativeNumber, Option<NonNegativeNumber>),ParseError<'i>> {
@@ -66,7 +67,7 @@
             return Ok(expanded! {
                 flex_grow: NonNegativeNumber::new(0.0),
                 flex_shrink: NonNegativeNumber::new(0.0),
-                flex_basis: longhands::flex_basis::SpecifiedValue::auto(),
+                flex_basis: FlexBasis::auto(),
             })
         }
         loop {
@@ -78,7 +79,7 @@
                 }
             }
             if basis.is_none() {
-                if let Ok(value) = input.try(|input| longhands::flex_basis::parse_specified(context, input)) {
+                if let Ok(value) = input.try(|input| FlexBasis::parse(context, input)) {
                     basis = Some(value);
                     continue
                 }
@@ -87,7 +88,7 @@
         }
 
         if grow.is_none() && basis.is_none() {
-            return Err(StyleParseError::UnspecifiedError.into())
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
         Ok(expanded! {
             flex_grow: grow.unwrap_or(NonNegativeNumber::new(1.0)),
@@ -96,7 +97,7 @@
             // browsers currently agree on using `0%`. This is a spec
             // change which hasn't been adopted by browsers:
             // https://github.com/w3c/csswg-drafts/commit/2c446befdf0f686217905bdd7c92409f6bd3921b
-            flex_basis: basis.unwrap_or(longhands::flex_basis::SpecifiedValue::zero_percent()),
+            flex_basis: basis.unwrap_or(FlexBasis::zero_percent()),
         })
     }
 </%helpers:shorthand>
@@ -309,7 +310,7 @@
             }
 
             let template_areas = TemplateAreas::from_vec(strings)
-                .map_err(|()| StyleParseError::UnspecifiedError)?;
+                .map_err(|()| input.new_custom_error(StyleParseErrorKind::UnspecifiedError))?;
             let template_rows = TrackList {
                 list_type: TrackListType::Normal,
                 values: values,
@@ -321,7 +322,7 @@
                 let value = GridTemplateComponent::parse_without_none(context, input)?;
                 if let GenericGridTemplateComponent::TrackList(ref list) = value {
                     if list.list_type != TrackListType::Explicit {
-                        return Err(StyleParseError::UnspecifiedError.into())
+                        return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
                     }
                 }
 
@@ -340,7 +341,7 @@
                 if list.line_names[0].is_empty() {
                     list.line_names[0] = first_line_names;      // won't panic
                 } else {
-                    return Err(StyleParseError::UnspecifiedError.into());
+                    return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
             }
 
@@ -501,7 +502,7 @@
                     autoflow: flow,
                     dense: dense,
                 }
-            }).ok_or(StyleParseError::UnspecifiedError.into())
+            }).ok_or(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
 
         if let Ok((rows, cols, areas)) = input.try(|i| super::grid_template::parse_grid_template(context, i)) {
@@ -617,12 +618,12 @@
                                -> Result<Longhands, ParseError<'i>> {
         let align = align_content::parse(context, input)?;
         if align.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
         let justify = input.try(|input| justify_content::parse(context, input))
                            .unwrap_or(justify_content::SpecifiedValue::from(align));
         if justify.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
         Ok(expanded! {
@@ -653,11 +654,11 @@
                                -> Result<Longhands, ParseError<'i>> {
         let align = AlignJustifySelf::parse(context, input)?;
         if align.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
         let justify = input.try(|input| AlignJustifySelf::parse(context, input)).unwrap_or(align.clone());
         if justify.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
         Ok(expanded! {
@@ -695,12 +696,12 @@
                                -> Result<Longhands, ParseError<'i>> {
         let align = AlignItems::parse(context, input)?;
         if align.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
         let justify = input.try(|input| JustifyItems::parse(context, input))
                            .unwrap_or(JustifyItems::from(align));
         if justify.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
         Ok(expanded! {

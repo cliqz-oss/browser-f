@@ -22,7 +22,7 @@ function clearAllImageCaches() {
   let tools = SpecialPowers.Cc["@mozilla.org/image/tools;1"]
                              .getService(SpecialPowers.Ci.imgITools);
   let imageCache = tools.getImgCacheForDocument(window.document);
-  imageCache.clearCache(true);  // true=chrome
+  imageCache.clearCache(true); // true=chrome
   imageCache.clearCache(false); // false=content
 }
 
@@ -187,16 +187,12 @@ async function openTab(aBrowser, aURL) {
 // A clean up function to prevent affecting other tests.
 registerCleanupFunction(() => {
   // Clear all cookies.
-  let cookieMgr = Cc["@mozilla.org/cookiemanager;1"]
-                     .getService(Ci.nsICookieManager);
-  cookieMgr.removeAll();
+  Services.cookies.removeAll();
 
   // Clear all image caches and network caches.
   clearAllImageCaches();
 
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
 });
 
 add_task(async function test_favicon_privateBrowsing() {
@@ -252,9 +248,7 @@ add_task(async function test_favicon_cache_privateBrowsing() {
   // Clear all image cahces and network cache before running the test.
   clearAllImageCaches();
 
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
 
   // Clear all favicons in Places.
   await clearAllPlacesFavicons();

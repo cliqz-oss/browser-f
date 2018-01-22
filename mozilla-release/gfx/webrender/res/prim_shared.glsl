@@ -71,14 +71,14 @@ vec4[2] fetch_from_resource_cache_2(int address) {
 
 #ifdef WR_VERTEX_SHADER
 
-#define VECS_PER_LAYER              9
+#define VECS_PER_LAYER              10
 #define VECS_PER_RENDER_TASK        3
 #define VECS_PER_PRIM_HEADER        2
-#define VECS_PER_TEXT_RUN           2
+#define VECS_PER_TEXT_RUN           3
 #define VECS_PER_GRADIENT           3
 #define VECS_PER_GRADIENT_STOP      2
 
-uniform HIGHP_SAMPLER_FLOAT sampler2D sLayers;
+uniform HIGHP_SAMPLER_FLOAT sampler2D sClipScrollNodes;
 uniform HIGHP_SAMPLER_FLOAT sampler2D sRenderTasks;
 
 // Instanced attributes
@@ -143,14 +143,16 @@ vec4 fetch_from_resource_cache_1(int address) {
     return texelFetch(sResourceCache, uv, 0);
 }
 
-struct Layer {
+struct ClipScrollNode {
     mat4 transform;
     mat4 inv_transform;
-    RectWithSize local_clip_rect;
+    vec4 local_clip_rect;
+    vec2 reference_frame_relative_scroll_offset;
+    vec2 scroll_offset;
 };
 
-Layer fetch_layer(int index) {
-    Layer layer;
+ClipScrollNode fetch_clip_scroll_node(int index) {
+    ClipScrollNode node;
 
     // Create a UV base coord for each 8 texels.
     // This is required because trying to use an offset
@@ -160,18 +162,46 @@ Layer fetch_layer(int index) {
     ivec2 uv0 = ivec2(uv.x + 0, uv.y);
     ivec2 uv1 = ivec2(uv.x + 8, uv.y);
 
-    layer.transform[0] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(0, 0));
-    layer.transform[1] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(1, 0));
-    layer.transform[2] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(2, 0));
-    layer.transform[3] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(3, 0));
+    node.transform[0] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(0, 0));
+    node.transform[1] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(1, 0));
+    node.transform[2] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(2, 0));
+    node.transform[3] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(3, 0));
 
-    layer.inv_transform[0] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(4, 0));
-    layer.inv_transform[1] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(5, 0));
-    layer.inv_transform[2] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(6, 0));
-    layer.inv_transform[3] = TEXEL_FETCH(sLayers, uv0, 0, ivec2(7, 0));
+    node.inv_transform[0] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(4, 0));
+    node.inv_transform[1] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(5, 0));
+    node.inv_transform[2] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(6, 0));
+    node.inv_transform[3] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(7, 0));
 
-    vec4 clip_rect = TEXEL_FETCH(sLayers, uv1, 0, ivec2(0, 0));
-    layer.local_clip_rect = RectWithSize(clip_rect.xy, clip_rect.zw);
+    vec4 clip_rect = TEXEL_FETCH(sClipScrollNodes, uv1, 0, ivec2(0, 0));
+    node.local_clip_rect = clip_rect;
+
+    vec4 offsets = TEXEL_FETCH(sClipScrollNodes, uv1, 0, ivec2(1, 0));
+    node.reference_frame_relative_scroll_offset = offsets.xy;
+    node.scroll_offset = offsets.zw;
+
+    return node;
+}
+
+struct Layer {
+    mat4 transform;
+    mat4 inv_transform;
+    RectWithSize local_clip_rect;
+};
+
+Layer fetch_layer(int clip_node_id, int scroll_node_id) {
+    ClipScrollNode clip_node = fetch_clip_scroll_node(clip_node_id);
+    ClipScrollNode scroll_node = fetch_clip_scroll_node(scroll_node_id);
+
+    Layer layer;
+    layer.transform = scroll_node.transform;
+    layer.inv_transform = scroll_node.inv_transform;
+
+    vec4 local_clip_rect = clip_node.local_clip_rect;
+    local_clip_rect.xy += clip_node.reference_frame_relative_scroll_offset;
+    local_clip_rect.xy -= scroll_node.reference_frame_relative_scroll_offset;
+    local_clip_rect.xy -= scroll_node.scroll_offset;
+
+    layer.local_clip_rect = RectWithSize(local_clip_rect.xy, local_clip_rect.zw);
 
     return layer;
 }
@@ -192,6 +222,56 @@ RenderTaskData fetch_render_task(int index) {
     task.data2 = TEXEL_FETCH(sRenderTasks, uv, 0, ivec2(2, 0));
 
     return task;
+}
+
+/*
+ The dynamic picture that this brush exists on. Right now, it
+ contains minimal information. In the future, it will describe
+ the transform mode of primitives on this picture, among other things.
+ */
+struct PictureTask {
+    RectWithSize target_rect;
+    float render_target_layer_index;
+    vec2 content_origin;
+    vec4 color;
+};
+
+PictureTask fetch_picture_task(int address) {
+    RenderTaskData task_data = fetch_render_task(address);
+
+    RectWithSize target_rect = RectWithSize(
+        task_data.data0.xy,
+        task_data.data0.zw
+    );
+
+    PictureTask task = PictureTask(
+        target_rect,
+        task_data.data1.x,
+        task_data.data1.yz,
+        task_data.data2
+    );
+
+    return task;
+}
+
+struct BlurTask {
+    RectWithSize target_rect;
+    float render_target_layer_index;
+    float blur_radius;
+    float scale_factor;
+    vec4 color;
+};
+
+BlurTask fetch_blur_task(int address) {
+    RenderTaskData task_data = fetch_render_task(address);
+
+    return BlurTask(
+        RectWithSize(task_data.data0.xy, task_data.data0.zw),
+        task_data.data1.x,
+        task_data.data1.y,
+        task_data.data1.z,
+        task_data.data2
+    );
 }
 
 struct AlphaBatchTask {
@@ -281,7 +361,9 @@ Glyph fetch_glyph(int specific_prim_address,
                         glyph_index / 2;
     vec4 data = fetch_from_resource_cache_1(glyph_address);
     // Select XY or ZW based on glyph index.
-    vec2 glyph = mix(data.xy, data.zw, bvec2(glyph_index % 2 == 1));
+    // We use "!= 0" instead of "== 1" here in order to work around a driver
+    // bug with equality comparisons on integers.
+    vec2 glyph = mix(data.xy, data.zw, bvec2(glyph_index % 2 != 0));
 
     // In subpixel mode, the subpixel offset has already been
     // accounted for while rasterizing the glyph.
@@ -292,11 +374,11 @@ Glyph fetch_glyph(int specific_prim_address,
             // Glyphs positioned [-0.125, 0.125] get a
             // subpx position of zero. So include that
             // offset in the glyph position to ensure
-            // we truncate to the correct whole position.
-            glyph.x = trunc(glyph.x + 0.125);
+            // we round to the correct whole position.
+            glyph.x = floor(glyph.x + 0.125);
             break;
         case SUBPX_DIR_VERTICAL:
-            glyph.y = trunc(glyph.y + 0.125);
+            glyph.y = floor(glyph.y + 0.125);
             break;
     }
 
@@ -308,7 +390,8 @@ struct PrimitiveInstance {
     int specific_prim_address;
     int render_task_index;
     int clip_task_index;
-    int layer_index;
+    int scroll_node_id;
+    int clip_node_id;
     int z;
     int user_data0;
     int user_data1;
@@ -322,7 +405,8 @@ PrimitiveInstance fetch_prim_instance() {
     pi.specific_prim_address = pi.prim_address + VECS_PER_PRIM_HEADER;
     pi.render_task_index = aData0.y;
     pi.clip_task_index = aData0.z;
-    pi.layer_index = aData0.w;
+    pi.clip_node_id = aData0.w / 65536;
+    pi.scroll_node_id = aData0.w % 65536;
     pi.z = aData1.x;
     pi.user_data0 = aData1.y;
     pi.user_data1 = aData1.z;
@@ -338,6 +422,8 @@ struct CompositeInstance {
     int user_data0;
     int user_data1;
     float z;
+    int user_data2;
+    int user_data3;
 };
 
 CompositeInstance fetch_composite_instance() {
@@ -350,6 +436,8 @@ CompositeInstance fetch_composite_instance() {
 
     ci.user_data0 = aData1.x;
     ci.user_data1 = aData1.y;
+    ci.user_data2 = aData1.z;
+    ci.user_data3 = aData1.w;
 
     return ci;
 }
@@ -357,7 +445,11 @@ CompositeInstance fetch_composite_instance() {
 struct Primitive {
     Layer layer;
     ClipArea clip_area;
+#ifdef PRIMITIVE_HAS_PICTURE_TASK
+    PictureTask task;
+#else
     AlphaBatchTask task;
+#endif
     RectWithSize local_rect;
     RectWithSize local_clip_rect;
     int specific_prim_address;
@@ -383,9 +475,13 @@ Primitive load_primitive() {
 
     Primitive prim;
 
-    prim.layer = fetch_layer(pi.layer_index);
+    prim.layer = fetch_layer(pi.clip_node_id, pi.scroll_node_id);
     prim.clip_area = fetch_clip_area(pi.clip_task_index);
+#ifdef PRIMITIVE_HAS_PICTURE_TASK
+    prim.task = fetch_picture_task(pi.render_task_index);
+#else
     prim.task = fetch_alpha_batch_task(pi.render_task_index);
+#endif
 
     PrimitiveGeometry geom = fetch_primitive_geometry(pi.prim_address);
     prim.local_rect = geom.local_rect;
@@ -488,8 +584,7 @@ VertexInfo write_vertex(RectWithSize instance_rect,
     vec2 local_pos = instance_rect.p0 + instance_rect.size * aPosition.xy;
 
     // Clamp to the two local clip rects.
-    vec2 clamped_local_pos = clamp_rect(clamp_rect(local_pos, local_clip_rect),
-                                        layer.local_clip_rect);
+    vec2 clamped_local_pos = clamp_rect(clamp_rect(local_pos, local_clip_rect), layer.local_clip_rect);
 
     /// Compute the snapping offset.
     vec2 snap_offset = compute_snap_offset(clamped_local_pos, local_clip_rect, layer, snap_rect);
@@ -539,13 +634,20 @@ vec2 intersect_lines(vec2 p0, vec2 p1, vec2 p2, vec2 p3) {
 
 TransformVertexInfo write_transform_vertex(RectWithSize instance_rect,
                                            RectWithSize local_clip_rect,
+                                           vec4 clip_edge_mask,
                                            float z,
                                            Layer layer,
-                                           AlphaBatchTask task,
-                                           RectWithSize snap_rect) {
+                                           AlphaBatchTask task) {
     RectWithEndpoint local_rect = to_rect_with_endpoint(instance_rect);
+    RectWithSize clip_rect;
+    clip_rect.p0 = clamp_rect(local_clip_rect.p0, layer.local_clip_rect);
+    clip_rect.size = clamp_rect(local_clip_rect.p0 + local_clip_rect.size, layer.local_clip_rect) - clip_rect.p0;
 
     vec2 current_local_pos, prev_local_pos, next_local_pos;
+
+    // Clamp to the two local clip rects.
+    local_rect.p0 = clamp_rect(local_rect.p0, clip_rect);
+    local_rect.p1 = clamp_rect(local_rect.p1, clip_rect);
 
     // Select the current vertex and the previous/next vertices,
     // based on the vertex ID that is known based on the instance rect.
@@ -608,11 +710,27 @@ TransformVertexInfo write_transform_vertex(RectWithSize instance_rect,
                      task.screen_space_origin +
                      task.render_target_origin;
 
+
     gl_Position = uTransform * vec4(final_pos, z, 1.0);
 
-    vLocalBounds = vec4(local_rect.p0, local_rect.p1);
+    vLocalBounds = mix(
+        vec4(clip_rect.p0, clip_rect.p0 + clip_rect.size),
+        vec4(local_rect.p0, local_rect.p1),
+        clip_edge_mask
+    );
 
     return TransformVertexInfo(layer_pos.xyw, device_pos);
+}
+
+TransformVertexInfo write_transform_vertex_primitive(Primitive prim) {
+    return write_transform_vertex(
+        prim.local_rect,
+        prim.local_clip_rect,
+        vec4(0.0),
+        prim.z,
+        prim.layer,
+        prim.task
+    );
 }
 
 #endif //WR_FEATURE_TRANSFORM
@@ -621,11 +739,12 @@ struct GlyphResource {
     vec4 uv_rect;
     float layer;
     vec2 offset;
+    float scale;
 };
 
 GlyphResource fetch_glyph_resource(int address) {
     vec4 data[2] = fetch_from_resource_cache_2(address);
-    return GlyphResource(data[0], data[1].x, data[1].yz);
+    return GlyphResource(data[0], data[1].x, data[1].yz, data[1].w);
 }
 
 struct ImageResource {
@@ -645,33 +764,25 @@ ImageResource fetch_image_resource_direct(ivec2 address) {
 
 struct Rectangle {
     vec4 color;
+    vec4 edge_aa_segment_mask;
 };
 
 Rectangle fetch_rectangle(int address) {
-    vec4 data = fetch_from_resource_cache_1(address);
-    return Rectangle(data);
-}
-
-struct TextShadow {
-    vec4 color;
-    vec2 offset;
-    float blur_radius;
-};
-
-TextShadow fetch_text_shadow(int address) {
     vec4 data[2] = fetch_from_resource_cache_2(address);
-    return TextShadow(data[0], data[1].xy, data[1].z);
+    vec4 mask = vec4((int(data[1].x) & ivec4(1,2,4,8)) != ivec4(0));
+    return Rectangle(data[0], mask);
 }
 
 struct TextRun {
     vec4 color;
+    vec4 bg_color;
     vec2 offset;
     int subpx_dir;
 };
 
 TextRun fetch_text_run(int address) {
-    vec4 data[2] = fetch_from_resource_cache_2(address);
-    return TextRun(data[0], data[1].xy, int(data[1].z));
+    vec4 data[3] = fetch_from_resource_cache_3(address);
+    return TextRun(data[0], data[1], data[2].xy, int(data[2].z));
 }
 
 struct Image {
@@ -685,32 +796,43 @@ Image fetch_image(int address) {
     return Image(data[0], data[1]);
 }
 
-struct BoxShadow {
-    vec4 src_rect;
-    vec4 bs_rect;
-    vec4 color;
-    vec4 border_radius_edge_size_blur_radius_inverted;
-};
-
-BoxShadow fetch_boxshadow(int address) {
-    vec4 data[4] = fetch_from_resource_cache_4(address);
-    return BoxShadow(data[0], data[1], data[2], data[3]);
-}
-
-BoxShadow fetch_boxshadow_direct(ivec2 address) {
-    vec4 data[4] = fetch_from_resource_cache_4_direct(address);
-    return BoxShadow(data[0], data[1], data[2], data[3]);
-}
-
 void write_clip(vec2 global_pos, ClipArea area) {
-    vec2 texture_size = vec2(textureSize(sSharedCacheA8, 0).xy);
     vec2 uv = global_pos + area.task_bounds.xy - area.screen_origin_target_index.xy;
-    vClipMaskUvBounds = area.task_bounds / texture_size.xyxy;
-    vClipMaskUv = vec3(uv / texture_size, area.screen_origin_target_index.z);
+    vClipMaskUvBounds = area.task_bounds;
+    vClipMaskUv = vec3(uv, area.screen_origin_target_index.z);
 }
 #endif //WR_VERTEX_SHADER
 
 #ifdef WR_FRAGMENT_SHADER
+
+/// Find the appropriate half range to apply the AA smoothstep over.
+/// This range represents a coefficient to go from one CSS pixel to half a device pixel.
+float compute_aa_range(vec2 position) {
+    // The constant factor is chosen to compensate for the fact that length(fw) is equal
+    // to sqrt(2) times the device pixel ratio in the typical case. 0.5/sqrt(2) = 0.35355.
+    //
+    // This coefficient is chosen to ensure that any sample 0.5 pixels or more inside of
+    // the shape has no anti-aliasing applied to it (since pixels are sampled at their center,
+    // such a pixel (axis aligned) is fully inside the border). We need this so that antialiased
+    // curves properly connect with non-antialiased vertical or horizontal lines, among other things.
+    //
+    // Using larger aa steps is quite common when rendering shapes with distance fields.
+    // It gives a smoother (although blurrier look) by extending the range that is smoothed
+    // to produce the anti aliasing. In our case, however, extending the range inside of
+    // the shape causes noticeable artifacts at the junction between an antialiased corner
+    // and a straight edge.
+    // We may want to adjust this constant in specific scenarios (for example keep the principled
+    // value for straight edges where we want pixel-perfect equivalence with non antialiased lines
+    // when axis aligned, while selecting a larger and smoother aa range on curves).
+    return 0.35355 * length(fwidth(position));
+}
+
+/// Return the blending coefficient to for distance antialiasing.
+///
+/// 0.0 means inside the shape, 1.0 means outside.
+float distance_aa(float aa_range, float signed_distance) {
+    return 1.0 - smoothstep(-aa_range, aa_range, signed_distance);
+}
 
 #ifdef WR_FEATURE_TRANSFORM
 float signed_distance_rect(vec2 pos, vec2 p0, vec2 p1) {
@@ -726,10 +848,10 @@ vec2 init_transform_fs(vec3 local_pos, out float fragment_alpha) {
     float d = signed_distance_rect(pos, vLocalBounds.xy, vLocalBounds.zw);
 
     // Find the appropriate distance to apply the AA smoothstep over.
-    float afwidth = 0.5 * length(fwidth(pos.xy));
+    float aa_range = compute_aa_range(pos.xy);
 
     // Only apply AA to fragments outside the signed distance field.
-    fragment_alpha = 1.0 - smoothstep(0.0, afwidth, d);
+    fragment_alpha = distance_aa(aa_range, d);
 
     return pos;
 }
@@ -742,7 +864,7 @@ float do_clip() {
         vec4(vClipMaskUv.xy, vClipMaskUvBounds.zw));
     // check for the dummy bounds, which are given to the opaque objects
     return vClipMaskUvBounds.xy == vClipMaskUvBounds.zw ? 1.0:
-        all(inside) ? textureLod(sSharedCacheA8, vClipMaskUv, 0.0).r : 0.0;
+        all(inside) ? texelFetch(sSharedCacheA8, ivec3(vClipMaskUv), 0).r : 0.0;
 }
 
 #ifdef WR_FEATURE_DITHERING

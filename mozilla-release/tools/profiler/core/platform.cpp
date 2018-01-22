@@ -107,7 +107,7 @@
 #endif
 
 // Linux builds use LUL, which uses DWARF info to unwind stacks.
-#if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_x86_linux)
+#if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_x86_linux) || defined(GP_PLAT_mips64_linux)
 # define HAVE_NATIVE_UNWIND
 # define USE_LUL_STACKWALK
 # include "lul/LulMain.h"
@@ -694,7 +694,7 @@ static const char* const kMainThreadName = "GeckoMain";
 class Registers
 {
 public:
-  Registers() {}
+  Registers() : mPC{nullptr}, mSP{nullptr}, mFP{nullptr}, mLR{nullptr} {}
 
 #if defined(HAVE_NATIVE_UNWIND)
   // Fills in mPC, mSP, mFP, mLR, and mContext for a synchronous sample.
@@ -731,7 +731,7 @@ struct NativeStack
   size_t mCount;  // Number of entries filled.
 
   NativeStack()
-    : mCount(0)
+    : mPCs(), mSPs(), mCount(0)
   {}
 };
 
@@ -1447,7 +1447,7 @@ StreamMetaJSCustomObject(PSLockRef aLock, SpliceableJSONWriter& aWriter,
 {
   MOZ_RELEASE_ASSERT(CorePS::Exists() && ActivePS::Exists(aLock));
 
-  aWriter.IntProperty("version", 8);
+  aWriter.IntProperty("version", 9);
 
   // The "startTime" field holds the number of milliseconds since midnight
   // January 1, 1970 GMT. This grotty code computes (Now - (Now -
@@ -1670,8 +1670,7 @@ locked_profiler_stream_json_for_this_process(PSLockRef aLock,
   }
   aWriter.EndArray();
 
-  aWriter.StartArrayProperty("pausedRanges",
-                             SpliceableJSONWriter::SingleLineStyle);
+  aWriter.StartArrayProperty("pausedRanges");
   {
     buffer.StreamPausedRangesToJSON(aWriter, aSinceTime);
   }
@@ -2115,7 +2114,7 @@ static ThreadInfo*
 FindLiveThreadInfo(PSLockRef aLock, int* aIndexOut = nullptr)
 {
   ThreadInfo* ret = nullptr;
-  Thread::tid_t id = Thread::GetCurrentId();
+  int id = Thread::GetCurrentId();
   const CorePS::ThreadVector& liveThreads = CorePS::LiveThreads(aLock);
   for (uint32_t i = 0; i < liveThreads.size(); i++) {
     ThreadInfo* info = liveThreads.at(i);
@@ -2449,7 +2448,7 @@ profiler_get_profile(double aSinceTime, bool aIsShuttingDown)
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 
   SpliceableChunkedJSONWriter b;
-  b.Start(SpliceableJSONWriter::SingleLineStyle);
+  b.Start();
   {
     if (!profiler_stream_json_for_this_process(b, aSinceTime,
                                                aIsShuttingDown)) {
@@ -2500,6 +2499,10 @@ profiler_get_start_params(int* aEntries, double* aInterval, uint32_t* aFeatures,
 
 AutoSetProfilerEnvVarsForChildProcess::AutoSetProfilerEnvVarsForChildProcess(
   MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_IN_IMPL)
+  : mSetEntries()
+  , mSetInterval()
+  , mSetFeaturesBitfield()
+  , mSetFilters()
 {
   MOZ_GUARD_OBJECT_NOTIFIER_INIT;
 
@@ -2571,7 +2574,7 @@ locked_profiler_save_profile_to_file(PSLockRef aLock, const char* aFilename,
   stream.open(aFilename);
   if (stream.is_open()) {
     SpliceableJSONWriter w(MakeUnique<OStreamJSONWriteFunc>(stream));
-    w.Start(SpliceableJSONWriter::SingleLineStyle);
+    w.Start();
     {
       locked_profiler_stream_json_for_this_process(aLock, w, /* sinceTime */ 0,
                                                    aIsShuttingDown);
@@ -2729,7 +2732,7 @@ locked_profiler_start(PSLockRef aLock, int aEntries, double aInterval,
   ActivePS::Create(aLock, entries, interval, aFeatures, aFilters, aFilterCount);
 
   // Set up profiling for each registered thread, if appropriate.
-  Thread::tid_t tid = Thread::GetCurrentId();
+  int tid = Thread::GetCurrentId();
   const CorePS::ThreadVector& liveThreads = CorePS::LiveThreads(aLock);
   for (uint32_t i = 0; i < liveThreads.size(); i++) {
     ThreadInfo* info = liveThreads.at(i);
@@ -2878,7 +2881,7 @@ locked_profiler_stop(PSLockRef aLock)
 #endif
 
   // Stop sampling live threads.
-  Thread::tid_t tid = Thread::GetCurrentId();
+  int tid = Thread::GetCurrentId();
   CorePS::ThreadVector& liveThreads = CorePS::LiveThreads(aLock);
   for (uint32_t i = 0; i < liveThreads.size(); i++) {
     ThreadInfo* info = liveThreads.at(i);
@@ -3163,7 +3166,7 @@ profiler_get_backtrace()
     return nullptr;
   }
 
-  Thread::tid_t tid = Thread::GetCurrentId();
+  int tid = Thread::GetCurrentId();
 
   TimeStamp now = TimeStamp::Now();
 
@@ -3187,66 +3190,6 @@ void
 ProfilerBacktraceDestructor::operator()(ProfilerBacktrace* aBacktrace)
 {
   delete aBacktrace;
-}
-
-// Fill the output buffer with the following pattern:
-// "Label 1" "\0" "Label 2" "\0" ... "Label N" "\0" "\0"
-// TODO: use the unwinder instead of pseudo stack.
-void
-profiler_get_backtrace_noalloc(char *output, size_t outputSize)
-{
-  MOZ_RELEASE_ASSERT(CorePS::Exists());
-
-  MOZ_ASSERT(outputSize >= 2);
-  char *bound = output + outputSize - 2;
-  output[0] = output[1] = '\0';
-
-  PSAutoLock lock(gPSMutex);
-
-  if (!ActivePS::Exists(lock)) {
-    return;
-  }
-
-  PseudoStack* pseudoStack = TLSInfo::Stack();
-  if (!pseudoStack) {
-    return;
-  }
-
-  bool includeDynamicString = !ActivePS::FeaturePrivacy(lock);
-
-  js::ProfileEntry* pseudoEntries = pseudoStack->entries;
-  uint32_t pseudoCount = pseudoStack->stackSize();
-
-  for (uint32_t i = 0; i < pseudoCount; i++) {
-    const char* label = pseudoEntries[i].label();
-    const char* dynamicString =
-      includeDynamicString ? pseudoEntries[i].dynamicString() : nullptr;
-    size_t labelLength = strlen(label);
-    if (dynamicString) {
-      // Put the label, maybe a space, and the dynamic string into output.
-      size_t spaceLength = label[0] == '\0' ? 0 : 1;
-      size_t dynamicStringLength = strlen(dynamicString);
-      if (output + labelLength + spaceLength + dynamicStringLength >= bound) {
-        break;
-      }
-      strcpy(output, label);
-      output += labelLength;
-      if (spaceLength != 0) {
-        *output++ = ' ';
-      }
-      strcpy(output, dynamicString);
-      output += dynamicStringLength;
-    } else {
-      // Only put the label into output.
-      if (output + labelLength >= bound) {
-        break;
-      }
-      strcpy(output, label);
-      output += labelLength;
-    }
-    *output++ = '\0';
-    *output = '\0';
-  }
 }
 
 static void
@@ -3312,7 +3255,7 @@ profiler_tracing(const char* aCategory, const char* aMarkerName,
 
 void
 profiler_tracing(const char* aCategory, const char* aMarkerName,
-                 UniqueProfilerBacktrace aCause, TracingKind aKind)
+                 TracingKind aKind, UniqueProfilerBacktrace aCause)
 {
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 

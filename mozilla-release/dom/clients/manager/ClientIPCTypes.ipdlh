@@ -1,0 +1,71 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+include protocol PClientSource;
+include DOMTypes;
+include PBackgroundSharedTypes;
+include IPCServiceWorkerDescriptor;
+include ProtocolTypes;
+using class mozilla::TimeStamp from "mozilla/TimeStamp.h";
+using ClientType from "mozilla/dom/ClientIPCUtils.h";
+using FrameType from "mozilla/dom/ClientIPCUtils.h";
+using VisibilityState from "mozilla/dom/ClientIPCUtils.h";
+
+namespace mozilla {
+namespace dom {
+
+struct ClientSourceConstructorArgs
+{
+  nsID id;
+  ClientType type;
+  PrincipalInfo principalInfo;
+  TimeStamp creationTime;
+};
+
+struct IPCClientInfo
+{
+  nsID id;
+  ClientType type;
+  PrincipalInfo principalInfo;
+  TimeStamp creationTime;
+  nsCString url;
+  FrameType frameType;
+};
+
+struct IPCClientWindowState
+{
+  VisibilityState visibilityState;
+  TimeStamp lastFocusTime;
+  bool focused;
+};
+
+struct IPCClientWorkerState
+{
+};
+
+union IPCClientState
+{
+  IPCClientWindowState;
+  IPCClientWorkerState;
+};
+
+struct ClientOpenWindowArgs
+{
+};
+
+struct ClientOpConstructorArgs
+{
+};
+
+struct ClientNavigateOpConstructorArgs
+{
+};
+
+union ClientOpResult
+{
+  nsresult;
+};
+
+} // namespace dom
+} // namespace mozilla

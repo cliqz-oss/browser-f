@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,14 +34,27 @@ nsAutoLayoutPhase::Enter()
     case eLayoutPhase_Paint:
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_Paint] == 0,
                  "recurring into paint");
+      MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_DisplayListBuilding] == 0,
+                 "recurring into paint from display list building");
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_Reflow] == 0,
                  "painting in the middle of reflow");
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_FrameC] == 0,
                  "painting in the middle of frame construction");
       break;
+    case eLayoutPhase_DisplayListBuilding:
+      // It's fine and expected to be in a paint here.
+      MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_DisplayListBuilding] == 0,
+                 "recurring into display list building");
+      MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_Reflow] == 0,
+                 "display list building in the middle of reflow");
+      MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_FrameC] == 0,
+                 "display list building in the middle of frame construction");
+      break;
     case eLayoutPhase_Reflow:
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_Paint] == 0,
                  "reflowing in the middle of a paint");
+      MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_DisplayListBuilding] == 0,
+                 "reflowing in the middle of a display list building");
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_Reflow] == 0,
                  "recurring into reflow");
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_FrameC] == 0,
@@ -49,6 +63,8 @@ nsAutoLayoutPhase::Enter()
     case eLayoutPhase_FrameC:
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_Paint] == 0,
                  "constructing frames in the middle of a paint");
+      MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_DisplayListBuilding] == 0,
+                 "constructing frames in the middle of a display list building");
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_Reflow] == 0,
                  "constructing frames in the middle of reflow");
       MOZ_ASSERT(mPresContext->mLayoutPhaseCount[eLayoutPhase_FrameC] == 0,

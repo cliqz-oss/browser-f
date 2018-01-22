@@ -20,25 +20,33 @@ XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
   "resource://gre/modules/NewTabUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Screenshots",
   "resource://activity-stream/lib/Screenshots.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
+  "resource://gre/modules/PageThumbs.jsm");
 
-const UPDATE_TIME = 15 * 60 * 1000; // 15 minutes
 const DEFAULT_SITES_PREF = "default.sites";
 const DEFAULT_TOP_SITES = [];
 const FRECENCY_THRESHOLD = 100 + 1; // 1 visit (skip first-run/one-time pages)
 const MIN_FAVICON_SIZE = 96;
+const CACHED_LINK_PROPS_TO_MIGRATE = ["screenshot"];
+const PINNED_FAVICON_PROPS_TO_MIGRATE = ["favicon", "faviconRef", "faviconSize"];
 
 this.TopSitesFeed = class TopSitesFeed {
   constructor() {
-    this.lastUpdated = 0;
     this._tippyTopProvider = new TippyTopProvider();
     this.dedupe = new Dedupe(this._dedupeKey);
     this.frecentCache = new LinksCache(NewTabUtils.activityStreamLinks,
-      "getTopSites", this.getLinkMigrator(), (oldOptions, newOptions) =>
+      "getTopSites", CACHED_LINK_PROPS_TO_MIGRATE, (oldOptions, newOptions) =>
         // Refresh if no old options or requesting more items
         !(oldOptions.numItems >= newOptions.numItems));
-    this.pinnedCache = new LinksCache(NewTabUtils.pinnedLinks,
-      "links", this.getLinkMigrator(["favicon", "faviconSize"]));
+    this.pinnedCache = new LinksCache(NewTabUtils.pinnedLinks, "links",
+      [...CACHED_LINK_PROPS_TO_MIGRATE, ...PINNED_FAVICON_PROPS_TO_MIGRATE]);
+    PageThumbs.addExpirationFilter(this);
   }
+
+  uninit() {
+    PageThumbs.removeExpirationFilter(this);
+  }
+
   _dedupeKey(site) {
     return site && site.hostname;
   }
@@ -59,22 +67,11 @@ this.TopSitesFeed = class TopSitesFeed {
     }
   }
 
-  /**
-   * Make a cached link data migrator by copying over screenshots and others.
-   *
-   * @param others {array} Optional extra properties to copy
-   */
-  getLinkMigrator(others = []) {
-    const properties = ["__fetchingScreenshot", "screenshot", ...others];
-    return (oldLink, newLink) => {
-      for (const property of properties) {
-        const oldValue = oldLink[property];
-        if (oldValue) {
-          newLink[property] = oldValue;
-        }
-      }
-    };
+  filterForThumbnailExpiration(callback) {
+    const {rows} = this.store.getState().TopSites;
+    callback(rows.map(site => site.url));
   }
+
   async getLinksWithDefaults(action) {
     // Get at least SHOWMORE amount so toggling between 1 and 2 rows has sites
     const numItems = Math.max(this.store.getState().Prefs.values.topSitesCount,
@@ -107,8 +104,10 @@ this.TopSitesFeed = class TopSitesFeed {
         try {
           NewTabUtils.activityStreamProvider._faviconBytesToDataURI(await
             NewTabUtils.activityStreamProvider._addFavicons([copy]));
-          copy.__updateCache("favicon");
-          copy.__updateCache("faviconSize");
+
+          for (const prop of PINNED_FAVICON_PROPS_TO_MIGRATE) {
+            copy.__sharedCache.updateLink(prop, copy[prop]);
+          }
         } catch (e) {
           // Some issue with favicon, so just continue without one
         }
@@ -134,9 +133,8 @@ this.TopSitesFeed = class TopSitesFeed {
       if (link) {
         this._fetchIcon(link);
 
-        // Remove any internal properties
-        delete link.__fetchingScreenshot;
-        delete link.__updateCache;
+        // Remove internal properties that might be updated after dispatch
+        delete link.__sharedCache;
       }
     }
 
@@ -144,45 +142,54 @@ this.TopSitesFeed = class TopSitesFeed {
   }
 
   /**
-   * Refresh the top sites data for content
-   *
-   * @param target Optional port/channel to receive the update. If not provided,
-   *               the update will be broadcasted.
+   * Refresh the top sites data for content.
+   * @param {bool} options.broadcast Should the update be broadcasted.
    */
-  async refresh(target = null) {
+  async refresh(options = {}) {
     if (!this._tippyTopProvider.initialized) {
       await this._tippyTopProvider.init();
     }
 
     const links = await this.getLinksWithDefaults();
     const newAction = {type: at.TOP_SITES_UPDATED, data: links};
-    if (target) {
-      // Send an update to content so the preloaded tab can get the updated content
-      this.store.dispatch(ac.SendToContent(newAction, target));
-    } else {
+    if (options.broadcast) {
       // Broadcast an update to all open content pages
       this.store.dispatch(ac.BroadcastToContent(newAction));
+    } else {
+      // Don't broadcast only update the state.
+      this.store.dispatch(ac.SendToMain(newAction));
     }
-    this.lastUpdated = Date.now();
   }
 
   /**
    * Get an image for the link preferring tippy top, rich favicon, screenshots.
    */
   async _fetchIcon(link) {
-    // Check for tippy top icon or a rich icon.
+    // Check for tippy top icon and rich icon.
     this._tippyTopProvider.processSite(link);
-    if (!link.tippyTopIcon &&
-        (!link.favicon || link.faviconSize < MIN_FAVICON_SIZE) &&
-        !link.screenshot) {
+    let hasTippyTop = !!link.tippyTopIcon;
+    let hasRichIcon = link.favicon && link.faviconSize >= MIN_FAVICON_SIZE;
+
+    if (!hasTippyTop && !hasRichIcon) {
+      this._requestRichIcon(link.url);
+    }
+
+    // Request a screenshot if needed.
+    if (!hasTippyTop && !hasRichIcon && !link.screenshot) {
       const {url} = link;
-      Screenshots.maybeGetAndSetScreenshot(link, url, "screenshot", screenshot => {
-        this.store.dispatch(ac.BroadcastToContent({
+      await Screenshots.maybeCacheScreenshot(link, url, "screenshot",
+        screenshot => this.store.dispatch(ac.BroadcastToContent({
           data: {screenshot, url},
           type: at.SCREENSHOT_UPDATED
-        }));
-      });
+        })));
     }
+  }
+
+  _requestRichIcon(url) {
+    this.store.dispatch({
+      type: at.RICH_ICON_MISSING,
+      data: {url}
+    });
   }
 
   /**
@@ -193,7 +200,7 @@ this.TopSitesFeed = class TopSitesFeed {
     this.pinnedCache.expire();
 
     // Refresh to update pinned sites with screenshots, trigger deduping, etc.
-    this.refresh();
+    this.refresh({broadcast: true});
   }
 
   /**
@@ -250,24 +257,22 @@ this.TopSitesFeed = class TopSitesFeed {
   async onAction(action) {
     switch (action.type) {
       case at.INIT:
-        this.refresh();
+        this.refresh({broadcast: true});
         break;
-      case at.NEW_TAB_LOAD:
-        if (
-          // When a new tab is opened, if the last time we refreshed the data
-          // is greater than 15 minutes, refresh the data.
-          (Date.now() - this.lastUpdated >= UPDATE_TIME)
-        ) {
-          this.refresh(action.meta.fromTarget);
-        }
+      case at.SYSTEM_TICK:
+        this.refresh({broadcast: false});
         break;
       // All these actions mean we need new top sites
       case at.MIGRATION_COMPLETED:
       case at.PLACES_HISTORY_CLEARED:
-      case at.PLACES_LINK_BLOCKED:
       case at.PLACES_LINKS_DELETED:
         this.frecentCache.expire();
-        this.refresh();
+        this.refresh({broadcast: true});
+        break;
+      case at.PLACES_LINK_BLOCKED:
+        this.frecentCache.expire();
+        this.pinnedCache.expire();
+        this.refresh({broadcast: true});
         break;
       case at.PREF_CHANGED:
         if (action.data.name === DEFAULT_SITES_PREF) {
@@ -286,10 +291,12 @@ this.TopSitesFeed = class TopSitesFeed {
       case at.TOP_SITES_ADD:
         this.add(action);
         break;
+      case at.UNINIT:
+        this.uninit();
+        break;
     }
   }
 };
 
-this.UPDATE_TIME = UPDATE_TIME;
 this.DEFAULT_TOP_SITES = DEFAULT_TOP_SITES;
-this.EXPORTED_SYMBOLS = ["TopSitesFeed", "UPDATE_TIME", "DEFAULT_TOP_SITES"];
+this.EXPORTED_SYMBOLS = ["TopSitesFeed", "DEFAULT_TOP_SITES"];

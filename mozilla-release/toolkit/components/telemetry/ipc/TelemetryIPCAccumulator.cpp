@@ -87,10 +87,7 @@ DoArmIPCTimerMainThread(const StaticMutexAutoLock& lock)
     return;
   }
   if (!gIPCTimer) {
-    CallCreateInstance(NS_TIMER_CONTRACTID, &gIPCTimer);
-    if (gIPCTimer) {
-      gIPCTimer->SetTarget(SystemGroup::EventTargetFor(TaskCategory::Other));
-    }
+    gIPCTimer = NS_NewTimer(SystemGroup::EventTargetFor(TaskCategory::Other)).take();
   }
   if (gIPCTimer) {
     gIPCTimer->InitWithNamedFuncCallback(TelemetryIPCAccumulator::IPCTimerFired,
@@ -178,7 +175,7 @@ TelemetryIPCAccumulator::AccumulateChildKeyedHistogram(mozilla::Telemetry::Histo
 }
 
 void
-TelemetryIPCAccumulator::RecordChildScalarAction(mozilla::Telemetry::ScalarID aId,
+TelemetryIPCAccumulator::RecordChildScalarAction(uint32_t aId, bool aDynamic,
                                                  ScalarActionType aAction, const ScalarVariant& aValue)
 {
   StaticMutexAutoLock locker(gTelemetryIPCAccumulatorMutex);
@@ -195,12 +192,12 @@ TelemetryIPCAccumulator::RecordChildScalarAction(mozilla::Telemetry::ScalarID aI
     DispatchIPCTimerFired();
   }
   // Store the action.
-  gChildScalarsActions->AppendElement(ScalarAction{aId, aAction, Some(aValue)});
+  gChildScalarsActions->AppendElement(ScalarAction{aId, aDynamic, aAction, Some(aValue)});
   ArmIPCTimer(locker);
 }
 
 void
-TelemetryIPCAccumulator::RecordChildKeyedScalarAction(mozilla::Telemetry::ScalarID aId,
+TelemetryIPCAccumulator::RecordChildKeyedScalarAction(uint32_t aId, bool aDynamic,
                                                       const nsAString& aKey,
                                                       ScalarActionType aAction,
                                                       const ScalarVariant& aValue)
@@ -220,7 +217,7 @@ TelemetryIPCAccumulator::RecordChildKeyedScalarAction(mozilla::Telemetry::Scalar
   }
   // Store the action.
   gChildKeyedScalarsActions->AppendElement(
-    KeyedScalarAction{aId, aAction, NS_ConvertUTF16toUTF8(aKey), Some(aValue)});
+    KeyedScalarAction{aId, aDynamic, aAction, NS_ConvertUTF16toUTF8(aKey), Some(aValue)});
   ArmIPCTimer(locker);
 }
 
@@ -293,7 +290,7 @@ SendAccumulatedData(TActor* ipcActor)
   }
 
   // Send the accumulated data to the parent process.
-  mozilla::Unused << NS_WARN_IF(!ipcActor);
+  MOZ_ASSERT(ipcActor);
   if (histogramsToSend.Length()) {
     mozilla::Unused <<
       NS_WARN_IF(!ipcActor->SendAccumulateChildHistograms(histogramsToSend));

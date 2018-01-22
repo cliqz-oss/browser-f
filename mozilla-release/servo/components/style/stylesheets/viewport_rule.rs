@@ -10,7 +10,7 @@
 use app_units::Au;
 use context::QuirksMode;
 use cssparser::{AtRuleParser, DeclarationListParser, DeclarationParser, Parser, parse_important};
-use cssparser::{CowRcStr, ToCss as ParserToCss};
+use cssparser::CowRcStr;
 use error_reporting::{ContextualParseError, ParseErrorReporter};
 use euclid::TypedSize2D;
 use font_metrics::get_metrics_provider_for_product;
@@ -18,15 +18,15 @@ use media_queries::Device;
 use parser::{ParserContext, ParserErrorContext};
 use properties::StyleBuilder;
 use rule_cache::RuleCacheConditions;
-use selectors::parser::SelectorParseError;
+use selectors::parser::SelectorParseErrorKind;
 use shared_lock::{SharedRwLockReadGuard, StylesheetGuards, ToCssWithGuard};
-use std::ascii::AsciiExt;
+#[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::iter::Enumerate;
 use std::str::Chars;
-use style_traits::{PinchZoomFactor, ToCss, ParseError, StyleParseError};
+use style_traits::{PinchZoomFactor, ToCss, ParseError, StyleParseErrorKind};
 use style_traits::viewport::{Orientation, UserZoom, ViewportConstraints, Zoom};
 use stylesheets::{StylesheetInDocument, Origin};
 use values::computed::{Context, ToComputedValue};
@@ -78,7 +78,7 @@ macro_rules! declare_viewport_descriptor_inner {
         $number_of_variants: expr
     ) => {
         #[derive(Clone, Debug, PartialEq)]
-        #[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+        #[cfg_attr(feature = "servo", derive(MallocSizeOf))]
         #[allow(missing_docs)]
         pub enum ViewportDescriptor {
             $(
@@ -140,7 +140,7 @@ trait FromMeta: Sized {
 /// * http://dev.w3.org/csswg/css-device-adapt/#min-max-width-desc
 /// * http://dev.w3.org/csswg/css-device-adapt/#extend-to-zoom
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 #[allow(missing_docs)]
 pub enum ViewportLength {
     Specified(LengthOrPercentageOrAuto),
@@ -231,7 +231,7 @@ struct ViewportRuleParser<'a, 'b: 'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 #[allow(missing_docs)]
 pub struct ViewportDescriptorDeclaration {
     pub origin: Origin,
@@ -276,12 +276,12 @@ impl<'a, 'b, 'i> AtRuleParser<'i> for ViewportRuleParser<'a, 'b> {
     type PreludeNoBlock = ();
     type PreludeBlock = ();
     type AtRule = Vec<ViewportDescriptorDeclaration>;
-    type Error = SelectorParseError<'i, StyleParseError<'i>>;
+    type Error = StyleParseErrorKind<'i>;
 }
 
 impl<'a, 'b, 'i> DeclarationParser<'i> for ViewportRuleParser<'a, 'b> {
     type Declaration = Vec<ViewportDescriptorDeclaration>;
-    type Error = SelectorParseError<'i, StyleParseError<'i>>;
+    type Error = StyleParseErrorKind<'i>;
 
     fn parse_value<'t>(&mut self, name: CowRcStr<'i>, input: &mut Parser<'i, 't>)
                        -> Result<Vec<ViewportDescriptorDeclaration>, ParseError<'i>> {
@@ -323,14 +323,14 @@ impl<'a, 'b, 'i> DeclarationParser<'i> for ViewportRuleParser<'a, 'b> {
             "max-zoom" => ok!(MaxZoom(Zoom::parse)),
             "user-zoom" => ok!(UserZoom(UserZoom::parse)),
             "orientation" => ok!(Orientation(Orientation::parse)),
-            _ => Err(SelectorParseError::UnexpectedIdent(name.clone()).into()),
+            _ => Err(input.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone()))),
         }
     }
 }
 
 /// A `@viewport` rule.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub struct ViewportRule {
     /// The declarations contained in this @viewport rule.
     pub declarations: Vec<ViewportDescriptorDeclaration>
@@ -368,9 +368,10 @@ impl ViewportRule {
                         cascade.add(Cow::Owned(declarations))
                     }
                 }
-                Err(err) => {
-                    let error = ContextualParseError::UnsupportedViewportDescriptorDeclaration(err.slice, err.error);
-                    context.log_css_error(error_context, err.location, error);
+                Err((error, slice)) => {
+                    let location = error.location;
+                    let error = ContextualParseError::UnsupportedViewportDescriptorDeclaration(slice, error);
+                    context.log_css_error(error_context, location, error);
                 }
             }
         }
@@ -533,7 +534,7 @@ impl ToCssWithGuard for ViewportRule {
 }
 
 /// Computes the cascade precedence as according to
-/// http://dev.w3.org/csswg/css-cascade/#cascade-origin
+/// <http://dev.w3.org/csswg/css-cascade/#cascade-origin>
 fn cascade_precendence(origin: Origin, important: bool) -> u8 {
     match (origin, important) {
         (Origin::UserAgent, true) => 1,

@@ -52,7 +52,9 @@ void main(void) {
     vGradientAddress = prim.specific_prim_address + VECS_PER_GRADIENT;
 
     // Whether to repeat the gradient instead of clamping.
-    vGradientRepeat = float(int(gradient.start_end_radius_ratio_xy_extend_mode.w) == EXTEND_MODE_REPEAT);
+    vGradientRepeat = float(int(gradient.start_end_radius_ratio_xy_extend_mode.w) != EXTEND_MODE_CLAMP);
+
+    write_clip(vi.screen_pos, prim.clip_area);
 }
 #endif
 
@@ -104,8 +106,10 @@ void main(void) {
         }
     }
 
-    oFragColor = sample_gradient(vGradientAddress,
+    vec4 color = sample_gradient(vGradientAddress,
                                  offset,
                                  vGradientRepeat);
+
+    oFragColor = color * do_clip();
 }
 #endif

@@ -62,7 +62,7 @@ class FieldScanner {
    *        The latest index of elements waiting for parsing.
    */
   set parsingIndex(index) {
-    if (index > this.fieldDetails.length) {
+    if (index > this._elements.length) {
       throw new Error("The parsing index is out of range.");
     }
     this._parsingIndex = index;
@@ -195,8 +195,12 @@ this.LabelUtils = {
 
   // An array consisting of label elements whose correponding form field doesn't
   // have an id attribute.
-  // @type {Array.<HTMLLabelElement>}
+  // @type {Array<HTMLLabelElement>}
   _unmappedLabels: null,
+
+  // A weak map consisting of label element and extracted strings pairs.
+  // @type {WeakMap<HTMLLabelElement, array>}
+  _labelStrings: null,
 
   /**
    * Extract all strings of an element's children to an array.
@@ -209,6 +213,9 @@ this.LabelUtils = {
    *          All strings in an element.
    */
   extractLabelStrings(element) {
+    if (this._labelStrings.has(element)) {
+      return this._labelStrings.get(element);
+    }
     let strings = [];
     let _extractLabelStrings = (el) => {
       if (this.EXCLUDED_TAGS.includes(el.tagName)) {
@@ -232,6 +239,7 @@ this.LabelUtils = {
       }
     };
     _extractLabelStrings(element);
+    this._labelStrings.set(element, strings);
     return strings;
   },
 
@@ -262,11 +270,13 @@ this.LabelUtils = {
 
     this._mappedLabels = mappedLabels;
     this._unmappedLabels = unmappedLabels;
+    this._labelStrings = new WeakMap();
   },
 
   clearLabelMap() {
     this._mappedLabels = null;
     this._unmappedLabels = null;
+    this._labelStrings = null;
   },
 
   findLabelElements(element) {
@@ -289,6 +299,70 @@ this.FormAutofillHeuristics = {
   RULES: null,
 
   /**
+   * Try to find a contiguous sub-array within an array.
+   *
+   * @param {Array} array
+   * @param {Array} subArray
+   *
+   * @returns {boolean}
+   *          Return whether subArray was found within the array or not.
+   */
+  _matchContiguousSubArray(array, subArray) {
+    return array.some((elm, i) => subArray.every((sElem, j) => sElem == array[i + j]));
+  },
+
+  /**
+   * Try to find the field that is look like a month select.
+   *
+   * @param {DOMElement} element
+   * @returns {boolean}
+   *          Return true if we observe the trait of month select in
+   *          the current element.
+   */
+  _isExpirationMonthLikely(element) {
+    if (ChromeUtils.getClassName(element) !== "HTMLSelectElement") {
+      return false;
+    }
+
+    const options = [...element.options];
+    const desiredValues = Array(12).fill(1).map((v, i) => v + i);
+
+    // The number of month options shouldn't be less than 12 or larger than 13
+    // including the default option.
+    if (options.length < 12 || options.length > 13) {
+      return false;
+    }
+
+    return this._matchContiguousSubArray(options.map(e => +e.value), desiredValues) ||
+           this._matchContiguousSubArray(options.map(e => +e.label), desiredValues);
+  },
+
+
+  /**
+   * Try to find the field that is look like a year select.
+   *
+   * @param {DOMElement} element
+   * @returns {boolean}
+   *          Return true if we observe the trait of year select in
+   *          the current element.
+   */
+  _isExpirationYearLikely(element) {
+    if (ChromeUtils.getClassName(element) !== "HTMLSelectElement") {
+      return false;
+    }
+
+    const options = [...element.options];
+    // A normal expiration year select should contain at least the last three years
+    // in the list.
+    const curYear = new Date().getFullYear();
+    const desiredValues = Array(3).fill(0).map((v, i) => v + curYear + i);
+
+    return this._matchContiguousSubArray(options.map(e => +e.value), desiredValues) ||
+           this._matchContiguousSubArray(options.map(e => +e.label), desiredValues);
+  },
+
+
+  /**
    * Try to match the telephone related fields to the grammar
    * list to see if there is any valid telephone set and correct their
    * field names.
@@ -308,7 +382,7 @@ this.FormAutofillHeuristics = {
       let ruleStart = i;
       for (; i < GRAMMARS.length && GRAMMARS[i][0] && fieldScanner.elementExisting(detailStart); i++, detailStart++) {
         let detail = fieldScanner.getFieldDetailByIndex(detailStart);
-        if (!detail || GRAMMARS[i][0] != detail.fieldName || detail._reason == "autocomplete") {
+        if (!detail || GRAMMARS[i][0] != detail.fieldName || (detail._reason && detail._reason == "autocomplete")) {
           break;
         }
         let element = detail.elementWeakRef.get();
@@ -393,6 +467,122 @@ this.FormAutofillHeuristics = {
   },
 
   /**
+   * Try to look for expiration date fields and revise the field names if needed.
+   *
+   * @param {FieldScanner} fieldScanner
+   *        The current parsing status for all elements
+   * @returns {boolean}
+   *          Return true if there is any field can be recognized in the parser,
+   *          otherwise false.
+   */
+  _parseCreditCardExpirationDateFields(fieldScanner) {
+    if (fieldScanner.parsingFinished) {
+      return false;
+    }
+
+    const savedIndex = fieldScanner.parsingIndex;
+    const monthAndYearFieldNames = ["cc-exp-month", "cc-exp-year"];
+    const detail = fieldScanner.getFieldDetailByIndex(fieldScanner.parsingIndex);
+    const element = detail.elementWeakRef.get();
+
+    // Respect to autocomplete attr and skip the uninteresting fields
+    if (!detail || (detail._reason && detail._reason == "autocomplete") ||
+        !["cc-exp", ...monthAndYearFieldNames].includes(detail.fieldName)) {
+      return false;
+    }
+
+    // If the input type is a month picker, then assume it's cc-exp.
+    if (element.type == "month") {
+      fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp");
+      fieldScanner.parsingIndex++;
+
+      return true;
+    }
+
+    // Don't process the fields if expiration month and expiration year are already
+    // matched by regex in correct order.
+    if (fieldScanner.getFieldDetailByIndex(fieldScanner.parsingIndex++).fieldName == "cc-exp-month" &&
+        !fieldScanner.parsingFinished &&
+        fieldScanner.getFieldDetailByIndex(fieldScanner.parsingIndex++).fieldName == "cc-exp-year") {
+      return true;
+    }
+    fieldScanner.parsingIndex = savedIndex;
+
+    // Determine the field name by checking if the fields are month select and year select
+    // likely.
+    if (this._isExpirationMonthLikely(element)) {
+      fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp-month");
+      fieldScanner.parsingIndex++;
+      if (!fieldScanner.parsingFinished) {
+        const nextDetail = fieldScanner.getFieldDetailByIndex(fieldScanner.parsingIndex);
+        const nextElement = nextDetail.elementWeakRef.get();
+        if (this._isExpirationYearLikely(nextElement)) {
+          fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp-year");
+          fieldScanner.parsingIndex++;
+          return true;
+        }
+      }
+    }
+    fieldScanner.parsingIndex = savedIndex;
+
+    // Verify that the following consecutive two fields can match cc-exp-month and cc-exp-year
+    // respectively.
+    if (this._findMatchedFieldName(element, ["cc-exp-month"])) {
+      fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp-month");
+      fieldScanner.parsingIndex++;
+      if (!fieldScanner.parsingFinished) {
+        const nextDetail = fieldScanner.getFieldDetailByIndex(fieldScanner.parsingIndex);
+        const nextElement = nextDetail.elementWeakRef.get();
+        if (this._findMatchedFieldName(nextElement, ["cc-exp-year"])) {
+          fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp-year");
+          fieldScanner.parsingIndex++;
+          return true;
+        }
+      }
+    }
+    fieldScanner.parsingIndex = savedIndex;
+
+    // Look for MM and/or YY(YY).
+    if (this._matchRegexp(element, /^mm$/ig)) {
+      fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp-month");
+      fieldScanner.parsingIndex++;
+      if (!fieldScanner.parsingFinished) {
+        const nextDetail = fieldScanner.getFieldDetailByIndex(fieldScanner.parsingIndex);
+        const nextElement = nextDetail.elementWeakRef.get();
+        if (this._matchRegexp(nextElement, /^(yy|yyyy)$/)) {
+          fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp-year");
+          fieldScanner.parsingIndex++;
+
+          return true;
+        }
+      }
+    }
+    fieldScanner.parsingIndex = savedIndex;
+
+    // Look for a cc-exp with 2-digit or 4-digit year.
+    if (this._matchRegexp(element, /(?:exp.*date[^y\\n\\r]*|mm\\s*[-/]?\\s*)yy(?:[^y]|$)/ig) ||
+        this._matchRegexp(element, /(?:exp.*date[^y\\n\\r]*|mm\\s*[-/]?\\s*)yyyy(?:[^y]|$)/ig)) {
+      fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp");
+      fieldScanner.parsingIndex++;
+      return true;
+    }
+    fieldScanner.parsingIndex = savedIndex;
+
+    // Match general cc-exp regexp at last.
+    if (this._findMatchedFieldName(element, ["cc-exp"])) {
+      fieldScanner.updateFieldName(fieldScanner.parsingIndex, "cc-exp");
+      fieldScanner.parsingIndex++;
+      return true;
+    }
+    fieldScanner.parsingIndex = savedIndex;
+
+    // Set current field name to null as it failed to match any patterns.
+    fieldScanner.updateFieldName(fieldScanner.parsingIndex, null);
+    fieldScanner.parsingIndex++;
+    return true;
+  },
+
+  /**
    * This function should provide all field details of a form. The details
    * contain the autocomplete info (e.g. fieldName, section, etc).
    *
@@ -409,18 +599,22 @@ this.FormAutofillHeuristics = {
    *        all field details in the form.
    */
   getFormInfo(form, allowDuplicates = false) {
-    if (form.elements.length <= 0) {
+    const eligibleFields = Array.from(form.elements)
+      .filter(elem => FormAutofillUtils.isFieldEligibleForAutofill(elem));
+
+    if (eligibleFields.length <= 0) {
       return [];
     }
 
-    let fieldScanner = new FieldScanner(form.elements);
+    let fieldScanner = new FieldScanner(eligibleFields);
     while (!fieldScanner.parsingFinished) {
       let parsedPhoneFields = this._parsePhoneFields(fieldScanner);
       let parsedAddressFields = this._parseAddressFields(fieldScanner);
+      let parsedExpirationDateFields = this._parseCreditCardExpirationDateFields(fieldScanner);
 
       // If there is no any field parsed, the parsing cursor can be moved
       // forward to the next one.
-      if (!parsedPhoneFields && !parsedAddressFields) {
+      if (!parsedPhoneFields && !parsedAddressFields && !parsedExpirationDateFields) {
         fieldScanner.parsingIndex++;
       }
     }
@@ -434,11 +628,70 @@ this.FormAutofillHeuristics = {
     return fieldScanner.trimmedFieldDetail;
   },
 
-  getInfo(element) {
-    if (!FormAutofillUtils.isFieldEligibleForAutofill(element)) {
+  _regExpTableHashValue(...signBits) {
+    return signBits.reduce((p, c, i) => p | !!c << i, 0);
+  },
+
+  _setRegExpListCache(regexps, b0, b1, b2) {
+    if (!this._regexpList) {
+      this._regexpList = [];
+    }
+    this._regexpList[this._regExpTableHashValue(b0, b1, b2)] = regexps;
+  },
+
+  _getRegExpListCache(b0, b1, b2) {
+    if (!this._regexpList) {
       return null;
     }
+    return this._regexpList[this._regExpTableHashValue(b0, b1, b2)] || null;
+  },
 
+  _getRegExpList(isAutoCompleteOff, elementTagName) {
+    let isSelectElem = elementTagName == "SELECT";
+    let regExpListCache = this._getRegExpListCache(
+      isAutoCompleteOff,
+      FormAutofillUtils.isAutofillCreditCardsAvailable,
+      isSelectElem
+    );
+    if (regExpListCache) {
+      return regExpListCache;
+    }
+    const FIELDNAMES_IGNORING_AUTOCOMPLETE_OFF = [
+      "cc-name",
+      "cc-number",
+      "cc-exp-month",
+      "cc-exp-year",
+      "cc-exp",
+    ];
+    let regexps = isAutoCompleteOff ? FIELDNAMES_IGNORING_AUTOCOMPLETE_OFF : Object.keys(this.RULES);
+
+    if (!FormAutofillUtils.isAutofillCreditCardsAvailable) {
+      regexps = regexps.filter(name => !FormAutofillUtils.isCreditCardField(name));
+    }
+
+    if (isSelectElem) {
+      const FIELDNAMES_FOR_SELECT_ELEMENT = [
+        "address-level1",
+        "address-level2",
+        "country",
+        "cc-exp-month",
+        "cc-exp-year",
+        "cc-exp",
+      ];
+      regexps = regexps.filter(name => FIELDNAMES_FOR_SELECT_ELEMENT.includes(name));
+    }
+
+    this._setRegExpListCache(
+      regexps,
+      isAutoCompleteOff,
+      FormAutofillUtils.isAutofillCreditCardsAvailable,
+      isSelectElem
+    );
+
+    return regexps;
+  },
+
+  getInfo(element) {
     let info = element.getAutocompleteInfo();
     // An input[autocomplete="on"] will not be early return here since it stll
     // needs to find the field name.
@@ -467,47 +720,62 @@ this.FormAutofillHeuristics = {
       };
     }
 
-    const FIELDNAMES_IGNORING_AUTOCOMPLETE_OFF = [
-      "cc-name",
-      "cc-number",
-      "cc-exp-month",
-      "cc-exp-year",
-      "cc-exp",
-    ];
-    let regexps = isAutoCompleteOff ? FIELDNAMES_IGNORING_AUTOCOMPLETE_OFF : Object.keys(this.RULES);
-
-    if (!FormAutofillUtils.isAutofillCreditCardsAvailable) {
-      if (isAutoCompleteOff) {
-        if (!this._regexpListOf_CcUnavailable_AcOff) {
-          this._regexpListOf_CcUnavailable_AcOff = regexps.filter(name => !FormAutofillUtils.isCreditCardField(name));
-        }
-        regexps = this._regexpListOf_CcUnavailable_AcOff;
-      } else {
-        if (!this._regexpListOf_CcUnavailable_AcOn) {
-          this._regexpListOf_CcUnavailable_AcOn = regexps.filter(name => !FormAutofillUtils.isCreditCardField(name));
-        }
-        regexps = this._regexpListOf_CcUnavailable_AcOn;
-      }
-    }
+    let regexps = this._getRegExpList(isAutoCompleteOff, element.tagName);
     if (regexps.length == 0) {
       return null;
     }
 
-    let labelStrings;
-    let getElementStrings = {};
-    getElementStrings[Symbol.iterator] = function* () {
-      yield element.id;
-      yield element.name;
-      if (!labelStrings) {
-        labelStrings = [];
-        let labels = LabelUtils.findLabelElements(element);
-        for (let label of labels) {
-          labelStrings.push(...LabelUtils.extractLabelStrings(label));
-        }
-      }
-      yield *labelStrings;
-    };
+    let matchedFieldName =  this._findMatchedFieldName(element, regexps);
+    if (matchedFieldName) {
+      return {
+        fieldName: matchedFieldName,
+        section: "",
+        addressType: "",
+        contactType: "",
+      };
+    }
 
+    return null;
+  },
+
+  /**
+   * @typedef ElementStrings
+   * @type {object}
+   * @yield {string} id - element id.
+   * @yield {string} name - element name.
+   * @yield {Array<string>} labels - extracted labels.
+   */
+
+  /**
+   * Extract all the signature strings of an element.
+   *
+   * @param {HTMLElement} element
+   * @returns {ElementStrings}
+   */
+  _getElementStrings(element) {
+    return {
+      * [Symbol.iterator]() {
+        yield element.id;
+        yield element.name;
+
+        const labels = LabelUtils.findLabelElements(element);
+        for (let label of labels) {
+          yield *LabelUtils.extractLabelStrings(label);
+        }
+      },
+    };
+  },
+
+  /**
+   * Find the first matched field name of the element wih given regex list.
+   *
+   * @param {HTMLElement} element
+   * @param {Array<string>} regexps
+   *        The regex key names that correspond to pattern in the rule list.
+   * @returns {?string} The first matched field name
+   */
+  _findMatchedFieldName(element, regexps) {
+    const getElementStrings = this._getElementStrings(element);
     for (let regexp of regexps) {
       for (let string of getElementStrings) {
         // The original regexp "(?<!united )state|county|region|province" for
@@ -521,17 +789,30 @@ this.FormAutofillHeuristics = {
           string = string.toLowerCase().split("united state").join("");
         }
         if (this.RULES[regexp].test(string)) {
-          return {
-            fieldName: regexp,
-            section: "",
-            addressType: "",
-            contactType: "",
-          };
+          return regexp;
         }
       }
     }
 
     return null;
+  },
+
+  /**
+   * Determine whether the regexp can match any of element strings.
+   *
+   * @param {HTMLElement} element
+   * @param {RegExp} regexp
+   *
+   * @returns {boolean}
+   */
+  _matchRegexp(element, regexp) {
+    const elemStrings = this._getElementStrings(element);
+    for (const str of elemStrings) {
+      if (regexp.test(str)) {
+        return true;
+      }
+    }
+    return false;
   },
 
 /**

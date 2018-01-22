@@ -182,19 +182,6 @@ this.ExtensionPreferencesManager = {
   },
 
   /**
-   * Gets the id of the extension controlling a preference or null if it isn't
-   * being controlled.
-   *
-   * @param {string} prefName The name of the preference.
-   *
-   * @returns {Promise} Resolves to the id of the extension, or null.
-   */
-  async getControllingExtensionId(prefName) {
-    await ExtensionSettingsStore.initialize();
-    return ExtensionSettingsStore.getTopExtensionId(STORE_TYPE, prefName);
-  },
-
-  /**
    * Indicates that an extension would like to change the value of a previously
    * defined setting.
    *
@@ -355,7 +342,11 @@ this.ExtensionPreferencesManager = {
     // This could be called for a setting that isn't defined to the PreferencesManager,
     // in which case we simply defer to the SettingsStore.
     if (storeType === STORE_TYPE) {
-      for (let prefName of settingsMap.get(name).prefNames) {
+      let setting = settingsMap.get(name);
+      if (!setting) {
+        return "not_controllable";
+      }
+      for (let prefName of setting.prefNames) {
         if (Preferences.locked(prefName)) {
           return "not_controllable";
         }

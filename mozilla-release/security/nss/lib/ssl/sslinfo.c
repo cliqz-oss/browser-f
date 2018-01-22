@@ -78,11 +78,22 @@ SSL_GetChannelInfo(PRFileDesc *fd, SSLChannelInfo *info, PRUintn len)
             /* Get these fromm |ss->sec| because that is accurate
              * even with TLS 1.3 disaggregated cipher suites. */
             inf.keaType = ss->sec.keaType;
-            inf.keaGroup = ss->sec.keaGroup ? ss->sec.keaGroup->name : ssl_grp_none;
+            inf.originalKeaGroup = ss->sec.originalKeaGroup
+                                       ? ss->sec.originalKeaGroup->name
+                                       : ssl_grp_none;
+            inf.keaGroup = ss->sec.keaGroup
+                               ? ss->sec.keaGroup->name
+                               : ssl_grp_none;
             inf.keaKeyBits = ss->sec.keaKeyBits;
             inf.authType = ss->sec.authType;
             inf.authKeyBits = ss->sec.authKeyBits;
             inf.signatureScheme = ss->sec.signatureScheme;
+            /* If this is a resumed session, signatureScheme isn't set in ss->sec.
+             * Use the signature scheme from the previous handshake. */
+            if (inf.signatureScheme == ssl_sig_none && sid->sigScheme) {
+                inf.signatureScheme = sid->sigScheme;
+            }
+            inf.resumed = ss->statelessResume || ss->ssl3.hs.isResuming;
         }
         if (sid) {
             unsigned int sidLen;
@@ -457,9 +468,9 @@ SSL_ExportKeyingMaterial(PRFileDesc *fd,
         return SECFailure;
     }
     i = 0;
-    PORT_Memcpy(val + i, &ss->ssl3.hs.client_random.rand, SSL3_RANDOM_LENGTH);
+    PORT_Memcpy(val + i, ss->ssl3.hs.client_random, SSL3_RANDOM_LENGTH);
     i += SSL3_RANDOM_LENGTH;
-    PORT_Memcpy(val + i, &ss->ssl3.hs.server_random.rand, SSL3_RANDOM_LENGTH);
+    PORT_Memcpy(val + i, ss->ssl3.hs.server_random, SSL3_RANDOM_LENGTH);
     i += SSL3_RANDOM_LENGTH;
     if (hasContext) {
         val[i++] = contextLen >> 8;

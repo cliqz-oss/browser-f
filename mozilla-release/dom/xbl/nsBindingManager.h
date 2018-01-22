@@ -19,10 +19,11 @@
 #include "nsTArray.h"
 #include "nsThreadUtils.h"
 #include "mozilla/StyleSheet.h"
+#include "mozilla/EventStates.h"
 
 struct ElementDependentRuleProcessorData;
 class nsIXPConnectWrappedJS;
-class nsIAtom;
+class nsAtom;
 class nsIDOMNodeList;
 class nsIDocument;
 class nsIURI;
@@ -79,7 +80,7 @@ public:
                                    nsIDocument* aOldDocument,
                                    DestructorHandling aDestructorHandling);
 
-  nsIAtom* ResolveTag(nsIContent* aContent, int32_t* aNameSpaceID);
+  nsAtom* ResolveTag(nsIContent* aContent, int32_t* aNameSpaceID);
 
   /**
    * Return the nodelist of "anonymous" kids for this node.  This might
@@ -175,16 +176,17 @@ public:
 
   nsIContent* FindNestedSingleInsertionPoint(nsIContent* aContainer, bool* aMulti);
 
+  bool AnyBindingHasDocumentStateDependency(mozilla::EventStates aStateMask);
+
 protected:
   nsIXPConnectWrappedJS* GetWrappedJS(nsIContent* aContent);
   nsresult SetWrappedJS(nsIContent* aContent, nsIXPConnectWrappedJS* aResult);
 
   // Called by ContentAppended and ContentInserted to handle a single child
   // insertion.  aChild must not be null.  aContainer may be null.
-  // aIndexInContainer is the index of the child in the parent.  aAppend is
-  // true if this child is being appended, not inserted.
+  // aAppend is true if this child is being appended, not inserted.
   void HandleChildInsertion(nsIContent* aContainer, nsIContent* aChild,
-                            uint32_t aIndexInContainer, bool aAppend);
+                            bool aAppend);
 
   // Same as ProcessAttachedQueue, but also nulls out
   // mProcessAttachedQueueEvent
@@ -197,9 +199,9 @@ protected:
   static void PostPAQEventCallback(nsITimer* aTimer, void* aClosure);
 
   // Enumerate each bound content's bindings (including its base bindings)
-  // in mBoundContentSet.
-  using BoundContentBindingCallback = std::function<void (nsXBLBinding*)>;
-  void EnumerateBoundContentBindings(
+  // in mBoundContentSet. Return false from the callback to stop enumeration.
+  using BoundContentBindingCallback = std::function<bool (nsXBLBinding*)>;
+  bool EnumerateBoundContentBindings(
     const BoundContentBindingCallback& aCallback) const;
 
 // MEMBER VARIABLES

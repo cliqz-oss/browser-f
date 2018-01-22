@@ -34,7 +34,6 @@ from mozharness.mozilla.signing import SigningMixin
 from mozharness.mozilla.updates.balrog import BalrogMixin
 from mozharness.mozilla.taskcluster_helper import Taskcluster
 from mozharness.base.python import VirtualenvMixin
-from mozharness.mozilla.mock import ERROR_MSGS
 
 try:
     import simplejson as json
@@ -158,9 +157,18 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
          "help": "Specify the url of the en-us binary"}
     ], [
         ["--disable-mock"], {
-        "dest": "disable_mock",
-        "action": "store_true",
-        "help": "do not run under mock despite what gecko-config says"}
+         "dest": "disable_mock",
+         "action": "store_true",
+         "help": "do not run under mock despite what gecko-config says"}
+    ], [
+        ['--scm-level'], {  # Ignored on desktop for now: see Bug 1414678.
+         "action": "store",
+         "type": "int",
+         "dest": "scm_level",
+         "default": 1,
+         "help": "This sets the SCM level for the branch being built."
+                 " See https://www.mozilla.org/en-US/about/"
+                 "governance/policies/commit/access-policy/"}
     ]]
 
     def __init__(self, require_config_file=True):
@@ -484,7 +492,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         elif 'revision' in self.buildbot_properties:
             revision = self.buildbot_properties['revision']
         elif (self.buildbot_config and
-                  self.buildbot_config.get('sourcestamp', {}).get('revision')):
+              self.buildbot_config.get('sourcestamp', {}).get('revision')):
             revision = self.buildbot_config['sourcestamp']['revision']
         elif self.buildbot_config and self.buildbot_config.get('revision'):
             revision = self.buildbot_config['revision']
@@ -618,7 +626,8 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
                     # pass through non-interpolables, like booleans
                     current_repo[key] = value
                 except KeyError:
-                    self.error('not all the values in "{0}" can be replaced. Check your configuration'.format(value))
+                    self.error('not all the values in "{0}" can be replaced. Check your '
+                               'configuration'.format(value))
                     raise
             repos.append(current_repo)
         self.info("repositories: %s" % repos)
@@ -819,7 +828,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
             targets.extend(['setup.exe', 'setup-stub.exe'])
             for f in matches:
                 target_file = next(target_file for target_file in targets
-                                    if f.endswith(target_file[6:]))
+                                   if f.endswith(target_file[6:]))
                 if target_file:
                     # Remove from list of available options for this locale
                     targets.remove(target_file)
@@ -971,7 +980,8 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         # files
         # Locale is hardcoded to en-US, for silly reasons
         # The Balrog submitter translates this platform into a build target
-        # via https://github.com/mozilla/build-tools/blob/master/lib/python/release/platforms.py#L23
+        # via
+        # https://github.com/mozilla/build-tools/blob/master/lib/python/release/platforms.py#L23
         self.set_buildbot_property("completeMarSize", self.query_filesize(c_marfile))
         self.set_buildbot_property("completeMarHash", self.query_sha512sum(c_marfile))
         self.set_buildbot_property("completeMarUrl", c_mar_url)
@@ -1047,13 +1057,12 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         env = self.query_bootstrap_env()
         config = self.config
         dirs = self.query_abs_dirs()
+        toolchains = os.environ.get('MOZ_TOOLCHAINS')
         manifest_src = os.environ.get('TOOLTOOL_MANIFEST')
         if not manifest_src:
             manifest_src = config.get('tooltool_manifest_src')
-        if not manifest_src:
+        if not manifest_src and not toolchains:
             return
-        tooltool_manifest_path = os.path.join(dirs['abs_mozilla_dir'],
-                                              manifest_src)
         python = sys.executable
         # A mock environment is a special case, the system python isn't
         # available there
@@ -1067,20 +1076,22 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
             'toolchain',
             '-v',
             '--retry', '4',
-            '--tooltool-manifest',
-            tooltool_manifest_path,
             '--artifact-manifest',
             os.path.join(dirs['abs_mozilla_dir'], 'toolchains.json'),
-            '--tooltool-url',
-            config['tooltool_url'],
         ]
-        auth_file = self._get_tooltool_auth_file()
-        if auth_file and os.path.exists(auth_file):
-            cmd.extend(['--authentication-file', auth_file])
+        if manifest_src:
+            cmd.extend([
+                '--tooltool-manifest',
+                os.path.join(dirs['abs_mozilla_dir'], manifest_src),
+                '--tooltool-url',
+                config['tooltool_url'],
+            ])
+            auth_file = self._get_tooltool_auth_file()
+            if auth_file and os.path.exists(auth_file):
+                cmd.extend(['--authentication-file', auth_file])
         cache = config['bootstrap_env'].get('TOOLTOOL_CACHE')
         if cache:
             cmd.extend(['--cache-dir', cache])
-        toolchains = os.environ.get('MOZ_TOOLCHAINS')
         if toolchains:
             cmd.extend(toolchains.split())
         self.info(str(cmd))
@@ -1096,7 +1107,8 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
             'branch': self.config['branch'],
             'appName': self.config['appName'],
             'platform': self.config['platform'],
-            'completeMarUrls':  {locale: self._query_complete_mar_url(locale) for locale in locales},
+            'completeMarUrls': {locale: self._query_complete_mar_url(locale)
+                                for locale in locales},
         }
         self.info('funsize info: %s' % funsize_info)
         self.set_buildbot_property('funsize_info', json.dumps(funsize_info),
@@ -1171,7 +1183,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
 
             self.info('Using routes: %s' % routes)
             tc = Taskcluster(branch,
-                             pushinfo.pushdate, # Use pushdate as the rank
+                             pushinfo.pushdate,  # Use pushdate as the rank
                              client_id,
                              access_token,
                              self.log_obj,

@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,7 +29,6 @@
 #include "mozilla/mozalloc.h"           // for operator delete, etc
 #include "mozilla/Unused.h"
 #include "nsCoord.h"                    // for NSAppUnitsToFloatPixels
-#include "nsDebug.h"                    // for NS_RUNTIMEABORT
 #include "nsISupportsImpl.h"            // for Layer::Release, etc
 #include "nsLayoutUtils.h"              // for nsLayoutUtils
 #include "nsMathUtils.h"                // for NS_round
@@ -170,7 +168,7 @@ LayerTransactionParent::RecvInitReadLocks(ReadLockArray&& aReadLocks)
 mozilla::ipc::IPCResult
 LayerTransactionParent::RecvUpdate(const TransactionInfo& aInfo)
 {
-  AutoProfilerTracing tracing("Paint", "LayerTransaction");
+  AUTO_PROFILER_TRACING("Paint", "LayerTransaction");
   AUTO_PROFILER_LABEL("LayerTransactionParent::RecvUpdate", GRAPHICS);
 
   TimeStamp updateStart = TimeStamp::Now();
@@ -611,10 +609,6 @@ LayerTransactionParent::SetLayerAttributes(const OpSetLayerAttributes& aOp)
     containerLayer->SetInheritedScale(attrs.inheritedXScale(), attrs.inheritedYScale());
     containerLayer->SetScaleToResolution(attrs.scaleToResolution(),
                                          attrs.presShellResolution());
-    if (attrs.eventRegionsOverride() != containerLayer->GetEventRegionsOverride()) {
-      UpdateHitTestingTree(layer, "event regions override changed");
-      containerLayer->SetEventRegionsOverride(attrs.eventRegionsOverride());
-    }
     break;
   }
   case Specific::TColorLayerAttributes: {
@@ -878,6 +872,10 @@ LayerTransactionParent::Attach(Layer* aLayer,
   TextureSourceProvider* provider =
     static_cast<HostLayerManager*>(aLayer->Manager())->GetTextureSourceProvider();
 
+  MOZ_ASSERT(!aCompositable->AsWebRenderImageHost());
+  if (aCompositable->AsWebRenderImageHost()) {
+    gfxCriticalNote << "Use WebRenderImageHost at LayerTransactionParent.";
+  }
   if (!layer->SetCompositableHost(aCompositable)) {
     // not all layer types accept a compositable, see bug 967824
     return false;

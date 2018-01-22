@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,7 +15,7 @@
 #include "nsNodeInfoManager.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsContentUtils.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsFontMetrics.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLProgressElement.h"
@@ -47,14 +48,14 @@ nsProgressFrame::~nsProgressFrame()
 }
 
 void
-nsProgressFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsProgressFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   NS_ASSERTION(!GetPrevContinuation(),
                "nsProgressFrame should not have continuations; if it does we "
                "need to call RegUnregAccessKey only for the first.");
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  DestroyAnonymousContent(mBarDiv.forget());
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  aPostDestroyData.AddAnonymousContent(mBarDiv.forget());
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nsresult
@@ -116,7 +117,7 @@ nsProgressFrame::Reflow(nsPresContext*           aPresContext,
                "need to call RegUnregAccessKey only for the first.");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   aDesiredSize.SetSize(aReflowInput.GetWritingMode(),
@@ -204,14 +205,14 @@ nsProgressFrame::ReflowChildFrame(nsIFrame*          aChild,
 
 nsresult
 nsProgressFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                  nsIAtom* aAttribute,
+                                  nsAtom* aAttribute,
                                   int32_t  aModType)
 {
   NS_ASSERTION(mBarDiv, "Progress bar div must exist!");
 
   if (aNameSpaceID == kNameSpaceID_None &&
       (aAttribute == nsGkAtoms::value || aAttribute == nsGkAtoms::max)) {
-    auto shell = PresContext()->PresShell();
+    auto shell = PresShell();
     for (auto childFrame : PrincipalChildList()) {
       shell->FrameNeedsReflow(childFrame, nsIPresShell::eResize,
                               NS_FRAME_IS_DIRTY);

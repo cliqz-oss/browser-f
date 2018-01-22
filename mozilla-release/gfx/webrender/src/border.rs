@@ -2,19 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BorderSide, BorderStyle, BorderWidths, ClipAndScrollInfo, ColorF, LayerPoint, LayerRect};
-use api::{LayerPrimitiveInfo, LayerSize, NormalBorder};
+use api::{BorderSide, BorderStyle, BorderWidths, ClipAndScrollInfo, ColorF};
+use api::{EdgeAaSegmentMask, LayerPoint, LayerRect};
+use api::{LayerPrimitiveInfo, LayerSize, NormalBorder, RepeatMode};
 use clip::ClipSource;
 use ellipse::Ellipse;
 use frame_builder::FrameBuilder;
 use gpu_cache::GpuDataRequest;
-use prim_store::{BorderPrimitiveCpu, PrimitiveContainer};
+use prim_store::{BorderPrimitiveCpu, RectangleContent, PrimitiveContainer, TexelRect};
 use tiling::PrimitiveFlags;
 use util::{lerp, pack_as_float};
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum BorderCornerInstance {
+    None,
     Single, // Single instance needed - corner styles are same or similar.
     Double, // Different corner styles. Draw two instances, one per style.
 }
@@ -128,8 +130,8 @@ impl NormalBorderHelpers for NormalBorder {
         corner: BorderCorner,
         border_rect: &LayerRect,
     ) -> BorderCornerKind {
-        // If either width is zero, a corner isn't formed.
-        if width0 == 0.0 || width1 == 0.0 {
+        // If both widths are zero, a corner isn't formed.
+        if width0 == 0.0 && width1 == 0.0 {
             return BorderCornerKind::None;
         }
 
@@ -139,9 +141,13 @@ impl NormalBorderHelpers for NormalBorder {
         }
 
         match (edge0.style, edge1.style) {
-            // If either edge is none or hidden, no corner is needed.
-            (BorderStyle::None, _) | (_, BorderStyle::None) => BorderCornerKind::None,
-            (BorderStyle::Hidden, _) | (_, BorderStyle::Hidden) => BorderCornerKind::None,
+            // If both edges are none or hidden, no corner is needed.
+            (BorderStyle::None, BorderStyle::None) |
+            (BorderStyle::None, BorderStyle::Hidden) |
+            (BorderStyle::Hidden, BorderStyle::None) |
+            (BorderStyle::Hidden, BorderStyle::Hidden) => {
+                BorderCornerKind::None
+            }
 
             // If both borders are solid, we can draw them with a simple rectangle if
             // both the colors match and there is no radius.
@@ -238,10 +244,10 @@ impl FrameBuilder {
         let bottom = &border.bottom;
 
         // These colors are used during inset/outset scaling.
-        let left_color = left.border_color(1.0, 2.0 / 3.0, 0.3, 0.7);
-        let top_color = top.border_color(1.0, 2.0 / 3.0, 0.3, 0.7);
-        let right_color = right.border_color(2.0 / 3.0, 1.0, 0.7, 0.3);
-        let bottom_color = bottom.border_color(2.0 / 3.0, 1.0, 0.7, 0.3);
+        let left_color = left.border_color(1.0, 2.0 / 3.0, 0.3, 0.7).premultiplied();
+        let top_color = top.border_color(1.0, 2.0 / 3.0, 0.3, 0.7).premultiplied();
+        let right_color = right.border_color(2.0 / 3.0, 1.0, 0.7, 0.3).premultiplied();
+        let bottom_color = bottom.border_color(2.0 / 3.0, 1.0, 0.7, 0.3).premultiplied();
 
         let prim_cpu = BorderPrimitiveCpu {
             corner_instances,
@@ -372,54 +378,55 @@ impl FrameBuilder {
             let p1 = info.rect.bottom_right();
             let rect_width = info.rect.size.width;
             let rect_height = info.rect.size.height;
+            let mut info = info.clone();
 
             // Add a solid rectangle for each visible edge/corner combination.
             if top_edge == BorderEdgeKind::Solid {
-                let mut info = info.clone();
                 info.rect = LayerRect::new(p0, LayerSize::new(rect_width, top_len));
+                info.edge_aa_segment_mask = EdgeAaSegmentMask::BOTTOM;
                 self.add_solid_rectangle(
                     clip_and_scroll,
                     &info,
-                    &border.top.color,
+                    RectangleContent::Fill(border.top.color),
                     PrimitiveFlags::None,
                 );
             }
             if left_edge == BorderEdgeKind::Solid {
-                let mut info = info.clone();
                 info.rect = LayerRect::new(
                     LayerPoint::new(p0.x, p0.y + top_len),
                     LayerSize::new(left_len, rect_height - top_len - bottom_len),
                 );
+                info.edge_aa_segment_mask = EdgeAaSegmentMask::RIGHT;
                 self.add_solid_rectangle(
                     clip_and_scroll,
                     &info,
-                    &border.left.color,
+                    RectangleContent::Fill(border.left.color),
                     PrimitiveFlags::None,
                 );
             }
             if right_edge == BorderEdgeKind::Solid {
-                let mut info = info.clone();
                 info.rect = LayerRect::new(
                     LayerPoint::new(p1.x - right_len, p0.y + top_len),
                     LayerSize::new(right_len, rect_height - top_len - bottom_len),
                 );
+                info.edge_aa_segment_mask = EdgeAaSegmentMask::LEFT;
                 self.add_solid_rectangle(
                     clip_and_scroll,
                     &info,
-                    &border.right.color,
+                    RectangleContent::Fill(border.right.color),
                     PrimitiveFlags::None,
                 );
             }
             if bottom_edge == BorderEdgeKind::Solid {
-                let mut info = info.clone();
                 info.rect = LayerRect::new(
                     LayerPoint::new(p0.x, p1.y - bottom_len),
                     LayerSize::new(rect_width, bottom_len),
                 );
+                info.edge_aa_segment_mask = EdgeAaSegmentMask::TOP;
                 self.add_solid_rectangle(
                     clip_and_scroll,
                     &info,
-                    &border.bottom.color,
+                    RectangleContent::Fill(border.bottom.color),
                     PrimitiveFlags::None,
                 );
             }
@@ -429,16 +436,19 @@ impl FrameBuilder {
             let mut corner_instances = [BorderCornerInstance::Single; 4];
 
             for (i, corner) in corners.iter().enumerate() {
-                match corner {
-                    &BorderCornerKind::Mask(corner_data, corner_radius, widths, kind) => {
+                match *corner {
+                    BorderCornerKind::Mask(corner_data, corner_radius, widths, kind) => {
                         let clip_source =
                             BorderCornerClipSource::new(corner_data, corner_radius, widths, kind);
                         extra_clips.push(ClipSource::BorderCorner(clip_source));
                     }
-                    &BorderCornerKind::Clip(instance_kind) => {
+                    BorderCornerKind::Clip(instance_kind) => {
                         corner_instances[i] = instance_kind;
                     }
-                    _ => {}
+                    BorderCornerKind::Solid => {}
+                    BorderCornerKind::None => {
+                        corner_instances[i] = BorderCornerInstance::None;
+                    }
                 }
             }
 
@@ -547,7 +557,7 @@ impl BorderCornerClipSource {
             BorderCornerClipKind::Dot => {
                 // The centers of dots follow an ellipse along the middle of the
                 // border radius.
-                let inner_radius = corner_radius - widths * 0.5;
+                let inner_radius = (corner_radius - widths * 0.5).abs();
                 let ellipse = Ellipse::new(inner_radius);
 
                 // Allocate a "worst case" number of dot clips. This can be
@@ -793,5 +803,57 @@ struct DotInfo {
 impl DotInfo {
     fn new(arc_pos: f32, diameter: f32) -> DotInfo {
         DotInfo { arc_pos, diameter }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ImageBorderSegment {
+    pub geom_rect: LayerRect,
+    pub sub_rect: TexelRect,
+    pub stretch_size: LayerSize,
+    pub tile_spacing: LayerSize,
+}
+
+impl ImageBorderSegment {
+    pub fn new(
+        rect: LayerRect,
+        sub_rect: TexelRect,
+        repeat_horizontal: RepeatMode,
+        repeat_vertical: RepeatMode,
+    ) -> ImageBorderSegment {
+        let tile_spacing = LayerSize::zero();
+
+        debug_assert!(sub_rect.uv1.x >= sub_rect.uv0.x);
+        debug_assert!(sub_rect.uv1.y >= sub_rect.uv0.y);
+
+        let image_size = LayerSize::new(
+            sub_rect.uv1.x - sub_rect.uv0.x,
+            sub_rect.uv1.y - sub_rect.uv0.y,
+        );
+
+        let stretch_size_x = match repeat_horizontal {
+            RepeatMode::Stretch => rect.size.width,
+            RepeatMode::Repeat => image_size.width,
+            RepeatMode::Round | RepeatMode::Space => {
+                error!("Round/Space not supported yet!");
+                rect.size.width
+            }
+        };
+
+        let stretch_size_y = match repeat_vertical {
+            RepeatMode::Stretch => rect.size.height,
+            RepeatMode::Repeat => image_size.height,
+            RepeatMode::Round | RepeatMode::Space => {
+                error!("Round/Space not supported yet!");
+                rect.size.height
+            }
+        };
+
+        ImageBorderSegment {
+            geom_rect: rect,
+            sub_rect,
+            stretch_size: LayerSize::new(stretch_size_x, stretch_size_y),
+            tile_spacing,
+        }
     }
 }

@@ -35,7 +35,7 @@ impl ToComputedValue for specified::NoCalcLength {
             specified::NoCalcLength::ViewportPercentage(length) =>
                 length.to_computed_value(context.viewport_size_for_viewport_unit_resolution()),
             specified::NoCalcLength::ServoCharacterWidth(length) =>
-                length.to_computed_value(Au::from(context.style().get_font().clone_font_size())),
+                length.to_computed_value(context.style().get_font().clone_font_size().size()),
             #[cfg(feature = "gecko")]
             specified::NoCalcLength::Physical(length) =>
                 length.to_computed_value(context),
@@ -66,9 +66,7 @@ impl ToComputedValue for specified::Length {
 }
 
 #[allow(missing_docs)]
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, PartialEq, ToAnimatedZero)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToAnimatedZero)]
 pub struct CalcLengthOrPercentage {
     #[animation(constant)]
     pub clamping_mode: AllowedNumericType,
@@ -269,7 +267,7 @@ impl specified::CalcLengthOrPercentage {
 
     /// Compute font-size or line-height taking into account text-zoom if necessary.
     pub fn to_computed_value_zoomed(&self, context: &Context, base_size: FontBaseSize) -> CalcLengthOrPercentage {
-        self.to_computed_value_with_zoom(context, |abs| context.maybe_zoom_text(abs), base_size)
+        self.to_computed_value_with_zoom(context, |abs| context.maybe_zoom_text(abs.into()).0, base_size)
     }
 }
 
@@ -294,10 +292,8 @@ impl ToComputedValue for specified::CalcLengthOrPercentage {
 
 #[allow(missing_docs)]
 #[animate(fallback = "Self::animate_fallback")]
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
 #[css(derive_debug)]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, PartialEq)]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, MallocSizeOf, PartialEq)]
 #[derive(ToAnimatedZero, ToCss)]
 #[distance(fallback = "Self::compute_squared_distance_fallback")]
 pub enum LengthOrPercentage {
@@ -307,7 +303,7 @@ pub enum LengthOrPercentage {
 }
 
 impl LengthOrPercentage {
-    /// https://drafts.csswg.org/css-transitions/#animtype-lpcalc
+    /// <https://drafts.csswg.org/css-transitions/#animtype-lpcalc>
     fn animate_fallback(
         &self,
         other: &Self,
@@ -452,10 +448,8 @@ impl ToComputedValue for specified::LengthOrPercentage {
 
 #[allow(missing_docs)]
 #[animate(fallback = "Self::animate_fallback")]
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
 #[css(derive_debug)]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, PartialEq, ToCss)]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, MallocSizeOf, PartialEq, ToCss)]
 #[distance(fallback = "Self::compute_squared_distance_fallback")]
 pub enum LengthOrPercentageOrAuto {
     Length(Length),
@@ -465,7 +459,7 @@ pub enum LengthOrPercentageOrAuto {
 }
 
 impl LengthOrPercentageOrAuto {
-    /// https://drafts.csswg.org/css-transitions/#animtype-lpcalc
+    /// <https://drafts.csswg.org/css-transitions/#animtype-lpcalc>
     fn animate_fallback(
         &self,
         other: &Self,
@@ -549,7 +543,7 @@ impl ToComputedValue for specified::LengthOrPercentageOrAuto {
 
 #[allow(missing_docs)]
 #[animate(fallback = "Self::animate_fallback")]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 #[css(derive_debug)]
 #[derive(Animate, Clone, ComputeSquaredDistance, Copy, PartialEq, ToCss)]
 #[distance(fallback = "Self::compute_squared_distance_fallback")]
@@ -561,7 +555,7 @@ pub enum LengthOrPercentageOrNone {
 }
 
 impl LengthOrPercentageOrNone {
-    /// https://drafts.csswg.org/css-transitions/#animtype-lpcalc
+    /// <https://drafts.csswg.org/css-transitions/#animtype-lpcalc>
     fn animate_fallback(
         &self,
         other: &Self,
@@ -684,9 +678,8 @@ impl NonNegativeLengthOrPercentage {
 }
 
 /// The computed `<length>` value.
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(Deserialize, HeapSizeOf, Serialize))]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf, PartialEq, PartialOrd)]
 #[derive(ToAnimatedValue, ToAnimatedZero)]
 pub struct CSSPixelLength(CSSFloat);
 
@@ -712,6 +705,11 @@ impl CSSPixelLength {
     /// Return the absolute value of this length.
     pub fn abs(self) -> Self {
         CSSPixelLength::new(self.0.abs())
+    }
+
+    /// Zero value
+    pub fn zero() -> Self {
+        CSSPixelLength::new(0.)
     }
 }
 
@@ -791,6 +789,16 @@ impl NonNegativeLength {
         self.0.px()
     }
 
+    #[inline]
+    /// Ensures it is non negative
+    pub fn clamp(self) -> Self {
+        if (self.0).0 < 0. {
+            Self::zero()
+        } else {
+            self
+        }
+    }
+
     /// Scale this NonNegativeLength.
     /// We scale NonNegativeLength by zero if the factor is negative because it doesn't
     /// make sense to scale a negative factor on a non-negative length.
@@ -840,7 +848,7 @@ pub type NonNegativeLengthOrNumber = Either<NonNegativeLength, NonNegativeNumber
 /// A value suitable for a `min-width`, `min-height`, `width` or `height` property.
 /// See values/specified/length.rs for more details.
 #[allow(missing_docs)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 #[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, PartialEq)]
 #[derive(ToAnimatedZero, ToCss)]
 pub enum MozLength {
@@ -890,7 +898,7 @@ impl ToComputedValue for specified::MozLength {
 /// A value suitable for a `max-width` or `max-height` property.
 /// See values/specified/length.rs for more details.
 #[allow(missing_docs)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 #[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, PartialEq, ToCss)]
 pub enum MaxLength {
     LengthOrPercentageOrNone(LengthOrPercentageOrNone),

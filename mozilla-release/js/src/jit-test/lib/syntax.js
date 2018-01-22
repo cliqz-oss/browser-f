@@ -767,42 +767,6 @@ function test_syntax(postfixes, check_error, ignore_opts) {
   test("/a/ ");
   test("/a/g ");
 
-  // Array comprehensions
-
-  test("[for ");
-  test("[for ( ");
-  test("[for (x ");
-  test("[for (x of ");
-  test("[for (x of y ");
-  test("[for (x of y) ");
-  test("[for (x of y) x ");
-  test("[for (x of y) if ");
-  test("[for (x of y) if ( ");
-  test("[for (x of y) if (x ");
-  test("[for (x of y) if (x == ");
-  test("[for (x of y) if (x == 1 ");
-  test("[for (x of y) if (x == 1) ");
-  test("[for (x of y) if (x == 1) x ");
-  test("[for (x of y) if (x == 1) x] ");
-
-  // Generator comprehensions
-
-  test("(for ");
-  test("(for ( ");
-  test("(for (x ");
-  test("(for (x of ");
-  test("(for (x of y ");
-  test("(for (x of y) ");
-  test("(for (x of y) x ");
-  test("(for (x of y) if ");
-  test("(for (x of y) if ( ");
-  test("(for (x of y) if (x ");
-  test("(for (x of y) if (x == ");
-  test("(for (x of y) if (x == 1 ");
-  test("(for (x of y) if (x == 1) ");
-  test("(for (x of y) if (x == 1) x ");
-  test("(for (x of y) if (x == 1) x) ");
-
   // ---- Left-hand-side expressions ----
 
   // property access
@@ -1152,13 +1116,6 @@ function test_syntax(postfixes, check_error, ignore_opts) {
   test("function f() 1; ");
   test("(function () 1 ");
   test("(function () 1); ");
-
-  // Legacy generator
-
-  test("function f() { (yield ");
-  test("function f() { (yield 1 ");
-  test("function f() { f(yield ");
-  test("function f() { f(yield 1 ");
 
   // for each...in
 

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -100,7 +101,7 @@ ClientLayerManager::ClientLayerManager(nsIWidget* aWidget)
   , mTransactionIncomplete(false)
   , mCompositorMightResample(false)
   , mNeedsComposite(false)
-  , mTextureSyncOnPaintThread(false)
+  , mQueuedAsyncPaints(false)
   , mPaintSequenceNumber(0)
   , mDeviceResetSequenceNumber(0)
   , mForwarder(new ShadowLayerForwarder(this))
@@ -230,6 +231,9 @@ ClientLayerManager::BeginTransactionWithTarget(gfxContext* aTarget)
 {
   // Wait for any previous async paints to complete before starting to paint again.
   GetCompositorBridgeChild()->FlushAsyncPaints();
+  if (PaintThread::Get()) {
+    PaintThread::Get()->BeginLayerTransaction();
+  }
 
   MOZ_ASSERT(mForwarder, "ClientLayerManager::BeginTransaction without forwarder");
   if (!mForwarder->IPCOpen()) {
@@ -331,7 +335,7 @@ ClientLayerManager::EndTransactionInternal(DrawPaintedLayerCallback aCallback,
                                            EndTransactionFlags)
 {
   PaintTelemetry::AutoRecord record(PaintTelemetry::Metric::Rasterization);
-  AutoProfilerTracing tracing("Paint", "Rasterize");
+  AUTO_PROFILER_TRACING("Paint", "Rasterize");
 
   Maybe<TimeStamp> startTime;
   if (gfxPrefs::LayersDrawFPS()) {
@@ -359,7 +363,7 @@ ClientLayerManager::EndTransactionInternal(DrawPaintedLayerCallback aCallback,
   ClientLayer* root = ClientLayer::ToClientLayer(GetRoot());
 
   mTransactionIncomplete = false;
-  mTextureSyncOnPaintThread = false;
+  mQueuedAsyncPaints = false;
 
   // Apply pending tree updates before recomputing effective
   // properties.
@@ -432,6 +436,12 @@ ClientLayerManager::EndTransaction(DrawPaintedLayerCallback aCallback,
     return;
   }
 
+  if (mTransactionIncomplete) {
+    // If the previous transaction was incomplete then we may have buffer operations
+    // running on the paint thread that haven't finished yet
+    GetCompositorBridgeChild()->FlushAsyncPaints();
+  }
+
   if (mWidget) {
     mWidget->PrepareWindowEffects();
   }
@@ -462,10 +472,19 @@ ClientLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags)
     return false;
   }
 
+  if (mTransactionIncomplete) {
+    // If the previous transaction was incomplete then we may have buffer operations
+    // running on the paint thread that haven't finished yet
+    GetCompositorBridgeChild()->FlushAsyncPaints();
+  }
+
   if (!EndTransactionInternal(nullptr, nullptr, aFlags)) {
     // Return without calling ForwardTransaction. This leaves the
     // ShadowLayerForwarder transaction open; the following
     // EndTransaction will complete it.
+    if (PaintThread::Get() && mQueuedAsyncPaints) {
+      PaintThread::Get()->EndLayerTransaction(nullptr);
+    }
     return false;
   }
   if (mWidget) {
@@ -723,7 +742,7 @@ ClientLayerManager::StopFrameTimeRecording(uint32_t         aStartIndex,
 void
 ClientLayerManager::ForwardTransaction(bool aScheduleComposite)
 {
-  AutoProfilerTracing tracing("Paint", "ForwardTransaction");
+  AUTO_PROFILER_TRACING("Paint", "ForwardTransaction");
   TimeStamp start = TimeStamp::Now();
 
   // Skip the synchronization for buffer since we also skip the painting during
@@ -741,7 +760,7 @@ ClientLayerManager::ForwardTransaction(bool aScheduleComposite)
   // that we finished queuing async paints so it can schedule a runnable after
   // all async painting is finished to do a texture sync and unblock the main
   // thread if it is waiting before doing a new layer transaction.
-  if (mTextureSyncOnPaintThread) {
+  if (mQueuedAsyncPaints) {
     MOZ_ASSERT(PaintThread::Get());
     PaintThread::Get()->EndLayerTransaction(syncObject);
   } else if (syncObject) {

@@ -84,7 +84,7 @@ pageInfoTreeView.prototype = {
 
   performActionOnRow(action, row) {
     if (action == "copy") {
-      var data = this.handleCopy(row)
+      var data = this.handleCopy(row);
       this.tree.treeBody.parentNode.setAttribute("copybuffer", data);
     }
   },
@@ -121,7 +121,7 @@ pageInfoTreeView.prototype = {
   isContainer(index) { return false; },
   isContainerOpen(index) { return false; },
   isSeparator(index) { return false; },
-  isSorted() { return this.sortcol > -1 },
+  isSorted() { return this.sortcol > -1; },
   canDrop(index, orientation) { return false; },
   drop(row, orientation) { return false; },
   getParentIndex(index) { return 0; },
@@ -249,7 +249,7 @@ const nsICookiePermission  = Components.interfaces.nsICookiePermission;
 const nsIPermissionManager = Components.interfaces.nsIPermissionManager;
 
 const nsICertificateDialogs = Components.interfaces.nsICertificateDialogs;
-const CERTIFICATEDIALOGS_CONTRACTID = "@mozilla.org/nsCertificateDialogs;1"
+const CERTIFICATEDIALOGS_CONTRACTID = "@mozilla.org/nsCertificateDialogs;1";
 
 // clipboard helper
 function getClipboardHelper() {
@@ -270,7 +270,7 @@ const XLinkNS  = "http://www.w3.org/1999/xlink";
 const XULNS    = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const XMLNS    = "http://www.w3.org/XML/1998/namespace";
 const XHTMLNS  = "http://www.w3.org/1999/xhtml";
-const XHTML2NS = "http://www.w3.org/2002/06/xhtml2"
+const XHTML2NS = "http://www.w3.org/2002/06/xhtml2";
 
 const XHTMLNSre  = "^http\:\/\/www\.w3\.org\/1999\/xhtml$";
 const XHTML2NSre = "^http\:\/\/www\.w3\.org\/2002\/06\/xhtml2$";
@@ -849,6 +849,9 @@ function makePreview(row) {
     var physWidth = 0, physHeight = 0;
     var width = 0, height = 0;
 
+    let serial = Components.classes["@mozilla.org/network/serialization-helper;1"]
+                           .getService(Components.interfaces.nsISerializationHelper);
+    let triggeringPrinStr = serial.serializeToString(gDocInfo.principal);
     if ((item.HTMLLinkElement || item.HTMLInputElement ||
          item.HTMLImageElement || item.SVGImageElement ||
          (item.HTMLObjectElement && mimeType && mimeType.startsWith("image/")) ||
@@ -887,7 +890,7 @@ function makePreview(row) {
         width = newImage.width;
         height = newImage.height;
 
-        document.getElementById("theimagecontainer").collapsed = false
+        document.getElementById("theimagecontainer").collapsed = false;
         document.getElementById("brokenimagecontainer").collapsed = true;
 
         let imageSize = "";
@@ -907,12 +910,14 @@ function makePreview(row) {
         setItemValue("imagedimensiontext", imageSize);
       }, {once: true});
 
+      newImage.setAttribute("triggeringprincipal", triggeringPrinStr);
       newImage.setAttribute("src", url);
     } else {
       // Handle the case where newImage is not used for width & height
       if (item.HTMLVideoElement && isProtocolAllowed) {
         newImage = document.createElementNS("http://www.w3.org/1999/xhtml", "video");
         newImage.id = "thepreviewimage";
+        newImage.setAttribute("triggeringprincipal", triggeringPrinStr);
         newImage.src = url;
         newImage.controls = true;
         width = physWidth = item.videoWidth;
@@ -923,6 +928,7 @@ function makePreview(row) {
       } else if (item.HTMLAudioElement && isProtocolAllowed) {
         newImage = new Audio;
         newImage.id = "thepreviewimage";
+        newImage.setAttribute("triggeringprincipal", triggeringPrinStr);
         newImage.src = url;
         newImage.controls = true;
         isAudio = true;
@@ -993,7 +999,7 @@ var imagePermissionObserver = {
       }
     }
   }
-}
+};
 
 function getContentTypeFromHeaders(cacheEntryDescriptor) {
   if (!cacheEntryDescriptor)
@@ -1014,7 +1020,7 @@ function setItemValue(id, value) {
 }
 
 function formatNumber(number) {
-  return (+number).toLocaleString();  // coerce number to a numeric value before calling toLocaleString()
+  return (+number).toLocaleString(); // coerce number to a numeric value before calling toLocaleString()
 }
 
 function formatDate(datestr, unknown) {

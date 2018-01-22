@@ -244,16 +244,6 @@ DoesNotParticipateInAutoDirection(const Element* aElement)
           aElement->IsInAnonymousSubtree());
 }
 
-static inline bool
-IsBdiWithoutDirAuto(const Element* aElement)
-{
-  // We are testing for bdi elements without explicit dir="auto", so we can't
-  // use the HasDirAuto() flag, since that will return true for bdi element with
-  // no dir attribute or an invalid dir attribute
-  return (aElement->IsHTMLElement(nsGkAtoms::bdi) &&
-          (!aElement->HasValidDir() || aElement->HasFixedDir()));
-}
-
 /**
  * Returns true if aElement is one of the element whose text content should not
  * affect the direction of ancestors with dir=auto (though it may affect its own
@@ -263,7 +253,7 @@ static bool
 DoesNotAffectDirectionOfAncestors(const Element* aElement)
 {
   return (DoesNotParticipateInAutoDirection(aElement) ||
-          IsBdiWithoutDirAuto(aElement) ||
+          aElement->IsHTMLElement(nsGkAtoms::bdi) ||
           aElement->HasFixedDir());
 }
 
@@ -421,7 +411,7 @@ WalkDescendantsSetDirectionFromText(Element* aElement, bool aNotify = true,
 class nsTextNodeDirectionalityMap
 {
   static void
-  nsTextNodeDirectionalityMapDtor(void *aObject, nsIAtom* aPropertyName,
+  nsTextNodeDirectionalityMapDtor(void *aObject, nsAtom* aPropertyName,
                                   void *aPropertyValue, void* aData)
   {
     nsINode* textNode = static_cast<nsINode * >(aObject);
@@ -429,7 +419,7 @@ class nsTextNodeDirectionalityMap
 
     nsTextNodeDirectionalityMap* map =
       reinterpret_cast<nsTextNodeDirectionalityMap * >(aPropertyValue);
-    map->EnsureMapIsClear(textNode);
+    map->EnsureMapIsClear();
     delete map;
   }
 
@@ -451,7 +441,7 @@ public:
 
   static void
   nsTextNodeDirectionalityMapPropertyDestructor(void* aObject,
-                                                nsIAtom* aProperty,
+                                                nsAtom* aProperty,
                                                 void* aPropertyValue,
                                                 void* aData)
   {
@@ -558,11 +548,11 @@ private:
     return OpRemove;
   }
 
-  static nsCheapSetOperator ClearEntry(nsPtrHashKey<Element>* aEntry, void* aData)
+  static nsCheapSetOperator TakeEntries(nsPtrHashKey<Element>* aEntry, void* aData)
   {
-    Element* rootNode = aEntry->GetKey();
-    rootNode->ClearHasDirAutoSet();
-    rootNode->DeleteProperty(nsGkAtoms::dirAutoSetBy);
+    AutoTArray<Element*, 8>* entries =
+      static_cast<AutoTArray<Element*, 8>*>(aData);
+    entries->AppendElement(aEntry->GetKey());
     return OpRemove;
   }
 
@@ -578,12 +568,15 @@ public:
     mElements.EnumerateEntries(ResetNodeDirection, &data);
   }
 
-  void EnsureMapIsClear(nsINode* aTextNode)
+  void EnsureMapIsClear()
   {
     AutoRestore<Element*> restore(mElementToBeRemoved);
-    DebugOnly<uint32_t> clearedEntries =
-      mElements.EnumerateEntries(ClearEntry, aTextNode);
-    MOZ_ASSERT(clearedEntries == 0, "Map should be empty already");
+    AutoTArray<Element*, 8> entries;
+    mElements.EnumerateEntries(TakeEntries, &entries);
+    for (Element* el : entries) {
+      el->ClearHasDirAutoSet();
+      el->DeleteProperty(nsGkAtoms::dirAutoSetBy);
+    }
   }
 
   static void RemoveElementFromMap(nsTextNode* aTextNode, Element* aElement)
@@ -623,7 +616,7 @@ public:
   static void EnsureMapIsClearFor(nsINode* aTextNode)
   {
     if (aTextNode->HasTextNodeDirectionalityMap()) {
-      GetDirectionalityMap(aTextNode)->EnsureMapIsClear(aTextNode);
+      GetDirectionalityMap(aTextNode)->EnsureMapIsClear();
     }
   }
 };

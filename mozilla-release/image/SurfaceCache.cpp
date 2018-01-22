@@ -168,7 +168,7 @@ public:
   bool IsDecoded() const { return !IsPlaceholder() && mProvider->IsFinished(); }
 
   ImageKey GetImageKey() const { return mProvider->GetImageKey(); }
-  SurfaceKey GetSurfaceKey() const { return mProvider->GetSurfaceKey(); }
+  const SurfaceKey& GetSurfaceKey() const { return mProvider->GetSurfaceKey(); }
   nsExpirationState* GetExpirationState() { return &mExpirationState; }
 
   CostEntry GetCostEntry()
@@ -775,8 +775,7 @@ public:
       aProvider->Availability().SetAvailable();
     }
 
-    NotNull<RefPtr<CachedSurface>> surface =
-      WrapNotNull(new CachedSurface(aProvider));
+    auto surface = MakeNotNull<RefPtr<CachedSurface>>(aProvider);
 
     // We require that locking succeed if the image is locked and we're not
     // inserting a placeholder; the caller may need to know this to handle

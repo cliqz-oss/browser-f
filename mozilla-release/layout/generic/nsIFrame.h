@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -67,7 +67,7 @@
  * 5. the view system handles moving of widgets, i.e., it's not our problem
  */
 
-class nsIAtom;
+class nsAtom;
 class nsPresContext;
 class nsIPresShell;
 class nsView;
@@ -76,6 +76,7 @@ class nsISelectionController;
 class nsBoxLayoutState;
 class nsBoxLayout;
 class nsILineIterator;
+class nsDisplayItem;
 class nsDisplayListBuilder;
 class nsDisplayListSet;
 class nsDisplayList;
@@ -109,6 +110,7 @@ class EffectSet;
 
 namespace layers {
 class Layer;
+class LayerManager;
 } // namespace layers
 
 } // namespace mozilla
@@ -593,6 +595,7 @@ public:
 
   typedef mozilla::FrameProperties FrameProperties;
   typedef mozilla::layers::Layer Layer;
+  typedef mozilla::layers::LayerManager LayerManager;
   typedef mozilla::layout::FrameChildList ChildList;
   typedef mozilla::layout::FrameChildListID ChildListID;
   typedef mozilla::layout::FrameChildListIDs ChildListIDs;
@@ -603,7 +606,7 @@ public:
   typedef mozilla::gfx::Matrix4x4 Matrix4x4;
   typedef mozilla::Sides Sides;
   typedef mozilla::LogicalSides LogicalSides;
-  typedef mozilla::SmallPointerArray<mozilla::DisplayItemData> DisplayItemArray;
+  typedef mozilla::SmallPointerArray<mozilla::DisplayItemData> DisplayItemDataArray;
   typedef nsQueryFrame::ClassID ClassID;
 
   NS_DECL_QUERYFRAME_TARGET(nsIFrame)
@@ -623,6 +626,12 @@ public:
     , mParentIsWrapperAnonBox(false)
     , mIsWrapperBoxNeedingRestyle(false)
     , mReflowRequestedForCharDataChange(false)
+    , mForceDescendIntoIfVisible(false)
+    , mBuiltDisplayList(false)
+    , mFrameIsModified(false)
+    , mHasOverrideDirtyRegion(false)
+    , mMayHaveWillChangeBudget(false)
+    , mBuiltBlendContainer(false)
     , mIsPrimaryFrame(false)
   {
     mozilla::PodZero(&mOverflow);
@@ -630,6 +639,10 @@ public:
 
   nsPresContext* PresContext() const {
     return StyleContext()->PresContext();
+  }
+
+  nsIPresShell* PresShell() const {
+    return PresContext()->PresShell();
   }
 
   /**
@@ -650,6 +663,22 @@ public:
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) = 0;
 
+  using PostDestroyData = mozilla::layout::PostFrameDestroyData;
+  struct MOZ_RAII AutoPostDestroyData
+  {
+    explicit AutoPostDestroyData(nsPresContext* aPresContext)
+      : mPresContext(aPresContext) {}
+    ~AutoPostDestroyData() {
+      for (auto& content : mozilla::Reversed(mData.mAnonymousContent)) {
+        nsIFrame::DestroyAnonymousContent(mPresContext, content.forget());
+      }
+      for (auto& content : mozilla::Reversed(mData.mGeneratedContent)) {
+        content->UnbindFromTree();
+      }
+    }
+    nsPresContext* mPresContext;
+    PostDestroyData mData;
+  };
   /**
    * Destroys this frame and each of its child frames (recursively calls
    * Destroy() for each child). If this frame is a first-continuation, this
@@ -658,7 +687,11 @@ public:
    * If the frame is a placeholder, it also ensures the out-of-flow frame's
    * removal and destruction.
    */
-  void Destroy() { DestroyFrom(this); }
+  void Destroy() {
+    AutoPostDestroyData data(PresContext());
+    DestroyFrom(this, data.mData);
+    // Note that |this| is deleted at this point.
+  }
 
   /** Flags for PeekOffsetCharacter, PeekOffsetNoAmount, PeekOffsetWord return values.
     */
@@ -694,6 +727,8 @@ public:
   };
 
 protected:
+  friend class nsBlockFrame; // for access to DestroyFrom
+
   /**
    * Return true if the frame is part of a Selection.
    * Helper method to implement the public IsSelected() API.
@@ -709,7 +744,7 @@ protected:
    *
    * @param  aDestructRoot is the root of the subtree being destroyed
    */
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) = 0;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) = 0;
   friend class nsFrameList; // needed to pass aDestructRoot through to children
   friend class nsLineBox;   // needed to pass aDestructRoot through to children
   friend class nsContainerFrame; // needed to pass aDestructRoot through to children
@@ -1003,6 +1038,9 @@ public:
    * we don't bother as the cost of the allocation has already been paid.)
    */
   void SetRect(const nsRect& aRect) {
+    if (aRect == mRect) {
+      return;
+    }
     if (mOverflow.mType != NS_FRAME_OVERFLOW_LARGE &&
         mOverflow.mType != NS_FRAME_OVERFLOW_NONE) {
       nsOverflowAreas overflow = GetOverflowAreas();
@@ -1011,6 +1049,7 @@ public:
     } else {
       mRect = aRect;
     }
+    MarkNeedsDisplayItemRebuild();
   }
   /**
    * Set this frame's rect from a logical rect in its own writing direction
@@ -1063,15 +1102,21 @@ public:
     SetRect(nsRect(mRect.TopLeft(), aSize));
   }
 
-  void SetPosition(const nsPoint& aPt) { mRect.MoveTo(aPt); }
+  void SetPosition(const nsPoint& aPt) {
+    if (mRect.TopLeft() == aPt) {
+      return;
+    }
+    mRect.MoveTo(aPt);
+    MarkNeedsDisplayItemRebuild();
+  }
   void SetPosition(mozilla::WritingMode aWritingMode,
                    const mozilla::LogicalPoint& aPt,
                    const nsSize& aContainerSize) {
     // We subtract mRect.Size() from the container size to account for
     // the fact that logical origins in RTL coordinate systems are at
     // the top right of the frame instead of the top left.
-    mRect.MoveTo(aPt.GetPhysicalPoint(aWritingMode,
-                                      aContainerSize - mRect.Size()));
+    SetPosition(aPt.GetPhysicalPoint(aWritingMode,
+                                    aContainerSize - mRect.Size()));
   }
 
   /**
@@ -1130,8 +1175,7 @@ public:
 
   nsPoint GetPositionIgnoringScrolling();
 
-  typedef AutoTArray<nsIContent*, 2> ContentArray;
-  static void DestroyContentArray(ContentArray* aArray);
+  typedef AutoTArray<nsDisplayItem*, 4> DisplayItemArray;
 
   typedef mozilla::layers::WebRenderUserData WebRenderUserData;
   typedef nsRefPtrHashtable<nsUint32HashKey, WebRenderUserData> WebRenderUserDataTable;
@@ -1227,8 +1271,8 @@ public:
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(IBaselinePadProperty, nscoord)
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(BBaselinePadProperty, nscoord)
 
-  NS_DECLARE_FRAME_PROPERTY_WITH_DTOR(GenConProperty, ContentArray,
-                                      DestroyContentArray)
+  NS_DECLARE_FRAME_PROPERTY_DELETABLE(ModifiedFrameList, nsTArray<nsIFrame*>)
+  NS_DECLARE_FRAME_PROPERTY_DELETABLE(DisplayItems, DisplayItemArray)
 
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(BidiDataProperty, mozilla::FrameBidiData)
 
@@ -1679,9 +1723,13 @@ public:
   /**
    * Builds a display list for the content represented by this frame,
    * treating this frame as the root of a stacking context.
+   * Optionally sets aCreatedContainerItem to true if we created a
+   * single container display item for the stacking context, and no
+   * other wrapping items are needed.
    */
   void BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
-                                          nsDisplayList*        aList);
+                                          nsDisplayList*        aList,
+                                          bool*                 aCreatedContainerItem = nullptr);
 
   enum {
     DISPLAY_CHILD_FORCE_PSEUDO_STACKING_CONTEXT = 0x01,
@@ -2046,7 +2094,7 @@ public:
    *   The constants are defined in nsIDOMMutationEvent.h.
    */
   virtual nsresult  AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType) = 0;
 
   /**
@@ -2795,9 +2843,13 @@ public:
    * @return A Matrix4x4 that converts points in this frame's coordinate space
    *   into points in aOutAncestor's coordinate space.
    */
+  enum {
+    IN_CSS_UNITS = 1 << 0,
+    STOP_AT_STACKING_CONTEXT_AND_DISPLAY_PORT = 1 << 1
+  };
   Matrix4x4 GetTransformMatrix(const nsIFrame* aStopAtAncestor,
                                nsIFrame **aOutAncestor,
-                               bool aInCSSUnits = false);
+                               uint32_t aFlags = 0);
 
   /**
    * Bit-flags to pass to IsFrameOfType()
@@ -3026,7 +3078,7 @@ public:
     PAINT_COMPOSITE_ONLY,
     PAINT_DELAYED_COMPRESS
   };
-  void SchedulePaint(PaintType aType = PAINT_DEFAULT);
+  void SchedulePaint(PaintType aType = PAINT_DEFAULT, bool aFrameChanged = true);
 
   // Similar to SchedulePaint() but without calling
   // InvalidateRenderingObservers() for SVG.
@@ -3057,6 +3109,8 @@ public:
                          const nsIntRect* aDamageRect = nullptr,
                          const nsRect* aFrameDamageRect = nullptr,
                          uint32_t aFlags = 0);
+
+  void MarkNeedsDisplayItemRebuild();
 
   /**
    * Returns a rect that encompasses everything that might be painted by
@@ -3454,12 +3508,25 @@ public:
   virtual bool IsVisibleInSelection(nsISelection* aSelection);
 
   /**
-   * Determines whether this frame is a pseudo stacking context, looking
-   * only as style --- i.e., assuming that it's in-flow and not a replaced
-   * element and not an SVG element.
-   * XXX maybe check IsTransformed()?
+   * Determines if this frame has a container effect that requires
+   * it to paint as a visually atomic unit.
    */
-  bool IsPseudoStackingContextFromStyle();
+  bool IsVisuallyAtomic(mozilla::EffectSet* aEffectSet,
+                        const nsStyleDisplay* aStyleDisplay,
+                        const nsStyleEffects* aStyleEffects);
+
+  /**
+   * Determines if this frame is a stacking context.
+   *
+   * @param aIsPositioned The precomputed result of IsAbsPosContainingBlock
+   * on the StyleDisplay().
+   * @param aIsVisuallyAtomic The precomputed result of IsVisuallyAtomic.
+   */
+  bool IsStackingContext(const nsStyleDisplay* aStyleDisplay,
+                         const nsStylePosition* aStylePosition,
+                         bool aIsPositioned,
+                         bool aIsVisuallyAtomic);
+  bool IsStackingContext();
 
   virtual bool HonorPrintBackgroundSettings() { return true; }
 
@@ -3807,6 +3874,10 @@ public:
   // clears this bit if so.
   bool CheckAndClearPaintedState();
 
+  // Checks if we (or any of our descendents) have mBuiltDisplayList set, and
+  // clears this bit if so.
+  bool CheckAndClearDisplayListState();
+
   // CSS visibility just doesn't cut it because it doesn't inherit through
   // documents. Also if this frame is in a hidden card of a deck then it isn't
   // visible either and that isn't expressed using CSS visibility. Also if it
@@ -3885,7 +3956,8 @@ public:
   uint8_t VerticalAlignEnum() const;
   enum { eInvalidVerticalAlign = 0xFF };
 
-  void CreateOwnLayerIfNeeded(nsDisplayListBuilder* aBuilder, nsDisplayList* aList);
+  void CreateOwnLayerIfNeeded(nsDisplayListBuilder* aBuilder, nsDisplayList* aList,
+                              bool* aCreatedContainerItem = nullptr);
 
   /**
    * Adds the NS_FRAME_IN_POPUP state bit to aFrame, and
@@ -4047,11 +4119,35 @@ public:
                             const nsStyleCoord& aCoord,
                             ComputeSizeFlags    aFlags = eDefault);
 
-  DisplayItemArray& DisplayItemData() { return mDisplayItemData; }
+  DisplayItemDataArray& DisplayItemData() { return mDisplayItemData; }
 
-  void DestroyAnonymousContent(already_AddRefed<nsIContent> aContent);
+  void AddDisplayItem(nsDisplayItem* aItem);
+  bool RemoveDisplayItem(nsDisplayItem* aItem);
+  void RemoveDisplayItemDataForDeletion();
+  bool HasDisplayItems();
+  bool HasDisplayItem(nsDisplayItem* aItem);
+
+  bool ForceDescendIntoIfVisible() { return mForceDescendIntoIfVisible; }
+  void SetForceDescendIntoIfVisible(bool aForce) { mForceDescendIntoIfVisible = aForce; }
+
+  bool BuiltDisplayList() { return mBuiltDisplayList; }
+  void SetBuiltDisplayList(bool aBuilt) { mBuiltDisplayList = aBuilt; }
+
+  bool IsFrameModified() { return mFrameIsModified; }
+  void SetFrameIsModified(bool aFrameIsModified) { mFrameIsModified = aFrameIsModified; }
+
+  bool HasOverrideDirtyRegion() { return mHasOverrideDirtyRegion; }
+  void SetHasOverrideDirtyRegion(bool aHasDirtyRegion) { mHasOverrideDirtyRegion = aHasDirtyRegion; }
+
+  bool MayHaveWillChangeBudget() { return mMayHaveWillChangeBudget; }
+  void SetMayHaveWillChangeBudget(bool aHasBudget) { mMayHaveWillChangeBudget = aHasBudget; }
+
+  bool BuiltBlendContainer() { return mBuiltBlendContainer; }
+  void SetBuiltBlendContainer(bool aBuilt) { mBuiltBlendContainer = aBuilt; }
 
 protected:
+  static void DestroyAnonymousContent(nsPresContext* aPresContext,
+                                      already_AddRefed<nsIContent>&& aContent);
 
   /**
    * Reparent this frame's view if it has one.
@@ -4075,7 +4171,8 @@ private:
   nsContainerFrame* mParent;
   nsIFrame*        mNextSibling;  // doubly-linked list of frames
   nsIFrame*        mPrevSibling;  // Do not touch outside SetNextSibling!
-  DisplayItemArray mDisplayItemData;
+
+  DisplayItemDataArray mDisplayItemData;
 
   void MarkAbsoluteFramesForDisplayList(nsDisplayListBuilder* aBuilder);
 
@@ -4211,6 +4308,37 @@ protected:
    */
   bool mReflowRequestedForCharDataChange : 1;
 
+  /**
+   * This bit is used during BuildDisplayList to mark frames that need to
+   * have display items rebuilt. We will descend into them if they are
+   * currently visible, even if they don't intersect the dirty area.
+   */
+  bool mForceDescendIntoIfVisible : 1;
+
+  /**
+   * True if we have built display items for this frame since
+   * the last call to CheckAndClearDisplayListState, false
+   * otherwise. Used for the reftest harness to verify minimal
+   * display list building.
+   */
+  bool mBuiltDisplayList : 1;
+
+  bool mFrameIsModified : 1;
+
+  bool mHasOverrideDirtyRegion : 1;
+
+  /**
+   * True if frame has will-change, and currently has display
+   * items consuming some of the will-change budget.
+   */
+  bool mMayHaveWillChangeBudget : 1;
+
+  /**
+   * True if we built an nsDisplayBlendContainer last time
+   * we did retained display list building for this frame.
+   */
+  bool mBuiltBlendContainer : 1;
+
 private:
   /**
    * True if this is the primary frame for mContent.
@@ -4219,7 +4347,7 @@ private:
 
 protected:
 
-  // There is a 9-bit gap left here.
+  // There is a 3-bit gap left here.
 
   // Helpers
   /**
@@ -4422,8 +4550,6 @@ public:
 #ifdef DEBUG
 public:
   virtual nsFrameState  GetDebugStateBits() const = 0;
-  virtual nsresult  DumpRegressionData(nsPresContext* aPresContext,
-                                       FILE* out, int32_t aIndent) = 0;
 #endif
 };
 

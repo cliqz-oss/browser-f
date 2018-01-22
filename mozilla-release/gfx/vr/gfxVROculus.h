@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -36,11 +37,11 @@ enum class OculusControllerAxisType : uint16_t {
 
 class VROculusSession
 {
-  NS_INLINE_DECL_REFCOUNTING(VROculusSession);
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VROculusSession);
   friend class VRDisplayOculus;
 public:
   VROculusSession();
-  void Refresh();
+  void Refresh(bool aForceRefresh = false);
   bool IsTrackingReady() const;
   bool IsRenderReady() const;
   ovrSession Get();
@@ -65,6 +66,7 @@ private:
   TimeStamp mLastPresentationEnd;
   VRTelemetry mTelemetry;
   bool mPresenting;
+  bool mDrawBlack;
 
   ~VROculusSession();
   void Uninitialize(bool aUnloadLib);
@@ -89,7 +91,7 @@ protected:
   virtual VRHMDSensorState GetSensorState() override;
   virtual void StartPresentation() override;
   virtual void StopPresentation() override;
-  virtual bool SubmitFrame(mozilla::layers::TextureSourceD3D11* aSource,
+  virtual bool SubmitFrame(ID3D11Texture2D* aSource,
                            const IntSize& aSize,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect) override;
@@ -121,6 +123,7 @@ protected:
   float mEyeHeight;
 
   bool UpdateConstantBuffers();
+  void UpdateEyeParameters(gfx::Matrix4x4* aHeadToEyeTransforms = nullptr);
 
   struct Vertex
   {

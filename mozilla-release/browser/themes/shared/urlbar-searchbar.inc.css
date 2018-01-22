@@ -4,6 +4,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 %endif
 
+:root {
+  /* 28x28 box - 16x16 image = 12x12 padding, 6 on each side */
+  --urlbar-icon-padding: 6px;
+}
+
+:root[uidensity=compact] {
+  /* 24x24 box - 16x16 image = 8x8 padding, 4 on each side */
+  --urlbar-icon-padding: 4px;
+}
+
+:root[uidensity=touch] {
+  /* 30x30 box - 16x16 image = 14x14 padding, 7 on each side */
+  --urlbar-icon-padding: 7px;
+}
+
 #urlbar,
 .searchbar-textbox {
   -moz-appearance: none;
@@ -14,6 +29,7 @@
   padding: 0;
   margin: 3px 5px;
   min-height: 30px;
+  cursor: default;
   overflow: -moz-hidden-unscrollable;
 }
 
@@ -53,13 +69,12 @@
   margin-inline-end: 0;
 }
 
-#urlbar-container {
-  -moz-box-align: center;
+:root[customizing] .urlbar-input-box {
+  visibility: hidden;
 }
 
-.urlbar-input-box,
-.searchbar-textbox > .autocomplete-textbox-container > .textbox-input-box {
-  margin: 0;
+#urlbar-container {
+  -moz-box-align: center;
 }
 
 #urlbar-search-splitter {
@@ -104,7 +119,12 @@
 
 #pageAction-panel-sendToDevice,
 #pageAction-urlbar-sendToDevice {
-  list-style-image: url("chrome://browser/skin/device-mobile.svg");
+  list-style-image: url("chrome://browser/skin/send-to-device.svg");
+}
+
+#pageAction-panel-sendToDevice:-moz-locale-dir(rtl) > .toolbarbutton-icon,
+#pageAction-urlbar-sendToDevice:-moz-locale-dir(rtl) {
+  transform: scaleX(-1);
 }
 
 .pageAction-sendToDevice-device[clientType=mobile] {
@@ -169,36 +189,35 @@
 .urlbar-icon {
   width: 28px;
   height: 28px;
-  /* 28x28 box - 16x16 image = 12x12 padding, 6 on each side */
-  padding: 6px;
+  padding: var(--urlbar-icon-padding);
   -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
   fill-opacity: 0.6;
   color: inherit;
 }
 
+.urlbar-page-action[disabled] {
+  fill-opacity: 0.3;
+}
+
 :root[uidensity=compact] .urlbar-icon {
   width: 24px;
   height: 24px;
-  /* 24x24 box - 16x16 image = 8x8 padding, 4 on each side */
-  padding: 4px;
 }
 
 :root[uidensity=touch] .urlbar-icon {
   width: 30px;
   height: 30px;
-  /* 30x30 box - 16x16 image = 14x14 padding, 7 on each side */
-  padding: 7px;
 }
 
-.urlbar-icon:hover,
-.urlbar-icon-wrapper:hover {
+.urlbar-icon:not([disabled]):hover,
+.urlbar-icon-wrapper:not([disabled]):hover {
   background-color: hsla(0,0%,80%,.4);
 }
 
 .urlbar-icon[open],
 .urlbar-icon-wrapper[open],
-.urlbar-icon:hover:active,
+.urlbar-icon:not([disabled]):hover:active,
 .urlbar-icon-wrapper:hover:active {
   background-color: hsla(0,0%,80%,.6);
 }
@@ -223,6 +242,11 @@
   -moz-appearance: none;
   list-style-image: url(chrome://global/skin/icons/arrow-dropdown-16.svg);
   transition: opacity 0.15s ease;
+}
+
+/* Avoid re-opening the popup when the dropmarker is clicked while the popup is still open. */
+.urlbar-history-dropmarker[open] {
+  pointer-events: none;
 }
 
 #urlbar[switchingtabs] > .urlbar-textbox-container > .urlbar-history-dropmarker {
@@ -279,12 +303,8 @@
   /* .urlbar-icon has width 28px. Each frame is 33px wide. Set margin-inline-start
      to be half the difference, -2.5px. */
   margin-inline-start: -2.5px;
-  /* Set the height to equal the height of each frame of the SVG. Must use
-     min- and max- width and height due to bug 1379332. */
-  min-width: 33px;
-  max-width: 33px;
-  min-height: 33px;
-  max-height: 33px;
+  width: 33px; /* Width of each frame within the SVG sprite */
+  height: 33px; /* Height of each frame within the SVG sprite */
 }
 
 :root[uidensity=compact] #star-button-box[animationsenabled] > #star-button[starred][animate] + #star-button-animatable-box {
@@ -326,12 +346,6 @@
 #reader-mode-button[readeractive] {
   fill: var(--toolbarbutton-icon-fill-attention);
   fill-opacity: 1;
-}
-
-/* Blocked popup icon */
-
-#page-report-button {
-  list-style-image: url(chrome://browser/skin/notification-icons/popup.svg);
 }
 
 /* Zoom button */

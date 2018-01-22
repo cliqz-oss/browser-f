@@ -7,9 +7,7 @@
 use values::animated::ToAnimatedZero;
 
 /// A generic value for the `vertical-align` property.
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, PartialEq)]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf, PartialEq)]
 #[derive(ToComputedValue, ToCss)]
 pub enum VerticalAlign<LengthOrPercentage> {
     /// `baseline`
@@ -47,4 +45,13 @@ impl<L> ToAnimatedZero for VerticalAlign<L> {
     fn to_animated_zero(&self) -> Result<Self, ()> {
         Err(())
     }
+}
+
+/// https://drafts.csswg.org/css-animations/#animation-iteration-count
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
+pub enum AnimationIterationCount<Number> {
+    /// A `<number>` value.
+    Number(Number),
+    /// The `infinite` keyword.
+    Infinite,
 }

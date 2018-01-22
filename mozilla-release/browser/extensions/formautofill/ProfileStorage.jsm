@@ -58,8 +58,8 @@
  *
  *       // credit card fields
  *       cc-name,
- *       cc-number,            // e.g. ************1234
- *       cc-number-encrypted,
+ *       cc-number,            // will be stored in masked format (************1234)
+ *                             // (see details below)
  *       cc-exp-month,
  *       cc-exp-year,          // 2-digit year will be converted to 4 digits
  *                             // upon saving
@@ -69,6 +69,8 @@
  *       cc-given-name,
  *       cc-additional-name,
  *       cc-family-name,
+ *       cc-number-encrypted,  // encrypted from the original unmasked "cc-number"
+ *                             // (see details below)
  *       cc-exp,
  *
  *       // metadata
@@ -80,6 +82,22 @@
  *     }
  *   ]
  * }
+ *
+ *
+ * Encrypt-related Credit Card Fields (cc-number & cc-number-encrypted):
+ *
+ * When saving or updating a credit-card record, the storage will encrypt the
+ * value of "cc-number", store the encrypted number in "cc-number-encrypted"
+ * field, and replace "cc-number" field with the masked number. These all happen
+ * in "_computeFields". We do reverse actions in "_stripComputedFields", which
+ * decrypts "cc-number-encrypted", restores it to "cc-number", and deletes
+ * "cc-number-encrypted". Therefore, calling "_stripComputedFields" followed by
+ * "_computeFields" can make sure the encrypt-related fields are up-to-date.
+ *
+ * In general, you have to decrypt the number by your own outside ProfileStorage
+ * when necessary. However, you will get the decrypted records when querying
+ * data with "rawData=true" to ensure they're ready to sync.
+ *
  *
  * Sync Metadata:
  *
@@ -182,7 +200,6 @@ const VALID_ADDRESS_COMPUTED_FIELDS = [
 const VALID_CREDIT_CARD_FIELDS = [
   "cc-name",
   "cc-number",
-  "cc-number-encrypted",
   "cc-exp-month",
   "cc-exp-year",
 ];
@@ -191,6 +208,7 @@ const VALID_CREDIT_CARD_COMPUTED_FIELDS = [
   "cc-given-name",
   "cc-additional-name",
   "cc-family-name",
+  "cc-number-encrypted",
   "cc-exp",
 ];
 
@@ -247,7 +265,7 @@ class AutofillRecords {
     this._schemaVersion = schemaVersion;
 
     let hasChanges = (result, record) => this._migrateRecord(record) || result;
-    if (this._store.data[this._collectionName].reduce(hasChanges, false)) {
+    if (this.data.reduce(hasChanges, false)) {
       this._store.saveSoon();
     }
   }
@@ -260,6 +278,16 @@ class AutofillRecords {
    */
   get version() {
     return this._schemaVersion;
+  }
+
+  /**
+   * Gets the data of this collection.
+   *
+   * @returns {array}
+   *          The data object.
+   */
+  get data() {
+    return this._store.data[this._collectionName];
   }
 
   // Ensures that we don't try to apply synced records with newer schema
@@ -285,42 +313,37 @@ class AutofillRecords {
   add(record, {sourceSync = false} = {}) {
     this.log.debug("add:", record);
 
+    let recordToSave = this._cloneAndCleanUp(record);
+
     if (sourceSync) {
       // Remove tombstones for incoming items that were changed on another
       // device. Local deletions always lose to avoid data loss.
-      let index = this._findIndexByGUID(record.guid, {
+      let index = this._findIndexByGUID(recordToSave.guid, {
         includeDeleted: true,
       });
       if (index > -1) {
-        let existing = this._store.data[this._collectionName][index];
+        let existing = this.data[index];
         if (existing.deleted) {
-          this._store.data[this._collectionName].splice(index, 1);
+          this.data.splice(index, 1);
         } else {
-          throw new Error(`Record ${record.guid} already exists`);
+          throw new Error(`Record ${recordToSave.guid} already exists`);
         }
       }
-      let recordToSave = this._clone(record);
-      return this._saveRecord(recordToSave, {sourceSync});
+    } else if (!recordToSave.deleted) {
+      this._normalizeRecord(recordToSave);
+
+      recordToSave.guid = this._generateGUID();
+      recordToSave.version = this.version;
+
+      // Metadata
+      let now = Date.now();
+      recordToSave.timeCreated = now;
+      recordToSave.timeLastModified = now;
+      recordToSave.timeLastUsed = 0;
+      recordToSave.timesUsed = 0;
     }
 
-    if (record.deleted) {
-      return this._saveRecord(record);
-    }
-
-    let recordToSave = this._clone(record);
-    this._normalizeRecord(recordToSave);
-
-    recordToSave.guid = this._generateGUID();
-    recordToSave.version = this.version;
-
-    // Metadata
-    let now = Date.now();
-    recordToSave.timeCreated = now;
-    recordToSave.timeLastModified = now;
-    recordToSave.timeLastUsed = 0;
-    recordToSave.timesUsed = 0;
-
-    return this._saveRecord(recordToSave);
+    return this._saveRecord(recordToSave, {sourceSync});
   }
 
   _saveRecord(record, {sourceSync = false} = {}) {
@@ -341,6 +364,7 @@ class AutofillRecords {
     } else {
       this._ensureMatchingVersion(record);
       recordToSave = record;
+      this._computeFields(recordToSave);
     }
 
     if (sourceSync) {
@@ -348,9 +372,7 @@ class AutofillRecords {
       sync.changeCounter = 0;
     }
 
-    this._computeFields(recordToSave);
-
-    this._store.data[this._collectionName].push(recordToSave);
+    this.data.push(recordToSave);
 
     this._store.saveSoon();
 
@@ -380,13 +402,16 @@ class AutofillRecords {
   update(guid, record, preserveOldProperties = false) {
     this.log.debug("update:", guid, record);
 
-    let recordFound = this._findByGUID(guid);
-    if (!recordFound) {
+    let recordFoundIndex = this._findIndexByGUID(guid);
+    if (recordFoundIndex == -1) {
       throw new Error("No matching record.");
     }
 
-    // Clone the record by Object assign API to preserve the property with empty string.
-    let recordToUpdate = Object.assign({}, record);
+    // Clone the record before modifying it to avoid exposing incomplete changes.
+    let recordFound = this._clone(this.data[recordFoundIndex]);
+    this._stripComputedFields(recordFound);
+
+    let recordToUpdate = this._clone(record);
     this._normalizeRecord(recordToUpdate);
 
     for (let field of this.VALID_FIELDS) {
@@ -398,7 +423,7 @@ class AutofillRecords {
         newValue = oldValue;
       }
 
-      if (!newValue) {
+      if (newValue === undefined || newValue === "") {
         delete recordFound[field];
       } else {
         recordFound[field] = newValue;
@@ -413,8 +438,8 @@ class AutofillRecords {
       syncMetadata.changeCounter += 1;
     }
 
-    this._stripComputedFields(recordFound);
     this._computeFields(recordFound);
+    this.data[recordFoundIndex] = recordFound;
 
     this._store.saveSoon();
 
@@ -465,7 +490,7 @@ class AutofillRecords {
         this.log.warn("attempting to remove non-existing entry", guid);
         return;
       }
-      let existing = this._store.data[this._collectionName][index];
+      let existing = this.data[index];
       if (existing.deleted) {
         return; // already a tombstone - don't touch it.
       }
@@ -473,7 +498,7 @@ class AutofillRecords {
       if (existingSync) {
         // existing sync metadata means it has been synced. This means we must
         // leave a tombstone behind.
-        this._store.data[this._collectionName][index] = {
+        this.data[index] = {
           guid,
           timeLastModified: Date.now(),
           deleted: true,
@@ -483,7 +508,7 @@ class AutofillRecords {
       } else {
         // If there's no sync meta-data, this record has never been synced, so
         // we can delete it.
-        this._store.data[this._collectionName].splice(index, 1);
+        this.data.splice(index, 1);
       }
     }
 
@@ -511,7 +536,7 @@ class AutofillRecords {
     }
 
     // The record is cloned to avoid accidental modifications from outside.
-    let clonedRecord = this._clone(recordFound);
+    let clonedRecord = this._cloneAndCleanUp(recordFound);
     if (rawData) {
       this._stripComputedFields(clonedRecord);
     } else {
@@ -533,9 +558,9 @@ class AutofillRecords {
   getAll({rawData = false, includeDeleted = false} = {}) {
     this.log.debug("getAll", rawData, includeDeleted);
 
-    let records = this._store.data[this._collectionName].filter(r => !r.deleted || includeDeleted);
+    let records = this.data.filter(r => !r.deleted || includeDeleted);
     // Records are cloned to avoid accidental modifications from outside.
-    let clonedRecords = records.map(r => this._clone(r));
+    let clonedRecords = records.map(r => this._cloneAndCleanUp(r));
     clonedRecords.forEach(record => {
       if (rawData) {
         this._stripComputedFields(record);
@@ -599,16 +624,17 @@ class AutofillRecords {
    * remote record, and the shared parent that we synthesize from the last
    * synced fields - see _maybeStoreLastSyncedField.
    *
-   * @param   {Object} localRecord
-   *          The changed local record, currently in storage.
+   * @param   {Object} strippedLocalRecord
+   *          The changed local record, currently in storage. Computed fields
+   *          are stripped.
    * @param   {Object} remoteRecord
    *          The remote record.
    * @returns {Object|null}
    *          The merged record, or `null` if there are conflicts and the
    *          records can't be merged.
    */
-  _mergeSyncedRecords(localRecord, remoteRecord) {
-    let sync = this._getSyncMetaData(localRecord, true);
+  _mergeSyncedRecords(strippedLocalRecord, remoteRecord) {
+    let sync = this._getSyncMetaData(strippedLocalRecord, true);
 
     // Copy all internal fields from the remote record. We'll update their
     // values in `_replaceRecordAt`.
@@ -627,30 +653,30 @@ class AutofillRecords {
         // determine if the local and remote values are different. Hashing is
         // expensive, but we don't expect this to happen frequently.
         let lastSyncedValue = sync.lastSyncedFields[field];
-        isLocalSame = lastSyncedValue == sha512(localRecord[field]);
+        isLocalSame = lastSyncedValue == sha512(strippedLocalRecord[field]);
         isRemoteSame = lastSyncedValue == sha512(remoteRecord[field]);
       } else {
         // Otherwise, if the field hasn't changed since the last sync, we know
         // it's the same locally.
         isLocalSame = true;
-        isRemoteSame = localRecord[field] == remoteRecord[field];
+        isRemoteSame = strippedLocalRecord[field] == remoteRecord[field];
       }
 
       let value;
       if (isLocalSame && isRemoteSame) {
         // Local and remote are the same; doesn't matter which one we pick.
-        value = localRecord[field];
+        value = strippedLocalRecord[field];
       } else if (isLocalSame && !isRemoteSame) {
         value = remoteRecord[field];
       } else if (!isLocalSame && isRemoteSame) {
         // We don't need to bump the change counter when taking the local
         // change, because the counter must already be > 0 if we're attempting
         // a three-way merge.
-        value = localRecord[field];
-      } else if (localRecord[field] == remoteRecord[field]) {
+        value = strippedLocalRecord[field];
+      } else if (strippedLocalRecord[field] == remoteRecord[field]) {
         // Shared parent doesn't match either local or remote, but the values
         // are identical, so there's no conflict.
-        value = localRecord[field];
+        value = strippedLocalRecord[field];
       } else {
         // Both local and remote changed to different values. We'll need to fork
         // the local record to resolve the conflict.
@@ -680,12 +706,12 @@ class AutofillRecords {
    *          it's uploaded.
    */
   _replaceRecordAt(index, remoteRecord, {keepSyncMetadata = false} = {}) {
-    let localRecord = this._store.data[this._collectionName][index];
+    let localRecord = this.data[index];
     let newRecord = this._clone(remoteRecord);
 
     this._stripComputedFields(newRecord);
 
-    this._store.data[this._collectionName][index] = newRecord;
+    this.data[index] = newRecord;
 
     if (keepSyncMetadata) {
       // It's safe to move the Sync metadata from the old record to the new
@@ -724,18 +750,14 @@ class AutofillRecords {
    * Clones a local record, giving the clone a new GUID and Sync metadata. The
    * original record remains unchanged in storage.
    *
-   * @param   {Object} localRecord
-   *          The local record.
+   * @param   {Object} strippedLocalRecord
+   *          The local record. Computed fields are stripped.
    * @returns {string}
    *          A clone of the local record with a new GUID.
    */
-  _forkLocalRecord(localRecord) {
-    let forkedLocalRecord = this._clone(localRecord);
-
-    this._stripComputedFields(forkedLocalRecord);
-
+  _forkLocalRecord(strippedLocalRecord) {
+    let forkedLocalRecord = this._cloneAndCleanUp(strippedLocalRecord);
     forkedLocalRecord.guid = this._generateGUID();
-    this._store.data[this._collectionName].push(forkedLocalRecord);
 
     // Give the record fresh Sync metadata and bump its change counter as a
     // side effect. This also excludes the forked record from de-duping on the
@@ -744,6 +766,7 @@ class AutofillRecords {
     this._getSyncMetaData(forkedLocalRecord, true);
 
     this._computeFields(forkedLocalRecord);
+    this.data.push(forkedLocalRecord);
 
     return forkedLocalRecord;
   }
@@ -774,7 +797,7 @@ class AutofillRecords {
       throw new Error(`Record ${remoteRecord.guid} not found`);
     }
 
-    let localRecord = this._store.data[this._collectionName][localIndex];
+    let localRecord = this.data[localIndex];
     let sync = this._getSyncMetaData(localRecord, true);
 
     let forkedGUID = null;
@@ -785,7 +808,10 @@ class AutofillRecords {
         keepSyncMetadata: false,
       });
     } else {
-      let mergedRecord = this._mergeSyncedRecords(localRecord, remoteRecord);
+      let strippedLocalRecord = this._clone(localRecord);
+      this._stripComputedFields(strippedLocalRecord);
+
+      let mergedRecord = this._mergeSyncedRecords(strippedLocalRecord, remoteRecord);
       if (mergedRecord) {
         // Local and remote modified, but we were able to merge. Replace the
         // local record with the merged record.
@@ -795,7 +821,7 @@ class AutofillRecords {
       } else {
         // Merge conflict. Fork the local record, then replace the original
         // with the merged record.
-        let forkedLocalRecord = this._forkLocalRecord(localRecord);
+        let forkedLocalRecord = this._forkLocalRecord(strippedLocalRecord);
         forkedGUID = forkedLocalRecord.guid;
         this._replaceRecordAt(localIndex, remoteRecord, {
           keepSyncMetadata: false,
@@ -825,11 +851,11 @@ class AutofillRecords {
 
       let sync = this._getSyncMetaData(tombstone, true);
       sync.changeCounter = 0;
-      this._store.data[this._collectionName].push(tombstone);
+      this.data.push(tombstone);
       return;
     }
 
-    let existing = this._store.data[this._collectionName][index];
+    let existing = this.data[index];
     let sync = this._getSyncMetaData(existing, true);
     if (sync.changeCounter > 0) {
       // Deleting a record with unsynced local changes. To avoid potential
@@ -846,7 +872,7 @@ class AutofillRecords {
 
     // Removing a record that's not changed locally, and that's not already
     // deleted. Replace the record with a synced tombstone.
-    this._store.data[this._collectionName][index] = {
+    this.data[index] = {
       guid,
       timeLastModified: Date.now(),
       deleted: true,
@@ -868,7 +894,7 @@ class AutofillRecords {
   pullSyncChanges() {
     let changes = {};
 
-    let profiles = this._store.data[this._collectionName];
+    let profiles = this.data;
     for (let profile of profiles) {
       let sync = this._getSyncMetaData(profile, true);
       if (sync.changeCounter < 1) {
@@ -925,7 +951,7 @@ class AutofillRecords {
    * metadata for all items is removed.
    */
   resetSync() {
-    for (let record of this._store.data[this._collectionName]) {
+    for (let record of this.data) {
       delete record._sync;
     }
     // XXX - we should probably also delete all tombstones?
@@ -955,7 +981,7 @@ class AutofillRecords {
     }
 
     let index = this._findIndexByGUID(oldID);
-    let profile = this._store.data[this._collectionName][index];
+    let profile = this.data[index];
     if (!profile) {
       throw new Error("changeGUID: no source record");
     }
@@ -989,47 +1015,48 @@ class AutofillRecords {
    * fields that match incoming remote records. This avoids creating
    * duplicate profiles with the same information.
    *
-   * @param   {Object} record
+   * @param   {Object} remoteRecord
    *          The remote record.
    * @returns {string|null}
    *          The GUID of the matching local record, or `null` if no records
    *          match.
    */
-  findDuplicateGUID(record) {
-    if (!record.guid) {
+  findDuplicateGUID(remoteRecord) {
+    if (!remoteRecord.guid) {
       throw new Error("Record missing GUID");
     }
-    this._ensureMatchingVersion(record);
-    if (record.deleted) {
+    this._ensureMatchingVersion(remoteRecord);
+    if (remoteRecord.deleted) {
       // Tombstones don't carry enough info to de-dupe, and we should have
       // handled them separately when applying the record.
       throw new Error("Tombstones can't have duplicates");
     }
-    let records = this._store.data[this._collectionName];
-    for (let profile of records) {
-      if (profile.deleted) {
+    let localRecords = this.data;
+    for (let localRecord of localRecords) {
+      if (localRecord.deleted) {
         continue;
       }
-      if (profile.guid == record.guid) {
-        throw new Error(`Record ${record.guid} already exists`);
+      if (localRecord.guid == remoteRecord.guid) {
+        throw new Error(`Record ${remoteRecord.guid} already exists`);
       }
-      if (this._getSyncMetaData(profile)) {
-        // This record has already been uploaded, so it can't be a dupe of
+      if (this._getSyncMetaData(localRecord)) {
+        // This local record has already been uploaded, so it can't be a dupe of
         // another incoming item.
         continue;
       }
-      let keys = new Set(Object.keys(record));
-      for (let key of Object.keys(profile)) {
+
+      // Ignore computed fields when matching records as they aren't synced at all.
+      let strippedLocalRecord = this._clone(localRecord);
+      this._stripComputedFields(strippedLocalRecord);
+
+      let keys = new Set(Object.keys(remoteRecord));
+      for (let key of Object.keys(strippedLocalRecord)) {
         keys.add(key);
       }
-      // Ignore internal and computed fields when matching records. Internal
-      // fields are synced, but almost certainly have different values than the
-      // local record, and we'll update them in `reconcile`. Computed fields
-      // aren't synced at all.
+      // Ignore internal fields when matching records. Internal fields are synced,
+      // but almost certainly have different values than the local record, and
+      // we'll update them in `reconcile`.
       for (let field of INTERNAL_FIELDS) {
-        keys.delete(field);
-      }
-      for (let field of this.VALID_COMPUTED_FIELDS) {
         keys.delete(field);
       }
       if (!keys.size) {
@@ -1043,13 +1070,13 @@ class AutofillRecords {
         // For now, we ensure that both (or neither) records have the field
         // with matching values. This doesn't account for the version yet
         // (bug 1377204).
-        same = key in profile == key in record && profile[key] == record[key];
+        same = key in strippedLocalRecord == key in remoteRecord && strippedLocalRecord[key] == remoteRecord[key];
         if (!same) {
           break;
         }
       }
       if (same) {
-        return profile.guid;
+        return strippedLocalRecord.guid;
       }
     }
     return null;
@@ -1060,6 +1087,10 @@ class AutofillRecords {
    */
 
   _clone(record) {
+    return Object.assign({}, record);
+  }
+
+  _cloneAndCleanUp(record) {
     let result = {};
     for (let key in record) {
       // Do not expose hidden fields and fields with empty value (mainly used
@@ -1073,17 +1104,21 @@ class AutofillRecords {
 
   _findByGUID(guid, {includeDeleted = false} = {}) {
     let found = this._findIndexByGUID(guid, {includeDeleted});
-    return found < 0 ? undefined : this._store.data[this._collectionName][found];
+    return found < 0 ? undefined : this.data[found];
   }
 
   _findIndexByGUID(guid, {includeDeleted = false} = {}) {
-    return this._store.data[this._collectionName].findIndex(record => {
+    return this.data.findIndex(record => {
       return record.guid == guid && (!record.deleted || includeDeleted);
     });
   }
 
   _migrateRecord(record) {
     let hasChanges = false;
+
+    if (record.deleted) {
+      return hasChanges;
+    }
 
     if (!record.version || isNaN(record.version) || record.version < 1) {
       this.log.warn("Invalid record version:", record.version);
@@ -1118,6 +1153,27 @@ class AutofillRecords {
     }
   }
 
+  /**
+   * Merge the record if storage has multiple mergeable records.
+   * @param {Object} targetRecord
+   *        The record for merge.
+   * @param {boolean} [strict = false]
+   *        In strict merge mode, we'll treat the subset record with empty field
+   *        as unable to be merged, but mergeable if in non-strict mode.
+   * @returns {Array.<string>}
+   *          Return an array of the merged GUID string.
+   */
+  mergeToStorage(targetRecord, strict = false) {
+    let mergedGUIDs = [];
+    for (let record of this.data) {
+      if (!record.deleted && this.mergeIfPossible(record.guid, targetRecord, strict)) {
+        mergedGUIDs.push(record.guid);
+      }
+    }
+    this.log.debug("Existing records matching and merging count is", mergedGUIDs.length);
+    return mergedGUIDs;
+  }
+
   // A test-only helper.
   _nukeAllRecords() {
     this._store.data[this._collectionName] = [];
@@ -1138,10 +1194,7 @@ class AutofillRecords {
   _normalizeFields(record) {}
 
   // An interface to be inherited.
-  mergeIfPossible(guid, record) {}
-
-  // An interface to be inherited.
-  mergeToStorage(targetRecord) {}
+  mergeIfPossible(guid, record, strict) {}
 }
 
 class Addresses extends AutofillRecords {
@@ -1164,6 +1217,10 @@ class Addresses extends AutofillRecords {
     //       computed fields)
 
     let hasNewComputedFields = false;
+
+    if (address.deleted) {
+      return hasNewComputedFields;
+    }
 
     // Compute name
     if (!("name" in address)) {
@@ -1332,10 +1389,13 @@ class Addresses extends AutofillRecords {
    *         Indicates which address to merge.
    * @param  {Object} address
    *         The new address used to merge into the old one.
+   * @param  {boolean} strict
+   *         In strict merge mode, we'll treat the subset record with empty field
+   *         as unable to be merged, but mergeable if in non-strict mode.
    * @returns {boolean}
    *          Return true if address is merged into target with specific guid or false if not.
    */
-  mergeIfPossible(guid, address) {
+  mergeIfPossible(guid, address, strict) {
     this.log.debug("mergeIfPossible:", guid, address);
 
     let addressFound = this._findByGUID(guid);
@@ -1343,7 +1403,7 @@ class Addresses extends AutofillRecords {
       throw new Error("No matching address.");
     }
 
-    let addressToMerge = this._clone(address);
+    let addressToMerge = strict ? this._clone(address) : this._cloneAndCleanUp(address);
     this._normalizeRecord(addressToMerge);
     let hasMatchingField = false;
 
@@ -1378,34 +1438,25 @@ class Addresses extends AutofillRecords {
       return false;
     }
 
-    // Early return if the data is the same.
-    let exactlyMatch = this.VALID_FIELDS.every((field) =>
-      addressFound[field] === addressToMerge[field]
-    );
-    if (exactlyMatch) {
+    // Early return if the data is the same or subset.
+    let noNeedToUpdate = this.VALID_FIELDS.every((field) => {
+      // When addressFound doesn't contain a field, it's unnecessary to update
+      // if the same field in addressToMerge is omitted or an empty string.
+      if (addressFound[field] === undefined) {
+        return !addressToMerge[field];
+      }
+
+      // When addressFound contains a field, it's unnecessary to update if
+      // the same field in addressToMerge is omitted or a duplicate.
+      return (addressToMerge[field] === undefined) ||
+             (addressFound[field] === addressToMerge[field]);
+    });
+    if (noNeedToUpdate) {
       return true;
     }
 
     this.update(guid, addressToMerge, true);
     return true;
-  }
-
-  /**
-   * Merge the address if storage has multiple mergeable records.
-   * @param {Object} targetAddress
-   *        The address for merge.
-   * @returns {Array.<string>}
-   *          Return an array of the merged GUID string.
-   */
-  mergeToStorage(targetAddress) {
-    let mergedGUIDs = [];
-    for (let address of this._store.data[this._collectionName]) {
-      if (!address.deleted && this.mergeIfPossible(address.guid, targetAddress)) {
-        mergedGUIDs.push(address.guid);
-      }
-    }
-    this.log.debug("Existing records matching and merging count is", mergedGUIDs.length);
-    return mergedGUIDs;
   }
 }
 
@@ -1414,12 +1465,23 @@ class CreditCards extends AutofillRecords {
     super(store, "creditCards", VALID_CREDIT_CARD_FIELDS, VALID_CREDIT_CARD_COMPUTED_FIELDS, CREDIT_CARD_SCHEMA_VERSION);
   }
 
+  _getMaskedCCNumber(ccNumber) {
+    if (ccNumber.length <= 4) {
+      throw new Error(`Invalid credit card number`);
+    }
+    return "*".repeat(ccNumber.length - 4) + ccNumber.substr(-4);
+  }
+
   _computeFields(creditCard) {
     // NOTE: Remember to bump the schema version number if any of the existing
     //       computing algorithm changes. (No need to bump when just adding new
     //       computed fields)
 
     let hasNewComputedFields = false;
+
+    if (creditCard.deleted) {
+      return hasNewComputedFields;
+    }
 
     // Compute split names
     if (!("cc-given-name" in creditCard)) {
@@ -1437,16 +1499,36 @@ class CreditCards extends AutofillRecords {
       hasNewComputedFields = true;
     }
 
+    // Encrypt credit card number
+    if (!("cc-number-encrypted" in creditCard)) {
+      let ccNumber = (creditCard["cc-number"] || "").replace(/\s/g, "");
+      if (FormAutofillUtils.isCCNumber(ccNumber)) {
+        creditCard["cc-number"] = this._getMaskedCCNumber(ccNumber);
+        creditCard["cc-number-encrypted"] = MasterPassword.encryptSync(ccNumber);
+      } else {
+        delete creditCard["cc-number"];
+        // Computed fields are always present in the storage no matter it's
+        // empty or not.
+        creditCard["cc-number-encrypted"] = "";
+      }
+    }
+
     return hasNewComputedFields;
   }
 
-  _normalizeFields(creditCard) {
-    // Check if cc-number is normalized(normalizeCCNumberFields should be called first).
-    if (!creditCard["cc-number-encrypted"] || !creditCard["cc-number"].includes("*")) {
-      throw new Error("Credit card number needs to be normalized first.");
+  _stripComputedFields(creditCard) {
+    if (creditCard["cc-number-encrypted"]) {
+      creditCard["cc-number"] = MasterPassword.decryptSync(creditCard["cc-number-encrypted"]);
     }
+    super._stripComputedFields(creditCard);
+  }
 
-    // Normalize name
+  _normalizeFields(creditCard) {
+    this._normalizeCCName(creditCard);
+    this._normalizeCCExpirationDate(creditCard);
+  }
+
+  _normalizeCCName(creditCard) {
     if (creditCard["cc-given-name"] || creditCard["cc-additional-name"] || creditCard["cc-family-name"]) {
       if (!creditCard["cc-name"]) {
         creditCard["cc-name"] = FormAutofillNameUtils.joinNameParts({
@@ -1460,8 +1542,9 @@ class CreditCards extends AutofillRecords {
       delete creditCard["cc-additional-name"];
       delete creditCard["cc-family-name"];
     }
+  }
 
-    // Validate expiry date
+  _normalizeCCExpirationDate(creditCard) {
     if (creditCard["cc-exp-month"]) {
       let expMonth = parseInt(creditCard["cc-exp-month"], 10);
       if (isNaN(expMonth) || expMonth < 1 || expMonth > 12) {
@@ -1470,6 +1553,7 @@ class CreditCards extends AutofillRecords {
         creditCard["cc-exp-month"] = expMonth;
       }
     }
+
     if (creditCard["cc-exp-year"]) {
       let expYear = parseInt(creditCard["cc-exp-year"], 10);
       if (isNaN(expYear) || expYear < 0) {
@@ -1481,31 +1565,147 @@ class CreditCards extends AutofillRecords {
         creditCard["cc-exp-year"] = expYear;
       }
     }
+
+    if (creditCard["cc-exp"] && (!creditCard["cc-exp-month"] || !creditCard["cc-exp-year"])) {
+      let rules = [
+        {
+          regex: "(\\d{4})[-/](\\d{1,2})",
+          yearIndex: 1,
+          monthIndex: 2,
+        },
+        {
+          regex: "(\\d{1,2})[-/](\\d{4})",
+          yearIndex: 2,
+          monthIndex: 1,
+        },
+        {
+          regex: "(\\d{1,2})[-/](\\d{1,2})",
+        },
+        {
+          regex: "(\\d{2})(\\d{2})",
+        },
+      ];
+
+      for (let rule of rules) {
+        let result = new RegExp(`(?:^|\\D)${rule.regex}(?!\\d)`).exec(creditCard["cc-exp"]);
+        if (!result) {
+          continue;
+        }
+
+        let expYear, expMonth;
+
+        if (!rule.yearIndex || !rule.monthIndex) {
+          expMonth = parseInt(result[1], 10);
+          if (expMonth > 12) {
+            expYear = parseInt(result[1], 10);
+            expMonth = parseInt(result[2], 10);
+          } else {
+            expYear = parseInt(result[2], 10);
+          }
+        } else {
+          expYear = parseInt(result[rule.yearIndex], 10);
+          expMonth = parseInt(result[rule.monthIndex], 10);
+        }
+
+        if (expMonth < 1 || expMonth > 12) {
+          continue;
+        }
+
+        if (expYear < 100) {
+          expYear += 2000;
+        } else if (expYear < 2000) {
+          continue;
+        }
+
+        creditCard["cc-exp-month"] = expMonth;
+        creditCard["cc-exp-year"] = expYear;
+        break;
+      }
+    }
+
+    delete creditCard["cc-exp"];
   }
 
   /**
-   * Normalize credit card number related field for saving. It should always be
-   * called before adding/updating credit card records.
-   *
-   * @param  {Object} creditCard
-   *         The creditCard record with plaintext number only.
+   * Normailze the given record and retrun the first matched guid if storage has the same record.
+   * @param {Object} targetCreditCard
+   *        The credit card for duplication checking.
+   * @returns {string|null}
+   *          Return the first guid if storage has the same credit card and null otherwise.
    */
-  async normalizeCCNumberFields(creditCard) {
-    // Fields that should not be set by content.
-    delete creditCard["cc-number-encrypted"];
+  getDuplicateGuid(targetCreditCard) {
+    let clonedTargetCreditCard = this._clone(targetCreditCard);
+    this._normalizeRecord(clonedTargetCreditCard);
+    for (let creditCard of this.data) {
+      let isDuplicate = this.VALID_FIELDS.every(field => {
+        if (!clonedTargetCreditCard[field]) {
+          return !creditCard[field];
+        }
+        if (field == "cc-number") {
+          return this._getMaskedCCNumber(clonedTargetCreditCard[field]) == creditCard[field];
+        }
+        return clonedTargetCreditCard[field] == creditCard[field];
+      });
+      if (isDuplicate) {
+        return creditCard.guid;
+      }
+    }
+    return null;
+  }
 
-    // Validate and encrypt credit card numbers, and calculate the masked numbers
-    if (creditCard["cc-number"]) {
-      let ccNumber = creditCard["cc-number"].replace(/\s/g, "");
-      delete creditCard["cc-number"];
+  /**
+   * Merge new credit card into the specified record if cc-number is identical.
+   *
+   * @param  {string} guid
+   *         Indicates which credit card to merge.
+   * @param  {Object} creditCard
+   *         The new credit card used to merge into the old one.
+   * @returns {boolean}
+   *          Return true if credit card is merged into target with specific guid or false if not.
+   */
+  mergeIfPossible(guid, creditCard) {
+    this.log.debug("mergeIfPossible:", guid, creditCard);
 
-      if (!FormAutofillUtils.isCCNumber(ccNumber)) {
-        throw new Error("Credit card number contains invalid characters or is under 12 digits.");
+    // Query raw data for comparing the decrypted credit card number
+    let creditCardFound = this.get(guid, {rawData: true});
+    if (!creditCardFound) {
+      throw new Error("No matching credit card.");
+    }
+
+    let creditCardToMerge = this._cloneAndCleanUp(creditCard);
+    this._normalizeRecord(creditCardToMerge);
+
+    for (let field of this.VALID_FIELDS) {
+      let existingField = creditCardFound[field];
+
+      // Make sure credit card field is existed and have value
+      if (field == "cc-number" && (!existingField || !creditCardToMerge[field])) {
+        return false;
       }
 
-      creditCard["cc-number-encrypted"] = await MasterPassword.encrypt(ccNumber);
-      creditCard["cc-number"] = "*".repeat(ccNumber.length - 4) + ccNumber.substr(-4);
+      if (!creditCardToMerge[field]) {
+        creditCardToMerge[field] = existingField;
+      }
+
+      let incomingField = creditCardToMerge[field];
+      if (incomingField && existingField) {
+        if (incomingField != existingField) {
+          this.log.debug("Conflicts: field", field, "has different value.");
+          return false;
+        }
+      }
     }
+
+    // Early return if the data is the same.
+    let exactlyMatch = this.VALID_FIELDS.every((field) =>
+      creditCardFound[field] === creditCardToMerge[field]
+    );
+    if (exactlyMatch) {
+      return true;
+    }
+
+    this.update(guid, creditCardToMerge, true);
+    return true;
   }
 }
 

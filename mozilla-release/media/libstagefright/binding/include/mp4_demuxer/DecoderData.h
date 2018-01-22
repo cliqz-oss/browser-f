@@ -7,9 +7,10 @@
 
 #include "MediaData.h"
 #include "MediaInfo.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/Result.h"
 #include "mozilla/Types.h"
 #include "mozilla/Vector.h"
-#include "mozilla/RefPtr.h"
 #include "nsString.h"
 #include "nsTArray.h"
 #include "nsString.h"
@@ -53,14 +54,14 @@ public:
 
   void Update(const uint8_t* aData, size_t aLength)
   {
-    valid = DoUpdate(aData, aLength);
+    valid = DoUpdate(aData, aLength).isOk();
   }
 
   bool valid;
   nsTArray<PsshInfo> pssh;
 
 private:
-  bool DoUpdate(const uint8_t* aData, size_t aLength);
+  mozilla::Result<mozilla::Ok, nsresult> DoUpdate(const uint8_t* aData, size_t aLength);
 };
 
 class MP4AudioInfo : public mozilla::AudioInfo
