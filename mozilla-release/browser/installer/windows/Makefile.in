@@ -11,7 +11,7 @@ INSTALLER_FILES = \
 	app.tag \
 	nsis/installer.nsi \
 	nsis/uninstaller.nsi \
-	nsis/stub_old.nsi \
+	nsis/stub.nsi \
 	nsis/shared.nsh \
 	stub.tag \
 	$(NULL)
@@ -23,14 +23,14 @@ INSTALLER_FILES += \
 endif
 
 BRANDING_FILES = \
-	bgstub.jpg \
-	bgstub_2x.jpg \
+	artboard1.bmp \
+	artboard2.bmp \
+	artboard3.bmp \
+	artboard4.bmp \
+	artboard5.bmp \
+	cliqzlogo.gif \
+	cliqzlogo_2x.gif \
 	branding.nsi \
-	appname.bmp \
-	bgintro.bmp \
-	focus.bmp \
-	magnifier.bmp \
-	shield.bmp \
 	firefox64.ico \
 	wizHeader.bmp \
 	wizHeaderRTL.bmp \
@@ -92,10 +92,6 @@ $(CONFIG_DIR)/setup.exe::
 	  --preprocess-single-file $(topsrcdir) \
 	  $(PPL_LOCALE_ARGS) $(CONFIG_DIR) \
 	  nsisstrings.properties nsisstrings.nlf
-# Cliqz. Need for support old stub-installer. Must be removed later
-	$(PYTHON) $(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \
-	  --convert-utf8-utf16le \
-	  $(srcdir)/nsis/oneoff_en-US.nsh $(CONFIG_DIR)/oneoff_en-US.nsh
 
 GARBARGE_DIRS += instgen
 

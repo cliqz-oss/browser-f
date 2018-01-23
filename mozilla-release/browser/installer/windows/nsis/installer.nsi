@@ -660,9 +660,6 @@ Section "-InstallEndCleanup"
       ${EndIf}
     ${EndIf}
   ${EndUnless}
-  ; Adds a pinned Task Bar shortcut (see MigrateTaskBarShortcut for details).
-  ; Cliqz: we want to have icon on taskbar in silent mode installation
-  ${MigrateTaskBarShortcut}
 
   ; Adds a pinned Task Bar shortcut (see MigrateTaskBarShortcut for details).
   ${MigrateTaskBarShortcut}
