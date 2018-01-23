@@ -9,6 +9,7 @@
 #include <time.h>
 
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
@@ -34,7 +35,14 @@
 using namespace mozilla;
 using namespace std;
 
+#ifdef DEBUG
+static mozilla::LazyLogModule gResistFingerprintingLog("nsResistFingerprinting");
+#endif
+
 #define RESIST_FINGERPRINTING_PREF "privacy.resistFingerprinting"
+#define RFP_TIMER_PREF "privacy.reduceTimerPrecision"
+#define RFP_TIMER_VALUE_PREF "privacy.resistFingerprinting.reduceTimerPrecision.microseconds"
+#define RFP_TIMER_VALUE_DEFAULT 20
 #define RFP_SPOOFED_FRAMES_PER_SEC_PREF "privacy.resistFingerprinting.video_frames_per_sec"
 #define RFP_SPOOFED_DROPPED_RATIO_PREF  "privacy.resistFingerprinting.video_dropped_ratio"
 #define RFP_TARGET_VIDEO_RES_PREF "privacy.resistFingerprinting.target_video_res"
@@ -48,7 +56,8 @@ NS_IMPL_ISUPPORTS(nsRFPService, nsIObserver)
 static StaticRefPtr<nsRFPService> sRFPService;
 static bool sInitialized = false;
 Atomic<bool, ReleaseAcquire> nsRFPService::sPrivacyResistFingerprinting;
-static uint32_t kResolutionUSec = 100000;
+Atomic<bool, ReleaseAcquire> nsRFPService::sPrivacyTimerPrecisionReduction;
+Atomic<uint32_t, ReleaseAcquire> sResolutionUSec;
 static uint32_t sVideoFramesPerSec;
 static uint32_t sVideoDroppedRatio;
 static uint32_t sTargetVideoRes;
@@ -74,24 +83,52 @@ nsRFPService::GetOrCreate()
 }
 
 /* static */
+bool
+nsRFPService::IsResistFingerprintingEnabled()
+{
+  return sPrivacyResistFingerprinting;
+}
+
+/* static */
+bool
+nsRFPService::IsTimerPrecisionReductionEnabled()
+{
+  return (sPrivacyTimerPrecisionReduction || IsResistFingerprintingEnabled()) &&
+         sResolutionUSec != 0;
+}
+
+/* static */
 double
 nsRFPService::ReduceTimePrecisionAsMSecs(double aTime)
 {
-  if (!IsResistFingerprintingEnabled()) {
+  if (!IsTimerPrecisionReductionEnabled()) {
     return aTime;
   }
-  const double resolutionMSec = kResolutionUSec / 1000.0;
-  return floor(aTime / resolutionMSec) * resolutionMSec;
+  const double resolutionMSec = sResolutionUSec / 1000.0;
+  double ret = floor(aTime / resolutionMSec) * resolutionMSec;
+#if defined(DEBUG)
+  MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+    ("Given: %.*f, Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
+      DBL_DIG-1, aTime, DBL_DIG-1, resolutionMSec, DBL_DIG-1, floor(aTime / resolutionMSec), DBL_DIG-1, ret));
+#endif
+  return ret;
 }
 
 /* static */
 double
 nsRFPService::ReduceTimePrecisionAsUSecs(double aTime)
 {
-  if (!IsResistFingerprintingEnabled()) {
+  if (!IsTimerPrecisionReductionEnabled()) {
     return aTime;
   }
-  return floor(aTime / kResolutionUSec) * kResolutionUSec;
+  double ret = floor(aTime / sResolutionUSec) * sResolutionUSec;
+#if defined(DEBUG)
+  double tmp_sResolutionUSec = sResolutionUSec;
+  MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+    ("Given: %.*f, Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
+      DBL_DIG-1, aTime, DBL_DIG-1, tmp_sResolutionUSec, DBL_DIG-1, floor(aTime / tmp_sResolutionUSec), DBL_DIG-1, ret));
+#endif
+  return ret;
 }
 
 /* static */
@@ -105,17 +142,29 @@ nsRFPService::CalculateTargetVideoResolution(uint32_t aVideoQuality)
 double
 nsRFPService::ReduceTimePrecisionAsSecs(double aTime)
 {
-  if (!IsResistFingerprintingEnabled()) {
+  if (!IsTimerPrecisionReductionEnabled()) {
     return aTime;
   }
-  if (kResolutionUSec < 1000000) {
+  if (sResolutionUSec < 1000000) {
     // The resolution is smaller than one sec.  Use the reciprocal to avoid
     // floating point error.
-    const double resolutionSecReciprocal = 1000000.0 / kResolutionUSec;
-    return floor(aTime * resolutionSecReciprocal) / resolutionSecReciprocal;
+    const double resolutionSecReciprocal = 1000000.0 / sResolutionUSec;
+    double ret = floor(aTime * resolutionSecReciprocal) / resolutionSecReciprocal;
+#if defined(DEBUG)
+  MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+    ("Given: %.*f, Reciprocal Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
+      DBL_DIG-1, aTime, DBL_DIG-1, resolutionSecReciprocal, DBL_DIG-1, floor(aTime * resolutionSecReciprocal), DBL_DIG-1, ret));
+#endif
+    return ret;
   }
-  const double resolutionSec = kResolutionUSec / 1000000.0;
-  return floor(aTime / resolutionSec) * resolutionSec;
+  const double resolutionSec = sResolutionUSec / 1000000.0;
+  double ret = floor(aTime / resolutionSec) * resolutionSec;
+#if defined(DEBUG)
+  MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+    ("Given: %.*f, Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
+      DBL_DIG-1, aTime, DBL_DIG-1, resolutionSec, DBL_DIG-1, floor(aTime / resolutionSec), DBL_DIG-1, ret));
+#endif
+  return ret;
 }
 
 /* static */
@@ -242,6 +291,19 @@ nsRFPService::Init()
   rv = prefs->AddObserver(RESIST_FINGERPRINTING_PREF, this, false);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  rv = prefs->AddObserver(RFP_TIMER_PREF, this, false);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = prefs->AddObserver(RFP_TIMER_VALUE_PREF, this, false);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  Preferences::AddAtomicBoolVarCache(&sPrivacyTimerPrecisionReduction,
+                                     RFP_TIMER_PREF,
+                                     false);
+
+  Preferences::AddAtomicUintVarCache(&sResolutionUSec,
+                                     RFP_TIMER_VALUE_PREF,
+                                     RFP_TIMER_VALUE_DEFAULT);
   Preferences::AddUintVarCache(&sVideoFramesPerSec,
                                RFP_SPOOFED_FRAMES_PER_SEC_PREF,
                                RFP_SPOOFED_FRAMES_PER_SEC_DEFAULT);
@@ -258,24 +320,37 @@ nsRFPService::Init()
     mInitialTZValue = nsCString(tzValue);
   }
 
-  // Call UpdatePref() here to cache the value of 'privacy.resistFingerprinting'
-  // and set the timezone.
-  UpdatePref();
+  // Call Update here to cache the values of the prefs and set the timezone.
+  UpdateRFPPref();
 
   return rv;
 }
 
+// This function updates only timing-related fingerprinting items
 void
-nsRFPService::UpdatePref()
+nsRFPService::UpdateTimers() {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (sPrivacyResistFingerprinting || sPrivacyTimerPrecisionReduction) {
+    JS::SetTimeResolutionUsec(sResolutionUSec);
+  } else if (sInitialized) {
+    JS::SetTimeResolutionUsec(0);
+  }
+}
+
+
+// This function updates every fingerprinting item necessary except timing-related
+void
+nsRFPService::UpdateRFPPref()
 {
   MOZ_ASSERT(NS_IsMainThread());
   sPrivacyResistFingerprinting = Preferences::GetBool(RESIST_FINGERPRINTING_PREF);
 
+  UpdateTimers();
+
   if (sPrivacyResistFingerprinting) {
     PR_SetEnv("TZ=UTC");
-    JS::SetTimeResolutionUsec(kResolutionUSec);
   } else if (sInitialized) {
-    JS::SetTimeResolutionUsec(0);
     // We will not touch the TZ value if 'privacy.resistFingerprinting' is false during
     // the time of initialization.
     if (!mInitialTZValue.IsEmpty()) {
@@ -323,6 +398,8 @@ nsRFPService::StartShutdown()
 
     if (prefs) {
       prefs->RemoveObserver(RESIST_FINGERPRINTING_PREF, this);
+      prefs->RemoveObserver(RFP_TIMER_PREF, this);
+      prefs->RemoveObserver(RFP_TIMER_VALUE_PREF, this);
     }
   }
 }
@@ -334,8 +411,11 @@ nsRFPService::Observe(nsISupports* aObject, const char* aTopic,
   if (!strcmp(NS_PREFBRANCH_PREFCHANGE_TOPIC_ID, aTopic)) {
     NS_ConvertUTF16toUTF8 pref(aMessage);
 
-    if (pref.EqualsLiteral(RESIST_FINGERPRINTING_PREF)) {
-      UpdatePref();
+    if (pref.EqualsLiteral(RFP_TIMER_PREF) || pref.EqualsLiteral(RFP_TIMER_VALUE_PREF)) {
+      UpdateTimers();
+    }
+    else if (pref.EqualsLiteral(RESIST_FINGERPRINTING_PREF)) {
+      UpdateRFPPref();
 
 #if defined(XP_WIN)
       if (!XRE_IsE10sParentProcess()) {

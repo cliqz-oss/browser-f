@@ -1417,6 +1417,12 @@ pref("privacy.firstparty.isolate",                        false);
 pref("privacy.firstparty.isolate.restrict_opener_access", true);
 // Anti-fingerprinting, disabled by default
 pref("privacy.resistFingerprinting", false);
+// A subset of Resist Fingerprinting protections focused specifically on timers for testing
+// This affects the Animation API, the performance APIs, Date.getTime, Event.timestamp,
+//   File.lastModified, audioContext.currentTime, canvas.captureStream.currentTime
+pref("privacy.reduceTimerPrecision", false);
+// Dynamically tune the resolution of the timer reduction for both of the two above prefs
+pref("privacy.resistFingerprinting.reduceTimerPrecision.microseconds", 20);
 // Lower the priority of network loads for resources on the tracking protection list.
 // Note that this requires the privacy.trackingprotection.annotate_channels pref to be on in order to have any effect.
 #ifdef NIGHTLY_BUILD
@@ -5246,7 +5252,7 @@ pref("dom.placeholder.show_on_focus", true);
 
 // WebVR is enabled by default in beta and release for Windows and for all
 // platforms in nightly and aurora.
-#if defined(XP_WIN) || defined(XP_MACOSX) || !defined(RELEASE_OR_BETA)
+#if defined(XP_WIN) || !defined(RELEASE_OR_BETA)
 pref("dom.vr.enabled", true);
 #else
 pref("dom.vr.enabled", false);
@@ -5297,7 +5303,7 @@ pref("dom.vr.osvr.enabled", false);
 // We are only enabling WebVR by default on 64-bit builds (Bug 1384459)
 pref("dom.vr.openvr.enabled", false);
 #elif defined(XP_WIN) || defined(XP_MACOSX)
-// We enable WebVR by default for Windows and macOS
+// We enable OpenVR by default for Windows and macOS
 pref("dom.vr.openvr.enabled", true);
 #else
 // See Bug 1310663 (Linux)
