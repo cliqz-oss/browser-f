@@ -29,10 +29,8 @@ public:
   NS_DECL_NSIOBSERVER
 
   static nsRFPService* GetOrCreate();
-  static bool IsResistFingerprintingEnabled()
-  {
-    return sPrivacyResistFingerprinting;
-  }
+  static bool IsResistFingerprintingEnabled();
+  static bool IsTimerPrecisionReductionEnabled();
 
   // The following Reduce methods can be called off main thread.
   static double ReduceTimePrecisionAsMSecs(double aTime);
@@ -59,10 +57,12 @@ private:
 
   ~nsRFPService() {}
 
-  void UpdatePref();
+  void UpdateTimers();
+  void UpdateRFPPref();
   void StartShutdown();
 
   static Atomic<bool, ReleaseAcquire> sPrivacyResistFingerprinting;
+  static Atomic<bool, ReleaseAcquire> sPrivacyTimerPrecisionReduction;
 
   nsCString mInitialTZValue;
 };

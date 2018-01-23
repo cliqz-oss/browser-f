@@ -265,6 +265,15 @@ HttpChannelParent::CleanupBackgroundChannel()
   }
 }
 
+base::ProcessId
+HttpChannelParent::OtherPid() const
+{
+  if (mIPCClosed) {
+    return 0;
+  }
+  return Manager()->OtherPid();
+}
+
 //-----------------------------------------------------------------------------
 // HttpChannelParent::nsISupports
 //-----------------------------------------------------------------------------
@@ -2004,6 +2013,16 @@ HttpChannelParent::ResumeMessageDiversion()
   LOG(("HttpChannelParent::SuspendMessageDiversion [this=%p]", this));
   // This only needs to resumes message queue.
   mEventQ->Resume();
+  return NS_OK;
+}
+
+nsresult
+HttpChannelParent::CancelDiversion()
+{
+  LOG(("HttpChannelParent::CancelDiversion [this=%p]", this));
+  if (!mIPCClosed) {
+    Unused << SendCancelDiversion();
+  }
   return NS_OK;
 }
 
