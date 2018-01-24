@@ -273,8 +273,10 @@ var gMainPane = {
 #endif
     setEventListener("disableContainersExtension", "command",
                      makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
+#if 0
     setEventListener("disableNewTabExtension", "command",
                      makeDisableControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY));
+#endif
     setEventListener("chooseLanguage", "command",
       gMainPane.showLanguages);
     setEventListener("translationAttributionImage", "click",
