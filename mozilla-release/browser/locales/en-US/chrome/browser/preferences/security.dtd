@@ -29,6 +29,7 @@
 <!ENTITY  formsAndPasswords.label       "Forms &amp; Passwords">
 
 <!ENTITY  rememberLogins2.label         "Remember logins and passwords for websites">
+<!ENTITY  rememberLogins2.hint          "To enable this feature please make sure Cliqz will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
 <!ENTITY  rememberLogins2.accesskey     "R">
 <!ENTITY  passwordExceptions.label      "Exceptions…">
 <!ENTITY  passwordExceptions.accesskey  "x">
