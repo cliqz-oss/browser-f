@@ -34,10 +34,7 @@ this.PrivateBrowsingUtils = {
   },
 
   isBrowserPrivate(aBrowser) {
-    if (aBrowser.loadContext)
-      return aBrowser.loadContext.usePrivateBrowsing;
-    else
-      return false;
+    return aBrowser.loadContext.usePrivateBrowsing;
     /*
     let chromeWin = aBrowser.ownerGlobal;
     if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
