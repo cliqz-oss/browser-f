@@ -120,6 +120,7 @@
   /* Override light theme variables */ }
   :root:-moz-lwtheme {
     --tabs-border: rgba(0, 0, 0, 0.08);
+    --tabs-border-color: rgba(0, 0, 0, 0.08);
     --tab-line-color: #0078CA; }
   :root:-moz-lwtheme-darktext {
     --toolbox-border-bottom-color: #f2f2f2;
