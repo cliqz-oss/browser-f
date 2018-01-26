@@ -116,6 +116,7 @@
 :root {
   --tab-min-height: 30px;
   --tabs-border: rgba(0, 0, 0, 0.08);
+  --tabs-border-color: rgba(0, 0, 0, 0.08);
   --tab-toolbar-navbar-overlap: 0px;
   /* Override light theme variables */ }
   :root:-moz-lwtheme-darktext {
