@@ -205,6 +205,12 @@ var gPrivacyPane = {
       gPrivacyPane.changeMasterPassword);
     setEventListener("showPasswords", "command",
       gPrivacyPane.showPasswords);
+    setEventListener("jumpToHistory", "click", function() {
+      const h = document.querySelector('.search-container')
+        .getBoundingClientRect().height;
+      document.querySelector('.main-content').scrollTop +=
+        document.querySelector('#historyGroup').getBoundingClientRect().top - h;
+    });
 #if 0
     setEventListener("addonExceptions", "command",
       gPrivacyPane.showAddonExceptions);
@@ -1101,6 +1107,7 @@ var gPrivacyPane = {
 
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
       document.getElementById("savePasswords").disabled = true;
+      document.getElementById("passwordsBoxHint").hidden = false;
       excepts.disabled = true;
       return false;
     }

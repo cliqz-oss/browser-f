@@ -205,6 +205,9 @@
     </hbox>
     <hbox id="showPasswordBox" pack="end">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+      <hbox flex="1">
+        <description id="passwordsBoxHint" hidden="true">&rememberLogins2.hint;</description>
+      </hbox>
       <hbox>
         <button id="showPasswords"
                 class="accessory-button"

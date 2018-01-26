@@ -850,3 +850,14 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
   visibility: hidden;
 }
 %endif
+
+#passwordsBoxHint {
+  padding-left: 28px;
+  font-size: 0.85em;
+  margin-top: -10px!important;
+  color: GrayText;
+}
+
+#passwordsBoxHint > .text-link {
+  font-size: 1em;
+}

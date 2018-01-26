@@ -30,6 +30,7 @@
 
 <!ENTITY  rememberLogins2.label         "Zugangsdaten und Passwörter für Websites speichern">
 <!ENTITY  rememberLogins2.accesskey     "Z">
+<!ENTITY  rememberLogins2.hint          "Diese Funktion kann nur genutzt werden, wenn Cliqz eine <label class='text-link' id='jumpToHistory'>Chronik</label> anlegen kann.">
 <!ENTITY  passwordExceptions.label      "Ausnahmen…">
 <!ENTITY  passwordExceptions.accesskey  "u">
 
