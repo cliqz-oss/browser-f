@@ -99,4 +99,3 @@ RUN sed -i.bkp -e \
       /etc/sudoers
 
 RUN mkdir /builds
-ADD . /builds
