@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y \
   libxt-dev \
   mesa-common-dev \
   python-dbus \
+  clang-5.0 \
   xvfb \
   yasm 
 
