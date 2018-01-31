@@ -144,7 +144,7 @@
     /* Move the new tab button a bit to the left to be aligned with the last toolbar button */
     /* Reverse the extra space on top (1) */ }
     #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext .titlebar-placeholder[type="pre-tabs"] {
-      width: 36px; }
+      width: 43px; }
     #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext[inFullscreen] {
       padding-top: 0; }
 
