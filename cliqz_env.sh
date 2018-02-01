@@ -92,10 +92,10 @@ export MOZ_BUILD_DATE=$CQZ_BUILD_ID
 # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
 # build artifacts back (to locale folder, same as FF)
 export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
-# if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
+if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
   # upload symbols only for release build
   export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
-# fi
+fi
 
 OBJ_DIR=$MOZ_OBJDIR
 SRC_BASE=mozilla-release
