@@ -37,9 +37,6 @@ node(MAC_BUILD_NODE) {
 stage('bootstrap') {
     sh 'pip install compare-locales'
     sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
-    sh 'brew install --force nss'
-    sh 'brew switch nss 3.34.1'
-    sh 'brew install xz'
     sh 'brew uninstall terminal-notifier'
 }
 
