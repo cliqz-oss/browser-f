@@ -42,10 +42,10 @@ fi
 echo '***** Packaging *****'
 ./mach package
 
-echo '***** Prepare build symbols (release only) *****'
-if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
+echo '***** Prepare build symbols (always now) *****'
+# if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
   ./mach buildsymbols
-fi
+#fi
 
 echo '***** Build DE language pack *****'
 if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
