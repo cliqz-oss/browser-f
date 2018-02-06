@@ -138,6 +138,10 @@
             <label class="text-link" href="https://cliqz.com/privacy">
               &cliqz.desc1.privacy;
             </label>
+            &cliqz.desc1.check;
+            <label class="text-link" href="https://cliqz.com/privacy-browser">
+              &cliqz.desc1.policy;
+            </label>
             &cliqz.desc1.or;
             <label class="text-link" href="https://cliqz.com/support">
               &cliqz.desc1.contact;
