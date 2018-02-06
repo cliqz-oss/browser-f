@@ -38,6 +38,7 @@ stage('bootstrap') {
     sh 'pip install compare-locales'
     sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
     sh 'brew uninstall terminal-notifier'
+    sh '/bin/bash -lc "rustup install 1.21.0 && rustup default 1.21.0-x86_64-apple-darwin"'
 }
 
 withEnv([
@@ -56,7 +57,7 @@ withEnv([
         }
 
         stage('build') {
-            sh "./magic_build_and_package.sh --clobber"
+            sh "/bin/bash -lc './magic_build_and_package.sh --clobber'"
         }
     }
 
