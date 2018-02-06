@@ -108,7 +108,7 @@ def getBaseWinBuildParams(build_64bit, slave_name) {
     string(name: 'WIN_BUILD_NODE', value: 'master'),
     string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
     string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
-    string(name: 'NODE_CPU_COUNT', value: '6'),
+    string(name: 'NODE_CPU_COUNT', value: '8'),
     booleanParam(name: 'CQZ_BUILD_64BIT_WINDOWS', value: build_64bit.toBoolean()),
     string(name: 'WIN_BUILD_NODE', value: slave_name)
   ]
