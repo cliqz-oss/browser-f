@@ -5,9 +5,10 @@ node('us-east-1 && ubuntu && docker && !gpu') {
     stage('Checkout') {
         checkout scm
     }
+    sh "`aws ecr get-login --region=us-east-1 --no-include-email`"
     def dockerfileChecksum = sh(returnStdout: true, script: 'md5sum Dockerfile | cut -d" " -f1').trim()
     def dockerTag = "${dockerfileChecksum}"
-    def baseImageName = "browser-android/build:${dockerTag}"
+    def baseImageName = "browser-f/android:${dockerTag}"
     stage('Build docker image') {
         docker.withRegistry('https://141047255820.dkr.ecr.us-east-1.amazonaws.com'){
                 try {
@@ -24,12 +25,17 @@ node('us-east-1 && ubuntu && docker && !gpu') {
     def args = "-v ${pwd}/artifacts:/artifacts:rw"
     docker.image("141047255820.dkr.ecr.us-east-1.amazonaws.com/${baseImageName}").inside(args) {
         stage('Bootstrap') {
-            sh './mach bootstrap'
+            sh '''#!/bin/bash -l
+                curl https://sh.rustup.rs -sSf | sh
+                cd mozilla-release
+                ./mach bootstrap
+            '''
         }
         stage('MozConfig'){
             sh'''#!/bin/bash -l
                 set -x
                 set -e
+                cd mozilla-release
                 rm -f mozconfig
                 echo "# Build Firefox for Android:
                 ac_add_options --enable-application=mobile/android
@@ -45,11 +51,14 @@ node('us-east-1 && ubuntu && docker && !gpu') {
             '''
         }
         stage('Compile APK') {
-            sh './mach build'
-            sh './mach package'
+            sh '''#!/bin/bash -l
+                cd mozilla-release
+                ./mach build
+                ./mach package
+            '''
         }
         stage('Upload APK') {
-            archiveArtifacts allowEmptyArchive: true, artifacts: 'objdir-frontend/dist/*.apk'
+            archiveArtifacts allowEmptyArchive: true, artifacts: 'mozilla-release/objdir-frontend/dist/*.apk'
         }
     }
 }
