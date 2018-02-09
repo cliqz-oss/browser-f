@@ -1,0 +1,55 @@
+#!/bin/env groovy
+
+node('us-east-1 && ubuntu && docker && !gpu') {
+    
+    stage('Checkout') {
+        checkout scm
+    }
+    def dockerfileChecksum = sh(returnStdout: true, script: 'md5sum Dockerfile | cut -d" " -f1').trim()
+    def dockerTag = "${dockerfileChecksum}"
+    def baseImageName = "browser-android/build:${dockerTag}"
+    stage('Build docker image') {
+        docker.withRegistry('https://141047255820.dkr.ecr.us-east-1.amazonaws.com'){
+                try {
+                    def image = docker.image(baseImageName)
+                    image.pull()
+                } catch (e) {
+                    print e
+                    def baseImage  = docker.build(baseImageName, '--build-arg UID=`id -u` --build-arg GID=`id -g` .')
+                    baseImage.push dockerTag
+                }
+        }
+    }
+
+    def args = "-v ${pwd}/artifacts:/artifacts:rw"
+    docker.image("141047255820.dkr.ecr.us-east-1.amazonaws.com/${baseImageName}").inside(args) {
+        stage('Bootstrap') {
+            sh './mach bootstrap'
+        }
+        stage('MozConfig'){
+            sh'''#!/bin/bash -l
+                set -x
+                set -e
+                rm -f mozconfig
+                echo "# Build Firefox for Android:
+                ac_add_options --enable-application=mobile/android
+                ac_add_options --target=i386-linux-android
+                # With the following Android SDK:
+                ac_add_options --with-android-sdk="$HOME/.mozbuild/android-sdk-macosx"
+                # Enable artifact building:
+                ac_add_options --enable-artifact-builds
+                # Write build artifacts to:
+                mk_add_options MOZ_OBJDIR=./objdir-frontend
+                export PROGUARD_JAR="/usr/local/Cellar/proguard/5.3.3/libexec/proguard.jar"
+                " >> mozconfig
+            '''
+        }
+        stage('Compile APK') {
+            sh './mach build'
+            sh './mach package'
+        }
+        stage('Upload APK') {
+            archiveArtifacts allowEmptyArchive: true, artifacts: 'objdir-frontend/dist/*.apk'
+        }
+    }
+}
