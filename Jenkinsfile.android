@@ -26,15 +26,15 @@ node('us-east-1 && ubuntu && docker && !gpu') {
     docker.image("141047255820.dkr.ecr.us-east-1.amazonaws.com/${baseImageName}").inside(args) {
         stage('Bootstrap') {
             sh '''#!/bin/bash -l
-                curl https://sh.rustup.rs -sSf | sh
-                cd mozilla-release
-                ./mach bootstrap
+                export SHELL=/bin/bash
+                /bin/bash -lc "sudo python mozilla-release/python/mozboot/bin/bootstrap.py --no-interactive --application-choice=mobile_android_artifact_mode"
             '''
         }
         stage('MozConfig'){
             sh'''#!/bin/bash -l
                 set -x
                 set -e
+                export SHELL=/bin/bash
                 cd mozilla-release
                 rm -f mozconfig
                 echo "# Build Firefox for Android:
@@ -52,6 +52,7 @@ node('us-east-1 && ubuntu && docker && !gpu') {
         }
         stage('Compile APK') {
             sh '''#!/bin/bash -l
+                export SHELL=/bin/bash
                 cd mozilla-release
                 ./mach build
                 ./mach package
