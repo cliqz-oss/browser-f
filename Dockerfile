@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND noninteractive
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y 
+    apt-get install -y \
     gcc \
     alien \
     fakeroot \

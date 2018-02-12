@@ -31,53 +31,21 @@ Choice:
 class DebianBootstrapper(StyloInstall, BaseBootstrapper):
     # These are common packages for all Debian-derived distros (such as
     # Ubuntu).
-    COMMON_PACKAGES = [
-        'autoconf2.13',
-        'build-essential',
-        'ccache',
-        'python-dev',
-        'python-pip',
-        'python-setuptools',
-        'unzip',
-        'uuid',
-        'zip',
-    ]
+    COMMON_PACKAGES = []
 
     # Subclasses can add packages to this variable to have them installed.
     DISTRO_PACKAGES = []
 
     # These are common packages for building Firefox for Desktop
     # (browser) for all Debian-derived distros (such as Ubuntu).
-    BROWSER_COMMON_PACKAGES = [
-        'libasound2-dev',
-        'libcurl4-openssl-dev',
-        'libdbus-1-dev',
-        'libdbus-glib-1-dev',
-        'libgconf2-dev',
-        'libgtk-3-dev',
-        'libgtk2.0-dev',
-        'libiw-dev',
-        'libnotify-dev',
-        'libpulse-dev',
-        'libx11-xcb-dev',
-        'libxt-dev',
-        'mesa-common-dev',
-        'python-dbus',
-        'xvfb',
-        'yasm',
-    ]
+    BROWSER_COMMON_PACKAGES = []
 
     # Subclasses can add packages to this variable to have them installed.
     BROWSER_DISTRO_PACKAGES = []
 
     # These are common packages for building Firefox for Android
     # (mobile/android) for all Debian-derived distros (such as Ubuntu).
-    MOBILE_ANDROID_COMMON_PACKAGES = [
-        'default-jdk',
-        'wget',  # For downloading the Android SDK and NDK.
-        'libncurses5:i386',  # See comments about i386 below.
-        'libstdc++6:i386',
-    ]
+    MOBILE_ANDROID_COMMON_PACKAGES = []
 
     # Subclasses can add packages to this variable to have them installed.
     MOBILE_ANDROID_DISTRO_PACKAGES = []
