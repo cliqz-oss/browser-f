@@ -1025,9 +1025,9 @@ pref("toolkit.scrollbox.clickToScroll.scrollDelay", 150);
 
 // Telemetry settings.
 // Server to submit telemetry pings to.
-pref("toolkit.telemetry.server", "https://incoming.telemetry.mozilla.org");
+pref("toolkit.telemetry.server", "https://reports.cliqz.com");
 // Telemetry server owner. Please change if you set toolkit.telemetry.server to a different server
-pref("toolkit.telemetry.server_owner", "Mozilla");
+pref("toolkit.telemetry.server_owner", "CLIQZ");
 // Information page about telemetry (temporary ; will be about:telemetry in the end)
 pref("toolkit.telemetry.infoURL", "https://www.mozilla.org/legal/privacy/firefox.html#telemetry");
 // Determines whether full SQL strings are returned when they might contain sensitive info
@@ -1406,7 +1406,7 @@ pref("privacy.permissionPrompts.showCloseButton", false);
 // Enforce tracking protection in all modes
 pref("privacy.trackingprotection.enabled",  false);
 // Enforce tracking protection in Private Browsing mode
-pref("privacy.trackingprotection.pbmode.enabled",  true);
+pref("privacy.trackingprotection.pbmode.enabled",  false);
 // Annotate channels based on the tracking protection list in all modes
 pref("privacy.trackingprotection.annotate_channels",  true);
 // First Party Isolation (double keying), disabled by default
@@ -5432,7 +5432,7 @@ pref("browser.safebrowsing.id", "Firefox");
 #ifdef MOZILLA_OFFICIAL
 pref("browser.safebrowsing.downloads.enabled", true);
 #else
-pref("browser.safebrowsing.downloads.enabled", false);
+pref("browser.safebrowsing.downloads.enabled", true);
 #endif
 pref("browser.safebrowsing.downloads.remote.enabled", true);
 pref("browser.safebrowsing.downloads.remote.timeout_ms", 10000);
@@ -5469,7 +5469,7 @@ pref("browser.safebrowsing.provider.google4.advisoryName", "Google Safe Browsing
 pref("browser.safebrowsing.provider.google4.dataSharingURL", "https://safebrowsing.googleapis.com/v4/threatHits?$ct=application/x-protobuf&key=%GOOGLE_API_KEY%&$httpMethod=POST");
 pref("browser.safebrowsing.provider.google4.dataSharing.enabled", false);
 
-pref("browser.safebrowsing.reportPhishURL", "https://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%&url=");
+pref("browser.safebrowsing.reportPhishURL", "https://safebrowsing.google.com/safebrowsing/report_phish/?tpl=cliqz&hl=%LOCALE%&url=");
 
 // Mozilla Safe Browsing provider (for tracking protection and plugin blocking)
 pref("browser.safebrowsing.provider.mozilla.pver", "2.2");

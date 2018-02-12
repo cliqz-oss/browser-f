@@ -22,6 +22,7 @@
 
     <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab(event);"/>
     <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();"/>
+    <command id="cmd_newForgetTab" oncommand="BrowserOpenPrivateTab();"/>
     <command id="Browser:OpenFile"  oncommand="BrowserOpenFileWindow();"/>
     <command id="Browser:SavePage" oncommand="saveBrowser(gBrowser.selectedBrowser);"/>
 
@@ -97,7 +98,7 @@
 
     <command id="Tools:Search" oncommand="BrowserSearch.webSearch();"/>
     <command id="Tools:Downloads" oncommand="BrowserDownloadsUI();"/>
-    <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr();"/>
+    <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/plugin');"/>
     <command id="Tools:Sanitize"
      oncommand="Cc['@mozilla.org/browser/browserglue;1'].getService(Ci.nsIBrowserGlue).sanitize(window);"/>
     <command id="Tools:PrivateBrowsing"
@@ -158,6 +159,7 @@
     <broadcaster id="singleFeedMenuitemState" disabled="true"/>
     <broadcaster id="multipleFeedsMenuState" hidden="true"/>
 
+#ifdef MOZ_SERVICES_SYNC
     <!-- Sync broadcasters -->
     <!-- A broadcaster of a number of attributes suitable for "sync now" UI -
         A 'syncstatus' attribute is set while actively syncing, and the label
@@ -172,6 +174,8 @@
                  type="checkbox" group="sidebar"
                  sidebarurl="chrome://browser/content/syncedtabs/sidebar.xhtml"
                  oncommand="SidebarUI.toggle('viewTabsSidebar');"/>
+#endif
+
     <broadcaster id="workOfflineMenuitemState"/>
 
     <broadcaster id="devtoolsMenuBroadcaster_PageSource"
@@ -189,6 +193,11 @@
          modifiers="accel" reserved="true"/>
     <key id="key_newNavigatorTab" key="&tabCmd.commandkey;" modifiers="accel"
          command="cmd_newNavigatorTabNoEvent" reserved="true"/>
+    <key id="key_newForgetTab"
+         key="&forgetTabCmd.commandkey;"
+         modifiers="accel,shift"
+         command="cmd_newForgetTab"
+         reserved="true"/>
     <key id="focusURLBar" key="&openCmd.commandkey;" command="Browser:OpenLocation"
          modifiers="accel"/>
 #ifndef XP_MACOSX
@@ -274,7 +283,6 @@
     <key id="key_fullScreen" keycode="VK_F11" command="View:FullScreen"/>
 #else
     <key id="key_fullScreen" key="&fullScreenCmd.macCommandKey;" command="View:FullScreen" modifiers="accel,control"/>
-    <key id="key_fullScreen_old" key="&fullScreenCmd.macCommandKey;" command="View:FullScreen" modifiers="accel,shift"/>
     <key keycode="VK_F11" command="View:FullScreen"/>
 #endif
     <key id="key_toggleReaderMode" key="&toggleReaderMode.key;" command="View:ReaderView" modifiers="accel,alt" disabled="true"/>

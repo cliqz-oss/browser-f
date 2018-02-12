@@ -5,18 +5,19 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
-    'activity-stream',
-    'aushelper',
-    'followonsearch',
-    'formautofill',
-    'onboarding',
+#    'activity-stream',
+#    'aushelper',
+#    'followonsearch',
+#    'formautofill',
+#    'onboarding',
     'pdfjs',
-    'pocket',
-    'screenshots',
-    'shield-recipe-client',
-    'webcompat',
+#    'pocket',
+#    'screenshots',
+#    'shield-recipe-client',
+#    'webcompat',
 ]
 
+''' disabled by Cliqz
 # Only include the following system add-ons if building Aurora or Nightly
 if not CONFIG['RELEASE_OR_BETA']:
     DIRS += [
@@ -41,3 +42,4 @@ if CONFIG['MOZ_ASAN_REPORTER']:
     DIRS += [
         'asan-reporter',
     ]
+'''

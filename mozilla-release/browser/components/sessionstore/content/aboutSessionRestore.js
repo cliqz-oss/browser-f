@@ -180,9 +180,8 @@ function restoreSession() {
 }
 
 function startNewSession() {
-  if (Services.prefs.getIntPref("browser.startup.page") == 0)
-    getBrowserWindow().gBrowser.loadURI("about:blank");
-  else
+  let addNTP = Services.prefs.getBoolPref("browser.startup.addFreshTab");
+  if (addNTP)
     getBrowserWindow().BrowserHome();
 }
 

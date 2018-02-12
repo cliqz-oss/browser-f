@@ -398,3 +398,6 @@ user_pref("extensions.screenshots.disabled", true);
 // The maintenance can take a relatively long time which may cause unnecessary
 // intermittents and slow down tests.
 user_pref("places.database.lastMaintenance", 7258114800);
+
+// Cliqz ignore onboarding
+user_pref("extensions.cliqz.browserOnboarding", true);

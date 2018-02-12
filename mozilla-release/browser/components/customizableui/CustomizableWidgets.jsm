@@ -239,7 +239,9 @@ const CustomizableWidgets = [
       panelview.appendChild(body);
       panelview.appendChild(footer);
     }
-  }, {
+  },
+#ifdef MOZ_SERVICES_SYNC
+  {
     id: "sync-button",
     label: "remotetabs-panelmenu.label",
     tooltiptext: "remotetabs-panelmenu.tooltiptext2",
@@ -521,7 +523,9 @@ const CustomizableWidgets = [
       });
       return showAllItem;
     }
-  }, {
+  },
+#endif  // MOZ_SERVICES_SYNC
+  {
     id: "privatebrowsing-button",
     shortcutId: "key_privatebrowsing",
     defaultArea: CustomizableUI.AREA_PANEL,
@@ -585,7 +589,7 @@ const CustomizableWidgets = [
     defaultArea: CustomizableUI.AREA_PANEL,
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
-      win.BrowserOpenAddonsMgr();
+      win.BrowserOpenAddonsMgr("addons://list/plugin");
     }
   }, {
     id: "zoom-controls",

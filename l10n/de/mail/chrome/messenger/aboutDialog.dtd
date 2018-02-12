@@ -51,7 +51,7 @@
 <!ENTITY bottomLinks.license        "Informationen zur Lizenzierung">
 
 <!-- LOCALIZATION NOTE (bottomLinks.rights): This is a link title that links to about:rights. -->
-<!ENTITY bottomLinks.rights         "Endanwenderrechte">
+<!ENTITY bottomLinks.rights         "Nutzungsbedingungen">
 
 <!-- LOCALIZATION NOTE (bottomLinks.privacy): This is a link title that links to http://www.mozilla.com/legal/privacy/. -->
 <!ENTITY bottomLinks.privacy        "Datenschutzbestimmungen">
@@ -92,7 +92,7 @@
 <!ENTITY update.unsupported.linkText "Weitere Informationen">
 <!ENTITY update.unsupported.end      "">
 
-<!-- LOCALIZATION NOTE (update.downloading.start,update.downloading.end): update.downloading.start and 
+<!-- LOCALIZATION NOTE (update.downloading.start,update.downloading.end): update.downloading.start and
      update.downloading.end all go into one line, with the amount downloaded inserted in between. As this
      is all in one line, try to make the localized text short (see bug 596813 for screenshots). The — is
      the "em dash" (long dash).

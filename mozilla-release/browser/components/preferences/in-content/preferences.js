@@ -62,7 +62,20 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
+#if MOZ_SERVICES_SYNC
   register_module("paneSync", gSyncPane);
+#endif
+  register_module("paneConnect", gConnectPane);
+  // Cliqz. DB-1230: Display the rich list item when connect module is available
+  try {
+    fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
+      if(res.status === 200) {
+        document.getElementById('category-connect').hidden = false;
+      }
+    });
+  } catch (e) {
+    Cu.reportError(e);
+  }
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
   gMainPane.preInit();
@@ -100,6 +113,7 @@ function telemetryBucketForCategory(category) {
     case "privacy":
     case "search":
     case "sync":
+    case "connect":
     case "searchresults":
       return category;
     default:

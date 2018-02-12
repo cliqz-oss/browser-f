@@ -144,7 +144,6 @@ EXTRA_JS_MODULES += [
     'FormValidationHandler.jsm',
     'LaterRun.jsm',
     'offlineAppCache.jsm',
-    'PageActions.jsm',
     'PermissionUI.jsm',
     'PingCentre.jsm',
     'PluginContent.jsm',
@@ -159,6 +158,10 @@ EXTRA_JS_MODULES += [
     'UpdateTopLevelContentWindowIDHelper.jsm',
     'webrtcUI.jsm',
     'ZoomUI.jsm',
+]
+
+EXTRA_PP_JS_MODULES += [
+    'PageActions.jsm',
 ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':

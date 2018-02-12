@@ -23,7 +23,7 @@
 #pragma comment(lib, "version.lib")
 
 // This uninstall key is defined originally in maintenanceservice_installer.nsi
-#define MAINT_UNINSTALL_KEY L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MozillaMaintenanceService"
+#define MAINT_UNINSTALL_KEY L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CLIQZMaintenanceService"
 
 static BOOL
 UpdateUninstallerVersionString(LPWSTR versionString)
@@ -56,7 +56,7 @@ ReadMaintenanceServiceStrings(LPCWSTR path,
 {
   // Read in the maintenance service description string if specified.
   const unsigned int kNumStrings = 1;
-  const char *kServiceKeys = "MozillaMaintenanceDescription\0";
+  const char *kServiceKeys = "CliqzMaintenanceDescription\0";
   char serviceStrings[kNumStrings][MAX_TEXT_LEN];
   int result = ReadStrings(path, kServiceKeys,
                            kNumStrings, serviceStrings);
@@ -181,7 +181,7 @@ UpdateServiceDescription(SC_HANDLE serviceHandle)
 }
 
 /**
- * Determines if the MozillaMaintenance service path needs to be updated
+ * Determines if the CliqzMaintenance service path needs to be updated
  * and fixes it if it is wrong.
  *
  * @param service             A handle to the service to fix.
@@ -194,7 +194,7 @@ FixServicePath(SC_HANDLE service,
                LPCWSTR currentServicePath,
                BOOL &servicePathWasWrong)
 {
-  // When we originally upgraded the MozillaMaintenance service we
+  // When we originally upgraded the CliqzMaintenance service we
   // would uninstall the service on each upgrade.  This had an
   // intermittent error which could cause the service to use the file
   // maintenanceservice_tmp.exe as the install path.  Only a small number
@@ -210,12 +210,12 @@ FixServicePath(SC_HANDLE service,
     currentServicePath[currentServicePathLen - 1] == L'\"';
 
   if (doesServiceHaveCorrectPath) {
-    LOG(("The MozillaMaintenance service path is correct."));
+    LOG(("The CliqzMaintenance service path is correct."));
     servicePathWasWrong = FALSE;
     return TRUE;
   }
   // This is a recoverable situation so not logging as a warning
-  LOG(("The MozillaMaintenance path is NOT correct. It was: %ls",
+  LOG(("The CliqzMaintenance path is NOT correct. It was: %ls",
        currentServicePath));
 
   servicePathWasWrong = TRUE;

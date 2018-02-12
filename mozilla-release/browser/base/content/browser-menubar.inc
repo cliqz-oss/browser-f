@@ -18,6 +18,13 @@
                           command="cmd_newNavigatorTab"
                           key="key_newNavigatorTab"
                           accesskey="&tabCmd.accesskey;"/>
+#if CQZ_AUTO_PRIVATE_TAB
+                <menuitem id="menu_newForgetTab"
+                          label="&forgetTabCmd.label;"
+                          command="cmd_newForgetTab"
+                          key="key_newForgetTab"
+                          accesskey="&forgetTabCmd.accesskey;"/>
+#endif
                 <menu id="menu_newUserContext"
                       label="&newUserContext.label;"
                       accesskey="&newUserContext.accesskey;"
@@ -211,9 +218,11 @@
                               key="key_gotoHistory"
                               observes="viewHistorySidebar"
                               label="&historyButton.label;"/>
+#ifdef MOZ_SERVICES_SYNC
                     <menuitem id="menu_tabsSidebar"
                               observes="viewTabsSidebar"
                               label="&syncedTabs.sidebar.label;"/>
+#endif
                   </menupopup>
                 </menu>
                 <menuseparator/>
@@ -334,11 +343,13 @@
                           key="key_sanitize"
                           command="Tools:Sanitize"/>
                 <menuseparator id="sanitizeSeparator"/>
+#ifdef MOZ_SERVICES_SYNC
                 <menuitem id="sync-tabs-menuitem"
                           class="syncTabsMenuItem"
                           label="&syncTabsMenu3.label;"
                           oncommand="BrowserOpenSyncTabs();"
                           hidden="true"/>
+#endif
                 <menuitem id="historyRestoreLastSession"
                           label="&historyRestoreLastSession.label;"
                           command="Browser:RestoreLastSession"/>
@@ -472,11 +483,11 @@
                         key="key_openDownloads"
                         command="Tools:Downloads"/>
               <menuitem id="menu_openAddons"
-                        label="&addons.label;"
+                        label="&plugins.label;"
                         accesskey="&addons.accesskey;"
                         key="key_openAddons"
                         command="Tools:Addons"/>
-
+#ifdef MOZ_SERVICES_SYNC
               <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"
                         label="&syncSignIn.label;"
@@ -493,6 +504,7 @@
                         accesskey="&syncReAuthItem.accesskey;"
                         observes="sync-reauth-state"
                         oncommand="gSync.openSignInAgainPage('menubar');"/>
+#endif
               <menuseparator id="devToolsSeparator"/>
               <menu id="webDeveloperMenu"
                     label="&webDeveloperMenu.label;"

@@ -120,7 +120,7 @@
 ; [Base Browser Files]
 #ifndef XP_UNIX
 @BINPATH@/@MOZ_APP_NAME@.exe
-@BINPATH@/firefox.VisualElementsManifest.xml
+@BINPATH@/cliqz.VisualElementsManifest.xml
 @BINPATH@/browser/VisualElements/VisualElements_150.png
 @BINPATH@/browser/VisualElements/VisualElements_70.png
 #else
@@ -143,6 +143,11 @@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
 #endif
 @RESPATH@/browser/blocklist.xml
+#if CQZ_AUTO_PRIVATE_TAB
+#if CQZ_ADULT_DOMAINS_BF
+@RESPATH@/browser/adult-domains.bin
+#endif  ; CQZ_ADULT_DOMAINS_BF
+#endif  ; CQZ_AUTO_PRIVATE_TAB
 #ifdef XP_WIN
 #ifdef _AMD64_
 @BINPATH@/@DLL_PREFIX@qipcap64@DLL_SUFFIX@
@@ -359,6 +364,7 @@
 @BINPATH@/components/nsDNSServiceDiscovery.manifest
 @BINPATH@/components/nsDNSServiceDiscovery.js
 #endif
+@RESPATH@/browser/components/AutoForgetTabsService.js
 @RESPATH@/browser/components/BrowserFeeds.manifest
 @RESPATH@/browser/components/FeedConverter.js
 @RESPATH@/browser/components/FeedWriter.js
@@ -493,8 +499,10 @@
 @RESPATH@/browser/components/SelfSupportService.manifest
 @RESPATH@/browser/components/SelfSupportService.js
 #endif
+#ifdef MOZ_SERVICES_SYNC
 @RESPATH@/components/SyncComponents.manifest
 @RESPATH@/components/Weave.js
+#endif
 @RESPATH@/components/FxAccountsComponents.manifest
 @RESPATH@/components/FxAccountsPush.js
 @RESPATH@/components/CaptivePortalDetectComponents.manifest
@@ -667,7 +675,9 @@
 @RESPATH@/defaults/pref/marionette.js
 
 ; Services (gre) prefs
+#ifdef MOZ_SERVICES_SYNC
 @RESPATH@/defaults/pref/services-sync.js
+#endif
 
 ; [Layout Engine Resources]
 ; Style Sheets, Graphics and other Resources used by the layout engine.
@@ -848,3 +858,6 @@ bin/libfreebl_32int64_3.so
 #ifdef PKG_LOCALE_MANIFEST
 #include @PKG_LOCALE_MANIFEST@
 #endif
+
+; Extra distrubution files
+@RESPATH@/cliqz.cfg

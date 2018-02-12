@@ -216,6 +216,7 @@ function onSearchSubmit(aEvent) {
 var gContentSearchController;
 
 function setupSearch() {
+  return; // Cliqz. Disable search engine
   // Set submit button label for when CSS background are disabled (e.g.
   // high contrast mode).
   document.getElementById("searchSubmit").value =
@@ -249,6 +250,7 @@ function loadCompleted() {
  * showSnippets.
  */
 function loadSnippets() {
+  return; // Cliqz. Disable snippets
   if (!gSnippetsMap)
     throw new Error("Snippets map has not properly been initialized");
 
@@ -305,6 +307,7 @@ function loadSnippets() {
  */
 var _snippetsShown = false;
 function showSnippets() {
+  return; // Cliqz. Disable snippets
   let snippetsElt = document.getElementById("snippets");
 
   // Show about:rights notification, if needed.
@@ -356,6 +359,7 @@ function showSnippets() {
  * Clear snippets element contents and show default snippets.
  */
 function showDefaultSnippets() {
+  return; // Cliqz. Disable snippets
   // Clear eventual contents...
   let snippetsElt = document.getElementById("snippets");
   snippetsElt.innerHTML = "";

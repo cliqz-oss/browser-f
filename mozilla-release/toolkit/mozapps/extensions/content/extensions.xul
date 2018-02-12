@@ -133,7 +133,8 @@
   <hbox flex="1">
     <vbox id="category-box">
       <!-- category list -->
-      <richlistbox id="categories" flex="1">
+      <richlistbox id="categories" flex="1" last-selected="category-plugin">
+#if 0
         <richlistitem id="category-search" value="addons://search/"
                       class="category"
                       name="&view.search.label;" priority="0"
@@ -142,6 +143,7 @@
                       class="category"
                       name="&view.discover.label;" priority="1000"
                       tooltiptext="&view.discover.label;"/>
+#endif
         <richlistitem id="category-legacy" value="addons://legacy/"
                       class="category" priority="20000"
                       disabled="true"/>
@@ -193,6 +195,8 @@
         <vbox id="headered-views" flex="1">
           <!-- main header -->
           <hbox id="header" align="center">
+          <!-- This is just to hide contents without actually removing elements. -->
+         <hbox id="settings-icon" hidden="true">
             <button id="show-all-extensions" hidden="true"
                     label="&showAllExtensions.button.label;"
                     command="cmd_showAllExtensions"/>
@@ -254,9 +258,10 @@
                           command="cmd_resetAddonAutoUpdate"/>
               </menupopup>
             </toolbarbutton>
-            <textbox id="header-search" type="search" searchbutton="true"
+            <textbox id="header-search" hidden="true" type="search" searchbutton="true"
                      searchbuttonlabel="&search.buttonlabel;"
                      placeholder="&search.placeholder;"/>
+          </hbox>
           </hbox>
 
           <deck id="headered-views-content" flex="1" selectedIndex="0">

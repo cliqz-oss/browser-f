@@ -22,9 +22,12 @@
 <preferences id="mainPreferences" hidden="true" data-category="paneGeneral">
 
     <!-- Startup -->
-    <preference id="browser.startup.page"
-                name="browser.startup.page"
-                type="int"/>
+    <preference id="browser.startup.restoreTabs"
+                name="browser.startup.restoreTabs"
+                type="bool"/>
+    <preference id="browser.startup.addFreshTab"
+                name="browser.startup.addFreshTab"
+                type="bool"/>
     <preference id="browser.startup.homepage"
                 name="browser.startup.homepage"
                 type="wstring"/>
@@ -291,7 +294,9 @@
               label="&alwaysCheckDefault2.label;" accesskey="&alwaysCheckDefault2.accesskey;"/>
     <deck id="setDefaultPane">
       <hbox align="center" class="indent">
+#if 0
         <image class="face-sad"/>
+#endif
         <label id="isNotDefaultLabel" flex="1">&isNotDefault.label;</label>
         <button id="setDefaultButton"
                 class="accessory-button"
@@ -299,7 +304,9 @@
                 preference="pref.general.disable_button.default_browser"/>
       </hbox>
       <hbox align="center" class="indent">
+#if 0
         <image class="face-smile"/>
+#endif
         <label id="isDefaultLabel" flex="1">&isDefault.label;</label>
       </hbox>
     </deck>
@@ -309,6 +316,16 @@
   <vbox id="startupPageBox">
     <label accesskey="&startupPage2.accesskey;"
            control="browserStartupPage">&startupPage2.label;</label>
+    <checkbox
+        id="restoreSessionCheckbox"
+        preference="browser.startup.restoreTabs"
+        label="&startupPrevSession.label;"/>
+    <checkbox
+        id="addCliqzFrashTabCheckbox"
+        preference="browser.startup.addFreshTab"
+        label="&startupUserHomePage.label;"/>
+# Replaced by two checkboxes above.
+#if 0
     <radiogroup id="browserStartupPage"
                 preference="browser.startup.page">
       <radio label="&startupUserHomePage.label;"
@@ -327,7 +344,9 @@
               class="extension-controlled-button accessory-button"
               label="&disableExtension.label;" />
     </hbox>
+#endif
   </vbox>
+#if 0
 </groupbox>
 
 <!-- Home Page -->
@@ -342,41 +361,47 @@
             class="extension-controlled-button accessory-button"
             label="&disableExtension.label;" />
   </hbox>
+#endif
 
   <vbox>
-    <textbox id="browserHomePage"
-             class="uri-element"
-             type="autocomplete"
-             autocompletesearch="unifiedcomplete"
-             onsyncfrompreference="return gMainPane.syncFromHomePref();"
-             onsynctopreference="return gMainPane.syncToHomePref(this.value);"
-             placeholder="&abouthome.pageTitle;"
-             preference="browser.startup.homepage"/>
+    <hbox>
+      <label>&homepage2.label;</label>
+      <vbox flex="1" style="margin-left: 10px;">
+        <textbox id="browserHomePage"
+                 flex="1"
+                 class="uri-element"
+                 type="autocomplete"
+                 autocompletesearch="unifiedcomplete"
+                 onsyncfrompreference="return gMainPane.syncFromHomePref();"
+                 onsynctopreference="return gMainPane.syncToHomePref(this.value);"
+                 placeholder="&abouthome.pageTitle;"
+                 preference="browser.startup.homepage"/>
+        <hbox class="homepage-buttons" flex="1">
+          <button id="useCurrent"
+                  flex="1"
+                  class="homepage-button"
+                  label=""
+                  accesskey="&useCurrentPage.accesskey;"
+                  label1="&useCurrentPage.label;"
+                  label2="&useMultiple.label;"
+                  preference="pref.browser.homepage.disable_button.current_page"/>
+          <button id="useBookmark"
+                  flex="1"
+                  class="homepage-button"
+                  label="&chooseBookmark.label;"
+                  accesskey="&chooseBookmark.accesskey;"
+                  preference="pref.browser.homepage.disable_button.bookmark_page"
+                  searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
+          <button id="restoreDefaultHomePage"
+                  flex="1"
+                  class="homepage-button"
+                  label="&restoreDefault.label;"
+                  accesskey="&restoreDefault.accesskey;"
+                  preference="pref.browser.homepage.disable_button.restore_default"/>
+        </hbox>
+      </vbox>
+    </hbox>
   </vbox>
-
-  <hbox class="homepage-buttons">
-    <button id="useCurrent"
-            flex="1"
-            class="homepage-button"
-            label=""
-            accesskey="&useCurrentPage.accesskey;"
-            label1="&useCurrentPage.label;"
-            label2="&useMultiple.label;"
-            preference="pref.browser.homepage.disable_button.current_page"/>
-    <button id="useBookmark"
-            flex="1"
-            class="homepage-button"
-            label="&chooseBookmark.label;"
-            accesskey="&chooseBookmark.accesskey;"
-            preference="pref.browser.homepage.disable_button.bookmark_page"
-            searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
-    <button id="restoreDefaultHomePage"
-            flex="1"
-            class="homepage-button"
-            label="&restoreDefault.label;"
-            accesskey="&restoreDefault.accesskey;"
-            preference="pref.browser.homepage.disable_button.restore_default"/>
-  </hbox>
 </groupbox>
 
 <!-- Tab preferences -->
@@ -826,7 +851,9 @@
                 disabled="true"/>
       </hbox>
       <hbox id="noUpdatesFound" align="start">
+#if 0
         <image class="face-smile"/>
+#endif
         <label>&update.noUpdatesFound;</label>
         <spacer flex="1"/>
         <button label="&update.checkForUpdatesButton.label;"
@@ -841,7 +868,9 @@
                 disabled="true"/>
       </hbox>
       <hbox id="manualUpdate" align="start">
+#if 0
         <image class="face-sad"/>
+#endif
         <description flex="1">
           <label>&update.manual.start;</label><label id="manualLink" class="text-link"/><label>&update.manual.end;</label>
         </description>

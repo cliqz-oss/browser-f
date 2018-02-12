@@ -18,6 +18,8 @@ const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/MigrationUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/Task.jsm");
+Cu.import("resource://gre/modules/NetUtil.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "PlacesBackups",
                                   "resource://gre/modules/PlacesBackups.jsm");
@@ -31,7 +33,83 @@ XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
                                   "resource://gre/modules/ProfileAge.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
                                   "resource://gre/modules/AppConstants.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+                                  "resource://gre/modules/PlacesUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Sqlite",
+                                  "resource://gre/modules/Sqlite.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
+                                  "resource://gre/modules/FormHistory.jsm");
+XPCOMUtils.defineLazyServiceGetter(this, "INIParserFactory",
+    "@mozilla.org/xpcom/ini-processor-factory;1", "nsIINIParserFactory");
 
+let fxProductDir = FileUtils.getDir(
+#if defined(XP_WIN)
+    "AppData", ["Mozilla", "Firefox"]
+#elif defined(XP_MACOSX)
+    "ULibDir", ["Application Support", "Firefox"]
+#else
+    "Home", [".mozilla", "firefox"]
+#endif
+    , false);
+
+function getFile(path) {
+  let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(path);
+  return file;
+}
+
+function* insertWholeBookmarkFolder(db, aId, aGuid) {
+  let query = `SELECT b.id, h.url, COALESCE(b.title, h.title) AS title,
+    b.type, k.keyword, b.dateAdded, b.lastModified
+    FROM moz_bookmarks b
+    LEFT JOIN moz_places h ON b.fk = h.id
+    LEFT JOIN moz_keywords k ON k.id = b.keyword_id
+    WHERE b.type IN (1,2) AND b.parent = ${aId}
+    ORDER BY b.position;`;
+  let rows = yield db.execute(query);
+  let yieldCounter = 0;
+  for (let row of rows) {
+    let type = row.getResultByName("type");
+    let title = row.getResultByName("title");
+    let id = row.getResultByName("id");
+
+    switch (type) {
+      case PlacesUtils.bookmarks.TYPE_BOOKMARK: // Bookmark Url - Handle keyword and favicon
+        let url = row.getResultByName("url");
+        if (isValidUrl(url)) {
+          yield PlacesUtils.bookmarks.insert({ parentGuid: aGuid,
+                                               url,
+                                               title,
+                                             });
+        }
+        break;
+      case PlacesUtils.bookmarks.TYPE_FOLDER: // Bookmark Folder - Handle Tag and Livemark (later)
+        let newFolderGuid = (yield PlacesUtils.bookmarks.insert({
+          parentGuid: aGuid,
+          type: PlacesUtils.bookmarks.TYPE_FOLDER,
+          title,
+        })).guid;
+        yield insertWholeBookmarkFolder(db, id, newFolderGuid); // Recursive insert bookmarks
+        break;
+    }
+
+    // With many bookmarks we end up stealing the CPU - even with yielding!
+    // So we let everyone else have a go every few items (bug 1186714).
+    if (++yieldCounter % 50 == 0) {
+      yield new Promise(resolve => {
+        Services.tm.currentThread.dispatch(resolve, Ci.nsIThread.DISPATCH_NORMAL);
+      });
+    }
+  }
+}
+
+function isValidUrl(aUrl) {
+  let url = NetUtil.newURI(aUrl);
+  // Filter out the URLs with unsupported schemes.
+  const invalidSchemes = ["wyciwyg", "place", "about", "chrome"];
+  if (invalidSchemes.indexOf(url.scheme) >= 0) return false;
+  return true;
+}
 
 function FirefoxProfileMigrator() {
   this.wrappedJSObject = this; // for testing...
@@ -40,6 +118,55 @@ function FirefoxProfileMigrator() {
 FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
 
 FirefoxProfileMigrator.prototype._getAllProfiles = function() {
+  const profiles = new Map();
+
+  const profilesIni = fxProductDir.clone();
+  profilesIni.append("profiles.ini");
+  if (!(profilesIni.exists() &&
+        profilesIni.isFile() &&
+        profilesIni.isReadable()))
+    return profiles;
+  const iniParser = INIParserFactory.createINIParser(profilesIni);
+
+  const sections = iniParser.getSections();
+  const profileSectionNameRE = /^Profile\d+$/;
+  while (sections.hasMore()) {
+    const section = sections.getNext();
+    if (!profileSectionNameRE.test(section))
+      continue;
+    try {
+      // The following code tries to replicate one in
+      // toolkit/profile/nsToolkitProfileService.cpp, Init() method.
+      const path = iniParser.getString(section, "Path");
+      const isRelative = iniParser.getString(section, "IsRelative") == "1";
+      let profileDir = fxProductDir.clone();
+      if (isRelative) {
+        profileDir.setRelativeDescriptor(fxProductDir, path);
+      }
+      else {
+        // TODO: Never saw absolute paths and never tested this.
+        profileDir.persistentDescriptor = path;
+      }
+
+      profiles.set(iniParser.getString(section, "Name"), profileDir);
+    }
+    catch (e) {
+      dump("Profiles.ini section: '" + section + "', error: " + e + "\n");
+    }
+  }
+
+  return profiles;
+};
+
+// This migrator is used for profile refresh.
+function CliqzProfileMigrator() {
+  FirefoxProfileMigrator.apply(this);
+}
+
+CliqzProfileMigrator.prototype =
+    Object.create(FirefoxProfileMigrator.prototype);
+
+CliqzProfileMigrator.prototype._getAllProfiles = function() {
   let allProfiles = new Map();
   let profiles =
     Components.classes["@mozilla.org/toolkit/profile-service;1"]
@@ -88,7 +215,13 @@ FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
 
   // Being a startup-only migrator, we can rely on
   // MigrationUtils.profileStartup being set.
-  let currentProfileDir = MigrationUtils.profileStartup.directory;
+  let currentProfileDir = null;
+  if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
+    currentProfileDir = FileUtils.getDir("ProfD","");
+  }
+  else {
+    currentProfileDir = MigrationUtils.profileStartup.directory;
+  }
 
   // Surely data cannot be imported from the current profile.
   if (sourceProfileDir.equals(currentProfileDir))
@@ -126,6 +259,254 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     };
   };
 
+  let getHistoryAndBookmarksResource = function(aFileName) {
+    let placesFile = this._getFileObject(sourceProfileDir, aFileName);
+    if (!placesFile)
+      return null;
+
+    return {
+      type: MigrationUtils.resourceTypes.HISTORY,
+
+      migrate(aCallback) {
+        return Task.spawn(function* () {
+          let db = yield Sqlite.openConnection({
+            path: placesFile.path
+          });
+
+          try {
+            // IMPORT BOOKMARKS
+            const topBookmarkFolderGuids = [
+                                            "menu________",
+                                            "toolbar_____",
+                                            "unfiled_____"
+                                            ];
+            let parentGuid = PlacesUtils.bookmarks.menuGuid;
+            // Create Firefox bookmarks folder on Bookmarks Menu
+            parentGuid = (yield PlacesUtils.bookmarks.insert({
+              parentGuid,
+              type: PlacesUtils.bookmarks.TYPE_FOLDER,
+              title: "Firefox",
+            })).guid;
+            // Create top bookmarks folders on Firefox bookmarks folder and recursively insert child bookmarks
+            for (let guid of topBookmarkFolderGuids) {
+              let query = `SELECT b.id, b.title
+                          FROM moz_bookmarks b
+                          WHERE b.type = 2 AND b.guid = '${guid}'
+                          ORDER BY b.position`;
+              let rows = yield db.execute(query);
+              if (rows.length > 0) {
+                let title = rows[0].getResultByName("title");
+                let id = rows[0].getResultByName("id");
+                let folderGuid = (yield PlacesUtils.bookmarks.insert({
+                  parentGuid,
+                  type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                  title,
+                })).guid;
+                yield insertWholeBookmarkFolder(db, id, folderGuid);
+              }
+            }
+
+            // IMPORT HISTORY
+            let rows = yield db.execute(`SELECT h.url, h.title, v.visit_type, v.visit_date
+                                        FROM moz_places h JOIN moz_historyvisits v
+                                        ON h.id = v.place_id
+                                        WHERE v.visit_type <= 3;`);
+            let places = [];
+            for (let row of rows) {
+              try {
+                places.push({
+                  uri: NetUtil.newURI(row.getResultByName("url")),
+                  title: row.getResultByName("title"),
+                  visits: [{
+                    transitionType: row.getResultByName("visit_type"),
+                    visitDate: row.getResultByName("visit_date"),
+                  }],
+                });
+              } catch (e) {
+                Cu.reportError(e);
+              }
+            }
+
+            if (places.length > 0) {
+              yield new Promise((resolve, reject) => {
+                PlacesUtils.asyncHistory.updatePlaces(places, {
+                  _success: false,
+                  handleResult: function() {
+                    // Importing any entry is considered a successful import.
+                    this._success = true;
+                  },
+                  handleError: function() {},
+                  handleCompletion: function() {
+                    if (this._success) {
+                      resolve();
+                    } else {
+                      reject(new Error("Couldn't add visits"));
+                    }
+                  }
+                });
+              });
+            }
+          } finally {
+            yield db.close();
+          }
+        }).then(() => { aCallback(true); },
+                ex => {
+                  Cu.reportError(ex);
+                  aCallback(false);
+                });
+      }
+    };
+  }.bind(this);
+
+  let getPasswordsResource = function(aFileName) {
+    let passwordsFile = this._getFileObject(sourceProfileDir, aFileName);
+    if (!passwordsFile)
+      return null;
+
+    return {
+      type: MigrationUtils.resourceTypes.PASSWORDS,
+
+      migrate(aCallback) {
+        return Task.spawn(function* () {
+          let jsonStream = yield new Promise(resolve =>
+            NetUtil.asyncFetch({ uri: NetUtil.newURI(passwordsFile),
+                                 loadUsingSystemPrincipal: true
+                               },
+                               (inputStream, resultCode) => {
+                                 if (Components.isSuccessCode(resultCode)) {
+                                   resolve(inputStream);
+                                 } else {
+                                   reject(new Error("Could not read Passwords file"));
+                                 }
+                               }
+            )
+          );
+
+          // Parse password file that is JSON format
+          let passwordJSON = NetUtil.readInputStreamToString(
+            jsonStream, jsonStream.available(), { charset : "UTF-8" });
+          let logins = JSON.parse(passwordJSON).logins;
+          const crypto = Cc["@mozilla.org/login-manager/crypto/SDR;1"].
+                      getService(Ci.nsILoginManagerCrypto);
+          try {
+            // Importing password items
+            if (logins && logins.length > 0) {
+              for(let loginInfo of logins) {
+                let login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
+                login.init(loginInfo.hostname, loginInfo.formSubmitURL, loginInfo.httpRealm,
+                           crypto.decrypt(loginInfo.encryptedUsername),
+                           crypto.decrypt(loginInfo.encryptedPassword),
+                           loginInfo.usernameField,
+                           loginInfo.passwordField);
+                login.QueryInterface(Ci.nsILoginMetaInfo);
+                login.timeCreated = loginInfo.timeCreated;
+                login.timeLastUsed = loginInfo.timeLastUsed;
+                login.timePasswordChanged = loginInfo.timePasswordChanged;
+                login.timesUsed = loginInfo.timesUsed;
+                //login.encType will be automatic generated;
+
+                // Add the login only if there's not an existing entry
+                let logins = Services.logins.findLogins({}, login.hostname,
+                                                        login.formSubmitURL,
+                                                        login.httpRealm);
+
+                // Bug 1187190: Password changes should be propagated depending on timestamps.
+                if (!logins.some(l => login.matches(l, true))) {
+                  Services.logins.addLogin(login);
+                }
+              }
+            }
+          } finally {
+            yield jsonStream.close(); // Re-Check if it's necessary to close or not
+          }
+        }).then(() => aCallback(true),
+        e => { Cu.reportError(e); aCallback(false) });
+      }
+    };
+  }.bind(this);
+
+  let getCookiesResource = function(aFileName) {
+    let cookiesFile = this._getFileObject(sourceProfileDir, aFileName);
+    if (!cookiesFile)
+      return null;
+
+    return {
+      type: MigrationUtils.resourceTypes.COOKIES,
+
+      migrate(aCallback) {
+        return Task.spawn(function* () {
+          let db = yield Sqlite.openConnection({
+            path: cookiesFile.path
+          });
+
+          try {
+            let rows = yield db.execute(`SELECT name, value,
+                                                host, path,
+                                                expiry, isSecure,
+                                                isHttpOnly
+                                          FROM moz_cookies`);
+            for(let row of rows) {
+              Services.cookies.add(row.getResultByName("host"),
+                                   row.getResultByName("path"),
+                                   row.getResultByName("name"),
+                                   row.getResultByName("value"),
+                                   row.getResultByName("isSecure"),
+                                   row.getResultByName("isHttpOnly"),
+                                   false,
+                                   row.getResultByName("expiry"),
+                                   {});
+            }
+          } finally {
+            yield db.close();
+          }
+        }).then(() => aCallback(true),
+        e => { Cu.reportError(e); aCallback(false) });
+      }
+    };
+  }.bind(this);
+
+  let getFormDataResource = function(aFileName) {
+    let formDataFile = this._getFileObject(sourceProfileDir, aFileName);
+    if (!formDataFile)
+      return null;
+
+    return {
+      type: MigrationUtils.resourceTypes.FORMDATA,
+
+      migrate(aCallback) {
+        return Task.spawn(function* () {
+          let db = yield Sqlite.openConnection({
+            path: formDataFile.path
+          });
+
+          try {
+            let rows = yield db.execute(`SELECT fieldname,
+                                                value,
+                                                timesUsed,
+                                                firstUsed,
+                                                lastUsed
+                                        FROM moz_formhistory`);
+            let changes = [];
+            for(let row of rows) {
+              changes.push({
+                            op: "add",
+                            fieldname: row.getResultByName("fieldname"),
+                            value:     row.getResultByName("value"),
+                            timesUsed: row.getResultByName("timesUsed"),
+                            firstUsed: row.getResultByName("firstUsed"),
+                            lastUsed:  row.getResultByName("lastUsed"),
+                          });
+            }
+            FormHistory.update(changes);
+          } finally {
+            yield db.close();
+          }
+        }).then(() => aCallback(true),
+        e => { Cu.reportError(e); aCallback(false) });
+      }
+    };
+  }.bind(this);
+
   function savePrefs() {
     // If we've used the pref service to write prefs for the new profile, it's too
     // early in startup for the service to have a profile directory, so we have to
@@ -136,9 +517,19 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   }
 
   let types = MigrationUtils.resourceTypes;
-  let places = getFileResource(types.HISTORY, ["places.sqlite", "places.sqlite-wal"]);
-  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite", "favicons.sqlite-wal"]);
-  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite", "cookies.sqlite-wal"]);
+  if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
+    let places = getHistoryAndBookmarksResource("places.sqlite");
+    let cookies = getCookiesResource("cookies.sqlite");
+    let formData = getFormDataResource("formhistory.sqlite");
+    return [places, cookies, formData].filter(r => r);
+  }
+  let places = getFileResource(types.HISTORY, ["places.sqlite"]);
+  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite"]);
+  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite"]);
+// TODO more accurate merge
+//  let places = getFileResource(types.HISTORY, ["places.sqlite", "places.sqlite-wal"]);
+//  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite", "favicons.sqlite-wal"]);
+//  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite", "cookies.sqlite-wal"]);
   let passwords = getFileResource(types.PASSWORDS,
     ["signons.sqlite", "logins.json", "key3.db", "key4.db"]);
   let formData = getFileResource(types.FORMDATA, [
@@ -160,13 +551,15 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     let sessionCheckpoints = this._getFileObject(sourceProfileDir, "sessionCheckpoints.json");
     let sessionFile = this._getFileObject(sourceProfileDir, "sessionstore.jsonlz4");
     if (sessionFile) {
+      let tabsRestoreURL = this.tabsRestoreURL;
       session = {
         type: types.SESSION,
         migrate(aCallback) {
           sessionCheckpoints.copyTo(currentProfileDir, "sessionCheckpoints.json");
           let newSessionFile = currentProfileDir.clone();
           newSessionFile.append("sessionstore.jsonlz4");
-          let migrationPromise = SessionMigration.migrate(sessionFile.path, newSessionFile.path);
+          let migrationPromise = SessionMigration.migrate(sessionFile.path,
+              newSessionFile.path, tabsRestoreURL);
           migrationPromise.then(function() {
             let buildID = Services.appinfo.platformBuildID;
             let mstone = Services.appinfo.platformVersion;
@@ -218,6 +611,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   };
 
   // Telemetry related migrations.
+  const doingProfileReset = this instanceof CliqzProfileMigrator;
   let times = {
     name: "times", // name is used only by tests.
     type: types.OTHERDATA,
@@ -226,6 +620,11 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
       if (file) {
         file.copyTo(currentProfileDir, "");
       }
+
+      // Don't record profile reset when just importing from Firefox.
+      if (!doingProfileReset)
+        return aCallback(true);
+
       // And record the fact a migration (ie, a reset) happened.
       let timesAccessor = new ProfileAge(currentProfileDir.path);
       timesAccessor.recordProfileReset().then(
@@ -290,13 +689,41 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
           session, sync, times, telemetry, favicons].filter(r => r);
 };
 
-Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
+Object.defineProperty(FirefoxProfileMigrator.prototype, "isFirefoxMigrator", {
+  // Cliqz
+  // This is FF migrator (need to correct migration process in MigrationUtils.jsm)
   get: () => true
 });
 
+Object.defineProperty(FirefoxProfileMigrator.prototype, "tabsRestoreURL", {
+  get: () => "about:importedtabs"
+});
+
+Object.defineProperty(CliqzProfileMigrator.prototype, "tabsRestoreURL", {
+  get: () => "about:welcomeback"
+});
+
+Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
+  // Cliqz
+  // Use not only as startup migrator, but as option to import from FF later
+  get: () => false
+});
+
+Object.defineProperty(CliqzProfileMigrator.prototype, "startupOnlyMigrator", {
+  get: () => true
+});
 
 FirefoxProfileMigrator.prototype.classDescription = "Firefox Profile Migrator";
 FirefoxProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=firefox";
 FirefoxProfileMigrator.prototype.classID = Components.ID("{91185366-ba97-4438-acba-48deaca63386}");
 
-this.NSGetFactory = XPCOMUtils.generateNSGetFactory([FirefoxProfileMigrator]);
+CliqzProfileMigrator.prototype.classDescription = "Cliqz Profile Migrator";
+CliqzProfileMigrator.prototype.contractID =
+    "@mozilla.org/profile/migrator;1?app=browser&type=cliqz";
+CliqzProfileMigrator.prototype.classID =
+    Components.ID("{f8cfe235-2127-4f42-894f-f8fdf2969233}");
+
+this.NSGetFactory = XPCOMUtils.generateNSGetFactory([
+    FirefoxProfileMigrator,
+    CliqzProfileMigrator
+]);

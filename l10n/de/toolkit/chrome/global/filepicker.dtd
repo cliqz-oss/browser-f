@@ -10,7 +10,7 @@
 <!ENTITY showHiddenFiles.label  "Versteckte Dateien und Ordner anzeigen">
 <!ENTITY showHiddenFiles.accesskey  "v">
 
-<!ENTITY noPermissionError.label "Sie haben nicht die notwendigen Rechte, um diesen Ordner anzusehen.">
+<!ENTITY noPermissionError.label "Du hast nicht die notwendigen Rechte, um diesen Ordner anzusehen.">
 
 <!ENTITY folderUp.tooltiptext   "Eine Ebene höher gehen">
 <!ENTITY folderHome.tooltiptext "Zum persönlichen Ordner gehen">

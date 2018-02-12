@@ -1,3 +1,9 @@
+##if CQZ_AUTO_PRIVATE_TAB
+component {998eec19-ade7-4b42-ad3f-5d19d98de71d}        AutoForgetTabsService.js
+contract  @cliqz.com/browser/auto_forget_tabs_service;1 {998eec19-ade7-4b42-ad3f-5d19d98de71d}
+category  profile-after-change  AutoForgetTabsService   @cliqz.com/browser/auto_forget_tabs_service;1
+##endif
+
 # nsBrowserContentHandler.js
 component {5d0ce354-df01-421a-83fb-7ead0990c24e} nsBrowserContentHandler.js application={ec8030f7-c20a-464f-9b0e-13a3a9e97384}
 contract @mozilla.org/browser/clh;1 {5d0ce354-df01-421a-83fb-7ead0990c24e} application={ec8030f7-c20a-464f-9b0e-13a3a9e97384}

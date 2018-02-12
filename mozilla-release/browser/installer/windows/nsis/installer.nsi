@@ -9,6 +9,7 @@
 # ShellLink      http://nsis.sourceforge.net/ShellLink_plug-in
 # UAC            http://nsis.sourceforge.net/UAC_plug-in
 # ServicesHelper Mozilla specific plugin that is located in /other-licenses/nsis
+# CliqzHelper    Simple library which help with extracting branding information
 
 ; Set verbosity to 3 (e.g. no script) to lessen the noise in the build logs
 !verbose 3
@@ -246,10 +247,10 @@ Section "-InstallStartCleanup"
   ${EndIf}
 
   ; setup the application model id registration value
-  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+  ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
   ; Remove the updates directory
-  ${CleanUpdateDirectories} "Mozilla\Firefox" "Mozilla\updates"
+  ${CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
 
   ${RemoveDeprecatedFiles}
   ${RemovePrecompleteEntries} "false"
@@ -257,6 +258,7 @@ Section "-InstallStartCleanup"
   ${If} ${FileExists} "$INSTDIR\defaults\pref\channel-prefs.js"
     Delete "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
+  ; Cliqz Browser: we don't replace already existing distribution.js file in pref
   ${If} ${FileExists} "$INSTDIR\defaults\pref"
     RmDir "$INSTDIR\defaults\pref"
   ${EndIf}
@@ -289,6 +291,13 @@ Section "-Application" APP_IDX
   ${CopyFilesFromDir} "$EXEDIR\core" "$INSTDIR" \
                       "$(ERROR_CREATE_DIRECTORY_PREFIX)" \
                       "$(ERROR_CREATE_DIRECTORY_SUFFIX)"
+
+  ; Try to get brand information from installer or it parent processes. Just
+  ; in case, because this will be done by stub installer. But in some rare cases
+  ; user can launch full installer bypassing stub installer.
+  CliqzHelper::saveTaggedParams "Software\CLIQZ" 259200
+  Call CliqzSaveBrandingInfo
+  Call FixCliqzAsFirefoxRegistry
 
   ; Register DLLs
   ; XXXrstrong - AccessibleMarshal.dll can be used by multiple applications but
@@ -340,30 +349,31 @@ Section "-Application" APP_IDX
 
   ${LogHeader} "Adding Registry Entries"
   SetShellVarContext current  ; Set SHCTX to HKCU
-  ${RegCleanMain} "Software\Mozilla"
+  ${RegCleanMain} "Software\CLIQZ"
   ${RegCleanUninstall}
   ${UpdateProtocolHandlers}
 
   ClearErrors
-  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     StrCpy $TmpVal "HKCU" ; used primarily for logging
   ${Else}
     SetShellVarContext all  ; Set SHCTX to HKLM
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
     StrCpy $TmpVal "HKLM" ; used primarily for logging
-    ${RegCleanMain} "Software\Mozilla"
+    ${RegCleanMain} "Software\CLIQZ"
     ${RegCleanUninstall}
     ${UpdateProtocolHandlers}
 
-    ReadRegStr $0 HKLM "Software\mozilla.org\Mozilla" "CurrentVersion"
+    ReadRegStr $0 HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion"
     ${If} "$0" != "${GREVersion}"
-      WriteRegStr HKLM "Software\mozilla.org\Mozilla" "CurrentVersion" "${GREVersion}"
+      WriteRegStr HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion" "${GREVersion}"
     ${EndIf}
   ${EndIf}
 
   ${RemoveDeprecatedKeys}
-  ${Set32to64DidMigrateReg}
+  ; Don't use migration for Cliqz browser users
+  ; ${Set32to64DidMigrateReg}
 
   ; The previous installer adds several regsitry values to both HKLM and HKCU.
   ; We now try to add to HKLM and if that fails to HKCU
@@ -381,17 +391,17 @@ Section "-Application" APP_IDX
   ; it doesn't cause problems always add them.
   ${SetUninstallKeys}
 
-  ; On install always add the FirefoxHTML and FirefoxURL keys.
-  ; An empty string is used for the 5th param because FirefoxHTML is not a
+  ; On install always add the CliqzHTML and CliqzURL keys.
+  ; An empty string is used for the 5th param because CliqzHTML is not a
   ; protocol handler.
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
   StrCpy $2 "$\"$8$\" -osint -url $\"%1$\""
 
-  ; In Win8, the delegate execute handler picks up the value in FirefoxURL and
-  ; FirefoxHTML to launch the desktop browser when it needs to.
-  ${AddDisabledDDEHandlerValues} "FirefoxHTML-$AppUserModelID" "$2" "$8,1" \
+  ; In Win8, the delegate execute handler picks up the value in CliqzURL and
+  ; CliqzHTML to launch the desktop browser when it needs to.
+  ${AddDisabledDDEHandlerValues} "CliqzHTML-$AppUserModelID" "$2" "$8,1" \
                                  "${AppRegName} Document" ""
-  ${AddDisabledDDEHandlerValues} "FirefoxURL-$AppUserModelID" "$2" "$8,1" \
+  ${AddDisabledDDEHandlerValues} "CliqzURL-$AppUserModelID" "$2" "$8,1" \
                                  "${AppRegName} URL" "true"
 
   ; For pre win8, the following keys should only be set if we can write to HKLM.
@@ -628,7 +638,7 @@ Section "-InstallEndCleanup"
       ; If we have something other than empty string now, write the value.
       ${If} "$0" != ""
         ClearErrors
-        WriteRegStr HKCU "Software\Mozilla\Firefox" "OldDefaultBrowserCommand" "$0"
+        WriteRegStr HKCU "Software\CLIQZ" "OldDefaultBrowserCommand" "$0"
       ${EndIf}
 
       ${LogHeader} "Setting as the default browser"
@@ -644,7 +654,7 @@ Section "-InstallEndCleanup"
     ${ElseIfNot} ${Errors}
       ${LogHeader} "Writing default-browser opt-out"
       ClearErrors
-      WriteRegStr HKCU "Software\Mozilla\Firefox" "DefaultBrowserOptOut" "True"
+      WriteRegStr HKCU "Software\CLIQZ" "DefaultBrowserOptOut" "True"
       ${If} ${Errors}
         ${LogMsg} "Error writing default-browser opt-out"
       ${EndIf}
@@ -699,6 +709,15 @@ Section "-InstallEndCleanup"
         Rename "$INSTDIR\helper.exe" "$INSTDIR\${FileMainEXE}"
       ${EndUnless}
     ${EndIf}
+  ${EndIf}
+
+  ; Cliqz: autolaunch in silent mode if /run switch exist
+  ${If} ${Silent}
+    ${GetParameters} $0
+    ${GetOptions} "$0" "/run" $0
+    ${Unless} ${Errors}
+      Call LaunchApp
+    ${EndUnless}
   ${EndIf}
 SectionEnd
 
@@ -953,7 +972,7 @@ FunctionEnd
 !ifdef MOZ_MAINTENANCE_SERVICE
 Function preComponents
   ; If the service already exists, don't show this page
-  ServicesHelper::IsInstalled "MozillaMaintenance"
+  ServicesHelper::IsInstalled "CLIQZMaintenance"
   Pop $R9
   ${If} $R9 == 1
     ; The service already exists so don't show this page.
@@ -970,13 +989,13 @@ Function preComponents
 
   ; Only show the maintenance service page if we have write access to HKLM
   ClearErrors
-  WriteRegStr HKLM "Software\Mozilla" \
+  WriteRegStr HKLM "Software\CLIQZ" \
               "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     ClearErrors
     Abort
   ${Else}
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
   ${EndIf}
 
   StrCpy $PageName "Components"
@@ -1042,17 +1061,17 @@ Function preSummary
 
   ; Check if it is possible to write to HKLM
   ClearErrors
-  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
   ${Unless} ${Errors}
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
-    ; Check if Firefox is the http handler for this user.
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
+    ; Check if Cliqz is the http handler for this user.
     SetShellVarContext current ; Set SHCTX to the current user
     ${IsHandlerForInstallDir} "http" $R9
     ${If} $TmpVal == "HKLM"
       SetShellVarContext all ; Set SHCTX to all users
     ${EndIf}
-    ; If Firefox isn't the http handler for this user show the option to set
-    ; Firefox as the default browser.
+    ; If Cliqz isn't the http handler for this user show the option to set
+    ; Cliqz as the default browser.
     ${If} "$R9" != "true"
     ${AndIf} ${AtMostWin2008R2}
       WriteINIStr "$PLUGINSDIR\summary.ini" "Settings" NumFields "4"

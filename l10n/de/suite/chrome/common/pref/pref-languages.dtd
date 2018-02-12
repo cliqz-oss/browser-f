@@ -4,10 +4,10 @@
 
 <!-- LOCALIZATION NOTE : FILE 'Languages' preferences dialog -->
 
-<!ENTITY languages.customize.prefLangDescript           "Web-Seiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie Sprachen für die Darstellung von Webseiten in Ihrer bevorzugten Reihenfolge.">
+<!ENTITY languages.customize.prefLangDescript           "Web-Seiten sind manchmal in mehr als einer Sprache verfügbar. Wähle Sprachen für die Darstellung von Webseiten in deiner bevorzugten Reihenfolge.">
 <!ENTITY languages.customize.title                      "Sprachen">
 <!ENTITY langtitle.label                                "Sprachen für Webseiten">
-<!ENTITY languages.customize.prefAddLangDescript        "Wählen Sie die Sprache(n), die hinzugefügt werden sollen.">
+<!ENTITY languages.customize.prefAddLangDescript        "Wähle die Sprache(n), die hinzugefügt werden sollen.">
 <!ENTITY languages.customize.addButton.label            "Hinzufügen…">
 <!ENTITY languages.customize.addButton.accesskey        "H">
 <!ENTITY languages.customize.deleteButton.label         "Entfernen">

@@ -389,12 +389,12 @@ var gXPInstallObserver = {
           args = [install.name];
         } else {
           error += "Incompatible";
-          args = [brandShortName, Services.appinfo.version, install.name];
+          args = [brandShortName, Services.prefs.getCharPref("distribution.version"), install.name];
         }
 
         // Add Learn More link when refusing to install an unsigned add-on
         if (install.error == AddonManager.ERROR_SIGNEDSTATE_REQUIRED) {
-          options.learnMoreURL = Services.urlFormatter.formatURLPref("app.support.baseURL") + "unsigned-addons";
+          options.learnMoreURL = "https://cliqz.com/support/wieso-keine-addons";
         }
 
         messageString = gNavigatorBundle.getFormattedString(error, args);
@@ -575,6 +575,7 @@ var LightWeightThemeWebInstaller = {
         this._installRequest(data.themeData, data.baseURI);
         break;
       }
+#if 0
       case "LightWeightThemeWebInstaller:Preview": {
         this._preview(data.themeData, data.baseURI);
         break;
@@ -583,6 +584,7 @@ var LightWeightThemeWebInstaller = {
         this._resetPreview(data && data.baseURI);
         break;
       }
+#endif
     }
   },
 
@@ -603,6 +605,22 @@ var LightWeightThemeWebInstaller = {
   },
 
   _installRequest(dataString, baseURI) {
+    let notificationBox = gBrowser.getNotificationBox();
+    // remove previous notification
+    ["lwtheme-install-request",
+     "lwtheme-install-notification"].forEach(function(value) {
+        let notification = notificationBox.getNotificationWithValue(value);
+        if (notification)
+          notificationBox.removeNotification(notification);
+      });
+    notificationBox.appendNotification(
+        gNavigatorBundle.getString("lwthemeInstallRequest.disabledInCliqz"),
+        "lwtheme-install-request", "",
+        notificationBox.PRIORITY_INFO_MEDIUM,
+        []);
+#if 0
+    // Disable LW themes in Cliqz.
+
     let data = this._manager.parseTheme(dataString, baseURI);
 
     if (!data) {
@@ -649,6 +667,7 @@ var LightWeightThemeWebInstaller = {
         LightWeightThemeWebInstaller._install(data, notify);
       }
     });
+#endif
   },
 
   _install(newLWTheme, notify) {
@@ -711,6 +730,8 @@ var LightWeightThemeWebInstaller = {
   },
 
   _isAllowed(srcURIString) {
+    return false;  // Disable LW themes in Cliqz.
+#if 0
     let uri;
     try {
       uri = makeURI(srcURIString);
@@ -725,5 +746,6 @@ var LightWeightThemeWebInstaller = {
 
     let pm = Services.perms;
     return pm.testPermission(uri, "install") == pm.ALLOW_ACTION;
+#endif
   }
 };

@@ -77,6 +77,13 @@ static const RedirEntry kRedirMap[] = {
   { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
+  { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
+    nsIAboutModule::ALLOW_SCRIPT |
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
+  { "home", "resource://cliqz/freshtab/home.html",
+    nsIAboutModule::ALLOW_SCRIPT },
+#if 0
+# Replaced by Cliqz
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
@@ -84,6 +91,7 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::MAKE_LINKABLE |
     nsIAboutModule::ENABLE_INDEXED_DB },
+#endif
   // the newtab's actual URL will be determined when the channel is created
   { "newtab", "about:blank",
     nsIAboutModule::ALLOW_SCRIPT },
@@ -182,6 +190,11 @@ AboutRedirector::NewChannel(nsIURI* aURI,
       rv = NS_URIChainHasFlags(tempURI, nsIProtocolHandler::URI_IS_UI_RESOURCE,
                                &isUIResource);
       NS_ENSURE_SUCCESS(rv, rv);
+      // TODO: Instead of this, try to return URI_IS_UI_RESOURCE from extension
+      // about-handler |getURIFlags|.
+      if (path.EqualsLiteral("home") || path.EqualsLiteral("newtab")) {
+        isUIResource = true;
+      }
 
       rv = NS_NewChannelInternal(getter_AddRefs(tempChannel),
                                  tempURI,

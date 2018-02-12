@@ -8,7 +8,7 @@
 <!ENTITY aboutSupport.pageSubtitle "
   This page contains technical information that might be useful when you’re
   trying to solve a problem. If you are looking for answers to common questions
-  about &brandShortName;, check out our <a id='supportLink'>support website</a>.
+  about &brandShortName;, check out our <a href='https://cliqz.com/support' target='_blank'>Cliqz Support page</a> or <a id='supportLink'>Mozilla's support website</a>.
 ">
 
 <!ENTITY aboutSupport.crashes.title "Crash Reports">
@@ -132,7 +132,7 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.sandboxSyscallArgs "Arguments">
 
 <!ENTITY aboutSupport.safeModeTitle "Try Safe Mode">
-<!ENTITY aboutSupport.restartInSafeMode.label "Restart with Add-ons Disabled…">
+<!ENTITY aboutSupport.restartInSafeMode.label "Restart in safe mode…">
 
 <!ENTITY aboutSupport.graphicsFeaturesTitle "Features">
 <!ENTITY aboutSupport.graphicsDiagnosticsTitle "Diagnostics">

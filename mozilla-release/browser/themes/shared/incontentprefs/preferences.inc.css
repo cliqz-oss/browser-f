@@ -137,6 +137,10 @@ button > hbox > label {
   list-style-image: url("chrome://browser/skin/preferences/in-content/sync.svg");
 }
 
+#category-connect > .category-icon {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/connect.svg");
+}
+
 /* header */
 .header {
   display: flex;
@@ -146,6 +150,11 @@ button > hbox > label {
 
 .header[hidden=true] {
   display: none;
+}
+
+#header-connect {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 /* General Pane */
@@ -372,6 +381,23 @@ button > hbox > label {
 
 .text-link {
   margin-bottom: 0;
+}
+
+.mozilla-support-label-drm {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: #999;
+}
+
+.mozilla-support-label-notification {
+  padding-left: 4px;
+  color: #999;
+}
+
+.mozilla-support-label-telemetry {
+  margin-top: 8px;
+  padding-left: 4px;
+  color: #999;
 }
 
 #showUpdateHistory {
@@ -806,6 +832,7 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
   margin-top: 64px;
 }
 
+%if 0
 .no-results-container:nth-child(2) > image {
   list-style-image: url("chrome://browser/skin/preferences/in-content/no-search-results.svg");
   width: 380px;
@@ -821,4 +848,16 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 
 .no-results-message[query*=🔥🦊] > .no-results-container {
   visibility: hidden;
+}
+%endif
+
+#passwordsBoxHint {
+  padding-left: 28px;
+  font-size: 0.85em;
+  margin-top: -10px!important;
+  color: GrayText;
+}
+
+#passwordsBoxHint > .text-link {
+  font-size: 1em;
 }

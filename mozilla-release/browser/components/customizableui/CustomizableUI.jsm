@@ -193,13 +193,11 @@ var CustomizableUIInternal = {
       "back-button",
       "forward-button",
       "stop-reload-button",
-      "home-button",
-      "spring",
       "urlbar-container",
-      "spring",
+      ...CustomizableUI.CLIQZ_WIDGET_IDS,
+      "bookmarks-menu-button",
+      "home-button",
       "downloads-button",
-      "library-button",
-      "sidebar-button",
     ];
 
     if (AppConstants.MOZ_DEV_EDITION) {
@@ -314,16 +312,19 @@ var CustomizableUIInternal = {
     if (currentVersion < 7 && gSavedState.placements &&
         gSavedState.placements[CustomizableUI.AREA_NAVBAR]) {
       let placements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
-      let newPlacements = ["back-button", "forward-button", "stop-reload-button", "home-button"];
+      /* Cliqz. "home-button" removed from default placements we add on upgrade. */
+      let newPlacements = ["back-button", "forward-button", "stop-reload-button"];
       for (let button of placements) {
         if (!newPlacements.includes(button)) {
           newPlacements.push(button);
         }
       }
 
+#if 0
       if (!newPlacements.includes("sidebar-button")) {
         newPlacements.push("sidebar-button");
       }
+#endif
 
       gSavedState.placements[CustomizableUI.AREA_NAVBAR] = newPlacements;
     }
@@ -345,6 +346,7 @@ var CustomizableUIInternal = {
         "preferences-button",
         "add-ons-button",
         "sync-button",
+        "mobilepairing_btn", // Cliqz connect/pairing
       ];
 
       if (!AppConstants.MOZ_DEV_EDITION) {
@@ -368,6 +370,7 @@ var CustomizableUIInternal = {
 
     if (currentVersion < 9 && gSavedState.placements && gSavedState.placements["nav-bar"]) {
       let placements = gSavedState.placements["nav-bar"];
+#if 0
       if (placements.includes("urlbar-container")) {
         let urlbarIndex = placements.indexOf("urlbar-container");
         let secondSpringIndex = urlbarIndex + 1;
@@ -398,6 +401,7 @@ var CustomizableUIInternal = {
         let libraryIndex = downloadButtonIndex == -1 ? bmbIndex : (downloadButtonIndex + 1);
         placements.splice(libraryIndex, 0, "library-button");
       }
+#endif
     }
 
     if (currentVersion < 10 && gSavedState.placements) {
@@ -449,6 +453,16 @@ var CustomizableUIInternal = {
             placements.splice(buttonIndex, 1);
           }
         }
+      }
+    }
+
+    // Cliqz
+    // Make sure no "search-container" is in navbar left from previous versions
+    const navbarPlacements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
+    if (navbarPlacements) {
+      const searchContainerIndex = navbarPlacements.indexOf("search-container");
+      if (searchContainerIndex !== -1) {
+        navbarPlacements.splice(searchContainerIndex, 1);
       }
     }
 
@@ -2266,13 +2280,16 @@ var CustomizableUIInternal = {
       let addToDefaultPlacements = false;
       let area = gAreas.get(widget.defaultArea);
       if (!CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
-          widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL) {
+          widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL ||
+          CustomizableUI.isCliqzWidget(widget.id)) {
         addToDefaultPlacements = true;
       }
 
       if (addToDefaultPlacements) {
         if (area.has("defaultPlacements")) {
-          area.get("defaultPlacements").push(widget.id);
+          // Cliqz widgets should be placed after urlbar by default.
+          // That is why we have special method to take care of it.
+          CustomizableUI.addWidgetToDefaultPlacements(widget.id, area);
         } else {
           area.set("defaultPlacements", [widget.id]);
         }
@@ -3038,6 +3055,15 @@ this.CustomizableUI = {
    */
   REASON_AREA_UNREGISTERED: "area-unregistered",
 
+  /**
+   * Cliqz.
+   * List of Cliqz widget ids.
+   */
+  CLIQZ_WIDGET_IDS: [
+    "control-center-browser-action", // Cliqz control center
+    "cliqz-cc-btn", // Cliqz control center old
+    "offers-cc-browser-action", // Cliqz offers hub
+  ],
 
   /**
    * An iteratable property of windows managed by CustomizableUI.
@@ -3930,6 +3956,33 @@ this.CustomizableUI = {
    */
   createSpecialWidget(aId, aDocument) {
     return CustomizableUIInternal.createSpecialWidget(aId, aDocument);
+  },
+
+  /**
+   * Cliqz.
+   * Add widget to the list of defaultPlacements.
+   * We always add widget after 'urlbar-container' if it exists, or
+   * to the end of the list if it doesn't.
+   * @param aWidgetId
+   * @param aArea
+   */
+  addWidgetToDefaultPlacements(aWidgetId, aArea) {
+    const placements = aArea.get("defaultPlacements");
+    let urlbarIndex = placements.indexOf('urlbar-container');
+    if (urlbarIndex === -1) {
+      placements.push(aWidgetId);
+    } else {
+      placements.splice(urlbarIndex, 0, aWidgetId);
+    }
+  },
+
+  /**
+   * Cliqz.
+   * Check if widget id belongs to one of Cliqz's.
+   * @param aWidgetId the ID of the widget you want to check
+   */
+  isCliqzWidget(aWidgetId) {
+    return CustomizableUI.CLIQZ_WIDGET_IDS.includes(aWidgetId);
   },
 };
 Object.freeze(this.CustomizableUI);

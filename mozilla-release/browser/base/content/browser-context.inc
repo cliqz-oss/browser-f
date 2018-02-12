@@ -63,6 +63,11 @@
                 accesskey="&openLinkCmdInTab.accesskey;"
                 data-usercontextid="0"
                 oncommand="gContextMenu.openLinkInTab(event);"/>
+      <menuitem id="context-openLinkInForgetTab"
+                label="&openLinkCmdInForgetTab.label;"
+                accesskey="&openLinkCmdInTab.accesskey;"
+                usercontextid="0"
+                oncommand="gContextMenu.openLinkInTab(event);"/>
 
       <menu id="context-openlinkinusercontext-menu"
             label="&openLinkCmdInContainerTab.label;"

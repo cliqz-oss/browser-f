@@ -293,7 +293,8 @@ var WebNavigation =  {
         this.loadURI(message.data.uri, message.data.flags,
                      message.data.referrer, message.data.referrerPolicy,
                      message.data.postData, message.data.headers,
-                     message.data.baseURI, message.data.triggeringPrincipal);
+                     message.data.baseURI, message.data.triggeringPrincipal,
+                     message.data.ensurePrivate);
         break;
       case "WebNavigation:SetOriginAttributes":
         this.setOriginAttributes(message.data.originAttributes);
@@ -333,7 +334,7 @@ var WebNavigation =  {
     this._wrapURIChangeCall(() => this.webNavigation.gotoIndex(index));
   },
 
-  loadURI(uri, flags, referrer, referrerPolicy, postData, headers, baseURI, triggeringPrincipal) {
+  loadURI(uri, flags, referrer, referrerPolicy, postData, headers, baseURI, triggeringPrincipal, ensurePrivate) {
     if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
       let annotation = uri;
       try {
@@ -357,7 +358,8 @@ var WebNavigation =  {
       triggeringPrincipal = Utils.deserializePrincipal(triggeringPrincipal);
     this._wrapURIChangeCall(() => {
       return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                                   postData, headers, baseURI, triggeringPrincipal);
+                                                   postData, headers, baseURI,
+                                                   triggeringPrincipal, ensurePrivate);
     });
   },
 

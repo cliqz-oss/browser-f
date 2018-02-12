@@ -2590,6 +2590,14 @@ TabParent::RecvDispatchFocusToTopLevelWindow()
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult
+TabParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
+  SetPrivateBrowsingAttributes(isPrivate);
+  CreateLoadContext();
+  mLoadContext->SetPrivateness(isPrivate);
+  return IPC_OK();
+}
+
 bool
 TabParent::ReceiveMessage(const nsString& aMessage,
                           bool aSync,
@@ -2869,26 +2877,32 @@ TabParent::RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
 already_AddRefed<nsILoadContext>
 TabParent::GetLoadContext()
 {
-  nsCOMPtr<nsILoadContext> loadContext;
+  CreateLoadContext();
+  RefPtr<LoadContext> loadContext;
+  loadContext = mLoadContext;
+  return loadContext.forget();
+}
+
+void TabParent::CreateLoadContext() {
   if (mLoadContext) {
-    loadContext = mLoadContext;
+    return;
   } else {
+#if 0  // Privateness is already passed with TabContext to our constructor.
     bool isPrivate = mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
     SetPrivateBrowsingAttributes(isPrivate);
+#endif
     bool useTrackingProtection = false;
     nsCOMPtr<nsIDocShell> docShell = mFrameElement->OwnerDoc()->GetDocShell();
     if (docShell) {
       docShell->GetUseTrackingProtection(&useTrackingProtection);
     }
-    loadContext = new LoadContext(GetOwnerElement(),
+    mLoadContext = new LoadContext(GetOwnerElement(),
                                   true /* aIsContent */,
-                                  isPrivate,
+                                  OriginAttributesRef().mPrivateBrowsingId != 0,
                                   mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
                                   useTrackingProtection,
                                   OriginAttributesRef());
-    mLoadContext = loadContext;
   }
-  return loadContext.forget();
 }
 
 NS_IMETHODIMP
@@ -3278,6 +3292,8 @@ public:
   NS_IMETHOD SetPrivateBrowsing(bool) NO_IMPL
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL
   NS_IMETHOD GetScriptableOriginAttributes(JS::MutableHandleValue) NO_IMPL
+  NS_IMETHOD AddWeakPrivacyTransitionObserver(
+      nsIPrivacyTransitionObserver *obs) NO_IMPL
   NS_IMETHOD_(void) GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
   NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL
   NS_IMETHOD SetRemoteTabs(bool) NO_IMPL

@@ -2093,7 +2093,6 @@ MOZ_PREF_EXTENSIONS=1
 MOZ_REFLOW_PERF=
 MOZ_SPELLCHECK=1
 MOZ_TOOLKIT_SEARCH=1
-MOZ_UI_LOCALE=en-US
 MOZ_UNIVERSALCHARDET=1
 MOZ_XUL=1
 MOZ_ZIPWRITER=1
@@ -2108,6 +2107,23 @@ MOZ_GMP_SANDBOX=
 MOZ_SANDBOX=1
 MOZ_BINARY_EXTENSIONS=
 MOZ_DEVTOOLS=server
+
+# Set this ENV variable to 0 to disable Automatic private tab feature.
+# NB: CQZ_ADULT_DOMAINS_BF should be set to let feature actually work.
+AC_SUBST(CQZ_AUTO_PRIVATE_TAB)
+if test -z "$CQZ_AUTO_PRIVATE_TAB"; then
+  CQZ_AUTO_PRIVATE_TAB=1
+fi
+AC_DEFINE(CQZ_AUTO_PRIVATE_TAB)
+
+# Path to bloom filter database of adult domains.
+# NB: This must be relative to source root.
+# NB: File name must be exactly "adult-domains.bin" :(
+AC_SUBST(CQZ_ADULT_DOMAINS_BF)
+if test "$CQZ_ADULT_DOMAINS_BF"; then
+  CQZ_ADULT_DOMAINS_BF="${_topsrcdir}/$CQZ_ADULT_DOMAINS_BF"
+  AC_DEFINE(CQZ_ADULT_DOMAINS_BF)
+fi
 
 case "$target_os" in
     mingw*)
@@ -2361,6 +2377,11 @@ MOZ_ARG_ENABLE_STRING(ui-locale,
 [  --enable-ui-locale=ab-CD
                           Select the user interface locale (default: en-US)],
     MOZ_UI_LOCALE=$enableval )
+dnl DB-98: fix bug in FF configuration script with locale processing
+if test -z "$MOZ_UI_LOCALE"; then
+  MOZ_UI_LOCALE=en-US
+fi
+
 AC_SUBST(MOZ_UI_LOCALE)
 
 AC_SUBST(MOZ_OFFICIAL_BRANDING)

@@ -70,3 +70,4 @@
 <!ENTITY  playDRMContent2.label          "Inhalte mit DRM-Kopierschutz wiedergeben">
 <!ENTITY  playDRMContent2.accesskey      "D">
 <!ENTITY  playDRMContent.learnMore.label "Weitere Informationen">
+<!ENTITY  mozillaSupportLearnMore.label  "(Mozilla Support)">

@@ -1209,6 +1209,37 @@ endif
 ################################################################################
 # CHROME PACKAGING
 
+# Cliqz additional distribution files
+CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
+HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
+
+DIST_RESPATH = $(DIST)/bin
+EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
+$(EXTENSIONS_PATH):
+	mkdir -p $(EXTENSIONS_PATH)
+
+CLIQZ_XPI_PATH = $(EXTENSIONS_PATH)/cliqz@cliqz.com.xpi
+$(CLIQZ_XPI_PATH): $(EXTENSIONS_PATH)
+	echo CLIQZ_XPI_PATH in `pwd`
+	wget --output-document $(CLIQZ_XPI_PATH) $(CLIQZ_EXT_URL)
+
+HTTPSE_XPI_PATH = $(EXTENSIONS_PATH)/https-everywhere@cliqz.com.xpi
+$(HTTPSE_XPI_PATH): $(EXTENSIONS_PATH)
+ifdef HTTPSE_EXT_URL
+	echo HTTPSE_XPI_PATH in `pwd`
+	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
+endif
+
+CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
+$(CLIQZ_CFG):
+	echo CLIQZ_CFG in `pwd`
+	echo $(CLIQZ_CFG)
+	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
+
+# Package Cliqz stuff
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_CFG)
+	echo cliqz_distr in `pwd`
+
 chrome::
 	$(MAKE) realchrome
 	$(LOOP_OVER_DIRS)
@@ -1224,16 +1255,16 @@ ifdef XPI_ROOT_APPID
 # sub-dir should be added to the root chrome manifest with
 # a specific application id.
 MAKE_JARS_FLAGS += --root-manifest-entry-appid='$(XPI_ROOT_APPID)'
-endif
+endif  # XPI_ROOT_APPID
 
 # if DIST_SUBDIR is defined but XPI_ROOT_APPID is not there's
 # no way langpacks will get packaged right, so error out.
 ifneq (,$(DIST_SUBDIR))
 ifndef XPI_ROOT_APPID
 $(error XPI_ROOT_APPID is not defined - langpacks will break.)
-endif
-endif
-endif
+endif   # ifndef XPI_ROOT_APPID
+endif  # ifneq (,$(DIST_SUBDIR))
+endif  # ifdef XPI_NAME
 
 libs realchrome:: $(FINAL_TARGET)/chrome
 	$(call py_action,jar_maker,\
@@ -1241,7 +1272,7 @@ libs realchrome:: $(FINAL_TARGET)/chrome
 	  $(MAKE_JARS_FLAGS) $(DEFINES) $(ACDEFINES) \
 	  $(JAR_MANIFEST))
 
-endif
+endif  # ifndef NO_DIST_INSTALL
 
 endif
 

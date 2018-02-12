@@ -32,7 +32,7 @@
 
 <!ENTITY importSource.title             "Einstellungen und Daten importieren">
 <!ENTITY importItems.title              "Zu importierende Daten">
-<!ENTITY importItems.label              "Wählen Sie bitte aus, welche Daten importiert werden sollen:">
+<!ENTITY importItems.label              "Wähle bitte aus, welche Daten importiert werden sollen:">
 
 <!ENTITY migrating.title                "Importieren…">
 <!ENTITY migrating.label                "Folgende Daten werden momentan importiert:">
@@ -43,4 +43,7 @@
 <!ENTITY done.title                     "Importieren abgeschlossen">
 <!ENTITY done.label                     "Folgende Daten wurden erfolgreich importiert:">
 
-<!ENTITY closeSourceBrowser.label       "Bitte überprüfen Sie vor dem Fortfahren, dass der gewählte Browser beendet ist.">
+<!ENTITY closeSourceBrowser.label       "Bitte überprüfe vor dem Fortfahren, dass der gewählte Browser beendet ist.">
+
+<!ENTITY importBookmarksFromHTML.label  "Firefox Lesezeichen aus einer HTML-Datei importieren">
+<!ENTITY importBookmarksFromHTML.url    "https://support.mozilla.org/de/kb/Lesezeichen_aus_einer_HTML-Datei_importieren">

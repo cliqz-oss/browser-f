@@ -10,6 +10,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoJSAPI
 #include "nsContentUtils.h"
+#include "nsIPrivacyTransitionObserver.h"
 #include "xpcpublic.h"
 
 namespace mozilla {
@@ -35,6 +36,34 @@ LoadContext::LoadContext(nsIPrincipal* aPrincipal,
   MOZ_ALWAYS_SUCCEEDS(aOptionalBase->GetIsContent(&mIsContent));
   MOZ_ALWAYS_SUCCEEDS(aOptionalBase->GetUseRemoteTabs(&mUseRemoteTabs));
   MOZ_ALWAYS_SUCCEEDS(aOptionalBase->GetUseTrackingProtection(&mUseTrackingProtection));
+}
+
+void LoadContext::SetPrivateness(bool enable) {
+  const bool privateness = mOriginAttributes.mPrivateBrowsingId > 0;
+  if (privateness == enable)
+    return;
+  mOriginAttributes.mPrivateBrowsingId = enable ? 1 : 0;
+  nsTObserverArray<nsWeakPtr>::ForwardIterator iter(mPrivacyObservers);
+  while (iter.HasMore()) {
+    nsWeakPtr ref = iter.GetNext();
+    nsCOMPtr<nsIPrivacyTransitionObserver> obs = do_QueryReferent(ref);
+    if (!obs) {
+      mPrivacyObservers.RemoveElement(ref);
+    } else {
+      obs->PrivateModeChanged(mOriginAttributes.mPrivateBrowsingId > 0);
+    }
+  }
+}
+
+NS_IMETHODIMP
+LoadContext::AddWeakPrivacyTransitionObserver(
+    nsIPrivacyTransitionObserver* aObserver)
+{
+  nsWeakPtr weakObs = do_GetWeakReference(aObserver);
+  if (!weakObs) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  return mPrivacyObservers.AppendElement(weakObs) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 //-----------------------------------------------------------------------------

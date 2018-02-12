@@ -31,8 +31,8 @@
 #define EMAIL_VALUE          L"Email"
 #define MAX_EMAIL_LENGTH     1024
 
-#define SENDURL_ORIGINAL L"https://crash-reports.mozilla.com/submit"
-#define SENDURL_XPSP2 L"https://crash-reports-xpsp2.mozilla.com/submit"
+#define SENDURL_ORIGINAL L"https://reports.cliqz.com/submit/sslreports"
+#define SENDURL_XPSP2 L"https://reports.cliqz.com/submit/sslreports"
 
 #define WM_UPLOADCOMPLETE WM_APP
 
@@ -80,7 +80,7 @@ static HANDLE               gThreadHandle;
 static SendThreadData       gSendData = { 0, };
 static vector<string>       gRestartArgs;
 static map<wstring,wstring> gQueryParameters;
-static wstring              gCrashReporterKey(L"Software\\Mozilla\\Crash Reporter");
+static wstring              gCrashReporterKey(L"Software\\Cliqz\\Crash Reporter");
 static wstring              gURLParameter;
 static int                  gCheckboxPadding = 6;
 static bool                 gRTLlayout = false;

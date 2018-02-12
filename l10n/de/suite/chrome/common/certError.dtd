@@ -12,25 +12,25 @@ by NSS/PSM via netError.xhtml. -->
 <!-- Localization note (certerror.introPara1) - The string "#1" will
 be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
-<!ENTITY certerror.introPara1 "Sie haben &brandShortName; angewiesen, eine gesicherte
+<!ENTITY certerror.introPara1 "Du hast &brandShortName; angewiesen, eine gesicherte
 Verbindung zu <b>#1</b> aufzubauen, es kann aber nicht überprüft werden, ob die Verbindung sicher ist.">
-<!ENTITY certerror.introPara2 "Wenn Sie normalerweise eine gesicherte Verbindung aufbauen,
+<!ENTITY certerror.introPara2 "Wenn du normalerweise eine gesicherte Verbindung aufbaust,
 weist sich die Website mit einer vertrauenswürdigen Identifikation aus, um zu garantieren,
-dass Sie die richtige Website besuchen. Die Identifikation dieser Website dagegen kann nicht bestätigt werden.">
+dass du die richtige Website besuchst. Die Identifikation dieser Website dagegen kann nicht bestätigt werden.">
 
 <!ENTITY certerror.whatShouldIDo.heading "Was sollte ich tun?">
-<!ENTITY certerror.whatShouldIDo.content "Falls Sie für gewöhnlich keine Probleme
-mit dieser Website haben, könnte dieser Fehler bedeuten, dass jemand
-die Website fälscht. Sie sollten in dem Fall nicht fortfahren.">
+<!ENTITY certerror.whatShouldIDo.content "Falls du für gewöhnlich keine Probleme
+mit dieser Website hast, könnte dieser Fehler bedeuten, dass jemand
+die Website fälscht. Du solltest in dem Fall nicht fortfahren.">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Security (HSTS), um anzugeben, dass &brandShortName; nur eine sichere Verbindung zu ihr aufbauen darf. Aus diesem Grund ist es nicht möglich, eine Ausnahme für dieses Zertifikat hinzuzufügen.">
 <!ENTITY certerror.getMeOutOfHere.label "Das klingt schlimm, stattdessen auf die Startseite gehen">
 
 <!ENTITY certerror.expert.heading "Ich kenne das Risiko">
-<!ENTITY certerror.expert.content "Wenn Sie wissen, warum dieses Problem auftritt,
-können Sie &brandShortName; anweisen, der Identifikation dieser Website zu vertrauen.
-<b>Selbst wenn Sie der Website vertrauen, kann dieser Fehler bedeuten, dass jemand
-Ihre Verbindung manipuliert.</b>">
-<!ENTITY certerror.expert.contentPara2 "Fügen Sie keine Ausnahme hinzu, außer Sie wissen,
+<!ENTITY certerror.expert.content "Wenn du weisst, warum dieses Problem auftritt,
+kannst du &brandShortName; anweisen, der Identifikation dieser Website zu vertrauen.
+<b>Selbst wenn du der Website vertraust, kann dieser Fehler bedeuten, dass jemand
+deine Verbindung manipuliert.</b>">
+<!ENTITY certerror.expert.contentPara2 "Füge keine Ausnahme hinzu, außer du weisst,
 dass es einen guten dafür Grund gibt, warum diese Website keine vertrauenswürdige Identifikation verwendet.">
 <!ENTITY certerror.addException.label "Ausnahme hinzufügen…">
 

@@ -279,9 +279,7 @@ static uint32_t gValidateOrigin = 0xffffffff;
 // Can be overridden with docshell.event_starvation_delay_hint pref.
 #define NS_EVENT_STARVATION_DELAY_HINT 2000
 
-#ifdef DEBUG
 static mozilla::LazyLogModule gDocShellLog("nsDocShell");
-#endif
 static mozilla::LazyLogModule gDocShellLeakLog("nsDocShellLeak");;
 
 const char kBrandBundleURL[]      = "chrome://branding/locale/brand.properties";
@@ -872,6 +870,8 @@ nsDocShell::~nsDocShell()
 {
   MOZ_ASSERT(!mObserved);
 
+  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::DTOR!!!\n", this));
+
   // Avoid notifying observers while we're in the dtor.
   mIsBeingDestroyed = true;
 
@@ -904,6 +904,8 @@ nsDocShell::~nsDocShell()
 nsresult
 nsDocShell::Init()
 {
+  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Init", this));
+
   nsresult rv = nsDocLoader::Init();
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2362,6 +2364,11 @@ NS_IMETHODIMP
 nsDocShell::SetPrivateBrowsing(bool aUsePrivateBrowsing)
 {
   bool changed = aUsePrivateBrowsing != (mPrivateBrowsingId > 0);
+
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+          ("nsDocShell[%p]::SetPrivateBrowsing(%d), changed = %d\n",
+           this, aUsePrivateBrowsing, changed));
+
   if (changed) {
     mPrivateBrowsingId = aUsePrivateBrowsing ? 1 : 0;
 
@@ -3519,7 +3526,13 @@ nsDocShell::SetDocLoaderParent(nsDocLoader* aParent)
 
   nsCOMPtr<nsILoadContext> parentAsLoadContext(do_QueryInterface(parent));
   if (parentAsLoadContext && mInheritPrivateBrowsingId &&
-      NS_SUCCEEDED(parentAsLoadContext->GetUsePrivateBrowsing(&value))) {
+      NS_SUCCEEDED(parentAsLoadContext->GetUsePrivateBrowsing(&value)) &&
+      // Never switch from private to non-private mode. This happens when
+      // DocShells are swapped during tab being dragged between windows, and
+      // we don't want private tabs to lose their privacy flag.
+      // See DB-911.
+      // Note: this path seems obsolete after merge with Fx-50.
+      value) {
     SetPrivateBrowsing(value);
   }
 
@@ -4835,7 +4848,7 @@ nsDocShell::LoadURI(const char16_t* aURI,
 {
   return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI,
                             mozilla::net::RP_Unset, aPostStream,
-                            aHeaderStream, nullptr, aTriggeringPrincipal);
+                            aHeaderStream, nullptr, aTriggeringPrincipal, false);
 }
 
 NS_IMETHODIMP
@@ -4846,7 +4859,8 @@ nsDocShell::LoadURIWithOptions(const char16_t* aURI,
                                nsIInputStream* aPostStream,
                                nsIInputStream* aHeaderStream,
                                nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal)
+                               nsIPrincipal* aTriggeringPrincipal,
+                               bool aEnsurePrivate)
 {
   NS_ASSERTION((aLoadFlags & 0xf) == 0, "Unexpected flags");
 
@@ -4973,6 +4987,13 @@ nsDocShell::LoadURIWithOptions(const char16_t* aURI,
     fixupInfo->GetKeywordProviderName(searchProvider);
     fixupInfo->GetKeywordAsSent(keyword);
     MaybeNotifyKeywordSearchLoading(searchProvider, keyword);
+  }
+
+  if (aEnsurePrivate) {
+    rv = SetPrivateBrowsing(true);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
   }
 
   rv = LoadURI(uri, loadInfo, extraFlags, true);
@@ -5867,6 +5888,8 @@ nsDocShell::Create()
     return NS_OK;
   }
 
+  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Create", this));
+
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
 
@@ -5913,6 +5936,14 @@ nsDocShell::Destroy()
 {
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
+
+#if defined(DEBUG)
+  nsAutoCString uri;
+  if (mCurrentURI.get())
+    mCurrentURI->GetSpec(uri);
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+         ("nsDocShell[%p]::Destroy() %s\n", this, uri.get()));
+#endif
 
   AssertOriginAttributesMatchPrivateBrowsing();
 
@@ -9931,6 +9962,13 @@ nsDocShell::InternalLoad(nsIURI* aURI,
   if (NS_FAILED(aURI->SchemeIs("javascript", &isJavaScript))) {
     isJavaScript = false;
   }
+
+#if defined(DEBUG)
+  nsAutoCString logSpec;
+  aURI->GetSpec(logSpec);
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+          ("nsDocShell[%p]::InternalLoad(%s)\n", this, logSpec.get()));
+#endif
 
   bool isTargetTopLevelDocShell = false;
   nsCOMPtr<nsIDocShell> targetDocShell;
@@ -14839,6 +14877,9 @@ nsDocShell::GetOriginAttributes(JSContext* aCx,
 bool
 nsDocShell::CanSetOriginAttributes()
 {
+  // TODO: Cliqz, find a better way to switch tab's privateness. See DB-1260.
+  return true;
+
   MOZ_ASSERT(mChildList.IsEmpty());
   if (!mChildList.IsEmpty()) {
     return false;
@@ -14870,6 +14911,10 @@ nsDocShell::SetOriginAttributes(const OriginAttributes& aAttrs)
   if (!CanSetOriginAttributes()) {
     return NS_ERROR_FAILURE;
   }
+
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+          ("nsDocShell[%p]::SetOriginAttributes(%d)\n",
+           this, aAttrs.mPrivateBrowsingId));
 
   AssertOriginAttributesMatchPrivateBrowsing();
   mOriginAttributes = aAttrs;

@@ -324,7 +324,7 @@ def main():
             if key in log:
                 f.preload(log[key])
 
-    copier.copy(args.destination)
+    copier.copy(args.destination, remove_unaccounted=False)
     generate_precomplete(os.path.normpath(os.path.join(args.destination,
                                                        respath)))
 

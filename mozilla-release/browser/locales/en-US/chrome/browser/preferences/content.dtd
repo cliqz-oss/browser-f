@@ -66,3 +66,4 @@
 <!ENTITY  playDRMContent2.label          "Play DRM-controlled content">
 <!ENTITY  playDRMContent2.accesskey      "P">
 <!ENTITY  playDRMContent.learnMore.label "Learn more">
+<!ENTITY  mozillaSupportLearnMore.label  "(Mozilla Support)">

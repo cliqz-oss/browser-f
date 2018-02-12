@@ -94,13 +94,15 @@ libs-%:
 	$(if $(filter en-US,$(AB_CD)),, @$(MAKE) merge-$*)
 	$(NSINSTALL) -D $(DIST)/install
 	@$(MAKE) -C ../../toolkit/locales libs-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
+ifdef MOZ_SERVICES_SYNC
 	@$(MAKE) -C ../../services/sync/locales AB_CD=$* XPI_NAME=locale-$*
+endif
 	@$(MAKE) -C ../../extensions/spellcheck/locales AB_CD=$* XPI_NAME=locale-$*
 ifneq (,$(wildcard ../extensions/formautofill/locales))
 	@$(MAKE) -C ../extensions/formautofill/locales AB_CD=$* XPI_NAME=locale-$*
 endif
-	@$(MAKE) -C ../extensions/onboarding/locales AB_CD=$* XPI_NAME=locale-$*
-	@$(MAKE) -C ../extensions/pocket/locale AB_CD=$* XPI_NAME=locale-$*
+#	@$(MAKE) -C ../extensions/onboarding/locales AB_CD=$* XPI_NAME=locale-$*
+#	@$(MAKE) -C ../extensions/pocket/locale AB_CD=$* XPI_NAME=locale-$*
 ifndef RELEASE_OR_BETA
 	@$(MAKE) -C ../extensions/presentation/locale AB_CD=$* XPI_NAME=locale-$*
 endif

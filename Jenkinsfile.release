@@ -1,0 +1,290 @@
+#!/usr/bin/env groovy
+
+/*
+Jenkins pipeline script to build Cliqz browser for linux
+It does the following:
+    1. Checks out 'cliqz-oss/browser-f'
+    2. Builds a docker image with dependencies installed
+Checkout code in respective Jenkinsfile
+
+node("master") {
+    stage("Checkout") {
+        checkout([
+            $class: 'GitSCM',
+            branches: [[name: COMMIT_ID]],
+            doGenerateSubmoduleConfigurations: false,
+            extensions: [],
+            submoduleCfg: [],
+            userRemoteConfigs: [[url: REPO_URL]]
+        ])
+    }
+
+    stage("Start build") {
+        load ENTRY_POINT
+    }
+}
+*/
+
+
+import org.codehaus.groovy.runtime.*;
+
+helpers = load 'build-helpers.groovy'
+submitResultList = []
+
+CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
+CQZ_VERSION = ""
+
+BUILD_STATUS_FAILED = 'Failed'
+BUILD_STATUS_SUCCESSFUL = 'Successful'
+
+EMAIL_LIST = 'alexander@cliqz.com,leonid@cliqz.com,lucian@cliqz.com'
+EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com,tamara@cliqz.com,marta@cliqz.com'
+
+// Die early for missing build params
+CQZ_RELEASE_CHANNEL
+CQZ_BUILD_ID
+COMMIT_ID
+REPO_URL
+CQZ_BUILD_DE_LOCALIZATION
+CQZ_BUILD_64BIT_WINDOWS
+LIN_REBUILD_IMAGE
+MAC_REBUILD_IMAGE
+WIN_REBUILD_IMAGE
+CQZ_GOOGLE_API_KEY_CREDENTIAL_ID
+CQZ_MOZILLA_API_KEY_CREDENTIAL_ID
+CQZ_AWS_CREDENTIAL_ID
+LINUX_BUILD_NODE
+CQZ_BALROG_DOMAIN
+BALROG_CREDENTIAL_ID
+
+stage("Copy XPI") {
+    CQZ_VERSION=sh(returnStdout: true, script: "cat ./mozilla-release/browser/config/version_display.txt").trim()
+    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+    LAST_BUILDID_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/lastbuildid"
+
+    withCredentials([[
+                $class: 'UsernamePasswordMultiBinding',
+                credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+        sh "aws s3 cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
+        sh "aws s3 cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+        sh "rm -f lastbuildid && echo $CQZ_BUILD_ID > lastbuildid && aws s3 cp lastbuildid $LAST_BUILDID_PATH"
+    }
+}
+
+def getBaseBuildParams(jobName, entryPoint) {
+  return [
+    job: jobName,
+    parameters: [
+      string(name: 'REPO_URL', value: REPO_URL),
+      string(name: 'COMMIT_ID', value: COMMIT_ID),
+      string(name: 'ENTRY_POINT', value: entryPoint),
+      string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+      string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
+      string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
+      string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
+      string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
+      string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+      string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+      string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
+      string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
+      string(name: 'TRIGGERING_BUILD_NUMBER', value: env.BUILD_NUMBER),
+      string(name: 'TRIGGERING_JOB_NAME', value: env.JOB_NAME),
+      string(name: 'BALROG_CREDENTIAL_ID', value: BALROG_CREDENTIAL_ID)
+    ]
+  ]
+}
+
+
+def getBaseWinBuildParams(build_64bit, slave_name) {
+  return [
+    booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
+    string(name: 'NODE_VNC_PORT', value: '7900'),
+    string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),    
+    string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
+    string(name: 'WIN_BUILD_NODE', value: 'master'),
+    string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
+    string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
+    string(name: 'NODE_CPU_COUNT', value: '8'),
+    booleanParam(name: 'CQZ_BUILD_64BIT_WINDOWS', value: build_64bit.toBoolean()),
+    string(name: 'WIN_BUILD_NODE', value: slave_name)
+  ]
+}
+
+
+def prepareBuildConfig() {
+  return [
+    'linux en': {
+        def buildParams = getBaseBuildParams('browser-f-linux', 'Jenkinsfile.lin')
+        buildParams.parameters += [
+          booleanParam(name: 'LIN_REBUILD_IMAGE', value: LIN_REBUILD_IMAGE.toBoolean()),
+          string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
+          string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+          string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+          string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+          string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
+        ]
+        job = build buildParams
+        submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+    },
+    'mac': {
+        def buildParams  = getBaseBuildParams('browser-f-mac', 'Jenkinsfile.mac')
+        buildParams.parameters += [
+          booleanParam(name: 'MAC_REBUILD_IMAGE', value: MAC_REBUILD_IMAGE.toBoolean()),
+          string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
+          string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
+          string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
+          string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
+          string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
+          string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
+          string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
+          string(name: 'VAGRANTFILE', value: 'mac.Vagrantfile'),
+          string(name: 'NODE_MEMORY', value: '8000'),
+          string(name: 'NODE_CPU_COUNT', value: '4'),
+          string(name: 'NODE_VNC_PORT', value: '7900'),
+        ]
+        job = build buildParams
+        if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
+          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
+          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
+        } else {
+          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+        }
+    },
+    'win_32': {
+        def buildParams = getBaseBuildParams('browser-f-win', 'Jenkinsfile.win')
+        buildParams.parameters += getBaseWinBuildParams(false, 'master')
+        if (CQZ_RELEASE_CHANNEL == "release") {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '16000'),
+          ]
+        } else {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '8000'),
+          ]
+        }
+        job = build buildParams
+        if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
+          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
+          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
+        } else {
+          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+        }
+    },
+    'win_64': {
+        def buildParams = getBaseBuildParams('browser-f-win', 'Jenkinsfile.win')
+        buildParams.parameters += getBaseWinBuildParams(true, 'rahm-win')
+        if (CQZ_RELEASE_CHANNEL == "release") {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '16000'),
+          ]
+        } else {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '8000'),
+          ]
+        }
+        job = build buildParams
+        if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
+          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
+          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
+        } else {
+          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+        }
+    }
+
+  ]
+}
+
+stage('Prepare files for nested jobs') {
+  archive 'build-helpers.groovy'
+  archive 'win.Vagrantfile'
+  archive 'mac.Vagrantfile'
+}
+
+stage('Build') {
+  try {
+    parallel prepareBuildConfig()
+    for (item in submitResultList) {
+      submitBalrog(item[0], item[1], item[2])
+    }
+  } catch (e) {
+    sendEmail(BUILD_STATUS_FAILED)
+    throw e
+  }
+  sendEmail(BUILD_STATUS_SUCCESSFUL)
+
+  if (CQZ_RELEASE_CHANNEL == "beta") {
+    withCredentials([[
+      $class: 'UsernamePasswordMultiBinding',
+      credentialsId: CQZ_AWS_CREDENTIAL_ID,
+      passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+      usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+        uploadBeta(CQZ_BUILD_ID, CQZ_VERSION)
+    }
+  }
+}
+
+def uploadBeta(build_id, cqz_version) {
+  def locales = ["en-US", "de"]
+  def installers_suffixes = ["win32.installer.exe", "mac.dmg"]
+
+  for (locale in locales) {
+      for (inst_suff in installers_suffixes) {
+          full_installer_path = "cliqz-${cqz_version}.${locale}.${inst_suff}"
+          installer_path = "cliqz.${locale}.${inst_suff}"
+          beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${full_installer_path}"
+          latest_beta_path = "repository.cliqz.com/dist/beta/latest/${installer_path}"
+
+          sh "aws s3 cp s3://${beta_path} s3://${latest_beta_path}"
+      }
+  }
+}
+
+def submitBalrog(jobName, id, propsPath) {
+    def folder = "artifacts/$jobName/$id"
+    step([
+        $class: 'CopyArtifact',
+        projectName: jobName,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: id],
+        target: folder
+    ])
+
+
+    withCredentials([
+        usernamePassword(
+            credentialsId: env.BALROG_CREDENTIAL_ID,
+            passwordVariable: 'BALROG_PASSWORD',
+            usernameVariable: 'BALROG_ADMIN')]) {
+                writeFile file: 'creds.txt', text: "balrog_credentials = dict({\"$BALROG_ADMIN\": \"$BALROG_PASSWORD\",})"
+
+        sh """
+            python ./build-tools/scripts/updates/balrog-submitter.py \
+                --credentials-file ./creds.txt --username $BALROG_ADMIN \
+                --api-root http://$CQZ_BALROG_DOMAIN/api \
+                --build-properties ${folder + '/' + propsPath}
+        """
+    }
+}
+
+def sendEmail(String buildStatus) {
+  def recepient_list = EMAIL_LIST
+  if (buildStatus == BUILD_STATUS_SUCCESSFUL) {
+    recepient_list += ','
+    recepient_list += EMAIL_LIST_SUCCESSFUL
+  }
+
+  def bodytxt = '$PROJECT_NAME - Build # $BUILD_NUMBER - ' + buildStatus + ':'
+  bodytxt += '\n\nCheck console output at http://magrathea:8080/job/' + env.JOB_NAME + '/' + env.BUILD_NUMBER + '/ to view the results.'
+  bodytxt += '\n\nBuildID: ' + CQZ_BUILD_ID
+  bodytxt += '\n\nUploaded to: http://repository.cliqz.com/?prefix=dist/' + CQZ_RELEASE_CHANNEL + '/' + CQZ_VERSION + '/' + CQZ_BUILD_ID
+  bodytxt += '\n\n\n $CHANGES_SINCE_LAST_SUCCESS'
+
+  emailext(
+    to: recepient_list,
+    subject: '$PROJECT_NAME - Build # $BUILD_NUMBER - ' + buildStatus,
+    body: bodytxt
+  )
+}

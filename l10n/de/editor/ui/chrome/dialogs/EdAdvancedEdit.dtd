@@ -14,5 +14,5 @@
 <!ENTITY tabCSS.label                   "Inline Style (CSS)">
 <!ENTITY tabJSE.label                   "JavaScript-Ereignisse">
 
-<!ENTITY editAttribute.label    "Klicken Sie auf einen Eintrag oben, um seinen Wert zu bearbeiten">
+<!ENTITY editAttribute.label    "Klicke auf einen Eintrag oben, um seinen Wert zu bearbeiten">
 <!ENTITY removeAttribute.label  "Entfernen">

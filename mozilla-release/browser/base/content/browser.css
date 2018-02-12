@@ -522,6 +522,10 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
  */
 #search-container {
   min-width: 25ch;
+  /*
+   * Hidden in Cliqz
+   */
+  display: none;
 }
 
 #urlbar,
@@ -534,6 +538,11 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
 
 #urlbar {
   -moz-binding: url(chrome://browser/content/urlbarBindings.xml#urlbar);
+}
+
+/* DB-652: Short-term design for (automatic) forget tabs */
+#navigator-toolbox[on_private_tab=true] #urlbar {
+  background-color: #BBC6D4;
 }
 
 /* Display URLs left-to-right but right aligned in RTL mode. */
@@ -1283,6 +1292,11 @@ toolbarpaletteitem[dragover] {
 
 #customization-toolbar-visibility-button > .box-inherit > .button-menu-dropmarker {
   display: -moz-box;
+}
+
+/* Hidden in Cliqz */
+#customization-lwtheme-button {
+  display: none !important;
 }
 
 toolbarpaletteitem[place="palette"] {

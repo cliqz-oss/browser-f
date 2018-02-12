@@ -11,6 +11,7 @@ Components.utils.import("resource://gre/modules/Downloads.jsm");
 Components.utils.import("resource://gre/modules/FileUtils.jsm");
 Components.utils.import("resource:///modules/ShellService.jsm");
 Components.utils.import("resource:///modules/TransientPrefs.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
 Components.utils.import("resource://gre/modules/LoadContextInfo.jsm");
@@ -166,8 +167,12 @@ var gMainPane = {
    */
   init() {
     function setEventListener(aId, aEventType, aCallback) {
-      document.getElementById(aId)
-        .addEventListener(aEventType, aCallback.bind(gMainPane));
+      try {
+        document.getElementById(aId)
+          .addEventListener(aEventType, aCallback.bind(gMainPane));
+      } catch (e) {
+        Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
+      }
     }
 
     if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -218,8 +223,9 @@ var gMainPane = {
     this._updateUseCurrentButton();
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this));
 
+#if 0
     this.updateBrowserStartupLastSession();
-
+#endif
     handleControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY);
     let newTabObserver = {
       observe(subject, topic, data) {
@@ -261,12 +267,16 @@ var gMainPane = {
       gMainPane.setHomePageToBookmark);
     setEventListener("restoreDefaultHomePage", "command",
       gMainPane.restoreDefaultHomePage);
+#if 0
     setEventListener("disableHomePageExtension", "command",
                      makeDisableControllingExtension(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY));
+#endif
     setEventListener("disableContainersExtension", "command",
                      makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
+#if 0
     setEventListener("disableNewTabExtension", "command",
                      makeDisableControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY));
+#endif
     setEventListener("chooseLanguage", "command",
       gMainPane.showLanguages);
     setEventListener("translationAttributionImage", "click",
@@ -342,9 +352,18 @@ var gMainPane = {
       ? "aboutDialog.architecture.sixtyFourBit"
       : "aboutDialog.architecture.thirtyTwoBit";
     let arch = bundle.GetStringFromName(archResource);
-    version += ` (${arch})`;
 
-    document.getElementById("version").textContent = version;
+    // Add Firefox and nav-extension versions
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+      let componentsVersion = Services.appinfo.platformVersion;
+      if (cliqzAddon) {
+        componentsVersion += `+${cliqzAddon.version}`;
+      }
+      version += ` (${componentsVersion})`;
+      version += ` (${arch})`;
+
+      document.getElementById("version").textContent = version;
+    });
 
     // Show a release notes link if we have a URL.
     let relNotesLink = document.getElementById("releasenotes");
@@ -357,6 +376,8 @@ var gMainPane = {
       }
     }
 
+#if 0
+    // Not used in Cliqz build because Cliqz itself a "distributed" build
     let distroId = Services.prefs.getCharPref("distribution.id", "");
     if (distroId) {
       let distroString = distroId;
@@ -377,6 +398,7 @@ var gMainPane = {
         distroField.hidden = false;
       }
     }
+#endif
 
     if (AppConstants.MOZ_UPDATER) {
       gAppUpdater = new appUpdater();
@@ -593,17 +615,9 @@ var gMainPane = {
    * browser.startup.homepage
    * - the user's home page, as a string; if the home page is a set of tabs,
    *   this will be those URLs separated by the pipe character "|"
-   * browser.startup.page
-   * - what page(s) to show when the user starts the application, as an integer:
-   *
-   *     0: a blank page
-   *     1: the home page (as set by the browser.startup.homepage pref)
-   *     2: the last page the user visited (DEPRECATED)
-   *     3: windows and tabs from the last session (a.k.a. session restore)
-   *
-   *   The deprecated option is not exposed in UI; however, if the user has it
-   *   selected and doesn't change the UI for this preference, the deprecated
-   *   option is preserved.
+   * browser.startup.restoreTabs
+   * - whether to restore windows and tabs from the last session (a.k.a. session
+   *   restore)
    */
 
   syncFromHomePref() {
@@ -620,7 +634,7 @@ var gMainPane = {
           element.disabled = isLocked || isControlled;
         });
     }
-
+#if 0
     if (homePref.locked) {
       // An extension can't control these settings if they're locked.
       hideControllingExtension(HOMEPAGE_OVERRIDE_KEY);
@@ -630,7 +644,7 @@ var gMainPane = {
       handleControllingExtension(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY)
         .then(setInputDisabledStates);
     }
-
+#endif
     // If the pref is set to about:home or about:newtab, set the value to ""
     // to show the placeholder text (about:home title) rather than
     // exposing those URLs to users.
@@ -734,13 +748,13 @@ var gMainPane = {
       useCurrent.label = useCurrent.getAttribute("label2");
     else
       useCurrent.label = useCurrent.getAttribute("label1");
-
+#if 0
     // If the homepage is controlled by an extension then you can't use this.
     if (await getControllingExtensionInfo(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY)) {
       useCurrent.disabled = true;
       return;
     }
-
+#endif
     // In this case, the button's disabled state is set by preferences.xml.
     let prefName = "pref.browser.homepage.disable_button.current_page";
     if (document.getElementById(prefName).locked)
@@ -799,17 +813,14 @@ var gMainPane = {
    */
   updateBrowserStartupLastSession() {
     let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
-    let startupPref = document.getElementById("browser.startup.page");
-    let group = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
+    let restorePref = document.getElementById("browser.startup.restoreTabs");
+    let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
     if (pbAutoStartPref.value) {
-      option.setAttribute("disabled", "true");
-      if (option.selected) {
-        group.selectedItem = document.getElementById("browserStartupHomePage");
-      }
+      restoreCheckbox.setAttribute("disabled", "true");
+      restoreCheckbox.checked = false;
     } else {
-      option.removeAttribute("disabled");
-      startupPref.updateElements(); // select the correct radio in the startup group
+      restoreCheckbox.removeAttribute("disabled");
+      restorePref.updateElements(); // Update corresponding checkbox.
     }
   },
 
@@ -1287,7 +1298,7 @@ var gMainPane = {
           var wrk = Components.classes["@mozilla.org/windows-registry-key;1"]
             .createInstance(Components.interfaces.nsIWindowsRegKey);
           wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-            "SOFTWARE\\Mozilla\\MaintenanceService",
+            "SOFTWARE\\Cliqz\\MaintenanceService",
             wrk.ACCESS_READ | wrk.WOW64_64);
           installed = wrk.readIntValue("Installed");
           wrk.close();

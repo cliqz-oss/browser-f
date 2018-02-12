@@ -213,6 +213,10 @@ appUpdater.prototype =
     this.isChecking = true;
     this.checker.checkForUpdates(this.updateCheckListener, true);
     // after checking, onCheckComplete() is called
+
+    // Cliqz. Start checking updates for System Addons also.
+    let { XPIProvider } = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+    XPIProvider.updateSystemAddons();
   },
 
   /**

@@ -276,6 +276,11 @@ OfflineCacheUpdateParent::GetScriptableOriginAttributes(JS::MutableHandleValue a
     return NS_OK;
 }
 
+NS_IMETHODIMP OfflineCacheUpdateParent::AddWeakPrivacyTransitionObserver(
+    nsIPrivacyTransitionObserver *obs) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 NS_IMETHODIMP_(void)
 OfflineCacheUpdateParent::GetOriginAttributes(mozilla::OriginAttributes& aAttrs)
 {

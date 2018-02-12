@@ -13,6 +13,7 @@ var Cr = Components.results;
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.import("resource:///modules/AutoForgetTabsMonitor.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm");
@@ -25,6 +26,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "FindContent",
 
 var global = this;
 
+var aftMon = new AutoForgetTabsMonitor(docShell, global);
+addEventListener("unload", () => { aftMon.shutdown(); });
 
 // Lazily load the finder code
 addMessageListener("Finder:Initialize", function() {

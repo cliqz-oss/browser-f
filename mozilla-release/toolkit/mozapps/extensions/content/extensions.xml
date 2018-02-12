@@ -1828,6 +1828,112 @@
     </handlers>
   </binding>
 
+  <!-- Cliqz feature -->
+  <binding id="cliqz-feature"
+           extends="chrome://mozapps/content/extensions/extensions.xml#addon-base">
+    <content>
+      <xul:hbox class="content-container" align="center">
+        <xul:vbox class="icon-container">
+          <xul:image anonid="icon" class="icon"/>
+        </xul:vbox>
+        <xul:vbox class="content-inner-container" flex="1">
+            <xul:hbox class="name-container">
+              <xul:label anonid="name" class="name" crop="end"
+                         tooltip="addonitem-tooltip" xbl:inherits="value=name"/>
+
+              <xul:label anonid="version" class="version" crop="end" flex="1"
+                         tooltip="addonitem-tooltip" xbl:inherits="value=version"/>
+            </xul:hbox>
+        </xul:vbox>
+        <xul:vbox class="homepage-container">
+          <xul:label anonid="homepage" class="text-link" crop="end" flex="1"
+                     tooltip="addonitem-tooltip" xbl:inherits="value=homepage"
+                     value="&setting.learnmore;"/>
+        </xul:vbox>
+
+        <xul:vbox class="status-control-wrapper">
+          <xul:hbox anonid="control-container" class="control-container">
+
+            <xul:button anonid="installBtn" class="addon-control install"
+                        label="&cmd.installAddon.label;"
+                        oncommand="document.getBindingParent(this).installClicked();"/>
+            <xul:button anonid="uninstallBtn" class="addon-control remove"
+                        label="&cmd.uninstallAddon.label;"
+                        oncommand="document.getBindingParent(this).unInstallClicked();"/>
+          </xul:hbox>
+        </xul:vbox>
+      </xul:hbox>
+    </content>
+
+    <implementation>
+      <constructor><![CDATA[
+         var homepage = document.getAnonymousElementByAttribute(this, "anonid", "homepage"),
+             icon =  document.getAnonymousElementByAttribute(this, "anonid", "icon");
+
+         this.setAttribute("name", this.mAddon.name);
+         this.setAttribute("version", "(v. " + this.mAddon.version + ")");
+
+         homepage.href = this.mAddon.homepageURL;
+         icon.src = this.mAddon.icons["64"] || this.mAddon.icons["32"];
+      ]]></constructor>
+      <method name="installClicked">
+        <body><![CDATA[
+          let installButton = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          installButton.setAttribute("disabled", "true")
+
+          let installEvent = new CustomEvent("installClicked", {
+                bubbles: true,
+                cancelable: false,
+                detail: {}
+              });
+          this.dispatchEvent(installEvent);
+        ]]>
+        </body>
+      </method>
+      <method name="unInstallClicked">
+        <body><![CDATA[
+          let unInstallEvent = new CustomEvent("unInstallClicked", {
+                bubbles: true,
+                cancelable: false,
+                detail: {}
+              });
+          this.dispatchEvent(unInstallEvent);
+        ]]>
+        </body>
+      </method>
+      <method name="updateInstallationProgress">
+        <parameter name="percentage"/>
+        <body><![CDATA[
+          let progressHolder = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          progressHolder.textContent = percentage
+        ]]>
+        </body>
+      </method>
+      <method name="updateDownloadFailed">
+        <parameter name="showText"/>
+        <body><![CDATA[
+          let button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          button.textContent = showText;
+        ]]>
+        </body>
+      </method>
+      <method name="updateInstallFailed">
+        <parameter name="showText"/>
+        <body><![CDATA[
+          let button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          button.textContent = showText;
+        ]]>
+        </body>
+      </method>
+
+      <property name="control">
+        <getter><![CDATA[
+          // overriding the default listbox onClick selection - disable selection
+          return null;
+        ]]></getter>
+      </property>
+    </implementation>
+  </binding>
 
   <!-- Addon - uninstalled - An uninstalled addon that can be re-installed. -->
   <binding id="addon-uninstalled"

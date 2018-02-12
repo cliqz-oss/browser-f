@@ -48,7 +48,7 @@
 <!ENTITY cmd.open.accesskey              "Ö">
 <!ENTITY cmd.open_window.label           "In neuem Fenster öffnen">
 <!ENTITY cmd.open_window.accesskey       "F">
-<!ENTITY cmd.open_private_window.label     "In neuem privaten Fenster öffnen">
+<!ENTITY cmd.open_private_window.label     "In neuem Vergessen Fenster öffnen">
 <!ENTITY cmd.open_private_window.accesskey "p">
 <!ENTITY cmd.open_tab.label              "In neuem Tab öffnen">
 <!ENTITY cmd.open_tab.accesskey          "T">
@@ -81,6 +81,7 @@
 <!ENTITY col.url.label           "Adresse">
 <!ENTITY col.mostrecentvisit.label "Zuletzt besucht">
 <!ENTITY col.visitcount.label    "Meistbesucht">
+<!ENTITY col.keyword.label       "Stichwort">
 <!ENTITY col.description.label   "Beschreibung">
 <!ENTITY col.dateadded.label     "Hinzugefügt">
 <!ENTITY col.lastmodified.label  "Zuletzt verändert">
@@ -102,7 +103,7 @@
 <!ENTITY detailsPane.more.accesskey "e">
 <!ENTITY detailsPane.less.label  "Weniger">
 <!ENTITY detailsPane.less.accesskey "e">
-<!ENTITY detailsPane.selectAnItemText.description "Wählen Sie einen Eintrag, um seine Eigenschaften zu sehen und zu bearbeiten">
+<!ENTITY detailsPane.selectAnItemText.description "Wähle einen Eintrag, um deine Eigenschaften zu sehen und zu bearbeiten">
 
 <!ENTITY view.label               "Sortieren">
 <!ENTITY view.accesskey           "o">

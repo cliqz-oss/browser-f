@@ -1437,6 +1437,25 @@ NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
                                                   uint32_t aFlags,
                                                   nsIAsyncVerifyRedirectCallback *cb)
 {
+  if (MOZ_LOG_TEST(gDocLoaderLog, LogLevel::Debug)) {
+    nsIURI* oldURI = nullptr;
+    if (aOldChannel)
+      aOldChannel->GetURI(&oldURI);
+    nsAutoCString oldURL;
+    if (oldURI)
+      oldURI->GetSpec(oldURL);
+
+    nsIURI* newURI = nullptr;
+    if (aNewChannel)
+      aNewChannel->GetURI(&newURI);
+    nsAutoCString newURL;
+    if (newURI)
+      newURI->GetSpec(newURL);
+
+    MOZ_LOG(gDocLoaderLog, LogLevel::Debug,
+           ("DocLoader:%p: AsyncOnChannelRedirect (%s -> %s) flags=%x",
+           this, oldURL.get(), newURL.get(), aFlags));
+  }
   if (aOldChannel)
   {
     nsLoadFlags loadFlags = 0;

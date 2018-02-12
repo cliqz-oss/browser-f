@@ -1,0 +1,46 @@
+
+html {
+  min-height: 100%;
+  background-image:
+      linear-gradient(to bottom, #AFBBC9, #7A8797);
+  font-family: "Lato", "Arial";
+  font-size: 16px;
+  color: #FFF;
+}
+
+#header {
+  text-align: center;
+  font-size: 40px;
+}
+
+#header > p {
+  margin-top: 15vh;
+}
+
+#logo {
+  background-image: url("eraser.svg");
+  background-size: contain;
+  background-repeat: no-repeat;
+  height: 72px;
+  width: 108px;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 60px;
+  margin-bottom: 60px;
+}
+
+#main {
+  margin-left: auto;
+  margin-right: auto;
+  width: 600px;
+}
+
+a:link {
+  color: #FFF;
+}
+
+a:visited,
+a:hover,
+a:active {
+  color: #6F6F6F;
+}

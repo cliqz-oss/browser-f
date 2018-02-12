@@ -53,6 +53,14 @@ GARBAGE += $(addprefix $(FINAL_TARGET)/defaults/pref/, firefox.js)
 
 endif
 
+# channel-prefs.js is handled separate from other prefs due to bug 756325
+# DO NOT change the content of channel-prefs.js without taking the appropriate
+# steps. See bug 1431342.
+CH_PREFS_JS = $(srcdir)/profile/channel-prefs.js
+libs:: $(CH_PREFS_JS) cliqz_distr
+	$(NSINSTALL) -D $(DIST)/bin/defaults/pref
+	$(call py_action,preprocessor,-Fsubstitution $(PREF_PPFLAGS) $(ACDEFINES) $(CH_PREFS_JS) -o $(DIST)/bin/defaults/pref/channel-prefs.js)
+
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 
 MAC_APP_NAME = $(MOZ_APP_DISPLAYNAME)
@@ -82,7 +90,7 @@ tools repackage:: $(DIST)/bin/$(MOZ_APP_NAME) features
 	$(MKDIR) -p $(dist_dest)/$(LPROJ)
 	rsync -a --exclude '*.in' $(srcdir)/macbuild/Contents $(dist_dest) --exclude English.lproj
 	rsync -a --exclude '*.in' $(srcdir)/macbuild/Contents/Resources/English.lproj/ $(dist_dest)/$(LPROJ)
-	sed -e 's/%APP_VERSION%/$(MOZ_APP_VERSION)/' -e 's/%MAC_APP_NAME%/$(MAC_APP_NAME)/' -e 's/%MOZ_MACBUNDLE_ID%/$(MOZ_MACBUNDLE_ID)/' -e 's/%MAC_BUNDLE_VERSION%/$(MAC_BUNDLE_VERSION)/' -e 's|%MOZ_DEVELOPER_REPO_PATH%|$(topsrcdir)|' -e 's|%MOZ_DEVELOPER_OBJ_PATH%|$(topobjdir)|' $(srcdir)/macbuild/Contents/Info.plist.in > $(dist_dest)/Contents/Info.plist
+	sed -e 's/%APP_VERSION%/$(MOZ_APP_VERSION)/' -e 's/%APP_VERSION_DISPLAY%/$(MOZ_APP_VERSION_DISPLAY)/' -e 's/%MOZ_APP_NAME%/$(MOZ_APP_NAME)/' -e 's/%MAC_APP_NAME%/$(MAC_APP_NAME)/' -e 's/%MOZ_MACBUNDLE_ID%/$(MOZ_MACBUNDLE_ID)/' -e 's/%MAC_BUNDLE_VERSION%/$(MAC_BUNDLE_VERSION)/' -e 's|%MOZ_DEVELOPER_REPO_PATH%|$(topsrcdir)|' -e 's|%MOZ_DEVELOPER_OBJ_PATH%|$(topobjdir)|' $(srcdir)/macbuild/Contents/Info.plist.in > $(dist_dest)/Contents/Info.plist
 	sed -e 's/%MAC_APP_NAME%/$(MAC_APP_NAME)/' $(srcdir)/macbuild/Contents/Resources/English.lproj/InfoPlist.strings.in | iconv -f UTF-8 -t UTF-16 > $(dist_dest)/$(LPROJ)/InfoPlist.strings
 	rsync -a --exclude-from='$(srcdir)/macbuild/Contents/MacOS-files.in' $(DIST)/bin/ $(dist_dest)/Contents/Resources
 	rsync -a --include-from='$(srcdir)/macbuild/Contents/MacOS-files.in' --exclude '*' $(DIST)/bin/ $(dist_dest)/Contents/MacOS
@@ -95,9 +103,12 @@ ifdef MOZ_UPDATER
 	mv -f $(dist_dest)/Contents/MacOS/updater.app/Contents/MacOS/org.mozilla.updater $(dist_dest)/Contents/Library/LaunchServices
 	ln -s ../../../../Library/LaunchServices/org.mozilla.updater $(dist_dest)/Contents/MacOS/updater.app/Contents/MacOS/org.mozilla.updater
 endif
-	printf APPLMOZB > $(dist_dest)/Contents/PkgInfo
+	{ echo 'APPL' ; \
+	  defaults read `pwd`/$(dist_dest)/Contents/Info.plist CFBundleSignature \
+	  ; } | sed -e 'N;s/\n//' > $(dist_dest)/Contents/PkgInfo
 endif
 
 .PHONY: features
 tools features::
-	$(PYTHON) -c 'import os, json; listing = {"system": sorted(os.listdir("$(DIST)/bin/browser/features"))}; print json.dumps(listing)' > $(DIST)/bin/browser/chrome/browser/content/browser/built_in_addons.json
+	$(PYTHON) -c 'import os, json; listing = {"system": [os.path.splitext(it)[0] for it in sorted(os.listdir("$(DIST)/bin/browser/features"))]}; print json.dumps(listing)' > $(DIST)/bin/browser/chrome/browser/content/browser/built_in_addons.json
+# Cliqz. We change a way how to generate built_in_addons.json, we need an extension's name without .xpi in the end, because later FF looking for exactly naming match in id node in install.rdf file

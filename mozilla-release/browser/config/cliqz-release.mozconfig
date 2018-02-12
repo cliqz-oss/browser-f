@@ -1,0 +1,19 @@
+# Copyright Cliqz GmbH 2016.
+
+. $topsrcdir/browser/config/cliqz.mozconfig
+
+ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}
+ac_add_options --enable-release
+ac_add_options --with-mozilla-api-keyfile=../mozilla-desktop-geoloc-api.key
+ac_add_options --with-google-api-keyfile=../google-desktop-api.key
+ac_add_options --disable-stylo
+
+if echo $OSTYPE | grep -q "msys"; then
+  # Windows specific flags
+  ac_add_options --enable-warnings-as-errors
+  ac_add_options --enable-jemalloc
+fi
+
+export MOZ_TELEMETRY_REPORTING=1
+export MOZ_ADDON_SIGNING=1
+export MOZ_REQUIRE_SIGNING=1

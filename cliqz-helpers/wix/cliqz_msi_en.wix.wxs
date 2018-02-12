@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <?define ProdLang = "en-US" ?>
+  <?define ProdLangCode = "1033" ?>
+  <?define ProdVer = "1.7.0" ?>
+  <?define ProdPlatform = "x86" ?>
+  <?define ProdCode = "79435031-a3dc-4210-bf50-11c25ee5509c" ?>
+  <?define ProdUpgradeCode = "3cffeecc-4af4-4fbd-8b3a-6f73ab692042" ?>
+  <?define ProdSetupFile = ".\CLIQZ-$(var.ProdVer).$(var.ProdLang).win32.installer.exe" ?>
+  <Product Id="$(var.ProdCode)" Name="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" Language="$(var.ProdLangCode)" Version="$(var.ProdVer)" Manufacturer="Cliqz GmbH" UpgradeCode="$(var.ProdUpgradeCode)">
+    <Package InstallerVersion="200" Compressed="yes" Description="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" InstallScope="perMachine" Keywords="CLIQZ, CLIQZ Browser, Internet, Browser, CLIQZ Browser $(var.ProdVer)" Languages="$(var.ProdLangCode)" Manufacturer="Cliqz GmbH" Platform="$(var.ProdPlatform)" ReadOnly="yes" InstallPrivileges="elevated" />
+    <Feature Id="DefaultFeature" Title="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" Level="1" Display="hidden" />
+    <Binary Id="FX_SETUP_EXE" SourceFile="$(var.ProdSetupFile)" />
+    <MajorUpgrade AllowDowngrades="no" IgnoreRemoveFailure="yes" Schedule="afterInstallInitialize" DowngradeErrorMessage="Downgrading is not allowed. You must manually remove this version in order to install an earlier version." />
+    <Upgrade Id="$(var.ProdUpgradeCode)">
+      <UpgradeVersion Property="UPGRADING_FX" IgnoreRemoveFailure="yes" IncludeMaximum="no" IncludeMinimum="yes" Maximum="$(var.ProdVer)" />
+    </Upgrade>
+    <SetDirectory Action="SetProgramBase_Name" Id="ProgramBase" Sequence="both" Value="[ProgramFilesFolder][INSTALL_DIRECTORY_NAME]">INSTALL_DIRECTORY_PATH = "DEFAULT"</SetDirectory>
+    <SetDirectory Action="SetProgramBase_Path" Id="ProgramBase" Value="[INSTALL_DIRECTORY_PATH]" Sequence="both">INSTALL_DIRECTORY_PATH &lt;&gt; "DEFAULT"</SetDirectory>
+    <CustomAction Id="FX_SETUP_EXECUTE" BinaryKey="FX_SETUP_EXE" ExeCommand="/INI=&quot;[TempFolder]config.ini&quot;" Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="FX_UNINS_EXECUTE" Directory="ProgramBase.UNINSTALL" ExeCommand="&quot;[ProgramBase.UNINSTALL]helper.exe&quot; -ms" Execute="deferred" Impersonate="no" Return="ignore" />
+    <!-- below are from http://code.dblock.org/msi-property-patterns-upgrading-firstinstall-and-maintenance -->
+    <CustomAction Id="SetFirstInstall" Property="FirstInstall" Value="true" />
+    <CustomAction Id="SetUpgrading" Property="Upgrading" Value="true" />
+    <CustomAction Id="SetRemovingForUpgrade" Property="RemovingForUpgrade" Value="true" />
+    <CustomAction Id="SetUninstalling" Property="Uninstalling" Value="true" />
+    <CustomAction Id="SetMaintenance" Property="Maintenance" Value="true" />
+    <CustomAction Id="SetRepair" Property="Repair" Value="true" />
+    <!-- end attribution -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramBase" Name="ProgramBase">
+        <Component Id="comp.REMOVE_UNINSTALL_ENTRY" Feature="DefaultFeature" Guid="9360fffe-a583-4259-98cc-68e39275523b" KeyPath="yes">
+          <RemoveRegistryKey Action="removeOnInstall" Id="UninstallKey" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CLIQZ Browser $(var.ProdVer) ($(var.ProdPlatform) $(var.ProdLang))" Root="HKLM" />
+        </Component>
+        <Directory Id="ProgramBase.UNINSTALL" Name="uninstall" />
+      </Directory>
+      <Directory Name="TempFolder" Id="TempFolder">
+        <Component Feature="DefaultFeature" Guid="fdd0f38b-3c16-4bdb-9f82-363171114f83" Id="comp.CONFIG.INI.ALWAYS" KeyPath="yes">
+          <IniFile Id="ini.add.CONFIG.INI.Install.QuickLaunchShortcut" Action="addLine" Key="QuickLaunchShortcut" Name="config.ini" Section="Install" Value="[QUICK_LAUNCH_SHORTCUT]" Directory="TempFolder" />
+          <IniFile Id="ini.add.CONFIG.INI.Install.DesktopShortcut" Action="addLine" Key="DesktopShortcut" Name="config.ini" Section="Install" Value="[DESKTOP_SHORTCUT]" Directory="TempFolder" />
+          <IniFile Id="ini.add.CONFIG.INI.Install.TaskbarShortcut" Action="addLine" Key="TaskbarShortcut" Name="config.ini" Section="Install" Value="[TASKBAR_SHORTCUT]" Directory="TempFolder" />
+          <IniFile Id="ini.add.CONFIG.INI.Install.StartMenuShortcut" Action="addLine" Key="StartMenuShortcut" Name="config.ini" Section="Install" Value="[START_MENU_SHORTCUT]" Directory="TempFolder" />
+          <IniFile Id="ini.add.CONFIG.INI.Install.MaintenanceService" Action="addLine" Key="MaintenanceService" Name="config.ini" Section="Install" Value="[MAINTENANCE_SERVICE]" Directory="TempFolder" />
+          <RemoveFile Id="rf.CONFIG.INI" Name="config.ini" On="both" />
+        </Component>
+        <Component Feature="DefaultFeature" Guid="7bfbe4b9-91d1-4921-9a72-a9e1e6b51547" Id="comp.CONFIG.INI.IFFULLPATH" KeyPath="yes">
+          <Condition>INSTALL_DIRECTORY_PATH &lt;&gt; "DEFAULT"</Condition>
+          <IniFile Id="ini.add.CONFIG.INI.Install.InstallDirectoryPath" Action="addLine" Key="InstallDirectoryPath" Name="config.ini" Section="Install" Value="[INSTALL_DIRECTORY_PATH]" Directory="TempFolder" />
+        </Component>
+        <Component Feature="DefaultFeature" Id="comp.CONFIG.INI.IFNOTFULLPATH" KeyPath="yes" Guid="98405695-1521-4349-9259-44cb10d693d6">
+          <Condition>INSTALL_DIRECTORY_PATH = "DEFAULT"</Condition>
+          <IniFile Id="ini.add.CONFIG.INI.Install.InstallDirectoryName" Action="addLine" Key="InstallDirectoryName" Name="config.ini" Section="Install" Value="[INSTALL_DIRECTORY_NAME]" Directory="TempFolder" />
+        </Component>
+      </Directory>
+    </Directory>
+    <UI />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPURLINFOABOUT" Value="http://cliqz.com/" />
+    <Property Id="DESKTOP_SHORTCUT" Value="true" />
+    <Property Id="TASKBAR_SHORTCUT" Value="true" />
+    <Property Id="INSTALL_DIRECTORY_NAME" Value="CLIQZ" />
+    <Property Id="INSTALL_DIRECTORY_PATH" Value="DEFAULT" />
+    <Property Id="LIMITUI" Value="1" />
+    <Property Id="MAINTENANCE_SERVICE" Value="true" />
+    <Property Id="NOCOMPANYNAME" Value="1" />
+    <Property Id="NOUSERNAME" Value="1" />
+    <Property Id="QUICK_LAUNCH_SHORTCUT" Value="true" />
+    <Property Id="START_MENU_SHORTCUT" Value="true" />
+    <InstallExecuteSequence>
+      <AppSearch Before="LaunchConditions" />
+      <FindRelatedProducts Before="AppSearch" />
+      <Custom Action="FX_SETUP_EXECUTE" Before="CreateFolders">FirstInstall or Upgrading or Repair</Custom>
+      <Custom Action="FX_UNINS_EXECUTE" Before="RemoveFiles">RemovingForUpgrade or Upgrading or Uninstalling or Repair</Custom>
+      <RemoveIniValues Sequence="3501" />
+      <RemoveFiles Sequence="3500" />
+      <RemoveRegistryValues Sequence="4999" />
+      <WriteIniValues Sequence="3502" />
+      <!-- below are from http://code.dblock.org/msi-property-patterns-upgrading-firstinstall-and-maintenance -->
+      <Custom Action="SetFirstInstall" After="FindRelatedProducts">NOT Installed AND NOT OLDERVERSION_BEINGUPGRADED AND NOT NEWERVERSION_INSTALLED</Custom>
+      <Custom Action="SetRemovingForUpgrade" After="RemoveExistingProducts">(REMOVE="ALL") AND UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="SetUpgrading" After="SetFirstInstall">OLDERVERSION_BEINGUPGRADED AND NOT (REMOVE="ALL")</Custom>
+      <Custom Action="SetUninstalling" After="SetUpgrading">Installed AND (REMOVE="ALL") AND NOT (OLDERVERSION_BEINGUPGRADED OR UPGRADINGPRODUCTCODE)</Custom>
+      <Custom Action="SetMaintenance" After="SetUninstalling">Installed AND NOT Upgrading AND NOT Uninstalling AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="SetRepair" After="SetMaintenance">REINSTALL and not PATCH</Custom>
+      <!-- end attribution -->
+    </InstallExecuteSequence>
+    <Media Id="1" />
+  </Product>
+</Wix>

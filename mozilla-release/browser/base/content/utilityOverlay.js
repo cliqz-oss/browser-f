@@ -187,8 +187,10 @@ function whereToOpenLink(e, ignoreButton, ignoreAlt) {
  *   allowPopups          (boolean)
  *   userContextId        (unsigned int)
  *   targetBrowser        (XUL browser)
+ *   private              (boolean)
  */
-function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerURI) {
+function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
+    aReferrerURI, aPrivate) {
   var params;
 
   if (arguments.length == 3 && typeof arguments[2] == "object") {
@@ -199,6 +201,7 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerURI
       postData: aPostData,
       referrerURI: aReferrerURI,
       referrerPolicy: Components.interfaces.nsIHttpChannel.REFERRER_POLICY_UNSET,
+      private: aPrivate
     };
   }
 
@@ -227,7 +230,7 @@ function openLinkIn(url, where, params) {
   var aInBackground         = params.inBackground;
   var aDisallowInheritPrincipal = params.disallowInheritPrincipal;
   var aInitiatingDoc        = params.initiatingDoc;
-  var aIsPrivate            = params.private;
+  var aIsPrivate            = params.private || params.isContentWindowPrivate;
   var aSkipTabAnimation     = params.skipTabAnimation;
   var aAllowPinnedTabHostChange = !!params.allowPinnedTabHostChange;
   var aNoReferrer           = params.noReferrer;
@@ -483,6 +486,7 @@ function openLinkIn(url, where, params) {
       originPrincipal: aPrincipal,
       triggeringPrincipal: aTriggeringPrincipal,
       focusUrlBar,
+      private: aIsPrivate
     });
     targetBrowser = tabUsedForLoad.linkedBrowser;
 

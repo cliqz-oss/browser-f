@@ -37,8 +37,6 @@
 <!ENTITY % privacyDTD SYSTEM "chrome://browser/locale/preferences/privacy.dtd">
 <!ENTITY % tabsDTD SYSTEM "chrome://browser/locale/preferences/tabs.dtd">
 <!ENTITY % searchDTD SYSTEM "chrome://browser/locale/preferences/search.dtd">
-<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
-<!ENTITY % syncDTD SYSTEM "chrome://browser/locale/preferences/sync.dtd">
 <!ENTITY % securityDTD SYSTEM
   "chrome://browser/locale/preferences/security.dtd">
 <!ENTITY % containersDTD SYSTEM
@@ -51,7 +49,9 @@
   "chrome://browser/locale/preferences/applications.dtd">
 <!ENTITY % advancedDTD SYSTEM
   "chrome://browser/locale/preferences/advanced.dtd">
-<!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd" >
+<!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd">
+<!ENTITY % connectDTD SYSTEM
+  "chrome://browser/locale/preferences/connect.dtd">
 %aboutDialogDTD;
 %brandDTD;
 %globalPreferencesDTD;
@@ -70,8 +70,6 @@
 %privacyDTD;
 %tabsDTD;
 %searchDTD;
-%syncBrandDTD;
-%syncDTD;
 %securityDTD;
 %containersDTD;
 %sanitizeDTD;
@@ -80,6 +78,14 @@
 %contentDTD;
 %applicationsDTD;
 %advancedDTD;
+%connectDTD;
+
+#if MOZ_SERVICES_SYNC
+<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
+<!ENTITY % syncDTD SYSTEM "chrome://browser/locale/preferences/sync.dtd">
+%syncBrandDTD;
+%syncDTD;
+#endif
 ]>
 
 #ifdef XP_WIN
@@ -161,6 +167,7 @@
           <label class="category-name" flex="1">&panePrivacySecurity.title;</label>
         </richlistitem>
 
+#if MOZ_SERVICES_SYNC
         <richlistitem id="category-sync"
                       class="category"
                       value="paneSync"
@@ -169,6 +176,17 @@
                       align="center">
           <image class="category-icon"/>
           <label class="category-name" flex="1">&paneSync1.title;</label>
+        </richlistitem>
+#endif
+        <richlistitem id="category-connect"
+                      hidden="true"
+                      class="category"
+                      value="paneConnect"
+                      helpTopic="prefs-connect"
+                      tooltiptext="&paneConnect.title;"
+                      align="center">
+          <image class="category-icon"/>
+          <label class="category-name" flex="1">&paneConnect.title;</label>
         </richlistitem>
       </richlistbox>
 
@@ -198,7 +216,10 @@
 #include search.xul
 #include privacy.xul
 #include containers.xul
-#include sync.xul
+#if MOZ_SERVICES_SYNC
+  #include sync.xul
+#endif
+#include connect.xul
         </prefpane>
       </vbox>
     </vbox>

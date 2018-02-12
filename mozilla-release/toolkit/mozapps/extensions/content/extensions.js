@@ -73,7 +73,7 @@ const UPDATES_RELEASENOTES_TRANSFORMFILE = "chrome://mozapps/content/extensions/
 
 const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
 
-var gViewDefault = "addons://discover/";
+var gViewDefault = "addons://list/plugin";
 
 XPCOMUtils.defineLazyGetter(this, "extensionStylesheets", () => {
   const {ExtensionParent} = Cu.import("resource://gre/modules/ExtensionParent.jsm", {});
@@ -728,8 +728,10 @@ var gViewController = {
     this.headeredViews = document.getElementById("headered-views");
     this.headeredViewsDeck = document.getElementById("headered-views-content");
 
+#if 0
     this.viewObjects.search = gSearchView;
     this.viewObjects.discover = gDiscoverView;
+#endif
     this.viewObjects.list = gListView;
     this.viewObjects.legacy = gLegacyView;
     this.viewObjects.detail = gDetailView;
@@ -1857,9 +1859,24 @@ var gCategories = {
     this.node = document.getElementById("categories");
     this._search = this.get("addons://search/");
 
+    // These addon categories are disabled in Cliqz.
+    const disabledCategories = new Set([
+        'extension',
+        'service',
+        'experiment',
+        'theme',
+        'legacy'
+        ]);
+    if (!Services.prefs.getPrefType("extensions.cliqz.listed")
+      || Services.prefs.getBoolPref("extensions.cliqz.listed")) {
+      disabledCategories.delete('extension');
+    }
     var types = AddonManager.addonTypes;
-    for (var type in types)
+    for (var type in types) {
+      if (disabledCategories.has(type))
+        continue;
       this.onTypeAdded(types[type]);
+    }
 
     AddonManager.addTypeListener(this);
 
@@ -2065,7 +2082,8 @@ var gCategories = {
 
   maybeHideSearch() {
     var view = gViewController.parseViewId(this.node.selectedItem.value);
-    this._search.disabled = view.type != "search";
+    if (this._search)
+      this._search.disabled = view.type != "search";
   }
 };
 
@@ -2084,6 +2102,12 @@ var gHeader = {
 
       gViewController.loadView("addons://search/" + encodeURIComponent(query));
     });
+
+    const SETTINGS_PREF_NAME = 'extensions.cliqz.listed';
+    if(Services.prefs.getPrefType(SETTINGS_PREF_NAME) === 128 &&
+      Services.prefs.getBoolPref(SETTINGS_PREF_NAME)) {
+      document.getElementById("settings-icon").hidden = false;
+    }
   },
 
   focusSearchBox() {

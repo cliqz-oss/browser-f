@@ -5180,7 +5180,7 @@
 !ifmacrodef InitHashAppModelId
       ; setup the application model id registration value
       !ifdef AppName
-      ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+      ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
       !endif
 !endif
 
@@ -5425,12 +5425,12 @@
 
 !ifndef NO_INSTDIR_FROM_REG
       SetShellVarContext all      ; Set SHCTX to HKLM
-      ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+      ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
 
       StrCmp "$R9" "false" +1 finish_get_install_dir
 
       SetShellVarContext current  ; Set SHCTX to HKCU
-      ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+      ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
 
       ${If} ${RunningX64}
         ; In HKCU there is no WOW64 redirection, which means we may have gotten
@@ -7431,6 +7431,41 @@
 !define __NSD_LabelCenter_STYLE ${DEFAULT_STYLES}|${SS_NOTIFY}|${SS_CENTER}
 !define __NSD_LabelCenter_EXSTYLE ${WS_EX_TRANSPARENT}
 !endif
+
+/**
+ * Modified version of the __NSD_SetStretchedImage macro from nsDialogs.nsh that
+ * supports transparency. See nsDialogs documentation for additional info.
+ */
+!macro __SetStretchedTransparentImage CONTROL IMAGE HANDLE
+  Push $0
+  Push $1
+  Push $2
+  Push $R0
+  StrCpy $R0 ${CONTROL} ; in case ${CONTROL} is $0
+  StrCpy $1 ""
+  StrCpy $2 ""
+  System::Call '*(i, i, i, i) i.s'
+  Pop $0
+  ${If} $0 <> 0
+    System::Call 'user32::GetClientRect(i R0, i r0)'
+    System::Call '*$0(i, i, i .s, i .s)'
+    System::Free $0
+    Pop $1
+    Pop $2
+  ${EndIf}
+  System::Call 'user32::LoadImageW(i 0, t s, i ${IMAGE_BITMAP}, i r1, i r2, \
+                                   i ${MOZ_LOADTRANSPARENT}) i .s' "${IMAGE}"
+  Pop $0
+  SendMessage $R0 ${STM_SETIMAGE} ${IMAGE_BITMAP} $0
+  SetCtlColors $R0 "" transparent
+  ${NSD_AddExStyle} $R0 ${WS_EX_TRANSPARENT}|${WS_EX_TOPMOST}
+  Pop $R0
+  Pop $2
+  Pop $1
+  Exch $0
+  Pop ${HANDLE}
+!macroend
+!define SetStretchedTransparentImage "!insertmacro __SetStretchedTransparentImage"
 
 /**
  * Draws an image file (BMP, GIF, or JPG) onto a bitmap control, with scaling.

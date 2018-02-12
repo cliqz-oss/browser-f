@@ -15,7 +15,8 @@ Cu.import("resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "AboutNewTab",
                                   "resource:///modules/AboutNewTab.jsm");
 
-const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
+//const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
+const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_LOCALES_CHANGE = "intl:requested-locales-changed";
 

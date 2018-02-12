@@ -59,7 +59,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   UITour: "resource:///modules/UITour.jsm",
   UpdateUtils: "resource://gre/modules/UpdateUtils.jsm",
   Utils: "resource://gre/modules/sessionstore/Utils.jsm",
+#ifdef MOZ_SERVICES_SYNC
   Weave: "resource://services-sync/main.js",
+#endif
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
   fxAccounts: "resource://gre/modules/FxAccounts.jsm",
   webrtcUI: "resource:///modules/webrtcUI.jsm",
@@ -285,6 +287,61 @@ Object.defineProperty(this, "AddonManager", {
   },
 });
 
+#if CQZ_AUTO_PRIVATE_TAB
+let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+    getService(Ci.nsISupports).wrappedJSObject;
+
+XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
+  "chrome://browser/content/PrivateTabUI.jsm");
+#endif
+
+// CLIQZ Blue Theme
+// TODO - move this out into a separate file!
+try {
+  var THEME_PREF = "extensions.cliqz.freshtab.blueTheme.enabled",
+      THEME_CLASS = "cliqz-blue",
+      FRESHTAB_CONFIG = "extensions.cliqz.freshtabConfig",
+      branch = Services.prefs.getBranch('');
+
+  function observe(subject, topic, data) {
+    setThemeState(getThemeState());
+  }
+
+  function getThemeState() {
+    return !branch.prefHasUserValue(THEME_PREF) || branch.getBoolPref(THEME_PREF);
+  }
+
+  function setThemeState(enabled) {
+    var win = window.document.getElementById('main-window');
+    if (enabled) {
+      win.classList.add(THEME_CLASS);
+    } else {
+      win.classList.remove(THEME_CLASS);
+    }
+  }
+
+  // handles changes
+  branch.addObserver(THEME_PREF, { observe:observe }, false);
+
+  // set the current state of the Blue theme
+  var freshtabConfig = branch.prefHasUserValue(FRESHTAB_CONFIG) ? branch.getStringPref(FRESHTAB_CONFIG) : '{}';
+  var freshtabBackground = JSON.parse(freshtabConfig).background || {};
+  var themeEnabled = false;
+
+  if (branch.prefHasUserValue(THEME_PREF)) {
+    themeEnabled = branch.getBoolPref(THEME_PREF);
+  } else if (Object.keys(freshtabBackground).length === 0) {
+    // we also set the blue theme if the user did not set any freshtab background
+    themeEnabled = true;
+    // once we decided should user see the theme or not, save the result in prefs
+    branch.setBoolPref(THEME_PREF, true);
+  }
+
+  setThemeState(themeEnabled);
+} catch (e) {
+  Cu.reportError(e);
+}
+// CLIQZ Blue Theme end
 
 var gInitialPages = [
   "about:blank",
@@ -292,7 +349,9 @@ var gInitialPages = [
   "about:home",
   "about:privatebrowsing",
   "about:welcomeback",
-  "about:sessionrestore"
+  "about:sessionrestore",
+  "resource://cliqz/freshtab/home.html",
+  "about:cliqz"
 ];
 
 function isInitialPage(url) {
@@ -998,6 +1057,7 @@ function handleUriInChrome(aBrowser, aUri) {
 
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
+// |browser| is the {xul::browser} element (binding id="tabbrowser-browser").
 function _loadURIWithFlags(browser, uri, params) {
   let tab = gBrowser.getTabForBrowser(browser);
   // Preloaded browsers don't have tabs, so we ignore those.
@@ -1063,9 +1123,9 @@ function _loadURIWithFlags(browser, uri, params) {
         browser.webNavigation.setOriginAttributesBeforeLoading({ userContextId: params.userContextId });
       }
 
-      browser.webNavigation.loadURIWithOptions(uri, flags,
-                                               referrer, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
+      browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+                                               postData, null, null,
+                                               triggeringPrincipal, !!params.ensurePrivate);
     } else {
       // Check if the current browser is allowed to unload.
       let {permitUnload, timedOut} = browser.permitUnload();
@@ -1111,7 +1171,8 @@ function _loadURIWithFlags(browser, uri, params) {
       }
 
       browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
+                                               postData, null, null,
+                                               triggeringPrincipal, !!params.ensurePrivate);
     } else {
       throw e;
     }
@@ -1126,6 +1187,7 @@ function _loadURIWithFlags(browser, uri, params) {
 // process
 function LoadInOtherProcess(browser, loadOptions, historyIndex = -1) {
   let tab = gBrowser.getTabForBrowser(browser);
+  // TODO: May need to pass privateness here as well.
   SessionStore.navigateAndRestore(tab, loadOptions, historyIndex);
 }
 
@@ -1242,7 +1304,9 @@ var gBrowserInit = {
     BrowserOnClick.init();
     FeedHandler.init();
     CompactTheme.init();
+#if 0
     AboutPrivateBrowsingListener.init();
+#endif
     TrackingProtection.init();
     CaptivePortalWatcher.init();
     ZoomUI.init(window);
@@ -1316,6 +1380,11 @@ var gBrowserInit = {
     gPrivateBrowsingUI.init();
     BrowserPageActions.init();
     gAccessibilityServiceIndicator.init();
+
+#if CQZ_AUTO_PRIVATE_TAB
+    this._privateTabUI = new PrivateTabUI(gBrowser, gNavToolbox);
+    this._privateTabUI.start();
+#endif
 
     if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
         window.matchMedia("(-moz-windows-default-theme)").matches) {
@@ -1501,10 +1570,10 @@ var gBrowserInit = {
 
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
-
-    if (!AppConstants.MOZILLA_OFFICIAL)
+#if 0
+    if (!AppConstants.MOZILLA_RELEASE)
       DevelopmentHelpers.init();
-
+#endif
     gExtensionsNotifications.init();
 
     let wasMinimized = window.windowState == window.STATE_MINIMIZED;
@@ -1686,8 +1755,10 @@ var gBrowserInit = {
     }
 
     scheduleIdleTask(() => {
+#ifdef MOZ_SERVICES_SYNC
       // Initialize the Sync UI
       gSync.init();
+#endif
     });
 
     scheduleIdleTask(() => {
@@ -1762,6 +1833,10 @@ var gBrowserInit = {
     if (!this._loadHandled)
       return;
 
+#if CQZ_AUTO_PRIVATE_TAB
+    this._privateTabUI.stop();
+#endif
+
     // First clean up services initialized in gBrowserInit.onLoad (or those whose
     // uninit methods don't depend on the services having been initialized).
 
@@ -1773,7 +1848,9 @@ var gBrowserInit = {
 
     FullScreen.uninit();
 
+#ifdef MOZ_SERVICES_SYNC
     gSync.uninit();
+#endif
 
     gExtensionsNotifications.uninit();
 
@@ -1872,6 +1949,8 @@ var gBrowserInit = {
           .XULBrowserWindow = null;
     window.QueryInterface(Ci.nsIDOMChromeWindow).browserDOMWindow = null;
   },
+
+  _privateTabUI: null
 };
 
 if (AppConstants.platform == "macosx") {
@@ -2281,6 +2360,13 @@ function BrowserOpenTab(event) {
 
   openUILinkIn(BROWSER_NEW_TAB_URL, where, { relatedToCurrent });
 }
+
+#if CQZ_AUTO_PRIVATE_TAB
+function BrowserOpenPrivateTab() {
+  openUILinkIn("about:privatebrowsing", "tab", {private: true});
+  gURLBar.focus();
+}
+#endif
 
 /* Called from the openLocation dialog. This allows that dialog to instruct
    its opener to open a new window and then step completely out of the way.
@@ -5980,7 +6066,11 @@ function contentAreaClick(event, isPanelClick) {
   // pages loaded in frames are embed visits and lost with the session, while
   // visits across frames should be preserved.
   try {
-    if (!PrivateBrowsingUtils.isWindowPrivate(window))
+    const doc = event.target.ownerDocument;
+    // We should never reach this code in e10s mode, as this function is only
+    // called in single-process mode. Hence docShell should be accessible.
+    const privateTab = doc && doc.docShell.usePrivateBrowsing;
+    if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab)
       PlacesUIUtils.markPageAsFollowedLink(href);
   } catch (ex) { /* Skip invalid URIs. */ }
 }
@@ -5999,10 +6089,12 @@ function handleLinkClick(event, href, linkNode) {
     return false;
 
   var doc = event.target.ownerDocument;
+  // We should never reach this code in e10s mode.
+  const privateTab = doc && doc.docShell.usePrivateBrowsing;
 
   if (where == "save") {
     saveURL(href, linkNode ? gatherTextUnder(linkNode) : "", null, true,
-            true, doc.documentURIObject, doc);
+            true, doc.documentURIObject, doc, privateTab);
     event.preventDefault();
     return true;
   }
@@ -6046,6 +6138,7 @@ function handleLinkClick(event, href, linkNode) {
     originPrincipal: doc.nodePrincipal,
     triggeringPrincipal: doc.nodePrincipal,
     frameOuterWindowID,
+    private: privateTab,
   };
 
   // The new tab/window must use the same userContextId
@@ -7064,9 +7157,11 @@ function checkEmptyPageOrigin(browser = gBrowser.selectedBrowser,
   return ssm.isSystemPrincipal(contentPrincipal);
 }
 
+#ifdef MOZ_SERVICES_SYNC
 function BrowserOpenSyncTabs() {
   gSync.openSyncedTabsPanel();
 }
+#endif
 
 function ReportFalseDeceptiveSite() {
   let docURI = gBrowser.selectedBrowser.documentURI;
@@ -7163,7 +7258,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|config|crashes|customizing|downloads|healthreport|license|newaddon|permissions|preferences|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
+  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|cliqz|config|crashes|customizing|downloads|healthreport|license|newaddon|newtab|permissions|preferences|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   get _isBroken() {
     return this._state & Ci.nsIWebProgressListener.STATE_IS_BROKEN;
@@ -8481,7 +8576,9 @@ var RestoreLastSessionObserver = {
   init() {
     let browser_tabs_restorebutton_pref = Services.prefs.getIntPref("browser.tabs.restorebutton");
     Services.telemetry.scalarSet("browser.session.restore.browser_tabs_restorebutton", browser_tabs_restorebutton_pref);
+#if 0
     Services.telemetry.scalarSet("browser.session.restore.browser_startup_page", Services.prefs.getIntPref("browser.startup.page"));
+#endif
     if (SessionStore.canRestoreLastSession &&
         !PrivateBrowsingUtils.isWindowPrivate(window)) {
       if (browser_tabs_restorebutton_pref == 1) {
@@ -8564,6 +8661,7 @@ var MenuTouchModeObserver = {
 
 var TabContextMenu = {
   contextTab: null,
+
   _updateToggleMuteMenuItem(aTab, aConditionFn) {
     ["muted", "soundplaying"].forEach(attr => {
       if (!aConditionFn || aConditionFn(attr)) {
@@ -8575,6 +8673,7 @@ var TabContextMenu = {
       }
     });
   },
+
   updateContextMenu: function updateContextMenu(aPopupMenu) {
     this.contextTab = aPopupMenu.triggerNode.localName == "tab" ?
                       aPopupMenu.triggerNode : gBrowser.selectedTab;
@@ -8635,11 +8734,40 @@ var TabContextMenu = {
     this.contextTab.toggleMuteMenuItem = toggleMute;
     this._updateToggleMuteMenuItem(this.contextTab);
 
+#if CQZ_AUTO_PRIVATE_TAB
+    // Privateness related menu items.
+    const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+    const tabIsPrivate = this.contextTab.private;
+    const togglePrivateItem = document.getElementById("context_togglePrivate");
+    togglePrivateItem.hidden = windowIsPrivate;
+    togglePrivateItem.label =
+        gNavigatorBundle.getString(
+            tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
+                         : "apt.tabContext.reloadInForgetMode");
+    const addExceptionItem =
+        document.getElementById("context_togglePrivateAndRememberDomain");
+    addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
+    addExceptionItem.label =
+        gNavigatorBundle.getString(
+            tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
+                         : "apt.tabContext.alwaysInForgetMode");
+#endif
+
     this.contextTab.addEventListener("TabAttrModified", this);
     aPopupMenu.addEventListener("popuphiding", this);
 
+#ifdef MOZ_SERVICES_SYNC
     gSync.updateTabContextMenu(aPopupMenu, this.contextTab);
+#endif
   },
+
+#if CQZ_AUTO_PRIVATE_TAB
+  togglePrivateMode: function(rememberDomain) {
+    autoForgetTabs.toggleBrowserPrivateMode(
+        this.contextTab.linkedBrowser, rememberDomain);
+  },
+#endif
+
   handleEvent(aEvent) {
     switch (aEvent.type) {
       case "popuphiding":
@@ -8707,6 +8835,11 @@ function duplicateTabIn(aTab, where, delta) {
     case "tab":
       let newTab = SessionStore.duplicateTab(window, aTab, delta);
       gBrowser.selectedTab = newTab;
+      break;
+    case "tabadjacent":
+      let newTab2 = SessionStore.duplicateTab(window, aTab, delta);
+      gBrowser.moveTabTo(newTab2, aTab._tPos + 1);
+      gBrowser.selectedTab = newTab2;
       break;
   }
 }
@@ -8943,6 +9076,7 @@ var PanicButtonNotifier = {
   },
 };
 
+#if 0
 var AboutPrivateBrowsingListener = {
   init() {
     window.messageManager.addMessageListener(
@@ -8963,6 +9097,7 @@ var AboutPrivateBrowsingListener = {
     });
   }
 };
+#endif
 
 function TabModalPromptBox(browser) {
   this._weakBrowserRef = Cu.getWeakReference(browser);

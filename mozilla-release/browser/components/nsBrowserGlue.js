@@ -279,6 +279,7 @@ BrowserGlue.prototype = {
     Services.prefs.savePrefFile(null);
   },
 
+#ifdef MOZ_SERVICES_SYNC
   _setSyncAutoconnectDelay: function BG__setSyncAutoconnectDelay() {
     // Assume that a non-zero value for services.sync.autoconnectDelay should override
     if (Services.prefs.prefHasUserValue("services.sync.autoconnectDelay")) {
@@ -300,6 +301,7 @@ BrowserGlue.prototype = {
     Cu.import("resource://services-sync/main.js");
     Weave.Service.scheduler.delayedAutoConnect(delay);
   },
+#endif
 
   /**
    * Lazily initialize PingCentre
@@ -370,6 +372,7 @@ BrowserGlue.prototype = {
           this._setPrefToSaveSession();
         }
         break;
+#ifdef MOZ_SERVICES_SYNC
       case "weave:service:ready":
         this._setSyncAutoconnectDelay();
         break;
@@ -391,6 +394,7 @@ BrowserGlue.prototype = {
       case "weave:engine:clients:display-uris":
         this._onDisplaySyncURIs(subject);
         break;
+#endif
       case "session-save":
         this._setPrefToSaveSession(true);
         subject.QueryInterface(Ci.nsISupportsPRBool);
@@ -542,12 +546,14 @@ BrowserGlue.prototype = {
       os.addObserver(this, "browser-lastwindow-close-requested");
       os.addObserver(this, "browser-lastwindow-close-granted");
     }
+#ifdef MOZ_SERVICES_SYNC
     os.addObserver(this, "weave:service:ready");
     os.addObserver(this, "fxaccounts:onverified");
     os.addObserver(this, "fxaccounts:device_connected");
     os.addObserver(this, "fxaccounts:verify_login");
     os.addObserver(this, "fxaccounts:device_disconnected");
     os.addObserver(this, "weave:engine:clients:display-uris");
+#endif
     os.addObserver(this, "session-save");
     os.addObserver(this, "places-init-complete");
     os.addObserver(this, "distribution-customization-complete");
@@ -584,12 +590,14 @@ BrowserGlue.prototype = {
       os.removeObserver(this, "browser-lastwindow-close-requested");
       os.removeObserver(this, "browser-lastwindow-close-granted");
     }
+#ifdef MOZ_SERVICES_SYNC
     os.removeObserver(this, "weave:service:ready");
     os.removeObserver(this, "fxaccounts:onverified");
     os.removeObserver(this, "fxaccounts:device_connected");
     os.removeObserver(this, "fxaccounts:verify_login");
     os.removeObserver(this, "fxaccounts:device_disconnected");
     os.removeObserver(this, "weave:engine:clients:display-uris");
+#endif
     os.removeObserver(this, "session-save");
     if (this._bookmarksBackupIdleTime) {
       this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
@@ -868,7 +876,7 @@ BrowserGlue.prototype = {
         label:     win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.label"),
         accessKey: win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.accesskey"),
         callback() {
-          win.BrowserOpenAddonsMgr("addons://list/extension?unsigned=true");
+          win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
         }
       },
     ];
@@ -937,11 +945,11 @@ BrowserGlue.prototype = {
       if (updateChannel) {
         let uninstalledValue =
           WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                     "Software\\Mozilla\\Firefox",
+                                     "Software\\Cliqz",
                                      `Uninstalled-${updateChannel}`);
         let removalSuccessful =
           WindowsRegistry.removeRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                       "Software\\Mozilla\\Firefox",
+                                       "Software\\Cliqz",
                                        `Uninstalled-${updateChannel}`);
         if (removalSuccessful && uninstalledValue == "True") {
           this._resetProfileNotification("uninstall");
@@ -1250,7 +1258,8 @@ BrowserGlue.prototype = {
     // There are several cases where we won't show a dialog here:
     // 1. There is only 1 tab open in 1 window
     // 2. The session will be restored at startup, indicated by
-    //    browser.startup.page == 3 or browser.sessionstore.resume_session_once == true
+    //    browser.startup.restoreTabs == true or
+    //    browser.sessionstore.resume_session_once == true
     // 3. browser.warnOnQuit == false
     // 4. The browser is currently in Private Browsing mode
     // 5. The browser will be restarted.
@@ -1295,8 +1304,9 @@ BrowserGlue.prototype = {
     // browser.showQuitWarning specifically covers quitting
     // browser.tabs.warnOnClose is the global "warn when closing multiple tabs" pref
 
-    var sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
-                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
+    var sessionWillBeRestored =
+        Services.prefs.getBoolPref("browser.startup.restoreTabs") ||
+        Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
     if (sessionWillBeRestored || !Services.prefs.getBoolPref("browser.warnOnQuit"))
       return;
 
@@ -1368,7 +1378,7 @@ BrowserGlue.prototype = {
       this._saveSession = true;
       if (neverAsk.value) {
         // always save state when shutting down
-        Services.prefs.setIntPref("browser.startup.page", 3);
+        Services.prefs.setBoolPref("browser.startup.restoreTabs", true);
       }
       break;
     }
@@ -2130,7 +2140,7 @@ BrowserGlue.prototype = {
       let currentTheme = Services.prefs.getCharPref("lightweightThemes.selectedThemeID", "");
       if (currentTheme == "firefox-compact-dark@mozilla.org" ||
           currentTheme == "firefox-compact-light@mozilla.org") {
-        Services.prefs.setIntPref("browser.uidensity", 1);
+        Services.prefs.setIntPref("browser.uidensity", 0);
       }
     }
 
@@ -2481,6 +2491,7 @@ BrowserGlue.prototype = {
     });
   },
 
+#ifdef MOZ_SERVICES_SYNC
   /**
    * Called as an observer when Sync's "display URIs" notification is fired.
    *
@@ -2563,6 +2574,7 @@ BrowserGlue.prototype = {
       Cu.reportError("Error displaying tab(s) received by Sync: " + ex);
     }
   },
+#endif
 
   async _onVerifyLoginNotification({body, title, url}) {
     let tab;

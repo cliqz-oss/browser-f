@@ -171,7 +171,7 @@ was trying to connect. -->
 
 <!ENTITY securityOverride.exceptionButtonLabel "Add Exception…">
 
-<!ENTITY errorReporting.automatic2 "Report errors like this to help Mozilla identify and block malicious sites">
+<!ENTITY errorReporting.automatic2 "Report errors like this to help Cliqz identify and block malicious sites">
 <!ENTITY errorReporting.learnMore "Learn more…">
 
 <!ENTITY remoteXUL.title "Remote XUL">

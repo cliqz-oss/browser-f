@@ -7,10 +7,9 @@
 <!ENTITY searchBar.hidden.label                "Adressleiste für Suche und Seitenaufrufe verwenden">
 <!ENTITY searchBar.shown.label                 "Suchleiste zur Symbolleiste hinzufügen">
 
-<!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
+<!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
 
-<!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
-
+<!ENTITY chooseYourDefaultSearchEngine2.label  "Wähle deine alternative Suchmaschine. Wenn du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst du deren Ergebnisse wenn du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 
@@ -18,9 +17,9 @@
 <!ENTITY showURLBarSuggestions2.accesskey       "v">
 <!ENTITY urlBarSuggestionsPermanentPB.label    "Suchvorschläge werden nicht in der Adressleiste angezeigt, weil &brandShortName; angewiesen wurde, keine Chronik zu speichern.">
 
-<!ENTITY oneClickSearchEngines.label           "Ein-Klick-Suchmaschinen">
+<!ENTITY oneClickSearchEngines.label           "Direkt suchen">
 
-<!ENTITY chooseWhichOneToDisplay2.label         "Wählen Sie eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem Sie den Suchbegriff eingegeben haben.">
+<!ENTITY chooseWhichOneToDisplay2.label        "Wähle eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem du den Suchbegriff eingegeben hast.">
 
 <!ENTITY engineNameColumn.label                "Suchmaschine">
 <!ENTITY engineKeywordColumn.label             "Schlüsselwort">
@@ -32,3 +31,4 @@
 <!ENTITY removeEngine.accesskey                "E">
 
 <!ENTITY findMoreSearchEngines.label           "Weitere Suchmaschinen hinzufügen">
+<!ENTITY findMoreSearchEnginesDesc.label       "Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.">

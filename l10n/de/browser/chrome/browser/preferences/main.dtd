@@ -1,6 +1,8 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
+%brandDTD;
 
 <!ENTITY startup.label             "Start">
 
@@ -38,10 +40,10 @@
 <!ENTITY setAsMyDefaultBrowser3.label     "Als Standard festlegen…">
 <!ENTITY setAsMyDefaultBrowser3.accesskey "g">
 <!ENTITY isDefault.label                  "&brandShortName; ist derzeit der Standardbrowser">
-<!ENTITY isNotDefault.label               "&brandShortName; ist nicht Ihr Standardbrowser">
+<!ENTITY isNotDefault.label               "&brandShortName; ist nicht dein Standardbrowser">
 
 <!ENTITY separateProfileMode.label        "Gleichzeitiges Ausführen von &brandShortName; und Firefox erlauben">
-<!ENTITY useFirefoxSync.label             "Tipp: Dabei werden getrennte Profile verwendet. Verwenden Sie Sync, um Daten zwischen diesen zu synchronisieren.">
+<!ENTITY useFirefoxSync.label             "Tipp: Dabei werden getrennte Profile verwendet. Verwende Sync, um Daten zwischen diesen zu synchronisieren.">
 <!ENTITY getStarted.notloggedin.label     "Bei &syncBrand.shortName.label; anmelden…">
 <!ENTITY getStarted.configured.label      "&syncBrand.shortName.label;-Einstellungen öffnen">
 

@@ -25,6 +25,8 @@
 <!ENTITY  panePrivacySecurity.title     "Privacy &amp; Security">
 <!ENTITY  paneContainers.title          "Container Tabs">
 <!ENTITY  paneUpdates.title             "Updates">
+<!ENTITY  paneConnect.title             "Connect">
+<!ENTITY  mozillaSupportHelp.label      "Visit Mozilla Support">
 
 <!ENTITY  languageAndAppearance.label   "Language and Appearance">
 <!ENTITY  filesAndApplications.label    "Files and Applications">
@@ -33,4 +35,5 @@
 <!-- LOCALIZATION NOTE (paneSync1.title): This should match syncBrand.fxAccount.label in ../syncBrand.dtd -->
 <!ENTITY  paneSync1.title          "Firefox Account">
 
-<!ENTITY  helpButton2.label        "&brandShortName; Support">
+<!-- In Cliqz browser use Mozilla Support for preferences page -->
+<!ENTITY  helpButton2.label        "Mozilla Support">

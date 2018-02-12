@@ -241,7 +241,7 @@ ContentRestoreInternal.prototype = {
 
         webNavigation.loadURIWithOptions(loadArguments.uri, loadArguments.flags,
                                          referrer, referrerPolicy, postData,
-                                         null, null, triggeringPrincipal);
+                                         null, null, triggeringPrincipal, false);
       } else if (tabData.userTypedValue && tabData.userTypedClear) {
         // If the user typed a URL into the URL bar and hit enter right before
         // we crashed, we want to start loading that page again. A non-zero

@@ -7,7 +7,7 @@
 # be specified once. As a result, the source file paths are relative
 # to the location of the actual manifest.
 
-  skin/classic/browser/aboutNetError.css                       (../shared/aboutNetError.css)
+* skin/classic/browser/aboutNetError.css                       (../shared/aboutNetError.css)
   skin/classic/browser/blockedSite.css                         (../shared/blockedSite.css)
   skin/classic/browser/error-pages.css                         (../shared/error-pages.css)
 * skin/classic/browser/aboutSessionRestore.css                 (../shared/aboutSessionRestore.css)
@@ -86,7 +86,7 @@
   skin/classic/browser/panel-icon-magnifier.svg                (../shared/panel-icon-magnifier.svg)
 #endif
   skin/classic/browser/panel-icon-retry.svg                    (../shared/panel-icon-retry.svg)
-  skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)
+  skin/classic/browser/preferences/in-content/connect.svg      (../shared/incontentprefs/connect.svg)
   skin/classic/browser/preferences/in-content/face-sad.svg     (../shared/incontentprefs/face-sad.svg)
   skin/classic/browser/preferences/in-content/face-smile.svg   (../shared/incontentprefs/face-smile.svg)
   skin/classic/browser/preferences/in-content/fxa-avatar.svg   (../shared/incontentprefs/fxa-avatar.svg)
@@ -124,6 +124,7 @@
   skin/classic/browser/chevron-animation.svg          (../shared/icons/chevron-animation.svg)
   skin/classic/browser/check.svg                      (../shared/icons/check.svg)
   skin/classic/browser/check-animation.svg            (../shared/icons/check-animation.svg)
+  skin/classic/browser/connect.svg                    (../shared/icons/connect.svg)
   skin/classic/browser/customize.svg                  (../shared/icons/customize.svg)
   skin/classic/browser/developer.svg                  (../shared/icons/developer.svg)
   skin/classic/browser/device-mobile.svg              (../shared/icons/device-mobile.svg)

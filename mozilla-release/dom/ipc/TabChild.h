@@ -22,6 +22,7 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsFrameMessageManager.h"
 #include "nsIPresShell.h"
+#include "nsIPrivacyTransitionObserver.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsWeakReference.h"
 #include "nsITabChild.h"
@@ -273,7 +274,8 @@ class TabChild final : public TabChildBase,
                        public nsIObserver,
                        public TabContext,
                        public nsITooltipListener,
-                       public mozilla::ipc::IShmemAllocator
+                       public mozilla::ipc::IShmemAllocator,
+                       public nsIPrivacyTransitionObserver
 {
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
   typedef mozilla::dom::CoalescedMouseData CoalescedMouseData;
@@ -329,6 +331,7 @@ public:
   NS_DECL_NSITABCHILD
   NS_DECL_NSIOBSERVER
   NS_DECL_NSITOOLTIPLISTENER
+  NS_DECL_NSIPRIVACYTRANSITIONOBSERVER
 
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(TabChild, TabChildBase)
 

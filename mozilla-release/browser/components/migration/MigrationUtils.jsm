@@ -185,6 +185,14 @@ this.MigratorPrototype = {
   },
 
   /**
+   * Cliqz
+   * Flag for Firefox migrator. Only FirefoxProfileMigrator must set it to true.
+   */
+  get isFirefoxMigrator() {
+    return false;
+  },
+
+  /**
    * OVERRIDE IF AND ONLY IF your migrator supports importing the homepage.
    * @see nsIBrowserProfileMigrator
    */
@@ -376,7 +384,17 @@ this.MigratorPrototype = {
       }
     };
 
-    if (MigrationUtils.isStartupMigration && !this.startupOnlyMigrator) {
+    /**
+     * Cliqz
+     * In Cliqz browser it is possible to import data from Firefox always, not
+     * only on startup, this is one of the product in import list. Code below
+     * doesn't expecting such behavior (startupOnlyMigrator flag). If change
+     * this flag to false in FirefoxProfileMigrator will fall into problem here,
+     * when importing passwords (NSS database initialize before key3.db will be
+     * copied). So we replace this flag to our own, which signal about importing
+     * from Firefox.
+     */
+    if (MigrationUtils.isStartupMigration && !this.isFirefoxMigrator) {
       MigrationUtils.profileStartup.doStartup();
       // First import the default bookmarks.
       // Note: We do not need to do so for the Firefox migrator
@@ -408,6 +426,7 @@ this.MigratorPrototype = {
       })();
       return;
     }
+
     doMigrate();
   },
 
@@ -566,6 +585,8 @@ this.MigrationUtils = Object.freeze({
         return "sourceNameFirefox";
       case "360se":
         return "sourceName360se";
+      case "cliqz":
+        return "sourceNameCliqz";
     }
     return null;
   },

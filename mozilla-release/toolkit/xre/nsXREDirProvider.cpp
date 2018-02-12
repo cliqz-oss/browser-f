@@ -1262,8 +1262,8 @@ nsXREDirProvider::GetUpdateRootDir(nsIFile* *aResult)
     // application doesn't have the nsXREAppData vendor value defined check
     // under SOFTWARE\Mozilla.
     wchar_t regPath[1024] = { L'\0' };
-    swprintf_s(regPath, mozilla::ArrayLength(regPath), L"SOFTWARE\\%S\\%S\\TaskBarIDs",
-               (hasVendor ? gAppData->vendor : "Mozilla"), MOZ_APP_BASENAME);
+    swprintf_s(regPath, mozilla::ArrayLength(regPath),
+               L"SOFTWARE\\%S\\TaskBarIDs", MOZ_APP_BASENAME);
 
     // If we pre-computed the hash, grab it from the registry.
     pathHashResult = GetCachedHash(HKEY_LOCAL_MACHINE,
@@ -1297,8 +1297,7 @@ nsXREDirProvider::GetUpdateRootDir(nsIFile* *aResult)
   nsCOMPtr<nsIFile> localDir;
   if ((hasVendor || gAppData->name) &&
       NS_SUCCEEDED(GetUserDataDirectoryHome(getter_AddRefs(localDir), true)) &&
-      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(hasVendor ?
-                                          gAppData->vendor : gAppData->name))) &&
+      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(gAppData->name))) &&
       NS_SUCCEEDED(localDir->Append(NS_LITERAL_STRING("updates"))) &&
       NS_SUCCEEDED(localDir->Append(pathHash))) {
     localDir.forget(aResult);

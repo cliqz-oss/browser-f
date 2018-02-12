@@ -160,6 +160,8 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFrameLoader)
   NS_INTERFACE_MAP_ENTRY(nsIWebBrowserPersistable)
 NS_INTERFACE_MAP_END
 
+static mozilla::LazyLogModule gFrameLoaderLog("nsFrameLoader");
+
 nsFrameLoader::nsFrameLoader(Element* aOwner, nsPIDOMWindowOuter* aOpener,
                              bool aNetworkCreated, int32_t aJSPluginID)
   : mOwnerContent(aOwner)
@@ -1827,6 +1829,9 @@ nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
 
   RefPtr<nsDocShell> ourDocshell = static_cast<nsDocShell*>(GetExistingDocShell());
   RefPtr<nsDocShell> otherDocshell = static_cast<nsDocShell*>(aOther->GetExistingDocShell());
+  MOZ_LOG(gFrameLoaderLog, LogLevel::Info,
+      ("Swapping DocShells %p and %p \n",
+       ourDocshell.get(), otherDocshell.get()));
   if (!ourDocshell || !otherDocshell) {
     // How odd
     return NS_ERROR_NOT_IMPLEMENTED;
@@ -4045,6 +4050,12 @@ nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
   NS_ENSURE_STATE(parentContext);
 
   bool isPrivate = parentContext->UsePrivateBrowsing();
+  isPrivate = isPrivate ||
+      // Remote browser could switch into private mode automatically.
+      (mRemoteBrowser &&
+       mRemoteBrowser->OriginAttributesRef().mPrivateBrowsingId > 0) ||
+      // Normally, this is inly needed for tab browser initialization.
+      mOwnerContent->HasAttr(kNameSpaceID_None, nsGkAtoms::mozprivatebrowsing);
   attrs.SyncAttributesWithPrivateBrowsing(isPrivate);
 
   UIStateChangeType showAccelerators = UIStateChangeType_NoChange;

@@ -25,6 +25,8 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   OS: "resource://gre/modules/osfile.jsm",
   Services: "resource://gre/modules/Services.jsm",
+  setTimeout: "resource://gre/modules/Timer.jsm",
+  TelemetryController: "resource://gre/modules/TelemetryController.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
@@ -1080,6 +1082,39 @@ this.XPIDatabase = {
       }
     }
   },
+
+  /**
+   * @param addonId {String} Id of the addon to report.
+   * @param type {String} Addon type.
+   * @param way {String} How we got that addon.
+   */
+  reportAddonInstallationAttempt: function(addonId, type, way) {
+    logger.debug("reportAddonInstallationAttempt", [addonId, type, way]);
+    TelemetryController.submitExternalPing(
+      "addon-install-blocked",
+      {
+        id: addonId,
+        addonType: type || null,
+        way: way
+      }
+    );
+
+    // TODO: Remove that
+    setTimeout(function() {
+      try {
+        Components.utils.import('chrome://cliqzmodules/content/CLIQZ.jsm')
+          .CLIQZ.CliqzUtils.telemetry({
+            type: "addon",
+            addonType: type || null,
+            action: way == "foreign" ? "foreign_install" : "block",
+            id: addonId
+          });
+      }
+      catch (e) {
+        logger.warn("Could not report through Cliqz Extension telemetry", e);
+      }
+    }, 5000);
+  },
 };
 
 this.XPIDatabaseReconcile = {
@@ -1220,6 +1255,8 @@ this.XPIDatabaseReconcile = {
             + aInstallLocation.name);
         aNewAddon.userDisabled = true;
         aNewAddon.seen = false;
+        XPIDatabase.reportAddonInstallationAttempt(aNewAddon.id, aNewAddon.type,
+            "foreign");
       }
     }
 

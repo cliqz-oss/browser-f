@@ -4,9 +4,9 @@
 
 <!ENTITY window.width                       "36em">
 
-<!ENTITY     cookiesonsystem2.label         "Folgende Cookies sind auf Ihrem Computer gespeichert:">
+<!ENTITY     cookiesonsystem2.label         "Folgende Cookies sind auf deinem Computer gespeichert:">
 <!ENTITY     cookiename.label               "Cookie-Name">
-<!ENTITY     cookiedomain.label             "Website"> 
+<!ENTITY     cookiedomain.label             "Website">
 
 <!ENTITY     props.name.label               "Name:">
 <!ENTITY     props.value.label              "Inhalt:">

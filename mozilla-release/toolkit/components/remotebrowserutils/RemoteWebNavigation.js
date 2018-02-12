@@ -70,10 +70,11 @@ RemoteWebNavigation.prototype = {
   loadURI(aURI, aLoadFlags, aReferrer, aPostData, aHeaders) {
     this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
                             Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                            aPostData, aHeaders, null);
+                            aPostData, aHeaders, null, null, false);
   },
   loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal) {
+                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal,
+                     aEnsurePrivate) {
     // We know the url is going to be loaded, let's start requesting network
     // connection before the content process asks.
     // Note that we might have already setup the speculative connection in some
@@ -109,6 +110,7 @@ RemoteWebNavigation.prototype = {
                            ? Utils.serializePrincipal(aTriggeringPrincipal)
                            : null,
       requestTime: Services.telemetry.msSystemNow(),
+      ensurePrivate: !!aEnsurePrivate
     });
   },
   setOriginAttributesBeforeLoading(aOriginAttributes) {

@@ -31,6 +31,7 @@ array_names = [
   'addonsPublicRoot',
   'addonsStageRoot',
   'privilegedPackageRoot',
+  'cliqzAddonsRoot',
 ]
 
 for n in array_names:

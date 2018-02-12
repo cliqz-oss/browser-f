@@ -29,6 +29,7 @@
 <!ENTITY  formsAndPasswords.label       "Forms &amp; Passwords">
 
 <!ENTITY  rememberLogins2.label         "Remember logins and passwords for websites">
+<!ENTITY  rememberLogins2.hint          "To enable this feature please make sure Cliqz will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
 <!ENTITY  rememberLogins2.accesskey     "R">
 <!ENTITY  passwordExceptions.label      "Exceptions…">
 <!ENTITY  passwordExceptions.accesskey  "x">
@@ -40,3 +41,17 @@
 
 <!ENTITY  savedLogins.label              "Saved Logins…">
 <!ENTITY  savedLogins.accesskey          "L">
+
+<!ENTITY  httpsEverywhere.label          "HTTPS Everywhere">
+<!ENTITY  httpsEverywhereEnable.label    "Enable HTTPS Everywhere">
+<!ENTITY  httpsEverywhere.accesskey      "H">
+<!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. ">
+<!ENTITY  httpsEverywhereMore.label      "Learn more">
+
+<!ENTITY  passwordManager.title          "Password Manager">
+<!ENTITY  passwordManager.desc1          "Cliqz integrates with LastPass, a third-party password manager software.">
+<!ENTITY  passwordManager.desc2          "Note that Cliqz has no control over what data third-party software might access.">
+
+<!ENTITY  ghostery.title                 "Extended Privacy Control">
+<!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you to decide which">
+<!ENTITY  ghostery.desc2                 "ones to block.">

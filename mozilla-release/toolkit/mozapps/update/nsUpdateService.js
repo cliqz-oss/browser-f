@@ -780,7 +780,7 @@ function isServiceInstalled() {
     let wrk = Cc["@mozilla.org/windows-registry-key;1"].
               createInstance(Ci.nsIWindowsRegKey);
     wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-             "SOFTWARE\\Mozilla\\MaintenanceService",
+             "SOFTWARE\\CLIQZ\\MaintenanceService",
              wrk.ACCESS_READ | wrk.WOW64_64);
     installed = wrk.readIntValue("Installed");
     wrk.close();
@@ -1367,6 +1367,7 @@ function Update(update) {
     this.displayVersion = this.appVersion;
   }
 
+#if 0
   // Don't allow the background download interval to be greater than 10 minutes.
   this.backgroundInterval = Math.min(this.backgroundInterval, 600);
 
@@ -1382,6 +1383,10 @@ function Update(update) {
                                               [appName, this.displayVersion], 2);
   }
   this.name = name;
+#endif
+  // In Cliqz we always use just the current product name.
+  var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
+  this.name = brandBundle.GetStringFromName("brandShortName");
 }
 Update.prototype = {
   /**

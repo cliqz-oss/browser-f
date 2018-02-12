@@ -943,6 +943,7 @@ BrowserPageActions.emailLink = {
   },
 };
 
+#ifdef MOZ_SERVICES_SYNC
 // send to device
 BrowserPageActions.sendToDevice = {
   onPlacedInPanel(buttonNode) {
@@ -1020,3 +1021,4 @@ BrowserPageActions.sendToDevice = {
     }
   },
 };
+#endif

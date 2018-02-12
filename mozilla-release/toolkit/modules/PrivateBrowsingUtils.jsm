@@ -34,6 +34,8 @@ this.PrivateBrowsingUtils = {
   },
 
   isBrowserPrivate(aBrowser) {
+    return aBrowser.loadContext.usePrivateBrowsing;
+    /*
     let chromeWin = aBrowser.ownerGlobal;
     if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
       // In e10s we have to look at the chrome window's private
@@ -44,6 +46,7 @@ this.PrivateBrowsingUtils = {
       return this.isWindowPrivate(chromeWin);
     }
     return this.privacyContextFromWindow(aBrowser.contentWindow).usePrivateBrowsing;
+    */
   },
 
   privacyContextFromWindow: function pbu_privacyContextFromWindow(aWindow) {

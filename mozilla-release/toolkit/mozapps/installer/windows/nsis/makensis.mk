@@ -28,6 +28,7 @@ CUSTOM_NSIS_PLUGINS = \
 	ApplicationID.dll \
 	CertCheck.dll \
 	CityHash.dll \
+	CliqzHelper.dll \
 	InetBgDL.dll \
 	InvokeShellVerb.dll \
 	liteFirewallW.dll \
@@ -67,7 +68,9 @@ ifdef MOZ_EXTERNAL_SIGNING_FORMAT
 endif
 
 $(CONFIG_DIR)/7zSD.sfx:
-	$(CYGWIN_WRAPPER) upx --best -o $(CONFIG_DIR)/7zSD.sfx $(SFX_MODULE)
+	cp $(SFX_MODULE) $(CONFIG_DIR)/7zSD_tmp.sfx
+	../../../../cliqz-helpers/rcedit.exe $(CONFIG_DIR)/7zSD_tmp.sfx -sfv "$(CQZ_VERSION)"
+	$(CYGWIN_WRAPPER) upx --best -o $(CONFIG_DIR)/7zSD.sfx $(CONFIG_DIR)/7zSD_tmp.sfx
 
 installer::
 	$(INSTALL) $(CONFIG_DIR)/setup.exe $(DEPTH)/installer-stage

@@ -216,6 +216,8 @@ this.LightweightThemeManager = {
   },
 
   previewTheme(aData) {
+    return;  // Disable LW themes in Cliqz.
+#if 0
     let cancel = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
     cancel.data = false;
     Services.obs.notifyObservers(cancel, "lightweight-theme-preview-requested",
@@ -232,6 +234,7 @@ this.LightweightThemeManager = {
                                    _previewTimer.TYPE_ONE_SHOT);
 
     _notifyWindows(aData);
+#endif
   },
 
   resetPreview() {
@@ -297,6 +300,8 @@ this.LightweightThemeManager = {
    *         The lightweight theme to switch to
    */
   themeChanged(aData) {
+    return;  // Disable LW themes in Cliqz.
+#if 0
     if (_previewTimer) {
       _previewTimer.cancel();
       _previewTimer = null;
@@ -321,6 +326,7 @@ this.LightweightThemeManager = {
 
     _notifyWindows(aData);
     Services.obs.notifyObservers(null, "lightweight-theme-changed");
+#endif
   },
 
   /**

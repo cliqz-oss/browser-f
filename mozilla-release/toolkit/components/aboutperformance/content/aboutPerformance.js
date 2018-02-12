@@ -719,7 +719,6 @@ var View = {
         }
       });
 
-      // Add buttons
       if (nature == "webpages") {
         eltSpan.appendChild(document.createElement("br"));
 

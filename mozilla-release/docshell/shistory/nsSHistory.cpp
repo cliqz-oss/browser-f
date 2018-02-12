@@ -1691,7 +1691,8 @@ nsSHistory::LoadURIWithOptions(const char16_t* aURI,
                                nsIInputStream* aPostStream,
                                nsIInputStream* aExtraHeaderStream,
                                nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal)
+                               nsIPrincipal* aTriggeringPrincipal,
+                               bool aEnsurePrivate)
 {
   return NS_OK;
 }

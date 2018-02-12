@@ -58,7 +58,8 @@
         fullscreenbutton="true"
         sizemode="normal"
         retargetdocumentfocus="urlbar"
-        persist="screenX screenY width height sizemode">
+        persist="screenX screenY width height sizemode"
+        cliqzBrowser="true">
 
 # All JS files which are not content (only) dependent that browser.xul
 # wishes to include *must* go into the global-scripts.inc file
@@ -81,27 +82,39 @@
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
       <menuitem id="context_reloadTab" label="&reloadTab.label;" accesskey="&reloadTab.accesskey;"
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
-      <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
+#if CQZ_AUTO_PRIVATE_TAB
+      <menuitem
+          id="context_togglePrivate"
+          oncommand="TabContextMenu.togglePrivateMode(false);"
+          />
+      <menuitem
+          id="context_togglePrivateAndRememberDomain"
+          oncommand="TabContextMenu.togglePrivateMode(true);"
+          />
+#endif
       <menuseparator/>
+      <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
+      <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
+                accesskey="&duplicateTab.accesskey;"
+                oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tabadjacent');"/>
       <menuitem id="context_pinTab" label="&pinTab.label;"
                 accesskey="&pinTab.accesskey;"
                 oncommand="gBrowser.pinTab(TabContextMenu.contextTab);"/>
       <menuitem id="context_unpinTab" label="&unpinTab.label;" hidden="true"
                 accesskey="&unpinTab.accesskey;"
                 oncommand="gBrowser.unpinTab(TabContextMenu.contextTab);"/>
-      <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
-                accesskey="&duplicateTab.accesskey;"
-                oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tab');"/>
       <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
+#if 0
       <menuseparator id="context_sendTabToDevice_separator"/>
       <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
             accesskey="&sendTabToDevice.accesskey;">
         <menupopup id="context_sendTabToDevicePopupMenu"
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle);"/>
       </menu>
+#endif
       <menuseparator/>
       <menuitem id="context_reloadAllTabs" label="&reloadAllTabs.label;" accesskey="&reloadAllTabs.accesskey;"
                 tbattr="tabbrowser-multiple-visible"
@@ -288,6 +301,7 @@
                      oncommand="SidebarUI.show('viewHistorySidebar');">
          <observes element="viewHistorySidebar" attribute="checked"/>
        </toolbarbutton>
+#ifdef MOZ_SERVICES_SYNC
       <toolbarbutton id="sidebar-switcher-tabs"
                      label="&syncedTabs.sidebar.label;"
                      class="subviewbutton subviewbutton-iconic"
@@ -295,6 +309,7 @@
                      oncommand="SidebarUI.show('viewTabsSidebar');">
          <observes element="viewTabsSidebar" attribute="checked"/>
        </toolbarbutton>
+#endif
       <toolbarseparator/>
       <vbox id="sidebar-extensions"></vbox>
       <toolbarseparator/>

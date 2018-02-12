@@ -616,6 +616,7 @@
 #ifdef XP_UNIX
         <xul:button dlgtype="disclosure" class="dialog-button" hidden="true"/>
         <xul:button dlgtype="help" class="dialog-button" hidden="true" icon="help"/>
+        <xul:hbox hidden="true" class="mozilla-support-label">(Mozilla Support)</xul:hbox>
         <xul:button dlgtype="extra2" class="dialog-button" hidden="true"/>
         <xul:button dlgtype="extra1" class="dialog-button" hidden="true"/>
         <xul:spacer anonid="spacer" flex="1"/>
@@ -832,10 +833,19 @@
               document.title = paneTitle;
           }
           var helpButton = document.documentElement.getButton("help");
-          if (aPaneElement.helpTopic)
+          if (aPaneElement.helpTopic) {
             helpButton.hidden = false;
-          else
+            // Cliqz. DB-1071: Added Mozilla Support label next to help icon
+            if (aPaneElement.helpTopic === "prefs-connection-settings") {
+              const mozLabel = document.getAnonymousElementByAttribute(this, 'class', 'mozilla-support-label');
+              if (mozLabel) {
+                mozLabel.hidden = false;
+              }
+            }
+          }
+          else {
             helpButton.hidden = true;
+          }
 
           // Find this pane's index in the deck and set the deck's
           // selectedIndex to that value to switch to it.

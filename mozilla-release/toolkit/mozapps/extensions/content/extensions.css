@@ -35,6 +35,7 @@ xhtml|link {
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#addon-uninstalled");
 }
 
+
 .creator {
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#creator-link");
 }

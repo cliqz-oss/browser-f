@@ -8,6 +8,7 @@
 
 interface mozIDOMWindowProxy;
 interface nsIDOMElement;
+interface nsIPrivacyTransitionObserver;
 
 [ref] native OriginAttributes(mozilla::OriginAttributes);
 
@@ -137,6 +138,8 @@ interface nsILoadContext : nsISupports
    */
   [binaryname(ScriptableOriginAttributes)]
   readonly attribute jsval originAttributes;
+
+  void addWeakPrivacyTransitionObserver(in nsIPrivacyTransitionObserver obs);
 
   /**
    * The C++ getter for origin attributes.

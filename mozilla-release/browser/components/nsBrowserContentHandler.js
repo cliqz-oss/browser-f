@@ -555,9 +555,10 @@ nsBrowserContentHandler.prototype = {
 
     var startPage = "";
     try {
-      var choice = prefb.getIntPref("browser.startup.page");
-      if (choice == 1 || choice == 3)
-        startPage = this.startPage;
+      var addFreshTab = prefb.getBoolPref("browser.startup.addFreshTab");
+      if (addFreshTab)
+        // TEMP: AboutRedirector.cpp seems to have issues on this one
+        startPage = this.startPage.replace("about:home", "resource://cliqz/freshtab/home.html");
     } catch (e) {
       Components.utils.reportError(e);
     }

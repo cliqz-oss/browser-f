@@ -9,12 +9,13 @@
 // Services = object with smart getters for common XPCOM services
 Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
 
 function init(aEvent) {
   if (aEvent.target != document)
     return;
 
-  var distroId = Services.prefs.getCharPref("distribution.id", "");
+  var distroId = Services.prefs.getCharPref("distribution.about", "");
   if (distroId) {
     var distroString = distroId;
 
@@ -27,14 +28,27 @@ function init(aEvent) {
     distroIdField.value = distroString;
     distroIdField.style.display = "block";
 
+    // DB-1148: Add platform and extension version to About dialog.
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+      let componentsVersion = Services.appinfo.platformVersion;
+      if (cliqzAddon) {
+        componentsVersion += `+${cliqzAddon.version}`;
+      }
+      distroIdField.value += ` (${componentsVersion})`;
+    });
+
+#if 0
     var distroAbout = Services.prefs.getStringPref("distribution.about", "");
     if (distroAbout) {
       var distroField = document.getElementById("distribution");
       distroField.value = distroAbout;
       distroField.style.display = "block";
     }
+#endif
   }
 
+// Cliqz. We don't use "version" element in Cliqz browser at all
+#if 0
   // Include the build ID and display warning if this is an "a#" (nightly or aurora) build
   let versionField = document.getElementById("version");
   let version = Services.appinfo.version;
@@ -56,6 +70,7 @@ function init(aEvent) {
                      : "aboutDialog.architecture.thirtyTwoBit";
   let arch = bundle.GetStringFromName(archResource);
   versionField.textContent += ` (${arch})`;
+#endif
 
   // Show a release notes link if we have a URL.
   let relNotesLink = document.getElementById("releasenotes");

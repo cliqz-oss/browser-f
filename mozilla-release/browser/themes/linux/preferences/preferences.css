@@ -47,7 +47,7 @@
   margin-top: 5px;
 }
 
-#advancedPrefs {
+#advancedPrefs, #connectPrefs {
   margin-left: 0;
   margin-right: 0;
 }
@@ -76,6 +76,7 @@
   margin-top: 0;
 }
 
+%ifdef MOZ_SERVICES_SYNC
 /* Sync Pane */
 
 #noFxaAccount {
@@ -85,3 +86,5 @@
 #noFxaAccount > label:first-child {
   margin-bottom: 0.6em;
 }
+
+%endif

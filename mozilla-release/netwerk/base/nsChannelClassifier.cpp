@@ -327,6 +327,8 @@ nsChannelClassifier::ShouldEnableTrackingProtectionInternal(
 
     NS_ENSURE_ARG(result);
     *result = false;
+    return NS_OK;
+#if 0
 
     nsresult rv;
     nsCOMPtr<mozIThirdPartyUtil> thirdPartyUtil =
@@ -466,6 +468,7 @@ nsChannelClassifier::ShouldEnableTrackingProtectionInternal(
     // window for the channel, then the shield won't show up so we can't send
     // an event to the securityUI anyway.
     return NotifyTrackingProtectionDisabled(aChannel);
+#endif
 }
 
 bool

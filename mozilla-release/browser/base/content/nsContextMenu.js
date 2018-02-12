@@ -309,7 +309,9 @@ nsContextMenu.prototype = {
     this.initLeaveDOMFullScreenItems();
     this.initClickToPlayItems();
     this.initPasswordManagerItems();
+#ifdef MOZ_SERVICES_SYNC
     this.initSyncItems();
+#endif
   },
 
   initPageMenuSeparator: function CM_initPageMenuSeparator() {
@@ -354,10 +356,14 @@ nsContextMenu.prototype = {
 
     var shouldShow = this.onSaveableLink || isMailtoInternal || this.onPlainTextLink;
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+    const isTabPrivate = this.browser.loadContext.usePrivateBrowsing;
     var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
+
+    this.showItem("context-openlink",
+        shouldShow && !isWindowPrivate && !isTabPrivate);
     this.showItem("context-openlinkprivate", shouldShow);
-    this.showItem("context-openlinkintab", shouldShow && !inContainer);
+    this.showItem("context-openlinkintab", shouldShow && !inContainer && !isTabPrivate);
+    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);
     this.showItem("context-openlinkincontainertab", shouldShow && inContainer);
     this.showItem("context-openlinkinusercontext-menu", shouldShow && !isWindowPrivate && showContainers);
     this.showItem("context-openlinkincurrent", this.onPlainTextLink);
@@ -756,7 +762,9 @@ nsContextMenu.prototype = {
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
                    frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-                   noReferrer: this.linkHasNoReferrer };
+                   noReferrer: this.linkHasNoReferrer,
+                   private: this.browser.loadContext.usePrivateBrowsing
+    };
     for (let p in extra) {
       params[p] = extra[p];
     }

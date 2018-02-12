@@ -31,7 +31,7 @@
 <!ENTITY restoreDeferred.label          "Tabs nur wiederherstellen, wenn sie benötigt werden">
 <!ENTITY restoreDeferred.accesskey      "T">
 
-<!ENTITY homePageIntro.label            "Klicken auf die Schaltfläche &quot;Startseite&quot; bringt Sie zu dieser Seite oder Gruppe von Seiten.">
+<!ENTITY homePageIntro.label            "Klicken auf die Schaltfläche &quot;Startseite&quot; bringt dich zu dieser Seite oder Gruppe von Seiten.">
 <!ENTITY useCurrent.label               "Aktuelle Seite">
 <!ENTITY useCurrent.accesskey           "k">
 <!ENTITY useCurrentGroup.label          "Aktuelle Gruppe">
@@ -44,7 +44,7 @@
 <!ENTITY defaultBrowserGroup.label      "Standard-Browser">
 <!ENTITY defaultBrowserButton.label     "Standard-Browser setzen">
 <!ENTITY defaultBrowserButton.accesskey "S">
-<!ENTITY alreadyDefaultText             "&brandShortName; ist bereits Ihr Standard-Browser.">
-<!ENTITY defaultPendingText             "&brandShortName; wird als Ihr Standard-Browser gesetzt, wenn Sie OK klicken.">
-<!ENTITY wasMadeDefaultText             "&brandShortName; wurde als Ihr Standardbrowser gesetzt.">
-<!ENTITY makeDefaultText                "&brandShortName; als Ihren Standard-Browser setzen.">
+<!ENTITY alreadyDefaultText             "&brandShortName; ist bereits dein Standard-Browser.">
+<!ENTITY defaultPendingText             "&brandShortName; wird als dein Standard-Browser gesetzt, wenn du OK klickst.">
+<!ENTITY wasMadeDefaultText             "&brandShortName; wurde als dein Standardbrowser gesetzt.">
+<!ENTITY makeDefaultText                "&brandShortName; als deinen Standard-Browser setzen.">

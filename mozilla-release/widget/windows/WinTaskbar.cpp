@@ -259,7 +259,7 @@ WinTaskbar::GetAppUserModelID(nsAString & aDefaultGroupId) {
   }
 
   nsAutoString regKey;
-  regKey.AssignLiteral("Software\\Mozilla\\");
+  regKey.AssignLiteral("Software\\");
   AppendASCIItoUTF16(appName, regKey);
   regKey.AppendLiteral("\\TaskBarIDs");
 

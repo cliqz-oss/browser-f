@@ -23,8 +23,13 @@ INSTALLER_FILES += \
 endif
 
 BRANDING_FILES = \
-	bgstub.jpg \
-	bgstub_2x.jpg \
+	artboard1.bmp \
+	artboard2.bmp \
+	artboard3.bmp \
+	artboard4.bmp \
+	artboard5.bmp \
+	cliqzlogo.gif \
+	cliqzlogo_2x.gif \
 	branding.nsi \
 	firefox64.ico \
 	wizHeader.bmp \

@@ -1,0 +1,83 @@
+#!/usr/bin/env groovy
+
+// Check for required variables
+WIN_REBUILD_IMAGE
+NODE_MEMORY
+NODE_CPU_COUNT
+NODE_VNC_PORT
+
+def CQZ_BUILD_64BIT_WINDOWS
+
+if (params.CQZ_BUILD_64BIT_WINDOWS) {
+    currentBuild.description = '64 bit'
+    CQZ_BUILD_64BIT_WINDOWS = 1
+} else {
+    currentBuild.description = '32 bit'
+    CQZ_BUILD_64BIT_WINDOWS = 0
+}
+
+
+/*
+ TRIGGERING JOB
+
+  ```groovy
+node(WIN_BUILD_NODE) {
+
+    step([
+        $class: 'CopyArtifact',
+        projectName: TRIGGERING_JOB_NAME,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: TRIGGERING_BUILD_NUMBER],
+        target: 'artifacts'
+    ])
+
+    def helpers = load "artifacts/build-helpers.groovy"
+
+    sh "find .vagrant/machines/ -type d -name '*.vmx.lck' -print0 | xargs -0 rm -rf"
+     
+    helpers.withVagrant("artifacts/${VAGRANTFILE}", "c:\\jenkins", NODE_CPU_COUNT.toInteger(), NODE_MEMORY.toInteger(), NODE_VNC_PORT.toInteger(), WIN_REBUILD_IMAGE.toBoolean()) { nodeId ->
+      node(nodeId) {
+        stage("Checkout") {
+            helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+        }
+
+        load ENTRY_POINT
+      }
+    }
+}
+  ```
+*/
+
+withCredentials([
+    [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+    [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
+    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+    [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+
+    withEnv([
+      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+      "CQZ_BUILD_64BIT_WINDOWS=${CQZ_BUILD_64BIT_WINDOWS}",
+      "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
+      "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+    ]) {
+
+      stage('fix keys') {
+          writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+          writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+      }
+
+      stage('build') {
+        bat '''
+          build_win.bat
+        '''
+      }
+    }
+
+    if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+      archiveArtifacts 'obj/en_build_properties.json'
+      archiveArtifacts 'obj/de_build_properties.json'
+    } else {
+      archiveArtifacts 'obj/build_properties.json'
+    }
+ }

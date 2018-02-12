@@ -6557,7 +6557,7 @@
     "alert_emails": ["jaws@mozilla.com"],
     "expires_in_version": "59",
     "kind": "categorical",
-    "labels": ["unknown", "general", "search", "content", "applications", "privacy", "security", "sync", "advancedGeneral", "advancedDataChoices", "advancedNetwork", "advancedUpdates", "advancedCerts"],
+    "labels": ["unknown", "general", "search", "content", "applications", "privacy", "security", "sync", "connect", "advancedGeneral", "advancedDataChoices", "advancedNetwork", "advancedUpdates", "advancedCerts"],
     "releaseChannelCollection": "opt-out",
     "description": "Count how often each preference category is opened."
   },
@@ -13156,6 +13156,16 @@
     "description": "Time spent painting the contents of a remote browser (ms).",
     "releaseChannelCollection": "opt-out"
   },
+  "AUTO_FORGET_TAB_NOTIFICATION_STATES": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 6,
+    "description": "The states the Auto Forget Tab notification goes through. 0: The notification was displayed. 1: User picked 'Reload in Normal Mode'. 2: User picked 'Always load in Normal Mode'. 3: User picked 'Change Settings'. Other values are reserved for future uses.",
+    "releaseChannelCollection": "opt-out"
+  },
   "TIME_TO_NON_BLANK_PAINT_MS": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["hkirschner@mozilla.com"],
@@ -13874,5 +13884,15 @@
     "n_buckets": 50,
     "description": "Amount of time in milliseconds the main thread spends waiting for the paint thread to complete, if the time was greater than 200us.",
     "bug_numbers": [1386968]
+  },
+  "REPORT_DECEPTIVE_SITE": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
+    "releaseChannelCollection": "opt-out"
   }
 }

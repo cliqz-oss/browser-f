@@ -14,6 +14,13 @@ const kIPStartup = Ci.nsIProfileStartup;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource:///modules/MigrationUtils.jsm");
 
+// For yet undiscovered reason `Cu.reportError()` doesn't work in this file.
+// Same as `dump()` :-/
+function logError(e) {
+  Services.console.logStringMessage("Error during migration: " + e + "\n" +
+      e.stack);
+}
+
 var MigrationWizard = { /* exported MigrationWizard */
   _source: "",                  // Source Profile Migrator ContractID suffix
   _itemsFlags: kIMig.ALL,       // Selected Import Data Sources (16-bit bitfield)
@@ -133,7 +140,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     }
   },
 
-  onImportSourcePageAdvanced() {
+  maybeTakeUserSelectedMigrator: function () {
     var newSource = document.getElementById("importSourceGroup").selectedItem.id;
 
     if (newSource == "nothing") {
@@ -154,6 +161,14 @@ var MigrationWizard = { /* exported MigrationWizard */
       this._selectedProfile = null;
     }
     this._source = newSource;
+
+    return true;
+  },
+
+  onImportSourcePageAdvanced() {
+    // Only change explicitly set migrator if manual selection is allowed.
+    if (!this._skipImportSourcePage && !this.maybeTakeUserSelectedMigrator())
+      return false;
 
     // check for more than one source profile
     var sourceProfiles = this._migrator.sourceProfiles;
@@ -289,6 +304,7 @@ var MigrationWizard = { /* exported MigrationWizard */
       mainStr = brandBundle.getString("homePageSingleStartMain");
     } catch (e) {
       this._wiz.advance();
+      logError(e);
       return;
     }
 
@@ -327,7 +343,9 @@ var MigrationWizard = { /* exported MigrationWizard */
       var radioGroup = document.getElementById("homePageRadiogroup");
 
       this._newHomePage = radioGroup.selectedItem.value;
-    } catch (ex) {}
+    } catch (ex) {
+      logError(ex);
+    }
   },
 
   // 5 - Migrating
@@ -379,9 +397,7 @@ var MigrationWizard = { /* exported MigrationWizard */
             MigrationUtils.getLocalizedString(itemID + "_" + this._source));
           items.appendChild(label);
         } catch (e) {
-          // if the block above throws, we've enumerated all the import data types we
-          // currently support and are now just wasting time, break.
-          break;
+          logError(e);
         }
       }
     }
@@ -390,6 +406,7 @@ var MigrationWizard = { /* exported MigrationWizard */
   observe(aSubject, aTopic, aData) {
     var label;
     switch (aTopic) {
+
       case "Migration:Started":
         break;
       case "Migration:ItemBeforeMigrate":
@@ -408,7 +425,7 @@ var MigrationWizard = { /* exported MigrationWizard */
           try {
             this.reportDataRecencyTelemetry();
           } catch (ex) {
-            Cu.reportError(ex);
+            logError(ex);
           }
         }
         if (this._autoMigrate) {

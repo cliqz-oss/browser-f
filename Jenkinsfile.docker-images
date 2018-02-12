@@ -1,0 +1,32 @@
+#!/bin/env groovy
+
+node('ubuntu && docker && !gpu') {
+
+  stage('checkout') {
+    checkout scm
+  }
+
+  // authorize docker deamon to access registry
+  sh "`aws ecr get-login --region=$AWS_REGION`"
+
+  docker.withRegistry(DOCKER_REGISTRY_URL) {
+
+    stage('base image') {
+      stash name: 'Dockerfile', includes: 'Dockerfile'
+
+      // change workspace to prevent docker context sharing
+      ws {
+        unstash name: 'Dockerfile'
+        def app = docker.build(
+          'browser-f',
+          "--build-arg user=`whoami` \
+           --build-arg uid=`id -u` \
+           --build-arg gid=`id -g` \
+           ."
+        )
+
+        app.push 'latest'
+      }
+    }
+  }
+}

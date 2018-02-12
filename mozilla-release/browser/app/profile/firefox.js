@@ -61,7 +61,7 @@ pref("extensions.hotfix.certs.1.sha1Fingerprint", "91:53:98:0C:C1:86:DF:47:8F:35
 pref("extensions.hotfix.certs.2.sha1Fingerprint", "39:E7:2B:7A:5B:CF:37:78:F9:5D:4A:E0:53:2D:2F:3D:68:53:C5:60");
 
 // Check AUS for system add-on updates.
-pref("extensions.systemAddon.update.url", "https://aus5.mozilla.org/update/3/SystemAddons/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+pref("extensions.systemAddon.update.url", "https://updatecheck.cliqz.com/update/3/SystemAddons/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
 
 // Disable add-ons that are not installed by the user in all scopes by default.
 // See the SCOPE constants in AddonManager.jsm for values to use here.
@@ -89,7 +89,7 @@ pref("extensions.webextensions.remote", true);
 #endif
 
 // Extensions that should not be flagged as legacy in about:addons
-pref("extensions.legacy.exceptions", "{972ce4c6-7e08-4474-a285-3208198ce6fd},testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
+pref("extensions.legacy.exceptions", "{972ce4c6-7e08-4474-a285-3208198ce6fd},cliqz@cliqz.com,https-everywhere@cliqz.com,testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
 
 // Require signed add-ons by default
 pref("xpinstall.signatures.required", true);
@@ -166,7 +166,8 @@ pref("app.update.silent", false);
 pref("app.update.staging.enabled", false);
 
 // Update service URL:
-pref("app.update.url", "https://aus5.mozilla.org/update/6/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%SYSTEM_CAPABILITIES%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+pref("app.update.url", "https://updatecheck.cliqz.com/update/3/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+
 // app.update.url.manual is in branding section
 // app.update.url.details is in branding section
 
@@ -255,9 +256,19 @@ pref("browser.shell.didSkipDefaultBrowserCheckOnFirstRun", false);
 pref("browser.shell.defaultBrowserCheckCount", 0);
 pref("browser.defaultbrowser.notificationbar", false);
 
+// Not used in Cliqz. Replaced by the two below.
+#if 0
 // 0 = blank, 1 = home (browser.startup.homepage), 2 = last visited page, 3 = resume previous browser session
 // The behavior of option 3 is detailed at: http://wiki.mozilla.org/Session_Restore
 pref("browser.startup.page",                1);
+#endif
+// If true, Cliqz will restore tabs from previous session, same as
+// 'browser.startup.page' = 3 would do.
+pref("browser.startup.restoreTabs", false);
+// If true, Cliqz will open additional tab with 'browser.startup.homepage' URL.
+// This is similar to 'browser.startup.page' = 1, but without excluding session
+// restore.
+pref("browser.startup.addFreshTab", true);
 pref("browser.startup.homepage",            "chrome://branding/locale/browserconfig.properties");
 // Whether we should skip the homepage when opening the first-run page
 pref("browser.startup.firstrunSkipsHomepage", true);
@@ -380,7 +391,7 @@ pref("browser.helperApps.deleteTempFileOnExit", true);
 #endif
 
 // search engines URL
-pref("browser.search.searchEnginesURL",      "https://addons.mozilla.org/%LOCALE%/firefox/search-engines/");
+pref("browser.search.searchEnginesURL",      "https://addons.mozilla.org/%LOCALE%/firefox/search-tools/");
 
 // pointer to the default engine name
 pref("browser.search.defaultenginename",      "chrome://browser-region/locale/region.properties");
@@ -468,7 +479,7 @@ pref("browser.tabs.opentabfor.middleclick", true);
 pref("browser.tabs.loadDivertedInBackground", false);
 pref("browser.tabs.loadBookmarksInBackground", false);
 pref("browser.tabs.loadBookmarksInTabs", false);
-pref("browser.tabs.tabClipWidth", 140);
+pref("browser.tabs.tabClipWidth", 1); // CLIQZ DB-1418: Allow more tabs' close button to be visible
 pref("browser.tabs.tabMinWidth", 76);
 #ifdef UNIX_BUT_NOT_MAC
 pref("browser.tabs.drawInTitlebar", false);
@@ -1151,6 +1162,7 @@ pref("browser.taskbar.lists.tasks.enabled", true);
 pref("browser.taskbar.lists.refreshInSeconds", 120);
 #endif
 
+#ifdef MOZ_SERVICES_SYNC
 // Preferences to be synced by default
 pref("services.sync.prefs.sync.accessibility.blockautorefresh", true);
 pref("services.sync.prefs.sync.accessibility.browsewithcaret", true);
@@ -1177,7 +1189,8 @@ pref("services.sync.prefs.sync.browser.safebrowsing.passwords.enabled", true);
 pref("services.sync.prefs.sync.browser.search.update", true);
 pref("services.sync.prefs.sync.browser.sessionstore.restore_on_demand", true);
 pref("services.sync.prefs.sync.browser.startup.homepage", true);
-pref("services.sync.prefs.sync.browser.startup.page", true);
+pref("services.sync.prefs.sync.browser.startup.restoreTabs", true);
+pref("services.sync.prefs.sync.browser.startup.addFreshTab", true);
 pref("services.sync.prefs.sync.browser.tabs.loadInBackground", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnClose", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnOpen", true);
@@ -1238,11 +1251,13 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 // user's tabs and bookmarks. Note this pref is also synced.
 pref("services.sync.syncedTabs.showRemoteIcons", true);
 
+#endif  // MOZ_SERVICES_SYNC
+
 // Developer edition preferences
 #ifdef MOZ_DEV_EDITION
 sticky_pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org");
 #else
-sticky_pref("lightweightThemes.selectedThemeID", "");
+sticky_pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org");
 #endif
 
 // Whether the character encoding menu is under the main Firefox button. This
@@ -1346,12 +1361,14 @@ pref("dom.debug.propagate_gesture_events_through_content", false);
 
 // All the Geolocation preferences are here.
 //
-
 // Geolocation preferences for the RELEASE and "later" Beta channels.
 // Some of these prefs are specified even though they are redundant; they are
 // here for clarity and end-user experiments.
 #ifndef EARLY_BETA_OR_EARLIER
-pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
+// Cliqz. Always use Mozilla's geolocation API.
+// Also we don't want to use nightly configs, as it was before
+// pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
+pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
 
 #ifdef XP_MACOSX
 pref("geo.provider.use_corelocation", false);
@@ -1581,7 +1598,7 @@ pref("extensions.interposition.prefetching", true);
 pref("extensions.allow-non-mpc-extensions", false);
 #endif
 
-pref("extensions.legacy.enabled", false);
+pref("extensions.legacy.enabled", true);
 
 // How often to check for CPOW timeouts. CPOWs are only timed out by
 // the hang monitor.

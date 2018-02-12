@@ -48,6 +48,14 @@ const OBSERVING = [
   "idle-daily", "clear-origin-attributes-data"
 ];
 
+// A mapping of known internal URLs.
+// Needed to detect homepages already present in the stored session with their
+// final URLs after redirections.
+// See DB-1219.
+const redirectedURLs = {
+  "about:cliqz": "resource://cliqz/freshtab/home.html",
+};
+
 // XUL Window properties to (re)store
 // Restored in restoreDimensions()
 const WINDOW_ATTRIBUTES = ["width", "height", "screenX", "screenY", "sizemode"];
@@ -1174,9 +1182,12 @@ var SessionStoreInternal = {
           // Restore session cookies before loading any tabs.
           SessionCookies.restore(aInitialState.cookies || []);
 
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState);
-          let options = {firstWindow: true, overwriteTabs: overwrite};
-          this.restoreWindows(aWindow, aInitialState, options);
+          gSessionStartup.willOverrideHomepagePromise.then(willOverrideHomepage => {
+            let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) && willOverrideHomepage;
+            let options = {firstWindow: true, overwriteTabs: overwrite};
+            this.restoreWindows(aWindow, aInitialState, options);
+          });
+
         }
       } else {
         // Nothing to restore, notify observers things are complete.
@@ -2373,10 +2384,14 @@ var SessionStoreInternal = {
     }
 
     // Create a new tab.
+    // Cliqz. DB-919: Added aTab.private param into addTab so that new tab will be private
+    // if it's duplicated from a private tab
     let userContextId = aTab.getAttribute("usercontextid");
     let newTab = aTab == aWindow.gBrowser.selectedTab ?
-      aWindow.gBrowser.addTab(null, {relatedToCurrent: true, ownerTab: aTab, userContextId}) :
-      aWindow.gBrowser.addTab(null, {userContextId});
+      aWindow.gBrowser.addTab(null,
+        {relatedToCurrent: true, ownerTab: aTab, userContextId, private: aTab.private}) :
+      aWindow.gBrowser.addTab(null,
+        {userContextId, private: aTab.private});
 
     // Start the throbber to pretend we're doing something while actually
     // waiting for data from the frame script.
@@ -3064,8 +3079,8 @@ var SessionStoreInternal = {
     let homePages = ["about:blank"];
     let removableTabs = [];
     let tabbrowser = aWindow.gBrowser;
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
+    let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
+    if (addFreshTab)
       homePages = homePages.concat(aWindow.gHomeButton.getHomePage().split("|"));
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
@@ -3334,6 +3349,26 @@ var SessionStoreInternal = {
     } else if (firstWindow && !overwriteTabs && winData.tabs.length == 1 &&
              (!winData.tabs[0].entries || winData.tabs[0].entries.length == 0)) {
       winData.tabs = [];
+    }
+
+    // Remove tab entries duplicating already open tabs.
+    // This is intended to work when both tab restore and fresh tab features
+    // are enabled.
+    if (!overwriteTabs) {
+      let homePages = aWindow.gHomeButton.getHomePage().split("|")
+        // Use final URLs that get into session after redirection (see DB-1219).
+        .map(url => {
+          return redirectedURLs[url] || url;
+        });
+      winData.tabs = winData.tabs.filter(function (tabData) {
+        if (!tabData.entries || !tabData.entries.length) {
+          return true;
+        }
+        let entryIndex = (tabData.index || 1) - 1;  // It's 1-based.
+        let entry = tabData.entries[entryIndex] ||
+          tabData.entries[tabData.entries.length - 1];
+        return homePages.indexOf(entry.url) == -1;
+      });
     }
 
     // See SessionStoreInternal.restoreTabs for a description of what
@@ -4284,7 +4319,7 @@ var SessionStoreInternal = {
    * @returns bool
    */
   _doResumeSession: function ssi_doResumeSession() {
-    return this._prefBranch.getIntPref("startup.page") == 3 ||
+    return this._prefBranch.getBoolPref("startup.restoreTabs") ||
            this._prefBranch.getBoolPref("sessionstore.resume_session_once");
   },
 

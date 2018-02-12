@@ -104,12 +104,6 @@ td.integer {
   width: 30%;
 }
 
-#action-box,
-#reset-box,
-#safe-mode-box {
-  display: none;
-}
-
 #action-box:dir(rtl) {
   float: left;
 }
@@ -133,4 +127,9 @@ td.integer {
 
 .hidden {
   display: none;
+}
+
+#crashes-table tr > td > a {
+  pointer-events: none;
+  color: var(--in-content-page-color);
 }

@@ -42,8 +42,10 @@ const tablePreferences = [
   "urlclassifier.downloadBlockTable",
   "urlclassifier.downloadAllowTable",
   "urlclassifier.passwordAllowTable",
+#if 0
   "urlclassifier.trackingTable",
   "urlclassifier.trackingWhitelistTable",
+#endif
   "urlclassifier.blockedTable",
   "urlclassifier.flashAllowTable",
   "urlclassifier.flashAllowExceptTable",
@@ -53,6 +55,20 @@ const tablePreferences = [
   "urlclassifier.flashSubDocExceptTable",
   "urlclassifier.flashInfobarTable"
 ];
+
+function reportPhishingURL(url, kind) {
+  try {
+    Components.utils.import('chrome://cliqzmodules/content/CLIQZ.jsm')
+      .CLIQZ.System.import('core/kord/inject').then(function (mod) {
+        const inject = mod.default;
+        const humanWeb = inject.module('human-web');
+        humanWeb.action('addDataToUrl', url, 'anti-phishing', kind);
+      });
+  }
+  catch (e) {
+    Cu.reportError(e);
+  }
+}
 
 this.SafeBrowsing = {
 
@@ -174,16 +190,25 @@ this.SafeBrowsing = {
     switch (kind) {
       case "Phish":
         pref = "browser.safebrowsing.reportPhishURL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(0);
+        reportPhishingURL(info.uri, 'user-report-phish');
         break;
 
       case "PhishMistake":
+        pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(1);
+        reportPhishingURL(info.uri, 'user-report-phish-mistake');
+        break;
+
       case "MalwareMistake":
         pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
+        reportPhishingURL(info.uri, 'user-report-malware-mistake');
         break;
 
       default:
         let err = "SafeBrowsing getReportURL() called with unknown kind: " + kind;
-        Components.utils.reportError(err);
+        Cu.reportError(err);
         throw err;
     }
 
@@ -256,8 +281,10 @@ this.SafeBrowsing = {
      this.downloadBlockLists,
      this.downloadAllowLists,
      this.passwordAllowLists,
+#if 0
      this.trackingProtectionLists,
      this.trackingProtectionWhitelists,
+#endif
      this.blockedLists,
      flashAllowTable,
      flashAllowExceptTable,

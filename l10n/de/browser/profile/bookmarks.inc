@@ -11,7 +11,7 @@
 #define bookmarks_heading Lesezeichen
 
 #define bookmarks_toolbarfolder Lesezeichen-Symbolleiste
-#define bookmarks_toolbarfolder_description Lesezeichen, die Sie in diesem Ordner ablegen, werden in der Lesezeichen-Symbolleiste angezeigt.
+#define bookmarks_toolbarfolder_description Lesezeichen, die du in diesem Ordner ablegst, werden in der Lesezeichen-Symbolleiste angezeigt.
 
 # LOCALIZATION NOTE (getting_started):
 # link title for https://www.mozilla.org/en-US/firefox/central/
@@ -19,7 +19,7 @@
 
 # LOCALIZATION NOTE (firefox_heading):
 # Firefox links folder name
-#define firefox_heading Mozilla Firefox
+#define firefox_heading Firefox
 
 # LOCALIZATION NOTE (firefox_help):
 # link title for https://www.mozilla.org/en-US/firefox/help/
@@ -31,7 +31,7 @@
 
 # LOCALIZATION NOTE (firefox_community):
 # link title for https://www.mozilla.org/en-US/contribute/
-#define firefox_community Machen Sie mit
+#define firefox_community Mach mit
 
 # LOCALIZATION NOTE (firefox_about):
 # link title for https://www.mozilla.org/en-US/about/
@@ -68,5 +68,11 @@
 # LOCALIZATION NOTE (planet):
 # Nightly builds only, link title for https://planet.mozilla.org/
 #define planet Planet Mozilla (englisch)
+
+# Cliqz links folder
+#define cliqz_heading Cliqz
+#define cliqz_about Über uns
+#define cliqz_contact Hilfe und Kontakt
+#define cliqz_tips Tipps und Tricks
 
 #unfilter emptyLines

@@ -7,7 +7,7 @@
 <!ENTITY  trackingProtection2.radioGroupLabel  "Use Tracking Protection to block known trackers">
 <!ENTITY  trackingProtectionAlways.label       "Always">
 <!ENTITY  trackingProtectionAlways.accesskey   "y">
-<!ENTITY  trackingProtectionPrivate.label      "Only in private windows">
+<!ENTITY  trackingProtectionPrivate.label      "Only in forget mode">
 <!ENTITY  trackingProtectionPrivate.accesskey  "l">
 <!ENTITY  trackingProtectionNever.label        "Never">
 <!ENTITY  trackingProtectionNever.accesskey    "n">
@@ -22,6 +22,7 @@
 <!ENTITY changeBlockList2.label               "Change Block List…">
 <!ENTITY changeBlockList2.accesskey           "C">
 
+<!ENTITY  doNotTrackHeader.label        "Do Not Track">
 <!ENTITY  doNotTrack.description        "Send websites a “Do Not Track” signal that you don’t want to be tracked">
 <!ENTITY  doNotTrack.learnMore.label    "Learn more">
 <!ENTITY  doNotTrack.default.label      "Only when using Tracking Protection">
@@ -82,7 +83,7 @@
 <!ENTITY  rememberActions.removeCookies.label "remove individual cookies">
 <!ENTITY  rememberActions.post.label          ".">
 
-<!ENTITY  dontrememberDescription.label  "&brandShortName; will use the same settings as private browsing, and will not remember any history as you browse the Web.">
+<!ENTITY  dontrememberDescription.label  "&brandShortName; will use the same settings as forget mode, and will not remember any history as you browse the Web.">
 
 <!-- LOCALIZATION NOTE (dontrememberActions.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (dontrememberActions.post.label): include a starting space as needed -->
@@ -90,8 +91,8 @@
 <!ENTITY  dontrememberActions.clearHistory.label "clear all current history">
 <!ENTITY  dontrememberActions.post.label         ".">
 
-<!ENTITY  privateBrowsingPermanent2.label "Always use private browsing mode">
-<!ENTITY  privateBrowsingPermanent2.accesskey "p">
+<!ENTITY  privateBrowsingPermanent2.label "Always use forget mode">
+<!ENTITY  privateBrowsingPermanent2.accesskey "m">
 
 <!ENTITY  rememberHistory2.label      "Remember my browsing and download history">
 <!ENTITY  rememberHistory2.accesskey  "b">
@@ -115,3 +116,13 @@
 <!ENTITY  a11yPrivacy.checkbox.accesskey "a">
 <!ENTITY  a11yPrivacy.learnmore.label    "Learn more">
 <!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
+
+<!-- Forget mode -->
+<!ENTITY  forgetMode.caption "Forget Mode">
+<!ENTITY  forgetMode.enableCheckboxLabel "Enable automatic forget mode">
+<!ENTITY  forgetMode.explanation1 "Automatic forget mode will automatically open websites with adult content inside a forget tab, so that these websites will not be saved in your history and temporary web files including cookies will not be stored.">
+<!ENTITY  forgetMode.explanation2 "Via the tab context menu, you can select whether a website should be opened in forget mode automatically or not. The tab context menu can be opened by right-clicking on the respective tab.">
+<!ENTITY  forgetMode.learnMore "Learn more">
+
+<!-- Cliqz addition -->
+<!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Cliqz Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">

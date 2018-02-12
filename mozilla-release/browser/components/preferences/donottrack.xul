@@ -36,7 +36,7 @@
     <description flex="1" class="doNotTrackLearnMore">
       &doNotTrackTPInfo.description;
       <label class="text-link"
-             href="https://www.mozilla.org/dnt">&doNotTrackLearnMore.label;</label>
+             href="&doNotTrackLearnMore.url;">&doNotTrackLearnMore.label;</label>
     </description>
   </prefpane>
 </prefwindow>

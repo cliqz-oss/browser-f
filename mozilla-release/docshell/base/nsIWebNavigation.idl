@@ -300,15 +300,20 @@ interface nsIWebNavigation : nsISupports
    *        tries to create a codeBasePrincipal from aReferrer if not null. If
    *        aReferrer is also null docShell peforms a load using the
    *        SystemPrincipal as the triggeringPrincipal.
+   * @param aEnsurePrivate
+   *        Set whether to switch into private mode before loading.
+   *        TODO: Remove this argument. Should not be necessary after
+   *        "mozprivatebrowsing" attribute for xul:browser is introduced.
    */
-  void loadURIWithOptions(in wstring                  aURI,
-                          in unsigned long            aLoadFlags,
-                          in nsIURI                   aReferrer,
-                          in unsigned long            aReferrerPolicy,
-                          in nsIInputStream           aPostData,
-                          in nsIInputStream           aHeaders,
-                          in nsIURI                   aBaseURI,
-                          [optional] in nsIPrincipal  aTriggeringPrincipal);
+  void loadURIWithOptions(in wstring        aURI,
+                          in unsigned long  aLoadFlags,
+                          in nsIURI         aReferrer,
+                          in unsigned long  aReferrerPolicy,
+                          in nsIInputStream aPostData,
+                          in nsIInputStream aHeaders,
+                          in nsIURI         aBaseURI,
+                          in nsIPrincipal   aTriggeringPrincipal,
+                          in boolean        aEnsurePrivate);
 
   /**
    * Tells the Object to reload the current page.  There may be cases where the

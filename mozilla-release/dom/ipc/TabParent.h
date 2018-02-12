@@ -45,6 +45,8 @@ class nsIDocShell;
 
 namespace mozilla {
 
+class LoadContext;
+
 namespace a11y {
 class DocAccessibleParent;
 }
@@ -303,6 +305,8 @@ public:
   virtual mozilla::ipc::IPCResult RecvSetNativeChildOfShareableWindow(const uintptr_t& childWindow) override;
 
   virtual mozilla::ipc::IPCResult RecvDispatchFocusToTopLevelWindow() override;
+
+  virtual mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(const bool& isPrivate) override;
 
   virtual mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
                                                              const bool& aStartSwipe) override;
@@ -664,6 +668,8 @@ protected:
   LayoutDeviceIntPoint mChromeOffset;
 
 private:
+  void CreateLoadContext();
+
   void DestroyInternal();
 
   already_AddRefed<nsFrameLoader>
@@ -705,7 +711,7 @@ private:
   // When false, the TabParent is initialized by window.open() from child side.
   bool mInitedByParent;
 
-  nsCOMPtr<nsILoadContext> mLoadContext;
+  RefPtr<LoadContext> mLoadContext;
 
   // We keep a strong reference to the frameloader after we've sent the
   // Destroy message and before we've received __delete__. This allows us to

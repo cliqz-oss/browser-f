@@ -11,7 +11,7 @@ browser.jar:
 
         content/browser/aboutDialog-appUpdater.js     (content/aboutDialog-appUpdater.js)
 *       content/browser/aboutDialog.xul               (content/aboutDialog.xul)
-        content/browser/aboutDialog.js                (content/aboutDialog.js)
+*       content/browser/aboutDialog.js                (content/aboutDialog.js)
         content/browser/aboutDialog.css               (content/aboutDialog.css)
         content/browser/aboutRobots.xhtml             (content/aboutRobots.xhtml)
 *       content/browser/abouthome/aboutHome.xhtml     (content/abouthome/aboutHome.xhtml)
@@ -55,15 +55,15 @@ browser.jar:
         content/browser/aboutTabCrashed.js            (content/aboutTabCrashed.js)
         content/browser/aboutTabCrashed.xhtml         (content/aboutTabCrashed.xhtml)
 *       content/browser/browser.css                   (content/browser.css)
-        content/browser/browser.js                    (content/browser.js)
+*       content/browser/browser.js                    (content/browser.js)
 *       content/browser/browser.xul                   (content/browser.xul)
-        content/browser/browser-addons.js             (content/browser-addons.js)
+*       content/browser/browser-addons.js             (content/browser-addons.js)
         content/browser/browser-captivePortal.js      (content/browser-captivePortal.js)
         content/browser/browser-ctrlTab.js            (content/browser-ctrlTab.js)
         content/browser/browser-customization.js      (content/browser-customization.js)
         content/browser/browser-data-submission-info-bar.js (content/browser-data-submission-info-bar.js)
         content/browser/browser-compacttheme.js       (content/browser-compacttheme.js)
-#ifndef MOZILLA_OFFICIAL
+#if 0
         content/browser/browser-development-helpers.js (content/browser-development-helpers.js)
 #endif
         content/browser/browser-feeds.js              (content/browser-feeds.js)
@@ -71,12 +71,14 @@ browser.jar:
         content/browser/browser-fullZoom.js           (content/browser-fullZoom.js)
         content/browser/browser-gestureSupport.js     (content/browser-gestureSupport.js)
         content/browser/browser-media.js              (content/browser-media.js)
-        content/browser/browser-pageActions.js        (content/browser-pageActions.js)
-        content/browser/browser-places.js             (content/browser-places.js)
+*       content/browser/browser-pageActions.js        (content/browser-pageActions.js)
+*       content/browser/browser-places.js             (content/browser-places.js)
         content/browser/browser-plugins.js            (content/browser-plugins.js)
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
         content/browser/browser-sidebar.js            (content/browser-sidebar.js)
+#ifdef MOZ_SERVICES_SYNC
         content/browser/browser-sync.js               (content/browser-sync.js)
+#endif
 *       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)
 #ifdef CAN_DRAW_IN_TITLEBAR
         content/browser/browser-tabsintitlebar.js       (content/browser-tabsintitlebar.js)
@@ -110,6 +112,9 @@ browser.jar:
 *       content/browser/newtab/newTab.js              (content/newtab/newTab.js)
         content/browser/newtab/newTab.css             (content/newtab/newTab.css)
         content/browser/newtab/alternativeDefaultSites.json   (content/newtab/alternativeDefaultSites.json)
+#if CQZ_AUTO_PRIVATE_TAB
+        content/browser/PrivateTabUI.jsm              (content/PrivateTabUI.jsm)
+#endif
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)
@@ -137,7 +142,7 @@ browser.jar:
         content/browser/webext-panels.js              (content/webext-panels.js)
 *       content/browser/webext-panels.xul             (content/webext-panels.xul)
 *       content/browser/baseMenuOverlay.xul           (content/baseMenuOverlay.xul)
-        content/browser/nsContextMenu.js              (content/nsContextMenu.js)
+*       content/browser/nsContextMenu.js              (content/nsContextMenu.js)
 # XXX: We should exclude this one as well (bug 71895)
 *       content/browser/hiddenWindow.xul              (content/hiddenWindow.xul)
 #ifdef XP_MACOSX

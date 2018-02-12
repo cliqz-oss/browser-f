@@ -49,7 +49,7 @@ caption {
   margin-top: 10px;
 }
 
-#advancedPrefs {
+#advancedPrefs, #connectPrefs {
   margin: 0 8px;
 }
 
@@ -95,6 +95,7 @@ caption {
 }
 
 
+%ifdef MOZ_SERVICES_SYNC
 /* ----- SYNC PANE ----- */
 
 #noFxaAccount {
@@ -104,3 +105,5 @@ caption {
 #noFxaAccount > label:first-child {
   margin-bottom: 0.6em;
 }
+
+%endif

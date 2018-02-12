@@ -1,0 +1,26 @@
+
+certificate_tag.go - script from Omaha project
+  (https://github.com/google/omaha/blob/master/common/certificate_tag/certificate_tag.go)
+  Used for prepare empty tagged area in binary file with digital signature. Later
+  this area can be filled with any usefull information (look at ApplyTag.exe)
+
+  Usage: go.exe run certificate_tag.go -set-superfluous-cert-tag=Gact2.0Omaha -padded-length=8206 -out out_name.exe input_file.exe
+
+
+ApplyTag.exe - this is part of Omaha project (https://github.com/google/omaha),
+  simple console application for injecting data into binary file, which must
+  be signed and must have special area for data injection. We are decide to use
+  data in inject area in next format: key1=value1&key2=value2&...
+
+  Usage: ApplyTag.exe binary_for_inject.exe result_binary.exe "inject=data"
+
+wix - the wrappers to build MSI installers for English and Deutsche version.
+  Use different GUIDs, so this is two separate project for now. To build MSI
+  with this files (*.wxs) you need to install wix (http://wixtoolset.org/),
+  version 3.10 work perfectly now. To build you need to put installers near
+  wxs file, change version in this file, if necessary and run two command:
+    candle cliqz_msi_de.wix.wxs
+    light cliqz_msi_de.wix.wixobj
+
+  As result you will have MSI installer.
+  This work based on this ticket: https://bugzilla.mozilla.org/show_bug.cgi?id=231062

@@ -6,7 +6,7 @@
 <!ENTITY pref.security.title              "Datenschutz &amp; Sicherheit">
 
 <!ENTITY tracking.label                   "Benutzerdaten-Aufzeichnung">
-<!ENTITY trackingIntro.label              "Websites könnten verfolgen, wie Sie sie verwenden, und damit Ihre Privatsphäre beeinflussen.">
+<!ENTITY trackingIntro.label              "Websites könnten verfolgen, wie du sie verwendest, und damit deine Privatsphäre beeinflussen.">
 
 <!ENTITY doNotTrack.label                 "Websites mitteilen, dass ich nicht verfolgt werden will">
 <!ENTITY doNotTrack.accesskey             "s">
@@ -16,7 +16,7 @@
 <!ENTITY warnTrackContent.accesskey       "W">
 
 <!ENTITY geoLocation.label                "Standortbezogenes Browsen">
-<!ENTITY geoIntro.label                   "Websites können Anfragen für weitere Informationen zu Ihrem Standort senden">
+<!ENTITY geoIntro.label                   "Websites können Anfragen für weitere Informationen zu deinem Standort senden">
 
 <!ENTITY geoEnabled.label                 "Um Erlaubnis anfragen, wenn eine Anfrage gemacht wird">
 <!ENTITY geoEnabled.accesskey             "U">
