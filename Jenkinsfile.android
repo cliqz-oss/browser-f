@@ -1,6 +1,6 @@
 #!/bin/env groovy
 
-node('us-east-1 && ubuntu && docker && !gpu') {
+node('android') {
     
     stage('Checkout') {
         checkout scm
@@ -22,12 +22,11 @@ node('us-east-1 && ubuntu && docker && !gpu') {
         }
     }
 
-    def args = "-v ${pwd}/artifacts:/artifacts:rw"
+    def args = "-u 0:0 -v ${pwd}/artifacts:/artifacts:rw"
     docker.image("141047255820.dkr.ecr.us-east-1.amazonaws.com/${baseImageName}").inside(args) {
-        stage('Bootstrap') {
+        stage('Rust Setup') {
             sh '''#!/bin/bash -l
-                export SHELL=/bin/bash
-                /bin/bash -lc "sudo python mozilla-release/python/mozboot/bin/bootstrap.py --no-interactive --application-choice=mobile_android_artifact_mode"
+                curl https://sh.rustup.rs -sSf | sh -s -- -y -v
             '''
         }
         stage('MozConfig'){
@@ -41,12 +40,11 @@ node('us-east-1 && ubuntu && docker && !gpu') {
                 ac_add_options --enable-application=mobile/android
                 ac_add_options --target=i386-linux-android
                 # With the following Android SDK:
-                ac_add_options --with-android-sdk="$HOME/.mozbuild/android-sdk-macosx"
+                ac_add_options --with-android-sdk=\"/root/.mozbuild/android-sdk-linux\"
                 # Enable artifact building:
                 ac_add_options --enable-artifact-builds
                 # Write build artifacts to:
                 mk_add_options MOZ_OBJDIR=./objdir-frontend
-                export PROGUARD_JAR="/usr/local/Cellar/proguard/5.3.3/libexec/proguard.jar"
                 " >> mozconfig
             '''
         }
