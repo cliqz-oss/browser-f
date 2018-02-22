@@ -13,6 +13,7 @@ const kAutoStartPref = "browser.privatebrowsing.autostart";
 var gTemporaryAutoStartMode = false;
 
 const Cc = Components.classes;
+const Cu = Components.utils;
 const Ci = Components.interfaces;
 
 this.PrivateBrowsingUtils = {
@@ -34,7 +35,17 @@ this.PrivateBrowsingUtils = {
   },
 
   isBrowserPrivate(aBrowser) {
-    return aBrowser.loadContext.usePrivateBrowsing;
+    try {
+      return aBrowser.loadContext.usePrivateBrowsing;
+    } catch(e) {
+      // There might be cases when aBrowser.loadContext is not yet (or not anymore)
+      // exists for a given aBrowser. As we don't have any other way to know if it's
+      // private or not, it's safer to assume it is.
+      Cu.reportError("Browser passed to PrivateBrowsingUtils.isBrowserPrivate " +
+                     "does not have loadContext.");
+      return true;
+    }
+
     /*
     let chromeWin = aBrowser.ownerGlobal;
     if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
