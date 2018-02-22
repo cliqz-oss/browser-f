@@ -98,6 +98,11 @@ AboutNewTabService.prototype = {
   _overridden: false,
   willNotifyUser: false,
 
+  CLIQZ_NEW_TAB_URLS: [
+    "resource://cliqz/freshtab/home.html",
+    "about:cliqz"
+  ],
+
   classID: Components.ID("{dfcd2adc-7867-4d3a-ba70-17501f208142}"),
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIAboutNewTabService,
@@ -232,7 +237,7 @@ AboutNewTabService.prototype = {
 
     this.toggleActivityStream(false);
     this._newTabURL = aNewTabURL;
-    this._overridden = true;
+    this._overridden = this.CLIQZ_NEW_TAB_URLS.indexOf(aNewTabURL) === -1;
     this.notifyChange();
   },
 
