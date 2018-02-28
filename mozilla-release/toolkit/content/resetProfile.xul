@@ -31,5 +31,14 @@
   <vbox id="migratedItems">
     <label class="migratedLabel" hidden="true" value="&refreshProfile.dialog.items.label1;"/>
     <label class="migratedLabel" value="&refreshProfile.dialog.items.label2;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label3;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label4;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label5;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label6;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label7;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label8;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label9;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label10;"/>
+    <label class="migratedLabel" value="&refreshProfile.dialog.items.label11;"/>
   </vbox>
 </dialog>
