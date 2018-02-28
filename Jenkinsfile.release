@@ -38,7 +38,7 @@ BUILD_STATUS_FAILED = 'Failed'
 BUILD_STATUS_SUCCESSFUL = 'Successful'
 
 EMAIL_LIST = 'alexander@cliqz.com,leonid@cliqz.com,lucian@cliqz.com'
-EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com,tamara@cliqz.com,marta@cliqz.com'
+EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com,tamara@cliqz.com,marta@cliqz.com,oleksandra@cliqz.com'
 
 // Die early for missing build params
 CQZ_RELEASE_CHANNEL
@@ -103,7 +103,7 @@ def getBaseWinBuildParams(build_64bit, slave_name) {
   return [
     booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
     string(name: 'NODE_VNC_PORT', value: '7900'),
-    string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),    
+    string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
     string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
     string(name: 'WIN_BUILD_NODE', value: 'master'),
     string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
