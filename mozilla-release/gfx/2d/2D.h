@@ -379,6 +379,17 @@ public:
   virtual bool IsValid() const { return true; }
 
   /**
+   * This returns true if it is the same underlying surface data, even if
+   * the objects are different (e.g. indirection due to
+   * DataSourceSurfaceWrapper).
+   */
+  virtual bool Equals(SourceSurface* aOther, bool aSymmetric = true)
+  {
+    return this == aOther ||
+           (aSymmetric && aOther && aOther->Equals(this, false));
+  }
+
+  /**
    * This function will return true if the surface type matches that of a
    * DataSourceSurface and if GetDataSurface will return the same object.
    */
@@ -558,6 +569,18 @@ public:
     return true;
   }
 
+  /**
+   * Indicates how many times the surface has been invalidated.
+   */
+  virtual int32_t Invalidations() const {
+    return -1;
+  }
+
+  /**
+   * Increment the invalidation counter.
+   */
+  virtual void Invalidate() { }
+
 protected:
   bool mIsMapped;
 };
@@ -683,7 +706,7 @@ protected:
 class PathBuilder : public PathSink
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(PathBuilder)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(PathBuilder, override)
   /** Finish writing to the path and return a Path object that can be used for
    * drawing. Future use of the builder results in a crash!
    */
@@ -1422,7 +1445,7 @@ protected:
 class DrawTargetCapture : public DrawTarget
 {
 public:
-  virtual bool IsCaptureDT() const { return true; }
+  virtual bool IsCaptureDT() const override { return true; }
 
   /**
    * Returns true if the recording only contains FillGlyph calls with
@@ -1549,7 +1572,8 @@ public:
 #ifdef XP_DARWIN
   static already_AddRefed<ScaledFont>
     CreateScaledFontForMacFont(CGFontRef aCGFont, const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize,
-                               const Color& aFontSmoothingBackgroundColor, bool aUseFontSmoothing = true);
+                               const Color& aFontSmoothingBackgroundColor, bool aUseFontSmoothing = true,
+                               bool aApplySyntheticBold = false);
 #endif
 
   /**
@@ -1731,6 +1755,9 @@ protected:
   // This guards access to the singleton devices above, as well as the
   // singleton devices in DrawTargetD2D1.
   static StaticMutex mDeviceLock;
+  // This synchronizes access between different D2D drawtargets and their
+  // implied dependency graph.
+  static StaticMutex mDTDependencyLock;
 
   friend class DrawTargetD2D1;
 #endif

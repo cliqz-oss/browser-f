@@ -197,7 +197,13 @@
     "de": {
       "default": {
         "visibleDefaultEngines": [
+<<<<<<< HEAD
           "google", "yahoo-de", "bing", "ddg", "youtube-de", "ecosia", "twitter", "amazondotcom-de", "eBay-de", "wikipedia-de", "leo_ende_de", "gmaps-de", "gimages-de", "startpage-de", "qwant"
+||||||| merged common ancestors
+          "google", "yahoo-de", "amazondotcom-de", "bing", "ddg", "ebay-de", "leo_ende_de", "wikipedia-de"
+=======
+          "google", "yahoo-de", "amazondotcom-de", "bing", "ddg", "ebay-de", "ecosia", "leo_ende_de", "wikipedia-de"
+>>>>>>> origin/upstream-releases
         ]
       }
     },
@@ -312,7 +318,7 @@
     "fr": {
       "default": {
         "visibleDefaultEngines": [
-          "google", "yahoo-france", "bing", "amazon-france", "ddg", "ebay-fr", "cnrtl-tlfi-fr", "wikipedia-fr"
+          "google", "yahoo-france", "bing", "amazon-france", "ddg", "ebay-fr", "cnrtl-tlfi-fr", "qwant", "wikipedia-fr"
         ]
       }
     },
@@ -782,7 +788,7 @@
     "wo": {
       "default": {
         "visibleDefaultEngines": [
-          "google", "yahoo", "bing", "amazondotcom", "ddg", "wikipedia-wo"
+          "google", "yahoo-france", "bing", "amazon-france", "ddg", "ebay-fr", "twitter", "wikipedia-wo"
         ]
       }
     },

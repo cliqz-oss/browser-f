@@ -13,7 +13,7 @@
 #include "mozilla/dom/EventTarget.h"
 #include "nsCOMPtr.h"
 #include "nsRect.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 
 class nsIContent;
 
@@ -212,9 +212,6 @@ public:
     return result;
   }
 
-  /// The possible related target
-  nsCOMPtr<dom::EventTarget> mRelatedTarget;
-
   bool mFromRaise;
   bool mIsRefocus;
 
@@ -222,7 +219,6 @@ public:
   {
     AssignUIEventData(aEvent, aCopyTargets);
 
-    mRelatedTarget = aCopyTargets ? aEvent.mRelatedTarget : nullptr;
     mFromRaise = aEvent.mFromRaise;
     mIsRefocus = aEvent.mIsRefocus;
   }

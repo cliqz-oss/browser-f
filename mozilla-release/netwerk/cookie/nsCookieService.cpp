@@ -610,7 +610,6 @@ nsCookieService::nsCookieService()
  , mMonitor("CookieThread")
  , mInitializedDBStates(false)
  , mInitializedDBConn(false)
- , mAccumulatedWaitTelemetry(false)
 {
 }
 
@@ -1431,7 +1430,6 @@ nsCookieService::TryInitDB(bool aRecreateDB)
       gCookieService->ImportCookies(oldCookieFile);
       oldCookieFile->Remove(false);
       gCookieService->mDBState = initialState;
-      Telemetry::Accumulate(Telemetry::MOZ_SQLITE_COOKIES_OLD_SCHEMA, 0);
     });
 
   NS_DispatchToMainThread(runnable);
@@ -1450,10 +1448,6 @@ nsCookieService::InitDBConn()
     return;
   }
 
-  if (!mAccumulatedWaitTelemetry) {
-    mAccumulatedWaitTelemetry = true;
-    Telemetry::Accumulate(Telemetry::MOZ_SQLITE_COOKIES_BLOCK_MAIN_THREAD_MS, 0);
-  }
   for (uint32_t i = 0; i < mReadArray.Length(); ++i) {
     CookieDomainTuple& tuple = mReadArray[i];
     RefPtr<nsCookie> cookie = nsCookie::Create(tuple.cookie->name,
@@ -1488,6 +1482,7 @@ nsCookieService::InitDBConn()
   mInitializedDBConn = true;
 
   COOKIE_LOGSTRING(LogLevel::Debug, ("InitDBConn(): mInitializedDBConn = true"));
+  mEndInitDBConn = mozilla::TimeStamp::Now();
 
   nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
   if (os && !mReadArray.IsEmpty()) {
@@ -2139,7 +2134,7 @@ nsCookieService::SetCookieStringCommon(nsIURI *aHostURI,
   nsDependentCString cookieString(aCookieHeader);
   nsDependentCString serverTime(aServerTime ? aServerTime : "");
   SetCookieStringInternal(aHostURI, isForeign, cookieString,
-                          serverTime, aFromHttp, attrs, aChannel);
+                          serverTime, aFromHttp, false, attrs, aChannel);
   return NS_OK;
 }
 
@@ -2149,6 +2144,7 @@ nsCookieService::SetCookieStringInternal(nsIURI                 *aHostURI,
                                          nsDependentCString     &aCookieHeader,
                                          const nsCString        &aServerTime,
                                          bool                    aFromHttp,
+                                         bool                    aFromChild,
                                          const OriginAttributes &aOriginAttrs,
                                          nsIChannel             *aChannel)
 {
@@ -2216,7 +2212,7 @@ nsCookieService::SetCookieStringInternal(nsIURI                 *aHostURI,
 
   // process each cookie in the header
   while (SetCookieInternal(aHostURI, key, requireHostMatch, cookieStatus,
-                           aCookieHeader, serverTime, aFromHttp, aChannel)) {
+                           aCookieHeader, serverTime, aFromHttp, aFromChild, aChannel)) {
     // document.cookie can only set one cookie at a time
     if (!aFromHttp)
       break;
@@ -2298,7 +2294,9 @@ nsCookieService::NotifyThirdParty(nsIURI *aHostURI, bool aIsAccepted, nsIChannel
 void
 nsCookieService::NotifyChanged(nsISupports     *aSubject,
                                const char16_t *aData,
-                               bool aOldCookieIsSession)
+                               bool aOldCookieIsSession,
+                               bool aFromHttp,
+                               bool aFromChild)
 {
   const char* topic = mDBState == mPrivateDBState ?
       "private-cookie-changed" : "cookie-changed";
@@ -2309,6 +2307,9 @@ nsCookieService::NotifyChanged(nsISupports     *aSubject,
   // Notify for topic "private-cookie-changed" or "cookie-changed"
   os->NotifyObservers(aSubject, topic, aData);
 
+  if (!aFromChild) {
+    os->NotifyObservers(aSubject, "non-js-cookie-changed", aData);
+  }
   // Notify for topic "session-cookie-changed" to update the copy of session
   // cookies in session restore component.
   // Ignore private session cookies since they will not be restored.
@@ -2761,6 +2762,8 @@ nsCookieService::EnsureReadComplete(bool aInitDBConn)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
+  bool isAccumulated = false;
+
   if (!mInitializedDBStates) {
     TimeStamp startBlockTime = TimeStamp::Now();
     MonitorAutoLock lock(mMonitor);
@@ -2768,12 +2771,32 @@ nsCookieService::EnsureReadComplete(bool aInitDBConn)
     while (!mInitializedDBStates) {
       mMonitor.Wait();
     }
-    Telemetry::AccumulateTimeDelta(Telemetry::MOZ_SQLITE_COOKIES_BLOCK_MAIN_THREAD_MS,
+    Telemetry::AccumulateTimeDelta(Telemetry::MOZ_SQLITE_COOKIES_BLOCK_MAIN_THREAD_MS_V2,
                                    startBlockTime);
-    mAccumulatedWaitTelemetry = true;
+    Telemetry::Accumulate(Telemetry::MOZ_SQLITE_COOKIES_TIME_TO_BLOCK_MAIN_THREAD_MS, 0);
+    isAccumulated = true;
+  } else if (!mEndInitDBConn.IsNull()) {
+    // We didn't block main thread, and here comes the first cookie request.
+    // Collect how close we're going to block main thread.
+    Telemetry::Accumulate(Telemetry::MOZ_SQLITE_COOKIES_TIME_TO_BLOCK_MAIN_THREAD_MS,
+                          (TimeStamp::Now() - mEndInitDBConn).ToMilliseconds());
+    // Nullify the timestamp so wo don't accumulate this telemetry probe again.
+    mEndInitDBConn = TimeStamp();
+    isAccumulated = true;
+  } else if (!mInitializedDBConn && aInitDBConn) {
+    // A request comes while we finished cookie thread task and InitDBConn is
+    // on the way from cookie thread to main thread. We're very close to block
+    // main thread.
+    Telemetry::Accumulate(Telemetry::MOZ_SQLITE_COOKIES_TIME_TO_BLOCK_MAIN_THREAD_MS, 0);
+    isAccumulated = true;
   }
+
   if (!mInitializedDBConn && aInitDBConn && mDefaultDBState) {
     InitDBConn();
+    if (isAccumulated) {
+      // Nullify the timestamp so wo don't accumulate this telemetry probe again.
+      mEndInitDBConn = TimeStamp();
+    }
   }
 }
 
@@ -3019,6 +3042,9 @@ nsCookieService::ImportCookies(nsIFile *aCookieFile)
     }
   }
 
+  if (mDefaultDBState->cookieCount - originalCookieCount > 0) {
+    Telemetry::Accumulate(Telemetry::MOZ_SQLITE_COOKIES_OLD_SCHEMA, 0);
+  }
 
   COOKIE_LOGSTRING(LogLevel::Debug, ("ImportCookies(): %" PRIu32 " cookies imported",
     mDefaultDBState->cookieCount));
@@ -3434,6 +3460,7 @@ nsCookieService::SetCookieInternal(nsIURI                        *aHostURI,
                                    nsDependentCString            &aCookieHeader,
                                    int64_t                        aServerTime,
                                    bool                           aFromHttp,
+                                   bool                           aFromChild,
                                    nsIChannel                    *aChannel)
 {
   NS_ASSERTION(aHostURI, "null host!");
@@ -3491,7 +3518,7 @@ nsCookieService::SetCookieInternal(nsIURI                        *aHostURI,
   // add the cookie to the list. AddInternal() takes care of logging.
   // we get the current time again here, since it may have changed during prompting
   AddInternal(aKey, cookie, PR_Now(), aHostURI, savedCookieHeader.get(),
-              aFromHttp);
+              aFromHttp, aFromChild);
   return newCookie;
 }
 
@@ -3506,7 +3533,8 @@ nsCookieService::AddInternal(const nsCookieKey &aKey,
                              int64_t            aCurrentTimeInUsec,
                              nsIURI            *aHostURI,
                              const char        *aCookieHeader,
-                             bool               aFromHttp)
+                             bool               aFromHttp,
+                             bool               aFromChild)
 {
   MOZ_ASSERT(mInitializedDBStates);
   MOZ_ASSERT(mInitializedDBConn);
@@ -3624,7 +3652,7 @@ nsCookieService::AddInternal(const nsCookieKey &aKey,
       if (aCookie->Expiry() <= currentTime) {
         COOKIE_LOGFAILURE(SET_COOKIE, aHostURI, aCookieHeader,
           "previously stored cookie was deleted");
-        NotifyChanged(oldCookie, u"deleted");
+        NotifyChanged(oldCookie, u"deleted", oldCookieIsSession, aFromHttp, aFromChild);
         return;
       }
 
@@ -3698,7 +3726,7 @@ nsCookieService::AddInternal(const nsCookieKey &aKey,
     NotifyChanged(purgedList, u"batch-deleted");
   }
 
-  NotifyChanged(aCookie, foundCookie ? u"changed" : u"added", oldCookieIsSession);
+  NotifyChanged(aCookie, foundCookie ? u"changed" : u"added", oldCookieIsSession, aFromHttp, aFromChild);
 }
 
 /******************************************************************************
@@ -4460,8 +4488,8 @@ nsCookieService::PurgeCookies(int64_t aCurrentTimeInUsec)
         removedList->AppendElement(cookie);
         COOKIE_LOGEVICTED(cookie, "Cookie expired");
 
-        // remove from list; do not increment our iterator unless we're the last
-        // in the list already.
+        // remove from list; do not increment our iterator, but stop if we're
+        // done already.
         gCookieService->RemoveCookieFromList(iter, paramsArray);
         if (i == --length) {
           break;

@@ -34,6 +34,7 @@
 #include "nsIStreamConverterService.h"
 #include "nsCRT.h"
 #include "nsContentUtils.h"
+#include "nsIMutableArray.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIObserverService.h"
 #include "nsProxyRelease.h"
@@ -65,6 +66,7 @@
 #include "nsIDOMWindowUtils.h"
 #include "nsHttpChannel.h"
 #include "nsRedirectHistoryEntry.h"
+#include "nsServerTiming.h"
 
 #include <algorithm>
 #include "HttpBaseChannel.h"
@@ -161,6 +163,7 @@ HttpBaseChannel::HttpBaseChannel()
   , mClassOfService(0)
   , mPriority(PRIORITY_NORMAL)
   , mRedirectionLimit(gHttpHandler->RedirectionLimit())
+  , mUpgradeToSecure(false)
   , mApplyConversion(true)
   , mIsPending(false)
   , mWasOpened(false)
@@ -175,6 +178,7 @@ HttpBaseChannel::HttpBaseChannel()
   , mChannelIsForDownload(false)
   , mTracingEnabled(true)
   , mTimingEnabled(false)
+  , mReportTiming(true)
   , mAllowSpdy(true)
   , mAllowAltSvc(true)
   , mBeConservative(false)
@@ -201,6 +205,7 @@ HttpBaseChannel::HttpBaseChannel()
   , mFetchCacheMode(nsIHttpChannelInternal::FETCH_CACHE_MODE_DEFAULT)
   , mOnStartRequestCalled(false)
   , mOnStopRequestCalled(false)
+  , mUpgradableToSecure(true)
   , mAfterOnStartRequestBegun(false)
   , mTransferSize(0)
   , mDecodedBodySize(0)
@@ -992,8 +997,10 @@ HttpBaseChannel::EnsureUploadStreamIsCloneableComplete(nsresult aStatus)
 }
 
 NS_IMETHODIMP
-HttpBaseChannel::CloneUploadStream(nsIInputStream** aClonedStream)
+HttpBaseChannel::CloneUploadStream(int64_t* aContentLength,
+                                   nsIInputStream** aClonedStream)
 {
+  NS_ENSURE_ARG_POINTER(aContentLength);
   NS_ENSURE_ARG_POINTER(aClonedStream);
   *aClonedStream = nullptr;
 
@@ -1006,6 +1013,12 @@ HttpBaseChannel::CloneUploadStream(nsIInputStream** aClonedStream)
   NS_ENSURE_SUCCESS(rv, rv);
 
   clonedStream.forget(aClonedStream);
+
+  if (mReqContentLengthDetermined) {
+    *aContentLength = mReqContentLength;
+  } else {
+    *aContentLength = -1;
+  }
 
   return NS_OK;
 }
@@ -1554,7 +1567,8 @@ HttpBaseChannel::GetReferrer(nsIURI **referrer)
 NS_IMETHODIMP
 HttpBaseChannel::SetReferrer(nsIURI *referrer)
 {
-  return SetReferrerWithPolicy(referrer, NS_GetDefaultReferrerPolicy());
+  bool isPrivate = mLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
+  return SetReferrerWithPolicy(referrer, NS_GetDefaultReferrerPolicy(isPrivate));
 }
 
 NS_IMETHODIMP
@@ -1563,6 +1577,36 @@ HttpBaseChannel::GetReferrerPolicy(uint32_t *referrerPolicy)
   NS_ENSURE_ARG_POINTER(referrerPolicy);
   *referrerPolicy = mReferrerPolicy;
   return NS_OK;
+}
+
+
+ /* Computing whether our URI is cross-origin may be expensive, so please do
+  * that in cases where we're going to use this information later on.
+  */
+bool
+HttpBaseChannel::IsCrossOriginWithReferrer()
+{
+  nsresult rv;
+  nsCOMPtr<nsIURI> triggeringURI;
+  if (mLoadInfo) {
+    nsCOMPtr<nsIPrincipal> triggeringPrincipal = mLoadInfo->TriggeringPrincipal();
+    if (triggeringPrincipal) {
+      triggeringPrincipal->GetURI(getter_AddRefs(triggeringURI));
+    }
+  }
+  if (triggeringURI) {
+    if (LOG_ENABLED()) {
+      nsAutoCString triggeringURISpec;
+      triggeringURI->GetAsciiSpec(triggeringURISpec);
+      LOG(("triggeringURI=%s\n", triggeringURISpec.get()));
+    }
+    nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
+    rv = ssm->CheckSameOriginURI(triggeringURI, mURI, false);
+    return (NS_FAILED(rv));
+  }
+
+  LOG(("no triggering principal available via loadInfo, assuming load is cross-origin"));
+  return true;
 }
 
 NS_IMETHODIMP
@@ -1581,7 +1625,8 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
   }
 
   if (mReferrerPolicy == REFERRER_POLICY_UNSET) {
-    mReferrerPolicy = NS_GetDefaultReferrerPolicy();
+    bool isPrivate = mLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
+    mReferrerPolicy = NS_GetDefaultReferrerPolicy(isPrivate);
   }
 
   if (!referrer) {
@@ -1605,11 +1650,6 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
   // false: use real referrer when leaving .onion
   // true: use an empty referrer
   bool userHideOnionReferrerSource = gHttpHandler->HideOnionReferrerSource();
-
-  // 0: full URI
-  // 1: scheme+host+port+path
-  // 2: scheme+host+port
-  int userReferrerTrimmingPolicy = gHttpHandler->ReferrerTrimmingPolicy();
 
   // 0: send referer no matter what
   // 1: send referer ONLY when base domains match
@@ -1662,22 +1702,10 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
     referrer = referrerGrip.get();
   }
 
-  //
-  // block referrer if not on our white list...
-  //
-  static const char *const referrerWhiteList[] = {
-    "http",
-    "https",
-    "ftp",
-    nullptr
-  };
-  match = false;
-  const char *const *scheme = referrerWhiteList;
-  for (; *scheme && !match; ++scheme) {
-    rv = referrer->SchemeIs(*scheme, &match);
-    if (NS_FAILED(rv)) return rv;
+  // Enforce Referrer whitelist
+  if (!IsReferrerSchemeAllowed(referrer)) {
+    return NS_OK; // kick out....
   }
-  if (!match) return NS_OK; // kick out....
 
   //
   // Handle secure referrals.
@@ -1767,85 +1795,57 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
   rv = clone->SetUserPass(EmptyCString());
   if (NS_FAILED(rv)) return rv;
 
-  // Computing whether our URI is cross-origin may be expensive, so we only do
-  // that in cases where we're going to use this information later on.  The if
-  // condition below encodes those cases.  isCrossOrigin.isNothing() will return
-  // true otherwise.
-  Maybe<bool> isCrossOrigin;
-  if ((mReferrerPolicy == REFERRER_POLICY_SAME_ORIGIN ||
-       mReferrerPolicy == REFERRER_POLICY_ORIGIN_WHEN_XORIGIN ||
-       mReferrerPolicy == REFERRER_POLICY_STRICT_ORIGIN_WHEN_XORIGIN ||
-       // If our referrer policy is origin-only or strict-origin, we will send
-       // the origin only no matter if we are cross origin, so in those cases we
-       // can also skip checking cross-origin-ness.
-       (gHttpHandler->ReferrerXOriginTrimmingPolicy() != 0 &&
-        mReferrerPolicy != REFERRER_POLICY_ORIGIN &&
-        mReferrerPolicy != REFERRER_POLICY_STRICT_ORIGIN)) &&
-      // 2 (origin-only) is already the strictest policy which we'd adopt if we
-      // were cross-origin, so there is no point to compute whether we are or
-      // not.
-      gHttpHandler->ReferrerTrimmingPolicy() != 2) {
-    // for cross-origin-based referrer changes (not just host-based), figure out
-    // if the referrer is being sent cross-origin.
-    nsCOMPtr<nsIURI> triggeringURI;
-    if (mLoadInfo) {
-      nsCOMPtr<nsIPrincipal> triggeringPrincipal = mLoadInfo->TriggeringPrincipal();
-      if (triggeringPrincipal) {
-        triggeringPrincipal->GetURI(getter_AddRefs(triggeringURI));
+  // 0: full URI
+  // 1: scheme+host+port+path
+  // 2: scheme+host+port
+  int userReferrerTrimmingPolicy = gHttpHandler->ReferrerTrimmingPolicy();
+  int userReferrerXOriginTrimmingPolicy =
+    gHttpHandler->ReferrerXOriginTrimmingPolicy();
+
+  switch (mReferrerPolicy) {
+    case REFERRER_POLICY_SAME_ORIGIN:
+      // Don't send referrer when the request is cross-origin and policy is "same-origin".
+      if (IsCrossOriginWithReferrer()) {
+        return NS_OK;
       }
-    }
-    if (triggeringURI) {
-      if (LOG_ENABLED()) {
-        nsAutoCString triggeringURISpec;
-        rv = triggeringURI->GetAsciiSpec(triggeringURISpec);
-        if (!NS_FAILED(rv)) {
-          LOG(("triggeringURI=%s\n", triggeringURISpec.get()));
+      break;
+
+    case REFERRER_POLICY_ORIGIN:
+    case REFERRER_POLICY_STRICT_ORIGIN:
+      userReferrerTrimmingPolicy = 2;
+      break;
+
+    case REFERRER_POLICY_ORIGIN_WHEN_XORIGIN:
+    case REFERRER_POLICY_STRICT_ORIGIN_WHEN_XORIGIN:
+      if (userReferrerTrimmingPolicy != 2 && IsCrossOriginWithReferrer()) {
+        // Ignore set userReferrerTrimmingPolicy if it is already the strictest
+        // policy.
+        userReferrerTrimmingPolicy = 2;
+      }
+      break;
+
+    case REFERRER_POLICY_NO_REFERRER_WHEN_DOWNGRADE:
+    case REFERRER_POLICY_UNSAFE_URL:
+      if (userReferrerTrimmingPolicy != 2) {
+        // Ignore set userReferrerTrimmingPolicy if it is already the strictest
+        // policy. Apply the user cross-origin trimming policy if it's more
+        // restrictive than the general one.
+        if (userReferrerXOriginTrimmingPolicy != 0 && IsCrossOriginWithReferrer()) {
+          userReferrerTrimmingPolicy =
+            std::max(userReferrerTrimmingPolicy, userReferrerXOriginTrimmingPolicy);
         }
       }
-      nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-      rv = ssm->CheckSameOriginURI(triggeringURI, mURI, false);
-      isCrossOrigin.emplace(NS_FAILED(rv));
-    } else {
-      LOG(("no triggering principal available via loadInfo, assuming load is cross-origin"));
-      isCrossOrigin.emplace(true);
-    }
-  }
 
-  // Don't send referrer when the request is cross-origin and policy is "same-origin".
-  if (mReferrerPolicy == REFERRER_POLICY_SAME_ORIGIN && *isCrossOrigin) {
-    return NS_OK;
+      break;
+
+    case REFERRER_POLICY_NO_REFERRER:
+    case REFERRER_POLICY_UNSET:
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unexpected value");
+      break;
   }
 
   nsAutoCString spec;
-
-  // Apply the user cross-origin trimming policy if it's more
-  // restrictive than the general one.
-  int userReferrerXOriginTrimmingPolicy =
-    gHttpHandler->ReferrerXOriginTrimmingPolicy();
-  if (userReferrerXOriginTrimmingPolicy != 0 && *isCrossOrigin) {
-    userReferrerTrimmingPolicy =
-      std::max(userReferrerTrimmingPolicy, userReferrerXOriginTrimmingPolicy);
-  }
-
-  // site-specified referrer trimming may affect the trim level
-  // "unsafe-url" behaves like "origin" (send referrer in the same situations) but
-  // "unsafe-url" sends the whole referrer and origin removes the path.
-  // "origin-when-cross-origin" trims the referrer only when the request is
-  // cross-origin.
-  // "Strict" request from https->http case was bailed out, so here:
-  // "strict-origin" behaves the same as "origin".
-  // "strict-origin-when-cross-origin" behaves the same as "origin-when-cross-origin"
-  if (mReferrerPolicy == REFERRER_POLICY_ORIGIN ||
-      mReferrerPolicy == REFERRER_POLICY_STRICT_ORIGIN ||
-      ((mReferrerPolicy == REFERRER_POLICY_ORIGIN_WHEN_XORIGIN ||
-        mReferrerPolicy == REFERRER_POLICY_STRICT_ORIGIN_WHEN_XORIGIN) &&
-        *isCrossOrigin)) {
-    // We can override the user trimming preference because "origin"
-    // (network.http.referer.trimmingPolicy = 2) is the strictest
-    // trimming policy that users can specify.
-    userReferrerTrimmingPolicy = 2;
-  }
-
   // check how much referer to send
   if (userReferrerTrimmingPolicy) {
     // All output strings start with: scheme+host+port
@@ -2208,6 +2208,20 @@ HttpBaseChannel::RedirectTo(nsIURI *targetURI)
   NS_ENSURE_FALSE(mOnStartRequestCalled, NS_ERROR_NOT_AVAILABLE);
 
   mAPIRedirectToURI = targetURI;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::UpgradeToSecure()
+{
+  // Upgrades are handled internally between http-on-modify-request and
+  // http-on-before-connect, which means upgrades are only possible during
+  // on-modify, or WebRequest.onBeforeRequest in Web Extensions.  Once we are
+  // past the code path where upgrades are handled, attempting an upgrade
+  // will throw an error.
+  NS_ENSURE_TRUE(mUpgradableToSecure, NS_ERROR_NOT_AVAILABLE);
+
+  mUpgradeToSecure = true;
   return NS_OK;
 }
 
@@ -2968,6 +2982,13 @@ HttpBaseChannel::FlushReportsToConsole(uint64_t aInnerWindowID,
 }
 
 void
+HttpBaseChannel::FlushReportsToConsoleForServiceWorkerScope(const nsACString& aScope,
+                                                            ReportAction aAction)
+{
+  mReportCollector->FlushReportsToConsoleForServiceWorkerScope(aScope, aAction);
+}
+
+void
 HttpBaseChannel::FlushConsoleReports(nsIDocument* aDocument,
                                      ReportAction aAction)
 {
@@ -3323,6 +3344,24 @@ HttpBaseChannel::AddCookiesToRequest()
   // If we are in the child process, we want the parent seeing any
   // cookie headers that might have been set by SetRequestHeader()
   SetRequestHeader(nsDependentCString(nsHttp::Cookie), cookie, false);
+}
+
+/* static */
+bool
+HttpBaseChannel::IsReferrerSchemeAllowed(nsIURI *aReferrer)
+{
+  NS_ENSURE_TRUE(aReferrer, false);
+
+  nsAutoCString scheme;
+  nsresult rv = aReferrer->GetScheme(scheme);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  if (scheme.EqualsIgnoreCase("https") ||
+      scheme.EqualsIgnoreCase("http") ||
+      scheme.EqualsIgnoreCase("ftp")) {
+    return true;
+  }
+  return false;
 }
 
 /* static */
@@ -4172,6 +4211,18 @@ HttpBaseChannel::GetPerformance()
   return docPerformance;
 }
 
+NS_IMETHODIMP
+HttpBaseChannel::SetReportResourceTiming(bool enabled) {
+  mReportTiming = enabled;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetReportResourceTiming(bool* _retval) {
+  *_retval = mReportTiming;
+  return NS_OK;
+}
+
 nsIURI*
 HttpBaseChannel::GetReferringPage()
 {
@@ -4408,6 +4459,52 @@ HttpBaseChannel::CallTypeSniffers(void *aClosure, const uint8_t *aData,
   if (!newType.IsEmpty()) {
     chan->SetContentType(newType);
   }
+}
+
+template <class T>
+static void
+ParseServerTimingHeader(const nsAutoPtr<T> &aHeader,
+                        nsIMutableArray* aOutput)
+{
+  if (!aHeader) {
+    return;
+  }
+
+  nsAutoCString serverTimingHeader;
+  Unused << aHeader->GetHeader(nsHttp::Server_Timing, serverTimingHeader);
+  if (serverTimingHeader.IsEmpty()) {
+    return;
+  }
+
+  ServerTimingParser parser(serverTimingHeader);
+  parser.Parse();
+
+  nsTArray<nsCOMPtr<nsIServerTiming>> array = parser.TakeServerTimingHeaders();
+  for (const auto &data : array) {
+    aOutput->AppendElement(data);
+  }
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetServerTiming(nsIArray **aServerTiming)
+{
+  NS_ENSURE_ARG_POINTER(aServerTiming);
+
+  bool isHTTPS = false;
+  if (gHttpHandler->AllowPlaintextServerTiming() ||
+      (NS_SUCCEEDED(mURI->SchemeIs("https", &isHTTPS)) && isHTTPS)) {
+    nsTArray<nsCOMPtr<nsIServerTiming>> data;
+    nsresult rv = NS_OK;
+    nsCOMPtr<nsIMutableArray> array = do_CreateInstance(NS_ARRAY_CONTRACTID, &rv);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    ParseServerTimingHeader(mResponseHead, array);
+    ParseServerTimingHeader(mResponseTrailers, array);
+
+    array.forget(aServerTiming);
+  }
+
+  return NS_OK;
 }
 
 } // namespace net

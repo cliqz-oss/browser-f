@@ -14,13 +14,16 @@ const { MemoryFront } = require("devtools/shared/fronts/memory");
 
 // Always log packets when running tests.
 Services.prefs.setBoolPref("devtools.debugger.log", true);
+var gReduceTimePrecision = Services.prefs.getBoolPref("privacy.reduceTimerPrecision");
+Services.prefs.setBoolPref("privacy.reduceTimerPrecision", false);
 SimpleTest.registerCleanupFunction(function () {
   Services.prefs.clearUserPref("devtools.debugger.log");
+  Services.prefs.setBoolPref("privacy.reduceTimerPrecision", gReduceTimePrecision);
 });
 
 function startServerAndGetSelectedTabMemory() {
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
+  DebuggerServer.registerAllActors();
   let client = new DebuggerClient(DebuggerServer.connectPipe());
 
   return client.connect()

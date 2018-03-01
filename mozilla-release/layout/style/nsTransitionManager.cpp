@@ -32,6 +32,7 @@
 #include "nsCSSProps.h"
 #include "nsCSSPseudoElements.h"
 #include "nsDisplayList.h"
+#include "nsRFPService.h"
 #include "nsStyleChangeList.h"
 #include "nsStyleSet.h"
 #include "mozilla/RestyleManager.h"
@@ -47,14 +48,6 @@ using mozilla::dom::KeyframeEffectReadOnly;
 
 using namespace mozilla;
 using namespace mozilla::css;
-
-namespace {
-struct TransitionEventParams {
-  EventMessage mMessage;
-  StickyTimeDuration mElapsedTime;
-  TimeStamp mTimeStamp;
-};
-} // anonymous namespace
 
 double
 ElementPropertyTransition::CurrentValuePortion() const
@@ -176,6 +169,19 @@ CSSTransition::PlayStateFromJS() const
   return Animation::PlayStateFromJS();
 }
 
+bool
+CSSTransition::PendingFromJS() const
+{
+  // Transitions don't become pending again after they start running but, if
+  // while the transition is still pending, style is updated in such a way
+  // that the transition will be canceled, we need to report false here.
+  // Hence we need to flush, but only when we're pending.
+  if (Pending()) {
+    FlushStyle();
+  }
+  return Animation::PendingFromJS();
+}
+
 void
 CSSTransition::PlayFromJS(ErrorResult& aRv)
 {
@@ -196,24 +202,18 @@ CSSTransition::UpdateTiming(SeekFlag aSeekFlag, SyncNotifyFlag aSyncNotifyFlag)
 }
 
 void
-CSSTransition::QueueEvents(StickyTimeDuration aActiveTime)
+CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
 {
   if (!mOwningElement.IsSet()) {
     return;
   }
 
-  dom::Element* owningElement;
-  CSSPseudoElementType owningPseudoType;
-  mOwningElement.GetElement(owningElement, owningPseudoType);
-  MOZ_ASSERT(owningElement, "Owning element should be set");
-
-  nsPresContext* presContext =
-    nsContentUtils::GetContextForContent(owningElement);
+  nsPresContext* presContext = mOwningElement.GetPresContext();
   if (!presContext) {
     return;
   }
 
-  const StickyTimeDuration zeroDuration = StickyTimeDuration();
+  static constexpr StickyTimeDuration zeroDuration = StickyTimeDuration();
 
   TransitionPhase currentPhase;
   StickyTimeDuration intervalStartTime;
@@ -249,16 +249,29 @@ CSSTransition::QueueEvents(StickyTimeDuration aActiveTime)
     currentPhase = TransitionPhase::Pending;
   }
 
-  AutoTArray<TransitionEventParams, 3> events;
+  AutoTArray<TransitionEventInfo, 3> events;
+
+  auto appendTransitionEvent = [&](EventMessage aMessage,
+                                   const StickyTimeDuration& aElapsedTime,
+                                   const TimeStamp& aTimeStamp) {
+    double elapsedTime = aElapsedTime.ToSeconds();
+    if (aMessage == eTransitionCancel) {
+      elapsedTime = nsRFPService::ReduceTimePrecisionAsSecs(elapsedTime);
+    }
+    events.AppendElement(TransitionEventInfo(mOwningElement.Target(),
+                                             aMessage,
+                                             TransitionProperty(),
+                                             elapsedTime,
+                                             aTimeStamp,
+                                             this));
+  };
 
   // Handle cancel events first
   if ((mPreviousTransitionPhase != TransitionPhase::Idle &&
        mPreviousTransitionPhase != TransitionPhase::After) &&
       currentPhase == TransitionPhase::Idle) {
     TimeStamp activeTimeStamp = ElapsedTimeToTimeStamp(aActiveTime);
-    events.AppendElement(TransitionEventParams{ eTransitionCancel,
-                                                aActiveTime,
-                                                activeTimeStamp });
+    appendTransitionEvent(eTransitionCancel, aActiveTime, activeTimeStamp);
   }
 
   // All other events
@@ -266,82 +279,64 @@ CSSTransition::QueueEvents(StickyTimeDuration aActiveTime)
     case TransitionPhase::Idle:
       if (currentPhase == TransitionPhase::Pending ||
           currentPhase == TransitionPhase::Before) {
-        events.AppendElement(TransitionEventParams{ eTransitionRun,
-                                                    intervalStartTime,
-                                                    zeroTimeStamp });
+        appendTransitionEvent(eTransitionRun, intervalStartTime, zeroTimeStamp);
       } else if (currentPhase == TransitionPhase::Active) {
-        events.AppendElement(TransitionEventParams{ eTransitionRun,
-                                                    intervalStartTime,
-                                                    zeroTimeStamp });
-        events.AppendElement(TransitionEventParams{ eTransitionStart,
-                                                    intervalStartTime,
-                                                    startTimeStamp });
+        appendTransitionEvent(eTransitionRun, intervalStartTime, zeroTimeStamp);
+        appendTransitionEvent(eTransitionStart,
+                              intervalStartTime,
+                              startTimeStamp);
       } else if (currentPhase == TransitionPhase::After) {
-        events.AppendElement(TransitionEventParams{ eTransitionRun,
-                                                    intervalStartTime,
-                                                    zeroTimeStamp });
-        events.AppendElement(TransitionEventParams{ eTransitionStart,
-                                                    intervalStartTime,
-                                                    startTimeStamp });
-        events.AppendElement(TransitionEventParams{ eTransitionEnd,
-                                                    intervalEndTime,
-                                                    endTimeStamp });
+        appendTransitionEvent(eTransitionRun, intervalStartTime, zeroTimeStamp);
+        appendTransitionEvent(eTransitionStart,
+                              intervalStartTime,
+                              startTimeStamp);
+        appendTransitionEvent(eTransitionEnd, intervalEndTime, endTimeStamp);
       }
       break;
 
     case TransitionPhase::Pending:
     case TransitionPhase::Before:
       if (currentPhase == TransitionPhase::Active) {
-        events.AppendElement(TransitionEventParams{ eTransitionStart,
-                                                    intervalStartTime,
-                                                    startTimeStamp });
+        appendTransitionEvent(eTransitionStart,
+                              intervalStartTime,
+                              startTimeStamp);
       } else if (currentPhase == TransitionPhase::After) {
-        events.AppendElement(TransitionEventParams{ eTransitionStart,
-                                                    intervalStartTime,
-                                                    startTimeStamp });
-        events.AppendElement(TransitionEventParams{ eTransitionEnd,
-                                                    intervalEndTime,
-                                                    endTimeStamp });
+        appendTransitionEvent(eTransitionStart,
+                              intervalStartTime,
+                              startTimeStamp);
+        appendTransitionEvent(eTransitionEnd, intervalEndTime, endTimeStamp);
       }
       break;
 
     case TransitionPhase::Active:
       if (currentPhase == TransitionPhase::After) {
-        events.AppendElement(TransitionEventParams{ eTransitionEnd,
-                                                    intervalEndTime,
-                                                    endTimeStamp });
+        appendTransitionEvent(eTransitionEnd, intervalEndTime, endTimeStamp);
       } else if (currentPhase == TransitionPhase::Before) {
-        events.AppendElement(TransitionEventParams{ eTransitionEnd,
-                                                    intervalStartTime,
-                                                    startTimeStamp });
+        appendTransitionEvent(eTransitionEnd,
+                              intervalStartTime,
+                              startTimeStamp);
       }
       break;
 
     case TransitionPhase::After:
       if (currentPhase == TransitionPhase::Active) {
-        events.AppendElement(TransitionEventParams{ eTransitionStart,
-                                                    intervalEndTime,
-                                                    startTimeStamp });
+        appendTransitionEvent(eTransitionStart,
+                              intervalEndTime,
+                              startTimeStamp);
       } else if (currentPhase == TransitionPhase::Before) {
-        events.AppendElement(TransitionEventParams{ eTransitionStart,
-                                                    intervalEndTime,
-                                                    startTimeStamp });
-        events.AppendElement(TransitionEventParams{ eTransitionEnd,
-                                                    intervalStartTime,
-                                                    endTimeStamp });
+        appendTransitionEvent(eTransitionStart,
+                              intervalEndTime,
+                              startTimeStamp);
+        appendTransitionEvent(eTransitionEnd,
+                              intervalStartTime,
+                              endTimeStamp);
       }
       break;
   }
   mPreviousTransitionPhase = currentPhase;
 
-  nsTransitionManager* manager = presContext->TransitionManager();
-  for (const TransitionEventParams& evt : events) {
-    manager->QueueEvent(TransitionEventInfo(owningElement, owningPseudoType,
-                                            evt.mMessage,
-                                            TransitionProperty(),
-                                            evt.mElapsedTime,
-                                            evt.mTimeStamp,
-                                            this));
+  if (!events.IsEmpty()) {
+    presContext->TransitionManager()->QueueEvents(Move(events));
   }
 }
 
@@ -509,7 +504,7 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
 
   // Return sooner (before the startedAny check below) for the most
   // common case: no transitions specified or running.
-  const nsStyleDisplay *disp = newStyleContext->StyleDisplay();
+  const nsStyleDisplay* disp = newStyleContext->StyleDisplay();
   CSSPseudoElementType pseudoType = newStyleContext->GetPseudoType();
   if (pseudoType != CSSPseudoElementType::NotPseudo) {
     if (pseudoType != CSSPseudoElementType::before &&
@@ -532,7 +527,7 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
     CSSTransitionCollection::GetAnimationCollection(aElement, pseudoType);
   if (!collection &&
       disp->mTransitionPropertyCount == 1 &&
-      disp->mTransitions[0].GetCombinedDuration() <= 0.0f) {
+      disp->GetTransitionCombinedDuration(0) <= 0.0f) {
     return;
   }
 
@@ -585,7 +580,7 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
   // We don't have to update transitions if display:none, although we will
   // cancel them after restyling.
   if (!afterChangeStyle->IsInDisplayNoneSubtree()) {
-    startedAny = DoUpdateTransitions(disp,
+    startedAny = DoUpdateTransitions(*disp,
                                      aElement,
                                      afterChangeStyle->GetPseudoType(),
                                      collection,
@@ -634,9 +629,9 @@ nsTransitionManager::UpdateTransitions(
 
   CSSTransitionCollection* collection =
     CSSTransitionCollection::GetAnimationCollection(aElement, aPseudoType);
-  const nsStyleDisplay *disp =
+  const nsStyleDisplay* disp =
       aNewStyle->ComputedData()->GetStyleDisplay();
-  return DoUpdateTransitions(disp,
+  return DoUpdateTransitions(*disp,
                              aElement, aPseudoType,
                              collection,
                              aOldStyle, aNewStyle);
@@ -645,14 +640,13 @@ nsTransitionManager::UpdateTransitions(
 template<typename StyleType>
 bool
 nsTransitionManager::DoUpdateTransitions(
-  const nsStyleDisplay* aDisp,
+  const nsStyleDisplay& aDisp,
   dom::Element* aElement,
   CSSPseudoElementType aPseudoType,
   CSSTransitionCollection*& aElementTransitions,
   StyleType aOldStyle,
   StyleType aNewStyle)
 {
-  MOZ_ASSERT(aDisp, "Null nsStyleDisplay");
   MOZ_ASSERT(!aElementTransitions ||
              aElementTransitions->mElement == aElement, "Element mismatch");
 
@@ -662,17 +656,16 @@ nsTransitionManager::DoUpdateTransitions(
   // ones (tracked using |whichStarted|).
   bool startedAny = false;
   nsCSSPropertyIDSet whichStarted;
-  for (uint32_t i = aDisp->mTransitionPropertyCount; i-- != 0; ) {
-    const StyleTransition& t = aDisp->mTransitions[i];
+  for (uint32_t i = aDisp.mTransitionPropertyCount; i-- != 0; ) {
     // Check the combined duration (combination of delay and duration)
     // first, since it defaults to zero, which means we can ignore the
     // transition.
-    if (t.GetCombinedDuration() > 0.0f) {
+    if (aDisp.GetTransitionCombinedDuration(i) > 0.0f) {
       // We might have something to transition.  See if any of the
       // properties in question changed and are animatable.
       // FIXME: Would be good to find a way to share code between this
       // interpretation of transition-property and the one below.
-      nsCSSPropertyID property = t.GetProperty();
+      nsCSSPropertyID property = aDisp.GetTransitionProperty(i);
       if (property == eCSSPropertyExtra_no_properties ||
           property == eCSSPropertyExtra_variable ||
           property == eCSSProperty_UNKNOWN) {
@@ -681,7 +674,7 @@ nsTransitionManager::DoUpdateTransitions(
         for (nsCSSPropertyID p = nsCSSPropertyID(0);
              p < eCSSProperty_COUNT_no_shorthands;
              p = nsCSSPropertyID(p + 1)) {
-          ConsiderInitiatingTransition(p, t, aElement, aPseudoType,
+          ConsiderInitiatingTransition(p, aDisp, i, aElement, aPseudoType,
                                        aElementTransitions,
                                        aOldStyle, aNewStyle,
                                        &startedAny, &whichStarted);
@@ -690,13 +683,13 @@ nsTransitionManager::DoUpdateTransitions(
         CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(subprop, property,
                                              CSSEnabledState::eForAllContent)
         {
-          ConsiderInitiatingTransition(*subprop, t, aElement, aPseudoType,
+          ConsiderInitiatingTransition(*subprop, aDisp, i, aElement, aPseudoType,
                                        aElementTransitions,
                                        aOldStyle, aNewStyle,
                                        &startedAny, &whichStarted);
         }
       } else {
-        ConsiderInitiatingTransition(property, t, aElement, aPseudoType,
+        ConsiderInitiatingTransition(property, aDisp, i, aElement, aPseudoType,
                                      aElementTransitions,
                                      aOldStyle, aNewStyle,
                                      &startedAny, &whichStarted);
@@ -715,14 +708,13 @@ nsTransitionManager::DoUpdateTransitions(
   // nsTransitionManager::PruneCompletedTransitions.
   if (aElementTransitions) {
     bool checkProperties =
-      aDisp->mTransitions[0].GetProperty() != eCSSPropertyExtra_all_properties;
+      aDisp.GetTransitionProperty(0) != eCSSPropertyExtra_all_properties;
     nsCSSPropertyIDSet allTransitionProperties;
     if (checkProperties) {
-      for (uint32_t i = aDisp->mTransitionPropertyCount; i-- != 0; ) {
-        const StyleTransition& t = aDisp->mTransitions[i];
+      for (uint32_t i = aDisp.mTransitionPropertyCount; i-- != 0; ) {
         // FIXME: Would be good to find a way to share code between this
         // interpretation of transition-property and the one above.
-        nsCSSPropertyID property = t.GetProperty();
+        nsCSSPropertyID property = aDisp.GetTransitionProperty(i);
         if (property == eCSSPropertyExtra_no_properties ||
             property == eCSSPropertyExtra_variable ||
             property == eCSSProperty_UNKNOWN) {
@@ -846,7 +838,8 @@ template<typename StyleType>
 void
 nsTransitionManager::ConsiderInitiatingTransition(
   nsCSSPropertyID aProperty,
-  const StyleTransition& aTransition,
+  const nsStyleDisplay& aStyleDisplay,
+  uint32_t transitionIdx,
   dom::Element* aElement,
   CSSPseudoElementType aPseudoType,
   CSSTransitionCollection*& aElementTransitions,
@@ -959,9 +952,10 @@ nsTransitionManager::ConsiderInitiatingTransition(
     return;
   }
 
-  const nsTimingFunction &tf = aTransition.GetTimingFunction();
-  float delay = aTransition.GetDelay();
-  float duration = aTransition.GetDuration();
+  const nsTimingFunction &tf =
+    aStyleDisplay.GetTransitionTimingFunction(transitionIdx);
+  float delay = aStyleDisplay.GetTransitionDelay(transitionIdx);
+  float duration = aStyleDisplay.GetTransitionDuration(transitionIdx);
   if (duration < 0.0) {
     // The spec says a negative duration is treated as zero.
     duration = 0.0;

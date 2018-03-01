@@ -4,11 +4,11 @@
 
 use app_units::{Au, MAX_AU};
 use block::FormattingContextType;
-use flow::{self, Flow, FlowFlags, ImmutableFlowUtils};
+use flow::{Flow, FlowFlags, GetBaseFlow, ImmutableFlowUtils};
 use persistent_list::PersistentList;
 use std::cmp::{max, min};
 use std::fmt;
-use style::computed_values::float;
+use style::computed_values::float::T as StyleFloat;
 use style::logical_geometry::{LogicalRect, LogicalSize, WritingMode};
 use style::values::computed::LengthOrPercentageOrAuto;
 
@@ -20,11 +20,11 @@ pub enum FloatKind {
 }
 
 impl FloatKind {
-    pub fn from_property(property: float::T) -> Option<FloatKind> {
+    pub fn from_property(property: StyleFloat) -> Option<FloatKind> {
         match property {
-            float::T::none => None,
-            float::T::left => Some(FloatKind::Left),
-            float::T::right => Some(FloatKind::Right),
+            StyleFloat::None => None,
+            StyleFloat::Left => Some(FloatKind::Left),
+            StyleFloat::Right => Some(FloatKind::Right),
         }
     }
 }
@@ -458,7 +458,7 @@ impl SpeculatedFloatPlacement {
     /// Given the speculated inline size of the floats out for the inorder predecessor of this
     /// flow, computes the speculated inline size of the floats flowing in.
     pub fn compute_floats_in(&mut self, flow: &mut Flow) {
-        let base_flow = flow::base(flow);
+        let base_flow = flow.base();
         if base_flow.flags.contains(FlowFlags::CLEARS_LEFT) {
             self.left = Au(0)
         }
@@ -491,7 +491,7 @@ impl SpeculatedFloatPlacement {
             }
         }
 
-        let base_flow = flow::base(flow);
+        let base_flow = flow.base();
         if !base_flow.flags.is_float() {
             return
         }
@@ -513,16 +513,16 @@ impl SpeculatedFloatPlacement {
         }
 
         match base_flow.flags.float_kind() {
-            float::T::none => {}
-            float::T::left => self.left = self.left + float_inline_size,
-            float::T::right => self.right = self.right + float_inline_size,
+            StyleFloat::None => {}
+            StyleFloat::Left => self.left = self.left + float_inline_size,
+            StyleFloat::Right => self.right = self.right + float_inline_size,
         }
     }
 
     /// Given a flow, computes the speculated inline size of the floats in of its first child.
     pub fn compute_floats_in_for_first_child(parent_flow: &mut Flow) -> SpeculatedFloatPlacement {
         if !parent_flow.is_block_like() {
-            return flow::base(parent_flow).speculated_float_placement_in
+            return parent_flow.base().speculated_float_placement_in
         }
 
         let parent_block_flow = parent_flow.as_block();

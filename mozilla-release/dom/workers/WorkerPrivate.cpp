@@ -47,6 +47,9 @@
 #include "mozilla/LoadContext.h"
 #include "mozilla/Move.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/ClientManager.h"
+#include "mozilla/dom/ClientSource.h"
+#include "mozilla/dom/ClientState.h"
 #include "mozilla/dom/Console.h"
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/ErrorEvent.h"
@@ -598,6 +601,10 @@ private:
   {
     aWorkerPrivate->AssertIsOnWorkerThread();
 
+    if (NS_WARN_IF(!aWorkerPrivate->EnsureClientSource())) {
+      return false;
+    }
+
     ErrorResult rv;
     scriptloader::LoadMainScript(aWorkerPrivate, mScriptURL, WorkerScript, rv);
     rv.WouldReportJSException();
@@ -665,6 +672,10 @@ private:
       aWorkerPrivate->CreateDebuggerGlobalScope(aCx);
     if (!globalScope) {
       NS_WARNING("Failed to make global!");
+      return false;
+    }
+
+    if (NS_WARN_IF(!aWorkerPrivate->EnsureClientSource())) {
       return false;
     }
 
@@ -1367,28 +1378,6 @@ private:
   }
 };
 
-class UpdatePreferenceRunnable final : public WorkerControlRunnable
-{
-  WorkerPreference mPref;
-  bool mValue;
-
-public:
-  UpdatePreferenceRunnable(WorkerPrivate* aWorkerPrivate,
-                           WorkerPreference aPref,
-                           bool aValue)
-    : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
-      mPref(aPref),
-      mValue(aValue)
-  { }
-
-  virtual bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
-  {
-    aWorkerPrivate->UpdatePreferenceInternal(mPref, mValue);
-    return true;
-  }
-};
-
 class UpdateLanguagesRunnable final : public WorkerRunnable
 {
   nsTArray<nsString> mLanguages;
@@ -1502,7 +1491,7 @@ public:
   { }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     aWorkerPrivate->CycleCollectInternal(mCollectChildren);
     return true;
@@ -1519,7 +1508,7 @@ public:
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     aWorkerPrivate->OfflineStatusChangeEventInternal(mIsOffline);
     return true;
@@ -1537,7 +1526,7 @@ public:
   {}
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     aWorkerPrivate->MemoryPressureInternal();
     return true;
@@ -1600,7 +1589,11 @@ PRThreadFromThread(nsIThread* aThread)
 class SimpleWorkerHolder final : public WorkerHolder
 {
 public:
-  virtual bool Notify(Status aStatus) { return true; }
+  SimpleWorkerHolder()
+    : WorkerHolder("SimpleWorkerHolder")
+  {}
+
+  virtual bool Notify(Status aStatus) override { return true; }
 };
 
 } /* anonymous namespace */
@@ -1816,6 +1809,9 @@ WorkerLoadInfo::StealFrom(WorkerLoadInfo& aOther)
   MOZ_ASSERT(!mPrincipal);
   aOther.mPrincipal.swap(mPrincipal);
 
+  // mLoadingPrincipal can be null if this is a ServiceWorker.
+  aOther.mLoadingPrincipal.swap(mLoadingPrincipal);
+
   MOZ_ASSERT(!mScriptContext);
   aOther.mScriptContext.swap(mScriptContext);
 
@@ -1912,7 +1908,7 @@ WorkerLoadInfo::GetPrincipalAndLoadGroupFromChannel(nsIChannel* aChannel,
   MOZ_DIAGNOSTIC_ASSERT(aLoadGroupOut);
 
   // Initial triggering principal should be set
-  MOZ_DIAGNOSTIC_ASSERT(mPrincipal);
+  NS_ENSURE_TRUE(mLoadingPrincipal, NS_ERROR_DOM_INVALID_STATE_ERR);
 
   nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
   MOZ_DIAGNOSTIC_ASSERT(ssm);
@@ -1926,14 +1922,14 @@ WorkerLoadInfo::GetPrincipalAndLoadGroupFromChannel(nsIChannel* aChannel,
   NS_ENSURE_SUCCESS(rv, rv);
   MOZ_ASSERT(channelLoadGroup);
 
-  // If the load principal is the system principal then the channel
+  // If the loading principal is the system principal then the channel
   // principal must also be the system principal (we do not allow chrome
   // code to create workers with non-chrome scripts, and if we ever decide
   // to change this we need to make sure we don't always set
   // mPrincipalIsSystem to true in WorkerPrivate::GetLoadInfo()). Otherwise
   // this channel principal must be same origin with the load principal (we
   // check again here in case redirects changed the location of the script).
-  if (nsContentUtils::IsSystemPrincipal(mPrincipal)) {
+  if (nsContentUtils::IsSystemPrincipal(mLoadingPrincipal)) {
     if (!nsContentUtils::IsSystemPrincipal(channelPrincipal)) {
       nsCOMPtr<nsIURI> finalURI;
       rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(finalURI));
@@ -1951,7 +1947,7 @@ WorkerLoadInfo::GetPrincipalAndLoadGroupFromChannel(nsIChannel* aChannel,
       if (isResource) {
         // Assign the system principal to the resource:// worker only if it
         // was loaded from code using the system principal.
-        channelPrincipal = mPrincipal;
+        channelPrincipal = mLoadingPrincipal;
       } else {
         return NS_ERROR_DOM_BAD_URI;
       }
@@ -1983,7 +1979,6 @@ WorkerLoadInfo::SetPrincipalFromChannel(nsIChannel* aChannel)
   return SetPrincipalOnMainThread(principal, loadGroup);
 }
 
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
 bool
 WorkerLoadInfo::FinalChannelPrincipalIsValid(nsIChannel* aChannel)
 {
@@ -2013,6 +2008,7 @@ WorkerLoadInfo::FinalChannelPrincipalIsValid(nsIChannel* aChannel)
   return false;
 }
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
 bool
 WorkerLoadInfo::PrincipalIsValid() const
 {
@@ -2085,7 +2081,7 @@ WorkerLoadInfo::ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate,
                                               nsCOMPtr<nsILoadGroup>& aLoadGroupToCancel)
 {
 
-  static const uint32_t kDoomedCount = 10;
+  static const uint32_t kDoomedCount = 11;
   nsTArray<nsCOMPtr<nsISupports>> doomed(kDoomedCount);
 
   SwapToISupportsArray(mWindow, doomed);
@@ -2093,6 +2089,7 @@ WorkerLoadInfo::ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate,
   SwapToISupportsArray(mBaseURI, doomed);
   SwapToISupportsArray(mResolvedScriptURI, doomed);
   SwapToISupportsArray(mPrincipal, doomed);
+  SwapToISupportsArray(mLoadingPrincipal, doomed);
   SwapToISupportsArray(mChannel, doomed);
   SwapToISupportsArray(mCSP, doomed);
   SwapToISupportsArray(mLoadGroup, doomed);
@@ -2838,8 +2835,6 @@ WorkerPrivateParent<Derived>::WorkerPrivateParent(
 
   if (aLoadInfo.mWindow) {
     AssertIsOnMainThread();
-    MOZ_ASSERT(aLoadInfo.mWindow->IsInnerWindow(),
-               "Should have inner window here!");
     BindToOwner(aLoadInfo.mWindow);
   }
 
@@ -3498,20 +3493,6 @@ WorkerPrivateParent<Derived>::UpdateContextOptions(
 
 template <class Derived>
 void
-WorkerPrivateParent<Derived>::UpdatePreference(WorkerPreference aPref, bool aValue)
-{
-  AssertIsOnParentThread();
-  MOZ_ASSERT(aPref >= 0 && aPref < WORKERPREF_COUNT);
-
-  RefPtr<UpdatePreferenceRunnable> runnable =
-    new UpdatePreferenceRunnable(ParentAsWorkerPrivate(), aPref, aValue);
-  if (!runnable->Dispatch()) {
-    NS_WARNING("Failed to update worker preferences!");
-  }
-}
-
-template <class Derived>
-void
 WorkerPrivateParent<Derived>::UpdateLanguages(const nsTArray<nsString>& aLanguages)
 {
   AssertIsOnParentThread();
@@ -3984,7 +3965,6 @@ WorkerPrivateParent<Derived>::SetPrincipalFromChannel(nsIChannel* aChannel)
   return mLoadInfo.SetPrincipalFromChannel(aChannel);
 }
 
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
 template <class Derived>
 bool
 WorkerPrivateParent<Derived>::FinalChannelPrincipalIsValid(nsIChannel* aChannel)
@@ -3992,6 +3972,7 @@ WorkerPrivateParent<Derived>::FinalChannelPrincipalIsValid(nsIChannel* aChannel)
   return mLoadInfo.FinalChannelPrincipalIsValid(aChannel);
 }
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
 template <class Derived>
 bool
 WorkerPrivateParent<Derived>::PrincipalURIMatchesScriptURL()
@@ -4524,12 +4505,10 @@ WorkerPrivate::WorkerPrivate(WorkerPrivate* aParent,
 {
   if (aParent) {
     aParent->AssertIsOnWorkerThread();
-    aParent->GetAllPreferences(mPreferences);
     mOnLine = aParent->OnLine();
   }
   else {
     AssertIsOnMainThread();
-    RuntimeService::GetDefaultPreferences(mPreferences);
     mOnLine = !NS_IsOffline();
   }
 
@@ -4833,7 +4812,7 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
     // loader will refuse to run any script that does not also have the system
     // principal.
     if (isChrome) {
-      rv = ssm->GetSystemPrincipal(getter_AddRefs(loadInfo.mPrincipal));
+      rv = ssm->GetSystemPrincipal(getter_AddRefs(loadInfo.mLoadingPrincipal));
       NS_ENSURE_SUCCESS(rv, rv);
 
       loadInfo.mPrincipalIsSystem = true;
@@ -4883,11 +4862,11 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
       loadInfo.mLoadGroup = document->GetDocumentLoadGroup();
       NS_ENSURE_TRUE(loadInfo.mLoadGroup, NS_ERROR_FAILURE);
 
-      // Use the document's NodePrincipal as our principal if we're not being
+      // Use the document's NodePrincipal as loading principal if we're not being
       // called from chrome.
-      if (!loadInfo.mPrincipal) {
-        loadInfo.mPrincipal = document->NodePrincipal();
-        NS_ENSURE_TRUE(loadInfo.mPrincipal, NS_ERROR_FAILURE);
+      if (!loadInfo.mLoadingPrincipal) {
+        loadInfo.mLoadingPrincipal = document->NodePrincipal();
+        NS_ENSURE_TRUE(loadInfo.mLoadingPrincipal, NS_ERROR_FAILURE);
 
         // We use the document's base domain to limit the number of workers
         // each domain can create. For sandboxed documents, we use the domain
@@ -4907,18 +4886,18 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
             NS_ENSURE_SUCCESS(rv, rv);
           } else {
             // No unsandboxed ancestor, use our GUID.
-            rv = loadInfo.mPrincipal->GetBaseDomain(loadInfo.mDomain);
+            rv = loadInfo.mLoadingPrincipal->GetBaseDomain(loadInfo.mDomain);
             NS_ENSURE_SUCCESS(rv, rv);
           }
         } else {
           // Document creating the worker is not sandboxed.
-          rv = loadInfo.mPrincipal->GetBaseDomain(loadInfo.mDomain);
+          rv = loadInfo.mLoadingPrincipal->GetBaseDomain(loadInfo.mDomain);
           NS_ENSURE_SUCCESS(rv, rv);
         }
       }
 
       NS_ENSURE_TRUE(NS_LoadGroupMatchesPrincipal(loadInfo.mLoadGroup,
-                                                  loadInfo.mPrincipal),
+                                                  loadInfo.mLoadingPrincipal),
                      NS_ERROR_FAILURE);
 
       nsCOMPtr<nsIPermissionManager> permMgr =
@@ -4926,8 +4905,8 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
       NS_ENSURE_SUCCESS(rv, rv);
 
       uint32_t perm;
-      rv = permMgr->TestPermissionFromPrincipal(loadInfo.mPrincipal, "systemXHR",
-                                                &perm);
+      rv = permMgr->TestPermissionFromPrincipal(loadInfo.mLoadingPrincipal,
+                                                "systemXHR", &perm);
       NS_ENSURE_SUCCESS(rv, rv);
 
       loadInfo.mXHRParamsAllowed = perm == nsIPermissionManager::ALLOW_ACTION;
@@ -4982,19 +4961,20 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
       loadInfo.mOriginAttributes = OriginAttributes();
     }
 
-    MOZ_ASSERT(loadInfo.mPrincipal);
+    MOZ_ASSERT(loadInfo.mLoadingPrincipal);
     MOZ_ASSERT(isChrome || !loadInfo.mDomain.IsEmpty());
 
     if (!loadInfo.mLoadGroup || aLoadGroupBehavior == OverrideLoadGroup) {
-      OverrideLoadInfoLoadGroup(loadInfo);
+      OverrideLoadInfoLoadGroup(loadInfo, loadInfo.mLoadingPrincipal);
     }
     MOZ_ASSERT(NS_LoadGroupMatchesPrincipal(loadInfo.mLoadGroup,
-                                            loadInfo.mPrincipal));
+                                            loadInfo.mLoadingPrincipal));
 
     // Top level workers' main script use the document charset for the script
     // uri encoding.
     bool useDefaultEncoding = false;
-    rv = ChannelFromScriptURLMainThread(loadInfo.mPrincipal, loadInfo.mBaseURI,
+    rv = ChannelFromScriptURLMainThread(loadInfo.mLoadingPrincipal,
+                                        loadInfo.mBaseURI,
                                         document, loadInfo.mLoadGroup,
                                         aScriptURL,
                                         ContentPolicyType(aWorkerType),
@@ -5010,6 +4990,7 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  MOZ_DIAGNOSTIC_ASSERT(loadInfo.mLoadingPrincipal);
   MOZ_DIAGNOSTIC_ASSERT(loadInfo.PrincipalIsValid());
 
   aLoadInfo->StealFrom(loadInfo);
@@ -5018,13 +4999,14 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
 
 // static
 void
-WorkerPrivate::OverrideLoadInfoLoadGroup(WorkerLoadInfo& aLoadInfo)
+WorkerPrivate::OverrideLoadInfoLoadGroup(WorkerLoadInfo& aLoadInfo,
+                                         nsIPrincipal* aPrincipal)
 {
   MOZ_ASSERT(!aLoadInfo.mInterfaceRequestor);
+  MOZ_ASSERT(aLoadInfo.mLoadingPrincipal == aPrincipal);
 
   aLoadInfo.mInterfaceRequestor =
-    new WorkerLoadInfo::InterfaceRequestor(aLoadInfo.mPrincipal,
-                                           aLoadInfo.mLoadGroup);
+    new WorkerLoadInfo::InterfaceRequestor(aPrincipal, aLoadInfo.mLoadGroup);
   aLoadInfo.mInterfaceRequestor->MaybeAddTabChild(aLoadInfo.mLoadGroup);
 
   // NOTE: this defaults the load context to:
@@ -5040,8 +5022,7 @@ WorkerPrivate::OverrideLoadInfoLoadGroup(WorkerLoadInfo& aLoadInfo)
 
   aLoadInfo.mLoadGroup = loadGroup.forget();
 
-  MOZ_ASSERT(NS_LoadGroupMatchesPrincipal(aLoadInfo.mLoadGroup,
-                                          aLoadInfo.mPrincipal));
+  MOZ_ASSERT(NS_LoadGroupMatchesPrincipal(aLoadInfo.mLoadGroup, aPrincipal));
 }
 
 void
@@ -5123,6 +5104,8 @@ WorkerPrivate::DoRunLoop(JSContext* aCx)
         // Flush uncaught rejections immediately, without
         // waiting for a next tick.
         PromiseDebugging::FlushUncaughtRejections();
+
+        mClientSource = nullptr;
 
         ShutdownGCTimers();
 
@@ -5283,6 +5266,108 @@ nsISerialEventTarget*
 WorkerPrivate::HybridEventTarget()
 {
   return mWorkerHybridEventTarget;
+}
+
+bool
+WorkerPrivate::EnsureClientSource()
+{
+  AssertIsOnWorkerThread();
+
+  if (mClientSource) {
+    return true;
+  }
+
+  ClientType type;
+  switch(Type()) {
+    case WorkerTypeDedicated:
+      type = ClientType::Worker;
+      break;
+    case WorkerTypeShared:
+      type = ClientType::Sharedworker;
+      break;
+    case WorkerTypeService:
+      type = ClientType::Serviceworker;
+      break;
+    default:
+      MOZ_CRASH("unknown worker type!");
+  }
+
+  mClientSource = ClientManager::CreateSource(type, mWorkerHybridEventTarget,
+                                              GetPrincipalInfo());
+  MOZ_DIAGNOSTIC_ASSERT(mClientSource);
+
+  if (mFrozen) {
+    mClientSource->Freeze();
+  }
+
+  // Shortly after the client is reserved we will try loading the main script
+  // for the worker.  This may get intercepted by the ServiceWorkerManager
+  // which will then try to create a ClientHandle.  Its actually possible for
+  // the main thread to create this ClientHandle before our IPC message creating
+  // the ClientSource completes.  To avoid this race we synchronously ping our
+  // parent Client actor here.  This ensure the worker ClientSource is created
+  // in the parent before the main thread might try reaching it with a
+  // ClientHandle.
+  //
+  // An alternative solution would have been to handle the out-of-order operations
+  // on the parent side.  We could have created a small window where we allow
+  // ClientHandle objects to exist without a ClientSource.  We would then time
+  // out these handles if they stayed orphaned for too long.  This approach would
+  // be much more complex, but also avoid this extra bit of latency when starting
+  // workers.
+  //
+  // Note, we only have to do this for workers that can be controlled by a
+  // service worker.  So avoid the sync overhead here if we are starting a
+  // service worker or a chrome worker.
+  if (Type() != WorkerTypeService && !IsChromeWorker()) {
+    mClientSource->WorkerSyncPing(this);
+  }
+
+  return true;
+}
+
+const ClientInfo&
+WorkerPrivate::GetClientInfo() const
+{
+  AssertIsOnWorkerThread();
+  MOZ_DIAGNOSTIC_ASSERT(mClientSource);
+  return mClientSource->Info();
+}
+
+const ClientState
+WorkerPrivate::GetClientState() const
+{
+  AssertIsOnWorkerThread();
+  MOZ_DIAGNOSTIC_ASSERT(mClientSource);
+  ClientState state;
+  mClientSource->SnapshotState(&state);
+  return Move(state);
+}
+
+const Maybe<ServiceWorkerDescriptor>
+WorkerPrivate::GetController() const
+{
+  AssertIsOnWorkerThread();
+  MOZ_DIAGNOSTIC_ASSERT(mClientSource);
+  return mClientSource->GetController();
+}
+
+void
+WorkerPrivate::Control(const ServiceWorkerDescriptor& aServiceWorker)
+{
+  AssertIsOnWorkerThread();
+  MOZ_DIAGNOSTIC_ASSERT(mClientSource);
+  MOZ_DIAGNOSTIC_ASSERT(!IsChromeWorker());
+  MOZ_DIAGNOSTIC_ASSERT(Type() != WorkerTypeService);
+  mClientSource->SetController(aServiceWorker);
+}
+
+void
+WorkerPrivate::ExecutionReady()
+{
+  AssertIsOnWorkerThread();
+  MOZ_DIAGNOSTIC_ASSERT(mClientSource);
+  mClientSource->WorkerExecutionReady(this);
 }
 
 void
@@ -5624,6 +5709,10 @@ WorkerPrivate::FreezeInternal()
 
   NS_ASSERTION(!mFrozen, "Already frozen!");
 
+  if (mClientSource) {
+    mClientSource->Freeze();
+  }
+
   mFrozen = true;
 
   for (uint32_t index = 0; index < mChildWorkers.Length(); index++) {
@@ -5645,6 +5734,11 @@ WorkerPrivate::ThawInternal()
   }
 
   mFrozen = false;
+
+  if (mClientSource) {
+    mClientSource->Thaw();
+  }
+
   return true;
 }
 
@@ -6750,19 +6844,6 @@ WorkerPrivate::UpdateLanguagesInternal(const nsTArray<nsString>& aLanguages)
 }
 
 void
-WorkerPrivate::UpdatePreferenceInternal(WorkerPreference aPref, bool aValue)
-{
-  AssertIsOnWorkerThread();
-  MOZ_ASSERT(aPref >= 0 && aPref < WORKERPREF_COUNT);
-
-  mPreferences[aPref] = aValue;
-
-  for (uint32_t index = 0; index < mChildWorkers.Length(); index++) {
-    mChildWorkers[index]->UpdatePreference(aPref, aValue);
-  }
-}
-
-void
 WorkerPrivate::UpdateJSWorkerMemoryParameterInternal(JSContext* aCx,
                                                      JSGCParamKey aKey,
                                                      uint32_t aValue)
@@ -7097,6 +7178,19 @@ WorkerPrivate::AssertIsOnWorkerThread() const
 }
 
 #endif // DEBUG
+
+void
+WorkerPrivate::DumpCrashInformation(nsACString& aString)
+{
+  AssertIsOnWorkerThread();
+
+  nsTObserverArray<WorkerHolder*>::ForwardIterator iter(mHolders);
+  while (iter.HasMore()) {
+    WorkerHolder* holder = iter.GetNext();
+    aString.Append("|");
+    aString.Append(holder->Name());
+  }
+}
 
 NS_IMPL_ISUPPORTS_INHERITED0(ExternalRunnableWrapper, WorkerRunnable)
 

@@ -15,6 +15,7 @@ class FirefoxConnector {
     this.connect = this.connect.bind(this);
     this.disconnect = this.disconnect.bind(this);
     this.willNavigate = this.willNavigate.bind(this);
+    this.navigate = this.navigate.bind(this);
     this.displayCachedEvents = this.displayCachedEvents.bind(this);
     this.onDocLoadingMarker = this.onDocLoadingMarker.bind(this);
     this.sendHTTPRequest = this.sendHTTPRequest.bind(this);
@@ -22,6 +23,7 @@ class FirefoxConnector {
     this.triggerActivity = this.triggerActivity.bind(this);
     this.getTabTarget = this.getTabTarget.bind(this);
     this.viewSourceInDebugger = this.viewSourceInDebugger.bind(this);
+    this.requestData = this.requestData.bind(this);
 
     // Internals
     this.getLongString = this.getLongString.bind(this);
@@ -33,6 +35,7 @@ class FirefoxConnector {
     this.getState = getState;
     this.tabTarget = connection.tabConnection.tabTarget;
     this.toolbox = connection.toolbox;
+    this.panel = connection.panel;
 
     this.webConsoleClient = this.tabTarget.activeConsole;
 
@@ -49,6 +52,7 @@ class FirefoxConnector {
     // Paused network panel should be automatically resumed when page
     // reload, so `will-navigate` listener needs to be there all the time.
     this.tabTarget.on("will-navigate", this.willNavigate);
+    this.tabTarget.on("navigate", this.navigate);
 
     // Don't start up waiting for timeline markers if the server isn't
     // recent enough to emit the markers we're interested in.
@@ -64,21 +68,25 @@ class FirefoxConnector {
   async disconnect() {
     this.actions.batchReset();
 
-    // The timeline front wasn't initialized and started if the server wasn't
-    // recent enough to emit the markers we were interested in.
-    if (this.tabTarget.getTrait("documentLoadingMarkers") && this.timelineFront) {
-      this.timelineFront.off("doc-loading", this.onDocLoadingMarker);
-      await this.timelineFront.destroy();
-    }
-
     this.removeListeners();
 
-    this.tabTarget.off("will-navigate");
+    if (this.tabTarget) {
+      // Unregister `will-navigate` needs to be done before `this.timelineFront.destroy()`
+      // since this.tabTarget might be nullified after timelineFront.destroy().
+      this.tabTarget.off("will-navigate");
+      // The timeline front wasn't initialized and started if the server wasn't
+      // recent enough to emit the markers we were interested in.
+      if (this.tabTarget.getTrait("documentLoadingMarkers") && this.timelineFront) {
+        this.timelineFront.off("doc-loading", this.onDocLoadingMarker);
+        await this.timelineFront.destroy();
+      }
+      this.tabTarget = null;
+    }
 
-    this.tabTarget = null;
     this.webConsoleClient = null;
     this.timelineFront = null;
     this.dataProvider = null;
+    this.panel = null;
   }
 
   pause() {
@@ -98,9 +106,13 @@ class FirefoxConnector {
   }
 
   removeListeners() {
-    this.tabTarget.off("close");
-    this.webConsoleClient.off("networkEvent");
-    this.webConsoleClient.off("networkEventUpdate");
+    if (this.tabTarget) {
+      this.tabTarget.off("close");
+    }
+    if (this.webConsoleClient) {
+      this.webConsoleClient.off("networkEvent");
+      this.webConsoleClient.off("networkEventUpdate");
+    }
   }
 
   willNavigate() {
@@ -116,6 +128,31 @@ class FirefoxConnector {
     let state = this.getState();
     if (!state.requests.recording) {
       this.actions.toggleRecording();
+    }
+  }
+
+  navigate() {
+    if (this.dataProvider.isPayloadQueueEmpty()) {
+      this.onReloaded();
+      return;
+    }
+    let listener = () => {
+      if (this.dataProvider && !this.dataProvider.isPayloadQueueEmpty()) {
+        return;
+      }
+      window.off(EVENTS.PAYLOAD_READY, listener);
+      // Netmonitor may already be destroyed,
+      // so do not try to notify the listeners
+      if (this.dataProvider) {
+        this.onReloaded();
+      }
+    };
+    window.on(EVENTS.PAYLOAD_READY, listener);
+  }
+
+  onReloaded() {
+    if (this.panel) {
+      this.panel.emit("reloaded");
     }
   }
 
@@ -284,6 +321,16 @@ class FirefoxConnector {
     if (this.toolbox) {
       this.toolbox.viewSourceInDebugger(sourceURL, sourceLine);
     }
+  }
+
+  /**
+   * Fetch networkEventUpdate websocket message from back-end when
+   * data provider is connected.
+   * @param {object} request network request instance
+   * @param {string} type NetworkEventUpdate type
+   */
+  requestData(request, type) {
+    return this.dataProvider.requestData(request, type);
   }
 }
 

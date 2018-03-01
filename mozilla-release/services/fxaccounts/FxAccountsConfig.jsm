@@ -28,6 +28,7 @@ const CONFIG_PREFS = [
   "identity.fxaccounts.remote.signup.uri",
   "identity.fxaccounts.remote.signin.uri",
   "identity.fxaccounts.remote.email.uri",
+  "identity.fxaccounts.remote.connectdevice.uri",
   "identity.fxaccounts.remote.force_auth.uri",
 ];
 
@@ -68,22 +69,6 @@ this.FxAccountsConfig = {
     }
     // Reset the webchannel.
     EnsureFxAccountsWebChannel();
-    if (!Services.prefs.prefHasUserValue("webchannel.allowObject.urlWhitelist")) {
-      return;
-    }
-    let whitelistValue = Services.prefs.getCharPref("webchannel.allowObject.urlWhitelist");
-    if (whitelistValue.startsWith(autoconfigURL + " ")) {
-      whitelistValue = whitelistValue.slice(autoconfigURL.length + 1);
-      // Check and see if the value will be the default, and just clear the pref if it would
-      // to avoid it showing up as changed in about:config.
-      let defaultWhitelist = Services.prefs.getDefaultBranch("webchannel.allowObject.").getCharPref("urlWhitelist", "");
-
-      if (defaultWhitelist === whitelistValue) {
-        Services.prefs.clearUserPref("webchannel.allowObject.urlWhitelist");
-      } else {
-        Services.prefs.setCharPref("webchannel.allowObject.urlWhitelist", whitelistValue);
-      }
-    }
   },
 
   getAutoConfigURL() {
@@ -161,13 +146,9 @@ this.FxAccountsConfig = {
       Services.prefs.setCharPref("identity.fxaccounts.remote.signup.uri", rootURL + "/signup?service=sync&context=" + contextParam);
       Services.prefs.setCharPref("identity.fxaccounts.remote.signin.uri", rootURL + "/signin?service=sync&context=" + contextParam);
       Services.prefs.setCharPref("identity.fxaccounts.remote.email.uri", rootURL + "/?service=sync&context=" + contextParam + "&action=email");
+      Services.prefs.setCharPref("identity.fxaccounts.remote.connectdevice.uri", rootURL + "/connect_another_device?service=sync&context=" + contextParam);
       Services.prefs.setCharPref("identity.fxaccounts.remote.force_auth.uri", rootURL + "/force_auth?service=sync&context=" + contextParam);
 
-      let whitelistValue = Services.prefs.getCharPref("webchannel.allowObject.urlWhitelist");
-      if (!whitelistValue.includes(rootURL)) {
-        whitelistValue = `${rootURL} ${whitelistValue}`;
-        Services.prefs.setCharPref("webchannel.allowObject.urlWhitelist", whitelistValue);
-      }
       // Ensure the webchannel is pointed at the correct uri
       EnsureFxAccountsWebChannel();
     } catch (e) {

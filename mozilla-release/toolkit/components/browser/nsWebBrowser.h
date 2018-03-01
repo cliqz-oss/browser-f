@@ -89,13 +89,16 @@ class nsWebBrowser final : public nsIWebBrowser,
 public:
 
   // The implementation of non-refcounted nsIWidgetListener, which would hold a
-  // strong reference on stack before calling nsWebBrowser.
+  // strong reference on stack before calling nsWebBrowser's
+  // MOZ_CAN_RUN_SCRIPT methods.
   class WidgetListenerDelegate : public nsIWidgetListener
   {
   public:
     explicit WidgetListenerDelegate(nsWebBrowser* aWebBrowser)
       : mWebBrowser(aWebBrowser) {}
-    virtual bool PaintWindow(
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual void WindowActivated() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual void WindowDeactivated() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual bool PaintWindow(
       nsIWidget* aWidget, mozilla::LayoutDeviceIntRegion aRegion) override;
 
   private:
@@ -133,10 +136,11 @@ protected:
   NS_IMETHOD UnBindListener(nsISupports* aListener, const nsIID& aIID);
   NS_IMETHOD EnableGlobalHistory(bool aEnable);
 
-  // nsIWidgetListener
-  virtual void WindowRaised(nsIWidget* aWidget);
-  virtual void WindowLowered(nsIWidget* aWidget);
-  bool PaintWindow(nsIWidget* aWidget, mozilla::LayoutDeviceIntRegion aRegion);
+  // nsIWidgetListener methods for WidgetListenerDelegate.
+  MOZ_CAN_RUN_SCRIPT void WindowActivated();
+  MOZ_CAN_RUN_SCRIPT void WindowDeactivated();
+  MOZ_CAN_RUN_SCRIPT bool PaintWindow(
+    nsIWidget* aWidget, mozilla::LayoutDeviceIntRegion aRegion);
 
 protected:
   RefPtr<nsDocShellTreeOwner> mDocShellTreeOwner;

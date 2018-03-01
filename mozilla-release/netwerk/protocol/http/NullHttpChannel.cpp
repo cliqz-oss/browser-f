@@ -289,6 +289,12 @@ NullHttpChannel::RedirectTo(nsIURI *aNewURI)
 }
 
 NS_IMETHODIMP
+NullHttpChannel::UpgradeToSecure()
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 NullHttpChannel::GetRequestContextID(uint64_t *_retval)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -875,6 +881,22 @@ NullHttpChannel::SetIsMainDocumentChannel(bool aValue)
 
 NS_IMETHODIMP
 NullHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::SetReportResourceTiming(bool enabled) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetReportResourceTiming(bool* _retval) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetServerTiming(nsIArray **aServerTiming)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

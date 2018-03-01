@@ -5,7 +5,7 @@ win32/debug:
         job-name: win32-debug
     treeherder:
         platform: windows2012-32/debug
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -14,12 +14,16 @@ win32/debug:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_32_debug.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/debug.py
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win32/opt:
@@ -29,7 +33,7 @@ win32/opt:
         job-name: win32-opt
     treeherder:
         platform: windows2012-32/opt
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -38,12 +42,16 @@ win32/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_32_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/opt.py
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win32-dmd/opt:
@@ -53,7 +61,7 @@ win32-dmd/opt:
         job-name: win32-dmd-opt
     treeherder:
         platform: windows2012-32-dmd/opt
-        symbol: tc(Bdmd)
+        symbol: Bdmd
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -62,14 +70,19 @@ win32-dmd/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_32_opt.py
-        custom-build-variant-cfg: dmd
-    run-on-projects: [ ]
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/opt.py
+        extra-config:
+            mozconfig_variant: 'opt-dmd'
+    run-on-projects: []
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win32/pgo:
@@ -79,7 +92,7 @@ win32/pgo:
         job-name: win32-pgo
     treeherder:
         platform: windows2012-32/pgo
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -88,13 +101,16 @@ win32/pgo:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
-        options: [enable-pgo]
+        options: [enable-pgo, append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_32_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/opt.py
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win64/debug:
@@ -104,7 +120,7 @@ win64/debug:
         job-name: win64-debug
     treeherder:
         platform: windows2012-64/debug
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -113,9 +129,13 @@ win64/debug:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_64_debug.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/debug.py
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -128,7 +148,7 @@ win64/opt:
         job-name: win64-opt
     treeherder:
         platform: windows2012-64/opt
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -137,9 +157,13 @@ win64/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_64_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/opt.py
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -152,7 +176,7 @@ win64-dmd/opt:
         job-name: win64-dmd-opt
     treeherder:
         platform: windows2012-64-dmd/opt
-        symbol: tc(Bdmd)
+        symbol: Bdmd
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -161,11 +185,16 @@ win64-dmd/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_64_opt.py
-        custom-build-variant-cfg: dmd
-    run-on-projects: [ ]
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/opt.py
+        extra-config:
+            mozconfig_variant: 'opt-dmd'
+    run-on-projects: []
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -179,9 +208,11 @@ win32-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: firefox
     treeherder:
         platform: windows2012-32/opt
-        symbol: tc(N)
+        symbol: N
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -191,14 +222,18 @@ win32-nightly/opt:
     run:
         using: mozharness
         actions: [clone-tools, build, check-test, update]
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_32_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/opt.py
             - disable_signing.py
             - taskcluster_nightly.py
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win64-nightly/opt:
@@ -209,9 +244,11 @@ win64-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: firefox
     treeherder:
         platform: windows2012-64/opt
-        symbol: tc(N)
+        symbol: N
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -221,9 +258,13 @@ win64-nightly/opt:
     run:
         using: mozharness
         actions: [clone-tools, build, check-test, update]
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_64_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/opt.py
             - disable_signing.py
             - taskcluster_nightly.py
     toolchains:
@@ -238,7 +279,7 @@ win64/pgo:
         job-name: win64-pgo
     treeherder:
         platform: windows2012-64/pgo
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -247,10 +288,13 @@ win64/pgo:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
-        options: [enable-pgo]
+        options: [enable-pgo, append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_64_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/opt.py
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -263,7 +307,7 @@ win32-add-on-devel/opt:
         job-name: win32-add-on-devel
     treeherder:
         platform: windows2012-32-add-on-devel/opt
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -272,14 +316,18 @@ win32-add-on-devel/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: "mozharness/scripts/fx_desktop_build.py"
         config:
-            - builds/taskcluster_firefox_windows_32_addondevel.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/addondevel.py
             - balrog/production.py
-    run-on-projects: [ 'mozilla-beta', 'mozilla-release', 'mozilla-esr45' ]
+    run-on-projects: ['mozilla-beta', 'mozilla-release', 'mozilla-esr45']
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win64-add-on-devel/opt:
@@ -289,7 +337,7 @@ win64-add-on-devel/opt:
         job-name: win64-add-on-devel
     treeherder:
         platform: windows2012-64-add-on-devel/opt
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -298,11 +346,15 @@ win64-add-on-devel/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: "mozharness/scripts/fx_desktop_build.py"
         config:
-            - builds/taskcluster_firefox_windows_64_addondevel.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/addondevel.py
             - balrog/production.py
-    run-on-projects: [ 'mozilla-beta', 'mozilla-release', 'mozilla-esr45' ]
+    run-on-projects: ['mozilla-beta', 'mozilla-release', 'mozilla-esr45']
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -315,7 +367,7 @@ win64-noopt/debug:
         job-name: win64-noopt-debug
     treeherder:
         platform: windows2012-64-noopt/debug
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -324,10 +376,14 @@ win64-noopt/debug:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_win64_noopt_debug.py
-    run-on-projects: [ 'trunk', 'try' ]
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/noopt_debug.py
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -340,7 +396,7 @@ win32-noopt/debug:
         job-name: win32-noopt-debug
     treeherder:
         platform: windows2012-32-noopt/debug
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -349,13 +405,17 @@ win32-noopt/debug:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_win32_noopt_debug.py
-    run-on-projects: [ 'trunk', 'try' ]
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/noopt_debug.py
+    run-on-projects: ['trunk', 'try']
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win32-rusttests/opt:
@@ -364,23 +424,28 @@ win32-rusttests/opt:
         product: firefox
         job-name: win32-rusttests-opt
     treeherder:
-        platform: windows2012-32-rusttests/opt
-        symbol: tc(BR)
+        platform: windows2012-32/opt
+        symbol: BR
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
         env:
+            PERFHERDER_EXTRA_OPTIONS: rusttests
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_win32_rusttests_opt.py
-    run-on-projects: [ 'trunk', 'try' ]
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/rusttests_opt.py
+    run-on-projects: ['trunk', 'try']
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win64-rusttests/opt:
@@ -389,8 +454,38 @@ win64-rusttests/opt:
         product: firefox
         job-name: win64-rusttests-opt
     treeherder:
-        platform: windows2012-64-rusttests/opt
-        symbol: tc(BR)
+        platform: windows2012-64/opt
+        symbol: BR
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            PERFHERDER_EXTRA_OPTIONS: rusttests
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/rusttests_opt.py
+    run-on-projects: ['trunk', 'try']
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-sccache
+
+win64-ccov/debug:
+    description: "Win64 Debug Code Coverage"
+    index:
+        product: firefox
+        job-name: win64-ccov-debug
+    treeherder:
+        platform: windows2012-64/ccov
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -399,10 +494,14 @@ win64-rusttests/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_win64_rusttests_opt.py
-    run-on-projects: [ 'trunk', 'try' ]
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/ccov_debug.py
+    run-on-projects: []
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -415,18 +514,23 @@ win64-asan/debug:
         job-name: win64-asan-debug
     treeherder:
         platform: windows2012-64/asan
-        symbol: tc(Bd)
+        symbol: Bd
         tier: 3
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
         env:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: "debug asan"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_win64_asan_debug.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/asan_debug.py
     run-on-projects: []
     toolchains:
         - win64-clang-cl
@@ -440,18 +544,23 @@ win64-asan/opt:
         job-name: win64-asan-opt
     treeherder:
         platform: windows2012-64/asan
-        symbol: tc(Bo)
+        symbol: Bo
         tier: 3
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
         env:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: "opt asan"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_win64_asan_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/asan_opt.py
     run-on-projects: []
     toolchains:
         - win64-clang-cl
@@ -466,9 +575,11 @@ win32-devedition-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: devedition
     treeherder:
         platform: windows2012-32-devedition/opt
-        symbol: tc(N)
+        symbol: N
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -478,15 +589,19 @@ win32-devedition-nightly/opt:
     run:
         using: mozharness
         script: mozharness/scripts/fx_desktop_build.py
+        options: [enable-pgo, append-env-variables-from-configs]
         config:
-            - builds/taskcluster_firefox_windows_32_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/opt.py
             - disable_signing.py
             - taskcluster_nightly.py
         custom-build-variant-cfg: devedition
-    run-on-projects: [ 'mozilla-beta', ]
+    run-on-projects: ['mozilla-beta']
     toolchains:
-        - win32-clang-cl
-        - win32-rust
+        - win64-clang-cl
+        - win64-rust
         - win64-sccache
 
 win64-devedition-nightly/opt:
@@ -497,9 +612,11 @@ win64-devedition-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: devedition
     treeherder:
         platform: windows2012-64-devedition/opt
-        symbol: tc(N)
+        symbol: N
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
@@ -508,13 +625,17 @@ win64-devedition-nightly/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
-            - builds/taskcluster_firefox_windows_64_opt.py
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/opt.py
             - disable_signing.py
             - taskcluster_nightly.py
         custom-build-variant-cfg: devedition
-    run-on-projects: [ 'mozilla-beta', ]
+    run-on-projects: ['mozilla-beta']
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -527,7 +648,7 @@ win32-mingw32/debug:
         job-name: win32-mingw32-debug
     treeherder:
         platform: windows-mingw32-32/debug
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
@@ -536,6 +657,7 @@ win32-mingw32/debug:
         using: mozharness
         script: mozharness/scripts/fx_desktop_build.py
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_windows_32_mingw_builds.py
         need-xvfb: false
     toolchains:

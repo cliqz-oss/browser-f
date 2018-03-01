@@ -6,6 +6,7 @@
 
 #include "OffscreenCanvas.h"
 
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/OffscreenCanvasBinding.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerScope.h"
@@ -225,14 +226,7 @@ OffscreenCanvas::TransferToImageBitmap(ErrorResult& aRv)
     return nullptr;
   }
 
-  // Clear the content.
-  if ((mCurrentContextType == CanvasContextType::WebGL1 ||
-       mCurrentContextType == CanvasContextType::WebGL2))
-  {
-    WebGLContext* webGL = static_cast<WebGLContext*>(mCurrentContext.get());
-    webGL->ClearScreen();
-  }
-
+  // TODO: Clear the content?
   return result.forget();
 }
 
@@ -264,7 +258,7 @@ OffscreenCanvas::ToBlob(JSContext* aCx,
       , mPromise(aPromise) {}
 
     // This is called on main thread.
-    nsresult ReceiveBlob(already_AddRefed<Blob> aBlob)
+    nsresult ReceiveBlob(already_AddRefed<Blob> aBlob) override
     {
       RefPtr<Blob> blob = aBlob;
 
@@ -333,25 +327,13 @@ OffscreenCanvas::CreateFromCloneData(nsIGlobalObject* aGlobal, OffscreenCanvasCl
 }
 
 /* static */ bool
-OffscreenCanvas::PrefEnabled(JSContext* aCx, JSObject* aObj)
-{
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("gfx.offscreencanvas.enabled");
-  } else {
-    WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-    MOZ_ASSERT(workerPrivate);
-    return workerPrivate->OffscreenCanvasEnabled();
-  }
-}
-
-/* static */ bool
 OffscreenCanvas::PrefEnabledOnWorkerThread(JSContext* aCx, JSObject* aObj)
 {
   if (NS_IsMainThread()) {
     return true;
   }
 
-  return PrefEnabled(aCx, aObj);
+  return DOMPrefs::OffscreenCanvasEnabled(aCx, aObj);
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(OffscreenCanvas, DOMEventTargetHelper, mCurrentContext)

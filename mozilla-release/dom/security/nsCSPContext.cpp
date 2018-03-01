@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <string>
+#include <unordered_set>
+
 #include "nsCOMPtr.h"
 #include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
@@ -39,6 +42,7 @@
 #include "nsScriptSecurityManager.h"
 #include "nsStringStream.h"
 #include "mozilla/Logging.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/dom/CSPReportBinding.h"
 #include "mozilla/dom/CSPDictionariesBinding.h"
 #include "mozilla/net/ReferrerPolicy.h"
@@ -62,6 +66,29 @@ GetCspContextLog()
 #define CSPCONTEXTLOGENABLED() MOZ_LOG_TEST(GetCspContextLog(), mozilla::LogLevel::Debug)
 
 static const uint32_t CSP_CACHE_URI_CUTOFF_SIZE = 512;
+
+#ifdef DEBUG
+/**
+ * This function is only used for verification purposes within
+ * GatherSecurityPolicyViolationEventData.
+ */
+static bool
+ValidateDirectiveName(const nsAString& aDirective)
+{
+  static const auto directives = [] () {
+    std::unordered_set<std::string> directives;
+    constexpr size_t dirLen = sizeof(CSPStrDirectives) / sizeof(CSPStrDirectives[0]);
+    for (size_t i = 0; i < dirLen; ++i) {
+      directives.insert(CSPStrDirectives[i]);
+    }
+    return directives;
+  } ();
+
+  nsAutoString directive(aDirective);
+  auto itr = directives.find(NS_ConvertUTF16toUTF8(directive).get());
+  return itr != directives.end();
+}
+#endif // DEBUG
 
 /**
  * Creates a key for use in the ShouldLoad cache.
@@ -271,12 +298,25 @@ NS_IMPL_ISUPPORTS_CI(nsCSPContext,
                      nsIContentSecurityPolicy,
                      nsISerializable)
 
+int32_t nsCSPContext::sScriptSampleMaxLength;
+bool nsCSPContext::sViolationEventsEnabled = false;
+
 nsCSPContext::nsCSPContext()
   : mInnerWindowID(0)
   , mLoadingContext(nullptr)
   , mLoadingPrincipal(nullptr)
   , mQueueUpMessages(true)
 {
+  static bool sInitialized = false;
+  if (!sInitialized) {
+    Preferences::AddIntVarCache(&sScriptSampleMaxLength,
+                                "security.csp.reporting.script-sample.max-length",
+                                40);
+    Preferences::AddBoolVarCache(&sViolationEventsEnabled,
+                                 "security.csp.enable_violation_events");
+    sInitialized = true;
+  }
+
   CSPCONTEXTLOG(("nsCSPContext::nsCSPContext"));
 }
 
@@ -412,6 +452,16 @@ nsCSPContext::AppendPolicy(const nsAString& aPolicyString,
                                                                 aReportOnly, this,
                                                                 aDeliveredViaMetaTag);
   if (policy) {
+    if (policy->hasDirective(nsIContentSecurityPolicy::UPGRADE_IF_INSECURE_DIRECTIVE)) {
+      nsAutoCString selfURIspec, referrer;
+      if (mSelfURI) {
+        mSelfURI->GetAsciiSpec(selfURIspec);
+      }
+      referrer = NS_ConvertUTF16toUTF8(mReferrer);
+      CSPCONTEXTLOG(("nsCSPContext::AppendPolicy added UPGRADE_IF_INSECURE_DIRECTIVE self-uri=%s referrer=%s",
+                     selfURIspec.get(), referrer.get()));
+    }
+
     mPolicies.AppendElement(policy);
     // reset cache since effective policy changes
     mShouldLoadCache.Clear();
@@ -479,9 +529,9 @@ nsCSPContext::reportInlineViolation(nsContentPolicyType aContentType,
   }
 
   nsAutoString codeSample(aContent);
-  // cap the length of the script sample at 40 chars
-  if (codeSample.Length() > 40) {
-    codeSample.Truncate(40);
+  // cap the length of the script sample
+  if (codeSample.Length() > ScriptSampleMaxLength()) {
+    codeSample.Truncate(ScriptSampleMaxLength());
     codeSample.AppendLiteral("...");
   }
   AsyncReportViolation(selfISupports,                      // aBlockedContentSource
@@ -832,36 +882,30 @@ StripURIForReporting(nsIURI* aURI,
   aURI->GetSpecIgnoringRef(outStrippedURI);
 }
 
-/**
- * Sends CSP violation reports to all sources listed under report-uri.
- *
- * @param aBlockedContentSource
- *        Either a CSP Source (like 'self', as string) or nsIURI: the source
- *        of the violation.
- * @param aOriginalUri
- *        The original URI if the blocked content is a redirect, else null
- * @param aViolatedDirective
- *        the directive that was violated (string).
- * @param aSourceFile
- *        name of the file containing the inline script violation
- * @param aScriptSample
- *        a sample of the violating inline script
- * @param aLineNum
- *        source line number of the violation (if available)
- */
 nsresult
-nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
-                          nsIURI* aOriginalURI,
-                          nsAString& aViolatedDirective,
-                          uint32_t aViolatedPolicyIndex,
-                          nsAString& aSourceFile,
-                          nsAString& aScriptSample,
-                          uint32_t aLineNum)
+nsCSPContext::GatherSecurityPolicyViolationEventData(
+  nsISupports* aBlockedContentSource,
+  nsIURI* aOriginalURI,
+  nsAString& aViolatedDirective,
+  uint32_t aViolatedPolicyIndex,
+  nsAString& aSourceFile,
+  nsAString& aScriptSample,
+  uint32_t aLineNum,
+  mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit)
 {
   NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, mPolicies.Length() - 1);
 
-  dom::CSPReport report;
+  MOZ_ASSERT(ValidateDirectiveName(aViolatedDirective), "Invalid directive name");
+
   nsresult rv;
+
+  // document-uri
+  nsAutoCString reportDocumentURI;
+  StripURIForReporting(mSelfURI, mSelfURI, reportDocumentURI);
+  aViolationEventInit.mDocumentURI = NS_ConvertUTF8toUTF16(reportDocumentURI);
+
+  // referrer
+  aViolationEventInit.mReferrer = mReferrer;
 
   // blocked-uri
   if (aBlockedContentSource) {
@@ -881,27 +925,23 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
       // ancestor is cross-origin.
       NS_WARNING("No blocked URI (null aBlockedContentSource) for CSP violation report.");
     }
-    report.mCsp_report.mBlocked_uri = NS_ConvertUTF8toUTF16(reportBlockedURI);
+    aViolationEventInit.mBlockedURI = NS_ConvertUTF8toUTF16(reportBlockedURI);
   }
 
-  // document-uri
-  nsAutoCString reportDocumentURI;
-  StripURIForReporting(mSelfURI, mSelfURI, reportDocumentURI);
-  report.mCsp_report.mDocument_uri = NS_ConvertUTF8toUTF16(reportDocumentURI);
+  // effective-directive
+  // The name of the policy directive that was violated.
+  aViolationEventInit.mEffectiveDirective = aViolatedDirective;
+
+  // violated-directive
+  // In CSP2, the policy directive that was violated, as it appears in the policy.
+  // In CSP3, the same as effective-directive.
+  aViolationEventInit.mViolatedDirective = aViolatedDirective;
 
   // original-policy
   nsAutoString originalPolicy;
   rv = this->GetPolicyString(aViolatedPolicyIndex, originalPolicy);
   NS_ENSURE_SUCCESS(rv, rv);
-  report.mCsp_report.mOriginal_policy = originalPolicy;
-
-  // referrer
-  if (!mReferrer.IsEmpty()) {
-    report.mCsp_report.mReferrer = mReferrer;
-  }
-
-  // violated-directive
-  report.mCsp_report.mViolated_directive = aViolatedDirective;
+  aViolationEventInit.mOriginalPolicy = originalPolicy;
 
   // source-file
   if (!aSourceFile.IsEmpty()) {
@@ -913,20 +953,87 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
       sourceURI->GetSpecIgnoringRef(spec);
       aSourceFile = NS_ConvertUTF8toUTF16(spec);
     }
+    aViolationEventInit.mSourceFile = aSourceFile;
+  }
+
+  // sample
+  aViolationEventInit.mSample = aScriptSample;
+
+  // disposition
+  aViolationEventInit.mDisposition = mPolicies[aViolatedPolicyIndex]->getReportOnlyFlag()
+    ? mozilla::dom::SecurityPolicyViolationEventDisposition::Report
+    : mozilla::dom::SecurityPolicyViolationEventDisposition::Enforce;
+
+  // status-code
+  uint16_t statusCode = 0;
+  {
+    nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+    if (doc) {
+      nsCOMPtr<nsIHttpChannel> channel = do_QueryInterface(doc->GetChannel());
+      if (channel) {
+        uint32_t responseStatus = 0;
+        nsresult rv = channel->GetResponseStatus(&responseStatus);
+        if (NS_SUCCEEDED(rv) && (responseStatus <= UINT16_MAX)) {
+          statusCode = static_cast<uint16_t>(responseStatus);
+        }
+      }
+    }
+  }
+  aViolationEventInit.mStatusCode = statusCode;
+
+  // line-number
+  aViolationEventInit.mLineNumber = aLineNum;
+
+  // column-number
+  // TODO: Set correct column number.
+  aViolationEventInit.mColumnNumber = 0;
+
+  aViolationEventInit.mBubbles = true;
+  aViolationEventInit.mComposed = true;
+
+  return NS_OK;
+}
+
+nsresult
+nsCSPContext::SendReports(
+  const mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit,
+  uint32_t aViolatedPolicyIndex)
+{
+  NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, mPolicies.Length() - 1);
+
+  dom::CSPReport report;
+
+  // blocked-uri
+  report.mCsp_report.mBlocked_uri = aViolationEventInit.mBlockedURI;
+
+  // document-uri
+  report.mCsp_report.mDocument_uri = aViolationEventInit.mDocumentURI;
+
+  // original-policy
+  report.mCsp_report.mOriginal_policy = aViolationEventInit.mOriginalPolicy;
+
+  // referrer
+  report.mCsp_report.mReferrer = aViolationEventInit.mReferrer;
+
+  // violated-directive
+  report.mCsp_report.mViolated_directive = aViolationEventInit.mViolatedDirective;
+
+  // source-file
+  if (!aViolationEventInit.mSourceFile.IsEmpty()) {
     report.mCsp_report.mSource_file.Construct();
-    report.mCsp_report.mSource_file.Value() = aSourceFile;
+    report.mCsp_report.mSource_file.Value() = aViolationEventInit.mSourceFile;
   }
 
   // script-sample
-  if (!aScriptSample.IsEmpty()) {
+  if (!aViolationEventInit.mSample.IsEmpty()) {
     report.mCsp_report.mScript_sample.Construct();
-    report.mCsp_report.mScript_sample.Value() = aScriptSample;
+    report.mCsp_report.mScript_sample.Value() = aViolationEventInit.mSample;
   }
 
   // line-number
-  if (aLineNum != 0) {
+  if (aViolationEventInit.mLineNumber != 0) {
     report.mCsp_report.mLine_number.Construct();
-    report.mCsp_report.mLine_number.Value() = aLineNum;
+    report.mCsp_report.mLine_number.Value() = aViolationEventInit.mLineNumber;
   }
 
   nsString csp_report;
@@ -939,11 +1046,11 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
   nsTArray<nsString> reportURIs;
   mPolicies[aViolatedPolicyIndex]->getReportURIs(reportURIs);
 
-
   nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
   nsCOMPtr<nsIURI> reportURI;
   nsCOMPtr<nsIChannel> reportChannel;
 
+  nsresult rv;
   for (uint32_t r = 0; r < reportURIs.Length(); r++) {
     nsAutoCString reportURICstring = NS_ConvertUTF16toUTF8(reportURIs[r]);
     // try to create a new uri from every report-uri string
@@ -953,7 +1060,8 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
       CSPCONTEXTLOG(("Could not create nsIURI for report URI %s",
                      reportURICstring.get()));
       logToConsole("triedToSendReport", params, ArrayLength(params),
-                   aSourceFile, aScriptSample, aLineNum, 0, nsIScriptError::errorFlag);
+                   aViolationEventInit.mSourceFile, aViolationEventInit.mSample,
+                   aViolationEventInit.mLineNumber, 0, nsIScriptError::errorFlag);
       continue; // don't return yet, there may be more URIs
     }
 
@@ -994,7 +1102,8 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
     if (!isHttpScheme) {
       const char16_t* params[] = { reportURIs[r].get() };
       logToConsole("reportURInotHttpsOrHttp2", params, ArrayLength(params),
-                   aSourceFile, aScriptSample, aLineNum, 0, nsIScriptError::errorFlag);
+                   aViolationEventInit.mSourceFile, aViolationEventInit.mSample,
+                   aViolationEventInit.mLineNumber, 0, nsIScriptError::errorFlag);
       continue;
     }
 
@@ -1059,12 +1168,37 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
       const char16_t* params[] = { reportURIs[r].get() };
       CSPCONTEXTLOG(("AsyncOpen failed for report URI %s", NS_ConvertUTF16toUTF8(params[0]).get()));
       logToConsole("triedToSendReport", params, ArrayLength(params),
-                   aSourceFile, aScriptSample, aLineNum, 0, nsIScriptError::errorFlag);
+                   aViolationEventInit.mSourceFile, aViolationEventInit.mSample,
+                   aViolationEventInit.mLineNumber, 0, nsIScriptError::errorFlag);
     } else {
       CSPCONTEXTLOG(("Sent violation report to URI %s", reportURICstring.get()));
     }
   }
   return NS_OK;
+}
+
+nsresult
+nsCSPContext::FireViolationEvent(
+  const mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit)
+{
+  if (!sViolationEventsEnabled) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+  if (!doc) {
+    return NS_OK;
+  }
+
+  RefPtr<mozilla::dom::Event> event =
+    mozilla::dom::SecurityPolicyViolationEvent::Constructor(
+      doc,
+      NS_LITERAL_STRING("securitypolicyviolation"),
+      aViolationEventInit);
+  event->SetTrusted(true);
+
+  bool rv;
+  return doc->DispatchEvent(event, &rv);
 }
 
 /**
@@ -1113,18 +1247,27 @@ class CSPReportSenderRunnable final : public Runnable
     {
       MOZ_ASSERT(NS_IsMainThread());
 
+      nsresult rv;
+
+      // 0) prepare violation data
+      mozilla::dom::SecurityPolicyViolationEventInit init;
+      rv = mCSPContext->GatherSecurityPolicyViolationEventData(
+        mBlockedContentSource, mOriginalURI,
+        mViolatedDirective, mViolatedPolicyIndex,
+        mSourceFile, mScriptSample, mLineNum,
+        init);
+      NS_ENSURE_SUCCESS(rv, rv);
+
       // 1) notify observers
       nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
       NS_ASSERTION(observerService, "needs observer service");
-      nsresult rv = observerService->NotifyObservers(mObserverSubject,
+      rv = observerService->NotifyObservers(mObserverSubject,
                                                      CSP_VIOLATION_TOPIC,
                                                      mViolatedDirective.get());
       NS_ENSURE_SUCCESS(rv, rv);
 
       // 2) send reports for the policy that was violated
-      mCSPContext->SendReports(mBlockedContentSource, mOriginalURI,
-                               mViolatedDirective, mViolatedPolicyIndex,
-                               mSourceFile, mScriptSample, mLineNum);
+      mCSPContext->SendReports(init, mViolatedPolicyIndex);
 
       // 3) log to console (one per policy violation)
       // mBlockedContentSource could be a URI or a string.
@@ -1157,6 +1300,10 @@ class CSPReportSenderRunnable final : public Runnable
                                   params, ArrayLength(params), mSourceFile, mScriptSample,
                                   mLineNum, 0, nsIScriptError::errorFlag);
       }
+
+      // 4) fire violation event
+      mCSPContext->FireViolationEvent(init);
+
       return NS_OK;
     }
 

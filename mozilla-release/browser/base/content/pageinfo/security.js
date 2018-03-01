@@ -52,8 +52,7 @@ var security = {
     if (!isInsecure && status) {
       status.QueryInterface(nsISSLStatus);
       var cert = status.serverCert;
-      var issuerName =
-        this.mapIssuerOrganization(cert.issuerOrganization) || cert.issuerName;
+      var issuerName = cert.issuerOrganization || cert.issuerName;
 
       var retval = {
         hostName,
@@ -132,31 +131,15 @@ var security = {
     return null;
   },
 
-  // Interface for mapping a certificate issuer organization to
-  // the value to be displayed.
-  // Bug 82017 - this implementation should be moved to pipnss C++ code
-  mapIssuerOrganization(name) {
-    if (!name) return null;
-
-    if (name == "RSA Data Security, Inc.") return "Verisign, Inc.";
-
-    // No mapping required
-    return name;
-  },
-
   /**
    * Open the cookie manager window
    */
   viewCookies() {
-    var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"]
-                       .getService(Components.interfaces.nsIWindowMediator);
-    var win = wm.getMostRecentWindow("Browser:Cookies");
-    var eTLDService = Components.classes["@mozilla.org/network/effective-tld-service;1"].
-                      getService(Components.interfaces.nsIEffectiveTLDService);
+    var win = Services.wm.getMostRecentWindow("Browser:Cookies");
 
     var eTLD;
     try {
-      eTLD = eTLDService.getBaseDomain(this.uri);
+      eTLD = Services.eTLD.getBaseDomain(this.uri);
     } catch (e) {
       // getBaseDomain will fail if the host is an IP address or is empty
       eTLD = this.uri.asciiHost;
@@ -204,7 +187,7 @@ function securityOnLoad(uri, windowInfo) {
     // fields must be specified for subject and issuer so that case is simpler.
     if (info.isEV) {
       owner = info.cert.organization;
-      verifier = security.mapIssuerOrganization(info.cAName);
+      verifier = info.cAName;
     } else {
       // Technically, a non-EV cert might specify an owner in the O field or not,
       // depending on the CA's issuing policies.  However we don't have any programmatic
@@ -212,9 +195,7 @@ function securityOnLoad(uri, windowInfo) {
       // vetting standards are good enough (that's what EV is for) so we default to
       // treating these certs as domain-validated only.
       owner = pageInfoBundle.getString("securityNoOwner");
-      verifier = security.mapIssuerOrganization(info.cAName ||
-                                                info.cert.issuerCommonName ||
-                                                info.cert.issuerName);
+      verifier = info.cAName || info.cert.issuerCommonName || info.cert.issuerName;
     }
   } else {
     // We don't have valid identity credentials.
@@ -333,10 +314,7 @@ function viewCertHelper(parent, cert) {
  * Return true iff we have cookies for uri
  */
 function hostHasCookies(uri) {
-  var cookieManager = Components.classes["@mozilla.org/cookiemanager;1"]
-                                .getService(Components.interfaces.nsICookieManager);
-
-  return cookieManager.countCookiesFromHost(uri.asciiHost) > 0;
+  return Services.cookies.countCookiesFromHost(uri.asciiHost) > 0;
 }
 
 /**
@@ -344,9 +322,7 @@ function hostHasCookies(uri) {
  * saved passwords
  */
 function realmHasPasswords(uri) {
-  var passwordManager = Components.classes["@mozilla.org/login-manager;1"]
-                                  .getService(Components.interfaces.nsILoginManager);
-  return passwordManager.countLogins(uri.prePath, "", "") > 0;
+  return Services.logins.countLogins(uri.prePath, "", "") > 0;
 }
 
 /**

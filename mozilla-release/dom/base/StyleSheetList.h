@@ -7,7 +7,8 @@
 #ifndef mozilla_dom_StyleSheetList_h
 #define mozilla_dom_StyleSheetList_h
 
-#include "nsIDOMStyleSheetList.h"
+#include "mozilla/dom/DocumentOrShadowRoot.h"
+#include "nsStubMutationObserver.h"
 #include "nsWrapperCache.h"
 
 class nsINode;
@@ -17,28 +18,51 @@ class StyleSheet;
 
 namespace dom {
 
-class StyleSheetList : public nsIDOMStyleSheetList
-                     , public nsWrapperCache
+class StyleSheetList final : public nsStubMutationObserver
+                           , public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(StyleSheetList)
-  NS_DECL_NSIDOMSTYLESHEETLIST
+
+  NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
+
+  explicit StyleSheetList(DocumentOrShadowRoot& aScope);
 
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override final;
 
-  virtual nsINode* GetParentObject() const = 0;
+  nsINode* GetParentObject() const
+  {
+    return mDocumentOrShadowRoot ? &mDocumentOrShadowRoot->AsNode() : nullptr;
+  }
 
-  virtual uint32_t Length() = 0;
-  virtual StyleSheet* IndexedGetter(uint32_t aIndex, bool& aFound) = 0;
-  StyleSheet* Item(uint32_t aIndex)
+  uint32_t Length() const
+  {
+    return mDocumentOrShadowRoot ? mDocumentOrShadowRoot->SheetCount() : 0;
+  }
+
+  StyleSheet* IndexedGetter(uint32_t aIndex, bool& aFound) const
+  {
+    if (!mDocumentOrShadowRoot) {
+      aFound = false;
+      return nullptr;
+    }
+
+    StyleSheet* sheet = mDocumentOrShadowRoot->SheetAt(aIndex);
+    aFound = !!sheet;
+    return sheet;
+  }
+
+  StyleSheet* Item(uint32_t aIndex) const
   {
     bool dummy = false;
     return IndexedGetter(aIndex, dummy);
   }
 
 protected:
-  virtual ~StyleSheetList() {}
+  virtual ~StyleSheetList();
+
+  DocumentOrShadowRoot* mDocumentOrShadowRoot; // Weak, cleared on "NodeWillBeDestroyed".
 };
 
 } // namespace dom

@@ -16,3 +16,4 @@
 <!ENTITY languages.customize.addButton.label            "Hinzufügen">
 <!ENTITY languages.customize.addButton.accesskey        "z">
 
+<!ENTITY languages.customize.spoofEnglish               "Englischsprachige Versionen von Websites für verbesserte Privatsphäre anfordern">

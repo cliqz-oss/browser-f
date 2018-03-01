@@ -229,8 +229,10 @@ nsGNOMEShellService::IsDefaultBrowser(bool aStartupCheck,
 
     if (giovfs) {
       handler.Truncate();
+      nsCOMPtr<nsIHandlerApp> handlerApp;
       giovfs->GetAppForURIScheme(nsDependentCString(appProtocols[i].name),
-                                 getter_AddRefs(gioApp));
+                                 getter_AddRefs(handlerApp));
+      gioApp = do_QueryInterface(handlerApp);
       if (!gioApp)
         return NS_OK;
 
@@ -294,10 +296,15 @@ nsGNOMEShellService::SetDefaultBrowser(bool aClaimAllTypes,
     // use brandShortName as the application id.
     NS_ConvertUTF16toUTF8 id(brandShortName);
     nsCOMPtr<nsIGIOMimeApp> appInfo;
-    rv = giovfs->CreateAppFromCommand(mAppPath,
-                                      id,
-                                      getter_AddRefs(appInfo));
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = giovfs->FindAppFromCommand(mAppPath, getter_AddRefs(appInfo));
+    if (NS_FAILED(rv)) {
+      // Application was not found in the list of installed applications provided
+      // by OS. Fallback to create appInfo from command and name.
+      rv = giovfs->CreateAppFromCommand(mAppPath,
+                                        id,
+                                        getter_AddRefs(appInfo));
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
 
     // set handler for the protocols
     for (unsigned int i = 0; i < ArrayLength(appProtocols); ++i) {
@@ -566,10 +573,10 @@ nsGNOMEShellService::OpenApplication(int32_t aApplication)
 
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (giovfs) {
-    nsCOMPtr<nsIGIOMimeApp> gioApp;
-    giovfs->GetAppForURIScheme(scheme, getter_AddRefs(gioApp));
-    if (gioApp)
-      return gioApp->Launch(EmptyCString());
+    nsCOMPtr<nsIHandlerApp> handlerApp;
+    giovfs->GetAppForURIScheme(scheme, getter_AddRefs(handlerApp));
+    if (handlerApp)
+      return handlerApp->LaunchWithURI(nullptr, nullptr);
   }
 
   nsCOMPtr<nsIGConfService> gconf = do_GetService(NS_GCONFSERVICE_CONTRACTID);

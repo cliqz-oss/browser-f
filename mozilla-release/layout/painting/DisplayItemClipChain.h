@@ -44,6 +44,11 @@ struct DisplayItemClipChain {
                                            const ActiveScrolledRoot* aASR);
 
   static bool Equal(const DisplayItemClipChain* aClip1, const DisplayItemClipChain* aClip2);
+  /**
+   * Hash function that returns the same value for any two clips A and B
+   * where Equal(A, B) is true.
+   */
+  static uint32_t Hash(const DisplayItemClipChain* aClip);
 
   static nsCString ToString(const DisplayItemClipChain* aClipChain);
 
@@ -61,14 +66,44 @@ struct DisplayItemClipChain {
     : mClip(aClip)
     , mASR(aASR)
     , mParent(aParent)
+#ifdef DEBUG
+    , mOnStack(true)
+#endif
   {}
 
-  DisplayItemClipChain() {}
+  DisplayItemClipChain()
+#ifdef DEBUG
+    : mOnStack(true)
+#endif
+  {}
 
   DisplayItemClip mClip;
   const ActiveScrolledRoot* mASR;
   RefPtr<const DisplayItemClipChain> mParent;
   mutable uint32_t mRefCount = 0;
+#ifdef DEBUG
+  bool mOnStack;
+#endif
+};
+
+struct DisplayItemClipChainHasher
+{
+  typedef const DisplayItemClipChain* Key;
+
+  std::size_t operator()(const Key& aKey) const
+  {
+    return DisplayItemClipChain::Hash(aKey);
+  }
+};
+
+struct DisplayItemClipChainEqualer
+{
+  typedef const DisplayItemClipChain* Key;
+
+  bool operator()(const Key& lhs, const Key& rhs) const
+  {
+    return DisplayItemClipChain::Equal(lhs, rhs);
+  }
 };
 
 } // namespace mozilla

@@ -42,7 +42,7 @@ class PolicyBase final : public TargetPolicy {
   ResultCode SetTokenLevel(TokenLevel initial, TokenLevel lockdown) override;
   TokenLevel GetInitialTokenLevel() const override;
   TokenLevel GetLockdownTokenLevel() const override;
-  void SetDoNotUseRestrictingSIDs() final;
+  void SetDoNotUseRestrictingSIDs() final override;
   ResultCode SetJobLevel(JobLevel job_level, uint32_t ui_exceptions) override;
   JobLevel GetJobLevel() const override;
   ResultCode SetJobMemoryLimit(size_t memory_limit) override;
@@ -59,7 +59,7 @@ class PolicyBase final : public TargetPolicy {
   MitigationFlags GetProcessMitigations() override;
   ResultCode SetDelayedProcessMitigations(MitigationFlags flags) override;
   MitigationFlags GetDelayedProcessMitigations() const override;
-  void SetDisconnectCsrss() override;
+  ResultCode SetDisconnectCsrss() override;
   void SetStrictInterceptions() override;
   ResultCode SetStdoutHandle(HANDLE handle) override;
   ResultCode SetStderrHandle(HANDLE handle) override;

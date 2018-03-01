@@ -15,13 +15,12 @@
           src="../events.js"></script>
 
   <script type="application/javascript">
+    /* import-globals-from ../common.js */
     /**
      * Turn on/off the caret browsing mode.
      */
     function turnCaretBrowsing(aIsOn) {
-      var prefs = Components.classes["@mozilla.org/preferences-service;1"].
-        getService(Components.interfaces.nsIPrefBranch);
-      prefs.setBoolPref("accessibility.browsewithcaret", aIsOn);
+      Services.prefs.setBoolPref("accessibility.browsewithcaret", aIsOn);
     }
 
     /**
@@ -103,7 +102,7 @@
           DOMPoint: [ getNode("p2_a", p2Doc).firstChild, 1 ],
           point: [ getNode("p2_a", p2Doc), 1 ],
           pointList: [
-            [ getNode("p2", p2Doc), 1 ] ,
+            [ getNode("p2", p2Doc), 1 ],
             [ p2Doc, 0 ]
           ]
         },
@@ -167,7 +166,7 @@
   <input id="textbox" value="hello"/>
   <textarea id="textarea">text<br>text</textarea>
   <p id="p" contentEditable="true"><span>text</span><br/>text</p>
-  <a id="link" href="about:">about mozilla</a>
+  <a id="link" href="about:mozilla">about mozilla</a>
   <h5 id="heading">heading</h5>
   <iframe id="p2_container"
           src="data:text/html,<p id='p2' contentEditable='true'>a<a id='p2_a' href='mozilla.org'>b</a>c</p>"></iframe>

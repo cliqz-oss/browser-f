@@ -9,12 +9,16 @@ use cssparser::{ParseError as CssParseError, ParserInput};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
 use parser::ParserContext;
-use properties::{PropertyId, PropertyDeclaration, PropertyParserContext, SourcePropertyDeclaration};
+use properties::{PropertyId, PropertyDeclaration, SourcePropertyDeclaration};
 use selectors::parser::SelectorParseErrorKind;
 use servo_arc::Arc;
 use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked, SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
-use std::fmt;
-use style_traits::{ToCss, ParseError};
+#[allow(unused_imports)] use std::ascii::AsciiExt;
+use std::ffi::{CStr, CString};
+use std::fmt::{self, Write};
+use std::str;
+use str::CssStringWriter;
+use style_traits::{CssWriter, ParseError, ToCss};
 use stylesheets::{CssRuleType, CssRules};
 
 /// An [`@supports`][supports] rule.
@@ -43,16 +47,10 @@ impl SupportsRule {
 }
 
 impl ToCssWithGuard for SupportsRule {
-    fn to_css<W>(&self, guard: &SharedRwLockReadGuard, dest: &mut W) -> fmt::Result
-    where W: fmt::Write {
+    fn to_css(&self, guard: &SharedRwLockReadGuard, dest: &mut CssStringWriter) -> fmt::Result {
         dest.write_str("@supports ")?;
-        self.condition.to_css(dest)?;
-        dest.write_str(" {")?;
-        for rule in self.rules.read_with(guard).0.iter() {
-            dest.write_str(" ")?;
-            rule.to_css(guard, dest)?;
-        }
-        dest.write_str(" }")
+        self.condition.to_css(&mut CssWriter::new(dest))?;
+        self.rules.read_with(guard).to_css_block(guard, dest)
     }
 }
 
@@ -88,6 +86,10 @@ pub enum SupportsCondition {
     Or(Vec<SupportsCondition>),
     /// `property-ident: value` (value can be any tokens)
     Declaration(Declaration),
+    /// `-moz-bool-pref("pref-name")`
+    /// Since we need to pass it through FFI to get the pref value,
+    /// we store it as CString directly.
+    MozBoolPref(CString),
     /// `(any tokens)` or `func(any tokens)`
     FutureSyntax(String),
 }
@@ -150,7 +152,26 @@ impl SupportsCondition {
                     return nested;
                 }
             }
-            Token::Function(_) => {}
+            Token::Function(ident) => {
+                // Although this is an internal syntax, it is not necessary to check
+                // parsing context as far as we accept any unexpected token as future
+                // syntax, and evaluate it to false when not in chrome / ua sheet.
+                // See https://drafts.csswg.org/css-conditional-3/#general_enclosed
+                if ident.eq_ignore_ascii_case("-moz-bool-pref") {
+                    if let Ok(name) = input.try(|i| {
+                        i.parse_nested_block(|i| {
+                            i.expect_string()
+                                .map(|s| s.to_string())
+                                .map_err(CssParseError::<()>::from)
+                        }).and_then(|s| {
+                            CString::new(s)
+                                .map_err(|_| location.new_custom_error(()))
+                        })
+                    }) {
+                        return Ok(SupportsCondition::MozBoolPref(name));
+                    }
+                }
+            }
             t => return Err(location.new_unexpected_token_error(t)),
         }
         input.parse_nested_block(|i| consume_any_value(i))?;
@@ -165,9 +186,25 @@ impl SupportsCondition {
             SupportsCondition::And(ref vec) => vec.iter().all(|c| c.eval(cx)),
             SupportsCondition::Or(ref vec) => vec.iter().any(|c| c.eval(cx)),
             SupportsCondition::Declaration(ref decl) => decl.eval(cx),
+            SupportsCondition::MozBoolPref(ref name) => eval_moz_bool_pref(name, cx),
             SupportsCondition::FutureSyntax(_) => false
         }
     }
+}
+
+#[cfg(feature = "gecko")]
+fn eval_moz_bool_pref(name: &CStr, cx: &ParserContext) -> bool {
+    use gecko_bindings::bindings;
+    use stylesheets::Origin;
+    if cx.stylesheet_origin != Origin::UserAgent && !cx.chrome_rules_enabled() {
+        return false;
+    }
+    unsafe { bindings::Gecko_GetBoolPrefValue(name.as_ptr()) }
+}
+
+#[cfg(feature = "servo")]
+fn eval_moz_bool_pref(_: &CStr, _: &ParserContext) -> bool {
+    false
 }
 
 /// supports_condition | declaration
@@ -182,8 +219,9 @@ pub fn parse_condition_or_declaration<'i, 't>(input: &mut Parser<'i, 't>)
 }
 
 impl ToCss for SupportsCondition {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write,
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
     {
         match *self {
             SupportsCondition::Not(ref cond) => {
@@ -222,6 +260,13 @@ impl ToCss for SupportsCondition {
                 decl.to_css(dest)?;
                 dest.write_str(")")
             }
+            SupportsCondition::MozBoolPref(ref name) => {
+                dest.write_str("-moz-bool-pref(")?;
+                let name = str::from_utf8(name.as_bytes())
+                    .expect("Should be parsed from valid UTF-8");
+                name.to_css(dest)?;
+                dest.write_str(")")
+            }
             SupportsCondition::FutureSyntax(ref s) => dest.write_str(&s),
         }
     }
@@ -232,7 +277,10 @@ impl ToCss for SupportsCondition {
 pub struct Declaration(pub String);
 
 impl ToCss for Declaration {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str(&self.0)
     }
 }
@@ -261,16 +309,15 @@ impl Declaration {
         let mut input = ParserInput::new(&self.0);
         let mut input = Parser::new(&mut input);
         input.parse_entirely(|input| -> Result<(), CssParseError<()>> {
-            let prop = input.expect_ident().unwrap().as_ref().to_owned();
+            let prop = input.expect_ident_cloned().unwrap();
             input.expect_colon().unwrap();
 
-            let property_context = PropertyParserContext::new(&context);
-            let id = PropertyId::parse(&prop, Some(&property_context))
-                        .map_err(|()| input.new_custom_error(()))?;
+            let id = PropertyId::parse(&prop)
+                .map_err(|_| input.new_custom_error(()))?;
 
             let mut declarations = SourcePropertyDeclaration::new();
             input.parse_until_before(Delimiter::Bang, |input| {
-                PropertyDeclaration::parse_into(&mut declarations, id, prop.into(), &context, input)
+                PropertyDeclaration::parse_into(&mut declarations, id, prop, &context, input)
                     .map_err(|_| input.new_custom_error(()))
             })?;
             let _ = input.try(parse_important);

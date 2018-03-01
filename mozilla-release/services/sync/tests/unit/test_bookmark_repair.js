@@ -11,7 +11,6 @@ Cu.import("resource://services-sync/doctor.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/engines/clients.js");
 Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 
 const LAST_BOOKMARK_SYNC_PREFS = [
   "bookmarks.lastSync",
@@ -41,11 +40,6 @@ add_task(async function setup() {
   Service.recordTelemetryEvent = (object, method, value, extra = undefined) => {
     recordedEvents.push({ object, method, value, extra });
   };
-
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.Engine.Clients").level = Log.Level.Trace;
-  Log.repository.getLogger("Sqlite").level = Log.Level.Info; // less noisy
 });
 
 function checkRecordedEvents(expected, message) {
@@ -359,7 +353,7 @@ add_task(async function test_repair_client_missing() {
     // sanity check we aren't going to sync this removal.
     do_check_empty((await bookmarksEngine.pullNewChanges()));
     // sanity check that the bookmark is not there anymore
-    do_check_false(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
+    Assert.equal(null, await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
 
     // sync again - we should have a few problems...
     _("Syncing again.");
@@ -377,7 +371,7 @@ add_task(async function test_repair_client_missing() {
     await Service.sync();
 
     // And we got our bookmark back
-    do_check_true(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
+    Assert.ok(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
   } finally {
     await cleanup(server);
   }
@@ -441,7 +435,7 @@ add_task(async function test_repair_server_missing() {
     await Service.sync();
 
     // And the server got our bookmark back
-    do_check_true(user.collection("bookmarks").wbo(bookmarkInfo.guid));
+    Assert.ok(user.collection("bookmarks").wbo(bookmarkInfo.guid));
   } finally {
     await cleanup(server);
   }
@@ -509,7 +503,7 @@ add_task(async function test_repair_server_deleted() {
     await Service.sync();
 
     // And the client deleted our bookmark
-    do_check_true(!(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid)));
+    Assert.ok(!(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid)));
   } finally {
     await cleanup(server);
   }

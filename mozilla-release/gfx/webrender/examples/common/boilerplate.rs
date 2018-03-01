@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 extern crate env_logger;
+extern crate euclid;
 
 use gleam::gl;
 use glutin;
@@ -28,14 +29,13 @@ impl RenderNotifier for Notifier {
         })
     }
 
-    fn new_frame_ready(&self) {
+    fn wake_up(&self) {
         #[cfg(not(target_os = "android"))]
         self.window_proxy.wakeup_event_loop();
     }
 
-    fn new_scroll_frame_ready(&self, _composite_needed: bool) {
-        #[cfg(not(target_os = "android"))]
-        self.window_proxy.wakeup_event_loop();
+    fn new_document_ready(&self, _: DocumentId, _scrolled: bool, _composite_needed: bool) {
+        self.wake_up();
     }
 }
 
@@ -62,29 +62,38 @@ impl HandyDandyRectBuilder for (i32, i32) {
 }
 
 pub trait Example {
+    const TITLE: &'static str = "WebRender Sample App";
+    const PRECACHE_SHADERS: bool = false;
+    const WIDTH: u32 = 1920;
+    const HEIGHT: u32 = 1080;
+
     fn render(
         &mut self,
         api: &RenderApi,
         builder: &mut DisplayListBuilder,
         resources: &mut ResourceUpdates,
-        layout_size: LayoutSize,
+        framebuffer_size: DeviceUintSize,
         pipeline_id: PipelineId,
         document_id: DocumentId,
     );
-    fn on_event(&mut self, event: glutin::Event, api: &RenderApi, document_id: DocumentId) -> bool;
-    fn get_external_image_handler(&self) -> Option<Box<webrender::ExternalImageHandler>> {
-        None
+    fn on_event(&mut self, glutin::Event, &RenderApi, DocumentId) -> bool {
+        false
     }
-    fn get_output_image_handler(
+    fn get_image_handlers(
         &mut self,
         _gl: &gl::Gl,
-    ) -> Option<Box<webrender::OutputImageHandler>> {
-        None
+    ) -> (Option<Box<webrender::ExternalImageHandler>>,
+          Option<Box<webrender::OutputImageHandler>>) {
+        (None, None)
     }
-    fn draw_custom(&self, _gl: &gl::Gl) {}
+    fn draw_custom(&self, _gl: &gl::Gl) {
+    }
 }
 
-pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOptions>) {
+pub fn main_wrapper<E: Example>(
+    example: &mut E,
+    options: Option<webrender::RendererOptions>,
+) {
     env_logger::init().unwrap();
 
     let args: Vec<String> = env::args().collect();
@@ -95,8 +104,9 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
     };
 
     let window = glutin::WindowBuilder::new()
-        .with_title("WebRender Sample App")
+        .with_title(E::TITLE)
         .with_multitouch()
+        .with_dimensions(E::WIDTH, E::HEIGHT)
         .with_gl(glutin::GlRequest::GlThenGles {
             opengl_version: (3, 2),
             opengles_version: (3, 0),
@@ -108,46 +118,54 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
         window.make_current().ok();
     }
 
-    let gl = match gl::GlType::default() {
-        gl::GlType::Gl => unsafe {
+    let gl = match window.get_api() {
+        glutin::Api::OpenGl => unsafe {
             gl::GlFns::load_with(|symbol| window.get_proc_address(symbol) as *const _)
         },
-        gl::GlType::Gles => unsafe {
+        glutin::Api::OpenGlEs => unsafe {
             gl::GlesFns::load_with(|symbol| window.get_proc_address(symbol) as *const _)
         },
+        glutin::Api::WebGl => unimplemented!(),
     };
 
     println!("OpenGL version {}", gl.get_string(gl::VERSION));
     println!("Shader resource path: {:?}", res_path);
+    let device_pixel_ratio = window.hidpi_factor();
+    println!("Device pixel ratio: {}", device_pixel_ratio);
 
-    let (width, height) = window.get_inner_size_pixels().unwrap();
-
+    println!("Loading shaders...");
     let opts = webrender::RendererOptions {
         resource_override_path: res_path,
         debug: true,
-        precache_shaders: true,
-        device_pixel_ratio: window.hidpi_factor(),
+        precache_shaders: E::PRECACHE_SHADERS,
+        device_pixel_ratio,
+        clear_color: Some(ColorF::new(0.3, 0.0, 0.0, 1.0)),
+        //scatter_gpu_cache_updates: false,
         ..options.unwrap_or(webrender::RendererOptions::default())
     };
 
-    let size = DeviceUintSize::new(width, height);
+    let framebuffer_size = {
+        let (width, height) = window.get_inner_size_pixels().unwrap();
+        DeviceUintSize::new(width, height)
+    };
     let notifier = Box::new(Notifier::new(window.create_window_proxy()));
     let (mut renderer, sender) = webrender::Renderer::new(gl.clone(), notifier, opts).unwrap();
     let api = sender.create_api();
-    let document_id = api.add_document(size);
+    let document_id = api.add_document(framebuffer_size, 0);
 
-    if let Some(external_image_handler) = example.get_external_image_handler() {
-        renderer.set_external_image_handler(external_image_handler);
-    }
-    if let Some(output_image_handler) = example.get_output_image_handler(&*gl) {
+    let (external, output) = example.get_image_handlers(&*gl);
+
+    if let Some(output_image_handler) = output {
         renderer.set_output_image_handler(output_image_handler);
     }
 
-    let epoch = Epoch(0);
-    let root_background_color = ColorF::new(0.3, 0.0, 0.0, 1.0);
+    if let Some(external_image_handler) = external {
+        renderer.set_external_image_handler(external_image_handler);
+    }
 
+    let epoch = Epoch(0);
     let pipeline_id = PipelineId(0, 0);
-    let layout_size = LayoutSize::new(width as f32, height as f32);
+    let layout_size = framebuffer_size.to_f32() / euclid::TypedScale::new(device_pixel_ratio);
     let mut builder = DisplayListBuilder::new(pipeline_id, layout_size);
     let mut resources = ResourceUpdates::new();
 
@@ -155,80 +173,86 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
         &api,
         &mut builder,
         &mut resources,
-        layout_size,
+        framebuffer_size,
         pipeline_id,
         document_id,
     );
-    api.set_display_list(
-        document_id,
+    let mut txn = Transaction::new();
+    txn.set_display_list(
         epoch,
-        Some(root_background_color),
-        LayoutSize::new(width as f32, height as f32),
+        None,
+        layout_size,
         builder.finalize(),
         true,
-        resources,
     );
-    api.set_root_pipeline(document_id, pipeline_id);
-    api.generate_frame(document_id, None);
+    txn.update_resources(resources);
+    txn.set_root_pipeline(pipeline_id);
+    txn.generate_frame();
+    api.send_transaction(document_id, txn);
 
+    println!("Entering event loop");
     'outer: for event in window.wait_events() {
         let mut events = Vec::new();
         events.push(event);
+        events.extend(window.poll_events());
 
-        for event in window.poll_events() {
-            events.push(event);
-        }
-
+        let mut txn = Transaction::new();
         for event in events {
             match event {
                 glutin::Event::Closed |
-                glutin::Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape)) |
-                glutin::Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Q)) => break 'outer,
+                glutin::Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape)) => break 'outer,
 
                 glutin::Event::KeyboardInput(
                     glutin::ElementState::Pressed,
                     _,
                     Some(glutin::VirtualKeyCode::P),
                 ) => {
-                    let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::DebugFlags::PROFILER_DBG);
-                    renderer.set_debug_flags(flags);
+                    renderer.toggle_debug_flags(webrender::DebugFlags::PROFILER_DBG);
                 }
                 glutin::Event::KeyboardInput(
                     glutin::ElementState::Pressed,
                     _,
                     Some(glutin::VirtualKeyCode::O),
                 ) => {
-                    let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::DebugFlags::RENDER_TARGET_DBG);
-                    renderer.set_debug_flags(flags);
+                    renderer.toggle_debug_flags(webrender::DebugFlags::RENDER_TARGET_DBG);
                 }
                 glutin::Event::KeyboardInput(
                     glutin::ElementState::Pressed,
                     _,
                     Some(glutin::VirtualKeyCode::I),
                 ) => {
-                    let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::DebugFlags::TEXTURE_CACHE_DBG);
-                    renderer.set_debug_flags(flags);
+                    renderer.toggle_debug_flags(webrender::DebugFlags::TEXTURE_CACHE_DBG);
                 }
                 glutin::Event::KeyboardInput(
                     glutin::ElementState::Pressed,
                     _,
                     Some(glutin::VirtualKeyCode::B),
                 ) => {
-                    let mut flags = renderer.get_debug_flags();
-                    flags.toggle(webrender::DebugFlags::ALPHA_PRIM_DBG);
-                    renderer.set_debug_flags(flags);
+                    renderer.toggle_debug_flags(webrender::DebugFlags::ALPHA_PRIM_DBG);
+                }
+                glutin::Event::KeyboardInput(
+                    glutin::ElementState::Pressed,
+                    _,
+                    Some(glutin::VirtualKeyCode::S),
+                ) => {
+                    renderer.toggle_debug_flags(webrender::DebugFlags::COMPACT_PROFILER);
+                }
+                glutin::Event::KeyboardInput(
+                    glutin::ElementState::Pressed,
+                    _,
+                    Some(glutin::VirtualKeyCode::Q),
+                ) => {
+                    renderer.toggle_debug_flags(webrender::DebugFlags::GPU_TIME_QUERIES
+                        | webrender::DebugFlags::GPU_SAMPLE_QUERIES);
                 }
                 glutin::Event::KeyboardInput(
                     glutin::ElementState::Pressed,
                     _,
                     Some(glutin::VirtualKeyCode::Key1),
                 ) => {
-                    api.set_window_parameters(document_id,
-                        size,
-                        DeviceUintRect::new(DeviceUintPoint::zero(), size),
+                    txn.set_window_parameters(
+                        framebuffer_size,
+                        DeviceUintRect::new(DeviceUintPoint::zero(), framebuffer_size),
                         1.0
                     );
                 }
@@ -237,9 +261,9 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
                     _,
                     Some(glutin::VirtualKeyCode::Key2),
                 ) => {
-                    api.set_window_parameters(document_id,
-                        size,
-                        DeviceUintRect::new(DeviceUintPoint::zero(), size),
+                    txn.set_window_parameters(
+                        framebuffer_size,
+                        DeviceUintRect::new(DeviceUintPoint::zero(), framebuffer_size),
                         2.0
                     );
                 }
@@ -250,6 +274,18 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
                 ) => {
                     api.notify_memory_pressure();
                 }
+                #[cfg(feature = "capture")]
+                glutin::Event::KeyboardInput(
+                    glutin::ElementState::Pressed,
+                    _,
+                    Some(glutin::VirtualKeyCode::C),
+                ) => {
+                    let path: PathBuf = "../captures/example".into();
+                    //TODO: switch between SCENE/FRAME capture types
+                    // based on "shift" modifier, when `glutin` is updated.
+                    let bits = CaptureBits::all();
+                    api.save_capture(path, bits);
+                }
                 _ => if example.on_event(event, &api, document_id) {
                     let mut builder = DisplayListBuilder::new(pipeline_id, layout_size);
                     let mut resources = ResourceUpdates::new();
@@ -258,26 +294,26 @@ pub fn main_wrapper(example: &mut Example, options: Option<webrender::RendererOp
                         &api,
                         &mut builder,
                         &mut resources,
-                        layout_size,
+                        framebuffer_size,
                         pipeline_id,
                         document_id,
                     );
-                    api.set_display_list(
-                        document_id,
+                    txn.set_display_list(
                         epoch,
-                        Some(root_background_color),
-                        LayoutSize::new(width as f32, height as f32),
+                        None,
+                        layout_size,
                         builder.finalize(),
                         true,
-                        resources,
                     );
-                    api.generate_frame(document_id, None);
-                },
+                    txn.update_resources(resources);
+                    txn.generate_frame();
+                }
             }
         }
+        api.send_transaction(document_id, txn);
 
         renderer.update();
-        renderer.render(DeviceUintSize::new(width, height)).unwrap();
+        renderer.render(framebuffer_size).unwrap();
         example.draw_custom(&*gl);
         window.swap_buffers().ok();
     }

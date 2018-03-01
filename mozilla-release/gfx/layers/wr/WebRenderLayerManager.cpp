@@ -10,6 +10,8 @@
 #include "gfxPrefs.h"
 #include "GeckoProfiler.h"
 #include "LayersLogging.h"
+#include "mozilla/dom/TabChild.h"
+#include "mozilla/dom/TabGroup.h"
 #include "mozilla/gfx/DrawEventRecorder.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/IpcResourceUpdateQueue.h"
@@ -19,6 +21,10 @@
 #include "mozilla/layers/UpdateImageHelper.h"
 #include "nsDisplayList.h"
 #include "WebRenderCanvasRenderer.h"
+
+// Useful for debugging, it dumps the Gecko display list *before* we try to
+// build WR commands from it, and dumps the WR display list after building it.
+#define DUMP_LISTS 0
 
 namespace mozilla {
 
@@ -88,6 +94,8 @@ WebRenderLayerManager::Destroy()
 void
 WebRenderLayerManager::DoDestroy(bool aIsSync)
 {
+  MOZ_ASSERT(NS_IsMainThread());
+
   if (IsDestroyed()) {
     return;
   }
@@ -244,10 +252,10 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
 
   AUTO_PROFILER_TRACING("Paint", "RenderLayers");
 
-#if 0
+#if DUMP_LISTS
   // Useful for debugging, it dumps the display list *before* we try to build
   // WR commands from it
-  nsFrame::PrintDisplayList(aDisplayListBuilder, *aDisplayList);
+  if (XRE_IsContentProcess()) nsFrame::PrintDisplayList(aDisplayListBuilder, *aDisplayList);
 #endif
 
   // Since we don't do repeat transactions right now, just set the time
@@ -259,7 +267,7 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
   LayoutDeviceIntSize size = mWidget->GetClientSize();
   wr::LayoutSize contentSize { (float)size.width, (float)size.height };
   wr::DisplayListBuilder builder(WrBridge()->GetPipeline(), contentSize, mLastDisplayListSize);
-  wr::IpcResourceUpdateQueue resourceUpdates(WrBridge()->GetShmemAllocator());
+  wr::IpcResourceUpdateQueue resourceUpdates(WrBridge());
 
   mWebRenderCommandBuilder.BuildWebRenderCommands(builder,
                                                   resourceUpdates,
@@ -301,6 +309,10 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
       WrBridge()->GetSyncObject()->Synchronize();
     }
   }
+
+#if DUMP_LISTS
+  if (XRE_IsContentProcess()) builder.Dump();
+#endif
 
   wr::BuiltDisplayList dl;
   builder.Finalize(contentSize, dl);
@@ -378,7 +390,7 @@ WebRenderLayerManager::MakeSnapshotIfRequired(LayoutDeviceIntSize aSize)
   gfxUtils::WriteAsPNG(snapshot, filename);
   */
 
-  Rect dst(bounds.x, bounds.y, bounds.Width(), bounds.Height());
+  Rect dst(bounds.X(), bounds.Y(), bounds.Width(), bounds.Height());
   Rect src(0, 0, bounds.Width(), bounds.Height());
 
   // The data we get from webrender is upside down. So flip and translate up so the image is rightside up.
@@ -401,7 +413,7 @@ WebRenderLayerManager::AddImageKeyForDiscard(wr::ImageKey key)
 void
 WebRenderLayerManager::DiscardImages()
 {
-  wr::IpcResourceUpdateQueue resources(WrBridge()->GetShmemAllocator());
+  wr::IpcResourceUpdateQueue resources(WrBridge());
   for (const auto& key : mImageKeysToDeleteLater) {
     resources.DeleteImage(key);
   }
@@ -499,25 +511,10 @@ WebRenderLayerManager::DidComposite(uint64_t aTransactionId,
 }
 
 void
-WebRenderLayerManager::ClearLayer(Layer* aLayer)
-{
-  aLayer->ClearCachedResources();
-  if (aLayer->GetMaskLayer()) {
-    aLayer->GetMaskLayer()->ClearCachedResources();
-  }
-  for (size_t i = 0; i < aLayer->GetAncestorMaskLayerCount(); i++) {
-    aLayer->GetAncestorMaskLayerAt(i)->ClearCachedResources();
-  }
-  for (Layer* child = aLayer->GetFirstChild(); child;
-       child = child->GetNextSibling()) {
-    ClearLayer(child);
-  }
-}
-
-void
 WebRenderLayerManager::ClearCachedResources(Layer* aSubtree)
 {
   WrBridge()->BeginClearCachedResources();
+  mWebRenderCommandBuilder.ClearCachedResources();
   DiscardImages();
   WrBridge()->EndClearCachedResources();
 }
@@ -529,9 +526,19 @@ WebRenderLayerManager::WrUpdated()
   DiscardLocalImages();
 }
 
+dom::TabGroup*
+WebRenderLayerManager::GetTabGroup()
+{
+  if (mWidget) {
+    if (dom::TabChild* tabChild = mWidget->GetOwningTabChild()) {
+      return tabChild->TabGroup();
+    }
+  }
+  return nullptr;
+}
+
 void
-WebRenderLayerManager::UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aNewIdentifier,
-                                                      uint64_t aDeviceResetSeqNo)
+WebRenderLayerManager::UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aNewIdentifier)
 {
   WrBridge()->IdentifyTextureHost(aNewIdentifier);
 }
@@ -607,6 +614,20 @@ WebRenderLayerManager::SetPendingScrollUpdateForNextTransaction(FrameMetrics::Vi
   // If we ever support changing the scroll position in an "empty transactions"
   // properly in WR we can fill this in. Covered by bug 1382259.
   return false;
+}
+
+already_AddRefed<PersistentBufferProvider>
+WebRenderLayerManager::CreatePersistentBufferProvider(const gfx::IntSize& aSize,
+                                                      gfx::SurfaceFormat aFormat)
+{
+  if (gfxPrefs::PersistentBufferProviderSharedEnabled()) {
+    RefPtr<PersistentBufferProvider> provider
+      = PersistentBufferProviderShared::Create(aSize, aFormat, AsKnowsCompositor());
+    if (provider) {
+      return provider.forget();
+    }
+  }
+  return LayerManager::CreatePersistentBufferProvider(aSize, aFormat);
 }
 
 } // namespace layers

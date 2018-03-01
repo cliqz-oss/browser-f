@@ -81,8 +81,8 @@ public:
   const uint64_t& GetScrollbarAnimationId() const { return mScrollbarAnimationId; }
   void SetScrollbarTargetContainerId(FrameMetrics::ViewID aId) { mScrollbarTargetContainerId = aId; }
   FrameMetrics::ViewID GetScrollbarTargetContainerId() const { return mScrollbarTargetContainerId; }
-  void SetIsScrollbarContainer() { mIsScrollbarContainer = true; }
-  bool IsScrollbarContainer() const { return mIsScrollbarContainer; }
+  void SetScrollbarContainerDirection(ScrollDirection aDirection) { mScrollbarContainerDirection = Some(aDirection); }
+  Maybe<ScrollDirection> GetScrollbarContainerDirection() const { return mScrollbarContainerDirection; }
 
   void SetFixedPositionScrollContainerId(FrameMetrics::ViewID aId) { mFixedPosScrollContainerId = aId; }
   FrameMetrics::ViewID GetFixedPositionScrollContainerId() const { return mFixedPosScrollContainerId; }
@@ -116,7 +116,7 @@ private:
   ScrollThumbData mScrollThumbData;
   uint64_t mScrollbarAnimationId;
   FrameMetrics::ViewID mScrollbarTargetContainerId;
-  bool mIsScrollbarContainer;
+  Maybe<ScrollDirection> mScrollbarContainerDirection;
   FrameMetrics::ViewID mFixedPosScrollContainerId;
 };
 
@@ -136,9 +136,6 @@ public:
   // Add the given ScrollMetadata if it doesn't already exist. Return an index
   // that can be used to look up the metadata later.
   size_t AddMetadata(const ScrollMetadata& aMetadata);
-  // Add a new empty WebRenderLayerScrollData and return the index that can be
-  // used to look it up via GetLayerData.
-  size_t AddNewLayerData();
   // Add the provided WebRenderLayerScrollData and return the index that can
   // be used to look it up via GetLayerData.
   size_t AddLayerData(const WebRenderLayerScrollData& aData);
@@ -147,11 +144,10 @@ public:
 
   // Return a pointer to the scroll data at the given index. Use with caution,
   // as the pointer may be invalidated if this WebRenderScrollData is mutated.
-  WebRenderLayerScrollData* GetLayerDataMutable(size_t aIndex);
   const WebRenderLayerScrollData* GetLayerData(size_t aIndex) const;
 
   const ScrollMetadata& GetScrollMetadata(size_t aIndex) const;
-  bool HasMetadataFor(const FrameMetrics::ViewID& aScrollId) const;
+  Maybe<size_t> HasMetadataFor(const FrameMetrics::ViewID& aScrollId) const;
 
   const FocusTarget& GetFocusTarget() const { return mFocusTarget; }
   void SetFocusTarget(const FocusTarget& aFocusTarget);
@@ -233,7 +229,7 @@ struct ParamTraits<mozilla::layers::WebRenderLayerScrollData>
     WriteParam(aMsg, aParam.mScrollThumbData);
     WriteParam(aMsg, aParam.mScrollbarAnimationId);
     WriteParam(aMsg, aParam.mScrollbarTargetContainerId);
-    WriteParam(aMsg, aParam.mIsScrollbarContainer);
+    WriteParam(aMsg, aParam.mScrollbarContainerDirection);
     WriteParam(aMsg, aParam.mFixedPosScrollContainerId);
   }
 
@@ -251,7 +247,7 @@ struct ParamTraits<mozilla::layers::WebRenderLayerScrollData>
         && ReadParam(aMsg, aIter, &aResult->mScrollThumbData)
         && ReadParam(aMsg, aIter, &aResult->mScrollbarAnimationId)
         && ReadParam(aMsg, aIter, &aResult->mScrollbarTargetContainerId)
-        && ReadParam(aMsg, aIter, &aResult->mIsScrollbarContainer)
+        && ReadParam(aMsg, aIter, &aResult->mScrollbarContainerDirection)
         && ReadParam(aMsg, aIter, &aResult->mFixedPosScrollContainerId);
   }
 };

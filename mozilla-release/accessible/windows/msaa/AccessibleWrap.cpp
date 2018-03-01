@@ -495,8 +495,12 @@ AccessibleWrap::get_accRole(
 
   if (content->IsElement()) {
     nsAutoString roleString;
-    if (msaaRole != ROLE_SYSTEM_CLIENT &&
-        !content->GetAttr(kNameSpaceID_None, nsGkAtoms::role, roleString)) {
+    // Try the role attribute.
+    content->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::role, roleString);
+
+    if (roleString.IsEmpty()) {
+      // No role attribute (or it is an empty string).
+      // Use the tag name.
       nsIDocument * document = content->GetUncomposedDoc();
       if (!document)
         return E_FAIL;
@@ -898,10 +902,10 @@ AccessibleWrap::accLocation(
 
   nsIntRect rect = Bounds();
 
-  *pxLeft = rect.x;
-  *pyTop = rect.y;
-  *pcxWidth = rect.width;
-  *pcyHeight = rect.height;
+  *pxLeft = rect.X();
+  *pyTop = rect.Y();
+  *pcxWidth = rect.Width();
+  *pcyHeight = rect.Height();
   return S_OK;
 }
 
@@ -1489,7 +1493,10 @@ AccessibleWrap::GetIAccessibleFor(const VARIANT& aVarChild, bool* aIsDefunct)
   // accessible is part of the chrome process and is part of the xul browser
   // window and the child id points in the content documents. Thus we need to
   // make sure that it is never called on proxies.
-  if (XRE_IsParentProcess() && !IsProxy() && !sIDGen.IsChromeID(varChild.lVal)) {
+  // Bug 1422674: We must only handle remote ids here (< 0), not child indices.
+  // Child indices (> 0) are handled below for both local and remote children.
+  if (XRE_IsParentProcess() && !IsProxy() &&
+      varChild.lVal < 0 && !sIDGen.IsChromeID(varChild.lVal)) {
     if (!IsRootForHWND()) {
       // Bug 1422201, 1424657: accChild with a remote id is only valid on the
       // root accessible for an HWND.
@@ -1654,12 +1661,12 @@ AccessibleWrap::UpdateSystemCaretFor(HWND aCaretWnd,
 
   // Create invisible bitmap for caret, otherwise its appearance interferes
   // with Gecko caret
-  nsAutoBitmap caretBitMap(CreateBitmap(1, aCaretRect.height, 1, 1, nullptr));
-  if (::CreateCaret(aCaretWnd, caretBitMap, 1, aCaretRect.height)) {  // Also destroys the last caret
+  nsAutoBitmap caretBitMap(CreateBitmap(1, aCaretRect.Height(), 1, 1, nullptr));
+  if (::CreateCaret(aCaretWnd, caretBitMap, 1, aCaretRect.Height())) {  // Also destroys the last caret
     ::ShowCaret(aCaretWnd);
     RECT windowRect;
     ::GetWindowRect(aCaretWnd, &windowRect);
-    ::SetCaretPos(aCaretRect.x - windowRect.left, aCaretRect.y - windowRect.top);
+    ::SetCaretPos(aCaretRect.X() - windowRect.left, aCaretRect.Y() - windowRect.top);
   }
 }
 

@@ -60,9 +60,9 @@ let signonReloadDisplay = {
 };
 
 // Formatter for localization.
-let dateFormatter = Services.intl.createDateTimeFormat(undefined,
+let dateFormatter = new Services.intl.DateTimeFormat(undefined,
                       { dateStyle: "medium" });
-let dateAndTimeFormatter = Services.intl.createDateTimeFormat(undefined,
+let dateAndTimeFormatter = new Services.intl.DateTimeFormat(undefined,
                              { dateStyle: "medium",
                                timeStyle: "short" });
 
@@ -157,7 +157,6 @@ let signonsTreeView = {
 
     return "";
   },
-  getProgressMode(row, column) {},
   getCellValue(row, column) {},
   getCellText(row, column) {
     let time;
@@ -629,6 +628,15 @@ function FilterPasswords() {
   removeAllButton.setAttribute("accesskey", kSignonBundle.getString("removeAllShown.accesskey"));
 }
 
+function CopySiteUrl() {
+  // Copy selected site url to clipboard
+  let clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].
+                  getService(Ci.nsIClipboardHelper);
+  let row = signonsTree.currentIndex;
+  let url = signonsTreeView.getCellText(row, {id: "siteCol"});
+  clipboard.copyString(url);
+}
+
 function CopyPassword() {
   // Don't copy passwords if we aren't already showing the passwords & a master
   // password hasn't been entered.
@@ -659,6 +667,12 @@ function EditCellInSelectedRow(columnName) {
   signonsTree.startEditing(row, signonsTree.columns.getColumnFor(columnElement));
 }
 
+function LaunchSiteUrl() {
+  let row = signonsTree.currentIndex;
+  let url = signonsTreeView.getCellText(row, {id: "siteCol"});
+  window.openUILinkIn(url, "tab");
+}
+
 function UpdateContextMenu() {
   let singleSelection = (signonsTreeView.selection.count == 1);
   let menuItems = new Map();
@@ -676,6 +690,14 @@ function UpdateContextMenu() {
 
   let selectedRow = signonsTree.currentIndex;
 
+  // Don't display "Launch Site URL" if we're not a browser.
+  if (window.openUILinkIn) {
+    menuItems.get("context-launchsiteurl").removeAttribute("disabled");
+  } else {
+    menuItems.get("context-launchsiteurl").setAttribute("disabled", "true");
+    menuItems.get("context-launchsiteurl").setAttribute("hidden", "true");
+  }
+
   // Disable "Copy Username" if the username is empty.
   if (signonsTreeView.getCellText(selectedRow, { id: "userCol" }) != "") {
     menuItems.get("context-copyusername").removeAttribute("disabled");
@@ -683,6 +705,7 @@ function UpdateContextMenu() {
     menuItems.get("context-copyusername").setAttribute("disabled", "true");
   }
 
+  menuItems.get("context-copysiteurl").removeAttribute("disabled");
   menuItems.get("context-editusername").removeAttribute("disabled");
   menuItems.get("context-copypassword").removeAttribute("disabled");
 

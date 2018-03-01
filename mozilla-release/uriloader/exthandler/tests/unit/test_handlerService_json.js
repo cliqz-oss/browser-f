@@ -28,8 +28,8 @@ add_task(async function test_store_keeps_unknown_properties() {
 
   await unloadHandlerStore();
   let data = JSON.parse(new TextDecoder().decode(await OS.File.read(jsonPath)));
-  do_check_eq(data.mimeTypes["example/type.handleinternally"].unknownProperty,
-              "preserved");
+  Assert.equal(data.mimeTypes["example/type.handleinternally"].unknownProperty,
+               "preserved");
 });
 
 /**
@@ -62,9 +62,9 @@ add_task(async function test_race_async_init() {
     return true;
   });
   gHandlerService.asyncInit();
-  do_check_false(storeInitialized);
+  Assert.ok(!storeInitialized);
   gHandlerService.enumerate();
-  do_check_true(storeInitialized);
+  Assert.ok(storeInitialized);
   await assertAllHandlerInfosMatchTestData();
 
   await unloadHandlerStore();
@@ -79,14 +79,14 @@ add_task(async function test_migration_rdf_present() {
   await copyTestDataToHandlerStoreRDF();
   Services.prefs.setBoolPref("gecko.handlerService.migrated", false);
   await assertAllHandlerInfosMatchTestData();
-  do_check_true(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
+  Assert.ok(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
 
   // Repeat the migration with the JSON file present.
   await unloadHandlerStore();
   await unloadHandlerStoreRDF();
   Services.prefs.setBoolPref("gecko.handlerService.migrated", false);
   await assertAllHandlerInfosMatchTestData();
-  do_check_true(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
+  Assert.ok(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
 });
 
 /**
@@ -110,7 +110,7 @@ add_task(async function test_migration_rdf_present_keeps_new_data() {
     alwaysAskBeforeHandling: false,
   });
 
-  do_check_true(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
+  Assert.ok(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
 });
 
 /**
@@ -118,7 +118,7 @@ add_task(async function test_migration_rdf_present_keeps_new_data() {
  */
 add_task(async function test_migration_rdf_absent() {
   if (!Services.prefs.getPrefType("gecko.handlerService.defaultHandlersVersion")) {
-    do_print("This platform or locale does not have default handlers.");
+    info("This platform or locale does not have default handlers.");
     return;
   }
 
@@ -127,12 +127,67 @@ add_task(async function test_migration_rdf_absent() {
   await deleteHandlerStoreRDF();
   Services.prefs.setBoolPref("gecko.handlerService.migrated", false);
   await assertAllHandlerInfosMatchDefaultHandlers();
-  do_check_true(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
+  Assert.ok(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
 
   // Repeat the migration with the JSON file present.
   await unloadHandlerStore();
   await unloadHandlerStoreRDF();
   Services.prefs.setBoolPref("gecko.handlerService.migrated", false);
   await assertAllHandlerInfosMatchDefaultHandlers();
-  do_check_true(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
+  Assert.ok(Services.prefs.getBoolPref("gecko.handlerService.migrated"));
+});
+
+/**
+ * Test saving and reloading an instance of nsIGIOMimeApp.
+ */
+add_task(async function test_store_gioHandlerApp() {
+  if (!("@mozilla.org/gio-service;1" in Cc)) {
+    info("Skipping test because it does not apply to this platform.");
+    return;
+  }
+
+  // Create dummy exec file that following won't fail because file not found error
+  let dummyHandlerFile = FileUtils.getFile("TmpD", ["dummyHandler"]);
+  dummyHandlerFile.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, parseInt("777", 8));
+
+  // Set up an nsIGIOMimeApp instance for testing.
+  let handlerApp = Cc["@mozilla.org/gio-service;1"]
+                     .getService(Ci.nsIGIOService)
+                     .createAppFromCommand(dummyHandlerFile.path, "Dummy GIO handler");
+  let expectedGIOMimeHandlerApp = {
+    name: handlerApp.name,
+    command: handlerApp.command,
+  };
+
+  await deleteHandlerStore();
+
+  let handlerInfo = getKnownHandlerInfo("example/new");
+  handlerInfo.preferredApplicationHandler = handlerApp;
+  handlerInfo.possibleApplicationHandlers.appendElement(handlerApp);
+  handlerInfo.possibleApplicationHandlers.appendElement(webHandlerApp);
+  gHandlerService.store(handlerInfo);
+
+  await unloadHandlerStore();
+
+  let actualHandlerInfo = HandlerServiceTestUtils.getHandlerInfo("example/new");
+  HandlerServiceTestUtils.assertHandlerInfoMatches(actualHandlerInfo, {
+    type: "example/new",
+    preferredAction: Ci.nsIHandlerInfo.saveToDisk,
+    alwaysAskBeforeHandling: false,
+    preferredApplicationHandler: expectedGIOMimeHandlerApp,
+    possibleApplicationHandlers: [expectedGIOMimeHandlerApp, webHandlerApp],
+  });
+
+  await OS.File.remove(dummyHandlerFile.path);
+
+  // After removing dummyHandlerFile, the handler should disappear from the
+  // list of possibleApplicationHandlers and preferredAppHandler should be null.
+  actualHandlerInfo = HandlerServiceTestUtils.getHandlerInfo("example/new");
+  HandlerServiceTestUtils.assertHandlerInfoMatches(actualHandlerInfo, {
+    type: "example/new",
+    preferredAction: Ci.nsIHandlerInfo.saveToDisk,
+    alwaysAskBeforeHandling: false,
+    preferredApplicationHandler: null,
+    possibleApplicationHandlers: [webHandlerApp],
+  });
 });

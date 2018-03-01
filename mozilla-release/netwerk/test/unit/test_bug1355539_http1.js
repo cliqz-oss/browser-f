@@ -27,6 +27,8 @@ server.start(-1);
 var baseURL = "http://localhost:" + server.identity.primaryPort + "/";
 var maxConnections = 0;
 var debug = false;
+var dummyResponseQueue = new Array();
+var responseQueue = new Array();
 
 function log(msg) {
   if (!debug) {
@@ -48,10 +50,10 @@ function serverStopListener() {
   server.stop();
 }
 
-function createHttpRequest(requestId, priority, isBlocking) {
+function createHttpRequest(requestId, priority, isBlocking, callback) {
   let uri = baseURL;
   var chan = make_channel(uri);
-  var listner = new HttpResponseListener(requestId);
+  var listner = new HttpResponseListener(requestId, callback);
   chan.setRequestHeader("X-ID", requestId, false);
   chan.setRequestHeader("Cache-control", "no-store", false);
   chan.QueryInterface(Ci.nsISupportsPriority).priority = priority;
@@ -63,10 +65,10 @@ function createHttpRequest(requestId, priority, isBlocking) {
   log("Create http request id=" + requestId);
 }
 
-function setup_dummyHttpRequests() {
+function setup_dummyHttpRequests(callback) {
   log("setup_dummyHttpRequests");
   for (var i = 0; i < maxConnections ; i++) {
-    createHttpRequest(i, i, false);
+    createHttpRequest(i, i, false, callback);
     do_test_pending();
   }
 }
@@ -95,13 +97,14 @@ function check_response_id(responses)
 {
   for (var i = 0; i < responses.length; i++) {
     var id = responses[i].getHeader("X-ID");
-    do_check_eq(id, transactionQueue[i].requestId);
+    Assert.equal(id, transactionQueue[i].requestId);
   }
 }
 
-function HttpResponseListener(id)
+function HttpResponseListener(id, onStopCallback)
 {
   this.id = id
+  this.stopCallback = onStopCallback;
 };
 
 HttpResponseListener.prototype =
@@ -115,10 +118,12 @@ HttpResponseListener.prototype =
   onStopRequest: function (request, ctx, status) {
     log("STOP id=" + this.id);
     do_test_finished();
+    if (this.stopCallback) {
+      this.stopCallback();
+    }
   }
 };
 
-var responseQueue = new Array();
 function setup_http_server()
 {
   log("setup_http_server");
@@ -134,13 +139,18 @@ function setup_http_server()
 
     response.processAsync();
     response.setHeader("X-ID", id);
-    responseQueue.push(response);
 
-    if (responseQueue.length == maxConnections && !allDummyHttpRequestReceived) {
+    if (!allDummyHttpRequestReceived) {
+      dummyResponseQueue.push(response);
+    } else {
+      responseQueue.push(response);
+    }
+
+    if (dummyResponseQueue.length == maxConnections) {
       log("received all dummy http requets");
       allDummyHttpRequestReceived = true;
       setup_HttpRequests();
-      processResponses();
+      processDummyResponse();
     } else if (responseQueue.length == maxConnections) {
       log("received all http requets");
       check_response_id(responseQueue);
@@ -149,10 +159,18 @@ function setup_http_server()
 
   });
 
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     server.stop(serverStopListener);
   });
 
+}
+
+function processDummyResponse() {
+  if (!dummyResponseQueue.length) {
+    return;
+  }
+  var resposne = dummyResponseQueue.pop();
+  resposne.finish();
 }
 
 function processResponses() {
@@ -164,5 +182,5 @@ function processResponses() {
 
 function run_test() {
   setup_http_server();
-  setup_dummyHttpRequests();
+  setup_dummyHttpRequests(processDummyResponse);
 }

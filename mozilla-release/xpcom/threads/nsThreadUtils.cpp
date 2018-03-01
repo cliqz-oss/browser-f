@@ -10,9 +10,8 @@
 #include "mozilla/TimeStamp.h"
 #include "LeakRefPtr.h"
 #include "nsComponentManagerUtils.h"
+#include "nsExceptionHandler.h"
 #include "nsITimer.h"
-
-#include "nsComponentManagerUtils.h"
 
 #ifdef MOZILLA_INTERNAL_API
 # include "nsThreadManager.h"
@@ -28,10 +27,6 @@
 #include <sys/resource.h>
 #endif
 
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
-
 using namespace mozilla;
 
 #ifndef XPCOM_GLUE_AVOID_NSPR
@@ -45,7 +40,16 @@ IdlePeriod::GetIdlePeriodHint(TimeStamp* aIdleDeadline)
   return NS_OK;
 }
 
+// NS_IMPL_NAMED_* relies on the mName field, which is not present on
+// release or beta. Instead, fall back to using "Runnable" for all
+// runnables.
+#ifdef RELEASE_OR_BETA
 NS_IMPL_ISUPPORTS(Runnable, nsIRunnable, nsINamed)
+#else
+NS_IMPL_NAMED_ADDREF(Runnable, mName)
+NS_IMPL_NAMED_RELEASE(Runnable, mName)
+NS_IMPL_QUERY_INTERFACE(Runnable, nsIRunnable, nsINamed)
+#endif
 
 NS_IMETHODIMP
 Runnable::Run()
@@ -517,9 +521,7 @@ void
 NS_SetCurrentThreadName(const char* aName)
 {
   PR_SetCurrentThreadName(aName);
-#ifdef MOZ_CRASHREPORTER
   CrashReporter::SetCurrentThreadName(aName);
-#endif
 }
 
 #ifdef MOZILLA_INTERNAL_API

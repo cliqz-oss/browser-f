@@ -30,6 +30,7 @@ function* performTest() {
   testParseAngle(doc, parser);
   testParseShape(doc, parser);
   testParseVariable(doc, parser);
+  testParseFontFamily(doc, parser);
 
   host.destroy();
 }
@@ -81,7 +82,8 @@ function testParseCssProperty(doc, parser) {
        ")"]),
 
     // In "arial black", "black" is a font, not a color.
-    makeColorTest("font-family", "arial black", ["arial black"]),
+    // (The font-family parser creates a span)
+    makeColorTest("font-family", "arial black", ["<span>arial black</span>"]),
 
     makeColorTest("box-shadow", "0 0 1em red",
                   ["0 0 1em ", {name: "red"}]),
@@ -420,18 +422,19 @@ function testParseVariable(doc, parser) {
     {
       text: "var(--seen)",
       variables: {"--seen": "chartreuse" },
-      expected: "<span>var(<span title=\"--seen = chartreuse\">--seen</span>)</span>"
+      expected: "<span>var(<span data-variable=\"--seen = chartreuse\">--seen</span>)" +
+        "</span>"
     },
     {
       text: "var(--not-seen)",
       variables: {},
       expected: "<span>var(<span class=\"unmatched-class\" " +
-        "title=\"--not-seen is not set\">--not-seen</span>)</span>"
+        "data-variable=\"--not-seen is not set\">--not-seen</span>)</span>"
     },
     {
       text: "var(--seen, seagreen)",
       variables: {"--seen": "chartreuse" },
-      expected: "<span>var(<span title=\"--seen = chartreuse\">--seen</span>," +
+      expected: "<span>var(<span data-variable=\"--seen = chartreuse\">--seen</span>," +
         "<span class=\"unmatched-class\"> <span data-color=\"seagreen\"><span>seagreen" +
         "</span></span></span>)</span>"
     },
@@ -439,8 +442,9 @@ function testParseVariable(doc, parser) {
       text: "var(--not-seen, var(--seen))",
       variables: {"--seen": "chartreuse" },
       expected: "<span>var(<span class=\"unmatched-class\" " +
-        "title=\"--not-seen is not set\">--not-seen</span>,<span> <span>var(<span " +
-        "title=\"--seen = chartreuse\">--seen</span>)</span></span>)</span>"
+        "data-variable=\"--not-seen is not set\">--not-seen</span>,<span> <span>var" +
+        "(<span data-variable=\"--seen = chartreuse\">--seen</span>)</span></span>)" +
+        "</span>"
     },
   ];
 
@@ -459,5 +463,89 @@ function testParseVariable(doc, parser) {
 
     is(target.innerHTML, test.expected, test.text);
     target.innerHTML = "";
+  }
+}
+
+function testParseFontFamily(doc, parser) {
+  info("Test font-family parsing");
+  const tests = [
+    {
+      desc: "No fonts",
+      definition: "",
+      families: []
+    },
+    {
+      desc: "List of fonts",
+      definition: "Arial,Helvetica,sans-serif",
+      families: ["Arial", "Helvetica", "sans-serif"]
+    },
+    {
+      desc: "Fonts with spaces",
+      definition: "Open Sans",
+      families: ["Open Sans"]
+    },
+    {
+      desc: "Quoted fonts",
+      definition: "\"Arial\",'Open Sans'",
+      families: ["Arial", "Open Sans"]
+    },
+    {
+      desc: "Fonts with extra whitespace",
+      definition: " Open  Sans  ",
+      families: ["Open Sans"]
+    }
+  ];
+
+  const textContentTests = [
+    {
+      desc: "No whitespace between fonts",
+      definition: "Arial,Helvetica,sans-serif",
+      output: "Arial,Helvetica,sans-serif",
+    },
+    {
+      desc: "Whitespace between fonts",
+      definition: "Arial ,  Helvetica,   sans-serif",
+      output: "Arial , Helvetica, sans-serif",
+    },
+    {
+      desc: "Whitespace before first font trimmed",
+      definition: "  Arial,Helvetica,sans-serif",
+      output: "Arial,Helvetica,sans-serif",
+    },
+    {
+      desc: "Whitespace after last font trimmed",
+      definition: "Arial,Helvetica,sans-serif  ",
+      output: "Arial,Helvetica,sans-serif",
+    },
+    {
+      desc: "Whitespace between quoted fonts",
+      definition: "'Arial' ,  \"Helvetica\" ",
+      output: "'Arial' , \"Helvetica\"",
+    },
+    {
+      desc: "Whitespace within font preserved",
+      definition: "'  Ari al '",
+      output: "'  Ari al '",
+    }
+  ];
+
+  for (let {desc, definition, families} of tests) {
+    info(desc);
+    let frag = parser.parseCssProperty("font-family", definition, {
+      fontFamilyClass: "ruleview-font-family"
+    });
+    let spans = frag.querySelectorAll(".ruleview-font-family");
+
+    is(spans.length, families.length, desc + " span count");
+    for (let i = 0; i < spans.length; i++) {
+      is(spans[i].textContent, families[i], desc + " span contents");
+    }
+  }
+
+  info("Test font-family text content");
+  for (let {desc, definition, output} of textContentTests) {
+    info(desc);
+    let frag = parser.parseCssProperty("font-family", definition, {});
+    is(frag.textContent, output, desc + " text content matches");
   }
 }

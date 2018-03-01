@@ -1,6 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
+                                  "resource://gre/modules/Preferences.jsm");
+
 add_task(async function insert_separator_notification() {
   let observer = expectNotifications();
   let bm = await PlacesUtils.bookmarks.insert({ type: PlacesUtils.bookmarks.TYPE_SEPARATOR,
@@ -108,6 +111,13 @@ add_task(async function insert_bookmark_tag_notification() {
 });
 
 add_task(async function update_bookmark_lastModified() {
+  let timerPrecision = Preferences.get("privacy.reduceTimerPrecision");
+  Preferences.set("privacy.reduceTimerPrecision", false);
+
+  registerCleanupFunction(function() {
+    Preferences.set("privacy.reduceTimerPrecision", timerPrecision);
+  });
+
   let bm = await PlacesUtils.bookmarks.insert({ type: PlacesUtils.bookmarks.TYPE_BOOKMARK,
                                                 parentGuid: PlacesUtils.bookmarks.unfiledGuid,
                                                 url: new URL("http://lastmod.example.com/") });
@@ -231,8 +241,6 @@ add_task(async function remove_bookmark() {
 
   let observer = expectNotifications();
   await PlacesUtils.bookmarks.remove(bm.guid);
-  // TODO (Bug 653910): onItemAnnotationRemoved notified even if there were no
-  // annotations.
   observer.check([ { name: "onItemRemoved",
                      arguments: [ itemId, parentId, bm.index, bm.type, bm.url,
                                   bm.guid, bm.parentGuid,
@@ -254,8 +262,6 @@ add_task(async function remove_multiple_bookmarks() {
 
   let observer = expectNotifications();
   await PlacesUtils.bookmarks.remove([bm1, bm2]);
-  // TODO (Bug 653910): onItemAnnotationRemoved notified even if there were no
-  // annotations.
   observer.check([ { name: "onItemRemoved",
                      arguments: [ itemId1, parentId1, bm1.index, bm1.type, bm1.url,
                                   bm1.guid, bm1.parentGuid,

@@ -260,14 +260,13 @@ nsINode* nsINode::GetRootNode(const GetRootNodeOptions& aOptions)
     }
 
     nsINode* node = this;
-    ShadowRoot* shadowRootParent = nullptr;
     while(node) {
       node = node->SubtreeRoot();
-      shadowRootParent = ShadowRoot::FromNode(node);
-      if (!shadowRootParent) {
-         break;
+      ShadowRoot* shadow = ShadowRoot::FromNode(node);
+      if (!shadow) {
+        break;
       }
-      node = shadowRootParent->GetHost();
+      node = shadow->GetHost();
     }
 
     return node;
@@ -395,8 +394,7 @@ nsINode::GetSelectionRootContent(nsIPresShell* aPresShell)
     content = GetRootForContentSubtree(static_cast<nsIContent*>(this));
     // Fixup for ShadowRoot because the ShadowRoot itself does not have a frame.
     // Use the host as the root.
-    ShadowRoot* shadowRoot = ShadowRoot::FromNode(content);
-    if (shadowRoot) {
+    if (ShadowRoot* shadowRoot = ShadowRoot::FromNode(content)) {
       content = shadowRoot->GetHost();
     }
   }
@@ -616,7 +614,7 @@ nsINode::RemoveChild(nsINode& aOldChild, ErrorResult& aError)
     return nullptr;
   }
 
-  RemoveChildAt(index, true);
+  RemoveChildAt_Deprecated(index, true);
   return &aOldChild;
 }
 
@@ -723,7 +721,7 @@ nsINode::Normalize()
                  "Should always have a parent unless "
                  "mutation events messed us up");
     if (parent) {
-      parent->RemoveChildAt(parent->IndexOf(node), true);
+      parent->RemoveChildAt_Deprecated(parent->IndexOf(node), true);
     }
   }
 }
@@ -778,17 +776,22 @@ nsINode::LookupPrefix(const nsAString& aNamespaceURI, nsAString& aPrefix)
     // return the prefix (i.e. the attribute localName).
     for (nsIContent* content = element; content;
          content = content->GetParent()) {
-      uint32_t attrCount = content->GetAttrCount();
+      if (!content->IsElement()) {
+        continue;
+      }
+
+      Element* element = content->AsElement();
+      uint32_t attrCount = element->GetAttrCount();
 
       for (uint32_t i = 0; i < attrCount; ++i) {
-        const nsAttrName* name = content->GetAttrNameAt(i);
+        const nsAttrName* name = element->GetAttrNameAt(i);
 
         if (name->NamespaceEquals(kNameSpaceID_XMLNS) &&
-            content->AttrValueIs(kNameSpaceID_XMLNS, name->LocalName(),
+            element->AttrValueIs(kNameSpaceID_XMLNS, name->LocalName(),
                                  aNamespaceURI, eCaseMatters)) {
           // If the localName is "xmlns", the prefix we output should be
           // null.
-          nsAtom *localName = name->LocalName();
+          nsAtom* localName = name->LocalName();
 
           if (localName != nsGkAtoms::xmlns) {
             localName->ToString(aPrefix);
@@ -1923,9 +1926,10 @@ nsINode::doRemoveChildAt(uint32_t aIndex, bool aNotify,
   // NOTE: This function must not trigger any calls to
   // nsIDocument::GetRootElement() calls until *after* it has removed aKid from
   // aChildArray. Any calls before then could potentially restore a stale
-  // value for our cached root element, per note in nsDocument::RemoveChildAt().
+  // value for our cached root element, per note in
+  // nsDocument::RemoveChildNode().
   MOZ_ASSERT(aKid && aKid->GetParentNode() == this &&
-             aKid == GetChildAt(aIndex) &&
+             aKid == GetChildAt_Deprecated(aIndex) &&
              IndexOf(aKid) == (int32_t)aIndex, "Bogus aKid");
   MOZ_ASSERT(!IsNodeOfType(nsINode::eATTRIBUTE));
 
@@ -2256,11 +2260,11 @@ nsINode::ReplaceOrInsertBefore(bool aReplace, nsINode* aNewChild,
       mozAutoDocUpdate batch(newContent->GetComposedDoc(),
                              UPDATE_CONTENT_MODEL, true);
       nsAutoMutationBatch mb(oldParent, true, true);
-      oldParent->RemoveChildAt(removeIndex, true);
+      oldParent->RemoveChildAt_Deprecated(removeIndex, true);
       if (nsAutoMutationBatch::GetCurrentBatch() == &mb) {
         mb.RemovalDone();
-        mb.SetPrevSibling(oldParent->GetChildAt(removeIndex - 1));
-        mb.SetNextSibling(oldParent->GetChildAt(removeIndex));
+        mb.SetPrevSibling(oldParent->GetChildAt_Deprecated(removeIndex - 1));
+        mb.SetNextSibling(oldParent->GetChildAt_Deprecated(removeIndex));
       }
     }
 
@@ -2336,7 +2340,7 @@ nsINode::ReplaceOrInsertBefore(bool aReplace, nsINode* aNewChild,
       nsAutoMutationBatch mb(newContent, false, true);
 
       for (uint32_t i = count; i > 0;) {
-        newContent->RemoveChildAt(--i, true);
+        newContent->RemoveChildAt_Deprecated(--i, true);
       }
     }
 
@@ -2434,7 +2438,7 @@ nsINode::ReplaceOrInsertBefore(bool aReplace, nsINode* aNewChild,
     // An since nodeToInsertBefore is at index insPos, we want to remove
     // at the previous index.
     NS_ASSERTION(insPos >= 1, "insPos too small");
-    RemoveChildAt(insPos-1, true);
+    RemoveChildAt_Deprecated(insPos-1, true);
     --insPos;
   }
 
@@ -2469,8 +2473,8 @@ nsINode::ReplaceOrInsertBefore(bool aReplace, nsINode* aNewChild,
     nsAutoMutationBatch* mutationBatch = nsAutoMutationBatch::GetCurrentBatch();
     if (mutationBatch) {
       mutationBatch->RemovalDone();
-      mutationBatch->SetPrevSibling(GetChildAt(insPos - 1));
-      mutationBatch->SetNextSibling(GetChildAt(insPos));
+      mutationBatch->SetPrevSibling(GetChildAt_Deprecated(insPos - 1));
+      mutationBatch->SetNextSibling(GetChildAt_Deprecated(insPos));
     }
 
     uint32_t count = fragChildren->Length();
@@ -2527,8 +2531,8 @@ nsINode::ReplaceOrInsertBefore(bool aReplace, nsINode* aNewChild,
 
     if (nsAutoMutationBatch::GetCurrentBatch() == &mb) {
       mb.RemovalDone();
-      mb.SetPrevSibling(GetChildAt(insPos - 1));
-      mb.SetNextSibling(GetChildAt(insPos));
+      mb.SetPrevSibling(GetChildAt_Deprecated(insPos - 1));
+      mb.SetNextSibling(GetChildAt_Deprecated(insPos));
     }
     aError = InsertChildAt(newContent, insPos, true);
     if (aError.Failed()) {
@@ -2584,9 +2588,9 @@ nsINode::GetAccessibleNode()
 #ifdef ACCESSIBILITY
   RefPtr<AccessibleNode> anode = new AccessibleNode(this);
   return anode.forget();
-#endif
-
+#else
   return nullptr;
+#endif
 }
 
 void
@@ -3057,12 +3061,9 @@ nsINode::GetParentElementCrossingShadowRoot() const
     return mParent->AsElement();
   }
 
-  ShadowRoot* shadowRoot = ShadowRoot::FromNode(mParent);
-  if (shadowRoot) {
-    nsIContent* host = shadowRoot->GetHost();
-    MOZ_ASSERT(host, "ShowRoots should always have a host");
-    MOZ_ASSERT(host->IsElement(), "ShadowRoot hosts should always be Elements");
-    return host->AsElement();
+  if (ShadowRoot* shadowRoot = ShadowRoot::FromNode(mParent)) {
+    MOZ_ASSERT(shadowRoot->GetHost(), "ShowRoots should always have a host");
+    return shadowRoot->GetHost();
   }
 
   return nullptr;
@@ -3121,3 +3122,9 @@ nsINode::IsStyledByServo() const
   return OwnerDoc()->IsStyledByServo();
 }
 #endif
+
+DocGroup*
+nsINode::GetDocGroup() const
+{
+  return OwnerDoc()->GetDocGroup();
+}

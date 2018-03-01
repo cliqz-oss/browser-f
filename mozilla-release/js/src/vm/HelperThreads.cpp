@@ -312,7 +312,7 @@ CancelOffThreadIonCompileLocked(const CompilationSelector& selector, bool discar
         jit::IonBuilder* builder = finished[i];
         if (IonBuilderMatches(selector, builder)) {
             builder->script()->zoneFromAnyThread()->group()->numFinishedBuilders--;
-            jit::FinishOffThreadBuilder(nullptr, builder, lock);
+            jit::FinishOffThreadBuilder(builder->script()->runtimeFromAnyThread(), builder, lock);
             HelperThreadState().remove(finished, &i);
         }
     }
@@ -701,7 +701,7 @@ EnsureParserCreatedClasses(JSContext* cx, ParseTaskKind kind)
         return false; // needed by regular expression literals
 
     if (!GlobalObject::initGenerators(cx, global))
-        return false; // needed by function*() {} and generator comprehensions
+        return false; // needed by function*() {}
 
     if (kind == ParseTaskKind::Module && !GlobalObject::ensureModulePrototypesCreated(cx, global))
         return false;
@@ -1769,7 +1769,8 @@ GlobalHelperThreadState::mergeParseTaskCompartment(JSContext* cx, ParseTask* par
             if (key != JSProto_Null) {
                 MOZ_ASSERT(key == JSProto_Object || key == JSProto_Array ||
                            key == JSProto_Function || key == JSProto_RegExp);
-                newProto = GetBuiltinPrototypePure(global, key);
+                newProto = global->maybeGetPrototype(key);
+                MOZ_ASSERT(newProto);
             } else if (protoObj == parseTaskGenFunctionProto) {
                 newProto = global->getGeneratorFunctionPrototype();
             } else if (protoObj == moduleProto) {

@@ -19,9 +19,7 @@ interfaces = [
     'core',
     'html',
     'events',
-    'stylesheets',
     'sidebar',
-    'css',
     'traversal',
     'range',
     'xbl',
@@ -29,7 +27,6 @@ interfaces = [
     'xul',
     'security',
     'storage',
-    'json',
     'offline',
     'geolocation',
     'notification',
@@ -60,12 +57,11 @@ DIRS += [
     'file',
     'filehandle',
     'filesystem',
-    'flyweb',
+    'flex',
     'gamepad',
     'geolocation',
     'grid',
     'html',
-    'json',
     'jsurl',
     'asmjscache',
     'mathml',
@@ -126,6 +122,6 @@ TEST_DIRS += [
     'imptests',
 ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'cocoa', 'windows'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk3', 'cocoa', 'windows'):
     TEST_DIRS += ['plugins/test']
 

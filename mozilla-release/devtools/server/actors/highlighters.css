@@ -386,6 +386,17 @@
   text-anchor: end;
 }
 
+:-moz-native-anonymous .rulers-highlighter-viewport-infobar-container {
+  shape-rendering: crispEdges;
+  background-color: rgba(255, 255, 255, 0.7);
+  font: var(--highlighter-font-family);
+  position: fixed;
+  top: 30px;
+  right: 0px;
+  font-size: 12px;
+  padding: 4px;
+}
+
 /* Measuring Tool Highlighter */
 
 :-moz-native-anonymous .measuring-tool-highlighter-root {
@@ -599,7 +610,7 @@
 /* Shapes highlighter */
 
 :-moz-native-anonymous .shapes-root {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 :-moz-native-anonymous .shapes-shape-container {
@@ -610,7 +621,9 @@
 :-moz-native-anonymous .shapes-polygon,
 :-moz-native-anonymous .shapes-ellipse,
 :-moz-native-anonymous .shapes-rect,
-:-moz-native-anonymous .shapes-bounding-box {
+:-moz-native-anonymous .shapes-bounding-box,
+:-moz-native-anonymous .shapes-rotate-line,
+:-moz-native-anonymous .shapes-quad {
   fill: transparent;
   stroke: var(--highlighter-guide-color);
   shape-rendering: geometricPrecision;

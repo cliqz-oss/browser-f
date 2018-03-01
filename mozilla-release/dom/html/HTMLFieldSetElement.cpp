@@ -170,11 +170,11 @@ HTMLFieldSetElement::InsertChildAt(nsIContent* aChild, uint32_t aIndex,
 }
 
 void
-HTMLFieldSetElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
+HTMLFieldSetElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 {
   bool firstLegendHasChanged = false;
 
-  if (mFirstLegend && (GetChildAt(aIndex) == mFirstLegend)) {
+  if (mFirstLegend && (GetChildAt_Deprecated(aIndex) == mFirstLegend)) {
     // If we are removing the first legend we have to found another one.
     nsIContent* child = mFirstLegend->GetNextSibling();
     mFirstLegend = nullptr;
@@ -188,7 +188,33 @@ HTMLFieldSetElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
     }
   }
 
-  nsGenericHTMLFormElement::RemoveChildAt(aIndex, aNotify);
+  nsGenericHTMLFormElement::RemoveChildAt_Deprecated(aIndex, aNotify);
+
+  if (firstLegendHasChanged) {
+    NotifyElementsForFirstLegendChange(aNotify);
+  }
+}
+
+void
+HTMLFieldSetElement::RemoveChildNode(nsIContent* aKid, bool aNotify)
+{
+  bool firstLegendHasChanged = false;
+
+  if (mFirstLegend && aKid == mFirstLegend) {
+    // If we are removing the first legend we have to found another one.
+    nsIContent* child = mFirstLegend->GetNextSibling();
+    mFirstLegend = nullptr;
+    firstLegendHasChanged = true;
+
+    for (; child; child = child->GetNextSibling()) {
+      if (child->IsHTMLElement(nsGkAtoms::legend)) {
+        mFirstLegend = child;
+        break;
+      }
+    }
+  }
+
+  nsGenericHTMLFormElement::RemoveChildNode(aKid, aNotify);
 
   if (firstLegendHasChanged) {
     NotifyElementsForFirstLegendChange(aNotify);

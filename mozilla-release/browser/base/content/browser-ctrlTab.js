@@ -16,12 +16,13 @@ var tabPreviews = {
 
     gBrowser.tabContainer.addEventListener("TabSelect", this);
     gBrowser.tabContainer.addEventListener("SSTabRestored", this);
+  },
 
-    let screenManager = Cc["@mozilla.org/gfx/screenmanager;1"]
-                          .getService(Ci.nsIScreenManager);
-    let left = {}, top = {}, width = {}, height = {};
-    screenManager.primaryScreen.GetRectDisplayPix(left, top, width, height);
-    this.aspectRatio = height.value / width.value;
+  get aspectRatio() {
+    let { PageThumbUtils } = Cu.import("resource://gre/modules/PageThumbUtils.jsm", {});
+    let [ width, height ] = PageThumbUtils.getThumbnailSize(window);
+    delete this.aspectRatio;
+    return this.aspectRatio = height / width;
   },
 
   get: function tabPreviews_get(aTab) {
@@ -215,8 +216,8 @@ var ctrlTab = {
   prefName: "browser.ctrlTab.previews",
   readPref: function ctrlTab_readPref() {
     var enable =
-      gPrefService.getBoolPref(this.prefName) &&
-      !gPrefService.getBoolPref("browser.ctrlTab.disallowForScreenReaders", false);
+      Services.prefs.getBoolPref(this.prefName) &&
+      !Services.prefs.getBoolPref("browser.ctrlTab.disallowForScreenReaders", false);
 
     if (enable)
       this.init();
@@ -287,6 +288,10 @@ var ctrlTab = {
       this._selectedIndex = selectedIndex;
     }
 
+    if (this.previews[selectedIndex]._tab) {
+      gBrowser.warmupTab(this.previews[selectedIndex]._tab);
+    }
+
     if (this._timer) {
       clearTimeout(this._timer);
       this._timer = null;
@@ -347,6 +352,7 @@ var ctrlTab = {
 
     this.updatePreviews();
     this._selectedIndex = 1;
+    gBrowser.warmupTab(this.selected._tab);
 
     // Add a slight delay before showing the UI, so that a quick
     // "ctrl-tab" keypress just flips back to the MRU tab.
@@ -547,7 +553,7 @@ var ctrlTab = {
     tabContainer[toggleEventListener]("TabClose", this);
 
     document[toggleEventListener]("keypress", this);
-    gBrowser.mTabBox.handleCtrlTab = !enable;
+    gBrowser.tabbox.handleCtrlTab = !enable;
 
     if (enable)
       PageThumbs.addExpirationFilter(this);

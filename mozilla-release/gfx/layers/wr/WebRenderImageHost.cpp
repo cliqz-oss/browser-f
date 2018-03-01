@@ -8,6 +8,7 @@
 
 #include "LayersLogging.h"
 #include "mozilla/layers/Compositor.h"  // for Compositor
+#include "mozilla/layers/CompositorVsyncScheduler.h"  // for CompositorVsyncScheduler
 #include "mozilla/layers/Effects.h"     // for TexturedEffect, Effect, etc
 #include "mozilla/layers/LayerManagerComposite.h"     // for TexturedEffect, Effect, etc
 #include "mozilla/layers/WebRenderBridgeParent.h"
@@ -70,8 +71,9 @@ WebRenderImageHost::UseTextureHost(const nsTArray<TimedTexture>& aTextures)
   mImages.SwapElements(newImages);
   newImages.Clear();
 
-  if (mWrBridge && GetAsyncRef()) {
-    mWrBridge->ScheduleComposition();
+  if (mWrBridge && mWrBridge->CompositorScheduler() && GetAsyncRef()) {
+    // Will check if we will generate frame.
+    mWrBridge->CompositorScheduler()->ScheduleComposition();
   }
 
   // Video producers generally send replacement images with the same frameID but

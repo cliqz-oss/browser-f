@@ -70,6 +70,51 @@ public:
   virtual AndroidSpecificState* AsAndroidSpecificState() { return nullptr; }
 };
 
+/*
+ * Represents a transform from the ParentLayer coordinate space of an APZC
+ * to the ParentLayer coordinate space of its parent APZC.
+ * Each layer along the way contributes to the transform. We track 
+ * contributions that are perspective transforms separately, as sometimes 
+ * these require special handling.
+ */
+struct AncestorTransform {
+  gfx::Matrix4x4 mTransform;
+  gfx::Matrix4x4 mPerspectiveTransform;
+
+  AncestorTransform() = default;
+
+  AncestorTransform(const gfx::Matrix4x4& aTransform, bool aTransformIsPerspective) {
+    (aTransformIsPerspective ? mPerspectiveTransform : mTransform) = aTransform;
+  }
+
+  AncestorTransform(const gfx::Matrix4x4& aTransform,
+                    const gfx::Matrix4x4& aPerspectiveTransform)
+    : mTransform(aTransform)
+    , mPerspectiveTransform(aPerspectiveTransform)
+  {}
+
+  gfx::Matrix4x4 CombinedTransform() const {
+    return mTransform * mPerspectiveTransform;
+  }
+
+  bool ContainsPerspectiveTransform() const {
+    return !mPerspectiveTransform.IsIdentity();
+  }
+
+  gfx::Matrix4x4 GetPerspectiveTransform() const {
+    return mPerspectiveTransform;
+  }
+
+  friend AncestorTransform operator*(const AncestorTransform& aA,
+                                     const AncestorTransform& aB)
+  {
+    return AncestorTransform{
+      aA.mTransform * aB.mTransform,
+      aA.mPerspectiveTransform * aB.mPerspectiveTransform
+    };
+  }
+};
+
 /**
  * Controller for all panning and zooming logic. Any time a user input is
  * detected and it must be processed in some way to affect what the user sees,
@@ -420,6 +465,10 @@ public:
   // direction.
   bool CanScroll(const InputData& aEvent) const;
 
+  // Return the directions in which this APZC allows handoff (as governed by
+  // overscroll-behavior).
+  ScrollDirections GetAllowedHandoffDirections() const;
+
   // Return whether or not a scroll delta will be able to scroll in either
   // direction.
   bool CanScrollWithWheel(const ParentLayerPoint& aDelta) const;
@@ -437,6 +486,8 @@ public:
                                  const ScrollThumbData& aThumbData) const;
 
   void NotifyMozMouseScrollEvent(const nsString& aString) const;
+
+  bool OverscrollBehaviorAllowsSwipe() const;
 
 protected:
   // Protected destructor, to discourage deletion outside of Release():
@@ -629,6 +680,11 @@ protected:
   void HandlePanningUpdate(const ScreenPoint& aDelta);
 
   /**
+   * Set and update the pinch lock
+   */
+  void HandlePinchLocking(ScreenCoord spanDistance, ScreenPoint focusChange);
+
+  /**
    * Sets up anything needed for panning. This takes us out of the "TOUCHING"
    * state and starts actually panning us.
    */
@@ -669,6 +725,12 @@ protected:
   const FrameMetrics& GetFrameMetrics() const;
 
   /**
+   * Gets the current scroll metadata. This is *not* the Gecko copy stored in
+   * the layers code/
+   */
+  const ScrollMetadata& GetScrollMetadata() const;
+
+  /**
    * Gets the pointer to the apzc tree manager. All the access to tree manager
    * should be made via this method and not via private variable since this method
    * ensures that no lock is set.
@@ -690,6 +752,14 @@ protected:
   };
 
   static AxisLockMode GetAxisLockMode();
+
+  enum PinchLockMode {
+    PINCH_FREE,     /* No locking at all */
+    PINCH_STANDARD, /* Default pinch locking mode that remains locked until pinch gesture ends*/
+    PINCH_STICKY,   /* Allow lock to be broken, with hysteresis */
+  };
+
+  static PinchLockMode GetPinchLockMode();
 
   // Helper function for OnSingleTapUp(), OnSingleTapConfirmed(), and
   // OnLongPressUp().
@@ -766,6 +836,10 @@ private:
   // This flag is set to true when we are in a axis-locked pan as a result of
   // the touch-action CSS property.
   bool mPanDirRestricted;
+
+  // This flag is set to true when we are in a pinch-locked state. ie: user
+  // is performing a two-finger pan rather than a pinch gesture
+  bool mPinchLocked;
 
   // Most up-to-date constraints on zooming. These should always be reasonable
   // values; for example, allowing a min zoom of 0.0 can cause very bad things
@@ -916,7 +990,8 @@ protected:
                                  CSSOM-View smooth scroll-behavior */
     WHEEL_SCROLL,             /* Smooth scrolling to a destination for a wheel event. */
     KEYBOARD_SCROLL,          /* Smooth scrolling to a destination for a keyboard event. */
-    AUTOSCROLL                /* Autoscroll animation. */
+    AUTOSCROLL,               /* Autoscroll animation. */
+    SCROLLBAR_DRAG            /* Async scrollbar drag. */
   };
   // This is in theory protected by |mRecursiveMutex|; that is, it should be held whenever
   // this is updated. In practice though... see bug 897017.
@@ -996,16 +1071,16 @@ private:
 public:
   /**
    * Attempt a fling with the velocity specified in |aHandoffState|.
-   * If we are not pannable, the fling is handed off to the next APZC in
-   * the handoff chain via mTreeManager->DispatchFling().
-   * Returns true iff. the entire velocity of the fling was consumed by
-   * this APZC. |aHandoffState.mVelocity| is modified to contain any
-   * unused, residual velocity.
    * |aHandoffState.mIsHandoff| should be true iff. the fling was handed off
    * from a previous APZC, and determines whether acceleration is applied
    * to the fling.
+   * We only accept the fling in the direction(s) in which we are pannable.
+   * Returns the "residual velocity", i.e. the portion of
+   * |aHandoffState.mVelocity| that this APZC did not consume.
    */
-  bool AttemptFling(FlingHandoffState& aHandoffState);
+  ParentLayerPoint AttemptFling(const FlingHandoffState& aHandoffState);
+
+  ParentLayerPoint AdjustHandoffVelocityForOverscrollBehavior(ParentLayerPoint& aHandoffVelocity) const;
 
 private:
   friend class AndroidFlingAnimation;
@@ -1037,9 +1112,6 @@ private:
                              const RefPtr<const AsyncPanZoomController>& aScrolledApzc);
 
   void HandleSmoothScrollOverscroll(const ParentLayerPoint& aVelocity);
-
-  // Helper function used by AttemptFling().
-  void AcceptFling(FlingHandoffState& aHandoffState);
 
   // Start an overscroll animation with the given initial velocity.
   void StartOverscrollAnimation(const ParentLayerPoint& aVelocity);
@@ -1179,6 +1251,8 @@ private:
    */
   void OverscrollBy(ParentLayerPoint& aOverscroll);
 
+  // Helper function for CanScroll().
+  ParentLayerPoint GetDeltaForEvent(const InputData& aEvent) const;
 
   /* ===================================================================
    * The functions and members in this section are used to maintain the
@@ -1186,12 +1260,21 @@ private:
    * hit-testing to see which APZC instance should handle touch events.
    */
 public:
-  void SetAncestorTransform(const Matrix4x4& aTransformToLayer) {
-    mAncestorTransform = aTransformToLayer;
+  void SetAncestorTransform(const AncestorTransform& aAncestorTransform) {
+    mAncestorTransform = aAncestorTransform;
   }
 
   Matrix4x4 GetAncestorTransform() const {
-    return mAncestorTransform;
+    return mAncestorTransform.CombinedTransform();
+  }
+
+  bool AncestorTransformContainsPerspective() const {
+    return mAncestorTransform.ContainsPerspectiveTransform();
+  }
+
+  // Return the perspective transform component of the ancestor transform.
+  Matrix4x4 GetAncestorTransformPerspective() const {
+    return mAncestorTransform.GetPerspectiveTransform();
   }
 
   // Returns whether or not this apzc contains the given screen point within
@@ -1208,7 +1291,7 @@ private:
   /* This is the cumulative CSS transform for all the layers from (and including)
    * the parent APZC down to (but excluding) this one, and excluding any
    * perspective transforms. */
-  Matrix4x4 mAncestorTransform;
+  AncestorTransform mAncestorTransform;
 
 
   /* ===================================================================

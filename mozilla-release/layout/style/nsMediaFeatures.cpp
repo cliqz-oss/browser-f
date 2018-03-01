@@ -27,6 +27,13 @@
 
 using namespace mozilla;
 
+static nsTArray<RefPtr<nsAtom>>* sSystemMetrics = nullptr;
+
+#ifdef XP_WIN
+// Cached theme identifier for the moz-windows-theme media query.
+static uint8_t sWinThemeId = LookAndFeel::eWindowsTheme_Generic;
+#endif
+
 static const nsCSSProps::KTableEntry kOrientationKeywords[] = {
   { eCSSKeyword_portrait,                 NS_STYLE_ORIENTATION_PORTRAIT },
   { eCSSKeyword_landscape,                NS_STYLE_ORIENTATION_LANDSCAPE },
@@ -78,130 +85,145 @@ const OperatingSystemVersionInfo osVersionStrings[] = {
 };
 #endif
 
+static nsPresContext*
+GetPresContext(nsIDocument* aDocument)
+{
+  nsIPresShell* presShell = aDocument->GetShell();
+  if (!presShell) {
+    return nullptr;
+  }
+
+  return presShell->GetPresContext();
+}
+
 // A helper for four features below
 static nsSize
-GetSize(nsPresContext* aPresContext)
+GetSize(nsIDocument* aDocument)
 {
-  nsSize size;
-  if (aPresContext->IsRootPaginatedDocument())
+  nsPresContext* pc = GetPresContext(aDocument);
+
+  // Per spec, return a 0x0 viewport if we're not being rendered. See:
+  //
+  //  * https://github.com/w3c/csswg-drafts/issues/571
+  //  * https://github.com/whatwg/html/issues/1813
+  //
+  if (!pc) {
+    return { };
+  }
+
+  if (pc->IsRootPaginatedDocument()) {
     // We want the page size, including unprintable areas and margins.
-    size = aPresContext->GetPageSize();
-  else
-    size = aPresContext->GetVisibleArea().Size();
-  return size;
+    //
+    // FIXME(emilio, bug 1414600): Not quite!
+    return pc->GetPageSize();
+  }
+
+  return pc->GetVisibleArea().Size();
 }
 
 static void
-GetWidth(nsPresContext* aPresContext, const nsMediaFeature*,
+GetWidth(nsIDocument* aDocument, const nsMediaFeature*,
          nsCSSValue& aResult)
 {
-  nsSize size = GetSize(aPresContext);
-  float pixelWidth = aPresContext->AppUnitsToFloatCSSPixels(size.width);
-  aResult.SetFloatValue(pixelWidth, eCSSUnit_Pixel);
+  nsSize size = GetSize(aDocument);
+  aResult.SetFloatValue(CSSPixel::FromAppUnits(size.width), eCSSUnit_Pixel);
 }
 
 static void
-GetHeight(nsPresContext* aPresContext, const nsMediaFeature*,
+GetHeight(nsIDocument* aDocument, const nsMediaFeature*,
           nsCSSValue& aResult)
 {
-  nsSize size = GetSize(aPresContext);
-  float pixelHeight = aPresContext->AppUnitsToFloatCSSPixels(size.height);
-  aResult.SetFloatValue(pixelHeight, eCSSUnit_Pixel);
-}
-
-inline static nsDeviceContext*
-GetDeviceContextFor(nsPresContext* aPresContext)
-{
-  // It would be nice to call
-  // nsLayoutUtils::GetDeviceContextForScreenInfo here, except for two
-  // things:  (1) it can flush, and flushing is bad here, and (2) it
-  // doesn't really get us consistency in multi-monitor situations
-  // *anyway*.
-  return aPresContext->DeviceContext();
+  nsSize size = GetSize(aDocument);
+  aResult.SetFloatValue(CSSPixel::FromAppUnits(size.height), eCSSUnit_Pixel);
 }
 
 static bool
-ShouldResistFingerprinting(nsPresContext* aPresContext)
+ShouldResistFingerprinting(nsIDocument* aDocument)
 {
-  return nsContentUtils::ShouldResistFingerprinting(aPresContext->GetDocShell());
+  return nsContentUtils::ShouldResistFingerprinting(aDocument->GetDocShell());
+}
+
+static bool
+IsDeviceSizePageSize(nsIDocument* aDocument)
+{
+  nsIDocShell* docShell = aDocument->GetDocShell();
+  if (!docShell) {
+    return false;
+  }
+  return docShell->GetDeviceSizeIsPageSize();
 }
 
 // A helper for three features below.
 static nsSize
-GetDeviceSize(nsPresContext* aPresContext)
+GetDeviceSize(nsIDocument* aDocument)
 {
-  nsSize size;
+  if (ShouldResistFingerprinting(aDocument) || IsDeviceSizePageSize(aDocument)) {
+    return GetSize(aDocument);
+  }
 
-  if (ShouldResistFingerprinting(aPresContext) || aPresContext->IsDeviceSizePageSize()) {
-    size = GetSize(aPresContext);
-  } else if (aPresContext->IsRootPaginatedDocument()) {
+  nsPresContext* pc = GetPresContext(aDocument);
+  // NOTE(emilio): We should probably figure out how to return an appropriate
+  // device size here, though in a multi-screen world that makes no sense
+  // really.
+  if (!pc) {
+    return { };
+  }
+
+  if (pc->IsRootPaginatedDocument()) {
     // We want the page size, including unprintable areas and margins.
     // XXX The spec actually says we want the "page sheet size", but
     // how is that different?
-    size = aPresContext->GetPageSize();
-  } else {
-    GetDeviceContextFor(aPresContext)->
-      GetDeviceSurfaceDimensions(size.width, size.height);
+    return pc->GetPageSize();
   }
+
+  nsSize size;
+  pc->DeviceContext()->GetDeviceSurfaceDimensions(size.width, size.height);
   return size;
 }
 
 static void
-GetDeviceWidth(nsPresContext* aPresContext, const nsMediaFeature*,
+GetDeviceWidth(nsIDocument* aDocument, const nsMediaFeature*,
                nsCSSValue& aResult)
 {
-  nsSize size = GetDeviceSize(aPresContext);
-  float pixelWidth = aPresContext->AppUnitsToFloatCSSPixels(size.width);
-  aResult.SetFloatValue(pixelWidth, eCSSUnit_Pixel);
+  nsSize size = GetDeviceSize(aDocument);
+  aResult.SetFloatValue(CSSPixel::FromAppUnits(size.width), eCSSUnit_Pixel);
 }
 
 static void
-GetDeviceHeight(nsPresContext* aPresContext, const nsMediaFeature*,
+GetDeviceHeight(nsIDocument* aDocument, const nsMediaFeature*,
                 nsCSSValue& aResult)
 {
-  nsSize size = GetDeviceSize(aPresContext);
-  float pixelHeight = aPresContext->AppUnitsToFloatCSSPixels(size.height);
-  aResult.SetFloatValue(pixelHeight, eCSSUnit_Pixel);
+  nsSize size = GetDeviceSize(aDocument);
+  aResult.SetFloatValue(CSSPixel::FromAppUnits(size.height), eCSSUnit_Pixel);
 }
 
 static void
-GetOrientation(nsPresContext* aPresContext, const nsMediaFeature*,
+GetOrientation(nsIDocument* aDocument, const nsMediaFeature*,
                nsCSSValue& aResult)
 {
-  nsSize size = GetSize(aPresContext);
-  int32_t orientation;
-  if (size.width > size.height) {
-    orientation = NS_STYLE_ORIENTATION_LANDSCAPE;
-  } else {
-    // Per spec, square viewports should be 'portrait'
-    orientation = NS_STYLE_ORIENTATION_PORTRAIT;
-  }
-
+  nsSize size = GetSize(aDocument);
+  // Per spec, square viewports should be 'portrait'
+  int32_t orientation = size.width > size.height
+    ?  NS_STYLE_ORIENTATION_LANDSCAPE : NS_STYLE_ORIENTATION_PORTRAIT;
   aResult.SetIntValue(orientation, eCSSUnit_Enumerated);
 }
 
 static void
-GetDeviceOrientation(nsPresContext* aPresContext, const nsMediaFeature*,
+GetDeviceOrientation(nsIDocument* aDocument, const nsMediaFeature*,
                      nsCSSValue& aResult)
 {
-  nsSize size = GetDeviceSize(aPresContext);
-  int32_t orientation;
-  if (size.width > size.height) {
-    orientation = NS_STYLE_ORIENTATION_LANDSCAPE;
-  } else {
-    // Per spec, square viewports should be 'portrait'
-    orientation = NS_STYLE_ORIENTATION_PORTRAIT;
-  }
-
+  nsSize size = GetDeviceSize(aDocument);
+  // Per spec, square viewports should be 'portrait'
+  int32_t orientation = size.width > size.height
+    ? NS_STYLE_ORIENTATION_LANDSCAPE : NS_STYLE_ORIENTATION_PORTRAIT;
   aResult.SetIntValue(orientation, eCSSUnit_Enumerated);
 }
 
 static void
-GetIsResourceDocument(nsPresContext* aPresContext, const nsMediaFeature*,
+GetIsResourceDocument(nsIDocument* aDocument, const nsMediaFeature*,
                       nsCSSValue& aResult)
 {
-  nsIDocument* doc = aPresContext->Document();
-  aResult.SetIntValue(doc && doc->IsResourceDoc() ? 1 : 0, eCSSUnit_Integer);
+  aResult.SetIntValue(aDocument->IsResourceDoc() ? 1 : 0, eCSSUnit_Integer);
 }
 
 // Helper for two features below
@@ -217,32 +239,46 @@ MakeArray(const nsSize& aSize, nsCSSValue& aResult)
 }
 
 static void
-GetAspectRatio(nsPresContext* aPresContext, const nsMediaFeature*,
+GetAspectRatio(nsIDocument* aDocument, const nsMediaFeature*,
                nsCSSValue& aResult)
 {
-  MakeArray(GetSize(aPresContext), aResult);
+  MakeArray(GetSize(aDocument), aResult);
 }
 
 static void
-GetDeviceAspectRatio(nsPresContext* aPresContext, const nsMediaFeature*,
+GetDeviceAspectRatio(nsIDocument* aDocument, const nsMediaFeature*,
                      nsCSSValue& aResult)
 {
-  MakeArray(GetDeviceSize(aPresContext), aResult);
+  MakeArray(GetDeviceSize(aDocument), aResult);
+}
+
+static nsDeviceContext*
+GetDeviceContextFor(nsIDocument* aDocument)
+{
+  nsPresContext* pc = GetPresContext(aDocument);
+  if (!pc) {
+    return nullptr;
+  }
+
+  // It would be nice to call nsLayoutUtils::GetDeviceContextForScreenInfo here,
+  // except for two things:  (1) it can flush, and flushing is bad here, and (2)
+  // it doesn't really get us consistency in multi-monitor situations *anyway*.
+  return pc->DeviceContext();
 }
 
 static void
-GetColor(nsPresContext* aPresContext, const nsMediaFeature*,
+GetColor(nsIDocument* aDocument, const nsMediaFeature*,
          nsCSSValue& aResult)
 {
-  uint32_t depth = 24; // Use depth of 24 when resisting fingerprinting.
+  // Use depth of 24 when resisting fingerprinting, or when we're not being
+  // rendered.
+  uint32_t depth = 24;
 
-  if (!ShouldResistFingerprinting(aPresContext)) {
-    // FIXME:  This implementation is bogus.  nsDeviceContext
-    // doesn't provide reliable information (should be fixed in bug
-    // 424386).
-    // FIXME: On a monochrome device, return 0!
-    nsDeviceContext *dx = GetDeviceContextFor(aPresContext);
-    dx->GetDepth(depth);
+  if (!ShouldResistFingerprinting(aDocument)) {
+    if (nsDeviceContext* dx = GetDeviceContextFor(aDocument)) {
+      // FIXME: On a monochrome device, return 0!
+      dx->GetDepth(depth);
+    }
   }
 
   // The spec says to use bits *per color component*, so divide by 3,
@@ -253,7 +289,7 @@ GetColor(nsPresContext* aPresContext, const nsMediaFeature*,
 }
 
 static void
-GetColorIndex(nsPresContext* aPresContext, const nsMediaFeature*,
+GetColorIndex(nsIDocument* aDocument, const nsMediaFeature*,
               nsCSSValue& aResult)
 {
   // We should return zero if the device does not use a color lookup
@@ -266,7 +302,7 @@ GetColorIndex(nsPresContext* aPresContext, const nsMediaFeature*,
 }
 
 static void
-GetMonochrome(nsPresContext* aPresContext, const nsMediaFeature*,
+GetMonochrome(nsIDocument* aDocument, const nsMediaFeature*,
               nsCSSValue& aResult)
 {
   // For color devices we should return 0.
@@ -276,7 +312,7 @@ GetMonochrome(nsPresContext* aPresContext, const nsMediaFeature*,
 }
 
 static void
-GetResolution(nsPresContext* aPresContext, const nsMediaFeature*,
+GetResolution(nsIDocument* aDocument, const nsMediaFeature*,
               nsCSSValue& aResult)
 {
   // We're returning resolution in terms of device pixels per css pixel, since
@@ -284,23 +320,23 @@ GetResolution(nsPresContext* aPresContext, const nsMediaFeature*,
   // introducing precision error from conversion to and from less-used
   // physical units like inches.
 
-  float dppx;
+  float dppx = 1.;
 
-  if (!ShouldResistFingerprinting(aPresContext)) {
-    // Get the actual device pixel ratio, which also takes zoom into account.
-    dppx = float(nsPresContext::AppUnitsPerCSSPixel()) /
-             aPresContext->AppUnitsPerDevPixel();
-  } else {
-    // We are resisting fingerprinting, so pretend we have a device pixel ratio
-    // of 1. In that case, we simply report the zoom level.
-    dppx = aPresContext->GetDeviceFullZoom();
+  if (nsDeviceContext* dx = GetDeviceContextFor(aDocument)) {
+    if (ShouldResistFingerprinting(aDocument)) {
+      dppx = dx->GetFullZoom();
+    } else {
+      // Get the actual device pixel ratio, which also takes zoom into account.
+      dppx =
+        float(nsPresContext::AppUnitsPerCSSPixel()) / dx->AppUnitsPerDevPixel();
+    }
   }
 
   aResult.SetFloatValue(dppx, eCSSUnit_Pixel);
 }
 
 static void
-GetScan(nsPresContext* aPresContext, const nsMediaFeature*,
+GetScan(nsIDocument* aDocument, const nsMediaFeature*,
         nsCSSValue& aResult)
 {
   // Since Gecko doesn't support the 'tv' media type, the 'scan'
@@ -308,35 +344,27 @@ GetScan(nsPresContext* aPresContext, const nsMediaFeature*,
   aResult.Reset();
 }
 
+static nsIDocument*
+TopDocument(nsIDocument* aDocument)
+{
+  nsIDocument* current = aDocument;
+  while (nsIDocument* parent = current->GetParentDocument()) {
+    current = parent;
+  }
+  return current;
+}
+
 static void
-GetDisplayMode(nsPresContext* aPresContext, const nsMediaFeature*,
+GetDisplayMode(nsIDocument* aDocument, const nsMediaFeature*,
                nsCSSValue& aResult)
 {
-  nsCOMPtr<nsISupports> container;
-  RefPtr<nsIDocShell> docShell;
+  nsIDocument* rootDocument = TopDocument(aDocument);
 
-  if (!aPresContext) {
-    aResult.SetIntValue(NS_STYLE_DISPLAY_MODE_BROWSER, eCSSUnit_Enumerated);
-    return;
-  }
-
-  if (aPresContext) {
-    // Calling GetRootPresContext() can be slow, so make sure to call it
-    // just once.
-    nsRootPresContext* root = aPresContext->GetRootPresContext();
-    if (root && root->Document()) {
-      container = root->Document()->GetContainer();
-      docShell = root->GetDocShell();
-    }
-  }
-
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(container);
-  if (baseWindow) {
+  nsCOMPtr<nsISupports> container = rootDocument->GetContainer();
+  if (nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(container)) {
     nsCOMPtr<nsIWidget> mainWidget;
     baseWindow->GetMainWidget(getter_AddRefs(mainWidget));
-    nsSizeMode mode = mainWidget ? mainWidget->SizeMode() : nsSizeMode_Normal;
-
-    if (mode == nsSizeMode_Fullscreen) {
+    if (mainWidget && mainWidget->SizeMode() == nsSizeMode_Fullscreen) {
       aResult.SetIntValue(NS_STYLE_DISPLAY_MODE_FULLSCREEN, eCSSUnit_Enumerated);
       return;
     }
@@ -349,7 +377,7 @@ GetDisplayMode(nsPresContext* aPresContext, const nsMediaFeature*,
                 "nsIDocShell display modes must mach nsStyleConsts.h");
 
   uint32_t displayMode = NS_STYLE_DISPLAY_MODE_BROWSER;
-  if (docShell) {
+  if (nsIDocShell* docShell = rootDocument->GetDocShell()) {
     docShell->GetDisplayMode(&displayMode);
   }
 
@@ -357,7 +385,7 @@ GetDisplayMode(nsPresContext* aPresContext, const nsMediaFeature*,
 }
 
 static void
-GetGrid(nsPresContext* aPresContext, const nsMediaFeature*,
+GetGrid(nsIDocument* aDocument, const nsMediaFeature*,
         nsCSSValue& aResult)
 {
   // Gecko doesn't support grid devices (e.g., ttys), so the 'grid'
@@ -366,27 +394,56 @@ GetGrid(nsPresContext* aPresContext, const nsMediaFeature*,
 }
 
 static void
-GetDevicePixelRatio(nsPresContext* aPresContext, const nsMediaFeature*,
+GetDevicePixelRatio(nsIDocument* aDocument, const nsMediaFeature*,
                     nsCSSValue& aResult)
 {
-  if (!ShouldResistFingerprinting(aPresContext)) {
-    float ratio = aPresContext->CSSPixelsToDevPixels(1.0f);
-    aResult.SetFloatValue(ratio, eCSSUnit_Number);
-  } else {
+  if (ShouldResistFingerprinting(aDocument)) {
     aResult.SetFloatValue(1.0, eCSSUnit_Number);
+    return;
   }
+
+  nsIPresShell* presShell = aDocument->GetShell();
+  if (!presShell) {
+    aResult.SetFloatValue(1.0, eCSSUnit_Number);
+    return;
+  }
+
+  nsPresContext* pc = presShell->GetPresContext();
+  if (!pc) {
+    aResult.SetFloatValue(1.0, eCSSUnit_Number);
+    return;
+  }
+
+  float ratio = pc->CSSPixelsToDevPixels(1.0f);
+  aResult.SetFloatValue(ratio, eCSSUnit_Number);
 }
 
 static void
-GetTransform3d(nsPresContext* aPresContext, const nsMediaFeature*,
+GetTransform3d(nsIDocument* aDocument, const nsMediaFeature*,
                nsCSSValue& aResult)
 {
   // Gecko supports 3d transforms, so this feature is always 1.
   aResult.SetIntValue(1, eCSSUnit_Integer);
 }
 
+static bool
+HasSystemMetric(nsAtom* aMetric)
+{
+  nsMediaFeatures::InitSystemMetrics();
+  return sSystemMetrics->IndexOf(aMetric) != sSystemMetrics->NoIndex;
+}
+
+#ifdef XP_WIN
+static uint8_t
+GetWindowsThemeIdentifier()
+{
+  nsMediaFeatures::InitSystemMetrics();
+  return sWinThemeId;
+}
+#endif
+
 static void
-GetSystemMetric(nsPresContext* aPresContext, const nsMediaFeature* aFeature,
+GetSystemMetric(nsIDocument* aDocument, const nsMediaFeature* aFeature,
                 nsCSSValue& aResult)
 {
   aResult.Reset();
@@ -397,8 +454,7 @@ GetSystemMetric(nsPresContext* aPresContext, const nsMediaFeature* aFeature,
   MOZ_ASSERT(!isAccessibleFromContentPages ||
              *aFeature->mName == nsGkAtoms::_moz_touch_enabled);
 
-  if (isAccessibleFromContentPages &&
-      ShouldResistFingerprinting(aPresContext)) {
+  if (isAccessibleFromContentPages && ShouldResistFingerprinting(aDocument)) {
     // If "privacy.resistFingerprinting" is enabled, then we simply don't
     // return any system-backed media feature values. (No spoofed values
     // returned.)
@@ -409,24 +465,23 @@ GetSystemMetric(nsPresContext* aPresContext, const nsMediaFeature* aFeature,
              "unexpected type");
 
   nsAtom* metricAtom = *aFeature->mData.mMetric;
-  bool hasMetric = nsCSSRuleProcessor::HasSystemMetric(metricAtom);
+  bool hasMetric = HasSystemMetric(metricAtom);
   aResult.SetIntValue(hasMetric ? 1 : 0, eCSSUnit_Integer);
 }
 
 static void
-GetWindowsTheme(nsPresContext* aPresContext, const nsMediaFeature* aFeature,
+GetWindowsTheme(nsIDocument* aDocument, const nsMediaFeature* aFeature,
                 nsCSSValue& aResult)
 {
   aResult.Reset();
 
   MOZ_ASSERT(aFeature->mReqFlags & nsMediaFeature::eUserAgentAndChromeOnly);
-  if (ShouldResistFingerprinting(aPresContext)) {
+  if (ShouldResistFingerprinting(aDocument)) {
     return;
   }
 
 #ifdef XP_WIN
-  uint8_t windowsThemeId =
-    nsCSSRuleProcessor::GetWindowsThemeIdentifier();
+  uint8_t windowsThemeId = GetWindowsThemeIdentifier();
 
   // Classic mode should fail to match.
   if (windowsThemeId == LookAndFeel::eWindowsTheme_Classic)
@@ -444,13 +499,13 @@ GetWindowsTheme(nsPresContext* aPresContext, const nsMediaFeature* aFeature,
 }
 
 static void
-GetOperatingSystemVersion(nsPresContext* aPresContext, const nsMediaFeature* aFeature,
+GetOperatingSystemVersion(nsIDocument* aDocument, const nsMediaFeature* aFeature,
                          nsCSSValue& aResult)
 {
   aResult.Reset();
 
   MOZ_ASSERT(aFeature->mReqFlags & nsMediaFeature::eUserAgentAndChromeOnly);
-  if (ShouldResistFingerprinting(aPresContext)) {
+  if (ShouldResistFingerprinting(aDocument)) {
     return;
   }
 
@@ -471,11 +526,177 @@ GetOperatingSystemVersion(nsPresContext* aPresContext, const nsMediaFeature* aFe
 }
 
 static void
-GetIsGlyph(nsPresContext* aPresContext, const nsMediaFeature* aFeature,
-          nsCSSValue& aResult)
+GetIsGlyph(nsIDocument* aDocument, const nsMediaFeature* aFeature,
+           nsCSSValue& aResult)
 {
   MOZ_ASSERT(aFeature->mReqFlags & nsMediaFeature::eUserAgentAndChromeOnly);
-  aResult.SetIntValue(aPresContext->IsGlyph() ? 1 : 0, eCSSUnit_Integer);
+  aResult.SetIntValue(aDocument->IsSVGGlyphsDocument() ? 1 : 0, eCSSUnit_Integer);
+}
+
+/* static */ void
+nsMediaFeatures::InitSystemMetrics()
+{
+  if (sSystemMetrics)
+    return;
+
+  MOZ_ASSERT(NS_IsMainThread());
+
+  sSystemMetrics = new nsTArray<RefPtr<nsAtom>>;
+
+  /***************************************************************************
+   * ANY METRICS ADDED HERE SHOULD ALSO BE ADDED AS MEDIA QUERIES BELOW      *
+   ***************************************************************************/
+
+  int32_t metricResult =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_ScrollArrowStyle);
+  if (metricResult & LookAndFeel::eScrollArrow_StartBackward) {
+    sSystemMetrics->AppendElement(nsGkAtoms::scrollbar_start_backward);
+  }
+  if (metricResult & LookAndFeel::eScrollArrow_StartForward) {
+    sSystemMetrics->AppendElement(nsGkAtoms::scrollbar_start_forward);
+  }
+  if (metricResult & LookAndFeel::eScrollArrow_EndBackward) {
+    sSystemMetrics->AppendElement(nsGkAtoms::scrollbar_end_backward);
+  }
+  if (metricResult & LookAndFeel::eScrollArrow_EndForward) {
+    sSystemMetrics->AppendElement(nsGkAtoms::scrollbar_end_forward);
+  }
+
+  metricResult =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_ScrollSliderStyle);
+  if (metricResult != LookAndFeel::eScrollThumbStyle_Normal) {
+    sSystemMetrics->AppendElement(nsGkAtoms::scrollbar_thumb_proportional);
+  }
+
+  metricResult =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars);
+  if (metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::overlay_scrollbars);
+  }
+
+  metricResult =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_MenuBarDrag);
+  if (metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::menubar_drag);
+  }
+
+  nsresult rv =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_WindowsDefaultTheme, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::windows_default_theme);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_MacGraphiteTheme, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::mac_graphite_theme);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_MacYosemiteTheme, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::mac_yosemite_theme);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_WindowsAccentColorInTitlebar, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::windows_accent_color_in_titlebar);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_DWMCompositor, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::windows_compositor);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_WindowsGlass, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::windows_glass);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_WindowsClassic, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::windows_classic);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_TouchEnabled, &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::touch_enabled);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_SwipeAnimationEnabled,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::swipe_animation_enabled);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDAvailable,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_available);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDMinimizeButton,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_minimize_button);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDMaximizeButton,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_maximize_button);
+  }
+
+  rv = LookAndFeel::GetInt(LookAndFeel::eIntID_GTKCSDCloseButton,
+                           &metricResult);
+  if (NS_SUCCEEDED(rv) && metricResult) {
+    sSystemMetrics->AppendElement(nsGkAtoms::gtk_csd_close_button);
+  }
+
+#ifdef XP_WIN
+  if (NS_SUCCEEDED(
+        LookAndFeel::GetInt(LookAndFeel::eIntID_WindowsThemeIdentifier,
+                            &metricResult))) {
+    sWinThemeId = metricResult;
+    switch (metricResult) {
+      case LookAndFeel::eWindowsTheme_Aero:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_aero);
+        break;
+      case LookAndFeel::eWindowsTheme_AeroLite:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_aero_lite);
+        break;
+      case LookAndFeel::eWindowsTheme_LunaBlue:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_luna_blue);
+        break;
+      case LookAndFeel::eWindowsTheme_LunaOlive:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_luna_olive);
+        break;
+      case LookAndFeel::eWindowsTheme_LunaSilver:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_luna_silver);
+        break;
+      case LookAndFeel::eWindowsTheme_Royale:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_royale);
+        break;
+      case LookAndFeel::eWindowsTheme_Zune:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_zune);
+        break;
+      case LookAndFeel::eWindowsTheme_Generic:
+        sSystemMetrics->AppendElement(nsGkAtoms::windows_theme_generic);
+        break;
+    }
+  }
+#endif
+}
+
+/* static */ void
+nsMediaFeatures::FreeSystemMetrics()
+{
+  delete sSystemMetrics;
+  sSystemMetrics = nullptr;
+}
+
+/* static */ void
+nsMediaFeatures::Shutdown()
+{
+  FreeSystemMetrics();
 }
 
 /*

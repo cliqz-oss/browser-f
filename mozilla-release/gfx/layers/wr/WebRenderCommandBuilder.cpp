@@ -81,7 +81,7 @@ WebRenderCommandBuilder::BuildWebRenderCommands(wr::DisplayListBuilder& aBuilder
     mLayerScrollData.emplace_back();
     mLayerScrollData.back().InitializeRoot(mLayerScrollData.size() - 1);
     auto callback = [&aScrollData](FrameMetrics::ViewID aScrollId) -> bool {
-      return aScrollData.HasMetadataFor(aScrollId);
+      return aScrollData.HasMetadataFor(aScrollId).isSome();
     };
     if (Maybe<ScrollMetadata> rootMetadata = nsLayoutUtils::GetRootMetadata(
           aDisplayListBuilder, mManager, ContainerLayerParameters(), callback)) {
@@ -111,7 +111,7 @@ WebRenderCommandBuilder::CreateWebRenderCommandsFromDisplayList(nsDisplayList* a
                                                                 wr::DisplayListBuilder& aBuilder,
                                                                 wr::IpcResourceUpdateQueue& aResources)
 {
-  mScrollingHelper.BeginList();
+  mScrollingHelper.BeginList(aSc);
 
   bool apzEnabled = mManager->AsyncPanZoomEnabled();
   EventRegions eventRegions;
@@ -261,7 +261,7 @@ WebRenderCommandBuilder::CreateWebRenderCommandsFromDisplayList(nsDisplayList* a
     mLayerScrollData.back().AddEventRegions(eventRegions);
   }
 
-  mScrollingHelper.EndList();
+  mScrollingHelper.EndList(aSc);
 }
 
 Maybe<wr::ImageKey>
@@ -342,14 +342,11 @@ WebRenderCommandBuilder::PushImage(nsDisplayItem* aItem,
 static bool
 PaintByLayer(nsDisplayItem* aItem,
              nsDisplayListBuilder* aDisplayListBuilder,
-             RefPtr<BasicLayerManager>& aManager,
+             const RefPtr<BasicLayerManager>& aManager,
              gfxContext* aContext,
+             const gfx::Size& aScale,
              const std::function<void()>& aPaintFunc)
 {
-  if (aManager == nullptr) {
-    aManager = new BasicLayerManager(BasicLayerManager::BLM_INACTIVE);
-  }
-
   UniquePtr<LayerProperties> props;
   if (aManager->GetRoot()) {
     props = Move(LayerProperties::CloneFrom(aManager->GetRoot()));
@@ -358,10 +355,11 @@ PaintByLayer(nsDisplayItem* aItem,
   layerBuilder->Init(aDisplayListBuilder, aManager, nullptr, true);
   layerBuilder->DidBeginRetainedLayerTransaction(aManager);
 
+  aManager->SetDefaultTarget(aContext);
   aManager->BeginTransactionWithTarget(aContext);
   bool isInvalidated = false;
 
-  ContainerLayerParameters param;
+  ContainerLayerParameters param(aScale.width, aScale.height);
   RefPtr<Layer> root = aItem->BuildLayer(aDisplayListBuilder, aManager, param);
 
   if (root) {
@@ -396,6 +394,7 @@ PaintByLayer(nsDisplayItem* aItem,
   }
 
   aManager->SetTarget(nullptr);
+  aManager->SetDefaultTarget(nullptr);
 
   return isInvalidated;
 }
@@ -406,9 +405,9 @@ PaintItemByDrawTarget(nsDisplayItem* aItem,
                       const LayerRect& aImageRect,
                       const LayoutDevicePoint& aOffset,
                       nsDisplayListBuilder* aDisplayListBuilder,
-                      RefPtr<BasicLayerManager>& aManager,
-                      WebRenderLayerManager* aWrManager,
-                      const gfx::Size& aScale)
+                      const RefPtr<BasicLayerManager>& aManager,
+                      const gfx::Size& aScale,
+                      Maybe<gfx::Color>& aHighlight)
 {
   MOZ_ASSERT(aDT);
 
@@ -417,16 +416,16 @@ PaintItemByDrawTarget(nsDisplayItem* aItem,
   RefPtr<gfxContext> context = gfxContext::CreateOrNull(aDT);
   MOZ_ASSERT(context);
 
-  context->SetMatrix(context->CurrentMatrix().PreScale(aScale.width, aScale.height).PreTranslate(-aOffset.x, -aOffset.y));
-
   switch (aItem->GetType()) {
   case DisplayItemType::TYPE_MASK:
+    context->SetMatrix(context->CurrentMatrix().PreScale(aScale.width, aScale.height).PreTranslate(-aOffset.x, -aOffset.y));
     static_cast<nsDisplayMask*>(aItem)->PaintMask(aDisplayListBuilder, context);
     isInvalidated = true;
     break;
   case DisplayItemType::TYPE_SVG_WRAPPER:
     {
-      isInvalidated = PaintByLayer(aItem, aDisplayListBuilder, aManager, context, [&]() {
+      context->SetMatrix(context->CurrentMatrix().PreTranslate(-aOffset.x, -aOffset.y));
+      isInvalidated = PaintByLayer(aItem, aDisplayListBuilder, aManager, context, aScale, [&]() {
         aManager->EndTransaction(FrameLayerBuilder::DrawPaintedLayer, aDisplayListBuilder);
       });
       break;
@@ -434,7 +433,8 @@ PaintItemByDrawTarget(nsDisplayItem* aItem,
 
   case DisplayItemType::TYPE_FILTER:
     {
-      isInvalidated = PaintByLayer(aItem, aDisplayListBuilder, aManager, context, [&]() {
+      context->SetMatrix(context->CurrentMatrix().PreTranslate(-aOffset.x, -aOffset.y));
+      isInvalidated = PaintByLayer(aItem, aDisplayListBuilder, aManager, context, aScale, [&]() {
         static_cast<nsDisplayFilter*>(aItem)->PaintAsLayer(aDisplayListBuilder,
                                                            context, aManager);
       });
@@ -442,21 +442,27 @@ PaintItemByDrawTarget(nsDisplayItem* aItem,
     }
 
   default:
+    context->SetMatrix(context->CurrentMatrix().PreScale(aScale.width, aScale.height).PreTranslate(-aOffset.x, -aOffset.y));
     aItem->Paint(aDisplayListBuilder, context);
     isInvalidated = true;
     break;
   }
 
-  if (gfxPrefs::WebRenderHighlightPaintedLayers()) {
-    aDT->SetTransform(gfx::Matrix());
-    aDT->FillRect(gfx::Rect(0, 0, aImageRect.Width(), aImageRect.Height()), gfx::ColorPattern(gfx::Color(1.0, 0.0, 0.0, 0.5)));
-  }
-  if (aItem->Frame()->PresContext()->GetPaintFlashing() && isInvalidated) {
-    aDT->SetTransform(gfx::Matrix());
-    float r = float(rand()) / RAND_MAX;
-    float g = float(rand()) / RAND_MAX;
-    float b = float(rand()) / RAND_MAX;
-    aDT->FillRect(gfx::Rect(0, 0, aImageRect.Width(), aImageRect.Height()), gfx::ColorPattern(gfx::Color(r, g, b, 0.5)));
+  if (aItem->GetType() != DisplayItemType::TYPE_MASK) {
+    // Apply highlight fills, if the appropriate prefs are set.
+    // We don't do this for masks because we'd be filling the A8 mask surface,
+    // which isn't very useful.
+    if (aHighlight) {
+      aDT->SetTransform(gfx::Matrix());
+      aDT->FillRect(gfx::Rect(0, 0, aImageRect.Width(), aImageRect.Height()), gfx::ColorPattern(aHighlight.value()));
+    }
+    if (aItem->Frame()->PresContext()->GetPaintFlashing() && isInvalidated) {
+      aDT->SetTransform(gfx::Matrix());
+      float r = float(rand()) / RAND_MAX;
+      float g = float(rand()) / RAND_MAX;
+      float b = float(rand()) / RAND_MAX;
+      aDT->FillRect(gfx::Rect(0, 0, aImageRect.Width(), aImageRect.Height()), gfx::ColorPattern(gfx::Color(r, g, b, 0.5)));
+    }
   }
 
   return isInvalidated;
@@ -470,6 +476,13 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
                                               nsDisplayListBuilder* aDisplayListBuilder,
                                               LayoutDeviceRect& aImageRect)
 {
+  bool useBlobImage = gfxPrefs::WebRenderBlobImages() && !aItem->MustPaintOnContentSide();
+  Maybe<gfx::Color> highlight = Nothing();
+  if (gfxPrefs::WebRenderHighlightPaintedLayers()) {
+    highlight = Some(useBlobImage ? gfx::Color(1.0, 0.0, 0.0, 0.5)
+                                  : gfx::Color(1.0, 1.0, 0.0, 0.5));
+  }
+
   RefPtr<WebRenderFallbackData> fallbackData = CreateOrRecycleWebRenderUserData<WebRenderFallbackData>(aItem);
 
   bool snap;
@@ -477,21 +490,23 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
 
   // Blob images will only draw the visible area of the blob so we don't need to clip
   // them here and can just rely on the webrender clipping.
-  bool useClipBounds = true;
+  // TODO We also don't clip native themed widget to avoid over-invalidation during scrolling.
+  // it would be better to support a sort of straming/tiling scheme for large ones but the hope
+  // is that we should not have large native themed items.
   nsRect paintBounds = itemBounds;
-  if (gfxPrefs::WebRenderBlobImages()) {
+  if (useBlobImage || aItem->MustPaintOnContentSide()) {
     paintBounds = itemBounds;
-    useClipBounds = false;
   } else {
     paintBounds = aItem->GetClippedBounds(aDisplayListBuilder);
   }
 
   // nsDisplayItem::Paint() may refer the variables that come from ComputeVisibility().
-  // So we should call RecomputeVisibility() before painting. e.g.: nsDisplayBoxShadowInner
+  // So we should call ComputeVisibility() before painting. e.g.: nsDisplayBoxShadowInner
   // uses mVisibleRegion in Paint() and mVisibleRegion is computed in
   // nsDisplayBoxShadowInner::ComputeVisibility().
-  nsRegion visibleRegion(itemBounds);
-  aItem->RecomputeVisibility(aDisplayListBuilder, &visibleRegion, useClipBounds);
+  nsRegion visibleRegion(paintBounds);
+  aItem->SetVisibleRect(paintBounds, false);
+  aItem->ComputeVisibility(aDisplayListBuilder, &visibleRegion);
 
   const int32_t appUnitsPerDevPixel = aItem->Frame()->PresContext()->AppUnitsPerDevPixel();
   LayoutDeviceRect bounds = LayoutDeviceRect::FromAppUnits(paintBounds, appUnitsPerDevPixel);
@@ -507,16 +522,22 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
 
   // XXX not sure if paintSize should be in layer or layoutdevice pixels, it
   // has some sort of scaling applied.
-  LayerIntSize paintSize = RoundedToInt(LayerSize(bounds.width * scale.width, bounds.height * scale.height));
+  LayerIntSize paintSize = RoundedToInt(LayerSize(bounds.Width() * scale.width, bounds.Height() * scale.height));
   if (paintSize.width == 0 || paintSize.height == 0) {
     return nullptr;
   }
 
+  // Some display item may draw exceed the paintSize, we need prepare a larger
+  // draw target to contain the result.
+  auto scaledBounds = bounds * LayoutDeviceToLayerScale(1);
+  scaledBounds.Scale(scale.width, scale.height);
+  LayerIntSize dtSize = RoundedToInt(scaledBounds).Size();
+
   bool needPaint = true;
   LayoutDeviceIntPoint offset = RoundedToInt(bounds.TopLeft());
-  aImageRect = LayoutDeviceRect(offset, LayoutDeviceSize(RoundedToInt(bounds.Size())));
+  aImageRect = LayoutDeviceRect(offset, LayoutDeviceSize(RoundedToInt(bounds).Size()));
   LayerRect paintRect = LayerRect(LayerPoint(0, 0), LayerSize(paintSize));
-  nsAutoPtr<nsDisplayItemGeometry> geometry = fallbackData->GetGeometry();
+  nsDisplayItemGeometry* geometry = fallbackData->GetGeometry();
 
   // nsDisplayFilter is rendered via BasicLayerManager which means the invalidate
   // region is unknown until we traverse the displaylist contained by it.
@@ -546,9 +567,13 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
   }
 
   if (needPaint || !fallbackData->GetKey()) {
+    nsAutoPtr<nsDisplayItemGeometry> newGeometry;
+    newGeometry = aItem->AllocateGeometry(aDisplayListBuilder);
+    fallbackData->SetGeometry(Move(newGeometry));
+
     gfx::SurfaceFormat format = aItem->GetType() == DisplayItemType::TYPE_MASK ?
                                                       gfx::SurfaceFormat::A8 : gfx::SurfaceFormat::B8G8R8A8;
-    if (gfxPrefs::WebRenderBlobImages()) {
+    if (useBlobImage) {
       bool snapped;
       bool isOpaque = aItem->GetOpaqueRegion(aDisplayListBuilder, &snapped).Contains(paintBounds);
 
@@ -562,16 +587,19 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
         });
       RefPtr<gfx::DrawTarget> dummyDt =
         gfx::Factory::CreateDrawTarget(gfx::BackendType::SKIA, gfx::IntSize(1, 1), format);
-      RefPtr<gfx::DrawTarget> dt = gfx::Factory::CreateRecordingDrawTarget(recorder, dummyDt, paintSize.ToUnknownSize());
+      RefPtr<gfx::DrawTarget> dt = gfx::Factory::CreateRecordingDrawTarget(recorder, dummyDt, dtSize.ToUnknownSize());
+      if (!fallbackData->mBasicLayerManager) {
+        fallbackData->mBasicLayerManager = new BasicLayerManager(BasicLayerManager::BLM_INACTIVE);
+      }
       bool isInvalidated = PaintItemByDrawTarget(aItem, dt, paintRect, offset, aDisplayListBuilder,
-                                                 fallbackData->mBasicLayerManager, mManager, scale);
+                                                 fallbackData->mBasicLayerManager, scale, highlight);
       recorder->FlushItem(IntRect());
       recorder->Finish();
 
       if (isInvalidated) {
         Range<uint8_t> bytes((uint8_t *)recorder->mOutputStream.mData, recorder->mOutputStream.mLength);
         wr::ImageKey key = mManager->WrBridge()->GetNextImageKey();
-        wr::ImageDescriptor descriptor(paintSize.ToUnknownSize(), 0, dt->GetFormat(), isOpaque);
+        wr::ImageDescriptor descriptor(dtSize.ToUnknownSize(), 0, dt->GetFormat(), isOpaque);
         if (!aResources.AddBlobImage(key, descriptor, bytes)) {
           return nullptr;
         }
@@ -583,8 +611,6 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
           return nullptr;
         }
       }
-
-
     } else {
       fallbackData->CreateImageClientIfNeeded();
       RefPtr<ImageClient> imageClient = fallbackData->GetImageClient();
@@ -592,15 +618,19 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
       bool isInvalidated = false;
 
       {
-        UpdateImageHelper helper(imageContainer, imageClient, paintSize.ToUnknownSize(), format);
+        UpdateImageHelper helper(imageContainer, imageClient, dtSize.ToUnknownSize(), format);
         {
           RefPtr<gfx::DrawTarget> dt = helper.GetDrawTarget();
           if (!dt) {
             return nullptr;
           }
+          if (!fallbackData->mBasicLayerManager) {
+            fallbackData->mBasicLayerManager = new BasicLayerManager(mManager->GetWidget());
+          }
           isInvalidated = PaintItemByDrawTarget(aItem, dt, paintRect, offset,
-                                               aDisplayListBuilder,
-                                               fallbackData->mBasicLayerManager, mManager, scale);
+                                                aDisplayListBuilder,
+                                                fallbackData->mBasicLayerManager, scale,
+                                                highlight);
         }
 
         if (isInvalidated) {
@@ -625,13 +655,11 @@ WebRenderCommandBuilder::GenerateFallbackData(nsDisplayItem* aItem,
       }
     }
 
-    geometry = aItem->AllocateGeometry(aDisplayListBuilder);
     fallbackData->SetScale(scale);
     fallbackData->SetInvalid(false);
   }
 
   // Update current bounds to fallback data
-  fallbackData->SetGeometry(Move(geometry));
   fallbackData->SetBounds(paintBounds);
 
   MOZ_ASSERT(fallbackData->GetKey());

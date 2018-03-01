@@ -7,14 +7,16 @@
 #include "AppleATDecoder.h"
 #include "AppleUtils.h"
 #include "MP4Decoder.h"
-#include "mp4_demuxer/Adts.h"
+#include "Adts.h"
 #include "MediaInfo.h"
 #include "mozilla/Logging.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/UniquePtr.h"
 #include "VideoUtils.h"
 
-#define LOG(...) MOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, (__VA_ARGS__))
+#define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
+#define LOGEX(_this, ...)                                                      \
+  DDMOZ_LOGEX(_this, sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
 #define FourCC2Str(n) ((char[5]){(char)(n >> 24), (char)(n >> 16), (char)(n >> 8), (char)(n), 0})
 
 namespace mozilla {
@@ -368,7 +370,7 @@ AppleATDecoder::GetInputAudioDescription(AudioStreamBasicDescription& aDesc,
   if (NS_WARN_IF(rv)) {
     return MediaResult(
       NS_ERROR_FAILURE,
-      RESULT_DETAIL("Unable to get format info:%lld", int64_t(rv)));
+      RESULT_DETAIL("Unable to get format info:%d", int32_t(rv)));
   }
 
   // If any of the methods below fail, we will return the default format as
@@ -567,12 +569,12 @@ AppleATDecoder::SetupDecoder(MediaRawData* aSample)
 
   LOG("Initializing Apple AudioToolbox decoder");
 
+  nsTArray<uint8_t>& magicCookie =
+    mMagicCookie.Length() ? mMagicCookie : *mConfig.mExtraData;
   AudioStreamBasicDescription inputFormat;
   PodZero(&inputFormat);
-  MediaResult rv =
-    GetInputAudioDescription(inputFormat,
-                             mMagicCookie.Length() ?
-                                 mMagicCookie : *mConfig.mExtraData);
+
+  MediaResult rv = GetInputAudioDescription(inputFormat, magicCookie);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -599,11 +601,26 @@ AppleATDecoder::SetupDecoder(MediaRawData* aSample)
 
   OSStatus status = AudioConverterNew(&inputFormat, &mOutputFormat, &mConverter);
   if (status) {
-    LOG("Error %d constructing AudioConverter", static_cast<int>(status));
+    LOG("Error %d constructing AudioConverter", int(status));
     mConverter = nullptr;
     return MediaResult(
       NS_ERROR_FAILURE,
-      RESULT_DETAIL("Error constructing AudioConverter:%lld", int64_t(status)));
+      RESULT_DETAIL("Error constructing AudioConverter:%d", int32_t(status)));
+  }
+
+  if (magicCookie.Length() && mFormatID == kAudioFormatMPEG4AAC) {
+    status = AudioConverterSetProperty(mConverter,
+                                       kAudioConverterDecompressionMagicCookie,
+                                       magicCookie.Length(),
+                                       magicCookie.Elements());
+    if (status) {
+      LOG("Error setting AudioConverter AAC cookie:%d", int32_t(status));
+      ProcessShutdown();
+      return MediaResult(
+        NS_ERROR_FAILURE,
+        RESULT_DETAIL("Error setting AudioConverter AAC cookie:%d",
+                      int32_t(status)));
+    }
   }
 
   if (NS_FAILED(SetupChannelLayout())) {
@@ -622,7 +639,7 @@ _MetadataCallback(void* aAppleATDecoder,
   AppleATDecoder* decoder = static_cast<AppleATDecoder*>(aAppleATDecoder);
   MOZ_RELEASE_ASSERT(decoder->mTaskQueue->IsCurrentThreadIn());
 
-  LOG("MetadataCallback receiving: '%s'", FourCC2Str(aProperty));
+  LOGEX(decoder, "MetadataCallback receiving: '%s'", FourCC2Str(aProperty));
   if (aProperty == kAudioFileStreamProperty_MagicCookieData) {
     UInt32 size;
     Boolean writeable;
@@ -631,8 +648,10 @@ _MetadataCallback(void* aAppleATDecoder,
                                                  &size,
                                                  &writeable);
     if (rv) {
-      LOG("Couldn't get property info for '%s' (%s)",
-          FourCC2Str(aProperty), FourCC2Str(rv));
+      LOGEX(decoder,
+            "Couldn't get property info for '%s' (%s)",
+            FourCC2Str(aProperty),
+            FourCC2Str(rv));
       decoder->mFileStreamError = true;
       return;
     }
@@ -640,8 +659,10 @@ _MetadataCallback(void* aAppleATDecoder,
     rv = AudioFileStreamGetProperty(aStream, aProperty,
                                     &size, data.get());
     if (rv) {
-      LOG("Couldn't get property '%s' (%s)",
-          FourCC2Str(aProperty), FourCC2Str(rv));
+      LOGEX(decoder,
+            "Couldn't get property '%s' (%s)",
+            FourCC2Str(aProperty),
+            FourCC2Str(rv));
       decoder->mFileStreamError = true;
       return;
     }
@@ -668,13 +689,12 @@ AppleATDecoder::GetImplicitAACMagicCookie(const MediaRawData* aSample)
   if (!adtssample) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
-  int8_t frequency_index =
-    mp4_demuxer::Adts::GetFrequencyIndex(mConfig.mRate);
+  int8_t frequency_index = Adts::GetFrequencyIndex(mConfig.mRate);
 
-  bool rv = mp4_demuxer::Adts::ConvertSample(mConfig.mChannels,
-                                             frequency_index,
-                                             mConfig.mProfile,
-                                             adtssample);
+  bool rv = Adts::ConvertSample(mConfig.mChannels,
+                                frequency_index,
+                                mConfig.mProfile,
+                                adtssample);
   if (!rv) {
     NS_WARNING("Failed to apply ADTS header");
     return NS_ERROR_FAILURE;
@@ -710,3 +730,6 @@ AppleATDecoder::GetImplicitAACMagicCookie(const MediaRawData* aSample)
 }
 
 } // namespace mozilla
+
+#undef LOG
+#undef LOGEX

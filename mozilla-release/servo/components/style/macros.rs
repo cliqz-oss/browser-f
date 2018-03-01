@@ -4,6 +4,33 @@
 
 //! Various macro helpers.
 
+macro_rules! exclusive_value {
+    (($value:ident, $set:expr) => $ident:path) => {
+        if $value.intersects($set) {
+            return Err(())
+        } else {
+            $ident
+        }
+    }
+}
+
+#[cfg(feature = "gecko")]
+macro_rules! impl_gecko_keyword_conversions {
+    ($name: ident, $utype: ty) => {
+        impl From<$utype> for $name {
+            fn from(bits: $utype) -> $name {
+                $name::from_gecko_keyword(bits)
+            }
+        }
+
+        impl From<$name> for $utype {
+            fn from(v: $name) -> $utype {
+                v.to_gecko_keyword()
+            }
+        }
+    };
+}
+
 macro_rules! trivial_to_computed_value {
     ($name:ty) => {
         impl $crate::values::computed::ToComputedValue for $name {
@@ -64,8 +91,11 @@ macro_rules! define_numbered_css_keyword_enum {
             }
         }
 
-        impl ::style_traits::values::ToCss for $name {
-            fn to_css<W>(&self, dest: &mut W) -> ::std::fmt::Result
+        impl ::style_traits::ToCss for $name {
+            fn to_css<W>(
+                &self,
+                dest: &mut ::style_traits::CssWriter<W>,
+            ) -> ::std::fmt::Result
             where
                 W: ::std::fmt::Write,
             {
@@ -122,5 +152,22 @@ macro_rules! define_keyword_type {
         }
 
         impl $crate::values::animated::AnimatedValueAsComputed for $name {}
+    };
+}
+
+#[cfg(feature = "gecko")]
+macro_rules! impl_bitflags_conversions {
+    ($name: ident) => {
+        impl From<u8> for $name {
+            fn from(bits: u8) -> $name {
+                $name::from_bits(bits).expect("bits contain valid flag")
+            }
+        }
+
+        impl From<$name> for u8 {
+            fn from(v: $name) -> u8 {
+                v.bits()
+            }
+        }
     };
 }

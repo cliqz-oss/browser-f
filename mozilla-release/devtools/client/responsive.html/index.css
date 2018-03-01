@@ -148,6 +148,10 @@ select > option.divider {
   padding: 1px 6px 0 2px;
 }
 
+#global-toolbar > .toolbar-button:first-of-type {
+  margin-inline-start: 8px;
+}
+
 #global-toolbar > .toolbar-button::before {
   width: 12px;
   height: 12px;
@@ -176,38 +180,30 @@ select > option.divider {
   width: 103px;
 }
 
-#global-dpr-selector > select {
-  padding: 0 8px 0 0;
-  margin-left: 2px;
-  max-width: 5em;
-}
-
-#global-dpr-selector {
-  margin: 0 8px;
+#global-device-pixel-ratio-selector {
   -moz-user-select: none;
   color: var(--viewport-color);
   height: 15px;
+  /* `max-width` is here to keep the UI compact if the device pixel ratio changes to a
+     repeating decimal value.  This can happen if you zoom the UI (Cmd + Plus / Minus on
+     macOS for example). */
+  max-width: 8em;
 }
 
-#global-dpr-selector.focused,
-#global-dpr-selector:not(.disabled):hover {
+#global-device-pixel-ratio-selector.focused,
+#global-device-pixel-ratio-selector:not(.disabled):hover {
   color: var(--viewport-hover-color);
 }
 
-#global-dpr-selector:not(.disabled):hover > select {
-  color: var(--viewport-hover-color);
-}
-
-#global-dpr-selector:focus > select {
+#global-device-pixel-ratio-selector:focus {
   color: var(--viewport-active-color);
 }
 
-#global-dpr-selector.selected,
-#global-dpr-selector.selected > select {
+#global-device-pixel-ratio-selector.selected {
   color: var(--viewport-active-color);
 }
 
-#global-dpr-selector > select > option {
+#global-device-pixel-ratio-selector > option {
   padding: 5px;
 }
 
@@ -402,29 +398,25 @@ select > option.divider {
 .device-modal {
   border-radius: 2px;
   box-shadow: var(--rdm-box-shadow);
-  display: none;
   position: absolute;
   margin: auto;
   top: 0;
   bottom: 0;
   left: 0;
   right: 0;
-  width: 642px;
+  width: 800px;
+  max-width: 90%;
   height: 650px;
   z-index: 1;
 }
 
 /* Handles the opening/closing of the modal */
 #device-modal-wrapper.opened .device-modal {
-  animation: fade-in-and-up 0.3s ease;
-  animation-fill-mode: forwards;
-  display: block;
+  animation: fade-in-and-up 0.3s ease forwards;
 }
 
 #device-modal-wrapper.closed .device-modal {
-  animation: fade-down-and-out 0.3s ease;
-  animation-fill-mode: forwards;
-  display: block;
+  animation: fade-down-and-out 0.3s ease forwards;
 }
 
 #device-modal-wrapper.opened .modal-overlay {
@@ -444,7 +436,6 @@ select > option.divider {
   flex-wrap: wrap;
   overflow: auto;
   height: 515px;
-  width: 600px;
   margin: 20px 20px 0;
 }
 

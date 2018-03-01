@@ -11,6 +11,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/DoublyLinkedList.h"
 #include "mozilla/LinkedList.h"
+#include "mozilla/MaybeOneOf.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/Scoped.h"
@@ -22,9 +23,6 @@
 #include "jsatom.h"
 #include "jsscript.h"
 
-#ifdef XP_DARWIN
-# include "wasm/WasmSignalHandlers.h"
-#endif
 #include "builtin/AtomicsObject.h"
 #include "builtin/Intl.h"
 #include "builtin/Promise.h"
@@ -52,6 +50,7 @@
 #include "vm/Stack.h"
 #include "vm/Stopwatch.h"
 #include "vm/Symbol.h"
+#include "wasm/WasmSignalHandlers.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -642,9 +641,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     /* Default locale for Internationalization API */
     js::ActiveThreadData<char*> defaultLocale;
 
-    /* Default JSVersion. */
-    js::ActiveThreadData<JSVersion> defaultVersion_;
-
     /* If true, new scripts must be created with PC counter information. */
     js::ActiveThreadOrIonCompileData<bool> profilingScripts;
 
@@ -740,9 +736,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
     /* Gets current default locale. String remains owned by context. */
     const char* getDefaultLocale();
-
-    JSVersion defaultVersion() const { return defaultVersion_; }
-    void setDefaultVersion(JSVersion v) { defaultVersion_ = v; }
 
     /* Garbage collector state, used by jsgc.c. */
     js::gc::GCRuntime   gc;
@@ -1058,80 +1051,45 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
   public:
     js::RuntimeCaches& caches() { return caches_.ref(); }
 
-  private:
-    // When wasm is interrupted, the pc at which we should return if the
-    // interrupt hasn't stopped execution of the current running code. Since
-    // this is used only by the interrupt handler and the latter is not
-    // reentrant, this value can't be clobbered so there is at most one
-    // resume PC at a time.
-    js::ActiveThreadData<void*> wasmResumePC_;
+    // When wasm traps or is interrupted, the signal handler records some data
+    // for unwinding purposes. Wasm code can't interrupt or trap reentrantly.
+    js::ActiveThreadData<
+        mozilla::MaybeOneOf<js::wasm::TrapData, js::wasm::InterruptData>
+    > wasmUnwindData;
 
-    // To ensure a consistent state of fp/pc, the unwound pc might be
-    // different from the resumePC, especially at call boundaries.
-    js::ActiveThreadData<void*> wasmUnwindPC_;
+    js::wasm::TrapData& wasmTrapData() {
+        return wasmUnwindData.ref().ref<js::wasm::TrapData>();
+    }
+    js::wasm::InterruptData& wasmInterruptData() {
+        return wasmUnwindData.ref().ref<js::wasm::InterruptData>();
+    }
 
   public:
-    void startWasmInterrupt(void* resumePC, void* unwindPC) {
-        MOZ_ASSERT(resumePC && unwindPC);
-        wasmResumePC_ = resumePC;
-        wasmUnwindPC_ = unwindPC;
-    }
-    void finishWasmInterrupt() {
-        MOZ_ASSERT(wasmResumePC_ && wasmUnwindPC_);
-        wasmResumePC_ = nullptr;
-        wasmUnwindPC_ = nullptr;
-    }
-    void* wasmResumePC() const {
-        return wasmResumePC_;
-    }
-    void* wasmUnwindPC() const {
-        return wasmUnwindPC_;
-    }
+#if defined(NIGHTLY_BUILD)
+    // Support for informing the embedding of any error thrown.
+    // This mechanism is designed to let the embedding
+    // log/report/fail in case certain errors are thrown
+    // (e.g. SyntaxError, ReferenceError or TypeError
+    // in critical code).
+    struct ErrorInterceptionSupport {
+        ErrorInterceptionSupport()
+          : isExecuting(false)
+          , interceptor(nullptr)
+        { }
+
+        // true if the error interceptor is currently executing,
+        // false otherwise. Used to avoid infinite loops.
+        bool isExecuting;
+
+        // if non-null, any call to `setPendingException`
+        // in this runtime will trigger the call to `interceptor`
+        JSErrorInterceptor* interceptor;
+    };
+    ErrorInterceptionSupport errorInterception;
+#endif // defined(NIGHTLY_BUILD)
 };
 
 namespace js {
-
-/*
- * Flags accompany script version data so that a) dynamically created scripts
- * can inherit their caller's compile-time properties and b) scripts can be
- * appropriately compared in the eval cache across global option changes. An
- * example of the latter is enabling the top-level-anonymous-function-is-error
- * option: subsequent evals of the same, previously-valid script text may have
- * become invalid.
- */
-namespace VersionFlags {
-static const unsigned MASK      = 0x0FFF; /* see JSVersion in jspubtd.h */
-} /* namespace VersionFlags */
-
-static inline JSVersion
-VersionNumber(JSVersion version)
-{
-    return JSVersion(uint32_t(version) & VersionFlags::MASK);
-}
-
-static inline JSVersion
-VersionExtractFlags(JSVersion version)
-{
-    return JSVersion(uint32_t(version) & ~VersionFlags::MASK);
-}
-
-static inline void
-VersionCopyFlags(JSVersion* version, JSVersion from)
-{
-    *version = JSVersion(VersionNumber(*version) | VersionExtractFlags(from));
-}
-
-static inline bool
-VersionHasFlags(JSVersion version)
-{
-    return !!VersionExtractFlags(version);
-}
-
-static inline bool
-VersionIsKnown(JSVersion version)
-{
-    return VersionNumber(version) != JSVERSION_UNKNOWN;
-}
 
 inline void
 FreeOp::free_(void* p)

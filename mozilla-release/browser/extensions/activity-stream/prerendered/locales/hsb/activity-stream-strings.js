@@ -47,7 +47,7 @@ window.gActivityStreamStrings = {
   "time_label_less_than_minute": "< 1 min",
   "time_label_minute": "{number} m",
   "time_label_hour": "{number} h",
-  "time_label_day": "",
+  "time_label_day": "{number} d",
   "settings_pane_button_label": "Stronu wašeho noweho rajtarka přiměrić",
   "settings_pane_header": "Nastajenja noweho rajtarka",
   "settings_pane_body2": "Wubjerće, štož so na tutej stronje pokazuje.",
@@ -94,5 +94,7 @@ window.gActivityStreamStrings = {
   "topstories_empty_state": "To je nachwilu wšitko. Wróćće so pozdźišo dalšich wulkotnych stawiznow dla wot {provider}. Njemóžeće čakać? Wubjerće woblubowanu temu, zo byšće dalše wulkotne stawizny z weba namakał.",
   "manual_migration_explanation2": "Wupruwujće Firefox ze zapołožkami, historiju a hesłami z druheho wobhladowaka.",
   "manual_migration_cancel_button": "Ně, dźakuju so",
-  "manual_migration_import_button": "Nětko importować"
+  "manual_migration_import_button": "Nětko importować",
+  "context_menu_button_sr": "Kontekstowy meni za {title} wočinić",
+  "edit_topsites_add_button_tooltip": "Woblubowane sydło přidać"
 };

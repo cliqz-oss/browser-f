@@ -20,6 +20,7 @@
 namespace mozilla {
 namespace dom {
 
+class DocGroup;
 class HTMLElementOrLong;
 class HTMLOptionElementOrHTMLOptGroupElement;
 class HTMLSelectElement;
@@ -36,7 +37,6 @@ public:
   explicit HTMLOptionsCollection(HTMLSelectElement* aSelect);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_NSIDOMHTMLCOLLECTION
 
   // nsWrapperCache
   using nsWrapperCache::GetWrapperPreserveColor;
@@ -56,8 +56,10 @@ protected:
   }
 public:
 
+  virtual uint32_t Length() override;
   virtual Element* GetElementAt(uint32_t aIndex) override;
   virtual nsINode* GetParentObject() override;
+  DocGroup* GetDocGroup() const;
 
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(HTMLOptionsCollection,
                                                          nsIHTMLCollection)

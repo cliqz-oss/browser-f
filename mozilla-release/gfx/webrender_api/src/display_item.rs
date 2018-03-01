@@ -8,6 +8,9 @@ use {GlyphOptions, LayoutVector2D, PipelineId, PropertyBinding};
 use euclid::{SideOffsets2D, TypedRect};
 use std::ops::Not;
 
+#[cfg(feature = "debug-serialization")]
+use GlyphInstance;
+
 // NOTE: some of these structs have an "IMPLICIT" comment.
 // This indicates that the BuiltDisplayList will have serialized
 // a list of values nearby that this item consumes. The traversal
@@ -39,41 +42,30 @@ impl ClipAndScrollInfo {
     }
 }
 
-bitflags! {
-    /// Each bit of the edge AA mask is:
-    /// 0, when the edge of the primitive needs to be considered for AA
-    /// 1, when the edge of the segment needs to be considered for AA
-    ///
-    /// *Note*: the bit values have to match the shader logic in
-    /// `write_transform_vertex()` function.
-    #[derive(Deserialize, Serialize)]
-    pub struct EdgeAaSegmentMask: u8 {
-        const LEFT = 0x1;
-        const TOP = 0x2;
-        const RIGHT = 0x4;
-        const BOTTOM = 0x8;
-    }
-}
-
 /// A tag that can be used to identify items during hit testing. If the tag
 /// is missing then the item doesn't take part in hit testing at all. This
 /// is composed of two numbers. In Servo, the first is an identifier while the
 /// second is used to select the cursor that should be used during mouse
-/// movement.
-pub type ItemTag = (u64, u8);
+/// movement. In Gecko, the first is a scrollframe identifier, while the second
+/// is used to store various flags that APZ needs to properly process input
+/// events.
+pub type ItemTag = (u64, u16);
 
+/// The DI is generic over the specifics, while allows to use
+/// the "complete" version of it for convenient serialization.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub struct DisplayItem {
-    pub item: SpecificDisplayItem,
+pub struct GenericDisplayItem<T> {
+    pub item: T,
     pub clip_and_scroll: ClipAndScrollInfo,
     pub info: LayoutPrimitiveInfo,
 }
+
+pub type DisplayItem = GenericDisplayItem<SpecificDisplayItem>;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PrimitiveInfo<T> {
     pub rect: TypedRect<f32, T>,
     pub local_clip: LocalClip,
-    pub edge_aa_segment_mask: EdgeAaSegmentMask,
     pub is_backface_visible: bool,
     pub tag: Option<ItemTag>,
 }
@@ -94,7 +86,6 @@ impl LayerPrimitiveInfo {
         PrimitiveInfo {
             rect: rect,
             local_clip: clip,
-            edge_aa_segment_mask: EdgeAaSegmentMask::empty(),
             is_backface_visible: true,
             tag: None,
         }
@@ -104,6 +95,7 @@ impl LayerPrimitiveInfo {
 pub type LayoutPrimitiveInfo = PrimitiveInfo<LayoutPixel>;
 pub type LayerPrimitiveInfo = PrimitiveInfo<LayerPixel>;
 
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum SpecificDisplayItem {
     Clip(ClipDisplayItem),
@@ -119,10 +111,39 @@ pub enum SpecificDisplayItem {
     BoxShadow(BoxShadowDisplayItem),
     Gradient(GradientDisplayItem),
     RadialGradient(RadialGradientDisplayItem),
+    ClipChain(ClipChainItem),
     Iframe(IframeDisplayItem),
     PushStackingContext(PushStackingContextDisplayItem),
     PopStackingContext,
     SetGradientStops,
+    PushShadow(Shadow),
+    PopAllShadows,
+}
+
+/// This is a "complete" version of the DI specifics,
+/// containing the auxiliary data within the corresponding
+/// enumeration variants, to be used for debug serialization.
+#[cfg(feature = "debug-serialization")]
+#[derive(Deserialize, Serialize)]
+pub enum CompletelySpecificDisplayItem {
+    Clip(ClipDisplayItem, Vec<ComplexClipRegion>),
+    ClipChain(ClipChainItem, Vec<ClipId>),
+    ScrollFrame(ScrollFrameDisplayItem, Vec<ComplexClipRegion>),
+    StickyFrame(StickyFrameDisplayItem),
+    Rectangle(RectangleDisplayItem),
+    ClearRectangle,
+    Line(LineDisplayItem),
+    Text(TextDisplayItem, Vec<GlyphInstance>),
+    Image(ImageDisplayItem),
+    YuvImage(YuvImageDisplayItem),
+    Border(BorderDisplayItem),
+    BoxShadow(BoxShadowDisplayItem),
+    Gradient(GradientDisplayItem),
+    RadialGradient(RadialGradientDisplayItem),
+    Iframe(IframeDisplayItem),
+    PushStackingContext(PushStackingContextDisplayItem, Vec<FilterOp>),
+    PopStackingContext,
+    SetGradientStops(Vec<GradientStop>),
     PushShadow(Shadow),
     PopAllShadows,
 }
@@ -344,7 +365,7 @@ pub enum BorderStyle {
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum BoxShadowClipMode {
     Outset = 0,
     Inset = 1,
@@ -406,6 +427,12 @@ pub struct RadialGradient {
     pub ratio_xy: f32,
     pub extend_mode: ExtendMode,
 } // IMPLICIT stops: Vec<GradientStop>
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ClipChainItem {
+    pub id: ClipChainId,
+    pub parent: Option<ClipChainId>,
+} // IMPLICIT stops: Vec<ClipId>
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RadialGradientDisplayItem {
@@ -471,9 +498,10 @@ pub enum FilterOp {
     Grayscale(f32),
     HueRotate(f32),
     Invert(f32),
-    Opacity(PropertyBinding<f32>),
+    Opacity(PropertyBinding<f32>, f32),
     Saturate(f32),
     Sepia(f32),
+    DropShadow(LayoutVector2D, f32, ColorF),
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
@@ -487,6 +515,7 @@ pub struct ImageDisplayItem {
     pub stretch_size: LayoutSize,
     pub tile_spacing: LayoutSize,
     pub image_rendering: ImageRendering,
+    pub alpha_type: AlphaType,
 }
 
 #[repr(u32)]
@@ -495,6 +524,12 @@ pub enum ImageRendering {
     Auto = 0,
     CrispEdges = 1,
     Pixelated = 2,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub enum AlphaType {
+    Alpha = 0,
+    PremultipliedAlpha = 1,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
@@ -707,9 +742,14 @@ impl ComplexClipRegion {
     }
 }
 
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct ClipChainId(pub u64, pub PipelineId);
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum ClipId {
     Clip(u64, PipelineId),
+    ClipChain(ClipChainId),
     ClipExternalId(u64, PipelineId),
     DynamicallyAddedNode(u64, PipelineId),
 }
@@ -736,6 +776,7 @@ impl ClipId {
     pub fn pipeline_id(&self) -> PipelineId {
         match *self {
             ClipId::Clip(_, pipeline_id) |
+            ClipId::ClipChain(ClipChainId(_, pipeline_id)) |
             ClipId::ClipExternalId(_, pipeline_id) |
             ClipId::DynamicallyAddedNode(_, pipeline_id) => pipeline_id,
         }

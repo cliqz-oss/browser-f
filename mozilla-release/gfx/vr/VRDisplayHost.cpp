@@ -26,6 +26,11 @@
 
 #endif
 
+#if defined(MOZ_ANDROID_GOOGLE_VR)
+#include "mozilla/layers/CompositorThread.h"
+#endif // defined(MOZ_ANDROID_GOOGLE_VR)
+
+
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
@@ -77,6 +82,10 @@ VRDisplayHost::VRDisplayHost(VRDeviceType aType)
 
 VRDisplayHost::~VRDisplayHost()
 {
+  if (mSubmitThread) {
+    mSubmitThread->Shutdown();
+    mSubmitThread = nullptr;
+  }
   MOZ_COUNT_DTOR(VRDisplayHost);
 }
 
@@ -85,7 +94,7 @@ bool
 VRDisplayHost::CreateD3DObjects()
 {
   if (!mDevice) {
-    RefPtr<ID3D11Device> device = gfx::DeviceManagerDx::Get()->GetCompositorDevice();
+    RefPtr<ID3D11Device> device = gfx::DeviceManagerDx::Get()->GetVRDevice();
     if (!device) {
       NS_WARNING("VRDisplayHost::CreateD3DObjects failed to get a D3D11Device");
       return false;
@@ -253,23 +262,16 @@ VRDisplayHost::NotifyVSync()
 }
 
 void
-VRDisplayHost::SubmitFrame(VRLayerParent* aLayer,
-                           const layers::SurfaceDescriptor &aTexture,
-                           uint64_t aFrameId,
-                           const gfx::Rect& aLeftEyeRect,
-                           const gfx::Rect& aRightEyeRect)
+VRDisplayHost::SubmitFrameInternal(const layers::SurfaceDescriptor &aTexture,
+                                   uint64_t aFrameId,
+                                   const gfx::Rect& aLeftEyeRect,
+                                   const gfx::Rect& aRightEyeRect)
 {
+#if !defined(MOZ_ANDROID_GOOGLE_VR)
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
+#endif // !defined(MOZ_ANDROID_GOOGLE_VR)
   AUTO_PROFILER_TRACING("VR", "SubmitFrameAtVRDisplayHost");
 
-  if ((mDisplayInfo.mGroupMask & aLayer->GetGroup()) == 0) {
-    // Suppress layers hidden by the group mask
-    return;
-  }
-
-  // Ensure that we only accept the first SubmitFrame call per RAF cycle.
-  if (!mFrameStarted || aFrameId != mDisplayInfo.mFrameId) {
-    return;
-  }
   mFrameStarted = false;
   switch (aTexture.type()) {
 
@@ -336,11 +338,11 @@ VRDisplayHost::SubmitFrame(VRLayerParent* aLayer,
     }
 #elif defined(MOZ_ANDROID_GOOGLE_VR)
     case SurfaceDescriptor::TEGLImageDescriptor: {
-       const EGLImageDescriptor& desc = aTexture.get_EGLImageDescriptor();
-       if (!SubmitFrame(&desc, aLeftEyeRect, aRightEyeRect)) {
-         return;
-       }
-       break;
+      const EGLImageDescriptor& desc = aTexture.get_EGLImageDescriptor();
+      if (!SubmitFrame(&desc, aLeftEyeRect, aRightEyeRect)) {
+        return;
+      }
+      break;
     }
 #endif
     default: {
@@ -369,6 +371,42 @@ VRDisplayHost::SubmitFrame(VRLayerParent* aLayer,
     vm, &VRManager::NotifyVRVsync, mDisplayInfo.mDisplayID
   ));
 #endif
+}
+
+void
+VRDisplayHost::SubmitFrame(VRLayerParent* aLayer,
+                           const layers::SurfaceDescriptor &aTexture,
+                           uint64_t aFrameId,
+                           const gfx::Rect& aLeftEyeRect,
+                           const gfx::Rect& aRightEyeRect)
+{
+#if !defined(MOZ_ANDROID_GOOGLE_VR)
+  if (!mSubmitThread) {
+    mSubmitThread = new VRThread(NS_LITERAL_CSTRING("VR_SubmitFrame"));
+  }
+#endif // !defined(MOZ_ANDROID_GOOGLE_VR)
+
+  if ((mDisplayInfo.mGroupMask & aLayer->GetGroup()) == 0) {
+    // Suppress layers hidden by the group mask
+    return;
+  }
+
+  // Ensure that we only accept the first SubmitFrame call per RAF cycle.
+  if (!mFrameStarted || aFrameId != mDisplayInfo.mFrameId) {
+    return;
+  }
+
+  RefPtr<Runnable> submit =
+    NewRunnableMethod<StoreCopyPassByConstLRef<layers::SurfaceDescriptor>, uint64_t,
+      StoreCopyPassByConstLRef<gfx::Rect>, StoreCopyPassByConstLRef<gfx::Rect>>(
+      "gfx::VRDisplayHost::SubmitFrameInternal", this, &VRDisplayHost::SubmitFrameInternal,
+      aTexture, aFrameId, aLeftEyeRect, aRightEyeRect);
+#if !defined(MOZ_ANDROID_GOOGLE_VR)
+  mSubmitThread->Start();
+  mSubmitThread->PostTask(submit.forget());
+#else
+  CompositorThreadHolder::Loop()->PostTask(submit.forget());
+#endif // defined(MOZ_ANDROID_GOOGLE_VR)
 }
 
 bool

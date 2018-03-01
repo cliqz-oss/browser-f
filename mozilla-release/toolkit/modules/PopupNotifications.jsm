@@ -331,7 +331,13 @@ PopupNotifications.prototype = {
    *        at a time. If a notification already exists with the given ID, it
    *        will be replaced.
    * @param message
-   *        The text to be displayed in the notification.
+   *        A JavaScript object or a string containing the text to be displayed in the
+   *        notification header. It must have the following properties:
+   *          - start(string): First part of the notification header text. Optionally,
+   *            it is also the entire header text when the notification header does not
+   *            contain a host name. eg. file URIs.
+   *          - host(string): Hostname of the site displaying the notifiation.
+   *          - end(string): An optional end label to the notification header text.
    * @param anchorID
    *        The ID of the element that should be used as this notification
    *        popup's anchor. May be null, in which case the notification will be
@@ -481,8 +487,7 @@ PopupNotifications.prototype = {
     notifications.push(notification);
 
     let isActiveBrowser = this._isActiveBrowser(browser);
-    let fm = Cc["@mozilla.org/focus-manager;1"].getService(Ci.nsIFocusManager);
-    let isActiveWindow = fm.activeWindow == this.window;
+    let isActiveWindow = Services.focus.activeWindow == this.window;
 
     if (isActiveBrowser) {
       if (isActiveWindow) {
@@ -768,7 +773,17 @@ PopupNotifications.prototype = {
       else
         popupnotification = doc.createElementNS(XUL_NS, "popupnotification");
 
-      popupnotification.setAttribute("label", n.message);
+      // Create the notification description element.
+
+      // Adding an if condition to check if n.message(i.e. the notification-description-text) is a string or an object.
+      if (typeof n.message == "string") {
+        popupnotification.setAttribute("label", n.message);
+      } else {
+        popupnotification.setAttribute("label", n.message.start || "");
+        popupnotification.setAttribute("hostname", n.message.host || "");
+        popupnotification.setAttribute("endlabel", n.message.end || "");
+      }
+
       popupnotification.setAttribute("id", popupnotificationID);
       popupnotification.setAttribute("popupid", n.id);
       popupnotification.setAttribute("oncommand", "PopupNotifications._onCommand(event);");

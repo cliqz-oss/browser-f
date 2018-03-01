@@ -810,12 +810,6 @@ EventListenerManager::SetEventHandler(nsAtom* aName,
     return NS_OK;
   }
 
-#ifdef DEBUG
-  if (nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(global)) {
-    MOZ_ASSERT(win->IsInnerWindow(), "We should not have an outer window here!");
-  }
-#endif
-
   nsresult rv = NS_OK;
   // return early preventing the event listener from being added
   // 'doc' is fetched above
@@ -1056,7 +1050,6 @@ EventListenerManager::CompileEventHandlerInternal(Listener* aListener,
   // Use line 0 to make the function body starts from line 1.
   options.setIntroductionType("eventHandler")
          .setFileAndLine(url.get(), 0)
-         .setVersion(JSVERSION_DEFAULT)
          .setElement(&v.toObject())
          .setElementAttributeName(jsStr);
 

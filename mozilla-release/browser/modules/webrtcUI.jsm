@@ -368,8 +368,15 @@ function prompt(aBrowser, aRequest) {
   aBrowser.dispatchEvent(new aBrowser.ownerGlobal
                                      .CustomEvent("PermissionStateChange"));
 
-  let uri = Services.io.newURI(aRequest.documentURI);
-  let host = getHost(uri);
+  let uri;
+  try {
+    // This fails for principals that serialize to "null", e.g. file URIs.
+    uri = Services.io.newURI(aRequest.origin);
+  } catch (e) {
+    uri = Services.io.newURI(aRequest.documentURI);
+  }
+  let message = {};
+  message.host = getHost(uri);
   let chromeDoc = aBrowser.ownerDocument;
   let stringBundle = chromeDoc.defaultView.gNavigatorBundle;
 
@@ -390,7 +397,10 @@ function prompt(aBrowser, aRequest) {
     "getUserMedia.shareScreenAndAudioCapture3.message",
   ].find(id => id.includes(joinedRequestTypes));
 
-  let message = stringBundle.getFormattedString(stringId, [host]);
+  let header = stringBundle.getFormattedString(stringId, ["<>"], 1);
+  header = header.split("<>");
+  message.end = header[1];
+  message.start = header[0];
 
   let notification; // Used by action callbacks.
   let mainAction = {
@@ -863,9 +873,7 @@ function getGlobalIndicator() {
     _microphone: null,
     _screen: null,
 
-    _hiddenDoc: Cc["@mozilla.org/appshell/appShellService;1"]
-                  .getService(Ci.nsIAppShellService)
-                  .hiddenDOMWindow.document,
+    _hiddenDoc: Services.appShell.hiddenDOMWindow.document,
     _statusBar: Cc["@mozilla.org/widget/macsystemstatusbar;1"]
                   .getService(Ci.nsISystemStatusBar),
 

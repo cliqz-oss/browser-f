@@ -63,30 +63,17 @@ TargetProcess::TargetProcess(base::win::ScopedHandle initial_token,
       base_address_(NULL) {}
 
 TargetProcess::~TargetProcess() {
-  DWORD exit_code = 0;
   // Give a chance to the process to die. In most cases the JOB_KILL_ON_CLOSE
   // will take effect only when the context changes. As far as the testing went,
   // this wait was enough to switch context and kill the processes in the job.
   // If this process is already dead, the function will return without waiting.
-  // TODO(nsylvain):  If the process is still alive at the end, we should kill
-  // it. http://b/893891
   // For now, this wait is there only to do a best effort to prevent some leaks
   // from showing up in purify.
   if (sandbox_process_info_.IsValid()) {
     ::WaitForSingleObject(sandbox_process_info_.process_handle(), 50);
-    // At this point, the target process should have been killed.  Check.
-    if (!::GetExitCodeProcess(sandbox_process_info_.process_handle(),
-                              &exit_code) || (STILL_ACTIVE == exit_code)) {
-      // Something went wrong.  We don't know if the target is in a state where
-      // it can manage to do another IPC call.  If it can, and we've destroyed
-      // the |ipc_server_|, it will crash the broker.  So we intentionally leak
-      // that.
-      if (shared_section_.IsValid())
-        shared_section_.Take();
-      ignore_result(ipc_server_.release());
-      sandbox_process_info_.TakeProcessHandle();
-      return;
-    }
+    // Terminate the process if it's still alive, as its IPC server is going
+    // away. 1 is RESULT_CODE_KILLED.
+    ::TerminateProcess(sandbox_process_info_.process_handle(), 1);
   }
 
   // ipc_server_ references our process handle, so make sure the former is shut
@@ -102,6 +89,7 @@ ResultCode TargetProcess::Create(
     bool inherit_handles,
     const base::win::StartupInformation& startup_info,
     base::win::ScopedProcessInformation* target_info,
+    base::EnvironmentMap& env_changes,
     DWORD* win_error) {
   exe_name_.reset(_wcsdup(exe_path));
 
@@ -121,12 +109,19 @@ ResultCode TargetProcess::Create(
     flags |= CREATE_BREAKAWAY_FROM_JOB;
   }
 
+  LPTCH original_environment = GetEnvironmentStrings();
+  base::NativeEnvironmentString new_environment =
+    base::AlterEnvironment(original_environment, env_changes);
+  // Ignore return value? What can we do?
+  FreeEnvironmentStrings(original_environment);
+  LPVOID new_env_ptr = (void*)new_environment.data();
+
   PROCESS_INFORMATION temp_process_info = {};
   if (!::CreateProcessAsUserW(lockdown_token_.Get(), exe_path, cmd_line.get(),
                               NULL,  // No security attribute.
                               NULL,  // No thread attribute.
                               inherit_handles, flags,
-                              NULL,  // Use the environment of the caller.
+                              new_env_ptr,
                               NULL,  // Use current directory of the caller.
                               startup_info.startup_info(),
                               &temp_process_info)) {

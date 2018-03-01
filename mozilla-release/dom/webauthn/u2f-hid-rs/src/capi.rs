@@ -9,7 +9,7 @@ use std::{ptr, slice};
 
 use U2FManager;
 
-type U2FKeyHandles = Vec<Vec<u8>>;
+type U2FKeyHandles = Vec<::KeyHandle>;
 type U2FResult = HashMap<u8, Vec<u8>>;
 type U2FCallback = extern "C" fn(u64, *mut U2FResult);
 
@@ -52,8 +52,12 @@ pub unsafe extern "C" fn rust_u2f_khs_add(
     khs: *mut U2FKeyHandles,
     key_handle_ptr: *const u8,
     key_handle_len: usize,
+    transports: u8,
 ) {
-    (*khs).push(from_raw(key_handle_ptr, key_handle_len));
+    (*khs).push(::KeyHandle {
+        credential: from_raw(key_handle_ptr, key_handle_len),
+        transports: ::AuthenticatorTransports::from_bits_truncate(transports),
+    });
 }
 
 #[no_mangle]
@@ -109,6 +113,7 @@ pub unsafe extern "C" fn rust_u2f_res_free(res: *mut U2FResult) {
 #[no_mangle]
 pub unsafe extern "C" fn rust_u2f_mgr_register(
     mgr: *mut U2FManager,
+    flags: u64,
     timeout: u64,
     callback: U2FCallback,
     challenge_ptr: *const u8,
@@ -126,20 +131,28 @@ pub unsafe extern "C" fn rust_u2f_mgr_register(
         return 0;
     }
 
+    let flags = ::RegisterFlags::from_bits_truncate(flags);
     let challenge = from_raw(challenge_ptr, challenge_len);
     let application = from_raw(application_ptr, application_len);
     let key_handles = (*khs).clone();
 
     let tid = new_tid();
-    let res = (*mgr).register(timeout, challenge, application, key_handles, move |rv| {
-        if let Ok(registration) = rv {
-            let mut result = U2FResult::new();
-            result.insert(RESBUF_ID_REGISTRATION, registration);
-            callback(tid, Box::into_raw(Box::new(result)));
-        } else {
-            callback(tid, ptr::null_mut());
-        };
-    });
+    let res = (*mgr).register(
+        flags,
+        timeout,
+        challenge,
+        application,
+        key_handles,
+        move |rv| {
+            if let Ok(registration) = rv {
+                let mut result = U2FResult::new();
+                result.insert(RESBUF_ID_REGISTRATION, registration);
+                callback(tid, Box::into_raw(Box::new(result)));
+            } else {
+                callback(tid, ptr::null_mut());
+            };
+        },
+    );
 
     if res.is_ok() { tid } else { 0 }
 }
@@ -147,6 +160,7 @@ pub unsafe extern "C" fn rust_u2f_mgr_register(
 #[no_mangle]
 pub unsafe extern "C" fn rust_u2f_mgr_sign(
     mgr: *mut U2FManager,
+    flags: u64,
     timeout: u64,
     callback: U2FCallback,
     challenge_ptr: *const u8,
@@ -169,21 +183,29 @@ pub unsafe extern "C" fn rust_u2f_mgr_sign(
         return 0;
     }
 
+    let flags = ::SignFlags::from_bits_truncate(flags);
     let challenge = from_raw(challenge_ptr, challenge_len);
     let application = from_raw(application_ptr, application_len);
     let key_handles = (*khs).clone();
 
     let tid = new_tid();
-    let res = (*mgr).sign(timeout, challenge, application, key_handles, move |rv| {
-        if let Ok((key_handle, signature)) = rv {
-            let mut result = U2FResult::new();
-            result.insert(RESBUF_ID_KEYHANDLE, key_handle);
-            result.insert(RESBUF_ID_SIGNATURE, signature);
-            callback(tid, Box::into_raw(Box::new(result)));
-        } else {
-            callback(tid, ptr::null_mut());
-        };
-    });
+    let res = (*mgr).sign(
+        flags,
+        timeout,
+        challenge,
+        application,
+        key_handles,
+        move |rv| {
+            if let Ok((key_handle, signature)) = rv {
+                let mut result = U2FResult::new();
+                result.insert(RESBUF_ID_KEYHANDLE, key_handle);
+                result.insert(RESBUF_ID_SIGNATURE, signature);
+                callback(tid, Box::into_raw(Box::new(result)));
+            } else {
+                callback(tid, ptr::null_mut());
+            };
+        },
+    );
 
     if res.is_ok() { tid } else { 0 }
 }

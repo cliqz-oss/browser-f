@@ -1,1 +1,7 @@
+<<<<<<< HEAD
 1.19.0
+||||||| merged common ancestors
+58.0.2
+=======
+59.0b14
+>>>>>>> origin/upstream-releases

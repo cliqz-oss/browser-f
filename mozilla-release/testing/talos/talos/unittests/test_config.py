@@ -122,6 +122,9 @@ class Test_get_browser_config(object):
     optional = ['bcontroller_config',
                 'branch_name',
                 'child_process',
+                'debug',
+                'debugger',
+                'debugger_args',
                 'develop',
                 'e10s',
                 'process',
@@ -176,7 +179,7 @@ class Test_get_browser_config(object):
 
         browser_config = get_browser_config(config_extensive)
         assert browser_config != config_extensive
-        assert set(browser_config.keys()).issubset(set(config_extensive.keys()))
+        assert set(browser_config).issubset(set(config_extensive))
 
 
 class Test_get_config(object):
@@ -227,7 +230,6 @@ class Test_get_config(object):
         cls.argv_kraken = '--activeTests kraken -e /some/random/path'.split()
         cls.argv_basic_compositor_video = \
             '--activeTests basic_compositor_video -e /some/random/path'.split()
-        cls.argv_tcanvasmark = '--activeTests tcanvasmark -e /some/random/path'.split()
         cls.argv_dromaeo_css = '--activeTests dromaeo_css -e /some/random/path'.split()
         cls.argv_dromaeo_dom = '--activeTests dromaeo_dom -e /some/random/path'.split()
         cls.argv_tsvgm = '--activeTests tsvgm -e /some/random/path'.split()
@@ -240,14 +242,6 @@ class Test_get_config(object):
         cls.argv_perf_reftest = '--activeTests perf_reftest -e /some/random/path'.split()
         cls.argv_perf_reftest_singletons = \
             '--activeTests perf_reftest_singletons -e /some/random/path'.split()
-        cls.argv_quantum_pageload_google = \
-            '--activeTests quantum_pageload_google -e /some/random/path'.split()
-        cls.argv_quantum_pageload_youtube = \
-            '--activeTests quantum_pageload_youtube -e /some/random/path'.split()
-        cls.argv_quantum_pageload_amazon = \
-            '--activeTests quantum_pageload_amazon -e /some/random/path'.split()
-        cls.argv_quantum_pageload_facebook = \
-            '--activeTests quantum_pageload_facebook -e /some/random/path'.split()
         cls.argv_tp6_google = '--activeTests tp6_google -e /some/random/path'.split()
         cls.argv_tp6_google_heavy = '--activeTests tp6_google_heavy -e /some/random/path'.split()
         cls.argv_tp6_youtube = '--activeTests tp6_youtube -e /some/random/path'.split()
@@ -304,7 +298,6 @@ class Test_get_config(object):
         assert test_config['gecko_profile_startup'] is True
         assert test_config['gecko_profile_entries'] == 10000000
         assert test_config['url'] != 'startup_test/tspaint_test.html'  # interpolation was done
-        assert test_config['shutdown'] is False
         assert test_config['xperf_counters'] == []
         # TODO: these don't work; is this a bug?
         # assert test_config['win7_counters'] == []
@@ -324,7 +317,6 @@ class Test_get_config(object):
         assert test_config['gecko_profile_startup'] is True
         assert test_config['gecko_profile_entries'] == 10000000
         assert test_config['url'] != 'startup_test/tspaint_test.html'  # interpolation was done
-        assert test_config['shutdown'] is False
         assert test_config['xperf_counters'] == []
         # TODO: these don't work; is this a bug?
         # assert test_config['win7_counters'] == []
@@ -347,7 +339,6 @@ class Test_get_config(object):
         assert test_config['gecko_profile_startup'] is True
         assert test_config['gecko_profile_entries'] == 10000000
         assert test_config['url'] != 'startup_test/tspaint_test.html'  # interpolation was done
-        assert test_config['shutdown'] is False
         assert test_config['xperf_counters'] == []
         # TODO: this doesn't work; is this a bug?
         # assert test_config['win7_counters'] == []
@@ -367,7 +358,6 @@ class Test_get_config(object):
         assert test_config['timeout'] == 900
         assert test_config['gecko_profile_startup'] is True
         assert test_config['gecko_profile_entries'] == 10000000
-        assert test_config['shutdown'] is False
         assert test_config['reinstall'] == [
             'sessionstore.jsonlz4', 'sessionstore.js', 'sessionCheckpoints.json']
         assert test_config['url'] == 'about:home'
@@ -383,7 +373,6 @@ class Test_get_config(object):
         assert test_config['timeout'] == 900
         assert test_config['gecko_profile_startup'] is True
         assert test_config['gecko_profile_entries'] == 10000000
-        assert test_config['shutdown'] is False
         assert test_config['reinstall'] == [
             'sessionstore.jsonlz4', 'sessionstore.js', 'sessionCheckpoints.json']
         assert test_config['url'] == 'about:home'
@@ -399,7 +388,6 @@ class Test_get_config(object):
         assert test_config['timeout'] == 900
         assert test_config['gecko_profile_startup'] is True
         assert test_config['gecko_profile_entries'] == 10000000
-        assert test_config['shutdown'] is False
         assert test_config['reinstall'] == [
             'sessionstore.jsonlz4', 'sessionstore.js', 'sessionCheckpoints.json']
         assert test_config['url'] == 'about:home'
@@ -604,13 +592,13 @@ class Test_get_config(object):
         assert test_config['filters'] is not None
         assert test_config['unit'] == 'ms'
 
+    @mock.patch('talos.config.build_manifest', conftest.patched_build_manifest)
     def test_tp5n_has_expected_attributes(self):
         config = get_config(self.argv_tp5n)
         test_config = config['tests'][0]
 
         assert test_config['name'] == 'tp5n'
         assert test_config['resolution'] == 20
-        assert test_config['shutdown'] is False
         assert test_config['tpmanifest'] != '${talos}/tests/tp5n/tp5n.manifest'
         assert test_config['tpcycles'] == 1
         assert test_config['tppagecycles'] == 1
@@ -650,6 +638,7 @@ class Test_get_config(object):
         }
         assert test_config['unit'] == 'ms'
 
+    @mock.patch('talos.config.build_manifest', conftest.patched_build_manifest)
     def test_tp5o_has_expected_attributes(self):
         config = get_config(self.argv_tp5o)
         test_config = config['tests'][0]
@@ -673,6 +662,7 @@ class Test_get_config(object):
         assert test_config['timeout'] == 1800
         assert test_config['unit'] == 'ms'
 
+    @mock.patch('talos.config.build_manifest', conftest.patched_build_manifest)
     def test_tp5o_webext_has_expected_attributes(self):
         config = get_config(self.argv_tp5o_webext)
         test_config = config['tests'][0]
@@ -698,6 +688,7 @@ class Test_get_config(object):
         assert test_config['webextensions'] == '${talos}/webextensions/dummy/dummy-signed.xpi'
         assert test_config['preferences'] == {'xpinstall.signatures.required': False}
 
+    @mock.patch('talos.config.build_manifest', conftest.patched_build_manifest)
     def test_tp5o_scroll_has_expected_attributes(self):
         config = get_config(self.argv_tp5o_scroll)
         test_config = config['tests'][0]
@@ -776,27 +767,6 @@ class Test_get_config(object):
         assert test_config['filters'] is not None
         assert test_config['unit'] == 'ms/frame'
         assert test_config['lower_is_better'] is True
-
-    def test_tcanvasmark_has_expected_attributes(self):
-        config = get_config(self.argv_tcanvasmark)
-        test_config = config['tests'][0]
-
-        assert test_config['name'] == 'tcanvasmark'
-        assert test_config['tpmanifest'] != '${talos}/tests/canvasmark/canvasmark.manifest'
-        assert 'win_counters' not in test_config
-        assert 'w7_counters' not in test_config
-        assert 'linux_counters' not in test_config
-        assert 'mac_counters' not in test_config
-        assert test_config['tpcycles'] == 5
-        assert test_config['tppagecycles'] == 1
-        assert test_config['timeout'] == 900
-        assert test_config['gecko_profile_interval'] == 10
-        assert test_config['gecko_profile_entries'] == 2500000
-        assert test_config['tpmozafterpaint'] is False
-        assert test_config['preferences'] == {'dom.send_after_paint_to_content': False}
-        assert test_config['filters'] is not None
-        assert test_config['unit'] == 'score'
-        assert test_config['lower_is_better'] is False
 
     def test_dromaeo_css_has_expected_attributes(self):
         config = get_config(self.argv_dromaeo_css)
@@ -981,70 +951,6 @@ class Test_get_config(object):
         assert test_config['unit'] == 'ms'
         assert test_config['lower_is_better'] is True
         assert test_config['alert_threshold'] == 5.0
-
-    def test_quantum_pageload_google_has_expected_attributes(self):
-        config = get_config(self.argv_quantum_pageload_google)
-        test_config = config['tests'][0]
-
-        assert test_config['name'] == 'quantum_pageload_google'
-        assert test_config['tpcycles'] == 1
-        assert test_config['tppagecycles'] == 25
-        assert test_config['gecko_profile_interval'] == 1
-        assert test_config['gecko_profile_entries'] == 2000000
-        assert test_config['filters'] is not None
-        assert test_config['unit'] == 'ms'
-        assert test_config['lower_is_better'] is True
-        assert test_config['fnbpaint'] is True
-        assert test_config['tpmanifest'] != \
-            '${talos}/tests/quantum_pageload/quantum_pageload_google.manifest'
-
-    def test_quantum_pageload_youtube_has_expected_attributes(self):
-        config = get_config(self.argv_quantum_pageload_youtube)
-        test_config = config['tests'][0]
-
-        assert test_config['name'] == 'quantum_pageload_youtube'
-        assert test_config['tpcycles'] == 1
-        assert test_config['tppagecycles'] == 25
-        assert test_config['gecko_profile_interval'] == 1
-        assert test_config['gecko_profile_entries'] == 2000000
-        assert test_config['filters'] is not None
-        assert test_config['unit'] == 'ms'
-        assert test_config['lower_is_better'] is True
-        assert test_config['fnbpaint'] is True
-        assert test_config['tpmanifest'] != \
-            '${talos}/tests/quantum_pageload/quantum_pageload_youtube.manifest'
-
-    def test_quantum_pageload_amazon_has_expected_attributes(self):
-        config = get_config(self.argv_quantum_pageload_amazon)
-        test_config = config['tests'][0]
-
-        assert test_config['name'] == 'quantum_pageload_amazon'
-        assert test_config['tpcycles'] == 1
-        assert test_config['tppagecycles'] == 25
-        assert test_config['gecko_profile_interval'] == 1
-        assert test_config['gecko_profile_entries'] == 2000000
-        assert test_config['filters'] is not None
-        assert test_config['unit'] == 'ms'
-        assert test_config['lower_is_better'] is True
-        assert test_config['fnbpaint'] is True
-        assert test_config['tpmanifest'] != \
-            '${talos}/tests/quantum_pageload/quantum_pageload_amazon.manifest'
-
-    def test_quantum_pageload_facebook_has_expected_attributes(self):
-        config = get_config(self.argv_quantum_pageload_facebook)
-        test_config = config['tests'][0]
-
-        assert test_config['name'] == 'quantum_pageload_facebook'
-        assert test_config['tpcycles'] == 1
-        assert test_config['tppagecycles'] == 25
-        assert test_config['gecko_profile_interval'] == 1
-        assert test_config['gecko_profile_entries'] == 2000000
-        assert test_config['filters'] is not None
-        assert test_config['unit'] == 'ms'
-        assert test_config['lower_is_better'] is True
-        assert test_config['fnbpaint'] is True
-        assert test_config['tpmanifest'] != \
-            '${talos}/tests/quantum_pageload/quantum_pageload_facebook.manifest'
 
     def test_tp6_google_has_expected_attributes(self):
         config = get_config(self.argv_tp6_google)

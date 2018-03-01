@@ -52,9 +52,9 @@ add_task(function* () {
 function loadDocument(browser) {
   let deferred = defer();
 
-  browser.addEventListener("load", function () {
+  BrowserTestUtils.browserLoaded(browser).then(function () {
     deferred.resolve();
-  }, {capture: true, once: true});
+  });
   BrowserTestUtils.loadURI(gBrowser.selectedBrowser, TEST_PATH);
 
   return deferred.promise;
@@ -65,13 +65,15 @@ function* testNetmonitor(toolbox) {
 
   let { store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
-  let { getSortedRequests } = windowRequire("devtools/client/netmonitor/src/selectors/index");
+  let { getSortedRequests } =
+    windowRequire("devtools/client/netmonitor/src/selectors/index");
 
   store.dispatch(Actions.batchEnable(false));
 
   yield waitUntil(() => store.getState().requests.requests.size > 0);
 
-  is(store.getState().requests.requests.size, 1, "Network request appears in the network panel");
+  is(store.getState().requests.requests.size, 1,
+    "Network request appears in the network panel");
 
   let item = getSortedRequests(store.getState()).get(0);
   is(item.method, "GET", "The attached method is correct.");

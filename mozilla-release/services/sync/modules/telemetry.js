@@ -218,7 +218,7 @@ class EngineRecord {
 }
 
 class TelemetryRecord {
-  constructor(allowedEngines) {
+  constructor(allowedEngines, why) {
     this.allowedEngines = allowedEngines;
     // Our failure reason. This property only exists in the generated ping if an
     // error actually occurred.
@@ -227,6 +227,7 @@ class TelemetryRecord {
     this.when = Date.now();
     this.startTime = tryGetMonotonicTimestamp();
     this.took = 0; // will be set later.
+    this.why = why;
 
     // All engines that have finished (ie, does not include the "current" one)
     // We omit this from the ping if it's empty.
@@ -243,6 +244,9 @@ class TelemetryRecord {
       status: this.status,
       devices: this.devices,
     };
+    if (this.why) {
+      result.why = this.why;
+    }
     let engines = [];
     for (let engine of this.engines) {
       engines.push(engine.toJSON());
@@ -424,7 +428,7 @@ function cleanErrorMessage(error) {
 
 class SyncTelemetryImpl {
   constructor(allowedEngines) {
-    log.level = Log.Level[Svc.Prefs.get("log.logger.telemetry", "Trace")];
+    log.manageLevelFromPref("services.sync.log.logger.telemetry");
     // This is accessible so we can enable custom engines during tests.
     this.allowedEngines = allowedEngines;
     this.current = null;
@@ -488,22 +492,24 @@ class SyncTelemetryImpl {
     }
     // We still call submit() with possibly illegal payloads so that tests can
     // know that the ping was built. We don't end up submitting them, however.
-    if (record.syncs.length) {
-      log.trace(`submitting ${record.syncs.length} sync record(s) to telemetry`);
+    let numEvents = record.events ? record.events.length : 0;
+    if (record.syncs.length || numEvents) {
+      log.trace(`submitting ${record.syncs.length} sync record(s) and ` +
+                `${numEvents} event(s) to telemetry`);
       TelemetryController.submitExternalPing("sync", record);
       return true;
     }
     return false;
   }
 
-
-  onSyncStarted() {
+  onSyncStarted(data) {
+    const why = data && JSON.parse(data).why;
     if (this.current) {
       log.warn("Observed weave:service:sync:start, but we're already recording a sync!");
       // Just discard the old record, consistent with our handling of engines, above.
       this.current = null;
     }
-    this.current = new TelemetryRecord(this.allowedEngines);
+    this.current = new TelemetryRecord(this.allowedEngines, why);
   }
 
   _checkCurrent(topic) {
@@ -589,9 +595,9 @@ class SyncTelemetryImpl {
         event.push(extra);
       }
     } else if (extra) {
-        event.push(null); // a null for the empty value.
-        event.push(extra);
-      }
+      event.push(null); // a null for the empty value.
+      event.push(extra);
+    }
     this.events.push(event);
   }
 
@@ -605,7 +611,7 @@ class SyncTelemetryImpl {
 
       /* sync itself state changes */
       case "weave:service:sync:start":
-        this.onSyncStarted();
+        this.onSyncStarted(data);
         break;
 
       case "weave:service:sync:finish":
@@ -678,6 +684,12 @@ class SyncTelemetryImpl {
   // happen (for example, when including an error in the |extra| field of
   // event telemetry)
   transformError(error) {
+    // Certain parts of sync will use this pattern as a way to communicate to
+    // processIncoming to abort the processing. However, there's no guarantee
+    // this can only happen then.
+    if (typeof error == "object" && error.code && error.cause) {
+      error = error.cause;
+    }
     if (Async.isShutdownException(error)) {
       return { name: "shutdownerror" };
     }

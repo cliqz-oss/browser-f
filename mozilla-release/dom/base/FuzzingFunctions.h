@@ -8,6 +8,9 @@
 #define mozilla_dom_FuzzingFunctions
 
 namespace mozilla {
+
+class ErrorResult;
+
 namespace dom {
 
 class GlobalObject;
@@ -20,6 +23,9 @@ public:
 
   static void
   CycleCollect(const GlobalObject&);
+
+  static void
+  EnableAccessibility(const GlobalObject&, ErrorResult& aRv);
 };
 
 } // namespace dom

@@ -2,9 +2,26 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+DIRS += [
+    'graph'
+]
+
 DevToolsModules(
+    'AnimatedPropertyItem.js',
+    'AnimatedPropertyList.js',
+    'AnimatedPropertyListContainer.js',
+    'AnimatedPropertyListHeader.js',
+    'AnimationDetailContainer.js',
+    'AnimationDetailHeader.js',
     'AnimationItem.js',
     'AnimationList.js',
+    'AnimationListContainer.js',
+    'AnimationListHeader.js',
+    'AnimationTarget.js',
+    'AnimationTimelineTickItem.js',
+    'AnimationTimelineTickList.js',
     'App.js',
-    'NoAnimationPanel.js'
+    'KeyframesProgressTickItem.js',
+    'KeyframesProgressTickList.js',
+    'NoAnimationPanel.js',
 )

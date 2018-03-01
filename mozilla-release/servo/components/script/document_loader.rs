@@ -126,7 +126,7 @@ impl DocumentLoader {
                                   request: RequestInit,
                                   fetch_target: IpcSender<FetchResponseMsg>) {
         self.resource_threads.sender().send(
-            CoreResourceMsg::Fetch(request, FetchChannels::ResponseMsg(fetch_target))).unwrap();
+            CoreResourceMsg::Fetch(request, FetchChannels::ResponseMsg(fetch_target, None))).unwrap();
     }
 
     /// Mark an in-progress network request complete.
@@ -139,6 +139,13 @@ impl DocumentLoader {
     pub fn is_blocked(&self) -> bool {
         // TODO: Ensure that we report blocked if parsing is still ongoing.
         !self.blocking_loads.is_empty()
+    }
+
+    pub fn is_only_blocked_by_iframes(&self) -> bool {
+        self.blocking_loads.iter().all(|load| match *load {
+            LoadType::Subframe(_) => true,
+            _ => false
+        })
     }
 
     pub fn inhibit_events(&mut self) {

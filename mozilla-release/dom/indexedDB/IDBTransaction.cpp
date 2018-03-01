@@ -47,7 +47,8 @@ class IDBTransaction::WorkerHolder final
 
 public:
   WorkerHolder(WorkerPrivate* aWorkerPrivate, IDBTransaction* aTransaction)
-    : mWorkerPrivate(aWorkerPrivate)
+    : mozilla::dom::workers::WorkerHolder("IDBTransaction::WorkerHolder")
+    , mWorkerPrivate(aWorkerPrivate)
     , mTransaction(aTransaction)
   {
     MOZ_ASSERT(aWorkerPrivate);
@@ -1053,7 +1054,7 @@ IDBTransaction::GetEventTargetParent(EventChainPreVisitor& aVisitor)
   AssertIsOnOwningThread();
 
   aVisitor.mCanHandle = true;
-  aVisitor.mParentTarget = mDatabase;
+  aVisitor.SetParentTarget(mDatabase, false);
   return NS_OK;
 }
 

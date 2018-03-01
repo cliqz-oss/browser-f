@@ -242,35 +242,36 @@ bool NS_StringToACE(const nsACString &idn, nsACString &result);
  */
 int32_t NS_GetRealPort(nsIURI *aURI);
 
-nsresult /* NS_NewInputStreamChannelWithLoadInfo */
-NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
-                                 nsIURI             *aUri,
-                                 nsIInputStream     *aStream,
-                                 const nsACString   &aContentType,
-                                 const nsACString   &aContentCharset,
-                                 nsILoadInfo        *aLoadInfo);
+nsresult
+NS_NewInputStreamChannelInternal(nsIChannel** outChannel,
+                                 nsIURI* aUri,
+                                 already_AddRefed<nsIInputStream> aStream,
+                                 const nsACString& aContentType,
+                                 const nsACString& aContentCharset,
+                                 nsILoadInfo* aLoadInfo);
 
-nsresult NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
-                                          nsIURI             *aUri,
-                                          nsIInputStream     *aStream,
-                                          const nsACString   &aContentType,
-                                          const nsACString   &aContentCharset,
-                                          nsINode            *aLoadingNode,
-                                          nsIPrincipal       *aLoadingPrincipal,
-                                          nsIPrincipal       *aTriggeringPrincipal,
-                                          nsSecurityFlags     aSecurityFlags,
-                                          nsContentPolicyType aContentPolicyType);
+nsresult
+NS_NewInputStreamChannelInternal(nsIChannel** outChannel,
+                                 nsIURI* aUri,
+                                 already_AddRefed<nsIInputStream> aStream,
+                                 const nsACString& aContentType,
+                                 const nsACString& aContentCharset,
+                                 nsINode* aLoadingNode,
+                                 nsIPrincipal* aLoadingPrincipal,
+                                 nsIPrincipal* aTriggeringPrincipal,
+                                 nsSecurityFlags aSecurityFlags,
+                                 nsContentPolicyType aContentPolicyType);
 
 
-nsresult /* NS_NewInputStreamChannelPrincipal */
-NS_NewInputStreamChannel(nsIChannel        **outChannel,
-                         nsIURI             *aUri,
-                         nsIInputStream     *aStream,
-                         nsIPrincipal       *aLoadingPrincipal,
-                         nsSecurityFlags     aSecurityFlags,
+nsresult
+NS_NewInputStreamChannel(nsIChannel* *outChannel,
+                         nsIURI* aUri,
+                         already_AddRefed<nsIInputStream> aStream,
+                         nsIPrincipal* aLoadingPrincipal,
+                         nsSecurityFlags aSecurityFlags,
                          nsContentPolicyType aContentPolicyType,
-                         const nsACString   &aContentType    = EmptyCString(),
-                         const nsACString   &aContentCharset = EmptyCString());
+                         const nsACString& aContentType    = EmptyCString(),
+                         const nsACString& aContentCharset = EmptyCString());
 
 nsresult NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
                                           nsIURI             *aUri,
@@ -300,25 +301,13 @@ nsresult NS_NewInputStreamChannel(nsIChannel        **outChannel,
                                   nsContentPolicyType aContentPolicyType,
                                   bool                aIsSrcdocChannel = false);
 
-nsresult NS_NewInputStreamPump(nsIInputStreamPump **result,
-                               nsIInputStream      *stream,
-                               uint32_t             segsize = 0,
-                               uint32_t             segcount = 0,
-                               bool                 closeWhenDone = false,
-                               nsIEventTarget      *mainThreadTarget = nullptr);
-
-// NOTE: you will need to specify whether or not your streams are buffered
-// (i.e., do they implement ReadSegments/WriteSegments).  the default
-// assumption of TRUE for both streams might not be right for you!
-nsresult NS_NewAsyncStreamCopier(nsIAsyncStreamCopier **result,
-                                 nsIInputStream        *source,
-                                 nsIOutputStream       *sink,
-                                 nsIEventTarget        *target,
-                                 bool                   sourceBuffered = true,
-                                 bool                   sinkBuffered = true,
-                                 uint32_t               chunkSize = 0,
-                                 bool                   closeSource = true,
-                                 bool                   closeSink = true);
+nsresult
+NS_NewInputStreamPump(nsIInputStreamPump** aResult,
+                      already_AddRefed<nsIInputStream> aStream,
+                      uint32_t aSegsize = 0,
+                      uint32_t aSegcount = 0,
+                      bool aCloseWhenDone = false,
+                      nsIEventTarget *aMainThreadTarget = nullptr);
 
 nsresult NS_NewLoadGroup(nsILoadGroup      **result,
                          nsIRequestObserver *obs);
@@ -520,11 +509,6 @@ NS_NewBufferedInputStream(nsIInputStream** aResult,
 nsresult NS_NewBufferedOutputStream(nsIOutputStream** aResult,
                                     already_AddRefed<nsIOutputStream> aOutputStream,
                                     uint32_t aBufferSize);
-
-// returns an input stream compatible with nsIUploadChannel::SetUploadStream()
-nsresult NS_NewPostDataStream(nsIInputStream  **result,
-                              bool              isFile,
-                              const nsACString &data);
 
 /**
  * This function reads an inputStream and stores its content into a buffer. In
@@ -951,9 +935,11 @@ nsresult NS_CompareLoadInfoAndLoadContext(nsIChannel *aChannel);
 
 /**
  * Return default referrer policy which is controlled by user
- * pref network.http.referer.userControlPolicy
+ * prefs:
+ * network.http.referer.defaultPolicy for regular mode
+ * network.http.referer.defaultPolicy.pbmode for private mode
  */
-uint32_t NS_GetDefaultReferrerPolicy();
+uint32_t NS_GetDefaultReferrerPolicy(bool privateBrowsing = false);
 
 namespace mozilla {
 namespace net {

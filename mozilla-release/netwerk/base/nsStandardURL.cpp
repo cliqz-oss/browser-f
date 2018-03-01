@@ -1554,8 +1554,8 @@ IsSpecialProtocol(const nsACString &input)
            protocol.LowerCaseEqualsLiteral("gopher");
 }
 
-NS_IMETHODIMP
-nsStandardURL::SetSpec(const nsACString &input)
+nsresult
+nsStandardURL::SetSpecInternal(const nsACString &input)
 {
     return SetSpecWithEncoding(input, nullptr);
 }
@@ -2209,7 +2209,7 @@ nsStandardURL::SetPathQueryRef(const nsACString &input)
             spec.Append('/');
         spec.Append(path);
 
-        return SetSpec(spec);
+        return SetSpecInternal(spec);
     }
     else if (mPath.mLen >= 1) {
         mSpec.Cut(mPath.mPos + 1, mPath.mLen - 1);
@@ -2223,6 +2223,20 @@ nsStandardURL::SetPathQueryRef(const nsACString &input)
         mQuery.mLen = -1;
         mRef.mLen = -1;
     }
+    return NS_OK;
+}
+
+NS_IMPL_ISUPPORTS(nsStandardURL::Mutator, nsIURISetters, nsIURIMutator)
+
+NS_IMETHODIMP
+nsStandardURL::Mutate(nsIURIMutator** aMutator)
+{
+    RefPtr<nsStandardURL::Mutator> mutator = new nsStandardURL::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+    mutator.forget(aMutator);
     return NS_OK;
 }
 
@@ -2510,8 +2524,7 @@ nsStandardURL::Resolve(const nsACString &in, nsACString &out)
         if (SegmentIs(mScheme, relpath, scheme, true)) {
             // mScheme and Scheme are the same
             // but this can still be relative
-            if (nsCRT::strncmp(relpath + scheme.mPos + scheme.mLen,
-                               "://",3) == 0) {
+            if (strncmp(relpath + scheme.mPos + scheme.mLen, "://", 3) == 0) {
                 // now this is really absolute
                 // because a :// follows the scheme
                 result = NS_strdup(relpath);
@@ -2880,7 +2893,7 @@ nsStandardURL::SetFilePath(const nsACString &input)
                 spec.Append(mSpec.get() + end, mSpec.Length() - end);
         }
 
-        return SetSpec(spec);
+        return SetSpecInternal(spec);
     }
     else if (mPath.mLen > 1) {
         mSpec.Cut(mPath.mPos + 1, mFilepath.mLen - 1);

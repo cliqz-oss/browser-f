@@ -32,6 +32,8 @@ MacIOSurfaceTextureHostOGL::~MacIOSurfaceTextureHostOGL()
 GLTextureSource*
 MacIOSurfaceTextureHostOGL::CreateTextureSourceForPlane(size_t aPlane)
 {
+  MOZ_ASSERT(mSurface);
+
   GLuint textureHandle;
   gl::GLContext* gl = mProvider->GetGLContext();
   gl->fGenTextures(1, &textureHandle);
@@ -94,11 +96,17 @@ MacIOSurfaceTextureHostOGL::SetTextureSourceProvider(TextureSourceProvider* aPro
 
 gfx::SurfaceFormat
 MacIOSurfaceTextureHostOGL::GetFormat() const {
+  if (!mSurface) {
+    return gfx::SurfaceFormat::UNKNOWN;
+  }
   return mSurface->GetFormat();
 }
 
 gfx::SurfaceFormat
 MacIOSurfaceTextureHostOGL::GetReadFormat() const {
+  if (!mSurface) {
+    return gfx::SurfaceFormat::UNKNOWN;
+  }
   return mSurface->GetReadFormat();
 }
 
@@ -161,12 +169,14 @@ MacIOSurfaceTextureHostOGL::PushResourceUpdates(wr::ResourceUpdateQueue& aResour
 
   switch (GetFormat()) {
     case gfx::SurfaceFormat::R8G8B8X8:
-    case gfx::SurfaceFormat::R8G8B8A8:
-    case gfx::SurfaceFormat::B8G8R8A8:
-    case gfx::SurfaceFormat::B8G8R8X8: {
+    case gfx::SurfaceFormat::R8G8B8A8: {
       MOZ_ASSERT(aImageKeys.length() == 1);
       MOZ_ASSERT(mSurface->GetPlaneCount() == 0);
-      wr::ImageDescriptor descriptor(GetSize(), GetFormat());
+      // The internal pixel format of MacIOSurface is always BGRX or BGRA
+      // format.
+      auto format = GetFormat() == gfx::SurfaceFormat::R8G8B8A8 ? gfx::SurfaceFormat::B8G8R8A8
+                                                                : gfx::SurfaceFormat::B8G8R8X8;
+      wr::ImageDescriptor descriptor(GetSize(), format);
       (aResources.*method)(aImageKeys[0], descriptor, aExtID, bufferType, 0);
       break;
     }
@@ -177,7 +187,7 @@ MacIOSurfaceTextureHostOGL::PushResourceUpdates(wr::ResourceUpdateQueue& aResour
       // and YCbCr at OpenGL 3.1)
       MOZ_ASSERT(aImageKeys.length() == 1);
       MOZ_ASSERT(mSurface->GetPlaneCount() == 0);
-      wr::ImageDescriptor descriptor(GetSize(), gfx::SurfaceFormat::R8G8B8X8);
+      wr::ImageDescriptor descriptor(GetSize(), gfx::SurfaceFormat::B8G8R8X8);
       (aResources.*method)(aImageKeys[0], descriptor, aExtID, bufferType, 0);
       break;
     }
@@ -212,7 +222,7 @@ MacIOSurfaceTextureHostOGL::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
     case gfx::SurfaceFormat::B8G8R8X8: {
       MOZ_ASSERT(aImageKeys.length() == 1);
       MOZ_ASSERT(mSurface->GetPlaneCount() == 0);
-      aBuilder.PushImage(aBounds, aClip, true, aFilter, aImageKeys[0]);
+      aBuilder.PushImage(aBounds, aClip, true, aFilter, aImageKeys[0], !(mFlags & TextureFlags::NON_PREMULTIPLIED));
       break;
     }
     case gfx::SurfaceFormat::YUV422: {
@@ -222,7 +232,7 @@ MacIOSurfaceTextureHostOGL::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
                                          aClip,
                                          true,
                                          aImageKeys[0],
-                                         wr::WrYuvColorSpace::Rec601,
+                                         wr::ToWrYuvColorSpace(YUVColorSpace::BT601),
                                          aFilter);
       break;
     }
@@ -234,7 +244,7 @@ MacIOSurfaceTextureHostOGL::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
                              true,
                              aImageKeys[0],
                              aImageKeys[1],
-                             wr::WrYuvColorSpace::Rec601,
+                             wr::ToWrYuvColorSpace(YUVColorSpace::BT601),
                              aFilter);
       break;
     }

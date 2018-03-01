@@ -20,29 +20,19 @@
 #define MALLOC_FUNCS_MALLOC                                                    \
   (MALLOC_FUNCS_MALLOC_BASE | MALLOC_FUNCS_MALLOC_EXTRA)
 #define MALLOC_FUNCS_JEMALLOC 4
-#define MALLOC_FUNCS_INIT 8
-#define MALLOC_FUNCS_BRIDGE 16
-#define MALLOC_FUNCS_ARENA_BASE 32
-#define MALLOC_FUNCS_ARENA_ALLOC 64
+#define MALLOC_FUNCS_ARENA_BASE 8
+#define MALLOC_FUNCS_ARENA_ALLOC 16
 #define MALLOC_FUNCS_ARENA (MALLOC_FUNCS_ARENA_BASE | MALLOC_FUNCS_ARENA_ALLOC)
 #define MALLOC_FUNCS_ALL                                                       \
-  (MALLOC_FUNCS_INIT | MALLOC_FUNCS_BRIDGE | MALLOC_FUNCS_MALLOC |             \
-   MALLOC_FUNCS_JEMALLOC | MALLOC_FUNCS_ARENA)
+  (MALLOC_FUNCS_MALLOC | MALLOC_FUNCS_JEMALLOC | MALLOC_FUNCS_ARENA)
 
 #endif // malloc_decls_h
 
 #ifndef MALLOC_FUNCS
-#define MALLOC_FUNCS                                                           \
-  (MALLOC_FUNCS_MALLOC | MALLOC_FUNCS_JEMALLOC | MALLOC_FUNCS_ARENA)
+#define MALLOC_FUNCS MALLOC_FUNCS_ALL
 #endif
 
 #ifdef MALLOC_DECL
-#if MALLOC_FUNCS & MALLOC_FUNCS_INIT
-MALLOC_DECL(init, void, const malloc_table_t*)
-#endif
-#if MALLOC_FUNCS & MALLOC_FUNCS_BRIDGE
-MALLOC_DECL(get_bridge, struct ReplaceMallocBridge*)
-#endif
 #if MALLOC_FUNCS & MALLOC_FUNCS_MALLOC_BASE
 MALLOC_DECL(malloc, void*, size_t)
 MALLOC_DECL(calloc, void*, size_t, size_t)
@@ -102,8 +92,9 @@ MALLOC_DECL(jemalloc_ptr_info, void, const void*, jemalloc_ptr_info_t*)
 #if MALLOC_FUNCS & MALLOC_FUNCS_ARENA_BASE
 
 // Creates a separate arena, and returns its id, valid to use with moz_arena_*
-// functions.
-MALLOC_DECL(moz_create_arena, arena_id_t)
+// functions. A helper is provided in mozmemory.h that doesn't take any
+// arena_params_t: moz_create_arena.
+MALLOC_DECL(moz_create_arena_with_params, arena_id_t, arena_params_t*)
 
 // Dispose of the given arena. Subsequent uses of the arena will crash.
 // Passing an invalid id (inexistent or already disposed) to this function

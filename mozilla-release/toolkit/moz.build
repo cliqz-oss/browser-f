@@ -7,6 +7,7 @@
 DIRS += [
     'components',
     'content',
+    'crashreporter',
     'forgetaboutsite',
     'locales',
     'modules',
@@ -22,12 +23,9 @@ DIRS += [
 if CONFIG['MOZ_UPDATER'] and CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
     DIRS += ['mozapps/update']
 
-if CONFIG['MOZ_MAINTENANCE_SERVICE'] or CONFIG['MOZ_UPDATER'] and CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
-# Including mozapps/update/common-standalone allows the maintenance service
-# to be built so the maintenance service can be used for things other than
-# updating applications.
+if CONFIG['MOZ_MAINTENANCE_SERVICE'] or CONFIG['MOZ_UPDATER']:
     DIRS += [
-        'mozapps/update/common-standalone',
+        'mozapps/update/common',
     ]
 
 if CONFIG['MOZ_MAINTENANCE_SERVICE']:
@@ -37,7 +35,7 @@ if CONFIG['MOZ_MAINTENANCE_SERVICE']:
 
 DIRS += ['xre']
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
     DIRS += ['system/unixproxy']
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     DIRS += ['system/osxproxy']
@@ -45,9 +43,6 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     DIRS += ['system/windowsproxy']
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     DIRS += ['system/androidproxy']
-
-if CONFIG['MOZ_CRASHREPORTER']:
-    DIRS += ['crashreporter']
 
 TEST_HARNESS_FILES.testing.mochitest.browser.toolkit.crashreporter.test.browser += [
     'crashreporter/test/browser/crashreport.sjs',

@@ -135,7 +135,6 @@ nsFrameManager::ParentForUndisplayedMap(const nsIContent* aContent)
   MOZ_ASSERT(aContent);
 
   nsIContent* parent = aContent->GetParentElementCrossingShadowRoot();
-  MOZ_ASSERT(parent || !aContent->GetParent(), "no non-elements");
 
   // Normalize the parent:
   parent = UndisplayedMap::GetApplicableParent(parent);
@@ -209,6 +208,7 @@ nsFrameManager::SetStyleContextInMap(UndisplayedMap* aMap,
   // that function's documentation).  We rely on ParentForUndisplayedMap to
   // have done that for us.
   nsIContent* parent = ParentForUndisplayedMap(aContent);
+  MOZ_ASSERT(parent || !aContent->GetParent(), "no non-elements");
 
 #ifdef DEBUG
   nsIPresShell* shell = aStyleContext->PresContext()->PresShell();
@@ -257,6 +257,7 @@ nsFrameManager::ChangeStyleContextInMap(UndisplayedMap* aMap,
   // that function's documentation).  We rely on ParentForUndisplayedMap to
   // have done that for us.
   nsIContent* parent = ParentForUndisplayedMap(aContent);
+  MOZ_ASSERT(parent || !aContent->GetParent(), "no non-elements");
 
   for (UndisplayedNode* node = aMap->GetFirstNode(parent);
        node; node = node->getNext()) {
@@ -730,7 +731,7 @@ nsFrameManagerBase::UndisplayedMap::GetApplicableParent(nsIContent* aParent)
   // be a <xbl:children> element) but the parent in the frame tree would be the
   // insertion parent (parent of the <xbl:children> element). Here the children
   // elements are normalized to the insertion parent to correct for the mismatch.
-  if (aParent && nsContentUtils::IsContentInsertionPoint(aParent)) {
+  if (aParent && aParent->IsActiveChildrenElement()) {
     return aParent->GetParent();
   }
 

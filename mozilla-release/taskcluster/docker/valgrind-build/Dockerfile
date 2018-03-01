@@ -6,20 +6,15 @@ VOLUME /builds/worker/checkouts
 VOLUME /builds/worker/workspace
 VOLUME /builds/worker/tooltool-cache
 
-# Add build scripts; these are the entry points from the taskcluster worker, and
-# operate on environment variables
-
-# %include taskcluster/docker/desktop-build/bin
-ADD topsrcdir/taskcluster/docker/desktop-build/bin /builds/worker/bin
-
-RUN chmod +x /builds/worker/bin/*
-
 # %include python/mozbuild/mozbuild/action/tooltool.py
 ADD topsrcdir/python/mozbuild/mozbuild/action/tooltool.py /builds/tooltool.py
 ADD topsrcdir/python/mozbuild/mozbuild/action/tooltool.py /setup/tooltool.py
 
 # %include testing/mozharness/external_tools/robustcheckout.py
 ADD topsrcdir/testing/mozharness/external_tools/robustcheckout.py /usr/local/mercurial/robustcheckout.py
+
+# %include taskcluster/docker/recipes/hgrc
+COPY topsrcdir/taskcluster/docker/recipes/hgrc /etc/mercurial/hgrc.d/mozilla.rc
 
 # %include taskcluster/docker/recipes/common.sh
 ADD topsrcdir/taskcluster/docker/recipes/common.sh /setup/common.sh
@@ -39,10 +34,13 @@ ADD topsrcdir/taskcluster/docker/recipes/centos6-build-system-setup.sh /setup/sy
 # %include taskcluster/docker/recipes/centos-install-debug-symbols.sh
 ADD topsrcdir/taskcluster/docker/recipes/centos-install-debug-symbols.sh /setup/install-debug-symbols.sh
 
+# %include build/unix/build-gtk3/build-gtk3.sh
+ADD topsrcdir/build/unix/build-gtk3/build-gtk3.sh /setup/build-gtk3.sh
+
 # TODO remove once base image doesn't install Mercurial
 RUN pip uninstall -y Mercurial
 
-RUN bash /setup/system-setup.sh
+RUN bash /setup/build-gtk3.sh && bash /setup/system-setup.sh
 
 # Add wrapper scripts for xvfb allowing tasks to easily retry starting up xvfb
 # %include taskcluster/docker/recipes/xvfb.sh
@@ -52,8 +50,8 @@ ADD topsrcdir/taskcluster/docker/recipes/xvfb.sh /builds/worker/scripts/xvfb.sh
 ADD topsrcdir/taskcluster/docker/recipes/run-task /builds/worker/bin/run-task
 
 # Add configuration
-# %include taskcluster/docker/desktop-build/dot-config
-ADD topsrcdir/taskcluster/docker/desktop-build/dot-config /builds/worker/.config
+# %include taskcluster/docker/recipes/dot-config
+ADD topsrcdir/taskcluster/docker/recipes/dot-config /builds/worker/.config
 
 # Generate machine uuid file
 RUN dbus-uuidgen --ensure=/var/lib/dbus/machine-id

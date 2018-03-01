@@ -20,7 +20,10 @@
 #include "GetAddrInfo.h"
 #include "mozilla/net/DNS.h"
 #include "mozilla/net/DashboardTypes.h"
+#include "mozilla/LinkedList.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/UniquePtr.h"
+#include "nsRefPtrHashtable.h"
 
 class nsHostResolver;
 class nsHostRecord;
@@ -35,11 +38,25 @@ class nsResolveHostCallback;
 
 struct nsHostKey
 {
-    const char *host;
-    uint16_t    flags;
-    uint16_t    af;
-    const char *netInterface;
-    const char *originSuffix;
+    const nsCString host;
+    uint16_t flags;
+    uint16_t af;
+    const nsCString netInterface;
+    const nsCString originSuffix;
+
+    nsHostKey(const nsACString& host, uint16_t flags,
+              uint16_t af, const nsACString& netInterface,
+              const nsACString& originSuffix)
+        : host(host)
+        , flags(flags)
+        , af(af)
+        , netInterface(netInterface)
+        , originSuffix(originSuffix) {
+    }
+
+    bool operator==(const nsHostKey& other) const;
+    size_t SizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
+    PLDHashNumber Hash() const;
 };
 
 /**
@@ -51,9 +68,6 @@ class nsHostRecord : public PRCList, public nsHostKey
 
 public:
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(nsHostRecord)
-
-    /* instantiates a new host record */
-    static nsresult Create(const nsHostKey *key, nsHostRecord **record);
 
     /* a fully resolved host record has either a non-null |addr_info| or |addr|
      * field.  if |addr_info| is null, it implies that the |host| is an IP
@@ -68,14 +82,14 @@ public:
      * are mutable and accessed by the resolver worker thread and the
      * nsDNSService2 class.  |addr| doesn't change after it has been
      * assigned a value.  only the resolver worker thread modifies
-     * nsHostRecord (and only in nsHostResolver::OnLookupComplete);
+     * nsHostRecord (and only in nsHostResolver::CompleteLookup);
      * the other threads just read it.  therefore the resolver worker
      * thread doesn't need to lock when reading |addr_info|.
      */
     Mutex        addr_info_lock;
     int          addr_info_gencnt; /* generation count of |addr_info| */
     mozilla::net::AddrInfo *addr_info;
-    mozilla::net::NetAddr  *addr;
+    mozilla::UniquePtr<mozilla::net::NetAddr> addr;
     bool         negative;   /* True if this record is a cache of a failed lookup.
                                 Negative cache entries are valid just like any other
                                 (though never for more than 60 seconds), but a use
@@ -129,8 +143,8 @@ public:
 private:
     friend class nsHostResolver;
 
-
-    PRCList callbacks; /* list of callbacks */
+    explicit nsHostRecord(const nsHostKey& key);
+    mozilla::LinkedList<RefPtr<nsResolveHostCallback>> mCallbacks;
 
     bool    resolving; /* true if this record is being resolved, which means
                         * that it is either on the pending queue or owned by
@@ -157,19 +171,21 @@ private:
     // of gencnt.
     nsTArray<nsCString> mBlacklistedItems;
 
-    explicit nsHostRecord(const nsHostKey *key);           /* use Create() instead */
    ~nsHostRecord();
 };
 
 /**
- * ResolveHost callback object.  It's PRCList members are used by
- * the nsHostResolver and should not be used by anything else.
+ * This class is used to notify listeners when a ResolveHost operation is
+ * complete. Classes that derive it must implement threadsafe nsISupports
+ * to be able to use RefPtr with this class.
  */
-class NS_NO_VTABLE nsResolveHostCallback : public PRCList
+class nsResolveHostCallback
+    : public mozilla::LinkedListElement<RefPtr<nsResolveHostCallback>>
+    , public nsISupports
 {
 public:
     /**
-     * OnLookupComplete
+     * OnResolveHostComplete
      *
      * this function is called to complete a host lookup initiated by
      * nsHostResolver::ResolveHost.  it may be invoked recursively from
@@ -185,9 +201,9 @@ public:
      * @param status
      *        if successful, |record| contains non-null results
      */
-    virtual void OnLookupComplete(nsHostResolver *resolver,
-                                  nsHostRecord   *record,
-                                  nsresult        status) = 0;
+    virtual void OnResolveHostComplete(nsHostResolver *resolver,
+                                       nsHostRecord   *record,
+                                       nsresult        status) = 0;
     /**
      * EqualsAsyncListener
      *
@@ -204,6 +220,8 @@ public:
     virtual bool EqualsAsyncListener(nsIDNSListener *aListener) = 0;
 
     virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf) const = 0;
+protected:
+    virtual ~nsResolveHostCallback() = default;
 };
 
 /**
@@ -317,7 +335,7 @@ private:
       LOOKUP_RESOLVEAGAIN,
     };
 
-    LookupStatus OnLookupComplete(nsHostRecord *, nsresult, mozilla::net::AddrInfo *);
+    LookupStatus CompleteLookup(nsHostRecord *, nsresult, mozilla::net::AddrInfo *);
     void     DeQueue(PRCList &aQ, nsHostRecord **aResult);
     void     ClearPendingQueue(PRCList *aPendingQueue);
     nsresult ConditionallyCreateThread(nsHostRecord *rec);
@@ -347,7 +365,7 @@ private:
     uint32_t      mDefaultGracePeriod; // granularity seconds
     mutable Mutex mLock;    // mutable so SizeOfIncludingThis can be const
     CondVar       mIdleThreadCV;
-    PLDHashTable  mDB;
+    nsRefPtrHashtable<nsGenericHashKey<nsHostKey>, nsHostRecord> mRecordDB;
     PRCList       mHighQ;
     PRCList       mMediumQ;
     PRCList       mLowQ;

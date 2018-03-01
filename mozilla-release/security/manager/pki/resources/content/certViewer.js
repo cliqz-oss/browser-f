@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* import-globals-from pippki.js */
 "use strict";
 
 /**
@@ -10,9 +12,6 @@
  * @argument {nsISupports} window.arguments[0]
  *           The cert to view, queryable to nsIX509Cert.
  */
-
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
 
 const nsIX509Cert = Ci.nsIX509Cert;
 const nsX509CertDB = "@mozilla.org/security/x509certdb;1";
@@ -27,24 +26,26 @@ const nsASN1Tree = "@mozilla.org/security/nsASN1Tree;1";
 
 var bundle;
 
-function doPrompt(msg) {
-  let prompts = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].
-    getService(Components.interfaces.nsIPromptService);
-  prompts.alert(window, null, msg);
-}
-
 /**
  * Fills out the "Certificate Hierarchy" tree of the cert viewer "Details" tab.
  *
  * @param {tree} node
  *        Parent tree node to append to.
- * @param {nsIArray<nsIX509Cert>} chain
- *        Chain where cert element n is issued by cert element n + 1.
+ * @param {Array} chain
+ *        An array of nsIX509Cert where cert n is issued by cert n + 1.
  */
 function AddCertChain(node, chain) {
+  if (!chain || chain.length < 1) {
+    return;
+  }
   let child = document.getElementById(node);
+  // Clear any previous state.
+  let preexistingChildren = child.querySelectorAll("treechildren");
+  for (let preexistingChild of preexistingChildren) {
+    child.removeChild(preexistingChild);
+  }
   for (let i = chain.length - 1; i >= 0; i--) {
-    let currCert = chain.queryElementAt(i, nsIX509Cert);
+    let currCert = chain[i];
     let displayValue = currCert.displayName;
     let addTwistie = i != 0;
     child = addChildrenToTree(child, displayValue, currCert.dbKey, addTwistie);
@@ -78,8 +79,9 @@ function setWindowName() {
   //  Set the cert attributes for viewing
   //
 
-  //  The chain of trust
-  AddCertChain("treesetDump", cert.getChain());
+  // Set initial dummy chain of just the cert itself. A more complete chain (if
+  // one can be found), will be set when asyncDetermineUsages finishes.
+  AddCertChain("treesetDump", [cert]);
   DisplayGeneralDataFromCert(cert);
   BuildPrettyPrint(cert);
 
@@ -142,7 +144,9 @@ function asyncDetermineUsages(cert) {
       let usage = certificateUsages[usageString];
       certdb.asyncVerifyCertAtTime(cert, usage, 0, null, now,
         (aPRErrorCode, aVerifiedChain, aHasEVPolicy) => {
-          resolve({ usageString, errorCode: aPRErrorCode });
+          resolve({ usageString,
+                    errorCode: aPRErrorCode,
+                    chain: aVerifiedChain });
         });
     }));
   });
@@ -150,13 +154,70 @@ function asyncDetermineUsages(cert) {
 }
 
 /**
+ * Given a results array (see displayUsages), returns the chain corresponding to
+ * the desired usage, if verifying for that usage succeeded. Returns null
+ * otherwise.
+ *
+ * @param {Array} results
+ *        An array of results from `asyncDetermineUsages`. See `displayUsages`.
+ * @param {Number} usage
+ *        A numerical value corresponding to a usage. See `certificateUsages`.
+ * @returns {Array} An array of `nsIX509Cert` representing the verified
+ *          certificate chain for the given usage, or null if there is none.
+ */
+function getChainForUsage(results, usage) {
+  for (let result of results) {
+    if (certificateUsages[result.usageString] == usage &&
+        result.errorCode == PRErrorCodeSuccess) {
+      let array = [];
+      let enumerator = result.chain.getEnumerator();
+      while (enumerator.hasMoreElements()) {
+        let cert = enumerator.getNext().QueryInterface(Ci.nsIX509Cert);
+        array.push(cert);
+      }
+      return array;
+    }
+  }
+  return null;
+}
+
+/**
+ * Given a results array (see displayUsages), returns the "best" verified
+ * certificate chain. Since the primary use case is for TLS server certificates
+ * in Firefox, such a verified chain will be returned if present. Otherwise, the
+ * priority is: TLS client certificate, email signer, email recipient, CA.
+ * Returns null if no usage verified successfully.
+ *
+ * @param {Array} results
+ *        An array of results from `asyncDetermineUsages`. See `displayUsages`.
+ * @param {Number} usage
+ *        A numerical value corresponding to a usage. See `certificateUsages`.
+ * @returns {Array} An array of `nsIX509Cert` representing the verified
+ *          certificate chain for the given usage, or null if there is none.
+ */
+function getBestChain(results) {
+  let usages = [ certificateUsageSSLServer, certificateUsageSSLClient,
+                 certificateUsageEmailSigner, certificateUsageEmailRecipient,
+                 certificateUsageSSLCA ];
+  for (let usage of usages) {
+    let chain = getChainForUsage(results, usage);
+    if (chain) {
+      return chain;
+    }
+  }
+  return null;
+}
+
+/**
  * Updates the usage display area given the results from asyncDetermineUsages.
  *
  * @param {Array} results
- *        An array of objects with the properties "usageString" and "errorCode".
+ *        An array of objects with the properties "usageString", "errorCode",
+ *        and "chain".
  *        usageString is a string that is a key in the certificateUsages map.
  *        errorCode is either an NSPR error code or PRErrorCodeSuccess (which is
  *        a pseudo-NSPR error code with the value 0 that indicates success).
+ *        chain is the built trust path, if one was found
  */
 function displayUsages(results) {
   document.getElementById("verify_pending").setAttribute("hidden", "true");
@@ -177,6 +238,7 @@ function displayUsages(results) {
       let usage = pipnssBundle.GetStringFromName(bundleName);
       AddUsage(usage);
     });
+    AddCertChain("treesetDump", getBestChain(results));
   } else {
     const errorRankings = [
       { error: SEC_ERROR_REVOKED_CERTIFICATE,
@@ -295,9 +357,7 @@ function updateCertDump() {
           .view.QueryInterface(nsIASN1Tree);
 
   var tree = document.getElementById("treesetDump");
-  if (tree.currentIndex < 0) {
-    doPrompt("No items are selected."); // This should never happen.
-  } else {
+  if (tree.currentIndex >= 0) {
     var item = tree.contentView.getItemAtIndex(tree.currentIndex);
     var dbKey = item.firstChild.firstChild.getAttribute("display");
     //  Get the cert from the cert database

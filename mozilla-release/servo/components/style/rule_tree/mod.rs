@@ -590,9 +590,7 @@ impl PrevSiblingOrFreeCount {
     }
 
     unsafe fn as_free_count(&self) -> &AtomicUsize {
-        unsafe {
-            mem::transmute(&self.0)
-        }
+        mem::transmute(&self.0)
     }
 }
 
@@ -866,7 +864,8 @@ impl StrongRuleNode {
         WeakRuleNode::from_ptr(self.ptr())
     }
 
-    fn parent(&self) -> Option<&StrongRuleNode> {
+    /// Get the parent rule node of this rule node.
+    pub fn parent(&self) -> Option<&StrongRuleNode> {
         self.get().parent.as_ref()
     }
 

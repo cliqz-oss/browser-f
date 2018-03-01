@@ -14,8 +14,6 @@ let engine;
 let tracker;
 
 add_task(async function setup() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Tracker.History").level = Log.Level.Trace;
 
   Service.engineManager.clear();
   await Service.engineManager.register(HistoryEngine);
@@ -71,7 +69,7 @@ async function cleanup() {
 add_task(async function test_empty() {
   _("Verify we've got an empty, disabled tracker to work with.");
   await verifyTrackerEmpty();
-  do_check_false(tracker._isTracking);
+  Assert.ok(!tracker._isTracking);
 
   await cleanup();
 });
@@ -111,7 +109,7 @@ add_task(async function test_start_tracking() {
 
   _("Score updated in test_start_tracking.");
   await verifyTrackedCount(1);
-  do_check_eq(tracker.score, SCORE_INCREMENT_SMALL);
+  Assert.equal(tracker.score, SCORE_INCREMENT_SMALL);
 
   await savePromise;
 
@@ -124,7 +122,7 @@ add_task(async function test_start_tracking_twice() {
   await startTracking();
   await addVisit("start_tracking_twice1");
   await verifyTrackedCount(1);
-  do_check_eq(tracker.score, SCORE_INCREMENT_SMALL);
+  Assert.equal(tracker.score, SCORE_INCREMENT_SMALL);
 
   _("Notifying twice won't do any harm.");
   await startTracking();
@@ -134,7 +132,7 @@ add_task(async function test_start_tracking_twice() {
 
   _("Score updated in test_start_tracking_twice.");
   await verifyTrackedCount(2);
-  do_check_eq(tracker.score, 2 * SCORE_INCREMENT_SMALL);
+  Assert.equal(tracker.score, 2 * SCORE_INCREMENT_SMALL);
 
   await cleanup();
 });
@@ -155,7 +153,7 @@ add_task(async function test_track_delete() {
   await Promise.all([scorePromise, visitRemovedPromise]);
 
   await verifyTrackedItems([guid]);
-  do_check_eq(tracker.score, SCORE_INCREMENT_XLARGE);
+  Assert.equal(tracker.score, SCORE_INCREMENT_XLARGE);
 
   await cleanup();
 });
@@ -209,6 +207,23 @@ add_task(async function test_stop_tracking_twice() {
   await addVisit("stop_tracking_twice2");
   await verifyTrackerEmpty();
 
+  await cleanup();
+});
+
+add_task(async function test_filter_file_uris() {
+  await startTracking();
+
+  let uri = CommonUtils.makeURI("file:///Users/eoger/tps/config.json");
+  let visitAddedPromise = promiseVisit("added", uri);
+  await PlacesTestUtils.addVisits({
+    uri,
+    visitDate: Date.now() * 1000,
+    transition: PlacesUtils.history.TRANSITION_LINK
+  });
+  await visitAddedPromise;
+
+  await verifyTrackerEmpty();
+  await stopTracking();
   await cleanup();
 });
 

@@ -52,7 +52,6 @@ class MOZ_STACK_CLASS BytecodeCompiler
                                    const Maybe<uint32_t>& parameterListEnd);
 
     ScriptSourceObject* sourceObjectPtr() const;
-    SourceCompressionTask* sourceCompressionTask() const;
 
   private:
     JSScript* compileScript(HandleObject environment, SharedContext* sc);
@@ -95,19 +94,6 @@ class MOZ_STACK_CLASS BytecodeCompiler
 };
 
 AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextId id,
-                                           const char* filename, size_t line, size_t column)
-#ifdef JS_TRACE_LOGGING
-  : logger_(TraceLoggerForCurrentThread(cx))
-{
-    frontendEvent_.emplace(TraceLogger_Frontend, filename, line, column);
-    frontendLog_.emplace(logger_, *frontendEvent_);
-    typeLog_.emplace(logger_, id);
-}
-#else
-{ }
-#endif
-
-AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextId id,
                                            const ErrorReporter& errorReporter)
 #ifdef JS_TRACE_LOGGING
   : logger_(TraceLoggerForCurrentThread(cx))
@@ -119,8 +105,7 @@ AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextI
         line = errorReporter.options().lineno;
         column = errorReporter.options().column;
     } else {
-        uint32_t offset = errorReporter.offset();
-        errorReporter.lineNumAndColumnIndex(offset, &line, &column);
+        errorReporter.currentLineAndColumn(&line, &column);
     }
     frontendEvent_.emplace(TraceLogger_Frontend, errorReporter.getFilename(), line, column);
     frontendLog_.emplace(logger_, *frontendEvent_);
@@ -151,7 +136,7 @@ AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextI
   : logger_(TraceLoggerForCurrentThread(cx))
 {
     uint32_t line, column;
-    errorReporter.lineNumAndColumnIndex(pn->pn_pos.begin, &line, &column);
+    errorReporter.lineAndColumnAt(pn->pn_pos.begin, &line, &column);
     frontendEvent_.emplace(TraceLogger_Frontend, errorReporter.getFilename(), line, column);
     frontendLog_.emplace(logger_, *frontendEvent_);
     typeLog_.emplace(logger_, id);
@@ -293,7 +278,7 @@ BytecodeCompiler::handleParseFailure(const Directives& newDirectives)
         // Syntax parsing has now been disabled in the parser, so retry
         // the parse.
         parser->clearAbortedSyntaxParse();
-    } else if (parser->tokenStream.hadError() || directives == newDirectives) {
+    } else if (parser->anyChars.hadError() || directives == newDirectives) {
         return false;
     }
 
@@ -417,7 +402,7 @@ BytecodeCompiler::compileModule()
 
     module->init(script);
 
-    ModuleBuilder builder(cx, module, parser->tokenStream);
+    ModuleBuilder builder(cx, module, parser->anyChars);
     if (!builder.init())
         return nullptr;
 
@@ -648,7 +633,7 @@ frontend::CompileLazyFunction(JSContext* cx, Handle<LazyScript*> lazy, const cha
 {
     MOZ_ASSERT(cx->compartment() == lazy->functionNonDelazifying()->compartment());
 
-    CompileOptions options(cx, lazy->version());
+    CompileOptions options(cx);
     options.setMutedErrors(lazy->mutedErrors())
            .setFileAndLine(lazy->filename(), lazy->lineno())
            .setColumn(lazy->column())
@@ -730,7 +715,8 @@ frontend::CompileStandaloneFunction(JSContext* cx, MutableHandleFunction fun,
         scope = &cx->global()->emptyGlobalScope();
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, scope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator, SyncFunction,
+    return compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator,
+                                              FunctionAsyncKind::SyncFunction,
                                               parameterListEnd);
 }
 
@@ -743,7 +729,8 @@ frontend::CompileStandaloneGenerator(JSContext* cx, MutableHandleFunction fun,
     RootedScope emptyGlobalScope(cx, &cx->global()->emptyGlobalScope());
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, emptyGlobalScope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::Generator, SyncFunction,
+    return compiler.compileStandaloneFunction(fun, GeneratorKind::Generator,
+                                              FunctionAsyncKind::SyncFunction,
                                               parameterListEnd);
 }
 
@@ -756,7 +743,8 @@ frontend::CompileStandaloneAsyncFunction(JSContext* cx, MutableHandleFunction fu
     RootedScope emptyGlobalScope(cx, &cx->global()->emptyGlobalScope());
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, emptyGlobalScope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator, AsyncFunction,
+    return compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator,
+                                              FunctionAsyncKind::AsyncFunction,
                                               parameterListEnd);
 }
 
@@ -769,6 +757,7 @@ frontend::CompileStandaloneAsyncGenerator(JSContext* cx, MutableHandleFunction f
     RootedScope emptyGlobalScope(cx, &cx->global()->emptyGlobalScope());
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, emptyGlobalScope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::Generator, AsyncFunction,
+    return compiler.compileStandaloneFunction(fun, GeneratorKind::Generator,
+                                              FunctionAsyncKind::AsyncFunction,
                                               parameterListEnd);
 }

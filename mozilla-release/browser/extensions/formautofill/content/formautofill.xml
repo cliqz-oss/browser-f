@@ -153,13 +153,17 @@
       <div anonid="autofill-footer" class="autofill-item-box autofill-footer">
         <div anonid="autofill-warning" class="autofill-footer-row autofill-warning">
         </div>
-        <div anonid="autofill-option-button" class="autofill-footer-row autofill-option-button">
+        <div anonid="autofill-option-button" class="autofill-footer-row autofill-button">
         </div>
       </div>
     </xbl:content>
 
     <handlers>
       <handler event="click" button="0"><![CDATA[
+        if (this._warningTextBox.contains(event.originalTarget)) {
+          return;
+        }
+
         window.openPreferences("panePrivacy", {origin: "autofillFooter"});
       ]]></handler>
     </handlers>
@@ -242,13 +246,10 @@
           this.setAttribute("formautofillattached", "true");
 
           let {AppConstants} = Cu.import("resource://gre/modules/AppConstants.jsm", {});
+          // TODO: The "Short" suffix is pointless now as normal version string is no longer needed,
+          // we should consider removing the suffix if possible when the next time locale change.
           let buttonTextBundleKey = AppConstants.platform == "macosx" ?
-            "autocompleteFooterOptionOSX" : "autocompleteFooterOption";
-          // If the popup shows up with small layout, we should use short string to
-          // have a better fit in the box.
-          if (this._itemBox.getAttribute("size") == "small") {
-            buttonTextBundleKey += "Short";
-          }
+            "autocompleteFooterOptionOSXShort" : "autocompleteFooterOptionShort";
           let buttonText = this._stringBundle.GetStringFromName(buttonTextBundleKey);
           this._optionButton.textContent = buttonText;
 
@@ -303,6 +304,51 @@
 
           let value = this.getAttribute("ac-value");
           this._itemBox.textContent = value;
+        ]]>
+        </body>
+      </method>
+
+    </implementation>
+  </binding>
+
+  <binding id="autocomplete-profile-listitem-clear-button" extends="chrome://formautofill/content/formautofill.xml#autocomplete-profile-listitem-base">
+    <xbl:content xmlns="http://www.w3.org/1999/xhtml">
+      <div anonid="autofill-item-box" class="autofill-item-box autofill-footer">
+        <div anonid="autofill-clear-button" class="autofill-footer-row autofill-button"></div>
+      </div>
+    </xbl:content>
+
+    <handlers>
+      <handler event="click" button="0"><![CDATA[
+        /* global Cu */
+        let {AutoCompletePopup} = Cu.import("resource://gre/modules/AutoCompletePopup.jsm", {});
+
+        AutoCompletePopup.sendMessageToBrowser("FormAutofill:ClearForm");
+      ]]></handler>
+    </handlers>
+
+    <implementation implements="nsIDOMXULSelectControlItemElement">
+      <constructor>
+      <![CDATA[
+        this._itemBox = document.getAnonymousElementByAttribute(
+          this, "anonid", "autofill-item-box"
+        );
+        this._clearBtn = document.getAnonymousElementByAttribute(
+          this, "anonid", "autofill-clear-button"
+        );
+
+        this._adjustAcItem();
+      ]]>
+      </constructor>
+
+      <method name="_adjustAcItem">
+        <body>
+        <![CDATA[
+          this._adjustAutofillItemLayout();
+          this.setAttribute("formautofillattached", "true");
+
+          let clearFormBtnLabel = this._stringBundle.GetStringFromName("clearFormBtnLabel2");
+          this._clearBtn.textContent = clearFormBtnLabel;
         ]]>
         </body>
       </method>

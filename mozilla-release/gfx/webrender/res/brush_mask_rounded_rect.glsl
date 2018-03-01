@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#define VECS_PER_SPECIFIC_BRUSH 4
+
 #include shared,prim_shared,ellipse,brush
 
 flat varying float vClipMode;
@@ -14,7 +16,7 @@ varying vec2 vLocalPos;
 
 #ifdef WR_VERTEX_SHADER
 
-struct BrushPrimitive {
+struct RoundedRectPrimitive {
     float clip_mode;
     vec4 rect;
     vec2 radius_tl;
@@ -23,9 +25,9 @@ struct BrushPrimitive {
     vec2 radius_bl;
 };
 
-BrushPrimitive fetch_brush_primitive(int address) {
+RoundedRectPrimitive fetch_rounded_rect_primitive(int address) {
     vec4 data[4] = fetch_from_resource_cache_4(address);
-    return BrushPrimitive(
+    return RoundedRectPrimitive(
         data[0].x,
         data[1],
         data[2].xy,
@@ -39,10 +41,11 @@ void brush_vs(
     int prim_address,
     vec2 local_pos,
     RectWithSize local_rect,
-    ivec2 user_data
+    ivec2 user_data,
+    PictureTask pic_task
 ) {
     // Load the specific primitive.
-    BrushPrimitive prim = fetch_brush_primitive(prim_address);
+    RoundedRectPrimitive prim = fetch_rounded_rect_primitive(prim_address);
 
     // Write clip parameters
     vClipMode = prim.clip_mode;

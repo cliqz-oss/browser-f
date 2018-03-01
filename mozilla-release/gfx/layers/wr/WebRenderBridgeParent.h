@@ -58,7 +58,7 @@ public:
   static WebRenderBridgeParent* CreateDestroyed(const wr::PipelineId& aPipelineId);
 
   wr::PipelineId PipelineId() { return mPipelineId; }
-  wr::WebRenderAPI* GetWebRenderAPI() { return mApi; }
+  already_AddRefed<wr::WebRenderAPI> GetWebRenderAPI() { return do_AddRef(mApi); }
   wr::Epoch WrEpoch() { return wr::NewEpoch(mWrEpoch); }
   AsyncImagePipelineManager* AsyncImageManager() { return mAsyncImageManager; }
   CompositorVsyncScheduler* CompositorScheduler() { return mCompositorScheduler.get(); }
@@ -74,7 +74,7 @@ public:
   mozilla::ipc::IPCResult RecvShutdownSync() override;
   mozilla::ipc::IPCResult RecvDeleteCompositorAnimations(InfallibleTArray<uint64_t>&& aIds) override;
   mozilla::ipc::IPCResult RecvUpdateResources(nsTArray<OpUpdateResource>&& aUpdates,
-                                              nsTArray<ipc::Shmem>&& aSmallShmems,
+                                              nsTArray<RefCountedShmem>&& aSmallShmems,
                                               nsTArray<ipc::Shmem>&& aLargeShmems) override;
   mozilla::ipc::IPCResult RecvSetDisplayList(const gfx::IntSize& aSize,
                                              InfallibleTArray<WebRenderParentCommand>&& aCommands,
@@ -82,11 +82,11 @@ public:
                                              const uint64_t& aFwdTransactionId,
                                              const uint64_t& aTransactionId,
                                              const wr::LayoutSize& aContentSize,
-                                             const wr::ByteBuffer& dl,
+                                             ipc::ByteBuf&& dl,
                                              const wr::BuiltDisplayListDescriptor& dlDesc,
                                              const WebRenderScrollData& aScrollData,
                                              nsTArray<OpUpdateResource>&& aResourceUpdates,
-                                             nsTArray<ipc::Shmem>&& aSmallShmems,
+                                             nsTArray<RefCountedShmem>&& aSmallShmems,
                                              nsTArray<ipc::Shmem>&& aLargeShmems,
                                              const wr::IdNamespace& aIdNamespace,
                                              const TimeStamp& aTxnStartTime,
@@ -173,7 +173,18 @@ public:
 
   void FlushRendering(bool aIsSync);
 
-  void ScheduleComposition();
+  /**
+   * Schedule generating WebRender frame definitely at next composite timing.
+   *
+   * WebRenderBridgeParent uses composite timing to check if there is an update
+   * to AsyncImagePipelines. If there is no update, WebRenderBridgeParent skips
+   * to generate frame. If we need to generate new frame at next composite timing,
+   * call this method.
+   *
+   * Call CompositorVsyncScheduler::ScheduleComposition() directly, if we just
+   * want to trigger AsyncImagePipelines update checks.
+   */
+  void ScheduleGenerateFrame();
 
   void UpdateWebRender(CompositorVsyncScheduler* aScheduler,
                        wr::WebRenderAPI* aApi,
@@ -181,13 +192,11 @@ public:
                        CompositorAnimationStorage* aAnimStorage);
 
 private:
-  void DeallocShmems(nsTArray<ipc::Shmem>& aShmems);
-
   explicit WebRenderBridgeParent(const wr::PipelineId& aPipelineId);
   virtual ~WebRenderBridgeParent();
 
   bool UpdateResources(const nsTArray<OpUpdateResource>& aResourceUpdates,
-                       const nsTArray<ipc::Shmem>& aSmallShmems,
+                       const nsTArray<RefCountedShmem>& aSmallShmems,
                        const nsTArray<ipc::Shmem>& aLargeShmems,
                        wr::ResourceUpdateQueue& aUpdates);
   bool AddExternalImage(wr::ExternalImageId aExtId, wr::ImageKey aKey,
@@ -211,7 +220,8 @@ private:
   // animation is in effect and we need to schedule another composition.
   // If scrollbars need their transforms updated, the provided aTransformArray
   // is populated with the property update details.
-  bool PushAPZStateToWR(nsTArray<wr::WrTransformProperty>& aTransformArray);
+  bool PushAPZStateToWR(wr::TransactionBuilder& aTxn,
+                        nsTArray<wr::WrTransformProperty>& aTransformArray);
 
   // Helper method to get an APZC reference from a scroll id. Uses the layers
   // id of this bridge, and may return null if the APZC wasn't found.

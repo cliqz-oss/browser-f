@@ -49,15 +49,6 @@ nsMIMEInfoUnix::GetHasDefaultHandler(bool *_retval)
   if (*_retval)
     return NS_OK;
 
-#if defined(MOZ_ENABLE_CONTENTACTION)
-  ContentAction::Action action = 
-    ContentAction::Action::defaultActionForFile(QUrl(), QString(mSchemeOrType.get()));
-  if (action.isValid()) {
-    *_retval = true;
-    return NS_OK;
-  }
-#endif
-
   return NS_OK;
 }
 
@@ -73,17 +64,6 @@ nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile *aFile)
   nsAutoCString nativePath;
   aFile->GetNativePath(nativePath);
 
-#if defined(MOZ_ENABLE_CONTENTACTION)
-  QUrl uri = QUrl::fromLocalFile(QString::fromUtf8(nativePath.get()));
-  ContentAction::Action action =
-    ContentAction::Action::defaultActionForFile(uri, QString(mSchemeOrType.get()));
-  if (action.isValid()) {
-    action.trigger();
-    return NS_OK;
-  }
-  return NS_ERROR_FAILURE;
-#endif
-
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (!giovfs) {
     return NS_ERROR_FAILURE;
@@ -96,41 +76,12 @@ nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile *aFile)
   nsCOMPtr<nsIURI> uri;
   rv = ioservice->NewFileURI(aFile, getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, rv);
-  nsAutoCString uriSpec;
-  uri->GetSpec(uriSpec);
 
-  nsCOMPtr<nsIGIOMimeApp> app;
+  nsCOMPtr<nsIHandlerApp> app;
   if (NS_FAILED(giovfs->GetAppForMimeType(mSchemeOrType, getter_AddRefs(app))) || !app) {
     return NS_ERROR_FILE_NOT_FOUND;
   }
 
-  return app->Launch(uriSpec);
+  return app->LaunchWithURI(uri, nullptr);
 }
-
-#if defined(MOZ_ENABLE_CONTENTACTION)
-NS_IMETHODIMP
-nsMIMEInfoUnix::GetPossibleApplicationHandlers(nsIMutableArray ** aPossibleAppHandlers)
-{
-  if (!mPossibleApplications) {
-    mPossibleApplications = do_CreateInstance(NS_ARRAY_CONTRACTID);
-
-    if (!mPossibleApplications)
-      return NS_ERROR_OUT_OF_MEMORY;
-
-    QList<ContentAction::Action> actions =
-      ContentAction::Action::actionsForFile(QUrl(), QString(mSchemeOrType.get()));
-
-    for (int i = 0; i < actions.size(); ++i) {
-      nsContentHandlerApp* app =
-        new nsContentHandlerApp(nsString((char16_t*)actions[i].name().data()), 
-                                mSchemeOrType, actions[i]);
-      mPossibleApplications->AppendElement(app);
-    }
-  }
-
-  *aPossibleAppHandlers = mPossibleApplications;
-  NS_ADDREF(*aPossibleAppHandlers);
-  return NS_OK;
-}
-#endif
 

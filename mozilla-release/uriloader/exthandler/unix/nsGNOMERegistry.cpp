@@ -18,7 +18,7 @@ nsGNOMERegistry::HandlerExists(const char *aProtocolScheme)
     return false;
   }
 
-  nsCOMPtr<nsIGIOMimeApp> app;
+  nsCOMPtr<nsIHandlerApp> app;
   return NS_SUCCEEDED(giovfs->GetAppForURIScheme(nsDependentCString(aProtocolScheme),
                                                  getter_AddRefs(app)));
 }
@@ -44,14 +44,11 @@ nsGNOMERegistry::GetAppDescForScheme(const nsACString& aScheme,
   if (!giovfs)
     return;
 
-  nsAutoCString name;
-  nsCOMPtr<nsIGIOMimeApp> app;
+  nsCOMPtr<nsIHandlerApp> app;
   if (NS_FAILED(giovfs->GetAppForURIScheme(aScheme, getter_AddRefs(app))))
     return;
 
-  app->GetName(name);
-
-  CopyUTF8toUTF16(name, aDesc);
+  app->GetName(aDesc);
 }
 
 
@@ -85,7 +82,7 @@ nsGNOMERegistry::GetFromType(const nsACString& aMIMEType)
   RefPtr<nsMIMEInfoUnix> mimeInfo = new nsMIMEInfoUnix(aMIMEType);
   NS_ENSURE_TRUE(mimeInfo, nullptr);
 
-  nsAutoCString name;
+  nsAutoString name;
   nsAutoCString description;
 
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
@@ -93,15 +90,15 @@ nsGNOMERegistry::GetFromType(const nsACString& aMIMEType)
     return nullptr;
   }
 
-  nsCOMPtr<nsIGIOMimeApp> gioHandlerApp;
-  if (NS_FAILED(giovfs->GetAppForMimeType(aMIMEType, getter_AddRefs(gioHandlerApp))) ||
-      !gioHandlerApp) {
+  nsCOMPtr<nsIHandlerApp> handlerApp;
+  if (NS_FAILED(giovfs->GetAppForMimeType(aMIMEType, getter_AddRefs(handlerApp))) ||
+      !handlerApp) {
     return nullptr;
   }
-  gioHandlerApp->GetName(name);
+  handlerApp->GetName(name);
   giovfs->GetDescriptionForMimeType(aMIMEType, description);
 
-  mimeInfo->SetDefaultDescription(NS_ConvertUTF8toUTF16(name));
+  mimeInfo->SetDefaultDescription(name);
   mimeInfo->SetPreferredAction(nsIMIMEInfo::useSystemDefault);
   mimeInfo->SetDescription(NS_ConvertUTF8toUTF16(description));
 

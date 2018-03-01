@@ -5,6 +5,7 @@
 
 #include "CloneableWithRangeMediaResource.h"
 
+#include "mozilla/AbstractThread.h"
 #include "mozilla/Monitor.h"
 #include "nsContentUtils.h"
 #include "nsIAsyncInputStream.h"
@@ -136,7 +137,11 @@ CloneableWithRangeMediaResource::MaybeInitialize()
 {
   if (!mInitialized) {
     mInitialized = true;
-    mCallback->NotifyDataEnded(NS_OK);
+    mCallback->AbstractMainThread()->Dispatch(
+      NewRunnableMethod<nsresult>("MediaResourceCallback::NotifyDataEnded",
+                                  mCallback.get(),
+                                  &MediaResourceCallback::NotifyDataEnded,
+                                  NS_OK));
   }
 }
 
@@ -200,7 +205,6 @@ CloneableWithRangeMediaResource::ReadFromCache(char* aBuffer, int64_t aOffset,
     return rv;
   }
 
-  mCurrentPosition = bytes + aOffset;
   return bytes == aCount ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -221,14 +225,7 @@ CloneableWithRangeMediaResource::ReadAt(int64_t aOffset, char* aBuffer,
     return rv;
   }
 
-  mCurrentPosition = *aBytes + aOffset;
   return NS_OK;
-}
-
-int64_t CloneableWithRangeMediaResource::Tell()
-{
-  MaybeInitialize();
-  return mCurrentPosition;
 }
 
 } // mozilla namespace

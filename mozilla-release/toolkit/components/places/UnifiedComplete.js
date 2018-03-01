@@ -50,7 +50,7 @@ const PREF_URLBAR_DEFAULTS = new Map([
   ["maxHistoricalSearchSuggestions", 0],
   ["usepreloadedtopurls.enabled", true],
   ["usepreloadedtopurls.expire_days", 14],
-  ["matchBuckets", "general:5,suggestion:Infinity"],
+  ["matchBuckets", "suggestion:4,general:Infinity"],
   ["matchBucketsSearch", ""],
   ["insertMethod", INSERTMETHOD.MERGE_RELATED],
 ]);
@@ -330,18 +330,13 @@ XPCOMUtils.defineLazyServiceGetter(this, "textURIService",
                                    "@mozilla.org/intl/texttosuburi;1",
                                    "nsITextToSubURI");
 
+XPCOMUtils.defineLazyPreferenceGetter(this, "syncUsernamePref",
+                                      "services.sync.username");
+
 function setTimeout(callback, ms) {
   let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   timer.initWithCallback(callback, ms, timer.TYPE_ONE_SHOT);
   return timer;
-}
-
-function convertBucketsCharPrefToArray(str) {
-  return str.split(",")
-            .map(v => {
-              let bucket = v.split(":");
-              return [ bucket[0].trim().toLowerCase(), Number(bucket[1]) ];
-            });
 }
 
 /**
@@ -485,9 +480,9 @@ XPCOMUtils.defineLazyGetter(this, "Prefs", () => {
         // Convert from pref char format to an array and add the default buckets.
         let val = readPref(pref);
         try {
-          val = convertBucketsCharPrefToArray(val);
+          val = PlacesUtils.convertMatchBucketsStringToArray(val);
         } catch (ex) {
-          val = convertBucketsCharPrefToArray(PREF_URLBAR_DEFAULTS.get(pref));
+          val = PlacesUtils.convertMatchBucketsStringToArray(PREF_URLBAR_DEFAULTS.get(pref));
         }
         return [ ...DEFAULT_BUCKETS_BEFORE,
                 ...val,
@@ -499,7 +494,7 @@ XPCOMUtils.defineLazyGetter(this, "Prefs", () => {
         if (val) {
           // Convert from pref char format to an array and add the default buckets.
           try {
-            val = convertBucketsCharPrefToArray(val);
+            val = PlacesUtils.convertMatchBucketsStringToArray(val);
             return [ ...DEFAULT_BUCKETS_BEFORE,
                     ...val,
                     ...DEFAULT_BUCKETS_AFTER ];
@@ -1680,6 +1675,10 @@ Search.prototype = {
   },
 
   async _matchRemoteTabs() {
+    // Bail out early for non-sync users.
+    if (!syncUsernamePref) {
+      return;
+    }
     let matches = await PlacesRemoteTabsAutocompleteProvider.getMatches(this._originalSearchString);
     for (let {url, title, icon, deviceName} of matches) {
       // It's rare that Sync supplies the icon for the page (but if it does, it

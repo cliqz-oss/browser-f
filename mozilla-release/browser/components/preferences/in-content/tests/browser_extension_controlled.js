@@ -1,3 +1,5 @@
+/* eslint-env webextensions */
+
 XPCOMUtils.defineLazyModuleGetter(this, "ExtensionSettingsStore",
                                   "resource://gre/modules/ExtensionSettingsStore.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
@@ -46,11 +48,9 @@ function waitForMutation(target, opts, cb) {
   });
 }
 
-function waitForMessageChange(messageId, cb) {
-  return waitForMutation(
-    // eslint-disable-next-line mozilla/no-cpows-in-tests
-    gBrowser.contentDocument.getElementById(messageId),
-    { attributes: true, attributeFilter: ["hidden"] }, cb);
+function waitForMessageChange(id, cb, opts = { attributes: true, attributeFilter: ["hidden"] }) {
+  // eslint-disable-next-line mozilla/no-cpows-in-tests
+  return waitForMutation(gBrowser.contentDocument.getElementById(id), opts, cb);
 }
 
 function waitForMessageHidden(messageId) {
@@ -59,6 +59,13 @@ function waitForMessageHidden(messageId) {
 
 function waitForMessageShown(messageId) {
   return waitForMessageChange(messageId, target => !target.hidden);
+}
+
+function waitForEnableMessage(messageId) {
+  return waitForMessageChange(
+    messageId,
+    target => target.classList.contains("extension-controlled-disabled"),
+    { attributeFilter: ["class"], attributes: true });
 }
 
 add_task(async function testExtensionControlledHomepage() {
@@ -91,14 +98,25 @@ add_task(async function testExtensionControlledHomepage() {
   is(doc.getElementById("browserHomePage").disabled, true, "The homepage input is disabled");
 
   // Disable the extension.
+  let enableMessageShown = waitForEnableMessage(controlledContent.id);
   doc.getElementById("disableHomePageExtension").click();
+  await enableMessageShown;
 
-  await waitForMessageHidden("browserHomePageExtensionContent");
+  // The user is notified how to enable the extension.
+  is(controlledLabel.textContent, "To enable the extension go to  Add-ons in the  menu.",
+     "The user is notified of how to enable the extension again");
 
+  // The user can dismiss the enable instructions.
+  let hidden = waitForMessageHidden("browserHomePageExtensionContent");
+  controlledLabel.querySelector("image:last-of-type").click();
+  await hidden;
+
+  // The homepage elements are reset to their original state.
   is(homepagePref(), originalHomepagePref, "homepage is set back to default");
   is(doc.getElementById("browserHomePage").disabled, false, "The homepage input is enabled");
   is(controlledContent.hidden, true, "The extension controlled row is hidden");
 
+  // Cleanup the add-on and tab.
   let addon = await AddonManager.getAddonByID("@set_homepage");
   // Enable the extension so we get the UNINSTALL event, which is needed by
   // ExtensionPreferencesManager to clean up properly.
@@ -107,7 +125,6 @@ add_task(async function testExtensionControlledHomepage() {
   await waitForMessageShown("browserHomePageExtensionContent");
   // Do the uninstall now that the enable code has been run.
   addon.uninstall();
-
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
@@ -204,7 +221,7 @@ add_task(async function testPrefLockedHomepage() {
   // Uninstall the add-on.
   let addon = await AddonManager.getAddonByID("@set_homepage");
   addon.uninstall();
-  await waitForMessageHidden(controlledContent.id);
+  await waitForEnableMessage(controlledContent.id);
 
   // Check that everything is now enabled again.
   is(getHomepage(), originalHomepage, "The reported homepage is reset to original value");
@@ -272,11 +289,22 @@ add_task(async function testExtensionControlledNewTab() {
   // Disable the extension.
   doc.getElementById("disableNewTabExtension").click();
 
-  await waitForMessageHidden("browserNewTabExtensionContent");
+  // Verify the user is notified how to enable the extension.
+  await waitForEnableMessage(controlledContent.id);
+  is(controlledLabel.textContent, "To enable the extension go to  Add-ons in the  menu.",
+     "The user is notified of how to enable the extension again");
 
+  // Verify the enable message can be dismissed.
+  let hidden = waitForMessageHidden(controlledContent.id);
+  let dismissButton = controlledLabel.querySelector("image:last-of-type");
+  dismissButton.click();
+  await hidden;
+
+  // Ensure the New Tab page has been reset and there is no message.
   ok(!aboutNewTabService.newTabURL.startsWith("moz-extension:"), "new tab page is set back to default");
   is(controlledContent.hidden, true, "The extension controlled row is shown");
 
+  // Cleanup the tab and add-on.
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
   let addon = await AddonManager.getAddonByID("@set_newtab");
   addon.uninstall();
@@ -432,7 +460,7 @@ add_task(async function testExtensionControlledHomepageUninstalledAddon() {
   await checkHomepageEnabled();
 
   // Remove the bad store file that we used.
-  await OS.File.remove(storePath)
+  await OS.File.remove(storePath);
 
   // Reload the ExtensionSettingsStore again so it clears the data we added.
   // Don't finalize the current store since it will write out the bad data.
@@ -440,4 +468,139 @@ add_task(async function testExtensionControlledHomepageUninstalledAddon() {
 
   is(ExtensionSettingsStore.getSetting("prefs", "homepage_override"), null,
      "The ExtensionSettingsStore is left empty.");
+});
+
+add_task(async function testExtensionControlledTrackingProtection() {
+  const TP_UI_PREF = "privacy.trackingprotection.ui.enabled";
+  const TP_PREF = "privacy.trackingprotection.enabled";
+  const TP_DEFAULT = false;
+  const EXTENSION_ID = "@set_tp";
+  const CONTROLLED_LABEL_ID = {
+    new: "trackingProtectionExtensionContentLabel",
+    old: "trackingProtectionPBMExtensionContentLabel"
+  };
+  const CONTROLLED_BUTTON_ID = "trackingProtectionExtensionContentButton";
+
+  let tpEnabledPref = () => Services.prefs.getBoolPref(TP_PREF);
+
+  await SpecialPowers.pushPrefEnv(
+    {"set": [[TP_PREF, TP_DEFAULT], [TP_UI_PREF, true]]});
+
+  function background() {
+    browser.privacy.websites.trackingProtectionMode.set({value: "always"});
+  }
+
+  function verifyState(isControlled) {
+    is(tpEnabledPref(), isControlled, "TP pref is set to the expected value.");
+
+    let controlledLabel = doc.getElementById(CONTROLLED_LABEL_ID[uiType]);
+
+    is(controlledLabel.hidden, !isControlled, "The extension controlled row's visibility is as expected.");
+    is(controlledButton.hidden, !isControlled, "The disable extension button's visibility is as expected.");
+    if (isControlled) {
+      let controlledDesc = controlledLabel.querySelector("description");
+      // There are two spaces before "set_tp" because it's " <image /> set_tp".
+      is(controlledDesc.textContent, "An extension,  set_tp, is controlling tracking protection.",
+         "The user is notified that an extension is controlling TP.");
+    }
+
+    if (uiType === "new") {
+      for (let element of doc.querySelectorAll("#trackingProtectionRadioGroup > radio")) {
+        is(element.disabled, isControlled, "TP controls are enabled.");
+      }
+      is(doc.querySelector("#trackingProtectionDesc > label").disabled,
+         isControlled,
+         "TP control label is enabled.");
+    } else {
+      is(doc.getElementById("trackingProtectionPBM").disabled,
+         isControlled,
+         "TP control is enabled.");
+      is(doc.getElementById("trackingProtectionPBMLabel").disabled,
+         isControlled,
+         "TP control label is enabled.");
+    }
+  }
+
+  async function disableViaClick() {
+    let labelId = CONTROLLED_LABEL_ID[uiType];
+    let controlledLabel = doc.getElementById(labelId);
+
+    let enableMessageShown = waitForEnableMessage(labelId);
+    doc.getElementById("disableTrackingProtectionExtension").click();
+    await enableMessageShown;
+
+    // The user is notified how to enable the extension.
+    let controlledDesc = controlledLabel.querySelector("description");
+    is(controlledDesc.textContent, "To enable the extension go to  Add-ons in the  menu.",
+       "The user is notified of how to enable the extension again");
+
+    // The user can dismiss the enable instructions.
+    let hidden = waitForMessageHidden(labelId);
+    controlledLabel.querySelector("image:last-of-type").click();
+    await hidden;
+  }
+
+  async function reEnableExtension(addon) {
+    let controlledMessageShown = waitForMessageShown(CONTROLLED_LABEL_ID[uiType]);
+    addon.userDisabled = false;
+    await controlledMessageShown;
+  }
+
+  let uiType = "new";
+
+  await openPreferencesViaOpenPreferencesAPI("panePrivacy", {leaveOpen: true});
+  // eslint-disable-next-line mozilla/no-cpows-in-tests
+  let doc = gBrowser.contentDocument;
+
+  is(gBrowser.currentURI.spec, "about:preferences#privacy",
+   "#privacy should be in the URI for about:preferences");
+
+  let controlledButton = doc.getElementById(CONTROLLED_BUTTON_ID);
+
+  verifyState(false);
+
+  // Install an extension that sets Tracking Protection.
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      name: "set_tp",
+      applications: {gecko: {id: EXTENSION_ID}},
+      permissions: ["privacy"],
+    },
+    background,
+  });
+
+  let messageShown = waitForMessageShown(CONTROLLED_LABEL_ID[uiType]);
+  await extension.startup();
+  await messageShown;
+  let addon = await AddonManager.getAddonByID(EXTENSION_ID);
+
+  verifyState(true);
+
+  await disableViaClick();
+
+  verifyState(false);
+
+  // Switch to the "old" Tracking Protection UI.
+  uiType = "old";
+  Services.prefs.setBoolPref(TP_UI_PREF, false);
+
+  verifyState(false);
+
+  await reEnableExtension(addon);
+
+  verifyState(true);
+
+  await disableViaClick();
+
+  verifyState(false);
+
+  // Enable the extension so we get the UNINSTALL event, which is needed by
+  // ExtensionPreferencesManager to clean up properly.
+  // TODO: BUG 1408226
+  await reEnableExtension(addon);
+
+  await extension.unload();
+
+  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

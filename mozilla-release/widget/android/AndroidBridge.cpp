@@ -873,8 +873,8 @@ __attribute__ ((visibility("default")))
 jobject JNICALL
 Java_org_mozilla_gecko_GeckoAppShell_allocateDirectBuffer(JNIEnv *env, jclass, jlong size);
 
-static jni::DependentRef<java::GeckoLayerClient>
-GetJavaLayerClient(mozIDOMWindowProxy* aWindow)
+static RefPtr<nsWindow>
+GetWidget(mozIDOMWindowProxy* aWindow)
 {
     MOZ_ASSERT(aWindow);
 
@@ -883,27 +883,26 @@ GetJavaLayerClient(mozIDOMWindowProxy* aWindow)
             widget::WidgetUtils::DOMWindowToWidget(domWindow);
     MOZ_ASSERT(widget);
 
-    return static_cast<nsWindow*>(widget.get())->GetLayerClient();
+    return RefPtr<nsWindow>(static_cast<nsWindow*>(widget.get()));
 }
 
 void
 AndroidBridge::ContentDocumentChanged(mozIDOMWindowProxy* aWindow)
 {
-    auto layerClient = GetJavaLayerClient(aWindow);
-    if (!layerClient) {
-        return;
+    auto widget = GetWidget(aWindow);
+    if (widget) {
+        widget->SetContentDocumentDisplayed(false);
     }
-    layerClient->ContentDocumentChanged();
 }
 
 bool
 AndroidBridge::IsContentDocumentDisplayed(mozIDOMWindowProxy* aWindow)
 {
-    auto layerClient = GetJavaLayerClient(aWindow);
-    if (!layerClient) {
-        return false;
+    auto widget = GetWidget(aWindow);
+    if (widget) {
+        return widget->IsContentDocumentDisplayed();
     }
-    return layerClient->IsContentDocumentDisplayed();
+    return false;
 }
 
 jni::Object::LocalRef AndroidBridge::ChannelCreate(jni::Object::Param stream) {

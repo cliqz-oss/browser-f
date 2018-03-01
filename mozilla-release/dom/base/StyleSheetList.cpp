@@ -16,7 +16,7 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_0(StyleSheetList)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(StyleSheetList)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsIDOMStyleSheetList)
+  NS_INTERFACE_MAP_ENTRY(nsIMutationObserver)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
@@ -29,18 +29,23 @@ StyleSheetList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
   return StyleSheetListBinding::Wrap(aCx, this, aGivenProto);
 }
 
-NS_IMETHODIMP
-StyleSheetList::GetLength(uint32_t* aLength)
+void
+StyleSheetList::NodeWillBeDestroyed(const nsINode* aNode)
 {
-  *aLength = Length();
-  return NS_OK;
+  mDocumentOrShadowRoot = nullptr;
 }
 
-NS_IMETHODIMP
-StyleSheetList::SlowItem(uint32_t aIndex, nsIDOMStyleSheet** aItem)
+StyleSheetList::StyleSheetList(DocumentOrShadowRoot& aScope)
+  : mDocumentOrShadowRoot(&aScope)
 {
-  NS_IF_ADDREF(*aItem = Item(aIndex));
-  return NS_OK;
+  mDocumentOrShadowRoot->AsNode().AddMutationObserver(this);
+}
+
+StyleSheetList::~StyleSheetList()
+{
+  if (mDocumentOrShadowRoot) {
+    mDocumentOrShadowRoot->AsNode().RemoveMutationObserver(this);
+  }
 }
 
 } // namespace dom

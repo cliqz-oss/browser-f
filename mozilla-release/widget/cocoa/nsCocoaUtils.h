@@ -192,10 +192,10 @@ public:
   DevPixelsToCocoaPoints(const LayoutDeviceIntRect& aRect,
                          CGFloat aBackingScale)
   {
-    return NSMakeRect((CGFloat)aRect.x / aBackingScale,
-                      (CGFloat)aRect.y / aBackingScale,
-                      (CGFloat)aRect.width / aBackingScale,
-                      (CGFloat)aRect.height / aBackingScale);
+    return NSMakeRect((CGFloat)aRect.X() / aBackingScale,
+                      (CGFloat)aRect.Y() / aBackingScale,
+                      (CGFloat)aRect.Width() / aBackingScale,
+                      (CGFloat)aRect.Height() / aBackingScale);
   }
 
   // Returns the given y coordinate, which must be in screen coordinates,
@@ -326,6 +326,14 @@ public:
    */
   static NSEvent* MakeNewCocoaEventWithType(NSEventType aEventType,
                                             NSEvent *aEvent);
+
+  /**
+   * Makes a cocoa event from a widget keyboard event.
+   */
+  static NSEvent* MakeNewCococaEventFromWidgetEvent(
+                    const mozilla::WidgetKeyboardEvent& aKeyEvent,
+                    NSInteger aWindowNumber,
+                    NSGraphicsContext* aContext);
 
   /**
    * Initializes aNPCocoaEvent.

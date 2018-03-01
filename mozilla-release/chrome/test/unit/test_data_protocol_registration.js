@@ -50,7 +50,7 @@ function run_test() {
       // register it if it is not. Otherwise, store the previous one
       // to be restored later and register the new one.
       if (registrar.isContractIDRegistered(factory.contractID)) {
-        dump(factory.scheme + " is already registered. Storing currently registered object for restoration later.")
+        dump(factory.scheme + " is already registered. Storing currently registered object for restoration later.");
         old_factories.push({
           CID: registrar.contractIDToCID(factory.contractID),
           factory: Components.manager.getClassObject(Cc[factory.contractID], Ci.nsIFactory)
@@ -58,7 +58,7 @@ function run_test() {
         old_factories_inds.push(true);
         registrar.unregisterFactory(old_factories[i].CID, old_factories[i].factory);
       } else {
-        dump(factory.scheme + " has never been registered. Registering...")
+        dump(factory.scheme + " has never been registered. Registering...");
         old_factories.push({CID: "", factory: null});
         old_factories_inds.push(false);
       }
@@ -78,13 +78,11 @@ function run_test() {
   let expectedURI = "data:application/vnd.mozilla.xul+xml,";
   let sourceURI = "chrome://good-package/content/test.xul";
   try {
-    let ios = Cc["@mozilla.org/network/io-service;1"].
-              getService(Ci.nsIIOService);
-    sourceURI = ios.newURI(sourceURI);
+    sourceURI = Services.io.newURI(sourceURI);
     // this throws for packages that are not registered
     let uri = cr.convertChromeURL(sourceURI).spec;
 
-    do_check_eq(expectedURI, uri);
+    Assert.equal(expectedURI, uri);
   } catch (e) {
     dump(e + "\n");
     do_throw("Should have registered our URI!");

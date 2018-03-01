@@ -40,8 +40,6 @@ class WakeLock;
 class ArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams;
 class ServiceWorkerContainer;
 class DOMRequest;
-struct FlyWebPublishOptions;
-struct FlyWebFilter;
 class CredentialsContainer;
 } // namespace dom
 } // namespace mozilla
@@ -61,7 +59,6 @@ class BatteryManager;
 
 class Promise;
 
-class DesktopNotificationCenter;
 class MozIdleObserver;
 class Gamepad;
 class GamepadServiceTest;
@@ -139,9 +136,6 @@ public:
   Geolocation* GetGeolocation(ErrorResult& aRv);
   Promise* GetBattery(ErrorResult& aRv);
 
-  already_AddRefed<Promise> PublishServer(const nsAString& aName,
-                                          const FlyWebPublishOptions& aOptions,
-                                          ErrorResult& aRv);
   static void AppName(nsAString& aAppName, bool aUsePrefOverriddenValue);
 
   static nsresult GetPlatform(nsAString& aPlatform,
@@ -176,17 +170,13 @@ public:
                   ErrorResult& aRv) const;
   bool JavaEnabled(CallerType aCallerType, ErrorResult& aRv);
   uint64_t HardwareConcurrency();
-  bool CpuHasSSE2();
   bool TaintEnabled()
   {
     return false;
   }
   void AddIdleObserver(MozIdleObserver& aObserver, ErrorResult& aRv);
   void RemoveIdleObserver(MozIdleObserver& aObserver, ErrorResult& aRv);
-  already_AddRefed<WakeLock> RequestWakeLock(const nsAString &aTopic,
-                                             ErrorResult& aRv);
 
-  DesktopNotificationCenter* GetMozNotification(ErrorResult& aRv);
   already_AddRefed<LegacyMozTCPSocket> MozTCPSocket();
   network::Connection* GetConnection(ErrorResult& aRv);
   MediaDevices* GetMediaDevices(ErrorResult& aRv);
@@ -283,7 +273,6 @@ private:
   RefPtr<nsPluginArray> mPlugins;
   RefPtr<Permissions> mPermissions;
   RefPtr<Geolocation> mGeolocation;
-  RefPtr<DesktopNotificationCenter> mNotification;
   RefPtr<battery::BatteryManager> mBatteryManager;
   RefPtr<Promise> mBatteryPromise;
   RefPtr<network::Connection> mConnection;

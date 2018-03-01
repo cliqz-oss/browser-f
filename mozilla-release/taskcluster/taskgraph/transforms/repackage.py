@@ -49,6 +49,9 @@ packaging_description_schema = Schema({
     # passed through directly to the job description
     Optional('extra'): task_description_schema['extra'],
 
+    # Shipping product and phase
+    Optional('shipping-product'): task_description_schema['shipping-product'],
+    Optional('shipping-phase'): task_description_schema['shipping-phase'],
 })
 
 
@@ -56,9 +59,10 @@ packaging_description_schema = Schema({
 def validate(config, jobs):
     for job in jobs:
         label = job.get('dependent-task', object).__dict__.get('label', '?no-label?')
-        yield validate_schema(
+        validate_schema(
             packaging_description_schema, job,
             "In packaging ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
 
 
 @transforms.add
@@ -87,7 +91,7 @@ def make_job_description(config, jobs):
         dependencies.update(signing_dependencies)
 
         treeherder = job.get('treeherder', {})
-        treeherder.setdefault('symbol', 'tc(Nr)')
+        treeherder.setdefault('symbol', 'Nr')
         dep_th_platform = dep_job.task.get('extra', {}).get(
             'treeherder', {}).get('machine', {}).get('platform', '')
         treeherder.setdefault('platform', "{}/opt".format(dep_th_platform))
@@ -159,9 +163,6 @@ def make_job_description(config, jobs):
             run['tooltool-downloads'] = 'internal'
             worker['docker-image'] = {"in-tree": "desktop-build"}
 
-            cot = job.setdefault('extra', {}).setdefault('chainOfTrust', {})
-            cot.setdefault('inputs', {})['docker-image'] = {"task-reference": "<docker-image>"}
-
         description = (
             "Repackaging for locale '{locale}' for build '"
             "{build_platform}/{build_type}'".format(
@@ -184,6 +185,12 @@ def make_job_description(config, jobs):
             'worker': worker,
             'run': run,
         }
+
+        if build_platform.startswith('macosx'):
+            task['toolchains'] = [
+                'linux64-libdmg',
+                'linux64-hfsplus',
+            ]
         yield task
 
 

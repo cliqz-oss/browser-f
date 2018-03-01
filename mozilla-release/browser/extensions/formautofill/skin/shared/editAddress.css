@@ -9,6 +9,7 @@ label > span {
 
 input,
 select {
+  flex: 1 0 auto;
   width: calc(50% - 9.5em);
   margin: 0;
 }
@@ -26,13 +27,11 @@ select {
   flex: 0 1 50%;
 }
 
-#family-name-container,
-#organization-container,
-#address-level2-container,
 #tel-container {
   padding-inline-end: 50%;
 }
 
+#name-container,
 #street-address-container,
 #email-container {
   flex: 0 1 100%;

@@ -1,7 +1,8 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
 /* exported ExtensionPageChild */
@@ -59,19 +60,54 @@ const {
 
 var ExtensionPageChild;
 
+const initializeBackgroundPage = (context) => {
+  // Override the `alert()` method inside background windows;
+  // we alias it to console.log().
+  // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1203394
+  let alertDisplayedWarning = false;
+  const innerWindowID = getInnerWindowID(context.contentWindow);
+
+  function logWarningMessage({text, filename, lineNumber, columnNumber}) {
+    let consoleMsg = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
+    consoleMsg.initWithWindowID(text, filename, null, lineNumber, columnNumber,
+                                Ci.nsIScriptError.warningFlag, "webextension",
+                                innerWindowID);
+    Services.console.logMessage(consoleMsg);
+  }
+
+  let alertOverwrite = text => {
+    const {filename, columnNumber, lineNumber} = Components.stack.caller;
+
+    if (!alertDisplayedWarning) {
+      context.childManager.callParentAsyncFunction("runtime.openBrowserConsole", []);
+
+      logWarningMessage({
+        text: "alert() is not supported in background windows; please use console.log instead.",
+        filename, lineNumber, columnNumber,
+      });
+
+      alertDisplayedWarning = true;
+    }
+
+    logWarningMessage({text, filename, lineNumber, columnNumber});
+  };
+  Cu.exportFunction(alertOverwrite, context.contentWindow, {defineAs: "alert"});
+};
+
 function getFrameData(global) {
   return processScript.getFrameData(global, true);
 }
 
 var apiManager = new class extends SchemaAPIManager {
   constructor() {
-    super("addon");
+    super("addon", Schemas);
     this.initialized = false;
   }
 
   lazyInit() {
     if (!this.initialized) {
       this.initialized = true;
+      this.initGlobal();
       for (let [/* name */, value] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCRIPTS_ADDON)) {
         this.loadScript(value);
       }
@@ -81,13 +117,14 @@ var apiManager = new class extends SchemaAPIManager {
 
 var devtoolsAPIManager = new class extends SchemaAPIManager {
   constructor() {
-    super("devtools");
+    super("devtools", Schemas);
     this.initialized = false;
   }
 
   lazyInit() {
     if (!this.initialized) {
       this.initialized = true;
+      this.initGlobal();
       for (let [/* name */, value] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCRIPTS_DEVTOOLS)) {
         this.loadScript(value);
       }
@@ -126,7 +163,9 @@ class ExtensionBaseContextChild extends BaseContext {
       sender.frameId = WebNavigationFrames.getFrameId(contentWindow);
       sender.tabId = tabId;
       Object.defineProperty(this, "tabId",
-        {value: tabId, enumerable: true, configurable: true});
+                            {value: tabId,
+                             enumerable: true,
+                             configurable: true});
     }
     if (uri) {
       sender.url = uri.spec;
@@ -135,7 +174,7 @@ class ExtensionBaseContextChild extends BaseContext {
 
     Schemas.exportLazyGetter(contentWindow, "browser", () => {
       let browserObj = Cu.createObjectIn(contentWindow);
-      Schemas.inject(browserObj, this.childManager);
+      this.childManager.inject(browserObj);
       return browserObj;
     });
 
@@ -144,7 +183,7 @@ class ExtensionBaseContextChild extends BaseContext {
       chromeApiWrapper.isChromeCompat = true;
 
       let chromeObj = Cu.createObjectIn(contentWindow);
-      Schemas.inject(chromeObj, chromeApiWrapper);
+      chromeApiWrapper.inject(chromeObj);
       return chromeObj;
     });
   }
@@ -235,10 +274,10 @@ class ExtensionPageContextChild extends ExtensionBaseContextChild {
 }
 
 defineLazyGetter(ExtensionPageContextChild.prototype, "childManager", function() {
-  apiManager.lazyInit();
+  this.extension.apiManager.lazyInit();
 
   let localApis = {};
-  let can = new CanOfAPIs(this, apiManager, localApis);
+  let can = new CanOfAPIs(this, this.extension.apiManager, localApis);
 
   let childManager = new ChildAPIManager(this, this.messageManager, can, {
     envType: "addon_parent",
@@ -250,7 +289,7 @@ defineLazyGetter(ExtensionPageContextChild.prototype, "childManager", function()
   this.callOnClose(childManager);
 
   if (this.viewType == "background") {
-    apiManager.global.initializeBackgroundPage(this.contentWindow);
+    initializeBackgroundPage(this);
   }
 
   return childManager;
@@ -308,6 +347,8 @@ ExtensionPageChild = {
   extensionContexts: new Map(),
 
   initialized: false,
+
+  apiManager,
 
   _init() {
     if (this.initialized) {

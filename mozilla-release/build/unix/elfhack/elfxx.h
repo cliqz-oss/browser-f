@@ -421,6 +421,8 @@ public:
         file.write(data, getSize());
     }
 
+    ElfSegment *getSegmentByType(unsigned int type);
+
 private:
     friend class ElfSegment;
 
@@ -432,8 +434,6 @@ private:
         std::vector<ElfSegment *>::iterator i = std::find(segments.begin(), segments.end(), segment);
         segments.erase(i, i + 1);
     }
-
-    ElfSegment *getSegmentByType(unsigned int type);
 
     void insertInSegments(std::vector<ElfSegment *> &segs);
 
@@ -629,7 +629,7 @@ public:
     ~ElfStrtab_Section()
     {
         for (std::vector<table_storage>::iterator t = table.begin() + 1;
-             t != table.end(); t++)
+             t != table.end(); ++t)
             delete[] t->buf;
     }
 
@@ -676,7 +676,7 @@ inline unsigned int Elf::getSize() {
 }
 
 inline ElfSegment *ElfSection::getSegmentByType(unsigned int type) {
-    for (std::vector<ElfSegment *>::iterator seg = segments.begin(); seg != segments.end(); seg++)
+    for (std::vector<ElfSegment *>::iterator seg = segments.begin(); seg != segments.end(); ++seg)
         if ((*seg)->getType() == type)
             return *seg;
     return nullptr;

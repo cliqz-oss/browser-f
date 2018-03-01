@@ -24,6 +24,7 @@
 #include "nsStyleConsts.h"
 #include "gfxFontConstants.h"
 #include "WidgetUtils.h"
+#include "nsWindow.h"
 
 #include <dlfcn.h>
 
@@ -259,7 +260,7 @@ nsLookAndFeel::NativeGetColor(ColorID aID, nscolor& aColor)
         break;
     case eColorID_WindowForeground:
     case eColorID_WidgetForeground:
-    case eColorID_TextForeground: 
+    case eColorID_TextForeground:
     case eColorID_captiontext: // text in active window caption, size box, and scrollbar arrow box (!)
     case eColorID_windowtext:
     case eColorID__moz_dialogtext:
@@ -442,7 +443,7 @@ static int32_t ConvertGTKStepperStyleToMozillaScrollArrowStyle(GtkWidget* aWidge
 {
     if (!aWidget)
         return mozilla::LookAndFeel::eScrollArrowStyle_Single;
-  
+
     return
         CheckWidgetStyle(aWidget, "has-backward-stepper",
                          mozilla::LookAndFeel::eScrollArrow_StartBackward) |
@@ -459,7 +460,7 @@ nsLookAndFeel::GetIntImpl(IntID aID, int32_t &aResult)
 {
     nsresult res = NS_OK;
 
-    // Set these before they can get overrided in the nsXPLookAndFeel. 
+    // Set these before they can get overrided in the nsXPLookAndFeel.
     switch (aID) {
     case eIntID_ScrollButtonLeftMouseButtonAction:
         aResult = 0;
@@ -496,7 +497,7 @@ nsLookAndFeel::GetIntImpl(IntID aID, int32_t &aResult)
                           "gtk-cursor-blink-time", &blink_time,
                           "gtk-cursor-blink", &blink,
                           nullptr);
- 
+
             if (blink)
                 aResult = (int32_t) blink_time;
             else
@@ -518,11 +519,11 @@ nsLookAndFeel::GetIntImpl(IntID aID, int32_t &aResult)
             entry = gtk_entry_new();
             g_object_ref_sink(entry);
             settings = gtk_widget_get_settings(entry);
-            g_object_get(settings, 
+            g_object_get(settings,
                          "gtk-entry-select-on-focus",
                          &select_on_focus,
                          nullptr);
-            
+
             if(select_on_focus)
                 aResult = 1;
             else
@@ -583,7 +584,7 @@ nsLookAndFeel::GetIntImpl(IntID aID, int32_t &aResult)
                          "gtk-dnd-drag-threshold", &threshold,
                          nullptr);
             g_object_ref_sink(box);
-            
+
             aResult = threshold;
         }
         break;
@@ -740,7 +741,7 @@ GetSystemFontInfo(GtkStyleContext *aStyle,
     // Scale fonts up on HiDPI displays.
     // This would be done automatically with cairo, but we manually manage
     // the display scale for platform consistency.
-    size *= ScreenHelperGTK::GetGTKMonitorScaleFactor();
+    size *= mozilla::widget::ScreenHelperGTK::GetGTKMonitorScaleFactor();
 
     // |size| is now pixels
 
@@ -931,7 +932,7 @@ nsLookAndFeel::EnsureInit()
     gtk_container_add(GTK_CONTAINER(window), parent);
     gtk_container_add(GTK_CONTAINER(parent), entry);
     gtk_container_add(GTK_CONTAINER(parent), textView);
-    
+
     // Text colors
     GdkRGBA bgColor;
     // If the text window background is translucent, then the background of
@@ -982,7 +983,7 @@ nsLookAndFeel::EnsureInit()
     gtk_style_context_get_color(style, GTK_STATE_FLAG_NORMAL, &color);
     mComboBoxText = GDK_RGBA_TO_NS_RGBA(color);
 
-    // Menubar text and hover text colors    
+    // Menubar text and hover text colors
     style = GetStyleContext(MOZ_GTK_MENUBARITEM);
     gtk_style_context_get_color(style, GTK_STATE_FLAG_NORMAL, &color);
     mMenuBarText = GDK_RGBA_TO_NS_RGBA(color);
@@ -1076,17 +1077,13 @@ nsLookAndFeel::EnsureInit()
     gtk_widget_destroy(window);
     g_object_unref(labelWidget);
 
-    // Require GTK 3.20 for client-side decoration support.
-    mCSDAvailable = gtk_check_version(3, 20, 0) == nullptr;
-    if (mCSDAvailable) {
-        mCSDAvailable =
-            mozilla::Preferences::GetBool("widget.allow-client-side-decoration",
-                                          false);
-    }
+    // Require GTK 3.10 for GtkHeaderBar support and compatible window manager.
+    mCSDAvailable = (gtk_check_version(3, 10, 0) == nullptr &&
+        nsWindow::GetCSDSupportLevel() != nsWindow::CSD_SUPPORT_NONE);
 
     // We need to initialize whole CSD config explicitly because it's queried
     // as -moz-gtk* media features.
-    mCSDCloseButton = false;
+    mCSDCloseButton = true;
     mCSDMaximizeButton = false;
     mCSDMinimizeButton = false;
 
@@ -1095,18 +1092,24 @@ nsLookAndFeel::EnsureInit()
           (const gchar* (*)(GtkWidget*))
           dlsym(RTLD_DEFAULT, "gtk_header_bar_get_decoration_layout");
 
-        GtkWidget* headerBar = GetWidget(MOZ_GTK_HEADER_BAR);
-        const gchar* decorationLayout =
-            sGtkHeaderBarGetDecorationLayoutPtr(headerBar);
-        if (!decorationLayout) {
-            g_object_get(settings, "gtk-decoration-layout", &decorationLayout,
-                         nullptr);
-        }
+        if (sGtkHeaderBarGetDecorationLayoutPtr) {
+            GtkWidget* headerBar = GetWidget(MOZ_GTK_HEADER_BAR);
+            const gchar* decorationLayout =
+                sGtkHeaderBarGetDecorationLayoutPtr(headerBar);
+            if (!decorationLayout) {
+                g_object_get(settings, "gtk-decoration-layout",
+                             &decorationLayout,
+                             nullptr);
+            }
 
-        if (decorationLayout) {
-            mCSDCloseButton = (strstr(decorationLayout, "close") != nullptr);
-            mCSDMaximizeButton = (strstr(decorationLayout, "maximize") != nullptr);
-            mCSDMinimizeButton = (strstr(decorationLayout, "minimize") != nullptr);
+            if (decorationLayout) {
+                mCSDCloseButton =
+                    (strstr(decorationLayout, "close") != nullptr);
+                mCSDMaximizeButton =
+                    (strstr(decorationLayout, "maximize") != nullptr);
+                mCSDMinimizeButton =
+                    (strstr(decorationLayout, "minimize") != nullptr);
+            }
         }
     }
 }

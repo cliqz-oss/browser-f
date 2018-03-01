@@ -196,7 +196,9 @@ ScaledFontDWrite::CopyGlyphsToBuilder(const GlyphBuffer &aBuffer, PathBuilder *a
 }
 
 void
-ScaledFontDWrite::GetGlyphDesignMetrics(const uint16_t* aGlyphs, uint32_t aNumGlyphs, GlyphMetrics* aGlyphMetrics)
+ScaledFontDWrite::GetGlyphDesignMetrics(const uint16_t* aGlyphs,
+                                        uint32_t aNumGlyphs,
+                                        GlyphMetrics* aGlyphMetrics)
 {
   DWRITE_FONT_METRICS fontMetrics;
   mFontFace->GetMetrics(&fontMetrics);
@@ -204,16 +206,20 @@ ScaledFontDWrite::GetGlyphDesignMetrics(const uint16_t* aGlyphs, uint32_t aNumGl
   vector<DWRITE_GLYPH_METRICS> metrics(aNumGlyphs);
   mFontFace->GetDesignGlyphMetrics(aGlyphs, aNumGlyphs, &metrics.front());
 
-  Float designUnitCorrection = 1.f / fontMetrics.designUnitsPerEm;
+  Float scaleFactor = mSize / fontMetrics.designUnitsPerEm;
 
   for (uint32_t i = 0; i < aNumGlyphs; i++) {
-    aGlyphMetrics[i].mXBearing = metrics[i].leftSideBearing * designUnitCorrection * mSize;
-    aGlyphMetrics[i].mXAdvance = metrics[i].advanceWidth * designUnitCorrection * mSize;
-    aGlyphMetrics[i].mYBearing = metrics[i].topSideBearing * designUnitCorrection * mSize;
-    aGlyphMetrics[i].mYAdvance = metrics[i].advanceHeight * designUnitCorrection * mSize;
-    aGlyphMetrics[i].mWidth = (metrics[i].advanceHeight - metrics[i].topSideBearing - metrics[i].bottomSideBearing) *
-                              designUnitCorrection * mSize;
-    aGlyphMetrics[i].mHeight = (metrics[i].topSideBearing - metrics[i].verticalOriginY) * designUnitCorrection * mSize;
+    aGlyphMetrics[i].mXBearing = metrics[i].leftSideBearing * scaleFactor;
+    aGlyphMetrics[i].mXAdvance = metrics[i].advanceWidth * scaleFactor;
+    aGlyphMetrics[i].mYBearing = (metrics[i].topSideBearing -
+                                  metrics[i].verticalOriginY) * scaleFactor;
+    aGlyphMetrics[i].mYAdvance = metrics[i].advanceHeight * scaleFactor;
+    aGlyphMetrics[i].mWidth = (metrics[i].advanceWidth -
+                               metrics[i].leftSideBearing -
+                               metrics[i].rightSideBearing) * scaleFactor;
+    aGlyphMetrics[i].mHeight = (metrics[i].advanceHeight -
+                                metrics[i].topSideBearing -
+                                metrics[i].bottomSideBearing) * scaleFactor;
   }
 }
 
@@ -385,21 +391,21 @@ ScaledFontDWrite::GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* aOutO
                                            Maybe<wr::FontInstancePlatformOptions>* aOutPlatformOptions,
                                            std::vector<FontVariation>* aOutVariations)
 {
-  AntialiasMode aaMode = GetDefaultAAMode();
-  if (aaMode != AntialiasMode::SUBPIXEL) {
-    wr::FontInstanceOptions options;
-    options.render_mode =
-      aaMode == AntialiasMode::NONE ? wr::FontRenderMode::Mono : wr::FontRenderMode::Alpha;
-    options.subpx_dir = wr::SubpixelDirection::Horizontal;
-    options.synthetic_italics = false;
-    options.bg_color = wr::ToColorU(Color());
-    *aOutOptions = Some(options);
+  wr::FontInstanceOptions options;
+  options.render_mode = wr::ToFontRenderMode(GetDefaultAAMode());
+  options.subpx_dir = wr::SubpixelDirection::Horizontal;
+  options.flags = 0;
+  if (mFontFace->GetSimulations() & DWRITE_FONT_SIMULATIONS_BOLD) {
+    options.flags |= wr::FontInstanceFlags::SYNTHETIC_BOLD;
   }
-
-  wr::FontInstancePlatformOptions platformOptions;
-  platformOptions.use_embedded_bitmap = UseEmbeddedBitmaps();
-  platformOptions.force_gdi_rendering = ForceGDIMode();
-  *aOutPlatformOptions = Some(platformOptions);
+  if (UseEmbeddedBitmaps()) {
+    options.flags |= wr::FontInstanceFlags::EMBEDDED_BITMAPS;
+  }
+  if (ForceGDIMode()) {
+    options.flags |= wr::FontInstanceFlags::FORCE_GDI;
+  }
+  options.bg_color = wr::ToColorU(Color());
+  *aOutOptions = Some(options);
   return true;
 }
 

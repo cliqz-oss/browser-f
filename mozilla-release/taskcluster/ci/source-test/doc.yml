@@ -2,9 +2,10 @@ generate:
     description: Generate the Sphinx documentation
     platform: lint/opt
     treeherder:
-        symbol: tc(Doc)
+        symbol: Doc
         kind: test
         tier: 1
+    run-on-projects: ['trunk', 'try']
     worker-type: aws-provisioner-v1/gecko-t-linux-xlarge
     worker:
         docker-image: {in-tree: "lint"}
@@ -19,18 +20,14 @@ generate:
             cd /builds/worker/checkouts/gecko &&
             ./mach doc --outdir docs-out --no-open --archive
         sparse-profile: sphinx-docs
-    when:
-        files-changed:
-            - '**/*.py'
-            - '**/*.rst'
-            - '**/*.md'
-            - 'tools/docs/**'
+    optimization:
+        skip-unless-schedules: [docs]
 
 upload:
     description: Generate and upload the Sphinx documentation
     platform: lint/opt
     treeherder:
-        symbol: tc(DocUp)
+        symbol: DocUp
         kind: test
         tier: 3
     run-on-projects: [mozilla-central]
@@ -45,8 +42,5 @@ upload:
         sparse-profile: sphinx-docs
     scopes:
         - secrets:get:project/releng/gecko/build/level-{level}/gecko-docs-upload
-    when:
-        files-changed:
-            - '**/*.py'
-            - '**/*.rst'
-            - 'tools/docs/**'
+    optimization:
+        skip-unless-schedules: [docs]

@@ -176,6 +176,7 @@ public:
                 aError);
   }
 
+  MOZ_CAN_RUN_SCRIPT
   void GetInnerText(mozilla::dom::DOMString& aValue, mozilla::ErrorResult& aError);
   void SetInnerText(const nsAString& aValue);
 
@@ -265,6 +266,7 @@ public:
    * Pass a reference to the image request, since the method may change the
    * value and we want to use the updated value.
    */
+  MOZ_CAN_RUN_SCRIPT
   nsSize GetWidthHeightForImage(RefPtr<imgRequestProxy>& aImageRequest);
 
   // XPIDL methods
@@ -344,6 +346,7 @@ public:
   virtual bool ParseAttribute(int32_t aNamespaceID,
                               nsAtom* aAttribute,
                               const nsAString& aValue,
+                              nsIPrincipal* aMaybeScriptedPrincipal,
                               nsAttrValue& aResult) override;
 
   bool ParseBackgroundAttribute(int32_t aNamespaceID,
@@ -960,7 +963,7 @@ protected:
    */
   ContentEditableTristate GetContentEditableValue() const
   {
-    static const nsIContent::AttrValuesArray values[] =
+    static const Element::AttrValuesArray values[] =
       { &nsGkAtoms::_false, &nsGkAtoms::_true, &nsGkAtoms::_empty, nullptr };
 
     if (!MayHaveContentEditableAttr())

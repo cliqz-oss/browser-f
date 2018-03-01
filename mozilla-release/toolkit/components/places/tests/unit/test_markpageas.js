@@ -19,13 +19,31 @@ add_task(async function test_execute() {
       _visitCount: 0,
       onVisit(aURI, aVisitID, aTime, aSessionID, aReferringID,
                         aTransitionType, aAdded) {
-        do_check_eq(aURI.spec, gVisits[this._visitCount].url);
-        do_check_eq(aTransitionType, gVisits[this._visitCount].transition);
+        Assert.equal(aURI.spec, gVisits[this._visitCount].url);
+        Assert.equal(aTransitionType, gVisits[this._visitCount].transition);
         this._visitCount++;
 
         if (this._visitCount == gVisits.length) {
           resolveCompletionPromise();
         }
+      },
+      onVisits(aVisits) {
+        Assert.equal(aVisits.length, 1, "Right number of visits notified");
+        let {
+          uri,
+          visitId,
+          time,
+          referrerId,
+          transitionType,
+          guid,
+          hidden,
+          visitCount,
+          typed,
+          lastKnownTitle,
+        } = aVisits[0];
+        this.onVisit(uri, visitId, time, 0, referrerId,
+                     transitionType, guid, hidden, visitCount,
+                     typed, lastKnownTitle);
       },
     };
   });

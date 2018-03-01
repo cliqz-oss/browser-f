@@ -15,13 +15,14 @@ use Ctxt;
 pub fn check(cx: &Ctxt, cont: &Container) {
     check_getter(cx, cont);
     check_identifier(cx, cont);
+    check_variant_skip_attrs(cx, cont);
 }
 
 /// Getters are only allowed inside structs (not enums) with the `remote`
 /// attribute.
 fn check_getter(cx: &Ctxt, cont: &Container) {
     match cont.body {
-        Body::Enum(_) => {
+        Body::Enum(_, _) => {
             if cont.body.has_getter() {
                 cx.error("#[serde(getter = \"...\")] is not allowed in an enum");
             }
@@ -30,7 +31,7 @@ fn check_getter(cx: &Ctxt, cont: &Container) {
             if cont.body.has_getter() && cont.attrs.remote().is_none() {
                 cx.error(
                     "#[serde(getter = \"...\")] can only be used in structs \
-                          that have #[serde(remote = \"...\")]",
+                     that have #[serde(remote = \"...\")]",
                 );
             }
         }
@@ -45,17 +46,20 @@ fn check_getter(cx: &Ctxt, cont: &Container) {
 /// last variant may be a newtype variant which is an implicit "other" case.
 fn check_identifier(cx: &Ctxt, cont: &Container) {
     let variants = match cont.body {
-        Body::Enum(ref variants) => variants,
+        Body::Enum(_, ref variants) => variants,
         Body::Struct(_, _) => {
             return;
         }
     };
 
     for (i, variant) in variants.iter().enumerate() {
-        match (variant.style, cont.attrs.identifier(), variant.attrs.other()) {
+        match (
+            variant.style,
+            cont.attrs.identifier(),
+            variant.attrs.other(),
+        ) {
             // The `other` attribute may only be used in a field_identifier.
-            (_, Identifier::Variant, true) |
-            (_, Identifier::No, true) => {
+            (_, Identifier::Variant, true) | (_, Identifier::No, true) => {
                 cx.error("#[serde(other)] may only be used inside a field_identifier");
             }
 
@@ -90,6 +94,77 @@ fn check_identifier(cx: &Ctxt, cont: &Container) {
 
             (_, Identifier::Variant, false) => {
                 cx.error("variant_identifier may only contain unit variants");
+            }
+        }
+    }
+}
+
+/// Skip-(de)serializing attributes are not allowed on variants marked
+/// (de)serialize_with.
+fn check_variant_skip_attrs(cx: &Ctxt, cont: &Container) {
+    let variants = match cont.body {
+        Body::Enum(_, ref variants) => variants,
+        Body::Struct(_, _) => {
+            return;
+        }
+    };
+
+    for variant in variants.iter() {
+        if variant.attrs.serialize_with().is_some() {
+            if variant.attrs.skip_serializing() {
+                cx.error(format!(
+                    "variant `{}` cannot have both #[serde(serialize_with)] and \
+                     #[serde(skip_serializing)]",
+                    variant.ident
+                ));
+            }
+
+            for (i, field) in variant.fields.iter().enumerate() {
+                let ident = field
+                    .ident
+                    .as_ref()
+                    .map_or_else(|| format!("{}", i), |ident| format!("`{}`", ident));
+
+                if field.attrs.skip_serializing() {
+                    cx.error(format!(
+                        "variant `{}` cannot have both #[serde(serialize_with)] and \
+                         a field {} marked with #[serde(skip_serializing)]",
+                        variant.ident, ident
+                    ));
+                }
+
+                if field.attrs.skip_serializing_if().is_some() {
+                    cx.error(format!(
+                        "variant `{}` cannot have both #[serde(serialize_with)] and \
+                         a field {} marked with #[serde(skip_serializing_if)]",
+                        variant.ident, ident
+                    ));
+                }
+            }
+        }
+
+        if variant.attrs.deserialize_with().is_some() {
+            if variant.attrs.skip_deserializing() {
+                cx.error(format!(
+                    "variant `{}` cannot have both #[serde(deserialize_with)] and \
+                     #[serde(skip_deserializing)]",
+                    variant.ident
+                ));
+            }
+
+            for (i, field) in variant.fields.iter().enumerate() {
+                if field.attrs.skip_deserializing() {
+                    let ident = field
+                        .ident
+                        .as_ref()
+                        .map_or_else(|| format!("{}", i), |ident| format!("`{}`", ident));
+
+                    cx.error(format!(
+                        "variant `{}` cannot have both #[serde(deserialize_with)] \
+                         and a field {} marked with #[serde(skip_deserializing)]",
+                        variant.ident, ident
+                    ));
+                }
             }
         }
     }

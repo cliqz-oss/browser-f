@@ -4,11 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-var CC = Components.Constructor;
-
 var Pipe = CC("@mozilla.org/pipe;1", "nsIPipe", "init");
 
 function run_test() {
@@ -35,24 +30,24 @@ function test_ends_are_threadsafe() {
   p = new Pipe(true, true, 1024, 1, null);
   is = p.inputStream.QueryInterface(Ci.nsIClassInfo);
   os = p.outputStream.QueryInterface(Ci.nsIClassInfo);
-  do_check_true(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
-  do_check_true(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
 
   p = new Pipe(true, false, 1024, 1, null);
   is = p.inputStream.QueryInterface(Ci.nsIClassInfo);
   os = p.outputStream.QueryInterface(Ci.nsIClassInfo);
-  do_check_true(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
-  do_check_true(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
 
   p = new Pipe(false, true, 1024, 1, null);
   is = p.inputStream.QueryInterface(Ci.nsIClassInfo);
   os = p.outputStream.QueryInterface(Ci.nsIClassInfo);
-  do_check_true(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
-  do_check_true(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
 
   p = new Pipe(false, false, 1024, 1, null);
   is = p.inputStream.QueryInterface(Ci.nsIClassInfo);
   os = p.outputStream.QueryInterface(Ci.nsIClassInfo);
-  do_check_true(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
-  do_check_true(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(is.flags & Ci.nsIClassInfo.THREADSAFE));
+  Assert.ok(Boolean(os.flags & Ci.nsIClassInfo.THREADSAFE));
 }

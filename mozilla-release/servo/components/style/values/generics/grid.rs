@@ -7,9 +7,10 @@
 
 use cssparser::Parser;
 use parser::{Parse, ParserContext};
-use std::{fmt, mem, usize};
-use style_traits::{ToCss, ParseError, StyleParseErrorKind};
-use values::{CSSFloat, CustomIdent, serialize_dimension};
+use std::{mem, usize};
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
+use values::{CSSFloat, CustomIdent};
 use values::computed::{Context, ToComputedValue};
 use values::specified;
 use values::specified::grid::parse_line_names;
@@ -49,7 +50,10 @@ impl<Integer> ToCss for GridLine<Integer>
 where
     Integer: ToCss,
 {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         if self.is_auto() {
             return dest.write_str("auto")
         }
@@ -59,12 +63,16 @@ where
         }
 
         if let Some(ref i) = self.line_num {
-            dest.write_str(" ")?;
+            if self.is_span {
+                dest.write_str(" ")?;
+            }
             i.to_css(dest)?;
         }
 
         if let Some(ref s) = self.ident {
-            dest.write_str(" ")?;
+            if self.is_span || self.line_num.is_some() {
+                dest.write_str(" ")?;
+            }
             s.to_css(dest)?;
         }
 
@@ -143,12 +151,13 @@ add_impls_for_keyword_enum!(TrackKeyword);
 /// avoid re-implementing it for the computed type.
 ///
 /// <https://drafts.csswg.org/css-grid/#typedef-track-breadth>
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub enum TrackBreadth<L> {
     /// The generic type is almost always a non-negative `<length-percentage>`
     Breadth(L),
     /// A flex fraction specified in `fr` units.
-    Flex(CSSFloat),
+    #[css(dimension)]
+    Fr(CSSFloat),
     /// One of the track-sizing keywords (`auto`, `min-content`, `max-content`)
     Keyword(TrackKeyword),
 }
@@ -162,16 +171,6 @@ impl<L> TrackBreadth<L> {
         match *self {
             TrackBreadth::Breadth(ref _lop) => true,
             _ => false,
-        }
-    }
-}
-
-impl<L: ToCss> ToCss for TrackBreadth<L> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        match *self {
-            TrackBreadth::Breadth(ref lop) => lop.to_css(dest),
-            TrackBreadth::Flex(ref value) => serialize_dimension(*value, "fr", dest),
-            TrackBreadth::Keyword(ref k) => k.to_css(dest),
         }
     }
 }
@@ -212,7 +211,7 @@ impl<L> TrackSize<L> {
                 }
 
                 match *breadth_1 {
-                    TrackBreadth::Flex(_) => false,     // should be <inflexible-breadth> at this point
+                    TrackBreadth::Fr(_) => false,     // should be <inflexible-breadth> at this point
                     _ => breadth_2.is_fixed(),
                 }
             },
@@ -235,14 +234,17 @@ impl<L: PartialEq> TrackSize<L> {
 }
 
 impl<L: ToCss> ToCss for TrackSize<L> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match *self {
             TrackSize::Breadth(ref breadth) => breadth.to_css(dest),
             TrackSize::Minmax(ref min, ref max) => {
                 // According to gecko minmax(auto, <flex>) is equivalent to <flex>,
                 // and both are serialized as <flex>.
                 if let TrackBreadth::Keyword(TrackKeyword::Auto) = *min {
-                    if let TrackBreadth::Flex(_) = *max {
+                    if let TrackBreadth::Fr(_) = *max {
                         return max.to_css(dest);
                     }
                 }
@@ -268,7 +270,7 @@ impl<L: ToComputedValue> ToComputedValue for TrackSize<L> {
     #[inline]
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
         match *self {
-            TrackSize::Breadth(TrackBreadth::Flex(ref f)) => {
+            TrackSize::Breadth(TrackBreadth::Fr(ref f)) => {
                 // <flex> outside `minmax()` expands to `mimmax(auto, <flex>)`
                 // https://drafts.csswg.org/css-grid/#valdef-grid-template-columns-flex
                 // FIXME(nox): This sounds false, the spec just says that <flex>
@@ -276,7 +278,7 @@ impl<L: ToComputedValue> ToComputedValue for TrackSize<L> {
                 // into `minmax` at computed value time.
                 TrackSize::Minmax(
                     TrackBreadth::Keyword(TrackKeyword::Auto),
-                    TrackBreadth::Flex(f.to_computed_value(context)),
+                    TrackBreadth::Fr(f.to_computed_value(context)),
                 )
             },
             TrackSize::Breadth(ref b) => {
@@ -320,10 +322,10 @@ pub fn concat_serialize_idents<W>(
     suffix: &str,
     slice: &[CustomIdent],
     sep: &str,
-    dest: &mut W,
+    dest: &mut CssWriter<W>,
 ) -> fmt::Result
 where
-    W: fmt::Write
+    W: Write,
 {
     if let Some((ref first, rest)) = slice.split_first() {
         dest.write_str(prefix)?;
@@ -390,7 +392,10 @@ pub struct TrackRepeat<L, I> {
 }
 
 impl<L: ToCss, I: ToCss> ToCss for TrackRepeat<L, I> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("repeat(")?;
         self.count.to_css(dest)?;
         dest.write_str(", ")?;
@@ -508,7 +513,10 @@ pub struct TrackList<LengthOrPercentage, Integer> {
 }
 
 impl<L: ToCss, I: ToCss> ToCss for TrackList<L, I> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         let auto_idx = match self.list_type {
             TrackListType::Auto(i) => i as usize,
             _ => usize::MAX,
@@ -619,7 +627,10 @@ impl Parse for LineNameList {
 }
 
 impl ToCss for LineNameList {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("subgrid")?;
         let fill_idx = self.fill_idx.map(|v| v as usize).unwrap_or(usize::MAX);
         for (i, names) in self.names.iter().enumerate() {

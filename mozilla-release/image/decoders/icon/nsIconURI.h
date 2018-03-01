@@ -12,15 +12,20 @@
 #include "nsString.h"
 #include "nsIIPCSerializableURI.h"
 #include "nsINestedURI.h"
+#include "nsIURIMutator.h"
 
-class nsMozIconURI : public nsIMozIconURI
-                   , public nsIIPCSerializableURI
+
+class nsMozIconURI final
+  : public nsIMozIconURI
+  , public nsIIPCSerializableURI
+  , public nsINestedURI
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIURI
   NS_DECL_NSIMOZICONURI
   NS_DECL_NSIIPCSERIALIZABLEURI
+  NS_DECL_NSINESTEDURI
 
   // nsMozIconURI
   nsMozIconURI();
@@ -39,25 +44,46 @@ protected:
                        // kSizeStrings
   int32_t mIconState;  // -1 if not specified, otherwise index into
                        // kStateStrings
-};
 
-// For moz-icon URIs that point to an actual file on disk and are
-// therefore nested URIs
-class nsNestedMozIconURI final : public nsMozIconURI
-                               , public nsINestedURI
-{
-  NS_DECL_ISUPPORTS_INHERITED
-  NS_FORWARD_NSIURI(nsMozIconURI::)
-  NS_FORWARD_NSIMOZICONURI(nsMozIconURI::)
-  NS_FORWARD_NSIIPCSERIALIZABLEURI(nsMozIconURI::)
+public:
+  class Mutator
+      : public nsIURIMutator
+      , public BaseURIMutator<nsMozIconURI>
+  {
+    NS_DECL_ISUPPORTS
+    NS_FORWARD_SAFE_NSIURISETTERS_RET(mURI)
 
-  NS_DECL_NSINESTEDURI
+    NS_IMETHOD Deserialize(const mozilla::ipc::URIParams& aParams) override
+    {
+      return InitFromIPCParams(aParams);
+    }
 
-  nsNestedMozIconURI();
+    NS_IMETHOD Read(nsIObjectInputStream* aStream) override
+    {
+      return NS_ERROR_NOT_IMPLEMENTED;
+    }
 
-protected:
-  virtual ~nsNestedMozIconURI();
+    NS_IMETHOD Finalize(nsIURI** aURI) override
+    {
+      mURI.forget(aURI);
+      return NS_OK;
+    }
 
+    NS_IMETHOD SetSpec(const nsACString & aSpec, nsIURIMutator** aMutator) override
+    {
+      if (aMutator) {
+        nsCOMPtr<nsIURIMutator> mutator = this;
+        mutator.forget(aMutator);
+      }
+      return InitFromSpec(aSpec);
+    }
+
+    explicit Mutator() { }
+  private:
+    virtual ~Mutator() { }
+
+    friend class nsMozIconURI;
+  };
 };
 
 #endif // mozilla_image_decoders_icon_nsIconURI_h

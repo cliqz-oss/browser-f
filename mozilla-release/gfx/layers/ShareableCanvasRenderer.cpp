@@ -51,7 +51,6 @@ ShareableCanvasRenderer::Initialize(const CanvasInitializeData& aData)
     MOZ_ASSERT(screen);
     caps = screen->mCaps;
   }
-  MOZ_ASSERT(caps.alpha == aData.mHasAlpha);
 
   auto forwarder = GetForwarder();
 
@@ -226,7 +225,7 @@ ShareableCanvasRenderer::UpdateCompositableClient()
 
   FirePreTransactionCallback();
   if (mBufferProvider && mBufferProvider->GetTextureClient()) {
-    if (!mBufferProvider->SetForwarder(GetForwarder()->AsLayerForwarder())) {
+    if (!mBufferProvider->SetKnowsCompositor(GetForwarder())) {
       gfxCriticalNote << "BufferProvider::SetForwarder failed";
       return;
     }

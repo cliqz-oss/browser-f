@@ -265,7 +265,7 @@ class AutofillRecords {
     this._schemaVersion = schemaVersion;
 
     let hasChanges = (result, record) => this._migrateRecord(record) || result;
-    if (this.data.reduce(hasChanges, false)) {
+    if (this._data.reduce(hasChanges, false)) {
       this._store.saveSoon();
     }
   }
@@ -286,7 +286,7 @@ class AutofillRecords {
    * @returns {array}
    *          The data object.
    */
-  get data() {
+  get _data() {
     return this._store.data[this._collectionName];
   }
 
@@ -313,7 +313,7 @@ class AutofillRecords {
   add(record, {sourceSync = false} = {}) {
     this.log.debug("add:", record);
 
-    let recordToSave = this._cloneAndCleanUp(record);
+    let recordToSave = this._clone(record);
 
     if (sourceSync) {
       // Remove tombstones for incoming items that were changed on another
@@ -322,9 +322,9 @@ class AutofillRecords {
         includeDeleted: true,
       });
       if (index > -1) {
-        let existing = this.data[index];
+        let existing = this._data[index];
         if (existing.deleted) {
-          this.data.splice(index, 1);
+          this._data.splice(index, 1);
         } else {
           throw new Error(`Record ${recordToSave.guid} already exists`);
         }
@@ -372,11 +372,14 @@ class AutofillRecords {
       sync.changeCounter = 0;
     }
 
-    this.data.push(recordToSave);
+    this._data.push(recordToSave);
 
     this._store.saveSoon();
 
-    Services.obs.notifyObservers({wrappedJSObject: {sourceSync}}, "formautofill-storage-changed", "add");
+    Services.obs.notifyObservers({wrappedJSObject: {
+      sourceSync,
+      collectionName: this._collectionName,
+    }}, "formautofill-storage-changed", "add");
     return recordToSave.guid;
   }
 
@@ -408,12 +411,13 @@ class AutofillRecords {
     }
 
     // Clone the record before modifying it to avoid exposing incomplete changes.
-    let recordFound = this._clone(this.data[recordFoundIndex]);
+    let recordFound = this._clone(this._data[recordFoundIndex]);
     this._stripComputedFields(recordFound);
 
     let recordToUpdate = this._clone(record);
-    this._normalizeRecord(recordToUpdate);
+    this._normalizeRecord(recordToUpdate, true);
 
+    let hasValidField = false;
     for (let field of this.VALID_FIELDS) {
       let oldValue = recordFound[field];
       let newValue = recordToUpdate[field];
@@ -426,10 +430,15 @@ class AutofillRecords {
       if (newValue === undefined || newValue === "") {
         delete recordFound[field];
       } else {
+        hasValidField = true;
         recordFound[field] = newValue;
       }
 
       this._maybeStoreLastSyncedField(recordFound, field, oldValue);
+    }
+
+    if (!hasValidField) {
+      throw new Error("Record contains no valid field.");
     }
 
     recordFound.timeLastModified = Date.now();
@@ -439,13 +448,14 @@ class AutofillRecords {
     }
 
     this._computeFields(recordFound);
-    this.data[recordFoundIndex] = recordFound;
+    this._data[recordFoundIndex] = recordFound;
 
     this._store.saveSoon();
 
-    let str = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
-    str.data = guid;
-    Services.obs.notifyObservers(str, "formautofill-storage-changed", "update");
+    Services.obs.notifyObservers({wrappedJSObject: {
+      guid,
+      collectionName: this._collectionName,
+    }}, "formautofill-storage-changed", "update");
   }
 
   /**
@@ -490,7 +500,7 @@ class AutofillRecords {
         this.log.warn("attempting to remove non-existing entry", guid);
         return;
       }
-      let existing = this.data[index];
+      let existing = this._data[index];
       if (existing.deleted) {
         return; // already a tombstone - don't touch it.
       }
@@ -498,7 +508,7 @@ class AutofillRecords {
       if (existingSync) {
         // existing sync metadata means it has been synced. This means we must
         // leave a tombstone behind.
-        this.data[index] = {
+        this._data[index] = {
           guid,
           timeLastModified: Date.now(),
           deleted: true,
@@ -508,12 +518,15 @@ class AutofillRecords {
       } else {
         // If there's no sync meta-data, this record has never been synced, so
         // we can delete it.
-        this.data.splice(index, 1);
+        this._data.splice(index, 1);
       }
     }
 
     this._store.saveSoon();
-    Services.obs.notifyObservers({wrappedJSObject: {sourceSync}}, "formautofill-storage-changed", "remove");
+    Services.obs.notifyObservers({wrappedJSObject: {
+      sourceSync,
+      collectionName: this._collectionName,
+    }}, "formautofill-storage-changed", "remove");
   }
 
   /**
@@ -558,7 +571,7 @@ class AutofillRecords {
   getAll({rawData = false, includeDeleted = false} = {}) {
     this.log.debug("getAll", rawData, includeDeleted);
 
-    let records = this.data.filter(r => !r.deleted || includeDeleted);
+    let records = this._data.filter(r => !r.deleted || includeDeleted);
     // Records are cloned to avoid accidental modifications from outside.
     let clonedRecords = records.map(r => this._cloneAndCleanUp(r));
     clonedRecords.forEach(record => {
@@ -706,12 +719,12 @@ class AutofillRecords {
    *          it's uploaded.
    */
   _replaceRecordAt(index, remoteRecord, {keepSyncMetadata = false} = {}) {
-    let localRecord = this.data[index];
+    let localRecord = this._data[index];
     let newRecord = this._clone(remoteRecord);
 
     this._stripComputedFields(newRecord);
 
-    this.data[index] = newRecord;
+    this._data[index] = newRecord;
 
     if (keepSyncMetadata) {
       // It's safe to move the Sync metadata from the old record to the new
@@ -766,7 +779,7 @@ class AutofillRecords {
     this._getSyncMetaData(forkedLocalRecord, true);
 
     this._computeFields(forkedLocalRecord);
-    this.data.push(forkedLocalRecord);
+    this._data.push(forkedLocalRecord);
 
     return forkedLocalRecord;
   }
@@ -797,7 +810,7 @@ class AutofillRecords {
       throw new Error(`Record ${remoteRecord.guid} not found`);
     }
 
-    let localRecord = this.data[localIndex];
+    let localRecord = this._data[localIndex];
     let sync = this._getSyncMetaData(localRecord, true);
 
     let forkedGUID = null;
@@ -832,6 +845,7 @@ class AutofillRecords {
     this._store.saveSoon();
     Services.obs.notifyObservers({wrappedJSObject: {
       sourceSync: true,
+      collectionName: this._collectionName,
     }}, "formautofill-storage-changed", "reconcile");
 
     return {forkedGUID};
@@ -851,11 +865,11 @@ class AutofillRecords {
 
       let sync = this._getSyncMetaData(tombstone, true);
       sync.changeCounter = 0;
-      this.data.push(tombstone);
+      this._data.push(tombstone);
       return;
     }
 
-    let existing = this.data[index];
+    let existing = this._data[index];
     let sync = this._getSyncMetaData(existing, true);
     if (sync.changeCounter > 0) {
       // Deleting a record with unsynced local changes. To avoid potential
@@ -872,7 +886,7 @@ class AutofillRecords {
 
     // Removing a record that's not changed locally, and that's not already
     // deleted. Replace the record with a synced tombstone.
-    this.data[index] = {
+    this._data[index] = {
       guid,
       timeLastModified: Date.now(),
       deleted: true,
@@ -894,7 +908,7 @@ class AutofillRecords {
   pullSyncChanges() {
     let changes = {};
 
-    let profiles = this.data;
+    let profiles = this._data;
     for (let profile of profiles) {
       let sync = this._getSyncMetaData(profile, true);
       if (sync.changeCounter < 1) {
@@ -951,7 +965,7 @@ class AutofillRecords {
    * metadata for all items is removed.
    */
   resetSync() {
-    for (let record of this.data) {
+    for (let record of this._data) {
       delete record._sync;
     }
     // XXX - we should probably also delete all tombstones?
@@ -981,7 +995,7 @@ class AutofillRecords {
     }
 
     let index = this._findIndexByGUID(oldID);
-    let profile = this.data[index];
+    let profile = this._data[index];
     if (!profile) {
       throw new Error("changeGUID: no source record");
     }
@@ -1031,7 +1045,7 @@ class AutofillRecords {
       // handled them separately when applying the record.
       throw new Error("Tombstones can't have duplicates");
     }
-    let localRecords = this.data;
+    let localRecords = this._data;
     for (let localRecord of localRecords) {
       if (localRecord.deleted) {
         continue;
@@ -1104,11 +1118,11 @@ class AutofillRecords {
 
   _findByGUID(guid, {includeDeleted = false} = {}) {
     let found = this._findIndexByGUID(guid, {includeDeleted});
-    return found < 0 ? undefined : this.data[found];
+    return found < 0 ? undefined : this._data[found];
   }
 
   _findIndexByGUID(guid, {includeDeleted = false} = {}) {
-    return this.data.findIndex(record => {
+    return this._data.findIndex(record => {
       return record.guid == guid && (!record.deleted || includeDeleted);
     });
   }
@@ -1139,7 +1153,7 @@ class AutofillRecords {
     return hasChanges;
   }
 
-  _normalizeRecord(record) {
+  _normalizeRecord(record, preserveEmptyFields = false) {
     this._normalizeFields(record);
 
     for (let key in record) {
@@ -1150,6 +1164,13 @@ class AutofillRecords {
           typeof record[key] !== "number") {
         throw new Error(`"${key}" contains invalid data type.`);
       }
+      if (!preserveEmptyFields && record[key] === "") {
+        delete record[key];
+      }
+    }
+
+    if (!Object.keys(record).length) {
+      throw new Error("Record contains no valid field.");
     }
   }
 
@@ -1165,7 +1186,7 @@ class AutofillRecords {
    */
   mergeToStorage(targetRecord, strict = false) {
     let mergedGUIDs = [];
-    for (let record of this.data) {
+    for (let record of this._data) {
       if (!record.deleted && this.mergeIfPossible(record.guid, targetRecord, strict)) {
         mergedGUIDs.push(record.guid);
       }
@@ -1203,9 +1224,7 @@ class Addresses extends AutofillRecords {
   }
 
   _recordReadProcessor(address) {
-    // TODO: We only support US in MVP so hide the field if it's not. We
-    //       are going to support more countries in bug 1370193.
-    if (address.country && address.country != "US") {
+    if (address.country && !FormAutofillUtils.supportedCountries.includes(address.country)) {
       delete address.country;
       delete address["country-name"];
     }
@@ -1214,7 +1233,10 @@ class Addresses extends AutofillRecords {
   _computeFields(address) {
     // NOTE: Remember to bump the schema version number if any of the existing
     //       computing algorithm changes. (No need to bump when just adding new
-    //       computed fields)
+    //       computed fields.)
+
+    // NOTE: Computed fields should be always present in the storage no matter
+    //       it's empty or not.
 
     let hasNewComputedFields = false;
 
@@ -1263,7 +1285,7 @@ class Addresses extends AutofillRecords {
     // Compute tel
     if (!("tel-national" in address)) {
       if (address.tel) {
-        let tel = PhoneNumber.Parse(address.tel, address.country || FormAutofillUtils.DEFAULT_COUNTRY_CODE);
+        let tel = PhoneNumber.Parse(address.tel, address.country || FormAutofillUtils.DEFAULT_REGION);
         if (tel) {
           if (tel.countryCode) {
             address["tel-country-code"] = tel.countryCode;
@@ -1307,41 +1329,36 @@ class Addresses extends AutofillRecords {
   }
 
   _normalizeName(address) {
-    if (!address.name) {
-      return;
-    }
-
-    let nameParts = FormAutofillNameUtils.splitName(address.name);
-    if (!address["given-name"] && nameParts.given) {
-      address["given-name"] = nameParts.given;
-    }
-    if (!address["additional-name"] && nameParts.middle) {
-      address["additional-name"] = nameParts.middle;
-    }
-    if (!address["family-name"] && nameParts.family) {
-      address["family-name"] = nameParts.family;
+    if (address.name) {
+      let nameParts = FormAutofillNameUtils.splitName(address.name);
+      if (!address["given-name"] && nameParts.given) {
+        address["given-name"] = nameParts.given;
+      }
+      if (!address["additional-name"] && nameParts.middle) {
+        address["additional-name"] = nameParts.middle;
+      }
+      if (!address["family-name"] && nameParts.family) {
+        address["family-name"] = nameParts.family;
+      }
     }
     delete address.name;
   }
 
   _normalizeAddress(address) {
-    if (STREET_ADDRESS_COMPONENTS.every(c => !address[c])) {
-      return;
-    }
+    if (STREET_ADDRESS_COMPONENTS.some(c => !!address[c])) {
+      // Treat "street-address" as "address-line1" if it contains only one line
+      // and "address-line1" is omitted.
+      if (!address["address-line1"] && address["street-address"] &&
+          !address["street-address"].includes("\n")) {
+        address["address-line1"] = address["street-address"];
+        delete address["street-address"];
+      }
 
-    // Treat "street-address" as "address-line1" if it contains only one line
-    // and "address-line1" is omitted.
-    if (!address["address-line1"] && address["street-address"] &&
-        !address["street-address"].includes("\n")) {
-      address["address-line1"] = address["street-address"];
-      delete address["street-address"];
+      // Concatenate "address-line*" if "street-address" is omitted.
+      if (!address["street-address"]) {
+        address["street-address"] = STREET_ADDRESS_COMPONENTS.map(c => address[c]).join("\n").replace(/\n+$/, "");
+      }
     }
-
-    // Concatenate "address-line*" if "street-address" is omitted.
-    if (!address["street-address"]) {
-      address["street-address"] = STREET_ADDRESS_COMPONENTS.map(c => address[c]).join("\n");
-    }
-
     STREET_ADDRESS_COMPONENTS.forEach(c => delete address[c]);
   }
 
@@ -1365,20 +1382,17 @@ class Addresses extends AutofillRecords {
   }
 
   _normalizeTel(address) {
-    if (!address.tel && TEL_COMPONENTS.every(c => !address[c])) {
-      return;
+    if (address.tel || TEL_COMPONENTS.some(c => !!address[c])) {
+      FormAutofillUtils.compressTel(address);
+
+      let possibleRegion = address.country || FormAutofillUtils.DEFAULT_REGION;
+      let tel = PhoneNumber.Parse(address.tel, possibleRegion);
+
+      if (tel && tel.internationalNumber) {
+        // Force to save numbers in E.164 format if parse success.
+        address.tel = tel.internationalNumber;
+      }
     }
-
-    FormAutofillUtils.compressTel(address);
-
-    let possibleRegion = address.country || FormAutofillUtils.DEFAULT_COUNTRY_CODE;
-    let tel = PhoneNumber.Parse(address.tel, possibleRegion);
-
-    if (tel && tel.internationalNumber) {
-      // Force to save numbers in E.164 format if parse success.
-      address.tel = tel.internationalNumber;
-    }
-
     TEL_COMPONENTS.forEach(c => delete address[c]);
   }
 
@@ -1403,8 +1417,8 @@ class Addresses extends AutofillRecords {
       throw new Error("No matching address.");
     }
 
-    let addressToMerge = strict ? this._clone(address) : this._cloneAndCleanUp(address);
-    this._normalizeRecord(addressToMerge);
+    let addressToMerge = this._clone(address);
+    this._normalizeRecord(addressToMerge, strict);
     let hasMatchingField = false;
 
     for (let field of this.VALID_FIELDS) {
@@ -1475,7 +1489,10 @@ class CreditCards extends AutofillRecords {
   _computeFields(creditCard) {
     // NOTE: Remember to bump the schema version number if any of the existing
     //       computing algorithm changes. (No need to bump when just adding new
-    //       computed fields)
+    //       computed fields.)
+
+    // NOTE: Computed fields should be always present in the storage no matter
+    //       it's empty or not.
 
     let hasNewComputedFields = false;
 
@@ -1492,23 +1509,23 @@ class CreditCards extends AutofillRecords {
       hasNewComputedFields = true;
     }
 
-    let year = creditCard["cc-exp-year"];
-    let month = creditCard["cc-exp-month"];
-    if (!creditCard["cc-exp"] && month && year) {
-      creditCard["cc-exp"] = String(year) + "-" + String(month).padStart(2, "0");
+    // Compute credit card expiration date
+    if (!("cc-exp" in creditCard)) {
+      if (creditCard["cc-exp-month"] && creditCard["cc-exp-year"]) {
+        creditCard["cc-exp"] = String(creditCard["cc-exp-year"]) + "-" + String(creditCard["cc-exp-month"]).padStart(2, "0");
+      } else {
+        creditCard["cc-exp"] = "";
+      }
       hasNewComputedFields = true;
     }
 
     // Encrypt credit card number
     if (!("cc-number-encrypted" in creditCard)) {
-      let ccNumber = (creditCard["cc-number"] || "").replace(/\s/g, "");
-      if (FormAutofillUtils.isCCNumber(ccNumber)) {
+      if ("cc-number" in creditCard) {
+        let ccNumber = creditCard["cc-number"];
         creditCard["cc-number"] = this._getMaskedCCNumber(ccNumber);
         creditCard["cc-number-encrypted"] = MasterPassword.encryptSync(ccNumber);
       } else {
-        delete creditCard["cc-number"];
-        // Computed fields are always present in the storage no matter it's
-        // empty or not.
         creditCard["cc-number-encrypted"] = "";
       }
     }
@@ -1525,6 +1542,7 @@ class CreditCards extends AutofillRecords {
 
   _normalizeFields(creditCard) {
     this._normalizeCCName(creditCard);
+    this._normalizeCCNumber(creditCard);
     this._normalizeCCExpirationDate(creditCard);
   }
 
@@ -1537,10 +1555,18 @@ class CreditCards extends AutofillRecords {
           family: creditCard["cc-family-name"],
         });
       }
+    }
+    delete creditCard["cc-given-name"];
+    delete creditCard["cc-additional-name"];
+    delete creditCard["cc-family-name"];
+  }
 
-      delete creditCard["cc-given-name"];
-      delete creditCard["cc-additional-name"];
-      delete creditCard["cc-family-name"];
+  _normalizeCCNumber(creditCard) {
+    if (creditCard["cc-number"]) {
+      creditCard["cc-number"] = FormAutofillUtils.normalizeCCNumber(creditCard["cc-number"]);
+      if (!creditCard["cc-number"]) {
+        delete creditCard["cc-number"];
+      }
     }
   }
 
@@ -1636,13 +1662,18 @@ class CreditCards extends AutofillRecords {
   getDuplicateGuid(targetCreditCard) {
     let clonedTargetCreditCard = this._clone(targetCreditCard);
     this._normalizeRecord(clonedTargetCreditCard);
-    for (let creditCard of this.data) {
+    for (let creditCard of this._data) {
       let isDuplicate = this.VALID_FIELDS.every(field => {
         if (!clonedTargetCreditCard[field]) {
           return !creditCard[field];
         }
-        if (field == "cc-number") {
-          return this._getMaskedCCNumber(clonedTargetCreditCard[field]) == creditCard[field];
+        if (field == "cc-number" && creditCard[field]) {
+          if (MasterPassword.isEnabled) {
+            // Compare the masked numbers instead when the master password is
+            // enabled because we don't want to leak the credit card number.
+            return this._getMaskedCCNumber(clonedTargetCreditCard[field]) == creditCard[field];
+          }
+          return clonedTargetCreditCard[field] == MasterPassword.decryptSync(creditCard["cc-number-encrypted"]);
         }
         return clonedTargetCreditCard[field] == creditCard[field];
       });
@@ -1655,6 +1686,7 @@ class CreditCards extends AutofillRecords {
 
   /**
    * Merge new credit card into the specified record if cc-number is identical.
+   * (Note that credit card records always do non-strict merge.)
    *
    * @param  {string} guid
    *         Indicates which credit card to merge.
@@ -1672,7 +1704,7 @@ class CreditCards extends AutofillRecords {
       throw new Error("No matching credit card.");
     }
 
-    let creditCardToMerge = this._cloneAndCleanUp(creditCard);
+    let creditCardToMerge = this._clone(creditCard);
     this._normalizeRecord(creditCardToMerge);
 
     for (let field of this.VALID_FIELDS) {

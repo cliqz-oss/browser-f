@@ -95,7 +95,6 @@ struct JSSettings
     JSSettings_JSGC_SLICE_TIME_BUDGET,
     JSSettings_JSGC_DYNAMIC_HEAP_GROWTH,
     JSSettings_JSGC_DYNAMIC_MARK_SLICE,
-    JSSettings_JSGC_REFRESH_FRAME_SLICES,
     // JSGC_MODE not supported
 
     // This must be last so that we get an accurate count.
@@ -186,16 +185,6 @@ struct JSSettings
   }
 };
 
-enum WorkerPreference
-{
-#define WORKER_SIMPLE_PREF(name, getter, NAME) WORKERPREF_ ## NAME,
-#define WORKER_PREF(name, callback)
-#include "mozilla/dom/WorkerPrefs.h"
-#undef WORKER_SIMPLE_PREF
-#undef WORKER_PREF
-  WORKERPREF_COUNT
-};
-
 // Implemented in WorkerPrivate.cpp
 
 struct WorkerLoadInfo
@@ -203,7 +192,14 @@ struct WorkerLoadInfo
   // All of these should be released in WorkerPrivateParent::ForgetMainThreadObjects.
   nsCOMPtr<nsIURI> mBaseURI;
   nsCOMPtr<nsIURI> mResolvedScriptURI;
+
+  // This is the principal of the global (parent worker or a window) loading
+  // the worker. It can be null if we are executing a ServiceWorker, otherwise,
+  // except for data: URL, it must subsumes the worker principal.
+  // If we load a data: URL, mPrincipal will be a null principal.
+  nsCOMPtr<nsIPrincipal> mLoadingPrincipal;
   nsCOMPtr<nsIPrincipal> mPrincipal;
+
   nsCOMPtr<nsIScriptContext> mScriptContext;
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
   nsCOMPtr<nsIContentSecurityPolicy> mCSP;
@@ -279,10 +275,10 @@ struct WorkerLoadInfo
   nsresult
   SetPrincipalFromChannel(nsIChannel* aChannel);
 
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   bool
   FinalChannelPrincipalIsValid(nsIChannel* aChannel);
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   bool
   PrincipalIsValid() const;
 

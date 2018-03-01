@@ -300,7 +300,7 @@ public:
     nsStyleBorder styleBorder = *mFrame->StyleBorder();
     nsMathMLmtdFrame* frame = static_cast<nsMathMLmtdFrame*>(mFrame);
     ApplyBorderToStyle(frame, styleBorder);
-    nsRect bounds = CalculateBounds(styleBorder).GetBounds();
+    nsRect bounds = CalculateBounds<nsRect>(styleBorder);
     nsMargin overflow = ComputeBorderOverflow(frame, styleBorder);
     bounds.Inflate(overflow);
     return bounds;
@@ -320,7 +320,7 @@ public:
                            ? PaintBorderFlags::SYNC_DECODE_IMAGES
                            : PaintBorderFlags();
 
-    DrawResult result =
+    ImgDrawResult result =
       nsCSSRendering::PaintBorderWithStyleBorder(mFrame->PresContext(), *aCtx,
                                                  mFrame, mVisibleRect,
                                                  bounds,
@@ -357,8 +357,8 @@ ParseFrameAttribute(nsIFrame* aFrame,
 {
   nsAutoString attrValue;
 
-  nsIContent* frameContent = aFrame->GetContent();
-  frameContent->GetAttr(kNameSpaceID_None, aAttribute, attrValue);
+  Element* frameElement = aFrame->GetContent()->AsElement();
+  frameElement->GetAttr(kNameSpaceID_None, aAttribute, attrValue);
 
   if (!attrValue.IsEmpty()) {
     nsTArray<int8_t>* valueList =
@@ -504,12 +504,12 @@ ParseSpacingAttribute(nsMathMLmtableFrame* aFrame, nsAtom* aAttribute)
                "Non spacing attribute passed");
 
   nsAutoString attrValue;
-  nsIContent* frameContent = aFrame->GetContent();
-  frameContent->GetAttr(kNameSpaceID_None, aAttribute, attrValue);
+  Element* frameElement = aFrame->GetContent()->AsElement();
+  frameElement->GetAttr(kNameSpaceID_None, aAttribute, attrValue);
 
   if (nsGkAtoms::framespacing_ == aAttribute) {
     nsAutoString frame;
-    frameContent->GetAttr(kNameSpaceID_None, nsGkAtoms::frame, frame);
+    frameElement->GetAttr(kNameSpaceID_None, nsGkAtoms::frame, frame);
     if (frame.IsEmpty() || frame.EqualsLiteral("none")) {
       aFrame->SetFrameSpacing(0, 0);
       return;
@@ -537,7 +537,7 @@ ParseSpacingAttribute(nsMathMLmtableFrame* aFrame, nsAtom* aAttribute)
   ExtractSpacingValues(attrValue, aAttribute, valueList, aFrame, value, value2,
                        fontSizeInflation);
   if (valueList.Length() == 0) {
-    if (frameContent->HasAttr(kNameSpaceID_None, aAttribute)) {
+    if (frameElement->HasAttr(kNameSpaceID_None, aAttribute)) {
       ReportParseError(aFrame, aAttribute->GetUTF16String(),
                        attrValue.get());
     }
@@ -545,7 +545,7 @@ ParseSpacingAttribute(nsMathMLmtableFrame* aFrame, nsAtom* aAttribute)
   }
   if (aAttribute == nsGkAtoms::framespacing_) {
     if (valueList.Length() == 1) {
-      if(frameContent->HasAttr(kNameSpaceID_None, aAttribute)) {
+      if(frameElement->HasAttr(kNameSpaceID_None, aAttribute)) {
         ReportParseError(aFrame, aAttribute->GetUTF16String(),
                          attrValue.get());
       }
@@ -844,7 +844,7 @@ nsMathMLmtableWrapperFrame::Reflow(nsPresContext*           aPresContext,
   // see if the user has set the align attribute on the <mtable>
   int32_t rowIndex = 0;
   eAlign tableAlign = eAlign_axis;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::align, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::align, value);
   if (!value.IsEmpty()) {
     ParseAlignAttribute(value, tableAlign, rowIndex);
   }
@@ -1088,9 +1088,9 @@ void
 nsMathMLmtableFrame::SetUseCSSSpacing()
 {
   mUseCSSSpacing =
-    !(mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::rowspacing_) ||
-      mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::columnspacing_) ||
-      mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::framespacing_));
+    !(mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::rowspacing_) ||
+      mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::columnspacing_) ||
+      mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::framespacing_));
 }
 
 NS_QUERYFRAME_HEAD(nsMathMLmtableFrame)
@@ -1232,7 +1232,7 @@ nsMathMLmtdFrame::ProcessBorders(nsTableFrame* aFrame,
                                  nsDisplayListBuilder* aBuilder,
                                  const nsDisplayListSet& aLists)
 {
-  aLists.BorderBackground()->AppendNewToTop(new (aBuilder)
+  aLists.BorderBackground()->AppendToTop(new (aBuilder)
                                             nsDisplaymtdBorder(aBuilder, this));
   return NS_OK;
 }

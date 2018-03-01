@@ -11,9 +11,9 @@ function test_requestTypes_request(client, anActor) {
                                            .prototype
                                            .requestTypes);
 
-    do_check_true(Array.isArray(response.requestTypes));
-    do_check_eq(JSON.stringify(response.requestTypes),
-                JSON.stringify(expectedRequestTypes));
+    Assert.ok(Array.isArray(response.requestTypes));
+    Assert.equal(JSON.stringify(response.requestTypes),
+                 JSON.stringify(expectedRequestTypes));
 
     client.close().then(() => {
       do_test_finished();
@@ -23,7 +23,7 @@ function test_requestTypes_request(client, anActor) {
 
 function run_test() {
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
+  DebuggerServer.registerAllActors();
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
   client.connect().then(function () {

@@ -63,6 +63,7 @@ SyncedTabsDeckComponent.prototype = {
     NOT_AUTHED_INFO: "notAuthedInfo",
     SINGLE_DEVICE_INFO: "singleDeviceInfo",
     TABS_DISABLED: "tabs-disabled",
+    UNVERIFIED: "unverified"
   },
 
   get container() {
@@ -73,14 +74,18 @@ SyncedTabsDeckComponent.prototype = {
     Services.obs.addObserver(this, this._SyncedTabs.TOPIC_TABS_CHANGED);
     Services.obs.addObserver(this, FxAccountsCommon.ONLOGIN_NOTIFICATION);
     Services.obs.addObserver(this, "weave:service:login:change");
+    // If the Sync service is not ready, in init() > updatePanel() we will
+    // show a blank screen. If tab syncing is disabled, we will not get any other
+    // ui-refreshing notifications! We listen to :ready in order to check again
+    // if this engine is disabled and refresh the UI one last time.
+    Services.obs.addObserver(this, "weave:service:ready");
 
     // Go ahead and trigger sync
     this._SyncedTabs.syncTabs()
                     .catch(Cu.reportError);
 
     this._deckView = new this._DeckView(this._window, this.tabListComponent, {
-      onAndroidClick: event => this.openAndroidLink(event),
-      oniOSClick: event => this.openiOSLink(event),
+      onConnectDeviceClick: event => this.openConnectDevice(event),
       onSyncPrefClick: event => this.openSyncPrefs(event)
     });
 
@@ -96,6 +101,7 @@ SyncedTabsDeckComponent.prototype = {
     Services.obs.removeObserver(this, this._SyncedTabs.TOPIC_TABS_CHANGED);
     Services.obs.removeObserver(this, FxAccountsCommon.ONLOGIN_NOTIFICATION);
     Services.obs.removeObserver(this, "weave:service:login:change");
+    Services.obs.removeObserver(this, "weave:service:ready");
     this._deckView.destroy();
   },
 
@@ -105,6 +111,9 @@ SyncedTabsDeckComponent.prototype = {
         this._syncedTabsListStore.getData();
         this.updatePanel();
         break;
+      case "weave:service:ready":
+        Services.obs.removeObserver(this, "weave:service:ready");
+        // Intended fallthrough.
       case FxAccountsCommon.ONLOGIN_NOTIFICATION:
       case "weave:service:login:change":
         this.updatePanel();
@@ -116,14 +125,17 @@ SyncedTabsDeckComponent.prototype = {
 
   // There's no good way to mock fxAccounts in browser tests where it's already
   // been instantiated, so we have this method for stubbing.
-  _accountStatus() {
-    return this._fxAccounts.accountStatus();
+  _getSignedInUser() {
+    return this._fxAccounts.getSignedInUser();
   },
 
   getPanelStatus() {
-    return this._accountStatus().then(exists => {
-      if (!exists || this._SyncedTabs.loginFailed) {
+    return this._getSignedInUser().then(user => {
+      if (!user || this._SyncedTabs.loginFailed) {
         return this.PANELS.NOT_AUTHED_INFO;
+      }
+      if (!user.verified) {
+        return this.PANELS.UNVERIFIED;
       }
       if (!this._SyncedTabs.isConfiguredToSyncTabs) {
         return this.PANELS.TABS_DISABLED;
@@ -151,22 +163,12 @@ SyncedTabsDeckComponent.prototype = {
       .catch(Cu.reportError);
   },
 
-  openAndroidLink(event) {
-    let href = Services.prefs.getCharPref("identity.mobilepromo.android") + "synced-tabs-sidebar";
-    this._openUrl(href, event);
-  },
-
-  openiOSLink(event) {
-    let href = Services.prefs.getCharPref("identity.mobilepromo.ios") + "synced-tabs-sidebar";
-    this._openUrl(href, event);
-  },
-
-  _openUrl(url, event) {
-    this._window.openUILink(url, event);
-  },
-
   openSyncPrefs() {
     this._getChromeWindow(this._window).gSync.openPrefs("tabs-sidebar");
-  }
+  },
+
+  openConnectDevice() {
+    this._getChromeWindow(this._window).gSync.openConnectAnotherDevice("tabs-sidebar");
+  },
 };
 

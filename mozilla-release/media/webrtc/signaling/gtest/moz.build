@@ -20,12 +20,14 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'uikit' and CONFIG['OS_TARGET'] != 'Android':
       '/media/webrtc/signaling/src/mediapipeline',
       '/media/webrtc/signaling/src/peerconnection',
       '/media/webrtc/trunk',
+      '/netwerk/srtp/src/include',
     ]
 
     SOURCES += [
         'jsep_session_unittest.cpp',
         'jsep_track_unittest.cpp',
         'mediaconduit_unittests.cpp',
+        'rtpsources_unittests.cpp',
         'sdp_unittests.cpp',
         'videoconduit_unittests.cpp',
     ]
@@ -38,7 +40,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'uikit' and CONFIG['OS_TARGET'] != 'Android':
 
     FINAL_LIBRARY = 'xul-gtest'
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     # This is intended as a temporary workaround to enable warning free building
     # with VS2015.
     # reinterpret_cast': conversion from 'DWORD' to 'HANDLE' of greater size

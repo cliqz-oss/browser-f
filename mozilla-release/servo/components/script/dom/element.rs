@@ -89,7 +89,7 @@ use script_layout_interface::message::ReflowGoal;
 use script_thread::ScriptThread;
 use selectors::Element as SelectorsElement;
 use selectors::attr::{AttrSelectorOperation, NamespaceConstraint, CaseSensitivity};
-use selectors::matching::{ElementSelectorFlags, MatchingContext, RelevantLinkStatus};
+use selectors::matching::{ElementSelectorFlags, MatchingContext};
 use selectors::sink::Push;
 use servo_arc::Arc;
 use servo_atoms::Atom;
@@ -348,11 +348,12 @@ impl Element {
     }
 
     // https://drafts.csswg.org/cssom-view/#css-layout-box
-    // Elements that have a computed value of the display property
-    // that is table-column or table-column-group
-    // FIXME: Currently, it is assumed to be true always
+    //
+    // We'll have no content box if there's no fragment for the node, and we use
+    // bounding_content_box, for simplicity, to detect this (rather than making a more specific
+    // query to the layout thread).
     fn has_css_layout_box(&self) -> bool {
-        true
+        self.upcast::<Node>().bounding_content_box().is_some()
     }
 
     // https://drafts.csswg.org/cssom-view/#potentially-scrollable
@@ -362,18 +363,45 @@ impl Element {
         !self.overflow_y_is_visible()
     }
 
+    // https://drafts.csswg.org/cssom-view/#scrolling-box
+    fn has_scrolling_box(&self) -> bool {
+        // TODO: scrolling mechanism, such as scrollbar (We don't have scrollbar yet)
+        //       self.has_scrolling_mechanism()
+        self.overflow_x_is_hidden() ||
+        self.overflow_y_is_hidden()
+    }
+
+    fn has_overflow(&self) -> bool {
+        self.ScrollHeight() > self.ClientHeight() ||
+        self.ScrollWidth() > self.ClientWidth()
+    }
+
     // used value of overflow-x is "visible"
     fn overflow_x_is_visible(&self) -> bool {
         let window = window_from_node(self);
         let overflow_pair = window.overflow_query(self.upcast::<Node>().to_trusted_node_address());
-        overflow_pair.x == overflow_x::computed_value::T::visible
+        overflow_pair.x == overflow_x::computed_value::T::Visible
     }
 
     // used value of overflow-y is "visible"
     fn overflow_y_is_visible(&self) -> bool {
         let window = window_from_node(self);
         let overflow_pair = window.overflow_query(self.upcast::<Node>().to_trusted_node_address());
-        overflow_pair.y == overflow_y::computed_value::T::visible
+        overflow_pair.y == overflow_y::computed_value::T::Visible
+    }
+
+    // used value of overflow-x is "hidden"
+    fn overflow_x_is_hidden(&self) -> bool {
+        let window = window_from_node(self);
+        let overflow_pair = window.overflow_query(self.upcast::<Node>().to_trusted_node_address());
+        overflow_pair.x == overflow_x::computed_value::T::Hidden
+    }
+
+    // used value of overflow-y is "hidden"
+    fn overflow_y_is_hidden(&self) -> bool {
+        let window = window_from_node(self);
+        let overflow_pair = window.overflow_query(self.upcast::<Node>().to_trusted_node_address());
+        overflow_pair.y == overflow_y::computed_value::T::Hidden
     }
 }
 
@@ -560,9 +588,9 @@ impl LayoutElementHelpers for LayoutDom<Element> {
                 shared_lock,
                 PropertyDeclaration::FontFamily(
                     font_family::SpecifiedValue::Values(
-                        font_family::computed_value::FontFamilyList::new(vec![
-                            font_family::computed_value::FontFamily::from_atom(
-                                font_family)])))));
+                        computed::font::FontFamilyList::new(Box::new([
+                            computed::font::SingleFontFamily::from_atom(
+                                font_family)]))))));
         }
 
         let font_size = self.downcast::<HTMLFontElement>().and_then(|this| this.get_size());
@@ -1470,7 +1498,13 @@ impl Element {
                return;
         }
 
-        // Step 10 (TODO)
+        // Step 10
+        if !self.has_css_layout_box() ||
+           !self.has_scrolling_box() ||
+           !self.has_overflow()
+        {
+            return;
+        }
 
         // Step 11
         win.scroll_node(node, x, y, behavior);
@@ -1926,7 +1960,13 @@ impl ElementMethods for Element {
                return;
         }
 
-        // Step 10 (TODO)
+        // Step 10
+        if !self.has_css_layout_box() ||
+           !self.has_scrolling_box() ||
+           !self.has_overflow()
+        {
+            return;
+        }
 
         // Step 11
         win.scroll_node(node, self.ScrollLeft(), y, behavior);
@@ -2019,7 +2059,13 @@ impl ElementMethods for Element {
                return;
         }
 
-        // Step 10 (TODO)
+        // Step 10
+        if !self.has_css_layout_box() ||
+           !self.has_scrolling_box() ||
+           !self.has_overflow()
+        {
+            return;
+        }
 
         // Step 11
         win.scroll_node(node, x, self.ScrollTop(), behavior);
@@ -2590,7 +2636,6 @@ impl<'a> SelectorsElement for DomRoot<Element> {
         &self,
         pseudo_class: &NonTSPseudoClass,
         _: &mut MatchingContext<Self::Impl>,
-        _: &RelevantLinkStatus,
         _: &mut F,
     ) -> bool
     where

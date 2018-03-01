@@ -101,13 +101,13 @@ ChromiumCDMProxy::Init(PromiseId aPromiseId,
         [self, aPromiseId](RefPtr<gmp::ChromiumCDMParent> cdm) {
           self->mCallback =
             MakeUnique<ChromiumCDMCallbackProxy>(self, self->mMainThread);
+          nsCString failureReason;
           if (!cdm->Init(self->mCallback.get(),
                          self->mDistinctiveIdentifierRequired,
                          self->mPersistentStateRequired,
-                         self->mMainThread)) {
-            self->RejectPromise(aPromiseId,
-                                NS_ERROR_FAILURE,
-                                NS_LITERAL_CSTRING("GetCDM failed due to CDM initialization failure."));
+                         self->mMainThread,
+                         failureReason)) {
+            self->RejectPromise(aPromiseId, NS_ERROR_FAILURE, failureReason);
             return;
           }
           {
@@ -466,6 +466,17 @@ ChromiumCDMProxy::OnResolveLoadSessionPromise(uint32_t aPromiseId,
 }
 
 void
+ChromiumCDMProxy::OnResolvePromiseWithKeyStatus(uint32_t aPromiseId,
+                                                dom::MediaKeyStatus aKeyStatus)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (mKeys.IsNull()) {
+    return;
+  }
+  mKeys->ResolvePromiseWithKeyStatus(aPromiseId, aKeyStatus);
+}
+
+void
 ChromiumCDMProxy::OnSessionMessage(const nsAString& aSessionId,
                                    dom::MediaKeyMessageType aMessageType,
                                    const nsTArray<uint8_t>& aMessage)
@@ -517,8 +528,8 @@ ChromiumCDMProxy::OnSessionClosed(const nsAString& aSessionId)
 
   bool keyStatusesChange = false;
   {
-    CDMCaps::AutoLock caps(Capabilites());
-    keyStatusesChange = caps.RemoveKeysForSession(nsString(aSessionId));
+    auto caps = Capabilites().Lock();
+    keyStatusesChange = caps->RemoveKeysForSession(nsString(aSessionId));
   }
   if (keyStatusesChange) {
     OnKeyStatusesChange(aSessionId);
@@ -571,7 +582,7 @@ ChromiumCDMProxy::KeySystem() const
   return mKeySystem;
 }
 
-CDMCaps&
+DataMutex<CDMCaps>&
 ChromiumCDMProxy::Capabilites()
 {
   return mCapabilites;
@@ -591,11 +602,28 @@ ChromiumCDMProxy::Decrypt(MediaRawData* aSample)
 }
 
 void
-ChromiumCDMProxy::GetSessionIdsForKeyId(const nsTArray<uint8_t>& aKeyId,
-                                        nsTArray<nsCString>& aSessionIds)
+ChromiumCDMProxy::GetStatusForPolicy(PromiseId aPromiseId,
+                                     const nsAString& aMinHdcpVersion)
 {
-  CDMCaps::AutoLock caps(Capabilites());
-  caps.GetSessionIdsForKeyId(aKeyId, aSessionIds);
+  MOZ_ASSERT(NS_IsMainThread());
+  EME_LOG("ChromiumCDMProxy::GetStatusForPolicy(pid=%u) minHdcpVersion=%s",
+          aPromiseId,
+          NS_ConvertUTF16toUTF8(aMinHdcpVersion).get());
+
+  RefPtr<gmp::ChromiumCDMParent> cdm = GetCDMParent();
+  if (!cdm) {
+    RejectPromise(aPromiseId,
+                  NS_ERROR_DOM_INVALID_STATE_ERR,
+                  NS_LITERAL_CSTRING("Null CDM in GetStatusForPolicy"));
+    return;
+  }
+
+  mGMPThread->Dispatch(NewRunnableMethod<uint32_t, nsCString>(
+    "gmp::ChromiumCDMParent::GetStatusForPolicy",
+    cdm,
+    &gmp::ChromiumCDMParent::GetStatusForPolicy,
+    aPromiseId,
+    NS_ConvertUTF16toUTF8(aMinHdcpVersion)));
 }
 
 void

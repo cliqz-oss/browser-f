@@ -23,6 +23,7 @@ namespace gfx {
 class VRLayerParent;
 class VRManagerParent;
 class VRDisplayHost;
+class VRSystemManagerPuppet;
 
 class VRManager
 {
@@ -47,10 +48,12 @@ public:
   RefPtr<gfx::VRControllerHost> GetController(const uint32_t& aControllerID);
   void GetVRControllerInfo(nsTArray<VRControllerInfo>& aControllerInfo);
   void CreateVRTestSystem();
+  VRSystemManagerPuppet* GetPuppetManager();
+
   void VibrateHaptic(uint32_t aControllerIdx, uint32_t aHapticIndex,
-                     double aIntensity, double aDuration, uint32_t aPromiseID);
+                     double aIntensity, double aDuration, const VRManagerPromise& aPromise);
   void StopVibrateHaptic(uint32_t aControllerIdx);
-  void NotifyVibrateHapticCompleted(uint32_t aPromiseID);
+  void NotifyVibrateHapticCompleted(const VRManagerPromise& aPromise);
   void DispatchSubmitFrameResult(uint32_t aDisplayID, const VRSubmitFrameResultInfo& aResult);
 
 protected:
@@ -64,6 +67,9 @@ private:
   void Shutdown();
 
   void DispatchVRDisplayInfoUpdate();
+  void UpdateRequestedDevices();
+  void EnumerateVRDisplays();
+  void CheckForInactiveTimeout();
 
   typedef nsTHashtable<nsRefPtrHashKey<VRManagerParent>> VRManagerParentSet;
   VRManagerParentSet mVRManagerParents;
@@ -79,9 +85,12 @@ private:
 
   Atomic<bool> mInitialized;
 
-  TimeStamp mLastRefreshTime;
+  TimeStamp mLastControllerEnumerationTime;
+  TimeStamp mLastDisplayEnumerationTime;
   TimeStamp mLastActiveTime;
-  bool mVRTestSystemCreated;
+  RefPtr<VRSystemManagerPuppet> mPuppetManager;
+  bool mVRDisplaysRequested;
+  bool mVRControllersRequested;
 };
 
 } // namespace gfx

@@ -679,7 +679,7 @@ nsHTMLFramesetFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   BuildDisplayListForInline(aBuilder, aLists);
 
   if (mDragger && aBuilder->IsForEventDelivery()) {
-    aLists.Content()->AppendNewToTop(
+    aLists.Content()->AppendToTop(
       new (aBuilder) nsDisplayEventReceiver(aBuilder, this));
   }
 }
@@ -1128,7 +1128,9 @@ nsHTMLFramesetFrame::GetNoResize(nsIFrame* aChildFrame)
 {
   nsIContent* content = aChildFrame->GetContent();
 
-  return content && content->HasAttr(kNameSpaceID_None, nsGkAtoms::noresize);
+  return content &&
+    content->IsElement() &&
+    content->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::noresize);
 }
 
 bool
@@ -1263,7 +1265,8 @@ nsHTMLFramesetFrame::MouseDrag(nsPresContext* aPresContext,
       GenerateRowCol(aPresContext, width, mNumCols, colSpecs, mColSizes.get(),
                      newColAttr);
       // Setting the attr will trigger a reflow
-      mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::cols, newColAttr, true);
+      mContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::cols,
+                                     newColAttr, true);
     }
   } else {
     change = aPresContext->DevPixelsToAppUnits(
@@ -1287,7 +1290,8 @@ nsHTMLFramesetFrame::MouseDrag(nsPresContext* aPresContext,
       GenerateRowCol(aPresContext, height, mNumRows, rowSpecs, mRowSizes.get(),
                      newRowAttr);
       // Setting the attr will trigger a reflow
-      mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::rows, newRowAttr, true);
+      mContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::rows,
+                                     newRowAttr, true);
     }
   }
 
@@ -1420,7 +1424,7 @@ void
 nsHTMLFramesetBorderFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                             const nsDisplayListSet& aLists)
 {
-  aLists.Content()->AppendNewToTop(
+  aLists.Content()->AppendToTop(
     new (aBuilder) nsDisplayFramesetBorder(aBuilder, this));
 }
 
@@ -1631,6 +1635,6 @@ void
 nsHTMLFramesetBlankFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                            const nsDisplayListSet& aLists)
 {
-  aLists.Content()->AppendNewToTop(
+  aLists.Content()->AppendToTop(
     new (aBuilder) nsDisplayFramesetBlank(aBuilder, this));
 }

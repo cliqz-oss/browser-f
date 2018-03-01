@@ -48,9 +48,15 @@ extern crate lazy_static;
 extern crate log;
 #[macro_use]
 extern crate thread_profiler;
+#[cfg(any(feature = "debugger", feature = "capture"))]
+#[macro_use]
+extern crate serde;
 
+mod batch;
 mod border;
 mod box_shadow;
+#[cfg(feature = "capture")]
+mod capture;
 mod clip;
 mod clip_scroll_node;
 mod clip_scroll_tree;
@@ -76,12 +82,14 @@ mod picture;
 mod prim_store;
 mod print_tree;
 mod profiler;
+mod query;
 mod record;
 mod render_backend;
 mod render_task;
 mod renderer;
 mod resource_cache;
 mod scene;
+mod segment;
 mod spring;
 mod texture_allocator;
 mod texture_cache;
@@ -138,21 +146,26 @@ extern crate gleam;
 extern crate num_traits;
 extern crate plane_split;
 extern crate rayon;
-#[cfg(feature = "debugger")]
-#[macro_use]
-extern crate serde_derive;
+#[cfg(feature = "capture")]
+extern crate ron;
 #[cfg(feature = "debugger")]
 extern crate serde_json;
+extern crate smallvec;
 extern crate time;
 #[cfg(feature = "debugger")]
 extern crate ws;
+#[cfg(feature = "debugger")]
+extern crate image;
+#[cfg(feature = "debugger")]
+extern crate base64;
+
 pub extern crate webrender_api;
 
 #[doc(hidden)]
-pub use device::build_shader_strings;
+pub use device::{build_shader_strings, ProgramCache, ReadPixelsFormat, UploadMethod, VertexUsageHint};
 pub use renderer::{CpuProfile, DebugFlags, GpuProfile, OutputImageHandler, RendererKind};
 pub use renderer::{ExternalImage, ExternalImageHandler, ExternalImageSource};
-pub use renderer::{GraphicsApi, GraphicsApiInfo, ReadPixelsFormat, Renderer, RendererOptions};
-pub use renderer::{ThreadListener};
+pub use renderer::{GraphicsApi, GraphicsApiInfo, Renderer, RendererOptions};
+pub use renderer::{RendererStats, ThreadListener};
 pub use renderer::MAX_VERTEX_TEXTURE_WIDTH;
 pub use webrender_api as api;

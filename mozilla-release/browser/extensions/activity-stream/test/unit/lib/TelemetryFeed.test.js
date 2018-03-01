@@ -1,16 +1,15 @@
 /* global Services */
-
-const injector = require("inject!lib/TelemetryFeed.jsm");
-const {GlobalOverrider, FakePrefs} = require("test/unit/utils");
-const {actionCreators: ac, actionTypes: at} = require("common/Actions.jsm");
-const {
+import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
+import {
   BasePing,
-  UndesiredPing,
-  UserEventPing,
   ImpressionStatsPing,
   PerfPing,
-  SessionPing
-} = require("test/schemas/pings");
+  SessionPing,
+  UndesiredPing,
+  UserEventPing
+} from "test/schemas/pings";
+import {FakePrefs, GlobalOverrider} from "test/unit/utils";
+import injector from "inject!lib/TelemetryFeed.jsm";
 
 const FAKE_UUID = "{foo-123-foo}";
 
@@ -132,7 +131,7 @@ describe("TelemetryFeed", () => {
 
       const session2 = instance.addSession("foo", "about:home");
 
-      assert.propertyNotVal(session2.perf, "load_trigger_type",
+      assert.notPropertyVal(session2.perf, "load_trigger_type",
         "first_window_opened");
     });
     it("should set load_trigger_ts to the value of perfService.timeOrigin", () => {
@@ -165,7 +164,7 @@ describe("TelemetryFeed", () => {
       assert.propertyVal(instance.sessions.get("foo").perf,
                          "topsites_data_late_by_ms", 10);
     });
-    it("should be a valid ping with the topsites_icon_stats perf", () => {
+    it("should be a valid ping with the topsites stats perf", () => {
       // Add a session
       const portID = "foo";
       const session = instance.addSession(portID, "about:home");
@@ -176,7 +175,8 @@ describe("TelemetryFeed", () => {
           "tippytop": 2,
           "rich_icon": 1,
           "no_image": 0
-        }
+        },
+        topsites_pinned: 3
       });
 
       // Create a ping referencing the session
@@ -184,6 +184,7 @@ describe("TelemetryFeed", () => {
       assert.validate(ping, SessionPing);
       assert.propertyVal(instance.sessions.get("foo").perf.topsites_icon_stats,
         "screenshot_with_icon", 2);
+      assert.equal(instance.sessions.get("foo").perf.topsites_pinned, 3);
     });
   });
 
@@ -676,18 +677,19 @@ describe("TelemetryFeed", () => {
   describe("#handleNewTabInit", () => {
     it("should set the session as preloaded if the browser is preloaded", () => {
       const session = {perf: {}};
+      let preloadedBrowser = {getAttribute() { return "preloaded"; }};
       sandbox.stub(instance, "addSession").returns(session);
 
       instance.onAction(ac.SendToMain({
         type: at.NEW_TAB_INIT,
-        data: {url: "about:newtab", browser}
+        data: {url: "about:newtab", browser: preloadedBrowser}
       }));
 
       assert.ok(session.perf.is_preloaded);
     });
     it("should set the session as non-preloaded if the browser is non-preloaded", () => {
       const session = {perf: {}};
-      let nonPreloadedBrowser = {getAttribute() { return "false"; }};
+      let nonPreloadedBrowser = {getAttribute() { return ""; }};
       sandbox.stub(instance, "addSession").returns(session);
 
       instance.onAction(ac.SendToMain({

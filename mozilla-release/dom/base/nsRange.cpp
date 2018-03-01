@@ -25,7 +25,6 @@
 #include "nsContentUtils.h"
 #include "nsGenericDOMDataNode.h"
 #include "nsTextFrame.h"
-#include "nsFontFaceList.h"
 #include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/DocumentType.h"
 #include "mozilla/dom/RangeBinding.h"
@@ -39,6 +38,7 @@
 #include "nsStyleStruct.h"
 #include "nsStyleStructInlines.h"
 #include "nsComputedDOMStyle.h"
+#include "mozilla/dom/InspectorFontFace.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -47,6 +47,12 @@ JSObject*
 nsRange::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   return RangeBinding::Wrap(aCx, this, aGivenProto);
+}
+
+DocGroup*
+nsRange::GetDocGroup() const
+{
+  return mOwner ? mOwner->GetDocGroup() : nullptr;
 }
 
 /******************************************************
@@ -200,9 +206,9 @@ nsRange::IsNodeSelected(nsINode* aNode, uint32_t aStartOffset,
   NS_ASSERTION(n || !aNode->IsSelectionDescendant(),
                "orphan selection descendant");
 
-  // Collect the potential ranges and their selection objects.
-  RangeHashTable ancestorSelectionRanges;
+  // Collect the selection objects for potential ranges.
   nsTHashtable<nsPtrHashKey<Selection>> ancestorSelections;
+  Selection* prevSelection = nullptr;
   uint32_t maxRangeCount = 0;
   for (; n; n = GetNextRangeCommonAncestor(n->GetParentNode())) {
     LinkedList<nsRange>* ranges = n->GetExistingCommonAncestorRanges();
@@ -213,35 +219,64 @@ nsRange::IsNodeSelected(nsINode* aNode, uint32_t aStartOffset,
       MOZ_ASSERT(range->IsInSelection(),
                  "Why is this range registeed with a node?");
       // Looks like that IsInSelection() assert fails sometimes...
-      if (!range->Collapsed() && range->IsInSelection()) {
-        ancestorSelectionRanges.PutEntry(range);
+      if (range->IsInSelection()) {
         Selection* selection = range->mSelection;
-        ancestorSelections.PutEntry(selection);
+        if (prevSelection != selection) {
+          prevSelection = selection;
+          ancestorSelections.PutEntry(selection);
+        }
         maxRangeCount = std::max(maxRangeCount, selection->RangeCount());
       }
     }
   }
 
-  if (!ancestorSelectionRanges.IsEmpty()) {
-    nsTArray<const nsRange*> sortedRanges(maxRangeCount);
+  IsItemInRangeComparator comparator = { aNode, aStartOffset, aEndOffset };
+  if (!ancestorSelections.IsEmpty()) {
     for (auto iter = ancestorSelections.ConstIter(); !iter.Done(); iter.Next()) {
       Selection* selection = iter.Get()->GetKey();
-      // Sort the found ranges for |selection| in document order
+      // Binary search the sorted ranges in this selection.
       // (Selection::GetRangeAt returns its ranges ordered).
-      for (uint32_t i = 0, len = selection->RangeCount(); i < len; ++i) {
-        nsRange* range = selection->GetRangeAt(i);
-        if (ancestorSelectionRanges.Contains(range)) {
-          sortedRanges.AppendElement(range);
+      size_t low = 0;
+      size_t high = selection->RangeCount();
+
+      while (high != low) {
+        size_t middle = low + (high - low) / 2;
+
+        const nsRange* const range = selection->GetRangeAt(middle);
+        int result = comparator(range);
+        if (result == 0) {
+          if (!range->Collapsed())
+            return true;
+
+          const nsRange* middlePlus1;
+          const nsRange* middleMinus1;
+          // if node end > start of middle+1, result = 1
+          if (middle + 1 < high &&
+              (middlePlus1 = selection->GetRangeAt(middle + 1)) &&
+              nsContentUtils::ComparePoints(
+                aNode, static_cast<int32_t>(aEndOffset),
+                middlePlus1->GetStartContainer(),
+                static_cast<int32_t>(middlePlus1->StartOffset())) > 0) {
+              result = 1;
+          // if node start < end of middle - 1, result = -1
+          } else if (middle >= 1 &&
+              (middleMinus1 = selection->GetRangeAt(middle - 1)) &&
+              nsContentUtils::ComparePoints(
+                aNode, static_cast<int32_t>(aStartOffset),
+                middleMinus1->GetEndContainer(),
+                static_cast<int32_t>(middleMinus1->EndOffset())) < 0) {
+            result = -1;
+          } else {
+            break;
+          }
+        }
+
+        if (result < 0) {
+          high = middle;
+        } else {
+          low = middle + 1;
         }
       }
-      MOZ_ASSERT(!sortedRanges.IsEmpty());
-      // Binary search the now sorted ranges.
-      IsItemInRangeComparator comparator = { aNode, aStartOffset, aEndOffset };
-      size_t unused;
-      if (mozilla::BinarySearchIf(sortedRanges, 0, sortedRanges.Length(), comparator, &unused)) {
-        return true;
-      }
-      sortedRanges.ClearAndRetainStorage();
     }
   }
   return false;
@@ -256,7 +291,7 @@ nsRange::~nsRange()
   NS_ASSERTION(!IsInSelection(), "deleting nsRange that is in use");
 
   // we want the side effects (releases and list removals)
-  DoSetRange(nullptr, 0, nullptr, 0, nullptr);
+  DoSetRange(RawRangeBoundary(), RawRangeBoundary(), nullptr);
 }
 
 nsRange::nsRange(nsINode* aNode)
@@ -830,14 +865,14 @@ nsRange::IsPointInRange(nsIDOMNode* aContainer, uint32_t aOffset, bool* aResult)
   }
 
   ErrorResult rv;
-  *aResult = IsPointInRange(*container, aOffset, rv);
+  *aResult = IsPointInRange(RawRangeBoundary(container, aOffset), rv);
   return rv.StealNSResult();
 }
 
 bool
-nsRange::IsPointInRange(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv)
+nsRange::IsPointInRange(const RawRangeBoundary& aPoint, ErrorResult& aRv)
 {
-  uint16_t compareResult = ComparePoint(aContainer, aOffset, aRv);
+  uint16_t compareResult = ComparePoint(aPoint, aRv);
   // If the node isn't in the range's document, it clearly isn't in the range.
   if (aRv.ErrorCodeIs(NS_ERROR_DOM_WRONG_DOCUMENT_ERR)) {
     aRv.SuppressException();
@@ -857,42 +892,46 @@ nsRange::ComparePoint(nsIDOMNode* aContainer, uint32_t aOffset,
   NS_ENSURE_TRUE(container, NS_ERROR_DOM_HIERARCHY_REQUEST_ERR);
 
   ErrorResult rv;
-  *aResult = ComparePoint(*container, aOffset, rv);
+  *aResult = ComparePoint(RawRangeBoundary(container, aOffset), rv);
   return rv.StealNSResult();
 }
 
 int16_t
-nsRange::ComparePoint(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv)
+nsRange::ComparePoint(const RawRangeBoundary& aPoint, ErrorResult& aRv)
 {
+  if (NS_WARN_IF(!aPoint.IsSet())) {
+    // FYI: Shouldn't reach this case if it's called by JS.  Therefore, it's
+    //      okay to warn.
+    aRv.Throw(NS_ERROR_DOM_INVALID_NODE_TYPE_ERR);
+    return 0;
+  }
+
   // our range is in a good state?
   if (!mIsPositioned) {
     aRv.Throw(NS_ERROR_NOT_INITIALIZED);
     return 0;
   }
 
-  if (!nsContentUtils::ContentIsDescendantOf(&aContainer, mRoot)) {
+  if (!nsContentUtils::ContentIsDescendantOf(aPoint.Container(), mRoot)) {
     aRv.Throw(NS_ERROR_DOM_WRONG_DOCUMENT_ERR);
     return 0;
   }
 
-  if (aContainer.NodeType() == nsIDOMNode::DOCUMENT_TYPE_NODE) {
+  if (aPoint.Container()->NodeType() == nsIDOMNode::DOCUMENT_TYPE_NODE) {
     aRv.Throw(NS_ERROR_DOM_INVALID_NODE_TYPE_ERR);
     return 0;
   }
 
-  if (aOffset > aContainer.Length()) {
+  if (aPoint.Offset() > aPoint.Container()->Length()) {
     aRv.Throw(NS_ERROR_DOM_INDEX_SIZE_ERR);
     return 0;
   }
 
-  int32_t cmp = nsContentUtils::ComparePoints(&aContainer, aOffset,
-                                              mStart.Container(),
-                                              mStart.Offset());
+  int32_t cmp = nsContentUtils::ComparePoints(aPoint, mStart.AsRaw());
   if (cmp <= 0) {
     return cmp;
   }
-  if (nsContentUtils::ComparePoints(mEnd.Container(), mEnd.Offset(),
-                                    &aContainer, aOffset) == -1) {
+  if (nsContentUtils::ComparePoints(mEnd.AsRaw(), aPoint) == -1) {
     return 1;
   }
 
@@ -1020,13 +1059,6 @@ nsRange::DoSetRange(const RawRangeBoundary& aStart,
   // sure to not use it here to determine our "old" current ancestor.
   mStart = aStart;
   mEnd = aEnd;
-
-  // If RangeBoundary is initialized with a container node and offset in it,
-  // its mRef may not have been initialized yet.  However, nsRange will need to
-  // adjust the offset when the node position is changed.  In such case,
-  // RangeBoundary::mRef needs to be initialized for recomputing offset later.
-  mStart.EnsureRef();
-  mEnd.EnsureRef();
 
   mIsPositioned = !!mStart.Container();
   if (checkCommonAncestor) {
@@ -1356,7 +1388,7 @@ nsRange::SetStart(nsINode& aNode, uint32_t aOffset, ErrorResult& aRv)
   }
 
   AutoInvalidateSelection atEndOfBlock(this);
-  aRv = SetStart(&aNode, aOffset);
+  SetStart(RawRangeBoundary(&aNode, aOffset), aRv);
 }
 
 NS_IMETHODIMP
@@ -1372,33 +1404,29 @@ nsRange::SetStart(nsIDOMNode* aContainer, uint32_t aOffset)
   return rv.StealNSResult();
 }
 
-/* virtual */ nsresult
-nsRange::SetStart(nsINode* aContainer, uint32_t aOffset)
+void
+nsRange::SetStart(const RawRangeBoundary& aPoint, ErrorResult& aRv)
 {
-  nsINode* newRoot = IsValidBoundary(aContainer);
+  nsINode* newRoot = IsValidBoundary(aPoint.Container());
   if (!newRoot) {
-    return NS_ERROR_DOM_INVALID_NODE_TYPE_ERR;
+    aRv.Throw(NS_ERROR_DOM_INVALID_NODE_TYPE_ERR);
+    return;
   }
 
-  if (!IsValidOffset(aContainer, aOffset)) {
-    return NS_ERROR_DOM_INDEX_SIZE_ERR;
+  if (!aPoint.IsSetAndValid()) {
+    aRv.Throw(NS_ERROR_DOM_INDEX_SIZE_ERR);
+    return;
   }
 
   // Collapse if not positioned yet, if positioned in another doc or
   // if the new start is after end.
   if (!mIsPositioned || newRoot != mRoot ||
-      nsContentUtils::ComparePoints(aContainer,
-                                    static_cast<int32_t>(aOffset),
-                                    mEnd.Container(), mEnd.Offset()) == 1) {
-    DoSetRange(aContainer, aOffset, aContainer, aOffset, newRoot);
-
-    return NS_OK;
+      nsContentUtils::ComparePoints(aPoint, mEnd.AsRaw()) == 1) {
+    DoSetRange(aPoint, aPoint, newRoot);
+    return;
   }
 
-  RawRangeBoundary newStart(aContainer, aOffset);
-  DoSetRange(newStart, mEnd.AsRaw(), mRoot);
-
-  return NS_OK;
+  DoSetRange(aPoint, mEnd.AsRaw(), mRoot);
 }
 
 void
@@ -1496,7 +1524,7 @@ nsRange::SetEnd(nsINode& aNode, uint32_t aOffset, ErrorResult& aRv)
     return;
   }
   AutoInvalidateSelection atEndOfBlock(this);
-  aRv = SetEnd(&aNode, aOffset);
+  SetEnd(RawRangeBoundary(&aNode, aOffset), aRv);
 }
 
 NS_IMETHODIMP
@@ -1512,34 +1540,29 @@ nsRange::SetEnd(nsIDOMNode* aContainer, uint32_t aOffset)
   return rv.StealNSResult();
 }
 
-/* virtual */ nsresult
-nsRange::SetEnd(nsINode* aContainer, uint32_t aOffset)
+void
+nsRange::SetEnd(const RawRangeBoundary& aPoint, ErrorResult& aRv)
 {
-  nsINode* newRoot = IsValidBoundary(aContainer);
+  nsINode* newRoot = IsValidBoundary(aPoint.Container());
   if (!newRoot) {
-    return NS_ERROR_DOM_INVALID_NODE_TYPE_ERR;
+    aRv.Throw(NS_ERROR_DOM_INVALID_NODE_TYPE_ERR);
+    return;
   }
 
-  if (!IsValidOffset(aContainer, aOffset)) {
-    return NS_ERROR_DOM_INDEX_SIZE_ERR;
+  if (!aPoint.IsSetAndValid()) {
+    aRv.Throw(NS_ERROR_DOM_INDEX_SIZE_ERR);
+    return;
   }
 
   // Collapse if not positioned yet, if positioned in another doc or
   // if the new end is before start.
   if (!mIsPositioned || newRoot != mRoot ||
-      nsContentUtils::ComparePoints(mStart.Container(),
-                                    static_cast<int32_t>(mStart.Offset()),
-                                    aContainer,
-                                    static_cast<int32_t>(aOffset)) == 1) {
-    DoSetRange(aContainer, aOffset, aContainer, aOffset, newRoot);
-
-    return NS_OK;
+      nsContentUtils::ComparePoints(mStart.AsRaw(), aPoint) == 1) {
+    DoSetRange(aPoint, aPoint, newRoot);
+    return;
   }
 
-  RawRangeBoundary newEnd(aContainer, aOffset);
-  DoSetRange(mStart.AsRaw(), newEnd, mRoot);
-
-  return NS_OK;
+  DoSetRange(mStart.AsRaw(), aPoint, mRoot);
 }
 
 void
@@ -1618,18 +1641,6 @@ nsRange::SetStartAndEnd(const RawRangeBoundary& aStart,
   // Otherwise, set the range as specified.
   DoSetRange(aStart, aEnd, newStartRoot);
   return NS_OK;
-}
-
-nsresult
-nsRange::SetStartAndEnd(nsINode* aStartContainer, uint32_t aStartOffset,
-                        nsINode* aEndContainer, uint32_t aEndOffset)
-{
-  if (NS_WARN_IF(!aStartContainer) || NS_WARN_IF(!aEndContainer)) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  return SetStartAndEnd(RawRangeBoundary(aStartContainer, aStartOffset),
-                        RawRangeBoundary(aEndContainer, aEndOffset));
 }
 
 void
@@ -1782,7 +1793,8 @@ nsRange::SelectNode(nsINode& aNode, ErrorResult& aRv)
   }
 
   AutoInvalidateSelection atEndOfBlock(this);
-  DoSetRange(container, index, container, index + 1, newRoot);
+  DoSetRange(RawRangeBoundary(container, index),
+             RawRangeBoundary(container, index + 1), newRoot);
 }
 
 NS_IMETHODIMP
@@ -1820,7 +1832,8 @@ nsRange::SelectNodeContents(nsINode& aNode, ErrorResult& aRv)
   }
 
   AutoInvalidateSelection atEndOfBlock(this);
-  DoSetRange(&aNode, 0, &aNode, aNode.Length(), newRoot);
+  DoSetRange(RawRangeBoundary(&aNode, 0),
+             RawRangeBoundary(&aNode, aNode.Length()), newRoot);
 }
 
 // The Subtree Content Iterator only returns subtrees that are
@@ -3454,11 +3467,9 @@ nsRange::GetClientRectsAndTexts(
     mStart.Container(), mStart.Offset(), mEnd.Container(), mEnd.Offset(), true, true);
 }
 
-NS_IMETHODIMP
-nsRange::GetUsedFontFaces(nsIDOMFontFaceList** aResult)
+nsresult
+nsRange::GetUsedFontFaces(nsTArray<nsAutoPtr<InspectorFontFace>>& aResult)
 {
-  *aResult = nullptr;
-
   NS_ENSURE_TRUE(mStart.Container(), NS_ERROR_UNEXPECTED);
 
   nsCOMPtr<nsINode> startContainer = do_QueryInterface(mStart.Container());
@@ -3472,7 +3483,11 @@ nsRange::GetUsedFontFaces(nsIDOMFontFaceList** aResult)
   // Recheck whether we're still in the document
   NS_ENSURE_TRUE(mStart.Container()->IsInUncomposedDoc(), NS_ERROR_UNEXPECTED);
 
-  RefPtr<nsFontFaceList> fontFaceList = new nsFontFaceList();
+  // A table to map gfxFontEntry objects to InspectorFontFace objects.
+  // (We hold on to the InspectorFontFaces strongly due to the nsAutoPtrs
+  // in the nsClassHashtable, until we move them out into aResult at the end
+  // of the function.)
+  nsLayoutUtils::UsedFontFaceTable fontFaces;
 
   RangeSubtreeIterator iter;
   nsresult rv = iter.Init(this);
@@ -3497,20 +3512,25 @@ nsRange::GetUsedFontFaces(nsIDOMFontFaceList** aResult)
          int32_t offset = startContainer == endContainer ?
            mEnd.Offset() : content->GetText()->GetLength();
          nsLayoutUtils::GetFontFacesForText(frame, mStart.Offset(), offset,
-                                            true, fontFaceList);
+                                            true, fontFaces);
          continue;
        }
        if (node == endContainer) {
          nsLayoutUtils::GetFontFacesForText(frame, 0, mEnd.Offset(),
-                                            true, fontFaceList);
+                                            true, fontFaces);
          continue;
        }
     }
 
-    nsLayoutUtils::GetFontFacesForFrames(frame, fontFaceList);
+    nsLayoutUtils::GetFontFacesForFrames(frame, fontFaces);
   }
 
-  fontFaceList.forget(aResult);
+  // Take ownership of the InspectorFontFaces in the table and move them into
+  // the aResult outparam.
+  for (auto iter = fontFaces.Iter(); !iter.Done(); iter.Next()) {
+    aResult.AppendElement(Move(iter.Data()));
+  }
+
   return NS_OK;
 }
 
@@ -3745,15 +3765,17 @@ ElementIsVisibleNoFlush(Element* aElement)
 }
 
 static void
-AppendTransformedText(InnerTextAccumulator& aResult,
-                      nsGenericDOMDataNode* aTextNode,
-                      uint32_t aStart, uint32_t aEnd)
+AppendTransformedText(InnerTextAccumulator& aResult, nsIContent* aContainer)
 {
-  nsIFrame* frame = aTextNode->GetPrimaryFrame();
+  auto textNode = static_cast<nsGenericDOMDataNode*>(aContainer);
+
+  nsIFrame* frame = textNode->GetPrimaryFrame();
   if (!IsVisibleAndNotInReplacedElement(frame)) {
     return;
   }
-  nsIFrame::RenderedText text = frame->GetRenderedText(aStart, aEnd);
+
+  nsIFrame::RenderedText text =
+    frame->GetRenderedText(0, aContainer->GetChildCount());
   aResult.Append(text.mString);
 }
 
@@ -3831,35 +3853,25 @@ IsLastNonemptyRowGroupOfTable(nsIFrame* aFrame)
 
 void
 nsRange::GetInnerTextNoFlush(DOMString& aValue, ErrorResult& aError,
-                             nsIContent* aStartContainer, uint32_t aStartOffset,
-                             nsIContent* aEndContainer, uint32_t aEndOffset)
+                             nsIContent* aContainer)
 {
   InnerTextAccumulator result(aValue);
-  nsIContent* currentNode = aStartContainer;
-  TreeTraversalState currentState = AFTER_NODE;
-  if (aStartContainer->IsNodeOfType(nsINode::eTEXT)) {
-    auto t = static_cast<nsGenericDOMDataNode*>(aStartContainer);
-    if (aStartContainer == aEndContainer) {
-      AppendTransformedText(result, t, aStartOffset, aEndOffset);
-      return;
-    }
-    AppendTransformedText(result, t, aStartOffset, t->TextLength());
-  } else {
-    if (uint32_t(aStartOffset) < aStartContainer->GetChildCount()) {
-      currentNode = aStartContainer->GetChildAt(aStartOffset);
-      currentState = AT_NODE;
-    }
+
+  if (aContainer->IsNodeOfType(nsINode::eTEXT)) {
+    AppendTransformedText(result, aContainer);
+    return;
   }
 
-  nsIContent* endNode = aEndContainer;
+  nsIContent* currentNode = aContainer;
+  TreeTraversalState currentState = AFTER_NODE;
+
+  nsIContent* endNode = aContainer;
   TreeTraversalState endState = AFTER_NODE;
-  if (aEndContainer->IsNodeOfType(nsINode::eTEXT)) {
-    endState = AT_NODE;
-  } else {
-    if (aEndOffset < aEndContainer->GetChildCount()) {
-      endNode = aEndContainer->GetChildAt(aEndOffset);
-      endState = AT_NODE;
-    }
+
+  nsIContent* firstChild = aContainer->GetFirstChild();
+  if (firstChild) {
+    currentNode = firstChild;
+    currentState = AT_NODE;
   }
 
   while (currentNode != endNode || currentState != endState) {
@@ -3919,10 +3931,6 @@ nsRange::GetInnerTextNoFlush(DOMString& aValue, ErrorResult& aError,
     }
   }
 
-  if (aEndContainer->IsNodeOfType(nsINode::eTEXT)) {
-    nsGenericDOMDataNode* t = static_cast<nsGenericDOMDataNode*>(aEndContainer);
-    AppendTransformedText(result, t, 0, aEndOffset);
-  }
   // Do not flush trailing line breaks! Required breaks at the end of the text
   // are suppressed.
 }

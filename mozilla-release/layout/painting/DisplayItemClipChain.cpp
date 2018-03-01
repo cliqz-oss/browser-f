@@ -28,9 +28,39 @@ DisplayItemClipChain::Equal(const DisplayItemClipChain* aClip1, const DisplayIte
     return false;
   }
 
-  return aClip1->mASR == aClip2->mASR &&
+  bool ret = aClip1->mASR == aClip2->mASR &&
          aClip1->mClip == aClip2->mClip &&
          Equal(aClip1->mParent, aClip2->mParent);
+  // Sanity check: if two clip chains are equal they must hash to the same
+  // thing too, or Bad Things (TM) will happen.
+  MOZ_ASSERT(!ret || (Hash(aClip1) == Hash(aClip2)));
+  return ret;
+}
+
+uint32_t
+DisplayItemClipChain::Hash(const DisplayItemClipChain* aClip)
+{
+  if (!aClip) {
+    return 0;
+  }
+
+  // We include the number of rounded rects in the hash but not their contents.
+  // This is to keep the hash fast, because most clips will not have rounded
+  // rects and including them will slow down the hash in the common case. Note
+  // that the ::Equal check still checks the rounded rect contents, so in case
+  // of hash collisions the clip chains can still be distinguished using that.
+  uint32_t hash = HashGeneric(aClip->mASR, aClip->mClip.GetRoundedRectCount());
+  if (aClip->mClip.HasClip()) {
+    const nsRect& rect = aClip->mClip.GetClipRect();
+    // empty rects are considered equal in DisplayItemClipChain::Equal, even
+    // though they may have different x and y coordinates. So make sure they
+    // hash to the same thing in those cases too.
+    if (!rect.IsEmpty()) {
+      hash = AddToHash(hash, rect.x, rect.y, rect.width, rect.height);
+    }
+  }
+
+  return hash;
 }
 
 /* static */ nsCString
@@ -39,10 +69,9 @@ DisplayItemClipChain::ToString(const DisplayItemClipChain* aClipChain)
   nsAutoCString str;
   for (auto* sc = aClipChain; sc; sc = sc->mParent) {
     if (sc->mASR) {
-      str.AppendPrintf("<%s> [0x%p]", sc->mClip.ToString().get(), sc->mASR->mScrollableFrame);
-
+      str.AppendPrintf("0x%p <%s> [0x%p]", sc, sc->mClip.ToString().get(), sc->mASR->mScrollableFrame);
     } else {
-      str.AppendPrintf("<%s> [root asr]", sc->mClip.ToString().get());
+      str.AppendPrintf("0x%p <%s> [root asr]", sc, sc->mClip.ToString().get());
     }
     if (sc->mParent) {
       str.AppendLiteral(", ");

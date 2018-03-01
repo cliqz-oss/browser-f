@@ -15,18 +15,9 @@
 #include "nsDependentSubstring.h"
 #include "nsReadableUtils.h"
 
-#include <new>
-
 // enable support for the obsolete string API if not explicitly disabled
 #ifndef MOZ_STRING_WITH_OBSOLETE_API
 #define MOZ_STRING_WITH_OBSOLETE_API 1
-#endif
-
-#if MOZ_STRING_WITH_OBSOLETE_API
-// radix values for ToInteger/AppendInt
-#define kRadix10        (10)
-#define kRadix16        (16)
-#define kAutoDetect     (100)
 #endif
 
 #include "nsTString.h"
@@ -150,16 +141,8 @@ private:
 };
 
 // the following are included/declared for backwards compatibility
-typedef nsAutoString nsVoidableString;
-
 #include "nsDependentString.h"
 #include "nsLiteralString.h"
 #include "nsPromiseFlatString.h"
-
-// need to include these for backwards compatibility
-#include "nsMemory.h"
-#include <string.h>
-#include <stdio.h>
-#include "plhash.h"
 
 #endif // !defined(nsString_h___)

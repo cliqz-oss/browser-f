@@ -17,7 +17,6 @@ use servo_arc::Arc;
 use servo_url::ServoUrl;
 use std::fmt::Debug;
 use style::attr::AttrValue;
-use style::computed_values::display;
 use style::context::SharedStyleContext;
 use style::data::ElementData;
 use style::dom::{LayoutIterator, NodeInfo, TNode};
@@ -29,46 +28,46 @@ use style::stylist::RuleInclusion;
 use webrender_api::ClipId;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum PseudoElementType<T> {
+pub enum PseudoElementType {
     Normal,
-    Before(T),
-    After(T),
-    DetailsSummary(T),
-    DetailsContent(T),
+    Before,
+    After,
+    DetailsSummary,
+    DetailsContent,
 }
 
-impl<T> PseudoElementType<T> {
+impl PseudoElementType {
+    pub fn fragment_type(&self) -> FragmentType {
+        match *self {
+            PseudoElementType::Normal => FragmentType::FragmentBody,
+            PseudoElementType::Before => FragmentType::BeforePseudoContent,
+            PseudoElementType::After => FragmentType::AfterPseudoContent,
+            PseudoElementType::DetailsSummary => FragmentType::FragmentBody,
+            PseudoElementType::DetailsContent => FragmentType::FragmentBody,
+        }
+    }
+
     pub fn is_before(&self) -> bool {
         match *self {
-            PseudoElementType::Before(_) => true,
+            PseudoElementType::Before => true,
             _ => false,
         }
     }
 
     pub fn is_replaced_content(&self) -> bool {
         match *self {
-            PseudoElementType::Before(_) | PseudoElementType::After(_) => true,
+            PseudoElementType::Before | PseudoElementType::After => true,
             _ => false,
-        }
-    }
-
-    pub fn strip(&self) -> PseudoElementType<()> {
-        match *self {
-            PseudoElementType::Normal => PseudoElementType::Normal,
-            PseudoElementType::Before(_) => PseudoElementType::Before(()),
-            PseudoElementType::After(_) => PseudoElementType::After(()),
-            PseudoElementType::DetailsSummary(_) => PseudoElementType::DetailsSummary(()),
-            PseudoElementType::DetailsContent(_) => PseudoElementType::DetailsContent(()),
         }
     }
 
     pub fn style_pseudo_element(&self) -> PseudoElement {
         match *self {
             PseudoElementType::Normal => unreachable!("style_pseudo_element called with PseudoElementType::Normal"),
-            PseudoElementType::Before(_) => PseudoElement::Before,
-            PseudoElementType::After(_) => PseudoElement::After,
-            PseudoElementType::DetailsSummary(_) => PseudoElement::DetailsSummary,
-            PseudoElementType::DetailsContent(_) => PseudoElement::DetailsContent,
+            PseudoElementType::Before => PseudoElement::Before,
+            PseudoElementType::After => PseudoElement::After,
+            PseudoElementType::DetailsSummary => PseudoElement::DetailsSummary,
+            PseudoElementType::DetailsContent => PseudoElement::DetailsContent,
         }
     }
 }
@@ -197,7 +196,7 @@ pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo 
     fn as_element(&self) -> Option<Self::ConcreteThreadSafeLayoutElement>;
 
     #[inline]
-    fn get_pseudo_element_type(&self) -> PseudoElementType<Option<display::T>> {
+    fn get_pseudo_element_type(&self) -> PseudoElementType {
         self.as_element().map_or(PseudoElementType::Normal, |el| el.get_pseudo_element_type())
     }
 
@@ -240,8 +239,6 @@ pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo 
     /// data flags, and we have this annoying trait separation between script and layout :-(
     unsafe fn unsafe_get(self) -> Self::ConcreteNode;
 
-    fn can_be_fragmented(&self) -> bool;
-
     fn node_text_content(&self) -> String;
 
     /// If the insertion point is within this node, returns it. Otherwise, returns `None`.
@@ -267,13 +264,7 @@ pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo 
     fn get_rowspan(&self) -> u32;
 
     fn fragment_type(&self) -> FragmentType {
-        match self.get_pseudo_element_type() {
-            PseudoElementType::Normal => FragmentType::FragmentBody,
-            PseudoElementType::Before(_) => FragmentType::BeforePseudoContent,
-            PseudoElementType::After(_) => FragmentType::AfterPseudoContent,
-            PseudoElementType::DetailsSummary(_) => FragmentType::FragmentBody,
-            PseudoElementType::DetailsContent(_) => FragmentType::FragmentBody,
-        }
+        self.get_pseudo_element_type().fragment_type()
     }
 
     fn generate_scroll_root_id(&self, pipeline_id: PipelineId) -> ClipId {
@@ -304,7 +295,7 @@ pub trait ThreadSafeLayoutElement
 
     /// Creates a new `ThreadSafeLayoutElement` for the same `LayoutElement`
     /// with a different pseudo-element type.
-    fn with_pseudo(&self, pseudo: PseudoElementType<Option<display::T>>) -> Self;
+    fn with_pseudo(&self, pseudo: PseudoElementType) -> Self;
 
     /// Returns the type ID of this node.
     /// Returns `None` if this is a pseudo-element; otherwise, returns `Some`.
@@ -327,12 +318,12 @@ pub trait ThreadSafeLayoutElement
     fn style_data(&self) -> AtomicRef<ElementData>;
 
     #[inline]
-    fn get_pseudo_element_type(&self) -> PseudoElementType<Option<display::T>>;
+    fn get_pseudo_element_type(&self) -> PseudoElementType;
 
     #[inline]
     fn get_before_pseudo(&self) -> Option<Self> {
         if self.style_data().styles.pseudos.get(&PseudoElement::Before).is_some() {
-            Some(self.with_pseudo(PseudoElementType::Before(None)))
+            Some(self.with_pseudo(PseudoElementType::Before))
         } else {
             None
         }
@@ -341,7 +332,7 @@ pub trait ThreadSafeLayoutElement
     #[inline]
     fn get_after_pseudo(&self) -> Option<Self> {
         if self.style_data().styles.pseudos.get(&PseudoElement::After).is_some() {
-            Some(self.with_pseudo(PseudoElementType::After(None)))
+            Some(self.with_pseudo(PseudoElementType::After))
         } else {
             None
         }
@@ -351,7 +342,7 @@ pub trait ThreadSafeLayoutElement
     fn get_details_summary_pseudo(&self) -> Option<Self> {
         if self.get_local_name() == &local_name!("details") &&
            self.get_namespace() == &ns!(html) {
-            Some(self.with_pseudo(PseudoElementType::DetailsSummary(None)))
+            Some(self.with_pseudo(PseudoElementType::DetailsSummary))
         } else {
             None
         }
@@ -360,13 +351,9 @@ pub trait ThreadSafeLayoutElement
     #[inline]
     fn get_details_content_pseudo(&self) -> Option<Self> {
         if self.get_local_name() == &local_name!("details") &&
-           self.get_namespace() == &ns!(html) {
-            let display = if self.get_attr(&ns!(), &local_name!("open")).is_some() {
-                None // Specified by the stylesheet
-            } else {
-                Some(display::T::none)
-            };
-            Some(self.with_pseudo(PseudoElementType::DetailsContent(display)))
+           self.get_namespace() == &ns!(html) &&
+           self.get_attr(&ns!(), &local_name!("open")).is_some() {
+            Some(self.with_pseudo(PseudoElementType::DetailsContent))
         } else {
             None
         }
@@ -400,22 +387,20 @@ pub trait ThreadSafeLayoutElement
                             &style_pseudo,
                             Some(data.styles.primary()),
                             CascadeFlags::empty(),
-                            &ServoMetricsProvider)
-                            .clone()
+                            &ServoMetricsProvider,
+                        )
                     }
                     PseudoElementCascadeType::Lazy => {
-                        context.stylist
-                               .lazily_compute_pseudo_element_style(
-                                   &context.guards,
-                                   unsafe { &self.unsafe_get() },
-                                   &style_pseudo,
-                                   RuleInclusion::All,
-                                   data.styles.primary(),
-                                   /* is_probe = */ false,
-                                   &ServoMetricsProvider,
-                                   /* matching_func = */ None)
-                               .unwrap()
-                               .clone()
+                        context.stylist.lazily_compute_pseudo_element_style(
+                           &context.guards,
+                           unsafe { self.unsafe_get() },
+                           &style_pseudo,
+                           RuleInclusion::All,
+                           data.styles.primary(),
+                           /* is_probe = */ false,
+                           &ServoMetricsProvider,
+                           /* matching_func = */ None,
+                        ).unwrap()
                     }
                 }
             }
@@ -426,7 +411,7 @@ pub trait ThreadSafeLayoutElement
     fn selected_style(&self) -> Arc<ComputedValues> {
         let data = self.style_data();
         data.styles.pseudos
-            .get(&PseudoElement::Selection).map(|s| s)
+            .get(&PseudoElement::Selection)
             .unwrap_or(data.styles.primary())
             .clone()
     }

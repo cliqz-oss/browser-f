@@ -10,6 +10,14 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
 XPCOMUtils.defineLazyModuleGetter(this, "ExtensionSettingsStore",
                                   "resource://gre/modules/ExtensionSettingsStore.jsm");
 
+Preferences.addAll([
+  { id: "browser.search.suggest.enabled", type: "bool" },
+  { id: "browser.urlbar.suggest.searches", type: "bool" },
+  { id: "browser.search.hiddenOneOffs", type: "unichar" },
+  { id: "browser.search.widget.inNavBar", type: "bool" },
+  { id: "browser.urlbar.matchBuckets", type: "string" },
+]);
+
 const ENGINE_FLAVOR = "text/x-moz-search-engine";
 const SEARCH_TYPE = "default_search";
 const SEARCH_KEY = "defaultSearch";
@@ -50,27 +58,75 @@ var gSearchPane = {
 
     this._initAutocomplete();
 
-    let suggestsPref =
-      document.getElementById("browser.search.suggest.enabled");
-    suggestsPref.addEventListener("change", () => {
-      this.updateSuggestsCheckbox();
-    });
-    this.updateSuggestsCheckbox();
+    let suggestsPref = Preferences.get("browser.search.suggest.enabled");
+    let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
+    let updateSuggestionCheckboxes = this._updateSuggestionCheckboxes.bind(this);
+    suggestsPref.on("change", updateSuggestionCheckboxes);
+    urlbarSuggestsPref.on("change", updateSuggestionCheckboxes);
+    this._initShowSearchSuggestionsFirst();
+    this._updateSuggestionCheckboxes();
   },
 
-  updateSuggestsCheckbox() {
-    let suggestsPref =
-      document.getElementById("browser.search.suggest.enabled");
+  _initShowSearchSuggestionsFirst() {
+    this._urlbarSuggestionsPosPref = Preferences.get("browser.urlbar.matchBuckets");
+    let checkbox =
+      document.getElementById("showSearchSuggestionsFirstCheckbox");
+
+    this._urlbarSuggestionsPosPref.on("change", () => {
+      this._syncFromShowSearchSuggestionsFirstPref(checkbox);
+    });
+    this._syncFromShowSearchSuggestionsFirstPref(checkbox);
+
+    checkbox.addEventListener("command", () => {
+      this._syncToShowSearchSuggestionsFirstPref(checkbox.checked);
+    });
+  },
+
+  _syncFromShowSearchSuggestionsFirstPref(checkbox) {
+    if (!this._urlbarSuggestionsPosPref.value) {
+      // The pref is cleared, meaning search suggestions are shown first.
+      checkbox.checked = true;
+      return;
+    }
+    // The pref has a value.  If the first bucket in the pref is search
+    // suggestions, then check the checkbox.
+    let buckets = PlacesUtils.convertMatchBucketsStringToArray(this._urlbarSuggestionsPosPref.value);
+    checkbox.checked = buckets[0] && buckets[0][0] == "suggestion";
+  },
+
+  _syncToShowSearchSuggestionsFirstPref(checked) {
+    if (checked) {
+      // Show search suggestions first, so clear the pref since that's the
+      // default.
+      this._urlbarSuggestionsPosPref.reset();
+      return;
+    }
+    // Show history first.
+    this._urlbarSuggestionsPosPref.value = "general:5,suggestion:Infinity";
+  },
+
+  _updateSuggestionCheckboxes() {
+    let suggestsPref = Preferences.get("browser.search.suggest.enabled");
     let permanentPB =
       Services.prefs.getBoolPref("browser.privatebrowsing.autostart");
     let urlbarSuggests = document.getElementById("urlBarSuggestion");
+    let positionCheckbox =
+      document.getElementById("showSearchSuggestionsFirstCheckbox");
+
     urlbarSuggests.disabled = !suggestsPref.value || permanentPB;
 
-    let urlbarSuggestsPref =
-      document.getElementById("browser.urlbar.suggest.searches");
+    let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
     urlbarSuggests.checked = urlbarSuggestsPref.value;
     if (urlbarSuggests.disabled) {
       urlbarSuggests.checked = false;
+    }
+
+    if (urlbarSuggests.checked) {
+      positionCheckbox.disabled = false;
+      this._syncFromShowSearchSuggestionsFirstPref(positionCheckbox);
+    } else {
+      positionCheckbox.disabled = true;
+      positionCheckbox.checked = false;
     }
 
     let permanentPBLabel =
@@ -315,7 +371,7 @@ var gSearchPane = {
       if (!engine.shown)
         hiddenList.push(engine.name);
     }
-    document.getElementById("browser.search.hiddenOneOffs").value =
+    Preferences.get("browser.search.hiddenOneOffs").value =
       hiddenList.join(",");
   },
 
@@ -339,7 +395,7 @@ function onDragEngineStart(event) {
 
 
 function EngineStore() {
-  let pref = document.getElementById("browser.search.hiddenOneOffs").value;
+  let pref = Preferences.get("browser.search.hiddenOneOffs").value;
   this.hiddenList = pref ? pref.split(",") : [];
 
   this._engines = Services.search.getVisibleEngines().map(this._cloneEngine, this);
@@ -586,7 +642,6 @@ EngineView.prototype = {
   getParentIndex(index) { return -1; },
   hasNextSibling(parentIndex, index) { return false; },
   getLevel(index) { return 0; },
-  getProgressMode(index, column) { },
   getCellValue(index, column) {
     if (column.id == "engineShown")
       return this._engineStore.engines[index].shown;

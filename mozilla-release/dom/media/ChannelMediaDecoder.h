@@ -18,7 +18,11 @@ namespace mozilla {
 
 class BaseMediaResource;
 
-class ChannelMediaDecoder : public MediaDecoder
+DDLoggedTypeDeclNameAndBase(ChannelMediaDecoder, MediaDecoder);
+
+class ChannelMediaDecoder
+  : public MediaDecoder
+  , public DecoderDoctorLifeLogger<ChannelMediaDecoder>
 {
   // Used to register with MediaResource to receive notifications which will
   // be forwarded to MediaDecoder.
@@ -36,6 +40,8 @@ class ChannelMediaDecoder : public MediaDecoder
     void Disconnect();
 
   private:
+    ~ResourceCallback();
+
     /* MediaResourceCallback functions */
     AbstractThread* AbstractMainThread() const override;
     MediaDecoderOwner* GetMediaOwner() const override;
@@ -44,7 +50,6 @@ class ChannelMediaDecoder : public MediaDecoder
     void NotifyDataEnded(nsresult aStatus) override;
     void NotifyPrincipalChanged() override;
     void NotifySuspendedStatusChanged(bool aSuspendedByCache) override;
-    void NotifyBytesConsumed(int64_t aBytes, int64_t aOffset) override;
 
     static void TimerCallback(nsITimer* aTimer, void* aClosure);
 
@@ -56,9 +61,8 @@ class ChannelMediaDecoder : public MediaDecoder
   };
 
 protected:
-  void OnPlaybackEvent(MediaEventType aEvent) override;
+  void OnPlaybackEvent(MediaPlaybackEvent&& aEvent) override;
   void DurationChanged() override;
-  void DownloadProgressed() override;
   void MetadataLoaded(UniquePtr<MediaInfo> aInfo,
                       UniquePtr<MetadataTags> aTags,
                       MediaDecoderEventVisibility aEventVisibility) override;
@@ -98,8 +102,7 @@ public:
   void Resume() override;
 
 private:
-  void PinForSeek() override;
-  void UnpinForSeek() override;
+  void DownloadProgressed();
 
   // Create a new state machine to run this decoder.
   MediaDecoderStateMachine* CreateStateMachine();
@@ -115,49 +118,46 @@ private:
   // by the MediaResource read functions.
   void NotifyBytesConsumed(int64_t aBytes, int64_t aOffset);
 
-  void SeekingChanged();
-
   bool CanPlayThroughImpl() override final;
 
-  bool IsLiveStream() override final;
-
+  struct PlaybackRateInfo
+  {
+    uint32_t mRate; // Estimate of the current playback rate (bytes/second).
+    bool mReliable; // True if mRate is a reliable estimate.
+  };
   // The actual playback rate computation.
-  void ComputePlaybackRate();
+  static PlaybackRateInfo ComputePlaybackRate(
+    const MediaChannelStatistics& aStats,
+    BaseMediaResource* aResource,
+    double aDuration);
 
   // Something has changed that could affect the computed playback rate,
   // so recompute it.
-  void UpdatePlaybackRate();
+  static void UpdatePlaybackRate(const PlaybackRateInfo& aInfo,
+                                 BaseMediaResource* aResource);
 
   // Return statistics. This is used for progress events and other things.
   // This can be called from any thread. It's only a snapshot of the
   // current state, since other threads might be changing the state
   // at any time.
-  MediaStatistics GetStatistics();
+  static MediaStatistics GetStatistics(const PlaybackRateInfo& aInfo,
+                                       BaseMediaResource* aRes,
+                                       int64_t aPlaybackPosition);
 
-  bool ShouldThrottleDownload();
-
-  WatchManager<ChannelMediaDecoder> mWatchManager;
-
-  // True when seeking or otherwise moving the play position around in
-  // such a manner that progress event data is inaccurate. This is set
-  // during seek and duration operations to prevent the progress indicator
-  // from jumping around. Read/Write on the main thread only.
-  bool mIgnoreProgressData = false;
+  bool ShouldThrottleDownload(const MediaStatistics& aStats);
 
   // Data needed to estimate playback data rate. The timeline used for
   // this estimate is "decode time" (where the "current time" is the
   // time of the last decoded video frame).
   MediaChannelStatistics mPlaybackStatistics;
 
-  // Estimate of the current playback rate (bytes/second).
-  double mPlaybackBytesPerSecond = 0;
+  // Current playback position in the stream. This is (approximately)
+  // where we're up to playing back the stream. This is not adjusted
+  // during decoder seek operations, but it's updated at the end when we
+  // start playing back again.
+  int64_t mPlaybackPosition = 0;
 
-  // True if mPlaybackBytesPerSecond is a reliable estimate.
-  bool mPlaybackRateReliable = true;
-
-  // True when our media stream has been pinned. We pin the stream
-  // while seeking.
-  bool mPinnedForSeek = false;
+  bool mCanPlayThrough = false;
 };
 
 } // namespace mozilla

@@ -135,6 +135,8 @@ class ReadOnlyDict(dict):
             result[k] = deepcopy(v, memo)
         return result
 
+DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "configs")
+
 # parse_config_file {{{1
 def parse_config_file(file_name, quiet=False, search_path=None,
                       config_dict_name="config"):
@@ -145,8 +147,7 @@ def parse_config_file(file_name, quiet=False, search_path=None,
         file_path = file_name
     else:
         if not search_path:
-            search_path = ['.', os.path.join(sys.path[0], '..', 'configs'),
-                           os.path.join(sys.path[0], '..', '..', 'configs')]
+            search_path = ['.', DEFAULT_CONFIG_PATH]
         for path in search_path:
             if os.path.exists(os.path.join(path, file_name)):
                 file_path = os.path.join(path, file_name)
@@ -280,6 +281,10 @@ class BaseConfig(object):
             help="Specify the absolute path of the parent of the working directory"
         )
         self.config_parser.add_option(
+            "--extra-config-path", action='extend', dest="config_paths",
+            type="string", help="Specify additional paths to search for config files.",
+        )
+        self.config_parser.add_option(
             "-c", "--config-file", "--cfg", action="extend", dest="config_files",
             type="string", help="Specify a config file; can be repeated"
         )
@@ -302,6 +307,11 @@ class BaseConfig(object):
                  "files were used making up the config and specify their own "
                  "keys/values that were not overwritten by another cfg -- "
                  "held the highest hierarchy."
+        )
+        self.config_parser.add_option(
+            "--append-env-variables-from-configs", action="store_true",
+            dest="append_env_variables_from_configs",
+            help="Merge environment variables from config files."
         )
 
         # Logging
@@ -432,6 +442,7 @@ class BaseConfig(object):
         way that self.config is made up.  See
         `mozharness.mozilla.building.buildbase.BuildingConfig` for an example.
         """
+        config_paths = options.config_paths or ['.']
         all_cfg_files_and_dicts = []
         for cf in all_config_files:
             try:
@@ -440,10 +451,12 @@ class BaseConfig(object):
                     file_path = os.path.join(os.getcwd(), file_name)
                     download_config_file(cf, file_path)
                     all_cfg_files_and_dicts.append(
-                        (file_path, parse_config_file(file_path))
+                        (file_path, parse_config_file(file_path, search_path=["."]))
                     )
                 else:
-                    all_cfg_files_and_dicts.append((cf, parse_config_file(cf)))
+                    all_cfg_files_and_dicts.append(
+                        (cf, parse_config_file(cf, search_path=config_paths + [DEFAULT_CONFIG_PATH]))
+                    )
             except Exception:
                 if cf in options.opt_config_files:
                     print(
@@ -451,6 +464,11 @@ class BaseConfig(object):
                     )
                 else:
                     raise
+
+        if 'EXTRA_MOZHARNESS_CONFIG' in os.environ:
+            env_config = json.loads(os.environ['EXTRA_MOZHARNESS_CONFIG'])
+            all_cfg_files_and_dicts.append(("[EXTRA_MOZHARENSS_CONFIG]", env_config))
+
         return all_cfg_files_and_dicts
 
     def parse_args(self, args=None):
@@ -481,7 +499,8 @@ class BaseConfig(object):
                 options.config_files + options.opt_config_files, options=options
             ))
             config = {}
-            if self.append_env_variables_from_configs:
+            if (self.append_env_variables_from_configs
+                    or options.append_env_variables_from_configs):
                 # We only append values from various configs for the 'env' entry
                 # For everything else we follow the standard behaviour
                 for i, (c_file, c_dict) in enumerate(self.all_cfg_files_and_dicts):

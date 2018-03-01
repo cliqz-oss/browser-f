@@ -19,10 +19,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
 XPCOMUtils.defineLazyModuleGetter(this, "ViewPopup",
                                   "resource:///modules/ExtensionPopups.jsm");
 
-XPCOMUtils.defineLazyServiceGetter(this, "DOMUtils",
-                                   "@mozilla.org/inspector/dom-utils;1",
-                                   "inIDOMUtils");
-
 var {
   DefaultWeakMap,
 } = ExtensionUtils;
@@ -33,6 +29,12 @@ var {
   IconDetails,
   StartupCache,
 } = ExtensionParent;
+
+var {
+  ExtensionError,
+} = ExtensionUtils;
+
+Cu.importGlobalProperties(["InspectorUtils"]);
 
 const POPUP_PRELOAD_TIMEOUT_MS = 200;
 const POPUP_OPEN_MS_HISTOGRAM = "WEBEXT_BROWSERACTION_POPUP_OPEN_MS";
@@ -92,6 +94,7 @@ this.browserAction = class extends ExtensionAPI {
       popup: options.default_popup || "",
       area: browserAreas[options.default_area || "navbar"],
     };
+    this.globals = Object.create(this.defaults);
 
     this.browserStyle = options.browser_style || false;
     if (options.browser_style === null) {
@@ -115,7 +118,7 @@ this.browserAction = class extends ExtensionAPI {
         extension, ["browserAction", "default_icon_data"],
         () => this.getIconData(this.defaults.icon)));
 
-    this.tabContext = new TabContext(tab => Object.create(this.defaults),
+    this.tabContext = new TabContext(tab => Object.create(this.globals),
                                      extension);
 
     // eslint-disable-next-line mozilla/balanced-listeners
@@ -188,7 +191,7 @@ this.browserAction = class extends ExtensionAPI {
         node.onmouseover = event => this.handleEvent(event);
         node.onmouseout = event => this.handleEvent(event);
 
-        this.updateButton(node, this.defaults, true);
+        this.updateButton(node, this.globals, true);
       },
 
       onViewShowing: async event => {
@@ -548,12 +551,16 @@ this.browserAction = class extends ExtensionAPI {
   // tab is allowed to be null.
   // prop should be one of "icon", "title", "badgeText", "popup", or "badgeBackgroundColor".
   setProperty(tab, prop, value) {
+    let values;
     if (tab == null) {
-      this.defaults[prop] = value;
-    } else if (value != null) {
-      this.tabContext.get(tab)[prop] = value;
+      values = this.globals;
     } else {
-      delete this.tabContext.get(tab)[prop];
+      values = this.tabContext.get(tab);
+    }
+    if (value == null) {
+      delete values[prop];
+    } else {
+      values[prop] = value;
     }
 
     this.updateOnChange(tab);
@@ -563,7 +570,7 @@ this.browserAction = class extends ExtensionAPI {
   // prop should be one of "title", "badgeText", "popup", or "badgeBackgroundColor".
   getProperty(tab, prop) {
     if (tab == null) {
-      return this.defaults[prop];
+      return this.globals[prop];
     }
     return this.tabContext.get(tab)[prop];
   }
@@ -604,15 +611,15 @@ this.browserAction = class extends ExtensionAPI {
           browserAction.setProperty(tab, "enabled", false);
         },
 
+        isEnabled: function(details) {
+          let tab = getTab(details.tabId);
+          return browserAction.getProperty(tab, "enabled");
+        },
+
         setTitle: function(details) {
           let tab = getTab(details.tabId);
 
-          let title = details.title;
-          // Clear the tab-specific title when given a null string.
-          if (tab && title == "") {
-            title = null;
-          }
-          browserAction.setProperty(tab, "title", title);
+          browserAction.setProperty(tab, "title", details.title);
         },
 
         getTitle: function(details) {
@@ -628,6 +635,9 @@ this.browserAction = class extends ExtensionAPI {
           details.iconType = "browserAction";
 
           let icon = IconDetails.normalize(details, extension, context);
+          if (!Object.keys(icon).length) {
+            icon = null;
+          }
           browserAction.setProperty(tab, "icon", icon);
         },
 
@@ -669,8 +679,11 @@ this.browserAction = class extends ExtensionAPI {
         setBadgeBackgroundColor: function(details) {
           let tab = getTab(details.tabId);
           let color = details.color;
-          if (!Array.isArray(color)) {
-            let col = DOMUtils.colorToRGBA(color);
+          if (typeof color == "string") {
+            let col = InspectorUtils.colorToRGBA(color);
+            if (!col) {
+              throw new ExtensionError(`Invalid badge background color: "${color}"`);
+            }
             color = col && [col.r, col.g, col.b, Math.round(col.a * 255)];
           }
           browserAction.setProperty(tab, "badgeBackgroundColor", color);

@@ -28,6 +28,7 @@ full-update:: complete-patch
 ifeq ($(OS_TARGET), WINNT)
 MOZ_PKG_FORMAT	:= SFX7Z
 UNPACKAGE	= '$(subst $(DIST),$(ABS_DIST),$(INSTALLER_PACKAGE))'
+<<<<<<< HEAD
 # Cliqz. This doesn't work as expected on build machine, when trying to generate
 # update package (mar) with localization installer (AB_CD). Script searching for
 # installer in different location, where it doesn't exist (and can not exist in
@@ -37,6 +38,12 @@ ifdef 0
 ifdef AB_CD
 UNPACKAGE	= '$(PACKAGE_BASE_DIR)/$(PACKAGE)'
 endif
+||||||| merged common ancestors
+ifdef AB_CD
+UNPACKAGE	= '$(PACKAGE_BASE_DIR)/$(PACKAGE)'
+endif
+=======
+>>>>>>> origin/upstream-releases
 endif
 endif
 
@@ -59,10 +66,13 @@ endif
 dir-stage := $(call mkdir_deps,$(STAGE_DIR))
 
 complete-patch:: $(dir-stage)
+# unpack the windows installer, unless we're an l10n repack, we just packed this
+ifndef IS_LANGUAGE_REPACK
 ifeq ($(OS_TARGET), WINNT)
 	test -f $(UNPACKAGE)
 	$(RM) -rf '$(PACKAGE_DIR)'
 	cd $(PACKAGE_BASE_DIR) && $(INNER_UNMAKE_PACKAGE)
+endif
 endif
 	MAR=$(MAR_BIN) \
 	MOZ_PRODUCT_VERSION=$(MOZ_APP_VERSION) \

@@ -15,34 +15,34 @@ namespace layers {
 
 template <typename PointOrRect>
 CoordOf<PointOrRect> GetAxisStart(ScrollDirection aDir, const PointOrRect& aValue) {
-  if (aDir == ScrollDirection::HORIZONTAL) {
-    return aValue.x;
+  if (aDir == ScrollDirection::eHorizontal) {
+    return aValue.X();
   } else {
-    return aValue.y;
+    return aValue.Y();
   }
 }
 
 template <typename Rect>
 CoordOf<Rect> GetAxisEnd(ScrollDirection aDir, const Rect& aValue) {
-  if (aDir == ScrollDirection::HORIZONTAL) {
-    return aValue.x + aValue.width;
+  if (aDir == ScrollDirection::eHorizontal) {
+    return aValue.XMost();
   } else {
-    return aValue.y + aValue.height;
+    return aValue.YMost();
   }
 }
 
 template <typename Rect>
 CoordOf<Rect> GetAxisLength(ScrollDirection aDir, const Rect& aValue) {
-  if (aDir == ScrollDirection::HORIZONTAL) {
-    return aValue.width;
+  if (aDir == ScrollDirection::eHorizontal) {
+    return aValue.Width();
   } else {
-    return aValue.height;
+    return aValue.Height();
   }
 }
 
 template <typename FromUnits, typename ToUnits>
 float GetAxisScale(ScrollDirection aDir, const gfx::ScaleFactors2D<FromUnits, ToUnits>& aValue) {
-  if (aDir == ScrollDirection::HORIZONTAL) {
+  if (aDir == ScrollDirection::eHorizontal) {
     return aValue.xScale;
   } else {
     return aValue.yScale;
@@ -50,9 +50,9 @@ float GetAxisScale(ScrollDirection aDir, const gfx::ScaleFactors2D<FromUnits, To
 }
 
 inline ScrollDirection GetPerpendicularDirection(ScrollDirection aDir) {
-  return aDir == ScrollDirection::HORIZONTAL
-       ? ScrollDirection::VERTICAL
-       : ScrollDirection::HORIZONTAL;
+  return aDir == ScrollDirection::eHorizontal
+       ? ScrollDirection::eVertical
+       : ScrollDirection::eHorizontal;
 }
 
 } // namespace layers

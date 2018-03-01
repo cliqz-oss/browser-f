@@ -6,6 +6,7 @@
 
 #include "nsContentSecurityManager.h"
 #include "nsEscape.h"
+#include "nsDataHandler.h"
 #include "nsIChannel.h"
 #include "nsIHttpChannelInternal.h"
 #include "nsIStreamListener.h"
@@ -14,8 +15,6 @@
 #include "nsContentUtils.h"
 #include "nsCORSListenerProxy.h"
 #include "nsIStreamListener.h"
-#include "nsIDocument.h"
-#include "nsMixedContentBlocker.h"
 #include "nsCDefaultURIFixup.h"
 #include "nsIURIFixup.h"
 #include "nsIImageLoadingContent.h"
@@ -60,16 +59,24 @@ nsContentSecurityManager::AllowTopLevelNavigationToDataURI(nsIChannel* aChannel)
   if (!isDataURI) {
     return true;
   }
+
+  nsAutoCString spec;
+  rv = uri->GetSpec(spec);
+  NS_ENSURE_SUCCESS(rv, true);
+  nsAutoCString contentType;
+  bool base64;
+  rv = nsDataHandler::ParseURI(spec, contentType, nullptr, 
+                               base64, nullptr);
+  NS_ENSURE_SUCCESS(rv, true);
+
   // Whitelist data: images as long as they are not SVGs
-  nsAutoCString filePath;
-  uri->GetFilePath(filePath);
-  if (StringBeginsWith(filePath, NS_LITERAL_CSTRING("image/")) &&
-      !StringBeginsWith(filePath, NS_LITERAL_CSTRING("image/svg+xml"))) {
+  if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("image/")) &&
+      !contentType.EqualsLiteral("image/svg+xml")) {
     return true;
   }
-  // Whitelist data: PDFs and JSON
-  if (StringBeginsWith(filePath, NS_LITERAL_CSTRING("application/pdf")) ||
-      StringBeginsWith(filePath, NS_LITERAL_CSTRING("application/json"))) {
+  // Whitelist all plain text types as well as data: PDFs.
+  if (nsContentUtils::IsPlainTextType(contentType) ||
+      contentType.EqualsLiteral("application/pdf")) {
     return true;
   }
   // Redirecting to a toplevel data: URI is not allowed, hence we make
@@ -471,6 +478,12 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
       break;
     }
 
+    case nsIContentPolicy::TYPE_SAVEAS_DOWNLOAD: {
+      mimeTypeGuess = EmptyCString();
+      requestingContext = aLoadInfo->LoadingNode();
+      break;
+    }
+
     default:
       // nsIContentPolicy::TYPE_INVALID
       MOZ_ASSERT(false, "can not perform security check without a valid contentType");
@@ -495,13 +508,6 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
       return NS_ERROR_CONTENT_BLOCKED_SHOW_ALT;
     }
     return NS_ERROR_CONTENT_BLOCKED;
-  }
-
-  if (nsMixedContentBlocker::sSendHSTSPriming) {
-    rv = nsMixedContentBlocker::MarkLoadInfoForPriming(uri,
-                                                       requestingContext,
-                                                       aLoadInfo);
-    return rv;
   }
 
   return NS_OK;

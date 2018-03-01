@@ -20,7 +20,6 @@
 
 #include "gc/Barrier.h"
 #include "js/Conversions.h"
-#include "js/GCAPI.h"
 #include "js/GCVector.h"
 #include "js/HeapAPI.h"
 #include "vm/Printer.h"
@@ -1031,19 +1030,6 @@ GetThisValueOfWith(JSObject* env);
 /* * */
 
 typedef JSObject* (*ClassInitializerOp)(JSContext* cx, JS::HandleObject obj);
-
-/* Fast access to builtin constructors and prototypes. */
-bool
-GetBuiltinConstructor(JSContext* cx, JSProtoKey key, MutableHandleObject objp);
-
-bool
-GetBuiltinPrototype(JSContext* cx, JSProtoKey key, MutableHandleObject objp);
-
-JSObject*
-GetBuiltinPrototypePure(GlobalObject* global, JSProtoKey protoKey);
-
-extern bool
-IsStandardPrototype(JSObject* obj, JSProtoKey key);
 
 } /* namespace js */
 

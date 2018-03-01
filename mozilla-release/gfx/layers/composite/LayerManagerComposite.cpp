@@ -723,7 +723,7 @@ LayerManagerComposite::PushGroupForLayerEffects()
   // so that we don't have to change size if the drawing area changes.
   IntRect rect(previousTarget->GetOrigin(), previousTarget->GetSize());
   // XXX: I'm not sure if this is true or not...
-  MOZ_ASSERT(rect.x == 0 && rect.y == 0);
+  MOZ_ASSERT(rect.IsEqualXY(0, 0));
   if (!mTwoPassTmpTarget ||
       mTwoPassTmpTarget->GetSize() != previousTarget->GetSize() ||
       mTwoPassTmpTarget->GetOrigin() != previousTarget->GetOrigin()) {
@@ -894,7 +894,7 @@ LayerManagerComposite::Render(const nsIntRegion& aInvalidRegion, const nsIntRegi
   }
 
   ParentLayerIntRect clipRect;
-  IntRect bounds(mRenderBounds.x, mRenderBounds.y, mRenderBounds.Width(), mRenderBounds.Height());
+  IntRect bounds(mRenderBounds.X(), mRenderBounds.Y(), mRenderBounds.Width(), mRenderBounds.Height());
   IntRect actualBounds;
 
   CompositorBench(mCompositor, bounds);
@@ -910,12 +910,12 @@ LayerManagerComposite::Render(const nsIntRegion& aInvalidRegion, const nsIntRegi
 #endif
   if (mRoot->GetClipRect()) {
     clipRect = *mRoot->GetClipRect();
-    IntRect rect(clipRect.x, clipRect.y, clipRect.Width(), clipRect.Height());
+    IntRect rect(clipRect.X(), clipRect.Y(), clipRect.Width(), clipRect.Height());
     mCompositor->BeginFrame(aInvalidRegion, &rect, bounds, aOpaqueRegion, nullptr, &actualBounds);
   } else {
     gfx::IntRect rect;
     mCompositor->BeginFrame(aInvalidRegion, nullptr, bounds, aOpaqueRegion, &rect, &actualBounds);
-    clipRect = ParentLayerIntRect(rect.x, rect.y, rect.Width(), rect.Height());
+    clipRect = ParentLayerIntRect(rect.X(), rect.Y(), rect.Width(), rect.Height());
   }
 #if defined(MOZ_WIDGET_ANDROID)
   ScreenCoord offset = GetContentShiftForToolbar();
@@ -959,7 +959,7 @@ LayerManagerComposite::Render(const nsIntRegion& aInvalidRegion, const nsIntRegi
   if (!mRegionToClear.IsEmpty()) {
     for (auto iter = mRegionToClear.RectIter(); !iter.Done(); iter.Next()) {
       const IntRect& r = iter.Get();
-      mCompositor->ClearRect(Rect(r.x, r.y, r.Width(), r.Height()));
+      mCompositor->ClearRect(Rect(r.X(), r.Y(), r.Width(), r.Height()));
     }
   }
 
@@ -1236,50 +1236,6 @@ LayerManagerComposite::HandlePixelsTarget()
 }
 #endif
 
-class TextLayerComposite : public TextLayer,
-                           public LayerComposite
-{
-public:
-  explicit TextLayerComposite(LayerManagerComposite *aManager)
-    : TextLayer(aManager, nullptr)
-    , LayerComposite(aManager)
-  {
-    MOZ_COUNT_CTOR(TextLayerComposite);
-    mImplData = static_cast<LayerComposite*>(this);
-  }
-
-protected:
-  ~TextLayerComposite()
-  {
-    MOZ_COUNT_DTOR(TextLayerComposite);
-    Destroy();
-  }
-
-public:
-  // LayerComposite Implementation
-  virtual Layer* GetLayer() override { return this; }
-
-  virtual void SetLayerManager(HostLayerManager* aManager) override
-  {
-    LayerComposite::SetLayerManager(aManager);
-    mManager = aManager;
-  }
-
-  virtual void Destroy() override { mDestroyed = true; }
-
-  virtual void RenderLayer(const gfx::IntRect& aClipRect,
-                           const Maybe<gfx::Polygon>& aGeometry) override {}
-  virtual void CleanupResources() override {};
-
-  virtual void GenEffectChain(EffectChain& aEffect) override {}
-
-  CompositableHost* GetCompositableHost() override { return nullptr; }
-
-  virtual HostLayer* AsHostLayer() override { return this; }
-
-  virtual const char* Name() const override { return "TextLayerComposite"; }
-};
-
 class BorderLayerComposite : public BorderLayer,
                              public LayerComposite
 {
@@ -1382,16 +1338,6 @@ LayerManagerComposite::CreateRefLayer()
     return nullptr;
   }
   return RefPtr<RefLayer>(new RefLayerComposite(this)).forget();
-}
-
-already_AddRefed<TextLayer>
-LayerManagerComposite::CreateTextLayer()
-{
-  if (LayerManagerComposite::mDestroyed) {
-    NS_WARNING("Call on destroyed layer manager");
-    return nullptr;
-  }
-  return RefPtr<TextLayer>(new TextLayerComposite(this)).forget();
 }
 
 already_AddRefed<BorderLayer>
@@ -1539,6 +1485,63 @@ HostLayer::GetShadowTransform() {
   }
 
   return transform;
+}
+
+static LayerIntRect
+TransformRect(const LayerIntRect& aRect, const Matrix4x4& aTransform)
+{
+  if (aRect.IsEmpty()) {
+    return LayerIntRect();
+  }
+
+  Rect rect(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height());
+  rect = aTransform.TransformAndClipBounds(rect, Rect::MaxIntRect());
+  rect.RoundOut();
+
+  IntRect intRect;
+  if (!gfxUtils::GfxRectToIntRect(ThebesRect(rect), &intRect)) {
+    return LayerIntRect();
+  }
+
+  return ViewAs<LayerPixel>(intRect);
+}
+
+static void
+AddTransformedRegion(LayerIntRegion& aDest, const LayerIntRegion& aSource, const Matrix4x4& aTransform)
+{
+  for (auto iter = aSource.RectIter(); !iter.Done(); iter.Next()) {
+    aDest.Or(aDest, TransformRect(iter.Get(), aTransform));
+  }
+  aDest.SimplifyOutward(20);
+}
+
+// Async animations can move child layers without updating our visible region.
+// PostProcessLayers will recompute visible regions for layers with an intermediate
+// surface, but otherwise we need to do it now.
+void
+ComputeVisibleRegionForChildren(ContainerLayer* aContainer, LayerIntRegion& aResult)
+{
+  for (Layer* l = aContainer->GetFirstChild(); l; l = l->GetNextSibling()) {
+    if (l->Extend3DContext()) {
+      MOZ_ASSERT(l->AsContainerLayer());
+      ComputeVisibleRegionForChildren(l->AsContainerLayer(), aResult);
+    } else {
+      AddTransformedRegion(aResult,
+                           l->GetLocalVisibleRegion(),
+                           l->ComputeTransformToPreserve3DRoot());
+    }
+  }
+}
+
+void
+HostLayer::RecomputeShadowVisibleRegionFromChildren()
+{
+  mShadowVisibleRegion.SetEmpty();
+  ContainerLayer* container = GetLayer()->AsContainerLayer();
+  MOZ_ASSERT(container);
+  if (container) {
+    ComputeVisibleRegionForChildren(container, mShadowVisibleRegion);
+  }
 }
 
 bool

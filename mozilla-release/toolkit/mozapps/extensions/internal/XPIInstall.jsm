@@ -593,11 +593,9 @@ async function loadManifestFromRDF(aUri, aStream) {
     addon.hasEmbeddedWebExtension = getRDFProperty(ds, root, "hasEmbeddedWebExtension") == "true";
 
     if (addon.optionsType &&
-        addon.optionsType != AddonManager.OPTIONS_TYPE_DIALOG &&
-        addon.optionsType != AddonManager.OPTIONS_TYPE_INLINE &&
-        addon.optionsType != AddonManager.OPTIONS_TYPE_TAB &&
-        addon.optionsType != AddonManager.OPTIONS_TYPE_INLINE_INFO) {
-      throw new Error("Install manifest specifies unknown type: " + addon.optionsType);
+        addon.optionsType != AddonManager.OPTIONS_INLINE_BROWSER &&
+        addon.optionsType != AddonManager.OPTIONS_TYPE_TAB) {
+      throw new Error("Install manifest specifies unknown optionsType: " + addon.optionsType);
     }
 
     if (addon.hasEmbeddedWebExtension) {
@@ -1850,7 +1848,7 @@ class AddonInstall {
 
         if (isUpgrade) {
           this.addon =  XPIDatabase.updateAddonMetadata(this.existingAddon, this.addon,
-                                                        file.persistentDescriptor);
+                                                        file.path);
           let state = XPIStates.getAddon(this.installLocation.name, this.addon.id);
           if (state) {
             state.syncWithDB(this.addon, true);
@@ -1859,7 +1857,7 @@ class AddonInstall {
           }
         } else {
           this.addon.active = (this.addon.visible && !this.addon.disabled);
-          this.addon = XPIDatabase.addAddonMetadata(this.addon, file.persistentDescriptor);
+          this.addon = XPIDatabase.addAddonMetadata(this.addon, file.path);
           XPIStates.addAddon(this.addon);
           this.addon.installDate = this.addon.updateDate;
           XPIDatabase.saveChanges();

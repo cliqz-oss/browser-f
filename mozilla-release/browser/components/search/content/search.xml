@@ -491,7 +491,7 @@
           // Select the installed engine if the installation succeeds
           var installCallback = {
             onSuccess: engine => this.currentEngine = engine
-          }
+          };
           Services.search.addEngine(target.getAttribute("uri"), null,
                                     target.getAttribute("src"), false,
                                     installCallback);
@@ -658,7 +658,7 @@
           if (AppConstants.platform == "macosx") {
             this.addEventListener("keypress", aEvent => {
               if (aEvent.keyCode == KeyEvent.DOM_VK_F4)
-                this.openSearch()
+                this.openSearch();
             }, true);
           }
 
@@ -945,7 +945,7 @@
         <xul:treecols anonid="treecols">
           <xul:treecol id="treecolAutoCompleteValue" class="autocomplete-treecol" flex="1" overflow="true"/>
         </xul:treecols>
-        <xul:treechildren class="autocomplete-treebody searchbar-treebody"/>
+        <xul:treechildren class="autocomplete-treebody searchbar-treebody" noSelectOnMouseMove="true"/>
       </xul:tree>
       <xul:vbox anonid="search-one-off-buttons" class="search-one-offs"/>
     </content>
@@ -1151,27 +1151,6 @@
       ]]></handler>
     </handlers>
 
-  </binding>
-
-
-  <!-- This is the same as the autocomplete-treebody binding except it does not
-       select rows on mousemove. -->
-  <binding id="searchbar-treebody"
-           extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-treebody">
-    <handlers>
-      <handler event="mousemove"><![CDATA[
-        // Cancel the event so that the base binding doesn't select the row.
-        event.preventDefault();
-      ]]></handler>
-    </handlers>
-  </binding>
-
-  <!-- Used for additional open search providers in the search panel. -->
-  <binding id="addengine-icon" extends="xul:box">
-    <content>
-      <xul:image class="addengine-icon" xbl:inherits="src"/>
-      <xul:image class="addengine-badge"/>
-    </content>
   </binding>
 
   <binding id="search-one-offs">
@@ -1579,11 +1558,13 @@
 
           let engines = this.engines;
           let oneOffCount = engines.length;
+          let collapsed = !oneOffCount ||
+                          (oneOffCount == 1 && engines[0].name == Services.search.currentEngine.name);
 
           // header is a xul:deck so collapsed doesn't work on it, see bug 589569.
-          this.header.hidden = this.buttons.collapsed = !oneOffCount;
+          this.header.hidden = this.buttons.collapsed = collapsed;
 
-          if (!oneOffCount)
+          if (collapsed)
             return;
 
           let panelWidth = parseInt(this.popup.clientWidth);
@@ -1712,9 +1693,9 @@
 
         if (tooManyEngines) {
           // Make the top-level menu button.
-          let button = document.createElementNS(kXULNS, "button");
+          let button = document.createElementNS(kXULNS, "toolbarbutton");
           list.appendChild(button);
-          button.classList.add("addengine-item");
+          button.classList.add("addengine-item", "badged-button");
           button.setAttribute("anonid", "addengine-menu-button");
           button.setAttribute("type", "menu");
           button.setAttribute("label",
@@ -1756,10 +1737,13 @@
         // menupopup created earlier.  In the latter case, create menuitem
         // elements instead of buttons, because buttons don't get keyboard
         // handling for free inside menupopups.
-        let eltType = tooManyEngines ? "menuitem" : "button";
+        let eltType = tooManyEngines ? "menuitem" : "toolbarbutton";
         for (let engine of engines) {
           let button = document.createElementNS(kXULNS, eltType);
           button.classList.add("addengine-item");
+          if (!tooManyEngines) {
+            button.classList.add("badged-button");
+          }
           button.id = this.telemetryOrigin + "-add-engine-" +
                       this._fixUpEngineNameForID(engine.title);
           let label = this.bundle.formatStringFromName("cmd_addFoundEngine",
@@ -2009,6 +1993,8 @@
         <parameter name="allowEmptySelection"/>
         <parameter name="textboxUserValue"/>
         <body><![CDATA[
+          if (this.compact && this.buttons.collapsed)
+            return false;
           if (event.keyCode == KeyEvent.DOM_VK_RIGHT &&
               this.selectedButton &&
               this.selectedButton.getAttribute("anonid") ==
@@ -2377,7 +2363,7 @@
               prompt.setPropertyAsBool("allowTabModal", true);
               prompt.alert(title, text);
             }
-          }
+          };
           Services.search.addEngine(target.getAttribute("uri"), null,
                                     target.getAttribute("image"), false,
                                     installCallback);

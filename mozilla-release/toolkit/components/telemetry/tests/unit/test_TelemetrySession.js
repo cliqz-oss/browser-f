@@ -109,7 +109,7 @@ function getSavedPingFile(basename) {
   if (pingFile.exists()) {
     pingFile.remove(true);
   }
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     try {
       pingFile.remove(true);
     } catch (e) {
@@ -330,6 +330,10 @@ function checkPayload(payload, reason, successfulPings, savedPings) {
   let activeTicks = payload.simpleMeasurements.activeTicks;
   Assert.ok(activeTicks >= 0);
 
+  if ("browser.timings.last_shutdown" in payload.processes.parent.scalars) {
+    Assert.equal(payload.processes.parent.scalars["browser.timings.last_shutdown"], SHUTDOWN_TIME);
+  }
+
   Assert.equal(payload.simpleMeasurements.failedProfileLockCount,
               FAILED_PROFILE_LOCK_ATTEMPTS);
   let profileDirectory = Services.dirsvc.get("ProfD", Ci.nsIFile);
@@ -487,7 +491,7 @@ add_task(async function test_setup() {
   write_fake_shutdown_file();
 
   let currentMaxNumberOfThreads = Telemetry.maximalNumberOfConcurrentThreads;
-  do_check_true(currentMaxNumberOfThreads > 0);
+  Assert.ok(currentMaxNumberOfThreads > 0);
 
   // Try to augment the maximal number of threads currently launched
   let threads = [];
@@ -500,9 +504,9 @@ add_task(async function test_setup() {
   }
   gNumberOfThreadsLaunched = threads.length;
 
-  do_check_true(Telemetry.maximalNumberOfConcurrentThreads >= gNumberOfThreadsLaunched);
+  Assert.ok(Telemetry.maximalNumberOfConcurrentThreads >= gNumberOfThreadsLaunched);
 
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     threads.forEach(function(thread) {
       thread.shutdown();
     });
@@ -525,7 +529,7 @@ add_task(async function test_expiredHistogram() {
 
   dummy.add(1);
 
-  do_check_eq(TelemetrySession.getPayload().histograms.TELEMETRY_TEST_EXPIRED, undefined);
+  Assert.equal(TelemetrySession.getPayload().histograms.TELEMETRY_TEST_EXPIRED, undefined);
 });
 
 // Sends a ping to a non existing server. If we remove this test, we won't get

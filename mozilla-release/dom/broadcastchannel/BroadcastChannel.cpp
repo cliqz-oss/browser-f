@@ -240,7 +240,8 @@ class BroadcastChannelWorkerHolder final : public workers::WorkerHolder
 
 public:
   explicit BroadcastChannelWorkerHolder(BroadcastChannel* aChannel)
-    : mChannel(aChannel)
+    : workers::WorkerHolder("BroadcastChannelWorkerHolder")
+    , mChannel(aChannel)
   {
     MOZ_COUNT_CTOR(BroadcastChannelWorkerHolder);
   }
@@ -362,7 +363,6 @@ BroadcastChannel::Constructor(const GlobalObject& aGlobal,
 
   if (!workerPrivate) {
     MOZ_ASSERT(window);
-    MOZ_ASSERT(window->IsInnerWindow());
     bc->mInnerID = window->WindowID();
 
     // Register as observer for inner-window-destroyed.

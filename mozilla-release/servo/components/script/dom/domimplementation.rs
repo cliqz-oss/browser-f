@@ -114,7 +114,7 @@ impl DOMImplementationMethods for DOMImplementation {
         }
 
         // Step 6.
-        // FIXME: https://github.com/mozilla/servo/issues/1522
+        // The origin is already set
 
         // Step 7.
         Ok(doc)
@@ -137,7 +137,8 @@ impl DOMImplementationMethods for DOMImplementation {
                                 DocumentSource::NotFromParser,
                                 loader,
                                 None,
-                                None);
+                                None,
+                                Default::default());
 
         {
             // Step 3.
@@ -182,7 +183,7 @@ impl DOMImplementationMethods for DOMImplementation {
         }
 
         // Step 8.
-        // FIXME: https://github.com/mozilla/servo/issues/1522
+        // The origin is already set
 
         // Step 9.
         doc

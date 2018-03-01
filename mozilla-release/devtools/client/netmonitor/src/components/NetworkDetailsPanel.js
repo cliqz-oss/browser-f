@@ -4,20 +4,22 @@
 
 "use strict";
 
-const {
-  createFactory,
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
+const { createFactory } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 const Actions = require("../actions/index");
 const { getSelectedRequest } = require("../selectors/index");
 
 // Components
-const CustomRequestPanel = createFactory(require("./CustomRequestPanel"));
-const TabboxPanel = createFactory(require("./TabboxPanel"));
+loader.lazyGetter(this, "CustomRequestPanel", function () {
+  return createFactory(require("./CustomRequestPanel"));
+});
+loader.lazyGetter(this, "TabboxPanel", function () {
+  return createFactory(require("./TabboxPanel"));
+});
 
-const { div } = DOM;
+const { div } = dom;
 
 /**
  * Network details panel component

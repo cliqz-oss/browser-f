@@ -22,10 +22,7 @@
 #include "nsIDOMElement.h"
 #include "nsIDOMXULElement.h"
 #include "nsIDOMXULMultSelectCntrlEl.h"
-#include "nsIRDFCompositeDataSource.h"
-#include "nsIRDFResource.h"
 #include "nsIURI.h"
-#include "nsIXULTemplateBuilder.h"
 #include "nsLayoutCID.h"
 #include "nsAttrAndChildArray.h"
 #include "nsGkAtoms.h"
@@ -40,6 +37,7 @@
 #include "mozilla/dom/DOMRect.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/DOMString.h"
+#include "mozilla/dom/FromParser.h"
 
 class nsIDocument;
 class nsXULPrototypeDocument;
@@ -212,7 +210,7 @@ class XULDocument;
 class nsXULPrototypeScript : public nsXULPrototypeNode
 {
 public:
-    nsXULPrototypeScript(uint32_t aLineNo, uint32_t version);
+    explicit nsXULPrototypeScript(uint32_t aLineNo);
     virtual ~nsXULPrototypeScript();
 
     virtual nsresult Serialize(nsIObjectOutputStream* aStream,
@@ -269,7 +267,6 @@ public:
     bool                     mSrcLoading;
     bool                     mOutOfLine;
     mozilla::dom::XULDocument* mSrcLoadWaiters;   // [OWNER] but not COMPtr
-    uint32_t                 mLangVersion;
 private:
     JS::Heap<JSScript*>      mScriptObject;
 };
@@ -333,12 +330,11 @@ public:
 
 // XUL element specific bits
 enum {
-  XUL_ELEMENT_TEMPLATE_GENERATED =        XUL_ELEMENT_FLAG_BIT(0),
-  XUL_ELEMENT_HAS_CONTENTMENU_LISTENER =  XUL_ELEMENT_FLAG_BIT(1),
-  XUL_ELEMENT_HAS_POPUP_LISTENER =        XUL_ELEMENT_FLAG_BIT(2)
+  XUL_ELEMENT_HAS_CONTENTMENU_LISTENER =  XUL_ELEMENT_FLAG_BIT(0),
+  XUL_ELEMENT_HAS_POPUP_LISTENER =        XUL_ELEMENT_FLAG_BIT(1)
 };
 
-ASSERT_NODE_FLAGS_SPACE(ELEMENT_TYPE_SPECIFIC_BITS_OFFSET + 3);
+ASSERT_NODE_FLAGS_SPACE(ELEMENT_TYPE_SPECIFIC_BITS_OFFSET + 2);
 
 #undef XUL_ELEMENT_FLAG_BIT
 
@@ -370,7 +366,8 @@ public:
                                 nsIContent* aBindingParent,
                                 bool aCompileEventHandlers) override;
     virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
-    virtual void RemoveChildAt(uint32_t aIndex, bool aNotify) override;
+    virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
+    virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
     virtual void DestroyContent() override;
 
 #ifdef DEBUG
@@ -384,7 +381,11 @@ public:
                                   bool aIsTrustedEvent) override;
     void ClickWithInputSource(uint16_t aInputSource, bool aIsTrustedEvent);
 
-    virtual nsIContent *GetBindingParent() const override;
+    nsIContent* GetBindingParent() const final override
+    {
+      return mBindingParent;
+    }
+
     virtual bool IsNodeOfType(uint32_t aFlags) const override;
     virtual bool IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) override;
 
@@ -392,15 +393,6 @@ public:
     virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                                 int32_t aModType) const override;
     NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
-
-    // XUL element methods
-    /**
-     * The template-generated flag is used to indicate that a
-     * template-generated element has already had its children generated.
-     */
-    void SetTemplateGenerated() { SetFlags(XUL_ELEMENT_TEMPLATE_GENERATED); }
-    void ClearTemplateGenerated() { UnsetFlags(XUL_ELEMENT_TEMPLATE_GENERATED); }
-    bool GetTemplateGenerated() { return HasFlag(XUL_ELEMENT_TEMPLATE_GENERATED); }
 
     // nsIDOMNode
     NS_FORWARD_NSIDOMNODE_TO_NSINODE
@@ -420,7 +412,6 @@ public:
 
     nsresult GetFrameLoaderXPCOM(nsIFrameLoader** aFrameLoader);
     void PresetOpenerWindow(mozIDOMWindowProxy* aWindow, ErrorResult& aRv);
-    nsresult SetIsPrerendered();
 
     virtual void RecompileScriptEventListeners() override;
 
@@ -632,22 +623,6 @@ public:
     {
         SetXULAttr(nsGkAtoms::top, aValue, rv);
     }
-    void GetDatasources(DOMString& aValue) const
-    {
-        GetXULAttr(nsGkAtoms::datasources, aValue);
-    }
-    void SetDatasources(const nsAString& aValue, mozilla::ErrorResult& rv)
-    {
-        SetXULAttr(nsGkAtoms::datasources, aValue, rv);
-    }
-    void GetRef(DOMString& aValue) const
-    {
-        GetXULAttr(nsGkAtoms::ref, aValue);
-    }
-    void SetRef(const nsAString& aValue, mozilla::ErrorResult& rv)
-    {
-        SetXULAttr(nsGkAtoms::ref, aValue, rv);
-    }
     void GetTooltipText(DOMString& aValue) const
     {
         GetXULAttr(nsGkAtoms::tooltiptext, aValue);
@@ -680,9 +655,6 @@ public:
     {
         SetXULBoolAttr(nsGkAtoms::allowevents, aAllowEvents);
     }
-    already_AddRefed<nsIRDFCompositeDataSource> GetDatabase();
-    already_AddRefed<nsIXULTemplateBuilder> GetBuilder();
-    already_AddRefed<nsIRDFResource> GetResource(mozilla::ErrorResult& rv);
     nsIControllers* GetControllers(mozilla::ErrorResult& rv);
     // Note: this can only fail if the do_CreateInstance for the boxobject
     // contact fails for some reason.
@@ -760,6 +732,7 @@ protected:
     virtual bool ParseAttribute(int32_t aNamespaceID,
                                   nsAtom* aAttribute,
                                   const nsAString& aValue,
+                                  nsIPrincipal* aMaybeScriptedPrincipal,
                                   nsAttrValue& aResult) override;
 
     virtual mozilla::EventListenerManager*
@@ -799,9 +772,10 @@ protected:
     bool BoolAttrIsTrue(nsAtom* aName) const;
 
     friend nsresult
-    NS_NewXULElement(mozilla::dom::Element** aResult, mozilla::dom::NodeInfo *aNodeInfo);
+    NS_NewXULElement(mozilla::dom::Element** aResult, mozilla::dom::NodeInfo *aNodeInfo,
+                     mozilla::dom::FromParser aFromParser, const nsAString* aIs);
     friend void
-    NS_TrustedNewXULElement(nsIContent** aResult, mozilla::dom::NodeInfo *aNodeInfo);
+    NS_TrustedNewXULElement(mozilla::dom::Element** aResult, mozilla::dom::NodeInfo *aNodeInfo);
 
     static already_AddRefed<nsXULElement>
     Create(nsXULPrototypeElement* aPrototype, mozilla::dom::NodeInfo *aNodeInfo,

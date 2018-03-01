@@ -128,6 +128,7 @@ bool
 HTMLMenuElement::ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None && aAttribute == nsGkAtoms::type) {
@@ -136,7 +137,7 @@ HTMLMenuElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
@@ -214,9 +215,9 @@ HTMLMenuElement::TraverseContent(nsIContent* aContent,
     } else if (child->IsHTMLElement(nsGkAtoms::hr)) {
       aBuilder->AddSeparator();
     } else if (child->IsHTMLElement(nsGkAtoms::menu) && !element->IsHidden()) {
-      if (child->HasAttr(kNameSpaceID_None, nsGkAtoms::label)) {
+      if (child->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::label)) {
         nsAutoString label;
-        child->GetAttr(kNameSpaceID_None, nsGkAtoms::label, label);
+        child->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, label);
 
         BuildSubmenu(label, child, aBuilder);
 

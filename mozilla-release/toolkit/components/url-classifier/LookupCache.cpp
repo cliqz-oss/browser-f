@@ -59,7 +59,7 @@ void CStringToHexString(const nsACString& aIn, nsACString& aOut)
 
   aOut.SetCapacity(2 * len);
   for (size_t i = 0; i < aIn.Length(); ++i) {
-    const char c = static_cast<const char>(aIn[i]);
+    const char c = static_cast<char>(aIn[i]);
     aOut.Append(lut[(c >> 4) & 0x0F]);
     aOut.Append(lut[c & 15]);
   }
@@ -79,7 +79,7 @@ LookupCache::LookupCache(const nsACString& aTableName,
 nsresult
 LookupCache::Open()
 {
-  LOG(("Loading PrefixSet"));
+  LOG(("Loading PrefixSet for %s", mTableName.get()));
   nsresult rv = LoadPrefixSet();
   NS_ENSURE_SUCCESS(rv, rv);
 

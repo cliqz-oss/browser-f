@@ -4,9 +4,6 @@
 // Verify that we wipe the server if we have to regenerate keys.
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
-
-initTestLogging("Trace");
 
 add_task(async function test_missing_crypto_collection() {
   enableValidationPrefs();
@@ -56,22 +53,22 @@ add_task(async function test_missing_crypto_collection() {
 
     _("Startup, no meta/global: freshStart called once.");
     await sync_and_validate_telem();
-    do_check_eq(fresh, 1);
+    Assert.equal(fresh, 1);
     fresh = 0;
 
     _("Regular sync: no need to freshStart.");
     await Service.sync();
-    do_check_eq(fresh, 0);
+    Assert.equal(fresh, 0);
 
     _("Simulate a bad info/collections.");
     delete johnColls.crypto;
     await sync_and_validate_telem();
-    do_check_eq(fresh, 1);
+    Assert.equal(fresh, 1);
     fresh = 0;
 
     _("Regular sync: no need to freshStart.");
     await sync_and_validate_telem();
-    do_check_eq(fresh, 0);
+    Assert.equal(fresh, 0);
 
   } finally {
     Svc.Prefs.resetBranch("");

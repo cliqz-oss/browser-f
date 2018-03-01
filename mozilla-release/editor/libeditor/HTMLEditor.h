@@ -11,13 +11,13 @@
 #include "mozilla/ManualNAC.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/TextEditor.h"
+#include "mozilla/TextEditRules.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/File.h"
 
 #include "nsAttrName.h"
 #include "nsCOMPtr.h"
-#include "nsIContentFilter.h"
 #include "nsICSSLoaderObserver.h"
 #include "nsIDocumentObserver.h"
 #include "nsIDOMElement.h"
@@ -25,7 +25,6 @@
 #include "nsIEditorMailSupport.h"
 #include "nsIEditorStyleSheets.h"
 #include "nsIEditorUtils.h"
-#include "nsIEditRules.h"
 #include "nsIHTMLAbsPosEditor.h"
 #include "nsIHTMLEditor.h"
 #include "nsIHTMLInlineTableEditor.h"
@@ -49,7 +48,6 @@ namespace mozilla {
 class AutoSelectionSetterAfterTableEdit;
 class HTMLEditorEventListener;
 class HTMLEditRules;
-class TextEditRules;
 class TypeInState;
 class WSRunObject;
 struct PropItem;
@@ -111,10 +109,10 @@ public:
   NS_IMETHOD BeginningOfDocument() override;
   virtual nsresult HandleKeyPressEvent(
                      WidgetKeyboardEvent* aKeyboardEvent) override;
-  virtual already_AddRefed<nsIContent> GetFocusedContent() override;
+  virtual nsIContent* GetFocusedContent() override;
   virtual already_AddRefed<nsIContent> GetFocusedContentForIME() override;
   virtual bool IsActiveInDOMWindow() override;
-  virtual already_AddRefed<dom::EventTarget> GetDOMEventTarget() override;
+  virtual dom::EventTarget* GetDOMEventTarget() override;
   virtual Element* GetEditorRoot() override;
   virtual already_AddRefed<nsIContent> FindSelectionRoot(
                                          nsINode *aNode) override;
@@ -131,8 +129,6 @@ public:
                                             bool aSuppressTransaction) override;
   using EditorBase::RemoveAttributeOrEquivalent;
   using EditorBase::SetAttributeOrEquivalent;
-
-  nsresult MouseMove(nsIDOMMouseEvent* aMouseEvent);
 
   // nsStubMutationObserver overrides
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
@@ -240,23 +236,23 @@ public:
   nsresult GetElementZIndex(Element* aElement, int32_t* aZindex);
 
   nsresult SetInlineProperty(nsAtom* aProperty,
-                             const nsAString& aAttribute,
+                             nsAtom* aAttribute,
                              const nsAString& aValue);
   nsresult GetInlineProperty(nsAtom* aProperty,
-                             const nsAString& aAttribute,
+                             nsAtom* aAttribute,
                              const nsAString& aValue,
                              bool* aFirst,
                              bool* aAny,
                              bool* aAll);
   nsresult GetInlinePropertyWithAttrValue(nsAtom* aProperty,
-                                          const nsAString& aAttr,
+                                          nsAtom* aAttr,
                                           const nsAString& aValue,
                                           bool* aFirst,
                                           bool* aAny,
                                           bool* aAll,
                                           nsAString& outValue);
   nsresult RemoveInlineProperty(nsAtom* aProperty,
-                                const nsAString& aAttribute);
+                                nsAtom* aAttribute);
 protected:
   virtual ~HTMLEditor();
 
@@ -300,7 +296,6 @@ public:
    * Returns true if aNode is a container.
    */
   virtual bool IsContainer(nsINode* aNode) override;
-  virtual bool IsContainer(nsIDOMNode* aNode) override;
 
   /**
    * Make the given selection span the entire document.
@@ -339,11 +334,28 @@ public:
   // Utility Routines, not part of public API
   NS_IMETHOD TypedText(const nsAString& aString,
                        ETypingAction aAction) override;
-  nsresult InsertNodeAtPoint(nsIDOMNode* aNode,
-                             nsCOMPtr<nsIDOMNode>* ioParent,
-                             int32_t* ioOffset,
-                             bool aNoEmptyNodes,
-                             nsCOMPtr<nsIDOMNode>* ioChildAtOffset = nullptr);
+
+  /**
+   * InsertNodeIntoProperAncestor() attempts to insert aNode into the document,
+   * at aPointToInsert.  Checks with strict dtd to see if containment is
+   * allowed.  If not allowed, will attempt to find a parent in the parent
+   * hierarchy of aPointToInsert.GetContainer() that will accept aNode as a
+   * child.  If such a parent is found, will split the document tree from
+   * aPointToInsert up to parent, and then insert aNode. aPointToInsert is then
+   * adjusted to point to the actual location that aNode was inserted at.
+   * aSplitAtEdges specifies if the splitting process is allowed to result in
+   * empty nodes.
+   *
+   * @param aNode             Node to insert.
+   * @param aPointToInsert    Insertion point.
+   * @param aSplitAtEdges     Splitting can result in empty nodes?
+   * @return                  Returns inserted point if succeeded.
+   *                          Otherwise, the result is not set.
+   */
+  EditorDOMPoint
+  InsertNodeIntoProperAncestor(nsIContent& aNode,
+                               const EditorRawDOMPoint& aPointToInsert,
+                               SplitAtEdges aSplitAtEdges);
 
   /**
    * Use this to assure that selection is set after attribute nodes when
@@ -357,12 +369,21 @@ public:
                                                     nsINode* aNode);
 
   /**
+   * IsInVisibleTextFrames() returns true if all text in aText is in visible
+   * text frames.  Callers have to guarantee that there is no pending reflow.
+   */
+  bool IsInVisibleTextFrames(dom::Text& aText);
+
+  /**
+   * IsVisibleTextNode() returns true if aText has visible text.  If it has
+   * only whitespaces and they are collapsed, returns false.
+   */
+  bool IsVisibleTextNode(Text& aText);
+
+  /**
    * aNode must be a non-null text node.
    * outIsEmptyNode must be non-null.
    */
-  nsresult IsVisTextNode(nsIContent* aNode,
-                         bool* outIsEmptyNode,
-                         bool aSafeToAskFrames);
   nsresult IsEmptyNode(nsIDOMNode* aNode, bool* outIsEmptyBlock,
                        bool aMozBRDoesntCount = false,
                        bool aListOrCellNotEmpty = false,
@@ -421,6 +442,30 @@ public:
     mDefaultParagraphSeparator = aSep;
   }
 
+  /**
+   * event callback when a mouse button is pressed
+   * @param aX      [IN] horizontal position of the pointer
+   * @param aY      [IN] vertical position of the pointer
+   * @param aTarget [IN] the element triggering the event
+   * @param aMouseEvent [IN] the event
+   */
+  nsresult OnMouseDown(int32_t aX, int32_t aY, nsIDOMElement* aTarget,
+                       nsIDOMEvent* aMouseEvent);
+
+  /**
+   * event callback when a mouse button is released
+   * @param aX      [IN] horizontal position of the pointer
+   * @param aY      [IN] vertical position of the pointer
+   * @param aTarget [IN] the element triggering the event
+   */
+  nsresult OnMouseUp(int32_t aX, int32_t aY, nsIDOMElement* aTarget);
+
+  /**
+   * event callback when the mouse pointer is moved
+   * @param aMouseEvent [IN] the event
+   */
+  nsresult OnMouseMove(nsIDOMMouseEvent* aMouseEvent);
+
 protected:
   class BlobReader final : public nsIEditorBlobListener
   {
@@ -470,14 +515,12 @@ protected:
   bool SetCaretInTableCell(nsIDOMElement* aElement);
 
   nsresult TabInTable(bool inIsShift, bool* outHandled);
-  already_AddRefed<Element> CreateBR(nsINode* aNode, int32_t aOffset,
-                                     EDirection aSelect = eNone);
-  NS_IMETHOD CreateBR(
-               nsIDOMNode* aNode, int32_t aOffset,
-               nsCOMPtr<nsIDOMNode>* outBRNode,
-               nsIEditor::EDirection aSelect = nsIEditor::eNone) override;
 
-  nsresult InsertBR(nsCOMPtr<nsIDOMNode>* outBRNode);
+  /**
+   * InsertBR() inserts a new <br> element at selection.  If there is
+   * non-collapsed selection ranges, the selected ranges is deleted first.
+   */
+  nsresult InsertBR();
 
   // Table Editing (implemented in nsTableEditor.cpp)
 
@@ -575,6 +618,9 @@ protected:
    */
   nsresult SetSelectionAtDocumentStart(Selection* aSelection);
 
+  nsresult GetTableSize(Element* aTable,
+                        int32_t* aRowCount, int32_t* aColCount);
+
   // End of Table Editing utilities
 
   static Element* GetEnclosingTable(nsINode* aNode);
@@ -601,7 +647,7 @@ protected:
    */
   bool IsTextPropertySetByContent(nsINode* aNode,
                                   nsAtom* aProperty,
-                                  const nsAString* aAttribute,
+                                  nsAtom* aAttribute,
                                   const nsAString* aValue,
                                   nsAString* outValue = nullptr);
 
@@ -649,17 +695,6 @@ protected:
   bool HavePrivateHTMLFlavor(nsIClipboard* clipboard );
   nsresult ParseCFHTML(nsCString& aCfhtml, char16_t** aStuffToPaste,
                        char16_t** aCfcontext);
-  nsresult DoContentFilterCallback(const nsAString& aFlavor,
-                                   nsIDOMDocument* aSourceDoc,
-                                   bool aWillDeleteSelection,
-                                   nsIDOMNode** aFragmentAsNode,
-                                   nsIDOMNode** aFragStartNode,
-                                   int32_t* aFragStartOffset,
-                                   nsIDOMNode** aFragEndNode,
-                                   int32_t* aFragEndOffset,
-                                   nsIDOMNode** aTargetNode,
-                                   int32_t* aTargetOffset,
-                                   bool* aDoContinue);
 
   bool IsInLink(nsIDOMNode* aNode, nsCOMPtr<nsIDOMNode>* outLink = nullptr);
   nsresult StripFormattingNodes(nsIContent& aNode, bool aOnlyList = false);
@@ -706,12 +741,19 @@ protected:
   bool IsVisibleBRElement(nsINode* aNode);
 
   /**
-   * Utility routine to possibly adjust the insertion position when
-   * inserting a block level element.
+   * GetBetterInsertionPointFor() returns better insertion point to insert
+   * aNodeToInsert.
+   *
+   * @param aNodeToInsert       The node to insert.
+   * @param aPointToInsert      A candidate point to insert the node.
+   * @return                    Better insertion point if next visible node
+   *                            is a <br> element and previous visible node
+   *                            is neither none, another <br> element nor
+   *                            different block level element.
    */
-  void NormalizeEOLInsertPosition(nsINode* firstNodeToInsert,
-                                  nsCOMPtr<nsIDOMNode>* insertParentNode,
-                                  int32_t* insertOffset);
+  EditorRawDOMPoint
+  GetBetterInsertionPointFor(nsINode& aNodeToInsert,
+                             const EditorRawDOMPoint& aPointToInsert);
 
   /**
    * Helpers for block transformations.
@@ -742,34 +784,32 @@ protected:
                                        int32_t aStartOffset,
                                        int32_t aEndOffset,
                                        nsAtom& aProperty,
-                                       const nsAString* aAttribute,
+                                       nsAtom* aAttribute,
                                        const nsAString& aValue);
   nsresult SetInlinePropertyOnNode(nsIContent& aNode,
                                    nsAtom& aProperty,
-                                   const nsAString* aAttribute,
+                                   nsAtom* aAttribute,
                                    const nsAString& aValue);
 
   nsresult PromoteInlineRange(nsRange& aRange);
   nsresult PromoteRangeIfStartsOrEndsInNamedAnchor(nsRange& aRange);
   nsresult SplitStyleAboveRange(nsRange* aRange,
                                 nsAtom* aProperty,
-                                const nsAString* aAttribute);
+                                nsAtom* aAttribute);
   nsresult SplitStyleAbovePoint(nsCOMPtr<nsINode>* aNode, int32_t* aOffset,
                                 nsAtom* aProperty,
-                                const nsAString* aAttribute,
+                                nsAtom* aAttribute,
                                 nsIContent** aOutLeftNode = nullptr,
                                 nsIContent** aOutRightNode = nullptr);
   nsresult RemoveStyleInside(nsIContent& aNode,
                              nsAtom* aProperty,
-                             const nsAString* aAttribute,
+                             nsAtom* aAttribute,
                              const bool aChildrenOnly = false);
-  nsresult RemoveInlinePropertyImpl(nsAtom* aProperty,
-                                    const nsAString* aAttribute);
 
   bool NodeIsProperty(nsINode& aNode);
   bool IsAtFrontOfNode(nsINode& aNode, int32_t aOffset);
   bool IsAtEndOfNode(nsINode& aNode, int32_t aOffset);
-  bool IsOnlyAttribute(const nsIContent* aElement, const nsAString& aAttribute);
+  bool IsOnlyAttribute(const Element* aElement, nsAtom* aAttribute);
 
   nsresult RemoveBlockContainer(nsIContent& aNode);
 
@@ -857,7 +897,7 @@ protected:
   nsIContent* GetLastEditableLeaf(nsINode& aNode);
 
   nsresult GetInlinePropertyBase(nsAtom& aProperty,
-                                 const nsAString* aAttribute,
+                                 nsAtom* aAttribute,
                                  const nsAString* aValue,
                                  bool* aFirst,
                                  bool* aAny,
@@ -895,7 +935,7 @@ protected:
                                    bool aClearStyle = true);
 
   nsresult ClearStyle(nsCOMPtr<nsINode>* aNode, int32_t* aOffset,
-                      nsAtom* aProperty, const nsAString* aAttribute);
+                      nsAtom* aProperty, nsAtom* aAttribute);
 
   void SetElementPosition(Element& aElement, int32_t aX, int32_t aY);
 
@@ -924,8 +964,6 @@ protected:
                                   int32_t aDirection, bool aSelected);
 
 protected:
-  nsTArray<OwningNonNull<nsIContentFilter>> mContentFilters;
-
   RefPtr<TypeInState> mTypeInState;
 
   bool mCRInParagraphCreatesParagraph;
@@ -1090,7 +1128,7 @@ protected:
                                          nsAString& aReturn);
 
   // inline table editing
-  nsCOMPtr<nsIDOMElement> mInlineEditedCell;
+  RefPtr<Element> mInlineEditedCell;
 
   ManualNACPtr mAddColumnBeforeButton;
   ManualNACPtr mRemoveColumnButton;
@@ -1099,6 +1137,8 @@ protected:
   ManualNACPtr mAddRowBeforeButton;
   ManualNACPtr mRemoveRowButton;
   ManualNACPtr mAddRowAfterButton;
+
+  nsresult ShowInlineTableEditingUI(Element* aCell);
 
   void AddMouseClickListener(Element* aElement);
   void RemoveMouseClickListener(Element* aElement);
@@ -1117,11 +1157,11 @@ public:
 private:
   bool IsSimpleModifiableNode(nsIContent* aContent,
                               nsAtom* aProperty,
-                              const nsAString* aAttribute,
+                              nsAtom* aAttribute,
                               const nsAString* aValue);
   nsresult SetInlinePropertyOnNodeImpl(nsIContent& aNode,
                                        nsAtom& aProperty,
-                                       const nsAString* aAttribute,
+                                       nsAtom* aAttribute,
                                        const nsAString& aValue);
   typedef enum { eInserted, eAppended } InsertedOrAppended;
   void DoContentInserted(nsIDocument* aDocument, nsIContent* aContainer,

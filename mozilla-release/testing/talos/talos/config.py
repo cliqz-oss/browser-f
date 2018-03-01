@@ -40,17 +40,16 @@ DEFAULTS = dict(
         tpchrome=True,
         tpcycles=10,
         tpmozafterpaint=False,
+        tphero=False,
         fnbpaint=False,
         firstpaint=False,
         format_pagename=True,
         userready=False,
         testeventmap=[],
         base_vs_ref=False,
-        tpnoisy=True,
         tppagecycles=1,
         tploadnocache=False,
         tpscrolltest=False,
-        tprender=False,
         win_counters=[],
         w7_counters=[],
         linux_counters=[],
@@ -58,6 +57,7 @@ DEFAULTS = dict(
         xperf_counters=[],
         setup=None,
         cleanup=None,
+        preferences={},
     ),
     # default preferences to run with
     # these are updated with --extraPrefs from the commandline
@@ -150,7 +150,6 @@ DEFAULTS = dict(
         'extensions.update.enabled': False,
         'extensions.webservice.discoverURL':
             'http://127.0.0.1/extensions-dummy/discoveryURL',
-        'extensions.getAddons.maxResults': 0,
         'extensions.getAddons.get.url':
             'http://127.0.0.1/extensions-dummy/repositoryGetURL',
         'extensions.getAddons.getWithPerformance.url':
@@ -158,8 +157,6 @@ DEFAULTS = dict(
             '/repositoryGetWithPerformanceURL',
         'extensions.getAddons.search.browseURL':
             'http://127.0.0.1/extensions-dummy/repositoryBrowseURL',
-        'extensions.getAddons.search.url':
-            'http://127.0.0.1/extensions-dummy/repositorySearchURL',
         'media.gmp-manager.url':
             'http://127.0.0.1/gmpmanager-dummy/update.xml',
         'media.gmp-manager.updateEnabled': False,
@@ -182,8 +179,6 @@ DEFAULTS = dict(
         'browser.contentHandlers.types.4.uri': 'http://127.0.0.1/rss?url=%s',
         'browser.contentHandlers.types.5.uri': 'http://127.0.0.1/rss?url=%s',
         'identity.fxaccounts.auth.uri': 'https://127.0.0.1/fxa-dummy/',
-        'datareporting.healthreport.about.reportUrl':
-            'http://127.0.0.1/abouthealthreport/',
         'datareporting.healthreport.documentServerURI':
             'http://127.0.0.1/healthreport/',
         'datareporting.policy.dataSubmissionPolicyBypassNotification': True,
@@ -217,13 +212,12 @@ GLOBAL_OVERRIDES = (
     'gecko_profile',
     'gecko_profile_interval',
     'gecko_profile_entries',
-    'shutdown',
     'tpcycles',
-    'tpdelay',
     'tppagecycles',
     'tpmanifest',
     'tptimeout',
     'tpmozafterpaint',
+    'tphero',
     'fnbpaint',
     'firstpaint',
     'userready',
@@ -334,16 +328,6 @@ def get_global_overrides(config):
         if key != 'gecko_profile':
             config.pop(key)
 
-    # add noChrome to global overrides (HACK)
-    noChrome = config.pop('noChrome')
-    if noChrome:
-        global_overrides['tpchrome'] = False
-
-    # HACK: currently xperf tests post results to graph server and
-    # we want to ensure we don't publish shutdown numbers
-    # This is also hacked because "--noShutdown -> shutdown:True"
-    if config['xperf_path']:
-        global_overrides['shutdown'] = False
     return global_overrides
 
 
@@ -367,6 +351,7 @@ def build_manifest(config, manifestName):
 
 def get_test(config, global_overrides, counters, test_instance):
     mozAfterPaint = getattr(test_instance, 'tpmozafterpaint', None)
+    hero = getattr(test_instance, 'tphero', None)
     firstPaint = getattr(test_instance, 'firstpaint', None)
     userReady = getattr(test_instance, 'userready', None)
     firstNonBlankPaint = getattr(test_instance, 'fnbpaint', None)
@@ -383,6 +368,8 @@ def get_test(config, global_overrides, counters, test_instance):
         test_instance.firstpaint = firstPaint
     if userReady is not None:
         test_instance.userready = userReady
+    if hero is not None:
+        test_instance.tphero = hero
 
     # fix up url
     url = getattr(test_instance, 'url', None)
@@ -432,6 +419,9 @@ def get_browser_config(config):
     optional = {'bcontroller_config': '${talos}/bcontroller.json',
                 'branch_name': '',
                 'child_process': 'plugin-container',
+                'debug': False,
+                'debugger': None,
+                'debugger_args': None,
                 'develop': False,
                 'process': '',
                 'framework': 'talos',

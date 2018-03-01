@@ -56,7 +56,6 @@ static const char contentSandboxRules[] = R"(
   (define hasProfileDir (param "HAS_SANDBOXED_PROFILE"))
   (define profileDir (param "PROFILE_DIR"))
   (define home-path (param "HOME_PATH"))
-  (define hasFilePrivileges (param "HAS_FILE_PRIVILEGES"))
   (define debugWriteDir (param "DEBUG_WRITE_DIR"))
   (define testingReadPath1 (param "TESTING_READ_PATH1"))
   (define testingReadPath2 (param "TESTING_READ_PATH2"))
@@ -157,15 +156,6 @@ static const char contentSandboxRules[] = R"(
   (define (profile-subpath profile-relative-subpath)
     (subpath (string-append profileDir profile-relative-subpath)))
 
-  (define (allow-shared-preferences-read domain)
-        (begin
-          (if (defined? `user-preference-read)
-            (allow user-preference-read (preference-domain domain)))
-          (allow file-read*
-                 (home-literal (string-append "/Library/Preferences/" domain ".plist"))
-                 (home-regex (string-append "/Library/Preferences/ByHost/" (regex-quote domain) "\..*\.plist$")))
-          ))
-
   (define (allow-shared-list domain)
     (allow file-read*
            (home-regex (string-append "/Library/Preferences/" (regex-quote domain)))))
@@ -193,21 +183,15 @@ static const char contentSandboxRules[] = R"(
   (if (= macosMinorVersion 9)
      (allow mach-lookup (global-name "com.apple.xpcd")))
 
-  ; File content processes need access to iconservices to draw file icons in
-  ; directory listings
-  (if (string=? hasFilePrivileges "TRUE")
-    (allow mach-lookup
-      (global-name "com.apple.iconservices")))
-
   (allow iokit-open
      (iokit-user-client-class "IOHIDParamUserClient")
      (iokit-user-client-class "IOAudioEngineUserClient"))
 
 ; depending on systems, the 1st, 2nd or both rules are necessary
-  (allow-shared-preferences-read "com.apple.HIToolbox")
+  (allow user-preference-read (preference-domain "com.apple.HIToolbox"))
   (allow file-read-data (literal "/Library/Preferences/com.apple.HIToolbox.plist"))
 
-  (allow-shared-preferences-read "com.apple.ATS")
+  (allow user-preference-read (preference-domain "com.apple.ATS"))
   (allow file-read-data (literal "/Library/Preferences/.GlobalPreferences.plist"))
 
   (allow file-read*
@@ -299,10 +283,19 @@ static const char contentSandboxRules[] = R"(
 
   ; level 3: Does not have any of it's own rules. The global rules provide:
   ;          no global read/write access,
+<<<<<<< HEAD
   ;          read access permitted to $PROFILE/{extensions,features,chrome}
   (if (string=? hasFilePrivileges "TRUE")
     ; This process has blanket file read privileges
     (allow file-read*))
+||||||| merged common ancestors
+  ;          read access permitted to $PROFILE/{extensions,chrome}
+  (if (string=? hasFilePrivileges "TRUE")
+    ; This process has blanket file read privileges
+    (allow file-read*))
+=======
+  ;          read access permitted to $PROFILE/{extensions,chrome}
+>>>>>>> origin/upstream-releases
 
   (if (string=? hasProfileDir "TRUE")
     ; we have a profile dir
@@ -312,8 +305,8 @@ static const char contentSandboxRules[] = R"(
       (profile-subpath "/chrome")))
 
 ; accelerated graphics
-  (allow-shared-preferences-read "com.apple.opengl")
-  (allow-shared-preferences-read "com.nvidia.OpenGL")
+  (allow user-preference-read (preference-domain "com.apple.opengl"))
+  (allow user-preference-read (preference-domain "com.nvidia.OpenGL"))
   (allow mach-lookup
       (global-name "com.apple.cvmsServ"))
   (allow iokit-open
@@ -359,6 +352,16 @@ static const char contentSandboxRules[] = R"(
   ; Read access to the default FontExplorer font directory
   (allow file-read* (home-subpath "/FontExplorer X/Font Library"))
 )";
+
+static const char fileContentProcessAddend[] = R"(
+  ; This process has blanket file read privileges
+  (allow file-read*)
+
+  ; File content processes need access to iconservices to draw file icons in
+  ; directory listings
+  (allow mach-lookup (global-name "com.apple.iconservices"))
+)";
+
 
 }
 

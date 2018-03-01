@@ -85,6 +85,32 @@ ToString(CodeNameIndex aCodeNameIndex)
   return NS_ConvertUTF16toUTF8(codeName);
 }
 
+const char*
+ToChar(Command aCommand)
+{
+  if (aCommand == CommandDoNothing) {
+    return "CommandDoNothing";
+  }
+
+  switch (aCommand) {
+
+#define NS_DEFINE_COMMAND(aName, aCommandStr) \
+    case Command##aName: \
+      return "Command" #aName;
+#define NS_DEFINE_COMMAND_NO_EXEC_COMMAND(aName) \
+    case Command##aName: \
+      return "Command" #aName;
+
+#include "mozilla/CommandList.h"
+
+#undef NS_DEFINE_COMMAND
+#undef NS_DEFINE_COMMAND_NO_EXEC_COMMAND
+
+    default:
+      return "illegal command value";
+  }
+}
+
 const nsCString
 GetDOMKeyCodeName(uint32_t aKeyCode)
 {
@@ -482,6 +508,24 @@ WidgetEvent::IsAllowedToDispatchInSystemGroup() const
   // if we do, prevent default on mouse events can't prevent default behaviors
   // anymore.
   return mClass != ePointerEventClass;
+}
+
+bool
+WidgetEvent::IsBlockedForFingerprintingResistance() const
+{
+  if (mClass == eKeyboardEventClass &&
+      nsContentUtils::ShouldResistFingerprinting()) {
+    const WidgetKeyboardEvent* keyboardEvent = AsKeyboardEvent();
+
+    if (keyboardEvent->mKeyNameIndex == KEY_NAME_INDEX_Alt     ||
+        keyboardEvent->mKeyNameIndex == KEY_NAME_INDEX_Shift   ||
+        keyboardEvent->mKeyNameIndex == KEY_NAME_INDEX_Control ||
+        keyboardEvent->mKeyNameIndex == KEY_NAME_INDEX_AltGraph) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /******************************************************************************
@@ -1142,11 +1186,13 @@ WidgetKeyboardEvent::GetCodeNameIndex(const nsAString& aCodeValue)
 WidgetKeyboardEvent::GetCommandStr(Command aCommand)
 {
 #define NS_DEFINE_COMMAND(aName, aCommandStr) , #aCommandStr
+#define NS_DEFINE_COMMAND_NO_EXEC_COMMAND(aName)
   static const char* const kCommands[] = {
     "" // CommandDoNothing
 #include "mozilla/CommandList.h"
   };
 #undef NS_DEFINE_COMMAND
+#undef NS_DEFINE_COMMAND_NO_EXEC_COMMAND
 
   MOZ_RELEASE_ASSERT(static_cast<size_t>(aCommand) < ArrayLength(kCommands),
                      "Illegal command enumeration value");

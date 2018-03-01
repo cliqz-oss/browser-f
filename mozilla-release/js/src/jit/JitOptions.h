@@ -73,7 +73,6 @@ struct DefaultJitOptions
     bool limitScriptSize;
     bool osr;
     bool asmJSAtomicsEnable;
-    bool wasmTestMode;
     bool wasmFoldOffsets;
     bool ionInterruptWithoutSignals;
     bool simulatorAlwaysInterrupt;
@@ -94,6 +93,8 @@ struct DefaultJitOptions
     mozilla::Maybe<uint32_t> forcedDefaultIonWarmUpThreshold;
     mozilla::Maybe<uint32_t> forcedDefaultIonSmallFunctionWarmUpThreshold;
     mozilla::Maybe<IonRegisterAllocator> forcedRegisterAllocator;
+
+    bool spectreIndexMasking;
 
     // The options below affect the rest of the VM, and not just the JIT.
     bool disableUnboxedObjects;

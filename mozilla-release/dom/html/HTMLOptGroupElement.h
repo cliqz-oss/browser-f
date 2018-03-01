@@ -27,7 +27,8 @@ public:
   // nsINode
   virtual nsresult InsertChildAt(nsIContent* aKid, uint32_t aIndex,
                                  bool aNotify) override;
-  virtual void RemoveChildAt(uint32_t aIndex, bool aNotify) override;
+  virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
+  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
 
   // nsIContent
   virtual nsresult GetEventTargetParent(

@@ -50,6 +50,7 @@
 #include "mozilla/MacroForEach.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ScriptPreloader.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/Unused.h"
@@ -88,7 +89,7 @@ static LazyLogModule gJSCLLog("JSComponentLoader");
 static bool
 Dump(JSContext* cx, unsigned argc, Value* vp)
 {
-    if (!nsContentUtils::DOMWindowDumpEnabled()) {
+    if (!mozilla::dom::DOMPrefs::DumpEnabled()) {
         return true;
     }
 
@@ -532,8 +533,6 @@ mozJSComponentLoader::CreateLoaderGlobal(JSContext* aCx,
            .setSystemZone()
            .setAddonId(aAddonID);
 
-    options.behaviors().setVersion(JSVERSION_DEFAULT);
-
     if (xpc::SharedMemoryEnabled())
         options.creationOptions().setSharedMemoryAndAtomicsEnabled(true);
 
@@ -778,7 +777,6 @@ mozJSComponentLoader::ObjectForLocation(ComponentLoaderInfo& aInfo,
         // See bug 1303754.
         CompileOptions options(cx);
         options.setNoScriptRval(true)
-               .setVersion(JSVERSION_DEFAULT)
                .maybeMakeStrictMode(true)
                .setFileAndLine(nativePath.get(), 1)
                .setSourceIsLazy(cache || ScriptPreloader::GetSingleton().Active());
@@ -1038,7 +1036,7 @@ NS_IMETHODIMP
 mozJSComponentLoader::GetModuleImportStack(const nsACString& aLocation,
                                            nsACString& retval)
 {
-#if defined(NIGHTLY_BUILD) || defined(DEBUG)
+#ifdef STARTUP_RECORDER_ENABLED
     MOZ_ASSERT(nsContentUtils::IsCallerChrome());
     MOZ_ASSERT(mInitialized);
 
@@ -1061,7 +1059,7 @@ NS_IMETHODIMP
 mozJSComponentLoader::GetComponentLoadStack(const nsACString& aLocation,
                                             nsACString& retval)
 {
-#if defined(NIGHTLY_BUILD) || defined(DEBUG)
+#ifdef STARTUP_RECORDER_ENABLED
     MOZ_ASSERT(nsContentUtils::IsCallerChrome());
     MOZ_ASSERT(mInitialized);
 
@@ -1180,7 +1178,7 @@ mozJSComponentLoader::ImportInto(const nsACString& aLocation,
             return NS_ERROR_FILE_NOT_FOUND;
         }
 
-#if defined(NIGHTLY_BUILD) || defined(DEBUG)
+#ifdef STARTUP_RECORDER_ENABLED
         if (Preferences::GetBool("browser.startup.record", false)) {
             newEntry->importStack =
                 xpc_PrintJSStack(callercx, false, false, false).get();

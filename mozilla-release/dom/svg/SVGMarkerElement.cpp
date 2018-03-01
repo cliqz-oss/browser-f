@@ -211,6 +211,7 @@ SVGMarkerElement::IsAttributeMapped(const nsAtom* name) const
 bool
 SVGMarkerElement::ParseAttribute(int32_t aNameSpaceID, nsAtom* aName,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
   if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::orient) {
@@ -230,20 +231,27 @@ SVGMarkerElement::ParseAttribute(int32_t aNameSpaceID, nsAtom* aName,
     mOrientType.SetBaseValue(SVG_MARKER_ORIENT_ANGLE);
   }
   return SVGMarkerElementBase::ParseAttribute(aNameSpaceID, aName,
-                                              aValue, aResult);
+                                              aValue,
+                                              aMaybeScriptedPrincipal,
+                                              aResult);
 }
 
 nsresult
-SVGMarkerElement::UnsetAttr(int32_t aNamespaceID, nsAtom* aName,
-                            bool aNotify)
+SVGMarkerElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
+                                const nsAttrValue* aValue,
+                                const nsAttrValue* aOldValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
+                                bool aNotify)
 {
-  if (aNamespaceID == kNameSpaceID_None) {
-    if (aName == nsGkAtoms::orient) {
-      mOrientType.SetBaseValue(SVG_MARKER_ORIENT_ANGLE);
-    }
+  if (!aValue && aNamespaceID == kNameSpaceID_None &&
+      aName == nsGkAtoms::orient) {
+    mOrientType.SetBaseValue(SVG_MARKER_ORIENT_ANGLE);
   }
 
-  return nsSVGElement::UnsetAttr(aNamespaceID, aName, aNotify);
+  return SVGMarkerElementBase::AfterSetAttr(aNamespaceID, aName,
+                                            aValue, aOldValue,
+                                            aMaybeScriptedPrincipal,
+                                            aNotify);
 }
 
 //----------------------------------------------------------------------

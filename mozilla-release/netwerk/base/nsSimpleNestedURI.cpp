@@ -186,5 +186,22 @@ nsSimpleNestedURI::GetClassIDNoAlloc(nsCID *aClassIDNoAlloc)
     return NS_OK;
 }
 
+NS_IMPL_ISUPPORTS(nsSimpleNestedURI::Mutator, nsIURISetters, nsIURIMutator)
+
+NS_IMETHODIMP
+nsSimpleNestedURI::Mutate(nsIURIMutator** aMutator)
+{
+    RefPtr<nsSimpleNestedURI::Mutator> mutator = new nsSimpleNestedURI::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+    // StartClone calls SetMutable(false) but we need the mutator clone
+    // to be mutable
+    mutator->ResetMutable();
+    mutator.forget(aMutator);
+    return NS_OK;
+}
+
 } // namespace net
 } // namespace mozilla

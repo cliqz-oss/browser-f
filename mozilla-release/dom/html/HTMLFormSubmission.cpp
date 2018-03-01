@@ -36,6 +36,7 @@
 #include "nsContentUtils.h"
 
 #include "mozilla/dom/Directory.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/File.h"
 
 namespace mozilla {
@@ -94,7 +95,7 @@ public:
   FSURLEncoded(NotNull<const Encoding*> aEncoding,
                int32_t aMethod,
                nsIDocument* aDocument,
-               nsIContent* aOriginatingElement)
+               Element* aOriginatingElement)
     : EncodingFormSubmission(aEncoding, aOriginatingElement)
     , mMethod(aMethod)
     , mDocument(aDocument)
@@ -396,7 +397,7 @@ FSURLEncoded::URLEncode(const nsAString& aStr, nsACString& aEncoded)
 // --------------------------------------------------------------------------
 
 FSMultipartFormData::FSMultipartFormData(NotNull<const Encoding*> aEncoding,
-                                         nsIContent* aOriginatingElement)
+                                         Element* aOriginatingElement)
   : EncodingFormSubmission(aEncoding, aOriginatingElement)
 {
   mPostData =
@@ -487,7 +488,7 @@ FSMultipartFormData::AddNameBlobOrNullPair(const nsAString& aName, Blob* aBlob)
     if (file) {
       nsAutoString relativePath;
       file->GetRelativePath(relativePath);
-      if (Directory::WebkitBlinkDirectoryPickerEnabled(nullptr, nullptr) &&
+      if (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
           !relativePath.IsEmpty()) {
         filename16 = relativePath;
       }
@@ -546,7 +547,7 @@ nsresult
 FSMultipartFormData::AddNameDirectoryPair(const nsAString& aName,
                                           Directory* aDirectory)
 {
-  if (!Directory::WebkitBlinkDirectoryPickerEnabled(nullptr, nullptr)) {
+  if (!DOMPrefs::WebkitBlinkDirectoryPickerEnabled()) {
     return NS_OK;
   }
 
@@ -670,7 +671,7 @@ class FSTextPlain : public EncodingFormSubmission
 {
 public:
   FSTextPlain(NotNull<const Encoding*> aEncoding,
-              nsIContent* aOriginatingElement)
+              Element* aOriginatingElement)
     : EncodingFormSubmission(aEncoding, aOriginatingElement)
   {
   }
@@ -796,7 +797,7 @@ FSTextPlain::GetEncodedSubmission(nsIURI* aURI,
 
 EncodingFormSubmission::EncodingFormSubmission(
   NotNull<const Encoding*> aEncoding,
-  nsIContent* aOriginatingElement)
+  Element* aOriginatingElement)
   : HTMLFormSubmission(aEncoding, aOriginatingElement)
 {
   if (!aEncoding->CanEncodeEverything()) {

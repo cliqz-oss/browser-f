@@ -6,7 +6,7 @@
 
 #include "mozilla/dom/PromiseWindowProxy.h"
 
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsPIDOMWindow.h"
 #include "nsIWeakReference.h"
 #include "mozilla/dom/Promise.h"

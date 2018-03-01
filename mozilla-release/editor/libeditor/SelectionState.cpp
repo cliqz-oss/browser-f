@@ -213,27 +213,31 @@ RangeUpdater::DropSelectionState(SelectionState& aSelState)
 // gravity methods:
 
 nsresult
-RangeUpdater::SelAdjCreateNode(nsINode* aParent,
-                               int32_t aPosition)
+RangeUpdater::SelAdjCreateNode(const EditorRawDOMPoint& aPoint)
 {
   if (mLock) {
     // lock set by Will/DidReplaceParent, etc...
     return NS_OK;
   }
-  NS_ENSURE_TRUE(aParent, NS_ERROR_NULL_POINTER);
   size_t count = mArray.Length();
   if (!count) {
     return NS_OK;
+  }
+
+  if (NS_WARN_IF(!aPoint.IsSetAndValid())) {
+    return NS_ERROR_FAILURE;
   }
 
   for (size_t i = 0; i < count; i++) {
     RangeItem* item = mArray[i];
     NS_ENSURE_TRUE(item, NS_ERROR_NULL_POINTER);
 
-    if (item->mStartContainer == aParent && item->mStartOffset > aPosition) {
+    if (item->mStartContainer == aPoint.GetContainer() &&
+        item->mStartOffset > static_cast<int32_t>(aPoint.Offset())) {
       item->mStartOffset++;
     }
-    if (item->mEndContainer == aParent && item->mEndOffset > aPosition) {
+    if (item->mEndContainer == aPoint.GetContainer() &&
+        item->mEndOffset > static_cast<int32_t>(aPoint.Offset())) {
       item->mEndOffset++;
     }
   }
@@ -241,10 +245,9 @@ RangeUpdater::SelAdjCreateNode(nsINode* aParent,
 }
 
 nsresult
-RangeUpdater::SelAdjInsertNode(nsINode* aParent,
-                               int32_t aPosition)
+RangeUpdater::SelAdjInsertNode(const EditorRawDOMPoint& aPoint)
 {
-  return SelAdjCreateNode(aParent, aPosition);
+  return SelAdjCreateNode(aPoint);
 }
 
 void
@@ -303,42 +306,47 @@ RangeUpdater::SelAdjDeleteNode(nsINode* aNode)
 }
 
 nsresult
-RangeUpdater::SelAdjSplitNode(nsIContent& aOldRightNode,
-                              int32_t aOffset,
+RangeUpdater::SelAdjSplitNode(nsIContent& aRightNode,
                               nsIContent* aNewLeftNode)
 {
   if (mLock) {
     // lock set by Will/DidReplaceParent, etc...
     return NS_OK;
   }
-  NS_ENSURE_TRUE(aNewLeftNode, NS_ERROR_NULL_POINTER);
+  if (NS_WARN_IF(!aNewLeftNode)) {
+    return NS_ERROR_FAILURE;
+  }
+
   size_t count = mArray.Length();
   if (!count) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsINode> parent = aOldRightNode.GetParentNode();
-  int32_t offset = parent ? parent->IndexOf(&aOldRightNode) : -1;
+  EditorRawDOMPoint atLeftNode(aNewLeftNode);
+  nsresult rv = SelAdjInsertNode(atLeftNode);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
-  // first part is same as inserting aNewLeftnode
-  nsresult rv = SelAdjInsertNode(parent, offset - 1);
-  NS_ENSURE_SUCCESS(rv, rv);
+  // If point in the ranges is in left node, change its container to the left
+  // node.  If point in the ranges is in right node, subtract numbers of
+  // children moved to left node from the offset.
+  int32_t lengthOfLeftNode = aNewLeftNode->Length();
+  for (RefPtr<RangeItem>& item : mArray) {
+    if (NS_WARN_IF(!item)) {
+      return NS_ERROR_FAILURE;
+    }
 
-  // next step is to check for range enpoints inside aOldRightNode
-  for (size_t i = 0; i < count; i++) {
-    RangeItem* item = mArray[i];
-    NS_ENSURE_TRUE(item, NS_ERROR_NULL_POINTER);
-
-    if (item->mStartContainer == &aOldRightNode) {
-      if (item->mStartOffset > aOffset) {
-        item->mStartOffset -= aOffset;
+    if (item->mStartContainer == &aRightNode) {
+      if (item->mStartOffset > lengthOfLeftNode) {
+        item->mStartOffset -= lengthOfLeftNode;
       } else {
         item->mStartContainer = aNewLeftNode;
       }
     }
-    if (item->mEndContainer == &aOldRightNode) {
-      if (item->mEndOffset > aOffset) {
-        item->mEndOffset -= aOffset;
+    if (item->mEndContainer == &aRightNode) {
+      if (item->mEndOffset > lengthOfLeftNode) {
+        item->mEndOffset -= lengthOfLeftNode;
       } else {
         item->mEndContainer = aNewLeftNode;
       }

@@ -9,6 +9,7 @@
 #include "mozilla/Alignment.h"
 #include "mozilla/Casting.h"
 
+#include "jit/AtomicOp.h"
 #include "jit/Bailouts.h"
 #include "jit/BaselineFrame.h"
 #include "jit/JitFrames.h"
@@ -202,7 +203,7 @@ MacroAssemblerX86::finish()
 }
 
 void
-MacroAssemblerX86::handleFailureWithHandlerTail(void* handler)
+MacroAssemblerX86::handleFailureWithHandlerTail(void* handler, Label* profilerExitTail)
 {
     // Reserve space for exception information.
     subl(Imm32(sizeof(ResumeFromException)), esp);
@@ -278,7 +279,7 @@ MacroAssemblerX86::handleFailureWithHandlerTail(void* handler)
         AbsoluteAddress addressOfEnabled(GetJitContext()->runtime->geckoProfiler().addressOfEnabled());
         asMasm().branch32(Assembler::Equal, addressOfEnabled, Imm32(0),
                           &skipProfilingInstrumentation);
-        profilerExitFrame();
+        jump(profilerExitTail);
         bind(&skipProfilingInstrumentation);
     }
 
@@ -312,7 +313,7 @@ MacroAssemblerX86::profilerEnterFrame(Register framePtr, Register scratch)
 void
 MacroAssemblerX86::profilerExitFrame()
 {
-    jmp(GetJitContext()->runtime->jitRuntime()->getProfilerExitFrameTail());
+    jump(GetJitContext()->runtime->jitRuntime()->getProfilerExitFrameTail());
 }
 
 MacroAssembler&
@@ -660,7 +661,7 @@ MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, 
 {
     MOZ_ASSERT(srcAddr.kind() == Operand::MEM_REG_DISP || srcAddr.kind() == Operand::MEM_SCALE);
 
-    memoryBarrier(access.barrierBefore());
+    memoryBarrierBefore(access.sync());
 
     size_t loadOffset = size();
     switch (access.type()) {
@@ -721,15 +722,18 @@ MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, 
     }
     append(access, loadOffset, framePushed());
 
-    memoryBarrier(access.barrierAfter());
+    memoryBarrierAfter(access.sync());
 }
 
 void
 MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAddr, Register64 out)
 {
-    MOZ_ASSERT(!access.isAtomic());
+    // Atomic i64 load must use lock_cmpxchg8b.
+    MOZ_ASSERT_IF(access.isAtomic(), access.byteSize() <= 4);
     MOZ_ASSERT(!access.isSimd());
     MOZ_ASSERT(srcAddr.kind() == Operand::MEM_REG_DISP || srcAddr.kind() == Operand::MEM_SCALE);
+
+    memoryBarrierBefore(access.sync());
 
     size_t loadOffset = size();
     switch (access.type()) {
@@ -800,6 +804,8 @@ MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAdd
       case Scalar::MaxTypedArrayViewType:
         MOZ_CRASH("unexpected array type");
     }
+
+    memoryBarrierAfter(access.sync());
 }
 
 void
@@ -807,7 +813,7 @@ MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access, AnyRegister valu
 {
     MOZ_ASSERT(dstAddr.kind() == Operand::MEM_REG_DISP || dstAddr.kind() == Operand::MEM_SCALE);
 
-    memoryBarrier(access.barrierBefore());
+    memoryBarrierBefore(access.sync());
 
     size_t storeOffset = size();
     switch (access.type()) {
@@ -865,12 +871,13 @@ MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access, AnyRegister valu
     }
     append(access, storeOffset, framePushed());
 
-    memoryBarrier(access.barrierAfter());
+    memoryBarrierAfter(access.sync());
 }
 
 void
 MacroAssembler::wasmStoreI64(const wasm::MemoryAccessDesc& access, Register64 value, Operand dstAddr)
 {
+    // Atomic i64 store must use lock_cmpxchg8b.
     MOZ_ASSERT(!access.isAtomic());
     MOZ_ASSERT(!access.isSimd());
     MOZ_ASSERT(dstAddr.kind() == Operand::MEM_REG_DISP || dstAddr.kind() == Operand::MEM_SCALE);
@@ -882,6 +889,159 @@ MacroAssembler::wasmStoreI64(const wasm::MemoryAccessDesc& access, Register64 va
     storeOffset = size();
     movl(value.high, HighWord(dstAddr));
     append(access, storeOffset, framePushed());
+}
+
+template <typename T>
+static void
+AtomicLoad64(MacroAssembler& masm, const T& address, Register64 temp, Register64 output)
+{
+    MOZ_ASSERT(temp.low == ebx);
+    MOZ_ASSERT(temp.high == ecx);
+    MOZ_ASSERT(output.high == edx);
+    MOZ_ASSERT(output.low == eax);
+
+    // In the event edx:eax matches what's in memory, ecx:ebx will be
+    // stored.  The two pairs must therefore have the same values.
+
+    masm.movl(edx, ecx);
+    masm.movl(eax, ebx);
+
+    masm.lock_cmpxchg8b(edx, eax, ecx, ebx, Operand(address));
+}
+
+void
+MacroAssembler::atomicLoad64(const Synchronization&, const Address& mem, Register64 temp,
+                             Register64 output)
+{
+    AtomicLoad64(*this, mem, temp, output);
+}
+
+void
+MacroAssembler::atomicLoad64(const Synchronization&, const BaseIndex& mem, Register64 temp,
+                             Register64 output)
+{
+    AtomicLoad64(*this, mem, temp, output);
+}
+
+template <typename T>
+static void
+CompareExchange64(MacroAssembler& masm, const T& mem, Register64 expected,
+                  Register64 replacement, Register64 output)
+{
+    MOZ_ASSERT(expected == output);
+    MOZ_ASSERT(expected.high == edx);
+    MOZ_ASSERT(expected.low == eax);
+    MOZ_ASSERT(replacement.high == ecx);
+    MOZ_ASSERT(replacement.low == ebx);
+
+    masm.lock_cmpxchg8b(edx, eax, ecx, ebx, Operand(mem));
+}
+
+void
+MacroAssembler::compareExchange64(const Synchronization&, const Address& mem, Register64 expected,
+                                  Register64 replacement, Register64 output)
+{
+    CompareExchange64(*this, mem, expected, replacement, output);
+}
+
+void
+MacroAssembler::compareExchange64(const Synchronization&, const BaseIndex& mem, Register64 expected,
+                                  Register64 replacement, Register64 output)
+{
+    CompareExchange64(*this, mem, expected, replacement, output);
+}
+
+template <typename T>
+static void
+AtomicExchange64(MacroAssembler& masm, const T& mem, Register64 value, Register64 output)
+{
+    MOZ_ASSERT(value.low == ebx);
+    MOZ_ASSERT(value.high == ecx);
+    MOZ_ASSERT(output.high == edx);
+    MOZ_ASSERT(output.low == eax);
+
+    // edx:eax has garbage initially, and that is the best we can do unless
+    // we can guess with high probability what's in memory.
+
+    Label again;
+    masm.bind(&again);
+    masm.lock_cmpxchg8b(edx, eax, ecx, ebx, Operand(mem));
+    masm.j(MacroAssembler::NonZero, &again);
+}
+
+void
+MacroAssembler::atomicExchange64(const Synchronization&, const Address& mem, Register64 value,
+                                 Register64 output)
+{
+    AtomicExchange64(*this, mem, value, output);
+}
+
+void
+MacroAssembler::atomicExchange64(const Synchronization&, const BaseIndex& mem, Register64 value,
+                                 Register64 output)
+{
+    AtomicExchange64(*this, mem, value, output);
+}
+
+template<typename T>
+static void
+AtomicFetchOp64(MacroAssembler& masm, AtomicOp op, const Address& value, const T& mem,
+                Register64 temp, Register64 output)
+{
+
+// We don't have enough registers for all the operands on x86, so the rhs
+// operand is in memory.
+
+#define ATOMIC_OP_BODY(OPERATE)                                    \
+    do {                                                           \
+        MOZ_ASSERT(output.low == eax);                             \
+        MOZ_ASSERT(output.high == edx);                            \
+        MOZ_ASSERT(temp.low == ebx);                               \
+        MOZ_ASSERT(temp.high == ecx);                              \
+        masm.load64(mem, output);                                  \
+        Label again;                                               \
+        masm.bind(&again);                                         \
+        masm.move64(output, temp);                                 \
+        masm.OPERATE(Operand(value), temp);                        \
+        masm.lock_cmpxchg8b(edx, eax, ecx, ebx, Operand(mem));     \
+        masm.j(MacroAssembler::NonZero, &again);                   \
+    } while(0)
+
+    switch (op) {
+      case AtomicFetchAddOp:
+        ATOMIC_OP_BODY(add64FromMemory);
+        break;
+      case AtomicFetchSubOp:
+        ATOMIC_OP_BODY(sub64FromMemory);
+        break;
+      case AtomicFetchAndOp:
+        ATOMIC_OP_BODY(and64FromMemory);
+        break;
+      case AtomicFetchOrOp:
+        ATOMIC_OP_BODY(or64FromMemory);
+        break;
+      case AtomicFetchXorOp:
+        ATOMIC_OP_BODY(xor64FromMemory);
+        break;
+      default:
+        MOZ_CRASH();
+    }
+
+#undef ATOMIC_OP_BODY
+}
+
+void
+MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, const Address& value,
+                                const Address& mem, Register64 temp, Register64 output)
+{
+    AtomicFetchOp64(*this, op, value, mem, temp, output);
+}
+
+void
+MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, const Address& value,
+                                const BaseIndex& mem, Register64 temp, Register64 output)
+{
+    AtomicFetchOp64(*this, op, value, mem, temp, output);
 }
 
 void

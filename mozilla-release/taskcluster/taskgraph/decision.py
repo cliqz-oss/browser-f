@@ -14,7 +14,7 @@ import yaml
 
 from .generator import TaskGraphGenerator
 from .create import create_tasks
-from .parameters import Parameters
+from .parameters import Parameters, get_version, get_app_version
 from .taskgraph import TaskGraph
 from .try_option_syntax import parse_message
 from .actions import render_actions_json
@@ -41,6 +41,7 @@ PER_PROJECT_PARAMETERS = {
 
     'try-comm-central': {
         'target_tasks_method': 'try_tasks',
+        'include_nightly': True,
     },
 
     'ash': {
@@ -192,7 +193,11 @@ def get_decision_parameters(options):
     parameters['existing_tasks'] = {}
     parameters['do_not_optimize'] = []
     parameters['build_number'] = 1
+    parameters['version'] = get_version()
+    parameters['app_version'] = get_app_version()
     parameters['next_version'] = None
+    parameters['release_type'] = ''
+    parameters['release_eta'] = ''
 
     # owner must be an email, but sometimes (e.g., for ffxbld) it is not, in which
     # case, fake it
@@ -225,13 +230,17 @@ def get_decision_parameters(options):
     if 'nightly' in parameters.get('target_tasks_method', ''):
         parameters['release_history'] = populate_release_history('Firefox', project)
 
-    # if try_task_config.json is present, load it
-    task_config_file = os.path.join(os.getcwd(), 'try_task_config.json')
+    if options.get('try_task_config_file'):
+        task_config_file = os.path.abspath(options.get('try_task_config_file'))
+    else:
+        # if try_task_config.json is present, load it
+        task_config_file = os.path.join(os.getcwd(), 'try_task_config.json')
 
     # load try settings
     if 'try' in project:
         parameters['try_mode'] = None
         if os.path.isfile(task_config_file):
+            logger.info("using try tasks from {}".format(task_config_file))
             parameters['try_mode'] = 'try_task_config'
             with open(task_config_file, 'r') as fh:
                 parameters['try_task_config'] = json.load(fh)
@@ -260,7 +269,9 @@ def get_decision_parameters(options):
         parameters['try_task_config'] = None
         parameters['try_options'] = None
 
-    return Parameters(**parameters)
+    result = Parameters(**parameters)
+    result.check()
+    return result
 
 
 def write_artifact(filename, data):

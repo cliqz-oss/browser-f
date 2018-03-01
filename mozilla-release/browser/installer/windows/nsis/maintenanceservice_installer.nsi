@@ -50,8 +50,16 @@ Var BrandFullName
 !include defines.nsi
 ; We keep defines.nsi defined so that we get other things like 
 ; the version number, but we redefine BrandFullName
+<<<<<<< HEAD
 !define MaintFullName "Cliqz Maintenance Service"
+||||||| merged common ancestors
+!define MaintFullName "Mozilla Maintenance Service"
+=======
+!define MaintFullName "Mozilla Maintenance Service"
+!ifdef BrandFullName
+>>>>>>> origin/upstream-releases
 !undef BrandFullName
+!endif
 !define BrandFullName "${MaintFullName}"
 
 !include common.nsh

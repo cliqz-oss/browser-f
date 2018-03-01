@@ -6,6 +6,10 @@ html {
   background: -moz-dialog;
 }
 
+#debugging-console {
+  float: right;
+}
+
 #total {
   border: 1px solid black;
   margin: 5px;
@@ -15,10 +19,4 @@ html {
 #total .label {
   font-size: 15px;
   font-weight: bold;
-}
-
-#cancel {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
 }

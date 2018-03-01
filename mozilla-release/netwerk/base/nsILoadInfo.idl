@@ -17,7 +17,16 @@ interface nsIURI;
 #include "nsTArray.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/LoadTainting.h"
+#include "mozilla/UniquePtr.h"
 #include "nsStringFwd.h"
+
+namespace mozilla {
+namespace dom {
+class ClientInfo;
+class ClientSource;
+class ServiceWorkerDescriptor;
+} // namespace dom
+} // namespace mozilla
 %}
 
 [ref] native nsIRedirectHistoryEntryArray(const nsTArray<nsCOMPtr<nsIRedirectHistoryEntry>>);
@@ -26,6 +35,12 @@ native OriginAttributes(mozilla::OriginAttributes);
 [ref] native StringArrayRef(const nsTArray<nsCString>);
 [ref] native Uint64ArrayRef(const nsTArray<uint64_t>);
 [ref] native PrincipalArrayRef(const nsTArray<nsCOMPtr<nsIPrincipal>>);
+[ref] native const_ClientInfoRef(const mozilla::dom::ClientInfo);
+      native UniqueClientSource(mozilla::UniquePtr<mozilla::dom::ClientSource>);
+      native UniqueClientSourceMove(mozilla::UniquePtr<mozilla::dom::ClientSource>&&);
+[ref] native const_MaybeClientInfoRef(const mozilla::Maybe<mozilla::dom::ClientInfo>);
+[ref] native const_ServiceWorkerDescriptorRef(const mozilla::dom::ServiceWorkerDescriptor);
+[ref] native const_MaybeServiceWorkerDescriptorRef(const mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor>);
 
 typedef unsigned long nsSecurityFlags;
 
@@ -624,6 +639,11 @@ interface nsILoadInfo : nsISupports
   [infallible] attribute boolean loadTriggeredFromExternal;
 
   /**
+   * True if the tainting has been set by the service worker.
+   */
+  [noscript, infallible] readonly attribute boolean serviceWorkerTaintingSynthesized;
+
+  /**
    * Whenever a channel gets redirected, append the redirect history entry of
    * the channel which contains principal referrer and remote address [before
    * the channels got redirected] to the loadinfo, so that at every point this
@@ -730,42 +750,6 @@ interface nsILoadInfo : nsISupports
   [infallible] readonly attribute boolean isPreflight;
 
   /**
-   * When this request would be mixed-content and we do not have an
-   * entry in the HSTS cache, we send an HSTS priming request to
-   * determine if it is ok to upgrade the request to HTTPS.
-   */
-  /**
-   * True if this is a mixed-content load and HSTS priming request will be sent.
-   */
-  [noscript, infallible] readonly attribute boolean forceHSTSPriming;
-  /**
-   * Carry the decision whether this load would be blocked by mixed content so
-   * that if HSTS priming fails, the correct decision can be made.
-   */
-  [noscript, infallible] readonly attribute boolean mixedContentWouldBlock;
-
-  /**
-   * True if this load is an HSTS priming request.
-   */
-  [noscript, infallible] attribute boolean isHSTSPriming;
-
-  /**
-   * True if this load was upgraded from HSTS priming
-   */
-  [noscript, infallible] attribute boolean isHSTSPrimingUpgrade;
-
-  /**
-   * Mark this LoadInfo as needing HSTS Priming
-   *
-   * @param wouldBlock Carry the decision of Mixed Content Blocking to be
-   * applied when HSTS priming is complete.
-   */
-  [noscript, notxpcom, nostdcall]
-  void setHSTSPriming(in boolean mixeContentWouldBlock);
-  [noscript, notxpcom, nostdcall]
-  void clearHSTSPriming();
-
-  /**
   * Constants reflecting the channel tainting.  These are mainly defined here
   * for script.  Internal C++ code should use the enum defined in LoadTainting.h.
   * See LoadTainting.h for documentation.
@@ -836,4 +820,107 @@ interface nsILoadInfo : nsISupports
    * is returned every time.
    */
   [noscript] readonly attribute nsIPrincipal sandboxedLoadingPrincipal;
+
+  /**
+   * Note which client (i.e. global) initiated this network request.  All
+   * nsGlobalWindow and WorkerPrivate can be converted to a ClientInfo to
+   * be set here.  While this is being added to support service worker
+   * FetchEvent, it can also be used to communicate other information about
+   * the source global context in the future.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetClientInfo(in const_ClientInfoRef aClientInfo);
+
+  /**
+   * Get the ClientInfo for the global that initiated the network request,
+   * if it has been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeClientInfoRef GetClientInfo();
+
+  /**
+   * Give a pre-allocated ClientSource to the channel LoadInfo.  This is
+   * intended to be used by docshell when loading windows without an
+   * initial about:blank document.  The docshell will allocate the ClientSource
+   * to represent the client that will be created as a result of the navigation
+   * network request.  If the channel succeeds and remains same-origin, then
+   * the result nsGlobalWindow will take ownership of the reserved ClientSource.
+   *
+   * This method is also called when a cross-origin redirect occurs.  A new
+   * ClientSource with a different UUID must be created in this case.
+   *
+   * This method automatically calls SetReservedClientInfo() with the
+   * ClientSource::Info().
+   */
+  [noscript, nostdcall, notxpcom]
+  void GiveReservedClientSource(in UniqueClientSourceMove aClientSource);
+
+  /**
+   * This method takes ownership of the reserved ClientSource previously
+   * provided in GiveReservedClientSource().  It may return nullptr if the
+   * nsILoadInfo does not own a ClientSource object.
+   */
+  [noscript, nostdcall, notxpcom]
+  UniqueClientSource TakeReservedClientSource();
+
+  /**
+   * Note the reserved client that be created if this non-subresource
+   * network request succeeds.  Depending on the type of client this
+   * may be called directly or indirectly via GiveReservedClientSource().
+   * For example, web workers do not call give their ClientSource to
+   * the nsILoadInfo, but must still call this method to indicate the
+   * reserved client for their main script load.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetReservedClientInfo(in const_ClientInfoRef aClientInfo);
+
+  /**
+   * Return the reserved ClientInfo for this load, if one has been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeClientInfoRef GetReservedClientInfo();
+
+  /**
+   * Note that this non-subresource network request will result in
+   * re-using an existing "initial" active client.  This mainly only
+   * happens when an initial about:blank document is replaced with
+   * a real load in a window.  In these cases we need to track this
+   * initial client so that we may report its existence in a FetchEvent.
+   *
+   * Note, an nsILoadInfo may only have a reserved client or an
+   * initial client.  It should never have both.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetInitialClientInfo(in const_ClientInfoRef aClientInfo);
+
+  /**
+   * Return the initial ClientInfo for this load, if one has been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeClientInfoRef GetInitialClientInfo();
+
+  /**
+   * Note that this network request should be controlled by a service worker.
+   * For non-subresource requests this may be set during the load when
+   * the first service worker interception occurs.  For subresource requests
+   * it may be set by the source client if its already controlled by a
+   * service worker.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetController(in const_ServiceWorkerDescriptorRef aServiceWorker);
+
+  /**
+   * Clear the service worker controller for this channel.  This should only
+   * be used for window navigation redirects.  By default we want to keep
+   * the controller in all other cases.
+   */
+  [noscript, nostdcall, notxpcom]
+  void ClearController();
+
+  /**
+   * Get the service worker controlling this network request, if one has
+   * been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeServiceWorkerDescriptorRef GetController();
 };

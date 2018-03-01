@@ -3,15 +3,15 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  trackingProtectionHeader2.label      "Tracking Protection">
-<!ENTITY  trackingProtection2.description      "Tracking is the collection of your browsing data across multiple websites. Tracking can be used to build a profile and display content based on your browsing and personal information.">
-<!ENTITY  trackingProtection2.radioGroupLabel  "Use Tracking Protection to block known trackers">
+<!ENTITY  trackingProtection3.description      "Tracking Protection blocks online trackers that collect your browsing data across multiple websites.">
+<!ENTITY  trackingProtection3.radioGroupLabel  "Use Tracking Protection to block known trackers">
 <!ENTITY  trackingProtectionAlways.label       "Always">
 <!ENTITY  trackingProtectionAlways.accesskey   "y">
 <!ENTITY  trackingProtectionPrivate.label      "Only in forget mode">
 <!ENTITY  trackingProtectionPrivate.accesskey  "l">
 <!ENTITY  trackingProtectionNever.label        "Never">
 <!ENTITY  trackingProtectionNever.accesskey    "n">
-<!ENTITY  trackingProtectionLearnMore.label    "Learn more">
+<!ENTITY  trackingProtectionLearnMore2.label    "Learn more about Tracking Protection and your privacy">
 <!ENTITY  trackingProtectionExceptions.label   "Exceptions…">
 <!ENTITY  trackingProtectionExceptions.accesskey "x">
 
@@ -22,12 +22,21 @@
 <!ENTITY changeBlockList2.label               "Change Block List…">
 <!ENTITY changeBlockList2.accesskey           "C">
 
+<<<<<<< HEAD
 <!ENTITY  doNotTrackHeader.label        "Do Not Track">
 <!ENTITY  doNotTrack.description        "Send websites a “Do Not Track” signal that you don’t want to be tracked">
 <!ENTITY  doNotTrack.learnMore.label    "Learn more">
 <!ENTITY  doNotTrack.default.label      "Only when using Tracking Protection">
 <!ENTITY  doNotTrack.always.label       "Always">
 
+||||||| merged common ancestors
+<!ENTITY  doNotTrack.description        "Send websites a “Do Not Track” signal that you don’t want to be tracked">
+<!ENTITY  doNotTrack.learnMore.label    "Learn more">
+<!ENTITY  doNotTrack.default.label      "Only when using Tracking Protection">
+<!ENTITY  doNotTrack.always.label       "Always">
+
+=======
+>>>>>>> origin/upstream-releases
 <!ENTITY  history.label                 "History">
 <!ENTITY  permissions.label             "Permissions">
 
@@ -115,6 +124,7 @@
 <!ENTITY  a11yPrivacy.checkbox.label     "Prevent accessibility services from accessing your browser">
 <!ENTITY  a11yPrivacy.checkbox.accesskey "a">
 <!ENTITY  a11yPrivacy.learnmore.label    "Learn more">
+<<<<<<< HEAD
 <!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
 
 <!-- Forget mode -->
@@ -126,3 +136,8 @@
 
 <!-- Cliqz addition -->
 <!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Cliqz Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">
+||||||| merged common ancestors
+<!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
+=======
+<!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
+>>>>>>> origin/upstream-releases

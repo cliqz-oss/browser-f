@@ -41,7 +41,7 @@ impl NetworkListener {
         }
     }
 
-    pub fn initiate_fetch(&self) {
+    pub fn initiate_fetch(&self, cancel_chan: Option<ipc::IpcReceiver<()>>) {
         let (ipc_sender, ipc_receiver) = ipc::channel().expect("Failed to create IPC channel!");
 
         let mut listener = NetworkListener {
@@ -57,14 +57,14 @@ impl NetworkListener {
             Some(ref res_init_) => CoreResourceMsg::FetchRedirect(
                                    self.req_init.clone(),
                                    res_init_.clone(),
-                                   ipc_sender),
+                                   ipc_sender, None),
             None => {
                 set_default_accept(Destination::Document, &mut listener.req_init.headers);
                 set_default_accept_language(&mut listener.req_init.headers);
 
                 CoreResourceMsg::Fetch(
                 listener.req_init.clone(),
-                FetchChannels::ResponseMsg(ipc_sender))
+                FetchChannels::ResponseMsg(ipc_sender, cancel_chan))
             }
         };
 
@@ -108,7 +108,11 @@ impl NetworkListener {
                             referrer: metadata.referrer.clone(),
                         });
 
-                        self.initiate_fetch();
+                        // XXXManishearth we don't have the cancel_chan anymore and
+                        // can't use it here.
+                        //
+                        // Ideally the Fetch code would handle manual redirects on its own
+                        self.initiate_fetch(None);
                     },
                     _ => {
                         // Response should be processed by script thread.

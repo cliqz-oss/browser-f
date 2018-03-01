@@ -28,33 +28,22 @@ const TITLE_LENGTH_MAX = 4096;
 Cu.importGlobalProperties(["URL"]);
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-                                  "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BookmarkJSONUtils",
-                                  "resource://gre/modules/BookmarkJSONUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BookmarkHTMLUtils",
-                                  "resource://gre/modules/BookmarkHTMLUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesBackups",
-                                  "resource://gre/modules/PlacesBackups.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesSyncUtils",
-                                  "resource://gre/modules/PlacesSyncUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
-                                  "resource://testing-common/PlacesTestUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTransactions",
-                                  "resource://gre/modules/PlacesTransactions.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Sqlite",
-                                  "resource://gre/modules/Sqlite.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TestUtils",
-                                  "resource://testing-common/TestUtils.jsm");
-
+XPCOMUtils.defineLazyModuleGetters(this, {
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  NetUtil: "resource://gre/modules/NetUtil.jsm",
+  PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+  BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.jsm",
+  BookmarkHTMLUtils: "resource://gre/modules/BookmarkHTMLUtils.jsm",
+  PlacesBackups: "resource://gre/modules/PlacesBackups.jsm",
+  PlacesSyncUtils: "resource://gre/modules/PlacesSyncUtils.jsm",
+  PlacesTestUtils: "resource://testing-common/PlacesTestUtils.jsm",
+  PlacesTransactions: "resource://gre/modules/PlacesTransactions.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  Sqlite: "resource://gre/modules/Sqlite.jsm",
+  TestUtils: "resource://testing-common/TestUtils.jsm",
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
+});
 // This imports various other objects in addition to PlacesUtils.
 Cu.import("resource://gre/modules/PlacesUtils.jsm");
 
@@ -80,7 +69,7 @@ var gTestDir = do_get_cwd();
 var gProfD = do_get_profile(true);
 
 Services.prefs.setBoolPref("browser.urlbar.usepreloadedtopurls.enabled", false);
-do_register_cleanup(() =>
+registerCleanupFunction(() =>
   Services.prefs.clearUserPref("browser.urlbar.usepreloadedtopurls.enabled"));
 
 // Remove any old database.
@@ -185,7 +174,7 @@ function readFileData(aFile) {
  */
 function readFileOfLength(aFileName, aExpectedLength) {
   let data = readFileData(do_get_file(aFileName));
-  do_check_eq(data.length, aExpectedLength);
+  Assert.equal(data.length, aExpectedLength);
   return data;
 }
 
@@ -384,17 +373,17 @@ function promiseTopicObserved(aTopic) {
  * Simulates a Places shutdown.
  */
 var shutdownPlaces = function() {
-  do_print("shutdownPlaces: starting");
+  info("shutdownPlaces: starting");
   let promise = new Promise(resolve => {
     Services.obs.addObserver(resolve, "places-connection-closed");
   });
   let hs = PlacesUtils.history.QueryInterface(Ci.nsIObserver);
   hs.observe(null, "profile-change-teardown", null);
-  do_print("shutdownPlaces: sent profile-change-teardown");
+  info("shutdownPlaces: sent profile-change-teardown");
   hs.observe(null, "test-simulate-places-shutdown", null);
-  do_print("shutdownPlaces: sent test-simulate-places-shutdown");
+  info("shutdownPlaces: sent test-simulate-places-shutdown");
   return promise.then(() => {
-    do_print("shutdownPlaces: complete");
+    info("shutdownPlaces: complete");
   });
 };
 
@@ -417,11 +406,11 @@ function create_bookmarks_html(aFilename) {
   remove_bookmarks_html();
   let bookmarksHTMLFile = gTestDir.clone();
   bookmarksHTMLFile.append(aFilename);
-  do_check_true(bookmarksHTMLFile.exists());
+  Assert.ok(bookmarksHTMLFile.exists());
   bookmarksHTMLFile.copyTo(gProfD, FILENAME_BOOKMARKS_HTML);
   let profileBookmarksHTMLFile = gProfD.clone();
   profileBookmarksHTMLFile.append(FILENAME_BOOKMARKS_HTML);
-  do_check_true(profileBookmarksHTMLFile.exists());
+  Assert.ok(profileBookmarksHTMLFile.exists());
   return profileBookmarksHTMLFile;
 }
 
@@ -434,7 +423,7 @@ function remove_bookmarks_html() {
   profileBookmarksHTMLFile.append(FILENAME_BOOKMARKS_HTML);
   if (profileBookmarksHTMLFile.exists()) {
     profileBookmarksHTMLFile.remove(false);
-    do_check_false(profileBookmarksHTMLFile.exists());
+    Assert.ok(!profileBookmarksHTMLFile.exists());
   }
 }
 
@@ -447,7 +436,7 @@ function remove_bookmarks_html() {
 function check_bookmarks_html() {
   let profileBookmarksHTMLFile = gProfD.clone();
   profileBookmarksHTMLFile.append(FILENAME_BOOKMARKS_HTML);
-  do_check_true(profileBookmarksHTMLFile.exists());
+  Assert.ok(profileBookmarksHTMLFile.exists());
   return profileBookmarksHTMLFile;
 }
 
@@ -468,7 +457,7 @@ function create_JSON_backup(aFilename) {
   bookmarksBackupDir.append("bookmarkbackups");
   if (!bookmarksBackupDir.exists()) {
     bookmarksBackupDir.create(Ci.nsIFile.DIRECTORY_TYPE, parseInt("0755", 8));
-    do_check_true(bookmarksBackupDir.exists());
+    Assert.ok(bookmarksBackupDir.exists());
   }
   let profileBookmarksJSONFile = bookmarksBackupDir.clone();
   profileBookmarksJSONFile.append(FILENAME_BOOKMARKS_JSON);
@@ -477,11 +466,11 @@ function create_JSON_backup(aFilename) {
   }
   let bookmarksJSONFile = gTestDir.clone();
   bookmarksJSONFile.append(aFilename);
-  do_check_true(bookmarksJSONFile.exists());
+  Assert.ok(bookmarksJSONFile.exists());
   bookmarksJSONFile.copyTo(bookmarksBackupDir, FILENAME_BOOKMARKS_JSON);
   profileBookmarksJSONFile = bookmarksBackupDir.clone();
   profileBookmarksJSONFile.append(FILENAME_BOOKMARKS_JSON);
-  do_check_true(profileBookmarksJSONFile.exists());
+  Assert.ok(profileBookmarksJSONFile.exists());
   return profileBookmarksJSONFile;
 }
 
@@ -494,7 +483,7 @@ function remove_all_JSON_backups() {
   bookmarksBackupDir.append("bookmarkbackups");
   if (bookmarksBackupDir.exists()) {
     bookmarksBackupDir.remove(true);
-    do_check_false(bookmarksBackupDir.exists());
+    Assert.ok(!bookmarksBackupDir.exists());
   }
 }
 
@@ -524,7 +513,7 @@ function check_JSON_backup(aIsAutomaticBackup) {
     profileBookmarksJSONFile.append("bookmarkbackups");
     profileBookmarksJSONFile.append(FILENAME_BOOKMARKS_JSON);
   }
-  do_check_true(profileBookmarksJSONFile.exists());
+  Assert.ok(profileBookmarksJSONFile.exists());
   return profileBookmarksJSONFile;
 }
 
@@ -620,7 +609,7 @@ function do_check_valid_places_guid(aGuid,
   if (!aStack) {
     aStack = Components.stack.caller;
   }
-  do_check_true(/^[a-zA-Z0-9\-_]{12}$/.test(aGuid), aStack);
+  Assert.ok(/^[a-zA-Z0-9\-_]{12}$/.test(aGuid), aStack);
 }
 
 /**
@@ -643,7 +632,7 @@ function do_get_guid_for_uri(aURI,
      WHERE url_hash = hash(:url) AND url = :url`
   );
   stmt.params.url = aURI.spec;
-  do_check_true(stmt.executeStep(), aStack);
+  Assert.ok(stmt.executeStep(), aStack);
   let guid = stmt.row.guid;
   stmt.finalize();
   do_check_valid_places_guid(guid, aStack);
@@ -664,7 +653,7 @@ function do_check_guid_for_uri(aURI,
   let guid = do_get_guid_for_uri(aURI, caller);
   if (aGUID) {
     do_check_valid_places_guid(aGUID, caller);
-    do_check_eq(guid, aGUID, caller);
+    Assert.equal(guid, aGUID, caller);
   }
 }
 
@@ -688,7 +677,7 @@ function do_get_guid_for_bookmark(aId,
      WHERE id = :item_id`
   );
   stmt.params.item_id = aId;
-  do_check_true(stmt.executeStep(), aStack);
+  Assert.ok(stmt.executeStep(), aStack);
   let guid = stmt.row.guid;
   stmt.finalize();
   do_check_valid_places_guid(guid, aStack);
@@ -709,7 +698,7 @@ function do_check_guid_for_bookmark(aId,
   let guid = do_get_guid_for_bookmark(aId, caller);
   if (aGUID) {
     do_check_valid_places_guid(aGUID, caller);
-    do_check_eq(guid, aGUID, caller);
+    Assert.equal(guid, aGUID, caller);
   }
 }
 
@@ -763,7 +752,7 @@ function NavHistoryObserver() {}
 NavHistoryObserver.prototype = {
   onBeginUpdateBatch() {},
   onEndUpdateBatch() {},
-  onVisit() {},
+  onVisits() {},
   onTitleChanged() {},
   onDeleteURI() {},
   onClearHistory() {},

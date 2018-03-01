@@ -17,12 +17,13 @@ job-defaults:
 web-platform-tests:
     description: "Web platform test run"
     suite: web-platform-tests
-    treeherder-symbol: tc-W(wpt)
+    treeherder-symbol: W(wpt)
     chunks:
-      by-test-platform:
-        macosx64/opt: 5
-        macosx64/debug: 10
-        default: 12
+        by-test-platform:
+            macosx64/opt: 5
+            macosx64/debug: 10
+            windows10-64-ccov/debug: 15
+            default: 12
     max-run-time: 7200
     e10s:
         by-test-platform:
@@ -36,18 +37,18 @@ web-platform-tests:
 web-platform-tests-headless:
     description: "Web platform test headless run"
     suite: web-platform-tests
-    treeherder-symbol: tc-W(wptH)
+    treeherder-symbol: W(wptH)
     chunks:
-      by-test-platform:
-        macosx64/opt: 5
-        macosx64/debug: 10
-        default: 12
+        by-test-platform:
+            macosx64/opt: 5
+            macosx64/debug: 10
+            default: 12
     e10s:
         by-test-platform:
             macosx.*: true
             default: true
     max-run-time: 7200
-    run-on-projects: [] # disabled pending releng approval
+    run-on-projects: []  # disabled pending releng approval
     mozharness:
         chunked: true
         extra-options:
@@ -64,12 +65,12 @@ web-platform-tests-headless:
 web-platform-tests-reftests:
     description: "Web platform reftest run"
     suite: web-platform-tests-reftests
-    treeherder-symbol: tc-W(Wr)
+    treeherder-symbol: W(Wr)
     chunks:
-      by-test-platform:
-        macosx.*: 1
-        windows.*: 1
-        default: 6
+        by-test-platform:
+            macosx.*: 1
+            windows.*: 1
+            default: 6
     e10s:
         by-test-platform:
             windows7-32/debug: both
@@ -81,17 +82,17 @@ web-platform-tests-reftests:
 web-platform-tests-reftests-headless:
     description: "Web platform reftest headless run"
     suite: web-platform-tests-reftests
-    treeherder-symbol: tc-W(WrH)
+    treeherder-symbol: W(WrH)
     chunks:
-      by-test-platform:
-        macosx.*: 1
-        windows.*: 1
-        default: 6
+        by-test-platform:
+            macosx.*: 1
+            windows.*: 1
+            default: 6
     e10s:
         by-test-platform:
             windows7-32/debug: both
             default: true
-    run-on-projects: [] # disabled pending releng approval
+    run-on-projects: []  # disabled pending releng approval
     mozharness:
         extra-options:
             by-test-platform:
@@ -106,7 +107,7 @@ web-platform-tests-reftests-headless:
 web-platform-tests-wdspec:
     description: "Web platform webdriver-spec run"
     suite: web-platform-tests-wdspec
-    treeherder-symbol: tc-W(Wd)
+    treeherder-symbol: W(Wd)
     mozharness:
         extra-options:
             - --test-type=wdspec
@@ -114,8 +115,8 @@ web-platform-tests-wdspec:
 web-platform-tests-wdspec-headless:
     description: "Web platform webdriver-spec headless run"
     suite: web-platform-tests-wdspec
-    treeherder-symbol: tc-W(WdH)
-    run-on-projects: [] # disabled pending releng approval
+    treeherder-symbol: W(WdH)
+    run-on-projects: []  # disabled pending releng approval
     mozharness:
         extra-options:
             by-test-platform:
@@ -127,3 +128,21 @@ web-platform-tests-wdspec-headless:
                 default:
                     - --test-type=wdspec
                     - --headless
+
+test-verify-wpt:
+    description: "Extra verification of web-platform tests modified on this push"
+    suite: test-verify-wpt
+    treeherder-symbol: TVw
+    run-on-projects:
+        by-test-platform:
+            # do not run on ccov; see also the enable_code_coverage transform
+            linux64-ccov/.*: []
+            # do not run on beta or release: usually just confirms earlier results
+            default: ['trunk', 'try']
+    tier:
+        by-test-platform:
+            windows10-64-asan.*: 3
+            default: 2
+    mozharness:
+        extra-options:
+            - --verify

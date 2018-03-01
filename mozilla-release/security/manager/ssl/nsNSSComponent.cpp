@@ -80,16 +80,15 @@ int nsNSSComponent::mInstanceCount = 0;
 // to ensure that NSS is initialized.
 bool EnsureNSSInitializedChromeOrContent()
 {
+  static Atomic<bool> initialized(false);
+
+  if (initialized) {
+    return true;
+  }
+
   // If this is not the main thread (i.e. probably a worker) then forward this
   // call to the main thread.
   if (!NS_IsMainThread()) {
-    static Atomic<bool> initialized(false);
-
-    // Cache the result to dispatch to the main thread only once per worker.
-    if (initialized) {
-      return true;
-    }
-
     nsCOMPtr<nsIThread> mainThread;
     nsresult rv = NS_GetMainThread(getter_AddRefs(mainThread));
     if (NS_FAILED(rv)) {
@@ -101,7 +100,7 @@ bool EnsureNSSInitializedChromeOrContent()
       mainThread,
       new SyncRunnable(
         NS_NewRunnableFunction("EnsureNSSInitializedChromeOrContent", []() {
-          initialized = EnsureNSSInitializedChromeOrContent();
+          EnsureNSSInitializedChromeOrContent();
         })));
 
     return initialized;
@@ -112,10 +111,12 @@ bool EnsureNSSInitializedChromeOrContent()
     if (!nss) {
       return false;
     }
+    initialized = true;
     return true;
   }
 
   if (NSS_IsInitialized()) {
+    initialized = true;
     return true;
   }
 
@@ -128,6 +129,7 @@ bool EnsureNSSInitializedChromeOrContent()
   }
 
   mozilla::psm::DisableMD5();
+  initialized = true;
   return true;
 }
 
@@ -1718,7 +1720,7 @@ nsNSSComponent::setEnabledTLSVersions()
   // keep these values in sync with security-prefs.js
   // 1 means TLS 1.0, 2 means TLS 1.1, etc.
   static const uint32_t PSM_DEFAULT_MIN_TLS_VERSION = 1;
-  static const uint32_t PSM_DEFAULT_MAX_TLS_VERSION = 3;
+  static const uint32_t PSM_DEFAULT_MAX_TLS_VERSION = 4;
 
   uint32_t minFromPrefs = Preferences::GetUint("security.tls.version.min",
                                                PSM_DEFAULT_MIN_TLS_VERSION);
@@ -1745,15 +1747,6 @@ static nsresult
 GetNSSProfilePath(nsAutoCString& aProfilePath)
 {
   aProfilePath.Truncate();
-  const char* dbDirOverride = getenv("MOZPSM_NSSDBDIR_OVERRIDE");
-  if (dbDirOverride && strlen(dbDirOverride) > 0) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("Using specified MOZPSM_NSSDBDIR_OVERRIDE as NSS DB dir: %s\n",
-            dbDirOverride));
-    aProfilePath.Assign(dbDirOverride);
-    return NS_OK;
-  }
-
   nsCOMPtr<nsIFile> profileFile;
   nsresult rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
                                        getter_AddRefs(profileFile));
@@ -1764,15 +1757,17 @@ GetNSSProfilePath(nsAutoCString& aProfilePath)
   }
 
 #if defined(XP_WIN)
-  // Native path will drop Unicode characters that cannot be mapped to system's
-  // codepage, using short (canonical) path as workaround.
+  // SQLite always takes UTF-8 file paths regardless of the current system
+  // code page.
   nsCOMPtr<nsILocalFileWin> profileFileWin(do_QueryInterface(profileFile));
   if (!profileFileWin) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Error,
            ("Could not get nsILocalFileWin for profile directory.\n"));
     return NS_ERROR_FAILURE;
   }
-  rv = profileFileWin->GetNativeCanonicalPath(aProfilePath);
+  nsAutoString u16ProfilePath;
+  rv = profileFileWin->GetCanonicalPath(u16ProfilePath);
+  CopyUTF16toUTF8(u16ProfilePath, aProfilePath);
 #else
   rv = profileFile->GetNativePath(aProfilePath);
 #endif
@@ -1797,15 +1792,6 @@ static nsresult
 AttemptToRenamePKCS11ModuleDB(const nsACString& profilePath,
                               const nsACString& moduleDBFilename)
 {
-  // profilePath may come from the environment variable
-  // MOZPSM_NSSDBDIR_OVERRIDE. If so, the user's NSS DBs are most likely not in
-  // their profile directory and we shouldn't mess with them.
-  const char* dbDirOverride = getenv("MOZPSM_NSSDBDIR_OVERRIDE");
-  if (dbDirOverride && strlen(dbDirOverride) > 0) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("MOZPSM_NSSDBDIR_OVERRIDE set - not renaming PKCS#11 module DB"));
-    return NS_OK;
-  }
   nsAutoCString destModuleDBFilename(moduleDBFilename);
   destModuleDBFilename.Append(".fips");
   nsCOMPtr<nsIFile> dbFile = do_CreateInstance("@mozilla.org/file/local;1");
@@ -1873,9 +1859,11 @@ AttemptToRenamePKCS11ModuleDB(const nsACString& profilePath,
   return NS_OK;
 }
 
-// We may be using the legacy databases, in which case we need to use
-// "secmod.db". We may be using the sqlite-backed databases, in which case we
-// need to use "pkcs11.txt".
+// The platform now only uses the sqlite-backed databases, so we'll try to
+// rename "pkcs11.txt". However, if we're upgrading from a version that used the
+// old format, we need to try to rename the old "secmod.db" as well (if we were
+// to only rename "pkcs11.txt", initializing NSS will still fail due to the old
+// database being in FIPS mode).
 static nsresult
 AttemptToRenameBothPKCS11ModuleDBVersions(const nsACString& profilePath)
 {
@@ -2362,7 +2350,12 @@ nsresult nsNSSComponent::LogoutAuthenticatedPK11()
 
   nsClientAuthRememberService::ClearAllRememberedDecisions();
 
-  return nsNSSShutDownList::doPK11Logout();
+  nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+  if (os) {
+    os->NotifyObservers(nullptr, "net:cancel-all-connections", nullptr);
+  }
+
+  return NS_OK;
 }
 
 nsresult

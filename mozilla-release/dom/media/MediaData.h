@@ -210,6 +210,13 @@ public:
     return AlignmentOffset() * 2;
   }
 
+  void PopFront(size_t aSize)
+  {
+    MOZ_ASSERT(mLength >= aSize);
+    PodMove(mData, mData + aSize, mLength - aSize);
+    mLength -= aSize;
+  }
+
 private:
   static size_t AlignmentOffset()
   {
@@ -512,16 +519,6 @@ public:
     const media::TimeUnit& aTimecode,
     const IntRect& aPicture);
 
-  static already_AddRefed<VideoData> CreateAndCopyIntoTextureClient(
-    const VideoInfo& aInfo,
-    int64_t aOffset,
-    const media::TimeUnit& aTime,
-    const media::TimeUnit& aDuration,
-    layers::TextureClient* aBuffer,
-    bool aKeyframe,
-    const media::TimeUnit& aTimecode,
-    const IntRect& aPicture);
-
   static already_AddRefed<VideoData> CreateFromImage(
     const IntSize& aDisplay,
     int64_t aOffset,
@@ -600,7 +597,6 @@ public:
   nsTArray<uint16_t> mPlainSizes;
   nsTArray<uint32_t> mEncryptedSizes;
   nsTArray<uint8_t> mIV;
-  nsTArray<nsCString> mSessionIds;
   nsTArray<nsTArray<uint8_t>> mInitDatas;
   nsString mInitDataType;
 };
@@ -648,6 +644,8 @@ public:
   bool Replace(const uint8_t* aData, size_t aSize);
   // Clear the memory buffer. Will set target mData and mSize to 0.
   void Clear();
+  // Remove aSize bytes from the front of the sample.
+  void PopFront(size_t aSize);
 
 private:
   friend class MediaRawData;

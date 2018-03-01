@@ -109,11 +109,10 @@ public:
   // if you move a node, that corresponds to deleting it and reinserting it.
   // DOM Range gravity will promote the selection out of the node on deletion,
   // which is not what you want if you know you are reinserting it.
-  nsresult SelAdjCreateNode(nsINode* aParent, int32_t aPosition);
-  nsresult SelAdjInsertNode(nsINode* aParent, int32_t aPosition);
+  nsresult SelAdjCreateNode(const EditorRawDOMPoint& aPoint);
+  nsresult SelAdjInsertNode(const EditorRawDOMPoint& aPoint);
   void SelAdjDeleteNode(nsINode* aNode);
-  nsresult SelAdjSplitNode(nsIContent& aOldRightNode, int32_t aOffset,
-                           nsIContent* aNewLeftNode);
+  nsresult SelAdjSplitNode(nsIContent& aRightNode, nsIContent* aNewLeftNode);
   nsresult SelAdjJoinNodes(nsINode& aLeftNode,
                            nsINode& aRightNode,
                            nsINode& aParent,
@@ -226,8 +225,8 @@ public:
     , mPoint(aPoint)
   {
     mRangeItem = new RangeItem();
-    mRangeItem->mStartContainer = mPoint->Container();
-    mRangeItem->mEndContainer = mPoint->Container();
+    mRangeItem->mStartContainer = mPoint->GetContainer();
+    mRangeItem->mEndContainer = mPoint->GetContainer();
     mRangeItem->mStartOffset = mPoint->Offset();
     mRangeItem->mEndOffset = mPoint->Offset();
     mRangeUpdater.RegisterRangeItem(mRangeItem);

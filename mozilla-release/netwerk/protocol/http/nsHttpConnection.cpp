@@ -24,6 +24,7 @@
 #include "nsHttpHandler.h"
 #include "nsHttpRequestHead.h"
 #include "nsHttpResponseHead.h"
+#include "nsIClassOfService.h"
 #include "nsIOService.h"
 #include "nsISocketTransport.h"
 #include "nsSocketTransportService2.h"
@@ -55,6 +56,8 @@ nsHttpConnection::nsHttpConnection()
     , mTotalBytesRead(0)
     , mTotalBytesWritten(0)
     , mContentBytesWritten(0)
+    , mUrgentStartPreferred(false)
+    , mUrgentStartPreferredKnown(false)
     , mConnectedTransport(false)
     , mKeepAlive(true) // assume to keep-alive by default
     , mKeepAliveMask(true)
@@ -87,9 +90,11 @@ nsHttpConnection::nsHttpConnection()
     , mEarlyDataNegotiated(false)
     , mDid0RTTSpdy(false)
     , mFastOpen(false)
-    , mFastOpenStatus(TFO_NOT_TRIED)
+    , mFastOpenStatus(TFO_NOT_SET)
     , mForceSendDuringFastOpenPending(false)
     , mReceivedSocketWouldBlockDuringFastOpen(false)
+    , mCheckNetworkStallsWithTFO(false)
+    , mLastRequestBytesSentTime(0)
 {
     LOG(("Creating nsHttpConnection @%p\n", this));
 
@@ -127,18 +132,13 @@ nsHttpConnection::~nsHttpConnection()
 
     if ((mFastOpenStatus != TFO_FAILED) &&
         (mFastOpenStatus != TFO_HTTP) &&
-        ((mFastOpenStatus != TFO_NOT_TRIED) ||
-#if defined(_WIN64) && defined(WIN95)
-         (gHttpHandler->UseFastOpen() &&
-          gSocketTransportService &&
-          gSocketTransportService->HasFileDesc2PlatformOverlappedIOHandleFunc()))) {
-#else
+        (((mFastOpenStatus > TFO_DISABLED_CONNECT) && (mFastOpenStatus < TFO_BACKUP_CONN)) ||
          gHttpHandler->UseFastOpen())) {
-#endif
         // TFO_FAILED will be reported in the replacement connection with more
         // details.
         // Otherwise report only if TFO is enabled and supported.
-        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_2, mFastOpenStatus);
+        // If TFO is disabled, report only connections ha cause it to be disabled, e.g. TFO_FAILED_NET_TIMEOUT, etc.
+        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_3, mFastOpenStatus);
     }
 }
 
@@ -634,6 +634,7 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
         nsHttpTransaction *hTrans = trans->QueryHttpTransaction();
         if (hTrans) {
             hTrans->BootstrapTimings(mBootstrappedTimings);
+            SetUrgentStartPreferred(hTrans->ClassOfService() & nsIClassOfService::UrgentStart);
         }
         mBootstrappedTimings = TimingStruct();
     }
@@ -647,6 +648,18 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
     NS_ENSURE_ARG_POINTER(trans);
     NS_ENSURE_TRUE(!mTransaction, NS_ERROR_IN_PROGRESS);
 
+    // If TCP fast Open has been used and conection was idle for some time
+    // we will be cautious and watch out for bug 1395494.
+    if (mNPNComplete && (mFastOpenStatus == TFO_DATA_SENT) &&
+        gHttpHandler->CheckIfConnectionIsStalledOnlyIfIdleForThisAmountOfSeconds() &&
+        IdleTime() >= gHttpHandler->CheckIfConnectionIsStalledOnlyIfIdleForThisAmountOfSeconds()) {
+        // If a connection was using the TCP FastOpen and it was idle for a
+        // long time we should check for stalls like bug 1395494.
+        mCheckNetworkStallsWithTFO = true;
+        // Also reset last write. We should start measuring a stall time only
+        // after we really write a request to the network.
+        mLastRequestBytesSentTime = 0;
+    }
     // reset the read timers to wash away any idle time
     mLastWriteTime = mLastReadTime = PR_IntervalNow();
 
@@ -718,7 +731,7 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
         mTransaction = mTLSFilter;
     }
 
-    trans->OnActivated(false);
+    trans->OnActivated();
 
     rv = OnOutputStreamReady(mSocketOut);
 
@@ -1063,6 +1076,17 @@ nsHttpConnection::IsAlive()
     return alive;
 }
 
+void
+nsHttpConnection::SetUrgentStartPreferred(bool urgent)
+{
+  if (mExperienced && !mUrgentStartPreferredKnown) {
+    // Set only according the first ever dispatched non-null transaction
+    mUrgentStartPreferredKnown = true;
+    mUrgentStartPreferred = urgent;
+    LOG(("nsHttpConnection::SetUrgentStartPreferred [this=%p urgent=%d]", this, urgent));
+  }
+}
+
 //----------------------------------------------------------------------------
 // nsHttpConnection::nsAHttpConnection compatible methods
 //----------------------------------------------------------------------------
@@ -1359,6 +1383,19 @@ nsHttpConnection::ReadTimeoutTick(PRIntervalTime now)
         nextTickAfter = PR_IntervalToSeconds(mTransaction->ResponseTimeout()) -
                         PR_IntervalToSeconds(initialResponseDelta);
         nextTickAfter = std::max(nextTickAfter, 1U);
+    }
+
+    // Check for the TCP Fast Open related stalls.
+    if (mCheckNetworkStallsWithTFO && mLastRequestBytesSentTime) {
+        PRIntervalTime initialResponseDelta = now - mLastRequestBytesSentTime;
+        if (initialResponseDelta >= gHttpHandler->FastOpenStallsTimeout()) {
+            gHttpHandler->IncrementFastOpenStallsCounter();
+            mCheckNetworkStallsWithTFO = false;
+        } else {
+            uint32_t next = PR_IntervalToSeconds(gHttpHandler->FastOpenStallsTimeout()) -
+                            PR_IntervalToSeconds(initialResponseDelta);
+            nextTickAfter = std::min(nextTickAfter, next);
+        }
     }
 
     if (!mNPNComplete) {
@@ -1862,6 +1899,9 @@ nsHttpConnection::OnSocketWritable()
                 mTransaction->OnTransportStatus(mSocketTransport,
                                                 NS_NET_STATUS_WAITING_FOR,
                                                 0);
+                if (mCheckNetworkStallsWithTFO) {
+                    mLastRequestBytesSentTime = PR_IntervalNow();
+                }
 
                 rv = ResumeRecv(); // start reading
             }
@@ -1903,6 +1943,8 @@ nsHttpConnection::OnWriteSegment(char *buf,
         mSocketInCondition = NS_BASE_STREAM_CLOSED;
     else
         mSocketInCondition = NS_OK; // reset condition
+
+    mCheckNetworkStallsWithTFO = false;
 
     return mSocketInCondition;
 }
@@ -2444,7 +2486,13 @@ nsHttpConnection::SetFastOpen(bool aFastOpen)
     if (!mFastOpen &&
         mTransaction &&
         !mTransaction->IsNullTransaction()) {
+
         mExperienced = true;
+
+        nsHttpTransaction *hTrans = mTransaction->QueryHttpTransaction();
+        if (hTrans) {
+            SetUrgentStartPreferred(hTrans->ClassOfService() & nsIClassOfService::UrgentStart);
+        }
     }
 }
 
@@ -2452,11 +2500,20 @@ void
 nsHttpConnection::SetFastOpenStatus(uint8_t tfoStatus) {
     mFastOpenStatus = tfoStatus;
     if ((mFastOpenStatus >= TFO_FAILED_CONNECTION_REFUSED) &&
+        (mFastOpenStatus <= TFO_FAILED_BACKUP_CONNECTION_TFO_DATA_COOKIE_NOT_ACCEPTED) &&
         mSocketTransport) {
         nsresult firstRetryError;
         if (NS_SUCCEEDED(mSocketTransport->GetFirstRetryError(&firstRetryError)) &&
             (NS_FAILED(firstRetryError))) {
-            mFastOpenStatus = tfoStatus + 4; 
+            if ((mFastOpenStatus >= TFO_FAILED_BACKUP_CONNECTION_TFO_NOT_TRIED) &&
+                (mFastOpenStatus <= TFO_FAILED_BACKUP_CONNECTION_TFO_DATA_COOKIE_NOT_ACCEPTED)) {
+                mFastOpenStatus = TFO_FAILED_BACKUP_CONNECTION_NO_TFO_FAILED_TOO;
+            } else {
+                // We add +7 to tranform TFO_FAILED_CONNECTION_REFUSED into
+                // TFO_FAILED_CONNECTION_REFUSED_NO_TFO_FAILED_TOO, etc.
+                // If the list in TCPFastOpenLayer.h changes please addapt +7.
+                mFastOpenStatus = tfoStatus + 7;
+            }
         }
     }
 }

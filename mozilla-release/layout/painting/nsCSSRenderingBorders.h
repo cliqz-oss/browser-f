@@ -303,9 +303,9 @@ public:
                             const nsRect& aDirtyRect,
                             nsIFrame::Sides aSkipSides,
                             uint32_t aFlags,
-                            mozilla::image::DrawResult* aDrawResult);
+                            mozilla::image::ImgDrawResult* aDrawResult);
 
-  mozilla::image::DrawResult
+  mozilla::image::ImgDrawResult
   DrawBorderImage(nsPresContext* aPresContext,
                   gfxContext& aRenderingContext,
                   nsIFrame* aForFrame,
@@ -336,8 +336,8 @@ private:
   nsMargin mImageOutset;
   nsRect mArea;
   nsRect mClip;
-  uint8_t mRepeatModeHorizontal;
-  uint8_t mRepeatModeVertical;
+  mozilla::StyleBorderImageRepeat mRepeatModeHorizontal;
+  mozilla::StyleBorderImageRepeat mRepeatModeVertical;
   uint8_t mFill;
 
   friend class nsDisplayBorder;

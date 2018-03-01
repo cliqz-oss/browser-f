@@ -120,16 +120,6 @@ function is_in_list(aManager, view, canGoBack, canGoForward) {
   check_state(canGoBack, canGoForward);
 }
 
-function is_in_search(aManager, query, canGoBack, canGoForward) {
-  var doc = aManager.document;
-
-  is(doc.getElementById("categories").selectedItem.value, "addons://search/", "Should be on the right category");
-  is(get_current_view(aManager).id, "search-view", "Should be on the right view");
-  is(doc.getElementById("header-search").value, query, "Should have used the right query");
-
-  check_state(canGoBack, canGoForward);
-}
-
 function is_in_detail(aManager, view, canGoBack, canGoForward) {
   var doc = aManager.document;
 
@@ -388,6 +378,20 @@ add_test(function() {
   });
 });
 
+function wait_for_page_show(browser) {
+  let promise = new Promise(resolve => {
+    let removeFunc;
+    let listener = () => {
+      removeFunc();
+      resolve();
+    };
+    removeFunc = BrowserTestUtils.addContentEventListener(browser, "pageshow", listener, false,
+                                                          (event) => event.target.location == "http://example.com/",
+                                                          false, false);
+  });
+  return promise;
+}
+
 // Tests than navigating to a website and then going back returns to the
 // previous view
 add_test(function() {
@@ -397,10 +401,7 @@ add_test(function() {
     is_in_list(aManager, "addons://list/plugin", false, false);
 
     gBrowser.loadURI("http://example.com/");
-    gBrowser.addEventListener("pageshow", function listener(event) {
-      if (event.target.location != "http://example.com/")
-        return;
-      gBrowser.removeEventListener("pageshow", listener);
+    wait_for_page_show(gBrowser.selectedBrowser).then(() => {
       info("Part 2");
 
       executeSoon(function() {
@@ -419,10 +420,7 @@ add_test(function() {
             is_in_list(aManager, "addons://list/plugin", false, true);
 
             executeSoon(() => go_forward());
-            gBrowser.addEventListener("pageshow", function listener(event) {
-              if (event.target.location != "http://example.com/")
-                return;
-              gBrowser.removeEventListener("pageshow", listener);
+            wait_for_page_show(gBrowser.selectedBrowser).then(() => {
               info("Part 4");
 
               executeSoon(function() {
@@ -441,132 +439,6 @@ add_test(function() {
 
                     close_manager(aManager, run_next_test);
                   });
-                });
-              });
-            });
-          });
-        });
-      });
-    });
-  });
-});
-
-// Tests that going back to search results works
-add_test(function() {
-  // Before we open the add-ons manager, we should make sure that no filter
-  // has been set. If one is set, we remove it.
-  // This is for the check below, from bug 611459.
-  let store = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
-  store.removeValue("about:addons", "search-filter-radiogroup", "value");
-
-  open_manager("addons://list/extension", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
-
-    var search = aManager.document.getElementById("header-search");
-    search.focus();
-    search.value = "bar";
-    EventUtils.synthesizeKey("VK_RETURN", {}, aManager);
-
-    wait_for_view_load(aManager, function(aManager) {
-      // Remote search is meant to be checked by default (bug 611459), so we
-      // confirm that and then switch to a local search.
-      var localFilter = aManager.document.getElementById("search-filter-local");
-      var remoteFilter = aManager.document.getElementById("search-filter-remote");
-
-      is(remoteFilter.selected, true, "Remote filter should be set by default");
-
-      var list = aManager.document.getElementById("search-list");
-      list.ensureElementIsVisible(localFilter);
-      EventUtils.synthesizeMouseAtCenter(localFilter, { }, aManager);
-
-      is(localFilter.selected, true, "Should have changed to local filter");
-
-      // Now we continue with the normal test.
-
-      info("Part 2");
-      is_in_search(aManager, "bar", true, false);
-      // force layout flush
-      aManager.document.documentElement.clientTop;
-      check_all_in_list(aManager, ["test2@tests.mozilla.org", "test3@tests.mozilla.org"]);
-
-      double_click_addon_element(aManager, "test2@tests.mozilla.org");
-
-      wait_for_view_load(aManager, function(aManager) {
-        info("Part 3");
-        is_in_detail(aManager, "addons://search/", true, false);
-
-        go_back();
-        wait_for_view_load(aManager, function(aManager) {
-          info("Part 4");
-          is_in_search(aManager, "bar", true, true);
-          check_all_in_list(aManager, ["test2@tests.mozilla.org", "test3@tests.mozilla.org"]);
-
-          go_forward();
-          wait_for_view_load(aManager, function(aManager) {
-            info("Part 5");
-            is_in_detail(aManager, "addons://search/", true, false);
-
-            close_manager(aManager, run_next_test);
-          });
-        });
-      });
-    });
-  });
-});
-
-// Tests that going back from a webpage to a detail view loaded from a search
-// result works
-add_test(function() {
-
-  open_manager("addons://list/extension", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
-
-    var search = aManager.document.getElementById("header-search");
-    search.focus();
-    search.value = "bar";
-    EventUtils.synthesizeKey("VK_RETURN", {});
-
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_search(aManager, "bar", true, false);
-      check_all_in_list(aManager, ["test2@tests.mozilla.org", "test3@tests.mozilla.org"]);
-
-      double_click_addon_element(aManager, "test2@tests.mozilla.org");
-
-      wait_for_view_load(aManager, function(aManager) {
-        info("Part 3");
-        is_in_detail(aManager, "addons://search/", true, false);
-
-        gBrowser.loadURI("http://example.com/");
-        gBrowser.addEventListener("pageshow", function listener(event) {
-          if (event.target.location != "http://example.com/")
-            return;
-          gBrowser.removeEventListener("pageshow", listener);
-
-          info("Part 4");
-          executeSoon(function() {
-            ok(gBrowser.canGoBack, "Should be able to go back");
-            ok(!gBrowser.canGoForward, "Should not be able to go forward");
-
-            go_back();
-            gBrowser.addEventListener("pageshow", function listener(event) {
-                if (event.target.location != "about:addons")
-                return;
-              gBrowser.removeEventListener("pageshow", listener);
-
-              wait_for_view_load(gBrowser.contentWindow.wrappedJSObject, function(aManager) {
-                info("Part 5");
-                is_in_detail(aManager, "addons://search/", true, true);
-
-                go_back();
-                wait_for_view_load(aManager, function(aManager) {
-                  info("Part 6");
-                  is_in_search(aManager, "bar", true, true);
-                  check_all_in_list(aManager, ["test2@tests.mozilla.org", "test3@tests.mozilla.org"]);
-
-                  close_manager(aManager, run_next_test);
                 });
               });
             });

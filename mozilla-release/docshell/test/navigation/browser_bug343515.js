@@ -9,11 +9,12 @@ var ctx = {};
 // how many load events should happen on that page (one for the toplevel doc
 // and one for each subframe) and wait until we receive the expected number
 // of events.
-function nShotsListener(aElem, aType, aCallback, aCount) {
+function nShotsListener(aBrowser, aType, aCallback, aCount) {
   let count = aCount;
-  aElem.addEventListener(aType, function listenerCallback() {
+  let removeFunc;
+  removeFunc = BrowserTestUtils.addContentEventListener(aBrowser, aType, function listenerCallback() {
     if (--count == 0) {
-      aElem.removeEventListener(aType, listenerCallback, true);
+      removeFunc();
 
       // aCallback is executed asynchronously, which is handy because load
       // events fire before mIsDocumentLoaded is actually set to true. :(
@@ -22,8 +23,8 @@ function nShotsListener(aElem, aType, aCallback, aCount) {
   }, true);
 }
 
-function oneShotListener(aElem, aType, aCallback) {
-  nShotsListener(aElem, aType, aCallback, 1);
+function oneShotListener(aBrowser, aType, aCallback) {
+  nShotsListener(aBrowser, aType, aCallback, 1);
 }
 
 function waitForPageshow(aBrowser, callback) {
@@ -38,23 +39,17 @@ function test() {
   // Lots of callbacks going on here
   waitForExplicitFinish();
 
-  // Begin the test. First, we disable tab warming because it's
-  // possible for the mouse to be over one of the tabs during
-  // this test, warm it up, and cause this test to fail intermittently
-  // in automation.
-  SpecialPowers.pushPrefEnv({
-    set: [["browser.tabs.remote.warmup.enabled", false]],
-  }).then(step1);
+  // Begin the test
+  step1();
 }
 
-function step1() {
-
+async function step1() {
   // Get a handle on the initial tab
   ctx.tab0 = gBrowser.selectedTab;
   ctx.tab0Browser = gBrowser.getBrowserForTab(ctx.tab0);
 
-  // Our current tab should be active
-  ok(ctx.tab0Browser.docShellIsActive, "Tab 0 should be active at test start");
+  await BrowserTestUtils.waitForCondition(() => ctx.tab0Browser.docShellIsActive,
+    "Timed out waiting for initial tab to be active.");
 
   // Open a New Tab
   ctx.tab1 = BrowserTestUtils.addTab(gBrowser, testPath + "bug343515_pg1.html");

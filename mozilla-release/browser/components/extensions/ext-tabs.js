@@ -20,6 +20,11 @@ var {
   ExtensionError,
 } = ExtensionUtils;
 
+const TABHIDE_PREFNAME = "extensions.webextensions.tabhide.enabled";
+
+// WeakMap[Tab -> ExtensionID]
+let hiddenTabs = new WeakMap();
+
 let tabListener = {
   tabReadyInitialized: false,
   tabReadyPromises: new WeakMap(),
@@ -77,6 +82,27 @@ let tabListener = {
 };
 
 this.tabs = class extends ExtensionAPI {
+  onShutdown(reason) {
+    if (!this.extension.hasPermission("tabHide")) {
+      return;
+    }
+    if (reason == "ADDON_DISABLE" ||
+        reason == "ADDON_UNINSTALL") {
+      // Show all hidden tabs if a tab managing extension is uninstalled or
+      // disabled.  If a user has more than one, the extensions will need to
+      // self-manage re-hiding tabs.
+      for (let tab of this.extension.tabManager.query()) {
+        let nativeTab = tabTracker.getTab(tab.id);
+        if (hiddenTabs.get(nativeTab) === this.extension.id) {
+          hiddenTabs.delete(nativeTab);
+          if (nativeTab.ownerGlobal) {
+            nativeTab.ownerGlobal.gBrowser.showTab(nativeTab);
+          }
+        }
+      }
+    }
+  }
+
   getAPI(context) {
     let {extension} = context;
 
@@ -261,6 +287,9 @@ this.tabs = class extends ExtensionAPI {
               if (changed.includes("label")) {
                 needed.push("title");
               }
+              if (changed.includes("sharing")) {
+                needed.push("sharingState");
+              }
             } else if (event.type == "TabPinned") {
               needed.push("pinned");
             } else if (event.type == "TabUnpinned") {
@@ -270,6 +299,12 @@ this.tabs = class extends ExtensionAPI {
               needed.push("discarded");
             } else if (event.type == "TabBrowserDiscarded") {
               needed.push("discarded");
+            } else if (event.type == "TabShow") {
+              needed.push("hidden");
+              // Always remove the tab from the hiddenTabs map.
+              hiddenTabs.delete(event.originalTarget);
+            } else if (event.type == "TabHide") {
+              needed.push("hidden");
             }
 
             let tab = tabManager.getWrapper(event.originalTarget);
@@ -310,6 +345,8 @@ this.tabs = class extends ExtensionAPI {
           windowTracker.addListener("TabUnpinned", listener);
           windowTracker.addListener("TabBrowserInserted", listener);
           windowTracker.addListener("TabBrowserDiscarded", listener);
+          windowTracker.addListener("TabShow", listener);
+          windowTracker.addListener("TabHide", listener);
 
           tabTracker.on("tab-isarticle", isArticleChangeListener);
 
@@ -320,6 +357,8 @@ this.tabs = class extends ExtensionAPI {
             windowTracker.removeListener("TabUnpinned", listener);
             windowTracker.removeListener("TabBrowserInserted", listener);
             windowTracker.removeListener("TabBrowserDiscarded", listener);
+            windowTracker.removeListener("TabShow", listener);
+            windowTracker.removeListener("TabHide", listener);
             tabTracker.off("tab-isarticle", isArticleChangeListener);
           };
         }).api(),
@@ -328,7 +367,7 @@ this.tabs = class extends ExtensionAPI {
           return new Promise((resolve, reject) => {
             let window = createProperties.windowId !== null ?
               windowTracker.getWindow(createProperties.windowId, context) :
-              windowTracker.topWindow;
+              windowTracker.topNormalWindow;
 
             if (!window.gBrowser) {
               let obs = (finishedWindow, topic, data) => {
@@ -532,17 +571,31 @@ this.tabs = class extends ExtensionAPI {
         },
 
         async query(queryInfo) {
-          if (queryInfo.url !== null) {
-            if (!extension.hasPermission("tabs")) {
-              return Promise.reject({message: 'The "tabs" permission is required to use the query API with the "url" parameter'});
+          if (!extension.hasPermission("tabs")) {
+            if (queryInfo.url !== null || queryInfo.title !== null) {
+              return Promise.reject({message: 'The "tabs" permission is required to use the query API with the "url" or "title" parameters'});
             }
+          }
 
-            queryInfo = Object.assign({}, queryInfo);
+          queryInfo = Object.assign({}, queryInfo);
+
+          if (queryInfo.url !== null) {
             queryInfo.url = new MatchPatternSet([].concat(queryInfo.url));
+          }
+          if (queryInfo.title !== null) {
+            queryInfo.title = new MatchGlob(queryInfo.title);
           }
 
           return Array.from(tabManager.query(queryInfo, context),
                             tab => tab.convert());
+        },
+
+        async captureTab(tabId, options) {
+          let nativeTab = getTabOrActive(tabId);
+          await tabListener.awaitTabReady(nativeTab);
+
+          let tab = tabManager.wrapTab(nativeTab);
+          return tab.capture(context, options);
         },
 
         async captureVisibleTab(windowId, options) {
@@ -610,6 +663,12 @@ this.tabs = class extends ExtensionAPI {
             // If the window is not specified, use the window from the tab.
             let window = destinationWindow || nativeTab.ownerGlobal;
             let gBrowser = window.gBrowser;
+
+            // If we are not moving the tab to a different window, and the window
+            // only has one tab, do nothing.
+            if (nativeTab.ownerGlobal == window && gBrowser.tabs.length === 1) {
+              continue;
+            }
 
             let insertionPoint = indexMap.get(window) || moveProperties.index;
             // If the index is -1 it should go to the end of the tabs.
@@ -862,10 +921,13 @@ this.tabs = class extends ExtensionAPI {
             picker.open(function(retval) {
               if (retval == 0 || retval == 2) {
                 // OK clicked (retval == 0) or replace confirmed (retval == 2)
+
+                // Workaround: When trying to replace an existing file that is open in another application (i.e. a locked file),
+                // the print progress listener is never called. This workaround ensures that a correct status is always returned.
                 try {
                   let fstream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
-                  fstream.init(picker.file, 0x2A, 0x1B6, 0); // write|create|truncate, file permissions rw-rw-rw- = 0666 = 0x1B6
-                  fstream.close(); // unlock file
+                  fstream.init(picker.file, 0x2A, 0o666, 0); // ioflags = write|create|truncate, file permissions = rw-rw-rw-
+                  fstream.close();
                 } catch (e) {
                   resolve(retval == 0 ? "not_saved" : "not_replaced");
                   return;
@@ -873,6 +935,10 @@ this.tabs = class extends ExtensionAPI {
 
                 let psService = Cc["@mozilla.org/gfx/printsettings-service;1"].getService(Ci.nsIPrintSettingsService);
                 let printSettings = psService.newPrintSettings;
+
+                printSettings.printerName = "";
+                printSettings.isInitializedFromPrinter = true;
+                printSettings.isInitializedFromPrefs = true;
 
                 printSettings.printToFile = true;
                 printSettings.toFileName = picker.file.path;
@@ -883,6 +949,15 @@ this.tabs = class extends ExtensionAPI {
                 printSettings.printFrameType = Ci.nsIPrintSettings.kFramesAsIs;
                 printSettings.outputFormat = Ci.nsIPrintSettings.kOutputFormatPDF;
 
+                if (pageSettings.paperSizeUnit !== null) {
+                  printSettings.paperSizeUnit = pageSettings.paperSizeUnit;
+                }
+                if (pageSettings.paperWidth !== null) {
+                  printSettings.paperWidth = pageSettings.paperWidth;
+                }
+                if (pageSettings.paperHeight !== null) {
+                  printSettings.paperHeight = pageSettings.paperHeight;
+                }
                 if (pageSettings.orientation !== null) {
                   printSettings.orientation = pageSettings.orientation;
                 }
@@ -898,14 +973,29 @@ this.tabs = class extends ExtensionAPI {
                 if (pageSettings.showBackgroundImages !== null) {
                   printSettings.printBGImages = pageSettings.showBackgroundImages;
                 }
-                if (pageSettings.paperSizeUnit !== null) {
-                  printSettings.paperSizeUnit = pageSettings.paperSizeUnit;
+                if (pageSettings.edgeLeft !== null) {
+                  printSettings.edgeLeft = pageSettings.edgeLeft;
                 }
-                if (pageSettings.paperWidth !== null) {
-                  printSettings.paperWidth = pageSettings.paperWidth;
+                if (pageSettings.edgeRight !== null) {
+                  printSettings.edgeRight = pageSettings.edgeRight;
                 }
-                if (pageSettings.paperHeight !== null) {
-                  printSettings.paperHeight = pageSettings.paperHeight;
+                if (pageSettings.edgeTop !== null) {
+                  printSettings.edgeTop = pageSettings.edgeTop;
+                }
+                if (pageSettings.edgeBottom !== null) {
+                  printSettings.edgeBottom = pageSettings.edgeBottom;
+                }
+                if (pageSettings.marginLeft !== null) {
+                  printSettings.marginLeft = pageSettings.marginLeft;
+                }
+                if (pageSettings.marginRight !== null) {
+                  printSettings.marginRight = pageSettings.marginRight;
+                }
+                if (pageSettings.marginTop !== null) {
+                  printSettings.marginTop = pageSettings.marginTop;
+                }
+                if (pageSettings.marginBottom !== null) {
+                  printSettings.marginBottom = pageSettings.marginBottom;
                 }
                 if (pageSettings.headerLeft !== null) {
                   printSettings.headerStrLeft = pageSettings.headerLeft;
@@ -925,22 +1015,25 @@ this.tabs = class extends ExtensionAPI {
                 if (pageSettings.footerRight !== null) {
                   printSettings.footerStrRight = pageSettings.footerRight;
                 }
-                if (pageSettings.marginLeft !== null) {
-                  printSettings.marginLeft = pageSettings.marginLeft;
-                }
-                if (pageSettings.marginRight !== null) {
-                  printSettings.marginRight = pageSettings.marginRight;
-                }
-                if (pageSettings.marginTop !== null) {
-                  printSettings.marginTop = pageSettings.marginTop;
-                }
-                if (pageSettings.marginBottom !== null) {
-                  printSettings.marginBottom = pageSettings.marginBottom;
-                }
 
-                activeTab.linkedBrowser.print(activeTab.linkedBrowser.outerWindowID, printSettings, null);
+                let printProgressListener = {
+                  onLocationChange(webProgress, request, location, flags) { },
+                  onProgressChange(webProgress, request, curSelfProgress, maxSelfProgress, curTotalProgress, maxTotalProgress) { },
+                  onSecurityChange(webProgress, request, state) { },
+                  onStateChange(webProgress, request, flags, status) {
+                    if ((flags & Ci.nsIWebProgressListener.STATE_STOP) && (flags & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT)) {
+                      resolve(retval == 0 ? "saved" : "replaced");
+                    }
+                  },
+                  onStatusChange: function(webProgress, request, status, message) {
+                    if (status != 0) {
+                      resolve(retval == 0 ? "not_saved" : "not_replaced");
+                    }
+                  },
+                  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener]),
+                };
 
-                resolve(retval == 0 ? "saved" : "replaced");
+                activeTab.linkedBrowser.print(activeTab.linkedBrowser.outerWindowID, printSettings, printProgressListener);
               } else {
                 // Cancel clicked (retval == 1)
                 resolve("canceled");
@@ -957,6 +1050,47 @@ this.tabs = class extends ExtensionAPI {
           tab = getTabOrActive(tabId);
 
           tab.linkedBrowser.messageManager.sendAsyncMessage("Reader:ToggleReaderMode");
+        },
+
+        show(tabIds) {
+          if (!Services.prefs.getBoolPref(TABHIDE_PREFNAME, false)) {
+            throw new ExtensionError(`tabs.show is currently experimental and must be enabled with the ${TABHIDE_PREFNAME} preference.`);
+          }
+
+          if (!Array.isArray(tabIds)) {
+            tabIds = [tabIds];
+          }
+
+          for (let tabId of tabIds) {
+            let tab = tabTracker.getTab(tabId);
+            if (tab.ownerGlobal) {
+              hiddenTabs.delete(tab);
+              tab.ownerGlobal.gBrowser.showTab(tab);
+            }
+          }
+        },
+
+        hide(tabIds) {
+          if (!Services.prefs.getBoolPref(TABHIDE_PREFNAME, false)) {
+            throw new ExtensionError(`tabs.hide is currently experimental and must be enabled with the ${TABHIDE_PREFNAME} preference.`);
+          }
+
+          if (!Array.isArray(tabIds)) {
+            tabIds = [tabIds];
+          }
+
+          let hidden = [];
+          let tabs = tabIds.map(tabId => tabTracker.getTab(tabId));
+          for (let tab of tabs) {
+            if (tab.ownerGlobal && !tab.hidden) {
+              tab.ownerGlobal.gBrowser.hideTab(tab);
+              if (tab.hidden) {
+                hiddenTabs.set(tab, extension.id);
+                hidden.push(tabTracker.getId(tab));
+              }
+            }
+          }
+          return hidden;
         },
       },
     };

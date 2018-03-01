@@ -241,6 +241,10 @@ class RefTest(object):
         if self.log:
             return
 
+        self.log = getattr(options, 'log', None)
+        if self.log:
+            return
+
         mozlog.commandline.log_formatters["tbpl"] = (ReftestFormatter,
                                                      "Reftest specific formatter for the"
                                                      "benefit of legacy log parsers and"
@@ -289,11 +293,14 @@ class RefTest(object):
             prefs['reftest.repeat'] = options.repeat
         if options.runUntilFailure:
             prefs['reftest.runUntilFailure'] = True
+        if options.verify:
+            prefs['reftest.verify'] = True
         if options.cleanupCrashes:
             prefs['reftest.cleanupPendingCrashes'] = True
         prefs['reftest.focusFilterMode'] = options.focusFilterMode
         prefs['reftest.logLevel'] = options.log_tbpl_level or 'info'
         prefs['reftest.manifests'] = json.dumps(manifests)
+        prefs['reftest.suite'] = options.suite
 
         if startAfter not in (None, self.TEST_SEEN_INITIAL, self.TEST_SEEN_FINAL):
             self.log.info("Setting reftest.startAfter to %s" % startAfter)
@@ -708,6 +715,7 @@ class RefTest(object):
                      interactive=interactive,
                      outputTimeout=timeout)
         proc = runner.process_handler
+        outputHandler.proc_name = 'GECKO({})'.format(proc.pid)
 
         # Used to defer a possible IOError exception from Marionette
         marionette_exception = None
@@ -744,6 +752,7 @@ class RefTest(object):
 
         status = runner.wait()
         runner.process_handler = None
+        outputHandler.proc_name = None
 
         if status:
             msg = "TEST-UNEXPECTED-FAIL | %s | application terminated with exit code %s" % \

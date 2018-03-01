@@ -12,9 +12,10 @@
 #include "nsIDocumentViewerPrint.h"
 #include "nsPrintObject.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/OwningNonNull.h"
 #include "nsThreadUtils.h"
 
-class nsPrintEngine;
+class nsPrintJob;
 class nsIDocument;
 
 //---------------------------------------------------
@@ -27,13 +28,13 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
 
-  nsPagePrintTimer(nsPrintEngine* aPrintEngine,
+  nsPagePrintTimer(nsPrintJob* aPrintJob,
                    nsIDocumentViewerPrint* aDocViewerPrint,
                    nsIDocument* aDocument,
                    uint32_t aDelay)
     : Runnable("nsPagePrintTimer")
-    , mPrintEngine(aPrintEngine)
-    , mDocViewerPrint(aDocViewerPrint)
+    , mPrintJob(aPrintJob)
+    , mDocViewerPrint(*aDocViewerPrint)
     , mDocument(aDocument)
     , mDelay(aDelay)
     , mFiringCount(0)
@@ -41,8 +42,8 @@ public:
     , mWatchDogCount(0)
     , mDone(false)
   {
-    MOZ_ASSERT(aDocument);
-    mDocViewerPrint->IncrementDestroyRefCount();
+    MOZ_ASSERT(aDocViewerPrint && aDocument);
+    mDocViewerPrint->IncrementDestroyBlockedCount();
   }
 
   NS_DECL_NSITIMERCALLBACK
@@ -58,7 +59,7 @@ public:
 
   void Disconnect()
   {
-    mPrintEngine = nullptr;
+    mPrintJob = nullptr;
     mPrintObj = nullptr;
   }
 
@@ -70,8 +71,8 @@ private:
   void     StopWatchDogTimer();
   void     Fail();
 
-  nsPrintEngine*             mPrintEngine;
-  nsCOMPtr<nsIDocumentViewerPrint> mDocViewerPrint;
+  nsPrintJob*                mPrintJob;
+  const mozilla::OwningNonNull<nsIDocumentViewerPrint> mDocViewerPrint;
   nsCOMPtr<nsIDocument>      mDocument;
   nsCOMPtr<nsITimer>         mTimer;
   nsCOMPtr<nsITimer>         mWatchDogTimer;

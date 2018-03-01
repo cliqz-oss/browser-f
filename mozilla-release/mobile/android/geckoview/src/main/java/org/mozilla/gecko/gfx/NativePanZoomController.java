@@ -6,28 +6,28 @@
 package org.mozilla.gecko.gfx;
 
 import org.mozilla.gecko.annotation.WrapForJNI;
-import org.mozilla.gecko.gfx.DynamicToolbarAnimator.PinReason;
 import org.mozilla.gecko.mozglue.JNIObject;
 import org.mozilla.gecko.util.ThreadUtils;
 
-import org.json.JSONObject;
-
-import android.graphics.PointF;
-import android.util.TypedValue;
-import android.view.KeyEvent;
+import android.graphics.Matrix;
+import android.graphics.Rect;
+import android.os.SystemClock;
+import android.util.Log;
 import android.view.MotionEvent;
-import android.view.View;
 import android.view.InputDevice;
 
-class NativePanZoomController extends JNIObject implements PanZoomController {
-    private final float MAX_SCROLL;
+import java.util.ArrayList;
 
-    private final LayerView mView;
+public final class NativePanZoomController extends JNIObject {
+    private static final String LOGTAG = "GeckoNPZC";
 
-    private boolean mDestroyed;
-    private Overscroll mOverscroll;
-    private float mPointerScrollFactor;
+    private final LayerSession mSession;
+    private final Rect mTempRect = new Rect();
+    private boolean mAttached;
+    private float mPointerScrollFactor = 64.0f;
     private long mLastDownTime;
+
+    private SynthesizedEventState mPointerState;
 
     @WrapForJNI(calledFrom = "ui")
     private native boolean handleMotionEvent(
@@ -47,7 +47,7 @@ class NativePanZoomController extends JNIObject implements PanZoomController {
             float x, float y, int buttons);
 
     private boolean handleMotionEvent(MotionEvent event) {
-        if (mDestroyed) {
+        if (!mAttached) {
             return false;
         }
 
@@ -91,7 +91,7 @@ class NativePanZoomController extends JNIObject implements PanZoomController {
     }
 
     private boolean handleScrollEvent(MotionEvent event) {
-        if (mDestroyed) {
+        if (!mAttached) {
             return false;
         }
 
@@ -103,20 +103,23 @@ class NativePanZoomController extends JNIObject implements PanZoomController {
 
         final MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
         event.getPointerCoords(0, coords);
-        final float x = coords.x;
-        // Scroll events are not adjusted by the AndroidDyanmicToolbarAnimator so adjust the offset here.
-        final float y = coords.y - mView.getCurrentToolbarHeight();
+
+        // Translate surface origin to client origin for scroll events.
+        mSession.getSurfaceBounds(mTempRect);
+        final float x = coords.x - mTempRect.left;
+        final float y = coords.y - mTempRect.top;
 
         final float hScroll = event.getAxisValue(MotionEvent.AXIS_HSCROLL) *
                               mPointerScrollFactor;
         final float vScroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL) *
                               mPointerScrollFactor;
 
-        return handleScrollEvent(event.getEventTime(), event.getMetaState(), x, y, hScroll, vScroll);
+        return handleScrollEvent(event.getEventTime(), event.getMetaState(), x, y,
+                                 hScroll, vScroll);
     }
 
     private boolean handleMouseEvent(MotionEvent event) {
-        if (mDestroyed) {
+        if (!mAttached) {
             return false;
         }
 
@@ -128,50 +131,88 @@ class NativePanZoomController extends JNIObject implements PanZoomController {
 
         final MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
         event.getPointerCoords(0, coords);
-        final float x = coords.x;
-        // Mouse events are not adjusted by the AndroidDyanmicToolbarAnimator so adjust the offset
-        // here.
-        final float y = coords.y - mView.getCurrentToolbarHeight();
 
-        return handleMouseEvent(event.getActionMasked(), event.getEventTime(), event.getMetaState(), x, y, event.getButtonState());
+        // Translate surface origin to client origin for mouse events.
+        mSession.getSurfaceBounds(mTempRect);
+        final float x = coords.x - mTempRect.left;
+        final float y = coords.y - mTempRect.top;
+
+        return handleMouseEvent(event.getActionMasked(), event.getEventTime(),
+                                event.getMetaState(), x, y, event.getButtonState());
     }
 
-
-    NativePanZoomController(View view) {
-        MAX_SCROLL = 0.075f * view.getContext().getResources().getDisplayMetrics().densityDpi;
-
-        mView = (LayerView) view;
-
-        TypedValue outValue = new TypedValue();
-        if (view.getContext().getTheme().resolveAttribute(android.R.attr.listPreferredItemHeight, outValue, true)) {
-            mPointerScrollFactor = outValue.getDimension(view.getContext().getResources().getDisplayMetrics());
-        } else {
-            mPointerScrollFactor = MAX_SCROLL;
-        }
+    /* package */ NativePanZoomController(final LayerSession session) {
+        mSession = session;
     }
 
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-// NOTE: This commented out block of code allows Fennec to generate
-//       mouse event instead of converting them to touch events.
-//       This gives Fennec similar behaviour to desktop when using
-//       a mouse.
-//
-//        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) {
-//            return handleMouseEvent(event);
-//        } else {
-//            return handleMotionEvent(event);
-//        }
+    /**
+     * Set the current scroll factor. The scroll factor is the maximum scroll amount that
+     * one scroll event may generate, in device pixels.
+     *
+     * @param factor Scroll factor.
+     */
+    public void setScrollFactor(final float factor) {
+        ThreadUtils.assertOnUiThread();
+        mPointerScrollFactor = factor;
+    }
+
+    /**
+     * Get the current scroll factor.
+     *
+     * @return Scroll factor.
+     */
+    public float getScrollFactor() {
+        ThreadUtils.assertOnUiThread();
+        return mPointerScrollFactor;
+    }
+
+    /**
+     * Process a touch event through the pan-zoom controller. Treat any mouse events as
+     * "touch" rather than as "mouse". Pointer coordinates should be relative to the
+     * display surface.
+     *
+     * @param event MotionEvent to process.
+     * @return True if the event was handled.
+     */
+    public boolean onTouchEvent(final MotionEvent event) {
+        ThreadUtils.assertOnUiThread();
         return handleMotionEvent(event);
     }
 
-    @Override
+    /**
+     * Process a touch event through the pan-zoom controller. Treat any mouse events as
+     * "mouse" rather than as "touch". Pointer coordinates should be relative to the
+     * display surface.
+     *
+     * @param event MotionEvent to process.
+     * @return True if the event was handled.
+     */
+    public boolean onMouseEvent(final MotionEvent event) {
+        ThreadUtils.assertOnUiThread();
+
+        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) {
+            return handleMouseEvent(event);
+        }
+        return handleMotionEvent(event);
+    }
+
+    /**
+     * Process a non-touch motion event through the pan-zoom controller. Currently, hover
+     * and scroll events are supported. Pointer coordinates should be relative to the
+     * display surface.
+     *
+     * @param event MotionEvent to process.
+     * @return True if the event was handled.
+     */
     public boolean onMotionEvent(MotionEvent event) {
+        ThreadUtils.assertOnUiThread();
+
         final int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_SCROLL) {
             if (event.getDownTime() >= mLastDownTime) {
                 mLastDownTime = event.getDownTime();
-            } else if ((InputDevice.getDevice(event.getDeviceId()).getSources() & InputDevice.SOURCE_TOUCHPAD) == InputDevice.SOURCE_TOUCHPAD) {
+            } else if ((InputDevice.getDevice(event.getDeviceId()).getSources() &
+                        InputDevice.SOURCE_TOUCHPAD) == InputDevice.SOURCE_TOUCHPAD) {
                 return false;
             }
             return handleScrollEvent(event);
@@ -184,76 +225,252 @@ class NativePanZoomController extends JNIObject implements PanZoomController {
         }
     }
 
-    @Override @WrapForJNI(calledFrom = "ui") // PanZoomController
-    public void destroy() {
-        if (mDestroyed || !mView.isGeckoReady()) {
-            return;
+    @WrapForJNI(calledFrom = "ui")
+    private void setAttached(final boolean attached) {
+        if (attached) {
+            mAttached = true;
+        } else if (mAttached) {
+            mAttached = false;
+            disposeNative();
         }
-        mDestroyed = true;
-        disposeNative();
     }
 
-    @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko_priority") @Override // JNIObject
+    @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko") @Override // JNIObject
     protected native void disposeNative();
-
-    @Override
-    public void setOverscrollHandler(final Overscroll handler) {
-        mOverscroll = handler;
-    }
 
     @WrapForJNI(stubName = "SetIsLongpressEnabled") // Called from test thread.
     private native void nativeSetIsLongpressEnabled(boolean isLongpressEnabled);
 
-    @Override // PanZoomController
+    /**
+     * Set whether Gecko should generate long-press events.
+     *
+     * @param isLongpressEnabled True if Gecko should generate long-press events.
+     */
     public void setIsLongpressEnabled(boolean isLongpressEnabled) {
-        if (!mDestroyed) {
+        ThreadUtils.assertOnUiThread();
+
+        if (mAttached) {
             nativeSetIsLongpressEnabled(isLongpressEnabled);
         }
     }
 
-    @WrapForJNI
-    private void updateOverscrollVelocity(final float x, final float y) {
-        if (mOverscroll != null) {
-            if (ThreadUtils.isOnUiThread() == true) {
-                mOverscroll.setVelocity(x * 1000.0f, Overscroll.Axis.X);
-                mOverscroll.setVelocity(y * 1000.0f, Overscroll.Axis.Y);
-            } else {
-                ThreadUtils.postToUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        // Multiply the velocity by 1000 to match what was done in JPZ.
-                        mOverscroll.setVelocity(x * 1000.0f, Overscroll.Axis.X);
-                        mOverscroll.setVelocity(y * 1000.0f, Overscroll.Axis.Y);
-                    }
-                });
-            }
+    private static class PointerInfo {
+        // We reserve one pointer ID for the mouse, so that tests don't have
+        // to worry about tracking pointer IDs if they just want to test mouse
+        // event synthesization. If somebody tries to use this ID for a
+        // synthesized touch event we'll throw an exception.
+        public static final int RESERVED_MOUSE_POINTER_ID = 100000;
+
+        public int pointerId;
+        public int source;
+        public int surfaceX;
+        public int surfaceY;
+        public double pressure;
+        public int orientation;
+
+        public MotionEvent.PointerCoords getCoords() {
+            MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
+            coords.orientation = orientation;
+            coords.pressure = (float)pressure;
+            coords.x = surfaceX;
+            coords.y = surfaceY;
+            return coords;
         }
     }
 
-    @WrapForJNI
-    private void updateOverscrollOffset(final float x, final float y) {
-        if (mOverscroll != null) {
-            if (ThreadUtils.isOnUiThread() == true) {
-                mOverscroll.setDistance(x, Overscroll.Axis.X);
-                mOverscroll.setDistance(y, Overscroll.Axis.Y);
-            } else {
-                ThreadUtils.postToUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        mOverscroll.setDistance(x, Overscroll.Axis.X);
-                        mOverscroll.setDistance(y, Overscroll.Axis.Y);
-                    }
-                });
+    private static class SynthesizedEventState {
+        public final ArrayList<PointerInfo> pointers;
+        public long downTime;
+
+        SynthesizedEventState() {
+            pointers = new ArrayList<PointerInfo>();
+        }
+
+        int getPointerIndex(int pointerId) {
+            for (int i = 0; i < pointers.size(); i++) {
+                if (pointers.get(i).pointerId == pointerId) {
+                    return i;
+                }
             }
+            return -1;
+        }
+
+        int addPointer(int pointerId, int source) {
+            PointerInfo info = new PointerInfo();
+            info.pointerId = pointerId;
+            info.source = source;
+            pointers.add(info);
+            return pointers.size() - 1;
+        }
+
+        int getPointerCount(int source) {
+            int count = 0;
+            for (int i = 0; i < pointers.size(); i++) {
+                if (pointers.get(i).source == source) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        MotionEvent.PointerProperties[] getPointerProperties(int source) {
+            MotionEvent.PointerProperties[] props =
+                    new MotionEvent.PointerProperties[getPointerCount(source)];
+            int index = 0;
+            for (int i = 0; i < pointers.size(); i++) {
+                if (pointers.get(i).source == source) {
+                    MotionEvent.PointerProperties p = new MotionEvent.PointerProperties();
+                    p.id = pointers.get(i).pointerId;
+                    switch (source) {
+                        case InputDevice.SOURCE_TOUCHSCREEN:
+                            p.toolType = MotionEvent.TOOL_TYPE_FINGER;
+                            break;
+                        case InputDevice.SOURCE_MOUSE:
+                            p.toolType = MotionEvent.TOOL_TYPE_MOUSE;
+                            break;
+                    }
+                    props[index++] = p;
+                }
+            }
+            return props;
+        }
+
+        MotionEvent.PointerCoords[] getPointerCoords(int source) {
+            MotionEvent.PointerCoords[] coords =
+                    new MotionEvent.PointerCoords[getPointerCount(source)];
+            int index = 0;
+            for (int i = 0; i < pointers.size(); i++) {
+                if (pointers.get(i).source == source) {
+                    coords[index++] = pointers.get(i).getCoords();
+                }
+            }
+            return coords;
         }
     }
 
-    /**
-     * Active SelectionCaretDrag requires DynamicToolbarAnimator to be pinned
-     * to avoid unwanted scroll interactions.
-     */
-    @WrapForJNI(calledFrom = "gecko")
-    private void onSelectionDragState(boolean state) {
-        mView.getDynamicToolbarAnimator().setPinned(state, PinReason.CARET_DRAG);
+    private void synthesizeNativePointer(int source, int pointerId, int eventType,
+                                         int clientX, int clientY, double pressure,
+                                         int orientation)
+    {
+        if (mPointerState == null) {
+            mPointerState = new SynthesizedEventState();
+        }
+
+        // Find the pointer if it already exists
+        int pointerIndex = mPointerState.getPointerIndex(pointerId);
+
+        // Event-specific handling
+        switch (eventType) {
+            case MotionEvent.ACTION_POINTER_UP:
+                if (pointerIndex < 0) {
+                    Log.w(LOGTAG, "Pointer-up for invalid pointer");
+                    return;
+                }
+                if (mPointerState.pointers.size() == 1) {
+                    // Last pointer is going up
+                    eventType = MotionEvent.ACTION_UP;
+                }
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                if (pointerIndex < 0) {
+                    Log.w(LOGTAG, "Pointer-cancel for invalid pointer");
+                    return;
+                }
+                break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                if (pointerIndex < 0) {
+                    // Adding a new pointer
+                    pointerIndex = mPointerState.addPointer(pointerId, source);
+                    if (pointerIndex == 0) {
+                        // first pointer
+                        eventType = MotionEvent.ACTION_DOWN;
+                        mPointerState.downTime = SystemClock.uptimeMillis();
+                    }
+                } else {
+                    // We're moving an existing pointer
+                    eventType = MotionEvent.ACTION_MOVE;
+                }
+                break;
+            case MotionEvent.ACTION_HOVER_MOVE:
+                if (pointerIndex < 0) {
+                    // Mouse-move a pointer without it going "down". However
+                    // in order to send the right MotionEvent without a lot of
+                    // duplicated code, we add the pointer to mPointerState,
+                    // and then remove it at the bottom of this function.
+                    pointerIndex = mPointerState.addPointer(pointerId, source);
+                } else {
+                    // We're moving an existing mouse pointer that went down.
+                    eventType = MotionEvent.ACTION_MOVE;
+                }
+                break;
+        }
+
+        // Translate client origin to surface origin.
+        mSession.getSurfaceBounds(mTempRect);
+        final int surfaceX = clientX + mTempRect.left;
+        final int surfaceY = clientY + mTempRect.top;
+
+        // Update the pointer with the new info
+        PointerInfo info = mPointerState.pointers.get(pointerIndex);
+        info.surfaceX = surfaceX;
+        info.surfaceY = surfaceY;
+        info.pressure = pressure;
+        info.orientation = orientation;
+
+        // Dispatch the event
+        int action = 0;
+        if (eventType == MotionEvent.ACTION_POINTER_DOWN ||
+            eventType == MotionEvent.ACTION_POINTER_UP) {
+            // for pointer-down and pointer-up events we need to add the
+            // index of the relevant pointer.
+            action = (pointerIndex << MotionEvent.ACTION_POINTER_INDEX_SHIFT);
+            action &= MotionEvent.ACTION_POINTER_INDEX_MASK;
+        }
+        action |= (eventType & MotionEvent.ACTION_MASK);
+        boolean isButtonDown = (source == InputDevice.SOURCE_MOUSE) &&
+                               (eventType == MotionEvent.ACTION_DOWN ||
+                                eventType == MotionEvent.ACTION_MOVE);
+        final MotionEvent event = MotionEvent.obtain(
+            /*downTime*/ mPointerState.downTime,
+            /*eventTime*/ SystemClock.uptimeMillis(),
+            /*action*/ action,
+            /*pointerCount*/ mPointerState.getPointerCount(source),
+            /*pointerProperties*/ mPointerState.getPointerProperties(source),
+            /*pointerCoords*/ mPointerState.getPointerCoords(source),
+            /*metaState*/ 0,
+            /*buttonState*/ (isButtonDown ? MotionEvent.BUTTON_PRIMARY : 0),
+            /*xPrecision*/ 0,
+            /*yPrecision*/ 0,
+            /*deviceId*/ 0,
+            /*edgeFlags*/ 0,
+            /*source*/ source,
+            /*flags*/ 0);
+        onTouchEvent(event);
+
+        // Forget about removed pointers
+        if (eventType == MotionEvent.ACTION_POINTER_UP ||
+            eventType == MotionEvent.ACTION_UP ||
+            eventType == MotionEvent.ACTION_CANCEL ||
+            eventType == MotionEvent.ACTION_HOVER_MOVE)
+        {
+            mPointerState.pointers.remove(pointerIndex);
+        }
+    }
+
+    @WrapForJNI(calledFrom = "ui")
+    private void synthesizeNativeTouchPoint(int pointerId, int eventType, int clientX,
+                                            int clientY, double pressure, int orientation) {
+        if (pointerId == PointerInfo.RESERVED_MOUSE_POINTER_ID) {
+            throw new IllegalArgumentException("Pointer ID reserved for mouse");
+        }
+        synthesizeNativePointer(InputDevice.SOURCE_TOUCHSCREEN, pointerId,
+                                eventType, clientX, clientY, pressure, orientation);
+    }
+
+    @WrapForJNI(calledFrom = "ui")
+    private void synthesizeNativeMouseEvent(int eventType, int clientX, int clientY) {
+        synthesizeNativePointer(InputDevice.SOURCE_MOUSE,
+                                PointerInfo.RESERVED_MOUSE_POINTER_ID,
+                                eventType, clientX, clientY, 0, 0);
     }
 }

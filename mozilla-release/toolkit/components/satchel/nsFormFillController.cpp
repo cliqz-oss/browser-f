@@ -72,8 +72,9 @@ GetFormAutoComplete()
 }
 
 NS_IMPL_CYCLE_COLLECTION(nsFormFillController,
-                         mController, mLoginManager, mFocusedPopup, mDocShells,
-                         mPopups, mLastListener, mLastFormAutoComplete)
+                         mController, mLoginManager, mLoginReputationService,
+                         mFocusedPopup, mDocShells, mPopups, mLastListener,
+                         mLastFormAutoComplete)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFormFillController)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIFormFillController)
@@ -897,6 +898,12 @@ nsFormFillController::StopSearch()
   return NS_OK;
 }
 
+nsresult
+nsFormFillController::StartQueryLoginReputation(nsIDOMHTMLInputElement *aInput)
+{
+  return NS_OK;
+}
+
 ////////////////////////////////////////////////////////////////////////
 //// nsIFormAutoCompleteObserver
 
@@ -1075,6 +1082,15 @@ nsFormFillController::MaybeStartControllingInput(nsIDOMHTMLInputElement* aInput)
   if (isAutofillInput || isPwmgrInput ||  hasList || autocomplete) {
     StartControllingInput(aInput);
   }
+
+#ifdef NIGHTLY_BUILD
+  // Trigger an asynchronous login reputation query when user focuses on the
+  // password field.
+  if (formControl->ControlType() == NS_FORM_INPUT_PASSWORD) {
+    StartQueryLoginReputation(aInput);
+  }
+#endif
+
 }
 
 nsresult

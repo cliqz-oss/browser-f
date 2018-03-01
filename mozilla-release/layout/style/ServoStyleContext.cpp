@@ -34,26 +34,6 @@ ServoStyleContext::ServoStyleContext(
 }
 
 ServoStyleContext*
-ServoStyleContext::GetCachedInheritingAnonBoxStyle(nsAtom* aAnonBox) const
-{
-  MOZ_ASSERT(nsCSSAnonBoxes::IsInheritingAnonBox(aAnonBox));
-
-  // See the reasoning in SetCachedInheritingAnonBoxStyle to understand why we
-  // can't use the cache in this case.
-  if (IsInheritingAnonBox()) {
-    return nullptr;
-  }
-
-  auto* current = mNextInheritingAnonBoxStyle.get();
-
-  while (current && current->GetPseudo() != aAnonBox) {
-    current = current->mNextInheritingAnonBoxStyle.get();
-  }
-
-  return current;
-}
-
-ServoStyleContext*
 ServoStyleContext::GetCachedLazyPseudoStyle(CSSPseudoElementType aPseudo) const
 {
   MOZ_ASSERT(aPseudo != CSSPseudoElementType::NotPseudo &&
@@ -65,13 +45,7 @@ ServoStyleContext::GetCachedLazyPseudoStyle(CSSPseudoElementType aPseudo) const
     return nullptr;
   }
 
-  auto* current = mNextLazyPseudoStyle.get();
-
-  while (current && current->GetPseudoType() != aPseudo) {
-    current = current->mNextLazyPseudoStyle.get();
-  }
-
-  return current;
+  return mCachedInheritingStyles.Lookup(nsCSSPseudoElements::GetPseudoAtom(aPseudo));
 }
 
 } // namespace mozilla

@@ -5,7 +5,6 @@
 #![deny(warnings)]
 
 extern crate webrender;
-extern crate webrender_api;
 extern crate euclid;
 extern crate app_units;
 extern crate gleam;
@@ -20,6 +19,8 @@ extern crate dwrote;
 extern crate core_foundation;
 #[cfg(target_os = "macos")]
 extern crate core_graphics;
+#[cfg(target_os = "macos")]
+extern crate foreign_types;
 
 #[allow(non_snake_case)]
 pub mod bindings;

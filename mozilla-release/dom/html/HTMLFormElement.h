@@ -94,6 +94,7 @@ public:
   virtual bool ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
   virtual nsresult GetEventTargetParent(
                      EventChainPreVisitor& aVisitor) override;
@@ -241,7 +242,7 @@ public:
    * submission. In that case the form will defer the submission until the
    * script handler returns and the return value is known.
    */
-  void OnSubmitClickBegin(nsIContent* aOriginatingElement);
+  void OnSubmitClickBegin(Element* aOriginatingElement);
   void OnSubmitClickEnd();
 
   /**
@@ -519,7 +520,7 @@ protected:
    * @param aActionURL the full, unadulterated URL you'll be submitting to [OUT]
    * @param aOriginatingElement the originating element of the form submission [IN]
    */
-  nsresult GetActionURL(nsIURI** aActionURL, nsIContent* aOriginatingElement);
+  nsresult GetActionURL(nsIURI** aActionURL, Element* aOriginatingElement);
 
   /**
    * Check the form validity following this algorithm:

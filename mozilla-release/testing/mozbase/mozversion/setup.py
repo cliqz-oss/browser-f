@@ -6,14 +6,15 @@ from __future__ import absolute_import
 
 from setuptools import setup
 
-PACKAGE_VERSION = '1.4'
+PACKAGE_VERSION = '1.5'
 
 
 setup(name='mozversion',
       version=PACKAGE_VERSION,
       description='Library to get version information for applications',
-      long_description='See http://mozbase.readthedocs.org',
-      classifiers=[],
+      long_description="see https://firefox-source-docs.mozilla.org/mozbase/index.html",
+      classifiers=['Programming Language :: Python :: 2.7',
+                   'Programming Language :: Python :: 3'],
       keywords='mozilla',
       author='Mozilla Automation and Testing Team',
       author_email='tools@lists.mozilla.org',
@@ -22,7 +23,9 @@ setup(name='mozversion',
       packages=['mozversion'],
       include_package_data=True,
       zip_safe=False,
-      install_requires=['mozfile >= 1.0', 'mozlog >= 3.0'],
+      install_requires=['mozfile >= 1.0',
+                        'mozlog >= 3.0',
+                        'six >= 1.10.0'],
       extras_require={'device': ['mozdevice >= 0.44']},
       entry_points="""
       # -*- Entry points: -*-

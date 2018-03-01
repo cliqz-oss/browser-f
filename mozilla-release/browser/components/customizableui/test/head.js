@@ -103,10 +103,6 @@ function removeCustomToolbars() {
   gAddedToolbars.clear();
 }
 
-function getToolboxCustomToolbarId(toolbarName) {
-  return "__customToolbar_" + toolbarName.replace(" ", "_");
-}
-
 function resetCustomization() {
   return CustomizableUI.reset();
 }
@@ -123,10 +119,6 @@ function removeNonReleaseButtons(areaPanelPlacements) {
 
 function removeNonOriginalButtons() {
   CustomizableUI.removeWidgetFromArea("sync-button");
-}
-
-function restoreNonOriginalButtons() {
-  CustomizableUI.addWidgetToArea("sync-button", CustomizableUI.AREA_PANEL);
 }
 
 function assertAreaPlacements(areaId, expectedPlacements) {
@@ -177,8 +169,22 @@ function getAreaWidgetIds(areaId) {
   return CustomizableUI.getWidgetIdsInArea(areaId);
 }
 
-function simulateItemDrag(aToDrag, aTarget) {
-  synthesizeDrop(aToDrag.parentNode, aTarget);
+function simulateItemDrag(aToDrag, aTarget, aEvent = {}) {
+  let ev = aEvent;
+  if (ev == "end" || ev == "start") {
+    let win = aTarget.ownerGlobal;
+    win.QueryInterface(Ci.nsIInterfaceRequestor);
+    const dwu = win.getInterface(Ci.nsIDOMWindowUtils);
+    let bounds = dwu.getBoundsWithoutFlushing(aTarget);
+    if (ev == "end") {
+      ev = {clientX: bounds.right - 2, clientY: bounds.bottom - 2};
+    } else {
+      ev = {clientX: bounds.left + 2, clientY: bounds.top + 2};
+    }
+  }
+  ev._domDispatchOnly = true;
+  synthesizeDrop(aToDrag.parentNode, aTarget, null, null,
+                 aToDrag.ownerGlobal, aTarget.ownerGlobal, ev);
 }
 
 function endCustomizing(aWindow = window) {
@@ -290,7 +296,7 @@ function promisePanelElementHidden(win, aPanel) {
     function onPanelClose(e) {
       aPanel.removeEventListener("popuphidden", onPanelClose);
       win.clearTimeout(timeoutId);
-      resolve();
+      executeSoon(resolve);
     }
     aPanel.addEventListener("popuphidden", onPanelClose);
   });
@@ -405,7 +411,7 @@ function promiseTabHistoryNavigation(aDirection = -1, aConditionFn) {
     }
     gBrowser.addEventListener("pageshow", listener, true);
 
-    content.history.go(aDirection);
+    gBrowser.contentWindowAsCPOW.history.go(aDirection);
 
   });
 }
@@ -505,12 +511,16 @@ function checkContextMenu(aContextMenu, aExpectedEntries, aWindow = window) {
 }
 
 function waitForOverflowButtonShown(win = window) {
+  let ov = win.document.getElementById("nav-bar-overflow-button");
+  let icon = win.document.getAnonymousElementByAttribute(ov, "class", "toolbarbutton-icon");
+  return waitForElementShown(icon);
+}
+function waitForElementShown(element) {
+  let win = element.ownerGlobal;
   let dwu = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
   return BrowserTestUtils.waitForCondition(() => {
     info("Waiting for overflow button to have non-0 size");
-    let ov = win.document.getElementById("nav-bar-overflow-button");
-    let icon = win.document.getAnonymousElementByAttribute(ov, "class", "toolbarbutton-icon");
-    let bounds = dwu.getBoundsWithoutFlushing(icon);
+    let bounds = dwu.getBoundsWithoutFlushing(element);
     return bounds.width > 0 && bounds.height > 0;
   });
 }

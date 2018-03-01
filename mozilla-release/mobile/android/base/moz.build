@@ -22,9 +22,6 @@ with Files('pocket-api-sandbox.token'):
 with Files('android-services.mozbuild'):
     BUG_COMPONENT = ('Android Background Services', 'Android Sync')
 
-with Files('geckoview.ddf'):
-    BUG_COMPONENT = ('Firefox for Android', 'GeckoView')
-
 with Files('crashreporter/**'):
     BUG_COMPONENT = ('Firefox for Android', 'General')
 
@@ -269,6 +266,7 @@ gujar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x for x in 
     'util/ActivityResultHandler.java',
     'util/ActivityResultHandlerMap.java',
     'util/ActivityUtils.java',
+    'util/BitmapUtils.java',
     'util/BundleEventListener.java',
     'util/ContextUtils.java',
     'util/DateUtil.java',
@@ -307,6 +305,7 @@ gujar.extra_jars = [
     CONFIG['ANDROID_SUPPORT_ANNOTATIONS_JAR_LIB'],
     CONFIG['ANDROID_SUPPORT_V4_AAR_LIB'],
     CONFIG['ANDROID_SUPPORT_V4_AAR_INTERNAL_LIB'],
+    CONFIG['ANDROID_PALETTE_V7_AAR_LIB'],
     'constants.jar',
     'gecko-mozglue.jar',
 ]
@@ -376,8 +375,6 @@ gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x
     'GeckoBatteryManager.java',
     'GeckoEditable.java',
     'GeckoEditableChild.java',
-    'GeckoEditableClient.java',
-    'GeckoEditableListener.java',
     'GeckoHalDefines.java',
     'GeckoInputConnection.java',
     'GeckoNetworkManager.java',
@@ -391,33 +388,21 @@ gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x
     'GeckoThread.java',
     'GeckoView.java',
     'GeckoVRManager.java',
-    'gfx/BitmapUtils.java',
-    'gfx/BufferedImage.java',
-    'gfx/BufferedImageGLInfo.java',
+    'gfx/CompositorController.java',
     'gfx/DynamicToolbarAnimator.java',
-    'gfx/FloatSize.java',
-    'gfx/FullScreenState.java',
-    'gfx/GeckoLayerClient.java',
+    'gfx/GeckoDisplay.java',
     'gfx/GeckoSurface.java',
     'gfx/GeckoSurfaceTexture.java',
-    'gfx/ImmutableViewportMetrics.java',
-    'gfx/IntSize.java',
-    'gfx/LayerView.java',
+    'gfx/LayerSession.java',
     'gfx/NativePanZoomController.java',
-    'gfx/Overscroll.java',
     'gfx/OverscrollEdgeEffect.java',
     'gfx/PanningPerfAPI.java',
-    'gfx/PanZoomController.java',
-    'gfx/PointUtils.java',
-    'gfx/RenderTask.java',
     'gfx/StackScroller.java',
     'gfx/SurfaceAllocator.java',
     'gfx/SurfaceAllocatorService.java',
     'gfx/SurfaceTextureListener.java',
-    'gfx/ViewTransform.java',
     'gfx/VsyncSource.java',
     'HapticFeedbackDelegate.java',
-    'InputConnectionListener.java',
     'InputMethods.java',
     'media/AsyncCodec.java',
     'media/AsyncCodecFactory.java',
@@ -460,11 +445,12 @@ gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x
     'sqlite/MatrixBlobCursor.java',
     'sqlite/SQLiteBridge.java',
     'sqlite/SQLiteBridgeException.java',
+    'TextInputController.java',
     'TouchEventInterceptor.java',
     'WakeLockDelegate.java',
 ]]
 
-if CONFIG['MOZ_ANDROID_HLS_SUPPORT']:
+if CONFIG['MOZ_ANDROID_HLS_SUPPORT'] and CONFIG['MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE']:
     gvjar.sources += [geckoview_source_dir + 'java/org/mozilla/gecko/' + x for x in [
         'media/GeckoHlsAudioRenderer.java',
         'media/GeckoHlsPlayer.java',
@@ -1433,7 +1419,7 @@ gvjar.sources += ['generated/org/mozilla/gecko/' + x for x in [
     'process/IProcessManager.java',
 ]]
 
-if CONFIG['MOZ_ANDROID_HLS_SUPPORT']:
+if CONFIG['MOZ_ANDROID_HLS_SUPPORT'] and CONFIG['MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE']:
     gvjar.extra_jars += [
         'exoplayer2.jar',
     ]

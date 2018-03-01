@@ -36,7 +36,7 @@ add_task(async function test_contextMenuAddAndRemoveLogins() {
   ];
 
   for (let hostname of testHostnames) {
-    do_print("test for hostname: " + hostname);
+    info("test for hostname: " + hostname);
     // Get expected logins for this test.
     let logins = getExpectedLogins(hostname);
 
@@ -102,7 +102,7 @@ function checkLoginItems(logins, items) {
   }
   let duplicates = findDuplicates(logins);
 
-  let dateAndTimeFormatter = Services.intl.createDateTimeFormat(undefined,
+  let dateAndTimeFormatter = new Services.intl.DateTimeFormat(undefined,
                              { dateStyle: "medium" });
   for (let login of logins) {
     if (login.username && !duplicates.has(login.username)) {

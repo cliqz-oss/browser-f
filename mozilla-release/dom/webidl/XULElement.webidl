@@ -5,10 +5,8 @@
  */
 
 interface XULControllers;
-interface MozRDFCompositeDataSource;
-interface MozRDFResource;
 
-[Func="IsChromeOrXBL"]
+[HTMLConstructor, Func="IsChromeOrXBL"]
 interface XULElement : Element {
   // Layout properties
   [SetterThrows]
@@ -68,12 +66,6 @@ interface XULElement : Element {
   [SetterThrows]
   attribute DOMString top;
 
-  // XUL Template Builder
-  [SetterThrows]
-  attribute DOMString datasources;
-  [SetterThrows]
-  attribute DOMString ref;
-
   // Tooltip and status info
   [SetterThrows]
   attribute DOMString tooltipText;
@@ -86,10 +78,6 @@ interface XULElement : Element {
 
   attribute boolean allowEvents;
 
-  readonly attribute MozRDFCompositeDataSource? database;
-  readonly attribute XULTemplateBuilder?        builder;
-  [Throws]
-  readonly attribute MozRDFResource?            resource;
   [Throws, ChromeOnly]
   readonly attribute XULControllers             controllers;
   [Throws]
@@ -120,9 +108,6 @@ interface XULElement : Element {
 interface MozFrameLoaderOwner {
   [ChromeOnly]
   readonly attribute FrameLoader? frameLoader;
-
-  [ChromeOnly]
-  void setIsPrerendered();
 
   [ChromeOnly, Throws]
   void presetOpenerWindow(WindowProxy? window);

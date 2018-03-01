@@ -371,7 +371,7 @@ public:
                       nsIDocument* aLoaderDocument);
 
     TX_DECL_ACOMPILEOBSERVER
-    NS_INLINE_DECL_REFCOUNTING(txCompileObserver)
+    NS_INLINE_DECL_REFCOUNTING(txCompileObserver, override)
 
     nsresult startLoad(nsIURI* aUri, txStylesheetCompiler* aCompiler,
                        nsIPrincipal* aSourcePrincipal,
@@ -588,7 +588,7 @@ public:
     explicit txSyncCompileObserver(txMozillaXSLTProcessor* aProcessor);
 
     TX_DECL_ACOMPILEOBSERVER
-    NS_INLINE_DECL_REFCOUNTING(txSyncCompileObserver)
+    NS_INLINE_DECL_REFCOUNTING(txSyncCompileObserver, override)
 
 private:
     // Private destructor, to discourage deletion outside of Release():
@@ -630,8 +630,7 @@ txSyncCompileObserver::loadURI(const nsAString& aUri,
     // make sense.
     nsCOMPtr<nsINode> source;
     if (mProcessor) {
-      source =
-        do_QueryInterface(mProcessor->GetSourceContentModel());
+      source = mProcessor->GetSourceContentModel();
     }
     nsAutoSyncOperation sync(source ? source->OwnerDoc() : nullptr);
     nsCOMPtr<nsIDOMDocument> document;

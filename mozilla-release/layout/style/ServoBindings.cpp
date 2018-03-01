@@ -25,6 +25,7 @@
 #include "nsDOMTokenList.h"
 #include "nsDeviceContext.h"
 #include "nsIContentInlines.h"
+#include "nsICrashReporter.h"
 #include "nsIDOMNode.h"
 #include "nsIDocumentInlines.h"
 #include "nsILoadContext.h"
@@ -57,12 +58,14 @@
 #include "mozilla/GeckoStyleContext.h"
 #include "mozilla/Keyframe.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/ServoElementSnapshot.h"
 #include "mozilla/ServoRestyleManager.h"
 #include "mozilla/SizeOfState.h"
 #include "mozilla/StyleAnimationValue.h"
 #include "mozilla/SystemGroup.h"
 #include "mozilla/ServoMediaList.h"
+#include "mozilla/Telemetry.h"
 #include "mozilla/RWLock.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ElementInlines.h"
@@ -73,10 +76,6 @@
 
 #if defined(MOZ_MEMORY)
 # include "mozmemory.h"
-#endif
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsICrashReporter.h"
 #endif
 
 using namespace mozilla;
@@ -124,21 +123,29 @@ AssertIsMainThreadOrServoLangFontPrefsCacheLocked()
   MOZ_ASSERT(NS_IsMainThread() || sServoFFILock->LockedForWritingByCurrentThread());
 }
 
-bool
-Gecko_IsInDocument(RawGeckoNodeBorrowed aNode)
-{
-  return aNode->IsInComposedDoc();
-}
 
-#ifdef MOZ_DEBUG_RUST
-bool
-Gecko_FlattenedTreeParentIsParent(RawGeckoNodeBorrowed aNode)
+void
+Gecko_RecordTraversalStatistics(uint32_t total, uint32_t parallel,
+                                uint32_t total_t, uint32_t parallel_t,
+                                uint32_t total_s, uint32_t parallel_s)
 {
-  // Servo calls this in debug builds to verify the result of its own
-  // flattened_tree_parent_is_parent() function.
-  return FlattenedTreeParentIsParent<nsIContent::eForStyle>(aNode);
-}
+
+#ifdef NIGHTLY_BUILD
+  // we ignore cases where a page just didn't restyle a lot
+  if (total > 30) {
+    uint32_t percent = parallel * 100 / total;
+    Telemetry::Accumulate(Telemetry::STYLO_PARALLEL_RESTYLE_FRACTION, percent);
+  }
+  if (total_t > 0) {
+    uint32_t percent = parallel_t * 100 / total_t;
+    Telemetry::Accumulate(Telemetry::STYLO_PARALLEL_RESTYLE_FRACTION_WEIGHTED_TRAVERSED, percent);
+  }
+  if (total_s > 0) {
+    uint32_t percent = parallel_s * 100 / total_s;
+    Telemetry::Accumulate(Telemetry::STYLO_PARALLEL_RESTYLE_FRACTION_WEIGHTED_STYLED, percent);
+  }
 #endif
+}
 
 /*
  * Does this child count as significant for selector matching?
@@ -163,11 +170,7 @@ Gecko_GetLastChild(RawGeckoNodeBorrowed aNode)
 RawGeckoNodeBorrowedOrNull
 Gecko_GetFlattenedTreeParentNode(RawGeckoNodeBorrowed aNode)
 {
-  MOZ_ASSERT(!FlattenedTreeParentIsParent<nsIContent::eForStyle>(aNode),
-             "Should have taken the inline path");
-  MOZ_ASSERT(aNode->IsContent(), "Slow path only applies to content");
-  const nsIContent* c = aNode->AsContent();
-  return c->GetFlattenedTreeParentNodeInternal(nsIContent::eForStyle);
+  return aNode->GetFlattenedTreeParentNodeForStyle();
 }
 
 RawGeckoElementBorrowedOrNull
@@ -307,22 +310,10 @@ Gecko_IsPrivateBrowsingEnabled(const nsIDocument* aDoc)
   return loadContext && loadContext->UsePrivateBrowsing();
 }
 
-bool
-Gecko_AreVisitedLinksEnabled()
-{
-  return nsCSSRuleProcessor::VisitedLinksEnabled();
-}
-
 EventStates::ServoType
 Gecko_ElementState(RawGeckoElementBorrowed aElement)
 {
   return aElement->StyleState().ServoValue();
-}
-
-EventStates::ServoType
-Gecko_DocumentState(const nsIDocument* aDocument)
-{
-  return aDocument->ThreadSafeGetDocumentState().ServoValue();
 }
 
 bool
@@ -336,13 +327,6 @@ Gecko_MatchesElement(CSSPseudoClassType aType,
                      RawGeckoElementBorrowed aElement)
 {
   return nsCSSPseudoClasses::MatchesElement(aType, aElement).value();
-}
-
-nsAtom*
-Gecko_Namespace(RawGeckoElementBorrowed aElement)
-{
-  int32_t id = aElement->NodeInfo()->NamespaceID();
-  return nsContentUtils::NameSpaceManager()->NameSpaceURIAtomForServo(id);
 }
 
 // Dirtiness tracking.
@@ -466,28 +450,6 @@ Gecko_UnsetDirtyStyleAttr(RawGeckoElementBorrowed aElement)
     return;
   }
   decl->UnsetDirty();
-}
-
-RawServoDeclarationBlockStrongBorrowedOrNull
-Gecko_GetSMILOverrideDeclarationBlock(RawGeckoElementBorrowed aElement)
-{
-  // This function duplicates a lot of the code in
-  // Gecko_GetStyleAttrDeclarationBlock above because I haven't worked out a way
-  // to persuade hazard analysis that a pointer-to-lambda is ok yet.
-  MOZ_ASSERT(aElement, "Invalid GeckoElement");
-
-  DeclarationBlock* decl =
-    const_cast<dom::Element*>(aElement)->GetSMILOverrideStyleDeclaration();
-  if (!decl) {
-    return nullptr;
-  }
-  if (decl->IsGecko()) {
-    // XXX This can happen when nodes are adopted from a Gecko-style-backend
-    //     document into a Servo-style-backend document.  See bug 1330051.
-    NS_WARNING("stylo: requesting a Gecko declaration block?");
-    return nullptr;
-  }
-  return decl->AsServo()->RefRawStrong();
 }
 
 const RawServoDeclarationBlockStrong*
@@ -856,15 +818,9 @@ Gecko_StyleTransition_SetUnsupportedProperty(StyleTransition* aTransition,
 }
 
 void
-Gecko_FillAllBackgroundLists(nsStyleImageLayers* aLayers, uint32_t aMaxLen)
+Gecko_FillAllImageLayers(nsStyleImageLayers* aLayers, uint32_t aMaxLen)
 {
-  nsRuleNode::FillAllBackgroundLists(*aLayers, aMaxLen);
-}
-
-void
-Gecko_FillAllMaskLists(nsStyleImageLayers* aLayers, uint32_t aMaxLen)
-{
-  nsRuleNode::FillAllMaskLists(*aLayers, aMaxLen);
+  aLayers->FillAllLayers(aMaxLen);
 }
 
 bool
@@ -887,17 +843,6 @@ Gecko_GetLookAndFeelSystemColor(int32_t aId,
 }
 
 bool
-Gecko_MatchStringArgPseudo(RawGeckoElementBorrowed aElement,
-                           CSSPseudoClassType aType,
-                           const char16_t* aIdent)
-{
-  EventStates dummyMask; // mask is never read because we pass aDependence=nullptr
-  return nsCSSRuleProcessor::StringPseudoMatches(aElement, aType, aIdent,
-                                                 aElement->OwnerDoc(),
-                                                 dummyMask, nullptr);
-}
-
-bool
 Gecko_MatchLang(RawGeckoElementBorrowed aElement,
                 nsAtom* aOverrideLang,
                 bool aHasOverrideLang,
@@ -906,13 +851,10 @@ Gecko_MatchLang(RawGeckoElementBorrowed aElement,
   MOZ_ASSERT(!(aOverrideLang && !aHasOverrideLang),
              "aHasOverrideLang should only be set when aOverrideLang is null");
 
-  if (!aHasOverrideLang) {
-    return nsCSSRuleProcessor::LangPseudoMatches(aElement, nullptr, false,
-                                                 aValue, aElement->OwnerDoc());
-  }
-
-  return nsCSSRuleProcessor::LangPseudoMatches(aElement, aOverrideLang, true,
-                                               aValue, aElement->OwnerDoc());
+  return nsCSSPseudoClasses::LangPseudoMatches(
+      aElement,
+      aHasOverrideLang ? aOverrideLang : nullptr,
+      aHasOverrideLang, aValue, aElement->OwnerDoc());
 }
 
 nsAtom*
@@ -1112,28 +1054,29 @@ template <typename Implementor>
 static uint32_t
 ClassOrClassList(Implementor* aElement, nsAtom** aClass, nsAtom*** aClassList)
 {
-  const nsAttrValue* attr = aElement->GetClasses();
+  const nsAttrValue* attr = aElement->DoGetClasses();
   if (!attr) {
     return 0;
   }
 
   // For class values with only whitespace, Gecko just stores a string. For the
   // purposes of the style system, there is no class in this case.
-  if (attr->Type() == nsAttrValue::eString) {
+  nsAttrValue::ValueType type = attr->Type();
+  if (MOZ_UNLIKELY(type == nsAttrValue::eString)) {
     MOZ_ASSERT(nsContentUtils::TrimWhitespace<nsContentUtils::IsHTMLWhitespace>(
                  attr->GetStringValue()).IsEmpty());
     return 0;
   }
 
   // Single tokens are generally stored as an atom. Check that case.
-  if (attr->Type() == nsAttrValue::eAtom) {
+  if (type == nsAttrValue::eAtom) {
     *aClass = attr->GetAtomValue();
     return 1;
   }
 
   // At this point we should have an atom array. It is likely, but not
   // guaranteed, that we have two or more elements in the array.
-  MOZ_ASSERT(attr->Type() == nsAttrValue::eAtomArray);
+  MOZ_ASSERT(type == nsAttrValue::eAtomArray);
   nsTArray<RefPtr<nsAtom>>* atomArray = attr->GetAtomArrayValue();
   uint32_t length = atomArray->Length();
 
@@ -1349,7 +1292,8 @@ Gecko_nsFont_InitSystem(nsFont* aDest, int32_t aFontId,
   LookAndFeel::FontID fontID = static_cast<LookAndFeel::FontID>(aFontId);
 
   AutoWriteLock guard(*sServoFFILock);
-  nsRuleNode::ComputeSystemFont(aDest, fontID, aPresContext, defaultVariableFont);
+  nsLayoutUtils::ComputeSystemFont(aDest, fontID, aPresContext,
+                                   defaultVariableFont);
 }
 
 void
@@ -1841,19 +1785,25 @@ Gecko_EnsureImageLayersLength(nsStyleImageLayers* aLayers, size_t aLen,
   }
 }
 
+template <typename StyleType>
+static void
+EnsureStyleAutoArrayLength(StyleType* aArray, size_t aLen)
+{
+  size_t oldLength = aArray->Length();
+
+  aArray->EnsureLengthAtLeast(aLen);
+
+  for (size_t i = oldLength; i < aLen; ++i) {
+    (*aArray)[i].SetInitialValues();
+  }
+}
+
 void
 Gecko_EnsureStyleAnimationArrayLength(void* aArray, size_t aLen)
 {
   auto base =
     static_cast<nsStyleAutoArray<StyleAnimation>*>(aArray);
-
-  size_t oldLength = base->Length();
-
-  base->EnsureLengthAtLeast(aLen);
-
-  for (size_t i = oldLength; i < aLen; ++i) {
-    (*base)[i].SetInitialValues();
-  }
+  EnsureStyleAutoArrayLength(base, aLen);
 }
 
 void
@@ -1861,14 +1811,7 @@ Gecko_EnsureStyleTransitionArrayLength(void* aArray, size_t aLen)
 {
   auto base =
     reinterpret_cast<nsStyleAutoArray<StyleTransition>*>(aArray);
-
-  size_t oldLength = base->Length();
-
-  base->EnsureLengthAtLeast(aLen);
-
-  for (size_t i = oldLength; i < aLen; ++i) {
-    (*base)[i].SetInitialValues();
-  }
+  EnsureStyleAutoArrayLength(base, aLen);
 }
 
 void
@@ -2043,6 +1986,12 @@ Gecko_NewBasicShape(mozilla::StyleShapeSource* aShape,
 {
   aShape->SetBasicShape(MakeUnique<mozilla::StyleBasicShape>(aType),
                         StyleGeometryBox::NoBox);
+}
+
+void
+Gecko_NewShapeImage(mozilla::StyleShapeSource* aShape)
+{
+  aShape->SetShapeImage(MakeUnique<nsStyleImage>());
 }
 
 void
@@ -2366,10 +2315,11 @@ void
 Gecko_nsStyleFont_FixupNoneGeneric(nsStyleFont* aFont,
                                    RawGeckoPresContextBorrowed aPresContext)
 {
-  const nsFont* defaultVariableFont = ThreadSafeGetDefaultFontHelper(aPresContext, aFont->mLanguage,
-                                                                     kPresContext_DefaultVariableFont_ID);
-  nsRuleNode::FixupNoneGeneric(&aFont->mFont, aPresContext,
-                               aFont->mGenericID, defaultVariableFont);
+  const nsFont* defaultVariableFont =
+    ThreadSafeGetDefaultFontHelper(aPresContext, aFont->mLanguage,
+                                   kPresContext_DefaultVariableFont_ID);
+  nsLayoutUtils::FixupNoneGeneric(&aFont->mFont, aPresContext,
+                                  aFont->mGenericID, defaultVariableFont);
 }
 
 void
@@ -2406,7 +2356,7 @@ Gecko_nsStyleFont_FixupMinFontSize(nsStyleFont* aFont,
     minFontSize = aPresContext->MinFontSize(aFont->mLanguage, nullptr);
   }
 
-  nsRuleNode::ApplyMinFontSize(aFont, aPresContext, minFontSize);
+  nsLayoutUtils::ApplyMinFontSize(aFont, aPresContext, minFontSize);
 }
 
 void
@@ -2522,9 +2472,9 @@ Gecko_GetFontMetrics(RawGeckoPresContextBorrowed aPresContext,
 
   nsPresContext* presContext = const_cast<nsPresContext*>(aPresContext);
   presContext->SetUsesExChUnits(true);
-  RefPtr<nsFontMetrics> fm = nsRuleNode::GetMetricsFor(
+  RefPtr<nsFontMetrics> fm = nsLayoutUtils::GetMetricsFor(
       presContext, aIsVertical, aFont, aFontSize, aUseUserFontSet,
-      nsRuleNode::FlushUserFontSet::No);
+      nsLayoutUtils::FlushUserFontSet::No);
 
   ret.mXSize = fm->XHeight();
   gfxFloat zeroWidth = fm->GetThebesFontGroup()->GetFirstValidFont()->
@@ -2750,8 +2700,8 @@ Gecko_DocumentRule_UseForPresentation(RawGeckoPresContextBorrowed aPresContext,
     NS_ENSURE_SUCCESS(rv, false);
   }
 
-  return css::DocumentRule::UseForPresentation(doc, docURI, docURISpec,
-                                               *aPattern, aURLMatchingFunction);
+  return CSSMozDocumentRule::Match(doc, docURI, docURISpec, *aPattern,
+                                   aURLMatchingFunction);
 }
 
 void
@@ -2835,11 +2785,9 @@ void
 Gecko_AddBufferToCrashReport(const void* addr, size_t len)
 {
   MOZ_ASSERT(NS_IsMainThread());
-#ifdef MOZ_CRASHREPORTER
   nsCOMPtr<nsICrashReporter> cr = do_GetService("@mozilla.org/toolkit/crash-reporter;1");
   NS_ENSURE_TRUE_VOID(cr);
   cr->RegisterAppMemory((uint64_t) addr, len);
-#endif
 }
 
 void
@@ -2848,11 +2796,9 @@ Gecko_AnnotateCrashReport(const char* key_str, const char* value_str)
   MOZ_ASSERT(NS_IsMainThread());
   nsDependentCString key(key_str);
   nsDependentCString value(value_str);
-#ifdef MOZ_CRASHREPORTER
   nsCOMPtr<nsICrashReporter> cr = do_GetService("@mozilla.org/toolkit/crash-reporter;1");
   NS_ENSURE_TRUE_VOID(cr);
   cr->AnnotateCrashReport(key, value);
-#endif
 }
 
 void
@@ -2879,4 +2825,23 @@ Gecko_GetElementsWithId(const nsIDocument* aDocument, nsAtom* aId)
   MOZ_ASSERT(aId);
 
   return aDocument->GetAllElementsForId(nsDependentAtomString(aId));
+}
+
+bool
+Gecko_GetBoolPrefValue(const char* aPrefName)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  return Preferences::GetBool(aPrefName);
+}
+
+bool
+Gecko_IsInServoTraversal()
+{
+  return ServoStyleSet::IsInServoTraversal();
+}
+
+bool
+Gecko_IsMainThread()
+{
+  return NS_IsMainThread();
 }

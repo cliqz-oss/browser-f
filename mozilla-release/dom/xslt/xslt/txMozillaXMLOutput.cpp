@@ -625,15 +625,13 @@ txMozillaXMLOutput::createTxWrapper()
       mDocument->CreateElem(nsDependentAtomString(nsGkAtoms::result),
                             nsGkAtoms::transformiix, namespaceID);
 
-    uint32_t i, j, childCount = mDocument->GetChildCount();
 #ifdef DEBUG
     // Keep track of the location of the current documentElement, if there is
     // one, so we can verify later
-    uint32_t rootLocation = 0;
+    uint32_t j = 0, rootLocation = 0;
 #endif
-    for (i = 0, j = 0; i < childCount; ++i) {
-        nsCOMPtr<nsIContent> childContent = mDocument->GetChildAt(j);
-
+    for (nsCOMPtr<nsIContent> childContent = mDocument->GetFirstChild();
+         childContent; childContent = childContent->GetNextSibling()) {
 #ifdef DEBUG
         if (childContent->IsElement()) {
             rootLocation = j;
@@ -646,11 +644,11 @@ txMozillaXMLOutput::createTxWrapper()
             // This is needed for cases when there is no existing
             // documentElement in the document.
             rootLocation = std::max(rootLocation, j + 1);
-#endif
             ++j;
+#endif
         }
         else {
-            mDocument->RemoveChildAt(j, true);
+            mDocument->RemoveChildNode(childContent, true);
 
             rv = wrapper->AppendChildTo(childContent, true);
             NS_ENSURE_SUCCESS(rv, rv);
@@ -688,7 +686,7 @@ txMozillaXMLOutput::startHTMLElement(nsIContent* aElement, bool aIsHTML)
     }
     else if (aElement->IsHTMLElement(nsGkAtoms::tr) && aIsHTML &&
              NS_PTR_TO_INT32(mTableStateStack.peek()) == TABLE) {
-        nsCOMPtr<nsIContent> tbody;
+        RefPtr<Element> tbody;
         rv = createHTMLElement(nsGkAtoms::tbody, getter_AddRefs(tbody));
         NS_ENSURE_SUCCESS(rv, rv);
 
@@ -708,7 +706,7 @@ txMozillaXMLOutput::startHTMLElement(nsIContent* aElement, bool aIsHTML)
              mOutputFormat.mMethod == eHTMLOutput) {
         // Insert META tag, according to spec, 16.2, like
         // <META http-equiv="Content-Type" content="text/html; charset=EUC-JP">
-        nsCOMPtr<nsIContent> meta;
+        RefPtr<Element> meta;
         rv = createHTMLElement(nsGkAtoms::meta, getter_AddRefs(meta));
         NS_ENSURE_SUCCESS(rv, rv);
 
@@ -752,10 +750,10 @@ txMozillaXMLOutput::endHTMLElement(nsIContent* aElement)
     else if (mCreatingNewDocument && aElement->IsHTMLElement(nsGkAtoms::meta)) {
         // handle HTTP-EQUIV data
         nsAutoString httpEquiv;
-        aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, httpEquiv);
+        aElement->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, httpEquiv);
         if (!httpEquiv.IsEmpty()) {
             nsAutoString value;
-            aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::content, value);
+            aElement->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::content, value);
             if (!value.IsEmpty()) {
                 nsContentUtils::ASCIIToLower(httpEquiv);
                 RefPtr<nsAtom> header = NS_Atomize(httpEquiv);
@@ -777,7 +775,7 @@ void txMozillaXMLOutput::processHTTPEquiv(nsAtom* aHeader, const nsString& aValu
 
 nsresult
 txMozillaXMLOutput::createResultDocument(const nsAString& aName, int32_t aNsID,
-                                         nsIDOMDocument* aSourceDocument,
+                                         nsIDocument* aSourceDocument,
                                          bool aLoadedAsData)
 {
     nsresult rv;
@@ -800,18 +798,16 @@ txMozillaXMLOutput::createResultDocument(const nsAString& aName, int32_t aNsID,
                nsIDocument::READYSTATE_UNINITIALIZED, "Bad readyState");
     mDocument->SetReadyStateInternal(nsIDocument::READYSTATE_LOADING);
     mDocument->SetMayStartLayout(false);
-    nsCOMPtr<nsIDocument> source = do_QueryInterface(aSourceDocument);
-    NS_ENSURE_STATE(source);
     bool hasHadScriptObject = false;
     nsIScriptGlobalObject* sgo =
-      source->GetScriptHandlingObject(hasHadScriptObject);
+      aSourceDocument->GetScriptHandlingObject(hasHadScriptObject);
     NS_ENSURE_STATE(sgo || !hasHadScriptObject);
 
     mCurrentNode = mDocument;
     mNodeInfoManager = mDocument->NodeInfoManager();
 
     // Reset and set up the document
-    URIUtils::ResetWithSource(mDocument, source);
+    URIUtils::ResetWithSource(mDocument, aSourceDocument);
 
     // Make sure we set the script handling object after resetting with the
     // source, so that we have the right principal.
@@ -917,8 +913,7 @@ txMozillaXMLOutput::createResultDocument(const nsAString& aName, int32_t aNsID,
 }
 
 nsresult
-txMozillaXMLOutput::createHTMLElement(nsAtom* aName,
-                                      nsIContent** aResult)
+txMozillaXMLOutput::createHTMLElement(nsAtom* aName, Element** aResult)
 {
     NS_ASSERTION(mOutputFormat.mMethod == eHTMLOutput,
                  "need to adjust createHTMLElement");
@@ -956,7 +951,7 @@ NS_IMPL_ISUPPORTS(txTransformNotifier,
 NS_IMETHODIMP
 txTransformNotifier::ScriptAvailable(nsresult aResult,
                                      nsIScriptElement *aElement,
-                                     bool aIsInline,
+                                     bool aIsInlineClassicScript,
                                      nsIURI *aURI,
                                      int32_t aLineNo)
 {

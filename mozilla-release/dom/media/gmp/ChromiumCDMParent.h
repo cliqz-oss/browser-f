@@ -43,7 +43,8 @@ public:
   bool Init(ChromiumCDMCallback* aCDMCallback,
             bool aAllowDistinctiveIdentifier,
             bool aAllowPersistentState,
-            nsIEventTarget* aMainThread);
+            nsIEventTarget* aMainThread,
+            nsCString& aOutFailureReason);
 
   void CreateSession(uint32_t aCreateSessionToken,
                      uint32_t aSessionType,
@@ -65,6 +66,9 @@ public:
   void CloseSession(const nsCString& aSessionId, uint32_t aPromiseId);
 
   void RemoveSession(const nsCString& aSessionId, uint32_t aPromiseId);
+
+  void GetStatusForPolicy(uint32_t aPromiseId,
+                          const nsCString& aMinHdcpVersion);
 
   RefPtr<DecryptPromise> Decrypt(MediaRawData* aSample);
 
@@ -90,6 +94,9 @@ protected:
   ~ChromiumCDMParent() {}
 
   ipc::IPCResult Recv__delete__() override;
+  ipc::IPCResult RecvOnResolvePromiseWithKeyStatus(
+    const uint32_t& aPromiseId,
+    const uint32_t& aKeyStatus) override;
   ipc::IPCResult RecvOnResolveNewSessionPromise(
     const uint32_t& aPromiseId,
     const nsCString& aSessionId) override;
@@ -172,12 +179,11 @@ protected:
   uint32_t mVideoShmemsActive = 0;
   // Maximum number of shmems to use to return decoded video frames.
   uint32_t mVideoShmemLimit;
-  // High water mark for mVideoShmemsActive, reported via telemetry.
-  uint32_t mMaxVideoShmemsActive = 0;
 
   bool mIsShutdown = false;
   bool mVideoDecoderInitialized = false;
   bool mActorDestroyed = false;
+  bool mAbnormalShutdown = false;
 
   // The H.264 decoder in Widevine CDM versions 970 and later output in decode
   // order rather than presentation order, so we reorder in presentation order

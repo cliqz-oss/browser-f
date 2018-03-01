@@ -61,7 +61,6 @@
 #include "nsXULPrototypeCache.h"
 #endif
 
-#include "nsIDOMStyleSheet.h"
 #include "nsError.h"
 
 #include "nsIContentSecurityPolicy.h"
@@ -167,6 +166,8 @@ SheetLoadData::SheetLoadData(Loader* aLoader,
   , mWasAlternate(aIsAlternate)
   , mUseSystemPrincipal(false)
   , mSheetAlreadyComplete(false)
+  , mIsCrossOriginNoCORS(false)
+  , mBlockResourceTiming(false)
   , mOwningElement(aOwningElement)
   , mObserver(aObserver)
   , mLoaderPrincipal(aLoaderPrincipal)
@@ -199,6 +200,8 @@ SheetLoadData::SheetLoadData(Loader* aLoader,
   , mWasAlternate(false)
   , mUseSystemPrincipal(false)
   , mSheetAlreadyComplete(false)
+  , mIsCrossOriginNoCORS(false)
+  , mBlockResourceTiming(false)
   , mOwningElement(nullptr)
   , mObserver(aObserver)
   , mLoaderPrincipal(aLoaderPrincipal)
@@ -241,6 +244,8 @@ SheetLoadData::SheetLoadData(Loader* aLoader,
   , mWasAlternate(false)
   , mUseSystemPrincipal(aUseSystemPrincipal)
   , mSheetAlreadyComplete(false)
+  , mIsCrossOriginNoCORS(false)
+  , mBlockResourceTiming(false)
   , mOwningElement(nullptr)
   , mObserver(aObserver)
   , mLoaderPrincipal(aLoaderPrincipal)
@@ -717,6 +722,14 @@ SheetLoadData::VerifySheetReadyToParse(nsresult aStatus,
 
   mSheet->SetPrincipal(principal);
 
+  if (mLoaderPrincipal && mSheet->GetCORSMode() == CORS_NONE) {
+    bool subsumed;
+    result = mLoaderPrincipal->Subsumes(principal, &subsumed);
+    if (NS_FAILED(result) || !subsumed) {
+      mIsCrossOriginNoCORS = true;
+    }
+  }
+
   // If it's an HTTP channel, we want to make sure this is not an
   // error document we got.
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(aChannel));
@@ -990,9 +1003,12 @@ Loader::CreateSheet(nsIURI* aURI,
       NS_ASSERTION(sheet->IsComplete(),
                    "Sheet thinks it's not complete while we think it is");
 
-      // Make sure it hasn't been modified; if it has, we can't use it
-      if (sheet->IsModified()) {
-        LOG(("  Not cloning completed sheet %p because it's been modified",
+      // Make sure it hasn't been forced to have a unique inner;
+      // that is an indication that its rules have been exposed to
+      // CSSOM and so we can't use it.
+      if (sheet->HasForcedUniqueInner()) {
+        LOG(("  Not cloning completed sheet %p because it has a "
+             "forced unique inner",
              sheet.get()));
         sheet = nullptr;
         fromCompleteSheets = false;
@@ -1043,10 +1059,11 @@ Loader::CreateSheet(nsIURI* aURI,
     }
 
     if (sheet) {
-      // The sheet we have now should be either incomplete or unmodified
-      NS_ASSERTION(!sheet->IsModified() ||
+      // The sheet we have now should be either incomplete or without
+      // a forced unique inner.
+      NS_ASSERTION(!sheet->HasForcedUniqueInner() ||
                    !sheet->IsComplete(),
-                   "Unexpected modified complete sheet");
+                   "Unexpected complete sheet with forced unique inner");
       NS_ASSERTION(sheet->IsComplete() ||
                    aSheetState != eSheetComplete,
                    "Sheet thinks it's not complete while we think it is");
@@ -1176,7 +1193,7 @@ Loader::InsertSheetInDoc(StyleSheet* aSheet,
 
   // XXX Need to cancel pending sheet loads for this element, if any
 
-  int32_t sheetCount = aDocument->GetNumberOfStyleSheets();
+  int32_t sheetCount = aDocument->SheetCount();
 
   /*
    * Start the walk at the _end_ of the list, since in the typical
@@ -1188,7 +1205,7 @@ Loader::InsertSheetInDoc(StyleSheet* aSheet,
    */
   int32_t insertionPoint;
   for (insertionPoint = sheetCount - 1; insertionPoint >= 0; --insertionPoint) {
-    StyleSheet* curSheet = aDocument->GetStyleSheetAt(insertionPoint);
+    StyleSheet* curSheet = aDocument->SheetAt(insertionPoint);
     NS_ASSERTION(curSheet, "There must be a sheet here!");
     nsCOMPtr<nsINode> sheetOwner = curSheet->GetOwnerNode();
     if (sheetOwner && !aLinkingContent) {
@@ -1367,7 +1384,7 @@ Loader::LoadSheet(SheetLoadData* aLoadData,
 
         rv = NS_NewInputStreamChannel(getter_AddRefs(channel),
                                       aLoadData->mURI,
-                                      stream,
+                                      stream.forget(),
                                       nsContentUtils::GetSystemPrincipal(),
                                       securityFlags,
                                       contentPolicyType);
@@ -1556,6 +1573,39 @@ Loader::LoadSheet(SheetLoadData* aLoadData,
     if (timedChannel) {
       if (aLoadData->mParentData) {
         timedChannel->SetInitiatorType(NS_LITERAL_STRING("css"));
+
+        // This is a child sheet load.
+        //
+        // The resource timing of the sub-resources that a document loads
+        // should normally be reported to the document.  One exception is any
+        // sub-resources of any cross-origin resources that are loaded.  We
+        // don't mind reporting timing data for a direct child cross-origin
+        // resource since the resource that linked to it (and hence potentially
+        // anything in that parent origin) is aware that the cross-origin
+        // resources is to be loaded.  However, we do not want to report
+        // timings for any sub-resources that a cross-origin resource may load
+        // since that obviously leaks information about what the cross-origin
+        // resource loads, which is bad.
+        //
+        // In addition to checking whether we're an immediate child resource of
+        // a cross-origin resource (by checking if mIsCrossOriginNoCORS is set
+        // to true on our parent), we also check our parent to see whether it
+        // itself is a sub-resource of a cross-origin resource by checking
+        // mBlockResourceTiming.  If that is set then we too are such a
+        // sub-resource and so we set the flag on ourself too to propagate it
+        // on down.
+        //
+        if (aLoadData->mParentData->mIsCrossOriginNoCORS ||
+            aLoadData->mParentData->mBlockResourceTiming) {
+          // Set a flag so any other stylesheet triggered by this one will
+          // not be reported
+          aLoadData->mBlockResourceTiming = true;
+
+          // Mark the channel so PerformanceMainThread::AddEntry will not
+          // report the resource.
+          timedChannel->SetReportResourceTiming(false);
+        }
+
       } else {
         timedChannel->SetInitiatorType(NS_LITERAL_STRING("link"));
       }
@@ -1766,8 +1816,8 @@ Loader::DoSheetComplete(SheetLoadData* aLoadData, nsresult aStatus,
       // If mSheetAlreadyComplete, then the sheet could well be modified between
       // when we posted the async call to SheetComplete and now, since the sheet
       // was page-accessible during that whole time.
-      MOZ_ASSERT(!data->mSheet->IsModified(),
-                 "should not get marked modified during parsing");
+      MOZ_ASSERT(!data->mSheet->HasForcedUniqueInner(),
+                 "should not get a forced unique inner during parsing");
       data->mSheet->SetComplete();
       data->ScheduleLoadEventIfNeeded(aStatus);
     }
@@ -1848,6 +1898,7 @@ Loader::DoSheetComplete(SheetLoadData* aLoadData, nsresult aStatus,
 nsresult
 Loader::LoadInlineStyle(nsIContent* aElement,
                         const nsAString& aBuffer,
+                        nsIPrincipal* aTriggeringPrincipal,
                         uint32_t aLineNumber,
                         const nsAString& aTitle,
                         const nsAString& aMedia,
@@ -1900,12 +1951,22 @@ Loader::LoadInlineStyle(nsIContent* aElement,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  nsIPrincipal* principal = aElement->NodePrincipal();
+  if (aTriggeringPrincipal) {
+    // The triggering principal may be an expanded principal, which is safe to
+    // use for URL security checks, but not as the loader principal for a
+    // stylesheet. So treat this as principal inheritance, and downgrade if
+    // necessary.
+    principal = BasePrincipal::Cast(aTriggeringPrincipal)->PrincipalToInherit();
+  }
+
   SheetLoadData* data = new SheetLoadData(this, aTitle, nullptr, sheet,
                                           owningElement, *aIsAlternate,
-                                          aObserver, nullptr, static_cast<nsINode*>(aElement));
+                                          aObserver, nullptr,
+                                          static_cast<nsINode*>(aElement));
 
   // We never actually load this, so just set its principal directly
-  sheet->SetPrincipal(aElement->NodePrincipal());
+  sheet->SetPrincipal(principal);
 
   NS_ADDREF(data);
   data->mLineNumber = aLineNumber;
@@ -2542,7 +2603,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Loader)
          !iter.Done();
          iter.Next()) {
       NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "Sheet cache nsCSSLoader");
-      cb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsIDOMCSSStyleSheet*, iter.UserData()));
+      cb.NoteXPCOMChild(iter.UserData());
     }
   }
   nsTObserverArray<nsCOMPtr<nsICSSLoaderObserver>>::ForwardIterator

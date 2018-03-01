@@ -194,7 +194,7 @@ add_task(async function testExtraFileInDir() {
                        {copy: [["lib/ui.js", "extra"]]});
 });
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   if (gTarget.exists()) {
     gTarget.remove(true);
   }

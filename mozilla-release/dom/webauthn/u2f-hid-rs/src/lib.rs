@@ -34,8 +34,11 @@ extern crate libc;
 extern crate boxfnonce;
 extern crate runloop;
 
+#[macro_use]
+extern crate bitflags;
+
 mod consts;
-mod khmatcher;
+mod statemachine;
 mod u2ftypes;
 mod u2fprotocol;
 
@@ -44,6 +47,33 @@ pub use manager::U2FManager;
 
 mod capi;
 pub use capi::*;
+
+// Keep this in sync with the constants in u2fhid-capi.h.
+bitflags! {
+    pub struct RegisterFlags: u64 {
+        const REQUIRE_RESIDENT_KEY        = 1;
+        const REQUIRE_USER_VERIFICATION   = 2;
+        const REQUIRE_PLATFORM_ATTACHMENT = 4;
+    }
+}
+bitflags! {
+    pub struct SignFlags: u64 {
+        const REQUIRE_USER_VERIFICATION = 1;
+    }
+}
+bitflags! {
+    pub struct AuthenticatorTransports: u8 {
+        const USB = 1;
+        const NFC = 2;
+        const BLE = 4;
+    }
+}
+
+#[derive(Clone)]
+pub struct KeyHandle {
+    pub credential: Vec<u8>,
+    pub transports: AuthenticatorTransports,
+}
 
 #[cfg(fuzzing)]
 pub use u2fprotocol::*;

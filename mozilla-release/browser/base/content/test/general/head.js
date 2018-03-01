@@ -57,25 +57,6 @@ function whenDelayedStartupFinished(aWindow, aCallback) {
   }, "browser-delayed-startup-finished");
 }
 
-function updateTabContextMenu(tab, onOpened) {
-  let menu = document.getElementById("tabContextMenu");
-  if (!tab)
-    tab = gBrowser.selectedTab;
-  var evt = new Event("");
-  tab.dispatchEvent(evt);
-  menu.openPopup(tab, "end_after", 0, 0, true, false, evt);
-  is(TabContextMenu.contextTab, tab, "TabContextMenu context is the expected tab");
-  const onFinished = () => menu.hidePopup();
-  if (onOpened) {
-    return (async function() {
-      await onOpened();
-      onFinished();
-    })();
-  }
-  onFinished();
-  return Promise.resolve();
-}
-
 function openToolbarCustomizationUI(aCallback, aBrowserWin) {
   if (!aBrowserWin)
     aBrowserWin = window;
@@ -223,7 +204,7 @@ function promiseWindowWillBeClosed(win) {
     Services.obs.addObserver(function observe(subject, topic) {
       if (subject == win) {
         Services.obs.removeObserver(observe, topic);
-        resolve();
+        executeSoon(resolve);
       }
     }, "domwindowclosed");
   });
@@ -314,7 +295,8 @@ function whenNewTabLoaded(aWindow, aCallback) {
   aWindow.BrowserOpenTab();
 
   let browser = aWindow.gBrowser.selectedBrowser;
-  if (browser.contentDocument.readyState === "complete") {
+  let doc = browser.contentDocumentAsCPOW;
+  if (doc && doc.readyState === "complete") {
     aCallback();
     return;
   }
@@ -433,11 +415,11 @@ var FullZoomHelper = {
       let didPs = false;
       let didZoom = false;
 
-      gBrowser.addEventListener("pageshow", function(event) {
+      BrowserTestUtils.waitForContentEvent(gBrowser.selectedBrowser, "pageshow", true).then(() => {
         didPs = true;
         if (didZoom)
           resolve();
-      }, {capture: true, once: true});
+      });
 
       if (direction == this.BACK)
         gBrowser.goBack();

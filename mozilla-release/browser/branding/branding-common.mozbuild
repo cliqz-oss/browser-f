@@ -18,6 +18,7 @@ def FirefoxBranding():
             'VisualElements_150.png',
             'VisualElements_70.png',
         ]
+<<<<<<< HEAD
         BRANDING_FILES += [
             'appname.bmp',
             'bgintro.bmp',
@@ -45,16 +46,36 @@ def FirefoxBranding():
             'dsstore',
             'firefox.icns',
         ]
-    elif 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
+||||||| merged common ancestors
         BRANDING_FILES += [
-            'default16.png',
-            'default32.png',
-            'default48.png',
-            'mozicon128.png',
+            'bgstub.jpg',
+            'bgstub_2x.jpg',
+            'branding.nsi',
+            'document.ico',
+            'firefox.ico',
+            'firefox64.ico',
+            'newtab.ico',
+            'newwindow.ico',
+            'pbmode.ico',
+            'wizHeader.bmp',
+            'wizHeaderRTL.bmp',
+            'wizWatermark.bmp',
+         ]
+    elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
+        BRANDING_FILES += [
+            'background.png',
+            'disk.icns',
+            'document.icns',
+            'dsstore',
+            'firefox.icns',
         ]
-        FINAL_TARGET_FILES.icons += ['mozicon128.png']
+=======
+>>>>>>> origin/upstream-releases
+    elif 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
         FINAL_TARGET_FILES.chrome.icons.default += [
+            'default128.png',
             'default16.png',
             'default32.png',
             'default48.png',
+            'default64.png',
         ]

@@ -51,6 +51,7 @@ can reach it easily. -->
 <!ENTITY  sendLinkToDevice.label             "Link an Gerät senden">
 <!ENTITY  sendLinkToDevice.accesskey         "X">
 <!ENTITY  sendToDeviceFeedback.label         "Gesendet!">
+<!ENTITY  sendToDeviceOfflineFeedback.label  "Vorgemerkt (derzeit offline)">
 <!ENTITY  moveToNewWindow.label              "In neues Fenster verschieben">
 <!ENTITY  moveToNewWindow.accesskey          "n">
 <!ENTITY  bookmarkAllTabs.label              "Lesezeichen für alle Tabs hinzufügen…">
@@ -192,13 +193,17 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY hideRecentlyBookmarked.accesskey "b">
 
 <!ENTITY backCmd.label                "Zurück">
+<!ENTITY backCmd.accesskey            "Z">
 <!ENTITY backButton.tooltip           "Eine Seite zurück">
 <!ENTITY forwardCmd.label             "Vor">
+<!ENTITY forwardCmd.accesskey         "V">
 <!ENTITY forwardButton.tooltip        "Eine Seite vor">
 <!ENTITY backForwardButtonMenu.tooltip "Rechtsklick oder gedrückt halten, um Chronik anzuzeigen">
 <!ENTITY backForwardButtonMenuMac.tooltip "Gedrückt halten, um Chronik anzuzeigen">
 <!ENTITY reloadCmd.label              "Neu laden">
+<!ENTITY reloadCmd.accesskey          "N">
 <!ENTITY stopCmd.label                "Stopp">
+<!ENTITY stopCmd.accesskey            "p">
 <!ENTITY stopCmd.macCommandKey        ".">
 <!ENTITY goEndCap.tooltip             "In der Adressleiste eingegebene Adresse laden">
 <!ENTITY printButton.label            "Drucken">
@@ -236,6 +241,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
 
+<!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">
 
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
 
@@ -391,11 +397,19 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuRemoteTabs.noclients.title "Noch keine synchronisierten Tabs">
 <!ENTITY appMenuRemoteTabs.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
+<<<<<<< HEAD
 <!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
+||||||| merged common ancestors
+<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+=======
+<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+<!ENTITY appMenuRemoteTabs.unverified.label "Ihr Konto muss verifiziert werden.">
+>>>>>>> origin/upstream-releases
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
 <!ENTITY appMenuRemoteTabs.managedevices.label "Geräte verwalten…">
 <!ENTITY appMenuRemoteTabs.sidebar.label "Sidebar mit synchronisierten Tabs">
 
+<!ENTITY appMenuRemoteTabs.connectdevice.label "Weiteres Gerät verbinden">
 
 <!ENTITY appMenuRecentHighlights.label "Neue wichtige Seiten">
 
@@ -573,6 +587,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY setDesktopBackgroundCmd.label      "Als Hintergrundbild einrichten…">
 <!ENTITY setDesktopBackgroundCmd.accesskey  "A">
 <!ENTITY bookmarkPageCmd2.label       "Lesezeichen für diese Seite hinzufügen">
+<!ENTITY bookmarkPageCmd2.accesskey   "L">
 <!ENTITY bookmarkThisLinkCmd.label      "Lesezeichen für diesen Link hinzufügen">
 <!ENTITY bookmarkThisLinkCmd.accesskey  "L">
 <!ENTITY bookmarkThisFrameCmd.label      "Lesezeichen für diesen Frame hinzufügen">
@@ -814,8 +829,17 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
 <!ENTITY syncedTabs.sidebar.noclients.label    "Melde dich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.noclients.title    "Noch keine synchronisierten Tabs">
+<<<<<<< HEAD
 <!ENTITY syncedTabs.sidebar.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY syncedTabs.sidebar.notsignedin.label  "Melde dich an, um eine Liste der Tabs von deinen anderen Geräten angezeigt zu bekommen.">
+||||||| merged common ancestors
+<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
+<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
+=======
+<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
+<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
+<!ENTITY syncedTabs.sidebar.unverified.label   "Ihr Konto muss verifiziert werden.">
+>>>>>>> origin/upstream-releases
 <!ENTITY syncedTabs.sidebar.notabs.label       "Keine offenen Tabs">
 <!ENTITY syncedTabs.sidebar.openprefs.label    "Einstellungen von &syncBrand.shortName.label; öffnen">
 <!-- LOCALIZATION NOTE (syncedTabs.sidebar.tabsnotsyncing.label): This is shown
@@ -823,6 +847,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktiviere das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.searchPlaceholder  "Synchronisierte Tabs durchsuchen">
 
+<!ENTITY syncedTabs.sidebar.connectAnotherDevice  "Weiteres Gerät verbinden">
 
 <!-- LOCALIZATION NOTE (syncedTabs.context.open.accesskey,
                         syncedTabs.context.openAllInTabs.accesskey):
@@ -993,6 +1018,12 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY updateRestart.cancelButton.accesskey "N">
 <!ENTITY updateRestart.panelUI.label2 "Zum Aktualisieren von &brandShorterName; neu starten">
 
+<!ENTITY newTabControlled.message "Eine Erweiterung hat die Startseite neuer Tabs geändert. Falls Sie diese Änderung nicht wollen, so können Sie diese rückgängig machen.">
+<!ENTITY newTabControlled.header.message "Startseite neuer Tabs wurde geändert">
+<!ENTITY newTabControlled.keepButton.label "Änderung beibehalten">
+<!ENTITY newTabControlled.keepButton.accesskey "b">
+<!ENTITY newTabControlled.restoreButton.label "Änderung rückgängig machen">
+<!ENTITY newTabControlled.restoreButton.accesskey "r">
 
 <!ENTITY pageActionButton.tooltip "Aktionen für Seite">
 <!ENTITY pageAction.addToUrlbar.label "Zu Adressleiste hinzufügen">

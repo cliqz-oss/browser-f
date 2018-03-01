@@ -230,6 +230,9 @@ protected:
   void ReflowDropdown(nsPresContext*          aPresContext,
                       const ReflowInput& aReflowInput);
 
+  // Return true if we should render a dropdown button.
+  bool HasDropDownButton() const;
+
   enum DropDownPositionState {
     // can't show the dropdown at its current position
     eDropDownPositionSuppressed,
@@ -284,7 +287,7 @@ private:
 protected:
   nsFrameList              mPopupFrames;             // additional named child list
   nsCOMPtr<nsIContent>     mDisplayContent;          // Anonymous content used to display the current selection
-  nsCOMPtr<nsIContent>     mButtonContent;           // Anonymous content for the button
+  RefPtr<Element>     mButtonContent;                // Anonymous content for the button
   nsContainerFrame*        mDisplayFrame;            // frame to display selection
   nsIFrame*                mButtonFrame;             // button frame
   nsIFrame*                mDropdownFrame;           // dropdown list frame

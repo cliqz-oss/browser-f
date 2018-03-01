@@ -39,6 +39,7 @@ Types = (
     'nsDependentSubstring',
     'nsDependentCSubstring',
     'mozilla::ipc::Shmem',
+    'mozilla::ipc::ByteBuf',
     'mozilla::ipc::FileDescriptor'
 )
 
@@ -48,7 +49,7 @@ HeaderIncludes = (
     'IPCMessageStart.h',
     'ipc/IPCMessageUtils.h',
     'mozilla/RefPtr.h',
-    'nsStringGlue.h',
+    'nsString.h',
     'nsTArray.h',
     'mozilla/ipc/ProtocolUtils.h',
     'nsTHashtable.h',

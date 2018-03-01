@@ -38,7 +38,6 @@ const PREF_HIDE_PLUGINS_WITHOUT_EXTENSIONS =
   "browser.download.hide_plugins_without_extensions";
 
 // Strings to identify ExtensionSettingsStore overrides
-const PREF_SETTING_TYPE = "prefs";
 const CONTAINERS_KEY = "privacy.containers";
 const HOMEPAGE_OVERRIDE_KEY = "homepage_override";
 const URL_OVERRIDES_TYPE = "url_overrides";
@@ -102,6 +101,144 @@ XPCOMUtils.defineLazyModuleGetter(this, "OS",
 if (AppConstants.MOZ_DEV_EDITION) {
   XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
     "resource://gre/modules/FxAccounts.jsm");
+}
+
+Preferences.addAll([
+  // Startup
+  { id: "browser.startup.page", type: "int" },
+  { id: "browser.startup.homepage", type: "wstring" },
+
+  { id: "pref.browser.homepage.disable_button.current_page", type: "bool" },
+  { id: "pref.browser.homepage.disable_button.bookmark_page", type: "bool" },
+  { id: "pref.browser.homepage.disable_button.restore_default", type: "bool" },
+
+  { id: "browser.privatebrowsing.autostart", type: "bool" },
+
+  // Downloads
+  { id: "browser.download.useDownloadDir", type: "bool" },
+  { id: "browser.download.folderList", type: "int" },
+  { id: "browser.download.dir", type: "file" },
+
+  /* Tab preferences
+  Preferences:
+
+  browser.link.open_newwindow
+      1 opens such links in the most recent window or tab,
+      2 opens such links in a new window,
+      3 opens such links in a new tab
+  browser.tabs.loadInBackground
+  - true if display should switch to a new tab which has been opened from a
+    link, false if display shouldn't switch
+  browser.tabs.warnOnClose
+  - true if when closing a window with multiple tabs the user is warned and
+    allowed to cancel the action, false to just close the window
+  browser.tabs.warnOnOpen
+  - true if the user should be warned if he attempts to open a lot of tabs at
+    once (e.g. a large folder of bookmarks), false otherwise
+  browser.taskbar.previews.enable
+  - true if tabs are to be shown in the Windows 7 taskbar
+  */
+
+  { id: "browser.link.open_newwindow", type: "int" },
+  { id: "browser.tabs.loadInBackground", type: "bool", inverted: true },
+  { id: "browser.tabs.warnOnClose", type: "bool" },
+  { id: "browser.tabs.warnOnOpen", type: "bool" },
+  { id: "browser.sessionstore.restore_on_demand", type: "bool" },
+  { id: "browser.ctrlTab.previews", type: "bool" },
+
+  // Fonts
+  { id: "font.language.group", type: "wstring" },
+
+  // Languages
+  { id: "browser.translation.detectLanguage", type: "bool" },
+
+  // General tab
+
+  /* Accessibility
+   * accessibility.browsewithcaret
+     - true enables keyboard navigation and selection within web pages using a
+       visible caret, false uses normal keyboard navigation with no caret
+   * accessibility.typeaheadfind
+     - when set to true, typing outside text areas and input boxes will
+       automatically start searching for what's typed within the current
+       document; when set to false, no search action happens */
+  { id: "accessibility.browsewithcaret", type: "bool" },
+  { id: "accessibility.typeaheadfind", type: "bool" },
+  { id: "accessibility.blockautorefresh", type: "bool" },
+
+  /* Browsing
+   * general.autoScroll
+     - when set to true, clicking the scroll wheel on the mouse activates a
+       mouse mode where moving the mouse down scrolls the document downward with
+       speed correlated with the distance of the cursor from the original
+       position at which the click occurred (and likewise with movement upward);
+       if false, this behavior is disabled
+   * general.smoothScroll
+     - set to true to enable finer page scrolling than line-by-line on page-up,
+       page-down, and other such page movements */
+  { id: "general.autoScroll", type: "bool" },
+  { id: "general.smoothScroll", type: "bool" },
+  { id: "layout.spellcheckDefault", type: "int" },
+
+  { id: "browser.preferences.defaultPerformanceSettings.enabled", type: "bool" },
+  { id: "dom.ipc.processCount", type: "int" },
+  { id: "dom.ipc.processCount.web", type: "int" },
+  { id: "layers.acceleration.disabled", type: "bool", inverted: true },
+
+  // Files and Applications
+  { id: "browser.feeds.handler", type: "string" },
+  { id: "browser.feeds.handler.default", type: "string" },
+  { id: "browser.feeds.handlers.application", type: "file" },
+  { id: "browser.feeds.handlers.webservice", type: "string" },
+
+  { id: "browser.videoFeeds.handler", type: "string" },
+  { id: "browser.videoFeeds.handler.default", type: "string" },
+  { id: "browser.videoFeeds.handlers.application", type: "file" },
+  { id: "browser.videoFeeds.handlers.webservice", type: "string" },
+
+  { id: "browser.audioFeeds.handler", type: "string" },
+  { id: "browser.audioFeeds.handler.default", type: "string" },
+  { id: "browser.audioFeeds.handlers.application", type: "file" },
+  { id: "browser.audioFeeds.handlers.webservice", type: "string" },
+
+  { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
+
+  // DRM content
+  { id: "media.eme.enabled", type: "bool" },
+
+  // Update
+  { id: "browser.preferences.advanced.selectedTabIndex", type: "int" },
+  { id: "browser.search.update", type: "bool" },
+
+  { id: "privacy.userContext.enabled", type: "bool" },
+]);
+
+if (AppConstants.HAVE_SHELL_SERVICE) {
+  Preferences.addAll([
+    { id: "browser.shell.checkDefaultBrowser", type: "bool" },
+    { id: "pref.general.disable_button.default_browser", type: "bool" },
+  ]);
+}
+
+if (AppConstants.platform === "win") {
+  Preferences.addAll([
+    { id: "browser.taskbar.previews.enable", type: "bool" },
+    { id: "ui.osk.enabled", type: "bool" },
+  ]);
+}
+
+if (AppConstants.MOZ_UPDATER) {
+  Preferences.addAll([
+    { id: "app.update.enabled", type: "bool" },
+    { id: "app.update.auto", type: "bool" },
+    { id: "app.update.disable_button.showUpdateHistory", type: "bool" },
+  ]);
+
+  if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
+    Preferences.addAll([
+      { id: "app.update.service.enabled", type: "bool" },
+    ]);
+  }
 }
 
 // A promise that resolves when the list of application handlers is loaded.
@@ -213,8 +350,8 @@ var gMainPane = {
     this.updateDefaultPerformanceSettingsPref();
 
     let defaultPerformancePref =
-      document.getElementById("browser.preferences.defaultPerformanceSettings.enabled");
-    defaultPerformancePref.addEventListener("change", () => {
+      Preferences.get("browser.preferences.defaultPerformanceSettings.enabled");
+    defaultPerformancePref.on("change", () => {
       this.updatePerformanceSettingsBox({ duringChangeEvent: true });
     });
     this.updatePerformanceSettingsBox({ duringChangeEvent: false });
@@ -255,8 +392,8 @@ var gMainPane = {
     if (!TransientPrefs.prefShouldBeVisible("browser.tabs.warnOnOpen"))
       document.getElementById("warnOpenMany").hidden = true;
 
-    setEventListener("browser.privatebrowsing.autostart", "change",
-      gMainPane.updateBrowserStartupLastSession);
+    Preferences.get("browser.privatebrowsing.autostart").on("change",
+      gMainPane.updateBrowserStartupLastSession.bind(gMainPane));
     if (AppConstants.HAVE_SHELL_SERVICE) {
       setEventListener("setDefaultButton", "command",
         gMainPane.setDefaultBrowser);
@@ -283,14 +420,14 @@ var gMainPane = {
       gMainPane.openTranslationProviderAttribution);
     setEventListener("translateButton", "command",
       gMainPane.showTranslationExceptions);
-    setEventListener("font.language.group", "change",
-      gMainPane._rebuildFonts);
+    Preferences.get("font.language.group").on("change",
+      gMainPane._rebuildFonts.bind(gMainPane));
     setEventListener("advancedFonts", "command",
       gMainPane.configureFonts);
     setEventListener("colors", "command",
       gMainPane.configureColors);
-    setEventListener("layers.acceleration.disabled", "change",
-      gMainPane.updateHardwareAcceleration);
+    Preferences.get("layers.acceleration.disabled").on("change",
+      gMainPane.updateHardwareAcceleration.bind(gMainPane));
     setEventListener("connectionSettings", "command",
       gMainPane.showConnections);
     setEventListener("browserContainersCheckbox", "command",
@@ -442,8 +579,8 @@ var gMainPane = {
     setEventListener("typeColumn", "click", gMainPane.sort);
     setEventListener("actionColumn", "click", gMainPane.sort);
     setEventListener("chooseFolder", "command", gMainPane.chooseFolder);
-    setEventListener("browser.download.dir", "change", gMainPane.displayDownloadDirPref);
-    setEventListener("saveWhere", "command", gMainPane.handleSaveToCommand);
+    Preferences.get("browser.download.dir").on("change",
+      gMainPane.displayDownloadDirPref.bind(gMainPane));
 
     // Listen for window unload so we can remove our preference observers.
     window.addEventListener("unload", this);
@@ -506,7 +643,7 @@ var gMainPane = {
    * Enables/disables the Settings button used to configure containers
    */
   readBrowserContainersCheckbox() {
-    const pref = document.getElementById("privacy.userContext.enabled");
+    const pref = Preferences.get("privacy.userContext.enabled");
     const settings = document.getElementById("browserContainersSettings");
 
     settings.disabled = !pref.value;
@@ -621,7 +758,7 @@ var gMainPane = {
    */
 
   syncFromHomePref() {
-    let homePref = document.getElementById("browser.startup.homepage");
+    let homePref = Preferences.get("browser.startup.homepage");
 
     // Set the "Use Current Page(s)" button's text and enabled state.
     this._updateUseCurrentButton();
@@ -630,7 +767,7 @@ var gMainPane = {
       // Disable or enable the inputs based on if this is controlled by an extension.
       document.querySelectorAll("#browserHomePage, .homepage-button")
         .forEach((element) => {
-          let isLocked = document.getElementById(element.getAttribute("preference")).locked;
+          let isLocked = Preferences.get(element.getAttribute("preference")).locked;
           element.disabled = isLocked || isControlled;
         });
     }
@@ -682,7 +819,7 @@ var gMainPane = {
    * window UI to reflect this.
    */
   setHomePageToCurrent() {
-    let homePage = document.getElementById("browser.startup.homepage");
+    let homePage = Preferences.get("browser.startup.homepage");
     let tabs = this._getTabsForHomePage();
     function getTabURI(t) {
       return t.linkedBrowser.currentURI.spec;
@@ -729,7 +866,7 @@ var gMainPane = {
     if (aEvent.detail.button != "accept")
       return;
     if (rv.urls && rv.names) {
-      var homePage = document.getElementById("browser.startup.homepage");
+      var homePage = Preferences.get("browser.startup.homepage");
 
       // XXX still using dangerous "|" joiner!
       homePage.value = rv.urls.join("|");
@@ -757,7 +894,7 @@ var gMainPane = {
 #endif
     // In this case, the button's disabled state is set by preferences.xml.
     let prefName = "pref.browser.homepage.disable_button.current_page";
-    if (document.getElementById(prefName).locked)
+    if (Preferences.get(prefName).locked)
       return;
 
     useCurrent.disabled = !tabs.length;
@@ -792,7 +929,7 @@ var gMainPane = {
    * Restores the default home page as the user's home page.
    */
   restoreDefaultHomePage() {
-    var homePage = document.getElementById("browser.startup.homepage");
+    var homePage = Preferences.get("browser.startup.homepage");
     homePage.value = homePage.defaultValue;
   },
 
@@ -802,7 +939,7 @@ var gMainPane = {
    */
   updateButtons(aButtonID, aPreferenceID) {
     var button = document.getElementById(aButtonID);
-    var preference = document.getElementById(aPreferenceID);
+    var preference = Preferences.get(aPreferenceID);
     button.disabled = preference.value != true;
     return undefined;
   },
@@ -812,9 +949,21 @@ var gMainPane = {
    * on the value of the browser.privatebrowsing.autostart pref.
    */
   updateBrowserStartupLastSession() {
+<<<<<<< HEAD
     let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
     let restorePref = document.getElementById("browser.startup.restoreTabs");
     let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
+||||||| merged common ancestors
+    let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
+    let startupPref = document.getElementById("browser.startup.page");
+    let group = document.getElementById("browserStartupPage");
+    let option = document.getElementById("browserStartupLastSession");
+=======
+    let pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
+    let startupPref = Preferences.get("browser.startup.page");
+    let group = document.getElementById("browserStartupPage");
+    let option = document.getElementById("browserStartupLastSession");
+>>>>>>> origin/upstream-releases
     if (pbAutoStartPref.value) {
       restoreCheckbox.setAttribute("disabled", "true");
       restoreCheckbox.checked = false;
@@ -855,7 +1004,7 @@ var gMainPane = {
    * @returns |true| if such links should be opened in new tabs
    */
   readLinkTarget() {
-    var openNewWindow = document.getElementById("browser.link.open_newwindow");
+    var openNewWindow = Preferences.get("browser.link.open_newwindow");
     return openNewWindow.value != 2;
   },
 
@@ -903,7 +1052,7 @@ var gMainPane = {
    */
   setDefaultBrowser() {
     if (AppConstants.HAVE_SHELL_SERVICE) {
-      let alwaysCheckPref = document.getElementById("browser.shell.checkDefaultBrowser");
+      let alwaysCheckPref = Preferences.get("browser.shell.checkDefaultBrowser");
       alwaysCheckPref.value = true;
 
       // Reset exponential backoff delay time in order to do visual update in pollForDefaultBrowser.
@@ -1035,12 +1184,7 @@ var gMainPane = {
    * Populates the default font list in UI.
    */
   _rebuildFonts() {
-    var preferences = document.getElementById("mainPreferences");
-    // Ensure preferences are "visible" to ensure bindings work.
-    preferences.hidden = false;
-    // Force flush:
-    preferences.clientHeight;
-    var langGroupPref = document.getElementById("font.language.group");
+    var langGroupPref = Preferences.get("font.language.group");
     var isSerif = this._readDefaultFontTypeForLanguage(langGroupPref.value) == "serif";
     this._selectDefaultLanguageGroup(langGroupPref.value, isSerif);
   },
@@ -1052,14 +1196,10 @@ var gMainPane = {
   _readDefaultFontTypeForLanguage(aLanguageGroup) {
     const kDefaultFontType = "font.default.%LANG%";
     var defaultFontTypePref = kDefaultFontType.replace(/%LANG%/, aLanguageGroup);
-    var preference = document.getElementById(defaultFontTypePref);
+    var preference = Preferences.get(defaultFontTypePref);
     if (!preference) {
-      preference = document.createElement("preference");
-      preference.id = defaultFontTypePref;
-      preference.setAttribute("name", defaultFontTypePref);
-      preference.setAttribute("type", "string");
-      preference.setAttribute("onchange", "gMainPane._rebuildFonts();");
-      document.getElementById("mainPreferences").appendChild(preference);
+      preference = Preferences.add({ id: defaultFontTypePref, type: "string" });
+      preference.on("change", gMainPane._rebuildFonts.bind(gMainPane));
     }
     return preference.value;
   },
@@ -1083,7 +1223,6 @@ var gMainPane = {
       const kFontNameListFmtSansSerif = "font.name-list.sans-serif.%LANG%";
       const kFontSizeFmtVariable = "font.size.variable.%LANG%";
 
-      var preferences = document.getElementById("mainPreferences");
       var prefs = [{
         format: aIsSerif ? kFontNameFmtSerif : kFontNameFmtSansSerif,
         type: "fontname",
@@ -1103,14 +1242,10 @@ var gMainPane = {
         fonttype: null
       }];
       for (var i = 0; i < prefs.length; ++i) {
-        var preference = document.getElementById(prefs[i].format.replace(/%LANG%/, aLanguageGroup));
+        var preference = Preferences.get(prefs[i].format.replace(/%LANG%/, aLanguageGroup));
         if (!preference) {
-          preference = document.createElement("preference");
           var name = prefs[i].format.replace(/%LANG%/, aLanguageGroup);
-          preference.id = name;
-          preference.setAttribute("name", name);
-          preference.setAttribute("type", prefs[i].type);
-          preferences.appendChild(preference);
+          preference = Preferences.add({ id: name, type: prefs[i].type });
         }
 
         if (!prefs[i].element)
@@ -1148,7 +1283,7 @@ var gMainPane = {
    *     2  enables spellchecking for all text fields
    */
   readCheckSpelling() {
-    var pref = document.getElementById("layout.spellcheckDefault");
+    var pref = Preferences.get("layout.spellcheckDefault");
     this._storedSpellCheck = pref.value;
 
     return (pref.value != 0);
@@ -1172,9 +1307,9 @@ var gMainPane = {
 
   updateDefaultPerformanceSettingsPref() {
     let defaultPerformancePref =
-      document.getElementById("browser.preferences.defaultPerformanceSettings.enabled");
-    let processCountPref = document.getElementById("dom.ipc.processCount");
-    let accelerationPref = document.getElementById("layers.acceleration.disabled");
+      Preferences.get("browser.preferences.defaultPerformanceSettings.enabled");
+    let processCountPref = Preferences.get("dom.ipc.processCount");
+    let accelerationPref = Preferences.get("layers.acceleration.disabled");
     if (processCountPref.value != processCountPref.defaultValue ||
       accelerationPref.value != accelerationPref.defaultValue) {
       defaultPerformancePref.value = false;
@@ -1183,11 +1318,11 @@ var gMainPane = {
 
   updatePerformanceSettingsBox({ duringChangeEvent }) {
     let defaultPerformancePref =
-      document.getElementById("browser.preferences.defaultPerformanceSettings.enabled");
+      Preferences.get("browser.preferences.defaultPerformanceSettings.enabled");
     let performanceSettings = document.getElementById("performanceSettings");
-    let processCountPref = document.getElementById("dom.ipc.processCount");
+    let processCountPref = Preferences.get("dom.ipc.processCount");
     if (defaultPerformancePref.value) {
-      let accelerationPref = document.getElementById("layers.acceleration.disabled");
+      let accelerationPref = Preferences.get("layers.acceleration.disabled");
       // Unset the value so process count will be decided by the platform.
       processCountPref.value = processCountPref.defaultValue;
       accelerationPref.value = accelerationPref.defaultValue;
@@ -1199,7 +1334,7 @@ var gMainPane = {
 
   buildContentProcessCountMenuList() {
     if (Services.appinfo.browserTabsRemoteAutostart) {
-      let processCountPref = document.getElementById("dom.ipc.processCount");
+      let processCountPref = Preferences.get("dom.ipc.processCount");
       let defaultProcessCount = processCountPref.defaultValue;
       let bundlePreferences = document.getElementById("bundlePreferences");
 
@@ -1271,8 +1406,8 @@ var gMainPane = {
    */
   updateReadPrefs() {
     if (AppConstants.MOZ_UPDATER) {
-      var enabledPref = document.getElementById("app.update.enabled");
-      var autoPref = document.getElementById("app.update.auto");
+      var enabledPref = Preferences.get("app.update.enabled");
+      var autoPref = Preferences.get("app.update.auto");
       var radiogroup = document.getElementById("updateRadioGroup");
 
       if (!enabledPref.value) // Don't care for autoPref.value in this case.
@@ -1316,8 +1451,8 @@ var gMainPane = {
    */
   updateWritePrefs() {
     if (AppConstants.MOZ_UPDATER) {
-      var enabledPref = document.getElementById("app.update.enabled");
-      var autoPref = document.getElementById("app.update.auto");
+      var enabledPref = Preferences.get("app.update.enabled");
+      var autoPref = Preferences.get("app.update.auto");
       var radiogroup = document.getElementById("updateRadioGroup");
       switch (radiogroup.value) {
         case "auto": // 1. Automatically install updates for Desktop only
@@ -1717,6 +1852,9 @@ var gMainPane = {
     if (aHandlerApp instanceof Ci.nsIWebContentHandlerInfo)
       return aHandlerApp.uri;
 
+    if (aHandlerApp instanceof Ci.nsIGIOMimeApp)
+      return aHandlerApp.command;
+
     return false;
   },
 
@@ -1853,6 +1991,46 @@ var gMainPane = {
 
       menuPopup.appendChild(menuItem);
       possibleAppMenuItems.push(menuItem);
+    }
+    // Add gio handlers
+    if (Cc["@mozilla.org/gio-service;1"]) {
+      let gIOSvc = Cc["@mozilla.org/gio-service;1"].
+                   getService(Ci.nsIGIOService);
+      var gioApps = gIOSvc.getAppsForURIScheme(typeItem.type);
+      let enumerator = gioApps.enumerate();
+      let possibleHandlers = handlerInfo.possibleApplicationHandlers;
+      while (enumerator.hasMoreElements()) {
+        let handler = enumerator.getNext().QueryInterface(Ci.nsIHandlerApp);
+        // OS handler share the same name, it's most likely the same app, skipping...
+        if (handler.name == handlerInfo.defaultDescription) {
+          continue;
+        }
+        // Check if the handler is already in possibleHandlers
+        let appAlreadyInHandlers = false;
+        for (let i = possibleHandlers.length - 1; i >= 0; --i) {
+          let app = possibleHandlers.queryElementAt(i, Ci.nsIHandlerApp);
+          // nsGIOMimeApp::Equals is able to compare with nsILocalHandlerApp
+          if (handler.equals(app)) {
+            appAlreadyInHandlers = true;
+            break;
+          }
+        }
+        if (!appAlreadyInHandlers) {
+          let menuItem = document.createElement("menuitem");
+          menuItem.setAttribute("action", Ci.nsIHandlerInfo.useHelperApp);
+          let label = this._prefsBundle.getFormattedString("useApp", [handler.name]);
+          menuItem.setAttribute("label", label);
+          menuItem.setAttribute("tooltiptext", label);
+          menuItem.setAttribute("image", this._getIconURLForHandlerApp(handler));
+
+          // Attach the handler app object to the menu item so we can use it
+          // to make changes to the datastore when the user selects the item.
+          menuItem.handlerApp = handler;
+
+          menuPopup.appendChild(menuItem);
+          possibleAppMenuItems.push(menuItem);
+        }
+      }
     }
 
     // Create a menu item for the plugin.
@@ -2338,7 +2516,7 @@ var gMainPane = {
   readUseDownloadDir() {
     var downloadFolder = document.getElementById("downloadFolder");
     var chooseFolder = document.getElementById("chooseFolder");
-    var preference = document.getElementById("browser.download.useDownloadDir");
+    var preference = Preferences.get("browser.download.useDownloadDir");
     downloadFolder.disabled = !preference.value || preference.locked;
     chooseFolder.disabled = !preference.value || preference.locked;
 
@@ -2366,8 +2544,8 @@ var gMainPane = {
         [providerDisplayName], 1);
       saveToCloudRadio.hidden = false;
 
-      let useDownloadDirPref = document.getElementById("browser.download.useDownloadDir");
-      let folderListPref = document.getElementById("browser.download.folderList");
+      let useDownloadDirPref = Preferences.get("browser.download.useDownloadDir");
+      let folderListPref = Preferences.get("browser.download.folderList");
 
       // Check if useDownloadDir is true and folderListPref is set to Cloud Storage value 3
       // before selecting cloudStorageradio button. Disable folder field and Browse button if
@@ -2401,7 +2579,7 @@ var gMainPane = {
       // with useDownloadDirPref value true, if selectedIndex is other than
       // SaveTo radio button disable downloadFolder filefield and chooseFolder button
       let saveWhere = document.getElementById("saveWhere");
-      let useDownloadDirPref = document.getElementById("browser.download.useDownloadDir");
+      let useDownloadDirPref = Preferences.get("browser.download.useDownloadDir");
       if (useDownloadDirPref.value) {
         let downloadFolder = document.getElementById("downloadFolder");
         let chooseFolder = document.getElementById("chooseFolder");
@@ -2415,12 +2593,12 @@ var gMainPane = {
       // default Downloads, check pref 'browser.download.dir' before setting respective
       // folderListPref value. If currentDirPref is unspecified folderList should
       // default to 1
-      let folderListPref = document.getElementById("browser.download.folderList");
+      let folderListPref = Preferences.get("browser.download.folderList");
       let saveTo = document.getElementById("saveTo");
       if (saveWhere.selectedItem == saveToCloudRadio) {
         folderListPref.value = 3;
       } else if (saveWhere.selectedItem == saveTo) {
-        let currentDirPref = document.getElementById("browser.download.dir");
+        let currentDirPref = Preferences.get("browser.download.dir");
         folderListPref.value = currentDirPref.value ? await this._folderToIndex(currentDirPref.value) : 1;
       }
     }
@@ -2437,7 +2615,7 @@ var gMainPane = {
   async chooseFolderTask() {
     let bundlePreferences = document.getElementById("bundlePreferences");
     let title = bundlePreferences.getString("chooseDownloadFolderTitle");
-    let folderListPref = document.getElementById("browser.download.folderList");
+    let folderListPref = Preferences.get("browser.download.folderList");
     let currentDirPref = await this._indexToFolder(folderListPref.value);
     let defDownloads = await this._indexToFolder(1);
     let fp = Components.classes["@mozilla.org/filepicker;1"].
@@ -2461,7 +2639,7 @@ var gMainPane = {
       return;
     }
 
-    let downloadDirPref = document.getElementById("browser.download.dir");
+    let downloadDirPref = Preferences.get("browser.download.dir");
     downloadDirPref.value = fp.file;
     folderListPref.value = await this._folderToIndex(fp.file);
     // Note, the real prefs will not be updated yet, so dnld manager's
@@ -2482,10 +2660,10 @@ var gMainPane = {
   },
 
   async displayDownloadDirPrefTask() {
-    var folderListPref = document.getElementById("browser.download.folderList");
+    var folderListPref = Preferences.get("browser.download.folderList");
     var bundlePreferences = document.getElementById("bundlePreferences");
     var downloadFolder = document.getElementById("downloadFolder");
-    var currentDirPref = document.getElementById("browser.download.dir");
+    var currentDirPref = Preferences.get("browser.download.dir");
 
     // Used in defining the correct path to the folder icon.
     var fph = Services.io.getProtocolHandler("file")
@@ -2581,7 +2759,7 @@ var gMainPane = {
       case 1:
         return this._getDownloadsFolder("Downloads");
     }
-    var currentDirPref = document.getElementById("browser.download.dir");
+    var currentDirPref = Preferences.get("browser.download.dir");
     return currentDirPref.value;
   }
 };
@@ -2984,16 +3162,16 @@ FeedHandlerInfo.prototype = {
   },
 
   get preferredApplicationHandler() {
-    switch (this.element(this._prefSelectedReader).value) {
+    switch (Preferences.get(this._prefSelectedReader).value) {
       case "client":
-        var file = this.element(this._prefSelectedApp).value;
+        var file = Preferences.get(this._prefSelectedApp).value;
         if (file)
           return getLocalHandlerApp(file);
 
         return null;
 
       case "web":
-        var uri = this.element(this._prefSelectedWeb).value;
+        var uri = Preferences.get(this._prefSelectedWeb).value;
         if (!uri)
           return null;
         return this._converterSvc.getWebContentHandlerByURI(this.type, uri);
@@ -3009,11 +3187,11 @@ FeedHandlerInfo.prototype = {
 
   set preferredApplicationHandler(aNewValue) {
     if (aNewValue instanceof Ci.nsILocalHandlerApp) {
-      this.element(this._prefSelectedApp).value = aNewValue.executable;
-      this.element(this._prefSelectedReader).value = "client";
+      Preferences.get(this._prefSelectedApp).value = aNewValue.executable;
+      Preferences.get(this._prefSelectedReader).value = "client";
     } else if (aNewValue instanceof Ci.nsIWebContentHandlerInfo) {
-      this.element(this._prefSelectedWeb).value = aNewValue.uri;
-      this.element(this._prefSelectedReader).value = "web";
+      Preferences.get(this._prefSelectedWeb).value = aNewValue.uri;
+      Preferences.get(this._prefSelectedReader).value = "web";
       // Make the web handler be the new "auto handler" for feeds.
       // Note: we don't have to unregister the auto handler when the user picks
       // a non-web handler (local app, Live Bookmarks, etc.) because the service
@@ -3073,7 +3251,7 @@ FeedHandlerInfo.prototype = {
     // only a single path.  But we display all the local apps the user chooses
     // while the prefpane is open, only dropping the list when the user closes
     // the prefpane, for maximum usability and consistency with other types.
-    var preferredAppFile = this.element(this._prefSelectedApp).value;
+    var preferredAppFile = Preferences.get(this._prefSelectedApp).value;
     if (preferredAppFile) {
       let preferredApp = getLocalHandlerApp(preferredAppFile);
       let defaultApp = this._defaultApplicationHandler;
@@ -3141,7 +3319,7 @@ FeedHandlerInfo.prototype = {
 
   // What to do with content of this type.
   get preferredAction() {
-    switch (this.element(this._prefSelectedAction).value) {
+    switch (Preferences.get(this._prefSelectedAction).value) {
 
       case "bookmarks":
         return Ci.nsIHandlerInfo.handleInternally;
@@ -3179,31 +3357,31 @@ FeedHandlerInfo.prototype = {
     switch (aNewValue) {
 
       case Ci.nsIHandlerInfo.handleInternally:
-        this.element(this._prefSelectedReader).value = "bookmarks";
+        Preferences.get(this._prefSelectedReader).value = "bookmarks";
         break;
 
       case Ci.nsIHandlerInfo.useHelperApp:
-        this.element(this._prefSelectedAction).value = "reader";
+        Preferences.get(this._prefSelectedAction).value = "reader";
         // The controller has already set preferredApplicationHandler
         // to the new helper app.
         break;
 
       case Ci.nsIHandlerInfo.useSystemDefault:
-        this.element(this._prefSelectedAction).value = "reader";
+        Preferences.get(this._prefSelectedAction).value = "reader";
         this.preferredApplicationHandler = this._defaultApplicationHandler;
         break;
     }
   },
 
   get alwaysAskBeforeHandling() {
-    return this.element(this._prefSelectedAction).value == "ask";
+    return Preferences.get(this._prefSelectedAction).value == "ask";
   },
 
   set alwaysAskBeforeHandling(aNewValue) {
     if (aNewValue == true)
-      this.element(this._prefSelectedAction).value = "ask";
+      Preferences.get(this._prefSelectedAction).value = "ask";
     else
-      this.element(this._prefSelectedAction).value = "reader";
+      Preferences.get(this._prefSelectedAction).value = "reader";
   },
 
   // Whether or not we are currently storing the action selected by the user.
@@ -3232,7 +3410,7 @@ FeedHandlerInfo.prototype = {
   store() {
     for (let app of this._possibleApplicationHandlers._removed) {
       if (app instanceof Ci.nsILocalHandlerApp) {
-        let pref = this.element(PREF_FEED_SELECTED_APP);
+        let pref = Preferences.get(PREF_FEED_SELECTED_APP);
         var preferredAppFile = pref.value;
         if (preferredAppFile) {
           let preferredApp = getLocalHandlerApp(preferredAppFile);

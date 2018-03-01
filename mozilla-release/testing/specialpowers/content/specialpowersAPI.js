@@ -30,7 +30,7 @@ Cu.import("resource://gre/modules/NetUtil.jsm");
 // but this whole file is in strict mode.  So instead fall back on
 // returning "this" from indirect eval, which returns the global.
 if (!(function() { var e = eval; return e("this"); })().File) { // eslint-disable-line no-eval
-    Cu.importGlobalProperties(["File"]);
+    Cu.importGlobalProperties(["File", "InspectorUtils"]);
 }
 
 // Allow stuff from this scope to be accessed from non-privileged scopes. This
@@ -313,7 +313,9 @@ function SPConsoleListener(callback) {
 }
 
 SPConsoleListener.prototype = {
-  observe(msg) {
+  // Overload the observe method for both nsIConsoleListener and nsIObserver.
+  // The topic will be null for nsIConsoleListener.
+  observe(msg, topic) {
     let m = { message: msg.message,
               errorMessage: null,
               sourceName: null,
@@ -323,6 +325,7 @@ SPConsoleListener.prototype = {
               category: null,
               windowID: null,
               isScriptError: false,
+              isConsoleEvent: false,
               isWarning: false,
               isException: false,
               isStrict: false };
@@ -339,6 +342,17 @@ SPConsoleListener.prototype = {
       m.isWarning     = ((msg.flags & Ci.nsIScriptError.warningFlag) === 1);
       m.isException   = ((msg.flags & Ci.nsIScriptError.exceptionFlag) === 1);
       m.isStrict      = ((msg.flags & Ci.nsIScriptError.strictFlag) === 1);
+    } else if (topic === "console-api-log-event") {
+      // This is a dom/console event.
+      let unwrapped = msg.wrappedJSObject;
+      m.errorMessage   = unwrapped.arguments[0];
+      m.sourceName     = unwrapped.filename;
+      m.lineNumber     = unwrapped.lineNumber;
+      m.columnNumber   = unwrapped.columnNumber;
+      m.windowID       = unwrapped.ID;
+      m.innerWindowID  = unwrapped.innerID;
+      m.isConsoleEvent = true;
+      m.isWarning      = unwrapped.level === "warning";
     }
 
     Object.freeze(m);
@@ -349,18 +363,21 @@ SPConsoleListener.prototype = {
       this.callback.call(undefined, m);
     });
 
-    if (!m.isScriptError && m.message === "SENTINEL")
+    if (!m.isScriptError && !m.isConsoleEvent && m.message === "SENTINEL") {
+      Services.obs.removeObserver(this, "console-api-log-event");
       Services.console.unregisterListener(this);
+    }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIConsoleListener])
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIConsoleListener,
+                                         Ci.nsIObserver])
 };
 
 function wrapCallback(cb) {
   return function SpecialPowersCallbackWrapper() {
     var args = Array.prototype.map.call(arguments, wrapIfUnwrapped);
     return cb.apply(this, args);
-  }
+  };
 }
 
 function wrapCallbackObject(obj) {
@@ -669,6 +686,8 @@ SpecialPowersAPI.prototype = {
 
     return bindDOMWindowUtils(aWindow);
   },
+
+  get InspectorUtils() { return wrapPrivileged(InspectorUtils); },
 
   waitForCrashes(aExpectingProcessCrash) {
     return new Promise((resolve, reject) => {
@@ -1010,7 +1029,7 @@ SpecialPowersAPI.prototype = {
         self._applyingPermissions = false;
         // Now apply any permissions that may have been queued while we were applying
         self._applyPermissions();
-    }
+    };
 
     for (var idx in pendingActions) {
       var perm = pendingActions[idx];
@@ -1172,6 +1191,22 @@ SpecialPowersAPI.prototype = {
     });
   },
 
+  _isPrefActionNeeded(prefAction) {
+    if (prefAction.action === "clear") {
+      return Services.prefs.prefHasUserValue(prefAction.name);
+    } else if (prefAction.action === "set") {
+      try {
+        let currentValue  = this._getPref(prefAction.name, prefAction.type, {});
+        return currentValue != prefAction.value;
+      } catch (e) {
+        // If the preference is not defined yet, setting the value will have an effect.
+        return true;
+      }
+    }
+    // Only "clear" and "set" actions are supported.
+    return false;
+  },
+
   /*
     Iterate through one atomic set of pref actions and perform sets/clears as appropriate.
     All actions performed must modify the relevant pref.
@@ -1187,19 +1222,33 @@ SpecialPowersAPI.prototype = {
     var pendingActions = transaction[0];
     var callback = transaction[1];
 
-    var lastPref = pendingActions[pendingActions.length - 1];
+    // Filter out all the pending actions that will not have any effect.
+    pendingActions = pendingActions.filter(action => {
+      return this._isPrefActionNeeded(action);
+    });
 
-    var pb = Services.prefs;
     var self = this;
-    pb.addObserver(lastPref.name, function prefObs(subject, topic, data) {
-      pb.removeObserver(lastPref.name, prefObs);
-
+    let onPrefActionsApplied = function() {
       self._setTimeout(callback);
       self._setTimeout(function() {
         self._applyingPrefs = false;
         // Now apply any prefs that may have been queued while we were applying
         self._applyPrefs();
       });
+    };
+
+    // If no valid action remains, call onPrefActionsApplied directly and bail out.
+    if (pendingActions.length === 0) {
+      onPrefActionsApplied();
+      return;
+    }
+
+    var lastPref = pendingActions[pendingActions.length - 1];
+
+    var pb = Services.prefs;
+    pb.addObserver(lastPref.name, function prefObs(subject, topic, data) {
+      pb.removeObserver(lastPref.name, prefObs);
+      onPrefActionsApplied();
     });
 
     for (var idx in pendingActions) {
@@ -1436,6 +1485,9 @@ SpecialPowersAPI.prototype = {
   registerConsoleListener(callback) {
     let listener = new SPConsoleListener(callback);
     Services.console.registerListener(listener);
+
+    // listen for dom/console events as well
+    Services.obs.addObserver(listener, "console-api-log-event");
   },
   postConsoleSentinel() {
     Services.console.logStringMessage("SENTINEL");
@@ -1552,7 +1604,7 @@ SpecialPowersAPI.prototype = {
         } else if (cb) {
           cb();
         }
-      }
+      };
     }
 
     Cu.schedulePreciseGC(genGCCallback(callback));
@@ -1645,7 +1697,7 @@ SpecialPowersAPI.prototype = {
                  "fireDone", "fireDetailedError"];
     for (var i in props) {
       let prop = props[i];
-      res[prop] = function() { return serv[prop].apply(serv, arguments) };
+      res[prop] = function() { return serv[prop].apply(serv, arguments); };
     }
     return res;
   },

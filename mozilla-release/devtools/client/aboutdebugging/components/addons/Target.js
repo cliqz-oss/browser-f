@@ -6,10 +6,17 @@
 
 "use strict";
 
-const { Component, DOM: dom, PropTypes } =
-  require("devtools/client/shared/vendor/react");
-const { debugAddon, isTemporaryID, parseFileUri, uninstallAddon } =
-  require("../../modules/addon");
+const { Component } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const {
+  debugLocalAddon,
+  debugRemoteAddon,
+  isLegacyTemporaryExtension,
+  isTemporaryID,
+  parseFileUri,
+  uninstallAddon
+} = require("../../modules/addon");
 const Services = require("Services");
 
 loader.lazyImporter(this, "BrowserToolboxProcess",
@@ -23,6 +30,7 @@ const Strings = Services.strings.createBundle(
 
 const TEMP_ID_URL = "https://developer.mozilla.org/Add-ons" +
                     "/WebExtensions/WebExtensions_and_the_Add-on_ID";
+const LEGACY_WARNING_URL = "https://wiki.mozilla.org/Add-ons/Future_of_Bootstrap";
 
 function filePathForTarget(target) {
   // Only show file system paths, and only for temporarily installed add-ons.
@@ -89,7 +97,7 @@ function internalIDForTarget(target) {
 
 function showMessages(target) {
   const messages = [
-    ...warningMessages(target.warnings),
+    ...warningMessages(target),
     ...infoMessages(target),
   ];
   if (messages.length > 0) {
@@ -111,25 +119,49 @@ function infoMessages(target) {
         Strings.GetStringFromName("temporaryID.learnMore")
       )));
   }
+
   return messages;
 }
 
-function warningMessages(warnings = []) {
-  return warnings.map((warning) => {
+function warningMessages(target) {
+  let messages = [];
+
+  if (isLegacyTemporaryExtension(target.form)) {
+    messages.push(dom.li(
+      {
+        className: "addon-target-warning-message addon-target-message"
+      },
+      Strings.GetStringFromName("legacyExtensionWarning"),
+      " ",
+      dom.a(
+        {
+          href: LEGACY_WARNING_URL,
+          target: "_blank"
+        },
+        Strings.GetStringFromName("legacyExtensionWarning.learnMore"))
+    ));
+  }
+
+  let warnings = target.warnings || [];
+  messages = messages.concat(warnings.map((warning) => {
     return dom.li(
       { className: "addon-target-warning-message addon-target-message" },
       warning);
-  });
+  }));
+
+  return messages;
 }
 
 class AddonTarget extends Component {
   static get propTypes() {
     return {
       client: PropTypes.instanceOf(DebuggerClient).isRequired,
+      connect: PropTypes.object,
       debugDisabled: PropTypes.bool,
       target: PropTypes.shape({
         addonActor: PropTypes.string.isRequired,
         addonID: PropTypes.string.isRequired,
+        form: PropTypes.object.isRequired,
         icon: PropTypes.string,
         name: PropTypes.string.isRequired,
         temporarilyInstalled: PropTypes.bool,
@@ -147,8 +179,13 @@ class AddonTarget extends Component {
   }
 
   debug() {
-    let { target } = this.props;
-    debugAddon(target.addonID);
+    let { client, connect, target } = this.props;
+
+    if (connect.type === "REMOTE") {
+      debugRemoteAddon(target.form, client);
+    } else if (connect.type === "LOCAL") {
+      debugLocalAddon(target.addonID);
+    }
   }
 
   uninstall() {

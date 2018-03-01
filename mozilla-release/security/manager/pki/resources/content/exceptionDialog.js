@@ -17,41 +17,12 @@ var gNsISecTel;
 
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 
-function badCertListener() {}
-badCertListener.prototype = {
-  getInterface(aIID) {
-    return this.QueryInterface(aIID);
-  },
-  QueryInterface(aIID) {
-    if (aIID.equals(Components.interfaces.nsIBadCertListener2) ||
-        aIID.equals(Components.interfaces.nsIInterfaceRequestor) ||
-        aIID.equals(Components.interfaces.nsISupports)) {
-      return this;
-    }
-
-    throw new Error(Components.results.NS_ERROR_NO_INTERFACE);
-  },
-  handle_test_result() {
-    if (gSSLStatus) {
-      gCert = gSSLStatus.QueryInterface(Components.interfaces.nsISSLStatus).serverCert;
-    }
-  },
-  notifyCertProblem: function MSR_notifyCertProblem(socketInfo, sslStatus, targetHost) {
-    gBroken = true;
-    gSSLStatus = sslStatus;
-    this.handle_test_result();
-    return true; // suppress error UI
-  }
-};
-
 function initExceptionDialog() {
   gNeedReset = false;
   gDialog = document.documentElement;
   gBundleBrand = document.getElementById("brand_bundle");
   gPKIBundle = document.getElementById("pippki_bundle");
-  gSecHistogram = Components.classes["@mozilla.org/base/telemetry;1"].
-                    getService(Components.interfaces.nsITelemetry).
-                    getHistogramById("SECURITY_UI");
+  gSecHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
   gNsISecTel = Components.interfaces.nsISecurityUITelemetry;
 
   var brandName = gBundleBrand.getString("brandShortName");
@@ -91,6 +62,28 @@ function initExceptionDialog() {
 }
 
 /**
+ * Helper function for checkCert. Set as the onerror/onload callbacks for an
+ * XMLHttpRequest. Sets gSSLStatus, gCert, gBroken, and gChecking according to
+ * the load information from the request. Probably should not be used directly.
+ *
+ * @param {XMLHttpRequest} req
+ *        The XMLHttpRequest created and sent by checkCert.
+ * @param {Event} evt
+ *        The load or error event.
+ */
+function grabCert(req, evt) {
+  if (req.channel && req.channel.securityInfo) {
+    gSSLStatus = req.channel.securityInfo
+                    .QueryInterface(Ci.nsISSLStatusProvider).SSLStatus;
+    gCert = gSSLStatus ? gSSLStatus.QueryInterface(Ci.nsISSLStatus).serverCert
+                       : null;
+  }
+  gBroken = evt.type == "error";
+  gChecking = false;
+  updateCertStatus();
+}
+
+/**
  * Attempt to download the certificate for the location specified, and populate
  * the Certificate Status section with the result.
  */
@@ -101,34 +94,18 @@ function checkCert() {
   gBroken = false;
   updateCertStatus();
 
-  var uri = getURI();
+  let uri = getURI();
 
-  var req = new XMLHttpRequest();
-  try {
-    if (uri) {
-      req.open("GET", uri.prePath, false);
-      req.channel.notificationCallbacks = new badCertListener();
-      req.send(null);
-    }
-  } catch (e) {
-    // We *expect* exceptions if there are problems with the certificate
-    // presented by the site.  Log it, just in case, but we can proceed here,
-    // with appropriate sanity checks
-    Components.utils.reportError("Attempted to connect to a site with a bad certificate in the add exception dialog. " +
-                                 "This results in a (mostly harmless) exception being thrown. " +
-                                 "Logged for information purposes only: " + e);
-  } finally {
+  if (uri) {
+    let req = new XMLHttpRequest();
+    req.open("GET", uri.prePath);
+    req.onerror = grabCert.bind(this, req);
+    req.onload = grabCert.bind(this, req);
+    req.send(null);
+  } else {
     gChecking = false;
+    updateCertStatus();
   }
-
-  if (req.channel && req.channel.securityInfo) {
-    const Ci = Components.interfaces;
-    gSSLStatus = req.channel.securityInfo
-                    .QueryInterface(Ci.nsISSLStatusProvider).SSLStatus;
-    gCert = gSSLStatus.QueryInterface(Ci.nsISSLStatus).serverCert;
-  }
-
-  updateCertStatus();
 }
 
 /**
@@ -143,10 +120,8 @@ function getURI() {
   // Use fixup service instead of just ioservice's newURI since it's quite
   // likely that the host will be supplied without a protocol prefix, resulting
   // in malformed uri exceptions being thrown.
-  let fus = Components.classes["@mozilla.org/docshell/urifixup;1"]
-                      .getService(Components.interfaces.nsIURIFixup);
   let locationTextBox = document.getElementById("locationTextBox");
-  let uri = fus.createFixupURI(locationTextBox.value, 0);
+  let uri = Services.uriFixup.createFixupURI(locationTextBox.value, 0);
 
   if (!uri) {
     return null;
@@ -264,9 +239,7 @@ function updateCertStatus() {
     document.getElementById("viewCertButton").disabled = false;
 
     // Notify observers about the availability of the certificate
-    Components.classes["@mozilla.org/observer-service;1"]
-              .getService(Components.interfaces.nsIObserverService)
-              .notifyObservers(null, "cert-exception-ui-ready");
+    Services.obs.notifyObservers(null, "cert-exception-ui-ready");
   } else if (gChecking) {
     shortDesc = "addExceptionCheckingShort";
     longDesc  = "addExceptionCheckingLong2";

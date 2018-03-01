@@ -164,34 +164,34 @@ nsDOMCSSAttributeDeclaration::GetCSSDeclaration(Operation aOperation)
 }
 
 void
-nsDOMCSSAttributeDeclaration::GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv)
+nsDOMCSSAttributeDeclaration::GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
+                                                       nsIPrincipal* aSubjectPrincipal)
 {
   NS_ASSERTION(mElement, "Something is severely broken -- there should be an Element here!");
 
   nsIDocument* doc = mElement->OwnerDoc();
   aCSSParseEnv.mSheetURI = doc->GetDocumentURI();
   aCSSParseEnv.mBaseURI = mElement->GetBaseURIForStyleAttr();
-  aCSSParseEnv.mPrincipal = mElement->NodePrincipal();
+  aCSSParseEnv.mPrincipal = (aSubjectPrincipal ? aSubjectPrincipal
+                                               : mElement->NodePrincipal());
   aCSSParseEnv.mCSSLoader = doc->CSSLoader();
 }
 
 nsDOMCSSDeclaration::ServoCSSParsingEnvironment
-nsDOMCSSAttributeDeclaration::GetServoCSSParsingEnvironment() const
+nsDOMCSSAttributeDeclaration::GetServoCSSParsingEnvironment(
+    nsIPrincipal* aSubjectPrincipal) const
 {
   return {
-    mElement->GetURLDataForStyleAttr(),
+    mElement->GetURLDataForStyleAttr(aSubjectPrincipal),
     mElement->OwnerDoc()->GetCompatibilityMode(),
     mElement->OwnerDoc()->CSSLoader(),
   };
 }
 
-NS_IMETHODIMP
-nsDOMCSSAttributeDeclaration::GetParentRule(nsIDOMCSSRule **aParent)
+css::Rule*
+nsDOMCSSAttributeDeclaration::GetParentRule()
 {
-  NS_ENSURE_ARG_POINTER(aParent);
-
-  *aParent = nullptr;
-  return NS_OK;
+  return nullptr;
 }
 
 /* virtual */ nsINode*
@@ -200,9 +200,16 @@ nsDOMCSSAttributeDeclaration::GetParentObject()
   return mElement;
 }
 
+/* virtual */ DocGroup*
+nsDOMCSSAttributeDeclaration::GetDocGroup() const
+{
+  return mElement ? mElement->OwnerDoc()->GetDocGroup() : nullptr;
+}
+
 NS_IMETHODIMP
 nsDOMCSSAttributeDeclaration::SetPropertyValue(const nsCSSPropertyID aPropID,
-                                               const nsAString& aValue)
+                                               const nsAString& aValue,
+                                               nsIPrincipal* aSubjectPrincipal)
 {
   // Scripted modifications to style.opacity or style.transform
   // could immediately force us into the animated state if heuristics suggest
@@ -220,5 +227,5 @@ nsDOMCSSAttributeDeclaration::SetPropertyValue(const nsCSSPropertyID aPropID,
       ActiveLayerTracker::NotifyInlineStyleRuleModified(frame, aPropID, aValue, this);
     }
   }
-  return nsDOMCSSDeclaration::SetPropertyValue(aPropID, aValue);
+  return nsDOMCSSDeclaration::SetPropertyValue(aPropID, aValue, aSubjectPrincipal);
 }

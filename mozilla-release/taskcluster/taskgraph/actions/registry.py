@@ -166,7 +166,9 @@ def register_callback_action(name, title, symbol, description, order=10000,
     def register_callback(cb):
         assert isinstance(cb, FunctionType), 'callback must be a function'
         assert isinstance(symbol, basestring), 'symbol must be a string'
-        assert 1 <= len(symbol) <= 25, 'symbol must be between 1 and 25 characters'
+        # Allow for json-e > 25 chars in the symbol.
+        if '$' not in symbol:
+            assert 1 <= len(symbol) <= 25, 'symbol must be between 1 and 25 characters'
         assert not mem['registered'], 'register_callback_action must be used as decorator'
         assert cb.__name__ not in callbacks, 'callback name {} is not unique'.format(cb.__name__)
 
@@ -178,7 +180,7 @@ def register_callback_action(name, title, symbol, description, order=10000,
             match = re.match(r'https://(hg.mozilla.org)/(.*?)/?$', parameters['head_repository'])
             if not match:
                 raise Exception('Unrecognized head_repository')
-            repo_scope = 'assume:repo:{}/{}:*'.format(
+            repo_scope = 'assume:repo:{}/{}:branch:default'.format(
                 match.group(1), match.group(2))
 
             task_group_id = os.environ.get('TASK_ID', slugid())

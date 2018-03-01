@@ -78,6 +78,7 @@
 
 #if defined(XP_WIN)
 #include <windows.h>
+#include "mozilla/WindowsVersion.h"
 #endif
 
 #if defined(XP_MACOSX)
@@ -108,8 +109,11 @@
 #define SAFE_HINT_HEADER_VALUE   "safeHint.enabled"
 #define SECURITY_PREFIX          "security."
 
-#define TCP_FAST_OPEN_ENABLE        "network.tcp.tcp_fastopen_enable"
-#define TCP_FAST_OPEN_FAILURE_LIMIT "network.tcp.tcp_fastopen_consecutive_failure_limit"
+#define TCP_FAST_OPEN_ENABLE         "network.tcp.tcp_fastopen_enable"
+#define TCP_FAST_OPEN_FAILURE_LIMIT  "network.tcp.tcp_fastopen_consecutive_failure_limit"
+#define TCP_FAST_OPEN_STALLS_LIMIT   "network.tcp.tcp_fastopen_http_stalls_limit"
+#define TCP_FAST_OPEN_STALLS_IDLE    "network.tcp.tcp_fastopen_http_check_for_stalls_only_if_idle_for"
+#define TCP_FAST_OPEN_STALLS_TIMEOUT "network.tcp.tcp_fastopen_http_stalls_timeout"
 
 #define UA_PREF(_pref) UA_PREF_PREFIX _pref
 #define HTTP_PREF(_pref) HTTP_PREF_PREFIX _pref
@@ -118,6 +122,8 @@
 #define NS_HTTP_PROTOCOL_FLAGS (URI_STD | ALLOWS_PROXY | ALLOWS_PROXY_HTTP | URI_LOADABLE_BY_ANYONE)
 
 //-----------------------------------------------------------------------------
+
+using mozilla::Telemetry::LABELS_NETWORK_HTTP_REDIRECT_TO_SCHEME;
 
 namespace mozilla {
 namespace net {
@@ -211,10 +217,13 @@ nsHttpHandler::nsHttpHandler()
     , mMaxPersistentConnectionsPerServer(2)
     , mMaxPersistentConnectionsPerProxy(4)
     , mThrottleEnabled(true)
+    , mThrottleVersion(2)
     , mThrottleSuspendFor(3000)
     , mThrottleResumeFor(200)
-    , mThrottleResumeIn(400)
-    , mThrottleTimeWindow(3000)
+    , mThrottleReadLimit(8000)
+    , mThrottleReadInterval(500)
+    , mThrottleHoldTime(600)
+    , mThrottleMaxTime(3000)
     , mUrgentStartEnabled(true)
     , mTailBlockingEnabled(true)
     , mTailDelayQuantum(600)
@@ -279,9 +288,15 @@ nsHttpHandler::nsHttpHandler()
     , mUseFastOpen(true)
     , mFastOpenConsecutiveFailureLimit(5)
     , mFastOpenConsecutiveFailureCounter(0)
+    , mFastOpenStallsLimit(3)
+    , mFastOpenStallsCounter(0)
+    , mFastOpenStallsIdleTime(10)
+    , mFastOpenStallsTimeout(20)
     , mActiveTabPriority(true)
+    , mAllowPlaintextServerTiming(false)
     , mProcessId(0)
     , mNextChannelId(1)
+    , mLastActiveTabLoadOptimizationLock("nsHttpConnectionMgr::LastActiveTabLoadOptimization")
 {
     LOG(("Creating nsHttpHandler [this=%p].\n", this));
 
@@ -302,6 +317,15 @@ nsHttpHandler::SetFastOpenOSSupport()
     mFastOpenSupported = false;
 #if !defined(XP_WIN) && !defined(XP_LINUX) && !defined(ANDROID) && !defined(HAS_CONNECTX)
     return;
+#elif defined(XP_WIN)
+    mFastOpenSupported = IsWindows10BuildOrLater(16299);
+
+    if (mFastOpenSupported) {
+        // We have some problems with lavasoft software and tcp fast open.
+        if (GetModuleHandleW(L"pmls64.dll") || GetModuleHandleW(L"rlls64.dll")) {
+            mFastOpenSupported = false;
+        }
+    }
 #else
 
     nsAutoCString version;
@@ -326,10 +350,8 @@ nsHttpHandler::SetFastOpenOSSupport()
 
     if (NS_SUCCEEDED(rv)) {
         // set min version minus 1.
-#ifdef XP_WIN
-        int min_version[] = {10, 0};
-#elif XP_MACOSX
-        int min_version[] = {15, 0};
+#if XP_MACOSX
+        int min_version[] = {17, 3};
 #elif ANDROID
         int min_version[] = {4, 4};
 #elif XP_LINUX
@@ -360,16 +382,6 @@ nsHttpHandler::SetFastOpenOSSupport()
         }
     }
 #endif
-
-#ifdef XP_WIN
-  if (mFastOpenSupported) {
-    // We have some problems with lavasoft software and tcp fast open.
-    if (GetModuleHandleW(L"pmls64.dll") || GetModuleHandleW(L"rlls64.dll")) {
-      mFastOpenSupported = false;
-    }
-  }
-#endif
-
     LOG(("nsHttpHandler::SetFastOpenOSSupport %s supported.\n",
          mFastOpenSupported ? "" : "not"));
 }
@@ -455,6 +467,10 @@ nsHttpHandler::Init()
         prefBranch->AddObserver(SECURITY_PREFIX, this, true);
         prefBranch->AddObserver(TCP_FAST_OPEN_ENABLE, this, true);
         prefBranch->AddObserver(TCP_FAST_OPEN_FAILURE_LIMIT, this, true);
+        prefBranch->AddObserver(TCP_FAST_OPEN_STALLS_LIMIT, this, true);
+        prefBranch->AddObserver(TCP_FAST_OPEN_STALLS_IDLE, this, true);
+        prefBranch->AddObserver(TCP_FAST_OPEN_STALLS_TIMEOUT, this, true);
+        prefBranch->AddObserver(HTTP_PREF("allow-plaintext-server-timing"), this, false);
         PrefsChanged(prefBranch, nullptr);
     }
 
@@ -541,6 +557,7 @@ nsHttpHandler::Init()
         obsService->AddObserver(this, "net:prune-dead-connections", true);
         // Sent by the TorButton add-on in the Tor Browser
         obsService->AddObserver(this, "net:prune-all-connections", true);
+        obsService->AddObserver(this, "net:cancel-all-connections", true);
         obsService->AddObserver(this, "last-pb-context-exited", true);
         obsService->AddObserver(this, "browser:purge-session-history", true);
         obsService->AddObserver(this, NS_NETWORK_LINK_TOPIC, true);
@@ -612,10 +629,13 @@ nsHttpHandler::InitConnectionMgr()
                         mMaxPersistentConnectionsPerProxy,
                         mMaxRequestDelay,
                         mThrottleEnabled,
+                        mThrottleVersion,
                         mThrottleSuspendFor,
                         mThrottleResumeFor,
-                        mThrottleResumeIn,
-                        mThrottleTimeWindow);
+                        mThrottleReadLimit,
+                        mThrottleReadInterval,
+                        mThrottleHoldTime,
+                        mThrottleMaxTime);
     return rv;
 }
 
@@ -735,6 +755,20 @@ nsHttpHandler::IncrementFastOpenConsecutiveFailureCounter()
     }
 }
 
+void
+nsHttpHandler::IncrementFastOpenStallsCounter()
+{
+  LOG(("nsHttpHandler::IncrementFastOpenStallsCounter - failed=%d "
+        "failure_limit=%d", mFastOpenStallsCounter, mFastOpenStallsLimit));
+  if (mFastOpenStallsCounter < mFastOpenStallsLimit) {
+    mFastOpenStallsCounter++;
+    if (mFastOpenStallsCounter == mFastOpenStallsLimit) {
+      LOG(("nsHttpHandler::IncrementFastOpenStallsCounter - "
+           "There are too many stalls involving TFO and TLS."));
+    }
+  }
+}
+
 nsresult
 nsHttpHandler::GetStreamConverterService(nsIStreamConverterService **result)
 {
@@ -820,14 +854,28 @@ nsHttpHandler::AsyncOnChannelRedirect(nsIChannel* oldChan,
                                       uint32_t flags,
                                       nsIEventTarget* mainThreadEventTarget)
 {
-    // TODO E10S This helper has to be initialized on the other process
-    RefPtr<nsAsyncRedirectVerifyHelper> redirectCallbackHelper =
-        new nsAsyncRedirectVerifyHelper();
+  MOZ_ASSERT(NS_IsMainThread() && (oldChan && newChan));
 
-    return redirectCallbackHelper->Init(oldChan,
-                                        newChan,
-                                        flags,
-                                        mainThreadEventTarget);
+  nsCOMPtr<nsIURI> newURI;
+  newChan->GetURI(getter_AddRefs(newURI));
+  MOZ_ASSERT(newURI);
+
+  nsAutoCString scheme;
+  newURI->GetScheme(scheme);
+  MOZ_ASSERT(!scheme.IsEmpty());
+
+  Telemetry::AccumulateCategoricalKeyed(
+    scheme,
+    oldChan->IsDocument()
+      ? LABELS_NETWORK_HTTP_REDIRECT_TO_SCHEME::topLevel
+      : LABELS_NETWORK_HTTP_REDIRECT_TO_SCHEME::subresource);
+
+  // TODO E10S This helper has to be initialized on the other process
+  RefPtr<nsAsyncRedirectVerifyHelper> redirectCallbackHelper =
+    new nsAsyncRedirectVerifyHelper();
+
+  return redirectCallbackHelper->Init(
+    oldChan, newChan, flags, mainThreadEventTarget);
 }
 
 /* static */ nsresult
@@ -1638,6 +1686,11 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         }
     }
 
+    if (PREF_CHANGED(HTTP_PREF("throttle.version"))) {
+        rv = prefs->GetIntPref(HTTP_PREF("throttle.version"), &val);
+        mThrottleVersion = (uint32_t)clamped(val, 1, 2);
+    }
+
     if (PREF_CHANGED(HTTP_PREF("throttle.suspend-for"))) {
         rv = prefs->GetIntPref(HTTP_PREF("throttle.suspend-for"), &val);
         mThrottleSuspendFor = (uint32_t)clamped(val, 0, 120000);
@@ -1656,21 +1709,39 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         }
     }
 
-    if (PREF_CHANGED(HTTP_PREF("throttle.resume-background-in"))) {
-        rv = prefs->GetIntPref(HTTP_PREF("throttle.resume-background-in"), &val);
-        mThrottleResumeIn = (uint32_t)clamped(val, 0, 120000);
+    if (PREF_CHANGED(HTTP_PREF("throttle.read-limit-bytes"))) {
+        rv = prefs->GetIntPref(HTTP_PREF("throttle.read-limit-bytes"), &val);
+        mThrottleReadLimit = (uint32_t)clamped(val, 0, 500000);
         if (NS_SUCCEEDED(rv) && mConnMgr) {
-            Unused << mConnMgr->UpdateParam(nsHttpConnectionMgr::THROTTLING_RESUME_IN,
-                                            mThrottleResumeIn);
+            Unused << mConnMgr->UpdateParam(nsHttpConnectionMgr::THROTTLING_READ_LIMIT,
+                                            mThrottleReadLimit);
         }
     }
 
-    if (PREF_CHANGED(HTTP_PREF("throttle.time-window"))) {
-      rv = prefs->GetIntPref(HTTP_PREF("throttle.time-window"), &val);
-      mThrottleTimeWindow = (uint32_t)clamped(val, 0, 120000);
+    if (PREF_CHANGED(HTTP_PREF("throttle.read-interval-ms"))) {
+        rv = prefs->GetIntPref(HTTP_PREF("throttle.read-interval-ms"), &val);
+        mThrottleReadInterval = (uint32_t)clamped(val, 0, 120000);
+        if (NS_SUCCEEDED(rv) && mConnMgr) {
+            Unused << mConnMgr->UpdateParam(nsHttpConnectionMgr::THROTTLING_READ_INTERVAL,
+                                            mThrottleReadInterval);
+        }
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("throttle.hold-time-ms"))) {
+        rv = prefs->GetIntPref(HTTP_PREF("throttle.hold-time-ms"), &val);
+        mThrottleHoldTime = (uint32_t)clamped(val, 0, 120000);
+        if (NS_SUCCEEDED(rv) && mConnMgr) {
+            Unused << mConnMgr->UpdateParam(nsHttpConnectionMgr::THROTTLING_HOLD_TIME,
+                                            mThrottleHoldTime);
+        }
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("throttle.max-time-ms"))) {
+      rv = prefs->GetIntPref(HTTP_PREF("throttle.max-time-ms"), &val);
+      mThrottleMaxTime = (uint32_t)clamped(val, 0, 120000);
       if (NS_SUCCEEDED(rv) && mConnMgr) {
-        Unused << mConnMgr->UpdateParam(nsHttpConnectionMgr::THROTTLING_TIME_WINDOW,
-                                        mThrottleTimeWindow);
+        Unused << mConnMgr->UpdateParam(nsHttpConnectionMgr::THROTTLING_MAX_TIME,
+                                        mThrottleMaxTime);
       }
     }
 
@@ -1693,6 +1764,10 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         Unused << prefs->GetIntPref(HTTP_PREF("tailing.delay-max"), &val);
         mTailDelayMax = (uint32_t)clamped(val, 0, 60000);
     }
+    if (PREF_CHANGED(HTTP_PREF("tailing.total-max"))) {
+        Unused << prefs->GetIntPref(HTTP_PREF("tailing.total-max"), &val);
+        mTailTotalMax = (uint32_t)clamped(val, 0, 60000);
+    }
 
     if (PREF_CHANGED(HTTP_PREF("focused_window_transaction_ratio"))) {
         float ratio = 0;
@@ -1704,6 +1779,10 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
                 NS_WARNING("Wrong value for focused_window_transaction_ratio");
             }
         }
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("allow-plaintext-server-timing"))) {
+        Unused << prefs->GetBoolPref(HTTP_PREF("allow-plaintext-server-timing"), &mAllowPlaintextServerTiming);
     }
 
     //
@@ -1888,6 +1967,36 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
                 val = 0;
             }
             mFastOpenConsecutiveFailureLimit = val;
+        }
+    }
+
+    if (PREF_CHANGED(TCP_FAST_OPEN_STALLS_LIMIT)) {
+        rv = prefs->GetIntPref(TCP_FAST_OPEN_STALLS_LIMIT, &val);
+        if (NS_SUCCEEDED(rv)) {
+            if (val < 0) {
+                val = 0;
+            }
+            mFastOpenStallsLimit = val;
+        }
+    }
+
+    if (PREF_CHANGED(TCP_FAST_OPEN_STALLS_TIMEOUT)) {
+        rv = prefs->GetIntPref(TCP_FAST_OPEN_STALLS_TIMEOUT, &val);
+        if (NS_SUCCEEDED(rv)) {
+            if (val < 0) {
+                val = 0;
+            }
+            mFastOpenStallsTimeout = val;
+        }
+    }
+
+    if (PREF_CHANGED(TCP_FAST_OPEN_STALLS_IDLE)) {
+        rv = prefs->GetIntPref(TCP_FAST_OPEN_STALLS_IDLE, &val);
+        if (NS_SUCCEEDED(rv)) {
+            if (val < 0) {
+                val = 0;
+            }
+            mFastOpenStallsIdleTime = val;
         }
     }
 
@@ -2237,8 +2346,10 @@ nsHttpHandler::Observe(nsISupports *subject,
             Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 1);
         } else if (!mUseFastOpen) {
             Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 2);
-        } else {
+        } else if (mFastOpenConsecutiveFailureCounter >= mFastOpenConsecutiveFailureLimit) {
             Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 3);
+        } else {
+            Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 4);
         }
     } else if (!strcmp(topic, "profile-change-net-restore")) {
         // initialize connection manager
@@ -2247,6 +2358,10 @@ nsHttpHandler::Observe(nsISupports *subject,
     } else if (!strcmp(topic, "net:clear-active-logins")) {
         Unused << mAuthCache.ClearAll();
         Unused << mPrivateAuthCache.ClearAll();
+    } else if (!strcmp(topic, "net:cancel-all-connections")) {
+        if (mConnMgr) {
+            mConnMgr->AbortAndCloseAllConnections(0, nullptr);
+        }
     } else if (!strcmp(topic, "net:prune-dead-connections")) {
         if (mConnMgr) {
             rv = mConnMgr->PruneDeadConnections();
@@ -2668,6 +2783,39 @@ nsHttpHandler::NewChannelId(uint64_t& channelId)
   MOZ_ASSERT(NS_IsMainThread());
   channelId = ((static_cast<uint64_t>(mProcessId) << 32) & 0xFFFFFFFF00000000LL) | mNextChannelId++;
   return NS_OK;
+}
+
+void
+nsHttpHandler::NotifyActiveTabLoadOptimization()
+{
+  SetLastActiveTabLoadOptimizationHit(TimeStamp::Now());
+}
+
+TimeStamp const nsHttpHandler::GetLastActiveTabLoadOptimizationHit()
+{
+  MutexAutoLock lock(mLastActiveTabLoadOptimizationLock);
+
+  return mLastActiveTabLoadOptimizationHit;
+}
+
+void
+nsHttpHandler::SetLastActiveTabLoadOptimizationHit(TimeStamp const &when)
+{
+  MutexAutoLock lock(mLastActiveTabLoadOptimizationLock);
+
+  if (mLastActiveTabLoadOptimizationHit.IsNull() ||
+      (!when.IsNull() && mLastActiveTabLoadOptimizationHit < when)) {
+    mLastActiveTabLoadOptimizationHit = when;
+  }
+}
+
+bool
+nsHttpHandler::IsBeforeLastActiveTabLoadOptimization(TimeStamp const &when)
+{
+  MutexAutoLock lock(mLastActiveTabLoadOptimizationLock);
+
+  return !mLastActiveTabLoadOptimizationHit.IsNull() &&
+         when <= mLastActiveTabLoadOptimizationHit;
 }
 
 } // namespace net

@@ -55,11 +55,11 @@ DIRS += [
     'webvtt',
 ]
 
-if CONFIG['MOZ_ANDROID_HLS_SUPPORT']:
+if CONFIG['MOZ_ANDROID_HLS_SUPPORT'] and CONFIG['MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE']:
     DIRS += ['hls']
 
 if CONFIG['MOZ_FMP4']:
-    DIRS += ['fmp4']
+    DIRS += ['mp4']
 
 if CONFIG['MOZ_WEBRTC']:
     DIRS += ['bridge']
@@ -98,8 +98,13 @@ EXPORTS += [
     'AudioSampleFormat.h',
     'AudioSegment.h',
     'AudioStream.h',
+    'AutoplayPolicy.h',
+    'BackgroundVideoDecodingPermissionObserver.h',
     'Benchmark.h',
+    'BitReader.h',
     'BufferMediaResource.h',
+    'BufferReader.h',
+    'ByteWriter.h',
     'ChannelMediaDecoder.h',
     'CubebUtils.h',
     'DecoderTraits.h',
@@ -210,8 +215,11 @@ UNIFIED_SOURCES += [
     'AudioStreamTrack.cpp',
     'AudioTrack.cpp',
     'AudioTrackList.cpp',
+    'AutoplayPolicy.cpp',
+    'BackgroundVideoDecodingPermissionObserver.cpp',
     'BaseMediaResource.cpp',
     'Benchmark.cpp',
+    'BitReader.cpp',
     'CanvasCaptureMediaStream.cpp',
     'ChannelMediaDecoder.cpp',
     'ChannelMediaResource.cpp',
@@ -288,7 +296,7 @@ SOURCES += [
 
 # Some codec-related code uses multi-character constants, which GCC and clang
 # warn about. Suppress turning this warning into an error.
-if CONFIG['GNU_CC'] or CONFIG['CLANG_CL']:
+if CONFIG['CC_TYPE'] in ('clang', 'clang-cl', 'gcc'):
   SOURCES['DecoderTraits.cpp'].flags += ['-Wno-error=multichar']
 
 EXTRA_COMPONENTS += [
@@ -318,7 +326,7 @@ if CONFIG['MOZ_WEBRTC']:
 
 DEFINES['MOZILLA_INTERNAL_API'] = True
 
-if CONFIG['MOZ_ANDROID_HLS_SUPPORT']:
+if CONFIG['MOZ_ANDROID_HLS_SUPPORT'] and CONFIG['MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE']:
     DEFINES['MOZ_ANDROID_HLS_SUPPORT'] = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
@@ -326,15 +334,10 @@ include('/ipc/chromium/chromium-config.mozbuild')
 # Suppress some GCC warnings being treated as errors:
 #  - about attributes on forward declarations for types that are already
 #    defined, which complains about an important MOZ_EXPORT for android::AString
-if CONFIG['GNU_CC']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += [
         '-Wno-error=attributes',
         '-Wno-error=shadow',
     ]
-
-if CONFIG['_MSC_VER']:
-    # This is intended as a temporary workaround to unblock compilation
-    # on VS2015 in warnings as errors mode.
-    CXXFLAGS += ['-wd4312']
 
 FINAL_LIBRARY = 'xul'

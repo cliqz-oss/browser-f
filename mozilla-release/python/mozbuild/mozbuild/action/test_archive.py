@@ -152,6 +152,15 @@ ARCHIVE_FILES = {
             'source': buildconfig.topsrcdir,
             'base': 'testing',
             'pattern': 'firefox-ui/**',
+            'ignore': [
+                'firefox-ui/tests',
+            ]
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': '',
+            'pattern': 'testing/firefox-ui/tests',
+            'dest': 'firefox-ui/tests',
         },
         {
             'source': buildconfig.topsrcdir,
@@ -162,13 +171,19 @@ ARCHIVE_FILES = {
         {
             'source': buildconfig.topsrcdir,
             'base': 'js/src/tests',
-            'pattern': 'ecma_6/**',
+            'pattern': 'non262/shell.js',
             'dest': 'jit-test/tests',
         },
         {
             'source': buildconfig.topsrcdir,
             'base': 'js/src/tests',
-            'pattern': 'js1_8_5/**',
+            'pattern': 'non262/Math/shell.js',
+            'dest': 'jit-test/tests',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'js/src/tests',
+            'pattern': 'non262/reflect-parse/Match.js',
             'dest': 'jit-test/tests',
         },
         {
@@ -204,6 +219,18 @@ ARCHIVE_FILES = {
             'base': 'testing/web-platform/tests/tools/wptserve',
             'pattern': '**',
             'dest': 'tools/wptserve',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'python/mozterm',
+            'pattern': '**',
+            'dest': 'tools/mozterm',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'third_party/python/six',
+            'pattern': '**',
+            'dest': 'tools/six',
         },
         {
             'source': buildconfig.topobjdir,

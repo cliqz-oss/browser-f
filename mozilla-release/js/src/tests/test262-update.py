@@ -21,13 +21,17 @@ from itertools import chain, imap
 UNSUPPORTED_FEATURES = set([
                             "tail-call-optimization",
                             "BigInt",
-                            "class-fields",
-                            "optional-catch-binding",
+                            "class-fields-public",
+                            "class-fields-private",
                             "regexp-dotall",
                             "regexp-lookbehind",
                             "regexp-named-groups",
                             "regexp-unicode-property-escapes",
                        ])
+FEATURE_CHECK_NEEDED = {
+                         "Atomics": "!this.hasOwnProperty('Atomics')",
+                         "SharedArrayBuffer": "!this.hasOwnProperty('SharedArrayBuffer')",
+                       }
 RELEASE_OR_BETA = set()
 
 @contextlib.contextmanager
@@ -138,7 +142,7 @@ def writeShellAndBrowserFiles(test262OutDir, harnessDir, includesMap, localInclu
     """
 
     # Find all includes from parent directories.
-    def findParentIncludes(relPath, includesMap):
+    def findParentIncludes():
         parentIncludes = set()
         current = relPath
         while current:
@@ -149,10 +153,9 @@ def writeShellAndBrowserFiles(test262OutDir, harnessDir, includesMap, localInclu
         return parentIncludes
 
     # Find all includes, skipping includes already present in parent directories.
-    def findIncludes(includesMap, relPath):
-        includeSet = includesMap[relPath]
-        parentIncludes = findParentIncludes(relPath, includesMap)
-        for include in includeSet:
+    def findIncludes():
+        parentIncludes = findParentIncludes()
+        for include in includesMap[relPath]:
             if include not in parentIncludes:
                 yield include
 
@@ -165,10 +168,10 @@ def writeShellAndBrowserFiles(test262OutDir, harnessDir, includesMap, localInclu
     # Concatenate all includes files.
     includeSource = "\n".join(imap(readIncludeFile, chain(
         # The requested include files.
-        imap(partial(os.path.join, harnessDir), findIncludes(includesMap, relPath)),
+        imap(partial(os.path.join, harnessDir), sorted(findIncludes())),
 
         # And additional local include files.
-        imap(partial(os.path.join, os.getcwd()), localIncludes)
+        imap(partial(os.path.join, os.getcwd()), sorted(localIncludes))
     )))
 
     # Write the concatenated include sources to shell.js.
@@ -226,7 +229,7 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
     # Negative tests have additional meta-data to specify the error type and
     # when the error is issued (runtime error or early parse error). We're
     # currently ignoring the error phase attribute.
-    # testRec["negative"] == {type=<error name>, phase=early|runtime}
+    # testRec["negative"] == {type=<error name>, phase=parse|resolution|runtime}
     isNegative = "negative" in testRec
     assert not isNegative or type(testRec["negative"]) == dict
     errorType = testRec["negative"]["type"] if isNegative else None
@@ -239,15 +242,18 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
     # Skip tests with unsupported features.
     if "features" in testRec:
         unsupported = UNSUPPORTED_FEATURES.intersection(testRec["features"])
-        releaseOrBeta = RELEASE_OR_BETA.intersection(testRec["features"])
         if unsupported:
-            refTestSkip.append(
-              "%s is not supported" % ",".join(list(unsupported)))
-        elif releaseOrBeta:
-            refTestSkipIf.append(
-              ("release_or_beta",
-               "%s is not released yet" % ",".join(list(releaseOrBeta)))
-            )
+            refTestSkip.append("%s is not supported" % ",".join(list(unsupported)))
+        else:
+            releaseOrBeta = RELEASE_OR_BETA.intersection(testRec["features"])
+            if releaseOrBeta:
+                refTestSkipIf.append(("release_or_beta",
+                                      "%s is not released yet" % ",".join(list(releaseOrBeta))))
+
+            featureCheckNeeded = set(FEATURE_CHECK_NEEDED.keys()).intersection(testRec["features"])
+            if featureCheckNeeded:
+                refTestSkipIf.append(("||".join([FEATURE_CHECK_NEEDED[f] for f in featureCheckNeeded]),
+                                      "%s is not enabled unconditionally" % ",".join(list(featureCheckNeeded))))
 
     # Includes for every test file in a directory is collected in a single
     # shell.js file per directory level. This is done to avoid adding all
@@ -318,7 +324,8 @@ def process_test262(test262Dir, test262OutDir, strictTests):
     # Additional explicit includes inserted at well-chosen locations to reduce
     # code duplication in shell.js files.
     explicitIncludes = {}
-    explicitIncludes["intl402"] = ["testBuiltInObject.js"]
+    explicitIncludes[os.path.join("built-ins", "Atomics")] = ["testAtomics.js",
+        "testTypedArray.js"]
     explicitIncludes[os.path.join("built-ins", "DataView")] = ["byteConversionValues.js"]
     explicitIncludes[os.path.join("built-ins", "Promise")] = ["promiseHelper.js"]
     explicitIncludes[os.path.join("built-ins", "TypedArray")] = ["byteConversionValues.js",

@@ -4,23 +4,68 @@
 
 "use strict";
 
+// The maximum number of times we can loop before we find the optimal time interval in the
+// timeline graph.
+const OPTIMAL_TIME_INTERVAL_MAX_ITERS = 100;
+// Time graduations should be multiple of one of these number.
+const OPTIMAL_TIME_INTERVAL_MULTIPLES = [1, 2.5, 5];
+
 /**
- * Check the equality timing effects from given animations.
+ * Find the optimal interval between time graduations in the animation timeline
+ * graph based on a minimum time interval.
+ *
+ * @param {Number} minTimeInterval
+ *                 Minimum time in ms in one interval
+ * @return {Number} The optimal interval time in ms
+ */
+function findOptimalTimeInterval(minTimeInterval) {
+  if (!minTimeInterval) {
+    return 0;
+  }
+
+  let numIters = 0;
+  let multiplier = 1;
+  let interval;
+
+  while (true) {
+    for (let i = 0; i < OPTIMAL_TIME_INTERVAL_MULTIPLES.length; i++) {
+      interval = OPTIMAL_TIME_INTERVAL_MULTIPLES[i] * multiplier;
+
+      if (minTimeInterval <= interval) {
+        return interval;
+      }
+    }
+
+    if (++numIters > OPTIMAL_TIME_INTERVAL_MAX_ITERS) {
+      return interval;
+    }
+
+    multiplier *= 10;
+  }
+}
+
+/**
+ * Check the equality of the given animations.
  *
  * @param {Array} animations.
- * @param {Array} same to avobe.
- * @return {Boolean} true: same timing effects
+ * @param {Array} same to above.
+ * @return {Boolean} true: same animations
  */
-function isAllTimingEffectEqual(animationsA, animationsB) {
+function isAllAnimationEqual(animationsA, animationsB) {
   if (animationsA.length !== animationsB.length) {
     return false;
   }
 
   for (let i = 0; i < animationsA.length; i++) {
-    if (!isTimingEffectEqual(animationsA[i].state, animationsB[i].state)) {
+    const animationA = animationsA[i];
+    const animationB = animationsB[i];
+
+    if (animationA.actorID !== animationB.actorID ||
+        !isTimingEffectEqual(animationsA[i].state, animationsB[i].state)) {
       return false;
     }
   }
+
   return true;
 }
 
@@ -42,5 +87,6 @@ function isTimingEffectEqual(stateA, stateB) {
          stateA.iterationStart === stateB.iterationStart;
 }
 
-module.exports.isAllTimingEffectEqual = isAllTimingEffectEqual;
-module.exports.isTimingEffectEqual = isTimingEffectEqual;
+exports.findOptimalTimeInterval = findOptimalTimeInterval;
+exports.isAllAnimationEqual = isAllAnimationEqual;
+exports.isTimingEffectEqual = isTimingEffectEqual;

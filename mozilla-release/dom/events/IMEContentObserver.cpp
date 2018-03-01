@@ -942,7 +942,8 @@ IMEContentObserver::CharacterDataWillChange(nsIDocument* aDocument,
              "CharacterDataChanged() should've reset "
              "mPreCharacterDataChangeLength");
 
-  if (!NeedsTextChangeNotification()) {
+  if (!NeedsTextChangeNotification() ||
+      !nsContentUtils::IsInSameAnonymousTree(mRootContent, aContent)) {
     return;
   }
 
@@ -971,7 +972,8 @@ IMEContentObserver::CharacterDataChanged(nsIDocument* aDocument,
   NS_ASSERTION(aContent->IsNodeOfType(nsINode::eTEXT),
                "character data changed for non-text node");
 
-  if (!NeedsTextChangeNotification()) {
+  if (!NeedsTextChangeNotification() ||
+      !nsContentUtils::IsInSameAnonymousTree(mRootContent, aContent)) {
     return;
   }
 
@@ -1017,7 +1019,8 @@ IMEContentObserver::NotifyContentAdded(nsINode* aContainer,
                                        nsIContent* aFirstContent,
                                        nsIContent* aLastContent)
 {
-  if (!NeedsTextChangeNotification()) {
+  if (!NeedsTextChangeNotification() ||
+      !nsContentUtils::IsInSameAnonymousTree(mRootContent, aFirstContent)) {
     return;
   }
 
@@ -1135,7 +1138,8 @@ IMEContentObserver::ContentRemoved(nsIDocument* aDocument,
                                    nsIContent* aChild,
                                    nsIContent* aPreviousSibling)
 {
-  if (!NeedsTextChangeNotification()) {
+  if (!NeedsTextChangeNotification() ||
+      !nsContentUtils::IsInSameAnonymousTree(mRootContent, aChild)) {
     return;
   }
 
@@ -1257,23 +1261,6 @@ IMEContentObserver::ClearAddedNodesDuringDocumentChange()
   MOZ_LOG(sIMECOLog, LogLevel::Debug,
     ("0x%p IMEContentObserver::ClearAddedNodesDuringDocumentChange()"
      ", finished storing consecutive nodes", this));
-}
-
-// static
-nsIContent*
-IMEContentObserver::GetChildNode(nsINode* aParent, int32_t aOffset)
-{
-  if (!aParent->HasChildren() || aOffset < 0 ||
-      aOffset >= static_cast<int32_t>(aParent->Length())) {
-    return nullptr;
-  }
-  if (!aOffset) {
-    return aParent->GetFirstChild();
-  }
-  if (aOffset == static_cast<int32_t>(aParent->Length() - 1)) {
-    return aParent->GetLastChild();
-  }
-  return aParent->GetChildAt(aOffset);
 }
 
 bool

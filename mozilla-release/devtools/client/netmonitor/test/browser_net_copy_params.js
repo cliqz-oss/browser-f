@@ -16,7 +16,7 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 1, 6);
+  let wait = waitForNetworkEvents(monitor, 7);
   yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
     content.wrappedJSObject.performRequests();
   });
@@ -98,8 +98,8 @@ add_task(function* () {
     // since copyPostData API needs to read these state.
     yield waitUntil(() => {
       let { requests } = store.getState().requests;
-      let actIDs = Object.keys(requests.toJS());
-      let { formDataSections, requestPostData } = requests.get(actIDs[index]).toJS();
+      let actIDs = [...requests.keys()];
+      let { formDataSections, requestPostData } = requests.get(actIDs[index]);
       return formDataSections && requestPostData;
     });
     EventUtils.sendMouseEvent({ type: "mousedown" },

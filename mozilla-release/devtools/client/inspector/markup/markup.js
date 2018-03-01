@@ -520,7 +520,7 @@ MarkupView.prototype = {
     }
 
     let parent = target, container;
-    while (parent !== this.doc.body) {
+    while (parent) {
       if (parent.container) {
         container = parent.container;
         break;
@@ -867,9 +867,7 @@ MarkupView.prototype = {
    *         If set to true, focus the previous sibling, otherwise the next one.
    */
   deleteNode: function (node, moveBackward) {
-    if (node.isDocumentElement ||
-        node.nodeType == nodeConstants.DOCUMENT_TYPE_NODE ||
-        node.isAnonymous) {
+    if (!this.inspector.isDeletable(node)) {
       return;
     }
 

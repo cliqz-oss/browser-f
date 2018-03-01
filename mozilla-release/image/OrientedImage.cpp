@@ -173,6 +173,37 @@ OrientedImage::GetImageContainer(LayerManager* aManager, uint32_t aFlags)
   return nullptr;
 }
 
+NS_IMETHODIMP_(bool)
+OrientedImage::IsImageContainerAvailableAtSize(LayerManager* aManager,
+                                               const IntSize& aSize,
+                                               uint32_t aFlags)
+{
+  if (mOrientation.IsIdentity()) {
+    return InnerImage()->IsImageContainerAvailableAtSize(aManager, aSize, aFlags);
+  }
+  return false;
+}
+
+NS_IMETHODIMP_(already_AddRefed<ImageContainer>)
+OrientedImage::GetImageContainerAtSize(LayerManager* aManager,
+                                       const IntSize& aSize,
+                                       const Maybe<SVGImageContext>& aSVGContext,
+                                       uint32_t aFlags)
+{
+  // XXX(seth): We currently don't have a way of orienting the result of
+  // GetImageContainer. We work around this by always returning null, but if it
+  // ever turns out that OrientedImage is widely used on codepaths that can
+  // actually benefit from GetImageContainer, it would be a good idea to fix
+  // that method for performance reasons.
+
+  if (mOrientation.IsIdentity()) {
+    return InnerImage()->GetImageContainerAtSize(aManager, aSize,
+                                                 aSVGContext, aFlags);
+  }
+
+  return nullptr;
+}
+
 struct MatrixBuilder
 {
   explicit MatrixBuilder(bool aInvert) : mInvert(aInvert) { }
@@ -272,7 +303,7 @@ OrientedImage::OrientationMatrix(const nsIntSize& aSize,
   return builder.Build();
 }
 
-NS_IMETHODIMP_(DrawResult)
+NS_IMETHODIMP_(ImgDrawResult)
 OrientedImage::Draw(gfxContext* aContext,
                     const nsIntSize& aSize,
                     const ImageRegion& aRegion,
@@ -364,10 +395,10 @@ OrientedImage::GetImageSpaceInvalidationRect(const nsIntRect& aRect)
 
   // Transform the invalidation rect into the correct orientation.
   gfxMatrix matrix(OrientationMatrix(innerSize));
-  gfxRect invalidRect(matrix.TransformBounds(gfxRect(rect.x, rect.y,
+  gfxRect invalidRect(matrix.TransformBounds(gfxRect(rect.X(), rect.Y(),
                                                      rect.Width(), rect.Height())));
 
-  return IntRect::RoundOut(invalidRect.x, invalidRect.y,
+  return IntRect::RoundOut(invalidRect.X(), invalidRect.Y(),
                            invalidRect.Width(), invalidRect.Height());
 }
 

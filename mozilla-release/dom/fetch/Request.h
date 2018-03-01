@@ -35,9 +35,6 @@ public:
   Request(nsIGlobalObject* aOwner, InternalRequest* aRequest,
           AbortSignal* aSignal);
 
-  static bool
-  RequestContextEnabled(JSContext* aCx, JSObject* aObj);
-
   JSObject*
   WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
   {
@@ -86,6 +83,12 @@ public:
   GetIntegrity(nsAString& aIntegrity) const
   {
     aIntegrity = mRequest->GetIntegrity();
+  }
+
+  bool
+  MozErrors() const
+  {
+    return mRequest->MozErrors();
   }
 
   RequestContext

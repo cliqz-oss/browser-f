@@ -21,3 +21,14 @@
   margin: 1px;
   margin-inline-end: 5px;
 }
+
+#permissionsDisableDescription {
+  margin-inline-start: 32px;
+  color: #737373;
+  line-height: 110%;
+}
+
+#permissionsDisableCheckbox {
+  margin-inline-start: 4px;
+  padding-top: 10px;
+}

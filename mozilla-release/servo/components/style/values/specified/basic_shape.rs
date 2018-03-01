@@ -10,8 +10,8 @@
 use cssparser::Parser;
 use parser::{Parse, ParserContext};
 use std::borrow::Cow;
-use std::fmt;
-use style_traits::{ToCss, ParseError, StyleParseErrorKind};
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 use values::computed::Percentage;
 use values::generics::basic_shape::{Circle as GenericCircle};
 use values::generics::basic_shape::{ClippingShape as GenericClippingShape, Ellipse as GenericEllipse};
@@ -22,6 +22,7 @@ use values::generics::basic_shape::{Polygon as GenericPolygon, ShapeRadius as Ge
 use values::generics::rect::Rect;
 use values::specified::LengthOrPercentage;
 use values::specified::border::BorderRadius;
+use values::specified::image::Image;
 use values::specified::position::{HorizontalPosition, Position, PositionComponent, Side, VerticalPosition};
 use values::specified::url::SpecifiedUrl;
 
@@ -29,7 +30,7 @@ use values::specified::url::SpecifiedUrl;
 pub type ClippingShape = GenericClippingShape<BasicShape, SpecifiedUrl>;
 
 /// A specified float area shape.
-pub type FloatAreaShape = GenericFloatAreaShape<BasicShape, SpecifiedUrl>;
+pub type FloatAreaShape = GenericFloatAreaShape<BasicShape, Image>;
 
 /// A specified basic shape.
 pub type BasicShape = GenericBasicShape<HorizontalPosition, VerticalPosition, LengthOrPercentage>;
@@ -49,14 +50,18 @@ pub type ShapeRadius = GenericShapeRadius<LengthOrPercentage>;
 /// The specified value of `Polygon`
 pub type Polygon = GenericPolygon<LengthOrPercentage>;
 
-impl<ReferenceBox: Parse> Parse for ShapeSource<BasicShape, ReferenceBox, SpecifiedUrl> {
+impl<ReferenceBox, ImageOrUrl> Parse for ShapeSource<BasicShape, ReferenceBox, ImageOrUrl>
+where
+    ReferenceBox: Parse,
+    ImageOrUrl: Parse,
+{
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
         if input.try(|i| i.expect_ident_matching("none")).is_ok() {
             return Ok(ShapeSource::None)
         }
 
-        if let Ok(url) = input.try(|i| SpecifiedUrl::parse(context, i)) {
-            return Ok(ShapeSource::Url(url))
+        if let Ok(image_or_url) = input.try(|i| ImageOrUrl::parse(context, i)) {
+            return Ok(ShapeSource::ImageOrUrl(image_or_url))
         }
 
         fn parse_component<U: Parse>(context: &ParserContext, input: &mut Parser,
@@ -166,7 +171,10 @@ impl Circle {
 }
 
 impl ToCss for Circle {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("circle(")?;
         if GenericShapeRadius::ClosestSide != self.radius {
             self.radius.to_css(dest)?;
@@ -208,7 +216,10 @@ impl Ellipse {
 }
 
 impl ToCss for Ellipse {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("ellipse(")?;
         if self.semiaxis_x != ShapeRadius::default() || self.semiaxis_y != ShapeRadius::default() {
             self.semiaxis_x.to_css(dest)?;
@@ -243,8 +254,12 @@ impl Parse for ShapeRadius {
 /// are converted to percentages where possible. Only the two or four
 /// value forms are used. In case of two keyword-percentage pairs,
 /// the keywords are folded into the percentages
-fn serialize_basicshape_position<W>(position: &Position, dest: &mut W) -> fmt::Result
-    where W: fmt::Write
+fn serialize_basicshape_position<W>(
+    position: &Position,
+    dest: &mut CssWriter<W>,
+) -> fmt::Result
+where
+    W: Write,
 {
     fn to_keyword_and_lop<S>(component: &PositionComponent<S>) -> (S, Cow<LengthOrPercentage>)
         where S: Copy + Side
@@ -284,8 +299,11 @@ fn serialize_basicshape_position<W>(position: &Position, dest: &mut W) -> fmt::R
         }
     }
 
-    fn write_pair<A, B, W>(a: &A, b: &B, dest: &mut W) -> fmt::Result
-        where A: ToCss, B: ToCss, W: fmt::Write
+    fn write_pair<A, B, W>(a: &A, b: &B, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        A: ToCss,
+        B: ToCss,
+        W: Write,
     {
         a.to_css(dest)?;
         dest.write_str(" ")?;

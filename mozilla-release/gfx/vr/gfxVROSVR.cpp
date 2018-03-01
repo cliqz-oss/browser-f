@@ -354,6 +354,7 @@ VRDisplayOSVR::SubmitFrame(MacIOSurface* aMacIOSurface,
                            const gfx::Rect& aRightEyeRect)
 {
   // XXX Add code to submit frame
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
   return false;
 }
 
@@ -365,6 +366,7 @@ VRDisplayOSVR::SubmitFrame(const mozilla::layers::EGLImageDescriptor*,
                            const gfx::Rect& aRightEyeRect)
 {
   // XXX Add code to submit frame
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
   return false;
 }
 
@@ -550,23 +552,49 @@ VRSystemManagerOSVR::Shutdown()
   osvr_ClientShutdown(m_ctx);
 }
 
-bool
-VRSystemManagerOSVR::GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult)
+void
+VRSystemManagerOSVR::NotifyVSync()
+{
+  VRSystemManager::NotifyVSync();
+
+  // TODO - Check for device disconnection or other OSVR events
+}
+
+void
+VRSystemManagerOSVR::Enumerate()
 {
   // make sure context, interface and display are initialized
   CheckOSVRStatus();
 
   if (!Init()) {
-    return false;
+    return;
   }
 
   mHMDInfo = new VRDisplayOSVR(&m_ctx, &m_iface, &m_display);
+}
 
+bool
+VRSystemManagerOSVR::ShouldInhibitEnumeration()
+{
+  if (VRSystemManager::ShouldInhibitEnumeration()) {
+    return true;
+  }
   if (mHMDInfo) {
-    aHMDResult.AppendElement(mHMDInfo);
+    // When we find an a VR device, don't
+    // allow any further enumeration as it
+    // may get picked up redundantly by other
+    // API's.
     return true;
   }
   return false;
+}
+
+void
+VRSystemManagerOSVR::GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult)
+{
+  if (mHMDInfo) {
+    aHMDResult.AppendElement(mHMDInfo);
+  }
 }
 
 bool
@@ -590,7 +618,7 @@ VRSystemManagerOSVR::VibrateHaptic(uint32_t aControllerIdx,
                                    uint32_t aHapticIndex,
                                    double aIntensity,
                                    double aDuration,
-                                   uint32_t aPromiseID)
+                                   const VRManagerPromise& aPromise)
 {
 }
 

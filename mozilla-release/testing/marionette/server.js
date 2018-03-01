@@ -18,6 +18,7 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
 Cu.import("chrome://marionette/content/assert.js");
 const {GeckoDriver} = Cu.import("chrome://marionette/content/driver.js", {});
+const {WebElement} = Cu.import("chrome://marionette/content/element.js", {});
 const {
   error,
   UnknownCommandError,
@@ -27,8 +28,7 @@ const {
   Message,
   Response,
 } = Cu.import("chrome://marionette/content/message.js", {});
-const {DebuggerTransport} =
-    Cu.import("chrome://marionette/content/transport.js", {});
+const {DebuggerTransport} = Cu.import("chrome://marionette/content/transport.js", {});
 
 XPCOMUtils.defineLazyServiceGetter(
     this, "env", "@mozilla.org/process/environment;1", "nsIEnvironment");
@@ -53,7 +53,7 @@ const PREF_RECOMMENDED = "marionette.prefs.recommended";
 const NOTIFY_RUNNING = "remote-active";
 
 // Marionette sets preferences recommended for automation when it starts,
-// unless |marionette.prefs.recommended| has been set to false.
+// unless marionette.prefs.recommended has been set to false.
 // Where noted, some prefs should also be set in the profile passed to
 // Marionette to prevent them from affecting startup, since some of these
 // are checked before Marionette initialises.
@@ -175,10 +175,6 @@ const RECOMMENDED_PREFS = new Map([
   // Do not show datareporting policy notifications which can
   // interfere with tests
   [
-    "datareporting.healthreport.about.reportUrl",
-    "http://%(server)s/dummy/abouthealthreport/",
-  ],
-  [
     "datareporting.healthreport.documentServerURI",
     "http://%(server)s/dummy/healthreport/",
   ],
@@ -295,8 +291,8 @@ const RECOMMENDED_PREFS = new Map([
  * Bootstraps Marionette and handles incoming client connections.
  *
  * Starting the Marionette server will open a TCP socket sporting the
- * debugger transport interface on the provided |port|.  For every new
- * connection, a |server.TCPConnection| is created.
+ * debugger transport interface on the provided <var>port</var>.
+ * For every new connection, a {@link server.TCPConnection} is created.
  */
 server.TCPListener = class {
   /**
@@ -345,11 +341,11 @@ server.TCPListener = class {
   }
 
   /**
-   * Bind this listener to |port| and start accepting incoming socket
-   * connections on |onSocketAccepted|.
+   * Bind this listener to {@link #port} and start accepting incoming
+   * socket connections on {@link #onSocketAccepted}.
    *
    * The marionette.port preference will be populated with the value
-   * of |this.port|.
+   * of {@link #port}.
    */
   start() {
     if (this.alive) {
@@ -389,11 +385,10 @@ server.TCPListener = class {
     }
     this.alteredPrefs.clear();
 
-    Services.obs.notifyObservers(this, NOTIFY_RUNNING);
-
     // Shutdown server socket, and no longer listen for new connections
     this.acceptConnections = false;
 
+    Services.obs.notifyObservers(this, NOTIFY_RUNNING);
     this.alive = false;
   }
 
@@ -430,7 +425,7 @@ server.TCPListener = class {
  * @param {DebuggerTransport} transport
  *     Debugger transport connection to the client.
  * @param {function(): GeckoDriver} driverFactory
- *     Factory function that produces a |GeckoDriver|.
+ *     Factory function that produces a {@link GeckoDriver}.
  */
 server.TCPConnection = class {
   constructor(connID, transport, driverFactory) {
@@ -448,6 +443,7 @@ server.TCPConnection = class {
     this.lastID = 0;
 
     this.driver = driverFactory();
+    this.driver.init();
 
     // lookup of commands sent by server to client by message ID
     this.commands_ = new Map();
@@ -459,6 +455,7 @@ server.TCPConnection = class {
    */
   onClosed() {
     this.driver.deleteSession();
+    this.driver.uninit();
     if (this.onclose) {
       this.onclose(this);
     }
@@ -560,7 +557,7 @@ server.TCPConnection = class {
     let rv = await fn.bind(this.driver)(cmd, resp);
 
     if (typeof rv != "undefined") {
-      if (typeof rv != "object") {
+      if (rv instanceof WebElement || typeof rv != "object") {
         resp.body = {value: rv};
       } else {
         resp.body = rv;
@@ -569,13 +566,13 @@ server.TCPConnection = class {
   }
 
   /**
-   * Fail-safe creation of a new instance of |message.Response|.
+   * Fail-safe creation of a new instance of {@link Response}.
    *
    * @param {number} msgID
    *     Message ID to respond to.  If it is not a number, -1 is used.
    *
-   * @return {message.Response}
-   *     Response to the message with |msgID|.
+   * @return {Response}
+   *     Response to the message with <var>msgID</var>.
    */
   createResponse(msgID) {
     if (typeof msgID != "number") {

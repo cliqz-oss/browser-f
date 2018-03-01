@@ -1,3 +1,6 @@
+// XXX Bug 1425371 - enable no-redeclare and fix the issues with the tests.
+/* eslint-disable no-redeclare */
+
 // //////////////////////////////////////////////////////////////////////////////
 // Constants
 
@@ -336,12 +339,10 @@ function eventQueue(aEventType) {
 
                 if (checker.unexpected) {
                   ok(true, msg + `There's no unexpected '${typeStr}' event.`);
+                } else if (checker.todo) {
+                  todo(false, `Todo event '${typeStr}' was caught`);
                 } else {
-                  if (checker.todo) {
-                    todo(false, `Todo event '${typeStr}' was caught`);
-                  } else {
-                    ok(true, `${msg} Event '${typeStr}' was handled.`);
-                  }
+                  ok(true, `${msg} Event '${typeStr}' was handled.`);
                 }
               }
             }
@@ -746,13 +747,13 @@ function eventQueue(aEventType) {
         var eventType = eventSeq[idx].type;
         if (typeof eventType == "string") {
           // DOM event
-          var target = eventSeq[idx].target;
+          var target = eventQueue.getEventTarget(eventSeq[idx]);
           if (!target) {
             ok(false, "no target for DOM event!");
             return false;
           }
           var phase = eventQueue.getEventPhase(eventSeq[idx]);
-          target.ownerDocument.addEventListener(eventType, this, phase);
+          target.addEventListener(eventType, this, phase);
 
         } else {
           // A11y event
@@ -774,9 +775,9 @@ function eventQueue(aEventType) {
         var eventType = eventSeq[idx].type;
         if (typeof eventType == "string") {
           // DOM event
-          var target = eventSeq[idx].target;
+          var target = eventQueue.getEventTarget(eventSeq[idx]);
           var phase = eventQueue.getEventPhase(eventSeq[idx]);
-          target.ownerDocument.removeEventListener(eventType, this, phase);
+          target.removeEventListener(eventType, this, phase);
 
         } else {
           // A11y event
@@ -851,6 +852,19 @@ eventQueue.getEventTargetDescr =
 
 eventQueue.getEventPhase = function eventQueue_getEventPhase(aChecker) {
   return ("phase" in aChecker) ? aChecker.phase : true;
+};
+
+eventQueue.getEventTarget = function eventQueue_getEventTarget(aChecker) {
+  if ("eventTarget" in aChecker) {
+    switch (aChecker.eventTarget) {
+      case "element":
+        return aChecker.target;
+      case "document":
+      default:
+        return aChecker.target.ownerDocument;
+    }
+  }
+  return aChecker.target.ownerDocument;
 };
 
 eventQueue.compareEventTypes =
@@ -1988,6 +2002,7 @@ function listenA11yEvents(aStartToListen) {
   } else {
     // Remove observer when there are no more applicants only.
     // '< 0' case should not happen, but just in case: removeObserver() will throw.
+    // eslint-disable-next-line no-lonely-if
     if (--gA11yEventApplicantsCount <= 0)
       Services.obs.removeObserver(gA11yEventObserver, "accessible-event");
   }
@@ -2107,7 +2122,7 @@ var gLogger =
    */
   hasFeature: function logger_hasFeature(aFeature) {
     var startIdx = gA11yEventDumpFeature.indexOf(aFeature);
-    if (startIdx == - 1)
+    if (startIdx == -1)
       return false;
 
     var endIdx = startIdx + aFeature.length;

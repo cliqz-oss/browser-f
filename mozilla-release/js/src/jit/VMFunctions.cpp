@@ -121,6 +121,35 @@ InvokeFunctionShuffleNewTarget(JSContext* cx, HandleObject obj, uint32_t numActu
     return InvokeFunction(cx, obj, true, false, numActualArgs, argv, rval);
 }
 
+bool
+InvokeFromInterpreterStub(JSContext* cx, InterpreterStubExitFrameLayout* frame)
+{
+    JitFrameLayout* jsFrame = frame->jsFrame();
+    CalleeToken token = jsFrame->calleeToken();
+
+    Value* argv = jsFrame->argv();
+    uint32_t numActualArgs = jsFrame->numActualArgs();
+    bool constructing = CalleeTokenIsConstructing(token);
+    RootedFunction fun(cx, CalleeTokenToFunction(token));
+
+    // Ensure new.target immediately follows the actual arguments (the arguments
+    // rectifier added padding). See also InvokeFunctionShuffleNewTarget.
+    if (constructing && numActualArgs < fun->nargs())
+        argv[1 + numActualArgs] = argv[1 + fun->nargs()];
+
+    RootedValue rval(cx);
+    if (!InvokeFunction(cx, fun, constructing,
+                        /* ignoresReturnValue = */ false,
+                        numActualArgs, argv, &rval))
+    {
+        return false;
+    }
+
+    // Overwrite |this| with the return value.
+    argv[0] = rval;
+    return true;
+}
+
 #ifdef JS_SIMULATOR
 static bool
 CheckSimulatorRecursionLimitWithExtra(JSContext* cx, uint32_t extra)
@@ -362,7 +391,7 @@ ArrayPushDense(JSContext* cx, HandleArrayObject arr, HandleValue v, uint32_t* le
     // possible the setOrExtendDenseElements call already invalidated the
     // IonScript. JSJitFrameIter::ionScript works when the script is invalidated
     // so we use that instead.
-    JSJitFrameIter frame(cx);
+    JSJitFrameIter frame(cx->activation()->asJit());
     MOZ_ASSERT(frame.type() == JitFrame_Exit);
     ++frame;
     IonScript* ionScript = frame.ionScript();
@@ -843,7 +872,7 @@ DebugEpilogue(JSContext* cx, BaselineFrame* frame, jsbytecode* pc, bool ok)
         // Pop this frame by updating packedExitFP, so that the exception
         // handling code will start at the previous frame.
         JitFrameLayout* prefix = frame->framePrefix();
-        EnsureBareExitFrame(cx, prefix);
+        EnsureBareExitFrame(cx->activation()->asJit(), prefix);
         return false;
     }
 
@@ -1413,14 +1442,14 @@ ObjectIsConstructor(JSObject* obj)
 }
 
 void
-MarkValueFromIon(JSRuntime* rt, Value* vp)
+MarkValueFromJit(JSRuntime* rt, Value* vp)
 {
     AutoUnsafeCallWithABI unsafe;
     TraceManuallyBarrieredEdge(&rt->gc.marker, vp, "write barrier");
 }
 
 void
-MarkStringFromIon(JSRuntime* rt, JSString** stringp)
+MarkStringFromJit(JSRuntime* rt, JSString** stringp)
 {
     AutoUnsafeCallWithABI unsafe;
     MOZ_ASSERT(*stringp);
@@ -1428,7 +1457,7 @@ MarkStringFromIon(JSRuntime* rt, JSString** stringp)
 }
 
 void
-MarkObjectFromIon(JSRuntime* rt, JSObject** objp)
+MarkObjectFromJit(JSRuntime* rt, JSObject** objp)
 {
     AutoUnsafeCallWithABI unsafe;
     MOZ_ASSERT(*objp);
@@ -1436,14 +1465,14 @@ MarkObjectFromIon(JSRuntime* rt, JSObject** objp)
 }
 
 void
-MarkShapeFromIon(JSRuntime* rt, Shape** shapep)
+MarkShapeFromJit(JSRuntime* rt, Shape** shapep)
 {
     AutoUnsafeCallWithABI unsafe;
     TraceManuallyBarrieredEdge(&rt->gc.marker, shapep, "write barrier");
 }
 
 void
-MarkObjectGroupFromIon(JSRuntime* rt, ObjectGroup** groupp)
+MarkObjectGroupFromJit(JSRuntime* rt, ObjectGroup** groupp)
 {
     AutoUnsafeCallWithABI unsafe;
     TraceManuallyBarrieredEdge(&rt->gc.marker, groupp, "write barrier");
@@ -1491,9 +1520,9 @@ BaselineThrowUninitializedThis(JSContext* cx, BaselineFrame* frame)
 }
 
 bool
-BaselineThrowInitializedThis(JSContext* cx, BaselineFrame* frame)
+BaselineThrowInitializedThis(JSContext* cx)
 {
-    return ThrowInitializedThis(cx, frame);
+    return ThrowInitializedThis(cx);
 }
 
 
@@ -1813,6 +1842,45 @@ HasNativeDataProperty<true>(JSContext* cx, JSObject* obj, Value* vp);
 
 template bool
 HasNativeDataProperty<false>(JSContext* cx, JSObject* obj, Value* vp);
+
+
+bool
+HasNativeElement(JSContext* cx, NativeObject* obj, int32_t index, Value* vp)
+{
+    AutoUnsafeCallWithABI unsafe;
+
+    MOZ_ASSERT(obj->getClass()->isNative());
+    MOZ_ASSERT(!obj->getOpsHasProperty());
+    MOZ_ASSERT(!obj->getOpsLookupProperty());
+    MOZ_ASSERT(!obj->getOpsGetOwnPropertyDescriptor());
+
+    if (MOZ_UNLIKELY(index < 0))
+        return false;
+
+    if (obj->containsDenseElement(index)) {
+        vp[0].setBoolean(true);
+        return true;
+    }
+
+    jsid id = INT_TO_JSID(index);
+    if (obj->lastProperty()->search(cx, id)) {
+        vp[0].setBoolean(true);
+        return true;
+    }
+
+    // Fail if there's a resolve hook, unless the mayResolve hook tells
+    // us the resolve hook won't define a property with this id.
+    if (MOZ_UNLIKELY(ClassMayResolveId(cx->names(), obj->getClass(), id, obj)))
+        return false;
+    // TypedArrayObject are also native and contain indexed properties.
+    if (MOZ_UNLIKELY(obj->is<TypedArrayObject>())) {
+        vp[0].setBoolean(uint32_t(index) < obj->as<TypedArrayObject>().length());
+        return true;
+    }
+
+    vp[0].setBoolean(false);
+    return true;
+}
 
 JSString*
 TypeOfObject(JSObject* obj, JSRuntime* rt)

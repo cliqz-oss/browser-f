@@ -37,6 +37,9 @@ namespace mozilla {
 class ErrorResult;
 class HTMLEditor;
 struct AutoPrepareFocusRange;
+namespace dom {
+class DocGroup;
+} // namespace dom
 } // namespace mozilla
 
 struct RangeData
@@ -82,6 +85,7 @@ public:
   void EndBatchChanges(int16_t aReason = nsISelectionListener::NO_REASON);
 
   nsIDocument* GetParentObject() const;
+  DocGroup* GetDocGroup() const;
 
   // utility methods for scrolling the selection into view
   nsPresContext* GetPresContext() const;
@@ -176,8 +180,8 @@ public:
   NS_IMETHOD   Repaint(nsPresContext* aPresContext);
 
   // Note: StartAutoScrollTimer might destroy arbitrary frames etc.
-  nsresult     StartAutoScrollTimer(nsIFrame *aFrame,
-                                    nsPoint& aPoint,
+  nsresult     StartAutoScrollTimer(nsIFrame* aFrame,
+                                    const nsPoint& aPoint,
                                     uint32_t aDelay);
 
   nsresult     StopAutoScrollTimer();
@@ -185,13 +189,40 @@ public:
   JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL methods
-  nsINode*     GetAnchorNode();
-  uint32_t     AnchorOffset();
-  nsINode*     GetFocusNode();
-  uint32_t     FocusOffset();
+  nsINode* GetAnchorNode()
+  {
+    const RangeBoundary& anchor = AnchorRef();
+    return anchor.IsSet() ? anchor.Container() : nullptr;
+  }
+  uint32_t AnchorOffset()
+  {
+    const RangeBoundary& anchor = AnchorRef();
+    return anchor.IsSet() ? anchor.Offset() : 0;
+  }
+  nsINode* GetFocusNode()
+  {
+    const RangeBoundary& focus = FocusRef();
+    return focus.IsSet() ? focus.Container() : nullptr;
+  }
+  uint32_t FocusOffset()
+  {
+    const RangeBoundary& focus = FocusRef();
+    return focus.IsSet() ? focus.Offset() : 0;
+  }
 
-  nsIContent*  GetChildAtAnchorOffset();
-  nsIContent*  GetChildAtFocusOffset();
+  nsIContent* GetChildAtAnchorOffset()
+  {
+    const RangeBoundary& anchor = AnchorRef();
+    return anchor.IsSet() ? anchor.GetChildAtOffset() : nullptr;
+  }
+  nsIContent* GetChildAtFocusOffset()
+  {
+    const RangeBoundary& focus = FocusRef();
+    return focus.IsSet() ? focus.GetChildAtOffset() : nullptr;
+  }
+
+  const RangeBoundary& AnchorRef();
+  const RangeBoundary& FocusRef();
 
   /*
    * IsCollapsed -- is the whole selection just one point, or unset?
@@ -334,7 +365,7 @@ private:
   friend class ::nsAutoScrollTimer;
 
   // Note: DoAutoScroll might destroy arbitrary frames etc.
-  nsresult DoAutoScroll(nsIFrame *aFrame, nsPoint& aPoint);
+  nsresult DoAutoScroll(nsIFrame* aFrame, nsPoint aPoint);
 
   // We are not allowed to be in nodes whose root is not our document
   bool HasSameRoot(nsINode& aNode);

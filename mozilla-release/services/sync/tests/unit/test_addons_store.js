@@ -9,7 +9,6 @@ Cu.import("resource://services-sync/addonutils.js");
 Cu.import("resource://services-sync/engines/addons.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 Cu.import("resource://gre/modules/FileUtils.jsm");
 
 const HTTP_PORT = 8888;
@@ -104,11 +103,6 @@ function checkReconcilerUpToDate(addon) {
 }
 
 add_task(async function setup() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Engine.Addons").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.Tracker.Addons").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.AddonsRepository").level = Log.Level.Trace;
-
   await Service.engineManager.register(AddonsEngine);
   engine     = Service.engineManager.get("addons");
   tracker    = engine._tracker;
@@ -129,35 +123,35 @@ add_task(async function test_remove() {
   let record = createRecordForThisApp(addon.syncGUID, addon.id, true, true);
 
   let failed = await store.applyIncomingBatch([record]);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
 
   let newAddon = getAddonFromAddonManagerByID(addon.id);
-  do_check_eq(null, newAddon);
+  Assert.equal(null, newAddon);
 });
 
 add_task(async function test_apply_enabled() {
   _("Ensures that changes to the userEnabled flag apply.");
 
   let addon = installAddon("test_bootstrap1_1");
-  do_check_true(addon.isActive);
-  do_check_false(addon.userDisabled);
+  Assert.ok(addon.isActive);
+  Assert.ok(!addon.userDisabled);
 
   _("Ensure application of a disable record works as expected.");
   let records = [];
   records.push(createRecordForThisApp(addon.syncGUID, addon.id, false, false));
   let failed = await store.applyIncomingBatch(records);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
   addon = getAddonFromAddonManagerByID(addon.id);
-  do_check_true(addon.userDisabled);
+  Assert.ok(addon.userDisabled);
   checkReconcilerUpToDate(addon);
   records = [];
 
   _("Ensure enable record works as expected.");
   records.push(createRecordForThisApp(addon.syncGUID, addon.id, true, false));
   failed = await store.applyIncomingBatch(records);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
   addon = getAddonFromAddonManagerByID(addon.id);
-  do_check_false(addon.userDisabled);
+  Assert.ok(!addon.userDisabled);
   checkReconcilerUpToDate(addon);
   records = [];
 
@@ -165,9 +159,9 @@ add_task(async function test_apply_enabled() {
   records.push(createRecordForThisApp(addon.syncGUID, addon.id, false, false));
   Svc.Prefs.set("addons.ignoreUserEnabledChanges", true);
   failed = await store.applyIncomingBatch(records);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
   addon = getAddonFromAddonManagerByID(addon.id);
-  do_check_false(addon.userDisabled);
+  Assert.ok(!addon.userDisabled);
   records = [];
 
   uninstallAddon(addon);
@@ -178,9 +172,9 @@ add_task(async function test_apply_enabled_appDisabled() {
   _("Ensures that changes to the userEnabled flag apply when the addon is appDisabled.");
 
   let addon = installAddon("test_install3"); // this addon is appDisabled by default.
-  do_check_true(addon.appDisabled);
-  do_check_false(addon.isActive);
-  do_check_false(addon.userDisabled);
+  Assert.ok(addon.appDisabled);
+  Assert.ok(!addon.isActive);
+  Assert.ok(!addon.userDisabled);
 
   _("Ensure application of a disable record works as expected.");
   store.reconciler.pruneChangesBeforeDate(Date.now() + 10);
@@ -188,18 +182,18 @@ add_task(async function test_apply_enabled_appDisabled() {
   let records = [];
   records.push(createRecordForThisApp(addon.syncGUID, addon.id, false, false));
   let failed = await store.applyIncomingBatch(records);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
   addon = getAddonFromAddonManagerByID(addon.id);
-  do_check_true(addon.userDisabled);
+  Assert.ok(addon.userDisabled);
   checkReconcilerUpToDate(addon);
   records = [];
 
   _("Ensure enable record works as expected.");
   records.push(createRecordForThisApp(addon.syncGUID, addon.id, true, false));
   failed = await store.applyIncomingBatch(records);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
   addon = getAddonFromAddonManagerByID(addon.id);
-  do_check_false(addon.userDisabled);
+  Assert.ok(!addon.userDisabled);
   checkReconcilerUpToDate(addon);
   records = [];
 
@@ -211,16 +205,16 @@ add_task(async function test_ignore_different_appid() {
 
   // We test by creating a record that should result in an update.
   let addon = installAddon("test_bootstrap1_1");
-  do_check_false(addon.userDisabled);
+  Assert.ok(!addon.userDisabled);
 
   let record = createRecordForThisApp(addon.syncGUID, addon.id, false, false);
   record.applicationID = "FAKE_ID";
 
   let failed = await store.applyIncomingBatch([record]);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
 
   let newAddon = getAddonFromAddonManagerByID(addon.id);
-  do_check_false(newAddon.userDisabled);
+  Assert.ok(!newAddon.userDisabled);
 
   uninstallAddon(addon);
 });
@@ -234,10 +228,10 @@ add_task(async function test_ignore_unknown_source() {
   record.source = "DUMMY_SOURCE";
 
   let failed = await store.applyIncomingBatch([record]);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
 
   let newAddon = getAddonFromAddonManagerByID(addon.id);
-  do_check_false(newAddon.userDisabled);
+  Assert.ok(!newAddon.userDisabled);
 
   uninstallAddon(addon);
 });
@@ -250,10 +244,10 @@ add_task(async function test_apply_uninstall() {
   let records = [];
   records.push(createRecordForThisApp(addon.syncGUID, addon.id, true, true));
   let failed = await store.applyIncomingBatch(records);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
 
   addon = getAddonFromAddonManagerByID(addon.id);
-  do_check_eq(null, addon);
+  Assert.equal(null, addon);
 });
 
 add_test(function test_addon_syncability() {
@@ -262,10 +256,10 @@ add_test(function test_addon_syncability() {
   Svc.Prefs.set("addons.trustedSourceHostnames",
                 "addons.mozilla.org,other.example.com");
 
-  do_check_false(store.isAddonSyncable(null));
+  Assert.ok(!store.isAddonSyncable(null));
 
   let addon = installAddon("test_bootstrap1_1");
-  do_check_true(store.isAddonSyncable(addon));
+  Assert.ok(store.isAddonSyncable(addon));
 
   let dummy = {};
   const KEYS = ["id", "syncGUID", "type", "scope", "foreignInstall", "isSyncable"];
@@ -273,33 +267,27 @@ add_test(function test_addon_syncability() {
     dummy[k] = addon[k];
   }
 
-  do_check_true(store.isAddonSyncable(dummy));
+  Assert.ok(store.isAddonSyncable(dummy));
 
   dummy.type = "UNSUPPORTED";
-  do_check_false(store.isAddonSyncable(dummy));
+  Assert.ok(!store.isAddonSyncable(dummy));
   dummy.type = addon.type;
 
   dummy.scope = 0;
-  do_check_false(store.isAddonSyncable(dummy));
+  Assert.ok(!store.isAddonSyncable(dummy));
   dummy.scope = addon.scope;
 
   dummy.isSyncable = false;
-  do_check_false(store.isAddonSyncable(dummy));
+  Assert.ok(!store.isAddonSyncable(dummy));
   dummy.isSyncable = addon.isSyncable;
 
   dummy.foreignInstall = true;
-  do_check_false(store.isAddonSyncable(dummy));
+  Assert.ok(!store.isAddonSyncable(dummy));
   dummy.foreignInstall = false;
 
   uninstallAddon(addon);
 
-  do_check_false(store.isSourceURITrusted(null));
-
-  function createURI(s) {
-    let service = Components.classes["@mozilla.org/network/io-service;1"]
-                  .getService(Components.interfaces.nsIIOService);
-    return service.newURI(s);
-  }
+  Assert.ok(!store.isSourceURITrusted(null));
 
   let trusted = [
     "https://addons.mozilla.org/foo",
@@ -313,20 +301,20 @@ add_test(function test_addon_syncability() {
   ];
 
   for (let uri of trusted) {
-    do_check_true(store.isSourceURITrusted(createURI(uri)));
+    Assert.ok(store.isSourceURITrusted(Services.io.newURI(uri)));
   }
 
   for (let uri of untrusted) {
-    do_check_false(store.isSourceURITrusted(createURI(uri)));
+    Assert.ok(!store.isSourceURITrusted(Services.io.newURI(uri)));
   }
 
   Svc.Prefs.set("addons.trustedSourceHostnames", "");
   for (let uri of trusted) {
-    do_check_false(store.isSourceURITrusted(createURI(uri)));
+    Assert.ok(!store.isSourceURITrusted(Services.io.newURI(uri)));
   }
 
   Svc.Prefs.set("addons.trustedSourceHostnames", "addons.mozilla.org");
-  do_check_true(store.isSourceURITrusted(createURI("https://addons.mozilla.org/foo")));
+  Assert.ok(store.isSourceURITrusted(Services.io.newURI("https://addons.mozilla.org/foo")));
 
   Svc.Prefs.reset("addons.trustedSourceHostnames");
 
@@ -341,7 +329,7 @@ add_test(function test_ignore_hotfixes() {
   let extensionPrefs = new Preferences("extensions.");
 
   let addon = installAddon("test_bootstrap1_1");
-  do_check_true(store.isAddonSyncable(addon));
+  Assert.ok(store.isAddonSyncable(addon));
 
   let dummy = {};
   const KEYS = ["id", "syncGUID", "type", "scope", "foreignInstall", "isSyncable"];
@@ -350,20 +338,18 @@ add_test(function test_ignore_hotfixes() {
   }
 
   // Basic sanity check.
-  do_check_true(store.isAddonSyncable(dummy));
+  Assert.ok(store.isAddonSyncable(dummy));
 
   extensionPrefs.set("hotfix.id", dummy.id);
-  do_check_false(store.isAddonSyncable(dummy));
+  Assert.ok(!store.isAddonSyncable(dummy));
 
   // Verify that int values don't throw off checking.
-  let prefSvc = Cc["@mozilla.org/preferences-service;1"]
-                .getService(Ci.nsIPrefService)
-                .getBranch("extensions.");
+  let prefSvc = Services.prefs.getBranch("extensions.");
   // Need to delete pref before changing type.
   prefSvc.deleteBranch("hotfix.id");
   prefSvc.setIntPref("hotfix.id", 0xdeadbeef);
 
-  do_check_true(store.isAddonSyncable(dummy));
+  Assert.ok(store.isAddonSyncable(dummy));
 
   uninstallAddon(addon);
 
@@ -388,17 +374,17 @@ add_task(async function test_get_all_ids() {
   let addon3 = installAddon("test_install3");
 
   _("Ensure they're syncable.");
-  do_check_true(store.isAddonSyncable(addon1));
-  do_check_true(store.isAddonSyncable(addon2));
-  do_check_true(store.isAddonSyncable(addon3));
+  Assert.ok(store.isAddonSyncable(addon1));
+  Assert.ok(store.isAddonSyncable(addon2));
+  Assert.ok(store.isAddonSyncable(addon3));
 
   let ids = await store.getAllIDs();
 
-  do_check_eq("object", typeof(ids));
-  do_check_eq(3, Object.keys(ids).length);
-  do_check_true(addon1.syncGUID in ids);
-  do_check_true(addon2.syncGUID in ids);
-  do_check_true(addon3.syncGUID in ids);
+  Assert.equal("object", typeof(ids));
+  Assert.equal(3, Object.keys(ids).length);
+  Assert.ok(addon1.syncGUID in ids);
+  Assert.ok(addon2.syncGUID in ids);
+  Assert.ok(addon3.syncGUID in ids);
 
   addon1.install.cancel();
   uninstallAddon(addon2);
@@ -416,8 +402,8 @@ add_task(async function test_change_item_id() {
   await store.changeItemID(oldID, newID);
 
   let newAddon = getAddonFromAddonManagerByID(addon.id);
-  do_check_neq(null, newAddon);
-  do_check_eq(newID, newAddon.syncGUID);
+  Assert.notEqual(null, newAddon);
+  Assert.equal(newID, newAddon.syncGUID);
 
   uninstallAddon(newAddon);
 });
@@ -435,12 +421,12 @@ add_task(async function test_create() {
   let record = createRecordForThisApp(guid, id, true, false);
 
   let failed = await store.applyIncomingBatch([record]);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
 
   let newAddon = getAddonFromAddonManagerByID(id);
-  do_check_neq(null, newAddon);
-  do_check_eq(guid, newAddon.syncGUID);
-  do_check_false(newAddon.userDisabled);
+  Assert.notEqual(null, newAddon);
+  Assert.equal(guid, newAddon.syncGUID);
+  Assert.ok(!newAddon.userDisabled);
 
   uninstallAddon(newAddon);
 
@@ -458,11 +444,11 @@ add_task(async function test_create_missing_search() {
   let record = createRecordForThisApp(guid, id, true, false);
 
   let failed = await store.applyIncomingBatch([record]);
-  do_check_eq(1, failed.length);
-  do_check_eq(guid, failed[0]);
+  Assert.equal(1, failed.length);
+  Assert.equal(guid, failed[0]);
 
   let addon = getAddonFromAddonManagerByID(id);
-  do_check_eq(null, addon);
+  Assert.equal(null, addon);
 
   await promiseStopServer(server);
 });
@@ -492,7 +478,7 @@ add_task(async function test_create_bad_install() {
   // do_check_eq(0, failed.length);
 
   let addon = getAddonFromAddonManagerByID(id);
-  do_check_eq(null, addon);
+  Assert.equal(null, addon);
 
   await promiseStopServer(server);
 });
@@ -506,9 +492,9 @@ add_task(async function test_ignore_system() {
   for (let guid in ids) {
     num += 1;
     let addon = reconciler.getAddonStateFromSyncGUID(guid);
-    do_check_neq(addon.id, SYSTEM_ADDON_ID);
+    Assert.notEqual(addon.id, SYSTEM_ADDON_ID);
   }
-  do_check_true(num > 1, "should have seen at least one.");
+  Assert.ok(num > 1, "should have seen at least one.");
 });
 
 add_task(async function test_incoming_system() {
@@ -518,7 +504,7 @@ add_task(async function test_incoming_system() {
   // to this.
 
   // before we start, ensure the system addon isn't disabled.
-  do_check_false(getAddonFromAddonManagerByID(SYSTEM_ADDON_ID).userDisabled);
+  Assert.ok(!getAddonFromAddonManagerByID(SYSTEM_ADDON_ID).userDisabled);
 
   // Now simulate an incoming record with the same ID as the system addon,
   // but flagged as disabled - it should not be applied.
@@ -529,10 +515,10 @@ add_task(async function test_incoming_system() {
   let record = createRecordForThisApp(guid, SYSTEM_ADDON_ID, false, false);
 
   let failed = await store.applyIncomingBatch([record]);
-  do_check_eq(0, failed.length);
+  Assert.equal(0, failed.length);
 
   // The system addon should still not be userDisabled.
-  do_check_false(getAddonFromAddonManagerByID(SYSTEM_ADDON_ID).userDisabled);
+  Assert.ok(!getAddonFromAddonManagerByID(SYSTEM_ADDON_ID).userDisabled);
 
   await promiseStopServer(server);
 });
@@ -545,7 +531,7 @@ add_task(async function test_wipe() {
   await store.wipe();
 
   let addon = getAddonFromAddonManagerByID(addon1.id);
-  do_check_eq(null, addon);
+  Assert.equal(null, addon);
 });
 
 add_task(async function test_wipe_and_install() {
@@ -562,7 +548,7 @@ add_task(async function test_wipe_and_install() {
   await store.wipe();
 
   let deleted = getAddonFromAddonManagerByID(installed.id);
-  do_check_null(deleted);
+  Assert.equal(null, deleted);
 
   // Re-applying the record can require re-fetching the XPI.
   let server = createAndStartHTTPServer(HTTP_PORT);
@@ -570,7 +556,7 @@ add_task(async function test_wipe_and_install() {
   await store.applyIncoming(record);
 
   let fetched = getAddonFromAddonManagerByID(record.addonID);
-  do_check_true(!!fetched);
+  Assert.ok(!!fetched);
 
   await promiseStopServer(server);
 });

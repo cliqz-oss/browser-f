@@ -487,12 +487,25 @@
                         accesskey="&addons.accesskey;"
                         key="key_openAddons"
                         command="Tools:Addons"/>
+<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
               <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
+||||||| merged common ancestors
+
+              <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
+=======
+
+              <!-- only one of sync-setup, sync-unverifieditem, sync-syncnowitem or sync-reauthitem will be showing at once -->
+>>>>>>> origin/upstream-releases
               <menuitem id="sync-setup"
                         label="&syncSignIn.label;"
                         accesskey="&syncSignIn.accesskey;"
                         observes="sync-setup-state"
+                        oncommand="gSync.openPrefs('menubar')"/>
+              <menuitem id="sync-unverifieditem"
+                        label="&syncSignIn.label;"
+                        accesskey="&syncSignIn.accesskey;"
+                        observes="sync-unverified-state"
                         oncommand="gSync.openPrefs('menubar')"/>
               <menuitem id="sync-syncnowitem"
                         label="&syncSyncNowItem.label;"

@@ -20,7 +20,7 @@ function run_test() {
   Services.prefs.deleteBranch("app.update.download.backgroundInterval");
 
   standardInit();
-  do_execute_soon(run_test_pt01);
+  executeSoon(run_test_pt01);
 }
 
 // Helper function for testing update counts returned from an update xml

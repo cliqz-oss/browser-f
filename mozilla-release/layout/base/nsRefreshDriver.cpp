@@ -1428,6 +1428,7 @@ nsRefreshDriver::ObserverCount() const
   // changes can trigger transitions which fire events when they complete, and
   // layout changes can affect media queries on child documents, triggering
   // style changes, etc.
+  sum += mResizeEventFlushObservers.Length();
   sum += mStyleFlushObservers.Length();
   sum += mLayoutFlushObservers.Length();
   sum += mPendingEvents.Length();
@@ -1690,7 +1691,7 @@ nsRefreshDriver::RunFrameRequestCallbacks(TimeStamp aNowTime)
       nsPIDOMWindowInner* innerWindow =
         docCallbacks.mDocument->GetInnerWindow();
       DOMHighResTimeStamp timeStamp = 0;
-      if (innerWindow && innerWindow->IsInnerWindow()) {
+      if (innerWindow) {
         mozilla::dom::Performance* perf = innerWindow->GetPerformance();
         if (perf) {
           timeStamp = perf->GetDOMTiming()->TimeStampToDOMHighRes(aNowTime);
@@ -1830,6 +1831,24 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
     earlyRunners[i]->Run();
   }
 
+  // Resize events should be fired before layout flushes or
+  // calling animation frame callbacks.
+  AutoTArray<nsIPresShell*, 16> observers;
+  observers.AppendElements(mResizeEventFlushObservers);
+  for (uint32_t i = observers.Length(); i; --i) {
+    if (!mPresContext || !mPresContext->GetPresShell()) {
+      break;
+    }
+    // Make sure to not process observers which might have been removed
+    // during previous iterations.
+    nsIPresShell* shell = observers[i - 1];
+    if (!mResizeEventFlushObservers.Contains(shell)) {
+      continue;
+    }
+    mResizeEventFlushObservers.RemoveElement(shell);
+    shell->FireResizeEvent();
+  }
+
   /*
    * The timer holds a reference to |this| while calling |Notify|.
    * However, implementations of |WillRefresh| are permitted to destroy
@@ -1857,9 +1876,6 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
       DispatchScrollEvents();
 
       if (mPresContext && mPresContext->GetPresShell()) {
-#ifdef MOZ_GECKO_PROFILER
-        Maybe<AutoProfilerTracing> tracingStyleFlush;
-#endif
         AutoTArray<nsIPresShell*, 16> observers;
         observers.AppendElements(mStyleFlushObservers);
         for (uint32_t j = observers.Length();
@@ -1869,13 +1885,6 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
           nsIPresShell* shell = observers[j - 1];
           if (!mStyleFlushObservers.RemoveElement(shell))
             continue;
-
-#ifdef MOZ_GECKO_PROFILER
-          if (!tracingStyleFlush) {
-            tracingStyleFlush.emplace("Paint", "Styles", Move(mStyleCause));
-            mStyleCause = nullptr;
-          }
-#endif
 
           nsCOMPtr<nsIPresShell> shellKungFuDeathGrip(shell);
           shell->mObservingStyleFlushes = false;
@@ -1892,9 +1901,6 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
       }
     } else if  (i == 2) {
       // This is the FlushType::Layout case.
-#ifdef MOZ_GECKO_PROFILER
-      Maybe<AutoProfilerTracing> tracingLayoutFlush;
-#endif
       AutoTArray<nsIPresShell*, 16> observers;
       observers.AppendElements(mLayoutFlushObservers);
       for (uint32_t j = observers.Length();
@@ -1904,13 +1910,6 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
         nsIPresShell* shell = observers[j - 1];
         if (!mLayoutFlushObservers.RemoveElement(shell))
           continue;
-
-#ifdef MOZ_GECKO_PROFILER
-        if (!tracingLayoutFlush) {
-          tracingLayoutFlush.emplace("Paint", "Reflow", Move(mReflowCause));
-          mReflowCause = nullptr;
-        }
-#endif
 
         nsCOMPtr<nsIPresShell> shellKungFuDeathGrip(shell);
         shell->mObservingLayoutFlushes = false;

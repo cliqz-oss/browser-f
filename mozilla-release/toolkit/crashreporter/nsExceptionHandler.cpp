@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsExceptionHandler.h"
+#include "nsExceptionHandlerUtils.h"
 
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsDirectoryServiceDefs.h"
@@ -41,6 +42,7 @@
 #include "nsDirectoryServiceUtils.h"
 
 #include "nsWindowsDllInterceptor.h"
+#include "mozilla/WindowsVersion.h"
 #elif defined(XP_MACOSX)
 #include "breakpad-client/mac/crash_generation/client_info.h"
 #include "breakpad-client/mac/crash_generation/crash_generation_server.h"
@@ -87,7 +89,6 @@ using mozilla::InjectCrashRunnable;
 #include <map>
 #include <vector>
 
-#include "mozilla/double-conversion.h"
 #include "mozilla/IOInterposer.h"
 #include "mozilla/mozalloc_oom.h"
 #include "mozilla/WindowsDllBlocklist.h"
@@ -304,7 +305,7 @@ class ReportInjectedCrash : public Runnable
 public:
   explicit ReportInjectedCrash(uint32_t pid) : Runnable("ReportInjectedCrash"), mPID(pid) { }
 
-  NS_IMETHOD Run();
+  NS_IMETHOD Run() override;
 
 private:
   uint32_t mPID;
@@ -411,54 +412,6 @@ typedef struct {
 static std::vector<mapping_info> library_mappings;
 typedef std::map<uint32_t,google_breakpad::MappingList> MappingMap;
 #endif
-}
-
-// Format a non-negative double to a string, without using C-library functions,
-// which need to be avoided (.e.g. bug 1240160, comment 10).  Leave the utility
-// non-file static so that we can gtest it.  Return false if we failed to
-// get the formatting done correctly.
-bool SimpleNoCLibDtoA(double aValue, char* aBuffer, int aBufferLength)
-{
-  // aBufferLength is the size of the buffer.  Be paranoid.
-  aBuffer[aBufferLength-1] = '\0';
-
-  if (aValue < 0) {
-    return false;
-  }
-
-  int length, point, i;
-  bool sign;
-  bool ok = true;
-  double_conversion::DoubleToStringConverter::DoubleToAscii(
-                                     aValue,
-                                     double_conversion::DoubleToStringConverter::SHORTEST,
-                                     8,
-                                     aBuffer,
-                                     aBufferLength,
-                                     &sign,
-                                     &length,
-                                     &point);
-
-  // length does not account for the 0 terminator.
-  if (length > point && (length+1) < (aBufferLength-1)) {
-    // We have to insert a decimal point.  Not worried about adding a leading zero
-    // in the < 1 (point == 0) case.
-    aBuffer[length+1] = '\0';
-    for (i=length; i>point; i-=1) {
-      aBuffer[i] = aBuffer[i-1];
-    }
-    aBuffer[i] = '.'; // Not worried about locales
-  } else if (length < point) {
-    // Trailing zeros scenario
-    for (i=length; i<point; i+=1) {
-      if (i >= aBufferLength-2) {
-        ok = false;
-      }
-      aBuffer[i] = '0';
-    }
-    aBuffer[i] = '\0';
-  }
-  return ok;
 }
 
 namespace CrashReporter {
@@ -1458,6 +1411,15 @@ GetMinidumpType()
   minidump_type = static_cast<MINIDUMP_TYPE>(minidump_type |
       MiniDumpWithUnloadedModules |
       MiniDumpWithProcessThreadData);
+
+  // dbghelp.dll on Win7 can't handle overlapping memory regions so we only
+  // enable this feature on Win8 or later.
+  if (IsWin8OrLater()) {
+    minidump_type = static_cast<MINIDUMP_TYPE>(minidump_type |
+      // This allows us to examine heap objects referenced from stack objects
+      // at the cost of further doubling the size of minidumps.
+      MiniDumpWithIndirectlyReferencedMemory);
+  }
 #endif
 
   const char* e = PR_GetEnv("MOZ_CRASHREPORTER_FULLDUMP");

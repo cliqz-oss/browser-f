@@ -8,6 +8,7 @@ job-defaults:
         config:
             by-test-platform:
                 android.*:
+                    - android/android_common.py
                     - android/androidarm_4_3.py
                 linux.*:
                     - unittests/linux_unittest.py
@@ -20,11 +21,19 @@ job-defaults:
 crashtest:
     description: "Crashtest run"
     suite: reftest/crashtest
-    treeherder-symbol: tc-R(C)
+    treeherder-symbol: R(C)
+    run-on-projects:
+        by-test-platform:
+            .*-qr/.*: ['mozilla-central', 'autoland', 'mozilla-inbound', 'try']  # exclude beta and project branches
+            default: built-projects
     instance-size:
         by-test-platform:
             android.*: xlarge
             default: default
+    virtualization:
+        by-test-platform:
+            windows10-64-qr/.*: virtual-with-gpu
+            default: virtual
     chunks:
         by-test-platform:
             android-4.3-arm7-api-16/debug: 10
@@ -43,7 +52,8 @@ crashtest:
 jsreftest:
     description: "JS Reftest run"
     suite: reftest/jsreftest
-    treeherder-symbol: tc-R(J)
+    schedules-component: jsreftest  # scheduling for this reftest is different from the others..
+    treeherder-symbol: R(J)
     instance-size:
         by-test-platform:
             android.*: xlarge
@@ -53,8 +63,10 @@ jsreftest:
             android-4.3-arm7-api-16/debug: 100
             android.*: 40
             windows.*: 2
+            windows10-64-ccov/debug: 5
             linux64-ccov/.*: 5
             linux64-qr/.*: 4
+            linux32/debug: 5
             macosx.*: 2
             default: 3
     e10s:
@@ -66,8 +78,6 @@ jsreftest:
         by-test-platform:
             android.*: 7200
             default: 3600
-    when:
-        schedules: ['jsreftest']
     tier:
         by-test-platform:
             linux64-qr/.*: 1
@@ -77,7 +87,7 @@ jsreftest:
 reftest:
     description: "Reftest run"
     suite: reftest/reftest
-    treeherder-symbol: tc-R(R)
+    treeherder-symbol: R(R)
     worker-type:
         by-test-platform:
             windows10-64.*: buildbot-bridge/buildbot-bridge
@@ -120,12 +130,11 @@ reftest:
 reftest-gpu:
     description: "Reftest GPU run"
     suite: reftest/reftest-gpu
-    treeherder-symbol: tc-R(Rg)
+    treeherder-symbol: R(Rg)
     chunks: 8
     run-on-projects:
         by-test-platform:
             windows10.*: []
-            windows8-64.*: []
             default: built-projects
     instance-size: default
     virtualization: virtual-with-gpu
@@ -137,17 +146,15 @@ reftest-gpu:
 reftest-no-accel:
     description: "Reftest not accelerated run"
     suite: reftest/reftest-no-accel
-    treeherder-symbol: tc-R(Ru)
+    treeherder-symbol: R(Ru)
     virtualization: virtual-with-gpu
-    worker-type:
+    run-on-projects:
         by-test-platform:
-            windows10-64.*: buildbot-bridge/buildbot-bridge
-            default: null
+            windows10.*: []
+            default: built-projects
     chunks:
         by-test-platform:
             macosx.*: 1
-            windows10-64.*/debug: 2
-            windows10-64.*/opt: 1
             default: 8
     e10s:
         by-test-platform:
@@ -168,6 +175,6 @@ reftest-no-accel:
 reftest-stylo:
     description: "Reftest run in Stylo vs. Gecko mode"
     suite: reftest/reftest-stylo
-    treeherder-symbol: tc-R(Rs)
+    treeherder-symbol: R(Rs)
     virtualization: virtual-with-gpu
     chunks: 8

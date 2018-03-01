@@ -19,6 +19,7 @@
 #include "imgIContainer.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/StaticPtr.h"
 #include "nsIReflowCallback.h"
 #include "nsTObserverArray.h"
 
@@ -65,7 +66,7 @@ public:
   using Nothing = mozilla::Nothing;
   using Visibility = mozilla::Visibility;
 
-  typedef mozilla::image::DrawResult DrawResult;
+  typedef mozilla::image::ImgDrawResult ImgDrawResult;
   typedef mozilla::layers::ImageContainer ImageContainer;
   typedef mozilla::layers::ImageLayer ImageLayer;
   typedef mozilla::layers::LayerManager LayerManager;
@@ -132,7 +133,7 @@ public:
   static void ReleaseGlobals() {
     if (gIconLoad) {
       gIconLoad->Shutdown();
-      NS_RELEASE(gIconLoad);
+      gIconLoad = nullptr;
     }
     NS_IF_RELEASE(sIOService);
   }
@@ -147,7 +148,7 @@ public:
   static bool ShouldCreateImageFrameFor(mozilla::dom::Element* aElement,
                                           nsStyleContext* aStyleContext);
 
-  DrawResult DisplayAltFeedback(gfxContext& aRenderingContext,
+  ImgDrawResult DisplayAltFeedback(gfxContext& aRenderingContext,
                                 const nsRect& aDirtyRect,
                                 nsPoint aPt,
                                 uint32_t aFlags);
@@ -225,7 +226,7 @@ protected:
                       const nsString&      aAltText,
                       const nsRect&        aRect);
 
-  DrawResult PaintImage(gfxContext& aRenderingContext, nsPoint aPt,
+  ImgDrawResult PaintImage(gfxContext& aRenderingContext, nsPoint aPt,
                         const nsRect& aDirtyRect, imgIContainer* aImage,
                         uint32_t aFlags);
 
@@ -395,7 +396,8 @@ private:
   };
 
 public:
-  static IconLoad* gIconLoad; // singleton pattern: one LoadIcons instance is used
+  // singleton pattern: one LoadIcons instance is used
+  static mozilla::StaticRefPtr<IconLoad> gIconLoad;
 
   friend class nsDisplayImage;
 };

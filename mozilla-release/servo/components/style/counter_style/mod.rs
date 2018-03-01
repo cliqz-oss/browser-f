@@ -11,19 +11,25 @@ use cssparser::{AtRuleParser, DeclarationListParser, DeclarationParser};
 use cssparser::{Parser, Token, serialize_identifier, CowRcStr};
 use error_reporting::{ContextualParseError, ParseErrorReporter};
 #[cfg(feature = "gecko")] use gecko::rules::CounterStyleDescriptors;
-#[cfg(feature = "gecko")] use gecko_bindings::structs::nsCSSCounterDesc;
+#[cfg(feature = "gecko")] use gecko_bindings::structs::{ nsCSSCounterDesc, nsCSSValue };
 use parser::{ParserContext, ParserErrorContext, Parse};
 use selectors::parser::SelectorParseErrorKind;
 use shared_lock::{SharedRwLockReadGuard, ToCssWithGuard};
 #[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::borrow::Cow;
-use std::fmt;
+use std::fmt::{self, Write};
 use std::ops::Range;
-use style_traits::{Comma, OneOrMoreSeparated, ParseError, StyleParseErrorKind, ToCss};
+use str::CssStringWriter;
+use style_traits::{Comma, CssWriter, OneOrMoreSeparated, ParseError};
+use style_traits::{StyleParseErrorKind, ToCss};
 use values::CustomIdent;
 
-/// Parse the prelude of an @counter-style rule
-pub fn parse_counter_style_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<CustomIdent, ParseError<'i>> {
+/// Parse a counter style name reference.
+///
+/// This allows the reserved counter style names "decimal" and "disc".
+pub fn parse_counter_style_name<'i, 't>(
+    input: &mut Parser<'i, 't>
+) -> Result<CustomIdent, ParseError<'i>> {
     macro_rules! predefined {
         ($($name: expr,)+) => {
             {
@@ -41,13 +47,27 @@ pub fn parse_counter_style_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Cu
                 if let Some(&lower_cased) = predefined(&ident) {
                     Ok(CustomIdent(Atom::from(lower_cased)))
                 } else {
-                    // https://github.com/w3c/csswg-drafts/issues/1295 excludes "none"
+                    // none is always an invalid <counter-style> value.
                     CustomIdent::from_ident(location, ident, &["none"])
                 }
             }
         }
     }
     include!("predefined.rs")
+}
+
+/// Parse the prelude of an @counter-style rule
+pub fn parse_counter_style_name_definition<'i, 't>(
+    input: &mut Parser<'i, 't>
+) -> Result<CustomIdent, ParseError<'i>> {
+    parse_counter_style_name(input)
+        .and_then(|ident| {
+            if ident.0 == atom!("decimal") || ident.0 == atom!("disc") {
+                Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
+            } else {
+                Ok(ident)
+            }
+        })
 }
 
 /// Parse the body (inside `{}`) of an @counter-style rule
@@ -210,20 +230,43 @@ macro_rules! counter_style_descriptors {
         }
 
         impl ToCssWithGuard for CounterStyleRuleData {
-            fn to_css<W>(&self, _guard: &SharedRwLockReadGuard, dest: &mut W) -> fmt::Result
-            where W: fmt::Write {
+            fn to_css(&self, _guard: &SharedRwLockReadGuard, dest: &mut CssStringWriter) -> fmt::Result {
                 dest.write_str("@counter-style ")?;
-                self.name.to_css(dest)?;
+                self.name.to_css(&mut CssWriter::new(dest))?;
                 dest.write_str(" {\n")?;
                 $(
                     if let Some(ref value) = self.$ident {
                         dest.write_str(concat!("  ", $name, ": "))?;
-                        ToCss::to_css(value, dest)?;
+                        ToCss::to_css(value, &mut CssWriter::new(dest))?;
                         dest.write_str(";\n")?;
                     }
                 )+
                 dest.write_str("}")
             }
+        }
+
+        /// Parse a descriptor into an `nsCSSValue`.
+        #[cfg(feature = "gecko")]
+        pub fn parse_counter_style_descriptor<'i, 't>(
+            context: &ParserContext,
+            input: &mut Parser<'i, 't>,
+            descriptor: nsCSSCounterDesc,
+            value: &mut nsCSSValue
+        ) -> Result<(), ParseError<'i>> {
+            match descriptor {
+                $(
+                    nsCSSCounterDesc::$gecko_ident => {
+                        let v: $ty =
+                            input.parse_entirely(|i| Parse::parse(context, i))?;
+                        value.set_from(v);
+                    }
+                )*
+                nsCSSCounterDesc::eCSSCounterDesc_COUNT |
+                nsCSSCounterDesc::eCSSCounterDesc_UNKNOWN => {
+                    panic!("invalid counter descriptor");
+                }
+            }
+            Ok(())
         }
     }
 }
@@ -320,7 +363,10 @@ impl Parse for System {
 }
 
 impl ToCss for System {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match *self {
             System::Cyclic => dest.write_str("cyclic"),
             System::Numeric => dest.write_str("numeric"),
@@ -359,17 +405,19 @@ pub enum Symbol {
 impl Parse for Symbol {
     fn parse<'i, 't>(_context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
         let location = input.current_source_location();
-        match input.next() {
-            Ok(&Token::QuotedString(ref s)) => Ok(Symbol::String(s.as_ref().to_owned())),
-            Ok(&Token::Ident(ref s)) => Ok(Symbol::Ident(s.as_ref().to_owned())),
-            Ok(t) => Err(location.new_unexpected_token_error(t.clone())),
-            Err(e) => Err(e.into()),
+        match *input.next()? {
+            Token::QuotedString(ref s) => Ok(Symbol::String(s.as_ref().to_owned())),
+            Token::Ident(ref s) => Ok(Symbol::Ident(s.as_ref().to_owned())),
+            ref t => Err(location.new_unexpected_token_error(t.clone())),
         }
     }
 }
 
 impl ToCss for Symbol {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match *self {
             Symbol::String(ref s) => s.to_css(dest),
             Symbol::Ident(ref s) => serialize_identifier(s, dest),
@@ -428,16 +476,18 @@ impl Parse for Ranges {
 
 fn parse_bound<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Option<i32>, ParseError<'i>> {
     let location = input.current_source_location();
-    match input.next() {
-        Ok(&Token::Number { int_value: Some(v), .. }) => Ok(Some(v)),
-        Ok(&Token::Ident(ref ident)) if ident.eq_ignore_ascii_case("infinite") => Ok(None),
-        Ok(t) => Err(location.new_unexpected_token_error(t.clone())),
-        Err(e) => Err(e.into()),
+    match *input.next()? {
+        Token::Number { int_value: Some(v), .. } => Ok(Some(v)),
+        Token::Ident(ref ident) if ident.eq_ignore_ascii_case("infinite") => Ok(None),
+        ref t => Err(location.new_unexpected_token_error(t.clone())),
     }
 }
 
 impl ToCss for Ranges {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         let mut iter = self.0.iter();
         if let Some(first) = iter.next() {
             range_to_css(first, dest)?;
@@ -452,14 +502,19 @@ impl ToCss for Ranges {
     }
 }
 
-fn range_to_css<W>(range: &Range<Option<i32>>, dest: &mut W) -> fmt::Result
-where W: fmt::Write {
+fn range_to_css<W>(range: &Range<Option<i32>>, dest: &mut CssWriter<W>) -> fmt::Result
+where
+    W: Write,
+{
     bound_to_css(range.start, dest)?;
     dest.write_char(' ')?;
     bound_to_css(range.end, dest)
 }
 
-fn bound_to_css<W>(range: Option<i32>, dest: &mut W) -> fmt::Result where W: fmt::Write {
+fn bound_to_css<W>(range: Option<i32>, dest: &mut CssWriter<W>) -> fmt::Result
+where
+    W: Write,
+{
     if let Some(finite) = range {
         finite.to_css(dest)
     } else {
@@ -516,7 +571,10 @@ impl Parse for Symbols {
 }
 
 impl ToCss for Symbols {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         let mut iter = self.0.iter();
         let first = iter.next().expect("expected at least one symbol");
         first.to_css(dest)?;

@@ -11,15 +11,14 @@ use cssparser::{Parser, Token};
 use euclid::Size2D;
 use font_metrics::FontMetricsQueryResult;
 use parser::{Parse, ParserContext};
-use std::{cmp, fmt, mem};
+use std::{cmp, mem};
 #[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::ops::{Add, Mul};
-use style_traits::{ToCss, ParseError, StyleParseErrorKind};
+use style_traits::{ParseError, StyleParseErrorKind};
 use style_traits::values::specified::AllowedNumericType;
 use stylesheets::CssRuleType;
 use super::{AllowQuirks, Number, ToComputedValue, Percentage};
-use values::{Auto, CSSFloat, Either, None_, Normal};
-use values::{ExtremumLength, serialize_dimension};
+use values::{Auto, CSSFloat, Either, ExtremumLength, None_, Normal};
 use values::computed::{self, CSSPixelLength, Context};
 use values::generics::NonNegative;
 use values::specified::NonNegativeNumber;
@@ -52,40 +51,37 @@ pub fn au_to_int_px(au: f32) -> i32 {
     (au / AU_PER_PX).round() as i32
 }
 
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
 /// A font relative length.
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToCss)]
 pub enum FontRelativeLength {
     /// A "em" value: https://drafts.csswg.org/css-values/#em
+    #[css(dimension)]
     Em(CSSFloat),
     /// A "ex" value: https://drafts.csswg.org/css-values/#ex
+    #[css(dimension)]
     Ex(CSSFloat),
     /// A "ch" value: https://drafts.csswg.org/css-values/#ch
+    #[css(dimension)]
     Ch(CSSFloat),
     /// A "rem" value: https://drafts.csswg.org/css-values/#rem
+    #[css(dimension)]
     Rem(CSSFloat)
-}
-
-impl ToCss for FontRelativeLength {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write
-    {
-        match *self {
-            FontRelativeLength::Em(length) => serialize_dimension(length, "em", dest),
-            FontRelativeLength::Ex(length) => serialize_dimension(length, "ex", dest),
-            FontRelativeLength::Ch(length) => serialize_dimension(length, "ch", dest),
-            FontRelativeLength::Rem(length) => serialize_dimension(length, "rem", dest)
-        }
-    }
 }
 
 /// A source to resolve font-relative units against
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FontBaseSize {
-    /// Use the font-size of the current element
+    /// Use the font-size of the current element.
     CurrentStyle,
-    /// Use the inherited font-size
+    /// Use the inherited font-size.
     InheritedStyle,
-    /// Use a custom base size
+    /// Use the inherited font-size, but strip em units.
+    ///
+    /// FIXME(emilio): This is very complex, and should go away.
+    InheritedStyleButStripEmUnits,
+    /// Use a custom base size.
+    ///
+    /// FIXME(emilio): This is very dubious, and only used for MathML.
     Custom(Au),
 }
 
@@ -95,6 +91,7 @@ impl FontBaseSize {
         match *self {
             FontBaseSize::Custom(size) => size,
             FontBaseSize::CurrentStyle => context.style().get_font().clone_font_size().size(),
+            FontBaseSize::InheritedStyleButStripEmUnits |
             FontBaseSize::InheritedStyle => context.style().get_parent_font().clone_font_size().size(),
         }
     }
@@ -109,36 +106,48 @@ impl FontRelativeLength {
         CSSPixelLength::new(pixel)
     }
 
-    /// Return reference font size. We use the base_size flag to pass a different size
-    /// for computing font-size and unconstrained font-size.
-    /// This returns a pair, the first one is the reference font size, and the second one is the
-    /// unpacked relative length.
+    /// Return reference font size.
+    ///
+    /// We use the base_size flag to pass a different size for computing
+    /// font-size and unconstrained font-size.
+    ///
+    /// This returns a pair, the first one is the reference font size, and the
+    /// second one is the unpacked relative length.
     fn reference_font_size_and_length(
         &self,
         context: &Context,
         base_size: FontBaseSize,
     ) -> (Au, CSSFloat) {
-        fn query_font_metrics(context: &Context, reference_font_size: Au) -> FontMetricsQueryResult {
-            context.font_metrics_provider.query(context.style().get_font(),
-                                                reference_font_size,
-                                                context.style().writing_mode,
-                                                context.in_media_query,
-                                                context.device())
+        fn query_font_metrics(
+            context: &Context,
+            reference_font_size: Au,
+        ) -> FontMetricsQueryResult {
+            context.font_metrics_provider.query(
+                context.style().get_font(),
+                reference_font_size,
+                context.style().writing_mode,
+                context.in_media_query,
+                context.device(),
+            )
         }
 
         let reference_font_size = base_size.resolve(context);
-
         match *self {
             FontRelativeLength::Em(length) => {
                 if context.for_non_inherited_property.is_some() {
-                    if matches!(base_size, FontBaseSize::CurrentStyle) {
+                    if base_size == FontBaseSize::CurrentStyle {
                         context.rule_cache_conditions.borrow_mut()
                             .set_font_size_dependency(
                                 reference_font_size.into()
                             );
                     }
                 }
-                (reference_font_size, length)
+
+                if base_size == FontBaseSize::InheritedStyleButStripEmUnits {
+                    (Au(0), length)
+                } else {
+                    (reference_font_size, length)
+                }
             },
             FontRelativeLength::Ex(length) => {
                 if context.for_non_inherited_property.is_some() {
@@ -192,10 +201,10 @@ impl FontRelativeLength {
                 // https://drafts.csswg.org/css-values/#rem:
                 //
                 //     When specified on the font-size property of the root
-                //     element, the rem units refer to the property’s initial
+                //     element, the rem units refer to the property's initial
                 //     value.
                 //
-                let reference_size = if context.is_root_element {
+                let reference_size = if context.is_root_element || context.in_media_query {
                     reference_font_size
                 } else {
                     context.device().root_font_size()
@@ -206,30 +215,23 @@ impl FontRelativeLength {
     }
 }
 
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
 /// A viewport-relative length.
 ///
 /// <https://drafts.csswg.org/css-values/#viewport-relative-lengths>
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToCss)]
 pub enum ViewportPercentageLength {
     /// A vw unit: https://drafts.csswg.org/css-values/#vw
+    #[css(dimension)]
     Vw(CSSFloat),
     /// A vh unit: https://drafts.csswg.org/css-values/#vh
+    #[css(dimension)]
     Vh(CSSFloat),
     /// <https://drafts.csswg.org/css-values/#vmin>
+    #[css(dimension)]
     Vmin(CSSFloat),
     /// <https://drafts.csswg.org/css-values/#vmax>
+    #[css(dimension)]
     Vmax(CSSFloat)
-}
-
-impl ToCss for ViewportPercentageLength {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        match *self {
-            ViewportPercentageLength::Vw(length) => serialize_dimension(length, "vw", dest),
-            ViewportPercentageLength::Vh(length) => serialize_dimension(length, "vh", dest),
-            ViewportPercentageLength::Vmin(length) => serialize_dimension(length, "vmin", dest),
-            ViewportPercentageLength::Vmax(length) => serialize_dimension(length, "vmax", dest)
-        }
-    }
 }
 
 impl ViewportPercentageLength {
@@ -255,7 +257,7 @@ impl ViewportPercentageLength {
 }
 
 /// HTML5 "character width", as defined in HTML5 § 14.5.4.
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToCss)]
 pub struct CharacterWidth(pub i32);
 
 impl CharacterWidth {
@@ -273,21 +275,28 @@ impl CharacterWidth {
 }
 
 /// Represents an absolute length with its unit
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToCss)]
 pub enum AbsoluteLength {
     /// An absolute length in pixels (px)
+    #[css(dimension)]
     Px(CSSFloat),
     /// An absolute length in inches (in)
+    #[css(dimension)]
     In(CSSFloat),
     /// An absolute length in centimeters (cm)
+    #[css(dimension)]
     Cm(CSSFloat),
     /// An absolute length in millimeters (mm)
+    #[css(dimension)]
     Mm(CSSFloat),
     /// An absolute length in quarter-millimeters (q)
+    #[css(dimension)]
     Q(CSSFloat),
     /// An absolute length in points (pt)
+    #[css(dimension)]
     Pt(CSSFloat),
     /// An absolute length in pica (pc)
+    #[css(dimension)]
     Pc(CSSFloat),
 }
 
@@ -334,20 +343,6 @@ impl ToComputedValue for AbsoluteLength {
     }
 }
 
-impl ToCss for AbsoluteLength {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        match *self {
-            AbsoluteLength::Px(length) => serialize_dimension(length, "px", dest),
-            AbsoluteLength::In(length) => serialize_dimension(length, "in", dest),
-            AbsoluteLength::Cm(length) => serialize_dimension(length, "cm", dest),
-            AbsoluteLength::Mm(length) => serialize_dimension(length, "mm", dest),
-            AbsoluteLength::Q(length) => serialize_dimension(length, "q", dest),
-            AbsoluteLength::Pt(length) => serialize_dimension(length, "pt", dest),
-            AbsoluteLength::Pc(length) => serialize_dimension(length, "pc", dest),
-        }
-    }
-}
-
 impl Mul<CSSFloat> for AbsoluteLength {
     type Output = AbsoluteLength;
 
@@ -383,57 +378,10 @@ impl Add<AbsoluteLength> for AbsoluteLength {
     }
 }
 
-/// Represents a physical length (mozmm) based on DPI
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg(feature = "gecko")]
-#[derive(MallocSizeOf)]
-pub struct PhysicalLength(pub CSSFloat);
-
-#[cfg(feature = "gecko")]
-impl PhysicalLength {
-    fn is_zero(&self) -> bool {
-        self.0 == 0.
-    }
-
-    /// Computes the given character width.
-    pub fn to_computed_value(&self, context: &Context) -> CSSPixelLength {
-        use gecko_bindings::bindings;
-        use std::f32;
-
-        // Same as Gecko
-        const INCH_PER_MM: f32 = 1. / 25.4;
-
-        let au_per_physical_inch = unsafe {
-            bindings::Gecko_GetAppUnitsPerPhysicalInch(context.device().pres_context()) as f32
-        };
-
-        let px_per_physical_inch = au_per_physical_inch / AU_PER_PX;
-        let pixel = self.0 * px_per_physical_inch * INCH_PER_MM;
-        CSSPixelLength::new(pixel.min(f32::MAX).max(f32::MIN))
-    }
-}
-
-#[cfg(feature = "gecko")]
-impl ToCss for PhysicalLength {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        serialize_dimension(self.0, "mozmm", dest)
-    }
-}
-
-#[cfg(feature = "gecko")]
-impl Mul<CSSFloat> for PhysicalLength {
-    type Output = PhysicalLength;
-
-    #[inline]
-    fn mul(self, scalar: CSSFloat) -> PhysicalLength {
-        PhysicalLength(self.0 * scalar)
-    }
-}
-
 /// A `<length>` without taking `calc` expressions into account
 ///
 /// <https://drafts.csswg.org/css-values/#lengths>
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToCss)]
 pub enum NoCalcLength {
     /// An absolute length
     ///
@@ -454,29 +402,8 @@ pub enum NoCalcLength {
     ///
     /// This cannot be specified by the user directly and is only generated by
     /// `Stylist::synthesize_rules_for_legacy_attributes()`.
+    #[css(function)]
     ServoCharacterWidth(CharacterWidth),
-
-    /// A physical length (mozmm) based on DPI
-    #[cfg(feature = "gecko")]
-    Physical(PhysicalLength),
-}
-
-impl ToCss for NoCalcLength {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        match *self {
-            NoCalcLength::Absolute(length) => length.to_css(dest),
-            NoCalcLength::FontRelative(length) => length.to_css(dest),
-            NoCalcLength::ViewportPercentage(length) => length.to_css(dest),
-            /* This should only be reached from style dumping code */
-            NoCalcLength::ServoCharacterWidth(CharacterWidth(i)) => {
-                dest.write_str("CharWidth(")?;
-                i.to_css(dest)?;
-                dest.write_char(')')
-            }
-            #[cfg(feature = "gecko")]
-            NoCalcLength::Physical(length) => length.to_css(dest),
-        }
-    }
 }
 
 impl Mul<CSSFloat> for NoCalcLength {
@@ -489,8 +416,6 @@ impl Mul<CSSFloat> for NoCalcLength {
             NoCalcLength::FontRelative(v) => NoCalcLength::FontRelative(v * scalar),
             NoCalcLength::ViewportPercentage(v) => NoCalcLength::ViewportPercentage(v * scalar),
             NoCalcLength::ServoCharacterWidth(_) => panic!("Can't multiply ServoCharacterWidth!"),
-            #[cfg(feature = "gecko")]
-            NoCalcLength::Physical(v) => NoCalcLength::Physical(v * scalar),
         }
     }
 }
@@ -538,8 +463,6 @@ impl NoCalcLength {
                 }
                 Ok(NoCalcLength::ViewportPercentage(ViewportPercentageLength::Vmax(value)))
             },
-            #[cfg(feature = "gecko")]
-            "mozmm" => Ok(NoCalcLength::Physical(PhysicalLength(value))),
             _ => Err(())
         }
     }
@@ -555,9 +478,16 @@ impl NoCalcLength {
     pub fn is_zero(&self) -> bool {
         match *self {
             NoCalcLength::Absolute(length) => length.is_zero(),
-            #[cfg(feature = "gecko")]
-            NoCalcLength::Physical(length) => length.is_zero(),
             _ => false
+        }
+    }
+
+    /// Get a px value without context.
+    #[inline]
+    pub fn to_computed_pixel_length_without_context(&self) -> Result<CSSFloat, ()> {
+        match *self {
+            NoCalcLength::Absolute(len) => Ok(len.to_px()),
+            _ => Err(()),
         }
     }
 

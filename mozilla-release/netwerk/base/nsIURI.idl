@@ -36,7 +36,7 @@
  */
 
 %{C++
-#include "nsStringGlue.h"
+#include "nsString.h"
 
 #undef GetPort  // XXX Windows!
 #undef SetPort  // XXX Windows!
@@ -47,6 +47,7 @@ class Encoding;
 %}
 
 [ptr] native Encoding(const mozilla::Encoding);
+interface nsIURIMutator;
 
 /**
  * nsIURI - interface for an uniform resource identifier w/ i18n support.
@@ -71,7 +72,7 @@ class Encoding;
  * we will need to add additional checks there for all intermediate IIDs, until
  * ContentPrincipal is fixed to serialize its URIs as nsISupports (bug 662693).
  */
-[scriptable, uuid(92073a54-6d78-4f30-913a-b871813208c6)]
+[scriptable, builtinclass, uuid(92073a54-6d78-4f30-913a-b871813208c6)]
 interface nsIURI : nsISupports
 {
     /************************************************************************
@@ -79,7 +80,16 @@ interface nsIURI : nsISupports
      */
 
     /**
-     * Returns a string representation of the URI. Setting the spec causes
+     * Returns a string representation of the URI.
+     *
+     * Some characters may be escaped.
+     */
+    readonly attribute AUTF8String spec;
+
+    /*
+     * This method should only be called by nsIURIMutator or C++ unit tests.
+     *
+     * Setting the spec causes
      * the new spec to be parsed per the rules for the scheme the URI
      * currently has.  In particular, setting the spec to a URI string with a
      * different scheme will generally produce incorrect results; no one
@@ -87,10 +97,9 @@ interface nsIURI : nsISupports
      * the URI stores information from the nsIIOService.newURI call used to
      * create it other than just the parsed string, then behavior of this
      * information on setting the spec attribute is undefined.
-     *
-     * Some characters may be escaped.
      */
-    attribute AUTF8String spec;
+    [noscript,notxpcom,nostdcall]
+    nsresult setSpecInternal(in ACString aSpec);
 
 %{ C++
     // An infallible wrapper for GetSpec() that returns a failure indication
@@ -327,4 +336,12 @@ interface nsIURI : nsISupports
      * the network.IDN_show_punycode pref is false)
      */
     readonly attribute AUTF8String displayPrePath;
+
+    /**
+     * Returns an nsIURIMutator that can be used to make changes to the URI.
+     * After performing the setter operations on the mutator, one may call
+     * mutator.finalize() to get a new immutable URI with the desired
+     * properties.
+     */
+    nsIURIMutator mutate();
 };

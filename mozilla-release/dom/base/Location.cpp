@@ -42,8 +42,6 @@ namespace dom {
 Location::Location(nsPIDOMWindowInner* aWindow, nsIDocShell *aDocShell)
   : mInnerWindow(aWindow)
 {
-  MOZ_ASSERT(mInnerWindow->IsInnerWindow());
-
   // aDocShell can be null if it gets called after nsDocShell::Destory().
   mDocShell = do_GetWeakReference(aDocShell);
 }
@@ -442,7 +440,6 @@ Location::GetHref(nsAString& aHref)
 
 void
 Location::SetHref(const nsAString& aHref,
-                  nsIPrincipal& aSubjectPrincipal,
                   ErrorResult& aRv)
 {
   JSContext *cx = nsContentUtils::GetCurrentJSContext();

@@ -10,6 +10,7 @@ const ADDONS = {
     badid: "signed_bootstrap_badid_2.xpi",
     preliminary: "preliminary_bootstrap_2.xpi",
     signed: "signed_bootstrap_2.xpi",
+    sha256Signed: "signed_bootstrap_sha256_1.xpi",
     privileged: "privileged_bootstrap_2.xpi",
   },
 };
@@ -104,9 +105,9 @@ async function test_install_broken(file, expectedError) {
   let install = await createInstall("http://localhost:4444/" + file.leafName);
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
-  do_check_eq(install.error, expectedError);
-  do_check_eq(install.addon, null);
+  Assert.equal(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
+  Assert.equal(install.error, expectedError);
+  Assert.equal(install.addon, null);
 
   gServer.registerFile("/" + file.leafName, null);
 }
@@ -117,9 +118,9 @@ async function test_install_working(file, expectedSignedState) {
   let install = await createInstall("http://localhost:4444/" + file.leafName);
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_INSTALLED);
-  do_check_neq(install.addon, null);
-  do_check_eq(install.addon.signedState, expectedSignedState);
+  Assert.equal(install.state, AddonManager.STATE_INSTALLED);
+  Assert.notEqual(install.addon, null);
+  Assert.equal(install.addon.signedState, expectedSignedState);
 
   gServer.registerFile("/" + file.leafName, null);
 
@@ -138,9 +139,9 @@ async function test_update_broken(file, expectedError) {
   let install = update.updateAvailable;
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
-  do_check_eq(install.error, expectedError);
-  do_check_eq(install.addon, null);
+  Assert.equal(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
+  Assert.equal(install.error, expectedError);
+  Assert.equal(install.addon, null);
 
   gServer.registerFile("/" + file.leafName, null);
   gServer.registerPathHandler("/update.rdf", null);
@@ -160,9 +161,9 @@ async function test_update_working(file, expectedSignedState) {
   let install = update.updateAvailable;
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_INSTALLED);
-  do_check_neq(install.addon, null);
-  do_check_eq(install.addon.signedState, expectedSignedState);
+  Assert.equal(install.state, AddonManager.STATE_INSTALLED);
+  Assert.notEqual(install.addon, null);
+  Assert.equal(install.addon.signedState, expectedSignedState);
 
   gServer.registerFile("/" + file.leafName, null);
   gServer.registerPathHandler("/update.rdf", null);
@@ -217,6 +218,12 @@ add_task(async function() {
 // Try to install a signed add-on
 add_task(async function() {
   let file = do_get_file(DATA + ADDONS.bootstrap.signed);
+  await test_install_working(file, AddonManager.SIGNEDSTATE_SIGNED);
+});
+
+// Try to install an add-on signed with SHA-256
+add_task(async function() {
+  let file = do_get_file(DATA + ADDONS.bootstrap.sha256Signed);
   await test_install_working(file, AddonManager.SIGNEDSTATE_SIGNED);
 });
 

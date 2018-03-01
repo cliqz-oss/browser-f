@@ -22,11 +22,13 @@
 #include "mozilla/DebugOnly.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
+#include "nsExceptionHandler.h"
+#include "nsPrintfCString.h"
 #include "nsRefPtrHashtable.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 
-#if defined(MOZ_DEV_EDITION) || defined(RELEASE_OR_BETA) || !defined(MOZ_CRASHREPORTER)
+#if defined(MOZ_DEV_EDITION) || defined(RELEASE_OR_BETA)
 
 #define ENSURE_HR_SUCCEEDED(hr) \
   if (FAILED((HRESULT)hr)) { \
@@ -34,9 +36,6 @@
   }
 
 #else
-
-#include "nsExceptionHandler.h"
-#include "nsPrintfCString.h"
 
 #define ENSURE_HR_SUCCEEDED(hr) \
   if (FAILED((HRESULT)hr)) { \
@@ -47,7 +46,7 @@
     return hr; \
   }
 
-#endif // defined(MOZ_DEV_EDITION) || defined(RELEASE_OR_BETA) || !defined(MOZ_CRASHREPORTER)
+#endif // defined(MOZ_DEV_EDITION) || defined(RELEASE_OR_BETA)
 
 namespace mozilla {
 namespace mscom {

@@ -18,7 +18,7 @@
 #include "nsIThreadManager.h"
 #include "nsITimer.h"
 #include "nsIThread.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsAutoPtr.h"
 #include "mozilla/Atomics.h"
@@ -1184,6 +1184,7 @@ public:
   {
     static_assert(sizeof...(Storages) == sizeof...(Args), "Storages and Args should have equal sizes");
   }
+
   NS_IMETHOD Run()
   {
     CancelTimer();

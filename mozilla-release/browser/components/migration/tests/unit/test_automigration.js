@@ -19,13 +19,13 @@ AutoMigrateBackstage.MigrationUtils = new Proxy({}, {
       return gShimmedMigratorKeyPicker;
     }
     if (name == "getMigrator" && gShimmedMigrator) {
-      return function() { return gShimmedMigrator };
+      return function() { return gShimmedMigrator; };
     }
     return MigrationUtils[name];
   },
 });
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   AutoMigrateBackstage.MigrationUtils = MigrationUtils;
 });
 
@@ -116,7 +116,7 @@ add_task(async function checkProfilePicking() {
 add_task(async function checkIntegration() {
   gShimmedMigrator = {
     get sourceProfiles() {
-      do_print("Read sourceProfiles");
+      info("Read sourceProfiles");
       return null;
     },
     getMigrateData(profileToMigrate) {
@@ -147,7 +147,7 @@ add_task(async function checkUndoPreconditions() {
   let shouldAddData = false;
   gShimmedMigrator = {
     get sourceProfiles() {
-      do_print("Read sourceProfiles");
+      info("Read sourceProfiles");
       return null;
     },
     getMigrateData(profileToMigrate) {
@@ -617,8 +617,8 @@ add_task(async function checkUndoVisitsState() {
   let observer = {
     onBeginUpdateBatch() {},
     onEndUpdateBatch() {},
-    onVisit(uri) {
-      wrongMethodDeferred.reject(new Error("Unexpected call to onVisit " + uri.spec));
+    onVisits(visits) {
+      wrongMethodDeferred.reject(new Error("Unexpected call to onVisits " + visits.length));
     },
     onTitleChanged(uri) {
       wrongMethodDeferred.reject(new Error("Unexpected call to onTitleChanged " + uri.spec));
@@ -630,17 +630,17 @@ add_task(async function checkUndoVisitsState() {
       wrongMethodDeferred.reject(new Error("Unexpected call to onPageChanged " + uri.spec));
     },
     onFrecencyChanged(aURI) {
-      do_print("frecency change");
+      info("frecency change");
       Assert.ok(frecencyChangesExpected.has(aURI.spec),
                 "Should be expecting frecency change for " + aURI.spec);
       frecencyChangesExpected.get(aURI.spec).resolve();
     },
     onManyFrecenciesChanged() {
-      do_print("Many frecencies changed");
+      info("Many frecencies changed");
       wrongMethodDeferred.reject(new Error("This test can't deal with onManyFrecenciesChanged to be called"));
     },
     onDeleteURI(aURI) {
-      do_print("delete uri");
+      info("delete uri");
       Assert.ok(uriDeletedExpected.has(aURI.spec),
                 "Should be expecting uri deletion for " + aURI.spec);
       uriDeletedExpected.get(aURI.spec).resolve();

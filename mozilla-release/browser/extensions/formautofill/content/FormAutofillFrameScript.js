@@ -39,12 +39,14 @@ var FormAutofillFrameScript = {
       // This is for testing purpose only which sends a message to indicate that the
       // form has been identified, and ready to open popup.
       sendAsyncMessage("FormAutofill:FieldsIdentified");
+      FormAutofillContent.updateActiveInput();
     });
   },
 
   init() {
     addEventListener("focusin", this);
     addMessageListener("FormAutofill:PreviewProfile", this);
+    addMessageListener("FormAutofill:ClearForm", this);
     addMessageListener("FormAutoComplete:PopupClosed", this);
     addMessageListener("FormAutoComplete:PopupOpened", this);
   },
@@ -53,6 +55,7 @@ var FormAutofillFrameScript = {
     if (!evt.isTrusted || !FormAutofillUtils.isAutofillEnabled) {
       return;
     }
+    FormAutofillContent.updateActiveInput();
 
     let element = evt.target;
     if (!FormAutofillUtils.isFieldEligibleForAutofill(element)) {
@@ -88,6 +91,10 @@ var FormAutofillFrameScript = {
         FormAutofillContent.previewProfile(doc);
         break;
       }
+      case "FormAutofill:ClearForm": {
+        FormAutofillContent.clearForm();
+        break;
+      }
       case "FormAutoComplete:PopupClosed": {
         FormAutofillContent.onPopupClosed();
         chromeEventHandler.removeEventListener("keydown", FormAutofillContent._onKeyDown,
@@ -97,6 +104,7 @@ var FormAutofillFrameScript = {
       case "FormAutoComplete:PopupOpened": {
         chromeEventHandler.addEventListener("keydown", FormAutofillContent._onKeyDown,
                                             {capturing: true});
+        break;
       }
     }
   },

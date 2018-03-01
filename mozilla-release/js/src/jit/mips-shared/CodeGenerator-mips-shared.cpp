@@ -207,9 +207,8 @@ CodeGeneratorMIPSShared::generateOutOfLineCode()
         // the same.
         masm.move32(Imm32(frameSize()), ra);
 
-        JitCode* handler = gen->jitRuntime()->getGenericBailoutHandler();
-
-        masm.branch(handler);
+        TrampolinePtr handler = gen->jitRuntime()->getGenericBailoutHandler();
+        masm.jump(handler);
     }
 
     return !masm.oom();
@@ -569,7 +568,7 @@ CodeGeneratorMIPSShared::visitDivI(LDivI* ins)
     // Handle divide by zero.
     if (mir->canBeDivideByZero()) {
         if (mir->trapOnError()) {
-            masm.ma_b(rhs, rhs, trap(mir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
+            masm.ma_b(rhs, rhs, oldTrap(mir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
         } else if (mir->canTruncateInfinities()) {
             // Truncated division by zero is zero (Infinity|0 == 0)
             Label notzero;
@@ -591,7 +590,7 @@ CodeGeneratorMIPSShared::visitDivI(LDivI* ins)
 
         masm.move32(Imm32(-1), temp);
         if (mir->trapOnError()) {
-            masm.ma_b(rhs, temp, trap(mir, wasm::Trap::IntegerOverflow), Assembler::Equal);
+            masm.ma_b(rhs, temp, oldTrap(mir, wasm::Trap::IntegerOverflow), Assembler::Equal);
         } else if (mir->canTruncateOverflow()) {
             // (-INT32_MIN)|0 == INT32_MIN
             Label skip;
@@ -719,7 +718,7 @@ CodeGeneratorMIPSShared::visitModI(LModI* ins)
     if (mir->canBeDivideByZero()) {
         if (mir->isTruncated()) {
             if (mir->trapOnError()) {
-                masm.ma_b(rhs, rhs, trap(mir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
+                masm.ma_b(rhs, rhs, oldTrap(mir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
             } else {
                 Label skip;
                 masm.ma_b(rhs, Imm32(0), &skip, Assembler::NotEqual, ShortJump);
@@ -1560,10 +1559,10 @@ CodeGeneratorMIPSShared::visitOutOfLineWasmTruncateCheck(OutOfLineWasmTruncateCh
 
     // Handle errors.
     masm.bind(&fail);
-    masm.jump(trap(ool, wasm::Trap::IntegerOverflow));
+    masm.jump(oldTrap(ool, wasm::Trap::IntegerOverflow));
 
     masm.bind(&inputIsNaN);
-    masm.jump(trap(ool, wasm::Trap::InvalidConversionToInteger));
+    masm.jump(oldTrap(ool, wasm::Trap::InvalidConversionToInteger));
 }
 
 void
@@ -1843,9 +1842,9 @@ CodeGeneratorMIPSShared::generateInvalidateEpilogue()
     // Push the Ion script onto the stack (when we determine what that
     // pointer is).
     invalidateEpilogueData_ = masm.pushWithPatch(ImmWord(uintptr_t(-1)));
-    JitCode* thunk = gen->jitRuntime()->getInvalidationThunk();
+    TrampolinePtr thunk = gen->jitRuntime()->getInvalidationThunk();
 
-    masm.branch(thunk);
+    masm.jump(thunk);
 
     // We should never reach this point in JIT code -- the invalidation thunk
     // should pop the invalidated JS frame and return directly to its caller.
@@ -1900,7 +1899,7 @@ CodeGeneratorMIPSShared::emitWasmLoad(T* lir)
       default: MOZ_CRASH("unexpected array type");
     }
 
-    masm.memoryBarrier(mir->access().barrierBefore());
+    masm.memoryBarrierBefore(mir->access().sync());
 
     BaseIndex address(HeapReg, ptr, TimesOne);
 
@@ -1920,7 +1919,7 @@ CodeGeneratorMIPSShared::emitWasmLoad(T* lir)
                                    isSigned ? SignExtend : ZeroExtend);
         }
 
-        masm.memoryBarrier(mir->access().barrierAfter());
+        masm.memoryBarrierAfter(mir->access().sync());
         return;
     }
 
@@ -1939,7 +1938,8 @@ CodeGeneratorMIPSShared::emitWasmLoad(T* lir)
                      isSigned ? SignExtend : ZeroExtend);
     }
     masm.append(mir->access(), masm.size() - 4, masm.framePushed());
-    masm.memoryBarrier(mir->access().barrierAfter());
+
+    masm.memoryBarrierAfter(mir->access().sync());
 }
 
 void
@@ -1991,7 +1991,7 @@ CodeGeneratorMIPSShared::emitWasmStore(T* lir)
       default: MOZ_CRASH("unexpected array type");
     }
 
-    masm.memoryBarrier(mir->access().barrierBefore());
+    masm.memoryBarrierBefore(mir->access().sync());
 
     BaseIndex address(HeapReg, ptr, TimesOne);
 
@@ -2011,7 +2011,7 @@ CodeGeneratorMIPSShared::emitWasmStore(T* lir)
                                     isSigned ? SignExtend : ZeroExtend);
         }
 
-        masm.memoryBarrier(mir->access().barrierAfter());
+        masm.memoryBarrierAfter(mir->access().sync());
         return;
     }
 
@@ -2033,7 +2033,8 @@ CodeGeneratorMIPSShared::emitWasmStore(T* lir)
     }
     // Only the last emitted instruction is a memory access.
     masm.append(mir->access(), masm.size() - 4, masm.framePushed());
-    masm.memoryBarrier(mir->access().barrierAfter());
+
+    masm.memoryBarrierAfter(mir->access().sync());
 }
 
 void
@@ -2210,9 +2211,9 @@ CodeGeneratorMIPSShared::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitAsmJSCompareExchangeHeap(LAsmJSCompareExchangeHeap* ins)
+CodeGeneratorMIPSShared::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* ins)
 {
-    MAsmJSCompareExchangeHeap* mir = ins->mir();
+    MWasmCompareExchangeHeap* mir = ins->mir();
     Scalar::Type vt = mir->access().type();
     const LAllocation* ptr = ins->ptr();
     Register ptrReg = ToRegister(ptr);
@@ -2232,9 +2233,9 @@ CodeGeneratorMIPSShared::visitAsmJSCompareExchangeHeap(LAsmJSCompareExchangeHeap
 }
 
 void
-CodeGeneratorMIPSShared::visitAsmJSAtomicExchangeHeap(LAsmJSAtomicExchangeHeap* ins)
+CodeGeneratorMIPSShared::visitWasmAtomicExchangeHeap(LWasmAtomicExchangeHeap* ins)
 {
-    MAsmJSAtomicExchangeHeap* mir = ins->mir();
+    MWasmAtomicExchangeHeap* mir = ins->mir();
     Scalar::Type vt = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register value = ToRegister(ins->value());
@@ -2251,12 +2252,12 @@ CodeGeneratorMIPSShared::visitAsmJSAtomicExchangeHeap(LAsmJSAtomicExchangeHeap* 
 }
 
 void
-CodeGeneratorMIPSShared::visitAsmJSAtomicBinopHeap(LAsmJSAtomicBinopHeap* ins)
+CodeGeneratorMIPSShared::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
 {
     MOZ_ASSERT(ins->mir()->hasUses());
     MOZ_ASSERT(ins->addrTemp()->isBogusTemp());
 
-    MAsmJSAtomicBinopHeap* mir = ins->mir();
+    MWasmAtomicBinopHeap* mir = ins->mir();
     Scalar::Type vt = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register flagTemp = ToRegister(ins->flagTemp());
@@ -2281,12 +2282,12 @@ CodeGeneratorMIPSShared::visitAsmJSAtomicBinopHeap(LAsmJSAtomicBinopHeap* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitAsmJSAtomicBinopHeapForEffect(LAsmJSAtomicBinopHeapForEffect* ins)
+CodeGeneratorMIPSShared::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapForEffect* ins)
 {
     MOZ_ASSERT(!ins->mir()->hasUses());
     MOZ_ASSERT(ins->addrTemp()->isBogusTemp());
 
-    MAsmJSAtomicBinopHeap* mir = ins->mir();
+    MWasmAtomicBinopHeap* mir = ins->mir();
     Scalar::Type vt = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register flagTemp = ToRegister(ins->flagTemp());
@@ -2414,7 +2415,7 @@ CodeGeneratorMIPSShared::visitUDivOrMod(LUDivOrMod* ins)
     if (ins->canBeDivideByZero()) {
         if (ins->mir()->isTruncated()) {
             if (ins->trapOnError()) {
-                masm.ma_b(rhs, rhs, trap(ins, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
+                masm.ma_b(rhs, rhs, oldTrap(ins, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
             } else {
                 // Infinity|0 == 0
                 Label notzero;
@@ -2766,7 +2767,7 @@ CodeGeneratorMIPSShared::visitWasmAddOffset(LWasmAddOffset* lir)
     Register base = ToRegister(lir->base());
     Register out = ToRegister(lir->output());
 
-    masm.ma_addTestCarry(out, base, Imm32(mir->offset()), trap(mir, wasm::Trap::OutOfBounds));
+    masm.ma_addTestCarry(out, base, Imm32(mir->offset()), oldTrap(mir, wasm::Trap::OutOfBounds));
 }
 
 template <typename T>

@@ -89,12 +89,15 @@ if CONFIG['MOZ_WEBRTC_SIGNALING']:
     GYP_DIRS['trunk/third_party/gflags'].variables = gyp_vars_copy
     GYP_DIRS['trunk/third_party/gflags'].sandbox_vars['COMPILE_FLAGS'] = {'WARNINGS_AS_ERRORS': []}
 
-    if CONFIG['_MSC_VER']:
+    if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
         # Avoid warnings from third-party code that we can not modify.
-        if CONFIG['CLANG_CL']:
+        if CONFIG['CC_TYPE'] == 'clang-cl':
             CXXFLAGS += ['-Wno-invalid-source-encoding']
         else:
-            CXXFLAGS += ['-validate-charset-']
+            CXXFLAGS += [
+                '-validate-charset-',
+                '-wd5038', # C5038 initializer list order warnings
+            ]
 
     if CONFIG['ENABLE_TESTS']:
         TEST_DIRS += [
@@ -108,6 +111,7 @@ if CONFIG['MOZ_WEBRTC_SIGNALING']:
             CFLAGS += ['-fsanitize-coverage=trace-pc-guard']
             CXXFLAGS += ['-fsanitize-coverage=trace-pc-guard']
 
-        TEST_DIRS += [
-            'signaling/fuzztest'
-        ]
+        if CONFIG['FUZZING_INTERFACES']:
+            TEST_DIRS += [
+                'signaling/fuzztest'
+            ]

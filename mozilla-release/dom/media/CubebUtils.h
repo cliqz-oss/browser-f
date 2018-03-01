@@ -38,11 +38,9 @@ enum Side {
   Output
 };
 
-void PrefChanged(const char* aPref, void* aClosure);
 double GetVolumeScale();
 bool GetFirstStream();
 cubeb* GetCubebContext();
-cubeb* GetCubebContextUnlocked();
 void ReportCubebStreamInitFailure(bool aIsFirstStream);
 void ReportCubebBackendUsed();
 uint32_t GetCubebPlaybackLatencyInMilliseconds();
@@ -53,6 +51,7 @@ void GetCurrentBackend(nsAString& aBackend);
 void GetPreferredChannelLayout(nsAString& aLayout);
 void GetDeviceCollection(nsTArray<RefPtr<AudioDeviceInfo>>& aDeviceInfos,
                          Side aSide);
+cubeb_channel_layout GetPreferredChannelLayoutOrSMPTE(cubeb* context, uint32_t aChannels);
 } // namespace CubebUtils
 } // namespace mozilla
 

@@ -361,7 +361,6 @@ var treeView = {
     return null;
   },
 
-  getProgressMode(idx, column) { },
   cycleHeader(column) { },
   cycleCell(idx, column) { },
   selectionChanged() { },

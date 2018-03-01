@@ -1,3 +1,5 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,6 +27,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   Schemas: "resource://gre/modules/Schemas.jsm",
+  SchemaRoot: "resource://gre/modules/Schemas.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetter(this, "styleSheetService",
@@ -83,6 +86,11 @@ class NoCloneSpreadArgs {
   }
 }
 
+/**
+ * Base class for WebExtension APIs.  Each API creates a new class
+ * that inherits from this class, the derived class is instantiated
+ * once for each extension that uses the API.
+ */
 class ExtensionAPI extends ExtensionUtils.EventEmitter {
   constructor(extension) {
     super();
@@ -113,6 +121,9 @@ var ExtensionAPIs = {
 
   load(apiName) {
     let api = this.apis.get(apiName);
+    if (!api) {
+      return null;
+    }
 
     if (api.loadPromise) {
       return api.loadPromise;
@@ -175,6 +186,13 @@ var ExtensionAPIs = {
   },
 };
 
+/**
+ * This class contains the information we have about an individual
+ * extension.  It is never instantiated directly, instead subclasses
+ * for each type of process extend this class and add members that are
+ * relevant for that process.
+ * @abstract
+ */
 class BaseContext {
   constructor(envType, extension) {
     this.envType = envType;
@@ -739,6 +757,17 @@ function getPath(map, path) {
   return map;
 }
 
+function mergePaths(dest, source) {
+  for (let name of source.modules) {
+    dest.modules.add(name);
+  }
+
+  for (let [name, child] of source.children.entries()) {
+    mergePaths(getChild(dest, name),
+               child);
+  }
+}
+
 /**
  * Manages loading and accessing a set of APIs for a specific extension
  * context.
@@ -829,7 +858,8 @@ class CanOfAPIs {
     let obj = this.root;
     let modules = this.apiManager.modulePaths;
 
-    for (let key of path.split(".")) {
+    let parts = path.split(".");
+    for (let [i, key] of parts.entries()) {
       if (!obj) {
         return;
       }
@@ -841,6 +871,9 @@ class CanOfAPIs {
         }
       }
 
+      if (!(key in obj) && i < parts.length - 1) {
+        obj[key] = {};
+      }
       obj = obj[key];
     }
 
@@ -865,7 +898,8 @@ class CanOfAPIs {
     let obj = this.root;
     let modules = this.apiManager.modulePaths;
 
-    for (let key of path.split(".")) {
+    let parts = path.split(".");
+    for (let [i, key] of parts.entries()) {
       if (!obj) {
         return;
       }
@@ -875,6 +909,10 @@ class CanOfAPIs {
         if (!this.apis.has(name)) {
           await this.asyncLoadAPI(name);
         }
+      }
+
+      if (!(key in obj) && i < parts.length - 1) {
+        obj[key] = {};
       }
 
       if (typeof obj[key] === "function") {
@@ -938,11 +976,15 @@ class SchemaAPIManager extends EventEmitter {
    *     "content" - A content process.
    *     "devtools" - A devtools process.
    *     "proxy" - A proxy script process.
+   * @param {SchemaRoot} schema
    */
-  constructor(processType) {
+  constructor(processType, schema) {
     super();
     this.processType = processType;
-    this.global = this._createExtGlobal();
+    this.global = null;
+    if (schema) {
+      this.schema = schema;
+    }
 
     this.modules = new Map();
     this.modulePaths = {children: new Map(), modules: new Set()};
@@ -958,12 +1000,27 @@ class SchemaAPIManager extends EventEmitter {
     this._scriptScopes = [];
   }
 
-  async loadModuleJSON(urls) {
-    function fetchJSON(url) {
-      return fetch(url).then(resp => resp.json());
+  onStartup(extension) {
+    let promises = [];
+    for (let apiName of this.eventModules.get("startup")) {
+      promises.push(this.asyncGetAPI(apiName, extension).then(api => {
+        if (api) {
+          api.onStartup();
+        }
+      }));
     }
 
-    for (let json of await Promise.all(urls.map(fetchJSON))) {
+    return Promise.all(promises);
+  }
+
+  async loadModuleJSON(urls) {
+    let promises = urls.map(url => fetch(url).then(resp => resp.json()));
+
+    return this.initModuleJSON(await Promise.all(promises));
+  }
+
+  initModuleJSON(blobs) {
+    for (let json of blobs) {
       this.registerModules(json);
     }
 
@@ -1166,6 +1223,8 @@ class SchemaAPIManager extends EventEmitter {
 
     this._checkLoadModule(module, name);
 
+    this.initGlobal();
+
     Services.scriptloader.loadSubScript(module.url, this.global, "UTF-8");
 
     module.loaded = true;
@@ -1193,6 +1252,7 @@ class SchemaAPIManager extends EventEmitter {
     this._checkLoadModule(module, name);
 
     module.asyncLoaded = ChromeUtils.compileScript(module.url).then(script => {
+      this.initGlobal();
       script.executeInGlobal(this.global);
 
       module.loaded = true;
@@ -1201,6 +1261,10 @@ class SchemaAPIManager extends EventEmitter {
     });
 
     return module.asyncLoaded;
+  }
+
+  getModule(name) {
+    return this.modules.get(name);
   }
 
   /**
@@ -1219,7 +1283,7 @@ class SchemaAPIManager extends EventEmitter {
    *        Whether the module may be loaded.
    */
   _checkGetAPI(name, extension, scope = null) {
-    let module = this.modules.get(name);
+    let module = this.getModule(name);
 
     if (module.permissions && !module.permissions.some(perm => extension.hasPermission(perm))) {
       return false;
@@ -1247,7 +1311,7 @@ class SchemaAPIManager extends EventEmitter {
     if (module.asyncLoaded) {
       throw new Error(`Module '${name}' currently being lazily loaded`);
     }
-    if (this.global[name]) {
+    if (this.global && this.global[name]) {
       throw new Error(`Module '${name}' conflicts with existing global property`);
     }
   }
@@ -1265,7 +1329,23 @@ class SchemaAPIManager extends EventEmitter {
       sandboxName: `Namespace of ext-*.js scripts for ${this.processType} (from: resource://gre/modules/ExtensionCommon.jsm)`,
     });
 
-    Object.assign(global, {global, Cc, Ci, Cu, Cr, XPCOMUtils, ChromeUtils, ChromeWorker, ExtensionAPI, ExtensionCommon, MatchPattern, MatchPatternSet, StructuredCloneHolder, extensions: this});
+    Object.assign(global, {
+      Cc,
+      ChromeUtils,
+      ChromeWorker,
+      Ci,
+      Cr,
+      Cu,
+      ExtensionAPI,
+      ExtensionCommon,
+      MatchGlob,
+      MatchPattern,
+      MatchPatternSet,
+      StructuredCloneHolder,
+      XPCOMUtils,
+      extensions: this,
+      global,
+    });
 
     Cu.import("resource://gre/modules/AppConstants.jsm", global);
 
@@ -1277,6 +1357,12 @@ class SchemaAPIManager extends EventEmitter {
     });
 
     return global;
+  }
+
+  initGlobal() {
+    if (!this.global) {
+      this.global = this._createExtGlobal();
+    }
   }
 
   /**
@@ -1317,6 +1403,96 @@ class SchemaAPIManager extends EventEmitter {
     }
   }
 }
+
+class LazyAPIManager extends SchemaAPIManager {
+  constructor(processType, moduleData, schemaURLs) {
+    super(processType);
+
+    this.initialized = false;
+
+    this.initModuleData(moduleData);
+
+    this.schemaURLs = schemaURLs;
+  }
+}
+
+defineLazyGetter(LazyAPIManager.prototype, "schema", function() {
+  let root = new SchemaRoot(Schemas.rootSchema, this.schemaURLs);
+  root.parseSchemas();
+  return root;
+});
+
+class MultiAPIManager extends SchemaAPIManager {
+  constructor(processType, children) {
+    super(processType);
+
+    this.initialized = false;
+
+    this.children = children;
+  }
+
+  async lazyInit() {
+    if (!this.initialized) {
+      this.initialized = true;
+
+      for (let child of this.children) {
+        if (child.lazyInit) {
+          let res = child.lazyInit();
+          if (res && typeof res.then === "function") {
+            await res;
+          }
+        }
+
+        mergePaths(this.modulePaths, child.modulePaths);
+      }
+    }
+  }
+
+  onStartup(extension) {
+    return Promise.all(this.children.map(
+      child => child.onStartup(extension)));
+  }
+
+  getModule(name) {
+    for (let child of this.children) {
+      if (child.modules.has(name)) {
+        return child.modules.get(name);
+      }
+    }
+  }
+
+  loadModule(name) {
+    for (let child of this.children) {
+      if (child.modules.has(name)) {
+        return child.loadModule(name);
+      }
+    }
+  }
+
+  asyncLoadModule(name) {
+    for (let child of this.children) {
+      if (child.modules.has(name)) {
+        return child.asyncLoadModule(name);
+      }
+    }
+  }
+}
+
+defineLazyGetter(MultiAPIManager.prototype, "schema", function() {
+  let bases = this.children.map(child => child.schema);
+
+  // All API manager schema roots should derive from the global schema root,
+  // so it doesn't need its own entry.
+  if (bases[bases.length - 1] === Schemas) {
+    bases.pop();
+  }
+
+  if (bases.length === 1) {
+    bases = bases[0];
+  }
+  return new SchemaRoot(bases, new Map());
+});
+
 
 function LocaleData(data) {
   this.defaultLocale = data.defaultLocale;
@@ -1518,27 +1694,38 @@ defineLazyGetter(LocaleData.prototype, "availableLocales", function() {
                  .filter(locale => this.messages.has(locale)));
 });
 
-// This is a generic class for managing event listeners. Example usage:
-//
-// new EventManager(context, "api.subAPI", fire => {
-//   let listener = (...) => {
-//     // Fire any listeners registered with addListener.
-//     fire.async(arg1, arg2);
-//   };
-//   // Register the listener.
-//   SomehowRegisterListener(listener);
-//   return () => {
-//     // Return a way to unregister the listener.
-//     SomehowUnregisterListener(listener);
-//   };
-// }).api()
-//
-// The result is an object with addListener, removeListener, and
-// hasListener methods. |context| is an add-on scope (either an
-// ExtensionContext in the chrome process or ExtensionContext in a
-// content process). |name| is for debugging. |register| is a function
-// to register the listener. |register| should return an
-// unregister function that will unregister the listener.
+/**
+* This is a generic class for managing event listeners.
+ *
+ * @example
+ * new EventManager(context, "api.subAPI", fire => {
+ *   let listener = (...) => {
+ *     // Fire any listeners registered with addListener.
+ *     fire.async(arg1, arg2);
+ *   };
+ *   // Register the listener.
+ *   SomehowRegisterListener(listener);
+ *   return () => {
+ *     // Return a way to unregister the listener.
+ *     SomehowUnregisterListener(listener);
+ *   };
+ * }).api()
+ *
+ * The result is an object with addListener, removeListener, and
+ * hasListener methods. `context` is an add-on scope (either an
+ * ExtensionContext in the chrome process or ExtensionContext in a
+ * content process). `name` is for debugging. `register` is a function
+ * to register the listener. `register` should return an
+ * unregister function that will unregister the listener.
+ * @constructor
+ *
+ * @param {BaseContext} context
+ *        An object representing the extension instance using this event.
+ * @param {string} name
+ *        A name used only for debugging.
+ * @param {functon} register
+ *        A function called whenever a new listener is added.
+ */
 function EventManager(context, name, register) {
   this.context = context;
   this.name = name;
@@ -1680,4 +1867,7 @@ ExtensionCommon = {
   SpreadArgs,
   ignoreEvent,
   stylesheetMap,
+
+  MultiAPIManager,
+  LazyAPIManager,
 };

@@ -9,8 +9,7 @@
 const promise = require("promise");
 const CssLogic = require("devtools/shared/inspector/css-logic");
 const {ELEMENT_STYLE} = require("devtools/shared/specs/styles");
-const {TextProperty} =
-      require("devtools/client/inspector/rules/models/text-property");
+const TextProperty = require("devtools/client/inspector/rules/models/text-property");
 const {promiseWarn} = require("devtools/client/inspector/shared/utils");
 const {parseNamedDeclarations} = require("devtools/shared/css/parsing-utils");
 const Services = require("Services");
@@ -47,7 +46,6 @@ function Rule(elementStyle, options) {
   this.isUnmatched = options.isUnmatched || false;
   this.inherited = options.inherited || null;
   this.keyframes = options.keyframes || null;
-  this._modificationDepth = 0;
 
   if (this.domRule && this.domRule.mediaText) {
     this.mediaText = this.domRule.mediaText;

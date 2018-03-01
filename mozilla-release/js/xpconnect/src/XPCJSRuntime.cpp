@@ -18,6 +18,7 @@
 #include "nsAutoPtr.h"
 #include "nsNetUtil.h"
 
+#include "nsExceptionHandler.h"
 #include "nsIMemoryInfoDumper.h"
 #include "nsIMemoryReporter.h"
 #include "nsIObserverService.h"
@@ -59,10 +60,6 @@
 #include "nsIInputStream.h"
 #include "nsIXULRuntime.h"
 #include "nsJSPrincipals.h"
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
 
 #ifdef XP_WIN
 #include <windows.h>
@@ -655,9 +652,7 @@ void XPCJSRuntime::TraceNativeBlackRoots(JSTracer* trc)
             roots->TraceJSAll(trc);
     }
 
-    JSContext* cx = XPCJSContext::Get()->Context();
-    dom::TraceBlackJS(trc, JS_GetGCParameter(cx, JSGC_NUMBER),
-                      nsXPConnect::XPConnect()->IsShuttingDown());
+    dom::TraceBlackJS(trc, nsXPConnect::XPConnect()->IsShuttingDown());
 }
 
 void XPCJSRuntime::TraceAdditionalNativeGrayRoots(JSTracer* trc)
@@ -754,9 +749,7 @@ XPCJSRuntime::GCSliceCallback(JSContext* cx,
     if (!self)
         return;
 
-#ifdef MOZ_CRASHREPORTER
     CrashReporter::SetGarbageCollecting(progress == JS::GC_CYCLE_BEGIN);
-#endif
 
     if (self->mPrevGCSliceCallback)
         (*self->mPrevGCSliceCallback)(cx, progress, desc);
@@ -2663,9 +2656,6 @@ AccumulateTelemetryCallback(int id, uint32_t sample, const char* key)
       case JS_TELEMETRY_DEPRECATED_LANGUAGE_EXTENSIONS_IN_CONTENT:
         Telemetry::Accumulate(Telemetry::JS_DEPRECATED_LANGUAGE_EXTENSIONS_IN_CONTENT, sample);
         break;
-      case JS_TELEMETRY_DEPRECATED_LANGUAGE_EXTENSIONS_IN_ADDONS:
-        Telemetry::Accumulate(Telemetry::JS_DEPRECATED_LANGUAGE_EXTENSIONS_IN_ADDONS, sample);
-        break;
       case JS_TELEMETRY_ADDON_EXCEPTIONS:
         Telemetry::Accumulate(Telemetry::JS_TELEMETRY_ADDON_EXCEPTIONS, nsDependentCString(key), sample);
         break;
@@ -2824,7 +2814,7 @@ ReadSourceFromFilename(JSContext* cx, const char* filename, char16_t** src, size
 // the source for a chrome JS function. See the comment in the XPCJSRuntime
 // constructor.
 class XPCJSSourceHook: public js::SourceHook {
-    bool load(JSContext* cx, const char* filename, char16_t** src, size_t* length) {
+    bool load(JSContext* cx, const char* filename, char16_t** src, size_t* length) override {
         *src = nullptr;
         *length = 0;
 

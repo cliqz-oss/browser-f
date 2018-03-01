@@ -26,6 +26,8 @@ public:
         return (gfxPlatformMac*) gfxPlatform::GetPlatform();
     }
 
+    bool UsesTiling() const override;
+
     virtual already_AddRefed<gfxASurface>
       CreateOffscreenSurface(const IntSize& aSize,
                              gfxImageFormat aFormat) override;
@@ -56,10 +58,6 @@ public:
                      nsAString& aSystemFontName,
                      gfxFontStyle &aFontStyle,
                      float aDevPixPerCSSPixel);
-
-    virtual bool CanRenderContentToDataSurface() const override {
-      return true;
-    }
 
     virtual bool SupportsApzWheelInput() const override {
       return true;

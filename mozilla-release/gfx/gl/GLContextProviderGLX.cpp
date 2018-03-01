@@ -17,7 +17,7 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/layers/CompositorOptions.h"
 #include "mozilla/widget/CompositorWidget.h"
-#include "mozilla/widget/X11CompositorWidget.h"
+#include "mozilla/widget/GtkCompositorWidget.h"
 #include "mozilla/Unused.h"
 
 #include "prenv.h"
@@ -606,40 +606,30 @@ GLContextGLX::Init()
 }
 
 bool
-GLContextGLX::MakeCurrentImpl(bool aForce)
+GLContextGLX::MakeCurrentImpl() const
 {
-    bool succeeded = true;
-
-    // With the ATI FGLRX driver, glxMakeCurrent is very slow even when the context doesn't change.
-    // (This is not the case with other drivers such as NVIDIA).
-    // So avoid calling it more than necessary. Since GLX documentation says that:
-    //     "glXGetCurrentContext returns client-side information.
-    //      It does not make a round trip to the server."
-    // I assume that it's not worth using our own TLS slot here.
-    if (aForce || mGLX->fGetCurrentContext() != mContext) {
-        if (mGLX->IsMesa()) {
-          // Read into the event queue to ensure that Mesa receives a
-          // DRI2InvalidateBuffers event before drawing. See bug 1280653.
-          Unused << XPending(mDisplay);
-        }
-
-        succeeded = mGLX->fMakeCurrent(mDisplay, mDrawable, mContext);
-        NS_ASSERTION(succeeded, "Failed to make GL context current!");
-
-        if (!IsOffscreen() && mGLX->SupportsSwapControl()) {
-            // Many GLX implementations default to blocking until the next
-            // VBlank when calling glXSwapBuffers. We want to run unthrottled
-            // in ASAP mode. See bug 1280744.
-            const bool isASAP = (gfxPrefs::LayoutFrameRate() == 0);
-            mGLX->fSwapInterval(mDisplay, mDrawable, isASAP ? 0 : 1);
-        }
+    if (mGLX->IsMesa()) {
+        // Read into the event queue to ensure that Mesa receives a
+        // DRI2InvalidateBuffers event before drawing. See bug 1280653.
+        Unused << XPending(mDisplay);
     }
 
+    const bool succeeded = mGLX->fMakeCurrent(mDisplay, mDrawable, mContext);
+    NS_ASSERTION(succeeded, "Failed to make GL context current!");
+
+    if (!IsOffscreen() && mGLX->SupportsSwapControl()) {
+        // Many GLX implementations default to blocking until the next
+        // VBlank when calling glXSwapBuffers. We want to run unthrottled
+        // in ASAP mode. See bug 1280744.
+        const bool isASAP = (gfxPrefs::LayoutFrameRate() == 0);
+        mGLX->fSwapInterval(mDisplay, mDrawable, isASAP ? 0 : 1);
+    }
     return succeeded;
 }
 
 bool
-GLContextGLX::IsCurrent() {
+GLContextGLX::IsCurrentImpl() const
+{
     return mGLX->fGetCurrentContext() == mContext;
 }
 
@@ -813,7 +803,7 @@ CreateForWidget(Display* aXDisplay, Window aXWindow,
 already_AddRefed<GLContext>
 GLContextProviderGLX::CreateForCompositorWidget(CompositorWidget* aCompositorWidget, bool aForceAccelerated)
 {
-    X11CompositorWidget* compWidget = aCompositorWidget->AsX11();
+    GtkCompositorWidget* compWidget = aCompositorWidget->AsX11();
     MOZ_ASSERT(compWidget);
 
     return CreateForWidget(compWidget->XDisplay(),
@@ -937,14 +927,13 @@ GLContextGLX::FindFBConfigForWindow(Display* display, int screen, Window window,
     printf("[GLX] window %lx has VisualID 0x%lx\n", window, windowVisualID);
 #endif
 
-    if (aWebRender) {
-        for (int i = 0; i < numConfigs; i++) {
-            int visid = X11None;
-            sGLXLibrary.fGetFBConfigAttrib(display, cfgs[i], LOCAL_GLX_VISUAL_ID, &visid);
-            if (!visid) {
-                continue;
-            }
-
+    for (int i = 0; i < numConfigs; i++) {
+        int visid = X11None;
+        sGLXLibrary.fGetFBConfigAttrib(display, cfgs[i], LOCAL_GLX_VISUAL_ID, &visid);
+        if (!visid) {
+            continue;
+        }
+        if (aWebRender || sGLXLibrary.IsATI()) {
             int depth;
             Visual* visual;
             FindVisualAndDepth(display, visid, &visual, &depth);
@@ -954,30 +943,11 @@ GLContextGLX::FindFBConfigForWindow(Display* display, int screen, Window window,
                 *out_visid = visid;
                 return true;
             }
-        }
-    } else {
-        for (int i = 0; i < numConfigs; i++) {
-            int visid = X11None;
-            sGLXLibrary.fGetFBConfigAttrib(display, cfgs[i], LOCAL_GLX_VISUAL_ID, &visid);
-            if (!visid) {
-                continue;
-            }
-            if (sGLXLibrary.IsATI()) {
-                int depth;
-                Visual* visual;
-                FindVisualAndDepth(display, visid, &visual, &depth);
-                if (depth == windowAttrs.depth &&
-                    AreCompatibleVisuals(windowAttrs.visual, visual)) {
-                    *out_config = cfgs[i];
-                    *out_visid = visid;
-                    return true;
-                }
-            } else {
-                if (windowVisualID == static_cast<VisualID>(visid)) {
-                    *out_config = cfgs[i];
-                    *out_visid = visid;
-                    return true;
-                }
+        } else {
+            if (windowVisualID == static_cast<VisualID>(visid)) {
+                *out_config = cfgs[i];
+                *out_visid = visid;
+                return true;
             }
         }
     }

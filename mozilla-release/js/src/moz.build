@@ -640,12 +640,19 @@ FINAL_LIBRARY = 'js'
 if CONFIG['NIGHTLY_BUILD']:
     DEFINES['ENABLE_BINARYDATA'] = True
     DEFINES['ENABLE_SIMD'] = True
-
-# In-flight WebAssembly atomic operations, sign extension operations,
-# and shared memory objects proposal:
-# https://github.com/WebAssembly/threads
-if CONFIG['NIGHTLY_BUILD']:
+    DEFINES['ENABLE_WASM_SIGNEXTEND_OPS'] = True
     DEFINES['ENABLE_WASM_THREAD_OPS'] = True
+
+if CONFIG['JS_BUILD_BINAST']:
+    # Using SOURCES as UNIFIED_SOURCES causes mysterious bugs on 32-bit platforms.
+    # These parts of BinAST are designed only to test evolutions of the
+    # specification.
+    SOURCES += ['frontend/BinTokenReaderTester.cpp']
+    # These parts of BinAST should eventually move to release.
+    SOURCES += [
+        'frontend/BinSource.cpp',
+        'frontend/BinToken.cpp'
+    ]
 
 # Wasm code should use WASM_HUGE_MEMORY instead of JS_CODEGEN_X64
 # so that it is easy to use the huge-mapping optimization for other
@@ -670,7 +677,7 @@ if CONFIG['JS_HAS_CTYPES']:
 if CONFIG['MOZ_LINKER']:
     DEFINES['MOZ_LINKER'] = True
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     if CONFIG['CPU_ARCH'] == 'x86':
         SOURCES['builtin/RegExp.cpp'].no_pgo = True # Bug 772303
     elif CONFIG['CPU_ARCH'] == 'x86_64' and CONFIG['JS_HAS_CTYPES']:
@@ -744,13 +751,13 @@ if CONFIG['JS_HAS_CTYPES']:
         # Windows needs this to be linked with a static library.
         DEFINES['FFI_BUILDING'] = True
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     # Also disable strict-aliasing for GCC compiler, that is enabled by default
     # starting with version 7.1, see Bug 1363009
     CXXFLAGS += ['-Wno-shadow', '-Werror=format', '-fno-strict-aliasing']
 
 # Suppress warnings in third-party code.
-if CONFIG['CLANG_CXX'] or CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     SOURCES['jsdtoa.cpp'].flags += ['-Wno-implicit-fallthrough']
 
 # Generate GC statistics phase data.

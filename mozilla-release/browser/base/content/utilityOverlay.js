@@ -469,7 +469,8 @@ function openLinkIn(url, where, params) {
     loadInBackground = !loadInBackground;
     // fall through
   case "tab":
-    focusUrlBar = !loadInBackground && w.isBlankPageURL(url);
+    focusUrlBar = !loadInBackground && w.isBlankPageURL(url)
+      && !aboutNewTabService.willNotifyUser;
 
     let tabUsedForLoad = w.gBrowser.loadOneTab(url, {
       referrerURI: aReferrerURI,
@@ -822,20 +823,10 @@ function openTroubleshootingPage() {
 }
 
 /**
- * Opens the troubleshooting information (about:support) page for this version
- * of the application.
- */
-function openHealthReport() {
-  openUILinkIn("about:healthreport", "tab");
-}
-
-/**
  * Opens the feedback page for this version of the application.
  */
 function openFeedbackPage() {
-  var url = Components.classes["@mozilla.org/toolkit/URLFormatterService;1"]
-                      .getService(Components.interfaces.nsIURLFormatter)
-                      .formatURLPref("app.feedback.baseURL");
+  var url = Services.urlFormatter.formatURLPref("app.feedback.baseURL");
   openUILinkIn(url, "tab");
 }
 
@@ -929,9 +920,7 @@ function openNewWindowWith(aURL, aDocument, aPostData, aAllowThirdPartyFixup,
 }
 
 function getHelpLinkURL(aHelpTopic) {
-  var url = Components.classes["@mozilla.org/toolkit/URLFormatterService;1"]
-                      .getService(Components.interfaces.nsIURLFormatter)
-                      .formatURLPref("app.support.baseURL");
+  var url = Services.urlFormatter.formatURLPref("app.support.baseURL");
   return url + aHelpTopic;
 }
 
@@ -950,7 +939,7 @@ function openPrefsHelp() {
   // since its probably behind the window.
   var instantApply = getBoolPref("browser.preferences.instantApply");
 
-  var helpTopic = document.getElementsByTagName("prefwindow")[0].currentPane.helpTopic;
+  var helpTopic = document.documentElement.getAttribute("helpTopic");
   openHelpLink(helpTopic, !instantApply);
 }
 

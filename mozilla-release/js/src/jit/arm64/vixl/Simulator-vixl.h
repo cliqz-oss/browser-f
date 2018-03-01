@@ -716,8 +716,11 @@ class Simulator : public DecoderVisitor {
   void setFP32Result(float result);
   void setFP64Result(double result);
   void VisitCallRedirection(const Instruction* instr);
-  static inline uintptr_t StackLimit() {
+  static uintptr_t StackLimit() {
     return Simulator::Current()->stackLimit();
+  }
+  static bool supportsAtomics() {
+    return true;
   }
 
   void ResetState();
@@ -752,7 +755,7 @@ class Simulator : public DecoderVisitor {
   void ExecuteInstruction();
 
   // Declare all Visitor functions.
-  #define DECLARE(A) virtual void Visit##A(const Instruction* instr);
+  #define DECLARE(A) virtual void Visit##A(const Instruction* instr) override;
   VISITOR_LIST_THAT_RETURN(DECLARE)
   VISITOR_LIST_THAT_DONT_RETURN(DECLARE)
   #undef DECLARE

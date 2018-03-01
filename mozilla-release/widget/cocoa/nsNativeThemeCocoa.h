@@ -38,6 +38,8 @@ public:
     eThemeGeometryTypeHighlightedMenuItem,
     eThemeGeometryTypeVibrancyLight,
     eThemeGeometryTypeVibrancyDark,
+    eThemeGeometryTypeVibrantTitlebarLight,
+    eThemeGeometryTypeVibrantTitlebarDark,
     eThemeGeometryTypeTooltip,
     eThemeGeometryTypeSheet,
     eThemeGeometryTypeSourceList,
@@ -55,7 +57,14 @@ public:
                                   uint8_t aWidgetType,
                                   const nsRect& aRect,
                                   const nsRect& aDirtyRect) override;
-  NS_IMETHOD GetWidgetBorder(nsDeviceContext* aContext, 
+  bool CreateWebRenderCommandsForWidget(mozilla::wr::DisplayListBuilder& aBuilder,
+                                        mozilla::wr::IpcResourceUpdateQueue& aResources,
+                                        const mozilla::layers::StackingContextHelper& aSc,
+                                        mozilla::layers::WebRenderLayerManager* aManager,
+                                        nsIFrame* aFrame,
+                                        uint8_t aWidgetType,
+                                        const nsRect& aRect) override;
+  NS_IMETHOD GetWidgetBorder(nsDeviceContext* aContext,
                              nsIFrame* aFrame,
                              uint8_t aWidgetType,
                              nsIntMargin* aResult) override;

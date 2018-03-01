@@ -206,7 +206,7 @@ function serializeNode(aNode, aIsLivemark) {
 // Imposed to limit database size.
 const DB_URL_LENGTH_MAX = 65536;
 const DB_TITLE_LENGTH_MAX = 4096;
-const DB_DESCRIPTION_LENGTH_MAX = 1024;
+const DB_DESCRIPTION_LENGTH_MAX = 256;
 
 /**
  * List of bookmark object validators, one per each known property.
@@ -446,6 +446,27 @@ this.PlacesUtils = {
       encodedParams[key] = encodeURIComponent(params[key]);
     }
     return "moz-action:" + type + "," + JSON.stringify(encodedParams);
+  },
+
+  /**
+   * Parses matchBuckets strings (for example, "suggestion:4,general:Infinity")
+   * like those used in the browser.urlbar.matchBuckets preference.
+   *
+   * @param   str
+   *          A matchBuckets string.
+   * @returns An array of the form: [
+   *            [bucketName_0, bucketPriority_0],
+   *            [bucketName_1, bucketPriority_1],
+   *            ...
+   *            [bucketName_n, bucketPriority_n]
+   *          ]
+   */
+  convertMatchBucketsStringToArray(str) {
+    return str.split(",")
+              .map(v => {
+                let bucket = v.split(":");
+                return [ bucket[0].trim().toLowerCase(), Number(bucket[1]) ];
+              });
   },
 
   /**
@@ -1232,19 +1253,26 @@ this.PlacesUtils = {
   },
 
   /**
-   * Checks if aItemId is a root.
+   * Checks if item is a root.
    *
-   *   @param aItemId
-   *          item id to look for.
-   *   @returns true if aItemId is a root, false otherwise.
+   * @param {Number|String} guid The guid or id of the item to look for.
+   * @returns {Boolean} true if guid is a root, false otherwise.
    */
-  isRootItem: function PU_isRootItem(aItemId) {
-    return aItemId == PlacesUtils.bookmarksMenuFolderId ||
-           aItemId == PlacesUtils.toolbarFolderId ||
-           aItemId == PlacesUtils.unfiledBookmarksFolderId ||
-           aItemId == PlacesUtils.tagsFolderId ||
-           aItemId == PlacesUtils.placesRootId ||
-           aItemId == PlacesUtils.mobileFolderId;
+  isRootItem(guid) {
+    if (typeof guid === "string") {
+      return guid == PlacesUtils.bookmarks.menuGuid ||
+             guid == PlacesUtils.bookmarks.toolbarGuid ||
+             guid == PlacesUtils.bookmarks.unfiledGuid ||
+             guid == PlacesUtils.bookmarks.tagsGuid ||
+             guid == PlacesUtils.bookmarks.rootGuid ||
+             guid == PlacesUtils.bookmarks.mobileGuid;
+    }
+    return guid == PlacesUtils.bookmarksMenuFolderId ||
+           guid == PlacesUtils.toolbarFolderId ||
+           guid == PlacesUtils.unfiledBookmarksFolderId ||
+           guid == PlacesUtils.tagsFolderId ||
+           guid == PlacesUtils.placesRootId ||
+           guid == PlacesUtils.mobileFolderId;
   },
 
   /**
@@ -2241,17 +2269,20 @@ var Keywords = {
         } else {
           // An entry for the given page could be missing, in such a case we need to
           // create it.  The IGNORE conflict can trigger on `guid`.
-          await db.executeCached(
-            `INSERT OR IGNORE INTO moz_places (url, url_hash, rev_host, hidden, frecency, guid)
-             VALUES (:url, hash(:url), :rev_host, 0, :frecency,
-                     IFNULL((SELECT guid FROM moz_places WHERE url_hash = hash(:url) AND url = :url),
-                            GENERATE_GUID()))
-            `, { url: url.href, rev_host: PlacesUtils.getReversedHost(url),
-                 frecency: url.protocol == "place:" ? 0 : -1 });
-          await db.executeCached(
-            `INSERT INTO moz_keywords (keyword, place_id, post_data)
-             VALUES (:keyword, (SELECT id FROM moz_places WHERE url_hash = hash(:url) AND url = :url), :post_data)
-            `, { url: url.href, keyword, post_data: postData });
+          await db.executeTransaction(async function() {
+            await db.executeCached(
+              `INSERT OR IGNORE INTO moz_places (url, url_hash, rev_host, hidden, frecency, guid)
+               VALUES (:url, hash(:url), :rev_host, 0, :frecency,
+                       IFNULL((SELECT guid FROM moz_places WHERE url_hash = hash(:url) AND url = :url),
+                              GENERATE_GUID()))
+              `, { url: url.href, rev_host: PlacesUtils.getReversedHost(url),
+                   frecency: url.protocol == "place:" ? 0 : -1 });
+            await db.executeCached("DELETE FROM moz_updatehostsinsert_temp");
+            await db.executeCached(
+              `INSERT INTO moz_keywords (keyword, place_id, post_data)
+               VALUES (:keyword, (SELECT id FROM moz_places WHERE url_hash = hash(:url) AND url = :url), :post_data)
+              `, { url: url.href, keyword, post_data: postData });
+          });
         }
 
         await PlacesSyncUtils.bookmarks.addSyncChangesForBookmarksWithURL(

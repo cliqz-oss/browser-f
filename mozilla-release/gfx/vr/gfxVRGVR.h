@@ -60,7 +60,6 @@ public:
   bool SubmitFrame(const mozilla::layers::EGLImageDescriptor* aDescriptor,
                    const gfx::Rect& aLeftEyeRect,
                    const gfx::Rect& aRightEyeRect) override;
-  void NotifyVSync() override;
 protected:
   virtual VRHMDSensorState GetSensorState() override;
   // END VRDisplayHost interface
@@ -74,7 +73,7 @@ public:
 
 protected:
   virtual ~VRDisplayGVR();
-  void UpdateHeadToEye(gvr_context* aContext, gfx::Quaternion* aRot = nullptr);
+  void UpdateHeadToEye(gvr_context* aContext);
   void UpdateViewport();
   void RecreateSwapChain();
 
@@ -105,7 +104,9 @@ public:
 
   void Destroy() override;
   void Shutdown() override;
-  bool GetHMDs(nsTArray<RefPtr<VRDisplayHost> >& aHMDResult) override;
+  void Enumerate() override;
+  bool ShouldInhibitEnumeration() override;
+  void GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult) override;
   bool GetIsPresenting() override;
   void HandleInput() override;
   void GetControllers(nsTArray<RefPtr<VRControllerHost>>&
@@ -116,7 +117,7 @@ public:
                      uint32_t aHapticIndex,
                      double aIntensity,
                      double aDuration,
-                     uint32_t aPromiseID) override;
+                     const VRManagerPromise& aPromise) override;
   void StopVibrateHaptic(uint32_t aControllerIdx) override;
 
 protected:

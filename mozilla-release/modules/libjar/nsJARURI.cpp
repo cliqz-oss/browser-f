@@ -258,10 +258,24 @@ nsJARURI::GetHasRef(bool *result)
     return mJAREntry->GetHasRef(result);
 }
 
-NS_IMETHODIMP
-nsJARURI::SetSpec(const nsACString& aSpec)
+nsresult
+nsJARURI::SetSpecInternal(const nsACString& aSpec)
 {
     return SetSpecWithBase(aSpec, nullptr);
+}
+
+NS_IMPL_ISUPPORTS(nsJARURI::Mutator, nsIURISetters, nsIURIMutator)
+
+NS_IMETHODIMP
+nsJARURI::Mutate(nsIURIMutator** aMutator)
+{
+    RefPtr<nsJARURI::Mutator> mutator = new nsJARURI::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+    mutator.forget(aMutator);
+    return NS_OK;
 }
 
 nsresult
@@ -312,12 +326,18 @@ nsJARURI::SetSpecWithBase(const nsACString &aSpec, nsIURI* aBaseURL)
 
     ++begin; // now we're past the "jar:"
 
+    nsACString::const_iterator delim_begin = begin;
+    nsACString::const_iterator delim_end = end;
     nsACString::const_iterator frag = begin;
-    while (frag != end && *frag != '#') {
+
+    if (FindInReadable(NS_JAR_DELIMITER, delim_begin, delim_end)) {
+        frag = delim_end;
+    }
+    while (frag != end && (*frag != '#' && *frag != '?')) {
         ++frag;
     }
     if (frag != end) {
-        // there was a fragment, mark that as the end of the URL to scan
+        // there was a fragment or query, mark that as the end of the URL to scan
         end = frag;
     }
 
@@ -329,11 +349,12 @@ nsJARURI::SetSpecWithBase(const nsACString &aSpec, nsIURI* aBaseURL)
     // Also, the outermost "inner" URI may be a relative URI:
     //   jar:../relative.jar!/a.html
 
-    nsACString::const_iterator delim_begin (begin),
-                               delim_end   (end);
+    delim_begin = begin;
+    delim_end = end;
 
-    if (!RFindInReadable(NS_JAR_DELIMITER, delim_begin, delim_end))
+    if (!RFindInReadable(NS_JAR_DELIMITER, delim_begin, delim_end)) {
         return NS_ERROR_MALFORMED_URI;
+    }
 
     rv = ioServ->NewURI(Substring(begin, delim_begin), mCharsetHint.get(),
                         aBaseURL, getter_AddRefs(mJARFile));

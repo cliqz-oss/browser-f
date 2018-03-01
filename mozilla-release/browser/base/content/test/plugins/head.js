@@ -16,8 +16,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
 function promiseInitContentBlocklistSvc(aBrowser) {
   return ContentTask.spawn(aBrowser, {}, async function() {
     try {
-      Cc["@mozilla.org/extensions/blocklist;1"]
-        .getService(Ci.nsIBlocklistService);
+      // eslint-disable-next-line no-unused-expressions
+      Services.blocklist;
     } catch (ex) {
       return ex.message;
     }
@@ -43,28 +43,6 @@ function waitForMs(aMs) {
     }
   });
 }
-
-function waitForEvent(subject, eventName, checkFn, useCapture, useUntrusted) {
-  return new Promise((resolve, reject) => {
-    subject.addEventListener(eventName, function listener(event) {
-      try {
-        if (checkFn && !checkFn(event)) {
-          return;
-        }
-        subject.removeEventListener(eventName, listener, useCapture);
-        resolve(event);
-      } catch (ex) {
-        try {
-          subject.removeEventListener(eventName, listener, useCapture);
-        } catch (ex2) {
-          // Maybe the provided object does not support removeEventListener.
-        }
-        reject(ex);
-      }
-    }, useCapture, useUntrusted);
-  });
-}
-
 
 /**
  * Waits for a load (or custom) event to finish in a given tab. If provided

@@ -101,7 +101,8 @@ PROT_ListManager.prototype.registerTable = function(tableName,
     // Using the V4 backoff algorithm for both V2 and V4. See bug 1273398.
     this.requestBackoffs_[updateUrl] = new RequestBackoffV4(
                                             4 /* num requests */,
-                               60 * 60 * 1000 /* request time, 60 min */);
+                               60 * 60 * 1000 /* request time, 60 min */,
+                                 providerName /* used by testcase */);
   }
   this.needsUpdate_[updateUrl][tableName] = false;
 
@@ -327,6 +328,42 @@ PROT_ListManager.prototype.maybeToggleUpdateChecking = function() {
     log("Stopping managing lists (if currently active)");
     this.stopUpdateCheckers(); // Cancel pending updates
   }
+};
+
+/**
+ * Force updates for the given tables. This API may trigger more than one update
+ * if the table lists provided belong to multiple updateurl (multiple provider).
+ * Return false when any update is fail due to back-off algorithm.
+ */
+PROT_ListManager.prototype.forceUpdates = function(tables) {
+  log("forceUpdates with " + tables);
+  if (!tables) {
+    return false;
+  }
+
+  let updateUrls = new Set();
+  tables.split(",").forEach((table) => {
+    if (this.tablesData[table]) {
+      updateUrls.add(this.tablesData[table].updateUrl);
+    }
+  });
+
+  let ret = true;
+
+  updateUrls.forEach((url) => {
+    // Cancel current update timer for the url because we are forcing an update.
+    if (this.updateCheckers_[url]) {
+      this.updateCheckers_[url].cancel();
+      this.updateCheckers_[url] = null;
+    }
+
+    // Trigger an update for the given url.
+    if (!this.checkForUpdates(url)) {
+      ret = false;
+    }
+  });
+
+  return ret;
 };
 
 /**

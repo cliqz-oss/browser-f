@@ -23,17 +23,17 @@ ProtocolHandler.prototype =
   defaultPort: -1,
   allowPort: () => false,
   newURI(aSpec, aCharset, aBaseURI) {
-    let uri = Cc["@mozilla.org/network/standard-url;1"].
-              createInstance(Ci.nsIURI);
-    uri.spec = aSpec;
-    if (!uri.scheme) {
-      // We got a partial uri, so let's resolve it with the base one
-      uri.spec = aBaseURI.resolve(aSpec);
+    let mutator = Cc["@mozilla.org/network/standard-url-mutator;1"]
+                    .createInstance(Ci.nsIURIMutator);
+    if (aBaseURI) {
+      mutator.setSpec(aBaseURI.resolve(aSpec));
+    } else {
+      mutator.setSpec(aSpec);
     }
-    return uri;
+    return mutator.finalize();
   },
-  newChannel2() { throw Cr.NS_ERROR_NOT_IMPLEMENTED },
-  newChannel() { throw Cr.NS_ERROR_NOT_IMPLEMENTED },
+  newChannel2() { throw Cr.NS_ERROR_NOT_IMPLEMENTED; },
+  newChannel() { throw Cr.NS_ERROR_NOT_IMPLEMENTED; },
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIProtocolHandler
   ])
@@ -125,12 +125,12 @@ function run_test() {
     // register it if it is not. Otherwise, store the previous one
     // to be restored later and register the new one.
     if (registrar.isContractIDRegistered(XULAppInfoFactory.contractID)) {
-      dump(XULAppInfoFactory.scheme + " is already registered. Storing currently registered object for restoration later.")
+      dump(XULAppInfoFactory.scheme + " is already registered. Storing currently registered object for restoration later.");
       old_factory.CID = registrar.contractIDToCID(XULAppInfoFactory.contractID);
       old_factory.factory = Components.manager.getClassObject(Cc[XULAppInfoFactory.contractID], Ci.nsIFactory);
       registrar.unregisterFactory(old_factory.CID, old_factory.factory);
     } else {
-      dump(XULAppInfoFactory.scheme + " has never been registered. Registering...")
+      dump(XULAppInfoFactory.scheme + " has never been registered. Registering...");
     }
 
     registrar.registerFactory(XULAppInfoFactory.CID, "test-" + XULAppInfoFactory.scheme, XULAppInfoFactory.contractID, XULAppInfoFactory);
@@ -178,13 +178,11 @@ function run_test() {
           break;
       }
       try {
-        let ios = Cc["@mozilla.org/network/io-service;1"].
-                  getService(Ci.nsIIOService);
-        sourceURI = ios.newURI(sourceURI);
+        sourceURI = Services.io.newURI(sourceURI);
         let uri;
         if (type == "resource") {
           // resources go about a slightly different way than everything else
-          let rph = ios.getProtocolHandler("resource").
+          let rph = Services.io.getProtocolHandler("resource").
                     QueryInterface(Ci.nsIResProtocolHandler);
           // this throws for packages that are not registered
           uri = rph.resolveURI(sourceURI);
@@ -194,11 +192,11 @@ function run_test() {
         }
 
         if (protocol.shouldRegister) {
-          do_check_eq(expectedURI, uri);
+          Assert.equal(expectedURI, uri);
         } else {
           // Overrides will not throw, so we'll get to here.  We want to make
           // sure that the two strings are not the same in this situation.
-          do_check_neq(expectedURI, uri);
+          Assert.notEqual(expectedURI, uri);
         }
       } catch (e) {
         if (protocol.shouldRegister) {

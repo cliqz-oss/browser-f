@@ -6,7 +6,6 @@ Cu.import("resource://services-sync/record.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://testing-common/services/sync/rotaryengine.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 
 add_task(async function test_processIncoming_abort() {
   _("An abort exception, raised in applyIncoming, will abort _processIncoming.");
@@ -46,7 +45,7 @@ add_task(async function test_processIncoming_abort() {
     err = ex;
   }
 
-  do_check_eq(err, "Nooo");
+  Assert.equal(err, "Nooo");
   err = undefined;
 
   _("Trying engine.sync(). It will abort without error.");
@@ -57,7 +56,7 @@ add_task(async function test_processIncoming_abort() {
     err = ex;
   }
 
-  do_check_eq(err, undefined);
+  Assert.equal(err, undefined);
 
   await promiseStopServer(server);
   Svc.Prefs.resetBranch("");

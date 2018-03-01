@@ -13,6 +13,7 @@
 #include "MediaDecoder.h"
 #include "MediaEncoder.h"
 #include "MediaStreamGraphImpl.h"
+#include "VideoUtils.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/AudioStreamTrack.h"
 #include "mozilla/dom/BlobEvent.h"
@@ -867,7 +868,7 @@ private:
     // Create a TaskQueue to read encode media data from MediaEncoder.
     MOZ_RELEASE_ASSERT(!mEncoderThread);
     RefPtr<SharedThreadPool> pool =
-      SharedThreadPool::Get(NS_LITERAL_CSTRING("MediaRecorderReadThread"));
+      GetMediaThreadPool(MediaThreadType::WEBRTC_DECODER);
     if (!pool) {
       LOG(LogLevel::Debug, ("Session.InitEncoder %p Failed to create "
                             "MediaRecorderReadThread thread pool", this));
@@ -875,7 +876,8 @@ private:
       return;
     }
 
-    mEncoderThread = MakeAndAddRef<TaskQueue>(pool.forget());
+    mEncoderThread =
+      MakeAndAddRef<TaskQueue>(pool.forget(), "MediaRecorderReadThread");
 
     if (!gMediaRecorderShutdownBlocker) {
       // Add a shutdown blocker so mEncoderThread can be shutdown async.
@@ -962,10 +964,13 @@ private:
     }
 
     mEncoderListener = MakeAndAddRef<EncoderListener>(mEncoderThread, this);
-    mEncoderThread->Dispatch(
-      NewRunnableMethod<RefPtr<EncoderListener>>(
-        "mozilla::MediaEncoder::RegisterListener",
-        mEncoder, &MediaEncoder::RegisterListener, mEncoderListener));
+    nsresult rv =
+      mEncoderThread->Dispatch(
+        NewRunnableMethod<RefPtr<EncoderListener>>(
+          "mozilla::MediaEncoder::RegisterListener",
+          mEncoder, &MediaEncoder::RegisterListener, mEncoderListener));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
 
     if (mRecorder->mAudioNode) {
       mEncoder->ConnectAudioNode(mRecorder->mAudioNode,
@@ -1246,7 +1251,6 @@ MediaRecorder::MediaRecorder(DOMMediaStream& aSourceMediaStream,
   , mState(RecordingState::Inactive)
 {
   MOZ_ASSERT(aOwnerWindow);
-  MOZ_ASSERT(aOwnerWindow->IsInnerWindow());
   mDOMStream = &aSourceMediaStream;
 
   RegisterActivityObserver();
@@ -1260,7 +1264,6 @@ MediaRecorder::MediaRecorder(AudioNode& aSrcAudioNode,
   , mState(RecordingState::Inactive)
 {
   MOZ_ASSERT(aOwnerWindow);
-  MOZ_ASSERT(aOwnerWindow->IsInnerWindow());
 
   mAudioNode = &aSrcAudioNode;
 

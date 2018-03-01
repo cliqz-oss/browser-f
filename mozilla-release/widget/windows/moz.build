@@ -23,9 +23,14 @@ EXPORTS.mozilla.widget += [
     'CompositorWidgetChild.h',
     'CompositorWidgetParent.h',
     'InProcessWinCompositorWidget.h',
+    'PDFiumChild.h',
     'PDFiumEngineShim.h',
+    'PDFiumParent.h',
+    'PDFiumProcessChild.h',
+    'PDFiumProcessParent.h',
     'PDFViaEMFPrintHelper.h',
     'WinCompositorWidget.h',
+    'WindowsEMF.h',
     'WinMessages.h',
     'WinModifierKeyState.h',
     'WinNativeEventData.h',
@@ -42,6 +47,7 @@ UNIFIED_SOURCES += [
     'InProcessWinCompositorWidget.cpp',
     'JumpListItem.cpp',
     'KeyboardLayout.cpp',
+    'LSPAnnotator.cpp',
     'nsAppShell.cpp',
     'nsClipboard.cpp',
     'nsColorPicker.cpp',
@@ -87,23 +93,26 @@ SOURCES += [
     'WinMouseScrollHandler.cpp',
 ]
 
-if CONFIG['MOZ_CRASHREPORTER']:
-    UNIFIED_SOURCES += [
-        'LSPAnnotator.cpp',
-    ]
-
 if CONFIG['NS_PRINTING']:
     UNIFIED_SOURCES += [
         'nsDeviceContextSpecWin.cpp',
         'nsPrintDialogUtil.cpp',
         'nsPrintDialogWin.cpp',
-        'nsPrintOptionsWin.cpp',
+        'nsPrintSettingsServiceWin.cpp',
         'nsPrintSettingsWin.cpp',
     ]
+
 if CONFIG['MOZ_ENABLE_SKIA_PDF']:
     DIRS += ['/modules/pdfium']
+    IPDL_SOURCES += [
+        'PPDFium.ipdl',
+    ]
     UNIFIED_SOURCES += [
+        'PDFiumChild.cpp',
         'PDFiumEngineShim.cpp',
+        'PDFiumParent.cpp',
+        'PDFiumProcessChild.cpp',
+        'PDFiumProcessParent.cpp',
         'PDFViaEMFPrintHelper.cpp',
         'WindowsEMF.cpp',
     ]
@@ -147,3 +156,7 @@ CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
 OS_LIBS += [
     'rpcrt4',
 ]
+
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+    # C5038: Suppress initializer list order warnings from wrl.h
+    SOURCES['WindowsUIUtils.cpp'].flags += ['-wd5038']

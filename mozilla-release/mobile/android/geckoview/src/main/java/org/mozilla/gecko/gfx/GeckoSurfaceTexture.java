@@ -6,43 +6,63 @@
 package org.mozilla.gecko.gfx;
 
 import android.graphics.SurfaceTexture;
+import android.os.Build;
 import android.util.Log;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.HashMap;
+import java.util.LinkedList;
 
 import org.mozilla.gecko.annotation.WrapForJNI;
-import org.mozilla.gecko.AppConstants.Versions;
 
-public final class GeckoSurfaceTexture extends SurfaceTexture {
+/* package */ final class GeckoSurfaceTexture extends SurfaceTexture {
     private static final String LOGTAG = "GeckoSurfaceTexture";
+    private static final int MAX_SURFACE_TEXTURES = 200;
     private static volatile int sNextHandle = 1;
-    private static HashMap<Integer, GeckoSurfaceTexture> sSurfaceTextures = new HashMap<Integer, GeckoSurfaceTexture>();
+    private static final HashMap<Integer, GeckoSurfaceTexture> sSurfaceTextures = new HashMap<Integer, GeckoSurfaceTexture>();
+
+
+    private static HashMap<Long, LinkedList<GeckoSurfaceTexture>> sUnusedTextures =
+        new HashMap<Long, LinkedList<GeckoSurfaceTexture>>();
 
     private int mHandle;
     private boolean mIsSingleBuffer;
+
+    private long mAttachedContext;
     private int mTexName;
+
     private GeckoSurfaceTexture.Callbacks mListener;
     private AtomicInteger mUseCount;
+    private boolean mFinalized;
 
-    @WrapForJNI(dispatchTo = "current")
-    private static native int nativeAcquireTexture();
-
-    private GeckoSurfaceTexture(int handle, int texName) {
-        super(texName);
-        init(handle, texName, false);
+    private GeckoSurfaceTexture(int handle) {
+        super(0);
+        init(handle, false);
     }
 
-    private GeckoSurfaceTexture(int handle, int texName, boolean singleBufferMode) {
-        super(texName, singleBufferMode);
-        init(handle, texName, singleBufferMode);
+    private GeckoSurfaceTexture(int handle, boolean singleBufferMode) {
+        super(0, singleBufferMode);
+        init(handle, singleBufferMode);
     }
 
-    private void init(int handle, int texName, boolean singleBufferMode) {
+    @Override
+    protected void finalize() throws Throwable {
+        // We only want finalize() to be called once
+        if (mFinalized) {
+            return;
+        }
+
+        mFinalized = true;
+        super.finalize();
+    }
+
+    private void init(int handle, boolean singleBufferMode) {
         mHandle = handle;
         mIsSingleBuffer = singleBufferMode;
-        mTexName = texName;
         mUseCount = new AtomicInteger(1);
+
+        // Start off detached
+        detachFromGLContext();
     }
 
     @WrapForJNI
@@ -53,6 +73,31 @@ public final class GeckoSurfaceTexture extends SurfaceTexture {
     @WrapForJNI
     public int getTexName() {
         return mTexName;
+    }
+
+    @WrapForJNI(exceptionMode = "nsresult")
+    public synchronized void attachToGLContext(long context, int texName) {
+        if (context == mAttachedContext && texName == mTexName) {
+            return;
+        }
+
+        attachToGLContext(texName);
+
+        mAttachedContext = context;
+        mTexName = texName;
+    }
+
+    @Override
+    @WrapForJNI(exceptionMode = "nsresult")
+    public synchronized void detachFromGLContext() {
+        super.detachFromGLContext();
+
+        mAttachedContext = mTexName = 0;
+    }
+
+    @WrapForJNI
+    public synchronized boolean isAttachedToGLContext(long context) {
+        return mAttachedContext == context;
     }
 
     @WrapForJNI
@@ -96,35 +141,71 @@ public final class GeckoSurfaceTexture extends SurfaceTexture {
 
     @WrapForJNI
     public static boolean isSingleBufferSupported() {
-        return Versions.feature19Plus;
+        return Build.VERSION.SDK_INT >= 19;
     }
 
     @WrapForJNI
-    public void incrementUse() {
+    public synchronized void incrementUse() {
         mUseCount.incrementAndGet();
     }
 
     @WrapForJNI
-    public void decrementUse() {
+    public synchronized void decrementUse() {
         int useCount = mUseCount.decrementAndGet();
 
         if (useCount == 0) {
-            synchronized (sSurfaceTextures) {
-                sSurfaceTextures.remove(mHandle);
-            }
-
             setListener(null);
 
-            if (Versions.feature16Plus) {
-                try {
-                    detachFromGLContext();
-                } catch (Exception e) {
-                    // This can throw if the EGL context is not current
-                    // but we can't do anything about that now.
-                }
+            if (mAttachedContext == 0) {
+                release();
+                return;
             }
 
-            release();
+            synchronized (sUnusedTextures) {
+                LinkedList<GeckoSurfaceTexture> list = sUnusedTextures.get(mAttachedContext);
+                if (list == null) {
+                    list = new LinkedList<GeckoSurfaceTexture>();
+                    sUnusedTextures.put(mAttachedContext, list);
+                }
+                list.addFirst(this);
+            }
+        }
+    }
+
+    @WrapForJNI
+    public static void destroyUnused(long context) {
+        LinkedList<GeckoSurfaceTexture> list;
+        synchronized (sUnusedTextures) {
+            list = sUnusedTextures.remove(context);
+        }
+
+        if (list == null) {
+            return;
+        }
+
+        for (GeckoSurfaceTexture tex : list) {
+            try {
+                synchronized (sSurfaceTextures) {
+                    sSurfaceTextures.remove(tex.mHandle);
+                }
+
+                if (tex.isSingleBuffer()) {
+                   tex.releaseTexImage();
+                }
+
+                tex.detachFromGLContext();
+                tex.release();
+
+                // We need to manually call finalize here, otherwise we can run out
+                // of file descriptors if the GC doesn't kick in soon enough. Bug 1416015.
+                try {
+                    tex.finalize();
+                } catch (Throwable t) {
+                    Log.e(LOGTAG, "Failed to finalize SurfaceTexture", t);
+                }
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Failed to destroy SurfaceTexture", e);
+            }
         }
     }
 
@@ -133,27 +214,31 @@ public final class GeckoSurfaceTexture extends SurfaceTexture {
             throw new IllegalArgumentException("single buffer mode not supported on API version < 19");
         }
 
-        int handle = sNextHandle++;
-        int texName = nativeAcquireTexture();
-
-        final GeckoSurfaceTexture gst;
-        if (isSingleBufferSupported()) {
-            gst = new GeckoSurfaceTexture(handle, texName, singleBufferMode);
-        } else {
-            gst = new GeckoSurfaceTexture(handle, texName);
-        }
-
         synchronized (sSurfaceTextures) {
+            // We want to limit the maximum number of SurfaceTextures at any one time.
+            // This is because they use a large number of fds, and once the process' limit
+            // is reached bad things happen. See bug 1421586.
+            if (sSurfaceTextures.size() >= MAX_SURFACE_TEXTURES) {
+                return null;
+            }
+
+            int handle = sNextHandle++;
+
+            final GeckoSurfaceTexture gst;
+            if (isSingleBufferSupported()) {
+                gst = new GeckoSurfaceTexture(handle, singleBufferMode);
+            } else {
+                gst = new GeckoSurfaceTexture(handle);
+            }
+
             if (sSurfaceTextures.containsKey(handle)) {
                 gst.release();
                 throw new IllegalArgumentException("Already have a GeckoSurfaceTexture with that handle");
             }
 
             sSurfaceTextures.put(handle, gst);
+            return gst;
         }
-
-
-        return gst;
     }
 
     @WrapForJNI
