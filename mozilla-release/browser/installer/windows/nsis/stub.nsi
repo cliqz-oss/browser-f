@@ -91,6 +91,7 @@ Var EndDownloadPhaseTickCount
 Var EndPreInstallPhaseTickCount
 Var EndInstallPhaseTickCount
 Var EndFinishPhaseTickCount
+Var SendPingTimestamp
 
 Var InitialInstallRequirementsCode
 Var ExistingProfile
