@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_driver.by import By
 from marionette_driver.expected import element_present
 from marionette_driver import errors
@@ -203,6 +205,14 @@ class TestTabModalAlerts(BaseAlertTestCase):
         self.wait_for_alert()
         with self.assertRaises(errors.UnexpectedAlertOpen):
             self.marionette.find_element(By.ID, "click-result")
+
+    def test_modal_is_dismissed_after_unexpected_alert(self):
+        self.marionette.find_element(By.ID, "tab-modal-alert").click()
+        self.wait_for_alert()
+        with self.assertRaises(errors.UnexpectedAlertOpen):
+            self.marionette.find_element(By.ID, "click-result")
+
+        assert not self.alert_present()
 
 
 class TestModalAlerts(BaseAlertTestCase):

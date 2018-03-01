@@ -2,7 +2,7 @@
 Histograms
 ==========
 
-If a user has opted into submitting performance data to Mozilla, the Telemetry system will collect various measures of Firefox performance, hardware, usage and customizations and submit it to Mozilla. The Telemetry data collected by a single client can be examined from the integrated ``about:telemetry`` browser page, while the aggregated reports across entire user populations are publicly available at `telemetry.mozilla.org <https://telemetry.mozilla.org>`_.
+In Firefox, the Telemetry system collects various measures of Firefox performance, hardware, usage and customizations and submits it to Mozilla. The Telemetry data collected by a single client can be examined from the integrated ``about:telemetry`` browser page, while the aggregated reports across entire user populations are publicly available at `telemetry.mozilla.org <https://telemetry.mozilla.org>`_.
 
 .. important::
 
@@ -100,7 +100,7 @@ Note that when you need to record for a small set of known keys, using separate 
 Declaring a Histogram
 =====================
 
-Histograms should be declared in the `Histograms.json <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Histograms.json>`_ file. These declarations are checked for correctness at `compile time <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/gen-histogram-data.py>`_ and used to generate C++ code.
+Histograms should be declared in the `Histograms.json <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Histograms.json>`_ file. These declarations are checked for correctness at `compile time <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/gen_histogram_data.py>`_ and used to generate C++ code.
 
 The following is a sample histogram declaration from ``Histograms.json`` for a histogram named ``MEMORY_RESIDENT`` which tracks the amount of resident memory used by a process:
 
@@ -130,7 +130,7 @@ Required. This field is a list of processes this histogram can be recorded in. C
 - ``main``
 - ``content``
 - ``gpu``
-- ``all_child`` (record in all child processes)
+- ``all_childs`` (record in all child processes)
 - ``all`` (record in all processes)
 
 ``alert_emails``
@@ -190,22 +190,33 @@ Optional. This field inserts an #ifdef directive around the histogram's C++ decl
 ----------------------------
 Optional. This is one of:
 
-* ``"opt-in"``: (default value) This histogram is submitted by default on pre-release channels; on the release channel only if the user opted into additional data collection
-* ``"opt-out"``: this histogram is submitted by default on release and pre-release channels, unless the user opted out.
+* ``"opt-in"``: (default value) This histogram is submitted by default on pre-release channels, unless the user opts out.
+* ``"opt-out"``: This histogram is submitted by default on release and pre-release channels, unless the user opts out.
 
 .. warning::
 
-    Because they are collected by default, opt-out probes need to meet a higher "user benefit" threshold than opt-in probes.
+    Because they are collected by default, opt-out probes need to meet a higher "user benefit" threshold than opt-in probes during data collection review.
 
 
     **Every** new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers.
 
 Changing a histogram
 ====================
-Changing histogram declarations after the histogram has been released is tricky. The current recommended procedure is to change the name of the histogram.
+Changing histogram declarations after the histogram has been released is tricky. Many tools (like `the aggregator <https://github.com/mozilla/python_mozaggregator>`_) assume histograms don't change. The current recommended procedure is to change the name of the histogram.
 
 * When changing existing histograms, the recommended pattern is to use a versioned name (``PROBE``, ``PROBE_2``, ``PROBE_3``, ...).
 * For enum histograms, it's recommended to set "n_buckets" to a slightly larger value than needed since new elements may be added to the enum in the future.
+
+The one exception is categorical histograms which can only be changed by adding labels, and only until it reaches 50 labels.
+
+Histogram values
+================
+
+The values you can accumulate to Histograms are limited by their internal represenation.
+
+Telemetry Histograms do not record negative values, instead clamping them to 0 before recording.
+
+Telemetry Histograms do not record values greater than 2^31, instead clamping them to INT_MAX before recording.
 
 Adding a JavaScript Probe
 =========================
@@ -220,7 +231,7 @@ A Telemetry probe is the code that measures and stores values in a histogram. Pr
   let keyed = Services.telemetry.getKeyedHistogramById("TAG_SEEN_COUNTS");
   keyed.add("blink");
 
-Note that ``nsITelemetry.getHistogramById()`` will throw an ``NS_ERROR_ILLEGAL_VALUE`` JavaScript exception if it is called with an invalid histogram ID. The ``add()`` function will not throw if it fails, instead it prints an error in the browser console.
+Note that ``nsITelemetry.getHistogramById()`` will throw an ``NS_ERROR_FAILURE`` JavaScript exception if it is called with an invalid histogram ID. The ``add()`` function will not throw if it fails, instead it prints an error in the browser console.
 
 .. warning::
 

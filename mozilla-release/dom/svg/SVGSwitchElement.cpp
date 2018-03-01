@@ -94,9 +94,16 @@ SVGSwitchElement::InsertChildAt(nsIContent* aKid,
 }
 
 void
-SVGSwitchElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
+SVGSwitchElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 {
-  SVGSwitchElementBase::RemoveChildAt(aIndex, aNotify);
+  SVGSwitchElementBase::RemoveChildAt_Deprecated(aIndex, aNotify);
+  MaybeInvalidate();
+}
+
+void
+SVGSwitchElement::RemoveChildNode(nsIContent* aKid, bool aNotify)
+{
+  SVGSwitchElementBase::RemoveChildNode(aKid, aNotify);
   MaybeInvalidate();
 }
 

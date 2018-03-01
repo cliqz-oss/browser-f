@@ -26,6 +26,9 @@ with Files('mozlint/**'):
 with Files('mozversioncontrol/**'):
     BUG_COMPONENT = ('Core', 'Build Config')
 
+with Files('l10n/**'):
+    BUG_COMPONENT = ('Core', 'Localization')
+
 SPHINX_PYTHON_PACKAGE_DIRS += [
     'mach',
     'mozbuild/mozbuild',
@@ -34,12 +37,19 @@ SPHINX_PYTHON_PACKAGE_DIRS += [
     'mozversioncontrol/mozversioncontrol',
 ]
 
+with Files('**.py'):
+    SCHEDULES.inclusive += ['docs']
+
 SPHINX_TREES['mach'] = 'mach/docs'
+
+with Files('mach/docs/**'):
+    SCHEDULES.exclusive = ['docs']
 
 PYTHON_UNITTEST_MANIFESTS += [
     'mach/mach/test/python.ini',
     'mozbuild/dumbmake/test/python.ini',
     'mozlint/test/python.ini',
+    'mozterm/test/python.ini',
     'mozversioncontrol/test/python.ini',
 ]
 

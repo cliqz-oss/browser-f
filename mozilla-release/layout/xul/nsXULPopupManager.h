@@ -289,7 +289,7 @@ private:
 class nsXULMenuCommandEvent : public mozilla::Runnable
 {
 public:
-  nsXULMenuCommandEvent(nsIContent* aMenu,
+  nsXULMenuCommandEvent(mozilla::dom::Element* aMenu,
                         bool aIsTrusted,
                         bool aShift,
                         bool aControl,
@@ -316,7 +316,7 @@ public:
   void SetCloseMenuMode(CloseMenuMode aCloseMenuMode) { mCloseMenuMode = aCloseMenuMode; }
 
 private:
-  nsCOMPtr<nsIContent> mMenu;
+  RefPtr<mozilla::dom::Element> mMenu;
   bool mIsTrusted;
   bool mShift;
   bool mControl;
@@ -362,6 +362,13 @@ public:
   // returns a weak reference to the popup manager instance, could return null
   // if a popup manager could not be allocated
   static nsXULPopupManager* GetInstance();
+
+  // Returns the immediate parent frame of inserted children of aFrame's
+  // content.
+  //
+  // FIXME(emilio): Or something like that, because this is kind of broken in a
+  // variety of situations like multiple insertion points.
+  static nsContainerFrame* ImmediateParentFrame(nsContainerFrame* aFrame);
 
   // This should be called when a window is moved or resized to adjust the
   // popups accordingly.

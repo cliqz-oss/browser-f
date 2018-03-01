@@ -17,9 +17,13 @@ inline already_AddRefed<DataSourceSurface>
 ConvertToB8G8R8A8_SIMD(SourceSurface* aSurface)
 {
   IntSize size = aSurface->GetSize();
-  RefPtr<DataSourceSurface> input = aSurface->GetDataSurface();
   RefPtr<DataSourceSurface> output =
     Factory::CreateDataSourceSurface(size, SurfaceFormat::B8G8R8A8);
+  if (!output) {
+    return nullptr;
+  }
+
+  RefPtr<DataSourceSurface> input = aSurface->GetDataSurface();
   DataSourceSurface::ScopedMap inputMap(input, DataSourceSurface::READ);
   DataSourceSurface::ScopedMap outputMap(output, DataSourceSurface::READ_WRITE);
   uint8_t *inputData = inputMap.GetData();
@@ -287,29 +291,21 @@ ShuffleAndPackComponents(i32x4_t bbbb1234, i32x4_t gggg1234,
 }
 
 template<typename i32x4_t, typename i16x8_t, typename u8x16_t, BlendMode mode>
-inline already_AddRefed<DataSourceSurface>
-ApplyBlending_SIMD(DataSourceSurface* aInput1, DataSourceSurface* aInput2)
+inline void
+ApplyBlending_SIMD(const DataSourceSurface::ScopedMap& aInputMap1,
+                   const DataSourceSurface::ScopedMap& aInputMap2,
+                   const DataSourceSurface::ScopedMap& aOutputMap,
+                   const IntSize& aSize)
 {
-  IntSize size = aInput1->GetSize();
-  RefPtr<DataSourceSurface> target =
-    Factory::CreateDataSourceSurface(size, SurfaceFormat::B8G8R8A8);
-  if (!target) {
-    return nullptr;
-  }
+  uint8_t* source1Data = aInputMap1.GetData();
+  uint8_t* source2Data = aInputMap2.GetData();
+  uint8_t* targetData = aOutputMap.GetData();
+  int32_t targetStride = aOutputMap.GetStride();
+  int32_t source1Stride = aInputMap1.GetStride();
+  int32_t source2Stride = aInputMap2.GetStride();
 
-  DataSourceSurface::ScopedMap inputMap1(aInput1, DataSourceSurface::READ);
-  DataSourceSurface::ScopedMap inputMap2(aInput2, DataSourceSurface::READ);
-  DataSourceSurface::ScopedMap outputMap(target, DataSourceSurface::READ_WRITE);
-
-  uint8_t* source1Data = inputMap1.GetData();
-  uint8_t* source2Data = inputMap2.GetData();
-  uint8_t* targetData = outputMap.GetData();
-  int32_t targetStride = outputMap.GetStride();
-  int32_t source1Stride = inputMap1.GetStride();
-  int32_t source2Stride = inputMap2.GetStride();
-
-  for (int32_t y = 0; y < size.height; y++) {
-    for (int32_t x = 0; x < size.width; x += 4) {
+  for (int32_t y = 0; y < aSize.height; y++) {
+    for (int32_t x = 0; x < aSize.width; x += 4) {
       int32_t targetIndex = y * targetStride + 4 * x;
       int32_t source1Index = y * source1Stride + 4 * x;
       int32_t source2Index = y * source2Stride + 4 * x;
@@ -339,6 +335,27 @@ ApplyBlending_SIMD(DataSourceSurface* aInput1, DataSourceSurface* aInput2)
       u8x16_t result1234 = ShuffleAndPackComponents<i32x4_t,i16x8_t,u8x16_t>(blendedB, blendedG, blendedR, blendedA);
       simd::Store8(&targetData[targetIndex], result1234);
     }
+  }
+}
+
+template<typename i32x4_t, typename i16x8_t, typename u8x16_t, BlendMode mode>
+inline already_AddRefed<DataSourceSurface>
+ApplyBlending_SIMD(DataSourceSurface* aInput1, DataSourceSurface* aInput2)
+{
+  IntSize size = aInput1->GetSize();
+  RefPtr<DataSourceSurface> target =
+    Factory::CreateDataSourceSurface(size, SurfaceFormat::B8G8R8A8);
+  if (!target) {
+    return nullptr;
+  }
+
+  DataSourceSurface::ScopedMap inputMap1(aInput1, DataSourceSurface::READ);
+  DataSourceSurface::ScopedMap outputMap(target, DataSourceSurface::READ_WRITE);
+  if (aInput1->Equals(aInput2)) {
+    ApplyBlending_SIMD<i32x4_t,i16x8_t,u8x16_t,mode>(inputMap1, inputMap1, outputMap, size);
+  } else {
+    DataSourceSurface::ScopedMap inputMap2(aInput2, DataSourceSurface::READ);
+    ApplyBlending_SIMD<i32x4_t,i16x8_t,u8x16_t,mode>(inputMap1, inputMap2, outputMap, size);
   }
 
   return target.forget();
@@ -395,9 +412,9 @@ inline void ApplyMorphologyHorizontal_SIMD(uint8_t* aSourceData, int32_t aSource
   IntRect sourceRect = aDestRect;
   sourceRect.Inflate(aRadius, 0);
 
-  for (int32_t y = aDestRect.y; y < aDestRect.YMost(); y++) {
-    int32_t kernelStartX = aDestRect.x - aRadius;
-    for (int32_t x = aDestRect.x; x < aDestRect.XMost(); x += 4, kernelStartX += 4) {
+  for (int32_t y = aDestRect.Y(); y < aDestRect.YMost(); y++) {
+    int32_t kernelStartX = aDestRect.X() - aRadius;
+    for (int32_t x = aDestRect.X(); x < aDestRect.XMost(); x += 4, kernelStartX += 4) {
       // We process four pixels (16 color values) at a time.
       // aSourceData[0] points to the pixel located at aDestRect.TopLeft();
       // source values can be read beyond that because the source is extended
@@ -455,10 +472,10 @@ static void ApplyMorphologyVertical_SIMD(uint8_t* aSourceData, int32_t aSourceSt
                 op == MORPHOLOGY_OPERATOR_DILATE,
                 "unexpected morphology operator");
 
-  int32_t startY = aDestRect.y - aRadius;
-  int32_t endY = aDestRect.y + aRadius;
-  for (int32_t y = aDestRect.y; y < aDestRect.YMost(); y++, startY++, endY++) {
-    for (int32_t x = aDestRect.x; x < aDestRect.XMost(); x += 4) {
+  int32_t startY = aDestRect.Y() - aRadius;
+  int32_t endY = aDestRect.Y() + aRadius;
+  for (int32_t y = aDestRect.Y(); y < aDestRect.YMost(); y++, startY++, endY++) {
+    for (int32_t x = aDestRect.X(); x < aDestRect.XMost(); x += 4) {
       int32_t sourceIndex = startY * aSourceStride + 4 * x;
       u8x16_t u = simd::Load8<u8x16_t>(&aSourceData[sourceIndex]);
       sourceIndex += aSourceStride;
@@ -1026,27 +1043,19 @@ ArithmeticCombineTwoPixels(i16x8_t in1, i16x8_t in2,
 }
 
 template<typename i32x4_t, typename i16x8_t, typename u8x16_t>
-static already_AddRefed<DataSourceSurface>
-ApplyArithmeticCombine_SIMD(DataSourceSurface* aInput1, DataSourceSurface* aInput2,
+static void
+ApplyArithmeticCombine_SIMD(const DataSourceSurface::ScopedMap& aInputMap1,
+                            const DataSourceSurface::ScopedMap& aInputMap2,
+                            const DataSourceSurface::ScopedMap& aOutputMap,
+                            const IntSize& aSize,
                             Float aK1, Float aK2, Float aK3, Float aK4)
 {
-  IntSize size = aInput1->GetSize();
-  RefPtr<DataSourceSurface> target =
-  Factory::CreateDataSourceSurface(size, SurfaceFormat::B8G8R8A8);
-  if (!target) {
-    return nullptr;
-  }
-
-  DataSourceSurface::ScopedMap inputMap1(aInput1, DataSourceSurface::READ);
-  DataSourceSurface::ScopedMap inputMap2(aInput2, DataSourceSurface::READ);
-  DataSourceSurface::ScopedMap outputMap(target, DataSourceSurface::READ_WRITE);
-
-  uint8_t* source1Data = inputMap1.GetData();
-  uint8_t* source2Data = inputMap2.GetData();
-  uint8_t* targetData = outputMap.GetData();
-  uint32_t source1Stride = inputMap1.GetStride();
-  uint32_t source2Stride = inputMap2.GetStride();
-  uint32_t targetStride = outputMap.GetStride();
+  uint8_t* source1Data = aInputMap1.GetData();
+  uint8_t* source2Data = aInputMap2.GetData();
+  uint8_t* targetData = aOutputMap.GetData();
+  uint32_t source1Stride = aInputMap1.GetStride();
+  uint32_t source2Stride = aInputMap2.GetStride();
+  uint32_t targetStride = aOutputMap.GetStride();
 
   // The arithmetic combine filter does the following calculation:
   // result = k1 * in1 * in2 + k2 * in1 + k3 * in2 + k4
@@ -1068,8 +1077,8 @@ ApplyArithmeticCombine_SIMD(DataSourceSurface* aInput1, DataSourceSurface* aInpu
   i16x8_t k1And4 = simd::InterleaveLo16(k1, k4);
   i16x8_t k2And3 = simd::InterleaveLo16(k2, k3);
 
-  for (int32_t y = 0; y < size.height; y++) {
-    for (int32_t x = 0; x < size.width; x += 4) {
+  for (int32_t y = 0; y < aSize.height; y++) {
+    for (int32_t x = 0; x < aSize.width; x += 4) {
       uint32_t source1Index = y * source1Stride + 4 * x;
       uint32_t source2Index = y * source2Stride + 4 * x;
       uint32_t targetIndex = y * targetStride + 4 * x;
@@ -1089,6 +1098,31 @@ ApplyArithmeticCombine_SIMD(DataSourceSurface* aInput1, DataSourceSurface* aInpu
       // Pack and store.
       simd::Store8(&targetData[targetIndex], simd::PackAndSaturate16To8(result_12, result_34));
     }
+  }
+}
+
+template<typename i32x4_t, typename i16x8_t, typename u8x16_t>
+static already_AddRefed<DataSourceSurface>
+ApplyArithmeticCombine_SIMD(DataSourceSurface* aInput1, DataSourceSurface* aInput2,
+                            Float aK1, Float aK2, Float aK3, Float aK4)
+{
+  IntSize size = aInput1->GetSize();
+  RefPtr<DataSourceSurface> target =
+  Factory::CreateDataSourceSurface(size, SurfaceFormat::B8G8R8A8);
+  if (!target) {
+    return nullptr;
+  }
+
+  DataSourceSurface::ScopedMap inputMap1(aInput1, DataSourceSurface::READ);
+  DataSourceSurface::ScopedMap outputMap(target, DataSourceSurface::READ_WRITE);
+
+  if (aInput1->Equals(aInput2)) {
+    ApplyArithmeticCombine_SIMD<i32x4_t, i16x8_t, u8x16_t>(inputMap1, inputMap1, outputMap,
+                                                           size, aK1, aK2, aK3, aK4);
+  } else {
+    DataSourceSurface::ScopedMap inputMap2(aInput2, DataSourceSurface::READ);
+    ApplyArithmeticCombine_SIMD<i32x4_t, i16x8_t, u8x16_t>(inputMap1, inputMap2, outputMap,
+                                                           size, aK1, aK2, aK3, aK4);
   }
 
   return target.forget();

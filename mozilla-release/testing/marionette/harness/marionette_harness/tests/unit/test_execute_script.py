@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 import os
 import urllib
 
@@ -393,7 +395,7 @@ class TestExecuteChrome(WindowManagerMixin, TestExecuteContent):
         with self.assertRaises(errors.ScriptTimeoutException):
             self.marionette.execute_async_script("""
                 var cb = arguments[arguments.length - 1];
-                setTimeout(function() { cb() }, 250);
+                setTimeout(function() { cb() }, 2500);
                 """, script_timeout=100)
 
     def test_lasting_side_effects(self):

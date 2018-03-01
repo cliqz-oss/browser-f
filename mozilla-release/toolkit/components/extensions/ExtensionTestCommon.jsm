@@ -1,3 +1,5 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -173,10 +175,7 @@ this.ExtensionTestCommon = class ExtensionTestCommon {
       manifest = {};
     }
 
-    let files = data.files;
-    if (!files) {
-      files = {};
-    }
+    let files = Object.assign({}, data.files);
 
     function provide(obj, keys, value, override = false) {
       if (keys.length == 1) {
@@ -381,6 +380,9 @@ this.ExtensionTestCommon = class ExtensionTestCommon {
       id,
       resourceURI: jarURI,
       cleanupFile: file,
+      signedState: data.isPrivileged ? AddonManager.SIGNEDSTATE_PRIVILEGED
+                                     : AddonManager.SIGNEDSTATE_SIGNED,
+      temporarilyInstalled: !!data.temporarilyInstalled,
     });
   }
 };

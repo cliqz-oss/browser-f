@@ -29,6 +29,13 @@ this.AppConstants = Object.freeze({
   false,
 #endif
 
+  EARLY_BETA_OR_EARLIER:
+#ifdef EARLY_BETA_OR_EARLIER
+  true,
+#else
+  false,
+#endif
+
   ACCESSIBILITY:
 #ifdef ACCESSIBILITY
   true,
@@ -231,13 +238,6 @@ this.AppConstants = Object.freeze({
 
   MOZ_ALLOW_LEGACY_EXTENSIONS:
 #ifdef MOZ_ALLOW_LEGACY_EXTENSIONS
-  true,
-#else
-  false,
-#endif
-
-  INSTALL_COMPACT_THEMES:
-#ifdef INSTALL_COMPACT_THEMES
   true,
 #else
   false,

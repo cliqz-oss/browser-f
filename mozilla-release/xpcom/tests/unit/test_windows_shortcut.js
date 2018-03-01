@@ -5,12 +5,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cr = Components.results;
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
-var CC = Components.Constructor;
-
 const LocalFile = CC("@mozilla.org/file/local;1", "nsIFile", "initWithPath");
 
 Cu.import("resource://gre/modules/Services.jsm");
@@ -91,7 +85,7 @@ function test_create_targetonly(tempDir) {
   win.setShortcut(targetFile);
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(targetFile));
+  Assert.ok(shortcutTarget.equals(targetFile));
 }
 
 function test_create_normal(tempDir) {
@@ -111,7 +105,7 @@ function test_create_normal(tempDir) {
                   "Ordinary shortcut");
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(targetFile))
+  Assert.ok(shortcutTarget.equals(targetFile));
 }
 
 function test_create_unicode(tempDir) {
@@ -131,7 +125,7 @@ function test_create_unicode(tempDir) {
                   "ῧṋіḉѻₑ");
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(targetFile))
+  Assert.ok(shortcutTarget.equals(targetFile));
 }
 
 function test_update_noargs(tempDir) {
@@ -153,7 +147,7 @@ function test_update_noargs(tempDir) {
   win.setShortcut();
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(targetFile))
+  Assert.ok(shortcutTarget.equals(targetFile));
 }
 
 function test_update_notarget(tempDir) {
@@ -178,7 +172,7 @@ function test_update_notarget(tempDir) {
                   "An UPDATED shortcut");
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(targetFile))
+  Assert.ok(shortcutTarget.equals(targetFile));
 }
 
 function test_update_targetonly(tempDir) {
@@ -204,7 +198,7 @@ function test_update_targetonly(tempDir) {
   win.setShortcut(newTargetFile);
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(newTargetFile))
+  Assert.ok(shortcutTarget.equals(newTargetFile));
 }
 
 function test_update_normal(tempDir) {
@@ -233,7 +227,7 @@ function test_update_normal(tempDir) {
                   "An UPDATED shortcut");
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(newTargetFile))
+  Assert.ok(shortcutTarget.equals(newTargetFile));
 }
 
 function test_update_unicode(tempDir) {
@@ -262,5 +256,5 @@ function test_update_unicode(tempDir) {
                   "A ῧṋіḉѻₑ shortcut");
 
   let shortcutTarget = LocalFile(shortcutFile.target);
-  do_check_true(shortcutTarget.equals(newTargetFile))
+  Assert.ok(shortcutTarget.equals(newTargetFile));
 }

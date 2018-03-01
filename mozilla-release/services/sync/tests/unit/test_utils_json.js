@@ -4,17 +4,15 @@
 Cu.import("resource://gre/modules/FileUtils.jsm");
 Cu.import("resource://services-sync/util.js");
 
-initTestLogging();
-
 add_task(async function test_roundtrip() {
   _("Do a simple write of an array to json and read");
   await Utils.jsonSave("foo", {}, ["v1", "v2"]);
 
   let foo = await Utils.jsonLoad("foo", {});
-  do_check_eq(typeof foo, "object");
-  do_check_eq(foo.length, 2);
-  do_check_eq(foo[0], "v1");
-  do_check_eq(foo[1], "v2");
+  Assert.equal(typeof foo, "object");
+  Assert.equal(foo.length, 2);
+  Assert.equal(foo[0], "v1");
+  Assert.equal(foo[1], "v2");
 });
 
 add_task(async function test_string() {
@@ -22,10 +20,10 @@ add_task(async function test_string() {
   await Utils.jsonSave("str", {}, "hi");
 
   let str = await Utils.jsonLoad("str", {});
-  do_check_eq(typeof str, "string");
-  do_check_eq(str.length, 2);
-  do_check_eq(str[0], "h");
-  do_check_eq(str[1], "i");
+  Assert.equal(typeof str, "string");
+  Assert.equal(str.length, 2);
+  Assert.equal(str[0], "h");
+  Assert.equal(str[1], "i");
 });
 
 add_task(async function test_number() {
@@ -33,21 +31,21 @@ add_task(async function test_number() {
   await Utils.jsonSave("num", {}, 42);
 
   let num = await Utils.jsonLoad("num", {});
-  do_check_eq(typeof num, "number");
-  do_check_eq(num, 42);
+  Assert.equal(typeof num, "number");
+  Assert.equal(num, 42);
 });
 
 add_task(async function test_nonexistent_file() {
   _("Try loading a non-existent file.");
   let val = await Utils.jsonLoad("non-existent", {});
-  do_check_eq(val, undefined);
+  Assert.equal(val, undefined);
 });
 
 add_task(async function test_save_logging() {
   _("Verify that writes are logged.");
   let trace;
   await Utils.jsonSave("log", {_log: {trace(msg) { trace = msg; }}}, "hi");
-  do_check_true(!!trace);
+  Assert.ok(!!trace);
 });
 
 add_task(async function test_load_logging() {
@@ -79,7 +77,7 @@ add_task(async function test_load_logging() {
     }
   };
   let val = await Utils.jsonLoad("log", obj);
-  do_check_true(!val);
-  do_check_true(!!trace);
-  do_check_true(!!debug);
+  Assert.ok(!val);
+  Assert.ok(!!trace);
+  Assert.ok(!!debug);
 });

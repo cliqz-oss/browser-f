@@ -1,6 +1,10 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+async function waitForBreakpointCount(dbg, count) {
+  return waitForState(dbg, state => dbg.selectors.getBreakpoints(state).size === count)
+}
+
 add_task(async function() {
   // NOTE: the CORS call makes the test run times inconsistent
   requestLongerTimeout(2);
@@ -22,10 +26,13 @@ add_task(async function() {
   // should not move anywhere.
   await addBreakpoint(dbg, entrySrc, 13);
   is(getBreakpoints(getState()).size, 1, "One breakpoint exists");
+
   ok(
     getBreakpoint(getState(), { sourceId: entrySrc.id, line: 13 }),
     "Breakpoint has correct line"
   );
+
+  await addBreakpoint(dbg, entrySrc, 5);
 
   await addBreakpoint(dbg, entrySrc, 15);
   await disableBreakpoint(dbg, entrySrc, 15);
@@ -34,7 +41,11 @@ add_task(async function() {
   await reload(dbg, "opts.js");
   await waitForDispatch(dbg, "LOAD_SOURCE_TEXT");
 
-  is(getBreakpoints(getState()).size, 2, "One breakpoint exists");
+  await waitForPaused(dbg);
+  assertPausedLocation(dbg);
+
+  await waitForBreakpointCount(dbg, 3);
+  is(getBreakpoints(getState()).size, 3, "Three breakpoints exist");
 
   ok(
     getBreakpoint(getState(), { sourceId: entrySrc.id, line: 13 }),

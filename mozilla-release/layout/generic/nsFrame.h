@@ -368,8 +368,7 @@ public:
               const ReflowInput& aReflowInput,
               nsReflowStatus&    aStatus) override;
   void DidReflow(nsPresContext*     aPresContext,
-                 const ReflowInput* aReflowInput,
-                 nsDidReflowStatus  aStatus) override;
+                 const ReflowInput* aReflowInput) override;
 
   /**
    * NOTE: aStatus is assumed to be already-initialized. The reflow statuses of
@@ -441,7 +440,7 @@ public:
 
   // Helper for GetContentAndOffsetsFromPoint; calculation of content offsets
   // in this function assumes there is no child frame that can be targeted.
-  virtual ContentOffsets CalcContentOffsetsFromFramePoint(nsPoint aPoint);
+  virtual ContentOffsets CalcContentOffsetsFromFramePoint(const nsPoint& aPoint);
 
   // Box layout methods
   nsSize GetXULPrefSize(nsBoxLayoutState& aBoxLayoutState) override;
@@ -494,8 +493,6 @@ public:
   // Helper function that verifies that each frame in the list has the
   // NS_FRAME_IS_DIRTY bit set
   static void VerifyDirtyBitSet(const nsFrameList& aFrameList);
-
-  static void XMLQuote(nsString& aString);
 
   // Display Reflow Debugging
   static void* DisplayReflowEnter(nsPresContext*          aPresContext,
@@ -728,11 +725,6 @@ public:
 
 #ifdef DEBUG
 public:
-  /**
-   * Return the state bits that are relevant to regression tests (that
-   * is, those bits which indicate a real difference when they differ
-   */
-  nsFrameState GetDebugStateBits() const override;
   /**
    * See if style tree verification is enabled. To enable style tree
    * verification add "styleverifytree:1" to your MOZ_LOG

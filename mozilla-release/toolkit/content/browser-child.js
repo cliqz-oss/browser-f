@@ -111,6 +111,7 @@ var WebProgressListener = {
 
     return {
       contentWindow: content,
+      contentDocument: content.document,
       // DOMWindow is not necessarily the content-window with subframes.
       DOMWindow: domWindow,
       webProgress: aWebProgress,
@@ -619,7 +620,7 @@ addMessageListener("PermitUnload", msg => {
 
   let permitUnload = true;
   if (docShell && docShell.contentViewer) {
-    permitUnload = docShell.contentViewer.permitUnload();
+    permitUnload = docShell.contentViewer.permitUnload(msg.data.aPermitUnloadFlags);
   }
 
   sendAsyncMessage("PermitUnload", {id: msg.data.id, kind: "end", permitUnload});

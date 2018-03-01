@@ -7,7 +7,11 @@
 #ifndef frontend_ParseContext_h
 #define frontend_ParseContext_h
 
+#include "ds/Nestable.h"
+
+#include "frontend/BytecodeCompiler.h"
 #include "frontend/ErrorReporter.h"
+#include "frontend/SharedContext.h"
 
 namespace js {
 
@@ -289,6 +293,10 @@ class ParseContext : public Nestable<ParseContext>
             return declared_.acquire(pc->sc()->context);
         }
 
+        bool isEmpty() const {
+            return declared_->all().empty();
+        }
+
         DeclaredNamePtr lookupDeclaredName(JSAtom* name) {
             return declared_->lookup(name);
         }
@@ -402,6 +410,7 @@ class ParseContext : public Nestable<ParseContext>
     {
       public:
         explicit inline VarScope(ParserBase* parser);
+        explicit inline VarScope(JSContext* cx, ParseContext* pc, UsedNameTracker& usedNames);
     };
 
   private:
@@ -447,28 +456,7 @@ class ParseContext : public Nestable<ParseContext>
     // between scopes. Only used when syntax parsing.
     PooledVectorPtr<AtomVector> closedOverBindingsForLazy_;
 
-    // Monotonically increasing id.
-    uint32_t scriptId_;
-
-    // Set when compiling a function using Parser::standaloneFunctionBody via
-    // the Function or Generator constructor.
-    bool isStandaloneFunctionBody_;
-
-    // Set when encountering a super.property inside a method. We need to mark
-    // the nearest super scope as needing a home object.
-    bool superScopeNeedsHomeObject_;
-
   public:
-    // lastYieldOffset stores the offset of the last yield that was parsed.
-    // NoYieldOffset is its initial value.
-    static const uint32_t NoYieldOffset = UINT32_MAX;
-    uint32_t lastYieldOffset;
-
-    // lastAwaitOffset stores the offset of the last await that was parsed.
-    // NoAwaitOffset is its initial value.
-    static const uint32_t NoAwaitOffset = UINT32_MAX;
-    uint32_t         lastAwaitOffset;
-
     // All inner functions in this context. Only used when syntax parsing.
     Rooted<GCVector<JSFunction*, 8>> innerFunctionsForLazy;
 
@@ -479,11 +467,27 @@ class ParseContext : public Nestable<ParseContext>
     // pointer may be nullptr.
     Directives* newDirectives;
 
-    // Set when parsing a function and it has 'return <expr>;'
-    bool funHasReturnExpr;
+    // lastYieldOffset stores the offset of the last yield that was parsed.
+    // NoYieldOffset is its initial value.
+    static const uint32_t NoYieldOffset = UINT32_MAX;
+    uint32_t lastYieldOffset;
 
-    // Set when parsing a function and it has 'return;'
-    bool funHasReturnVoid;
+    // lastAwaitOffset stores the offset of the last await that was parsed.
+    // NoAwaitOffset is its initial value.
+    static const uint32_t NoAwaitOffset = UINT32_MAX;
+    uint32_t lastAwaitOffset;
+
+  private:
+    // Monotonically increasing id.
+    uint32_t scriptId_;
+
+    // Set when compiling a function using Parser::standaloneFunctionBody via
+    // the Function or Generator constructor.
+    bool isStandaloneFunctionBody_;
+
+    // Set when encountering a super.property inside a method. We need to mark
+    // the nearest super scope as needing a home object.
+    bool superScopeNeedsHomeObject_;
 
   public:
     inline ParseContext(JSContext* cx, ParseContext*& parent, SharedContext* sc, ErrorReporter& errorReporter,
@@ -501,15 +505,13 @@ class ParseContext : public Nestable<ParseContext>
         varScope_(nullptr),
         positionalFormalParameterNames_(cx->frontendCollectionPool()),
         closedOverBindingsForLazy_(cx->frontendCollectionPool()),
-        scriptId_(usedNames.nextScriptId()),
-        isStandaloneFunctionBody_(false),
-        superScopeNeedsHomeObject_(false),
-        lastYieldOffset(NoYieldOffset),
-        lastAwaitOffset(NoAwaitOffset),
         innerFunctionsForLazy(cx, GCVector<JSFunction*, 8>(cx)),
         newDirectives(newDirectives),
-        funHasReturnExpr(false),
-        funHasReturnVoid(false)
+        lastYieldOffset(NoYieldOffset),
+        lastAwaitOffset(NoAwaitOffset),
+        scriptId_(usedNames.nextScriptId()),
+        isStandaloneFunctionBody_(false),
+        superScopeNeedsHomeObject_(false)
     {
         if (isFunctionBox()) {
             if (functionBox()->function()->isNamedLambda())
@@ -524,6 +526,7 @@ class ParseContext : public Nestable<ParseContext>
         return sc_;
     }
 
+    // `true` if we are in the body of a function definition.
     bool isFunctionBox() const {
         return sc_->isFunctionBox();
     }
@@ -584,6 +587,22 @@ class ParseContext : public Nestable<ParseContext>
     AtomVector& closedOverBindingsForLazy() {
         return *closedOverBindingsForLazy_;
     }
+
+    enum class BreakStatementError {
+        // Unlabeled break must be inside loop or switch.
+        ToughBreak,
+        LabelNotFound,
+    };
+
+    // Return Err(true) if we have encountered at least one loop,
+    // Err(false) otherwise.
+    MOZ_MUST_USE inline JS::Result<Ok, BreakStatementError> checkBreakStatement(PropertyName* label);
+
+    enum class ContinueStatementError {
+        NotInALoop,
+        LabelNotFound,
+    };
+    MOZ_MUST_USE inline JS::Result<Ok, ContinueStatementError> checkContinueStatement(PropertyName* label);
 
     // True if we are at the topmost level of a entire script or function body.
     // For example, while parsing this code we would encounter f1 and f2 at
@@ -646,7 +665,7 @@ class ParseContext : public Nestable<ParseContext>
     }
 
     FunctionAsyncKind asyncKind() const {
-        return isAsync() ? AsyncFunction : SyncFunction;
+        return isAsync() ? FunctionAsyncKind::AsyncFunction : FunctionAsyncKind::SyncFunction;
     }
 
     bool isArrowFunction() const {

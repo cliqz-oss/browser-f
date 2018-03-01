@@ -18,15 +18,15 @@ LOCAL_INCLUDES += [
     '/media/webrtc/signaling/src/media-conduit',
     '/media/webrtc/signaling/src/mediapipeline',
     '/media/webrtc/trunk',
+    '/netwerk/srtp/src/include',
 ]
 
 UNIFIED_SOURCES += [
-    'MediaPipelineFactory.cpp',
-    'MediaStreamList.cpp',
     'PacketDumper.cpp',
     'PeerConnectionCtx.cpp',
     'PeerConnectionImpl.cpp',
     'PeerConnectionMedia.cpp',
+    'TransceiverImpl.cpp',
     'WebrtcGlobalInformation.cpp',
 ]
 

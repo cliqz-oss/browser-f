@@ -548,7 +548,9 @@ Connection::Connection(Service *aService,
 
 Connection::~Connection()
 {
-  Unused << Close();
+  // Failsafe Close() occurs in our custom Release method because of
+  // complications related to Close() potentially invoking AsyncClose() which
+  // will increment our refcount.
   MOZ_ASSERT(!mAsyncExecutionThread,
              "The async thread has not been shutdown properly!");
 }
@@ -572,8 +574,55 @@ NS_IMETHODIMP_(MozExternalRefCountType) Connection::Release(void)
   if (1 == count) {
     // If the refcount is 1, the single reference must be from
     // gService->mConnections (in class |Service|).  Which means we can
-    // unregister it safely.
-    mStorageService->unregisterConnection(this);
+    // perform our failsafe Close() and unregister...
+    //
+    // HOWEVER, there is an edge-case where our failsafe Close() may trigger
+    // a call to AsyncClose() which obtains a strong reference.  This reference
+    // will be released via NS_ReleaseOnMainThreadSystemGroup() before Close()
+    // returns, which can potentially result in reentrancy into this method and
+    // this branch a second time.  (It may also be deferred if we're not in
+    // that event target ourselves.)  To avoid reentrancy madness, we explicitly
+    // bump our refcount up to 2 without going through AddRef().
+    ++mRefCnt;
+    // Okay, now our refcount is 2, we trigger Close().
+    Unused << Close();
+    // Now our refcount should either be at 2 (because nothing happened, or the
+    // addref and release pair happened due to SpinningSynchronousClose) or
+    // 3 (because SpinningSynchronousClose happened but didn't release yet).
+    //
+    // We *really* want to avoid re-entrancy, and we have potentially two strong
+    // references remaining that will invoke Release() and potentially trigger
+    // a transition to 1 again.  Since the second reference would be just a
+    // proxy release of an already-closed connection, it's not a big deal for us
+    // to unregister the connection now.  We do need to take care to avoid a
+    // strong refcount transition to 1 from 2 because that would induce
+    // reentrancy.  Note that we do not have any concerns about other threads
+    // being involved here; we MUST be the main thread if AsyncClose() is
+    // involved.
+    //
+    // Note: While Close() potentially spins the nested event loop, it is
+    // conceivable that Service::CollectReports or Service::minimizeMemory might
+    // be invoked.  These call Service::getConnections() and will perform
+    // matching AddRef and Release calls but will definitely not retain any
+    // references.  (Because connectionReady() will return false so both loops
+    // will immediately "continue" to bypass the connection in question.)
+    // Because our refcount is at least 2 at the lowest point, these do not pose
+    // a problem.
+    if (mRefCnt == 3) {
+      // pending proxy release, strong release to 2
+      mStorageService->unregisterConnection(this);
+      // now weak release to 1, the outstanding refcount will strong release to
+      // 0 and result in destruction later.
+      --mRefCnt;
+    } else if (mRefCnt == 2) {
+      // weak release to 1
+      --mRefCnt;
+      // strong release to 0, destruction will happen, we must NOT touch
+      // `this` after this point.
+      mStorageService->unregisterConnection(this);
+    } else {
+      MOZ_ASSERT(false, "Connection refcount invariant violated.");
+    }
   } else if (0 == count) {
     mRefCnt = 1; /* stabilize */
 #if 0 /* enable this to find non-threadsafe destructors: */
@@ -718,13 +767,7 @@ Connection::initializeInternal()
   MOZ_ASSERT(mDBConn);
 
   auto guard = MakeScopeExit([&]() {
-    {
-      MutexAutoLock lockedScope(sharedAsyncExecutionMutex);
-      mConnectionClosed = true;
-    }
-    MOZ_ALWAYS_TRUE(::sqlite3_close(mDBConn) == SQLITE_OK);
-    mDBConn = nullptr;
-    sharedDBMutex.destroy();
+    initializeFailed();
   });
 
   if (mFileURL) {
@@ -837,6 +880,18 @@ Connection::initializeOnAsyncThread(nsIFile* aStorageFile) {
     Unused << NS_DispatchToMainThread(event);
   }
   return rv;
+}
+
+void
+Connection::initializeFailed()
+{
+  {
+    MutexAutoLock lockedScope(sharedAsyncExecutionMutex);
+    mConnectionClosed = true;
+  }
+  MOZ_ALWAYS_TRUE(::sqlite3_close(mDBConn) == SQLITE_OK);
+  mDBConn = nullptr;
+  sharedDBMutex.destroy();
 }
 
 nsresult
@@ -1477,6 +1532,10 @@ Connection::initializeClone(Connection* aClone, bool aReadOnly)
     return rv;
   }
 
+  auto guard = MakeScopeExit([&]() {
+    aClone->initializeFailed();
+  });
+
   // Re-attach on-disk databases that were attached to the original connection.
   {
     nsCOMPtr<mozIStorageStatement> stmt;
@@ -1541,6 +1600,45 @@ Connection::initializeClone(Connection* aClone, bool aReadOnly)
     }
   }
 
+  // Copy over temporary tables, triggers, and views from the original
+  // connections. Entities in `sqlite_temp_master` are only visible to the
+  // connection that created them.
+  if (!aReadOnly) {
+    rv = aClone->ExecuteSimpleSQL(NS_LITERAL_CSTRING("BEGIN TRANSACTION"));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    nsCOMPtr<mozIStorageStatement> stmt;
+    rv = CreateStatement(NS_LITERAL_CSTRING("SELECT sql FROM sqlite_temp_master "
+                                            "WHERE type IN ('table', 'view', "
+                                                           "'index', 'trigger')"),
+                         getter_AddRefs(stmt));
+    // Propagate errors, because failing to copy triggers might cause schema
+    // coherency issues when writing to the database from the cloned connection.
+    NS_ENSURE_SUCCESS(rv, rv);
+    bool hasResult = false;
+    while (stmt && NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
+      nsAutoCString query;
+      rv = stmt->GetUTF8String(0, query);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      // The `CREATE` SQL statements in `sqlite_temp_master` omit the `TEMP`
+      // keyword. We need to add it back, or we'll recreate temporary entities
+      // as persistent ones. `sqlite_temp_master` also holds `CREATE INDEX`
+      // statements, but those don't need `TEMP` keywords.
+      if (StringBeginsWith(query, NS_LITERAL_CSTRING("CREATE TABLE ")) ||
+          StringBeginsWith(query, NS_LITERAL_CSTRING("CREATE TRIGGER ")) ||
+          StringBeginsWith(query, NS_LITERAL_CSTRING("CREATE VIEW "))) {
+        query.Replace(0, 6, "CREATE TEMP");
+      }
+
+      rv = aClone->ExecuteSimpleSQL(query);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+
+    rv = aClone->ExecuteSimpleSQL(NS_LITERAL_CSTRING("COMMIT"));
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
   // Copy any functions that have been added to this connection.
   SQLiteMutexAutoLock lockedScope(sharedDBMutex);
   for (auto iter = mFunctions.Iter(); !iter.Done(); iter.Next()) {
@@ -1569,6 +1667,7 @@ Connection::initializeClone(Connection* aClone, bool aReadOnly)
     }
   }
 
+  guard.release();
   return NS_OK;
 }
 

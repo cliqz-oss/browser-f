@@ -203,14 +203,22 @@ already_AddRefed<SharedThreadPool> GetMediaThreadPool(MediaThreadType aType)
     case MediaThreadType::PLATFORM_DECODER:
       name = "MediaPDecoder";
       break;
+    case MediaThreadType::MSG_CONTROL:
+      name = "MSGControl";
+      break;
+    case MediaThreadType::WEBRTC_DECODER:
+      name = "WebRTCPD";
+      break;
     default:
       MOZ_FALLTHROUGH_ASSERT("Unexpected MediaThreadType");
     case MediaThreadType::PLAYBACK:
       name = "MediaPlayback";
       break;
   }
+
+  static const uint32_t kMediaThreadPoolDefaultCount = 4;
   return SharedThreadPool::
-    Get(nsDependentCString(name), MediaPrefs::MediaThreadPoolDefaultCount());
+    Get(nsDependentCString(name), kMediaThreadPoolDefaultCount);
 }
 
 bool

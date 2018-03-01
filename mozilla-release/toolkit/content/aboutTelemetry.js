@@ -237,7 +237,7 @@ var Settings = {
   },
 
   convertStringToLink(string) {
-    return "<a href=\"\" class=\"change-data-choices-link\">" + string + "</a>";
+    return "<a href=\"#\" class=\"change-data-choices-link\">" + string + "</a>";
   },
 };
 
@@ -424,7 +424,7 @@ var PingPicker = {
     for (let p of this._archivedPings) {
       pingTypes.add(p.type);
       const pingDate = new Date(p.timestampCreated);
-      const datetimeText = Services.intl.createDateTimeFormat(undefined, {
+      const datetimeText = new Services.intl.DateTimeFormat(undefined, {
           dateStyle: "short",
           timeStyle: "medium"
         }).format(pingDate);
@@ -1060,16 +1060,15 @@ var ChromeHangs = {
   /**
    * Renders raw chrome hang data
    */
-  render: function ChromeHangs_render(payload) {
-    let hangs = payload.chromeHangs;
-    setHasData("chrome-hangs-section", !!hangs);
-    if (!hangs) {
+  render: function ChromeHangs_render(chromeHangs) {
+    setHasData("chrome-hangs-section", !!chromeHangs);
+    if (!chromeHangs) {
       return;
     }
 
-    let stacks = hangs.stacks;
-    let memoryMap = hangs.memoryMap;
-    let durations = hangs.durations;
+    let stacks = chromeHangs.stacks;
+    let memoryMap = chromeHangs.memoryMap;
+    let durations = chromeHangs.durations;
 
     StackRenderer.renderStacks("chrome-hangs", stacks, memoryMap,
                                (index) => this.renderHangHeader(index, durations));
@@ -1152,7 +1151,6 @@ var Histogram = {
     outerDiv.appendChild(divStats);
 
     if (isRTL()) {
-      hgram.buckets.reverse();
       hgram.values.reverse();
     }
 
@@ -1282,6 +1280,8 @@ var Search = {
 
   // A list of ids of sections that do not support search.
   blacklist: [
+    "late-writes-section",
+    "chrome-hangs-section",
     "raw-payload-section"
   ],
 
@@ -1460,6 +1460,7 @@ var Search = {
 
   homeSearch(text) {
     changeUrlSearch(text);
+    removeSearchSectionTitles();
     if (text === "") {
       this.resetHome();
       return;
@@ -1475,7 +1476,13 @@ var Search = {
       }
       section.classList.add("active");
       let sectionHidden = this.search(text, section);
-      if (noSearchResults && !sectionHidden) {
+      if (!sectionHidden) {
+        let sectionTitle = document.querySelector(`.category[value="${section.id}"] .category-name`).textContent;
+        let sectionDataDiv = document.querySelector(`#${section.id}.has-data.active .data`);
+        let titleDiv = document.createElement("h1");
+        titleDiv.classList.add("data", "search-section-title");
+        titleDiv.textContent = sectionTitle;
+        section.insertBefore(titleDiv, sectionDataDiv);
         noSearchResults = false;
       }
     });
@@ -1874,6 +1881,7 @@ function displayProcessesSelector(selectedSection) {
 }
 
 function refreshSearch() {
+  removeSearchSectionTitles();
   let selectedSection = document.querySelector(".category.selected").getAttribute("value");
   let search = document.getElementById("search");
   if (!Search.blacklist.includes(selectedSection)) {
@@ -1882,12 +1890,19 @@ function refreshSearch() {
 }
 
 function adjustSearchState() {
+  removeSearchSectionTitles();
   let selectedSection = document.querySelector(".category.selected").getAttribute("value");
   let search = document.getElementById("search");
   search.value = "";
   search.hidden = Search.blacklist.includes(selectedSection);
   document.getElementById("no-search-results").classList.add("hidden");
   Search.search(""); // reinitialize search state.
+}
+
+function removeSearchSectionTitles() {
+    for (let sectionTitleDiv of Array.from(document.getElementsByClassName("search-section-title"))) {
+        sectionTitleDiv.remove();
+    }
 }
 
 function adjustSection() {
@@ -1982,9 +1997,6 @@ function show(selected) {
   });
   selected_section.classList.add("active");
 
-  // Hack because subsection text appear selected. See Bug 1375114.
-  document.getSelection().empty();
-
   adjustHeaderState();
   displayProcessesSelector(selectedValue);
   adjustSearchState();
@@ -2009,7 +2021,6 @@ function showSubSection(selected) {
   let title = selected.parentElement.querySelector(".category-name").textContent;
   let subsection = selected.textContent;
   document.getElementById("sectionTitle").textContent = title + " - " + subsection;
-  document.getSelection().empty(); // prevent subsection text selection
   changeUrlPath(subsection, true);
 }
 
@@ -2058,7 +2069,7 @@ function setupListeners() {
         return;
       }
 
-      ChromeHangs.render(gPingData);
+      ChromeHangs.render(gPingData.payload.chromeHangs);
   });
 
   document.getElementById("captured-stacks-fetch-symbols").addEventListener("click",
@@ -2492,7 +2503,7 @@ function displayRichPingData(ping, updatePayloadList) {
   }
 
   // Show chrome hang stacks
-  ChromeHangs.render(payload);
+  ChromeHangs.render(payload.chromeHangs);
 
   // Show telemetry log.
   TelLog.render(payload);

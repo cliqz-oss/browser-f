@@ -18,9 +18,10 @@ transforms = TransformSequence()
 def validate(config, jobs):
     for job in jobs:
         label = job['label']
-        yield validate_schema(
+        validate_schema(
             job_description_schema, job,
             "In repackage-signing ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
 
 
 @transforms.add
@@ -32,6 +33,8 @@ def add_indexes(config, jobs):
             job_name = '{}-{}'.format(build_platform, repackage_type)
             product = job.get('index', {}).get('product', 'firefox')
             index_type = 'generic'
+            if job['attributes'].get('nightly') and job['attributes'].get('locale'):
+                index_type = 'nightly-l10n'
             if job['attributes'].get('nightly'):
                 index_type = 'nightly'
             if job['attributes'].get('locale'):

@@ -49,15 +49,7 @@ nsDisplayItemBoundsGeometry::nsDisplayItemBoundsGeometry(nsDisplayItem* aItem, n
 nsDisplayBorderGeometry::nsDisplayBorderGeometry(nsDisplayItem* aItem, nsDisplayListBuilder* aBuilder)
   : nsDisplayItemGeometry(aItem, aBuilder)
   , nsImageGeometryMixin(aItem, aBuilder)
-  , mContentRect(aItem->GetContentRect())
 {}
-
-void
-nsDisplayBorderGeometry::MoveBy(const nsPoint& aOffset)
-{
-  nsDisplayItemGeometry::MoveBy(aOffset);
-  mContentRect.MoveBy(aOffset);
-}
 
 nsDisplayBackgroundGeometry::nsDisplayBackgroundGeometry(nsDisplayBackgroundImage* aItem,
                                                          nsDisplayListBuilder* aBuilder)
@@ -132,6 +124,8 @@ nsDisplayMaskGeometry::nsDisplayMaskGeometry(nsDisplayMask* aItem, nsDisplayList
   : nsDisplaySVGEffectGeometry(aItem, aBuilder)
   , nsImageGeometryMixin(aItem, aBuilder)
   , mDestRects(aItem->GetDestRects())
+  , mOpacity(aItem->Frame()->StyleEffects()->mOpacity)
+  , mHandleOpacity(aItem->ShouldHandleOpacity())
 {}
 
 nsDisplayFilterGeometry::nsDisplayFilterGeometry(nsDisplayFilter* aItem, nsDisplayListBuilder* aBuilder)

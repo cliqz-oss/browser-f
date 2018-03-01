@@ -34,7 +34,6 @@ XPCOMUtils.defineLazyGetter(this, "BrandBundle", function() {
 
 const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const kPrefCustomizationDebug = "browser.uiCustomization.debug";
-const kWidePanelItemClass = "panel-wide-item";
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let scope = {};
@@ -153,7 +152,6 @@ const CustomizableWidgets = [
     viewId: "PanelUI-history",
     shortcutId: "key_gotoHistory",
     tooltiptext: "history-panelmenu.tooltiptext2",
-    defaultArea: CustomizableUI.AREA_PANEL,
     recentlyClosedTabsPanel: "appMenu-library-recentlyClosedTabs",
     recentlyClosedWindowsPanel: "appMenu-library-recentlyClosedWindows",
     handleEvent(event) {
@@ -245,7 +243,6 @@ const CustomizableWidgets = [
     tooltiptext: "remotetabs-panelmenu.tooltiptext2",
     type: "view",
     viewId: "PanelUI-remotetabs",
-    defaultArea: CustomizableUI.AREA_PANEL,
     deckIndices: {
       DECKINDEX_TABS: 0,
       DECKINDEX_TABSDISABLED: 1,
@@ -270,41 +267,6 @@ const CustomizableWidgets = [
       obnode.setAttribute("element", "sync-status");
       obnode.setAttribute("attribute", "syncstatus");
       aNode.appendChild(obnode);
-
-      // A somewhat complicated dance to format the mobilepromo label.
-      let bundle = doc.getElementById("bundle_browser");
-      let formatArgs = ["android", "ios"].map(os => {
-        let link = doc.createElement("label");
-        link.textContent = bundle.getString(`appMenuRemoteTabs.mobilePromo.${os}`);
-        link.setAttribute("mobile-promo-os", os);
-        link.className = "text-link remotetabs-promo-link";
-        return link.outerHTML;
-      });
-      let promoParentElt = doc.getElementById("PanelUI-remotetabs-mobile-promo");
-      // Put it all together...
-      let contents = bundle.getFormattedString("appMenuRemoteTabs.mobilePromo.text2", formatArgs);
-      // eslint-disable-next-line no-unsanitized/property
-      promoParentElt.unsafeSetInnerHTML(contents);
-      // We manually manage the "click" event to open the promo links because
-      // allowing the "text-link" widget handle it has 2 problems: (1) it only
-      // supports button 0 and (2) it's tricky to intercept when it does the
-      // open and auto-close the panel. (1) can probably be fixed, but (2) is
-      // trickier without hard-coding here the knowledge of exactly what buttons
-      // it does support.
-      // So we allow left and middle clicks to open the link in a new tab and
-      // close the panel; not setting a "href" attribute prevents the text-link
-      // widget handling it, and we build the final URL in the click handler to
-      // make testing easier (ie, so tests can change the pref after the links
-      // were created and have the new pref value used.)
-      promoParentElt.addEventListener("click", e => {
-        let os = e.target.getAttribute("mobile-promo-os");
-        if (!os || e.button > 1) {
-          return;
-        }
-        let link = Services.prefs.getCharPref(`identity.mobilepromo.${os}`) + "synced-tabs";
-        doc.defaultView.openUILinkIn(link, "tab");
-        CustomizableUI.hidePanelForNode(e.target);
-      });
       this._initialized = true;
     },
     onViewShowing(aEvent) {
@@ -524,7 +486,6 @@ const CustomizableWidgets = [
   }, {
     id: "privatebrowsing-button",
     shortcutId: "key_privatebrowsing",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onCommand(e) {
       let win = e.target.ownerGlobal;
       win.OpenBrowserWindow({private: true});
@@ -533,7 +494,6 @@ const CustomizableWidgets = [
     id: "save-page-button",
     shortcutId: "key_savePage",
     tooltiptext: "save-page-button.tooltiptext3",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.saveBrowser(win.gBrowser.selectedBrowser);
@@ -542,7 +502,6 @@ const CustomizableWidgets = [
     id: "find-button",
     shortcutId: "key_find",
     tooltiptext: "find-button.tooltiptext3",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       if (win.gFindBar) {
@@ -553,7 +512,6 @@ const CustomizableWidgets = [
     id: "open-file-button",
     shortcutId: "openFileKb",
     tooltiptext: "open-file-button.tooltiptext3",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.BrowserOpenFileWindow();
@@ -582,7 +540,6 @@ const CustomizableWidgets = [
     id: "add-ons-button",
     shortcutId: "key_openAddons",
     tooltiptext: "add-ons-button.tooltiptext3",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.BrowserOpenAddonsMgr();
@@ -591,7 +548,6 @@ const CustomizableWidgets = [
     id: "zoom-controls",
     type: "custom",
     tooltiptext: "zoom-controls.tooltiptext2",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onBuild(aDocument) {
       let buttons = [{
         id: "zoom-out-button",
@@ -626,7 +582,6 @@ const CustomizableWidgets = [
       node.setAttribute("removable", "true");
       node.classList.add("chromeclass-toolbar-additional");
       node.classList.add("toolbaritem-combined-buttons");
-      node.classList.add(kWidePanelItemClass);
 
       buttons.forEach(function(aButton, aIndex) {
         if (aIndex != 0)
@@ -641,7 +596,6 @@ const CustomizableWidgets = [
     id: "edit-controls",
     type: "custom",
     tooltiptext: "edit-controls.tooltiptext2",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onBuild(aDocument) {
       let buttons = [{
         id: "cut-button",
@@ -674,7 +628,6 @@ const CustomizableWidgets = [
       node.setAttribute("removable", "true");
       node.classList.add("chromeclass-toolbar-additional");
       node.classList.add("toolbaritem-combined-buttons");
-      node.classList.add(kWidePanelItemClass);
 
       buttons.forEach(function(aButton, aIndex) {
         if (aIndex != 0)
@@ -711,7 +664,6 @@ const CustomizableWidgets = [
     type: "view",
     viewId: "PanelUI-feeds",
     tooltiptext: "feed-button.tooltiptext2",
-    defaultArea: CustomizableUI.AREA_PANEL,
     onClick(aEvent) {
       let win = aEvent.target.ownerGlobal;
       let feeds = win.gBrowser.selectedBrowser.feeds;
@@ -751,7 +703,6 @@ const CustomizableWidgets = [
     type: "view",
     viewId: "PanelUI-characterEncodingView",
     tooltiptext: "characterencoding-button2.tooltiptext",
-    defaultArea: CustomizableUI.AREA_PANEL,
     maybeDisableMenu(aDocument) {
       let window = aDocument.defaultView;
       return !(window.gBrowser &&
@@ -924,7 +875,6 @@ const CustomizableWidgets = [
 
 let preferencesButton = {
   id: "preferences-button",
-  defaultArea: CustomizableUI.AREA_PANEL,
   onCommand(aEvent) {
     let win = aEvent.target.ownerGlobal;
     win.openPreferences(undefined, {origin: "preferencesButton"});

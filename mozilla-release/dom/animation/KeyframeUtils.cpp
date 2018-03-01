@@ -6,12 +6,12 @@
 
 #include "mozilla/KeyframeUtils.h"
 
-#include "mozilla/AnimationUtils.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/Move.h"
 #include "mozilla/RangedArray.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoBindingTypes.h"
+#include "mozilla/ServoCSSParser.h"
 #include "mozilla/StyleAnimationValue.h"
 #include "mozilla/TimingParams.h"
 #include "mozilla/dom/BaseKeyframeTypesBinding.h" // For FastBaseKeyframe etc.
@@ -20,11 +20,13 @@
 #include "mozilla/dom/KeyframeEffectReadOnly.h" // For PropertyValuesPair etc.
 #include "jsapi.h" // For ForOfIterator etc.
 #include "nsClassHashtable.h"
-#include "nsContentUtils.h" // For GetContextForContent
+#include "nsContentUtils.h" // For GetContextForContent, and
+                            // AnimationsAPICoreEnabled
 #include "nsCSSParser.h"
 #include "nsCSSPropertyIDSet.h"
 #include "nsCSSProps.h"
 #include "nsCSSPseudoElements.h" // For CSSPseudoElementType
+#include "nsDocument.h" // For nsDocument::IsWebAnimationsEnabled
 #include "nsIScriptError.h"
 #include "nsStyleContext.h"
 #include "nsTArray.h"
@@ -438,7 +440,7 @@ KeyframeUtils::GetKeyframesFromObject(JSContext* aCx,
     return keyframes;
   }
 
-  if (!AnimationUtils::IsCoreAPIEnabled() &&
+  if (!nsDocument::IsWebAnimationsEnabled(aCx, nullptr) &&
       RequiresAdditiveAnimation(keyframes, aDocument)) {
     keyframes.Clear();
     aRv.Throw(NS_ERROR_DOM_ANIM_MISSING_PROPS_ERR);
@@ -559,26 +561,6 @@ KeyframeUtils::IsAnimatableProperty(nsCSSPropertyID aProperty,
   return false;
 }
 
-/* static */ already_AddRefed<RawServoDeclarationBlock>
-KeyframeUtils::ParseProperty(nsCSSPropertyID aProperty,
-                             const nsAString& aValue,
-                             nsIDocument* aDocument)
-{
-  MOZ_ASSERT(aDocument);
-
-  NS_ConvertUTF16toUTF8 value(aValue);
-  // FIXME this is using the wrong base uri (bug 1343919)
-  RefPtr<URLExtraData> data = new URLExtraData(aDocument->GetDocumentURI(),
-                                               aDocument->GetDocumentURI(),
-                                               aDocument->NodePrincipal());
-  return Servo_ParseProperty(aProperty,
-                             &value,
-                             data,
-                             ParsingMode::Default,
-                             aDocument->GetCompatibilityMode(),
-                             aDocument->CSSLoader()).Consume();
-}
-
 // ------------------------------------------------------------------
 //
 // Internal helpers
@@ -676,7 +658,7 @@ ConvertKeyframeSequence(JSContext* aCx,
       keyframe->mOffset.emplace(keyframeDict.mOffset.Value());
     }
 
-    if (keyframeDict.mComposite.WasPassed()) {
+    if (!keyframeDict.mComposite.IsNull()) {
       keyframe->mComposite.emplace(keyframeDict.mComposite.Value());
     }
 
@@ -902,8 +884,10 @@ MakePropertyValuePair(nsCSSPropertyID aProperty, const nsAString& aStringValue,
   Maybe<PropertyValuePair> result;
 
   if (aDocument->GetStyleBackendType() == StyleBackendType::Servo) {
+    ServoCSSParser::ParsingEnvironment env =
+      ServoCSSParser::GetParsingEnvironment(aDocument);
     RefPtr<RawServoDeclarationBlock> servoDeclarationBlock =
-      KeyframeUtils::ParseProperty(aProperty, aStringValue, aDocument);
+      ServoCSSParser::ParseProperty(aProperty, aStringValue, env);
 
     if (servoDeclarationBlock) {
       result.emplace(aProperty, Move(servoDeclarationBlock));
@@ -1165,7 +1149,7 @@ HandleMissingInitialKeyframe(nsTArray<AnimationProperty>& aResult,
   // If the preference of the core Web Animations API is not enabled, don't fill
   // in the missing keyframe since the missing keyframe requires support for
   // additive animation which is guarded by this pref.
-  if (!AnimationUtils::IsCoreAPIEnabled()){
+  if (!nsContentUtils::AnimationsAPICoreEnabled()) {
     return nullptr;
   }
 
@@ -1188,7 +1172,7 @@ HandleMissingFinalKeyframe(nsTArray<AnimationProperty>& aResult,
   // If the preference of the core Web Animations API is not enabled, don't fill
   // in the missing keyframe since the missing keyframe requires support for
   // additive animation which is guarded by this pref.
-  if (!AnimationUtils::IsCoreAPIEnabled()){
+  if (!nsContentUtils::AnimationsAPICoreEnabled()) {
     // If we have already appended a new entry for the property so we have to
     // remove it.
     if (aCurrentAnimationProperty) {
@@ -1432,8 +1416,7 @@ GetKeyframeListFromPropertyIndexedKeyframe(JSContext* aCx,
     // If we only have one value, we should animate from the underlying value
     // using additive animation--however, we don't support additive animation
     // when the core animation API pref is switched off.
-    if ((!AnimationUtils::IsCoreAPIEnabled()) &&
-        count == 1) {
+    if (!nsContentUtils::AnimationsAPICoreEnabled() && count == 1) {
       aRv.Throw(NS_ERROR_DOM_ANIM_MISSING_PROPS_ERR);
       return;
     }
@@ -1469,7 +1452,7 @@ GetKeyframeListFromPropertyIndexedKeyframe(JSContext* aCx,
   // Fill in any specified offsets
   //
   // This corresponds to step 5, "Otherwise," branch, substeps 5-6 of
-  // https://w3c.github.io/web-animations/#processing-a-keyframes-argument
+  // https://drafts.csswg.org/web-animations/#processing-a-keyframes-argument
   const FallibleTArray<Nullable<double>>* offsets = nullptr;
   AutoTArray<Nullable<double>, 1> singleOffset;
   auto& offset = keyframeDict.mOffset;
@@ -1499,7 +1482,7 @@ GetKeyframeListFromPropertyIndexedKeyframe(JSContext* aCx,
   // are between 0.0 and 1.0 inclusive.
   //
   // This corresponds to steps 6-7 of
-  // https://w3c.github.io/web-animations/#processing-a-keyframes-argument
+  // https://drafts.csswg.org/web-animations/#processing-a-keyframes-argument
   //
   // In the spec, TypeErrors arising from invalid offsets and easings are thrown
   // at the end of the procedure since it assumes we initially store easing
@@ -1519,7 +1502,7 @@ GetKeyframeListFromPropertyIndexedKeyframe(JSContext* aCx,
   // Fill in any easings.
   //
   // This corresponds to step 5, "Otherwise," branch, substeps 7-11 of
-  // https://w3c.github.io/web-animations/#processing-a-keyframes-argument
+  // https://drafts.csswg.org/web-animations/#processing-a-keyframes-argument
   FallibleTArray<Maybe<ComputedTimingFunction>> easings;
   auto parseAndAppendEasing = [&](const nsString& easingString,
                                   ErrorResult& aRv) {
@@ -1563,24 +1546,28 @@ GetKeyframeListFromPropertyIndexedKeyframe(JSContext* aCx,
   // Fill in any composite operations.
   //
   // This corresponds to step 5, "Otherwise," branch, substep 12 of
-  // https://w3c.github.io/web-animations/#processing-a-keyframes-argument
-  const FallibleTArray<dom::CompositeOperation>* compositeOps;
-  AutoTArray<dom::CompositeOperation, 1> singleCompositeOp;
+  // https://drafts.csswg.org/web-animations/#processing-a-keyframes-argument
+  const FallibleTArray<Nullable<dom::CompositeOperation>>* compositeOps =
+    nullptr;
+  AutoTArray<Nullable<dom::CompositeOperation>, 1> singleCompositeOp;
   auto& composite = keyframeDict.mComposite;
   if (composite.IsCompositeOperation()) {
     singleCompositeOp.AppendElement(composite.GetAsCompositeOperation());
-    const FallibleTArray<dom::CompositeOperation>& asFallibleArray =
+    const FallibleTArray<Nullable<dom::CompositeOperation>>& asFallibleArray =
       singleCompositeOp;
     compositeOps = &asFallibleArray;
-  } else {
-    compositeOps = &composite.GetAsCompositeOperationSequence();
+  } else if (composite.IsCompositeOperationOrNullSequence()) {
+    compositeOps = &composite.GetAsCompositeOperationOrNullSequence();
   }
 
   // Fill in and repeat as needed.
-  if (!compositeOps->IsEmpty()) {
+  if (compositeOps && !compositeOps->IsEmpty()) {
+    size_t length = compositeOps->Length();
     for (size_t i = 0; i < aResult.Length(); i++) {
-      aResult[i].mComposite.emplace(
-        compositeOps->ElementAt(i % compositeOps->Length()));
+      if (!compositeOps->ElementAt(i % length).IsNull()) {
+        aResult[i].mComposite.emplace(
+          compositeOps->ElementAt(i % length).Value());
+      }
     }
   }
 }

@@ -8,7 +8,7 @@
 
 const { getRootBindingParent } = require("devtools/shared/layout/utils");
 const { getTabPrefs } = require("devtools/shared/indentation");
-const { Ci, Cc } = require("chrome");
+const InspectorUtils = require("InspectorUtils");
 
 const MAX_DATA_URL_LENGTH = 40;
 
@@ -24,7 +24,7 @@ const MAX_DATA_URL_LENGTH = 40;
  *
  * - CssSheet provides a more useful API to a DOM CSSSheet for our purposes,
  *   including shortSource and href.
- * - CssRule a more useful API to a nsIDOMCSSRule including access to the group
+ * - CssRule a more useful API to a DOM CSSRule including access to the group
  *   of CssSelectors that the rule provides properties for
  * - CssSelector A single selector - i.e. not a selector group. In other words
  *   a CssSelector does not contain ','. This terminology is different from the
@@ -38,9 +38,9 @@ const MAX_DATA_URL_LENGTH = 40;
 
 /**
  * Provide access to the style information in a page.
- * CssLogic uses the standard DOM API, and the Gecko inIDOMUtils API to access
- * styling information in the page, and present this to the user in a way that
- * helps them understand:
+ * CssLogic uses the standard DOM API, and the Gecko InspectorUtils API to
+ * access styling information in the page, and present this to the user in a way
+ * that helps them understand:
  * - why their expectations may not have been fulfilled
  * - how browsers process CSS
  * @constructor
@@ -511,9 +511,7 @@ exports.getBindingElementAndPseudo = getBindingElementAndPseudo;
  * normal element.
  */
 function getCSSStyleRules(node) {
-  const DOMUtils =
-    Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils);
   let { bindingElement, pseudo } = getBindingElementAndPseudo(node);
-  return DOMUtils.getCSSStyleRules(bindingElement, pseudo);
+  return InspectorUtils.getCSSStyleRules(bindingElement, pseudo);
 }
 exports.getCSSStyleRules = getCSSStyleRules;

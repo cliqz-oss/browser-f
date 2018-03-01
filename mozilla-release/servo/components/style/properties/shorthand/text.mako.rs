@@ -62,11 +62,11 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             self.text_decoration_line.to_css(dest)?;
 
             % if product == "gecko":
-                if self.text_decoration_style != &text_decoration_style::SpecifiedValue::solid {
+                if *self.text_decoration_style != text_decoration_style::SpecifiedValue::Solid {
                     dest.write_str(" ")?;
                     self.text_decoration_style.to_css(dest)?;
                 }

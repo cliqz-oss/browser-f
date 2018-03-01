@@ -6,8 +6,10 @@
 
 "use strict";
 
-const { Component, DOM: dom, PropTypes } =
-  require("devtools/client/shared/vendor/react");
+const { Component } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+
 const Services = require("Services");
 
 const Strings = Services.strings.createBundle(
@@ -16,6 +18,7 @@ const Strings = Services.strings.createBundle(
 class TabTarget extends Component {
   static get propTypes() {
     return {
+      connect: PropTypes.object,
       target: PropTypes.shape({
         icon: PropTypes.string,
         outerWindowID: PropTypes.number.isRequired,
@@ -31,8 +34,13 @@ class TabTarget extends Component {
   }
 
   debug() {
-    let { target } = this.props;
-    window.open("about:devtools-toolbox?type=tab&id=" + target.outerWindowID);
+    let { target, connect } = this.props;
+    let url = "about:devtools-toolbox?type=tab&id=" + target.outerWindowID;
+    if (connect.type == "REMOTE") {
+      let {host, port} = connect.params;
+      url += `&host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`;
+    }
+    window.open(url);
   }
 
   render() {

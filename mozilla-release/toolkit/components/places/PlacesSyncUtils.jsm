@@ -220,7 +220,7 @@ const HistorySyncUtils = PlacesSyncUtils.history = Object.freeze({
   async fetchURLInfoForGuid(guid) {
     let db = await PlacesUtils.promiseDBConnection();
     let rows = await db.executeCached(`
-      SELECT url, title, frecency
+      SELECT url, IFNULL(title, "") AS title, frecency
       FROM moz_places
       WHERE guid = :guid`,
       { guid }
@@ -1048,10 +1048,20 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    *   exist, or will be updated with the correct title and URL otherwise.
    */
   async ensureMobileQuery() {
-    Services.prefs.setBoolPref(MOBILE_BOOKMARKS_PREF, true);
-
     let db = await PlacesUtils.promiseDBConnection();
 
+    let mobileChildGuids = await fetchChildGuids(db, PlacesUtils.bookmarks.mobileGuid);
+    let hasMobileBookmarks = mobileChildGuids.length > 0;
+
+    Services.prefs.setBoolPref(MOBILE_BOOKMARKS_PREF, hasMobileBookmarks);
+    if (hasMobileBookmarks) {
+      await this.upsertMobileQuery(db);
+    } else {
+      await this.removeMobileQuery(db);
+    }
+  },
+
+  async upsertMobileQuery(db) {
     let maybeAllBookmarksGuids = await fetchGuidsWithAnno(db,
       ORGANIZER_QUERY_ANNO, ORGANIZER_ALL_BOOKMARKS_ANNO_VALUE);
     if (!maybeAllBookmarksGuids.length) {
@@ -1100,6 +1110,17 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
     });
   },
 
+  async removeMobileQuery(db) {
+    let maybeMobileQueryGuids = await fetchGuidsWithAnno(db,
+      ORGANIZER_QUERY_ANNO, ORGANIZER_MOBILE_QUERY_ANNO_VALUE);
+    if (!maybeMobileQueryGuids.length) {
+      BookmarkSyncLog.warn("Trying to remove non-existent mobile query");
+      return;
+    }
+    let mobileQueryGuid = maybeMobileQueryGuids[0];
+    await PlacesUtils.bookmarks.remove(mobileQueryGuid);
+  },
+
   /**
    * Fetches an array of GUIDs for items that have an annotation set with the
    * given value.
@@ -1111,7 +1132,9 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
 });
 
 XPCOMUtils.defineLazyGetter(this, "BookmarkSyncLog", () => {
-  return Log.repository.getLogger("BookmarkSyncUtils");
+  // Use a sub-log of the bookmarks engine, so setting the level for that
+  // engine also adjust the level of this log.
+  return Log.repository.getLogger("Sync.Engine.Bookmarks.BookmarkSyncUtils");
 });
 
 function validateSyncBookmarkObject(name, input, behavior) {

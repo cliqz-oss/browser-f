@@ -118,13 +118,7 @@ public:
   already_AddRefed<StyleSheet> Clone(StyleSheet* aCloneParent,
     dom::CSSImportRule* aCloneOwnerRule,
     nsIDocument* aCloneDocument,
-    nsINode* aCloneOwningNode) const final;
-
-  void SetModifiedByChildRule() {
-    NS_ASSERTION(mDirty,
-                 "sheet must be marked dirty before handing out child rules");
-    DidDirty();
-  }
+    nsINode* aCloneOwningNode) const final override;
 
   nsresult AddRuleProcessor(nsCSSRuleProcessor* aProcessor);
   nsresult DropRuleProcessor(nsCSSRuleProcessor* aProcessor);

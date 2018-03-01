@@ -16,17 +16,6 @@ VOLUME /builds/worker/checkouts
 VOLUME /builds/worker/workspace
 VOLUME /builds/worker/tooltool-cache
 
-# Add build scripts; these are the entry points from the taskcluster worker, and
-# operate on environment variables
-# %include taskcluster/docker/desktop-build/bin/
-COPY topsrcdir/taskcluster/docker/desktop-build/bin/ /builds/worker/bin/
-RUN chmod +x /builds/worker/bin/*
-
-# Add common hg configuration.
-# %include taskcluster/docker/centos6-build/hgrc
-COPY topsrcdir/taskcluster/docker/centos6-build/hgrc /builds/worker/.hgrc
-RUN chown worker:worker /builds/worker/.hgrc
-
 # Set variables normally configured at login, by the shell' parent process,
 # these are taken from GNU su manual.  Also set DEBIAN_FRONTEND to advise
 # apt-get of our situation.
@@ -43,14 +32,9 @@ CMD ["/bin/bash", "--login"]
 # Set apt sources list to a snapshot.
 COPY sources.list /etc/apt/
 
-# We need i386 packages for the Android SDK.
-# Once https://bugzilla.mozilla.org/show_bug.cgi?id=1370119 is in-tree, we
-# will have 64-bit builds of everything, and we can then remove this and
-# the :i386 packages we install below.
-RUN dpkg --add-architecture i386
-
 # rsync is required for l10n single locale repacks.  less, screen, and
 # vim, help debugging interactive tasks in Task Cluster.
+# git and openssh-client are used to upload GeckoView javadoc to Github.
 RUN apt-get update -q && \
     apt-get install -yyq --no-install-recommends \
       autoconf2.13 \
@@ -61,9 +45,11 @@ RUN apt-get update -q && \
       cmake \
       curl \
       file \
+      git \
       gnupg \
       less \
       make \
+      openssh-client \
       procps \
       python \
       python-cryptography \
@@ -82,10 +68,6 @@ RUN apt-get update -q && \
       xz-utils \
       yasm \
       zip \
-      libstdc++6:i386 \
-      libgcc1:i386 \
-      zlib1g:i386 \
-      libncurses5:i386 \
     && \
     apt-get clean
 
@@ -95,17 +77,14 @@ COPY topsrcdir/python/mozbuild/mozbuild/action/tooltool.py /setup/tooltool.py
 # %include testing/mozharness/external_tools/robustcheckout.py
 COPY topsrcdir/testing/mozharness/external_tools/robustcheckout.py /usr/local/mercurial/robustcheckout.py
 
+# %include taskcluster/docker/recipes/hgrc
+COPY topsrcdir/taskcluster/docker/recipes/hgrc /etc/mercurial/hgrc.d/mozilla.rc
+
 # %include taskcluster/docker/recipes/common.sh
 COPY topsrcdir/taskcluster/docker/recipes/common.sh /setup/common.sh
 
 # %include taskcluster/docker/recipes/install-mercurial.sh
 COPY topsrcdir/taskcluster/docker/recipes/install-mercurial.sh /setup/install-mercurial.sh
-
-# %include taskcluster/docker/recipes/install-make.sh
-COPY topsrcdir/taskcluster/docker/recipes/install-make.sh /setup/install-make.sh
-
-# %include taskcluster/docker/recipes/install-cmake.sh
-COPY topsrcdir/taskcluster/docker/recipes/install-cmake.sh /setup/install-cmake.sh
 
 # %include taskcluster/docker/recipes/debian-build-system-setup.sh
 COPY topsrcdir/taskcluster/docker/recipes/debian-build-system-setup.sh /setup/system-setup.sh
@@ -120,7 +99,8 @@ COPY topsrcdir/taskcluster/docker/recipes/xvfb.sh /builds/worker/scripts/xvfb.sh
 COPY topsrcdir/taskcluster/docker/recipes/run-task /builds/worker/bin/run-task
 
 # Add pip configuration, among other things.
-COPY dot-config /builds/worker/.config
+# %include taskcluster/docker/recipes/dot-config
+COPY topsrcdir/taskcluster/docker/recipes/dot-config /builds/worker/.config
 
 # Stubbed out credentials; mozharness looks for this file an issues a WARNING
 # if it's not found, which causes the build to fail.  Note that this needs to

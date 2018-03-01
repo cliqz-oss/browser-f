@@ -203,7 +203,7 @@ fails-if(Android) pref(security.fileuri.strict_origin_policy,true) == filter-ext
 == filter-foreignObject-01.svg pass.svg
 == filter-in-mask-01.svg pass.svg
 == filter-invalidation-01.svg pass.svg
-fuzzy(71,817) fails-if(winWidget&&stylo) fails-if(webrender) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
+fuzzy(71,817) fails-if(winWidget&&stylo) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
 == filter-result-01.svg filter-result-01-ref.svg
 == filter-scaled-01.svg pass.svg
 fuzzy-if(skiaContent,1,500) == filter-scaled-02.html filter-scaled-02-ref.html
@@ -261,12 +261,12 @@ fuzzy-if(skiaContent,1,800000) == markers-and-group-opacity-01.svg markers-and-g
 == marker-dynamic-opacity.html marker-dynamic-opacity-ref.html
 == marker-effects-01.svg marker-effects-01-ref.svg
 fuzzy-if(skiaContent,1,100) == marker-viewBox-01.svg marker-viewBox-01-ref.svg
-fuzzy-if(skiaContent,1,100) fails-if(webrender) == marker-orientation-01.svg marker-orientation-01-ref.svg
-fuzzy-if(skiaContent,1,5) pref(svg.marker-improvements.enabled,true) fails-if(webrender) == marker-orientation-02.svg marker-orientation-02-ref.svg
+fuzzy-if(skiaContent,1,100) == marker-orientation-01.svg marker-orientation-01-ref.svg
+fuzzy-if(skiaContent,1,5) pref(svg.marker-improvements.enabled,true) == marker-orientation-02.svg marker-orientation-02-ref.svg
 == marker-orientation-03.svg pass.svg
 == marker-orientation-04.svg pass.svg
 
-fuzzy(28,28) fails-if(webrender) == mask-and-clipPath.html mask-and-clipPath-ref.html
+fuzzy(28,28) == mask-and-clipPath.html mask-and-clipPath-ref.html
 == mask-and-clipPath-2.svg pass.svg
 == mask-ref-loop-01.svg pass.svg
 == mask-basic-01.svg pass.svg
@@ -298,7 +298,7 @@ fuzzy-if(d2d||skiaContent,1,6400) == mask-type-04.svg mask-type-01-ref.svg
 == nested-viewBox-01.svg pass.svg
 fuzzy-if(skiaContent,3,448000) == nesting-invalid-01.svg nesting-invalid-01-ref.svg
 
-fuzzy-if(d2d&&/^Windows\x20NT\x20(6\.1|10\.0)/.test(http.oscpu),63,168) fuzzy-if(cocoaWidget,1,122) fuzzy-if(skiaContent,2,1000) fails-if(webrender) == non-scaling-stroke-01.svg non-scaling-stroke-01-ref.svg # bug 1074161 for Win7 and OSX 10.8
+fuzzy-if(d2d&&/^Windows\x20NT\x20(6\.1|10\.0)/.test(http.oscpu),63,168) fuzzy-if(cocoaWidget,1,122) fuzzy-if(skiaContent,2,1000) == non-scaling-stroke-01.svg non-scaling-stroke-01-ref.svg # bug 1074161 for Win7 and OSX 10.8
 fuzzy-if(gtkWidget,1,99) fuzzy-if(!contentSameGfxBackendAsCanvas,9,99) fuzzy-if(Android,9,586) == non-scaling-stroke-02.svg non-scaling-stroke-02-ref.svg
 == non-scaling-stroke-03.svg non-scaling-stroke-03-ref.svg
 
@@ -335,12 +335,11 @@ fuzzy-if(skiaContent,7,175) == outline.html outline-ref.html
 == paint-on-maskLayer-1b.html paint-on-maskLayer-1-ref.html
 == paint-on-maskLayer-1c.html paint-on-maskLayer-1-ref.html
 pref(svg.paint-order.enabled,true) == paint-order-01.svg paint-order-01-ref.svg
-pref(svg.paint-order.enabled,true) == paint-order-02.svg paint-order-02-ref.svg
+pref(svg.paint-order.enabled,true) fuzzy-if(webrender,1-1,112-112) == paint-order-02.svg paint-order-02-ref.svg
 pref(svg.paint-order.enabled,true) == paint-order-03.svg paint-order-03-ref.svg
 
 #fuzzy(23,60) fails-if(d2d) == path-01.svg path-01-ref.svg
 == path-02.svg pass.svg
-== path-03.svg pass.svg
 == path-04.svg pass.svg
 == path-05.svg pass.svg
 fuzzy-if(skiaContent,1,400) == path-06.svg path-06-ref.svg
@@ -404,6 +403,7 @@ fuzzy-if(skiaContent,1,340) == stroke-dasharray-03.svg pass.svg
 == stroke-linecap-circle-ellipse-dashed-01.svg pass.svg
 == stroke-linecap-round-w-zero-length-segs-01.svg pass.svg
 == stroke-linecap-round-w-zero-length-segs-02.svg pass.svg
+== stroke-linecap-round-w-zero-length-segs-03.svg pass.svg
 == stroke-linecap-square-w-zero-length-segs-01.svg pass.svg
 == stroke-linecap-square-w-zero-length-segs-02.svg pass.svg
 == stroke-width-percentage-01.svg pass.svg
@@ -414,7 +414,7 @@ fuzzy-if(skiaContent,1,340) == stroke-dasharray-03.svg pass.svg
 == style-property-on-script-element-01.svg pass.svg
 == style-without-type-attribute.svg pass.svg
 
-== svg-in-foreignObject-01.xhtml svg-in-foreignObject-01-ref.xhtml
+fuzzy-if(webrender,1-1,262-262) == svg-in-foreignObject-01.xhtml svg-in-foreignObject-01-ref.xhtml
 fuzzy-if(skiaContent,1,2600) == svg-in-foreignObject-02.xhtml svg-in-foreignObject-01-ref.xhtml # reuse -01-ref.xhtml
 == svg-in-inner-svg-dimensions.svg pass.svg
 == switch-01.svg pass.svg
@@ -439,7 +439,7 @@ fuzzy-if(skiaContent,1,2600) == svg-in-foreignObject-02.xhtml svg-in-foreignObje
 == text-font-size-01.svg pass.svg
 random-if(gtkWidget) == text-font-weight-01.svg text-font-weight-01-ref.svg # bug 386713
 == text-gradient-01.svg text-gradient-01-ref.svg
-random-if(winWidget) == text-gradient-02.svg text-gradient-02-ref.svg # see bug 590101
+random-if(winWidget) fuzzy-if(Android,10,2) == text-gradient-02.svg text-gradient-02-ref.svg # see bug 590101
 fuzzy-if(skiaContent,1,5500) == text-gradient-03.svg pass.svg
 == text-gradient-04.svg text-gradient-04-ref.svg
 == text-in-link-01.svg text-in-link-01-ref.svg

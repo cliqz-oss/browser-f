@@ -4,12 +4,9 @@
 
 // The ext-* files are imported into the same scopes.
 /* import-globals-from ext-browser.js */
+/* globals WINDOW_ID_CURRENT */
 
 Cu.import("resource://gre/modules/ExtensionParent.jsm");
-
-var {
-  ExtensionError,
-} = ExtensionUtils;
 
 var {
   IconDetails,
@@ -55,13 +52,14 @@ this.sidebarAction = class extends ExtensionAPI {
       icon: IconDetails.normalize({path: options.default_icon}, extension),
       panel: options.default_panel || "",
     };
+    this.globals = Object.create(this.defaults);
 
-    this.tabContext = new TabContext(tab => Object.create(this.defaults),
+    this.tabContext = new TabContext(tab => Object.create(this.globals),
                                      extension);
 
     // We need to ensure our elements are available before session restore.
     this.windowOpenListener = (window) => {
-      this.createMenuItem(window, this.defaults);
+      this.createMenuItem(window, this.globals);
     };
     windowTracker.addOpenListener(this.windowOpenListener);
 
@@ -188,7 +186,8 @@ this.sidebarAction = class extends ExtensionAPI {
 
     document.getElementById("mainBroadcasterSet").appendChild(broadcaster);
     document.getElementById("viewSidebarMenu").appendChild(menuitem);
-    document.getElementById("sidebar-extensions").appendChild(toolbarbutton);
+    let separator = document.getElementById("sidebar-extensions-separator");
+    separator.parentNode.insertBefore(toolbarbutton, separator);
 
     return menuitem;
   }
@@ -289,19 +288,23 @@ this.sidebarAction = class extends ExtensionAPI {
    *        Value for property.
    */
   setProperty(nativeTab, prop, value) {
+    let values;
     if (nativeTab === null) {
-      this.defaults[prop] = value;
-    } else if (value !== null) {
-      this.tabContext.get(nativeTab)[prop] = value;
+      values = this.globals;
     } else {
-      delete this.tabContext.get(nativeTab)[prop];
+      values = this.tabContext.get(nativeTab);
+    }
+    if (value === null) {
+      delete values[prop];
+    } else {
+      values[prop] = value;
     }
 
     this.updateOnChange(nativeTab);
   }
 
   /**
-   * Retrieve a property from the tab or defaults if tab is null.
+   * Retrieve a property from the tab or globals if tab is null.
    *
    * @param {XULElement|null} nativeTab
    *        Browser tab object, may be null.
@@ -312,7 +315,7 @@ this.sidebarAction = class extends ExtensionAPI {
    */
   getProperty(nativeTab, prop) {
     if (nativeTab === null) {
-      return this.defaults[prop];
+      return this.globals[prop];
     }
     return this.tabContext.get(nativeTab)[prop];
   }
@@ -348,10 +351,20 @@ this.sidebarAction = class extends ExtensionAPI {
    * @param {ChromeWindow} window
    */
   close(window) {
-    let {SidebarUI} = window;
-    if (SidebarUI.isOpen && this.id == SidebarUI.currentID) {
-      SidebarUI.hide();
+    if (this.isOpen(window)) {
+      window.SidebarUI.hide();
     }
+  }
+
+  /**
+   * Checks whether this sidebar action is open in the given window.
+   *
+   * @param {ChromeWindow} window
+   * @returns {boolean}
+   */
+  isOpen(window) {
+    let {SidebarUI} = window;
+    return SidebarUI.isOpen && this.id == SidebarUI.currentID;
   }
 
   getAPI(context) {
@@ -369,13 +382,7 @@ this.sidebarAction = class extends ExtensionAPI {
       sidebarAction: {
         async setTitle(details) {
           let nativeTab = getTab(details.tabId);
-
-          let title = details.title;
-          // Clear the tab-specific title when given a null string.
-          if (nativeTab && title === "") {
-            title = null;
-          }
-          sidebarAction.setProperty(nativeTab, "title", title);
+          sidebarAction.setProperty(nativeTab, "title", details.title);
         },
 
         getTitle(details) {
@@ -389,6 +396,9 @@ this.sidebarAction = class extends ExtensionAPI {
           let nativeTab = getTab(details.tabId);
 
           let icon = IconDetails.normalize(details, extension, context);
+          if (!Object.keys(icon).length) {
+            icon = null;
+          }
           sidebarAction.setProperty(nativeTab, "icon", icon);
         },
 
@@ -396,16 +406,14 @@ this.sidebarAction = class extends ExtensionAPI {
           let nativeTab = getTab(details.tabId);
 
           let url;
-          // Clear the tab-specific url when given a null string.
-          if (nativeTab && details.panel === "") {
+          // Clear the url when given null or empty string.
+          if (!details.panel) {
             url = null;
-          } else if (details.panel !== "") {
+          } else {
             url = context.uri.resolve(details.panel);
             if (!context.checkLoadURL(url)) {
               return Promise.reject({message: `Access denied for URL ${url}`});
             }
-          } else {
-            throw new ExtensionError("Invalid url for sidebar panel.");
           }
 
           sidebarAction.setProperty(nativeTab, "panel", url);
@@ -426,6 +434,15 @@ this.sidebarAction = class extends ExtensionAPI {
         close() {
           let window = windowTracker.topWindow;
           sidebarAction.close(window);
+        },
+
+        isOpen(details) {
+          let {windowId} = details;
+          if (windowId == null) {
+            windowId = WINDOW_ID_CURRENT;
+          }
+          let window = windowTracker.getWindow(windowId, context);
+          return sidebarAction.isOpen(window);
         },
       },
     };

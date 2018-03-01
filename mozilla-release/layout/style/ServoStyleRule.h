@@ -13,12 +13,13 @@
 #include "mozilla/ServoBindingTypes.h"
 #include "mozilla/WeakPtr.h"
 
-#include "nsICSSStyleRuleDOMWrapper.h"
-#include "nsIDOMCSSStyleRule.h"
-#include "nsICSSStyleRuleDOMWrapper.h"
 #include "nsDOMCSSDeclaration.h"
 
 namespace mozilla {
+
+namespace dom {
+class DocGroup;
+} // namespace dom
 
 class ServoDeclarationBlock;
 class ServoStyleRule;
@@ -28,15 +29,18 @@ class ServoStyleRuleDeclaration final : public nsDOMCSSDeclaration
 public:
   NS_DECL_ISUPPORTS_INHERITED
 
-  NS_IMETHOD GetParentRule(nsIDOMCSSRule** aParent) final;
-  nsINode* GetParentObject() final;
+  css::Rule* GetParentRule() final override;
+  nsINode* GetParentObject() final override;
+  mozilla::dom::DocGroup* GetDocGroup() const final override;
 
 protected:
-  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final;
-  nsresult SetCSSDeclaration(DeclarationBlock* aDecl) final;
-  nsIDocument* DocToUpdate() final;
-  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv) final;
-  ServoCSSParsingEnvironment GetServoCSSParsingEnvironment() const final;
+  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final override;
+  nsresult SetCSSDeclaration(DeclarationBlock* aDecl) final override;
+  nsIDocument* DocToUpdate() final override;
+  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
+                                nsIPrincipal* aSubjectPrincipal) final override;
+  ServoCSSParsingEnvironment
+  GetServoCSSParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final override;
 
 private:
   // For accessing the constructor.
@@ -53,7 +57,6 @@ private:
 };
 
 class ServoStyleRule final : public BindingStyleRule
-                           , public nsICSSStyleRuleDOMWrapper
                            , public SupportsWeakPtr<ServoStyleRule>
 {
 public:
@@ -63,13 +66,9 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(ServoStyleRule,
                                                          css::Rule)
-  bool IsCCLeaf() const final MOZ_MUST_OVERRIDE;
-  NS_DECL_NSIDOMCSSSTYLERULE
+  bool IsCCLeaf() const final override MOZ_MUST_OVERRIDE;
 
   MOZ_DECLARE_WEAKREFERENCE_TYPENAME(ServoStyleRule)
-
-  // nsICSSStyleRuleDOMWrapper
-  NS_IMETHOD GetCSSStyleRule(BindingStyleRule **aResult) override;
 
   uint32_t GetSelectorCount() override;
   nsresult GetSelectorText(uint32_t aSelectorIndex,
@@ -83,19 +82,20 @@ public:
   NotNull<DeclarationBlock*> GetDeclarationBlock() const override;
 
   // WebIDL interface
-  uint16_t Type() const final;
-  void GetCssTextImpl(nsAString& aCssText) const final;
-  nsICSSDeclaration* Style() final;
+  uint16_t Type() const final override;
+  void GetCssTextImpl(nsAString& aCssText) const final override;
+  void GetSelectorText(nsAString& aSelectorText) final override;
+  void SetSelectorText(const nsAString& aSelectorText) final override;
+  nsICSSDeclaration* Style() final override;
 
   RawServoStyleRule* Raw() const { return mRawRule; }
 
   // Methods of mozilla::css::Rule
-  int32_t GetType() const final { return css::Rule::STYLE_RULE; }
-  using Rule::GetType;
-  already_AddRefed<Rule> Clone() const final;
-  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const final;
+  int32_t GetType() const final override { return css::Rule::STYLE_RULE; }
+  already_AddRefed<Rule> Clone() const final override;
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const final override;
 #ifdef DEBUG
-  void List(FILE* out = stdout, int32_t aIndent = 0) const final;
+  void List(FILE* out = stdout, int32_t aIndent = 0) const final override;
 #endif
 
 private:

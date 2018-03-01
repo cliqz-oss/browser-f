@@ -107,7 +107,9 @@ ExpectedOwnerForChild(const nsIFrame& aFrame)
       // Handle :-moz-table and :-moz-inline-table.
       parent = IsAnonBox(*tableFrame) ? parent->GetParent() : tableFrame;
     } else {
-      parent = parent->GetParent();
+      // We get the in-flow parent here so that we can handle the OOF anonymous
+      // boxed to get the correct parent.
+      parent = parent->GetInFlowParent();
     }
     parent = FirstContinuationOrPartOfIBSplit(parent);
   }
@@ -427,7 +429,7 @@ ServoRestyleManager::PostRebuildAllStyleDataEvent(nsChangeHint aExtraHint,
 }
 
 /* static */ void
-ServoRestyleManager::ClearServoDataFromSubtree(Element* aElement)
+ServoRestyleManager::ClearServoDataFromSubtree(Element* aElement, IncludeRoot aIncludeRoot)
 {
   if (!aElement->HasServoData()) {
     MOZ_ASSERT(!aElement->HasDirtyDescendantsForServo());
@@ -438,11 +440,13 @@ ServoRestyleManager::ClearServoDataFromSubtree(Element* aElement)
   StyleChildrenIterator it(aElement);
   for (nsIContent* n = it.GetNextChild(); n; n = it.GetNextChild()) {
     if (n->IsElement()) {
-      ClearServoDataFromSubtree(n->AsElement());
+      ClearServoDataFromSubtree(n->AsElement(), IncludeRoot::Yes);
     }
   }
 
-  aElement->ClearServoData();
+  if (MOZ_LIKELY(aIncludeRoot == IncludeRoot::Yes)) {
+    aElement->ClearServoData();
+  }
 }
 
 /* static */ void
@@ -1092,13 +1096,18 @@ ServoRestyleManager::SnapshotFor(Element* aElement)
 void
 ServoRestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags)
 {
-  MOZ_ASSERT(PresContext()->Document(), "No document?  Pshaw!");
+  nsPresContext* presContext = PresContext();
+
+  MOZ_ASSERT(presContext->Document(), "No document?  Pshaw!");
+  MOZ_ASSERT(!presContext->HasPendingMediaQueryUpdates(),
+             "Someone forgot to update media queries?");
   MOZ_ASSERT(!nsContentUtils::IsSafeToRunScript(), "Missing a script blocker!");
   MOZ_ASSERT(!mInStyleRefresh, "Reentrant call?");
 
-  if (MOZ_UNLIKELY(!PresContext()->PresShell()->DidInitialize())) {
+
+  if (MOZ_UNLIKELY(!presContext->PresShell()->DidInitialize())) {
     // PresShell::FlushPendingNotifications doesn't early-return in the case
-    // where the PreShell hasn't yet been initialized (and therefore we haven't
+    // where the PresShell hasn't yet been initialized (and therefore we haven't
     // yet done the initial style traversal of the DOM tree). We should arguably
     // fix up the callers and assert against this case, but we just detect and
     // handle it for now.
@@ -1111,11 +1120,11 @@ ServoRestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags)
   AnimationsWithDestroyedFrame animationsWithDestroyedFrame(this);
 
   ServoStyleSet* styleSet = StyleSet();
-  nsIDocument* doc = PresContext()->Document();
+  nsIDocument* doc = presContext->Document();
 
   // Ensure the refresh driver is active during traversal to avoid mutating
   // mActiveTimer and mMostRecentRefresh time.
-  PresContext()->RefreshDriver()->MostRecentRefresh();
+  presContext->RefreshDriver()->MostRecentRefresh();
 
 
   // Perform the Servo traversal, and the post-traversal if required. We do this
@@ -1139,7 +1148,7 @@ ServoRestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags)
     // Recreate style contexts, and queue up change hints (which also handle
     // lazy frame construction).
     {
-      AutoRestyleTimelineMarker marker(mPresContext->GetDocShell(), false);
+      AutoRestyleTimelineMarker marker(presContext->GetDocShell(), false);
       DocumentStyleRootIterator iter(doc->GetServoRestyleRoot());
       while (Element* root = iter.GetNextStyleRoot()) {
         nsTArray<nsIFrame*> wrappersToRestyle;
@@ -1158,7 +1167,7 @@ ServoRestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags)
     // iterate until there's nothing left.
     {
       AutoTimelineMarker marker(
-        mPresContext->GetDocShell(), "StylesApplyChanges");
+        presContext->GetDocShell(), "StylesApplyChanges");
       ReentrantChangeList newChanges;
       mReentrantChanges = &newChanges;
       while (!currentChanges.IsEmpty()) {
@@ -1428,6 +1437,8 @@ ServoRestyleManager::TakeSnapshotForAttributeChange(Element* aElement,
 // For some attribute changes we must restyle the whole subtree:
 //
 // * <td> is affected by the cellpadding on its ancestor table
+// * lwtheme and lwthemetextcolor on root element of XUL document
+//   affects all descendants due to :-moz-lwtheme* pseudo-classes
 // * lang="" and xml:lang="" can affect all descendants due to :lang()
 //
 static inline bool
@@ -1435,6 +1446,11 @@ AttributeChangeRequiresSubtreeRestyle(const Element& aElement, nsAtom* aAttr)
 {
   if (aAttr == nsGkAtoms::cellpadding) {
     return aElement.IsHTMLElement(nsGkAtoms::table);
+  }
+  if (aAttr == nsGkAtoms::lwtheme ||
+      aAttr == nsGkAtoms::lwthemetextcolor) {
+    return aElement.GetNameSpaceID() == kNameSpaceID_XUL &&
+      &aElement == aElement.OwnerDoc()->GetRootElement();
   }
 
   return aAttr == nsGkAtoms::lang;
@@ -1447,10 +1463,6 @@ ServoRestyleManager::AttributeChanged(Element* aElement, int32_t aNameSpaceID,
 {
   MOZ_ASSERT(!mInStyleRefresh);
 
-  if (nsIFrame* primaryFrame = aElement->GetPrimaryFrame()) {
-    primaryFrame->AttributeChanged(aNameSpaceID, aAttribute, aModType);
-  }
-
   auto changeHint = nsChangeHint(0);
   auto restyleHint = nsRestyleHint(0);
 
@@ -1462,6 +1474,25 @@ ServoRestyleManager::AttributeChanged(Element* aElement, int32_t aNameSpaceID,
     restyleHint |= eRestyle_Subtree;
   } else if (aElement->IsAttributeMapped(aAttribute)) {
     restyleHint |= eRestyle_Self;
+  }
+
+  if (nsIFrame* primaryFrame = aElement->GetPrimaryFrame()) {
+    // See if we have appearance information for a theme.
+    const nsStyleDisplay* disp = primaryFrame->StyleDisplay();
+    if (disp->mAppearance) {
+      nsITheme* theme = PresContext()->GetTheme();
+      if (theme && theme->ThemeSupportsWidget(PresContext(), primaryFrame,
+                                              disp->mAppearance)) {
+        bool repaint = false;
+        theme->WidgetStateChanged(primaryFrame, disp->mAppearance,
+                                  aAttribute, &repaint, aOldValue);
+        if (repaint) {
+          changeHint |= nsChangeHint_RepaintFrame;
+        }
+      }
+    }
+
+    primaryFrame->AttributeChanged(aNameSpaceID, aAttribute, aModType);
   }
 
   if (restyleHint || changeHint) {

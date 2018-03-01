@@ -1,8 +1,7 @@
 // Bug 380852 - Delete permission manager entries in Clear Recent History
 
 var tempScope = {};
-Cc["@mozilla.org/moz/jssubscript-loader;1"].getService(Ci.mozIJSSubScriptLoader)
-                                           .loadSubScript("chrome://browser/content/sanitize.js", tempScope);
+Services.scriptloader.loadSubScript("chrome://browser/content/sanitize.js", tempScope);
 var Sanitizer = tempScope.Sanitizer;
 
 function countPermissions() {
@@ -21,7 +20,7 @@ add_task(async function test() {
   let s = new Sanitizer();
   s.ignoreTimespan = false;
   s.prefDomain = "privacy.cpd.";
-  var itemPrefs = gPrefService.getBranch(s.prefDomain);
+  var itemPrefs = Services.prefs.getBranch(s.prefDomain);
   itemPrefs.setBoolPref("history", false);
   itemPrefs.setBoolPref("downloads", false);
   itemPrefs.setBoolPref("cache", false);

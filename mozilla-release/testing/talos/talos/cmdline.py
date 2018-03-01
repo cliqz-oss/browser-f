@@ -70,8 +70,6 @@ def create_parser(mach_interface=False):
             help="Suite to use (instead of --activeTests)")
     add_arg('--subtests',
             help="Name of the subtest(s) to run (works only on DAMP)")
-    add_arg('--noChrome', action='store_true',
-            help="do not run tests as chrome")
     add_arg('--mainthread', action='store_true',
             help="Collect mainthread IO data from the browser by setting"
                  " an environment variable")
@@ -79,6 +77,8 @@ def create_parser(mach_interface=False):
             help="wait for MozAfterPaint event before recording the time")
     add_arg("--firstPaint", action='store_true', dest="firstpaint",
             help="Also report the first paint value in supported tests")
+    add_arg("--useHero", action='store_true', dest="tphero",
+            help="use Hero elementtiming attribute to record the time")
     add_arg("--userReady", action='store_true', dest="userready",
             help="Also report the user ready value in supported tests")
     add_arg('--spsProfile', action="store_true", dest="gecko_profile",
@@ -112,8 +112,6 @@ def create_parser(mach_interface=False):
             default=os.path.abspath('browser_failures.txt'),
             help="Filename to store the errors found during the test."
                  " Currently used for xperf only.")
-    add_arg('--noShutdown', dest='shutdown', action='store_true',
-            help="Record time browser takes to shutdown after testing")
     add_arg('--setpref', action='append', default=[], dest="extraPrefs",
             metavar="PREF=VALUE",
             help="defines an extra user preference")
@@ -142,8 +140,6 @@ def create_parser(mach_interface=False):
     add_arg('--tppagecycles', type=int,
             help='number of pageloader cycles to run for each page in'
                  ' the manifest')
-    add_arg('--tpdelay', type=int,
-            help="length of the pageloader delay")
     add_arg('--no-download', action="store_true", dest="no_download",
             help="Do not download the talos test pagesets")
     add_arg('--sourcestamp',
@@ -177,6 +173,21 @@ def create_parser(mach_interface=False):
             help='If given, run Stylo with a certain number of threads')
     add_arg('--profile', type=str, default=None,
             help="Downloads a profile from TaskCluster and uses it")
+    debug_options = parser.add_argument_group('Command Arguments for debugging')
+    debug_options.add_argument('--debug', action='store_true',
+                               help='Enable the debugger. Not specifying a --debugger option will'
+                                    'result in the default debugger being used.')
+    debug_options.add_argument('--debugger', default=None,
+                               help='Name of debugger to use.')
+    debug_options.add_argument('--debugger-args', default=None, metavar='params',
+                               help='Command-line arguments to pass to the debugger itself; split'
+                                    'as the Bourne shell would.')
+    add_arg('--code-coverage', action="store_true",
+            dest='code_coverage',
+            help='Remove any existing ccov gcda output files after browser'
+                 ' initialization but before starting the tests. NOTE:'
+                 ' Currently only supported in production.')
+
     add_logging_group(parser)
     return parser
 

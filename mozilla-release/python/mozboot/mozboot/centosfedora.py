@@ -23,6 +23,8 @@ class CentOSFedoraBootstrapper(StyloInstall, BaseBootstrapper):
         self.packages = [
             'autoconf213',
             'mercurial',
+            'nodejs',
+            'npm',
             'which',
         ]
 
@@ -39,7 +41,6 @@ class CentOSFedoraBootstrapper(StyloInstall, BaseBootstrapper):
                            # Development group.
             'libstdc++-static',
             'libXt-devel',
-            'mesa-libGL-devel',
             'pulseaudio-libs-devel',
             'wireless-tools-devel',
             'yasm',

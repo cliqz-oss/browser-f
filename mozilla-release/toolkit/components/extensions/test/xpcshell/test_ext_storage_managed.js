@@ -44,10 +44,11 @@ add_task(async function setup() {
   if (AppConstants.platform === "win") {
     registry = new MockRegistry();
     registry.setValue(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-      `Software\\\Mozilla\\\ManagedStorage\\${MANIFEST.name}`, "", path);
+                      `Software\\\Mozilla\\\ManagedStorage\\${MANIFEST.name}`,
+                      "", path);
   }
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Services.dirsvc.unregisterProvider(dirProvider);
     tmpDir.remove(true);
     if (registry) {

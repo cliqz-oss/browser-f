@@ -12,9 +12,8 @@ Cu.import("resource://shield-recipe-client/lib/Utils.jsm", this);
 
 // Load mocking/stubbing library, sinon
 // docs: http://sinonjs.org/docs/
-const loader = Cc["@mozilla.org/moz/jssubscript-loader;1"].getService(Ci.mozIJSSubScriptLoader);
 /* global sinon */
-loader.loadSubScript("resource://testing-common/sinon-2.3.2.js");
+Services.scriptloader.loadSubScript("resource://testing-common/sinon-2.3.2.js");
 
 // Make sinon assertions fail in a way that mochitest understands
 sinon.assert.fail = function(message) {
@@ -185,10 +184,26 @@ class MockPreferences {
     for (const [branchName, values] of Object.entries(this.oldValues)) {
       const preferenceBranch = preferenceBranches[branchName];
       for (const [name, {oldValue, existed}] of Object.entries(values)) {
+        const before = preferenceBranch.get(name);
+
+        if (before === oldValue) {
+          continue;
+        }
+
         if (existed) {
           preferenceBranch.set(name, oldValue);
+        } else if (branchName === "default") {
+          Services.prefs.getDefaultBranch(name).deleteBranch("");
         } else {
           preferenceBranch.reset(name);
+        }
+
+        const after = preferenceBranch.get(name);
+        if (before === after && before !== undefined) {
+          throw new Error(
+            `Couldn't reset pref "${name}" to "${oldValue}" on "${branchName}" branch ` +
+            `(value stayed "${before}", did ${existed ? "" : "not "}exist)`
+          );
         }
       }
     }

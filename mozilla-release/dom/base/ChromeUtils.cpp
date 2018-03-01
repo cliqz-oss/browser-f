@@ -11,11 +11,14 @@
 
 #include "mozilla/Base64.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/dom/IdleDeadline.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/WindowBinding.h" // For IdleRequestCallback/Options
 #include "nsThreadUtils.h"
+#include "mozJSComponentLoader.h"
+#include "GeckoProfiler.h"
 
 namespace mozilla {
 namespace dom {
@@ -372,6 +375,53 @@ ChromeUtils::IdleDispatch(const GlobalObject& aGlobal,
 }
 
 /* static */ void
+ChromeUtils::Import(const GlobalObject& aGlobal,
+                    const nsAString& aResourceURI,
+                    const Optional<JS::Handle<JSObject*>>& aTargetObj,
+                    JS::MutableHandle<JSObject*> aRetval,
+                    ErrorResult& aRv)
+{
+
+  RefPtr<mozJSComponentLoader> moduleloader = mozJSComponentLoader::Get();
+  MOZ_ASSERT(moduleloader);
+
+  NS_ConvertUTF16toUTF8 registryLocation(aResourceURI);
+
+  AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING(
+    "ChromeUtils::Import", OTHER, registryLocation);
+
+  JSContext* cx = aGlobal.Context();
+  JS::Rooted<JS::Value> targetObj(cx);
+  uint8_t optionalArgc;
+  if (aTargetObj.WasPassed()) {
+    targetObj.setObjectOrNull(aTargetObj.Value());
+    optionalArgc = 1;
+  } else {
+    targetObj.setUndefined();
+    optionalArgc = 0;
+  }
+
+  JS::Rooted<JS::Value> retval(cx);
+  nsresult rv = moduleloader->Import(registryLocation, targetObj, cx,
+                                     optionalArgc, &retval);
+  if (NS_FAILED(rv)) {
+    aRv.Throw(rv);
+    return;
+  }
+
+  // Import() on the component loader can return NS_OK while leaving an
+  // exception on the JSContext.  Check for that case.
+  if (JS_IsExceptionPending(cx)) {
+    aRv.NoteJSContextException(cx);
+    return;
+  }
+
+  // Now we better have an object.
+  MOZ_ASSERT(retval.isObject());
+  aRetval.set(&retval.toObject());
+}
+
+/* static */ void
 ChromeUtils::OriginAttributesToSuffix(dom::GlobalObject& aGlobal,
                                       const dom::OriginAttributesDictionary& aAttrs,
                                       nsCString& aSuffix)
@@ -432,6 +482,33 @@ ChromeUtils::IsOriginAttributesEqual(const dom::OriginAttributesDictionary& aA,
          aA.mUserContextId == aB.mUserContextId &&
          aA.mPrivateBrowsingId == aB.mPrivateBrowsingId;
 }
+
+#ifdef NIGHTLY_BUILD
+/* static */ void
+ChromeUtils::GetRecentJSDevError(GlobalObject& aGlobal,
+                                JS::MutableHandleValue aRetval,
+                                ErrorResult& aRv)
+{
+  aRetval.setUndefined();
+  auto runtime = CycleCollectedJSRuntime::Get();
+  MOZ_ASSERT(runtime);
+
+  auto cx = aGlobal.Context();
+  if (!runtime->GetRecentDevError(cx, aRetval)) {
+    aRv.NoteJSContextException(cx);
+    return;
+  }
+}
+
+/* static */ void
+ChromeUtils::ClearRecentJSDevError(GlobalObject&)
+{
+  auto runtime = CycleCollectedJSRuntime::Get();
+  MOZ_ASSERT(runtime);
+
+  runtime->ClearRecentDevError();
+}
+#endif // NIGHTLY_BUILD
 
 } // namespace dom
 } // namespace mozilla

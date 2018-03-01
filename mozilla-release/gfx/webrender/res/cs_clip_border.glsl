@@ -64,7 +64,7 @@ BorderClipDot fetch_border_clip_dot(ivec2 address, int segment) {
 void main(void) {
     ClipMaskInstance cmi = fetch_clip_item();
     ClipArea area = fetch_clip_area(cmi.render_task_address);
-    Layer layer = fetch_layer(cmi.layer_address, cmi.layer_address);
+    ClipScrollNode scroll_node = fetch_clip_scroll_node(cmi.scroll_node_id);
 
     // Fetch the header information for this corner clip.
     BorderCorner corner = fetch_border_corner(cmi.clip_data_address);
@@ -120,7 +120,7 @@ void main(void) {
     vec2 pos = corner.rect.p0 + aPosition.xy * corner.rect.size;
 
     // Transform to world pos
-    vec4 world_pos = layer.transform * vec4(pos, 0.0, 1.0);
+    vec4 world_pos = scroll_node.transform * vec4(pos, 0.0, 1.0);
     world_pos.xyz /= world_pos.w;
 
     // Scale into device pixels.
@@ -128,12 +128,12 @@ void main(void) {
 
     // Position vertex within the render task area.
     vec2 final_pos = device_pos -
-                     area.screen_origin_target_index.xy +
-                     area.task_bounds.xy;
+                     area.screen_origin +
+                     area.common_data.task_rect.p0;
 
     // Calculate the local space position for this vertex.
-    vec4 layer_pos = get_layer_pos(world_pos.xy, layer);
-    vPos = layer_pos.xyw;
+    vec4 node_pos = get_node_pos(world_pos.xy, scroll_node);
+    vPos = node_pos.xyw;
 
     gl_Position = uTransform * vec4(final_pos, 0.0, 1.0);
 }

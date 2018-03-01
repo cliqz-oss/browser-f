@@ -60,7 +60,7 @@ nsImageRenderer::nsImageRenderer(nsIFrame* aForFrame,
   , mImageContainer(nullptr)
   , mGradientData(nullptr)
   , mPaintServerFrame(nullptr)
-  , mPrepareResult(DrawResult::NOT_READY)
+  , mPrepareResult(ImgDrawResult::NOT_READY)
   , mSize(0, 0)
   , mFlags(aFlags)
   , mExtendMode(ExtendMode::CLAMP)
@@ -115,7 +115,7 @@ bool
 nsImageRenderer::PrepareImage()
 {
   if (mImage->IsEmpty()) {
-    mPrepareResult = DrawResult::BAD_IMAGE;
+    mPrepareResult = ImgDrawResult::BAD_IMAGE;
     return false;
   }
 
@@ -129,7 +129,7 @@ nsImageRenderer::PrepareImage()
     // on through because the Draw() will do a sync decode then.
     if (!(frameComplete || mImage->IsComplete()) &&
         !ShouldTreatAsCompleteDueToSyncDecode(mImage, mFlags)) {
-      mPrepareResult = DrawResult::NOT_READY;
+      mPrepareResult = ImgDrawResult::NOT_READY;
       return false;
     }
   }
@@ -154,7 +154,7 @@ nsImageRenderer::PrepareImage()
           mImage->ComputeActualCropRect(actualCropRect, &isEntireImage);
         if (!success || actualCropRect.IsEmpty()) {
           // The cropped image has zero size
-          mPrepareResult = DrawResult::BAD_IMAGE;
+          mPrepareResult = ImgDrawResult::BAD_IMAGE;
           return false;
         }
         if (isEntireImage) {
@@ -167,12 +167,12 @@ nsImageRenderer::PrepareImage()
           mImageContainer.swap(subImage);
         }
       }
-      mPrepareResult = DrawResult::SUCCESS;
+      mPrepareResult = ImgDrawResult::SUCCESS;
       break;
     }
     case eStyleImageType_Gradient:
       mGradientData = mImage->GetGradientData();
-      mPrepareResult = DrawResult::SUCCESS;
+      mPrepareResult = ImgDrawResult::SUCCESS;
       break;
     case eStyleImageType_Element:
     {
@@ -186,7 +186,7 @@ nsImageRenderer::PrepareImage()
           targetURI, mForFrame->FirstContinuation(),
           SVGObserverUtils::BackgroundImageProperty());
       if (!property) {
-        mPrepareResult = DrawResult::BAD_IMAGE;
+        mPrepareResult = ImgDrawResult::BAD_IMAGE;
         return false;
       }
 
@@ -202,13 +202,13 @@ nsImageRenderer::PrepareImage()
             (paintServerFrame->IsFrameOfType(nsIFrame::eSVG) &&
              !paintServerFrame->IsFrameOfType(nsIFrame::eSVGPaintServer) &&
              !static_cast<nsSVGDisplayableFrame*>(do_QueryFrame(paintServerFrame)))) {
-          mPrepareResult = DrawResult::BAD_IMAGE;
+          mPrepareResult = ImgDrawResult::BAD_IMAGE;
           return false;
         }
         mPaintServerFrame = paintServerFrame;
       }
 
-      mPrepareResult = DrawResult::SUCCESS;
+      mPrepareResult = ImgDrawResult::SUCCESS;
       break;
     }
     case eStyleImageType_Null:
@@ -441,35 +441,7 @@ ConvertImageRendererToDrawFlags(uint32_t aImageRendererFlags)
   return drawFlags;
 }
 
-/*
- *  SVG11: A luminanceToAlpha operation is equivalent to the following matrix operation:                                                   |
- *  | R' |     |      0        0        0  0  0 |   | R |
- *  | G' |     |      0        0        0  0  0 |   | G |
- *  | B' |  =  |      0        0        0  0  0 | * | B |
- *  | A' |     | 0.2125   0.7154   0.0721  0  0 |   | A |
- *  | 1  |     |      0        0        0  0  1 |   | 1 |
- */
-static void
-RGBALuminanceOperation(uint8_t *aData,
-                       int32_t aStride,
-                       const IntSize &aSize)
-{
-  int32_t redFactor = 55;    // 256 * 0.2125
-  int32_t greenFactor = 183; // 256 * 0.7154
-  int32_t blueFactor = 18;   // 256 * 0.0721
-
-  for (int32_t y = 0; y < aSize.height; y++) {
-    uint32_t *pixel = (uint32_t*)(aData + aStride * y);
-    for (int32_t x = 0; x < aSize.width; x++) {
-      *pixel = (((((*pixel & 0x00FF0000) >> 16) * redFactor) +
-                 (((*pixel & 0x0000FF00) >>  8) * greenFactor) +
-                  ((*pixel & 0x000000FF)        * blueFactor)) >> 8) << 24;
-      pixel++;
-    }
-  }
-}
-
-DrawResult
+ImgDrawResult
 nsImageRenderer::Draw(nsPresContext*       aPresContext,
                       gfxContext&          aRenderingContext,
                       const nsRect&        aDirtyRect,
@@ -482,15 +454,15 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
 {
   if (!IsReady()) {
     NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
-    return DrawResult::TEMPORARY_ERROR;
+    return ImgDrawResult::TEMPORARY_ERROR;
   }
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
 
   SamplingFilter samplingFilter = nsLayoutUtils::GetSamplingFilterForFrame(mForFrame);
-  DrawResult result = DrawResult::SUCCESS;
+  ImgDrawResult result = ImgDrawResult::SUCCESS;
   RefPtr<gfxContext> ctx = &aRenderingContext;
   IntRect tmpDTRect;
 
@@ -498,7 +470,7 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
     gfxRect clipRect = ctx->GetClipExtents(gfxContext::eDeviceSpace);
     tmpDTRect = RoundedOut(ToRect(clipRect));
     if (tmpDTRect.IsEmpty()) {
-      return DrawResult::SUCCESS;
+      return ImgDrawResult::SUCCESS;
     }
     RefPtr<DrawTarget> tempDT =
       gfxPlatform::GetPlatform()->CreateSimilarSoftwareDrawTarget(ctx->GetDrawTarget(),
@@ -506,13 +478,13 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
                                                                   SurfaceFormat::B8G8R8A8);
     if (!tempDT || !tempDT->IsValid()) {
       gfxDevCrash(LogReason::InvalidContext) << "ImageRenderer::Draw problem " << gfx::hexa(tempDT);
-      return DrawResult::TEMPORARY_ERROR;
+      return ImgDrawResult::TEMPORARY_ERROR;
     }
     tempDT->SetTransform(ctx->GetDrawTarget()->GetTransform() * Matrix::Translation(-tmpDTRect.TopLeft()));
     ctx = gfxContext::CreatePreservingTransformOrNull(tempDT);
     if (!ctx) {
       gfxDevCrash(LogReason::InvalidContext) << "ImageRenderer::Draw problem " << gfx::hexa(tempDT);
-      return DrawResult::TEMPORARY_ERROR;
+      return ImgDrawResult::TEMPORARY_ERROR;
     }
   }
 
@@ -545,7 +517,7 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
       RefPtr<gfxDrawable> drawable = DrawableForElement(aDest, *ctx);
       if (!drawable) {
         NS_WARNING("Could not create drawable for element");
-        return DrawResult::TEMPORARY_ERROR;
+        return ImgDrawResult::TEMPORARY_ERROR;
       }
 
       nsCOMPtr<imgIContainer> image(ImageOps::CreateFromDrawable(drawable));
@@ -563,33 +535,28 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
   }
 
   if (!tmpDTRect.IsEmpty()) {
-    RefPtr<SourceSurface> surf = ctx->GetDrawTarget()->Snapshot();
-    if (mMaskOp == NS_STYLE_MASK_MODE_LUMINANCE) {
-      RefPtr<DataSourceSurface> maskData = surf->GetDataSurface();
-      DataSourceSurface::MappedSurface map;
-      if (!maskData->Map(DataSourceSurface::MapType::READ_WRITE, &map)) {
-        return result;
-      }
-
-      RGBALuminanceOperation(map.mData, map.mStride, maskData->GetSize());
-      maskData->Unmap();
-      surf = maskData;
-    }
-
     DrawTarget* dt = aRenderingContext.GetDrawTarget();
     Matrix oldTransform = dt->GetTransform();
     dt->SetTransform(Matrix());
-    dt->DrawSurface(surf, Rect(tmpDTRect.x, tmpDTRect.y, tmpDTRect.width, tmpDTRect.height),
-                    Rect(0, 0, tmpDTRect.width, tmpDTRect.height),
-                    DrawSurfaceOptions(SamplingFilter::POINT),
-                    DrawOptions(1.0f, aRenderingContext.CurrentOp()));
+    if (mMaskOp == NS_STYLE_MASK_MODE_LUMINANCE) {
+      RefPtr<SourceSurface> surf = ctx->GetDrawTarget()->IntoLuminanceSource(LuminanceType::LUMINANCE, 1.0f);
+      dt->MaskSurface(ColorPattern(Color(0, 0, 0, 1.0f)), surf, tmpDTRect.TopLeft(),
+                      DrawOptions(1.0f, aRenderingContext.CurrentOp()));
+    } else {
+      RefPtr<SourceSurface> surf = ctx->GetDrawTarget()->Snapshot();
+      dt->DrawSurface(surf, Rect(tmpDTRect.x, tmpDTRect.y, tmpDTRect.width, tmpDTRect.height),
+                      Rect(0, 0, tmpDTRect.width, tmpDTRect.height),
+                      DrawSurfaceOptions(SamplingFilter::POINT),
+                      DrawOptions(1.0f, aRenderingContext.CurrentOp()));
+    }
+
     dt->SetTransform(oldTransform);
   }
 
   return result;
 }
 
-DrawResult
+ImgDrawResult
 nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
                                             mozilla::wr::DisplayListBuilder& aBuilder,
                                             mozilla::wr::IpcResourceUpdateQueue& aResources,
@@ -606,11 +573,11 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
 {
   if (!IsReady()) {
     NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
-    return DrawResult::NOT_READY;
+    return ImgDrawResult::NOT_READY;
   }
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
 
   switch (mType) {
@@ -625,17 +592,26 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
     }
     case eStyleImageType_Image:
     {
-      // XXX(aosmond): We will support downscale-on-decode in bug 1368776. Until
-      // then, don't pass FLAG_HIGH_QUALITY_SCALING.
-      uint32_t containerFlags = imgIContainer::FLAG_NONE;
+      uint32_t containerFlags = imgIContainer::FLAG_ASYNC_NOTIFY;
+      if (mFlags & nsImageRenderer::FLAG_PAINTING_TO_WINDOW) {
+        containerFlags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
+      }
       if (mFlags & nsImageRenderer::FLAG_SYNC_DECODE_IMAGES) {
         containerFlags |= imgIContainer::FLAG_SYNC_DECODE;
       }
+
+      const int32_t appUnitsPerDevPixel = mForFrame->PresContext()->AppUnitsPerDevPixel();
+      LayoutDeviceRect destRect = LayoutDeviceRect::FromAppUnits(
+          aDest, appUnitsPerDevPixel);
+      Maybe<SVGImageContext> svgContext;
+      gfx::IntSize decodeSize =
+        nsLayoutUtils::ComputeImageContainerDrawingParameters(mImageContainer, mForFrame, destRect,
+                                                              aSc, containerFlags, svgContext);
       RefPtr<layers::ImageContainer> container =
-        mImageContainer->GetImageContainer(aManager, containerFlags);
+        mImageContainer->GetImageContainerAtSize(aManager, decodeSize, svgContext, containerFlags);
       if (!container) {
         NS_WARNING("Failed to get image container");
-        return DrawResult::NOT_READY;
+        return ImgDrawResult::NOT_READY;
       }
 
       gfx::IntSize size;
@@ -643,12 +619,8 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
                                                                           aResources, aSc, size, Nothing());
 
       if (key.isNothing()) {
-        return DrawResult::BAD_IMAGE;
+        return ImgDrawResult::BAD_IMAGE;
       }
-
-      const int32_t appUnitsPerDevPixel = mForFrame->PresContext()->AppUnitsPerDevPixel();
-      LayoutDeviceRect destRect = LayoutDeviceRect::FromAppUnits(
-          aDest, appUnitsPerDevPixel);
 
       nsPoint firstTilePos = nsLayoutUtils::GetBackgroundFirstTilePos(aDest.TopLeft(),
                                                                       aFill.TopLeft(),
@@ -674,7 +646,7 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
       break;
   }
 
-  return DrawResult::SUCCESS;
+  return ImgDrawResult::SUCCESS;
 }
 
 already_AddRefed<gfxDrawable>
@@ -685,7 +657,7 @@ nsImageRenderer::DrawableForElement(const nsRect& aImageRect,
                "DrawableForElement only makes sense if backed by an element");
   if (mPaintServerFrame) {
     // XXX(seth): In order to not pass FLAG_SYNC_DECODE_IMAGES here,
-    // DrawableFromPaintServer would have to return a DrawResult indicating
+    // DrawableFromPaintServer would have to return a ImgDrawResult indicating
     // whether any images could not be painted because they weren't fully
     // decoded. Even always passing FLAG_SYNC_DECODE_IMAGES won't eliminate all
     // problems, as it won't help if there are image which haven't finished
@@ -710,7 +682,7 @@ nsImageRenderer::DrawableForElement(const nsRect& aImageRect,
   return drawable.forget();
 }
 
-DrawResult
+ImgDrawResult
 nsImageRenderer::DrawLayer(nsPresContext*       aPresContext,
                            gfxContext&          aRenderingContext,
                            const nsRect&        aDest,
@@ -722,11 +694,11 @@ nsImageRenderer::DrawLayer(nsPresContext*       aPresContext,
 {
   if (!IsReady()) {
     NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
-    return DrawResult::TEMPORARY_ERROR;
+    return ImgDrawResult::TEMPORARY_ERROR;
   }
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
 
   return Draw(aPresContext, aRenderingContext,
@@ -737,7 +709,7 @@ nsImageRenderer::DrawLayer(nsPresContext*       aPresContext,
               aOpacity);
 }
 
-DrawResult
+ImgDrawResult
 nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresContext,
                                                     mozilla::wr::DisplayListBuilder& aBuilder,
                                                     mozilla::wr::IpcResourceUpdateQueue& aResources,
@@ -757,7 +729,7 @@ nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresCo
   }
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
   return BuildWebRenderDisplayItems(aPresContext, aBuilder, aResources, aSc,
                                     aManager, aItem,
@@ -773,35 +745,35 @@ nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresCo
  * tile used to fill the dest rect.
  * aFill The destination rect to be filled
  * aHFill and aVFill are the repeat patterns for the component -
- * NS_STYLE_BORDER_IMAGE_REPEAT_* - i.e., how a tiling unit is used to fill aFill
+ * StyleBorderImageRepeat - i.e., how a tiling unit is used to fill aFill
  * aUnitSize The size of the source rect in dest coords.
  */
 static nsRect
 ComputeTile(nsRect&              aFill,
-            uint8_t              aHFill,
-            uint8_t              aVFill,
+            StyleBorderImageRepeat aHFill,
+            StyleBorderImageRepeat aVFill,
             const nsSize&        aUnitSize,
             nsSize&              aRepeatSize)
 {
   nsRect tile;
   switch (aHFill) {
-  case NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH:
+  case StyleBorderImageRepeat::Stretch:
     tile.x = aFill.x;
     tile.width = aFill.width;
     aRepeatSize.width = tile.width;
     break;
-  case NS_STYLE_BORDER_IMAGE_REPEAT_REPEAT:
+  case StyleBorderImageRepeat::Repeat:
     tile.x = aFill.x + aFill.width/2 - aUnitSize.width/2;
     tile.width = aUnitSize.width;
     aRepeatSize.width = tile.width;
     break;
-  case NS_STYLE_BORDER_IMAGE_REPEAT_ROUND:
+  case StyleBorderImageRepeat::Round:
     tile.x = aFill.x;
     tile.width = nsCSSRendering::ComputeRoundedSize(aUnitSize.width,
                                                     aFill.width);
     aRepeatSize.width = tile.width;
     break;
-  case NS_STYLE_BORDER_IMAGE_REPEAT_SPACE:
+  case StyleBorderImageRepeat::Space:
     {
       nscoord space;
       aRepeatSize.width =
@@ -818,23 +790,23 @@ ComputeTile(nsRect&              aFill,
   }
 
   switch (aVFill) {
-  case NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH:
+  case StyleBorderImageRepeat::Stretch:
     tile.y = aFill.y;
     tile.height = aFill.height;
     aRepeatSize.height = tile.height;
     break;
-  case NS_STYLE_BORDER_IMAGE_REPEAT_REPEAT:
+  case StyleBorderImageRepeat::Repeat:
     tile.y = aFill.y + aFill.height/2 - aUnitSize.height/2;
     tile.height = aUnitSize.height;
     aRepeatSize.height = tile.height;
     break;
-  case NS_STYLE_BORDER_IMAGE_REPEAT_ROUND:
+  case StyleBorderImageRepeat::Round:
     tile.y = aFill.y;
     tile.height = nsCSSRendering::ComputeRoundedSize(aUnitSize.height,
                                                      aFill.height);
     aRepeatSize.height = tile.height;
     break;
-  case NS_STYLE_BORDER_IMAGE_REPEAT_SPACE:
+  case StyleBorderImageRepeat::Space:
     {
       nscoord space;
       aRepeatSize.height =
@@ -860,26 +832,26 @@ ComputeTile(nsRect&              aFill,
  */
 static bool
 RequiresScaling(const nsRect&        aFill,
-                uint8_t              aHFill,
-                uint8_t              aVFill,
+                StyleBorderImageRepeat aHFill,
+                StyleBorderImageRepeat aVFill,
                 const nsSize&        aUnitSize)
 {
   // If we have no tiling in either direction, we can skip the intermediate
   // scaling step.
-  return (aHFill != NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH ||
-          aVFill != NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH) &&
+  return (aHFill != StyleBorderImageRepeat::Stretch ||
+          aVFill != StyleBorderImageRepeat::Stretch) &&
          (aUnitSize.width != aFill.width ||
           aUnitSize.height != aFill.height);
 }
 
-DrawResult
+ImgDrawResult
 nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
                                           gfxContext&          aRenderingContext,
                                           const nsRect&        aDirtyRect,
                                           const nsRect&        aFill,
                                           const CSSIntRect&    aSrc,
-                                          uint8_t              aHFill,
-                                          uint8_t              aVFill,
+                                          StyleBorderImageRepeat aHFill,
+                                          StyleBorderImageRepeat aVFill,
                                           const nsSize&        aUnitSize,
                                           uint8_t              aIndex,
                                           const Maybe<nsSize>& aSVGViewportSize,
@@ -887,10 +859,10 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
 {
   if (!IsReady()) {
     NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
-    return DrawResult::BAD_ARGS;
+    return ImgDrawResult::BAD_ARGS;
   }
   if (aFill.IsEmpty() || aSrc.IsEmpty()) {
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
 
   if (mType == eStyleImageType_Image || mType == eStyleImageType_Element) {
@@ -931,7 +903,7 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
                            aRenderingContext);
       if (!drawable) {
         NS_WARNING("Could not create drawable for element");
-        return DrawResult::TEMPORARY_ERROR;
+        return ImgDrawResult::TEMPORARY_ERROR;
       }
 
       nsCOMPtr<imgIContainer> image(ImageOps::CreateFromDrawable(drawable));

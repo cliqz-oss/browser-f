@@ -9,9 +9,6 @@ Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/status.js");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://testing-common/services/sync/fakeservices.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
-
-initTestLogging("Trace");
 
 var engineManager = Service.engineManager;
 engineManager.clear();
@@ -55,6 +52,7 @@ async function sync_httpd_setup() {
 async function setUp(server) {
   await configureIdentity({username: "johndoe"}, server);
   new FakeCryptoService();
+  syncTestLogging();
 }
 
 async function generateAndUploadKeys(server) {
@@ -82,16 +80,16 @@ add_task(async function test_backoff500() {
   engine.exception = {status: 500};
 
   try {
-    do_check_false(Status.enforceBackoff);
+    Assert.ok(!Status.enforceBackoff);
 
     // Forcibly create and upload keys here -- otherwise we don't get to the 500!
-    do_check_true(await generateAndUploadKeys(server));
+    Assert.ok(await generateAndUploadKeys(server));
 
     await Service.login();
     await Service.sync();
-    do_check_true(Status.enforceBackoff);
-    do_check_eq(Status.sync, SYNC_SUCCEEDED);
-    do_check_eq(Status.service, SYNC_FAILED_PARTIAL);
+    Assert.ok(Status.enforceBackoff);
+    Assert.equal(Status.sync, SYNC_SUCCEEDED);
+    Assert.equal(Status.service, SYNC_FAILED_PARTIAL);
   } finally {
     Status.resetBackoff();
     await Service.startOver();
@@ -118,17 +116,17 @@ add_task(async function test_backoff503() {
   });
 
   try {
-    do_check_false(Status.enforceBackoff);
+    Assert.ok(!Status.enforceBackoff);
 
-    do_check_true(await generateAndUploadKeys(server));
+    Assert.ok(await generateAndUploadKeys(server));
 
     await Service.login();
     await Service.sync();
 
-    do_check_true(Status.enforceBackoff);
-    do_check_eq(backoffInterval, BACKOFF);
-    do_check_eq(Status.service, SYNC_FAILED_PARTIAL);
-    do_check_eq(Status.sync, SERVER_MAINTENANCE);
+    Assert.ok(Status.enforceBackoff);
+    Assert.equal(backoffInterval, BACKOFF);
+    Assert.equal(Status.service, SYNC_FAILED_PARTIAL);
+    Assert.equal(Status.sync, SERVER_MAINTENANCE);
   } finally {
     Status.resetBackoff();
     Status.resetSync();
@@ -152,15 +150,15 @@ add_task(async function test_overQuota() {
                       }};
 
   try {
-    do_check_eq(Status.sync, SYNC_SUCCEEDED);
+    Assert.equal(Status.sync, SYNC_SUCCEEDED);
 
-    do_check_true(await generateAndUploadKeys(server));
+    Assert.ok(await generateAndUploadKeys(server));
 
     await Service.login();
     await Service.sync();
 
-    do_check_eq(Status.sync, OVER_QUOTA);
-    do_check_eq(Status.service, SYNC_FAILED_PARTIAL);
+    Assert.equal(Status.sync, OVER_QUOTA);
+    Assert.equal(Status.service, SYNC_FAILED_PARTIAL);
   } finally {
     Status.resetSync();
     await Service.startOver();
@@ -179,13 +177,13 @@ add_task(async function test_service_networkError() {
   Service.clusterURL = "http://localhost:12345/";
 
   try {
-    do_check_eq(Status.sync, SYNC_SUCCEEDED);
+    Assert.equal(Status.sync, SYNC_SUCCEEDED);
 
     Service._loggedIn = true;
     await Service.sync();
 
-    do_check_eq(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
-    do_check_eq(Status.service, SYNC_FAILED);
+    Assert.equal(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
+    Assert.equal(Status.service, SYNC_FAILED);
   } finally {
     Status.resetSync();
     await Service.startOver();
@@ -204,13 +202,13 @@ add_task(async function test_service_offline() {
   Services.prefs.setBoolPref("network.dns.offline-localhost", false);
 
   try {
-    do_check_eq(Status.sync, SYNC_SUCCEEDED);
+    Assert.equal(Status.sync, SYNC_SUCCEEDED);
 
     Service._loggedIn = true;
     await Service.sync();
 
-    do_check_eq(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
-    do_check_eq(Status.service, SYNC_FAILED);
+    Assert.equal(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
+    Assert.equal(Status.service, SYNC_FAILED);
   } finally {
     Status.resetSync();
     await Service.startOver();
@@ -232,15 +230,15 @@ add_task(async function test_engine_networkError() {
                                           Cr.NS_ERROR_UNKNOWN_HOST);
 
   try {
-    do_check_eq(Status.sync, SYNC_SUCCEEDED);
+    Assert.equal(Status.sync, SYNC_SUCCEEDED);
 
-    do_check_true(await generateAndUploadKeys(server));
+    Assert.ok(await generateAndUploadKeys(server));
 
     await Service.login();
     await Service.sync();
 
-    do_check_eq(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
-    do_check_eq(Status.service, SYNC_FAILED_PARTIAL);
+    Assert.equal(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
+    Assert.equal(Status.service, SYNC_FAILED_PARTIAL);
   } finally {
     Status.resetSync();
     await Service.startOver();
@@ -261,15 +259,15 @@ add_task(async function test_resource_timeout() {
                                           Cr.NS_ERROR_NET_TIMEOUT);
 
   try {
-    do_check_eq(Status.sync, SYNC_SUCCEEDED);
+    Assert.equal(Status.sync, SYNC_SUCCEEDED);
 
-    do_check_true(await generateAndUploadKeys(server));
+    Assert.ok(await generateAndUploadKeys(server));
 
     await Service.login();
     await Service.sync();
 
-    do_check_eq(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
-    do_check_eq(Status.service, SYNC_FAILED_PARTIAL);
+    Assert.equal(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
+    Assert.equal(Status.service, SYNC_FAILED_PARTIAL);
   } finally {
     Status.resetSync();
     await Service.startOver();

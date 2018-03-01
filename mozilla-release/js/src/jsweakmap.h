@@ -14,6 +14,7 @@
 #include "jsfriendapi.h"
 #include "jsobj.h"
 
+#include "gc/DeletePolicy.h"
 #include "gc/StoreBuffer.h"
 #include "js/HashTable.h"
 
@@ -373,7 +374,7 @@ class ObjectValueMap : public WeakMap<HeapPtr<JSObject*>, HeapPtr<Value>,
                 MovableCellHasher<HeapPtr<JSObject*>>>(cx, obj)
     {}
 
-    virtual bool findZoneEdges();
+    bool findZoneEdges() override;
 };
 
 

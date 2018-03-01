@@ -16,10 +16,11 @@ use properties::animated_properties::AnimationValue;
 use shared_lock::Locked;
 use smallbitvec::{self, SmallBitVec};
 use smallvec::SmallVec;
-use std::fmt;
+use std::fmt::{self, Write};
 use std::iter::{DoubleEndedIterator, Zip};
 use std::slice::Iter;
-use style_traits::{ToCss, ParseError, ParsingMode, StyleParseErrorKind};
+use str::{CssString, CssStringBorrow, CssStringWriter};
+use style_traits::{CssWriter, ParseError, ParsingMode, StyleParseErrorKind, ToCss};
 use stylesheets::{CssRuleType, Origin, UrlExtraData};
 use super::*;
 use values::computed::Context;
@@ -91,7 +92,7 @@ pub struct DeclarationImportanceIterator<'a> {
 }
 
 impl<'a> DeclarationImportanceIterator<'a> {
-    /// Constructor
+    /// Constructor.
     pub fn new(declarations: &'a [PropertyDeclaration], important: &'a SmallBitVec) -> Self {
         DeclarationImportanceIterator {
             iter: declarations.iter().zip(important.iter()),
@@ -102,17 +103,20 @@ impl<'a> DeclarationImportanceIterator<'a> {
 impl<'a> Iterator for DeclarationImportanceIterator<'a> {
     type Item = (&'a PropertyDeclaration, Importance);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(decl, important)|
             (decl, if important { Importance::Important } else { Importance::Normal }))
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
 }
 
 impl<'a> DoubleEndedIterator for DeclarationImportanceIterator<'a> {
+    #[inline(always)]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.iter.next_back().map(|(decl, important)|
             (decl, if important { Importance::Important } else { Importance::Normal }))
@@ -123,7 +127,8 @@ impl<'a> DoubleEndedIterator for DeclarationImportanceIterator<'a> {
 pub struct NormalDeclarationIterator<'a>(DeclarationImportanceIterator<'a>);
 
 impl<'a> NormalDeclarationIterator<'a> {
-    /// Constructor
+    /// Constructor.
+    #[inline]
     pub fn new(declarations: &'a [PropertyDeclaration], important: &'a SmallBitVec) -> Self {
         NormalDeclarationIterator(
             DeclarationImportanceIterator::new(declarations, important)
@@ -136,14 +141,9 @@ impl<'a> Iterator for NormalDeclarationIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let next = self.0.iter.next();
-            match next {
-                Some((decl, importance)) => {
-                    if !importance {
-                        return Some(decl);
-                    }
-                },
-                None => return None,
+            let (decl, importance) = self.0.iter.next()?;
+            if !importance {
+                return Some(decl);
             }
         }
     }
@@ -167,7 +167,7 @@ impl<'a, 'cx, 'cx_a:'cx> AnimationValueIterator<'a, 'cx, 'cx_a> {
         declarations: &'a PropertyDeclarationBlock,
         context: &'cx mut Context<'cx_a>,
         default_values: &'a ComputedValues,
-       extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
+        extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
     ) -> AnimationValueIterator<'a, 'cx, 'cx_a> {
         AnimationValueIterator {
             iter: declarations.normal_declaration_iter(),
@@ -183,11 +183,7 @@ impl<'a, 'cx, 'cx_a:'cx> Iterator for AnimationValueIterator<'a, 'cx, 'cx_a> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let next = self.iter.next();
-            let decl = match next {
-                Some(decl) => decl,
-                None => return None,
-            };
+            let decl = self.iter.next()?;
 
             let animation = AnimationValue::from_declaration(
                 decl,
@@ -288,6 +284,12 @@ impl PropertyDeclarationBlock {
         self.longhands.contains(id)
     }
 
+    /// Returns whether this block contains any reset longhand.
+    #[inline]
+    pub fn contains_any_reset(&self) -> bool {
+        self.longhands.contains_any_reset()
+    }
+
     /// Get a declaration for a given property.
     ///
     /// NOTE: This is linear time.
@@ -305,9 +307,7 @@ impl PropertyDeclarationBlock {
     /// Find the value of the given property in this block and serialize it
     ///
     /// <https://dev.w3.org/csswg/cssom/#dom-cssstyledeclaration-getpropertyvalue>
-    pub fn property_value_to_css<W>(&self, property: &PropertyId, dest: &mut W) -> fmt::Result
-        where W: fmt::Write,
-    {
+    pub fn property_value_to_css(&self, property: &PropertyId, dest: &mut CssStringWriter) -> fmt::Result {
         // Step 1.1: done when parsing a string to PropertyId
 
         // Step 1.2
@@ -395,15 +395,28 @@ impl PropertyDeclarationBlock {
         importance: Importance,
         source: DeclarationSource,
     ) -> bool {
-        let all_shorthand_len = match drain.all_shorthand {
-            AllShorthand::NotSet => 0,
-            AllShorthand::CSSWideKeyword(_) |
-            AllShorthand::WithVariables(_) => ShorthandId::All.longhands().len()
-        };
-        let push_calls_count = drain.declarations.len() + all_shorthand_len;
+        match source {
+            DeclarationSource::Parsing => {
+                let all_shorthand_len = match drain.all_shorthand {
+                    AllShorthand::NotSet => 0,
+                    AllShorthand::CSSWideKeyword(_) |
+                    AllShorthand::WithVariables(_) => ShorthandId::All.longhands().len()
+                };
+                let push_calls_count =
+                    drain.declarations.len() + all_shorthand_len;
 
-        // With deduplication the actual length increase may be less than this.
-        self.declarations.reserve(push_calls_count);
+                // With deduplication the actual length increase may be less than this.
+                self.declarations.reserve(push_calls_count);
+            }
+            DeclarationSource::CssOm => {
+                // Don't bother reserving space, since it's usually the case
+                // that CSSOM just overrides properties and we don't need to use
+                // more memory. See bug 1424346 for an example where this
+                // matters.
+                //
+                // TODO: Would it be worth to call reserve() just if it's empty?
+            }
+        }
 
         let mut changed = false;
         for decl in &mut drain.declarations {
@@ -470,54 +483,56 @@ impl PropertyDeclarationBlock {
         if !definitely_new {
             let mut index_to_remove = None;
             for (i, slot) in self.declarations.iter_mut().enumerate() {
-                if slot.id() == declaration.id() {
-                    let important = self.declarations_importance.get(i as u32);
-                    match (important, importance.important()) {
-                        (false, true) => {}
+                if slot.id() != declaration.id() {
+                    continue;
+                }
 
-                        (true, false) => {
-                            // For declarations set from the OM, less-important
-                            // declarations are overridden.
-                            if !matches!(source, DeclarationSource::CssOm) {
-                                return false
-                            }
-                        }
-                        _ => if *slot == declaration {
-                            return false;
+                let important = self.declarations_importance.get(i as u32);
+                match (important, importance.important()) {
+                    (false, true) => {}
+
+                    (true, false) => {
+                        // For declarations set from the OM, more-important
+                        // declarations are overridden.
+                        if !matches!(source, DeclarationSource::CssOm) {
+                            return false
                         }
                     }
+                    _ => if *slot == declaration {
+                        return false;
+                    }
+                }
 
-                    match source {
-                        // CSSOM preserves the declaration position, and
-                        // overrides importance.
-                        DeclarationSource::CssOm => {
-                            *slot = declaration;
-                            self.declarations_importance.set(i as u32, importance.important());
-                            return true;
-                        }
-                        DeclarationSource::Parsing => {
-                            // As a compatibility hack, specially on Android,
-                            // don't allow to override a prefixed webkit display
-                            // value with an unprefixed version from parsing
-                            // code.
-                            //
-                            // TODO(emilio): Unship.
-                            if let PropertyDeclaration::Display(old_display) = *slot {
-                                use properties::longhands::display::computed_value::T as display;
+                match source {
+                    // CSSOM preserves the declaration position, and
+                    // overrides importance.
+                    DeclarationSource::CssOm => {
+                        *slot = declaration;
+                        self.declarations_importance.set(i as u32, importance.important());
+                        return true;
+                    }
+                    DeclarationSource::Parsing => {
+                        // As a compatibility hack, specially on Android,
+                        // don't allow to override a prefixed webkit display
+                        // value with an unprefixed version from parsing
+                        // code.
+                        //
+                        // TODO(emilio): Unship.
+                        if let PropertyDeclaration::Display(old_display) = *slot {
+                            use properties::longhands::display::computed_value::T as display;
 
-                                if let PropertyDeclaration::Display(new_display) = declaration {
-                                    if display::should_ignore_parsed_value(old_display, new_display) {
-                                        return false;
-                                    }
+                            if let PropertyDeclaration::Display(new_display) = declaration {
+                                if display::should_ignore_parsed_value(old_display, new_display) {
+                                    return false;
                                 }
                             }
-
-                            // NOTE(emilio): We could avoid this and just override for
-                            // properties not affected by logical props, but it's not
-                            // clear it's worth it given the `definitely_new` check.
-                            index_to_remove = Some(i);
-                            break;
                         }
+
+                        // NOTE(emilio): We could avoid this and just override for
+                        // properties not affected by logical props, but it's not
+                        // clear it's worth it given the `definitely_new` check.
+                        index_to_remove = Some(i);
+                        break;
                     }
                 }
             }
@@ -560,7 +575,8 @@ impl PropertyDeclarationBlock {
     ///
     /// Returns whether any declaration was actually removed.
     pub fn remove_property(&mut self, property: &PropertyId) -> bool {
-        if let PropertyId::Longhand(id) = *property {
+        let longhand_id = property.longhand_id();
+        if let Some(id) = longhand_id {
             if !self.longhands.contains(id) {
                 return false
             }
@@ -584,22 +600,20 @@ impl PropertyDeclarationBlock {
             !remove
         });
 
-        if let PropertyId::Longhand(_) = *property {
+        if longhand_id.is_some() {
             debug_assert!(removed_at_least_one);
         }
         removed_at_least_one
     }
 
     /// Take a declaration block known to contain a single property and serialize it.
-    pub fn single_value_to_css<W>(
+    pub fn single_value_to_css(
         &self,
         property: &PropertyId,
-        dest: &mut W,
+        dest: &mut CssStringWriter,
         computed_values: Option<&ComputedValues>,
         custom_properties_block: Option<&PropertyDeclarationBlock>,
     ) -> fmt::Result
-    where
-        W: fmt::Write,
     {
         match property.as_shorthand() {
             Err(_longhand_or_custom) => {
@@ -647,10 +661,10 @@ impl PropertyDeclarationBlock {
                 let iter = self.declarations.iter();
                 match shorthand.get_shorthand_appendable_value(iter) {
                     Some(AppendableValue::Css { css, .. }) => {
-                        dest.write_str(css)
+                        css.append_to(dest)
                     },
                     Some(AppendableValue::DeclarationsForShorthand(_, decls)) => {
-                        shorthand.longhands_to_css(decls, dest)
+                        shorthand.longhands_to_css(decls, &mut CssWriter::new(dest))
                     }
                     _ => Ok(())
                 }
@@ -681,7 +695,7 @@ impl PropertyDeclarationBlock {
     /// property.
     #[cfg(feature = "gecko")]
     pub fn has_css_wide_keyword(&self, property: &PropertyId) -> bool {
-        if let PropertyId::Longhand(id) = *property {
+        if let Some(id) = property.longhand_id() {
             if !self.longhands.contains(id) {
                 return false
             }
@@ -721,11 +735,13 @@ impl PropertyDeclarationBlock {
     }
 }
 
-impl ToCss for PropertyDeclarationBlock {
-    // https://drafts.csswg.org/cssom/#serialize-a-css-declaration-block
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write,
-    {
+impl PropertyDeclarationBlock {
+    /// Like the method on ToCss, but without the type parameter to avoid
+    /// accidentally monomorphizing this large function multiple times for
+    /// different writers.
+    ///
+    /// https://drafts.csswg.org/cssom/#serialize-a-css-declaration-block
+    pub fn to_css(&self, dest: &mut CssStringWriter) -> fmt::Result {
         let mut is_first_serialization = true; // trailing serializations should have a prepended space
 
         // Step 1 -> dest = result list
@@ -818,7 +834,7 @@ impl ToCss for PropertyDeclarationBlock {
 
                     // We avoid re-serializing if we're already an
                     // AppendableValue::Css.
-                    let mut v = String::new();
+                    let mut v = CssString::new();
                     let value = match (appendable_value, found_system) {
                         (AppendableValue::Css { css, with_variables }, _) => {
                             debug_assert!(!css.is_empty());
@@ -829,9 +845,9 @@ impl ToCss for PropertyDeclarationBlock {
                         }
                         #[cfg(feature = "gecko")]
                         (_, Some(sys)) => {
-                            sys.to_css(&mut v)?;
+                            sys.to_css(&mut CssWriter::new(&mut v))?;
                             AppendableValue::Css {
-                                css: &v,
+                                css: CssStringBorrow::from(&v),
                                 with_variables: false,
                             }
                         }
@@ -844,7 +860,7 @@ impl ToCss for PropertyDeclarationBlock {
                             }
 
                             AppendableValue::Css {
-                                css: &v,
+                                css: CssStringBorrow::from(&v),
                                 with_variables: false,
                             }
                         }
@@ -854,14 +870,14 @@ impl ToCss for PropertyDeclarationBlock {
                     // We need to check the shorthand whether it's an alias property or not.
                     // If it's an alias property, it should be serialized like its longhand.
                     if shorthand.flags().contains(PropertyFlags::SHORTHAND_ALIAS_PROPERTY) {
-                        append_serialization::<_, Cloned<slice::Iter< _>>, _>(
+                        append_serialization::<Cloned<slice::Iter< _>>, _>(
                              dest,
                              &property,
                              value,
                              importance,
                              &mut is_first_serialization)?;
                     } else {
-                        append_serialization::<_, Cloned<slice::Iter< _>>, _>(
+                        append_serialization::<Cloned<slice::Iter< _>>, _>(
                              dest,
                              &shorthand,
                              value,
@@ -896,7 +912,7 @@ impl ToCss for PropertyDeclarationBlock {
             // "error: unable to infer enough type information about `_`;
             //  type annotations or generic parameter binding required [E0282]"
             // Use the same type as earlier call to reuse generated code.
-            append_serialization::<_, Cloned<slice::Iter<_>>, _>(
+            append_serialization::<Cloned<slice::Iter<_>>, _>(
                 dest,
                 &property,
                 AppendableValue::Declaration(declaration),
@@ -928,17 +944,19 @@ pub enum AppendableValue<'a, I>
     /// or when storing a serialized shorthand value before appending directly.
     Css {
         /// The raw CSS string.
-        css: &'a str,
+        css: CssStringBorrow<'a>,
         /// Whether the original serialization contained variables or not.
         with_variables: bool,
     }
 }
 
 /// Potentially appends whitespace after the first (property: value;) pair.
-fn handle_first_serialization<W>(dest: &mut W,
-                                 is_first_serialization: &mut bool)
-                                 -> fmt::Result
-    where W: fmt::Write,
+fn handle_first_serialization<W>(
+    dest: &mut W,
+    is_first_serialization: &mut bool,
+) -> fmt::Result
+where
+    W: Write,
 {
     if !*is_first_serialization {
         dest.write_str(" ")
@@ -949,39 +967,41 @@ fn handle_first_serialization<W>(dest: &mut W,
 }
 
 /// Append a given kind of appendable value to a serialization.
-pub fn append_declaration_value<'a, W, I>(dest: &mut W,
-                                          appendable_value: AppendableValue<'a, I>)
-                                          -> fmt::Result
-    where W: fmt::Write,
-          I: Iterator<Item=&'a PropertyDeclaration>,
+pub fn append_declaration_value<'a, I>(
+    dest: &mut CssStringWriter,
+    appendable_value: AppendableValue<'a, I>,
+) -> fmt::Result
+where
+    I: Iterator<Item=&'a PropertyDeclaration>,
 {
     match appendable_value {
         AppendableValue::Css { css, .. } => {
-            dest.write_str(css)
+            css.append_to(dest)
         },
         AppendableValue::Declaration(decl) => {
             decl.to_css(dest)
         },
         AppendableValue::DeclarationsForShorthand(shorthand, decls) => {
-            shorthand.longhands_to_css(decls, dest)
+            shorthand.longhands_to_css(decls, &mut CssWriter::new(dest))
         }
     }
 }
 
 /// Append a given property and value pair to a serialization.
-pub fn append_serialization<'a, W, I, N>(dest: &mut W,
-                                         property_name: &N,
-                                         appendable_value: AppendableValue<'a, I>,
-                                         importance: Importance,
-                                         is_first_serialization: &mut bool)
-                                         -> fmt::Result
-    where W: fmt::Write,
-          I: Iterator<Item=&'a PropertyDeclaration>,
-          N: ToCss,
+pub fn append_serialization<'a, I, N>(
+    dest: &mut CssStringWriter,
+    property_name: &N,
+    appendable_value: AppendableValue<'a, I>,
+    importance: Importance,
+    is_first_serialization: &mut bool
+) -> fmt::Result
+where
+    I: Iterator<Item=&'a PropertyDeclaration>,
+    N: ToCss,
 {
     handle_first_serialization(dest, is_first_serialization)?;
 
-    property_name.to_css(dest)?;
+    property_name.to_css(&mut CssWriter::new(dest))?;
     dest.write_char(':')?;
 
     // for normal parsed values, add a space between key: and value
@@ -1013,18 +1033,23 @@ pub fn append_serialization<'a, W, I, N>(dest: &mut W,
 
 /// A helper to parse the style attribute of an element, in order for this to be
 /// shared between Servo and Gecko.
-pub fn parse_style_attribute<R>(input: &str,
-                                url_data: &UrlExtraData,
-                                error_reporter: &R,
-                                quirks_mode: QuirksMode)
-                                -> PropertyDeclarationBlock
-    where R: ParseErrorReporter
+pub fn parse_style_attribute<R>(
+    input: &str,
+    url_data: &UrlExtraData,
+    error_reporter: &R,
+    quirks_mode: QuirksMode,
+) -> PropertyDeclarationBlock
+where
+    R: ParseErrorReporter
 {
-    let context = ParserContext::new(Origin::Author,
-                                     url_data,
-                                     Some(CssRuleType::Style),
-                                     ParsingMode::DEFAULT,
-                                     quirks_mode);
+    let context = ParserContext::new(
+        Origin::Author,
+        url_data,
+        Some(CssRuleType::Style),
+        ParsingMode::DEFAULT,
+        quirks_mode,
+    );
+
     let error_context = ParserErrorContext { error_reporter: error_reporter };
     let mut input = ParserInput::new(input);
     parse_property_declaration_list(&context, &error_context, &mut Parser::new(&mut input))
@@ -1046,11 +1071,14 @@ pub fn parse_one_declaration_into<R>(
 where
     R: ParseErrorReporter
 {
-    let context = ParserContext::new(Origin::Author,
-                                     url_data,
-                                     Some(CssRuleType::Style),
-                                     parsing_mode,
-                                     quirks_mode);
+    let context = ParserContext::new(
+        Origin::Author,
+        url_data,
+        Some(CssRuleType::Style),
+        parsing_mode,
+        quirks_mode,
+    );
+
     let mut input = ParserInput::new(input);
     let mut parser = Parser::new(&mut input);
     let start_position = parser.position();
@@ -1092,12 +1120,14 @@ impl<'a, 'b, 'i> DeclarationParser<'i> for PropertyDeclarationParser<'a, 'b> {
     type Declaration = Importance;
     type Error = StyleParseErrorKind<'i>;
 
-    fn parse_value<'t>(&mut self, name: CowRcStr<'i>, input: &mut Parser<'i, 't>)
-                       -> Result<Importance, ParseError<'i>> {
-        let prop_context = PropertyParserContext::new(self.context);
-        let id = match PropertyId::parse(&name, Some(&prop_context)) {
+    fn parse_value<'t>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Importance, ParseError<'i>> {
+        let id = match PropertyId::parse(&name) {
             Ok(id) => id,
-            Err(()) => {
+            Err(..) => {
                 return Err(input.new_custom_error(if is_non_mozilla_vendor_identifier(&name) {
                     StyleParseErrorKind::UnknownVendorProperty
                 } else {
@@ -1107,7 +1137,6 @@ impl<'a, 'b, 'i> DeclarationParser<'i> for PropertyDeclarationParser<'a, 'b> {
         };
         input.parse_until_before(Delimiter::Bang, |input| {
             PropertyDeclaration::parse_into(self.declarations, id, name, self.context, input)
-                .map_err(|e| e.into())
         })?;
         let importance = match input.try(parse_important) {
             Ok(()) => Importance::Important,

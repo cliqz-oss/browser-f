@@ -81,20 +81,20 @@ add_old_configure_assignment('_YASM_MINOR_VERSION',
 def yasm_asflags(yasm, target):
     if yasm:
         asflags = {
-            ('OSX', 'x86'): '-f macho32',
-            ('OSX', 'x86_64'): '-f macho64',
-            ('WINNT', 'x86'): '-f win32',
-            ('WINNT', 'x86_64'): '-f x64',
+            ('OSX', 'x86'): ['-f', 'macho32'],
+            ('OSX', 'x86_64'): ['-f', 'macho64'],
+            ('WINNT', 'x86'): ['-f', 'win32'],
+            ('WINNT', 'x86_64'): ['-f', 'x64'],
         }.get((target.os, target.cpu), None)
         if asflags is None:
             # We're assuming every x86 platform we support that's
             # not Windows or Mac is ELF.
             if target.cpu == 'x86':
-                asflags = '-f elf32'
+                asflags = ['-f', 'elf32']
             elif target.cpu == 'x86_64':
-                asflags = '-f elf64'
+                asflags = ['-f', 'elf64']
         if asflags:
-            asflags += ' -rnasm -pnasm'
+            asflags += ['-rnasm', '-pnasm']
         return asflags
 
 
@@ -488,28 +488,24 @@ def check_compiler(compiler, language, target):
         if info.type in ('clang-cl', 'clang', 'gcc'):
             append_flag('-std=gnu99')
 
-    # Note: MSVC, while supporting C++11, still reports 199711L for __cplusplus.
+    # Note: MSVC, while supporting C++14, still reports 199711L for __cplusplus.
     # Note: this is a strict version check because we used to always add
-    # -std=gnu++11.
+    # -std=gnu++14.
     draft_cxx14_version = 201300
     cxx14_version = 201402
     if info.language == 'C++':
-        if target.kernel != 'WINNT':
-            if info.type in ('clang', 'gcc') and info.language_version != 201103:
-                append_flag('-std=gnu++11')
-        else:
-            if info.type == 'clang' and info.language_version != 201103:
-                append_flag('-std=gnu++11')
-            # MSVC 2015 headers include C++14 features, but don't guard them
-            # with appropriate checks.
-            if info.type == 'clang-cl' and info.language_version != cxx14_version:
-                append_flag('-std=c++14')
-            # GCC 4.9 indicates that it implements draft C++14 features
-            # instead of the full language.
-            elif info.type == 'gcc' and not \
-                (info.language_version == draft_cxx14_version or
-                 info.language_version == cxx14_version):
-                append_flag('-std=gnu++14')
+        if info.type == 'clang' and info.language_version != cxx14_version:
+            append_flag('-std=gnu++14')
+        # MSVC 2015 headers include C++14 features, but don't guard them
+        # with appropriate checks.
+        elif info.type == 'clang-cl' and info.language_version != cxx14_version:
+            append_flag('-std=c++14')
+        # GCC 4.9 indicates that it implements draft C++14 features
+        # instead of the full language.
+        elif info.type == 'gcc' and \
+                info.language_version not in (draft_cxx14_version,
+                                              cxx14_version):
+            append_flag('-std=gnu++14')
 
     # We force clang-cl to emulate Visual C++ 2017 version 15.4
     if info.type == 'clang-cl' and info.version != '19.11.25547':
@@ -522,6 +518,12 @@ def check_compiler(compiler, language, target):
     if not info.cpu or info.cpu != target.cpu:
         if info.type == 'clang':
             append_flag('--target=%s' % target.toolchain)
+        elif info.type == 'clang-cl':
+            # Ideally this would share the 'clang' branch above, but on Windows
+            # the --target needs additional data like ms-compatibility-version.
+            if (info.cpu, target.cpu) == ('x86_64', 'x86'):
+                # -m32 does not use -Xclang, so add it directly.
+                flags.append('-m32')
         elif info.type == 'gcc':
             same_arch_different_bits = (
                 ('x86', 'x86_64'),
@@ -1021,7 +1023,7 @@ def compiler(language, host_or_target, c_compiler=None, other_compiler=None,
             def is_msvc(compiler):
                 return compiler.type == 'msvc'
 
-            imply_option('LINK', linker, reason='LD', when=is_msvc)
+            imply_option('LINKER', linker, reason='LD', when=is_msvc)
 
     return valid_compiler
 
@@ -1260,6 +1262,19 @@ set_config('PROFILE_GEN_LDFLAGS', pgo_flags.gen_ldflags)
 set_config('PROFILE_USE_CFLAGS', pgo_flags.use_cflags)
 set_config('PROFILE_USE_LDFLAGS', pgo_flags.use_ldflags)
 
+
+@depends(c_compiler)
+def preprocess_option(compiler):
+    # The uses of PREPROCESS_OPTION depend on the spacing for -o/-Fi.
+    if compiler.type in ('gcc', 'clang'):
+        return '-E -o '
+    else:
+        return '-P -Fi'
+
+
+set_config('PREPROCESS_OPTION', preprocess_option)
+
+
 # We only want to include windows.configure when we are compiling on
 # Windows, for Windows.
 
@@ -1282,18 +1297,69 @@ wine = check_prog('WINE', ['wine'], when=depends(target, host)
 # Security Hardening
 # ==============================================================
 
+js_option('--enable-address-sanitizer', help='Enable Address Sanitizer')
+
+
+@depends_if('--enable-address-sanitizer')
+def asan(value):
+    return True
+
+
+add_old_configure_assignment('MOZ_ASAN', asan)
+
+
 option('--enable-hardening', env='MOZ_SECURITY_HARDENING',
        help='Enables security hardening compiler options')
 
 
-@depends('--enable-hardening', c_compiler)
-def security_hardening_cflags(value, c_compiler):
-    if value and c_compiler.type in ['gcc', 'clang']:
-        return '-fstack-protector-strong'
+@depends('--enable-hardening', '--enable-address-sanitizer',
+         '--enable-optimize', c_compiler, target)
+def security_hardening_cflags(hardening_flag, asan, optimize, c_compiler, target):
+    compiler_is_gccish = c_compiler.type in ('gcc', 'clang')
+
+    flags = []
+    js_flags = []
+
+    # FORTIFY_SOURCE ------------------------------------
+    # If hardening is explicitly enabled, or not explicitly disabled
+    if hardening_flag.origin == "default" or hardening_flag:
+        # Require optimization for FORTIFY_SOURCE. See Bug 1417452
+        # Also, undefine it before defining it just in case a distro adds it, see Bug 1418398
+        if compiler_is_gccish and optimize and not asan:
+            # Don't enable FORTIFY_SOURCE on Android on the top-level, but do enable in js/
+            if target.os != 'Android':
+                flags.append("-U_FORTIFY_SOURCE")
+                flags.append("-D_FORTIFY_SOURCE=2")
+            js_flags.append("-U_FORTIFY_SOURCE")
+            js_flags.append("-D_FORTIFY_SOURCE=2")
+
+    # If ASAN _is_ on, undefine FOTIFY_SOURCE just to be safe
+    if asan:
+        flags.append("-U_FORTIFY_SOURCE")
+        js_flags.append("-U_FORTIFY_SOURCE")
+
+    # fstack-protector ------------------------------------
+    # Enable only if --enable-hardening is passed and ASAN is
+    # not on as ASAN will catch the crashes for us
+    if hardening_flag and compiler_is_gccish and not asan:
+        flags.append("-fstack-protector-strong")
+
+    # fno-common -----------------------------------------
+    # Do not merge variables for ASAN; can detect some subtle bugs
+    if asan:
+        flags.append("-fno-common")
+
+    return namespace(
+        flags=flags,
+        js_flags=js_flags,
+    )
 
 
-add_old_configure_assignment('HARDENING_CFLAGS', security_hardening_cflags)
+add_old_configure_assignment('MOZ_HARDENING_CFLAGS', security_hardening_cflags.flags)
+add_old_configure_assignment('MOZ_HARDENING_CFLAGS_JS', security_hardening_cflags.js_flags)
 imply_option('--enable-pie', depends_if('--enable-hardening')(lambda v: v))
+
+# ==============================================================
 
 option(env='RUSTFLAGS',
        nargs=1,
@@ -1351,7 +1417,7 @@ def rust_compiler_flags(opt_level_option, debug_rust, debug_symbols,
     debug_assertions = None
     debug_info = None
 
-    if opt_level_option.origin != 'default':
+    if opt_level_option:
         opt_level = opt_level_option[0]
     else:
         opt_level = '1' if optimize else '0'
@@ -1514,6 +1580,12 @@ js_option('--enable-clang-plugin', env='ENABLE_CLANG_PLUGIN',
 add_old_configure_assignment('ENABLE_CLANG_PLUGIN',
                              depends_if('--enable-clang-plugin')(lambda _: True))
 
+js_option('--enable-mozsearch-plugin', env='ENABLE_MOZSEARCH_PLUGIN',
+          help="Enable building with the mozsearch indexer plugin")
+
+add_old_configure_assignment('ENABLE_MOZSEARCH_PLUGIN',
+                             depends_if('--enable-mozsearch-plugin')(lambda _: True))
+
 # Code Coverage
 # ==============================================================
 
@@ -1529,3 +1601,31 @@ def code_coverage(value):
 
 set_config('MOZ_CODE_COVERAGE', code_coverage)
 set_define('MOZ_CODE_COVERAGE', code_coverage)
+
+# Libstdc++ compatibility hacks
+# ==============================================================
+#
+js_option('--enable-stdcxx-compat', env='MOZ_STDCXX_COMPAT',
+          help='Enable compatibility with older libstdc++')
+
+
+@template
+def libstdcxx_version(var, compiler):
+    @depends(compiler, when='--enable-stdcxx-compat')
+    @imports(_from='mozbuild.configure.libstdcxx', _import='find_version')
+    def version(compiler):
+        result = find_version(
+            compiler.wrapper + [compiler.compiler] + compiler.flags)
+        if result:
+            return str(result)
+
+    set_config(var, version)
+    return version
+
+
+add_gcc_flag(
+    '-D_GLIBCXX_USE_CXX11_ABI=0', cxx_compiler,
+    when=libstdcxx_version('MOZ_LIBSTDCXX_TARGET_VERSION', cxx_compiler))
+add_gcc_flag(
+    '-D_GLIBCXX_USE_CXX11_ABI=0', host_cxx_compiler,
+    when=libstdcxx_version('MOZ_LIBSTDCXX_HOST_VERSION', host_cxx_compiler))

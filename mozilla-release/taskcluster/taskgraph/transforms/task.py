@@ -26,11 +26,8 @@ from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.schema import validate_schema, Schema, optionally_keyed_by, resolve_keyed_by
 from taskgraph.util.scriptworker import get_release_config
 from voluptuous import Any, Required, Optional, Extra
-from taskgraph import GECKO
+from taskgraph import GECKO, MAX_DEPENDENCIES
 from ..util import docker as dockerutil
-
-from .gecko_v2_whitelist import JOB_NAME_WHITELIST, JOB_NAME_WHITELIST_ERROR
-
 
 RUN_TASK = os.path.join(GECKO, 'taskcluster', 'docker', 'recipes', 'run-task')
 
@@ -47,21 +44,35 @@ taskref_or_string = Any(
     {Required('task-reference'): basestring},
 )
 
-notification_ids = optionally_keyed_by('project', Any(None, [basestring]))
+# For more details look at https://github.com/mozilla-releng/pulse-notify#task-definition
+#
+# Notification fields are keyed by project, which lets you use
+# `by-project` and define different messages or recepients for each
+# project.
 notification_schema = Schema({
-    Required("subject"): basestring,
-    Required("message"): basestring,
-    Required("ids"): notification_ids,
+    # notification routes for this task status
+    # https://github.com/mozilla-releng/pulse-notify/tree/master/pulsenotify/plugins
+    Optional('plugins'): optionally_keyed_by('project', [basestring]),
 
+    # notification subject
+    Optional('subject'): optionally_keyed_by('project', basestring),
+
+    # notification message
+    Optional('message'): optionally_keyed_by('project', basestring),
+
+    # emails to be notified (for ses and smtp plugins only)
+    Optional('emails'): optionally_keyed_by('project', [basestring]),
+
+    # IRC nicknames to notify (for irc plugin only)
+    Optional('nicks'): optionally_keyed_by('project', [basestring]),
+
+    # IRC channels to send a notification to (for irc plugin only)
+    Optional('channels'): optionally_keyed_by('project', [basestring]),
+
+    # notify a 'name' based on a configuration in the service
+    # https://github.com/mozilla-releng/pulse-notify/blob/production/pulsenotify/id_configs/prod.yml
+    Optional('ids'): optionally_keyed_by('project', [basestring]),
 })
-
-FULL_TASK_NAME = (
-    "[{task[payload][properties][product]} "
-    "{task[payload][properties][version]} "
-    "build{task[payload][properties][build_number]}/"
-    "{task[payload][sourcestamp][branch]}] "
-    "{task[metadata][name]} task"
-)
 
 # A task description is a general description of a TaskCluster task
 task_description_schema = Schema({
@@ -82,6 +93,8 @@ task_description_schema = Schema({
     # method.
     Optional('dependencies'): {basestring: object},
 
+    Optional('requires'): Any('all-completed', 'all-resolved'),
+
     # expiration and deadline times, relative to task creation, with units
     # (e.g., "14 days").  Defaults are set based on the project.
     Optional('expires-after'): basestring,
@@ -95,6 +108,7 @@ task_description_schema = Schema({
     # added automatically. The following parameters will be substituted in each
     # scope:
     #  {level} -- the scm level of this push
+    #  {project} -- the project of this push
     Optional('scopes'): [basestring],
 
     # Tags
@@ -121,29 +135,20 @@ task_description_schema = Schema({
         # treeherder.machine.platform and treeherder.collection or
         # treeherder.labels
         'platform': basestring,
-
-        # treeherder environments (defaults to both staging and production)
-        Required('environments', default=['production', 'staging']): ['production', 'staging'],
     },
 
     # information for indexing this build so its artifacts can be discovered;
     # if omitted, the build will not be indexed.
     Optional('index'): {
         # the name of the product this build produces
-        'product': Any(
-            'firefox',
-            'fennec',
-            'mobile',
-            'static-analysis',
-            'devedition',
-            'source',
-        ),
+        'product': basestring,
 
         # the names to use for this job in the TaskCluster index
         'job-name': basestring,
 
         # Type of gecko v2 index to use
-        'type': Any('generic', 'nightly', 'l10n', 'nightly-with-multi-l10n', 'release'),
+        'type': Any('generic', 'nightly', 'l10n', 'nightly-with-multi-l10n',
+                    'release', 'nightly-l10n'),
 
         # The rank that the task will receive in the TaskCluster
         # index.  A newly completed task supercedes the currently
@@ -175,16 +180,17 @@ task_description_schema = Schema({
 
     # The `shipping_phase` attribute, defaulting to None. This specifies the
     # release promotion phase that this task belongs to.
-    Required('shipping-phase', default=None): Any(
+    Required('shipping-phase'): Any(
         None,
+        'build',
         'promote',
-        'publish',
+        'push',
         'ship',
     ),
 
     # The `shipping_product` attribute, defaulting to None. This specifies the
     # release promotion product that this task belongs to.
-    Required('shipping-product', default=None): Any(
+    Required('shipping-product'): Any(
         None,
         'devedition',
         'fennec',
@@ -217,11 +223,11 @@ task_description_schema = Schema({
     # will be candidates for optimization even when `optimize_target_tasks` is
     # False, unless the task was also explicitly chosen by the target_tasks
     # method.
-    Required('always-target', default=False): bool,
+    Required('always-target'): bool,
 
     # Optimization to perform on this task during the optimization phase.
     # Optimizations are defined in taskcluster/taskgraph/optimize.py.
-    Required('optimization', default=None): Any(
+    Required('optimization'): Any(
         # always run this task (default)
         None,
         # search the index for the given index namespaces, and replace this task if found
@@ -246,13 +252,22 @@ task_description_schema = Schema({
     'worker-type': basestring,
 
     # Whether the job should use sccache compiler caching.
-    Required('needs-sccache', default=False): bool,
+    Required('needs-sccache'): bool,
 
-    # notifications
+    # Send notifications using pulse-notifier[1] service:
+    #
+    #     https://github.com/mozilla-releng/pulse-notify
+    #
+    # Notifications are send uppon task completion, failure or when exception
+    # is raised.
     Optional('notifications'): {
-        Optional('completed'): Any(notification_schema, notification_ids),
-        Optional('failed'): Any(notification_schema, notification_ids),
-        Optional('exception'): Any(notification_schema, notification_ids),
+        Optional('defined'): notification_schema,
+        Optional('pending'): notification_schema,
+        Optional('running'): notification_schema,
+        Optional('artifact-created'): notification_schema,
+        Optional('completed'): notification_schema,
+        Optional('failed'): notification_schema,
+        Optional('exception'): notification_schema,
     },
 
     # information specific to the worker implementation that will run this task
@@ -274,13 +289,13 @@ task_description_schema = Schema({
         ),
 
         # worker features that should be enabled
-        Required('relengapi-proxy', default=False): bool,
-        Required('chain-of-trust', default=False): bool,
-        Required('taskcluster-proxy', default=False): bool,
-        Required('allow-ptrace', default=False): bool,
-        Required('loopback-video', default=False): bool,
-        Required('loopback-audio', default=False): bool,
-        Required('docker-in-docker', default=False): bool,  # (aka 'dind')
+        Required('relengapi-proxy'): bool,
+        Required('chain-of-trust'): bool,
+        Required('taskcluster-proxy'): bool,
+        Required('allow-ptrace'): bool,
+        Required('loopback-video'): bool,
+        Required('loopback-audio'): bool,
+        Required('docker-in-docker'): bool,  # (aka 'dind')
 
         # Paths to Docker volumes.
         #
@@ -292,7 +307,7 @@ task_description_schema = Schema({
         # Caches are often mounted to the same path as Docker volumes. In this
         # case, they take precedence over a Docker volume. But a volume still
         # needs to be declared for the path.
-        Optional('volumes', default=[]): [basestring],
+        Optional('volumes'): [basestring],
 
         # caches to set up for the task
         Optional('caches'): [{
@@ -308,7 +323,7 @@ task_description_schema = Schema({
 
             # Whether the cache is not used in untrusted environments
             # (like the Try repo).
-            Optional('skip-untrusted', default=False): bool,
+            Optional('skip-untrusted'): bool,
         }],
 
         # artifacts to extract from the task image after completion
@@ -325,7 +340,7 @@ task_description_schema = Schema({
         }],
 
         # environment variables
-        Required('env', default={}): {basestring: taskref_or_string},
+        Required('env'): {basestring: taskref_or_string},
 
         # the command to run; if not given, docker-worker will default to the
         # command in the docker image
@@ -334,8 +349,11 @@ task_description_schema = Schema({
         # the maximum time to run, in seconds
         Required('max-run-time'): int,
 
-        # the exit status code that indicates the task should be retried
-        Optional('retry-exit-status'): int,
+        # the exit status code(s) that indicates the task should be retried
+        Optional('retry-exit-status'): Any(
+            int,
+            [int],
+        ),
     }, {
         Required('implementation'): 'generic-worker',
         Required('os'): Any('windows', 'macosx'),
@@ -403,16 +421,16 @@ task_description_schema = Schema({
         }],
 
         # environment variables
-        Required('env', default={}): {basestring: taskref_or_string},
+        Required('env'): {basestring: taskref_or_string},
 
         # the maximum time to run, in seconds
         Required('max-run-time'): int,
 
         # os user groups for test task workers
-        Optional('os-groups', default=[]): [basestring],
+        Optional('os-groups'): [basestring],
 
         # optional features
-        Required('chain-of-trust', default=False): bool,
+        Required('chain-of-trust'): bool,
     }, {
         Required('implementation'): 'buildbot-bridge',
 
@@ -429,7 +447,9 @@ task_description_schema = Schema({
             'product': basestring,
             Optional('build_number'): int,
             Optional('release_promotion'): bool,
+            Optional('generate_bz2_blob'): bool,
             Optional('tuxedo_server_url'): optionally_keyed_by('project', basestring),
+            Optional('release_eta'): basestring,
             Extra: taskref_or_string,  # additional properties are allowed
         },
     }, {
@@ -466,7 +486,7 @@ task_description_schema = Schema({
         Required('implementation'): 'scriptworker-signing',
 
         # the maximum time to run, in seconds
-        Required('max-run-time', default=600): int,
+        Required('max-run-time'): int,
 
         # list of artifact URLs for the artifacts that should be signed
         Required('upstream-artifacts'): [{
@@ -483,10 +503,12 @@ task_description_schema = Schema({
             Required('formats'): [basestring],
         }],
     }, {
+        Required('implementation'): 'binary-transparency',
+    }, {
         Required('implementation'): 'beetmover',
 
         # the maximum time to run, in seconds
-        Required('max-run-time', default=600): int,
+        Required('max-run-time'): int,
 
         # locale key, if this is a locale beetmover job
         Optional('locale'): basestring,
@@ -509,7 +531,7 @@ task_description_schema = Schema({
         Required('implementation'): 'beetmover-cdns',
 
         # the maximum time to run, in seconds
-        Required('max-run-time', default=600): int,
+        Required('max-run-time'): int,
         Required('product'): basestring,
     }, {
         Required('implementation'): 'balrog',
@@ -536,6 +558,10 @@ task_description_schema = Schema({
         Extra: object,
 
     }, {
+        Required('implementation'): 'always-optimized',
+        Extra: object,
+
+    }, {
         Required('implementation'): 'push-apk',
 
         # list of artifact URLs for the artifacts that should be beetmoved
@@ -548,12 +574,18 @@ task_description_schema = Schema({
 
             # Paths to the artifacts to sign
             Required('paths'): [basestring],
+
+            # Artifact is optional to run the task
+            Optional('optional', default=False): bool,
         }],
 
         # "Invalid" is a noop for try and other non-supported branches
         Required('google-play-track'): Any('production', 'beta', 'alpha', 'rollout', 'invalid'),
-        Required('dry-run', default=True): bool,
-        Optional('rollout-percentage'): int,
+        Required('commit'): bool,
+        Optional('rollout-percentage'): Any(int, None),
+    }, {
+        Required('implementation'): 'shipit',
+        Required('release-name'): basestring,
     }),
 })
 
@@ -561,39 +593,44 @@ TC_TREEHERDER_SCHEMA_URL = 'https://github.com/taskcluster/taskcluster-treeherde
                            'blob/master/schemas/task-treeherder-config.yml'
 
 
-UNKNOWN_GROUP_NAME = "Treeherder group {} has no name; add it to " + __file__
+UNKNOWN_GROUP_NAME = "Treeherder group {} (from {}) has no name; " \
+                     "add it to taskcluster/ci/config.yml"
 
 V2_ROUTE_TEMPLATES = [
-    "index.gecko.v2.{project}.latest.{product}.{job-name}",
-    "index.gecko.v2.{project}.pushdate.{build_date_long}.{product}.{job-name}",
-    "index.gecko.v2.{project}.pushlog-id.{pushlog_id}.{product}.{job-name}",
-    "index.gecko.v2.{project}.revision.{head_rev}.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.latest.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.pushdate.{build_date_long}.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.pushlog-id.{pushlog_id}.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.revision.{head_rev}.{product}.{job-name}",
 ]
 
 # {central, inbound, autoland} write to a "trunk" index prefix. This facilitates
 # walking of tasks with similar configurations.
 V2_TRUNK_ROUTE_TEMPLATES = [
-    "index.gecko.v2.trunk.revision.{head_rev}.{product}.{job-name}",
+    "index.{trust-domain}.v2.trunk.revision.{head_rev}.{product}.{job-name}",
 ]
 
 V2_NIGHTLY_TEMPLATES = [
-    "index.gecko.v2.{project}.nightly.latest.{product}.{job-name}",
-    "index.gecko.v2.{project}.nightly.{build_date}.revision.{head_rev}.{product}.{job-name}",
-    "index.gecko.v2.{project}.nightly.{build_date}.latest.{product}.{job-name}",
-    "index.gecko.v2.{project}.nightly.revision.{head_rev}.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.nightly.latest.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.nightly.{build_date}.revision.{head_rev}.{product}.{job-name}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.nightly.{build_date}.latest.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.nightly.revision.{head_rev}.{product}.{job-name}",
+]
+
+V2_NIGHTLY_L10N_TEMPLATES = [
+    "index.{trust-domain}.v2.{project}.nightly.latest.{product}-l10n.{job-name}.{locale}",
+    "index.{trust-domain}.v2.{project}.nightly.{build_date}.revision.{head_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.nightly.{build_date}.latest.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.nightly.revision.{head_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
 ]
 
 V2_L10N_TEMPLATES = [
-    "index.gecko.v2.{project}.revision.{head_rev}.{product}-l10n.{job-name}.{locale}",
-    "index.gecko.v2.{project}.pushdate.{build_date_long}.{product}-l10n.{job-name}.{locale}",
-    "index.gecko.v2.{project}.latest.{product}-l10n.{job-name}.{locale}",
+    "index.{trust-domain}.v2.{project}.revision.{head_rev}.{product}-l10n.{job-name}.{locale}",
+    "index.{trust-domain}.v2.{project}.pushdate.{build_date_long}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.latest.{product}-l10n.{job-name}.{locale}",
 ]
 
-# the roots of the treeherder routes, keyed by treeherder environment
-TREEHERDER_ROUTE_ROOTS = {
-    'production': 'tc-treeherder',
-    'staging': 'tc-treeherder-stage',
-}
+# the roots of the treeherder routes
+TREEHERDER_ROUTE_ROOT = 'tc-treeherder'
 
 # Which repository repository revision to use when reporting results to treeherder.
 DEFAULT_BRANCH_REV_PARAM = 'head_rev'
@@ -684,10 +721,16 @@ def superseder_url(config, task):
     )
 
 
-def verify_index_job_name(index):
-    job_name = index['job-name']
-    if job_name not in JOB_NAME_WHITELIST:
-        raise Exception(JOB_NAME_WHITELIST_ERROR.format(job_name))
+UNSUPPORTED_PRODUCT_ERROR = """\
+The gecko-v2 product {product} is not in the list of configured products in
+`taskcluster/ci/config.yml'.
+"""
+
+
+def verify_index(config, index):
+    product = index['product']
+    if product not in config.graph_config['index']['products']:
+        raise Exception(UNSUPPORTED_PRODUCT_ERROR.format(product=product))
 
 
 @payload_builder('docker-worker')
@@ -749,7 +792,8 @@ def build_docker_worker_payload(config, task, task_def):
     if task.get('needs-sccache'):
         features['taskclusterProxy'] = True
         task_def['scopes'].append(
-            'assume:project:taskcluster:level-{level}-sccache-buckets'.format(
+            'assume:project:taskcluster:{trust_domain}:level-{level}-sccache-buckets'.format(
+                trust_domain=config.graph_config['trust-domain'],
                 level=config.params['level'])
         )
         worker['env']['USE_SCCACHE'] = '1'
@@ -776,7 +820,10 @@ def build_docker_worker_payload(config, task, task_def):
         payload['maxRunTime'] = worker['max-run-time']
 
     if 'retry-exit-status' in worker:
-        payload['onExitStatus'] = {'retry': [worker['retry-exit-status']]}
+        if isinstance(worker['retry-exit-status'], int):
+            payload['onExitStatus'] = {'retry': [worker['retry-exit-status']]}
+        elif isinstance(worker['retry-exit-status'], list):
+            payload['onExitStatus'] = {'retry': worker['retry-exit-status']}
 
     if 'artifacts' in worker:
         artifacts = {}
@@ -788,17 +835,16 @@ def build_docker_worker_payload(config, task, task_def):
             }
         payload['artifacts'] = artifacts
 
+    run_task = payload.get('command', [''])[0].endswith('run-task')
+
     if isinstance(worker.get('docker-image'), basestring):
         out_of_tree_image = worker['docker-image']
+        run_task = run_task or out_of_tree_image.startswith(
+            'taskcluster/image_builder')
     else:
         out_of_tree_image = None
-
-    run_task = any([
-        payload.get('command', [''])[0].endswith('run-task'),
-        # image_builder is special and doesn't get detected like other tasks.
-        # It uses run-task so it needs our cache manipulations.
-        (out_of_tree_image or '').startswith('taskcluster/image_builder'),
-    ])
+        image = worker.get('docker-image', {}).get('in-tree')
+        run_task = run_task or image == 'image_builder'
 
     if 'caches' in worker:
         caches = {}
@@ -833,7 +879,7 @@ def build_docker_worker_payload(config, task, task_def):
         else:
             suffix = ''
 
-        skip_untrusted = config.params['project'] == 'try' or level == 1
+        skip_untrusted = config.params.is_try() or level == 1
 
         for cache in worker['caches']:
             # Some caches aren't enabled in environments where we can't
@@ -938,6 +984,27 @@ def build_scriptworker_signing_payload(config, task, task_def):
     }
 
 
+@payload_builder('binary-transparency')
+def build_binary_transparency_payload(config, task, task_def):
+    release_config = get_release_config(config)
+
+    task_def['payload'] = {
+        'version': release_config['version'],
+        'chain': 'TRANSPARENCY.pem',
+        'contact': task_def['metadata']['owner'],
+        'maxRunTime': 600,
+        'stage-product': task['shipping-product'],
+        'summary': (
+            'https://archive.mozilla.org/pub/{}/candidates/'
+            '{}-candidates/build{}/SHA256SUMMARY'
+        ).format(
+            task['shipping-product'],
+            release_config['version'],
+            release_config['build_number'],
+        ),
+    }
+
+
 @payload_builder('beetmover')
 def build_beetmover_payload(config, task, task_def):
     worker = task['worker']
@@ -957,7 +1024,7 @@ def build_beetmover_payload(config, task, task_def):
 @payload_builder('beetmover-cdns')
 def build_beetmover_cdns_payload(config, task, task_def):
     worker = task['worker']
-    release_config = get_release_config(config, force=True)
+    release_config = get_release_config(config)
 
     task_def['payload'] = {
         'maxRunTime': worker['max-run-time'],
@@ -981,7 +1048,7 @@ def build_push_apk_payload(config, task, task_def):
     worker = task['worker']
 
     task_def['payload'] = {
-        'dry_run': worker['dry-run'],
+        'commit': worker['commit'],
         'upstreamArtifacts':  worker['upstream-artifacts'],
         'google_play_track': worker['google-play-track'],
     }
@@ -995,9 +1062,23 @@ def build_push_apk_breakpoint_payload(config, task, task_def):
     task_def['payload'] = task['worker']['payload']
 
 
+@payload_builder('shipit')
+def build_ship_it_payload(config, task, task_def):
+    worker = task['worker']
+
+    task_def['payload'] = {
+        'release_name': worker['release-name']
+    }
+
+
 @payload_builder('invalid')
 def build_invalid_payload(config, task, task_def):
     task_def['payload'] = 'invalid task - should never be created'
+
+
+@payload_builder('always-optimized')
+def build_always_optimized_payload(config, task, task_def):
+    task_def['payload'] = {}
 
 
 @payload_builder('native-engine')
@@ -1026,7 +1107,6 @@ def build_macosx_engine_payload(config, task, task_def):
 @payload_builder('buildbot-bridge')
 def build_buildbot_bridge_payload(config, task, task_def):
     task['extra'].pop('treeherder', None)
-    task['extra'].pop('treeherderEnv', None)
     worker = task['worker']
 
     if worker['properties'].get('tuxedo_server_url'):
@@ -1051,6 +1131,45 @@ transforms = TransformSequence()
 
 
 @transforms.add
+def set_defaults(config, tasks):
+    for task in tasks:
+        task.setdefault('shipping-phase', None)
+        task.setdefault('shipping-product', None)
+        task.setdefault('always-target', False)
+        task.setdefault('optimization', None)
+        task.setdefault('needs-sccache', False)
+
+        worker = task['worker']
+        if worker['implementation'] in ('docker-worker', 'docker-engine'):
+            worker.setdefault('relengapi-proxy', False)
+            worker.setdefault('chain-of-trust', False)
+            worker.setdefault('taskcluster-proxy', False)
+            worker.setdefault('allow-ptrace', False)
+            worker.setdefault('loopback-video', False)
+            worker.setdefault('loopback-audio', False)
+            worker.setdefault('docker-in-docker', False)
+            worker.setdefault('volumes', [])
+            worker.setdefault('env', {})
+            if 'caches' in worker:
+                for c in worker['caches']:
+                    c.setdefault('skip-untrusted', False)
+        elif worker['implementation'] == 'generic-worker':
+            worker.setdefault('env', {})
+            worker.setdefault('os-groups', [])
+            worker.setdefault('chain-of-trust', False)
+        elif worker['implementation'] == 'scriptworker-signing':
+            worker.setdefault('max-run-time', 600)
+        elif worker['implementation'] == 'beetmover':
+            worker.setdefault('max-run-time', 600)
+        elif worker['implementation'] == 'beetmover-cdns':
+            worker.setdefault('max-run-time', 600)
+        elif worker['implementation'] == 'push-apk':
+            worker.setdefault('commit', False)
+
+        yield task
+
+
+@transforms.add
 def task_name_from_label(config, tasks):
     for task in tasks:
         if 'label' not in task:
@@ -1065,9 +1184,10 @@ def task_name_from_label(config, tasks):
 @transforms.add
 def validate(config, tasks):
     for task in tasks:
-        yield validate_schema(
+        validate_schema(
             task_description_schema, task,
             "In task {!r}:".format(task.get('label', '?no-label?')))
+        yield task
 
 
 @index_builder('generic')
@@ -1075,13 +1195,14 @@ def add_generic_index_routes(config, task):
     index = task.get('index')
     routes = task.setdefault('routes', [])
 
-    verify_index_job_name(index)
+    verify_index(config, index)
 
     subs = config.params.copy()
     subs['job-name'] = index['job-name']
     subs['build_date_long'] = time.strftime("%Y.%m.%d.%Y%m%d%H%M%S",
                                             time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
+    subs['trust-domain'] = config.graph_config['trust-domain']
 
     project = config.params.get('project')
 
@@ -1102,7 +1223,7 @@ def add_nightly_index_routes(config, task):
     index = task.get('index')
     routes = task.setdefault('routes', [])
 
-    verify_index_job_name(index)
+    verify_index(config, index)
 
     subs = config.params.copy()
     subs['job-name'] = index['job-name']
@@ -1111,6 +1232,7 @@ def add_nightly_index_routes(config, task):
     subs['build_date'] = time.strftime("%Y.%m.%d",
                                        time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
+    subs['trust-domain'] = config.graph_config['trust-domain']
 
     for tpl in V2_NIGHTLY_TEMPLATES:
         routes.append(tpl.format(**subs))
@@ -1125,15 +1247,14 @@ def add_nightly_index_routes(config, task):
 def add_release_index_routes(config, task):
     index = task.get('index')
     routes = []
-    release_config = get_release_config(config, force=True)
-
-    verify_index_job_name(index)
+    release_config = get_release_config(config)
 
     subs = config.params.copy()
     subs['build_number'] = str(release_config['build_number'])
     subs['revision'] = subs['head_rev']
     subs['underscore_version'] = release_config['version'].replace('.', '_')
     subs['product'] = index['product']
+    subs['trust-domain'] = config.graph_config['trust-domain']
     subs['branch'] = subs['project']
     if 'channel' in index:
         resolve_keyed_by(
@@ -1161,13 +1282,14 @@ def add_l10n_index_routes(config, task, force_locale=None):
     index = task.get('index')
     routes = task.setdefault('routes', [])
 
-    verify_index_job_name(index)
+    verify_index(config, index)
 
     subs = config.params.copy()
     subs['job-name'] = index['job-name']
     subs['build_date_long'] = time.strftime("%Y.%m.%d.%Y%m%d%H%M%S",
                                             time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
+    subs['trust-domain'] = config.graph_config['trust-domain']
 
     locales = task['attributes'].get('chunk_locales',
                                      task['attributes'].get('all_locales'))
@@ -1194,17 +1316,46 @@ def add_l10n_index_routes(config, task, force_locale=None):
     return task
 
 
+@index_builder('nightly-l10n')
+def add_nightly_l10n_index_routes(config, task, force_locale=None):
+    index = task.get('index')
+    routes = task.setdefault('routes', [])
+
+    verify_index(config, index)
+
+    subs = config.params.copy()
+    subs['job-name'] = index['job-name']
+    subs['build_date_long'] = time.strftime("%Y.%m.%d.%Y%m%d%H%M%S",
+                                            time.gmtime(config.params['build_date']))
+    subs['product'] = index['product']
+    subs['trust-domain'] = config.graph_config['trust-domain']
+
+    locales = task['attributes'].get('chunk_locales',
+                                     task['attributes'].get('all_locales'))
+    # Some tasks has only one locale set
+    if task['attributes'].get('locale'):
+        locales = [task['attributes']['locale']]
+
+    if force_locale:
+        # Used for en-US and multi-locale
+        locales = [force_locale]
+
+    if not locales:
+        raise Exception("Error: Unable to use l10n index for tasks without locales")
+
+    for locale in locales:
+        for tpl in V2_NIGHTLY_L10N_TEMPLATES:
+            routes.append(tpl.format(locale=locale, **subs))
+
+    # Add locales at old route too
+    task = add_l10n_index_routes(config, task, force_locale=force_locale)
+    return task
+
+
 @transforms.add
 def add_index_routes(config, tasks):
     for task in tasks:
-        index = task.get('index')
-
-        if not index:
-            yield task
-            continue
-
-        index_type = index.get('type', 'generic')
-        task = index_builders[index_type](config, task)
+        index = task.get('index', {})
 
         # The default behavior is to rank tasks according to their tier
         extra_index = task.setdefault('extra', {}).setdefault('index', {})
@@ -1220,6 +1371,13 @@ def add_index_routes(config, tasks):
         else:
             extra_index['rank'] = rank
 
+        if not index:
+            yield task
+            continue
+
+        index_type = index.get('type', 'generic')
+        task = index_builders[index_type](config, task)
+
         del task['index']
         yield task
 
@@ -1230,17 +1388,16 @@ def build_task(config, tasks):
         level = str(config.params['level'])
         worker_type = task['worker-type'].format(level=level)
         provisioner_id, worker_type = worker_type.split('/', 1)
+        project = config.params['project']
 
         routes = task.get('routes', [])
-        scopes = [s.format(level=level) for s in task.get('scopes', [])]
+        scopes = [s.format(level=level, project=project) for s in task.get('scopes', [])]
 
         # set up extra
         extra = task.get('extra', {})
         extra['parent'] = os.environ.get('TASK_ID', '')
         task_th = task.get('treeherder')
         if task_th:
-            extra['treeherderEnv'] = task_th['environments']
-
             treeherder = extra.setdefault('treeherder', {})
 
             machine_platform, collection = task_th['platform'].split('/', 1)
@@ -1252,7 +1409,8 @@ def build_task(config, tasks):
             if groupSymbol != '?':
                 treeherder['groupSymbol'] = groupSymbol
                 if groupSymbol not in group_names:
-                    raise Exception(UNKNOWN_GROUP_NAME.format(groupSymbol))
+                    path = os.path.join(config.path, task.get('job-from', ''))
+                    raise Exception(UNKNOWN_GROUP_NAME.format(groupSymbol, path))
                 treeherder['groupName'] = group_names[groupSymbol]
             treeherder['symbol'] = symbol
             if len(symbol) > 25 or len(groupSymbol) > 25:
@@ -1269,13 +1427,12 @@ def build_task(config, tasks):
                     config.params['project'],
                     DEFAULT_BRANCH_REV_PARAM)]
 
-            routes.extend([
-                '{}.v2.{}.{}.{}'.format(TREEHERDER_ROUTE_ROOTS[env],
+            routes.append(
+                '{}.v2.{}.{}.{}'.format(TREEHERDER_ROUTE_ROOT,
                                         config.params['project'],
                                         treeherder_rev,
                                         config.params['pushlog_id'])
-                for env in task_th['environments']
-            ])
+            )
 
         if 'expires-after' not in task:
             task['expires-after'] = '28 days' if config.params['project'] == 'try' else '1 year'
@@ -1311,15 +1468,15 @@ def build_task(config, tasks):
                 'description': task['description'],
                 'name': task['label'],
                 'owner': config.params['owner'],
-                'source': '{}/file/{}/{}'.format(
-                    config.params['head_repository'],
-                    config.params['head_rev'],
-                    config.path),
+                'source': config.params.file_url(config.path),
             },
             'extra': extra,
             'tags': tags,
             'priority': task['priority'],
         }
+
+        if task.get('requires', None):
+            task_def['requires'] = task['requires']
 
         if task_th:
             # link back to treeherder in description
@@ -1334,8 +1491,26 @@ def build_task(config, tasks):
         attributes = task.get('attributes', {})
         attributes['run_on_projects'] = task.get('run-on-projects', ['all'])
         attributes['always_target'] = task['always-target']
-        attributes['shipping_phase'] = task['shipping-phase']
-        attributes['shipping_product'] = task['shipping-product']
+        # This logic is here since downstream tasks don't always match their
+        # upstream dependency's shipping_phase.
+        # A basestring task['shipping-phase'] takes precedence, then
+        # an existing attributes['shipping_phase'], then fall back to None.
+        if task.get('shipping-phase') is not None:
+            attributes['shipping_phase'] = task['shipping-phase']
+        else:
+            attributes.setdefault('shipping_phase', None)
+        # shipping_product will always match the upstream task's
+        # shipping_product, so a pre-set existing attributes['shipping_product']
+        # takes precedence over task['shipping-product']. However, make sure
+        # we don't have conflicting values.
+        if task.get('shipping-product') and \
+                attributes.get('shipping_product') not in (None, task['shipping-product']):
+            raise Exception(
+                "{} shipping_product {} doesn't match task shipping-product {}!".format(
+                    task['label'], attributes['shipping_product'], task['shipping-product']
+                )
+            )
+        attributes.setdefault('shipping_product', task['shipping-product'])
 
         # Set MOZ_AUTOMATION on all jobs.
         if task['worker']['implementation'] in (
@@ -1351,47 +1526,42 @@ def build_task(config, tasks):
 
         notifications = task.get('notifications')
         if notifications:
+            release_config = get_release_config(config)
             task_def['extra'].setdefault('notifications', {})
-            for k, v in notifications.items():
-                if isinstance(v, dict) and len(v) == 1 and v.keys()[0].startswith('by-'):
-                    v = {'tmp': v}
-                    resolve_keyed_by(v, 'tmp', 'notifications', **config.params)
-                    v = v['tmp']
-                if v is None:
-                    continue
-                elif isinstance(v, list):
-                    v = {'ids': v}
-                    if 'completed' == k:
-                        v.update({
-                            "subject": "Completed: {}".format(FULL_TASK_NAME),
-                            "message": "{} has completed successfully! Yay!".format(
-                                FULL_TASK_NAME),
-                        })
-                    elif k == 'failed':
-                        v.update({
-                            "subject": "Failed: {}".format(FULL_TASK_NAME),
-                            "message": "Uh-oh! {} failed.".format(FULL_TASK_NAME),
-                        })
-                    elif k == 'exception':
-                        v.update({
-                            "subject": "Exception: {}".format(FULL_TASK_NAME),
-                            "message": "Uh-oh! {} resulted in an exception.".format(
-                                FULL_TASK_NAME),
-                        })
-                else:
-                    resolve_keyed_by(v, 'ids', 'notifications', **config.params)
-                if v['ids'] is None:
-                    continue
-                notifications_kwargs = dict(
-                    task=task_def,
-                    config=config.__dict__,
-                    release_config=get_release_config(config, force=True),
-                )
-                task_def['extra']['notifications']['task-' + k] = {
-                    'subject': v['subject'].format(**notifications_kwargs),
-                    'message': v['message'].format(**notifications_kwargs),
-                    'ids': v['ids'],
-                }
+            for notification_event, notification in notifications.items():
+
+                for notification_option, notification_option_value in notification.items():
+
+                    # resolve by-project
+                    resolve_keyed_by(
+                        notification,
+                        notification_option,
+                        'notifications',
+                        project=config.params['project'],
+                    )
+
+                    # resolve formatting for each of the fields
+                    format_kwargs = dict(
+                            task=task,
+                            task_def=task_def,
+                            config=config.__dict__,
+                            release_config=release_config,
+                    )
+                    if isinstance(notification_option_value, basestring):
+                        notification[notification_option] = notification_option_value.format(
+                            **format_kwargs
+                        )
+                    elif isinstance(notification_option_value, list):
+                        notification[notification_option] = [
+                            i.format(**format_kwargs) for i in notification_option_value
+                        ]
+
+                # change event to correct event
+                if notification_event != 'artifact-created':
+                    notification_event = 'task-' + notification_event
+
+                # update notifications
+                task_def['extra']['notifications'][notification_event] = notification
 
         yield {
             'label': task['label'],
@@ -1400,6 +1570,46 @@ def build_task(config, tasks):
             'attributes': attributes,
             'optimization': task.get('optimization', None),
         }
+
+
+@transforms.add
+def chain_of_trust(config, tasks):
+    for task in tasks:
+        if task['task'].get('payload', {}).get('features', {}).get('chainOfTrust'):
+            image = task.get('dependencies', {}).get('docker-image')
+            if image:
+                cot = task['task'].setdefault('extra', {}).setdefault('chainOfTrust', {})
+                cot.setdefault('inputs', {})['docker-image'] = {
+                    'task-reference': '<docker-image>'
+                }
+        yield task
+
+
+@transforms.add
+def check_task_identifiers(config, tasks):
+    """Ensures that all tasks have well defined identifiers:
+       ^[a-zA-Z0-9_-]{1,22}$
+    """
+    e = re.compile("^[a-zA-Z0-9_-]{1,22}$")
+    for task in tasks:
+        for attr in ('workerType', 'provisionerId'):
+            if not e.match(task['task'][attr]):
+                raise Exception(
+                    'task {}.{} is not a valid identifier: {}'.format(
+                        task['label'], attr, task['task'][attr]))
+        yield task
+
+
+@transforms.add
+def check_task_dependencies(config, tasks):
+    """Ensures that tasks don't have more than 100 dependencies."""
+    for task in tasks:
+        if len(task['dependencies']) > MAX_DEPENDENCIES:
+            raise Exception(
+                    'task {}/{} has too many dependencies ({} > {})'.format(
+                        config.kind, task['label'], len(task['dependencies']),
+                        MAX_DEPENDENCIES))
+        yield task
 
 
 def check_caches_are_volumes(task):
@@ -1503,19 +1713,22 @@ def check_v2_routes():
     with open(os.path.join(GECKO, "testing/mozharness/configs/routes.json"), "rb") as f:
         routes_json = json.load(f)
 
-    for key in ('routes', 'nightly', 'l10n'):
+    for key in ('routes', 'nightly', 'l10n', 'nightly-l10n'):
         if key == 'routes':
             tc_template = V2_ROUTE_TEMPLATES
         elif key == 'nightly':
             tc_template = V2_NIGHTLY_TEMPLATES
         elif key == 'l10n':
             tc_template = V2_L10N_TEMPLATES
+        elif key == 'nightly-l10n':
+            tc_template = V2_NIGHTLY_L10N_TEMPLATES + V2_L10N_TEMPLATES
 
         routes = routes_json[key]
 
         # we use different variables than mozharness
         for mh, tg in [
                 ('{index}', 'index'),
+                ('gecko', '{trust-domain}'),
                 ('{build_product}', '{product}'),
                 ('{build_name}-{build_type}', '{job-name}'),
                 ('{year}.{month}.{day}.{pushdate}', '{build_date_long}'),

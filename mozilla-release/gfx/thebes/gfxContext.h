@@ -40,7 +40,7 @@ class ClipExporter;
  * All drawing happens by creating a path and then stroking or filling it.
  * The functions like Rectangle and Arc do not do any drawing themselves.
  * When a path is drawn (stroked or filled), it is filled/stroked with a
- * pattern set by SetPattern, SetColor or SetSource.
+ * pattern set by SetPattern or SetColor.
  *
  * Note that the gfxContext takes coordinates in device pixels,
  * as opposed to app units.
@@ -270,15 +270,6 @@ public:
     void SetColor(const mozilla::gfx::Color& aColor);
 
     /**
-     * Uses a surface for drawing. This is a shorthand for creating a
-     * pattern and setting it.
-     *
-     * @param offset from the source surface, to use only part of it.
-     *        May need to make it negative.
-     */
-    void SetSource(gfxASurface *surface, const gfxPoint& offset = gfxPoint(0.0, 0.0));
-
-    /**
      * Uses a pattern for drawing.
      */
     void SetPattern(gfxPattern *pattern);
@@ -480,7 +471,6 @@ private:
       , color(0, 0, 0, 1.0f)
       , aaMode(mozilla::gfx::AntialiasMode::SUBPIXEL)
       , patternTransformChanged(false)
-      , mBlendOpacity(0.0f)
 #ifdef DEBUG
       , mContentChanged(false)
 #endif
@@ -489,10 +479,6 @@ private:
     mozilla::gfx::CompositionOp op;
     Color color;
     RefPtr<gfxPattern> pattern;
-    RefPtr<gfxASurface> sourceSurfCairo;
-    RefPtr<SourceSurface> sourceSurface;
-    mozilla::gfx::Point sourceSurfaceDeviceOffset;
-    Matrix surfTransform;
     Matrix transform;
     struct PushedClip {
       RefPtr<Path> path;
@@ -509,12 +495,7 @@ private:
     Color fontSmoothingBackgroundColor;
     // This is used solely for using minimal intermediate surface size.
     mozilla::gfx::Point deviceOffset;
-    // Support groups
-    mozilla::gfx::Float mBlendOpacity;
-    RefPtr<SourceSurface> mBlendMask;
-    Matrix mBlendMaskTransform;
 #ifdef DEBUG
-    bool mWasPushedForBlendBack;
     // Whether the content of this AzureState changed after construction.
     bool mContentChanged;
 #endif

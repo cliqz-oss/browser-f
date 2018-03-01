@@ -24,7 +24,7 @@
 //! address in the GPU cache of a given resource slot
 //! for this frame.
 
-use api::{ColorF, LayerRect};
+use api::{LayerRect, PremultipliedColorF};
 use device::FrameId;
 use internal_types::UvRect;
 use profiler::GpuCacheProfileCounters;
@@ -32,11 +32,13 @@ use renderer::MAX_VERTEX_TEXTURE_WIDTH;
 use std::{mem, u16, u32};
 use std::ops::Add;
 
+
 pub const GPU_CACHE_INITIAL_HEIGHT: u32 = 512;
 const FRAMES_BEFORE_EVICTION: usize = 10;
 const NEW_ROWS_PER_RESIZE: u32 = 512;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 struct Epoch(u32);
 
 impl Epoch {
@@ -46,6 +48,7 @@ impl Epoch {
 }
 
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 struct CacheLocation {
     block_index: BlockIndex,
     epoch: Epoch,
@@ -53,18 +56,19 @@ struct CacheLocation {
 
 /// A single texel in RGBAF32 texture - 16 bytes.
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub struct GpuBlockData {
     pub data: [f32; 4],
 }
 
 impl GpuBlockData {
-    pub fn empty() -> GpuBlockData {
+    pub fn empty() -> Self {
         GpuBlockData { data: [0.0; 4] }
     }
 }
 
 /// Conversion helpers for GpuBlockData
-impl Into<GpuBlockData> for ColorF {
+impl Into<GpuBlockData> for PremultipliedColorF {
     fn into(self) -> GpuBlockData {
         GpuBlockData {
             data: [self.r, self.g, self.b, self.a],
@@ -108,12 +112,13 @@ pub trait ToGpuBlocks {
 
 // A handle to a GPU resource.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub struct GpuCacheHandle {
     location: Option<CacheLocation>,
 }
 
 impl GpuCacheHandle {
-    pub fn new() -> GpuCacheHandle {
+    pub fn new() -> Self {
         GpuCacheHandle { location: None }
     }
 }
@@ -122,20 +127,21 @@ impl GpuCacheHandle {
 // as part of the primitive instances, to allow the vertex
 // shader to fetch the specific data.
 #[derive(Copy, Debug, Clone)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub struct GpuCacheAddress {
     pub u: u16,
     pub v: u16,
 }
 
 impl GpuCacheAddress {
-    fn new(u: usize, v: usize) -> GpuCacheAddress {
+    fn new(u: usize, v: usize) -> Self {
         GpuCacheAddress {
             u: u as u16,
             v: v as u16,
         }
     }
 
-    pub fn invalid() -> GpuCacheAddress {
+    pub fn invalid() -> Self {
         GpuCacheAddress {
             u: u16::MAX,
             v: u16::MAX,
@@ -156,6 +162,7 @@ impl Add<usize> for GpuCacheAddress {
 
 // An entry in a free-list of blocks in the GPU cache.
 #[derive(Debug)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 struct Block {
     // The location in the cache of this block.
     address: GpuCacheAddress,
@@ -170,7 +177,7 @@ struct Block {
 }
 
 impl Block {
-    fn new(address: GpuCacheAddress, next: Option<BlockIndex>, frame_id: FrameId) -> Block {
+    fn new(address: GpuCacheAddress, next: Option<BlockIndex>, frame_id: FrameId) -> Self {
         Block {
             address,
             next,
@@ -181,9 +188,11 @@ impl Block {
 }
 
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 struct BlockIndex(usize);
 
 // A row in the cache texture.
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 struct Row {
     // The fixed size of blocks that this row supports.
     // Each row becomes a slab allocator for a fixed block size.
@@ -193,7 +202,7 @@ struct Row {
 }
 
 impl Row {
-    fn new(block_count_per_item: usize) -> Row {
+    fn new(block_count_per_item: usize) -> Self {
         Row {
             block_count_per_item,
         }
@@ -204,6 +213,7 @@ impl Row {
 // this frame. The list of updates is created by the render backend
 // during frame construction. It's passed to the render thread
 // where GL commands can be applied.
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub enum GpuCacheUpdate {
     Copy {
         block_index: usize,
@@ -225,6 +235,7 @@ pub struct GpuCacheUpdateList {
 
 // Holds the free lists of fixed size blocks. Mostly
 // just serves to work around the borrow checker.
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 struct FreeBlockLists {
     free_list_1: Option<BlockIndex>,
     free_list_2: Option<BlockIndex>,
@@ -238,7 +249,7 @@ struct FreeBlockLists {
 }
 
 impl FreeBlockLists {
-    fn new() -> FreeBlockLists {
+    fn new() -> Self {
         FreeBlockLists {
             free_list_1: None,
             free_list_2: None,
@@ -275,6 +286,7 @@ impl FreeBlockLists {
 }
 
 // CPU-side representation of the GPU resource cache texture.
+#[cfg_attr(feature = "capture", derive(Serialize, Deserialize))]
 struct Texture {
     // Current texture height
     height: u32,
@@ -300,7 +312,7 @@ struct Texture {
 }
 
 impl Texture {
-    fn new() -> Texture {
+    fn new() -> Self {
         Texture {
             height: GPU_CACHE_INITIAL_HEIGHT,
             blocks: Vec::new(),
@@ -449,6 +461,7 @@ pub struct GpuDataRequest<'a> {
     handle: &'a mut GpuCacheHandle,
     frame_id: FrameId,
     start_index: usize,
+    max_block_count: usize,
     texture: &'a mut Texture,
 }
 
@@ -477,7 +490,9 @@ impl<'a> GpuDataRequest<'a> {
 impl<'a> Drop for GpuDataRequest<'a> {
     fn drop(&mut self) {
         // Push the data to the texture pending updates list.
-        let block_count = self.texture.pending_blocks.len() - self.start_index;
+        let block_count = self.current_used_block_num();
+        debug_assert!(block_count <= self.max_block_count);
+
         let location = self.texture
             .push_data(Some(self.start_index), block_count, self.frame_id);
         self.handle.location = Some(location);
@@ -486,18 +501,23 @@ impl<'a> Drop for GpuDataRequest<'a> {
 
 
 /// The main LRU cache interface.
+#[cfg_attr(feature = "capture", derive(Serialize, Deserialize))]
 pub struct GpuCache {
     /// Current frame ID.
     frame_id: FrameId,
     /// CPU-side texture allocator.
     texture: Texture,
+    /// Number of blocks requested this frame that don't
+    /// need to be re-uploaded.
+    saved_block_count: usize,
 }
 
 impl GpuCache {
-    pub fn new() -> GpuCache {
+    pub fn new() -> Self {
         GpuCache {
             frame_id: FrameId::new(0),
             texture: Texture::new(),
+            saved_block_count: 0,
         }
     }
 
@@ -506,6 +526,7 @@ impl GpuCache {
         debug_assert!(self.texture.pending_blocks.is_empty());
         self.frame_id = self.frame_id + 1;
         self.texture.evict_old_blocks(self.frame_id);
+        self.saved_block_count = 0;
     }
 
     // Invalidate a (possibly) existing block in the cache.
@@ -521,12 +542,17 @@ impl GpuCache {
     // Request a resource be added to the cache. If the resource
     /// is already in the cache, `None` will be returned.
     pub fn request<'a>(&'a mut self, handle: &'a mut GpuCacheHandle) -> Option<GpuDataRequest<'a>> {
+        let mut max_block_count = MAX_VERTEX_TEXTURE_WIDTH;
         // Check if the allocation for this handle is still valid.
         if let Some(ref location) = handle.location {
             let block = &mut self.texture.blocks[location.block_index.0];
+            max_block_count = self.texture.rows[block.address.v as usize].block_count_per_item;
             if block.epoch == location.epoch {
-                // Mark last access time to avoid evicting this block.
-                block.last_access_time = self.frame_id;
+                if block.last_access_time != self.frame_id {
+                    // Mark last access time to avoid evicting this block.
+                    block.last_access_time = self.frame_id;
+                    self.saved_block_count += max_block_count;
+                }
                 return None;
             }
         }
@@ -536,6 +562,7 @@ impl GpuCache {
             frame_id: self.frame_id,
             start_index: self.texture.pending_blocks.len(),
             texture: &mut self.texture,
+            max_block_count,
         })
     }
 
@@ -571,10 +598,15 @@ impl GpuCache {
         &mut self,
         profile_counters: &mut GpuCacheProfileCounters,
     ) -> GpuCacheUpdateList {
-        profile_counters.allocated_rows.set(self.texture.rows.len());
+        profile_counters
+            .allocated_rows
+            .set(self.texture.rows.len());
         profile_counters
             .allocated_blocks
             .set(self.texture.allocated_block_count);
+        profile_counters
+            .saved_blocks
+            .set(self.saved_block_count);
 
         GpuCacheUpdateList {
             height: self.texture.height,

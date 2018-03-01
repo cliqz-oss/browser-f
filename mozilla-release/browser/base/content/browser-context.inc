@@ -12,28 +12,33 @@
                   tooltiptext="&backButton.tooltip;"
                   aria-label="&backCmd.label;"
                   command="Browser:BackOrBackDuplicate"
+                  accesskey="&backCmd.accesskey;"
                   onclick="checkForMiddleClick(this, event);"/>
         <menuitem id="context-forward"
                   class="menuitem-iconic"
                   tooltiptext="&forwardButton.tooltip;"
                   aria-label="&forwardCmd.label;"
                   command="Browser:ForwardOrForwardDuplicate"
+                  accesskey="&forwardCmd.accesskey;"
                   onclick="checkForMiddleClick(this, event);"/>
         <menuitem id="context-reload"
                   class="menuitem-iconic"
                   tooltip="dynamic-shortcut-tooltip"
                   aria-label="&reloadCmd.label;"
                   oncommand="gContextMenu.reload(event);"
+                  accesskey="&reloadCmd.accesskey;"
                   onclick="checkForMiddleClick(this, event);"/>
         <menuitem id="context-stop"
                   class="menuitem-iconic"
                   tooltip="dynamic-shortcut-tooltip"
                   aria-label="&stopCmd.label;"
+                  accesskey="&stopCmd.accesskey;"
                   command="Browser:Stop"/>
         <menuitem id="context-bookmarkpage"
                   class="menuitem-iconic"
                   observes="bookmarkThisPageBroadcaster"
                   aria-label="&bookmarkPageCmd2.label;"
+                  accesskey="&bookmarkPageCmd2.accesskey;"
                   oncommand="gContextMenu.bookmarkThisPage();"/>
       </menugroup>
       <menuseparator id="context-sep-navigation"/>
@@ -332,7 +337,7 @@
           <menuitem id="context-reloadframe"
                     label="&reloadFrameCmd.label;"
                     accesskey="&reloadFrameCmd.accesskey;"
-                    oncommand="gContextMenu.reloadFrame();"/>
+                    oncommand="gContextMenu.reloadFrame(event);"/>
           <menuseparator/>
           <menuitem id="context-bookmarkframe"
                     label="&bookmarkThisFrameCmd.label;"

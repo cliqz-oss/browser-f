@@ -23,7 +23,6 @@ const { updateFonts } = require("./actions/fonts");
 const { updatePreviewText, updateShowAllFonts } = require("./actions/font-options");
 
 class FontInspector {
-
   constructor(inspector, window) {
     this.document = window.document;
     this.inspector = inspector;
@@ -167,7 +166,9 @@ class FontInspector {
 
     if (!fonts || !fonts.length) {
       // No fonts to display. Clear the previously shown fonts.
-      this.store.dispatch(updateFonts(fonts));
+      if (this.store) {
+        this.store.dispatch(updateFonts(fonts));
+      }
       return;
     }
 
@@ -184,7 +185,6 @@ class FontInspector {
 
     this.inspector.emit("fontinspector-updated");
   }
-
 }
 
 module.exports = FontInspector;

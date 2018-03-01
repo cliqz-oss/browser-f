@@ -43,8 +43,8 @@ public:
                    const nsIntRegion& aDirtyRegion,
                    LayerManager::DrawPaintedLayerCallback aCallback,
                    void* aCallbackData,
-                   bool aIsProgressive = false) override;
- 
+                   TilePaintFlags aFlags = TilePaintFlags::None) override;
+
   bool SupportsProgressiveUpdate() override { return false; }
   bool ProgressiveUpdate(const nsIntRegion& aValidRegion,
                          const nsIntRegion& aInvalidRegion,
@@ -57,17 +57,17 @@ public:
     MOZ_ASSERT(false, "ProgressiveUpdate not supported!");
     return false;
   }
-  
+
   void ResetPaintedAndValidState() override {
     mPaintedRegion.SetEmpty();
     mValidRegion.SetEmpty();
     mTile.DiscardBuffers();
   }
-  
+
   const nsIntRegion& GetValidRegion() override {
     return mValidRegion;
   }
-  
+
   bool IsLowPrecision() const override {
     return false;
   }
@@ -84,6 +84,8 @@ public:
 
 private:
   TileClient mTile;
+
+  RefPtr<ClientLayerManager> mManager;
 
   nsIntRegion mPaintedRegion;
   nsIntRegion mValidRegion;

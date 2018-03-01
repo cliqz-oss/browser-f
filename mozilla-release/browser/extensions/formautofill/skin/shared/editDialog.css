@@ -9,13 +9,17 @@ p {
   display: flex;
 }
 
-form {
+form,
+div {
   flex-wrap: wrap;
+}
+
+form {
   /* Add extra space to ensure invalid input box is displayed properly */
   padding: 2px;
 }
 
-form > label,
+form label,
 form > p {
   margin: 0 0 0.5em !important;
 }
@@ -38,15 +42,13 @@ textarea {
 }
 
 button {
-  padding: 3px 2em;
-  margin-inline-start: 10px;
-  margin-inline-end: 0;
+  padding-right: 10px;
+  padding-left: 10px;
 }
 
 input,
 select {
   box-sizing: border-box;
-  flex: 1 0 auto;
 }
 
 #controls-container {

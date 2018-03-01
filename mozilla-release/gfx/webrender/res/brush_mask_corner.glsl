@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#define VECS_PER_SPECIFIC_BRUSH 1
+
 #include shared,prim_shared,ellipse,brush
 
 flat varying float vClipMode;
@@ -25,7 +27,8 @@ void brush_vs(
     int prim_address,
     vec2 local_pos,
     RectWithSize local_rect,
-    ivec2 user_data
+    ivec2 user_data,
+    PictureTask pic_task
 ) {
     // Load the specific primitive.
     BrushMaskCornerPrimitive prim = fetch_primitive(prim_address);
@@ -51,7 +54,8 @@ vec4 brush_fs() {
     if (vLocalPos.x < vClipCenter_Radius.x && vLocalPos.y < vClipCenter_Radius.y) {
         // Apply ellipse clip on corner.
         d = distance_to_ellipse(vLocalPos - vClipCenter_Radius.xy,
-                                vClipCenter_Radius.zw);
+                                vClipCenter_Radius.zw,
+                                aa_range);
         d = distance_aa(aa_range, d);
     }
 

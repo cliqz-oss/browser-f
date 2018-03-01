@@ -111,51 +111,37 @@ endif
 # may be overridden if necessary.
 MOZDEPTH ?= $(DEPTH)
 
-ifdef MOZ_MAKE_COMPLETE_MAR
-MAKE_COMPLETE_MAR = 1
-ifeq ($(OS_ARCH), WINNT)
-ifneq ($(MOZ_PKG_FORMAT), SFX7Z)
-MAKE_COMPLETE_MAR =
-endif
-endif
-endif
 repackage-zip: UNPACKAGE='$(ZIP_IN)'
-repackage-zip:  libs-$(AB_CD)
-# call a hook for apps to put their uninstall helper.exe into the package
-	$(UNINSTALLER_PACKAGE_HOOK)
-# call a hook for apps to build the stub installer
-ifdef MOZ_STUB_INSTALLER
-	$(STUB_HOOK)
-endif
-	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/l10n-repack.py $(STAGEDIST) $(DIST)/xpi-stage/locale-$(AB_CD) \
+repackage-zip:
+	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/l10n-repack.py '$(STAGEDIST)' $(DIST)/xpi-stage/locale-$(AB_CD) \
 		$(MOZ_PKG_EXTRAL10N) \
 		$(if $(filter omni,$(MOZ_PACKAGER_FORMAT)),$(if $(NON_OMNIJAR_FILES),--non-resource $(NON_OMNIJAR_FILES)))
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 ifneq (en,$(LPROJ_ROOT))
-	mv $(STAGEDIST)/en.lproj $(STAGEDIST)/$(LPROJ_ROOT).lproj
+	mv '$(STAGEDIST)'/en.lproj '$(STAGEDIST)'/$(LPROJ_ROOT).lproj
 endif
 ifdef MOZ_CRASHREPORTER
 # On Mac OS X, the crashreporter.ini file needs to be moved from under the
 # application bundle's Resources directory where all other l10n files are
 # located to the crash reporter bundle's Resources directory.
-	mv $(STAGEDIST)/crashreporter.app/Contents/Resources/crashreporter.ini \
-	  $(STAGEDIST)/../MacOS/crashreporter.app/Contents/Resources/crashreporter.ini
-	$(RM) -rf $(STAGEDIST)/crashreporter.app
+	mv '$(STAGEDIST)'/crashreporter.app/Contents/Resources/crashreporter.ini \
+	  '$(STAGEDIST)'/../MacOS/crashreporter.app/Contents/Resources/crashreporter.ini
+	$(RM) -rf '$(STAGEDIST)'/crashreporter.app
 endif
 endif
 
 	$(NSINSTALL) -D $(DIST)/l10n-stage/$(PKG_PATH)
-	cd $(DIST)/l10n-stage; \
-	  $(MAKE_PACKAGE)
-ifdef MAKE_COMPLETE_MAR
+	(cd $(DIST)/l10n-stage; \
+	  $(MAKE_PACKAGE))
+ifdef MOZ_MAKE_COMPLETE_MAR
 	$(MAKE) -C $(MOZDEPTH)/tools/update-packaging full-update AB_CD=$(AB_CD) \
 	  PACKAGE_BASE_DIR='$(ABS_DIST)/l10n-stage'
 endif
 # packaging done, undo l10n stuff
 ifneq (en,$(LPROJ_ROOT))
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-	mv $(STAGEDIST)/$(LPROJ_ROOT).lproj $(STAGEDIST)/en.lproj
+	mv '$(STAGEDIST)'/$(LPROJ_ROOT).lproj '$(STAGEDIST)'/en.lproj
 endif
 endif
 	$(NSINSTALL) -D $(DIST)/$(PKG_PATH)
@@ -206,15 +192,20 @@ ifdef NIGHTLY_BUILD
 	fi
 endif
 	$(RM) -rf $(REAL_LOCALE_MERGEDIR)
-	-$(MOZILLA_DIR)/mach compare-locales --merge $(BASE_MERGE) $(srcdir)/l10n.toml $(L10NBASEDIR) $*
+	-$(MOZILLA_DIR)/mach compare-locales $(COMPARE_LOCALES_DEFINES) --merge $(BASE_MERGE) $(srcdir)/l10n.toml $(L10NBASEDIR) $*
 
-langpack-%: LANGPACK_FILE=$(ABS_DIST)/$(PKG_LANGPACK_PATH)$(PKG_LANGPACK_BASENAME).xpi
-langpack-%: AB_CD=$*
-langpack-%: XPI_NAME=locale-$*
 langpack-%: IS_LANGUAGE_REPACK=1
 langpack-%: IS_LANGPACK=1
-langpack-%: multilocale.json-% libs-%
+langpack-%: AB_CD=$*
+langpack-%:
 	@echo 'Making langpack $(LANGPACK_FILE)'
+	@$(MAKE) libs-$(AB_CD)
+	@$(MAKE) package-langpack-$(AB_CD)
+
+package-langpack-%: LANGPACK_FILE=$(ABS_DIST)/$(PKG_LANGPACK_PATH)$(PKG_LANGPACK_BASENAME).xpi
+package-langpack-%: XPI_NAME=locale-$*
+package-langpack-%: AB_CD=$*
+package-langpack-%:
 	$(NSINSTALL) -D $(DIST)/$(PKG_LANGPACK_PATH)
 	$(call py_action,langpack_manifest,--locales $(AB_CD) --min-app-ver $(MOZ_APP_VERSION) --max-app-ver $(MOZ_APP_MAXVERSION) --app-name "$(MOZ_APP_DISPLAYNAME)" --l10n-basedir "$(L10NBASEDIR)" --defines $(LANGPACK_DEFINES) --input $(DIST)/xpi-stage/locale-$(AB_CD))
 	$(call py_action,zip,-C $(DIST)/xpi-stage/locale-$(AB_CD) -x **/*.manifest -x **/*.js -x **/*.ini $(LANGPACK_FILE) $(PKG_ZIP_DIRS) manifest.json)
@@ -256,7 +247,7 @@ endif
 generate-snippet-%:
 	$(PYTHON) $(MOZILLA_DIR)/tools/update-packaging/generatesnippet.py \
           --mar-path=$(ABS_DIST)/update \
-          --application-ini-file=$(STAGEDIST)/application.ini \
+          --application-ini-file='$(STAGEDIST)'/application.ini \
           --locale=$* \
           --product=$(MOZ_PKG_APPNAME) \
           --platform=$(MOZ_PKG_PLATFORM) \

@@ -46,17 +46,23 @@ NS_IMPL_RELEASE_USING_AGGREGATOR(ServoPageRuleDeclaration, Rule())
 
 /* nsDOMCSSDeclaration implementation */
 
-NS_IMETHODIMP
-ServoPageRuleDeclaration::GetParentRule(nsIDOMCSSRule** aParent)
+css::Rule*
+ServoPageRuleDeclaration::GetParentRule()
 {
-  *aParent = do_AddRef(Rule()).take();
-  return NS_OK;
+  return Rule();
 }
 
 nsINode*
 ServoPageRuleDeclaration::GetParentObject()
 {
   return Rule()->GetDocument();
+}
+
+DocGroup*
+ServoPageRuleDeclaration::GetDocGroup() const
+{
+  nsIDocument* document = Rule()->GetDocument();
+  return document ? document->GetDocGroup() : nullptr;
 }
 
 DeclarationBlock*
@@ -90,7 +96,8 @@ ServoPageRuleDeclaration::DocToUpdate()
 
 void
 ServoPageRuleDeclaration::GetCSSParsingEnvironment(
-  CSSParsingEnvironment& aCSSParseEnv)
+  CSSParsingEnvironment& aCSSParseEnv,
+  nsIPrincipal* aSubjectPrincipal)
 {
   MOZ_ASSERT_UNREACHABLE("GetCSSParsingEnvironment "
                          "shouldn't be calling for a Servo rule");
@@ -98,7 +105,8 @@ ServoPageRuleDeclaration::GetCSSParsingEnvironment(
 }
 
 nsDOMCSSDeclaration::ServoCSSParsingEnvironment
-ServoPageRuleDeclaration::GetServoCSSParsingEnvironment() const
+ServoPageRuleDeclaration::GetServoCSSParsingEnvironment(
+  nsIPrincipal* aSubjectPrincipal) const
 {
   return GetServoCSSParsingEnvironmentForRule(Rule());
 }

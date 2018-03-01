@@ -26,6 +26,7 @@ DIRS += [
     'commandlines',
     'contentprefs',
     'contextualidentity',
+    'crashes',
     'crashmonitor',
     'diskspacewatcher',
     'downloads',
@@ -80,9 +81,6 @@ if CONFIG['MOZ_BUILD_APP'] != 'mobile/android':
     if CONFIG['NS_PRINTING']:
         DIRS += ['printing']
 
-if CONFIG['MOZ_CRASHREPORTER']:
-    DIRS += ['crashes']
-
 if CONFIG['BUILD_CTYPES']:
     DIRS += ['ctypes']
 
@@ -91,9 +89,6 @@ if CONFIG['MOZ_FEEDS']:
 
 if CONFIG['MOZ_XUL']:
     DIRS += ['autocomplete', 'printingui', 'satchel']
-
-if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
-    DIRS += ['filepicker']
 
 if CONFIG['MOZ_TOOLKIT_SEARCH']:
     DIRS += ['search']

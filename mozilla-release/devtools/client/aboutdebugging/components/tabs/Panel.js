@@ -6,8 +6,9 @@
 
 "use strict";
 
-const { Component, createFactory, DOM: dom, PropTypes } =
-  require("devtools/client/shared/vendor/react");
+const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const Services = require("Services");
 
 const PanelHeader = createFactory(require("../PanelHeader"));
@@ -24,6 +25,7 @@ class TabsPanel extends Component {
   static get propTypes() {
     return {
       client: PropTypes.instanceOf(DebuggerClient).isRequired,
+      connect: PropTypes.object,
       id: PropTypes.string.isRequired
     };
   }
@@ -75,7 +77,7 @@ class TabsPanel extends Component {
   }
 
   render() {
-    let { client, id } = this.props;
+    let { client, connect, id } = this.props;
     let { tabs } = this.state;
 
     return dom.div({
@@ -91,6 +93,7 @@ class TabsPanel extends Component {
     dom.div({},
       TargetList({
         client,
+        connect,
         id: "tabs",
         name: Strings.GetStringFromName("tabs"),
         sort: false,

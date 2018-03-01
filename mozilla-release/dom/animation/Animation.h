@@ -110,13 +110,14 @@ public:
   double PlaybackRate() const { return mPlaybackRate; }
   void SetPlaybackRate(double aPlaybackRate);
   AnimationPlayState PlayState() const;
+  bool Pending() const { return mPendingState != PendingState::NotPending; }
   virtual Promise* GetReady(ErrorResult& aRv);
-  virtual Promise* GetFinished(ErrorResult& aRv);
+  Promise* GetFinished(ErrorResult& aRv);
   void Cancel();
-  virtual void Finish(ErrorResult& aRv);
+  void Finish(ErrorResult& aRv);
   virtual void Play(ErrorResult& aRv, LimitBehavior aLimitBehavior);
   virtual void Pause(ErrorResult& aRv);
-  virtual void Reverse(ErrorResult& aRv);
+  void Reverse(ErrorResult& aRv);
   bool IsRunningOnCompositor() const;
   IMPL_EVENT_HANDLER(finish);
   IMPL_EVENT_HANDLER(cancel);
@@ -133,6 +134,7 @@ public:
   void SetCurrentTimeAsDouble(const Nullable<double>& aCurrentTime,
                               ErrorResult& aRv);
   virtual AnimationPlayState PlayStateFromJS() const { return PlayState(); }
+  virtual bool PendingFromJS() const { return Pending(); }
   virtual void PlayFromJS(ErrorResult& aRv)
   {
     Play(aRv, LimitBehavior::AutoRewind);
@@ -153,9 +155,7 @@ public:
   virtual void Tick();
   bool NeedsTicks() const
   {
-    AnimationPlayState playState = PlayState();
-    return playState == AnimationPlayState::Running ||
-           playState == AnimationPlayState::Pending;
+    return Pending() || PlayState() == AnimationPlayState::Running;
   }
 
   /**
@@ -263,6 +263,12 @@ public:
 
   bool IsPausedOrPausing() const
   {
+    // FIXME: Once we drop the dom.animations-api.pending-member.enabled pref we
+    // can simplify the following check to just:
+    //
+    //   return PlayState() == AnimationPlayState::Paused;
+    //
+    // And at that point we might not need this method at all.
     return PlayState() == AnimationPlayState::Paused ||
            mPendingState == PendingState::PausePending;
   }
@@ -278,6 +284,10 @@ public:
 
   bool IsPlaying() const
   {
+    // FIXME: Once we drop the dom.animations-api.pending-member.enabled pref we
+    // can simplify the last two conditions to just:
+    //
+    //   PlayState() == AnimationPlayState::Running
     return mPlaybackRate != 0.0 &&
            mTimeline &&
            !mTimeline->GetCurrentTime().IsNull() &&
@@ -342,7 +352,7 @@ public:
    * is canceled, it will be released by its owning element and may not still
    * exist when we would normally go to queue events on the next tick.
    */
-  virtual void MaybeQueueCancelEvent(StickyTimeDuration aActiveTime) {};
+  virtual void MaybeQueueCancelEvent(const StickyTimeDuration& aActiveTime) {};
 
 protected:
   void SilentlySetCurrentTime(const TimeDuration& aNewCurrentTime);
@@ -432,14 +442,14 @@ protected:
   // A Promise that is replaced on each call to Play()
   // and fulfilled when Play() is successfully completed.
   // This object is lazily created by GetReady.
-  // See http://w3c.github.io/web-animations/#current-ready-promise
+  // See http://drafts.csswg.org/web-animations/#current-ready-promise
   RefPtr<Promise> mReady;
 
   // A Promise that is resolved when we reach the end of the effect, or
   // 0 when playing backwards. The Promise is replaced if the animation is
   // finished but then a state change makes it not finished.
   // This object is lazily created by GetFinished.
-  // See http://w3c.github.io/web-animations/#current-finished-promise
+  // See http://drafts.csswg.org/web-animations/#current-finished-promise
   RefPtr<Promise> mFinished;
 
   // Indicates if the animation is in the pending state (and what state it is

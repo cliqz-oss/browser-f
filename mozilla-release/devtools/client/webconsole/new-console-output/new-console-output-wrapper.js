@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-// React & Redux
-const React = require("devtools/client/shared/vendor/react");
+const { createElement, createFactory } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const ReactDOM = require("devtools/client/shared/vendor/react-dom");
 const { Provider } = require("devtools/client/shared/vendor/react-redux");
 
@@ -13,8 +13,9 @@ const { createContextMenu } = require("devtools/client/webconsole/new-console-ou
 const { configureStore } = require("devtools/client/webconsole/new-console-output/store");
 
 const EventEmitter = require("devtools/shared/old-event-emitter");
-const ConsoleOutput = React.createFactory(require("devtools/client/webconsole/new-console-output/components/ConsoleOutput"));
-const FilterBar = React.createFactory(require("devtools/client/webconsole/new-console-output/components/FilterBar"));
+const ConsoleOutput = createFactory(require("devtools/client/webconsole/new-console-output/components/ConsoleOutput"));
+const FilterBar = createFactory(require("devtools/client/webconsole/new-console-output/components/FilterBar"));
+const SideBar = createFactory(require("devtools/client/webconsole/new-console-output/components/SideBar"));
 
 let store = null;
 
@@ -87,14 +88,17 @@ NewConsoleOutputWrapper.prototype = {
           }]));
         },
         hudProxy: hud.proxy,
-        openLink: url => {
-          hud.owner.openLink(url);
+        openLink: (url, e) => {
+          hud.owner.openLink(url, e);
         },
         createElement: nodename => {
           return this.document.createElement(nodename);
         },
         getLongString: (grip) => {
           return hud.proxy.webConsoleClient.getString(grip);
+        },
+        requestData(id, type) {
+          return hud.proxy.networkDataProvider.requestData(id, type);
         },
       };
 
@@ -115,11 +119,23 @@ NewConsoleOutputWrapper.prototype = {
             ? messageVariable.textContent : null;
 
         // Retrieve closes actor id from the DOM.
-        let actorEl = target.closest("[data-link-actor-id]");
+        let actorEl = target.closest("[data-link-actor-id]") ||
+                      target.querySelector("[data-link-actor-id]");
         let actor = actorEl ? actorEl.dataset.linkActorId : null;
 
+        let rootObjectInspector = target.closest(".object-inspector");
+        let rootActor = rootObjectInspector ?
+                        rootObjectInspector.querySelector("[data-link-actor-id]") : null;
+        let rootActorId = rootActor ? rootActor.dataset.linkActorId : null;
+
+        let sidebarTogglePref = store.getState().prefs.sidebarToggle;
+        let openSidebar = sidebarTogglePref ? (messageId) => {
+          store.dispatch(actions.showObjectInSidebar(rootActorId, messageId));
+        } : null;
+
         let menu = createContextMenu(this.jsterm, this.parentNode,
-          { actor, clipboardText, variableText, message, serviceContainer });
+          { actor, clipboardText, variableText, message,
+            serviceContainer, openSidebar, rootActorId });
 
         // Emit the "menu-open" event for testing.
         menu.once("open", () => this.emit("menu-open"));
@@ -175,7 +191,7 @@ NewConsoleOutputWrapper.prototype = {
         });
       }
 
-      let childComponent = ConsoleOutput({
+      let consoleOutput = ConsoleOutput({
         serviceContainer,
         onFirstMeaningfulPaint: resolve
       });
@@ -186,32 +202,42 @@ NewConsoleOutputWrapper.prototype = {
         }
       });
 
-      let provider = React.createElement(
+      let sideBar = SideBar({
+        serviceContainer,
+      });
+
+      let provider = createElement(
         Provider,
         { store },
-        React.DOM.div(
+        dom.div(
           {className: "webconsole-output-wrapper"},
           filterBar,
-          childComponent
-      ));
+          consoleOutput,
+          sideBar
+        ));
       this.body = ReactDOM.render(provider, this.parentNode);
 
       this.jsterm.focus();
     });
   },
 
-  dispatchMessageAdd: function (message, waitForResponse) {
+  dispatchMessageAdd: function (packet, waitForResponse) {
     // Wait for the message to render to resolve with the DOM node.
     // This is just for backwards compatibility with old tests, and should
     // be removed once it's not needed anymore.
     // Can only wait for response if the action contains a valid message.
     let promise;
-    if (waitForResponse) {
+    // Also, do not expect any update while the panel is in background.
+    if (waitForResponse && document.visibilityState === "visible") {
+      const timeStampToMatch = packet.message
+        ? packet.message.timeStamp
+        : packet.timestamp;
+
       promise = new Promise(resolve => {
         let jsterm = this.jsterm;
         jsterm.hud.on("new-messages", function onThisMessage(e, messages) {
           for (let m of messages) {
-            if (m.timeStamp === message.timestamp) {
+            if (m.timeStamp === timeStampToMatch) {
               resolve(m.node);
               jsterm.hud.off("new-messages", onThisMessage);
               return;
@@ -223,7 +249,7 @@ NewConsoleOutputWrapper.prototype = {
       promise = Promise.resolve();
     }
 
-    this.batchedMessagesAdd(message);
+    this.batchedMessagesAdd(packet);
     return promise;
   },
 
@@ -258,6 +284,10 @@ NewConsoleOutputWrapper.prototype = {
 
   dispatchRequestUpdate: function (id, data) {
     this.batchedRequestUpdates({ id, data });
+  },
+
+  dispatchSidebarClose: function () {
+    store.dispatch(actions.sidebarClose());
   },
 
   batchedMessageUpdates: function (info) {

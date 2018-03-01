@@ -267,6 +267,7 @@ static const struct {
   // For testing purpose.
   { "test-phish-proto",    SOCIAL_ENGINEERING_PUBLIC}, // 2
   { "test-unwanted-proto", UNWANTED_SOFTWARE},         // 3
+  { "test-passwordwhite-proto", CSD_WHITELIST},        // 8
 };
 
 NS_IMETHODIMP
@@ -512,7 +513,7 @@ AddThreatSourceFromChannel(ThreatHit& aHit, nsIChannel *aChannel,
   matchingSource->set_type(aType);
 
   nsCOMPtr<nsIURI> uri;
-  rv = aChannel->GetURI(getter_AddRefs(uri));
+  rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCString spec;
@@ -634,12 +635,12 @@ AddTabThreatSources(ThreatHit& aHit, nsIChannel *aChannel)
     }
   }
 
-  // Set top level tab_url threatshource
+  // Set top level tab_url threat source
   rv = AddThreatSourceFromChannel(aHit, topChannel,
                                   ThreatHit_ThreatSourceType_TAB_URL);
   Unused << NS_WARN_IF(NS_FAILED(rv));
 
-  // Set tab_redirect threatshources if there's any
+  // Set tab_redirect threat sources if there's any
   nsCOMPtr<nsILoadInfo> topLoadInfo = topChannel->GetLoadInfo();
   if (!topLoadInfo) {
     return NS_OK;

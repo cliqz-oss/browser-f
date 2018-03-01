@@ -346,7 +346,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter
         varEmitterScope = emitterScope;
     }
 
-    Scope* bodyScope() const { return scopeList.vector[bodyScopeIndex]; }
     Scope* outermostScope() const { return scopeList.vector[0]; }
     Scope* innermostScope() const;
 
@@ -393,7 +392,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     SrcNotesVector& notes() const { return current->notes; }
     ptrdiff_t lastNoteOffset() const { return current->lastNoteOffset; }
     unsigned currentLine() const { return current->currentLine; }
-    unsigned lastColumn() const { return current->lastColumn; }
 
     // Check if the last emitted opcode is a jump target.
     bool lastOpcodeIsJumpTarget() const {
@@ -793,6 +791,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitSelfHostedForceInterpreter(ParseNode* pn);
     MOZ_MUST_USE bool emitSelfHostedAllowContentIter(ParseNode* pn);
     MOZ_MUST_USE bool emitSelfHostedDefineDataProperty(ParseNode* pn);
+    MOZ_MUST_USE bool emitSelfHostedGetPropertySuper(ParseNode* pn);
     MOZ_MUST_USE bool emitSelfHostedHasOwn(ParseNode* pn);
 
     MOZ_MUST_USE bool emitDo(ParseNode* pn);
@@ -834,6 +833,8 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitCallee(ParseNode* callee, ParseNode* call, bool spread, bool* callop);
 
     MOZ_MUST_USE bool emitPipeline(ParseNode* pn);
+
+    MOZ_MUST_USE bool emitExportDefault(ParseNode* pn);
 };
 
 } /* namespace frontend */

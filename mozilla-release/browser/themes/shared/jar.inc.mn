@@ -20,12 +20,12 @@
   skin/classic/browser/addons/addon-install-installed.svg      (../shared/addons/addon-install-installed.svg)
   skin/classic/browser/addons/addon-install-restart.svg        (../shared/addons/addon-install-restart.svg)
   skin/classic/browser/addons/addon-install-warning.svg        (../shared/addons/addon-install-warning.svg)
-* skin/classic/browser/controlcenter/conn-not-secure.svg       (../shared/controlcenter/conn-not-secure.svg)
+  skin/classic/browser/controlcenter/conn-not-secure.svg       (../shared/controlcenter/conn-not-secure.svg)
   skin/classic/browser/controlcenter/connection.svg            (../shared/controlcenter/connection.svg)
   skin/classic/browser/controlcenter/mcb-disabled.svg          (../shared/controlcenter/mcb-disabled.svg)
   skin/classic/browser/controlcenter/extension.svg             (../shared/controlcenter/extension.svg)
-* skin/classic/browser/controlcenter/permissions.svg           (../shared/controlcenter/permissions.svg)
-* skin/classic/browser/controlcenter/tracking-protection.svg   (../shared/controlcenter/tracking-protection.svg)
+  skin/classic/browser/controlcenter/permissions.svg           (../shared/controlcenter/permissions.svg)
+  skin/classic/browser/controlcenter/tracking-protection.svg   (../shared/controlcenter/tracking-protection.svg)
   skin/classic/browser/controlcenter/warning-gray.svg          (../shared/controlcenter/warning-gray.svg)
   skin/classic/browser/controlcenter/warning-yellow.svg        (../shared/controlcenter/warning-yellow.svg)
   skin/classic/browser/customizableui/empty-overflow-panel.png     (../shared/customizableui/empty-overflow-panel.png)
@@ -54,6 +54,7 @@
 
   skin/classic/browser/notification-icons/camera-blocked.svg                (../shared/notification-icons/camera-blocked.svg)
   skin/classic/browser/notification-icons/camera.svg                        (../shared/notification-icons/camera.svg)
+  skin/classic/browser/notification-icons/canvas-blocked.svg                (../shared/notification-icons/canvas-blocked.svg)
   skin/classic/browser/notification-icons/canvas.svg                        (../shared/notification-icons/canvas.svg)
   skin/classic/browser/notification-icons/default-info.svg                  (../shared/notification-icons/default-info.svg)
   skin/classic/browser/notification-icons/desktop-notification-blocked.svg  (../shared/notification-icons/desktop-notification-blocked.svg)
@@ -108,6 +109,7 @@
 * skin/classic/browser/preferences/containers.css              (../shared/preferences/containers.css)
   skin/classic/browser/fxa/default-avatar.svg                  (../shared/fxa/default-avatar.svg)
   skin/classic/browser/fxa/sync-illustration.svg               (../shared/fxa/sync-illustration.svg)
+  skin/classic/browser/fxa/sync-illustration-issue.svg         (../shared/fxa/sync-illustration-issue.svg)
 
 
   skin/classic/browser/accessibility.svg              (../shared/icons/accessibility.svg)
@@ -174,8 +176,6 @@
   skin/classic/browser/zoom-out.svg                   (../shared/icons/zoom-out.svg)
 
 
-  skin/classic/browser/badge-add-engine.png                    (../shared/search/badge-add-engine.png)
-  skin/classic/browser/badge-add-engine@2x.png                 (../shared/search/badge-add-engine@2x.png)
   skin/classic/browser/search-engine-placeholder.png           (../shared/search/search-engine-placeholder.png)
   skin/classic/browser/search-engine-placeholder@2x.png        (../shared/search/search-engine-placeholder@2x.png)
   skin/classic/browser/search-indicator-badge-add.svg          (../shared/search/search-indicator-badge-add.svg)

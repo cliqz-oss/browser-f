@@ -19,6 +19,9 @@
 #include "mozilla/TimeStamp.h"
 
 #include <chrono>
+#ifdef JS_POSIX_NSPR
+# include <dlfcn.h>
+#endif
 #ifdef XP_WIN
 # include <direct.h>
 # include <process.h>
@@ -62,11 +65,20 @@
 # include "jswin.h"
 #endif
 #include "jswrapper.h"
+#ifndef JS_POSIX_NSPR
+# include "prerror.h"
+# include "prlink.h"
+#endif
 #include "shellmoduleloader.out.h"
 
 #include "builtin/ModuleObject.h"
 #include "builtin/RegExp.h"
 #include "builtin/TestingFunctions.h"
+
+#if defined(JS_BUILD_BINAST)
+#include "frontend/BinSource.h"
+#endif // defined(JS_BUILD_BINAST)
+
 #include "frontend/Parser.h"
 #include "gc/GCInternals.h"
 #include "jit/arm/Simulator-arm.h"
@@ -75,7 +87,6 @@
 #include "jit/JitcodeMap.h"
 #include "jit/OptimizationTracking.h"
 #include "js/Debug.h"
-#include "js/GCAPI.h"
 #include "js/GCVector.h"
 #include "js/Initialization.h"
 #include "js/StructuredClone.h"
@@ -86,6 +97,7 @@
 #include "shell/jsshell.h"
 #include "shell/OSObject.h"
 #include "threading/ConditionVariable.h"
+#include "threading/ExclusiveData.h"
 #include "threading/LockGuard.h"
 #include "threading/Thread.h"
 #include "vm/ArgumentsObject.h"
@@ -128,6 +140,23 @@ using mozilla::PodCopy;
 using mozilla::PodEqual;
 using mozilla::TimeDuration;
 using mozilla::TimeStamp;
+
+// Avoid an unnecessary NSPR dependency on Linux and OS X just for the shell.
+#ifdef JS_POSIX_NSPR
+typedef void PRLibrary;
+
+static PRLibrary*
+PR_LoadLibrary(const char* path)
+{
+    return dlopen(path, RTLD_LAZY | RTLD_GLOBAL);
+}
+
+static void
+PR_UnloadLibrary(PRLibrary* dll)
+{
+    dlclose(dll);
+}
+#endif
 
 enum JSShellExitCode {
     EXITCODE_RUNTIME_ERROR      = 3,
@@ -722,7 +751,6 @@ InitModuleLoader(JSContext* cx)
     options.setFileAndLine("shell/ModuleLoader.js", 1);
     options.setSelfHostingMode(false);
     options.setCanLazilyParse(false);
-    options.setVersion(JSVERSION_DEFAULT);
     options.werrorOption = true;
     options.strictOption = true;
 
@@ -820,7 +848,8 @@ DrainJobQueue(JSContext* cx, unsigned argc, Value* vp)
 
 static void
 ForwardingPromiseRejectionTrackerCallback(JSContext* cx, JS::HandleObject promise,
-                                          PromiseRejectionHandlingState state, void* data)
+                                          JS::PromiseRejectionHandlingState state,
+                                          void* data)
 {
     RootedValue callback(cx, GetShellContext(cx)->promiseRejectionTrackerCallback);
     if (callback.isNull()) {
@@ -1062,36 +1091,6 @@ Process(JSContext* cx, const char* filename, bool forceTTY, FileKind kind = File
     return true;
 }
 
-static bool
-Version(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    JSVersion origVersion = JS_GetVersion(cx);
-    if (args.length() == 0 || args[0].isUndefined()) {
-        /* Get version. */
-        args.rval().setInt32(origVersion);
-    } else {
-        /* Set version. */
-        int32_t v = -1;
-        if (args[0].isInt32()) {
-            v = args[0].toInt32();
-        } else if (args[0].isDouble()) {
-            double fv = args[0].toDouble();
-            int32_t fvi;
-            if (NumberEqualsInt32(fv, &fvi))
-                v = fvi;
-        }
-        if (v < 0 || v > JSVERSION_LATEST) {
-            JS_ReportErrorNumberASCII(cx, my_GetErrorMessage, nullptr, JSSMSG_INVALID_ARGS,
-                                      "version");
-            return false;
-        }
-        SetVersionForCurrentRealm(cx, JSVersion(v));
-        args.rval().setInt32(origVersion);
-    }
-    return true;
-}
-
 #ifdef XP_WIN
 #  define GET_FD_FROM_FILE(a) int(_get_osfhandle(fileno(a)))
 #else
@@ -1157,7 +1156,7 @@ CreateMappedArrayBuffer(JSContext* cx, unsigned argc, Value* vp)
         }
         if (off_t(offset) >= st.st_size) {
             JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                                      JSMSG_ARG_INDEX_OUT_OF_RANGE, "2");
+                                      JSMSG_OFFSET_LARGER_THAN_FILESIZE);
             return false;
         }
         size = st.st_size - offset;
@@ -3197,6 +3196,14 @@ Crash(JSContext* cx, unsigned argc, Value* vp)
     char* utf8chars = JS_EncodeStringToUTF8(cx, message);
     if (!utf8chars)
         return false;
+    if (args.get(1).isObject()) {
+        RootedValue v(cx);
+        RootedObject opts(cx, &args[1].toObject());
+        if (!JS_GetProperty(cx, opts, "suppress_minidump", &v))
+            return false;
+        if (v.isBoolean() && v.toBoolean())
+            js::NoteIntentionalCrash();
+    }
 #ifndef DEBUG
     MOZ_ReportCrash(utf8chars, __FILE__, __LINE__);
 #endif
@@ -3277,7 +3284,6 @@ static const JSClass sandbox_class = {
 static void
 SetStandardCompartmentOptions(JS::CompartmentOptions& options)
 {
-    options.behaviors().setVersion(JSVERSION_DEFAULT);
     options.creationOptions().setSharedMemoryAndAtomicsEnabled(enableSharedMemory);
 }
 
@@ -3749,15 +3755,12 @@ EvalInThread(JSContext* cx, unsigned argc, Value* vp, bool cooperative)
         CooperativeBeginWait(cx);
     }
 
-    auto thread = js_new<Thread>(Thread::Options().setStackSize(gMaxStackSize + 128 * 1024));
-    if (!thread || !thread->init(WorkerMain, input)) {
-        ReportOutOfMemory(cx);
-        if (cooperative) {
-            cooperationState->numThreads--;
-            CooperativeYield();
-            CooperativeEndWait(cx);
-        }
-        return false;
+    Thread* thread;
+    {
+        AutoEnterOOMUnsafeRegion oomUnsafe;
+        thread = js_new<Thread>(Thread::Options().setStackSize(gMaxStackSize + 128 * 1024));
+        if (!thread || !thread->init(WorkerMain, input))
+            oomUnsafe.crash("EvalInThread");
     }
 
     if (cooperative) {
@@ -4392,6 +4395,64 @@ GetModuleLoadPath(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
+#if defined(JS_BUILD_BINAST)
+
+static bool
+BinParse(JSContext* cx, unsigned argc, Value* vp)
+{
+    using namespace js::frontend;
+
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    if (args.length() < 1) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_MORE_ARGS_NEEDED,
+                                  "parse", "0", "s");
+        return false;
+    }
+    if (!args[0].isObject()) {
+        const char* typeName = InformalValueTypeName(args[0]);
+        JS_ReportErrorASCII(cx, "expected object (typed array) to parse, got %s", typeName);
+        return false;
+    }
+
+    RootedObject obj(cx, &args[0].toObject());
+    if (!JS_IsTypedArrayObject(obj)) {
+        const char* typeName = InformalValueTypeName(args[0]);
+        JS_ReportErrorASCII(cx, "expected typed array to parse, got %s", typeName);
+        return false;
+    }
+
+    uint32_t buf_length = 0;
+    bool buf_isSharedMemory = false;
+    uint8_t* buf_data = nullptr;
+    GetArrayBufferViewLengthAndData(obj, &buf_length, &buf_isSharedMemory, &buf_data);
+    MOZ_ASSERT(buf_data);
+
+    CompileOptions options(cx);
+    options.setIntroductionType("js shell bin parse")
+           .setFileAndLine("<ArrayBuffer>", 1);
+
+    UsedNameTracker usedNames(cx);
+    if (!usedNames.init())
+        return false;
+
+    BinASTParser reader(cx, cx->tempLifoAlloc(), usedNames, options);
+
+    JS::Result<ParseNode*> parsed = reader.parse(buf_data, buf_length);
+    if (parsed.isErr())
+        return false;
+
+#ifdef DEBUG
+    Fprinter out(stderr);
+    DumpParseTree(parsed.unwrap(), out);
+#endif
+
+    args.rval().setUndefined();
+    return true;
+}
+
+#endif // defined(JS_BUILD_BINAST)
+
 static bool
 Parse(JSContext* cx, unsigned argc, Value* vp)
 {
@@ -4424,22 +4485,22 @@ Parse(JSContext* cx, unsigned argc, Value* vp)
     CompileOptions options(cx);
     options.setIntroductionType("js shell parse")
            .setFileAndLine("<string>", 1);
+
     UsedNameTracker usedNames(cx);
     if (!usedNames.init())
         return false;
     Parser<FullParseHandler, char16_t> parser(cx, cx->tempLifoAlloc(), options, chars, length,
-                                              /* foldConstants = */ true, usedNames, nullptr,
+                                              /* foldConstants = */ false, usedNames, nullptr,
                                               nullptr);
     if (!parser.checkOptions())
         return false;
 
-    ParseNode* pn = parser.parse();
+    ParseNode* pn = parser.parse(); // Deallocated once `parser` goes out of scope.
     if (!pn)
         return false;
 #ifdef DEBUG
     js::Fprinter out(stderr);
     DumpParseTree(pn, out);
-    out.putChar('\n');
 #endif
     args.rval().setUndefined();
     return true;
@@ -5262,7 +5323,8 @@ class ShellSourceHook: public SourceHook {
   public:
     ShellSourceHook(JSContext* cx, JSFunction& fun) : fun(cx, &fun) {}
 
-    bool load(JSContext* cx, const char* filename, char16_t** src, size_t* length) {
+    bool load(JSContext* cx, const char* filename, char16_t** src,
+              size_t* length) override {
         RootedString str(cx, JS_NewStringCopyZ(cx, filename));
         if (!str)
             return false;
@@ -5476,6 +5538,38 @@ IsLatin1(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
+static bool
+UnboxedObjectsEnabled(JSContext* cx, unsigned argc, Value* vp)
+{
+    // Note: this also returns |false| if we're using --ion-eager or if the
+    // JITs are disabled, since that affects how unboxed objects are used.
+
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setBoolean(!jit::JitOptions.disableUnboxedObjects &&
+                           !jit::JitOptions.eagerCompilation &&
+                           jit::IsIonEnabled(cx));
+    return true;
+}
+
+static bool
+IsUnboxedObject(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setBoolean(args.get(0).isObject() &&
+                           args[0].toObject().is<UnboxedPlainObject>());
+    return true;
+}
+
+static bool
+HasCopyOnWriteElements(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setBoolean(args.get(0).isObject() &&
+                           args[0].toObject().isNative() &&
+                           args[0].toObject().as<NativeObject>().denseElementsAreCopyOnWrite());
+    return true;
+}
+
 // Set the profiling stack for each cooperating context in a runtime.
 static bool
 EnsureAllContextProfilingStacks(JSContext* cx)
@@ -5560,23 +5654,39 @@ DisableGeckoProfiling(JSContext* cx, unsigned argc, Value* vp)
 // decrements will be on a garbage object.  We could implement this
 // with atomics and a CAS loop but it's not worth the bother.
 
-static Mutex* sharedArrayBufferMailboxLock;
-static SharedArrayRawBuffer* sharedArrayBufferMailbox;
+struct SharedArrayBufferMailbox
+{
+    SharedArrayBufferMailbox() : buffer(nullptr), length(0) {}
+
+    SharedArrayRawBuffer* buffer;
+    uint32_t              length;
+};
+
+typedef ExclusiveData<SharedArrayBufferMailbox> SABMailbox;
+
+// Never null after successful initialization.
+static SABMailbox* sharedArrayBufferMailbox;
 
 static bool
 InitSharedArrayBufferMailbox()
 {
-    sharedArrayBufferMailboxLock = js_new<Mutex>(mutexid::ShellArrayBufferMailbox);
-    return sharedArrayBufferMailboxLock != nullptr;
+    sharedArrayBufferMailbox = js_new<SABMailbox>(mutexid::ShellArrayBufferMailbox);
+    return sharedArrayBufferMailbox != nullptr;
 }
 
 static void
 DestructSharedArrayBufferMailbox()
 {
     // All workers need to have terminated at this point.
-    if (sharedArrayBufferMailbox)
-        sharedArrayBufferMailbox->dropReference();
-    js_delete(sharedArrayBufferMailboxLock);
+
+    {
+        auto mbx = sharedArrayBufferMailbox->lock();
+        if (mbx->buffer)
+            mbx->buffer->dropReference();
+    }
+
+    js_delete(sharedArrayBufferMailbox);
+    sharedArrayBufferMailbox = nullptr;
 }
 
 static bool
@@ -5586,11 +5696,9 @@ GetSharedArrayBuffer(JSContext* cx, unsigned argc, Value* vp)
     JSObject* newObj = nullptr;
 
     {
-        sharedArrayBufferMailboxLock->lock();
-        auto unlockMailbox = MakeScopeExit([]() { sharedArrayBufferMailboxLock->unlock(); });
+        auto mbx = sharedArrayBufferMailbox->lock();
 
-        SharedArrayRawBuffer* buf = sharedArrayBufferMailbox;
-        if (buf) {
+        if (SharedArrayRawBuffer* buf = mbx->buffer) {
             if (!buf->addReference()) {
                 JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_SC_SAB_REFCNT_OFLO);
                 return false;
@@ -5599,7 +5707,8 @@ GetSharedArrayBuffer(JSContext* cx, unsigned argc, Value* vp)
             // Shared memory is enabled globally in the shell: there can't be a worker
             // that does not enable it if the main thread has it.
             MOZ_ASSERT(cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled());
-            newObj = SharedArrayBufferObject::New(cx, buf);
+
+            newObj = SharedArrayBufferObject::New(cx, buf, mbx->length);
             if (!newObj) {
                 buf->dropReference();
                 return false;
@@ -5616,12 +5725,14 @@ SetSharedArrayBuffer(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     SharedArrayRawBuffer* newBuffer = nullptr;
+    uint32_t newLength = 0;
 
-    if (argc == 0 || args.get(0).isNullOrUndefined()) {
+    if (args.get(0).isNullOrUndefined()) {
         // Clear out the mailbox
     }
     else if (args.get(0).isObject() && args[0].toObject().is<SharedArrayBufferObject>()) {
         newBuffer = args[0].toObject().as<SharedArrayBufferObject>().rawBufferObject();
+        newLength = args[0].toObject().as<SharedArrayBufferObject>().byteLength();
         if (!newBuffer->addReference()) {
             JS_ReportErrorASCII(cx, "Reference count overflow on SharedArrayBuffer");
             return false;
@@ -5632,13 +5743,13 @@ SetSharedArrayBuffer(JSContext* cx, unsigned argc, Value* vp)
     }
 
     {
-        sharedArrayBufferMailboxLock->lock();
-        auto unlockMailbox = MakeScopeExit([]() { sharedArrayBufferMailboxLock->unlock(); });
+        auto mbx = sharedArrayBufferMailbox->lock();
 
-        SharedArrayRawBuffer* oldBuffer = sharedArrayBufferMailbox;
-        if (oldBuffer)
+        if (SharedArrayRawBuffer* oldBuffer = mbx->buffer)
             oldBuffer->dropReference();
-        sharedArrayBufferMailbox = newBuffer;
+
+        mbx->buffer = newBuffer;
+        mbx->length = newLength;
     }
 
     args.rval().setUndefined();
@@ -6501,10 +6612,6 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "clone(fun[, scope])",
 "  Clone function object."),
 
-    JS_FN_HELP("version", Version, 0, 0,
-"version([number])",
-"  Get or force a script compilation version number."),
-
     JS_FN_HELP("options", Options, 0, 0,
 "options([option ...])",
 "  Get or toggle JavaScript options."),
@@ -6733,6 +6840,14 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "  Return any --module-load-path argument passed to the shell.  Used by the\n"
 "  module loader.\n"),
 
+#if defined(JS_BUILD_BINAST)
+
+JS_FN_HELP("parseBin", BinParse, 1, 0,
+"parseBin(arraybuffer)",
+"  Parses a Binary AST, potentially throwing."),
+
+#endif // defined(JS_BUILD_BINAST)
+
     JS_FN_HELP("parse", Parse, 1, 0,
 "parse(code)",
 "  Parses a string, potentially throwing."),
@@ -6941,6 +7056,18 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "isLatin1(s)",
 "  Return true iff the string's characters are stored as Latin1."),
 
+    JS_FN_HELP("unboxedObjectsEnabled", UnboxedObjectsEnabled, 0, 0,
+"unboxedObjectsEnabled()",
+"  Return true if unboxed objects are enabled."),
+
+    JS_FN_HELP("isUnboxedObject", IsUnboxedObject, 1, 0,
+"isUnboxedObject(o)",
+"  Return true iff the object is an unboxed object."),
+
+    JS_FN_HELP("hasCopyOnWriteElements", HasCopyOnWriteElements, 1, 0,
+"hasCopyOnWriteElements(o)",
+"  Return true iff the object has copy-on-write dense elements."),
+
     JS_FN_HELP("stackPointerInfo", StackPointerInfo, 0, 0,
 "stackPointerInfo()",
 "  Return an int32 value which corresponds to the offset of the latest stack\n"
@@ -7080,8 +7207,12 @@ TestAssertRecoveredOnBailout,
 "  this function runs."),
 
     JS_FN_HELP("crash", Crash, 0, 0,
-"crash([message])",
-"  Crashes the process with a MOZ_CRASH."),
+"crash([message, [{disable_minidump:true}]])",
+"  Crashes the process with a MOZ_CRASH, optionally providing a message.\n"
+"  An options object may be passed as the second argument. If the key\n"
+"  'suppress_minidump' is set to true, then a minidump will not be\n"
+"  generated by the crash (which only has an effect if the breakpad\n"
+"  dumping library is loaded.)"),
 
     JS_FN_HELP("setARMHwCapFlags", SetARMHwCapFlags, 1, 0,
 "setARMHwCapFlags(\"flag1,flag2 flag3\")",
@@ -8225,9 +8356,6 @@ SetContextOptions(JSContext* cx, const OptionParser& op)
                              .setAsyncStack(enableAsyncStacks)
                              .setStreams(enableStreams);
 
-    if (op.getBoolOption("wasm-test-mode"))
-        jit::JitOptions.wasmTestMode = true;
-
     if (op.getBoolOption("no-unboxed-objects"))
         jit::JitOptions.disableUnboxedObjects = true;
 
@@ -8238,6 +8366,15 @@ SetContextOptions(JSContext* cx, const OptionParser& op)
             jit::JitOptions.disableCacheIR = true;
         else
             return OptionFailure("cache-ir-stubs", str);
+    }
+
+    if (const char* str = op.getStringOption("spectre-mitigations")) {
+        if (strcmp(str, "on") == 0)
+            jit::JitOptions.spectreIndexMasking = true;
+        else if (strcmp(str, "off") == 0)
+            jit::JitOptions.spectreIndexMasking = false;
+        else
+            return OptionFailure("spectre-mitigations", str);
     }
 
     if (const char* str = op.getStringOption("ion-scalar-replacement")) {
@@ -8635,6 +8772,34 @@ PreInit()
 #endif
 }
 
+class AutoLibraryLoader {
+    Vector<PRLibrary*, 4, SystemAllocPolicy> libraries;
+
+  public:
+
+    ~AutoLibraryLoader() {
+        for (auto dll : libraries) {
+            PR_UnloadLibrary(dll);
+        }
+    }
+
+    PRLibrary* load(const char* path) {
+        PRLibrary* dll = PR_LoadLibrary(path);
+        if (!dll) {
+#ifdef JS_POSIX_NSPR
+            fprintf(stderr, "LoadLibrary '%s' failed: %s\n", path, dlerror());
+#else
+            fprintf(stderr, "LoadLibrary '%s' failed with code %d\n", path, PR_GetError());
+#endif
+            MOZ_CRASH("Failed to load library");
+        }
+
+        MOZ_ALWAYS_TRUE(libraries.append(dll));
+        return dll;
+    }
+};
+
+
 int
 main(int argc, char** argv, char** envp)
 {
@@ -8719,8 +8884,6 @@ main(int argc, char** argv, char** envp)
                                    "instantiation on completion of tier2")
         || !op.addBoolOption('\0', "no-native-regexp", "Disable native regexp compilation")
         || !op.addBoolOption('\0', "no-unboxed-objects", "Disable creating unboxed plain objects")
-        || !op.addBoolOption('\0', "wasm-test-mode", "Enable wasm testing mode, creating synthetic "
-                                   "objects for non-canonical NaNs and i64 returned from wasm.")
         || !op.addBoolOption('\0', "enable-streams", "Enable WHATWG Streams")
 #ifdef ENABLE_SHARED_ARRAY_BUFFER
         || !op.addStringOption('\0', "shared-memory", "on/off",
@@ -8732,6 +8895,8 @@ main(int argc, char** argv, char** envp)
 #  endif
             )
 #endif
+        || !op.addStringOption('\0', "spectre-mitigations", "on/off",
+                               "Whether Spectre mitigations are enabled (default: off, on to enable)")
         || !op.addStringOption('\0', "cache-ir-stubs", "on/off",
                                "Use CacheIR stubs (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-shared-stubs", "on/off",
@@ -8839,6 +9004,8 @@ main(int argc, char** argv, char** envp)
 #endif
         || !op.addStringOption('\0', "module-load-path", "DIR", "Set directory to load modules from")
         || !op.addBoolOption('\0', "no-async-stacks", "Disable async stacks")
+        || !op.addMultiStringOption('\0', "dll", "LIBRARY", "Dynamically load LIBRARY")
+        || !op.addBoolOption('\0', "suppress-minidump", "Suppress crash minidumps")
     )
     {
         return EXIT_FAILURE;
@@ -8887,6 +9054,17 @@ main(int argc, char** argv, char** envp)
 
     if (op.getBoolOption("no-threads"))
         js::DisableExtraThreads();
+
+    AutoLibraryLoader loader;
+    MultiStringRange dllPaths = op.getMultiStringOption("dll");
+    while (!dllPaths.empty()) {
+        char* path = dllPaths.front();
+        loader.load(path);
+        dllPaths.popFront();
+    }
+
+    if (op.getBoolOption("suppress-minidump"))
+        js::NoteIntentionalCrash();
 
     if (!InitSharedArrayBufferMailbox())
         return 1;

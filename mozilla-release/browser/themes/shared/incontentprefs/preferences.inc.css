@@ -26,11 +26,9 @@
 #mainPrefPane {
   width: 100%;
   padding: 0;
-  font: message-box;
-  color: currentColor;
 }
 
-prefpane > groupbox + groupbox {
+.prefpane > groupbox + groupbox {
   margin-top: 16px;
 }
 
@@ -57,9 +55,13 @@ html|option {
 
 description,
 label {
-  line-height: 30px;
+  line-height: 1.8em;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+}
+
+.tip-caption {
+  font-size: .9em;
 }
 
 menulist > hbox > label,
@@ -95,6 +97,24 @@ button > hbox > label {
   margin: 4px 0;
 }
 
+.spotlight {
+  background-color: rgba(0,200,215,0.3);
+  /* Show the border to spotlight the components in high-contrast mode. */
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+[data-subcategory] {
+  margin-left: -4px;
+  margin-right: -4px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+[data-subcategory] > .groupbox-title {
+  padding-inline-start: 4px;
+}
+
 #searchInput {
   border-radius: 0;
 }
@@ -106,8 +126,8 @@ button > hbox > label {
  */
 
 .subcategory:not([hidden]) ~ .subcategory {
-  margin-top: 32px;
-  padding-top: 15px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid rgba(12, 12, 13, 0.15);
 }
 
@@ -174,9 +194,27 @@ button > hbox > label {
 
 .extension-controlled-icon {
   height: 20px;
-  margin-bottom: 6px;
-  vertical-align: bottom;
+  margin: 2px 0 6px;
+  vertical-align: middle;
   width: 20px;
+}
+
+.extension-controlled-disabled {
+  -moz-context-properties: fill, fill-opacity, stroke-opacity;
+  color: GrayText;
+  fill: currentColor;
+  fill-opacity: 1;
+  stroke-opacity: 1;
+}
+
+.extension-controlled-disabled > .extension-controlled-button {
+  display: none;
+}
+
+.extension-controlled-icon.close-icon {
+  height: 30px;
+  width: 30px;
+  margin-inline-start: 5px;
 }
 
 #getStarted {
@@ -193,12 +231,10 @@ button > hbox > label {
 }
 
 #updateApp > .groupbox-body > label {
-  margin: 0 0 4px 0;
-  line-height: 30px;
+  margin: 0 0 4px;
 }
 
 #updateApp > .groupbox-body > description {
-  line-height: 30px;
   margin: 0;
 }
 
@@ -228,7 +264,7 @@ button > hbox > label {
 }
 
 #filter {
-  margin: 4px 0 8px 0;
+  margin: 4px 0 8px;
 }
 
 #handlersView {
@@ -272,7 +308,7 @@ button > hbox > label {
 /* Search Pane */
 
 #engineList {
-  margin: 2px 0 5px 0;
+  margin: 2px 0 5px;
 }
 
 #engineList > treechildren::-moz-tree-image(engineShown, checked),
@@ -301,7 +337,7 @@ button > hbox > label {
 }
 
 #addEnginesBox {
-  margin: 4px 0 0 0;
+  margin: 4px 0 0;
 }
 
 /* Privacy Pane */
@@ -394,7 +430,6 @@ button > hbox > label {
   background-color: #fbfbfb;
   background-clip: content-box;
   color: #424e5a;
-  font-size: 14px;
   /* `transparent` will use the dialogText color in high-contrast themes and
      when page colors are disabled */
   border: 1px solid transparent;
@@ -420,6 +455,7 @@ button > hbox > label {
 }
 
 .dialogTitle {
+  font-size: .9em;
   text-align: center;
   -moz-user-select: none;
 }
@@ -664,7 +700,7 @@ button > hbox > label {
 
 .help-label {
   margin: 0 4px;
-  line-height: 22px;
+  font-size: .9em;
   -moz-user-select: none;
 }
 
@@ -706,9 +742,14 @@ button > hbox > label {
 .search-container {
   position: sticky;
   background-color: var(--in-content-page-background);
-  width: 100%;
   top: 0;
   z-index: 1;
+  /* The search-container should have the capability to cover all spotlight area. */
+  width: calc(100% + 8px);
+  margin-left: -4px;
+  margin-right: -4px;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 #searchInput {

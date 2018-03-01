@@ -43,7 +43,6 @@
 #include "mozilla/layers/GeckoContentController.h"
 #include "nsDeque.h"
 #include "nsISHistoryListener.h"
-#include "nsIPartialSHistoryListener.h"
 
 class nsIDOMWindowUtils;
 class nsIHttpChannel;
@@ -183,29 +182,6 @@ public:
   NS_DECL_NSIDOMEVENTLISTENER
 protected:
   ~ContentListener() {}
-  TabChild* mTabChild;
-};
-
-/**
- * Listens on session history change, and sends NotifySessionHistoryChange to
- * parent process.
- */
-class TabChildSHistoryListener final : public nsISHistoryListener,
-                                       public nsIPartialSHistoryListener,
-                                       public nsSupportsWeakReference
-{
-public:
-  explicit TabChildSHistoryListener(TabChild* aTabChild) : mTabChild(aTabChild) {}
-  void ClearTabChild() { mTabChild = nullptr; }
-
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSISHISTORYLISTENER
-  NS_DECL_NSIPARTIALSHISTORYLISTENER
-
-private:
-  nsresult SHistoryDidUpdate(bool aTruncate = false);
-
-  ~TabChildSHistoryListener() {}
   TabChild* mTabChild;
 };
 
@@ -504,27 +480,6 @@ public:
 
   virtual bool DeallocPDocAccessibleChild(PDocAccessibleChild*) override;
 
-  virtual PDocumentRendererChild*
-  AllocPDocumentRendererChild(const nsRect& aDocumentRect,
-                              const gfx::Matrix& aTransform,
-                              const nsString& aBggcolor,
-                              const uint32_t& aRenderFlags,
-                              const bool& aFlushLayout,
-                              const nsIntSize& arenderSize) override;
-
-  virtual bool
-  DeallocPDocumentRendererChild(PDocumentRendererChild* aCctor) override;
-
-  virtual mozilla::ipc::IPCResult
-  RecvPDocumentRendererConstructor(PDocumentRendererChild* aActor,
-                                   const nsRect& aDocumentRect,
-                                   const gfx::Matrix& aTransform,
-                                   const nsString& aBgcolor,
-                                   const uint32_t& aRenderFlags,
-                                   const bool& aFlushLayout,
-                                   const nsIntSize& aRenderSize) override;
-
-
   virtual PColorPickerChild*
   AllocPColorPickerChild(const nsString& aTitle,
                          const nsString& aInitialColor) override;
@@ -579,8 +534,7 @@ public:
    */
   void MakeVisible();
   void MakeHidden();
-
-  void OnDocShellActivated(bool aIsActive);
+  bool IsVisible();
 
   nsIContentChild* Manager() const { return mManager; }
 
@@ -628,8 +582,6 @@ public:
   void InvalidateLayers();
   void ReinitRendering();
   void ReinitRenderingForDeviceReset();
-  void CompositorUpdated(const TextureFactoryIdentifier& aNewIdentifier,
-                         uint64_t aDeviceResetSeqNo);
 
   static inline TabChild* GetFrom(nsIDOMWindow* aWindow)
   {
@@ -678,7 +630,7 @@ public:
   DeallocPPaymentRequestChild(PPaymentRequestChild* aActor) override;
 
   LayoutDeviceIntPoint GetClientOffset() const { return mClientOffset; }
-  LayoutDeviceIntPoint GetChromeDisplacement() const { return mChromeDisp; };
+  LayoutDeviceIntPoint GetChromeOffset() const { return mChromeOffset; };
 
   bool IPCOpen() const { return mIPCOpen; }
 
@@ -742,8 +694,6 @@ public:
   bool StopAwaitingLargeAlloc();
   bool IsAwaitingLargeAlloc();
 
-  already_AddRefed<nsISHistory> GetRelatedSHistory();
-
   mozilla::dom::TabGroup* TabGroup();
 
 #if defined(ACCESSIBILITY)
@@ -779,20 +729,20 @@ public:
                                   const ScrollableLayerGuid& aGuid,
                                   const uint64_t& aInputBlockId);
 
-  static bool HasActiveTabs()
+  static bool HasVisibleTabs()
   {
-    return sActiveTabs && !sActiveTabs->IsEmpty();
+    return sVisibleTabs && !sVisibleTabs->IsEmpty();
   }
 
-  // Returns the set of TabChilds that are currently in the foreground. There
-  // can be multiple foreground TabChilds if Firefox has multiple windows
-  // open. There can also be zero foreground TabChilds if the foreground tab is
-  // in a different content process. Note that this function should only be
-  // called if HasActiveTabs() returns true.
-  static const nsTHashtable<nsPtrHashKey<TabChild>>& GetActiveTabs()
+  // Returns the set of TabChilds that are currently rendering layers. There
+  // can be multiple TabChilds in this state if Firefox has multiple windows
+  // open or is warming tabs up. There can also be zero TabChilds in this
+  // state. Note that this function should only be called if HasVisibleTabs()
+  // returns true.
+  static const nsTHashtable<nsPtrHashKey<TabChild>>& GetVisibleTabs()
   {
-    MOZ_ASSERT(HasActiveTabs());
-    return *sActiveTabs;
+    MOZ_ASSERT(HasVisibleTabs());
+    return *sVisibleTabs;
   }
 
 protected:
@@ -804,9 +754,9 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvDestroy() override;
 
-  virtual mozilla::ipc::IPCResult RecvSetDocShellIsActive(const bool& aIsActive,
-                                                          const bool& aIsHidden,
-                                                          const uint64_t& aLayerObserverEpoch) override;
+  virtual mozilla::ipc::IPCResult RecvSetDocShellIsActive(const bool& aIsActive) override;
+
+  virtual mozilla::ipc::IPCResult RecvRenderLayers(const bool& aEnabled, const uint64_t& aLayerObserverEpoch) override;
 
   virtual mozilla::ipc::IPCResult RecvNavigateByKey(const bool& aForward,
                                                     const bool& aForDocumentNavigation) override;
@@ -821,13 +771,6 @@ protected:
                                                             const UIStateChangeType& aShowFocusRings) override;
 
   virtual mozilla::ipc::IPCResult RecvStopIMEStateManagement() override;
-
-  virtual mozilla::ipc::IPCResult RecvNotifyAttachGroupedSHistory(const uint32_t& aOffset) override;
-
-  virtual mozilla::ipc::IPCResult RecvNotifyPartialSHistoryActive(const uint32_t& aGlobalLength,
-                                                                  const uint32_t& aTargetLocalIndex) override;
-
-  virtual mozilla::ipc::IPCResult RecvNotifyPartialSHistoryDeactive() override;
 
   virtual mozilla::ipc::IPCResult RecvAwaitLargeAlloc() override;
 
@@ -897,8 +840,7 @@ private:
                           const ScrollableLayerGuid& aGuid,
                           const uint64_t& aInputBlockId);
 
-  void InternalSetDocShellIsActive(bool aIsActive,
-                                   bool aPreserveLayers);
+  void InternalSetDocShellIsActive(bool aIsActive);
 
   bool CreateRemoteLayerManager(mozilla::layers::PCompositorBridgeChild* aCompositorChild);
 
@@ -911,7 +853,6 @@ private:
   nsCOMPtr<nsIURI> mLastURI;
   RenderFrameChild* mRemoteFrame;
   RefPtr<nsIContentChild> mManager;
-  RefPtr<TabChildSHistoryListener> mHistoryListener;
   uint32_t mChromeFlags;
   uint32_t mMaxTouchPoints;
   int32_t mActiveSuppressDisplayport;
@@ -933,7 +874,7 @@ private:
   // Position of client area relative to the outer window
   LayoutDeviceIntPoint mClientOffset;
   // Position of tab, relative to parent widget (typically the window)
-  LayoutDeviceIntPoint mChromeDisp;
+  LayoutDeviceIntPoint mChromeOffset;
   TabId mUniqueId;
 
   // Holds the compositor options for the compositor rendering this tab,
@@ -987,18 +928,29 @@ private:
 #endif
   bool mCoalesceMouseMoveEvents;
 
+  // In some circumstances, a DocShell might be in a state where it is
+  // "blocked", and we should not attempt to change its active state or
+  // the underlying PresShell state until the DocShell becomes unblocked.
+  // It is possible, however, for the parent process to send commands to
+  // change those states while the DocShell is blocked. We store those
+  // states temporarily as "pending", and only apply them once the DocShell
+  // is no longer blocked.
   bool mPendingDocShellIsActive;
-  bool mPendingDocShellPreserveLayers;
   bool mPendingDocShellReceivedMessage;
+  bool mPendingRenderLayers;
+  bool mPendingRenderLayersReceivedMessage;
+  uint64_t mPendingLayerObserverEpoch;
+  // When mPendingDocShellBlockers is greater than 0, the DocShell is blocked,
+  // and once it reaches 0, it is no longer blocked.
   uint32_t mPendingDocShellBlockers;
 
   WindowsHandle mWidgetNativeData;
 
-  // This state is used to keep track of the current active tabs (the ones in
-  // the foreground). There may be more than one if there are multiple browser
-  // windows open. There may be none if this process does not host any
-  // foreground tabs.
-  static nsTHashtable<nsPtrHashKey<TabChild>>* sActiveTabs;
+  // This state is used to keep track of the current visible tabs (the ones rendering
+  // layers). There may be more than one if there are multiple browser windows open, or
+  // tabs are being warmed up. There may be none if this process does not host any
+  // visible or warming tabs.
+  static nsTHashtable<nsPtrHashKey<TabChild>>* sVisibleTabs;
 
   DISALLOW_EVIL_CONSTRUCTORS(TabChild);
 };

@@ -238,8 +238,13 @@ PlacesViewBase.prototype = {
   },
 
   clearAllContents(aPopup) {
-    while (aPopup.firstChild) {
-      aPopup.firstChild.remove();
+    let kid = aPopup.firstChild;
+    while (kid) {
+      let next = kid.nextSibling;
+      if (!kid.classList.contains("panel-header")) {
+        kid.remove();
+      }
+      kid = next;
     }
     aPopup._emptyMenuitem = aPopup._startMarker = aPopup._endMarker = null;
   },
@@ -684,6 +689,10 @@ PlacesViewBase.prototype = {
 
         PlacesUtils.livemarks.getLivemark({ id: aPlacesNode.itemId })
           .then(aLivemark => {
+            if (!this.controller) {
+              // We might have been destroyed in the interim...
+              return;
+            }
             let shouldInvalidate =
               !this.controller.hasCachedLivemarkInfo(aPlacesNode);
             this.controller.cacheLivemarkInfo(aPlacesNode, aLivemark);
@@ -928,6 +937,9 @@ PlacesViewBase.prototype = {
     }
 
     if (popup._placesNode && PlacesUIUtils.getViewForNode(popup) == this) {
+      if (this.controller.hasCachedLivemarkInfo(popup._placesNode)) {
+        Services.telemetry.scalarAdd("browser.feeds.livebookmark_opened", 1);
+      }
       if (!popup._placesNode.containerOpen)
         popup._placesNode.containerOpen = true;
       if (!popup._built)
@@ -2124,8 +2136,8 @@ this.PlacesPanelview = class extends PlacesViewBase {
   handleEvent(event) {
     switch (event.type) {
       case "click":
-        // For left and middle clicks, fall through to the command handler.
-        if (event.button >= 2) {
+        // For middle clicks, fall through to the command handler.
+        if (event.button != 1) {
           break;
         }
       case "command":
@@ -2154,8 +2166,22 @@ this.PlacesPanelview = class extends PlacesViewBase {
     if (!button._placesNode)
       return;
 
+    let modifKey = AppConstants.platform === "macosx" ? event.metaKey
+                                                      : event.ctrlKey;
+    if (!PlacesUIUtils.openInTabClosesMenu && modifKey) {
+      // If 'Recent Bookmarks' in Bookmarks Panel.
+      if (button.parentNode.id == "panelMenu_bookmarksMenu") {
+        button.setAttribute("closemenu", "none");
+      }
+    } else {
+      button.removeAttribute("closemenu");
+    }
     PlacesUIUtils.openNodeWithEvent(button._placesNode, event);
-    this.panelMultiView.closest("panel").hidePopup();
+    // Unlike left-click, middle-click requires manual menu closing.
+    if (button.parentNode.id != "panelMenu_bookmarksMenu" ||
+        (event.type == "click" && event.button == 1 && PlacesUIUtils.openInTabClosesMenu)) {
+      this.panelMultiView.closest("panel").hidePopup();
+    }
   }
 
   _onDragEnd() {

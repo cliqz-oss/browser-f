@@ -11,7 +11,9 @@
 #include "nsHttpConnectionMgr.h"
 #include "ASpdySession.h"
 
+#include "mozilla/Mutex.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/TimeStamp.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsWeakReference.h"
@@ -142,6 +144,11 @@ public:
       return aAfterDOMContentLoaded ? mTailDelayQuantumAfterDCL : mTailDelayQuantum;
     }
     uint32_t       TailBlockingDelayMax() { return mTailDelayMax; }
+    uint32_t       TailBlockingTotalMax() { return mTailTotalMax; }
+
+    uint32_t       ThrottlingReadLimit() { return mThrottleVersion == 1 ? 0 : mThrottleReadLimit; }
+
+    bool           AllowPlaintextServerTiming() { return mAllowPlaintextServerTiming; }
 
     // TCP Keepalive configuration values.
 
@@ -173,15 +180,12 @@ public:
     bool UseFastOpen()
     {
         return mUseFastOpen && mFastOpenSupported &&
-               mFastOpenConsecutiveFailureCounter < mFastOpenConsecutiveFailureLimit;
+               (mFastOpenStallsCounter < mFastOpenStallsLimit) &&
+               (mFastOpenConsecutiveFailureCounter < mFastOpenConsecutiveFailureLimit);
     }
     // If one of tcp connections return PR_NOT_TCP_SOCKET_ERROR while trying
     // fast open, it means that Fast Open is turned off so we will not try again
     // until a restart. This is only on Linux.
-    // For windows 10 we can only check whether a version of windows support
-    // Fast Open at run time, so if we get error PR_NOT_IMPLEMENTED_ERROR it
-    // means that Fast Open is not supported and we will set mFastOpenSupported
-    // to false.
     void SetFastOpenNotSupported() { mFastOpenSupported = false; }
 
     void IncrementFastOpenConsecutiveFailureCounter();
@@ -189,6 +193,14 @@ public:
     void ResetFastOpenConsecutiveFailureCounter()
     {
         mFastOpenConsecutiveFailureCounter = 0;
+    }
+
+    void IncrementFastOpenStallsCounter();
+    uint32_t CheckIfConnectionIsStalledOnlyIfIdleForThisAmountOfSeconds() {
+        return mFastOpenStallsIdleTime;
+    }
+    uint32_t FastOpenStallsTimeout() {
+      return mFastOpenStallsTimeout;
     }
 
     // returns the HTTP framing check level preference, as controlled with
@@ -403,6 +415,14 @@ public:
         return mActiveTabPriority;
     }
 
+    // Called when an optimization feature affecting active vs background tab load
+    // took place.  Called only on the parent process and only updates
+    // mLastActiveTabLoadOptimizationHit timestamp to now.
+    void NotifyActiveTabLoadOptimization();
+    TimeStamp const GetLastActiveTabLoadOptimizationHit();
+    void SetLastActiveTabLoadOptimizationHit(TimeStamp const &when);
+    bool IsBeforeLastActiveTabLoadOptimization(TimeStamp const &when);
+
 private:
     nsHttpHandler();
 
@@ -474,16 +494,20 @@ private:
     uint8_t  mMaxPersistentConnectionsPerProxy;
 
     bool mThrottleEnabled;
+    uint32_t mThrottleVersion;
     uint32_t mThrottleSuspendFor;
     uint32_t mThrottleResumeFor;
-    uint32_t mThrottleResumeIn;
-    uint32_t mThrottleTimeWindow;
+    uint32_t mThrottleReadLimit;
+    uint32_t mThrottleReadInterval;
+    uint32_t mThrottleHoldTime;
+    uint32_t mThrottleMaxTime;
 
     bool mUrgentStartEnabled;
     bool mTailBlockingEnabled;
     uint32_t mTailDelayQuantum;
     uint32_t mTailDelayQuantumAfterDCL;
     uint32_t mTailDelayMax;
+    uint32_t mTailTotalMax;
 
     uint8_t  mRedirectionLimit;
 
@@ -636,9 +660,15 @@ private:
     Atomic<bool, Relaxed> mFastOpenSupported;
     uint32_t mFastOpenConsecutiveFailureLimit;
     uint32_t mFastOpenConsecutiveFailureCounter;
+    uint32_t mFastOpenStallsLimit;
+    uint32_t mFastOpenStallsCounter;
+    uint32_t mFastOpenStallsIdleTime;
+    uint32_t mFastOpenStallsTimeout;
 
     // If true, the transactions from active tab will be dispatched first.
     bool mActiveTabPriority;
+
+    bool mAllowPlaintextServerTiming;
 
 private:
     // For Rate Pacing Certain Network Events. Only assign this pointer on
@@ -688,6 +718,18 @@ private:
     // State for generating channelIds
     uint32_t mProcessId;
     uint32_t mNextChannelId;
+
+    // The last time any of the active tab page load optimization took place.
+    // This is accessed on multiple threads, hence a lock is needed.
+    // On the parent process this is updated to now every time a scheduling
+    // or rate optimization related to the active/background tab is hit.
+    // We carry this value through each http channel's onstoprequest notification
+    // to the parent process.  On the content process then we just update this
+    // value from ipc onstoprequest arguments.  This is a sufficent way of passing
+    // it down to the content process, since the value will be used only after
+    // onstoprequest notification coming from an http channel.
+    Mutex mLastActiveTabLoadOptimizationLock;
+    TimeStamp mLastActiveTabLoadOptimizationHit;
 
 public:
     MOZ_MUST_USE nsresult NewChannelId(uint64_t& channelId);

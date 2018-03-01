@@ -411,7 +411,7 @@ IDBRequest::GetEventTargetParent(EventChainPreVisitor& aVisitor)
   AssertIsOnOwningThread();
 
   aVisitor.mCanHandle = true;
-  aVisitor.mParentTarget = mTransaction;
+  aVisitor.SetParentTarget(mTransaction, false);
   return NS_OK;
 }
 
@@ -428,7 +428,8 @@ class IDBOpenDBRequest::WorkerHolder final
 public:
   explicit
   WorkerHolder(WorkerPrivate* aWorkerPrivate)
-    : mWorkerPrivate(aWorkerPrivate)
+    : mozilla::dom::workers::WorkerHolder("IDBOpenDBRequest::WorkerHolder")
+    , mWorkerPrivate(aWorkerPrivate)
 #ifdef DEBUG
     , mWorkerPrivateDEBUG(aWorkerPrivate)
 #endif

@@ -101,6 +101,15 @@ ClientManagerParent::DeallocPClientSourceParent(PClientSourceParent* aActor)
   return true;
 }
 
+IPCResult
+ClientManagerParent::RecvPClientSourceConstructor(PClientSourceParent* aActor,
+                                                  const ClientSourceConstructorArgs& aArgs)
+{
+  ClientSourceParent* actor = static_cast<ClientSourceParent*>(aActor);
+  actor->Init();
+  return IPC_OK();
+}
+
 ClientManagerParent::ClientManagerParent()
   : mService(ClientManagerService::GetOrCreateInstance())
 {
@@ -108,6 +117,13 @@ ClientManagerParent::ClientManagerParent()
 
 ClientManagerParent::~ClientManagerParent()
 {
+  mService->RemoveManager(this);
+}
+
+void
+ClientManagerParent::Init()
+{
+  mService->AddManager(this);
 }
 
 } // namespace dom

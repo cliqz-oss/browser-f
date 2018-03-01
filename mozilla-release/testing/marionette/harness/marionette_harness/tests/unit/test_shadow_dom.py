@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_driver.by import By
 from marionette_driver.errors import (
     NoSuchElementException,
@@ -16,7 +18,7 @@ class TestShadowDom(MarionetteTestCase):
 
     def setUp(self):
         super(TestShadowDom, self).setUp()
-        self.marionette.set_pref("dom.webcomponents.enabled", True)
+        self.marionette.set_pref("dom.webcomponents.shadowdom.enabled", True)
         self.marionette.navigate(self.marionette.absolute_url("test_shadow_dom.html"))
 
         self.host = self.marionette.find_element(By.ID, "host")
@@ -24,7 +26,7 @@ class TestShadowDom(MarionetteTestCase):
         self.button = self.marionette.find_element(By.ID, "button")
 
     def tearDown(self):
-        self.marionette.clear_pref("dom.webcomponents.enabled")
+        self.marionette.clear_pref("dom.webcomponents.shadowdom.enabled")
         super(TestShadowDom, self).tearDown()
 
     def test_chrome_error(self):

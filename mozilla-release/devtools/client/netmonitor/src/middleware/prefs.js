@@ -13,7 +13,6 @@ const {
   ENABLE_PERSISTENT_LOGS,
   DISABLE_BROWSER_CACHE,
 } = require("../constants");
-const { getRequestFilterTypes } = require("../selectors/index");
 
 /**
   * Update the relevant prefs when:
@@ -26,7 +25,7 @@ function prefsMiddleware(store) {
     switch (action.type) {
       case ENABLE_REQUEST_FILTER_TYPE_ONLY:
       case TOGGLE_REQUEST_FILTER_TYPE:
-        let filters = getRequestFilterTypes(store.getState())
+        let filters = Object.entries(store.getState().filters.requestFilterTypes)
           .filter(([type, check]) => check)
           .map(([type, check]) => type);
         Services.prefs.setCharPref(
@@ -42,9 +41,13 @@ function prefsMiddleware(store) {
         break;
       case TOGGLE_COLUMN:
       case RESET_COLUMNS:
-        let visibleColumns = [...store.getState().ui.columns]
-          .filter(([column, shown]) => shown)
-          .map(([column, shown]) => column);
+        let visibleColumns = [];
+        let columns = store.getState().ui.columns;
+        for (let column in columns) {
+          if (columns[column]) {
+            visibleColumns.push(column);
+          }
+        }
         Services.prefs.setCharPref(
           "devtools.netmonitor.visibleColumns", JSON.stringify(visibleColumns));
         break;

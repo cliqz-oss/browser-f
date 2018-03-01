@@ -278,26 +278,26 @@
                      key="viewBookmarksSidebarKb"
                      observes="viewBookmarksSidebar"
                      oncommand="SidebarUI.show('viewBookmarksSidebar');">
-         <observes element="viewBookmarksSidebar" attribute="checked"/>
-       </toolbarbutton>
+        <observes element="viewBookmarksSidebar" attribute="checked"/>
+      </toolbarbutton>
       <toolbarbutton id="sidebar-switcher-history"
                      label="&historyButton.label;"
                      class="subviewbutton subviewbutton-iconic"
                      key="key_gotoHistory"
                      observes="viewHistorySidebar"
                      oncommand="SidebarUI.show('viewHistorySidebar');">
-         <observes element="viewHistorySidebar" attribute="checked"/>
-       </toolbarbutton>
+        <observes element="viewHistorySidebar" attribute="checked"/>
+      </toolbarbutton>
       <toolbarbutton id="sidebar-switcher-tabs"
                      label="&syncedTabs.sidebar.label;"
                      class="subviewbutton subviewbutton-iconic"
                      observes="viewTabsSidebar"
                      oncommand="SidebarUI.show('viewTabsSidebar');">
-         <observes element="viewTabsSidebar" attribute="checked"/>
-       </toolbarbutton>
+        <observes element="viewTabsSidebar" attribute="checked"/>
+      </toolbarbutton>
       <toolbarseparator/>
-      <vbox id="sidebar-extensions"></vbox>
-      <toolbarseparator/>
+      <!-- Extension toolbarbuttons go here. -->
+      <toolbarseparator id="sidebar-extensions-separator"/>
       <toolbarbutton id="sidebar-reverse-position"
                      class="subviewbutton"
                      oncommand="SidebarUI.reversePosition()"/>
@@ -417,15 +417,15 @@
            emailLink-title="&emailPageCmd.label;"
            sendToDevice-title="&pageAction.sendTabToDevice.label;"
            sendToDevice-notReadyTitle="&sendToDevice.syncNotReady.label;">
-      <photonpanelmultiview id="pageActionPanelMultiView"
-                            mainViewId="pageActionPanelMainView"
-                            viewCacheId="appMenu-viewCache">
+      <panelmultiview id="pageActionPanelMultiView"
+                      mainViewId="pageActionPanelMainView"
+                      viewCacheId="appMenu-viewCache">
         <panelview id="pageActionPanelMainView"
                    context="pageActionContextMenu"
                    class="PanelUI-subView">
           <vbox class="panel-subview-body"/>
         </panelview>
-      </photonpanelmultiview>
+      </panelmultiview>
     </panel>
     <panel id="pageActionFeedback"
            role="alert"
@@ -436,7 +436,8 @@
            tabspecific="true"
            noautofocus="true"
            copyURLFeedback="&copyURLFeedback.label;"
-           sendToDeviceFeedback="&sendToDeviceFeedback.label;">
+           sendToDeviceFeedback="&sendToDeviceFeedback.label;"
+           sendToDeviceOfflineFeedback="&sendToDeviceOfflineFeedback.label;">
       <hbox id="pageActionFeedbackAnimatableBox">
         <image id="pageActionFeedbackAnimatableImage"/>
       </hbox>
@@ -595,13 +596,10 @@
 </vbox>
 #endif
 
-<deck flex="1" id="tab-view-deck">
-<vbox flex="1" id="browser-panel">
-
-  <toolbox id="navigator-toolbox" mode="icons">
+  <toolbox id="navigator-toolbox">
     <!-- Menu -->
     <toolbar type="menubar" id="toolbar-menubar" class="chromeclass-menubar" customizable="true"
-             mode="icons" iconsize="small"
+             mode="icons"
 #ifdef MENUBAR_CAN_AUTOHIDE
              toolbarname="&menubarCmd.label;"
              accesskey="&menubarCmd.accesskey;"
@@ -627,7 +625,6 @@
              fullscreentoolbar="true"
              customizable="true"
              mode="icons"
-             iconsize="small"
              aria-label="&tabsToolbar.label;"
              context="toolbar-context-menu"
              collapsed="true">
@@ -710,7 +707,6 @@
     <toolbar id="nav-bar"
              aria-label="&navbarCmd.label;"
              fullscreentoolbar="true" mode="icons" customizable="true"
-             iconsize="small"
              customizationtarget="nav-bar-customization-target"
              overflowable="true"
              overflowbutton="nav-bar-overflow-button"
@@ -814,6 +810,8 @@
                          tooltiptext="&urlbar.persistentStorageBlocked.tooltip;"/>
                   <image data-permission-id="popup" class="blocked-permission-icon popup-icon" role="button"
                          tooltiptext="&urlbar.popupBlocked.tooltip;"/>
+                  <image data-permission-id="canvas" class="blocked-permission-icon canvas-icon" role="button"
+                         tooltiptext="&urlbar.canvasBlocked.tooltip;"/>
                 </box>
                 <box id="notification-popup-box"
                      hidden="true"
@@ -928,7 +926,7 @@
 
         <toolbarbutton id="library-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
                        removable="true"
-                       onmousedown="PanelUI.showSubView('appMenu-libraryView', this, null, event);"
+                       onmousedown="PanelUI.showSubView('appMenu-libraryView', this, event);"
                        closemenu="none"
                        cui-areatype="toolbar"
                        tooltiptext="&libraryButton.tooltip;"
@@ -975,10 +973,8 @@
       </hbox>
     </toolbar>
 
-    <toolbarset id="customToolbars" context="toolbar-context-menu"/>
-
     <toolbar id="PersonalToolbar"
-             mode="icons" iconsize="small"
+             mode="icons"
              class="chromeclass-directories"
              context="toolbar-context-menu"
              toolbarname="&personalbarCmd.label;" accesskey="&personalbarCmd.accesskey;"
@@ -1152,7 +1148,7 @@
       </toolbarbutton>
 
       <toolbaritem id="search-container"
-                   class="chromeclass-toolbar-additional panel-wide-item"
+                   class="chromeclass-toolbar-additional"
                    title="&searchItem.title;"
                    align="center"
                    flex="100"
@@ -1238,11 +1234,5 @@
   <vbox id="browser-bottombox" layer="true">
     <notificationbox id="global-notificationbox" notificationside="bottom"/>
   </vbox>
-
-</vbox>
-# <iframe id="tab-view"> is dynamically appended as the 2nd child of #tab-view-deck.
-#     Introducing the iframe dynamically, as needed, was found to be better than
-#     starting with an empty iframe here in browser.xul from a Ts standpoint.
-</deck>
 
 </window>

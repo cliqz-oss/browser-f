@@ -15,7 +15,9 @@ const { Task } = require("devtools/shared/task");
 const Services = require("Services");
 const {
   VIEW_NODE_VALUE_TYPE,
+  VIEW_NODE_FONT_TYPE,
   VIEW_NODE_IMAGE_URL_TYPE,
+  VIEW_NODE_VARIABLE_TYPE,
 } = require("devtools/client/inspector/shared/node-types");
 const { getColor } = require("devtools/client/shared/theme");
 const { HTMLTooltip } = require("devtools/client/shared/widgets/tooltip/HTMLTooltip");
@@ -29,12 +31,15 @@ loader.lazyRequireGetter(this, "setImageTooltip",
   "devtools/client/shared/widgets/tooltip/ImageTooltipHelper", true);
 loader.lazyRequireGetter(this, "setBrokenImageTooltip",
   "devtools/client/shared/widgets/tooltip/ImageTooltipHelper", true);
+loader.lazyRequireGetter(this, "setVariableTooltip",
+  "devtools/client/shared/widgets/tooltip/VariableTooltipHelper", true);
 
 const PREF_IMAGE_TOOLTIP_SIZE = "devtools.inspector.imagePreviewTooltipSize";
 
 // Types of existing tooltips
 const TOOLTIP_IMAGE_TYPE = "image";
 const TOOLTIP_FONTFAMILY_TYPE = "font-family";
+const TOOLTIP_VARIABLE_TYPE = "variable";
 
 /**
  * Manages all tooltips in the style-inspector.
@@ -167,11 +172,17 @@ TooltipsOverlay.prototype = {
     }
 
     // Font preview tooltip
-    if (type === VIEW_NODE_VALUE_TYPE && prop.property === "font-family") {
+    if ((type === VIEW_NODE_VALUE_TYPE && prop.property === "font-family") ||
+        (type === VIEW_NODE_FONT_TYPE)) {
       let value = prop.value.toLowerCase();
       if (value !== "inherit" && value !== "unset" && value !== "initial") {
         tooltipType = TOOLTIP_FONTFAMILY_TYPE;
       }
+    }
+
+    // Variable preview tooltip
+    if (type === VIEW_NODE_VARIABLE_TYPE) {
+      tooltipType = TOOLTIP_VARIABLE_TYPE;
     }
 
     return tooltipType;
@@ -222,6 +233,18 @@ TooltipsOverlay.prototype = {
       let font = nodeInfo.value.value;
       let nodeFront = inspector.selection.nodeFront;
       yield this._setFontPreviewTooltip(font, nodeFront);
+
+      if (nodeInfo.type === VIEW_NODE_FONT_TYPE) {
+        // If the hovered element is on the font family span, anchor
+        // the tooltip on the whole property value instead.
+        return target.parentNode;
+      }
+      return true;
+    }
+
+    if (type === TOOLTIP_VARIABLE_TYPE && nodeInfo.value.value.startsWith("--")) {
+      let variable = nodeInfo.value.variable;
+      yield this._setVariablePreviewTooltip(variable);
       return true;
     }
 
@@ -288,6 +311,18 @@ TooltipsOverlay.prototype = {
     yield setImageTooltip(this.getTooltip("previewTooltip"), doc, imageUrl,
       {hideDimensionLabel: true, hideCheckeredBackground: true,
        maxDim, naturalWidth, naturalHeight});
+  }),
+
+  /**
+   * Set the content of the preview tooltip to display a variable preview.
+   *
+   * @param {String} text
+   *        The text to display for the variable tooltip
+   * @return {Promise} A promise that resolves when the preview tooltip content is ready
+   */
+  _setVariablePreviewTooltip: Task.async(function* (text) {
+    let doc = this.view.inspector.panelDoc;
+    yield setVariableTooltip(this.getTooltip("previewTooltip"), doc, text);
   }),
 
   _onNewSelection: function () {

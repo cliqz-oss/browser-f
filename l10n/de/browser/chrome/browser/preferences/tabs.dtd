@@ -8,6 +8,9 @@
 <!ENTITY newWindowsAsTabs.label       "Statt neuem Fenster neuen Tab öffnen">
 <!ENTITY newWindowsAsTabs.accesskey   "F">
 
+<!ENTITY newWindowsAsTabs3.label       "Links in Tabs anstatt in neuen Fenstern öffnen">
+<!ENTITY newWindowsAsTabs3.accesskey   "T">
+
 <!ENTITY warnOnCloseMultipleTabs.label      "Warnen, wenn mehrere Tabs geschlossen werden">
 <!ENTITY warnOnCloseMultipleTabs.accesskey  "m">
 

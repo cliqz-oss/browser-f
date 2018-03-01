@@ -35,12 +35,6 @@ const whitelist = [
     platforms: ["linux", "win", "macosx"],
   },
 
-  // Bug 1363040
-  {
-    file: "chrome://browser/skin/tracking-protection-16.svg#enabled",
-    platforms: ["linux", "win", "macosx"],
-  },
-
   {
     file: "chrome://browser/skin/tabbrowser/tabDragIndicator.png",
     hidpi: "chrome://browser/skin/tabbrowser/tabDragIndicator@2x.png",
@@ -93,7 +87,7 @@ add_task(async function() {
   let startupRecorder = Cc["@mozilla.org/test/startuprecorder;1"].getService().wrappedJSObject;
   await startupRecorder.done;
 
-  let data = startupRecorder.data.images;
+  let data = Cu.cloneInto(startupRecorder.data.images, {});
   let filteredWhitelist = whitelist.filter(el => {
     return el.platforms.includes(AppConstants.platform);
   });

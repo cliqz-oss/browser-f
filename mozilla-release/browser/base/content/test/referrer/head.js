@@ -153,9 +153,7 @@ function delayedStartupFinished(aWindow) {
  * @resolves With the tab once it's loaded.
  */
 function someTabLoaded(aWindow) {
-  return BrowserTestUtils.waitForNewTab(gTestWindow.gBrowser).then((tab) => {
-    return BrowserTestUtils.browserStopped(tab.linkedBrowser).then(() => tab);
-  });
+  return BrowserTestUtils.waitForNewTab(gTestWindow.gBrowser, null, true);
 }
 
 /**
@@ -208,7 +206,8 @@ function referrerTestCaseLoaded(aTestNumber, aParams) {
   let url = test.fromScheme + server +
             "?scheme=" + escape(test.toScheme) +
             "&policy=" + escape(test.policy || "") +
-            "&rel=" + escape(test.rel || "");
+            "&rel=" + escape(test.rel || "") +
+            "&cross=" + escape(test.cross || "");
   let browser = gTestWindow.gBrowser;
   return BrowserTestUtils.openNewForegroundTab(browser, () => {
     browser.selectedTab = browser.addTab(url, aParams);

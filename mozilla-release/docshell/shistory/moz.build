@@ -6,9 +6,6 @@
 
 XPIDL_SOURCES += [
     'nsIBFCacheEntry.idl',
-    'nsIGroupedSHistory.idl',
-    'nsIPartialSHistory.idl',
-    'nsIPartialSHistoryListener.idl',
     'nsISHContainer.idl',
     'nsISHEntry.idl',
     'nsISHistory.idl',
@@ -36,5 +33,5 @@ LOCAL_INCLUDES += [
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

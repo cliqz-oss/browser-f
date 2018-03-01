@@ -14,7 +14,7 @@ parts it can be useful to know about:
     to communicate with, instrument, and control Gecko.  It is
     built in to Firefox and written in [XPCOM] flavoured JavaScript.
 
-  * [_libwebdriver_] is a Rust crate providing interfaces, traits
+  * [_webdriver_] is a Rust crate providing interfaces, traits
     and types, errors, type- and bounds checks, and JSON marshaling
     for correctly parsing and emitting the [WebDriver protocol].
 
@@ -24,7 +24,7 @@ for contributing high-quality and actionable bugs and code.
 
 [_geckodriver_]: ./README.md
 [_Marionette_]: ../marionette/README.md
-[_libwebdriver_]: ../webdriver/README.md
+[_webdriver_]: ../webdriver/README.md
 [WebDriver protocol]: https://w3c.github.io/webdriver/webdriver-spec.html#protocol
 [XPCOM]: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Guide
 [Community Participation Guidelines]: https://www.mozilla.org/en-US/about/governance/policies/participation/
@@ -89,7 +89,7 @@ where to start.  Please don’t hesitate to [ask questions]!
 The canonical source code repository of geckodriver is now
 [mozilla-central].  We continue to use the [GitHub issue tracker] as
 a triage ground before actual, actionable bugs and tasks are filed
-in the [`Testing :: geckodriver`] component in Bugzilla.  We also
+in the [`Testing :: geckodriver`] component on Bugzilla.  We also
 have a curated set of [good first bugs] you may consider attempting first.
 
 The purpose of this guide _is not_ to make sure you have a basic
@@ -126,8 +126,7 @@ When you have, you are ready to start off your first build:
 
 	% ./mach build testing/geckodriver
 
-The geckodriver executable will appear in `${objdir}/dist/bin/geckodriver`
-alongside firefox-bin.  To run it you can use mach:
+To run the executable from the objdir:
 
 	% ./mach geckodriver -- --version
 	 0:00.27 /home/ato/src/gecko/obj-x86_64-pc-linux-gnu/dist/bin/geckodriver --version --binary /home/ato/src/gecko/obj-x86_64-pc-linux-gnu/dist/bin/firefox
@@ -154,18 +153,17 @@ a set of conformance tests with other browser vendors through the
 compatibility between _different_ WebDriver implementations for
 different browsers.
 
-In addition to the WPT tests, geckodriver and libwebdriver has
-unit tests.  At the moment there is no way to run Rust unit tests
-through mach, although this is being worked on.  For the moment
-you need to kick off a separate build using [cargo]:
+In addition to the WPT tests, geckodriver and webdriver have unit tests.
+You can use a mach command to run them:
 
-	% cd testing/geckodriver
-	   Compiling geckodriver v0.19.0 (file:///home/ato/src/gecko/testing/geckodriver)
-	…
-	test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+	% ./mach test testing/geckodriver
 
-Because the unit tests _are not_ currently run in the [Firefox CI],
-hopefully you will find that they all pass. (-:
+The webdriver crate tests are unfortunately not yet runnable through mach.
+Work to make this possible is tracked in [[https://bugzil.la/1424369]].
+For the moment you must run them manually through `cargo`:
+
+	% cd testing/webdriver
+	% cargo test
 
 To run the more extensive WPT tests you can use mach, but first
 make sure you have a build of Firefox:
@@ -229,4 +227,4 @@ channel on irc.mozilla.org.  Don’t ask if you can ask a question, just
 ask, and please wait for an answer as we might not be in your timezone.
 
 [subscribe]: https://lists.mozilla.org/listinfo/tools-marionette
-[archive]: http://groups.google.com/group/mozilla.tools.marionette
+[archive]: https://groups.google.com/group/mozilla.tools.marionette

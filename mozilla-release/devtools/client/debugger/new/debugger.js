@@ -7,7 +7,7 @@
 		var a = typeof exports === 'object' ? factory(require("devtools/client/shared/vendor/react"), require("devtools/client/shared/vendor/lodash"), require("devtools/client/shared/vendor/react-dom"), require("Services"), require("devtools/shared/flags"), require("devtools/client/sourceeditor/editor"), require("devtools/client/shared/vendor/WasmParser"), require("devtools/client/shared/vendor/WasmDis")) : factory(root["devtools/client/shared/vendor/react"], root["devtools/client/shared/vendor/lodash"], root["devtools/client/shared/vendor/react-dom"], root["Services"], root["devtools/shared/flags"], root["devtools/client/sourceeditor/editor"], root["devtools/client/shared/vendor/WasmParser"], root["devtools/client/shared/vendor/WasmDis"]);
 		for(var i in a) (typeof exports === 'object' ? exports : root)[i] = a[i];
 	}
-})(this, function(__WEBPACK_EXTERNAL_MODULE_0__, __WEBPACK_EXTERNAL_MODULE_2__, __WEBPACK_EXTERNAL_MODULE_4__, __WEBPACK_EXTERNAL_MODULE_22__, __WEBPACK_EXTERNAL_MODULE_52__, __WEBPACK_EXTERNAL_MODULE_197__, __WEBPACK_EXTERNAL_MODULE_677__, __WEBPACK_EXTERNAL_MODULE_678__) {
+})(typeof self !== 'undefined' ? self : this, function(__WEBPACK_EXTERNAL_MODULE_0__, __WEBPACK_EXTERNAL_MODULE_2__, __WEBPACK_EXTERNAL_MODULE_4__, __WEBPACK_EXTERNAL_MODULE_22__, __WEBPACK_EXTERNAL_MODULE_52__, __WEBPACK_EXTERNAL_MODULE_197__, __WEBPACK_EXTERNAL_MODULE_677__, __WEBPACK_EXTERNAL_MODULE_678__) {
 return /******/ (function(modules) { // webpackBootstrap
 /******/ 	// The module cache
 /******/ 	var installedModules = {};
@@ -8759,7 +8759,7 @@ module.exports = invariant;
 
   pos_bonus = 20;
 
-  tau_size = 85;
+  tau_size = 150;
 
   miss_coeff = 0.75;
 
@@ -8800,7 +8800,7 @@ module.exports = invariant;
   };
 
   exports.computeScore = computeScore = function(subject, subject_lw, preparedQuery) {
-    var acro, acro_score, align, csc_diag, csc_invalid, csc_row, csc_score, i, j, m, miss_budget, miss_left, mm, n, pos, query, query_lw, record_miss, score, score_diag, score_row, score_up, si_lw, start, sz;
+    var acro, acro_score, align, csc_diag, csc_row, csc_score, csc_should_rebuild, i, j, m, miss_budget, miss_left, n, pos, query, query_lw, record_miss, score, score_diag, score_row, score_up, si_lw, start, sz;
     query = preparedQuery.query;
     query_lw = preparedQuery.query_lw;
     m = subject.length;
@@ -8819,29 +8819,22 @@ module.exports = invariant;
     sz = scoreSize(n, m);
     miss_budget = Math.ceil(miss_coeff * n) + 5;
     miss_left = miss_budget;
+    csc_should_rebuild = true;
     j = -1;
     while (++j < n) {
       score_row[j] = 0;
       csc_row[j] = 0;
     }
-    i = subject_lw.indexOf(query_lw[0]);
-    if (i > -1) {
-      i--;
-    }
-    mm = subject_lw.lastIndexOf(query_lw[n - 1], m);
-    if (mm > i) {
-      m = mm + 1;
-    }
-    csc_invalid = true;
+    i = -1;
     while (++i < m) {
       si_lw = subject_lw[i];
-      if (preparedQuery.charCodes[si_lw.charCodeAt(0)] == null) {
-        if (csc_invalid !== true) {
+      if (!si_lw.charCodeAt(0) in preparedQuery.charCodes) {
+        if (csc_should_rebuild) {
           j = -1;
           while (++j < n) {
             csc_row[j] = 0;
           }
-          csc_invalid = true;
+          csc_should_rebuild = false;
         }
         continue;
       }
@@ -8849,7 +8842,7 @@ module.exports = invariant;
       score_diag = 0;
       csc_diag = 0;
       record_miss = true;
-      csc_invalid = false;
+      csc_should_rebuild = true;
       j = -1;
       while (++j < n) {
         score_up = score_row[j];
@@ -8866,7 +8859,7 @@ module.exports = invariant;
             miss_left = miss_budget;
           } else {
             if (record_miss && --miss_left <= 0) {
-              return score_row[n - 1] * sz;
+              return Math.max(score, score_row[n - 1]) * sz;
             }
             record_miss = false;
           }
@@ -8976,6 +8969,9 @@ module.exports = invariant;
       if (query[j] === subject[i]) {
         sameCase++;
       }
+    }
+    if (sz < k) {
+      i--;
     }
     if (sz === 1) {
       return 1 + 2 * sameCase;
@@ -9094,9 +9090,9 @@ module.exports = invariant;
 
   _ref = __webpack_require__(163), isMatch = _ref.isMatch, computeScore = _ref.computeScore, scoreSize = _ref.scoreSize;
 
-  tau_depth = 13;
+  tau_depth = 20;
 
-  file_coeff = 1.2;
+  file_coeff = 2.5;
 
   exports.score = function(string, query, options) {
     var allowErrors, preparedQuery, score, string_lw;
@@ -9337,7 +9333,7 @@ module.exports = invariant;
         strPos = matchPos;
       }
     }
-    if (strPos < string.length - 1) {
+    if (strPos <= string.length - 1) {
       output += string.substring(strPos);
     }
     return output;
@@ -9848,9 +9844,9 @@ var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
 		module.exports = classNames;
 	} else if (true) {
 		// register as 'classnames', consistent with npm package name
-		!(__WEBPACK_AMD_DEFINE_ARRAY__ = [], __WEBPACK_AMD_DEFINE_RESULT__ = function () {
+		!(__WEBPACK_AMD_DEFINE_ARRAY__ = [], __WEBPACK_AMD_DEFINE_RESULT__ = (function () {
 			return classNames;
-		}.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__),
+		}).apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__),
 				__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
 	} else {
 		window.classNames = classNames;
@@ -10218,10 +10214,15 @@ const prefsSchemaVersion = "1.0.3";
 const pref = Services.pref;
 
 if (isDevelopment()) {
+  pref("devtools.debugger.auto-pretty-print", true);
   pref("devtools.source-map.client-service.enabled", true);
   pref("devtools.debugger.pause-on-exceptions", false);
   pref("devtools.debugger.ignore-caught-exceptions", false);
-  pref("devtools.debugger.call-stack-visible", false);
+  pref("devtools.debugger.call-stack-visible", true);
+  pref("devtools.debugger.scopes-visible", true);
+  pref("devtools.debugger.workers-visible", true);
+  pref("devtools.debugger.expressions-visible", true);
+  pref("devtools.debugger.breakpoints-visible", true);
   pref("devtools.debugger.start-panel-collapsed", false);
   pref("devtools.debugger.end-panel-collapsed", false);
   pref("devtools.debugger.tabs", "[]");
@@ -10234,19 +10235,33 @@ if (isDevelopment()) {
   pref("devtools.debugger.file-search-regex-match", false);
   pref("devtools.debugger.project-directory-root", "");
   pref("devtools.debugger.prefs-schema-version", "1.0.1");
-  pref("devtools.debugger.features.project-text-search", true);
+  pref("devtools.debugger.features.workers", true);
   pref("devtools.debugger.features.async-stepping", true);
   pref("devtools.debugger.features.wasm", true);
   pref("devtools.debugger.features.shortcuts", true);
   pref("devtools.debugger.features.root", true);
+  pref("devtools.debugger.features.column-breakpoints", false);
+  pref("devtools.debugger.features.chrome-scopes", false);
+  pref("devtools.debugger.features.map-scopes", true);
+  pref("devtools.debugger.features.breakpoints-dropdown", true);
+  pref("devtools.debugger.features.remove-command-bar-options", true);
+  pref("devtools.debugger.features.code-coverage", false);
+  pref("devtools.debugger.features.event-listeners", false);
+  pref("devtools.debugger.features.code-folding", false);
+  pref("devtools.debugger.features.outline", true);
   pref("devtools.debugger.features.column-breakpoints", true);
 }
 
 const prefs = new PrefsHelper("devtools", {
+  autoPrettyPrint: ["Bool", "debugger.auto-pretty-print"],
   clientSourceMapsEnabled: ["Bool", "source-map.client-service.enabled"],
   pauseOnExceptions: ["Bool", "debugger.pause-on-exceptions"],
   ignoreCaughtExceptions: ["Bool", "debugger.ignore-caught-exceptions"],
   callStackVisible: ["Bool", "debugger.call-stack-visible"],
+  scopesVisible: ["Bool", "debugger.scopes-visible"],
+  workersVisible: ["Bool", "debugger.workers-visible"],
+  breakpointsVisible: ["Bool", "debugger.breakpoints-visible"],
+  expressionsVisible: ["Bool", "debugger.expressions-visible"],
   startPanelCollapsed: ["Bool", "debugger.start-panel-collapsed"],
   endPanelCollapsed: ["Bool", "debugger.end-panel-collapsed"],
   frameworkGroupingOn: ["Bool", "debugger.ui.framework-grouping-on"],
@@ -10264,12 +10279,20 @@ const prefs = new PrefsHelper("devtools", {
 
 
 const features = new PrefsHelper("devtools.debugger.features", {
-  asyncStepping: ["Bool", "async-stepping", false],
-  projectTextSearch: ["Bool", "project-text-search", true],
-  wasm: ["Bool", "wasm", true],
-  shortcuts: ["Bool", "shortcuts", true],
-  root: ["Bool", "root", false],
-  columnBreakpoints: ["Bool", "column-breakpoints", false]
+  asyncStepping: ["Bool", "async-stepping"],
+  wasm: ["Bool", "wasm"],
+  shortcuts: ["Bool", "shortcuts"],
+  root: ["Bool", "root"],
+  columnBreakpoints: ["Bool", "column-breakpoints"],
+  chromeScopes: ["Bool", "chrome-scopes"],
+  mapScopes: ["Bool", "map-scopes"],
+  breakpointsDropdown: ["Bool", "breakpoints-dropdown"],
+  removeCommandBarOptions: ["Bool", "remove-command-bar-options"],
+  workers: ["Bool", "workers"],
+  codeCoverage: ["Bool", "code-coverage"],
+  eventListeners: ["Bool", "event-listeners"],
+  outline: ["Bool", "outline"],
+  codeFolding: ["Bool", "code-folding"]
 });
 /* harmony export (immutable) */ __webpack_exports__["features"] = features;
 
@@ -10305,7 +10328,7 @@ if (prefs.debuggerPrefsSchemaVersion !== prefsSchemaVersion) {
 /* 247 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0 0 256 272\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><g><path d=\"M0.0996108949,45.522179 L125.908171,0.697276265 L255.103502,44.7252918 L234.185214,211.175097 L125.908171,271.140856 L19.3245136,211.971984 L0.0996108949,45.522179 Z\" fill=\"#E23237\"></path><path d=\"M255.103502,44.7252918 L125.908171,0.697276265 L125.908171,271.140856 L234.185214,211.274708 L255.103502,44.7252918 L255.103502,44.7252918 Z\" fill=\"#B52E31\"></path><path d=\"M126.107393,32.27393 L126.107393,32.27393 L47.7136187,206.692607 L76.9992218,206.194553 L92.7377432,166.848249 L126.207004,166.848249 L126.306615,166.848249 L163.063035,166.848249 L180.29572,206.692607 L208.286381,207.190661 L126.107393,32.27393 L126.107393,32.27393 Z M126.306615,88.155642 L152.803113,143.5393 L127.402335,143.5393 L126.107393,143.5393 L102.997665,143.5393 L126.306615,88.155642 L126.306615,88.155642 Z\" fill=\"#FFFFFF\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 256 272\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><g><path d=\"M0.0996108949,45.522179 L125.908171,0.697276265 L255.103502,44.7252918 L234.185214,211.175097 L125.908171,271.140856 L19.3245136,211.971984 L0.0996108949,45.522179 Z\" fill=\"#E23237\"></path><path d=\"M255.103502,44.7252918 L125.908171,0.697276265 L125.908171,271.140856 L234.185214,211.274708 L255.103502,44.7252918 L255.103502,44.7252918 Z\" fill=\"#B52E31\"></path><path d=\"M126.107393,32.27393 L126.107393,32.27393 L47.7136187,206.692607 L76.9992218,206.194553 L92.7377432,166.848249 L126.207004,166.848249 L126.306615,166.848249 L163.063035,166.848249 L180.29572,206.692607 L208.286381,207.190661 L126.107393,32.27393 L126.107393,32.27393 Z M126.306615,88.155642 L152.803113,143.5393 L127.402335,143.5393 L126.107393,143.5393 L102.997665,143.5393 L126.306615,88.155642 L126.306615,88.155642 Z\" fill=\"#FFFFFF\"></path></g></svg>"
 
 /***/ }),
 /* 248 */
@@ -10649,14 +10672,14 @@ function isSlowBuffer (obj) {
 /* 256 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g fill=\"#764ABC\"><path d=\"M65.6 65.4c2.9-.3 5.1-2.8 5-5.8-.1-3-2.6-5.4-5.6-5.4h-.2c-3.1.1-5.5 2.7-5.4 5.8.1 1.5.7 2.8 1.6 3.7-3.4 6.7-8.6 11.6-16.4 15.7-5.3 2.8-10.8 3.8-16.3 3.1-4.5-.6-8-2.6-10.2-5.9-3.2-4.9-3.5-10.2-.8-15.5 1.9-3.8 4.9-6.6 6.8-8-.4-1.3-1-3.5-1.3-5.1-14.5 10.5-13 24.7-8.6 31.4 3.3 5 10 8.1 17.4 8.1 2 0 4-.2 6-.7 12.8-2.5 22.5-10.1 28-21.4z\"></path><path d=\"M83.2 53c-7.6-8.9-18.8-13.8-31.6-13.8H50c-.9-1.8-2.8-3-4.9-3h-.2c-3.1.1-5.5 2.7-5.4 5.8.1 3 2.6 5.4 5.6 5.4h.2c2.2-.1 4.1-1.5 4.9-3.4H52c7.6 0 14.8 2.2 21.3 6.5 5 3.3 8.6 7.6 10.6 12.8 1.7 4.2 1.6 8.3-.2 11.8-2.8 5.3-7.5 8.2-13.7 8.2-4 0-7.8-1.2-9.8-2.1-1.1 1-3.1 2.6-4.5 3.6 4.3 2 8.7 3.1 12.9 3.1 9.6 0 16.7-5.3 19.4-10.6 2.9-5.8 2.7-15.8-4.8-24.3z\"></path><path d=\"M32.4 67.1c.1 3 2.6 5.4 5.6 5.4h.2c3.1-.1 5.5-2.7 5.4-5.8-.1-3-2.6-5.4-5.6-5.4h-.2c-.2 0-.5 0-.7.1-4.1-6.8-5.8-14.2-5.2-22.2.4-6 2.4-11.2 5.9-15.5 2.9-3.7 8.5-5.5 12.3-5.6 10.6-.2 15.1 13 15.4 18.3 1.3.3 3.5 1 5 1.5-1.2-16.2-11.2-24.6-20.8-24.6-9 0-17.3 6.5-20.6 16.1-4.6 12.8-1.6 25.1 4 34.8-.5.7-.8 1.8-.7 2.9z\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g fill=\"#764ABC\"><path d=\"M65.6 65.4c2.9-.3 5.1-2.8 5-5.8-.1-3-2.6-5.4-5.6-5.4h-.2c-3.1.1-5.5 2.7-5.4 5.8.1 1.5.7 2.8 1.6 3.7-3.4 6.7-8.6 11.6-16.4 15.7-5.3 2.8-10.8 3.8-16.3 3.1-4.5-.6-8-2.6-10.2-5.9-3.2-4.9-3.5-10.2-.8-15.5 1.9-3.8 4.9-6.6 6.8-8-.4-1.3-1-3.5-1.3-5.1-14.5 10.5-13 24.7-8.6 31.4 3.3 5 10 8.1 17.4 8.1 2 0 4-.2 6-.7 12.8-2.5 22.5-10.1 28-21.4z\"></path><path d=\"M83.2 53c-7.6-8.9-18.8-13.8-31.6-13.8H50c-.9-1.8-2.8-3-4.9-3h-.2c-3.1.1-5.5 2.7-5.4 5.8.1 3 2.6 5.4 5.6 5.4h.2c2.2-.1 4.1-1.5 4.9-3.4H52c7.6 0 14.8 2.2 21.3 6.5 5 3.3 8.6 7.6 10.6 12.8 1.7 4.2 1.6 8.3-.2 11.8-2.8 5.3-7.5 8.2-13.7 8.2-4 0-7.8-1.2-9.8-2.1-1.1 1-3.1 2.6-4.5 3.6 4.3 2 8.7 3.1 12.9 3.1 9.6 0 16.7-5.3 19.4-10.6 2.9-5.8 2.7-15.8-4.8-24.3z\"></path><path d=\"M32.4 67.1c.1 3 2.6 5.4 5.6 5.4h.2c3.1-.1 5.5-2.7 5.4-5.8-.1-3-2.6-5.4-5.6-5.4h-.2c-.2 0-.5 0-.7.1-4.1-6.8-5.8-14.2-5.2-22.2.4-6 2.4-11.2 5.9-15.5 2.9-3.7 8.5-5.5 12.3-5.6 10.6-.2 15.1 13 15.4 18.3 1.3.3 3.5 1 5 1.5-1.2-16.2-11.2-24.6-20.8-24.6-9 0-17.3 6.5-20.6 16.1-4.6 12.8-1.6 25.1 4 34.8-.5.7-.8 1.8-.7 2.9z\"></path></g></svg>"
 
 /***/ }),
 /* 257 */,
 /* 258 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg version=\"1.0\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200.000000 200.000000\" preserveAspectRatio=\"xMidYMid meet\"><g transform=\"translate(0.000000,200.000000) scale(0.100000,-0.100000)\" fill=\"#000000\" stroke=\"none\"><path d=\"M247 1663 c-4 -3 -7 -235 -7 -515 l0 -508 175 0 175 0 0 515 0 515 -168 0 c-93 0 -172 -3 -175 -7z m183 -508 c0 -336 -2 -385 -15 -385 -13 0 -15 49 -15 385 0 336 2 385 15 385 13 0 15 -49 15 -385z\"></path><path d=\"M697 1664 c-4 -4 -7 -236 -7 -516 l0 -508 165 0 165 0 2 181 3 181 99 -146 c54 -80 102 -146 106 -146 3 0 51 66 106 148 l99 147 3 -182 2 -183 160 0 160 0 0 515 0 515 -132 0 -133 -1 -130 -194 c-71 -107 -132 -194 -135 -194 -3 -1 -64 86 -135 192 l-131 192 -130 3 c-71 1 -133 -1 -137 -4z m356 -374 c92 -138 172 -250 176 -250 4 0 84 112 177 250 112 166 175 250 187 250 16 0 17 -25 17 -385 0 -336 -2 -385 -15 -385 -13 0 -15 46 -15 350 0 193 -4 350 -8 350 -4 0 -82 -108 -172 -240 -90 -132 -167 -240 -171 -240 -4 0 -81 108 -171 240 -90 131 -166 239 -170 240 -5 0 -8 -157 -8 -350 0 -304 -2 -350 -15 -350 -13 0 -15 49 -15 385 0 360 1 385 18 385 11 -1 74 -86 185 -250z\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.0\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200.000000 200.000000\" preserveAspectRatio=\"xMidYMid meet\"><g transform=\"translate(0.000000,200.000000) scale(0.100000,-0.100000)\" fill=\"#000000\" stroke=\"none\"><path d=\"M247 1663 c-4 -3 -7 -235 -7 -515 l0 -508 175 0 175 0 0 515 0 515 -168 0 c-93 0 -172 -3 -175 -7z m183 -508 c0 -336 -2 -385 -15 -385 -13 0 -15 49 -15 385 0 336 2 385 15 385 13 0 15 -49 15 -385z\"></path><path d=\"M697 1664 c-4 -4 -7 -236 -7 -516 l0 -508 165 0 165 0 2 181 3 181 99 -146 c54 -80 102 -146 106 -146 3 0 51 66 106 148 l99 147 3 -182 2 -183 160 0 160 0 0 515 0 515 -132 0 -133 -1 -130 -194 c-71 -107 -132 -194 -135 -194 -3 -1 -64 86 -135 192 l-131 192 -130 3 c-71 1 -133 -1 -137 -4z m356 -374 c92 -138 172 -250 176 -250 4 0 84 112 177 250 112 166 175 250 187 250 16 0 17 -25 17 -385 0 -336 -2 -385 -15 -385 -13 0 -15 46 -15 350 0 193 -4 350 -8 350 -4 0 -82 -108 -172 -240 -90 -132 -167 -240 -171 -240 -4 0 -81 108 -171 240 -90 131 -166 239 -170 240 -5 0 -8 -157 -8 -350 0 -304 -2 -350 -15 -350 -13 0 -15 49 -15 385 0 360 1 385 18 385 11 -1 74 -86 185 -250z\"></path></g></svg>"
 
 /***/ }),
 /* 259 */
@@ -12266,159 +12289,7 @@ module.exports = {
 /* 343 */,
 /* 344 */,
 /* 345 */,
-/* 346 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, '__esModule', {
-    value: true
-});
-
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
-
-var _createClass = (function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ('value' in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; })();
-
-var _get = function get(_x, _x2, _x3) { var _again = true; _function: while (_again) { var object = _x, property = _x2, receiver = _x3; _again = false; if (object === null) object = Function.prototype; var desc = Object.getOwnPropertyDescriptor(object, property); if (desc === undefined) { var parent = Object.getPrototypeOf(object); if (parent === null) { return undefined; } else { _x = parent; _x2 = property; _x3 = receiver; _again = true; desc = parent = undefined; continue _function; } } else if ('value' in desc) { return desc.value; } else { var getter = desc.get; if (getter === undefined) { return undefined; } return getter.call(receiver); } } };
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
-
-function _objectWithoutProperties(obj, keys) { var target = {}; for (var i in obj) { if (keys.indexOf(i) >= 0) continue; if (!Object.prototype.hasOwnProperty.call(obj, i)) continue; target[i] = obj[i]; } return target; }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var _react = __webpack_require__(0);
-
-var _react2 = _interopRequireDefault(_react);
-
-var DOMParser = typeof window !== 'undefined' && window.DOMParser;
-var process = process || {};
-process.env = process.env || {};
-var parserAvailable = typeof DOMParser !== 'undefined' && DOMParser.prototype != null && DOMParser.prototype.parseFromString != null;
-
-function isParsable(src) {
-    // kinda naive but meh, ain't gonna use full-blown parser for this
-    return parserAvailable && typeof src === 'string' && src.trim().substr(0, 4) === '<svg';
-}
-
-// parse SVG string using `DOMParser`
-function parseFromSVGString(src) {
-    var parser = new DOMParser();
-    return parser.parseFromString(src, "image/svg+xml");
-}
-
-// Transform DOM prop/attr names applicable to `<svg>` element but react-limited
-function switchSVGAttrToReactProp(propName) {
-    switch (propName) {
-        case 'class':
-            return 'className';
-        default:
-            return propName;
-    }
-}
-
-var InlineSVG = (function (_React$Component) {
-    _inherits(InlineSVG, _React$Component);
-
-    _createClass(InlineSVG, null, [{
-        key: 'defaultProps',
-        value: {
-            element: 'i',
-            raw: false,
-            src: ''
-        },
-        enumerable: true
-    }, {
-        key: 'propTypes',
-        value: {
-            src: _react2['default'].PropTypes.string.isRequired,
-            element: _react2['default'].PropTypes.string,
-            raw: _react2['default'].PropTypes.bool
-        },
-        enumerable: true
-    }]);
-
-    function InlineSVG(props) {
-        _classCallCheck(this, InlineSVG);
-
-        _get(Object.getPrototypeOf(InlineSVG.prototype), 'constructor', this).call(this, props);
-        this._extractSVGProps = this._extractSVGProps.bind(this);
-    }
-
-    // Serialize `Attr` objects in `NamedNodeMap`
-
-    _createClass(InlineSVG, [{
-        key: '_serializeAttrs',
-        value: function _serializeAttrs(map) {
-            var ret = {};
-            var prop = undefined;
-            for (var i = 0; i < map.length; i++) {
-                prop = switchSVGAttrToReactProp(map[i].name);
-                ret[prop] = map[i].value;
-            }
-            return ret;
-        }
-
-        // get <svg /> element props
-    }, {
-        key: '_extractSVGProps',
-        value: function _extractSVGProps(src) {
-            var map = parseFromSVGString(src).documentElement.attributes;
-            return map.length > 0 ? this._serializeAttrs(map) : null;
-        }
-
-        // get content inside <svg> element.
-    }, {
-        key: '_stripSVG',
-        value: function _stripSVG(src) {
-            return parseFromSVGString(src).documentElement.innerHTML;
-        }
-    }, {
-        key: 'componentWillReceiveProps',
-        value: function componentWillReceiveProps(_ref) {
-            var children = _ref.children;
-
-            if ("production" !== process.env.NODE_ENV && children != null) {
-                console.info('<InlineSVG />: `children` prop will be ignored.');
-            }
-        }
-    }, {
-        key: 'render',
-        value: function render() {
-            var Element = undefined,
-                __html = undefined,
-                svgProps = undefined;
-            var _props = this.props;
-            var element = _props.element;
-            var raw = _props.raw;
-            var src = _props.src;
-
-            var otherProps = _objectWithoutProperties(_props, ['element', 'raw', 'src']);
-
-            if (raw === true && isParsable(src)) {
-                Element = 'svg';
-                svgProps = this._extractSVGProps(src);
-                __html = this._stripSVG(src);
-            }
-            __html = __html || src;
-            Element = Element || element;
-            svgProps = svgProps || {};
-
-            return _react2['default'].createElement(Element, _extends({}, svgProps, otherProps, { src: null, children: null,
-                dangerouslySetInnerHTML: { __html: __html } }));
-        }
-    }]);
-
-    return InlineSVG;
-})(_react2['default'].Component);
-
-exports['default'] = InlineSVG;
-module.exports = exports['default'];
-
-/***/ }),
+/* 346 */,
 /* 347 */
 /***/ (function(module, exports) {
 
@@ -12446,7 +12317,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /* 351 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 20 16\" stroke=\"none\" fillrule=\"evenodd\"><path d=\"M10.919,13 L9.463,13 C9.29966585,13 9.16550052,12.9591671 9.0605,12.8775 C8.95549947,12.7958329 8.8796669,12.6943339 8.833,12.573 L8.077,10.508 L3.884,10.508 L3.128,12.573 C3.09066648,12.6803339 3.01716722,12.7783329 2.9075,12.867 C2.79783279,12.9556671 2.66366746,13 2.505,13 L1.042,13 L5.018,2.878 L6.943,2.878 L10.919,13 Z M4.367,9.178 L7.594,9.178 L6.362,5.811 C6.30599972,5.66166592 6.24416701,5.48550102 6.1765,5.2825 C6.108833,5.07949898 6.04233366,4.85900119 5.977,4.621 C5.91166634,4.85900119 5.84750032,5.08066564 5.7845,5.286 C5.72149969,5.49133436 5.65966697,5.67099923 5.599,5.825 L4.367,9.178 Z M18.892,13 L18.115,13 C17.9516658,13 17.8233338,12.9755002 17.73,12.9265 C17.6366662,12.8774998 17.5666669,12.7783341 17.52,12.629 L17.366,12.118 C17.1839991,12.2813341 17.0055009,12.4248327 16.8305,12.5485 C16.6554991,12.6721673 16.4746676,12.7759996 16.288,12.86 C16.1013324,12.9440004 15.903001,13.0069998 15.693,13.049 C15.4829989,13.0910002 15.2496679,13.112 14.993,13.112 C14.6896651,13.112 14.4096679,13.0711671 14.153,12.9895 C13.896332,12.9078329 13.6758342,12.7853342 13.4915,12.622 C13.3071657,12.4586658 13.1636672,12.2556679 13.061,12.013 C12.9583328,11.7703321 12.907,11.4880016 12.907,11.166 C12.907,10.895332 12.9781659,10.628168 13.1205,10.3645 C13.262834,10.100832 13.499665,9.8628344 13.831,9.6505 C14.162335,9.43816561 14.6033306,9.2620007 15.154,9.122 C15.7046694,8.9819993 16.3883292,8.90266676 17.205,8.884 L17.205,8.464 C17.205,7.98333093 17.103501,7.62750116 16.9005,7.3965 C16.697499,7.16549885 16.4023352,7.05 16.015,7.05 C15.7349986,7.05 15.5016676,7.08266634 15.315,7.148 C15.1283324,7.21333366 14.9661673,7.28683292 14.8285,7.3685 C14.6908326,7.45016707 14.5636672,7.52366634 14.447,7.589 C14.3303327,7.65433366 14.2020007,7.687 14.062,7.687 C13.9453327,7.687 13.8450004,7.65666697 13.761,7.596 C13.6769996,7.53533303 13.6093336,7.46066711 13.558,7.372 L13.243,6.819 C14.0690041,6.06299622 15.0653275,5.685 16.232,5.685 C16.6520021,5.685 17.0264983,5.75383264 17.3555,5.8915 C17.6845016,6.02916736 17.9633322,6.22049877 18.192,6.4655 C18.4206678,6.71050122 18.5944994,7.00333163 18.7135,7.344 C18.8325006,7.68466837 18.892,8.05799797 18.892,8.464 L18.892,13 Z M15.532,11.922 C15.7093342,11.922 15.8726659,11.9056668 16.022,11.873 C16.1713341,11.8403332 16.3124993,11.7913337 16.4455,11.726 C16.5785006,11.6606663 16.7068327,11.5801671 16.8305,11.4845 C16.9541673,11.3888329 17.0789993,11.2756673 17.205,11.145 L17.205,9.934 C16.7009975,9.95733345 16.279835,10.0004997 15.9415,10.0635 C15.603165,10.1265003 15.3313343,10.2069995 15.126,10.305 C14.9206656,10.4030005 14.7748337,10.5173327 14.6885,10.648 C14.6021662,10.7786673 14.559,10.9209992 14.559,11.075 C14.559,11.3783349 14.6488324,11.5953327 14.8285,11.726 C15.0081675,11.8566673 15.2426652,11.922 15.532,11.922 L15.532,11.922 Z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 20 16\" stroke=\"none\" fillrule=\"evenodd\"><path d=\"M10.919,13 L9.463,13 C9.29966585,13 9.16550052,12.9591671 9.0605,12.8775 C8.95549947,12.7958329 8.8796669,12.6943339 8.833,12.573 L8.077,10.508 L3.884,10.508 L3.128,12.573 C3.09066648,12.6803339 3.01716722,12.7783329 2.9075,12.867 C2.79783279,12.9556671 2.66366746,13 2.505,13 L1.042,13 L5.018,2.878 L6.943,2.878 L10.919,13 Z M4.367,9.178 L7.594,9.178 L6.362,5.811 C6.30599972,5.66166592 6.24416701,5.48550102 6.1765,5.2825 C6.108833,5.07949898 6.04233366,4.85900119 5.977,4.621 C5.91166634,4.85900119 5.84750032,5.08066564 5.7845,5.286 C5.72149969,5.49133436 5.65966697,5.67099923 5.599,5.825 L4.367,9.178 Z M18.892,13 L18.115,13 C17.9516658,13 17.8233338,12.9755002 17.73,12.9265 C17.6366662,12.8774998 17.5666669,12.7783341 17.52,12.629 L17.366,12.118 C17.1839991,12.2813341 17.0055009,12.4248327 16.8305,12.5485 C16.6554991,12.6721673 16.4746676,12.7759996 16.288,12.86 C16.1013324,12.9440004 15.903001,13.0069998 15.693,13.049 C15.4829989,13.0910002 15.2496679,13.112 14.993,13.112 C14.6896651,13.112 14.4096679,13.0711671 14.153,12.9895 C13.896332,12.9078329 13.6758342,12.7853342 13.4915,12.622 C13.3071657,12.4586658 13.1636672,12.2556679 13.061,12.013 C12.9583328,11.7703321 12.907,11.4880016 12.907,11.166 C12.907,10.895332 12.9781659,10.628168 13.1205,10.3645 C13.262834,10.100832 13.499665,9.8628344 13.831,9.6505 C14.162335,9.43816561 14.6033306,9.2620007 15.154,9.122 C15.7046694,8.9819993 16.3883292,8.90266676 17.205,8.884 L17.205,8.464 C17.205,7.98333093 17.103501,7.62750116 16.9005,7.3965 C16.697499,7.16549885 16.4023352,7.05 16.015,7.05 C15.7349986,7.05 15.5016676,7.08266634 15.315,7.148 C15.1283324,7.21333366 14.9661673,7.28683292 14.8285,7.3685 C14.6908326,7.45016707 14.5636672,7.52366634 14.447,7.589 C14.3303327,7.65433366 14.2020007,7.687 14.062,7.687 C13.9453327,7.687 13.8450004,7.65666697 13.761,7.596 C13.6769996,7.53533303 13.6093336,7.46066711 13.558,7.372 L13.243,6.819 C14.0690041,6.06299622 15.0653275,5.685 16.232,5.685 C16.6520021,5.685 17.0264983,5.75383264 17.3555,5.8915 C17.6845016,6.02916736 17.9633322,6.22049877 18.192,6.4655 C18.4206678,6.71050122 18.5944994,7.00333163 18.7135,7.344 C18.8325006,7.68466837 18.892,8.05799797 18.892,8.464 L18.892,13 Z M15.532,11.922 C15.7093342,11.922 15.8726659,11.9056668 16.022,11.873 C16.1713341,11.8403332 16.3124993,11.7913337 16.4455,11.726 C16.5785006,11.6606663 16.7068327,11.5801671 16.8305,11.4845 C16.9541673,11.3888329 17.0789993,11.2756673 17.205,11.145 L17.205,9.934 C16.7009975,9.95733345 16.279835,10.0004997 15.9415,10.0635 C15.603165,10.1265003 15.3313343,10.2069995 15.126,10.305 C14.9206656,10.4030005 14.7748337,10.5173327 14.6885,10.648 C14.6021662,10.7786673 14.559,10.9209992 14.559,11.075 C14.559,11.3783349 14.6488324,11.5953327 14.8285,11.726 C15.0081675,11.8566673 15.2426652,11.922 15.532,11.922 L15.532,11.922 Z\"></path></svg>"
 
 /***/ }),
 /* 352 */
@@ -12482,7 +12353,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /* 357 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><path class=\"st0\" d=\"M9 9.3l3.6 3.6\"></path><ellipse fill=\"transparent\" cx=\"5.9\" cy=\"6.2\" rx=\"4.5\" ry=\"4.5\"></ellipse></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><path class=\"st0\" d=\"M9 9.3l3.6 3.6\"></path><ellipse fill=\"transparent\" cx=\"5.9\" cy=\"6.2\" rx=\"4.5\" ry=\"4.5\"></ellipse></svg>"
 
 /***/ }),
 /* 358 */
@@ -12512,13 +12383,13 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /* 362 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 20 16\" stroke=\"none\" fillrule=\"evenodd\"><rect x=\"3\" y=\"10\" width=\"3\" height=\"3\" rx=\"1\"></rect><rect x=\"12\" y=\"3\" width=\"2\" height=\"9\" rx=\"1\"></rect><rect transform=\"translate(13.000000, 7.500000) rotate(60.000000) translate(-13.000000, -7.500000) \" x=\"12\" y=\"3\" width=\"2\" height=\"9\" rx=\"1\"></rect><rect transform=\"translate(13.000000, 7.500000) rotate(-60.000000) translate(-13.000000, -7.500000) \" x=\"12\" y=\"3\" width=\"2\" height=\"9\" rx=\"1\"></rect></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 20 16\" stroke=\"none\" fillrule=\"evenodd\"><rect x=\"3\" y=\"10\" width=\"3\" height=\"3\" rx=\"1\"></rect><rect x=\"12\" y=\"3\" width=\"2\" height=\"9\" rx=\"1\"></rect><rect transform=\"translate(13.000000, 7.500000) rotate(60.000000) translate(-13.000000, -7.500000) \" x=\"12\" y=\"3\" width=\"2\" height=\"9\" rx=\"1\"></rect><rect transform=\"translate(13.000000, 7.500000) rotate(-60.000000) translate(-13.000000, -7.500000) \" x=\"12\" y=\"3\" width=\"2\" height=\"9\" rx=\"1\"></rect></svg>"
 
 /***/ }),
 /* 363 */
 /***/ (function(module, exports) {
 
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M6.925 12.5l7.4-5-7.4-5v10zM6 12.5v-10c0-.785.8-1.264 1.415-.848l7.4 5c.58.392.58 1.304 0 1.696l-7.4 5C6.8 13.764 6 13.285 6 12.5z\" fill-rule=\"evenodd\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:svg=\"http://www.w3.org/2000/svg\"><path fill=\"black\" id=\"svg_1\" fill-rule=\"evenodd\" d=\"m4.55195,12.97461l7.4,-5l-7.4,-5l0,10zm-0.925,0l0,-10c0,-0.785 0.8,-1.264 1.415,-0.848l7.4,5c0.58,0.392 0.58,1.304 0,1.696l-7.4,5c-0.615,0.416 -1.415,-0.063 -1.415,-0.848z\"></path></svg>"
 
 /***/ }),
 /* 364 */
@@ -12566,7 +12437,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /* 371 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 16 16\" stroke=\"none\" fillrule=\"evenodd\"><rect opacity=\"0.6\" x=\"1\" y=\"3\" width=\"2\" height=\"6\"></rect><rect opacity=\"0.6\" x=\"17\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"6\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"12\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"9\" y=\"3\" width=\"2\" height=\"6\"></rect><path d=\"M4.5,13 L15.5,13 L16,13 L16,12 L15.5,12 L4.5,12 L4,12 L4,13 L4.5,13 L4.5,13 Z\"></path><path d=\"M4,10.5 L4,12.5 L4,13 L5,13 L5,12.5 L5,10.5 L5,10 L4,10 L4,10.5 L4,10.5 Z\"></path><path d=\"M15,10.5 L15,12.5 L15,13 L16,13 L16,12.5 L16,10.5 L16,10 L15,10 L15,10.5 L15,10.5 Z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 16 16\" stroke=\"none\" fillrule=\"evenodd\"><rect opacity=\"0.6\" x=\"1\" y=\"3\" width=\"2\" height=\"6\"></rect><rect opacity=\"0.6\" x=\"17\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"6\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"12\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"9\" y=\"3\" width=\"2\" height=\"6\"></rect><path d=\"M4.5,13 L15.5,13 L16,13 L16,12 L15.5,12 L4.5,12 L4,12 L4,13 L4.5,13 L4.5,13 Z\"></path><path d=\"M4,10.5 L4,12.5 L4,13 L5,13 L5,12.5 L5,10.5 L5,10 L4,10 L4,10.5 L4,10.5 Z\"></path><path d=\"M15,10.5 L15,12.5 L15,13 L16,13 L16,12.5 L16,10.5 L16,10 L15,10 L15,10.5 L15,10.5 Z\"></path></svg>"
 
 /***/ }),
 /* 372 */
@@ -13074,7 +12945,7 @@ module.exports = function(module) {
 /* 806 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 256 256\"><defs><style>.cls-1{isolation:isolate;}.cls-17,.cls-2,.cls-25{fill:none;}.cls-17,.cls-2{stroke-miterlimit:10;}.cls-2{stroke-width:0.75px;stroke:url(#linear-gradient);}.cls-3{fill:url(#linear-gradient-2);}.cls-4{fill:#f15a24;}.cls-5{fill:#ed1c24;}.cls-6{fill:#c1272d;}.cls-7{fill:url(#linear-gradient-3);}.cls-8{fill:url(#linear-gradient-4);}.cls-9{fill:url(#linear-gradient-5);}.cls-10{fill:url(#linear-gradient-6);}.cls-11{opacity:0.49;fill:url(#linear-gradient-7);}.cls-12{fill:url(#linear-gradient-8);}.cls-13{fill:#2db5f9;}.cls-13,.cls-14{mix-blend-mode:screen;}.cls-14{fill:#5fd2ff;}.cls-15{fill:#219058;}.cls-16{fill:url(#linear-gradient-9);}.cls-17{stroke:#fff;stroke-width:1.87px;}.cls-18{fill:#f7b852;}.cls-19{fill:#ff8431;}.cls-20{fill:#fffb69;}.cls-21{fill:#44c688;}.cls-22{fill:#29b36e;}.cls-23{fill:#6fd191;}.cls-24{fill:#c83ad7;}.cls-26{fill:#fba9ff;}.cls-27{fill:#ff737d;}.cls-28{fill:#fdc666;}</style><linearGradient id=\"linear-gradient\" x1=\"67.45\" y1=\"154.72\" x2=\"67.29\" y2=\"155.43\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ff1d25\" stop-opacity=\"0.5\"></stop><stop offset=\"0.06\" stop-color=\"#ff1d25\" stop-opacity=\"0.54\"></stop><stop offset=\"0.37\" stop-color=\"#ff1d25\" stop-opacity=\"0.74\"></stop><stop offset=\"0.64\" stop-color=\"#ff1d25\" stop-opacity=\"0.88\"></stop><stop offset=\"0.86\" stop-color=\"#ff1d25\" stop-opacity=\"0.97\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient><linearGradient id=\"linear-gradient-2\" x1=\"73.09\" y1=\"170.74\" x2=\"73.09\" y2=\"153.5\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ffdd42\"></stop><stop offset=\"1\" stop-color=\"#fb784b\"></stop></linearGradient><linearGradient id=\"linear-gradient-3\" x1=\"201.52\" y1=\"95.13\" x2=\"207.88\" y2=\"89.89\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#5bcb99\"></stop><stop offset=\"1\" stop-color=\"#85a8e8\"></stop></linearGradient><linearGradient id=\"linear-gradient-4\" x1=\"81.17\" y1=\"158.3\" x2=\"279.32\" y2=\"55.49\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#34e28b\"></stop><stop offset=\"1\"></stop></linearGradient><linearGradient id=\"linear-gradient-5\" x1=\"117.57\" y1=\"178.22\" x2=\"133.15\" y2=\"178.22\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#c297ff\"></stop><stop offset=\"1\" stop-color=\"#ae31bb\"></stop></linearGradient><linearGradient id=\"linear-gradient-6\" x1=\"54.05\" y1=\"253.29\" x2=\"251.08\" y2=\"99.63\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-color=\"#d23de2\"></stop></linearGradient><linearGradient id=\"linear-gradient-7\" x1=\"199.8\" y1=\"86.45\" x2=\"191.83\" y2=\"113.37\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-opacity=\"0\"></stop></linearGradient><linearGradient id=\"linear-gradient-8\" x1=\"126.87\" y1=\"190.63\" x2=\"182.9\" y2=\"204.2\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#2db5f9\"></stop><stop offset=\"1\" stop-color=\"#092432\"></stop></linearGradient><linearGradient id=\"linear-gradient-9\" x1=\"83.08\" y1=\"49.55\" x2=\"46.06\" y2=\"151.24\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"0.21\" stop-color=\"#48080a\"></stop><stop offset=\"0.42\" stop-color=\"#891014\"></stop><stop offset=\"0.61\" stop-color=\"#bc151b\"></stop><stop offset=\"0.78\" stop-color=\"#e01a21\"></stop><stop offset=\"0.91\" stop-color=\"#f71c24\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient></defs><title>dojo_square</title><g class=\"cls-1\"><g id=\"Layer_1\" data-name=\"Layer 1\"><line class=\"cls-2\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-3\" d=\"M42.28,150.4l.52.82A58,58,0,0,0,52,161.49a45.23,45.23,0,0,0,28.74,10.25c.65,0,1.31,0,2,0a67.32,67.32,0,0,0,21.13-5.26,67.38,67.38,0,0,1-9.09.83,36.92,36.92,0,0,1-27.44-12.17A66.82,66.82,0,0,1,42.28,150.4Z\"></path><path class=\"cls-4\" d=\"M80.79,80.88a45.4,45.4,0,0,1,38.89,21.94A37,37,0,0,0,84.43,94.7c8.29,4,19.66,7.08,35.28,8.15,0,0-.77-14.87-19.8-22.64-26.57-10.84-30.33-8.69-37.06-19.9a30.09,30.09,0,0,0,6,22.15A45.45,45.45,0,0,1,80.79,80.88Z\"></path><path class=\"cls-5\" d=\"M99.92,80.21c-9.1-3.71-15.52-5.9-20.3-7.62A33.4,33.4,0,0,0,84.54,81a45.42,45.42,0,0,1,35.13,21.78,36.87,36.87,0,0,0-20.54-9.34,109,109,0,0,0,20,9.32l.59,0S118.94,88,99.92,80.21Z\"></path><path class=\"cls-6\" d=\"M119.69,102.85h.1c.29-1.62,2.07-14.46-12.4-25.7C85.78,60.37,81.56,58.82,80.53,49.94a27.8,27.8,0,0,0-.91,22.65c4.78,1.72,11.21,3.91,20.3,7.62,19,7.77,19.8,22.64,19.8,22.64Z\"></path><path class=\"cls-7\" d=\"M185.28,88.22a33.64,33.64,0,0,1,22.08,8.23,29.8,29.8,0,0,1,19,8S208.22,78,176.19,89a41.72,41.72,0,0,0-8.2,4A33.64,33.64,0,0,1,185.28,88.22Z\"></path><path class=\"cls-8\" d=\"M185.28,88.22A33.62,33.62,0,0,0,168,93l.93-.56c-25.88,15.24-57.6,62.06-101.56,62.65h0a36.92,36.92,0,0,0,27.44,12.17,67.38,67.38,0,0,0,9.09-.83c28.6-11.79,56.09-40,68.55-53.64,11.56-12.67,24.22-17,34.91-16.34A33.64,33.64,0,0,0,185.28,88.22Z\"></path><path class=\"cls-9\" d=\"M118.48,179a20.94,20.94,0,0,0-.92,5.86,22.25,22.25,0,0,0,1,6.74,16.56,16.56,0,0,1,5.5-14.74c0-.17.09-.34.14-.51a20.37,20.37,0,0,1,8.91-11.47l-.08,0a37.84,37.84,0,0,0-4,1.53A20.87,20.87,0,0,0,118.48,179Z\"></path><path class=\"cls-10\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-11\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-12\" d=\"M137.8,201.88a20.44,20.44,0,0,1-13.68-25.12h0l0,.08a16.56,16.56,0,0,0-5.5,14.73,20.94,20.94,0,0,0,33.63,9.38A20.37,20.37,0,0,1,137.8,201.88Z\"></path><path class=\"cls-13\" d=\"M144.91,200.4c2.12-6.17,9-15.7,16.33-11.34,0,0,6,3.36,7.23-6.11,0,0,4.49,22.28-17.1,21.53,0,0,4.86-3.55,4.81-7.2A24.73,24.73,0,0,1,144.91,200.4Z\"></path><path class=\"cls-14\" d=\"M153.52,186.75c2.14-1.09,4.16-2.18,8.08-.44,3,1.35,6.88-3.94,3.56-8.66,0,0,.21,4.88-3.72,4.84A8.81,8.81,0,0,0,153.52,186.75Z\"></path><path class=\"cls-15\" d=\"M175.21,115.88c-5.17,7-12.75,12.95-13.64,14.39s1.5,6.11,5,6.45.82-1.36.52-3,1.06,1,5.27.42-1.53-2.2-1.14-4.33,4.74-6.17,6.47-10.25,4.7,0,3.18,3.18c-.6,1.26,4.81-3.54,2.08-7.21S178.22,111.77,175.21,115.88Z\"></path><path class=\"cls-15\" d=\"M160.47,131.28c-.76.73-3,2.37-3,2.37s2.19,3.05,5,3c0,0,.61-.29-.27-1.18S160.27,131.82,160.47,131.28Z\"></path><path class=\"cls-16\" d=\"M84.43,94.7c-7.35-3.56-12.27-7.88-15.54-12.24A45.42,45.42,0,0,0,42.28,150.4a66.82,66.82,0,0,0,25.09,4.67h0A37,37,0,0,1,84.43,94.7Z\"></path><line class=\"cls-17\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-18\" d=\"M84.52,81c2,2.91,7.81,7.94,14.63,12.44a36.87,36.87,0,0,1,20.52,9.33A45.42,45.42,0,0,0,84.52,81Z\"></path><path class=\"cls-19\" d=\"M84.52,81c-1.23-.1-2.48-.16-3.74-.16a45.45,45.45,0,0,0-11.89,1.58c3.27,4.36,8.19,8.67,15.54,12.24a36.72,36.72,0,0,1,14.72-1.22C92.33,89,86.54,83.95,84.52,81Z\"></path><path class=\"cls-20\" d=\"M109.73,91.38a33.29,33.29,0,0,0-12.21-7.29C100.46,89.66,103,91.38,109.73,91.38Z\"></path><path class=\"cls-6\" d=\"M96.89,67.66a63.16,63.16,0,0,1,6.54,4.58c.52.39-.93-3.55-2.62-4.3A7.5,7.5,0,0,0,96.89,67.66Z\"></path><path class=\"cls-6\" d=\"M105,73.37a70.75,70.75,0,0,1,6.5,4.64c.53.38-.9-3.56-2.57-4.33A7.5,7.5,0,0,0,105,73.37Z\"></path><path class=\"cls-6\" d=\"M112.55,79a19.59,19.59,0,0,1,3.52,4.39c.26.38.07-2.58-.92-3.42A5.28,5.28,0,0,0,112.55,79Z\"></path><path class=\"cls-21\" d=\"M77.55,151c-.2-.65,2.35-1.48,3-1.51a11.91,11.91,0,0,1,3.57,1.19,16.34,16.34,0,0,1-4.89,1A4.46,4.46,0,0,1,77.55,151Z\"></path><path class=\"cls-21\" d=\"M86.73,148.78c-.22-.51,1.75-1.38,2.29-1.46a9.58,9.58,0,0,1,3,.65,13.15,13.15,0,0,1-3.83,1.23A3.59,3.59,0,0,1,86.73,148.78Z\"></path><path class=\"cls-21\" d=\"M94.41,146c-.22-.4,1.32-1.29,1.76-1.41a7.92,7.92,0,0,1,2.48.27,10.87,10.87,0,0,1-3,1.35A3,3,0,0,1,94.41,146Z\"></path><path class=\"cls-21\" d=\"M100.52,143.19c-.23-.35,1.11-1.27,1.5-1.41a7.25,7.25,0,0,1,2.29.07,10,10,0,0,1-2.67,1.45A2.72,2.72,0,0,1,100.52,143.19Z\"></path><path class=\"cls-21\" d=\"M106.23,140.07c-.22-.29.9-1.16,1.24-1.3a6.31,6.31,0,0,1,2,0,8.66,8.66,0,0,1-2.25,1.39A2.36,2.36,0,0,1,106.23,140.07Z\"></path><path class=\"cls-21\" d=\"M68.34,151.69c-.11-.73,2.73-1.16,3.46-1.09a12.76,12.76,0,0,1,3.57,1.86,17.51,17.51,0,0,1-5.35.26A4.78,4.78,0,0,1,68.34,151.69Z\"></path><path class=\"cls-6\" d=\"M70.08,65.82c2,2.27,6.68,3.74,6.68,3.74A19,19,0,0,1,75.83,62c0-.18-5.75-.09-6.73-4.81C68.91,56.23,68.1,63.55,70.08,65.82Z\"></path><path class=\"cls-4\" d=\"M50.54,174.68a5.49,5.49,0,0,1,2.24-3.88l.19-.11a14,14,0,0,0-1.43-.25c-6.85-1-8.59,3.06-8.95,7.64,0,.26,0,.53,0,.78a8.31,8.31,0,0,1,7.89-4.2Z\"></path><path class=\"cls-4\" d=\"M58.88,173.19c-6.81-4.13-10.63-4.43-12.15,7.14,0,0,7.17-5.67,10.55-1.92,3.68,4.07,8.68.32,6.05-2.06A18.77,18.77,0,0,0,58.88,173.19Z\"></path><path class=\"cls-4\" d=\"M56.06,174.53c-3.86,2.57-3.86,8.62-3.86,8.62s7-3.81,6.5-6.19A2.93,2.93,0,0,0,56.06,174.53Z\"></path><path class=\"cls-4\" d=\"M24,127a5.49,5.49,0,0,1,4.43-.68l.2.08a14,14,0,0,0-.7-1.27c-3.49-6-7.76-4.79-11.56-2.21-.22.15-.43.31-.63.47a8.31,8.31,0,0,1,8.21,3.53Z\"></path><path class=\"cls-4\" d=\"M31.29,134.08c-2.48-9.82-4.47-13.62-14-6.83,0,0,8.13-2.34,9.06,9.22.44,5.47,5.69,6.57,5.63,3A18.77,18.77,0,0,0,31.29,134.08Z\"></path><path class=\"cls-4\" d=\"M27.83,128.82c-4.52-1.07-8.94,3.06-8.94,3.06s6.94-.24,7.78,4C27.14,138.23,27.83,128.82,27.83,128.82Z\"></path><path class=\"cls-22\" d=\"M172.45,112.79a55.39,55.39,0,0,1,15.49-12.5c5.64-3,13.66-4.84,18.5-4.61l1.85,1.59-1-.08a37.75,37.75,0,0,0-19,3.76A55,55,0,0,0,172.45,112.79Z\"></path><path class=\"cls-23\" d=\"M207.12,95.74a34.5,34.5,0,0,1,10.45,2.68,27.42,27.42,0,0,1,8.81,6,27.05,27.05,0,0,0-9.09-5.29,43.65,43.65,0,0,0-9-1.84l-1.84-1.59Z\"></path><path class=\"cls-24\" d=\"M124.52,175.47a27.43,27.43,0,0,1,3.11-1.9,25.35,25.35,0,0,1,2.31-1c.78-.34,1.58-.58,2.38-.84a45.63,45.63,0,0,1,9.84-1.81,95.67,95.67,0,0,1,19.84.78,194.33,194.33,0,0,0,19.66,1.89,66.25,66.25,0,0,0,19.6-1.93,66.44,66.44,0,0,1-19.6,2.3,194.82,194.82,0,0,1-19.75-1.52,94.77,94.77,0,0,0-19.65-.41,44.43,44.43,0,0,0-9.55,1.94c-.76.27-1.53.52-2.27.85a24,24,0,0,0-2.18,1,21.38,21.38,0,0,0-3.93,2.7l-.53.47A18.42,18.42,0,0,1,124.52,175.47Z\"></path><line class=\"cls-25\" x1=\"124.09\" y1=\"176.84\" x2=\"124.09\" y2=\"176.84\"></line><path class=\"cls-6\" d=\"M85.66,97.64c-6.36,1.4-5.37,6.45-5.37,6.45s2-2.43,13.09-3.74A52.36,52.36,0,0,1,85.66,97.64Z\"></path><path class=\"cls-26\" d=\"M118.59,191.58a16.4,16.4,0,0,1-.08-4.24,18.64,18.64,0,0,1,.91-4.18,18.86,18.86,0,0,1,1.87-3.9,19.81,19.81,0,0,1,2.78-3.38l.46-.42s-.63,2-.7,2.51a19.27,19.27,0,0,0-1.61,1.93,17.84,17.84,0,0,0-3.33,7.5A16.22,16.22,0,0,0,118.59,191.58Z\"></path><path class=\"cls-27\" d=\"M65.89,155.08c-3.61-4-6.65-10.29-7.95-16.2a36.79,36.79,0,0,1-.82-9.49l.14-2.38.33-2.36a23,23,0,0,1,.47-2.33,19.65,19.65,0,0,1,.6-2.3,35.6,35.6,0,0,1,3.83-8.64,39.45,39.45,0,0,1,2.68-3.89l1.53-1.8c.51-.6,1.1-1.13,1.64-1.69a37.2,37.2,0,0,1,7.47-5.68,39.82,39.82,0,0,1,8.62-3.62A39.67,39.67,0,0,0,76,98.56a36.78,36.78,0,0,0-7.22,5.83c-.52.57-1.08,1.11-1.56,1.71l-1.45,1.81a38.67,38.67,0,0,0-2.51,3.89,34.62,34.62,0,0,0-3.48,8.52,18.77,18.77,0,0,0-.52,2.24,21.9,21.9,0,0,0-.38,2.27l-.25,2.28-.06,2.3a35.25,35.25,0,0,0,1.06,9.07,36.17,36.17,0,0,0,8.62,15.83l.66.71S66.44,155.12,65.89,155.08Z\"></path><path class=\"cls-28\" d=\"M103.89,166.42A47.14,47.14,0,0,1,94,167.55,37.09,37.09,0,0,1,84,165.91,46.7,46.7,0,0,1,74.71,162a34.57,34.57,0,0,1-8.12-6.17l-.69-.74s2.38,0,3-.06a33.57,33.57,0,0,0,6.72,5.5,45.26,45.26,0,0,0,8.82,4.27A36.2,36.2,0,0,0,94,166.91,47.78,47.78,0,0,0,103.89,166.42Z\"></path></g></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 256 256\"><defs><style>.cls-1{isolation:isolate;}.cls-17,.cls-2,.cls-25{fill:none;}.cls-17,.cls-2{stroke-miterlimit:10;}.cls-2{stroke-width:0.75px;stroke:url(#linear-gradient);}.cls-3{fill:url(#linear-gradient-2);}.cls-4{fill:#f15a24;}.cls-5{fill:#ed1c24;}.cls-6{fill:#c1272d;}.cls-7{fill:url(#linear-gradient-3);}.cls-8{fill:url(#linear-gradient-4);}.cls-9{fill:url(#linear-gradient-5);}.cls-10{fill:url(#linear-gradient-6);}.cls-11{opacity:0.49;fill:url(#linear-gradient-7);}.cls-12{fill:url(#linear-gradient-8);}.cls-13{fill:#2db5f9;}.cls-13,.cls-14{mix-blend-mode:screen;}.cls-14{fill:#5fd2ff;}.cls-15{fill:#219058;}.cls-16{fill:url(#linear-gradient-9);}.cls-17{stroke:#fff;stroke-width:1.87px;}.cls-18{fill:#f7b852;}.cls-19{fill:#ff8431;}.cls-20{fill:#fffb69;}.cls-21{fill:#44c688;}.cls-22{fill:#29b36e;}.cls-23{fill:#6fd191;}.cls-24{fill:#c83ad7;}.cls-26{fill:#fba9ff;}.cls-27{fill:#ff737d;}.cls-28{fill:#fdc666;}</style><linearGradient id=\"linear-gradient\" x1=\"67.45\" y1=\"154.72\" x2=\"67.29\" y2=\"155.43\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ff1d25\" stop-opacity=\"0.5\"></stop><stop offset=\"0.06\" stop-color=\"#ff1d25\" stop-opacity=\"0.54\"></stop><stop offset=\"0.37\" stop-color=\"#ff1d25\" stop-opacity=\"0.74\"></stop><stop offset=\"0.64\" stop-color=\"#ff1d25\" stop-opacity=\"0.88\"></stop><stop offset=\"0.86\" stop-color=\"#ff1d25\" stop-opacity=\"0.97\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient><linearGradient id=\"linear-gradient-2\" x1=\"73.09\" y1=\"170.74\" x2=\"73.09\" y2=\"153.5\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ffdd42\"></stop><stop offset=\"1\" stop-color=\"#fb784b\"></stop></linearGradient><linearGradient id=\"linear-gradient-3\" x1=\"201.52\" y1=\"95.13\" x2=\"207.88\" y2=\"89.89\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#5bcb99\"></stop><stop offset=\"1\" stop-color=\"#85a8e8\"></stop></linearGradient><linearGradient id=\"linear-gradient-4\" x1=\"81.17\" y1=\"158.3\" x2=\"279.32\" y2=\"55.49\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#34e28b\"></stop><stop offset=\"1\"></stop></linearGradient><linearGradient id=\"linear-gradient-5\" x1=\"117.57\" y1=\"178.22\" x2=\"133.15\" y2=\"178.22\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#c297ff\"></stop><stop offset=\"1\" stop-color=\"#ae31bb\"></stop></linearGradient><linearGradient id=\"linear-gradient-6\" x1=\"54.05\" y1=\"253.29\" x2=\"251.08\" y2=\"99.63\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-color=\"#d23de2\"></stop></linearGradient><linearGradient id=\"linear-gradient-7\" x1=\"199.8\" y1=\"86.45\" x2=\"191.83\" y2=\"113.37\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-opacity=\"0\"></stop></linearGradient><linearGradient id=\"linear-gradient-8\" x1=\"126.87\" y1=\"190.63\" x2=\"182.9\" y2=\"204.2\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#2db5f9\"></stop><stop offset=\"1\" stop-color=\"#092432\"></stop></linearGradient><linearGradient id=\"linear-gradient-9\" x1=\"83.08\" y1=\"49.55\" x2=\"46.06\" y2=\"151.24\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"0.21\" stop-color=\"#48080a\"></stop><stop offset=\"0.42\" stop-color=\"#891014\"></stop><stop offset=\"0.61\" stop-color=\"#bc151b\"></stop><stop offset=\"0.78\" stop-color=\"#e01a21\"></stop><stop offset=\"0.91\" stop-color=\"#f71c24\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient></defs><title>dojo_square</title><g class=\"cls-1\"><g id=\"Layer_1\" data-name=\"Layer 1\"><line class=\"cls-2\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-3\" d=\"M42.28,150.4l.52.82A58,58,0,0,0,52,161.49a45.23,45.23,0,0,0,28.74,10.25c.65,0,1.31,0,2,0a67.32,67.32,0,0,0,21.13-5.26,67.38,67.38,0,0,1-9.09.83,36.92,36.92,0,0,1-27.44-12.17A66.82,66.82,0,0,1,42.28,150.4Z\"></path><path class=\"cls-4\" d=\"M80.79,80.88a45.4,45.4,0,0,1,38.89,21.94A37,37,0,0,0,84.43,94.7c8.29,4,19.66,7.08,35.28,8.15,0,0-.77-14.87-19.8-22.64-26.57-10.84-30.33-8.69-37.06-19.9a30.09,30.09,0,0,0,6,22.15A45.45,45.45,0,0,1,80.79,80.88Z\"></path><path class=\"cls-5\" d=\"M99.92,80.21c-9.1-3.71-15.52-5.9-20.3-7.62A33.4,33.4,0,0,0,84.54,81a45.42,45.42,0,0,1,35.13,21.78,36.87,36.87,0,0,0-20.54-9.34,109,109,0,0,0,20,9.32l.59,0S118.94,88,99.92,80.21Z\"></path><path class=\"cls-6\" d=\"M119.69,102.85h.1c.29-1.62,2.07-14.46-12.4-25.7C85.78,60.37,81.56,58.82,80.53,49.94a27.8,27.8,0,0,0-.91,22.65c4.78,1.72,11.21,3.91,20.3,7.62,19,7.77,19.8,22.64,19.8,22.64Z\"></path><path class=\"cls-7\" d=\"M185.28,88.22a33.64,33.64,0,0,1,22.08,8.23,29.8,29.8,0,0,1,19,8S208.22,78,176.19,89a41.72,41.72,0,0,0-8.2,4A33.64,33.64,0,0,1,185.28,88.22Z\"></path><path class=\"cls-8\" d=\"M185.28,88.22A33.62,33.62,0,0,0,168,93l.93-.56c-25.88,15.24-57.6,62.06-101.56,62.65h0a36.92,36.92,0,0,0,27.44,12.17,67.38,67.38,0,0,0,9.09-.83c28.6-11.79,56.09-40,68.55-53.64,11.56-12.67,24.22-17,34.91-16.34A33.64,33.64,0,0,0,185.28,88.22Z\"></path><path class=\"cls-9\" d=\"M118.48,179a20.94,20.94,0,0,0-.92,5.86,22.25,22.25,0,0,0,1,6.74,16.56,16.56,0,0,1,5.5-14.74c0-.17.09-.34.14-.51a20.37,20.37,0,0,1,8.91-11.47l-.08,0a37.84,37.84,0,0,0-4,1.53A20.87,20.87,0,0,0,118.48,179Z\"></path><path class=\"cls-10\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-11\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-12\" d=\"M137.8,201.88a20.44,20.44,0,0,1-13.68-25.12h0l0,.08a16.56,16.56,0,0,0-5.5,14.73,20.94,20.94,0,0,0,33.63,9.38A20.37,20.37,0,0,1,137.8,201.88Z\"></path><path class=\"cls-13\" d=\"M144.91,200.4c2.12-6.17,9-15.7,16.33-11.34,0,0,6,3.36,7.23-6.11,0,0,4.49,22.28-17.1,21.53,0,0,4.86-3.55,4.81-7.2A24.73,24.73,0,0,1,144.91,200.4Z\"></path><path class=\"cls-14\" d=\"M153.52,186.75c2.14-1.09,4.16-2.18,8.08-.44,3,1.35,6.88-3.94,3.56-8.66,0,0,.21,4.88-3.72,4.84A8.81,8.81,0,0,0,153.52,186.75Z\"></path><path class=\"cls-15\" d=\"M175.21,115.88c-5.17,7-12.75,12.95-13.64,14.39s1.5,6.11,5,6.45.82-1.36.52-3,1.06,1,5.27.42-1.53-2.2-1.14-4.33,4.74-6.17,6.47-10.25,4.7,0,3.18,3.18c-.6,1.26,4.81-3.54,2.08-7.21S178.22,111.77,175.21,115.88Z\"></path><path class=\"cls-15\" d=\"M160.47,131.28c-.76.73-3,2.37-3,2.37s2.19,3.05,5,3c0,0,.61-.29-.27-1.18S160.27,131.82,160.47,131.28Z\"></path><path class=\"cls-16\" d=\"M84.43,94.7c-7.35-3.56-12.27-7.88-15.54-12.24A45.42,45.42,0,0,0,42.28,150.4a66.82,66.82,0,0,0,25.09,4.67h0A37,37,0,0,1,84.43,94.7Z\"></path><line class=\"cls-17\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-18\" d=\"M84.52,81c2,2.91,7.81,7.94,14.63,12.44a36.87,36.87,0,0,1,20.52,9.33A45.42,45.42,0,0,0,84.52,81Z\"></path><path class=\"cls-19\" d=\"M84.52,81c-1.23-.1-2.48-.16-3.74-.16a45.45,45.45,0,0,0-11.89,1.58c3.27,4.36,8.19,8.67,15.54,12.24a36.72,36.72,0,0,1,14.72-1.22C92.33,89,86.54,83.95,84.52,81Z\"></path><path class=\"cls-20\" d=\"M109.73,91.38a33.29,33.29,0,0,0-12.21-7.29C100.46,89.66,103,91.38,109.73,91.38Z\"></path><path class=\"cls-6\" d=\"M96.89,67.66a63.16,63.16,0,0,1,6.54,4.58c.52.39-.93-3.55-2.62-4.3A7.5,7.5,0,0,0,96.89,67.66Z\"></path><path class=\"cls-6\" d=\"M105,73.37a70.75,70.75,0,0,1,6.5,4.64c.53.38-.9-3.56-2.57-4.33A7.5,7.5,0,0,0,105,73.37Z\"></path><path class=\"cls-6\" d=\"M112.55,79a19.59,19.59,0,0,1,3.52,4.39c.26.38.07-2.58-.92-3.42A5.28,5.28,0,0,0,112.55,79Z\"></path><path class=\"cls-21\" d=\"M77.55,151c-.2-.65,2.35-1.48,3-1.51a11.91,11.91,0,0,1,3.57,1.19,16.34,16.34,0,0,1-4.89,1A4.46,4.46,0,0,1,77.55,151Z\"></path><path class=\"cls-21\" d=\"M86.73,148.78c-.22-.51,1.75-1.38,2.29-1.46a9.58,9.58,0,0,1,3,.65,13.15,13.15,0,0,1-3.83,1.23A3.59,3.59,0,0,1,86.73,148.78Z\"></path><path class=\"cls-21\" d=\"M94.41,146c-.22-.4,1.32-1.29,1.76-1.41a7.92,7.92,0,0,1,2.48.27,10.87,10.87,0,0,1-3,1.35A3,3,0,0,1,94.41,146Z\"></path><path class=\"cls-21\" d=\"M100.52,143.19c-.23-.35,1.11-1.27,1.5-1.41a7.25,7.25,0,0,1,2.29.07,10,10,0,0,1-2.67,1.45A2.72,2.72,0,0,1,100.52,143.19Z\"></path><path class=\"cls-21\" d=\"M106.23,140.07c-.22-.29.9-1.16,1.24-1.3a6.31,6.31,0,0,1,2,0,8.66,8.66,0,0,1-2.25,1.39A2.36,2.36,0,0,1,106.23,140.07Z\"></path><path class=\"cls-21\" d=\"M68.34,151.69c-.11-.73,2.73-1.16,3.46-1.09a12.76,12.76,0,0,1,3.57,1.86,17.51,17.51,0,0,1-5.35.26A4.78,4.78,0,0,1,68.34,151.69Z\"></path><path class=\"cls-6\" d=\"M70.08,65.82c2,2.27,6.68,3.74,6.68,3.74A19,19,0,0,1,75.83,62c0-.18-5.75-.09-6.73-4.81C68.91,56.23,68.1,63.55,70.08,65.82Z\"></path><path class=\"cls-4\" d=\"M50.54,174.68a5.49,5.49,0,0,1,2.24-3.88l.19-.11a14,14,0,0,0-1.43-.25c-6.85-1-8.59,3.06-8.95,7.64,0,.26,0,.53,0,.78a8.31,8.31,0,0,1,7.89-4.2Z\"></path><path class=\"cls-4\" d=\"M58.88,173.19c-6.81-4.13-10.63-4.43-12.15,7.14,0,0,7.17-5.67,10.55-1.92,3.68,4.07,8.68.32,6.05-2.06A18.77,18.77,0,0,0,58.88,173.19Z\"></path><path class=\"cls-4\" d=\"M56.06,174.53c-3.86,2.57-3.86,8.62-3.86,8.62s7-3.81,6.5-6.19A2.93,2.93,0,0,0,56.06,174.53Z\"></path><path class=\"cls-4\" d=\"M24,127a5.49,5.49,0,0,1,4.43-.68l.2.08a14,14,0,0,0-.7-1.27c-3.49-6-7.76-4.79-11.56-2.21-.22.15-.43.31-.63.47a8.31,8.31,0,0,1,8.21,3.53Z\"></path><path class=\"cls-4\" d=\"M31.29,134.08c-2.48-9.82-4.47-13.62-14-6.83,0,0,8.13-2.34,9.06,9.22.44,5.47,5.69,6.57,5.63,3A18.77,18.77,0,0,0,31.29,134.08Z\"></path><path class=\"cls-4\" d=\"M27.83,128.82c-4.52-1.07-8.94,3.06-8.94,3.06s6.94-.24,7.78,4C27.14,138.23,27.83,128.82,27.83,128.82Z\"></path><path class=\"cls-22\" d=\"M172.45,112.79a55.39,55.39,0,0,1,15.49-12.5c5.64-3,13.66-4.84,18.5-4.61l1.85,1.59-1-.08a37.75,37.75,0,0,0-19,3.76A55,55,0,0,0,172.45,112.79Z\"></path><path class=\"cls-23\" d=\"M207.12,95.74a34.5,34.5,0,0,1,10.45,2.68,27.42,27.42,0,0,1,8.81,6,27.05,27.05,0,0,0-9.09-5.29,43.65,43.65,0,0,0-9-1.84l-1.84-1.59Z\"></path><path class=\"cls-24\" d=\"M124.52,175.47a27.43,27.43,0,0,1,3.11-1.9,25.35,25.35,0,0,1,2.31-1c.78-.34,1.58-.58,2.38-.84a45.63,45.63,0,0,1,9.84-1.81,95.67,95.67,0,0,1,19.84.78,194.33,194.33,0,0,0,19.66,1.89,66.25,66.25,0,0,0,19.6-1.93,66.44,66.44,0,0,1-19.6,2.3,194.82,194.82,0,0,1-19.75-1.52,94.77,94.77,0,0,0-19.65-.41,44.43,44.43,0,0,0-9.55,1.94c-.76.27-1.53.52-2.27.85a24,24,0,0,0-2.18,1,21.38,21.38,0,0,0-3.93,2.7l-.53.47A18.42,18.42,0,0,1,124.52,175.47Z\"></path><line class=\"cls-25\" x1=\"124.09\" y1=\"176.84\" x2=\"124.09\" y2=\"176.84\"></line><path class=\"cls-6\" d=\"M85.66,97.64c-6.36,1.4-5.37,6.45-5.37,6.45s2-2.43,13.09-3.74A52.36,52.36,0,0,1,85.66,97.64Z\"></path><path class=\"cls-26\" d=\"M118.59,191.58a16.4,16.4,0,0,1-.08-4.24,18.64,18.64,0,0,1,.91-4.18,18.86,18.86,0,0,1,1.87-3.9,19.81,19.81,0,0,1,2.78-3.38l.46-.42s-.63,2-.7,2.51a19.27,19.27,0,0,0-1.61,1.93,17.84,17.84,0,0,0-3.33,7.5A16.22,16.22,0,0,0,118.59,191.58Z\"></path><path class=\"cls-27\" d=\"M65.89,155.08c-3.61-4-6.65-10.29-7.95-16.2a36.79,36.79,0,0,1-.82-9.49l.14-2.38.33-2.36a23,23,0,0,1,.47-2.33,19.65,19.65,0,0,1,.6-2.3,35.6,35.6,0,0,1,3.83-8.64,39.45,39.45,0,0,1,2.68-3.89l1.53-1.8c.51-.6,1.1-1.13,1.64-1.69a37.2,37.2,0,0,1,7.47-5.68,39.82,39.82,0,0,1,8.62-3.62A39.67,39.67,0,0,0,76,98.56a36.78,36.78,0,0,0-7.22,5.83c-.52.57-1.08,1.11-1.56,1.71l-1.45,1.81a38.67,38.67,0,0,0-2.51,3.89,34.62,34.62,0,0,0-3.48,8.52,18.77,18.77,0,0,0-.52,2.24,21.9,21.9,0,0,0-.38,2.27l-.25,2.28-.06,2.3a35.25,35.25,0,0,0,1.06,9.07,36.17,36.17,0,0,0,8.62,15.83l.66.71S66.44,155.12,65.89,155.08Z\"></path><path class=\"cls-28\" d=\"M103.89,166.42A47.14,47.14,0,0,1,94,167.55,37.09,37.09,0,0,1,84,165.91,46.7,46.7,0,0,1,74.71,162a34.57,34.57,0,0,1-8.12-6.17l-.69-.74s2.38,0,3-.06a33.57,33.57,0,0,0,6.72,5.5,45.26,45.26,0,0,0,8.82,4.27A36.2,36.2,0,0,0,94,166.91,47.78,47.78,0,0,0,103.89,166.42Z\"></path></g></g></svg>"
 
 /***/ }),
 /* 807 */,
@@ -14186,9 +14057,9 @@ if (!String.prototype.codePointAt) {
 	if (
 		true
 	) {
-		!(__WEBPACK_AMD_DEFINE_RESULT__ = function() {
+		!(__WEBPACK_AMD_DEFINE_RESULT__ = (function() {
 			return punycode;
-		}.call(exports, __webpack_require__, exports, module),
+		}).call(exports, __webpack_require__, exports, module),
 				__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
 	} else if (freeExports && freeModule) {
 		if (module.exports == freeExports) {
@@ -14215,13 +14086,13 @@ if (!String.prototype.codePointAt) {
 /* 919 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1792 1792\"><path d=\"M1395 1184q0 13-10 23l-50 50q-10 10-23 10t-23-10l-393-393-393 393q-10 10-23 10t-23-10l-50-50q-10-10-10-23t10-23l466-466q10-10 23-10t23 10l466 466q10 10 10 23z\" fill=\"#696969\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1792 1792\"><path d=\"M1395 1184q0 13-10 23l-50 50q-10 10-23 10t-23-10l-393-393-393 393q-10 10-23 10t-23-10l-50-50q-10-10-10-23t10-23l466-466q10-10 23-10t23 10l466 466q10 10 10 23z\" fill=\"#696969\"></path></svg>"
 
 /***/ }),
 /* 920 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1792 1792\"><path d=\"M1395 736q0 13-10 23l-466 466q-10 10-23 10t-23-10l-466-466q-10-10-10-23t10-23l50-50q10-10 23-10t23 10l393 393 393-393q10-10 23-10t23 10l50 50q10 10 10 23z\" fill=\"#696969\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1792 1792\"><path d=\"M1395 736q0 13-10 23l-466 466q-10 10-23 10t-23-10l-466-466q-10-10-10-23t10-23l50-50q10-10 23-10t23 10l393 393 393-393q10-10 23-10t23 10l50 50q10 10 10 23z\" fill=\"#696969\"></path></svg>"
 
 /***/ }),
 /* 921 */,
@@ -14266,7 +14137,7 @@ module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1792 1
 /* 960 */
 /***/ (function(module, exports) {
 
-module.exports = "# This Source Code Form is subject to the terms of the Mozilla Public\n# License, v. 2.0. If a copy of the MPL was not distributed with this\n# file, You can obtain one at http://mozilla.org/MPL/2.0/.\n\n# LOCALIZATION NOTE These strings are used inside the Debugger\n# which is available from the Web Developer sub-menu -> 'Debugger'.\n# The correct localization of this file might be to keep it in\n# English, or another language commonly spoken among web developers.\n# You want to make that choice consistent across the developer tools.\n# A good criteria is the language in which you'd find the best\n# documentation on web development on the web.\n\n# LOCALIZATION NOTE (collapsePanes): This is the tooltip for the button\n# that collapses the left and right panes in the debugger UI.\ncollapsePanes=Collapse panes\n\n# LOCALIZATION NOTE (copySource): This is the text that appears in the\n# context menu to copy the selected source of file open.\ncopySource=Copy\ncopySource.accesskey=y\n\n# LOCALIZATION NOTE (copySourceUri2): This is the text that appears in the\n# context menu to copy the source URI of file open.\ncopySourceUri2=Copy source URI\ncopySourceUri2.accesskey=u\n\n# LOCALIZATION NOTE (setDirectoryRoot): This is the text that appears in the\n# context menu to set a directory as root directory\nsetDirectoryRoot.label=Set directory root\nsetDirectoryRoot.accesskey=r\n\n# LOCALIZATION NOTE (copyFunction): This is the text that appears in the\n# context menu to copy the function the user selected\ncopyFunction.label=Copy function\ncopyFunction.accesskey=F\n\n# LOCALIZATION NOTE (copyStackTrace): This is the text that appears in the\n# context menu to copy the stack trace methods, file names and row number.\ncopyStackTrace=Copy stack trace\ncopyStackTrace.accesskey=c\n\n# LOCALIZATION NOTE (expandPanes): This is the tooltip for the button\n# that expands the left and right panes in the debugger UI.\nexpandPanes=Expand panes\n\n# LOCALIZATION NOTE (pauseButtonTooltip): The tooltip that is displayed for the pause\n# button when the debugger is in a running state.\npauseButtonTooltip=Pause %S\n\n# LOCALIZATION NOTE (pausePendingButtonTooltip): The tooltip that is displayed for\n# the pause button after it's been clicked but before the next JavaScript to run.\npausePendingButtonTooltip=Waiting for next execution\n\n# LOCALIZATION NOTE (resumeButtonTooltip): The label that is displayed on the pause\n# button when the debugger is in a paused state.\nresumeButtonTooltip=Resume %S\n\n# LOCALIZATION NOTE (stepOverTooltip): The label that is displayed on the\n# button that steps over a function call.\nstepOverTooltip=Step over %S\n\n# LOCALIZATION NOTE (stepInTooltip): The label that is displayed on the\n# button that steps into a function call.\nstepInTooltip=Step in %S\n\n# LOCALIZATION NOTE (stepOutTooltip): The label that is displayed on the\n# button that steps out of a function call.\nstepOutTooltip=Step out %S\n\n# LOCALIZATION NOTE (workersHeader): The text to display in the events\n# header.\nworkersHeader=Workers\n\n# LOCALIZATION NOTE (noWorkersText): The text to display in the workers list\n# when there are no workers.\nnoWorkersText=This page has no workers.\n\n# LOCALIZATION NOTE (noSourcesText): The text to display in the sources list\n# when there are no sources.\nnoSourcesText=This page has no sources.\n\n# LOCALIZATION NOTE (noEventListenersText): The text to display in the events tab\n# when there are no events.\nnoEventListenersText=No event listeners to display.\n\n# LOCALIZATION NOTE (eventListenersHeader): The text to display in the events\n# header.\neventListenersHeader=Event listeners\n\n# LOCALIZATION NOTE (noStackFramesText): The text to display in the call stack tab\n# when there are no stack frames.\nnoStackFramesText=No stack frames to display\n\n# LOCALIZATION NOTE (eventCheckboxTooltip): The tooltip text to display when\n# the user hovers over the checkbox used to toggle an event breakpoint.\neventCheckboxTooltip=Toggle breaking on this event\n\n# LOCALIZATION NOTE (eventOnSelector): The text to display in the events tab\n# for every event item, between the event type and event selector.\neventOnSelector=on\n\n# LOCALIZATION NOTE (eventInSource): The text to display in the events tab\n# for every event item, between the event selector and listener's owner source.\neventInSource=in\n\n# LOCALIZATION NOTE (eventNodes): The text to display in the events tab when\n# an event is listened on more than one target node.\neventNodes=%S nodes\n\n# LOCALIZATION NOTE (eventNative): The text to display in the events tab when\n# a listener is added from plugins, thus getting translated to native code.\neventNative=[native code]\n\n# LOCALIZATION NOTE (*Events): The text to display in the events tab for\n# each group of sub-level event entries.\nanimationEvents=Animation\naudioEvents=Audio\nbatteryEvents=Battery\nclipboardEvents=Clipboard\ncompositionEvents=Composition\ndeviceEvents=Device\ndisplayEvents=Display\ndragAndDropEvents=Drag and Drop\ngamepadEvents=Gamepad\nindexedDBEvents=IndexedDB\ninteractionEvents=Interaction\nkeyboardEvents=Keyboard\nmediaEvents=HTML5 Media\nmouseEvents=Mouse\nmutationEvents=Mutation\nnavigationEvents=Navigation\npointerLockEvents=Pointer Lock\nsensorEvents=Sensor\nstorageEvents=Storage\ntimeEvents=Time\ntouchEvents=Touch\notherEvents=Other\n\n# LOCALIZATION NOTE (blackboxCheckboxTooltip2): The tooltip text to display when\n# the user hovers over the checkbox used to toggle blackboxing its associated\n# source.\nblackboxCheckboxTooltip2=Toggle blackboxing\n\n# LOCALIZATION NOTE (sources.search.key2): Key shortcut to open the search for\n# searching all the source files the debugger has seen.\nsources.search.key2=CmdOrCtrl+P\n\n# LOCALIZATION NOTE (sources.search.alt.key): A second key shortcut to open the\n# search for searching all the source files the debugger has seen.\nsources.search.alt.key=CmdOrCtrl+O\n\n# LOCALIZATION NOTE (projectTextSearch.key): A key shortcut to open the\n# full project text search for searching all the files the debugger has seen.\nprojectTextSearch.key=CmdOrCtrl+Shift+F\n\n# LOCALIZATION NOTE (functionSearch.key): A key shortcut to open the\n# modal for searching functions in a file.\nfunctionSearch.key=CmdOrCtrl+Shift+O\n\n# LOCALIZATION NOTE (toggleBreakpoint.key): A key shortcut to toggle\n# breakpoints.\ntoggleBreakpoint.key=CmdOrCtrl+B\n\n# LOCALIZATION NOTE (toggleCondPanel.key): A key shortcut to toggle\n# the conditional breakpoint panel.\ntoggleCondPanel.key=CmdOrCtrl+Shift+B\n\n# LOCALIZATION NOTE (stepOut.key): A key shortcut to\n# step out.\nstepOut.key=Shift+F11\n\n# LOCALIZATION NOTE (shortcuts.header.editor): Sections header in\n# the shortcuts modal for keyboard shortcuts related to editing.\nshortcuts.header.editor=Editor\n\n# LOCALIZATION NOTE (shortcuts.header.stepping): Sections header in\n# the shortcuts modal for keyboard shortcuts related to stepping.\nshortcuts.header.stepping=Stepping\n\n# LOCALIZATION NOTE (shortcuts.header.search): Sections header in\n# the shortcuts modal for keyboard shortcuts related to search.\nshortcuts.header.search=Search\n\n# LOCALIZATION NOTE (projectTextSearch.placeholder): A placeholder shown\n# when searching across all of the files in a project.\nprojectTextSearch.placeholder=Find in files…\n\n# LOCALIZATION NOTE (projectTextSearch.noResults): The center pane Text Search\n# message when the query did not match any text of all files in a project.\nprojectTextSearch.noResults=No results found\n\n# LOCALIZATION NOTE (sources.noSourcesAvailable): Text shown when the debugger\n# does not have any sources.\nsources.noSourcesAvailable=This page has no sources\n\n# LOCALIZATION NOTE (sourceSearch.search.key2): Key shortcut to open the search\n# for searching within a the currently opened files in the editor\nsourceSearch.search.key2=CmdOrCtrl+F\n\n# LOCALIZATION NOTE (sourceSearch.search.placeholder): placeholder text in\n# the source search input bar\nsourceSearch.search.placeholder=Search in file…\n\n# LOCALIZATION NOTE (sourceSearch.search.again.key2): Key shortcut to highlight\n# the next occurrence of the last search triggered from a source search\nsourceSearch.search.again.key2=CmdOrCtrl+G\n\n# LOCALIZATION NOTE (sourceSearch.search.againPrev.key2): Key shortcut to highlight\n# the previous occurrence of the last search triggered from a source search\nsourceSearch.search.againPrev.key2=CmdOrCtrl+Shift+G\n\n# LOCALIZATION NOTE (sourceSearch.resultsSummary1): Shows a summary of\n# the number of matches for autocomplete\nsourceSearch.resultsSummary1=%d results\n\n# LOCALIZATION NOTE (noMatchingStringsText): The text to display in the\n# global search results when there are no matching strings after filtering.\nnoMatchingStringsText=No matches found\n\n# LOCALIZATION NOTE (emptySearchText): This is the text that appears in the\n# filter text box when it is empty and the scripts container is selected.\nemptySearchText=Search scripts (%S)\n\n# LOCALIZATION NOTE (emptyVariablesFilterText): This is the text that\n# appears in the filter text box for the variables view container.\nemptyVariablesFilterText=Filter variables\n\n# LOCALIZATION NOTE (emptyPropertiesFilterText): This is the text that\n# appears in the filter text box for the editor's variables view bubble.\nemptyPropertiesFilterText=Filter properties\n\n# LOCALIZATION NOTE (searchPanelFilter): This is the text that appears in the\n# filter panel popup for the filter scripts operation.\nsearchPanelFilter=Filter scripts (%S)\n\n# LOCALIZATION NOTE (searchPanelGlobal): This is the text that appears in the\n# filter panel popup for the global search operation.\nsearchPanelGlobal=Search in all files (%S)\n\n# LOCALIZATION NOTE (searchPanelFunction): This is the text that appears in the\n# filter panel popup for the function search operation.\nsearchPanelFunction=Search for function definition (%S)\n\n# LOCALIZATION NOTE (searchPanelToken): This is the text that appears in the\n# filter panel popup for the token search operation.\nsearchPanelToken=Find in this file (%S)\n\n# LOCALIZATION NOTE (searchPanelGoToLine): This is the text that appears in the\n# filter panel popup for the line search operation.\nsearchPanelGoToLine=Go to line (%S)\n\n# LOCALIZATION NOTE (searchPanelVariable): This is the text that appears in the\n# filter panel popup for the variables search operation.\nsearchPanelVariable=Filter variables (%S)\n\n# LOCALIZATION NOTE (breakpointMenuItem): The text for all the elements that\n# are displayed in the breakpoints menu item popup.\nbreakpointMenuItem.setConditional=Configure conditional breakpoint\nbreakpointMenuItem.enableSelf2.label=Enable\nbreakpointMenuItem.enableSelf2.accesskey=E\nbreakpointMenuItem.disableSelf2.label=Disable\nbreakpointMenuItem.disableSelf2.accesskey=D\nbreakpointMenuItem.deleteSelf2.label=Remove\nbreakpointMenuItem.deleteSelf2.accesskey=R\nbreakpointMenuItem.enableOthers2.label=Enable others\nbreakpointMenuItem.enableOthers2.accesskey=o\nbreakpointMenuItem.disableOthers2.label=Disable others\nbreakpointMenuItem.disableOthers2.accesskey=s\nbreakpointMenuItem.deleteOthers2.label=Remove others\nbreakpointMenuItem.deleteOthers2.accesskey=h\nbreakpointMenuItem.enableAll2.label=Enable all\nbreakpointMenuItem.enableAll2.accesskey=b\nbreakpointMenuItem.disableAll2.label=Disable all\nbreakpointMenuItem.disableAll2.accesskey=k\nbreakpointMenuItem.deleteAll2.label=Remove all\nbreakpointMenuItem.deleteAll2.accesskey=a\nbreakpointMenuItem.removeCondition2.label=Remove condition\nbreakpointMenuItem.removeCondition2.accesskey=c\nbreakpointMenuItem.addCondition2.label=Add condition\nbreakpointMenuItem.addCondition2.accesskey=A\nbreakpointMenuItem.editCondition2.label=Edit condition\nbreakpointMenuItem.editCondition2.accesskey=n\nbreakpointMenuItem.enableSelf=Enable breakpoint\nbreakpointMenuItem.enableSelf.accesskey=E\nbreakpointMenuItem.disableSelf=Disable breakpoint\nbreakpointMenuItem.disableSelf.accesskey=D\nbreakpointMenuItem.deleteSelf=Remove breakpoint\nbreakpointMenuItem.deleteSelf.accesskey=R\nbreakpointMenuItem.enableOthers=Enable others\nbreakpointMenuItem.enableOthers.accesskey=o\nbreakpointMenuItem.disableOthers=Disable others\nbreakpointMenuItem.disableOthers.accesskey=s\nbreakpointMenuItem.deleteOthers=Remove others\nbreakpointMenuItem.deleteOthers.accesskey=h\nbreakpointMenuItem.enableAll=Enable all breakpoints\nbreakpointMenuItem.enableAll.accesskey=b\nbreakpointMenuItem.disableAll=Disable all breakpoints\nbreakpointMenuItem.disableAll.accesskey=k\nbreakpointMenuItem.deleteAll=Remove all breakpoints\nbreakpointMenuItem.deleteAll.accesskey=a\nbreakpointMenuItem.removeCondition.label=Remove breakpoint condition\nbreakpointMenuItem.removeCondition.accesskey=c\nbreakpointMenuItem.editCondition.label=Edit breakpoint condition\nbreakpointMenuItem.editCondition.accesskey=n\n\n# LOCALIZATION NOTE (breakpoints.header): Breakpoints right sidebar pane header.\nbreakpoints.header=Breakpoints\n\n# LOCALIZATION NOTE (breakpoints.none): The text that appears when there are\n# no breakpoints present\nbreakpoints.none=No breakpoints\n\n# LOCALIZATION NOTE (breakpoints.enable): The text that may appear as a tooltip\n# when hovering over the 'disable breakpoints' switch button in right sidebar\nbreakpoints.enable=Enable breakpoints\n\n# LOCALIZATION NOTE (breakpoints.disable): The text that may appear as a tooltip\n# when hovering over the 'disable breakpoints' switch button in right sidebar\nbreakpoints.disable=Disable breakpoints\n\n# LOCALIZATION NOTE (breakpoints.removeBreakpointTooltip): The tooltip that is displayed\n# for remove breakpoint button in right sidebar\nbreakpoints.removeBreakpointTooltip=Remove breakpoint\n\n# LOCALIZATION NOTE (callStack.header): Call Stack right sidebar pane header.\ncallStack.header=Call stack\n\n# LOCALIZATION NOTE (callStack.notPaused): Call Stack right sidebar pane\n# message when not paused.\ncallStack.notPaused=Not paused\n\n# LOCALIZATION NOTE (callStack.collapse): Call Stack right sidebar pane\n# message to hide some of the frames that are shown.\ncallStack.collapse=Collapse rows\n\n# LOCALIZATION NOTE (callStack.expand): Call Stack right sidebar pane\n# message to show more of the frames.\ncallStack.expand=Expand rows\n\n# LOCALIZATION NOTE (editor.searchResults): Editor Search bar message\n# for the summarizing the selected search result. e.g. 5 of 10 results.\neditor.searchResults=%d of %d results\n\n# LOCALIZATION NOTE (sourceSearch.singleResult): Copy shown when there is one result.\neditor.singleResult=1 result\n\n# LOCALIZATION NOTE (editor.noResults): Editor Search bar message\n# for when no results found.\neditor.noResults=No results\n\n# LOCALIZATION NOTE (editor.searchResults.nextResult): Editor Search bar\n# tooltip for traversing to the Next Result\neditor.searchResults.nextResult=Next result\n\n# LOCALIZATION NOTE (editor.searchResults.prevResult): Editor Search bar\n# tooltip for traversing to the Previous Result\neditor.searchResults.prevResult=Previous result\n\n# LOCALIZATION NOTE (editor.searchTypeToggleTitle): Search bar title for\n# toggling search type buttons(function search, variable search)\neditor.searchTypeToggleTitle=Search for:\n\n# LOCALIZATION NOTE (editor.continueToHere.label): Editor gutter context\n# menu item for jumping to a new paused location\neditor.continueToHere.label=Continue to here\neditor.continueToHere.accesskey=H\n\n# LOCALIZATION NOTE (editor.addBreakpoint): Editor gutter context menu item\n# for adding a breakpoint on a line.\neditor.addBreakpoint=Add breakpoint\n\n# LOCALIZATION NOTE (editor.disableBreakpoint): Editor gutter context menu item\n# for disabling a breakpoint on a line.\neditor.disableBreakpoint=Disable breakpoint\neditor.disableBreakpoint.accesskey=D\n\n# LOCALIZATION NOTE (editor.enableBreakpoint): Editor gutter context menu item\n# for enabling a breakpoint on a line.\neditor.enableBreakpoint=Enable breakpoint\n\n# LOCALIZATION NOTE (editor.removeBreakpoint): Editor gutter context menu item\n# for removing a breakpoint on a line.\neditor.removeBreakpoint=Remove breakpoint\n\n# LOCALIZATION NOTE (editor.editBreakpoint): Editor gutter context menu item\n# for setting a breakpoint condition on a line.\neditor.editBreakpoint=Edit breakpoint\n\n# LOCALIZATION NOTE (editor.addConditionalBreakpoint): Editor gutter context\n# menu item for adding a breakpoint condition on a line.\neditor.addConditionalBreakpoint=Add conditional breakpoint\neditor.addConditionalBreakpoint.accesskey=c\n\n# LOCALIZATION NOTE (editor.conditionalPanel.placeholder): Placeholder text for\n# input element inside ConditionalPanel component\neditor.conditionalPanel.placeholder=This breakpoint will pause when the expression is true\n\n# LOCALIZATION NOTE (editor.conditionalPanel.placeholder): Tooltip text for\n# close button inside ConditionalPanel component\neditor.conditionalPanel.close=Cancel edit breakpoint and close\n\n# LOCALIZATION NOTE (editor.jumpToMappedLocation1): Context menu item\n# for navigating to a source mapped location\neditor.jumpToMappedLocation1=Jump to %S location\neditor.jumpToMappedLocation1.accesskey=m\n\n# LOCALIZATION NOTE (framework.disableGrouping): This is the text that appears in the\n# context menu to disable framework grouping.\nframework.disableGrouping=Disable framework grouping\nframework.disableGrouping.accesskey=u\n\n# LOCALIZATION NOTE (framework.enableGrouping): This is the text that appears in the\n# context menu to enable framework grouping.\nframework.enableGrouping=Enable framework grouping\nframework.enableGrouping.accesskey=u\n\n# LOCALIZATION NOTE (generated): Source Map term for a server source location\ngenerated=Generated\n\n# LOCALIZATION NOTE (original): Source Map term for a debugger UI source location\noriginal=original\n\n# LOCALIZATION NOTE (expressions.placeholder): Placeholder text for expression\n# input element\nexpressions.placeholder=Add watch expression\nexpressions.label=Add watch expression\nexpressions.accesskey=e\n\n# LOCALIZATION NOTE (sourceTabs.closeTab): Editor source tab context menu item\n# for closing the selected tab below the mouse.\nsourceTabs.closeTab=Close tab\nsourceTabs.closeTab.accesskey=c\n\n# LOCALIZATION NOTE (sourceTabs.closeOtherTabs): Editor source tab context menu item\n# for closing the other tabs.\nsourceTabs.closeOtherTabs=Close other tabs\nsourceTabs.closeOtherTabs.accesskey=o\n\n# LOCALIZATION NOTE (sourceTabs.closeTabsToEnd): Editor source tab context menu item\n# for closing the tabs to the end (the right for LTR languages) of the selected tab.\nsourceTabs.closeTabsToEnd=Close tabs to the right\nsourceTabs.closeTabsToEnd.accesskey=e\n\n# LOCALIZATION NOTE (sourceTabs.closeAllTabs): Editor source tab context menu item\n# for closing all tabs.\nsourceTabs.closeAllTabs=Close all tabs\nsourceTabs.closeAllTabs.accesskey=a\n\n# LOCALIZATION NOTE (sourceTabs.revealInTree): Editor source tab context menu item\n# for revealing source in tree.\nsourceTabs.revealInTree=Reveal in tree\nsourceTabs.revealInTree.accesskey=r\n\n# LOCALIZATION NOTE (sourceTabs.prettyPrint): Editor source tab context menu item\n# for pretty printing the source.\nsourceTabs.prettyPrint=Pretty print source\nsourceTabs.prettyPrint.accesskey=p\n\n# LOCALIZATION NOTE (sourceFooter.blackbox): Tooltip text associated\n# with the blackbox button\nsourceFooter.blackbox=Blackbox source\nsourceFooter.blackbox.accesskey=B\n\n# LOCALIZATION NOTE (sourceFooter.unblackbox): Tooltip text associated\n# with the blackbox button\nsourceFooter.unblackbox=Unblackbox source\nsourceFooter.unblackbox.accesskey=b\n\n# LOCALIZATION NOTE (sourceFooter.blackboxed): Text associated\n# with a blackboxed source\nsourceFooter.blackboxed=Blackboxed source\n\n# LOCALIZATION NOTE (sourceFooter.codeCoverage): Text associated\n# with a code coverage button\nsourceFooter.codeCoverage=Code coverage\n\n# LOCALIZATION NOTE (sourceTabs.closeTabButtonTooltip): The tooltip that is displayed\n# for close tab button in source tabs.\nsourceTabs.closeTabButtonTooltip=Close tab\n\n# LOCALIZATION NOTE (scopes.header): Scopes right sidebar pane header.\nscopes.header=Scopes\n\n# LOCALIZATION NOTE (scopes.notAvailable): Scopes right sidebar pane message\n# for when the debugger is paused, but there isn't pause data.\nscopes.notAvailable=Scopes unavailable\n\n# LOCALIZATION NOTE (scopes.notPaused): Scopes right sidebar pane message\n# for when the debugger is not paused.\nscopes.notPaused=Not paused\n\n# LOCALIZATION NOTE (scopes.block): Refers to a block of code in\n# the scopes pane when the debugger is paused.\nscopes.block=Block\n\n# LOCALIZATION NOTE (sources.header): Sources left sidebar header\nsources.header=Sources\n\n# LOCALIZATION NOTE (outline.header): Outline left sidebar header\noutline.header=Outline\n\n# LOCALIZATION NOTE (outline.noFunctions): Outline text when there are no functions to display\noutline.noFunctions=No functions\n\n# LOCALIZATION NOTE (sources.search): Sources left sidebar prompt\n# e.g. Cmd+P to search. On a mac, we use the command unicode character.\n# On windows, it's ctrl.\nsources.search=%S to search\n\n# LOCALIZATION NOTE (watchExpressions.header): Watch Expressions right sidebar\n# pane header.\nwatchExpressions.header=Watch expressions\n\n# LOCALIZATION NOTE (watchExpressions.refreshButton): Watch Expressions header\n# button for refreshing the expressions.\nwatchExpressions.refreshButton=Refresh\n\n# LOCALIZATION NOTE (welcome.search): The center pane welcome panel's\n# search prompt. e.g. cmd+p to search for files. On windows, it's ctrl, on\n# a mac we use the unicode character.\nwelcome.search=%S to search for sources\n\n# LOCALIZATION NOTE (welcome.findInFiles): The center pane welcome panel's\n# search prompt. e.g. cmd+f to search for files. On windows, it's ctrl+shift+f, on\n# a mac we use the unicode character.\nwelcome.findInFiles=%S to find in files\n\n# LOCALIZATION NOTE (welcome.searchFunction): Label displayed in the welcome\n# panel. %S is replaced by the keyboard shortcut to search for functions.\nwelcome.searchFunction=%S to search for functions in file\n\n# LOCALIZATION NOTE (sourceSearch.search): The center pane Source Search\n# prompt for searching for files.\nsourceSearch.search=Search sources…\n\n# LOCALIZATION NOTE (sourceSearch.noResults): The center pane Source Search\n# message when the query did not match any of the sources.\nsourceSearch.noResults2=No results found\n\n# LOCALIZATION NOTE (ignoreExceptions): The pause on exceptions button tooltip\n# when the debugger will not pause on exceptions.\nignoreExceptions=Ignore exceptions. Click to pause on uncaught exceptions\n\n# LOCALIZATION NOTE (pauseOnUncaughtExceptions): The pause on exceptions button\n# tooltip when the debugger will pause on uncaught exceptions.\npauseOnUncaughtExceptions=Pause on uncaught exceptions. Click to pause on all exceptions\n\n# LOCALIZATION NOTE (pauseOnExceptions): The pause on exceptions button tooltip\n# when the debugger will pause on all exceptions.\npauseOnExceptions=Pause on all exceptions. Click to ignore exceptions\n\n# LOCALIZATION NOTE (loadingText): The text that is displayed in the script\n# editor when the loading process has started but there is no file to display\n# yet.\nloadingText=Loading\\u2026\n\n# LOCALIZATION NOTE (errorLoadingText3): The text that is displayed in the debugger\n# viewer when there is an error loading a file\nerrorLoadingText3=Error loading this URI: %S\n\n# LOCALIZATION NOTE (addWatchExpressionText): The text that is displayed in the\n# watch expressions list to add a new item.\naddWatchExpressionText=Add watch expression\n\n# LOCALIZATION NOTE (addWatchExpressionButton): The button that is displayed in the\n# variables view popup.\naddWatchExpressionButton=Watch\n\n# LOCALIZATION NOTE (emptyVariablesText): The text that is displayed in the\n# variables pane when there are no variables to display.\nemptyVariablesText=No variables to display\n\n# LOCALIZATION NOTE (scopeLabel): The text that is displayed in the variables\n# pane as a header for each variable scope (e.g. \"Global scope, \"With scope\",\n# etc.).\nscopeLabel=%S scope\n\n# LOCALIZATION NOTE (watchExpressionsScopeLabel): The name of the watch\n# expressions scope. This text is displayed in the variables pane as a header for\n# the watch expressions scope.\nwatchExpressionsScopeLabel=Watch expressions\n\n# LOCALIZATION NOTE (globalScopeLabel): The name of the global scope. This text\n# is added to scopeLabel and displayed in the variables pane as a header for\n# the global scope.\nglobalScopeLabel=Global\n\n# LOCALIZATION NOTE (variablesViewErrorStacktrace): This is the text that is\n# shown before the stack trace in an error.\nvariablesViewErrorStacktrace=Stack trace:\n\n# LOCALIZATION NOTE (variablesViewMoreObjects): the text that is displayed\n# when you have an object preview that does not show all of the elements. At the end of the list\n# you see \"N more...\" in the web console output.\n# This is a semi-colon list of plural forms.\n# See: http://developer.mozilla.org/en/docs/Localization_and_Plurals\n# #1 number of remaining items in the object\n# example: 3 more…\nvariablesViewMoreObjects=#1 more…;#1 more…\n\n# LOCALIZATION NOTE (variablesEditableNameTooltip): The text that is displayed\n# in the variables list on an item with an editable name.\nvariablesEditableNameTooltip=Double click to edit\n\n# LOCALIZATION NOTE (variablesEditableValueTooltip): The text that is displayed\n# in the variables list on an item with an editable value.\nvariablesEditableValueTooltip=Click to change value\n\n# LOCALIZATION NOTE (variablesCloseButtonTooltip): The text that is displayed\n# in the variables list on an item which can be removed.\nvariablesCloseButtonTooltip=Click to remove\n\n# LOCALIZATION NOTE (variablesEditButtonTooltip): The text that is displayed\n# in the variables list on a getter or setter which can be edited.\nvariablesEditButtonTooltip=Click to set value\n\n# LOCALIZATION NOTE (variablesEditableValueTooltip): The text that is displayed\n# in a tooltip on the \"open in inspector\" button in the the variables list for a\n# DOMNode item.\nvariablesDomNodeValueTooltip=Click to select the node in the inspector\n\n# LOCALIZATION NOTE (configurable|...|Tooltip): The text that is displayed\n# in the variables list on certain variables or properties as tooltips.\n# Expanations of what these represent can be found at the following links:\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/isExtensible\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/isFrozen\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/isSealed\n# It's probably best to keep these in English.\nconfigurableTooltip=configurable\nenumerableTooltip=enumerable\nwritableTooltip=writable\nfrozenTooltip=frozen\nsealedTooltip=sealed\nextensibleTooltip=extensible\noverriddenTooltip=overridden\nWebIDLTooltip=WebIDL\n\n# LOCALIZATION NOTE (variablesSeparatorLabel): The text that is displayed\n# in the variables list as a separator between the name and value.\nvariablesSeparatorLabel=:\n\n# LOCALIZATION NOTE (watchExpressionsSeparatorLabel2): The text that is displayed\n# in the watch expressions list as a separator between the code and evaluation.\nwatchExpressionsSeparatorLabel2=\\u0020→\n\n# LOCALIZATION NOTE (functionSearchSeparatorLabel): The text that is displayed\n# in the functions search panel as a separator between function's inferred name\n# and its real name (if available).\nfunctionSearchSeparatorLabel=←\n\n# LOCALIZATION NOTE(gotoLineModal.placeholder): The placeholder\n# text displayed when the user searches for specific lines in a file\ngotoLineModal.placeholder=Go to line…\ngotoLineModal.key=CmdOrCtrl+Shift+;\n\n# LOCALIZATION NOTE(symbolSearch.search.functionsPlaceholder): The placeholder\n# text displayed when the user searches for functions in a file\nsymbolSearch.search.functionsPlaceholder=Search functions…\n\n# LOCALIZATION NOTE(symbolSearch.search.variablesPlaceholder): The placeholder\n# text displayed when the user searches for variables in a file\nsymbolSearch.search.variablesPlaceholder=Search variables…\n\n# LOCALIZATION NOTE(symbolSearch.search.key2): The Key Shortcut for\n# searching for a function or variable\nsymbolSearch.search.key2=CmdOrCtrl+Shift+O\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.modifiersLabel): A label\n# preceding the group of modifiers\nsymbolSearch.searchModifier.modifiersLabel=Modifiers:\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.regex): A search option\n# when searching text in a file\nsymbolSearch.searchModifier.regex=Regex\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.caseSensitive): A search option\n# when searching text in a file\nsymbolSearch.searchModifier.caseSensitive=Case sensitive\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.wholeWord): A search option\n# when searching text in a file\nsymbolSearch.searchModifier.wholeWord=Whole word\n\n# LOCALIZATION NOTE (resumptionOrderPanelTitle): This is the text that appears\n# as a description in the notification panel popup, when multiple debuggers are\n# open in separate tabs and the user tries to resume them in the wrong order.\n# The substitution parameter is the URL of the last paused window that must be\n# resumed first.\nresumptionOrderPanelTitle=There are one or more paused debuggers. Please resume the most-recently paused debugger first at: %S\n\nvariablesViewOptimizedOut=(optimized away)\nvariablesViewUninitialized=(uninitialized)\nvariablesViewMissingArgs=(unavailable)\n\nanonymousSourcesLabel=Anonymous sources\n\nexperimental=This is an experimental feature\n\n# LOCALIZATION NOTE (whyPaused.debuggerStatement): The text that is displayed\n# in a info block explaining how the debugger is currently paused due to a `debugger`\n# statement in the code\nwhyPaused.debuggerStatement=Paused on debugger statement\n\n# LOCALIZATION NOTE (whyPaused.breakpoint): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a breakpoint\nwhyPaused.breakpoint=Paused on breakpoint\n\n# LOCALIZATION NOTE (whyPaused.exception): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an exception\nwhyPaused.exception=Paused on exception\n\n# LOCALIZATION NOTE (whyPaused.resumeLimit): The text that is displayed\n# in a info block explaining how the debugger is currently paused while stepping\n# in or out of the stack\nwhyPaused.resumeLimit=Paused while stepping\n\n# LOCALIZATION NOTE (whyPaused.pauseOnDOMEvents): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a\n# dom event\nwhyPaused.pauseOnDOMEvents=Paused on event listener\n\n# LOCALIZATION NOTE (whyPaused.breakpointConditionThrown): The text that is displayed\n# in an info block when evaluating a conditional breakpoint throws an error\nwhyPaused.breakpointConditionThrown=Error with conditional breakpoint\n\n# LOCALIZATION NOTE (whyPaused.xhr): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an\n# xml http request\nwhyPaused.xhr=Paused on XMLHttpRequest\n\n# LOCALIZATION NOTE (whyPaused.promiseRejection): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a\n# promise rejection\nwhyPaused.promiseRejection=Paused on promise rejection\n\n# LOCALIZATION NOTE (whyPaused.assert): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an\n# assert\nwhyPaused.assert=Paused on assertion\n\n# LOCALIZATION NOTE (whyPaused.debugCommand): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a\n# debugger statement\nwhyPaused.debugCommand=Paused on debugged function\n\n# LOCALIZATION NOTE (whyPaused.other): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an event\n# listener breakpoint set\nwhyPaused.other=Debugger paused\n\n# LOCALIZATION NOTE (ctrl): The text that is used for documenting\n# keyboard shortcuts that use the control key\nctrl=Ctrl\n\n# LOCALIZATION NOTE (anonymous): The text that is displayed when the\n# display name is null.\nanonymous=(anonymous)\n\n# LOCALIZATION NOTE (shortcuts.toggleBreakpoint): text describing\n# keyboard shortcut action for toggling breakpoint\nshortcuts.toggleBreakpoint=Toggle Breakpoint\nshortcuts.toggleBreakpoint.accesskey=B\n\n# LOCALIZATION NOTE (shortcuts.toggleCondPanel): text describing\n# keyboard shortcut action for toggling conditional panel keyboard\nshortcuts.toggleCondPanel=Toggle Conditional Panel\n\n# LOCALIZATION NOTE (shortcuts.pauseOrResume): text describing\n# keyboard shortcut action for pause of resume\nshortcuts.pauseOrResume=Pause/Resume\n\n# LOCALIZATION NOTE (shortcuts.stepOver): text describing\n# keyboard shortcut action for stepping over\nshortcuts.stepOver=Step Over\n\n# LOCALIZATION NOTE (shortcuts.stepIn): text describing\n# keyboard shortcut action for stepping in\nshortcuts.stepIn=Step In\n\n# LOCALIZATION NOTE (shortcuts.stepOut): text describing\n# keyboard shortcut action for stepping out\nshortcuts.stepOut=Step Out\n\n# LOCALIZATION NOTE (shortcuts.fileSearch): text describing\n# keyboard shortcut action for source file search\nshortcuts.fileSearch=Source File Search\n\n# LOCALIZATION NOTE (shortcuts.searchAgain): text describing\n# keyboard shortcut action for searching again\nshortcuts.searchAgain=Search Again\n\n# LOCALIZATION NOTE (shortcuts.projectSearch): text describing\n# keyboard shortcut action for full project search\nshortcuts.projectSearch=Full Project Search\n\n# LOCALIZATION NOTE (shortcuts.functionSearch): text describing\n# keyboard shortcut action for function search\nshortcuts.functionSearch=Function Search\n\n# LOCALIZATION NOTE (shortcuts.buttonName): text describing\n# keyboard shortcut button text\nshortcuts.buttonName=Keyboard shortcuts\n"
+module.exports = "# This Source Code Form is subject to the terms of the Mozilla Public\n# License, v. 2.0. If a copy of the MPL was not distributed with this\n# file, You can obtain one at http://mozilla.org/MPL/2.0/.\n\n# LOCALIZATION NOTE These strings are used inside the Debugger\n# which is available from the Web Developer sub-menu -> 'Debugger'.\n# The correct localization of this file might be to keep it in\n# English, or another language commonly spoken among web developers.\n# You want to make that choice consistent across the developer tools.\n# A good criteria is the language in which you'd find the best\n# documentation on web development on the web.\n\n# LOCALIZATION NOTE (collapsePanes): This is the tooltip for the button\n# that collapses the left and right panes in the debugger UI.\ncollapsePanes=Collapse panes\n\n# LOCALIZATION NOTE (copySource): This is the text that appears in the\n# context menu to copy the selected source of file open.\ncopySource=Copy\ncopySource.accesskey=y\n\n# LOCALIZATION NOTE (copySourceUri2): This is the text that appears in the\n# context menu to copy the source URI of file open.\ncopySourceUri2=Copy source URI\ncopySourceUri2.accesskey=u\n\n# LOCALIZATION NOTE (setDirectoryRoot): This is the text that appears in the\n# context menu to set a directory as root directory\nsetDirectoryRoot.label=Set directory root\nsetDirectoryRoot.accesskey=r\n\n# LOCALIZATION NOTE (copyFunction): This is the text that appears in the\n# context menu to copy the function the user selected\ncopyFunction.label=Copy function\ncopyFunction.accesskey=F\n\n# LOCALIZATION NOTE (copyStackTrace): This is the text that appears in the\n# context menu to copy the stack trace methods, file names and row number.\ncopyStackTrace=Copy stack trace\ncopyStackTrace.accesskey=c\n\n# LOCALIZATION NOTE (expandPanes): This is the tooltip for the button\n# that expands the left and right panes in the debugger UI.\nexpandPanes=Expand panes\n\n# LOCALIZATION NOTE (pauseButtonTooltip): The tooltip that is displayed for the pause\n# button when the debugger is in a running state.\npauseButtonTooltip=Pause %S\n\n# LOCALIZATION NOTE (pausePendingButtonTooltip): The tooltip that is displayed for\n# the pause button after it's been clicked but before the next JavaScript to run.\npausePendingButtonTooltip=Waiting for next execution\n\n# LOCALIZATION NOTE (resumeButtonTooltip): The label that is displayed on the pause\n# button when the debugger is in a paused state.\nresumeButtonTooltip=Resume %S\n\n# LOCALIZATION NOTE (stepOverTooltip): The label that is displayed on the\n# button that steps over a function call.\nstepOverTooltip=Step over %S\n\n# LOCALIZATION NOTE (stepInTooltip): The label that is displayed on the\n# button that steps into a function call.\nstepInTooltip=Step in %S\n\n# LOCALIZATION NOTE (stepOutTooltip): The label that is displayed on the\n# button that steps out of a function call.\nstepOutTooltip=Step out %S\n\n# LOCALIZATION NOTE (pauseButtonItem): The label that is displayed for the dropdown pause\n# list item when the debugger is in a running state.\npauseButtonItem=Pause on Next Statement\n\n# LOCALIZATION NOTE (ignoreExceptionsItem): The pause on exceptions button description\n# when the debugger will not pause on exceptions.\nignoreExceptionsItem=Ignore exceptions\n\n# LOCALIZATION NOTE (pauseOnUncaughtExceptionsItem): The pause on exceptions dropdown\n# item shown when a user is adding a new breakpoint.\npauseOnUncaughtExceptionsItem=Pause on uncaught exceptions\n\n# LOCALIZATION NOTE (pauseOnExceptionsItem): The pause on exceptions button description\n# when the debugger will pause on all exceptions.\npauseOnExceptionsItem=Pause on all exceptions\n\n# LOCALIZATION NOTE (workersHeader): The text to display in the events\n# header.\nworkersHeader=Workers\n\n# LOCALIZATION NOTE (noWorkersText): The text to display in the workers list\n# when there are no workers.\nnoWorkersText=This page has no workers.\n\n# LOCALIZATION NOTE (noSourcesText): The text to display in the sources list\n# when there are no sources.\nnoSourcesText=This page has no sources.\n\n# LOCALIZATION NOTE (noEventListenersText): The text to display in the events tab\n# when there are no events.\nnoEventListenersText=No event listeners to display.\n\n# LOCALIZATION NOTE (eventListenersHeader): The text to display in the events\n# header.\neventListenersHeader=Event listeners\n\n# LOCALIZATION NOTE (noStackFramesText): The text to display in the call stack tab\n# when there are no stack frames.\nnoStackFramesText=No stack frames to display\n\n# LOCALIZATION NOTE (eventCheckboxTooltip): The tooltip text to display when\n# the user hovers over the checkbox used to toggle an event breakpoint.\neventCheckboxTooltip=Toggle breaking on this event\n\n# LOCALIZATION NOTE (eventOnSelector): The text to display in the events tab\n# for every event item, between the event type and event selector.\neventOnSelector=on\n\n# LOCALIZATION NOTE (eventInSource): The text to display in the events tab\n# for every event item, between the event selector and listener's owner source.\neventInSource=in\n\n# LOCALIZATION NOTE (eventNodes): The text to display in the events tab when\n# an event is listened on more than one target node.\neventNodes=%S nodes\n\n# LOCALIZATION NOTE (eventNative): The text to display in the events tab when\n# a listener is added from plugins, thus getting translated to native code.\neventNative=[native code]\n\n# LOCALIZATION NOTE (*Events): The text to display in the events tab for\n# each group of sub-level event entries.\nanimationEvents=Animation\naudioEvents=Audio\nbatteryEvents=Battery\nclipboardEvents=Clipboard\ncompositionEvents=Composition\ndeviceEvents=Device\ndisplayEvents=Display\ndragAndDropEvents=Drag and Drop\ngamepadEvents=Gamepad\nindexedDBEvents=IndexedDB\ninteractionEvents=Interaction\nkeyboardEvents=Keyboard\nmediaEvents=HTML5 Media\nmouseEvents=Mouse\nmutationEvents=Mutation\nnavigationEvents=Navigation\npointerLockEvents=Pointer Lock\nsensorEvents=Sensor\nstorageEvents=Storage\ntimeEvents=Time\ntouchEvents=Touch\notherEvents=Other\n\n# LOCALIZATION NOTE (blackboxCheckboxTooltip2): The tooltip text to display when\n# the user hovers over the checkbox used to toggle blackboxing its associated\n# source.\nblackboxCheckboxTooltip2=Toggle blackboxing\n\n# LOCALIZATION NOTE (sources.search.key2): Key shortcut to open the search for\n# searching all the source files the debugger has seen.\nsources.search.key2=CmdOrCtrl+P\n\n# LOCALIZATION NOTE (sources.search.alt.key): A second key shortcut to open the\n# search for searching all the source files the debugger has seen.\nsources.search.alt.key=CmdOrCtrl+O\n\n# LOCALIZATION NOTE (projectTextSearch.key): A key shortcut to open the\n# full project text search for searching all the files the debugger has seen.\nprojectTextSearch.key=CmdOrCtrl+Shift+F\n\n# LOCALIZATION NOTE (functionSearch.key): A key shortcut to open the\n# modal for searching functions in a file.\nfunctionSearch.key=CmdOrCtrl+Shift+O\n\n# LOCALIZATION NOTE (toggleBreakpoint.key): A key shortcut to toggle\n# breakpoints.\ntoggleBreakpoint.key=CmdOrCtrl+B\n\n# LOCALIZATION NOTE (toggleCondPanel.key): A key shortcut to toggle\n# the conditional breakpoint panel.\ntoggleCondPanel.key=CmdOrCtrl+Shift+B\n\n# LOCALIZATION NOTE (stepOut.key): A key shortcut to\n# step out.\nstepOut.key=Shift+F11\n\n# LOCALIZATION NOTE (shortcuts.header.editor): Sections header in\n# the shortcuts modal for keyboard shortcuts related to editing.\nshortcuts.header.editor=Editor\n\n# LOCALIZATION NOTE (shortcuts.header.stepping): Sections header in\n# the shortcuts modal for keyboard shortcuts related to stepping.\nshortcuts.header.stepping=Stepping\n\n# LOCALIZATION NOTE (shortcuts.header.search): Sections header in\n# the shortcuts modal for keyboard shortcuts related to search.\nshortcuts.header.search=Search\n\n# LOCALIZATION NOTE (projectTextSearch.placeholder): A placeholder shown\n# when searching across all of the files in a project.\nprojectTextSearch.placeholder=Find in files…\n\n# LOCALIZATION NOTE (projectTextSearch.noResults): The center pane Text Search\n# message when the query did not match any text of all files in a project.\nprojectTextSearch.noResults=No results found\n\n# LOCALIZATION NOTE (sources.noSourcesAvailable): Text shown when the debugger\n# does not have any sources.\nsources.noSourcesAvailable=This page has no sources\n\n# LOCALIZATION NOTE (sourceSearch.search.key2): Key shortcut to open the search\n# for searching within a the currently opened files in the editor\nsourceSearch.search.key2=CmdOrCtrl+F\n\n# LOCALIZATION NOTE (sourceSearch.search.placeholder): placeholder text in\n# the source search input bar\nsourceSearch.search.placeholder=Search in file…\n\n# LOCALIZATION NOTE (sourceSearch.search.again.key2): Key shortcut to highlight\n# the next occurrence of the last search triggered from a source search\nsourceSearch.search.again.key2=CmdOrCtrl+G\n\n# LOCALIZATION NOTE (sourceSearch.search.againPrev.key2): Key shortcut to highlight\n# the previous occurrence of the last search triggered from a source search\nsourceSearch.search.againPrev.key2=CmdOrCtrl+Shift+G\n\n# LOCALIZATION NOTE (sourceSearch.resultsSummary1): Shows a summary of\n# the number of matches for autocomplete\nsourceSearch.resultsSummary1=%d results\n\n# LOCALIZATION NOTE (noMatchingStringsText): The text to display in the\n# global search results when there are no matching strings after filtering.\nnoMatchingStringsText=No matches found\n\n# LOCALIZATION NOTE (emptySearchText): This is the text that appears in the\n# filter text box when it is empty and the scripts container is selected.\nemptySearchText=Search scripts (%S)\n\n# LOCALIZATION NOTE (emptyVariablesFilterText): This is the text that\n# appears in the filter text box for the variables view container.\nemptyVariablesFilterText=Filter variables\n\n# LOCALIZATION NOTE (emptyPropertiesFilterText): This is the text that\n# appears in the filter text box for the editor's variables view bubble.\nemptyPropertiesFilterText=Filter properties\n\n# LOCALIZATION NOTE (searchPanelFilter): This is the text that appears in the\n# filter panel popup for the filter scripts operation.\nsearchPanelFilter=Filter scripts (%S)\n\n# LOCALIZATION NOTE (searchPanelGlobal): This is the text that appears in the\n# filter panel popup for the global search operation.\nsearchPanelGlobal=Search in all files (%S)\n\n# LOCALIZATION NOTE (searchPanelFunction): This is the text that appears in the\n# filter panel popup for the function search operation.\nsearchPanelFunction=Search for function definition (%S)\n\n# LOCALIZATION NOTE (searchPanelToken): This is the text that appears in the\n# filter panel popup for the token search operation.\nsearchPanelToken=Find in this file (%S)\n\n# LOCALIZATION NOTE (searchPanelGoToLine): This is the text that appears in the\n# filter panel popup for the line search operation.\nsearchPanelGoToLine=Go to line (%S)\n\n# LOCALIZATION NOTE (searchPanelVariable): This is the text that appears in the\n# filter panel popup for the variables search operation.\nsearchPanelVariable=Filter variables (%S)\n\n# LOCALIZATION NOTE (breakpointMenuItem): The text for all the elements that\n# are displayed in the breakpoints menu item popup.\nbreakpointMenuItem.setConditional=Configure conditional breakpoint\nbreakpointMenuItem.enableSelf2.label=Enable\nbreakpointMenuItem.enableSelf2.accesskey=E\nbreakpointMenuItem.disableSelf2.label=Disable\nbreakpointMenuItem.disableSelf2.accesskey=D\nbreakpointMenuItem.deleteSelf2.label=Remove\nbreakpointMenuItem.deleteSelf2.accesskey=R\nbreakpointMenuItem.enableOthers2.label=Enable others\nbreakpointMenuItem.enableOthers2.accesskey=o\nbreakpointMenuItem.disableOthers2.label=Disable others\nbreakpointMenuItem.disableOthers2.accesskey=s\nbreakpointMenuItem.deleteOthers2.label=Remove others\nbreakpointMenuItem.deleteOthers2.accesskey=h\nbreakpointMenuItem.enableAll2.label=Enable all\nbreakpointMenuItem.enableAll2.accesskey=b\nbreakpointMenuItem.disableAll2.label=Disable all\nbreakpointMenuItem.disableAll2.accesskey=k\nbreakpointMenuItem.deleteAll2.label=Remove all\nbreakpointMenuItem.deleteAll2.accesskey=a\nbreakpointMenuItem.removeCondition2.label=Remove condition\nbreakpointMenuItem.removeCondition2.accesskey=c\nbreakpointMenuItem.addCondition2.label=Add condition\nbreakpointMenuItem.addCondition2.accesskey=A\nbreakpointMenuItem.editCondition2.label=Edit condition\nbreakpointMenuItem.editCondition2.accesskey=n\nbreakpointMenuItem.enableSelf=Enable breakpoint\nbreakpointMenuItem.enableSelf.accesskey=E\nbreakpointMenuItem.disableSelf=Disable breakpoint\nbreakpointMenuItem.disableSelf.accesskey=D\nbreakpointMenuItem.deleteSelf=Remove breakpoint\nbreakpointMenuItem.deleteSelf.accesskey=R\nbreakpointMenuItem.enableOthers=Enable others\nbreakpointMenuItem.enableOthers.accesskey=o\nbreakpointMenuItem.disableOthers=Disable others\nbreakpointMenuItem.disableOthers.accesskey=s\nbreakpointMenuItem.deleteOthers=Remove others\nbreakpointMenuItem.deleteOthers.accesskey=h\nbreakpointMenuItem.enableAll=Enable all breakpoints\nbreakpointMenuItem.enableAll.accesskey=b\nbreakpointMenuItem.disableAll=Disable all breakpoints\nbreakpointMenuItem.disableAll.accesskey=k\nbreakpointMenuItem.deleteAll=Remove all breakpoints\nbreakpointMenuItem.deleteAll.accesskey=a\nbreakpointMenuItem.removeCondition.label=Remove breakpoint condition\nbreakpointMenuItem.removeCondition.accesskey=c\nbreakpointMenuItem.editCondition.label=Edit breakpoint condition\nbreakpointMenuItem.editCondition.accesskey=n\n\n# LOCALIZATION NOTE (breakpoints.header): Breakpoints right sidebar pane header.\nbreakpoints.header=Breakpoints\n\n# LOCALIZATION NOTE (breakpoints.none): The text that appears when there are\n# no breakpoints present\nbreakpoints.none=No breakpoints\n\n# LOCALIZATION NOTE (breakpoints.enable): The text that may appear as a tooltip\n# when hovering over the 'disable breakpoints' switch button in right sidebar\nbreakpoints.enable=Enable breakpoints\n\n# LOCALIZATION NOTE (breakpoints.disable): The text that may appear as a tooltip\n# when hovering over the 'disable breakpoints' switch button in right sidebar\nbreakpoints.disable=Disable breakpoints\n\n# LOCALIZATION NOTE (breakpoints.removeBreakpointTooltip): The tooltip that is displayed\n# for remove breakpoint button in right sidebar\nbreakpoints.removeBreakpointTooltip=Remove breakpoint\n\n# LOCALIZATION NOTE (callStack.header): Call Stack right sidebar pane header.\ncallStack.header=Call stack\n\n# LOCALIZATION NOTE (callStack.notPaused): Call Stack right sidebar pane\n# message when not paused.\ncallStack.notPaused=Not paused\n\n# LOCALIZATION NOTE (callStack.collapse): Call Stack right sidebar pane\n# message to hide some of the frames that are shown.\ncallStack.collapse=Collapse rows\n\n# LOCALIZATION NOTE (callStack.expand): Call Stack right sidebar pane\n# message to show more of the frames.\ncallStack.expand=Expand rows\n\n# LOCALIZATION NOTE (editor.searchResults): Editor Search bar message\n# for the summarizing the selected search result. e.g. 5 of 10 results.\neditor.searchResults=%d of %d results\n\n# LOCALIZATION NOTE (editor.singleResult): Copy shown when there is one result.\neditor.singleResult=1 result\n\n# LOCALIZATION NOTE (editor.noResults): Editor Search bar message\n# for when no results found.\neditor.noResults=No results\n\n# LOCALIZATION NOTE (editor.searchResults.nextResult): Editor Search bar\n# tooltip for traversing to the Next Result\neditor.searchResults.nextResult=Next result\n\n# LOCALIZATION NOTE (editor.searchResults.prevResult): Editor Search bar\n# tooltip for traversing to the Previous Result\neditor.searchResults.prevResult=Previous result\n\n# LOCALIZATION NOTE (editor.searchTypeToggleTitle): Search bar title for\n# toggling search type buttons(function search, variable search)\neditor.searchTypeToggleTitle=Search for:\n\n# LOCALIZATION NOTE (editor.continueToHere.label): Editor gutter context\n# menu item for jumping to a new paused location\neditor.continueToHere.label=Continue to here\neditor.continueToHere.accesskey=H\n\n# LOCALIZATION NOTE (editor.addBreakpoint): Editor gutter context menu item\n# for adding a breakpoint on a line.\neditor.addBreakpoint=Add breakpoint\n\n# LOCALIZATION NOTE (editor.disableBreakpoint): Editor gutter context menu item\n# for disabling a breakpoint on a line.\neditor.disableBreakpoint=Disable breakpoint\neditor.disableBreakpoint.accesskey=D\n\n# LOCALIZATION NOTE (editor.enableBreakpoint): Editor gutter context menu item\n# for enabling a breakpoint on a line.\neditor.enableBreakpoint=Enable breakpoint\n\n# LOCALIZATION NOTE (editor.removeBreakpoint): Editor gutter context menu item\n# for removing a breakpoint on a line.\neditor.removeBreakpoint=Remove breakpoint\n\n# LOCALIZATION NOTE (editor.editBreakpoint): Editor gutter context menu item\n# for setting a breakpoint condition on a line.\neditor.editBreakpoint=Edit breakpoint\n\n# LOCALIZATION NOTE (editor.addConditionalBreakpoint): Editor gutter context\n# menu item for adding a breakpoint condition on a line.\neditor.addConditionalBreakpoint=Add conditional breakpoint\neditor.addConditionalBreakpoint.accesskey=c\n\n# LOCALIZATION NOTE (editor.conditionalPanel.placeholder): Placeholder text for\n# input element inside ConditionalPanel component\neditor.conditionalPanel.placeholder=This breakpoint will pause when the expression is true\n\n# LOCALIZATION NOTE (editor.conditionalPanel.close): Tooltip text for\n# close button inside ConditionalPanel component\neditor.conditionalPanel.close=Cancel edit breakpoint and close\n\n# LOCALIZATION NOTE (editor.jumpToMappedLocation1): Context menu item\n# for navigating to a source mapped location\neditor.jumpToMappedLocation1=Jump to %S location\neditor.jumpToMappedLocation1.accesskey=m\n\n# LOCALIZATION NOTE (framework.disableGrouping): This is the text that appears in the\n# context menu to disable framework grouping.\nframework.disableGrouping=Disable framework grouping\nframework.disableGrouping.accesskey=u\n\n# LOCALIZATION NOTE (framework.enableGrouping): This is the text that appears in the\n# context menu to enable framework grouping.\nframework.enableGrouping=Enable framework grouping\nframework.enableGrouping.accesskey=u\n\n# LOCALIZATION NOTE (generated): Source Map term for a server source location\ngenerated=generated\n\n# LOCALIZATION NOTE (original): Source Map term for a debugger UI source location\noriginal=original\n\n# LOCALIZATION NOTE (expressions.placeholder): Placeholder text for expression\n# input element\nexpressions.placeholder=Add watch expression\n# LOCALIZATION NOTE (expressions.errorMsg): Error text for expression\n# input element\nexpressions.errorMsg=Invalid expression…\nexpressions.label=Add watch expression\nexpressions.accesskey=e\n\n# LOCALIZATION NOTE (sourceTabs.closeTab): Editor source tab context menu item\n# for closing the selected tab below the mouse.\nsourceTabs.closeTab=Close tab\nsourceTabs.closeTab.accesskey=c\n\n# LOCALIZATION NOTE (sourceTabs.closeOtherTabs): Editor source tab context menu item\n# for closing the other tabs.\nsourceTabs.closeOtherTabs=Close other tabs\nsourceTabs.closeOtherTabs.accesskey=o\n\n# LOCALIZATION NOTE (sourceTabs.closeTabsToEnd): Editor source tab context menu item\n# for closing the tabs to the end (the right for LTR languages) of the selected tab.\nsourceTabs.closeTabsToEnd=Close tabs to the right\nsourceTabs.closeTabsToEnd.accesskey=e\n\n# LOCALIZATION NOTE (sourceTabs.closeAllTabs): Editor source tab context menu item\n# for closing all tabs.\nsourceTabs.closeAllTabs=Close all tabs\nsourceTabs.closeAllTabs.accesskey=a\n\n# LOCALIZATION NOTE (sourceTabs.revealInTree): Editor source tab context menu item\n# for revealing source in tree.\nsourceTabs.revealInTree=Reveal in tree\nsourceTabs.revealInTree.accesskey=r\n\n# LOCALIZATION NOTE (sourceTabs.prettyPrint): Editor source tab context menu item\n# for pretty printing the source.\nsourceTabs.prettyPrint=Pretty print source\nsourceTabs.prettyPrint.accesskey=p\n\n# LOCALIZATION NOTE (sourceFooter.blackbox): Tooltip text associated\n# with the blackbox button\nsourceFooter.blackbox=Blackbox source\nsourceFooter.blackbox.accesskey=B\n\n# LOCALIZATION NOTE (sourceFooter.unblackbox): Tooltip text associated\n# with the blackbox button\nsourceFooter.unblackbox=Unblackbox source\nsourceFooter.unblackbox.accesskey=b\n\n# LOCALIZATION NOTE (sourceFooter.blackboxed): Text associated\n# with a blackboxed source\nsourceFooter.blackboxed=Blackboxed source\n\n# LOCALIZATION NOTE (sourceFooter.mappedSource): Text associated\n# with a mapped source. %S is replaced by the source map origin.\nsourceFooter.mappedSource=(From %S)\n\n# LOCALIZATION NOTE (sourceFooter.mappedSourceTooltip): Tooltip text associated\n# with a mapped source. %S is replaced by the source map origin.\nsourceFooter.mappedSourceTooltip=(Source mapped from %S)\n\n# LOCALIZATION NOTE (sourceFooter.codeCoverage): Text associated\n# with a code coverage button\nsourceFooter.codeCoverage=Code coverage\n\n# LOCALIZATION NOTE (sourceTabs.closeTabButtonTooltip): The tooltip that is displayed\n# for close tab button in source tabs.\nsourceTabs.closeTabButtonTooltip=Close tab\n\n# LOCALIZATION NOTE (scopes.header): Scopes right sidebar pane header.\nscopes.header=Scopes\n\n# LOCALIZATION NOTE (scopes.notAvailable): Scopes right sidebar pane message\n# for when the debugger is paused, but there isn't pause data.\nscopes.notAvailable=Scopes unavailable\n\n# LOCALIZATION NOTE (scopes.notPaused): Scopes right sidebar pane message\n# for when the debugger is not paused.\nscopes.notPaused=Not paused\n\n# LOCALIZATION NOTE (scopes.block): Refers to a block of code in\n# the scopes pane when the debugger is paused.\nscopes.block=Block\n\n# LOCALIZATION NOTE (sources.header): Sources left sidebar header\nsources.header=Sources\n\n# LOCALIZATION NOTE (outline.header): Outline left sidebar header\noutline.header=Outline\n\n# LOCALIZATION NOTE (outline.noFunctions): Outline text when there are no functions to display\noutline.noFunctions=No functions\n\n# LOCALIZATION NOTE (sources.search): Sources left sidebar prompt\n# e.g. Cmd+P to search. On a mac, we use the command unicode character.\n# On windows, it's ctrl.\nsources.search=%S to search\n\n# LOCALIZATION NOTE (watchExpressions.header): Watch Expressions right sidebar\n# pane header.\nwatchExpressions.header=Watch expressions\n\n# LOCALIZATION NOTE (watchExpressions.refreshButton): Watch Expressions header\n# button for refreshing the expressions.\nwatchExpressions.refreshButton=Refresh\n\n# LOCALIZATION NOTE (welcome.search): The center pane welcome panel's\n# search prompt. e.g. cmd+p to search for files. On windows, it's ctrl, on\n# a mac we use the unicode character.\nwelcome.search=%S to search for sources\n\n# LOCALIZATION NOTE (welcome.findInFiles): The center pane welcome panel's\n# search prompt. e.g. cmd+f to search for files. On windows, it's ctrl+shift+f, on\n# a mac we use the unicode character.\nwelcome.findInFiles=%S to find in files\n\n# LOCALIZATION NOTE (welcome.searchFunction): Label displayed in the welcome\n# panel. %S is replaced by the keyboard shortcut to search for functions.\nwelcome.searchFunction=%S to search for functions in file\n\n# LOCALIZATION NOTE (sourceSearch.search): The center pane Source Search\n# prompt for searching for files.\nsourceSearch.search=Search sources…\n\n# LOCALIZATION NOTE (sourceSearch.noResults2): The center pane Source Search\n# message when the query did not match any of the sources.\nsourceSearch.noResults2=No results found\n\n# LOCALIZATION NOTE (ignoreExceptions): The pause on exceptions button tooltip\n# when the debugger will not pause on exceptions.\nignoreExceptions=Ignore exceptions. Click to pause on uncaught exceptions\n\n# LOCALIZATION NOTE (pauseOnUncaughtExceptions): The pause on exceptions button\n# tooltip when the debugger will pause on uncaught exceptions.\npauseOnUncaughtExceptions=Pause on uncaught exceptions. Click to pause on all exceptions\n\n# LOCALIZATION NOTE (pauseOnExceptions): The pause on exceptions button tooltip\n# when the debugger will pause on all exceptions.\npauseOnExceptions=Pause on all exceptions. Click to ignore exceptions\n\n# LOCALIZATION NOTE (loadingText): The text that is displayed in the script\n# editor when the loading process has started but there is no file to display\n# yet.\nloadingText=Loading\\u2026\n\n# LOCALIZATION NOTE (errorLoadingText3): The text that is displayed in the debugger\n# viewer when there is an error loading a file\nerrorLoadingText3=Error loading this URI: %S\n\n# LOCALIZATION NOTE (addWatchExpressionText): The text that is displayed in the\n# watch expressions list to add a new item.\naddWatchExpressionText=Add watch expression\n\n# LOCALIZATION NOTE (addWatchExpressionButton): The button that is displayed in the\n# variables view popup.\naddWatchExpressionButton=Watch\n\n# LOCALIZATION NOTE (emptyVariablesText): The text that is displayed in the\n# variables pane when there are no variables to display.\nemptyVariablesText=No variables to display\n\n# LOCALIZATION NOTE (scopeLabel): The text that is displayed in the variables\n# pane as a header for each variable scope (e.g. \"Global scope, \"With scope\",\n# etc.).\nscopeLabel=%S scope\n\n# LOCALIZATION NOTE (watchExpressionsScopeLabel): The name of the watch\n# expressions scope. This text is displayed in the variables pane as a header for\n# the watch expressions scope.\nwatchExpressionsScopeLabel=Watch expressions\n\n# LOCALIZATION NOTE (globalScopeLabel): The name of the global scope. This text\n# is added to scopeLabel and displayed in the variables pane as a header for\n# the global scope.\nglobalScopeLabel=Global\n\n# LOCALIZATION NOTE (variablesViewErrorStacktrace): This is the text that is\n# shown before the stack trace in an error.\nvariablesViewErrorStacktrace=Stack trace:\n\n# LOCALIZATION NOTE (variablesViewMoreObjects): the text that is displayed\n# when you have an object preview that does not show all of the elements. At the end of the list\n# you see \"N more...\" in the web console output.\n# This is a semi-colon list of plural forms.\n# See: http://developer.mozilla.org/en/docs/Localization_and_Plurals\n# #1 number of remaining items in the object\n# example: 3 more…\nvariablesViewMoreObjects=#1 more…;#1 more…\n\n# LOCALIZATION NOTE (variablesEditableNameTooltip): The text that is displayed\n# in the variables list on an item with an editable name.\nvariablesEditableNameTooltip=Double click to edit\n\n# LOCALIZATION NOTE (variablesEditableValueTooltip): The text that is displayed\n# in the variables list on an item with an editable value.\nvariablesEditableValueTooltip=Click to change value\n\n# LOCALIZATION NOTE (variablesCloseButtonTooltip): The text that is displayed\n# in the variables list on an item which can be removed.\nvariablesCloseButtonTooltip=Click to remove\n\n# LOCALIZATION NOTE (variablesEditButtonTooltip): The text that is displayed\n# in the variables list on a getter or setter which can be edited.\nvariablesEditButtonTooltip=Click to set value\n\n# LOCALIZATION NOTE (variablesDomNodeValueTooltip): The text that is displayed\n# in a tooltip on the \"open in inspector\" button in the the variables list for a\n# DOMNode item.\nvariablesDomNodeValueTooltip=Click to select the node in the inspector\n\n# LOCALIZATION NOTE (configurable|...|Tooltip): The text that is displayed\n# in the variables list on certain variables or properties as tooltips.\n# Expanations of what these represent can be found at the following links:\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/isExtensible\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/isFrozen\n# https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/isSealed\n# It's probably best to keep these in English.\nconfigurableTooltip=configurable\nenumerableTooltip=enumerable\nwritableTooltip=writable\nfrozenTooltip=frozen\nsealedTooltip=sealed\nextensibleTooltip=extensible\noverriddenTooltip=overridden\nWebIDLTooltip=WebIDL\n\n# LOCALIZATION NOTE (variablesSeparatorLabel): The text that is displayed\n# in the variables list as a separator between the name and value.\nvariablesSeparatorLabel=:\n\n# LOCALIZATION NOTE (watchExpressionsSeparatorLabel2): The text that is displayed\n# in the watch expressions list as a separator between the code and evaluation.\nwatchExpressionsSeparatorLabel2=\\u0020→\n\n# LOCALIZATION NOTE (functionSearchSeparatorLabel): The text that is displayed\n# in the functions search panel as a separator between function's inferred name\n# and its real name (if available).\nfunctionSearchSeparatorLabel=←\n\n# LOCALIZATION NOTE(gotoLineModal.placeholder): The placeholder\n# text displayed when the user searches for specific lines in a file\ngotoLineModal.placeholder=Go to line…\ngotoLineModal.key=CmdOrCtrl+Shift+;\ngotoLineModal.title=Go to a line number in a file\n\n# LOCALIZATION NOTE(symbolSearch.search.functionsPlaceholder): The placeholder\n# text displayed when the user searches for functions in a file\nsymbolSearch.search.functionsPlaceholder=Search functions…\nsymbolSearch.search.functionsPlaceholder.title=Search for a function in a file\n\n# LOCALIZATION NOTE(symbolSearch.search.variablesPlaceholder): The placeholder\n# text displayed when the user searches for variables in a file\nsymbolSearch.search.variablesPlaceholder=Search variables…\nsymbolSearch.search.variablesPlaceholder.title=Search for a variable in a file\n\n# LOCALIZATION NOTE(symbolSearch.search.key2): The Key Shortcut for\n# searching for a function or variable\nsymbolSearch.search.key2=CmdOrCtrl+Shift+O\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.modifiersLabel): A label\n# preceding the group of modifiers\nsymbolSearch.searchModifier.modifiersLabel=Modifiers:\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.regex): A search option\n# when searching text in a file\nsymbolSearch.searchModifier.regex=Regex\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.caseSensitive): A search option\n# when searching text in a file\nsymbolSearch.searchModifier.caseSensitive=Case sensitive\n\n# LOCALIZATION NOTE(symbolSearch.searchModifier.wholeWord): A search option\n# when searching text in a file\nsymbolSearch.searchModifier.wholeWord=Whole word\n\n# LOCALIZATION NOTE (resumptionOrderPanelTitle): This is the text that appears\n# as a description in the notification panel popup, when multiple debuggers are\n# open in separate tabs and the user tries to resume them in the wrong order.\n# The substitution parameter is the URL of the last paused window that must be\n# resumed first.\nresumptionOrderPanelTitle=There are one or more paused debuggers. Please resume the most-recently paused debugger first at: %S\n\nvariablesViewOptimizedOut=(optimized away)\nvariablesViewUninitialized=(uninitialized)\nvariablesViewMissingArgs=(unavailable)\n\nanonymousSourcesLabel=Anonymous sources\n\nexperimental=This is an experimental feature\n\n# LOCALIZATION NOTE (whyPaused.debuggerStatement): The text that is displayed\n# in a info block explaining how the debugger is currently paused due to a `debugger`\n# statement in the code\nwhyPaused.debuggerStatement=Paused on debugger statement\n\n# LOCALIZATION NOTE (whyPaused.breakpoint): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a breakpoint\nwhyPaused.breakpoint=Paused on breakpoint\n\n# LOCALIZATION NOTE (whyPaused.exception): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an exception\nwhyPaused.exception=Paused on exception\n\n# LOCALIZATION NOTE (whyPaused.resumeLimit): The text that is displayed\n# in a info block explaining how the debugger is currently paused while stepping\n# in or out of the stack\nwhyPaused.resumeLimit=Paused while stepping\n\n# LOCALIZATION NOTE (whyPaused.pauseOnDOMEvents): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a\n# dom event\nwhyPaused.pauseOnDOMEvents=Paused on event listener\n\n# LOCALIZATION NOTE (whyPaused.breakpointConditionThrown): The text that is displayed\n# in an info block when evaluating a conditional breakpoint throws an error\nwhyPaused.breakpointConditionThrown=Error with conditional breakpoint\n\n# LOCALIZATION NOTE (whyPaused.xhr): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an\n# xml http request\nwhyPaused.xhr=Paused on XMLHttpRequest\n\n# LOCALIZATION NOTE (whyPaused.promiseRejection): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a\n# promise rejection\nwhyPaused.promiseRejection=Paused on promise rejection\n\n# LOCALIZATION NOTE (whyPaused.assert): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an\n# assert\nwhyPaused.assert=Paused on assertion\n\n# LOCALIZATION NOTE (whyPaused.debugCommand): The text that is displayed\n# in a info block explaining how the debugger is currently paused on a\n# debugger statement\nwhyPaused.debugCommand=Paused on debugged function\n\n# LOCALIZATION NOTE (whyPaused.other): The text that is displayed\n# in a info block explaining how the debugger is currently paused on an event\n# listener breakpoint set\nwhyPaused.other=Debugger paused\n\n# LOCALIZATION NOTE (ctrl): The text that is used for documenting\n# keyboard shortcuts that use the control key\nctrl=Ctrl\n\n# LOCALIZATION NOTE (anonymous): The text that is displayed when the\n# display name is null.\nanonymous=(anonymous)\n\n# LOCALIZATION NOTE (shortcuts.toggleBreakpoint): text describing\n# keyboard shortcut action for toggling breakpoint\nshortcuts.toggleBreakpoint=Toggle Breakpoint\nshortcuts.toggleBreakpoint.accesskey=B\n\n# LOCALIZATION NOTE (shortcuts.toggleCondPanel): text describing\n# keyboard shortcut action for toggling conditional panel keyboard\nshortcuts.toggleCondPanel=Toggle Conditional Panel\n\n# LOCALIZATION NOTE (shortcuts.pauseOrResume): text describing\n# keyboard shortcut action for pause of resume\nshortcuts.pauseOrResume=Pause/Resume\n\n# LOCALIZATION NOTE (shortcuts.stepOver): text describing\n# keyboard shortcut action for stepping over\nshortcuts.stepOver=Step Over\n\n# LOCALIZATION NOTE (shortcuts.stepIn): text describing\n# keyboard shortcut action for stepping in\nshortcuts.stepIn=Step In\n\n# LOCALIZATION NOTE (shortcuts.stepOut): text describing\n# keyboard shortcut action for stepping out\nshortcuts.stepOut=Step Out\n\n# LOCALIZATION NOTE (shortcuts.fileSearch): text describing\n# keyboard shortcut action for source file search\nshortcuts.fileSearch=Source File Search\n\n# LOCALIZATION NOTE (shortcuts.searchAgain): text describing\n# keyboard shortcut action for searching again\nshortcuts.searchAgain=Search Again\n\n# LOCALIZATION NOTE (shortcuts.projectSearch): text describing\n# keyboard shortcut action for full project search\nshortcuts.projectSearch=Full Project Search\n\n# LOCALIZATION NOTE (shortcuts.functionSearch): text describing\n# keyboard shortcut action for function search\nshortcuts.functionSearch=Function Search\n\n# LOCALIZATION NOTE (shortcuts.buttonName): text describing\n# keyboard shortcut button text\nshortcuts.buttonName=Keyboard shortcuts\n"
 
 /***/ }),
 /* 961 */,
@@ -14680,7 +14551,7 @@ function createStructuredSelector(selectors) {
 /* 997 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" viewBox=\"0 0 32 32\"><script></script><path fill=\"#444444\" d=\"M16 9.875l-9.539-5.438v23.698l9.539-5.438 9.539 5.438v-23.698l-9.539 5.438zM11.248 16.286l4.752-2.709 4.752 2.709-4.752 2.709-4.752-2.709zM9.618 9.643l3.399 1.938-3.399 1.938v-3.876zM9.618 19.053l3.145 1.792-3.145 1.793v-3.585zM22.382 22.638l-3.145-1.793 3.145-1.793v3.585zM18.982 11.581l3.399-1.938v3.876l-3.399-1.938z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" viewBox=\"0 0 32 32\"><script></script><path fill=\"#444444\" d=\"M16 9.875l-9.539-5.438v23.698l9.539-5.438 9.539 5.438v-23.698l-9.539 5.438zM11.248 16.286l4.752-2.709 4.752 2.709-4.752 2.709-4.752-2.709zM9.618 9.643l3.399 1.938-3.399 1.938v-3.876zM9.618 19.053l3.145 1.792-3.145 1.793v-3.585zM22.382 22.638l-3.145-1.793 3.145-1.793v3.585zM18.982 11.581l3.399-1.938v3.876l-3.399-1.938z\"></path></svg>"
 
 /***/ }),
 /* 998 */
@@ -14692,37 +14563,37 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /* 999 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 32 32\"><path fill=\"#444444\" d=\"M16.232 24.047c-0.15-0.034-0.295-0.081-0.441-0.124-0.037-0.011-0.074-0.022-0.11-0.033-0.143-0.044-0.284-0.090-0.425-0.139-0.019-0.007-0.039-0.014-0.058-0.021-0.126-0.045-0.251-0.091-0.375-0.139-0.035-0.014-0.070-0.027-0.105-0.041-0.136-0.054-0.271-0.11-0.405-0.168-0.027-0.012-0.054-0.024-0.081-0.036-0.115-0.052-0.228-0.105-0.341-0.159-0.033-0.016-0.065-0.031-0.099-0.047-0.089-0.043-0.177-0.090-0.264-0.134-0.059-0.031-0.118-0.060-0.176-0.092-0.107-0.058-0.212-0.117-0.317-0.178-0.035-0.020-0.071-0.038-0.107-0.059-0.139-0.081-0.277-0.166-0.412-0.252-0.037-0.024-0.074-0.050-0.111-0.074-0.099-0.063-0.197-0.128-0.293-0.195-0.032-0.021-0.063-0.045-0.094-0.066-0.093-0.066-0.186-0.132-0.277-0.2-0.042-0.031-0.082-0.062-0.123-0.093-0.084-0.064-0.168-0.129-0.25-0.196-0.037-0.030-0.075-0.060-0.112-0.090-0.105-0.087-0.209-0.173-0.312-0.263-0.011-0.009-0.023-0.018-0.034-0.028-0.111-0.097-0.22-0.197-0.328-0.298-0.031-0.030-0.062-0.059-0.092-0.088-0.080-0.076-0.158-0.153-0.235-0.231-0.031-0.031-0.062-0.061-0.092-0.092-0.098-0.101-0.194-0.203-0.289-0.306-0.005-0.005-0.010-0.010-0.014-0.015-0.1-0.109-0.197-0.221-0.293-0.334-0.026-0.031-0.051-0.060-0.077-0.091-0.071-0.086-0.142-0.173-0.211-0.261-0.026-0.031-0.052-0.064-0.077-0.096-0.083-0.108-0.164-0.215-0.243-0.324-2.197-2.996-2.986-7.129-1.23-10.523l-1.556 1.974c-1.994 2.866-1.746 6.595-0.223 9.64 0.036 0.073 0.074 0.145 0.112 0.217 0.024 0.045 0.046 0.092 0.071 0.137 0.014 0.027 0.030 0.053 0.044 0.079 0.026 0.049 0.053 0.095 0.079 0.142 0.047 0.083 0.096 0.166 0.145 0.249 0.027 0.045 0.055 0.091 0.083 0.136 0.055 0.089 0.111 0.176 0.169 0.264 0.024 0.037 0.047 0.075 0.072 0.111 0.080 0.118 0.161 0.236 0.244 0.353 0.002 0.003 0.005 0.006 0.007 0.009 0.013 0.018 0.028 0.037 0.041 0.056 0.072 0.1 0.147 0.199 0.223 0.296 0.028 0.036 0.056 0.072 0.084 0.107 0.067 0.085 0.136 0.169 0.206 0.253 0.026 0.031 0.052 0.063 0.079 0.094 0.094 0.11 0.189 0.22 0.287 0.328 0.002 0.002 0.004 0.004 0.006 0.005 0.004 0.005 0.008 0.008 0.011 0.013 0.095 0.104 0.193 0.206 0.291 0.307 0.031 0.032 0.062 0.063 0.093 0.094 0.076 0.077 0.154 0.153 0.233 0.228 0.032 0.030 0.063 0.061 0.095 0.091 0.105 0.099 0.211 0.196 0.319 0.291 0.002 0.001 0.003 0.003 0.005 0.004 0.018 0.016 0.038 0.032 0.056 0.047 0.095 0.082 0.192 0.164 0.29 0.245 0.040 0.032 0.080 0.064 0.12 0.096 0.080 0.064 0.16 0.127 0.241 0.189 0.043 0.033 0.086 0.066 0.129 0.098 0.089 0.066 0.18 0.131 0.271 0.194 0.033 0.024 0.065 0.047 0.099 0.070 0.009 0.006 0.018 0.013 0.027 0.019 0.086 0.060 0.175 0.116 0.263 0.174 0.038 0.025 0.075 0.051 0.114 0.076 0.136 0.086 0.273 0.171 0.412 0.253 0.038 0.022 0.076 0.043 0.114 0.064 0.102 0.059 0.205 0.117 0.309 0.174 0.056 0.030 0.114 0.059 0.171 0.088 0.073 0.038 0.147 0.078 0.221 0.115 0.017 0.009 0.035 0.017 0.051 0.025 0.030 0.014 0.060 0.028 0.091 0.044 0.116 0.055 0.233 0.11 0.351 0.163 0.025 0.011 0.049 0.022 0.074 0.033 0.135 0.059 0.271 0.116 0.409 0.17 0.033 0.014 0.066 0.026 0.1 0.039 0.127 0.049 0.256 0.098 0.386 0.143 0.016 0.006 0.032 0.012 0.049 0.017 0.142 0.050 0.286 0.096 0.43 0.141 0.034 0.010 0.069 0.021 0.104 0.031 0.147 0.044 0.293 0.097 0.445 0.125 9.643 1.759 12.444-5.795 12.444-5.795-2.352 3.065-6.528 3.873-10.485 2.974zM12.758 16.231c0.216 0.31 0.456 0.678 0.742 0.927 0.104 0.114 0.213 0.226 0.324 0.336 0.028 0.029 0.057 0.056 0.085 0.084 0.108 0.105 0.217 0.207 0.33 0.307 0.005 0.003 0.009 0.008 0.014 0.012 0.001 0.001 0.002 0.002 0.003 0.003 0.125 0.11 0.255 0.216 0.386 0.319 0.029 0.022 0.058 0.046 0.088 0.069 0.132 0.101 0.266 0.2 0.404 0.295 0.004 0.003 0.008 0.006 0.012 0.009 0.061 0.042 0.123 0.081 0.184 0.122 0.030 0.019 0.058 0.040 0.088 0.058 0.098 0.063 0.198 0.125 0.299 0.183 0.014 0.009 0.028 0.016 0.042 0.024 0.087 0.051 0.176 0.1 0.265 0.148 0.031 0.018 0.063 0.033 0.094 0.049 0.061 0.032 0.123 0.064 0.185 0.096 0.009 0.004 0.019 0.009 0.028 0.012 0.127 0.063 0.255 0.123 0.386 0.18 0.028 0.012 0.057 0.023 0.085 0.035 0.105 0.045 0.21 0.088 0.316 0.129 0.045 0.017 0.091 0.033 0.135 0.050 0.097 0.036 0.193 0.069 0.291 0.101 0.044 0.014 0.087 0.028 0.131 0.042 0.139 0.043 0.276 0.098 0.42 0.122 7.445 1.233 9.164-4.499 9.164-4.499-1.549 2.232-4.55 3.296-7.752 2.465-0.142-0.038-0.282-0.078-0.422-0.122-0.043-0.013-0.084-0.027-0.127-0.041-0.099-0.032-0.197-0.066-0.295-0.102-0.045-0.017-0.089-0.033-0.133-0.050-0.107-0.041-0.213-0.084-0.317-0.128-0.029-0.013-0.058-0.024-0.086-0.036-0.131-0.057-0.261-0.117-0.389-0.18-0.066-0.032-0.13-0.066-0.195-0.099-0.037-0.019-0.075-0.038-0.112-0.058-0.083-0.045-0.165-0.092-0.246-0.139-0.019-0.011-0.040-0.022-0.059-0.033-0.101-0.059-0.2-0.12-0.299-0.182-0.030-0.019-0.060-0.040-0.090-0.060-0.065-0.042-0.13-0.085-0.193-0.128-0.137-0.095-0.271-0.194-0.402-0.294-0.030-0.024-0.061-0.047-0.091-0.071-1.401-1.107-2.512-2.619-3.041-4.334-0.554-1.778-0.434-3.775 0.525-5.395l-1.178 1.663c-1.442 2.075-1.364 4.853-0.239 7.048 0.189 0.368 0.401 0.725 0.638 1.065zM20.606 13.664c0.061 0.023 0.123 0.043 0.185 0.064 0.027 0.008 0.054 0.018 0.082 0.026 0.088 0.027 0.175 0.060 0.265 0.076 4.111 0.794 5.226-2.11 5.523-2.537-0.977 1.406-2.618 1.744-4.632 1.255-0.159-0.039-0.334-0.096-0.488-0.151-0.197-0.070-0.39-0.15-0.579-0.24-0.358-0.172-0.699-0.38-1.015-0.619-1.802-1.367-2.922-3.976-1.746-6.101l-0.637 0.877c-0.85 1.251-0.933 2.805-0.344 4.186 0.622 1.467 1.897 2.617 3.384 3.163z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 32 32\"><path fill=\"#444444\" d=\"M16.232 24.047c-0.15-0.034-0.295-0.081-0.441-0.124-0.037-0.011-0.074-0.022-0.11-0.033-0.143-0.044-0.284-0.090-0.425-0.139-0.019-0.007-0.039-0.014-0.058-0.021-0.126-0.045-0.251-0.091-0.375-0.139-0.035-0.014-0.070-0.027-0.105-0.041-0.136-0.054-0.271-0.11-0.405-0.168-0.027-0.012-0.054-0.024-0.081-0.036-0.115-0.052-0.228-0.105-0.341-0.159-0.033-0.016-0.065-0.031-0.099-0.047-0.089-0.043-0.177-0.090-0.264-0.134-0.059-0.031-0.118-0.060-0.176-0.092-0.107-0.058-0.212-0.117-0.317-0.178-0.035-0.020-0.071-0.038-0.107-0.059-0.139-0.081-0.277-0.166-0.412-0.252-0.037-0.024-0.074-0.050-0.111-0.074-0.099-0.063-0.197-0.128-0.293-0.195-0.032-0.021-0.063-0.045-0.094-0.066-0.093-0.066-0.186-0.132-0.277-0.2-0.042-0.031-0.082-0.062-0.123-0.093-0.084-0.064-0.168-0.129-0.25-0.196-0.037-0.030-0.075-0.060-0.112-0.090-0.105-0.087-0.209-0.173-0.312-0.263-0.011-0.009-0.023-0.018-0.034-0.028-0.111-0.097-0.22-0.197-0.328-0.298-0.031-0.030-0.062-0.059-0.092-0.088-0.080-0.076-0.158-0.153-0.235-0.231-0.031-0.031-0.062-0.061-0.092-0.092-0.098-0.101-0.194-0.203-0.289-0.306-0.005-0.005-0.010-0.010-0.014-0.015-0.1-0.109-0.197-0.221-0.293-0.334-0.026-0.031-0.051-0.060-0.077-0.091-0.071-0.086-0.142-0.173-0.211-0.261-0.026-0.031-0.052-0.064-0.077-0.096-0.083-0.108-0.164-0.215-0.243-0.324-2.197-2.996-2.986-7.129-1.23-10.523l-1.556 1.974c-1.994 2.866-1.746 6.595-0.223 9.64 0.036 0.073 0.074 0.145 0.112 0.217 0.024 0.045 0.046 0.092 0.071 0.137 0.014 0.027 0.030 0.053 0.044 0.079 0.026 0.049 0.053 0.095 0.079 0.142 0.047 0.083 0.096 0.166 0.145 0.249 0.027 0.045 0.055 0.091 0.083 0.136 0.055 0.089 0.111 0.176 0.169 0.264 0.024 0.037 0.047 0.075 0.072 0.111 0.080 0.118 0.161 0.236 0.244 0.353 0.002 0.003 0.005 0.006 0.007 0.009 0.013 0.018 0.028 0.037 0.041 0.056 0.072 0.1 0.147 0.199 0.223 0.296 0.028 0.036 0.056 0.072 0.084 0.107 0.067 0.085 0.136 0.169 0.206 0.253 0.026 0.031 0.052 0.063 0.079 0.094 0.094 0.11 0.189 0.22 0.287 0.328 0.002 0.002 0.004 0.004 0.006 0.005 0.004 0.005 0.008 0.008 0.011 0.013 0.095 0.104 0.193 0.206 0.291 0.307 0.031 0.032 0.062 0.063 0.093 0.094 0.076 0.077 0.154 0.153 0.233 0.228 0.032 0.030 0.063 0.061 0.095 0.091 0.105 0.099 0.211 0.196 0.319 0.291 0.002 0.001 0.003 0.003 0.005 0.004 0.018 0.016 0.038 0.032 0.056 0.047 0.095 0.082 0.192 0.164 0.29 0.245 0.040 0.032 0.080 0.064 0.12 0.096 0.080 0.064 0.16 0.127 0.241 0.189 0.043 0.033 0.086 0.066 0.129 0.098 0.089 0.066 0.18 0.131 0.271 0.194 0.033 0.024 0.065 0.047 0.099 0.070 0.009 0.006 0.018 0.013 0.027 0.019 0.086 0.060 0.175 0.116 0.263 0.174 0.038 0.025 0.075 0.051 0.114 0.076 0.136 0.086 0.273 0.171 0.412 0.253 0.038 0.022 0.076 0.043 0.114 0.064 0.102 0.059 0.205 0.117 0.309 0.174 0.056 0.030 0.114 0.059 0.171 0.088 0.073 0.038 0.147 0.078 0.221 0.115 0.017 0.009 0.035 0.017 0.051 0.025 0.030 0.014 0.060 0.028 0.091 0.044 0.116 0.055 0.233 0.11 0.351 0.163 0.025 0.011 0.049 0.022 0.074 0.033 0.135 0.059 0.271 0.116 0.409 0.17 0.033 0.014 0.066 0.026 0.1 0.039 0.127 0.049 0.256 0.098 0.386 0.143 0.016 0.006 0.032 0.012 0.049 0.017 0.142 0.050 0.286 0.096 0.43 0.141 0.034 0.010 0.069 0.021 0.104 0.031 0.147 0.044 0.293 0.097 0.445 0.125 9.643 1.759 12.444-5.795 12.444-5.795-2.352 3.065-6.528 3.873-10.485 2.974zM12.758 16.231c0.216 0.31 0.456 0.678 0.742 0.927 0.104 0.114 0.213 0.226 0.324 0.336 0.028 0.029 0.057 0.056 0.085 0.084 0.108 0.105 0.217 0.207 0.33 0.307 0.005 0.003 0.009 0.008 0.014 0.012 0.001 0.001 0.002 0.002 0.003 0.003 0.125 0.11 0.255 0.216 0.386 0.319 0.029 0.022 0.058 0.046 0.088 0.069 0.132 0.101 0.266 0.2 0.404 0.295 0.004 0.003 0.008 0.006 0.012 0.009 0.061 0.042 0.123 0.081 0.184 0.122 0.030 0.019 0.058 0.040 0.088 0.058 0.098 0.063 0.198 0.125 0.299 0.183 0.014 0.009 0.028 0.016 0.042 0.024 0.087 0.051 0.176 0.1 0.265 0.148 0.031 0.018 0.063 0.033 0.094 0.049 0.061 0.032 0.123 0.064 0.185 0.096 0.009 0.004 0.019 0.009 0.028 0.012 0.127 0.063 0.255 0.123 0.386 0.18 0.028 0.012 0.057 0.023 0.085 0.035 0.105 0.045 0.21 0.088 0.316 0.129 0.045 0.017 0.091 0.033 0.135 0.050 0.097 0.036 0.193 0.069 0.291 0.101 0.044 0.014 0.087 0.028 0.131 0.042 0.139 0.043 0.276 0.098 0.42 0.122 7.445 1.233 9.164-4.499 9.164-4.499-1.549 2.232-4.55 3.296-7.752 2.465-0.142-0.038-0.282-0.078-0.422-0.122-0.043-0.013-0.084-0.027-0.127-0.041-0.099-0.032-0.197-0.066-0.295-0.102-0.045-0.017-0.089-0.033-0.133-0.050-0.107-0.041-0.213-0.084-0.317-0.128-0.029-0.013-0.058-0.024-0.086-0.036-0.131-0.057-0.261-0.117-0.389-0.18-0.066-0.032-0.13-0.066-0.195-0.099-0.037-0.019-0.075-0.038-0.112-0.058-0.083-0.045-0.165-0.092-0.246-0.139-0.019-0.011-0.040-0.022-0.059-0.033-0.101-0.059-0.2-0.12-0.299-0.182-0.030-0.019-0.060-0.040-0.090-0.060-0.065-0.042-0.13-0.085-0.193-0.128-0.137-0.095-0.271-0.194-0.402-0.294-0.030-0.024-0.061-0.047-0.091-0.071-1.401-1.107-2.512-2.619-3.041-4.334-0.554-1.778-0.434-3.775 0.525-5.395l-1.178 1.663c-1.442 2.075-1.364 4.853-0.239 7.048 0.189 0.368 0.401 0.725 0.638 1.065zM20.606 13.664c0.061 0.023 0.123 0.043 0.185 0.064 0.027 0.008 0.054 0.018 0.082 0.026 0.088 0.027 0.175 0.060 0.265 0.076 4.111 0.794 5.226-2.11 5.523-2.537-0.977 1.406-2.618 1.744-4.632 1.255-0.159-0.039-0.334-0.096-0.488-0.151-0.197-0.070-0.39-0.15-0.579-0.24-0.358-0.172-0.699-0.38-1.015-0.619-1.802-1.367-2.922-3.976-1.746-6.101l-0.637 0.877c-0.85 1.251-0.933 2.805-0.344 4.186 0.622 1.467 1.897 2.617 3.384 3.163z\"></path></svg>"
 
 /***/ }),
 /* 1000 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 34 32\"><path fill=\"#444444\" d=\"M19.314 15.987c0 1.321-1.071 2.392-2.392 2.392s-2.392-1.071-2.392-2.392c0-1.321 1.071-2.392 2.392-2.392s2.392 1.071 2.392 2.392z\"></path><path fill=\"#444444\" d=\"M16.922 24.783c1.878 1.826 3.729 2.906 5.221 2.906 0.489 0 0.952-0.103 1.337-0.334 1.337-0.772 1.826-2.701 1.363-5.453-0.077-0.489-0.18-0.977-0.309-1.492 0.514-0.154 0.977-0.309 1.44-0.463 2.598-1.003 4.038-2.392 4.038-3.909 0-1.543-1.44-2.932-4.038-3.909-0.463-0.18-0.926-0.334-1.44-0.463 0.129-0.514 0.232-1.003 0.309-1.492 0.437-2.803-0.051-4.758-1.389-5.53-0.386-0.231-0.849-0.334-1.337-0.334-1.466 0-3.344 1.080-5.221 2.906-1.852-1.826-3.704-2.906-5.195-2.906-0.489 0-0.952 0.103-1.337 0.334-1.337 0.772-1.826 2.701-1.363 5.453 0.077 0.489 0.18 0.977 0.309 1.492-0.514 0.154-0.977 0.309-1.44 0.463-2.598 1.003-4.038 2.392-4.038 3.909 0 1.543 1.44 2.932 4.038 3.909 0.463 0.18 0.926 0.334 1.44 0.463-0.129 0.514-0.232 1.003-0.309 1.492-0.437 2.752 0.051 4.707 1.363 5.453 0.386 0.232 0.849 0.334 1.337 0.334 1.492 0.051 3.344-1.029 5.221-2.829v0zM15.481 21.311c0.463 0.026 0.952 0.026 1.44 0.026s0.977 0 1.44-0.026c-0.463 0.617-0.952 1.183-1.44 1.723-0.489-0.54-0.977-1.106-1.44-1.723zM12.292 18.662c0.257 0.437 0.489 0.849 0.772 1.26-0.797-0.103-1.543-0.232-2.263-0.386 0.232-0.694 0.489-1.415 0.797-2.135 0.206 0.411 0.437 0.849 0.694 1.26zM10.8 12.463c0.72-0.154 1.466-0.283 2.263-0.386-0.257 0.412-0.514 0.823-0.772 1.26s-0.489 0.849-0.694 1.286c-0.334-0.746-0.592-1.466-0.797-2.161zM12.215 15.987c0.334-0.694 0.694-1.389 1.106-2.083 0.386-0.669 0.823-1.337 1.26-2.006 0.772-0.051 1.543-0.077 2.341-0.077 0.823 0 1.595 0.026 2.341 0.077 0.463 0.669 0.874 1.337 1.26 2.006 0.412 0.694 0.772 1.389 1.106 2.083-0.334 0.694-0.694 1.389-1.106 2.083-0.386 0.669-0.823 1.337-1.26 2.006-0.772 0.051-1.543 0.077-2.341 0.077-0.823 0-1.595-0.026-2.341-0.077-0.463-0.669-0.874-1.337-1.26-2.006-0.412-0.695-0.772-1.389-1.106-2.083v0zM22.272 14.598l-0.694-1.286c-0.257-0.437-0.489-0.849-0.772-1.26 0.797 0.103 1.543 0.232 2.263 0.386-0.231 0.72-0.489 1.44-0.797 2.161v0zM22.272 17.376c0.309 0.72 0.566 1.44 0.797 2.135-0.72 0.154-1.466 0.283-2.263 0.386 0.257-0.412 0.514-0.823 0.772-1.26 0.232-0.386 0.463-0.823 0.694-1.26v0zM22.863 26.301c-0.206 0.129-0.463 0.18-0.746 0.18-1.26 0-2.829-1.029-4.372-2.572 0.746-0.797 1.466-1.698 2.186-2.701 1.209-0.103 2.366-0.283 3.447-0.54 0.129 0.463 0.206 0.926 0.283 1.389 0.36 2.186 0.077 3.755-0.797 4.244zM24.201 12.746c2.881 0.823 4.604 2.083 4.604 3.241 0 1.003-1.183 2.006-3.266 2.804-0.412 0.154-0.874 0.309-1.337 0.437-0.334-1.055-0.746-2.135-1.26-3.241 0.514-1.106 0.952-2.186 1.26-3.241v0zM22.143 5.493c0.283 0 0.514 0.051 0.746 0.18 0.849 0.489 1.157 2.032 0.797 4.244-0.077 0.437-0.18 0.9-0.283 1.389-1.080-0.232-2.238-0.412-3.447-0.54-0.694-1.003-1.44-1.903-2.186-2.701 1.543-1.518 3.112-2.572 4.372-2.572zM18.362 10.663c-0.463-0.026-0.952-0.026-1.44-0.026s-0.977 0-1.44 0.026c0.463-0.617 0.952-1.183 1.44-1.723 0.489 0.54 0.977 1.132 1.44 1.723v0zM10.98 5.673c0.206-0.129 0.463-0.18 0.746-0.18 1.26 0 2.829 1.029 4.372 2.572-0.746 0.797-1.466 1.697-2.186 2.701-1.209 0.103-2.366 0.283-3.447 0.54-0.129-0.463-0.206-0.926-0.283-1.389-0.36-2.186-0.077-3.729 0.797-4.244v0zM9.643 19.228c-2.881-0.823-4.604-2.083-4.604-3.241 0-1.003 1.183-2.006 3.266-2.803 0.412-0.154 0.874-0.309 1.337-0.437 0.334 1.055 0.746 2.135 1.26 3.241-0.514 1.106-0.952 2.212-1.26 3.241zM10.183 22.057c0.077-0.437 0.18-0.9 0.283-1.389 1.080 0.232 2.238 0.412 3.447 0.54 0.694 1.003 1.44 1.903 2.186 2.701-1.543 1.517-3.112 2.572-4.372 2.572-0.283 0-0.514-0.051-0.746-0.18-0.875-0.489-1.157-2.058-0.797-4.244z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 34 32\"><path fill=\"#444444\" d=\"M19.314 15.987c0 1.321-1.071 2.392-2.392 2.392s-2.392-1.071-2.392-2.392c0-1.321 1.071-2.392 2.392-2.392s2.392 1.071 2.392 2.392z\"></path><path fill=\"#444444\" d=\"M16.922 24.783c1.878 1.826 3.729 2.906 5.221 2.906 0.489 0 0.952-0.103 1.337-0.334 1.337-0.772 1.826-2.701 1.363-5.453-0.077-0.489-0.18-0.977-0.309-1.492 0.514-0.154 0.977-0.309 1.44-0.463 2.598-1.003 4.038-2.392 4.038-3.909 0-1.543-1.44-2.932-4.038-3.909-0.463-0.18-0.926-0.334-1.44-0.463 0.129-0.514 0.232-1.003 0.309-1.492 0.437-2.803-0.051-4.758-1.389-5.53-0.386-0.231-0.849-0.334-1.337-0.334-1.466 0-3.344 1.080-5.221 2.906-1.852-1.826-3.704-2.906-5.195-2.906-0.489 0-0.952 0.103-1.337 0.334-1.337 0.772-1.826 2.701-1.363 5.453 0.077 0.489 0.18 0.977 0.309 1.492-0.514 0.154-0.977 0.309-1.44 0.463-2.598 1.003-4.038 2.392-4.038 3.909 0 1.543 1.44 2.932 4.038 3.909 0.463 0.18 0.926 0.334 1.44 0.463-0.129 0.514-0.232 1.003-0.309 1.492-0.437 2.752 0.051 4.707 1.363 5.453 0.386 0.232 0.849 0.334 1.337 0.334 1.492 0.051 3.344-1.029 5.221-2.829v0zM15.481 21.311c0.463 0.026 0.952 0.026 1.44 0.026s0.977 0 1.44-0.026c-0.463 0.617-0.952 1.183-1.44 1.723-0.489-0.54-0.977-1.106-1.44-1.723zM12.292 18.662c0.257 0.437 0.489 0.849 0.772 1.26-0.797-0.103-1.543-0.232-2.263-0.386 0.232-0.694 0.489-1.415 0.797-2.135 0.206 0.411 0.437 0.849 0.694 1.26zM10.8 12.463c0.72-0.154 1.466-0.283 2.263-0.386-0.257 0.412-0.514 0.823-0.772 1.26s-0.489 0.849-0.694 1.286c-0.334-0.746-0.592-1.466-0.797-2.161zM12.215 15.987c0.334-0.694 0.694-1.389 1.106-2.083 0.386-0.669 0.823-1.337 1.26-2.006 0.772-0.051 1.543-0.077 2.341-0.077 0.823 0 1.595 0.026 2.341 0.077 0.463 0.669 0.874 1.337 1.26 2.006 0.412 0.694 0.772 1.389 1.106 2.083-0.334 0.694-0.694 1.389-1.106 2.083-0.386 0.669-0.823 1.337-1.26 2.006-0.772 0.051-1.543 0.077-2.341 0.077-0.823 0-1.595-0.026-2.341-0.077-0.463-0.669-0.874-1.337-1.26-2.006-0.412-0.695-0.772-1.389-1.106-2.083v0zM22.272 14.598l-0.694-1.286c-0.257-0.437-0.489-0.849-0.772-1.26 0.797 0.103 1.543 0.232 2.263 0.386-0.231 0.72-0.489 1.44-0.797 2.161v0zM22.272 17.376c0.309 0.72 0.566 1.44 0.797 2.135-0.72 0.154-1.466 0.283-2.263 0.386 0.257-0.412 0.514-0.823 0.772-1.26 0.232-0.386 0.463-0.823 0.694-1.26v0zM22.863 26.301c-0.206 0.129-0.463 0.18-0.746 0.18-1.26 0-2.829-1.029-4.372-2.572 0.746-0.797 1.466-1.698 2.186-2.701 1.209-0.103 2.366-0.283 3.447-0.54 0.129 0.463 0.206 0.926 0.283 1.389 0.36 2.186 0.077 3.755-0.797 4.244zM24.201 12.746c2.881 0.823 4.604 2.083 4.604 3.241 0 1.003-1.183 2.006-3.266 2.804-0.412 0.154-0.874 0.309-1.337 0.437-0.334-1.055-0.746-2.135-1.26-3.241 0.514-1.106 0.952-2.186 1.26-3.241v0zM22.143 5.493c0.283 0 0.514 0.051 0.746 0.18 0.849 0.489 1.157 2.032 0.797 4.244-0.077 0.437-0.18 0.9-0.283 1.389-1.080-0.232-2.238-0.412-3.447-0.54-0.694-1.003-1.44-1.903-2.186-2.701 1.543-1.518 3.112-2.572 4.372-2.572zM18.362 10.663c-0.463-0.026-0.952-0.026-1.44-0.026s-0.977 0-1.44 0.026c0.463-0.617 0.952-1.183 1.44-1.723 0.489 0.54 0.977 1.132 1.44 1.723v0zM10.98 5.673c0.206-0.129 0.463-0.18 0.746-0.18 1.26 0 2.829 1.029 4.372 2.572-0.746 0.797-1.466 1.697-2.186 2.701-1.209 0.103-2.366 0.283-3.447 0.54-0.129-0.463-0.206-0.926-0.283-1.389-0.36-2.186-0.077-3.729 0.797-4.244v0zM9.643 19.228c-2.881-0.823-4.604-2.083-4.604-3.241 0-1.003 1.183-2.006 3.266-2.803 0.412-0.154 0.874-0.309 1.337-0.437 0.334 1.055 0.746 2.135 1.26 3.241-0.514 1.106-0.952 2.212-1.26 3.241zM10.183 22.057c0.077-0.437 0.18-0.9 0.283-1.389 1.080 0.232 2.238 0.412 3.447 0.54 0.694 1.003 1.44 1.903 2.186 2.701-1.543 1.517-3.112 2.572-4.372 2.572-0.283 0-0.514-0.051-0.746-0.18-0.875-0.489-1.157-2.058-0.797-4.244z\"></path></svg>"
 
 /***/ }),
 /* 1001 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 774 875.7\"><title>icon</title><path fill=\"#FFF\" d=\"M387 0l387 218.9v437.9L387 875.7 0 656.8V218.9z\"></path><path fill=\"#8ed6fb\" d=\"M704.9 641.7L399.8 814.3V679.9l190.1-104.6 115 66.4zm20.9-18.9V261.9l-111.6 64.5v232l111.6 64.4zM67.9 641.7L373 814.3V679.9L182.8 575.3 67.9 641.7zM47 622.8V261.9l111.6 64.5v232L47 622.8zm13.1-384.3L373 61.5v129.9L172.5 301.7l-1.6.9-110.8-64.1zm652.6 0l-312.9-177v129.9l200.5 110.2 1.6.9 110.8-64z\"></path><path fill=\"#1c78c0\" d=\"M373 649.3L185.4 546.1V341.8L373 450.1v199.2zm26.8 0l187.6-103.1V341.8L399.8 450.1v199.2zm-13.4-207zM198.1 318.2l188.3-103.5 188.3 103.5-188.3 108.7-188.3-108.7z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 774 875.7\"><title>icon</title><path fill=\"#FFF\" d=\"M387 0l387 218.9v437.9L387 875.7 0 656.8V218.9z\"></path><path fill=\"#8ed6fb\" d=\"M704.9 641.7L399.8 814.3V679.9l190.1-104.6 115 66.4zm20.9-18.9V261.9l-111.6 64.5v232l111.6 64.4zM67.9 641.7L373 814.3V679.9L182.8 575.3 67.9 641.7zM47 622.8V261.9l111.6 64.5v232L47 622.8zm13.1-384.3L373 61.5v129.9L172.5 301.7l-1.6.9-110.8-64.1zm652.6 0l-312.9-177v129.9l200.5 110.2 1.6.9 110.8-64z\"></path><path fill=\"#1c78c0\" d=\"M373 649.3L185.4 546.1V341.8L373 450.1v199.2zm26.8 0l187.6-103.1V341.8L399.8 450.1v199.2zm-13.4-207zM198.1 318.2l188.3-103.5 188.3 103.5-188.3 108.7-188.3-108.7z\"></path></svg>"
 
 /***/ }),
 /* 1002 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg version=\"1.1\" id=\"Layer_1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 128 128\" style=\"enable-background:new 0 0 128 128;\" xml:space=\"preserve\"><style type=\"text/css\"> .st0{fill:#83CD29;} </style><path class=\"st0\" d=\"M114.3,29.6L69.1,3.4c-2.8-1.6-6.6-1.6-9.4,0L14.2,29.6c-2.9,1.7-4.9,4.9-4.9,8.3v52.3c0,3.4,2,6.6,5,8.3 l12,6.8c5.8,2.8,7.3,2.8,10,2.8c8.5,0,12.9-5.2,12.9-14.1V42.3c0-0.7,0.5-1.8-0.3-1.8h-5.7c-0.7,0-2.2,1.1-2.2,1.8v51.6 c0,4-3.7,7.9-10.4,4.6l-12.4-7.2c-0.4-0.2-0.7-0.7-0.7-1.2V37.8c0-0.5,0.5-1,0.9-1.2l45.4-26.1c0.4-0.2,1-0.2,1.4,0l44.9,26.1 c0.4,0.3,0.4,0.7,0.4,1.2v52.3c0,0.5,0.1,1-0.3,1.2l-45.1,26.1c-0.4,0.2-0.9,0.2-1.3,0l-11.6-6.9c-0.3-0.2-0.8-0.3-1.1-0.1 c-3.2,1.8-3.8,2.1-6.8,3.1c-0.7,0.3-1.8,0.7,0.4,2l15.1,8.9c1.4,0.8,3.1,1.3,4.8,1.3c1.7,0,3.3-0.4,4.8-1.3l45-26.1 c2.9-1.7,4.4-4.9,4.4-8.3V37.8C118.7,34.4,117.2,31.3,114.3,29.6z M78.5,81.8c-12,0-14.6-3.3-15.5-9.3c-0.1-0.6-0.6-1.4-1.3-1.4 h-5.9c-0.7,0-1.3,0.9-1.3,1.6c0,7.6,4.2,16.9,24,16.9c14.3,0,22.6-5.6,22.6-15.4c0-9.8-6.6-12.4-20.5-14.2 c-14.1-1.9-15.5-2.8-15.5-6.1c0-2.7,1.2-6.3,11.6-6.3c9.3,0,12.7,2,14.1,8.3c0.1,0.6,0.7,1,1.3,1H98c0.4,0,0.7-0.1,1-0.4 c0.2-0.3,0.4-0.6,0.3-1c-0.9-10.8-8.1-15.8-22.6-15.8c-12.9,0-20.6,5.5-20.6,14.6c0,9.9,7.7,12.7,20.1,13.9c14.8,1.5,16,3.6,16,6.5 C92.1,79.7,88.1,81.8,78.5,81.8z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" id=\"Layer_1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 128 128\" style=\"enable-background:new 0 0 128 128;\" xml:space=\"preserve\"><style type=\"text/css\"> .st0{fill:#83CD29;} </style><path class=\"st0\" d=\"M114.3,29.6L69.1,3.4c-2.8-1.6-6.6-1.6-9.4,0L14.2,29.6c-2.9,1.7-4.9,4.9-4.9,8.3v52.3c0,3.4,2,6.6,5,8.3 l12,6.8c5.8,2.8,7.3,2.8,10,2.8c8.5,0,12.9-5.2,12.9-14.1V42.3c0-0.7,0.5-1.8-0.3-1.8h-5.7c-0.7,0-2.2,1.1-2.2,1.8v51.6 c0,4-3.7,7.9-10.4,4.6l-12.4-7.2c-0.4-0.2-0.7-0.7-0.7-1.2V37.8c0-0.5,0.5-1,0.9-1.2l45.4-26.1c0.4-0.2,1-0.2,1.4,0l44.9,26.1 c0.4,0.3,0.4,0.7,0.4,1.2v52.3c0,0.5,0.1,1-0.3,1.2l-45.1,26.1c-0.4,0.2-0.9,0.2-1.3,0l-11.6-6.9c-0.3-0.2-0.8-0.3-1.1-0.1 c-3.2,1.8-3.8,2.1-6.8,3.1c-0.7,0.3-1.8,0.7,0.4,2l15.1,8.9c1.4,0.8,3.1,1.3,4.8,1.3c1.7,0,3.3-0.4,4.8-1.3l45-26.1 c2.9-1.7,4.4-4.9,4.4-8.3V37.8C118.7,34.4,117.2,31.3,114.3,29.6z M78.5,81.8c-12,0-14.6-3.3-15.5-9.3c-0.1-0.6-0.6-1.4-1.3-1.4 h-5.9c-0.7,0-1.3,0.9-1.3,1.6c0,7.6,4.2,16.9,24,16.9c14.3,0,22.6-5.6,22.6-15.4c0-9.8-6.6-12.4-20.5-14.2 c-14.1-1.9-15.5-2.8-15.5-6.1c0-2.7,1.2-6.3,11.6-6.3c9.3,0,12.7,2,14.1,8.3c0.1,0.6,0.7,1,1.3,1H98c0.4,0,0.7-0.1,1-0.4 c0.2-0.3,0.4-0.6,0.3-1c-0.9-10.8-8.1-15.8-22.6-15.8c-12.9,0-20.6,5.5-20.6,14.6c0,9.9,7.7,12.7,20.1,13.9c14.8,1.5,16,3.6,16,6.5 C92.1,79.7,88.1,81.8,78.5,81.8z\"></path></svg>"
 
 /***/ }),
 /* 1003 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0 0 512 149\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><g><path d=\"M3.33224862,115.629027 L3.33224862,58.6475756 L74.4757566,58.6475756 L74.4757566,55.315327 L3.33224862,55.315327 L3.33224862,3.33224862 L78.9742922,3.33224862 L78.9742922,0 L-3.55271368e-15,0 L-3.55271368e-15,118.961276 L79.640742,118.961276 L79.640742,115.629027 L3.33224862,115.629027 L3.33224862,115.629027 Z M143.786528,33.3224862 L114.296128,72.1431826 L85.472177,33.3224862 L81.1402538,33.3224862 L112.296778,74.642369 L78.14123,118.961276 L82.1399284,118.961276 L114.296128,77.1415554 L146.618939,118.961276 L150.78425,118.961276 L116.462089,74.642369 L147.785226,33.3224862 L143.786528,33.3224862 L143.786528,33.3224862 Z M160.780996,148.285063 L160.780996,94.9690856 L161.114221,94.9690856 C163.11358,102.744371 167.056701,108.992275 172.943703,113.712984 C178.830705,118.433693 186.32819,120.794012 195.436381,120.794012 C201.323384,120.794012 206.543854,119.599969 211.09795,117.211845 C215.652046,114.823722 219.456324,111.574812 222.510902,107.465018 C225.565478,103.355224 227.898028,98.5790488 229.508624,93.1363488 C231.119218,87.6936488 231.924504,81.973346 231.924504,75.9752684 C231.924504,69.532889 231.09145,63.5904384 229.425318,58.1477384 C227.759184,52.7050384 225.343328,47.9844 222.177676,43.9856818 C219.012024,39.9869634 215.179976,36.8768958 210.681418,34.6553856 C206.18286,32.4338754 201.101232,31.323137 195.436381,31.323137 C191.104437,31.323137 187.07801,31.9618116 183.35698,33.23918 C179.635951,34.5165484 176.331504,36.3214982 173.443541,38.654084 C170.555577,40.9866696 168.056416,43.7357472 165.945981,46.9013992 C163.835546,50.0670512 162.224976,53.5381088 161.114221,57.3146762 L160.780996,57.3146762 L160.780996,33.3224862 L157.448747,33.3224862 L157.448747,148.285063 L160.780996,148.285063 L160.780996,148.285063 Z M195.436381,117.628376 C184.995284,117.628376 176.609208,114.046245 170.277904,106.881874 C163.9466,99.717504 160.780996,89.415405 160.780996,75.9752684 C160.780996,70.421493 161.558513,65.1454854 163.11357,60.1470876 C164.668627,55.1486896 166.917872,50.7612728 169.861373,46.9847054 C172.804874,43.2081382 176.442543,40.2091444 180.774487,37.9876342 C185.106432,35.766124 189.993681,34.6553856 195.436381,34.6553856 C200.990156,34.6553856 205.849638,35.766124 210.01497,37.9876342 C214.1803,40.2091444 217.62359,43.2359066 220.34494,47.0680118 C223.06629,50.9001168 225.121156,55.2875336 226.5096,60.2303938 C227.898044,65.173254 228.592256,70.421493 228.592256,75.9752684 C228.592256,80.9736664 227.95358,85.9442208 226.676212,90.887081 C225.398844,95.8299412 223.427284,100.272895 220.76147,104.216075 C218.095658,108.159256 214.680138,111.380398 210.514806,113.879596 C206.349474,116.378795 201.323384,117.628376 195.436381,117.628376 L195.436381,117.628376 L195.436381,117.628376 Z M250.251872,118.961276 L250.251872,70.4770582 C250.251872,65.8118868 250.918314,61.2578592 252.25122,56.814839 C253.584126,52.3718186 255.638992,48.4564656 258.41588,45.0686626 C261.192768,41.6808596 264.719362,39.0150872 268.99577,37.0712658 C273.272176,35.1274444 278.353806,34.322159 284.240808,34.6553856 L284.240808,31.323137 C279.131334,31.2120614 274.660612,31.7674308 270.828506,32.9892614 C266.996402,34.211092 263.691954,35.8771996 260.915066,37.9876342 C258.138178,40.098069 255.916702,42.569462 254.25057,45.4018874 C252.584436,48.2343128 251.362624,51.2610752 250.585096,54.4822648 L250.251872,54.4822648 L250.251872,33.3224862 L246.919622,33.3224862 L246.919622,118.961276 L250.251872,118.961276 L250.251872,118.961276 Z M288.406118,76.8083306 L360.049464,76.8083306 C360.271614,70.9213286 359.688476,65.2565626 358.300032,59.8138626 C356.911588,54.3711628 354.690112,49.5394506 351.635536,45.3185812 C348.580958,41.0977118 344.637838,37.7099596 339.806052,35.155223 C334.974268,32.6004862 329.226196,31.323137 322.561666,31.323137 C317.78542,31.323137 313.120318,32.3228016 308.566222,34.3221608 C304.012126,36.32152 300.013468,39.2372084 296.570126,43.0693134 C293.126786,46.9014184 290.34994,51.5942884 288.239506,57.1480638 C286.12907,62.7018392 285.07387,69.0330484 285.07387,76.1418808 C285.07387,82.473185 285.79585,88.387867 287.23983,93.8861048 C288.683812,99.3843424 290.90529,104.160518 293.904328,108.214774 C296.903366,112.26903 300.763182,115.406866 305.483892,117.628376 C310.204602,119.849886 315.897136,120.905088 322.561666,120.794012 C332.33631,120.794012 340.555776,118.044935 347.220306,112.546697 C353.884836,107.048459 357.827958,99.3010588 359.049788,89.304263 L355.71754,89.304263 C354.273558,98.7456812 350.580352,105.826639 344.637814,110.547348 C338.695274,115.268057 331.225558,117.628376 322.228442,117.628376 C316.119288,117.628376 310.954354,116.573175 306.733486,114.46274 C302.512616,112.352305 299.069326,109.464385 296.403514,105.798894 C293.737702,102.133402 291.766142,97.8292904 290.488774,92.8864302 C289.211404,87.94357 288.517194,82.5842572 288.406118,76.8083306 L288.406118,76.8083306 L288.406118,76.8083306 Z M356.717214,73.476082 L288.406118,73.476082 C288.739344,67.4780046 289.850082,62.0909232 291.738366,57.3146762 C293.62665,52.5384294 296.098044,48.4564656 299.15262,45.0686626 C302.207196,41.6808596 305.76156,39.0983926 309.815816,37.3211846 C313.870072,35.5439764 318.22972,34.6553856 322.89489,34.6553856 C328.448666,34.6553856 333.335916,35.6828186 337.556784,37.7377156 C341.777654,39.7926126 345.304248,42.597227 348.136674,46.1516434 C350.9691,49.7060596 353.107272,53.8435602 354.551252,58.5642694 C355.995234,63.2849786 356.717214,68.255533 356.717214,73.476082 L356.717214,73.476082 L356.717214,73.476082 Z M429.193622,58.6475756 L432.52587,58.6475756 C432.52587,49.0950818 429.749024,42.1529666 424.195248,37.8210218 C418.641474,33.489077 411.088452,31.323137 401.535958,31.323137 C396.204334,31.323137 391.705844,31.98958 388.040352,33.3224862 C384.37486,34.6553922 381.375866,36.3770368 379.04328,38.4874716 C376.710694,40.5979062 375.044586,42.930457 374.044908,45.4851936 C373.045228,48.0399304 372.545396,50.4835548 372.545396,52.8161406 C372.545396,57.481312 373.37845,61.2022858 375.044582,63.9791734 C376.710714,66.7560612 379.32095,68.9220012 382.875366,70.4770582 C385.319028,71.5878134 388.095874,72.587478 391.205988,73.476082 C394.316102,74.364686 397.926002,75.3088138 402.035796,76.3084934 C405.701288,77.1970974 409.311188,78.0856882 412.865604,78.9742922 C416.42002,79.8628962 419.557856,81.0569402 422.279206,82.5564594 C425.000556,84.0559788 427.222032,85.9720026 428.943704,88.3045884 C430.665374,90.637174 431.526196,93.6917048 431.526196,97.468272 C431.526196,101.133764 430.665374,104.243831 428.943704,106.798568 C427.222032,109.353305 425.028324,111.435939 422.362512,113.046534 C419.6967,114.657129 416.725474,115.823405 413.448748,116.545395 C410.17202,117.267386 406.978646,117.628376 403.868532,117.628376 C393.760662,117.628376 386.01326,115.379131 380.626098,110.880573 C375.238936,106.382015 372.545396,99.3010572 372.545396,89.6374878 L369.213146,89.6374878 C369.213146,100.411812 372.128836,108.298055 377.9603,113.296453 C383.791764,118.294851 392.427754,120.794012 403.868532,120.794012 C407.534024,120.794012 411.22723,120.377485 414.94826,119.544419 C418.669288,118.711353 422.001504,117.350698 424.945004,115.462415 C427.888506,113.574131 430.276594,111.130506 432.10934,108.131468 C433.942086,105.132429 434.858444,101.466992 434.858444,97.1350472 C434.858444,93.0252534 434.05316,89.693038 432.442564,87.1383014 C430.83197,84.5835646 428.721566,82.4731616 426.111292,80.807029 C423.501018,79.1408964 420.55756,77.8357786 417.280834,76.8916368 C414.004106,75.947495 410.699658,75.0311358 407.367394,74.1425318 C402.702222,72.9207012 398.620258,71.8654996 395.12138,70.9768956 C391.622502,70.0882914 388.373592,69.03309 385.374552,67.8112594 C382.48659,66.5894288 380.181808,64.8400158 378.460136,62.5629678 C376.738466,60.2859198 375.877644,57.03701 375.877644,52.8161406 C375.877644,52.038612 376.099792,50.650189 376.544094,48.6508298 C376.988396,46.6514706 378.043598,44.624373 379.70973,42.569476 C381.375862,40.5145792 383.93056,38.6818608 387.373902,37.0712658 C390.817242,35.460671 395.53788,34.6553856 401.535958,34.6553856 C405.645752,34.6553856 409.394494,35.099681 412.782298,35.988285 C416.1701,36.8768892 419.085788,38.2930806 421.52945,40.236902 C423.973112,42.1807234 425.861366,44.6521164 427.194272,47.6511552 C428.527178,50.650194 429.193622,54.3156308 429.193622,58.6475756 L429.193622,58.6475756 L429.193622,58.6475756 Z M506.335178,58.6475756 L509.667426,58.6475756 C509.667426,49.0950818 506.89058,42.1529666 501.336804,37.8210218 C495.783028,33.489077 488.230008,31.323137 478.677514,31.323137 C473.34589,31.323137 468.847398,31.98958 465.181906,33.3224862 C461.516416,34.6553922 458.517422,36.3770368 456.184836,38.4874716 C453.85225,40.5979062 452.186142,42.930457 451.186462,45.4851936 C450.186784,48.0399304 449.68695,50.4835548 449.68695,52.8161406 C449.68695,57.481312 450.520004,61.2022858 452.186138,63.9791734 C453.85227,66.7560612 456.462506,68.9220012 460.016922,70.4770582 C462.460582,71.5878134 465.237428,72.587478 468.347544,73.476082 C471.457658,74.364686 475.067558,75.3088138 479.177352,76.3084934 C482.842842,77.1970974 486.452742,78.0856882 490.00716,78.9742922 C493.561576,79.8628962 496.699412,81.0569402 499.420762,82.5564594 C502.142112,84.0559788 504.363588,85.9720026 506.085258,88.3045884 C507.80693,90.637174 508.667752,93.6917048 508.667752,97.468272 C508.667752,101.133764 507.80693,104.243831 506.085258,106.798568 C504.363588,109.353305 502.16988,111.435939 499.504068,113.046534 C496.838256,114.657129 493.86703,115.823405 490.590302,116.545395 C487.313576,117.267386 484.120202,117.628376 481.010088,117.628376 C470.902216,117.628376 463.154816,115.379131 457.767654,110.880573 C452.380492,106.382015 449.68695,99.3010572 449.68695,89.6374878 L446.354702,89.6374878 C446.354702,100.411812 449.27039,108.298055 455.101854,113.296453 C460.93332,118.294851 469.56931,120.794012 481.010088,120.794012 C484.67558,120.794012 488.368784,120.377485 492.089814,119.544419 C495.810844,118.711353 499.14306,117.350698 502.08656,115.462415 C505.030062,113.574131 507.418148,111.130506 509.250894,108.131468 C511.08364,105.132429 512,101.466992 512,97.1350472 C512,93.0252534 511.194714,89.693038 509.58412,87.1383014 C507.973524,84.5835646 505.863122,82.4731616 503.252848,80.807029 C500.642572,79.1408964 497.699116,77.8357786 494.422388,76.8916368 C491.145662,75.947495 487.841214,75.0311358 484.508948,74.1425318 C479.843778,72.9207012 475.761814,71.8654996 472.262936,70.9768956 C468.764056,70.0882914 465.515146,69.03309 462.516108,67.8112594 C459.628144,66.5894288 457.323362,64.8400158 455.601692,62.5629678 C453.880022,60.2859198 453.0192,57.03701 453.0192,52.8161406 C453.0192,52.038612 453.241348,50.650189 453.68565,48.6508298 C454.129952,46.6514706 455.185152,44.624373 456.851286,42.569476 C458.517418,40.5145792 461.072116,38.6818608 464.515458,37.0712658 C467.958798,35.460671 472.679436,34.6553856 478.677514,34.6553856 C482.787308,34.6553856 486.53605,35.099681 489.923852,35.988285 C493.311656,36.8768892 496.227344,38.2930806 498.671006,40.236902 C501.114666,42.1807234 503.002922,44.6521164 504.335828,47.6511552 C505.668734,50.650194 506.335178,54.3156308 506.335178,58.6475756 L506.335178,58.6475756 L506.335178,58.6475756 Z\" fill=\"#222222\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 512 149\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><g><path d=\"M3.33224862,115.629027 L3.33224862,58.6475756 L74.4757566,58.6475756 L74.4757566,55.315327 L3.33224862,55.315327 L3.33224862,3.33224862 L78.9742922,3.33224862 L78.9742922,0 L-3.55271368e-15,0 L-3.55271368e-15,118.961276 L79.640742,118.961276 L79.640742,115.629027 L3.33224862,115.629027 L3.33224862,115.629027 Z M143.786528,33.3224862 L114.296128,72.1431826 L85.472177,33.3224862 L81.1402538,33.3224862 L112.296778,74.642369 L78.14123,118.961276 L82.1399284,118.961276 L114.296128,77.1415554 L146.618939,118.961276 L150.78425,118.961276 L116.462089,74.642369 L147.785226,33.3224862 L143.786528,33.3224862 L143.786528,33.3224862 Z M160.780996,148.285063 L160.780996,94.9690856 L161.114221,94.9690856 C163.11358,102.744371 167.056701,108.992275 172.943703,113.712984 C178.830705,118.433693 186.32819,120.794012 195.436381,120.794012 C201.323384,120.794012 206.543854,119.599969 211.09795,117.211845 C215.652046,114.823722 219.456324,111.574812 222.510902,107.465018 C225.565478,103.355224 227.898028,98.5790488 229.508624,93.1363488 C231.119218,87.6936488 231.924504,81.973346 231.924504,75.9752684 C231.924504,69.532889 231.09145,63.5904384 229.425318,58.1477384 C227.759184,52.7050384 225.343328,47.9844 222.177676,43.9856818 C219.012024,39.9869634 215.179976,36.8768958 210.681418,34.6553856 C206.18286,32.4338754 201.101232,31.323137 195.436381,31.323137 C191.104437,31.323137 187.07801,31.9618116 183.35698,33.23918 C179.635951,34.5165484 176.331504,36.3214982 173.443541,38.654084 C170.555577,40.9866696 168.056416,43.7357472 165.945981,46.9013992 C163.835546,50.0670512 162.224976,53.5381088 161.114221,57.3146762 L160.780996,57.3146762 L160.780996,33.3224862 L157.448747,33.3224862 L157.448747,148.285063 L160.780996,148.285063 L160.780996,148.285063 Z M195.436381,117.628376 C184.995284,117.628376 176.609208,114.046245 170.277904,106.881874 C163.9466,99.717504 160.780996,89.415405 160.780996,75.9752684 C160.780996,70.421493 161.558513,65.1454854 163.11357,60.1470876 C164.668627,55.1486896 166.917872,50.7612728 169.861373,46.9847054 C172.804874,43.2081382 176.442543,40.2091444 180.774487,37.9876342 C185.106432,35.766124 189.993681,34.6553856 195.436381,34.6553856 C200.990156,34.6553856 205.849638,35.766124 210.01497,37.9876342 C214.1803,40.2091444 217.62359,43.2359066 220.34494,47.0680118 C223.06629,50.9001168 225.121156,55.2875336 226.5096,60.2303938 C227.898044,65.173254 228.592256,70.421493 228.592256,75.9752684 C228.592256,80.9736664 227.95358,85.9442208 226.676212,90.887081 C225.398844,95.8299412 223.427284,100.272895 220.76147,104.216075 C218.095658,108.159256 214.680138,111.380398 210.514806,113.879596 C206.349474,116.378795 201.323384,117.628376 195.436381,117.628376 L195.436381,117.628376 L195.436381,117.628376 Z M250.251872,118.961276 L250.251872,70.4770582 C250.251872,65.8118868 250.918314,61.2578592 252.25122,56.814839 C253.584126,52.3718186 255.638992,48.4564656 258.41588,45.0686626 C261.192768,41.6808596 264.719362,39.0150872 268.99577,37.0712658 C273.272176,35.1274444 278.353806,34.322159 284.240808,34.6553856 L284.240808,31.323137 C279.131334,31.2120614 274.660612,31.7674308 270.828506,32.9892614 C266.996402,34.211092 263.691954,35.8771996 260.915066,37.9876342 C258.138178,40.098069 255.916702,42.569462 254.25057,45.4018874 C252.584436,48.2343128 251.362624,51.2610752 250.585096,54.4822648 L250.251872,54.4822648 L250.251872,33.3224862 L246.919622,33.3224862 L246.919622,118.961276 L250.251872,118.961276 L250.251872,118.961276 Z M288.406118,76.8083306 L360.049464,76.8083306 C360.271614,70.9213286 359.688476,65.2565626 358.300032,59.8138626 C356.911588,54.3711628 354.690112,49.5394506 351.635536,45.3185812 C348.580958,41.0977118 344.637838,37.7099596 339.806052,35.155223 C334.974268,32.6004862 329.226196,31.323137 322.561666,31.323137 C317.78542,31.323137 313.120318,32.3228016 308.566222,34.3221608 C304.012126,36.32152 300.013468,39.2372084 296.570126,43.0693134 C293.126786,46.9014184 290.34994,51.5942884 288.239506,57.1480638 C286.12907,62.7018392 285.07387,69.0330484 285.07387,76.1418808 C285.07387,82.473185 285.79585,88.387867 287.23983,93.8861048 C288.683812,99.3843424 290.90529,104.160518 293.904328,108.214774 C296.903366,112.26903 300.763182,115.406866 305.483892,117.628376 C310.204602,119.849886 315.897136,120.905088 322.561666,120.794012 C332.33631,120.794012 340.555776,118.044935 347.220306,112.546697 C353.884836,107.048459 357.827958,99.3010588 359.049788,89.304263 L355.71754,89.304263 C354.273558,98.7456812 350.580352,105.826639 344.637814,110.547348 C338.695274,115.268057 331.225558,117.628376 322.228442,117.628376 C316.119288,117.628376 310.954354,116.573175 306.733486,114.46274 C302.512616,112.352305 299.069326,109.464385 296.403514,105.798894 C293.737702,102.133402 291.766142,97.8292904 290.488774,92.8864302 C289.211404,87.94357 288.517194,82.5842572 288.406118,76.8083306 L288.406118,76.8083306 L288.406118,76.8083306 Z M356.717214,73.476082 L288.406118,73.476082 C288.739344,67.4780046 289.850082,62.0909232 291.738366,57.3146762 C293.62665,52.5384294 296.098044,48.4564656 299.15262,45.0686626 C302.207196,41.6808596 305.76156,39.0983926 309.815816,37.3211846 C313.870072,35.5439764 318.22972,34.6553856 322.89489,34.6553856 C328.448666,34.6553856 333.335916,35.6828186 337.556784,37.7377156 C341.777654,39.7926126 345.304248,42.597227 348.136674,46.1516434 C350.9691,49.7060596 353.107272,53.8435602 354.551252,58.5642694 C355.995234,63.2849786 356.717214,68.255533 356.717214,73.476082 L356.717214,73.476082 L356.717214,73.476082 Z M429.193622,58.6475756 L432.52587,58.6475756 C432.52587,49.0950818 429.749024,42.1529666 424.195248,37.8210218 C418.641474,33.489077 411.088452,31.323137 401.535958,31.323137 C396.204334,31.323137 391.705844,31.98958 388.040352,33.3224862 C384.37486,34.6553922 381.375866,36.3770368 379.04328,38.4874716 C376.710694,40.5979062 375.044586,42.930457 374.044908,45.4851936 C373.045228,48.0399304 372.545396,50.4835548 372.545396,52.8161406 C372.545396,57.481312 373.37845,61.2022858 375.044582,63.9791734 C376.710714,66.7560612 379.32095,68.9220012 382.875366,70.4770582 C385.319028,71.5878134 388.095874,72.587478 391.205988,73.476082 C394.316102,74.364686 397.926002,75.3088138 402.035796,76.3084934 C405.701288,77.1970974 409.311188,78.0856882 412.865604,78.9742922 C416.42002,79.8628962 419.557856,81.0569402 422.279206,82.5564594 C425.000556,84.0559788 427.222032,85.9720026 428.943704,88.3045884 C430.665374,90.637174 431.526196,93.6917048 431.526196,97.468272 C431.526196,101.133764 430.665374,104.243831 428.943704,106.798568 C427.222032,109.353305 425.028324,111.435939 422.362512,113.046534 C419.6967,114.657129 416.725474,115.823405 413.448748,116.545395 C410.17202,117.267386 406.978646,117.628376 403.868532,117.628376 C393.760662,117.628376 386.01326,115.379131 380.626098,110.880573 C375.238936,106.382015 372.545396,99.3010572 372.545396,89.6374878 L369.213146,89.6374878 C369.213146,100.411812 372.128836,108.298055 377.9603,113.296453 C383.791764,118.294851 392.427754,120.794012 403.868532,120.794012 C407.534024,120.794012 411.22723,120.377485 414.94826,119.544419 C418.669288,118.711353 422.001504,117.350698 424.945004,115.462415 C427.888506,113.574131 430.276594,111.130506 432.10934,108.131468 C433.942086,105.132429 434.858444,101.466992 434.858444,97.1350472 C434.858444,93.0252534 434.05316,89.693038 432.442564,87.1383014 C430.83197,84.5835646 428.721566,82.4731616 426.111292,80.807029 C423.501018,79.1408964 420.55756,77.8357786 417.280834,76.8916368 C414.004106,75.947495 410.699658,75.0311358 407.367394,74.1425318 C402.702222,72.9207012 398.620258,71.8654996 395.12138,70.9768956 C391.622502,70.0882914 388.373592,69.03309 385.374552,67.8112594 C382.48659,66.5894288 380.181808,64.8400158 378.460136,62.5629678 C376.738466,60.2859198 375.877644,57.03701 375.877644,52.8161406 C375.877644,52.038612 376.099792,50.650189 376.544094,48.6508298 C376.988396,46.6514706 378.043598,44.624373 379.70973,42.569476 C381.375862,40.5145792 383.93056,38.6818608 387.373902,37.0712658 C390.817242,35.460671 395.53788,34.6553856 401.535958,34.6553856 C405.645752,34.6553856 409.394494,35.099681 412.782298,35.988285 C416.1701,36.8768892 419.085788,38.2930806 421.52945,40.236902 C423.973112,42.1807234 425.861366,44.6521164 427.194272,47.6511552 C428.527178,50.650194 429.193622,54.3156308 429.193622,58.6475756 L429.193622,58.6475756 L429.193622,58.6475756 Z M506.335178,58.6475756 L509.667426,58.6475756 C509.667426,49.0950818 506.89058,42.1529666 501.336804,37.8210218 C495.783028,33.489077 488.230008,31.323137 478.677514,31.323137 C473.34589,31.323137 468.847398,31.98958 465.181906,33.3224862 C461.516416,34.6553922 458.517422,36.3770368 456.184836,38.4874716 C453.85225,40.5979062 452.186142,42.930457 451.186462,45.4851936 C450.186784,48.0399304 449.68695,50.4835548 449.68695,52.8161406 C449.68695,57.481312 450.520004,61.2022858 452.186138,63.9791734 C453.85227,66.7560612 456.462506,68.9220012 460.016922,70.4770582 C462.460582,71.5878134 465.237428,72.587478 468.347544,73.476082 C471.457658,74.364686 475.067558,75.3088138 479.177352,76.3084934 C482.842842,77.1970974 486.452742,78.0856882 490.00716,78.9742922 C493.561576,79.8628962 496.699412,81.0569402 499.420762,82.5564594 C502.142112,84.0559788 504.363588,85.9720026 506.085258,88.3045884 C507.80693,90.637174 508.667752,93.6917048 508.667752,97.468272 C508.667752,101.133764 507.80693,104.243831 506.085258,106.798568 C504.363588,109.353305 502.16988,111.435939 499.504068,113.046534 C496.838256,114.657129 493.86703,115.823405 490.590302,116.545395 C487.313576,117.267386 484.120202,117.628376 481.010088,117.628376 C470.902216,117.628376 463.154816,115.379131 457.767654,110.880573 C452.380492,106.382015 449.68695,99.3010572 449.68695,89.6374878 L446.354702,89.6374878 C446.354702,100.411812 449.27039,108.298055 455.101854,113.296453 C460.93332,118.294851 469.56931,120.794012 481.010088,120.794012 C484.67558,120.794012 488.368784,120.377485 492.089814,119.544419 C495.810844,118.711353 499.14306,117.350698 502.08656,115.462415 C505.030062,113.574131 507.418148,111.130506 509.250894,108.131468 C511.08364,105.132429 512,101.466992 512,97.1350472 C512,93.0252534 511.194714,89.693038 509.58412,87.1383014 C507.973524,84.5835646 505.863122,82.4731616 503.252848,80.807029 C500.642572,79.1408964 497.699116,77.8357786 494.422388,76.8916368 C491.145662,75.947495 487.841214,75.0311358 484.508948,74.1425318 C479.843778,72.9207012 475.761814,71.8654996 472.262936,70.9768956 C468.764056,70.0882914 465.515146,69.03309 462.516108,67.8112594 C459.628144,66.5894288 457.323362,64.8400158 455.601692,62.5629678 C453.880022,60.2859198 453.0192,57.03701 453.0192,52.8161406 C453.0192,52.038612 453.241348,50.650189 453.68565,48.6508298 C454.129952,46.6514706 455.185152,44.624373 456.851286,42.569476 C458.517418,40.5145792 461.072116,38.6818608 464.515458,37.0712658 C467.958798,35.460671 472.679436,34.6553856 478.677514,34.6553856 C482.787308,34.6553856 486.53605,35.099681 489.923852,35.988285 C493.311656,36.8768892 496.227344,38.2930806 498.671006,40.236902 C501.114666,42.1807234 503.002922,44.6521164 504.335828,47.6511552 C505.668734,50.650194 506.335178,54.3156308 506.335178,58.6475756 L506.335178,58.6475756 L506.335178,58.6475756 Z\" fill=\"#222222\"></path></g></svg>"
 
 /***/ }),
 /* 1004 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg version=\"1.1\" id=\"Layer_1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 128 128\" style=\"enable-background:new 0 0 128 128;\" xml:space=\"preserve\"><style type=\"text/css\"> .st0{fill:#C1272D;} .st1{fill:#EFCCA3;} .st2{fill:#ED1C24;} .st3{fill:#CCAC8D;} .st4{fill:#FFFFFF;} .st5{fill:#FF931E;} .st6{fill:#FFB81E;} .st7{fill:#56332B;} .st8{fill:#442823;} .st9{fill:#7F4A41;} .st10{fill:#331712;} .st11{fill:#FFCC66;} .st12{fill:#CCCCCC;} .st13{fill:#B3B3B3;} .st14{fill:#989898;} .st15{fill:#323232;} .st16{fill:#1E1E1E;} .st17{fill:#4C4C4C;} .st18{fill:#E6E6E6;} .st19{fill:#606060;} </style><g><path class=\"st1\" d=\"M107.4,50.9c-0.2-4.4,0.4-8.3-1.6-11.6c-4.8-8.2-16.8-13-40.8-13V27c0,0-0.5,0-0.5,0c0,0,0.5,0,0.5,0v-0.7 c-24,0-36.6,4.8-41.4,13.1c-1.9,3.4-1.7,7.2-2,11.6c-0.2,3.5-1.8,7.2-1.1,11.2c0.8,5.2,1.1,10.4,1.9,15.2c0.6,3.9,6,7.2,6.5,10.9 c1.4,10.2,12,14.9,36,14.9v0.8h-0.6h0.1H65v-0.8c24,0,34.2-4.7,35.5-14.9c0.5-3.8,5.5-7,6.1-10.9c0.8-4.8,1.1-10,1.9-15.2 C109.2,58.2,107.6,54.4,107.4,50.9z\"></path><path class=\"st3\" d=\"M64.6,54.5c4.3,0.1,7.3,2.8,10.1,5.3c3.3,2.9,8.9,4.9,11.2,7.4c2.3,2.5,5.3,5,6.4,8.9 c1.1,3.9,1.4,8.9,1.4,10.2c0,1.3,0.7,1,2.7,0c4.7-2.3,9.9-8.5,9.9-8.5c-0.6,3.9-5.7,7.4-6.2,11.1C98.9,99.1,89,104,64.5,104h-0.1h0 H65\"></path><path class=\"st3\" d=\"M80.4,46.7c0.9,3.1,4.1,13.6-2.1,10.1c0,0,2.6,1.5,4.2,7.2c1.7,5.7,5.8,6.4,5.8,6.4s6.7,1.3,11.7-3 c4.2-3.6,4.9-10,3.1-14.9c-1.8-4.8-5-6.3-9.7-7.3C88.7,44.1,79.3,43.2,80.4,46.7z\"></path><g><circle cx=\"92.3\" cy=\"58.1\" r=\"8.8\"></circle><circle class=\"st4\" cx=\"90\" cy=\"54.2\" r=\"2.3\"></circle></g><path class=\"st1\" d=\"M78.9,57.7c0,0,7.9,5.4,12.2,10.7c4.3,5.3,4.2,6.3,4.2,6.3l-3.1,1.4c0,0-4.4-8.3-9.8-11.4 c-5.5-3.1-6.1-5.7-6.1-5.7L78.9,57.7z\"></path><path class=\"st3\" d=\"M64.9,54.5c-4.3,0.1-7.5,2.8-10.4,5.3c-3.3,2.9-9.1,4.9-11.4,7.4c-2.3,2.5-5.4,5-6.5,8.9 c-1.1,3.9-1.5,8.9-1.5,10.2c0,1.3,0.2,1.4-2.7,0c-4.7-2.2-9.9-8.5-9.9-8.5c0.6,3.9,5.7,7.4,6.2,11.1C30.1,99.1,40,104,64.5,104h0.1 h0H65\"></path><path class=\"st7\" d=\"M88.1,71.4C83.3,65.5,75.6,60,64.9,60h-0.1h0c-10.7,0-18.4,5.5-23.2,11.4c-5,6.1-4.6,8.5-4.6,14.3 c0,21,7.4,15,12.3,17.6c5,2.5,10.2,1.7,15.5,1.7h0h0.1c5.4,0,10.5,0.7,15.5-1.8c4.9-2.5,12.3,3.7,12.3-17.3 C92.8,80.1,93.1,77.5,88.1,71.4z\"></path><path class=\"st8\" d=\"M64.4,65.2c0,0-0.7,9.7-2.1,11.6l2.6-0.6L64.4,65.2z\"></path><path class=\"st8\" d=\"M65.1,65.2c0,0,0.7,9.7,2.1,11.6l-2.6-0.6L65.1,65.2z\"></path><path class=\"st7\" d=\"M56.7,62.9c-1-2.3,2.6-6,8.3-6.1c5.7,0,9.3,3.7,8.3,6.1c-1,2.4-4.6,3.1-8.3,3.2C61.4,66,57.7,65.3,56.7,62.9z\"></path><path d=\"M65,65.2c0-0.4,3.4-0.5,5.2-1.7c0,0-3.7,1.2-4.5,0.7c-0.8-0.4-1-1.6-1-1.6s-0.3,1.2-0.9,1.6c-0.7,0.4-4.9-0.7-4.9-0.7 s5.6,1.4,5.6,1.7c0,0.3-0.1,1.3-0.1,2c0,2.5,0,8.7,0.4,9.2c0.6,0.9,0.4-6.7,0.4-9.2C65.1,66.4,65.1,65.6,65,65.2z\"></path><path class=\"st9\" d=\"M65.2,78.6c1.7,0,4.7,1.2,7.4,3.1c-2.6-2.9-5.7-4.9-7.4-4.9c-1.8,0-5.6,2.2-8.3,5.4 C59.7,80,63.3,78.6,65.2,78.6z\"></path><path class=\"st8\" d=\"M64.5,96.3c-3.8,0-7.5-1.2-10.9-2.1c-0.7-0.2-1.4,0.3-2.1,0.1c-6.3-2-11.4-5.4-14.5-9.7c0,0.3,0,0.7,0,1 c0,21,7.4,15.1,12.3,17.6c5,2.5,10.2,1.7,15.5,1.7h0h0.1c5.4,0,10.5,0.7,15.5-1.8c4.9-2.5,12.3,3.6,12.3-17.4c0-0.8,0-1.6,0.1-2.3 c-2.9,4.7-8.2,8.4-14.8,10.6c-0.6,0.2-2-0.3-2.6-0.2C71.8,95,68.6,96.3,64.5,96.3z\"></path><path class=\"st8\" d=\"M55,85c0,0-2.5,7.5-0.8,10.8l-2.3-1C51.9,94.8,53.6,87.2,55,85z\"></path><path class=\"st8\" d=\"M74.8,85c0,0,2.5,7.5,0.8,10.8l2.3-1C77.9,94.8,76.1,87.2,74.8,85z\"></path><path class=\"st3\" d=\"M48.6,46.7c-0.9,3.1-4.1,13.6,2.1,10.1c0,0-2.6,1.5-4.2,7.2s-5.8,6.4-5.8,6.4s-6.7,1.3-11.7-3 c-4.2-3.6-4.9-10-3.1-14.9s5-6.3,9.7-7.3C40.3,44.1,49.6,43.2,48.6,46.7z\"></path><path d=\"M64.9,76.8c2.7,0,11.1,5.8,11.2,12.9c0-0.1,0-0.2,0-0.4c0-7.4-6.8-13.3-11.2-13.3c-4.4,0-11.2,6-11.2,13.3 c0,0.1,0,0.2,0,0.4C53.8,82.6,62.2,76.8,64.9,76.8z\"></path><g><ellipse transform=\"matrix(0.9683 -0.2497 0.2497 0.9683 -13.2339 18.6065)\" class=\"st10\" cx=\"66.7\" cy=\"61.5\" rx=\"0.8\" ry=\"1.5\"></ellipse><ellipse transform=\"matrix(0.9551 0.2963 -0.2963 0.9551 21.0115 -15.7209)\" class=\"st10\" cx=\"62.4\" cy=\"61.5\" rx=\"0.8\" ry=\"1.5\"></ellipse></g><g><circle cx=\"37.2\" cy=\"58.1\" r=\"8.8\"></circle><circle class=\"st4\" cx=\"39.5\" cy=\"54.2\" r=\"2.3\"></circle></g><g><path class=\"st9\" d=\"M67.5,58.2c0-0.1-2.3,1-2.9,1.1c-0.6-0.1-2.9-1.2-2.9-1.1c0,0,1.9,0,2.9,0C65.6,58.2,67.5,58.2,67.5,58.2z\"></path></g><path class=\"st1\" d=\"M50,57.7c0,0-7.9,5.4-12.2,10.7c-4.3,5.3-4.2,6.3-4.2,6.3l3.1,1.4c0,0,4.4-8.3,9.8-11.4s6.1-5.7,6.1-5.7 L50,57.7z\"></path><path class=\"st3\" d=\"M32.7,41.7c0,0-2.7,7.4-8.7,10.5C24,52.2,33.4,51.1,32.7,41.7z\"></path><path class=\"st3\" d=\"M95.8,41.7c0,0,2.7,7.4,8.7,10.5C104.5,52.2,95.1,51.1,95.8,41.7z\"></path><path class=\"st3\" d=\"M78.7,55.5c0,0-5.9-6.2-13.8-6.4l0,0c-0.1,0,0.2,0,0.1,0c-0.1,0,0.1,0,0.1,0v0c-8,0.2-13.8,6.4-13.8,6.4 c6.9-4.8,12.8-4.7,13.8-4.7v0c0,0,0,0,0,0c0,0,0,0,0,0v0C65,50.8,71.8,50.7,78.7,55.5z\"></path><path class=\"st3\" d=\"M71.8,42.5c0,0-3-4.2-7-4.3l0,0c0,0,0.1,0,0.1,0c0,0,0.1,0,0.1,0v0c-3,0.1-6.9,4.3-6.9,4.3 c3.4-3.3,6.9-3.2,6.9-3.2v0c0,0,0,0,0,0c0,0,0,0,0,0v0C65,39.3,68.3,39.2,71.8,42.5z\"></path><path class=\"st3\" d=\"M37.2,73.2c0,0-4.7,2.3-8.1,0.9l0,0c0,0-0.1,0-0.1,0c0,0,0,0,0,0v0c-3-1.7-4.5-6.8-4.5-6.8 S27.5,76.3,37.2,73.2z\"></path><path class=\"st3\" d=\"M92,73.2c0,0,4.7,2.3,8.1,0.9l0,0c0,0,0,0,0,0c0,0,0,0,0,0v0c4-1.7,4.6-6.8,4.6-6.8S101.7,76.3,92,73.2z\"></path><g><path class=\"st3\" d=\"M42.6,41.2c2.6-0.5,6.9-0.6,10.3,0.5c4.3,1.5,0.8,7,1.7,7.3c0.9,0.3,2.1-3.8,10.1-3.4c8.1,0.4,9,4,10.1,3.4 s-1.1-10,11-7.8c0,0-12.7-3.4-12.1,5.8c0,0-7.3-5.6-17.5-0.6C56.3,46.4,58.9,37.8,42.6,41.2z\"></path></g><path class=\"st3\" d=\"M86.9,41.2c0.2,0,0.3,0.1,0.4,0.1C87.4,41.3,87.2,41.2,86.9,41.2z\"></path><path class=\"st3\" d=\"M86.9,41.2C86.9,41.2,86.9,41.2,86.9,41.2C86.9,41.2,86.9,41.2,86.9,41.2z\"></path><path class=\"st3\" d=\"M39.1,28.9c0,0-10.8,13.6-12.4,18.8c-1.6,5.3-2.8,27-4.2,30.1l-5-21.4l9.2-22.3L39.1,28.9z\"></path><path class=\"st3\" d=\"M89.9,28.9c0,0,10.8,13.6,12.4,18.8c1.6,5.3,2.8,27,4.2,30.1l5-21.4l-9.2-22.3L89.9,28.9z\"></path><path class=\"st7\" d=\"M89.4,28.9c0,0,11.6,9.7,15,20.9c3.4,11.2,2,24.8,4.6,26.5c3.7,2.4,7.9-11.9,9.3-13.4c2.2-2.4,9.5-8.5,10-9.6 c0.5-1.1-14.8-17.8-21.5-21.1C98.7,28.4,88.7,28.1,89.4,28.9z\"></path><path class=\"st8\" d=\"M99.3,34.9c0,0,13.7,17.5,13.5,39.3l5.5-11.2C118.2,63,113.4,48.7,99.3,34.9z\"></path><path class=\"st7\" d=\"M39.1,28.9c0,0-11.6,9.7-15,20.9s-2,24.8-4.6,26.5c-3.7,2.4-7.9-11.9-9.3-13.4c-2.2-2.4-9.5-8.5-10-9.6 c-0.5-1.1,14.8-17.8,21.5-21.1C29.8,28.4,39.8,28.1,39.1,28.9z\"></path><path class=\"st8\" d=\"M29.2,34.9c0,0-13.7,17.5-13.5,39.3L10.3,63C10.3,63,15.1,48.7,29.2,34.9z\"></path><path class=\"st3\" d=\"M21.8,74.6c0,0,1,5.4,2.6,7.1s0.5-1.3,0.5-1.3s-1.7-0.9-1.4-7.8S21.8,74.6,21.8,74.6z\"></path><path class=\"st3\" d=\"M107.1,74.6c0,0-1,5.4-2.6,7.1s-0.5-1.3-0.5-1.3s1.7-0.9,1.4-7.8S107.1,74.6,107.1,74.6z\"></path><g><circle class=\"st8\" cx=\"54.5\" cy=\"70.5\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"49.9\" cy=\"75.3\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"48.4\" cy=\"70.5\" r=\"0.8\"></circle></g><g><circle class=\"st8\" cx=\"74\" cy=\"70.5\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"78.6\" cy=\"75.3\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"80.1\" cy=\"70.5\" r=\"0.8\"></circle></g></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" id=\"Layer_1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 128 128\" style=\"enable-background:new 0 0 128 128;\" xml:space=\"preserve\"><style type=\"text/css\"> .st0{fill:#C1272D;} .st1{fill:#EFCCA3;} .st2{fill:#ED1C24;} .st3{fill:#CCAC8D;} .st4{fill:#FFFFFF;} .st5{fill:#FF931E;} .st6{fill:#FFB81E;} .st7{fill:#56332B;} .st8{fill:#442823;} .st9{fill:#7F4A41;} .st10{fill:#331712;} .st11{fill:#FFCC66;} .st12{fill:#CCCCCC;} .st13{fill:#B3B3B3;} .st14{fill:#989898;} .st15{fill:#323232;} .st16{fill:#1E1E1E;} .st17{fill:#4C4C4C;} .st18{fill:#E6E6E6;} .st19{fill:#606060;} </style><g><path class=\"st1\" d=\"M107.4,50.9c-0.2-4.4,0.4-8.3-1.6-11.6c-4.8-8.2-16.8-13-40.8-13V27c0,0-0.5,0-0.5,0c0,0,0.5,0,0.5,0v-0.7 c-24,0-36.6,4.8-41.4,13.1c-1.9,3.4-1.7,7.2-2,11.6c-0.2,3.5-1.8,7.2-1.1,11.2c0.8,5.2,1.1,10.4,1.9,15.2c0.6,3.9,6,7.2,6.5,10.9 c1.4,10.2,12,14.9,36,14.9v0.8h-0.6h0.1H65v-0.8c24,0,34.2-4.7,35.5-14.9c0.5-3.8,5.5-7,6.1-10.9c0.8-4.8,1.1-10,1.9-15.2 C109.2,58.2,107.6,54.4,107.4,50.9z\"></path><path class=\"st3\" d=\"M64.6,54.5c4.3,0.1,7.3,2.8,10.1,5.3c3.3,2.9,8.9,4.9,11.2,7.4c2.3,2.5,5.3,5,6.4,8.9 c1.1,3.9,1.4,8.9,1.4,10.2c0,1.3,0.7,1,2.7,0c4.7-2.3,9.9-8.5,9.9-8.5c-0.6,3.9-5.7,7.4-6.2,11.1C98.9,99.1,89,104,64.5,104h-0.1h0 H65\"></path><path class=\"st3\" d=\"M80.4,46.7c0.9,3.1,4.1,13.6-2.1,10.1c0,0,2.6,1.5,4.2,7.2c1.7,5.7,5.8,6.4,5.8,6.4s6.7,1.3,11.7-3 c4.2-3.6,4.9-10,3.1-14.9c-1.8-4.8-5-6.3-9.7-7.3C88.7,44.1,79.3,43.2,80.4,46.7z\"></path><g><circle cx=\"92.3\" cy=\"58.1\" r=\"8.8\"></circle><circle class=\"st4\" cx=\"90\" cy=\"54.2\" r=\"2.3\"></circle></g><path class=\"st1\" d=\"M78.9,57.7c0,0,7.9,5.4,12.2,10.7c4.3,5.3,4.2,6.3,4.2,6.3l-3.1,1.4c0,0-4.4-8.3-9.8-11.4 c-5.5-3.1-6.1-5.7-6.1-5.7L78.9,57.7z\"></path><path class=\"st3\" d=\"M64.9,54.5c-4.3,0.1-7.5,2.8-10.4,5.3c-3.3,2.9-9.1,4.9-11.4,7.4c-2.3,2.5-5.4,5-6.5,8.9 c-1.1,3.9-1.5,8.9-1.5,10.2c0,1.3,0.2,1.4-2.7,0c-4.7-2.2-9.9-8.5-9.9-8.5c0.6,3.9,5.7,7.4,6.2,11.1C30.1,99.1,40,104,64.5,104h0.1 h0H65\"></path><path class=\"st7\" d=\"M88.1,71.4C83.3,65.5,75.6,60,64.9,60h-0.1h0c-10.7,0-18.4,5.5-23.2,11.4c-5,6.1-4.6,8.5-4.6,14.3 c0,21,7.4,15,12.3,17.6c5,2.5,10.2,1.7,15.5,1.7h0h0.1c5.4,0,10.5,0.7,15.5-1.8c4.9-2.5,12.3,3.7,12.3-17.3 C92.8,80.1,93.1,77.5,88.1,71.4z\"></path><path class=\"st8\" d=\"M64.4,65.2c0,0-0.7,9.7-2.1,11.6l2.6-0.6L64.4,65.2z\"></path><path class=\"st8\" d=\"M65.1,65.2c0,0,0.7,9.7,2.1,11.6l-2.6-0.6L65.1,65.2z\"></path><path class=\"st7\" d=\"M56.7,62.9c-1-2.3,2.6-6,8.3-6.1c5.7,0,9.3,3.7,8.3,6.1c-1,2.4-4.6,3.1-8.3,3.2C61.4,66,57.7,65.3,56.7,62.9z\"></path><path d=\"M65,65.2c0-0.4,3.4-0.5,5.2-1.7c0,0-3.7,1.2-4.5,0.7c-0.8-0.4-1-1.6-1-1.6s-0.3,1.2-0.9,1.6c-0.7,0.4-4.9-0.7-4.9-0.7 s5.6,1.4,5.6,1.7c0,0.3-0.1,1.3-0.1,2c0,2.5,0,8.7,0.4,9.2c0.6,0.9,0.4-6.7,0.4-9.2C65.1,66.4,65.1,65.6,65,65.2z\"></path><path class=\"st9\" d=\"M65.2,78.6c1.7,0,4.7,1.2,7.4,3.1c-2.6-2.9-5.7-4.9-7.4-4.9c-1.8,0-5.6,2.2-8.3,5.4 C59.7,80,63.3,78.6,65.2,78.6z\"></path><path class=\"st8\" d=\"M64.5,96.3c-3.8,0-7.5-1.2-10.9-2.1c-0.7-0.2-1.4,0.3-2.1,0.1c-6.3-2-11.4-5.4-14.5-9.7c0,0.3,0,0.7,0,1 c0,21,7.4,15.1,12.3,17.6c5,2.5,10.2,1.7,15.5,1.7h0h0.1c5.4,0,10.5,0.7,15.5-1.8c4.9-2.5,12.3,3.6,12.3-17.4c0-0.8,0-1.6,0.1-2.3 c-2.9,4.7-8.2,8.4-14.8,10.6c-0.6,0.2-2-0.3-2.6-0.2C71.8,95,68.6,96.3,64.5,96.3z\"></path><path class=\"st8\" d=\"M55,85c0,0-2.5,7.5-0.8,10.8l-2.3-1C51.9,94.8,53.6,87.2,55,85z\"></path><path class=\"st8\" d=\"M74.8,85c0,0,2.5,7.5,0.8,10.8l2.3-1C77.9,94.8,76.1,87.2,74.8,85z\"></path><path class=\"st3\" d=\"M48.6,46.7c-0.9,3.1-4.1,13.6,2.1,10.1c0,0-2.6,1.5-4.2,7.2s-5.8,6.4-5.8,6.4s-6.7,1.3-11.7-3 c-4.2-3.6-4.9-10-3.1-14.9s5-6.3,9.7-7.3C40.3,44.1,49.6,43.2,48.6,46.7z\"></path><path d=\"M64.9,76.8c2.7,0,11.1,5.8,11.2,12.9c0-0.1,0-0.2,0-0.4c0-7.4-6.8-13.3-11.2-13.3c-4.4,0-11.2,6-11.2,13.3 c0,0.1,0,0.2,0,0.4C53.8,82.6,62.2,76.8,64.9,76.8z\"></path><g><ellipse transform=\"matrix(0.9683 -0.2497 0.2497 0.9683 -13.2339 18.6065)\" class=\"st10\" cx=\"66.7\" cy=\"61.5\" rx=\"0.8\" ry=\"1.5\"></ellipse><ellipse transform=\"matrix(0.9551 0.2963 -0.2963 0.9551 21.0115 -15.7209)\" class=\"st10\" cx=\"62.4\" cy=\"61.5\" rx=\"0.8\" ry=\"1.5\"></ellipse></g><g><circle cx=\"37.2\" cy=\"58.1\" r=\"8.8\"></circle><circle class=\"st4\" cx=\"39.5\" cy=\"54.2\" r=\"2.3\"></circle></g><g><path class=\"st9\" d=\"M67.5,58.2c0-0.1-2.3,1-2.9,1.1c-0.6-0.1-2.9-1.2-2.9-1.1c0,0,1.9,0,2.9,0C65.6,58.2,67.5,58.2,67.5,58.2z\"></path></g><path class=\"st1\" d=\"M50,57.7c0,0-7.9,5.4-12.2,10.7c-4.3,5.3-4.2,6.3-4.2,6.3l3.1,1.4c0,0,4.4-8.3,9.8-11.4s6.1-5.7,6.1-5.7 L50,57.7z\"></path><path class=\"st3\" d=\"M32.7,41.7c0,0-2.7,7.4-8.7,10.5C24,52.2,33.4,51.1,32.7,41.7z\"></path><path class=\"st3\" d=\"M95.8,41.7c0,0,2.7,7.4,8.7,10.5C104.5,52.2,95.1,51.1,95.8,41.7z\"></path><path class=\"st3\" d=\"M78.7,55.5c0,0-5.9-6.2-13.8-6.4l0,0c-0.1,0,0.2,0,0.1,0c-0.1,0,0.1,0,0.1,0v0c-8,0.2-13.8,6.4-13.8,6.4 c6.9-4.8,12.8-4.7,13.8-4.7v0c0,0,0,0,0,0c0,0,0,0,0,0v0C65,50.8,71.8,50.7,78.7,55.5z\"></path><path class=\"st3\" d=\"M71.8,42.5c0,0-3-4.2-7-4.3l0,0c0,0,0.1,0,0.1,0c0,0,0.1,0,0.1,0v0c-3,0.1-6.9,4.3-6.9,4.3 c3.4-3.3,6.9-3.2,6.9-3.2v0c0,0,0,0,0,0c0,0,0,0,0,0v0C65,39.3,68.3,39.2,71.8,42.5z\"></path><path class=\"st3\" d=\"M37.2,73.2c0,0-4.7,2.3-8.1,0.9l0,0c0,0-0.1,0-0.1,0c0,0,0,0,0,0v0c-3-1.7-4.5-6.8-4.5-6.8 S27.5,76.3,37.2,73.2z\"></path><path class=\"st3\" d=\"M92,73.2c0,0,4.7,2.3,8.1,0.9l0,0c0,0,0,0,0,0c0,0,0,0,0,0v0c4-1.7,4.6-6.8,4.6-6.8S101.7,76.3,92,73.2z\"></path><g><path class=\"st3\" d=\"M42.6,41.2c2.6-0.5,6.9-0.6,10.3,0.5c4.3,1.5,0.8,7,1.7,7.3c0.9,0.3,2.1-3.8,10.1-3.4c8.1,0.4,9,4,10.1,3.4 s-1.1-10,11-7.8c0,0-12.7-3.4-12.1,5.8c0,0-7.3-5.6-17.5-0.6C56.3,46.4,58.9,37.8,42.6,41.2z\"></path></g><path class=\"st3\" d=\"M86.9,41.2c0.2,0,0.3,0.1,0.4,0.1C87.4,41.3,87.2,41.2,86.9,41.2z\"></path><path class=\"st3\" d=\"M86.9,41.2C86.9,41.2,86.9,41.2,86.9,41.2C86.9,41.2,86.9,41.2,86.9,41.2z\"></path><path class=\"st3\" d=\"M39.1,28.9c0,0-10.8,13.6-12.4,18.8c-1.6,5.3-2.8,27-4.2,30.1l-5-21.4l9.2-22.3L39.1,28.9z\"></path><path class=\"st3\" d=\"M89.9,28.9c0,0,10.8,13.6,12.4,18.8c1.6,5.3,2.8,27,4.2,30.1l5-21.4l-9.2-22.3L89.9,28.9z\"></path><path class=\"st7\" d=\"M89.4,28.9c0,0,11.6,9.7,15,20.9c3.4,11.2,2,24.8,4.6,26.5c3.7,2.4,7.9-11.9,9.3-13.4c2.2-2.4,9.5-8.5,10-9.6 c0.5-1.1-14.8-17.8-21.5-21.1C98.7,28.4,88.7,28.1,89.4,28.9z\"></path><path class=\"st8\" d=\"M99.3,34.9c0,0,13.7,17.5,13.5,39.3l5.5-11.2C118.2,63,113.4,48.7,99.3,34.9z\"></path><path class=\"st7\" d=\"M39.1,28.9c0,0-11.6,9.7-15,20.9s-2,24.8-4.6,26.5c-3.7,2.4-7.9-11.9-9.3-13.4c-2.2-2.4-9.5-8.5-10-9.6 c-0.5-1.1,14.8-17.8,21.5-21.1C29.8,28.4,39.8,28.1,39.1,28.9z\"></path><path class=\"st8\" d=\"M29.2,34.9c0,0-13.7,17.5-13.5,39.3L10.3,63C10.3,63,15.1,48.7,29.2,34.9z\"></path><path class=\"st3\" d=\"M21.8,74.6c0,0,1,5.4,2.6,7.1s0.5-1.3,0.5-1.3s-1.7-0.9-1.4-7.8S21.8,74.6,21.8,74.6z\"></path><path class=\"st3\" d=\"M107.1,74.6c0,0-1,5.4-2.6,7.1s-0.5-1.3-0.5-1.3s1.7-0.9,1.4-7.8S107.1,74.6,107.1,74.6z\"></path><g><circle class=\"st8\" cx=\"54.5\" cy=\"70.5\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"49.9\" cy=\"75.3\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"48.4\" cy=\"70.5\" r=\"0.8\"></circle></g><g><circle class=\"st8\" cx=\"74\" cy=\"70.5\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"78.6\" cy=\"75.3\" r=\"0.8\"></circle><circle class=\"st8\" cx=\"80.1\" cy=\"70.5\" r=\"0.8\"></circle></g></g></svg>"
 
 /***/ }),
 /* 1005 */,
@@ -14766,19 +14637,19 @@ module.exports = "<svg version=\"1.1\" id=\"Layer_1\" xmlns=\"http://www.w3.org/
 /* 1043 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" id=\"svg2\" viewBox=\"0 0 34 34\"><defs id=\"defs4\"><linearGradient id=\"linearGradient4275\"><stop id=\"stop4277\" offset=\"0\" style=\"stop-color:#006e00;stop-opacity:1\"></stop><stop style=\"stop-color:#00cc00;stop-opacity:1;\" offset=\"0.55349338\" id=\"stop4283\"></stop><stop id=\"stop4279\" offset=\"1\" style=\"stop-color:#eeff2a;stop-opacity:1\"></stop></linearGradient><linearGradient gradientTransform=\"matrix(0.03267513,0,0,0.03267513,5.555801,1018.6805)\" gradientUnits=\"userSpaceOnUse\" y2=\"275.13159\" x2=\"162.84953\" y1=\"823.703\" x1=\"555.89331\" id=\"linearGradient4281\" xlink:href=\"#linearGradient4275\"></linearGradient></defs><g transform=\"translate(0,-1018.3622)\" id=\"layer1\"><path id=\"path4136\" d=\"m 13.661978,1019.0545 c -9.6447445,1.1926 -10.316754,13.2244 -4.2596149,18.1959 6.0571409,4.9714 13.9697969,9.3171 10.7466029,14.4295 9.372821,-1.0092 10.165143,-10.5469 5.793842,-15.3419 -4.371301,-4.7949 -17.4582341,-10.442 -12.28083,-17.2835 z\" style=\"opacity:1;fill:url(#linearGradient4281);fill-opacity:1;stroke:#000080;stroke-width:0.29986507;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" id=\"svg2\" viewBox=\"0 0 34 34\"><defs id=\"defs4\"><linearGradient id=\"linearGradient4275\"><stop id=\"stop4277\" offset=\"0\" style=\"stop-color:#006e00;stop-opacity:1\"></stop><stop style=\"stop-color:#00cc00;stop-opacity:1;\" offset=\"0.55349338\" id=\"stop4283\"></stop><stop id=\"stop4279\" offset=\"1\" style=\"stop-color:#eeff2a;stop-opacity:1\"></stop></linearGradient><linearGradient gradientTransform=\"matrix(0.03267513,0,0,0.03267513,5.555801,1018.6805)\" gradientUnits=\"userSpaceOnUse\" y2=\"275.13159\" x2=\"162.84953\" y1=\"823.703\" x1=\"555.89331\" id=\"linearGradient4281\" xlink:href=\"#linearGradient4275\"></linearGradient></defs><g transform=\"translate(0,-1018.3622)\" id=\"layer1\"><path id=\"path4136\" d=\"m 13.661978,1019.0545 c -9.6447445,1.1926 -10.316754,13.2244 -4.2596149,18.1959 6.0571409,4.9714 13.9697969,9.3171 10.7466029,14.4295 9.372821,-1.0092 10.165143,-10.5469 5.793842,-15.3419 -4.371301,-4.7949 -17.4582341,-10.442 -12.28083,-17.2835 z\" style=\"opacity:1;fill:url(#linearGradient4281);fill-opacity:1;stroke:#000080;stroke-width:0.29986507;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1\"></path></g></svg>"
 
 /***/ }),
 /* 1044 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0 0 7 15\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><desc>Created with Sketch.</desc><defs></defs><g id=\"Symbols\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\" stroke-linecap=\"square\"><g id=\"sources\" transform=\"translate(-1.000000, 0.000000)\" stroke=\"#DDE1E5\"><g id=\"Group\"><path d=\"M1.5,0.5 L1.5,14.5\" id=\"Line\"></path><path d=\"M4.5,0.5 L4.5,14.5\" id=\"Line\"></path><path d=\"M7.5,0.5 L7.5,14.5\" id=\"Line\"></path></g></g></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 7 15\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><desc>Created with Sketch.</desc><defs></defs><g id=\"Symbols\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\" stroke-linecap=\"square\"><g id=\"sources\" transform=\"translate(-1.000000, 0.000000)\" stroke=\"#DDE1E5\"><g id=\"Group\"><path d=\"M1.5,0.5 L1.5,14.5\" id=\"Line\"></path><path d=\"M4.5,0.5 L4.5,14.5\" id=\"Line\"></path><path d=\"M7.5,0.5 L7.5,14.5\" id=\"Line\"></path></g></g></g></svg>"
 
 /***/ }),
 /* 1045 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0 0 14 5\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><desc>Created with Sketch.</desc><defs></defs><g id=\"Symbols\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\" stroke-linecap=\"square\"><g id=\"outline\" transform=\"translate(0.000000, -2.000000)\" stroke=\"#DDE1E5\"><path d=\"M1.25,2.25 L1.25,2.75\" id=\"Line\" transform=\"translate(1.250000, 2.500000) rotate(90.000000) translate(-1.250000, -2.500000) \"></path><path d=\"M1.25,4.25 L1.25,4.75\" id=\"Line\" transform=\"translate(1.250000, 4.500000) rotate(90.000000) translate(-1.250000, -4.500000) \"></path><path d=\"M8.5,-3.5 L8.5,6.5\" id=\"Line\" transform=\"translate(8.000000, 2.000000) rotate(90.000000) translate(-8.000000, -2.000000) \"></path><path d=\"M8.5,-0.5 L8.5,9.5\" id=\"Line\" transform=\"translate(8.500000, 4.500000) rotate(90.000000) translate(-8.500000, -4.500000) \"></path><path d=\"M1.25,6.25 L1.25,6.75\" id=\"Line\" transform=\"translate(1.250000, 6.500000) rotate(90.000000) translate(-1.250000, -6.500000) \"></path><path d=\"M8.5,1.5 L8.5,11.5\" id=\"Line\" transform=\"translate(8.500000, 6.500000) rotate(90.000000) translate(-8.500000, -6.500000) \"></path></g></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 14 5\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><desc>Created with Sketch.</desc><defs></defs><g id=\"Symbols\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\" stroke-linecap=\"square\"><g id=\"outline\" transform=\"translate(0.000000, -2.000000)\" stroke=\"#DDE1E5\"><path d=\"M1.25,2.25 L1.25,2.75\" id=\"Line\" transform=\"translate(1.250000, 2.500000) rotate(90.000000) translate(-1.250000, -2.500000) \"></path><path d=\"M1.25,4.25 L1.25,4.75\" id=\"Line\" transform=\"translate(1.250000, 4.500000) rotate(90.000000) translate(-1.250000, -4.500000) \"></path><path d=\"M8.5,-3.5 L8.5,6.5\" id=\"Line\" transform=\"translate(8.000000, 2.000000) rotate(90.000000) translate(-8.000000, -2.000000) \"></path><path d=\"M8.5,-0.5 L8.5,9.5\" id=\"Line\" transform=\"translate(8.500000, 4.500000) rotate(90.000000) translate(-8.500000, -4.500000) \"></path><path d=\"M1.25,6.25 L1.25,6.75\" id=\"Line\" transform=\"translate(1.250000, 6.500000) rotate(90.000000) translate(-1.250000, -6.500000) \"></path><path d=\"M8.5,1.5 L8.5,11.5\" id=\"Line\" transform=\"translate(8.500000, 6.500000) rotate(90.000000) translate(-8.500000, -6.500000) \"></path></g></g></svg>"
 
 /***/ }),
 /* 1046 */,
@@ -14855,19 +14726,19 @@ module.exports = "<svg viewBox=\"0 0 14 5\" version=\"1.1\" xmlns=\"http://www.w
 /* 1117 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 32 32\"><rect fill=\"#002f42\" width=\"16\" x=\"0\" y=\"28\" height=\"4\"></rect><rect fill=\"#0072b1\" width=\"16\" x=\"16\" y=\"28\" height=\"4\"></rect></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 32 32\"><rect fill=\"#002f42\" width=\"16\" x=\"0\" y=\"28\" height=\"4\"></rect><rect fill=\"#0072b1\" width=\"16\" x=\"16\" y=\"28\" height=\"4\"></rect></svg>"
 
 /***/ }),
 /* 1118 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 2500 2500\"><path d=\"M70 188.5h220v1460h870v180H70v-1640zm1776 396c-225-3-450 140-520 357-100 250-54 564 142 755 190 158 476 170 690 58 147-78 240-233 260-396 26-170 13-356-70-510-98-164-290-270-480-263l-22-3zm20 174c165 0 313 126 340 288 50 183 20 407-130 536-140 114-365 98-480-43-140-150-140-380-68-560 50-130 183-223 323-220h18z\" fill=\"#000000\"></path><path d=\"M70 2061.5h2360v250H70v-250z\" fill=\"#3492ff\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 2500 2500\"><path d=\"M70 188.5h220v1460h870v180H70v-1640zm1776 396c-225-3-450 140-520 357-100 250-54 564 142 755 190 158 476 170 690 58 147-78 240-233 260-396 26-170 13-356-70-510-98-164-290-270-480-263l-22-3zm20 174c165 0 313 126 340 288 50 183 20 407-130 536-140 114-365 98-480-43-140-150-140-380-68-560 50-130 183-223 323-220h18z\" fill=\"#000000\"></path><path d=\"M70 2061.5h2360v250H70v-250z\" fill=\"#3492ff\"></path></svg>"
 
 /***/ }),
 /* 1119 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0.1 31.4 256 244.5\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMinYMin meet\"><path fill=\"#FFF\" d=\"M57.9 219.3l.6-1.5.1-.2c.5-1.2 1-2.5 1.5-3.7.6-1.6 1.2-3.3 1.8-4.9.4-.9.7-1.8 1-2.8.8-2.2 1.9-5.1 3.2-7.9.8-1.7 1.4-2.9 2.1-4 .8-1.3 1.6-2.5 2.5-3.7l.7-1 1.1-.7c.1-.1.3-.2.5-.3.5-.3 1.1-.5 1.5-.7.7-.3 1.6-.6 2.6-.9 1.4-.4 3-.8 4.9-1.2 2.8-.6 5.8-1.2 9.6-1.8 5.7-.9 11.8-1.7 19.1-2.5 12.9-1.4 25.8-2.4 38.2-3 6.6-.3 11.6-.4 16.3-.4h3c3.1.1 6.7.2 10 .7 1.2.2 2.3.4 3.1.7.3.1.6.2.7.3l1 .4.8.7.9.9c1.1 1.1 2.3 2.4 3.5 3.9 3.8 4.8 7.2 10.6 10.2 17.2 2.9 6.4 4.7 12.1 5.8 17.7l1.5 7.9h-18.4l-1.1-5.3c-1.2-5.6-16.3-20.4-23.8-23.3-.8-.3-4-1.2-13.9-1.2-20.4 0-49.2 3.6-53.3 4.5-4.9 2.3-12.4 11.9-16.7 21.5l-1.8 3.9\"></path><path fill=\"#BA8449\" d=\"M182.9 190.1c-.9-1.2-1.9-2.3-3-3.3l-.7-.7s-.1 0-.2-.1c-.5-.2-1.2-.3-1.9-.4-2.9-.4-6-.5-9.1-.6-6.3-.1-12.6.1-18.9.4-12.6.6-25.3 1.6-37.8 3-6.3.7-12.6 1.5-18.8 2.5-3.1.5-6.2 1-9.2 1.7-1.5.3-3 .7-4.4 1.1-.7.2-1.4.4-2 .7-.3.1-.6.2-.7.4 0 0-.1 0-.1.1-.7 1-1.4 2-2.1 3.1-.7 1.1-1.2 2.3-1.8 3.5-1.1 2.4-2.1 4.9-3 7.4s-1.9 5.1-2.8 7.7c-.5 1.3-1 2.6-1.6 3.9-.2.6-.5 1.2-.8 1.8h8.5c4.6-10.3 13.3-22.1 20.5-25 2-.8 34.2-4.8 55.5-4.8 7.9 0 13.3.6 16.3 1.7 8.7 3.4 26.1 19.5 27.9 28.2h4.9c-1-5.5-3-10.9-5.3-16.1-2.6-6-5.7-11.5-9.4-16.2\"></path><path fill=\"#FFF\" d=\"M179.1 185.9z\"></path><path fill=\"#BA8449\" d=\"M179.1 185.9z\"></path><path fill=\"#FFF\" d=\"M192.1 228.6l-1-5.4c-.9-4.5-2.4-9.3-4.8-14.6-2.6-5.6-5.4-10.5-8.6-14.4-.6-.8-1.2-1.5-1.8-2.1-2.5-.4-5.4-.4-8-.5h-2.8c-4.5 0-9.3.1-15.7.4-12.2.6-24.7 1.6-37.4 3-7.1.8-13 1.6-18.4 2.4-3.5.5-6.3 1.1-8.8 1.6-1.6.4-2.8.7-3.9 1-.2 0-.3.1-.4.1-.2.4-.5.7-.7 1.1-.5.8-.9 1.7-1.6 2.9-1.1 2.3-2 4.7-2.8 6.8-.4.9-.7 1.8-1 2.7-.6 1.7-1.2 3.4-1.9 5.1-.5 1.3-1.1 2.6-1.6 4l-.1.2c-.2.6-.5 1.2-.7 1.7l-1.8 4H56.6l-1.7-.8-.2-.1c-4-2.3-4-5.7-3.9-7.1v-.3l.2-.9.3-1.1c.2-.7.4-1.5.6-2.2.4-1.5.9-2.9 1.4-4.3.9-2.6 2-5.4 3.3-8.4 1.4-3.1 2.7-5.8 4.2-8.3.7-1.3 1.5-2.6 2.5-4.1.9-1.4 1.9-2.8 2.9-4.1.9-1.1 1.7-1.8 2.3-2.2h.1c.6-.5 1.2-.8 1.5-.9.9-.5 1.6-.8 2.1-1 1.2-.5 2.3-.8 3.2-1.1 2-.6 3.9-1 5.3-1.3 2.9-.6 6-1.2 9.9-1.8 5.8-.9 11.9-1.6 19.4-2.4 13-1.3 26-2.3 38.6-2.8 6-.2 10.7-.4 15-.4h4.6c3.2.1 6.8.2 10.7.8h.1c.9.2 2.3.4 3.9.9h.1c.4.2 1 .4 1.7.7.5.3.9.5 1.2.7l.5.4.4.3.4.4 1.1 1.1c1.3 1.3 2.5 2.7 3.8 4.4 4 5.2 7.5 11.2 10.7 18.3 1.5 3.3 2.8 6.6 3.8 9.8 1.1 3.5 1.9 6.8 2.5 10l1.2 7.7h-18.2v.1z\"></path><path fill=\"#FFF\" d=\"M64.3 228.6l4.4-9.5c3.7-7.9 12.6-22.4 22.5-26.5l.2-.1c3.3-1.2 36.7-5.1 57.1-5.1 11.4 0 15.7 1.1 17.9 2 10.3 4 28.2 20.9 30.6 30.9l2 8.2H64.3z\"></path><path fill=\"#FFF\" d=\"M185.4 228.6l-1.2-5.1c-1.1-4.7-15.2-18.8-22.5-21.7-.7-.3-3.6-1.1-13.2-1.1-19.6 0-48 3.5-52.6 4.4-3.8 1.9-10.7 10-15.2 19.6l-1.8 3.8H62.3l4.2-9.3c4.9-11 14.6-24.6 24.1-28.4 3.7-1.5 37.5-5.3 58-5.3 8.9 0 14.9.7 18.6 2.1 10.3 4 29.6 21.4 32 33l1.6 8h-15.4z\"></path><path fill=\"#FFF\" d=\"M193.1 228.6l-1.9-1.8c-7.2-6.7-9.2-20.6-7-26.3 1.5-3.8 4.7-5.1 7.1-5.1.7 0 1.3.1 1.9.3 1.3-.1 4.3-2.6 5.2-4 1.4-2.6 4.1-4.2 7.4-4.2 4.9 0 12.9 3.9 15.5 7.6 1.5 2.1 1.9 4.6 1.1 6.8-.1.2-.2.6-.4 1.1-2.7 8.1-6.2 18-9 22.6l-1.9 3.1-18-.1z\"></path><path fill=\"#FFF\" d=\"M192.5 228.6l6.2-10.1c3-4.9 5.1-8.9 6.5-12-3.5 2.5-8.4 4-15.7 4.4l-.2-.2-.1.7c-4.3 0-7.8-3.5-8-7.8-.1-2.1.7-4.2 2.1-5.8 1.4-1.6 3.4-2.5 5.5-2.6 7.2-.3 8.1-2 9.4-4.5 1.8-3.4 5.7-5.4 10.8-5.4 1.3 0 2.6.1 3.8.4 6.3 1.4 10.4 6.2 10.7 12.4.3 6.3-3.2 15.5-10.2 27.3l-1.9 3.2h-18.9z\"></path><path fill=\"#FFF\" d=\"M218.8 208.9c-8.1 0-16.9-5.3-21.4-10.5-4.1-4.7-4.5-8.9-4.1-11.6.5-3.3 3.2-6.6 8.1-6.6.9 0 1.8.1 2.6.2.8-3.6 2.7-11.1 10.4-11.1h1.1c3.7.4 6.5 2.7 7.6 6.2 1.2-.6 2.6-1.1 4.2-1.1 2.4 0 4.7 1 6.4 2.8 2.7 2.9 3.3 6.9 1.6 10.7 1.8 1.1 3.2 2.8 3.8 5 .8 2.8.3 5.8-1.5 8.2-3.5 4.9-11.6 7.2-18 7.4-.4.4-.6.4-.8.4M210.8 44.2c-7.3 4.6-15.3 15.1-25.1 29.5-1.5 2.3-4 3.5-6.8 3.5-3.6 0-8.2-2.2-13.5-6.5-8.4-6.8-8.6-10.6-8.7-12.1-.2-4 2.8-7.4 7-7.8 8.1-.7 14.8-5.6 21.3-10.3 6.5-4.7 12.5-9 19.7-9 1.4 0 2.9.2 4.3.5\"></path><path fill=\"#FFF8EE\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4\"></path><path fill=\"#FFF\" d=\"M37.3 48.2c4.9-4.5 11.5-6.8 19.6-6.8 7 0 15.3 1.7 24.6 5.1 2.5.9 5.8 1.1 8.3 1.1h3.7c2.3 0 7.2 0 9.3 4.5.7 1.7 1.6 5.2-1.1 9.3-3.3 5.1-12 10.5-20.4 10.5h-.4c-4.5-.1-8.7-2.5-13.6-5.2-6.1-3.4-13-7.3-21.2-7.3-1.1 0-2.3.1-3.4.2M188.1 96.7c-3.6 0-10.4-1.5-14.7-11.7-2.4-5.4-3.2-11.5-3.2-14.9 0-7 3.7-8.9 6-9.4 1.6-1.6 4.6-5.7 6.8-8.8 9.1-12.4 15.7-20.5 23.4-20.5 1.3 0 2.5.2 3.7.7 10.3 4.1 15.3 12.8 13.6 23.8-1.2 8.1-6.3 17.7-13.8 26.5-3.5 4.1-12.6 13.7-20.7 14.3h-1.1\"></path><path fill=\"#FFF\" d=\"M69.9 100.5c-.9 0-1.8 0-2.6-.2-12.8-2.1-28.8-15-34.8-28.3-4.1-9.1-2.3-15.3 0-18.9 3.7-5.9 9.2-9 16-9 8.2 0 16.4 4.5 23.6 8.4 2.8 1.5 6.8 3.7 8.5 4.1.6-.2 1.2-.3 1.9-.3 2.6 0 5 1.4 6.4 3.8 3.3 5.8 1.3 21.4-3.9 30.4-3.6 6.6-9 10-15.1 10z\"></path><path fill=\"#FFF\" d=\"M114.5 212.1c-30 0-59.7-14.7-69.6-25.4-10.3-11.1-14-23.7-11.2-37.5 2.4-11.3 8.7-21.4 14.2-30.4 3.8-6.2 7.4-12 8.4-16.2 12.2-53.9 42.8-60.8 68.1-60.8 1.6 0 3.3 0 5.2.1 53.9 1.6 59.3 27.6 62.5 43.2.6 2.9 1.2 5.6 1.9 7.4 18.1 44.4 21.1 71 10 89-10.9 17.7-34.8 26.4-82.4 30.3-2.3.2-4.7.3-7.1.3z\"></path><path fill=\"#FFF\" d=\"M113.4 212.2c-30.6 0-58.9-15.2-68.4-25.5-10.3-11.1-14-23.7-11.2-37.5 2.4-11.3 8.7-21.4 14.2-30.4 3.8-6.2 7.4-12 8.4-16.2 12.2-53.9 42.8-60.8 68.1-60.8 1.6 0 3.3 0 5.2.1 53.9 1.6 59.3 27.6 62.5 43.2.6 2.9 1.2 5.6 1.9 7.4 17.8 43.7 20.7 70.1 9.8 88.1-12.5 20.7-41.9 27.4-82.1 31.2-2.8.3-5.6.4-8.4.4\"></path><path fill=\"#FFF\" d=\"M191.3 174.6c.4-.9.8-1.9 1.2-2.8 4.1-9.8 7.2-18.4 2.3-23.9-5.8-6.4-30.3-18-52.1-28.2-41.7-19.7-67.5-32.4-71.2-45-.9-3.2-.5-6.5 1.2-9.3C79.9 54.1 100 42 127.5 42h.8c25.9.2 44.7 7.7 56 22.1 9.6 12.2 11.7 26.5 13.3 36.9.5 3.5 1.2 8 1.9 9.2 19.6 33.7 10.6 58.6 3.5 70.3l-11.7-5.9z\"></path><path fill=\"#FFF\" d=\"M170.8 135.8c-10.1 0-27-2.5-32.8-8.1-4.6-4.4-6.3-11.7-8.1-18.8-.7-3-1.9-7.8-3-10h-.1c-.4 1.1-.9 2.5-1.3 3.6-2.7 7.6-6.5 18.1-14.4 23.8-3.4 2.5-15.7 4.7-25.2 4.7s-16.7-2-21.5-6.1c-6.9-5.8-12.1-16.5-15.6-31.8-.2-.1-.3-.2-.5-.3-1.6-1.1-3.7-2.4-4.8-4.7-1.8-3.6-1.1-10 .8-13.4 1.4-2.5 3.8-4.1 6.4-4.3h.9c1.4 0 2.8.2 4.4.5s3.5.6 5.1.6h.9c9.5-1.4 18.4-2 26.5-2 19.7 0 30.1 4 34 5.6.3.1.6.2.8.3 1.1.3 3.2.7 5.4.7.8 0 1.6 0 2.3-.2 8.9-1.4 17.4-2 25.2-2 20.8 0 31.8 4.7 36.6 6.8.4.2.8.4 1.1.4h.4c1.3 0 3.2-.4 4.8-.7 1.2-.3 2.4-.5 3.5-.7h.9c3.1 0 5.9 1.8 7.6 4.8 1.9 3.5 3.2 10.8.5 15-1.8 2.8-4.7 4.1-7.1 5.2-.3.1-.7.3-1 .5-.8 1.4-2.2 4.2-3.4 6.5-3.5 6.8-7.4 14.6-11 18.8-3.2 3.6-9.2 5.3-18.3 5.3\"></path><defs><path id=\"a\" d=\"M42.5 75H212v59.2H42.5z\"></path></defs><clipPath id=\"b\"><use xlink:href=\"#a\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#b)\"><path fill=\"#FFF\" d=\"M166.778 134.181c-8 0-19.3-1.2-27.4-6.9-4.6-3.3-6.7-9.9-9.6-20.5-.8-3-2-7.2-2.9-9.3-.5 1.2-1.1 2.8-1.6 4.1-3 8.1-7.1 19.1-14.6 23.7-3.9 2.4-16 4.6-25.4 4.6-10.1 0-17.4-2.3-21.6-6.7-10.7-11.2-12.8-21.9-14.1-28.2-.2-.9-.4-2.1-.6-2.8-6.3-3.3-6.7-8.2-6.6-10.3.3-3.9 3.3-6.8 7-6.8 2.5 0 4.1 1.2 5.3 2 .1.1.2.2.4.2.1 0 .4.1.5.2 1.6.5 6.3 1.8 7.3 7.9.2 1.1 1.8 7.5 4.4 14.2 4.1 10.7 7 12.5 7.3 12.6 3.4 1.2 7.4 1.8 11.9 1.8 7.4 0 13.6-1.6 16.1-2.4 1.5-2.3 4.5-8.3 6.6-12.4 6.3-12.5 7.4-14.4 10.1-15.8 1.5-.8 3.3-1.2 5.6-1.2 3 0 7.3.7 9.3 1.6 4.6 2 7 8 12.4 23.5 1 2.8 2.2 6.4 3 8.2 4 1.9 13.1 3.2 22.6 3.2 2.7 0 4.7-.1 6-.2.9-1.9 2.2-4.6 3.3-6.9 7.6-16.2 8.8-18.1 10.7-19.6 3.3-2.5 9.1-4.2 12.4-4.2 4.4 0 6.8 2.9 7.4 5.7 1.1 5.8-4.6 8-6.5 8.7-.5.2-1.2.5-1.7.7-.7 1.2-2 3.8-3 5.9-8.2 16-10.9 20.4-14 22.3-3.8 2.1-13 3.1-20 3.1\"></path></g><defs><path id=\"c\" d=\"M45 70.7h33.4v16.2H45z\"></path></defs><clipPath id=\"d\"><use xlink:href=\"#c\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#d)\"><path fill=\"#FFF\" d=\"M61.388 86.816c-1.2 0-3.5-.2-8.1-1.7-1.2-.4-2.3-.8-3-1.1-1.5-.6-5.4-2.1-5.4-6.7v-6.7h6.6c.9 0 1.5.2 2 .3 1.4.2 5.9.5 7.4.6l.9.1c1.2 0 4.9-.5 6.5-.7 2-.3 2.6-.4 3.4-.4h5.7l.9 5.6c.4 2.8-1.1 6.3-4.8 7.4-.2.1-.9.3-1.5.5-3.5 1.3-7 2.5-10 2.6-.2.2-.4.2-.6.2\"></path></g><defs><path id=\"e\" d=\"M181 79.3h25.4v17.2H181z\"></path></defs><clipPath id=\"f\"><use xlink:href=\"#e\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#f)\"><path fill=\"#FFF\" d=\"M193.488 96.41c-2.2 0-4.4-.9-7.4-3-2.9-2-5.1-4-5.1-7.5v-6.7h6.5c.9 0 1.8.2 2.7.6.7.3 3.4 1.2 4.6 1.5.4 0 1.2-.2 2.8-.5.8-.2 1.3-.2 2-.2h5.7l.9 5.6c.4 2.7-.8 6.1-4.5 7.4l-1.2.6c-1.8.9-3.9 1.9-6 2.3-.2-.1-.6-.1-1-.1\"></path></g><path fill=\"#FFF\" d=\"M171.7 243.3h-24.6V222h24.6v21.3z\"></path><path fill=\"#BA8449\" d=\"M182.9 190.1c-.9-1.2-1.9-2.3-3-3.3l-.7-.7s-.1 0-.2-.1c-.5-.2-1.2-.3-1.9-.4-2.9-.4-6-.5-9.1-.6-6.3-.1-12.6.1-18.9.4-12.6.6-25.3 1.6-37.8 3-6.3.7-12.6 1.5-18.8 2.5-3.1.5-6.2 1-9.2 1.7-1.5.3-3 .7-4.4 1.1-.7.2-1.4.4-2 .7-.3.1-.6.2-.7.4 0 0-.1 0-.1.1-.7 1-1.4 2-2.1 3.1-.7 1.1-1.2 2.3-1.8 3.5-1.1 2.4-2.1 4.9-3 7.4s-1.9 5.1-2.8 7.7c-.5 1.3-1 2.6-1.6 3.9-.2.6-.5 1.2-.8 1.8h8.5c4.6-10.3 13.3-22.1 20.5-25 2-.8 34.2-4.8 55.5-4.8 7.9 0 13.3.6 16.3 1.7 8.7 3.4 26.1 19.5 27.9 28.2h4.9c-1-5.5-3-10.9-5.3-16.1-2.6-6-5.7-11.5-9.4-16.2M179.1 185.9z\"></path><path fill=\"#895B2E\" d=\"M179.1 185.9zm17.8 17.9c-2.7-6-5.8-11.7-9.9-16.9-1-1.3-2.1-2.6-3.3-3.8l-.9-.9-.2-.2-.1-.1-.2-.2c-.2-.1-.4-.2-.5-.3-.3-.2-.6-.3-.9-.4-1.1-.4-1.9-.5-2.8-.7-3.4-.5-6.6-.6-9.8-.7-6.5-.1-12.8 0-19.2.3-12.8.5-25.5 1.5-38.2 2.8-6.3.7-12.7 1.4-19.1 2.4-3.2.5-6.3 1-9.5 1.7-1.6.4-3.2.7-4.8 1.2-.8.2-1.6.5-2.5.9-.4.2-.9.4-1.4.7-.2.2-.5.3-.8.5-.3.2-.6.5-1 1-.9 1.1-1.8 2.4-2.6 3.6-.8 1.2-1.6 2.5-2.3 3.8-1.4 2.5-2.7 5.1-3.9 7.7-1.1 2.6-2.2 5.2-3.1 7.9-.5 1.3-.9 2.6-1.2 4-.2.7-.4 1.3-.6 2l-.3 1-.1.5c0 .1.2.2.6.5H64.2c.3-.6.5-1.2.8-1.8.5-1.3 1.1-2.6 1.6-3.8 1-2.6 1.9-5.1 2.8-7.7.9-2.5 1.9-5.1 3-7.4.6-1.2 1.2-2.3 1.8-3.5.7-1.1 1.3-2.1 2.1-3.1 0 0 .1 0 .1-.1.2-.1.5-.2.7-.4.6-.2 1.3-.5 2-.7 1.4-.4 2.9-.8 4.4-1.1 3-.7 6.1-1.2 9.2-1.7 6.2-1 12.5-1.8 18.8-2.5 12.6-1.4 25.2-2.4 37.8-3 6.3-.3 12.6-.5 18.9-.4 3.1.1 6.3.2 9.1.6.7.1 1.4.3 1.9.4.1 0 .2 0 .2.1l.7.7c1.1 1.1 2 2.2 3 3.3 3.7 4.7 6.8 10.2 9.4 15.8 2.3 5.2 4.3 10.6 5.3 16.1h5c-.5-3.1-1.3-6.1-2.2-9-1.2-3.1-2.4-6.1-3.7-9.1\"></path><path fill=\"#FFF8EE\" d=\"M164.1 195.7c-2.6-1-7.9-1.6-15.5-1.6-21.4 0-53 4-54.7 4.7-6.5 2.6-14.6 13.6-19.1 23.2h115.9c-1.9-7.5-18-22.9-26.6-26.3\"></path><path fill=\"#E5D0AE\" d=\"M164.8 193.8c-2.9-1.1-8.4-1.7-16.3-1.7-21.3 0-53.5 4-55.5 4.8-7.3 3-15.9 14.7-20.5 25h2.2c4.5-9.5 12.6-20.5 19.1-23.2 1.7-.7 33.3-4.7 54.7-4.7 7.6 0 12.9.5 15.5 1.6 8.6 3.3 24.7 18.8 26.6 26.3h2c-1.7-8.6-19.1-24.7-27.8-28.1\"></path><path fill=\"#BA8449\" d=\"M204.4 194.7c-1.2 2.5-7.5 8.9-12.8 7.4-2.8-.8-2.3 14 4.1 19.9h11.6c3.2-5.1 8.2-20.7 8.8-22.3.7-1.9-10.5-7.5-11.7-5\"></path><path fill=\"#895B2E\" d=\"M216.7 198.4c-.2-3.2-2.1-5.5-5.5-6.3-2.7-.6-6.3-.1-7.2 1.6-1.8 3.4-4 7.5-14.9 8.1-.7 0-1.3.7-1.3 1.4s.7 1.3 1.4 1.3c11.4-.5 14.7-4.9 17.1-9.4.5-.4 3.2-.9 5.4 0 1.6.7 2.3 1.8 2.4 3.5.3 6.2-6.2 17.7-9.7 23.5h3.1c3.9-6.8 9.5-17.3 9.2-23.7\"></path><defs><path id=\"g\" d=\"M193.5 196.5H217v27.3h-23.5z\"></path></defs><clipPath id=\"h\"><use xlink:href=\"#g\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#h)\"><path fill=\"#E3AB5E\" d=\"M194.235 222.3c7.1-1.7 13.4-8.8 13.9-18.9.1-1.9-3.8-5.5-3.8-6.5s11.9.2 12.5 3c.5 2.8-7.4 19.7-10.1 22.5-2.6 2.7-16.7.9-12.5-.1\"></path></g><path fill=\"#FCD4C3\" d=\"M199.8 187.8c-.9 6.2 11.2 14.7 19.4 14.5 6.8-.2 14.5-3.4 13.4-7.2-1.1-3.9-7.7.7-8.3-2-.5-2.6 7.7-7.5 4.4-11.1-3.1-3.3-6.7 5.2-10.3 4-3.6-1.2.7-9.5-3.8-10-5.3-.5-3.3 11.3-7.3 11.5-2.8.3-7.2-1.7-7.5.3\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M199.8 187.8c-.9 6.2 11.2 14.7 19.4 14.5 6.8-.2 14.5-3.4 13.4-7.2-1.1-3.9-7.7.7-8.3-2-.5-2.6 7.7-7.5 4.4-11.1-3.1-3.3-6.7 5.2-10.3 4-3.6-1.2.7-9.5-3.8-10-5.3-.5-3.3 11.3-7.3 11.5-2.8.3-7.2-1.7-7.5.3z\"></path><defs><path id=\"i\" d=\"M203.2 182.8h7.8v6.4h-7.8z\"></path></defs><clipPath id=\"j\"><use xlink:href=\"#i\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#j)\"><path fill=\"#FCD4C3\" d=\"M203.238 187.742c1.3 1 6 2.3 6.7.6.8-1.7 1.4-5.1.9-5.6-.4 1.6-.9 4.6-2.6 5.3-1.3.5-4.1-.1-5-.3\"></path></g><defs><path id=\"k\" d=\"M215.9 181.2h7.7v7.2h-7.7z\"></path></defs><clipPath id=\"l\"><use xlink:href=\"#k\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#l)\"><path fill=\"#FCD4C3\" d=\"M216.159 181.142c-.2 1.1-1.1 6.3 1.6 7 2.3.6 4-.8 5.8-3.7-1 .9-3.5 3.1-5.4 2.3-1.9-.9-2.1-2.9-2-5.6\"></path></g><defs><path id=\"m\" d=\"M204.5 193h15.8v8.6h-15.8z\"></path></defs><clipPath id=\"n\"><use xlink:href=\"#m\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#n)\"><path fill=\"#FCD4C3\" d=\"M204.576 195.158c13.6-6.7 16.4 4.2 15.7 6.4-5.4.9-14.9-4.7-15.7-6.4\"></path></g><defs><path id=\"o\" d=\"M223 190.9h5.7v5H223z\"></path></defs><clipPath id=\"p\"><use xlink:href=\"#o\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#p)\"><path fill=\"#FCD4C3\" d=\"M224.351 190.896c-2.3 2.6-1.2 4.7.3 5 1.9.4 4.4-1.6 4-1.6-.5 0-4.2 1.2-4.9-.6-.5-1.4.3-2.2.6-2.8\"></path></g><defs><path id=\"q\" d=\"M66.1 182.6H195v36.5H66.1z\"></path></defs><clipPath id=\"r\"><use xlink:href=\"#q\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#r)\"><path fill=\"#E3AB5E\" d=\"M69.034 208.266c43.7 25.1 130.4-.4 125.8-8.6-6.1-10.9-8.5-17.7-21.9-17.1-13.3.7-98.9 7.5-102.4 10.1-3.4 2.7-7.2 12.3-1.5 15.6\"></path></g><path fill=\"#FFF8EE\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4\"></path><path fill=\"none\" stroke=\"#E5D0AE\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-miterlimit=\"10\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4z\"></path><path fill=\"#BA8449\" d=\"M41.8 53.1c8.8-8.2 24.7-5 37.5-.4 7.3 2.6 16.8.5 17.4 2 1.6 3.5-7.9 10.7-15.7 10.5-7.7-.1-20.6-14.6-39.2-12.1\"></path><path fill=\"none\" stroke=\"#895B2E\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-miterlimit=\"10\" d=\"M41.8 53.1c8.8-8.2 24.7-5 37.5-.4 7.3 2.6 16.8.5 17.4 2 1.6 3.5-7.9 10.7-15.7 10.5-7.7-.1-20.6-14.6-39.2-12.1z\"></path><path fill=\"#FCD4C3\" d=\"M177.7 67.2c4.5 1.3 21.6-32.2 29.9-28.9 26.4 10.5-8 50.9-18.9 51.8-11 .8-13.5-23.7-11-22.9\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M177.7 67.2c4.5 1.3 21.6-32.2 29.9-28.9 26.4 10.5-8 50.9-18.9 51.8-11 .8-13.5-23.7-11-22.9z\"></path><path fill=\"#FCD4C3\" d=\"M82.3 63.2c-7.3 3.2-33.2-23.9-44.1-6.5C31 68.2 52.8 91.4 68.4 93.9s17.7-32.4 13.9-30.7\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M82.3 63.2c-7.3 3.2-33.2-23.9-44.1-6.5C31 68.2 52.8 91.4 68.4 93.9s17.7-32.4 13.9-30.7z\"></path><defs><path id=\"s\" d=\"M180.5 44.8h18v44.6h-18z\"></path></defs><clipPath id=\"t\"><use xlink:href=\"#s\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#t)\"><path fill=\"#FCD4C3\" d=\"M198.067 44.8c-1.4 4.6-13.2 16.5-11.6 26.7.6 3.8 4.6 15 6.3 14.6s6-3.1 5.6-2.5c-.4.6-6 4.7-8.1 5.8-2.1-1.1-11-21.8-9.7-22.9 3.9-3.5 15.8-21.5 17.5-21.7\"></path></g><defs><path id=\"u\" d=\"M38.6 51.5h44.2v31.6H38.6z\"></path></defs><clipPath id=\"v\"><use xlink:href=\"#u\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#v)\"><path fill=\"#FCD4C3\" d=\"M38.533 57.4c8-4.9 22.6-2.8 31.1 5.5 3 3 3.9 13-2.9 19.8-2.7 2.7 16-9.6 16.1-13.2 0-3.6-1.2-4.6-4-5.6-10.3-3.8-21.1-12.6-30.5-12.4-6.1.1-8.9 4.3-9.8 5.9\"></path></g><defs><path id=\"w\" d=\"M181.1 42.2h26.2v44.2h-26.2z\"></path></defs><clipPath id=\"x\"><use xlink:href=\"#w\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#x)\"><path fill=\"#FCD4C3\" d=\"M201.3 42.175c18.2 10-11.1 25.2-8.9 44.1-3.8-.4-13.2-18.7-10.9-20.3 3.2-2.2 16.7-24.6 19.8-23.8\"></path></g><path fill=\"#E5D0AE\" d=\"M60.9 103.6c.3-1.3.5-2.7.5-4 .1-1.4.2-2.8.5-4.1.1-.7.3-1.4.6-2 .3-.6.5-1.3.7-1.9.5-1.3 1-2.6 1.6-3.8 2.3-5.1 4.9-9.9 8.1-14.4 3.2-4.5 6.7-8.7 10.7-12.3 4-3.7 8.7-6.7 13.7-8.7 5-2.1 10.4-3.4 15.8-4 5.4-.7 10.8-.8 16.2-.7 5.4.1 10.8.4 16.2 1.1 5.4.7 10.8 1.9 16 3.8 2.6 1 5.1 2.1 7.5 3.5 2.4 1.4 4.7 3.1 6.8 5.1 2.1 1.9 3.9 4.2 5.4 6.6 1.5 2.4 2.6 5 3.6 7.7.9 2.6 1.6 5.3 2.2 8s1 5.3 1.6 7.8c.3 1.2.7 2.4 1.1 3.6.5 1.2 1 2.5 1.4 3.8.9 2.5 1.9 5.1 2.8 7.6 3.5 10.2 6.6 20.6 8.5 31.2.9 5.3 1.6 10.7 1.7 16.1.1 5.4-.4 10.8-1.9 16-.4 1.3-.8 2.6-1.3 3.8-.5 1.2-1.2 2.4-1.6 3.7-.2.7-.4 1.3-.7 1.9-.3.6-.7 1.2-1.1 1.8-.7 1.1-1.6 2.3-2.5 3.3-3.5 4.2-8 7.6-12.8 10.2s-10 4.6-15.2 6.1c-5.3 1.5-10.5 2.7-15.9 3.7s-10.7 1.7-16 2.4l-8.1.9-4 .4c-1.3.1-2.7.2-4.1.3-11 .6-22-1-32.5-3.9-5.3-1.5-10.4-3.3-15.4-5.5s-9.9-4.7-14.5-7.7c-2.3-1.5-4.6-3.2-6.7-5.1-.5-.5-1.1-1-1.6-1.5s-.9-1.1-1.4-1.6c-.9-1.1-1.8-2.2-2.6-3.3-3.1-4.6-5.6-10-6.4-15.6-.9-5.7-.1-11.5 1.5-16.8 1.6-5.4 4.1-10.3 6.7-15.1 2.7-4.7 5.6-9.3 8.4-13.8 1.4-2.3 2.7-4.6 3.9-6.9 1.1-3 2.1-5.3 2.6-7.7zm4 .9c-.7 2.8-1.9 5.4-3.2 7.9s-2.7 4.8-4.1 7.1c-2.8 4.6-5.7 9.1-8.2 13.7s-4.8 9.4-6.2 14.3c-1.4 4.9-2 10-1.2 15 .8 4.9 2.9 9.6 5.9 13.7.7 1 1.6 2 2.4 3 .4.5.9 1 1.3 1.4.4.5.9.9 1.3 1.3 1.8 1.7 3.9 3.2 6.1 4.7 4.4 2.8 9 5.3 13.9 7.4 4.8 2.1 9.8 3.9 14.9 5.3s10.2 2.5 15.4 3.2c5.2.7 10.4.9 15.6.7l3.9-.3 4-.4c2.6-.2 5.3-.5 8-.8 5.3-.5 10.6-1.2 15.8-2.1 5.3-.9 10.4-1.9 15.5-3.3s10.1-3 14.9-5.1c4.7-2.2 9.3-4.9 13-8.6.9-.9 1.8-1.9 2.6-2.9.4-.5.8-1.1 1.2-1.6.4-.5.9-1 1.3-1.6.9-1.1 1.3-2.3 1.9-3.5.5-1.2.9-2.5 1.2-3.8 1.3-5.2 1.6-10.6 1.3-15.9-.4-5.3-1.3-10.6-2.6-15.8-2.5-10.4-6.2-20.4-10.1-30.3-1-2.5-2-5-3-7.4l-1.6-3.7c-.5-1.3-1-2.7-1.4-4-.7-2.7-1.2-5.3-1.8-7.9-.5-2.6-1.2-5.1-2-7.5-1.7-4.9-4.2-9.3-7.9-12.8-3.6-3.5-8.1-6.2-12.9-8.2-4.8-2-10-3.3-15.2-4.2-5.2-.9-10.5-1.4-15.8-1.7-5.3-.2-10.7-.3-16 .3-5.3.6-10.5 1.7-15.4 3.8-4.9 2-9.4 4.9-13.2 8.5-3.9 3.6-7 8-9.3 12.6-2.4 4.7-4.1 9.7-5.6 14.7-.4 1.2-.7 2.5-1 3.8-.2.6-.3 1.3-.5 1.9-.1.3-.1.7-.2 1-.1.3-.2.6-.4.9-.5 1.2-1.1 2.4-1.7 3.6-.2 1.1-.6 2.3-.9 3.6z\"></path><path fill=\"#FFF8EE\" d=\"M62.9 104.1c-4.2 18.6-40.9 48-13 78.1 9.5 10.2 40.3 25.9 71.2 23 80.4-7.6 100.7-27 66.8-110.2-5.5-13.5.7-44.7-58.4-46.5-24.8-.7-54.6 2.7-66.6 55.6\"></path><path fill=\"#E5BFA1\" d=\"M76.8 67.7c2.6-4 6-7.3 9.8-10C90.4 55 94.7 53 99 51.4c8.8-3.2 18-4.4 27.2-4.7 9.2-.2 18.5.5 27.5 2.8 4.5 1.2 8.9 2.8 13.1 5.1s8.1 5.1 11.4 8.6c3.3 3.5 6 7.4 8.1 11.7 2.1 4.3 3.6 8.8 4.7 13.3 1.1 4.6 1.8 9.1 2.4 13.6.3 2.3.6 4.5 1.1 6.6.2 1.1.5 2.1.8 2.9l.3.6.1.1.1.1.2.4.9 1.5c4.4 8.1 7.7 17 8.9 26.3.6 4.6.7 9.3.2 14-.5 4.6-1.7 9.2-3.5 13.5-.9 2.1-1.9 4.2-3.1 6.3l-.9 1.5c-.3.5-.6.9-1 1.5-.1.1-.1.2-.2.3-.3-.2.4.7-1.6 0-.5-.9-.2-.7-.3-.9 0-.3.1-.4.1-.6l.3-.9.5-1.6c1.4-4.3 2.6-8.6 3.1-13.1.2-2.2.3-4.4 0-6.7-.3-2.2-.9-4.3-2-6.1-.3-.5-.6-.9-1-1.3s-.7-.8-1.1-1.2c-.8-.8-1.6-1.5-2.5-2.2-1.8-1.4-3.7-2.5-5.7-3.5-4.1-1.8-8.6-2.5-13-2.3-4.5.2-8.9 1.1-13.2 2.3-2.2.6-4.3 1.3-6.5 2-1.1.4-2.2.7-3.3 1-.6.2-1.1.3-1.8.4-.6.1-1.1.2-1.7.2-4.6.5-9.1.8-13.8.7-4.6-.1-9.2-.6-13.8-1.6-4.5-1-9-2.5-13.2-4.4-4.2-2-8.2-4.4-11.8-7.4-3.6-3-6.8-6.4-9.6-10.1-5.6-7.5-9.3-16.2-11.1-25.3-.9-4.6-1.3-9.2-1.1-13.9.1-2.3.4-4.7.9-7 .6-1.8 1.4-4.1 2.7-6.2zm2 1.3c-1.1 1.8-1.8 3.8-2.3 6-.5 2.1-.7 4.3-.9 6.5-.2 4.4.3 8.9 1.2 13.2 1.9 8.7 5.6 17 11 24 2.7 3.5 5.8 6.7 9.2 9.5 3.4 2.8 7.2 5.2 11.2 7.1 4 1.9 8.2 3.3 12.6 4.3 4.3 1 8.8 1.6 13.2 1.7 4.5.2 8.9 0 13.4-.5l1.7-.2c.5-.1 1-.2 1.6-.3 1.1-.3 2.1-.6 3.2-.9 2.2-.6 4.4-1.3 6.6-1.8 4.4-1.1 9-1.9 13.7-1.9 4.6 0 9.3.8 13.5 2.8 2.1 1 4.1 2.2 5.9 3.6.9.7 1.8 1.5 2.6 2.3l1.2 1.2c.4.4.8.9 1.1 1.4 1.3 2 2 4.3 2.3 6.7s.3 4.7.1 7c-.4 4.6-1.4 9.1-2.7 13.5l-.5 1.6-.2.8c0 .1-.1.3 0 .3-.1-.1.2.2-.2-.7-1.9-.7-1.2.2-1.4-.1.2-.4.5-.9.8-1.4.3-.5.5-1 .8-1.5 1-2 1.9-4 2.7-6.1 3-8.3 3.6-17.4 2.1-26.1-.7-4.4-2-8.6-3.6-12.7s-3.5-8.1-5.7-12l-.8-1.4-.2-.4-.1-.2-.1-.2c-.2-.3-.3-.6-.4-.9-.5-1.2-.8-2.5-1.1-3.6-.5-2.3-.9-4.6-1.2-6.8-.7-4.5-1.3-8.9-2.4-13.2-1-4.3-2.4-8.5-4.3-12.4-1.9-3.9-4.2-7.5-7.2-10.7-5.8-6.3-13.8-10.5-22.3-13s-17.5-3.3-26.5-3.3c-8.9 0-17.9 1.1-26.3 3.9-4.2 1.4-8.2 3.3-11.9 5.8-3.8 2.4-7 5.4-9.4 9.1z\"></path><path fill=\"#895B2E\" d=\"M75.6 67.2c1.5-2.4 3.3-4.3 5.1-6.1 1.9-1.8 3.9-3.3 6-4.7 4.2-2.8 8.7-5 13.4-6.7 9.4-3.3 19.3-4.6 29.1-4.4 9.7.3 19.5 1.5 28.9 4.9 4.7 1.7 9.2 3.9 13.3 6.9 4.1 2.9 7.7 6.5 10.7 10.6 2.9 4.1 5.1 8.6 6.8 13.3 1.6 4.7 2.7 9.5 3.5 14.2.4 2.4.7 4.7 1.1 7.1.4 2.3.7 4.7 1.1 6.8.2 1.1.5 2.1.9 2.9l.1.2.1.2.2.4.4.8.9 1.6c1.1 2.1 2.2 4.3 3.2 6.5 1.9 4.4 3.5 9.1 4.6 13.9 1.1 4.7 1.6 9.6 1.6 14.5-.1 9.8-2.8 19.5-7.9 27.8-.4.6-1.2.9-1.8.5-.6-.4-.8-1.1-.6-1.6 1.4-3.6 2.9-7 4-10.5 1.2-3.5 2-7.1 2-10.6s-.9-6.9-3-9.6c-.1-.2-.3-.4-.4-.5l-.2-.2-.2-.3-.9-.9c-.6-.6-1.3-1.2-2-1.7-1.4-1.1-3-2.1-4.5-3.1-6.3-3.9-13-7.3-19.8-10.7-6.8-3.3-13.7-6.5-20.5-9.6-13.8-6.3-27.6-12.6-41.2-19.4-6.8-3.5-13.5-7-20.1-11.2-3.5-2.5-6.7-4.7-9.8-7.5-1.5-1.4-3-3-4.2-5.2-.6-1.1-1.1-2.4-1.2-4 0-.8 0-1.6.2-2.4.1-.4.2-.8.4-1.2.1-.3.4-.9.5-1h.2zm5.6 3.4c-.2.3-.1.2-.2.3 0 .1 0 .1-.1.2v.4c0 .3.2.8.4 1.4.6 1.2 1.7 2.5 2.9 3.6 2.5 2.4 5.4 4.6 8.5 6.6 6.1 4.1 12.7 7.7 19.4 11.3 13.3 7 27 13.5 40.6 20.1 6.8 3.3 13.6 6.7 20.4 10.1 6.8 3.5 13.5 7 20 11.3 1.6 1.1 3.2 2.2 4.7 3.5.8.6 1.5 1.3 2.3 2 .4.4.7.7 1.1 1.2l.2.3.3.3c.2.2.3.4.5.6 1.2 1.7 2.1 3.6 2.7 5.6s.7 4.1.7 6.1c-.1 4-1.2 7.9-2.5 11.6-1.3 3.7-2.9 7.1-4.4 10.6l-2.4-1.2c4.7-8 6.9-17.2 6.8-26.4-.2-9.2-2.6-18.3-6.5-26.7-1-2.1-2-4.2-3.2-6.2l-1.8-3.2c-.7-1.3-1-2.6-1.3-3.8-.6-2.5-1-4.8-1.4-7.2s-.8-4.7-1.2-6.9c-.9-4.6-2-9-3.6-13.3-1.6-4.2-3.7-8.3-6.3-11.8-2.6-3.6-5.9-6.7-9.5-9.2-3.7-2.5-7.7-4.5-12-5.9-8.6-2.9-17.8-3.9-27-4-4.6 0-9.1.2-13.6 1-4.5.7-8.9 1.8-13.1 3.3s-8.3 3.4-12 5.8c-1.9 1.2-3.6 2.5-5.2 4s-3.1 3-4.2 4.6z\"></path><path fill=\"#BA8449\" d=\"M77.8 68.3c-11 17 2.1 82.3 71.2 73.5 7.3-.9 31.6-13.9 48 4.3 8.9 10-3.1 35.3 0 30 3.5-5.8 16.9-28.2-3.2-62.7-6.4-11.1 4.2-64.4-65-65.1-26.5-.1-43.7 8.7-51 20\"></path><defs><path id=\"y\" d=\"M61.7 64.6H179v111.9H61.7z\"></path></defs><clipPath id=\"z\"><use xlink:href=\"#y\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#z)\"><path fill=\"#E3AB5E\" d=\"M75.968 72.433c19.9-12.8 80.1-11.9 99.3 18.8 12.8 20.4-10.6 70.8-19.3 77.2-8.6 6.4-20.6 12-52.2 4.4-26.8-6.4 13.5-31.3-17.9-34.9-28.7-3.3-31.6-51.5-9.9-65.5\"></path></g><defs><path id=\"A\" d=\"M118.5 119.2h13.1v5.5h-13.1z\"></path></defs><clipPath id=\"B\"><use xlink:href=\"#A\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#B)\"><path fill=\"#E3AB5E\" d=\"M131.6 121.966c0 1.5-2.9 2.8-6.5 2.8s-6.5-1.2-6.5-2.8c0-1.5 2.9-2.8 6.5-2.8 3.6.1 6.5 1.3 6.5 2.8\"></path></g><path fill=\"#F8A38F\" d=\"M120.1 113.8c1.5-1 9.5-.7 10.5.4 1 1 3.2 5.2.7 7-.9.6-.9-1.9-2.9-1.5-2.4.5-1.1 3.6-3 3.6-2.9-.1-.1-3.4-2.6-3.8-1.9-.4-2.3 1.5-3.2 1.3-2.9-.6-1.6-5.6.5-7\"></path><defs><path id=\"C\" d=\"M117.9 113.2h14.5v9.9h-14.5z\"></path></defs><clipPath id=\"D\"><use xlink:href=\"#C\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#D)\"><path fill=\"#F8A38F\" d=\"M124.42 113.205c-1.9 0-3.7.2-4.3.6-2.1 1.4-3.4 6.4-.6 6.9h.1c.7 0 1.1-1.4 2.6-1.4h.5c2.5.4-.2 3.8 2.6 3.8 1.8 0 .5-3 3-3.5h.4c1.4 0 1.6 1.6 2.2 1.6.1 0 .2 0 .3-.1 2.6-1.8.4-6-.7-7-.5-.5-3.4-.9-6.1-.9m0 .7c3 0 5.3.4 5.7.7.6.6 1.8 2.8 1.6 4.4-.1.6-.3 1.1-.7 1.4 0-.1-.1-.1-.2-.2-.4-.5-1-1.3-2.1-1.3-.2 0-.4 0-.5.1-1.7.4-2 1.7-2.3 2.6-.2.9-.3.9-.6.9-.8 0-.8-.2-.8-1.1 0-.9 0-2.3-1.8-2.6h-.6c-1.1 0-1.8.7-2.3 1.1-.1.1-.3.3-.4.3-.4-.1-.8-.3-1-1.1-.3-1.4.7-3.8 1.8-4.6.6-.4 2-.6 4.2-.6\"></path></g><defs><path id=\"E\" d=\"M74.1 124.9H187V189H74.1z\"></path></defs><clipPath id=\"F\"><use xlink:href=\"#E\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#F)\"><path fill=\"#F7E8D0\" d=\"M186.799 140.05c3 19.2-21 43.3-53.3 48.3-32.3 4.9-56.1-23.9-59.1-43.2-3-19.2 16.8-11.9 49.1-16.8s60.3-7.5 63.3 11.7\"></path></g><defs><path id=\"G\" d=\"M80 125.9h93.6v47.5H80z\"></path></defs><clipPath id=\"H\"><use xlink:href=\"#G\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#H)\"><path fill=\"#D8CAB2\" d=\"M102.515 169.277c-.9-1.4-1.4-3.1-1.9-4.7l-1.5-4.8c-1-3.2-2.1-6.4-3.6-9.4s-3.4-5.8-5.8-7.9c-2.4-2.1-5.3-3.5-8.4-4.1-1.1-.4-1.6-1.5-1.2-2.5.4-1 1.4-1.5 2.3-1.3 7.2 1.7 14.7 2.5 22.1 2.6s15-.3 22.5-1.2c7.5-.9 14.9-2.2 22.2-3.9 7.3-1.7 14.6-3.7 21.7-6.1 1.1-.4 2.2.2 2.5 1.2.3.8 0 1.6-.6 2.1-.2.2-.6.5-.9.8-.3.3-.6.7-.9 1-.6.7-1.2 1.5-1.8 2.3-1.2 1.6-2.3 3.2-3.3 4.9-2.2 3.3-4.2 6.7-6.1 10.2-1.9 3.5-3.8 7-5.5 10.5-.9 1.8-1.7 3.6-2.4 5.4-.4.9-.7 1.8-1.1 2.8-.2.5-.3.9-.4 1.4v.2c0 .1 0 .1-.1.2 0 .1-.1.2-.2.2-.1.1-.2.2-.4.3-.2.2-.5.3-.7.4-1.9.8-3.9 1.2-5.8 1.6-1.9.4-3.9.7-5.9.9-4 .5-7.9.9-11.9 1-4 .2-8 .2-11.9-.2-2-.2-4-.5-5.9-1-1-.3-1.9-.6-2.8-1.1-.9-.4-1.7-1-2.3-1.8m.1-.1c.5.8 1.4 1.4 2.3 1.8.9.4 1.8.7 2.8 1 1.9.5 3.9.8 5.9.9 4 .3 7.9.3 11.9.1 4-.2 7.9-.7 11.8-1.2 1.9-.3 3.9-.6 5.8-1.1s3.9-.9 5.6-1.7c.2-.1.4-.2.6-.4.2-.1.3-.2.3-.3.1-.5.2-1 .4-1.5.3-1 .6-1.9.9-2.9.7-1.9 1.4-3.7 2.2-5.6 1.6-3.7 3.2-7.3 4.9-10.9 1.7-3.6 3.5-7.2 5.4-10.7.9-1.8 1.9-3.5 3-5.3.5-.9 1.1-1.8 1.7-2.6.3-.4.6-.9.9-1.3.4-.4.7-.9 1.2-1.3l1.9 3.4c-7.3 2.5-14.6 4.5-22.1 6.2-7.5 1.7-15 3.1-22.6 4-7.6.9-15.3 1.4-23 1.2s-15.4-1.1-23-2.9l1.1-4c3.3 2 6.3 3.9 8.6 6.6 2.3 2.7 3.9 5.8 5.2 9 1.2 3.2 2.2 6.5 3 9.7.4 1.6.9 3.3 1.3 4.9.6 1.9 1.1 3.5 2 4.9\"></path></g><defs><path id=\"I\" d=\"M81 126.9h91.6v46.5H81z\"></path></defs><clipPath id=\"J\"><use xlink:href=\"#I\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#J)\"><path fill=\"#D8CAB2\" d=\"M102.532 169.288c-.9-1.4-1.4-3-1.9-4.6-.5-1.6-.9-3.2-1.4-4.8-1-3.2-2-6.4-3.5-9.5-1.4-3-3.3-5.8-5.6-8-2.4-2.3-5.3-3.9-8.4-4.6v-.1c-.5-.2-.8-.8-.6-1.3.2-.5.7-.8 1.2-.7 7.3 1.7 14.8 2.5 22.4 2.6s15.1-.3 22.6-1.2c7.5-.9 14.9-2.3 22.3-3.9 7.4-1.7 14.7-3.7 21.8-6.1.5-.2 1.1.1 1.3.6.1.4 0 .8-.3 1.1-.6.5-1.3 1.3-1.9 2-.6.7-1.2 1.6-1.8 2.3-1.1 1.6-2.2 3.3-3.2 5-2.1 3.3-4.1 6.8-6 10.3-1.9 3.5-3.7 7-5.3 10.6l-2.4 5.4c-.4.9-.7 1.8-1 2.8-.2.5-.3.9-.4 1.4-.1.4-.4.5-.6.7-.2.2-.5.3-.7.4-1.9.8-3.9 1.2-5.8 1.6-1.9.4-3.9.7-5.9 1-3.9.5-7.9.9-11.9 1.1-4 .2-8 .2-11.9-.2-2-.2-4-.5-5.9-1-1-.3-1.9-.6-2.8-1-1-.5-1.9-1.1-2.4-1.9m0-.1c.5.8 1.4 1.4 2.3 1.9.9.4 1.8.7 2.8 1 1.9.5 3.9.8 5.9.9 4 .4 7.9.3 11.9.1 4-.2 7.9-.6 11.9-1.2 1.9-.3 3.9-.6 5.9-1.1 1.9-.4 3.9-.9 5.6-1.7.2-.1.4-.2.6-.4.2-.1.4-.3.4-.4.1-.5.2-1 .4-1.5.3-1 .6-1.9 1-2.8.7-1.9 1.5-3.7 2.3-5.5 1.6-3.7 3.3-7.2 5.1-10.8 1.8-3.6 3.6-7.1 5.6-10.6 1-1.8 2-3.5 3.1-5.1.5-.9 1.1-1.7 1.7-2.5.6-.8 1.2-1.6 2.1-2.4l1 1.8c-7.2 2.5-14.6 4.5-22 6.2s-14.9 3-22.5 4c-7.6.9-15.2 1.4-22.9 1.2-7.6-.2-15.3-1-22.8-2.7l.5-1.9c3.3 1.3 6.3 3.3 8.6 5.9 2.3 2.6 4 5.6 5.3 8.7 1.3 3.1 2.3 6.3 3.2 9.6.4 1.6.9 3.2 1.4 4.9.2 1.4.7 3 1.6 4.4\"></path></g><path fill=\"#333\" d=\"M102.6 169.2c5.1 8 46.8 2.5 47.5-.7 1.8-8.1 16.8-36.7 21.6-40.7-8.6 3-53.3 17.3-89.6 8.6 16.3 5.5 16.5 26.6 20.5 32.8\"></path><g><defs><path id=\"K\" d=\"M82 127.9h89.6v45.4H82z\"></path></defs><clipPath id=\"L\"><use xlink:href=\"#K\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#L)\"><path fill=\"#333\" d=\"M171.55 127.95c-6.7 2.3-34.9 11.4-64.1 11.4-8.6 0-17.2-.8-25.5-2.7 16.4 5.3 16.6 26.5 20.6 32.7 1.9 3 9.2 4.1 17.5 4.1 13.4 0 29.5-2.8 30-4.8 1.8-8.2 16.7-36.8 21.5-40.7m-5.6 3.9c-6.5 9.8-15.9 28.7-17.8 35.8-2.5 1.4-15.4 3.8-28.1 3.8-10.2 0-14.8-1.7-15.8-3.2-1-1.5-1.8-4.3-2.6-7.5-1.7-6.1-4.1-14.5-9.8-20.3 5 .6 10.2.9 15.7.9 23.8-.1 47.1-6.1 58.4-9.5\"></path></g></g><path fill=\"#FCD4C3\" d=\"M119.7 173.4c-8.6 0-14.2-1.2-16.4-3.6-.2-.2-.2-1.4.8-3.7 2.4-5.5 9.8-14.9 22.6-15.7.9 0 1.7-.1 2.5-.1 15 0 24 7.6 24 8.9-.2.4-.4 1-.7 1.8-.8 1.9-2 4.9-3.1 8.1-1.3 1.3-16.3 4.3-29.7 4.3\"></path><path fill=\"#F8A38F\" d=\"M129.2 149.8c-.9 0-1.7 0-2.6.1-17.5 1.1-25.6 18.4-23.8 20.5 2.6 2.8 9.3 3.8 16.9 3.8 13.5 0 29.8-3.1 30.3-4.6 1.5-4.5 3.2-8.2 3.9-10 .6-1.8-9.5-9.9-24.7-9.8m0 1.3c13.4 0 22.4 6.4 23.3 8.3-.2.4-.4.9-.6 1.5-.8 1.9-2 4.7-3.1 7.9-2.1 1.2-16.1 3.9-29.1 3.9-8.1 0-13.7-1.2-15.8-3.3-.1-.7.6-3.5 3.1-7 2.2-3.2 8.6-10.7 19.7-11.3h2.5\"></path><g><defs><path id=\"M\" d=\"M103.1 149.4h50.2v20.7h-50.2z\"></path></defs><clipPath id=\"N\"><use xlink:href=\"#M\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#N)\"><path fill=\"#FCD4C3\" d=\"M103.084 169.317c-1.2 5.4 31.9-21.1 49.7-8.4 3.7-4.9-16-13.2-27.5-11.3-9.7 1.7-19.7 7.9-22.2 19.7\"></path></g></g><path fill=\"#FFF7E3\" d=\"M109.8 140.8c1.7 3 4.8 17.6 6.1 17.9s9.5 2.6 10.6 2.1c1.2-.5 1.1-3.3 2.3-2.5 1 .7 1.5 2 2.5 1.5 1.8-.9 7.1-4.2 8-5.6.8-1.5.7-9.8 0-16.4-3.4 1.6-23.5 3.7-29.5 3\"></path><g><defs><path id=\"O\" d=\"M109.8 137.9h30.1v23.2h-30.1z\"></path></defs><clipPath id=\"P\"><use xlink:href=\"#O\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#P)\"><path fill=\"#FFDC99\" d=\"M139.35 137.85c-3 1.3-18.7 3.1-26.6 3.1-1.2 0-2.1 0-2.9-.1 1.7 3 4.8 17.6 6.1 17.9 1.2.3 8 2.2 10.1 2.2.2 0 .4 0 .5-.1 1-.4 1.1-2.6 1.9-2.6.1 0 .3 0 .4.2.9.5 1.3 1.6 2.1 1.6.1 0 .3 0 .4-.1 1.8-.9 7.1-4.2 8-5.6.9-1.5.7-9.8 0-16.5m-.5.9c.6 6.8.6 14 0 15.2-.7 1.2-5.5 4.3-7.7 5.4h-.1c-.2 0-.5-.3-.7-.6-.3-.3-.6-.6-1-.9-.3-.2-.5-.3-.8-.3-.9 0-1.2.9-1.5 1.6-.2.4-.4 1-.7 1.1h-.3c-1.7 0-6.8-1.4-8.9-1.9-.4-.1-.7-.2-.9-.2-.6-.7-1.9-5.4-2.9-8.8-.9-3.1-1.7-6-2.4-7.7h1.9c7.5 0 21.5-1.6 26-2.9\"></path></g></g><g><defs><path id=\"Q\" d=\"M109.9 137.5h29.7v10.3h-29.7z\"></path></defs><clipPath id=\"R\"><use xlink:href=\"#Q\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#R)\"><path fill=\"#EADCBE\" d=\"M112.151 147.85c-.5-5.4 24.4-7.2 27.5-6.7 0-1.3-.2-2.1-.2-3.6-4.1 2.1-26.5 4.3-29.5 3.4.3.6 1.4 3.6 2.2 6.9\"></path></g></g><g><defs><path id=\"S\" d=\"M124 143.8h5.5v14.7H124z\"></path></defs><clipPath id=\"T\"><use xlink:href=\"#S\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#T)\"><path fill=\"#FFDC99\" d=\"M124.558 143.768c.5 1.2 1 2.3 1.4 3.5l1.2 3.6 1.1 3.6 1.1 3.6-1.7.5-.8-3.7-.9-3.7-.9-3.6c-.4-1.2-.7-2.4-1.1-3.5l.6-.3z\"></path></g></g><g><defs><path id=\"U\" d=\"M39.1 51.5h39.4v35.7H39.1z\"></path></defs><clipPath id=\"V\"><use xlink:href=\"#U\" overflow=\"visible\"></use></clipPath><g opacity=\".4\" clip-path=\"url(#V)\"><path fill=\"#FCD4C3\" d=\"M40.384 59.116c13.2 3.4 11.1 26.2 18.9 28 7.9 1.8 18.2-18.8 19.2-23.3-15.2-6.5-22.3-14.1-33.2-11.9-3.6.7-8.6 6.2-4.9 7.2\"></path></g></g><g><defs><path id=\"W\" d=\"M59.9 88.7h133.7v42.5H59.9z\"></path></defs><clipPath id=\"X\"><use xlink:href=\"#W\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#X)\"><path fill=\"#E3AB5E\" d=\"M76.967 125.833c16.6 1.3 30.3 2 35.2-3.1s6.7-27.7 14.7-27.1c6.8.5 9.1 29.9 13.5 30.7 4.4.9 35.5 9.4 43.3 1.4 7.7-8 11.3-13 9.5-17.8-1.8-4.8-47.3-20.3-56.6-21.2-9.3-.9-72.1 7-73.7 10.9-1.6 4-3.3 3.4-3 7.6.6 8.1.5 17.3 17.1 18.6\"></path></g></g><path fill=\"#333\" d=\"M123.5 92.4c1.2 0 5.9-.4 7 .5 6 4.7 5.8 24 12.1 30 5.6 5.4 36.2 9.3 41.5 3.2 5.3-6.1 13.1-24.7 14.9-26.1 1.8-1.3 5.8-2.3 7-4.2 1.2-1.8.2-10-2.6-9.6-2.8.4-8.1 2.1-11.4 1.2-3.3-1-19.4-11.1-59.9-5-3.9.6-7.8 0-10.5-.7S103.7 72.2 63 78c-4 .6-9.6-1.2-11.6-1-2 .2-2.6 6.5-1.8 8.1s5 3 5.5 5 4.2 21.6 13.8 29.7c10.2 8.6 36.2 2.6 38.5 1 10.3-7.3 12.6-28.4 16.1-28.4\"></path><g><defs><path id=\"Y\" d=\"M49.1 76.1h157.3v53.1H49.1z\"></path></defs><clipPath id=\"Z\"><use xlink:href=\"#Y\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#Z)\"><path fill=\"#1A1A1A\" d=\"M88.438 76.123c-7.1 0-15.6.5-25.6 2-.6.1-1.2.1-1.8.1-3.5 0-7.6-1.1-9.5-1.1h-.3c-2 .2-2.6 6.5-1.8 8.1.8 1.7 5 3 5.5 5s4.2 21.6 13.8 29.7c4 3.4 10.6 4.5 17.2 4.5 10 0 19.9-2.5 21.3-3.5 10.4-7.4 12.8-28.5 16.3-28.5.5 0 1.8-.1 3-.1 1.6 0 3.3.1 3.9.5 6 4.7 5.8 24 12.1 30 3.6 3.4 17.4 6.3 28.2 6.3 6.1 0 11.3-.9 13.2-3.1 5.3-6.1 13.1-24.7 14.9-26.1 1.8-1.4 5.8-2.3 7-4.2 1.1-1.8.2-9.6-2.5-9.6h-.2c-2.2.3-6 1.4-9.1 1.4-.8 0-1.6-.1-2.3-.3-2.6-.8-12.7-6.9-35.7-6.9-6.9 0-14.9.5-24.2 1.9-1.1.2-2.3.2-3.3.2-2.7 0-5.2-.4-7.1-.9-2-.2-11.2-5.4-33-5.4m0 2c18.1 0 27.4 3.6 30.8 5 .7.3 1.2.5 1.7.6 1.8.4 4.5 1 7.6 1 1.2 0 2.5-.1 3.6-.3 8.5-1.3 16.5-1.9 23.9-1.9 19 0 28.9 4.2 33.2 6.1.9.4 1.5.6 2 .8.9.3 1.8.4 2.9.4 2.2 0 4.6-.5 6.6-.9.9-.2 1.8-.4 2.5-.5.9 1 1.5 5.4 1 6.6-.4.6-2.1 1.4-3.3 1.9-1.2.5-2.3 1-3.1 1.6-1.1.8-2.2 2.9-5.4 9.3-3.1 6.1-6.9 13.7-9.8 17-1 1.2-4.6 2.4-11.8 2.4-10.5 0-23.9-2.8-26.9-5.7-2.8-2.6-4.2-8.7-5.6-14.6-1.6-6.6-3.1-12.8-6.6-15.6-.9-.7-2.3-1-5.1-1h-3.1c-2.8 0-4 3.3-6.1 9.3-2.3 6.6-5.6 15.5-11.3 19.6-1.3.8-10.7 3.2-20.2 3.2-7.3 0-12.8-1.4-15.9-4-3.8-3.2-9.1-10.7-12.9-27.8-.1-.4-.2-.7-.2-.9-.5-1.9-2.3-3-3.8-4-.6-.4-1.6-1.1-1.8-1.4-.4-.9 0-4.2.6-5.3.7 0 1.7.2 2.8.4 1.9.3 4.3.7 6.5.7.7 0 1.5 0 2.1-.2 8.9-1.1 17.4-1.8 25.1-1.8\"></path></g></g><g><defs><path id=\"aa\" d=\"M64.4 83.4h50.5v34.2H64.4z\"></path></defs><clipPath id=\"ab\"><use xlink:href=\"#aa\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#ab)\"><path fill=\"none\" stroke=\"#333\" stroke-width=\"4\" stroke-miterlimit=\"10\" d=\"M66.2 90.45c-.9 1.2-1.5 18.9 6 23.7 4.9 3.2 25.7 2.5 29.9.2 6.5-3.7 12.9-20.5 11.1-22.9-3-4-24.6-9.3-40.8-5.1-2 .4-5.1 2.6-6.2 4.1z\"></path></g></g><path fill=\"#FFF\" d=\"M66.2 90.4c-.9 1.2-1.5 18.9 6 23.7 4.9 3.2 25.7 2.5 29.9.2 6.5-3.7 12.9-20.5 11.1-22.9-3-4-24.6-9.3-40.8-5.1-2 .5-5.1 2.6-6.2 4.1\"></path><g><defs><path id=\"ac\" d=\"M139.8 88.1h50.1v35h-50.1z\"></path></defs><clipPath id=\"ad\"><use xlink:href=\"#ac\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#ad)\"><path fill=\"none\" stroke=\"#333\" stroke-width=\"4\" stroke-miterlimit=\"10\" d=\"M188.394 98.163c.8 1.3-1 18.9-9 22.8-5.3 2.5-25.8-.9-29.6-3.7-6-4.5-10.2-22-8.1-24.2 3.5-3.6 25.6-6 41.1.2 1.9.7 4.7 3.3 5.6 4.9z\"></path></g></g><path fill=\"#FFF\" d=\"M188.4 98.2c.8 1.3-1 18.9-9 22.8-5.3 2.5-25.8-.9-29.6-3.7-6-4.5-10.2-22-8.1-24.2 3.5-3.6 25.6-6 41.1.2 1.9.7 4.6 3.2 5.6 4.9\"></path><path d=\"M89.9 101.2c-.5 3.9-2.5 6.8-4.4 6.5-1.9-.3-2.9-3.6-2.4-7.5s2.5-6.8 4.4-6.5c1.9.3 2.9 3.6 2.4 7.5M169.6 105.6c.4 3.9-.8 7.2-2.6 7.4-1.9.2-3.7-2.8-4.1-6.7-.4-3.9.8-7.2 2.6-7.4 1.8-.1 3.6 2.9 4.1 6.7\"></path><g><defs><path id=\"ae\" d=\"M49.1 81.6h156.3v46H49.1z\"></path></defs><clipPath id=\"af\"><use xlink:href=\"#ae\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#af)\"><path fill=\"#333\" d=\"M51.475 82.75c2.3 1.5 4.4.6 4.9 3.6s7.4 29 16 32c14.1 4.9 31.9.1 34.3-1.4 2.4-1.5 13.7-26.8 15.6-27.8 1.9-1 7.9.1 9.2.7 3.9 1.7 11.1 29.1 13 30.5 8.7 6.1 36.6 5.6 37.9 4 1.4-1.7 11.8-25.6 13.7-27 2.7-2.1 9-3.5 9.2-2.6.2.9-5.1 1.8-6.7 3.7-1.6 2-12.1 24.9-15.4 26.9-3.3 2-27.7 5.3-40.1-3.4-5.9-4.2-8.2-29.1-12.9-30.5-3-.9-5.3-.8-7.5-.2-2.9 1.9-7 23.1-15.7 28.4-3.5 2.1-30.6 7.4-38.7-1.1-15.1-15.8-10.5-29.9-15.4-31.9-3.3-1.4-4-3.2-4-4.4.3-1.3 1.4-.3 2.6.5\"></path></g></g><g><defs><path id=\"ag\" d=\"M51.6 77.2h20.2v3H51.6z\"></path></defs><clipPath id=\"ah\"><use xlink:href=\"#ag\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#ah)\"><path fill=\"#333\" d=\"M51.75 77.45c-1.6-.6 6.8 2.9 9.9 2.7 3.1-.2 8.3-2.4 10-2.9 1.5-.5-7.8 1.2-10.1 1.1s-8.9-.6-9.8-.9\"></path></g></g><g><defs><path id=\"ai\" d=\"M116.6 82.1h21.7v5.3h-21.7z\"></path></defs><clipPath id=\"aj\"><use xlink:href=\"#ai\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#aj)\"><path fill=\"#333\" d=\"M116.6 82.15c2.9 1.3 4.2 4.6 7 4.9s6.2.8 7.8-.1c1.6-.9 5.6-3 6.7-3.2 1.2-.2-8.7 1.3-12.4 1-3.7-.4-8-2.5-9.1-2.6\"></path></g></g><g><defs><path id=\"ak\" d=\"M187.4 86h12.3v3.9h-12.3z\"></path></defs><clipPath id=\"al\"><use xlink:href=\"#ak\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#al)\"><path fill=\"#333\" d=\"M187.575 85.975c-1.2-.5 4.4 4 6.1 3.8 1.7-.2 4.7-2.1 6-2.6 1-.4-4 1-5.5.7-1.5-.1-5.4-1.4-6.6-1.9\"></path></g></g><g><defs><path id=\"am\" d=\"M62.3 82.8h28.9v28.6H62.3z\"></path></defs><clipPath id=\"an\"><use xlink:href=\"#am\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#an)\"><path fill=\"#333\" d=\"M63.05 87.825c7.4-7.3 25-4.8 28.2-4.2-21.1 1.5-21.5 3.1-25.2 6.8-.5 2.9-1.2 12.5 2.1 20.9-3.7-2-7.6-21-5.1-23.5\"></path></g></g><g><defs><path id=\"ao\" d=\"M165.1 87.8h27.8v30.5h-27.8z\"></path></defs><clipPath id=\"ap\"><use xlink:href=\"#ao\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#ap)\"><path fill=\"#333\" d=\"M192.46 95.698c-6.4-8.2-24.1-8.1-27.4-7.8 20.7 4.3 20.9 5.9 24.1 10.1.2 2.9-.4 12.5-4.7 20.4 3.8-1.6 10.1-20 8-22.7\"></path></g></g><g><defs><path id=\"aq\" d=\"M65.8 84.8h47.8v27.5H65.8z\"></path></defs><clipPath id=\"ar\"><use xlink:href=\"#aq\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#ar)\"><path fill=\"#D0DDDC\" d=\"M66.412 102.575c.7-8.6 1.5-15.6 18.6-16.1 13.7-.4 24.6 2.8 26.1 6.1 1 2.1.2 11.3-6.6 19.7 4.4-3.9 11.4-19.4 8.4-21.3-11.1-7.1-33.2-7.3-41.4-4.4-1.5.5-3.9 2.2-5.5 4-.3 2.2-.3 10.8.4 12\"></path></g></g><g><defs><path id=\"as\" d=\"M66.8 103H102v13.9H66.8z\"></path></defs><clipPath id=\"at\"><use xlink:href=\"#as\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#at)\"><path fill=\"#D0DDDC\" d=\"M66.884 103.2c2.6 16.8 33.3 11.7 35.1 11-.1.9-16.1 5.4-29.5.2-5.4-2-5.8-13.1-5.6-11.2\"></path></g></g><g><defs><path id=\"au\" d=\"M141.2 89.5h47.7V115h-47.7z\"></path></defs><clipPath id=\"av\"><use xlink:href=\"#au\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#av)\"><path fill=\"#D0DDDC\" d=\"M186.957 110.087c.4-8.7.4-15.6-16.4-18.2-13.5-2.1-24.7-.3-26.7 2.8-1.2 1.9-1.6 11.2 4.2 20.4-3.9-4.5-9-20.6-5.7-22.2 11.9-5.7 33.9-3.2 41.6.7 1.4.7 3.7 2.6 5 4.7-.1 2.1-1.1 10.7-2 11.8\"></path></g></g><g><defs><path id=\"aw\" d=\"M150.2 110.4h36.3v11.7h-36.3z\"></path></defs><clipPath id=\"ax\"><use xlink:href=\"#aw\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#ax)\"><path fill=\"#D0DDDC\" d=\"M186.383 110.613c-4.6 16.3-34.5 7.5-36.2 6.6 0 .9 15.3 7.3 29.3 3.9 5.6-1.4 7.5-12.4 6.9-10.5\"></path></g></g><g><defs><path id=\"ay\" d=\"M87.3 95.2h2v2h-2z\"></path></defs><clipPath id=\"az\"><use xlink:href=\"#ay\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#az)\"><path fill=\"#FFF\" d=\"M89.375 96.2c0-.5-.4-1-1-1s-1 .4-1 1 .4 1 1 1 1-.4 1-1\"></path></g></g><g><defs><path id=\"aA\" d=\"M166.3 99.9h2v2h-2z\"></path></defs><clipPath id=\"aB\"><use xlink:href=\"#aA\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#aB)\"><path fill=\"#FFF\" d=\"M168.375 100.9c0-.5-.4-1-1-1-.5 0-1 .4-1 1s.4 1 1 1c.5 0 1-.5 1-1\"></path></g></g><g><defs><path id=\"aC\" d=\"M52 79.1h64.8v9.5H52z\"></path></defs><clipPath id=\"aD\"><use xlink:href=\"#aC\" overflow=\"visible\"></use></clipPath><g opacity=\".1\" clip-path=\"url(#aD)\"><path fill=\"#D0DDDC\" d=\"M52.025 81.675c2.4 2.7 3.9 3 7.1 2.6 31.1-4 48.3-3.9 56.8 4 1.8 1.7.8-5.1-2.6-6-26.2-6.9-45.2-.7-49.2-.2-4.1.6-7-.3-12.1-.4\"></path></g></g><g><defs><path id=\"aE\" d=\"M137.7 82.3h47.9v9.2h-47.9z\"></path></defs><clipPath id=\"aF\"><use xlink:href=\"#aE\" overflow=\"visible\"></use></clipPath><g opacity=\".1\" clip-path=\"url(#aF)\"><path fill=\"#D0DDDC\" d=\"M138.025 85.675c-.7.7-.4 7.9 3 5.2 9.8-7.8 30.3-6 44.6-1.2-2.3-4.5-19-7.6-28.4-7.5-4.5.2-17.3 1.5-19.2 3.5\"></path></g></g><path fill=\"#D0DDDC\" d=\"M197.2 91.4c0 .3-1.6.5-3.5.5s-3.5-.2-3.5-.5 1.6-.5 3.5-.5c2 0 3.5.3 3.5.5M62.4 82.8c0 .3-1.6.3-3.5 0s-3.4-.8-3.3-1.1 1.6-.3 3.5 0c1.9.2 3.4.7 3.3 1.1\"></path><g><path fill=\"#FFF\" d=\"M256.04 243.036c-.6-6.1-5.1-8.8-9.2-8.8-1.9 0-3.4.5-4 .8l-.8.4-.7.5c-1 .7-2.7 1.8-4.2 2.3-.1-1.2 0-2.8.2-4.2v-.2c1.1-10.7-1.1-17-6.7-18.6-.9-.3-1.9-.4-2.9-.4-3.4 0-6.4 1.6-8.3 3-1.6-2.1-4.4-3.2-7.8-3.2-5.1 0-9.2 2.4-10.7 6.2-.2.4-.4 1-.6 1.8-3-6.6-9.1-9.1-14.8-9.1-5.4 0-10.6 2.1-12.5 3.6-.1.1-.2.1-.3.2-5.1 3.6-9.1 8.2-11.9 13.7-1.4-4.7-4.4-9.2-9.7-12.5l-.1-.1c-.2-.1-.3-.2-.4-.2 5.3-9.3 9.9-21.7 7.1-33.5-3-12.6-10.4-14.4-14.5-14.4-1.7 0-3.5.3-5.3.9h-.2c-7.8 3.1-11.2 7.7-12 8.8-.8 1.2-9.3 14.2-11.4 33.2-.2 2.1-.5 4.3-.7 6.5-1.2-1.7-3.2-3.3-6.3-4.2-1-.3-2-.4-3-.4-4.3 0-7.8 2.6-9.7 4.4-1.6-2.4-4.2-3.9-7.1-4h-.7c-4.6 0-8.2 2-10.9 4.3-1.7-3-4.9-4.9-8.6-4.9h-1.5c-5.1 0-9.1 2.4-10.7 6.4-.1.3-.3.7-.4 1.2-4-5-9.1-7.3-16-7.3h-.7c-4.3.1-14.9 1.9-21.5 16.6-1 2.3-1.8 4.6-2.4 6.8-1.4-.7-2.8-.8-3.7-.8-3.4 0-6 1.9-7.2 3.8-1 1.5-4.2 6.7-2.6 11.9.9 2.8 2.8 4.9 5.6 6 2.5 1 5.6 1.9 7.9 2.6 1.4 3.3 4 7 8.6 10.5 3.2 2.5 7.4 3.7 12.2 3.7 8.2 0 16.1-3.5 16.9-3.9l.3-.2.1-.1c1.6 1.6 3.6 2.8 6.2 3.3.8.2 1.8.3 3 .3 4.4 0 7.5-2.3 10.4-6.5 2.3 3.7 6.6 5.7 11.6 5.7.3 0 .5.2.9.2 2.6 0 6-.9 8.7-5.4 2.3 4.1 6.5 6.5 11.5 6.5 4.4 0 8.3-1.8 9-2.2l.2-.1c1.5-.8 2.7-1.5 3.7-2 3.3 1.8 8.3 3.7 14.5 3.7 1.1 0 2.1 0 3.2-.2h.6c13-2.6 21.5-5.7 26.6-8.1 3.5 4 9.2 7.8 17.2 8.4.9.1 1.8.1 2.7.1 6.6 0 11.9-1.9 15.8-3.9 1.2 1.3 2.8 2.5 4.8 3.3 1.2.5 2.5.7 3.7.7 8.1 0 11.9-9.6 12.9-12.9l1.9-5.2c1.7 1.8 3.9 3.3 6.7 4.1 1.5.4 3.2.7 4.8.7 8.9 0 17.5-6.3 18.8-7.4 2.3-2.3 4.9-6.5 4.4-12.2\"></path></g><g><path fill=\"#E24B31\" d=\"M174.35 245.713s-1.1-4 3.1-11.6 7.4-3.5 7.4-3.5 3.6 3.9-.5 9.7c-4.1 5.8-10 5.4-10 5.4m-32.1 5.5c-4.8 12.5-16.4 7.4-16.4 7.4s-1.3-4.5 2.5-17 12.6-7.6 12.6-7.6 6.1 4.7 1.3 17.2m-8.7-52.5s7.2-18.9 9-9.7c1.8 9.2-15.2 36.5-15.2 36.5.2-6.1 6.2-26.8 6.2-26.8m-103.5 47c.3-12.1 8.2-17.4 11-14.8 2.8 2.6 1.8 8.4-3.5 11.9-5.1 3.6-7.5 2.9-7.5 2.9m219.3-2c-.4-4.1-4.1-2.6-4.1-2.6s-5.9 4.6-11.1 4.1c-5.2-.5-3.5-12.1-3.5-12.1s1.1-10.7-1.9-11.6c-3.1-.9-6.8 2.8-6.8 2.8s-4.7 5.2-6.9 11.8l-.6.2s.7-11.6-.1-14.3c-.6-1.3-6.2-1.2-7.1 1.1-.9 2.3-5.4 18.6-5.7 25.5 0 0-8.8 7.4-16.4 8.7-7.7 1.2-9.5-3.6-9.5-3.6s20.8-5.8 20.1-22.4c-.7-16.6-16.8-10.5-18.6-9.1-1.8 1.3-11.1 7-13.9 22.6-.1.5-.3 2.9-.3 2.9s-8.1 5.4-12.5 6.8c0 0 12.5-21.1-2.8-30.7-6.9-4.2-12.5 4.6-12.5 4.6s20.7-23 16.1-42.5c-2.2-9.3-6.8-10.3-11.1-8.8-6.5 2.6-8.9 6.3-8.9 6.3s-8.4 12.1-10.3 30.2-4.8 39.8-4.8 39.8-4 3.9-7.6 4.1c-3.7.2-2-10.9-2-10.9s2.8-16.9 2.6-19.8-.4-4.4-3.8-5.4c-3.3-1-7 3.3-7 3.3s-9.7 14.7-10.5 16.9l-.5.9-.5-.6s6.8-20 .3-20.3c-6.5-.3-10.8 7.1-10.8 7.1s-7.4 12.5-7.7 13.9l-.5-.6s3.1-14.5 2.5-18.1c-.6-3.6-4-2.8-4-2.8s-4.3-.5-5.4 2.3c-1.1 2.8-5.2 21-5.7 26.8 0 0-10.7 7.7-17.7 7.7-7 .1-6.3-4.5-6.3-4.5s25.8-8.8 18.8-26.3c-3.2-4.5-6.8-5.9-12-5.8-5.2.1-11.3 3.3-15.5 12.6-2 4.5-2.8 8.7-2.8 11.9 0 0-4.8.9-7.3-1.1s-3.9 0-3.9 0-4.3 6.1-.1 7.7c4.2 1.6 10.6 3.2 10.6 3.2.6 2.6 2.3 7 7.4 10.8 7.6 5.8 22.3-.9 22.3-.9l6-3.6s.2 5.4 4.6 6.2c4.4.8 6.2-.1 13.9-18.6 4.5-9.5 4.8-9 4.8-9l.5-.1s-3.5 18.1-2.1 23 7.1 4.4 7.1 4.4 3.2 1.1 5.7-7.9c2.6-9 7.4-18.4 7.4-18.4h.6s-2.1 18.1 1.1 24c3.3 5.9 11.7 1.8 11.7 1.8s5.9-3.1 6.8-4c0 0 7 5.9 16.9 4.8 22.1-4.4 30-10.3 30-10.3s3.8 9.6 15.6 10.5c13.5 1 20.8-7.5 20.8-7.5s-.1 5.5 4.6 7.4c4.7 1.9 7.9-8.3 7.9-8.3l7.9-21.1h.7s.4 13.5 8.2 15.7c7.8 2.2 17.9-5.6 17.9-5.6s2.2-1.1 1.7-5.2\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0.1 31.4 256 244.5\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMinYMin meet\"><path fill=\"#FFF\" d=\"M57.9 219.3l.6-1.5.1-.2c.5-1.2 1-2.5 1.5-3.7.6-1.6 1.2-3.3 1.8-4.9.4-.9.7-1.8 1-2.8.8-2.2 1.9-5.1 3.2-7.9.8-1.7 1.4-2.9 2.1-4 .8-1.3 1.6-2.5 2.5-3.7l.7-1 1.1-.7c.1-.1.3-.2.5-.3.5-.3 1.1-.5 1.5-.7.7-.3 1.6-.6 2.6-.9 1.4-.4 3-.8 4.9-1.2 2.8-.6 5.8-1.2 9.6-1.8 5.7-.9 11.8-1.7 19.1-2.5 12.9-1.4 25.8-2.4 38.2-3 6.6-.3 11.6-.4 16.3-.4h3c3.1.1 6.7.2 10 .7 1.2.2 2.3.4 3.1.7.3.1.6.2.7.3l1 .4.8.7.9.9c1.1 1.1 2.3 2.4 3.5 3.9 3.8 4.8 7.2 10.6 10.2 17.2 2.9 6.4 4.7 12.1 5.8 17.7l1.5 7.9h-18.4l-1.1-5.3c-1.2-5.6-16.3-20.4-23.8-23.3-.8-.3-4-1.2-13.9-1.2-20.4 0-49.2 3.6-53.3 4.5-4.9 2.3-12.4 11.9-16.7 21.5l-1.8 3.9\"></path><path fill=\"#BA8449\" d=\"M182.9 190.1c-.9-1.2-1.9-2.3-3-3.3l-.7-.7s-.1 0-.2-.1c-.5-.2-1.2-.3-1.9-.4-2.9-.4-6-.5-9.1-.6-6.3-.1-12.6.1-18.9.4-12.6.6-25.3 1.6-37.8 3-6.3.7-12.6 1.5-18.8 2.5-3.1.5-6.2 1-9.2 1.7-1.5.3-3 .7-4.4 1.1-.7.2-1.4.4-2 .7-.3.1-.6.2-.7.4 0 0-.1 0-.1.1-.7 1-1.4 2-2.1 3.1-.7 1.1-1.2 2.3-1.8 3.5-1.1 2.4-2.1 4.9-3 7.4s-1.9 5.1-2.8 7.7c-.5 1.3-1 2.6-1.6 3.9-.2.6-.5 1.2-.8 1.8h8.5c4.6-10.3 13.3-22.1 20.5-25 2-.8 34.2-4.8 55.5-4.8 7.9 0 13.3.6 16.3 1.7 8.7 3.4 26.1 19.5 27.9 28.2h4.9c-1-5.5-3-10.9-5.3-16.1-2.6-6-5.7-11.5-9.4-16.2\"></path><path fill=\"#FFF\" d=\"M179.1 185.9z\"></path><path fill=\"#BA8449\" d=\"M179.1 185.9z\"></path><path fill=\"#FFF\" d=\"M192.1 228.6l-1-5.4c-.9-4.5-2.4-9.3-4.8-14.6-2.6-5.6-5.4-10.5-8.6-14.4-.6-.8-1.2-1.5-1.8-2.1-2.5-.4-5.4-.4-8-.5h-2.8c-4.5 0-9.3.1-15.7.4-12.2.6-24.7 1.6-37.4 3-7.1.8-13 1.6-18.4 2.4-3.5.5-6.3 1.1-8.8 1.6-1.6.4-2.8.7-3.9 1-.2 0-.3.1-.4.1-.2.4-.5.7-.7 1.1-.5.8-.9 1.7-1.6 2.9-1.1 2.3-2 4.7-2.8 6.8-.4.9-.7 1.8-1 2.7-.6 1.7-1.2 3.4-1.9 5.1-.5 1.3-1.1 2.6-1.6 4l-.1.2c-.2.6-.5 1.2-.7 1.7l-1.8 4H56.6l-1.7-.8-.2-.1c-4-2.3-4-5.7-3.9-7.1v-.3l.2-.9.3-1.1c.2-.7.4-1.5.6-2.2.4-1.5.9-2.9 1.4-4.3.9-2.6 2-5.4 3.3-8.4 1.4-3.1 2.7-5.8 4.2-8.3.7-1.3 1.5-2.6 2.5-4.1.9-1.4 1.9-2.8 2.9-4.1.9-1.1 1.7-1.8 2.3-2.2h.1c.6-.5 1.2-.8 1.5-.9.9-.5 1.6-.8 2.1-1 1.2-.5 2.3-.8 3.2-1.1 2-.6 3.9-1 5.3-1.3 2.9-.6 6-1.2 9.9-1.8 5.8-.9 11.9-1.6 19.4-2.4 13-1.3 26-2.3 38.6-2.8 6-.2 10.7-.4 15-.4h4.6c3.2.1 6.8.2 10.7.8h.1c.9.2 2.3.4 3.9.9h.1c.4.2 1 .4 1.7.7.5.3.9.5 1.2.7l.5.4.4.3.4.4 1.1 1.1c1.3 1.3 2.5 2.7 3.8 4.4 4 5.2 7.5 11.2 10.7 18.3 1.5 3.3 2.8 6.6 3.8 9.8 1.1 3.5 1.9 6.8 2.5 10l1.2 7.7h-18.2v.1z\"></path><path fill=\"#FFF\" d=\"M64.3 228.6l4.4-9.5c3.7-7.9 12.6-22.4 22.5-26.5l.2-.1c3.3-1.2 36.7-5.1 57.1-5.1 11.4 0 15.7 1.1 17.9 2 10.3 4 28.2 20.9 30.6 30.9l2 8.2H64.3z\"></path><path fill=\"#FFF\" d=\"M185.4 228.6l-1.2-5.1c-1.1-4.7-15.2-18.8-22.5-21.7-.7-.3-3.6-1.1-13.2-1.1-19.6 0-48 3.5-52.6 4.4-3.8 1.9-10.7 10-15.2 19.6l-1.8 3.8H62.3l4.2-9.3c4.9-11 14.6-24.6 24.1-28.4 3.7-1.5 37.5-5.3 58-5.3 8.9 0 14.9.7 18.6 2.1 10.3 4 29.6 21.4 32 33l1.6 8h-15.4z\"></path><path fill=\"#FFF\" d=\"M193.1 228.6l-1.9-1.8c-7.2-6.7-9.2-20.6-7-26.3 1.5-3.8 4.7-5.1 7.1-5.1.7 0 1.3.1 1.9.3 1.3-.1 4.3-2.6 5.2-4 1.4-2.6 4.1-4.2 7.4-4.2 4.9 0 12.9 3.9 15.5 7.6 1.5 2.1 1.9 4.6 1.1 6.8-.1.2-.2.6-.4 1.1-2.7 8.1-6.2 18-9 22.6l-1.9 3.1-18-.1z\"></path><path fill=\"#FFF\" d=\"M192.5 228.6l6.2-10.1c3-4.9 5.1-8.9 6.5-12-3.5 2.5-8.4 4-15.7 4.4l-.2-.2-.1.7c-4.3 0-7.8-3.5-8-7.8-.1-2.1.7-4.2 2.1-5.8 1.4-1.6 3.4-2.5 5.5-2.6 7.2-.3 8.1-2 9.4-4.5 1.8-3.4 5.7-5.4 10.8-5.4 1.3 0 2.6.1 3.8.4 6.3 1.4 10.4 6.2 10.7 12.4.3 6.3-3.2 15.5-10.2 27.3l-1.9 3.2h-18.9z\"></path><path fill=\"#FFF\" d=\"M218.8 208.9c-8.1 0-16.9-5.3-21.4-10.5-4.1-4.7-4.5-8.9-4.1-11.6.5-3.3 3.2-6.6 8.1-6.6.9 0 1.8.1 2.6.2.8-3.6 2.7-11.1 10.4-11.1h1.1c3.7.4 6.5 2.7 7.6 6.2 1.2-.6 2.6-1.1 4.2-1.1 2.4 0 4.7 1 6.4 2.8 2.7 2.9 3.3 6.9 1.6 10.7 1.8 1.1 3.2 2.8 3.8 5 .8 2.8.3 5.8-1.5 8.2-3.5 4.9-11.6 7.2-18 7.4-.4.4-.6.4-.8.4M210.8 44.2c-7.3 4.6-15.3 15.1-25.1 29.5-1.5 2.3-4 3.5-6.8 3.5-3.6 0-8.2-2.2-13.5-6.5-8.4-6.8-8.6-10.6-8.7-12.1-.2-4 2.8-7.4 7-7.8 8.1-.7 14.8-5.6 21.3-10.3 6.5-4.7 12.5-9 19.7-9 1.4 0 2.9.2 4.3.5\"></path><path fill=\"#FFF8EE\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4\"></path><path fill=\"#FFF\" d=\"M37.3 48.2c4.9-4.5 11.5-6.8 19.6-6.8 7 0 15.3 1.7 24.6 5.1 2.5.9 5.8 1.1 8.3 1.1h3.7c2.3 0 7.2 0 9.3 4.5.7 1.7 1.6 5.2-1.1 9.3-3.3 5.1-12 10.5-20.4 10.5h-.4c-4.5-.1-8.7-2.5-13.6-5.2-6.1-3.4-13-7.3-21.2-7.3-1.1 0-2.3.1-3.4.2M188.1 96.7c-3.6 0-10.4-1.5-14.7-11.7-2.4-5.4-3.2-11.5-3.2-14.9 0-7 3.7-8.9 6-9.4 1.6-1.6 4.6-5.7 6.8-8.8 9.1-12.4 15.7-20.5 23.4-20.5 1.3 0 2.5.2 3.7.7 10.3 4.1 15.3 12.8 13.6 23.8-1.2 8.1-6.3 17.7-13.8 26.5-3.5 4.1-12.6 13.7-20.7 14.3h-1.1\"></path><path fill=\"#FFF\" d=\"M69.9 100.5c-.9 0-1.8 0-2.6-.2-12.8-2.1-28.8-15-34.8-28.3-4.1-9.1-2.3-15.3 0-18.9 3.7-5.9 9.2-9 16-9 8.2 0 16.4 4.5 23.6 8.4 2.8 1.5 6.8 3.7 8.5 4.1.6-.2 1.2-.3 1.9-.3 2.6 0 5 1.4 6.4 3.8 3.3 5.8 1.3 21.4-3.9 30.4-3.6 6.6-9 10-15.1 10z\"></path><path fill=\"#FFF\" d=\"M114.5 212.1c-30 0-59.7-14.7-69.6-25.4-10.3-11.1-14-23.7-11.2-37.5 2.4-11.3 8.7-21.4 14.2-30.4 3.8-6.2 7.4-12 8.4-16.2 12.2-53.9 42.8-60.8 68.1-60.8 1.6 0 3.3 0 5.2.1 53.9 1.6 59.3 27.6 62.5 43.2.6 2.9 1.2 5.6 1.9 7.4 18.1 44.4 21.1 71 10 89-10.9 17.7-34.8 26.4-82.4 30.3-2.3.2-4.7.3-7.1.3z\"></path><path fill=\"#FFF\" d=\"M113.4 212.2c-30.6 0-58.9-15.2-68.4-25.5-10.3-11.1-14-23.7-11.2-37.5 2.4-11.3 8.7-21.4 14.2-30.4 3.8-6.2 7.4-12 8.4-16.2 12.2-53.9 42.8-60.8 68.1-60.8 1.6 0 3.3 0 5.2.1 53.9 1.6 59.3 27.6 62.5 43.2.6 2.9 1.2 5.6 1.9 7.4 17.8 43.7 20.7 70.1 9.8 88.1-12.5 20.7-41.9 27.4-82.1 31.2-2.8.3-5.6.4-8.4.4\"></path><path fill=\"#FFF\" d=\"M191.3 174.6c.4-.9.8-1.9 1.2-2.8 4.1-9.8 7.2-18.4 2.3-23.9-5.8-6.4-30.3-18-52.1-28.2-41.7-19.7-67.5-32.4-71.2-45-.9-3.2-.5-6.5 1.2-9.3C79.9 54.1 100 42 127.5 42h.8c25.9.2 44.7 7.7 56 22.1 9.6 12.2 11.7 26.5 13.3 36.9.5 3.5 1.2 8 1.9 9.2 19.6 33.7 10.6 58.6 3.5 70.3l-11.7-5.9z\"></path><path fill=\"#FFF\" d=\"M170.8 135.8c-10.1 0-27-2.5-32.8-8.1-4.6-4.4-6.3-11.7-8.1-18.8-.7-3-1.9-7.8-3-10h-.1c-.4 1.1-.9 2.5-1.3 3.6-2.7 7.6-6.5 18.1-14.4 23.8-3.4 2.5-15.7 4.7-25.2 4.7s-16.7-2-21.5-6.1c-6.9-5.8-12.1-16.5-15.6-31.8-.2-.1-.3-.2-.5-.3-1.6-1.1-3.7-2.4-4.8-4.7-1.8-3.6-1.1-10 .8-13.4 1.4-2.5 3.8-4.1 6.4-4.3h.9c1.4 0 2.8.2 4.4.5s3.5.6 5.1.6h.9c9.5-1.4 18.4-2 26.5-2 19.7 0 30.1 4 34 5.6.3.1.6.2.8.3 1.1.3 3.2.7 5.4.7.8 0 1.6 0 2.3-.2 8.9-1.4 17.4-2 25.2-2 20.8 0 31.8 4.7 36.6 6.8.4.2.8.4 1.1.4h.4c1.3 0 3.2-.4 4.8-.7 1.2-.3 2.4-.5 3.5-.7h.9c3.1 0 5.9 1.8 7.6 4.8 1.9 3.5 3.2 10.8.5 15-1.8 2.8-4.7 4.1-7.1 5.2-.3.1-.7.3-1 .5-.8 1.4-2.2 4.2-3.4 6.5-3.5 6.8-7.4 14.6-11 18.8-3.2 3.6-9.2 5.3-18.3 5.3\"></path><defs><path id=\"a\" d=\"M42.5 75H212v59.2H42.5z\"></path></defs><clipPath id=\"b\"><use xlink:href=\"#a\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#b)\"><path fill=\"#FFF\" d=\"M166.778 134.181c-8 0-19.3-1.2-27.4-6.9-4.6-3.3-6.7-9.9-9.6-20.5-.8-3-2-7.2-2.9-9.3-.5 1.2-1.1 2.8-1.6 4.1-3 8.1-7.1 19.1-14.6 23.7-3.9 2.4-16 4.6-25.4 4.6-10.1 0-17.4-2.3-21.6-6.7-10.7-11.2-12.8-21.9-14.1-28.2-.2-.9-.4-2.1-.6-2.8-6.3-3.3-6.7-8.2-6.6-10.3.3-3.9 3.3-6.8 7-6.8 2.5 0 4.1 1.2 5.3 2 .1.1.2.2.4.2.1 0 .4.1.5.2 1.6.5 6.3 1.8 7.3 7.9.2 1.1 1.8 7.5 4.4 14.2 4.1 10.7 7 12.5 7.3 12.6 3.4 1.2 7.4 1.8 11.9 1.8 7.4 0 13.6-1.6 16.1-2.4 1.5-2.3 4.5-8.3 6.6-12.4 6.3-12.5 7.4-14.4 10.1-15.8 1.5-.8 3.3-1.2 5.6-1.2 3 0 7.3.7 9.3 1.6 4.6 2 7 8 12.4 23.5 1 2.8 2.2 6.4 3 8.2 4 1.9 13.1 3.2 22.6 3.2 2.7 0 4.7-.1 6-.2.9-1.9 2.2-4.6 3.3-6.9 7.6-16.2 8.8-18.1 10.7-19.6 3.3-2.5 9.1-4.2 12.4-4.2 4.4 0 6.8 2.9 7.4 5.7 1.1 5.8-4.6 8-6.5 8.7-.5.2-1.2.5-1.7.7-.7 1.2-2 3.8-3 5.9-8.2 16-10.9 20.4-14 22.3-3.8 2.1-13 3.1-20 3.1\"></path></g><defs><path id=\"c\" d=\"M45 70.7h33.4v16.2H45z\"></path></defs><clipPath id=\"d\"><use xlink:href=\"#c\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#d)\"><path fill=\"#FFF\" d=\"M61.388 86.816c-1.2 0-3.5-.2-8.1-1.7-1.2-.4-2.3-.8-3-1.1-1.5-.6-5.4-2.1-5.4-6.7v-6.7h6.6c.9 0 1.5.2 2 .3 1.4.2 5.9.5 7.4.6l.9.1c1.2 0 4.9-.5 6.5-.7 2-.3 2.6-.4 3.4-.4h5.7l.9 5.6c.4 2.8-1.1 6.3-4.8 7.4-.2.1-.9.3-1.5.5-3.5 1.3-7 2.5-10 2.6-.2.2-.4.2-.6.2\"></path></g><defs><path id=\"e\" d=\"M181 79.3h25.4v17.2H181z\"></path></defs><clipPath id=\"f\"><use xlink:href=\"#e\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#f)\"><path fill=\"#FFF\" d=\"M193.488 96.41c-2.2 0-4.4-.9-7.4-3-2.9-2-5.1-4-5.1-7.5v-6.7h6.5c.9 0 1.8.2 2.7.6.7.3 3.4 1.2 4.6 1.5.4 0 1.2-.2 2.8-.5.8-.2 1.3-.2 2-.2h5.7l.9 5.6c.4 2.7-.8 6.1-4.5 7.4l-1.2.6c-1.8.9-3.9 1.9-6 2.3-.2-.1-.6-.1-1-.1\"></path></g><path fill=\"#FFF\" d=\"M171.7 243.3h-24.6V222h24.6v21.3z\"></path><path fill=\"#BA8449\" d=\"M182.9 190.1c-.9-1.2-1.9-2.3-3-3.3l-.7-.7s-.1 0-.2-.1c-.5-.2-1.2-.3-1.9-.4-2.9-.4-6-.5-9.1-.6-6.3-.1-12.6.1-18.9.4-12.6.6-25.3 1.6-37.8 3-6.3.7-12.6 1.5-18.8 2.5-3.1.5-6.2 1-9.2 1.7-1.5.3-3 .7-4.4 1.1-.7.2-1.4.4-2 .7-.3.1-.6.2-.7.4 0 0-.1 0-.1.1-.7 1-1.4 2-2.1 3.1-.7 1.1-1.2 2.3-1.8 3.5-1.1 2.4-2.1 4.9-3 7.4s-1.9 5.1-2.8 7.7c-.5 1.3-1 2.6-1.6 3.9-.2.6-.5 1.2-.8 1.8h8.5c4.6-10.3 13.3-22.1 20.5-25 2-.8 34.2-4.8 55.5-4.8 7.9 0 13.3.6 16.3 1.7 8.7 3.4 26.1 19.5 27.9 28.2h4.9c-1-5.5-3-10.9-5.3-16.1-2.6-6-5.7-11.5-9.4-16.2M179.1 185.9z\"></path><path fill=\"#895B2E\" d=\"M179.1 185.9zm17.8 17.9c-2.7-6-5.8-11.7-9.9-16.9-1-1.3-2.1-2.6-3.3-3.8l-.9-.9-.2-.2-.1-.1-.2-.2c-.2-.1-.4-.2-.5-.3-.3-.2-.6-.3-.9-.4-1.1-.4-1.9-.5-2.8-.7-3.4-.5-6.6-.6-9.8-.7-6.5-.1-12.8 0-19.2.3-12.8.5-25.5 1.5-38.2 2.8-6.3.7-12.7 1.4-19.1 2.4-3.2.5-6.3 1-9.5 1.7-1.6.4-3.2.7-4.8 1.2-.8.2-1.6.5-2.5.9-.4.2-.9.4-1.4.7-.2.2-.5.3-.8.5-.3.2-.6.5-1 1-.9 1.1-1.8 2.4-2.6 3.6-.8 1.2-1.6 2.5-2.3 3.8-1.4 2.5-2.7 5.1-3.9 7.7-1.1 2.6-2.2 5.2-3.1 7.9-.5 1.3-.9 2.6-1.2 4-.2.7-.4 1.3-.6 2l-.3 1-.1.5c0 .1.2.2.6.5H64.2c.3-.6.5-1.2.8-1.8.5-1.3 1.1-2.6 1.6-3.8 1-2.6 1.9-5.1 2.8-7.7.9-2.5 1.9-5.1 3-7.4.6-1.2 1.2-2.3 1.8-3.5.7-1.1 1.3-2.1 2.1-3.1 0 0 .1 0 .1-.1.2-.1.5-.2.7-.4.6-.2 1.3-.5 2-.7 1.4-.4 2.9-.8 4.4-1.1 3-.7 6.1-1.2 9.2-1.7 6.2-1 12.5-1.8 18.8-2.5 12.6-1.4 25.2-2.4 37.8-3 6.3-.3 12.6-.5 18.9-.4 3.1.1 6.3.2 9.1.6.7.1 1.4.3 1.9.4.1 0 .2 0 .2.1l.7.7c1.1 1.1 2 2.2 3 3.3 3.7 4.7 6.8 10.2 9.4 15.8 2.3 5.2 4.3 10.6 5.3 16.1h5c-.5-3.1-1.3-6.1-2.2-9-1.2-3.1-2.4-6.1-3.7-9.1\"></path><path fill=\"#FFF8EE\" d=\"M164.1 195.7c-2.6-1-7.9-1.6-15.5-1.6-21.4 0-53 4-54.7 4.7-6.5 2.6-14.6 13.6-19.1 23.2h115.9c-1.9-7.5-18-22.9-26.6-26.3\"></path><path fill=\"#E5D0AE\" d=\"M164.8 193.8c-2.9-1.1-8.4-1.7-16.3-1.7-21.3 0-53.5 4-55.5 4.8-7.3 3-15.9 14.7-20.5 25h2.2c4.5-9.5 12.6-20.5 19.1-23.2 1.7-.7 33.3-4.7 54.7-4.7 7.6 0 12.9.5 15.5 1.6 8.6 3.3 24.7 18.8 26.6 26.3h2c-1.7-8.6-19.1-24.7-27.8-28.1\"></path><path fill=\"#BA8449\" d=\"M204.4 194.7c-1.2 2.5-7.5 8.9-12.8 7.4-2.8-.8-2.3 14 4.1 19.9h11.6c3.2-5.1 8.2-20.7 8.8-22.3.7-1.9-10.5-7.5-11.7-5\"></path><path fill=\"#895B2E\" d=\"M216.7 198.4c-.2-3.2-2.1-5.5-5.5-6.3-2.7-.6-6.3-.1-7.2 1.6-1.8 3.4-4 7.5-14.9 8.1-.7 0-1.3.7-1.3 1.4s.7 1.3 1.4 1.3c11.4-.5 14.7-4.9 17.1-9.4.5-.4 3.2-.9 5.4 0 1.6.7 2.3 1.8 2.4 3.5.3 6.2-6.2 17.7-9.7 23.5h3.1c3.9-6.8 9.5-17.3 9.2-23.7\"></path><defs><path id=\"g\" d=\"M193.5 196.5H217v27.3h-23.5z\"></path></defs><clipPath id=\"h\"><use xlink:href=\"#g\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#h)\"><path fill=\"#E3AB5E\" d=\"M194.235 222.3c7.1-1.7 13.4-8.8 13.9-18.9.1-1.9-3.8-5.5-3.8-6.5s11.9.2 12.5 3c.5 2.8-7.4 19.7-10.1 22.5-2.6 2.7-16.7.9-12.5-.1\"></path></g><path fill=\"#FCD4C3\" d=\"M199.8 187.8c-.9 6.2 11.2 14.7 19.4 14.5 6.8-.2 14.5-3.4 13.4-7.2-1.1-3.9-7.7.7-8.3-2-.5-2.6 7.7-7.5 4.4-11.1-3.1-3.3-6.7 5.2-10.3 4-3.6-1.2.7-9.5-3.8-10-5.3-.5-3.3 11.3-7.3 11.5-2.8.3-7.2-1.7-7.5.3\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M199.8 187.8c-.9 6.2 11.2 14.7 19.4 14.5 6.8-.2 14.5-3.4 13.4-7.2-1.1-3.9-7.7.7-8.3-2-.5-2.6 7.7-7.5 4.4-11.1-3.1-3.3-6.7 5.2-10.3 4-3.6-1.2.7-9.5-3.8-10-5.3-.5-3.3 11.3-7.3 11.5-2.8.3-7.2-1.7-7.5.3z\"></path><defs><path id=\"i\" d=\"M203.2 182.8h7.8v6.4h-7.8z\"></path></defs><clipPath id=\"j\"><use xlink:href=\"#i\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#j)\"><path fill=\"#FCD4C3\" d=\"M203.238 187.742c1.3 1 6 2.3 6.7.6.8-1.7 1.4-5.1.9-5.6-.4 1.6-.9 4.6-2.6 5.3-1.3.5-4.1-.1-5-.3\"></path></g><defs><path id=\"k\" d=\"M215.9 181.2h7.7v7.2h-7.7z\"></path></defs><clipPath id=\"l\"><use xlink:href=\"#k\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#l)\"><path fill=\"#FCD4C3\" d=\"M216.159 181.142c-.2 1.1-1.1 6.3 1.6 7 2.3.6 4-.8 5.8-3.7-1 .9-3.5 3.1-5.4 2.3-1.9-.9-2.1-2.9-2-5.6\"></path></g><defs><path id=\"m\" d=\"M204.5 193h15.8v8.6h-15.8z\"></path></defs><clipPath id=\"n\"><use xlink:href=\"#m\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#n)\"><path fill=\"#FCD4C3\" d=\"M204.576 195.158c13.6-6.7 16.4 4.2 15.7 6.4-5.4.9-14.9-4.7-15.7-6.4\"></path></g><defs><path id=\"o\" d=\"M223 190.9h5.7v5H223z\"></path></defs><clipPath id=\"p\"><use xlink:href=\"#o\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#p)\"><path fill=\"#FCD4C3\" d=\"M224.351 190.896c-2.3 2.6-1.2 4.7.3 5 1.9.4 4.4-1.6 4-1.6-.5 0-4.2 1.2-4.9-.6-.5-1.4.3-2.2.6-2.8\"></path></g><defs><path id=\"q\" d=\"M66.1 182.6H195v36.5H66.1z\"></path></defs><clipPath id=\"r\"><use xlink:href=\"#q\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#r)\"><path fill=\"#E3AB5E\" d=\"M69.034 208.266c43.7 25.1 130.4-.4 125.8-8.6-6.1-10.9-8.5-17.7-21.9-17.1-13.3.7-98.9 7.5-102.4 10.1-3.4 2.7-7.2 12.3-1.5 15.6\"></path></g><path fill=\"#FFF8EE\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4\"></path><path fill=\"none\" stroke=\"#E5D0AE\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-miterlimit=\"10\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4z\"></path><path fill=\"#BA8449\" d=\"M41.8 53.1c8.8-8.2 24.7-5 37.5-.4 7.3 2.6 16.8.5 17.4 2 1.6 3.5-7.9 10.7-15.7 10.5-7.7-.1-20.6-14.6-39.2-12.1\"></path><path fill=\"none\" stroke=\"#895B2E\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-miterlimit=\"10\" d=\"M41.8 53.1c8.8-8.2 24.7-5 37.5-.4 7.3 2.6 16.8.5 17.4 2 1.6 3.5-7.9 10.7-15.7 10.5-7.7-.1-20.6-14.6-39.2-12.1z\"></path><path fill=\"#FCD4C3\" d=\"M177.7 67.2c4.5 1.3 21.6-32.2 29.9-28.9 26.4 10.5-8 50.9-18.9 51.8-11 .8-13.5-23.7-11-22.9\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M177.7 67.2c4.5 1.3 21.6-32.2 29.9-28.9 26.4 10.5-8 50.9-18.9 51.8-11 .8-13.5-23.7-11-22.9z\"></path><path fill=\"#FCD4C3\" d=\"M82.3 63.2c-7.3 3.2-33.2-23.9-44.1-6.5C31 68.2 52.8 91.4 68.4 93.9s17.7-32.4 13.9-30.7\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M82.3 63.2c-7.3 3.2-33.2-23.9-44.1-6.5C31 68.2 52.8 91.4 68.4 93.9s17.7-32.4 13.9-30.7z\"></path><defs><path id=\"s\" d=\"M180.5 44.8h18v44.6h-18z\"></path></defs><clipPath id=\"t\"><use xlink:href=\"#s\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#t)\"><path fill=\"#FCD4C3\" d=\"M198.067 44.8c-1.4 4.6-13.2 16.5-11.6 26.7.6 3.8 4.6 15 6.3 14.6s6-3.1 5.6-2.5c-.4.6-6 4.7-8.1 5.8-2.1-1.1-11-21.8-9.7-22.9 3.9-3.5 15.8-21.5 17.5-21.7\"></path></g><defs><path id=\"u\" d=\"M38.6 51.5h44.2v31.6H38.6z\"></path></defs><clipPath id=\"v\"><use xlink:href=\"#u\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#v)\"><path fill=\"#FCD4C3\" d=\"M38.533 57.4c8-4.9 22.6-2.8 31.1 5.5 3 3 3.9 13-2.9 19.8-2.7 2.7 16-9.6 16.1-13.2 0-3.6-1.2-4.6-4-5.6-10.3-3.8-21.1-12.6-30.5-12.4-6.1.1-8.9 4.3-9.8 5.9\"></path></g><defs><path id=\"w\" d=\"M181.1 42.2h26.2v44.2h-26.2z\"></path></defs><clipPath id=\"x\"><use xlink:href=\"#w\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#x)\"><path fill=\"#FCD4C3\" d=\"M201.3 42.175c18.2 10-11.1 25.2-8.9 44.1-3.8-.4-13.2-18.7-10.9-20.3 3.2-2.2 16.7-24.6 19.8-23.8\"></path></g><path fill=\"#E5D0AE\" d=\"M60.9 103.6c.3-1.3.5-2.7.5-4 .1-1.4.2-2.8.5-4.1.1-.7.3-1.4.6-2 .3-.6.5-1.3.7-1.9.5-1.3 1-2.6 1.6-3.8 2.3-5.1 4.9-9.9 8.1-14.4 3.2-4.5 6.7-8.7 10.7-12.3 4-3.7 8.7-6.7 13.7-8.7 5-2.1 10.4-3.4 15.8-4 5.4-.7 10.8-.8 16.2-.7 5.4.1 10.8.4 16.2 1.1 5.4.7 10.8 1.9 16 3.8 2.6 1 5.1 2.1 7.5 3.5 2.4 1.4 4.7 3.1 6.8 5.1 2.1 1.9 3.9 4.2 5.4 6.6 1.5 2.4 2.6 5 3.6 7.7.9 2.6 1.6 5.3 2.2 8s1 5.3 1.6 7.8c.3 1.2.7 2.4 1.1 3.6.5 1.2 1 2.5 1.4 3.8.9 2.5 1.9 5.1 2.8 7.6 3.5 10.2 6.6 20.6 8.5 31.2.9 5.3 1.6 10.7 1.7 16.1.1 5.4-.4 10.8-1.9 16-.4 1.3-.8 2.6-1.3 3.8-.5 1.2-1.2 2.4-1.6 3.7-.2.7-.4 1.3-.7 1.9-.3.6-.7 1.2-1.1 1.8-.7 1.1-1.6 2.3-2.5 3.3-3.5 4.2-8 7.6-12.8 10.2s-10 4.6-15.2 6.1c-5.3 1.5-10.5 2.7-15.9 3.7s-10.7 1.7-16 2.4l-8.1.9-4 .4c-1.3.1-2.7.2-4.1.3-11 .6-22-1-32.5-3.9-5.3-1.5-10.4-3.3-15.4-5.5s-9.9-4.7-14.5-7.7c-2.3-1.5-4.6-3.2-6.7-5.1-.5-.5-1.1-1-1.6-1.5s-.9-1.1-1.4-1.6c-.9-1.1-1.8-2.2-2.6-3.3-3.1-4.6-5.6-10-6.4-15.6-.9-5.7-.1-11.5 1.5-16.8 1.6-5.4 4.1-10.3 6.7-15.1 2.7-4.7 5.6-9.3 8.4-13.8 1.4-2.3 2.7-4.6 3.9-6.9 1.1-3 2.1-5.3 2.6-7.7zm4 .9c-.7 2.8-1.9 5.4-3.2 7.9s-2.7 4.8-4.1 7.1c-2.8 4.6-5.7 9.1-8.2 13.7s-4.8 9.4-6.2 14.3c-1.4 4.9-2 10-1.2 15 .8 4.9 2.9 9.6 5.9 13.7.7 1 1.6 2 2.4 3 .4.5.9 1 1.3 1.4.4.5.9.9 1.3 1.3 1.8 1.7 3.9 3.2 6.1 4.7 4.4 2.8 9 5.3 13.9 7.4 4.8 2.1 9.8 3.9 14.9 5.3s10.2 2.5 15.4 3.2c5.2.7 10.4.9 15.6.7l3.9-.3 4-.4c2.6-.2 5.3-.5 8-.8 5.3-.5 10.6-1.2 15.8-2.1 5.3-.9 10.4-1.9 15.5-3.3s10.1-3 14.9-5.1c4.7-2.2 9.3-4.9 13-8.6.9-.9 1.8-1.9 2.6-2.9.4-.5.8-1.1 1.2-1.6.4-.5.9-1 1.3-1.6.9-1.1 1.3-2.3 1.9-3.5.5-1.2.9-2.5 1.2-3.8 1.3-5.2 1.6-10.6 1.3-15.9-.4-5.3-1.3-10.6-2.6-15.8-2.5-10.4-6.2-20.4-10.1-30.3-1-2.5-2-5-3-7.4l-1.6-3.7c-.5-1.3-1-2.7-1.4-4-.7-2.7-1.2-5.3-1.8-7.9-.5-2.6-1.2-5.1-2-7.5-1.7-4.9-4.2-9.3-7.9-12.8-3.6-3.5-8.1-6.2-12.9-8.2-4.8-2-10-3.3-15.2-4.2-5.2-.9-10.5-1.4-15.8-1.7-5.3-.2-10.7-.3-16 .3-5.3.6-10.5 1.7-15.4 3.8-4.9 2-9.4 4.9-13.2 8.5-3.9 3.6-7 8-9.3 12.6-2.4 4.7-4.1 9.7-5.6 14.7-.4 1.2-.7 2.5-1 3.8-.2.6-.3 1.3-.5 1.9-.1.3-.1.7-.2 1-.1.3-.2.6-.4.9-.5 1.2-1.1 2.4-1.7 3.6-.2 1.1-.6 2.3-.9 3.6z\"></path><path fill=\"#FFF8EE\" d=\"M62.9 104.1c-4.2 18.6-40.9 48-13 78.1 9.5 10.2 40.3 25.9 71.2 23 80.4-7.6 100.7-27 66.8-110.2-5.5-13.5.7-44.7-58.4-46.5-24.8-.7-54.6 2.7-66.6 55.6\"></path><path fill=\"#E5BFA1\" d=\"M76.8 67.7c2.6-4 6-7.3 9.8-10C90.4 55 94.7 53 99 51.4c8.8-3.2 18-4.4 27.2-4.7 9.2-.2 18.5.5 27.5 2.8 4.5 1.2 8.9 2.8 13.1 5.1s8.1 5.1 11.4 8.6c3.3 3.5 6 7.4 8.1 11.7 2.1 4.3 3.6 8.8 4.7 13.3 1.1 4.6 1.8 9.1 2.4 13.6.3 2.3.6 4.5 1.1 6.6.2 1.1.5 2.1.8 2.9l.3.6.1.1.1.1.2.4.9 1.5c4.4 8.1 7.7 17 8.9 26.3.6 4.6.7 9.3.2 14-.5 4.6-1.7 9.2-3.5 13.5-.9 2.1-1.9 4.2-3.1 6.3l-.9 1.5c-.3.5-.6.9-1 1.5-.1.1-.1.2-.2.3-.3-.2.4.7-1.6 0-.5-.9-.2-.7-.3-.9 0-.3.1-.4.1-.6l.3-.9.5-1.6c1.4-4.3 2.6-8.6 3.1-13.1.2-2.2.3-4.4 0-6.7-.3-2.2-.9-4.3-2-6.1-.3-.5-.6-.9-1-1.3s-.7-.8-1.1-1.2c-.8-.8-1.6-1.5-2.5-2.2-1.8-1.4-3.7-2.5-5.7-3.5-4.1-1.8-8.6-2.5-13-2.3-4.5.2-8.9 1.1-13.2 2.3-2.2.6-4.3 1.3-6.5 2-1.1.4-2.2.7-3.3 1-.6.2-1.1.3-1.8.4-.6.1-1.1.2-1.7.2-4.6.5-9.1.8-13.8.7-4.6-.1-9.2-.6-13.8-1.6-4.5-1-9-2.5-13.2-4.4-4.2-2-8.2-4.4-11.8-7.4-3.6-3-6.8-6.4-9.6-10.1-5.6-7.5-9.3-16.2-11.1-25.3-.9-4.6-1.3-9.2-1.1-13.9.1-2.3.4-4.7.9-7 .6-1.8 1.4-4.1 2.7-6.2zm2 1.3c-1.1 1.8-1.8 3.8-2.3 6-.5 2.1-.7 4.3-.9 6.5-.2 4.4.3 8.9 1.2 13.2 1.9 8.7 5.6 17 11 24 2.7 3.5 5.8 6.7 9.2 9.5 3.4 2.8 7.2 5.2 11.2 7.1 4 1.9 8.2 3.3 12.6 4.3 4.3 1 8.8 1.6 13.2 1.7 4.5.2 8.9 0 13.4-.5l1.7-.2c.5-.1 1-.2 1.6-.3 1.1-.3 2.1-.6 3.2-.9 2.2-.6 4.4-1.3 6.6-1.8 4.4-1.1 9-1.9 13.7-1.9 4.6 0 9.3.8 13.5 2.8 2.1 1 4.1 2.2 5.9 3.6.9.7 1.8 1.5 2.6 2.3l1.2 1.2c.4.4.8.9 1.1 1.4 1.3 2 2 4.3 2.3 6.7s.3 4.7.1 7c-.4 4.6-1.4 9.1-2.7 13.5l-.5 1.6-.2.8c0 .1-.1.3 0 .3-.1-.1.2.2-.2-.7-1.9-.7-1.2.2-1.4-.1.2-.4.5-.9.8-1.4.3-.5.5-1 .8-1.5 1-2 1.9-4 2.7-6.1 3-8.3 3.6-17.4 2.1-26.1-.7-4.4-2-8.6-3.6-12.7s-3.5-8.1-5.7-12l-.8-1.4-.2-.4-.1-.2-.1-.2c-.2-.3-.3-.6-.4-.9-.5-1.2-.8-2.5-1.1-3.6-.5-2.3-.9-4.6-1.2-6.8-.7-4.5-1.3-8.9-2.4-13.2-1-4.3-2.4-8.5-4.3-12.4-1.9-3.9-4.2-7.5-7.2-10.7-5.8-6.3-13.8-10.5-22.3-13s-17.5-3.3-26.5-3.3c-8.9 0-17.9 1.1-26.3 3.9-4.2 1.4-8.2 3.3-11.9 5.8-3.8 2.4-7 5.4-9.4 9.1z\"></path><path fill=\"#895B2E\" d=\"M75.6 67.2c1.5-2.4 3.3-4.3 5.1-6.1 1.9-1.8 3.9-3.3 6-4.7 4.2-2.8 8.7-5 13.4-6.7 9.4-3.3 19.3-4.6 29.1-4.4 9.7.3 19.5 1.5 28.9 4.9 4.7 1.7 9.2 3.9 13.3 6.9 4.1 2.9 7.7 6.5 10.7 10.6 2.9 4.1 5.1 8.6 6.8 13.3 1.6 4.7 2.7 9.5 3.5 14.2.4 2.4.7 4.7 1.1 7.1.4 2.3.7 4.7 1.1 6.8.2 1.1.5 2.1.9 2.9l.1.2.1.2.2.4.4.8.9 1.6c1.1 2.1 2.2 4.3 3.2 6.5 1.9 4.4 3.5 9.1 4.6 13.9 1.1 4.7 1.6 9.6 1.6 14.5-.1 9.8-2.8 19.5-7.9 27.8-.4.6-1.2.9-1.8.5-.6-.4-.8-1.1-.6-1.6 1.4-3.6 2.9-7 4-10.5 1.2-3.5 2-7.1 2-10.6s-.9-6.9-3-9.6c-.1-.2-.3-.4-.4-.5l-.2-.2-.2-.3-.9-.9c-.6-.6-1.3-1.2-2-1.7-1.4-1.1-3-2.1-4.5-3.1-6.3-3.9-13-7.3-19.8-10.7-6.8-3.3-13.7-6.5-20.5-9.6-13.8-6.3-27.6-12.6-41.2-19.4-6.8-3.5-13.5-7-20.1-11.2-3.5-2.5-6.7-4.7-9.8-7.5-1.5-1.4-3-3-4.2-5.2-.6-1.1-1.1-2.4-1.2-4 0-.8 0-1.6.2-2.4.1-.4.2-.8.4-1.2.1-.3.4-.9.5-1h.2zm5.6 3.4c-.2.3-.1.2-.2.3 0 .1 0 .1-.1.2v.4c0 .3.2.8.4 1.4.6 1.2 1.7 2.5 2.9 3.6 2.5 2.4 5.4 4.6 8.5 6.6 6.1 4.1 12.7 7.7 19.4 11.3 13.3 7 27 13.5 40.6 20.1 6.8 3.3 13.6 6.7 20.4 10.1 6.8 3.5 13.5 7 20 11.3 1.6 1.1 3.2 2.2 4.7 3.5.8.6 1.5 1.3 2.3 2 .4.4.7.7 1.1 1.2l.2.3.3.3c.2.2.3.4.5.6 1.2 1.7 2.1 3.6 2.7 5.6s.7 4.1.7 6.1c-.1 4-1.2 7.9-2.5 11.6-1.3 3.7-2.9 7.1-4.4 10.6l-2.4-1.2c4.7-8 6.9-17.2 6.8-26.4-.2-9.2-2.6-18.3-6.5-26.7-1-2.1-2-4.2-3.2-6.2l-1.8-3.2c-.7-1.3-1-2.6-1.3-3.8-.6-2.5-1-4.8-1.4-7.2s-.8-4.7-1.2-6.9c-.9-4.6-2-9-3.6-13.3-1.6-4.2-3.7-8.3-6.3-11.8-2.6-3.6-5.9-6.7-9.5-9.2-3.7-2.5-7.7-4.5-12-5.9-8.6-2.9-17.8-3.9-27-4-4.6 0-9.1.2-13.6 1-4.5.7-8.9 1.8-13.1 3.3s-8.3 3.4-12 5.8c-1.9 1.2-3.6 2.5-5.2 4s-3.1 3-4.2 4.6z\"></path><path fill=\"#BA8449\" d=\"M77.8 68.3c-11 17 2.1 82.3 71.2 73.5 7.3-.9 31.6-13.9 48 4.3 8.9 10-3.1 35.3 0 30 3.5-5.8 16.9-28.2-3.2-62.7-6.4-11.1 4.2-64.4-65-65.1-26.5-.1-43.7 8.7-51 20\"></path><defs><path id=\"y\" d=\"M61.7 64.6H179v111.9H61.7z\"></path></defs><clipPath id=\"z\"><use xlink:href=\"#y\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#z)\"><path fill=\"#E3AB5E\" d=\"M75.968 72.433c19.9-12.8 80.1-11.9 99.3 18.8 12.8 20.4-10.6 70.8-19.3 77.2-8.6 6.4-20.6 12-52.2 4.4-26.8-6.4 13.5-31.3-17.9-34.9-28.7-3.3-31.6-51.5-9.9-65.5\"></path></g><defs><path id=\"A\" d=\"M118.5 119.2h13.1v5.5h-13.1z\"></path></defs><clipPath id=\"B\"><use xlink:href=\"#A\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#B)\"><path fill=\"#E3AB5E\" d=\"M131.6 121.966c0 1.5-2.9 2.8-6.5 2.8s-6.5-1.2-6.5-2.8c0-1.5 2.9-2.8 6.5-2.8 3.6.1 6.5 1.3 6.5 2.8\"></path></g><path fill=\"#F8A38F\" d=\"M120.1 113.8c1.5-1 9.5-.7 10.5.4 1 1 3.2 5.2.7 7-.9.6-.9-1.9-2.9-1.5-2.4.5-1.1 3.6-3 3.6-2.9-.1-.1-3.4-2.6-3.8-1.9-.4-2.3 1.5-3.2 1.3-2.9-.6-1.6-5.6.5-7\"></path><defs><path id=\"C\" d=\"M117.9 113.2h14.5v9.9h-14.5z\"></path></defs><clipPath id=\"D\"><use xlink:href=\"#C\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#D)\"><path fill=\"#F8A38F\" d=\"M124.42 113.205c-1.9 0-3.7.2-4.3.6-2.1 1.4-3.4 6.4-.6 6.9h.1c.7 0 1.1-1.4 2.6-1.4h.5c2.5.4-.2 3.8 2.6 3.8 1.8 0 .5-3 3-3.5h.4c1.4 0 1.6 1.6 2.2 1.6.1 0 .2 0 .3-.1 2.6-1.8.4-6-.7-7-.5-.5-3.4-.9-6.1-.9m0 .7c3 0 5.3.4 5.7.7.6.6 1.8 2.8 1.6 4.4-.1.6-.3 1.1-.7 1.4 0-.1-.1-.1-.2-.2-.4-.5-1-1.3-2.1-1.3-.2 0-.4 0-.5.1-1.7.4-2 1.7-2.3 2.6-.2.9-.3.9-.6.9-.8 0-.8-.2-.8-1.1 0-.9 0-2.3-1.8-2.6h-.6c-1.1 0-1.8.7-2.3 1.1-.1.1-.3.3-.4.3-.4-.1-.8-.3-1-1.1-.3-1.4.7-3.8 1.8-4.6.6-.4 2-.6 4.2-.6\"></path></g><defs><path id=\"E\" d=\"M74.1 124.9H187V189H74.1z\"></path></defs><clipPath id=\"F\"><use xlink:href=\"#E\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#F)\"><path fill=\"#F7E8D0\" d=\"M186.799 140.05c3 19.2-21 43.3-53.3 48.3-32.3 4.9-56.1-23.9-59.1-43.2-3-19.2 16.8-11.9 49.1-16.8s60.3-7.5 63.3 11.7\"></path></g><defs><path id=\"G\" d=\"M80 125.9h93.6v47.5H80z\"></path></defs><clipPath id=\"H\"><use xlink:href=\"#G\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#H)\"><path fill=\"#D8CAB2\" d=\"M102.515 169.277c-.9-1.4-1.4-3.1-1.9-4.7l-1.5-4.8c-1-3.2-2.1-6.4-3.6-9.4s-3.4-5.8-5.8-7.9c-2.4-2.1-5.3-3.5-8.4-4.1-1.1-.4-1.6-1.5-1.2-2.5.4-1 1.4-1.5 2.3-1.3 7.2 1.7 14.7 2.5 22.1 2.6s15-.3 22.5-1.2c7.5-.9 14.9-2.2 22.2-3.9 7.3-1.7 14.6-3.7 21.7-6.1 1.1-.4 2.2.2 2.5 1.2.3.8 0 1.6-.6 2.1-.2.2-.6.5-.9.8-.3.3-.6.7-.9 1-.6.7-1.2 1.5-1.8 2.3-1.2 1.6-2.3 3.2-3.3 4.9-2.2 3.3-4.2 6.7-6.1 10.2-1.9 3.5-3.8 7-5.5 10.5-.9 1.8-1.7 3.6-2.4 5.4-.4.9-.7 1.8-1.1 2.8-.2.5-.3.9-.4 1.4v.2c0 .1 0 .1-.1.2 0 .1-.1.2-.2.2-.1.1-.2.2-.4.3-.2.2-.5.3-.7.4-1.9.8-3.9 1.2-5.8 1.6-1.9.4-3.9.7-5.9.9-4 .5-7.9.9-11.9 1-4 .2-8 .2-11.9-.2-2-.2-4-.5-5.9-1-1-.3-1.9-.6-2.8-1.1-.9-.4-1.7-1-2.3-1.8m.1-.1c.5.8 1.4 1.4 2.3 1.8.9.4 1.8.7 2.8 1 1.9.5 3.9.8 5.9.9 4 .3 7.9.3 11.9.1 4-.2 7.9-.7 11.8-1.2 1.9-.3 3.9-.6 5.8-1.1s3.9-.9 5.6-1.7c.2-.1.4-.2.6-.4.2-.1.3-.2.3-.3.1-.5.2-1 .4-1.5.3-1 .6-1.9.9-2.9.7-1.9 1.4-3.7 2.2-5.6 1.6-3.7 3.2-7.3 4.9-10.9 1.7-3.6 3.5-7.2 5.4-10.7.9-1.8 1.9-3.5 3-5.3.5-.9 1.1-1.8 1.7-2.6.3-.4.6-.9.9-1.3.4-.4.7-.9 1.2-1.3l1.9 3.4c-7.3 2.5-14.6 4.5-22.1 6.2-7.5 1.7-15 3.1-22.6 4-7.6.9-15.3 1.4-23 1.2s-15.4-1.1-23-2.9l1.1-4c3.3 2 6.3 3.9 8.6 6.6 2.3 2.7 3.9 5.8 5.2 9 1.2 3.2 2.2 6.5 3 9.7.4 1.6.9 3.3 1.3 4.9.6 1.9 1.1 3.5 2 4.9\"></path></g><defs><path id=\"I\" d=\"M81 126.9h91.6v46.5H81z\"></path></defs><clipPath id=\"J\"><use xlink:href=\"#I\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#J)\"><path fill=\"#D8CAB2\" d=\"M102.532 169.288c-.9-1.4-1.4-3-1.9-4.6-.5-1.6-.9-3.2-1.4-4.8-1-3.2-2-6.4-3.5-9.5-1.4-3-3.3-5.8-5.6-8-2.4-2.3-5.3-3.9-8.4-4.6v-.1c-.5-.2-.8-.8-.6-1.3.2-.5.7-.8 1.2-.7 7.3 1.7 14.8 2.5 22.4 2.6s15.1-.3 22.6-1.2c7.5-.9 14.9-2.3 22.3-3.9 7.4-1.7 14.7-3.7 21.8-6.1.5-.2 1.1.1 1.3.6.1.4 0 .8-.3 1.1-.6.5-1.3 1.3-1.9 2-.6.7-1.2 1.6-1.8 2.3-1.1 1.6-2.2 3.3-3.2 5-2.1 3.3-4.1 6.8-6 10.3-1.9 3.5-3.7 7-5.3 10.6l-2.4 5.4c-.4.9-.7 1.8-1 2.8-.2.5-.3.9-.4 1.4-.1.4-.4.5-.6.7-.2.2-.5.3-.7.4-1.9.8-3.9 1.2-5.8 1.6-1.9.4-3.9.7-5.9 1-3.9.5-7.9.9-11.9 1.1-4 .2-8 .2-11.9-.2-2-.2-4-.5-5.9-1-1-.3-1.9-.6-2.8-1-1-.5-1.9-1.1-2.4-1.9m0-.1c.5.8 1.4 1.4 2.3 1.9.9.4 1.8.7 2.8 1 1.9.5 3.9.8 5.9.9 4 .4 7.9.3 11.9.1 4-.2 7.9-.6 11.9-1.2 1.9-.3 3.9-.6 5.9-1.1 1.9-.4 3.9-.9 5.6-1.7.2-.1.4-.2.6-.4.2-.1.4-.3.4-.4.1-.5.2-1 .4-1.5.3-1 .6-1.9 1-2.8.7-1.9 1.5-3.7 2.3-5.5 1.6-3.7 3.3-7.2 5.1-10.8 1.8-3.6 3.6-7.1 5.6-10.6 1-1.8 2-3.5 3.1-5.1.5-.9 1.1-1.7 1.7-2.5.6-.8 1.2-1.6 2.1-2.4l1 1.8c-7.2 2.5-14.6 4.5-22 6.2s-14.9 3-22.5 4c-7.6.9-15.2 1.4-22.9 1.2-7.6-.2-15.3-1-22.8-2.7l.5-1.9c3.3 1.3 6.3 3.3 8.6 5.9 2.3 2.6 4 5.6 5.3 8.7 1.3 3.1 2.3 6.3 3.2 9.6.4 1.6.9 3.2 1.4 4.9.2 1.4.7 3 1.6 4.4\"></path></g><path fill=\"#333\" d=\"M102.6 169.2c5.1 8 46.8 2.5 47.5-.7 1.8-8.1 16.8-36.7 21.6-40.7-8.6 3-53.3 17.3-89.6 8.6 16.3 5.5 16.5 26.6 20.5 32.8\"></path><g><defs><path id=\"K\" d=\"M82 127.9h89.6v45.4H82z\"></path></defs><clipPath id=\"L\"><use xlink:href=\"#K\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#L)\"><path fill=\"#333\" d=\"M171.55 127.95c-6.7 2.3-34.9 11.4-64.1 11.4-8.6 0-17.2-.8-25.5-2.7 16.4 5.3 16.6 26.5 20.6 32.7 1.9 3 9.2 4.1 17.5 4.1 13.4 0 29.5-2.8 30-4.8 1.8-8.2 16.7-36.8 21.5-40.7m-5.6 3.9c-6.5 9.8-15.9 28.7-17.8 35.8-2.5 1.4-15.4 3.8-28.1 3.8-10.2 0-14.8-1.7-15.8-3.2-1-1.5-1.8-4.3-2.6-7.5-1.7-6.1-4.1-14.5-9.8-20.3 5 .6 10.2.9 15.7.9 23.8-.1 47.1-6.1 58.4-9.5\"></path></g></g><path fill=\"#FCD4C3\" d=\"M119.7 173.4c-8.6 0-14.2-1.2-16.4-3.6-.2-.2-.2-1.4.8-3.7 2.4-5.5 9.8-14.9 22.6-15.7.9 0 1.7-.1 2.5-.1 15 0 24 7.6 24 8.9-.2.4-.4 1-.7 1.8-.8 1.9-2 4.9-3.1 8.1-1.3 1.3-16.3 4.3-29.7 4.3\"></path><path fill=\"#F8A38F\" d=\"M129.2 149.8c-.9 0-1.7 0-2.6.1-17.5 1.1-25.6 18.4-23.8 20.5 2.6 2.8 9.3 3.8 16.9 3.8 13.5 0 29.8-3.1 30.3-4.6 1.5-4.5 3.2-8.2 3.9-10 .6-1.8-9.5-9.9-24.7-9.8m0 1.3c13.4 0 22.4 6.4 23.3 8.3-.2.4-.4.9-.6 1.5-.8 1.9-2 4.7-3.1 7.9-2.1 1.2-16.1 3.9-29.1 3.9-8.1 0-13.7-1.2-15.8-3.3-.1-.7.6-3.5 3.1-7 2.2-3.2 8.6-10.7 19.7-11.3h2.5\"></path><g><defs><path id=\"M\" d=\"M103.1 149.4h50.2v20.7h-50.2z\"></path></defs><clipPath id=\"N\"><use xlink:href=\"#M\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#N)\"><path fill=\"#FCD4C3\" d=\"M103.084 169.317c-1.2 5.4 31.9-21.1 49.7-8.4 3.7-4.9-16-13.2-27.5-11.3-9.7 1.7-19.7 7.9-22.2 19.7\"></path></g></g><path fill=\"#FFF7E3\" d=\"M109.8 140.8c1.7 3 4.8 17.6 6.1 17.9s9.5 2.6 10.6 2.1c1.2-.5 1.1-3.3 2.3-2.5 1 .7 1.5 2 2.5 1.5 1.8-.9 7.1-4.2 8-5.6.8-1.5.7-9.8 0-16.4-3.4 1.6-23.5 3.7-29.5 3\"></path><g><defs><path id=\"O\" d=\"M109.8 137.9h30.1v23.2h-30.1z\"></path></defs><clipPath id=\"P\"><use xlink:href=\"#O\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#P)\"><path fill=\"#FFDC99\" d=\"M139.35 137.85c-3 1.3-18.7 3.1-26.6 3.1-1.2 0-2.1 0-2.9-.1 1.7 3 4.8 17.6 6.1 17.9 1.2.3 8 2.2 10.1 2.2.2 0 .4 0 .5-.1 1-.4 1.1-2.6 1.9-2.6.1 0 .3 0 .4.2.9.5 1.3 1.6 2.1 1.6.1 0 .3 0 .4-.1 1.8-.9 7.1-4.2 8-5.6.9-1.5.7-9.8 0-16.5m-.5.9c.6 6.8.6 14 0 15.2-.7 1.2-5.5 4.3-7.7 5.4h-.1c-.2 0-.5-.3-.7-.6-.3-.3-.6-.6-1-.9-.3-.2-.5-.3-.8-.3-.9 0-1.2.9-1.5 1.6-.2.4-.4 1-.7 1.1h-.3c-1.7 0-6.8-1.4-8.9-1.9-.4-.1-.7-.2-.9-.2-.6-.7-1.9-5.4-2.9-8.8-.9-3.1-1.7-6-2.4-7.7h1.9c7.5 0 21.5-1.6 26-2.9\"></path></g></g><g><defs><path id=\"Q\" d=\"M109.9 137.5h29.7v10.3h-29.7z\"></path></defs><clipPath id=\"R\"><use xlink:href=\"#Q\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#R)\"><path fill=\"#EADCBE\" d=\"M112.151 147.85c-.5-5.4 24.4-7.2 27.5-6.7 0-1.3-.2-2.1-.2-3.6-4.1 2.1-26.5 4.3-29.5 3.4.3.6 1.4 3.6 2.2 6.9\"></path></g></g><g><defs><path id=\"S\" d=\"M124 143.8h5.5v14.7H124z\"></path></defs><clipPath id=\"T\"><use xlink:href=\"#S\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#T)\"><path fill=\"#FFDC99\" d=\"M124.558 143.768c.5 1.2 1 2.3 1.4 3.5l1.2 3.6 1.1 3.6 1.1 3.6-1.7.5-.8-3.7-.9-3.7-.9-3.6c-.4-1.2-.7-2.4-1.1-3.5l.6-.3z\"></path></g></g><g><defs><path id=\"U\" d=\"M39.1 51.5h39.4v35.7H39.1z\"></path></defs><clipPath id=\"V\"><use xlink:href=\"#U\" overflow=\"visible\"></use></clipPath><g opacity=\".4\" clip-path=\"url(#V)\"><path fill=\"#FCD4C3\" d=\"M40.384 59.116c13.2 3.4 11.1 26.2 18.9 28 7.9 1.8 18.2-18.8 19.2-23.3-15.2-6.5-22.3-14.1-33.2-11.9-3.6.7-8.6 6.2-4.9 7.2\"></path></g></g><g><defs><path id=\"W\" d=\"M59.9 88.7h133.7v42.5H59.9z\"></path></defs><clipPath id=\"X\"><use xlink:href=\"#W\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#X)\"><path fill=\"#E3AB5E\" d=\"M76.967 125.833c16.6 1.3 30.3 2 35.2-3.1s6.7-27.7 14.7-27.1c6.8.5 9.1 29.9 13.5 30.7 4.4.9 35.5 9.4 43.3 1.4 7.7-8 11.3-13 9.5-17.8-1.8-4.8-47.3-20.3-56.6-21.2-9.3-.9-72.1 7-73.7 10.9-1.6 4-3.3 3.4-3 7.6.6 8.1.5 17.3 17.1 18.6\"></path></g></g><path fill=\"#333\" d=\"M123.5 92.4c1.2 0 5.9-.4 7 .5 6 4.7 5.8 24 12.1 30 5.6 5.4 36.2 9.3 41.5 3.2 5.3-6.1 13.1-24.7 14.9-26.1 1.8-1.3 5.8-2.3 7-4.2 1.2-1.8.2-10-2.6-9.6-2.8.4-8.1 2.1-11.4 1.2-3.3-1-19.4-11.1-59.9-5-3.9.6-7.8 0-10.5-.7S103.7 72.2 63 78c-4 .6-9.6-1.2-11.6-1-2 .2-2.6 6.5-1.8 8.1s5 3 5.5 5 4.2 21.6 13.8 29.7c10.2 8.6 36.2 2.6 38.5 1 10.3-7.3 12.6-28.4 16.1-28.4\"></path><g><defs><path id=\"Y\" d=\"M49.1 76.1h157.3v53.1H49.1z\"></path></defs><clipPath id=\"Z\"><use xlink:href=\"#Y\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#Z)\"><path fill=\"#1A1A1A\" d=\"M88.438 76.123c-7.1 0-15.6.5-25.6 2-.6.1-1.2.1-1.8.1-3.5 0-7.6-1.1-9.5-1.1h-.3c-2 .2-2.6 6.5-1.8 8.1.8 1.7 5 3 5.5 5s4.2 21.6 13.8 29.7c4 3.4 10.6 4.5 17.2 4.5 10 0 19.9-2.5 21.3-3.5 10.4-7.4 12.8-28.5 16.3-28.5.5 0 1.8-.1 3-.1 1.6 0 3.3.1 3.9.5 6 4.7 5.8 24 12.1 30 3.6 3.4 17.4 6.3 28.2 6.3 6.1 0 11.3-.9 13.2-3.1 5.3-6.1 13.1-24.7 14.9-26.1 1.8-1.4 5.8-2.3 7-4.2 1.1-1.8.2-9.6-2.5-9.6h-.2c-2.2.3-6 1.4-9.1 1.4-.8 0-1.6-.1-2.3-.3-2.6-.8-12.7-6.9-35.7-6.9-6.9 0-14.9.5-24.2 1.9-1.1.2-2.3.2-3.3.2-2.7 0-5.2-.4-7.1-.9-2-.2-11.2-5.4-33-5.4m0 2c18.1 0 27.4 3.6 30.8 5 .7.3 1.2.5 1.7.6 1.8.4 4.5 1 7.6 1 1.2 0 2.5-.1 3.6-.3 8.5-1.3 16.5-1.9 23.9-1.9 19 0 28.9 4.2 33.2 6.1.9.4 1.5.6 2 .8.9.3 1.8.4 2.9.4 2.2 0 4.6-.5 6.6-.9.9-.2 1.8-.4 2.5-.5.9 1 1.5 5.4 1 6.6-.4.6-2.1 1.4-3.3 1.9-1.2.5-2.3 1-3.1 1.6-1.1.8-2.2 2.9-5.4 9.3-3.1 6.1-6.9 13.7-9.8 17-1 1.2-4.6 2.4-11.8 2.4-10.5 0-23.9-2.8-26.9-5.7-2.8-2.6-4.2-8.7-5.6-14.6-1.6-6.6-3.1-12.8-6.6-15.6-.9-.7-2.3-1-5.1-1h-3.1c-2.8 0-4 3.3-6.1 9.3-2.3 6.6-5.6 15.5-11.3 19.6-1.3.8-10.7 3.2-20.2 3.2-7.3 0-12.8-1.4-15.9-4-3.8-3.2-9.1-10.7-12.9-27.8-.1-.4-.2-.7-.2-.9-.5-1.9-2.3-3-3.8-4-.6-.4-1.6-1.1-1.8-1.4-.4-.9 0-4.2.6-5.3.7 0 1.7.2 2.8.4 1.9.3 4.3.7 6.5.7.7 0 1.5 0 2.1-.2 8.9-1.1 17.4-1.8 25.1-1.8\"></path></g></g><g><defs><path id=\"aa\" d=\"M64.4 83.4h50.5v34.2H64.4z\"></path></defs><clipPath id=\"ab\"><use xlink:href=\"#aa\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#ab)\"><path fill=\"none\" stroke=\"#333\" stroke-width=\"4\" stroke-miterlimit=\"10\" d=\"M66.2 90.45c-.9 1.2-1.5 18.9 6 23.7 4.9 3.2 25.7 2.5 29.9.2 6.5-3.7 12.9-20.5 11.1-22.9-3-4-24.6-9.3-40.8-5.1-2 .4-5.1 2.6-6.2 4.1z\"></path></g></g><path fill=\"#FFF\" d=\"M66.2 90.4c-.9 1.2-1.5 18.9 6 23.7 4.9 3.2 25.7 2.5 29.9.2 6.5-3.7 12.9-20.5 11.1-22.9-3-4-24.6-9.3-40.8-5.1-2 .5-5.1 2.6-6.2 4.1\"></path><g><defs><path id=\"ac\" d=\"M139.8 88.1h50.1v35h-50.1z\"></path></defs><clipPath id=\"ad\"><use xlink:href=\"#ac\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#ad)\"><path fill=\"none\" stroke=\"#333\" stroke-width=\"4\" stroke-miterlimit=\"10\" d=\"M188.394 98.163c.8 1.3-1 18.9-9 22.8-5.3 2.5-25.8-.9-29.6-3.7-6-4.5-10.2-22-8.1-24.2 3.5-3.6 25.6-6 41.1.2 1.9.7 4.7 3.3 5.6 4.9z\"></path></g></g><path fill=\"#FFF\" d=\"M188.4 98.2c.8 1.3-1 18.9-9 22.8-5.3 2.5-25.8-.9-29.6-3.7-6-4.5-10.2-22-8.1-24.2 3.5-3.6 25.6-6 41.1.2 1.9.7 4.6 3.2 5.6 4.9\"></path><path d=\"M89.9 101.2c-.5 3.9-2.5 6.8-4.4 6.5-1.9-.3-2.9-3.6-2.4-7.5s2.5-6.8 4.4-6.5c1.9.3 2.9 3.6 2.4 7.5M169.6 105.6c.4 3.9-.8 7.2-2.6 7.4-1.9.2-3.7-2.8-4.1-6.7-.4-3.9.8-7.2 2.6-7.4 1.8-.1 3.6 2.9 4.1 6.7\"></path><g><defs><path id=\"ae\" d=\"M49.1 81.6h156.3v46H49.1z\"></path></defs><clipPath id=\"af\"><use xlink:href=\"#ae\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#af)\"><path fill=\"#333\" d=\"M51.475 82.75c2.3 1.5 4.4.6 4.9 3.6s7.4 29 16 32c14.1 4.9 31.9.1 34.3-1.4 2.4-1.5 13.7-26.8 15.6-27.8 1.9-1 7.9.1 9.2.7 3.9 1.7 11.1 29.1 13 30.5 8.7 6.1 36.6 5.6 37.9 4 1.4-1.7 11.8-25.6 13.7-27 2.7-2.1 9-3.5 9.2-2.6.2.9-5.1 1.8-6.7 3.7-1.6 2-12.1 24.9-15.4 26.9-3.3 2-27.7 5.3-40.1-3.4-5.9-4.2-8.2-29.1-12.9-30.5-3-.9-5.3-.8-7.5-.2-2.9 1.9-7 23.1-15.7 28.4-3.5 2.1-30.6 7.4-38.7-1.1-15.1-15.8-10.5-29.9-15.4-31.9-3.3-1.4-4-3.2-4-4.4.3-1.3 1.4-.3 2.6.5\"></path></g></g><g><defs><path id=\"ag\" d=\"M51.6 77.2h20.2v3H51.6z\"></path></defs><clipPath id=\"ah\"><use xlink:href=\"#ag\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#ah)\"><path fill=\"#333\" d=\"M51.75 77.45c-1.6-.6 6.8 2.9 9.9 2.7 3.1-.2 8.3-2.4 10-2.9 1.5-.5-7.8 1.2-10.1 1.1s-8.9-.6-9.8-.9\"></path></g></g><g><defs><path id=\"ai\" d=\"M116.6 82.1h21.7v5.3h-21.7z\"></path></defs><clipPath id=\"aj\"><use xlink:href=\"#ai\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#aj)\"><path fill=\"#333\" d=\"M116.6 82.15c2.9 1.3 4.2 4.6 7 4.9s6.2.8 7.8-.1c1.6-.9 5.6-3 6.7-3.2 1.2-.2-8.7 1.3-12.4 1-3.7-.4-8-2.5-9.1-2.6\"></path></g></g><g><defs><path id=\"ak\" d=\"M187.4 86h12.3v3.9h-12.3z\"></path></defs><clipPath id=\"al\"><use xlink:href=\"#ak\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#al)\"><path fill=\"#333\" d=\"M187.575 85.975c-1.2-.5 4.4 4 6.1 3.8 1.7-.2 4.7-2.1 6-2.6 1-.4-4 1-5.5.7-1.5-.1-5.4-1.4-6.6-1.9\"></path></g></g><g><defs><path id=\"am\" d=\"M62.3 82.8h28.9v28.6H62.3z\"></path></defs><clipPath id=\"an\"><use xlink:href=\"#am\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#an)\"><path fill=\"#333\" d=\"M63.05 87.825c7.4-7.3 25-4.8 28.2-4.2-21.1 1.5-21.5 3.1-25.2 6.8-.5 2.9-1.2 12.5 2.1 20.9-3.7-2-7.6-21-5.1-23.5\"></path></g></g><g><defs><path id=\"ao\" d=\"M165.1 87.8h27.8v30.5h-27.8z\"></path></defs><clipPath id=\"ap\"><use xlink:href=\"#ao\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#ap)\"><path fill=\"#333\" d=\"M192.46 95.698c-6.4-8.2-24.1-8.1-27.4-7.8 20.7 4.3 20.9 5.9 24.1 10.1.2 2.9-.4 12.5-4.7 20.4 3.8-1.6 10.1-20 8-22.7\"></path></g></g><g><defs><path id=\"aq\" d=\"M65.8 84.8h47.8v27.5H65.8z\"></path></defs><clipPath id=\"ar\"><use xlink:href=\"#aq\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#ar)\"><path fill=\"#D0DDDC\" d=\"M66.412 102.575c.7-8.6 1.5-15.6 18.6-16.1 13.7-.4 24.6 2.8 26.1 6.1 1 2.1.2 11.3-6.6 19.7 4.4-3.9 11.4-19.4 8.4-21.3-11.1-7.1-33.2-7.3-41.4-4.4-1.5.5-3.9 2.2-5.5 4-.3 2.2-.3 10.8.4 12\"></path></g></g><g><defs><path id=\"as\" d=\"M66.8 103H102v13.9H66.8z\"></path></defs><clipPath id=\"at\"><use xlink:href=\"#as\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#at)\"><path fill=\"#D0DDDC\" d=\"M66.884 103.2c2.6 16.8 33.3 11.7 35.1 11-.1.9-16.1 5.4-29.5.2-5.4-2-5.8-13.1-5.6-11.2\"></path></g></g><g><defs><path id=\"au\" d=\"M141.2 89.5h47.7V115h-47.7z\"></path></defs><clipPath id=\"av\"><use xlink:href=\"#au\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#av)\"><path fill=\"#D0DDDC\" d=\"M186.957 110.087c.4-8.7.4-15.6-16.4-18.2-13.5-2.1-24.7-.3-26.7 2.8-1.2 1.9-1.6 11.2 4.2 20.4-3.9-4.5-9-20.6-5.7-22.2 11.9-5.7 33.9-3.2 41.6.7 1.4.7 3.7 2.6 5 4.7-.1 2.1-1.1 10.7-2 11.8\"></path></g></g><g><defs><path id=\"aw\" d=\"M150.2 110.4h36.3v11.7h-36.3z\"></path></defs><clipPath id=\"ax\"><use xlink:href=\"#aw\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#ax)\"><path fill=\"#D0DDDC\" d=\"M186.383 110.613c-4.6 16.3-34.5 7.5-36.2 6.6 0 .9 15.3 7.3 29.3 3.9 5.6-1.4 7.5-12.4 6.9-10.5\"></path></g></g><g><defs><path id=\"ay\" d=\"M87.3 95.2h2v2h-2z\"></path></defs><clipPath id=\"az\"><use xlink:href=\"#ay\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#az)\"><path fill=\"#FFF\" d=\"M89.375 96.2c0-.5-.4-1-1-1s-1 .4-1 1 .4 1 1 1 1-.4 1-1\"></path></g></g><g><defs><path id=\"aA\" d=\"M166.3 99.9h2v2h-2z\"></path></defs><clipPath id=\"aB\"><use xlink:href=\"#aA\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#aB)\"><path fill=\"#FFF\" d=\"M168.375 100.9c0-.5-.4-1-1-1-.5 0-1 .4-1 1s.4 1 1 1c.5 0 1-.5 1-1\"></path></g></g><g><defs><path id=\"aC\" d=\"M52 79.1h64.8v9.5H52z\"></path></defs><clipPath id=\"aD\"><use xlink:href=\"#aC\" overflow=\"visible\"></use></clipPath><g opacity=\".1\" clip-path=\"url(#aD)\"><path fill=\"#D0DDDC\" d=\"M52.025 81.675c2.4 2.7 3.9 3 7.1 2.6 31.1-4 48.3-3.9 56.8 4 1.8 1.7.8-5.1-2.6-6-26.2-6.9-45.2-.7-49.2-.2-4.1.6-7-.3-12.1-.4\"></path></g></g><g><defs><path id=\"aE\" d=\"M137.7 82.3h47.9v9.2h-47.9z\"></path></defs><clipPath id=\"aF\"><use xlink:href=\"#aE\" overflow=\"visible\"></use></clipPath><g opacity=\".1\" clip-path=\"url(#aF)\"><path fill=\"#D0DDDC\" d=\"M138.025 85.675c-.7.7-.4 7.9 3 5.2 9.8-7.8 30.3-6 44.6-1.2-2.3-4.5-19-7.6-28.4-7.5-4.5.2-17.3 1.5-19.2 3.5\"></path></g></g><path fill=\"#D0DDDC\" d=\"M197.2 91.4c0 .3-1.6.5-3.5.5s-3.5-.2-3.5-.5 1.6-.5 3.5-.5c2 0 3.5.3 3.5.5M62.4 82.8c0 .3-1.6.3-3.5 0s-3.4-.8-3.3-1.1 1.6-.3 3.5 0c1.9.2 3.4.7 3.3 1.1\"></path><g><path fill=\"#FFF\" d=\"M256.04 243.036c-.6-6.1-5.1-8.8-9.2-8.8-1.9 0-3.4.5-4 .8l-.8.4-.7.5c-1 .7-2.7 1.8-4.2 2.3-.1-1.2 0-2.8.2-4.2v-.2c1.1-10.7-1.1-17-6.7-18.6-.9-.3-1.9-.4-2.9-.4-3.4 0-6.4 1.6-8.3 3-1.6-2.1-4.4-3.2-7.8-3.2-5.1 0-9.2 2.4-10.7 6.2-.2.4-.4 1-.6 1.8-3-6.6-9.1-9.1-14.8-9.1-5.4 0-10.6 2.1-12.5 3.6-.1.1-.2.1-.3.2-5.1 3.6-9.1 8.2-11.9 13.7-1.4-4.7-4.4-9.2-9.7-12.5l-.1-.1c-.2-.1-.3-.2-.4-.2 5.3-9.3 9.9-21.7 7.1-33.5-3-12.6-10.4-14.4-14.5-14.4-1.7 0-3.5.3-5.3.9h-.2c-7.8 3.1-11.2 7.7-12 8.8-.8 1.2-9.3 14.2-11.4 33.2-.2 2.1-.5 4.3-.7 6.5-1.2-1.7-3.2-3.3-6.3-4.2-1-.3-2-.4-3-.4-4.3 0-7.8 2.6-9.7 4.4-1.6-2.4-4.2-3.9-7.1-4h-.7c-4.6 0-8.2 2-10.9 4.3-1.7-3-4.9-4.9-8.6-4.9h-1.5c-5.1 0-9.1 2.4-10.7 6.4-.1.3-.3.7-.4 1.2-4-5-9.1-7.3-16-7.3h-.7c-4.3.1-14.9 1.9-21.5 16.6-1 2.3-1.8 4.6-2.4 6.8-1.4-.7-2.8-.8-3.7-.8-3.4 0-6 1.9-7.2 3.8-1 1.5-4.2 6.7-2.6 11.9.9 2.8 2.8 4.9 5.6 6 2.5 1 5.6 1.9 7.9 2.6 1.4 3.3 4 7 8.6 10.5 3.2 2.5 7.4 3.7 12.2 3.7 8.2 0 16.1-3.5 16.9-3.9l.3-.2.1-.1c1.6 1.6 3.6 2.8 6.2 3.3.8.2 1.8.3 3 .3 4.4 0 7.5-2.3 10.4-6.5 2.3 3.7 6.6 5.7 11.6 5.7.3 0 .5.2.9.2 2.6 0 6-.9 8.7-5.4 2.3 4.1 6.5 6.5 11.5 6.5 4.4 0 8.3-1.8 9-2.2l.2-.1c1.5-.8 2.7-1.5 3.7-2 3.3 1.8 8.3 3.7 14.5 3.7 1.1 0 2.1 0 3.2-.2h.6c13-2.6 21.5-5.7 26.6-8.1 3.5 4 9.2 7.8 17.2 8.4.9.1 1.8.1 2.7.1 6.6 0 11.9-1.9 15.8-3.9 1.2 1.3 2.8 2.5 4.8 3.3 1.2.5 2.5.7 3.7.7 8.1 0 11.9-9.6 12.9-12.9l1.9-5.2c1.7 1.8 3.9 3.3 6.7 4.1 1.5.4 3.2.7 4.8.7 8.9 0 17.5-6.3 18.8-7.4 2.3-2.3 4.9-6.5 4.4-12.2\"></path></g><g><path fill=\"#E24B31\" d=\"M174.35 245.713s-1.1-4 3.1-11.6 7.4-3.5 7.4-3.5 3.6 3.9-.5 9.7c-4.1 5.8-10 5.4-10 5.4m-32.1 5.5c-4.8 12.5-16.4 7.4-16.4 7.4s-1.3-4.5 2.5-17 12.6-7.6 12.6-7.6 6.1 4.7 1.3 17.2m-8.7-52.5s7.2-18.9 9-9.7c1.8 9.2-15.2 36.5-15.2 36.5.2-6.1 6.2-26.8 6.2-26.8m-103.5 47c.3-12.1 8.2-17.4 11-14.8 2.8 2.6 1.8 8.4-3.5 11.9-5.1 3.6-7.5 2.9-7.5 2.9m219.3-2c-.4-4.1-4.1-2.6-4.1-2.6s-5.9 4.6-11.1 4.1c-5.2-.5-3.5-12.1-3.5-12.1s1.1-10.7-1.9-11.6c-3.1-.9-6.8 2.8-6.8 2.8s-4.7 5.2-6.9 11.8l-.6.2s.7-11.6-.1-14.3c-.6-1.3-6.2-1.2-7.1 1.1-.9 2.3-5.4 18.6-5.7 25.5 0 0-8.8 7.4-16.4 8.7-7.7 1.2-9.5-3.6-9.5-3.6s20.8-5.8 20.1-22.4c-.7-16.6-16.8-10.5-18.6-9.1-1.8 1.3-11.1 7-13.9 22.6-.1.5-.3 2.9-.3 2.9s-8.1 5.4-12.5 6.8c0 0 12.5-21.1-2.8-30.7-6.9-4.2-12.5 4.6-12.5 4.6s20.7-23 16.1-42.5c-2.2-9.3-6.8-10.3-11.1-8.8-6.5 2.6-8.9 6.3-8.9 6.3s-8.4 12.1-10.3 30.2-4.8 39.8-4.8 39.8-4 3.9-7.6 4.1c-3.7.2-2-10.9-2-10.9s2.8-16.9 2.6-19.8-.4-4.4-3.8-5.4c-3.3-1-7 3.3-7 3.3s-9.7 14.7-10.5 16.9l-.5.9-.5-.6s6.8-20 .3-20.3c-6.5-.3-10.8 7.1-10.8 7.1s-7.4 12.5-7.7 13.9l-.5-.6s3.1-14.5 2.5-18.1c-.6-3.6-4-2.8-4-2.8s-4.3-.5-5.4 2.3c-1.1 2.8-5.2 21-5.7 26.8 0 0-10.7 7.7-17.7 7.7-7 .1-6.3-4.5-6.3-4.5s25.8-8.8 18.8-26.3c-3.2-4.5-6.8-5.9-12-5.8-5.2.1-11.3 3.3-15.5 12.6-2 4.5-2.8 8.7-2.8 11.9 0 0-4.8.9-7.3-1.1s-3.9 0-3.9 0-4.3 6.1-.1 7.7c4.2 1.6 10.6 3.2 10.6 3.2.6 2.6 2.3 7 7.4 10.8 7.6 5.8 22.3-.9 22.3-.9l6-3.6s.2 5.4 4.6 6.2c4.4.8 6.2-.1 13.9-18.6 4.5-9.5 4.8-9 4.8-9l.5-.1s-3.5 18.1-2.1 23 7.1 4.4 7.1 4.4 3.2 1.1 5.7-7.9c2.6-9 7.4-18.4 7.4-18.4h.6s-2.1 18.1 1.1 24c3.3 5.9 11.7 1.8 11.7 1.8s5.9-3.1 6.8-4c0 0 7 5.9 16.9 4.8 22.1-4.4 30-10.3 30-10.3s3.8 9.6 15.6 10.5c13.5 1 20.8-7.5 20.8-7.5s-.1 5.5 4.6 7.4c4.7 1.9 7.9-8.3 7.9-8.3l7.9-21.1h.7s.4 13.5 8.2 15.7c7.8 2.2 17.9-5.6 17.9-5.6s2.2-1.1 1.7-5.2\"></path></g></svg>"
 
 /***/ }),
 /* 1120 */,
@@ -14942,7 +14813,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /* 1174 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:cc=\"http://creativecommons.org/ns#\" xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 400\" xml:space=\"preserve\" id=\"svg2\" version=\"1.1\"><metadata id=\"metadata8\"><rdf:RDF><cc:Work rdf:about><dc:format>image/svg+xml</dc:format><dc:type rdf:resource=\"http://purl.org/dc/dcmitype/StillImage\"></dc></cc:Work></rdf:RDF></metadata><defs id=\"defs6\"></defs><g transform=\"matrix(1.3333333,0,0,-1.3333333,0,400)\" id=\"g10\"><g transform=\"translate(178.0626,235.0086)\" id=\"g12\"><path id=\"path14\" style=\"fill:#41b883;fill-opacity:1;fill-rule:nonzero;stroke:none\" d=\"M 0,0 -22.669,-39.264 -45.338,0 h -75.491 L -22.669,-170.017 75.491,0 Z\"></path></g><g transform=\"translate(178.0626,235.0086)\" id=\"g16\"><path id=\"path18\" style=\"fill:#34495e;fill-opacity:1;fill-rule:nonzero;stroke:none\" d=\"M 0,0 -22.669,-39.264 -45.338,0 H -81.565 L -22.669,-102.01 36.227,0 Z\"></path></g></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:cc=\"http://creativecommons.org/ns#\" xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 400\" xml:space=\"preserve\" id=\"svg2\" version=\"1.1\"><metadata id=\"metadata8\"><rdf:RDF><cc:Work rdf:about><dc:format>image/svg+xml</dc:format><dc:type rdf:resource=\"http://purl.org/dc/dcmitype/StillImage\"></dc></cc:Work></rdf:RDF></metadata><defs id=\"defs6\"></defs><g transform=\"matrix(1.3333333,0,0,-1.3333333,0,400)\" id=\"g10\"><g transform=\"translate(178.0626,235.0086)\" id=\"g12\"><path id=\"path14\" style=\"fill:#41b883;fill-opacity:1;fill-rule:nonzero;stroke:none\" d=\"M 0,0 -22.669,-39.264 -45.338,0 h -75.491 L -22.669,-170.017 75.491,0 Z\"></path></g><g transform=\"translate(178.0626,235.0086)\" id=\"g16\"><path id=\"path18\" style=\"fill:#34495e;fill-opacity:1;fill-rule:nonzero;stroke:none\" d=\"M 0,0 -22.669,-39.264 -45.338,0 H -81.565 L -22.669,-102.01 36.227,0 Z\"></path></g></g></svg>"
 
 /***/ }),
 /* 1175 */,
@@ -16114,7 +15985,7 @@ function verifySubselectors(mapStateToProps, mapDispatchToProps, mergeProps, dis
 /* 1233 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0 0 256 296\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><g><polygon fill=\"#673AB8\" points=\"128 0 256 73.8999491 256 221.699847 128 295.599796 0 221.699847 0 73.8999491\"></polygon><path d=\"M34.8647584,220.478469 C51.8814262,242.25881 105.959701,225.662965 157.014868,185.774297 C208.070035,145.885628 237.255632,97.428608 220.238964,75.6482664 C203.222296,53.8679249 149.144022,70.4637701 98.0888543,110.352439 C47.0336869,150.241107 17.8480906,198.698127 34.8647584,220.478469 Z M42.1343351,214.798853 C36.4908625,207.575537 38.9565723,193.395881 49.7081913,175.544904 C61.0297348,156.747677 80.2490923,135.997367 103.76847,117.622015 C127.287848,99.2466634 152.071368,85.6181573 173.049166,79.1803727 C192.970945,73.066665 207.325915,74.1045667 212.969387,81.3278822 C218.61286,88.5511977 216.14715,102.730854 205.395531,120.581832 C194.073987,139.379058 174.85463,160.129368 151.335252,178.50472 C127.815874,196.880072 103.032354,210.508578 82.054556,216.946362 C62.1327769,223.06007 47.7778077,222.022168 42.1343351,214.798853 Z\" fill=\"#FFFFFF\"></path><path d=\"M220.238964,220.478469 C237.255632,198.698127 208.070035,150.241107 157.014868,110.352439 C105.959701,70.4637701 51.8814262,53.8679249 34.8647584,75.6482664 C17.8480906,97.428608 47.0336869,145.885628 98.0888543,185.774297 C149.144022,225.662965 203.222296,242.25881 220.238964,220.478469 Z M212.969387,214.798853 C207.325915,222.022168 192.970945,223.06007 173.049166,216.946362 C152.071368,210.508578 127.287848,196.880072 103.76847,178.50472 C80.2490923,160.129368 61.0297348,139.379058 49.7081913,120.581832 C38.9565723,102.730854 36.4908625,88.5511977 42.1343351,81.3278822 C47.7778077,74.1045667 62.1327769,73.066665 82.054556,79.1803727 C103.032354,85.6181573 127.815874,99.2466634 151.335252,117.622015 C174.85463,135.997367 194.073987,156.747677 205.395531,175.544904 C216.14715,193.395881 218.61286,207.575537 212.969387,214.798853 Z\" fill=\"#FFFFFF\"></path><path d=\"M127.551861,167.666971 C138.378632,167.666971 147.155465,158.890139 147.155465,148.063368 C147.155465,137.236596 138.378632,128.459764 127.551861,128.459764 C116.72509,128.459764 107.948257,137.236596 107.948257,148.063368 C107.948257,158.890139 116.72509,167.666971 127.551861,167.666971 L127.551861,167.666971 Z\" fill=\"#FFFFFF\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 256 296\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><g><polygon fill=\"#673AB8\" points=\"128 0 256 73.8999491 256 221.699847 128 295.599796 0 221.699847 0 73.8999491\"></polygon><path d=\"M34.8647584,220.478469 C51.8814262,242.25881 105.959701,225.662965 157.014868,185.774297 C208.070035,145.885628 237.255632,97.428608 220.238964,75.6482664 C203.222296,53.8679249 149.144022,70.4637701 98.0888543,110.352439 C47.0336869,150.241107 17.8480906,198.698127 34.8647584,220.478469 Z M42.1343351,214.798853 C36.4908625,207.575537 38.9565723,193.395881 49.7081913,175.544904 C61.0297348,156.747677 80.2490923,135.997367 103.76847,117.622015 C127.287848,99.2466634 152.071368,85.6181573 173.049166,79.1803727 C192.970945,73.066665 207.325915,74.1045667 212.969387,81.3278822 C218.61286,88.5511977 216.14715,102.730854 205.395531,120.581832 C194.073987,139.379058 174.85463,160.129368 151.335252,178.50472 C127.815874,196.880072 103.032354,210.508578 82.054556,216.946362 C62.1327769,223.06007 47.7778077,222.022168 42.1343351,214.798853 Z\" fill=\"#FFFFFF\"></path><path d=\"M220.238964,220.478469 C237.255632,198.698127 208.070035,150.241107 157.014868,110.352439 C105.959701,70.4637701 51.8814262,53.8679249 34.8647584,75.6482664 C17.8480906,97.428608 47.0336869,145.885628 98.0888543,185.774297 C149.144022,225.662965 203.222296,242.25881 220.238964,220.478469 Z M212.969387,214.798853 C207.325915,222.022168 192.970945,223.06007 173.049166,216.946362 C152.071368,210.508578 127.287848,196.880072 103.76847,178.50472 C80.2490923,160.129368 61.0297348,139.379058 49.7081913,120.581832 C38.9565723,102.730854 36.4908625,88.5511977 42.1343351,81.3278822 C47.7778077,74.1045667 62.1327769,73.066665 82.054556,79.1803727 C103.032354,85.6181573 127.815874,99.2466634 151.335252,117.622015 C174.85463,135.997367 194.073987,156.747677 205.395531,175.544904 C216.14715,193.395881 218.61286,207.575537 212.969387,214.798853 Z\" fill=\"#FFFFFF\"></path><path d=\"M127.551861,167.666971 C138.378632,167.666971 147.155465,158.890139 147.155465,148.063368 C147.155465,137.236596 138.378632,128.459764 127.551861,128.459764 C116.72509,128.459764 107.948257,137.236596 107.948257,148.063368 C107.948257,158.890139 116.72509,167.666971 127.551861,167.666971 L127.551861,167.666971 Z\" fill=\"#FFFFFF\"></path></g></svg>"
 
 /***/ }),
 /* 1234 */,
@@ -16176,7 +16047,7 @@ module.exports = "<svg viewBox=\"0 0 256 296\" version=\"1.1\" xmlns=\"http://ww
 /* 1290 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 512 512\" enable-background=\"new 0 0 512 512\" xml:space=\"preserve\"><g id=\"Layer_2\"><path fill=\"#132028\" d=\"M190.475,376V203.308H81.266c-27.129,0-50.139,26-58.222,62.035c-9.877,1.302-17.62,13.541-17.62,28.455 c0,14.914,7.743,27.153,17.62,28.455c7.291,32.507,26.733,56.84,50.385,61.294v68.669h395.95V376H190.475z\"></path></g><g id=\"Layer_3\"><path fill=\"#575A5B\" d=\"M490.712,427.977c0,30.941-25.082,56.023-56.023,56.023c-25.804,0-47.519-17.451-54.023-41.19 c-6.504,23.739-28.219,41.19-54.023,41.19c-30.941,0-56.023-25.082-56.023-56.023c0-30.941,25.082-56.023,56.023-56.023 c25.804,0,47.519,17.451,54.023,41.19c6.504-23.739,28.219-41.19,54.023-41.19C465.629,371.954,490.712,397.036,490.712,427.977z M161.24,203.308l29.75-113.845H94.232l29.75,113.845h-13.668c-33.865,0-61.319,40.513-61.319,90.489 c0,49.976,27.453,90.489,61.319,90.489H294.27V203.308H161.24z M162.321,420.431c-13.164,0-24.458,8.002-29.285,19.408 c-4.826-11.405-16.121-19.408-29.284-19.408c-17.554,0-31.785,14.23-31.785,31.784c0,17.554,14.23,31.785,31.785,31.785 c13.164,0,24.458-8.002,29.284-19.408C137.863,475.998,149.157,484,162.321,484c17.554,0,31.784-14.23,31.784-31.785 C194.106,434.661,179.875,420.431,162.321,420.431z\"></path></g><g id=\"Layer_4\"><path fill=\"#FFB636\" d=\"M200.78,384.287h-16.028c-20.105,0-36.403-40.513-36.403-90.489c0-49.976,16.298-90.489,36.403-90.489 h16.028c-20.105,0-36.403,40.513-36.403,90.489C164.378,343.773,180.676,384.287,200.78,384.287z M122.236,293.797 c0-49.976,16.298-90.489,36.403-90.489H142.61c-20.105,0-36.403,40.513-36.403,90.489c0,49.976,16.298,90.489,36.403,90.489h16.028 C138.534,384.287,122.236,343.773,122.236,293.797z\"></path></g><g id=\"Layer_5\"><path fill=\"#FF473E\" d=\"M489.353,384.287H294.27V85.761h195.083V384.287z M74.21,384.103h-7.99c-2.436,0-4.707,1.48-6.035,3.934 l-43.633,80.594C13.436,474.387,16.874,482,22.587,482h52.826c4.027,0,7.271-3.968,7.199-8.806l-1.203-80.594 C81.339,387.883,78.136,384.103,74.21,384.103z\"></path></g><g id=\"Layer_6\"><path fill=\"#EF2020\" d=\"M497.28,66.397H286.342c-5.92,0-10.72,4.8-10.72,10.72v1.626c0,5.92,4.8,10.72,10.72,10.72H497.28 c5.921,0,10.72-4.8,10.72-10.72v-1.626C508,71.197,503.201,66.397,497.28,66.397z\"></path></g><g id=\"Layer_7\"><path fill=\"#76DFFF\" d=\"M371.466,257.523h-40.952c-3.976,0-7.2-3.224-7.2-7.2V124.018c0-3.976,3.224-7.2,7.2-7.2h40.952 c3.976,0,7.2,3.224,7.2,7.2v126.305C378.666,254.3,375.442,257.523,371.466,257.523z M460.474,250.323V124.018 c0-3.976-3.224-7.2-7.2-7.2h-40.952c-3.976,0-7.2,3.224-7.2,7.2v126.305c0,3.976,3.224,7.2,7.2,7.2h40.952 C457.251,257.523,460.474,254.3,460.474,250.323z\"></path></g><g id=\"Layer_8\"><path fill=\"#132028\" d=\"M489.353,339.586H294.27v-36.582h195.083V339.586z M111.17,52L94.206,89.463h96.758L174,52H111.17z M326.643,414.954c-7.192,0-13.023,5.831-13.023,13.023S319.451,441,326.643,441c7.192,0,13.023-5.831,13.023-13.023 S333.835,414.954,326.643,414.954z M434.689,414.954c-7.192,0-13.023,5.831-13.023,13.023S427.496,441,434.689,441 s13.023-5.831,13.023-13.023S441.881,414.954,434.689,414.954z M103.752,444.827c-4.081,0-7.389,3.308-7.389,7.389 s3.308,7.389,7.389,7.389c4.081,0,7.389-3.308,7.389-7.389S107.833,444.827,103.752,444.827z M162.321,444.827 c-4.081,0-7.389,3.308-7.389,7.389s3.308,7.389,7.389,7.389s7.389-3.308,7.389-7.389S166.402,444.827,162.321,444.827z\"></path></g><g id=\"Layer_9\"><path fill=\"#FFB636\" d=\"M196.709,444.208h-92.957c-4.91,0-8.891-3.98-8.891-8.891s3.98-8.891,8.891-8.891h90.449l36.759-22.53 c1.398-0.857,3.006-1.311,4.646-1.311H459.54c4.91,0,8.891,3.98,8.891,8.891s-3.98,8.891-8.891,8.891H238.114l-36.759,22.53 C199.957,443.755,198.349,444.208,196.709,444.208z\"></path></g><g id=\"Layer_10\"><path fill=\"#ADB7BC\" d=\"M69.849,393.079c-5.787,0-10.485-4.685-10.5-10.475c-0.014-5.799,4.676-10.512,10.475-10.525l413.924-1 c0.009,0,0.018,0,0.026,0c5.787,0,10.485,4.685,10.499,10.475c0.014,5.799-4.676,10.512-10.475,10.525l-413.924,1 C69.867,393.079,69.857,393.079,69.849,393.079z\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 512 512\" enable-background=\"new 0 0 512 512\" xml:space=\"preserve\"><g id=\"Layer_2\"><path fill=\"#132028\" d=\"M190.475,376V203.308H81.266c-27.129,0-50.139,26-58.222,62.035c-9.877,1.302-17.62,13.541-17.62,28.455 c0,14.914,7.743,27.153,17.62,28.455c7.291,32.507,26.733,56.84,50.385,61.294v68.669h395.95V376H190.475z\"></path></g><g id=\"Layer_3\"><path fill=\"#575A5B\" d=\"M490.712,427.977c0,30.941-25.082,56.023-56.023,56.023c-25.804,0-47.519-17.451-54.023-41.19 c-6.504,23.739-28.219,41.19-54.023,41.19c-30.941,0-56.023-25.082-56.023-56.023c0-30.941,25.082-56.023,56.023-56.023 c25.804,0,47.519,17.451,54.023,41.19c6.504-23.739,28.219-41.19,54.023-41.19C465.629,371.954,490.712,397.036,490.712,427.977z M161.24,203.308l29.75-113.845H94.232l29.75,113.845h-13.668c-33.865,0-61.319,40.513-61.319,90.489 c0,49.976,27.453,90.489,61.319,90.489H294.27V203.308H161.24z M162.321,420.431c-13.164,0-24.458,8.002-29.285,19.408 c-4.826-11.405-16.121-19.408-29.284-19.408c-17.554,0-31.785,14.23-31.785,31.784c0,17.554,14.23,31.785,31.785,31.785 c13.164,0,24.458-8.002,29.284-19.408C137.863,475.998,149.157,484,162.321,484c17.554,0,31.784-14.23,31.784-31.785 C194.106,434.661,179.875,420.431,162.321,420.431z\"></path></g><g id=\"Layer_4\"><path fill=\"#FFB636\" d=\"M200.78,384.287h-16.028c-20.105,0-36.403-40.513-36.403-90.489c0-49.976,16.298-90.489,36.403-90.489 h16.028c-20.105,0-36.403,40.513-36.403,90.489C164.378,343.773,180.676,384.287,200.78,384.287z M122.236,293.797 c0-49.976,16.298-90.489,36.403-90.489H142.61c-20.105,0-36.403,40.513-36.403,90.489c0,49.976,16.298,90.489,36.403,90.489h16.028 C138.534,384.287,122.236,343.773,122.236,293.797z\"></path></g><g id=\"Layer_5\"><path fill=\"#FF473E\" d=\"M489.353,384.287H294.27V85.761h195.083V384.287z M74.21,384.103h-7.99c-2.436,0-4.707,1.48-6.035,3.934 l-43.633,80.594C13.436,474.387,16.874,482,22.587,482h52.826c4.027,0,7.271-3.968,7.199-8.806l-1.203-80.594 C81.339,387.883,78.136,384.103,74.21,384.103z\"></path></g><g id=\"Layer_6\"><path fill=\"#EF2020\" d=\"M497.28,66.397H286.342c-5.92,0-10.72,4.8-10.72,10.72v1.626c0,5.92,4.8,10.72,10.72,10.72H497.28 c5.921,0,10.72-4.8,10.72-10.72v-1.626C508,71.197,503.201,66.397,497.28,66.397z\"></path></g><g id=\"Layer_7\"><path fill=\"#76DFFF\" d=\"M371.466,257.523h-40.952c-3.976,0-7.2-3.224-7.2-7.2V124.018c0-3.976,3.224-7.2,7.2-7.2h40.952 c3.976,0,7.2,3.224,7.2,7.2v126.305C378.666,254.3,375.442,257.523,371.466,257.523z M460.474,250.323V124.018 c0-3.976-3.224-7.2-7.2-7.2h-40.952c-3.976,0-7.2,3.224-7.2,7.2v126.305c0,3.976,3.224,7.2,7.2,7.2h40.952 C457.251,257.523,460.474,254.3,460.474,250.323z\"></path></g><g id=\"Layer_8\"><path fill=\"#132028\" d=\"M489.353,339.586H294.27v-36.582h195.083V339.586z M111.17,52L94.206,89.463h96.758L174,52H111.17z M326.643,414.954c-7.192,0-13.023,5.831-13.023,13.023S319.451,441,326.643,441c7.192,0,13.023-5.831,13.023-13.023 S333.835,414.954,326.643,414.954z M434.689,414.954c-7.192,0-13.023,5.831-13.023,13.023S427.496,441,434.689,441 s13.023-5.831,13.023-13.023S441.881,414.954,434.689,414.954z M103.752,444.827c-4.081,0-7.389,3.308-7.389,7.389 s3.308,7.389,7.389,7.389c4.081,0,7.389-3.308,7.389-7.389S107.833,444.827,103.752,444.827z M162.321,444.827 c-4.081,0-7.389,3.308-7.389,7.389s3.308,7.389,7.389,7.389s7.389-3.308,7.389-7.389S166.402,444.827,162.321,444.827z\"></path></g><g id=\"Layer_9\"><path fill=\"#FFB636\" d=\"M196.709,444.208h-92.957c-4.91,0-8.891-3.98-8.891-8.891s3.98-8.891,8.891-8.891h90.449l36.759-22.53 c1.398-0.857,3.006-1.311,4.646-1.311H459.54c4.91,0,8.891,3.98,8.891,8.891s-3.98,8.891-8.891,8.891H238.114l-36.759,22.53 C199.957,443.755,198.349,444.208,196.709,444.208z\"></path></g><g id=\"Layer_10\"><path fill=\"#ADB7BC\" d=\"M69.849,393.079c-5.787,0-10.485-4.685-10.5-10.475c-0.014-5.799,4.676-10.512,10.475-10.525l413.924-1 c0.009,0,0.018,0,0.026,0c5.787,0,10.485,4.685,10.499,10.475c0.014,5.799-4.676,10.512-10.475,10.525l-413.924,1 C69.867,393.079,69.857,393.079,69.849,393.079z\"></path></g></svg>"
 
 /***/ }),
 /* 1291 */,
@@ -16489,7 +16360,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /* 1348 */
 /***/ (function(module, exports) {
 
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M13.917 7C13.44 4.162 10.973 2 8 2 4.686 2 2 4.686 2 8s2.686 6 6 6c2.22 0 4.16-1.207 5.197-3H12c-.912 1.214-2.364 2-4 2-2.76 0-5-2.24-5-5s2.24-5 5-5c2.42 0 4.437 1.718 4.9 4h1.017z\"></path><path d=\"M14 1L8 7h6V1zm-1 1L9 6h4V2z\" fill-rule=\"evenodd\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"context-fill\"><path d=\"M13.917 7C13.44 4.162 10.973 2 8 2 4.686 2 2 4.686 2 8s2.686 6 6 6c2.22 0 4.16-1.207 5.197-3H12c-.912 1.214-2.364 2-4 2-2.76 0-5-2.24-5-5s2.24-5 5-5c2.42 0 4.437 1.718 4.9 4h1.017z\"></path><path d=\"M14 1L8 7h6V1zm-1 1L9 6h4V2z\" fill-rule=\"evenodd\"></path></svg>"
 
 /***/ }),
 /* 1349 */,
@@ -16565,10 +16436,6 @@ var _breakpointAtLocation = __webpack_require__(1503);
 
 var _breakpointAtLocation2 = _interopRequireDefault(_breakpointAtLocation);
 
-var _linesInScope = __webpack_require__(1504);
-
-var _linesInScope2 = _interopRequireDefault(_linesInScope);
-
 var _visibleBreakpoints = __webpack_require__(1427);
 
 var _visibleBreakpoints2 = _interopRequireDefault(_visibleBreakpoints);
@@ -16576,6 +16443,14 @@ var _visibleBreakpoints2 = _interopRequireDefault(_visibleBreakpoints);
 var _isSelectedFrameVisible = __webpack_require__(1505);
 
 var _isSelectedFrameVisible2 = _interopRequireDefault(_isSelectedFrameVisible);
+
+var _getCallStackFrames = __webpack_require__(1779);
+
+var _getCallStackFrames2 = _interopRequireDefault(_getCallStackFrames);
+
+var _visibleSelectedFrame = __webpack_require__(1780);
+
+var _visibleSelectedFrame2 = _interopRequireDefault(_visibleSelectedFrame);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -16587,9 +16462,10 @@ function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj;
 
 module.exports = _extends({}, expressions, sources, pause, debuggee, breakpoints, pendingBreakpoints, eventListeners, ui, ast, coverage, fileSearch, projectTextSearch, quickOpen, sourceTree, {
   getBreakpointAtLocation: _breakpointAtLocation2.default,
-  getInScopeLines: _linesInScope2.default,
   getVisibleBreakpoints: _visibleBreakpoints2.default,
-  isSelectedFrameVisible: _isSelectedFrameVisible2.default
+  isSelectedFrameVisible: _isSelectedFrameVisible2.default,
+  getCallStackFrames: _getCallStackFrames2.default,
+  getVisibleSelectedFrame: _visibleSelectedFrame2.default
 });
 
 /***/ }),
@@ -17032,10 +16908,6 @@ var _eventListeners = __webpack_require__(1527);
 
 var eventListeners = _interopRequireWildcard(_eventListeners);
 
-var _sources = __webpack_require__(1373);
-
-var sources = _interopRequireWildcard(_sources);
-
 var _pause = __webpack_require__(1639);
 
 var pause = _interopRequireWildcard(_pause);
@@ -17072,9 +16944,9 @@ var _sourceTree = __webpack_require__(1532);
 
 var sourceTree = _interopRequireWildcard(_sourceTree);
 
-var _loadSourceText = __webpack_require__(1435);
+var _sources = __webpack_require__(1797);
 
-var loadSourceText = _interopRequireWildcard(_loadSourceText);
+var sources = _interopRequireWildcard(_sources);
 
 var _debuggee = __webpack_require__(1533);
 
@@ -17084,9 +16956,13 @@ var _toolbox = __webpack_require__(1534);
 
 var toolbox = _interopRequireWildcard(_toolbox);
 
+var _preview = __webpack_require__(1786);
+
+var preview = _interopRequireWildcard(_preview);
+
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
-exports.default = _extends({}, navigation, breakpoints, expressions, eventListeners, sources, pause, ui, fileSearch, ast, coverage, projectTextSearch, quickOpen, sourceTree, loadSourceText, debuggee, toolbox);
+exports.default = _extends({}, navigation, breakpoints, expressions, eventListeners, sources, pause, ui, fileSearch, ast, coverage, projectTextSearch, quickOpen, sourceTree, debuggee, toolbox, preview);
 
 /***/ }),
 /* 1355 */
@@ -17109,7 +16985,32 @@ module.exports = feature;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.isLoaded = exports.getMode = exports.getSourceLineCount = exports.getSourcePath = exports.getFileURL = exports.getFilenameFromURL = exports.getFilename = exports.getRawSourceURL = exports.getPrettySourceURL = exports.shouldPrettyPrint = exports.isThirdParty = exports.isPretty = exports.isJavaScript = undefined;
+exports.isMinified = undefined;
+
+var _isMinified = __webpack_require__(1778);
+
+Object.defineProperty(exports, "isMinified", {
+  enumerable: true,
+  get: function () {
+    return _isMinified.isMinified;
+  }
+});
+exports.shouldPrettyPrint = shouldPrettyPrint;
+exports.isJavaScript = isJavaScript;
+exports.isPretty = isPretty;
+exports.isPrettyURL = isPrettyURL;
+exports.isThirdParty = isThirdParty;
+exports.getPrettySourceURL = getPrettySourceURL;
+exports.getRawSourceURL = getRawSourceURL;
+exports.getFilenameFromURL = getFilenameFromURL;
+exports.getFormattedSourceId = getFormattedSourceId;
+exports.getFilename = getFilename;
+exports.getFileURL = getFileURL;
+exports.getSourcePath = getSourcePath;
+exports.getSourceLineCount = getSourceLineCount;
+exports.getMode = getMode;
+exports.isLoaded = isLoaded;
+exports.isLoading = isLoading;
 
 var _devtoolsSourceMap = __webpack_require__(1360);
 
@@ -17125,15 +17026,6 @@ var _url = __webpack_require__(334);
  * @memberof utils/source
  * @static
  */
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-/**
- * Utils for working with Source URLs
- * @module utils/source
- */
-
 function trimUrlQuery(url) {
   const length = url.length;
   const q1 = url.indexOf("?");
@@ -17148,11 +17040,10 @@ function shouldPrettyPrint(source) {
   if (!source) {
     return false;
   }
-
   const _isPretty = isPretty(source);
   const _isJavaScript = isJavaScript(source);
-  const isOriginal = (0, _devtoolsSourceMap.isOriginalId)(source.id);
-  const hasSourceMap = source.sourceMapURL;
+  const isOriginal = (0, _devtoolsSourceMap.isOriginalId)(source.get("id"));
+  const hasSourceMap = source.get("sourceMapURL");
 
   if (_isPretty || isOriginal || hasSourceMap || !_isJavaScript) {
     return false;
@@ -17172,7 +17063,9 @@ function shouldPrettyPrint(source) {
  * @static
  */
 function isJavaScript(source) {
-  return source.url && /\.(jsm|js)?$/.test(trimUrlQuery(source.url)) || !!(source.contentType && source.contentType.includes("javascript"));
+  const url = source.get("url");
+  const contentType = source.get("contentType");
+  return url && /\.(jsm|js)?$/.test(trimUrlQuery(url)) || !!(contentType && contentType.includes("javascript"));
 }
 
 /**
@@ -17180,15 +17073,21 @@ function isJavaScript(source) {
  * @static
  */
 function isPretty(source) {
-  return source.url ? /formatted$/.test(source.url) : false;
+  const url = source.get("url");
+  return isPrettyURL(url);
+}
+
+function isPrettyURL(url) {
+  return url ? /formatted$/.test(url) : false;
 }
 
 function isThirdParty(source) {
-  if (!source || !source.url) {
+  const url = source.get("url");
+  if (!source || !url) {
     return false;
   }
 
-  return !!source.url.match(/(node_modules|bower_components)/);
+  return !!url.match(/(node_modules|bower_components)/);
 }
 
 /**
@@ -17277,12 +17176,12 @@ const contentTypeModeMap = {
   "text/html": { name: "htmlmixed" }
 };
 
-function getSourcePath(source) {
-  if (!source.url) {
+function getSourcePath(url) {
+  if (!url) {
     return "";
   }
 
-  const { path, href } = (0, _url.parse)(source.url);
+  const { path, href } = (0, _url.parse)(url);
   // for URLs like "about:home" the path is null so we pass the full href
   return path || href;
 }
@@ -17301,6 +17200,16 @@ function getSourceLineCount(source) {
 
 /**
  *
+ * Checks if a source is minified based on some heuristics
+ * @param key
+ * @param text
+ * @return boolean
+ * @memberof utils/source
+ * @static
+ */
+
+/**
+ *
  * Returns Code Mirror mode for source content type
  * @param contentType
  * @return String
@@ -17308,15 +17217,26 @@ function getSourceLineCount(source) {
  * @static
  */
 
-function getMode(source, sourceMetaData) {
+function getMode(source, symbols) {
   const { contentType, text, isWasm, url } = source;
 
   if (!text || isWasm) {
     return { name: "text" };
   }
 
-  if (url && url.match(/\.jsx$/i) || sourceMetaData && sourceMetaData.isReactComponent) {
+  if (url && url.match(/\.jsx$/i) || symbols && symbols.hasJsx) {
     return "jsx";
+  }
+
+  const languageMimeMap = [{ ext: ".c", mode: "text/x-csrc" }, { ext: ".kt", mode: "text/x-kotlin" }, { ext: ".cpp", mode: "text/x-c++src" }, { ext: ".m", mode: "text/x-objectivec" }, { ext: ".rs", mode: "text/x-rustsrc" }];
+
+  // check for C and other non JS languages
+  if (url) {
+    const result = languageMimeMap.find(({ ext }) => url.endsWith(ext));
+
+    if (result !== undefined) {
+      return result.mode;
+    }
   }
 
   // if the url ends with .marko we set the name to Javascript so
@@ -17356,22 +17276,12 @@ function getMode(source, sourceMetaData) {
 }
 
 function isLoaded(source) {
-  return source.loadedState === "loaded";
+  return source.get("loadedState") === "loaded";
 }
 
-exports.isJavaScript = isJavaScript;
-exports.isPretty = isPretty;
-exports.isThirdParty = isThirdParty;
-exports.shouldPrettyPrint = shouldPrettyPrint;
-exports.getPrettySourceURL = getPrettySourceURL;
-exports.getRawSourceURL = getRawSourceURL;
-exports.getFilename = getFilename;
-exports.getFilenameFromURL = getFilenameFromURL;
-exports.getFileURL = getFileURL;
-exports.getSourcePath = getSourcePath;
-exports.getSourceLineCount = getSourceLineCount;
-exports.getMode = getMode;
-exports.isLoaded = isLoaded;
+function isLoading(source) {
+  return source.get("loadedState") === "loading";
+}
 
 /***/ }),
 /* 1357 */
@@ -17399,42 +17309,102 @@ module.exports = {
 "use strict";
 
 
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
                                                                                                                                                                                                                                                                    * License, v. 2.0. If a copy of the MPL was not distributed with this
                                                                                                                                                                                                                                                                    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-var _devtoolsConfig = __webpack_require__(1355);
-
 var _sourceDocuments = __webpack_require__(1436);
 
-var sourceDocumentUtils = _interopRequireWildcard(_sourceDocuments);
+Object.keys(_sourceDocuments).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _sourceDocuments[key];
+    }
+  });
+});
 
-var _source = __webpack_require__(1356);
+var _getTokenLocation = __webpack_require__(1783);
 
-var _expression = __webpack_require__(1525);
-
-var expressionUtils = _interopRequireWildcard(_expression);
+Object.keys(_getTokenLocation).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _getTokenLocation[key];
+    }
+  });
+});
 
 var _sourceSearch = __webpack_require__(1526);
 
-var sourceSearchUtils = _interopRequireWildcard(_sourceSearch);
-
-var _wasm = __webpack_require__(1401);
+Object.keys(_sourceSearch).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _sourceSearch[key];
+    }
+  });
+});
 
 var _ui = __webpack_require__(1439);
 
-var _devtoolsSourceEditor = __webpack_require__(1386);
+Object.keys(_ui).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _ui[key];
+    }
+  });
+});
 
-function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
+var _createEditor = __webpack_require__(1806);
 
-const { findNext, findPrev } = sourceSearchUtils;
+Object.keys(_createEditor).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _createEditor[key];
+    }
+  });
+});
+exports.shouldShowPrettyPrint = shouldShowPrettyPrint;
+exports.shouldShowFooter = shouldShowFooter;
+exports.traverseResults = traverseResults;
+exports.toEditorLine = toEditorLine;
+exports.toEditorPosition = toEditorPosition;
+exports.toEditorRange = toEditorRange;
+exports.toSourceLine = toSourceLine;
+exports.scrollToColumn = scrollToColumn;
+exports.toSourceLocation = toSourceLocation;
+exports.markText = markText;
+exports.lineAtHeight = lineAtHeight;
+exports.getSourceLocationFromMouseEvent = getSourceLocationFromMouseEvent;
+exports.forEachLine = forEachLine;
+exports.removeLineClass = removeLineClass;
+exports.clearLineClass = clearLineClass;
+exports.getTextForLine = getTextForLine;
+exports.getCursorLine = getCursorLine;
+
+var _source = __webpack_require__(1356);
+
+var _wasm = __webpack_require__(1401);
+
+var _devtoolsSourceMap = __webpack_require__(1360);
 
 function shouldShowPrettyPrint(selectedSource) {
   if (!selectedSource) {
     return false;
   }
 
-  selectedSource = selectedSource.toJS();
   return (0, _source.shouldPrettyPrint)(selectedSource);
 }
 
@@ -17442,8 +17412,10 @@ function shouldShowFooter(selectedSource, horizontal) {
   if (!horizontal) {
     return true;
   }
-
-  return shouldShowPrettyPrint(selectedSource);
+  if (!selectedSource) {
+    return false;
+  }
+  return shouldShowPrettyPrint(selectedSource) || (0, _devtoolsSourceMap.isOriginalId)(selectedSource.get("id"));
 }
 
 function traverseResults(e, ctx, query, dir, modifiers) {
@@ -17451,57 +17423,32 @@ function traverseResults(e, ctx, query, dir, modifiers) {
   e.preventDefault();
 
   if (dir == "prev") {
-    findPrev(ctx, query, true, modifiers);
+    (0, _sourceSearch.findPrev)(ctx, query, true, modifiers);
   } else if (dir == "next") {
-    findNext(ctx, query, true, modifiers);
+    (0, _sourceSearch.findNext)(ctx, query, true, modifiers);
   }
-}
-
-function createEditor() {
-  const gutters = ["breakpoints", "hit-markers", "CodeMirror-linenumbers"];
-
-  if ((0, _devtoolsConfig.isEnabled)("codeFolding")) {
-    gutters.push("CodeMirror-foldgutter");
-  }
-
-  return new _devtoolsSourceEditor.SourceEditor({
-    mode: "javascript",
-    foldGutter: (0, _devtoolsConfig.isEnabled)("codeFolding"),
-    enableCodeFolding: (0, _devtoolsConfig.isEnabled)("codeFolding"),
-    readOnly: true,
-    lineNumbers: true,
-    theme: "mozilla",
-    styleActiveLine: false,
-    lineWrapping: false,
-    matchBrackets: true,
-    showAnnotationRuler: true,
-    gutters,
-    value: " ",
-    extraKeys: {
-      // Override code mirror keymap to avoid conflicts with split console.
-      Esc: false,
-      "Cmd-F": false,
-      "Cmd-G": false
-    }
-  });
 }
 
 function toEditorLine(sourceId, lineOrOffset) {
-  return (0, _wasm.isWasm)(sourceId) ? (0, _wasm.wasmOffsetToLine)(sourceId, lineOrOffset) : lineOrOffset - 1;
+  if ((0, _wasm.isWasm)(sourceId)) {
+    return (0, _wasm.wasmOffsetToLine)(sourceId, lineOrOffset);
+  }
+
+  return lineOrOffset ? lineOrOffset - 1 : 1;
 }
 
-function toEditorPosition(sourceId, location) {
+function toEditorPosition(location) {
   return {
-    line: toEditorLine(sourceId, location.line),
-    column: (0, _wasm.isWasm)(sourceId) ? 0 : location.column
+    line: toEditorLine(location.sourceId, location.line),
+    column: (0, _wasm.isWasm)(location.sourceId) || !location.column ? 0 : location.column
   };
 }
 
 function toEditorRange(sourceId, location) {
   const { start, end } = location;
   return {
-    start: toEditorPosition(sourceId, start),
-    end: toEditorPosition(sourceId, end)
+    start: toEditorPosition(_extends({}, start, { sourceId })),
+    end: toEditorPosition(_extends({}, end, { sourceId }))
   };
 }
 
@@ -17550,23 +17497,29 @@ function getSourceLocationFromMouseEvent(editor, selectedLocation, e) {
   };
 }
 
-module.exports = _extends({}, expressionUtils, sourceDocumentUtils, sourceSearchUtils, _devtoolsSourceEditor.SourceEditorUtils, {
-  createEditor,
-  isWasm: _wasm.isWasm,
-  toEditorLine,
-  toEditorPosition,
-  toEditorRange,
-  toSourceLine,
-  scrollToColumn,
-  toSourceLocation,
-  shouldShowPrettyPrint,
-  shouldShowFooter,
-  traverseResults,
-  markText,
-  lineAtHeight,
-  getSourceLocationFromMouseEvent,
-  resizeBreakpointGutter: _ui.resizeBreakpointGutter
-});
+function forEachLine(codeMirror, iter) {
+  codeMirror.operation(() => {
+    codeMirror.doc.iter(0, codeMirror.lineCount(), iter);
+  });
+}
+
+function removeLineClass(codeMirror, line, className) {
+  codeMirror.removeLineClass(line, "line", className);
+}
+
+function clearLineClass(codeMirror, className) {
+  forEachLine(codeMirror, line => {
+    removeLineClass(codeMirror, line, className);
+  });
+}
+
+function getTextForLine(codeMirror, line) {
+  return codeMirror.getLine(line - 1).trim();
+}
+
+function getCursorLine(codeMirror) {
+  return codeMirror.getCursor().line;
+}
 
 /***/ }),
 /* 1359 */
@@ -17711,7 +17664,7 @@ const { setConfig, getValue, isDevelopment } = __webpack_require__(1355);
 const L10N = __webpack_require__(1462);
 const { showMenu, buildMenu } = __webpack_require__(1413);
 
-setConfig({"environment":"firefox-panel","logging":false,"clientLogging":false,"firefox":{"mcPath":"./firefox"},"workers":{"parserURL":"resource://devtools/client/debugger/new/parser-worker.js","prettyPrintURL":"resource://devtools/client/debugger/new/pretty-print-worker.js","searchURL":"resource://devtools/client/debugger/new/search-worker.js"},"features":{"blackbox":{"enabled":true},"chromeScopes":{"enabled":false},"eventListeners":{"enabled":false},"codeCoverage":{"enabled":false},"codeFolding":{"enabled":false},"searchNav":{"enabled":true},"collapseFrame":{"enabled":true},"outline":{"enabled":true}}});
+setConfig({"environment":"firefox-panel","logging":false,"clientLogging":false,"firefox":{"mcPath":"./firefox"},"workers":{"parserURL":"resource://devtools/client/debugger/new/parser-worker.js","prettyPrintURL":"resource://devtools/client/debugger/new/pretty-print-worker.js","searchURL":"resource://devtools/client/debugger/new/search-worker.js"},"features":{}});
 
 // Set various flags before requiring app code.
 if (getValue("logging.client")) {
@@ -18099,7 +18052,7 @@ function createPendingBreakpoint(bp) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.replaceOriginalVariableName = exports.isReactComponent = exports.hasSyntaxError = exports.clearSources = exports.setSource = exports.hasSource = exports.getEmptyLines = exports.getNextStep = exports.clearASTs = exports.clearScopes = exports.clearSymbols = exports.getOutOfScopeLocations = exports.getVariablesInScope = exports.getScopes = exports.getSymbols = exports.getClosestExpression = exports.stopParserWorker = exports.startParserWorker = undefined;
+exports.replaceOriginalVariableName = exports.isReactComponent = exports.hasSyntaxError = exports.clearSources = exports.setSource = exports.hasSource = exports.getEmptyLines = exports.getNextStep = exports.clearASTs = exports.clearScopes = exports.clearSymbols = exports.findOutOfScopeLocations = exports.getVariablesInScope = exports.getScopes = exports.getSymbols = exports.getClosestExpression = exports.stopParserWorker = exports.startParserWorker = undefined;
 
 var _devtoolsUtils = __webpack_require__(1363);
 
@@ -18115,7 +18068,7 @@ const getClosestExpression = exports.getClosestExpression = dispatcher.task("get
 const getSymbols = exports.getSymbols = dispatcher.task("getSymbols");
 const getScopes = exports.getScopes = dispatcher.task("getScopes");
 const getVariablesInScope = exports.getVariablesInScope = dispatcher.task("getVariablesInScope");
-const getOutOfScopeLocations = exports.getOutOfScopeLocations = dispatcher.task("getOutOfScopeLocations");
+const findOutOfScopeLocations = exports.findOutOfScopeLocations = dispatcher.task("findOutOfScopeLocations");
 const clearSymbols = exports.clearSymbols = dispatcher.task("clearSymbols");
 const clearScopes = exports.clearScopes = dispatcher.task("clearScopes");
 const clearASTs = exports.clearASTs = dispatcher.task("clearASTs");
@@ -18400,6 +18353,7 @@ exports.removeSourcesFromTabList = removeSourcesFromTabList;
 exports.getNewSelectedSourceId = getNewSelectedSourceId;
 exports.getSource = getSource;
 exports.getSourceByURL = getSourceByURL;
+exports.getGeneratedSource = getGeneratedSource;
 exports.getPendingSelectedLocation = getPendingSelectedLocation;
 exports.getPrettySource = getPrettySource;
 exports.getSourceInSources = getSourceInSources;
@@ -18415,6 +18369,8 @@ var _makeRecord = __webpack_require__(1361);
 var _makeRecord2 = _interopRequireDefault(_makeRecord);
 
 var _source = __webpack_require__(1356);
+
+var _devtoolsSourceMap = __webpack_require__(1360);
 
 var _prefs = __webpack_require__(226);
 
@@ -18436,26 +18392,23 @@ function update(state = initialState(), action) {
   let location = null;
 
   switch (action.type) {
-    case "ADD_SOURCE":
+    case "UPDATE_SOURCE":
       {
         const source = action.source;
         return updateSource(state, source);
       }
 
+    case "ADD_SOURCE":
+      {
+        return updateSource(state, action.source);
+      }
+
     case "ADD_SOURCES":
       {
-        action.sources.forEach(source => {
-          state = state.mergeIn(["sources", source.id], source);
-        });
-
-        return state;
+        return action.sources.reduce((newState, source) => updateSource(newState, source), state);
       }
 
     case "SELECT_SOURCE":
-      if (action.status != "start") {
-        return state;
-      }
-
       location = _extends({}, action.location, {
         url: action.source.url
       });
@@ -18507,9 +18460,6 @@ function update(state = initialState(), action) {
       }
       break;
 
-    case "TOGGLE_PRETTY_PRINT":
-      return setSourceTextProps(state, action);
-
     case "NAVIGATE":
       const source = getSelectedSource({ sources: state });
       const url = source && source.get("url");
@@ -18525,17 +18475,16 @@ function update(state = initialState(), action) {
 }
 
 function getTextPropsFromAction(action) {
-  const source = action.source;
-  const { value } = action;
+  const { value, sourceId } = action;
 
   if (action.status === "start") {
-    return { id: source.id, loadedState: "loading" };
+    return { id: sourceId, loadedState: "loading" };
   } else if (action.status === "error") {
-    return { id: source.id, error: action.error, loadedState: "loaded" };
+    return { id: sourceId, error: action.error, loadedState: "loaded" };
   }
   return {
     text: value.text,
-    id: source.id,
+    id: sourceId,
     contentType: value.contentType,
     loadedState: "loaded"
   };
@@ -18667,6 +18616,13 @@ function getSourceByURL(state, url) {
   return getSourceByUrlInSources(state.sources.sources, url);
 }
 
+function getGeneratedSource(state, source) {
+  if (!source || !(0, _devtoolsSourceMap.isOriginalId)(source.id)) {
+    return null;
+  }
+  return getSource(state, (0, _devtoolsSourceMap.originalToGeneratedId)(source.id));
+}
+
 function getPendingSelectedLocation(state) {
   return state.sources.pendingSelectedLocation;
 }
@@ -18774,7 +18730,7 @@ function isDirectory(url) {
 }
 
 function isNotJavaScript(source) {
-  const parsedUrl = (0, _url.parse)(source.url).pathname;
+  const parsedUrl = (0, _url.parse)(source.get("url")).pathname;
   if (!parsedUrl) {
     return false;
   }
@@ -18784,7 +18740,7 @@ function isNotJavaScript(source) {
 }
 
 function isInvalidUrl(url, source) {
-  return IGNORED_URLS.indexOf(url) != -1 || !source.get("url") || source.get("loadedState") === "loading" || !url.group || (0, _source.isPretty)(source.toJS()) || isNotJavaScript(source.toJS());
+  return IGNORED_URLS.indexOf(url) != -1 || !source.get("url") || !url.group || (0, _source.isPretty)(source) || isNotJavaScript(source);
 }
 
 function partIsFile(index, parts, url) {
@@ -18968,373 +18924,7 @@ module.exports = {
 };
 
 /***/ }),
-/* 1373 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.newSource = newSource;
-exports.newSources = newSources;
-exports.selectSourceURL = selectSourceURL;
-exports.selectSource = selectSource;
-exports.jumpToMappedLocation = jumpToMappedLocation;
-exports.addTab = addTab;
-exports.moveTab = moveTab;
-exports.closeTab = closeTab;
-exports.closeTabs = closeTabs;
-exports.togglePrettyPrint = togglePrettyPrint;
-exports.toggleBlackBox = toggleBlackBox;
-exports.loadAllSources = loadAllSources;
-
-var _promise = __webpack_require__(1653);
-
-var _assert = __webpack_require__(1384);
-
-var _assert2 = _interopRequireDefault(_assert);
-
-var _breakpoints = __webpack_require__(1396);
-
-var _ast = __webpack_require__(1399);
-
-var _projectTextSearch = __webpack_require__(1433);
-
-var _ui = __webpack_require__(1385);
-
-var _source2 = __webpack_require__(1356);
-
-var _createPrettySource = __webpack_require__(1523);
-
-var _loadSourceText = __webpack_require__(1435);
-
-var _prefs = __webpack_require__(226);
-
-var _editor = __webpack_require__(1358);
-
-var _sourceMaps = __webpack_require__(1397);
-
-var _selectors = __webpack_require__(1352);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-// If a request has been made to show this source, go ahead and
-// select it.
-async function checkSelectedSource(state, dispatch, source) {
-  const pendingLocation = (0, _selectors.getPendingSelectedLocation)(state);
-
-  if (pendingLocation && !!source.url && pendingLocation.url === source.url) {
-    await dispatch(selectSource(source.id, { location: pendingLocation }));
-  }
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-/**
- * Redux actions for the sources state
- * @module actions/sources
- */
-
-async function checkPendingBreakpoints(state, dispatch, sourceId) {
-  // source may have been modified by selectSource
-  const source = (0, _selectors.getSource)(state, sourceId).toJS();
-  const pendingBreakpoints = (0, _selectors.getPendingBreakpointsForSource)(state, source.url);
-  if (!pendingBreakpoints.size) {
-    return;
-  }
-
-  // load the source text if there is a pending breakpoint for it
-  await dispatch((0, _loadSourceText.loadSourceText)(source));
-  const pendingBreakpointsArray = pendingBreakpoints.valueSeq().toJS();
-  for (const pendingBreakpoint of pendingBreakpointsArray) {
-    await dispatch((0, _breakpoints.syncBreakpoint)(sourceId, pendingBreakpoint));
-  }
-}
-
-/**
- * Handler for the debugger client's unsolicited newSource notification.
- * @memberof actions/sources
- * @static
- */
-function newSource(source) {
-  return async ({ dispatch, getState }) => {
-    const _source = (0, _selectors.getSource)(getState(), source.id);
-    if (_source) {
-      return;
-    }
-
-    dispatch({ type: "ADD_SOURCE", source });
-
-    if (_prefs.prefs.clientSourceMapsEnabled) {
-      await dispatch(loadSourceMap(source));
-    }
-
-    await checkSelectedSource(getState(), dispatch, source);
-    await checkPendingBreakpoints(getState(), dispatch, source.id);
-  };
-}
-
-function newSources(sources) {
-  return async ({ dispatch, getState }) => {
-    const filteredSources = sources.filter(source => !(0, _selectors.getSource)(getState(), source.id));
-
-    for (const source of filteredSources) {
-      await dispatch(newSource(source));
-    }
-  };
-}
-
-/**
- * @memberof actions/sources
- * @static
- */
-function loadSourceMap(generatedSource) {
-  return async function ({ dispatch, getState, sourceMaps }) {
-    const urls = await sourceMaps.getOriginalURLs(generatedSource);
-    if (!urls) {
-      // If this source doesn't have a sourcemap, do nothing.
-      return;
-    }
-
-    const originalSources = urls.map(originalUrl => ({
-      url: originalUrl,
-      id: sourceMaps.generatedToOriginalId(generatedSource.id, originalUrl),
-      isPrettyPrinted: false,
-      isWasm: false,
-      isBlackBoxed: false,
-      loadedState: "unloaded"
-    }));
-
-    dispatch({ type: "ADD_SOURCES", sources: originalSources });
-
-    await dispatch((0, _loadSourceText.loadSourceText)(generatedSource));
-    originalSources.forEach(async source => {
-      await checkSelectedSource(getState(), dispatch, source);
-      checkPendingBreakpoints(getState(), dispatch, source.id);
-    });
-  };
-}
-
-/**
- * Deterministically select a source that has a given URL. This will
- * work regardless of the connection status or if the source exists
- * yet. This exists mostly for external things to interact with the
- * debugger.
- *
- * @memberof actions/sources
- * @static
- */
-function selectSourceURL(url, options = {}) {
-  return async ({ dispatch, getState }) => {
-    const source = (0, _selectors.getSourceByURL)(getState(), url);
-    if (source) {
-      await dispatch(selectSource(source.get("id"), options));
-    } else {
-      dispatch({
-        type: "SELECT_SOURCE_URL",
-        url: url,
-        tabIndex: options.tabIndex,
-        location: options.location
-      });
-    }
-  };
-}
-
-/**
- * @memberof actions/sources
- * @static
- */
-function selectSource(id, options = {}) {
-  return ({ dispatch, getState, client }) => {
-    if (!client) {
-      // No connection, do nothing. This happens when the debugger is
-      // shut down too fast and it tries to display a default source.
-      return;
-    }
-
-    const source = (0, _selectors.getSource)(getState(), id);
-    if (!source) {
-      // If there is no source we deselect the current selected source
-      return dispatch({ type: "CLEAR_SELECTED_SOURCE" });
-    }
-
-    const activeSearch = (0, _selectors.getActiveSearch)(getState());
-    if (activeSearch !== "file") {
-      dispatch((0, _ui.closeActiveSearch)());
-    }
-
-    dispatch(addTab(source.toJS(), 0));
-
-    return dispatch({
-      type: "SELECT_SOURCE",
-      source: source.toJS(),
-      tabIndex: options.tabIndex,
-      location: options.location || {},
-      [_promise.PROMISE]: (async () => {
-        await dispatch((0, _loadSourceText.loadSourceText)(source.toJS()));
-        await dispatch((0, _ast.setOutOfScopeLocations)());
-      })()
-    });
-  };
-}
-
-/**
- * @memberof actions/sources
- * @static
- */
-function jumpToMappedLocation(sourceLocation) {
-  return async function ({ dispatch, getState, client, sourceMaps }) {
-    if (!client) {
-      return;
-    }
-
-    const source = (0, _selectors.getSource)(getState(), sourceLocation.sourceId);
-    let pairedLocation;
-    if (sourceMaps.isOriginalId(sourceLocation.sourceId)) {
-      pairedLocation = await (0, _sourceMaps.getGeneratedLocation)(getState(), source.toJS(), sourceLocation, sourceMaps);
-    } else {
-      pairedLocation = await sourceMaps.getOriginalLocation(sourceLocation, source.toJS());
-    }
-
-    return dispatch(selectSource(pairedLocation.sourceId, { location: pairedLocation }));
-  };
-}
-
-function addTab(source, tabIndex) {
-  return {
-    type: "ADD_TAB",
-    source,
-    tabIndex
-  };
-}
-
-function moveTab(url, tabIndex) {
-  return {
-    type: "MOVE_TAB",
-    url,
-    tabIndex
-  };
-}
-
-/**
- * @memberof actions/sources
- * @static
- */
-function closeTab(url) {
-  return ({ dispatch, getState, client }) => {
-    (0, _editor.removeDocument)(url);
-    const tabs = (0, _selectors.removeSourceFromTabList)((0, _selectors.getSourceTabs)(getState()), url);
-    const sourceId = (0, _selectors.getNewSelectedSourceId)(getState(), tabs);
-
-    dispatch({ type: "CLOSE_TAB", url, tabs });
-    dispatch(selectSource(sourceId));
-  };
-}
-
-/**
- * @memberof actions/sources
- * @static
- */
-function closeTabs(urls) {
-  return ({ dispatch, getState, client }) => {
-    urls.forEach(url => {
-      const source = (0, _selectors.getSourceByURL)(getState(), url);
-      if (source) {
-        (0, _editor.removeDocument)(source.get("id"));
-      }
-    });
-
-    const tabs = (0, _selectors.removeSourcesFromTabList)((0, _selectors.getSourceTabs)(getState()), urls);
-    const sourceId = (0, _selectors.getNewSelectedSourceId)(getState(), tabs);
-
-    dispatch({ type: "CLOSE_TABS", urls, tabs });
-    dispatch(selectSource(sourceId));
-  };
-}
-
-/**
- * Toggle the pretty printing of a source's text. All subsequent calls to
- * |getText| will return the pretty-toggled text. Nothing will happen for
- * non-javascript files.
- *
- * @memberof actions/sources
- * @static
- * @param string id The source form from the RDP.
- * @returns Promise
- *          A promise that resolves to [aSource, prettyText] or rejects to
- *          [aSource, error].
- */
-function togglePrettyPrint(sourceId) {
-  return async ({ dispatch, getState, client, sourceMaps }) => {
-    const source = (0, _selectors.getSource)(getState(), sourceId).toJS();
-
-    if (!source || !(0, _source2.isLoaded)(source)) {
-      return {};
-    }
-
-    (0, _assert2.default)(sourceMaps.isGeneratedId(sourceId), "Pretty-printing only allowed on generated sources");
-
-    const selectedLocation = (0, _selectors.getSelectedLocation)(getState());
-    const url = (0, _source2.getPrettySourceURL)(source.url);
-    const prettySource = (0, _selectors.getSourceByURL)(getState(), url);
-
-    const options = {};
-    if (selectedLocation) {
-      options.location = await sourceMaps.getOriginalLocation(selectedLocation);
-    }
-
-    if (prettySource) {
-      return dispatch(selectSource(prettySource.get("id"), options));
-    }
-
-    const newPrettySource = await dispatch((0, _createPrettySource.createPrettySource)(sourceId));
-    await dispatch((0, _breakpoints.remapBreakpoints)(sourceId));
-    await dispatch((0, _ast.setEmptyLines)(newPrettySource.id));
-
-    return dispatch(selectSource(newPrettySource.id, options));
-  };
-}
-
-function toggleBlackBox(source) {
-  return async ({ dispatch, getState, client, sourceMaps }) => {
-    const { isBlackBoxed, id } = source;
-
-    return dispatch({
-      type: "BLACKBOX",
-      source,
-      [_promise.PROMISE]: client.blackBox(id, isBlackBoxed)
-    });
-  };
-}
-
-/**
-  Load the text for all the available sources
- * @memberof actions/sources
- * @static
- */
-function loadAllSources() {
-  return async ({ dispatch, getState }) => {
-    const sources = (0, _selectors.getSources)(getState());
-    const query = (0, _selectors.getTextSearchQuery)(getState());
-    for (const [, src] of sources) {
-      const source = src.toJS();
-      if ((0, _source2.isThirdParty)(source)) {
-        continue;
-      }
-
-      await dispatch((0, _loadSourceText.loadSourceText)(source));
-      // If there is a current search query we search
-      // each of the source texts as they get loaded
-      if (query) {
-        await dispatch((0, _projectTextSearch.searchSource)(source.id, query));
-      }
-    }
-  };
-}
-
-/***/ }),
+/* 1373 */,
 /* 1374 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -19349,13 +18939,13 @@ var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _Svg = __webpack_require__(1359);
-
-var _Svg2 = _interopRequireDefault(_Svg);
-
 __webpack_require__(1312);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 function CloseButton({ handleClick, buttonClass, tooltip }) {
   return _react2.default.createElement(
@@ -19365,11 +18955,9 @@ function CloseButton({ handleClick, buttonClass, tooltip }) {
       onClick: handleClick,
       title: tooltip
     },
-    _react2.default.createElement(_Svg2.default, { name: "close" })
+    _react2.default.createElement("img", { className: "close" })
   );
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+}
 
 exports.default = CloseButton;
 
@@ -19543,6 +19131,11 @@ function update(state = initialState(), action) {
       {
         return remapBreakpoints(state, action);
       }
+
+    case "NAVIGATE":
+      {
+        return initialState();
+      }
   }
 
   return state;
@@ -19571,12 +19164,16 @@ function addBreakpoint(state, action) {
 
 function syncBreakpoint(state, data) {
   const { breakpoint, previousLocation } = data;
-  const locationId = (0, _breakpoint.makeLocationId)(breakpoint.location);
 
   if (previousLocation) {
-    return state.deleteIn(["breakpoints", (0, _breakpoint.makeLocationId)(previousLocation)]).setIn(["breakpoints", locationId], breakpoint);
+    state = state.deleteIn(["breakpoints", (0, _breakpoint.makeLocationId)(previousLocation)]);
   }
 
+  if (!breakpoint) {
+    return state;
+  }
+
+  const locationId = (0, _breakpoint.makeLocationId)(breakpoint.location);
   return state.setIn(["breakpoints", locationId], breakpoint);
 }
 
@@ -19675,8 +19272,6 @@ var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _devtoolsConfig = __webpack_require__(1355);
-
 var _Svg = __webpack_require__(1359);
 
 var _Svg2 = _interopRequireDefault(_Svg);
@@ -19693,10 +19288,6 @@ __webpack_require__(1313);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
 const arrowBtn = (onClick, type, className, tooltip) => {
   const props = {
     onClick,
@@ -19711,7 +19302,9 @@ const arrowBtn = (onClick, type, className, tooltip) => {
     props,
     _react2.default.createElement(_Svg2.default, { name: type })
   );
-};
+}; /* This Source Code Form is subject to the terms of the Mozilla Public
+    * License, v. 2.0. If a copy of the MPL was not distributed with this
+    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 class SearchInput extends _react.Component {
 
@@ -19749,10 +19342,6 @@ class SearchInput extends _react.Component {
   }
 
   renderNav() {
-    if (!(0, _devtoolsConfig.isEnabled)("searchNav")) {
-      return;
-    }
-
     const { count, handleNext, handlePrev } = this.props;
     if (!handleNext && !handlePrev || !count || count == 1) {
       return;
@@ -19840,8 +19429,6 @@ exports.collapseFrames = collapseFrames;
 
 var _lodash = __webpack_require__(2);
 
-var _devtoolsConfig = __webpack_require__(1355);
-
 var _utils = __webpack_require__(1366);
 
 var _source = __webpack_require__(1356);
@@ -19880,6 +19467,9 @@ const libraryMap = [{
 }, {
   label: "ExtJS",
   pattern: /\/ext-all[\.\-]/
+}, {
+  label: "MobX",
+  pattern: /mobx/i
 }, {
   label: "Underscore",
   pattern: /underscore/i
@@ -19958,10 +19548,6 @@ function mapDisplayNames(frame, library) {
 }
 
 function annotateFrame(frame) {
-  if (!(0, _devtoolsConfig.isEnabled)("collapseFrame")) {
-    return frame;
-  }
-
   const library = getLibraryFromUrl(frame);
   if (library) {
     return _extends({}, frame, { library });
@@ -20301,6 +19887,7 @@ exports.getEmptyLines = getEmptyLines;
 exports.getOutOfScopeLocations = getOutOfScopeLocations;
 exports.getPreview = getPreview;
 exports.getSourceMetaData = getSourceMetaData;
+exports.getInScopeLines = getInScopeLines;
 
 var _immutable = __webpack_require__(146);
 
@@ -20328,6 +19915,7 @@ function initialState() {
     symbols: I.Map(),
     emptyLines: I.Map(),
     outOfScopeLocations: null,
+    inScopeLines: null,
     preview: null,
     sourceMetaData: I.Map()
   })();
@@ -20350,6 +19938,11 @@ function update(state = initialState(), action) {
     case "OUT_OF_SCOPE_LOCATIONS":
       {
         return state.set("outOfScopeLocations", action.locations);
+      }
+
+    case "IN_SCOPE_LINES":
+      {
+        return state.set("inScopeLines", action.lines);
       }
 
     case "CLEAR_SELECTION":
@@ -20375,6 +19968,7 @@ function update(state = initialState(), action) {
           cursorPos,
           extra
         } = action.value;
+
         return state.set("preview", {
           updating: false,
           expression,
@@ -20386,7 +19980,7 @@ function update(state = initialState(), action) {
         });
       }
 
-    case "RESUMED":
+    case "RESUME":
       {
         return state.set("outOfScopeLocations", null);
       }
@@ -20410,14 +20004,16 @@ function update(state = initialState(), action) {
 
 // NOTE: we'd like to have the app state fully typed
 // https://github.com/devtools-html/debugger.html/blob/master/src/reducers/sources.js#L179-L185
+
+
+const emptySymbols = { variables: [], functions: [] };
 function getSymbols(state, source) {
-  const emptySet = { variables: [], functions: [] };
   if (!source) {
-    return emptySet;
+    return emptySymbols;
   }
 
   const symbols = state.ast.getIn(["symbols", source.id]);
-  return symbols || emptySet;
+  return symbols || emptySymbols;
 }
 
 function hasSymbols(state, source) {
@@ -20449,8 +20045,13 @@ function getPreview(state) {
   return state.ast.get("preview");
 }
 
+const emptySourceMetaData = {};
 function getSourceMetaData(state, sourceId) {
-  return state.ast.getIn(["sourceMetaData", sourceId]) || {};
+  return state.ast.getIn(["sourceMetaData", sourceId]) || emptySourceMetaData;
+}
+
+function getInScopeLines(state, sourceId) {
+  return state.ast.get("inScopeLines");
 }
 
 exports.default = update;
@@ -20635,22 +20236,7 @@ function setOrientation(orientation) {
 }
 
 /***/ }),
-/* 1386 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-const SourceEditor = __webpack_require__(197);
-const SourceEditorUtils = __webpack_require__(1524);
-
-module.exports = { SourceEditor, SourceEditorUtils };
-
-/***/ }),
+/* 1386 */,
 /* 1387 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -21035,7 +20621,7 @@ exports.join = join;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.getSelectedFrame = exports.getLoadedObjects = exports.getPause = exports.State = undefined;
+exports.getSelectedFrame = exports.getLoadedObjects = exports.State = undefined;
 
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
                                                                                                                                                                                                                                                                    * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -21063,6 +20649,7 @@ exports.getFrameScope = getFrameScope;
 exports.getSelectedScope = getSelectedScope;
 exports.getScopes = getScopes;
 exports.getSelectedFrameId = getSelectedFrameId;
+exports.getTopFrame = getTopFrame;
 exports.getDebuggeeUrl = getDebuggeeUrl;
 exports.getChromeScopes = getChromeScopes;
 
@@ -21073,7 +20660,6 @@ var _prefs = __webpack_require__(226);
 var _lodash = __webpack_require__(2);
 
 const State = exports.State = () => ({
-  pause: undefined,
   why: null,
   isWaitingOnBreak: false,
   frames: undefined,
@@ -21098,10 +20684,7 @@ function update(state = State(), action) {
   switch (action.type) {
     case "PAUSED":
       {
-        const { selectedFrameId, frames, loadedObjects, pauseInfo } = action;
-
-        const { why } = pauseInfo;
-        pauseInfo.isInterrupted = pauseInfo.why.type === "interrupted";
+        const { selectedFrameId, frames, loadedObjects, why } = action;
 
         // turn this into an object keyed by object id
         const objectMap = {};
@@ -21111,13 +20694,17 @@ function update(state = State(), action) {
 
         return _extends({}, state, {
           isWaitingOnBreak: false,
-          pause: pauseInfo,
           selectedFrameId,
           frames,
           frameScopes: {},
           loadedObjects: objectMap,
           why
         });
+      }
+
+    case "MAP_FRAMES":
+      {
+        return _extends({}, state, { frames: action.frames });
       }
 
     case "ADD_SCOPES":
@@ -21127,19 +20714,6 @@ function update(state = State(), action) {
 
       const frameScopes = _extends({}, state.frameScopes, { [selectedFrameId]: scopes });
       return _extends({}, state, { frameScopes });
-
-    case "TOGGLE_PRETTY_PRINT":
-      if (action.status == "done") {
-        const frames = action.value.frames;
-        const pause = state.pause;
-        if (pause) {
-          pause.frame = frames[0];
-        }
-
-        return _extends({}, state, { pause, frames });
-      }
-
-      break;
 
     case "BREAK_ON_NEXT":
       return _extends({}, state, { isWaitingOnBreak: true });
@@ -21222,8 +20796,6 @@ function update(state = State(), action) {
 
 const getPauseState = state => state.pause;
 
-const getPause = exports.getPause = (0, _reselect.createSelector)(getPauseState, pauseWrapper => pauseWrapper.pause);
-
 const getLoadedObjects = exports.getLoadedObjects = (0, _reselect.createSelector)(getPauseState, pauseWrapper => pauseWrapper.loadedObjects);
 
 function getPauseReason(state) {
@@ -21235,7 +20807,7 @@ function isStepping(state) {
 }
 
 function isPaused(state) {
-  return !!getPause(state);
+  return !!getFrames(state);
 }
 
 function isEvaluatingExpression(state) {
@@ -21291,6 +20863,11 @@ function getScopes(state) {
 
 function getSelectedFrameId(state) {
   return state.pause.selectedFrameId;
+}
+
+function getTopFrame(state) {
+  const frames = getFrames(state);
+  return frames && frames[0];
 }
 
 const getSelectedFrame = exports.getSelectedFrame = (0, _reselect.createSelector)(getSelectedFrameId, getFrames, (selectedFrameId, frames) => {
@@ -21651,12 +21228,16 @@ function setBreakpointCondition(location, { condition } = {}) {
 
 function toggleBreakpoint(line, column) {
   return ({ dispatch, getState, client, sourceMaps }) => {
+    if (!line) {
+      return;
+    }
+
     const state = getState();
     const selectedSource = (0, _selectors.getSelectedSource)(state);
     const bp = (0, _selectors.getBreakpointAtLocation)(state, { line, column });
     const isEmptyLine = (0, _ast.isEmptyLineInSource)(state, line, selectedSource.toJS());
 
-    if (isEmptyLine || bp && bp.loading) {
+    if (!bp && isEmptyLine || bp && bp.loading) {
       return;
     }
 
@@ -21681,6 +21262,10 @@ function toggleBreakpoint(line, column) {
 
 function addOrToggleDisabledBreakpoint(line, column) {
   return ({ dispatch, getState, client, sourceMaps }) => {
+    if (!line) {
+      return;
+    }
+
     const selectedSource = (0, _selectors.getSelectedSource)(getState());
     const bp = (0, _selectors.getBreakpointAtLocation)(getState(), { line, column });
 
@@ -21760,6 +21345,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.addExpression = addExpression;
+exports.clearExpressionError = clearExpressionError;
 exports.updateExpression = updateExpression;
 exports.deleteExpression = deleteExpression;
 exports.evaluateExpressions = evaluateExpressions;
@@ -21798,28 +21384,34 @@ function addExpression(input) {
       return dispatch(evaluateExpression(expression));
     }
 
-    dispatch({
-      type: "ADD_EXPRESSION",
-      input
-    });
+    const expressionError = await parser.hasSyntaxError(input);
+    dispatch({ type: "ADD_EXPRESSION", input, expressionError });
 
     const newExpression = (0, _selectors.getExpression)(getState(), input);
-    dispatch(evaluateExpression(newExpression));
+    if (newExpression) {
+      return dispatch(evaluateExpression(newExpression));
+    }
   };
 } /* This Source Code Form is subject to the terms of the Mozilla Public
    * License, v. 2.0. If a copy of the MPL was not distributed with this
    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+function clearExpressionError() {
+  return { type: "CLEAR_EXPRESSION_ERROR" };
+}
+
 function updateExpression(input, expression) {
-  return ({ dispatch, getState }) => {
+  return async ({ dispatch, getState }) => {
     if (!input || input == expression.input) {
       return;
     }
 
+    const expressionError = await parser.hasSyntaxError(input);
     dispatch({
       type: "UPDATE_EXPRESSION",
       expression,
-      input: input
+      input: expressionError ? expression.input : input,
+      expressionError
     });
 
     dispatch(evaluateExpressions());
@@ -21865,15 +21457,6 @@ function evaluateExpression(expression) {
     }
 
     let input = expression.input;
-    const error = await parser.hasSyntaxError(input);
-    if (error) {
-      return dispatch({
-        type: "EVALUATE_EXPRESSION",
-        input: expression.input,
-        value: { input: expression.input, result: error }
-      });
-    }
-
     const frame = (0, _selectors.getSelectedFrame)(getState());
 
     if (frame) {
@@ -21922,33 +21505,16 @@ async function getMappedExpression({ sourceMaps }, generatedLocation, expression
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
 exports.setSourceMetaData = setSourceMetaData;
 exports.setSymbols = setSymbols;
 exports.setEmptyLines = setEmptyLines;
 exports.setOutOfScopeLocations = setOutOfScopeLocations;
-exports.clearPreview = clearPreview;
-exports.setPreview = setPreview;
 
 var _selectors = __webpack_require__(1352);
 
-var _expressions = __webpack_require__(1398);
-
-var _promise = __webpack_require__(1653);
+var _setInScopeLines = __webpack_require__(1781);
 
 var _parser = __webpack_require__(1365);
-
-var _ast = __webpack_require__(1638);
-
-var _devtoolsSourceMap = __webpack_require__(1360);
-
-const extraProps = {
-  react: { displayName: "this._reactInternalInstance.getName()" }
-};
 
 function setSourceMetaData(sourceId) {
   return async ({ dispatch, getState }) => {
@@ -21971,7 +21537,9 @@ function setSourceMetaData(sourceId) {
       }
     });
   };
-}
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 function setSymbols(sourceId) {
   return async ({ dispatch, getState }) => {
@@ -21981,18 +21549,13 @@ function setSymbols(sourceId) {
     }
 
     const source = sourceRecord.toJS();
+
     if (!source.text || source.isWasm || (0, _selectors.hasSymbols)(getState(), source)) {
       return;
     }
 
     const symbols = await (0, _parser.getSymbols)(source);
-
-    dispatch({
-      type: "SET_SYMBOLS",
-      source,
-      symbols
-    });
-
+    dispatch({ type: "SET_SYMBOLS", source, symbols });
     dispatch(setEmptyLines(source.id));
     dispatch(setSourceMetaData(source.id));
   };
@@ -22023,95 +21586,21 @@ function setEmptyLines(sourceId) {
 function setOutOfScopeLocations() {
   return async ({ dispatch, getState }) => {
     const location = (0, _selectors.getSelectedLocation)(getState());
+
     if (!location) {
       return;
     }
 
     const source = (0, _selectors.getSource)(getState(), location.sourceId);
 
-    if (!location.line || !source) {
-      return dispatch({
-        type: "OUT_OF_SCOPE_LOCATIONS",
-        locations: null
-      });
-    }
+    const locations = !location.line || !source ? null : await (0, _parser.findOutOfScopeLocations)(source.toJS(), location);
 
-    const locations = await (0, _parser.getOutOfScopeLocations)(source.toJS(), location);
-
-    return dispatch({
+    dispatch({
       type: "OUT_OF_SCOPE_LOCATIONS",
       locations
     });
-  };
-}
 
-function clearPreview() {
-  return ({ dispatch, getState, client }) => {
-    const currentSelection = (0, _selectors.getPreview)(getState());
-    if (!currentSelection) {
-      return;
-    }
-
-    return dispatch({
-      type: "CLEAR_SELECTION"
-    });
-  };
-}
-
-function setPreview(token, tokenPos, cursorPos) {
-  return async ({ dispatch, getState, client, sourceMaps }) => {
-    const currentSelection = (0, _selectors.getPreview)(getState());
-    if (currentSelection && currentSelection.updating) {
-      return;
-    }
-
-    await dispatch({
-      type: "SET_PREVIEW",
-      [_promise.PROMISE]: async function () {
-        const source = (0, _selectors.getSelectedSource)(getState());
-        const _symbols = await (0, _parser.getSymbols)(source.toJS());
-
-        const found = (0, _ast.findBestMatchExpression)(_symbols, tokenPos, token);
-        if (!found) {
-          return;
-        }
-
-        let { expression, location } = found;
-
-        if (!expression) {
-          return;
-        }
-
-        const sourceId = source.get("id");
-        if (location && !(0, _devtoolsSourceMap.isGeneratedId)(sourceId)) {
-          const generatedLocation = await sourceMaps.getGeneratedLocation(_extends({}, location.start, { sourceId }), source.toJS());
-
-          expression = await (0, _expressions.getMappedExpression)({ sourceMaps }, generatedLocation, expression);
-        }
-
-        const selectedFrame = (0, _selectors.getSelectedFrame)(getState());
-        const { result } = await client.evaluate(expression, {
-          frameId: selectedFrame.id
-        });
-
-        const data = await client.evaluate(extraProps.react.displayName, {
-          frameId: selectedFrame.id
-        });
-
-        if (result === undefined) {
-          return;
-        }
-
-        return {
-          expression,
-          result,
-          location,
-          tokenPos,
-          cursorPos,
-          extra: data && data.result
-        };
-      }()
-    });
+    dispatch((0, _setInScopeLines.setInScopeLines)());
   };
 }
 
@@ -22125,53 +21614,11 @@ function setPreview(token, tokenPos, cursorPos) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-exports.updateFrameLocations = updateFrameLocations;
-exports.updateScopeBindings = updateScopeBindings;
 exports.getPauseReason = getPauseReason;
-exports.getPausedPosition = getPausedPosition;
+exports.isException = isException;
+exports.isInterrupted = isInterrupted;
 exports.inDebuggerEval = inDebuggerEval;
 
-var _lodash = __webpack_require__(2);
-
-var _parser = __webpack_require__(1365);
-
-function updateFrameLocations(frames, sourceMaps) {
-  if (!frames || frames.length == 0) {
-    return Promise.resolve(frames);
-  }
-
-  return Promise.all(frames.map(frame => sourceMaps.getOriginalLocation(frame.location).then(loc => _extends({}, frame, {
-    location: loc,
-    generatedLocation: frame.location
-  }))));
-}
-
-function extendScope(scope, generatedScopes, index) {
-  if (!scope) {
-    return undefined;
-  }
-  if (index >= generatedScopes.length) {
-    return scope;
-  }
-  return _extends({}, scope, {
-    parent: extendScope(scope.parent, generatedScopes, index + 1),
-    sourceBindings: generatedScopes[index].bindings
-  });
-}
-
-async function updateScopeBindings(scope, location, sourceMaps) {
-  const astScopes = await (0, _parser.getScopes)(location);
-  const generatedScopes = await sourceMaps.getLocationScopes(location, astScopes);
-  if (!generatedScopes) {
-    return scope;
-  }
-  return extendScope(scope, generatedScopes, 0);
-}
 
 // Map protocol pause "why" reason to a valid L10N key
 // These are the known unhandled reasons:
@@ -22193,26 +21640,28 @@ const reasons = {
   assert: "whyPaused.assert",
   debugCommand: "whyPaused.debugCommand",
   other: "whyPaused.other"
-};
+}; /* This Source Code Form is subject to the terms of the Mozilla Public
+    * License, v. 2.0. If a copy of the MPL was not distributed with this
+    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-function getPauseReason(pauseInfo) {
-  if (!pauseInfo) {
+function getPauseReason(why) {
+  if (!why) {
     return null;
   }
 
-  const reasonType = (0, _lodash.get)(pauseInfo, "why.type", null);
+  const reasonType = why.type;
   if (!reasons[reasonType]) {
     console.log("Please file an issue: reasonType=", reasonType);
   }
   return reasons[reasonType];
 }
 
-async function getPausedPosition(pauseInfo, sourceMaps) {
-  let { frames } = pauseInfo;
-  frames = await updateFrameLocations(frames, sourceMaps);
-  const frame = frames[0];
-  const { location } = frame;
-  return location;
+function isException(why) {
+  return why && why.type && why.type === "exception";
+}
+
+function isInterrupted(why) {
+  return why && why.type && why.type === "interrupted";
 }
 
 function inDebuggerEval(why) {
@@ -22712,6 +22161,7 @@ function getFilenameFromPath(pathname) {
   return filename;
 }
 
+const NoDomain = "(no domain)";
 function getURL(sourceUrl, debuggeeUrl = "") {
   const url = sourceUrl;
   const def = { path: "", group: "", filename: "" };
@@ -22736,12 +22186,27 @@ function getURL(sourceUrl, debuggeeUrl = "") {
         filename: filename
       });
 
+    case "ng:":
+      // An Angular source is a special case
+      return (0, _lodash.merge)(def, {
+        path: path,
+        group: "Angular",
+        filename: filename
+      });
+
     case "about:":
       // An about page is a special case
       return (0, _lodash.merge)(def, {
         path: "/",
         group: url,
         filename: filename
+      });
+
+    case "data:":
+      return (0, _lodash.merge)(def, {
+        path: "/",
+        group: NoDomain,
+        filename: url
       });
 
     case null:
@@ -22851,13 +22316,13 @@ var _Svg = __webpack_require__(1359);
 
 var _Svg2 = _interopRequireDefault(_Svg);
 
+var _CommandBarButton = __webpack_require__(1764);
+
+var _CommandBarButton2 = _interopRequireDefault(_CommandBarButton);
+
 __webpack_require__(1321);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 class PaneToggleButton extends _react.Component {
   shouldComponentUpdate(nextProps) {
@@ -22871,9 +22336,9 @@ class PaneToggleButton extends _react.Component {
     const title = !collapsed ? L10N.getStr("expandPanes") : L10N.getStr("collapsePanes");
 
     return _react2.default.createElement(
-      "button",
+      _CommandBarButton2.default,
       {
-        className: (0, _classnames2.default)(`toggle-button-${position}`, {
+        className: (0, _classnames2.default)("toggle-button", position, {
           collapsed,
           vertical: horizontal != null ? !horizontal : false
         }),
@@ -22883,7 +22348,9 @@ class PaneToggleButton extends _react.Component {
       _react2.default.createElement(_Svg2.default, { name: "togglePanes" })
     );
   }
-}
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 exports.default = PaneToggleButton;
 
@@ -23250,7 +22717,7 @@ module.exports = Grip;
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const React = __webpack_require__(0);
-const InlineSVG = __webpack_require__(346);
+const InlineSVG = __webpack_require__(1789);
 
 const svg = {
   "arrow": __webpack_require__(1152),
@@ -23318,7 +22785,7 @@ module.exports = function defer() {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { Menu, MenuItem } = __webpack_require__(1376);
+const { Menu, MenuItem } = __webpack_require__(1767);
 
 function inToolbox() {
   return window.parent.document.documentURI == "about:devtools-toolbox";
@@ -23566,6 +23033,10 @@ function findClosestScope(functions, location) {
 }
 
 async function getASTLocation(source, location) {
+  if (source.isWasm) {
+    return { name: undefined, offset: location };
+  }
+
   const symbols = await (0, _parser.getSymbols)(source);
   const functions = [...symbols.functions];
 
@@ -23599,7 +23070,7 @@ async function findScopeByName(source, name) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.getExpressions = exports.State = undefined;
+exports.getExpressionError = exports.getExpressions = exports.State = undefined;
 exports.getExpression = getExpression;
 
 var _makeRecord = __webpack_require__(1361);
@@ -23617,7 +23088,8 @@ var _prefs = __webpack_require__(226);
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 const State = exports.State = (0, _makeRecord2.default)({
-  expressions: (0, _immutable.List)(restoreExpressions())
+  expressions: (0, _immutable.List)(restoreExpressions()),
+  expressionError: false
 }); /* This Source Code Form is subject to the terms of the Mozilla Public
      * License, v. 2.0. If a copy of the MPL was not distributed with this
      * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
@@ -23630,6 +23102,9 @@ const State = exports.State = (0, _makeRecord2.default)({
 function update(state = State(), action) {
   switch (action.type) {
     case "ADD_EXPRESSION":
+      if (action.expressionError) {
+        return state.set("expressionError", !!action.expressionError);
+      }
       return appendToList(state, ["expressions"], {
         input: action.input,
         value: null,
@@ -23641,7 +23116,7 @@ function update(state = State(), action) {
         input: action.input,
         value: null,
         updating: true
-      });
+      }).set("expressionError", !!action.expressionError);
     case "EVALUATE_EXPRESSION":
       return updateItemInList(state, ["expressions"], action.input, {
         input: action.input,
@@ -23650,6 +23125,8 @@ function update(state = State(), action) {
       });
     case "DELETE_EXPRESSION":
       return deleteExpression(state, action.input);
+    case "CLEAR_EXPRESSION_ERROR":
+      return state.set("expressionError", false);
   }
 
   return state;
@@ -23702,6 +23179,8 @@ function getExpression(state, input) {
   return getExpressions(state).find(exp => exp.input == input);
 }
 
+const getExpressionError = exports.getExpressionError = (0, _reselect.createSelector)(getExpressionsWrapper, expressions => expressions.get("expressionError"));
+
 exports.default = update;
 
 /***/ }),
@@ -23716,6 +23195,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.getWorkers = exports.State = undefined;
 exports.default = debuggee;
+exports.getWorker = getWorker;
 
 var _reselect = __webpack_require__(993);
 
@@ -23741,7 +23221,7 @@ const State = exports.State = (0, _makeRecord2.default)({
 function debuggee(state = State(), action) {
   switch (action.type) {
     case "SET_WORKERS":
-      return state.set("workers", (0, _immutable.List)(action.workers.workers));
+      return state.set("workers", (0, _immutable.List)(action.workers));
     default:
       return state;
   }
@@ -23750,6 +23230,10 @@ function debuggee(state = State(), action) {
 const getDebuggeeWrapper = state => state.debuggee;
 
 const getWorkers = exports.getWorkers = (0, _reselect.createSelector)(getDebuggeeWrapper, debuggeeState => debuggeeState.get("workers"));
+
+function getWorker(state, url) {
+  return getWorkers(state).find(value => url);
+}
 
 /***/ }),
 /* 1419 */
@@ -23842,7 +23326,6 @@ function addBreakpoint(state, action) {
   if (action.status !== "done") {
     return state;
   }
-
   // when the action completes, we can commit the breakpoint
   const { value: { breakpoint } } = action;
   const locationId = (0, _breakpoint.makePendingLocationId)(breakpoint.location);
@@ -23853,12 +23336,17 @@ function addBreakpoint(state, action) {
 
 function syncBreakpoint(state, action) {
   const { breakpoint, previousLocation } = action;
-  const locationId = (0, _breakpoint.makePendingLocationId)(breakpoint.location);
-  const pendingBreakpoint = (0, _breakpoint.createPendingBreakpoint)(breakpoint);
 
   if (previousLocation) {
-    return state.deleteIn(["pendingBreakpoints", (0, _breakpoint.makePendingLocationId)(previousLocation)]).setIn(["pendingBreakpoints", locationId], pendingBreakpoint);
+    state = state.deleteIn(["pendingBreakpoints", (0, _breakpoint.makePendingLocationId)(previousLocation)]);
   }
+
+  if (!breakpoint) {
+    return state;
+  }
+
+  const locationId = (0, _breakpoint.makePendingLocationId)(breakpoint.location);
+  const pendingBreakpoint = (0, _breakpoint.createPendingBreakpoint)(breakpoint);
 
   return state.setIn(["pendingBreakpoints", locationId], pendingBreakpoint);
 }
@@ -24073,6 +23561,14 @@ function update(state = State(), action) {
 
     case "SET_PRIMARY_PANE_TAB":
       return state.set("selectedPrimaryPaneTab", action.tabName);
+
+    case "CLOSE_PROJECT_SEARCH":
+      {
+        if (state.get("activeSearch") === "project") {
+          return state.set("activeSearch", null);
+        }
+        return state;
+      }
 
     default:
       {
@@ -24307,8 +23803,10 @@ exports.default = update;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.statusType = undefined;
 exports.InitialState = InitialState;
 exports.getTextSearchResults = getTextSearchResults;
+exports.getTextSearchStatus = getTextSearchStatus;
 exports.getTextSearchQuery = getTextSearchQuery;
 
 var _immutable = __webpack_require__(146);
@@ -24327,19 +23825,33 @@ function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj;
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+// @format
+
 /**
  * Project text search reducer
  * @module reducers/project-text-search
  */
 
+const statusType = exports.statusType = {
+  initial: "INITIAL",
+  fetching: "FETCHING",
+  done: "DONE",
+  error: "ERROR"
+};
+
 function InitialState() {
-  return (0, _makeRecord2.default)({ query: "", results: I.List() })();
+  return (0, _makeRecord2.default)({
+    query: "",
+    results: I.List(),
+    status: statusType.initial
+  })();
 }
 
 function update(state = InitialState(), action) {
   switch (action.type) {
     case "ADD_QUERY":
-      return state.update("query", value => action.query);
+      const actionCopy = action;
+      return state.update("query", value => actionCopy.query);
 
     case "CLEAR_QUERY":
       return state.remove("query");
@@ -24348,8 +23860,17 @@ function update(state = InitialState(), action) {
       const results = state.get("results");
       return state.merge({ results: results.push(action.result) });
 
+    case "UPDATE_STATUS":
+      return state.merge({ status: action.status });
+
     case "CLEAR_SEARCH_RESULTS":
       return state.merge({
+        results: state.get("results").clear()
+      });
+
+    case "CLOSE_PROJECT_SEARCH":
+      return state.merge({
+        query: "",
         results: state.get("results").clear()
       });
   }
@@ -24358,6 +23879,10 @@ function update(state = InitialState(), action) {
 
 function getTextSearchResults(state) {
   return state.projectTextSearch.get("results");
+}
+
+function getTextSearchStatus(state) {
+  return state.projectTextSearch.get("status");
 }
 
 function getTextSearchQuery(state) {
@@ -24699,7 +24224,7 @@ function bootstrapApp(connection, { store, actions }) {
   // Expose the bound actions so external things can do things like
   // selecting a source.
   window.actions = {
-    selectSource: actions.selectSource,
+    selectLocation: actions.selectLocation,
     selectSourceURL: actions.selectSourceURL
   };
 
@@ -24774,7 +24299,7 @@ async function prettyPrint({ source, url }) {
   return await _prettyPrint({
     url,
     indent,
-    source: source.text
+    sourceText: source.get("text")
   });
 }
 
@@ -24823,6 +24348,8 @@ Object.defineProperty(exports, "__esModule", {
 exports.addSearchQuery = addSearchQuery;
 exports.clearSearchQuery = clearSearchQuery;
 exports.clearSearchResults = clearSearchResults;
+exports.updateSearchStatus = updateSearchStatus;
+exports.closeProjectSearch = closeProjectSearch;
 exports.searchSources = searchSources;
 exports.searchSource = searchSource;
 
@@ -24832,22 +24359,22 @@ var _selectors = __webpack_require__(1352);
 
 var _source = __webpack_require__(1356);
 
-var _sources = __webpack_require__(1373);
+var _sources = __webpack_require__(1797);
 
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-/**
- * Redux actions for the search state
- * @module actions/search
- */
+var _projectTextSearch = __webpack_require__(1424);
 
 function addSearchQuery(query) {
   return ({ dispatch, getState }) => {
     dispatch({ type: "ADD_QUERY", query });
   };
-}
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+/**
+ * Redux actions for the search state
+ * @module actions/search
+ */
 
 function clearSearchQuery() {
   return ({ dispatch, getState }) => {
@@ -24861,16 +24388,24 @@ function clearSearchResults() {
   };
 }
 
+function updateSearchStatus(status) {
+  return { type: "UPDATE_STATUS", status };
+}
+
+function closeProjectSearch() {
+  return { type: "CLOSE_PROJECT_SEARCH" };
+}
+
 function searchSources(query) {
   return async ({ dispatch, getState }) => {
     await dispatch(clearSearchResults());
     await dispatch(addSearchQuery(query));
+    dispatch(updateSearchStatus(_projectTextSearch.statusType.fetching));
     await dispatch((0, _sources.loadAllSources)());
     const sources = (0, _selectors.getSources)(getState());
-    const validSources = sources.valueSeq().filter(source => (0, _source.isLoaded)(source.toJS()) && !(0, _source.isThirdParty)(source.toJS())).toJS();
-
+    const validSources = sources.valueSeq().filter(source => (0, _source.isLoaded)(source) && !(0, _source.isThirdParty)(source));
     for (const source of validSources) {
-      await dispatch(searchSource(source.id, query));
+      await dispatch(searchSource(source.get("id"), query));
     }
   };
 }
@@ -24882,16 +24417,18 @@ function searchSource(sourceId, query) {
       return;
     }
 
-    const source = sourceRecord.toJS();
-    const matches = await (0, _search.findSourceMatches)(source, query);
+    const matches = await (0, _search.findSourceMatches)(sourceRecord.toJS(), query);
     dispatch({
       type: "ADD_SEARCH_RESULT",
       result: {
-        sourceId: source.id,
-        filepath: source.url,
+        sourceId: sourceRecord.get("id"),
+        filepath: sourceRecord.get("url"),
         matches
       }
     });
+    if (matches.length) {
+      dispatch(updateSearchStatus(_projectTextSearch.statusType.done));
+    }
   };
 }
 
@@ -24906,7 +24443,10 @@ function searchSource(sourceId, query) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.loadAllSources = loadAllSources;
 exports.loadSourceText = loadSourceText;
+
+var _devtoolsSourceMap = __webpack_require__(1360);
 
 var _promise = __webpack_require__(1653);
 
@@ -24916,21 +24456,62 @@ var _selectors = __webpack_require__(1352);
 
 var _parser = __webpack_require__(1365);
 
+var parser = _interopRequireWildcard(_parser);
+
+var _source = __webpack_require__(1356);
+
+var _defer = __webpack_require__(1800);
+
+var _defer2 = _interopRequireDefault(_defer);
+
+var _projectTextSearch = __webpack_require__(1433);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
+
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+const requests = new Map();
+
 async function loadSource(source, { sourceMaps, client }) {
-  if (sourceMaps.isOriginalId(source.id)) {
-    return await sourceMaps.getOriginalSourceText(source);
+  const id = source.get("id");
+  if ((0, _devtoolsSourceMap.isOriginalId)(id)) {
+    return await sourceMaps.getOriginalSourceText(source.toJS());
   }
 
-  const response = await client.sourceContents(source.id);
+  const response = await client.sourceContents(id);
 
   return {
-    id: source.id,
+    id,
     text: response.source,
     contentType: response.contentType || "text/javascript"
+  };
+}
+
+/**
+  Load the text for all the available sources
+ * @memberof actions/sources
+ * @static
+ */
+function loadAllSources() {
+  return async ({ dispatch, getState }) => {
+    const sources = (0, _selectors.getSources)(getState());
+    const query = (0, _selectors.getTextSearchQuery)(getState());
+    for (const [, source] of sources) {
+      if ((0, _source.isThirdParty)(source)) {
+        continue;
+      }
+
+      await dispatch(loadSourceText(source));
+      // If there is a current search query we search
+      // each of the source texts as they get loaded
+      if (query) {
+        await dispatch((0, _projectTextSearch.searchSource)(source.get("id"), query));
+      }
+    }
   };
 }
 
@@ -24940,24 +24521,41 @@ async function loadSource(source, { sourceMaps, client }) {
  */
 function loadSourceText(source) {
   return async ({ dispatch, getState, client, sourceMaps }) => {
+    const deferred = (0, _defer2.default)();
+
     // Fetch the source text only once.
-    if (source.text) {
+    if ((0, _source.isLoaded)(source)) {
       return Promise.resolve(source);
     }
 
+    const id = source.get("id");
+
+    if ((0, _source.isLoading)(source) || requests.has(id)) {
+      return requests.get(id);
+    }
+
+    requests.set(id, deferred.promise);
     await dispatch({
       type: "LOAD_SOURCE_TEXT",
-      source: source,
+      sourceId: id,
       [_promise.PROMISE]: loadSource(source, { sourceMaps, client })
     });
 
-    const newSource = (0, _selectors.getSource)(getState(), source.id).toJS();
-    if (newSource.isWasm) {
-      return;
+    const newSource = (0, _selectors.getSource)(getState(), source.get("id")).toJS();
+
+    if ((0, _devtoolsSourceMap.isOriginalId)(newSource.id) && !newSource.isWasm) {
+      const generatedSource = (0, _selectors.getGeneratedSource)(getState(), source.toJS());
+      await dispatch(loadSourceText(generatedSource));
     }
 
-    await (0, _parser.setSource)(newSource);
-    dispatch((0, _ast.setSymbols)(source.id));
+    if (!newSource.isWasm) {
+      await parser.setSource(newSource);
+      dispatch((0, _ast.setSymbols)(id));
+    }
+
+    // signal that the action is finished
+    deferred.resolve();
+    requests.delete(id);
   };
 }
 
@@ -24971,7 +24569,7 @@ function loadSourceText(source) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.showLoading = exports.showSourceText = exports.updateDocument = exports.updateLineNumberFormat = exports.resetLineNumberFormat = exports.clearDocuments = exports.removeDocument = exports.setDocument = exports.getDocument = undefined;
+exports.showLoading = exports.showSourceText = exports.updateDocument = exports.updateLineNumberFormat = exports.resetLineNumberFormat = exports.clearDocuments = exports.removeDocument = exports.hasDocument = exports.setDocument = exports.getDocument = undefined;
 
 var _source = __webpack_require__(1356);
 
@@ -24985,6 +24583,10 @@ let sourceDocs = {}; /* This Source Code Form is subject to the terms of the Moz
 
 function getDocument(key) {
   return sourceDocs[key];
+}
+
+function hasDocument(key) {
+  return !!getDocument(key);
 }
 
 function setDocument(key, doc) {
@@ -25017,11 +24619,12 @@ function updateLineNumberFormat(editor, sourceId) {
   (0, _ui.resizeToggleButton)(cm);
 }
 
-function updateDocument(editor, sourceId) {
-  if (!sourceId) {
+function updateDocument(editor, source) {
+  if (!source) {
     return;
   }
 
+  const sourceId = source.get("id");
   const doc = getDocument(sourceId) || editor.createDocument();
   editor.replaceDocument(doc);
 
@@ -25029,7 +24632,7 @@ function updateDocument(editor, sourceId) {
 }
 
 function showLoading(editor) {
-  if (getDocument("loading")) {
+  if (hasDocument("loading")) {
     return;
   }
 
@@ -25056,35 +24659,36 @@ function setEditorText(editor, source) {
  * Handle getting the source document or creating a new
  * document with the correct mode and text.
  */
-function showSourceText(editor, source, sourceMetaData) {
+function showSourceText(editor, source, symbols) {
   if (!source) {
     return;
   }
 
-  let doc = getDocument(source.id);
-  if (editor.codeMirror.doc === doc) {
-    editor.setMode((0, _source.getMode)(source, sourceMetaData));
-    return;
-  }
+  if (hasDocument(source.id)) {
+    const doc = getDocument(source.id);
+    if (editor.codeMirror.doc === doc) {
+      editor.setMode((0, _source.getMode)(source, symbols));
+      return;
+    }
 
-  if (doc) {
     editor.replaceDocument(doc);
     updateLineNumberFormat(editor, source.id);
-    editor.setMode((0, _source.getMode)(source, sourceMetaData));
+    editor.setMode((0, _source.getMode)(source, symbols));
     return doc;
   }
 
-  doc = editor.createDocument();
+  const doc = editor.createDocument();
   setDocument(source.id, doc);
   editor.replaceDocument(doc);
 
   setEditorText(editor, source);
-  editor.setMode((0, _source.getMode)(source, sourceMetaData));
+  editor.setMode((0, _source.getMode)(source, symbols));
   updateLineNumberFormat(editor, source.id);
 }
 
 exports.getDocument = getDocument;
 exports.setDocument = setDocument;
+exports.hasDocument = hasDocument;
 exports.removeDocument = removeDocument;
 exports.clearDocuments = clearDocuments;
 exports.resetLineNumberFormat = resetLineNumberFormat;
@@ -25109,9 +24713,9 @@ exports.getValue = getValue;
 
 var _indentation = __webpack_require__(1438);
 
-// replace quotes and slashes that could interfere with the evaluation.
+// replace quotes that could interfere with the evaluation.
 function sanitizeInput(input) {
-  return input.replace(/\\/g, "\\\\").replace(/"/g, '"');
+  return input.replace(/"/g, '"');
 }
 
 /*
@@ -25187,26 +24791,32 @@ function getValue(expression) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.getIndentation = getIndentation;
 exports.correctIndentation = correctIndentation;
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-function getIndentation(lines) {
+function getIndentation(line) {
+  if (!line) {
+    return 0;
+  }
+  return line.match(/^\s*/)[0].length;
+}
+
+function getMaxIndentation(lines) {
   const firstLine = lines[0];
   const secondLine = lines[1];
   const lastLine = lines[lines.length - 1];
 
-  const _getIndentation = line => line && line.match(/^\s*/)[0].length;
-
-  const indentations = [_getIndentation(firstLine), _getIndentation(secondLine), _getIndentation(lastLine)];
+  const indentations = [getIndentation(firstLine), getIndentation(secondLine), getIndentation(lastLine)];
 
   return Math.max(...indentations);
 }
 
 function correctIndentation(text) {
   const lines = text.trim().split("\n");
-  const indentation = getIndentation(lines);
+  const indentation = getMaxIndentation(lines);
   const formattedLines = lines.map(_line => _line.replace(new RegExp(`^\\s{0,${indentation - 1}}`), ""));
 
   return formattedLines.join("\n");
@@ -25521,8 +25131,8 @@ function addSourceToNode(node, url, source) {
     return source;
   }
 
-  const name = (0, _getURL.getFilenameFromPath)(url.path);
-  const { found: childFound, index: childIndex } = (0, _treeOrder.findNodeInContents)(node, (0, _treeOrder.createTreeNodeMatcher)(name, false, null));
+  const { filename } = url;
+  const { found: childFound, index: childIndex } = (0, _treeOrder.findNodeInContents)(node, (0, _treeOrder.createTreeNodeMatcher)(filename, false, null));
 
   // if we are readding an existing file in the node, overwrite the existing
   // file and return the node's contents
@@ -25533,7 +25143,7 @@ function addSourceToNode(node, url, source) {
   }
 
   // if this is a new file, add the new file;
-  const newNode = (0, _utils.createNode)(name, source.get("url"), source);
+  const newNode = (0, _utils.createNode)(filename, source.get("url"), source);
   const contents = node.contents.slice(0);
   contents.splice(childIndex, 0, newNode);
   return contents;
@@ -26927,7 +26537,7 @@ class FrameComponent extends _react.Component {
   }
 
   onMouseDown(e, frame, selectedFrame) {
-    if (e.nativeEvent.which == 3 && selectedFrame.id != frame.id) {
+    if (e.nativeEvent.which == 3 || selectedFrame.id === frame.id) {
       return;
     }
     this.props.selectFrame(frame);
@@ -26986,7 +26596,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = FrameMenu;
 
-var _devtoolsLaunchpad = __webpack_require__(1362);
+var _devtoolsContextmenu = __webpack_require__(1413);
 
 var _clipboard = __webpack_require__(1388);
 
@@ -27052,7 +26662,7 @@ function FrameMenu(frame, frameworkGroupingOn, callbacks, event) {
 
   menuOptions.push(copyStackTraceItem);
 
-  (0, _devtoolsLaunchpad.showMenu)(event, menuOptions);
+  (0, _devtoolsContextmenu.showMenu)(event, menuOptions);
 }
 
 /***/ }),
@@ -27082,15 +26692,17 @@ var _client = __webpack_require__(1499);
 
 var _bootstrap = __webpack_require__(1430);
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+var _sourceQueue = __webpack_require__(1795);
 
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+var _sourceQueue2 = _interopRequireDefault(_sourceQueue);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 if (false) {
   window.Perf = require("react-addons-perf");
-}
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 if ((0, _devtoolsConfig.isFirefoxPanel)()) {
   module.exports = {
@@ -27115,6 +26727,7 @@ if ((0, _devtoolsConfig.isFirefoxPanel)()) {
     },
     destroy: () => {
       (0, _devtoolsLaunchpad.unmountRoot)(_reactDom2.default);
+      _sourceQueue2.default.clear();
       (0, _bootstrap.teardownWorkers)();
     }
   };
@@ -27566,12 +27179,12 @@ var __WEBPACK_AMD_DEFINE_RESULT__;
         window.vsprintf = vsprintf;
 
         if (true) {
-            !(__WEBPACK_AMD_DEFINE_RESULT__ = function () {
+            !(__WEBPACK_AMD_DEFINE_RESULT__ = (function () {
                 return {
                     sprintf: sprintf,
                     vsprintf: vsprintf
                 };
-            }.call(exports, __webpack_require__, exports, module),
+            }).call(exports, __webpack_require__, exports, module),
 				__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
         }
     }
@@ -28511,7 +28124,7 @@ module.exports = {
 
 const CDP = __webpack_require__(52);
 const { getValue } = __webpack_require__(1355);
-const { networkRequest } = __webpack_require__(1473);
+const { networkRequest } = __webpack_require__(1363);
 
 let connection;
 
@@ -28618,194 +28231,9 @@ module.exports = {
 };
 
 /***/ }),
-/* 1473 */
-/***/ (function(module, exports, __webpack_require__) {
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-const networkRequest = __webpack_require__(1474);
-const workerUtils = __webpack_require__(1475);
-
-module.exports = {
-  networkRequest,
-  workerUtils
-};
-
-/***/ }),
-/* 1474 */
-/***/ (function(module, exports) {
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-function networkRequest(url, opts) {
-  return new Promise((resolve, reject) => {
-    try {
-      const req = new XMLHttpRequest();
-
-      req.addEventListener("readystatechange", () => {
-        if (req.readyState === XMLHttpRequest.DONE) {
-          if (req.status === 200) {
-            resolve({ content: req.responseText });
-          } else {
-            let text = req.statusText || "invalid URL";
-            reject(text);
-          }
-        }
-      });
-
-      // Not working yet.
-      // if (!opts.loadFromCache) {
-      //   req.channel.loadFlags = (
-      //     Components.interfaces.nsIRequest.LOAD_BYPASS_CACHE |
-      //       Components.interfaces.nsIRequest.INHIBIT_CACHING |
-      //       Components.interfaces.nsIRequest.LOAD_ANONYMOUS
-      //   );
-      // }
-
-      req.open("GET", url);
-      req.send();
-    } catch (e) {
-      reject(e.toString());
-    }
-  });
-}
-
-module.exports = networkRequest;
-
-/***/ }),
-/* 1475 */
-/***/ (function(module, exports) {
-
-function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
-
-function WorkerDispatcher() {
-  this.msgId = 1;
-  this.worker = null;
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-WorkerDispatcher.prototype = {
-  start(url) {
-    this.worker = new Worker(url);
-    this.worker.onerror = () => {
-      console.error(`Error in worker ${url}`);
-    };
-  },
-
-  stop() {
-    if (!this.worker) {
-      return;
-    }
-
-    this.worker.terminate();
-    this.worker = null;
-  },
-
-  task(method) {
-    return (...args) => {
-      return new Promise((resolve, reject) => {
-        const id = this.msgId++;
-        this.worker.postMessage({ id, method, args });
-
-        const listener = ({ data: result }) => {
-          if (result.id !== id) {
-            return;
-          }
-
-          this.worker.removeEventListener("message", listener);
-          if (result.error) {
-            reject(result.error);
-          } else {
-            resolve(result.response);
-          }
-        };
-
-        this.worker.addEventListener("message", listener);
-      });
-    };
-  }
-};
-
-function workerHandler(publicInterface) {
-  return function (msg) {
-    const { id, method, args } = msg.data;
-    try {
-      const response = publicInterface[method].apply(undefined, args);
-      if (response instanceof Promise) {
-        response.then(val => self.postMessage({ id, response: val }), err => self.postMessage({ id, error: err }));
-      } else {
-        self.postMessage({ id, response });
-      }
-    } catch (error) {
-      self.postMessage({ id, error });
-    }
-  };
-}
-
-function streamingWorkerHandler(publicInterface, { timeout = 100 } = {}, worker = self) {
-  let streamingWorker = (() => {
-    var _ref = _asyncToGenerator(function* (id, tasks) {
-      let isWorking = true;
-
-      const intervalId = setTimeout(function () {
-        isWorking = false;
-      }, timeout);
-
-      const results = [];
-      while (tasks.length !== 0 && isWorking) {
-        const { callback, context, args } = tasks.shift();
-        const result = yield callback.call(context, args);
-        results.push(result);
-      }
-      worker.postMessage({ id, status: "pending", data: results });
-      clearInterval(intervalId);
-
-      if (tasks.length !== 0) {
-        yield streamingWorker(id, tasks);
-      }
-    });
-
-    return function streamingWorker(_x, _x2) {
-      return _ref.apply(this, arguments);
-    };
-  })();
-
-  return (() => {
-    var _ref2 = _asyncToGenerator(function* (msg) {
-      const { id, method, args } = msg.data;
-      const workerMethod = publicInterface[method];
-      if (!workerMethod) {
-        console.error(`Could not find ${method} defined in worker.`);
-      }
-      worker.postMessage({ id, status: "start" });
-
-      try {
-        const tasks = workerMethod(args);
-        yield streamingWorker(id, tasks);
-        worker.postMessage({ id, status: "done" });
-      } catch (error) {
-        worker.postMessage({ id, status: "error", error });
-      }
-    });
-
-    return function (_x3) {
-      return _ref2.apply(this, arguments);
-    };
-  })();
-}
-
-module.exports = {
-  WorkerDispatcher,
-  workerHandler,
-  streamingWorkerHandler
-};
-
-/***/ }),
+/* 1473 */,
+/* 1474 */,
+/* 1475 */,
 /* 1476 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -29473,7 +28901,8 @@ module.exports = update;
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const React = __webpack_require__(0);
-const { PropTypes } = React;
+const { Component } = React;
+const PropTypes = __webpack_require__(20);
 const ImPropTypes = __webpack_require__(150);
 const { connect } = __webpack_require__(1189);
 const { bindActionCreators } = __webpack_require__(3);
@@ -29481,15 +28910,15 @@ const { getTabs, getFilterString, getConfig } = __webpack_require__(1490);
 const { getValue } = __webpack_require__(1355);
 const LandingPage = React.createFactory(__webpack_require__(1491));
 
-const LaunchpadApp = React.createClass({
-  displayName: "LaunchpadApp",
-
-  propTypes: {
-    tabs: ImPropTypes.map.isRequired,
-    filterString: PropTypes.string,
-    actions: PropTypes.object,
-    config: PropTypes.object
-  },
+class LaunchpadApp extends Component {
+  static get propTypes() {
+    return {
+      tabs: ImPropTypes.map.isRequired,
+      filterString: PropTypes.string,
+      actions: PropTypes.object,
+      config: PropTypes.object
+    };
+  }
 
   render() {
     const {
@@ -29510,7 +28939,7 @@ const LaunchpadApp = React.createClass({
       setValue
     });
   }
-});
+}
 
 function mapStateToProps(state) {
   return {
@@ -29539,7 +28968,7 @@ module.exports = connect(mapStateToProps, mapDispatchToProps)(LaunchpadApp);
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { score } = __webpack_require__(161);
+const { score } = __webpack_require__(1774);
 
 function getTabs(state) {
   let tabs = state.tabs.get("tabs");
@@ -29588,7 +29017,9 @@ module.exports = {
 const React = __webpack_require__(0);
 
 __webpack_require__(1298);
-const { DOM: dom } = React;
+const { Component } = React;
+const PropTypes = __webpack_require__(20);
+const dom = __webpack_require__(1758);
 const ImPropTypes = __webpack_require__(150);
 const configMap = __webpack_require__(1377).sidePanelItems;
 const Tabs = React.createFactory(__webpack_require__(1492));
@@ -29608,44 +29039,57 @@ function firstTimeMessage(title, urlPart) {
   }, "docs"), ".");
 }
 
-const LandingPage = React.createClass({
-  displayName: "LandingPage",
-
-  propTypes: {
-    tabs: ImPropTypes.map.isRequired,
-    supportsFirefox: React.PropTypes.bool.isRequired,
-    supportsChrome: React.PropTypes.bool.isRequired,
-    title: React.PropTypes.string.isRequired,
-    filterString: React.PropTypes.string,
-    onFilterChange: React.PropTypes.func.isRequired,
-    onTabClick: React.PropTypes.func.isRequired,
-    config: React.PropTypes.object.isRequired,
-    setValue: React.PropTypes.func.isRequired
-  },
-
-  getInitialState() {
+class LandingPage extends Component {
+  static get propTypes() {
     return {
+      tabs: ImPropTypes.map.isRequired,
+      supportsFirefox: PropTypes.bool.isRequired,
+      supportsChrome: PropTypes.bool.isRequired,
+      title: PropTypes.string.isRequired,
+      filterString: PropTypes.string,
+      onFilterChange: PropTypes.func.isRequired,
+      onTabClick: PropTypes.func.isRequired,
+      config: PropTypes.object.isRequired,
+      setValue: PropTypes.func.isRequired
+    };
+  }
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
       selectedPane: configMap.Firefox.name,
       firefoxConnected: false,
       chromeConnected: false
     };
-  },
+
+    this.onFilterChange = this.onFilterChange.bind(this);
+    this.onSideBarItemClick = this.onSideBarItemClick.bind(this);
+    this.renderLaunchOptions = this.renderLaunchOptions.bind(this);
+    this.renderLaunchButton = this.renderLaunchButton.bind(this);
+    this.renderExperimentalMessage = this.renderExperimentalMessage.bind(this);
+    this.launchBrowser = this.launchBrowser.bind(this);
+    this.renderEmptyPanel = this.renderEmptyPanel.bind(this);
+    this.renderSettings = this.renderSettings.bind(this);
+    this.renderFilter = this.renderFilter.bind(this);
+    this.renderPanel = this.renderPanel.bind(this);
+  }
 
   componentDidUpdate() {
     if (this.refs.filterInput) {
       this.refs.filterInput.focus();
     }
-  },
+  }
 
   onFilterChange(newFilterString) {
     this.props.onFilterChange(newFilterString);
-  },
+  }
 
   onSideBarItemClick(itemTitle) {
     if (itemTitle !== this.state.selectedPane) {
       this.setState({ selectedPane: itemTitle });
     }
-  },
+  }
 
   renderLaunchOptions() {
     const { selectedPane } = this.state;
@@ -29661,11 +29105,11 @@ const LandingPage = React.createClass({
     const connectedStateText = isNodeSelected ? null : `Please open a tab in ${name}`;
 
     return isConnected ? connectedStateText : this.renderLaunchButton(name, isUnderConstruction);
-  },
+  }
 
   renderLaunchButton(browserName, isUnderConstruction) {
     return dom.div({ className: "launch-action-container" }, dom.button({ onClick: () => this.launchBrowser(browserName) }, `Launch ${browserName}`), isUnderConstruction ? this.renderExperimentalMessage(browserName) : null);
-  },
+  }
 
   renderExperimentalMessage(browserName) {
     const underConstructionMessage = "Debugging is experimental and certain features won't work (i.e, seeing variables, attaching breakpoints)"; // eslint-disable-line max-len
@@ -29674,7 +29118,7 @@ const LandingPage = React.createClass({
       className: "github-link",
       target: "_blank"
     }, "Help us make it happen")));
-  },
+  }
 
   launchBrowser(browser) {
     fetch("/launch", {
@@ -29692,17 +29136,17 @@ const LandingPage = React.createClass({
     }).catch(err => {
       alert(`Error launching ${browser}. ${err.message}`);
     });
-  },
+  }
 
   renderEmptyPanel() {
     return dom.div({ className: "hero" }, this.renderLaunchOptions());
-  },
+  }
 
   renderSettings() {
     const { config, setValue } = this.props;
 
     return dom.div({}, dom.header({}, dom.h1({}, configMap.Settings.name)), Settings({ config, setValue }));
-  },
+  }
 
   renderFilter() {
     const { selectedPane } = this.state;
@@ -29726,7 +29170,7 @@ const LandingPage = React.createClass({
         }
       }
     }));
-  },
+  }
 
   renderPanel() {
     const { onTabClick, tabs } = this.props;
@@ -29749,7 +29193,7 @@ const LandingPage = React.createClass({
     }
 
     return dom.div({}, this.renderFilter(), Tabs({ targets, paramName, onTabClick }));
-  },
+  }
 
   render() {
     const { supportsFirefox, supportsChrome, title } = this.props;
@@ -29768,7 +29212,7 @@ const LandingPage = React.createClass({
       onSideBarItemClick
     }), dom.main({ className: "panel" }, this.renderPanel(), firstTimeMessage(name, docsUrlPart)));
   }
-});
+}
 
 module.exports = LandingPage;
 
@@ -29786,26 +29230,33 @@ module.exports = LandingPage;
 const React = __webpack_require__(0);
 
 __webpack_require__(1299);
-const { DOM: dom } = React;
+const { Component } = React;
+const dom = __webpack_require__(1758);
+const PropTypes = __webpack_require__(20);
 const classnames = __webpack_require__(175);
 
 function getTabURL(tab, paramName) {
   const tabID = tab.get("id");
-  return `/?${paramName}=${tabID}`;
+  return `/?react_perf&${paramName}=${tabID}`;
 }
 
-const Tabs = React.createClass({
-  displayName: "Tabs",
+class Tabs extends Component {
+  static get propTypes() {
+    return {
+      targets: PropTypes.object.isRequired,
+      paramName: PropTypes.string.isRequired,
+      onTabClick: PropTypes.func.isRequired
+    };
+  }
 
-  propTypes: {
-    targets: React.PropTypes.object.isRequired,
-    paramName: React.PropTypes.string.isRequired,
-    onTabClick: React.PropTypes.func.isRequired
-  },
+  constructor(props) {
+    super(props);
+    this.onTabClick = this.onTabClick.bind(this);
+  }
 
   onTabClick(tab, paramName) {
     this.props.onTabClick(getTabURL(tab, paramName));
-  },
+  }
 
   render() {
     const { targets, paramName } = this.props;
@@ -29834,8 +29285,7 @@ const Tabs = React.createClass({
       }
     }, dom.div({ className: "tab-title" }, tab.get("title")), dom.div({ className: "tab-url" }, tab.get("url"))))));
   }
-
-});
+}
 
 module.exports = Tabs;
 
@@ -29852,23 +29302,32 @@ module.exports = Tabs;
 
 const React = __webpack_require__(0);
 __webpack_require__(1300);
-const { DOM: dom } = React;
+const { Component } = React;
+const dom = __webpack_require__(1758);
+const PropTypes = __webpack_require__(20);
 const classnames = __webpack_require__(175);
 const Svg = __webpack_require__(1494);
-const Sidebar = React.createClass({
-  displayName: "Sidebar",
 
-  propTypes: {
-    supportsFirefox: React.PropTypes.bool.isRequired,
-    supportsChrome: React.PropTypes.bool.isRequired,
-    title: React.PropTypes.string.isRequired,
-    selectedPane: React.PropTypes.string.isRequired,
-    onSideBarItemClick: React.PropTypes.func.isRequired
-  },
+class Sidebar extends Component {
+  static get propTypes() {
+    return {
+      supportsFirefox: PropTypes.bool.isRequired,
+      supportsChrome: PropTypes.bool.isRequired,
+      title: PropTypes.string.isRequired,
+      selectedPane: PropTypes.string.isRequired,
+      onSideBarItemClick: PropTypes.func.isRequired
+    };
+  }
+
+  constructor(props) {
+    super(props);
+    this.renderTitle = this.renderTitle.bind(this);
+    this.renderItem = this.renderItem.bind(this);
+  }
 
   renderTitle(title) {
     return dom.div({ className: "title-wrapper" }, dom.h1({}, title), dom.div({ className: "launchpad-container" }, Svg({ name: "rocket" }), dom.h2({ className: "launchpad-container-title" }, "Launchpad")));
-  },
+  }
 
   renderItem(title) {
     return dom.li({
@@ -29885,7 +29344,7 @@ const Sidebar = React.createClass({
         }
       }
     }, dom.a({}, title));
-  },
+  }
 
   render() {
     let connections = [];
@@ -29902,7 +29361,7 @@ const Sidebar = React.createClass({
       className: "sidebar"
     }, this.renderTitle(this.props.title), dom.ul({}, connections.map(title => this.renderItem(title)), this.renderItem("Settings")));
   }
-});
+}
 
 module.exports = Sidebar;
 
@@ -29914,7 +29373,7 @@ module.exports = Sidebar;
 
 
 const React = __webpack_require__(0);
-const InlineSVG = __webpack_require__(1495);
+const { default: InlineSVG } = __webpack_require__(1763);
 const { isDevelopment } = __webpack_require__(1355);
 
 const svg = {
@@ -29939,211 +29398,7 @@ Svg.displayName = "Svg";
 module.exports = Svg;
 
 /***/ }),
-/* 1495 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, '__esModule', {
-    value: true
-});
-
-var _extends = Object.assign || function (target) {
-    for (var i = 1; i < arguments.length; i++) {
-        var source = arguments[i];for (var key in source) {
-            if (Object.prototype.hasOwnProperty.call(source, key)) {
-                target[key] = source[key];
-            }
-        }
-    }return target;
-};
-
-var _createClass = function () {
-    function defineProperties(target, props) {
-        for (var i = 0; i < props.length; i++) {
-            var descriptor = props[i];descriptor.enumerable = descriptor.enumerable || false;descriptor.configurable = true;if ('value' in descriptor) descriptor.writable = true;Object.defineProperty(target, descriptor.key, descriptor);
-        }
-    }return function (Constructor, protoProps, staticProps) {
-        if (protoProps) defineProperties(Constructor.prototype, protoProps);if (staticProps) defineProperties(Constructor, staticProps);return Constructor;
-    };
-}();
-
-var _get = function get(_x, _x2, _x3) {
-    var _again = true;_function: while (_again) {
-        var object = _x,
-            property = _x2,
-            receiver = _x3;_again = false;if (object === null) object = Function.prototype;var desc = Object.getOwnPropertyDescriptor(object, property);if (desc === undefined) {
-            var parent = Object.getPrototypeOf(object);if (parent === null) {
-                return undefined;
-            } else {
-                _x = parent;_x2 = property;_x3 = receiver;_again = true;desc = parent = undefined;continue _function;
-            }
-        } else if ('value' in desc) {
-            return desc.value;
-        } else {
-            var getter = desc.get;if (getter === undefined) {
-                return undefined;
-            }return getter.call(receiver);
-        }
-    }
-};
-
-function _interopRequireDefault(obj) {
-    return obj && obj.__esModule ? obj : { 'default': obj };
-}
-
-function _objectWithoutProperties(obj, keys) {
-    var target = {};for (var i in obj) {
-        if (keys.indexOf(i) >= 0) continue;if (!Object.prototype.hasOwnProperty.call(obj, i)) continue;target[i] = obj[i];
-    }return target;
-}
-
-function _classCallCheck(instance, Constructor) {
-    if (!(instance instanceof Constructor)) {
-        throw new TypeError('Cannot call a class as a function');
-    }
-}
-
-function _inherits(subClass, superClass) {
-    if (typeof superClass !== 'function' && superClass !== null) {
-        throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass);
-    }subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } });if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass;
-}
-
-var _react = __webpack_require__(0);
-
-var _react2 = _interopRequireDefault(_react);
-
-var DOMParser = typeof window !== 'undefined' && window.DOMParser;
-var process = process || {};
-process.env = process.env || {};
-var parserAvailable = typeof DOMParser !== 'undefined' && DOMParser.prototype != null && DOMParser.prototype.parseFromString != null;
-
-if ("production" !== process.env.NODE_ENV && !parserAvailable) {
-    console.info('<InlineSVG />: `raw` prop works only when `window.DOMParser` exists.');
-}
-
-function isParsable(src) {
-    // kinda naive but meh, ain't gonna use full-blown parser for this
-    return parserAvailable && typeof src === 'string' && src.trim().substr(0, 4) === '<svg';
-}
-
-// parse SVG string using `DOMParser`
-function parseFromSVGString(src) {
-    var parser = new DOMParser();
-    return parser.parseFromString(src, "image/svg+xml");
-}
-
-// Transform DOM prop/attr names applicable to `<svg>` element but react-limited
-function switchSVGAttrToReactProp(propName) {
-    switch (propName) {
-        case 'class':
-            return 'className';
-        default:
-            return propName;
-    }
-}
-
-var InlineSVG = function (_React$Component) {
-    _inherits(InlineSVG, _React$Component);
-
-    _createClass(InlineSVG, null, [{
-        key: 'defaultProps',
-        value: {
-            element: 'i',
-            raw: false,
-            src: ''
-        },
-        enumerable: true
-    }, {
-        key: 'propTypes',
-        value: {
-            src: _react2['default'].PropTypes.string.isRequired,
-            element: _react2['default'].PropTypes.string,
-            raw: _react2['default'].PropTypes.bool
-        },
-        enumerable: true
-    }]);
-
-    function InlineSVG(props) {
-        _classCallCheck(this, InlineSVG);
-
-        _get(Object.getPrototypeOf(InlineSVG.prototype), 'constructor', this).call(this, props);
-        this._extractSVGProps = this._extractSVGProps.bind(this);
-    }
-
-    // Serialize `Attr` objects in `NamedNodeMap`
-
-    _createClass(InlineSVG, [{
-        key: '_serializeAttrs',
-        value: function _serializeAttrs(map) {
-            var ret = {};
-            var prop = undefined;
-            for (var i = 0; i < map.length; i++) {
-                prop = switchSVGAttrToReactProp(map[i].name);
-                ret[prop] = map[i].value;
-            }
-            return ret;
-        }
-
-        // get <svg /> element props
-    }, {
-        key: '_extractSVGProps',
-        value: function _extractSVGProps(src) {
-            var map = parseFromSVGString(src).documentElement.attributes;
-            return map.length > 0 ? this._serializeAttrs(map) : null;
-        }
-
-        // get content inside <svg> element.
-    }, {
-        key: '_stripSVG',
-        value: function _stripSVG(src) {
-            return parseFromSVGString(src).documentElement.innerHTML;
-        }
-    }, {
-        key: 'componentWillReceiveProps',
-        value: function componentWillReceiveProps(_ref) {
-            var children = _ref.children;
-
-            if ("production" !== process.env.NODE_ENV && children != null) {
-                console.info('<InlineSVG />: `children` prop will be ignored.');
-            }
-        }
-    }, {
-        key: 'render',
-        value: function render() {
-            var Element = undefined,
-                __html = undefined,
-                svgProps = undefined;
-            var _props = this.props;
-            var element = _props.element;
-            var raw = _props.raw;
-            var src = _props.src;
-
-            var otherProps = _objectWithoutProperties(_props, ['element', 'raw', 'src']);
-
-            if (raw === true && isParsable(src)) {
-                Element = 'svg';
-                svgProps = this._extractSVGProps(src);
-                __html = this._stripSVG(src);
-            }
-            __html = __html || src;
-            Element = Element || element;
-            svgProps = svgProps || {};
-
-            return _react2['default'].createElement(Element, _extends({}, svgProps, otherProps, { src: null, children: null,
-                dangerouslySetInnerHTML: { __html: __html } }));
-        }
-    }]);
-
-    return InlineSVG;
-}(_react2['default'].Component);
-
-exports['default'] = InlineSVG;
-module.exports = exports['default'];
-
-/***/ }),
+/* 1495 */,
 /* 1496 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -30155,16 +29410,26 @@ module.exports = exports['default'];
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const React = __webpack_require__(0);
-const { DOM: dom } = React;
+const { Component } = React;
+const dom = __webpack_require__(1758);
+const PropTypes = __webpack_require__(20);
 const { showMenu, buildMenu } = __webpack_require__(1413);
 
-const Settings = React.createClass({
-  displayName: "Settings",
+class Settings extends Component {
+  static get propTypes() {
+    return {
+      config: PropTypes.object.isRequired,
+      setValue: PropTypes.func.isRequired
+    };
+  }
 
-  propTypes: {
-    config: React.PropTypes.object.isRequired,
-    setValue: React.PropTypes.func.isRequired
-  },
+  constructor(props) {
+    super(props);
+    this.onConfigContextMenu = this.onConfigContextMenu.bind(this);
+    this.onInputHandler = this.onInputHandler.bind(this);
+    this.renderConfig = this.renderConfig.bind(this);
+    this.renderFeatures = this.renderFeatures.bind(this);
+  }
 
   onConfigContextMenu(event, key) {
     event.preventDefault();
@@ -30215,12 +29480,12 @@ const Settings = React.createClass({
       "theme": [{ item: lightMenuItem }, { item: darkMenuItem }, { item: firebugMenuItem }]
     };
     showMenu(event, buildMenu(items[key]));
-  },
+  }
 
   onInputHandler(e, path) {
     const { setValue } = this.props;
     setValue(path, e.target.checked);
-  },
+  }
 
   renderConfig(config) {
     const configs = [{ name: "dir", label: "direction" }, { name: "theme", label: "theme"
@@ -30238,7 +29503,7 @@ const Settings = React.createClass({
         onClick: e => this.onConfigContextMenu(e, c.name)
       }, config[c.name]));
     }));
-  },
+  }
 
   renderFeatures(features) {
     return dom.ul({ className: "tab-list" }, Object.keys(features).map(key => dom.li({
@@ -30249,14 +29514,14 @@ const Settings = React.createClass({
       defaultChecked: features[key].enabled,
       onChange: e => this.onInputHandler(e, `features.${key}.enabled`)
     })))));
-  },
+  }
 
   render() {
     const { config } = this.props;
 
     return dom.div({ className: "tab-group" }, dom.h3({}, "Configurations"), this.renderConfig(config), config.features ? (dom.h3({}, "Features"), this.renderFeatures(config.features)) : null);
   }
-});
+}
 
 module.exports = Settings;
 
@@ -30568,14 +29833,6 @@ async function onConnect(connection, actions) {
     wasmBinarySource: supportsWasm
   });
 
-  // NOTE: The Worker and Browser Content toolboxes do not have a parent
-  // with a listWorkers function
-  // TODO: there is a listWorkers property, but it is not a function on the
-  // parent. Investigate what it is
-  if (threadClient._parent && typeof threadClient._parent.listWorkers === "function") {
-    threadClient._parent.listWorkers().then(workers => actions.setWorkers(workers));
-  }
-
   // In Firefox, we need to initially request all of the sources. This
   // usually fires off individual `newSource` notifications as the
   // debugger finds them, but there may be existing sources already in
@@ -30583,7 +29840,7 @@ async function onConnect(connection, actions) {
   // bfcache) so explicity fire `newSource` events for all returned
   // sources.
   const sources = await _commands.clientCommands.fetchSources();
-  actions.connect(tabTarget.url);
+  await actions.connect(tabTarget.url);
   await actions.newSources(sources);
 
   // If the threadClient is already paused, make sure to show a
@@ -30671,7 +29928,7 @@ function sourceContents(sourceId) {
 }
 
 function getBreakpointByLocation(location) {
-  const id = (0, _breakpoint.makeLocationId)(location);
+  const id = (0, _breakpoint.makePendingLocationId)(location);
   const bpClient = bpClients[id];
 
   if (bpClient) {
@@ -30700,7 +29957,7 @@ function setBreakpoint(location, condition, noSliding) {
     noSliding
   }).then(([{ actualLocation }, bpClient]) => {
     actualLocation = (0, _create.createBreakpointLocation)(location, actualLocation);
-    const id = (0, _breakpoint.makeLocationId)(actualLocation);
+    const id = (0, _breakpoint.makePendingLocationId)(actualLocation);
     bpClients[id] = bpClient;
     bpClient.location.line = actualLocation.line;
     bpClient.location.column = actualLocation.column;
@@ -30712,7 +29969,7 @@ function setBreakpoint(location, condition, noSliding) {
 
 function removeBreakpoint(generatedLocation) {
   try {
-    const id = (0, _breakpoint.makeLocationId)(generatedLocation);
+    const id = (0, _breakpoint.makePendingLocationId)(generatedLocation);
     const bpClient = bpClients[id];
     if (!bpClient) {
       console.warn("No breakpoint to delete on server");
@@ -30733,6 +29990,10 @@ function setBreakpointCondition(breakpointId, location, condition, noSliding) {
     bpClients[breakpointId] = _bpClient;
     return { id: breakpointId };
   });
+}
+
+function evaluateInFrame(frameId, script) {
+  return evaluate(script, { frameId });
 }
 
 function evaluate(script, { frameId }) {
@@ -30832,6 +30093,18 @@ async function fetchSources() {
   return sources.map(source => (0, _create.createSource)(source, { supportsWasm }));
 }
 
+async function fetchWorkers() {
+  // NOTE: The Worker and Browser Content toolboxes do not have a parent
+  // with a listWorkers function
+  // TODO: there is a listWorkers property, but it is not a function on the
+  // parent. Investigate what it is
+  if (!threadClient._parent || typeof threadClient._parent.listWorkers != "function") {
+    return Promise.resolve({ workers: [] });
+  }
+
+  return threadClient._parent.listWorkers();
+}
+
 const clientCommands = {
   blackBox,
   interrupt,
@@ -30848,6 +30121,7 @@ const clientCommands = {
   removeBreakpoint,
   setBreakpointCondition,
   evaluate,
+  evaluateInFrame,
   debuggeeCommand,
   navigate,
   reload,
@@ -30856,7 +30130,8 @@ const clientCommands = {
   pauseOnExceptions,
   prettyPrint,
   disablePrettyPrint,
-  fetchSources
+  fetchSources,
+  fetchWorkers
 };
 
 exports.setupCommands = setupCommands;
@@ -31049,56 +30324,7 @@ function getBreakpointAtLocation(state, location) {
 }
 
 /***/ }),
-/* 1504 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = getInScopeLines;
-
-var _ast = __webpack_require__(1383);
-
-var _sources = __webpack_require__(1369);
-
-var _source = __webpack_require__(1356);
-
-var _lodash = __webpack_require__(2);
-
-function getOutOfScopeLines(outOfScopeLocations) {
-  if (!outOfScopeLocations) {
-    return null;
-  }
-
-  return (0, _lodash.uniq)((0, _lodash.flatMap)(outOfScopeLocations, location => (0, _lodash.range)(location.start.line, location.end.line)));
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-function getInScopeLines(state) {
-  const source = (0, _sources.getSelectedSource)(state);
-  const outOfScopeLocations = (0, _ast.getOutOfScopeLocations)(state);
-
-  if (!source || !source.get("text")) {
-    return;
-  }
-
-  const linesOutOfScope = getOutOfScopeLines(outOfScopeLocations, source.toJS());
-
-  const sourceNumLines = (0, _source.getSourceLineCount)(source.toJS());
-  const sourceLines = (0, _lodash.range)(1, sourceNumLines + 1);
-
-  if (!linesOutOfScope) {
-    return sourceLines;
-  }
-
-  return (0, _lodash.without)(sourceLines, ...linesOutOfScope);
-}
-
-/***/ }),
+/* 1504 */,
 /* 1505 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -31143,25 +30369,39 @@ exports.clientEvents = exports.setupEvents = undefined;
 
 var _create = __webpack_require__(1428);
 
-var _devtoolsConfig = __webpack_require__(1355);
+var _sourceQueue = __webpack_require__(1795);
 
-const CALL_STACK_PAGE_SIZE = 1000; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                    * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+var _sourceQueue2 = _interopRequireDefault(_sourceQueue);
+
+var _prefs = __webpack_require__(226);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+const CALL_STACK_PAGE_SIZE = 1000;
 
 let threadClient;
 let actions;
 let supportsWasm;
+let isInterrupted;
 
 function setupEvents(dependencies) {
   threadClient = dependencies.threadClient;
   actions = dependencies.actions;
   supportsWasm = dependencies.supportsWasm;
+  _sourceQueue2.default.initialize({ actions, supportsWasm, createSource: _create.createSource });
 
   if (threadClient) {
     Object.keys(clientEvents).forEach(eventName => {
       threadClient.addListener(eventName, clientEvents[eventName]);
     });
+
+    if (threadClient._parent) {
+      threadClient._parent.addListener("workerListChanged", workerListChanged);
+    }
   }
 }
 
@@ -31171,6 +30411,7 @@ async function paused(_, packet) {
   // breakpoints, ignore the event.
   const { why } = packet;
   if (why.type === "interrupted" && !packet.why.onNext) {
+    isInterrupted = true;
     return;
   }
 
@@ -31179,20 +30420,33 @@ async function paused(_, packet) {
 
   if (why.type != "alreadyPaused") {
     const pause = (0, _create.createPause)(packet, response);
+    await _sourceQueue2.default.flush();
     actions.paused(pause);
   }
 }
 
 function resumed(_, packet) {
+  // NOTE: the client suppresses resumed events while interrupted
+  // to prevent unintentional behavior.
+  // see [client docs](../README.md#interrupted) for more information.
+  if (isInterrupted) {
+    isInterrupted = false;
+    return;
+  }
+
   actions.resumed(packet);
 }
 
 function newSource(_, { source }) {
-  actions.newSource((0, _create.createSource)(source, { supportsWasm }));
+  _sourceQueue2.default.queue(source);
 
-  if ((0, _devtoolsConfig.isEnabled)("eventListeners")) {
+  if (_prefs.features.eventListeners) {
     actions.fetchEventListeners();
   }
+}
+
+function workerListChanged() {
+  actions.updateWorkers();
 }
 
 const clientEvents = {
@@ -31774,6 +31028,7 @@ class App extends _react.Component {
 
   componentDidMount() {
     verticalLayoutBreakpoint.addListener(this.onLayoutChange);
+    this.setOrientation();
 
     shortcuts.on(L10N.getStr("symbolSearch.search.key2"), (_, e) => this.toggleQuickOpenModal(_, e, "@"));
 
@@ -31844,6 +31099,10 @@ class App extends _react.Component {
   }
 
   onLayoutChange() {
+    this.setOrientation();
+  }
+
+  setOrientation() {
     const orientation = verticalLayoutBreakpoint.matches ? "horizontal" : "vertical";
     if ((0, _ui.isVisible)()) {
       this.props.setOrientation(orientation);
@@ -32032,7 +31291,7 @@ exports.default = async function addBreakpoint(getState, client, sourceMaps, { b
   const newGeneratedLocation = actualLocation || generatedLocation;
   const newLocation = await sourceMaps.getOriginalLocation(newGeneratedLocation);
 
-  const astLocation = await (0, _breakpoint.getASTLocation)(sourceRecord, location);
+  const astLocation = await (0, _breakpoint.getASTLocation)(sourceRecord, newLocation);
 
   const newBreakpoint = {
     id,
@@ -32125,7 +31384,7 @@ async function makeScopedLocation({ name, offset }, location, source) {
   };
 }
 
-function createSyncData(id, pendingBreakpoint, location, generatedLocation, previousLocation = null) {
+function createSyncData(id, pendingBreakpoint, location, generatedLocation, previousLocation) {
   const overrides = _extends({}, pendingBreakpoint, { generatedLocation, id });
   const breakpoint = (0, _breakpoint.createBreakpoint)(location, overrides);
 
@@ -32163,7 +31422,7 @@ async function syncClientBreakpoint(getState, client, sourceMaps, sourceId, pend
   // send update only to redux
   if (pendingBreakpoint.disabled || existingClient && isSameLocation) {
     const id = pendingBreakpoint.disabled ? "" : existingClient.id;
-    return createSyncData(id, pendingBreakpoint, scopedLocation, scopedGeneratedLocation);
+    return createSyncData(id, pendingBreakpoint, scopedLocation, scopedGeneratedLocation, previousLocation);
   }
 
   // clear server breakpoints if they exist and we have moved
@@ -32174,6 +31433,11 @@ async function syncClientBreakpoint(getState, client, sourceMaps, sourceId, pend
   /** ******* Case 2: Add New Breakpoint ***********/
   // If we are not disabled, set the breakpoint on the server and get
   // that info so we can set it on our breakpoints.
+
+  if (!scopedGeneratedLocation.line) {
+    return { previousLocation, breakpoint: null };
+  }
+
   const { id, actualLocation } = await client.setBreakpoint(scopedGeneratedLocation, pendingBreakpoint.condition, sourceMaps.isOriginalId(sourceId));
 
   // the breakpoint might have slid server side, so we want to get the location
@@ -32186,185 +31450,9 @@ async function syncClientBreakpoint(getState, client, sourceMaps, sourceId, pend
 
 /***/ }),
 /* 1522 */,
-/* 1523 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.createPrettySource = createPrettySource;
-
-var _selectors = __webpack_require__(1352);
-
-var _prettyPrint = __webpack_require__(1431);
-
-var _pause = __webpack_require__(1400);
-
-var _source = __webpack_require__(1356);
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-function createPrettySource(sourceId) {
-  return async ({ dispatch, getState, sourceMaps }) => {
-    const source = (0, _selectors.getSource)(getState(), sourceId).toJS();
-    const url = (0, _source.getPrettySourceURL)(source.url);
-    const id = await sourceMaps.generatedToOriginalId(sourceId, url);
-
-    const { code, mappings } = await (0, _prettyPrint.prettyPrint)({
-      source,
-      url
-    });
-
-    await sourceMaps.applySourceMap(source.id, url, code, mappings);
-
-    let frames = (0, _selectors.getFrames)(getState());
-    if (frames) {
-      frames = await (0, _pause.updateFrameLocations)(frames, sourceMaps);
-    }
-
-    const prettySource = {
-      url,
-      id,
-      isPrettyPrinted: true,
-      text: code,
-      contentType: "text/javascript",
-      frames,
-      loadedState: "loaded"
-    };
-
-    dispatch({
-      type: "ADD_SOURCE",
-      source: prettySource
-    });
-
-    return prettySource;
-  };
-}
-
-/***/ }),
-/* 1524 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-function forEachLine(codeMirror, iter) {
-  codeMirror.operation(() => {
-    codeMirror.doc.iter(0, codeMirror.lineCount(), iter);
-  });
-}
-
-function removeLineClass(codeMirror, line, className) {
-  codeMirror.removeLineClass(line, "line", className);
-}
-
-function clearLineClass(codeMirror, className) {
-  forEachLine(codeMirror, line => {
-    removeLineClass(codeMirror, line, className);
-  });
-}
-
-function getTextForLine(codeMirror, line) {
-  return codeMirror.getLine(line - 1).trim();
-}
-
-function getCursorLine(codeMirror) {
-  return codeMirror.getCursor().line;
-}
-
-function getTokenLocation(codeMirror, tokenEl) {
-  const lineOffset = 1;
-  const { left, top } = tokenEl.getBoundingClientRect();
-  const { line, ch } = codeMirror.coordsChar({ left, top });
-
-  return {
-    line: line + lineOffset,
-    column: ch
-  };
-}
-
-module.exports = {
-  removeLineClass,
-  clearLineClass,
-  getTextForLine,
-  getCursorLine,
-  getTokenLocation
-};
-
-/***/ }),
-/* 1525 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.getTokenLocation = getTokenLocation;
-exports.updatePreview = updatePreview;
-
-var _lodash = __webpack_require__(2);
-
-function getTokenLocation(codeMirror, tokenEl) {
-  const { left, top, width, height } = tokenEl.getBoundingClientRect();
-  const { line, ch } = codeMirror.coordsChar({
-    left: left + width / 2,
-    top: top + height / 2
-  });
-
-  return {
-    line: line + 1,
-    column: ch
-  };
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-function updatePreview(target, editor, { linesInScope, preview, setPreview, clearPreview }) {
-  const location = getTokenLocation(editor.codeMirror, target);
-  const tokenText = target.innerText ? target.innerText.trim() : "";
-  const cursorPos = target.getBoundingClientRect();
-
-  if (preview) {
-    // We are mousing over the same token as before
-    if ((0, _lodash.isEqual)(preview.tokenPos, location)) {
-      return;
-    }
-
-    // We are mousing over a new token that is not in the preview
-    if (!target.classList.contains("debug-expression")) {
-      clearPreview();
-    }
-  }
-
-  const invalidToken = tokenText === "" || tokenText.match(/[(){}\|&%,.;=<>\+-/\*\s]/);
-
-  const invalidTarget = target.parentElement && !target.parentElement.closest(".CodeMirror-line") || cursorPos.top == 0;
-
-  const isUpdating = preview && preview.updating;
-
-  const inScope = linesInScope && linesInScope.includes(location.line);
-
-  const invaildType = target.className === "cm-string" || target.className === "cm-number" || target.className === "cm-atom";
-
-  if (invalidTarget || !inScope || isUpdating || invalidToken || invaildType) {
-    return;
-  }
-
-  setPreview(tokenText, location, cursorPos);
-}
-
-/***/ }),
+/* 1523 */,
+/* 1524 */,
+/* 1525 */,
 /* 1526 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -32666,12 +31754,14 @@ var _DevToolsUtils = __webpack_require__(1432);
 
 var _selectors = __webpack_require__(1352);
 
-// delay is in ms
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+var _waitService = __webpack_require__(1659);
 
-/* global window gThreadClient setNamedTimeout services EVENTS */
+// delay is in ms
+const FETCH_EVENT_LISTENERS_DELAY = 200; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                          * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                          * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* global window gThreadClient setNamedTimeout EVENTS */
 /* eslint no-shadow: 0  */
 
 /**
@@ -32679,7 +31769,6 @@ var _selectors = __webpack_require__(1352);
  * @module actions/event-listeners
  */
 
-const FETCH_EVENT_LISTENERS_DELAY = 200;
 let fetchListenersTimerID;
 
 /**
@@ -32687,7 +31776,7 @@ let fetchListenersTimerID;
  * @static
  */
 async function asPaused(state, client, func) {
-  if (!(0, _selectors.getPause)(state)) {
+  if (!(0, _selectors.isPaused)(state)) {
     await client.interrupt();
     let result;
 
@@ -32725,7 +31814,7 @@ function fetchEventListeners() {
       // on a currently running request
       if (getState().eventListeners.fetchingListeners) {
         dispatch({
-          type: services.WAIT_UNTIL,
+          type: _waitService.NAME,
           predicate: action => action.type === "FETCH_EVENT_LISTENERS" && action.status === "done",
           run: dispatch => dispatch(fetchEventListeners())
         });
@@ -32845,15 +31934,23 @@ exports.navigated = navigated;
 
 var _editor = __webpack_require__(1358);
 
+var _sourceQueue = __webpack_require__(1795);
+
+var _sourceQueue2 = _interopRequireDefault(_sourceQueue);
+
 var _sources = __webpack_require__(1369);
 
 var _utils = __webpack_require__(1366);
 
-var _sources2 = __webpack_require__(1373);
+var _sources2 = __webpack_require__(1797);
+
+var _debuggee = __webpack_require__(1533);
 
 var _parser = __webpack_require__(1365);
 
 var _wasm = __webpack_require__(1401);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
  * Redux actions for the navigation state
@@ -32877,12 +31974,13 @@ function willNavigate(_, event) {
     (0, _parser.clearASTs)();
     (0, _parser.clearScopes)();
     (0, _parser.clearSources)();
-
     dispatch(navigate(event.url));
   };
 }
 
 function navigate(url) {
+  _sourceQueue2.default.clear();
+
   return {
     type: "NAVIGATE",
     url
@@ -32890,9 +31988,9 @@ function navigate(url) {
 }
 
 function connect(url) {
-  return {
-    type: "CONNECT",
-    url
+  return async function ({ dispatch }) {
+    await dispatch((0, _debuggee.updateWorkers)());
+    dispatch({ type: "CONNECT", url });
   };
 }
 
@@ -32989,7 +32087,13 @@ function searchContents(query, editor) {
     const ctx = { ed: editor, cm: editor.codeMirror };
     const _modifiers = modifiers.toJS();
     const matches = await (0, _search.getMatches)(query, selectedSource.get("text"), _modifiers);
-    const { ch, line } = (0, _editor.find)(ctx, query, true, _modifiers);
+
+    const res = (0, _editor.find)(ctx, query, true, _modifiers);
+    if (!res) {
+      return;
+    }
+
+    const { ch, line } = res;
 
     dispatch(updateSearchResults(ch, line, matches));
   };
@@ -33013,9 +32117,12 @@ function traverseResults(rev, editor) {
 
     if (modifiers) {
       const matchedLocations = matches || [];
-      const { ch, line } = rev ? (0, _editor.findPrev)(ctx, query, true, modifiers.toJS()) : (0, _editor.findNext)(ctx, query, true, modifiers.toJS());
+      const results = rev ? (0, _editor.findPrev)(ctx, query, true, modifiers.toJS()) : (0, _editor.findNext)(ctx, query, true, modifiers.toJS());
 
-      console.log(line);
+      if (!results) {
+        return;
+      }
+      const { ch, line } = results;
       dispatch(updateSearchResults(ch, line, matchedLocations));
     }
   };
@@ -33093,17 +32200,15 @@ function setExpandedState(expanded) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.setWorkers = setWorkers;
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-function setWorkers(workers) {
-  return {
-    type: "SET_WORKERS",
-    workers
+exports.updateWorkers = updateWorkers;
+function updateWorkers() {
+  return async function ({ dispatch, client }) {
+    const { workers } = await client.fetchWorkers();
+    dispatch({ type: "SET_WORKERS", workers });
   };
-}
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 /***/ }),
 /* 1534 */
@@ -33116,6 +32221,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.openLink = openLink;
+exports.openWorkerToolbox = openWorkerToolbox;
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
@@ -33133,6 +32239,19 @@ function openLink(url) {
       win.focus();
     } else {
       openLinkCommand(url);
+    }
+  };
+}
+
+function openWorkerToolbox(worker) {
+  return async function ({
+    getState,
+    openWorkerToolbox: openWorkerToolboxCommand
+  }) {
+    if (isDevelopment()) {
+      alert(worker.url);
+    } else {
+      openWorkerToolboxCommand(worker);
     }
   };
 }
@@ -33296,7 +32415,9 @@ exports.ShortcutsModal = ShortcutsModal; /* This Source Code Form is subject to 
 const React = __webpack_require__(0);
 const ReactDOM = __webpack_require__(4);
 const Draggable = React.createFactory(__webpack_require__(1537));
-const { DOM: dom, PropTypes } = React;
+const { Component } = React;
+const PropTypes = __webpack_require__(20);
+const dom = __webpack_require__(1758);
 
 __webpack_require__(1309);
 
@@ -33304,43 +32425,43 @@ __webpack_require__(1309);
  * This component represents a Splitter. The splitter supports vertical
  * as well as horizontal mode.
  */
-const SplitBox = React.createClass({
-  propTypes: {
-    // Custom class name. You can use more names separated by a space.
-    className: PropTypes.string,
-    // Initial size of controlled panel.
-    initialSize: PropTypes.any,
-    // Optional initial width of controlled panel.
-    initialWidth: PropTypes.number,
-    // Optional initial height of controlled panel.
-    initialHeight: PropTypes.number,
-    // Left/top panel
-    startPanel: PropTypes.any,
-    // Left/top panel collapse state.
-    startPanelCollapsed: PropTypes.bool,
-    // Min panel size.
-    minSize: PropTypes.any,
-    // Max panel size.
-    maxSize: PropTypes.any,
-    // Right/bottom panel
-    endPanel: PropTypes.any,
-    // Right/bottom panel collapse state.
-    endPanelCollapsed: PropTypes.bool,
-    // True if the right/bottom panel should be controlled.
-    endPanelControl: PropTypes.bool,
-    // Size of the splitter handle bar.
-    splitterSize: PropTypes.number,
-    // True if the splitter bar is vertical (default is vertical).
-    vert: PropTypes.bool,
-    // Optional style properties passed into the splitbox
-    style: PropTypes.object,
-    // Optional callback when splitbox resize stops
-    onResizeEnd: PropTypes.func
-  },
+class SplitBox extends Component {
+  static get propTypes() {
+    return {
+      // Custom class name. You can use more names separated by a space.
+      className: PropTypes.string,
+      // Initial size of controlled panel.
+      initialSize: PropTypes.any,
+      // Optional initial width of controlled panel.
+      initialWidth: PropTypes.number,
+      // Optional initial height of controlled panel.
+      initialHeight: PropTypes.number,
+      // Left/top panel
+      startPanel: PropTypes.any,
+      // Left/top panel collapse state.
+      startPanelCollapsed: PropTypes.bool,
+      // Min panel size.
+      minSize: PropTypes.any,
+      // Max panel size.
+      maxSize: PropTypes.any,
+      // Right/bottom panel
+      endPanel: PropTypes.any,
+      // Right/bottom panel collapse state.
+      endPanelCollapsed: PropTypes.bool,
+      // True if the right/bottom panel should be controlled.
+      endPanelControl: PropTypes.bool,
+      // Size of the splitter handle bar.
+      splitterSize: PropTypes.number,
+      // True if the splitter bar is vertical (default is vertical).
+      vert: PropTypes.bool,
+      // Optional style properties passed into the splitbox
+      style: PropTypes.object,
+      // Optional callback when splitbox resize stops
+      onResizeEnd: PropTypes.func
+    };
+  }
 
-  displayName: "SplitBox",
-
-  getDefaultProps() {
+  static get defaultProps() {
     return {
       splitterSize: 5,
       vert: true,
@@ -33348,27 +32469,29 @@ const SplitBox = React.createClass({
       endPanelCollapsed: false,
       startPanelCollapsed: false
     };
-  },
+  }
 
-  /**
-   * The state stores the current orientation (vertical or horizontal)
-   * and the current size (width/height). All these values can change
-   * during the component's life time.
-   */
-  getInitialState() {
-    return {
-      vert: this.props.vert,
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      vert: props.vert,
       // We use integers for these properties
-      width: parseInt(this.props.initialWidth || this.props.initialSize),
-      height: parseInt(this.props.initialHeight || this.props.initialSize)
+      width: parseInt(props.initialWidth || props.initialSize, 10),
+      height: parseInt(props.initialHeight || props.initialSize, 10)
     };
-  },
+
+    this.onStartMove = this.onStartMove.bind(this);
+    this.onStopMove = this.onStopMove.bind(this);
+    this.onMove = this.onMove.bind(this);
+    this.preparePanelStyles = this.preparePanelStyles.bind(this);
+  }
 
   componentWillReceiveProps(nextProps) {
     if (this.props.vert !== nextProps.vert) {
       this.setState({ vert: nextProps.vert });
     }
-  },
+  }
 
   // Dragging Events
 
@@ -33388,7 +32511,7 @@ const SplitBox = React.createClass({
     this.setState({
       defaultCursor: defaultCursor
     });
-  },
+  }
 
   onStopMove() {
     const splitBox = ReactDOM.findDOMNode(this);
@@ -33400,7 +32523,7 @@ const SplitBox = React.createClass({
     if (this.props.onResizeEnd) {
       this.props.onResizeEnd(this.state.vert ? this.state.width : this.state.height);
     }
-  },
+  }
 
   /**
    * Adjust size of the controlled panel. Depending on the current
@@ -33434,7 +32557,7 @@ const SplitBox = React.createClass({
         height: state.height + movementY
       }));
     }
-  },
+  }
 
   // Rendering
   preparePanelStyles() {
@@ -33480,7 +32603,7 @@ const SplitBox = React.createClass({
     }
 
     return { leftPanelStyle, rightPanelStyle };
-  },
+  }
 
   render() {
     const vert = this.state.vert;
@@ -33526,7 +32649,7 @@ const SplitBox = React.createClass({
       style: rightPanelStyle
     }, endPanel) : null);
   }
-});
+}
 
 module.exports = SplitBox;
 
@@ -33540,18 +32663,27 @@ module.exports = SplitBox;
 
 const React = __webpack_require__(0);
 const ReactDOM = __webpack_require__(4);
-const { DOM: dom, PropTypes } = React;
+const { Component } = React;
+const PropTypes = __webpack_require__(20);
+const dom = __webpack_require__(1758);
 
-const Draggable = React.createClass({
-  displayName: "Draggable",
+class Draggable extends Component {
+  static get propTypes() {
+    return {
+      onMove: PropTypes.func.isRequired,
+      onStart: PropTypes.func,
+      onStop: PropTypes.func,
+      style: PropTypes.object,
+      className: PropTypes.string
+    };
+  }
 
-  propTypes: {
-    onMove: PropTypes.func.isRequired,
-    onStart: PropTypes.func,
-    onStop: PropTypes.func,
-    style: PropTypes.object,
-    className: PropTypes.string
-  },
+  constructor(props) {
+    super(props);
+    this.startDragging = this.startDragging.bind(this);
+    this.onMove = this.onMove.bind(this);
+    this.onUp = this.onUp.bind(this);
+  }
 
   startDragging(ev) {
     ev.preventDefault();
@@ -33559,14 +32691,14 @@ const Draggable = React.createClass({
     doc.addEventListener("mousemove", this.onMove);
     doc.addEventListener("mouseup", this.onUp);
     this.props.onStart && this.props.onStart();
-  },
+  }
 
   onMove(ev) {
     ev.preventDefault();
     // We pass the whole event because we don't know which properties
     // the callee needs.
     this.props.onMove(ev);
-  },
+  }
 
   onUp(ev) {
     ev.preventDefault();
@@ -33574,7 +32706,7 @@ const Draggable = React.createClass({
     doc.removeEventListener("mousemove", this.onMove);
     doc.removeEventListener("mouseup", this.onUp);
     this.props.onStop && this.props.onStop();
-  },
+  }
 
   render() {
     return dom.div({
@@ -33583,7 +32715,7 @@ const Draggable = React.createClass({
       onMouseDown: this.startDragging
     });
   }
-});
+}
 
 module.exports = Draggable;
 
@@ -33666,18 +32798,20 @@ class ProjectSearch extends _react.Component {
     const {
       sources,
       results,
+      status,
       searchSources,
-      closeActiveSearch,
-      selectSource,
+      closeProjectSearch,
+      selectLocation,
       textSearchQuery
     } = this.props;
 
     return _react2.default.createElement(_TextSearch2.default, {
       sources: sources,
       results: results.toJS(),
+      status: status,
       searchSources: searchSources,
-      closeActiveSearch: closeActiveSearch,
-      selectSource: selectSource,
+      closeProjectSearch: closeProjectSearch,
+      selectLocation: selectLocation,
       query: textSearchQuery
     });
   }
@@ -33694,18 +32828,6 @@ class ProjectSearch extends _react.Component {
     );
   }
 }
-
-ProjectSearch.propTypes = {
-  sources: _propTypes2.default.object.isRequired,
-  results: _propTypes2.default.object,
-  textSearchQuery: _propTypes2.default.string,
-  setActiveSearch: _propTypes2.default.func.isRequired,
-  closeActiveSearch: _propTypes2.default.func.isRequired,
-  searchSources: _propTypes2.default.func,
-  activeSearch: _propTypes2.default.string,
-  selectSource: _propTypes2.default.func.isRequired
-};
-
 ProjectSearch.contextTypes = {
   shortcuts: _propTypes2.default.object
 };
@@ -33714,7 +32836,8 @@ exports.default = (0, _reactRedux.connect)(state => ({
   sources: (0, _selectors.getSources)(state),
   activeSearch: (0, _selectors.getActiveSearch)(state),
   results: (0, _selectors.getTextSearchResults)(state),
-  textSearchQuery: (0, _selectors.getTextSearchQuery)(state)
+  textSearchQuery: (0, _selectors.getTextSearchQuery)(state),
+  status: (0, _selectors.getTextSearchStatus)(state)
 }), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(ProjectSearch);
 
 /***/ }),
@@ -33727,6 +32850,10 @@ exports.default = (0, _reactRedux.connect)(state => ({
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 var _propTypes = __webpack_require__(20);
 
@@ -33758,6 +32885,8 @@ var _sourcesTree = __webpack_require__(1442);
 
 var _highlight = __webpack_require__(1547);
 
+var _projectTextSearch = __webpack_require__(1424);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 class TextSearch extends _react.Component {
@@ -33787,8 +32916,7 @@ class TextSearch extends _react.Component {
   }
 
   selectMatchItem(matchItem) {
-    const { line, column } = matchItem;
-    this.props.selectSource(matchItem.sourceId, { location: { line, column } });
+    this.props.selectLocation(_extends({}, matchItem));
   }
 
   getResults() {
@@ -33887,6 +33015,8 @@ class TextSearch extends _react.Component {
   renderResults() {
     const results = this.getResults().filter(result => result.matches.length > 0);
 
+    const { status } = this.props;
+
     function getFilePath(item, index) {
       return item.filepath ? `${item.sourceId}-${index}` : `${item.sourceId}-${item.line}-${item.column}-${index}`;
     }
@@ -33894,8 +33024,7 @@ class TextSearch extends _react.Component {
     const renderItem = (item, depth, focused, _, expanded, { setExpanded }) => {
       return item.filepath ? this.renderFile(item, focused, expanded, setExpanded) : this.renderMatch(item, focused);
     };
-
-    if (results.length) {
+    if (results.length && status === _projectTextSearch.statusType.done) {
       return _react2.default.createElement(_ManagedTree2.default, {
         getRoots: () => results,
         getChildren: file => file.matches || [],
@@ -33906,7 +33035,7 @@ class TextSearch extends _react.Component {
         getPath: getFilePath,
         renderItem: renderItem
       });
-    } else if (this.props.query && !results.length) {
+    } else if (this.props.query && !results.length || status === _projectTextSearch.statusType.fetching) {
       return _react2.default.createElement(
         "div",
         { className: "no-result-msg absolute-center" },
@@ -33928,7 +33057,7 @@ class TextSearch extends _react.Component {
       onFocus: () => this.inputFocused = true,
       onBlur: () => this.inputFocused = false,
       onKeyDown: e => this.onKeyDown(e),
-      handleClose: this.props.closeActiveSearch,
+      handleClose: this.props.closeProjectSearch,
       ref: "searchInput"
     });
   }
@@ -33949,20 +33078,7 @@ class TextSearch extends _react.Component {
   }
 }
 
-exports.default = TextSearch; /* This Source Code Form is subject to the terms of the Mozilla Public
-                               * License, v. 2.0. If a copy of the MPL was not distributed with this
-                               * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-TextSearch.propTypes = {
-  sources: _propTypes2.default.object,
-  results: _propTypes2.default.array,
-  query: _propTypes2.default.string,
-  closeActiveSearch: _propTypes2.default.func,
-  searchSources: _propTypes2.default.func,
-  selectSource: _propTypes2.default.func,
-  searchBottomBar: _propTypes2.default.object
-};
-
+exports.default = TextSearch;
 TextSearch.contextTypes = {
   shortcuts: _propTypes2.default.object
 };
@@ -33974,8 +33090,14 @@ TextSearch.contextTypes = {
 "use strict";
 
 
+var _svgInlineReact = __webpack_require__(1763);
+
+var _svgInlineReact2 = _interopRequireDefault(_svgInlineReact);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
 const React = __webpack_require__(0);
-const InlineSVG = __webpack_require__(346);
+
 const { isDevelopment } = __webpack_require__(1355);
 
 const svg = {
@@ -33993,6 +33115,7 @@ const svg = {
   domain: __webpack_require__(353),
   file: __webpack_require__(354),
   folder: __webpack_require__(355),
+  function: __webpack_require__(1787),
   globe: __webpack_require__(356),
   jquery: __webpack_require__(999),
   underscore: __webpack_require__(1117),
@@ -34029,11 +33152,13 @@ const svg = {
   express: __webpack_require__(1003),
   pug: __webpack_require__(1004),
   extjs: __webpack_require__(1043),
+  mobx: __webpack_require__(1733),
   marko: __webpack_require__(1649),
   nextjs: __webpack_require__(1650),
   showSources: __webpack_require__(1044),
   showOutline: __webpack_require__(1045),
-  nuxtjs: __webpack_require__(1651)
+  nuxtjs: __webpack_require__(1651),
+  rxjs: __webpack_require__(1808)
 };
 
 function Svg({ name, className, onClick, "aria-label": ariaLabel }) {
@@ -34044,7 +33169,7 @@ function Svg({ name, className, onClick, "aria-label": ariaLabel }) {
     }
 
     console.warn(error);
-    return;
+    return null;
   }
 
   className = `${name} ${className || ""}`;
@@ -34059,7 +33184,7 @@ function Svg({ name, className, onClick, "aria-label": ariaLabel }) {
     src: svg[name]
   };
 
-  return React.createElement(InlineSVG, props);
+  return React.createElement(_svgInlineReact2.default, props);
 }
 
 Svg.displayName = "Svg";
@@ -35021,7 +34146,7 @@ var _actions2 = _interopRequireDefault(_actions);
 
 var _selectors = __webpack_require__(1352);
 
-var _devtoolsConfig = __webpack_require__(1355);
+var _prefs = __webpack_require__(226);
 
 __webpack_require__(1318);
 
@@ -35054,7 +34179,7 @@ class PrimaryPanes extends _react.Component {
   }
 
   renderOutlineTabs() {
-    if (!(0, _devtoolsConfig.isEnabled)("outline")) {
+    if (!_prefs.features.outline) {
       return;
     }
 
@@ -35065,7 +34190,7 @@ class PrimaryPanes extends _react.Component {
     return [_react2.default.createElement(
       "div",
       {
-        className: (0, _classnames2.default)("tab", {
+        className: (0, _classnames2.default)("tab sources-tab", {
           active: this.props.selectedTab === "sources"
         }),
         onClick: () => this.showPane("sources"),
@@ -35075,7 +34200,7 @@ class PrimaryPanes extends _react.Component {
     ), _react2.default.createElement(
       "div",
       {
-        className: (0, _classnames2.default)("tab", {
+        className: (0, _classnames2.default)("tab outline-tab", {
           active: this.props.selectedTab === "outline"
         }),
         onClick: () => this.showPane("outline"),
@@ -35110,16 +34235,16 @@ class PrimaryPanes extends _react.Component {
   }
 
   renderOutline() {
-    const { selectSource } = this.props;
+    const { selectLocation } = this.props;
 
-    const outlineComp = (0, _devtoolsConfig.isEnabled)("outline") ? _react2.default.createElement(_Outline2.default, { selectSource: selectSource }) : null;
+    const outlineComp = _prefs.features.outline ? _react2.default.createElement(_Outline2.default, { selectLocation: selectLocation }) : null;
 
     return outlineComp;
   }
 
   renderSources() {
-    const { sources, selectSource } = this.props;
-    return _react2.default.createElement(_SourcesTree2.default, { sources: sources, selectSource: selectSource });
+    const { sources, selectLocation } = this.props;
+    return _react2.default.createElement(_SourcesTree2.default, { sources: sources, selectLocation: selectLocation });
   }
 
   render() {
@@ -35168,6 +34293,10 @@ var _actions2 = _interopRequireDefault(_actions);
 
 var _selectors = __webpack_require__(1352);
 
+var _Svg = __webpack_require__(1359);
+
+var _Svg2 = _interopRequireDefault(_Svg);
+
 __webpack_require__(1319);
 
 var _PreviewFunction = __webpack_require__(1446);
@@ -35178,19 +34307,15 @@ var _lodash = __webpack_require__(2);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
 class Outline extends _react.Component {
   selectItem(location) {
-    const { selectedSource, selectSource } = this.props;
+    const { selectedSource, selectLocation } = this.props;
     if (!selectedSource) {
       return;
     }
     const selectedSourceId = selectedSource.get("id");
     const startLine = location.start.line;
-    selectSource(selectedSourceId, { line: startLine });
+    selectLocation({ sourceId: selectedSourceId, line: startLine });
   }
 
   renderPlaceholder() {
@@ -35211,6 +34336,7 @@ class Outline extends _react.Component {
         className: "outline-list__element",
         onClick: () => this.selectItem(location)
       },
+      _react2.default.createElement(_Svg2.default, { name: "function" }),
       _react2.default.createElement(_PreviewFunction2.default, { func: { name, parameterNames } })
     );
   }
@@ -35267,7 +34393,10 @@ class Outline extends _react.Component {
   }
 }
 
-exports.Outline = Outline;
+exports.Outline = Outline; /* This Source Code Form is subject to the terms of the Mozilla Public
+                            * License, v. 2.0. If a copy of the MPL was not distributed with this
+                            * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 exports.default = (0, _reactRedux.connect)(state => {
   const selectedSource = (0, _selectors.getSelectedSource)(state);
   return {
@@ -35295,15 +34424,13 @@ var _classnames = __webpack_require__(175);
 
 var _classnames2 = _interopRequireDefault(_classnames);
 
-var _redux = __webpack_require__(3);
-
 var _reactRedux = __webpack_require__(1189);
 
 var _selectors = __webpack_require__(1352);
 
-var _actions = __webpack_require__(1354);
+var _sourceTree = __webpack_require__(1532);
 
-var _actions2 = _interopRequireDefault(_actions);
+var _sources = __webpack_require__(1797);
 
 var _ManagedTree = __webpack_require__(1404);
 
@@ -35317,7 +34444,7 @@ var _sourcesTree = __webpack_require__(1442);
 
 var _immutable = __webpack_require__(146);
 
-var _devtoolsLaunchpad = __webpack_require__(1362);
+var _devtoolsContextmenu = __webpack_require__(1413);
 
 var _clipboard = __webpack_require__(1388);
 
@@ -35428,7 +34555,7 @@ class SourcesTree extends _react.Component {
 
   selectItem(item) {
     if (!(0, _sourcesTree.nodeHasChildren)(item)) {
-      this.props.selectSource(item.contents.get("id"));
+      this.props.selectLocation({ sourceId: item.contents.get("id") });
     }
   }
 
@@ -35443,6 +34570,10 @@ class SourcesTree extends _react.Component {
 
     if (item.path === "/Webpack") {
       return _react2.default.createElement(_Svg2.default, { name: "webpack" });
+    }
+
+    if (item.path === "/Angular") {
+      return _react2.default.createElement(_Svg2.default, { name: "angular" });
     }
 
     if (depth === 0) {
@@ -35486,7 +34617,9 @@ class SourcesTree extends _react.Component {
       };
 
       menuOptions.push(copySourceUri2);
-    } else if (_prefs.features.root) {
+    }
+
+    if ((0, _sourcesTree.isDirectory)(item) && _prefs.features.root) {
       menuOptions.push({
         id: "node-set-directory-root",
         label: setDirectoryRootLabel,
@@ -35495,7 +34628,8 @@ class SourcesTree extends _react.Component {
         click: () => (0, _ui.setProjectDirectoryRoot)(item.path)
       });
     }
-    (0, _devtoolsLaunchpad.showMenu)(event, menuOptions);
+
+    (0, _devtoolsContextmenu.showMenu)(event, menuOptions);
   }
 
   renderItem(item, depth, focused, _, expanded, { setExpanded }) {
@@ -35540,7 +34674,7 @@ class SourcesTree extends _react.Component {
   }
 
   render() {
-    const { setExpandedState, expanded } = this.props;
+    const expanded = this.props.expanded;
     const {
       focusedItem,
       sourceTree,
@@ -35548,6 +34682,14 @@ class SourcesTree extends _react.Component {
       listItems,
       highlightItems
     } = this.state;
+
+    const onExpand = (item, expandedState) => {
+      this.props.setExpandedState(expandedState);
+    };
+
+    const onCollapse = (item, expandedState) => {
+      this.props.setExpandedState(expandedState);
+    };
 
     const isEmpty = sourceTree.contents.length === 0;
     const treeProps = {
@@ -35563,8 +34705,8 @@ class SourcesTree extends _react.Component {
       listItems,
       highlightItems,
       expanded,
-      onExpand: (item, expandedState) => setExpandedState(expandedState),
-      onCollapse: (item, expandedState) => setExpandedState(expandedState),
+      onExpand,
+      onCollapse,
       renderItem: this.renderItem
     };
 
@@ -35607,7 +34749,9 @@ class SourcesTree extends _react.Component {
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 // React
-exports.default = (0, _reactRedux.connect)(state => {
+
+
+const mapStateToProps = state => {
   return {
     shownSource: (0, _selectors.getShownSource)(state),
     selectedSource: (0, _selectors.getSelectedSource)(state),
@@ -35616,7 +34760,14 @@ exports.default = (0, _reactRedux.connect)(state => {
     projectRoot: (0, _selectors.getProjectDirectoryRoot)(state),
     sources: (0, _selectors.getSources)(state)
   };
-}, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(SourcesTree);
+};
+
+const actionCreators = {
+  setExpandedState: _sourceTree.setExpandedState,
+  selectLocation: _sources.selectLocation
+};
+
+exports.default = (0, _reactRedux.connect)(mapStateToProps, actionCreators)(SourcesTree);
 
 /***/ }),
 /* 1554 */
@@ -35653,7 +34804,9 @@ var _source = __webpack_require__(1356);
 
 var _devtoolsConfig = __webpack_require__(1355);
 
-var _devtoolsSourceEditor = __webpack_require__(1386);
+var _prefs = __webpack_require__(226);
+
+var _indentation = __webpack_require__(1438);
 
 var _selectors = __webpack_require__(1352);
 
@@ -35695,6 +34848,10 @@ var _DebugLine = __webpack_require__(1593);
 
 var _DebugLine2 = _interopRequireDefault(_DebugLine);
 
+var _HighlightLine = __webpack_require__(1796);
+
+var _HighlightLine2 = _interopRequireDefault(_HighlightLine);
+
 var _EmptyLines = __webpack_require__(1594);
 
 var _EmptyLines2 = _interopRequireDefault(_EmptyLines);
@@ -35721,7 +34878,6 @@ __webpack_require__(1333);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-// Redux actions
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
@@ -35732,14 +34888,16 @@ const cssVars = {
   footerHeight: "var(--editor-footer-height)"
 };
 
-class Editor extends _react.PureComponent {
+// Redux actions
 
+
+class Editor extends _react.PureComponent {
   constructor() {
     super();
 
     this.onToggleBreakpoint = (key, e) => {
       e.preventDefault();
-      const { selectedSource } = this.props;
+      const { selectedSource, conditionalPanelLine } = this.props;
 
       if (!selectedSource) {
         return;
@@ -35749,7 +34907,10 @@ class Editor extends _react.PureComponent {
 
       if (e.shiftKey) {
         this.toggleConditionalPanel(line);
+      } else if (!conditionalPanelLine) {
+        this.props.toggleBreakpoint(line);
       } else {
+        this.toggleConditionalPanel(line);
         this.props.toggleBreakpoint(line);
       }
     };
@@ -35802,6 +34963,7 @@ class Editor extends _react.PureComponent {
       if (ev.shiftKey) {
         return addOrToggleDisabledBreakpoint(sourceLine);
       }
+
       return toggleBreakpoint(sourceLine);
     };
 
@@ -35833,9 +34995,6 @@ class Editor extends _react.PureComponent {
       return this.props.closeConditionalPanel();
     };
 
-    this.pendingJumpLocation = null;
-    this.lastJumpLine = null;
-
     this.state = {
       highlightedLineRange: null,
       editor: null
@@ -35847,15 +35006,21 @@ class Editor extends _react.PureComponent {
       return;
     }
 
-    (0, _editor.resizeBreakpointGutter)(this.state.editor.codeMirror);
+    (0, _ui.resizeBreakpointGutter)(this.state.editor.codeMirror);
     (0, _ui.resizeToggleButton)(this.state.editor.codeMirror);
+  }
+
+  componentWillUpdate(nextProps) {
+    this.setText(nextProps);
+    this.setSize(nextProps);
+    this.scrollToLocation(nextProps);
   }
 
   setupEditor() {
     const editor = (0, _editor.createEditor)();
 
     // disables the default search shortcuts
-
+    // $FlowIgnore
     editor._initShortcuts = () => {};
 
     const node = _reactDom2.default.findDOMNode(this);
@@ -35866,7 +35031,7 @@ class Editor extends _react.PureComponent {
     const { codeMirror } = editor;
     const codeMirrorWrapper = codeMirror.getWrapperElement();
 
-    (0, _editor.resizeBreakpointGutter)(codeMirror);
+    (0, _ui.resizeBreakpointGutter)(codeMirror);
     (0, _ui.resizeToggleButton)(codeMirror);
 
     (0, _devtoolsLaunchpad.debugGlobal)("cm", codeMirror);
@@ -35904,7 +35069,7 @@ class Editor extends _react.PureComponent {
   componentDidMount() {
     const editor = this.setupEditor();
 
-    const { selectedSource, selectedLocation } = this.props;
+    const { selectedSource } = this.props;
     const { shortcuts } = this.context;
 
     const searchAgainKey = L10N.getStr("sourceSearch.search.again.key2");
@@ -35916,17 +35081,14 @@ class Editor extends _react.PureComponent {
     shortcuts.on(searchAgainPrevKey, this.onSearchAgain);
     shortcuts.on(searchAgainKey, this.onSearchAgain);
 
-    if (selectedLocation && !!selectedLocation.line) {
-      this.pendingJumpLocation = selectedLocation;
-    }
-
-    const sourceId = selectedSource ? selectedSource.get("id") : undefined;
-    (0, _editor.updateDocument)(editor, sourceId);
+    (0, _editor.updateDocument)(editor, selectedSource);
   }
 
   componentWillUnmount() {
-    this.state.editor.destroy();
-    this.setState({ editor: null });
+    if (this.state.editor) {
+      this.state.editor.destroy();
+      this.setState({ editor: null });
+    }
 
     const searchAgainKey = L10N.getStr("sourceSearch.search.again.key2");
     const searchAgainPrevKey = L10N.getStr("sourceSearch.search.againPrev.key2");
@@ -35937,35 +35099,13 @@ class Editor extends _react.PureComponent {
     shortcuts.off(searchAgainKey);
   }
 
-  componentWillUpdate(nextProps) {
-    this.setText(nextProps);
-    this.setSize(nextProps);
-  }
-
-  componentDidUpdate(prevProps) {
-    // This is in `componentDidUpdate` so helper functions can expect
-    // `this.props` to be the current props. This lifecycle method is
-    // responsible for updating the editor annotations.
-    const { selectedLocation, selectedSource } = this.props;
-
-    // If the location is different and a new line is requested,
-    // update the pending jump line. Note that if jumping to a line in
-    // a source where the text hasn't been loaded yet, we will set the
-    // line here but not jump until rendering the actual source.
-
-    if (prevProps.selectedLocation !== selectedLocation) {
-      if (selectedLocation && selectedLocation.line != undefined) {
-        this.pendingJumpLocation = selectedLocation;
-      } else {
-        this.pendingJumpLocation = null;
-      }
-    }
-
-    // Only update and jump around in real source texts. This will
-    // keep the jump state around until the real source text is
-    // loaded.
-    if (selectedSource && (0, _source.isLoaded)(selectedSource.toJS())) {
-      this.highlightLine();
+  componentDidUpdate(prevProps, prevState) {
+    // NOTE: when devtools are opened, the editor is not set when
+    // the source loads so we need to wait until the editor is
+    // set to update the text and size.
+    if (!prevState.editor && this.state.editor) {
+      this.setText(this.props);
+      this.setSize(this.props);
     }
   }
 
@@ -36023,44 +35163,41 @@ class Editor extends _react.PureComponent {
     }
   }
 
-  // If the location has changed and a specific line is requested,
-  // move to that line and flash it.
-  highlightLine() {
-    const { selectedLocation, selectedFrame } = this.props;
-    if (!selectedLocation) {
-      return;
+  shouldScrollToLocation(nextProps) {
+    const { selectedLocation, selectedSource } = this.props;
+    const { editor } = this.state;
+
+    if (!nextProps.selectedSource || !editor || !nextProps.selectedLocation) {
+      return false;
     }
 
-    // Make sure to clean up after ourselves. Not only does this
-    // cancel any existing animation, but it avoids it from
-    // happening ever again (in case CodeMirror re-applies the
-    // class, etc).
-    if (this.lastJumpLine !== null) {
-      (0, _editor.clearLineClass)(this.state.editor.codeMirror, "highlight-line");
+    if (!(0, _source.isLoaded)(nextProps.selectedSource)) {
+      return false;
     }
 
-    let line = null;
-    if (selectedLocation.line >= 0) {
-      line = this.scrollToPosition();
+    if (!nextProps.selectedLocation.line) {
+      return false;
     }
 
-    // We only want to do the flashing animation if it's not a debug
-    // line, which has it's own styling.
-    // Also, if it the first time the debugger is being loaded, we don't want
-    // to flash the previously saved selected line.
-    if (line !== null && this.lastJumpLine !== null && (!selectedFrame || selectedFrame.location.line !== line)) {
-      this.state.editor.codeMirror.addLineClass(line, "line", "highlight-line");
-    }
+    const isFirstLoad = (!selectedSource || !(0, _source.isLoaded)(selectedSource)) && (0, _source.isLoaded)(nextProps.selectedSource);
 
-    this.lastJumpLine = line;
-    this.pendingJumpLocation = null;
+    const locationChanged = selectedLocation !== nextProps.selectedLocation;
+    return isFirstLoad || locationChanged;
   }
 
-  scrollToPosition() {
-    const { sourceId, line, column } = this.props.selectedLocation;
-    const editorLine = (0, _editor.toEditorLine)(sourceId, line);
-    (0, _editor.scrollToColumn)(this.state.editor.codeMirror, editorLine, column);
-    return editorLine;
+  scrollToLocation(nextProps) {
+    const { editor } = this.state;
+
+    if (this.shouldScrollToLocation(nextProps)) {
+      let { line, column } = (0, _editor.toEditorPosition)(nextProps.selectedLocation);
+
+      if ((0, _editor.hasDocument)(nextProps.selectedSource.get("id"))) {
+        const doc = (0, _editor.getDocument)(nextProps.selectedSource.get("id"));
+        const lineText = doc.getLine(line);
+        column = Math.max(column, (0, _indentation.getIndentation)(lineText));
+      }
+      (0, _editor.scrollToColumn)(editor.codeMirror, line, column);
+    }
   }
 
   setSize(nextProps) {
@@ -36074,7 +35211,8 @@ class Editor extends _react.PureComponent {
   }
 
   setText(props) {
-    const { selectedSource, sourceMetaData } = props;
+    const { selectedSource, symbols } = props;
+
     if (!this.state.editor) {
       return;
     }
@@ -36083,16 +35221,15 @@ class Editor extends _react.PureComponent {
       return this.showMessage("");
     }
 
-    if (!(0, _source.isLoaded)(selectedSource.toJS())) {
+    if (!(0, _source.isLoaded)(selectedSource)) {
       return (0, _editor.showLoading)(this.state.editor);
     }
 
     if (selectedSource.get("error")) {
       return this.showMessage(selectedSource.get("error"));
     }
-
     if (selectedSource) {
-      return (0, _editor.showSourceText)(this.state.editor, selectedSource.toJS(), sourceMetaData);
+      return (0, _editor.showSourceText)(this.state.editor, selectedSource.toJS(), symbols);
     }
   }
 
@@ -36127,7 +35264,7 @@ class Editor extends _react.PureComponent {
   renderHitCounts() {
     const { hitCount, selectedSource } = this.props;
 
-    if (!selectedSource || !(0, _source.isLoaded)(selectedSource.toJS()) || !hitCount || !this.state.editor) {
+    if (!selectedSource || !(0, _source.isLoaded)(selectedSource) || !hitCount || !this.state.editor) {
       return;
     }
 
@@ -36139,19 +35276,20 @@ class Editor extends _react.PureComponent {
   }
 
   renderItems() {
-    const { selectedSource, horizontal } = this.props;
+    const { horizontal, selectedSource } = this.props;
     const { editor } = this.state;
 
-    if (!editor || !selectedSource || !(0, _source.isLoaded)(selectedSource.toJS())) {
+    if (!editor || !selectedSource) {
       return null;
     }
+
     return _react2.default.createElement(
       "div",
       null,
-      _react2.default.createElement(_DebugLine2.default, { editor: editor }),
+      _react2.default.createElement(_DebugLine2.default, null),
+      _react2.default.createElement(_HighlightLine2.default, null),
       _react2.default.createElement(_EmptyLines2.default, { editor: editor }),
       _react2.default.createElement(_Breakpoints2.default, { editor: editor }),
-      _react2.default.createElement(_CallSites2.default, { editor: editor }),
       _react2.default.createElement(_Preview2.default, { editor: editor }),
       ";",
       _react2.default.createElement(_Footer2.default, { editor: editor, horizontal: horizontal }),
@@ -36159,6 +35297,7 @@ class Editor extends _react.PureComponent {
       _react2.default.createElement(_EditorMenu2.default, { editor: editor }),
       _react2.default.createElement(_GutterMenu2.default, { editor: editor }),
       _react2.default.createElement(_ConditionalPanel2.default, { editor: editor }),
+      _prefs.features.columnBreakpoints ? _react2.default.createElement(_CallSites2.default, { editor: editor }) : null,
       this.renderHitCounts()
     );
   }
@@ -36205,10 +35344,9 @@ const mapStateToProps = state => {
     selectedSource,
     searchOn: (0, _selectors.getActiveSearch)(state) === "file",
     hitCount: (0, _selectors.getHitCountForSource)(state, sourceId),
-    selectedFrame: (0, _selectors.getSelectedFrame)(state),
     coverageOn: (0, _selectors.getCoverageEnabled)(state),
     conditionalPanelLine: (0, _selectors.getConditionalPanelLine)(state),
-    sourceMetaData: (0, _selectors.getSourceMetaData)(state, sourceId)
+    symbols: (0, _selectors.getSymbols)(state, selectedSource && selectedSource.toJS())
   };
 };
 
@@ -36243,9 +35381,11 @@ var _classnames = __webpack_require__(175);
 
 var _classnames2 = _interopRequireDefault(_classnames);
 
-var _devtoolsConfig = __webpack_require__(1355);
+var _prefs = __webpack_require__(226);
 
 var _source = __webpack_require__(1356);
+
+var _sources = __webpack_require__(1369);
 
 var _editor = __webpack_require__(1358);
 
@@ -36257,25 +35397,29 @@ __webpack_require__(1322);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 class SourceFooter extends _react.PureComponent {
   prettyPrintButton() {
     const { selectedSource, togglePrettyPrint } = this.props;
-    const sourceLoaded = selectedSource && (0, _source.isLoaded)(selectedSource.toJS());
+    const sourceLoaded = selectedSource && (0, _source.isLoaded)(selectedSource);
 
     if (!(0, _editor.shouldShowPrettyPrint)(selectedSource)) {
       return;
     }
 
     const tooltip = L10N.getStr("sourceTabs.prettyPrint");
-    const type = "prettyPrint";
 
+    const type = "prettyPrint";
     return _react2.default.createElement(
       "button",
       {
         onClick: () => togglePrettyPrint(selectedSource.get("id")),
         className: (0, _classnames2.default)("action", type, {
           active: sourceLoaded,
-          pretty: (0, _source.isPretty)(selectedSource.toJS())
+          pretty: (0, _source.isPretty)(selectedSource)
         }),
         key: type,
         title: tooltip,
@@ -36287,9 +35431,9 @@ class SourceFooter extends _react.PureComponent {
 
   blackBoxButton() {
     const { selectedSource, toggleBlackBox } = this.props;
-    const sourceLoaded = selectedSource && (0, _source.isLoaded)(selectedSource.toJS());
+    const sourceLoaded = selectedSource && (0, _source.isLoaded)(selectedSource);
 
-    if (!(0, _devtoolsConfig.isEnabled)("blackbox") || !sourceLoaded) {
+    if (!sourceLoaded) {
       return;
     }
 
@@ -36331,7 +35475,7 @@ class SourceFooter extends _react.PureComponent {
   coverageButton() {
     const { recordCoverage } = this.props;
 
-    if (!(0, _devtoolsConfig.isEnabled)("codeCoverage")) {
+    if (!_prefs.features.codeCoverage) {
       return;
     }
 
@@ -36371,6 +35515,35 @@ class SourceFooter extends _react.PureComponent {
     );
   }
 
+  renderSourceSummary() {
+    const { mappedSource, jumpToMappedLocation, selectedSource } = this.props;
+    if (mappedSource) {
+      const bundleSource = mappedSource.toJS();
+      const filename = (0, _source.getFilename)(bundleSource);
+      const tooltip = L10N.getFormatStr("sourceFooter.mappedSourceTooltip", filename);
+      const title = L10N.getFormatStr("sourceFooter.mappedSource", filename);
+      const mappedSourceLocation = {
+        sourceId: selectedSource.get("id"),
+        line: 1,
+        column: 1
+      };
+      return _react2.default.createElement(
+        "button",
+        {
+          className: "mapped-source",
+          onClick: () => jumpToMappedLocation(mappedSourceLocation),
+          title: tooltip
+        },
+        _react2.default.createElement(
+          "span",
+          null,
+          title
+        )
+      );
+    }
+    return null;
+  }
+
   render() {
     const { selectedSource, horizontal } = this.props;
 
@@ -36382,18 +35555,19 @@ class SourceFooter extends _react.PureComponent {
       "div",
       { className: "source-footer" },
       this.renderCommands(),
+      this.renderSourceSummary(),
       this.renderToggleButton()
     );
   }
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+}
 
 exports.default = (0, _reactRedux.connect)(state => {
   const selectedSource = (0, _selectors.getSelectedSource)(state);
-  const selectedId = selectedSource && selectedSource.get("id");
+  const selectedId = selectedSource.get("id");
+  const source = selectedSource.toJS();
   return {
     selectedSource,
+    mappedSource: (0, _sources.getGeneratedSource)(state, source),
     prettySource: (0, _selectors.getPrettySource)(state, selectedId),
     endPanelCollapsed: (0, _selectors.getPaneCollapse)(state, "end")
   };
@@ -36440,8 +35614,6 @@ var _classnames = __webpack_require__(175);
 
 var _classnames2 = _interopRequireDefault(_classnames);
 
-var _devtoolsSourceEditor = __webpack_require__(1386);
-
 var _SearchInput = __webpack_require__(1379);
 
 var _SearchInput2 = _interopRequireDefault(_SearchInput);
@@ -36451,10 +35623,6 @@ var _lodash = __webpack_require__(2);
 __webpack_require__(1323);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 function getShortcuts() {
   const searchAgainKey = L10N.getStr("sourceSearch.search.again.key2");
@@ -36466,7 +35634,9 @@ function getShortcuts() {
     searchAgainShortcut: searchAgainKey,
     searchShortcut: searchKey
   };
-}
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 class SearchBar extends _react.Component {
   constructor(props) {
@@ -36824,8 +35994,6 @@ var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _redux = __webpack_require__(3);
-
 var _reactRedux = __webpack_require__(1189);
 
 var _lodash = __webpack_require__(2);
@@ -36844,21 +36012,38 @@ var _editor = __webpack_require__(1358);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
 class Preview extends _react.PureComponent {
 
   constructor() {
     super();
 
-    const self = this;
-    self.onScroll = this.onScroll.bind(this);
+    this.onMouseOver = e => {
+      const { target } = e;
+      if (this.props.selectedFrameVisible) {
+        this.props.updatePreview(target, this.props.editor);
+      }
+    };
+
+    this.onMouseUp = () => {
+      this.setState({ selecting: false });
+      return true;
+    };
+
+    this.onMouseDown = () => {
+      this.setState({ selecting: true });
+      return true;
+    };
+
+    this.onScroll = () => {
+      this.props.clearPreview();
+    };
+
+    this.onClose = e => {
+      this.props.clearPreview();
+    };
+
+    this.state = { selecting: false };
     self.onMouseOver = (0, _lodash.debounce)(this.onMouseOver, 40);
-    self.onMouseOver = this.onMouseOver.bind(this);
-    self.onMouseUp = this.onMouseUp.bind(this);
-    self.onMouseDown = this.onMouseDown.bind(this);
   }
 
   componentDidMount() {
@@ -36877,37 +36062,13 @@ class Preview extends _react.PureComponent {
     codeMirrorWrapper.removeEventListener("mouseover", this.onMouseOver);
     codeMirrorWrapper.removeEventListener("mouseup", this.onMouseUp);
     codeMirrorWrapper.removeEventListener("mousedown", this.onMouseDown);
-
     codeMirror.off("scroll", this.onScroll);
-  }
-
-  onMouseOver(e) {
-    const { target } = e;
-    if (this.props.selectedFrameVisible) {
-      (0, _editor.updatePreview)(target, this.props.editor, this.props);
-    }
-  }
-
-  onMouseUp() {
-    this.currentlySelecting = false;
-  }
-
-  onMouseDown() {
-    this.currentlySelecting = true;
-  }
-
-  onScroll() {
-    this.props.clearPreview();
-  }
-
-  onClose(e) {
-    this.props.clearPreview();
   }
 
   render() {
     const { selectedSource, preview } = this.props;
 
-    if (!this.props.editor || !selectedSource || this.currentlySelecting) {
+    if (!this.props.editor || !selectedSource || this.state.selecting) {
       return null;
     }
 
@@ -36933,14 +36094,27 @@ class Preview extends _react.PureComponent {
       onClose: e => this.onClose(e)
     });
   }
-}
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+const {
+  addExpression,
+  loadObjectProperties,
+  updatePreview,
+  clearPreview
+} = _actions2.default;
 
 exports.default = (0, _reactRedux.connect)(state => ({
   preview: (0, _selectors.getPreview)(state),
   selectedSource: (0, _selectors.getSelectedSource)(state),
-  linesInScope: (0, _selectors.getInScopeLines)(state),
   selectedFrameVisible: (0, _selectors.isSelectedFrameVisible)(state)
-}), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Preview);
+}), {
+  addExpression,
+  loadObjectProperties,
+  updatePreview,
+  clearPreview
+})(Preview);
 
 /***/ }),
 /* 1559 */
@@ -36959,10 +36133,6 @@ var _react = __webpack_require__(0);
 var _react2 = _interopRequireDefault(_react);
 
 var _reactRedux = __webpack_require__(1189);
-
-var _redux = __webpack_require__(3);
-
-var _devtoolsConfig = __webpack_require__(1355);
 
 var _devtoolsReps = __webpack_require__(1408);
 
@@ -36984,6 +36154,12 @@ var _PreviewFunction2 = _interopRequireDefault(_PreviewFunction);
 
 var _editor = __webpack_require__(1358);
 
+var _preview = __webpack_require__(1807);
+
+var _Svg = __webpack_require__(1359);
+
+var _Svg2 = _interopRequireDefault(_Svg);
+
 __webpack_require__(1328);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
@@ -36994,10 +36170,6 @@ const { REPS: { Rep }, MODE, ObjectInspectorUtils } = _devtoolsReps2.default; /*
 
 const { ObjectInspector } = _devtoolsReps2.default;
 const { getChildren } = ObjectInspectorUtils;
-
-function isReactComponent(roots) {
-  return roots.some(root => root.name === "_reactInternalInstance");
-}
 
 class Popup extends _react.Component {
 
@@ -37057,36 +36229,77 @@ class Popup extends _react.Component {
     );
   }
 
+  renderReact(react, roots) {
+    const reactHeader = react.displayName || "React Component";
+
+    const header = _react2.default.createElement(
+      "div",
+      { className: "header-container" },
+      _react2.default.createElement(
+        "h3",
+        null,
+        reactHeader
+      )
+    );
+
+    roots = roots.filter(r => ["state", "props"].includes(r.name));
+    return _react2.default.createElement(
+      "div",
+      { className: "preview-popup" },
+      header,
+      this.renderObjectInspector(roots)
+    );
+  }
+
+  renderImmutable(immutable, roots) {
+    const immutableHeader = immutable.type || "Immutable";
+
+    const header = _react2.default.createElement(
+      "div",
+      { className: "header-container" },
+      _react2.default.createElement(_Svg2.default, { name: "immutable", className: "immutable-logo" }),
+      _react2.default.createElement(
+        "h3",
+        null,
+        immutableHeader
+      )
+    );
+
+    roots = [{
+      path: "entries",
+      contents: { value: immutable.entries }
+    }];
+
+    return _react2.default.createElement(
+      "div",
+      { className: "preview-popup" },
+      header,
+      this.renderObjectInspector(roots)
+    );
+  }
+
   renderObjectPreview(expression, root, extra) {
-    let reactHeader = null;
     const { loadedObjects } = this.props;
+    const { extra: { react, immutable } } = this.props;
     const getObjectProperties = id => loadedObjects[id];
-    let roots = this.getChildren(root, getObjectProperties);
+    const roots = this.getChildren(root, getObjectProperties);
+    const grip = root.contents.value;
 
     if (!roots) {
       return null;
     }
 
-    if (isReactComponent(roots)) {
-      if (typeof extra !== "undefined") {
-        reactHeader = _react2.default.createElement(
-          "div",
-          { className: "header-container" },
-          _react2.default.createElement(
-            "h3",
-            null,
-            extra
-          )
-        );
-      }
+    if ((0, _preview.isReactComponent)(grip)) {
+      return this.renderReact(react, roots);
+    }
 
-      roots = roots.filter(r => ["state", "props"].includes(r.name));
+    if ((0, _preview.isImmutable)(grip)) {
+      return this.renderImmutable(immutable, roots);
     }
 
     return _react2.default.createElement(
       "div",
       { className: "preview-popup" },
-      reactHeader,
       this.renderObjectInspector(roots)
     );
   }
@@ -37122,36 +36335,6 @@ class Popup extends _react.Component {
     });
   }
 
-  renderAddToExpressionBar(expression) {
-    if (!(0, _devtoolsConfig.isEnabled)("previewWatch")) {
-      return null;
-    }
-
-    const { addExpression } = this.props;
-    return _react2.default.createElement(
-      "div",
-      { className: "add-to-expression-bar" },
-      _react2.default.createElement(
-        "div",
-        { className: "prompt" },
-        "\xBB"
-      ),
-      _react2.default.createElement(
-        "div",
-        { className: "expression-to-save-label" },
-        expression
-      ),
-      _react2.default.createElement(
-        "div",
-        {
-          className: "expression-to-save-button",
-          onClick: event => addExpression(event)
-        },
-        L10N.getStr("addWatchExpressionButton")
-      )
-    );
-  }
-
   renderPreview(expression, value, extra) {
     const root = {
       name: expression,
@@ -37167,8 +36350,7 @@ class Popup extends _react.Component {
       return _react2.default.createElement(
         "div",
         null,
-        this.renderObjectPreview(expression, root, extra),
-        this.renderAddToExpressionBar(expression)
+        this.renderObjectPreview(expression, root, extra)
       );
     }
 
@@ -37196,9 +36378,23 @@ class Popup extends _react.Component {
 }
 
 exports.Popup = Popup;
+const {
+  addExpression,
+  selectSourceURL,
+  selectLocation,
+  loadObjectProperties,
+  openLink
+} = _actions2.default;
+
 exports.default = (0, _reactRedux.connect)(state => ({
   loadedObjects: (0, _selectors.getLoadedObjects)(state)
-}), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Popup);
+}), {
+  addExpression,
+  selectSourceURL,
+  selectLocation,
+  loadObjectProperties,
+  openLink
+})(Popup);
 
 /***/ }),
 /* 1560 */
@@ -39709,7 +38905,6 @@ class Popover extends _react.Component {
 
   renderPopover() {
     const { top, left, orientation, targetMid } = this.state;
-
     const arrow = this.getPopoverArrow(orientation, targetMid);
 
     return _react2.default.createElement(
@@ -39810,8 +39005,6 @@ Object.defineProperty(exports, "__esModule", {
 
 var _reactRedux = __webpack_require__(1189);
 
-var _redux = __webpack_require__(3);
-
 var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
@@ -39819,10 +39012,6 @@ var _react2 = _interopRequireDefault(_react);
 var _Breakpoint = __webpack_require__(1589);
 
 var _Breakpoint2 = _interopRequireDefault(_Breakpoint);
-
-var _actions = __webpack_require__(1354);
-
-var _actions2 = _interopRequireDefault(_actions);
 
 var _selectors = __webpack_require__(1352);
 
@@ -39838,7 +39027,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 class Breakpoints extends _react.Component {
   shouldComponentUpdate(nextProps) {
-    if (nextProps.selectedSource && !(0, _source.isLoaded)(nextProps.selectedSource.toJS())) {
+    if (nextProps.selectedSource && !(0, _source.isLoaded)(nextProps.selectedSource)) {
       return false;
     }
 
@@ -39846,7 +39035,7 @@ class Breakpoints extends _react.Component {
   }
 
   render() {
-    const { breakpoints, selectedSource, editor, sourceMetaData } = this.props;
+    const { breakpoints, selectedSource, editor } = this.props;
 
     if (!selectedSource || !breakpoints || selectedSource.get("isBlackBoxed")) {
       return null;
@@ -39860,7 +39049,6 @@ class Breakpoints extends _react.Component {
           key: (0, _breakpoint.makeLocationId)(bp.location),
           breakpoint: bp,
           selectedSource: selectedSource,
-          sourceMetaData: sourceMetaData,
           editor: editor
         });
       })
@@ -39872,9 +39060,8 @@ class Breakpoints extends _react.Component {
 
 exports.default = (0, _reactRedux.connect)(state => ({
   breakpoints: (0, _visibleBreakpoints2.default)(state),
-  selectedSource: (0, _selectors.getSelectedSource)(state),
-  sourceMetaData: (0, _selectors.getSourceMetaData)(state, (0, _selectors.getSelectedSource)(state).id)
-}), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Breakpoints);
+  selectedSource: (0, _selectors.getSelectedSource)(state)
+}))(Breakpoints);
 
 /***/ }),
 /* 1589 */
@@ -39891,8 +39078,6 @@ var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _devtoolsConfig = __webpack_require__(1355);
-
 var _reactDom = __webpack_require__(4);
 
 var _reactDom2 = _interopRequireDefault(_reactDom);
@@ -39907,6 +39092,8 @@ var _Svg2 = _interopRequireDefault(_Svg);
 
 var _editor = __webpack_require__(1358);
 
+var _prefs = __webpack_require__(226);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
@@ -39920,7 +39107,7 @@ function makeMarker(isDisabled) {
   const bp = breakpointSvg.cloneNode(true);
   bp.className = (0, _classnames2.default)("editor new-breakpoint", {
     "breakpoint-disabled": isDisabled,
-    "folding-enabled": (0, _devtoolsConfig.isEnabled)("codeFolding")
+    "folding-enabled": _prefs.features.codeFolding
   });
 
   return bp;
@@ -39934,7 +39121,7 @@ class Breakpoint extends _react.Component {
   }
 
   addBreakpoint() {
-    const { breakpoint, editor, selectedSource, sourceMetaData } = this.props;
+    const { breakpoint, editor, selectedSource } = this.props;
 
     // Hidden Breakpoints are never rendered on the client
     if (breakpoint.hidden) {
@@ -39949,8 +39136,6 @@ class Breakpoint extends _react.Component {
 
     const sourceId = selectedSource.get("id");
     const line = (0, _editor.toEditorLine)(sourceId, breakpoint.location.line);
-
-    (0, _editor.showSourceText)(editor, selectedSource.toJS(), sourceMetaData);
 
     editor.codeMirror.setGutterMarker(line, "breakpoints", makeMarker(breakpoint.disabled));
 
@@ -40093,10 +39278,6 @@ var _react2 = _interopRequireDefault(_react);
 
 var _reactRedux = __webpack_require__(1189);
 
-var _redux = __webpack_require__(3);
-
-var _prefs = __webpack_require__(226);
-
 var _lodash = __webpack_require__(2);
 
 var _CallSite = __webpack_require__(1592);
@@ -40135,22 +39316,18 @@ class CallSites extends _react.Component {
     const { editor } = this.props;
     const codeMirrorWrapper = editor.codeMirror.getWrapperElement();
 
-    if (_prefs.features.columnBreakpoints) {
-      codeMirrorWrapper.addEventListener("click", e => this.onTokenClick(e));
-      document.body.addEventListener("keydown", this.onKeyDown);
-      document.body.addEventListener("keyup", this.onKeyUp);
-    }
+    codeMirrorWrapper.addEventListener("click", e => this.onTokenClick(e));
+    document.body.addEventListener("keydown", this.onKeyDown);
+    document.body.addEventListener("keyup", this.onKeyUp);
   }
 
-  componentDidUnMount() {
+  componentWillUnmount() {
     const { editor } = this.props;
     const codeMirrorWrapper = editor.codeMirror.getWrapperElement();
 
-    if (_prefs.features.columnBreakpoints) {
-      codeMirrorWrapper.addEventListener("click", e => this.onTokenClick(e));
-      document.body.removeEventListener("keydown", e => this.onKeyDown);
-      document.body.removeEventListener("keyup", this.onKeyUp);
-    }
+    codeMirrorWrapper.removeEventListener("click", e => this.onTokenClick(e));
+    document.body.removeEventListener("keydown", this.onKeyDown);
+    document.body.removeEventListener("keyup", this.onKeyUp);
   }
 
   onKeyUp(e) {
@@ -40282,6 +39459,8 @@ function getCallSites(symbols, breakpoints) {
   return callSites.filter(({ location }) => location.start.line === location.end.line).map(callSite => _extends({}, callSite, { breakpoint: findBreakpoint(callSite) }));
 }
 
+const { addBreakpoint, removeBreakpoint } = _actions2.default;
+
 exports.default = (0, _reactRedux.connect)(state => {
   const selectedLocation = (0, _selectors.getSelectedLocation)(state);
   const selectedSource = (0, _selectors.getSelectedSource)(state);
@@ -40297,7 +39476,10 @@ exports.default = (0, _reactRedux.connect)(state => {
     callSites: getCallSites(symbols, breakpoints),
     breakpoints: breakpoints
   };
-}, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(CallSites);
+}, {
+  addBreakpoint,
+  removeBreakpoint
+})(CallSites);
 
 /***/ }),
 /* 1592 */
@@ -40409,86 +39591,80 @@ var _react = __webpack_require__(0);
 
 var _editor = __webpack_require__(1358);
 
-var _sourceDocuments = __webpack_require__(1436);
+var _source = __webpack_require__(1356);
+
+var _pause = __webpack_require__(1400);
+
+var _indentation = __webpack_require__(1438);
 
 var _reactRedux = __webpack_require__(1189);
 
 var _selectors = __webpack_require__(1352);
 
+function isDocumentReady(selectedSource, selectedFrame) {
+  return selectedFrame && (0, _source.isLoaded)(selectedSource) && (0, _editor.hasDocument)(selectedFrame.location.sourceId);
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 class DebugLine extends _react.Component {
-  constructor() {
-    super();
-    this.state = { debugExpression: { clear: () => {} } };
+
+  componentDidUpdate(prevProps) {
+    const { why, selectedFrame, selectedSource } = this.props;
+    this.setDebugLine(why, selectedFrame, selectedSource);
+  }
+
+  componentWillUpdate() {
+    const { why, selectedFrame, selectedSource } = this.props;
+    this.clearDebugLine(selectedFrame, selectedSource, why);
   }
 
   componentDidMount() {
-    this.setDebugLine(this.props.pauseInfo, this.props.selectedFrame, this.props.selectedLocation, this.props.editor);
+    const { why, selectedFrame, selectedSource } = this.props;
+    this.setDebugLine(why, selectedFrame, selectedSource);
   }
 
-  componentWillReceiveProps(nextProps) {
-    this.clearDebugLine(this.props.selectedFrame, this.props.editor);
-    this.setDebugLine(nextProps.pauseInfo, nextProps.selectedFrame, nextProps.selectedLocation, nextProps.editor);
-  }
-
-  componentWillUnmount() {
-    this.clearDebugLine(this.props.selectedFrame, this.props.editor);
-  }
-
-  setDebugLine(pauseInfo, selectedFrame, selectedLocation, editor) {
-    if (!selectedFrame) {
+  setDebugLine(why, selectedFrame, selectedSource) {
+    if (!isDocumentReady(selectedSource, selectedFrame)) {
       return;
     }
+    const sourceId = selectedFrame.location.sourceId;
+    const doc = (0, _editor.getDocument)(sourceId);
 
-    const { location, location: { sourceId } } = selectedFrame;
-    const doc = (0, _sourceDocuments.getDocument)(sourceId);
-    if (!doc) {
-      return;
-    }
-
-    const { line, column } = (0, _editor.toEditorPosition)(sourceId, location);
-
-    // make sure the line is visible
-    if (editor && editor.alignLine) {
-      editor.alignLine(line);
-    }
-
-    const { markTextClass, lineClass } = this.getTextClasses(pauseInfo);
+    let { line, column } = (0, _editor.toEditorPosition)(selectedFrame.location);
+    const { markTextClass, lineClass } = this.getTextClasses(why);
     doc.addLineClass(line, "line", lineClass);
 
-    const debugExpression = (0, _editor.markText)(editor, markTextClass, {
-      start: { line, column },
-      end: { line, column: null }
-    });
-    this.setState({ debugExpression });
+    const lineText = doc.getLine(line);
+    column = Math.max(column, (0, _indentation.getIndentation)(lineText));
+
+    this.debugExpression = doc.markText({ ch: column, line }, { ch: null, line }, { className: markTextClass });
   }
 
-  clearDebugLine(selectedFrame, editor) {
-    if (!selectedFrame) {
-      return;
-    }
-    const { line, sourceId } = selectedFrame.location;
-    const { debugExpression } = this.state;
-    if (debugExpression) {
-      debugExpression.clear();
-    }
-
-    const editorLine = line - 1;
-    const doc = (0, _sourceDocuments.getDocument)(sourceId);
-    if (!doc) {
+  clearDebugLine(selectedFrame, selectedSource, why) {
+    if (!isDocumentReady(selectedSource, selectedFrame)) {
       return;
     }
 
-    doc.removeLineClass(editorLine, "line", "new-debug-line");
-    doc.removeLineClass(editorLine, "line", "new-debug-line-error");
+    if (this.debugExpression) {
+      this.debugExpression.clear();
+    }
+
+    const sourceId = selectedFrame.location.sourceId;
+    const { line } = (0, _editor.toEditorPosition)(selectedFrame.location);
+    const doc = (0, _editor.getDocument)(sourceId);
+    const { lineClass } = this.getTextClasses(why);
+    doc.removeLineClass(line, "line", lineClass);
   }
 
-  getTextClasses(pauseInfo) {
-    if (pauseInfo && pauseInfo.why.type === "exception") {
+  getTextClasses(why) {
+    if ((0, _pause.isException)(why)) {
       return {
         markTextClass: "debug-expression-error",
         lineClass: "new-debug-line-error"
       };
     }
+
     return { markTextClass: "debug-expression", lineClass: "new-debug-line" };
   }
 
@@ -40497,15 +39673,14 @@ class DebugLine extends _react.Component {
   }
 }
 
-exports.DebugLine = DebugLine; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-exports.default = (0, _reactRedux.connect)(state => ({
-  selectedLocation: (0, _selectors.getSelectedLocation)(state),
-  selectedFrame: (0, _selectors.getSelectedFrame)(state),
-  pauseInfo: (0, _selectors.getPause)(state)
-}))(DebugLine);
+exports.DebugLine = DebugLine;
+exports.default = (0, _reactRedux.connect)(state => {
+  return {
+    selectedFrame: (0, _selectors.getVisibleSelectedFrame)(state),
+    selectedSource: (0, _selectors.getSelectedSource)(state),
+    why: (0, _selectors.getPauseReason)(state)
+  };
+})(DebugLine);
 
 /***/ }),
 /* 1594 */
@@ -40520,21 +39695,13 @@ Object.defineProperty(exports, "__esModule", {
 
 var _reactRedux = __webpack_require__(1189);
 
-var _redux = __webpack_require__(3);
-
 var _react = __webpack_require__(0);
-
-var _actions = __webpack_require__(1354);
-
-var _actions2 = _interopRequireDefault(_actions);
 
 var _selectors = __webpack_require__(1352);
 
 var _editor = __webpack_require__(1358);
 
 __webpack_require__(1330);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 class EmptyLines extends _react.Component {
 
@@ -40587,7 +39754,7 @@ exports.default = (0, _reactRedux.connect)(state => {
     selectedSource,
     emptyLines: selectedSource ? (0, _selectors.getEmptyLines)(state, selectedSource.toJS()) : []
   };
-}, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(EmptyLines);
+})(EmptyLines);
 
 /***/ }),
 /* 1595 */
@@ -40608,7 +39775,7 @@ exports.gutterMenu = gutterMenu;
 
 var _react = __webpack_require__(0);
 
-var _devtoolsLaunchpad = __webpack_require__(1362);
+var _devtoolsContextmenu = __webpack_require__(1413);
 
 var _redux = __webpack_require__(3);
 
@@ -40630,7 +39797,7 @@ function gutterMenu({
   breakpoint,
   line,
   event,
-  pauseData,
+  isPaused,
   toggleBreakpoint,
   openConditionalPanel,
   toggleDisabledBreakpoint,
@@ -40691,7 +39858,7 @@ function gutterMenu({
 
   const items = [toggleBreakpointItem, conditionalBreakpoint];
 
-  if (pauseData) {
+  if (isPaused) {
     const continueToHereItem = _extends({
       accesskey: L10N.getStr("editor.continueToHere.accesskey"),
       disabled: false,
@@ -40709,7 +39876,7 @@ function gutterMenu({
     items.push(disableBreakpoint);
   }
 
-  (0, _devtoolsLaunchpad.showMenu)(event, items);
+  (0, _devtoolsContextmenu.showMenu)(event, items);
 }
 
 class GutterContextMenuComponent extends _react.PureComponent {
@@ -40754,7 +39921,7 @@ exports.default = (0, _reactRedux.connect)(state => {
     selectedLocation: (0, _selectors.getSelectedLocation)(state),
     selectedSource: selectedSource,
     breakpoints: (0, _selectors.getVisibleBreakpoints)(state),
-    pauseData: (0, _selectors.getPause)(state),
+    isPaused: (0, _selectors.isPaused)(state),
     contextMenu: (0, _selectors.getContextMenu)(state),
     emptyLines: selectedSource ? (0, _selectors.getEmptyLines)(state, selectedSource.toJS()) : []
   };
@@ -40773,23 +39940,21 @@ Object.defineProperty(exports, "__esModule", {
 
 var _react = __webpack_require__(0);
 
+var _reactRedux = __webpack_require__(1189);
+
 var _devtoolsLaunchpad = __webpack_require__(1362);
 
 var _devtoolsSourceMap = __webpack_require__(1360);
 
 var _clipboard = __webpack_require__(1388);
 
-var _source = __webpack_require__(1356);
-
-var _editor = __webpack_require__(1358);
-
-var _redux = __webpack_require__(3);
-
-var _reactRedux = __webpack_require__(1189);
-
 var _function = __webpack_require__(1597);
 
 var _astBreakpointLocation = __webpack_require__(1416);
+
+var _editor = __webpack_require__(1358);
+
+var _source = __webpack_require__(1356);
 
 var _selectors = __webpack_require__(1352);
 
@@ -40804,41 +39969,53 @@ function _objectWithoutProperties(obj, keys) { var target = {}; for (var i in ob
                                                                                                                                                                                                                               * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 function getMenuItems(event, {
+  addExpression,
   editor,
+  flashLineRange,
+  getFunctionLocation,
+  getFunctionText,
+  hasPrettyPrint,
+  jumpToMappedLocation,
+  onGutterContextMenu,
   selectedLocation,
   selectedSource,
   showSource,
-  onGutterContextMenu,
-  jumpToMappedLocation,
-  toggleBlackBox,
-  addExpression,
-  getFunctionText,
-  getFunctionLocation,
-  flashLineRange
+  toggleBlackBox
 }) {
-  const copySourceLabel = L10N.getStr("copySource");
-  const copySourceKey = L10N.getStr("copySource.accesskey");
-  const copyFunctionLabel = L10N.getStr("copyFunction.label");
-  const copyFunctionKey = L10N.getStr("copyFunction.accesskey");
-  const copySourceUri2Label = L10N.getStr("copySourceUri2");
-  const copySourceUri2Key = L10N.getStr("copySourceUri2.accesskey");
-  const revealInTreeLabel = L10N.getStr("sourceTabs.revealInTree");
-  const revealInTreeKey = L10N.getStr("sourceTabs.revealInTree.accesskey");
+  // variables
+  const hasSourceMap = !!selectedSource.get("sourceMapURL");
+  const isOriginal = (0, _devtoolsSourceMap.isOriginalId)(selectedLocation.sourceId);
+  const isPrettyPrinted = (0, _source.isPretty)(selectedSource);
+  const isPrettified = isPrettyPrinted || hasPrettyPrint;
+  const isMapped = isOriginal || hasSourceMap;
+  const { line } = editor.codeMirror.coordsChar({
+    left: event.clientX,
+    top: event.clientY
+  });
+  const selectionText = editor.codeMirror.getSelection().trim();
+  const sourceLocation = (0, _editor.getSourceLocationFromMouseEvent)(editor, selectedLocation, event);
+  const textSelected = editor.codeMirror.somethingSelected();
+
+  // localizations
+  const blackboxKey = L10N.getStr("sourceFooter.blackbox.accesskey");
   const blackboxLabel = L10N.getStr("sourceFooter.blackbox");
   const unblackboxLabel = L10N.getStr("sourceFooter.unblackbox");
-  const blackboxKey = L10N.getStr("sourceFooter.blackbox.accesskey");
   const toggleBlackBoxLabel = selectedSource.get("isBlackBoxed") ? unblackboxLabel : blackboxLabel;
+  const copyFunctionKey = L10N.getStr("copyFunction.accesskey");
+  const copyFunctionLabel = L10N.getStr("copyFunction.label");
+  const copySourceKey = L10N.getStr("copySource.accesskey");
+  const copySourceLabel = L10N.getStr("copySource");
+  const copySourceUri2Key = L10N.getStr("copySourceUri2.accesskey");
+  const copySourceUri2Label = L10N.getStr("copySourceUri2");
+  const jumpToMappedLocKey = L10N.getStr("editor.jumpToMappedLocation1.accesskey");
+  const jumpToMappedLocLabel = L10N.getFormatStr("editor.jumpToMappedLocation1", isOriginal ? L10N.getStr("generated") : L10N.getStr("original"));
+  const revealInTreeKey = L10N.getStr("sourceTabs.revealInTree.accesskey");
+  const revealInTreeLabel = L10N.getStr("sourceTabs.revealInTree");
+  const watchExpressionKey = L10N.getStr("expressions.accesskey");
+  const watchExpressionLabel = L10N.getStr("expressions.label");
 
-  const copySourceUri2 = {
-    id: "node-menu-copy-source-url",
-    label: copySourceUri2Label,
-    accesskey: copySourceUri2Key,
-    disabled: false,
-    click: () => (0, _clipboard.copyToTheClipboard)(selectedSource.get("url"))
-  };
-
-  const selectionText = editor.codeMirror.getSelection().trim();
-  const copySource = {
+  // menu items
+  const copySourceItem = {
     id: "node-menu-copy-source",
     label: copySourceLabel,
     accesskey: copySourceKey,
@@ -40846,51 +40023,16 @@ function getMenuItems(event, {
     click: () => (0, _clipboard.copyToTheClipboard)(selectionText)
   };
 
-  const { line } = editor.codeMirror.coordsChar({
-    left: event.clientX,
-    top: event.clientY
-  });
-
-  const sourceLocation = (0, _editor.getSourceLocationFromMouseEvent)(editor, selectedLocation, event);
-
-  const isOriginal = (0, _devtoolsSourceMap.isOriginalId)(selectedLocation.sourceId);
-  const hasSourceMap = selectedSource.get("sourceMapURL");
-  const isPrettyPrinted = (0, _source.isPretty)(selectedSource.toJS());
-
-  const jumpLabel = {
-    accesskey: L10N.getStr("editor.jumpToMappedLocation1.accesskey"),
-    disabled: _devtoolsSourceMap.isGeneratedId && !hasSourceMap,
-    label: L10N.getFormatStr("editor.jumpToMappedLocation1", isOriginal ? L10N.getStr("generated") : L10N.getStr("original")),
-    click: () => jumpToMappedLocation(sourceLocation)
-  };
-
-  const watchExpressionLabel = {
-    accesskey: L10N.getStr("expressions.accesskey"),
-    label: L10N.getStr("expressions.label"),
-    click: () => addExpression(editor.codeMirror.getSelection())
-  };
-
-  const blackBoxMenuItem = {
-    id: "node-menu-blackbox",
-    label: toggleBlackBoxLabel,
-    accesskey: blackboxKey,
-    disabled: isOriginal || isPrettyPrinted || hasSourceMap,
-    click: () => toggleBlackBox(selectedSource.toJS())
-  };
-
-  // TODO: Find a new way to only add this for mapped sources?
-  const textSelected = editor.codeMirror.somethingSelected();
-
-  const showSourceMenuItem = {
-    id: "node-menu-show-source",
-    label: revealInTreeLabel,
-    accesskey: revealInTreeKey,
-    disabled: isPrettyPrinted,
-    click: () => showSource(selectedSource.get("id"))
+  const copySourceUri2Item = {
+    id: "node-menu-copy-source-url",
+    label: copySourceUri2Label,
+    accesskey: copySourceUri2Key,
+    disabled: false,
+    click: () => (0, _clipboard.copyToTheClipboard)(selectedSource.get("url"))
   };
 
   const functionText = getFunctionText(line + 1);
-  const copyFunction = {
+  const copyFunctionItem = {
     id: "node-menu-copy-function",
     label: copyFunctionLabel,
     accesskey: copyFunctionKey,
@@ -40906,10 +40048,44 @@ function getMenuItems(event, {
     }
   };
 
-  const menuItems = [copySource, copySourceUri2, copyFunction, { type: "separator" }, jumpLabel, showSourceMenuItem, blackBoxMenuItem];
+  const jumpToMappedLocationItem = {
+    id: "node-menu-jump",
+    label: jumpToMappedLocLabel,
+    accesskey: jumpToMappedLocKey,
+    disabled: !isMapped && !isPrettified,
+    click: () => jumpToMappedLocation(sourceLocation)
+  };
 
+  const showSourceMenuItem = {
+    id: "node-menu-show-source",
+    label: revealInTreeLabel,
+    accesskey: revealInTreeKey,
+    disabled: isPrettyPrinted,
+    click: () => showSource(selectedSource.get("id"))
+  };
+
+  const blackBoxMenuItem = {
+    id: "node-menu-blackbox",
+    label: toggleBlackBoxLabel,
+    accesskey: blackboxKey,
+    disabled: isOriginal || isPrettyPrinted || hasSourceMap,
+    click: () => toggleBlackBox(selectedSource.toJS())
+  };
+
+  const watchExpressionItem = {
+    id: "node-menu-add-watch-expression",
+    label: watchExpressionLabel,
+    accesskey: watchExpressionKey,
+    click: () => addExpression(editor.codeMirror.getSelection())
+  };
+
+  // construct menu
+  const menuItems = [copySourceItem, copySourceUri2Item, copyFunctionItem, { type: "separator" }, jumpToMappedLocationItem, showSourceMenuItem, blackBoxMenuItem];
+
+  // conditionally added items
+  // TODO: Find a new way to only add this for mapped sources?
   if (textSelected) {
-    menuItems.push(watchExpressionLabel);
+    menuItems.push(watchExpressionItem);
   }
 
   return menuItems;
@@ -40943,11 +40119,21 @@ class EditorMenu extends _react.PureComponent {
   }
 }
 
+const {
+  addExpression,
+  flashLineRange,
+  jumpToMappedLocation,
+  setContextMenu,
+  showSource,
+  toggleBlackBox
+} = _actions2.default;
+
 exports.default = (0, _reactRedux.connect)(state => {
   const selectedSource = (0, _selectors.getSelectedSource)(state);
   return {
     selectedLocation: (0, _selectors.getSelectedLocation)(state),
     selectedSource,
+    hasPrettyPrint: !!(0, _selectors.getPrettySource)(state, selectedSource.get("id")),
     contextMenu: (0, _selectors.getContextMenu)(state),
     getFunctionText: line => (0, _function.findFunctionText)(line, selectedSource.toJS(), (0, _selectors.getSymbols)(state, selectedSource.toJS())),
     getFunctionLocation: line => (0, _astBreakpointLocation.findClosestScope)((0, _selectors.getSymbols)(state, selectedSource.toJS()).functions, {
@@ -40955,7 +40141,14 @@ exports.default = (0, _reactRedux.connect)(state => {
       column: Infinity
     })
   };
-}, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(EditorMenu);
+}, {
+  addExpression,
+  flashLineRange,
+  jumpToMappedLocation,
+  setContextMenu,
+  showSource,
+  toggleBlackBox
+})(EditorMenu);
 
 /***/ }),
 /* 1597 */
@@ -41014,8 +40207,6 @@ var _reactDom = __webpack_require__(4);
 
 var _reactDom2 = _interopRequireDefault(_reactDom);
 
-var _redux = __webpack_require__(3);
-
 var _reactRedux = __webpack_require__(1189);
 
 var _Close = __webpack_require__(1374);
@@ -41033,6 +40224,10 @@ var _actions2 = _interopRequireDefault(_actions);
 var _selectors = __webpack_require__(1352);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 class ConditionalPanel extends _react.PureComponent {
 
@@ -41052,6 +40247,13 @@ class ConditionalPanel extends _react.PureComponent {
         this.saveAndClose();
       } else if (e.key === "Escape") {
         this.props.closeConditionalPanel();
+      }
+    };
+
+    this.repositionOnScroll = () => {
+      if (this.panelNode && this.scrollParent) {
+        const { scrollLeft } = this.scrollParent;
+        this.panelNode.style.transform = `translateX(${scrollLeft}px)`;
       }
     };
 
@@ -41076,12 +40278,28 @@ class ConditionalPanel extends _react.PureComponent {
       this.cbPanel.clear();
       this.cbPanel = null;
     }
+    if (this.scrollParent) {
+      this.scrollParent.removeEventListener("scroll", this.repositionOnScroll);
+    }
+  }
+
+  componentWillMount() {
+    if (this.props.line) {
+      return this.renderToWidget(this.props);
+    }
   }
 
   componentWillUpdate(nextProps) {
     if (nextProps.line) {
       return this.renderToWidget(nextProps);
     }
+    return this.clearConditionalPanel();
+  }
+
+  componentWillUnmount() {
+    // This is called if CodeMirror is re-initializing itself before the
+    // user closes the conditional panel. Clear the widget, and re-render it
+    // as soon as this component gets remounted
     return this.clearConditionalPanel();
   }
 
@@ -41095,6 +40313,20 @@ class ConditionalPanel extends _react.PureComponent {
       noHScroll: false
     });
     if (this.input) {
+      let parent = this.input.parentNode;
+      while (parent) {
+        if (parent instanceof HTMLElement && parent.classList.contains("CodeMirror-scroll")) {
+          this.scrollParent = parent;
+          break;
+        }
+        parent = parent.parentNode;
+      }
+
+      if (this.scrollParent) {
+        this.scrollParent.addEventListener("scroll", this.repositionOnScroll);
+        this.repositionOnScroll();
+      }
+
       this.input.focus();
     }
   }
@@ -41108,7 +40340,8 @@ class ConditionalPanel extends _react.PureComponent {
       {
         className: "conditional-breakpoint-panel",
         onClick: () => this.keepFocusOnInput(),
-        onBlur: this.props.closeConditionalPanel
+        onBlur: this.props.closeConditionalPanel,
+        ref: node => this.panelNode = node
       },
       _react2.default.createElement(
         "div",
@@ -41135,9 +40368,12 @@ class ConditionalPanel extends _react.PureComponent {
   }
 }
 
-exports.ConditionalPanel = ConditionalPanel; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                              * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                              * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+exports.ConditionalPanel = ConditionalPanel;
+const {
+  setBreakpointCondition,
+  openConditionalPanel,
+  closeConditionalPanel
+} = _actions2.default;
 
 exports.default = (0, _reactRedux.connect)(state => {
   const line = (0, _selectors.getConditionalPanelLine)(state);
@@ -41147,7 +40383,11 @@ exports.default = (0, _reactRedux.connect)(state => {
     breakpoint: (0, _selectors.getBreakpointForLine)(state, selectedLocation.sourceId, line),
     line
   };
-}, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(ConditionalPanel);
+}, {
+  setBreakpointCondition,
+  openConditionalPanel,
+  closeConditionalPanel
+})(ConditionalPanel);
 
 /***/ }),
 /* 1599 */
@@ -41172,23 +40412,17 @@ var _reactRedux = __webpack_require__(1189);
 
 var _redux = __webpack_require__(3);
 
-var _prefs = __webpack_require__(226);
-
-var _reactImmutableProptypes = __webpack_require__(150);
-
-var _reactImmutableProptypes2 = _interopRequireDefault(_reactImmutableProptypes);
-
 var _actions = __webpack_require__(1354);
 
 var _actions2 = _interopRequireDefault(_actions);
 
 var _selectors = __webpack_require__(1352);
 
-var _devtoolsConfig = __webpack_require__(1355);
-
 var _Svg = __webpack_require__(1359);
 
 var _Svg2 = _interopRequireDefault(_Svg);
+
+var _prefs = __webpack_require__(226);
 
 var _Breakpoints = __webpack_require__(1600);
 
@@ -41226,6 +40460,10 @@ var _UtilsBar = __webpack_require__(1609);
 
 var _UtilsBar2 = _interopRequireDefault(_UtilsBar);
 
+var _BreakpointsDropdown = __webpack_require__(1790);
+
+var _BreakpointsDropdown2 = _interopRequireDefault(_BreakpointsDropdown);
+
 var _ChromeScopes = __webpack_require__(1610);
 
 var _ChromeScopes2 = _interopRequireDefault(_ChromeScopes);
@@ -41242,7 +40480,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-const Scopes = (0, _devtoolsConfig.isEnabled)("chromeScopes") ? _ChromeScopes2.default : _Scopes3.default;
+const Scopes = _prefs.features.chromeScopes ? _ChromeScopes2.default : _Scopes3.default;
 
 function debugBtn(onClick, type, className, tooltip) {
   return _react2.default.createElement(
@@ -41265,7 +40503,6 @@ class SecondaryPanes extends _react.Component {
       breakpointsDisabled,
       breakpointsLoading
     } = this.props;
-    const boxClassName = "breakpoints-toggle";
     const isIndeterminate = !breakpointsDisabled && breakpoints.some(x => x.disabled);
 
     if (breakpoints.size == 0) {
@@ -41275,8 +40512,9 @@ class SecondaryPanes extends _react.Component {
     const inputProps = {
       type: "checkbox",
       "aria-label": breakpointsDisabled ? L10N.getStr("breakpoints.enable") : L10N.getStr("breakpoints.disable"),
-      className: boxClassName,
+      className: "breakpoints-toggle",
       disabled: breakpointsLoading,
+      key: "breakpoints-toggle",
       onChange: e => {
         e.stopPropagation();
         toggleAllBreakpoints(!breakpointsDisabled);
@@ -41302,8 +40540,6 @@ class SecondaryPanes extends _react.Component {
   }
 
   getScopeItem() {
-    const isPaused = () => !!this.props.pauseData;
-
     return {
       header: L10N.getStr("scopes.header"),
       className: "scopes-pane",
@@ -41311,8 +40547,7 @@ class SecondaryPanes extends _react.Component {
       opened: _prefs.prefs.scopesVisible,
       onToggle: opened => {
         _prefs.prefs.scopesVisible = opened;
-      },
-      shouldOpen: isPaused
+      }
     };
   }
 
@@ -41322,49 +40557,93 @@ class SecondaryPanes extends _react.Component {
       className: "watch-expressions-pane",
       buttons: this.watchExpressionHeaderButtons(),
       component: _Expressions2.default,
-      opened: true
+      opened: _prefs.prefs.expressionsVisible,
+      onToggle: opened => {
+        _prefs.prefs.expressionsVisible = opened;
+      }
     };
   }
 
-  getStartItems() {
-    const scopesContent = this.props.horizontal ? this.getScopeItem() : null;
-    const isPaused = () => !!this.props.pauseData;
-
-    const items = [{
-      header: L10N.getStr("breakpoints.header"),
-      className: "breakpoints-pane",
-      buttons: this.renderBreakpointsToggle(),
-      component: _Breakpoints2.default,
-      opened: true
-    }, {
+  getCallStackItem() {
+    return {
       header: L10N.getStr("callStack.header"),
       className: "call-stack-pane",
       component: _Frames2.default,
       opened: _prefs.prefs.callStackVisible,
       onToggle: opened => {
         _prefs.prefs.callStackVisible = opened;
-      },
-      shouldOpen: isPaused
-    }, scopesContent];
+      }
+    };
+  }
 
-    if ((0, _devtoolsConfig.isEnabled)("eventListeners")) {
+  getWorkersItem() {
+    return {
+      header: L10N.getStr("workersHeader"),
+      className: "workers-pane",
+      component: _Workers2.default,
+      opened: _prefs.prefs.workersVisible,
+      onToggle: opened => {
+        _prefs.prefs.workersVisible = opened;
+      }
+    };
+  }
+
+  getBreakpointsItem() {
+    return {
+      header: L10N.getStr("breakpoints.header"),
+      className: "breakpoints-pane",
+      buttons: [this.breakpointDropdown(), this.renderBreakpointsToggle()],
+      component: _Breakpoints2.default,
+      opened: _prefs.prefs.breakpointsVisible,
+      onToggle: opened => {
+        _prefs.prefs.breakpointsVisible = opened;
+      }
+    };
+  }
+
+  breakpointDropdown() {
+    if (!_prefs.features.breakpointsDropdown) {
+      return;
+    }
+
+    const {
+      breakOnNext,
+      pauseOnExceptions,
+      shouldPauseOnExceptions,
+      shouldIgnoreCaughtExceptions,
+      isWaitingOnBreak
+    } = this.props;
+
+    return (0, _BreakpointsDropdown2.default)(breakOnNext, pauseOnExceptions, shouldPauseOnExceptions, shouldIgnoreCaughtExceptions, isWaitingOnBreak);
+  }
+
+  getStartItems() {
+    const { workers } = this.props;
+
+    const items = [];
+    if (this.props.horizontal) {
+      if (_prefs.features.workers && workers.size > 0) {
+        items.push(this.getWorkersItem());
+      }
+
+      items.push(this.getWatchItem());
+    }
+
+    items.push(this.getBreakpointsItem());
+
+    if (this.props.isPaused) {
+      items.push(this.getCallStackItem());
+      if (this.props.horizontal) {
+        items.push(this.getScopeItem());
+      }
+    }
+
+    if (_prefs.features.eventListeners) {
       items.push({
         header: L10N.getStr("eventListenersHeader"),
         className: "event-listeners-pane",
         component: _EventListeners2.default
       });
-    }
-
-    if ((0, _devtoolsConfig.isEnabled)("workers")) {
-      items.push({
-        header: L10N.getStr("workersHeader"),
-        className: "workers-pane",
-        component: _Workers2.default
-      });
-    }
-
-    if (this.props.horizontal) {
-      items.unshift(this.getWatchItem());
     }
 
     return items.filter(item => item);
@@ -41375,14 +40654,22 @@ class SecondaryPanes extends _react.Component {
   }
 
   getEndItems() {
-    const items = [];
+    const { workers } = this.props;
 
-    if (!this.props.horizontal) {
-      items.unshift(this.getScopeItem());
+    let items = [];
+
+    if (this.props.horizontal) {
+      return [];
     }
 
-    if (!this.props.horizontal) {
-      items.unshift(this.getWatchItem());
+    if (_prefs.features.workers && workers.size > 0) {
+      items.push(this.getWorkersItem());
+    }
+
+    items.push(this.getWatchItem());
+
+    if (this.props.isPaused) {
+      items = [...items, this.getScopeItem()];
     }
 
     return items;
@@ -41429,26 +40716,19 @@ class SecondaryPanes extends _react.Component {
   }
 }
 
-SecondaryPanes.propTypes = {
-  evaluateExpressions: _propTypes2.default.func.isRequired,
-  pauseData: _propTypes2.default.object,
-  horizontal: _propTypes2.default.bool,
-  breakpoints: _reactImmutableProptypes2.default.map.isRequired,
-  breakpointsDisabled: _propTypes2.default.bool,
-  breakpointsLoading: _propTypes2.default.bool,
-  toggleAllBreakpoints: _propTypes2.default.func.isRequired,
-  toggleShortcutsModal: _propTypes2.default.func
-};
-
 SecondaryPanes.contextTypes = {
   shortcuts: _propTypes2.default.object
 };
 
 exports.default = (0, _reactRedux.connect)(state => ({
-  pauseData: (0, _selectors.getPause)(state),
+  isPaused: (0, _selectors.isPaused)(state),
   breakpoints: (0, _selectors.getBreakpoints)(state),
   breakpointsDisabled: (0, _selectors.getBreakpointsDisabled)(state),
-  breakpointsLoading: (0, _selectors.getBreakpointsLoading)(state)
+  breakpointsLoading: (0, _selectors.getBreakpointsLoading)(state),
+  isWaitingOnBreak: (0, _selectors.getIsWaitingOnBreak)(state),
+  shouldPauseOnExceptions: (0, _selectors.getShouldPauseOnExceptions)(state),
+  shouldIgnoreCaughtExceptions: (0, _selectors.getShouldIgnoreCaughtExceptions)(state),
+  workers: (0, _selectors.getWorkers)(state)
 }), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(SecondaryPanes);
 
 /***/ }),
@@ -41498,7 +40778,7 @@ var _utils = __webpack_require__(1366);
 
 var _source = __webpack_require__(1356);
 
-var _devtoolsLaunchpad = __webpack_require__(1362);
+var _pause = __webpack_require__(1400);
 
 var _Close = __webpack_require__(1374);
 
@@ -41508,17 +40788,21 @@ __webpack_require__(1334);
 
 var _lodash = __webpack_require__(2);
 
+var _BreakpointsContextMenu = __webpack_require__(1805);
+
+var _BreakpointsContextMenu2 = _interopRequireDefault(_BreakpointsContextMenu);
+
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function isCurrentlyPausedAtBreakpoint(pause, breakpoint) {
-  if (!pause || pause.isInterrupted) {
+function isCurrentlyPausedAtBreakpoint(frame, why, breakpoint) {
+  if (!(0, _pause.isInterrupted)(why)) {
     return false;
   }
 
   const bpId = (0, _breakpoint.makeLocationId)(breakpoint.location);
-  const pausedId = (0, _breakpoint.makeLocationId)((0, _lodash.get)(pause, "frame.location"));
+  const pausedId = (0, _breakpoint.makeLocationId)(frame.location);
   return bpId === pausedId;
 }
 
@@ -41561,185 +40845,8 @@ class Breakpoints extends _react.PureComponent {
     }
   }
 
-  showContextMenu(e, breakpoint) {
-    const {
-      removeBreakpoint,
-      removeBreakpoints,
-      removeAllBreakpoints,
-      toggleBreakpoints,
-      toggleAllBreakpoints,
-      toggleDisabledBreakpoint,
-      setBreakpointCondition,
-      openConditionalPanel,
-      breakpoints
-    } = this.props;
-
-    e.preventDefault();
-
-    const deleteSelfLabel = L10N.getStr("breakpointMenuItem.deleteSelf2.label");
-    const deleteAllLabel = L10N.getStr("breakpointMenuItem.deleteAll2.label");
-    const deleteOthersLabel = L10N.getStr("breakpointMenuItem.deleteOthers2.label");
-    const enableSelfLabel = L10N.getStr("breakpointMenuItem.enableSelf2.label");
-    const enableAllLabel = L10N.getStr("breakpointMenuItem.enableAll2.label");
-    const enableOthersLabel = L10N.getStr("breakpointMenuItem.enableOthers2.label");
-    const disableSelfLabel = L10N.getStr("breakpointMenuItem.disableSelf2.label");
-    const disableAllLabel = L10N.getStr("breakpointMenuItem.disableAll2.label");
-    const disableOthersLabel = L10N.getStr("breakpointMenuItem.disableOthers2.label");
-    const removeConditionLabel = L10N.getStr("breakpointMenuItem.removeCondition2.label");
-    const addConditionLabel = L10N.getStr("breakpointMenuItem.addCondition2.label");
-    const editConditionLabel = L10N.getStr("breakpointMenuItem.editCondition2.label");
-
-    const deleteSelfKey = L10N.getStr("breakpointMenuItem.deleteSelf2.accesskey");
-    const deleteAllKey = L10N.getStr("breakpointMenuItem.deleteAll2.accesskey");
-    const deleteOthersKey = L10N.getStr("breakpointMenuItem.deleteOthers2.accesskey");
-    const enableSelfKey = L10N.getStr("breakpointMenuItem.enableSelf2.accesskey");
-    const enableAllKey = L10N.getStr("breakpointMenuItem.enableAll2.accesskey");
-    const enableOthersKey = L10N.getStr("breakpointMenuItem.enableOthers2.accesskey");
-    const disableSelfKey = L10N.getStr("breakpointMenuItem.disableSelf2.accesskey");
-    const disableAllKey = L10N.getStr("breakpointMenuItem.disableAll2.accesskey");
-    const disableOthersKey = L10N.getStr("breakpointMenuItem.disableOthers2.accesskey");
-    const removeConditionKey = L10N.getStr("breakpointMenuItem.removeCondition2.accesskey");
-    const editConditionKey = L10N.getStr("breakpointMenuItem.editCondition2.accesskey");
-    const addConditionKey = L10N.getStr("breakpointMenuItem.addCondition2.accesskey");
-
-    const otherBreakpoints = breakpoints.filter(b => b !== breakpoint);
-    const enabledBreakpoints = breakpoints.filter(b => !b.disabled);
-    const disabledBreakpoints = breakpoints.filter(b => b.disabled);
-    const otherEnabledBreakpoints = breakpoints.filter(b => !b.disabled && b !== breakpoint);
-    const otherDisabledBreakpoints = breakpoints.filter(b => b.disabled && b !== breakpoint);
-
-    const deleteSelf = {
-      id: "node-menu-delete-self",
-      label: deleteSelfLabel,
-      accesskey: deleteSelfKey,
-      disabled: false,
-      click: () => removeBreakpoint(breakpoint.location)
-    };
-
-    const deleteAll = {
-      id: "node-menu-delete-all",
-      label: deleteAllLabel,
-      accesskey: deleteAllKey,
-      disabled: false,
-      click: () => removeAllBreakpoints()
-    };
-
-    const deleteOthers = {
-      id: "node-menu-delete-other",
-      label: deleteOthersLabel,
-      accesskey: deleteOthersKey,
-      disabled: false,
-      click: () => removeBreakpoints(otherBreakpoints)
-    };
-
-    const enableSelf = {
-      id: "node-menu-enable-self",
-      label: enableSelfLabel,
-      accesskey: enableSelfKey,
-      disabled: false,
-      click: () => toggleDisabledBreakpoint(breakpoint.location.line)
-    };
-
-    const enableAll = {
-      id: "node-menu-enable-all",
-      label: enableAllLabel,
-      accesskey: enableAllKey,
-      disabled: false,
-      click: () => toggleAllBreakpoints(false)
-    };
-
-    const enableOthers = {
-      id: "node-menu-enable-others",
-      label: enableOthersLabel,
-      accesskey: enableOthersKey,
-      disabled: false,
-      click: () => toggleBreakpoints(false, otherDisabledBreakpoints)
-    };
-
-    const disableSelf = {
-      id: "node-menu-disable-self",
-      label: disableSelfLabel,
-      accesskey: disableSelfKey,
-      disabled: false,
-      click: () => toggleDisabledBreakpoint(breakpoint.location.line)
-    };
-
-    const disableAll = {
-      id: "node-menu-disable-all",
-      label: disableAllLabel,
-      accesskey: disableAllKey,
-      disabled: false,
-      click: () => toggleAllBreakpoints(true)
-    };
-
-    const disableOthers = {
-      id: "node-menu-disable-others",
-      label: disableOthersLabel,
-      accesskey: disableOthersKey,
-      click: () => toggleBreakpoints(true, otherEnabledBreakpoints)
-    };
-
-    const removeCondition = {
-      id: "node-menu-remove-condition",
-      label: removeConditionLabel,
-      accesskey: removeConditionKey,
-      disabled: false,
-      click: () => setBreakpointCondition(breakpoint.location)
-    };
-
-    const addCondition = {
-      id: "node-menu-add-condition",
-      label: addConditionLabel,
-      accesskey: addConditionKey,
-      click: () => {
-        this.selectBreakpoint(breakpoint);
-        openConditionalPanel(breakpoint.location.line);
-      }
-    };
-
-    const editCondition = {
-      id: "node-menu-edit-condition",
-      label: editConditionLabel,
-      accesskey: editConditionKey,
-      click: () => {
-        this.selectBreakpoint(breakpoint);
-        openConditionalPanel(breakpoint.location.line);
-      }
-    };
-
-    const hideEnableSelf = !breakpoint.disabled;
-    const hideEnableAll = disabledBreakpoints.size === 0;
-    const hideEnableOthers = otherDisabledBreakpoints.size === 0;
-    const hideDisableAll = enabledBreakpoints.size === 0;
-    const hideDisableOthers = otherEnabledBreakpoints.size === 0;
-    const hideDisableSelf = breakpoint.disabled;
-
-    const items = [{ item: enableSelf, hidden: () => hideEnableSelf }, { item: enableAll, hidden: () => hideEnableAll }, { item: enableOthers, hidden: () => hideEnableOthers }, {
-      item: { type: "separator" },
-      hidden: () => hideEnableSelf && hideEnableAll && hideEnableOthers
-    }, { item: deleteSelf }, { item: deleteAll }, { item: deleteOthers, hidden: () => breakpoints.size === 1 }, {
-      item: { type: "separator" },
-      hidden: () => hideDisableSelf && hideDisableAll && hideDisableOthers
-    }, { item: disableSelf, hidden: () => hideDisableSelf }, { item: disableAll, hidden: () => hideDisableAll }, { item: disableOthers, hidden: () => hideDisableOthers }, {
-      item: { type: "separator" }
-    }, {
-      item: addCondition,
-      hidden: () => breakpoint.condition
-    }, {
-      item: editCondition,
-      hidden: () => !breakpoint.condition
-    }, {
-      item: removeCondition,
-      hidden: () => !breakpoint.condition
-    }];
-
-    (0, _devtoolsLaunchpad.showMenu)(e, (0, _devtoolsLaunchpad.buildMenu)(items));
-  }
-
   selectBreakpoint(breakpoint) {
-    const sourceId = breakpoint.location.sourceId;
-    const { location } = breakpoint;
-    this.props.selectSource(sourceId, { location });
+    this.props.selectLocation(breakpoint.location);
   }
 
   removeBreakpoint(event, breakpoint) {
@@ -41772,7 +40879,7 @@ class Breakpoints extends _react.PureComponent {
         }),
         key: locationId,
         onClick: () => this.selectBreakpoint(breakpoint),
-        onContextMenu: e => this.showContextMenu(e, breakpoint)
+        onContextMenu: e => (0, _BreakpointsContextMenu2.default)(_extends({}, this.props, { breakpoint, contextMenuEvent: e }))
       },
       _react2.default.createElement("input", {
         type: "checkbox",
@@ -41814,9 +40921,9 @@ class Breakpoints extends _react.PureComponent {
   }
 }
 
-function updateLocation(sources, pause, bp) {
+function updateLocation(sources, frame, why, bp) {
   const source = (0, _selectors.getSourceInSources)(sources, bp.location.sourceId);
-  const isCurrentlyPaused = isCurrentlyPausedAtBreakpoint(pause, bp);
+  const isCurrentlyPaused = isCurrentlyPausedAtBreakpoint(frame, why, bp);
   const locationId = (0, _breakpoint.makeLocationId)(bp.location);
 
   const location = _extends({}, bp.location, { source });
@@ -41825,7 +40932,7 @@ function updateLocation(sources, pause, bp) {
   return localBP;
 }
 
-const _getBreakpoints = (0, _reselect.createSelector)(_selectors.getBreakpoints, _selectors.getSources, _selectors.getPause, (breakpoints, sources, pause) => breakpoints.map(bp => updateLocation(sources, pause, bp)).filter(bp => bp.location.source && !bp.location.source.get("isBlackBoxed")));
+const _getBreakpoints = (0, _reselect.createSelector)(_selectors.getBreakpoints, _selectors.getSources, _selectors.getTopFrame, _selectors.getPauseReason, (breakpoints, sources, frame, why) => breakpoints.map(bp => updateLocation(sources, frame, why, bp)).filter(bp => bp.location.source && !bp.location.source.get("isBlackBoxed")));
 
 exports.default = (0, _reactRedux.connect)((state, props) => ({ breakpoints: _getBreakpoints(state) }), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Breakpoints);
 
@@ -41846,7 +40953,11 @@ var _react2 = _interopRequireDefault(_react);
 
 var _reactRedux = __webpack_require__(1189);
 
-var _redux = __webpack_require__(3);
+var _classnames = __webpack_require__(175);
+
+var _classnames2 = _interopRequireDefault(_classnames);
+
+var _devtoolsReps = __webpack_require__(1408);
 
 var _actions = __webpack_require__(1354);
 
@@ -41860,21 +40971,46 @@ var _Close = __webpack_require__(1374);
 
 var _Close2 = _interopRequireDefault(_Close);
 
-var _devtoolsReps = __webpack_require__(1408);
-
 __webpack_require__(1335);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 class Expressions extends _react.PureComponent {
 
-  constructor(...args) {
-    super(...args);
+  constructor(props) {
+    super(props);
 
-    this.state = {
-      editing: null
+    this.clear = () => {
+      this.setState(() => {
+        this.props.clearExpressionError();
+        return { editing: false, editIndex: -1, inputValue: "" };
+      });
     };
 
+    this.handleChange = e => {
+      this.setState({ inputValue: e.target.value });
+    };
+
+    this.handleKeyDown = e => {
+      if (e.key === "Escape") {
+        this.clear();
+      }
+    };
+
+    this.handleExistingSubmit = async (e, expression) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.props.updateExpression(this.state.inputValue, expression);
+    };
+
+    this.handleNewSubmit = async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.props.addExpression(this.state.inputValue);
+      this.setState({ editing: false, editIndex: -1, inputValue: "" });
+    };
+
+    this.state = { editing: false, editIndex: -1, inputValue: "" };
     this.renderExpression = this.renderExpression.bind(this);
   }
 
@@ -41885,18 +41021,35 @@ class Expressions extends _react.PureComponent {
     }
   }
 
-  shouldComponentUpdate(nextProps, nextState) {
-    const { editing } = this.state;
-    const { expressions, loadedObjects } = this.props;
-    return expressions !== nextProps.expressions || loadedObjects !== nextProps.loadedObjects || editing !== nextState.editing;
+  componentWillReceiveProps(nextProps) {
+    if (this.state.editing && !nextProps.expressionError) {
+      this.clear();
+    }
   }
 
-  editExpression(expression, { depth }) {
+  shouldComponentUpdate(nextProps, nextState) {
+    const { editing, inputValue } = this.state;
+    const { expressions, expressionError, loadedObjects } = this.props;
+    return expressions !== nextProps.expressions || expressionError !== nextProps.expressionError || loadedObjects !== nextProps.loadedObjects || editing !== nextState.editing || inputValue !== nextState.inputValue;
+  }
+
+  componentDidUpdate() {
+    if (this._input) {
+      const input = this._input;
+      input.setSelectionRange(input.value.length + 1, input.value.length + 1);
+      input.focus();
+    }
+  }
+
+  editExpression(expression, index, { depth }) {
     if (depth > 0) {
       return;
     }
-
-    this.setState({ editing: expression.input });
+    this.setState({
+      inputValue: expression.input,
+      editing: true,
+      editIndex: index
+    });
   }
 
   deleteExpression(e, expression) {
@@ -41905,42 +41058,17 @@ class Expressions extends _react.PureComponent {
     deleteExpression(expression);
   }
 
-  inputKeyPress(e, expression) {
-    if (e.key !== "Enter") {
-      return;
-    }
-
-    const value = e.target.value;
-    if (value == "") {
-      return;
-    }
-
-    this.setState({ editing: null });
-    e.target.value = "";
-    this.props.updateExpression(value, expression);
-  }
-
-  renderExpressionEditInput(expression) {
-    return _react2.default.createElement(
-      "span",
-      { className: "expression-input-container", key: expression.input },
-      _react2.default.createElement("input", {
-        className: "input-expression",
-        type: "text",
-        onKeyPress: e => this.inputKeyPress(e, expression),
-        onBlur: () => this.setState({ editing: null }),
-        defaultValue: expression.input,
-        ref: c => this._input = c
-      })
-    );
-  }
-
-  renderExpression(expression) {
-    const { loadObjectProperties, loadedObjects, openLink } = this.props;
-    const { editing } = this.state;
+  renderExpression(expression, index) {
+    const {
+      expressionError,
+      loadObjectProperties,
+      loadedObjects,
+      openLink
+    } = this.props;
+    const { editing, editIndex } = this.state;
     const { input, updating } = expression;
-
-    if (editing == input) {
+    const isEditingExpr = editing && editIndex === index;
+    if (isEditingExpr || isEditingExpr && expressionError) {
       return this.renderExpressionEditInput(expression);
     }
 
@@ -41967,7 +41095,7 @@ class Expressions extends _react.PureComponent {
           autoExpandDepth: 0,
           disableWrap: true,
           disabledFocus: true,
-          onDoubleClick: (items, options) => this.editExpression(expression, options),
+          onDoubleClick: (items, options) => this.editExpression(expression, index, options),
           openLink: openLink,
           getObjectProperties: id => loadedObjects[id],
           loadObjectProperties: loadObjectProperties
@@ -41986,38 +41114,55 @@ class Expressions extends _react.PureComponent {
     );
   }
 
-  componentDidUpdate() {
-    if (this._input) {
-      this._input.focus();
-    }
-  }
-
   renderNewExpressionInput() {
-    const onKeyPress = e => {
-      if (e.key !== "Enter") {
-        return;
-      }
-
-      const value = e.target.value;
-      if (value == "") {
-        return;
-      }
-
-      e.stopPropagation();
-      e.target.value = "";
-      this.props.addExpression(value);
-    };
-
+    const { expressionError } = this.props;
+    const { editing, inputValue } = this.state;
+    const error = editing === false && expressionError === true;
+    const placeholder = error ? L10N.getStr("expressions.errorMsg") : L10N.getStr("expressions.placeholder");
     return _react2.default.createElement(
       "li",
       { className: "expression-input-container" },
-      _react2.default.createElement("input", {
-        className: "input-expression",
-        type: "text",
-        placeholder: L10N.getStr("expressions.placeholder"),
-        onBlur: e => e.target.value = "",
-        onKeyPress: onKeyPress
-      })
+      _react2.default.createElement(
+        "form",
+        { className: "expression-input-form", onSubmit: this.handleNewSubmit },
+        _react2.default.createElement("input", {
+          className: (0, _classnames2.default)("input-expression", { error }),
+          type: "text",
+          placeholder: placeholder,
+          onChange: this.handleChange,
+          onBlur: this.clear,
+          onKeyDown: this.handleKeyDown,
+          value: !editing ? inputValue : ""
+        }),
+        _react2.default.createElement("input", { type: "submit", style: { display: "none" } })
+      )
+    );
+  }
+
+  renderExpressionEditInput(expression) {
+    const { expressionError } = this.props;
+    const { inputValue, editing } = this.state;
+    const error = editing === true && expressionError === true;
+    return _react2.default.createElement(
+      "span",
+      { className: "expression-input-container", key: expression.input },
+      _react2.default.createElement(
+        "form",
+        {
+          className: "expression-input-form",
+          onSubmit: e => this.handleExistingSubmit(e, expression)
+        },
+        _react2.default.createElement("input", {
+          className: (0, _classnames2.default)("input-expression", { error }),
+          type: "text",
+          onChange: this.handleChange,
+          onBlur: this.clear,
+          onKeyDown: this.handleKeyDown,
+          value: editing ? inputValue : expression.input,
+          ref: c => this._input = c
+        }),
+        _react2.default.createElement("input", { type: "submit", style: { display: "none" } })
+      )
     );
   }
 
@@ -42035,10 +41180,10 @@ class Expressions extends _react.PureComponent {
    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 exports.default = (0, _reactRedux.connect)(state => ({
-  pauseInfo: (0, _selectors.getPause)(state),
   expressions: (0, _selectors.getExpressions)(state),
+  expressionError: (0, _selectors.getExpressionError)(state),
   loadedObjects: (0, _selectors.getLoadedObjects)(state)
-}), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Expressions);
+}), _actions2.default)(Expressions);
 
 /***/ }),
 /* 1602 */
@@ -42051,16 +41196,6 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-exports.getAndProcessFrames = getAndProcessFrames;
-
-var _propTypes = __webpack_require__(20);
-
-var _propTypes2 = _interopRequireDefault(_propTypes);
-
 var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
@@ -42068,10 +41203,6 @@ var _react2 = _interopRequireDefault(_react);
 var _redux = __webpack_require__(3);
 
 var _reactRedux = __webpack_require__(1189);
-
-var _reselect = __webpack_require__(993);
-
-var _lodash = __webpack_require__(2);
 
 var _Frame = __webpack_require__(1453);
 
@@ -42099,7 +41230,9 @@ __webpack_require__(1338);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-const NUM_FRAMES_SHOWN = 7;
+const NUM_FRAMES_SHOWN = 7; /* This Source Code Form is subject to the terms of the Mozilla Public
+                             * License, v. 2.0. If a copy of the MPL was not distributed with this
+                             * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 class Frames extends _react.Component {
 
@@ -42205,7 +41338,7 @@ class Frames extends _react.Component {
   }
 
   render() {
-    const { frames, pause } = this.props;
+    const { frames, why } = this.props;
 
     if (!frames) {
       return _react2.default.createElement(
@@ -42223,47 +41356,18 @@ class Frames extends _react.Component {
       "div",
       { className: "pane frames" },
       this.renderFrames(frames),
-      (0, _WhyPaused2.default)({ pause }),
+      (0, _WhyPaused2.default)(why),
       this.renderToggleButton(frames)
     );
   }
 }
 
-Frames.propTypes = {
-  frames: _propTypes2.default.array,
-  frameworkGroupingOn: _propTypes2.default.bool.isRequired,
-  toggleFrameworkGrouping: _propTypes2.default.func.isRequired,
-  selectedFrame: _propTypes2.default.object,
-  selectFrame: _propTypes2.default.func.isRequired,
-  toggleBlackBox: _propTypes2.default.func,
-  pause: _propTypes2.default.object
-};
-
-function getSourceForFrame(sources, frame) {
-  return (0, _selectors.getSourceInSources)(sources, frame.location.sourceId);
-}
-
-function appendSource(sources, frame) {
-  return _extends({}, frame, { source: getSourceForFrame(sources, frame).toJS() });
-}
-
-function getAndProcessFrames(frames, sources) {
-  if (!frames) {
-    return null;
-  }
-
-  const processedFrames = frames.filter(frame => getSourceForFrame(sources, frame)).map(frame => appendSource(sources, frame)).filter(frame => !(0, _lodash.get)(frame, "source.isBlackBoxed")).map(_frame.annotateFrame);
-
-  return processedFrames;
-}
-
-const getAndProcessFramesSelector = (0, _reselect.createSelector)(_selectors.getFrames, _selectors.getSources, getAndProcessFrames);
-
 exports.default = (0, _reactRedux.connect)(state => ({
-  frames: getAndProcessFramesSelector(state),
+  frames: (0, _selectors.getCallStackFrames)(state),
+  why: (0, _selectors.getPauseReason)(state),
   frameworkGroupingOn: (0, _selectors.getFrameworkGroupingState)(state),
   selectedFrame: (0, _selectors.getSelectedFrame)(state),
-  pause: (0, _selectors.getPause)(state)
+  pause: (0, _selectors.isPaused)(state)
 }), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Frames);
 
 /***/ }),
@@ -42301,7 +41405,15 @@ var _Frame = __webpack_require__(1453);
 
 var _Frame2 = _interopRequireDefault(_Frame);
 
+var _Badge = __webpack_require__(1704);
+
+var _Badge2 = _interopRequireDefault(_Badge);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 function FrameLocation({ frame }) {
   const library = (0, _frame.getLibraryFromUrl)(frame);
@@ -42315,9 +41427,7 @@ function FrameLocation({ frame }) {
     library,
     _react2.default.createElement(_Svg2.default, { name: library.toLowerCase(), className: "annotation-logo" })
   );
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+}
 
 FrameLocation.displayName = "FrameLocation";
 
@@ -42392,8 +41502,17 @@ class Group extends _react.Component {
       },
       _react2.default.createElement(
         "div",
-        { className: "title" },
-        displayName
+        { className: "d-flex align-items-center min-width-0" },
+        _react2.default.createElement(
+          "div",
+          { className: "title" },
+          displayName
+        ),
+        _react2.default.createElement(
+          _Badge2.default,
+          null,
+          this.props.group.length
+        )
       ),
       _react2.default.createElement(FrameLocation, { frame: frame })
     );
@@ -42432,8 +41551,6 @@ var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _lodash = __webpack_require__(2);
-
 var _pause = __webpack_require__(1400);
 
 __webpack_require__(1337);
@@ -42441,46 +41558,42 @@ __webpack_require__(1337);
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function renderExceptionSummary(exception) {
-  if ((0, _lodash.isString)(exception)) {
+  if (typeof exception === "string") {
     return exception;
   }
 
-  const message = (0, _lodash.get)(exception, "preview.message");
-  const name = (0, _lodash.get)(exception, "preview.name");
+  const preview = exception.preview;
+  if (!preview) {
+    return;
+  }
 
-  return `${name}: ${message}`;
+  return `${preview.name}: ${preview.message}`;
 } /* This Source Code Form is subject to the terms of the Mozilla Public
    * License, v. 2.0. If a copy of the MPL was not distributed with this
    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-function renderMessage(pauseInfo) {
-  if (!pauseInfo) {
-    return null;
-  }
-
-  const message = (0, _lodash.get)(pauseInfo, "why.message");
-  if (message) {
-    return _react2.default.createElement(
-      "div",
-      { className: "message" },
-      message
-    );
-  }
-
-  const exception = (0, _lodash.get)(pauseInfo, "why.exception");
-  if (exception) {
+function renderMessage(why) {
+  if (why.type == "exception" && why.exception) {
     return _react2.default.createElement(
       "div",
       { className: "message warning" },
-      renderExceptionSummary(exception)
+      renderExceptionSummary(why.exception)
+    );
+  }
+
+  if (typeof why.message == "string") {
+    return _react2.default.createElement(
+      "div",
+      { className: "message" },
+      why.message
     );
   }
 
   return null;
 }
 
-function renderWhyPaused({ pause }) {
-  const reason = (0, _pause.getPauseReason)(pause);
+function renderWhyPaused(why) {
+  const reason = (0, _pause.getPauseReason)(why);
 
   if (!reason) {
     return null;
@@ -42494,7 +41607,7 @@ function renderWhyPaused({ pause }) {
       null,
       L10N.getStr(reason)
     ),
-    renderMessage(pause)
+    renderMessage(why)
   );
 }
 renderWhyPaused.displayName = "whyPaused";
@@ -42552,7 +41665,7 @@ class EventListeners extends _react.Component {
       "div",
       {
         className: "listener",
-        onClick: () => this.props.selectSource(sourceId, { line }),
+        onClick: () => this.props.selectLocation({ sourceId, line }),
         key: `${type}.${selector}.${sourceId}.${line}`
       },
       _react2.default.createElement("input", {
@@ -42637,25 +41750,35 @@ var _react = __webpack_require__(0);
 
 var _react2 = _interopRequireDefault(_react);
 
-__webpack_require__(1340);
+var _redux = __webpack_require__(3);
 
 var _reactRedux = __webpack_require__(1189);
 
+__webpack_require__(1340);
+
+var _actions = __webpack_require__(1354);
+
+var _actions2 = _interopRequireDefault(_actions);
+
 var _selectors = __webpack_require__(1352);
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+var _path = __webpack_require__(1393);
 
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 class Workers extends _react.PureComponent {
 
   renderWorkers(workers) {
-    return workers.map(w => _react2.default.createElement(
+    const { openWorkerToolbox } = this.props;
+    return workers.map(worker => _react2.default.createElement(
       "div",
-      { className: "worker", key: w.url },
-      w.url
+      {
+        className: "worker",
+        key: worker.actor,
+        onClick: () => openWorkerToolbox(worker)
+      },
+      _react2.default.createElement("img", { className: "domain" }),
+      (0, _path.basename)(worker.url)
     ));
   }
 
@@ -42677,11 +41800,13 @@ class Workers extends _react.PureComponent {
   }
 }
 
-exports.Workers = Workers;
-function mapStateToProps(state) {
+exports.Workers = Workers; /* This Source Code Form is subject to the terms of the Mozilla Public
+                            * License, v. 2.0. If a copy of the MPL was not distributed with this
+                            * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+exports.default = (0, _reactRedux.connect)(state => {
   return { workers: (0, _selectors.getWorkers)(state) };
-}
-exports.default = (0, _reactRedux.connect)(mapStateToProps)(Workers);
+}, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Workers);
 
 /***/ }),
 /* 1607 */
@@ -42711,7 +41836,7 @@ class Accordion extends _react.Component {
     super();
 
     this.renderContainer = (item, i) => {
-      const { opened, created } = this.state;
+      const { opened } = item;
 
       return _react2.default.createElement(
         "div",
@@ -42719,7 +41844,7 @@ class Accordion extends _react.Component {
         _react2.default.createElement(
           "div",
           { className: "_header", onClick: () => this.handleHeaderClick(i) },
-          _react2.default.createElement(_Svg2.default, { name: "arrow", className: opened[i] ? "expanded" : "" }),
+          _react2.default.createElement(_Svg2.default, { name: "arrow", className: opened ? "expanded" : "" }),
           item.header,
           item.buttons ? _react2.default.createElement(
             "div",
@@ -42727,11 +41852,11 @@ class Accordion extends _react.Component {
             item.buttons
           ) : null
         ),
-        created[i] || opened[i] ? _react2.default.createElement(
+        opened ? _react2.default.createElement(
           "div",
           {
             className: "_content",
-            style: { display: opened[i] ? "block" : "none" }
+            style: { display: opened ? "block" : "none" }
           },
           (0, _react.createElement)(item.component, item.componentProps || {})
         ) : null
@@ -42744,33 +41869,20 @@ class Accordion extends _react.Component {
     };
   }
 
-  componentWillReceiveProps(nextProps) {
-    const newOpened = this.state.opened.map((isOpen, i) => {
-      const { shouldOpen } = nextProps.items[i];
-
-      return isOpen || shouldOpen && shouldOpen();
-    });
-
-    this.setState({ opened: newOpened });
-  }
+  componentWillReceiveProps(nextProps) {}
 
   handleHeaderClick(i) {
-    const opened = [...this.state.opened];
-    const created = [...this.state.created];
     const item = this.props.items[i];
-
-    opened[i] = !opened[i];
-    created[i] = true;
-
-    if (opened[i] && item.onOpened) {
-      item.onOpened();
-    }
+    const opened = !item.opened;
+    item.opened = opened;
 
     if (item.onToggle) {
-      item.onToggle(opened[i]);
+      item.onToggle(opened);
     }
 
-    this.setState({ opened, created });
+    // We force an update because otherwise the accordion
+    // would not re-render
+    this.forceUpdate();
   }
 
   render() {
@@ -42797,10 +41909,6 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
 var _propTypes = __webpack_require__(20);
 
 var _propTypes2 = _interopRequireDefault(_propTypes);
@@ -42817,6 +41925,8 @@ var _classnames = __webpack_require__(175);
 
 var _classnames2 = _interopRequireDefault(_classnames);
 
+var _prefs = __webpack_require__(226);
+
 var _selectors = __webpack_require__(1352);
 
 var _text = __webpack_require__(1387);
@@ -42825,11 +41935,19 @@ var _actions = __webpack_require__(1354);
 
 var _actions2 = _interopRequireDefault(_actions);
 
+var _CommandBarButton = __webpack_require__(1764);
+
+var _CommandBarButton2 = _interopRequireDefault(_CommandBarButton);
+
 __webpack_require__(1295);
 
 var _devtoolsModules = __webpack_require__(1376);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 const { appinfo } = _devtoolsModules.Services;
 
@@ -42881,18 +41999,17 @@ function formatKey(action) {
   return (0, _text.formatKeyShortcut)(key);
 }
 
-function debugBtn(onClick, type, className, tooltip, disabled = false) {
-  const props = {
-    onClick,
-    key: type,
-    "aria-label": tooltip,
-    title: tooltip,
-    disabled
-  };
-
+function debugBtn(onClick, type, className, tooltip, disabled = false, ariaPressed = false) {
   return _react2.default.createElement(
-    "button",
-    _extends({ className: (0, _classnames2.default)(type, className) }, props),
+    _CommandBarButton2.default,
+    {
+      className: (0, _classnames2.default)(type, className),
+      disabled: disabled,
+      key: type,
+      onClick: onClick,
+      pressed: ariaPressed,
+      title: tooltip
+    },
     _react2.default.createElement("img", { className: type })
   );
 }
@@ -42926,18 +42043,26 @@ class CommandBar extends _react.Component {
   }
 
   renderStepButtons() {
-    const isPaused = this.props.pause;
+    const { isPaused } = this.props;
     const className = isPaused ? "active" : "disabled";
-    const isDisabled = !this.props.pause;
+    const isDisabled = !isPaused;
+
+    if (!isPaused && _prefs.features.removeCommandBarOptions) {
+      return;
+    }
 
     return [debugBtn(this.props.stepOver, "stepOver", className, L10N.getFormatStr("stepOverTooltip", formatKey("stepOver")), isDisabled), debugBtn(this.props.stepIn, "stepIn", className, L10N.getFormatStr("stepInTooltip", formatKey("stepIn")), isDisabled), debugBtn(this.props.stepOut, "stepOut", className, L10N.getFormatStr("stepOutTooltip", formatKey("stepOut")), isDisabled)];
   }
 
   renderPauseButton() {
-    const { pause, breakOnNext, isWaitingOnBreak } = this.props;
+    const { isPaused, breakOnNext, isWaitingOnBreak } = this.props;
 
-    if (pause) {
+    if (isPaused) {
       return debugBtn(this.props.resume, "resume", "active", L10N.getFormatStr("resumeButtonTooltip", formatKey("resume")));
+    }
+
+    if (_prefs.features.removeCommandBarOptions) {
+      return;
     }
 
     if (isWaitingOnBreak) {
@@ -42954,6 +42079,10 @@ class CommandBar extends _react.Component {
    *  3. pause on all exceptions        [true, false]
   */
   renderPauseOnExceptions() {
+    if (_prefs.features.breakpointsDropdown) {
+      return;
+    }
+
     const {
       shouldPauseOnExceptions,
       shouldIgnoreCaughtExceptions,
@@ -42961,14 +42090,14 @@ class CommandBar extends _react.Component {
     } = this.props;
 
     if (!shouldPauseOnExceptions && !shouldIgnoreCaughtExceptions) {
-      return debugBtn(() => pauseOnExceptions(true, true), "pause-exceptions", "enabled", L10N.getStr("ignoreExceptions"));
+      return debugBtn(() => pauseOnExceptions(true, true), "pause-exceptions", "enabled", L10N.getStr("ignoreExceptions"), false, false);
     }
 
     if (shouldPauseOnExceptions && shouldIgnoreCaughtExceptions) {
-      return debugBtn(() => pauseOnExceptions(true, false), "pause-exceptions", "uncaught enabled", L10N.getStr("pauseOnUncaughtExceptions"));
+      return debugBtn(() => pauseOnExceptions(true, false), "pause-exceptions", "uncaught enabled", L10N.getStr("pauseOnUncaughtExceptions"), false, true);
     }
 
-    return debugBtn(() => pauseOnExceptions(false, false), "pause-exceptions", "all enabled", L10N.getStr("pauseOnExceptions"));
+    return debugBtn(() => pauseOnExceptions(false, false), "pause-exceptions", "all enabled", L10N.getStr("pauseOnExceptions"), false, true);
   }
 
   render() {
@@ -42992,7 +42121,7 @@ CommandBar.contextTypes = {
 
 exports.default = (0, _reactRedux.connect)(state => {
   return {
-    pause: (0, _selectors.getPause)(state),
+    isPaused: (0, _selectors.isPaused)(state),
     isWaitingOnBreak: (0, _selectors.getIsWaitingOnBreak)(state),
     shouldPauseOnExceptions: (0, _selectors.getShouldPauseOnExceptions)(state),
     shouldIgnoreCaughtExceptions: (0, _selectors.getShouldIgnoreCaughtExceptions)(state)
@@ -43258,9 +42387,9 @@ class Scopes extends _react.Component {
   }
 
   render() {
-    const { pauseInfo } = this.props;
+    const { isPaused } = this.props;
 
-    if (!pauseInfo) {
+    if (!isPaused) {
       return _react2.default.createElement(
         "div",
         { className: (0, _classnames2.default)("pane", "scopes-list") },
@@ -43295,7 +42424,7 @@ class Scopes extends _react.Component {
 }
 
 exports.default = (0, _reactRedux.connect)(state => ({
-  pauseInfo: (0, _selectors.getPause)(state),
+  isPaused: (0, _selectors.isPaused)(state),
   loadedObjects: (0, _selectors.getLoadedObjects)(state),
   scopes: (0, _selectors.getChromeScopes)(state)
 }), dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Scopes);
@@ -43325,7 +42454,7 @@ var _actions2 = _interopRequireDefault(_actions);
 
 var _selectors = __webpack_require__(1352);
 
-var _scopes = __webpack_require__(1612);
+var _scopes = __webpack_require__(1792);
 
 var _devtoolsReps = __webpack_require__(1408);
 
@@ -43339,30 +42468,30 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 class Scopes extends _react.PureComponent {
   constructor(props, ...args) {
-    const { pauseInfo, selectedFrame, frameScopes } = props;
+    const { why, selectedFrame, frameScopes } = props;
 
     super(props, ...args);
 
     this.state = {
-      scopes: (0, _scopes.getScopes)(pauseInfo, selectedFrame, frameScopes)
+      scopes: (0, _scopes.getScopes)(why, selectedFrame, frameScopes)
     };
   }
 
   componentWillReceiveProps(nextProps) {
-    const { pauseInfo, selectedFrame, frameScopes } = this.props;
-    const pauseInfoChanged = pauseInfo !== nextProps.pauseInfo;
+    const { isPaused, selectedFrame, frameScopes } = this.props;
+    const isPausedChanged = isPaused !== nextProps.isPaused;
     const selectedFrameChanged = selectedFrame !== nextProps.selectedFrame;
     const frameScopesChanged = frameScopes !== nextProps.frameScopes;
 
-    if (pauseInfoChanged || selectedFrameChanged || frameScopesChanged) {
+    if (isPausedChanged || selectedFrameChanged || frameScopesChanged) {
       this.setState({
-        scopes: (0, _scopes.getScopes)(nextProps.pauseInfo, nextProps.selectedFrame, nextProps.frameScopes)
+        scopes: (0, _scopes.getScopes)(nextProps.why, nextProps.selectedFrame, nextProps.frameScopes)
       });
     }
   }
 
   render() {
-    const { pauseInfo, loadObjectProperties, loadedObjects } = this.props;
+    const { isPaused, loadObjectProperties, loadedObjects } = this.props;
     const { scopes } = this.state;
 
     if (scopes) {
@@ -43390,7 +42519,7 @@ class Scopes extends _react.PureComponent {
       _react2.default.createElement(
         "div",
         { className: "pane-info" },
-        pauseInfo ? L10N.getStr("scopes.notAvailable") : L10N.getStr("scopes.notPaused")
+        isPaused ? L10N.getStr("scopes.notAvailable") : L10N.getStr("scopes.notPaused")
       )
     );
   }
@@ -43401,205 +42530,15 @@ exports.default = (0, _reactRedux.connect)(state => {
   const frameScopes = selectedFrame ? (0, _selectors.getFrameScope)(state, selectedFrame.id) : null;
   return {
     selectedFrame,
-    pauseInfo: (0, _selectors.getPause)(state),
+    isPaused: (0, _selectors.isPaused)(state),
+    why: (0, _selectors.getPauseReason)(state),
     frameScopes: frameScopes,
     loadedObjects: (0, _selectors.getLoadedObjects)(state)
   };
 }, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(Scopes);
 
 /***/ }),
-/* 1612 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-exports.getFramePopVariables = getFramePopVariables;
-exports.getScopes = getScopes;
-
-var _lodash = __webpack_require__(2);
-
-var _frame = __webpack_require__(1380);
-
-// Create the tree nodes representing all the variables and arguments
-// for the bindings from a scope.
-
-
-// VarAndBindingsPair actually is [name: string, contents: ScopeBindings]
-function getBindingVariables(bindings, parentName) {
-  const args = bindings.arguments.map(arg => (0, _lodash.toPairs)(arg)[0]);
-  const variables = (0, _lodash.toPairs)(bindings.variables);
-
-  return args.concat(variables).map(binding => {
-    const name = binding[0];
-    const contents = binding[1];
-    return {
-      name,
-      path: `${parentName}/${name}`,
-      contents
-    };
-  });
-}
-
-function getSourceBindingVariables(bindings, sourceBindings, parentName) {
-  const result = getBindingVariables(bindings, parentName);
-  const index = Object.create(null);
-  result.forEach(entry => {
-    index[entry.name] = { used: false, entry };
-  });
-  // Find and replace variables that is present in sourceBindings.
-  const bound = Object.keys(sourceBindings).map(name => {
-    const generatedName = sourceBindings[name];
-    const foundMap = index[generatedName];
-    let contents;
-    if (foundMap) {
-      foundMap.used = true;
-      contents = foundMap.entry.contents;
-    } else {
-      contents = { value: { type: "undefined" } };
-    }
-    return {
-      name,
-      generatedName,
-      path: `${parentName}/${generatedName}`,
-      contents
-    };
-  });
-  // Use rest of them (not found in the sourceBindings) as is.
-  const unused = result.filter(entry => !index[entry.name].used);
-  return bound.concat(unused);
-}
-
-function getFramePopVariables(pauseInfo, path) {
-  const vars = [];
-
-  if (pauseInfo.why && pauseInfo.why.frameFinished) {
-    const frameFinished = pauseInfo.why.frameFinished;
-
-    // Always display a `throw` property if present, even if it is falsy.
-    if (Object.prototype.hasOwnProperty.call(frameFinished, "throw")) {
-      vars.push({
-        name: "<exception>",
-        path: `${path}/<exception>`,
-        contents: { value: frameFinished.throw }
-      });
-    }
-
-    if (Object.prototype.hasOwnProperty.call(frameFinished, "return")) {
-      const returned = frameFinished.return;
-
-      // Do not display undefined. Do display falsy values like 0 and false. The
-      // protocol grip for undefined is a JSON object: { type: "undefined" }.
-      if (typeof returned !== "object" || returned.type !== "undefined") {
-        vars.push({
-          name: "<return>",
-          path: `${path}/<return>`,
-          contents: { value: returned }
-        });
-      }
-    }
-  }
-
-  return vars;
-}
-
-function getThisVariable(frame, path) {
-  const this_ = frame.this;
-
-  if (!this_) {
-    return null;
-  }
-
-  return {
-    name: "<this>",
-    path: `${path}/<this>`,
-    contents: { value: this_ }
-  };
-}
-
-function getScopes(pauseInfo, selectedFrame, selectedScope) {
-  if (!pauseInfo || !selectedFrame) {
-    return null;
-  }
-
-  // NOTE: it's possible that we're inspecting an old server
-  // that does not support getting frame scopes directly
-  selectedScope = selectedScope || selectedFrame.scope;
-
-  if (!selectedScope) {
-    return null;
-  }
-
-  const scopes = [];
-
-  let scope = selectedScope;
-  let scopeIndex = 1;
-
-  do {
-    const { type, actor } = scope;
-    const key = `${actor}-${scopeIndex}`;
-    if (type === "function" || type === "block") {
-      const bindings = scope.bindings;
-      const sourceBindings = scope.sourceBindings;
-      let title;
-      if (type === "function") {
-        title = scope.function.displayName ? (0, _frame.simplifyDisplayName)(scope.function.displayName) : L10N.getStr("anonymous");
-      } else {
-        title = L10N.getStr("scopes.block");
-      }
-
-      let vars = sourceBindings ? getSourceBindingVariables(bindings, sourceBindings, key) : getBindingVariables(bindings, key);
-
-      // On the innermost scope of a frame that is just about to be popped, show
-      // the return value or the exception being thrown as special variables.
-      if (scope.actor === selectedScope.actor && selectedFrame.id === pauseInfo.frame.id) {
-        vars = vars.concat(getFramePopVariables(pauseInfo, key));
-      }
-
-      if (scope.actor === selectedScope.actor) {
-        const this_ = getThisVariable(selectedFrame, key);
-
-        if (this_) {
-          vars.push(this_);
-        }
-      }
-
-      if (vars && vars.length) {
-        vars.sort((a, b) => a.name.localeCompare(b.name));
-        scopes.push({
-          name: title,
-          path: key,
-          contents: vars
-        });
-      }
-    } else if (type === "object") {
-      let value = scope.object;
-      // If this is the global window scope, mark it as such so that it will
-      // preview Window: Global instead of Window: Window
-      if (value.class === "Window") {
-        value = _extends({}, scope.object, { displayClass: "Global" });
-      }
-      scopes.push({
-        name: scope.object.class,
-        path: key,
-        contents: { value }
-      });
-    }
-    scopeIndex++;
-  } while (scope = scope.parent); // eslint-disable-line no-cond-assign
-
-  return scopes;
-}
-
-/***/ }),
+/* 1612 */,
 /* 1613 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -43775,7 +42714,7 @@ var _Close = __webpack_require__(1374);
 
 var _Close2 = _interopRequireDefault(_Close);
 
-var _devtoolsLaunchpad = __webpack_require__(1362);
+var _devtoolsContextmenu = __webpack_require__(1413);
 
 var _lodash = __webpack_require__(2);
 
@@ -43922,7 +42861,7 @@ class SourceTabs extends _react.PureComponent {
       return;
     }
 
-    const isPrettySource = (0, _source.isPretty)(sourceTab.toJS());
+    const isPrettySource = (0, _source.isPretty)(sourceTab);
 
     const closeTabMenuItem = {
       id: "node-menu-close-tab",
@@ -43993,7 +42932,7 @@ class SourceTabs extends _react.PureComponent {
       items.push({ item: prettyPrint });
     }
 
-    (0, _devtoolsLaunchpad.showMenu)(e, (0, _devtoolsLaunchpad.buildMenu)(items));
+    (0, _devtoolsContextmenu.showMenu)(e, (0, _devtoolsContextmenu.buildMenu)(items));
   }
 
   /*
@@ -44021,6 +42960,16 @@ class SourceTabs extends _react.PureComponent {
     });
   }
 
+  getIconClass(source) {
+    if ((0, _source.isPretty)(source)) {
+      return "prettyPrint";
+    }
+    if (source.get("isBlackBoxed")) {
+      return "blackBox";
+    }
+    return "file";
+  }
+
   renderDropdownSource(source) {
     const { selectSource } = this.props;
     const filename = (0, _source.getFilename)(source.toJS());
@@ -44029,6 +42978,7 @@ class SourceTabs extends _react.PureComponent {
     return _react2.default.createElement(
       "li",
       { key: source.get("id"), onClick: onClick },
+      _react2.default.createElement("img", { className: `dropdown-icon ${this.getIconClass(source)}` }),
       filename
     );
   }
@@ -44096,7 +43046,7 @@ class SourceTabs extends _react.PureComponent {
     const { selectedSource, selectSource, closeTab } = this.props;
     const filename = (0, _source.getFilename)(source.toJS());
     const active = selectedSource && source.get("id") == selectedSource.get("id") && !this.isProjectSearchEnabled() && !this.isSourceSearchEnabled();
-    const isPrettyCode = (0, _source.isPretty)(source.toJS());
+    const isPrettyCode = (0, _source.isPretty)(source);
     const sourceAnnotation = this.getSourceAnnotation(source);
 
     function onClickClose(ev) {
@@ -44143,7 +43093,7 @@ class SourceTabs extends _react.PureComponent {
       hiddenSourceTabs.map(this.renderDropdownSource)
     );
 
-    return _react2.default.createElement(_Dropdown2.default, { panel: Panel });
+    return _react2.default.createElement(_Dropdown2.default, { panel: Panel, icon: "»" });
   }
 
   renderStartPanelToggleButton() {
@@ -44168,12 +43118,16 @@ class SourceTabs extends _react.PureComponent {
   }
 
   getSourceAnnotation(source) {
-    const sourceObj = source.toJS();
+    const sourceId = source.get("id");
+    const sourceMetaData = this.props.sourceTabsMetaData[sourceId];
 
-    if ((0, _source.isPretty)(sourceObj)) {
+    if (sourceMetaData && sourceMetaData.isReactComponent) {
+      return _react2.default.createElement("img", { className: "react" });
+    }
+    if ((0, _source.isPretty)(source)) {
       return _react2.default.createElement("img", { className: "prettyPrint" });
     }
-    if (sourceObj.isBlackBoxed) {
+    if (source.get("isBlackBoxed")) {
       return _react2.default.createElement("img", { className: "blackBox" });
     }
   }
@@ -44191,12 +43145,20 @@ class SourceTabs extends _react.PureComponent {
 }
 
 exports.default = (0, _reactRedux.connect)(state => {
+  const sourceTabs = (0, _selectors.getSourcesForTabs)(state);
+  const sourceTabsMetaData = {};
+  sourceTabs.forEach(source => {
+    const sourceId = source ? source.get("id") : "";
+    sourceTabsMetaData[sourceId] = (0, _selectors.getSourceMetaData)(state, sourceId);
+  });
+
   return {
     selectedSource: (0, _selectors.getSelectedSource)(state),
     searchTabs: (0, _selectors.getSearchTabs)(state),
-    sourceTabs: (0, _selectors.getSourcesForTabs)(state),
+    sourceTabs: sourceTabs,
     activeSearch: (0, _selectors.getActiveSearch)(state),
-    searchOn: (0, _selectors.getActiveSearch)(state) === "source"
+    searchOn: (0, _selectors.getActiveSearch)(state) === "source",
+    sourceTabsMetaData: sourceTabsMetaData
   };
 }, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(SourceTabs);
 
@@ -44259,7 +43221,7 @@ class Dropdown extends _react.Component {
     return _react2.default.createElement(
       "button",
       { className: "dropdown-button", onClick: this.toggleDropdown },
-      "\xBB"
+      this.props.icon
     );
   }
 
@@ -44396,26 +43358,29 @@ exports.parseQuickOpenQuery = parseQuickOpenQuery;
 exports.parseLineColumn = parseLineColumn;
 exports.formatSymbol = formatSymbol;
 exports.formatSymbols = formatSymbols;
+exports.formatShortcutResults = formatShortcutResults;
 exports.formatSources = formatSources;
 
 var _utils = __webpack_require__(1366);
 
 var _source = __webpack_require__(1356);
 
+const MODIFIERS = {
+  "@": "functions",
+  "#": "variables",
+  ":": "goto",
+  "?": "shortcuts"
+};
+
 function parseQuickOpenQuery(query) {
-  const modifierPattern = /^@|#|\:$/;
+  const modifierPattern = /^@|#|:|\?$/;
   const gotoSourcePattern = /^(\w+)\:/;
   const startsWithModifier = modifierPattern.test(query[0]);
   const isGotoSource = gotoSourcePattern.test(query);
 
   if (startsWithModifier) {
-    const modifiers = {
-      "@": "functions",
-      "#": "variables",
-      ":": "goto"
-    };
     const modifier = query[0];
-    return modifiers[modifier];
+    return MODIFIERS[modifier];
   }
 
   if (isGotoSource) {
@@ -44459,13 +43424,32 @@ function formatSymbols(symbols) {
   };
 }
 
+function formatShortcutResults() {
+  return [{
+    value: L10N.getStr("symbolSearch.search.functionsPlaceholder.title"),
+    title: `@ ${L10N.getStr("symbolSearch.search.functionsPlaceholder")}`,
+    id: "@"
+  }, {
+    value: L10N.getStr("symbolSearch.search.variablesPlaceholder.title"),
+    title: `# ${L10N.getStr("symbolSearch.search.variablesPlaceholder")}`,
+    id: "#"
+  }, {
+    value: L10N.getStr("gotoLineModal.title"),
+    title: `: ${L10N.getStr("gotoLineModal.placeholder")}`,
+    id: ":"
+  }];
+}
+
 function formatSources(sources) {
-  return sources.valueSeq().toJS().filter(source => !(0, _source.isPretty)(source) && !(0, _source.isThirdParty)(source)).map(source => ({
-    value: (0, _source.getSourcePath)(source),
-    title: (0, _source.getSourcePath)(source).split("/").pop(),
-    subtitle: (0, _utils.endTruncateStr)((0, _source.getSourcePath)(source), 100),
-    id: source.id
-  })).filter(formattedSource => formattedSource.value != "");
+  return sources.valueSeq().filter(source => !(0, _source.isPretty)(source) && !(0, _source.isThirdParty)(source)).map(source => {
+    const sourcePath = (0, _source.getSourcePath)(source.get("url"));
+    return {
+      value: sourcePath,
+      title: sourcePath.split("/").pop(),
+      subtitle: (0, _utils.endTruncateStr)(sourcePath, 100),
+      id: source.get("id")
+    };
+  }).filter(({ value }) => value != "").toJS();
 }
 
 /***/ }),
@@ -44487,8 +43471,6 @@ exports.astCommand = astCommand;
 
 var _selectors = __webpack_require__(1352);
 
-var _pause = __webpack_require__(1400);
-
 var _promise = __webpack_require__(1653);
 
 var _parser = __webpack_require__(1365);
@@ -44504,10 +43486,6 @@ var _prefs = __webpack_require__(226);
  * @memberof actions/pause
  * @static
  */
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
 function command(type) {
   return async ({ dispatch, client }) => {
     return dispatch({
@@ -44524,9 +43502,13 @@ function command(type) {
  * @static
  * @returns {Function} {@link command}
  */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
 function stepIn() {
   return ({ dispatch, getState }) => {
-    if ((0, _selectors.getPause)(getState())) {
+    if ((0, _selectors.isPaused)(getState())) {
       return dispatch(command("stepIn"));
     }
   };
@@ -44540,7 +43522,7 @@ function stepIn() {
  */
 function stepOver() {
   return ({ dispatch, getState }) => {
-    if ((0, _selectors.getPause)(getState())) {
+    if ((0, _selectors.isPaused)(getState())) {
       return dispatch(astCommand("stepOver"));
     }
   };
@@ -44554,7 +43536,7 @@ function stepOver() {
  */
 function stepOut() {
   return ({ dispatch, getState }) => {
-    if ((0, _selectors.getPause)(getState())) {
+    if ((0, _selectors.isPaused)(getState())) {
       return dispatch(command("stepOut"));
     }
   };
@@ -44568,10 +43550,24 @@ function stepOut() {
  */
 function resume() {
   return ({ dispatch, getState }) => {
-    if ((0, _selectors.getPause)(getState())) {
+    if ((0, _selectors.isPaused)(getState())) {
       return dispatch(command("resume"));
     }
   };
+}
+
+/*
+ * Checks for await or yield calls on the paused line
+ * This avoids potentially expensive parser calls when we are likely
+ * not at an async expression.
+ */
+function hasAwait(source, pauseLocation) {
+  const { line, column } = pauseLocation;
+  if (!source.text) {
+    return false;
+  }
+
+  return source.text.split("\n")[line - 1].slice(column, column + 200).match(/(yield|await)/);
 }
 
 /**
@@ -44586,16 +43582,15 @@ function astCommand(stepType) {
       return dispatch(command(stepType));
     }
 
-    const pauseInfo = (0, _selectors.getPause)(getState());
-    const source = (0, _selectors.getSelectedSource)(getState()).toJS();
-
-    const pausedPosition = await (0, _pause.getPausedPosition)(pauseInfo, sourceMaps);
-
     if (stepType == "stepOver") {
-      const nextLocation = await (0, _parser.getNextStep)(source, pausedPosition);
-      if (nextLocation) {
-        await dispatch((0, _breakpoints.addHiddenBreakpoint)(nextLocation));
-        return dispatch(command("resume"));
+      const frame = (0, _selectors.getTopFrame)(getState());
+      const source = (0, _selectors.getSelectedSource)(getState()).toJS();
+      if (source && hasAwait(source, frame.location)) {
+        const nextLocation = await (0, _parser.getNextStep)(source, frame.location);
+        if (nextLocation) {
+          await dispatch((0, _breakpoints.addHiddenBreakpoint)(nextLocation));
+          return dispatch(command("resume"));
+        }
       }
     }
 
@@ -44715,6 +43710,15 @@ Object.defineProperty(exports, "breakOnNext", {
   }
 });
 
+var _mapFrames = __webpack_require__(1804);
+
+Object.defineProperty(exports, "mapFrames", {
+  enumerable: true,
+  get: function () {
+    return _mapFrames.mapFrames;
+  }
+});
+
 var _loadObjectProperties = __webpack_require__(1644);
 
 Object.defineProperty(exports, "loadObjectProperties", {
@@ -44756,13 +43760,13 @@ exports.paused = paused;
 
 var _selectors = __webpack_require__(1352);
 
-var _pause = __webpack_require__(1400);
+var _ = __webpack_require__(1639);
 
 var _breakpoints = __webpack_require__(1396);
 
 var _expressions = __webpack_require__(1398);
 
-var _sources = __webpack_require__(1373);
+var _sources = __webpack_require__(1797);
 
 var _ui = __webpack_require__(1385);
 
@@ -44779,14 +43783,11 @@ function paused(pauseInfo) {
   return async function ({ dispatch, getState, client, sourceMaps }) {
     const { frames, why, loadedObjects } = pauseInfo;
 
-    const mappedFrames = await (0, _pause.updateFrameLocations)(frames, sourceMaps);
-    const frame = mappedFrames[0];
-
     dispatch({
       type: "PAUSED",
-      pauseInfo: { why, frame, frames },
-      frames: mappedFrames,
-      selectedFrameId: frame.id,
+      why,
+      frames,
+      selectedFrameId: frames[0].id,
       loadedObjects: loadedObjects || []
     });
 
@@ -44799,8 +43800,9 @@ function paused(pauseInfo) {
       dispatch((0, _expressions.evaluateExpressions)());
     }
 
-    const { line, column } = frame.location;
-    await dispatch((0, _sources.selectSource)(frame.location.sourceId, { location: { line, column } }));
+    await dispatch((0, _.mapFrames)());
+    const selectedFrame = (0, _selectors.getSelectedFrame)(getState());
+    await dispatch((0, _sources.selectLocation)(selectedFrame.location));
 
     dispatch((0, _ui.togglePaneCollapse)("end", false));
     dispatch((0, _fetchScopes.fetchScopes)());
@@ -45002,7 +44004,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.selectFrame = selectFrame;
 
-var _sources = __webpack_require__(1373);
+var _sources = __webpack_require__(1797);
 
 var _expressions = __webpack_require__(1398);
 
@@ -45019,8 +44021,7 @@ function selectFrame(frame) {
       frame
     });
 
-    const { line, column } = frame.location;
-    dispatch((0, _sources.selectSource)(frame.location.sourceId, { line, column }));
+    dispatch((0, _sources.selectLocation)(frame.location));
 
     dispatch((0, _expressions.evaluateExpressions)());
     dispatch((0, _fetchScopes.fetchScopes)());
@@ -45066,25 +44067,25 @@ function closeQuickOpen() {
 /* 1648 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg id=\"svg2\" xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" xmlns:cc=\"http://creativecommons.org/ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" viewBox=\"0 0 354.33071 354.33071\"><metadata id=\"metadata7\"><rdf:RDF><cc:Work rdf:about><dc:format>image/svg+xml</dc:format><dc:type rdf:resource=\"http://purl.org/dc/dcmitype/StillImage\"></dc><dc:title></dc></cc:Work></rdf:RDF></metadata><g id=\"layer1\" fill=\"#EF2D5E\" transform=\"translate(0 -698.03)\"><path id=\"text3336\" d=\"m102.28 749.3-88.657 293.97h72.114l14.848-63.206h86.112l14.845 63.206h73.81l-34.36-113.69-128.53 0.00011 30.967-129.8v-50.48z\"></path><rect id=\"rect3356\" transform=\"rotate(237.21)\" height=\"79.557\" width=\"79.557\" y=\"-311.53\" x=\"-785.82\"></rect><rect id=\"rect3362\" transform=\"matrix(-.78208 .62317 -.62317 -.78208 0 0)\" height=\"95.238\" width=\"95.238\" y=\"-885.85\" x=\"318.72\"></rect><rect id=\"rect3364\" transform=\"rotate(12.582)\" height=\"95.238\" width=\"95.238\" y=\"633.02\" x=\"396.31\"></rect></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg id=\"svg2\" xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" xmlns:cc=\"http://creativecommons.org/ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" viewBox=\"0 0 354.33071 354.33071\"><metadata id=\"metadata7\"><rdf:RDF><cc:Work rdf:about><dc:format>image/svg+xml</dc:format><dc:type rdf:resource=\"http://purl.org/dc/dcmitype/StillImage\"></dc><dc:title></dc></cc:Work></rdf:RDF></metadata><g id=\"layer1\" fill=\"#EF2D5E\" transform=\"translate(0 -698.03)\"><path id=\"text3336\" d=\"m102.28 749.3-88.657 293.97h72.114l14.848-63.206h86.112l14.845 63.206h73.81l-34.36-113.69-128.53 0.00011 30.967-129.8v-50.48z\"></path><rect id=\"rect3356\" transform=\"rotate(237.21)\" height=\"79.557\" width=\"79.557\" y=\"-311.53\" x=\"-785.82\"></rect><rect id=\"rect3362\" transform=\"matrix(-.78208 .62317 -.62317 -.78208 0 0)\" height=\"95.238\" width=\"95.238\" y=\"-885.85\" x=\"318.72\"></rect><rect id=\"rect3364\" transform=\"rotate(12.582)\" height=\"95.238\" width=\"95.238\" y=\"633.02\" x=\"396.31\"></rect></g></svg>"
 
 /***/ }),
 /* 1649 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0 0 256 140\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><defs><linearGradient x1=\"49.9109718%\" y1=\"99.9084071%\" x2=\"49.9109718%\" y2=\"-0.0902654867%\" id=\"linearGradient-1\"><stop stop-color=\"#8AC23E\" offset=\"0%\"></stop><stop stop-color=\"#8AC23E\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9835165%\" y1=\"0.0637125664%\" x2=\"49.9835165%\" y2=\"100.062389%\" id=\"linearGradient-2\"><stop stop-color=\"#698932\" offset=\"0%\"></stop><stop stop-color=\"#698932\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0595611%\" y1=\"0.0637125664%\" x2=\"50.0595611%\" y2=\"100.062389%\" id=\"linearGradient-3\"><stop stop-color=\"#FFED01\" offset=\"0%\"></stop><stop stop-color=\"#FFED01\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0170846%\" y1=\"0.0637125664%\" x2=\"50.0170846%\" y2=\"100.092699%\" id=\"linearGradient-4\"><stop stop-color=\"#E02A89\" offset=\"0%\"></stop><stop stop-color=\"#E02A89\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9631661%\" y1=\"-0.0915929204%\" x2=\"49.9631661%\" y2=\"99.9070796%\" id=\"linearGradient-5\"><stop stop-color=\"#7F1E4F\" offset=\"0%\"></stop><stop stop-color=\"#7F1E4F\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9652038%\" y1=\"-0.0915929204%\" x2=\"49.9652038%\" y2=\"99.9070796%\" id=\"linearGradient-6\"><stop stop-color=\"#E95506\" offset=\"0%\"></stop><stop stop-color=\"#E95506\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9766458%\" y1=\"99.9084071%\" x2=\"49.9766458%\" y2=\"-0.0265486726%\" id=\"linearGradient-7\"><stop stop-color=\"#88D0F1\" offset=\"0%\"></stop><stop stop-color=\"#88D0F1\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0205329%\" y1=\"0.0637125664%\" x2=\"50.0205329%\" y2=\"99.9986726%\" id=\"linearGradient-8\"><stop stop-color=\"#00828B\" offset=\"0%\"></stop><stop stop-color=\"#00828B\" stop-opacity=\"0\" offset=\"83.25%\"></stop></linearGradient><linearGradient x1=\"50.078022%\" y1=\"99.9752212%\" x2=\"50.078022%\" y2=\"0.0705752212%\" id=\"linearGradient-9\"><stop stop-color=\"#2073BA\" offset=\"0%\"></stop><stop stop-color=\"#2073BA\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0177116%\" y1=\"0.0637125664%\" x2=\"50.0177116%\" y2=\"99.9986726%\" id=\"linearGradient-10\"><stop stop-color=\"#8ED0E1\" offset=\"0%\"></stop><stop stop-color=\"#88D0F1\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient></defs><g><path d=\"M128.1,0 L164.2,0 C150.9,21.8 136.2,45.8 121.5,69.7 L85.4,69.7 C100.1,45.8 114.8,21.8 128.1,0 Z\" fill=\"#8DC220\"></path><path d=\"M42.7,0 L78.8,0 C71.7,11.6 64.5,23.3 57.4,34.9 C50.3,46.5 43.2,58.1 36.1,69.7 C43.2,81.3 50.3,93 57.4,104.6 C64.5,116.2 71.6,127.8 78.8,139.4 L42.7,139.4 C35.6,127.8 28.4,116.2 21.3,104.6 C14.2,93.1 7.1,81.4 0,69.8 C7.1,58.2 14.2,46.6 21.3,35 C28.4,23.3 35.6,11.7 42.7,0 Z\" fill=\"#44BFEF\"></path><path d=\"M42.7,0 L42.7,0 C57.4,24 72.1,48 85.4,69.7 L121.5,69.7 C108.2,48 93.5,24 78.8,0 L78.8,0 L42.7,0 Z\" fill=\"#00AC71\"></path><path d=\"M164.2,0 L128.1,0 C135.2,11.6 142.3,23.3 149.5,34.9 C156.6,46.5 163.7,58.1 170.9,69.7 C163.8,81.3 156.6,93 149.5,104.6 C142.4,116.2 135.3,127.8 128.1,139.4 L164.2,139.4 C171.3,127.8 178.4,116.2 185.6,104.6 C192.7,93 199.8,81.4 207,69.7 C199.8,58.1 192.7,46.5 185.6,34.9 C178.5,23.3 171.3,11.7 164.2,0 Z\" fill=\"#F9BC00\"></path><path d=\"M149.3,24.6 L113.2,24.6 C108.6,32.1 104,39.7 99.4,47.2 C94.8,54.7 90.2,62.3 85.5,69.8 L121.6,69.8 C126.2,62.3 130.9,54.7 135.5,47.2 C140,39.6 144.6,32.1 149.3,24.6 Z\" fill=\"url(#linearGradient-1)\"></path><path d=\"M100.5,45.2 L136.6,45.2 C141.2,37.7 145.8,30.1 150.4,22.6 C155,15.1 159.6,7.5 164.2,0 L128.1,0 C123.5,7.5 118.9,15.1 114.3,22.6 C109.7,30.2 105.1,37.7 100.5,45.2 Z\" fill=\"url(#linearGradient-2)\"></path><path d=\"M191.9,45.2 L155.8,45.2 C151.2,37.7 146.5,30.1 141.9,22.6 C137.3,15.1 132.7,7.5 128.1,0 L164.2,0 C168.8,7.5 173.4,15.1 178,22.6 C182.7,30.2 187.3,37.7 191.9,45.2 Z\" fill=\"url(#linearGradient-3)\"></path><path d=\"M213.2,0 L177.1,0 C184.2,11.7 191.3,23.3 198.4,34.9 C205.5,46.5 212.7,58.1 219.8,69.7 C212.7,81.3 205.5,93 198.4,104.6 C191.3,116.2 184.2,127.8 177,139.4 L213.1,139.4 C220.2,127.8 227.3,116.2 234.5,104.6 C241.6,93 248.7,81.4 255.9,69.7 C248.8,58.1 241.7,46.5 234.5,34.9 C227.5,23.3 220.3,11.7 213.2,0 Z\" fill=\"#DF1B1C\"></path><path d=\"M240.9,45.2 L204.8,45.2 C200.1,37.7 195.5,30.1 190.9,22.6 C186.3,15.1 181.7,7.5 177.1,0 L213.2,0 C217.8,7.5 222.4,15.1 227,22.6 C231.6,30.2 236.3,37.7 240.9,45.2 Z\" fill=\"url(#linearGradient-4)\"></path><path d=\"M192.2,115 L228.3,115 C232.9,107.5 237.5,100 242.1,92.4 C246.7,84.9 251.3,77.3 256,69.8 L219.8,69.8 C215.2,77.3 210.6,84.9 206,92.4 C201.4,99.9 196.8,107.4 192.2,115 Z\" fill=\"url(#linearGradient-5)\"></path><path d=\"M143.2,115 L179.3,115 C183.9,107.5 188.5,99.9 193.1,92.4 C197.7,84.9 202.3,77.3 207,69.8 L170.9,69.8 C166.3,77.3 161.7,84.9 157.1,92.4 C152.4,99.9 147.8,107.4 143.2,115 Z\" fill=\"url(#linearGradient-6)\"></path><path d=\"M63.8,24.6 L27.7,24.6 C23.1,32.1 18.5,39.7 13.9,47.2 C9.2,54.7 4.6,62.3 0,69.8 L36.1,69.8 C40.7,62.3 45.3,54.8 49.9,47.2 C54.5,39.7 59.1,32.1 63.8,24.6 Z\" fill=\"url(#linearGradient-7)\"></path><path d=\"M15,45.2 L51.1,45.2 C55.7,37.7 60.3,30.1 64.9,22.6 C69.6,15.1 74.2,7.5 78.8,0 L42.7,0 C38.1,7.5 33.5,15 28.9,22.6 C24.3,30.1 19.7,37.7 15,45.2 Z\" fill=\"url(#linearGradient-8)\"></path><path d=\"M15,94.3 L51.1,94.3 C55.7,101.8 60.3,109.4 64.9,116.9 C69.5,124.4 74.1,132 78.7,139.5 L42.6,139.5 C38,132 33.3,124.5 28.7,116.9 C24.2,109.4 19.6,101.9 15,94.3 Z\" fill=\"url(#linearGradient-9)\"></path><path d=\"M106.5,45.2 L70.4,45.2 C65.8,37.7 61.2,30.1 56.6,22.6 C51.9,15.1 47.3,7.5 42.7,0 L78.8,0 C83.4,7.5 88,15 92.6,22.6 C97.3,30.1 101.9,37.7 106.5,45.2 Z\" fill=\"url(#linearGradient-10)\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 256 140\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><defs><linearGradient x1=\"49.9109718%\" y1=\"99.9084071%\" x2=\"49.9109718%\" y2=\"-0.0902654867%\" id=\"linearGradient-1\"><stop stop-color=\"#8AC23E\" offset=\"0%\"></stop><stop stop-color=\"#8AC23E\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9835165%\" y1=\"0.0637125664%\" x2=\"49.9835165%\" y2=\"100.062389%\" id=\"linearGradient-2\"><stop stop-color=\"#698932\" offset=\"0%\"></stop><stop stop-color=\"#698932\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0595611%\" y1=\"0.0637125664%\" x2=\"50.0595611%\" y2=\"100.062389%\" id=\"linearGradient-3\"><stop stop-color=\"#FFED01\" offset=\"0%\"></stop><stop stop-color=\"#FFED01\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0170846%\" y1=\"0.0637125664%\" x2=\"50.0170846%\" y2=\"100.092699%\" id=\"linearGradient-4\"><stop stop-color=\"#E02A89\" offset=\"0%\"></stop><stop stop-color=\"#E02A89\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9631661%\" y1=\"-0.0915929204%\" x2=\"49.9631661%\" y2=\"99.9070796%\" id=\"linearGradient-5\"><stop stop-color=\"#7F1E4F\" offset=\"0%\"></stop><stop stop-color=\"#7F1E4F\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9652038%\" y1=\"-0.0915929204%\" x2=\"49.9652038%\" y2=\"99.9070796%\" id=\"linearGradient-6\"><stop stop-color=\"#E95506\" offset=\"0%\"></stop><stop stop-color=\"#E95506\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"49.9766458%\" y1=\"99.9084071%\" x2=\"49.9766458%\" y2=\"-0.0265486726%\" id=\"linearGradient-7\"><stop stop-color=\"#88D0F1\" offset=\"0%\"></stop><stop stop-color=\"#88D0F1\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0205329%\" y1=\"0.0637125664%\" x2=\"50.0205329%\" y2=\"99.9986726%\" id=\"linearGradient-8\"><stop stop-color=\"#00828B\" offset=\"0%\"></stop><stop stop-color=\"#00828B\" stop-opacity=\"0\" offset=\"83.25%\"></stop></linearGradient><linearGradient x1=\"50.078022%\" y1=\"99.9752212%\" x2=\"50.078022%\" y2=\"0.0705752212%\" id=\"linearGradient-9\"><stop stop-color=\"#2073BA\" offset=\"0%\"></stop><stop stop-color=\"#2073BA\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"50.0177116%\" y1=\"0.0637125664%\" x2=\"50.0177116%\" y2=\"99.9986726%\" id=\"linearGradient-10\"><stop stop-color=\"#8ED0E1\" offset=\"0%\"></stop><stop stop-color=\"#88D0F1\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient></defs><g><path d=\"M128.1,0 L164.2,0 C150.9,21.8 136.2,45.8 121.5,69.7 L85.4,69.7 C100.1,45.8 114.8,21.8 128.1,0 Z\" fill=\"#8DC220\"></path><path d=\"M42.7,0 L78.8,0 C71.7,11.6 64.5,23.3 57.4,34.9 C50.3,46.5 43.2,58.1 36.1,69.7 C43.2,81.3 50.3,93 57.4,104.6 C64.5,116.2 71.6,127.8 78.8,139.4 L42.7,139.4 C35.6,127.8 28.4,116.2 21.3,104.6 C14.2,93.1 7.1,81.4 0,69.8 C7.1,58.2 14.2,46.6 21.3,35 C28.4,23.3 35.6,11.7 42.7,0 Z\" fill=\"#44BFEF\"></path><path d=\"M42.7,0 L42.7,0 C57.4,24 72.1,48 85.4,69.7 L121.5,69.7 C108.2,48 93.5,24 78.8,0 L78.8,0 L42.7,0 Z\" fill=\"#00AC71\"></path><path d=\"M164.2,0 L128.1,0 C135.2,11.6 142.3,23.3 149.5,34.9 C156.6,46.5 163.7,58.1 170.9,69.7 C163.8,81.3 156.6,93 149.5,104.6 C142.4,116.2 135.3,127.8 128.1,139.4 L164.2,139.4 C171.3,127.8 178.4,116.2 185.6,104.6 C192.7,93 199.8,81.4 207,69.7 C199.8,58.1 192.7,46.5 185.6,34.9 C178.5,23.3 171.3,11.7 164.2,0 Z\" fill=\"#F9BC00\"></path><path d=\"M149.3,24.6 L113.2,24.6 C108.6,32.1 104,39.7 99.4,47.2 C94.8,54.7 90.2,62.3 85.5,69.8 L121.6,69.8 C126.2,62.3 130.9,54.7 135.5,47.2 C140,39.6 144.6,32.1 149.3,24.6 Z\" fill=\"url(#linearGradient-1)\"></path><path d=\"M100.5,45.2 L136.6,45.2 C141.2,37.7 145.8,30.1 150.4,22.6 C155,15.1 159.6,7.5 164.2,0 L128.1,0 C123.5,7.5 118.9,15.1 114.3,22.6 C109.7,30.2 105.1,37.7 100.5,45.2 Z\" fill=\"url(#linearGradient-2)\"></path><path d=\"M191.9,45.2 L155.8,45.2 C151.2,37.7 146.5,30.1 141.9,22.6 C137.3,15.1 132.7,7.5 128.1,0 L164.2,0 C168.8,7.5 173.4,15.1 178,22.6 C182.7,30.2 187.3,37.7 191.9,45.2 Z\" fill=\"url(#linearGradient-3)\"></path><path d=\"M213.2,0 L177.1,0 C184.2,11.7 191.3,23.3 198.4,34.9 C205.5,46.5 212.7,58.1 219.8,69.7 C212.7,81.3 205.5,93 198.4,104.6 C191.3,116.2 184.2,127.8 177,139.4 L213.1,139.4 C220.2,127.8 227.3,116.2 234.5,104.6 C241.6,93 248.7,81.4 255.9,69.7 C248.8,58.1 241.7,46.5 234.5,34.9 C227.5,23.3 220.3,11.7 213.2,0 Z\" fill=\"#DF1B1C\"></path><path d=\"M240.9,45.2 L204.8,45.2 C200.1,37.7 195.5,30.1 190.9,22.6 C186.3,15.1 181.7,7.5 177.1,0 L213.2,0 C217.8,7.5 222.4,15.1 227,22.6 C231.6,30.2 236.3,37.7 240.9,45.2 Z\" fill=\"url(#linearGradient-4)\"></path><path d=\"M192.2,115 L228.3,115 C232.9,107.5 237.5,100 242.1,92.4 C246.7,84.9 251.3,77.3 256,69.8 L219.8,69.8 C215.2,77.3 210.6,84.9 206,92.4 C201.4,99.9 196.8,107.4 192.2,115 Z\" fill=\"url(#linearGradient-5)\"></path><path d=\"M143.2,115 L179.3,115 C183.9,107.5 188.5,99.9 193.1,92.4 C197.7,84.9 202.3,77.3 207,69.8 L170.9,69.8 C166.3,77.3 161.7,84.9 157.1,92.4 C152.4,99.9 147.8,107.4 143.2,115 Z\" fill=\"url(#linearGradient-6)\"></path><path d=\"M63.8,24.6 L27.7,24.6 C23.1,32.1 18.5,39.7 13.9,47.2 C9.2,54.7 4.6,62.3 0,69.8 L36.1,69.8 C40.7,62.3 45.3,54.8 49.9,47.2 C54.5,39.7 59.1,32.1 63.8,24.6 Z\" fill=\"url(#linearGradient-7)\"></path><path d=\"M15,45.2 L51.1,45.2 C55.7,37.7 60.3,30.1 64.9,22.6 C69.6,15.1 74.2,7.5 78.8,0 L42.7,0 C38.1,7.5 33.5,15 28.9,22.6 C24.3,30.1 19.7,37.7 15,45.2 Z\" fill=\"url(#linearGradient-8)\"></path><path d=\"M15,94.3 L51.1,94.3 C55.7,101.8 60.3,109.4 64.9,116.9 C69.5,124.4 74.1,132 78.7,139.5 L42.6,139.5 C38,132 33.3,124.5 28.7,116.9 C24.2,109.4 19.6,101.9 15,94.3 Z\" fill=\"url(#linearGradient-9)\"></path><path d=\"M106.5,45.2 L70.4,45.2 C65.8,37.7 61.2,30.1 56.6,22.6 C51.9,15.1 47.3,7.5 42.7,0 L78.8,0 C83.4,7.5 88,15 92.6,22.6 C97.3,30.1 101.9,37.7 106.5,45.2 Z\" fill=\"url(#linearGradient-10)\"></path></g></svg>"
 
 /***/ }),
 /* 1650 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg viewBox=\"0 0 512 512\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" style=\"background: #FFFFFF;\"><title>Zeit - Black on white logo</title><defs><linearGradient x1=\"114.720775%\" y1=\"181.283245%\" x2=\"39.5399306%\" y2=\"100%\" id=\"linearGradient-1\"><stop stop-color=\"#FFFFFF\" offset=\"0%\"></stop><stop stop-color=\"#000000\" offset=\"100%\"></stop></linearGradient></defs><g id=\"Page-1\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\"><g id=\"Black-on-white\" fill=\"url(#linearGradient-1)\"><polygon id=\"Triangle-3-Copy\" points=\"254 156 367 356 141 356\"></polygon></g></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 512 512\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" style=\"background: #FFFFFF;\"><title>Zeit - Black on white logo</title><defs><linearGradient x1=\"114.720775%\" y1=\"181.283245%\" x2=\"39.5399306%\" y2=\"100%\" id=\"linearGradient-1\"><stop stop-color=\"#FFFFFF\" offset=\"0%\"></stop><stop stop-color=\"#000000\" offset=\"100%\"></stop></linearGradient></defs><g id=\"Page-1\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\"><g id=\"Black-on-white\" fill=\"url(#linearGradient-1)\"><polygon id=\"Triangle-3-Copy\" points=\"254 156 367 356 141 356\"></polygon></g></g></svg>"
 
 /***/ }),
 /* 1651 */
 /***/ (function(module, exports) {
 
-module.exports = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 1000 1000\"><style>.st0{display:none}.st1{display:inline}.st2{fill:#222}.st3{fill:#41b883}.st4{fill:#328170}.st5{fill:#35495e}</style><g id=\"express\" class=\"st0\"><g class=\"st1\"><path class=\"st2\" d=\"M24.5 870.5v-376H494v-22H24.5v-343h499.1v-22H2.5v785H528v-22H24.5z\"></path><path class=\"st2\" d=\"M951.3 327.4L756.7 583.6 566.5 327.4h-28.6l205.6 272.7-225.4 292.4h26.4l212.2-276 213.3 276h27.5L771 600l206.7-272.6h-26.4z\"></path></g></g><g id=\"nuxt\"><path class=\"st3\" d=\"M317.9 852H3.7l408.1-704 408.1 704H507.7\"></path><path class=\"st4\" d=\"M779.8 852h216.5l-354-608.5-351 608.5h216.5\"></path><path class=\"st5\" d=\"M651.2 852h159.5L549.9 403.8 291.3 852h159.5\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 1000 1000\"><style>.st0{display:none}.st1{display:inline}.st2{fill:#222}.st3{fill:#41b883}.st4{fill:#328170}.st5{fill:#35495e}</style><g id=\"express\" class=\"st0\"><g class=\"st1\"><path class=\"st2\" d=\"M24.5 870.5v-376H494v-22H24.5v-343h499.1v-22H2.5v785H528v-22H24.5z\"></path><path class=\"st2\" d=\"M951.3 327.4L756.7 583.6 566.5 327.4h-28.6l205.6 272.7-225.4 292.4h26.4l212.2-276 213.3 276h27.5L771 600l206.7-272.6h-26.4z\"></path></g></g><g id=\"nuxt\"><path class=\"st3\" d=\"M317.9 852H3.7l408.1-704 408.1 704H507.7\"></path><path class=\"st4\" d=\"M779.8 852h216.5l-354-608.5-351 608.5h216.5\"></path><path class=\"st5\" d=\"M651.2 852h159.5L549.9 403.8 291.3 852h159.5\"></path></g></svg>"
 
 /***/ }),
 /* 1652 */
@@ -45107,8 +44108,6 @@ var _react = __webpack_require__(0);
 var _react2 = _interopRequireDefault(_react);
 
 var _reactRedux = __webpack_require__(1189);
-
-var _redux = __webpack_require__(3);
 
 var _fuzzaldrinPlus = __webpack_require__(161);
 
@@ -45147,13 +44146,10 @@ class QuickOpenModal extends _react.Component {
     this.searchSources = query => {
       if (query == "") {
         const results = this.props.sources;
-        this.setState({ results });
-        return;
+        return this.setState({ results });
       }
 
-      const { searchType } = this.props;
-
-      if (searchType === "gotoSource") {
+      if (this.isGotoSourceQuery()) {
         const [baseQuery] = query.split(":");
         const results = (0, _fuzzaldrinPlus.filter)(this.props.sources, baseQuery, { key: "value" });
         this.setState({ results });
@@ -45164,15 +44160,14 @@ class QuickOpenModal extends _react.Component {
     };
 
     this.searchSymbols = query => {
-      const { symbols: { functions, variables }, searchType } = this.props;
+      const { symbols: { functions, variables } } = this.props;
 
       let results = functions;
-      if (searchType === "variables") {
+      if (this.isVariableQuery()) {
         results = variables;
       }
       if (query === "@" || query === "#") {
-        this.setState({ results });
-        return;
+        return this.setState({ results });
       }
 
       results = (0, _fuzzaldrinPlus.filter)(results, query.slice(1), {
@@ -45182,64 +44177,75 @@ class QuickOpenModal extends _react.Component {
       this.setState({ results });
     };
 
+    this.showShortcuts = query => {
+      this.setState({ results: (0, _quickOpen.formatShortcutResults)() });
+    };
+
     this.updateResults = query => {
       if (this.isSymbolSearch()) {
         return this.searchSymbols(query);
       }
+      if (this.isShortcutQuery()) {
+        return this.showShortcuts(query);
+      }
       return this.searchSources(query);
+    };
+
+    this.setModifier = item => {
+      if (["@", "#", ":"].includes(item.id)) {
+        this.props.setQuickOpenQuery(item.id);
+      }
     };
 
     this.selectResultItem = (e, item) => {
       if (item == null) {
         return;
       }
-      const { selectSource, selectedSource, query, searchType } = this.props;
-      if (this.isSymbolSearch()) {
-        if (selectedSource == null) {
-          return;
-        }
-        selectSource(selectedSource.get("id"), {
-          location: _extends({}, item.location != null ? { line: item.location.start.line } : {})
-        });
-      } else if (searchType === "gotoSource") {
-        const location = (0, _quickOpen.parseLineColumn)(query);
-        if (location != null) {
-          selectSource(item.id, { location });
-        }
-      } else {
-        selectSource(item.id);
+
+      if (this.isShortcutQuery()) {
+        return this.setModifier(item);
       }
 
-      this.closeModal();
+      if (this.isGotoSourceQuery()) {
+        const location = (0, _quickOpen.parseLineColumn)(this.props.query);
+        return this.gotoLocation(_extends({}, location, { sourceId: item.id }));
+      }
+
+      if (this.isSymbolSearch()) {
+        return this.gotoLocation({
+          line: item.location && item.location.start ? item.location.start.line : 0
+        });
+      }
+
+      this.gotoLocation({ sourceId: item.id, line: 0 });
     };
 
     this.onSelectResultItem = item => {
-      const {
-        selectSource,
-        selectedSource,
-        highlightLineRange,
-        searchType
-      } = this.props;
+      const { selectLocation, selectedSource, highlightLineRange } = this.props;
       if (!this.isSymbolSearch() || selectedSource == null) {
         return;
       }
 
-      if (searchType === "variables") {
-        selectSource(selectedSource.get("id"), {
-          location: _extends({}, item.location != null ? { line: item.location.start.line } : {})
+      if (this.isVariableQuery()) {
+        const line = item.location && item.location.start ? item.location.start.line : 0;
+        return selectLocation({
+          sourceId: selectedSource.get("id"),
+          line,
+          column: null
         });
       }
 
-      if (searchType === "functions") {
-        highlightLineRange(_extends({}, item.location != null ? { start: item.location.start.line, end: item.location.end.line } : {}, {
+      if (this.isFunctionQuery()) {
+        return highlightLineRange(_extends({}, item.location != null ? { start: item.location.start.line, end: item.location.end.line } : {}, {
           sourceId: selectedSource.get("id")
         }));
       }
     };
 
-    this.traverseResults = direction => {
+    this.traverseResults = e => {
+      const direction = e.key === "ArrowUp" ? -1 : 1;
       const { selectedIndex, results } = this.state;
-      const resultCount = this.resultCount();
+      const resultCount = this.getResultCount();
       const index = selectedIndex + direction;
       const nextIndex = (index + resultCount) % resultCount;
 
@@ -45247,6 +44253,20 @@ class QuickOpenModal extends _react.Component {
 
       if (results != null) {
         this.onSelectResultItem(results[nextIndex]);
+      }
+    };
+
+    this.gotoLocation = location => {
+      const { selectLocation, selectedSource } = this.props;
+      const selectedSourceId = selectedSource ? selectedSource.get("id") : "";
+      if (location != null) {
+        const sourceId = location.sourceId ? location.sourceId : selectedSourceId;
+        selectLocation({
+          sourceId,
+          line: location.line,
+          column: location.column || null
+        });
+        this.closeModal();
       }
     };
 
@@ -45261,45 +44281,51 @@ class QuickOpenModal extends _react.Component {
     };
 
     this.onKeyDown = e => {
-      const {
-        selectSource,
-        selectedSource,
-        enabled,
-        query,
-        searchType
-      } = this.props;
+      const { enabled, query } = this.props;
       const { results, selectedIndex } = this.state;
 
       if (!enabled || !results) {
         return;
       }
 
-      const canTraverse = searchType !== "goto";
-      if (e.key === "ArrowUp" && canTraverse) {
-        return this.traverseResults(-1);
-      } else if (e.key === "ArrowDown" && canTraverse) {
-        return this.traverseResults(1);
-      } else if (e.key === "Enter") {
-        if (searchType === "goto") {
-          if (!selectedSource) {
-            return;
-          }
+      if (e.key === "Enter") {
+        if (this.isGotoQuery()) {
           const location = (0, _quickOpen.parseLineColumn)(query);
-          if (location != null) {
-            selectSource(selectedSource.get("id"), { location });
-          }
-        } else {
-          this.selectResultItem(e, results[selectedIndex]);
+          return this.gotoLocation(location);
         }
+
+        if (this.isShortcutQuery()) {
+          return this.setModifier(results[selectedIndex]);
+        }
+
+        return this.selectResultItem(e, results[selectedIndex]);
+      }
+
+      if (e.key === "Tab") {
         return this.closeModal();
-      } else if (e.key === "Tab") {
-        return this.closeModal();
+      }
+
+      if (["ArrowUp", "ArrowDown"].includes(e.key)) {
+        return this.traverseResults(e);
       }
     };
 
-    this.resultCount = () => this.state.results ? this.state.results.length : 0;
+    this.getResultCount = () => {
+      const results = this.state.results;
+      return results && results.length ? results.length : 0;
+    };
 
-    this.isSymbolSearch = () => ["functions", "variables"].includes(this.props.searchType);
+    this.isFunctionQuery = () => this.props.searchType === "functions";
+
+    this.isVariableQuery = () => this.props.searchType === "variables";
+
+    this.isSymbolSearch = () => this.isFunctionQuery() || this.isVariableQuery();
+
+    this.isGotoQuery = () => this.props.searchType === "goto";
+
+    this.isGotoSourceQuery = () => this.props.searchType === "gotoSource";
+
+    this.isShortcutQuery = () => this.props.searchType === "shortcuts";
 
     this.state = {
       results: null,
@@ -45323,60 +44349,46 @@ class QuickOpenModal extends _react.Component {
     }
   }
 
-  renderResults() {
-    const { enabled, searchType } = this.props;
-    const { selectedIndex, results } = this.state;
+  // Query helpers
 
-    if (!enabled || !results) {
-      return null;
-    }
 
-    return _react2.default.createElement(_ResultList2.default, _extends({
-      key: "results",
-      items: results,
-      selected: selectedIndex,
-      selectItem: this.selectResultItem,
-      ref: "resultList"
-    }, searchType === "sources" || searchType === "gotoSource" ? { size: "big" } : {}));
-  }
-
-  renderInput() {
-    const { query, searchType } = this.props;
-    const summaryMsg = L10N.getFormatStr("sourceSearch.resultsSummary1", this.resultCount());
-
-    const showSummary = searchType === "sources" || searchType === "functions" || searchType === "variables";
-
-    return _react2.default.createElement(
-      "div",
-      { key: "input", className: "input-wrapper" },
-      _react2.default.createElement(_SearchInput2.default, _extends({
-        query: query,
-        count: this.resultCount(),
-        placeholder: L10N.getStr("sourceSearch.search")
-      }, showSummary === true ? { summaryMsg } : {}, {
-        onChange: this.onChange,
-        onKeyDown: this.onKeyDown,
-        handleClose: this.closeModal
-      }))
-    );
-  }
   render() {
-    const { enabled } = this.props;
+    const { enabled, query, searchType } = this.props;
+    const { selectedIndex, results } = this.state;
 
     if (!enabled) {
       return null;
     }
 
+    const summaryMsg = L10N.getFormatStr("sourceSearch.resultsSummary1", this.getResultCount());
+
+    const showSummary = searchType === "sources" || searchType === "functions" || searchType === "variables" || searchType === "shortcuts";
+
     return _react2.default.createElement(
       _Modal2.default,
       { "in": enabled, handleClose: this.closeModal },
-      this.renderInput(),
-      this.renderResults()
+      _react2.default.createElement(_SearchInput2.default, _extends({
+        query: query,
+        count: this.getResultCount(),
+        placeholder: L10N.getStr("sourceSearch.search")
+      }, showSummary === true ? { summaryMsg } : {}, {
+        onChange: this.onChange,
+        onKeyDown: this.onKeyDown,
+        handleClose: this.closeModal
+      })),
+      results && _react2.default.createElement(_ResultList2.default, _extends({
+        key: "results",
+        items: results,
+        selected: selectedIndex,
+        selectItem: this.selectResultItem,
+        ref: "resultList"
+      }, searchType === "sources" || searchType === "gotoSource" ? { size: "big" } : {}))
     );
   }
 }
 
-exports.QuickOpenModal = QuickOpenModal;
+exports.QuickOpenModal = QuickOpenModal; /* istanbul ignore next: ignoring testing of redux connection stuff */
+
 function mapStateToProps(state) {
   const selectedSource = (0, _selectors.getSelectedSource)(state);
   let symbols = null;
@@ -45393,7 +44405,8 @@ function mapStateToProps(state) {
   };
 }
 
-exports.default = (0, _reactRedux.connect)(mapStateToProps, dispatch => (0, _redux.bindActionCreators)(_actions2.default, dispatch))(QuickOpenModal);
+/* istanbul ignore next: ignoring testing of redux connection stuff */
+exports.default = (0, _reactRedux.connect)(mapStateToProps, _actions2.default)(QuickOpenModal);
 
 /***/ }),
 /* 1653 */
@@ -45482,10 +44495,43 @@ exports.fetchScopes = fetchScopes;
 
 var _selectors = __webpack_require__(1352);
 
-var _pause = __webpack_require__(1400);
+var _prefs = __webpack_require__(226);
 
 var _devtoolsSourceMap = __webpack_require__(1360);
 
+var _loadSourceText = __webpack_require__(1435);
+
+var _parser = __webpack_require__(1365);
+
+var _updateScopeBindings = __webpack_require__(1784);
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function mapScopes(scopes, frame) {
+  return async function ({ dispatch, getState, client, sourceMaps }) {
+    const mappedScopes = await (0, _updateScopeBindings.updateScopeBindings)(scopes, frame.generatedLocation, frame.location, {
+      async getSourceMapsScopes(location) {
+        const astScopes = await (0, _parser.getScopes)(location);
+        return sourceMaps.getLocationScopes(location, astScopes);
+      },
+      async getOriginalSourceScopes(location) {
+        const source = (0, _selectors.getSource)(getState(), location.sourceId);
+        await dispatch((0, _loadSourceText.loadSourceText)(source));
+        return (0, _parser.getScopes)(location);
+      }
+    });
+
+    dispatch({
+      type: "MAP_SCOPES",
+      frame,
+      scopes: mappedScopes
+    });
+  };
+}
+
+// eslint-disable-next-line max-len
 function fetchScopes() {
   return async function ({ dispatch, getState, client, sourceMaps }) {
     const frame = (0, _selectors.getSelectedFrame)(getState());
@@ -45501,9 +44547,15 @@ function fetchScopes() {
       scopes
     });
 
-    const sourceRecord = (0, _selectors.getSource)(getState(), frame.generatedLocation.sourceId);
+    const generatedSourceRecord = (0, _selectors.getSource)(getState(), frame.generatedLocation.sourceId);
 
-    if (sourceRecord.get("isWasm")) {
+    if (generatedSourceRecord.get("isWasm")) {
+      return;
+    }
+
+    const sourceRecord = (0, _selectors.getSource)(getState(), frame.location.sourceId);
+
+    if (sourceRecord.get("isPrettyPrinted")) {
       return;
     }
 
@@ -45511,17 +44563,11 @@ function fetchScopes() {
       return;
     }
 
-    const mappedScopes = await (0, _pause.updateScopeBindings)(scopes, frame.generatedLocation, sourceMaps);
-
-    dispatch({
-      type: "MAP_SCOPES",
-      frame,
-      scopes: mappedScopes
-    });
+    if (_prefs.features.mapScopes) {
+      dispatch(mapScopes(scopes, frame));
+    }
   };
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+}
 
 /***/ }),
 /* 1656 */,
@@ -45769,6 +44815,14 @@ function cloneAction(action) {
     action.source = source;
   }
 
+  if (action.sources) {
+    const sources = action.sources.slice(0, 30).map(source => {
+      const url = !source.url || source.url.includes("data:") ? "" : source.url;
+      return _extends({}, source, { url });
+    });
+    action.sources = sources;
+  }
+
   // LOAD_SOURCE_TEXT
   if (action.text) {
     action.text = "";
@@ -45789,7 +44843,7 @@ function formatFrame(frame) {
 
 function formatPause(pause) {
   return _extends({}, pause, {
-    pauseInfo: { why: pause.pauseInfo.why },
+    pauseInfo: { why: pause.why },
     scopes: [],
     frames: pause.frames.map(formatFrame),
     loadedObjects: []
@@ -45937,6 +44991,4908 @@ function timing(store) {
     return result;
   };
 }
+
+/***/ }),
+/* 1664 */,
+/* 1665 */,
+/* 1666 */,
+/* 1667 */,
+/* 1668 */,
+/* 1669 */,
+/* 1670 */,
+/* 1671 */,
+/* 1672 */,
+/* 1673 */,
+/* 1674 */,
+/* 1675 */,
+/* 1676 */,
+/* 1677 */,
+/* 1678 */,
+/* 1679 */,
+/* 1680 */,
+/* 1681 */,
+/* 1682 */,
+/* 1683 */,
+/* 1684 */,
+/* 1685 */,
+/* 1686 */,
+/* 1687 */,
+/* 1688 */,
+/* 1689 */,
+/* 1690 */,
+/* 1691 */,
+/* 1692 */,
+/* 1693 */,
+/* 1694 */,
+/* 1695 */,
+/* 1696 */,
+/* 1697 */,
+/* 1698 */,
+/* 1699 */,
+/* 1700 */,
+/* 1701 */,
+/* 1702 */,
+/* 1703 */,
+/* 1704 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+__webpack_require__(1705);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+const Badge = ({ children }) => _react2.default.createElement(
+  "div",
+  { className: "badge text-white text-center" },
+  children
+);
+
+exports.default = Badge;
+
+/***/ }),
+/* 1705 */
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+/* 1706 */,
+/* 1707 */,
+/* 1708 */,
+/* 1709 */,
+/* 1710 */,
+/* 1711 */,
+/* 1712 */,
+/* 1713 */,
+/* 1714 */,
+/* 1715 */,
+/* 1716 */,
+/* 1717 */,
+/* 1718 */,
+/* 1719 */,
+/* 1720 */,
+/* 1721 */,
+/* 1722 */,
+/* 1723 */,
+/* 1724 */,
+/* 1725 */,
+/* 1726 */,
+/* 1727 */,
+/* 1728 */,
+/* 1729 */,
+/* 1730 */,
+/* 1731 */,
+/* 1732 */,
+/* 1733 */
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" id=\"Layer_1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 1200 1200\" style=\"enable-background:new 0 0 1200 1200;\" xml:space=\"preserve\"><style type=\"text/css\"> .st0{clip-path:url(#SVGID_2_);} .st1{fill:url(#SVGID_3_);} .st2{fill:url(#SVGID_4_);} .st3{opacity:0.28;fill:#C24411;} .st4{fill:#FFFFFF;} </style><g><defs><path id=\"SVGID_1_\" d=\"M1088.7,1165.5H111.3c-42.4,0-76.7-34.4-76.7-76.7V111.3c0-42.4,34.4-76.7,76.7-76.7h977.4 c42.4,0,76.7,34.4,76.7,76.7v977.4C1165.5,1131.1,1131.1,1165.5,1088.7,1165.5z\"></path></defs><clipPath id=\"SVGID_2_\"><use xlink:href=\"#SVGID_1_\" style=\"overflow:visible;\"></use></clipPath><g class=\"st0\"><linearGradient id=\"SVGID_3_\" gradientUnits=\"userSpaceOnUse\" x1=\"426.6738\" y1=\"482.4993\" x2=\"1284.413\" y2=\"1239.9835\"><stop offset=\"0\" style=\"stop-color:#F77122\"></stop><stop offset=\"1\" style=\"stop-color:#D6560A\"></stop></linearGradient><polygon class=\"st1\" points=\"573.6,1896.7 -87.9,1286.6 1204.5,-115 1866,495 \"></polygon><linearGradient id=\"SVGID_4_\" gradientUnits=\"userSpaceOnUse\" x1=\"1128.9907\" y1=\"-135.8044\" x2=\"-496.2911\" y2=\"788.1552\"><stop offset=\"0\" style=\"stop-color:#D6560A\"></stop><stop offset=\"1\" style=\"stop-color:#F77122\"></stop></linearGradient><polygon class=\"st2\" points=\"-66.9,1307.6 -644.1,775.5 648.4,-626.1 1225.5,-94 \"></polygon><rect x=\"-143.7\" y=\"-143.6\" transform=\"matrix(0.9658 -0.2591 0.2591 0.9658 -201.3159 92.1307)\" class=\"st3\" width=\"785\" height=\"1906.5\"></rect></g></g><g><path class=\"st4\" d=\"M384.9,900.1H245.4v-45.3h85.6V345.2h-85.6v-45.3h139.5V900.1z\"></path><path class=\"st4\" d=\"M745.7,463c-16.1,60.4-35,118.2-56.7,173.6c-21.7,55.4-42.7,105-62.9,148.8H574 c-20.3-43.8-41.2-93.4-62.9-148.8c-21.7-55.4-40.6-113.2-56.7-173.6h62c5,20.3,10.8,41.9,17.7,64.8s14,45.7,21.7,68.2 c7.6,22.5,15.4,44.3,23.2,65.4c7.8,21.1,15.3,39.9,22.3,56.4c7-16.5,14.5-35.3,22.3-56.4c7.8-21.1,15.6-42.9,23.2-65.4 c7.6-22.5,14.9-45.3,21.7-68.2s12.7-44.5,17.7-64.8H745.7z\"></path><path class=\"st4\" d=\"M815.1,299.9h139.5v45.3h-85.6v509.6h85.6v45.3H815.1V299.9z\"></path></g></svg>"
+
+/***/ }),
+/* 1734 */,
+/* 1735 */,
+/* 1736 */,
+/* 1737 */,
+/* 1738 */,
+/* 1739 */,
+/* 1740 */,
+/* 1741 */,
+/* 1742 */,
+/* 1743 */,
+/* 1744 */,
+/* 1745 */,
+/* 1746 */,
+/* 1747 */,
+/* 1748 */,
+/* 1749 */,
+/* 1750 */,
+/* 1751 */,
+/* 1752 */,
+/* 1753 */,
+/* 1754 */,
+/* 1755 */,
+/* 1756 */,
+/* 1757 */,
+/* 1758 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/**
+ * Copyright (c) 2015-present, Facebook, Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+(function(f) {
+  if (true) {
+    module.exports = f(__webpack_require__(0));
+    /* global define */
+  } else if (typeof define === 'function' && define.amd) {
+    define(['react'], f);
+  } else {
+    var g;
+    if (typeof window !== 'undefined') {
+      g = window;
+    } else if (typeof global !== 'undefined') {
+      g = global;
+    } else if (typeof self !== 'undefined') {
+      g = self;
+    } else {
+      g = this;
+    }
+
+    if (typeof g.React === 'undefined') {
+      throw Error('React module should be required before ReactDOMFactories');
+    }
+
+    g.ReactDOMFactories = f(g.React);
+  }
+})(function(React) {
+  /**
+   * Create a factory that creates HTML tag elements.
+   */
+  function createDOMFactory(type) {
+    var factory = React.createElement.bind(null, type);
+    // Expose the type on the factory and the prototype so that it can be
+    // easily accessed on elements. E.g. `<Foo />.type === Foo`.
+    // This should not be named `constructor` since this may not be the function
+    // that created the element, and it may not even be a constructor.
+    factory.type = type;
+    return factory;
+  };
+
+  /**
+   * Creates a mapping from supported HTML tags to `ReactDOMComponent` classes.
+   */
+  var ReactDOMFactories = {
+    a: createDOMFactory('a'),
+    abbr: createDOMFactory('abbr'),
+    address: createDOMFactory('address'),
+    area: createDOMFactory('area'),
+    article: createDOMFactory('article'),
+    aside: createDOMFactory('aside'),
+    audio: createDOMFactory('audio'),
+    b: createDOMFactory('b'),
+    base: createDOMFactory('base'),
+    bdi: createDOMFactory('bdi'),
+    bdo: createDOMFactory('bdo'),
+    big: createDOMFactory('big'),
+    blockquote: createDOMFactory('blockquote'),
+    body: createDOMFactory('body'),
+    br: createDOMFactory('br'),
+    button: createDOMFactory('button'),
+    canvas: createDOMFactory('canvas'),
+    caption: createDOMFactory('caption'),
+    cite: createDOMFactory('cite'),
+    code: createDOMFactory('code'),
+    col: createDOMFactory('col'),
+    colgroup: createDOMFactory('colgroup'),
+    data: createDOMFactory('data'),
+    datalist: createDOMFactory('datalist'),
+    dd: createDOMFactory('dd'),
+    del: createDOMFactory('del'),
+    details: createDOMFactory('details'),
+    dfn: createDOMFactory('dfn'),
+    dialog: createDOMFactory('dialog'),
+    div: createDOMFactory('div'),
+    dl: createDOMFactory('dl'),
+    dt: createDOMFactory('dt'),
+    em: createDOMFactory('em'),
+    embed: createDOMFactory('embed'),
+    fieldset: createDOMFactory('fieldset'),
+    figcaption: createDOMFactory('figcaption'),
+    figure: createDOMFactory('figure'),
+    footer: createDOMFactory('footer'),
+    form: createDOMFactory('form'),
+    h1: createDOMFactory('h1'),
+    h2: createDOMFactory('h2'),
+    h3: createDOMFactory('h3'),
+    h4: createDOMFactory('h4'),
+    h5: createDOMFactory('h5'),
+    h6: createDOMFactory('h6'),
+    head: createDOMFactory('head'),
+    header: createDOMFactory('header'),
+    hgroup: createDOMFactory('hgroup'),
+    hr: createDOMFactory('hr'),
+    html: createDOMFactory('html'),
+    i: createDOMFactory('i'),
+    iframe: createDOMFactory('iframe'),
+    img: createDOMFactory('img'),
+    input: createDOMFactory('input'),
+    ins: createDOMFactory('ins'),
+    kbd: createDOMFactory('kbd'),
+    keygen: createDOMFactory('keygen'),
+    label: createDOMFactory('label'),
+    legend: createDOMFactory('legend'),
+    li: createDOMFactory('li'),
+    link: createDOMFactory('link'),
+    main: createDOMFactory('main'),
+    map: createDOMFactory('map'),
+    mark: createDOMFactory('mark'),
+    menu: createDOMFactory('menu'),
+    menuitem: createDOMFactory('menuitem'),
+    meta: createDOMFactory('meta'),
+    meter: createDOMFactory('meter'),
+    nav: createDOMFactory('nav'),
+    noscript: createDOMFactory('noscript'),
+    object: createDOMFactory('object'),
+    ol: createDOMFactory('ol'),
+    optgroup: createDOMFactory('optgroup'),
+    option: createDOMFactory('option'),
+    output: createDOMFactory('output'),
+    p: createDOMFactory('p'),
+    param: createDOMFactory('param'),
+    picture: createDOMFactory('picture'),
+    pre: createDOMFactory('pre'),
+    progress: createDOMFactory('progress'),
+    q: createDOMFactory('q'),
+    rp: createDOMFactory('rp'),
+    rt: createDOMFactory('rt'),
+    ruby: createDOMFactory('ruby'),
+    s: createDOMFactory('s'),
+    samp: createDOMFactory('samp'),
+    script: createDOMFactory('script'),
+    section: createDOMFactory('section'),
+    select: createDOMFactory('select'),
+    small: createDOMFactory('small'),
+    source: createDOMFactory('source'),
+    span: createDOMFactory('span'),
+    strong: createDOMFactory('strong'),
+    style: createDOMFactory('style'),
+    sub: createDOMFactory('sub'),
+    summary: createDOMFactory('summary'),
+    sup: createDOMFactory('sup'),
+    table: createDOMFactory('table'),
+    tbody: createDOMFactory('tbody'),
+    td: createDOMFactory('td'),
+    textarea: createDOMFactory('textarea'),
+    tfoot: createDOMFactory('tfoot'),
+    th: createDOMFactory('th'),
+    thead: createDOMFactory('thead'),
+    time: createDOMFactory('time'),
+    title: createDOMFactory('title'),
+    tr: createDOMFactory('tr'),
+    track: createDOMFactory('track'),
+    u: createDOMFactory('u'),
+    ul: createDOMFactory('ul'),
+    var: createDOMFactory('var'),
+    video: createDOMFactory('video'),
+    wbr: createDOMFactory('wbr'),
+
+    // SVG
+    circle: createDOMFactory('circle'),
+    clipPath: createDOMFactory('clipPath'),
+    defs: createDOMFactory('defs'),
+    ellipse: createDOMFactory('ellipse'),
+    g: createDOMFactory('g'),
+    image: createDOMFactory('image'),
+    line: createDOMFactory('line'),
+    linearGradient: createDOMFactory('linearGradient'),
+    mask: createDOMFactory('mask'),
+    path: createDOMFactory('path'),
+    pattern: createDOMFactory('pattern'),
+    polygon: createDOMFactory('polygon'),
+    polyline: createDOMFactory('polyline'),
+    radialGradient: createDOMFactory('radialGradient'),
+    rect: createDOMFactory('rect'),
+    stop: createDOMFactory('stop'),
+    svg: createDOMFactory('svg'),
+    text: createDOMFactory('text'),
+    tspan: createDOMFactory('tspan'),
+  };
+
+  // due to wrapper and conditionals at the top, this will either become
+  // `module.exports ReactDOMFactories` if that is available,
+  // otherwise it will be defined via `define(['react'], ReactDOMFactories)`
+  // if that is available,
+  // otherwise it will be defined as global variable.
+  return ReactDOMFactories;
+});
+
+
+
+/***/ }),
+/* 1759 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+var EventEmitter = function EventEmitter() {};
+module.exports = EventEmitter;
+
+const promise = __webpack_require__(1769);
+
+/**
+ * Decorate an object with event emitter functionality.
+ *
+ * @param Object aObjectToDecorate
+ *        Bind all public methods of EventEmitter to
+ *        the aObjectToDecorate object.
+ */
+EventEmitter.decorate = function EventEmitter_decorate(aObjectToDecorate) {
+  let emitter = new EventEmitter();
+  aObjectToDecorate.on = emitter.on.bind(emitter);
+  aObjectToDecorate.off = emitter.off.bind(emitter);
+  aObjectToDecorate.once = emitter.once.bind(emitter);
+  aObjectToDecorate.emit = emitter.emit.bind(emitter);
+};
+
+EventEmitter.prototype = {
+  /**
+   * Connect a listener.
+   *
+   * @param string aEvent
+   *        The event name to which we're connecting.
+   * @param function aListener
+   *        Called when the event is fired.
+   */
+  on: function EventEmitter_on(aEvent, aListener) {
+    if (!this._eventEmitterListeners) this._eventEmitterListeners = new Map();
+    if (!this._eventEmitterListeners.has(aEvent)) {
+      this._eventEmitterListeners.set(aEvent, []);
+    }
+    this._eventEmitterListeners.get(aEvent).push(aListener);
+  },
+
+  /**
+   * Listen for the next time an event is fired.
+   *
+   * @param string aEvent
+   *        The event name to which we're connecting.
+   * @param function aListener
+   *        (Optional) Called when the event is fired. Will be called at most
+   *        one time.
+   * @return promise
+   *        A promise which is resolved when the event next happens. The
+   *        resolution value of the promise is the first event argument. If
+   *        you need access to second or subsequent event arguments (it's rare
+   *        that this is needed) then use aListener
+   */
+  once: function EventEmitter_once(aEvent, aListener) {
+    let deferred = promise.defer();
+
+    let handler = (aEvent, aFirstArg, ...aRest) => {
+      this.off(aEvent, handler);
+      if (aListener) {
+        aListener.apply(null, [aEvent, aFirstArg, ...aRest]);
+      }
+      deferred.resolve(aFirstArg);
+    };
+
+    handler._originalListener = aListener;
+    this.on(aEvent, handler);
+
+    return deferred.promise;
+  },
+
+  /**
+   * Remove a previously-registered event listener.  Works for events
+   * registered with either on or once.
+   *
+   * @param string aEvent
+   *        The event name whose listener we're disconnecting.
+   * @param function aListener
+   *        The listener to remove.
+   */
+  off: function EventEmitter_off(aEvent, aListener) {
+    if (!this._eventEmitterListeners) return;
+    let listeners = this._eventEmitterListeners.get(aEvent);
+    if (listeners) {
+      this._eventEmitterListeners.set(aEvent, listeners.filter(l => {
+        return l !== aListener && l._originalListener !== aListener;
+      }));
+    }
+  },
+
+  /**
+   * Emit an event.  All arguments to this method will
+   * be sent to listener functions.
+   */
+  emit: function EventEmitter_emit(aEvent) {
+    if (!this._eventEmitterListeners || !this._eventEmitterListeners.has(aEvent)) {
+      return;
+    }
+
+    let originalListeners = this._eventEmitterListeners.get(aEvent);
+    for (let listener of this._eventEmitterListeners.get(aEvent)) {
+      // If the object was destroyed during event emission, stop
+      // emitting.
+      if (!this._eventEmitterListeners) {
+        break;
+      }
+
+      // If listeners were removed during emission, make sure the
+      // event handler we're going to fire wasn't removed.
+      if (originalListeners === this._eventEmitterListeners.get(aEvent) || this._eventEmitterListeners.get(aEvent).some(l => l === listener)) {
+        try {
+          listener.apply(null, arguments);
+        } catch (ex) {
+          // Prevent a bad listener from interfering with the others.
+          let msg = ex + ": " + ex.stack;
+          //console.error(msg);
+          console.log(msg);
+        }
+      }
+    }
+  }
+};
+
+/***/ }),
+/* 1760 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+(function () {
+  var AcronymResult, computeScore, emptyAcronymResult, isAcronymFullWord, isMatch, isSeparator, isWordEnd, isWordStart, miss_coeff, pos_bonus, scoreAcronyms, scoreCharacter, scoreConsecutives, scoreExact, scoreExactMatch, scorePattern, scorePosition, scoreSize, tau_size, wm;
+
+  wm = 150;
+
+  pos_bonus = 20;
+
+  tau_size = 85;
+
+  miss_coeff = 0.75;
+
+  exports.score = function (string, query, options) {
+    var allowErrors, preparedQuery, score, string_lw;
+    preparedQuery = options.preparedQuery, allowErrors = options.allowErrors;
+    if (!(allowErrors || isMatch(string, preparedQuery.core_lw, preparedQuery.core_up))) {
+      return 0;
+    }
+    string_lw = string.toLowerCase();
+    score = computeScore(string, string_lw, preparedQuery);
+    return Math.ceil(score);
+  };
+
+  exports.isMatch = isMatch = function (subject, query_lw, query_up) {
+    var i, j, m, n, qj_lw, qj_up, si;
+    m = subject.length;
+    n = query_lw.length;
+    if (!m || n > m) {
+      return false;
+    }
+    i = -1;
+    j = -1;
+    while (++j < n) {
+      qj_lw = query_lw.charCodeAt(j);
+      qj_up = query_up.charCodeAt(j);
+      while (++i < m) {
+        si = subject.charCodeAt(i);
+        if (si === qj_lw || si === qj_up) {
+          break;
+        }
+      }
+      if (i === m) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  exports.computeScore = computeScore = function (subject, subject_lw, preparedQuery) {
+    var acro, acro_score, align, csc_diag, csc_invalid, csc_row, csc_score, i, j, m, miss_budget, miss_left, mm, n, pos, query, query_lw, record_miss, score, score_diag, score_row, score_up, si_lw, start, sz;
+    query = preparedQuery.query;
+    query_lw = preparedQuery.query_lw;
+    m = subject.length;
+    n = query.length;
+    acro = scoreAcronyms(subject, subject_lw, query, query_lw);
+    acro_score = acro.score;
+    if (acro.count === n) {
+      return scoreExact(n, m, acro_score, acro.pos);
+    }
+    pos = subject_lw.indexOf(query_lw);
+    if (pos > -1) {
+      return scoreExactMatch(subject, subject_lw, query, query_lw, pos, n, m);
+    }
+    score_row = new Array(n);
+    csc_row = new Array(n);
+    sz = scoreSize(n, m);
+    miss_budget = Math.ceil(miss_coeff * n) + 5;
+    miss_left = miss_budget;
+    j = -1;
+    while (++j < n) {
+      score_row[j] = 0;
+      csc_row[j] = 0;
+    }
+    i = subject_lw.indexOf(query_lw[0]);
+    if (i > -1) {
+      i--;
+    }
+    mm = subject_lw.lastIndexOf(query_lw[n - 1], m);
+    if (mm > i) {
+      m = mm + 1;
+    }
+    csc_invalid = true;
+    while (++i < m) {
+      si_lw = subject_lw[i];
+      if (preparedQuery.charCodes[si_lw.charCodeAt(0)] == null) {
+        if (csc_invalid !== true) {
+          j = -1;
+          while (++j < n) {
+            csc_row[j] = 0;
+          }
+          csc_invalid = true;
+        }
+        continue;
+      }
+      score = 0;
+      score_diag = 0;
+      csc_diag = 0;
+      record_miss = true;
+      csc_invalid = false;
+      j = -1;
+      while (++j < n) {
+        score_up = score_row[j];
+        if (score_up > score) {
+          score = score_up;
+        }
+        csc_score = 0;
+        if (query_lw[j] === si_lw) {
+          start = isWordStart(i, subject, subject_lw);
+          csc_score = csc_diag > 0 ? csc_diag : scoreConsecutives(subject, subject_lw, query, query_lw, i, j, start);
+          align = score_diag + scoreCharacter(i, j, start, acro_score, csc_score);
+          if (align > score) {
+            score = align;
+            miss_left = miss_budget;
+          } else {
+            if (record_miss && --miss_left <= 0) {
+              return score_row[n - 1] * sz;
+            }
+            record_miss = false;
+          }
+        }
+        score_diag = score_up;
+        csc_diag = csc_row[j];
+        csc_row[j] = csc_score;
+        score_row[j] = score;
+      }
+    }
+    score = score_row[n - 1];
+    return score * sz;
+  };
+
+  exports.isWordStart = isWordStart = function (pos, subject, subject_lw) {
+    var curr_s, prev_s;
+    if (pos === 0) {
+      return true;
+    }
+    curr_s = subject[pos];
+    prev_s = subject[pos - 1];
+    return isSeparator(prev_s) || curr_s !== subject_lw[pos] && prev_s === subject_lw[pos - 1];
+  };
+
+  exports.isWordEnd = isWordEnd = function (pos, subject, subject_lw, len) {
+    var curr_s, next_s;
+    if (pos === len - 1) {
+      return true;
+    }
+    curr_s = subject[pos];
+    next_s = subject[pos + 1];
+    return isSeparator(next_s) || curr_s === subject_lw[pos] && next_s !== subject_lw[pos + 1];
+  };
+
+  isSeparator = function (c) {
+    return c === ' ' || c === '.' || c === '-' || c === '_' || c === '/' || c === '\\';
+  };
+
+  scorePosition = function (pos) {
+    var sc;
+    if (pos < pos_bonus) {
+      sc = pos_bonus - pos;
+      return 100 + sc * sc;
+    } else {
+      return Math.max(100 + pos_bonus - pos, 0);
+    }
+  };
+
+  exports.scoreSize = scoreSize = function (n, m) {
+    return tau_size / (tau_size + Math.abs(m - n));
+  };
+
+  scoreExact = function (n, m, quality, pos) {
+    return 2 * n * (wm * quality + scorePosition(pos)) * scoreSize(n, m);
+  };
+
+  exports.scorePattern = scorePattern = function (count, len, sameCase, start, end) {
+    var bonus, sz;
+    sz = count;
+    bonus = 6;
+    if (sameCase === count) {
+      bonus += 2;
+    }
+    if (start) {
+      bonus += 3;
+    }
+    if (end) {
+      bonus += 1;
+    }
+    if (count === len) {
+      if (start) {
+        if (sameCase === len) {
+          sz += 2;
+        } else {
+          sz += 1;
+        }
+      }
+      if (end) {
+        bonus += 1;
+      }
+    }
+    return sameCase + sz * (sz + bonus);
+  };
+
+  exports.scoreCharacter = scoreCharacter = function (i, j, start, acro_score, csc_score) {
+    var posBonus;
+    posBonus = scorePosition(i);
+    if (start) {
+      return posBonus + wm * ((acro_score > csc_score ? acro_score : csc_score) + 10);
+    }
+    return posBonus + wm * csc_score;
+  };
+
+  exports.scoreConsecutives = scoreConsecutives = function (subject, subject_lw, query, query_lw, i, j, startOfWord) {
+    var k, m, mi, n, nj, sameCase, sz;
+    m = subject.length;
+    n = query.length;
+    mi = m - i;
+    nj = n - j;
+    k = mi < nj ? mi : nj;
+    sameCase = 0;
+    sz = 0;
+    if (query[j] === subject[i]) {
+      sameCase++;
+    }
+    while (++sz < k && query_lw[++j] === subject_lw[++i]) {
+      if (query[j] === subject[i]) {
+        sameCase++;
+      }
+    }
+    if (sz === 1) {
+      return 1 + 2 * sameCase;
+    }
+    return scorePattern(sz, n, sameCase, startOfWord, isWordEnd(i, subject, subject_lw, m));
+  };
+
+  exports.scoreExactMatch = scoreExactMatch = function (subject, subject_lw, query, query_lw, pos, n, m) {
+    var end, i, pos2, sameCase, start;
+    start = isWordStart(pos, subject, subject_lw);
+    if (!start) {
+      pos2 = subject_lw.indexOf(query_lw, pos + 1);
+      if (pos2 > -1) {
+        start = isWordStart(pos2, subject, subject_lw);
+        if (start) {
+          pos = pos2;
+        }
+      }
+    }
+    i = -1;
+    sameCase = 0;
+    while (++i < n) {
+      if (query[pos + i] === subject[i]) {
+        sameCase++;
+      }
+    }
+    end = isWordEnd(pos + n - 1, subject, subject_lw, m);
+    return scoreExact(n, m, scorePattern(n, n, sameCase, start, end), pos);
+  };
+
+  AcronymResult = function () {
+    function AcronymResult(score, pos, count) {
+      this.score = score;
+      this.pos = pos;
+      this.count = count;
+    }
+
+    return AcronymResult;
+  }();
+
+  emptyAcronymResult = new AcronymResult(0, 0.1, 0);
+
+  exports.scoreAcronyms = scoreAcronyms = function (subject, subject_lw, query, query_lw) {
+    var count, fullWord, i, j, m, n, qj_lw, sameCase, score, sepCount, sumPos;
+    m = subject.length;
+    n = query.length;
+    if (!(m > 1 && n > 1)) {
+      return emptyAcronymResult;
+    }
+    count = 0;
+    sepCount = 0;
+    sumPos = 0;
+    sameCase = 0;
+    i = -1;
+    j = -1;
+    while (++j < n) {
+      qj_lw = query_lw[j];
+      if (isSeparator(qj_lw)) {
+        i = subject_lw.indexOf(qj_lw, i + 1);
+        if (i > -1) {
+          sepCount++;
+          continue;
+        } else {
+          break;
+        }
+      }
+      while (++i < m) {
+        if (qj_lw === subject_lw[i] && isWordStart(i, subject, subject_lw)) {
+          if (query[j] === subject[i]) {
+            sameCase++;
+          }
+          sumPos += i;
+          count++;
+          break;
+        }
+      }
+      if (i === m) {
+        break;
+      }
+    }
+    if (count < 2) {
+      return emptyAcronymResult;
+    }
+    fullWord = count === n ? isAcronymFullWord(subject, subject_lw, query, count) : false;
+    score = scorePattern(count, n, sameCase, true, fullWord);
+    return new AcronymResult(score, sumPos / count, count + sepCount);
+  };
+
+  isAcronymFullWord = function (subject, subject_lw, query, nbAcronymInQuery) {
+    var count, i, m, n;
+    m = subject.length;
+    n = query.length;
+    count = 0;
+    if (m > 12 * n) {
+      return false;
+    }
+    i = -1;
+    while (++i < m) {
+      if (isWordStart(i, subject, subject_lw) && ++count > nbAcronymInQuery) {
+        return false;
+      }
+    }
+    return true;
+  };
+}).call(undefined);
+
+/***/ }),
+/* 1761 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+(function () {
+  var computeScore, countDir, file_coeff, getExtension, getExtensionScore, isMatch, scorePath, scoreSize, tau_depth, _ref;
+
+  _ref = __webpack_require__(1760), isMatch = _ref.isMatch, computeScore = _ref.computeScore, scoreSize = _ref.scoreSize;
+
+  tau_depth = 13;
+
+  file_coeff = 1.2;
+
+  exports.score = function (string, query, options) {
+    var allowErrors, preparedQuery, score, string_lw;
+    preparedQuery = options.preparedQuery, allowErrors = options.allowErrors;
+    if (!(allowErrors || isMatch(string, preparedQuery.core_lw, preparedQuery.core_up))) {
+      return 0;
+    }
+    string_lw = string.toLowerCase();
+    score = computeScore(string, string_lw, preparedQuery);
+    score = scorePath(string, string_lw, score, options);
+    return Math.ceil(score);
+  };
+
+  scorePath = function (subject, subject_lw, fullPathScore, options) {
+    var alpha, basePathScore, basePos, depth, end, extAdjust, fileLength, pathSeparator, preparedQuery, useExtensionBonus;
+    if (fullPathScore === 0) {
+      return 0;
+    }
+    preparedQuery = options.preparedQuery, useExtensionBonus = options.useExtensionBonus, pathSeparator = options.pathSeparator;
+    end = subject.length - 1;
+    while (subject[end] === pathSeparator) {
+      end--;
+    }
+    basePos = subject.lastIndexOf(pathSeparator, end);
+    fileLength = end - basePos;
+    extAdjust = 1.0;
+    if (useExtensionBonus) {
+      extAdjust += getExtensionScore(subject_lw, preparedQuery.ext, basePos, end, 2);
+      fullPathScore *= extAdjust;
+    }
+    if (basePos === -1) {
+      return fullPathScore;
+    }
+    depth = preparedQuery.depth;
+    while (basePos > -1 && depth-- > 0) {
+      basePos = subject.lastIndexOf(pathSeparator, basePos - 1);
+    }
+    basePathScore = basePos === -1 ? fullPathScore : extAdjust * computeScore(subject.slice(basePos + 1, end + 1), subject_lw.slice(basePos + 1, end + 1), preparedQuery);
+    alpha = 0.5 * tau_depth / (tau_depth + countDir(subject, end + 1, pathSeparator));
+    return alpha * basePathScore + (1 - alpha) * fullPathScore * scoreSize(0, file_coeff * fileLength);
+  };
+
+  exports.countDir = countDir = function (path, end, pathSeparator) {
+    var count, i;
+    if (end < 1) {
+      return 0;
+    }
+    count = 0;
+    i = -1;
+    while (++i < end && path[i] === pathSeparator) {
+      continue;
+    }
+    while (++i < end) {
+      if (path[i] === pathSeparator) {
+        count++;
+        while (++i < end && path[i] === pathSeparator) {
+          continue;
+        }
+      }
+    }
+    return count;
+  };
+
+  exports.getExtension = getExtension = function (str) {
+    var pos;
+    pos = str.lastIndexOf(".");
+    if (pos < 0) {
+      return "";
+    } else {
+      return str.substr(pos + 1);
+    }
+  };
+
+  getExtensionScore = function (candidate, ext, startPos, endPos, maxDepth) {
+    var m, matched, n, pos;
+    if (!ext.length) {
+      return 0;
+    }
+    pos = candidate.lastIndexOf(".", endPos);
+    if (!(pos > startPos)) {
+      return 0;
+    }
+    n = ext.length;
+    m = endPos - pos;
+    if (m < n) {
+      n = m;
+      m = ext.length;
+    }
+    pos++;
+    matched = -1;
+    while (++matched < n) {
+      if (candidate[pos + matched] !== ext[matched]) {
+        break;
+      }
+    }
+    if (matched === 0 && maxDepth > 0) {
+      return 0.9 * getExtensionScore(candidate, ext, startPos, pos - 2, maxDepth - 1);
+    }
+    return matched / m;
+  };
+}).call(undefined);
+
+/***/ }),
+/* 1762 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+(function () {
+  var Query, coreChars, countDir, getCharCodes, getExtension, opt_char_re, truncatedUpperCase, _ref;
+
+  _ref = __webpack_require__(1761), countDir = _ref.countDir, getExtension = _ref.getExtension;
+
+  module.exports = Query = function () {
+    function Query(query, _arg) {
+      var optCharRegEx, pathSeparator, _ref1;
+      _ref1 = _arg != null ? _arg : {}, optCharRegEx = _ref1.optCharRegEx, pathSeparator = _ref1.pathSeparator;
+      if (!(query && query.length)) {
+        return null;
+      }
+      this.query = query;
+      this.query_lw = query.toLowerCase();
+      this.core = coreChars(query, optCharRegEx);
+      this.core_lw = this.core.toLowerCase();
+      this.core_up = truncatedUpperCase(this.core);
+      this.depth = countDir(query, query.length, pathSeparator);
+      this.ext = getExtension(this.query_lw);
+      this.charCodes = getCharCodes(this.query_lw);
+    }
+
+    return Query;
+  }();
+
+  opt_char_re = /[ _\-:\/\\]/g;
+
+  coreChars = function (query, optCharRegEx) {
+    if (optCharRegEx == null) {
+      optCharRegEx = opt_char_re;
+    }
+    return query.replace(optCharRegEx, '');
+  };
+
+  truncatedUpperCase = function (str) {
+    var char, upper, _i, _len;
+    upper = "";
+    for (_i = 0, _len = str.length; _i < _len; _i++) {
+      char = str[_i];
+      upper += char.toUpperCase()[0];
+    }
+    return upper;
+  };
+
+  getCharCodes = function (str) {
+    var charCodes, i, len;
+    len = str.length;
+    i = -1;
+    charCodes = [];
+    while (++i < len) {
+      charCodes[str.charCodeAt(i)] = true;
+    }
+    return charCodes;
+  };
+}).call(undefined);
+
+/***/ }),
+/* 1763 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+var _propTypes = __webpack_require__(20);
+
+var _util = __webpack_require__(1777);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _objectWithoutProperties(obj, keys) { var target = {}; for (var i in obj) { if (keys.indexOf(i) >= 0) continue; if (!Object.prototype.hasOwnProperty.call(obj, i)) continue; target[i] = obj[i]; } return target; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var process = process || { env: {} };
+
+var InlineSVG = function (_React$Component) {
+    _inherits(InlineSVG, _React$Component);
+
+    function InlineSVG() {
+        _classCallCheck(this, InlineSVG);
+
+        return _possibleConstructorReturn(this, (InlineSVG.__proto__ || Object.getPrototypeOf(InlineSVG)).apply(this, arguments));
+    }
+
+    _createClass(InlineSVG, [{
+        key: 'componentWillReceiveProps',
+        value: function componentWillReceiveProps(_ref) {
+            var children = _ref.children;
+
+            if ("production" !== process.env.NODE_ENV && children != null) {
+                console.info('<InlineSVG />: `children` prop will be ignored.');
+            }
+        }
+    }, {
+        key: 'render',
+        value: function render() {
+            var Element = void 0,
+                __html = void 0,
+                svgProps = void 0;
+
+            var _props = this.props,
+                element = _props.element,
+                raw = _props.raw,
+                src = _props.src,
+                otherProps = _objectWithoutProperties(_props, ['element', 'raw', 'src']);
+
+            if (raw === true) {
+                Element = 'svg';
+                svgProps = (0, _util.extractSVGProps)(src);
+                __html = (0, _util.getSVGFromSource)(src).innerHTML;
+            }
+            __html = __html || src;
+            Element = Element || element;
+            svgProps = svgProps || {};
+
+            return _react2.default.createElement(Element, _extends({}, svgProps, otherProps, { src: null, children: null,
+                dangerouslySetInnerHTML: { __html: __html } }));
+        }
+    }]);
+
+    return InlineSVG;
+}(_react2.default.Component);
+
+exports.default = InlineSVG;
+
+
+InlineSVG.defaultProps = {
+    element: 'i',
+    raw: false,
+    src: ''
+};
+
+InlineSVG.propTypes = {
+    src: _propTypes.string.isRequired,
+    element: _propTypes.string,
+    raw: _propTypes.bool
+};
+
+/***/ }),
+/* 1764 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var _classnames = __webpack_require__(175);
+
+var _classnames2 = _interopRequireDefault(_classnames);
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+__webpack_require__(1788);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _objectWithoutProperties(obj, keys) { var target = {}; for (var i in obj) { if (keys.indexOf(i) >= 0) continue; if (!Object.prototype.hasOwnProperty.call(obj, i)) continue; target[i] = obj[i]; } return target; }
+
+const CommandBarButton = props => {
+  const { children, className, pressed = false } = props,
+        rest = _objectWithoutProperties(props, ["children", "className", "pressed"]);
+
+  return _react2.default.createElement(
+    "button",
+    _extends({
+      "aria-pressed": pressed,
+      className: (0, _classnames2.default)("command-bar-button", className)
+    }, rest),
+    children
+  );
+};
+
+exports.default = CommandBarButton;
+
+/***/ }),
+/* 1765 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.getSourceBindingVariables = getSourceBindingVariables;
+exports.getBindingVariables = getBindingVariables;
+
+var _lodash = __webpack_require__(2);
+
+// VarAndBindingsPair actually is [name: string, contents: BindingContents]
+
+
+// Scope's bindings field which holds variables and arguments
+function getSourceBindingVariables(bindings, sourceBindings, parentName) {
+  const result = getBindingVariables(bindings, parentName);
+  const index = Object.create(null);
+  result.forEach(entry => {
+    index[entry.name] = { used: false, entry };
+  });
+  // Find and replace variables that is present in sourceBindings.
+  const bound = Object.keys(sourceBindings).map(name => {
+    const generatedName = sourceBindings[name];
+    const foundMap = index[generatedName];
+    let contents;
+    if (foundMap) {
+      foundMap.used = true;
+      contents = foundMap.entry.contents;
+    } else {
+      contents = { value: { type: "undefined" } };
+    }
+    return {
+      name,
+      generatedName,
+      path: `${parentName}/${generatedName}`,
+      contents
+    };
+  });
+  // Use rest of them (not found in the sourceBindings) as is.
+  const unused = result.filter(entry => !index[entry.name].used);
+  return bound.concat(unused);
+}
+
+// Create the tree nodes representing all the variables and arguments
+// for the bindings from a scope.
+/* eslint max-nested-callbacks: ["error", 4] */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function getBindingVariables(bindings, parentName) {
+  const args = bindings.arguments.map(arg => (0, _lodash.toPairs)(arg)[0]);
+  const variables = (0, _lodash.toPairs)(bindings.variables);
+
+  return args.concat(variables).map(binding => {
+    const name = binding[0];
+    const contents = binding[1];
+    return {
+      name,
+      path: `${parentName}/${name}`,
+      contents
+    };
+  });
+}
+
+/***/ }),
+/* 1766 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.getFramePopVariables = getFramePopVariables;
+exports.getThisVariable = getThisVariable;
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function getFramePopVariables(why, path) {
+  const vars = [];
+
+  if (why && why.frameFinished) {
+    const frameFinished = why.frameFinished;
+
+    // Always display a `throw` property if present, even if it is falsy.
+    if (Object.prototype.hasOwnProperty.call(frameFinished, "throw")) {
+      vars.push({
+        name: "<exception>",
+        path: `${path}/<exception>`,
+        contents: { value: frameFinished.throw }
+      });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(frameFinished, "return")) {
+      const returned = frameFinished.return;
+
+      // Do not display undefined. Do display falsy values like 0 and false. The
+      // protocol grip for undefined is a JSON object: { type: "undefined" }.
+      if (typeof returned !== "object" || returned.type !== "undefined") {
+        vars.push({
+          name: "<return>",
+          path: `${path}/<return>`,
+          contents: { value: returned }
+        });
+      }
+    }
+  }
+
+  return vars;
+}
+
+function getThisVariable(frame, path) {
+  const this_ = frame.this;
+
+  if (!this_) {
+    return null;
+  }
+
+  return {
+    name: "<this>",
+    path: `${path}/<this>`,
+    contents: { value: this_ }
+  };
+}
+
+/***/ }),
+/* 1767 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+const Menu = __webpack_require__(1768);
+const MenuItem = __webpack_require__(1770);
+const { PrefsHelper } = __webpack_require__(1771);
+const Services = __webpack_require__(22);
+const KeyShortcuts = __webpack_require__(1772);
+const { ZoomKeys } = __webpack_require__(1773);
+const EventEmitter = __webpack_require__(1759);
+
+module.exports = {
+  KeyShortcuts,
+  Menu,
+  MenuItem,
+  PrefsHelper,
+  Services,
+  ZoomKeys,
+  EventEmitter
+};
+
+/***/ }),
+/* 1768 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+const EventEmitter = __webpack_require__(1759);
+
+function inToolbox() {
+  return window.parent.document.documentURI == "about:devtools-toolbox";
+}
+
+/**
+ * A partial implementation of the Menu API provided by electron:
+ * https://github.com/electron/electron/blob/master/docs/api/menu.md.
+ *
+ * Extra features:
+ *  - Emits an 'open' and 'close' event when the menu is opened/closed
+
+ * @param String id (non standard)
+ *        Needed so tests can confirm the XUL implementation is working
+ */
+function Menu({ id = null } = {}) {
+  this.menuitems = [];
+  this.id = id;
+
+  Object.defineProperty(this, "items", {
+    get() {
+      return this.menuitems;
+    }
+  });
+
+  EventEmitter.decorate(this);
+}
+
+/**
+ * Add an item to the end of the Menu
+ *
+ * @param {MenuItem} menuItem
+ */
+Menu.prototype.append = function (menuItem) {
+  this.menuitems.push(menuItem);
+};
+
+/**
+ * Add an item to a specified position in the menu
+ *
+ * @param {int} pos
+ * @param {MenuItem} menuItem
+ */
+Menu.prototype.insert = function (pos, menuItem) {
+  throw Error("Not implemented");
+};
+
+/**
+ * Show the Menu at a specified location on the screen
+ *
+ * Missing features:
+ *   - browserWindow - BrowserWindow (optional) - Default is null.
+ *   - positioningItem Number - (optional) OS X
+ *
+ * @param {int} screenX
+ * @param {int} screenY
+ * @param Toolbox toolbox (non standard)
+ *        Needed so we in which window to inject XUL
+ */
+Menu.prototype.popup = function (screenX, screenY, toolbox) {
+  let doc = toolbox.doc;
+  let popupset = doc.querySelector("popupset");
+  // See bug 1285229, on Windows, opening the same popup multiple times in a
+  // row ends up duplicating the popup. The newly inserted popup doesn't
+  // dismiss the old one. So remove any previously displayed popup before
+  // opening a new one.
+  let popup = popupset.querySelector("menupopup[menu-api=\"true\"]");
+  if (popup) {
+    popup.hidePopup();
+  }
+
+  popup = this.createPopup(doc);
+  popup.setAttribute("menu-api", "true");
+
+  if (this.id) {
+    popup.id = this.id;
+  }
+  this._createMenuItems(popup);
+
+  // Remove the menu from the DOM once it's hidden.
+  popup.addEventListener("popuphidden", e => {
+    if (e.target === popup) {
+      popup.remove();
+      this.emit("close", popup);
+    }
+  });
+
+  popup.addEventListener("popupshown", e => {
+    if (e.target === popup) {
+      this.emit("open", popup);
+    }
+  });
+
+  popupset.appendChild(popup);
+  popup.openPopupAtScreen(screenX, screenY, true);
+};
+
+Menu.prototype.createPopup = function (doc) {
+  return doc.createElement("menupopup");
+};
+
+Menu.prototype._createMenuItems = function (parent) {
+  let doc = parent.ownerDocument;
+  this.menuitems.forEach(item => {
+    if (!item.visible) {
+      return;
+    }
+
+    if (item.submenu) {
+      let menupopup = doc.createElement("menupopup");
+      item.submenu._createMenuItems(menupopup);
+
+      let menuitem = doc.createElement("menuitem");
+      menuitem.setAttribute("label", item.label);
+      if (!inToolbox()) {
+        menuitem.textContent = item.label;
+      }
+
+      let menu = doc.createElement("menu");
+      menu.appendChild(menuitem);
+      menu.appendChild(menupopup);
+      if (item.disabled) {
+        menu.setAttribute("disabled", "true");
+      }
+      if (item.accesskey) {
+        menu.setAttribute("accesskey", item.accesskey);
+      }
+      if (item.id) {
+        menu.id = item.id;
+      }
+      parent.appendChild(menu);
+    } else if (item.type === "separator") {
+      let menusep = doc.createElement("menuseparator");
+      parent.appendChild(menusep);
+    } else {
+      let menuitem = doc.createElement("menuitem");
+      menuitem.setAttribute("label", item.label);
+
+      if (!inToolbox()) {
+        menuitem.textContent = item.label;
+      }
+
+      menuitem.addEventListener("command", () => item.click());
+
+      if (item.type === "checkbox") {
+        menuitem.setAttribute("type", "checkbox");
+      }
+      if (item.type === "radio") {
+        menuitem.setAttribute("type", "radio");
+      }
+      if (item.disabled) {
+        menuitem.setAttribute("disabled", "true");
+      }
+      if (item.checked) {
+        menuitem.setAttribute("checked", "true");
+      }
+      if (item.accesskey) {
+        menuitem.setAttribute("accesskey", item.accesskey);
+      }
+      if (item.id) {
+        menuitem.id = item.id;
+      }
+
+      parent.appendChild(menuitem);
+    }
+  });
+};
+
+Menu.setApplicationMenu = () => {
+  throw Error("Not implemented");
+};
+
+Menu.sendActionToFirstResponder = () => {
+  throw Error("Not implemented");
+};
+
+Menu.buildFromTemplate = () => {
+  throw Error("Not implemented");
+};
+
+module.exports = Menu;
+
+/***/ }),
+/* 1769 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * A sham for https://dxr.mozilla.org/mozilla-central/source/toolkit/modules/Promise.jsm
+ */
+
+/**
+ * Promise.jsm is mostly the Promise web API with a `defer` method. Just drop this in here,
+ * and use the native web API (although building with webpack/babel, it may replace this
+ * with it's own version if we want to target environments that do not have `Promise`.
+ */
+
+let p = typeof window != "undefined" ? window.Promise : Promise;
+p.defer = function defer() {
+  var resolve, reject;
+  var promise = new Promise(function () {
+    resolve = arguments[0];
+    reject = arguments[1];
+  });
+  return {
+    resolve: resolve,
+    reject: reject,
+    promise: promise
+  };
+};
+
+module.exports = p;
+
+/***/ }),
+/* 1770 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * A partial implementation of the MenuItem API provided by electron:
+ * https://github.com/electron/electron/blob/master/docs/api/menu-item.md.
+ *
+ * Missing features:
+ *   - id String - Unique within a single menu. If defined then it can be used
+ *                 as a reference to this item by the position attribute.
+ *   - role String - Define the action of the menu item; when specified the
+ *                   click property will be ignored
+ *   - sublabel String
+ *   - accelerator Accelerator
+ *   - icon NativeImage
+ *   - position String - This field allows fine-grained definition of the
+ *                       specific location within a given menu.
+ *
+ * Implemented features:
+ *  @param Object options
+ *    Function click
+ *      Will be called with click(menuItem, browserWindow) when the menu item
+ *       is clicked
+ *    String type
+ *      Can be normal, separator, submenu, checkbox or radio
+ *    String label
+ *    Boolean enabled
+ *      If false, the menu item will be greyed out and unclickable.
+ *    Boolean checked
+ *      Should only be specified for checkbox or radio type menu items.
+ *    Menu submenu
+ *      Should be specified for submenu type menu items. If submenu is specified,
+ *      the type: 'submenu' can be omitted. If the value is not a Menu then it
+ *      will be automatically converted to one using Menu.buildFromTemplate.
+ *    Boolean visible
+ *      If false, the menu item will be entirely hidden.
+ */
+function MenuItem({
+  accesskey = null,
+  checked = false,
+  click = () => {},
+  disabled = false,
+  label = "",
+  id = null,
+  submenu = null,
+  type = "normal",
+  visible = true
+} = {}) {
+  this.accesskey = accesskey;
+  this.checked = checked;
+  this.click = click;
+  this.disabled = disabled;
+  this.id = id;
+  this.label = label;
+  this.submenu = submenu;
+  this.type = type;
+  this.visible = visible;
+}
+
+module.exports = MenuItem;
+
+/***/ }),
+/* 1771 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+const Services = __webpack_require__(22);
+const EventEmitter = __webpack_require__(1759);
+
+/**
+ * Shortcuts for lazily accessing and setting various preferences.
+ * Usage:
+ *   let prefs = new Prefs("root.path.to.branch", {
+ *     myIntPref: ["Int", "leaf.path.to.my-int-pref"],
+ *     myCharPref: ["Char", "leaf.path.to.my-char-pref"],
+ *     myJsonPref: ["Json", "leaf.path.to.my-json-pref"],
+ *     myFloatPref: ["Float", "leaf.path.to.my-float-pref"]
+ *     ...
+ *   });
+ *
+ * Get/set:
+ *   prefs.myCharPref = "foo";
+ *   let aux = prefs.myCharPref;
+ *
+ * Observe:
+ *   prefs.registerObserver();
+ *   prefs.on("pref-changed", (prefName, prefValue) => {
+ *     ...
+ *   });
+ *
+ * @param string prefsRoot
+ *        The root path to the required preferences branch.
+ * @param object prefsBlueprint
+ *        An object containing { accessorName: [prefType, prefName, prefDefault] } keys.
+ */
+function PrefsHelper(prefsRoot = "", prefsBlueprint = {}) {
+  EventEmitter.decorate(this);
+
+  let cache = new Map();
+
+  for (let accessorName in prefsBlueprint) {
+    let [prefType, prefName, prefDefault] = prefsBlueprint[accessorName];
+    map(this, cache, accessorName, prefType, prefsRoot, prefName, prefDefault);
+  }
+
+  let observer = makeObserver(this, cache, prefsRoot, prefsBlueprint);
+  this.registerObserver = () => observer.register();
+  this.unregisterObserver = () => observer.unregister();
+}
+
+/**
+ * Helper method for getting a pref value.
+ *
+ * @param Map cache
+ * @param string prefType
+ * @param string prefsRoot
+ * @param string prefName
+ * @return any
+ */
+function get(cache, prefType, prefsRoot, prefName) {
+  let cachedPref = cache.get(prefName);
+  if (cachedPref !== undefined) {
+    return cachedPref;
+  }
+  let value = Services.prefs["get" + prefType + "Pref"]([prefsRoot, prefName].join("."));
+  cache.set(prefName, value);
+  return value;
+}
+
+/**
+ * Helper method for setting a pref value.
+ *
+ * @param Map cache
+ * @param string prefType
+ * @param string prefsRoot
+ * @param string prefName
+ * @param any value
+ */
+function set(cache, prefType, prefsRoot, prefName, value) {
+  Services.prefs["set" + prefType + "Pref"]([prefsRoot, prefName].join("."), value);
+  cache.set(prefName, value);
+}
+
+/**
+ * Maps a property name to a pref, defining lazy getters and setters.
+ * Supported types are "Bool", "Char", "Int", "Float" (sugar around "Char"
+ * type and casting), and "Json" (which is basically just sugar for "Char"
+ * using the standard JSON serializer).
+ *
+ * @param PrefsHelper self
+ * @param Map cache
+ * @param string accessorName
+ * @param string prefType
+ * @param string prefsRoot
+ * @param string prefName
+ * @param string prefDefault
+ * @param array serializer [optional]
+ */
+function map(self, cache, accessorName, prefType, prefsRoot, prefName, prefDefault, serializer = { in: e => e, out: e => e }) {
+  if (prefName in self) {
+    throw new Error(`Can't use ${prefName} because it overrides a property` + "on the instance.");
+  }
+  if (prefType == "Json") {
+    map(self, cache, accessorName, "String", prefsRoot, prefName, prefDefault, {
+      in: JSON.parse,
+      out: JSON.stringify
+    });
+    return;
+  }
+  if (prefType == "Float") {
+    map(self, cache, accessorName, "Char", prefsRoot, prefName, prefDefault, {
+      in: Number.parseFloat,
+      out: n => n + ""
+    });
+    return;
+  }
+
+  Object.defineProperty(self, accessorName, {
+    get: () => {
+      try {
+        return serializer.in(get(cache, prefType, prefsRoot, prefName));
+      } catch (e) {
+        if (typeof prefDefault !== 'undefined') {
+          return prefDefault;
+        }
+        throw e;
+      }
+    },
+    set: e => set(cache, prefType, prefsRoot, prefName, serializer.out(e))
+  });
+}
+
+/**
+ * Finds the accessor for the provided pref, based on the blueprint object
+ * used in the constructor.
+ *
+ * @param PrefsHelper self
+ * @param object prefsBlueprint
+ * @return string
+ */
+function accessorNameForPref(somePrefName, prefsBlueprint) {
+  for (let accessorName in prefsBlueprint) {
+    let [, prefName] = prefsBlueprint[accessorName];
+    if (somePrefName == prefName) {
+      return accessorName;
+    }
+  }
+  return "";
+}
+
+/**
+ * Creates a pref observer for `self`.
+ *
+ * @param PrefsHelper self
+ * @param Map cache
+ * @param string prefsRoot
+ * @param object prefsBlueprint
+ * @return object
+ */
+function makeObserver(self, cache, prefsRoot, prefsBlueprint) {
+  return {
+    register: function () {
+      this._branch = Services.prefs.getBranch(prefsRoot + ".");
+      this._branch.addObserver("", this);
+    },
+    unregister: function () {
+      this._branch.removeObserver("", this);
+    },
+    observe: function (subject, topic, prefName) {
+      // If this particular pref isn't handled by the blueprint object,
+      // even though it's in the specified branch, ignore it.
+      let accessorName = accessorNameForPref(prefName, prefsBlueprint);
+      if (!(accessorName in self)) {
+        return;
+      }
+      cache.delete(prefName);
+      self.emit("pref-changed", accessorName, self[accessorName]);
+    }
+  };
+}
+
+exports.PrefsHelper = PrefsHelper;
+
+/***/ }),
+/* 1772 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+const { appinfo } = __webpack_require__(22);
+const EventEmitter = __webpack_require__(1759);
+const isOSX = appinfo.OS === "Darwin";
+
+// List of electron keys mapped to DOM API (DOM_VK_*) key code
+const ElectronKeysMapping = {
+  "F1": "DOM_VK_F1",
+  "F2": "DOM_VK_F2",
+  "F3": "DOM_VK_F3",
+  "F4": "DOM_VK_F4",
+  "F5": "DOM_VK_F5",
+  "F6": "DOM_VK_F6",
+  "F7": "DOM_VK_F7",
+  "F8": "DOM_VK_F8",
+  "F9": "DOM_VK_F9",
+  "F10": "DOM_VK_F10",
+  "F11": "DOM_VK_F11",
+  "F12": "DOM_VK_F12",
+  "F13": "DOM_VK_F13",
+  "F14": "DOM_VK_F14",
+  "F15": "DOM_VK_F15",
+  "F16": "DOM_VK_F16",
+  "F17": "DOM_VK_F17",
+  "F18": "DOM_VK_F18",
+  "F19": "DOM_VK_F19",
+  "F20": "DOM_VK_F20",
+  "F21": "DOM_VK_F21",
+  "F22": "DOM_VK_F22",
+  "F23": "DOM_VK_F23",
+  "F24": "DOM_VK_F24",
+  "Space": "DOM_VK_SPACE",
+  "Backspace": "DOM_VK_BACK_SPACE",
+  "Delete": "DOM_VK_DELETE",
+  "Insert": "DOM_VK_INSERT",
+  "Return": "DOM_VK_RETURN",
+  "Enter": "DOM_VK_RETURN",
+  "Up": "DOM_VK_UP",
+  "Down": "DOM_VK_DOWN",
+  "Left": "DOM_VK_LEFT",
+  "Right": "DOM_VK_RIGHT",
+  "Home": "DOM_VK_HOME",
+  "End": "DOM_VK_END",
+  "PageUp": "DOM_VK_PAGE_UP",
+  "PageDown": "DOM_VK_PAGE_DOWN",
+  "Escape": "DOM_VK_ESCAPE",
+  "Esc": "DOM_VK_ESCAPE",
+  "Tab": "DOM_VK_TAB",
+  "VolumeUp": "DOM_VK_VOLUME_UP",
+  "VolumeDown": "DOM_VK_VOLUME_DOWN",
+  "VolumeMute": "DOM_VK_VOLUME_MUTE",
+  "PrintScreen": "DOM_VK_PRINTSCREEN"
+};
+
+/**
+ * Helper to listen for keyboard events decribed in .properties file.
+ *
+ * let shortcuts = new KeyShortcuts({
+ *   window
+ * });
+ * shortcuts.on("Ctrl+F", event => {
+ *   // `event` is the KeyboardEvent which relates to the key shortcuts
+ * });
+ *
+ * @param DOMWindow window
+ *        The window object of the document to listen events from.
+ * @param DOMElement target
+ *        Optional DOM Element on which we should listen events from.
+ *        If omitted, we listen for all events fired on `window`.
+ */
+function KeyShortcuts({ window, target }) {
+  this.window = window;
+  this.target = target || window;
+  this.keys = new Map();
+  this.eventEmitter = new EventEmitter();
+  this.target.addEventListener("keydown", this);
+}
+
+/*
+ * Parse an electron-like key string and return a normalized object which
+ * allow efficient match on DOM key event. The normalized object matches DOM
+ * API.
+ *
+ * @param DOMWindow window
+ *        Any DOM Window object, just to fetch its `KeyboardEvent` object
+ * @param String str
+ *        The shortcut string to parse, following this document:
+ *        https://github.com/electron/electron/blob/master/docs/api/accelerator.md
+ */
+KeyShortcuts.parseElectronKey = function (window, str) {
+  let modifiers = str.split("+");
+  let key = modifiers.pop();
+
+  let shortcut = {
+    ctrl: false,
+    meta: false,
+    alt: false,
+    shift: false,
+    // Set for character keys
+    key: undefined,
+    // Set for non-character keys
+    keyCode: undefined
+  };
+  for (let mod of modifiers) {
+    if (mod === "Alt") {
+      shortcut.alt = true;
+    } else if (["Command", "Cmd"].includes(mod)) {
+      shortcut.meta = true;
+    } else if (["CommandOrControl", "CmdOrCtrl"].includes(mod)) {
+      if (isOSX) {
+        shortcut.meta = true;
+      } else {
+        shortcut.ctrl = true;
+      }
+    } else if (["Control", "Ctrl"].includes(mod)) {
+      shortcut.ctrl = true;
+    } else if (mod === "Shift") {
+      shortcut.shift = true;
+    } else {
+      console.error("Unsupported modifier:", mod, "from key:", str);
+      return null;
+    }
+  }
+
+  // Plus is a special case. It's a character key and shouldn't be matched
+  // against a keycode as it is only accessible via Shift/Capslock
+  if (key === "Plus") {
+    key = "+";
+  }
+
+  if (typeof key === "string" && key.length === 1) {
+    // Match any single character
+    shortcut.key = key.toLowerCase();
+  } else if (key in ElectronKeysMapping) {
+    // Maps the others manually to DOM API DOM_VK_*
+    key = ElectronKeysMapping[key];
+    shortcut.keyCode = window.KeyboardEvent[key];
+    // Used only to stringify the shortcut
+    shortcut.keyCodeString = key;
+    shortcut.key = key;
+  } else {
+    console.error("Unsupported key:", key);
+    return null;
+  }
+
+  return shortcut;
+};
+
+KeyShortcuts.stringify = function (shortcut) {
+  let list = [];
+  if (shortcut.alt) {
+    list.push("Alt");
+  }
+  if (shortcut.ctrl) {
+    list.push("Ctrl");
+  }
+  if (shortcut.meta) {
+    list.push("Cmd");
+  }
+  if (shortcut.shift) {
+    list.push("Shift");
+  }
+  let key;
+  if (shortcut.key) {
+    key = shortcut.key.toUpperCase();
+  } else {
+    key = shortcut.keyCodeString;
+  }
+  list.push(key);
+  return list.join("+");
+};
+
+KeyShortcuts.prototype = {
+  destroy() {
+    this.target.removeEventListener("keydown", this);
+    this.keys.clear();
+  },
+
+  doesEventMatchShortcut(event, shortcut) {
+    if (shortcut.meta != event.metaKey) {
+      return false;
+    }
+    if (shortcut.ctrl != event.ctrlKey) {
+      return false;
+    }
+    if (shortcut.alt != event.altKey) {
+      return false;
+    }
+    // Shift is a special modifier, it may implicitely be required if the
+    // expected key is a special character accessible via shift.
+    if (shortcut.shift != event.shiftKey && event.key && event.key.match(/[a-zA-Z]/)) {
+      return false;
+    }
+    if (shortcut.keyCode) {
+      return event.keyCode == shortcut.keyCode;
+    } else if (event.key in ElectronKeysMapping) {
+      return ElectronKeysMapping[event.key] === shortcut.key;
+    }
+
+    // get the key from the keyCode if key is not provided.
+    let key = event.key || String.fromCharCode(event.keyCode);
+
+    // For character keys, we match if the final character is the expected one.
+    // But for digits we also accept indirect match to please azerty keyboard,
+    // which requires Shift to be pressed to get digits.
+    return key.toLowerCase() == shortcut.key || shortcut.key.match(/^[0-9]$/) && event.keyCode == shortcut.key.charCodeAt(0);
+  },
+
+  handleEvent(event) {
+    for (let [key, shortcut] of this.keys) {
+      if (this.doesEventMatchShortcut(event, shortcut)) {
+        this.eventEmitter.emit(key, event);
+      }
+    }
+  },
+
+  on(key, listener) {
+    if (typeof listener !== "function") {
+      throw new Error("KeyShortcuts.on() expects a function as " + "second argument");
+    }
+    if (!this.keys.has(key)) {
+      let shortcut = KeyShortcuts.parseElectronKey(this.window, key);
+      // The key string is wrong and we were unable to compute the key shortcut
+      if (!shortcut) {
+        return;
+      }
+      this.keys.set(key, shortcut);
+    }
+    this.eventEmitter.on(key, listener);
+  },
+
+  off(key, listener) {
+    this.eventEmitter.off(key, listener);
+  }
+};
+module.exports = KeyShortcuts;
+
+/***/ }),
+/* 1773 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+
+
+/**
+ * Empty shim for "devtools/client/shared/zoom-keys" module
+ *
+ * Based on nsIMarkupDocumentViewer.fullZoom API
+ * https://developer.mozilla.org/en-US/Firefox/Releases/3/Full_page_zoom
+ */
+
+exports.register = function (window) {};
+
+/***/ }),
+/* 1774 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(process) {
+
+(function () {
+  var Query, defaultPathSeparator, filter, matcher, parseOptions, pathScorer, preparedQueryCache, scorer;
+
+  filter = __webpack_require__(1775);
+
+  matcher = __webpack_require__(1776);
+
+  scorer = __webpack_require__(1760);
+
+  pathScorer = __webpack_require__(1761);
+
+  Query = __webpack_require__(1762);
+
+  preparedQueryCache = null;
+
+  defaultPathSeparator = (typeof process !== "undefined" && process !== null ? process.platform : void 0) === "win32" ? '\\' : '/';
+
+  module.exports = {
+    filter: function (candidates, query, options) {
+      if (options == null) {
+        options = {};
+      }
+      if (!((query != null ? query.length : void 0) && (candidates != null ? candidates.length : void 0))) {
+        return [];
+      }
+      options = parseOptions(options, query);
+      return filter(candidates, query, options);
+    },
+    score: function (string, query, options) {
+      if (options == null) {
+        options = {};
+      }
+      if (!((string != null ? string.length : void 0) && (query != null ? query.length : void 0))) {
+        return 0;
+      }
+      options = parseOptions(options, query);
+      if (options.usePathScoring) {
+        return pathScorer.score(string, query, options);
+      } else {
+        return scorer.score(string, query, options);
+      }
+    },
+    match: function (string, query, options) {
+      var _i, _ref, _results;
+      if (options == null) {
+        options = {};
+      }
+      if (!string) {
+        return [];
+      }
+      if (!query) {
+        return [];
+      }
+      if (string === query) {
+        return function () {
+          _results = [];
+          for (var _i = 0, _ref = string.length; 0 <= _ref ? _i < _ref : _i > _ref; 0 <= _ref ? _i++ : _i--) {
+            _results.push(_i);
+          }
+          return _results;
+        }.apply(this);
+      }
+      options = parseOptions(options, query);
+      return matcher.match(string, query, options);
+    },
+    wrap: function (string, query, options) {
+      if (options == null) {
+        options = {};
+      }
+      if (!string) {
+        return [];
+      }
+      if (!query) {
+        return [];
+      }
+      options = parseOptions(options, query);
+      return matcher.wrap(string, query, options);
+    },
+    prepareQuery: function (query, options) {
+      if (options == null) {
+        options = {};
+      }
+      options = parseOptions(options, query);
+      return options.preparedQuery;
+    }
+  };
+
+  parseOptions = function (options, query) {
+    if (options.allowErrors == null) {
+      options.allowErrors = false;
+    }
+    if (options.usePathScoring == null) {
+      options.usePathScoring = true;
+    }
+    if (options.useExtensionBonus == null) {
+      options.useExtensionBonus = false;
+    }
+    if (options.pathSeparator == null) {
+      options.pathSeparator = defaultPathSeparator;
+    }
+    if (options.optCharRegEx == null) {
+      options.optCharRegEx = null;
+    }
+    if (options.wrap == null) {
+      options.wrap = null;
+    }
+    if (options.preparedQuery == null) {
+      options.preparedQuery = preparedQueryCache && preparedQueryCache.query === query ? preparedQueryCache : preparedQueryCache = new Query(query, options);
+    }
+    return options;
+  };
+}).call(undefined);
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(120)))
+
+/***/ }),
+/* 1775 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+(function () {
+  var Query, pathScorer, pluckCandidates, scorer, sortCandidates;
+
+  scorer = __webpack_require__(1760);
+
+  pathScorer = __webpack_require__(1761);
+
+  Query = __webpack_require__(1762);
+
+  pluckCandidates = function (a) {
+    return a.candidate;
+  };
+
+  sortCandidates = function (a, b) {
+    return b.score - a.score;
+  };
+
+  module.exports = function (candidates, query, options) {
+    var bKey, candidate, key, maxInners, maxResults, score, scoreProvider, scoredCandidates, spotLeft, string, usePathScoring, _i, _len;
+    scoredCandidates = [];
+    key = options.key, maxResults = options.maxResults, maxInners = options.maxInners, usePathScoring = options.usePathScoring;
+    spotLeft = maxInners != null && maxInners > 0 ? maxInners : candidates.length + 1;
+    bKey = key != null;
+    scoreProvider = usePathScoring ? pathScorer : scorer;
+    for (_i = 0, _len = candidates.length; _i < _len; _i++) {
+      candidate = candidates[_i];
+      string = bKey ? candidate[key] : candidate;
+      if (!string) {
+        continue;
+      }
+      score = scoreProvider.score(string, query, options);
+      if (score > 0) {
+        scoredCandidates.push({
+          candidate: candidate,
+          score: score
+        });
+        if (! --spotLeft) {
+          break;
+        }
+      }
+    }
+    scoredCandidates.sort(sortCandidates);
+    candidates = scoredCandidates.map(pluckCandidates);
+    if (maxResults != null) {
+      candidates = candidates.slice(0, maxResults);
+    }
+    return candidates;
+  };
+}).call(undefined);
+
+/***/ }),
+/* 1776 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+(function () {
+  var basenameMatch, computeMatch, isMatch, isWordStart, match, mergeMatches, scoreAcronyms, scoreCharacter, scoreConsecutives, _ref;
+
+  _ref = __webpack_require__(1760), isMatch = _ref.isMatch, isWordStart = _ref.isWordStart, scoreConsecutives = _ref.scoreConsecutives, scoreCharacter = _ref.scoreCharacter, scoreAcronyms = _ref.scoreAcronyms;
+
+  exports.match = match = function (string, query, options) {
+    var allowErrors, baseMatches, matches, pathSeparator, preparedQuery, string_lw;
+    allowErrors = options.allowErrors, preparedQuery = options.preparedQuery, pathSeparator = options.pathSeparator;
+    if (!(allowErrors || isMatch(string, preparedQuery.core_lw, preparedQuery.core_up))) {
+      return [];
+    }
+    string_lw = string.toLowerCase();
+    matches = computeMatch(string, string_lw, preparedQuery);
+    if (matches.length === 0) {
+      return matches;
+    }
+    if (string.indexOf(pathSeparator) > -1) {
+      baseMatches = basenameMatch(string, string_lw, preparedQuery, pathSeparator);
+      matches = mergeMatches(matches, baseMatches);
+    }
+    return matches;
+  };
+
+  exports.wrap = function (string, query, options) {
+    var matchIndex, matchPos, matchPositions, output, strPos, tagClass, tagClose, tagOpen, _ref1;
+    if (options.wrap != null) {
+      _ref1 = options.wrap, tagClass = _ref1.tagClass, tagOpen = _ref1.tagOpen, tagClose = _ref1.tagClose;
+    }
+    if (tagClass == null) {
+      tagClass = 'highlight';
+    }
+    if (tagOpen == null) {
+      tagOpen = '<strong class="' + tagClass + '">';
+    }
+    if (tagClose == null) {
+      tagClose = '</strong>';
+    }
+    if (string === query) {
+      return tagOpen + string + tagClose;
+    }
+    matchPositions = match(string, query, options);
+    if (matchPositions.length === 0) {
+      return string;
+    }
+    output = '';
+    matchIndex = -1;
+    strPos = 0;
+    while (++matchIndex < matchPositions.length) {
+      matchPos = matchPositions[matchIndex];
+      if (matchPos > strPos) {
+        output += string.substring(strPos, matchPos);
+        strPos = matchPos;
+      }
+      while (++matchIndex < matchPositions.length) {
+        if (matchPositions[matchIndex] === matchPos + 1) {
+          matchPos++;
+        } else {
+          matchIndex--;
+          break;
+        }
+      }
+      matchPos++;
+      if (matchPos > strPos) {
+        output += tagOpen;
+        output += string.substring(strPos, matchPos);
+        output += tagClose;
+        strPos = matchPos;
+      }
+    }
+    if (strPos < string.length - 1) {
+      output += string.substring(strPos);
+    }
+    return output;
+  };
+
+  basenameMatch = function (subject, subject_lw, preparedQuery, pathSeparator) {
+    var basePos, depth, end;
+    end = subject.length - 1;
+    while (subject[end] === pathSeparator) {
+      end--;
+    }
+    basePos = subject.lastIndexOf(pathSeparator, end);
+    if (basePos === -1) {
+      return [];
+    }
+    depth = preparedQuery.depth;
+    while (depth-- > 0) {
+      basePos = subject.lastIndexOf(pathSeparator, basePos - 1);
+      if (basePos === -1) {
+        return [];
+      }
+    }
+    basePos++;
+    end++;
+    return computeMatch(subject.slice(basePos, end), subject_lw.slice(basePos, end), preparedQuery, basePos);
+  };
+
+  mergeMatches = function (a, b) {
+    var ai, bj, i, j, m, n, out;
+    m = a.length;
+    n = b.length;
+    if (n === 0) {
+      return a.slice();
+    }
+    if (m === 0) {
+      return b.slice();
+    }
+    i = -1;
+    j = 0;
+    bj = b[j];
+    out = [];
+    while (++i < m) {
+      ai = a[i];
+      while (bj <= ai && ++j < n) {
+        if (bj < ai) {
+          out.push(bj);
+        }
+        bj = b[j];
+      }
+      out.push(ai);
+    }
+    while (j < n) {
+      out.push(b[j++]);
+    }
+    return out;
+  };
+
+  computeMatch = function (subject, subject_lw, preparedQuery, offset) {
+    var DIAGONAL, LEFT, STOP, UP, acro_score, align, backtrack, csc_diag, csc_row, csc_score, i, j, m, matches, move, n, pos, query, query_lw, score, score_diag, score_row, score_up, si_lw, start, trace;
+    if (offset == null) {
+      offset = 0;
+    }
+    query = preparedQuery.query;
+    query_lw = preparedQuery.query_lw;
+    m = subject.length;
+    n = query.length;
+    acro_score = scoreAcronyms(subject, subject_lw, query, query_lw).score;
+    score_row = new Array(n);
+    csc_row = new Array(n);
+    STOP = 0;
+    UP = 1;
+    LEFT = 2;
+    DIAGONAL = 3;
+    trace = new Array(m * n);
+    pos = -1;
+    j = -1;
+    while (++j < n) {
+      score_row[j] = 0;
+      csc_row[j] = 0;
+    }
+    i = -1;
+    while (++i < m) {
+      score = 0;
+      score_up = 0;
+      csc_diag = 0;
+      si_lw = subject_lw[i];
+      j = -1;
+      while (++j < n) {
+        csc_score = 0;
+        align = 0;
+        score_diag = score_up;
+        if (query_lw[j] === si_lw) {
+          start = isWordStart(i, subject, subject_lw);
+          csc_score = csc_diag > 0 ? csc_diag : scoreConsecutives(subject, subject_lw, query, query_lw, i, j, start);
+          align = score_diag + scoreCharacter(i, j, start, acro_score, csc_score);
+        }
+        score_up = score_row[j];
+        csc_diag = csc_row[j];
+        if (score > score_up) {
+          move = LEFT;
+        } else {
+          score = score_up;
+          move = UP;
+        }
+        if (align > score) {
+          score = align;
+          move = DIAGONAL;
+        } else {
+          csc_score = 0;
+        }
+        score_row[j] = score;
+        csc_row[j] = csc_score;
+        trace[++pos] = score > 0 ? move : STOP;
+      }
+    }
+    i = m - 1;
+    j = n - 1;
+    pos = i * n + j;
+    backtrack = true;
+    matches = [];
+    while (backtrack && i >= 0 && j >= 0) {
+      switch (trace[pos]) {
+        case UP:
+          i--;
+          pos -= n;
+          break;
+        case LEFT:
+          j--;
+          pos--;
+          break;
+        case DIAGONAL:
+          matches.push(i + offset);
+          j--;
+          i--;
+          pos -= n + 1;
+          break;
+        default:
+          backtrack = false;
+      }
+    }
+    matches.reverse();
+    return matches;
+  };
+}).call(undefined);
+
+/***/ }),
+/* 1777 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.convertReactSVGDOMProperty = convertReactSVGDOMProperty;
+exports.startsWith = startsWith;
+exports.serializeAttrs = serializeAttrs;
+exports.getSVGFromSource = getSVGFromSource;
+exports.extractSVGProps = extractSVGProps;
+// Transform DOM prop/attr names applicable to `<svg>` element but react-limited
+
+function convertReactSVGDOMProperty(str) {
+    return str.replace(/[-|:]([a-z])/g, function (g) {
+        return g[1].toUpperCase();
+    });
+}
+
+function startsWith(str, substring) {
+    return str.indexOf(substring) === 0;
+}
+
+var DataPropPrefix = 'data-';
+// Serialize `Attr` objects in `NamedNodeMap`
+function serializeAttrs(map) {
+    var ret = {};
+    for (var prop, i = 0; i < map.length; i++) {
+        var key = map[i].name;
+        if (!startsWith(key, DataPropPrefix)) {
+            prop = convertReactSVGDOMProperty(key);
+        }
+        ret[prop] = map[i].value;
+    }
+    return ret;
+}
+
+function getSVGFromSource(src) {
+    var svgContainer = document.createElement('div');
+    svgContainer.innerHTML = src;
+    var svg = svgContainer.firstElementChild;
+    svg.remove(); // deref from parent element
+    return svg;
+}
+
+// get <svg /> element props
+function extractSVGProps(src) {
+    var map = getSVGFromSource(src).attributes;
+    return map.length > 0 ? serializeAttrs(map) : null;
+}
+
+/***/ }),
+/* 1778 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.isMinified = isMinified;
+
+
+// Used to detect minification for automatic pretty printing
+const SAMPLE_SIZE = 50; /* This Source Code Form is subject to the terms of the Mozilla Public
+                         * License, v. 2.0. If a copy of the MPL was not distributed with this
+                         * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+const INDENT_COUNT_THRESHOLD = 5;
+const CHARACTER_LIMIT = 250;
+const _minifiedCache = new Map();
+
+function isMinified(source) {
+  if (_minifiedCache.has(source.get("id"))) {
+    return _minifiedCache.get(source.get("id"));
+  }
+
+  let text = source.get("text");
+  if (!text) {
+    return false;
+  }
+
+  let lineEndIndex = 0;
+  let lineStartIndex = 0;
+  let lines = 0;
+  let indentCount = 0;
+  let overCharLimit = false;
+
+  // Strip comments.
+  text = text.replace(/\/\*[\S\s]*?\*\/|\/\/(.+|\n)/g, "");
+
+  while (lines++ < SAMPLE_SIZE) {
+    lineEndIndex = text.indexOf("\n", lineStartIndex);
+    if (lineEndIndex == -1) {
+      break;
+    }
+    if (/^\s+/.test(text.slice(lineStartIndex, lineEndIndex))) {
+      indentCount++;
+    }
+    // For files with no indents but are not minified.
+    if (lineEndIndex - lineStartIndex > CHARACTER_LIMIT) {
+      overCharLimit = true;
+      break;
+    }
+    lineStartIndex = lineEndIndex + 1;
+  }
+
+  const minified = indentCount / lines * 100 < INDENT_COUNT_THRESHOLD || overCharLimit;
+
+  _minifiedCache.set(source.id, minified);
+  return minified;
+}
+
+/***/ }),
+/* 1779 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+exports.formatCallStackFrames = formatCallStackFrames;
+exports.default = getCallStackFrames;
+
+var _sources = __webpack_require__(1369);
+
+var _pause = __webpack_require__(1394);
+
+var _frame = __webpack_require__(1380);
+
+var _devtoolsSourceMap = __webpack_require__(1360);
+
+var _lodash = __webpack_require__(2);
+
+function getLocation(frame, isGeneratedSource) {
+  return isGeneratedSource ? frame.generatedLocation || frame.location : frame.location;
+}
+
+function getSourceForFrame(sources, frame, isGeneratedSource) {
+  const sourceId = getLocation(frame, isGeneratedSource).sourceId;
+  return (0, _sources.getSourceInSources)(sources, sourceId);
+}
+
+function appendSource(sources, frame, selectedSource) {
+  const isGeneratedSource = selectedSource && !(0, _devtoolsSourceMap.isOriginalId)(selectedSource.get("id"));
+  return _extends({}, frame, {
+    location: getLocation(frame, isGeneratedSource),
+    source: getSourceForFrame(sources, frame, isGeneratedSource).toJS()
+  });
+}
+
+function formatCallStackFrames(frames, sources, selectedSource) {
+  if (!frames) {
+    return null;
+  }
+
+  return frames.filter(frame => getSourceForFrame(sources, frame)).map(frame => appendSource(sources, frame, selectedSource)).filter(frame => !(0, _lodash.get)(frame, "source.isBlackBoxed")).map(_frame.annotateFrame);
+}
+
+function getCallStackFrames(state) {
+  const selectedSource = (0, _sources.getSelectedSource)(state);
+  const sources = (0, _sources.getSources)(state);
+  const frames = (0, _pause.getFrames)(state);
+
+  return formatCallStackFrames(frames, sources, selectedSource);
+}
+
+/***/ }),
+/* 1780 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _sources = __webpack_require__(1369);
+
+var _pause = __webpack_require__(1394);
+
+var _devtoolsSourceMap = __webpack_require__(1360);
+
+var _reselect = __webpack_require__(993);
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function getLocation(frame, location) {
+  return !(0, _devtoolsSourceMap.isOriginalId)(location.sourceId) ? frame.generatedLocation || frame.location : frame.location;
+}
+
+const getVisibleSelectedFrame = (0, _reselect.createSelector)(_sources.getSelectedLocation, _pause.getSelectedFrame, (selectedLocation, selectedFrame) => {
+  if (!selectedFrame || !selectedLocation) {
+    return null;
+  }
+
+  const { id } = selectedFrame;
+
+  return {
+    id,
+    location: getLocation(selectedFrame, selectedLocation)
+  };
+});
+
+exports.default = getVisibleSelectedFrame;
+
+/***/ }),
+/* 1781 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.setInScopeLines = setInScopeLines;
+
+var _selectors = __webpack_require__(1352);
+
+var _source = __webpack_require__(1356);
+
+var _lodash = __webpack_require__(2);
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function getOutOfScopeLines(outOfScopeLocations) {
+  if (!outOfScopeLocations) {
+    return null;
+  }
+
+  return (0, _lodash.uniq)((0, _lodash.flatMap)(outOfScopeLocations, location => (0, _lodash.range)(location.start.line, location.end.line)));
+}
+
+function setInScopeLines() {
+  return ({ dispatch, getState }) => {
+    const source = (0, _selectors.getSelectedSource)(getState());
+    const outOfScopeLocations = (0, _selectors.getOutOfScopeLocations)(getState());
+
+    if (!source || !source.get("text")) {
+      return;
+    }
+
+    const linesOutOfScope = getOutOfScopeLines(outOfScopeLocations, source.toJS());
+
+    const sourceNumLines = (0, _source.getSourceLineCount)(source.toJS());
+    const sourceLines = (0, _lodash.range)(1, sourceNumLines + 1);
+
+    const inScopeLines = !linesOutOfScope ? sourceLines : (0, _lodash.without)(sourceLines, ...linesOutOfScope);
+
+    dispatch({
+      type: "IN_SCOPE_LINES",
+      lines: inScopeLines
+    });
+  };
+}
+
+/***/ }),
+/* 1782 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.createLocation = createLocation;
+function createLocation({
+  sourceId,
+  line,
+  column,
+  sourceUrl
+}) {
+  return {
+    sourceId,
+    line,
+    column,
+    sourceUrl: sourceUrl || null
+  };
+}
+
+/***/ }),
+/* 1783 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.getTokenLocation = getTokenLocation;
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function getTokenLocation(codeMirror, tokenEl) {
+  const { left, top, width, height } = tokenEl.getBoundingClientRect();
+  const { line, ch } = codeMirror.coordsChar({
+    left: left + width / 2,
+    top: top + height / 2
+  });
+
+  return {
+    line: line + 1,
+    column: ch
+  };
+}
+
+/***/ }),
+/* 1784 */
+/***/ (function(module, exports, __webpack_require__) {
+
+let updateScopeBindings = (() => {
+  var _ref = _asyncToGenerator(function* (scope, location, originalLocation, scopesDataSource) {
+    const generatedScopes = yield scopesDataSource.getSourceMapsScopes(location);
+    if (!generatedScopes) {
+      return scope;
+    }
+    const originalScopes = yield scopesDataSource.getOriginalSourceScopes(originalLocation);
+    const remapedScopes = remapScopes(originalScopes, generatedScopes);
+    return extendScope(scope, generatedScopes, 0, remapedScopes, 0);
+  });
+
+  return function updateScopeBindings(_x, _x2, _x3, _x4) {
+    return _ref.apply(this, arguments);
+  };
+})();
+
+function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+const { remapScopes } = __webpack_require__(1785);
+
+function extendScope(scope, generatedScopes, index, remapedScopes, remapedScopesIndex) {
+  if (!scope) {
+    return undefined;
+  }
+  if (index >= generatedScopes.length) {
+    return scope;
+  }
+
+  let syntheticScopes;
+  if (remapedScopes && remapedScopesIndex < remapedScopes.length) {
+    if (index >= remapedScopes[remapedScopesIndex].end) {
+      remapedScopesIndex++;
+    }
+    if (remapedScopesIndex < remapedScopes.length) {
+      const remapedScope = remapedScopes[remapedScopesIndex];
+      syntheticScopes = {
+        scopes: remapedScope.scopes,
+        groupIndex: index - remapedScope.start,
+        groupLength: remapedScope.end - remapedScope.start
+      };
+    }
+  }
+
+  const parent = extendScope(scope.parent, generatedScopes, index + 1, remapedScopes, remapedScopesIndex);
+  return Object.assign({}, scope, {
+    parent,
+    sourceBindings: generatedScopes[index].bindings,
+    syntheticScopes
+  });
+}
+
+module.exports = {
+  updateScopeBindings
+};
+
+/***/ }),
+/* 1785 */
+/***/ (function(module, exports) {
+
+
+
+// Chunk split source scopes on function/closure boundary
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+function rollupFunctionScopes(scopes) {
+  const { result } = scopes.reduce(({ isLast, result }, scope) => {
+    if (isLast) {
+      result.push([]);
+    }
+    result[result.length - 1].push(scope);
+    return {
+      isLast: scope.type === "function",
+      result
+    };
+  }, { isLast: true, result: [] });
+  return result;
+}
+
+function getBindingNames(summarizedScopes) {
+  return summarizedScopes.reduce((acc, { bindingsNames }) => acc.concat(bindingsNames), []);
+}
+
+// Performs mapping of the original parsed scopes to the locals mappings
+// based on the generated source parse and source map data.
+function remapScopes(scopes, generatedScopes) {
+  if (!scopes || scopes.length === 0) {
+    return null;
+  }
+  const scopeChunks = rollupFunctionScopes(scopes);
+  const { result: assigned } = scopeChunks.reduce(({ result, searchIn, searchOffset }, scopeChunk) => {
+    if (searchIn.length === 0) {
+      return { result, searchIn, searchOffset };
+    }
+    // Process chunk of original parsed scopes: create used original names
+    // binding summary per scope and entire chunk.
+    const summarizedScopes = scopeChunk.map(({ type, bindings }) => ({
+      type,
+      bindingsNames: Object.keys(bindings)
+    }));
+    const names = getBindingNames(summarizedScopes);
+    // ... and find these names in the generated scopes (with mapped
+    // original names) -- we need index of the last scope in the searchIn.
+    let foundInMax = names.reduce((max, name) => {
+      const index = searchIn.findIndex(s => name in s.bindings);
+      return index < 0 ? Math.max(index, max) : max;
+    }, 0);
+
+    // TODO double check if names were not matched/found -- the source maps
+    // and scope parsing can be broken.
+    // Moving to the function bounary (in generated scopes).
+    while (foundInMax + 1 < searchIn.length && searchIn[foundInMax].type !== "function") {
+      foundInMax++;
+    }
+
+    // We found chunk of the function(s) that contains all/most of
+    // the scopeChunk names -- adding finding to the result.
+    result.push({
+      scopes: summarizedScopes,
+      start: searchOffset,
+      end: searchOffset + foundInMax + 1
+    });
+
+    // Consuming generated scopes mappings (searchIn).
+    return {
+      result,
+      searchIn: searchIn.slice(foundInMax + 1),
+      searchOffset: searchOffset + foundInMax + 1
+    };
+  }, { result: [], searchIn: generatedScopes, searchOffset: 0 });
+  return assigned;
+}
+
+module.exports = {
+  remapScopes
+};
+
+/***/ }),
+/* 1786 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+exports.updatePreview = updatePreview;
+exports.setPreview = setPreview;
+exports.clearPreview = clearPreview;
+
+var _ast = __webpack_require__(1638);
+
+var _editor = __webpack_require__(1358);
+
+var _preview = __webpack_require__(1807);
+
+var _devtoolsSourceMap = __webpack_require__(1360);
+
+var _promise = __webpack_require__(1653);
+
+var _selectors = __webpack_require__(1352);
+
+var _expressions = __webpack_require__(1398);
+
+var _lodash = __webpack_require__(2);
+
+async function getReactProps(evaluate) {
+  const reactDisplayName = await evaluate("this._reactInternalInstance.getName()");
+
+  return {
+    displayName: reactDisplayName.result
+  };
+}
+
+async function getImmutableProps(expression, evaluate) {
+  const immutableEntries = await evaluate((exp => `${exp}.toJS()`)(expression));
+
+  const immutableType = await evaluate((exp => `${exp}.constructor.name`)(expression));
+
+  return {
+    type: immutableType.result,
+    entries: immutableEntries.result
+  };
+}
+
+async function getExtraProps(expression, result, evaluate) {
+  const props = {};
+  if ((0, _preview.isReactComponent)(result)) {
+    props.react = await getReactProps(evaluate);
+  }
+
+  if ((0, _preview.isImmutable)(result)) {
+    props.immutable = await getImmutableProps(expression, evaluate);
+  }
+
+  return props;
+}
+
+function updatePreview(target, editor) {
+  return ({ dispatch, getState, client, sourceMaps }) => {
+    const location = (0, _editor.getTokenLocation)(editor.codeMirror, target);
+    const tokenText = target.innerText ? target.innerText.trim() : "";
+    const cursorPos = target.getBoundingClientRect();
+    const preview = (0, _selectors.getPreview)(getState());
+
+    if (preview) {
+      // We are mousing over the same token as before
+      if ((0, _lodash.isEqual)(preview.tokenPos, location)) {
+        return;
+      }
+
+      // We are mousing over a new token that is not in the preview
+      if (!target.classList.contains("debug-expression")) {
+        dispatch(clearPreview());
+      }
+    }
+
+    const source = (0, _selectors.getSelectedSource)(getState());
+
+    const symbols = (0, _selectors.getSymbols)(getState(), source.toJS());
+    if (symbols.functions.length == 0) {
+      return;
+    }
+
+    const invalidToken = tokenText === "" || tokenText.match(/[(){}\|&%,.;=<>\+-/\*\s]/);
+
+    const invalidTarget = target.parentElement && !target.parentElement.closest(".CodeMirror-line") || cursorPos.top == 0;
+
+    const isUpdating = preview && preview.updating;
+
+    const linesInScope = (0, _selectors.getInScopeLines)(getState());
+    const inScope = linesInScope && linesInScope.includes(location.line);
+
+    const invaildType = target.className === "cm-string" || target.className === "cm-number" || target.className === "cm-atom";
+
+    if (invalidTarget || !inScope || isUpdating || invalidToken || invaildType) {
+      return;
+    }
+
+    dispatch(setPreview(tokenText, location, cursorPos));
+  };
+}
+
+function setPreview(token, tokenPos, cursorPos) {
+  return async ({ dispatch, getState, client, sourceMaps }) => {
+    const currentSelection = (0, _selectors.getPreview)(getState());
+    if (currentSelection && currentSelection.updating) {
+      return;
+    }
+
+    await dispatch({
+      type: "SET_PREVIEW",
+      [_promise.PROMISE]: async function () {
+        const source = (0, _selectors.getSelectedSource)(getState());
+        const symbols = (0, _selectors.getSymbols)(getState(), source.toJS());
+        const found = (0, _ast.findBestMatchExpression)(symbols, tokenPos, token);
+
+        if (!found) {
+          return;
+        }
+
+        let { expression, location } = found;
+
+        if (!expression) {
+          return;
+        }
+
+        const sourceId = source.get("id");
+        if (location && !(0, _devtoolsSourceMap.isGeneratedId)(sourceId)) {
+          const generatedLocation = await sourceMaps.getGeneratedLocation(_extends({}, location.start, { sourceId }), source.toJS());
+
+          expression = await (0, _expressions.getMappedExpression)({ sourceMaps }, generatedLocation, expression);
+        }
+
+        const selectedFrame = (0, _selectors.getSelectedFrame)(getState());
+        const { result } = await client.evaluateInFrame(selectedFrame.id, expression);
+
+        if (result === undefined) {
+          return;
+        }
+
+        const extra = await getExtraProps(expression, result, expr => client.evaluateInFrame(selectedFrame.id, expr));
+
+        return {
+          expression,
+          result,
+          location,
+          tokenPos,
+          cursorPos,
+          extra
+        };
+      }()
+    });
+  };
+}
+
+function clearPreview() {
+  return ({ dispatch, getState, client }) => {
+    const currentSelection = (0, _selectors.getPreview)(getState());
+    if (!currentSelection) {
+      return;
+    }
+
+    return dispatch({
+      type: "CLEAR_SELECTION"
+    });
+  };
+}
+
+/***/ }),
+/* 1787 */
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 9 15\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><title>Group 2</title><desc>Created with Sketch.</desc><g id=\"Symbols\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\"><g id=\"Group-2\" transform=\"translate(-3.000000, 0.000000)\" fill-rule=\"nonzero\" fill=\"#000000\"><g transform=\"translate(2.000000, 0.000000)\" id=\"path10\"><path d=\"M8.66478978,0.152329483 L6.24859226,7.23234215 L6.24859226,7.23234215 C6.22451137,7.30290469 6.14778771,7.34058551 6.07722517,7.31650462 C6.0437665,7.30508617 6.01612208,7.2809984 6.00023206,7.24941723 L2.49196511,0.276788279 L2.49196511,0.276788279 C2.4537519,0.200840088 2.3759926,0.152917255 2.29097274,0.152917255 L1.08420686,0.152917255 L1.08420686,0.152917255 C1.02897839,0.152917255 0.984206865,0.19768878 0.984206865,0.252917255 C0.984206865,0.268916365 0.988045664,0.284681937 0.99540091,0.2988901 L5.47310495,8.94849143 L5.47310495,8.94849143 C5.53346173,9.06508289 5.54553974,9.2007357 5.50673082,9.3261565 L4.0917648,13.8989752 L4.0917648,13.8989752 C4.06260539,13.9932111 3.97546399,14.0574648 3.87681975,14.0574648 L1.45804052,14.0574648 L1.45804052,14.0574648 C1.33377645,14.0574648 1.23304051,14.1582007 1.23304051,14.2824648 L1.23304051,14.775 L1.23304051,14.775 C1.23304051,14.8992641 1.33377645,15 1.45804052,15 L4.50020953,15 L4.50020953,15 C4.71271509,15 4.90200445,14.8656767 4.97216898,14.6650887 L10.0088745,0.266035474 L10.0088745,0.266035474 C10.0453448,0.161773071 9.99038856,0.0476866038 9.88612615,0.0112162185 C9.86490135,0.00379190571 9.84257651,2.78889645e-14 9.82009068,2.5895952e-14 L8.87773108,-4.83289971e-14 L8.87773108,-4.79061235e-14 C8.78147405,-5.47279145e-14 8.69587888,0.061231278 8.66478978,0.152329483 Z\" transform=\"translate(5.502176, 7.500000) scale(1, -1) translate(-5.502176, -7.500000) \"></path></g></g></g></svg>"
+
+/***/ }),
+/* 1788 */
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+/* 1789 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+
+var _extends = Object.assign || function (target) {
+    for (var i = 1; i < arguments.length; i++) {
+        var source = arguments[i];for (var key in source) {
+            if (Object.prototype.hasOwnProperty.call(source, key)) {
+                target[key] = source[key];
+            }
+        }
+    }return target;
+};
+
+var _createClass = function () {
+    function defineProperties(target, props) {
+        for (var i = 0; i < props.length; i++) {
+            var descriptor = props[i];descriptor.enumerable = descriptor.enumerable || false;descriptor.configurable = true;if ('value' in descriptor) descriptor.writable = true;Object.defineProperty(target, descriptor.key, descriptor);
+        }
+    }return function (Constructor, protoProps, staticProps) {
+        if (protoProps) defineProperties(Constructor.prototype, protoProps);if (staticProps) defineProperties(Constructor, staticProps);return Constructor;
+    };
+}();
+
+var _get = function get(_x, _x2, _x3) {
+    var _again = true;_function: while (_again) {
+        var object = _x,
+            property = _x2,
+            receiver = _x3;_again = false;if (object === null) object = Function.prototype;var desc = Object.getOwnPropertyDescriptor(object, property);if (desc === undefined) {
+            var parent = Object.getPrototypeOf(object);if (parent === null) {
+                return undefined;
+            } else {
+                _x = parent;_x2 = property;_x3 = receiver;_again = true;desc = parent = undefined;continue _function;
+            }
+        } else if ('value' in desc) {
+            return desc.value;
+        } else {
+            var getter = desc.get;if (getter === undefined) {
+                return undefined;
+            }return getter.call(receiver);
+        }
+    }
+};
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { 'default': obj };
+}
+
+function _objectWithoutProperties(obj, keys) {
+    var target = {};for (var i in obj) {
+        if (keys.indexOf(i) >= 0) continue;if (!Object.prototype.hasOwnProperty.call(obj, i)) continue;target[i] = obj[i];
+    }return target;
+}
+
+function _classCallCheck(instance, Constructor) {
+    if (!(instance instanceof Constructor)) {
+        throw new TypeError('Cannot call a class as a function');
+    }
+}
+
+function _inherits(subClass, superClass) {
+    if (typeof superClass !== 'function' && superClass !== null) {
+        throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass);
+    }subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } });if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass;
+}
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+var DOMParser = typeof window !== 'undefined' && window.DOMParser;
+var process = process || {};
+process.env = process.env || {};
+var parserAvailable = typeof DOMParser !== 'undefined' && DOMParser.prototype != null && DOMParser.prototype.parseFromString != null;
+
+function isParsable(src) {
+    // kinda naive but meh, ain't gonna use full-blown parser for this
+    return parserAvailable && typeof src === 'string' && src.trim().substr(0, 4) === '<svg';
+}
+
+// parse SVG string using `DOMParser`
+function parseFromSVGString(src) {
+    var parser = new DOMParser();
+    return parser.parseFromString(src, "image/svg+xml");
+}
+
+// Transform DOM prop/attr names applicable to `<svg>` element but react-limited
+function switchSVGAttrToReactProp(propName) {
+    switch (propName) {
+        case 'class':
+            return 'className';
+        default:
+            return propName;
+    }
+}
+
+var InlineSVG = function (_React$Component) {
+    _inherits(InlineSVG, _React$Component);
+
+    _createClass(InlineSVG, null, [{
+        key: 'defaultProps',
+        value: {
+            element: 'i',
+            raw: false,
+            src: ''
+        },
+        enumerable: true
+    }, {
+        key: 'propTypes',
+        value: {
+            src: _react2['default'].PropTypes.string.isRequired,
+            element: _react2['default'].PropTypes.string,
+            raw: _react2['default'].PropTypes.bool
+        },
+        enumerable: true
+    }]);
+
+    function InlineSVG(props) {
+        _classCallCheck(this, InlineSVG);
+
+        _get(Object.getPrototypeOf(InlineSVG.prototype), 'constructor', this).call(this, props);
+        this._extractSVGProps = this._extractSVGProps.bind(this);
+    }
+
+    // Serialize `Attr` objects in `NamedNodeMap`
+
+    _createClass(InlineSVG, [{
+        key: '_serializeAttrs',
+        value: function _serializeAttrs(map) {
+            var ret = {};
+            var prop = undefined;
+            for (var i = 0; i < map.length; i++) {
+                prop = switchSVGAttrToReactProp(map[i].name);
+                ret[prop] = map[i].value;
+            }
+            return ret;
+        }
+
+        // get <svg /> element props
+    }, {
+        key: '_extractSVGProps',
+        value: function _extractSVGProps(src) {
+            var map = parseFromSVGString(src).documentElement.attributes;
+            return map.length > 0 ? this._serializeAttrs(map) : null;
+        }
+
+        // get content inside <svg> element.
+    }, {
+        key: '_stripSVG',
+        value: function _stripSVG(src) {
+            return parseFromSVGString(src).documentElement.innerHTML;
+        }
+    }, {
+        key: 'componentWillReceiveProps',
+        value: function componentWillReceiveProps(_ref) {
+            var children = _ref.children;
+
+            if ("production" !== process.env.NODE_ENV && children != null) {
+                console.info('<InlineSVG />: `children` prop will be ignored.');
+            }
+        }
+    }, {
+        key: 'render',
+        value: function render() {
+            var Element = undefined,
+                __html = undefined,
+                svgProps = undefined;
+            var _props = this.props;
+            var element = _props.element;
+            var raw = _props.raw;
+            var src = _props.src;
+
+            var otherProps = _objectWithoutProperties(_props, ['element', 'raw', 'src']);
+
+            if (raw === true && isParsable(src)) {
+                Element = 'svg';
+                svgProps = this._extractSVGProps(src);
+                __html = this._stripSVG(src);
+            }
+            __html = __html || src;
+            Element = Element || element;
+            svgProps = svgProps || {};
+
+            return _react2['default'].createElement(Element, _extends({}, svgProps, otherProps, { src: null, children: null,
+                dangerouslySetInnerHTML: { __html: __html } }));
+        }
+    }]);
+
+    return InlineSVG;
+}(_react2['default'].Component);
+
+exports['default'] = InlineSVG;
+module.exports = exports['default'];
+
+/***/ }),
+/* 1790 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = renderBreakpointsDropdown;
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+var _Svg = __webpack_require__(1359);
+
+var _Svg2 = _interopRequireDefault(_Svg);
+
+var _Dropdown = __webpack_require__(1615);
+
+var _Dropdown2 = _interopRequireDefault(_Dropdown);
+
+var _classnames = __webpack_require__(175);
+
+var _classnames2 = _interopRequireDefault(_classnames);
+
+__webpack_require__(1791);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function renderPause(isWaitingOnBreak) {
+  const active = isWaitingOnBreak;
+  return _react2.default.createElement(
+    "div",
+    {
+      className: (0, _classnames2.default)("pause-next", {
+        active: active,
+        inactive: !active
+      })
+    },
+    _react2.default.createElement("img", { className: "pause-next" }),
+    _react2.default.createElement(
+      "span",
+      { className: "icon-spacer" },
+      L10N.getStr("pauseButtonItem")
+    )
+  );
+}
+
+function renderPauseOnExceptions(shouldPauseOnExceptions, shouldIgnoreCaughtExceptions) {
+  const active = (shouldPauseOnExceptions || shouldIgnoreCaughtExceptions) && (!shouldPauseOnExceptions || !shouldIgnoreCaughtExceptions);
+  return _react2.default.createElement(
+    "div",
+    {
+      className: (0, _classnames2.default)("pause-on-exceptions", {
+        active: active,
+        inactive: !active
+      })
+    },
+    _react2.default.createElement("img", { className: "pause-on-exceptions" }),
+    _react2.default.createElement(
+      "span",
+      { className: "icon-spacer" },
+      L10N.getStr("pauseOnExceptionsItem")
+    )
+  );
+}
+
+function renderPauseOnUncaughtExceptions(shouldPauseOnExceptions, shouldIgnoreCaughtExceptions) {
+  const active = shouldPauseOnExceptions && shouldIgnoreCaughtExceptions;
+  return _react2.default.createElement(
+    "div",
+    {
+      className: (0, _classnames2.default)("pause-uncaught-exceptions", {
+        active: active,
+        inactive: !active
+      })
+    },
+    _react2.default.createElement("img", { className: "pause-uncaught-exceptions" }),
+    _react2.default.createElement(
+      "span",
+      { className: "icon-spacer" },
+      L10N.getStr("pauseOnUncaughtExceptionsItem")
+    )
+  );
+}
+
+function renderIgnoreExceptions(shouldPauseOnExceptions, shouldIgnoreCaughtExceptions) {
+  const active = !shouldPauseOnExceptions && !shouldIgnoreCaughtExceptions;
+  return _react2.default.createElement(
+    "div",
+    {
+      className: (0, _classnames2.default)("ignore-exceptions", {
+        active: active,
+        inactive: !active
+      })
+    },
+    _react2.default.createElement("img", { className: "ignore-exceptions" }),
+    _react2.default.createElement(
+      "span",
+      { className: "icon-spacer" },
+      L10N.getStr("ignoreExceptionsItem")
+    )
+  );
+}
+
+function handleClick(e) {
+  e.stopPropagation();
+}
+
+function renderBreakpointsDropdown(breakOnNext, pauseOnExceptions, shouldPauseOnExceptions, shouldIgnoreCaughtExceptions, isWaitingOnBreak) {
+  const Panel = _react2.default.createElement(
+    "ul",
+    null,
+    _react2.default.createElement(
+      "li",
+      { onClick: () => breakOnNext(), className: "first" },
+      renderPause(isWaitingOnBreak)
+    ),
+    _react2.default.createElement(
+      "li",
+      { onClick: () => pauseOnExceptions(false, false) },
+      renderIgnoreExceptions(shouldPauseOnExceptions, shouldIgnoreCaughtExceptions)
+    ),
+    _react2.default.createElement(
+      "li",
+      { onClick: () => pauseOnExceptions(true, true) },
+      renderPauseOnUncaughtExceptions(shouldPauseOnExceptions, shouldIgnoreCaughtExceptions)
+    ),
+    _react2.default.createElement(
+      "li",
+      { onClick: () => pauseOnExceptions(true, false) },
+      renderPauseOnExceptions(shouldPauseOnExceptions, shouldIgnoreCaughtExceptions)
+    )
+  );
+
+  const active = shouldPauseOnExceptions || shouldIgnoreCaughtExceptions || isWaitingOnBreak;
+
+  return _react2.default.createElement(
+    "div",
+    {
+      className: "breakpoints-dropdown",
+      onClick: e => handleClick(e),
+      key: "breakpoints-dropdown"
+    },
+    _react2.default.createElement(_Dropdown2.default, {
+      className: "dropdown",
+      panel: Panel,
+      icon: _react2.default.createElement(_Svg2.default, {
+        name: "plus",
+        className: (0, _classnames2.default)("plus", {
+          active: active,
+          inactive: !active
+        })
+      })
+    })
+  );
+}
+
+/***/ }),
+/* 1791 */
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+/* 1792 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.getScopes = getScopes;
+
+var _synthesizeScopes = __webpack_require__(1793);
+
+var _getScope = __webpack_require__(1794);
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function getScopes(why, selectedFrame, frameScopes) {
+  if (!why || !selectedFrame) {
+    return null;
+  }
+
+  if (!frameScopes) {
+    return null;
+  }
+
+  const scopes = [];
+
+  let scope = frameScopes;
+  let scopeIndex = 1;
+
+  while (scope) {
+    const { syntheticScopes } = scope;
+    let lastScope = scope;
+
+    if (!syntheticScopes) {
+      const scopeItem = (0, _getScope.getScope)(scope, selectedFrame, frameScopes, why, scopeIndex);
+
+      if (scopeItem) {
+        scopes.push(scopeItem);
+      }
+      scopeIndex++;
+    } else {
+      scopes.push(...(0, _synthesizeScopes.synthesizeScopes)(scope, selectedFrame, frameScopes, why, scopeIndex));
+
+      // skip to the next generated scope
+      const scopeDepth = syntheticScopes.groupLength;
+      for (let i = 1; lastScope.parent && i < scopeDepth; i++) {
+        const nextScope = lastScope.parent;
+        lastScope = nextScope;
+      }
+
+      scope = lastScope;
+      scopeIndex += syntheticScopes.scopes.length;
+    }
+    scope = scope.parent;
+  }
+
+  return scopes;
+}
+
+/***/ }),
+/* 1793 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.synthesizeScopes = synthesizeScopes;
+
+var _getVariables = __webpack_require__(1765);
+
+var _frame = __webpack_require__(1380);
+
+var _utils = __webpack_require__(1766);
+
+function getSynteticScopeTitle(type, generatedScopes) {
+  if (type === "function") {
+    // FIXME Use original function name here
+    const lastGeneratedScope = generatedScopes[generatedScopes.length - 1];
+    const isLastGeneratedScopeFn = lastGeneratedScope && lastGeneratedScope.type === "function";
+    return isLastGeneratedScopeFn && lastGeneratedScope.function.displayName ? (0, _frame.simplifyDisplayName)(lastGeneratedScope.function.displayName) : L10N.getStr("anonymous");
+  }
+  return L10N.getStr("scopes.block");
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function findOriginalBindings(bindingsNames, generatedScopes, key, foundGeneratedNames) {
+  return bindingsNames.reduce((vars, name) => {
+    // Find binding name in the original source bindings
+    const generatedScope = generatedScopes.find(gs => gs.sourceBindings && name in gs.sourceBindings);
+    if (!generatedScope || !generatedScope.sourceBindings) {
+      return vars;
+    }
+    // .. and map it to the generated name
+    const generatedName = generatedScope.sourceBindings[name];
+    // Skip if we already use the generated name
+    if (generatedName && !foundGeneratedNames[generatedName]) {
+      if (generatedScope.bindings.variables[generatedName]) {
+        vars.push({
+          name,
+          generatedName,
+          path: `${key}/${generatedName}`,
+          contents: generatedScope.bindings.variables[generatedName]
+        });
+        foundGeneratedNames[generatedName] = true;
+        return vars;
+      }
+
+      const arg = generatedScope.bindings.arguments.find(arg_ => arg_[generatedName]);
+      if (arg) {
+        vars.push({
+          name,
+          generatedName,
+          path: `${key}/${generatedName}`,
+          contents: arg[generatedName]
+        });
+        foundGeneratedNames[generatedName] = true;
+        return vars;
+      }
+    }
+
+    vars.push({
+      name,
+      generatedName,
+      path: `${key}/${generatedName}`,
+      contents: { value: { type: "undefined" } }
+    });
+    return vars;
+  }, []);
+}
+
+function findUnusedBindings(generatedScopes, foundGeneratedNames, key) {
+  const allGeneratedVars = generatedScopes.reduce((acc, { bindings }) => {
+    return acc.concat((0, _getVariables.getBindingVariables)(bindings, key));
+  }, []);
+  return allGeneratedVars.filter(v => !foundGeneratedNames[v.name]);
+}
+
+// Create a synthesized scope based on its binding names and
+// generated/original scopes information.
+function synthesizeScope(syntheticScope, index, actor, key, scopeIndex, lastScopeIndex, generatedScopes, foundGeneratedNames, scope, frameScopes, selectedFrame, why) {
+  const { bindingsNames } = syntheticScope;
+  const isLast = index === lastScopeIndex;
+
+  let vars = findOriginalBindings(bindingsNames, generatedScopes, key, foundGeneratedNames);
+
+  if (isLast) {
+    // For the last synthesized scope, apply all generated names we did not use
+    vars = [...vars, ...findUnusedBindings(generatedScopes, foundGeneratedNames, key)];
+  }
+
+  if (index === 0) {
+    const isLocalScope = scope.actor === frameScopes.actor;
+
+    // For the first synthesized scope, add this and other vars.
+    if (isLocalScope) {
+      vars = [...vars, ...(0, _utils.getFramePopVariables)(why, key)];
+
+      const this_ = (0, _utils.getThisVariable)(selectedFrame, key);
+
+      if (this_) {
+        vars.push(this_);
+      }
+    }
+  }
+
+  return vars;
+}
+
+function synthesizeScopes(scope, selectedFrame, frameScopes, why, scopeIndex) {
+  const { actor, syntheticScopes } = scope;
+  if (!syntheticScopes) {
+    return [];
+  }
+
+  // Collect all connected generated scopes.
+  const generatedScopes = [];
+  for (let count = syntheticScopes.groupLength, s = scope; count > 0 && s; count--) {
+    generatedScopes.push(s);
+    s = s.parent;
+  }
+
+  const foundGeneratedNames = Object.create(null);
+  const lastScopeIndex = syntheticScopes.scopes.length - 1;
+  return syntheticScopes.scopes.reduce((result, syntheticScope, index) => {
+    const key = `${actor}-${scopeIndex + index}`;
+    const bindings = synthesizeScope(syntheticScope, index, actor, key, scopeIndex, lastScopeIndex, generatedScopes, foundGeneratedNames, scope, frameScopes, selectedFrame, why);
+
+    if (bindings && bindings.length) {
+      const title = getSynteticScopeTitle(syntheticScope.type, generatedScopes);
+      bindings.sort((a, b) => a.name.localeCompare(b.name));
+      result.push({
+        name: title,
+        path: key,
+        contents: bindings
+      });
+    }
+    return result;
+  }, []);
+}
+
+/***/ }),
+/* 1794 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+exports.getScope = getScope;
+
+var _getVariables = __webpack_require__(1765);
+
+var _utils = __webpack_require__(1766);
+
+var _frame = __webpack_require__(1380);
+
+function getScopeTitle(type, scope) {
+  if (type === "function") {
+    return scope.function.displayName ? (0, _frame.simplifyDisplayName)(scope.function.displayName) : L10N.getStr("anonymous");
+  }
+  return L10N.getStr("scopes.block");
+}
+
+function getScope(scope, selectedFrame, frameScopes, why, scopeIndex) {
+  const { type, actor } = scope;
+
+  const isLocalScope = scope.actor === frameScopes.actor;
+
+  const key = `${actor}-${scopeIndex}`;
+  if (type === "function" || type === "block") {
+    const bindings = scope.bindings;
+    const sourceBindings = scope.sourceBindings;
+
+    let vars = sourceBindings ? (0, _getVariables.getSourceBindingVariables)(bindings, sourceBindings, key) : (0, _getVariables.getBindingVariables)(bindings, key);
+
+    // show exception, return, and this variables in innermost scope
+    if (isLocalScope) {
+      vars = vars.concat((0, _utils.getFramePopVariables)(why, key));
+
+      const this_ = (0, _utils.getThisVariable)(selectedFrame, key);
+
+      if (this_) {
+        vars.push(this_);
+      }
+    }
+
+    if (vars && vars.length) {
+      const title = getScopeTitle(type, scope);
+      vars.sort((a, b) => a.name.localeCompare(b.name));
+      return {
+        name: title,
+        path: key,
+        contents: vars
+      };
+    }
+  } else if (type === "object") {
+    let value = scope.object;
+    // If this is the global window scope, mark it as such so that it will
+    // preview Window: Global instead of Window: Window
+    if (value.class === "Window") {
+      value = _extends({}, scope.object, { displayClass: "Global" });
+    }
+    return {
+      name: scope.object.class,
+      path: key,
+      contents: { value }
+    };
+  }
+
+  return null;
+}
+
+/***/ }),
+/* 1795 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _lodash = __webpack_require__(2);
+
+let newSources;
+let createSource;
+let supportsWasm = false;
+let queuedSources;
+
+async function dispatchNewSources() {
+  const sources = queuedSources;
+  queuedSources = [];
+
+  await newSources(sources.map(source => createSource(source, { supportsWasm })));
+}
+
+const queue = (0, _lodash.throttle)(dispatchNewSources, 100);
+
+exports.default = {
+  initialize: options => {
+    newSources = options.actions.newSources;
+    createSource = options.createSource;
+    supportsWasm = options.supportsWasm;
+    queuedSources = [];
+  },
+  queue: source => {
+    queuedSources.push(source);
+    queue();
+  },
+  flush: () => queue.flush(),
+  clear: () => queue.cancel()
+};
+
+/***/ }),
+/* 1796 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.HighlightLine = undefined;
+
+var _react = __webpack_require__(0);
+
+var _editor = __webpack_require__(1358);
+
+var _sourceDocuments = __webpack_require__(1436);
+
+var _source = __webpack_require__(1356);
+
+var _reactRedux = __webpack_require__(1189);
+
+var _selectors = __webpack_require__(1352);
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function isDebugLine(selectedFrame, selectedLocation) {
+  if (!selectedFrame) {
+    return;
+  }
+
+  return selectedFrame.location.sourceId == selectedLocation.sourceId && selectedFrame.location.line == selectedLocation.line;
+}
+
+function isDocumentReady(selectedSource, selectedLocation) {
+  return selectedLocation && (0, _source.isLoaded)(selectedSource) && (0, _sourceDocuments.hasDocument)(selectedLocation.sourceId);
+}
+
+class HighlightLine extends _react.PureComponent {
+  componentDidUpdate(prevProps) {
+    const { selectedLocation, selectedFrame, selectedSource } = this.props;
+
+    this.clearHighlightLine(prevProps.selectedLocation, prevProps.selectedSource);
+
+    this.setHighlightLine(selectedLocation, selectedFrame, selectedSource);
+  }
+
+  setHighlightLine(selectedLocation, selectedFrame, selectedSource) {
+    if (!isDocumentReady(selectedSource, selectedLocation)) {
+      return;
+    }
+
+    const { sourceId, line } = selectedLocation;
+
+    if (!line || isDebugLine(selectedFrame, selectedLocation)) {
+      return;
+    }
+
+    const editorLine = (0, _editor.toEditorLine)(sourceId, line);
+    const doc = (0, _sourceDocuments.getDocument)(sourceId);
+    doc.addLineClass(editorLine, "line", "highlight-line");
+  }
+
+  clearHighlightLine(selectedLocation, selectedSource) {
+    if (!isDocumentReady(selectedSource, selectedLocation)) {
+      return;
+    }
+
+    const { line, sourceId } = selectedLocation;
+    const editorLine = (0, _editor.toEditorLine)(sourceId, line);
+    const doc = (0, _sourceDocuments.getDocument)(sourceId);
+    doc.removeLineClass(editorLine, "line", "highlight-line");
+  }
+
+  render() {
+    return null;
+  }
+}
+
+exports.HighlightLine = HighlightLine;
+exports.default = (0, _reactRedux.connect)(state => ({
+  selectedFrame: (0, _selectors.getVisibleSelectedFrame)(state),
+  selectedLocation: (0, _selectors.getSelectedLocation)(state),
+  selectedSource: (0, _selectors.getSelectedSource)(state)
+}))(HighlightLine);
+
+/***/ }),
+/* 1797 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _loadSourceText = __webpack_require__(1435);
+
+Object.keys(_loadSourceText).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _loadSourceText[key];
+    }
+  });
+});
+
+var _prettyPrint = __webpack_require__(1798);
+
+Object.keys(_prettyPrint).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _prettyPrint[key];
+    }
+  });
+});
+
+var _newSources = __webpack_require__(1801);
+
+Object.keys(_newSources).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _newSources[key];
+    }
+  });
+});
+
+var _blackbox = __webpack_require__(1802);
+
+Object.keys(_blackbox).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _blackbox[key];
+    }
+  });
+});
+
+var _select = __webpack_require__(1803);
+
+Object.keys(_select).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _select[key];
+    }
+  });
+});
+
+var _tabs = __webpack_require__(1799);
+
+Object.keys(_tabs).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _tabs[key];
+    }
+  });
+});
+
+/***/ }),
+/* 1798 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+exports.createPrettySource = createPrettySource;
+exports.togglePrettyPrint = togglePrettyPrint;
+
+var _assert = __webpack_require__(1384);
+
+var _assert2 = _interopRequireDefault(_assert);
+
+var _breakpoints = __webpack_require__(1396);
+
+var _ast = __webpack_require__(1399);
+
+var _prettyPrint = __webpack_require__(1431);
+
+var _source = __webpack_require__(1356);
+
+var _loadSourceText = __webpack_require__(1435);
+
+var _sources = __webpack_require__(1797);
+
+var _pause = __webpack_require__(1639);
+
+var _selectors = __webpack_require__(1352);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function createPrettySource(sourceId) {
+  return async ({ dispatch, getState, sourceMaps }) => {
+    const source = (0, _selectors.getSource)(getState(), sourceId);
+    const url = (0, _source.getPrettySourceURL)(source.get("url"));
+    const id = await sourceMaps.generatedToOriginalId(sourceId, url);
+
+    const prettySource = {
+      url,
+      id,
+      isPrettyPrinted: true,
+      contentType: "text/javascript",
+      loadedState: "loading"
+    };
+    dispatch({ type: "ADD_SOURCE", source: prettySource });
+
+    const { code, mappings } = await (0, _prettyPrint.prettyPrint)({ source, url });
+    await sourceMaps.applySourceMap(source.get("id"), url, code, mappings);
+
+    dispatch({
+      type: "UPDATE_SOURCE",
+      source: _extends({}, prettySource, { text: code, loadedState: "loaded" })
+    });
+
+    return prettySource;
+  };
+}
+
+/**
+ * Toggle the pretty printing of a source's text. All subsequent calls to
+ * |getText| will return the pretty-toggled text. Nothing will happen for
+ * non-javascript files.
+ *
+ * @memberof actions/sources
+ * @static
+ * @param string id The source form from the RDP.
+ * @returns Promise
+ *          A promise that resolves to [aSource, prettyText] or rejects to
+ *          [aSource, error].
+ */
+function togglePrettyPrint(sourceId) {
+  return async ({ dispatch, getState, client, sourceMaps }) => {
+    const source = (0, _selectors.getSource)(getState(), sourceId);
+
+    if (!source) {
+      return {};
+    }
+
+    if (!(0, _source.isLoaded)(source)) {
+      await dispatch((0, _loadSourceText.loadSourceText)(source));
+    }
+
+    (0, _assert2.default)(sourceMaps.isGeneratedId(sourceId), "Pretty-printing only allowed on generated sources");
+
+    const selectedLocation = (0, _selectors.getSelectedLocation)(getState());
+    const url = (0, _source.getPrettySourceURL)(source.get("url"));
+    const prettySource = (0, _selectors.getSourceByURL)(getState(), url);
+
+    const options = {};
+    if (selectedLocation) {
+      options.location = await sourceMaps.getOriginalLocation(selectedLocation);
+    }
+
+    if (prettySource) {
+      const _sourceId = prettySource.get("id");
+      return dispatch((0, _sources.selectLocation)(_extends({}, options.location, { sourceId: _sourceId })));
+    }
+
+    const newPrettySource = await dispatch(createPrettySource(sourceId));
+    await dispatch((0, _breakpoints.remapBreakpoints)(sourceId));
+    await dispatch((0, _pause.mapFrames)());
+    await dispatch((0, _ast.setEmptyLines)(newPrettySource.id));
+    await dispatch((0, _ast.setSymbols)(newPrettySource.id));
+
+    return dispatch((0, _sources.selectLocation)(_extends({}, options.location, { sourceId: newPrettySource.id })));
+  };
+}
+
+/***/ }),
+/* 1799 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.addTab = addTab;
+exports.moveTab = moveTab;
+exports.closeTab = closeTab;
+exports.closeTabs = closeTabs;
+
+var _editor = __webpack_require__(1358);
+
+var _sources = __webpack_require__(1797);
+
+var _selectors = __webpack_require__(1352);
+
+function addTab(source, tabIndex) {
+  return {
+    type: "ADD_TAB",
+    source,
+    tabIndex
+  };
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+/**
+ * Redux actions for the sources state
+ * @module actions/sources
+ */
+
+function moveTab(url, tabIndex) {
+  return {
+    type: "MOVE_TAB",
+    url,
+    tabIndex
+  };
+}
+
+/**
+ * @memberof actions/sources
+ * @static
+ */
+function closeTab(url) {
+  return ({ dispatch, getState, client }) => {
+    (0, _editor.removeDocument)(url);
+    const tabs = (0, _selectors.removeSourceFromTabList)((0, _selectors.getSourceTabs)(getState()), url);
+    const sourceId = (0, _selectors.getNewSelectedSourceId)(getState(), tabs);
+    dispatch({ type: "CLOSE_TAB", url, tabs });
+    dispatch((0, _sources.selectSource)(sourceId));
+  };
+}
+
+/**
+ * @memberof actions/sources
+ * @static
+ */
+function closeTabs(urls) {
+  return ({ dispatch, getState, client }) => {
+    urls.forEach(url => {
+      const source = (0, _selectors.getSourceByURL)(getState(), url);
+      if (source) {
+        (0, _editor.removeDocument)(source.get("id"));
+      }
+    });
+
+    const tabs = (0, _selectors.removeSourcesFromTabList)((0, _selectors.getSourceTabs)(getState()), urls);
+    dispatch({ type: "CLOSE_TABS", urls, tabs });
+
+    const sourceId = (0, _selectors.getNewSelectedSourceId)(getState(), tabs);
+    dispatch((0, _sources.selectSource)(sourceId));
+  };
+}
+
+/***/ }),
+/* 1800 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = defer;
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function defer() {
+  let resolve = () => {};
+  let reject = () => {};
+  const promise = new Promise((_res, _rej) => {
+    resolve = _res;
+    reject = _rej;
+  });
+
+  return { resolve, reject, promise };
+}
+
+/***/ }),
+/* 1801 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+/**
+ * Redux actions for the sources state
+ * @module actions/sources
+ */
+
+exports.newSource = newSource;
+exports.newSources = newSources;
+
+var _breakpoints = __webpack_require__(1396);
+
+var _loadSourceText = __webpack_require__(1435);
+
+var _prettyPrint = __webpack_require__(1798);
+
+var _sources = __webpack_require__(1797);
+
+var _source2 = __webpack_require__(1356);
+
+var _prefs = __webpack_require__(226);
+
+var _selectors = __webpack_require__(1352);
+
+function createOriginalSource(originalUrl, generatedSource, sourceMaps) {
+  return {
+    url: originalUrl,
+    id: sourceMaps.generatedToOriginalId(generatedSource.id, originalUrl),
+    isPrettyPrinted: false,
+    isWasm: false,
+    isBlackBoxed: false,
+    loadedState: "unloaded"
+  };
+}
+
+// TODO: It would be nice to make getOriginalURLs a safer api
+async function loadOriginalSourceUrls(sourceMaps, generatedSource) {
+  try {
+    return await sourceMaps.getOriginalURLs(generatedSource);
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
+/**
+ * @memberof actions/sources
+ * @static
+ */
+function loadSourceMap(generatedSource) {
+  return async function ({ dispatch, getState, sourceMaps }) {
+    const urls = await loadOriginalSourceUrls(sourceMaps, generatedSource);
+    if (!urls) {
+      // If this source doesn't have a sourcemap, do nothing.
+      return;
+    }
+
+    const originalSources = urls.map(url => createOriginalSource(url, generatedSource, sourceMaps));
+
+    // TODO: check if this line is really needed, it introduces
+    // a lot of lag to the application.
+    const generatedSourceRecord = (0, _selectors.getSource)(getState(), generatedSource.id);
+    await dispatch((0, _loadSourceText.loadSourceText)(generatedSourceRecord));
+    dispatch(newSources(originalSources));
+  };
+}
+
+// If a request has been made to show this source, go ahead and
+// select it.
+function checkSelectedSource(source) {
+  return async ({ dispatch, getState }) => {
+    const pendingLocation = (0, _selectors.getPendingSelectedLocation)(getState());
+
+    if (!pendingLocation || !pendingLocation.url || !source.url) {
+      return;
+    }
+
+    const pendingUrl = pendingLocation.url;
+    const rawPendingUrl = (0, _source2.getRawSourceURL)(pendingUrl);
+
+    if (rawPendingUrl === source.url) {
+      if ((0, _source2.isPrettyURL)(pendingUrl)) {
+        return await dispatch((0, _prettyPrint.togglePrettyPrint)(source.id));
+      }
+
+      await dispatch((0, _sources.selectLocation)(_extends({}, pendingLocation, { sourceId: source.id })));
+    }
+  };
+}
+
+function checkPendingBreakpoints(sourceId) {
+  return async ({ dispatch, getState }) => {
+    // source may have been modified by selectLocation
+    const source = (0, _selectors.getSource)(getState(), sourceId);
+
+    const pendingBreakpoints = (0, _selectors.getPendingBreakpointsForSource)(getState(), source.get("url"));
+
+    if (!pendingBreakpoints.size) {
+      return;
+    }
+
+    // load the source text if there is a pending breakpoint for it
+    await dispatch((0, _loadSourceText.loadSourceText)(source));
+
+    const pendingBreakpointsArray = pendingBreakpoints.valueSeq().toJS();
+    for (const pendingBreakpoint of pendingBreakpointsArray) {
+      await dispatch((0, _breakpoints.syncBreakpoint)(sourceId, pendingBreakpoint));
+    }
+  };
+}
+
+/**
+ * Handler for the debugger client's unsolicited newSource notification.
+ * @memberof actions/sources
+ * @static
+ */
+function newSource(source) {
+  return async ({ dispatch, getState }) => {
+    const _source = (0, _selectors.getSource)(getState(), source.id);
+    if (_source) {
+      return;
+    }
+
+    dispatch({ type: "ADD_SOURCE", source });
+
+    if (_prefs.prefs.clientSourceMapsEnabled) {
+      dispatch(loadSourceMap(source));
+    }
+
+    dispatch(checkSelectedSource(source));
+    dispatch(checkPendingBreakpoints(source.id));
+  };
+}
+
+function newSources(sources) {
+  return async ({ dispatch, getState }) => {
+    const filteredSources = sources.filter(source => !(0, _selectors.getSource)(getState(), source.id));
+
+    if (filteredSources.length == 0) {
+      return;
+    }
+
+    dispatch({
+      type: "ADD_SOURCES",
+      sources: filteredSources
+    });
+
+    for (const source of filteredSources) {
+      dispatch(checkSelectedSource(source));
+      dispatch(checkPendingBreakpoints(source.id));
+    }
+
+    return Promise.all(filteredSources.map(source => dispatch(loadSourceMap(source))));
+  };
+}
+
+/***/ }),
+/* 1802 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.toggleBlackBox = toggleBlackBox;
+
+var _promise = __webpack_require__(1653);
+
+function toggleBlackBox(source) {
+  return async ({ dispatch, getState, client, sourceMaps }) => {
+    const { isBlackBoxed, id } = source;
+
+    return dispatch({
+      type: "BLACKBOX",
+      source,
+      [_promise.PROMISE]: client.blackBox(id, isBlackBoxed)
+    });
+  };
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+/**
+ * Redux actions for the sources state
+ * @module actions/sources
+ */
+
+/***/ }),
+/* 1803 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                                                                                                                                                                                                                   * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                                                                                                                                                                                                                   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+/**
+ * Redux actions for the sources state
+ * @module actions/sources
+ */
+
+exports.selectSourceURL = selectSourceURL;
+exports.selectSource = selectSource;
+exports.selectLocation = selectLocation;
+exports.jumpToMappedLocation = jumpToMappedLocation;
+
+var _devtoolsSourceMap = __webpack_require__(1360);
+
+var _ast = __webpack_require__(1399);
+
+var _ui = __webpack_require__(1385);
+
+var _prettyPrint = __webpack_require__(1798);
+
+var _tabs = __webpack_require__(1799);
+
+var _loadSourceText = __webpack_require__(1435);
+
+var _prefs = __webpack_require__(226);
+
+var _source = __webpack_require__(1356);
+
+var _location = __webpack_require__(1782);
+
+var _sourceMaps = __webpack_require__(1397);
+
+var _selectors = __webpack_require__(1352);
+
+/**
+ * Deterministically select a source that has a given URL. This will
+ * work regardless of the connection status or if the source exists
+ * yet. This exists mostly for external things to interact with the
+ * debugger.
+ *
+ * @memberof actions/sources
+ * @static
+ */
+function selectSourceURL(url, options = {}) {
+  return async ({ dispatch, getState }) => {
+    const source = (0, _selectors.getSourceByURL)(getState(), url);
+    if (source) {
+      const sourceId = source.get("id");
+      const location = (0, _location.createLocation)(_extends({}, options.location, { sourceId }));
+      // flow is unable to comprehend that if an options.location object
+      // exists, that we have a valid Location object, and if it doesnt,
+      // we have a valid { sourceId: string } object. So we are overriding
+      // the error
+      // $FlowIgnore
+      await dispatch(selectLocation(location, options.tabIndex));
+    } else {
+      dispatch({
+        type: "SELECT_SOURCE_URL",
+        url: url,
+        tabIndex: options.tabIndex,
+        location: options.location
+      });
+    }
+  };
+}
+
+/**
+ * @memberof actions/sources
+ * @static
+ */
+function selectSource(sourceId, tabIndex = "") {
+  return async ({ dispatch }) => {
+    const location = (0, _location.createLocation)({ sourceId });
+    return await dispatch(selectLocation(location, tabIndex));
+  };
+}
+
+/**
+ * @memberof actions/sources
+ * @static
+ */
+function selectLocation(location, tabIndex = "") {
+  return async ({ dispatch, getState, client }) => {
+    if (!client) {
+      // No connection, do nothing. This happens when the debugger is
+      // shut down too fast and it tries to display a default source.
+      return;
+    }
+
+    const source = (0, _selectors.getSource)(getState(), location.sourceId);
+    if (!source) {
+      // If there is no source we deselect the current selected source
+      return dispatch({ type: "CLEAR_SELECTED_SOURCE" });
+    }
+
+    const activeSearch = (0, _selectors.getActiveSearch)(getState());
+    if (activeSearch !== "file") {
+      dispatch((0, _ui.closeActiveSearch)());
+    }
+
+    dispatch((0, _tabs.addTab)(source.toJS(), 0));
+
+    dispatch({
+      type: "SELECT_SOURCE",
+      source: source.toJS(),
+      tabIndex,
+      location
+    });
+
+    await dispatch((0, _loadSourceText.loadSourceText)(source));
+    const selectedSource = (0, _selectors.getSelectedSource)(getState());
+    if (_prefs.prefs.autoPrettyPrint && !(0, _selectors.getPrettySource)(getState(), selectedSource.get("id")) && (0, _source.shouldPrettyPrint)(selectedSource) && (0, _source.isMinified)(selectedSource)) {
+      await dispatch((0, _prettyPrint.togglePrettyPrint)(source.get("id")));
+      dispatch((0, _tabs.closeTab)(source.get("url")));
+    }
+
+    dispatch((0, _ast.setOutOfScopeLocations)());
+  };
+}
+
+/**
+ * @memberof actions/sources
+ * @static
+ */
+function jumpToMappedLocation(sourceLocation) {
+  return async function ({ dispatch, getState, client, sourceMaps }) {
+    if (!client) {
+      return;
+    }
+
+    const source = (0, _selectors.getSource)(getState(), sourceLocation.sourceId);
+    let pairedLocation;
+    if ((0, _devtoolsSourceMap.isOriginalId)(sourceLocation.sourceId)) {
+      pairedLocation = await (0, _sourceMaps.getGeneratedLocation)(getState(), source.toJS(), sourceLocation, sourceMaps);
+    } else {
+      pairedLocation = await sourceMaps.getOriginalLocation(sourceLocation, source.toJS());
+    }
+
+    return dispatch(selectLocation(_extends({}, pairedLocation)));
+  };
+}
+
+/***/ }),
+/* 1804 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+exports.mapFrames = mapFrames;
+
+var _selectors = __webpack_require__(1352);
+
+function updateFrameLocation(frame, sourceMaps) {
+  return sourceMaps.getOriginalLocation(frame.location).then(loc => _extends({}, frame, {
+    location: loc,
+    generatedLocation: frame.generatedLocation || frame.location
+  }));
+}
+
+function updateFrameLocations(frames, sourceMaps) {
+  if (!frames || frames.length == 0) {
+    return Promise.resolve(frames);
+  }
+
+  return Promise.all(frames.map(frame => updateFrameLocation(frame, sourceMaps)));
+}
+
+/**
+ * Map call stack frame locations to original locations.
+ * e.g.
+ * 1. When the debuggee pauses
+ * 2. When a source is pretty printed
+ *
+ * @memberof actions/pause
+ * @static
+ */
+function mapFrames() {
+  return async function ({ dispatch, getState, sourceMaps }) {
+    const frames = (0, _selectors.getFrames)(getState());
+    if (!frames) {
+      return;
+    }
+
+    const mappedFrames = await updateFrameLocations(frames, sourceMaps);
+
+    dispatch({
+      type: "MAP_FRAMES",
+      frames: mappedFrames
+    });
+  };
+}
+
+/***/ }),
+/* 1805 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = showContextMenu;
+
+var _devtoolsContextmenu = __webpack_require__(1413);
+
+function showContextMenu(props) {
+  const {
+    removeBreakpoint,
+    removeBreakpoints,
+    removeAllBreakpoints,
+    toggleBreakpoints,
+    toggleAllBreakpoints,
+    toggleDisabledBreakpoint,
+    selectLocation,
+    setBreakpointCondition,
+    openConditionalPanel,
+    breakpoints,
+    breakpoint,
+    contextMenuEvent
+  } = props;
+
+  contextMenuEvent.preventDefault();
+
+  const deleteSelfLabel = L10N.getStr("breakpointMenuItem.deleteSelf2.label");
+  const deleteAllLabel = L10N.getStr("breakpointMenuItem.deleteAll2.label");
+  const deleteOthersLabel = L10N.getStr("breakpointMenuItem.deleteOthers2.label");
+  const enableSelfLabel = L10N.getStr("breakpointMenuItem.enableSelf2.label");
+  const enableAllLabel = L10N.getStr("breakpointMenuItem.enableAll2.label");
+  const enableOthersLabel = L10N.getStr("breakpointMenuItem.enableOthers2.label");
+  const disableSelfLabel = L10N.getStr("breakpointMenuItem.disableSelf2.label");
+  const disableAllLabel = L10N.getStr("breakpointMenuItem.disableAll2.label");
+  const disableOthersLabel = L10N.getStr("breakpointMenuItem.disableOthers2.label");
+  const removeConditionLabel = L10N.getStr("breakpointMenuItem.removeCondition2.label");
+  const addConditionLabel = L10N.getStr("breakpointMenuItem.addCondition2.label");
+  const editConditionLabel = L10N.getStr("breakpointMenuItem.editCondition2.label");
+
+  const deleteSelfKey = L10N.getStr("breakpointMenuItem.deleteSelf2.accesskey");
+  const deleteAllKey = L10N.getStr("breakpointMenuItem.deleteAll2.accesskey");
+  const deleteOthersKey = L10N.getStr("breakpointMenuItem.deleteOthers2.accesskey");
+  const enableSelfKey = L10N.getStr("breakpointMenuItem.enableSelf2.accesskey");
+  const enableAllKey = L10N.getStr("breakpointMenuItem.enableAll2.accesskey");
+  const enableOthersKey = L10N.getStr("breakpointMenuItem.enableOthers2.accesskey");
+  const disableSelfKey = L10N.getStr("breakpointMenuItem.disableSelf2.accesskey");
+  const disableAllKey = L10N.getStr("breakpointMenuItem.disableAll2.accesskey");
+  const disableOthersKey = L10N.getStr("breakpointMenuItem.disableOthers2.accesskey");
+  const removeConditionKey = L10N.getStr("breakpointMenuItem.removeCondition2.accesskey");
+  const editConditionKey = L10N.getStr("breakpointMenuItem.editCondition2.accesskey");
+  const addConditionKey = L10N.getStr("breakpointMenuItem.addCondition2.accesskey");
+
+  const otherBreakpoints = breakpoints.filter(b => b !== breakpoint);
+  const enabledBreakpoints = breakpoints.filter(b => !b.disabled);
+  const disabledBreakpoints = breakpoints.filter(b => b.disabled);
+  const otherEnabledBreakpoints = breakpoints.filter(b => !b.disabled && b !== breakpoint);
+  const otherDisabledBreakpoints = breakpoints.filter(b => b.disabled && b !== breakpoint);
+
+  const deleteSelf = {
+    id: "node-menu-delete-self",
+    label: deleteSelfLabel,
+    accesskey: deleteSelfKey,
+    disabled: false,
+    click: () => removeBreakpoint(breakpoint.location)
+  };
+
+  const deleteAll = {
+    id: "node-menu-delete-all",
+    label: deleteAllLabel,
+    accesskey: deleteAllKey,
+    disabled: false,
+    click: () => removeAllBreakpoints()
+  };
+
+  const deleteOthers = {
+    id: "node-menu-delete-other",
+    label: deleteOthersLabel,
+    accesskey: deleteOthersKey,
+    disabled: false,
+    click: () => removeBreakpoints(otherBreakpoints)
+  };
+
+  const enableSelf = {
+    id: "node-menu-enable-self",
+    label: enableSelfLabel,
+    accesskey: enableSelfKey,
+    disabled: false,
+    click: () => toggleDisabledBreakpoint(breakpoint.location.line)
+  };
+
+  const enableAll = {
+    id: "node-menu-enable-all",
+    label: enableAllLabel,
+    accesskey: enableAllKey,
+    disabled: false,
+    click: () => toggleAllBreakpoints(false)
+  };
+
+  const enableOthers = {
+    id: "node-menu-enable-others",
+    label: enableOthersLabel,
+    accesskey: enableOthersKey,
+    disabled: false,
+    click: () => toggleBreakpoints(false, otherDisabledBreakpoints)
+  };
+
+  const disableSelf = {
+    id: "node-menu-disable-self",
+    label: disableSelfLabel,
+    accesskey: disableSelfKey,
+    disabled: false,
+    click: () => toggleDisabledBreakpoint(breakpoint.location.line)
+  };
+
+  const disableAll = {
+    id: "node-menu-disable-all",
+    label: disableAllLabel,
+    accesskey: disableAllKey,
+    disabled: false,
+    click: () => toggleAllBreakpoints(true)
+  };
+
+  const disableOthers = {
+    id: "node-menu-disable-others",
+    label: disableOthersLabel,
+    accesskey: disableOthersKey,
+    click: () => toggleBreakpoints(true, otherEnabledBreakpoints)
+  };
+
+  const removeCondition = {
+    id: "node-menu-remove-condition",
+    label: removeConditionLabel,
+    accesskey: removeConditionKey,
+    disabled: false,
+    click: () => setBreakpointCondition(breakpoint.location)
+  };
+
+  const addCondition = {
+    id: "node-menu-add-condition",
+    label: addConditionLabel,
+    accesskey: addConditionKey,
+    click: () => {
+      selectLocation(breakpoint.location);
+      openConditionalPanel(breakpoint.location.line);
+    }
+  };
+
+  const editCondition = {
+    id: "node-menu-edit-condition",
+    label: editConditionLabel,
+    accesskey: editConditionKey,
+    click: () => {
+      selectLocation(breakpoint.location);
+      openConditionalPanel(breakpoint.location.line);
+    }
+  };
+
+  const hideEnableSelf = !breakpoint.disabled;
+  const hideEnableAll = disabledBreakpoints.size === 0;
+  const hideEnableOthers = otherDisabledBreakpoints.size === 0;
+  const hideDisableAll = enabledBreakpoints.size === 0;
+  const hideDisableOthers = otherEnabledBreakpoints.size === 0;
+  const hideDisableSelf = breakpoint.disabled;
+
+  const items = [{ item: enableSelf, hidden: () => hideEnableSelf }, { item: enableAll, hidden: () => hideEnableAll }, { item: enableOthers, hidden: () => hideEnableOthers }, {
+    item: { type: "separator" },
+    hidden: () => hideEnableSelf && hideEnableAll && hideEnableOthers
+  }, { item: deleteSelf }, { item: deleteAll }, { item: deleteOthers, hidden: () => breakpoints.size === 1 }, {
+    item: { type: "separator" },
+    hidden: () => hideDisableSelf && hideDisableAll && hideDisableOthers
+  }, { item: disableSelf, hidden: () => hideDisableSelf }, { item: disableAll, hidden: () => hideDisableAll }, { item: disableOthers, hidden: () => hideDisableOthers }, {
+    item: { type: "separator" }
+  }, {
+    item: addCondition,
+    hidden: () => breakpoint.condition
+  }, {
+    item: editCondition,
+    hidden: () => !breakpoint.condition
+  }, {
+    item: removeCondition,
+    hidden: () => !breakpoint.condition
+  }];
+
+  (0, _devtoolsContextmenu.showMenu)(contextMenuEvent, (0, _devtoolsContextmenu.buildMenu)(items));
+}
+
+/***/ }),
+/* 1806 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.createEditor = createEditor;
+
+var _sourceEditor = __webpack_require__(197);
+
+var _sourceEditor2 = _interopRequireDefault(_sourceEditor);
+
+var _prefs = __webpack_require__(226);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function createEditor() {
+  const gutters = ["breakpoints", "hit-markers", "CodeMirror-linenumbers"];
+
+  if (_prefs.features.codeFolding) {
+    gutters.push("CodeMirror-foldgutter");
+  }
+
+  return new _sourceEditor2.default({
+    mode: "javascript",
+    foldGutter: _prefs.features.codeFolding,
+    enableCodeFolding: _prefs.features.codeFolding,
+    readOnly: true,
+    lineNumbers: true,
+    theme: "mozilla",
+    styleActiveLine: false,
+    lineWrapping: false,
+    matchBrackets: true,
+    showAnnotationRuler: true,
+    gutters,
+    value: " ",
+    extraKeys: {
+      // Override code mirror keymap to avoid conflicts with split console.
+      Esc: false,
+      "Cmd-F": false,
+      "Cmd-G": false
+    }
+  });
+}
+
+/***/ }),
+/* 1807 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.isImmutable = isImmutable;
+exports.isReactComponent = isReactComponent;
+
+
+const IMMUTABLE_FIELDS = ["_root", "__ownerID", "__altered", "__hash"]; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                                         * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                                         * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function isImmutable(result) {
+  if (!result || !result.preview) {
+    return;
+  }
+
+  const ownProperties = result.preview.ownProperties;
+  if (!ownProperties) {
+    return;
+  }
+
+  return IMMUTABLE_FIELDS.every(field => Object.keys(ownProperties).includes(field));
+}
+
+function isReactComponent(result) {
+  if (!result || !result.preview) {
+    return;
+  }
+
+  const ownProperties = result.preview.ownProperties;
+  if (!ownProperties) {
+    return;
+  }
+
+  return Object.keys(ownProperties).includes("_reactInternalInstance");
+}
+
+/***/ }),
+/* 1808 */
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 256 247\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><defs><radialGradient cx=\"78.7636112%\" cy=\"37.8476394%\" fx=\"78.7636112%\" fy=\"37.8476394%\" r=\"89.8725577%\" id=\"radialGradient-1\"><stop stop-color=\"#F80090\" offset=\"0%\"></stop><stop stop-color=\"#4D008E\" offset=\"100%\"></stop></radialGradient><radialGradient cx=\"68.7389016%\" cy=\"4.39833672%\" fx=\"68.7389016%\" fy=\"4.39833672%\" r=\"81.7284786%\" id=\"radialGradient-2\"><stop stop-color=\"#57008E\" offset=\"0%\"></stop><stop stop-color=\"#5C008E\" offset=\"29.1746283%\"></stop><stop stop-color=\"#F80090\" offset=\"100%\"></stop></radialGradient><linearGradient x1=\"18.2386532%\" y1=\"0%\" x2=\"81.1591125%\" y2=\"84.3374763%\" id=\"linearGradient-3\"><stop stop-color=\"#F70090\" offset=\"0%\"></stop><stop stop-color=\"#E50090\" offset=\"66.9712865%\"></stop><stop stop-color=\"#D6008F\" stop-opacity=\"0.2\" offset=\"82.7147533%\"></stop><stop stop-color=\"#C10090\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"64.9060589%\" y1=\"71.5585538%\" x2=\"44.2897699%\" y2=\"50%\" id=\"linearGradient-4\"><stop stop-color=\"#B2008F\" stop-opacity=\"0.151340138\" offset=\"0%\"></stop><stop stop-color=\"#F70090\" stop-opacity=\"0.4\" offset=\"40.0350765%\"></stop><stop stop-color=\"#F60090\" stop-opacity=\"0.891668\" offset=\"64.8995536%\"></stop><stop stop-color=\"#FF0090\" offset=\"100%\"></stop></linearGradient></defs><g><path d=\"M16.6852208,157.125328 C3.56690702,87.3798324 38.2363025,20.1145078 117.808706,11.1662199 C106.835616,-0.558801732 91.8452087,-0.646905628 84.9481697,0.779380087 C72.770288,4.66044372 73.1525932,12.540855 59.3390152,22.7199675 C45.6064437,30.5634307 38.7094156,24.5568182 28.7057455,32.6879515 C18.7234849,40.7583874 25.6888528,59.2851732 21.5022823,62.8870857 C17.3464381,70.0905489 4.45500952,76.5077264 2.10834286,85.6062545 C0.168948918,97.2420641 7.37241212,105.553752 7.09535584,115.527778 C7.92652468,123.839467 -1.17920693,128.539449 0.129052814,135.275796 C4.0477368,146.281025 11.600845,152.904887 15.1615723,155.958047 C15.9781085,156.533531 16.8404881,157.95083 16.6852208,157.125328 L16.6852208,157.125328 Z\" fill=\"#FF0090\"></path><path d=\"M158.275491,60.578542 C155.368486,60.578542 153.011422,58.2214776 153.011422,55.3144727 C153.011422,52.4074679 155.368486,50.0504035 158.275491,50.0504035 C161.182496,50.0504035 163.53956,52.4074679 163.53956,55.3144727 C163.53956,58.2214776 161.182496,60.578542 158.275491,60.578542 L158.275491,60.578542 Z M19.7566405,164.732808 C7.1500258,104.116773 46.1602355,53.4676156 121.704062,78.4026805 C166.031404,104.334594 221.793282,102.646102 224.307422,85.8832 C230.514061,65.7878769 196.047681,24.3767065 144.515214,13.5715117 C42.2814476,-6.37654026 -12.8335943,104.116774 19.7566405,164.732808 L19.7566405,164.732808 Z\" fill=\"url(#radialGradient-1)\"></path><path d=\"M187.458604,171.493257 C202.639072,173.137863 217.048769,169.494573 230.402327,158.61014 C210.228197,181.112651 185.002777,192.426521 156.059262,195.505171 C169.878829,207.254019 183.20579,212.546348 195.955366,210.281136 C160.528734,220.05679 130.847947,209.296529 94.7424273,173.340673 C92.8517347,183.020022 103.074741,198.100667 113.611745,207.727264 C52.4742909,181.221845 47.1143627,98.6544556 121.66531,78.3442237 C44.3844415,41.214641 0.686373501,113.357693 22.1558444,172.485931 C43.1623368,218.026693 99.1402667,253.085223 160.492163,245.3753 C190.292928,241.7251 234.79401,221.178935 252.973664,172.485931 C240.160919,183.983766 217.257941,193.997836 207.037617,194.765984 C241.628648,177.478781 260.301586,148.103896 255.060336,107.955387 C247.895106,125.013742 238.441392,138.114625 226.616076,147.112305 C251.735653,107.955387 247.425219,87.716426 228.832526,65.4732398 C242.131228,102.044668 224.928249,142.633967 187.458604,171.493257 L187.458604,171.493257 Z\" fill=\"url(#radialGradient-2)\"></path><path d=\"M169.707072,213.625541 C167.082407,213.13513 175.656929,217.098842 159.079366,212.710316 C142.501804,208.32179 125.622502,204.092744 94.7424273,173.340673 C92.8517347,183.020022 103.074741,198.100667 113.611745,207.727264 C142.056275,227.564927 122.711866,218.286797 166.051946,233.269481 C169.52976,226.346862 169.707072,220.195346 169.707072,213.625541 L169.707072,213.625541 Z\" fill=\"url(#linearGradient-3)\"></path><path d=\"M114.601372,57.8510108 C114.601372,57.8510108 118.369452,52.2893628 119.836219,49.7810251 C121.633641,46.7072319 124.393939,41.104618 124.393939,41.104618 C124.393939,41.104618 95.389611,31.6417749 88.2716448,30.4871665 C66.1450215,36.2308801 66.0645022,45.5009559 78.435065,59.690116 C79.8114806,61.2693368 114.601372,57.8510108 114.601372,57.8510108 L114.601372,57.8510108 Z\" fill=\"url(#linearGradient-4)\"></path></g></svg>"
 
 /***/ })
 /******/ ]);

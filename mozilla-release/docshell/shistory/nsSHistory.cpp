@@ -235,10 +235,7 @@ nsSHistory::nsSHistory()
   : mIndex(-1)
   , mLength(0)
   , mRequestedIndex(-1)
-  , mGlobalIndexOffset(0)
-  , mEntriesInFollowingPartialHistories(0)
   , mRootDocShell(nullptr)
-  , mIsPartial(false)
 {
   // Add this new SHistory object to the list
   gSHistoryList.insertBack(this);
@@ -335,7 +332,7 @@ nsSHistory::Startup()
   // The goal of this is to unbreak users who have inadvertently set their
   // session history size to less than the default value.
   int32_t defaultHistoryMaxSize =
-    Preferences::GetDefaultInt(PREF_SHISTORY_SIZE, 50);
+    Preferences::GetInt(PREF_SHISTORY_SIZE, 50, PrefValueKind::Default);
   if (gHistoryMaxSize < defaultHistoryMaxSize) {
     gHistoryMaxSize = defaultHistoryMaxSize;
   }
@@ -375,6 +372,223 @@ nsSHistory::Shutdown()
     }
     gObserver = nullptr;
   }
+}
+
+// static
+nsISHEntry*
+nsSHistory::GetRootSHEntry(nsISHEntry* aEntry)
+{
+  nsCOMPtr<nsISHEntry> rootEntry = aEntry;
+  nsISHEntry* result = nullptr;
+  while (rootEntry) {
+    result = rootEntry;
+    result->GetParent(getter_AddRefs(rootEntry));
+  }
+
+  return result;
+}
+
+// static
+nsresult
+nsSHistory::WalkHistoryEntries(nsISHEntry* aRootEntry,
+                               nsDocShell* aRootShell,
+                               WalkHistoryEntriesFunc aCallback,
+                               void* aData)
+{
+  NS_ENSURE_TRUE(aRootEntry, NS_ERROR_FAILURE);
+
+  nsCOMPtr<nsISHContainer> container(do_QueryInterface(aRootEntry));
+  if (!container) {
+    return NS_ERROR_FAILURE;
+  }
+
+  int32_t childCount;
+  container->GetChildCount(&childCount);
+  for (int32_t i = 0; i < childCount; i++) {
+    nsCOMPtr<nsISHEntry> childEntry;
+    container->GetChildAt(i, getter_AddRefs(childEntry));
+    if (!childEntry) {
+      // childEntry can be null for valid reasons, for example if the
+      // docshell at index i never loaded anything useful.
+      // Remember to clone also nulls in the child array (bug 464064).
+      aCallback(nullptr, nullptr, i, aData);
+      continue;
+    }
+
+    nsDocShell* childShell = nullptr;
+    if (aRootShell) {
+      // Walk the children of aRootShell and see if one of them
+      // has srcChild as a SHEntry.
+      int32_t length;
+      aRootShell->GetChildCount(&length);
+      for (int32_t i = 0; i < length; i++) {
+        nsCOMPtr<nsIDocShellTreeItem> item;
+        nsresult rv = aRootShell->GetChildAt(i, getter_AddRefs(item));
+        NS_ENSURE_SUCCESS(rv, rv);
+        nsDocShell* child = static_cast<nsDocShell*>(item.get());
+        if (child->HasHistoryEntry(childEntry)) {
+          childShell = child;
+          break;
+        }
+      }
+    }
+    nsresult rv = aCallback(childEntry, childShell, i, aData);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  return NS_OK;
+}
+
+// callback data for WalkHistoryEntries
+struct MOZ_STACK_CLASS CloneAndReplaceData
+{
+  CloneAndReplaceData(uint32_t aCloneID, nsISHEntry* aReplaceEntry,
+                      bool aCloneChildren, nsISHEntry* aDestTreeParent)
+    : cloneID(aCloneID)
+    , cloneChildren(aCloneChildren)
+    , replaceEntry(aReplaceEntry)
+    , destTreeParent(aDestTreeParent)
+  {
+  }
+
+  uint32_t cloneID;
+  bool cloneChildren;
+  nsISHEntry* replaceEntry;
+  nsISHEntry* destTreeParent;
+  nsCOMPtr<nsISHEntry> resultEntry;
+};
+
+// static
+nsresult
+nsSHistory::CloneAndReplaceChild(nsISHEntry* aEntry,
+                                          nsDocShell* aShell,
+                                          int32_t aEntryIndex,
+                                          void* aData)
+{
+  nsCOMPtr<nsISHEntry> dest;
+
+  CloneAndReplaceData* data = static_cast<CloneAndReplaceData*>(aData);
+  uint32_t cloneID = data->cloneID;
+  nsISHEntry* replaceEntry = data->replaceEntry;
+
+  nsCOMPtr<nsISHContainer> container = do_QueryInterface(data->destTreeParent);
+  if (!aEntry) {
+    if (container) {
+      container->AddChild(nullptr, aEntryIndex);
+    }
+    return NS_OK;
+  }
+
+  uint32_t srcID;
+  aEntry->GetID(&srcID);
+
+  nsresult rv = NS_OK;
+  if (srcID == cloneID) {
+    // Replace the entry
+    dest = replaceEntry;
+  } else {
+    // Clone the SHEntry...
+    rv = aEntry->Clone(getter_AddRefs(dest));
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  dest->SetIsSubFrame(true);
+
+  if (srcID != cloneID || data->cloneChildren) {
+    // Walk the children
+    CloneAndReplaceData childData(cloneID, replaceEntry,
+                                  data->cloneChildren, dest);
+    rv = WalkHistoryEntries(aEntry, aShell,
+                            CloneAndReplaceChild, &childData);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  if (srcID != cloneID && aShell) {
+    aShell->SwapHistoryEntries(aEntry, dest);
+  }
+
+  if (container) {
+    container->AddChild(dest, aEntryIndex);
+  }
+
+  data->resultEntry = dest;
+  return rv;
+}
+
+// static
+nsresult
+nsSHistory::CloneAndReplace(nsISHEntry* aSrcEntry,
+                                     nsDocShell* aSrcShell,
+                                     uint32_t aCloneID,
+                                     nsISHEntry* aReplaceEntry,
+                                     bool aCloneChildren,
+                                     nsISHEntry** aResultEntry)
+{
+  NS_ENSURE_ARG_POINTER(aResultEntry);
+  NS_ENSURE_TRUE(aReplaceEntry, NS_ERROR_FAILURE);
+
+  CloneAndReplaceData data(aCloneID, aReplaceEntry, aCloneChildren, nullptr);
+  nsresult rv = CloneAndReplaceChild(aSrcEntry, aSrcShell, 0, &data);
+
+  data.resultEntry.swap(*aResultEntry);
+  return rv;
+}
+
+// static
+nsresult
+nsSHistory::SetChildHistoryEntry(nsISHEntry* aEntry, nsDocShell* aShell,
+                                 int32_t aEntryIndex, void* aData)
+{
+  SwapEntriesData* data = static_cast<SwapEntriesData*>(aData);
+  nsDocShell* ignoreShell = data->ignoreShell;
+
+  if (!aShell || aShell == ignoreShell) {
+    return NS_OK;
+  }
+
+  nsISHEntry* destTreeRoot = data->destTreeRoot;
+
+  nsCOMPtr<nsISHEntry> destEntry;
+  nsCOMPtr<nsISHContainer> container = do_QueryInterface(data->destTreeParent);
+
+  if (container) {
+    // aEntry is a clone of some child of destTreeParent, but since the
+    // trees aren't necessarily in sync, we'll have to locate it.
+    // Note that we could set aShell's entry to null if we don't find a
+    // corresponding entry under destTreeParent.
+
+    uint32_t targetID, id;
+    aEntry->GetID(&targetID);
+
+    // First look at the given index, since this is the common case.
+    nsCOMPtr<nsISHEntry> entry;
+    container->GetChildAt(aEntryIndex, getter_AddRefs(entry));
+    if (entry && NS_SUCCEEDED(entry->GetID(&id)) && id == targetID) {
+      destEntry.swap(entry);
+    } else {
+      int32_t childCount;
+      container->GetChildCount(&childCount);
+      for (int32_t i = 0; i < childCount; ++i) {
+        container->GetChildAt(i, getter_AddRefs(entry));
+        if (!entry) {
+          continue;
+        }
+
+        entry->GetID(&id);
+        if (id == targetID) {
+          destEntry.swap(entry);
+          break;
+        }
+      }
+    }
+  } else {
+    destEntry = destTreeRoot;
+  }
+
+  aShell->SwapHistoryEntries(aEntry, destEntry);
+
+  // Now handle the children of aEntry.
+  SwapEntriesData childData = { ignoreShell, destTreeRoot, destEntry };
+  return WalkHistoryEntries(aEntry, aShell, SetChildHistoryEntry, &childData);
 }
 
 /* Add an entry to the History list at mIndex and
@@ -449,10 +663,6 @@ nsSHistory::AddEntry(nsISHEntry* aSHEntry, bool aPersist)
   NOTIFY_LISTENERS(OnLengthChanged, (mLength));
   NOTIFY_LISTENERS(OnIndexChanged, (mIndex));
 
-  // Much like how mLength works above, when changing our entries, all following
-  // partial histories should be purged, so we just reset the number to zero.
-  mEntriesInFollowingPartialHistories = 0;
-
   // If this is the very first transaction, initialize the list
   if (!mListRoot) {
     mListRoot = txn;
@@ -466,14 +676,6 @@ nsSHistory::AddEntry(nsISHEntry* aSHEntry, bool aPersist)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsSHistory::GetIsPartial(bool* aResult)
-{
-  NS_ENSURE_ARG_POINTER(aResult);
-  *aResult = mIsPartial;
-  return NS_OK;
-}
-
 /* Get size of the history list */
 NS_IMETHODIMP
 nsSHistory::GetCount(int32_t* aResult)
@@ -483,74 +685,12 @@ nsSHistory::GetCount(int32_t* aResult)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsSHistory::GetGlobalCount(int32_t* aResult)
-{
-  NS_ENSURE_ARG_POINTER(aResult);
-  *aResult = mGlobalIndexOffset + mLength + mEntriesInFollowingPartialHistories;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSHistory::GetGlobalIndexOffset(int32_t* aResult)
-{
-  NS_ENSURE_ARG_POINTER(aResult);
-  *aResult = mGlobalIndexOffset;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSHistory::OnPartialSHistoryActive(int32_t aGlobalLength, int32_t aTargetIndex)
-{
-  NS_ENSURE_TRUE(mRootDocShell && mIsPartial, NS_ERROR_UNEXPECTED);
-
-  int32_t extraLength = aGlobalLength - mLength - mGlobalIndexOffset;
-  NS_ENSURE_TRUE(extraLength >= 0, NS_ERROR_UNEXPECTED);
-
-  if (extraLength != mEntriesInFollowingPartialHistories) {
-    mEntriesInFollowingPartialHistories = extraLength;
-  }
-
-  return RestoreToEntryAtIndex(aTargetIndex);
-}
-
-NS_IMETHODIMP
-nsSHistory::OnPartialSHistoryDeactive()
-{
-  NS_ENSURE_TRUE(mRootDocShell && mIsPartial, NS_ERROR_UNEXPECTED);
-
-  // Ensure the deactive docshell loads about:blank.
-  nsCOMPtr<nsIWebNavigation> webNav = do_QueryInterface(mRootDocShell);
-  nsCOMPtr<nsIURI> currentURI;
-  webNav->GetCurrentURI(getter_AddRefs(currentURI));
-  if (NS_IsAboutBlank(currentURI)) {
-    return NS_OK;
-  }
-
-  // At this point we've swapped out to an invisble tab, and can not prompt here.
-  // The check should have been done in nsDocShell::InternalLoad, so we'd
-  // just force docshell to load about:blank.
-  if (NS_FAILED(mRootDocShell->ForceCreateAboutBlankContentViewer(nullptr))) {
-    return NS_ERROR_FAILURE;
-  }
-
-  return NS_OK;
-}
-
 /* Get index of the history list */
 NS_IMETHODIMP
 nsSHistory::GetIndex(int32_t* aResult)
 {
   NS_PRECONDITION(aResult, "null out param?");
   *aResult = mIndex;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSHistory::GetGlobalIndex(int32_t* aResult)
-{
-  NS_PRECONDITION(aResult, "null out param?");
-  *aResult = mIndex + mGlobalIndexOffset;
   return NS_OK;
 }
 
@@ -805,9 +945,6 @@ nsSHistory::PurgeHistory(int32_t aEntries)
   mLength -= cnt;
   mIndex -= cnt;
 
-  // All following partial histories will be deleted in this case.
-  mEntriesInFollowingPartialHistories = 0;
-
   // Now if we were not at the end of the history, mIndex could have
   // become far too negative.  If so, just set it to -1.
   if (mIndex < -1) {
@@ -848,13 +985,6 @@ nsSHistory::RemoveSHistoryListener(nsISHistoryListener* aListener)
   // one we have in store.
   nsWeakPtr listener = do_GetWeakReference(aListener);
   mListeners.RemoveElement(listener);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSHistory::SetPartialSHistoryListener(nsIPartialSHistoryListener* aListener)
-{
-  mPartialHistoryListener = do_GetWeakReference(aListener);
   return NS_OK;
 }
 
@@ -936,11 +1066,6 @@ nsSHistory::GetCanGoBack(bool* aCanGoBack)
 {
   NS_ENSURE_ARG_POINTER(aCanGoBack);
 
-  if (mGlobalIndexOffset) {
-    *aCanGoBack = true;
-    return NS_OK;
-  }
-
   int32_t index = -1;
   NS_ENSURE_SUCCESS(GetIndex(&index), NS_ERROR_FAILURE);
   if (index > 0) {
@@ -956,11 +1081,6 @@ NS_IMETHODIMP
 nsSHistory::GetCanGoForward(bool* aCanGoForward)
 {
   NS_ENSURE_ARG_POINTER(aCanGoForward);
-
-  if (mEntriesInFollowingPartialHistories) {
-    *aCanGoForward = true;
-    return NS_OK;
-  }
 
   int32_t index = -1;
   int32_t count = -1;
@@ -1554,7 +1674,6 @@ nsSHistory::RemoveDuplicate(int32_t aIndex, bool aKeepNext)
       mRequestedIndex = mRequestedIndex - 1;
     }
     --mLength;
-    mEntriesInFollowingPartialHistories = 0;
     NOTIFY_LISTENERS(OnLengthChanged, (mLength));
     return true;
   }
@@ -1714,12 +1833,9 @@ nsSHistory::LoadURI(const char16_t* aURI,
 }
 
 NS_IMETHODIMP
-nsSHistory::GotoIndex(int32_t aGlobalIndex)
+nsSHistory::GotoIndex(int32_t aIndex)
 {
-  // We provide abstraction of grouped session history for nsIWebNavigation
-  // functions, so the index passed in here is global index.
-  return LoadEntry(aGlobalIndex - mGlobalIndexOffset, nsIDocShellLoadInfo::loadHistory,
-                   HIST_CMD_GOTOINDEX);
+  return LoadEntry(aIndex, nsIDocShellLoadInfo::loadHistory, HIST_CMD_GOTOINDEX);
 }
 
 nsresult
@@ -1746,50 +1862,35 @@ nsSHistory::LoadEntry(int32_t aIndex, long aLoadType, uint32_t aHistCmd)
   nsCOMPtr<nsIURI> nextURI;
   nsCOMPtr<nsISHEntry> prevEntry;
   nsCOMPtr<nsISHEntry> nextEntry;
-  bool isCrossBrowserNavigation = false;
   if (aIndex < 0 || aIndex >= mLength) {
-    if (aIndex + mGlobalIndexOffset < 0) {
-      // The global index is negative.
-      return NS_ERROR_FAILURE;
-    }
-
-    if (aIndex - mLength >= mEntriesInFollowingPartialHistories) {
-      // The global index exceeds max possible value.
-      return NS_ERROR_FAILURE;
-    }
-
-    // The global index is valid. Mark that we're going to navigate to another
-    // partial history, but wait until we've notified all listeners before
-    // actually do so.
-    isCrossBrowserNavigation = true;
-  } else {
-    // This is a normal local history navigation.
-    // Keep note of requested history index in mRequestedIndex.
-    mRequestedIndex = aIndex;
-
-    GetEntryAtIndex(mIndex, false, getter_AddRefs(prevEntry));
-    GetEntryAtIndex(mRequestedIndex, false, getter_AddRefs(nextEntry));
-    if (!nextEntry || !prevEntry) {
-      mRequestedIndex = -1;
-      return NS_ERROR_FAILURE;
-    }
-
-    // Remember that this entry is getting loaded at this point in the sequence
-    nsCOMPtr<nsISHEntryInternal> entryInternal = do_QueryInterface(nextEntry);
-
-    if (entryInternal) {
-      entryInternal->SetLastTouched(++gTouchCounter);
-    }
-
-    // Get the uri for the entry we are about to visit
-    nextEntry->GetURI(getter_AddRefs(nextURI));
+    // The index is out of range
+    return NS_ERROR_FAILURE;
   }
 
-  MOZ_ASSERT(isCrossBrowserNavigation || (prevEntry && nextEntry && nextURI),
-    "prevEntry, nextEntry and nextURI can be null only if isCrossBrowserNavigation is set");
+  // This is a normal local history navigation.
+  // Keep note of requested history index in mRequestedIndex.
+  mRequestedIndex = aIndex;
 
-  // Send appropriate listener notifications. Note nextURI could be null in case
-  // of grouped session history navigation.
+  GetEntryAtIndex(mIndex, false, getter_AddRefs(prevEntry));
+  GetEntryAtIndex(mRequestedIndex, false, getter_AddRefs(nextEntry));
+  if (!nextEntry || !prevEntry) {
+    mRequestedIndex = -1;
+    return NS_ERROR_FAILURE;
+  }
+
+  // Remember that this entry is getting loaded at this point in the sequence
+  nsCOMPtr<nsISHEntryInternal> entryInternal = do_QueryInterface(nextEntry);
+
+  if (entryInternal) {
+    entryInternal->SetLastTouched(++gTouchCounter);
+  }
+
+  // Get the uri for the entry we are about to visit
+  nextEntry->GetURI(getter_AddRefs(nextURI));
+
+  MOZ_ASSERT((prevEntry && nextEntry && nextURI), "prevEntry, nextEntry and nextURI can't be null");
+
+  // Send appropriate listener notifications.
   bool canNavigate = true;
   if (aHistCmd == HIST_CMD_BACK) {
     // We are going back one entry. Send GoBack notifications
@@ -1810,23 +1911,6 @@ nsSHistory::LoadEntry(int32_t aIndex, long aLoadType, uint32_t aHistCmd)
     // the operation, simply return.
     mRequestedIndex = -1;
     return NS_OK;  // XXX Maybe I can return some other error code?
-  }
-
-  if (isCrossBrowserNavigation) {
-    nsCOMPtr<nsIPartialSHistoryListener> listener =
-      do_QueryReferent(mPartialHistoryListener);
-    if (!listener) {
-      return NS_ERROR_FAILURE;
-    }
-
-    // CreateAboutBlankContentViewer would check for permit unload, fire proper
-    // pagehide / unload events and transfer content viewer ownership to SHEntry.
-    if (NS_FAILED(mRootDocShell->CreateAboutBlankContentViewer(nullptr))) {
-      return NS_ERROR_FAILURE;
-    }
-
-    return listener->OnRequestCrossBrowserNavigation(aIndex +
-                                                     mGlobalIndexOffset);
   }
 
   if (mRequestedIndex == mIndex) {
@@ -2017,25 +2101,6 @@ nsSHistory::GetSHistoryEnumerator(nsISimpleEnumerator** aEnumerator)
   RefPtr<nsSHEnumerator> iterator = new nsSHEnumerator(this);
   iterator.forget(aEnumerator);
   return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSHistory::OnAttachGroupedSHistory(int32_t aOffset)
-{
-  NS_ENSURE_TRUE(!mIsPartial && mRootDocShell, NS_ERROR_UNEXPECTED);
-  NS_ENSURE_TRUE(aOffset >= 0, NS_ERROR_ILLEGAL_VALUE);
-
-  mIsPartial = true;
-  mGlobalIndexOffset = aOffset;
-
-  // The last attached history is always at the end of the group.
-  mEntriesInFollowingPartialHistories = 0;
-
-  // Setting grouped history info may change canGoBack / canGoForward.
-  // Send a location change to update these values.
-  mRootDocShell->DispatchLocationChangeEvent();
-  return NS_OK;
-
 }
 
 nsSHEnumerator::nsSHEnumerator(nsSHistory* aSHistory) : mIndex(-1)

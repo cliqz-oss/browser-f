@@ -5,7 +5,6 @@ Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/policies.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 
 function login_handling(handler) {
   return function(request, response) {
@@ -48,8 +47,8 @@ add_task(async function run_test() {
 
     _("Initial state: We're successfully logged in.");
     await Service.login();
-    do_check_true(Service.isLoggedIn);
-    do_check_eq(Service.status.login, LOGIN_SUCCEEDED);
+    Assert.ok(Service.isLoggedIn);
+    Assert.equal(Service.status.login, LOGIN_SUCCEEDED);
 
     _("Simulate having changed the password somewhere else.");
     Service.identity._token.id = "somethingelse";
@@ -59,22 +58,22 @@ add_task(async function run_test() {
     await Service.sync();
 
     _("Verify that sync() threw an exception.");
-    do_check_true(threw);
+    Assert.ok(threw);
 
     _("We're no longer logged in.");
-    do_check_false(Service.isLoggedIn);
+    Assert.ok(!Service.isLoggedIn);
 
     _("Sync status won't have changed yet, because we haven't tried again.");
 
     _("globalScore is reset upon starting a sync.");
-    do_check_eq(Service.scheduler.globalScore, 0);
+    Assert.equal(Service.scheduler.globalScore, 0);
 
     _("Our next sync will fail appropriately.");
     try {
       await Service.sync();
     } catch (ex) {
     }
-    do_check_eq(Service.status.login, LOGIN_FAILED_LOGIN_REJECTED);
+    Assert.equal(Service.status.login, LOGIN_FAILED_LOGIN_REJECTED);
 
   } finally {
     Svc.Prefs.resetBranch("");

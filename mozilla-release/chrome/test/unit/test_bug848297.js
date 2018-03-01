@@ -18,10 +18,6 @@ var chromeReg = Cc["@mozilla.org/chrome/chrome-registry;1"]
                 .QueryInterface(Ci.nsIToolkitChromeRegistry);
 chromeReg.checkForNewChrome();
 
-var prefService = Cc["@mozilla.org/preferences-service;1"]
-                  .getService(Ci.nsIPrefService)
-                  .QueryInterface(Ci.nsIPrefBranch);
-
 function enum_to_array(strings) {
   let rv = [];
   while (strings.hasMore()) {
@@ -35,15 +31,15 @@ function run_test() {
 
   // without override
   Services.locale.setRequestedLocales(["de"]);
-  do_check_eq(chromeReg.getSelectedLocale("basepack"), "en-US");
-  do_check_eq(chromeReg.getSelectedLocale("overpack"), "de");
-  do_check_matches(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
+  Assert.equal(chromeReg.getSelectedLocale("basepack"), "en-US");
+  Assert.equal(chromeReg.getSelectedLocale("overpack"), "de");
+  Assert.deepEqual(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
                    ["en-US", "fr"]);
 
   // with override
-  prefService.setCharPref("chrome.override_package.basepack", "overpack");
-  do_check_eq(chromeReg.getSelectedLocale("basepack"), "de");
-  do_check_matches(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
+  Services.prefs.setCharPref("chrome.override_package.basepack", "overpack");
+  Assert.equal(chromeReg.getSelectedLocale("basepack"), "de");
+  Assert.deepEqual(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
                    ["de", "en-US"]);
 
 }

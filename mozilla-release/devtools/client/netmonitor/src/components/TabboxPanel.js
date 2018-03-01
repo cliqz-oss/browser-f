@@ -4,11 +4,8 @@
 
 "use strict";
 
-const {
-  createFactory,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
-const { connect } = require("devtools/client/shared/vendor/react-redux");
+const { createFactory } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { L10N } = require("../utils/l10n");
 const { PANELS } = require("../constants");
 
@@ -60,13 +57,22 @@ function TabboxPanel({
         id: PANELS.HEADERS,
         title: HEADERS_TITLE,
       },
-        HeadersPanel({ request, cloneSelectedRequest, openLink }),
+        HeadersPanel({
+          cloneSelectedRequest,
+          connector,
+          openLink,
+          request,
+        }),
       ),
       TabPanel({
         id: PANELS.COOKIES,
         title: COOKIES_TITLE,
       },
-        CookiesPanel({ request, openLink }),
+        CookiesPanel({
+          connector,
+          openLink,
+          request,
+        }),
       ),
       TabPanel({
         id: PANELS.PARAMS,
@@ -78,15 +84,18 @@ function TabboxPanel({
         id: PANELS.RESPONSE,
         title: RESPONSE_TITLE,
       },
-        ResponsePanel({ request, openLink }),
+        ResponsePanel({ request, openLink, connector }),
       ),
       TabPanel({
         id: PANELS.TIMINGS,
         title: TIMINGS_TITLE,
       },
-        TimingsPanel({ request }),
+        TimingsPanel({
+          connector,
+          request,
+        }),
       ),
-      request.cause && request.cause.stacktrace && request.cause.stacktrace.length > 0 &&
+      request.cause && request.cause.stacktraceAvailable &&
       TabPanel({
         id: PANELS.STACK_TRACE,
         title: STACK_TRACE_TITLE,
@@ -98,7 +107,11 @@ function TabboxPanel({
         id: PANELS.SECURITY,
         title: SECURITY_TITLE,
       },
-        SecurityPanel({ request, openLink }),
+        SecurityPanel({
+          connector,
+          openLink,
+          request,
+        }),
       ),
     )
   );
@@ -116,4 +129,4 @@ TabboxPanel.propTypes = {
   sourceMapService: PropTypes.object,
 };
 
-module.exports = connect()(TabboxPanel);
+module.exports = TabboxPanel;

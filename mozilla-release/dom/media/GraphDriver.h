@@ -119,7 +119,6 @@ public:
   virtual void WaitForNextIteration() = 0;
   /* Wakes up the graph if it is waiting. */
   virtual void WakeUp() = 0;
-  virtual void Destroy() {}
   /* Start the graph, init the driver, start the thread. */
   virtual void Start() = 0;
   /* Revive this driver, as more messages just arrived. */
@@ -215,22 +214,6 @@ protected:
   // monitor.
   MediaStreamGraphImpl* mGraphImpl;
 
-  // This enum specifies the wait state of the driver.
-  enum WaitState {
-    // RunThread() is running normally
-    WAITSTATE_RUNNING,
-    // RunThread() is paused waiting for its next iteration, which will
-    // happen soon
-    WAITSTATE_WAITING_FOR_NEXT_ITERATION,
-    // RunThread() is paused indefinitely waiting for something to change
-    WAITSTATE_WAITING_INDEFINITELY,
-    // Something has signaled RunThread() to wake up immediately,
-    // but it hasn't done so yet
-    WAITSTATE_WAKING_UP
-  };
-  // This must be access with the monitor.
-  WaitState mWaitState;
-
   // This is used on the main thread (during initialization), and the graph
   // thread. No monitor needed because we know the graph thread does not run
   // during the initialization.
@@ -311,6 +294,23 @@ private:
   // graph thread does not run during the initialization.
   TimeStamp mInitialTimeStamp;
   TimeStamp mLastTimeStamp;
+
+  // This enum specifies the wait state of the driver.
+  enum WaitState {
+    // RunThread() is running normally
+    WAITSTATE_RUNNING,
+    // RunThread() is paused waiting for its next iteration, which will
+    // happen soon
+    WAITSTATE_WAITING_FOR_NEXT_ITERATION,
+    // RunThread() is paused indefinitely waiting for something to change
+    WAITSTATE_WAITING_INDEFINITELY,
+    // Something has signaled RunThread() to wake up immediately,
+    // but it hasn't done so yet
+    WAITSTATE_WAKING_UP
+  };
+  // This must be access with the monitor.
+  WaitState mWaitState;
+
   // This is true if this SystemClockDriver runs the graph because we could not
   // open an audio stream.
   bool mIsFallback;
@@ -383,7 +383,6 @@ public:
   explicit AudioCallbackDriver(MediaStreamGraphImpl* aGraphImpl);
   virtual ~AudioCallbackDriver();
 
-  void Destroy() override;
   void Start() override;
   void Revive() override;
   void RemoveCallback() override;
@@ -486,6 +485,10 @@ private:
   friend class AsyncCubebTask;
   bool Init();
   void Stop();
+  /**
+   *  Fall back to a SystemClockDriver using a normal thread. If needed,
+   *  the graph will try to re-open an audio stream later. */
+  void FallbackToSystemClockDriver();
 
   /* MediaStreamGraphs are always down/up mixed to output channels. */
   uint32_t mOutputChannels;

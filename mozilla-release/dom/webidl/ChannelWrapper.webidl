@@ -71,11 +71,22 @@ interface ChannelWrapper : EventTarget {
   /**
    * Redirects the wrapped HTTP channel to the given URI. For other channel
    * types, this method will throw. The redirect is an internal redirect, and
-   * the  behavior is the same as nsIHttpChannel.redirectTo.
+   * the behavior is the same as nsIHttpChannel.redirectTo.
    */
   [Throws]
   void redirectTo(URI url);
 
+  /**
+   * Requests an upgrade of the HTTP channel to a secure request. For other channel
+   * types, this method will throw. The redirect is an internal redirect, and
+   * the behavior is the same as nsIHttpChannel.upgradeToSecure. Setting this
+   * flag is only effective during the WebRequest.onBeforeRequest in
+   * Web Extensions, calling this at any other point during the request will
+   * have no effect. Setting this flag in addition to calling redirectTo
+   * results in the redirect happening rather than the upgrade request.
+   */
+  [Throws]
+  void upgradeToSecure();
 
   /**
    * The content type of the request, usually as read from the Content-Type
@@ -330,17 +341,25 @@ interface ChannelWrapper : EventTarget {
   /**
    * Sets the given request header to the given value, overwriting any
    * previous value. Setting a header to a null string has the effect of
-   * removing it.
+   * removing it.  If merge is true, then the passed value will be merged
+   * to any existing value that exists for the header. Otherwise, any prior
+   * value for the header will be overwritten. Merge is ignored for headers
+   * that cannot be merged.
    *
    * For non-HTTP requests, throws NS_ERROR_UNEXPECTED.
    */
   [Throws]
-  void setRequestHeader(ByteString header, ByteString value);
+  void setRequestHeader(ByteString header,
+                        ByteString value,
+                        optional boolean merge = false);
 
   /**
    * Sets the given response header to the given value, overwriting any
    * previous value. Setting a header to a null string has the effect of
-   * removing it.
+   * removing it.  If merge is true, then the passed value will be merged
+   * to any existing value that exists for the header (e.g. handling multiple
+   * Set-Cookie headers).  Otherwise, any prior value for the header will be
+   * overwritten. Merge is ignored for headers that cannot be merged.
    *
    * For non-HTTP requests, throws NS_ERROR_UNEXPECTED.
    *
@@ -348,7 +367,9 @@ interface ChannelWrapper : EventTarget {
    * getResponseHeaders() for details.
    */
   [Throws]
-  void setResponseHeader(ByteString header, ByteString value);
+  void setResponseHeader(ByteString header,
+                         ByteString value,
+                         optional boolean merge = false);
 };
 
 /**

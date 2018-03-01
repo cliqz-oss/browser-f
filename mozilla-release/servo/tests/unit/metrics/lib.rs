@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-extern crate euclid;
+#![cfg(test)]
+
 extern crate gfx;
 extern crate gfx_traits;
 extern crate ipc_channel;
@@ -10,10 +11,9 @@ extern crate metrics;
 extern crate msg;
 extern crate net_traits;
 extern crate profile_traits;
-extern crate style;
+extern crate servo_url;
 extern crate time;
+extern crate webrender_api;
 
-#[cfg(test)]
 mod interactive_time;
-#[cfg(test)]
 mod paint_time;

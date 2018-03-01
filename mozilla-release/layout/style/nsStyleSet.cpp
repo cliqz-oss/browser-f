@@ -199,17 +199,6 @@ static const SheetType gCSSSheetTypes[] = {
   SheetType::Override
 };
 
-/* static */ bool
-nsStyleSet::IsCSSSheetType(SheetType aSheetType)
-{
-  for (SheetType type : gCSSSheetTypes) {
-    if (type == aSheetType) {
-      return true;
-    }
-  }
-  return false;
-}
-
 nsStyleSet::nsStyleSet()
   : mRuleTree(nullptr),
     mBatching(0),
@@ -737,7 +726,7 @@ nsStyleSet::AddDocStyleSheet(CSSStyleSheet* aSheet, nsIDocument* aDocument)
 
   bool present = sheets.RemoveElement(aSheet);
 
-  size_t index = aDocument->FindDocStyleSheetInsertionPoint(sheets, aSheet);
+  size_t index = aDocument->FindDocStyleSheetInsertionPoint(sheets, *aSheet);
   sheets.InsertElementAt(index, aSheet);
 
   if (!present) {
@@ -2365,8 +2354,7 @@ nsStyleSet::Shutdown()
 }
 
 void
-nsStyleSet::RecordStyleSheetChange(CSSStyleSheet* aStyleSheet,
-                                   StyleSheet::ChangeType)
+nsStyleSet::SheetChanged(CSSStyleSheet& aStyleSheet)
 {
   MOZ_ASSERT(mBatching != 0, "Should be in an update");
 
@@ -2374,7 +2362,7 @@ nsStyleSet::RecordStyleSheetChange(CSSStyleSheet* aStyleSheet,
     return;
   }
 
-  if (Element* scopeElement = aStyleSheet->GetScopeElement()) {
+  if (Element* scopeElement = aStyleSheet.GetScopeElement()) {
     mChangedScopeStyleRoots.AppendElement(scopeElement);
     return;
   }

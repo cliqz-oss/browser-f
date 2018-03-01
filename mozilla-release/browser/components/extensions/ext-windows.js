@@ -190,11 +190,11 @@ this.windows = class extends ExtensionAPI {
             if (allowScriptsToClose) {
               for (let {linkedBrowser} of window.gBrowser.tabs) {
                 onXULFrameLoaderCreated({target: linkedBrowser});
-                linkedBrowser.addEventListener( // eslint-disable-line mozilla/balanced-listeners
-                                               "XULFrameLoaderCreated", onXULFrameLoaderCreated);
+                // eslint-disable-next-line mozilla/balanced-listeners
+                linkedBrowser.addEventListener("XULFrameLoaderCreated", onXULFrameLoaderCreated);
               }
             }
-            if (createData.titlePreface) {
+            if (createData.titlePreface !== null) {
               win.setTitlePreface(createData.titlePreface);
             }
             return win.convert({populate: true});
@@ -225,7 +225,7 @@ this.windows = class extends ExtensionAPI {
 
           win.updateGeometry(updateInfo);
 
-          if (updateInfo.titlePreface) {
+          if (updateInfo.titlePreface !== null) {
             win.setTitlePreface(updateInfo.titlePreface);
             win.window.gBrowser.updateTitlebar();
           }

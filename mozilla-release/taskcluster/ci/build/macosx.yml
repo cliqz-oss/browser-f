@@ -5,7 +5,7 @@ macosx64/debug:
         job-name: macosx64-debug
     treeherder:
         platform: osx-cross/debug
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-macosx64
     worker:
@@ -16,6 +16,7 @@ macosx64/debug:
         using: mozharness
         actions: [get-secrets build update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_mac_64_cross_builds.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
@@ -26,6 +27,7 @@ macosx64/debug:
         - linux64-clang
         - linux64-hfsplus
         - linux64-libdmg
+        - linux64-llvm-dsymutil
         - linux64-rust-macos
         - linux64-sccache
 
@@ -36,7 +38,7 @@ macosx64/opt:
         job-name: macosx64-opt
     treeherder:
         platform: osx-cross/opt
-        symbol: tc(B)
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-macosx64
     worker:
@@ -47,6 +49,7 @@ macosx64/opt:
         using: mozharness
         actions: [get-secrets build update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_mac_64_cross_builds.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
@@ -56,6 +59,7 @@ macosx64/opt:
         - linux64-clang
         - linux64-hfsplus
         - linux64-libdmg
+        - linux64-llvm-dsymutil
         - linux64-rust-macos
         - linux64-sccache
 
@@ -66,7 +70,7 @@ macosx64-dmd/opt:
         job-name: macosx64-dmd-opt
     treeherder:
         platform: osx-10-10-dmd/opt
-        symbol: tc(Bdmd)
+        symbol: Bdmd
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-macosx64
     worker:
@@ -77,17 +81,20 @@ macosx64-dmd/opt:
         using: mozharness
         actions: [get-secrets build update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_mac_64_cross_builds.py
         script: "mozharness/scripts/fx_desktop_build.py"
-        custom-build-variant-cfg: dmd
+        extra-config:
+            mozconfig_variant: 'opt-dmd'
         secrets: true
         tooltool-downloads: internal
-    run-on-projects: [ ]
+    run-on-projects: []
     toolchains:
         - linux64-cctools-port
         - linux64-clang
         - linux64-hfsplus
         - linux64-libdmg
+        - linux64-llvm-dsymutil
         - linux64-rust-macos
         - linux64-sccache
 
@@ -95,13 +102,15 @@ macosx64-devedition-nightly/opt:
     description: "MacOS X Dev Edition x64 Nightly"
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: devedition
     index:
         product: devedition
         job-name: macosx64-opt
         type: nightly
     treeherder:
         platform: osx-cross-devedition/opt
-        symbol: tc(N)
+        symbol: N
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-macosx64
     worker:
@@ -112,6 +121,7 @@ macosx64-devedition-nightly/opt:
         using: mozharness
         actions: [get-secrets build update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_mac_64_cross_builds.py
             - disable_signing.py
             - taskcluster_nightly.py
@@ -119,12 +129,13 @@ macosx64-devedition-nightly/opt:
         secrets: true
         tooltool-downloads: internal
         custom-build-variant-cfg: devedition
-    run-on-projects: ['mozilla-beta',]
+    run-on-projects: ['mozilla-beta']
     toolchains:
         - linux64-cctools-port
         - linux64-clang
         - linux64-hfsplus
         - linux64-libdmg
+        - linux64-llvm-dsymutil
         - linux64-rust-macos
         - linux64-sccache
 
@@ -135,11 +146,10 @@ macosx64-noopt/debug:
         job-name: macosx64-noopt-debug
     treeherder:
         platform: osx-cross-noopt/debug
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-macosx64
     worker:
-        docker-image: {in-tree: desktop-build}
         max-run-time: 36000
         env:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-releng.manifest"
@@ -147,6 +157,7 @@ macosx64-noopt/debug:
         using: mozharness
         actions: [get-secrets build update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_mac_64_cross_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -154,12 +165,13 @@ macosx64-noopt/debug:
         custom-build-variant-cfg: cross-noopt-debug
         tooltool-downloads: internal
         keep-artifacts: false
-    run-on-projects: [ 'trunk', 'try' ]
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - linux64-cctools-port
         - linux64-clang
         - linux64-hfsplus
         - linux64-libdmg
+        - linux64-llvm-dsymutil
         - linux64-rust-macos
         - linux64-sccache
 
@@ -170,7 +182,7 @@ macosx64-add-on-devel/opt:
         job-name: macosx64-add-on-devel
     treeherder:
         platform: osx-cross-add-on-devel/opt
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-macosx64
     worker:
@@ -178,21 +190,23 @@ macosx64-add-on-devel/opt:
         env:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-releng.manifest"
     run:
-       using: mozharness
-       actions: [get-secrets build update]
-       config:
+        using: mozharness
+        actions: [get-secrets build update]
+        config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_mac_64_cross_builds.py
             - balrog/production.py
-       script: "mozharness/scripts/fx_desktop_build.py"
-       secrets: true
-       custom-build-variant-cfg: add-on-devel
-       tooltool-downloads: internal
-    run-on-projects: [ 'mozilla-beta', 'mozilla-release', 'mozilla-esr45' ]
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: add-on-devel
+        tooltool-downloads: internal
+    run-on-projects: ['mozilla-beta', 'mozilla-release', 'mozilla-esr45']
     toolchains:
         - linux64-cctools-port
         - linux64-clang
         - linux64-hfsplus
         - linux64-libdmg
+        - linux64-llvm-dsymutil
         - linux64-rust-macos
         - linux64-sccache
 
@@ -200,13 +214,15 @@ macosx64-nightly/opt:
     description: "MacOS X x64 Cross-compile Nightly"
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: firefox
     index:
         product: firefox
         job-name: macosx64-opt
         type: nightly
     treeherder:
         platform: osx-cross/opt
-        symbol: tc(N)
+        symbol: N
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-macosx64
     worker:
@@ -217,6 +233,7 @@ macosx64-nightly/opt:
         using: mozharness
         actions: [get-secrets build update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_mac_64_cross_builds.py
             - disable_signing.py
             - taskcluster_nightly.py
@@ -228,5 +245,6 @@ macosx64-nightly/opt:
         - linux64-clang
         - linux64-hfsplus
         - linux64-libdmg
+        - linux64-llvm-dsymutil
         - linux64-rust-macos
         - linux64-sccache

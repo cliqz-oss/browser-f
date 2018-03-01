@@ -53,7 +53,8 @@ public:
 
 private:
   ConnectionProxy(WorkerPrivate* aWorkerPrivate, ConnectionWorker* aConnection)
-    : mConnection(aConnection)
+    : WorkerHolder("ConnectionProxy")
+    , mConnection(aConnection)
     , mWorkerPrivate(aWorkerPrivate)
   {
     MOZ_ASSERT(mWorkerPrivate);
@@ -95,7 +96,7 @@ public:
   }
 
   bool
-  MainThreadRun()
+  MainThreadRun() override
   {
     MOZ_ASSERT(NS_IsMainThread());
     hal::RegisterNetworkObserver(mProxy);
@@ -122,7 +123,7 @@ public:
   }
 
   bool
-  MainThreadRun()
+  MainThreadRun() override
   {
     MOZ_ASSERT(NS_IsMainThread());
     hal::UnregisterNetworkObserver(mProxy);

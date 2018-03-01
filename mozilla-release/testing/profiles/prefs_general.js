@@ -65,7 +65,7 @@ user_pref("media.gmp-manager.updateEnabled", false);
 user_pref("media.hls.server.url", "http://%(server)s/tests/dom/media/test/hls");
 user_pref("dom.w3c_touch_events.enabled", 1);
 user_pref("layout.accessiblecaret.enabled_on_touch", false);
-user_pref("dom.webcomponents.enabled", true);
+user_pref("dom.webcomponents.shadowdom.enabled", false);
 user_pref("dom.webcomponents.customelements.enabled", true);
 // Existing tests assume there is no font size inflation.
 user_pref("font.size.inflation.emPerLine", 0);
@@ -127,11 +127,9 @@ user_pref("extensions.update.enabled", false);
 // Make sure opening about:addons won't hit the network
 user_pref("extensions.webservice.discoverURL", "http://%(server)s/extensions-dummy/discoveryURL");
 // Make sure AddonRepository won't hit the network
-user_pref("extensions.getAddons.maxResults", 0);
 user_pref("extensions.getAddons.get.url", "http://%(server)s/extensions-dummy/repositoryGetURL");
 user_pref("extensions.getAddons.getWithPerformance.url", "http://%(server)s/extensions-dummy/repositoryGetWithPerformanceURL");
 user_pref("extensions.getAddons.search.browseURL", "http://%(server)s/extensions-dummy/repositoryBrowseURL");
-user_pref("extensions.getAddons.search.url", "http://%(server)s/extensions-dummy/repositorySearchURL");
 // Ensure blocklist updates don't hit the network
 user_pref("services.settings.server", "http://%(server)s/dummy-kinto/v1");
 // Make sure SNTP requests don't hit the network
@@ -159,8 +157,6 @@ user_pref("security.turn_off_all_security_so_that_viruses_can_take_over_this_com
 user_pref("dom.use_xbl_scopes_for_remote_xul", true);
 
 user_pref("captivedetect.canonicalURL", "http://%(server)s/captive-detect/success.txt");
-// Get network events.
-user_pref("network.activity.blipIntervalMilliseconds", 250);
 
 // We do not wish to display datareporting policy notifications as it might
 // cause other tests to fail. Tests that wish to test the notification functionality
@@ -170,7 +166,6 @@ user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 // Point Firefox Health Report at a local server. We don't care if it actually
 // works. It just can't hit the default production endpoint.
 user_pref("datareporting.healthreport.documentServerURI", "http://%(server)s/healthreport/");
-user_pref("datareporting.healthreport.about.reportUrl", "http://%(server)s/abouthealthreport/v4/");
 
 // Make sure CSS error reporting is enabled for tests
 user_pref("layout.css.report_errors", true);
@@ -239,15 +234,16 @@ user_pref("dom.presentation.testing.simulate-receiver", false);
 
 // Don't connect to Yahoo! for RSS feed tests.
 // en-US only uses .types.0.uri, but set all of them just to be sure.
-user_pref("browser.contentHandlers.types.0.uri", "http://test1.example.org/rss?url=%%s")
-user_pref("browser.contentHandlers.types.1.uri", "http://test1.example.org/rss?url=%%s")
-user_pref("browser.contentHandlers.types.2.uri", "http://test1.example.org/rss?url=%%s")
-user_pref("browser.contentHandlers.types.3.uri", "http://test1.example.org/rss?url=%%s")
-user_pref("browser.contentHandlers.types.4.uri", "http://test1.example.org/rss?url=%%s")
-user_pref("browser.contentHandlers.types.5.uri", "http://test1.example.org/rss?url=%%s")
+user_pref("browser.contentHandlers.types.0.uri", "http://test1.example.org/rss?url=%%s");
+user_pref("browser.contentHandlers.types.1.uri", "http://test1.example.org/rss?url=%%s");
+user_pref("browser.contentHandlers.types.2.uri", "http://test1.example.org/rss?url=%%s");
+user_pref("browser.contentHandlers.types.3.uri", "http://test1.example.org/rss?url=%%s");
+user_pref("browser.contentHandlers.types.4.uri", "http://test1.example.org/rss?url=%%s");
+user_pref("browser.contentHandlers.types.5.uri", "http://test1.example.org/rss?url=%%s");
 
 // We want to collect telemetry, but we don't want to send in the results.
 user_pref("toolkit.telemetry.server", "https://%(server)s/telemetry-dummy/");
+user_pref("datareporting.healthreport.uploadEnabled", false);
 // Don't send 'new-profile' ping on new profiles during tests, otherwise the testing framework
 // might wait on the pingsender to finish and slow down tests.
 user_pref("toolkit.telemetry.newProfilePing.enabled", false);
@@ -394,7 +390,11 @@ user_pref("marionette.prefs.recommended", false);
 // Disable Screenshots by default for now
 user_pref("extensions.screenshots.disabled", true);
 
-// Set places maintenance far in the future to avoid it kicking in during tests.
-// The maintenance can take a relatively long time which may cause unnecessary
-// intermittents and slow down tests.
-user_pref("places.database.lastMaintenance", 7258114800);
+// Set places maintenance far in the future (the maximum time possible in an
+// int32_t) to avoid it kicking in during tests. The maintenance can take a
+// relatively long time which may cause unnecessary intermittents and slow down
+// tests. This, like many things, will stop working correctly in 2038.
+user_pref("places.database.lastMaintenance", 2147483647);
+
+// Disable Bookmark backups by default.
+user_pref("browser.bookmarks.max_backups", 0);

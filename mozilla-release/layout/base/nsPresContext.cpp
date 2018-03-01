@@ -43,7 +43,7 @@
 #include "mozilla/RestyleManager.h"
 #include "mozilla/RestyleManagerInlines.h"
 #include "SurfaceCacheUtils.h"
-#include "nsCSSRuleProcessor.h"
+#include "nsMediaFeatures.h"
 #include "nsRuleNode.h"
 #include "gfxPlatform.h"
 #include "nsCSSRules.h"
@@ -405,6 +405,9 @@ nsPresContext::Destroy()
                                   this);
   Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
                                   kUseStandinsForNativeColors,
+                                  this);
+  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
+                                  "intl.accept_languages",
                                   this);
 
   mRefreshDriver = nullptr;
@@ -773,7 +776,8 @@ nsPresContext::PreferenceChanged(const char* aPrefName)
       mMissingFonts = nullptr;
     }
   }
-  if (StringBeginsWith(prefName, NS_LITERAL_CSTRING("font."))) {
+  if (StringBeginsWith(prefName, NS_LITERAL_CSTRING("font.")) ||
+      prefName.EqualsLiteral("intl.accept_languages")) {
     // Changes to font family preferences don't change anything in the
     // computed style data, so the style system won't generate a reflow
     // hint for us.  We need to do that manually.
@@ -975,6 +979,9 @@ nsPresContext::Init(nsDeviceContext* aDeviceContext)
                                 this);
   Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
                                 kUseStandinsForNativeColors,
+                                this);
+  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
+                                "intl.accept_languages",
                                 this);
 
   nsresult rv = mEventManager->Init();
@@ -1286,9 +1293,9 @@ void nsPresContext::SetImgAnimations(nsIContent *aParent, uint16_t aMode)
     SetImgAnimModeOnImgReq(imgReq, aMode);
   }
 
-  uint32_t count = aParent->GetChildCount();
-  for (uint32_t i = 0; i < count; ++i) {
-    SetImgAnimations(aParent->GetChildAt(i), aMode);
+  for (nsIContent* childContent = aParent->GetFirstChild();
+       childContent; childContent = childContent->GetNextSibling()) {
+    SetImgAnimations(childContent, aMode);
   }
 }
 
@@ -1682,19 +1689,7 @@ nsPresContext::GetBidi() const
 bool
 nsPresContext::IsTopLevelWindowInactive()
 {
-  nsCOMPtr<nsIDocShellTreeItem> treeItem(mContainer);
-  if (!treeItem)
-    return false;
-
-  nsCOMPtr<nsIDocShellTreeItem> rootItem;
-  treeItem->GetRootTreeItem(getter_AddRefs(rootItem));
-  if (!rootItem) {
-    return false;
-  }
-
-  nsCOMPtr<nsPIDOMWindowOuter> domWindow = rootItem->GetWindow();
-
-  return domWindow && !domWindow->IsActive();
+  return Document()->IsTopLevelWindowInactive();
 }
 
 void
@@ -1894,7 +1889,7 @@ nsPresContext::RefreshSystemMetrics()
 {
   // This will force the system metrics to be generated the next time they're
   // used.
-  nsCSSRuleProcessor::FreeSystemMetrics();
+  nsMediaFeatures::FreeSystemMetrics();
 
   // Changes to system metrics can change media queries on them.
   //
@@ -2360,7 +2355,7 @@ public:
   }
   virtual ~CounterStyleCleaner() {}
 
-  void DidRefresh() final
+  void DidRefresh() final override
   {
     mRefreshDriver->RemovePostRefreshObserver(this);
     mCounterStyleManager->CleanRetiredStyles();
@@ -2464,7 +2459,7 @@ nsPresContext::FireDOMPaintEvent(nsTArray<nsRect>* aList, uint64_t aTransactionI
     aTimeStamp = mozilla::TimeStamp::Now();
   }
   DOMHighResTimeStamp timeStamp = 0;
-  if (ourWindow && ourWindow->IsInnerWindow()) {
+  if (ourWindow) {
     mozilla::dom::Performance* perf = ourWindow->GetPerformance();
     if (perf) {
       timeStamp = perf->GetDOMTiming()->TimeStampToDOMHighRes(aTimeStamp);
@@ -3095,6 +3090,14 @@ nsPresContext::AppUnitsToGfxUnits(nscoord aAppUnits) const
   return mDeviceContext->AppUnitsToGfxUnits(aAppUnits);
 }
 
+nscoord
+nsPresContext::PhysicalMillimetersToAppUnits(float aMM) const
+{
+  float inches = aMM / MM_PER_INCH_FLOAT;
+  return NSToCoordFloorClamped(
+      inches * float(DeviceContext()->AppUnitsPerPhysicalInch()));
+}
+
 bool
 nsPresContext::IsDeviceSizePageSize()
 {
@@ -3173,8 +3176,7 @@ nsPresContext::RebuildFontFeatureValues()
 
 nsRootPresContext::nsRootPresContext(nsIDocument* aDocument,
                                      nsPresContextType aType)
-  : nsPresContext(aDocument, aType),
-    mDOMGeneration(0)
+  : nsPresContext(aDocument, aType)
 {
 }
 

@@ -35,6 +35,7 @@ public:
   virtual bool ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
@@ -45,7 +46,7 @@ public:
   uint32_t GetSandboxFlags();
 
   // Web IDL binding methods
-  void GetSrc(nsString& aSrc, nsIPrincipal*) const
+  void GetSrc(nsString& aSrc) const
   {
     GetURIAttr(nsGkAtoms::src, nullptr, aSrc);
   }

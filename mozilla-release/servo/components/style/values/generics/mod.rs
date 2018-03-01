@@ -8,8 +8,9 @@
 use counter_style::{Symbols, parse_counter_style_name};
 use cssparser::Parser;
 use parser::{Parse, ParserContext};
-use std::fmt;
-use style_traits::{Comma, OneOrMoreSeparated, ParseError, StyleParseErrorKind, ToCss};
+use std::fmt::{self, Write};
+use style_traits::{Comma, CssWriter, OneOrMoreSeparated, ParseError};
+use style_traits::{StyleParseErrorKind, ToCss};
 use super::CustomIdent;
 
 pub mod background;
@@ -144,7 +145,10 @@ impl<T> OneOrMoreSeparated for FontSettingTag<T> {
 }
 
 impl<T: ToCss> ToCss for FontSettingTag<T> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         use byteorder::{BigEndian, ByteOrder};
         use std::str;
 
@@ -196,6 +200,14 @@ pub enum FontSettings<T> {
     Tag(Vec<FontSettingTag<T>>)
 }
 
+impl <T> FontSettings<T> {
+    #[inline]
+    /// Default value of font settings as `normal`
+    pub fn normal() -> Self {
+        FontSettings::Normal
+    }
+}
+
 impl<T: Parse> Parse for FontSettings<T> {
     /// <https://www.w3.org/TR/css-fonts-3/#propdef-font-feature-settings>
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
@@ -223,7 +235,10 @@ pub struct FontSettingTagInt(pub u32);
 pub struct FontSettingTagFloat(pub f32);
 
 impl ToCss for FontSettingTagInt {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match self.0 {
             1 => Ok(()),
             0 => dest.write_str(" off"),
@@ -265,7 +280,10 @@ impl Parse for FontSettingTagFloat {
 }
 
 impl ToCss for FontSettingTagFloat {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str(" ")?;
         self.0.to_css(dest)
     }

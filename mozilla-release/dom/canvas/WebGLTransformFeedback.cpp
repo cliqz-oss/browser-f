@@ -31,7 +31,6 @@ void
 WebGLTransformFeedback::Delete()
 {
     if (mGLName) {
-        mContext->MakeContextCurrent();
         mContext->gl->fDeleteTransformFeedbacks(1, &mGLName);
     }
     removeFrom(mContext->mTransformFeedbacks);
@@ -93,7 +92,6 @@ WebGLTransformFeedback::BeginTransformFeedback(GLenum primMode)
     ////
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
     gl->fBeginTransformFeedback(primMode);
 
     ////
@@ -123,8 +121,19 @@ WebGLTransformFeedback::EndTransformFeedback()
     ////
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
     gl->fEndTransformFeedback();
+
+    if (gl->WorkAroundDriverBugs()) {
+#ifdef XP_MACOSX
+        // Multi-threaded GL on mac will generate INVALID_OP in some cases for at least
+        // BindBufferBase after an EndTransformFeedback if there is not a flush between
+        // the two.
+        // Single-threaded GL does not have this issue.
+        // This is likely due to not synchronizing client/server state, and erroring in
+        // BindBufferBase because the client thinks we're still in transform feedback.
+        gl->fFlush();
+#endif
+    }
 
     ////
 
@@ -151,7 +160,6 @@ WebGLTransformFeedback::PauseTransformFeedback()
     ////
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
     gl->fPauseTransformFeedback();
 
     ////
@@ -176,7 +184,6 @@ WebGLTransformFeedback::ResumeTransformFeedback()
     ////
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
     gl->fResumeTransformFeedback();
 
     ////

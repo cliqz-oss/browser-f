@@ -6,52 +6,36 @@ loader: taskgraph.loader.transform:loader
 
 transforms:
    - taskgraph.transforms.job:transforms
+   - taskgraph.transforms.release_notifications:transforms
    - taskgraph.transforms.task:transforms
 
 job-defaults:
+   description: release bouncer submission job
+   worker-type: buildbot-bridge/buildbot-bridge
+   run-on-projects: []
    shipping-phase: promote
+   run:
+      using: buildbot
+      release-promotion: true
 
 jobs:
    fennec:
       name: fennec_release_bouncer_sub
-      description: release bouncer submission job
-      worker-type: buildbot-bridge/buildbot-bridge
-      run-on-projects: []
       shipping-product: fennec
       run:
-         using: buildbot
          product: fennec
          buildername: release-{branch}-fennec_bncr_sub
-         release-promotion: true
-      routes:
-         - index.releases.v1.{branch}.latest.fennec.latest.bouncer_submitter
-         - index.releases.v1.{branch}.{revision}.fennec.{underscore_version}.build{build_number}.bouncer_submitter
-      index:
-         type: release
-         product: fennec
-         job-name: android-api-16-opt
-      notifications:
-         completed:
-            by-project:
-               maple:
-                  - "release-drivers-staging"
-               try:
-                  #- "{task[tags][createdForUser]}"
-               default:
-                  - "releasetasks"
-         failed:
-            by-project:
-               maple:
-                  - "release-drivers-staging"
-               try:
-                  #- "{task[tags][createdForUser]}"
-               default:
-                  - "releasetasks"
-         exception:
-            by-project:
-               maple:
-                  - "release-drivers-staging"
-               try:
-                  #- "{task[tags][createdForUser]}"
-               default:
-                  - "releasetasks"
+
+   firefox:
+      name: firefox_release_bouncer_sub
+      shipping-product: firefox
+      run:
+         product: firefox
+         buildername: release-{branch}_firefox_bncr_sub
+
+   devedition:
+      name: devedition_release_bouncer_sub
+      shipping-product: devedition
+      run:
+         product: devedition
+         buildername: release-{branch}_devedition_bncr_sub

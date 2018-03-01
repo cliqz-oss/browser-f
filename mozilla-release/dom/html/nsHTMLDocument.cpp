@@ -32,7 +32,6 @@
 #include "nsIIOService.h"
 #include "nsNetUtil.h"
 #include "nsIPrivateBrowsingChannel.h"
-#include "nsIContentViewerContainer.h"
 #include "nsIContentViewer.h"
 #include "nsDocShell.h"
 #include "nsDocShellLoadTypes.h"
@@ -63,7 +62,7 @@
 #include "nsIHttpChannel.h"
 #include "nsIFile.h"
 #include "nsFrameSelection.h"
-#include "nsISelectionPrivate.h"//for toStringwithformat code
+#include "nsISelectionPrivate.h" //for toStringwithformat code
 
 #include "nsContentUtils.h"
 #include "nsJSUtils.h"
@@ -486,6 +485,12 @@ nsHTMLDocument::TryFallback(int32_t& aCharsetSource,
     return;
 
   aCharsetSource = kCharsetFromFallback;
+  bool isFile = false;
+  if (FallbackEncoding::sFallbackToUTF8ForFile && mDocumentURI &&
+      NS_SUCCEEDED(mDocumentURI->SchemeIs("file", &isFile)) && isFile) {
+    aEncoding = UTF_8_ENCODING;
+    return;
+  }
   aEncoding = FallbackEncoding::FromLocale();
 }
 
@@ -1147,13 +1152,6 @@ nsHTMLDocument::GetHead(nsISupports** aHead)
   return head ? CallQueryInterface(head, aHead) : NS_OK;
 }
 
-NS_IMETHODIMP
-nsHTMLDocument::GetImages(nsIDOMHTMLCollection** aImages)
-{
-  NS_ADDREF(*aImages = Images());
-  return NS_OK;
-}
-
 nsIHTMLCollection*
 nsHTMLDocument::Images()
 {
@@ -1161,13 +1159,6 @@ nsHTMLDocument::Images()
     mImages = new nsContentList(this, kNameSpaceID_XHTML, nsGkAtoms::img, nsGkAtoms::img);
   }
   return mImages;
-}
-
-NS_IMETHODIMP
-nsHTMLDocument::GetApplets(nsIDOMHTMLCollection** aApplets)
-{
-  NS_ADDREF(*aApplets = Applets());
-  return NS_OK;
 }
 
 nsIHTMLCollection*
@@ -1211,13 +1202,6 @@ nsHTMLDocument::MatchLinks(Element* aElement, int32_t aNamespaceID,
   return false;
 }
 
-NS_IMETHODIMP
-nsHTMLDocument::GetLinks(nsIDOMHTMLCollection** aLinks)
-{
-  NS_ADDREF(*aLinks = Links());
-  return NS_OK;
-}
-
 nsIHTMLCollection*
 nsHTMLDocument::Links()
 {
@@ -1251,13 +1235,6 @@ nsHTMLDocument::MatchAnchors(Element* aElement, int32_t aNamespaceID,
   return false;
 }
 
-NS_IMETHODIMP
-nsHTMLDocument::GetAnchors(nsIDOMHTMLCollection** aAnchors)
-{
-  NS_ADDREF(*aAnchors = Anchors());
-  return NS_OK;
-}
-
 nsIHTMLCollection*
 nsHTMLDocument::Anchors()
 {
@@ -1265,13 +1242,6 @@ nsHTMLDocument::Anchors()
     mAnchors = new nsContentList(this, MatchAnchors, nullptr, nullptr);
   }
   return mAnchors;
-}
-
-NS_IMETHODIMP
-nsHTMLDocument::GetScripts(nsIDOMHTMLCollection** aScripts)
-{
-  NS_ADDREF(*aScripts = Scripts());
-  return NS_OK;
 }
 
 nsIHTMLCollection*
@@ -1624,6 +1594,18 @@ nsHTMLDocument::Open(JSContext* cx,
       if (NS_SUCCEEDED(cv->PermitUnload(&okToUnload)) && !okToUnload) {
         // We don't want to unload, so stop here, but don't throw an
         // exception.
+        nsCOMPtr<nsIDocument> ret = this;
+        return ret.forget();
+      }
+
+      // Now double-check that our invariants still hold.
+      if (!mScriptGlobalObject) {
+        nsCOMPtr<nsIDocument> ret = this;
+        return ret.forget();
+      }
+
+      nsPIDOMWindowOuter* outer = GetWindow();
+      if (!outer || (GetInnerWindow() != outer->GetCurrentInnerWindow())) {
         nsCOMPtr<nsIDocument> ret = this;
         return ret.forget();
       }
@@ -2205,13 +2187,6 @@ nsHTMLDocument::SetFgColor(const nsAString& aFgColor)
 }
 
 
-NS_IMETHODIMP
-nsHTMLDocument::GetEmbeds(nsIDOMHTMLCollection** aEmbeds)
-{
-  NS_ADDREF(*aEmbeds = Embeds());
-  return NS_OK;
-}
-
 nsIHTMLCollection*
 nsHTMLDocument::Embeds()
 {
@@ -2244,14 +2219,6 @@ nsHTMLDocument::ReleaseEvents()
 }
 
 // Mapped to document.embeds for NS4 compatibility
-NS_IMETHODIMP
-nsHTMLDocument::GetPlugins(nsIDOMHTMLCollection** aPlugins)
-{
-  *aPlugins = nullptr;
-
-  return GetEmbeds(aPlugins);
-}
-
 nsIHTMLCollection*
 nsHTMLDocument::Plugins()
 {
@@ -2333,13 +2300,6 @@ nsHTMLDocument::GetSupportedNames(nsTArray<nsString>& aNames)
 //----------------------------
 
 // forms related stuff
-
-NS_IMETHODIMP
-nsHTMLDocument::GetForms(nsIDOMHTMLCollection** aForms)
-{
-  NS_ADDREF(*aForms = nsHTMLDocument::GetForms());
-  return NS_OK;
-}
 
 nsContentList*
 nsHTMLDocument::GetForms()
@@ -3722,6 +3682,9 @@ nsHTMLDocument::DocAddSizeOfExcludingThis(nsWindowSizes& aWindowSizes) const
 bool
 nsHTMLDocument::WillIgnoreCharsetOverride()
 {
+  if (mEncodingMenuDisabled) {
+    return true;
+  }
   if (mType != eHTML) {
     MOZ_ASSERT(mType == eXHTML);
     return true;

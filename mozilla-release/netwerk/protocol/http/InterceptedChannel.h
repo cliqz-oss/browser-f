@@ -182,7 +182,9 @@ public:
   NS_IMETHOD ResetInterception() override;
   NS_IMETHOD StartSynthesizedResponse(nsIInputStream* aBody,
                                       nsIInterceptedBodyCallback* aBodyCallback,
-                                      const nsACString& aFinalURLSpec) override;
+                                      nsICacheInfoChannel* aChannel,
+                                      const nsACString& aFinalURLSpec,
+                                      bool aResponseRedirected) override;
   NS_IMETHOD FinishSynthesizedResponse() override;
   NS_IMETHOD GetChannel(nsIChannel** aChannel) override;
   NS_IMETHOD GetSecureUpgradedChannelURI(nsIURI** aURI) override;

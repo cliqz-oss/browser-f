@@ -11,8 +11,6 @@ toolkit.jar:
    skin/classic/global/colorpicker.css
    skin/classic/global/commonDialog.css
    skin/classic/global/dropmarker.css
-   skin/classic/global/filepicker.css
-   skin/classic/global/Filepicker.png                          (filepicker/Filepicker.png)
    skin/classic/global/findBar.css
 *  skin/classic/global/global.css
    skin/classic/global/groupbox.css
@@ -23,7 +21,6 @@ toolkit.jar:
 *  skin/classic/global/notification.css
    skin/classic/global/numberbox.css
    skin/classic/global/popup.css
-   skin/classic/global/preferences.css
    skin/classic/global/printPreview.css
    skin/classic/global/radio.css
    skin/classic/global/scrollbox.css

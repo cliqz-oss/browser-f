@@ -6,8 +6,10 @@
 
 #include "DrawTargetCapture.h"
 #include "DrawCommand.h"
+#include "DrawCommands.h"
 #include "gfxPlatform.h"
 #include "SourceSurfaceCapture.h"
+#include "FilterNodeCapture.h"
 
 namespace mozilla {
 namespace gfx {
@@ -33,6 +35,7 @@ DrawTargetCaptureImpl::DrawTargetCaptureImpl(BackendType aBackend,
       gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
 
   mFormat = aFormat;
+  SetPermitSubpixelAA(IsOpaque(mFormat));
   if (aBackend == screenRefDT->GetBackendType()) {
     mRefDT = screenRefDT;
   } else {
@@ -65,6 +68,7 @@ DrawTargetCaptureImpl::Init(const IntSize& aSize, DrawTarget* aRefDT)
 
   mSize = aSize;
   mFormat = aRefDT->GetFormat();
+  SetPermitSubpixelAA(IsOpaque(mFormat));
   return true;
 }
 
@@ -87,6 +91,14 @@ DrawTargetCaptureImpl::Snapshot()
 }
 
 already_AddRefed<SourceSurface>
+DrawTargetCaptureImpl::IntoLuminanceSource(LuminanceType aLuminanceType,
+                                           float aOpacity)
+{
+  RefPtr<SourceSurface> surface = new SourceSurfaceCapture(this, aLuminanceType, aOpacity);
+  return surface.forget();
+}
+
+already_AddRefed<SourceSurface>
 DrawTargetCaptureImpl::OptimizeSourceSurface(SourceSurface *aSurface) const
 {
   // If the surface is a recording, make sure it gets resolved on the paint thread.
@@ -104,11 +116,17 @@ DrawTargetCaptureImpl::DetachAllSnapshots()
 }
 
 #define AppendCommand(arg) new (AppendToCommandList<arg>()) arg
+#define ReuseOrAppendCommand(arg) new (ReuseOrAppendToCommandList<arg>()) arg
 
 void
 DrawTargetCaptureImpl::SetPermitSubpixelAA(bool aPermitSubpixelAA)
 {
-  AppendCommand(SetPermitSubpixelAACommand)(aPermitSubpixelAA);
+  // Save memory by eliminating state changes with no effect
+  if (mPermitSubpixelAA == aPermitSubpixelAA) {
+    return;
+  }
+
+  ReuseOrAppendCommand(SetPermitSubpixelAACommand)(aPermitSubpixelAA);
 
   // Have to update mPermitSubpixelAA for this DT
   // because some code paths query the current setting
@@ -299,7 +317,12 @@ DrawTargetCaptureImpl::PopClip()
 void
 DrawTargetCaptureImpl::SetTransform(const Matrix& aTransform)
 {
-  AppendCommand(SetTransformCommand)(aTransform);
+  // Save memory by eliminating state changes with no effect
+  if (mTransform.ExactlyEquals(aTransform)) {
+    return;
+  }
+
+  ReuseOrAppendCommand(SetTransformCommand)(aTransform);
 
   // Have to update the transform for this DT
   // because some code paths query the current transform
@@ -408,6 +431,16 @@ DrawTargetCaptureImpl::CreateSimilarRasterTarget(const IntSize& aSize, SurfaceFo
 {
   MOZ_ASSERT(!mRefDT->IsCaptureDT());
   return mRefDT->CreateSimilarDrawTarget(aSize, aFormat);
+}
+
+already_AddRefed<FilterNode>
+DrawTargetCaptureImpl::CreateFilter(FilterType aType)
+{
+  if (mRefDT->GetBackendType() == BackendType::DIRECT2D1_1) {
+    return MakeRefPtr<FilterNodeCapture>(aType).forget();
+  } else {
+    return mRefDT->CreateFilter(aType);
+  }
 }
 
 } // namespace gfx

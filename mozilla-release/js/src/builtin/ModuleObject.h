@@ -7,12 +7,15 @@
 #ifndef builtin_ModuleObject_h
 #define builtin_ModuleObject_h
 
+#include "mozilla/Maybe.h"
+
 #include "jsapi.h"
 #include "jsatom.h"
 
 #include "builtin/SelfHostingDefines.h"
 #include "js/GCVector.h"
 #include "js/Id.h"
+#include "js/UniquePtr.h"
 #include "vm/NativeObject.h"
 #include "vm/ProxyObject.h"
 
@@ -23,7 +26,7 @@ class ModuleObject;
 
 namespace frontend {
 class ParseNode;
-class TokenStream;
+class TokenStreamAnyChars;
 } /* namespace frontend */
 
 typedef Rooted<ModuleObject*> RootedModuleObject;
@@ -127,27 +130,27 @@ typedef Handle<RequestedModuleObject*> HandleRequestedModuleObject;
 class IndirectBindingMap
 {
   public:
-    explicit IndirectBindingMap(Zone* zone);
-    bool init();
-
     void trace(JSTracer* trc);
 
-    bool putNew(JSContext* cx, HandleId name,
-                HandleModuleEnvironmentObject environment, HandleId localName);
+    bool put(JSContext* cx, HandleId name,
+             HandleModuleEnvironmentObject environment, HandleId localName);
 
     size_t count() const {
-        return map_.count();
+        return map_ ? map_->count() : 0;
     }
 
     bool has(jsid name) const {
-        return map_.has(name);
+        return map_ ? map_->has(name) : false;
     }
 
     bool lookup(jsid name, ModuleEnvironmentObject** envOut, Shape** shapeOut) const;
 
     template <typename Func>
     void forEachExportedName(Func func) const {
-        for (auto r = map_.all(); !r.empty(); r.popFront())
+        if (!map_)
+            return;
+
+        for (auto r = map_->all(); !r.empty(); r.popFront())
             func(r.front().key());
     }
 
@@ -161,14 +164,22 @@ class IndirectBindingMap
 
     typedef HashMap<jsid, Binding, DefaultHasher<jsid>, ZoneAllocPolicy> Map;
 
-    Map map_;
+    mozilla::Maybe<Map> map_;
 };
 
 class ModuleNamespaceObject : public ProxyObject
 {
   public:
+    enum ModuleNamespaceSlot
+    {
+        ExportsSlot = 0,
+        BindingsSlot
+    };
+
     static bool isInstance(HandleValue value);
-    static ModuleNamespaceObject* create(JSContext* cx, HandleModuleObject module);
+    static ModuleNamespaceObject* create(JSContext* cx, HandleModuleObject module,
+                                         HandleObject exports,
+                                         UniquePtr<IndirectBindingMap> bindings);
 
     ModuleObject& module();
     JSObject& exports();
@@ -209,6 +220,9 @@ class ModuleNamespaceObject : public ProxyObject
         bool set(JSContext* cx, HandleObject proxy, HandleId id, HandleValue v,
                  HandleValue receiver, ObjectOpResult& result) const override;
 
+        void trace(JSTracer* trc, JSObject* proxy) const override;
+        void finalize(JSFreeOp* fop, JSObject* proxy) const override;
+
         static const char family;
     };
 
@@ -239,11 +253,10 @@ class ModuleObject : public NativeObject
     enum ModuleSlot
     {
         ScriptSlot = 0,
-        InitialEnvironmentSlot,
         EnvironmentSlot,
         NamespaceSlot,
         StatusSlot,
-        ErrorSlot,
+        EvaluationErrorSlot,
         HostDefinedSlot,
         RequestedModulesSlot,
         ImportEntriesSlot,
@@ -251,8 +264,6 @@ class ModuleObject : public NativeObject
         IndirectExportEntriesSlot,
         StarExportEntriesSlot,
         ImportBindingsSlot,
-        NamespaceExportsSlot,
-        NamespaceBindingsSlot,
         FunctionDeclarationsSlot,
         DFSIndexSlot,
         DFSAncestorIndexSlot,
@@ -263,8 +274,8 @@ class ModuleObject : public NativeObject
                   "EnvironmentSlot must match self-hosting define");
     static_assert(StatusSlot == MODULE_OBJECT_STATUS_SLOT,
                   "StatusSlot must match self-hosting define");
-    static_assert(ErrorSlot == MODULE_OBJECT_ERROR_SLOT,
-                  "ErrorSlot must match self-hosting define");
+    static_assert(EvaluationErrorSlot == MODULE_OBJECT_EVALUATION_ERROR_SLOT,
+                  "EvaluationErrorSlot must match self-hosting define");
     static_assert(DFSIndexSlot == MODULE_OBJECT_DFS_INDEX_SLOT,
                   "DFSIndexSlot must match self-hosting define");
     static_assert(DFSAncestorIndexSlot == MODULE_OBJECT_DFS_ANCESTOR_INDEX_SLOT,
@@ -294,7 +305,8 @@ class ModuleObject : public NativeObject
     ModuleEnvironmentObject* environment() const;
     ModuleNamespaceObject* namespace_();
     ModuleStatus status() const;
-    Value error() const;
+    bool hadEvaluationError() const;
+    Value evaluationError() const;
     Value hostDefinedField() const;
     ArrayObject& requestedModules() const;
     ArrayObject& importEntries() const;
@@ -302,16 +314,11 @@ class ModuleObject : public NativeObject
     ArrayObject& indirectExportEntries() const;
     ArrayObject& starExportEntries() const;
     IndirectBindingMap& importBindings();
-    JSObject* namespaceExports();
-    IndirectBindingMap* namespaceBindings();
 
     static bool Instantiate(JSContext* cx, HandleModuleObject self);
     static bool Evaluate(JSContext* cx, HandleModuleObject self);
 
     void setHostDefinedField(const JS::Value& value);
-
-    // For intrinsic_CreateModuleEnvironment.
-    void createEnvironment();
 
     // For BytecodeEmitter.
     bool noteFunctionDeclaration(JSContext* cx, HandleAtom name, HandleFunction fun);
@@ -343,7 +350,7 @@ class MOZ_STACK_CLASS ModuleBuilder
 {
   public:
     explicit ModuleBuilder(JSContext* cx, HandleModuleObject module,
-                           const frontend::TokenStream& tokenStream);
+                           const frontend::TokenStreamAnyChars& tokenStream);
     bool init();
 
     bool processImport(frontend::ParseNode* pn);
@@ -373,7 +380,7 @@ class MOZ_STACK_CLASS ModuleBuilder
 
     JSContext* cx_;
     RootedModuleObject module_;
-    const frontend::TokenStream& tokenStream_;
+    const frontend::TokenStreamAnyChars& tokenStream_;
     RootedAtomSet requestedModuleSpecifiers_;
     RootedRequestedModuleVector requestedModules_;
     RootedAtomVector importedBoundNames_;

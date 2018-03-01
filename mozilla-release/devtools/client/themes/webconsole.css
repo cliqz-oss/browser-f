@@ -767,6 +767,8 @@ a.learn-more-link.webconsole-learn-more-link {
   --icon-top-margin: 3px;
   --object-inspector-hover-background: transparent;
   --attachment-margin-block-end: 3px;
+  --primary-toolbar-height: 29px;
+  --close-button-image: url(chrome://devtools/skin/images/close.svg);
 }
 
 /* Webconsole specific theme variables */
@@ -820,6 +822,7 @@ a.learn-more-link.webconsole-learn-more-link {
 */
 .webconsole-filteringbar-wrapper {
   display: flex;
+  grid-row: 1 / 2;
   /* Wrap so the "Hidden messages" bar can go to its own row if needed */
   flex-wrap: wrap;
   --primary-toolbar-height: 29px;
@@ -827,9 +830,9 @@ a.learn-more-link.webconsole-learn-more-link {
 
 .webconsole-filterbar-primary {
   display: flex;
-  /* We want the toolbar (which contain the text search input) to be at least 200px
-  so we don't allow to shrink it */
-  flex: 100 0 200px;
+  /* We want the toolbar (which contain the text search input) to fit
+  the content, we don't allow to shrink/overlap it */
+  flex: 100 0 -moz-fit-content;
   align-items: center;
   min-height: var(--primary-toolbar-height);
 }
@@ -865,6 +868,7 @@ a.learn-more-link.webconsole-learn-more-link {
   text-align: end;
   align-items: center;
   min-height: var(--primary-toolbar-height);
+  line-height: var(--primary-toolbar-height);
 }
 
 .webconsole-filterbar-filtered-messages .filter-message-text {
@@ -928,13 +932,13 @@ a.learn-more-link.webconsole-learn-more-link {
 }
 
 .webconsole-output-wrapper .message-flex-body > .message-body {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-block;
   max-width: 100%;
 }
 
 .webconsole-output-wrapper .message-body > * {
   flex-shrink: 0;
+  vertical-align: top;
 }
 
 .message.startGroup .message-body > .objectBox-string,
@@ -1005,6 +1009,17 @@ a.learn-more-link.webconsole-learn-more-link {
   font-style: inherit;
 }
 
+.webconsole-output-wrapper .message.network .status .status-info .status-code {
+  padding: 0 2px;
+  border-radius: 3px;
+  text-decoration: none;
+  font-style: normal;
+}
+
+.webconsole-output-wrapper .message.network .status .status-info .status-code:not([data-code^="3"]) {
+  color: var(--theme-body-background);
+}
+
 
 .network.message .network-info {
   display: none;
@@ -1029,6 +1044,7 @@ a.learn-more-link.webconsole-learn-more-link {
 
 .network .message-flex-body > .message-body {
   display: flex;
+  flex-wrap: wrap;
 }
 
 /* Output Wrapper */
@@ -1079,62 +1095,52 @@ a.learn-more-link.webconsole-learn-more-link {
 /* console.table() */
 .new-consoletable {
   width: 100%;
-  border-collapse: collapse;
   --consoletable-border: var(--theme-splitter-color);
   margin-block-end: var(--attachment-margin-block-end);
   color: var(--theme-body-color);
-}
-
-.new-consoletable thead {
+  display: grid;
+  max-height: 250px;
+  overflow-y: auto;
   border: 1px solid var(--consoletable-border);
+  /* border at the left side will be added by the inner divs [role=gridcell] */
+  border-left: none;
 }
 
-.new-consoletable tbody {
-  background-color: var(--theme-body-background);
-  border: 1px solid var(--consoletable-border);
-  border-block-start-width: 0;
+.new-consoletable > div {
+  border-left: 1px solid var(--consoletable-border);
 }
 
-.new-consoletable th {
+.new-consoletable-header {
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--consoletable-border);
   background-color: var(--theme-toolbar-background);
   color: var(--theme-body-color);
   margin: 0;
-  padding: 5px 0 0;
+  padding: 5px 4px;
   font-weight: inherit;
+  z-index: 1;
 }
 
-.new-consoletable th:not(:last-of-type) {
-  border-inline-end: 1px solid var(--consoletable-border);
+.new-consoletable > [role=gridcell] {
+  background-color: var(--theme-body-background);
+  padding: 3px 4px;
+  min-width: 100px;
+  color: var(--theme-body-color);
 }
 
-.new-consoletable tr:nth-of-type(even) {
+.new-consoletable > [role=gridcell].even {
   background-color: var(--table-zebra-background);
 }
 
-.new-consoletable td {
-  padding: 3px 4px;
-  min-width: 100px;
-  -moz-user-focus: normal;
-  color: var(--theme-body-color);
-  height: 1.25em;
-  line-height: 1.25em;
-  /* Objects are expandable in cells, and if one gets tall,
-   * we still want other columns to stick to the top.
-   */
-  vertical-align: top;
-}
-
-.new-consoletable tr td:not(:last-of-type) {
-  border-inline-end: 1px solid var(--consoletable-border);
-}
 /* Layout */
-
 .webconsole-output {
   flex: 1;
   direction: ltr;
   overflow: auto;
   -moz-user-select: text;
   position: relative;
+  grid-row: 2 / 3;
 }
 
 html,
@@ -1160,25 +1166,82 @@ body #output-container {
 }
 
 .webconsole-output-wrapper {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
   height: 100%;
+  width: 100vw;
 }
 
 /* Object Inspector */
 .webconsole-output-wrapper .object-inspector.tree {
-  /*
-   * Make the arrow the same color and approximately the same size of the twisty icon.
-   * Should be properly fixed in https://bugzilla.mozilla.org/show_bug.cgi?id=1307937.
-   */
-  --arrow-width: 8px;
-  --arrow-fill-color: #AFA8AB;
-  --arrow-single-margin: 0.5rem;
-  --tree-indent-width: var(--console-output-indent-width);
-  --tree-indent-border-color: var(--console-output-indent-border-color);
-  --tree-node-hover-background-color : var(--object-inspector-hover-background);
+  display: inline-block;
 }
 
-.theme-dark .webconsole-output-wrapper .object-inspector.tree {
-  --arrow-fill-color: #7F7E81;
+.webconsole-output-wrapper .object-inspector.tree .tree-indent {
+  border-inline-start-color: var(--console-output-indent-border-color);
+}
+
+.webconsole-output-wrapper .object-inspector.tree .tree-node:hover:not(.focused) {
+  background-color: var(--object-inspector-hover-background);
+}
+
+/*
+ * Make the arrow the same color and approximately the same size of the twisty icon.
+ * Should be properly fixed in https://bugzilla.mozilla.org/show_bug.cgi?id=1307937.
+ */
+.webconsole-output-wrapper .object-inspector.tree .tree-node .arrow svg {
+  width: 8px;
+  fill: #AFA8AB;
+  margin-inline-start: 1px;
+}
+
+.theme-dark .webconsole-output-wrapper .object-inspector.tree .tree-node .arrow svg {
+  fill: #7F7E81;
+}
+
+/* Sidebar */
+.sidebar {
+  display: flex;
+  grid-row: 1 / -1;
+  grid-column: -1 / -2;
+  background-color: var(--theme-sidebar-background);
+}
+
+.split-box.vert.sidebar {
+  /* Set to prevent the sidebar from extending past the right edge of the page */
+  width: unset;
+}
+
+.sidebar-wrapper {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: 100%;
+  overflow: hidden;
+}
+
+.webconsole-sidebar-toolbar {
+  grid-row: 1 / 2;
+  min-height: var(--primary-toolbar-height);
+  display: flex;
+  justify-content: end;
+}
+
+.sidebar-contents {
+  grid-row: 2 / 3;
+  overflow: scroll;
+}
+
+.webconsole-sidebar-toolbar .sidebar-close-button {
+  padding: 4px 0;
+  margin: 0;
+  margin-inline-end: -3px;
+}
+
+.sidebar-close-button::before {
+  background-image: var(--close-button-image);
+}
+
+.sidebar-contents .object-inspector {
+  min-width: 100%;
 }

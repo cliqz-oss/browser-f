@@ -10,7 +10,10 @@ from __future__ import absolute_import, print_function, unicode_literals
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.schema import validate_schema, Schema
-from taskgraph.util.scriptworker import get_signing_cert_scope_per_platform
+from taskgraph.util.scriptworker import (
+    get_signing_cert_scope_per_platform,
+    get_worker_type_for_scope,
+)
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import Any, Required, Optional
 
@@ -47,7 +50,7 @@ signing_description_schema = Schema({
     }],
 
     # depname is used in taskref's to identify the taskID of the unsigned things
-    Required('depname', default='build'): basestring,
+    Required('depname'): basestring,
 
     # unique label to describe this signing task, defaults to {dep.label}-signing
     Optional('label'): basestring,
@@ -59,16 +62,27 @@ signing_description_schema = Schema({
 
     # Routes specific to this task, if defined
     Optional('routes'): [basestring],
+
+    Optional('shipping-phase'): task_description_schema['shipping-phase'],
+    Optional('shipping-product'): task_description_schema['shipping-product'],
 })
+
+
+@transforms.add
+def set_defaults(config, jobs):
+    for job in jobs:
+        job.setdefault('depname', 'build')
+        yield job
 
 
 @transforms.add
 def validate(config, jobs):
     for job in jobs:
         label = job.get('dependent-task', object).__dict__.get('label', '?no-label?')
-        yield validate_schema(
+        validate_schema(
             signing_description_schema, job,
             "In signing ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
 
 
 @transforms.add
@@ -124,7 +138,7 @@ def make_task_description(config, jobs):
         task = {
             'label': label,
             'description': description,
-            'worker-type': _generate_worker_type(signing_cert_scope),
+            'worker-type': get_worker_type_for_scope(config, signing_cert_scope),
             'worker': {'implementation': 'scriptworker-signing',
                        'upstream-artifacts': job['upstream-artifacts'],
                        'max-run-time': 3600},
@@ -145,9 +159,4 @@ def _generate_treeherder_platform(dep_th_platform, build_platform, build_type):
 
 
 def _generate_treeherder_symbol(is_nightly):
-    return 'tc(Ns)' if is_nightly else 'tc(Bs)'
-
-
-def _generate_worker_type(signing_cert_scope):
-    worker_type = 'depsigning' if 'dep-signing' in signing_cert_scope else 'signing-linux-v1'
-    return 'scriptworker-prov-v1/{}'.format(worker_type)
+    return 'Ns' if is_nightly else 'Bs'

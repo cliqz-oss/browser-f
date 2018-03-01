@@ -1,7 +1,8 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
 this.EXPORTED_SYMBOLS = ["ExtensionUtils"];
@@ -14,6 +15,8 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ConsoleAPI",
                                   "resource://gre/modules/Console.jsm");
 
+Cu.importGlobalProperties(["crypto", "TextDecoder", "TextEncoder"]);
+
 function getConsole() {
   return new ConsoleAPI({
     maxLogLevelPref: "extensions.webextensions.log.level",
@@ -22,6 +25,13 @@ function getConsole() {
 }
 
 XPCOMUtils.defineLazyGetter(this, "console", getConsole);
+
+XPCOMUtils.defineLazyGetter(this, "utf8Encoder", () => {
+  return new TextEncoder("utf-8");
+});
+XPCOMUtils.defineLazyGetter(this, "utf8Decoder", () => {
+  return new TextDecoder("utf-8");
+});
 
 // It would be nicer to go through `Services.appinfo`, but some tests need to be
 // able to replace that field with a custom implementation before it is first
@@ -633,6 +643,21 @@ function checkLoadURL(url, principal, options) {
   return true;
 }
 
+/**
+ * Return the cryptographic hash given a string of text (using MD5 by default).
+ *
+ * @param {string} text
+ *   The string of text to hash.
+ * @param {string} [algo]
+ *   An optional algorithm to be re-used to generate the hash ("SHA-1" by default).
+ * @returns {string} text
+ *   The hashed string.
+ */
+async function stringToCryptoHash(text, algo = "SHA-1") {
+  const buffer = await crypto.subtle.digest(algo, utf8Encoder.encode(text));
+  return utf8Decoder.decode(buffer);
+}
+
 this.ExtensionUtils = {
   checkLoadURL,
   defineLazyGetter,
@@ -650,6 +675,7 @@ this.ExtensionUtils = {
   promiseEvent,
   promiseObserved,
   runSafeSyncWithoutClone,
+  stringToCryptoHash,
   withHandlingUserInput,
   DefaultMap,
   DefaultWeakMap,

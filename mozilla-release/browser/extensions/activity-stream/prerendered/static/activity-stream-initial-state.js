@@ -5,7 +5,7 @@ window.gActivityStreamPrerenderedState = {
     "rows": [],
     "editForm": {
       "visible": false,
-      "site": null
+      "index": -1
     }
   },
   "App": {

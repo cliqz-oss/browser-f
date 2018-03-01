@@ -48,6 +48,10 @@ function addPlace(aUrl, aFavicon, aGuid = PlacesUtils.history.makeGuid()) {
   stmt.params.guid = aGuid;
   stmt.execute();
   stmt.finalize();
+  stmt = mDBConn.createStatement(
+    "DELETE FROM moz_updatehostsinsert_temp");
+  stmt.execute();
+  stmt.finalize();
   let id = mDBConn.lastInsertRowID;
   if (aFavicon) {
     stmt = mDBConn.createStatement(
@@ -131,7 +135,7 @@ tests.push({
       "SELECT id FROM moz_anno_attributes WHERE name = :anno"
     );
     stmt.params.anno = this._obsoleteWeaveAttribute;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -184,7 +188,7 @@ tests.push({
     stmt.params.anno1 = this._obsoleteSyncAttribute;
     stmt.params.anno2 = this._obsoleteGuidAttribute;
     stmt.params.anno3 = this._obsoleteWeaveAttribute;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -232,14 +236,14 @@ tests.push({
     // Check that used attributes are still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_anno_attributes WHERE name = :anno");
     stmt.params.anno = this._usedPageAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     stmt.params.anno = this._usedItemAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     // Check that unused attribute has been removed
     stmt.params.anno = this._unusedAttribute;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -277,16 +281,16 @@ tests.push({
     // Check that used attribute is still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_anno_attributes WHERE name = :anno");
     stmt.params.anno = this._usedPageAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // check that annotation with valid attribute is still there
     stmt = mDBConn.createStatement("SELECT id FROM moz_annos WHERE anno_attribute_id = (SELECT id FROM moz_anno_attributes WHERE name = :anno)");
     stmt.params.anno = this._usedPageAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // Check that annotation with bogus attribute has been removed
     stmt = mDBConn.createStatement("SELECT id FROM moz_annos WHERE anno_attribute_id = 1337");
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -324,16 +328,16 @@ tests.push({
     // Check that used attribute is still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_anno_attributes WHERE name = :anno");
     stmt.params.anno = this._usedPageAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // check that annotation with valid attribute is still there
     stmt = mDBConn.createStatement("SELECT id FROM moz_annos WHERE anno_attribute_id = (SELECT id FROM moz_anno_attributes WHERE name = :anno)");
     stmt.params.anno = this._usedPageAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // Check that an annotation to a nonexistent page has been removed
     stmt = mDBConn.createStatement("SELECT id FROM moz_annos WHERE place_id = 1337");
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -345,26 +349,26 @@ tests.push({
 
   setup() {
     // Sanity check: ensure that roots are intact.
-    do_check_eq(bs.getFolderIdForItem(bs.placesRoot), 0);
-    do_check_eq(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
-    do_check_eq(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
-    do_check_eq(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
-    do_check_eq(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.placesRoot), 0);
+    Assert.equal(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
 
     // Remove the root.
     mDBConn.executeSimpleSQL("DELETE FROM moz_bookmarks WHERE parent = 0");
     let stmt = mDBConn.createStatement("SELECT id FROM moz_bookmarks WHERE parent = 0");
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   },
 
   check() {
     // Ensure the roots have been correctly restored.
-    do_check_eq(bs.getFolderIdForItem(bs.placesRoot), 0);
-    do_check_eq(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
-    do_check_eq(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
-    do_check_eq(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
-    do_check_eq(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.placesRoot), 0);
+    Assert.equal(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
+    Assert.equal(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
   }
 });
 
@@ -378,22 +382,22 @@ tests.push({
     this.check();
     // Change some roots' titles.
     bs.setItemTitle(bs.placesRoot, "bad title");
-    do_check_eq(bs.getItemTitle(bs.placesRoot), "bad title");
+    Assert.equal(bs.getItemTitle(bs.placesRoot), "bad title");
     bs.setItemTitle(bs.unfiledBookmarksFolder, "bad title");
-    do_check_eq(bs.getItemTitle(bs.unfiledBookmarksFolder), "bad title");
+    Assert.equal(bs.getItemTitle(bs.unfiledBookmarksFolder), "bad title");
   },
 
   check() {
     // Ensure all roots titles are correct.
-    do_check_eq(bs.getItemTitle(bs.placesRoot), "");
-    do_check_eq(bs.getItemTitle(bs.bookmarksMenuFolder),
-                PlacesUtils.getString("BookmarksMenuFolderTitle"));
-    do_check_eq(bs.getItemTitle(bs.tagsFolder),
-                PlacesUtils.getString("TagsFolderTitle"));
-    do_check_eq(bs.getItemTitle(bs.unfiledBookmarksFolder),
-                PlacesUtils.getString("OtherBookmarksFolderTitle"));
-    do_check_eq(bs.getItemTitle(bs.toolbarFolder),
-                PlacesUtils.getString("BookmarksToolbarFolderTitle"));
+    Assert.equal(bs.getItemTitle(bs.placesRoot), "");
+    Assert.equal(bs.getItemTitle(bs.bookmarksMenuFolder),
+                 PlacesUtils.getString("BookmarksMenuFolderTitle"));
+    Assert.equal(bs.getItemTitle(bs.tagsFolder),
+                 PlacesUtils.getString("TagsFolderTitle"));
+    Assert.equal(bs.getItemTitle(bs.unfiledBookmarksFolder),
+                 PlacesUtils.getString("OtherBookmarksFolderTitle"));
+    Assert.equal(bs.getItemTitle(bs.toolbarFolder),
+                 PlacesUtils.getString("BookmarksToolbarFolderTitle"));
   }
 });
 
@@ -425,18 +429,18 @@ tests.push({
     // Check that valid bookmark is still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_bookmarks WHERE id = :item_id");
     stmt.params.item_id = this._validItemId;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     // Check that invalid bookmark has been removed
     stmt.params.item_id = this._invalidItemId;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.reset();
     stmt.params.item_id = this._invalidSyncedItemId;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
 
     let tombstones = await PlacesTestUtils.fetchSyncTombstones();
-    do_check_matches(tombstones.map(info => info.guid), ["bookmarkAAAA"]);
+    Assert.deepEqual(tombstones.map(info => info.guid), ["bookmarkAAAA"]);
   }
 });
 
@@ -470,17 +474,17 @@ tests.push({
     let stmt = mDBConn.createStatement("SELECT id FROM moz_bookmarks WHERE type = :type AND parent = :parent");
     stmt.params.type = bs.TYPE_BOOKMARK;
     stmt.params.parent = this._tagId;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     // Check that separator is no more there
     stmt.params.type = bs.TYPE_SEPARATOR;
     stmt.params.parent = this._tagId;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.reset();
     // Check that folder is no more there
     stmt.params.type = bs.TYPE_FOLDER;
     stmt.params.parent = this._tagId;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -513,17 +517,17 @@ tests.push({
     stmt.params.id = this._bookmarkId;
     stmt.params.type = bs.TYPE_BOOKMARK;
     stmt.params.parent = this._tagId;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     stmt.params.id = this._tagId;
     stmt.params.type = bs.TYPE_FOLDER;
     stmt.params.parent = bs.tagsFolder;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     stmt.params.id = this._emptyTagId;
     stmt.params.type = bs.TYPE_FOLDER;
     stmt.params.parent = bs.tagsFolder;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -583,10 +587,10 @@ tests.push({
         FROM moz_bookmarks
         WHERE id = :item_id AND parent = :parent`,
         { item_id: id, parent });
-      do_check_eq(rows.length, 1);
+      Assert.equal(rows.length, 1);
 
       let actualChangeCounter = rows[0].getResultByName("syncChangeCounter");
-      do_check_eq(actualChangeCounter, syncChangeCounter);
+      Assert.equal(actualChangeCounter, syncChangeCounter);
     }
   }
 });
@@ -615,11 +619,11 @@ tests.push({
     let stmt = mDBConn.createStatement("SELECT id FROM moz_bookmarks WHERE id = :item_id AND type = :type");
     stmt.params.item_id = this._separatorId;
     stmt.params.type = bs.TYPE_BOOKMARK;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     stmt.params.item_id = this._folderId;
     stmt.params.type = bs.TYPE_BOOKMARK;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -651,14 +655,14 @@ tests.push({
       WHERE id = :item_id AND type = :type`);
     stmt.params.item_id = this._validBookmarkId;
     stmt.params.type = bs.TYPE_BOOKMARK;
-    do_check_true(stmt.executeStep());
-    do_check_eq(stmt.row.syncChangeCounter, 0);
+    Assert.ok(stmt.executeStep());
+    Assert.equal(stmt.row.syncChangeCounter, 0);
     stmt.reset();
     // Check invalid bookmark has been converted to a folder
     stmt.params.item_id = this._invalidBookmarkId;
     stmt.params.type = bs.TYPE_FOLDER;
-    do_check_true(stmt.executeStep());
-    do_check_eq(stmt.row.syncChangeCounter, 1);
+    Assert.ok(stmt.executeStep());
+    Assert.equal(stmt.row.syncChangeCounter, 1);
     stmt.finalize();
   }
 });
@@ -709,10 +713,10 @@ tests.push({
         FROM moz_bookmarks
         WHERE id = :item_id AND parent = :parent`,
         { item_id: id, parent });
-      do_check_eq(rows.length, 1);
+      Assert.equal(rows.length, 1);
 
       let actualChangeCounter = rows[0].getResultByName("syncChangeCounter");
-      do_check_eq(actualChangeCounter, syncChangeCounter);
+      Assert.equal(actualChangeCounter, syncChangeCounter);
     }
   }
 });
@@ -784,7 +788,7 @@ tests.push({
 
     let syncInfos = await PlacesTestUtils.fetchBookmarkSyncFields(
       PlacesUtils.bookmarks.unfiledGuid, PlacesUtils.bookmarks.toolbarGuid);
-    do_check_true(syncInfos.every(info => info.syncChangeCounter === 0));
+    Assert.ok(syncInfos.every(info => info.syncChangeCounter === 0));
   },
 
   async check() {
@@ -813,7 +817,7 @@ tests.push({
         { parent: aParent });
       for (let row of parentRows) {
         let actualChangeCounter = row.getResultByName("syncChangeCounter");
-        do_check_true(actualChangeCounter > 0);
+        Assert.ok(actualChangeCounter > 0);
       }
     }
 
@@ -827,6 +831,7 @@ tests.push({
 tests.push({
   name: "D.12",
   desc: "Fix empty-named tags",
+  _taggedItemIds: {},
 
   setup() {
     // Add a place to ensure place_id = 1 is valid
@@ -843,6 +848,12 @@ tests.push({
     addBookmark(placeId, bs.TYPE_BOOKMARK, this._titledTagId);
     // Create a titled folder.
     this._titledFolderId = addBookmark(null, bs.TYPE_FOLDER, bs.toolbarFolder, null, null, "titledFolder");
+
+    // Create two tagged bookmarks in different folders.
+    this._taggedItemIds.inMenu = addBookmark(placeId, bs.TYPE_BOOKMARK,
+      bs.bookmarksMenuFolder, null, null, "Tagged bookmark in menu");
+    this._taggedItemIds.inToolbar = addBookmark(placeId, bs.TYPE_BOOKMARK,
+      bs.toolbarFolder, null, null, "Tagged bookmark in toolbar");
   },
 
   check() {
@@ -851,21 +862,31 @@ tests.push({
       "SELECT title FROM moz_bookmarks WHERE id = :id"
     );
     stmt.params.id = this._untitledTagId;
-    do_check_true(stmt.executeStep());
-    do_check_eq(stmt.row.title, "(notitle)");
+    Assert.ok(stmt.executeStep());
+    Assert.equal(stmt.row.title, "(notitle)");
     stmt.reset();
     stmt.params.id = this._untitledFolderId;
-    do_check_true(stmt.executeStep());
-    do_check_eq(stmt.row.title, "");
+    Assert.ok(stmt.executeStep());
+    Assert.equal(stmt.row.title, "");
     stmt.reset();
     stmt.params.id = this._titledTagId;
-    do_check_true(stmt.executeStep());
-    do_check_eq(stmt.row.title, "titledTag");
+    Assert.ok(stmt.executeStep());
+    Assert.equal(stmt.row.title, "titledTag");
     stmt.reset();
     stmt.params.id = this._titledFolderId;
-    do_check_true(stmt.executeStep());
-    do_check_eq(stmt.row.title, "titledFolder");
+    Assert.ok(stmt.executeStep());
+    Assert.equal(stmt.row.title, "titledFolder");
     stmt.finalize();
+
+    let taggedItemsStmt = mDBConn.createStatement(`
+      SELECT syncChangeCounter FROM moz_bookmarks
+      WHERE id IN (:taggedInMenu, :taggedInToolbar)`);
+    taggedItemsStmt.params.taggedInMenu = this._taggedItemIds.inMenu;
+    taggedItemsStmt.params.taggedInToolbar = this._taggedItemIds.inToolbar;
+    while (taggedItemsStmt.executeStep()) {
+      Assert.greaterOrEqual(taggedItemsStmt.row.syncChangeCounter, 1);
+    }
+    taggedItemsStmt.finalize();
   }
 });
 
@@ -903,16 +924,16 @@ tests.push({
     // Check that used icon is still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_icons WHERE id = :favicon_id");
     stmt.params.favicon_id = 1;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     // Check that unused icon has been removed
     stmt.params.favicon_id = 2;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
     // Check that the orphan page is gone.
     stmt = mDBConn.createStatement("SELECT id FROM moz_pages_w_icons WHERE id = :page_id");
     stmt.params.page_id = 99;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -943,11 +964,11 @@ tests.push({
     // Check that valid visit is still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_historyvisits WHERE place_id = :place_id");
     stmt.params.place_id = this._placeId;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     // Check that invalid visit has been removed
     stmt.params.place_id = this._invalidPlaceId;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -980,11 +1001,11 @@ tests.push({
     // Check that inputhistory on valid place is still there
     let stmt = mDBConn.createStatement("SELECT place_id FROM moz_inputhistory WHERE place_id = :place_id");
     stmt.params.place_id = this._placeId;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.reset();
     // Check that inputhistory on invalid place has gone
     stmt.params.place_id = this._invalidPlaceId;
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -1025,16 +1046,16 @@ tests.push({
     // Check that used attribute is still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_anno_attributes WHERE name = :anno");
     stmt.params.anno = this._usedItemAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // check that annotation with valid attribute is still there
     stmt = mDBConn.createStatement("SELECT id FROM moz_items_annos WHERE anno_attribute_id = (SELECT id FROM moz_anno_attributes WHERE name = :anno)");
     stmt.params.anno = this._usedItemAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // Check that annotation with bogus attribute has been removed
     stmt = mDBConn.createStatement("SELECT id FROM moz_items_annos WHERE anno_attribute_id = 1337");
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -1076,16 +1097,16 @@ tests.push({
     // Check that used attribute is still there
     let stmt = mDBConn.createStatement("SELECT id FROM moz_anno_attributes WHERE name = :anno");
     stmt.params.anno = this._usedItemAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // check that annotation with valid attribute is still there
     stmt = mDBConn.createStatement("SELECT id FROM moz_items_annos WHERE anno_attribute_id = (SELECT id FROM moz_anno_attributes WHERE name = :anno)");
     stmt.params.anno = this._usedItemAttribute;
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     stmt.finalize();
     // Check that an annotation to a nonexistent page has been removed
     stmt = mDBConn.createStatement("SELECT id FROM moz_items_annos WHERE item_id = 8888");
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -1115,7 +1136,7 @@ tests.push({
     let stmt = mDBConn.createStatement("SELECT id FROM moz_keywords WHERE keyword = :keyword");
     // Check that "unused" keyword has gone
     stmt.params.keyword = "unused";
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -1194,7 +1215,7 @@ tests.push({
        JOIN moz_historyvisits v ON v.place_id = h.id
        GROUP BY h.id HAVING h.last_visit_date <> MAX(v.visit_date)`
     );
-    do_check_false(stmt.executeStep());
+    Assert.ok(!stmt.executeStep());
     stmt.finalize();
   }
 });
@@ -1230,15 +1251,15 @@ tests.push({
         handleResult(aResultSet) {
           for (let row; (row = aResultSet.getNextRow());) {
             let url = row.getResultByIndex(0);
-            do_check_true(/redirecting/.test(url));
+            Assert.ok(/redirecting/.test(url));
             this._count++;
           }
         },
         handleError(aError) {
         },
         handleCompletion(aReason) {
-          do_check_eq(aReason, Ci.mozIStorageStatementCallback.REASON_FINISHED);
-          do_check_eq(this._count, 2);
+          Assert.equal(aReason, Ci.mozIStorageStatementCallback.REASON_FINISHED);
+          Assert.equal(this._count, 2);
           resolve();
         }
       });
@@ -1337,9 +1358,9 @@ tests.push({
       let id = row.getResultByName("id");
       let guid = row.getResultByName("guid");
       if (id == this._placeIds[0]) {
-        do_check_eq(guid, "placeAAAAAAA");
+        Assert.equal(guid, "placeAAAAAAA");
       } else {
-        do_check_true(PlacesUtils.isValidGuid(guid));
+        Assert.ok(PlacesUtils.isValidGuid(guid));
       }
     }
   },
@@ -1414,22 +1435,22 @@ tests.push({
     for (let row of updatedRows) {
       let id = row.getResultByName("id");
       let guid = row.getResultByName("guid");
-      do_check_true(PlacesUtils.isValidGuid(guid));
+      Assert.ok(PlacesUtils.isValidGuid(guid));
 
       let cachedGuid = await PlacesUtils.promiseItemGuid(id);
-      do_check_eq(cachedGuid, guid);
+      Assert.equal(cachedGuid, guid);
 
       let expectedInfo = this._bookmarkInfos.find(info => info.id == id);
 
       let syncChangeCounter = row.getResultByName("syncChangeCounter");
-      do_check_eq(syncChangeCounter, expectedInfo.syncChangeCounter);
+      Assert.equal(syncChangeCounter, expectedInfo.syncChangeCounter);
 
       let syncStatus = row.getResultByName("syncStatus");
-      do_check_eq(syncStatus, expectedInfo.syncStatus);
+      Assert.equal(syncStatus, expectedInfo.syncStatus);
     }
 
     let tombstones = await PlacesTestUtils.fetchSyncTombstones();
-    do_check_matches(tombstones.map(info => info.guid),
+    Assert.deepEqual(tombstones.map(info => info.guid),
       ["bookmarkAAAA\n", "{123456}"]);
   },
 });
@@ -1456,7 +1477,7 @@ tests.push({
 
   async check() {
     let tombstones = await PlacesTestUtils.fetchSyncTombstones();
-    do_check_matches(tombstones.map(info => info.guid), ["bookmarkBBBB"]);
+    Assert.deepEqual(tombstones.map(info => info.guid), ["bookmarkBBBB"]);
   },
 });
 
@@ -1538,25 +1559,25 @@ tests.push({
       let guid = row.getResultByName("guid");
 
       let dateAdded = row.getResultByName("dateAdded");
-      do_check_true(Number.isInteger(dateAdded));
+      Assert.ok(Number.isInteger(dateAdded));
 
       let lastModified = row.getResultByName("lastModified");
-      do_check_true(Number.isInteger(lastModified));
+      Assert.ok(Number.isInteger(lastModified));
 
       switch (guid) {
         // Last modified date exists, so we should use it for date added.
         case "bookmarkAAAA": {
           let expectedInfo = this._bookmarksWithDates[0];
-          do_check_eq(dateAdded, expectedInfo.lastModified);
-          do_check_eq(lastModified, expectedInfo.lastModified);
+          Assert.equal(dateAdded, expectedInfo.lastModified);
+          Assert.equal(lastModified, expectedInfo.lastModified);
           break;
         }
 
         // Date added exists, so we should use it for last modified date.
         case "bookmarkBBBB": {
           let expectedInfo = this._bookmarksWithDates[1];
-          do_check_eq(dateAdded, expectedInfo.dateAdded);
-          do_check_eq(lastModified, expectedInfo.dateAdded);
+          Assert.equal(dateAdded, expectedInfo.dateAdded);
+          Assert.equal(lastModified, expectedInfo.dateAdded);
           break;
         }
 
@@ -1564,8 +1585,8 @@ tests.push({
         // should fall back to the current time for both.
         case "bookmarkCCCC": {
           let nowAsPRTime = PlacesUtils.toPRTime(new Date());
-          do_check_eq(dateAdded, lastModified);
-          do_check_true(dateAdded <= nowAsPRTime);
+          Assert.equal(dateAdded, lastModified);
+          Assert.ok(dateAdded <= nowAsPRTime);
           break;
         }
 
@@ -1574,9 +1595,9 @@ tests.push({
         // dates.
         case "bookmarkDDDD": {
           let oldestVisit = this._placeVisits[0];
-          do_check_eq(dateAdded, oldestVisit.visitDate);
+          Assert.equal(dateAdded, oldestVisit.visitDate);
           let newestVisit = this._placeVisits[1];
-          do_check_eq(lastModified, newestVisit.visitDate);
+          Assert.equal(lastModified, newestVisit.visitDate);
           break;
         }
 
@@ -1584,8 +1605,8 @@ tests.push({
         // so we shouldn't update them.
         case "bookmarkEEEE": {
           let expectedInfo = this._bookmarksWithDates[4];
-          do_check_eq(dateAdded, expectedInfo.dateAdded);
-          do_check_eq(lastModified, expectedInfo.lastModified);
+          Assert.equal(dateAdded, expectedInfo.dateAdded);
+          Assert.equal(lastModified, expectedInfo.lastModified);
           break;
         }
       }
@@ -1647,24 +1668,24 @@ tests.push({
   async check() {
     // Check that all items are correct
     let isVisited = await promiseIsURIVisited(this._uri1);
-    do_check_true(isVisited);
+    Assert.ok(isVisited);
     isVisited = await promiseIsURIVisited(this._uri2);
-    do_check_true(isVisited);
+    Assert.ok(isVisited);
 
-    do_check_eq((await bs.fetch(this._bookmark.guid)).url, this._uri1.spec);
+    Assert.equal((await bs.fetch(this._bookmark.guid)).url, this._uri1.spec);
     let folder = await bs.fetch(this._folder.guid);
-    do_check_eq(folder.index, 0);
-    do_check_eq(folder.type, bs.TYPE_FOLDER);
-    do_check_eq((await bs.fetch(this._separator.guid)).type, bs.TYPE_SEPARATOR);
+    Assert.equal(folder.index, 0);
+    Assert.equal(folder.type, bs.TYPE_FOLDER);
+    Assert.equal((await bs.fetch(this._separator.guid)).type, bs.TYPE_SEPARATOR);
 
-    do_check_eq(ts.getTagsForURI(this._uri1).length, 1);
-    do_check_eq((await PlacesUtils.keywords.fetch({ url: this._uri1.spec })).keyword, "testkeyword");
-    do_check_eq(as.getPageAnnotation(this._uri2, "anno"), "anno");
-    do_check_eq(as.getItemAnnotation(this._bookmarkId, "anno"), "anno");
+    Assert.equal(ts.getTagsForURI(this._uri1).length, 1);
+    Assert.equal((await PlacesUtils.keywords.fetch({ url: this._uri1.spec })).keyword, "testkeyword");
+    Assert.equal(as.getPageAnnotation(this._uri2, "anno"), "anno");
+    Assert.equal(as.getItemAnnotation(this._bookmarkId, "anno"), "anno");
 
     await new Promise(resolve => {
       fs.getFaviconURLForPage(this._uri2, aFaviconURI => {
-        do_check_true(aFaviconURI.equals(SMALLPNG_DATA_URI));
+        Assert.ok(aFaviconURI.equals(SMALLPNG_DATA_URI));
         resolve();
       });
     });
@@ -1679,7 +1700,7 @@ add_task(async function test_preventive_maintenance() {
   stmt.executeStep();
   defaultBookmarksMaxId = stmt.getInt32(0);
   stmt.finalize();
-  do_check_true(defaultBookmarksMaxId > 0);
+  Assert.ok(defaultBookmarksMaxId > 0);
 
   for (let test of tests) {
     await PlacesTestUtils.markBookmarksAsSynced();
@@ -1691,7 +1712,7 @@ add_task(async function test_preventive_maintenance() {
     await PlacesDBUtils.maintenanceOnIdle();
 
     // Check the lastMaintenance time has been saved.
-    do_check_neq(Services.prefs.getIntPref("places.database.lastMaintenance"), null);
+    Assert.notEqual(Services.prefs.getIntPref("places.database.lastMaintenance"), null);
 
     await test.check();
 
@@ -1699,9 +1720,9 @@ add_task(async function test_preventive_maintenance() {
   }
 
   // Sanity check: all roots should be intact
-  do_check_eq(bs.getFolderIdForItem(bs.placesRoot), 0);
-  do_check_eq(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
-  do_check_eq(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
-  do_check_eq(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
-  do_check_eq(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
+  Assert.equal(bs.getFolderIdForItem(bs.placesRoot), 0);
+  Assert.equal(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
+  Assert.equal(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
+  Assert.equal(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
+  Assert.equal(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
 });

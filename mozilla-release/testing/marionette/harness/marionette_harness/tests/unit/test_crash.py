@@ -2,7 +2,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import glob
+import os
 import shutil
 
 from marionette_driver import Wait
@@ -26,13 +29,8 @@ class MockMozCrash(object):
 
         with self.marionette.using_context('chrome'):
             self.crash_reporter_enabled = self.marionette.execute_script("""
-                try {
-                  Components.classes["@mozilla.org/toolkit/crash-reporter;1"].
-                    getService(Components.interfaces.nsICrashReporter);
-                  return true;
-                } catch (exc) {
-                  return false;
-                }
+                Cu.import("resource://gre/modules/AppConstants.jsm");
+                return AppConstants.MOZ_CRASHREPORTER;
             """)
 
     def check_for_crashes(self, dump_directory, *args, **kwargs):
@@ -47,7 +45,8 @@ class MockMozCrash(object):
             except TimeoutException:
                 minidump_files = []
 
-            shutil.rmtree(dump_directory)
+            if os.path.isdir(dump_directory):
+                shutil.rmtree(dump_directory)
 
             return len(minidump_files)
         else:
@@ -110,13 +109,8 @@ class BaseCrashTestCase(MarionetteTestCase):
 class TestCrash(BaseCrashTestCase):
 
     def test_crash_chrome_process(self):
-        with self.assertRaises(IOError):
-            self.crash(chrome=True)
-            Wait(self.marionette, timeout=self.socket_timeout,
-                 ignored_exceptions=NoSuchWindowException).until(
-                lambda _: self.marionette.get_url(),
-                message="Expected IOError exception for content crash not raised."
-            )
+        self.assertRaisesRegexp(IOError, "Process crashed",
+                                self.crash, chrome=True)
 
         # A crash results in a non zero exit code
         self.assertNotIn(self.marionette.instance.runner.returncode, (None, 0))
@@ -133,12 +127,11 @@ class TestCrash(BaseCrashTestCase):
 
     @run_if_e10s("Content crashes only exist in e10s mode")
     def test_crash_content_process(self):
-        # With MOZ_CRASHREPORTER_SHUTDOWN each window of the browser will be
-        # closed in case of a content crash. So the "unload" handler fires for
-        # the current window, which causes the command to return early.
-        # To check for an IOError, further commands have to be executed until
-        # Firefox has been shutdown.
-        with self.assertRaises(IOError):
+        # For a content process crash and MOZ_CRASHREPORTER_SHUTDOWN set the top
+        # browsing context will be gone first. As such the raised NoSuchWindowException
+        # has to be ignored. To check for the IOError, further commands have to
+        # be executed until the process is gone.
+        with self.assertRaisesRegexp(IOError, "Content process crashed"):
             self.crash(chrome=False)
             Wait(self.marionette, timeout=self.socket_timeout,
                  ignored_exceptions=NoSuchWindowException).until(
@@ -169,13 +162,8 @@ class TestCrashInSetUp(BaseCrashTestCase):
     def setUp(self):
         super(TestCrashInSetUp, self).setUp()
 
-        with self.assertRaises(IOError):
-            self.crash(chrome=True)
-            Wait(self.marionette, timeout=self.socket_timeout,
-                 ignored_exceptions=NoSuchWindowException).until(
-                lambda _: self.marionette.get_url(),
-                message="Expected IOError exception for content crash not raised."
-            )
+        self.assertRaisesRegexp(IOError, "Process crashed",
+                                self.crash, chrome=True)
 
         # A crash results in a non zero exit code
         self.assertNotIn(self.marionette.instance.runner.returncode, (None, 0))
@@ -192,13 +180,8 @@ class TestCrashInTearDown(BaseCrashTestCase):
 
     def tearDown(self):
         try:
-            with self.assertRaises(IOError):
-                self.crash(chrome=True)
-                Wait(self.marionette, timeout=self.socket_timeout,
-                     ignored_exceptions=NoSuchWindowException).until(
-                    lambda _: self.marionette.get_url(),
-                    message="Expected IOError exception for content crash not raised."
-                )
+            self.assertRaisesRegexp(IOError, "Process crashed",
+                                    self.crash, chrome=True)
 
             # A crash results in a non zero exit code
             self.assertNotIn(self.marionette.instance.runner.returncode, (None, 0))

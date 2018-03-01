@@ -15,7 +15,7 @@
 #include <type_traits>
 
 #include "nscore.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsStringBuffer.h"
 #include "nsColor.h"
 #include "nsCaseTreatment.h"
@@ -132,7 +132,7 @@ public:
   static nsresult Init();
   static void Shutdown();
 
-  ValueType Type() const;
+  inline ValueType Type() const;
   // Returns true when this value is self-contained and does not depend on
   // the state of its associated element.
   // Returns false when this value depends on the state of its associated
@@ -433,8 +433,12 @@ public:
    *
    * @param aString the style attribute value to be parsed.
    * @param aElement the element the attribute is set on.
+   * @param aMaybeScriptedPrincipal if available, the scripted principal
+   *        responsible for this attribute value, as passed to
+   *        Element::ParseAttribute.
    */
   bool ParseStyleAttribute(const nsAString& aString,
+                           nsIPrincipal* aMaybeScriptedPrincipal,
                            nsStyledElement* aElement);
 
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
@@ -500,13 +504,6 @@ nsAttrValue::operator=(const nsAttrValue& aOther)
   return *this;
 }
 
-inline nsAtom*
-nsAttrValue::GetAtomValue() const
-{
-  NS_PRECONDITION(Type() == eAtom, "wrong type");
-  return reinterpret_cast<nsAtom*>(GetPtr());
-}
-
 inline nsAttrValue::ValueBaseType
 nsAttrValue::BaseType() const
 {
@@ -525,32 +522,6 @@ inline bool
 nsAttrValue::IsEmptyString() const
 {
   return !mBits;
-}
-
-inline void
-nsAttrValue::ToString(mozilla::dom::DOMString& aResult) const
-{
-  switch (Type()) {
-    case eString:
-    {
-      nsStringBuffer* str = static_cast<nsStringBuffer*>(GetPtr());
-      if (str) {
-        aResult.SetStringBuffer(str, str->StorageSize()/sizeof(char16_t) - 1);
-      }
-      // else aResult is already empty
-      return;
-    }
-    case eAtom:
-    {
-      nsAtom *atom = static_cast<nsAtom*>(GetPtr());
-      aResult.SetOwnedAtom(atom, mozilla::dom::DOMString::eNullNotExpected);
-      break;
-    }
-    default:
-    {
-      ToString(aResult.AsAString());
-    }
-  }
 }
 
 #endif

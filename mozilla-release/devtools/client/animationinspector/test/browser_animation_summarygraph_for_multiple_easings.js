@@ -115,7 +115,32 @@ const TEST_CASES = {
         { x: 100000, y: 0 },
       ]
     ]
-  }
+  },
+  "narrow-keyframes": {
+    expectedKeyframeEasingGraphs: [
+      [
+        { x: 0, y: 0 },
+        { x: 10000, y: 0.1 },
+        { x: 11000, y: 0.1 },
+        { x: 11500, y: 0.1 },
+        { x: 12999, y: 0.1 },
+        { x: 13000, y: 0.13 },
+        { x: 13500, y: 0.135 },
+        { x: 14000, y: 0.14 },
+      ]
+    ]
+  },
+  "duplicate-offsets": {
+    expectedKeyframeEasingGraphs: [
+      [
+        { x: 0, y: 0 },
+        { x: 25000, y: 0.25 },
+        { x: 50000, y: 0.5 },
+        { x: 75000, y: 0.5 },
+        { x: 99999, y: 0.5 },
+      ]
+    ]
+  },
 };
 
 add_task(function* () {

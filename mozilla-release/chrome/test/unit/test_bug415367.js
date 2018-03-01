@@ -3,15 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-var gIOS = Cc["@mozilla.org/network/io-service;1"]
-            .getService(Ci.nsIIOService);
-
 function test_uri(obj) {
   var uri = null;
   var failed = false;
   var message = "";
   try {
-    uri = gIOS.newURI(obj.uri);
+    uri = Services.io.newURI(obj.uri);
     if (!obj.result) {
       failed = true;
       message = obj.uri + " should not be accepted as a valid URI";
@@ -25,8 +22,8 @@ function test_uri(obj) {
   if (failed)
     do_throw(message);
   if (obj.result) {
-    do_check_true(uri != null);
-    do_check_eq(uri.spec, obj.uri);
+    Assert.ok(uri != null);
+    Assert.equal(uri.spec, obj.uri);
   }
 }
 

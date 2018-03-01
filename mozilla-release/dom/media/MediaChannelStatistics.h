@@ -6,6 +6,8 @@
 #if !defined(MediaChannelStatistics_h_)
 #define MediaChannelStatistics_h_
 
+#include "mozilla/TimeStamp.h"
+
 namespace mozilla {
 
 // Number of bytes we have accumulated before we assume the connection download
@@ -29,8 +31,8 @@ static const int64_t RELIABLE_DATA_THRESHOLD = 57 * 1460;
 class MediaChannelStatistics {
 public:
   MediaChannelStatistics() = default;
-
   MediaChannelStatistics(const MediaChannelStatistics&) = default;
+  MediaChannelStatistics& operator=(const MediaChannelStatistics&) = default;
 
   void Reset() {
     mLastStartTime = TimeStamp();
@@ -58,7 +60,8 @@ public:
     }
     mAccumulatedBytes += aBytes;
   }
-  double GetRateAtLastStop(bool* aReliable) {
+  double GetRateAtLastStop(bool* aReliable) const
+  {
     double seconds = mAccumulatedTime.ToSeconds();
     *aReliable = (seconds >= 1.0) ||
                  (mAccumulatedBytes >= RELIABLE_DATA_THRESHOLD);
@@ -66,7 +69,8 @@ public:
       return 0.0;
     return static_cast<double>(mAccumulatedBytes)/seconds;
   }
-  double GetRate(bool* aReliable) {
+  double GetRate(bool* aReliable) const
+  {
     TimeDuration time = mAccumulatedTime;
     if (mIsStarted) {
       time += TimeStamp::Now() - mLastStartTime;

@@ -219,9 +219,6 @@ nsMathMLFrame::CalcLength(nsPresContext*   aPresContext,
 {
   NS_ASSERTION(aCSSValue.IsLengthUnit(), "not a length unit");
 
-  if (aCSSValue.IsFixedLengthUnit()) {
-    return aCSSValue.GetFixedLength(aPresContext);
-  }
   if (aCSSValue.IsPixelLengthUnit()) {
     return aCSSValue.GetPixelLength();
   }
@@ -321,7 +318,7 @@ nsMathMLFrame::DisplayBoundingMetrics(nsDisplayListBuilder* aBuilder,
   nscoord w = aMetrics.rightBearing - aMetrics.leftBearing;
   nscoord h = aMetrics.ascent + aMetrics.descent;
 
-  aLists.Content()->AppendNewToTop(new (aBuilder)
+  aLists.Content()->AppendToTop(new (aBuilder)
       nsDisplayMathMLBoundingMetrics(aBuilder, aFrame, nsRect(x,y,w,h)));
 }
 #endif
@@ -373,7 +370,7 @@ nsMathMLFrame::DisplayBar(nsDisplayListBuilder* aBuilder,
   if (!aFrame->StyleVisibility()->IsVisible() || aRect.IsEmpty())
     return;
 
-  aLists.Content()->AppendNewToTop(new (aBuilder)
+  aLists.Content()->AppendToTop(new (aBuilder)
     nsDisplayMathMLBar(aBuilder, aFrame, aRect, aIndex));
 }
 

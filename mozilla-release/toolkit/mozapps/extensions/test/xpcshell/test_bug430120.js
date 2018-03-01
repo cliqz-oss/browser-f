@@ -65,11 +65,11 @@ function pathHandler(metadata, response) {
     if (macutils.isUniversalBinary)
       ABI += "-u-" + macutils.architecturesInBinary;
   }
-  do_check_eq(metadata.queryString,
-              "xpcshell@tests.mozilla.org&1&XPCShell&1&" +
-              gAppInfo.appBuildID + "&" +
-              "XPCShell_" + ABI + "&locale&updatechannel&" +
-              gOSVersion + "&1.9&distribution&distribution-version");
+  Assert.equal(metadata.queryString,
+               "xpcshell@tests.mozilla.org&1&XPCShell&1&" +
+               gAppInfo.appBuildID + "&" +
+               "XPCShell_" + ABI + "&locale&updatechannel&" +
+               gOSVersion + "&1.9&distribution&distribution-version");
   gBlocklist.observe(null, "quit-application", "");
   gBlocklist.observe(null, "xpcom-shutdown", "");
   testserver.stop(do_test_finished);
@@ -77,13 +77,11 @@ function pathHandler(metadata, response) {
 
 function run_test() {
   var osVersion;
-  var sysInfo = Components.classes["@mozilla.org/system-info;1"]
-                          .getService(Components.interfaces.nsIPropertyBag2);
   try {
-    osVersion = sysInfo.getProperty("name") + " " + sysInfo.getProperty("version");
+    osVersion = Services.sysinfo.getProperty("name") + " " + Services.sysinfo.getProperty("version");
     if (osVersion) {
       try {
-        osVersion += " (" + sysInfo.getProperty("secondaryLibrary") + ")";
+        osVersion += " (" + Services.sysinfo.getProperty("secondaryLibrary") + ")";
       } catch (e) {
       }
       gOSVersion = encodeURIComponent(osVersion);
@@ -100,12 +98,10 @@ function run_test() {
   gPort = testserver.identity.primaryPort;
 
   // Initialise the blocklist service
-  gBlocklist = Components.classes["@mozilla.org/extensions/blocklist;1"]
-                         .getService(Components.interfaces.nsIBlocklistService)
-                         .QueryInterface(Components.interfaces.nsIObserver);
+  gBlocklist = Services.blocklist.QueryInterface(Components.interfaces.nsIObserver);
   gBlocklist.observe(null, "profile-after-change", "");
 
-  do_check_true(timerService.hasTimer(BLOCKLIST_TIMER));
+  Assert.ok(timerService.hasTimer(BLOCKLIST_TIMER));
 
   do_test_pending();
 

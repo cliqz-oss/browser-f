@@ -13,8 +13,8 @@ use parser::{ParserContext, Parse};
 use self::url::SpecifiedUrl;
 #[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::f32;
-use std::fmt;
-use style_traits::{ToCss, ParseError, StyleParseErrorKind};
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 use style_traits::values::specified::AllowedNumericType;
 use super::{Auto, CSSFloat, CSSInteger, Either, None_};
 use super::computed::{Context, ToComputedValue};
@@ -31,8 +31,11 @@ pub use self::background::{BackgroundRepeat, BackgroundSize};
 pub use self::border::{BorderCornerRadius, BorderImageSlice, BorderImageWidth};
 pub use self::border::{BorderImageSideWidth, BorderRadius, BorderSideWidth, BorderSpacing};
 pub use self::font::{FontSize, FontSizeAdjust, FontSynthesis, FontWeight, FontVariantAlternates};
-pub use self::font::{MozScriptLevel, MozScriptMinSize, XTextZoom};
-pub use self::box_::{AnimationIterationCount, AnimationName, ScrollSnapType, VerticalAlign};
+pub use self::font::{FontFamily, FontLanguageOverride, FontVariantSettings, FontVariantEastAsian};
+pub use self::font::{FontVariantLigatures, FontVariantNumeric, FontFeatureSettings};
+pub use self::font::{MozScriptLevel, MozScriptMinSize, MozScriptSizeMultiplier, XTextZoom, XLang};
+pub use self::box_::{AnimationIterationCount, AnimationName, Display, OverscrollBehavior, Contain};
+pub use self::box_::{OverflowClipBox, ScrollSnapType, TouchAction, VerticalAlign, WillChange};
 pub use self::color::{Color, ColorPropertyValue, RGBAColor};
 pub use self::effects::{BoxShadow, Filter, SimpleShadow};
 pub use self::flex::FlexBasis;
@@ -40,20 +43,32 @@ pub use self::flex::FlexBasis;
 pub use self::gecko::ScrollSnapPoint;
 pub use self::image::{ColorStop, EndingShape as GradientEndingShape, Gradient};
 pub use self::image::{GradientItem, GradientKind, Image, ImageLayer, MozImageRect};
+pub use self::inherited_box::ImageOrientation;
 pub use self::length::{AbsoluteLength, CalcLengthOrPercentage, CharacterWidth};
 pub use self::length::{FontRelativeLength, Length, LengthOrNone, LengthOrNumber};
 pub use self::length::{LengthOrPercentage, LengthOrPercentageOrAuto};
 pub use self::length::{LengthOrPercentageOrNone, MaxLength, MozLength};
 pub use self::length::{NoCalcLength, ViewportPercentageLength};
 pub use self::length::NonNegativeLengthOrPercentage;
+pub use self::list::{ListStyleImage, Quotes};
+#[cfg(feature = "gecko")]
+pub use self::list::ListStyleType;
+pub use self::outline::OutlineStyle;
 pub use self::rect::LengthOrNumberRect;
 pub use self::percentage::Percentage;
-pub use self::position::{Position, PositionComponent};
-pub use self::svg::{SVGLength, SVGOpacity, SVGPaint, SVGPaintKind, SVGStrokeDashArray, SVGWidth};
+pub use self::position::{Position, PositionComponent, GridAutoFlow, GridTemplateAreas};
+pub use self::pointing::Cursor;
+#[cfg(feature = "gecko")]
+pub use self::pointing::CursorImage;
+pub use self::svg::{SVGLength, SVGOpacity, SVGPaint, SVGPaintKind};
+pub use self::svg::{SVGPaintOrder, SVGStrokeDashArray, SVGWidth};
+pub use self::svg::MozContextProperties;
 pub use self::table::XSpan;
-pub use self::text::{InitialLetter, LetterSpacing, LineHeight, TextOverflow, WordSpacing};
+pub use self::text::{InitialLetter, LetterSpacing, LineHeight, TextDecorationLine};
+pub use self::text::{TextAlign, TextAlignKeyword, TextOverflow, WordSpacing};
 pub use self::time::Time;
-pub use self::transform::{TimingFunction, TransformOrigin};
+pub use self::transform::{TimingFunction, Transform, TransformOrigin};
+pub use self::ui::MozForceBrokenImageIcon;
 pub use super::generics::grid::GridTemplateComponent as GenericGridTemplateComponent;
 
 #[cfg(feature = "gecko")]
@@ -73,8 +88,12 @@ pub mod font;
 pub mod gecko;
 pub mod grid;
 pub mod image;
+pub mod inherited_box;
 pub mod length;
+pub mod list;
+pub mod outline;
 pub mod percentage;
+pub mod pointing;
 pub mod position;
 pub mod rect;
 pub mod source_size_list;
@@ -83,6 +102,7 @@ pub mod table;
 pub mod text;
 pub mod time;
 pub mod transform;
+pub mod ui;
 
 /// Common handling for the specified value CSS url() values.
 pub mod url {
@@ -105,36 +125,12 @@ impl Parse for SpecifiedUrl {
 impl Eq for SpecifiedUrl {}
 }
 
-/// Parse an `<integer>` value, handling `calc()` correctly.
-pub fn parse_integer<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                             -> Result<Integer, ParseError<'i>> {
-    let location = input.current_source_location();
-    // FIXME: remove early returns when lifetimes are non-lexical
-    match *input.next()? {
-        Token::Number { int_value: Some(v), .. } => return Ok(Integer::new(v)),
-        Token::Function(ref name) if name.eq_ignore_ascii_case("calc") => {}
-        ref t => return Err(location.new_unexpected_token_error(t.clone()))
-    }
-
-    let result = input.parse_nested_block(|i| {
-        CalcNode::parse_integer(context, i)
-    })?;
-
-    Ok(Integer::from_calc(result))
-}
-
-/// Parse a `<number>` value, handling `calc()` correctly, and without length
-/// limitations.
-pub fn parse_number<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                            -> Result<Number, ParseError<'i>> {
-    parse_number_with_clamping_mode(context, input, AllowedNumericType::All)
-}
-
 /// Parse a `<number>` value, with a given clamping mode.
-pub fn parse_number_with_clamping_mode<'i, 't>(context: &ParserContext,
-                                               input: &mut Parser<'i, 't>,
-                                               clamping_mode: AllowedNumericType)
-                                               -> Result<Number, ParseError<'i>> {
+fn parse_number_with_clamping_mode<'i, 't>(
+    context: &ParserContext,
+    input: &mut Parser<'i, 't>,
+    clamping_mode: AllowedNumericType,
+) -> Result<Number, ParseError<'i>> {
     let location = input.current_source_location();
     // FIXME: remove early returns when lifetimes are non-lexical
     match *input.next()? {
@@ -160,24 +156,26 @@ pub fn parse_number_with_clamping_mode<'i, 't>(context: &ParserContext,
 
 // The integer values here correspond to the border conflict resolution rules in CSS 2.1 §
 // 17.6.2.1. Higher values override lower values.
+//
+// FIXME(emilio): Should move to border.rs
 define_numbered_css_keyword_enum! { BorderStyle:
-    "none" => none = -1,
-    "solid" => solid = 6,
-    "double" => double = 7,
-    "dotted" => dotted = 4,
-    "dashed" => dashed = 5,
-    "hidden" => hidden = -2,
-    "groove" => groove = 1,
-    "ridge" => ridge = 3,
-    "inset" => inset = 0,
-    "outset" => outset = 2,
+    "none" => None = -1,
+    "solid" => Solid = 6,
+    "double" => Double = 7,
+    "dotted" => Dotted = 4,
+    "dashed" => Dashed = 5,
+    "hidden" => Hidden = -2,
+    "groove" => Groove = 1,
+    "ridge" => Ridge = 3,
+    "inset" => Inset = 0,
+    "outset" => Outset = 2,
 }
 
 
 impl BorderStyle {
     /// Whether this border style is either none or hidden.
     pub fn none_or_hidden(&self) -> bool {
-        matches!(*self, BorderStyle::none | BorderStyle::hidden)
+        matches!(*self, BorderStyle::None | BorderStyle::Hidden)
     }
 }
 
@@ -196,7 +194,7 @@ pub struct Number {
 
 impl Parse for Number {
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        parse_number(context, input)
+        parse_number_with_clamping_mode(context, input, AllowedNumericType::All)
     }
 }
 
@@ -252,8 +250,9 @@ impl ToComputedValue for Number {
 }
 
 impl ToCss for Number {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write,
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
     {
         if self.calc_clamping_mode.is_some() {
             dest.write_str("calc(")?;
@@ -263,6 +262,20 @@ impl ToCss for Number {
             dest.write_str(")")?;
         }
         Ok(())
+    }
+}
+
+impl From<Number> for f32 {
+    #[inline]
+    fn from(n: Number) -> Self {
+        n.get()
+    }
+}
+
+impl From<Number> for f64 {
+    #[inline]
+    fn from(n: Number) -> Self {
+        n.get() as f64
     }
 }
 
@@ -339,7 +352,7 @@ pub struct Opacity(Number);
 
 impl Parse for Opacity {
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        parse_number(context, input).map(Opacity)
+        Number::parse(context, input).map(Opacity)
     }
 }
 
@@ -398,7 +411,20 @@ impl Integer {
 
 impl Parse for Integer {
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        parse_integer(context, input)
+        let location = input.current_source_location();
+
+        // FIXME: remove early returns when lifetimes are non-lexical
+        match *input.next()? {
+            Token::Number { int_value: Some(v), .. } => return Ok(Integer::new(v)),
+            Token::Function(ref name) if name.eq_ignore_ascii_case("calc") => {}
+            ref t => return Err(location.new_unexpected_token_error(t.clone()))
+        }
+
+        let result = input.parse_nested_block(|i| {
+            CalcNode::parse_integer(context, i)
+        })?;
+
+        Ok(Integer::from_calc(result))
     }
 }
 
@@ -409,7 +435,7 @@ impl Integer {
         input: &mut Parser<'i, 't>,
         min: i32
     ) -> Result<Integer, ParseError<'i>> {
-        match parse_integer(context, input) {
+        match Integer::parse(context, input) {
             // FIXME(emilio): The spec asks us to avoid rejecting it at parse
             // time except until computed value time.
             //
@@ -451,8 +477,9 @@ impl ToComputedValue for Integer {
 }
 
 impl ToCss for Integer {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write,
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
     {
         if self.was_calc {
             dest.write_str("calc(")?;
@@ -535,7 +562,10 @@ pub struct ClipRect {
 
 
 impl ToCss for ClipRect {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("rect(")?;
 
         if let Some(ref top) = self.top {
@@ -780,7 +810,10 @@ impl Attr {
 }
 
 impl ToCss for Attr {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("attr(")?;
         if let Some(ref ns) = self.namespace {
             serialize_identifier(&ns.0.to_string(), dest)?;

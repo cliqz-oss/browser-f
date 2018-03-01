@@ -57,13 +57,6 @@
     </implementation>      
   </binding>
 
-  <binding id="control-item" extends="chrome://global/content/bindings/general.xml#basetext">
-    <implementation>
-      <property name="value"      onset="this.setAttribute('value', val); return val;"
-                                  onget="return this.getAttribute('value');"/>
-    </implementation>
-  </binding>
-
   <binding id="root-element">
     <implementation>
       <field name="_lightweightTheme">null</field>
@@ -100,58 +93,6 @@
       <property name="contentDocument" readonly="true"
                 onget="return this.webNavigation.document;"/>
     </implementation>
-  </binding>
-
-  <binding id="statusbarpanel" display="xul:button">
-    <content>
-      <children>
-        <xul:label class="statusbarpanel-text" xbl:inherits="value=label,crop" crop="right" flex="1"/>
-      </children>
-    </content>
-
-    <implementation>
-      <property name="label"
-                onget="return this.getAttribute('label');"
-                onset="this.setAttribute('label',val); return val;"/>
-      <property name="image"
-                onget="return this.getAttribute('image');"
-                onset="this.setAttribute('image',val); return val;"/>
-      <property name="src"
-                onget="return this.getAttribute('src');"
-                onset="this.setAttribute('src',val); return val;"/>
-    </implementation>
-  </binding>
-
-  <binding id="statusbarpanel-menu-iconic" display="xul:menu"
-           extends="chrome://global/content/bindings/general.xml#statusbarpanel">
-    <content>
-      <xul:image class="statusbarpanel-icon" xbl:inherits="src,src=image"/>
-      <children/>
-    </content>
-  </binding>
-
-  <binding id="statusbar" role="xul:statusbar">
-    <content>
-      <children/>
-      <xul:statusbarpanel class="statusbar-resizerpanel">
-        <xul:resizer dir="bottomend"/>
-      </xul:statusbarpanel>
-    </content>
-  </binding>
-
-  <binding id="statusbarpanel-iconic" display="xul:button" role="xul:button"
-           extends="chrome://global/content/bindings/general.xml#statusbarpanel">
-    <content>
-      <xul:image class="statusbarpanel-icon" xbl:inherits="src,src=image"/>
-    </content>
-  </binding>
-
-  <binding id="statusbarpanel-iconic-text" display="xul:button" role="xul:button"
-           extends="chrome://global/content/bindings/general.xml#statusbarpanel">
-    <content>
-      <xul:image class="statusbarpanel-icon" xbl:inherits="src,src=image"/>
-      <xul:label class="statusbarpanel-text" xbl:inherits="value=label,crop"/>
-    </content>
   </binding>
 
   <binding id="deck">

@@ -11,18 +11,27 @@ from __future__ import absolute_import, unicode_literals, print_function
 
 # TODO: ideally these lists could be specified in moz.build itself
 
+# Inclusive components are those which are scheduled when certain files are
+# changed, but do not run by default.  These are generally added to
+# `SCHEDULES.inclusive` using `+=`, but can also be used as exclusive
+# components for files which *only* affect the named component.
 INCLUSIVE_COMPONENTS = [
+    'docs',
     'py-lint',
     'js-lint',
     'yaml-lint',
-    # test suites that only run when certain files have changed
+    # inclusive test suites -- these *only* run when certain files have changed
     'jittest',
     'test-verify',
-    # test flavors (narrower than suites)
+    'test-verify-wpt',
     'jsreftest',
 ]
 INCLUSIVE_COMPONENTS = sorted(INCLUSIVE_COMPONENTS)
 
+# Exclusive components are those which are scheduled by default, but for which
+# some files *only* affect that component.  For example, most files affect all
+# platforms, but platform-specific files exclusively affect a single platform.
+# These components are assigned to `SCHEDULES.exclusive` with `=`.
 EXCLUSIVE_COMPONENTS = [
     # os families
     'android',
@@ -46,6 +55,8 @@ EXCLUSIVE_COMPONENTS = [
     'web-platform-tests',
     'web-platform-tests-reftests',
     'web-platform-tests-wdspec',
+    # Thunderbird test suites
+    'mozmill',
 ]
 EXCLUSIVE_COMPONENTS = sorted(EXCLUSIVE_COMPONENTS)
 ALL_COMPONENTS = INCLUSIVE_COMPONENTS + EXCLUSIVE_COMPONENTS

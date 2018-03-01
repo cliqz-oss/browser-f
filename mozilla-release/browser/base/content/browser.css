@@ -71,37 +71,20 @@ panelmultiview {
   -moz-binding: url("chrome://browser/content/customizableui/panelUI.xml#panelmultiview");
 }
 
-photonpanelmultiview {
-  -moz-binding: url("chrome://browser/content/customizableui/panelUI.xml#photonpanelmultiview");
-}
-
 panelview {
-  -moz-binding: url("chrome://browser/content/customizableui/panelUI.xml#panelview");
   -moz-box-orient: vertical;
 }
 
-panel[hidden] panelmultiview,
-panel[hidden] photonpanelmultiview,
-panel[hidden] panelview {
+panel[hidden] panelmultiview {
   -moz-binding: none;
 }
 
-.panel-mainview {
-  transition: transform var(--panelui-subview-transition-duration);
-}
-
-panelview:not([mainview]):not([current]):not([in-transition]) {
-  transition: visibility 0s linear var(--panelui-subview-transition-duration);
+panelview:not([current]):not([in-transition]) {
   visibility: collapse;
 }
 
-photonpanelmultiview panelview:not([current]):not([in-transition]) {
-  transition: none;
-  visibility: collapse;
-}
-
-panelview[mainview] > .panel-header,
-panelview:not([title]) > .panel-header {
+/* Hide the header when a subview is reused as a main view. */
+panelview[mainview] > .panel-header {
   display: none;
 }
 
@@ -378,7 +361,7 @@ toolbarpaletteitem {
   }
 
   .webextension-menuitem {
-    list-style-image: var(--webextension-menuitem-image, inherit);
+    list-style-image: var(--webextension-menuitem-image, inherit) !important;
   }
 }
 
@@ -410,7 +393,7 @@ toolbarpaletteitem {
   }
 
   .webextension-menuitem {
-    list-style-image: var(--webextension-menuitem-image-2x, inherit);
+    list-style-image: var(--webextension-menuitem-image-2x, inherit) !important;
   }
 }
 
@@ -425,7 +408,7 @@ toolbarpaletteitem[removable="false"] {
 
 %ifndef XP_MACOSX
 toolbarpaletteitem[place="palette"],
-toolbarpaletteitem[place="panel"],
+toolbarpaletteitem[place="menu-panel"],
 toolbarpaletteitem[place="toolbar"] {
   -moz-user-focus: normal;
 }
@@ -653,14 +636,6 @@ html|input.urlbar-input[textoverflow]:not([focused]) {
 
 #PopupSearchAutoComplete {
   -moz-binding: url("chrome://browser/content/search/search.xml#browser-search-autocomplete-result-popup");
-}
-
-/* Overlay a badge on top of the icon of additional open search providers
-   in the search panel. */
-.addengine-item > .button-box > .button-icon,
-.addengine-item[type="menu"] > .button-box > .box-inherit > .button-icon {
-  -moz-binding: url("chrome://browser/content/search/search.xml#addengine-icon");
-  display: -moz-stack;
 }
 
 #PopupAutoCompleteRichResult {
@@ -928,35 +903,6 @@ html|*#fullscreen-exit-button {
 
 /* ::::: Ctrl-Tab Panel ::::: */
 
-.ctrlTab-preview > html|img,
-.ctrlTab-preview > html|canvas {
-  min-width: inherit;
-  max-width: inherit;
-  min-height: inherit;
-  max-height: inherit;
-}
-
-.ctrlTab-favicon-container {
-  -moz-box-align: start;
-%ifdef XP_MACOSX
-  -moz-box-pack: end;
-%else
-  -moz-box-pack: start;
-%endif
-}
-
-.ctrlTab-favicon {
-  width: 16px;
-  height: 16px;
-}
-
-/* Apply crisp rendering for favicons at exactly 2dppx resolution */
-@media (resolution: 2dppx) {
-  .ctrlTab-favicon {
-    image-rendering: -moz-crisp-edges;
-  }
-}
-
 .ctrlTab-preview {
   -moz-binding: url("chrome://browser/content/browser-tabPreviews.xml#ctrlTab-preview");
 }
@@ -1071,12 +1017,6 @@ html|*#gcli-output-frame,
 /* Translation */
 notification[value="translation"] {
   -moz-binding: url("chrome://browser/content/translation-infobar.xml#translationbar");
-}
-
-/** See bug 872317 for why the following rule is necessary. */
-
-#downloads-button {
-  -moz-binding: url("chrome://browser/content/downloads/download.xml#download-toolbarbutton");
 }
 
 /*** Visibility of downloads indicator controls ***/
@@ -1428,6 +1368,16 @@ toolbarpaletteitem[place="palette"][hidden] {
 #pageActionContextMenu[state=extensionPinned] > .pageActionContextMenuItem.extensionPinned,
 #pageActionContextMenu[state=extensionUnpinned] > .pageActionContextMenuItem.extensionUnpinned {
   visibility: visible;
+}
+
+
+/* Favicon in Open Bookmark in Sidebar */
+#sidebar-box[sidebarcommand="viewWebPanelsSidebar"] > #sidebar-header > #sidebar-switcher-target > #sidebar-icon {
+  list-style-image: var(--sidebar-webpage-icon, url(chrome://mozapps/skin/places/defaultFavicon.svg) );
+  -moz-context-properties: fill;
+  fill: currentColor;
+  width: 16px;
+  height: 16px;
 }
 
 /* WebExtension Sidebars */

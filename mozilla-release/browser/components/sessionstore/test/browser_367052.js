@@ -6,9 +6,9 @@
 
 add_task(async function() {
   // make sure that the next closed tab will increase getClosedTabCount
-  let max_tabs_undo = gPrefService.getIntPref("browser.sessionstore.max_tabs_undo");
-  gPrefService.setIntPref("browser.sessionstore.max_tabs_undo", max_tabs_undo + 1);
-  registerCleanupFunction(() => gPrefService.clearUserPref("browser.sessionstore.max_tabs_undo"));
+  let max_tabs_undo = Services.prefs.getIntPref("browser.sessionstore.max_tabs_undo");
+  Services.prefs.setIntPref("browser.sessionstore.max_tabs_undo", max_tabs_undo + 1);
+  registerCleanupFunction(() => Services.prefs.clearUserPref("browser.sessionstore.max_tabs_undo"));
 
   // Empty the list of closed tabs.
   while (ss.getClosedTabCount(window)) {
@@ -16,7 +16,7 @@ add_task(async function() {
   }
 
   // restore a blank tab
-  let tab = BrowserTestUtils.addTab(gBrowser, "about:");
+  let tab = BrowserTestUtils.addTab(gBrowser, "about:mozilla");
   await promiseBrowserLoaded(tab.linkedBrowser);
 
   let count = await promiseSHistoryCount(tab.linkedBrowser);

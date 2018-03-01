@@ -419,8 +419,7 @@ NotificationController::ScheduleContentInsertion(Accessible* aContainer,
                                                  nsIContent* aStartChildNode,
                                                  nsIContent* aEndChildNode)
 {
-  nsTArray<nsCOMPtr<nsIContent>>* list =
-    mContentInsertions.LookupOrAdd(aContainer);
+  nsTArray<nsCOMPtr<nsIContent>> list;
 
   bool needsProcessing = false;
   nsIContent* node = aStartChildNode;
@@ -429,13 +428,14 @@ NotificationController::ScheduleContentInsertion(Accessible* aContainer,
     // actually inserted, check if the given content has a frame to discard
     // this case early.
     if (node->GetPrimaryFrame()) {
-      if (list->AppendElement(node))
+      if (list.AppendElement(node))
         needsProcessing = true;
     }
     node = node->GetNextSibling();
   }
 
   if (needsProcessing) {
+    mContentInsertions.LookupOrAdd(aContainer)->AppendElements(list);
     ScheduleProcessing();
   }
 }
@@ -459,9 +459,29 @@ NotificationController::IsUpdatePending()
 {
   return mPresShell->IsLayoutFlushObserver() ||
     mObservingState == eRefreshProcessingForUpdate ||
+    WaitingForParent() ||
     mContentInsertions.Count() != 0 || mNotifications.Length() != 0 ||
     mTextHash.Count() != 0 ||
     !mDocument->HasLoadState(DocAccessible::eTreeConstructed);
+}
+
+bool
+NotificationController::WaitingForParent()
+{
+  DocAccessible* parentdoc = mDocument->ParentDocument();
+  if (!parentdoc) {
+    return false;
+  }
+
+  NotificationController* parent = parentdoc->mNotificationController;
+  if (!parent || parent == this) {
+    // Do not wait for nothing or ourselves
+    return false;
+  }
+
+  // Wait for parent's notifications processing
+  return parent->mContentInsertions.Count() != 0 ||
+         parent->mNotifications.Length() != 0;
 }
 
 void
@@ -592,6 +612,8 @@ NotificationController::ProcessMutationEvents()
 void
 NotificationController::WillRefresh(mozilla::TimeStamp aTime)
 {
+  Telemetry::AutoTimer<Telemetry::A11Y_TREE_UPDATE_TIMING_MS> timer;
+
   AUTO_PROFILER_LABEL("NotificationController::WillRefresh", OTHER);
 
   // If the document accessible that notification collector was created for is
@@ -607,6 +629,15 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
       mObservingState == eRefreshProcessingForUpdate ||
       mPresShell->IsReflowInterrupted()) {
     return;
+  }
+
+  // Process parent's notifications before ours, to get proper ordering between
+  // e.g. tab event and content event.
+  if (WaitingForParent()) {
+    mDocument->ParentDocument()->mNotificationController->WillRefresh(aTime);
+    if (!mDocument) {
+      return;
+    }
   }
 
   // Any generic notifications should be queued if we're processing content
@@ -646,19 +677,20 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
     nsIContent* textNode = entry->GetKey();
     Accessible* textAcc = mDocument->GetAccessible(textNode);
 
-    // If the text node is not in tree or doesn't have frame then this case should
-    // have been handled already by content removal notifications.
-    nsINode* containerNode = textNode->GetParentNode();
-    if (!containerNode) {
-      NS_ASSERTION(!textAcc,
-                   "Text node was removed but accessible is kept alive!");
+    // If the text node is not in tree or doesn't have a frame, or placed in
+    // another document, then this case should have been handled already by
+    // content removal notifications.
+    nsINode* containerNode = textNode->GetFlattenedTreeParentNode();
+    if (!containerNode || textNode->OwnerDoc() != mDocument->DocumentNode()) {
+      MOZ_ASSERT(!textAcc,
+                 "Text node was removed but accessible is kept alive!");
       continue;
     }
 
     nsIFrame* textFrame = textNode->GetPrimaryFrame();
     if (!textFrame) {
-      NS_ASSERTION(!textAcc,
-                   "Text node isn't rendered but accessible is kept alive!");
+      MOZ_ASSERT(!textAcc,
+                 "Text node isn't rendered but accessible is kept alive!");
       continue;
     }
 

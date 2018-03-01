@@ -36,6 +36,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/ScriptPreloader.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/ContentParent.h"
@@ -805,7 +806,7 @@ nsFrameMessageManager::ReleaseCachedProcesses()
 NS_IMETHODIMP
 nsFrameMessageManager::Dump(const nsAString& aStr)
 {
-  if (!nsContentUtils::DOMWindowDumpEnabled()) {
+  if (!DOMPrefs::DumpEnabled()) {
     return NS_OK;
   }
 
@@ -1649,7 +1650,7 @@ nsMessageManagerScriptExecutor::TryCacheLoadAndCompileScript(
       return;
     }
 
-    JS::CompileOptions options(cx, JSVERSION_DEFAULT);
+    JS::CompileOptions options(cx);
     options.setFileAndLine(url.get(), 1);
     options.setNoScriptRval(true);
 
@@ -1714,7 +1715,6 @@ nsMessageManagerScriptExecutor::InitChildGlobalInternal(
 
   JS::CompartmentOptions options;
   options.creationOptions().setSystemZone();
-  options.behaviors().setVersion(JSVERSION_DEFAULT);
 
   if (xpc::SharedMemoryEnabled()) {
     options.creationOptions().setSharedMemoryAndAtomicsEnabled(true);

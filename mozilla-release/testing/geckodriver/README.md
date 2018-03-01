@@ -280,6 +280,23 @@ and run. It may contain any of the following fields:
  </tr>
 </table>
 
+moz:useNonSpecCompliantPointerOrigin
+------------------------------------
+
+A boolean value to indicate how the pointer origin for an action command
+will be calculated.
+
+With Firefox 59 the calculation will be based on the requirements by the
+[WebDriver] specification. This means that the pointer origin is no longer
+computed based on the top and left position of the referenced element, but
+on the in-view center point.
+
+To temporarily disable the WebDriver conformant behavior use `false` as value
+for this capability.
+
+Please note that this capability exists only temporarily, and that it will be
+removed once all Selenium bindings can handle the new behavior.
+
 moz:webdriverClick
 ------------------
 
@@ -575,8 +592,9 @@ ensure you put this in your [mozconfig]:
 
 	ac_add_options --enable-geckodriver
 
-The _geckodriver_ binary will appear in `${objdir}/dist/bin/geckodriver`
-alongside _firefox-bin_.
+You build geckodriver with the `./mach build testing/geckodriver`
+command, run tests with `./mach test testing/geckodriver`, and run
+the built executable with `./mach geckodriver -- --other --flags`.
 
 [Rust]: https://www.rust-lang.org/
 [Mozilla]: https://www.mozilla.org/en-US/
@@ -602,4 +620,4 @@ There is also an IRC channel to talk about using and developing
 geckodriver in #ateam on irc.mozilla.org.
 
 [subscribe]: https://lists.mozilla.org/listinfo/tools-marionette
-[archive]: http://groups.google.com/group/mozilla.tools.marionette
+[archive]: https://groups.google.com/group/mozilla.tools.marionette

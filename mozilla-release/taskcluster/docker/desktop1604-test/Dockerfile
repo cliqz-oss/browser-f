@@ -1,6 +1,7 @@
 FROM          ubuntu:16.04
 MAINTAINER    Joel Maher <joel.maher@gmail.com>
 
+
 RUN mkdir /builds
 RUN useradd -d /builds/worker -s /bin/bash -m worker
 WORKDIR /builds/worker
@@ -18,6 +19,9 @@ ADD topsrcdir/python/mozbuild/mozbuild/action/tooltool.py /setup/tooltool.py
 
 # %include testing/mozharness/external_tools/robustcheckout.py
 ADD topsrcdir/testing/mozharness/external_tools/robustcheckout.py /usr/local/mercurial/robustcheckout.py
+
+# %include taskcluster/docker/recipes/hgrc
+COPY topsrcdir/taskcluster/docker/recipes/hgrc /etc/mercurial/hgrc.d/mozilla.rc
 
 # %include taskcluster/docker/recipes/common.sh
 ADD topsrcdir/taskcluster/docker/recipes/common.sh /setup/common.sh
@@ -45,6 +49,8 @@ ADD topsrcdir/taskcluster/docker/recipes/run-task /builds/worker/bin/run-task
 
 # %include taskcluster/scripts/tester/test-linux.sh
 ADD topsrcdir/taskcluster/scripts/tester/test-linux.sh /builds/worker/bin/test-linux.sh
+
+ADD topsrcdir/python/mozbuild/mozbuild/action/tooltool.py /builds/worker/scripts/tooltool.py
 
 # Set variable normally configured at login, by the shells parent process, these
 # are taken from GNU su manual

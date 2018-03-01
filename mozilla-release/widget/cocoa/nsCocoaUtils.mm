@@ -489,13 +489,13 @@ nsresult nsCocoaUtils::CreateNSImageFromImageContainer(imgIContainer *aImage, ui
     RefPtr<gfxContext> context = gfxContext::CreateOrNull(drawTarget);
     MOZ_ASSERT(context);
 
-    mozilla::image::DrawResult res =
+    mozilla::image::ImgDrawResult res =
       aImage->Draw(context, scaledSize, ImageRegion::Create(scaledSize),
                    aWhichFrame, SamplingFilter::POINT,
                    /* no SVGImageContext */ Nothing(),
                    imgIContainer::FLAG_SYNC_DECODE, 1.0);
 
-    if (res != mozilla::image::DrawResult::SUCCESS) {
+    if (res != mozilla::image::ImgDrawResult::SUCCESS) {
       return NS_ERROR_FAILURE;
     }
 
@@ -593,6 +593,65 @@ nsCocoaUtils::MakeNewCocoaEventWithType(NSEventType aEventType, NSEvent *aEvent)
                         isARepeat:[aEvent isARepeat]
                           keyCode:[aEvent keyCode]];
   return newEvent;
+
+  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+}
+
+// static
+NSEvent*
+nsCocoaUtils::MakeNewCococaEventFromWidgetEvent(
+                const WidgetKeyboardEvent& aKeyEvent,
+                NSInteger aWindowNumber,
+                NSGraphicsContext* aContext)
+{
+  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
+
+  NSEventType eventType;
+  if (aKeyEvent.mMessage == eKeyUp) {
+    eventType = NSKeyUp;
+  } else {
+    eventType = NSKeyDown;
+  }
+
+  static const uint32_t sModifierFlagMap[][2] = {
+    { MODIFIER_SHIFT,    NSShiftKeyMask },
+    { MODIFIER_CONTROL,  NSControlKeyMask },
+    { MODIFIER_ALT,      NSAlternateKeyMask },
+    { MODIFIER_ALTGRAPH, NSAlternateKeyMask },
+    { MODIFIER_META,     NSCommandKeyMask },
+    { MODIFIER_CAPSLOCK, NSAlphaShiftKeyMask },
+    { MODIFIER_NUMLOCK,  NSNumericPadKeyMask }
+  };
+
+  NSUInteger modifierFlags = 0;
+  for (uint32_t i = 0; i < ArrayLength(sModifierFlagMap); ++i) {
+    if (aKeyEvent.mModifiers & sModifierFlagMap[i][0]) {
+      modifierFlags |= sModifierFlagMap[i][1];
+    }
+  }
+
+  NSString* characters;
+  if (aKeyEvent.mCharCode) {
+    characters = [NSString stringWithCharacters:
+      reinterpret_cast<const unichar*>(&(aKeyEvent.mCharCode)) length:1];
+  } else {
+    uint32_t cocoaCharCode =
+      nsCocoaUtils::ConvertGeckoKeyCodeToMacCharCode(aKeyEvent.mKeyCode);
+    characters = [NSString stringWithCharacters:
+      reinterpret_cast<const unichar*>(&cocoaCharCode) length:1];
+  }
+
+  return
+    [NSEvent     keyEventWithType:eventType
+                         location:NSMakePoint(0,0)
+                    modifierFlags:modifierFlags
+                        timestamp:0
+                     windowNumber:aWindowNumber
+                          context:aContext
+                       characters:characters
+      charactersIgnoringModifiers:characters
+                        isARepeat:NO
+                          keyCode:0]; // Native key code not currently needed
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }

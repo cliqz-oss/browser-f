@@ -517,6 +517,7 @@ public:
   virtual PContentPermissionRequestParent*
   AllocPContentPermissionRequestParent(const InfallibleTArray<PermissionRequest>& aRequests,
                                        const IPC::Principal& aPrincipal,
+                                       const bool& aIsTrusted,
                                        const TabId& aTabId) override;
 
   virtual bool
@@ -539,6 +540,7 @@ public:
                    const nsCString& aBaseURI,
                    const float& aFullZoom,
                    const IPC::Principal& aTriggeringPrincipal,
+                   const uint32_t& aReferrerPolicy,
                    CreateWindowResolver&& aResolve) override;
 
   virtual mozilla::ipc::IPCResult RecvCreateWindowInDifferentProcess(
@@ -552,7 +554,8 @@ public:
     const nsCString& aBaseURI,
     const float& aFullZoom,
     const nsString& aName,
-    const IPC::Principal& aTriggeringPrincipal) override;
+    const IPC::Principal& aTriggeringPrincipal,
+    const uint32_t& aReferrerPolicy) override;
 
   static bool AllocateLayerTreeId(TabParent* aTabParent, uint64_t* aId);
 
@@ -603,6 +606,16 @@ public:
                                      const URIParams& aURI,
                                      const nsCString& aTables) override;
 
+  virtual PLoginReputationParent*
+  AllocPLoginReputationParent(const URIParams& aURI) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvPLoginReputationConstructor(PLoginReputationParent* aActor,
+                                  const URIParams& aURI) override;
+
+  virtual bool
+  DeallocPLoginReputationParent(PLoginReputationParent* aActor) override;
+
   virtual bool SendActivate(PBrowserParent* aTab) override
   {
     return PContentParent::SendActivate(aTab);
@@ -644,6 +657,8 @@ public:
   virtual bool
   DeallocPClientOpenWindowOpParent(PClientOpenWindowOpParent* aActor) override;
 
+  static hal::ProcessPriority GetInitialProcessPriority(Element* aFrameElement);
+
   // Control the priority of the IPC messages for input events.
   void SetInputPriorityEventEnabled(bool aEnabled);
   bool IsInputPriorityEventEnabled()
@@ -676,8 +691,6 @@ private:
   static nsTArray<ContentParent*>* sPrivateContent;
   static nsDataHashtable<nsUint32HashKey, ContentParent*> *sJSPluginContentParents;
   static StaticAutoPtr<LinkedList<ContentParent> > sContentParents;
-
-  static hal::ProcessPriority GetInitialProcessPriority(Element* aFrameElement);
 
   static ContentBridgeParent* CreateContentBridgeParent(const TabContext& aContext,
                                                         const hal::ProcessPriority& aPriority,
@@ -716,6 +729,7 @@ private:
                      nsCOMPtr<nsITabParent>& aNewTabParent,
                      bool* aWindowIsNew,
                      nsIPrincipal* aTriggeringPrincipal,
+                     uint32_t aReferrerPolicy,
                      bool aLoadUri);
 
   FORWARD_SHMEM_ALLOCATOR_TO(PContentParent)
@@ -880,7 +894,6 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvAccumulateMixedContentHSTS(const URIParams& aURI,
                                                                  const bool& aActive,
-                                                                 const bool& aHSTSPriming,
                                                                  const OriginAttributes& aOriginAttributes) override;
 
   virtual bool DeallocPHalParent(PHalParent*) override;
@@ -943,12 +956,6 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvPPresentationConstructor(PPresentationParent* aActor) override;
 
-  virtual PFlyWebPublishedServerParent*
-    AllocPFlyWebPublishedServerParent(const nsString& name,
-                                      const FlyWebPublishOptions& params) override;
-
-  virtual bool DeallocPFlyWebPublishedServerParent(PFlyWebPublishedServerParent* aActor) override;
-
   virtual PSpeechSynthesisParent* AllocPSpeechSynthesisParent() override;
 
   virtual bool
@@ -982,6 +989,10 @@ private:
   virtual mozilla::ipc::IPCResult RecvClipboardHasType(nsTArray<nsCString>&& aTypes,
                                                        const int32_t& aWhichClipboard,
                                                        bool* aHasType) override;
+
+  virtual mozilla::ipc::IPCResult RecvPlaySound(const URIParams& aURI) override;
+  virtual mozilla::ipc::IPCResult RecvBeep() override;
+  virtual mozilla::ipc::IPCResult RecvPlayEventSound(const uint32_t& aEventId) override;
 
   virtual mozilla::ipc::IPCResult RecvGetSystemColors(const uint32_t& colorsCount,
                                                       InfallibleTArray<uint32_t>* colors) override;
@@ -1096,6 +1107,9 @@ private:
 
   virtual mozilla::ipc::IPCResult
   RecvRequestAnonymousTemporaryFile(const uint64_t& aID) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvCreateAudioIPCConnection(CreateAudioIPCConnectionResolver&& aResolver) override;
 
   virtual mozilla::ipc::IPCResult
   RecvKeygenProcessValue(const nsString& oldValue, const nsString& challenge,
@@ -1283,9 +1297,8 @@ private:
   nsTHashtable<nsCStringHashKey> mActivePermissionKeys;
 
   nsTArray<nsCString> mBlobURLs;
-#ifdef MOZ_CRASHREPORTER
+
   UniquePtr<mozilla::ipc::CrashReporterHost> mCrashReporter;
-#endif
 
   static uint64_t sNextTabParentId;
   static nsDataHashtable<nsUint64HashKey, TabParent*> sNextTabParents;

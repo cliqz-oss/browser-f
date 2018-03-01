@@ -105,7 +105,7 @@ class nsImageGeometryMixin
 {
 public:
   nsImageGeometryMixin(nsDisplayItem* aItem, nsDisplayListBuilder* aBuilder)
-    : mLastDrawResult(mozilla::image::DrawResult::NOT_READY)
+    : mLastDrawResult(mozilla::image::ImgDrawResult::NOT_READY)
     , mWaitingForPaint(false)
   {
     // Transfer state from the previous version of this geometry item.
@@ -126,7 +126,7 @@ public:
   }
 
   static void UpdateDrawResult(nsDisplayItem* aItem,
-                               mozilla::image::DrawResult aResult)
+                               mozilla::image::ImgDrawResult aResult)
   {
     auto lastGeometry =
       static_cast<T*>(mozilla::FrameLayerBuilder::GetMostRecentGeometry(aItem));
@@ -147,8 +147,8 @@ public:
       return false;
     }
 
-    if (mLastDrawResult == mozilla::image::DrawResult::SUCCESS ||
-        mLastDrawResult == mozilla::image::DrawResult::BAD_IMAGE) {
+    if (mLastDrawResult == mozilla::image::ImgDrawResult::SUCCESS ||
+        mLastDrawResult == mozilla::image::ImgDrawResult::BAD_IMAGE) {
       return false;
     }
 
@@ -156,7 +156,7 @@ public:
   }
 
 private:
-  mozilla::image::DrawResult mLastDrawResult;
+  mozilla::image::ImgDrawResult mLastDrawResult;
   bool mWaitingForPaint;
 };
 
@@ -198,14 +198,10 @@ class nsDisplayBorderGeometry
 public:
   nsDisplayBorderGeometry(nsDisplayItem* aItem, nsDisplayListBuilder* aBuilder);
 
-  virtual void MoveBy(const nsPoint& aOffset) override;
-
   virtual bool InvalidateForSyncDecodeImages() const override
   {
     return ShouldInvalidateToSyncDecodeImages();
   }
-
-  nsRect mContentRect;
 };
 
 class nsDisplayBackgroundGeometry
@@ -313,6 +309,8 @@ public:
   }
 
   nsTArray<nsRect> mDestRects;
+  float mOpacity;
+  bool mHandleOpacity;
 };
 
 class nsDisplayFilterGeometry : public nsDisplaySVGEffectGeometry

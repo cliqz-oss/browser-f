@@ -58,6 +58,13 @@ js::jit::SA(uint32_t value)
     return value << SAShift;
 }
 
+uint32_t
+js::jit::FS(uint32_t value)
+{
+    MOZ_ASSERT(value < 32);
+    return value << FSShift;
+}
+
 Register
 js::jit::toRS(Instruction& i)
 {
@@ -1341,15 +1348,15 @@ AssemblerMIPSShared::as_movd(FloatRegister fd, FloatRegister fs)
 BufferOffset
 AssemblerMIPSShared::as_ctc1(Register rt, FPControl fc)
 {
-    spew("ctc1   %3s,%3s", rt.name(), FloatRegister(fc).name());
-    return writeInst(InstReg(op_cop1, rs_ctc1, rt, FloatRegister(fc)).encode());
+    spew("ctc1   %3s,%d", rt.name(), fc);
+    return writeInst(InstReg(op_cop1, rs_ctc1, rt, (uint32_t)fc).encode());
 }
 
 BufferOffset
 AssemblerMIPSShared::as_cfc1(Register rt, FPControl fc)
 {
-    spew("cfc1   %3s,%3s", rt.name(), FloatRegister(fc).name());
-    return writeInst(InstReg(op_cop1, rs_cfc1, rt, FloatRegister(fc)).encode());
+    spew("cfc1   %3s,%d", rt.name(), fc);
+    return writeInst(InstReg(op_cop1, rs_cfc1, rt, (uint32_t)fc).encode());
 }
 
 BufferOffset
@@ -1802,7 +1809,7 @@ AssemblerMIPSShared::bind(Label* label, BufferOffset boff)
 }
 
 void
-AssemblerMIPSShared::bindLater(Label* label, wasm::TrapDesc target)
+AssemblerMIPSShared::bindLater(Label* label, wasm::OldTrapDesc target)
 {
     if (label->used()) {
         int32_t next;
@@ -1811,7 +1818,7 @@ AssemblerMIPSShared::bindLater(Label* label, wasm::TrapDesc target)
         do {
             Instruction* inst = editSrc(b);
 
-            append(wasm::TrapSite(target, b.getOffset()));
+            append(wasm::OldTrapSite(target, b.getOffset()));
             next = inst[1].encode();
             inst[1].makeNop();
 

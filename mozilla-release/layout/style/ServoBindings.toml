@@ -1,6 +1,6 @@
 [build]
 args = [
-    "-x", "c++", "-std=c++14",
+    "-x", "c++", "-std=c++14", "-fno-sized-deallocation",
     "-DTRACING=1", "-DIMPL_LIBXUL", "-DMOZ_STYLO_BINDINGS=1",
     "-DMOZILLA_INTERNAL_API", "-DRUST_BINDGEN", "-DMOZ_STYLO"
 ]
@@ -56,6 +56,7 @@ headers = [
     "nsThemeConstants.h",
     "mozilla/css/Loader.h",
     "mozilla/dom/AnimationEffectReadOnlyBinding.h",
+    "mozilla/dom/HTMLSlotElement.h",
     "mozilla/dom/KeyframeEffectBinding.h",
     "mozilla/AnimationPropertySegment.h",
     "mozilla/ComputedTiming.h",
@@ -72,11 +73,13 @@ headers = [
     "mozilla/ServoBindings.h",
     "mozilla/ServoMediaList.h",
     "mozilla/ServoStyleContext.h",
+    "mozilla/ServoDeclarationBlock.h",
     "mozilla/SizeOfState.h",
     "nsCSSCounterStyleRule.h",
     "nsCSSFontFaceRule.h",
+    "nsContentUtils.h",
+    "nsNameSpaceManager.h",
     "nsMediaFeatures.h",
-    "nsMediaList.h",
     "nsXBLBinding.h",
 ]
 raw-lines = [
@@ -131,9 +134,9 @@ rusty-enums = [
     "nsIDocument_DocumentTheme",
     "nsIDocument_Type",
     "nsCSSUnit",
+    "nsCSSFontDesc",
     "nsCSSPropertyID",
     "nsCSSCounterDesc",
-    "nsMediaExpression_Range",
     "nsMediaFeature_RangeType",
     "nsMediaFeature_ValueType",
     "nsresult",
@@ -166,6 +169,7 @@ rusty-enums = [
     "StyleBasicShapeType",
     "nsStyleImageLayers_Size_DimensionType",
     "StyleStackSizing",
+    "StyleBorderImageRepeat",
     "StyleBoxPack",
     "StyleBoxOrient",
     "StyleBoxAlign",
@@ -175,6 +179,7 @@ rusty-enums = [
     "StyleBoxDecorationBreak",
     "StyleRuleInclusion",
     "StyleGridTrackBreadth",
+    "StyleOverscrollBehavior",
     "nsStyleImageType",
     "StyleWhiteSpace",
     "nsStyleSVGPaintType",
@@ -207,6 +212,8 @@ whitelist-vars = [
     "kNameSpaceID_.*",
     "kGenericFont_.*",
     "kPresContext_.*",
+    "nsContentUtils_.*",
+    "GECKO_IS_NIGHTLY",
 ]
 whitelist-types = [
     "RawGecko.*",
@@ -270,6 +277,7 @@ whitelist-types = [
     "nsChangeHint",
     "nsCSSCounterDesc",
     "nsCSSCounterStyleRule",
+    "nsCSSFontDesc",
     "nsCSSFontFaceRule",
     "nsCSSKeyword",
     "nsCSSPropertyID",
@@ -295,7 +303,6 @@ whitelist-types = [
     "nsMainThreadPtrHandle",
     "nsMainThreadPtrHolder",
     "nsMargin",
-    "nsMediaExpression",
     "nsMediaFeature",
     "nsMediaFeatures",
     "nsMediaList",
@@ -368,6 +375,7 @@ whitelist-types = [
     "mozilla::binding_danger::AssertAndSuppressCleanupPolicy",
     "mozilla::ParsingMode",
     "mozilla::InheritTarget",
+    "mozilla::ServoDeclarationBlock",
     "mozilla::ServoMediaList",
     "mozilla::StyleRuleInclusion",
     "nsStyleTransformMatrix::MatrixTransformOperator",
@@ -415,6 +423,7 @@ opaque-types = [
     "mozilla::dom::.*Callback", # Pulls in ErrorResult and other things that
                                 # don't align properly on Linux 32-bit
     "mozilla::SchedulerGroup", # Non-standard-layout packing of field into superclass
+    "nsCSSCounterStyleRule_Getter", # thiscall function pointer
 ]
 mapped-generic-types = [
     { generic = true, gecko = "mozilla::ServoUnsafeCell", servo = "::std::cell::UnsafeCell" },
@@ -495,6 +504,7 @@ structs-types = [
     "RawGeckoURLExtraData",
     "RawGeckoXBLBinding",
     "RawServoSelectorList",
+    "RawServoSourceSizeList",
     "RefPtr",
     "RustString",
     "CSSPseudoClassType",
@@ -518,7 +528,9 @@ structs-types = [
     "StyleShapeSource",
     "StyleTransition",
     "gfxFontFeatureValueSet",
+    "nsCSSCounterDesc",
     "nsCSSCounterStyleRule",
+    "nsCSSFontDesc",
     "nsCSSFontFaceRule",
     "nsCSSKeyword",
     "nsCSSPropertyID",
@@ -608,6 +620,7 @@ array-types = [
 servo-owned-types = [
     { name = "RawServoStyleSet", opaque = true },
     { name = "RawServoSelectorList", opaque = false },
+    { name = "RawServoSourceSizeList", opaque = false },
     { name = "ServoElementSnapshot", opaque = false },
     { name = "RawServoAnimationValueMap", opaque = true },
 ]

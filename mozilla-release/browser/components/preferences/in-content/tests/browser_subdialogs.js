@@ -21,7 +21,13 @@ function open_subdialog_and_test_generic_start_state(browser, domcontentloadedFn
     let subdialog = content.gSubDialog._topDialog;
 
     info("waiting for subdialog DOMFrameContentLoaded");
-    await ContentTaskUtils.waitForEvent(win, "DOMFrameContentLoaded", true);
+    let dialogOpenPromise;
+    await new Promise(resolve => {
+      win.addEventListener("DOMFrameContentLoaded", () => {
+        dialogOpenPromise = ContentTaskUtils.waitForEvent(subdialog._overlay, "dialogopen");
+        resolve();
+      }, { once: true, capture: true });
+    });
     let result;
     if (args.domcontentloadedFnStr) {
       // eslint-disable-next-line no-eval
@@ -29,7 +35,7 @@ function open_subdialog_and_test_generic_start_state(browser, domcontentloadedFn
     }
 
     info("waiting for subdialog load");
-    await ContentTaskUtils.waitForEvent(subdialog._overlay, "dialogopen");
+    await dialogOpenPromise;
     info("subdialog window is loaded");
 
     let expectedStyleSheetURLs = subdialog._injectedStyleSheets.slice(0);
@@ -179,6 +185,7 @@ add_task(async function check_reopening_dialog() {
 add_task(async function check_opening_while_closing() {
   await open_subdialog_and_test_generic_start_state(tab.linkedBrowser);
   info("closing");
+  // eslint-disable-next-line mozilla/no-cpows-in-tests
   content.window.gSubDialog._topDialog.close();
   info("reopening immediately after calling .close()");
   await open_subdialog_and_test_generic_start_state(tab.linkedBrowser);
@@ -296,7 +303,9 @@ add_task(async function wrapped_text_in_dialog_should_have_expected_scrollHeight
     Assert.ok(docEl.scrollHeight > contentOldHeight,
       "Content height increased (from " + contentOldHeight + " to " + docEl.scrollHeight + ").");
     Assert.equal(frame.style.height, docEl.scrollHeight + "px",
-      "Height on the frame should be higher now");
+      "Height on the frame should be higher now. " +
+      "This test may fail on certain screen resoluition. " +
+      "See bug 1420576 and bug 1205717.");
   });
 
   await close_subdialog_and_test_generic_end_state(tab.linkedBrowser,

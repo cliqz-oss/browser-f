@@ -10,7 +10,6 @@
 #include "nsISynthVoiceRegistry.h"
 #include "nsRefPtrHashtable.h"
 #include "nsTArray.h"
-#include "MediaStreamGraph.h"
 
 class nsISpeechService;
 
@@ -67,8 +66,6 @@ public:
   static void RecvIsSpeakingChanged(bool aIsSpeaking);
 
   static void RecvNotifyVoicesChanged();
-
-  static void Shutdown();
 
 private:
   virtual ~nsSynthVoiceRegistry();

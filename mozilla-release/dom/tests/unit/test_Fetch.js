@@ -1,7 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const {utils: Cu} = Components;
+const {utils: Cu, results: Cr} = Components;
 
 Cu.importGlobalProperties(['fetch']);
 Cu.import("resource://testing-common/httpd.js");
@@ -79,8 +79,8 @@ add_test(function test_GetData() {
     try {
       // check our request headers made it OK
       for (let headerName of headerNames) {
-        do_check_eq(testData.request.headers[headerName],
-                    aRequest.getHeader(headerName));
+        Assert.equal(testData.request.headers[headerName],
+                     aRequest.getHeader(headerName));
       }
 
       // send a response
@@ -94,21 +94,21 @@ add_test(function test_GetData() {
   fetch(getBaseUrl() + testData.testPath, {headers: testData.request.headers})
     .then(function(response){
     // check response looks as expected
-    do_check_true(response.ok);
-    do_check_eq(response.status, testData.response.status);
-    do_check_eq(response.statusText, testData.response.statusText);
+    Assert.ok(response.ok);
+    Assert.equal(response.status, testData.response.status);
+    Assert.equal(response.statusText, testData.response.statusText);
 
     // check a response header looks OK:
-    do_check_eq(response.headers.get("Content-Type"),
-                testData.response.contentType);
+    Assert.equal(response.headers.get("Content-Type"),
+                 testData.response.contentType);
 
     // ... and again to check header names are case insensitive
-    do_check_eq(response.headers.get("content-type"),
-                testData.response.contentType);
+    Assert.equal(response.headers.get("content-type"),
+                 testData.response.contentType);
 
     // ensure response.text() returns a promise that resolves appropriately
     response.text().then(function(text) {
-      do_check_eq(text, testData.response.body);
+      Assert.equal(text, testData.response.body);
       do_test_finished();
       run_next_test();
     });
@@ -137,12 +137,12 @@ add_test(function test_GetDataNoInit() {
   fetch(getBaseUrl() + testData.testPath, {headers: testData.request.headers})
     .then(function(response){
     // check response looks as expected
-    do_check_true(response.ok);
-    do_check_eq(response.status, testData.response.status);
+    Assert.ok(response.ok);
+    Assert.equal(response.status, testData.response.status);
 
     // ensure response.text() returns a promise that resolves appropriately
     response.text().then(function(text) {
-      do_check_eq(text, testData.response.body);
+      Assert.equal(text, testData.response.body);
       do_test_finished();
       run_next_test();
     });
@@ -166,7 +166,7 @@ add_test(function test_get40x() {
   // No need to register a path handler - httpd will return 404 anyway.
   // Fetch, via GET, the resource that doesn't exist
   fetch(getBaseUrl() + notFoundData.testPath).then(function(response){
-    do_check_eq(response.status, 404);
+    Assert.equal(response.status, 404);
     do_test_finished();
     run_next_test();
   });
@@ -193,7 +193,7 @@ add_test(function test_get50x() {
 
   // fetch, via GET, the resource that creates a server error
   fetch(getBaseUrl() + serverErrorData.testPath).then(function(response){
-    do_check_eq(response.status, 500);
+    Assert.equal(response.status, 500);
     do_test_finished();
     run_next_test();
   });
@@ -206,7 +206,32 @@ add_test(function test_getTestFailedConnect() {
   fetch("http://localhost:4/should/fail").then(response => {
     do_throw("Request should not succeed");
   }).catch(err => {
-    do_check_eq(true, err instanceof TypeError);
+    Assert.equal(true, err instanceof TypeError);
+    do_test_finished();
+    run_next_test();
+  });
+});
+
+add_test(function test_mozError() {
+  do_test_pending();
+  // try a server that's not there
+  fetch("http://localhost:4/should/fail", { mozErrors: true }).then(response => {
+    do_throw("Request should not succeed");
+  }).catch(err => {
+    Assert.equal(err.result, Cr.NS_ERROR_CONNECTION_REFUSED);
+    do_test_finished();
+    run_next_test();
+  });
+});
+
+add_test(function test_request_mozError() {
+  do_test_pending();
+  // try a server that's not there
+  const r = new Request("http://localhost:4/should/fail", { mozErrors: true });
+  fetch(r).then(response => {
+    do_throw("Request should not succeed");
+  }).catch(err => {
+    Assert.equal(err.result, Cr.NS_ERROR_CONNECTION_REFUSED);
     do_test_finished();
     run_next_test();
   });
@@ -224,14 +249,14 @@ add_test(function test_PostJSONData() {
       let requestData = readDataFromRequest(aRequest);
 
       // Check the request body is OK
-      do_check_eq(requestData.body, testData.request.body);
+      Assert.equal(requestData.body, testData.request.body);
 
       // Check the content type is as expected
-      do_check_eq(requestData.contentType, testData.request.contentType);
+      Assert.equal(requestData.contentType, testData.request.contentType);
 
       writeDataToResponse(testData.response, aResponse);
     } catch (e) {
-      do_check_true(false);
+      Assert.ok(false);
     }
   });
 
@@ -242,9 +267,9 @@ add_test(function test_PostJSONData() {
       'Content-Type': 'application/json'
     }
   }).then(function(aResponse) {
-    do_check_true(aResponse.ok);
-    do_check_eq(aResponse.status, testData.response.status);
-    do_check_eq(aResponse.statusText, testData.response.statusText);
+    Assert.ok(aResponse.ok);
+    Assert.equal(aResponse.status, testData.response.status);
+    Assert.equal(aResponse.statusText, testData.response.statusText);
 
     do_test_finished();
     run_next_test();
@@ -270,14 +295,14 @@ add_test(function test_PostTextData() {
       let requestData = readDataFromRequest(aRequest);
 
       // Check the request body is OK
-      do_check_eq(requestData.body, testData.request.body);
+      Assert.equal(requestData.body, testData.request.body);
 
       // Check the content type is as expected
-      do_check_eq(requestData.contentType, testData.request.contentType);
+      Assert.equal(requestData.contentType, testData.request.contentType);
 
       writeDataToResponse(testData.response, aResponse);
     } catch (e) {
-      do_check_true(false);
+      Assert.ok(false);
     }
   });
 
@@ -288,13 +313,13 @@ add_test(function test_PostTextData() {
       'Content-Type': testData.request.contentType
     }
   }).then(function(aResponse) {
-    do_check_true(aResponse.ok);
-    do_check_eq(aResponse.status, testData.response.status);
-    do_check_eq(aResponse.statusText, testData.response.statusText);
+    Assert.ok(aResponse.ok);
+    Assert.equal(aResponse.status, testData.response.status);
+    Assert.equal(aResponse.statusText, testData.response.statusText);
 
     // check the response header is set OK
-    do_check_eq(aResponse.headers.get(responseHeaderName),
-                testData.response.headers[responseHeaderName]);
+    Assert.equal(aResponse.headers.get(responseHeaderName),
+                 testData.response.headers[responseHeaderName]);
 
     do_test_finished();
     run_next_test();
@@ -312,7 +337,7 @@ function run_test() {
 
   run_next_test();
 
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     server.stop(function() { });
   });
 }

@@ -13,14 +13,9 @@ SOURCES += [
     'workmonitor.cpp',
 ]
 
-if CONFIG['OS_ARCH'] == 'WINNT':
-    USE_LIBS += [
-        'updatecommon-standalone',
-    ]
-else:
-    USE_LIBS += [
-        'updatecommon',
-    ]
+USE_LIBS += [
+    'updatecommon',
+]
 
 # For debugging purposes only
 #DEFINES['DISABLE_UPDATER_AUTHENTICODE_CHECK'] = True
@@ -37,7 +32,7 @@ LOCAL_INCLUDES += [
 
 USE_STATIC_LIBS = True
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     WIN32_EXE_LDFLAGS += ['-ENTRY:wmainCRTStartup']
 
 RCINCLUDE = 'maintenanceservice.rc'

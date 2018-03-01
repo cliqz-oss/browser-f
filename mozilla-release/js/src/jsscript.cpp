@@ -359,7 +359,7 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
     uint32_t length, lineno, column, nfixed, nslots;
     uint32_t natoms, nsrcnotes, i;
     uint32_t nconsts, nobjects, nscopes, nregexps, ntrynotes, nscopenotes, nyieldoffsets;
-    uint32_t prologueLength, version;
+    uint32_t prologueLength;
     uint32_t funLength = 0;
     uint32_t nTypeSets = 0;
     uint32_t scriptBits = 0;
@@ -398,8 +398,6 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
 
     if (mode == XDR_ENCODE) {
         prologueLength = script->mainOffset();
-        MOZ_ASSERT(script->getVersion() != JSVERSION_UNKNOWN);
-        version = script->getVersion();
         lineno = script->lineno();
         column = script->column();
         nfixed = script->nfixed();
@@ -454,7 +452,7 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
             scriptBits |= (1 << OwnSource);
         if (script->isGenerator())
             scriptBits |= (1 << IsGenerator);
-        if (script->asyncKind() == AsyncFunction)
+        if (script->isAsync())
             scriptBits |= (1 << IsAsync);
         if (script->hasRest())
             scriptBits |= (1 << HasRest);
@@ -479,8 +477,6 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
     }
 
     if (!xdr->codeUint32(&prologueLength))
-        return false;
-    if (!xdr->codeUint32(&version))
         return false;
 
     // To fuse allocations, we need lengths of all embedded arrays early.
@@ -511,24 +507,20 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
     RootedScriptSource sourceObject(cx, sourceObjectArg);
 
     if (mode == XDR_DECODE) {
-        JSVersion version_ = JSVersion(version);
-        MOZ_ASSERT((version_ & VersionFlags::MASK) == unsigned(version_));
-
-        // When loading from the bytecode cache, we get the CompileOption from
-        // the document, which specify the version to use. If the version does
-        // not match, then we should fail. This only applies to the top-level,
-        // and not its inner functions.
+        // When loading from the bytecode cache, we get the CompileOptions from
+        // the document. If the noScriptRval or selfHostingMode flag doesn't
+        // match, we should fail. This only applies to the top-level and not
+        // its inner functions.
         mozilla::Maybe<CompileOptions> options;
         if (xdr->hasOptions() && (scriptBits & (1 << OwnSource))) {
             options.emplace(xdr->cx(), xdr->options());
-            if (options->version != version_ ||
-                options->noScriptRval != !!(scriptBits & (1 << NoScriptRval)) ||
+            if (options->noScriptRval != !!(scriptBits & (1 << NoScriptRval)) ||
                 options->selfHostingMode != !!(scriptBits & (1 << SelfHosted)))
             {
                 return xdr->fail(JS::TranscodeResult_Failure_WrongCompileOption);
             }
         } else {
-            options.emplace(xdr->cx(), version_);
+            options.emplace(xdr->cx());
             (*options).setNoScriptRval(!!(scriptBits & (1 << NoScriptRval)))
                       .setSelfHostingMode(!!(scriptBits & (1 << SelfHosted)));
         }
@@ -626,7 +618,7 @@ js::XDRScript(XDRState<mode>* xdr, HandleScope scriptEnclosingScope,
         if (scriptBits & (1 << IsGenerator))
             script->setGeneratorKind(GeneratorKind::Generator);
         if (scriptBits & (1 << IsAsync))
-            script->setAsyncKind(AsyncFunction);
+            script->setAsyncKind(FunctionAsyncKind::AsyncFunction);
         if (scriptBits & (1 << HasRest))
             script->setHasRest();
         if (scriptBits & (1 << IsExprBody))
@@ -1271,14 +1263,14 @@ ScriptCounts::getThrowCounts(size_t offset) {
 }
 
 void
-JSScript::setIonScript(JSRuntime* maybeRuntime, js::jit::IonScript* ionScript)
+JSScript::setIonScript(JSRuntime* rt, js::jit::IonScript* ionScript)
 {
     MOZ_ASSERT_IF(ionScript != ION_DISABLED_SCRIPT, !baselineScript()->hasPendingIonBuilder());
     if (hasIonScript())
         js::jit::IonScript::writeBarrierPre(zone(), ion);
     ion = ionScript;
     MOZ_ASSERT_IF(hasIonScript(), hasBaselineScript());
-    updateBaselineOrIonRaw(maybeRuntime);
+    updateJitCodeRaw(rt);
 }
 
 js::PCCounts*
@@ -2429,14 +2421,23 @@ ScriptSource::setSourceMapURL(JSContext* cx, const char16_t* sourceMapURL)
 
 /*
  * Shared script data management.
+ *
+ * SharedScriptData::data contains data that can be shared within a
+ * runtime. The atoms() data is placed first to simplify its alignment.
+ *
+ * Array elements   Pointed to by         Length
+ * --------------   -------------         ------
+ * GCPtrAtom        atoms()               natoms()
+ * jsbytecode       code()                codeLength()
+ * jsscrnote        notes()               numNotes()
  */
 
 SharedScriptData*
 js::SharedScriptData::new_(JSContext* cx, uint32_t codeLength,
                            uint32_t srcnotesLength, uint32_t natoms)
 {
-    uint32_t dataLength = natoms * sizeof(GCPtrAtom) + codeLength + srcnotesLength;
-    uint32_t allocLength = offsetof(SharedScriptData, data_) + dataLength;
+    size_t dataLength = natoms * sizeof(GCPtrAtom) + codeLength + srcnotesLength;
+    size_t allocLength = offsetof(SharedScriptData, data_) + dataLength;
     auto entry = reinterpret_cast<SharedScriptData*>(cx->zone()->pod_malloc<uint8_t>(allocLength));
     if (!entry) {
         ReportOutOfMemory(cx);
@@ -2448,18 +2449,23 @@ js::SharedScriptData::new_(JSContext* cx, uint32_t codeLength,
     MOZ_DIAGNOSTIC_ASSERT(codeLength > 0);
 
     entry->refCount_ = 0;
-    entry->dataLength_ = dataLength;
     entry->natoms_ = natoms;
     entry->codeLength_ = codeLength;
+    entry->noteLength_ = srcnotesLength;
+
 
     /*
      * Call constructors to initialize the storage that will be accessed as a
      * GCPtrAtom array via atoms().
      */
+    static_assert(offsetof(SharedScriptData, data_) % sizeof(GCPtrAtom) == 0,
+                  "atoms must have GCPtrAtom alignment");
     GCPtrAtom* atoms = entry->atoms();
-    MOZ_ASSERT(reinterpret_cast<uintptr_t>(atoms) % sizeof(GCPtrAtom*) == 0);
     for (unsigned i = 0; i < natoms; ++i)
         new (&atoms[i]) GCPtrAtom();
+
+    // Sanity check the dataLength() computation
+    MOZ_ASSERT(entry->dataLength() == dataLength);
 
     return entry;
 }
@@ -2508,9 +2514,7 @@ JSScript::shareScriptData(JSContext* cx)
 
     AutoLockForExclusiveAccess lock(cx);
 
-    ScriptBytecodeHasher::Lookup l(ssd);
-
-    ScriptDataTable::AddPtr p = cx->scriptDataTable(lock).lookupForAdd(l);
+    ScriptDataTable::AddPtr p = cx->scriptDataTable(lock).lookupForAdd(*ssd);
     if (p) {
         MOZ_ASSERT(ssd != *p);
         freeScriptData();
@@ -2611,20 +2615,6 @@ js::FreeScriptData(JSRuntime* rt, AutoLockForExclusiveAccess& lock)
  *   manual layout easy. In particular, in the second part, arrays with larger
  *   elements precede arrays with smaller elements.
  *
- * SharedScriptData::data contains data that can be shared within a
- * runtime. These items' layout is manually controlled to make it easier to
- * manage both during (temporary) allocation and during matching against
- * existing entries in the runtime. As the jsbytecode has to come first to
- * enable lookup by bytecode identity, SharedScriptData::data, the atoms part
- * has to manually be aligned sufficiently by adding padding after the notes
- * part.
- *
- * Array elements   Pointed to by         Length
- * --------------   -------------         ------
- * jsbytecode       code                  length
- * jsscrnote        notes()               numNotes()
- * Atoms            atoms                 natoms
- *
  * The following static assertions check JSScript::data's alignment properties.
  */
 
@@ -2722,12 +2712,15 @@ JSScript::Create(JSContext* cx, const ReadOnlyCompileOptions& options,
 
     script->initCompartment(cx);
 
+#ifndef JS_CODEGEN_NONE
+    uint8_t* stubEntry = cx->runtime()->jitRuntime()->interpreterStub().value;
+    script->jitCodeRaw_ = stubEntry;
+    script->jitCodeSkipArgCheck_ = stubEntry;
+#endif
+
     script->selfHosted_ = options.selfHostingMode;
     script->noScriptRval_ = options.noScriptRval;
     script->treatAsRunOnce_ = options.isRunOnce;
-
-    script->version = options.version;
-    MOZ_ASSERT(script->getVersion() == options.version);     // assert that no overflow occurred
 
     script->setSourceObject(sourceObject);
     if (cx->runtime()->lcovOutput().isEnabled() && !script->initScriptName(cx))
@@ -3164,20 +3157,6 @@ size_t
 JSScript::sizeOfTypeScript(mozilla::MallocSizeOf mallocSizeOf) const
 {
     return types_ ? types_->sizeOfIncludingThis(mallocSizeOf) : 0;
-}
-
-/*
- * Nb: srcnotes are variable-length.  This function computes the number of
- * srcnote *slots*, which may be greater than the number of srcnotes.
- */
-uint32_t
-JSScript::numNotes()
-{
-    jssrcnote* sn;
-    jssrcnote* notes_ = notes();
-    for (sn = notes_; !SN_IS_TERMINATOR(sn); sn = SN_NEXT(sn))
-        continue;
-    return sn - notes_ + 1;    /* +1 for the terminator */
 }
 
 js::GlobalObject&
@@ -3643,7 +3622,7 @@ js::detail::CopyScript(JSContext* cx, HandleScript src, HandleScript dst,
     dst->isDerivedClassConstructor_ = src->isDerivedClassConstructor();
     dst->needsHomeObject_ = src->needsHomeObject();
     dst->isDefaultClassConstructor_ = src->isDefaultClassConstructor();
-    dst->isAsync_ = src->asyncKind() == AsyncFunction;
+    dst->isAsync_ = src->isAsync_;
     dst->hasRest_ = src->hasRest_;
     dst->isExprBody_ = src->isExprBody_;
 
@@ -3723,8 +3702,7 @@ CreateEmptyScriptForClone(JSContext* cx, HandleScript src)
     CompileOptions options(cx);
     options.setMutedErrors(src->mutedErrors())
            .setSelfHostingMode(src->selfHosted())
-           .setNoScriptRval(src->noScriptRval())
-           .setVersion(src->getVersion());
+           .setNoScriptRval(src->noScriptRval());
 
     return JSScript::Create(cx, options, sourceObject, src->sourceStart(), src->sourceEnd(),
                             src->toStringStart(), src->toStringEnd());
@@ -4380,7 +4358,6 @@ LazyScript::CreateRaw(JSContext* cx, HandleFunction fun,
 LazyScript::Create(JSContext* cx, HandleFunction fun,
                    const frontend::AtomVector& closedOverBindings,
                    Handle<GCVector<JSFunction*, 8>> innerFunctions,
-                   JSVersion version,
                    uint32_t begin, uint32_t end,
                    uint32_t toStringStart, uint32_t lineno, uint32_t column)
 {
@@ -4389,7 +4366,6 @@ LazyScript::Create(JSContext* cx, HandleFunction fun,
         uint64_t packedFields;
     };
 
-    p.version = version;
     p.shouldDeclareArguments = false;
     p.hasThisBinding = false;
     p.isAsync = false;
@@ -4397,7 +4373,7 @@ LazyScript::Create(JSContext* cx, HandleFunction fun,
     p.isExprBody = false;
     p.numClosedOverBindings = closedOverBindings.length();
     p.numInnerFunctions = innerFunctions.length();
-    p.generatorKind = GeneratorKindAsBit(GeneratorKind::NotGenerator);
+    p.isGenerator = false;
     p.strict = false;
     p.bindingsAccessedDynamically = false;
     p.hasDebuggerStatement = false;
@@ -4419,7 +4395,6 @@ LazyScript::Create(JSContext* cx, HandleFunction fun,
     for (size_t i = 0; i < res->numInnerFunctions(); i++)
         resInnerFunctions[i].init(innerFunctions[i]);
 
-    MOZ_ASSERT_IF(res, res->version() == version);
     return res;
 }
 
@@ -4502,23 +4477,25 @@ LazyScript::hasUncompiledEnclosingScript() const
 }
 
 void
-JSScript::updateBaselineOrIonRaw(JSRuntime* maybeRuntime)
+JSScript::updateJitCodeRaw(JSRuntime* rt)
 {
+    MOZ_ASSERT(rt);
     if (hasBaselineScript() && baseline->hasPendingIonBuilder()) {
-        MOZ_ASSERT(maybeRuntime);
         MOZ_ASSERT(!isIonCompilingOffThread());
-        baselineOrIonRaw = maybeRuntime->jitRuntime()->lazyLinkStub()->raw();
-        baselineOrIonSkipArgCheck = maybeRuntime->jitRuntime()->lazyLinkStub()->raw();
+        jitCodeRaw_ = rt->jitRuntime()->lazyLinkStub().value;
+        jitCodeSkipArgCheck_ = jitCodeRaw_;
     } else if (hasIonScript()) {
-        baselineOrIonRaw = ion->method()->raw();
-        baselineOrIonSkipArgCheck = ion->method()->raw() + ion->getSkipArgCheckEntryOffset();
+        jitCodeRaw_ = ion->method()->raw();
+        jitCodeSkipArgCheck_ = jitCodeRaw_ + ion->getSkipArgCheckEntryOffset();
     } else if (hasBaselineScript()) {
-        baselineOrIonRaw = baseline->method()->raw();
-        baselineOrIonSkipArgCheck = baseline->method()->raw();
+        jitCodeRaw_ = baseline->method()->raw();
+        jitCodeSkipArgCheck_ = jitCodeRaw_;
     } else {
-        baselineOrIonRaw = nullptr;
-        baselineOrIonSkipArgCheck = nullptr;
+        jitCodeRaw_ = rt->jitRuntime()->interpreterStub().value;
+        jitCodeSkipArgCheck_ = jitCodeRaw_;
     }
+    MOZ_ASSERT(jitCodeRaw_);
+    MOZ_ASSERT(jitCodeSkipArgCheck_);
 }
 
 bool

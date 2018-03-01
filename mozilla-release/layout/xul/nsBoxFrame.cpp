@@ -203,18 +203,16 @@ nsBoxFrame::Init(nsIContent*       aContent,
 
 void nsBoxFrame::UpdateMouseThrough()
 {
-  if (mContent) {
-    static nsIContent::AttrValuesArray strings[] =
-      {&nsGkAtoms::never, &nsGkAtoms::always, nullptr};
-    switch (mContent->FindAttrValueIn(kNameSpaceID_None,
-              nsGkAtoms::mousethrough, strings, eCaseMatters)) {
-      case 0: AddStateBits(NS_FRAME_MOUSE_THROUGH_NEVER); break;
-      case 1: AddStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS); break;
-      case 2: {
-        RemoveStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS);
-        RemoveStateBits(NS_FRAME_MOUSE_THROUGH_NEVER);
-        break;
-      }
+  static Element::AttrValuesArray strings[] =
+    {&nsGkAtoms::never, &nsGkAtoms::always, nullptr};
+  switch (mContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
+            nsGkAtoms::mousethrough, strings, eCaseMatters)) {
+    case 0: AddStateBits(NS_FRAME_MOUSE_THROUGH_NEVER); break;
+    case 1: AddStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS); break;
+    case 2: {
+      RemoveStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS);
+      RemoveStateBits(NS_FRAME_MOUSE_THROUGH_NEVER);
+      break;
     }
   }
 }
@@ -282,10 +280,10 @@ nsBoxFrame::CacheAttributes()
 bool
 nsBoxFrame::GetInitialDebug(bool& aDebug)
 {
-  if (!GetContent())
+  if (!GetContent() || !GetContent()->IsElement())
     return false;
 
-  static nsIContent::AttrValuesArray strings[] =
+  static Element::AttrValuesArray strings[] =
     {&nsGkAtoms::_false, &nsGkAtoms::_true, nullptr};
   int32_t index = GetContent()->FindAttrValueIn(kNameSpaceID_None,
       nsGkAtoms::debug, strings, eCaseMatters);
@@ -301,14 +299,15 @@ nsBoxFrame::GetInitialDebug(bool& aDebug)
 bool
 nsBoxFrame::GetInitialHAlignment(nsBoxFrame::Halignment& aHalign)
 {
-  if (!GetContent())
+  if (!GetContent() || !GetContent()->IsElement())
     return false;
 
+  Element* element = GetContent()->AsElement();
   // XXXdwh Everything inside this if statement is deprecated code.
-  static nsIContent::AttrValuesArray alignStrings[] =
+  static Element::AttrValuesArray alignStrings[] =
     {&nsGkAtoms::left, &nsGkAtoms::right, nullptr};
   static const Halignment alignValues[] = {hAlign_Left, hAlign_Right};
-  int32_t index = GetContent()->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::align,
+  int32_t index = element->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::align,
       alignStrings, eCaseMatters);
   if (index >= 0) {
     aHalign = alignValues[index];
@@ -319,14 +318,14 @@ nsBoxFrame::GetInitialHAlignment(nsBoxFrame::Halignment& aHalign)
   // attribute.  For horizontal boxes, we are checking the PACK attribute.  For vertical boxes
   // we are checking the ALIGN attribute.
   nsAtom* attrName = IsXULHorizontal() ? nsGkAtoms::pack : nsGkAtoms::align;
-  static nsIContent::AttrValuesArray strings[] =
+  static Element::AttrValuesArray strings[] =
     {&nsGkAtoms::_empty, &nsGkAtoms::start, &nsGkAtoms::center, &nsGkAtoms::end, nullptr};
   static const Halignment values[] =
     {hAlign_Left/*not used*/, hAlign_Left, hAlign_Center, hAlign_Right};
-  index = GetContent()->FindAttrValueIn(kNameSpaceID_None, attrName,
+  index = element->FindAttrValueIn(kNameSpaceID_None, attrName,
       strings, eCaseMatters);
 
-  if (index == nsIContent::ATTR_VALUE_NO_MATCH) {
+  if (index == Element::ATTR_VALUE_NO_MATCH) {
     // The attr was present but had a nonsensical value. Revert to the default.
     return false;
   }
@@ -376,14 +375,16 @@ nsBoxFrame::GetInitialHAlignment(nsBoxFrame::Halignment& aHalign)
 bool
 nsBoxFrame::GetInitialVAlignment(nsBoxFrame::Valignment& aValign)
 {
-  if (!GetContent())
+  if (!GetContent() || !GetContent()->IsElement())
     return false;
 
-  static nsIContent::AttrValuesArray valignStrings[] =
+  Element* element = GetContent()->AsElement();
+
+  static Element::AttrValuesArray valignStrings[] =
     {&nsGkAtoms::top, &nsGkAtoms::baseline, &nsGkAtoms::middle, &nsGkAtoms::bottom, nullptr};
   static const Valignment valignValues[] =
     {vAlign_Top, vAlign_BaseLine, vAlign_Middle, vAlign_Bottom};
-  int32_t index = GetContent()->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::valign,
+  int32_t index = element->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::valign,
       valignStrings, eCaseMatters);
   if (index >= 0) {
     aValign = valignValues[index];
@@ -394,14 +395,14 @@ nsBoxFrame::GetInitialVAlignment(nsBoxFrame::Valignment& aValign)
   // attribute.  For horizontal boxes, we are checking the ALIGN attribute.  For vertical boxes
   // we are checking the PACK attribute.
   nsAtom* attrName = IsXULHorizontal() ? nsGkAtoms::align : nsGkAtoms::pack;
-  static nsIContent::AttrValuesArray strings[] =
+  static Element::AttrValuesArray strings[] =
     {&nsGkAtoms::_empty, &nsGkAtoms::start, &nsGkAtoms::center,
      &nsGkAtoms::baseline, &nsGkAtoms::end, nullptr};
   static const Valignment values[] =
     {vAlign_Top/*not used*/, vAlign_Top, vAlign_Middle, vAlign_BaseLine, vAlign_Bottom};
-  index = GetContent()->FindAttrValueIn(kNameSpaceID_None, attrName,
+  index = element->FindAttrValueIn(kNameSpaceID_None, attrName,
       strings, eCaseMatters);
-  if (index == nsIContent::ATTR_VALUE_NO_MATCH) {
+  if (index == Element::ATTR_VALUE_NO_MATCH) {
     // The attr was present but had a nonsensical value. Revert to the default.
     return false;
   }
@@ -468,10 +469,14 @@ nsBoxFrame::GetInitialOrientation(bool& aIsHorizontal)
 
   // Now see if we have an attribute.  The attribute overrides
   // the style system value.
-  static nsIContent::AttrValuesArray strings[] =
+  if (!GetContent()->IsElement())
+    return;
+
+  static Element::AttrValuesArray strings[] =
     {&nsGkAtoms::vertical, &nsGkAtoms::horizontal, nullptr};
-  int32_t index = GetContent()->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::orient,
-      strings, eCaseMatters);
+  int32_t index =
+    GetContent()->AsElement()->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::orient,
+                                               strings, eCaseMatters);
   if (index >= 0) {
     aIsHorizontal = index == 1;
   }
@@ -497,19 +502,25 @@ nsBoxFrame::GetInitialDirection(bool& aIsNormal)
     aIsNormal = !aIsNormal; // Invert our direction.
   }
 
+  if (!GetContent()->IsElement()) {
+    return;
+  }
+
+  Element* element = GetContent()->AsElement();
+
   // Now see if we have an attribute.  The attribute overrides
   // the style system value.
   if (IsXULHorizontal()) {
-    static nsIContent::AttrValuesArray strings[] =
+    static Element::AttrValuesArray strings[] =
       {&nsGkAtoms::reverse, &nsGkAtoms::ltr, &nsGkAtoms::rtl, nullptr};
-    int32_t index = GetContent()->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::dir,
+    int32_t index = element->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::dir,
         strings, eCaseMatters);
     if (index >= 0) {
       bool values[] = {!aIsNormal, true, false};
       aIsNormal = values[index];
     }
-  } else if (GetContent()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::dir,
-                                       nsGkAtoms::reverse, eCaseMatters)) {
+  } else if (element->AttrValueIs(kNameSpaceID_None, nsGkAtoms::dir,
+                                  nsGkAtoms::reverse, eCaseMatters)) {
     aIsNormal = !aIsNormal;
   }
 }
@@ -520,11 +531,12 @@ bool
 nsBoxFrame::GetInitialEqualSize(bool& aEqualSize)
 {
  // see if we are a vertical or horizontal box.
-  if (!GetContent())
+  if (!GetContent() || !GetContent()->IsElement())
      return false;
 
-  if (GetContent()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::equalsize,
-                           nsGkAtoms::always, eCaseMatters)) {
+  if (GetContent()->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                             nsGkAtoms::equalsize,
+                                             nsGkAtoms::always, eCaseMatters)) {
     aEqualSize = true;
     return true;
   }
@@ -541,13 +553,16 @@ nsBoxFrame::GetInitialAutoStretch(bool& aStretch)
      return false;
 
   // Check the align attribute.
-  static nsIContent::AttrValuesArray strings[] =
-    {&nsGkAtoms::_empty, &nsGkAtoms::stretch, nullptr};
-  int32_t index = GetContent()->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::align,
-      strings, eCaseMatters);
-  if (index != nsIContent::ATTR_MISSING && index != 0) {
-    aStretch = index == 1;
-    return true;
+  if (GetContent()->IsElement()) {
+    static Element::AttrValuesArray strings[] =
+      {&nsGkAtoms::_empty, &nsGkAtoms::stretch, nullptr};
+    int32_t index =
+      GetContent()->AsElement()->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::align,
+                                                 strings, eCaseMatters);
+    if (index != Element::ATTR_MISSING && index != 0) {
+      aStretch = index == 1;
+      return true;
+    }
   }
 
   // Check the CSS box-align property.
@@ -559,19 +574,18 @@ nsBoxFrame::GetInitialAutoStretch(bool& aStretch)
 
 void
 nsBoxFrame::DidReflow(nsPresContext*           aPresContext,
-                      const ReflowInput*  aReflowInput,
-                      nsDidReflowStatus         aStatus)
+                      const ReflowInput*  aReflowInput)
 {
   nsFrameState preserveBits =
     mState & (NS_FRAME_IS_DIRTY | NS_FRAME_HAS_DIRTY_CHILDREN);
-  nsFrame::DidReflow(aPresContext, aReflowInput, aStatus);
+  nsFrame::DidReflow(aPresContext, aReflowInput);
   AddStateBits(preserveBits);
 }
 
 bool
 nsBoxFrame::HonorPrintBackgroundSettings()
 {
-  return (!mContent || !mContent->IsInNativeAnonymousSubtree()) &&
+  return !mContent->IsInNativeAnonymousSubtree() &&
     nsContainerFrame::HonorPrintBackgroundSettings();
 }
 
@@ -1314,7 +1328,7 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   if (GetContent()->IsXULElement()) {
     // forcelayer is only supported on XUL elements with box layout
-    if (GetContent()->HasAttr(kNameSpaceID_None, nsGkAtoms::layer)) {
+    if (GetContent()->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::layer)) {
       forceLayer = true;
     }
     // Check for frames that are marked as a part of the region used
@@ -1333,10 +1347,10 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 #ifdef DEBUG_LAYOUT
   if (mState & NS_STATE_CURRENTLY_IN_DEBUG) {
-    destination.BorderBackground()->AppendNewToTop(new (aBuilder)
+    destination.BorderBackground()->AppendToTop(new (aBuilder)
       nsDisplayGeneric(aBuilder, this, PaintXULDebugBackground,
                        "XULDebugBackground"));
-    destination.Outlines()->AppendNewToTop(new (aBuilder)
+    destination.Outlines()->AppendToTop(new (aBuilder)
       nsDisplayXULDebug(aBuilder, this));
   }
 #endif
@@ -1356,7 +1370,7 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     // and merge them into a single Content() list. This can cause us
     // to violate CSS stacking order, but forceLayer is a magic
     // XUL-only extension anyway.
-    nsDisplayList masterList(aBuilder);
+    nsDisplayList masterList;
     masterList.AppendToTop(tempLists.BorderBackground());
     masterList.AppendToTop(tempLists.BlockBorderBackgrounds());
     masterList.AppendToTop(tempLists.Floats());
@@ -1369,8 +1383,9 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     DisplayListClipState::AutoSaveRestore ownLayerClipState(aBuilder);
 
     // Wrap the list to make it its own layer
-    aLists.Content()->AppendNewToTop(new (aBuilder)
-      nsDisplayOwnLayer(aBuilder, this, &masterList, ownLayerASR, 0,
+    aLists.Content()->AppendToTop(new (aBuilder)
+      nsDisplayOwnLayer(aBuilder, this, &masterList, ownLayerASR,
+                        nsDisplayOwnLayerFlags::eNone,
                         mozilla::layers::FrameMetrics::NULL_SCROLL_ID,
                         mozilla::layers::ScrollThumbData{}, true, true));
   }
@@ -1879,7 +1894,7 @@ nsBoxFrame::RegUnregAccessKey(bool aDoReg)
   }
 
   nsAutoString accessKey;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::accesskey, accessKey);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::accesskey, accessKey);
 
   if (accessKey.IsEmpty())
     return;
@@ -1890,9 +1905,9 @@ nsBoxFrame::RegUnregAccessKey(bool aDoReg)
 
   uint32_t key = accessKey.First();
   if (aDoReg)
-    esm->RegisterAccessKey(mContent, key);
+    esm->RegisterAccessKey(mContent->AsElement(), key);
   else
-    esm->UnregisterAccessKey(mContent, key);
+    esm->UnregisterAccessKey(mContent->AsElement(), key);
 }
 
 bool
@@ -2041,12 +2056,16 @@ void nsDisplayXULEventRedirector::HitTest(nsDisplayListBuilder* aBuilder,
     for (nsIContent* content = outFrames.ElementAt(i)->GetContent();
          content && content != mTargetFrame->GetContent();
          content = content->GetParent()) {
-      if (content->AttrValueIs(kNameSpaceID_None, nsGkAtoms::allowevents,
-                               nsGkAtoms::_true, eCaseMatters)) {
-        // Events are allowed on 'frame', so let it go.
-        aOutFrames->AppendElement(outFrames.ElementAt(i));
-        topMostAdded = true;
+      if (!content->IsElement() ||
+          !content->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                             nsGkAtoms::allowevents,
+                                             nsGkAtoms::_true, eCaseMatters)) {
+        continue;
       }
+
+      // Events are allowed on 'frame', so let it go.
+      aOutFrames->AppendElement(outFrames.ElementAt(i));
+      topMostAdded = true;
     }
 
     // If there was no hit on the topmost frame or its ancestors,

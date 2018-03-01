@@ -17,7 +17,7 @@ use script_traits::{AnimationState, ConstellationMsg, EventResult, LoadData};
 use servo_url::ServoUrl;
 use std::fmt::{Debug, Error, Formatter};
 use std::sync::mpsc::{Receiver, Sender};
-use style_traits::cursor::Cursor;
+use style_traits::cursor::CursorKind;
 use style_traits::viewport::ViewportConstraints;
 use webrender;
 use webrender_api;
@@ -124,12 +124,16 @@ pub enum EmbedderMsg {
     ResizeTo(TopLevelBrowsingContextId, Size2D<u32>),
     /// Get Window Informations size and position
     GetClientWindow(TopLevelBrowsingContextId, IpcSender<(Size2D<u32>, Point2D<i32>)>),
+    /// Get screen size (pixel)
+    GetScreenSize(TopLevelBrowsingContextId, IpcSender<(Size2D<u32>)>),
+    /// Get screen available size (pixel)
+    GetScreenAvailSize(TopLevelBrowsingContextId, IpcSender<(Size2D<u32>)>),
     /// Wether or not to follow a link
     AllowNavigation(TopLevelBrowsingContextId, ServoUrl, IpcSender<bool>),
     /// Sends an unconsumed key event back to the embedder.
     KeyEvent(Option<TopLevelBrowsingContextId>, Option<char>, Key, KeyState, KeyModifiers),
     /// Changes the cursor.
-    SetCursor(Cursor),
+    SetCursor(CursorKind),
     /// A favicon was detected
     NewFavicon(TopLevelBrowsingContextId, ServoUrl),
     /// <head> tag finished parsing
@@ -222,6 +226,8 @@ impl Debug for EmbedderMsg {
             EmbedderMsg::MoveTo(..) => write!(f, "MoveTo"),
             EmbedderMsg::ResizeTo(..) => write!(f, "ResizeTo"),
             EmbedderMsg::GetClientWindow(..) => write!(f, "GetClientWindow"),
+            EmbedderMsg::GetScreenSize(..) => write!(f, "GetScreenSize"),
+            EmbedderMsg::GetScreenAvailSize(..) => write!(f, "GetScreenAvailSize"),
             EmbedderMsg::AllowNavigation(..) => write!(f, "AllowNavigation"),
             EmbedderMsg::KeyEvent(..) => write!(f, "KeyEvent"),
             EmbedderMsg::SetCursor(..) => write!(f, "SetCursor"),

@@ -65,6 +65,10 @@ var gSync = {
            .sort((a, b) => a.name.localeCompare(b.name));
   },
 
+  get offline() {
+    return Weave.Service.scheduler.offline;
+  },
+
   _generateNodeGetters() {
     for (let k of ["Status", "Avatar", "Label", "Container"]) {
       let prop = "appMenu" + k;
@@ -75,6 +79,22 @@ var gSync = {
         return this[prop] = document.getElementById("appMenu-fxa-" + suffix);
       });
     }
+  },
+
+  _definePrefGetters() {
+    XPCOMUtils.defineLazyPreferenceGetter(this, "UNSENDABLE_URL_REGEXP",
+        "services.sync.engine.tabs.filteredUrls", null, null, rx => {
+          try {
+            return new RegExp(rx, "i");
+          } catch (e) {
+            Cu.reportError(`Failed to build url filter regexp for send tab: ${e}`);
+            return null;
+          }
+        });
+    XPCOMUtils.defineLazyPreferenceGetter(this, "FXA_CONNECT_DEVICE_URI",
+        "identity.fxaccounts.remote.connectdevice.uri");
+    XPCOMUtils.defineLazyPreferenceGetter(this, "PRODUCT_INFO_BASE_URL",
+        "app.productInfo.baseURL");
   },
 
   _maybeUpdateUIState() {
@@ -99,10 +119,15 @@ var gSync = {
     }
 
     this._generateNodeGetters();
+    this._definePrefGetters();
 
     // initial label for the sync buttons.
-    let broadcaster = document.getElementById("sync-status");
-    broadcaster.setAttribute("label", this.syncStrings.GetStringFromName("syncnow.label"));
+    let statusBroadcaster = document.getElementById("sync-status");
+    statusBroadcaster.setAttribute("label", this.syncStrings.GetStringFromName("syncnow.label"));
+    // We start with every broadcasters hidden, so that we don't need to init
+    // the sync UI on windows like pageInfo.xul (see bug 1384856).
+    let setupBroadcaster = document.getElementById("sync-setup-state");
+    setupBroadcaster.hidden = false;
 
     this._maybeUpdateUIState();
 
@@ -155,6 +180,11 @@ var gSync = {
   },
 
   updatePanelPopup(state) {
+    // Some windows (e.g. places.xul) won't contain the panel UI, so we can
+    // abort immediately for those (bug 1384856).
+    if (!this.appMenuContainer) {
+      return;
+    }
     let defaultLabel = this.appMenuStatus.getAttribute("defaultlabel");
     // The localization string is for the signed in text, but it's the default text as well
     let defaultTooltiptext = this.appMenuStatus.getAttribute("signedinTooltiptext");
@@ -214,13 +244,15 @@ var gSync = {
     document.getElementById("sync-reauth-state").hidden = true;
     document.getElementById("sync-setup-state").hidden = true;
     document.getElementById("sync-syncnow-state").hidden = true;
+    document.getElementById("sync-unverified-state").hidden = true;
 
     if (status == UIState.STATUS_LOGIN_FAILED) {
       // unhiding this element makes the menubar show the login failure state.
       document.getElementById("sync-reauth-state").hidden = false;
-    } else if (status == UIState.STATUS_NOT_CONFIGURED ||
-               status == UIState.STATUS_NOT_VERIFIED) {
+    } else if (status == UIState.STATUS_NOT_CONFIGURED) {
       document.getElementById("sync-setup-state").hidden = false;
+    } else if (status == UIState.STATUS_NOT_VERIFIED) {
+      document.getElementById("sync-unverified-state").hidden = false;
     } else {
       document.getElementById("sync-syncnow-state").hidden = false;
     }
@@ -270,8 +302,14 @@ var gSync = {
     });
   },
 
+  openConnectAnotherDevice(entryPoint) {
+    let url = new URL(this.FXA_CONNECT_DEVICE_URI);
+    url.searchParams.append("entrypoint", entryPoint);
+    openUILinkIn(url.href, "tab");
+  },
+
   openSendToDevicePromo() {
-    let url = Services.prefs.getCharPref("app.productInfo.baseURL");
+    let url = this.PRODUCT_INFO_BASE_URL;
     url += "send-tabs/?utm_source=" + Services.appinfo.name.toLowerCase();
     switchToTabHavingURI(url, true, { replaceQueryString: true });
   },
@@ -359,25 +397,24 @@ var gSync = {
   _appendSendTabSingleDevice(fragment, createDeviceNodeFn) {
     const noDevices = this.fxaStrings.GetStringFromName("sendTabToDevice.singledevice.status");
     const learnMore = this.fxaStrings.GetStringFromName("sendTabToDevice.singledevice");
-    this._appendSendTabInfoItems(fragment, createDeviceNodeFn, noDevices, learnMore, () => {
-      this.openSendToDevicePromo();
-    });
+    const connectDevice = this.fxaStrings.GetStringFromName("sendTabToDevice.connectdevice");
+    const actions = [{label: connectDevice, command: () => this.openConnectAnotherDevice("sendtab")},
+                     {label: learnMore,     command: () => this.openSendToDevicePromo()}];
+    this._appendSendTabInfoItems(fragment, createDeviceNodeFn, noDevices, actions);
   },
 
   _appendSendTabVerify(fragment, createDeviceNodeFn) {
     const notVerified = this.fxaStrings.GetStringFromName("sendTabToDevice.verify.status");
     const verifyAccount = this.fxaStrings.GetStringFromName("sendTabToDevice.verify");
-    this._appendSendTabInfoItems(fragment, createDeviceNodeFn, notVerified, verifyAccount, () => {
-      this.openPrefs("sendtab");
-    });
+    const actions = [{label: verifyAccount, command: () => this.openPrefs("sendtab")}];
+    this._appendSendTabInfoItems(fragment, createDeviceNodeFn, notVerified, actions);
   },
 
   _appendSendTabUnconfigured(fragment, createDeviceNodeFn) {
     const notConnected = this.fxaStrings.GetStringFromName("sendTabToDevice.unconfigured.status");
     const learnMore = this.fxaStrings.GetStringFromName("sendTabToDevice.unconfigured");
-    this._appendSendTabInfoItems(fragment, createDeviceNodeFn, notConnected, learnMore, () => {
-      this.openSendToDevicePromo();
-    });
+    const actions = [{label: learnMore, command: () => this.openSendToDevicePromo()}];
+    this._appendSendTabInfoItems(fragment, createDeviceNodeFn, notConnected, actions);
 
     // Now add a 'sign in to sync' item above the 'learn more' item.
     const signInToSync = this.fxaStrings.GetStringFromName("sendTabToDevice.signintosync");
@@ -394,7 +431,7 @@ var gSync = {
     fragment.insertBefore(signInItem, fragment.lastChild);
   },
 
-  _appendSendTabInfoItems(fragment, createDeviceNodeFn, statusLabel, actionLabel, actionCommand) {
+  _appendSendTabInfoItems(fragment, createDeviceNodeFn, statusLabel, actions) {
     const status = createDeviceNodeFn(null, statusLabel, null);
     status.setAttribute("label", statusLabel);
     status.setAttribute("disabled", true);
@@ -405,11 +442,13 @@ var gSync = {
     separator.classList.add("sync-menuitem");
     fragment.appendChild(separator);
 
-    const actionItem = createDeviceNodeFn(null, actionLabel, null);
-    actionItem.addEventListener("command", actionCommand, true);
-    actionItem.classList.add("sync-menuitem");
-    actionItem.setAttribute("label", actionLabel);
-    fragment.appendChild(actionItem);
+    for (let {label, command} of actions) {
+      const actionItem = createDeviceNodeFn(null, label, null);
+      actionItem.addEventListener("command", command, true);
+      actionItem.classList.add("sync-menuitem");
+      actionItem.setAttribute("label", label);
+      fragment.appendChild(actionItem);
+    }
   },
 
   isSendableURI(aURISpec) {
@@ -420,18 +459,14 @@ var gSync = {
     if (aURISpec.length > 65535) {
       return false;
     }
-    try {
-      // Filter out un-sendable URIs -- things like local files, object urls, etc.
-      const unsendableRegexp = new RegExp(
-        Services.prefs.getCharPref("services.sync.engine.tabs.filteredUrls"), "i");
-      return !unsendableRegexp.test(aURISpec);
-    } catch (e) {
-      // The preference has been removed, or is an invalid regexp, so we log an
-      // error and treat it as a valid URI -- and the more problematic case is
-      // the length, which we've already addressed.
-      Cu.reportError(`Failed to build url filter regexp for send tab: ${e}`);
-      return true;
+    if (this.UNSENDABLE_URL_REGEXP) {
+      return !this.UNSENDABLE_URL_REGEXP.test(aURISpec);
     }
+    // The preference has been removed, or is an invalid regexp, so we treat it
+    // as a valid URI. We've already logged an error when trying to construct
+    // the regexp, and the more problematic case is the length, which we've
+    // already addressed.
+    return true;
   },
 
   // "Send Tab to Device" menu item
@@ -525,18 +560,19 @@ var gSync = {
 
   openSyncedTabsPanel() {
     let placement = CustomizableUI.getPlacementOfWidget("sync-button");
-    let area = placement ? placement.area : CustomizableUI.AREA_NAVBAR;
+    let area = placement && placement.area;
     let anchor = document.getElementById("sync-button") ||
                  document.getElementById("PanelUI-menu-button");
-    if (area == CustomizableUI.AREA_PANEL) {
-      // The button is in the panel, so we need to show the panel UI, then our
-      // subview.
-      PanelUI.show().then(() => {
-        PanelUI.showSubView("PanelUI-remotetabs", anchor, area);
-      }).catch(Cu.reportError);
+    if (area == CustomizableUI.AREA_FIXED_OVERFLOW_PANEL) {
+      // The button is in the overflow panel, so we need to show the panel,
+      // then show our subview.
+      let navbar = document.getElementById(CustomizableUI.AREA_NAVBAR);
+      navbar.overflowable.show().then(() => {
+        PanelUI.showSubView("PanelUI-remotetabs", anchor);
+      }, Cu.reportError);
     } else {
       // It is placed somewhere else - just try and show it.
-      PanelUI.showSubView("PanelUI-remotetabs", anchor, area);
+      PanelUI.showSubView("PanelUI-remotetabs", anchor);
     }
   },
 

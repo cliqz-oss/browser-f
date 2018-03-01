@@ -12,6 +12,12 @@ const { PromisesFront } = require("devtools/shared/fronts/promises");
 var EventEmitter = require("devtools/shared/event-emitter");
 
 add_task(function* () {
+  Services.prefs.setBoolPref("privacy.reduceTimerPrecision", false);
+
+  registerCleanupFunction(function () {
+    Services.prefs.clearUserPref("privacy.reduceTimerPrecision");
+  });
+
   let client = yield startTestDebuggerServer("promises-object-test");
   let chromeActors = yield getChromeActors(client);
 
@@ -63,7 +69,8 @@ function* testPromiseCreationTimestamp(client, form, makePromise) {
   let creationTimestamp = grip.promiseState.creationTimestamp;
 
   ok(start - 1 <= creationTimestamp && creationTimestamp <= end + 1,
-    "Expect promise creation timestamp to be within elapsed time range.");
+    "Expect promise creation timestamp to be within elapsed time range: " +
+     (start - 1) + " <= " + creationTimestamp + " <= " + (end + 1));
 
   yield front.detach();
   // Appease eslint

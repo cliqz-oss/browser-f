@@ -6,7 +6,6 @@ Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/engines.js");
 Cu.import("resource://services-sync/engines/clients.js");
 Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 
 Svc.Prefs.set("registerEngines", "");
 Cu.import("resource://services-sync/service.js");
@@ -37,19 +36,15 @@ function sync_httpd_setup() {
 }
 
 async function setUp(server) {
+  syncTestLogging();
   await configureIdentity({username: "johndoe"}, server);
   await generateNewKeys(Service.collectionKeys);
   let serverKeys = Service.collectionKeys.asWBO("crypto", "keys");
   await serverKeys.encrypt(Service.identity.syncKeyBundle);
-  serverKeys.upload(Service.resource(Service.cryptoKeysURL));
+  await serverKeys.upload(Service.resource(Service.cryptoKeysURL));
 }
 
 add_task(async function setup() {
-  initTestLogging("Trace");
-
-  Log.repository.getLogger("Sync.Service").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.SyncScheduler").level = Log.Level.Trace;
-
   scheduler = Service.scheduler;
   clientsEngine = Service.clientsEngine;
 
@@ -74,86 +69,86 @@ add_task(async function test_successful_sync_adjustSyncInterval() {
   await setUp(server);
 
   // Confirm defaults
-  do_check_false(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
-  do_check_false(scheduler.hasIncomingItems);
+  Assert.ok(!scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.ok(!scheduler.hasIncomingItems);
 
   _("Test as long as numClients <= 1 our sync interval is SINGLE_USER.");
   // idle == true && numClients <= 1 && hasIncomingItems == false
   scheduler.idle = true;
   await Service.sync();
-  do_check_eq(syncSuccesses, 1);
-  do_check_true(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncSuccesses, 1);
+  Assert.ok(scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   // idle == false && numClients <= 1 && hasIncomingItems == false
   scheduler.idle = false;
   await Service.sync();
-  do_check_eq(syncSuccesses, 2);
-  do_check_false(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncSuccesses, 2);
+  Assert.ok(!scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   // idle == false && numClients <= 1 && hasIncomingItems == true
   scheduler.hasIncomingItems = true;
   await Service.sync();
-  do_check_eq(syncSuccesses, 3);
-  do_check_false(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_true(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncSuccesses, 3);
+  Assert.ok(!scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   // idle == true && numClients <= 1 && hasIncomingItems == true
   scheduler.idle = true;
   await Service.sync();
-  do_check_eq(syncSuccesses, 4);
-  do_check_true(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_true(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncSuccesses, 4);
+  Assert.ok(scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   _("Test as long as idle && numClients > 1 our sync interval is idleInterval.");
   // idle == true && numClients > 1 && hasIncomingItems == true
   await Service.clientsEngine._store.create({ id: "foo", cleartext: { name: "bar", type: "mobile" } });
   await Service.sync();
-  do_check_eq(syncSuccesses, 5);
-  do_check_true(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_true(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.idleInterval);
+  Assert.equal(syncSuccesses, 5);
+  Assert.ok(scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.idleInterval);
 
   // idle == true && numClients > 1 && hasIncomingItems == false
   scheduler.hasIncomingItems = false;
   await Service.sync();
-  do_check_eq(syncSuccesses, 6);
-  do_check_true(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.idleInterval);
+  Assert.equal(syncSuccesses, 6);
+  Assert.ok(scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.idleInterval);
 
   _("Test non-idle, numClients > 1, no incoming items => activeInterval.");
   // idle == false && numClients > 1 && hasIncomingItems == false
   scheduler.idle = false;
   await Service.sync();
-  do_check_eq(syncSuccesses, 7);
-  do_check_false(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.activeInterval);
+  Assert.equal(syncSuccesses, 7);
+  Assert.ok(!scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.activeInterval);
 
   _("Test non-idle, numClients > 1, incoming items => immediateInterval.");
   // idle == false && numClients > 1 && hasIncomingItems == true
   scheduler.hasIncomingItems = true;
   await Service.sync();
-  do_check_eq(syncSuccesses, 8);
-  do_check_false(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems); // gets reset to false
-  do_check_eq(scheduler.syncInterval, scheduler.immediateInterval);
+  Assert.equal(syncSuccesses, 8);
+  Assert.ok(!scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems); // gets reset to false
+  Assert.equal(scheduler.syncInterval, scheduler.immediateInterval);
 
   Svc.Obs.remove("weave:service:sync:finish", onSyncFinish);
   await Service.startOver();
@@ -180,47 +175,47 @@ add_task(async function test_unsuccessful_sync_adjustSyncInterval() {
   await setUp(server);
 
   // Confirm defaults
-  do_check_false(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
-  do_check_false(scheduler.hasIncomingItems);
+  Assert.ok(!scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.ok(!scheduler.hasIncomingItems);
 
   _("Test as long as numClients <= 1 our sync interval is SINGLE_USER.");
   // idle == true && numClients <= 1 && hasIncomingItems == false
   scheduler.idle = true;
   await Service.sync();
-  do_check_eq(syncFailures, 1);
-  do_check_true(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncFailures, 1);
+  Assert.ok(scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   // idle == false && numClients <= 1 && hasIncomingItems == false
   scheduler.idle = false;
   await Service.sync();
-  do_check_eq(syncFailures, 2);
-  do_check_false(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncFailures, 2);
+  Assert.ok(!scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   // idle == false && numClients <= 1 && hasIncomingItems == true
   scheduler.hasIncomingItems = true;
   await Service.sync();
-  do_check_eq(syncFailures, 3);
-  do_check_false(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_true(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncFailures, 3);
+  Assert.ok(!scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   // idle == true && numClients <= 1 && hasIncomingItems == true
   scheduler.idle = true;
   await Service.sync();
-  do_check_eq(syncFailures, 4);
-  do_check_true(scheduler.idle);
-  do_check_false(scheduler.numClients > 1);
-  do_check_true(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncFailures, 4);
+  Assert.ok(scheduler.idle);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.ok(scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   _("Test as long as idle && numClients > 1 our sync interval is idleInterval.");
   // idle == true && numClients > 1 && hasIncomingItems == true
@@ -228,40 +223,40 @@ add_task(async function test_unsuccessful_sync_adjustSyncInterval() {
   scheduler.updateClientMode();
 
   await Service.sync();
-  do_check_eq(syncFailures, 5);
-  do_check_true(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_true(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.idleInterval);
+  Assert.equal(syncFailures, 5);
+  Assert.ok(scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.idleInterval);
 
   // idle == true && numClients > 1 && hasIncomingItems == false
   scheduler.hasIncomingItems = false;
   await Service.sync();
-  do_check_eq(syncFailures, 6);
-  do_check_true(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.idleInterval);
+  Assert.equal(syncFailures, 6);
+  Assert.ok(scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.idleInterval);
 
   _("Test non-idle, numClients > 1, no incoming items => activeInterval.");
   // idle == false && numClients > 1 && hasIncomingItems == false
   scheduler.idle = false;
   await Service.sync();
-  do_check_eq(syncFailures, 7);
-  do_check_false(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems);
-  do_check_eq(scheduler.syncInterval, scheduler.activeInterval);
+  Assert.equal(syncFailures, 7);
+  Assert.ok(!scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems);
+  Assert.equal(scheduler.syncInterval, scheduler.activeInterval);
 
   _("Test non-idle, numClients > 1, incoming items => immediateInterval.");
   // idle == false && numClients > 1 && hasIncomingItems == true
   scheduler.hasIncomingItems = true;
   await Service.sync();
-  do_check_eq(syncFailures, 8);
-  do_check_false(scheduler.idle);
-  do_check_true(scheduler.numClients > 1);
-  do_check_false(scheduler.hasIncomingItems); // gets reset to false
-  do_check_eq(scheduler.syncInterval, scheduler.immediateInterval);
+  Assert.equal(syncFailures, 8);
+  Assert.ok(!scheduler.idle);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.ok(!scheduler.hasIncomingItems); // gets reset to false
+  Assert.equal(scheduler.syncInterval, scheduler.immediateInterval);
 
   await Service.startOver();
   Svc.Obs.remove("weave:service:sync:error", onSyncError);
@@ -277,7 +272,7 @@ add_task(async function test_back_triggers_sync() {
   // Single device: no sync triggered.
   scheduler.idle = true;
   scheduler.observe(null, "active", Svc.Prefs.get("scheduler.idleTime"));
-  do_check_false(scheduler.idle);
+  Assert.ok(!scheduler.idle);
 
   // Multiple devices: sync is triggered.
   Svc.Prefs.set("clients.devices.mobile", 2);
@@ -287,7 +282,7 @@ add_task(async function test_back_triggers_sync() {
 
   scheduler.idle = true;
   scheduler.observe(null, "active", Svc.Prefs.get("scheduler.idleTime"));
-  do_check_false(scheduler.idle);
+  Assert.ok(!scheduler.idle);
   await promiseDone;
 
   Service.recordManager.clearCache();
@@ -316,16 +311,16 @@ add_task(async function test_adjust_interval_on_sync_error() {
   // Force a sync fail.
   Svc.Prefs.set("firstSync", "notReady");
 
-  do_check_eq(syncFailures, 0);
-  do_check_false(scheduler.numClients > 1);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(syncFailures, 0);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   Svc.Prefs.set("clients.devices.mobile", 2);
   await Service.sync();
 
-  do_check_eq(syncFailures, 1);
-  do_check_true(scheduler.numClients > 1);
-  do_check_eq(scheduler.syncInterval, scheduler.activeInterval);
+  Assert.equal(syncFailures, 1);
+  Assert.ok(scheduler.numClients > 1);
+  Assert.equal(scheduler.syncInterval, scheduler.activeInterval);
 
   Svc.Obs.remove("weave:service:sync:error", onSyncError);
   await Service.startOver();
@@ -352,10 +347,10 @@ add_task(async function test_bug671378_scenario() {
 
   // After first sync call, syncInterval & syncTimer are singleDeviceInterval.
   await Service.sync();
-  do_check_eq(syncSuccesses, 1);
-  do_check_false(scheduler.numClients > 1);
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
-  do_check_eq(scheduler.syncTimer.delay, scheduler.singleDeviceInterval);
+  Assert.equal(syncSuccesses, 1);
+  Assert.equal(false, scheduler.numClients > 1);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(scheduler.syncTimer.delay, scheduler.singleDeviceInterval);
 
   let promiseDone = new Promise(resolve => {
     // Wrap scheduleNextSync so we are notified when it is finished.
@@ -366,9 +361,9 @@ add_task(async function test_bug671378_scenario() {
       // Check on sync:finish scheduleNextSync sets the appropriate
       // syncInterval and syncTimer values.
       if (syncSuccesses == 2) {
-        do_check_neq(scheduler.nextSync, 0);
-        do_check_eq(scheduler.syncInterval, scheduler.activeInterval);
-        do_check_true(scheduler.syncTimer.delay <= scheduler.activeInterval);
+        Assert.notEqual(scheduler.nextSync, 0);
+        Assert.equal(scheduler.syncInterval, scheduler.activeInterval);
+        Assert.ok(scheduler.syncTimer.delay <= scheduler.activeInterval);
 
         scheduler.scheduleNextSync = scheduler._scheduleNextSync;
         Svc.Obs.remove("weave:service:sync:finish", onSyncFinish);
@@ -390,9 +385,9 @@ add_task(async function test_bug671378_scenario() {
       Svc.Obs.remove("weave:service:sync:start", onSyncStart);
 
       scheduler.scheduleNextSync();
-      do_check_neq(scheduler.nextSync, 0);
-      do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
-      do_check_eq(scheduler.syncTimer.delay, scheduler.singleDeviceInterval);
+      Assert.notEqual(scheduler.nextSync, 0);
+      Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
+      Assert.equal(scheduler.syncTimer.delay, scheduler.singleDeviceInterval);
     });
   });
 
@@ -405,25 +400,25 @@ add_task(async function test_adjust_timer_larger_syncInterval() {
   _("Test syncInterval > current timout period && nextSync != 0, syncInterval is NOT used.");
   Svc.Prefs.set("clients.devices.mobile", 2);
   scheduler.updateClientMode();
-  do_check_eq(scheduler.syncInterval, scheduler.activeInterval);
+  Assert.equal(scheduler.syncInterval, scheduler.activeInterval);
 
   scheduler.scheduleNextSync();
 
   // Ensure we have a small interval.
-  do_check_neq(scheduler.nextSync, 0);
-  do_check_eq(scheduler.syncTimer.delay, scheduler.activeInterval);
+  Assert.notEqual(scheduler.nextSync, 0);
+  Assert.equal(scheduler.syncTimer.delay, scheduler.activeInterval);
 
   // Make interval large again
   await clientsEngine._wipeClient();
   Svc.Prefs.reset("clients.devices.mobile");
   scheduler.updateClientMode();
-  do_check_eq(scheduler.syncInterval, scheduler.singleDeviceInterval);
+  Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
 
   scheduler.scheduleNextSync();
 
   // Ensure timer delay remains as the small interval.
-  do_check_neq(scheduler.nextSync, 0);
-  do_check_true(scheduler.syncTimer.delay <= scheduler.activeInterval);
+  Assert.notEqual(scheduler.nextSync, 0);
+  Assert.ok(scheduler.syncTimer.delay <= scheduler.activeInterval);
 
   // SyncSchedule.
   await Service.startOver();
@@ -434,19 +429,19 @@ add_task(async function test_adjust_timer_smaller_syncInterval() {
   scheduler.scheduleNextSync();
 
   // Ensure we have a large interval.
-  do_check_neq(scheduler.nextSync, 0);
-  do_check_eq(scheduler.syncTimer.delay, scheduler.singleDeviceInterval);
+  Assert.notEqual(scheduler.nextSync, 0);
+  Assert.equal(scheduler.syncTimer.delay, scheduler.singleDeviceInterval);
 
   // Make interval smaller
   Svc.Prefs.set("clients.devices.mobile", 2);
   scheduler.updateClientMode();
-  do_check_eq(scheduler.syncInterval, scheduler.activeInterval);
+  Assert.equal(scheduler.syncInterval, scheduler.activeInterval);
 
   scheduler.scheduleNextSync();
 
   // Ensure smaller timer delay is used.
-  do_check_neq(scheduler.nextSync, 0);
-  do_check_true(scheduler.syncTimer.delay <= scheduler.activeInterval);
+  Assert.notEqual(scheduler.nextSync, 0);
+  Assert.ok(scheduler.syncTimer.delay <= scheduler.activeInterval);
 
   // SyncSchedule.
   await Service.startOver();

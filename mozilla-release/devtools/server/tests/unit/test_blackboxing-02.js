@@ -1,8 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
-/* eslint-disable no-shadow */
 
 "use strict";
+
+/* eslint-disable no-shadow */
 
 /**
  * Test that we don't hit breakpoints in black boxed sources, and that when we
@@ -45,13 +46,13 @@ function test_black_box() {
       source.setBreakpoint({
         line: 2
       }, function (response) {
-        do_check_true(!response.error, "Should be able to set breakpoint.");
+        Assert.ok(!response.error, "Should be able to set breakpoint.");
         gThreadClient.resume(test_black_box_breakpoint);
       });
     }
   });
 
-  /* eslint-disable */
+  /* eslint-disable no-multi-spaces */
   Components.utils.evalInSandbox(
     "" + function doStuff(k) { // line 1
       let arg = 15;            // line 2 - Break here
@@ -77,20 +78,20 @@ function test_black_box() {
     SOURCE_URL,
     1
   );
-  /* eslint-enable */
+  /* eslint-enable no-multi-spaces */
 }
 
 function test_black_box_breakpoint() {
   gThreadClient.getSources(function ({error, sources}) {
-    do_check_true(!error, "Should not get an error: " + error);
+    Assert.ok(!error, "Should not get an error: " + error);
     let sourceClient = gThreadClient.source(
       sources.filter(s => s.url == BLACK_BOXED_URL)[0]
     );
     sourceClient.blackBox(function ({error}) {
-      do_check_true(!error, "Should not get an error: " + error);
+      Assert.ok(!error, "Should not get an error: " + error);
 
       gClient.addOneTimeListener("paused", function (event, packet) {
-        do_check_eq(
+        Assert.equal(
           packet.why.type, "debuggerStatement",
           "We should pass over the breakpoint since the source is black boxed.");
         gThreadClient.resume(test_unblack_box_breakpoint.bind(null, sourceClient));
@@ -102,10 +103,10 @@ function test_black_box_breakpoint() {
 
 function test_unblack_box_breakpoint(sourceClient) {
   sourceClient.unblackBox(function ({error}) {
-    do_check_true(!error, "Should not get an error: " + error);
+    Assert.ok(!error, "Should not get an error: " + error);
     gClient.addOneTimeListener("paused", function (event, packet) {
-      do_check_eq(packet.why.type, "breakpoint",
-                  "We should hit the breakpoint again");
+      Assert.equal(packet.why.type, "breakpoint",
+                   "We should hit the breakpoint again");
 
       // We will hit the debugger statement on resume, so do this
       // nastiness to skip over it.

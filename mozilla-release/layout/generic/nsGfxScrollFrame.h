@@ -69,6 +69,7 @@ public:
     nsTArray<nsIAnonymousContentCreator::ContentInfo>& aElements);
   void AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements, uint32_t aFilter);
   nsresult FireScrollPortEvent();
+  void PostScrollEndEvent();
   void FireScrollEndEvent();
   void PostOverflowEvent();
   using PostDestroyData = nsIFrame::PostDestroyData;
@@ -131,6 +132,15 @@ public:
     ScrollFrameHelper* mHelper;
   };
 
+  class ScrollEndEvent : public Runnable {
+  public:
+    NS_DECL_NSIRUNNABLE
+    explicit ScrollEndEvent(ScrollFrameHelper* aHelper);
+    void Revoke() { mHelper = nullptr; }
+  private:
+    ScrollFrameHelper* mHelper;
+  };
+
   class AsyncScrollPortEvent : public Runnable {
   public:
     NS_DECL_NSIRUNNABLE
@@ -160,18 +170,20 @@ public:
   /**
    * @note This method might destroy the frame, pres shell and other objects.
    */
-  void FinishReflowForScrollbar(nsIContent* aContent, nscoord aMinXY,
-                                nscoord aMaxXY, nscoord aCurPosXY,
-                                nscoord aPageIncrement,
+  void FinishReflowForScrollbar(mozilla::dom::Element* aElement,
+                                nscoord aMinXY, nscoord aMaxXY,
+                                nscoord aCurPosXY, nscoord aPageIncrement,
                                 nscoord aIncrement);
   /**
    * @note This method might destroy the frame, pres shell and other objects.
    */
-  void SetScrollbarEnabled(nsIContent* aContent, nscoord aMaxPos);
+  void SetScrollbarEnabled(mozilla::dom::Element* aElement, nscoord aMaxPos);
   /**
    * @note This method might destroy the frame, pres shell and other objects.
    */
-  void SetCoordAttribute(nsIContent* aContent, nsAtom* aAtom, nscoord aSize);
+  void SetCoordAttribute(mozilla::dom::Element* aElement,
+                         nsAtom* aAtom,
+                         nscoord aSize);
 
   nscoord GetCoordAttribute(nsIFrame* aFrame, nsAtom* aAtom, nscoord aDefaultValue,
                             nscoord* aRangeStart, nscoord* aRangeLength);
@@ -402,7 +414,7 @@ public:
 
   void SetTransformingByAPZ(bool aTransforming) {
     if (mTransformingByAPZ && !aTransforming) {
-      FireScrollEndEvent();
+      PostScrollEndEvent();
     }
     mTransformingByAPZ = aTransforming;
     if (!mozilla::css::TextOverflow::HasClippedOverflow(mOuter)) {
@@ -416,6 +428,7 @@ public:
   }
   void SetScrollableByAPZ(bool aScrollable);
   void SetZoomableByAPZ(bool aZoomable);
+  void SetHasOutOfFlowContentInsideFilter();
 
   bool UsesContainerScrolling() const;
 
@@ -489,12 +502,13 @@ public:
   bool IsRootScrollFrameOfDocument() const { return mIsRoot; }
 
   // owning references to the nsIAnonymousContentCreator-built content
-  nsCOMPtr<nsIContent> mHScrollbarContent;
-  nsCOMPtr<nsIContent> mVScrollbarContent;
-  nsCOMPtr<nsIContent> mScrollCornerContent;
-  nsCOMPtr<nsIContent> mResizerContent;
+  nsCOMPtr<mozilla::dom::Element> mHScrollbarContent;
+  nsCOMPtr<mozilla::dom::Element> mVScrollbarContent;
+  nsCOMPtr<mozilla::dom::Element> mScrollCornerContent;
+  nsCOMPtr<mozilla::dom::Element> mResizerContent;
 
   RefPtr<ScrollEvent> mScrollEvent;
+  RefPtr<ScrollEndEvent> mScrollEndEvent;
   nsRevocableEventPtr<AsyncScrollPortEvent> mAsyncScrollPortEvent;
   nsRevocableEventPtr<ScrolledAreaEvent> mScrolledAreaEvent;
   nsIFrame* mHScrollbarBox;
@@ -620,6 +634,10 @@ public:
 
   // True if the APZ is allowed to zoom this scrollframe.
   bool mZoomableByAPZ:1;
+
+  // True if the scroll frame contains out-of-flow content and is inside
+  // a CSS filter.
+  bool mHasOutOfFlowContentInsideFilter:1;
 
   // True if we don't want the scrollbar to repaint itself right now.
   bool mSuppressScrollbarRepaints:1;
@@ -1050,6 +1068,9 @@ public:
   }
   void SetZoomableByAPZ(bool aZoomable) override {
     mHelper.SetZoomableByAPZ(aZoomable);
+  }
+  void SetHasOutOfFlowContentInsideFilter() override {
+    mHelper.SetHasOutOfFlowContentInsideFilter();
   }
 
   ScrollSnapInfo GetScrollSnapInfo() const override {
@@ -1485,6 +1506,9 @@ public:
   }
   void SetZoomableByAPZ(bool aZoomable) override {
     mHelper.SetZoomableByAPZ(aZoomable);
+  }
+  void SetHasOutOfFlowContentInsideFilter() override {
+    mHelper.SetHasOutOfFlowContentInsideFilter();
   }
   virtual bool DecideScrollableLayer(nsDisplayListBuilder* aBuilder,
                                      nsRect* aVisibleRect,

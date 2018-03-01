@@ -327,7 +327,7 @@ CacheRegisterAllocator::restoreIonLiveRegisters(MacroAssembler& masm, LiveRegist
 static void*
 GetReturnAddressToIonCode(JSContext* cx)
 {
-    JSJitFrameIter frame(cx);
+    JSJitFrameIter frame(cx->activation()->asJit());
     MOZ_ASSERT(frame.type() == JitFrame_Exit,
                "An exit frame is expected as update functions are called with a VMFunction.");
 
@@ -358,9 +358,7 @@ IonCacheIRCompiler::callVM(MacroAssembler& masm, const VMFunction& fun)
 {
     MOZ_ASSERT(calledPrepareVMCall_);
 
-    JitCode* code = cx_->runtime()->jitRuntime()->getVMWrapper(fun);
-    if (!code)
-        return false;
+    TrampolinePtr code = cx_->runtime()->jitRuntime()->getVMWrapper(fun);
 
     uint32_t frameSize = fun.explicitStackSlots() * sizeof(void*);
     uint32_t descriptor = MakeFrameDescriptor(frameSize, JitFrame_IonICCall,
@@ -1043,12 +1041,10 @@ IonCacheIRCompiler::emitCallScriptedGetterResult()
     // Check stack alignment. Add sizeof(uintptr_t) for the return address.
     MOZ_ASSERT(((masm.framePushed() + sizeof(uintptr_t)) % JitStackAlignment) == 0);
 
-    // The getter has JIT code now and we will only discard the getter's JIT
-    // code when discarding all JIT code in the Zone, so we can assume it'll
-    // still have JIT code.
-    MOZ_ASSERT(target->hasJITCode());
-    masm.loadPtr(Address(scratch, JSFunction::offsetOfNativeOrScript()), scratch);
-    masm.loadBaselineOrIonRaw(scratch, scratch, nullptr);
+    // The getter currently has a non-lazy script. We will only relazify when
+    // we do a shrinking GC and when that happens we will also purge IC stubs.
+    MOZ_ASSERT(target->hasScript());
+    masm.loadJitCodeRaw(scratch, scratch);
     masm.callJit(scratch);
     masm.storeCallResultValue(output);
 
@@ -1095,7 +1091,7 @@ IonCacheIRCompiler::emitCallNativeGetterResult()
 
     if (!masm.icBuildOOLFakeExitFrame(GetReturnAddressToIonCode(cx_), save))
         return false;
-    masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameToken::IonOOLNative);
+    masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameType::IonOOLNative);
 
     // Construct and execute call.
     masm.setupUnalignedABICall(scratch);
@@ -1153,7 +1149,7 @@ IonCacheIRCompiler::emitCallProxyGetResult()
 
     if (!masm.icBuildOOLFakeExitFrame(GetReturnAddressToIonCode(cx_), save))
         return false;
-    masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameToken::IonOOLProxy);
+    masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameType::IonOOLProxy);
 
     // Make the call.
     masm.setupUnalignedABICall(scratch);
@@ -1237,7 +1233,6 @@ IonCacheIRCompiler::emitCallProxyHasPropResult()
     masm.storeCallResultValue(output);
     return true;
 }
-
 
 bool
 IonCacheIRCompiler::emitLoadUnboxedPropertyResult()
@@ -2006,7 +2001,7 @@ IonCacheIRCompiler::emitCallNativeSetter()
 
     if (!masm.icBuildOOLFakeExitFrame(GetReturnAddressToIonCode(cx_), save))
         return false;
-    masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameToken::IonOOLNative);
+    masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameType::IonOOLNative);
 
     // Make the call.
     masm.setupUnalignedABICall(scratch);
@@ -2071,12 +2066,10 @@ IonCacheIRCompiler::emitCallScriptedSetter()
     // Check stack alignment. Add sizeof(uintptr_t) for the return address.
     MOZ_ASSERT(((masm.framePushed() + sizeof(uintptr_t)) % JitStackAlignment) == 0);
 
-    // The setter has JIT code now and we will only discard the setter's JIT
-    // code when discarding all JIT code in the Zone, so we can assume it'll
-    // still have JIT code.
-    MOZ_ASSERT(target->hasJITCode());
-    masm.loadPtr(Address(scratch, JSFunction::offsetOfNativeOrScript()), scratch);
-    masm.loadBaselineOrIonRaw(scratch, scratch, nullptr);
+    // The setter currently has a non-lazy script. We will only relazify when
+    // we do a shrinking GC and when that happens we will also purge IC stubs.
+    MOZ_ASSERT(target->hasScript());
+    masm.loadJitCodeRaw(scratch, scratch);
     masm.callJit(scratch);
 
     masm.freeStack(masm.framePushed() - framePushedBefore);
@@ -2196,7 +2189,7 @@ IonCacheIRCompiler::emitLoadTypedObjectResult()
     LoadTypedThingData(masm, layout, obj, scratch1);
 
     Address fieldAddr(scratch1, fieldOffset);
-    emitLoadTypedObjectResultShared(fieldAddr, scratch2, layout, typeDescr, output);
+    emitLoadTypedObjectResultShared(fieldAddr, scratch2, typeDescr, output);
     return true;
 }
 

@@ -123,9 +123,17 @@ CodeGeneratorX86::visitUnbox(LUnbox* unbox)
     // inputs.
     MUnbox* mir = unbox->mir();
 
+    JSValueTag tag = MIRTypeToTag(mir->type());
     if (mir->fallible()) {
-        masm.cmp32(ToOperand(unbox->type()), Imm32(MIRTypeToTag(mir->type())));
+        masm.cmp32(ToOperand(unbox->type()), Imm32(tag));
         bailoutIf(Assembler::NotEqual, unbox->snapshot());
+    } else {
+#ifdef DEBUG
+        Label ok;
+        masm.branch32(Assembler::Equal, ToOperand(unbox->type()), Imm32(tag), &ok);
+        masm.assumeUnreachable("Infallible unbox type mismatch");
+        masm.bind(&ok);
+#endif
     }
 }
 
@@ -318,10 +326,12 @@ CodeGeneratorX86::emitWasmLoad(T* ins)
                       ? Operand(ToRegister(memoryBase), offset ? offset : mir->base()->toConstant()->toInt32())
                       : Operand(ToRegister(memoryBase), ToRegister(ptr), TimesOne, offset);
 
-    if (mir->type() == MIRType::Int64)
+    if (mir->type() == MIRType::Int64) {
+        MOZ_ASSERT_IF(mir->access().isAtomic(), mir->access().type() != Scalar::Int64);
         masm.wasmLoadI64(mir->access(), srcAddr, ToOutRegister64(ins));
-    else
+    } else {
         masm.wasmLoad(mir->access(), srcAddr, ToAnyRegister(ins->output()));
+    }
 }
 
 void
@@ -489,24 +499,10 @@ CodeGeneratorX86::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins)
         masm.bind(&rejoin);
 }
 
-// Perform bounds checking on the access if necessary; if it fails,
-// jump to out-of-line code that throws.  If the bounds check passes,
-// set up the heap address in addrTemp.
-
 void
-CodeGeneratorX86::asmJSAtomicComputeAddress(Register addrTemp, Register ptrReg, Register memoryBase)
+CodeGeneratorX86::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* ins)
 {
-    // Add in the actual heap pointer explicitly, to avoid opening up
-    // the abstraction that is atomicBinopToTypedIntArray at this time.
-    masm.movl(ptrReg, addrTemp);
-    masm.addl(memoryBase, addrTemp);
-}
-
-void
-CodeGeneratorX86::visitAsmJSCompareExchangeHeap(LAsmJSCompareExchangeHeap* ins)
-{
-    MAsmJSCompareExchangeHeap* mir = ins->mir();
-    MOZ_ASSERT(mir->access().offset() == 0);
+    MWasmCompareExchangeHeap* mir = ins->mir();
 
     Scalar::Type accessType = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
@@ -514,79 +510,62 @@ CodeGeneratorX86::visitAsmJSCompareExchangeHeap(LAsmJSCompareExchangeHeap* ins)
     Register newval = ToRegister(ins->newValue());
     Register addrTemp = ToRegister(ins->addrTemp());
     Register memoryBase = ToRegister(ins->memoryBase());
+    Register output = ToRegister(ins->output());
 
-    asmJSAtomicComputeAddress(addrTemp, ptrReg, memoryBase);
+    masm.leal(Operand(memoryBase, ptrReg, TimesOne, mir->access().offset()), addrTemp);
 
     Address memAddr(addrTemp, 0);
-    masm.compareExchangeToTypedIntArray(accessType == Scalar::Uint32 ? Scalar::Int32 : accessType,
-                                        memAddr,
-                                        oldval,
-                                        newval,
-                                        InvalidReg,
-                                        ToAnyRegister(ins->output()));
+    masm.compareExchange(accessType, Synchronization::Full(), memAddr, oldval, newval, output);
 }
 
 void
-CodeGeneratorX86::visitAsmJSAtomicExchangeHeap(LAsmJSAtomicExchangeHeap* ins)
+CodeGeneratorX86::visitWasmAtomicExchangeHeap(LWasmAtomicExchangeHeap* ins)
 {
-    MAsmJSAtomicExchangeHeap* mir = ins->mir();
-    MOZ_ASSERT(mir->access().offset() == 0);
+    MWasmAtomicExchangeHeap* mir = ins->mir();
 
     Scalar::Type accessType = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register value = ToRegister(ins->value());
     Register addrTemp = ToRegister(ins->addrTemp());
     Register memoryBase = ToRegister(ins->memoryBase());
+    Register output = ToRegister(ins->output());
 
-    asmJSAtomicComputeAddress(addrTemp, ptrReg, memoryBase);
+    masm.leal(Operand(memoryBase, ptrReg, TimesOne, mir->access().offset()), addrTemp);
 
     Address memAddr(addrTemp, 0);
-    masm.atomicExchangeToTypedIntArray(accessType == Scalar::Uint32 ? Scalar::Int32 : accessType,
-                                       memAddr,
-                                       value,
-                                       InvalidReg,
-                                       ToAnyRegister(ins->output()));
+    masm.atomicExchange(accessType, Synchronization::Full(), memAddr, value, output);
 }
 
 void
-CodeGeneratorX86::visitAsmJSAtomicBinopHeap(LAsmJSAtomicBinopHeap* ins)
+CodeGeneratorX86::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
 {
-    MAsmJSAtomicBinopHeap* mir = ins->mir();
-    MOZ_ASSERT(mir->access().offset() == 0);
+    MWasmAtomicBinopHeap* mir = ins->mir();
 
     Scalar::Type accessType = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register temp = ins->temp()->isBogusTemp() ? InvalidReg : ToRegister(ins->temp());
     Register addrTemp = ToRegister(ins->addrTemp());
+    Register out = ToRegister(ins->output());
     const LAllocation* value = ins->value();
     AtomicOp op = mir->operation();
     Register memoryBase = ToRegister(ins->memoryBase());
 
-    asmJSAtomicComputeAddress(addrTemp, ptrReg, memoryBase);
+    masm.leal(Operand(memoryBase, ptrReg, TimesOne, mir->access().offset()), addrTemp);
 
     Address memAddr(addrTemp, 0);
     if (value->isConstant()) {
-        atomicBinopToTypedIntArray(op, accessType == Scalar::Uint32 ? Scalar::Int32 : accessType,
-                                   Imm32(ToInt32(value)),
-                                   memAddr,
-                                   temp,
-                                   InvalidReg,
-                                   ToAnyRegister(ins->output()));
+        masm.atomicFetchOp(accessType, Synchronization::Full(), op, Imm32(ToInt32(value)),
+                           memAddr, temp, out);
     } else {
-        atomicBinopToTypedIntArray(op, accessType == Scalar::Uint32 ? Scalar::Int32 : accessType,
-                                   ToRegister(value),
-                                   memAddr,
-                                   temp,
-                                   InvalidReg,
-                                   ToAnyRegister(ins->output()));
+        masm.atomicFetchOp(accessType, Synchronization::Full(), op, ToRegister(value),
+                           memAddr, temp, out);
     }
 }
 
 void
-CodeGeneratorX86::visitAsmJSAtomicBinopHeapForEffect(LAsmJSAtomicBinopHeapForEffect* ins)
+CodeGeneratorX86::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapForEffect* ins)
 {
-    MAsmJSAtomicBinopHeap* mir = ins->mir();
-    MOZ_ASSERT(mir->access().offset() == 0);
+    MWasmAtomicBinopHeap* mir = ins->mir();
     MOZ_ASSERT(!mir->hasUses());
 
     Scalar::Type accessType = mir->access().type();
@@ -596,13 +575,139 @@ CodeGeneratorX86::visitAsmJSAtomicBinopHeapForEffect(LAsmJSAtomicBinopHeapForEff
     AtomicOp op = mir->operation();
     Register memoryBase = ToRegister(ins->memoryBase());
 
-    asmJSAtomicComputeAddress(addrTemp, ptrReg, memoryBase);
+    masm.leal(Operand(memoryBase, ptrReg, TimesOne, mir->access().offset()), addrTemp);
 
     Address memAddr(addrTemp, 0);
-    if (value->isConstant())
-        atomicBinopToTypedIntArray(op, accessType, Imm32(ToInt32(value)), memAddr);
-    else
-        atomicBinopToTypedIntArray(op, accessType, ToRegister(value), memAddr);
+    if (value->isConstant()) {
+        masm.atomicEffectOp(accessType, Synchronization::Full(), op, Imm32(ToInt32(value)), memAddr,
+                            InvalidReg);
+    } else {
+        masm.atomicEffectOp(accessType, Synchronization::Full(), op, ToRegister(value), memAddr,
+                            InvalidReg);
+    }
+}
+
+void
+CodeGeneratorX86::visitWasmAtomicLoadI64(LWasmAtomicLoadI64* ins)
+{
+    uint32_t offset = ins->mir()->access().offset();
+    MOZ_ASSERT(offset < wasm::OffsetGuardLimit);
+
+    const LAllocation* memoryBase = ins->memoryBase();
+    const LAllocation* ptr = ins->ptr();
+    Operand srcAddr(ToRegister(memoryBase), ToRegister(ptr), TimesOne, offset);
+
+    MOZ_ASSERT(ToRegister(ins->t1()) == ecx);
+    MOZ_ASSERT(ToRegister(ins->t2()) == ebx);
+    MOZ_ASSERT(ToOutRegister64(ins).high == edx);
+    MOZ_ASSERT(ToOutRegister64(ins).low == eax);
+
+    // We must have the same values in ecx:ebx and edx:eax, but we don't care
+    // what they are.  It's safe to clobber ecx:ebx for sure because they are
+    // fixed temp registers.
+    masm.movl(eax, ebx);
+    masm.movl(edx, ecx);
+    masm.lock_cmpxchg8b(edx, eax, ecx, ebx, srcAddr);
+}
+
+void
+CodeGeneratorX86::visitWasmCompareExchangeI64(LWasmCompareExchangeI64* ins)
+{
+    uint32_t offset = ins->mir()->access().offset();
+    MOZ_ASSERT(offset < wasm::OffsetGuardLimit);
+
+    const LAllocation* memoryBase = ins->memoryBase();
+    const LAllocation* ptr = ins->ptr();
+    Operand srcAddr(ToRegister(memoryBase), ToRegister(ptr), TimesOne, offset);
+
+    MOZ_ASSERT(ToRegister64(ins->expected()).low == eax);
+    MOZ_ASSERT(ToRegister64(ins->expected()).high == edx);
+    MOZ_ASSERT(ToRegister64(ins->replacement()).low == ebx);
+    MOZ_ASSERT(ToRegister64(ins->replacement()).high == ecx);
+    MOZ_ASSERT(ToOutRegister64(ins).low == eax);
+    MOZ_ASSERT(ToOutRegister64(ins).high == edx);
+
+    masm.lock_cmpxchg8b(edx, eax, ecx, ebx, srcAddr);
+}
+
+template<typename T>
+void
+CodeGeneratorX86::emitWasmStoreOrExchangeAtomicI64(T* ins, uint32_t offset)
+{
+    MOZ_ASSERT(offset < wasm::OffsetGuardLimit);
+
+    const LAllocation* memoryBase = ins->memoryBase();
+    const LAllocation* ptr = ins->ptr();
+    Operand srcAddr(ToRegister(memoryBase), ToRegister(ptr), TimesOne, offset);
+
+    DebugOnly<const LInt64Allocation> value = ins->value();
+    MOZ_ASSERT(ToRegister64(value).low == ebx);
+    MOZ_ASSERT(ToRegister64(value).high == ecx);
+
+    // eax and ebx will be overwritten every time through the loop but
+    // memoryBase and ptr must remain live for a possible second iteration.
+
+    MOZ_ASSERT(ToRegister(memoryBase) != edx && ToRegister(memoryBase) != eax);
+    MOZ_ASSERT(ToRegister(ptr) != edx && ToRegister(ptr) != eax);
+
+    Label again;
+    masm.bind(&again);
+    masm.lock_cmpxchg8b(edx, eax, ecx, ebx, srcAddr);
+    masm.j(Assembler::Condition::NonZero, &again);
+}
+
+void
+CodeGeneratorX86::visitWasmAtomicStoreI64(LWasmAtomicStoreI64* ins)
+{
+    MOZ_ASSERT(ToRegister(ins->t1()) == edx);
+    MOZ_ASSERT(ToRegister(ins->t2()) == eax);
+
+    emitWasmStoreOrExchangeAtomicI64(ins, ins->mir()->access().offset());
+}
+
+void
+CodeGeneratorX86::visitWasmAtomicExchangeI64(LWasmAtomicExchangeI64* ins)
+{
+    MOZ_ASSERT(ToOutRegister64(ins).high == edx);
+    MOZ_ASSERT(ToOutRegister64(ins).low == eax);
+
+    emitWasmStoreOrExchangeAtomicI64(ins, ins->access().offset());
+}
+
+void
+CodeGeneratorX86::visitWasmAtomicBinopI64(LWasmAtomicBinopI64* ins)
+{
+    uint32_t offset = ins->access().offset();
+    MOZ_ASSERT(offset < wasm::OffsetGuardLimit);
+
+    const LAllocation* memoryBase = ins->memoryBase();
+    const LAllocation* ptr = ins->ptr();
+
+    BaseIndex srcAddr(ToRegister(memoryBase), ToRegister(ptr), TimesOne, offset);
+
+    MOZ_ASSERT(ToRegister(memoryBase) == esi || ToRegister(memoryBase) == edi);
+    MOZ_ASSERT(ToRegister(ptr) == esi || ToRegister(ptr) == edi);
+
+    Register64 value = ToRegister64(ins->value());
+
+    MOZ_ASSERT(value.low == ebx);
+    MOZ_ASSERT(value.high == ecx);
+
+    Register64 output = ToOutRegister64(ins);
+
+    MOZ_ASSERT(output.low == eax);
+    MOZ_ASSERT(output.high == edx);
+
+    masm.Push(ecx);
+    masm.Push(ebx);
+
+    Address valueAddr(esp, 0);
+
+    // Here the `value` register acts as a temp, we'll restore it below.
+    masm.atomicFetchOp64(Synchronization::Full(), ins->operation(), valueAddr, srcAddr, value, output);
+
+    masm.Pop(ebx);
+    masm.Pop(ecx);
 }
 
 namespace js {
@@ -617,7 +722,7 @@ class OutOfLineTruncate : public OutOfLineCodeBase<CodeGeneratorX86>
       : ins_(ins)
     { }
 
-    void accept(CodeGeneratorX86* codegen) {
+    void accept(CodeGeneratorX86* codegen) override {
         codegen->visitOutOfLineTruncate(this);
     }
     LTruncateDToInt32* ins() const {
@@ -634,7 +739,7 @@ class OutOfLineTruncateFloat32 : public OutOfLineCodeBase<CodeGeneratorX86>
       : ins_(ins)
     { }
 
-    void accept(CodeGeneratorX86* codegen) {
+    void accept(CodeGeneratorX86* codegen) override {
         codegen->visitOutOfLineTruncateFloat32(this);
     }
     LTruncateFToInt32* ins() const {
@@ -926,7 +1031,7 @@ CodeGeneratorX86::visitDivOrModI64(LDivOrModI64* lir)
 
     // Handle divide by zero.
     if (lir->canBeDivideByZero())
-        masm.branchTest64(Assembler::Zero, rhs, rhs, temp, trap(lir, wasm::Trap::IntegerDivideByZero));
+        masm.branchTest64(Assembler::Zero, rhs, rhs, temp, oldTrap(lir, wasm::Trap::IntegerDivideByZero));
 
     MDefinition* mir = lir->mir();
 
@@ -938,7 +1043,7 @@ CodeGeneratorX86::visitDivOrModI64(LDivOrModI64* lir)
         if (mir->isMod())
             masm.xor64(output, output);
         else
-            masm.jump(trap(lir, wasm::Trap::IntegerOverflow));
+            masm.jump(oldTrap(lir, wasm::Trap::IntegerOverflow));
         masm.jump(&done);
         masm.bind(&notmin);
     }
@@ -974,7 +1079,7 @@ CodeGeneratorX86::visitUDivOrModI64(LUDivOrModI64* lir)
 
     // Prevent divide by zero.
     if (lir->canBeDivideByZero())
-        masm.branchTest64(Assembler::Zero, rhs, rhs, temp, trap(lir, wasm::Trap::IntegerDivideByZero));
+        masm.branchTest64(Assembler::Zero, rhs, rhs, temp, oldTrap(lir, wasm::Trap::IntegerDivideByZero));
 
     masm.setupWasmABICall();
     masm.passABIArg(lhs.high);

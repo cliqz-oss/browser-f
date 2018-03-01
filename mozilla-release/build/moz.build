@@ -10,8 +10,13 @@ with Files('**'):
 # This cannot be named "build" because of bug 922191.
 SPHINX_TREES['buildsystem'] = 'docs'
 
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']
+
 if CONFIG['OS_ARCH'] == 'WINNT':
     DIRS += ['win32']
+    if CONFIG['WIN64_CARGO_LINKER']:
+        CONFIGURE_SUBST_FILES += ['win64/cargo-linker.bat']
 else:
     DIRS += ['unix']
 
@@ -46,7 +51,7 @@ FINAL_TARGET_PP_FILES += ['.gdbinit_python.in']
 OBJDIR_FILES += ['!/dist/bin/.gdbinit_python']
 
 # Install the clang-cl runtime library for ASAN next to the binaries we produce.
-if CONFIG['MOZ_ASAN'] and CONFIG['CLANG_CL']:
+if CONFIG['MOZ_ASAN'] and CONFIG['CC_TYPE'] == 'clang-cl':
     FINAL_TARGET_FILES += ['%' + CONFIG['MOZ_CLANG_RT_ASAN_LIB_PATH']]
 
 if CONFIG['LLVM_SYMBOLIZER']:

@@ -7,18 +7,30 @@
 <!ENTITY engine.bookmarks.label     "Lesezeichen">
 <!ENTITY engine.bookmarks.accesskey "L">
 <!ENTITY engine.tabs.label2         "Offene Tabs">
+<!ENTITY engine.tabs.title          "Liste aller offenen Tabs von allen verbundenen Geräten">
 <!ENTITY engine.tabs.accesskey      "T">
 <!ENTITY engine.history.label       "Chronik">
 <!ENTITY engine.history.accesskey   "C">
 <!ENTITY engine.logins.label        "Zugangsdaten">
+<!ENTITY engine.logins.title        "Durch Sie gespeicherte Benutzernamen und Passwörter">
 <!ENTITY engine.logins.accesskey    "Z">
+<!-- On Windows we use the term "Options" to describe settings, but
+     on Linux and Mac OS X we use "Preferences" - carry that distinction
+     over into this string, used as the checkbox which indicates if prefs are synced
+-->
+<!ENTITY engine.prefsWin.label      "Einstellungen">
+<!ENTITY engine.prefsWin.accesskey  "E">
 <!ENTITY engine.prefs.label         "Einstellungen">
 <!ENTITY engine.prefs.accesskey     "E">
+<!ENTITY engine.prefs.title         "Durch Sie geänderte allgemeine, Datenschutz- und Sicherheitseinstellungen">
 <!ENTITY engine.addons.label        "Add-ons">
+<!ENTITY engine.addons.title        "Erweiterungen und Themes für Firefox für Desktops">
 <!ENTITY engine.addons.accesskey    "A">
 <!ENTITY engine.addresses.label     "Adressen">
+<!ENTITY engine.addresses.title     "Durch Sie gespeicherte postalische Adressen (nur für Desktops)">
 <!ENTITY engine.addresses.accesskey "d">
 <!ENTITY engine.creditcards.label   "Kreditkarten">
+<!ENTITY engine.creditcards.title   "Namen, Nummern und Gültigkeitsdatum (nur für Desktops)">
 <!ENTITY engine.creditcards.accesskey "K">
 
 <!-- Device Settings -->
@@ -62,6 +74,11 @@ both, to better adapt this sentence to their language.
 <!ENTITY verify.accesskey            "b">
 <!ENTITY forget.label                "E-Mail-Adresse vergessen">
 <!ENTITY forget.accesskey            "v">
+
+<!ENTITY resendVerification.label     "E-Mail zur Verifizierung erneut senden">
+<!ENTITY resendVerification.accesskey "V">
+<!ENTITY cancelSetup.label            "Einrichtung abbrechen">
+<!ENTITY cancelSetup.accesskey        "b">
 
 <!ENTITY signedOut.caption            "So haben Sie das Web überall dabei.">
 <!ENTITY signedOut.description        "Synchronisieren Sie Ihre Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen Ihren Geräten.">

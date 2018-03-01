@@ -6,6 +6,7 @@
 #include "WebGLContext.h"
 
 #include "GeckoProfiler.h"
+#include "MozFramebuffer.h"
 #include "GLContext.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/UniquePtrExtensions.h"
@@ -99,23 +100,10 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(WebGLContext* webgl,
 {
     MOZ_ASSERT(mWebGL->gl->IsCurrent());
 
-    if (!mWebGL->mActiveProgramLinkInfo) {
-        mWebGL->ErrorInvalidOperation("%s: The current program is not linked.", funcName);
-        *out_error = true;
-        return;
-    }
-
     const std::vector<const WebGLFBAttachPoint*>* attachList = nullptr;
     const auto& fb = mWebGL->mBoundDrawFramebuffer;
     if (fb) {
-        if (!fb->ValidateAndInitAttachments(funcName)) {
-            *out_error = true;
-            return;
-        }
-
         attachList = &(fb->ResolvedCompleteData()->texDrawBuffers);
-    } else {
-        webgl->ClearBackbufferIfNeeded();
     }
 
     MOZ_ASSERT(mWebGL->mActiveProgramLinkInfo);
@@ -255,6 +243,11 @@ public:
     {
         MOZ_ASSERT(mWebGL->gl->IsCurrent());
 
+        if (!mWebGL->BindCurFBForDraw(funcName)) {
+            *out_error = true;
+            return;
+        }
+
         if (!mWebGL->ValidateDrawModeEnum(mode, funcName)) {
             *out_error = true;
             return;
@@ -265,21 +258,15 @@ public:
             return;
         }
 
-        ////
-
-        if (mWebGL->mBoundDrawFramebuffer) {
-            if (!mWebGL->mBoundDrawFramebuffer->ValidateAndInitAttachments(funcName)) {
-                *out_error = true;
-                return;
-            }
-        } else {
-            mWebGL->ClearBackbufferIfNeeded();
+        if (!mWebGL->mActiveProgramLinkInfo) {
+            mWebGL->ErrorInvalidOperation("%s: The current program is not linked.", funcName);
+            *out_error = true;
+            return;
         }
+        const auto& linkInfo = mWebGL->mActiveProgramLinkInfo;
 
         ////
         // Check UBO sizes.
-
-        const auto& linkInfo = mWebGL->mActiveProgramLinkInfo;
 
         for (const auto& cur : linkInfo->uniformBlocks) {
             const auto& dataSize = cur->mDataSize;
@@ -337,6 +324,10 @@ public:
                     *out_error = true;
                     return;
                 }
+
+                // Technically we don't know that this will be updated yet, but we can
+                // speculatively mark it.
+                buffer->ResetLastUpdateFenceId();
             }
         }
 
@@ -521,19 +512,19 @@ WebGLContext::DrawArraysInstanced(GLenum mode, GLint first, GLsizei vertCount,
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
-
-    bool error = false;
-    ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
-    if (error)
-        return;
+    const gl::GLContext::TlsScope inTls(gl);
 
     Maybe<uint32_t> lastVert;
     if (!DrawArrays_check(funcName, first, vertCount, instanceCount, &lastVert))
         return;
 
+    bool error = false;
     const ScopedDrawHelper scopedHelper(this, funcName, mode, lastVert, instanceCount,
                                         &error);
+    if (error)
+        return;
+
+    const ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
     if (error)
         return;
 
@@ -679,12 +670,7 @@ WebGLContext::DrawElementsInstanced(GLenum mode, GLsizei indexCount, GLenum type
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
-
-    bool error = false;
-    ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
-    if (error)
-        return;
+    const gl::GLContext::TlsScope inTls(gl);
 
     Maybe<uint32_t> lastVert;
     if (!DrawElements_check(funcName, indexCount, type, byteOffset, instanceCount,
@@ -693,8 +679,13 @@ WebGLContext::DrawElementsInstanced(GLenum mode, GLsizei indexCount, GLenum type
         return;
     }
 
+    bool error = false;
     const ScopedDrawHelper scopedHelper(this, funcName, mode, lastVert, instanceCount,
                                         &error);
+    if (error)
+        return;
+
+    const ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
     if (error)
         return;
 
@@ -759,8 +750,8 @@ WebGLContext::Draw_cleanup(const char* funcName)
             break;
         }
     } else {
-        destWidth = mWidth;
-        destHeight = mHeight;
+        destWidth = mDefaultFB->mSize.width;
+        destHeight = mDefaultFB->mSize.height;
     }
 
     if (mViewportWidth > int32_t(destWidth) ||
@@ -999,7 +990,6 @@ WebGLContext::FakeBlackTexture::FakeBlackTexture(gl::GLContext* gl)
 
 WebGLContext::FakeBlackTexture::~FakeBlackTexture()
 {
-    mGL->MakeCurrent();
     mGL->fDeleteTextures(1, &mGLName);
 }
 

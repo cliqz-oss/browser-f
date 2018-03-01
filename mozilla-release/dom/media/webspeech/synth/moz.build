@@ -51,9 +51,6 @@ if CONFIG['MOZ_WEBSPEECH']:
     if CONFIG['MOZ_SYNTH_SPEECHD']:
         DIRS += ['speechd']
 
-    if CONFIG['MOZ_SYNTH_PICO']:
-        DIRS += ['pico']
-
 IPDL_SOURCES += [
     'ipc/PSpeechSynthesis.ipdl',
     'ipc/PSpeechSynthesisRequest.ipdl',
@@ -66,5 +63,5 @@ LOCAL_INCLUDES += [
     'ipc',
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

@@ -244,7 +244,7 @@ var gXPInstallObserver = {
       notificationID = "xpinstall-disabled";
       let secondaryActions = null;
 
-      if (gPrefService.prefIsLocked("xpinstall.enabled")) {
+      if (Services.prefs.prefIsLocked("xpinstall.enabled")) {
         messageString = gNavigatorBundle.getString("xpinstallDisabledMessageLocked");
       } else {
         messageString = gNavigatorBundle.getString("xpinstallDisabledMessage");
@@ -253,7 +253,7 @@ var gXPInstallObserver = {
           label: gNavigatorBundle.getString("xpinstallDisabledButton"),
           accessKey: gNavigatorBundle.getString("xpinstallDisabledButton.accesskey"),
           callback: function editPrefs() {
-            gPrefService.setBoolPref("xpinstall.enabled", true);
+            Services.prefs.setBoolPref("xpinstall.enabled", true);
           }
         };
 
@@ -274,7 +274,7 @@ var gXPInstallObserver = {
       options.removeOnDismissal = true;
       options.persistent = false;
 
-      let secHistogram = Components.classes["@mozilla.org/base/telemetry;1"].getService(Ci.nsITelemetry).getHistogramById("SECURITY_UI");
+      let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
       secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_ADDON_ASKING_PREVENTED);
       let popup = PopupNotifications.show(browser, notificationID,
                                           messageString, anchorID,
@@ -285,7 +285,7 @@ var gXPInstallObserver = {
       messageString = gNavigatorBundle.getFormattedString("xpinstallPromptMessage",
                         [brandShortName]);
 
-      let secHistogram = Components.classes["@mozilla.org/base/telemetry;1"].getService(Ci.nsITelemetry).getHistogramById("SECURITY_UI");
+      let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
       action = {
         label: gNavigatorBundle.getString("xpinstallPromptAllowButton"),
         accessKey: gNavigatorBundle.getString("xpinstallPromptAllowButton.accesskey"),
@@ -441,10 +441,19 @@ var gXPInstallObserver = {
       });
 
       let secondaryActions = null;
+      let numAddons = installInfo.installs.length;
 
       if (needsRestart) {
         notificationID = "addon-install-restart";
-        messageString = gNavigatorBundle.getString("addonsInstalledNeedsRestart");
+        if (numAddons == 1) {
+          messageString = gNavigatorBundle.getFormattedString("addonInstalledNeedsRestart",
+                                                              [installInfo.installs[0].name, brandShortName]);
+        } else {
+          messageString = gNavigatorBundle.getString("addonsGenericInstalledNeedsRestart");
+          messageString = PluralForm.get(numAddons, messageString);
+          messageString = messageString.replace("#1", numAddons);
+          messageString = messageString.replace("#2", brandShortName);
+        }
         action = {
           label: gNavigatorBundle.getString("addonInstallRestartButton"),
           accessKey: gNavigatorBundle.getString("addonInstallRestartButton.accesskey"),
@@ -458,14 +467,16 @@ var gXPInstallObserver = {
           callback: () => {},
         }];
       } else {
-        messageString = gNavigatorBundle.getString("addonsInstalled");
+        if (numAddons == 1) {
+          messageString = gNavigatorBundle.getFormattedString("addonInstalled",
+                                                              [installInfo.installs[0].name]);
+        } else {
+          messageString = gNavigatorBundle.getString("addonsGenericInstalled");
+          messageString = PluralForm.get(numAddons, messageString);
+          messageString = messageString.replace("#1", numAddons);
+        }
         action = null;
       }
-
-      messageString = PluralForm.get(installInfo.installs.length, messageString);
-      messageString = messageString.replace("#1", installInfo.installs[0].name);
-      messageString = messageString.replace("#2", installInfo.installs.length);
-      messageString = messageString.replace("#3", brandShortName);
 
       // Remove notification on dismissal, since it's possible to cancel the
       // install through the addons manager UI, making the "restart" prompt
@@ -634,7 +645,8 @@ var LightWeightThemeWebInstaller = {
     }
 
     let strings = {
-      header: gNavigatorBundle.getFormattedString("webextPerms.header", [data.name]),
+      header: gNavigatorBundle.getFormattedString("webextPerms.header", ["<>"]),
+      addonName: data.name,
       text: gNavigatorBundle.getFormattedString("lwthemeInstallRequest.message2",
                                                 [uri.host]),
       acceptText: gNavigatorBundle.getString("lwthemeInstallRequest.allowButton2"),

@@ -13,7 +13,6 @@
 #include "nsIDOMNodeList.h"
 #include "nsGkAtoms.h"
 #include "nsNameSpaceManager.h"
-#include "nsIDOMCSSStyleDeclaration.h"
 
 #include "nsPresContext.h"
 #include "nsFrameManager.h"
@@ -332,7 +331,7 @@ nsResizerFrame::GetContentToResize(nsIPresShell* aPresShell, nsIBaseWindow** aWi
   *aWindow = nullptr;
 
   nsAutoString elementid;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::element, elementid);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::element, elementid);
   if (elementid.IsEmpty()) {
     // If the resizer is in a popup, resize the popup's widget, otherwise
     // resize the widget associated with the window.
@@ -409,20 +408,21 @@ nsResizerFrame::ResizeContent(nsIContent* aContent, const Direction& aDirection,
   // other elements, set style.width and style.height
   if (aContent->IsXULElement()) {
     if (aOriginalSizeInfo) {
-      aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::width,
-                        aOriginalSizeInfo->width);
-      aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::height,
-                        aOriginalSizeInfo->height);
+      aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::width,
+                                     aOriginalSizeInfo->width);
+      aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::height,
+                                     aOriginalSizeInfo->height);
     }
     // only set the property if the element could have changed in that direction
     if (aDirection.mHorizontal) {
-      aContent->SetAttr(kNameSpaceID_None, nsGkAtoms::width, aSizeInfo.width, true);
+      aContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::width,
+                                     aSizeInfo.width, true);
     }
     if (aDirection.mVertical) {
-      aContent->SetAttr(kNameSpaceID_None, nsGkAtoms::height, aSizeInfo.height, true);
+      aContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::height,
+                                     aSizeInfo.height, true);
     }
-  }
-  else {
+  } else {
     nsCOMPtr<nsStyledElement> inlineStyleContent =
       do_QueryInterface(aContent);
     if (inlineStyleContent) {
@@ -492,7 +492,7 @@ nsResizerFrame::RestoreOriginalSize(nsIContent* aContent)
 nsResizerFrame::Direction
 nsResizerFrame::GetDirection()
 {
-  static const nsIContent::AttrValuesArray strings[] =
+  static const Element::AttrValuesArray strings[] =
     {&nsGkAtoms::topleft,    &nsGkAtoms::top,    &nsGkAtoms::topright,
      &nsGkAtoms::left,                           &nsGkAtoms::right,
      &nsGkAtoms::bottomleft, &nsGkAtoms::bottom, &nsGkAtoms::bottomright,
@@ -510,9 +510,10 @@ nsResizerFrame::GetDirection()
     return directions[0]; // default: topleft
   }
 
-  int32_t index = GetContent()->FindAttrValueIn(kNameSpaceID_None,
-                                                nsGkAtoms::dir,
-                                                strings, eCaseMatters);
+  int32_t index =
+    mContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
+                                           nsGkAtoms::dir,
+                                           strings, eCaseMatters);
   if (index < 0) {
     return directions[0]; // default: topleft
   }

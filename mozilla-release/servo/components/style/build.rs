@@ -76,6 +76,16 @@ fn generate_properties() {
         .arg(&script)
         .arg(product)
         .arg("style-crate")
+        .envs(if std::mem::size_of::<Option<bool>>() == 1 {
+            // FIXME: remove this envs() call
+            // and make unconditional code that depends on RUSTC_HAS_PR45225
+            // once Firefox requires Rust 1.23+
+
+            // https://github.com/rust-lang/rust/pull/45225
+            vec![("RUSTC_HAS_PR45225", "1")]
+        } else {
+            vec![]
+        })
         .status()
         .unwrap();
     if !status.success() {
@@ -84,6 +94,15 @@ fn generate_properties() {
 }
 
 fn main() {
+    let gecko = cfg!(feature = "gecko");
+    let servo = cfg!(feature = "servo");
+    if !(gecko || servo) {
+        panic!("The style crate requires enabling one of its 'servo' or 'gecko' feature flags");
+    }
+    if gecko && servo {
+        panic!("The style crate does not support enabling both its 'servo' or 'gecko' \
+                feature flags at the same time.");
+    }
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:out_dir={}", env::var("OUT_DIR").unwrap());
     generate_properties();

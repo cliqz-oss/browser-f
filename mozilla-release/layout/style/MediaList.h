@@ -9,11 +9,11 @@
 #ifndef mozilla_dom_MediaList_h
 #define mozilla_dom_MediaList_h
 
+#include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/ServoUtils.h"
 #include "mozilla/StyleBackendType.h"
 
-#include "nsIDOMMediaList.h"
 #include "nsWrapperCache.h"
 
 class nsIDocument;
@@ -33,7 +33,7 @@ namespace dom {
 //     directly. We may want to determine in the future whether the
 //     above is correct.
 
-class MediaList : public nsIDOMMediaList
+class MediaList : public nsISupports
                 , public nsWrapperCache
 {
 public:
@@ -50,7 +50,7 @@ public:
 
   virtual already_AddRefed<MediaList> Clone() = 0;
 
-  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) final;
+  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) final override;
   nsISupports* GetParentObject() const { return nullptr; }
 
   virtual void GetText(nsAString& aMediaText) = 0;
@@ -63,22 +63,15 @@ public:
 
   void SetStyleSheet(StyleSheet* aSheet);
 
-  NS_DECL_NSIDOMMEDIALIST
-
   // WebIDL
-  // XPCOM GetMediaText and SetMediaText are fine.
+  void GetMediaText(nsAString& aMediaText);
+  void SetMediaText(const nsAString& aMediaText);
   virtual uint32_t Length() = 0;
   virtual void IndexedGetter(uint32_t aIndex, bool& aFound,
                              nsAString& aReturn) = 0;
-  // XPCOM Item is fine.
-  void DeleteMedium(const nsAString& aMedium, ErrorResult& aRv)
-  {
-    aRv = DeleteMedium(aMedium);
-  }
-  void AppendMedium(const nsAString& aMedium, ErrorResult& aRv)
-  {
-    aRv = AppendMedium(aMedium);
-  }
+  void Item(uint32_t aIndex, nsAString& aResult);
+  void DeleteMedium(const nsAString& aMedium, ErrorResult& aRv);
+  void AppendMedium(const nsAString& aMedium, ErrorResult& aRv);
 
 protected:
   virtual nsresult Delete(const nsAString& aOldMedium) = 0;

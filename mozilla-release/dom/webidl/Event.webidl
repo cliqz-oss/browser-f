@@ -20,6 +20,8 @@ interface Event {
   [Pure]
   readonly attribute EventTarget? currentTarget;
 
+  sequence<EventTarget> composedPath();
+
   const unsigned short NONE = 0;
   const unsigned short CAPTURING_PHASE = 1;
   const unsigned short AT_TARGET = 2;
@@ -68,7 +70,6 @@ partial interface Event {
   [ChromeOnly] readonly attribute EventTarget? composedTarget;
   [ChromeOnly] readonly attribute boolean multipleActionsPrevented;
   [ChromeOnly] readonly attribute boolean isSynthesized;
-  boolean getPreventDefault();
 };
 
 dictionary EventInit {

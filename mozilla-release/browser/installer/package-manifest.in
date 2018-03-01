@@ -68,9 +68,6 @@
 #ifndef MOZ_STATIC_JS
 @BINPATH@/@DLL_PREFIX@mozjs@DLL_SUFFIX@
 #endif
-#ifdef MOZ_DMD
-@BINPATH@/@DLL_PREFIX@dmd@DLL_SUFFIX@
-#endif
 #ifndef MOZ_SYSTEM_NSPR
 #ifndef MOZ_FOLD_LIBS
 @BINPATH@/@DLL_PREFIX@nspr4@DLL_SUFFIX@
@@ -106,6 +103,9 @@
 #ifdef MOZ_GTK3
 @BINPATH@/@DLL_PREFIX@mozgtk@DLL_SUFFIX@
 @BINPATH@/gtk2/@DLL_PREFIX@mozgtk@DLL_SUFFIX@
+#ifdef MOZ_WAYLAND
+@BINPATH@/@DLL_PREFIX@mozwayland@DLL_SUFFIX@
+#endif
 #endif
 
 ; We don't have a complete view of which dlls to expect when doing an artifact
@@ -195,11 +195,13 @@
 @RESPATH@/components/dom.xpt
 @RESPATH@/components/dom_base.xpt
 @RESPATH@/components/dom_bindings.xpt
+#ifdef MOZ_DEBUG
+@RESPATH@/components/dom_bindings_test.xpt
+#endif
 @RESPATH@/components/dom_file.xpt
 @RESPATH@/components/dom_system.xpt
 @RESPATH@/components/dom_canvas.xpt
 @RESPATH@/components/dom_core.xpt
-@RESPATH@/components/dom_css.xpt
 @RESPATH@/components/dom_events.xpt
 @RESPATH@/components/dom_geolocation.xpt
 @RESPATH@/components/dom_media.xpt
@@ -207,7 +209,6 @@
 @RESPATH@/components/dom_notification.xpt
 @RESPATH@/components/dom_html.xpt
 @RESPATH@/components/dom_offline.xpt
-@RESPATH@/components/dom_json.xpt
 @RESPATH@/components/dom_payments.xpt
 @RESPATH@/components/dom_power.xpt
 @RESPATH@/components/dom_push.xpt
@@ -216,7 +217,6 @@
 @RESPATH@/components/dom_security.xpt
 @RESPATH@/components/dom_sidebar.xpt
 @RESPATH@/components/dom_storage.xpt
-@RESPATH@/components/dom_stylesheets.xpt
 @RESPATH@/components/dom_traversal.xpt
 #ifdef MOZ_WEBSPEECH
 @RESPATH@/components/dom_webspeechrecognition.xpt
@@ -233,9 +233,6 @@
 @RESPATH@/components/exthandler.xpt
 @RESPATH@/components/fastfind.xpt
 @RESPATH@/components/feeds.xpt
-#ifdef MOZ_GTK
-@RESPATH@/components/filepicker.xpt
-#endif
 @RESPATH@/components/gfx.xpt
 @RESPATH@/components/html5.xpt
 @RESPATH@/components/htmlparser.xpt
@@ -247,6 +244,9 @@
 @RESPATH@/components/jsdownloads.xpt
 @RESPATH@/browser/components/jsinspector.xpt
 @RESPATH@/components/layout_base.xpt
+#ifdef MOZ_DEBUG
+@RESPATH@/components/layout_debug.xpt
+#endif
 #ifdef NS_PRINTING
 @RESPATH@/components/layout_printing.xpt
 #endif
@@ -327,7 +327,6 @@
 @RESPATH@/components/widget_cocoa.xpt
 #endif
 @RESPATH@/components/windowcreator.xpt
-@RESPATH@/components/windowds.xpt
 @RESPATH@/components/windowwatcher.xpt
 @RESPATH@/components/xpcom_base.xpt
 @RESPATH@/components/xpcom_system.xpt
@@ -339,7 +338,6 @@
 @RESPATH@/components/xpconnect.xpt
 @RESPATH@/components/xulapp.xpt
 @RESPATH@/components/xul.xpt
-@RESPATH@/components/xultmpl.xpt
 @RESPATH@/components/zipwriter.xpt
 @RESPATH@/components/telemetry.xpt
 
@@ -374,6 +372,8 @@
 @RESPATH@/browser/components/aboutdebugging.manifest
 @RESPATH@/browser/components/aboutdevtools-registration.js
 @RESPATH@/browser/components/aboutdevtools.manifest
+@RESPATH@/browser/components/aboutdevtoolstoolbox-registration.js
+@RESPATH@/browser/components/aboutdevtoolstoolbox.manifest
 @RESPATH@/browser/components/Experiments.manifest
 @RESPATH@/browser/components/ExperimentsService.js
 @RESPATH@/browser/components/browser-newtab.xpt
@@ -404,10 +404,6 @@
 @RESPATH@/components/webvtt.xpt
 @RESPATH@/components/WebVTT.manifest
 @RESPATH@/components/WebVTTParserWrapper.js
-#ifdef MOZ_GTK
-@RESPATH@/components/nsFilePicker.manifest
-@RESPATH@/components/nsFilePicker.js
-#endif
 @RESPATH@/components/nsHelperAppDlg.manifest
 @RESPATH@/components/nsHelperAppDlg.js
 @RESPATH@/components/NetworkGeolocationProvider.manifest
@@ -489,10 +485,6 @@
 @RESPATH@/components/nsINIProcessor.js
 @RESPATH@/components/nsPrompter.manifest
 @RESPATH@/components/nsPrompter.js
-#ifdef MOZ_SERVICES_HEALTHREPORT
-@RESPATH@/browser/components/SelfSupportService.manifest
-@RESPATH@/browser/components/SelfSupportService.js
-#endif
 @RESPATH@/components/SyncComponents.manifest
 @RESPATH@/components/Weave.js
 @RESPATH@/components/FxAccountsComponents.manifest
@@ -556,7 +548,7 @@
 @RESPATH@/components/TestInterfaceJSMaplike.js
 #endif
 
-#if defined(MOZ_DEBUG) || defined(NIGHTLY_BUILD)
+#if defined(MOZ_DEBUG) || defined(MOZ_DEV_EDITION) || defined(NIGHTLY_BUILD)
 @RESPATH@/browser/components/testComponents.manifest
 @RESPATH@/browser/components/startupRecorder.js
 #endif
@@ -616,6 +608,8 @@
 @RESPATH@/browser/chrome/icons/default/default16.png
 @RESPATH@/browser/chrome/icons/default/default32.png
 @RESPATH@/browser/chrome/icons/default/default48.png
+@RESPATH@/browser/chrome/icons/default/default64.png
+@RESPATH@/browser/chrome/icons/default/default128.png
 #endif
 @RESPATH@/browser/features/*
 
@@ -638,8 +632,6 @@
 ; shell icons
 #ifdef XP_UNIX
 #ifndef XP_MACOSX
-; shell icons
-@RESPATH@/browser/icons/*.png
 #ifdef MOZ_UPDATER
 ; updater icon
 @RESPATH@/icons/updater.png
@@ -698,7 +690,6 @@
 #endif
 @RESPATH@/res/fonts/*
 @RESPATH@/res/dtd/*
-@RESPATH@/res/html/*
 @RESPATH@/res/language.properties
 #ifdef XP_MACOSX
 @RESPATH@/res/MainMenu.nib/

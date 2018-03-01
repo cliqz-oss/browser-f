@@ -14,6 +14,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
+#include "mozilla/EnumSet.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/net/WebSocketFrame.h"
 #include "mozilla/TimeStamp.h"
@@ -25,9 +26,7 @@
 
 #include <stdint.h>
 
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
-#endif
 #include "nsID.h"
 #include "nsIWidget.h"
 #include "nsMemory.h"
@@ -127,16 +126,12 @@ struct EnumSerializer {
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult) {
     uintParamType value;
     if (!ReadParam(aMsg, aIter, &value)) {
-#ifdef MOZ_CRASHREPORTER
       CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IPCReadErrorReason"),
                                          NS_LITERAL_CSTRING("Bad iter"));
-#endif
       return false;
     } else if (!EnumValidator::IsLegalValue(paramType(value))) {
-#ifdef MOZ_CRASHREPORTER
       CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IPCReadErrorReason"),
                                          NS_LITERAL_CSTRING("Illegal value"));
-#endif
       return false;
     }
     *aResult = paramType(value);
@@ -262,6 +257,11 @@ struct BitFlagsEnumSerializer
  * structure's members.
  *
  * Derive ParamTraits<T> from PlainOldDataSerializer<T> if T is POD.
+ *
+ * Note: For POD structures with enumeration fields, this will not do
+ *   validation of the enum values the way serializing the fields
+ *   individually would. Prefer serializing the fields individually
+ *   in such cases.
  */
 template <typename T>
 struct PlainOldDataSerializer
@@ -916,6 +916,27 @@ struct ParamTraits<mozilla::Maybe<T>>
       *result = mozilla::Nothing();
     }
     return true;
+  }
+};
+
+template<typename T>
+struct ParamTraits<mozilla::EnumSet<T>>
+{
+  typedef mozilla::EnumSet<T> paramType;
+
+  static void Write(Message* msg, const paramType& param)
+  {
+    WriteParam(msg, param.serialize());
+  }
+
+  static bool Read(const Message* msg, PickleIterator* iter, paramType* result)
+  {
+    decltype(result->serialize()) tmp;
+    if (ReadParam(msg, iter, &tmp)) {
+      result->deserialize(tmp);
+      return true;
+    }
+    return false;
   }
 };
 

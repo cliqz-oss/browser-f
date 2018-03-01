@@ -5,6 +5,8 @@
 <!ENTITY  trackingProtectionHeader2.label      "Schutz vor Aktivitätenverfolgung">
 <!ENTITY  trackingProtection2.description      "Um Aktivitätenverfolgung handelt es sich, wenn Website-übergreifend Daten über Ihr Surfverhalten gesammelt werden. Aktivitätenverfolgung kann dazu eingesetzt werden, ein Profil von Ihnen zu erstellen, und Inhalte an Hand Ihrer besuchten Webseiten und persönlichen Daten anzuzeigen.">
 <!ENTITY  trackingProtection2.radioGroupLabel  "Bekannte Aktivitäten verfolgende Skripte blockieren">
+<!ENTITY  trackingProtection3.description      "Der Schutz vor Aktivittenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen.">
+<!ENTITY  trackingProtection3.radioGroupLabel  "Schutz vor Aktivitätenverfolgung verwenden, um bekannte Aktivitäten verfolgende Systeme zu blockieren">
 <!ENTITY  trackingProtectionAlways.label       "Immer">
 <!ENTITY  trackingProtectionAlways.accesskey   "m">
 <!ENTITY  trackingProtectionPrivate.label      "Nur in privaten Fenstern">
@@ -12,6 +14,7 @@
 <!ENTITY  trackingProtectionNever.label        "Nie">
 <!ENTITY  trackingProtectionNever.accesskey    "N">
 <!ENTITY  trackingProtectionLearnMore.label    "Weitere Informationen">
+<!ENTITY  trackingProtectionLearnMore2.label    "Weitere Informationen zum Schutz Ihrer Privatsphäre und vor Aktivitätenverfolgung">
 <!ENTITY  trackingProtectionExceptions.label   "Ausnahmen…">
 <!ENTITY  trackingProtectionExceptions.accesskey "u">
 
@@ -115,7 +118,7 @@
 <!ENTITY  browserContainersSettings.label        "Einstellungen…">
 <!ENTITY  browserContainersSettings.accesskey    "u">
 
-<!ENTITY  a11yPrivacy.checkbox.label     "Dienste für Barrierefreiheit am Zugriff auf Ihren Browser hindern">
+<!ENTITY  a11yPrivacy.checkbox.label     "Externen Anwendungen den Zugriff auf den Dienst für Barrierefreiheit in Firefox verweigern">
 <!ENTITY  a11yPrivacy.checkbox.accesskey "B">
 <!ENTITY  a11yPrivacy.learnmore.label    "Weitere Informationen">
 <!ENTITY enableSafeBrowsingLearnMore.label "Weitere Informationen">

@@ -10,14 +10,66 @@ add_task(async function() {
   await gBrowser.contentWindow.gMainPane._selectDefaultLanguageGroupPromise;
   // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
+  // eslint-disable-next-line mozilla/no-cpows-in-tests
+  let contentWindow = gBrowser.contentWindow;
   var langGroup = Services.prefs.getComplexValue("font.language.group", Ci.nsIPrefLocalizedString).data;
-  is(doc.getElementById("font.language.group").value, langGroup,
+  is(contentWindow.Preferences.get("font.language.group").value, langGroup,
      "Language group should be set correctly.");
 
   let defaultFontType = Services.prefs.getCharPref("font.default." + langGroup);
-  let fontFamily = Services.prefs.getCharPref("font.name." + defaultFontType + "." + langGroup);
+  let fontFamilyPref = "font.name." + defaultFontType + "." + langGroup;
+  let fontFamily = Services.prefs.getCharPref(fontFamilyPref);
   let fontFamilyField = doc.getElementById("defaultFont");
   is(fontFamilyField.value, fontFamily, "Font family should be set correctly.");
+
+  function dispatchMenuItemCommand(menuItem) {
+    const cmdEvent = doc.createEvent("xulcommandevent");
+    cmdEvent.initCommandEvent("command", true, true, contentWindow, 0, false, false, false, false, null, 0);
+    menuItem.dispatchEvent(cmdEvent);
+  }
+
+  /**
+   * Return a promise that resolves when the fontFamilyPref changes.
+   *
+   * Font prefs are the only ones whose form controls set "delayprefsave",
+   * which delays the pref change when a user specifies a new value
+   * for the pref.  Thus, in order to confirm that the pref gets changed
+   * when the test selects a new value in a font field, we need to await
+   * the change.  Awaiting this function does so for fontFamilyPref.
+   */
+  function fontFamilyPrefChanged() {
+    return new Promise(resolve => {
+      const observer = {
+        observe(aSubject, aTopic, aData) {
+          // Check for an exact match to avoid the ambiguity of nsIPrefBranch's
+          // prefix-matching algorithm for notifying pref observers.
+          if (aData == fontFamilyPref) {
+            Services.prefs.removeObserver(fontFamilyPref, observer);
+            resolve();
+          }
+        }
+      };
+      Services.prefs.addObserver(fontFamilyPref, observer);
+    });
+  }
+
+  const menuItems = fontFamilyField.querySelectorAll("menuitem");
+  ok(menuItems.length > 1, "There are multiple font menuitems.");
+  ok(menuItems[0].selected, "The first (default) font menuitem is selected.");
+
+  dispatchMenuItemCommand(menuItems[1]);
+  ok(menuItems[1].selected, "The second font menuitem is selected.");
+
+  await fontFamilyPrefChanged();
+  fontFamily = Services.prefs.getCharPref(fontFamilyPref);
+  is(fontFamilyField.value, fontFamily, "The font family has been updated.");
+
+  dispatchMenuItemCommand(menuItems[0]);
+  ok(menuItems[0].selected, "The first (default) font menuitem is selected again.");
+
+  await fontFamilyPrefChanged();
+  fontFamily = Services.prefs.getCharPref(fontFamilyPref);
+  is(fontFamilyField.value, fontFamily, "The font family has been updated.");
 
   let defaultFontSize = Services.prefs.getIntPref("font.size.variable." + langGroup);
   let fontSizeField = doc.getElementById("defaultFontSize");
@@ -44,7 +96,7 @@ add_task(async function() {
   win.FontBuilder._allFonts = null;
   win.FontBuilder._langGroupSupported = false;
 
-  let langGroupElement = doc.getElementById("font.language.group");
+  let langGroupElement = win.Preferences.get("font.language.group");
   let selectLangsField = doc.getElementById("selectLangs");
   let serifField = doc.getElementById("serif");
   let armenian = "x-armn";
@@ -63,7 +115,7 @@ add_task(async function() {
   selectLangsField.value = armenian;
   is(serifField.value, "", "Font family should not be set.");
 
-  let armenianSerifElement = doc.getElementById("font.name.serif.x-armn");
+  let armenianSerifElement = win.Preferences.get("font.name.serif.x-armn");
 
   langGroupElement.value = western;
   await fontListsRebuilt();

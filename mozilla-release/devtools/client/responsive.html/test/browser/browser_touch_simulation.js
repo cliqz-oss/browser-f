@@ -8,107 +8,100 @@
 const TEST_URL = `${URL_ROOT}touch.html`;
 const PREF_DOM_META_VIEWPORT_ENABLED = "dom.meta-viewport.enabled";
 
-addRDMTask(TEST_URL, function* ({ ui }) {
-  yield waitBootstrap(ui);
-  yield testWithNoTouch(ui);
-  yield toggleTouchSimulation(ui);
-  yield testWithTouch(ui);
-  yield testWithMetaViewportEnabled(ui);
-  yield testWithMetaViewportDisabled(ui);
+addRDMTask(TEST_URL, async function ({ ui }) {
+  await injectEventUtilsInContentTask(ui.getViewportBrowser());
+
+  await waitBootstrap(ui);
+  await testWithNoTouch(ui);
+  await toggleTouchSimulation(ui);
+  await testWithTouch(ui);
+  await testWithMetaViewportEnabled(ui);
+  await testWithMetaViewportDisabled(ui);
   testTouchButton(ui);
 });
 
-function* testWithNoTouch(ui) {
-  yield injectEventUtils(ui);
-  yield ContentTask.spawn(ui.getViewportBrowser(), {}, function* () {
-    let { EventUtils } = content;
-
+async function testWithNoTouch(ui) {
+  await ContentTask.spawn(ui.getViewportBrowser(), {}, async function () {
     let div = content.document.querySelector("div");
     let x = 0, y = 0;
 
     info("testWithNoTouch: Initial test parameter and mouse mouse outside div");
     x = -1; y = -1;
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mousemove", isSynthesized: false }, content);
     div.style.transform = "none";
     div.style.backgroundColor = "";
 
     info("testWithNoTouch: Move mouse into the div element");
-    yield EventUtils.synthesizeMouseAtCenter(div,
+    await EventUtils.synthesizeMouseAtCenter(div,
           { type: "mousemove", isSynthesized: false }, content);
     is(div.style.backgroundColor, "red", "mouseenter or mouseover should work");
 
     info("testWithNoTouch: Drag the div element");
-    yield EventUtils.synthesizeMouseAtCenter(div,
+    await EventUtils.synthesizeMouseAtCenter(div,
           { type: "mousedown", isSynthesized: false }, content);
     x = 100; y = 100;
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mousemove", isSynthesized: false }, content);
     is(div.style.transform, "none", "touchmove shouldn't work");
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mouseup", isSynthesized: false }, content);
 
     info("testWithNoTouch: Move mouse out of the div element");
     x = -1; y = -1;
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mousemove", isSynthesized: false }, content);
     is(div.style.backgroundColor, "blue", "mouseout or mouseleave should work");
 
     info("testWithNoTouch: Click the div element");
-    yield EventUtils.synthesizeClick(div);
+    await EventUtils.synthesizeClick(div);
     is(div.dataset.isDelay, "false",
       "300ms delay between touch events and mouse events should not work");
   });
 }
 
-function* testWithTouch(ui) {
-  yield injectEventUtils(ui);
-
-  yield ContentTask.spawn(ui.getViewportBrowser(), {}, function* () {
-    let { EventUtils } = content;
-
+async function testWithTouch(ui) {
+  await ContentTask.spawn(ui.getViewportBrowser(), {}, async function () {
     let div = content.document.querySelector("div");
     let x = 0, y = 0;
 
     info("testWithTouch: Initial test parameter and mouse mouse outside div");
     x = -1; y = -1;
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mousemove", isSynthesized: false }, content);
     div.style.transform = "none";
     div.style.backgroundColor = "";
 
     info("testWithTouch: Move mouse into the div element");
-    yield EventUtils.synthesizeMouseAtCenter(div,
+    await EventUtils.synthesizeMouseAtCenter(div,
           { type: "mousemove", isSynthesized: false }, content);
     isnot(div.style.backgroundColor, "red",
       "mouseenter or mouseover should not work");
 
     info("testWithTouch: Drag the div element");
-    yield EventUtils.synthesizeMouseAtCenter(div,
+    await EventUtils.synthesizeMouseAtCenter(div,
           { type: "mousedown", isSynthesized: false }, content);
     x = 100; y = 100;
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mousemove", isSynthesized: false }, content);
     isnot(div.style.transform, "none", "touchmove should work");
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mouseup", isSynthesized: false }, content);
 
     info("testWithTouch: Move mouse out of the div element");
     x = -1; y = -1;
-    yield EventUtils.synthesizeMouse(div, x, y,
+    await EventUtils.synthesizeMouse(div, x, y,
           { type: "mousemove", isSynthesized: false }, content);
     isnot(div.style.backgroundColor, "blue",
       "mouseout or mouseleave should not work");
   });
 }
 
-function* testWithMetaViewportEnabled(ui) {
-  yield SpecialPowers.pushPrefEnv({set: [[PREF_DOM_META_VIEWPORT_ENABLED, true]]});
+async function testWithMetaViewportEnabled(ui) {
+  await SpecialPowers.pushPrefEnv({set: [[PREF_DOM_META_VIEWPORT_ENABLED, true]]});
 
-  yield injectEventUtils(ui);
-
-  yield ContentTask.spawn(ui.getViewportBrowser(), {}, function* () {
-    let { synthesizeClick } = content.EventUtils;
+  await ContentTask.spawn(ui.getViewportBrowser(), {}, async function () {
+    let { synthesizeClick } = EventUtils;
 
     let meta = content.document.querySelector("meta[name=viewport]");
     let div = content.document.querySelector("div");
@@ -117,7 +110,7 @@ function* testWithMetaViewportEnabled(ui) {
     info("testWithMetaViewportEnabled: " +
          "click the div element with <meta name='viewport'>");
     meta.content = "";
-    yield synthesizeClick(div);
+    await synthesizeClick(div);
     is(div.dataset.isDelay, "true",
       "300ms delay between touch events and mouse events should work");
 
@@ -125,7 +118,7 @@ function* testWithMetaViewportEnabled(ui) {
          "click the div element with " +
          "<meta name='viewport' content='user-scalable=no'>");
     meta.content = "user-scalable=no";
-    yield synthesizeClick(div);
+    await synthesizeClick(div);
     is(div.dataset.isDelay, "false",
       "300ms delay between touch events and mouse events should not work");
 
@@ -133,7 +126,7 @@ function* testWithMetaViewportEnabled(ui) {
          "click the div element with " +
          "<meta name='viewport' content='minimum-scale=maximum-scale'>");
     meta.content = "minimum-scale=maximum-scale";
-    yield synthesizeClick(div);
+    await synthesizeClick(div);
     is(div.dataset.isDelay, "false",
       "300ms delay between touch events and mouse events should not work");
 
@@ -141,19 +134,17 @@ function* testWithMetaViewportEnabled(ui) {
          "click the div element with " +
          "<meta name='viewport' content='width=device-width'>");
     meta.content = "width=device-width";
-    yield synthesizeClick(div);
+    await synthesizeClick(div);
     is(div.dataset.isDelay, "false",
       "300ms delay between touch events and mouse events should not work");
   });
 }
 
-function* testWithMetaViewportDisabled(ui) {
-  yield SpecialPowers.pushPrefEnv({set: [[PREF_DOM_META_VIEWPORT_ENABLED, false]]});
+async function testWithMetaViewportDisabled(ui) {
+  await SpecialPowers.pushPrefEnv({set: [[PREF_DOM_META_VIEWPORT_ENABLED, false]]});
 
-  yield injectEventUtils(ui);
-
-  yield ContentTask.spawn(ui.getViewportBrowser(), {}, function* () {
-    let { synthesizeClick } = content.EventUtils;
+  await ContentTask.spawn(ui.getViewportBrowser(), {}, async function () {
+    let { synthesizeClick } = EventUtils;
 
     let meta = content.document.querySelector("meta[name=viewport]");
     let div = content.document.querySelector("div");
@@ -161,7 +152,7 @@ function* testWithMetaViewportDisabled(ui) {
 
     info("testWithMetaViewportDisabled: click the div with <meta name='viewport'>");
     meta.content = "";
-    yield synthesizeClick(div);
+    await synthesizeClick(div);
     is(div.dataset.isDelay, "true",
       "300ms delay between touch events and mouse events should work");
   });
@@ -185,43 +176,9 @@ function testTouchButton(ui) {
     "Touch simulation is started on click.");
 }
 
-function* waitBootstrap(ui) {
+async function waitBootstrap(ui) {
   let { store } = ui.toolWindow;
 
-  yield waitUntilState(store, state => state.viewports.length == 1);
-  yield waitForFrameLoad(ui, TEST_URL);
-}
-
-function* injectEventUtils(ui) {
-  yield ContentTask.spawn(ui.getViewportBrowser(), {}, function* () {
-    if ("EventUtils" in content) {
-      return;
-    }
-
-    let EventUtils = content.EventUtils = {};
-
-    EventUtils.window = {};
-    EventUtils.parent = EventUtils.window;
-    /* eslint-disable camelcase */
-    EventUtils._EU_Ci = Components.interfaces;
-    EventUtils._EU_Cc = Components.classes;
-    /* eslint-enable camelcase */
-    // EventUtils' `sendChar` function relies on the navigator to synthetize events.
-    EventUtils.navigator = content.navigator;
-    EventUtils.KeyboardEvent = content.KeyboardEvent;
-
-    EventUtils.synthesizeClick = element => new Promise(resolve => {
-      element.addEventListener("click", function () {
-        resolve();
-      }, {once: true});
-
-      EventUtils.synthesizeMouseAtCenter(element,
-        { type: "mousedown", isSynthesized: false }, content);
-      EventUtils.synthesizeMouseAtCenter(element,
-        { type: "mouseup", isSynthesized: false }, content);
-    });
-
-    Services.scriptloader.loadSubScript(
-      "chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
-  });
+  await waitUntilState(store, state => state.viewports.length == 1);
+  await waitForFrameLoad(ui, TEST_URL);
 }

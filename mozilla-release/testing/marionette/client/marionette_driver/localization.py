@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 
 class L10n(object):
     """An API which allows Marionette to handle localized content.
@@ -17,7 +19,7 @@ class L10n(object):
         from marionette_driver.localization import L10n
         l10n = L10n(marionette)
 
-        l10n.localize_entity(["chrome://global/locale/about.dtd"], "about.version")
+        l10n.localize_entity(["chrome://branding/locale/brand.dtd"], "brandShortName")
         l10n.localize_property(["chrome://global/locale/findbar.properties"], "FastFind"))
 
     .. _localization: https://mzl.la/2eUMjyF

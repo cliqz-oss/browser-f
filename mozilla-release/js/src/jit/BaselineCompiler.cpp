@@ -367,7 +367,7 @@ BaselineCompiler::emitPrologue()
     masm.moveStackPtrTo(BaselineFrameReg);
     masm.subFromStackPtr(Imm32(BaselineFrame::Size()));
 
-    // Initialize BaselineFrame. For eval scripts, the scope chain
+    // Initialize BaselineFrame. For eval scripts, the env chain
     // is passed in R1, so we have to be careful not to clobber it.
 
     // Initialize BaselineFrame::flags.
@@ -655,8 +655,8 @@ BaselineCompiler::initEnvironmentChain()
 
     RootedFunction fun(cx, function());
     if (fun) {
-        // Use callee->environment as scope chain. Note that we do this also
-        // for needsSomeEnvironmentObject functions, so that the scope chain
+        // Use callee->environment as env chain. Note that we do this also
+        // for needsSomeEnvironmentObject functions, so that the env chain
         // slot is properly initialized if the call triggers GC.
         Register callee = R0.scratchReg();
         Register scope = R1.scratchReg();
@@ -1432,7 +1432,7 @@ static const VMFunction ThrowUninitializedThisInfo =
     FunctionInfo<ThrowUninitializedThisFn>(BaselineThrowUninitializedThis,
                                            "BaselineThrowUninitializedThis");
 
-typedef bool (*ThrowInitializedThisFn)(JSContext*, BaselineFrame* frame);
+typedef bool (*ThrowInitializedThisFn)(JSContext*);
 static const VMFunction ThrowInitializedThisInfo =
     FunctionInfo<ThrowInitializedThisFn>(BaselineThrowInitializedThis,
                                          "BaselineThrowInitializedThis");
@@ -1466,13 +1466,13 @@ BaselineCompiler::emitCheckThis(ValueOperand val, bool reinit)
 
     prepareVMCall();
 
-    masm.loadBaselineFramePtr(BaselineFrameReg, val.scratchReg());
-    pushArg(val.scratchReg());
-
     if (reinit) {
         if (!callVM(ThrowInitializedThisInfo))
             return false;
     } else {
+        masm.loadBaselineFramePtr(BaselineFrameReg, val.scratchReg());
+        pushArg(val.scratchReg());
+
         if (!callVM(ThrowUninitializedThisInfo))
             return false;
     }
@@ -2501,7 +2501,7 @@ BaselineCompiler::emit_JSOP_BINDGNAME()
             }
         }
 
-        // Otherwise we have to use the dynamic scope chain.
+        // Otherwise we have to use the environment chain.
     }
 
     return emit_JSOP_BINDNAME();
@@ -3549,7 +3549,7 @@ BaselineCompiler::emit_JSOP_OPTIMIZE_SPREADCALL()
 
 typedef bool (*ImplicitThisFn)(JSContext*, HandleObject, HandlePropertyName,
                                MutableHandleValue);
-static const VMFunction ImplicitThisInfo =
+const VMFunction jit::ImplicitThisInfo =
     FunctionInfo<ImplicitThisFn>(ImplicitThisOperation, "ImplicitThisOperation");
 
 bool
@@ -3863,7 +3863,7 @@ BaselineCompiler::emit_JSOP_ENTERWITH()
     // Pop "with" object to R0.
     frame.popRegsAndSync(1);
 
-    // Call a stub to push the object onto the scope chain.
+    // Call a stub to push the object onto the environment chain.
     prepareVMCall();
     masm.loadBaselineFramePtr(BaselineFrameReg, R1.scratchReg());
 
@@ -3881,7 +3881,7 @@ static const VMFunction LeaveWithInfo =
 bool
 BaselineCompiler::emit_JSOP_LEAVEWITH()
 {
-    // Call a stub to pop the with object from the scope chain.
+    // Call a stub to pop the with object from the environment chain.
     prepareVMCall();
 
     masm.loadBaselineFramePtr(BaselineFrameReg, R0.scratchReg());
@@ -4015,7 +4015,7 @@ BaselineCompiler::emit_JSOP_RETRVAL()
     return emitReturn();
 }
 
-typedef bool (*ToIdFn)(JSContext*, HandleScript, jsbytecode*, HandleValue, MutableHandleValue);
+typedef bool (*ToIdFn)(JSContext*, HandleValue, MutableHandleValue);
 static const VMFunction ToIdInfo = FunctionInfo<ToIdFn>(js::ToIdOperation, "ToIdOperation");
 
 bool
@@ -4034,8 +4034,6 @@ BaselineCompiler::emit_JSOP_TOID()
     prepareVMCall();
 
     pushArg(R0);
-    pushArg(ImmPtr(pc));
-    pushArg(ImmGCPtr(script));
 
     if (!callVM(ToIdInfo))
         return false;
@@ -4694,7 +4692,7 @@ BaselineCompiler::emit_JSOP_RESUME()
     // Load the script. Note that we don't relazify generator scripts, so it's
     // guaranteed to be non-lazy.
     Register scratch1 = regs.takeAny();
-    masm.loadPtr(Address(callee, JSFunction::offsetOfNativeOrScript()), scratch1);
+    masm.loadPtr(Address(callee, JSFunction::offsetOfScript()), scratch1);
 
     // Load the BaselineScript or call a stub if we don't have one.
     Label interpret;
@@ -4869,9 +4867,7 @@ BaselineCompiler::emit_JSOP_RESUME()
         pushArg(genObj);
         pushArg(scratch2);
 
-        JitCode* code = cx->runtime()->jitRuntime()->getVMWrapper(GeneratorThrowInfo);
-        if (!code)
-            return false;
+        TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(GeneratorThrowInfo);
 
         // Create the frame descriptor.
         masm.subStackPtrFrom(scratch1);
@@ -5013,10 +5009,10 @@ bool
 BaselineCompiler::emit_JSOP_BUILTINPROTO()
 {
     // The builtin prototype is a constant for a given global.
-    RootedObject builtin(cx);
     JSProtoKey key = static_cast<JSProtoKey>(GET_UINT8(pc));
     MOZ_ASSERT(key < JSProto_LIMIT);
-    if (!GetBuiltinPrototype(cx, key, &builtin))
+    JSObject* builtin = GlobalObject::getOrCreatePrototype(cx, key);
+    if (!builtin)
         return false;
     frame.push(ObjectValue(*builtin));
     return true;

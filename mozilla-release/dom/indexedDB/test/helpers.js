@@ -23,12 +23,7 @@ if ((!c.value || c.writable) && typeof SpecialPowers === "object") {
 
 function executeSoon(aFun)
 {
-  let comp = SpecialPowers.wrap(Components);
-
-  let tm = comp.classes["@mozilla.org/thread-manager;1"]
-               .getService(comp.interfaces.nsIThreadManager);
-
-  tm.dispatchToMainThread({
+  SpecialPowers.Services.tm.dispatchToMainThread({
     run() {
       aFun();
     }
@@ -370,6 +365,19 @@ function getWasmBinarySync(text)
   let wasmTextToBinary = SpecialPowers.unwrap(testingFunctions.wasmTextToBinary);
   let binary = wasmTextToBinary(text);
   return binary;
+}
+
+// (Async versions to imitate the on-worker behavior where getWasmBinarySync is
+// not available.)
+function getWasmBinary(text) {
+  let binary = getWasmBinarySync(text);
+  SimpleTest.executeSoon(function() {
+    testGenerator.next(binary);
+  });
+}
+function getWasmModule(_binary_) {
+  let module = new WebAssembly.Module(_binary_);
+  return module;
 }
 
 function workerScript() {

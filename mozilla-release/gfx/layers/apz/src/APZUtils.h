@@ -11,20 +11,11 @@
 #include "LayersTypes.h"
 #include "UnitTransforms.h"
 #include "mozilla/gfx/Point.h"
+#include "mozilla/EnumSet.h"
 #include "mozilla/FloatingPoint.h"
 
 namespace mozilla {
 namespace layers {
-
-enum HitTestResult {
-  HitNothing,
-  HitLayer,
-  HitLayerTouchActionNone,
-  HitLayerTouchActionPanX,
-  HitLayerTouchActionPanY,
-  HitLayerTouchActionPanXY,
-  HitDispatchToContentRegion,
-};
 
 enum CancelAnimationFlags : uint32_t {
   Default = 0x0,             /* Cancel all animations */
@@ -41,6 +32,8 @@ operator|(CancelAnimationFlags a, CancelAnimationFlags b)
   return static_cast<CancelAnimationFlags>(static_cast<int>(a)
                                          | static_cast<int>(b));
 }
+
+typedef EnumSet<ScrollDirection> ScrollDirections;
 
 enum class ScrollSource {
   // scrollTo() or something similar.

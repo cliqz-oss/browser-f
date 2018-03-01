@@ -139,6 +139,7 @@ namespace indexedDB {
 
 using namespace mozilla::dom::quota;
 using namespace mozilla::ipc;
+using mozilla::dom::quota::Client;
 
 namespace {
 
@@ -3647,13 +3648,10 @@ UpgradeSchemaFrom18_0To19_0(mozIStorageConnection* aConnection)
   return NS_OK;
 }
 
-class NormalJSContext;
-
 class UpgradeFileIdsFunction final
   : public mozIStorageFunction
 {
   RefPtr<FileManager> mFileManager;
-  nsAutoPtr<NormalJSContext> mContext;
 
 public:
   UpgradeFileIdsFunction()
@@ -7552,7 +7550,7 @@ protected:
 
   // Common nsIRunnable implementation that subclasses may not override.
   NS_IMETHOD
-  Run() final;
+  Run() final override;
 
   // OpenDirectoryListener overrides.
   void
@@ -7895,7 +7893,7 @@ protected:
 
   // Common nsIRunnable implementation that subclasses may not override.
   NS_IMETHOD
-  Run() final;
+  Run() final override;
 
   // IPDL methods.
   void
@@ -8027,13 +8025,7 @@ class CreateIndexOp final
 {
   friend class VersionChangeTransaction;
 
-  class ThreadLocalJSContext;
   class UpdateIndexDataValuesFunction;
-
-  static const unsigned int kBadThreadLocalIndex =
-    static_cast<unsigned int>(-1);
-
-  static unsigned int sThreadLocalIndex;
 
   const IndexMetadata mMetadata;
   Maybe<UniqueIndexTable> mMaybeUniqueIndexTable;
@@ -8062,94 +8054,21 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 };
 
-class NormalJSContext
-{
-  friend class nsAutoPtr<NormalJSContext>;
-
-  static const JSClass sGlobalClass;
-  static const uint32_t kContextHeapSize = 768 * 1024;
-
-  JSContext* mContext;
-  JSObject* mGlobal;
-
-public:
-  static NormalJSContext*
-  Create();
-
-  JSContext*
-  Context() const
-  {
-    return mContext;
-  }
-
-  JSObject*
-  Global() const
-  {
-    return mGlobal;
-  }
-
-protected:
-  NormalJSContext()
-    : mContext(nullptr)
-    , mGlobal(nullptr)
-  {
-    MOZ_COUNT_CTOR(NormalJSContext);
-  }
-
-  ~NormalJSContext()
-  {
-    MOZ_COUNT_DTOR(NormalJSContext);
-
-    if (mContext) {
-      JS_DestroyContext(mContext);
-    }
-  }
-
-  bool
-  Init();
-};
-
-class CreateIndexOp::ThreadLocalJSContext final
-  : public NormalJSContext
-{
-  friend class CreateIndexOp;
-  friend class nsAutoPtr<ThreadLocalJSContext>;
-
-public:
-  static ThreadLocalJSContext*
-  GetOrCreate();
-
-private:
-  ThreadLocalJSContext()
-  {
-    MOZ_COUNT_CTOR(CreateIndexOp::ThreadLocalJSContext);
-  }
-
-  ~ThreadLocalJSContext()
-  {
-    MOZ_COUNT_DTOR(CreateIndexOp::ThreadLocalJSContext);
-  }
-};
-
 class CreateIndexOp::UpdateIndexDataValuesFunction final
   : public mozIStorageFunction
 {
   RefPtr<CreateIndexOp> mOp;
   RefPtr<DatabaseConnection> mConnection;
-  JSContext* mCx;
 
 public:
   UpdateIndexDataValuesFunction(CreateIndexOp* aOp,
-                                DatabaseConnection* aConnection,
-                                JSContext* aCx)
+                                DatabaseConnection* aConnection)
     : mOp(aOp)
     , mConnection(aConnection)
-    , mCx(aCx)
   {
     MOZ_ASSERT(aOp);
     MOZ_ASSERT(aConnection);
     aConnection->AssertIsOnConnectionThread();
-    MOZ_ASSERT(aCx);
   }
 
   NS_DECL_ISUPPORTS
@@ -8254,7 +8173,7 @@ protected:
 
   // Subclasses use this override to set the IPDL response value.
   virtual void
-  GetResponse(RequestResponse& aResponse) = 0;
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) = 0;
 
 private:
   nsresult
@@ -8318,7 +8237,7 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override;
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override;
 
   void
   Cleanup() override;
@@ -8440,7 +8359,7 @@ private:
   GetPreprocessParams(PreprocessParams& aParams) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override;
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override;
 };
 
 class ObjectStoreGetKeyRequestOp final
@@ -8466,7 +8385,7 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override;
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override;
 };
 
 class ObjectStoreDeleteRequestOp final
@@ -8488,9 +8407,10 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
     aResponse = Move(mResponse);
+    *aResponseSize = 0;
   }
 };
 
@@ -8513,9 +8433,10 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
     aResponse = Move(mResponse);
+    *aResponseSize = 0;
   }
 };
 
@@ -8540,9 +8461,10 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
     aResponse = Move(mResponse);
+    *aResponseSize = sizeof(uint64_t);
   }
 };
 
@@ -8592,7 +8514,7 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override;
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override;
 };
 
 class IndexGetKeyRequestOp final
@@ -8617,7 +8539,7 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override;
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override;
 };
 
 class IndexCountRequestOp final
@@ -8642,9 +8564,10 @@ private:
   DoDatabaseWork(DatabaseConnection* aConnection) override;
 
   void
-  GetResponse(RequestResponse& aResponse) override
+  GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
     aResponse = Move(mResponse);
+    *aResponseSize = sizeof(uint64_t);
   }
 };
 
@@ -10151,24 +10074,6 @@ SerializeStructuredCloneFiles(
   }
 
   return NS_OK;
-}
-
-already_AddRefed<nsIFile>
-GetFileForFileInfo(FileInfo* aFileInfo)
-{
-  FileManager* fileManager = aFileInfo->Manager();
-  nsCOMPtr<nsIFile> directory = fileManager->GetDirectory();
-  if (NS_WARN_IF(!directory)) {
-    return nullptr;
-  }
-
-  nsCOMPtr<nsIFile> file = fileManager->GetFileForId(directory,
-                                                     aFileInfo->Id());
-  if (NS_WARN_IF(!file)) {
-    return nullptr;
-  }
-
-  return file.forget();
 }
 
 /*******************************************************************************
@@ -19584,13 +19489,7 @@ UpgradeFileIdsFunction::Init(nsIFile* aFMDirectory,
     return rv;
   }
 
-  nsAutoPtr<NormalJSContext> context(NormalJSContext::Create());
-  if (NS_WARN_IF(!context)) {
-    return NS_ERROR_FAILURE;
-  }
-
   mFileManager.swap(fileManager);
-  mContext = context;
   return NS_OK;
 }
 
@@ -19603,7 +19502,6 @@ UpgradeFileIdsFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
   MOZ_ASSERT(aArguments);
   MOZ_ASSERT(aResult);
   MOZ_ASSERT(mFileManager);
-  MOZ_ASSERT(mContext);
 
   AUTO_PROFILER_LABEL("UpgradeFileIdsFunction::OnFunctionCall", STORAGE);
 
@@ -19625,30 +19523,10 @@ UpgradeFileIdsFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
                                                                   mFileManager,
                                                                   &cloneInfo);
 
-  JSContext* cx = mContext->Context();
-  JSAutoRequest ar(cx);
-  JSAutoCompartment ac(cx, mContext->Global());
-
-  JS::Rooted<JS::Value> clone(cx);
-  if (NS_WARN_IF(!IDBObjectStore::DeserializeUpgradeValue(cx, cloneInfo,
-                                                          &clone))) {
-    return NS_ERROR_DOM_DATA_CLONE_ERR;
-  }
-
   nsAutoString fileIds;
-
-  for (uint32_t count = cloneInfo.mFiles.Length(), index = 0;
-       index < count;
-       index++) {
-    StructuredCloneFile& file = cloneInfo.mFiles[index];
-    MOZ_ASSERT(file.mFileInfo);
-
-    const int64_t id = file.mFileInfo->Id();
-
-    if (index) {
-      fileIds.Append(' ');
-    }
-    fileIds.AppendInt(file.mType == StructuredCloneFile::eBlob ? id : -id);
+  rv = IDBObjectStore::DeserializeUpgradeValueToFileIds(cloneInfo, fileIds);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return NS_ERROR_DOM_DATA_CLONE_ERR;
   }
 
   nsCOMPtr<nsIVariant> result = new mozilla::storage::TextVariant(fileIds);
@@ -19879,7 +19757,7 @@ DatabaseOperationBase::GetStructuredCloneReadInfoFromExternalBlob(
   MOZ_ASSERT(file.mFileInfo);
   MOZ_ASSERT(file.mType == StructuredCloneFile::eStructuredClone);
 
-  nsCOMPtr<nsIFile> nativeFile = GetFileForFileInfo(file.mFileInfo);
+  nsCOMPtr<nsIFile> nativeFile = FileInfo::GetFileForFileInfo(file.mFileInfo);
   if (NS_WARN_IF(!nativeFile)) {
     return NS_ERROR_FAILURE;
   }
@@ -24242,7 +24120,7 @@ CreateFileOp::CreateFileOp(Database* aDatabase,
 nsresult
 CreateFileOp::CreateMutableFile(MutableFile** aMutableFile)
 {
-  nsCOMPtr<nsIFile> file = GetFileForFileInfo(mFileInfo);
+  nsCOMPtr<nsIFile> file = FileInfo::GetFileForFileInfo(mFileInfo);
   if (NS_WARN_IF(!file)) {
     IDB_REPORT_INTERNAL_ERR();
     return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
@@ -24829,8 +24707,6 @@ CreateIndexOp::CreateIndexOp(VersionChangeTransaction* aTransaction,
   MOZ_ASSERT(!mDatabaseId.IsEmpty());
 }
 
-unsigned int CreateIndexOp::sThreadLocalIndex = kBadThreadLocalIndex;
-
 nsresult
 CreateIndexOp::InsertDataFromObjectStore(DatabaseConnection* aConnection)
 {
@@ -24845,18 +24721,8 @@ CreateIndexOp::InsertDataFromObjectStore(DatabaseConnection* aConnection)
     aConnection->GetStorageConnection();
   MOZ_ASSERT(storageConnection);
 
-  ThreadLocalJSContext* context = ThreadLocalJSContext::GetOrCreate();
-  if (NS_WARN_IF(!context)) {
-    IDB_REPORT_INTERNAL_ERR();
-    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
-  }
-
-  JSContext* cx = context->Context();
-  JSAutoRequest ar(cx);
-  JSAutoCompartment ac(cx, context->Global());
-
   RefPtr<UpdateIndexDataValuesFunction> updateFunction =
-    new UpdateIndexDataValuesFunction(this, aConnection, cx);
+    new UpdateIndexDataValuesFunction(this, aConnection);
 
   NS_NAMED_LITERAL_CSTRING(updateFunctionName, "update_index_data_values");
 
@@ -24921,25 +24787,6 @@ CreateIndexOp::Init(TransactionBase* aTransaction)
 {
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(aTransaction);
-
-  struct MOZ_STACK_CLASS Helper final
-  {
-    static void
-    Destroy(void* aThreadLocal)
-    {
-      delete static_cast<ThreadLocalJSContext*>(aThreadLocal);
-    }
-  };
-
-  if (sThreadLocalIndex == kBadThreadLocalIndex) {
-    if (NS_WARN_IF(PR_SUCCESS !=
-                     PR_NewThreadPrivateIndex(&sThreadLocalIndex,
-                                              &Helper::Destroy))) {
-      return false;
-    }
-  }
-
-  MOZ_ASSERT(sThreadLocalIndex != kBadThreadLocalIndex);
 
   nsresult rv =
     GetUniqueIndexTableForObjectStore(aTransaction,
@@ -25085,102 +24932,6 @@ CreateIndexOp::DoDatabaseWork(DatabaseConnection* aConnection)
   return NS_OK;
 }
 
-static const JSClassOps sNormalJSContextGlobalClassOps = {
-  /* addProperty */ nullptr,
-  /* delProperty */ nullptr,
-  /* enumerate */ nullptr,
-  /* newEnumerate */ nullptr,
-  /* resolve */ nullptr,
-  /* mayResolve */ nullptr,
-  /* finalize */ nullptr,
-  /* call */ nullptr,
-  /* hasInstance */ nullptr,
-  /* construct */ nullptr,
-  /* trace */ JS_GlobalObjectTraceHook
-};
-
-const JSClass NormalJSContext::sGlobalClass = {
-  "IndexedDBTransactionThreadGlobal",
-  JSCLASS_GLOBAL_FLAGS,
-  &sNormalJSContextGlobalClassOps
-};
-
-bool
-NormalJSContext::Init()
-{
-  MOZ_ASSERT(!IsOnBackgroundThread());
-
-  mContext = JS_NewContext(kContextHeapSize);
-  if (NS_WARN_IF(!mContext)) {
-    return false;
-  }
-
-  // Let everyone know that we might be able to call JS. This alerts the
-  // profiler about certain possible deadlocks.
-  NS_GetCurrentThread()->SetCanInvokeJS(true);
-
-  // Not setting this will cause JS_CHECK_RECURSION to report false positives.
-  JS_SetNativeStackQuota(mContext, 128 * sizeof(size_t) * 1024);
-
-  if (NS_WARN_IF(!JS::InitSelfHostedCode(mContext))) {
-    return false;
-  }
-
-  JSAutoRequest ar(mContext);
-
-  JS::CompartmentOptions options;
-  mGlobal = JS_NewGlobalObject(mContext, &sGlobalClass, nullptr,
-                               JS::FireOnNewGlobalHook, options);
-  if (NS_WARN_IF(!mGlobal)) {
-    return false;
-  }
-
-  return true;
-}
-
-// static
-NormalJSContext*
-NormalJSContext::Create()
-{
-  MOZ_ASSERT(!IsOnBackgroundThread());
-
-  nsAutoPtr<NormalJSContext> newContext(new NormalJSContext());
-
-  if (NS_WARN_IF(!newContext->Init())) {
-    return nullptr;
-  }
-
-  return newContext.forget();
-}
-
-// static
-auto
-CreateIndexOp::
-ThreadLocalJSContext::GetOrCreate() -> ThreadLocalJSContext*
-{
-  MOZ_ASSERT(!IsOnBackgroundThread());
-  MOZ_ASSERT(CreateIndexOp::kBadThreadLocalIndex !=
-             CreateIndexOp::sThreadLocalIndex);
-
-  auto* context = static_cast<ThreadLocalJSContext*>(
-    PR_GetThreadPrivate(CreateIndexOp::sThreadLocalIndex));
-  if (context) {
-    return context;
-  }
-
-  nsAutoPtr<ThreadLocalJSContext> newContext(new ThreadLocalJSContext());
-
-  if (NS_WARN_IF(!newContext->Init())) {
-    return nullptr;
-  }
-
-  DebugOnly<PRStatus> status =
-    PR_SetThreadPrivate(CreateIndexOp::sThreadLocalIndex, newContext);
-  MOZ_ASSERT(status == PR_SUCCESS);
-
-  return newContext.forget();
-}
-
 NS_IMPL_ISUPPORTS(CreateIndexOp::UpdateIndexDataValuesFunction,
                   mozIStorageFunction);
 
@@ -25194,7 +24945,6 @@ UpdateIndexDataValuesFunction::OnFunctionCall(mozIStorageValueArray* aValues,
   MOZ_ASSERT(mConnection);
   mConnection->AssertIsOnConnectionThread();
   MOZ_ASSERT(mOp);
-  MOZ_ASSERT(mCx);
 
   AUTO_PROFILER_LABEL(
     "CreateIndexOp::UpdateIndexDataValuesFunction::OnFunctionCall", STORAGE);
@@ -25234,25 +24984,18 @@ UpdateIndexDataValuesFunction::OnFunctionCall(mozIStorageValueArray* aValues,
     return rv;
   }
 
-  JS::Rooted<JS::Value> clone(mCx);
-  if (NS_WARN_IF(!IDBObjectStore::DeserializeIndexValue(mCx,
-                                                        cloneInfo,
-                                                        &clone))) {
-    return NS_ERROR_DOM_DATA_CLONE_ERR;
-  }
-
   const IndexMetadata& metadata = mOp->mMetadata;
   const int64_t& objectStoreId = mOp->mObjectStoreId;
 
   AutoTArray<IndexUpdateInfo, 32> updateInfos;
-  rv = IDBObjectStore::AppendIndexUpdateInfo(metadata.id(),
-                                             metadata.keyPath(),
-                                             metadata.unique(),
-                                             metadata.multiEntry(),
-                                             metadata.locale(),
-                                             mCx,
-                                             clone,
-                                             updateInfos);
+  rv = IDBObjectStore::DeserializeIndexValueToUpdateInfos(
+         metadata.id(),
+         metadata.keyPath(),
+         metadata.unique(),
+         metadata.multiEntry(),
+         metadata.locale(),
+         cloneInfo,
+         updateInfos);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -25987,8 +25730,22 @@ NormalTransactionOp::SendSuccessResult()
   AssertIsOnOwningThread();
 
   if (!IsActorDestroyed()) {
+    static const size_t kMaxIDBMsgOverhead = 1024 * 1024 * 10; // 10MB
+    const uint32_t maximalSizeFromPref =
+      IndexedDatabaseManager::MaxSerializedMsgSize();
+    MOZ_ASSERT(maximalSizeFromPref > kMaxIDBMsgOverhead);
+    const size_t kMaxMessageSize = maximalSizeFromPref - kMaxIDBMsgOverhead;
+
     RequestResponse response;
-    GetResponse(response);
+    size_t responseSize = kMaxMessageSize;
+    GetResponse(response, &responseSize);
+
+    if (responseSize >= kMaxMessageSize) {
+      nsPrintfCString("The serialized value is too large"
+                      " (size=%zu bytes, max=%zu bytes).",
+                      responseSize, kMaxMessageSize);
+      return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
+    }
 
     MOZ_ASSERT(response.type() != RequestResponse::T__None);
 
@@ -26648,14 +26405,17 @@ ObjectStoreAddOrPutRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
 }
 
 void
-ObjectStoreAddOrPutRequestOp::GetResponse(RequestResponse& aResponse)
+ObjectStoreAddOrPutRequestOp::GetResponse(RequestResponse& aResponse,
+                                          size_t* aResponseSize)
 {
   AssertIsOnOwningThread();
 
   if (mOverwrite) {
     aResponse = ObjectStorePutResponse(mResponse);
+    *aResponseSize = mResponse.GetBuffer().Length();
   } else {
     aResponse = ObjectStoreAddResponse(mResponse);
+    *aResponseSize = mResponse.GetBuffer().Length();
   }
 }
 
@@ -26949,12 +26709,14 @@ ObjectStoreGetRequestOp::GetPreprocessParams(PreprocessParams& aParams)
 }
 
 void
-ObjectStoreGetRequestOp::GetResponse(RequestResponse& aResponse)
+ObjectStoreGetRequestOp::GetResponse(RequestResponse& aResponse,
+                                     size_t* aResponseSize)
 {
   MOZ_ASSERT_IF(mLimit, mResponse.Length() <= mLimit);
 
   if (mGetAll) {
     aResponse = ObjectStoreGetAllResponse();
+    *aResponseSize = 0;
 
     if (!mResponse.IsEmpty()) {
       FallibleTArray<SerializedStructuredCloneReadInfo> fallibleCloneInfos;
@@ -26967,6 +26729,7 @@ ObjectStoreGetRequestOp::GetResponse(RequestResponse& aResponse)
       for (uint32_t count = mResponse.Length(), index = 0;
            index < count;
            index++) {
+        *aResponseSize += mResponse[index].Size();
         nsresult rv =
           ConvertResponse<false>(mResponse[index], fallibleCloneInfos[index]);
         if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -26985,11 +26748,13 @@ ObjectStoreGetRequestOp::GetResponse(RequestResponse& aResponse)
   }
 
   aResponse = ObjectStoreGetResponse();
+  *aResponseSize = 0;
 
   if (!mResponse.IsEmpty()) {
     SerializedStructuredCloneReadInfo& serializedInfo =
       aResponse.get_ObjectStoreGetResponse().cloneInfo();
 
+    *aResponseSize += mResponse[0].Size();
     nsresult rv = ConvertResponse<false>(mResponse[0], serializedInfo);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       aResponse = rv;
@@ -27095,25 +26860,33 @@ ObjectStoreGetKeyRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
 }
 
 void
-ObjectStoreGetKeyRequestOp::GetResponse(RequestResponse& aResponse)
+ObjectStoreGetKeyRequestOp::GetResponse(RequestResponse& aResponse,
+                                        size_t* aResponseSize)
 {
   MOZ_ASSERT_IF(mLimit, mResponse.Length() <= mLimit);
 
   if (mGetAll) {
     aResponse = ObjectStoreGetAllKeysResponse();
+    *aResponseSize = 0;
 
     if (!mResponse.IsEmpty()) {
       nsTArray<Key>& response =
         aResponse.get_ObjectStoreGetAllKeysResponse().keys();
+
       mResponse.SwapElements(response);
+      for (uint32_t i = 0; i < mResponse.Length(); ++i) {
+        *aResponseSize += mResponse[i].GetBuffer().Length();
+      }
     }
 
     return;
   }
 
   aResponse = ObjectStoreGetKeyResponse();
+  *aResponseSize = 0;
 
   if (!mResponse.IsEmpty()) {
+    *aResponseSize = mResponse[0].GetBuffer().Length();
     aResponse.get_ObjectStoreGetKeyResponse().key() = Move(mResponse[0]);
   }
 }
@@ -27545,12 +27318,14 @@ IndexGetRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
 }
 
 void
-IndexGetRequestOp::GetResponse(RequestResponse& aResponse)
+IndexGetRequestOp::GetResponse(RequestResponse& aResponse,
+                               size_t* aResponseSize)
 {
   MOZ_ASSERT_IF(!mGetAll, mResponse.Length() <= 1);
 
   if (mGetAll) {
     aResponse = IndexGetAllResponse();
+    *aResponseSize = 0;
 
     if (!mResponse.IsEmpty()) {
       FallibleTArray<SerializedStructuredCloneReadInfo> fallibleCloneInfos;
@@ -27564,6 +27339,7 @@ IndexGetRequestOp::GetResponse(RequestResponse& aResponse)
            index < count;
            index++) {
         StructuredCloneReadInfo& info = mResponse[index];
+        *aResponseSize += info.Size();
 
         SerializedStructuredCloneReadInfo& serializedInfo =
           fallibleCloneInfos[index];
@@ -27596,9 +27372,11 @@ IndexGetRequestOp::GetResponse(RequestResponse& aResponse)
   }
 
   aResponse = IndexGetResponse();
+  *aResponseSize = 0;
 
   if (!mResponse.IsEmpty()) {
     StructuredCloneReadInfo& info = mResponse[0];
+    *aResponseSize += info.Size();
 
     SerializedStructuredCloneReadInfo& serializedInfo =
       aResponse.get_IndexGetResponse().cloneInfo();
@@ -27728,23 +27506,30 @@ IndexGetKeyRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
 }
 
 void
-IndexGetKeyRequestOp::GetResponse(RequestResponse& aResponse)
+IndexGetKeyRequestOp::GetResponse(RequestResponse& aResponse,
+                                  size_t* aResponseSize)
 {
   MOZ_ASSERT_IF(!mGetAll, mResponse.Length() <= 1);
 
   if (mGetAll) {
     aResponse = IndexGetAllKeysResponse();
+    *aResponseSize = 0;
 
     if (!mResponse.IsEmpty()) {
       mResponse.SwapElements(aResponse.get_IndexGetAllKeysResponse().keys());
+      for (uint32_t i = 0; i < mResponse.Length(); ++i) {
+        *aResponseSize += mResponse[i].GetBuffer().Length();
+      }
     }
 
     return;
   }
 
   aResponse = IndexGetKeyResponse();
+  *aResponseSize = 0;
 
   if (!mResponse.IsEmpty()) {
+    *aResponseSize = mResponse[0].GetBuffer().Length();
     aResponse.get_IndexGetKeyResponse().key() = Move(mResponse[0]);
   }
 }

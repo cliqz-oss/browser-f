@@ -213,6 +213,54 @@ body {
   opacity: 100;
 }
 
+.deck .syncIllustration,
+.deck .syncIllustrationIssue {
+  height: 150px;
+  margin-top: 20px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.deck .syncIllustration {
+  background-image: url(chrome://browser/skin/fxa/sync-illustration.svg);
+}
+
+.deck .syncIllustrationIssue {
+  background-image: url(chrome://browser/skin/fxa/sync-illustration-issue.svg);
+}
+
+.deck .instructions {
+  text-align: center;
+  color: rgba(12, 12, 13, .5);
+  padding: 0 11px;
+  max-width: 15em;
+  margin: 1em auto;
+}
+
+.deck .button {
+  display: block;
+  background-color: #0060df;
+  color: white;
+  border: 0;
+  border-radius: 2px;
+  margin: 15px auto;
+  padding: 8px;
+  text-shadow: none;
+  width: calc(100% - 22px);
+  max-width: 200px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.deck .button:hover {
+  background-color: #003eaa;
+}
+
+.deck .button:hover:active {
+  background-color: #002275;
+}
+
 .sidebar-search-container.tabs-container:not(.selected) {
   display: none;
 }

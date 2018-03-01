@@ -34,7 +34,7 @@ from mach.decorators import (
 
 from servo.command_base import (
     BuildNotFound, CommandBase,
-    call, cd, check_call, set_osmesa_env,
+    call, check_call, set_osmesa_env,
 )
 from servo.util import host_triple
 
@@ -59,9 +59,6 @@ TEST_SUITES = OrderedDict([
     ("unit", {"kwargs": {},
               "paths": [path.abspath(path.join("tests", "unit"))],
               "include_arg": "test_name"}),
-    ("compiletest", {"kwargs": {"release": False},
-                     "paths": [path.abspath(path.join("tests", "compiletest"))],
-                     "include_arg": "test_name"})
 ])
 
 TEST_SUITES_BY_PREFIX = {path: k for k, v in TEST_SUITES.iteritems() if "paths" in v for path in v["paths"]}
@@ -71,7 +68,7 @@ def create_parser_wpt():
     parser = wptcommandline.create_parser()
     parser.add_argument('--release', default=False, action="store_true",
                         help="Run with a release build of servo")
-    parser.add_argument('--chaos', default=False, action="store_true",
+    parser.add_argument('--rr-chaos', default=False, action="store_true",
                         help="Run under chaos mode in rr until a failure is captured")
     parser.add_argument('--pref', default=[], action="append", dest="prefs",
                         help="Pass preferences to servo")
@@ -117,7 +114,6 @@ class MachCommands(CommandBase):
                                     "stylo": False}
         suites["wpt"]["kwargs"] = {"release": release}
         suites["unit"]["kwargs"] = {}
-        suites["compiletest"]["kwargs"] = {"release": release}
 
         selected_suites = OrderedDict()
 
@@ -173,21 +169,23 @@ class MachCommands(CommandBase):
     @Command('test-perf',
              description='Run the page load performance test',
              category='testing')
-    @CommandArgument('--submit', default=False, action="store_true",
+    @CommandArgument('--base', default=None,
+                     help="the base URL for testcases")
+    @CommandArgument('--date', default=None,
+                     help="the datestamp for the data")
+    @CommandArgument('--submit', '-a', default=False, action="store_true",
                      help="submit the data to perfherder")
-    def test_perf(self, submit=False):
+    def test_perf(self, base=None, date=None, submit=False):
         self.set_software_rendering_env(True)
 
         self.ensure_bootstrapped()
         env = self.build_env()
         cmd = ["bash", "test_perf.sh"]
+        if base:
+            cmd += ["--base", base]
+        if date:
+            cmd += ["--date", date]
         if submit:
-            if not ("TREEHERDER_CLIENT_ID" in os.environ and
-                    "TREEHERDER_CLIENT_SECRET" in os.environ):
-                print("Please set the environment variable \"TREEHERDER_CLIENT_ID\""
-                      " and \"TREEHERDER_CLIENT_SECRET\" to submit the performance"
-                      " test result to perfherder")
-                return 1
             cmd += ["--submit"]
         return call(cmd,
                     env=env,
@@ -233,31 +231,31 @@ class MachCommands(CommandBase):
             else:
                 test_patterns.append(test)
 
-        in_crate_packages = []
-
-        # Since the selectors tests have no corresponding selectors_tests crate in tests/unit,
-        # we need to treat them separately from those that do.
-        try:
-            packages.remove('selectors')
-            in_crate_packages += ["selectors"]
-        except KeyError:
-            pass
-
+        self_contained_tests = [
+            "gfx",
+            "layout",
+            "msg",
+            "net",
+            "net_traits",
+            "selectors",
+            "servo_config",
+            "servo_remutex",
+        ]
         if not packages:
             packages = set(os.listdir(path.join(self.context.topdir, "tests", "unit"))) - set(['.DS_Store'])
-            in_crate_packages += ["selectors"]
+            packages |= set(self_contained_tests)
 
-        # Since the selectors tests have no corresponding selectors_tests crate in tests/unit,
-        # we need to treat them separately from those that do.
-        try:
-            packages.remove('selectors')
-            in_crate_packages += ["selectors"]
-        except KeyError:
-            pass
+        in_crate_packages = []
+        for crate in self_contained_tests:
+            try:
+                packages.remove(crate)
+                in_crate_packages += [crate]
+            except KeyError:
+                pass
 
         packages.discard('stylo')
 
-        env = self.build_env()
+        env = self.build_env(test_unit=True)
         env["RUST_BACKTRACE"] = "1"
 
         if "msvc" in host_triple():
@@ -266,8 +264,8 @@ class MachCommands(CommandBase):
             env["PATH"] = "%s%s%s" % (path.dirname(self.get_binary_path(False, False)), os.pathsep, env["PATH"])
 
         features = self.servo_features()
-        if len(packages) > 0:
-            args = ["cargo", "bench" if bench else "test"]
+        if len(packages) > 0 or len(in_crate_packages) > 0:
+            args = ["cargo", "bench" if bench else "test", "--manifest-path", self.servo_manifest()]
             for crate in packages:
                 args += ["-p", "%s_tests" % crate]
             for crate in in_crate_packages:
@@ -280,7 +278,7 @@ class MachCommands(CommandBase):
             if nocapture:
                 args += ["--", "--nocapture"]
 
-            err = call(args, env=env, cwd=self.servo_crate())
+            err = self.call_rustup_run(args, env=env)
             if err is not 0:
                 return err
 
@@ -292,74 +290,19 @@ class MachCommands(CommandBase):
     @CommandArgument('--release', default=False, action="store_true",
                      help="Run with a release build of servo")
     def test_stylo(self, release=False, test_name=None):
-        self.set_use_stable_rust()
+        self.set_use_geckolib_toolchain()
         self.ensure_bootstrapped()
 
         env = self.build_env()
         env["RUST_BACKTRACE"] = "1"
         env["CARGO_TARGET_DIR"] = path.join(self.context.topdir, "target", "geckolib").encode("UTF-8")
 
-        args = (["cargo", "test", "-p", "stylo_tests"] +
-                (["--release"] if release else []) + (test_name or []))
-        with cd(path.join("ports", "geckolib")):
-            return call(args, env=env)
-
-    @Command('test-compiletest',
-             description='Run compiletests',
-             category='testing')
-    @CommandArgument('--package', '-p', default=None, help="Specific package to test")
-    @CommandArgument('test_name', nargs=argparse.REMAINDER,
-                     help="Only run tests that match this pattern or file path")
-    @CommandArgument('--release', default=False, action="store_true",
-                     help="Run with a release build of servo")
-    def test_compiletest(self, test_name=None, package=None, release=False):
-        if test_name is None:
-            test_name = []
-
-        self.ensure_bootstrapped()
-
-        if package:
-            packages = {package}
-        else:
-            packages = set()
-
-        test_patterns = []
-        for test in test_name:
-            # add package if 'tests/compiletest/<package>'
-            match = re.search("tests/compiletest/(\\w+)/?$", test)
-            if match:
-                packages.add(match.group(1))
-            # add package & test if '<package>/<test>', 'tests/compiletest/<package>/<test>.rs', or similar
-            elif re.search("\\w/\\w", test):
-                tokens = test.split("/")
-                packages.add(tokens[-2])
-                test_prefix = tokens[-1]
-                if test_prefix.endswith(".rs"):
-                    test_prefix = test_prefix[:-3]
-                test_prefix += "::"
-                test_patterns.append(test_prefix)
-            # add test as-is otherwise
-            else:
-                test_patterns.append(test)
-
-        if not packages:
-            packages = set(os.listdir(path.join(self.context.topdir, "tests", "compiletest"))) - set(['.DS_Store'])
-
-        packages.remove("helper")
-
-        args = ["cargo", "test"]
-        for crate in packages:
-            args += ["-p", "%s_compiletest" % crate]
-        args += test_patterns
-
-        env = self.build_env()
-        if release:
-            env["BUILD_MODE"] = "release"
-            args += ["--release"]
-        else:
-            env["BUILD_MODE"] = "debug"
-
-        return call(args, env=env, cwd=self.servo_crate())
+        args = (
+            ["cargo", "test", "--manifest-path", self.geckolib_manifest(), "-p", "stylo_tests"] +
+            (["--release"] if release else []) +
+            (test_name or [])
+        )
+        return self.call_rustup_run(args, env=env)
 
     @Command('test-content',
              description='Run the content tests',
@@ -467,7 +410,7 @@ class MachCommands(CommandBase):
 
         os.environ["RUST_BACKTRACE"] = "1"
         kwargs["debug"] = not kwargs["release"]
-        if kwargs.pop("chaos"):
+        if kwargs.pop("rr_chaos"):
             kwargs["debugger"] = "rr"
             kwargs["debugger_args"] = "record --chaos"
             kwargs["repeat_until_unexpected"] = True
@@ -929,7 +872,7 @@ testing/web-platform/mozilla/tests for Servo-only tests""" % reference_path)
     def update_net_cookies(self):
         cache_dir = path.join(self.config["tools"]["cache-dir"], "tests")
         run_file = path.abspath(path.join(PROJECT_TOPLEVEL_PATH,
-                                          "tests", "unit", "net",
+                                          "components", "net", "tests",
                                           "cookie_http_state_utils.py"))
         run_globals = {"__file__": run_file}
         execfile(run_file, run_globals)

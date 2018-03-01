@@ -7,6 +7,7 @@
 #include "mozilla/dom/Notification.h"
 
 #include "mozilla/Encoding.h"
+#include "mozilla/EventStateManager.h"
 #include "mozilla/JSONWriter.h"
 #include "mozilla/Move.h"
 #include "mozilla/OwningNonNull.h"
@@ -18,6 +19,7 @@
 #include "mozilla/dom/AppNotificationServiceOptionsBinding.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/NotificationEvent.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
 #include "mozilla/dom/Promise.h"
@@ -92,7 +94,7 @@ public:
                     const nsAString& aIcon,
                     const nsAString& aData,
                     const nsAString& aBehavior,
-                    const nsAString& aServiceWorkerRegistrationScope) final
+                    const nsAString& aServiceWorkerRegistrationScope) final override
   {
     AssertIsOnMainThread();
     MOZ_ASSERT(!aID.IsEmpty());
@@ -145,7 +147,7 @@ public:
     MOZ_ASSERT(aPromise);
   }
 
-  NS_IMETHOD Done() final
+  NS_IMETHOD Done() final override
   {
     ErrorResult result;
     AutoTArray<RefPtr<Notification>, 5> notifications;
@@ -236,13 +238,14 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(NotificationPermissionRequest,
                                            nsIContentPermissionRequest)
 
-  NotificationPermissionRequest(nsIPrincipal* aPrincipal,
+  NotificationPermissionRequest(nsIPrincipal* aPrincipal, bool aIsHandlingUserInput,
                                 nsPIDOMWindowInner* aWindow, Promise* aPromise,
                                 NotificationPermissionCallback* aCallback)
     : mPrincipal(aPrincipal), mWindow(aWindow),
       mPermission(NotificationPermission::Default),
       mPromise(aPromise),
-      mCallback(aCallback)
+      mCallback(aCallback),
+      mIsHandlingUserInput(aIsHandlingUserInput)
   {
     MOZ_ASSERT(aPromise);
     mRequester = new nsContentPermissionRequester(mWindow);
@@ -265,6 +268,7 @@ protected:
   RefPtr<Promise> mPromise;
   RefPtr<NotificationPermissionCallback> mCallback;
   nsCOMPtr<nsIContentPermissionRequester> mRequester;
+  bool mIsHandlingUserInput;
 };
 
 namespace {
@@ -600,6 +604,13 @@ NotificationPermissionRequest::GetElement(nsIDOMElement** aElement)
 }
 
 NS_IMETHODIMP
+NotificationPermissionRequest::GetIsHandlingUserInput(bool* aIsHandlingUserInput)
+{
+  *aIsHandlingUserInput = mIsHandlingUserInput;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 NotificationPermissionRequest::Cancel()
 {
   // `Cancel` is called if the user denied permission or dismissed the
@@ -883,39 +894,22 @@ NotificationTask::Run()
   return NS_OK;
 }
 
-bool
-Notification::RequireInteractionEnabled(JSContext* aCx, JSObject* aOjb)
-{
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("dom.webnotifications.requireinteraction.enabled", false);
-  }
-
-  WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-  if (!workerPrivate) {
-    return false;
-  }
-
-  return workerPrivate->DOMWorkerNotificationRIEnabled();
-}
-
 // static
 bool
 Notification::PrefEnabled(JSContext* aCx, JSObject* aObj)
 {
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("dom.webnotifications.enabled", false);
+  if (!NS_IsMainThread()) {
+    WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
+    if (!workerPrivate) {
+      return false;
+    }
+
+    if (workerPrivate->IsServiceWorker()) {
+      return DOMPrefs::NotificationEnabledInServiceWorkers();
+    }
   }
 
-  WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-  if (!workerPrivate) {
-    return false;
-  }
-
-  if (workerPrivate->IsServiceWorker()) {
-    return workerPrivate->DOMServiceWorkerNotificationEnabled();
-  }
-
-  return workerPrivate->DOMWorkerNotificationEnabled();
+  return DOMPrefs::NotificationEnabled();
 }
 
 // static
@@ -1623,7 +1617,7 @@ namespace {
     nsAString& mBuffer; // This struct must not outlive this buffer
     explicit StringWriteFunc(nsAString& buffer) : mBuffer(buffer) {}
 
-    void Write(const char* aStr)
+    void Write(const char* aStr) override
     {
       mBuffer.Append(NS_ConvertUTF8toUTF16(aStr));
     }
@@ -1730,7 +1724,7 @@ Notification::ShowInternal()
   bool inPrivateBrowsing = IsInPrivateBrowsing();
 
   bool requireInteraction = mRequireInteraction;
-  if (!Preferences::GetBool("dom.webnotifications.requireinteraction.enabled", false)) {
+  if (!DOMPrefs::NotificationRIEnabled()) {
     requireInteraction = false;
   }
 
@@ -1811,8 +1805,9 @@ Notification::RequestPermission(const GlobalObject& aGlobal,
   if (aCallback.WasPassed()) {
     permissionCallback = &aCallback.Value();
   }
-  nsCOMPtr<nsIRunnable> request =
-    new NotificationPermissionRequest(principal, window, promise, permissionCallback);
+  bool isHandlingUserInput = EventStateManager::IsHandlingUserInput();
+  nsCOMPtr<nsIRunnable> request = new NotificationPermissionRequest(
+    principal, isHandlingUserInput, window, promise, permissionCallback);
 
   global->Dispatch(TaskCategory::Other, request.forget());
 
@@ -2095,7 +2090,7 @@ public:
     MOZ_ASSERT(aProxy);
   }
 
-  NS_IMETHOD Done() final
+  NS_IMETHOD Done() final override
   {
     AssertIsOnMainThread();
     MOZ_ASSERT(mPromiseProxy, "Was Done() called twice?");
@@ -2382,7 +2377,8 @@ Notification::ReleaseObject()
 }
 
 NotificationWorkerHolder::NotificationWorkerHolder(Notification* aNotification)
-  : mNotification(aNotification)
+  : WorkerHolder("NotificationWorkerHolder")
+  , mNotification(aNotification)
 {
   MOZ_ASSERT(mNotification->mWorkerPrivate);
   mNotification->mWorkerPrivate->AssertIsOnWorkerThread();

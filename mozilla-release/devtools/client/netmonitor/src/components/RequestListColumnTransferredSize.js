@@ -4,17 +4,17 @@
 
 "use strict";
 
-const {
-  Component,
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
+const { Component } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { getFormattedSize } = require("../utils/format-utils");
 const { L10N } = require("../utils/l10n");
 const { propertiesEqual } = require("../utils/request-utils");
 
-const { div } = DOM;
-
+const { div } = dom;
+const SIZE_CACHED = L10N.getStr("networkMenu.sizeCached");
+const SIZE_SERVICE_WORKER = L10N.getStr("networkMenu.sizeServiceWorker");
+const SIZE_UNAVAILABLE = L10N.getStr("networkMenu.sizeUnavailable");
 const UPDATED_TRANSFERRED_PROPS = [
   "transferredSize",
   "fromCache",
@@ -37,13 +37,13 @@ class RequestListColumnTransferredSize extends Component {
     let text;
 
     if (fromCache || status === "304") {
-      text = L10N.getStr("networkMenu.sizeCached");
+      text = SIZE_CACHED;
     } else if (fromServiceWorker) {
-      text = L10N.getStr("networkMenu.sizeServiceWorker");
+      text = SIZE_SERVICE_WORKER;
     } else if (typeof transferredSize == "number") {
       text = getFormattedSize(transferredSize);
     } else if (transferredSize === null) {
-      text = L10N.getStr("networkMenu.sizeUnavailable");
+      text = SIZE_UNAVAILABLE;
     }
 
     return (

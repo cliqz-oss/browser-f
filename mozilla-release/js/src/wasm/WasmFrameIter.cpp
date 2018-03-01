@@ -35,20 +35,26 @@ using mozilla::Swap;
 WasmFrameIter::WasmFrameIter(JitActivation* activation, wasm::Frame* fp)
   : activation_(activation),
     code_(nullptr),
-    callsite_(nullptr),
     codeRange_(nullptr),
+    lineOrBytecode_(0),
     fp_(fp ? fp : activation->wasmExitFP()),
     unwind_(Unwind::False)
 {
     MOZ_ASSERT(fp_);
 
-    // Normally, execution exits wasm code via an exit stub which sets exitFP
-    // to the exit stub's frame. Thus, in this case, we want to start iteration
-    // at the caller of the exit frame, whose Code, CodeRange and CallSite are
-    // indicated by the returnAddress of the exit stub's frame.
+    // When the stack is captured during a trap (viz., to create the .stack
+    // for an Error object), use the pc/bytecode information captured by the
+    // signal handler in the runtime.
 
-    if (!activation->isWasmInterrupted()) {
-        popFrame();
+    if (activation->isWasmTrapping()) {
+        code_ = &fp_->tls->instance->code();
+        MOZ_ASSERT(code_ == LookupCode(activation->wasmTrapPC()));
+
+        codeRange_ = code_->lookupRange(activation->wasmTrapPC());
+        MOZ_ASSERT(codeRange_->kind() == CodeRange::Function);
+
+        lineOrBytecode_ = activation->wasmTrapBytecodeOffset();
+
         MOZ_ASSERT(!done());
         return;
     }
@@ -61,12 +67,25 @@ WasmFrameIter::WasmFrameIter(JitActivation* activation, wasm::Frame* fp)
     // for which we can use the beginning of the function from the CodeRange
     // instead.
 
-    code_ = &fp_->tls->instance->code();
-    MOZ_ASSERT(code_ == LookupCode(activation->wasmUnwindPC()));
+    if (activation->isWasmInterrupted()) {
+        code_ = &fp_->tls->instance->code();
+        MOZ_ASSERT(code_ == LookupCode(activation->wasmInterruptUnwindPC()));
 
-    codeRange_ = code_->lookupRange(activation->wasmUnwindPC());
-    MOZ_ASSERT(codeRange_->kind() == CodeRange::Function);
+        codeRange_ = code_->lookupRange(activation->wasmInterruptUnwindPC());
+        MOZ_ASSERT(codeRange_->kind() == CodeRange::Function);
 
+        lineOrBytecode_ = codeRange_->funcLineOrBytecode();
+
+        MOZ_ASSERT(!done());
+        return;
+    }
+
+    // Otherwise, execution exits wasm code via an exit stub which sets exitFP
+    // to the exit stub's frame. Thus, in this case, we want to start iteration
+    // at the caller of the exit frame, whose Code, CodeRange and CallSite are
+    // indicated by the returnAddress of the exit stub's frame.
+
+    popFrame();
     MOZ_ASSERT(!done());
 }
 
@@ -96,6 +115,8 @@ WasmFrameIter::operator++()
     if (unwind_ == Unwind::True) {
         if (activation_->isWasmInterrupted())
             activation_->finishWasmInterrupt();
+        else if (activation_->isWasmTrapping())
+            activation_->finishWasmTrap();
         activation_->setWasmExitFP(fp_);
     }
 
@@ -112,7 +133,6 @@ WasmFrameIter::popFrame()
     if (!fp_) {
         code_ = nullptr;
         codeRange_ = nullptr;
-        callsite_ = nullptr;
 
         if (unwind_ == Unwind::True) {
             // TODO with bug 1319203, there may be other JIT frames above.
@@ -132,8 +152,10 @@ WasmFrameIter::popFrame()
     codeRange_ = code_->lookupRange(returnAddress);
     MOZ_ASSERT(codeRange_->kind() == CodeRange::Function);
 
-    callsite_ = code_->lookupCallSite(returnAddress);
-    MOZ_ASSERT(callsite_);
+    const CallSite* callsite = code_->lookupCallSite(returnAddress);
+    MOZ_ASSERT(callsite);
+
+    lineOrBytecode_ = callsite->lineOrBytecode();
 
     MOZ_ASSERT(!done());
 }
@@ -178,8 +200,7 @@ unsigned
 WasmFrameIter::lineOrBytecode() const
 {
     MOZ_ASSERT(!done());
-    MOZ_ASSERT_IF(!callsite_, activation_->isWasmInterrupted());
-    return callsite_ ? callsite_->lineOrBytecode() : codeRange_->funcLineOrBytecode();
+    return lineOrBytecode_;
 }
 
 Instance*
@@ -216,20 +237,7 @@ DebugFrame*
 WasmFrameIter::debugFrame() const
 {
     MOZ_ASSERT(!done());
-    MOZ_ASSERT(debugEnabled());
-    return reinterpret_cast<DebugFrame*>((uint8_t*)fp_ - DebugFrame::offsetOfFrame());
-}
-
-const CallSite*
-WasmFrameIter::debugTrapCallsite() const
-{
-    MOZ_ASSERT(!done());
-    MOZ_ASSERT(callsite_);
-    MOZ_ASSERT(debugEnabled());
-    MOZ_ASSERT(callsite_->kind() == CallSite::EnterFrame ||
-               callsite_->kind() == CallSite::LeaveFrame ||
-               callsite_->kind() == CallSite::Breakpoint);
-    return callsite_;
+    return DebugFrame::from(fp_);
 }
 
 /*****************************************************************************/
@@ -277,12 +285,13 @@ static const unsigned SetFP = 28;
 static const unsigned PoppedFP = 16;
 static const unsigned PoppedTLSReg = 8;
 #elif defined(JS_CODEGEN_NONE)
+// Synthetic values to satisfy asserts and avoid compiler warnings.
 static const unsigned PushedRetAddr = 0;
 static const unsigned PushedTLS = 1;
-static const unsigned PushedFP = 0;
-static const unsigned SetFP = 0;
-static const unsigned PoppedFP = 0;
-static const unsigned PoppedTLSReg = 0;
+static const unsigned PushedFP = 2;
+static const unsigned SetFP = 3;
+static const unsigned PoppedFP = 4;
+static const unsigned PoppedTLSReg = 5;
 #else
 # error "Unknown architecture!"
 #endif
@@ -445,7 +454,7 @@ wasm::GenerateFunctionPrologue(MacroAssembler& masm, unsigned framePushed, const
     // Generate table entry:
     offsets->begin = masm.currentOffset();
     BytecodeOffset trapOffset(0);  // ignored by masm.wasmEmitTrapOutOfLineCode
-    TrapDesc trap(trapOffset, Trap::IndirectCallBadSig, masm.framePushed());
+    OldTrapDesc trap(trapOffset, Trap::IndirectCallBadSig, masm.framePushed());
     switch (sigId.kind()) {
       case SigIdDesc::Kind::Global: {
         Register scratch = WasmTableCallScratchReg;
@@ -546,8 +555,7 @@ wasm::GenerateJitExitEpilogue(MacroAssembler& masm, unsigned framePushed, Callab
 // ProfilingFrameIterator
 
 ProfilingFrameIterator::ProfilingFrameIterator()
-  : activation_(nullptr),
-    code_(nullptr),
+  : code_(nullptr),
     codeRange_(nullptr),
     callerFP_(nullptr),
     callerPC_(nullptr),
@@ -558,8 +566,7 @@ ProfilingFrameIterator::ProfilingFrameIterator()
 }
 
 ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation)
-  : activation_(&activation),
-    code_(nullptr),
+  : code_(nullptr),
     codeRange_(nullptr),
     callerFP_(nullptr),
     callerPC_(nullptr),
@@ -570,8 +577,7 @@ ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation)
 }
 
 ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation, const Frame* fp)
-  : activation_(&activation),
-    code_(nullptr),
+  : code_(nullptr),
     codeRange_(nullptr),
     callerFP_(nullptr),
     callerPC_(nullptr),
@@ -583,7 +589,7 @@ ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation, 
 }
 
 static inline void
-AssertMatchesCallSite(const JitActivation& activation, void* callerPC, Frame* callerFP)
+AssertMatchesCallSite(void* callerPC, Frame* callerFP)
 {
 #ifdef DEBUG
     const Code* code = LookupCode(callerPC);
@@ -632,12 +638,13 @@ ProfilingFrameIterator::initFromExitFP(const Frame* fp)
         fp = fp->callerFP;
         callerPC_ = fp->returnAddress;
         callerFP_ = fp->callerFP;
-        AssertMatchesCallSite(*activation_, callerPC_, callerFP_);
+        AssertMatchesCallSite(callerPC_, callerFP_);
         break;
       case CodeRange::ImportJitExit:
       case CodeRange::ImportInterpExit:
       case CodeRange::BuiltinThunk:
       case CodeRange::TrapExit:
+      case CodeRange::OldTrapExit:
       case CodeRange::DebugTrap:
       case CodeRange::OutOfBoundsExit:
       case CodeRange::UnalignedExit:
@@ -651,8 +658,8 @@ ProfilingFrameIterator::initFromExitFP(const Frame* fp)
 }
 
 bool
-js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& registers,
-                         UnwindState* unwindState, bool* unwoundCaller)
+js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindState,
+                         bool* unwoundCaller)
 {
     // Shorthands.
     uint8_t* const pc = (uint8_t*) registers.pc;
@@ -672,7 +679,7 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
 
     const CodeSegment* codeSegment = LookupCodeSegment(pc);
     if (codeSegment) {
-        code = codeSegment->code();
+        code = &codeSegment->code();
         codeRange = code->lookupRange(pc);
         codeBase = codeSegment->base();
     } else if (!LookupBuiltinThunk(pc, &codeRange, &codeBase)) {
@@ -716,7 +723,7 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
       case CodeRange::ImportJitExit:
       case CodeRange::ImportInterpExit:
       case CodeRange::BuiltinThunk:
-      case CodeRange::TrapExit:
+      case CodeRange::OldTrapExit:
       case CodeRange::DebugTrap:
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
         if ((offsetFromEntry >= BeforePushRetAddr && offsetFromEntry < PushedFP) || codeRange->isThunk()) {
@@ -730,14 +737,14 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
             // fp holds the caller's fp.
             fixedPC = (uint8_t*) registers.lr;
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
         } else
 #elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64)
         if (offsetFromEntry == BeforePushRetAddr || codeRange->isThunk()) {
             // The return address is still in lr and fp holds the caller's fp.
             fixedPC = (uint8_t*) registers.lr;
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
         } else
 #endif
         if (offsetFromEntry == PushedRetAddr || codeRange->isThunk()) {
@@ -745,26 +752,26 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
             // points to the caller's fp.
             fixedPC = sp[0];
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
         } else if (offsetFromEntry >= PushedTLS && offsetFromEntry < PushedFP) {
             // The return address and caller's TLS have been pushed on the
             // stack; fp is still the caller's fp.
             fixedPC = sp[1];
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
         } else if (offsetFromEntry == PushedFP) {
             // The full Frame has been pushed; fp is still the caller's fp.
             MOZ_ASSERT(fp == reinterpret_cast<Frame*>(sp)->callerFP);
             fixedPC = reinterpret_cast<Frame*>(sp)->returnAddress;
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
         } else if (offsetInCode >= codeRange->ret() - PoppedFP &&
                    offsetInCode < codeRange->ret() - PoppedTLSReg)
         {
             // The fixedFP field of the Frame has been popped into fp.
             fixedPC = sp[1];
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
         } else if (offsetInCode >= codeRange->ret() - PoppedTLSReg &&
                    offsetInCode < codeRange->ret())
@@ -773,20 +780,20 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
             // exit reason hasn't been popped yet.
             fixedPC = sp[0];
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
         } else if (offsetInCode == codeRange->ret()) {
             // Both the TLS, fixedFP and ra have been popped and fp now
             // points to the caller's frame.
             fixedPC = (uint8_t*) registers.lr;
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
 #else
         } else if (offsetInCode == codeRange->ret()) {
             // Both the TLS and fixedFP fields have been popped and fp now
             // points to the caller's frame.
             fixedPC = sp[0];
             fixedFP = fp;
-            AssertMatchesCallSite(activation, fixedPC, fixedFP);
+            AssertMatchesCallSite(fixedPC, fixedFP);
 #endif
         } else {
             if (codeRange->kind() == CodeRange::ImportJitExit) {
@@ -803,10 +810,11 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
             fixedPC = pc;
             fixedFP = fp;
             *unwoundCaller = false;
-            AssertMatchesCallSite(activation, fp->returnAddress, fp->callerFP);
+            AssertMatchesCallSite(fp->returnAddress, fp->callerFP);
             break;
         }
         break;
+      case CodeRange::TrapExit:
       case CodeRange::OutOfBoundsExit:
       case CodeRange::UnalignedExit:
         // These code stubs execute after the prologue/epilogue have completed
@@ -814,7 +822,7 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
         fixedPC = pc;
         fixedFP = fp;
         *unwoundCaller = false;
-        AssertMatchesCallSite(activation, fp->returnAddress, fp->callerFP);
+        AssertMatchesCallSite(fp->returnAddress, fp->callerFP);
         break;
       case CodeRange::InterpEntry:
         // The entry trampoline is the final frame in an wasm JitActivation. The
@@ -842,8 +850,7 @@ js::wasm::StartUnwinding(const JitActivation& activation, const RegisterState& r
 
 ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation,
                                                const RegisterState& state)
-  : activation_(&activation),
-    code_(nullptr),
+  : code_(nullptr),
     codeRange_(nullptr),
     callerFP_(nullptr),
     callerPC_(nullptr),
@@ -861,7 +868,7 @@ ProfilingFrameIterator::ProfilingFrameIterator(const JitActivation& activation,
 
     bool unwoundCaller;
     UnwindState unwindState;
-    if (!StartUnwinding(*activation_, state, &unwindState, &unwoundCaller)) {
+    if (!StartUnwinding(state, &unwindState, &unwoundCaller)) {
         MOZ_ASSERT(done());
         return;
     }
@@ -917,13 +924,14 @@ ProfilingFrameIterator::operator++()
       case CodeRange::ImportInterpExit:
       case CodeRange::BuiltinThunk:
       case CodeRange::TrapExit:
+      case CodeRange::OldTrapExit:
       case CodeRange::DebugTrap:
       case CodeRange::OutOfBoundsExit:
       case CodeRange::UnalignedExit:
       case CodeRange::FarJumpIsland:
         stackAddress_ = callerFP_;
         callerPC_ = callerFP_->returnAddress;
-        AssertMatchesCallSite(*activation_, callerPC_, callerFP_->callerFP);
+        AssertMatchesCallSite(callerPC_, callerFP_->callerFP);
         callerFP_ = callerFP_->callerFP;
         break;
       case CodeRange::InterpEntry:
@@ -945,6 +953,7 @@ ThunkedNativeToDescription(SymbolicAddress func)
       case SymbolicAddress::HandleDebugTrap:
       case SymbolicAddress::HandleThrow:
       case SymbolicAddress::ReportTrap:
+      case SymbolicAddress::OldReportTrap:
       case SymbolicAddress::ReportOutOfBounds:
       case SymbolicAddress::ReportUnalignedAccess:
       case SymbolicAddress::CallImport_Void:
@@ -982,20 +991,6 @@ ThunkedNativeToDescription(SymbolicAddress func)
         return "call to native i32.div_s (in wasm)";
       case SymbolicAddress::aeabi_uidivmod:
         return "call to native i32.div_u (in wasm)";
-      case SymbolicAddress::AtomicCmpXchg:
-        return "call to native atomic compare exchange (in wasm)";
-      case SymbolicAddress::AtomicXchg:
-        return "call to native atomic exchange (in wasm)";
-      case SymbolicAddress::AtomicFetchAdd:
-        return "call to native atomic fetch add (in wasm)";
-      case SymbolicAddress::AtomicFetchSub:
-        return "call to native atomic fetch sub (in wasm)";
-      case SymbolicAddress::AtomicFetchAnd:
-        return "call to native atomic fetch and (in wasm)";
-      case SymbolicAddress::AtomicFetchOr:
-        return "call to native atomic fetch or (in wasm)";
-      case SymbolicAddress::AtomicFetchXor:
-        return "call to native atomic fetch xor (in wasm)";
 #endif
       case SymbolicAddress::ModD:
         return "call to asm.js native f64 % (mod)";
@@ -1039,6 +1034,12 @@ ThunkedNativeToDescription(SymbolicAddress func)
         return "call to native grow_memory (in wasm)";
       case SymbolicAddress::CurrentMemory:
         return "call to native current_memory (in wasm)";
+      case SymbolicAddress::WaitI32:
+        return "call to native i32.wait (in wasm)";
+      case SymbolicAddress::WaitI64:
+        return "call to native i64.wait (in wasm)";
+      case SymbolicAddress::Wake:
+        return "call to native wake (in wasm)";
       case SymbolicAddress::Limit:
         break;
     }
@@ -1083,6 +1084,7 @@ ProfilingFrameIterator::label() const
       case CodeRange::BuiltinThunk:      return builtinNativeDescription;
       case CodeRange::ImportInterpExit:  return importInterpDescription;
       case CodeRange::TrapExit:          return trapDescription;
+      case CodeRange::OldTrapExit:       return trapDescription;
       case CodeRange::DebugTrap:         return debugTrapDescription;
       case CodeRange::OutOfBoundsExit:   return "out-of-bounds stub (in wasm)";
       case CodeRange::UnalignedExit:     return "unaligned trap stub (in wasm)";
@@ -1103,7 +1105,7 @@ wasm::LookupFaultingInstance(const CodeSegment& codeSegment, void* pc, void* fp)
     // simulators which call this function at every load/store before even
     // knowing whether there is a fault.
 
-    const CodeRange* codeRange = codeSegment.code()->lookupRange(pc);
+    const CodeRange* codeRange = codeSegment.code().lookupRange(pc);
     if (!codeRange || !codeRange->isFunction())
         return nullptr;
 
@@ -1114,7 +1116,7 @@ wasm::LookupFaultingInstance(const CodeSegment& codeSegment, void* pc, void* fp)
         return nullptr;
 
     Instance* instance = reinterpret_cast<Frame*>(fp)->tls->instance;
-    MOZ_RELEASE_ASSERT(&instance->code() == codeSegment.code());
+    MOZ_RELEASE_ASSERT(&instance->code() == &codeSegment.code());
     return instance;
 }
 

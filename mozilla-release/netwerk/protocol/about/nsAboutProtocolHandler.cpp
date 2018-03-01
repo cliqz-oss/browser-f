@@ -113,11 +113,13 @@ nsAboutProtocolHandler::NewURI(const nsACString &aSpec,
     *result = nullptr;
     nsresult rv;
 
-    // Use a simple URI to parse out some stuff first
-    nsCOMPtr<nsIURI> url = do_CreateInstance(kSimpleURICID, &rv);
-    if (NS_FAILED(rv)) return rv;
 
-    rv = url->SetSpec(aSpec);
+    // Use a simple URI to parse out some stuff first
+    nsCOMPtr<nsIURI> url;
+    rv = NS_MutateURI(new nsSimpleURI::Mutator())
+           .SetSpec(aSpec)
+           .Finalize(url);
+
     if (NS_FAILED(rv)) {
         return rv;
     }
@@ -148,13 +150,10 @@ nsAboutProtocolHandler::NewURI(const nsACString &aSpec,
         rv = NS_NewURI(getter_AddRefs(inner), spec);
         NS_ENSURE_SUCCESS(rv, rv);
 
-        nsSimpleNestedURI* outer = new nsNestedAboutURI(inner, aBaseURI);
-        NS_ENSURE_TRUE(outer, NS_ERROR_OUT_OF_MEMORY);
-
-        // Take a ref to it in the COMPtr we plan to return
-        url = outer;
-
-        rv = outer->SetSpec(aSpec);
+        RefPtr<nsSimpleNestedURI> outer = new nsNestedAboutURI(inner, aBaseURI);
+        rv = NS_MutateURI(outer)
+               .SetSpec(aSpec)
+               .Finalize(url);
         NS_ENSURE_SUCCESS(rv, rv);
     }
 
@@ -298,21 +297,15 @@ nsSafeAboutProtocolHandler::NewURI(const nsACString &aSpec,
                                    nsIURI *aBaseURI,
                                    nsIURI **result)
 {
-    nsresult rv;
-
-    nsCOMPtr<nsIURI> url = do_CreateInstance(kSimpleURICID, &rv);
-    if (NS_FAILED(rv)) return rv;
-
-    rv = url->SetSpec(aSpec);
+    nsresult rv = NS_MutateURI(new nsSimpleURI::Mutator())
+                    .SetSpec(aSpec)
+                    .Finalize(result);
     if (NS_FAILED(rv)) {
         return rv;
     }
 
-    NS_TryToSetImmutable(url);
-
-    *result = nullptr;
-    url.swap(*result);
-    return rv;
+    NS_TryToSetImmutable(*result);
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -425,6 +418,23 @@ nsNestedAboutURI::StartClone(nsSimpleURI::RefHandlingEnum aRefHandlingMode,
     url->SetMutable(false);
 
     return url;
+}
+
+NS_IMPL_ISUPPORTS(nsNestedAboutURI::Mutator, nsIURISetters, nsIURIMutator)
+
+NS_IMETHODIMP
+nsNestedAboutURI::Mutate(nsIURIMutator** aMutator)
+{
+    RefPtr<nsNestedAboutURI::Mutator> mutator = new nsNestedAboutURI::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+    // StartClone calls SetMutable(false) but we need the mutator clone
+    // to be mutable
+    mutator->ResetMutable();
+    mutator.forget(aMutator);
+    return NS_OK;
 }
 
 // nsIClassInfo

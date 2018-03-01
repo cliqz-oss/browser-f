@@ -5,8 +5,8 @@
 const CC = Components.Constructor;
 
 const BinaryInputStream = CC("@mozilla.org/binaryinputstream;1",
-                           "nsIBinaryInputStream",
-                           "setInputStream");
+                             "nsIBinaryInputStream",
+                             "setInputStream");
 
 const currentThread = Cc["@mozilla.org/thread-manager;1"]
                       .getService().currentThread;
@@ -424,7 +424,7 @@ class SocksTestClient {
 
 const socksServer = new SocksTestServer();
 socksServer.setUserPass("foo", "bar");
-do_register_cleanup(() => {
+registerCleanupFunction(() => {
   socksServer.close();
 });
 

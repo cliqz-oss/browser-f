@@ -37,10 +37,6 @@
 #include "nsWrapperCache.h"
 #include "nsStringBuffer.h"
 
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
-
 #include "nsIException.h"
 #include "nsIPlatformInfo.h"
 #include "nsThread.h"
@@ -254,7 +250,7 @@ CycleCollectedJSContext::EnqueuePromiseJobCallback(JSContext* aCx,
 void
 CycleCollectedJSContext::PromiseRejectionTrackerCallback(JSContext* aCx,
                                                          JS::HandleObject aPromise,
-                                                         PromiseRejectionHandlingState state,
+                                                         JS::PromiseRejectionHandlingState state,
                                                          void* aData)
 {
 #ifdef DEBUG
@@ -263,7 +259,7 @@ CycleCollectedJSContext::PromiseRejectionTrackerCallback(JSContext* aCx,
   MOZ_ASSERT(aCx == self->Context());
   MOZ_ASSERT(Get() == self);
 
-  if (state == PromiseRejectionHandlingState::Unhandled) {
+  if (state == JS::PromiseRejectionHandlingState::Unhandled) {
     PromiseDebugging::AddUncaughtRejection(aPromise);
   } else {
     PromiseDebugging::AddConsumedRejection(aPromise);

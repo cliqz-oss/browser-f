@@ -40,6 +40,9 @@ _register_modules_protocol_handler();
 var _Promise = Components.utils.import("resource://gre/modules/Promise.jsm", {}).Promise;
 var _PromiseTestUtils = Components.utils.import("resource://testing-common/PromiseTestUtils.jsm", {}).PromiseTestUtils;
 var _Task = Components.utils.import("resource://gre/modules/Task.jsm", {}).Task;
+
+let _NetUtil = Components.utils.import("resource://gre/modules/NetUtil.jsm", {}).NetUtil;
+
 Components.utils.importGlobalProperties(["XMLHttpRequest"]);
 
 // Support a common assertion library, Assert.jsm.
@@ -61,7 +64,7 @@ var _add_params = function(params) {
 
 var _dumpLog = function(raw_msg) {
   dump("\n" + JSON.stringify(raw_msg) + "\n");
-}
+};
 
 var _LoggerClass = Components.utils.import("resource://testing-common/StructuredLog.jsm", null).StructuredLogger;
 var _testLogger = new _LoggerClass("xpcshell/head.js", _dumpLog, [_add_params]);
@@ -128,7 +131,7 @@ try {
 // Configure a console listener so messages sent to it are logged as part
 // of the test.
 try {
-  let levelNames = {}
+  let levelNames = {};
   for (let level of ["debug", "info", "warn", "error"]) {
     levelNames[Components.interfaces.nsIConsoleMessage[level]] = level;
   }
@@ -142,8 +145,8 @@ try {
       return this;
     },
     observe(msg) {
-      if (typeof do_print === "function")
-        do_print("CONSOLE_MESSAGE: (" + levelNames[msg.logLevel] + ") " + msg.toString());
+      if (typeof info === "function")
+        info("CONSOLE_MESSAGE: (" + levelNames[msg.logLevel] + ") " + msg.toString());
     }
   };
   Components.classes["@mozilla.org/consoleservice;1"]
@@ -313,7 +316,7 @@ var _fakeIdleService = {
     }
     throw Components.results.NS_ERROR_NO_INTERFACE;
   }
-}
+};
 
 /**
  * Restores the idle service factory if needed and returns the service's handle.
@@ -403,12 +406,12 @@ function _setupDebuggerServer(breakpointFiles, callback) {
                     "It is possible for this to alter test behevior by " +
                     "triggering additional browser code to run, so check " +
                     "test behavior after making this change.\n" +
-                    "See also https://bugzil.la/1215378.")
+                    "See also https://bugzil.la/1215378.");
   }
   let { DebuggerServer } = require("devtools/server/main");
   let { OriginalLocation } = require("devtools/server/actors/common");
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
+  DebuggerServer.registerAllActors();
   DebuggerServer.addActors("resource://testing-common/dbg-actors.js");
   DebuggerServer.allowChromeProcess = true;
 
@@ -432,7 +435,7 @@ function _setupDebuggerServer(breakpointFiles, callback) {
             sourceActor._getOrCreateBreakpointActor(new OriginalLocation(sourceActor, 1));
           }
         } catch (ex) {
-          do_print("Failed to initialize breakpoints: " + ex + "\n" + ex.stack);
+          info("Failed to initialize breakpoints: " + ex + "\n" + ex.stack);
         }
         break;
       case "xpcshell-test-devtools-shutdown":
@@ -456,14 +459,14 @@ function _initDebugging(port) {
   let initialized = false;
   let DebuggerServer = _setupDebuggerServer(_TEST_FILE, () => { initialized = true; });
 
-  do_print("");
-  do_print("*******************************************************************");
-  do_print("Waiting for the debugger to connect on port " + port)
-  do_print("")
-  do_print("To connect the debugger, open a Firefox instance, select 'Connect'");
-  do_print("from the Developer menu and specify the port as " + port);
-  do_print("*******************************************************************");
-  do_print("")
+  info("");
+  info("*******************************************************************");
+  info("Waiting for the debugger to connect on port " + port);
+  info("");
+  info("To connect the debugger, open a Firefox instance, select 'Connect'");
+  info("from the Developer menu and specify the port as " + port);
+  info("*******************************************************************");
+  info("");
 
   let AuthenticatorType = DebuggerServer.Authenticators.get("PROMPT");
   let authenticator = new AuthenticatorType.Server();
@@ -482,13 +485,13 @@ function _initDebugging(port) {
     if (initialized) {
       return true;
     }
-    do_print("Still waiting for debugger to connect...");
+    info("Still waiting for debugger to connect...");
     return false;
   });
   // NOTE: if you want to debug the harness itself, you can now add a 'debugger'
   // statement anywhere and it will stop - but we've already added a breakpoint
   // for the first line of the test scripts, so we just continue...
-  do_print("Debugger connected, starting test execution");
+  info("Debugger connected, starting test execution");
 }
 
 function _execute_test() {
@@ -648,7 +651,7 @@ function _load_files(aFiles) {
     } catch (e) {
       let extra = {
         source_file: element
-      }
+      };
       if (e.stack) {
         extra.stack = _format_stack(e.stack);
       }
@@ -668,7 +671,7 @@ function _wrap_with_quotes_if_necessary(val) {
 /**
  * Prints a message to the output log.
  */
-function do_print(msg, data) {
+function info(msg, data) {
   msg = _wrap_with_quotes_if_necessary(msg);
   data = data ? data : null;
   _testLogger.info(msg, data);
@@ -688,7 +691,7 @@ function do_timeout(delay, func) {
   new _Timer(func, Number(delay));
 }
 
-function do_execute_soon(callback, aName) {
+function executeSoon(callback, aName) {
   let funcName = (aName ? aName : callback.name);
   do_test_pending(funcName);
   var tm = Components.classes["@mozilla.org/thread-manager;1"]
@@ -814,24 +817,6 @@ function do_note_exception(ex, text) {
                    });
 }
 
-function _do_check_neq(left, right, stack, todo) {
-  Assert.notEqual(left, right);
-}
-
-function do_check_neq(left, right, stack) {
-  if (!stack)
-    stack = Components.stack.caller;
-
-  _do_check_neq(left, right, stack, false);
-}
-
-function todo_check_neq(left, right, stack) {
-  if (!stack)
-      stack = Components.stack.caller;
-
-  _do_check_neq(left, right, stack, true);
-}
-
 function do_report_result(passed, text, stack, todo) {
   while (stack.filename.includes("head.js") && stack.caller) {
     stack = stack.caller;
@@ -887,19 +872,11 @@ function _do_check_eq(left, right, stack, todo) {
   do_report_result(left == right, text, stack, todo);
 }
 
-function do_check_eq(left, right, stack) {
-  Assert.equal(left, right);
-}
-
 function todo_check_eq(left, right, stack) {
   if (!stack)
       stack = Components.stack.caller;
 
   _do_check_eq(left, right, stack, true);
-}
-
-function do_check_true(condition, stack) {
-  Assert.ok(condition, stack);
 }
 
 function todo_check_true(condition, stack) {
@@ -909,10 +886,6 @@ function todo_check_true(condition, stack) {
   todo_check_eq(condition, true, stack);
 }
 
-function do_check_false(condition, stack) {
-  Assert.ok(!condition, stack);
-}
-
 function todo_check_false(condition, stack) {
   if (!stack)
     stack = Components.stack.caller;
@@ -920,15 +893,8 @@ function todo_check_false(condition, stack) {
   todo_check_eq(condition, false, stack);
 }
 
-function do_check_null(condition, stack) {
-  Assert.equal(condition, null);
-}
-
 function todo_check_null(condition, stack = Components.stack.caller) {
   todo_check_eq(condition, null, stack);
-}
-function do_check_matches(pattern, value) {
-  Assert.deepEqual(pattern, value);
 }
 
 // Check that |func| throws an nsIException that has
@@ -1054,7 +1020,7 @@ function do_get_cwd() {
 function do_load_manifest(path) {
   var lf = do_get_file(path);
   const nsIComponentRegistrar = Components.interfaces.nsIComponentRegistrar;
-  do_check_true(Components.manager instanceof nsIComponentRegistrar);
+  Assert.ok(Components.manager instanceof nsIComponentRegistrar);
   // Previous do_check_true() is not a test check.
   Components.manager.autoRegister(lf);
 }
@@ -1104,7 +1070,7 @@ function do_parse_document(aPath, aType) {
  * @param aFunction
  *        The function to be called when the test harness has finished running.
  */
-function do_register_cleanup(aFunction) {
+function registerCleanupFunction(aFunction) {
   _cleanupFunctions.push(aFunction);
 }
 
@@ -1462,12 +1428,18 @@ function run_next_test() {
       _PromiseTestUtils.assertNoUncaughtRejections();
       let _properties;
       [_properties, _gRunningTest, ] = _gTests[_gTestIndex++];
+
+      // Must set to pending before we check for skip, so that we keep the
+      // running counts correct.
+      _testLogger.info(_TEST_NAME + " | Starting " + _gRunningTest.name);
+      do_test_pending(_gRunningTest.name);
+
       if ((typeof(_properties.skip_if) == "function" && _properties.skip_if()) ||
           (_gRunOnlyThisTest && _gRunningTest != _gRunOnlyThisTest)) {
         let _condition = _gRunOnlyThisTest ? "only one task may run." :
           _properties.skip_if.toSource().replace(/\(\)\s*=>\s*/, "");
         if (_condition == "true")
-          _condition = "explicitly skipped."
+          _condition = "explicitly skipped.";
         let _message = _gRunningTest.name
           + " skipped because the following conditions were"
           + " met: (" + _condition + ")";
@@ -1476,11 +1448,9 @@ function run_next_test() {
                                "SKIP",
                                "SKIP",
                                _message);
-        do_execute_soon(run_next_test);
+        executeSoon(run_next_test);
         return;
       }
-      _testLogger.info(_TEST_NAME + " | Starting " + _gRunningTest.name);
-      do_test_pending(_gRunningTest.name);
 
       if (_properties.isTask) {
         _gTaskRunning = true;
@@ -1510,8 +1480,8 @@ function run_next_test() {
   // For sane stacks during failures, we execute this code soon, but not now.
   // We do this now, before we call do_test_finished(), to ensure the pending
   // counter (_tests_pending) never reaches 0 while we still have tests to run
-  // (do_execute_soon bumps that counter).
-  do_execute_soon(_run_next_test, "run_next_test " + _gTestIndex);
+  // (executeSoon bumps that counter).
+  executeSoon(_run_next_test, "run_next_test " + _gTestIndex);
 
   if (_gRunningTest !== null) {
     // Close the previous test do_test_pending call.
@@ -1565,9 +1535,8 @@ function _load_mozinfo() {
   let stream = Components.classes["@mozilla.org/network/file-input-stream;1"]
     .createInstance(Components.interfaces.nsIFileInputStream);
   stream.init(mozinfoFile, -1, 0, 0);
-  let json = Components.classes["@mozilla.org/dom/json;1"]
-    .createInstance(Components.interfaces.nsIJSON);
-  let mozinfo = json.decodeFromStream(stream, stream.available());
+  let bytes = _NetUtil.readInputStream(stream, stream.available());
+  let mozinfo = JSON.parse((new TextDecoder()).decode(bytes));
   stream.close();
   return mozinfo;
 }

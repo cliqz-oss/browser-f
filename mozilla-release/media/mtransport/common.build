@@ -25,7 +25,6 @@ mtransport_lcppsrcs = [
     'transportlayerice.cpp',
     'transportlayerlog.cpp',
     'transportlayerloopback.cpp',
-    'transportlayerprsock.cpp',
 ]
 
 mtransport_cppsrcs = [
@@ -87,5 +86,5 @@ DEFINES['R_DEFINED_UINT4'] = 'uint32_t'
 DEFINES['R_DEFINED_INT8'] = 'int64_t'
 DEFINES['R_DEFINED_UINT8'] = 'uint64_t'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

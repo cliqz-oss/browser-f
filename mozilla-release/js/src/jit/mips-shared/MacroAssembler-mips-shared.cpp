@@ -337,8 +337,8 @@ template void
 MacroAssemblerMIPSShared::ma_addTestCarry<Label*>(Register rd, Register rs,
                                                   Register rt, Label* overflow);
 template void
-MacroAssemblerMIPSShared::ma_addTestCarry<wasm::TrapDesc>(Register rd, Register rs, Register rt,
-                                                          wasm::TrapDesc overflow);
+MacroAssemblerMIPSShared::ma_addTestCarry<wasm::OldTrapDesc>(Register rd, Register rs, Register rt,
+                                                             wasm::OldTrapDesc overflow);
 
 template <typename L>
 void
@@ -352,8 +352,8 @@ template void
 MacroAssemblerMIPSShared::ma_addTestCarry<Label*>(Register rd, Register rs,
                                                   Imm32 imm, Label* overflow);
 template void
-MacroAssemblerMIPSShared::ma_addTestCarry<wasm::TrapDesc>(Register rd, Register rs, Imm32 imm,
-                                                          wasm::TrapDesc overflow);
+MacroAssemblerMIPSShared::ma_addTestCarry<wasm::OldTrapDesc>(Register rd, Register rs, Imm32 imm,
+                                                             wasm::OldTrapDesc overflow);
 
 // Subtract.
 void
@@ -552,6 +552,7 @@ void
 MacroAssemblerMIPSShared::ma_load_unaligned(const wasm::MemoryAccessDesc& access, Register dest, const BaseIndex& src, Register temp,
                                             LoadStoreSize size, LoadStoreExtension extension)
 {
+    MOZ_ASSERT(MOZ_LITTLE_ENDIAN, "Wasm-only; wasm is disabled on big-endian.");
     int16_t lowOffset, hiOffset;
     Register base;
 
@@ -704,6 +705,7 @@ void
 MacroAssemblerMIPSShared::ma_store_unaligned(const wasm::MemoryAccessDesc& access, Register data, const BaseIndex& dest, Register temp,
                                              LoadStoreSize size, LoadStoreExtension extension)
 {
+    MOZ_ASSERT(MOZ_LITTLE_ENDIAN, "Wasm-only; wasm is disabled on big-endian.");
     int16_t lowOffset, hiOffset;
     Register base;
 
@@ -796,7 +798,7 @@ MacroAssemblerMIPSShared::ma_b(Register lhs, ImmPtr imm, Label* l, Condition c, 
 
 template <typename T>
 void
-MacroAssemblerMIPSShared::ma_b(Register lhs, T rhs, wasm::TrapDesc target, Condition c,
+MacroAssemblerMIPSShared::ma_b(Register lhs, T rhs, wasm::OldTrapDesc target, Condition c,
                                JumpKind jumpKind)
 {
     Label label;
@@ -805,13 +807,13 @@ MacroAssemblerMIPSShared::ma_b(Register lhs, T rhs, wasm::TrapDesc target, Condi
 }
 
 template void MacroAssemblerMIPSShared::ma_b<Register>(Register lhs, Register rhs,
-                                                       wasm::TrapDesc target, Condition c,
+                                                       wasm::OldTrapDesc target, Condition c,
                                                        JumpKind jumpKind);
 template void MacroAssemblerMIPSShared::ma_b<Imm32>(Register lhs, Imm32 rhs,
-                                                       wasm::TrapDesc target, Condition c,
+                                                       wasm::OldTrapDesc target, Condition c,
                                                        JumpKind jumpKind);
 template void MacroAssemblerMIPSShared::ma_b<ImmTag>(Register lhs, ImmTag rhs,
-                                                       wasm::TrapDesc target, Condition c,
+                                                       wasm::OldTrapDesc target, Condition c,
                                                        JumpKind jumpKind);
 
 void
@@ -821,7 +823,7 @@ MacroAssemblerMIPSShared::ma_b(Label* label, JumpKind jumpKind)
 }
 
 void
-MacroAssemblerMIPSShared::ma_b(wasm::TrapDesc target, JumpKind jumpKind)
+MacroAssemblerMIPSShared::ma_b(wasm::OldTrapDesc target, JumpKind jumpKind)
 {
     Label label;
     asMasm().branchWithCode(getBranchCode(BranchIsJump), &label, jumpKind);
@@ -1863,6 +1865,14 @@ MacroAssembler::comment(const char* msg)
     Assembler::comment(msg);
 }
 
+// ===============================================================
+// WebAssembly
+
+CodeOffset
+MacroAssembler::illegalInstruction()
+{
+    MOZ_CRASH("NYI");
+}
 
 void
 MacroAssembler::wasmTruncateDoubleToInt32(FloatRegister input, Register output, Label* oolEntry)

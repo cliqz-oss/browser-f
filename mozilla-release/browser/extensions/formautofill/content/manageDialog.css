@@ -2,12 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+html {
+  /* Prevent unnecessary horizontal scroll bar from showing */
+  overflow-x: hidden;
+}
+
 div {
   display: flex;
 }
 
 button {
-  padding: 3px 2em;
+  padding-right: 10px;
+  padding-left: 10px;
 }
 
 fieldset {
@@ -20,7 +26,6 @@ fieldset > legend {
   box-sizing: border-box;
   width: 100%;
   padding: 0.4em 0.7em;
-  font-size: 0.9em;
   color: #808080;
   background-color: var(--in-content-box-background-hover);
   border: 1px solid var(--in-content-box-border-color);
@@ -34,7 +39,6 @@ option:nth-child(even) {
 
 #addresses,
 #credit-cards {
-  font-size: 0.85em;
   width: 100%;
   height: 16.6em;
   margin: 0;
@@ -53,7 +57,6 @@ option:nth-child(even) {
 #controls-container {
   flex: 0 1 100%;
   justify-content: end;
-  font-size: 0.9em;
   margin-top: 1em;
 }
 

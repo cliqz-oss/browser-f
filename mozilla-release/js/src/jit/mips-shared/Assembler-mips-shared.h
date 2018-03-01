@@ -219,15 +219,14 @@ class InstJump;
 
 uint32_t RS(Register r);
 uint32_t RT(Register r);
-uint32_t RT(uint32_t regCode);
 uint32_t RT(FloatRegister r);
 uint32_t RD(Register r);
 uint32_t RD(FloatRegister r);
-uint32_t RD(uint32_t regCode);
 uint32_t RZ(Register r);
 uint32_t RZ(FloatRegister r);
 uint32_t SA(uint32_t value);
 uint32_t SA(FloatRegister r);
+uint32_t FS(uint32_t value);
 
 Register toRS (Instruction& i);
 Register toRT (Instruction& i);
@@ -627,7 +626,7 @@ class GSImm13
       : value(imm & ~0xf)
     { }
     uint32_t encode(uint32_t shift) {
-        return ((value >> 4) & 0x1f) << shift;
+        return ((value >> 4) & 0x1ff) << shift;
     }
     int32_t decodeSigned() {
         return value;
@@ -877,7 +876,6 @@ class AssemblerMIPSShared : public AssemblerShared
     };
 
     js::Vector<RelativePatch, 8, SystemAllocPolicy> jumps_;
-    js::Vector<uint32_t, 8, SystemAllocPolicy> longJumps_;
 
     CompactBufferWriter jumpRelocations_;
     CompactBufferWriter dataRelocations_;
@@ -1233,7 +1231,7 @@ class AssemblerMIPSShared : public AssemblerShared
 
     // label operations
     void bind(Label* label, BufferOffset boff = BufferOffset());
-    void bindLater(Label* label, wasm::TrapDesc target);
+    void bindLater(Label* label, wasm::OldTrapDesc target);
     virtual void bind(InstImm* inst, uintptr_t branch, uintptr_t target) = 0;
     void bind(CodeOffset* label) {
         label->bind(currentOffset());
@@ -1280,18 +1278,13 @@ class AssemblerMIPSShared : public AssemblerShared
             writeRelocation(src);
     }
 
-    void addLongJump(BufferOffset src) {
-        enoughMemory_ &= longJumps_.append(src.getOffset());
+    void addLongJump(BufferOffset src, BufferOffset dst) {
+        CodeOffset patchAt(src.getOffset());
+        CodeOffset target(dst.getOffset());
+        addCodeLabel(CodeLabel(patchAt, target));
     }
 
   public:
-    size_t numLongJumps() const {
-        return longJumps_.length();
-    }
-    uint32_t longJump(size_t i) {
-        return longJumps_[i];
-    }
-
     void flushBuffer() {
     }
 
@@ -1428,6 +1421,9 @@ class InstReg : public Instruction
       : Instruction(op | code | ff)
     { }
     // for float point
+    InstReg(Opcode op, RSField rs, Register rt, uint32_t fs)
+      : Instruction(op | rs | RT(rt) | FS(fs))
+    { }
     InstReg(Opcode op, RSField rs, Register rt, FloatRegister rd)
       : Instruction(op | rs | RT(rt) | RD(rd))
     { }

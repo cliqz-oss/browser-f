@@ -27,9 +27,9 @@ use selectors::parser::SelectorParseErrorKind;
 use servo_arc::Arc;
 use smallvec::SmallVec;
 use std::cmp;
-use std::fmt;
+use std::fmt::{self, Write};
 #[cfg(feature = "gecko")] use hash::FnvHashMap;
-use style_traits::{ParseError, ToCss};
+use style_traits::{CssWriter, ParseError, ToCss};
 use super::ComputedValues;
 use values::{CSSFloat, CustomIdent, Either};
 use values::animated::{Animate, Procedure, ToAnimatedValue, ToAnimatedZero};
@@ -46,7 +46,7 @@ use values::computed::ToComputedValue;
 use values::computed::transform::{DirectionVector, Matrix, Matrix3D};
 use values::computed::transform::TransformOperation as ComputedTransformOperation;
 use values::computed::transform::Transform as ComputedTransform;
-use values::generics::transform::{Transform, TransformOperation};
+use values::generics::transform::{self, Transform, TransformOperation};
 use values::distance::{ComputeSquaredDistance, SquaredDistance};
 #[cfg(feature = "gecko")] use values::generics::FontSettings as GenericFontSettings;
 #[cfg(feature = "gecko")] use values::generics::FontSettingTag as GenericFontSettingTag;
@@ -94,7 +94,10 @@ pub enum TransitionProperty {
 }
 
 impl ToCss for TransitionProperty {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match *self {
             TransitionProperty::All => dest.write_str("all"),
             TransitionProperty::Shorthand(ref id) => dest.write_str(id.name()),
@@ -178,7 +181,7 @@ impl From<nsCSSPropertyID> for TransitionProperty {
             % endfor
             nsCSSPropertyID::eCSSPropertyExtra_all_properties => TransitionProperty::All,
             _ => {
-                panic!("non-convertible nsCSSPropertyID::{:?}", property)
+                panic!("non-convertible nsCSSPropertyID")
             }
         }
     }
@@ -263,7 +266,7 @@ impl AnimatedProperty {
             % for prop in data.longhands:
                 % if prop.animatable:
                     AnimatedProperty::${prop.camel_case}(ref from, ref to) => {
-                        // https://w3c.github.io/web-animations/#discrete-animation-type
+                        // https://drafts.csswg.org/web-animations/#discrete-animation-type
                         % if prop.animation_value_type == "discrete":
                             let value = if progress < 0.5 { from.clone() } else { to.clone() };
                         % else:
@@ -552,7 +555,7 @@ impl Animate for AnimationValue {
             % endif
             % endfor
             _ => {
-                panic!("Unexpected AnimationValue::animate call, got: {:?}, {:?}", self, other);
+                panic!("Unexpected AnimationValue::animate call");
             }
         };
         Ok(value)
@@ -582,11 +585,7 @@ impl ComputeSquaredDistance for AnimationValue {
             % endif
             % endfor
             _ => {
-                panic!(
-                    "computed values should be of the same property, got: {:?}, {:?}",
-                    self,
-                    other
-                );
+                panic!("computed values should be of the same property");
             },
         }
     }
@@ -659,10 +658,10 @@ impl Animate for Visibility {
     fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
         let (this_weight, other_weight) = procedure.weights();
         match (*self, *other) {
-            (Visibility::visible, _) => {
+            (Visibility::Visible, _) => {
                 Ok(if this_weight > 0.0 { *self } else { *other })
             },
-            (_, Visibility::visible) => {
+            (_, Visibility::Visible) => {
                 Ok(if other_weight > 0.0 { *other } else { *self })
             },
             _ => Err(()),
@@ -764,7 +763,7 @@ impl Animate for FontStretch {
     {
         let from = f64::from(*self);
         let to = f64::from(*other);
-        let normal = f64::from(FontStretch::normal);
+        let normal = f64::from(FontStretch::Normal);
         let (this_weight, other_weight) = procedure.weights();
         let result = (from - normal) * this_weight + (to - normal) * other_weight + normal;
         Ok(result.into())
@@ -789,15 +788,15 @@ impl From<FontStretch> for f64 {
     fn from(stretch: FontStretch) -> f64 {
         use self::FontStretch::*;
         match stretch {
-            ultra_condensed => 1.0,
-            extra_condensed => 2.0,
-            condensed       => 3.0,
-            semi_condensed  => 4.0,
-            normal          => 5.0,
-            semi_expanded   => 6.0,
-            expanded        => 7.0,
-            extra_expanded  => 8.0,
-            ultra_expanded  => 9.0,
+            UltraCondensed => 1.0,
+            ExtraCondensed => 2.0,
+            Condensed => 3.0,
+            SemiCondensed => 4.0,
+            Normal => 5.0,
+            SemiExpanded => 6.0,
+            Expanded => 7.0,
+            ExtraExpanded => 8.0,
+            UltraExpanded => 9.0,
         }
     }
 }
@@ -807,8 +806,8 @@ impl Into<FontStretch> for f64 {
         use properties::longhands::font_stretch::computed_value::T::*;
         let index = (self + 0.5).floor().min(9.0).max(1.0);
         static FONT_STRETCH_ENUM_MAP: [FontStretch; 9] =
-            [ ultra_condensed, extra_condensed, condensed, semi_condensed, normal,
-              semi_expanded, expanded, extra_expanded, ultra_expanded ];
+            [ UltraCondensed, ExtraCondensed, Condensed, SemiCondensed, Normal,
+              SemiExpanded, Expanded, ExtraExpanded, UltraExpanded ];
         FONT_STRETCH_ENUM_MAP[(index - 1.0) as usize]
     }
 }
@@ -1184,10 +1183,8 @@ impl Animate for ComputedTransformOperation {
                 &TransformOperation::Rotate3D(fx, fy, fz, fa),
                 &TransformOperation::Rotate3D(tx, ty, tz, ta),
             ) => {
-                let (fx, fy, fz, fa) =
-                    ComputedTransform::get_normalized_vector_and_angle(fx, fy, fz, fa);
-                let (tx, ty, tz, ta) =
-                    ComputedTransform::get_normalized_vector_and_angle(tx, ty, tz, ta);
+                let (fx, fy, fz, fa) = transform::get_normalized_vector_and_angle(fx, fy, fz, fa);
+                let (tx, ty, tz, ta) = transform::get_normalized_vector_and_angle(tx, ty, tz, ta);
                 if (fx, fy, fz) == (tx, ty, tz) {
                     let ia = fa.animate(&ta, procedure)?;
                     Ok(TransformOperation::Rotate3D(fx, fy, fz, ia))
@@ -2453,9 +2450,9 @@ impl ComputeSquaredDistance for ComputedTransformOperation {
                 &TransformOperation::Rotate3D(tx, ty, tz, ta),
             ) => {
                 let (fx, fy, fz, angle1) =
-                    ComputedTransform::get_normalized_vector_and_angle(fx, fy, fz, fa);
+                    transform::get_normalized_vector_and_angle(fx, fy, fz, fa);
                 let (tx, ty, tz, angle2) =
-                    ComputedTransform::get_normalized_vector_and_angle(tx, ty, tz, ta);
+                    transform::get_normalized_vector_and_angle(tx, ty, tz, ta);
                 if (fx, fy, fz) == (tx, ty, tz) {
                     angle1.compute_squared_distance(&angle2)
                 } else {
@@ -2546,8 +2543,8 @@ impl ComputeSquaredDistance for ComputedTransform {
         // Roll back to matrix interpolation if there is any Err(()) in the transform lists, such
         // as mismatched transform functions.
         if let Err(_) = squared_dist {
-            let matrix1: Matrix3D = self.to_transform_3d_matrix(None).ok_or(())?.into();
-            let matrix2: Matrix3D = other.to_transform_3d_matrix(None).ok_or(())?.into();
+            let matrix1: Matrix3D = self.to_transform_3d_matrix(None)?.0.into();
+            let matrix2: Matrix3D = other.to_transform_3d_matrix(None)?.0.into();
             return matrix1.compute_squared_distance(&matrix2);
         }
         squared_dist
@@ -2872,7 +2869,7 @@ impl ComputeSquaredDistance for AnimatedFilterList {
 ///
 ///   border-top-color, border-color, border-top, border
 ///
-/// [property-order] https://w3c.github.io/web-animations/#calculating-computed-keyframes
+/// [property-order] https://drafts.csswg.org/web-animations/#calculating-computed-keyframes
 #[cfg(feature = "gecko")]
 pub fn compare_property_priority(a: &PropertyId, b: &PropertyId) -> cmp::Ordering {
     match (a.as_shorthand(), b.as_shorthand()) {

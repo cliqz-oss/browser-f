@@ -696,13 +696,6 @@ XPCJSContext::InterruptCallback(JSContext* cx)
         return false;
     }
 
-    if (win->GetIsPrerendered()) {
-        // We cannot display a dialog if the page is being prerendered, so
-        // just kill the page.
-        mozilla::dom::HandlePrerenderingViolation(win->AsInner());
-        return false;
-    }
-
     // Accumulate slow script invokation delay.
     if (!chrome && !self->mTimeoutAccumulated) {
       uint32_t delay = uint32_t(self->mSlowScriptActualWait.ToMilliseconds() - (limit * 1000.0));
@@ -711,13 +704,13 @@ XPCJSContext::InterruptCallback(JSContext* cx)
     }
 
     // Show the prompt to the user, and kill if requested.
-    nsGlobalWindow::SlowScriptResponse response = win->ShowSlowScriptDialog(addonId);
-    if (response == nsGlobalWindow::KillSlowScript) {
+    nsGlobalWindowInner::SlowScriptResponse response = win->ShowSlowScriptDialog(addonId);
+    if (response == nsGlobalWindowInner::KillSlowScript) {
         if (Preferences::GetBool("dom.global_stop_script", true))
             xpc::Scriptability::Get(global).Block();
         return false;
     }
-    if (response == nsGlobalWindow::KillScriptGlobal) {
+    if (response == nsGlobalWindowInner::KillScriptGlobal) {
         nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
 
         if (!IsSandbox(global) || !obs)
@@ -742,10 +735,10 @@ XPCJSContext::InterruptCallback(JSContext* cx)
 
     // The user chose to continue the script. Reset the timer, and disable this
     // machinery with a pref of the user opted out of future slow-script dialogs.
-    if (response != nsGlobalWindow::ContinueSlowScriptAndKeepNotifying)
+    if (response != nsGlobalWindowInner::ContinueSlowScriptAndKeepNotifying)
         self->mSlowScriptCheckpoint = TimeStamp::NowLoRes();
 
-    if (response == nsGlobalWindow::AlwaysContinueSlowScript)
+    if (response == nsGlobalWindowInner::AlwaysContinueSlowScript)
         Preferences::SetInt(prefName, 0);
 
     return true;
@@ -815,6 +808,8 @@ ReloadPrefsCallback(const char* pref, void* data)
 
     bool streams = Preferences::GetBool(JS_OPTIONS_DOT_STR "streams");
 
+    bool spectreIndexMasking = Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.index_masking");
+
     sSharedMemoryEnabled = Preferences::GetBool(JS_OPTIONS_DOT_STR "shared_memory");
 
 #ifdef DEBUG
@@ -871,6 +866,8 @@ ReloadPrefsCallback(const char* pref, void* data)
 #ifdef DEBUG
     JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_FULL_DEBUG_CHECKS, fullJitDebugChecks);
 #endif
+
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_SPECTRE_INDEX_MASKING, spectreIndexMasking);
 }
 
 XPCJSContext::~XPCJSContext()

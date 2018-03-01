@@ -418,6 +418,30 @@ class TestRecursiveMakeBackend(BackendTester):
         self.maxDiff = None
         self.assertEqual(lines, expected)
 
+    def test_localized_generated_files(self):
+        """Ensure LOCALIZED_GENERATED_FILES is handled properly."""
+        env = self._consume('localized-generated-files', RecursiveMakeBackend)
+
+        backend_path = mozpath.join(env.topobjdir, 'backend.mk')
+        lines = [l.strip() for l in open(backend_path, 'rt').readlines()[2:]]
+
+        expected = [
+            'libs:: foo.xyz',
+            'GARBAGE += foo.xyz',
+            'EXTRA_MDDEPEND_FILES += foo.xyz.pp',
+            'foo.xyz: %s/generate-foo.py $(call MERGE_FILE,localized-input) $(srcdir)/non-localized-input $(if $(IS_LANGUAGE_REPACK),FORCE)' % env.topsrcdir,
+            '$(REPORT_BUILD)',
+            '$(call py_action,file_generate,--locale=$(AB_CD) %s/generate-foo.py main foo.xyz $(MDDEPDIR)/foo.xyz.pp $(call MERGE_FILE,localized-input) $(srcdir)/non-localized-input)' % env.topsrcdir,
+            '',
+            'LOCALIZED_FILES_0_FILES += foo.xyz',
+            'LOCALIZED_FILES_0_DEST = $(FINAL_TARGET)/',
+            'LOCALIZED_FILES_0_TARGET := libs',
+            'INSTALL_TARGETS += LOCALIZED_FILES_0',
+        ]
+
+        self.maxDiff = None
+        self.assertEqual(lines, expected)
+
     def test_exports_generated(self):
         """Ensure EXPORTS that are listed in GENERATED_FILES
         are handled properly."""
@@ -484,18 +508,6 @@ class TestRecursiveMakeBackend(BackendTester):
         self.assertIn('res/bar.res.in', m)
         self.assertIn('res/tests/test.manifest', m)
         self.assertIn('res/tests/extra.manifest', m)
-
-    def test_branding_files(self):
-        """Ensure BRANDING_FILES is handled properly."""
-        env = self._consume('branding-files', RecursiveMakeBackend)
-
-        #BRANDING_FILES should appear in the dist_branding install manifest.
-        m = InstallManifest(path=os.path.join(env.topobjdir,
-            '_build_manifests', 'install', 'dist_branding'))
-        self.assertEqual(len(m), 3)
-        self.assertIn('bar.ico', m)
-        self.assertIn('quux.png', m)
-        self.assertIn('icons/foo.ico', m)
 
     def test_test_manifests_files_written(self):
         """Ensure test manifests get turned into files."""
@@ -644,7 +656,7 @@ class TestRecursiveMakeBackend(BackendTester):
             self.assertEqual(m, m2)
 
     def test_ipdl_sources(self):
-        """Test that IPDL_SOURCES are written to ipdlsrcs.mk correctly."""
+        """Test that PREPROCESSED_IPDL_SOURCES and IPDL_SOURCES are written to ipdlsrcs.mk correctly."""
         env = self._consume('ipdl_sources', RecursiveMakeBackend)
 
         manifest_path = mozpath.join(env.topobjdir,
@@ -655,9 +667,9 @@ class TestRecursiveMakeBackend(BackendTester):
         topsrcdir = env.topsrcdir.replace(os.sep, '/')
 
         expected = [
-            "ALL_IPDLSRCS := %s/bar/bar.ipdl %s/bar/bar2.ipdlh %s/foo/foo.ipdl %s/foo/foo2.ipdlh" % tuple([topsrcdir] * 4),
+            "ALL_IPDLSRCS := bar1.ipdl foo1.ipdl %s/bar/bar.ipdl %s/bar/bar2.ipdlh %s/foo/foo.ipdl %s/foo/foo2.ipdlh" % tuple([topsrcdir] * 4),
             "CPPSRCS := UnifiedProtocols0.cpp",
-            "IPDLDIRS := %s/bar %s/foo" % (topsrcdir, topsrcdir),
+            "IPDLDIRS := %s/ipc/ipdl %s/bar %s/foo" % (env.topobjdir, topsrcdir, topsrcdir),
         ]
 
         found = [str for str in lines if str.startswith(('ALL_IPDLSRCS',
@@ -842,6 +854,44 @@ class TestRecursiveMakeBackend(BackendTester):
         ]
 
         found = [str for str in lines if 'DIST_FILES' in str]
+        self.assertEqual(found, expected)
+
+    def test_localized_files(self):
+        """Test that LOCALIZED_FILES is written to backend.mk correctly."""
+        env = self._consume('localized-files', RecursiveMakeBackend)
+
+        backend_path = mozpath.join(env.topobjdir, 'backend.mk')
+        lines = [l.strip() for l in open(backend_path, 'rt').readlines()[2:]]
+
+        expected = [
+            'LOCALIZED_FILES_0_FILES += $(wildcard $(LOCALE_SRCDIR)/abc/*.abc)',
+            'LOCALIZED_FILES_0_FILES += $(call MERGE_FILE,bar.ini)',
+            'LOCALIZED_FILES_0_FILES += $(call MERGE_FILE,foo.js)',
+            'LOCALIZED_FILES_0_DEST = $(FINAL_TARGET)/',
+            'LOCALIZED_FILES_0_TARGET := libs',
+            'INSTALL_TARGETS += LOCALIZED_FILES_0',
+        ]
+
+        found = [str for str in lines if 'LOCALIZED_FILES' in str]
+        self.assertEqual(found, expected)
+
+    def test_localized_pp_files(self):
+        """Test that LOCALIZED_PP_FILES is written to backend.mk correctly."""
+        env = self._consume('localized-pp-files', RecursiveMakeBackend)
+
+        backend_path = mozpath.join(env.topobjdir, 'backend.mk')
+        lines = [l.strip() for l in open(backend_path, 'rt').readlines()[2:]]
+
+        expected = [
+            'LOCALIZED_PP_FILES_0 += $(call MERGE_FILE,bar.ini)',
+            'LOCALIZED_PP_FILES_0 += $(call MERGE_FILE,foo.js)',
+            'LOCALIZED_PP_FILES_0_PATH = $(FINAL_TARGET)/',
+            'LOCALIZED_PP_FILES_0_TARGET := libs',
+            'LOCALIZED_PP_FILES_0_FLAGS := --silence-missing-directive-warnings',
+            'PP_TARGETS += LOCALIZED_PP_FILES_0',
+        ]
+
+        found = [str for str in lines if 'LOCALIZED_PP_FILES' in str]
         self.assertEqual(found, expected)
 
     def test_config(self):

@@ -212,7 +212,7 @@ this.MigratorPrototype = {
       return [];
     }
     let types = resources.map(r => r.type);
-    return types.reduce((a, b) => { a |= b; return a }, 0);
+    return types.reduce((a, b) => { a |= b; return a; }, 0);
   },
 
   getBrowserKey: function MP_getBrowserKey() {
@@ -364,13 +364,7 @@ this.MigratorPrototype = {
             resourceDone(false);
           }
 
-          // Certain resources must be ran sequentially or they could fail,
-          // for example bookmarks and history (See bug 1272652).
-          if (migrationType == MigrationUtils.resourceTypes.BOOKMARKS ||
-              migrationType == MigrationUtils.resourceTypes.HISTORY) {
-            await completeDeferred.promise;
-          }
-
+          await completeDeferred.promise;
           await unblockMainThread();
         }
       }
@@ -699,13 +693,13 @@ this.MigrationUtils = Object.freeze({
       try {
         migrator = Cc["@mozilla.org/profile/migrator;1?app=browser&type=" +
                       aKey].createInstance(Ci.nsIBrowserProfileMigrator);
-      } catch (ex) { Cu.reportError(ex) }
+      } catch (ex) { Cu.reportError(ex); }
       this._migrators.set(aKey, migrator);
     }
 
     try {
       return migrator && migrator.sourceExists ? migrator : null;
-    } catch (ex) { Cu.reportError(ex); return null }
+    } catch (ex) { Cu.reportError(ex); return null; }
   },
 
   /**

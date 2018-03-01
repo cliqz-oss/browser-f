@@ -112,11 +112,13 @@ class Simulator
     explicit Simulator(JSContext* cx);
     ~Simulator();
 
+    static bool supportsAtomics() { return HasLDSTREXBHD(); }
+
     // The currently executing Simulator instance. Potentially there can be one
     // for each native thread.
     static Simulator* Current();
 
-    static inline uintptr_t StackLimit() {
+    static uintptr_t StackLimit() {
         return Simulator::Current()->stackLimit();
     }
 
@@ -294,7 +296,8 @@ class Simulator
     void startWasmInterrupt(JitActivation* act);
 
     // Handle any wasm faults, returning true if the fault was handled.
-    bool handleWasmFault(int32_t addr, unsigned numBytes);
+    bool handleWasmSegFault(int32_t addr, unsigned numBytes);
+    bool handleWasmIllFault();
 
     // Read and write memory.
     inline uint8_t readBU(int32_t addr);

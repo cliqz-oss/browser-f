@@ -33,6 +33,7 @@ XPCOMUtils.defineLazyServiceGetter(Svc, "mime",
                                    "@mozilla.org/mime;1",
                                    "nsIMIMEService");
 
+/* eslint-disable semi */
 var DEFAULT_PREFERENCES =
 {
   "showPreviousViewOnLoad": true,
@@ -57,6 +58,7 @@ var DEFAULT_PREFERENCES =
   "disablePageLabels": false
 }
 
+/* eslint-enable semi */
 
 var PdfjsChromeUtils = {
   // For security purposes when running remote, we restrict preferences

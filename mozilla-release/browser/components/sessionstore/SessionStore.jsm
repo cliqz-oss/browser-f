@@ -29,6 +29,7 @@ const NOTIFY_INITIATING_MANUAL_RESTORE = "sessionstore-initiating-manual-restore
 const NOTIFY_CLOSED_OBJECTS_CHANGED = "sessionstore-closed-objects-changed";
 
 const NOTIFY_TAB_RESTORED = "sessionstore-debug-tab-restored"; // WARNING: debug-only
+const NOTIFY_DOMWINDOWCLOSED_HANDLED = "sessionstore-debug-domwindowclosed-handled"; // WARNING: debug-only
 
 // Maximum number of tabs to restore simultaneously. Previously controlled by
 // the browser.sessionstore.max_concurrent_tabs pref.
@@ -772,6 +773,9 @@ var SessionStoreInternal = {
         this.onClose(aSubject).then(() => {
           this._notifyOfClosedObjectsChange();
         });
+        if (gDebuggingEnabled) {
+          Services.obs.notifyObservers(null, NOTIFY_DOMWINDOWCLOSED_HANDLED);
+        }
         break;
       case "quit-application-granted":
         let syncShutdown = aData == "syncShutdown";
@@ -3279,7 +3283,7 @@ var SessionStoreInternal = {
       tabMap.set(tab, tabData);
       tabsData.push(tabData);
     }
-    winData.selected = tabbrowser.mTabBox.selectedIndex + 1;
+    winData.selected = tabbrowser.tabbox.selectedIndex + 1;
 
     this._updateWindowFeatures(aWindow);
 
@@ -3894,11 +3898,7 @@ var SessionStoreInternal = {
 
     this.markTabAsRestoring(aTab);
 
-    // We need a new frameloader if we are reloading into a browser with a
-    // grouped session history (as we don't support restoring into browsers
-    // with grouped session histories directly).
-    let newFrameloader =
-      aOptions.newFrameloader || !!browser.frameLoader.groupedSHistory;
+    let newFrameloader = aOptions.newFrameloader;
 
     let isRemotenessUpdate;
     if (aOptions.remoteType !== undefined) {

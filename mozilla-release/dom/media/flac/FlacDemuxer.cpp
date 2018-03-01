@@ -7,7 +7,7 @@
 #include "FlacDemuxer.h"
 
 #include "mozilla/Maybe.h"
-#include "mp4_demuxer/BitReader.h"
+#include "BitReader.h"
 #include "nsAutoPtr.h"
 #include "prenv.h"
 #include "FlacFrameParser.h"
@@ -15,10 +15,10 @@
 #include "TimeUnits.h"
 
 extern mozilla::LazyLogModule gMediaDemuxerLog;
-#define LOG(msg, ...) \
-  MOZ_LOG(gMediaDemuxerLog, LogLevel::Debug, ("FlacDemuxer " msg, ##__VA_ARGS__))
-#define LOGV(msg, ...) \
-  MOZ_LOG(gMediaDemuxerLog, LogLevel::Verbose, ("FlacDemuxer " msg, ##__VA_ARGS__))
+#define LOG(msg, ...)                                                          \
+  DDMOZ_LOG(gMediaDemuxerLog, LogLevel::Debug, msg, ##__VA_ARGS__)
+#define LOGV(msg, ...)                                                         \
+  DDMOZ_LOG(gMediaDemuxerLog, LogLevel::Verbose, msg, ##__VA_ARGS__)
 
 using namespace mozilla::media;
 
@@ -46,7 +46,7 @@ public:
   // valid CRC.
   bool Parse(const uint8_t* aPacket, size_t aBytes)
   {
-    mp4_demuxer::BitReader br(aPacket, aBytes * 8);
+    BitReader br(aPacket, aBytes * 8);
 
     // Frame sync code.
     if ((br.ReadBits(15) & 0x7fff) != 0x7ffc) {
@@ -559,13 +559,18 @@ private:
 
 // FlacDemuxer
 
-FlacDemuxer::FlacDemuxer(MediaResource* aSource) : mSource(aSource) { }
+FlacDemuxer::FlacDemuxer(MediaResource* aSource)
+  : mSource(aSource)
+{
+  DDLINKCHILD("source", aSource);
+}
 
 bool
 FlacDemuxer::InitInternal()
 {
   if (!mTrackDemuxer) {
     mTrackDemuxer = new FlacTrackDemuxer(mSource);
+    DDLINKCHILD("track demuxer", mTrackDemuxer.get());
   }
   return mTrackDemuxer->Init();
 }
@@ -612,6 +617,7 @@ FlacTrackDemuxer::FlacTrackDemuxer(MediaResource* aSource)
   , mParser(new flac::FrameParser())
   , mTotalFrameLen(0)
 {
+  DDLINKCHILD("source", aSource);
   Reset();
 }
 

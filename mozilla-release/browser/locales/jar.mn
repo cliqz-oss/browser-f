@@ -19,9 +19,6 @@
     locale/browser/aboutRobots.dtd                 (%chrome/browser/aboutRobots.dtd)
     locale/browser/aboutHome.dtd                   (%chrome/browser/aboutHome.dtd)
     locale/browser/accounts.properties             (%chrome/browser/accounts.properties)
-#ifdef MOZ_SERVICES_HEALTHREPORT
-    locale/browser/aboutHealthReport.dtd           (%chrome/browser/aboutHealthReport.dtd)
-#endif
     locale/browser/aboutSearchReset.dtd            (%chrome/browser/aboutSearchReset.dtd)
     locale/browser/aboutSessionRestore.dtd         (%chrome/browser/aboutSessionRestore.dtd)
     locale/browser/aboutTabCrashed.dtd             (%chrome/browser/aboutTabCrashed.dtd)
@@ -75,7 +72,6 @@
     locale/browser/preferences/containers.properties     (%chrome/browser/preferences/containers.properties)
     locale/browser/preferences/content.dtd            (%chrome/browser/preferences/content.dtd)
     locale/browser/preferences/cookies.dtd            (%chrome/browser/preferences/cookies.dtd)
-    locale/browser/preferences/donottrack.dtd         (%chrome/browser/preferences/donottrack.dtd)
     locale/browser/preferences/fonts.dtd              (%chrome/browser/preferences/fonts.dtd)
     locale/browser/preferences/languages.dtd          (%chrome/browser/preferences/languages.dtd)
     locale/browser/preferences/main.dtd               (%chrome/browser/preferences/main.dtd)

@@ -27,7 +27,6 @@
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/Hal.h"
 #include "mozilla/IMEStateManager.h"
-#include "mozilla/ipc/DocumentRendererParent.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "mozilla/layers/AsyncDragMetrics.h"
 #include "mozilla/layers/InputAPZContext.h"
@@ -98,8 +97,6 @@
 #include "UnitTransforms.h"
 #include <algorithm>
 #include "mozilla/WebBrowserPersistDocumentParent.h"
-#include "nsIGroupedSHistory.h"
-#include "PartialSHistory.h"
 #include "ProcessPriorityManager.h"
 #include "nsString.h"
 #include "NullPrincipal.h"
@@ -171,8 +168,10 @@ TabParent::TabParent(nsIContentParent* aManager,
 #ifdef DEBUG
   , mActiveSupressDisplayportCount(0)
 #endif
-  , mLayerTreeEpoch(0)
+  , mLayerTreeEpoch(1)
   , mPreserveLayers(false)
+  , mRenderLayers(true)
+  , mHasLayers(false)
   , mHasPresented(false)
   , mHasBeforeUnload(false)
   , mIsMouseEnterIntoWidgetEventSuppressed(false)
@@ -1007,24 +1006,6 @@ TabParent::GetTopLevelDocAccessible() const
                                 "there shouldn't be an accessible doc at all!");
 #endif
   return nullptr;
-}
-
-PDocumentRendererParent*
-TabParent::AllocPDocumentRendererParent(const nsRect& documentRect,
-                                        const gfx::Matrix& transform,
-                                        const nsString& bgcolor,
-                                        const uint32_t& renderFlags,
-                                        const bool& flushLayout,
-                                        const nsIntSize& renderSize)
-{
-    return new DocumentRendererParent();
-}
-
-bool
-TabParent::DeallocPDocumentRendererParent(PDocumentRendererParent* actor)
-{
-    delete actor;
-    return true;
 }
 
 PFilePickerParent*
@@ -2244,6 +2225,7 @@ TabParent::RecvAccessKeyNotHandled(const WidgetKeyboardEvent& aEvent)
   //     twice or more for a keyboard event, that must be a bug.  But how to
   //     detect if received event has already been handled?
 
+  MOZ_ASSERT(aEvent.mMessage == eKeyPress);
   WidgetKeyboardEvent localEvent(aEvent);
   localEvent.MarkAsHandledInRemoteProcess();
   localEvent.mMessage = eAccessKeyNotFound;
@@ -2902,14 +2884,9 @@ TabParent::GetUseAsyncPanZoom(bool* useAsyncPanZoom)
 NS_IMETHODIMP
 TabParent::SetDocShellIsActive(bool isActive)
 {
-  // Increment the epoch so that layer tree updates from previous
-  // SetDocShellIsActive requests are ignored.
-  mLayerTreeEpoch++;
-
-  // docshell is consider prerendered only if not active yet
-  mIsPrerendered &= !isActive;
   mDocShellIsActive = isActive;
-  Unused << SendSetDocShellIsActive(isActive, mPreserveLayers, mLayerTreeEpoch);
+  SetRenderLayers(isActive);
+  Unused << SendSetDocShellIsActive(isActive);
 
   // update active accessible documents on windows
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
@@ -2932,13 +2909,6 @@ TabParent::SetDocShellIsActive(bool isActive)
   // changing of the process priority.
   ProcessPriorityManager::TabActivityChanged(this, isActive);
 
-  // Ask the child to repaint using the PHangMonitor channel/thread (which may
-  // be less congested).
-  if (isActive) {
-    ContentParent* cp = Manager()->AsContentParent();
-    cp->ForceTabPaint(this, mLayerTreeEpoch);
-  }
-
   return NS_OK;
 }
 
@@ -2950,9 +2920,62 @@ TabParent::GetDocShellIsActive(bool* aIsActive)
 }
 
 NS_IMETHODIMP
-TabParent::GetIsPrerendered(bool* aIsPrerendered)
+TabParent::SetRenderLayers(bool aEnabled)
 {
-  *aIsPrerendered = mIsPrerendered;
+  if (aEnabled == mRenderLayers) {
+    if (aEnabled && mHasLayers && mPreserveLayers) {
+      // RenderLayers might be called when we've been preserving layers,
+      // and already had layers uploaded. In that case, the MozLayerTreeReady
+      // event will not naturally arrive, which can confuse the front-end
+      // layer. So we fire the event here.
+      RefPtr<TabParent> self = this;
+      uint64_t epoch = mLayerTreeEpoch;
+      NS_DispatchToMainThread(NS_NewRunnableFunction(
+        "dom::TabParent::RenderLayers",
+        [self, epoch] () {
+          MOZ_ASSERT(NS_IsMainThread());
+          self->LayerTreeUpdate(epoch, true);
+        }));
+    }
+
+    return NS_OK;
+  }
+
+  // Preserve layers means that attempts to stop rendering layers
+  // will be ignored.
+  if (!aEnabled && mPreserveLayers) {
+    return NS_OK;
+  }
+
+  mRenderLayers = aEnabled;
+
+  // Increment the epoch so that layer tree updates from previous
+  // RenderLayers requests are ignored.
+  mLayerTreeEpoch++;
+
+  Unused << SendRenderLayers(aEnabled, mLayerTreeEpoch);
+
+  // Ask the child to repaint using the PHangMonitor channel/thread (which may
+  // be less congested).
+  if (aEnabled) {
+    ContentParent* cp = Manager()->AsContentParent();
+    cp->ForceTabPaint(this, mLayerTreeEpoch);
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TabParent::GetRenderLayers(bool* aResult)
+{
+  *aResult = mRenderLayers;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TabParent::GetHasLayers(bool* aResult)
+{
+  *aResult = mHasLayers;
   return NS_OK;
 }
 
@@ -3043,35 +3066,6 @@ TabParent::GetHasBeforeUnload(bool* aResult)
   return NS_OK;
 }
 
-class LayerTreeUpdateRunnable final
-  : public mozilla::Runnable
-{
-  uint64_t mLayersId;
-  uint64_t mEpoch;
-  bool mActive;
-
-public:
-  explicit LayerTreeUpdateRunnable(uint64_t aLayersId,
-                                   uint64_t aEpoch,
-                                   bool aActive)
-    : Runnable("dom::LayerTreeUpdateRunnable")
-    , mLayersId(aLayersId)
-    , mEpoch(aEpoch)
-    , mActive(aActive)
-  {
-    MOZ_ASSERT(!NS_IsMainThread());
-  }
-
-private:
-  NS_IMETHOD Run() override {
-    MOZ_ASSERT(NS_IsMainThread());
-    if (RefPtr<TabParent> tabParent = TabParent::GetTabParentFromLayersId(mLayersId)) {
-      tabParent->LayerTreeUpdate(mEpoch, mActive);
-    }
-    return NS_OK;
-  }
-};
-
 void
 TabParent::LayerTreeUpdate(uint64_t aEpoch, bool aActive)
 {
@@ -3087,6 +3081,8 @@ TabParent::LayerTreeUpdate(uint64_t aEpoch, bool aActive)
     NS_WARNING("Could not locate target for layer tree message.");
     return;
   }
+
+  mHasLayers = aActive;
 
   RefPtr<Event> event = NS_NewDOMEvent(mFrameElement, nullptr, nullptr);
   if (aActive) {
@@ -3571,45 +3567,6 @@ TabParent::RecvLookUpDictionary(const nsString& aText,
 
   widget->LookUpDictionary(aText, aFontRangeArray, aIsVertical,
                            aPoint - GetChildProcessOffset());
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
-TabParent::RecvSHistoryUpdate(const uint32_t& aCount, const uint32_t& aLocalIndex, const bool& aTruncate)
-{
-  RefPtr<nsFrameLoader> frameLoader(GetFrameLoader());
-  if (!frameLoader) {
-    // FrameLoader can be nullptr if the it is destroying.
-    // In this case session history change can simply be ignored.
-    return IPC_OK();
-  }
-
-  nsCOMPtr<nsIPartialSHistory> partialHistory;
-  frameLoader->GetPartialSHistory(getter_AddRefs(partialHistory));
-  if (!partialHistory) {
-    // PartialSHistory is not enabled
-    return IPC_OK();
-  }
-
-  partialHistory->HandleSHistoryUpdate(aCount, aLocalIndex, aTruncate);
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
-TabParent::RecvRequestCrossBrowserNavigation(const uint32_t& aGlobalIndex)
-{
-  RefPtr<nsFrameLoader> frameLoader(GetFrameLoader());
-  if (!frameLoader) {
-    // FrameLoader can be nullptr if the it is destroying.
-    // In this case we can ignore the request.
-    return IPC_OK();
-  }
-
-  nsCOMPtr<nsISupports> promise;
-  if (NS_FAILED(frameLoader->RequestGroupedHistoryNavigation(aGlobalIndex,
-                                                             getter_AddRefs(promise)))) {
-    return IPC_FAIL_NO_REASON(this);
-  }
   return IPC_OK();
 }
 

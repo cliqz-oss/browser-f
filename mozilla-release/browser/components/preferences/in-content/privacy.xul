@@ -6,165 +6,6 @@
 
 <script type="application/javascript"
         src="chrome://browser/content/preferences/in-content/privacy.js"/>
-
-<preferences id="privacyPreferences" hidden="true" data-category="panePrivacy">
-
-  <!-- Tracking -->
-  <preference id="privacy.trackingprotection.enabled"
-              name="privacy.trackingprotection.enabled"
-              type="bool"/>
-  <preference id="privacy.trackingprotection.pbmode.enabled"
-              name="privacy.trackingprotection.pbmode.enabled"
-              type="bool"/>
-
-  <!-- XXX button prefs -->
-  <preference id="pref.privacy.disable_button.cookie_exceptions"
-              name="pref.privacy.disable_button.cookie_exceptions"
-              type="bool"/>
-  <preference id="pref.privacy.disable_button.view_cookies"
-              name="pref.privacy.disable_button.view_cookies"
-              type="bool"/>
-  <preference id="pref.privacy.disable_button.change_blocklist"
-              name="pref.privacy.disable_button.change_blocklist"
-              type="bool"/>
-  <preference id="pref.privacy.disable_button.tracking_protection_exceptions"
-              name="pref.privacy.disable_button.tracking_protection_exceptions"
-              type="bool"/>
-
-  <!-- Location Bar -->
-  <preference id="browser.urlbar.autocomplete.enabled"
-              name="browser.urlbar.autocomplete.enabled"
-              type="bool"/>
-  <preference id="browser.urlbar.suggest.bookmark"
-              name="browser.urlbar.suggest.bookmark"
-              type="bool"/>
-  <preference id="browser.urlbar.suggest.history"
-              name="browser.urlbar.suggest.history"
-              type="bool"/>
-  <preference id="browser.urlbar.suggest.openpage"
-              name="browser.urlbar.suggest.openpage"
-              type="bool"/>
-
-  <!-- History -->
-  <preference id="places.history.enabled"
-              name="places.history.enabled"
-              type="bool"/>
-  <preference id="browser.formfill.enable"
-              name="browser.formfill.enable"
-              type="bool"/>
-  <preference id="privacy.history.custom"
-              name="privacy.history.custom"
-              type="bool"/>
-  <!-- Cookies -->
-  <preference id="network.cookie.cookieBehavior"
-              name="network.cookie.cookieBehavior"
-              type="int"/>
-  <preference id="network.cookie.lifetimePolicy"
-              name="network.cookie.lifetimePolicy"
-              type="int"/>
-  <preference id="network.cookie.blockFutureCookies"
-              name="network.cookie.blockFutureCookies"
-              type="bool"/>
-  <!-- Clear Private Data -->
-  <preference id="privacy.sanitize.sanitizeOnShutdown"
-              name="privacy.sanitize.sanitizeOnShutdown"
-              type="bool"/>
-  <preference id="privacy.sanitize.timeSpan"
-              name="privacy.sanitize.timeSpan"
-              type="int"/>
-  <!-- Private Browsing -->
-  <preference id="browser.privatebrowsing.autostart"
-              name="browser.privatebrowsing.autostart"
-              type="bool"/>
-  <!-- Do not track -->
-  <preference id="privacy.donottrackheader.enabled"
-              name="privacy.donottrackheader.enabled"
-              type="bool"/>
-  <!-- Popups -->
-  <preference id="dom.disable_open_during_load"
-              name="dom.disable_open_during_load"
-              type="bool"/>
-  <!-- Passwords -->
-  <preference id="signon.rememberSignons" name="signon.rememberSignons" type="bool"/>
-
-  <!-- XXX buttons -->
-  <preference id="pref.privacy.disable_button.view_passwords"
-              name="pref.privacy.disable_button.view_passwords"
-              type="bool"/>
-  <preference id="pref.privacy.disable_button.view_passwords_exceptions"
-              name="pref.privacy.disable_button.view_passwords_exceptions"
-              type="bool"/>
-
-  <!-- Certificates tab
-   * security.default_personal_cert
-     - a string:
-         "Select Automatically"   select a certificate automatically when a site
-                                  requests one
-         "Ask Every Time"         present a dialog to the user so he can select
-                                  the certificate to use on a site which
-                                  requests one -->
-  <preference id="security.default_personal_cert"
-              name="security.default_personal_cert"
-              type="string"/>
-
-  <preference id="security.disable_button.openCertManager"
-              name="security.disable_button.openCertManager"
-              type="bool"/>
-
-  <preference id="security.disable_button.openDeviceManager"
-              name="security.disable_button.openDeviceManager"
-              type="bool"/>
-
-  <preference id="security.OCSP.enabled"
-              name="security.OCSP.enabled"
-              type="int"/>
-
-  <!-- Add-ons, malware, phishing -->
-  <preference id="xpinstall.whitelist.required"
-              name="xpinstall.whitelist.required"
-              type="bool"/>
-
-  <preference id="browser.safebrowsing.malware.enabled"
-              name="browser.safebrowsing.malware.enabled"
-              type="bool"/>
-  <preference id="browser.safebrowsing.phishing.enabled"
-              name="browser.safebrowsing.phishing.enabled"
-              type="bool"/>
-
-  <preference id="browser.safebrowsing.downloads.enabled"
-              name="browser.safebrowsing.downloads.enabled"
-              type="bool"/>
-
-  <preference id="urlclassifier.malwareTable"
-              name="urlclassifier.malwareTable"
-              type="string"/>
-
-  <preference id="browser.safebrowsing.downloads.remote.block_potentially_unwanted"
-              name="browser.safebrowsing.downloads.remote.block_potentially_unwanted"
-              type="bool"/>
-  <preference id="browser.safebrowsing.downloads.remote.block_uncommon"
-              name="browser.safebrowsing.downloads.remote.block_uncommon"
-              type="bool"/>
-
-  <!-- Network tab -->
-  <preference id="browser.cache.disk.capacity"
-              name="browser.cache.disk.capacity"
-              type="int"/>
-
-  <preference id="browser.cache.disk.smart_size.enabled"
-              name="browser.cache.disk.smart_size.enabled"
-              inverted="true"
-              type="bool"/>
-
-  <!-- Data Choices tab -->
-#ifdef MOZ_CRASHREPORTER
-  <preference id="browser.crashReports.unsubmittedCheck.autoSubmit2"
-              name="browser.crashReports.unsubmittedCheck.autoSubmit2"
-              type="bool"/>
-#endif
-
-</preferences>
-
 <stringbundle id="bundlePreferences" src="chrome://browser/locale/preferences/preferences.properties"/>
 <stringbundle id="signonBundle" src="chrome://passwordmgr/locale/passwordmgr.properties"/>
 
@@ -415,7 +256,7 @@
   <checkbox id="openpageSuggestion" label="&locbar.openpage.label;"
             accesskey="&locbar.openpage.accesskey;"
             preference="browser.urlbar.suggest.openpage"/>
-  <label class="text-link" onclick="gotoPref('search')">
+  <label class="text-link" id="openSearchEnginePreferences">
     &suggestionSettings2.label;
   </label>
 </groupbox>
@@ -482,41 +323,55 @@
     <hbox align="start">
       <vbox flex="1">
         <description>
-          &trackingProtection2.description;
+          &trackingProtection3.description;
+          <label id="trackingProtectionLearnMore" class="learnMore text-link">&trackingProtectionLearnMore2.label;</label>
         </description>
       </vbox>
       <spacer flex="1"/>
     </hbox>
     <hbox>
       <vbox id="trackingProtectionBox" flex="1" hidden="true">
-        <description id="trackingProtectionDesc"
-                     control="trackingProtectionRadioGroup">
-           <label class="tail-with-learn-more">&trackingProtection2.radioGroupLabel;</label>
-           <label id="trackingProtectionLearnMore" class="learnMore text-link">&trackingProtectionLearnMore.label;</label>
-        </description>
-        <radiogroup id="trackingProtectionRadioGroup" aria-labelledby="trackingProtectionDesc">
-          <radio value="always"
-                 label="&trackingProtectionAlways.label;"
-                 accesskey="&trackingProtectionAlways.accesskey;"/>
-          <radio value="private"
-                 label="&trackingProtectionPrivate.label;"
-                 accesskey="&trackingProtectionPrivate.accesskey;"/>
-          <radio value="never"
-                 label="&trackingProtectionNever.label;"
-                 accesskey="&trackingProtectionNever.accesskey;"/>
-        </radiogroup>
+        <vbox>
+          <hbox id="trackingProtectionExtensionContentLabel" align="center" hidden="true">
+            <description control="disableTrackingProtectionExtension" flex="1"/>
+          </hbox>
+          <vbox>
+            <description id="trackingProtectionDesc"
+                         control="trackingProtectionRadioGroup">
+               <label>&trackingProtection3.radioGroupLabel;</label>
+            </description>
+            <radiogroup id="trackingProtectionRadioGroup" aria-labelledby="trackingProtectionDesc">
+              <radio value="always"
+                     label="&trackingProtectionAlways.label;"
+                     accesskey="&trackingProtectionAlways.accesskey;"/>
+              <radio value="private"
+                     label="&trackingProtectionPrivate.label;"
+                     accesskey="&trackingProtectionPrivate.accesskey;"/>
+              <radio value="never"
+                     label="&trackingProtectionNever.label;"
+                     accesskey="&trackingProtectionNever.accesskey;"/>
+            </radiogroup>
+          </vbox>
+        </vbox>
       </vbox>
       <vbox id="trackingProtectionPBMBox" flex="1">
-        <hbox align="center">
+        <hbox id="trackingProtectionPBMExtensionContentLabel" align="center" hidden="true">
+          <description control="disableTrackingProtectionExtension" flex="1"/>
+        </hbox>
+        <hbox align="start">
           <checkbox id="trackingProtectionPBM"
                     preference="privacy.trackingprotection.pbmode.enabled"
                     accesskey="&trackingProtectionPBM6.accesskey;"/>
-          <label flex="1">&trackingProtectionPBM6.label;<spacer class="tail-with-learn-more" /><label id="trackingProtectionPBMLearnMore"
-                 class="learnMore text-link">&trackingProtectionPBMLearnMore.label;</label>
-          </label>
+          <label id="trackingProtectionPBMLabel" flex="1">&trackingProtectionPBM6.label;</label>
         </hbox>
       </vbox>
       <vbox id="trackingProtectionAdvancedSettings">
+        <hbox id="trackingProtectionExtensionContentButton" hidden="true">
+          <button id="disableTrackingProtectionExtension"
+                  class="extension-controlled-button accessory-button"
+                  flex="1"
+                  label="&disableExtension.label;"/>
+        </hbox>
         <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
         <hbox>
           <button id="trackingProtectionExceptions"
@@ -544,12 +399,12 @@
       </vbox>
     </hbox>
     <vbox id="doNotTrackLearnMoreBox">
-      <label><label class="tail-with-learn-more">&doNotTrack.description;</label><label
+      <label><label class="tail-with-learn-more" data-l10n-id="do-not-track-description"></label><label
       class="learnMore text-link" href="https://www.mozilla.org/dnt"
-      >&doNotTrack.learnMore.label;</label></label>
+      data-l10n-id="do-not-track-learn-more"></label></label>
       <radiogroup id="doNotTrackRadioGroup" aria-labelledby="doNotTrackDesc" preference="privacy.donottrackheader.enabled">
-        <radio value="false" label="&doNotTrack.default.label;"/>
-        <radio value="true" label="&doNotTrack.always.label;"/>
+        <radio value="false" data-l10n-id="do-not-track-option-default"/>
+        <radio value="true" data-l10n-id="do-not-track-option-always"/>
       </radiogroup>
     </vbox>
   </vbox>
@@ -707,20 +562,19 @@
 <hbox id="dataCollectionCategory"
       class="subcategory"
       hidden="true"
-      data-category="panePrivacy"
-      data-subcategory="reports">
+      data-category="panePrivacy">
   <label class="header-name" flex="1">&dataCollection.label;</label>
 </hbox>
 
 <!-- Firefox Data Collection and Use -->
 #ifdef MOZ_DATA_REPORTING
-<groupbox id="dataCollectionGroup" data-category="panePrivacy" data-subcategory="reports" hidden="true">
+<groupbox id="dataCollectionGroup" data-category="panePrivacy" hidden="true">
   <caption class="search-header" hidden="true"><label>&dataCollection.label;</label></caption>
 
-  <vbox>
-    <description>
-      <label class="tail-with-learn-more">&dataCollectionDesc.label;</label><label id="dataCollectionPrivacyNotice" class="learnMore text-link">&dataCollectionPrivacyNotice.label;</label>
-    </description>
+  <description>
+    <label class="tail-with-learn-more">&dataCollectionDesc.label;</label><label id="dataCollectionPrivacyNotice" class="learnMore text-link">&dataCollectionPrivacyNotice.label;</label>
+  </description>
+  <vbox data-subcategory="reports">
     <description flex="1">
       <checkbox id="submitHealthReportBox" label="&enableHealthReport2.label;"
                 class="tail-with-learn-more"
@@ -731,18 +585,19 @@
 #ifndef MOZ_TELEMETRY_REPORTING
     <description id="TelemetryDisabledDesc" class="indent tip-caption" control="telemetryGroup">&healthReportingDisabled.label;</description>
 #endif
-  </vbox>
+
 #ifdef MOZ_CRASHREPORTER
-  <hbox align="center">
-    <checkbox id="automaticallySubmitCrashesBox"
-              class="tail-with-learn-more"
-              preference="browser.crashReports.unsubmittedCheck.autoSubmit2"
-              label="&alwaysSubmitCrashReports1.label;"
-              accesskey="&alwaysSubmitCrashReports1.accesskey;"/>
-    <label id="crashReporterLearnMore"
-           class="learnMore text-link">&crashReporterLearnMore.label;</label>
-  </hbox>
+    <hbox align="center">
+      <checkbox id="automaticallySubmitCrashesBox"
+                class="tail-with-learn-more"
+                preference="browser.crashReports.unsubmittedCheck.autoSubmit2"
+                label="&alwaysSubmitCrashReports1.label;"
+                accesskey="&alwaysSubmitCrashReports1.accesskey;"/>
+      <label id="crashReporterLearnMore"
+             class="learnMore text-link">&crashReporterLearnMore.label;</label>
+    </hbox>
 #endif
+  </vbox>
 </groupbox>
 #endif
 

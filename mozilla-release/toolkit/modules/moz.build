@@ -38,7 +38,7 @@ with Files('tests/xpcshell/test_JSONFile.js'):
     BUG_COMPONENT = ('Toolkit', 'Form Manager')
 
 with Files('tests/xpcshell/test_Match*.js'):
-    BUG_COMPONENT = ('Toolkit', 'WebExtentions: General')
+    BUG_COMPONENT = ('Toolkit', 'WebExtensions: General')
 
 with Files('tests/xpcshell/test_NewTabUtils.js'):
     BUG_COMPONENT = ('Firefox', 'New Tab Page')
@@ -70,6 +70,9 @@ with Files('DateTimePickerHelper.jsm'):
 with Files('DeferredTask.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Async Tooling')
 
+with Files("E10SUtils.jsm"):
+    BUG_COMPONENT = ("Core", "Security: Process Sandboxing")
+
 with Files('Finder*.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Find Toolbar')
 
@@ -77,7 +80,7 @@ with Files('FormLikeFactory.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Password Manager')
 
 with Files('IndexedDB.jsm'):
-    BUG_COMPONENT = ('Toolkit', 'Web Extensions: General')
+    BUG_COMPONENT = ('Toolkit', 'WebExtensions: General')
 
 with Files('InlineSpellChecker*.jsm'):
     BUG_COMPONENT = ('Core', 'Spell Checker')
@@ -162,6 +165,9 @@ TESTING_JS_MODULES += [
 
 SPHINX_TREES['toolkit_modules'] = 'docs'
 
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']
+
 EXTRA_JS_MODULES += [
     'addons/MatchURLFilters.jsm',
     'addons/WebNavigation.jsm',
@@ -187,6 +193,7 @@ EXTRA_JS_MODULES += [
     'debug.js',
     'DeferredTask.jsm',
     'Deprecated.jsm',
+    'E10SUtils.jsm',
     'EventEmitter.jsm',
     'FileUtils.jsm',
     'Finder.jsm',
@@ -258,14 +265,13 @@ EXTRA_JS_MODULES.sessionstore += [
     'sessionstore/Utils.jsm',
 ]
 
-DEFINES['INSTALL_COMPACT_THEMES'] = 1
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa', 'gtk3'):
     DEFINES['CAN_DRAW_IN_TITLEBAR'] = 1
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk2', 'gtk3'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3'):
     DEFINES['MENUBAR_CAN_AUTOHIDE'] = 1
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk2', 'gtk3', 'cocoa'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3', 'cocoa'):
     DEFINES['HAVE_SHELL_SERVICE'] = 1
 
 EXTRA_PP_JS_MODULES += [

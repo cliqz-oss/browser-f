@@ -711,15 +711,7 @@ Declaration::GetPropertyValueInternal(
           !data->HasDefaultBorderImageSlice() ||
           !data->HasDefaultBorderImageWidth() ||
           !data->HasDefaultBorderImageOutset() ||
-          !data->HasDefaultBorderImageRepeat() ||
-          data->ValueFor(eCSSProperty__moz_border_top_colors)->GetUnit() !=
-            eCSSUnit_None ||
-          data->ValueFor(eCSSProperty__moz_border_right_colors)->GetUnit() !=
-            eCSSUnit_None ||
-          data->ValueFor(eCSSProperty__moz_border_bottom_colors)->GetUnit() !=
-            eCSSUnit_None ||
-          data->ValueFor(eCSSProperty__moz_border_left_colors)->GetUnit() !=
-            eCSSUnit_None) {
+          !data->HasDefaultBorderImageRepeat()) {
         break;
       }
 
@@ -1422,6 +1414,7 @@ Declaration::GetPropertyValueInternal(
       }
       MOZ_FALLTHROUGH;
     }
+    case eCSSProperty_overflow_clip_box:
     case eCSSProperty_grid_gap: {
       const nsCSSPropertyID* subprops =
         nsCSSProps::SubpropertyEntryFor(aProperty);
@@ -1466,6 +1459,18 @@ Declaration::GetPropertyValueInternal(
       MOZ_ASSERT(subprops[1] == eCSSProperty_UNKNOWN,
                  "must have exactly one subproperty");
       AppendValueToString(subprops[0], aValue);
+      break;
+    }
+    case eCSSProperty_overscroll_behavior: {
+      const nsCSSValue& xValue =
+        *data->ValueFor(eCSSProperty_overscroll_behavior_x);
+      const nsCSSValue& yValue =
+        *data->ValueFor(eCSSProperty_overscroll_behavior_y);
+      AppendValueToString(eCSSProperty_overscroll_behavior_x, aValue);
+      if (yValue != xValue) {
+        aValue.Append(char16_t(' '));
+        AppendValueToString(eCSSProperty_overscroll_behavior_y, aValue);
+      }
       break;
     }
     case eCSSProperty_scroll_snap_type: {

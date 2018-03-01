@@ -12,6 +12,7 @@
 #include "js/TypeDecls.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/NotNull.h"
+#include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"
 #include "nsIURI.h"
 class nsPresContext;
@@ -19,6 +20,9 @@ class nsIPresShell;
 namespace mozilla {
 class Encoding;
 class HTMLEditor;
+namespace dom {
+class ClientSource;
+} // namespace dom
 }
 %}
 
@@ -30,6 +34,7 @@ class HTMLEditor;
 [ptr] native nsIPresShell(nsIPresShell);
 [ref] native MaybeURI(mozilla::Maybe<nsCOMPtr<nsIURI>>);
 [ref] native Encoding(const mozilla::Encoding*);
+      native UniqueClientSource(mozilla::UniquePtr<mozilla::dom::ClientSource>);
 
 interface nsIURI;
 interface nsIChannel;
@@ -214,7 +219,6 @@ interface nsIDocShell : nsIDocShellTreeItem
                               in AString aSrcdoc,
                               in nsIDocShell aSourceDocShell,
                               in nsIURI aBaseURI,
-                              in boolean aCheckForPrerender,
                               out nsIDocShell aDocShell,
                               out nsIRequest aRequest);
 
@@ -652,6 +656,12 @@ interface nsIDocShell : nsIDocShellTreeItem
   attribute boolean isOffScreenBrowser;
 
   /**
+   * Allows nsDocumentViewer to tell the top-level same-type docshell that
+   * one of the documents under it is printing.
+   */
+  void setIsPrinting(in boolean aIsPrinting);
+
+  /**
    * If the current content viewer isn't initialized for print preview,
    * it is replaced with one which is and to which an about:blank document
    * is loaded.
@@ -671,17 +681,6 @@ interface nsIDocShell : nsIDocShellTreeItem
    * like image frame discarding. Docshells are active unless told otherwise.
    */
   attribute boolean isActive;
-
-  /**
-   * Puts the docshell in prerendering mode. noscript because we want only
-   * native code to be able to put a docshell in prerendering.
-   */
-  [noscript] void SetIsPrerendered();
-
-  /**
-   * Whether this docshell is in prerender mode.
-   */
-  [infallible] readonly attribute boolean isPrerendered;
 
   /**
    * The ID of the docshell in the session history.
@@ -1172,6 +1171,17 @@ interface nsIDocShell : nsIDocShellTreeItem
   * Fire a dummy location change event asynchronously.
   */
   [noscript] void dispatchLocationChangeEvent();
+
+  /**
+   * Take ownership of the ClientSource representing an initial about:blank
+   * document that was never needed.  As an optimization we avoid creating
+   * this document if no code calls GetDocument(), but we still need a
+   * ClientSource object to represent the about:blank window.  This may return
+   * nullptr; for example if the docshell has created a real window and document
+   * already.
+   */
+  [noscript, nostdcall, notxpcom]
+  UniqueClientSource TakeInitialClientSource();
 
 %{C++
   /**

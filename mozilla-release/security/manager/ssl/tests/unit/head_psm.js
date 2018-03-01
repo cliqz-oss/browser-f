@@ -180,8 +180,8 @@ function getXPCOMStatusFromNSS(statusNSS) {
 function checkCertErrorGenericAtTime(certdb, cert, expectedError, usage, time,
                                      /* optional */ hasEVPolicy,
                                      /* optional */ hostname) {
-  do_print(`cert cn=${cert.commonName}`);
-  do_print(`cert issuer cn=${cert.issuerCommonName}`);
+  info(`cert cn=${cert.commonName}`);
+  info(`cert issuer cn=${cert.issuerCommonName}`);
   let verifiedChain = {};
   let error = certdb.verifyCertAtTime(cert, usage, NO_FLAGS, hostname, time,
                                       verifiedChain, hasEVPolicy || {});
@@ -194,8 +194,8 @@ function checkCertErrorGenericAtTime(certdb, cert, expectedError, usage, time,
 function checkCertErrorGeneric(certdb, cert, expectedError, usage,
                                /* optional */ hasEVPolicy,
                                /* optional */ hostname) {
-  do_print(`cert cn=${cert.commonName}`);
-  do_print(`cert issuer cn=${cert.issuerCommonName}`);
+  info(`cert cn=${cert.commonName}`);
+  info(`cert issuer cn=${cert.issuerCommonName}`);
   let verifiedChain = {};
   let error = certdb.verifyCertNow(cert, usage, NO_FLAGS, hostname,
                                    verifiedChain, hasEVPolicy || {});
@@ -339,9 +339,9 @@ function run_test() {
 }
 */
 
-function add_tls_server_setup(serverBinName, certsPath) {
+function add_tls_server_setup(serverBinName, certsPath, addDefaultRoot = true) {
   add_test(function() {
-    _setupTLSServerTest(serverBinName, certsPath);
+    _setupTLSServerTest(serverBinName, certsPath, addDefaultRoot);
   });
 }
 
@@ -376,9 +376,7 @@ function add_connection_test(aHost, aExpectedResult,
 
   function Connection(host) {
     this.host = host;
-    let threadManager = Cc["@mozilla.org/thread-manager;1"]
-                          .getService(Ci.nsIThreadManager);
-    this.thread = threadManager.currentThread;
+    this.thread = Services.tm.currentThread;
     this.defer = Promise.defer();
     let sts = Cc["@mozilla.org/network/socket-transport-service;1"]
                 .getService(Ci.nsISocketTransportService);
@@ -455,7 +453,7 @@ function add_connection_test(aHost, aExpectedResult,
       aBeforeConnect();
     }
     connectTo(aHost).then(function(conn) {
-      do_print("handling " + aHost);
+      info("handling " + aHost);
       let expectedNSResult = aExpectedResult == PRErrorCodeSuccess
                            ? Cr.NS_OK
                            : getXPCOMStatusFromNSS(aExpectedResult);
@@ -471,15 +469,12 @@ function add_connection_test(aHost, aExpectedResult,
 }
 
 function _getBinaryUtil(binaryUtilName) {
-  let directoryService = Cc["@mozilla.org/file/directory_service;1"]
-                           .getService(Ci.nsIProperties);
-
-  let utilBin = directoryService.get("CurProcD", Ci.nsIFile);
+  let utilBin = Services.dirsvc.get("CurProcD", Ci.nsIFile);
   utilBin.append(binaryUtilName + mozinfo.bin_suffix);
   // If we're testing locally, the above works. If not, the server executable
   // is in another location.
   if (!utilBin.exists()) {
-    utilBin = directoryService.get("CurWorkD", Ci.nsIFile);
+    utilBin = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
     while (utilBin.path.indexOf("xpcshell") != -1) {
       utilBin = utilBin.parent;
     }
@@ -496,19 +491,19 @@ function _getBinaryUtil(binaryUtilName) {
 }
 
 // Do not call this directly; use add_tls_server_setup
-function _setupTLSServerTest(serverBinName, certsPath) {
+function _setupTLSServerTest(serverBinName, certsPath, addDefaultRoot) {
   let certdb = Cc["@mozilla.org/security/x509certdb;1"]
                   .getService(Ci.nsIX509CertDB);
   // The trusted CA that is typically used for "good" certificates.
-  addCertFromFile(certdb, `${certsPath}/test-ca.pem`, "CTu,u,u");
+  if (addDefaultRoot) {
+    addCertFromFile(certdb, `${certsPath}/test-ca.pem`, "CTu,u,u");
+  }
 
   const CALLBACK_PORT = 8444;
 
-  let directoryService = Cc["@mozilla.org/file/directory_service;1"]
-                           .getService(Ci.nsIProperties);
   let envSvc = Cc["@mozilla.org/process/environment;1"]
                  .getService(Ci.nsIEnvironment);
-  let greBinDir = directoryService.get("GreBinD", Ci.nsIFile);
+  let greBinDir = Services.dirsvc.get("GreBinD", Ci.nsIFile);
   envSvc.set("DYLD_LIBRARY_PATH", greBinDir.path);
   // TODO(bug 1107794): Android libraries are in /data/local/xpcb, but "GreBinD"
   // does not return this path on Android, so hard code it here.
@@ -523,7 +518,7 @@ function _setupTLSServerTest(serverBinName, certsPath) {
         aResponse.setHeader("Content-Type", "text/plain");
         let responseBody = "OK!";
         aResponse.bodyOutputStream.write(responseBody, responseBody.length);
-        do_execute_soon(function() {
+        executeSoon(function() {
           httpServer.stop(run_next_test);
         });
       });
@@ -532,13 +527,13 @@ function _setupTLSServerTest(serverBinName, certsPath) {
   let serverBin = _getBinaryUtil(serverBinName);
   let process = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
   process.init(serverBin);
-  let certDir = directoryService.get("CurWorkD", Ci.nsIFile);
+  let certDir = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
   certDir.append(`${certsPath}`);
   Assert.ok(certDir.exists(), `certificate folder (${certsPath}) should exist`);
   // Using "sql:" causes the SQL DB to be used so we can run tests on Android.
   process.run(false, [ "sql:" + certDir.path ], 1);
 
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     process.kill();
   });
 }
@@ -563,7 +558,7 @@ function generateOCSPResponses(ocspRespArray, nssDBlocation) {
     argArray.push(ocspRespArray[i][2]); // extranickname
     argArray.push(ocspRespArray[i][3]); // thisUpdate skew
     argArray.push(filename);
-    do_print("argArray = " + argArray);
+    info("argArray = " + argArray);
 
     let process = Cc["@mozilla.org/process/util;1"]
                     .createInstance(Ci.nsIProcess);
@@ -614,9 +609,12 @@ function getFailingHttpServer(serverPort, serverIdentities) {
 //   by which HTTP method the server is expected to be queried.
 // expectedResponseTypes is an optional array of OCSP response types to use (see
 //   GenerateOCSPResponse.cpp).
+// responseHeaderPairs is an optional array of HTTP header (name, value) pairs
+//   to set in each response.
 function startOCSPResponder(serverPort, identity, nssDBLocation,
                             expectedCertNames, expectedBasePaths,
-                            expectedMethods, expectedResponseTypes) {
+                            expectedMethods, expectedResponseTypes,
+                            responseHeaderPairs = []) {
   let ocspResponseGenerationArgs = expectedCertNames.map(
     function(expectedNick) {
       let responseType = "good";
@@ -631,7 +629,7 @@ function startOCSPResponder(serverPort, identity, nssDBLocation,
   let httpServer = new HttpServer();
   httpServer.registerPrefixHandler("/",
     function handleServerCallback(aRequest, aResponse) {
-      do_print("got request for: " + aRequest.path);
+      info("got request for: " + aRequest.path);
       let basePath = aRequest.path.slice(1).split("/")[0];
       if (expectedBasePaths.length >= 1) {
         Assert.equal(basePath, expectedBasePaths.shift(),
@@ -645,6 +643,9 @@ function startOCSPResponder(serverPort, identity, nssDBLocation,
       }
       aResponse.setStatusLine(aRequest.httpVersion, 200, "OK");
       aResponse.setHeader("Content-Type", "application/ocsp-response");
+      for (let headerPair of responseHeaderPairs) {
+        aResponse.setHeader(headerPair[0], headerPair[1]);
+      }
       aResponse.write(ocspResponses.shift());
     });
   httpServer.identity.setPrimary("http", identity, serverPort);
@@ -703,7 +704,7 @@ FakeSSLStatus.prototype = {
 function add_cert_override(aHost, aExpectedBits, aExpectedErrorRegexp,
                            aSecurityInfo) {
   if (aExpectedErrorRegexp) {
-    do_print(aSecurityInfo.errorMessage);
+    info(aSecurityInfo.errorMessage);
     Assert.ok(aExpectedErrorRegexp.test(aSecurityInfo.errorMessage),
               "Actual error message should match expected error regexp");
   }
@@ -856,7 +857,7 @@ function loadPKCS11TestModule(expectModuleUnloadToFail) {
 
   let pkcs11ModuleDB = Cc["@mozilla.org/security/pkcs11moduledb;1"]
                          .getService(Ci.nsIPKCS11ModuleDB);
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     try {
       pkcs11ModuleDB.deleteModule("PKCS11 Test Module");
     } catch (e) {

@@ -8,6 +8,7 @@
 #define CDMProxy_h_
 
 #include "mozilla/CDMCaps.h"
+#include "mozilla/DataMutex.h"
 #include "mozilla/MozPromise.h"
 
 #include "mozilla/dom/MediaKeyMessageEvent.h"
@@ -92,6 +93,7 @@ public:
            nsIEventTarget* aMainThread)
     : mKeys(aKeys)
     , mKeySystem(aKeySystem)
+    , mCapabilites("CDMProxy::mCDMCaps")
     , mDistinctiveIdentifierRequired(aDistinctiveIdentifierRequired)
     , mPersistentStateRequired(aPersistentStateRequired)
     , mMainThread(aMainThread)
@@ -217,13 +219,16 @@ public:
   // Threadsafe.
   virtual const nsString& KeySystem() const = 0;
 
-  virtual  CDMCaps& Capabilites() = 0;
+  virtual DataMutex<CDMCaps>& Capabilites() = 0;
 
   // Main thread only.
   virtual void OnKeyStatusesChange(const nsAString& aSessionId) = 0;
 
-  virtual void GetSessionIdsForKeyId(const nsTArray<uint8_t>& aKeyId,
-                                     nsTArray<nsCString>& aSessionIds) = 0;
+  // Main thread only.
+  // Calls MediaKeys->ResolvePromiseWithKeyStatus(aPromiseId, aKeyStatus) after
+  // the CDM has processed the request.
+  virtual void GetStatusForPolicy(PromiseId aPromiseId,
+                                  const nsAString& aMinHdcpVersion) = 0;
 
 #ifdef DEBUG
   virtual bool IsOnOwnerThread() = 0;
@@ -277,7 +282,7 @@ protected:
 
   nsCString mNodeId;
 
-  CDMCaps mCapabilites;
+  DataMutex<CDMCaps> mCapabilites;
 
   const bool mDistinctiveIdentifierRequired;
   const bool mPersistentStateRequired;

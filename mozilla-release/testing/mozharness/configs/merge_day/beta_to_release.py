@@ -18,7 +18,7 @@ config = {
         for d in ["mobile/android/config/mozconfigs/android-api-16/",
                   "mobile/android/config/mozconfigs/android-x86/",
                   "mobile/android/config/mozconfigs/android-aarch64/"]
-        for f in ["debug", "nightly", "l10n-nightly"]
+        for f in ["debug", "nightly"]
     ] + [
         # File, from, to
         ("browser/confvars.sh",
@@ -33,8 +33,8 @@ config = {
     # "hg_share_base": None,
     "tools_repo_url": "https://hg.mozilla.org/build/tools",
     "tools_repo_branch": "default",
-    "from_repo_url": "ssh://hg.mozilla.org/releases/mozilla-beta",
-    "to_repo_url": "ssh://hg.mozilla.org/releases/mozilla-release",
+    "from_repo_url": "https://hg.mozilla.org/releases/mozilla-beta",
+    "to_repo_url": "https://hg.mozilla.org/releases/mozilla-release",
 
     "base_tag": "FIREFOX_RELEASE_%(major_version)s_BASE",
     "end_tag": "FIREFOX_RELEASE_%(major_version)s_END",

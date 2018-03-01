@@ -9,10 +9,13 @@
 #include "nsTArray.h"
 #include "mozilla/Atomics.h"
 
-namespace mozilla
-{
+namespace mozilla {
 
-class MockMediaResource : public MediaResource
+DDLoggedTypeDeclNameAndBase(MockMediaResource, MediaResource);
+
+class MockMediaResource
+  : public MediaResource
+  , public DecoderDoctorLifeLogger<MockMediaResource>
 {
 public:
   explicit MockMediaResource(const char* aFileName);
@@ -20,7 +23,6 @@ public:
                   uint32_t* aBytes) override;
   // Data stored in file, caching recommended.
   bool ShouldCacheReads() override { return true; }
-  int64_t Tell() override { return 0; }
   void Pin() override {}
   void Unpin() override {}
   int64_t GetLength() override;

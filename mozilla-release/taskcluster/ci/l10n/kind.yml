@@ -19,7 +19,7 @@ only-for-build-platforms:
    - linux64/opt
    - linux/opt
    - android-api-16/opt
-   #- macosx64/opt
+   # - macosx64/opt
 
 job-template:
    description:
@@ -41,11 +41,9 @@ job-template:
          android-api-16-l10n: 18000
    docker-image:
       by-build-platform:
-         default:
-           in-tree: desktop-build
          android-api-16-l10n:
-           in-tree: android-build
-         win.*: null
+            in-tree: android-build
+         default: null
    secrets:
       by-build-platform:
          default: false
@@ -53,6 +51,9 @@ job-template:
    toolchains:
       by-build-platform:
          default: []
+         macosx64:
+            - linux64-libdmg
+            - linux64-hfsplus
          android-api-16-l10n:
             - android-gradle-dependencies
             - android-sdk-linux
@@ -67,7 +68,7 @@ job-template:
          default: aws-provisioner-v1/gecko-{level}-b-linux
          android: aws-provisioner-v1/gecko-{level}-b-android
    treeherder:
-      symbol: tc(L10n)
+      symbol: L10n
       tier: 2
       platform:
          by-build-platform:
@@ -87,7 +88,7 @@ job-template:
             android-api-16-l10n:
                - single_locale/{project}_android-api-16.py
                - single_locale/tc_android-api-16.py
-            # no default, so we fail on new entries
+      # no default, so we fail on new entries
       options:
          by-build-platform:
             linux-l10n:

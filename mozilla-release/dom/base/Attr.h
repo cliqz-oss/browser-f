@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /*
- * Implementation of DOM Core's nsIDOMAttr node.
+ * Implementation of DOM Core's Attr node.
  */
 
 #ifndef mozilla_dom_Attr_h
@@ -13,7 +13,7 @@
 
 #include "mozilla/Attributes.h"
 #include "nsIAttribute.h"
-#include "nsIDOMAttr.h"
+#include "nsIDOMNode.h"
 #include "nsIDOMText.h"
 #include "nsIDOMNodeList.h"
 #include "nsString.h"
@@ -28,9 +28,9 @@ class EventChainPreVisitor;
 namespace dom {
 
 // Attribute helper class used to wrap up an attribute with a dom
-// object that implements nsIDOMAttr and nsIDOMNode
+// object that implements the DOM Attr interface.
 class Attr final : public nsIAttribute,
-                   public nsIDOMAttr
+                   public nsIDOMNode
 {
   virtual ~Attr() {}
 
@@ -46,13 +46,11 @@ public:
   virtual void GetTextContentInternal(nsAString& aTextContent,
                                       OOMReporter& aError) override;
   virtual void SetTextContentInternal(const nsAString& aTextContent,
+                                      nsIPrincipal* aSubjectPrincipal,
                                       ErrorResult& aError) override;
   virtual void GetNodeValueInternal(nsAString& aNodeValue) override;
   virtual void SetNodeValueInternal(const nsAString& aNodeValue,
                                     ErrorResult& aError) override;
-
-  // nsIDOMAttr interface
-  NS_DECL_NSIDOMATTR
 
   virtual nsresult GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
@@ -64,11 +62,12 @@ public:
   // nsINode interface
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
   virtual uint32_t GetChildCount() const override;
-  virtual nsIContent *GetChildAt(uint32_t aIndex) const override;
+  virtual nsIContent *GetChildAt_Deprecated(uint32_t aIndex) const override;
   virtual int32_t IndexOf(const nsINode* aPossibleChild) const override;
   virtual nsresult InsertChildAt(nsIContent* aKid, uint32_t aIndex,
                                  bool aNotify) override;
-  virtual void RemoveChildAt(uint32_t aIndex, bool aNotify) override;
+  virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
+  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;
   virtual already_AddRefed<nsIURI> GetBaseURI(bool aTryUseXHRDocBaseURI = false) const override;
@@ -84,14 +83,11 @@ public:
   // WebIDL
   virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
-  // XPCOM GetName() is OK
-
-  void GetValue(nsString& val, nsIPrincipal*)
-  {
-    GetValue(val);
-  }
+  void GetName(nsAString& aName);
+  void GetValue(nsAString& aValue);
 
   void SetValue(const nsAString& aValue, nsIPrincipal* aTriggeringPrincipal, ErrorResult& aRv);
+  void SetValue(const nsAString& aValue, ErrorResult& aRv);
 
   bool Specified() const;
 

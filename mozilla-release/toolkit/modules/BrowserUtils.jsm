@@ -74,8 +74,6 @@ this.BrowserUtils = {
    * safe mode if it is already in safe mode.
    */
   restartApplication() {
-    let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"]
-                       .getService(Ci.nsIAppStartup);
     let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
                        .createInstance(Ci.nsISupportsPRBool);
     Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
@@ -84,10 +82,10 @@ this.BrowserUtils = {
     }
     // if already in safe mode restart in safe mode
     if (Services.appinfo.inSafeMode) {
-      appStartup.restartInSafeMode(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
+      Services.startup.restartInSafeMode(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
       return undefined;
     }
-    appStartup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
+    Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
     return undefined;
   },
 
@@ -479,13 +477,49 @@ this.BrowserUtils = {
       .getInterface(Ci.nsIDOMWindow);
   },
 
-  getSelectionDetails(topWindow, aCharLen) {
-    // selections of more than 150 characters aren't useful
-    const kMaxSelectionLen = 150;
-    const charLen = Math.min(aCharLen || kMaxSelectionLen, kMaxSelectionLen);
+  /**
+   * Trim the selection text to a reasonable size and sanitize it to make it
+   * safe for search query input.
+   *
+   * @param aSelection
+   *        The selection text to trim.
+   * @param aMaxLen
+   *        The maximum string length, defaults to a reasonable size if undefined.
+   * @return The trimmed selection text.
+   */
+  trimSelection(aSelection, aMaxLen) {
+    // Selections of more than 150 characters aren't useful.
+    const maxLen = Math.min(aMaxLen || 150, aSelection.length);
 
+    if (aSelection.length > maxLen) {
+      // only use the first maxLen important chars. see bug 221361
+      let pattern = new RegExp("^(?:\\s*.){0," + maxLen + "}");
+      pattern.test(aSelection);
+      aSelection = RegExp.lastMatch;
+    }
+
+    aSelection = aSelection.trim().replace(/\s+/g, " ");
+
+    if (aSelection.length > maxLen) {
+      aSelection = aSelection.substr(0, maxLen);
+    }
+
+    return aSelection;
+  },
+
+  /**
+   * Retrieve the text selection details for the given window.
+   *
+   * @param  aTopWindow
+   *         The top window of the element containing the selection.
+   * @param  aCharLen
+   *         The maximum string length for the selection text.
+   * @return The selection details containing the full and trimmed selection text
+   *         and link details for link selections.
+   */
+  getSelectionDetails(aTopWindow, aCharLen) {
     let focusedWindow = {};
-    let focusedElement = Services.focus.getFocusedElementForWindow(topWindow, true, focusedWindow);
+    let focusedElement = Services.focus.getFocusedElementForWindow(aTopWindow, true, focusedWindow);
     focusedWindow = focusedWindow.value;
 
     let selection = focusedWindow.getSelection();
@@ -551,10 +585,8 @@ this.BrowserUtils = {
         }
 
         if (delimitedAtStart && delimitedAtEnd) {
-          let uriFixup = Cc["@mozilla.org/docshell/urifixup;1"]
-                           .getService(Ci.nsIURIFixup);
           try {
-            url = uriFixup.createFixupURI(linkText, uriFixup.FIXUP_FLAG_NONE);
+            url = Services.uriFixup.createFixupURI(linkText, Services.uriFixup.FIXUP_FLAG_NONE);
           } catch (ex) {}
         }
       }
@@ -564,19 +596,7 @@ this.BrowserUtils = {
       // Pass up to 16K through unmolested.  If an add-on needs more, they will
       // have to use a content script.
       fullText = selectionStr.substr(0, 16384);
-
-      if (selectionStr.length > charLen) {
-        // only use the first charLen important chars. see bug 221361
-        var pattern = new RegExp("^(?:\\s*.){0," + charLen + "}");
-        pattern.test(selectionStr);
-        selectionStr = RegExp.lastMatch;
-      }
-
-      selectionStr = selectionStr.trim().replace(/\s+/g, " ");
-
-      if (selectionStr.length > charLen) {
-        selectionStr = selectionStr.substr(0, charLen);
-      }
+      selectionStr = this.trimSelection(selectionStr, aCharLen);
     }
 
     if (url && !url.host) {

@@ -15,6 +15,9 @@ namespace gfx {
 SourceSurfaceCapture::SourceSurfaceCapture(DrawTargetCaptureImpl* aOwner)
  : mOwner(aOwner),
    mHasCommandList(false),
+   mShouldResolveToLuminance{false},
+   mLuminanceType{LuminanceType::LUMINANCE},
+   mOpacity{1.0f},
    mLock("SourceSurfaceCapture.mLock")
 {
   mSize = mOwner->GetSize();
@@ -22,6 +25,26 @@ SourceSurfaceCapture::SourceSurfaceCapture(DrawTargetCaptureImpl* aOwner)
   mRefDT = mOwner->mRefDT;
   mStride = mOwner->mStride;
   mSurfaceAllocationSize = mOwner->mSurfaceAllocationSize;
+}
+
+SourceSurfaceCapture::SourceSurfaceCapture(DrawTargetCaptureImpl* aOwner,
+                                           LuminanceType aLuminanceType /* = LuminanceType::LINEARRGB */,
+                                           Float aOpacity /* = 1.0f */)
+  : mOwner{aOwner}
+  , mHasCommandList{false}
+  , mShouldResolveToLuminance{true}
+  , mLuminanceType{aLuminanceType}
+  , mOpacity{aOpacity}
+  , mLock{"SourceSurfaceCapture.mLock"}
+{
+  mSize = mOwner->GetSize();
+  mFormat = mOwner->GetFormat();
+  mRefDT = mOwner->mRefDT;
+  mStride = mOwner->mStride;
+  mSurfaceAllocationSize = mOwner->mSurfaceAllocationSize;
+
+  // In this case our DrawTarget will not track us, so copy its drawing commands.
+  DrawTargetWillChange();
 }
 
 SourceSurfaceCapture::~SourceSurfaceCapture()
@@ -111,7 +134,11 @@ SourceSurfaceCapture::ResolveImpl(BackendType aBackendType)
   }
 
   RefPtr<SourceSurface> surf;
-  surf = dt->Snapshot();
+  if (!mShouldResolveToLuminance) {
+    surf = dt->Snapshot();
+  } else {
+    surf = dt->IntoLuminanceSource(mLuminanceType, mOpacity);
+  }
 
   if (data) {
     surf->AddUserData(reinterpret_cast<UserDataKey*>(dt.get()), data, free);

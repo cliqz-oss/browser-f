@@ -1,5 +1,5 @@
 #![allow(improper_ctypes)] // this is needed so that rustc doesn't complain about passing the &Arc<Vec> to an extern function
-use webrender_api::*;
+use webrender::api::*;
 use bindings::{ByteSlice, MutByteSlice, wr_moz2d_render_cb, ArcVecU8};
 use rayon::ThreadPool;
 
@@ -14,7 +14,7 @@ use std::sync::Arc;
 use dwrote;
 
 #[cfg(target_os = "macos")]
-use core_foundation::base::TCFType;
+use foreign_types::ForeignType;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use std::ffi::CString;
@@ -124,7 +124,7 @@ impl BlobImageRenderer for Moz2dImageRenderer {
 
         #[cfg(target_os = "macos")]
         fn process_native_font_handle(key: FontKey, handle: &NativeFontHandle) {
-            unsafe { AddNativeFontHandle(key, handle.0.as_concrete_TypeRef() as *mut c_void, 0) };
+            unsafe { AddNativeFontHandle(key, handle.0.as_ptr() as *mut c_void, 0) };
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -165,7 +165,7 @@ impl BlobImageRenderer for Moz2dImageRenderer {
             let buf_size = (descriptor.width
                 * descriptor.height
                 * descriptor.format.bytes_per_pixel()) as usize;
-            let mut output = vec![255u8; buf_size];
+            let mut output = vec![0u8; buf_size];
 
             let result = unsafe {
                 if wr_moz2d_render_cb(

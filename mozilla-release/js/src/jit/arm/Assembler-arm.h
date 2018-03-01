@@ -148,7 +148,7 @@ static constexpr Register64 ReturnReg64(r1, r0);
 static constexpr FloatRegister ReturnFloat32Reg = { FloatRegisters::d0, VFPRegister::Single };
 static constexpr FloatRegister ReturnDoubleReg = { FloatRegisters::d0, VFPRegister::Double};
 static constexpr FloatRegister ReturnSimd128Reg = InvalidFloatReg;
-static constexpr FloatRegister ScratchFloat32Reg = { FloatRegisters::d30, VFPRegister::Single };
+static constexpr FloatRegister ScratchFloat32Reg = { FloatRegisters::s30, VFPRegister::Single };
 static constexpr FloatRegister ScratchDoubleReg = { FloatRegisters::d15, VFPRegister::Double };
 static constexpr FloatRegister ScratchSimd128Reg = InvalidFloatReg;
 static constexpr FloatRegister ScratchUIntReg = { FloatRegisters::d15, VFPRegister::UInt };
@@ -417,7 +417,7 @@ bool condsAreSafe(ALUOp op);
 // variant of it.
 ALUOp getDestVariant(ALUOp op);
 
-static const ValueOperand JSReturnOperand = ValueOperand(JSReturnReg_Type, JSReturnReg_Data);
+static constexpr ValueOperand JSReturnOperand{JSReturnReg_Type, JSReturnReg_Data};
 static const ValueOperand softfpReturnOperand = ValueOperand(r1, r0);
 
 // All of these classes exist solely to shuffle data into the various operands.
@@ -1137,7 +1137,6 @@ PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitZoneGroup::Ba
     PatchJump(jump_, label);
 }
 
-class InstructionIterator;
 class Assembler;
 typedef js::jit::AssemblerBufferWithConstantPools<1024, 4, Instruction, Assembler> ARMBuffer;
 
@@ -1615,7 +1614,7 @@ class Assembler : public AssemblerShared
     BufferOffset as_b(BOffImm off, Condition c, Label* documentation = nullptr);
 
     BufferOffset as_b(Label* l, Condition c = Always);
-    BufferOffset as_b(wasm::TrapDesc target, Condition c = Always);
+    BufferOffset as_b(wasm::OldTrapDesc target, Condition c = Always);
     BufferOffset as_b(BOffImm off, Condition c, BufferOffset inst);
 
     // blx can go to either an immediate or a register. When blx'ing to a
@@ -1723,7 +1722,7 @@ class Assembler : public AssemblerShared
     bool nextLink(BufferOffset b, BufferOffset* next);
     void bind(Label* label, BufferOffset boff = BufferOffset());
     void bind(RepatchLabel* label);
-    void bindLater(Label* label, wasm::TrapDesc target);
+    void bindLater(Label* label, wasm::OldTrapDesc target);
     uint32_t currentOffset() {
         return nextOffset().getOffset();
     }
@@ -1734,6 +1733,7 @@ class Assembler : public AssemblerShared
     static void Bind(uint8_t* rawCode, CodeOffset label, CodeOffset target);
 
     void as_bkpt();
+    BufferOffset as_illegal_trap();
 
   public:
     static void TraceJumpRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
@@ -2002,16 +2002,10 @@ class Instruction
     }
     // Since almost all instructions have condition codes, the condition code
     // extractor resides in the base class.
-    Assembler::Condition extractCond() {
+    Assembler::Condition extractCond() const {
         MOZ_ASSERT(data >> 28 != 0xf, "The instruction does not have condition code");
         return (Assembler::Condition)(data & 0xf0000000);
     }
-    // Get the next instruction in the instruction stream.
-    // This does neat things like ignoreconstant pools and their guards.
-    Instruction* next();
-
-    // Skipping pools with artificial guards.
-    Instruction* skipPool();
 
     // Sometimes, an api wants a uint32_t (or a pointer to it) rather than an
     // instruction. raw() just coerces this into a pointer to a uint32_t.
@@ -2266,29 +2260,55 @@ class InstructionIterator
 {
   private:
     Instruction* inst_;
+
   public:
-    explicit InstructionIterator(Instruction* inst) : inst_(inst) {
-        skipPool();
+    explicit InstructionIterator(Instruction* inst)
+      : inst_(inst)
+    {
+        maybeSkipAutomaticInstructions();
     }
-    void skipPool() {
-        inst_ = inst_->skipPool();
-    }
-    Instruction* next() {
-        inst_ = inst_->next();
-        return cur();
-    }
+
+    // Advances to the next intentionally-inserted instruction.
+    Instruction* next();
+
+    // Advances past any automatically-inserted instructions.
+    Instruction* maybeSkipAutomaticInstructions();
+
     Instruction* cur() const {
         return inst_;
     }
+
+  protected:
+    // Advances past the given number of instruction-length bytes.
+    void advanceRaw(ptrdiff_t instructions = 1) {
+        inst_ = inst_ + instructions;
+    }
+
+    // Look ahead, including automatically-inserted instructions
+    // and PoolHeaders.
+    Instruction* peekRaw(ptrdiff_t instructions = 1) const {
+        return inst_ + instructions;
+    }
 };
 
+// Compile-time iterator over instructions, with a safe interface that
+// references not-necessarily-linear Instructions by linear BufferOffset.
 class BufferInstructionIterator : public ARMBuffer::AssemblerBufferInstIterator
 {
   public:
     BufferInstructionIterator(BufferOffset bo, ARMBuffer* buffer)
       : ARMBuffer::AssemblerBufferInstIterator(bo, buffer)
     {}
-    void skipPool();
+
+    // Advances the buffer to the next intentionally-inserted instruction.
+    Instruction* next() {
+        advance(cur()->size());
+        maybeSkipAutomaticInstructions();
+        return cur();
+    }
+
+    // Advances the BufferOffset past any automatically-inserted instructions.
+    Instruction* maybeSkipAutomaticInstructions();
 };
 
 static const uint32_t NumIntArgRegs = 4;

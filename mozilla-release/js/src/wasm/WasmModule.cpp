@@ -436,7 +436,8 @@ Module::deserialize(const uint8_t* bytecodeBegin, size_t bytecodeSize,
     if (!bytecode || !bytecode->bytes.initLengthUninitialized(bytecodeSize))
         return nullptr;
 
-    memcpy(bytecode->bytes.begin(), bytecodeBegin, bytecodeSize);
+    if (bytecodeSize)
+        memcpy(bytecode->bytes.begin(), bytecodeBegin, bytecodeSize);
 
     Assumptions assumptions;
     const uint8_t* cursor = assumptions.deserialize(compiledBegin, compiledSize);
@@ -586,9 +587,22 @@ wasm::DeserializeModule(PRFileDesc* bytecodeFile, PRFileDesc* maybeCompiledFile,
     scriptedCaller.line = line;
     scriptedCaller.column = column;
 
-    SharedCompileArgs args = js_new<CompileArgs>(Assumptions(Move(buildId)), Move(scriptedCaller));
+    MutableCompileArgs args = js_new<CompileArgs>(Assumptions(Move(buildId)), Move(scriptedCaller));
     if (!args)
         return nullptr;
+
+    // The true answer to whether shared memory is enabled is provided by
+    // cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled()
+    // where cx is the context that originated the call that caused this
+    // deserialization attempt to happen.  We don't have that context here, so
+    // we assume that shared memory is enabled; we will catch a wrong assumption
+    // later, during instantiation.
+    //
+    // (We would prefer to store this value with the Assumptions when
+    // serializing, and for the caller of the deserialization machinery to
+    // provide the value from the originating context.)
+
+    args->sharedMemoryEnabled = true;
 
     UniqueChars error;
     return CompileBuffer(*args, *bytecode, &error);
@@ -736,8 +750,8 @@ Module::initSegments(JSContext* cx,
     }
 
     if (memoryObj) {
+        uint32_t memoryLength = memoryObj->volatileMemoryLength();
         for (const DataSegment& seg : dataSegments_) {
-            uint32_t memoryLength = memoryObj->buffer().byteLength();
             uint32_t offset = EvaluateInitExpr(globalImports, seg.offset);
 
             if (offset > memoryLength || memoryLength - offset < seg.length) {
@@ -865,6 +879,27 @@ CheckLimits(JSContext* cx, uint32_t declaredMin, const Maybe<uint32_t>& declared
     return true;
 }
 
+static bool
+CheckSharing(JSContext* cx, bool declaredShared, bool isShared)
+{
+    if (isShared && !cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled()) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_NO_SHMEM_LINK);
+        return false;
+    }
+
+    if (declaredShared && !isShared) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_IMP_SHARED_REQD);
+        return false;
+    }
+
+    if (!declaredShared && isShared) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_IMP_SHARED_BANNED);
+        return false;
+    }
+
+    return true;
+}
+
 // asm.js module instantiation supplies its own buffer, but for wasm, create and
 // initialize the buffer if one is requested. Either way, the buffer is wrapped
 // in a WebAssembly.Memory object which is what the Instance stores.
@@ -879,27 +914,31 @@ Module::instantiateMemory(JSContext* cx, MutableHandleWasmMemoryObject memory) c
 
     uint32_t declaredMin = metadata().minMemoryLength;
     Maybe<uint32_t> declaredMax = metadata().maxMemoryLength;
+    bool declaredShared = metadata().memoryUsage == MemoryUsage::Shared;
 
     if (memory) {
-        ArrayBufferObjectMaybeShared& buffer = memory->buffer();
-        MOZ_ASSERT_IF(metadata().isAsmJS(), buffer.isPreparedForAsmJS());
-        MOZ_ASSERT_IF(!metadata().isAsmJS(), buffer.as<ArrayBufferObject>().isWasm());
+        MOZ_ASSERT_IF(metadata().isAsmJS(), memory->buffer().isPreparedForAsmJS());
+        MOZ_ASSERT_IF(!metadata().isAsmJS(), memory->buffer().isWasm());
 
-        if (!CheckLimits(cx, declaredMin, declaredMax, buffer.byteLength(), buffer.wasmMaxSize(),
-                         metadata().isAsmJS(), "Memory")) {
+        if (!CheckLimits(cx, declaredMin, declaredMax, memory->volatileMemoryLength(),
+                         memory->buffer().wasmMaxSize(), metadata().isAsmJS(), "Memory"))
+        {
             return false;
         }
+
+        if (!CheckSharing(cx, declaredShared, memory->isShared()))
+            return false;
     } else {
         MOZ_ASSERT(!metadata().isAsmJS());
-        MOZ_ASSERT(metadata().memoryUsage == MemoryUsage::Unshared);
 
-        RootedArrayBufferObjectMaybeShared buffer(cx,
-            ArrayBufferObject::createForWasm(cx, declaredMin, declaredMax));
-        if (!buffer)
+        RootedArrayBufferObjectMaybeShared buffer(cx);
+        Limits l(declaredMin,
+                 declaredMax,
+                 declaredShared ? Shareable::True : Shareable::False);
+        if (!CreateWasmBuffer(cx, l, &buffer))
             return false;
 
         RootedObject proto(cx, &cx->global()->getPrototype(JSProto_WasmMemory).toObject());
-
         memory.set(WasmMemoryObject::create(cx, buffer, proto));
         if (!memory)
             return false;
@@ -1019,34 +1058,16 @@ GetGlobalExport(JSContext* cx, const GlobalDescVector& globals, uint32_t globalI
         return true;
       }
       case ValType::I64: {
-        MOZ_ASSERT(JitOptions.wasmTestMode, "no int64 in asm.js/wasm");
-        RootedObject obj(cx, CreateI64Object(cx, val.i64()));
-        if (!obj)
-            return false;
-        jsval.set(ObjectValue(*obj));
-        return true;
+        JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_I64_LINK);
+        return false;
       }
       case ValType::F32: {
         float f = val.f32();
-        if (JitOptions.wasmTestMode && IsNaN(f)) {
-            RootedObject obj(cx, CreateCustomNaNObject(cx, &f));
-            if (!obj)
-                return false;
-            jsval.set(ObjectValue(*obj));
-            return true;
-        }
         jsval.set(DoubleValue(JS::CanonicalizeNaN(double(f))));
         return true;
       }
       case ValType::F64: {
         double d = val.f64();
-        if (JitOptions.wasmTestMode && IsNaN(d)) {
-            RootedObject obj(cx, CreateCustomNaNObject(cx, &d));
-            if (!obj)
-                return false;
-            jsval.set(ObjectValue(*obj));
-            return true;
-        }
         jsval.set(DoubleValue(JS::CanonicalizeNaN(d)));
         return true;
       }

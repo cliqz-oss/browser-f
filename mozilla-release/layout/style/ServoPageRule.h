@@ -16,6 +16,10 @@
 
 namespace mozilla {
 
+namespace dom {
+class DocGroup;
+} // namespace dom
+
 class ServoDeclarationBlock;
 class ServoPageRule;
 
@@ -24,15 +28,18 @@ class ServoPageRuleDeclaration final : public nsDOMCSSDeclaration
 public:
   NS_DECL_ISUPPORTS_INHERITED
 
-  NS_IMETHOD GetParentRule(nsIDOMCSSRule** aParent) final;
-  nsINode* GetParentObject() final;
+  css::Rule* GetParentRule() final override;
+  nsINode* GetParentObject() final override;
+  DocGroup* GetDocGroup() const final override;
 
 protected:
-  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final;
-  nsresult SetCSSDeclaration(DeclarationBlock* aDecl) final;
-  nsIDocument* DocToUpdate() final;
-  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv) final;
-  nsDOMCSSDeclaration::ServoCSSParsingEnvironment GetServoCSSParsingEnvironment() const final;
+  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final override;
+  nsresult SetCSSDeclaration(DeclarationBlock* aDecl) final override;
+  nsIDocument* DocToUpdate() final override;
+  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
+                                nsIPrincipal* aSubjectPrincipal) final override;
+  nsDOMCSSDeclaration::ServoCSSParsingEnvironment
+  GetServoCSSParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final override;
 
 private:
   // For accessing the constructor.
@@ -58,20 +65,21 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(
     ServoPageRule, dom::CSSPageRule
   )
-  bool IsCCLeaf() const final;
+  bool IsCCLeaf() const final override;
 
   RawServoPageRule* Raw() const { return mRawRule; }
 
   // WebIDL interface
-  void GetCssTextImpl(nsAString& aCssText) const final;
-  nsICSSDeclaration* Style() final;
+  void GetCssTextImpl(nsAString& aCssText) const final override;
+  nsICSSDeclaration* Style() final override;
 
   // Methods of mozilla::css::Rule
-  already_AddRefed<css::Rule> Clone() const final;
+  already_AddRefed<css::Rule> Clone() const final override;
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
-    const final;
+    const final override;
+
 #ifdef DEBUG
-  void List(FILE* out = stdout, int32_t aIndent = 0) const final;
+  void List(FILE* out = stdout, int32_t aIndent = 0) const final override;
 #endif
 
 private:

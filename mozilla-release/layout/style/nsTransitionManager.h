@@ -139,8 +139,9 @@ public:
   void GetTransitionProperty(nsString& aRetVal) const;
 
   // Animation interface overrides
-  virtual AnimationPlayState PlayStateFromJS() const override;
-  virtual void PlayFromJS(ErrorResult& aRv) override;
+  AnimationPlayState PlayStateFromJS() const override;
+  bool PendingFromJS() const override;
+  void PlayFromJS(ErrorResult& aRv) override;
 
   // A variant of Play() that avoids posting style updates since this method
   // is expected to be called whilst already updating style.
@@ -217,7 +218,7 @@ public:
       const TimeDuration& aStartTime,
       double aPlaybackRate);
 
-  void MaybeQueueCancelEvent(StickyTimeDuration aActiveTime) override {
+  void MaybeQueueCancelEvent(const StickyTimeDuration& aActiveTime) override {
     QueueEvents(aActiveTime);
   }
 
@@ -232,7 +233,7 @@ protected:
   void UpdateTiming(SeekFlag aSeekFlag,
                     SyncNotifyFlag aSyncNotifyFlag) override;
 
-  void QueueEvents(StickyTimeDuration activeTime = StickyTimeDuration());
+  void QueueEvents(const StickyTimeDuration& activeTime = StickyTimeDuration());
 
 
   enum class TransitionPhase;
@@ -306,14 +307,13 @@ struct TransitionEventInfo {
   InternalTransitionEvent mEvent;
   TimeStamp mTimeStamp;
 
-  TransitionEventInfo(dom::Element* aElement,
-                      CSSPseudoElementType aPseudoType,
+  TransitionEventInfo(const NonOwningAnimationTarget& aTarget,
                       EventMessage aMessage,
                       nsCSSPropertyID aProperty,
-                      StickyTimeDuration aDuration,
+                      double aElapsedTime,
                       const TimeStamp& aTimeStamp,
                       dom::Animation* aAnimation)
-    : mElement(aElement)
+    : mElement(aTarget.mElement)
     , mAnimation(aAnimation)
     , mEvent(true, aMessage)
     , mTimeStamp(aTimeStamp)
@@ -321,9 +321,10 @@ struct TransitionEventInfo {
     // XXX Looks like nobody initialize WidgetEvent::time
     mEvent.mPropertyName =
       NS_ConvertUTF8toUTF16(nsCSSProps::GetStringValue(aProperty));
-    mEvent.mElapsedTime = aDuration.ToSeconds();
+    mEvent.mElapsedTime = aElapsedTime;
     mEvent.mPseudoElement =
-      AnimationCollection<dom::CSSTransition>::PseudoTypeAsString(aPseudoType);
+      AnimationCollection<dom::CSSTransition>::PseudoTypeAsString(
+        aTarget.mPseudoType);
   }
 
   // InternalTransitionEvent doesn't support copy-construction, so we need
@@ -341,11 +342,13 @@ struct TransitionEventInfo {
 } // namespace mozilla
 
 class nsTransitionManager final
-  : public mozilla::CommonAnimationManager<mozilla::dom::CSSTransition>
+  : public mozilla::CommonAnimationManager<mozilla::dom::CSSTransition,
+                                           mozilla::TransitionEventInfo>
 {
 public:
   explicit nsTransitionManager(nsPresContext *aPresContext)
-    : mozilla::CommonAnimationManager<mozilla::dom::CSSTransition>(aPresContext)
+    : mozilla::CommonAnimationManager<mozilla::dom::CSSTransition,
+                                      mozilla::TransitionEventInfo>(aPresContext)
     , mInAnimationOnlyStyleUpdate(false)
   {
   }
@@ -403,19 +406,11 @@ public:
     return mInAnimationOnlyStyleUpdate;
   }
 
-  void QueueEvent(mozilla::TransitionEventInfo&& aEventInfo)
-  {
-    mEventDispatcher.QueueEvent(
-      mozilla::Forward<mozilla::TransitionEventInfo>(aEventInfo));
-  }
-
   void DispatchEvents()
   {
     RefPtr<nsTransitionManager> kungFuDeathGrip(this);
     mEventDispatcher.DispatchEvents(mPresContext);
   }
-  void SortEvents()      { mEventDispatcher.SortEvents(); }
-  void ClearEventQueue() { mEventDispatcher.ClearEventQueue(); }
 
 protected:
   virtual ~nsTransitionManager() {}
@@ -429,7 +424,7 @@ protected:
   // aElementTransitions is the collection of current transitions, and it
   // could be a nullptr if we don't have any transitions.
   template<typename StyleType> bool
-  DoUpdateTransitions(const nsStyleDisplay* aDisp,
+  DoUpdateTransitions(const nsStyleDisplay& aDisp,
                       mozilla::dom::Element* aElement,
                       mozilla::CSSPseudoElementType aPseudoType,
                       CSSTransitionCollection*& aElementTransitions,
@@ -438,7 +433,8 @@ protected:
 
   template<typename StyleType> void
   ConsiderInitiatingTransition(nsCSSPropertyID aProperty,
-                               const mozilla::StyleTransition& aTransition,
+                               const nsStyleDisplay& aStyleDisplay,
+                               uint32_t transitionIdx,
                                mozilla::dom::Element* aElement,
                                mozilla::CSSPseudoElementType aPseudoType,
                                CSSTransitionCollection*& aElementTransitions,
@@ -448,9 +444,6 @@ protected:
                                nsCSSPropertyIDSet* aWhichStarted);
 
   bool mInAnimationOnlyStyleUpdate;
-
-  mozilla::DelayedEventDispatcher<mozilla::TransitionEventInfo>
-      mEventDispatcher;
 };
 
 #endif /* !defined(nsTransitionManager_h_) */

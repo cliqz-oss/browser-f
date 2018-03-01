@@ -77,7 +77,7 @@ else:
     SOURCES += [
         osdir + '/nsOSHelperAppService.cpp',
     ]
-    if CONFIG['GNU_CXX']:
+    if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         CXXFLAGS += ['-Wno-error=shadow']
 
 if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
@@ -103,11 +103,6 @@ if CONFIG['MOZ_ENABLE_DBUS']:
     ]
     EXPORTS.mozilla += [
         'DBusHelpers.h',
-    ]
-
-if CONFIG['MOZ_ENABLE_CONTENTACTION']:
-    UNIFIED_SOURCES += [
-        'nsContentHandlerApp.cpp',
     ]
 
 EXTRA_COMPONENTS += [
@@ -140,6 +135,6 @@ if CONFIG['MOZ_ENABLE_DBUS']:
     CXXFLAGS += CONFIG['TK_CFLAGS']
     CXXFLAGS += CONFIG['MOZ_DBUS_CFLAGS']
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
     CXXFLAGS += CONFIG['TK_CFLAGS']
     CXXFLAGS += CONFIG['MOZ_DBUS_GLIB_CFLAGS']

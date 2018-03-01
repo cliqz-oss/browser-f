@@ -7,7 +7,6 @@ Cu.import("resource://services-sync/engines/clients.js");
 Cu.import("resource://services-sync/record.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 
 function QuietStore() {
   Store.call("Quiet");
@@ -70,18 +69,14 @@ async function setUp(server) {
   await generateNewKeys(Service.collectionKeys);
   let serverKeys = Service.collectionKeys.asWBO("crypto", "keys");
   await serverKeys.encrypt(Service.identity.syncKeyBundle);
-  return serverKeys.upload(Service.resource(Service.cryptoKeysURL)).success;
+  let {success} = await serverKeys.upload(Service.resource(Service.cryptoKeysURL));
+  ok(success);
 }
 
 const PAYLOAD = 42;
 
 add_task(async function setup() {
-  initTestLogging();
   Service.engineManager.clear();
-
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Service").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.ErrorHandler").level = Log.Level.Trace;
   validate_all_future_pings();
 
   await Service.engineManager.register(SteamEngine);
@@ -109,7 +104,7 @@ add_task(async function test_newAccount() {
     await Service.sync();
 
     _("Engine continues to be enabled.");
-    do_check_true(engine.enabled);
+    Assert.ok(engine.enabled);
   } finally {
     await Service.startOver();
     await promiseStopServer(server);
@@ -139,10 +134,10 @@ add_task(async function test_enabledLocally() {
     await Service.sync();
 
     _("Meta record now contains the new engine.");
-    do_check_true(!!metaWBO.data.engines.steam);
+    Assert.ok(!!metaWBO.data.engines.steam);
 
     _("Engine continues to be enabled.");
-    do_check_true(engine.enabled);
+    Assert.ok(engine.enabled);
   } finally {
     await Service.startOver();
     await promiseStopServer(server);
@@ -180,13 +175,13 @@ add_task(async function test_disabledLocally() {
     await Service.sync();
 
     _("Meta record no longer contains engine.");
-    do_check_false(!!metaWBO.data.engines.steam);
+    Assert.ok(!metaWBO.data.engines.steam);
 
     _("Server records are wiped.");
-    do_check_eq(steamCollection.payload, undefined);
+    Assert.equal(steamCollection.payload, undefined);
 
     _("Engine continues to be disabled.");
-    do_check_false(engine.enabled);
+    Assert.ok(!engine.enabled);
   } finally {
     await Service.startOver();
     await promiseStopServer(server);
@@ -230,7 +225,7 @@ add_task(async function test_disabledLocally_wipe503() {
   _("Sync.");
   Service.errorHandler.syncAndReportErrors();
   await promiseObserved;
-  do_check_eq(Service.status.sync, SERVER_MAINTENANCE);
+  Assert.equal(Service.status.sync, SERVER_MAINTENANCE);
 
   await Service.startOver();
   await promiseStopServer(server);
@@ -263,19 +258,19 @@ add_task(async function test_enabledRemotely() {
     _("Upload some keys to avoid a fresh start.");
     let wbo = await Service.collectionKeys.generateNewKeysWBO();
     await wbo.encrypt(Service.identity.syncKeyBundle);
-    do_check_eq(200, (await wbo.upload(Service.resource(Service.cryptoKeysURL))).status);
+    Assert.equal(200, (await wbo.upload(Service.resource(Service.cryptoKeysURL))).status);
 
     _("Engine is disabled.");
-    do_check_false(engine.enabled);
+    Assert.ok(!engine.enabled);
 
     _("Sync.");
     await Service.sync();
 
     _("Engine is enabled.");
-    do_check_true(engine.enabled);
+    Assert.ok(engine.enabled);
 
     _("Meta record still present.");
-    do_check_eq(metaWBO.data.engines.steam.syncID, engine.syncID);
+    Assert.equal(metaWBO.data.engines.steam.syncID, engine.syncID);
   } finally {
     await Service.startOver();
     await promiseStopServer(server);
@@ -320,7 +315,7 @@ add_task(async function test_disabledRemotelyTwoClients() {
     await Service.sync();
 
     _("Engine is disabled.");
-    do_check_false(engine.enabled);
+    Assert.ok(!engine.enabled);
 
   } finally {
     await Service.startOver();
@@ -353,7 +348,7 @@ add_task(async function test_disabledRemotely() {
     await Service.sync();
 
     _("Engine is not disabled: only one client.");
-    do_check_true(engine.enabled);
+    Assert.ok(engine.enabled);
 
   } finally {
     await Service.startOver();
@@ -386,12 +381,12 @@ add_task(async function test_dependentEnginesEnabledLocally() {
     await Service.sync();
 
     _("Meta record now contains the new engines.");
-    do_check_true(!!metaWBO.data.engines.steam);
-    do_check_true(!!metaWBO.data.engines.stirling);
+    Assert.ok(!!metaWBO.data.engines.steam);
+    Assert.ok(!!metaWBO.data.engines.stirling);
 
     _("Engines continue to be enabled.");
-    do_check_true(steamEngine.enabled);
-    do_check_true(stirlingEngine.enabled);
+    Assert.ok(steamEngine.enabled);
+    Assert.ok(stirlingEngine.enabled);
   } finally {
     await Service.startOver();
     await promiseStopServer(server);
@@ -428,25 +423,25 @@ add_task(async function test_dependentEnginesDisabledLocally() {
     _("Disable engines locally. Doing it on one is enough.");
     Service._ignorePrefObserver = true;
     steamEngine.enabled = true;
-    do_check_true(stirlingEngine.enabled);
+    Assert.ok(stirlingEngine.enabled);
     Service._ignorePrefObserver = false;
     steamEngine.enabled = false;
-    do_check_false(stirlingEngine.enabled);
+    Assert.ok(!stirlingEngine.enabled);
 
     _("Sync.");
     await Service.sync();
 
     _("Meta record no longer contains engines.");
-    do_check_false(!!metaWBO.data.engines.steam);
-    do_check_false(!!metaWBO.data.engines.stirling);
+    Assert.ok(!metaWBO.data.engines.steam);
+    Assert.ok(!metaWBO.data.engines.stirling);
 
     _("Server records are wiped.");
-    do_check_eq(steamCollection.payload, undefined);
-    do_check_eq(stirlingCollection.payload, undefined);
+    Assert.equal(steamCollection.payload, undefined);
+    Assert.equal(stirlingCollection.payload, undefined);
 
     _("Engines continue to be disabled.");
-    do_check_false(steamEngine.enabled);
-    do_check_false(stirlingEngine.enabled);
+    Assert.ok(!steamEngine.enabled);
+    Assert.ok(!stirlingEngine.enabled);
   } finally {
     await Service.startOver();
     await promiseStopServer(server);

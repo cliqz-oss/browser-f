@@ -55,7 +55,7 @@ const promise = require("promise");
 const defer = require("devtools/shared/defer");
 const Services = require("Services");
 const {gDevTools} = require("devtools/client/framework/devtools");
-const {Heritage} = require("devtools/client/shared/widgets/view-helpers");
+const { extend } = require("devtools/shared/extend");
 
 const {XPCOMUtils} = require("resource://gre/modules/XPCOMUtils.jsm");
 const {NetUtil} = require("resource://gre/modules/NetUtil.jsm");
@@ -1732,6 +1732,9 @@ var Scratchpad = {
       this.editor.focus();
       this.editor.setCursor({ line: lines.length, ch: lines.pop().length });
 
+      // Add the commands controller for the source-editor.
+      this.editor.insertCommandsController();
+
       if (state)
         this.dirty = !state.saved;
 
@@ -2177,7 +2180,7 @@ function ScratchpadWindow() {}
 
 ScratchpadWindow.consoleFor = ScratchpadTab.consoleFor;
 
-ScratchpadWindow.prototype = Heritage.extend(ScratchpadTab.prototype, {
+ScratchpadWindow.prototype = extend(ScratchpadTab.prototype, {
   /**
    * Attach to this window.
    *
@@ -2186,10 +2189,8 @@ ScratchpadWindow.prototype = Heritage.extend(ScratchpadTab.prototype, {
    */
   _attach: function SW__attach()
   {
-    if (!DebuggerServer.initialized) {
-      DebuggerServer.init();
-      DebuggerServer.addBrowserActors();
-    }
+    DebuggerServer.init();
+    DebuggerServer.registerAllActors();
     DebuggerServer.allowChromeProcess = true;
 
     let client = new DebuggerClient(DebuggerServer.connectPipe());
@@ -2209,7 +2210,7 @@ function ScratchpadTarget(aTarget)
 
 ScratchpadTarget.consoleFor = ScratchpadTab.consoleFor;
 
-ScratchpadTarget.prototype = Heritage.extend(ScratchpadTab.prototype, {
+ScratchpadTarget.prototype = extend(ScratchpadTab.prototype, {
   _attach: function ST__attach()
   {
     if (this._target.isRemote) {

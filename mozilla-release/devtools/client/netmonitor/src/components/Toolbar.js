@@ -5,30 +5,26 @@
 "use strict";
 
 const Services = require("Services");
-const {
-  Component,
-  createFactory,
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
+const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 
 const Actions = require("../actions/index");
 const { FILTER_SEARCH_DELAY, FILTER_TAGS } = require("../constants");
 const {
   getRecordingState,
-  getRequestFilterTypes,
   getTypeFilteredRequests,
   isNetworkDetailsToggleButtonDisabled,
 } = require("../selectors/index");
-
 const { autocompleteProvider } = require("../utils/filter-autocomplete-provider");
 const { L10N } = require("../utils/l10n");
+const { fetchNetworkUpdatePacket } = require("../utils/request-utils");
 
 // Components
 const SearchBox = createFactory(require("devtools/client/shared/components/SearchBox"));
 
-const { button, div, input, label, span } = DOM;
+const { button, div, input, label, span } = dom;
 
 // Localization
 const COLLAPSE_DETAILS_PANE = L10N.getStr("collapseDetailsPane");
@@ -59,10 +55,11 @@ const DISABLE_CACHE_LABEL = L10N.getStr("netmonitor.toolbar.disableCache.label")
 class Toolbar extends Component {
   static get propTypes() {
     return {
+      connector: PropTypes.object.isRequired,
       toggleRecording: PropTypes.func.isRequired,
       recording: PropTypes.bool.isRequired,
       clearRequests: PropTypes.func.isRequired,
-      requestFilterTypes: PropTypes.array.isRequired,
+      requestFilterTypes: PropTypes.object.isRequired,
       setRequestFilterText: PropTypes.func.isRequired,
       networkDetailsToggleDisabled: PropTypes.bool.isRequired,
       networkDetailsOpen: PropTypes.bool.isRequired,
@@ -74,13 +71,14 @@ class Toolbar extends Component {
       toggleBrowserCache: PropTypes.func.isRequired,
       browserCacheDisabled: PropTypes.bool.isRequired,
       toggleRequestFilterType: PropTypes.func.isRequired,
-      filteredRequests: PropTypes.object.isRequired,
+      filteredRequests: PropTypes.array.isRequired,
     };
   }
 
   constructor(props) {
     super(props);
     this.autocompleteProvider = this.autocompleteProvider.bind(this);
+    this.onSearchBoxFocus = this.onSearchBoxFocus.bind(this);
     this.toggleRequestFilterType = this.toggleRequestFilterType.bind(this);
     this.updatePersistentLogsEnabled = this.updatePersistentLogsEnabled.bind(this);
     this.updateBrowserCacheDisabled = this.updateBrowserCacheDisabled.bind(this);
@@ -91,6 +89,18 @@ class Toolbar extends Component {
                                this.updatePersistentLogsEnabled);
     Services.prefs.addObserver(DEVTOOLS_DISABLE_CACHE_PREF,
                                this.updateBrowserCacheDisabled);
+  }
+
+  shouldComponentUpdate(nextProps) {
+    return this.props.networkDetailsOpen !== nextProps.networkDetailsOpen
+    || this.props.networkDetailsToggleDisabled !== nextProps.networkDetailsToggleDisabled
+    || this.props.persistentLogsEnabled !== nextProps.persistentLogsEnabled
+    || this.props.browserCacheDisabled !== nextProps.browserCacheDisabled
+    || this.props.recording !== nextProps.recording
+    || !Object.is(this.props.requestFilterTypes, nextProps.requestFilterTypes)
+
+    // Filtered requests are useful only when searchbox is focused
+    || !!(this.refs.searchbox && this.refs.searchbox.focused);
   }
 
   componentWillUnmount() {
@@ -121,6 +131,18 @@ class Toolbar extends Component {
     return autocompleteProvider(filter, this.props.filteredRequests);
   }
 
+  onSearchBoxFocus() {
+    let { connector, filteredRequests } = this.props;
+
+    // Fetch responseCookies & responseHeaders for building autocomplete list
+    filteredRequests.forEach((request) => {
+      fetchNetworkUpdatePacket(connector.requestData, request, [
+        "responseCookies",
+        "responseHeaders",
+      ]);
+    });
+  }
+
   render() {
     let {
       toggleRecording,
@@ -138,7 +160,7 @@ class Toolbar extends Component {
     } = this.props;
 
     // Render list of filter-buttons.
-    let buttons = requestFilterTypes.map(([type, checked]) => {
+    let buttons = Object.entries(requestFilterTypes).map(([type, checked]) => {
       let classList = ["devtools-button", `requests-list-filter-${type}-button`];
       checked && classList.push("checked");
 
@@ -227,7 +249,9 @@ class Toolbar extends Component {
             keyShortcut: SEARCH_KEY_SHORTCUT,
             placeholder: SEARCH_PLACE_HOLDER,
             type: "filter",
+            ref: "searchbox",
             onChange: setRequestFilterText,
+            onFocus: this.onSearchBoxFocus,
             autocompleteProvider: this.autocompleteProvider,
           }),
           button({
@@ -251,7 +275,7 @@ module.exports = connect(
     networkDetailsOpen: state.ui.networkDetailsOpen,
     persistentLogsEnabled: state.ui.persistentLogsEnabled,
     recording: getRecordingState(state),
-    requestFilterTypes: getRequestFilterTypes(state),
+    requestFilterTypes: state.filters.requestFilterTypes,
   }),
   (dispatch) => ({
     clearRequests: () => dispatch(Actions.clearRequests()),

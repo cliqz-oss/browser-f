@@ -3,12 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {
-  Component,
-  createFactory,
-  DOM: dom,
-  PropTypes
-} = require("devtools/client/shared/vendor/react");
+const { Component, createElement, createFactory } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 const {initialize} = require("devtools/client/webconsole/new-console-output/actions/ui");
 
@@ -21,6 +18,7 @@ const {
   getAllRepeatById,
 } = require("devtools/client/webconsole/new-console-output/selectors/messages");
 const MessageContainer = createFactory(require("devtools/client/webconsole/new-console-output/components/MessageContainer").MessageContainer);
+const VisibilityHandler = createFactory(require("devtools/client/shared/components/VisibilityHandler"));
 const {
   MESSAGE_TYPE,
 } = require("devtools/client/webconsole/new-console-output/constants");
@@ -96,13 +94,17 @@ class ConsoleOutput extends Component {
     //   and we are already scrolled to the bottom
     // - the number of messages in the store changed
     //   and the new message is an evaluation result.
+    const isNewMessageEvaluationResult = messagesDelta > 0 &&
+      [...nextProps.messages.values()][nextProps.messages.size - 1].type
+        === MESSAGE_TYPE.RESULT;
+
     this.shouldScrollBottom =
       (
         !this.props.initialized &&
         nextProps.initialized &&
         isScrolledToBottom(lastChild, outputNode)
       ) ||
-      (messagesDelta > 0 && nextProps.messages.last().type === MESSAGE_TYPE.RESULT) ||
+      (isNewMessageEvaluationResult) ||
       (visibleMessagesDelta > 0 && isScrolledToBottom(lastChild, outputNode));
   }
 
@@ -193,4 +195,9 @@ function mapStateToProps(state, props) {
   };
 }
 
-module.exports = connect(mapStateToProps)(ConsoleOutput);
+module.exports = connect(mapStateToProps)(props =>
+  VisibilityHandler(
+    null,
+    createElement(ConsoleOutput, props)
+  )
+);

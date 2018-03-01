@@ -102,7 +102,7 @@ IsInlineAxisOverflowVisible(nsIFrame* aFrame)
                   "expected a block frame");
 
   nsIFrame* f = aFrame;
-  while (f && f->StyleContext()->GetPseudo() && !f->IsScrollFrame()) {
+  while (f && f->StyleContext()->IsAnonBox() && !f->IsScrollFrame()) {
     f = f->GetParent();
   }
   if (!f) {
@@ -298,10 +298,6 @@ nsDisplayTextOverflowMarker::CreateWebRenderCommands(mozilla::wr::DisplayListBui
                                                      layers::WebRenderLayerManager* aManager,
                                                      nsDisplayListBuilder* aDisplayListBuilder)
 {
-  if (!gfxPrefs::LayersAllowTextLayers()) {
-      return false;
-  }
-
   bool snap;
   nsRect bounds = GetBounds(aDisplayListBuilder, &snap);
   if (bounds.IsEmpty()) {
@@ -326,7 +322,6 @@ TextOverflow::TextOverflow(nsDisplayListBuilder* aBuilder,
   , mBuilder(aBuilder)
   , mBlock(aBlockFrame)
   , mScrollableFrame(nsLayoutUtils::GetScrollableFrameFor(aBlockFrame))
-  , mMarkerList(aBuilder)
   , mBlockSize(aBlockFrame->GetSize())
   , mBlockWM(aBlockFrame->GetWritingMode())
   , mAdjustForPixelSnapping(false)
@@ -453,6 +448,8 @@ TextOverflow::AnalyzeMarkerEdges(nsIFrame* aFrame,
                                  bool* aFoundVisibleTextOrAtomic,
                                  InnerClipEdges* aClippedMarkerEdges)
 {
+  MOZ_ASSERT(aFrameType == LayoutFrameType::Text ||
+             IsAtomicElement(aFrame, aFrameType));
   LogicalRect borderRect(mBlockWM,
                          nsRect(aFrame->GetOffsetTo(mBlock),
                                 aFrame->GetSize()),
@@ -482,11 +479,12 @@ TextOverflow::AnalyzeMarkerEdges(nsIFrame* aFrame,
   if ((istartOverlap > 0 && insideIStartEdge) ||
       (iendOverlap > 0 && insideIEndEdge)) {
     if (aFrameType == LayoutFrameType::Text) {
-      if (aInsideMarkersArea.IStart(mBlockWM) <
-          aInsideMarkersArea.IEnd(mBlockWM)) {
+      auto textFrame = static_cast<nsTextFrame*>(aFrame);
+      if ((aInsideMarkersArea.IStart(mBlockWM) <
+           aInsideMarkersArea.IEnd(mBlockWM)) &&
+          textFrame->HasNonSuppressedText()) {
         // a clipped text frame and there is some room between the markers
         nscoord snappedIStart, snappedIEnd;
-        auto textFrame = static_cast<nsTextFrame*>(aFrame);
         bool isFullyClipped = mBlockWM.IsBidiLTR() ?
           IsFullyClipped(textFrame, istartOverlap, iendOverlap,
                          &snappedIStart, &snappedIEnd) :
@@ -516,7 +514,14 @@ TextOverflow::AnalyzeMarkerEdges(nsIFrame* aFrame,
   } else {
     // frame is inside
     aAlignmentEdges->Accumulate(mBlockWM, borderRect);
-    *aFoundVisibleTextOrAtomic = true;
+    if (aFrameType == LayoutFrameType::Text) {
+      auto textFrame = static_cast<nsTextFrame*>(aFrame);
+      if (textFrame->HasNonSuppressedText()) {
+        *aFoundVisibleTextOrAtomic = true;
+      }
+    } else {
+      *aFoundVisibleTextOrAtomic = true;
+    }
   }
 }
 
@@ -755,7 +760,7 @@ TextOverflow::PruneDisplayListContents(nsDisplayList* aList,
                                        const FrameHashtable& aFramesToHide,
                                        const LogicalRect& aInsideMarkersArea)
 {
-  nsDisplayList saved(mBuilder);
+  nsDisplayList saved;
   nsDisplayItem* item;
   while ((item = aList->RemoveBottom())) {
     nsIFrame* itemFrame = item->Frame();
@@ -859,7 +864,7 @@ TextOverflow::CreateMarkers(const nsLineBox* aLine,
     nsDisplayItem* marker = new (mBuilder)
       nsDisplayTextOverflowMarker(mBuilder, mBlock, markerRect,
                                   aLine->GetLogicalAscent(), mIStart.mStyle, aLineNumber, 0);
-    mMarkerList.AppendNewToTop(marker);
+    mMarkerList.AppendToTop(marker);
   }
 
   if (aCreateIEnd) {
@@ -876,7 +881,7 @@ TextOverflow::CreateMarkers(const nsLineBox* aLine,
     nsDisplayItem* marker = new (mBuilder)
       nsDisplayTextOverflowMarker(mBuilder, mBlock, markerRect,
                                   aLine->GetLogicalAscent(), mIEnd.mStyle, aLineNumber, 1);
-    mMarkerList.AppendNewToTop(marker);
+    mMarkerList.AppendToTop(marker);
   }
 }
 

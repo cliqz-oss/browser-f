@@ -8,14 +8,16 @@
 
 "use strict";
 
-const { DOM, Component, PropTypes, createFactory } = require("devtools/client/shared/vendor/react");
+const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const Tabs = createFactory(require("devtools/client/shared/components/tabs/Tabs").Tabs);
 
 const Menu = require("devtools/client/framework/menu");
 const MenuItem = require("devtools/client/framework/menu-item");
 
 // Shortcuts
-const { div } = DOM;
+const { div } = dom;
 
 /**
  * Renders Tabbar component.
@@ -140,16 +142,19 @@ class Tabbar extends Component {
     let tabs = this.state.tabs.slice();
     tabs.splice(index, 1);
 
-    let activeTab = this.state.activeTab;
-
-    if (activeTab >= tabs.length) {
-      activeTab = tabs.length - 1;
-    }
+    let activeTab = this.state.activeTab - 1;
+    activeTab = activeTab === -1 ? 0 : activeTab;
 
     this.setState(Object.assign({}, this.state, {
-      tabs,
       activeTab,
-    }));
+      tabs,
+    }), () => {
+      // Select the next active tab and force the select event handler to initialize
+      // the panel if needed.
+      if (tabs.length > 0 && this.props.onSelect) {
+        this.props.onSelect(this.getTabId(activeTab));
+      }
+    });
   }
 
   select(tabId) {

@@ -11,7 +11,6 @@ Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/engines.js");
 Cu.import("resource://services-sync/engines/bookmarks.js");
 Cu.import("resource://services-sync/engines/clients.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 Cu.import("resource://testing-common/services/sync/fxa_utils.js");
 Cu.import("resource://testing-common/services/sync/rotaryengine.js");
 Cu.import("resource://gre/modules/osfile.jsm", this);
@@ -61,13 +60,12 @@ BogusEngine.prototype = Object.create(SteamEngine.prototype);
 async function cleanAndGo(engine, server) {
   engine._tracker.clearChangedIDs();
   Svc.Prefs.resetBranch("");
-  Svc.Prefs.set("log.logger.engine.rotary", "Trace");
+  syncTestLogging();
   Service.recordManager.clearCache();
   await promiseStopServer(server);
 }
 
 add_task(async function setup() {
-  initTestLogging("Trace");
   // Avoid addon manager complaining about not being initialized
   Service.engineManager.unregister("addons");
 });
@@ -525,6 +523,29 @@ add_task(async function test_nserror() {
   }
 });
 
+add_task(async function test_sync_why() {
+  enableValidationPrefs();
+
+  await Service.engineManager.register(SteamEngine);
+  let engine = Service.engineManager.get("steam");
+  engine.enabled = true;
+  let server = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+  let e = new Error("generic failure message");
+  engine._errToThrow = e;
+
+  try {
+    _(`test_generic_engine_fail: Steam tracker contents: ${
+      JSON.stringify(engine._tracker.changedIDs)}`);
+    let ping = await wait_for_ping(() => Service.sync({why: "user"}), true, false);
+    _(JSON.stringify(ping));
+    equal(ping.why, "user");
+  } finally {
+    await cleanAndGo(engine, server);
+    Service.engineManager.unregister(engine);
+  }
+});
+
 add_task(async function test_discarding() {
   enableValidationPrefs();
 
@@ -647,6 +668,14 @@ add_task(async function test_events() {
     equal(ping.events[0].length, 6);
     [timestamp, category, method, object, value, extra] = ping.events[0];
     equal(value, null);
+
+    Service.recordTelemetryEvent("object", "method", undefined, { foo: "bar" });
+    let telem = get_sync_test_telemetry();
+    // Fake a submission due to shutdown.
+    ping = await wait_for_ping(() => telem.finish("shutdown"), false, true);
+    equal(ping.syncs.length, 0);
+    equal(ping.events.length, 1);
+    equal(ping.events[0].length, 6);
   } finally {
     await cleanAndGo(engine, server);
     Service.engineManager.unregister(engine);

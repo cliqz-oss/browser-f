@@ -7,6 +7,11 @@ const TEST_FILE = "dummy_page.html";
 add_task(async function() {
   let dir = getChromeDir(getResolvedURI(gTestPath));
   dir.append(TEST_FILE);
+
+  // The file can be a symbolic link on local build.  Normalize it to make sure
+  // the path matches to the actual URI opened in the new tab.
+  dir.normalize();
+
   const uriString = Services.io.newFileURI(dir).spec;
   const openedUriString = uriString + "?opened";
 
@@ -17,7 +22,7 @@ add_task(async function() {
   });
 
   // Open new file:// tab from JavaScript in first file:// page.
-  let promiseTabOpened = BrowserTestUtils.waitForNewTab(gBrowser, openedUriString);
+  let promiseTabOpened = BrowserTestUtils.waitForNewTab(gBrowser, openedUriString, true);
   await ContentTask.spawn(tab.linkedBrowser, openedUriString, uri => {
     content.open(uri, "_blank");
   });
@@ -28,7 +33,6 @@ add_task(async function() {
   });
 
   let openedBrowser = openedTab.linkedBrowser;
-  await BrowserTestUtils.browserLoaded(openedBrowser);
 
   // Ensure that new file:// tab can be navigated to web content.
   openedBrowser.loadURI("http://example.org/");

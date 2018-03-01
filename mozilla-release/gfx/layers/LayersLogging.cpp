@@ -64,7 +64,7 @@ AppendToString(std::stringstream& aStream, const nsRect& r,
   aStream << pfx;
   aStream << nsPrintfCString(
     "(x=%d, y=%d, w=%d, h=%d)",
-    r.x, r.y, r.Width(), r.Height()).get();
+    r.X(), r.Y(), r.Width(), r.Height()).get();
   aStream << sfx;
 }
 
@@ -98,6 +98,17 @@ AppendToString(std::stringstream& aStream, const wr::LayoutSize& s,
   aStream << nsPrintfCString(
     "(w=%f, h=%f)",
     s.width, s.height).get();
+  aStream << sfx;
+}
+
+void
+AppendToString(std::stringstream& aStream, const nsSize& sz,
+               const char* pfx, const char* sfx)
+{
+  aStream << pfx;
+  aStream << nsPrintfCString(
+    "(w=%d, h=%d)",
+    sz.width, sz.height).get();
   aStream << sfx;
 }
 
@@ -167,6 +178,28 @@ AppendToString(std::stringstream& aStream, const EventRegions& e,
 }
 
 void
+AppendToString(std::stringstream& aStream, OverscrollBehavior aBehavior,
+               const char* pfx, const char* sfx)
+{
+  aStream << pfx;
+  switch (aBehavior) {
+  case OverscrollBehavior::Auto: {
+    aStream << "auto";
+    break;
+  }
+  case OverscrollBehavior::Contain: {
+    aStream << "contain";
+    break;
+  }
+  case OverscrollBehavior::None: {
+    aStream << "none";
+    break;
+  }
+  }
+  aStream << sfx;
+}
+
+void
 AppendToString(std::stringstream& aStream, const ScrollMetadata& m,
                const char* pfx, const char* sfx)
 {
@@ -181,6 +214,18 @@ AppendToString(std::stringstream& aStream, const ScrollMetadata& m,
   }
   if (m.HasMaskLayer()) {
     AppendToString(aStream, m.ScrollClip().GetMaskLayerIndex().value(), "] [mask=");
+  }
+  OverscrollBehavior overscrollX = m.GetOverscrollBehavior().mBehaviorX;
+  OverscrollBehavior overscrollY = m.GetOverscrollBehavior().mBehaviorY;
+  if (overscrollX == overscrollY && overscrollX != OverscrollBehavior::Auto) {
+    AppendToString(aStream, overscrollX, "] [overscroll=");
+  } else {
+    if (overscrollX != OverscrollBehavior::Auto) {
+      AppendToString(aStream, overscrollX, "] [overscroll-x=");
+    }
+    if (overscrollY != OverscrollBehavior::Auto) {
+      AppendToString(aStream, overscrollY, "] [overscroll-y=");
+    }
   }
   aStream << "] }" << sfx;
 }
@@ -229,7 +274,7 @@ AppendToString(std::stringstream& aStream, const ScrollableLayerGuid& s,
                const char* pfx, const char* sfx)
 {
   aStream << pfx
-          << nsPrintfCString("{ l=%" PRIu64 ", p=%u, v=%" PRIu64 " }", s.mLayersId, s.mPresShellId, s.mScrollId).get()
+          << nsPrintfCString("{ l=0x%" PRIx64 ", p=%u, v=%" PRIu64 " }", s.mLayersId, s.mPresShellId, s.mScrollId).get()
           << sfx;
 }
 

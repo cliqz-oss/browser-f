@@ -157,7 +157,7 @@ function EdgeReadingListMigrator(dbOverride) {
 EdgeReadingListMigrator.prototype = {
   type: MigrationUtils.resourceTypes.BOOKMARKS,
 
-  get db() { return this.dbOverride || gEdgeDatabase },
+  get db() { return this.dbOverride || gEdgeDatabase; },
 
   get exists() {
     return !!this.db;
@@ -233,9 +233,9 @@ function EdgeBookmarksMigrator(dbOverride) {
 EdgeBookmarksMigrator.prototype = {
   type: MigrationUtils.resourceTypes.BOOKMARKS,
 
-  get db() { return this.dbOverride || gEdgeDatabase },
+  get db() { return this.dbOverride || gEdgeDatabase; },
 
-  get TABLE_NAME() { return "Favorites" },
+  get TABLE_NAME() { return "Favorites"; },
 
   get exists() {
     if (!("_exists" in this)) {
@@ -395,7 +395,8 @@ EdgeProfileMigrator.prototype.getLastUsedDate = function() {
       typedURLs = MSMigrationUtils.getTypedURLs(kEdgeRegistryRoot);
     } catch (ex) {}
     let times = [0, ...typedURLs.values()];
-    resolve(Math.max.apply(Math, times));
+    // dates is an array of PRTimes, which are in microseconds - convert to milliseconds
+    resolve(Math.max.apply(Math, times) / 1000);
   }));
   return Promise.all(datePromises).then(dates => {
     return new Date(Math.max.apply(Math, dates));

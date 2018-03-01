@@ -7,6 +7,7 @@
 #include "InterceptedHttpChannel.h"
 #include "nsContentSecurityManager.h"
 #include "nsEscape.h"
+#include "mozilla/dom/Performance.h"
 
 namespace mozilla {
 namespace net {
@@ -14,6 +15,7 @@ namespace net {
 NS_IMPL_ISUPPORTS_INHERITED(InterceptedHttpChannel,
                             HttpBaseChannel,
                             nsIInterceptedChannel,
+                            nsICacheInfoChannel,
                             nsIAsyncVerifyRedirectCallback,
                             nsIRequestObserver,
                             nsIStreamListener,
@@ -232,13 +234,15 @@ InterceptedHttpChannel::FollowSyntheticRedirect()
 }
 
 nsresult
-InterceptedHttpChannel::RedirectForOpaqueResponse(nsIURI* aResponseURI)
+InterceptedHttpChannel::RedirectForResponseURL(nsIURI* aResponseURI,
+                                               bool aResponseRedirected)
 {
-  // Perform an internal redirect to another InterceptedHttpChannel using
-  // the given cross-origin response URL.  The resulting channel will then
-  // process the synthetic response as normal.  This extra redirect is
-  // performed so that listeners treat the result as unsafe cross-origin
-  // data.
+  // Perform a service worker redirect to another InterceptedHttpChannel using
+  // the given response URL. It allows content to see the final URL where
+  // appropriate and also helps us enforce cross-origin restrictions. The
+  // resulting channel will then process the synthetic response as normal. This
+  // extra redirect is performed so that listeners treat the result as unsafe
+  // cross-origin data.
 
   nsresult rv = NS_OK;
 
@@ -256,7 +260,11 @@ InterceptedHttpChannel::RedirectForOpaqueResponse(nsIURI* aResponseURI)
                         static_cast<nsProxyInfo*>(mProxyInfo.get()),
                         mProxyResolveFlags, mProxyURI, mChannelId);
 
-  uint32_t flags = nsIChannelEventSink::REDIRECT_INTERNAL;
+  // If the response has been redirected, propagate all the URLs to content.
+  // Thus, the exact value of the redirect flag does not matter as long as it's
+  // not REDIRECT_INTERNAL.
+  uint32_t flags = aResponseRedirected ? nsIChannelEventSink::REDIRECT_TEMPORARY
+                                       : nsIChannelEventSink::REDIRECT_INTERNAL;
 
   nsCOMPtr<nsILoadInfo> redirectLoadInfo =
     CloneLoadInfoForRedirect(aResponseURI, flags);
@@ -729,7 +737,9 @@ InterceptedHttpChannel::SynthesizeHeader(const nsACString& aName,
 NS_IMETHODIMP
 InterceptedHttpChannel::StartSynthesizedResponse(nsIInputStream* aBody,
                                                  nsIInterceptedBodyCallback* aBodyCallback,
-                                                 const nsACString& aFinalURLSpec)
+                                                 nsICacheInfoChannel* aSynthesizedCacheInfo,
+                                                 const nsACString& aFinalURLSpec,
+                                                 bool aResponseRedirected)
 {
   nsresult rv = NS_OK;
 
@@ -759,6 +769,8 @@ InterceptedHttpChannel::StartSynthesizedResponse(nsIInputStream* aBody,
   // redirect we pass ownership of the callback to the new channel.
   mBodyCallback = aBodyCallback;
   aBodyCallback = nullptr;
+
+  mSynthesizedCacheInfo = aSynthesizedCacheInfo;
 
   if (!mSynthesizedResponseHead) {
     mSynthesizedResponseHead.reset(new nsHttpResponseHead());
@@ -795,7 +807,7 @@ InterceptedHttpChannel::StartSynthesizedResponse(nsIInputStream* aBody,
   bool equal = false;
   Unused << mURI->Equals(responseURI, &equal);
   if (!equal) {
-    rv = RedirectForOpaqueResponse(responseURI);
+    rv = RedirectForResponseURL(responseURI, aResponseRedirected);
     NS_ENSURE_SUCCESS(rv, rv);
 
     return NS_OK;
@@ -943,8 +955,12 @@ InterceptedHttpChannel::SetChannelResetEnd(mozilla::TimeStamp aTimeStamp)
 NS_IMETHODIMP
 InterceptedHttpChannel::SaveTimeStamps(void)
 {
-  nsCString navigationOrSubresource = nsContentUtils::IsNonSubresourceRequest(this) ?
+  bool isNonSubresourceRequest = nsContentUtils::IsNonSubresourceRequest(this);
+  nsCString navigationOrSubresource = isNonSubresourceRequest ?
     NS_LITERAL_CSTRING("navigation") : NS_LITERAL_CSTRING("subresource");
+
+  nsAutoCString subresourceKey(EmptyCString());
+  GetSubresourceTimeStampKey(this, subresourceKey);
 
   // We may have null timestamps if the fetch dispatch runnable was cancelled
   // and we defaulted to resuming the request.
@@ -954,16 +970,31 @@ InterceptedHttpChannel::SaveTimeStamps(void)
       Telemetry::SERVICE_WORKER_FETCH_EVENT_CHANNEL_RESET_MS;
     Telemetry::Accumulate(id, navigationOrSubresource,
       static_cast<uint32_t>((mFinishResponseEnd - mFinishResponseStart).ToMilliseconds()));
+    if (!isNonSubresourceRequest && !subresourceKey.IsEmpty()) {
+      Telemetry::Accumulate(id, subresourceKey,
+        static_cast<uint32_t>((mFinishResponseEnd - mFinishResponseStart).ToMilliseconds()));
+    }
   }
 
   Telemetry::Accumulate(Telemetry::SERVICE_WORKER_FETCH_EVENT_DISPATCH_MS,
     navigationOrSubresource,
     static_cast<uint32_t>((mHandleFetchEventStart - mDispatchFetchEventStart).ToMilliseconds()));
 
+  if (!isNonSubresourceRequest && !subresourceKey.IsEmpty()) {
+    Telemetry::Accumulate(Telemetry::SERVICE_WORKER_FETCH_EVENT_DISPATCH_MS,
+      subresourceKey,
+      static_cast<uint32_t>((mHandleFetchEventStart - mDispatchFetchEventStart).ToMilliseconds()));
+  }
+
   if (!mFinishResponseEnd.IsNull()) {
     Telemetry::Accumulate(Telemetry::SERVICE_WORKER_FETCH_INTERCEPTION_DURATION_MS,
       navigationOrSubresource,
       static_cast<uint32_t>((mFinishResponseEnd - mDispatchFetchEventStart).ToMilliseconds()));
+    if (!isNonSubresourceRequest && !subresourceKey.IsEmpty()) {
+      Telemetry::Accumulate(Telemetry::SERVICE_WORKER_FETCH_INTERCEPTION_DURATION_MS,
+        subresourceKey,
+        static_cast<uint32_t>((mFinishResponseEnd - mDispatchFetchEventStart).ToMilliseconds()));
+    }
   }
 
   return NS_OK;
@@ -1170,6 +1201,142 @@ InterceptedHttpChannel::CheckListenerChain()
     rv = retargetableListener->CheckListenerChain();
   }
   return rv;
+}
+
+//-----------------------------------------------------------------------------
+// InterceptedHttpChannel::nsICacheInfoChannel
+//-----------------------------------------------------------------------------
+// InterceptedHttpChannel does not really implement the nsICacheInfoChannel
+// interface, we tranfers parameters to the saved nsICacheInfoChannel(mSynthesizedCacheInfo)
+// from StartSynthesizedResponse. And we return false in IsFromCache and
+// NS_ERROR_NOT_AVAILABLE for all other methods while the saved
+// mSynthesizedCacheInfo does not exist.
+NS_IMETHODIMP
+InterceptedHttpChannel::IsFromCache(bool *value)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->IsFromCache(value);
+  }
+  *value = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetCacheEntryId(uint64_t *aCacheEntryId)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->GetCacheEntryId(aCacheEntryId);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetCacheTokenFetchCount(int32_t *_retval)
+{
+  NS_ENSURE_ARG_POINTER(_retval);
+
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->GetCacheTokenFetchCount(_retval);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetCacheTokenExpirationTime(uint32_t *_retval)
+{
+  NS_ENSURE_ARG_POINTER(_retval);
+
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->GetCacheTokenExpirationTime(_retval);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetCacheTokenCachedCharset(nsACString &_retval)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->GetCacheTokenCachedCharset(_retval);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::SetCacheTokenCachedCharset(const nsACString &aCharset)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->SetCacheTokenCachedCharset(aCharset);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::SetAllowStaleCacheContent(bool aAllowStaleCacheContent)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->SetAllowStaleCacheContent(aAllowStaleCacheContent);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetAllowStaleCacheContent(bool *aAllowStaleCacheContent)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->GetAllowStaleCacheContent(aAllowStaleCacheContent);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::PreferAlternativeDataType(const nsACString & aType)
+{
+  ENSURE_CALLED_BEFORE_ASYNC_OPEN();
+  mPreferredCachedAltDataType = aType;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetPreferredAlternativeDataType(nsACString & aType)
+{
+  aType = mPreferredCachedAltDataType;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetAlternativeDataType(nsACString & aType)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->GetAlternativeDataType(aType);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::OpenAlternativeOutputStream(const nsACString & type, nsIOutputStream * *_retval)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->OpenAlternativeOutputStream(type, _retval);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::GetCacheKey(nsISupports **key)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->GetCacheKey(key);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+InterceptedHttpChannel::SetCacheKey(nsISupports *key)
+{
+  if (mSynthesizedCacheInfo) {
+    return mSynthesizedCacheInfo->SetCacheKey(key);
+  }
+  return NS_ERROR_NOT_AVAILABLE;
 }
 
 } // namespace net

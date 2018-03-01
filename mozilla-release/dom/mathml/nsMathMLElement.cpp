@@ -145,6 +145,7 @@ bool
 nsMathMLElement::ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult)
 {
   MOZ_ASSERT(IsMathMLElement());
@@ -177,7 +178,9 @@ nsMathMLElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsMathMLElementBase::ParseAttribute(aNamespaceID, aAttribute,
-                                             aValue, aResult);
+                                             aValue,
+                                             aMaybeScriptedPrincipal,
+                                             aResult);
 }
 
 static Element::MappedAttributeEntry sMtableStyles[] = {
@@ -525,7 +528,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
         } else {
           ReportParseErrorNoTag(str,
                                 nsGkAtoms::scriptsizemultiplier_,
-                                aData->mPresContext->Document());
+                                aData->Document());
         }
       }
     }
@@ -547,7 +550,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
       nsCSSValue scriptMinSize;
       ParseNumericValue(value->GetStringValue(), scriptMinSize,
                         PARSE_ALLOW_UNITLESS | CONVERT_UNITLESS_TO_PERCENT,
-                        aData->mPresContext->Document());
+                        aData->Document());
 
       if (scriptMinSize.GetUnit() == eCSSUnit_Percent) {
         scriptMinSize.SetFloatValue(8.0 * scriptMinSize.GetPercentValue(),
@@ -591,7 +594,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
         } else {
           ReportParseErrorNoTag(str,
                                 nsGkAtoms::scriptlevel_,
-                                aData->mPresContext->Document());
+                                aData->Document());
         }
       }
     }
@@ -625,7 +628,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
       if (value) {
         WarnDeprecated(nsGkAtoms::fontsize_->GetUTF16String(),
                        nsGkAtoms::mathsize_->GetUTF16String(),
-                       aData->mPresContext->Document());
+                       aData->Document());
       }
     }
     if (value && value->Type() == nsAttrValue::eString &&
@@ -668,7 +671,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
     if (value) {
       WarnDeprecated(nsGkAtoms::fontfamily_->GetUTF16String(),
                      nsGkAtoms::mathvariant_->GetUTF16String(),
-                     aData->mPresContext->Document());
+                     aData->Document());
     }
     if (value && value->Type() == nsAttrValue::eString &&
         !aData->PropertyIsSet(eCSSProperty_font_family)) {
@@ -689,7 +692,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
     if (value) {
       WarnDeprecated(nsGkAtoms::fontstyle_->GetUTF16String(),
                        nsGkAtoms::mathvariant_->GetUTF16String(),
-                       aData->mPresContext->Document());
+                       aData->Document());
       if (value->Type() == nsAttrValue::eString &&
           !aData->PropertyIsSet(eCSSProperty_font_style)) {
         nsAutoString str(value->GetStringValue());
@@ -718,7 +721,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
     if (value) {
       WarnDeprecated(nsGkAtoms::fontweight_->GetUTF16String(),
                        nsGkAtoms::mathvariant_->GetUTF16String(),
-                       aData->mPresContext->Document());
+                       aData->Document());
       if (value->Type() == nsAttrValue::eString &&
           !aData->PropertyIsSet(eCSSProperty_font_weight)) {
         nsAutoString str(value->GetStringValue());
@@ -803,7 +806,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
       if (value) {
         WarnDeprecated(nsGkAtoms::background->GetUTF16String(),
                        nsGkAtoms::mathbackground_->GetUTF16String(),
-                       aData->mPresContext->Document());
+                       aData->Document());
       }
     }
     if (value) {
@@ -838,7 +841,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
       if (value) {
         WarnDeprecated(nsGkAtoms::color->GetUTF16String(),
                        nsGkAtoms::mathcolor_->GetUTF16String(),
-                       aData->mPresContext->Document());
+                       aData->Document());
       }
     }
     nscolor color;
@@ -865,8 +868,7 @@ nsMathMLElement::MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
       nsCSSValue width;
       // This does not handle auto and unitless values
       if (value && value->Type() == nsAttrValue::eString) {
-        ParseNumericValue(value->GetStringValue(), width, 0,
-                          aData->mPresContext->Document());
+        ParseNumericValue(value->GetStringValue(), width, 0, aData->Document());
         if (width.GetUnit() == eCSSUnit_Percent) {
           aData->SetPercentValue(eCSSProperty_width,
                                  width.GetPercentValue());
@@ -1008,13 +1010,13 @@ nsMathMLElement::IsLink(nsIURI** aURI) const
     // For any other values, we're either not a *clickable* XLink, or the end
     // result is poorly specified. Either way, we return false.
 
-    static nsIContent::AttrValuesArray sTypeVals[] =
+    static Element::AttrValuesArray sTypeVals[] =
       { &nsGkAtoms::_empty, &nsGkAtoms::simple, nullptr };
 
-    static nsIContent::AttrValuesArray sShowVals[] =
+    static Element::AttrValuesArray sShowVals[] =
       { &nsGkAtoms::_empty, &nsGkAtoms::_new, &nsGkAtoms::replace, nullptr };
 
-    static nsIContent::AttrValuesArray sActuateVals[] =
+    static Element::AttrValuesArray sActuateVals[] =
       { &nsGkAtoms::_empty, &nsGkAtoms::onRequest, nullptr };
 
     // Optimization: check for href first for early return
@@ -1023,13 +1025,13 @@ nsMathMLElement::IsLink(nsIURI** aURI) const
     if (href &&
         FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::type,
                         sTypeVals, eCaseMatters) !=
-        nsIContent::ATTR_VALUE_NO_MATCH &&
+        Element::ATTR_VALUE_NO_MATCH &&
         FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::show,
                         sShowVals, eCaseMatters) !=
-        nsIContent::ATTR_VALUE_NO_MATCH &&
+        Element::ATTR_VALUE_NO_MATCH &&
         FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::actuate,
                         sActuateVals, eCaseMatters) !=
-        nsIContent::ATTR_VALUE_NO_MATCH) {
+        Element::ATTR_VALUE_NO_MATCH) {
       hasHref = true;
     }
   }
@@ -1060,7 +1062,7 @@ nsMathMLElement::GetLinkTarget(nsAString& aTarget)
 
   if (aTarget.IsEmpty()) {
 
-    static nsIContent::AttrValuesArray sShowVals[] =
+    static Element::AttrValuesArray sShowVals[] =
       { &nsGkAtoms::_new, &nsGkAtoms::replace, nullptr };
 
     switch (FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::show,

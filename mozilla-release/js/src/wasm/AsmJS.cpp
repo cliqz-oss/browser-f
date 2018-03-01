@@ -413,7 +413,7 @@ BinaryLeft(ParseNode* pn)
 static inline ParseNode*
 ReturnExpr(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_RETURN));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Return));
     return UnaryKid(pn);
 }
 
@@ -455,14 +455,14 @@ ListLength(ParseNode* pn)
 static inline ParseNode*
 CallCallee(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_CALL));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Call));
     return ListHead(pn);
 }
 
 static inline unsigned
 CallArgListLength(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_CALL));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Call));
     MOZ_ASSERT(ListLength(pn) >= 1);
     return ListLength(pn) - 1;
 }
@@ -470,14 +470,14 @@ CallArgListLength(ParseNode* pn)
 static inline ParseNode*
 CallArgList(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_CALL));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Call));
     return NextNode(ListHead(pn));
 }
 
 static inline ParseNode*
 VarListHead(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_VAR) || pn->isKind(PNK_CONST));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Var) || pn->isKind(ParseNodeKind::Const));
     return ListHead(pn);
 }
 
@@ -532,42 +532,42 @@ BitwiseRight(ParseNode* pn)
 static inline ParseNode*
 MultiplyLeft(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_STAR));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Star));
     return BinaryOpLeft(pn);
 }
 
 static inline ParseNode*
 MultiplyRight(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_STAR));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Star));
     return BinaryOpRight(pn);
 }
 
 static inline ParseNode*
 AddSubLeft(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_ADD) || pn->isKind(PNK_SUB));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Add) || pn->isKind(ParseNodeKind::Sub));
     return BinaryOpLeft(pn);
 }
 
 static inline ParseNode*
 AddSubRight(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_ADD) || pn->isKind(PNK_SUB));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Add) || pn->isKind(ParseNodeKind::Sub));
     return BinaryOpRight(pn);
 }
 
 static inline ParseNode*
 DivOrModLeft(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_DIV) || pn->isKind(PNK_MOD));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Div) || pn->isKind(ParseNodeKind::Mod));
     return BinaryOpLeft(pn);
 }
 
 static inline ParseNode*
 DivOrModRight(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_DIV) || pn->isKind(PNK_MOD));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Div) || pn->isKind(ParseNodeKind::Mod));
     return BinaryOpRight(pn);
 }
 
@@ -586,20 +586,20 @@ ComparisonRight(ParseNode* pn)
 static inline bool
 IsExpressionStatement(ParseNode* pn)
 {
-    return pn->isKind(PNK_SEMI);
+    return pn->isKind(ParseNodeKind::Semi);
 }
 
 static inline ParseNode*
 ExpressionStatementExpr(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_SEMI));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Semi));
     return UnaryKid(pn);
 }
 
 static inline PropertyName*
 LoopControlMaybeLabel(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_BREAK) || pn->isKind(PNK_CONTINUE));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Break) || pn->isKind(ParseNodeKind::Continue));
     MOZ_ASSERT(pn->isArity(PN_NULLARY));
     return pn->as<LoopControlStatement>().label();
 }
@@ -619,21 +619,21 @@ LabeledStatementStatement(ParseNode* pn)
 static double
 NumberNodeValue(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_NUMBER));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Number));
     return pn->pn_dval;
 }
 
 static bool
 NumberNodeHasFrac(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_NUMBER));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Number));
     return pn->pn_u.number.decimalPoint == HasDecimal;
 }
 
 static ParseNode*
 DotBase(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_DOT));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Dot));
     MOZ_ASSERT(pn->isArity(PN_NAME));
     return pn->expr();
 }
@@ -641,7 +641,7 @@ DotBase(ParseNode* pn)
 static PropertyName*
 DotMember(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_DOT));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Dot));
     MOZ_ASSERT(pn->isArity(PN_NAME));
     return pn->pn_atom->asPropertyName();
 }
@@ -649,21 +649,21 @@ DotMember(ParseNode* pn)
 static ParseNode*
 ElemBase(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_ELEM));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Elem));
     return BinaryLeft(pn);
 }
 
 static ParseNode*
 ElemIndex(ParseNode* pn)
 {
-    MOZ_ASSERT(pn->isKind(PNK_ELEM));
+    MOZ_ASSERT(pn->isKind(ParseNodeKind::Elem));
     return BinaryRight(pn);
 }
 
 static inline JSFunction*
 FunctionObject(ParseNode* fn)
 {
-    MOZ_ASSERT(fn->isKind(PNK_FUNCTION));
+    MOZ_ASSERT(fn->isKind(ParseNodeKind::Function));
     MOZ_ASSERT(fn->isArity(PN_CODE));
     return fn->pn_funbox->function();
 }
@@ -679,28 +679,28 @@ FunctionName(ParseNode* fn)
 static inline ParseNode*
 FunctionStatementList(ParseNode* fn)
 {
-    MOZ_ASSERT(fn->pn_body->isKind(PNK_PARAMSBODY));
+    MOZ_ASSERT(fn->pn_body->isKind(ParseNodeKind::ParamsBody));
     ParseNode* last = fn->pn_body->last();
-    MOZ_ASSERT(last->isKind(PNK_LEXICALSCOPE));
+    MOZ_ASSERT(last->isKind(ParseNodeKind::LexicalScope));
     MOZ_ASSERT(last->isEmptyScope());
     ParseNode* body = last->scopeBody();
-    MOZ_ASSERT(body->isKind(PNK_STATEMENTLIST));
+    MOZ_ASSERT(body->isKind(ParseNodeKind::StatementList));
     return body;
 }
 
 static inline bool
 IsNormalObjectField(JSContext* cx, ParseNode* pn)
 {
-    return pn->isKind(PNK_COLON) &&
+    return pn->isKind(ParseNodeKind::Colon) &&
            pn->getOp() == JSOP_INITPROP &&
-           BinaryLeft(pn)->isKind(PNK_OBJECT_PROPERTY_NAME);
+           BinaryLeft(pn)->isKind(ParseNodeKind::ObjectPropertyName);
 }
 
 static inline PropertyName*
 ObjectNormalFieldName(JSContext* cx, ParseNode* pn)
 {
     MOZ_ASSERT(IsNormalObjectField(cx, pn));
-    MOZ_ASSERT(BinaryLeft(pn)->isKind(PNK_OBJECT_PROPERTY_NAME));
+    MOZ_ASSERT(BinaryLeft(pn)->isKind(ParseNodeKind::ObjectPropertyName));
     return BinaryLeft(pn)->pn_atom->asPropertyName();
 }
 
@@ -720,7 +720,7 @@ MaybeInitializer(ParseNode* pn)
 static inline bool
 IsUseOfName(ParseNode* pn, PropertyName* name)
 {
-    return pn->isKind(PNK_NAME) && pn->name() == name;
+    return pn->isKind(ParseNodeKind::Name) && pn->name() == name;
 }
 
 static inline bool
@@ -732,16 +732,16 @@ IsIgnoredDirectiveName(JSContext* cx, JSAtom* atom)
 static inline bool
 IsIgnoredDirective(JSContext* cx, ParseNode* pn)
 {
-    return pn->isKind(PNK_SEMI) &&
+    return pn->isKind(ParseNodeKind::Semi) &&
            UnaryKid(pn) &&
-           UnaryKid(pn)->isKind(PNK_STRING) &&
+           UnaryKid(pn)->isKind(ParseNodeKind::String) &&
            IsIgnoredDirectiveName(cx, UnaryKid(pn)->pn_atom);
 }
 
 static inline bool
 IsEmptyStatement(ParseNode* pn)
 {
-    return pn->isKind(PNK_SEMI) && !UnaryKid(pn);
+    return pn->isKind(ParseNodeKind::Semi) && !UnaryKid(pn);
 }
 
 static inline ParseNode*
@@ -761,12 +761,12 @@ NextNonEmptyStatement(ParseNode* pn)
 static bool
 GetToken(AsmJSParser& parser, TokenKind* tkp)
 {
-    TokenStream& ts = parser.tokenStream;
+    auto& ts = parser.tokenStream;
     TokenKind tk;
     while (true) {
-        if (!ts.getToken(&tk, TokenStream::Operand))
+        if (!ts.getToken(&tk, TokenStreamShared::Operand))
             return false;
-        if (tk != TOK_SEMI)
+        if (tk != TokenKind::TOK_SEMI)
             break;
     }
     *tkp = tk;
@@ -776,14 +776,14 @@ GetToken(AsmJSParser& parser, TokenKind* tkp)
 static bool
 PeekToken(AsmJSParser& parser, TokenKind* tkp)
 {
-    TokenStream& ts = parser.tokenStream;
+    auto& ts = parser.tokenStream;
     TokenKind tk;
     while (true) {
         if (!ts.peekToken(&tk, TokenStream::Operand))
             return false;
-        if (tk != TOK_SEMI)
+        if (tk != TokenKind::TOK_SEMI)
             break;
-        ts.consumeKnownToken(TOK_SEMI, TokenStream::Operand);
+        ts.consumeKnownToken(TokenKind::TOK_SEMI, TokenStreamShared::Operand);
     }
     *tkp = tk;
     return true;
@@ -795,7 +795,7 @@ ParseVarOrConstStatement(AsmJSParser& parser, ParseNode** var)
     TokenKind tk;
     if (!PeekToken(parser, &tk))
         return false;
-    if (tk != TOK_VAR && tk != TOK_CONST) {
+    if (tk != TokenKind::TOK_VAR && tk != TokenKind::TOK_CONST) {
         *var = nullptr;
         return true;
     }
@@ -804,7 +804,7 @@ ParseVarOrConstStatement(AsmJSParser& parser, ParseNode** var)
     if (!*var)
         return false;
 
-    MOZ_ASSERT((*var)->isKind(PNK_VAR) || (*var)->isKind(PNK_CONST));
+    MOZ_ASSERT((*var)->isKind(ParseNodeKind::Var) || (*var)->isKind(ParseNodeKind::Const));
     return true;
 }
 
@@ -1763,7 +1763,11 @@ class MOZ_STACK_CLASS ModuleValidator
         arrayViews_(cx),
         atomicsPresent_(false),
         simdPresent_(false),
-        env_(CompileMode::Once, Tier::Ion, DebugEnabled::False, ModuleKind::AsmJS),
+        env_(CompileMode::Once, Tier::Ion, DebugEnabled::False,
+             cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled()
+               ? Shareable::True
+               : Shareable::False,
+             ModuleKind::AsmJS),
         errorString_(nullptr),
         errorOffset_(UINT32_MAX),
         errorOverRecursed_(false)
@@ -1785,10 +1789,10 @@ class MOZ_STACK_CLASS ModuleValidator
         va_list args;
         va_start(args, offset);
 
-        TokenStream& ts = tokenStream();
+        auto& ts = tokenStream();
         ErrorMetadata metadata;
         if (ts.computeErrorMetadata(&metadata, offset)) {
-            if (ts.options().throwOnAsmJSValidationFailureOption) {
+            if (ts.anyCharsAccess().options().throwOnAsmJSValidationFailureOption) {
                 ReportCompileError(cx_, Move(metadata), nullptr, JSREPORT_ERROR,
                                    JSMSG_USE_ASM_TYPE_FAIL, args);
             } else {
@@ -1800,8 +1804,9 @@ class MOZ_STACK_CLASS ModuleValidator
                 // If warning succeeds, no exception is set.  If warning fails,
                 // an exception is set and execution will halt.  Thus it's safe
                 // and correct to ignore the return value here.
-                Unused << ts.compileWarning(Move(metadata), nullptr, JSREPORT_WARNING,
-                                            JSMSG_USE_ASM_TYPE_FAIL, args);
+                Unused << ts.anyCharsAccess().compileWarning(Move(metadata), nullptr,
+                                                             JSREPORT_WARNING,
+                                                             JSMSG_USE_ASM_TYPE_FAIL, args);
             }
         }
 
@@ -1898,8 +1903,15 @@ class MOZ_STACK_CLASS ModuleValidator
     PropertyName* importArgumentName() const { return importArgumentName_; }
     PropertyName* bufferArgumentName() const { return bufferArgumentName_; }
     const ModuleEnvironment& env()           { return env_; }
-    AsmJSParser& parser() const              { return parser_; }
-    TokenStream& tokenStream() const         { return parser_.tokenStream; }
+
+    AsmJSParser& parser() const { return parser_; }
+
+    auto tokenStream() const
+      -> decltype(parser_.tokenStream)&
+    {
+        return parser_.tokenStream;
+    }
+
     RootedFunction& dummyFunction()          { return dummyFunction_; }
     bool supportsSimd() const                { return cx_->jitSupportsSimd(); }
     bool atomicsPresent() const              { return atomicsPresent_; }
@@ -2069,7 +2081,7 @@ class MOZ_STACK_CLASS ModuleValidator
                                    PropertyName* field)
     {
         if (!JitOptions.asmJSAtomicsEnable)
-            return failCurrentOffset("asm.js Atomics only enabled in wasm test mode");
+            return failCurrentOffset("asm.js Atomics only enabled when asmjs.atomics.enable is set");
 
         atomicsPresent_ = true;
 
@@ -2297,7 +2309,7 @@ class MOZ_STACK_CLASS ModuleValidator
     }
 
     bool failCurrentOffset(const char* str) {
-        return failOffset(tokenStream().currentToken().pos.begin, str);
+        return failOffset(tokenStream().anyCharsAccess().currentToken().pos.begin, str);
     }
 
     bool fail(ParseNode* pn, const char* str) {
@@ -2439,11 +2451,11 @@ class MOZ_STACK_CLASS ModuleValidator
                 return nullptr;
         }
 
-        uint32_t endBeforeCurly = tokenStream().currentToken().pos.end;
+        uint32_t endBeforeCurly = tokenStream().anyCharsAccess().currentToken().pos.end;
         asmJSMetadata_->srcLength = endBeforeCurly - asmJSMetadata_->srcStart;
 
         TokenPos pos;
-        JS_ALWAYS_TRUE(tokenStream().peekTokenPos(&pos, TokenStream::Operand));
+        JS_ALWAYS_TRUE(tokenStream().peekTokenPos(&pos, TokenStreamShared::Operand));
         uint32_t endAfterCurly = pos.end;
         asmJSMetadata_->srcLengthWithRightBrace = endAfterCurly - asmJSMetadata_->srcStart;
 
@@ -2500,18 +2512,18 @@ IsNumericNonFloatLiteral(ParseNode* pn)
 {
     // Note: '-' is never rolled into the number; numbers are always positive
     // and negations must be applied manually.
-    return pn->isKind(PNK_NUMBER) ||
-           (pn->isKind(PNK_NEG) && UnaryKid(pn)->isKind(PNK_NUMBER));
+    return pn->isKind(ParseNodeKind::Number) ||
+           (pn->isKind(ParseNodeKind::Neg) && UnaryKid(pn)->isKind(ParseNodeKind::Number));
 }
 
 static bool
 IsCallToGlobal(ModuleValidator& m, ParseNode* pn, const ModuleValidator::Global** global)
 {
-    if (!pn->isKind(PNK_CALL))
+    if (!pn->isKind(ParseNodeKind::Call))
         return false;
 
     ParseNode* callee = CallCallee(pn);
-    if (!callee->isKind(PNK_NAME))
+    if (!callee->isKind(ParseNodeKind::Name))
         return false;
 
     *global = m.lookupGlobal(callee->name());
@@ -2640,7 +2652,7 @@ ExtractNumericNonFloatValue(ParseNode* pn, ParseNode** out = nullptr)
 {
     MOZ_ASSERT(IsNumericNonFloatLiteral(pn));
 
-    if (pn->isKind(PNK_NEG)) {
+    if (pn->isKind(ParseNodeKind::Neg)) {
         pn = UnaryKid(pn);
         if (out)
             *out = pn;
@@ -2753,7 +2765,7 @@ ExtractNumericLiteral(ModuleValidator& m, ParseNode* pn)
 {
     MOZ_ASSERT(IsNumericLiteral(m, pn));
 
-    if (pn->isKind(PNK_CALL)) {
+    if (pn->isKind(ParseNodeKind::Call)) {
         // Float literals are explicitly coerced and thus the coerced literal may be
         // any valid (non-float) numeric literal.
         if (CallArgListLength(pn) == 1) {
@@ -3279,15 +3291,22 @@ class MOZ_STACK_CLASS FunctionValidator
         MOZ_CRASH("unexpected literal type");
     }
     MOZ_MUST_USE bool writeCall(ParseNode* pn, Op op) {
-        return encoder().writeOp(op) &&
-               callSiteLineNums_.append(m().tokenStream().srcCoords.lineNum(pn->pn_pos.begin));
+        if (!encoder().writeOp(op))
+            return false;
+
+        TokenStreamAnyChars& anyChars = m().tokenStream().anyCharsAccess();
+        return callSiteLineNums_.append(anyChars.srcCoords.lineNum(pn->pn_pos.begin));
     }
     MOZ_MUST_USE bool writeCall(ParseNode* pn, MozOp op) {
-        return encoder().writeOp(op) &&
-               callSiteLineNums_.append(m().tokenStream().srcCoords.lineNum(pn->pn_pos.begin));
+        if (!encoder().writeOp(op))
+            return false;
+
+        TokenStreamAnyChars& anyChars = m().tokenStream().anyCharsAccess();
+        return callSiteLineNums_.append(anyChars.srcCoords.lineNum(pn->pn_pos.begin));
     }
     MOZ_MUST_USE bool prepareCall(ParseNode* pn) {
-        return callSiteLineNums_.append(m().tokenStream().srcCoords.lineNum(pn->pn_pos.begin));
+        TokenStreamAnyChars& anyChars = m().tokenStream().anyCharsAccess();
+        return callSiteLineNums_.append(anyChars.srcCoords.lineNum(pn->pn_pos.begin));
     }
     MOZ_MUST_USE bool writeSimdOp(SimdType simdType, SimdOperation simdOp) {
         MozOp op = SimdToOp(simdType, simdOp);
@@ -3345,7 +3364,7 @@ CheckArgument(ModuleValidator& m, ParseNode* arg, PropertyName** name)
 {
     *name = nullptr;
 
-    if (!arg->isKind(PNK_NAME))
+    if (!arg->isKind(ParseNodeKind::Name))
         return m.fail(arg, "argument is not a plain name");
 
     if (!CheckIdentifier(m, arg, arg->name()))
@@ -3402,7 +3421,7 @@ CheckModuleArguments(ModuleValidator& m, ParseNode* fn)
 static bool
 CheckPrecedingStatements(ModuleValidator& m, ParseNode* stmtList)
 {
-    MOZ_ASSERT(stmtList->isKind(PNK_STATEMENTLIST));
+    MOZ_ASSERT(stmtList->isKind(ParseNodeKind::StatementList));
 
     ParseNode* stmt = ListHead(stmtList);
     for (unsigned i = 0, n = ListLength(stmtList); i < n; i++) {
@@ -3433,7 +3452,7 @@ CheckTypeAnnotation(ModuleValidator& m, ParseNode* coercionNode, Type* coerceTo,
                     ParseNode** coercedExpr = nullptr)
 {
     switch (coercionNode->getKind()) {
-      case PNK_BITOR: {
+      case ParseNodeKind::BitOr: {
         ParseNode* rhs = BitwiseRight(coercionNode);
         uint32_t i;
         if (!IsLiteralInt(m, rhs, &i) || i != 0)
@@ -3443,13 +3462,13 @@ CheckTypeAnnotation(ModuleValidator& m, ParseNode* coercionNode, Type* coerceTo,
             *coercedExpr = BitwiseLeft(coercionNode);
         return true;
       }
-      case PNK_POS: {
+      case ParseNodeKind::Pos: {
         *coerceTo = Type::Double;
         if (coercedExpr)
             *coercedExpr = UnaryKid(coercionNode);
         return true;
       }
-      case PNK_CALL: {
+      case ParseNodeKind::Call: {
         if (IsCoercionCall(m, coercionNode, coerceTo, coercedExpr))
             return true;
         break;
@@ -3469,7 +3488,7 @@ CheckGlobalVariableInitImport(ModuleValidator& m, PropertyName* varName, ParseNo
     if (!CheckTypeAnnotation(m, initNode, &coerceTo, &coercedExpr))
         return false;
 
-    if (!coercedExpr->isKind(PNK_DOT))
+    if (!coercedExpr->isKind(ParseNodeKind::Dot))
         return m.failName(coercedExpr, "invalid import expression for global '%s'", varName);
 
     if (!coerceTo.isGlobalVarType())
@@ -3541,7 +3560,7 @@ CheckNewArrayView(ModuleValidator& m, PropertyName* varName, ParseNode* newExpr)
 
     PropertyName* field;
     Scalar::Type type;
-    if (ctorExpr->isKind(PNK_DOT)) {
+    if (ctorExpr->isKind(ParseNodeKind::Dot)) {
         ParseNode* base = DotBase(ctorExpr);
 
         if (!IsUseOfName(base, globalName))
@@ -3551,7 +3570,7 @@ CheckNewArrayView(ModuleValidator& m, PropertyName* varName, ParseNode* newExpr)
         if (!IsArrayViewCtorName(m, field, &type))
             return m.fail(ctorExpr, "could not match typed array name");
     } else {
-        if (!ctorExpr->isKind(PNK_NAME))
+        if (!ctorExpr->isKind(ParseNodeKind::Name))
             return m.fail(ctorExpr, "expecting name of imported array view constructor");
 
         PropertyName* globalName = ctorExpr->name();
@@ -3737,7 +3756,7 @@ CheckGlobalDotImport(ModuleValidator& m, PropertyName* varName, ParseNode* initN
     ParseNode* base = DotBase(initNode);
     PropertyName* field = DotMember(initNode);
 
-    if (base->isKind(PNK_DOT)) {
+    if (base->isKind(ParseNodeKind::Dot)) {
         ParseNode* global = DotBase(base);
         PropertyName* mathOrAtomicsOrSimd = DotMember(base);
 
@@ -3746,7 +3765,7 @@ CheckGlobalDotImport(ModuleValidator& m, PropertyName* varName, ParseNode* initN
             return m.fail(base, "import statement requires the module have a stdlib parameter");
 
         if (!IsUseOfName(global, globalName)) {
-            if (global->isKind(PNK_DOT)) {
+            if (global->isKind(ParseNodeKind::Dot)) {
                 return m.failName(base, "imports can have at most two dot accesses "
                                         "(e.g. %s.Math.sin)", globalName);
             }
@@ -3762,7 +3781,7 @@ CheckGlobalDotImport(ModuleValidator& m, PropertyName* varName, ParseNode* initN
         return m.failName(base, "expecting %s.{Math|SIMD}", globalName);
     }
 
-    if (!base->isKind(PNK_NAME))
+    if (!base->isKind(ParseNodeKind::Name))
         return m.fail(base, "expected name of variable or parameter");
 
     if (base->name() == m.globalArgumentName()) {
@@ -3794,7 +3813,7 @@ CheckGlobalDotImport(ModuleValidator& m, PropertyName* varName, ParseNode* initN
 static bool
 CheckModuleGlobal(ModuleValidator& m, ParseNode* var, bool isConst)
 {
-    if (!var->isKind(PNK_NAME))
+    if (!var->isKind(ParseNodeKind::Name))
         return m.fail(var, "import variable is not a plain name");
 
     if (!CheckModuleLevelName(m, var, var->name()))
@@ -3807,13 +3826,17 @@ CheckModuleGlobal(ModuleValidator& m, ParseNode* var, bool isConst)
     if (IsNumericLiteral(m, initNode))
         return CheckGlobalVariableInitConstant(m, var->name(), initNode, isConst);
 
-    if (initNode->isKind(PNK_BITOR) || initNode->isKind(PNK_POS) || initNode->isKind(PNK_CALL))
+    if (initNode->isKind(ParseNodeKind::BitOr) ||
+        initNode->isKind(ParseNodeKind::Pos) ||
+        initNode->isKind(ParseNodeKind::Call))
+    {
         return CheckGlobalVariableInitImport(m, var->name(), initNode, isConst);
+    }
 
-    if (initNode->isKind(PNK_NEW))
+    if (initNode->isKind(ParseNodeKind::New))
         return CheckNewArrayView(m, var->name(), initNode);
 
-    if (initNode->isKind(PNK_DOT))
+    if (initNode->isKind(ParseNodeKind::Dot))
         return CheckGlobalDotImport(m, var->name(), initNode);
 
     return m.fail(initNode, "unsupported import expression");
@@ -3822,21 +3845,21 @@ CheckModuleGlobal(ModuleValidator& m, ParseNode* var, bool isConst)
 static bool
 CheckModuleProcessingDirectives(ModuleValidator& m)
 {
-    TokenStream& ts = m.parser().tokenStream;
+    auto& ts = m.parser().tokenStream;
     while (true) {
         bool matched;
-        if (!ts.matchToken(&matched, TOK_STRING, TokenStream::Operand))
+        if (!ts.matchToken(&matched, TokenKind::TOK_STRING, TokenStreamShared::Operand))
             return false;
         if (!matched)
             return true;
 
-        if (!IsIgnoredDirectiveName(m.cx(), ts.currentToken().atom()))
+        if (!IsIgnoredDirectiveName(m.cx(), ts.anyCharsAccess().currentToken().atom()))
             return m.failCurrentOffset("unsupported processing directive");
 
         TokenKind tt;
         if (!ts.getToken(&tt))
             return false;
-        if (tt != TOK_SEMI)
+        if (tt != TokenKind::TOK_SEMI)
             return m.failCurrentOffset("expected semicolon after string literal");
     }
 }
@@ -3851,7 +3874,7 @@ CheckModuleGlobals(ModuleValidator& m)
         if (!varStmt)
             break;
         for (ParseNode* var = VarListHead(varStmt); var; var = NextNode(var)) {
-            if (!CheckModuleGlobal(m, var, varStmt->isKind(PNK_CONST)))
+            if (!CheckModuleGlobal(m, var, varStmt->isKind(ParseNodeKind::Const)))
                 return false;
         }
     }
@@ -3873,7 +3896,7 @@ CheckArgumentType(FunctionValidator& f, ParseNode* stmt, PropertyName* name, Typ
         return ArgFail(f, name, stmt ? stmt : f.fn());
 
     ParseNode* initNode = ExpressionStatementExpr(stmt);
-    if (!initNode || !initNode->isKind(PNK_ASSIGN))
+    if (!initNode || !initNode->isKind(ParseNodeKind::Assign))
         return ArgFail(f, name, stmt);
 
     ParseNode* argNode = BinaryLeft(initNode);
@@ -3938,7 +3961,7 @@ CheckArguments(FunctionValidator& f, ParseNode** stmtIter, ValTypeVector* argTyp
 static bool
 IsLiteralOrConst(FunctionValidator& f, ParseNode* pn, NumLit* lit)
 {
-    if (pn->isKind(PNK_NAME)) {
+    if (pn->isKind(ParseNodeKind::Name)) {
         const ModuleValidator::Global* global = f.lookupGlobal(pn->name());
         if (!global || global->which() != ModuleValidator::Global::ConstantLiteral)
             return false;
@@ -3965,7 +3988,7 @@ CheckFinalReturn(FunctionValidator& f, ParseNode* lastNonEmptyStmt)
         return true;
     }
 
-    if (!lastNonEmptyStmt->isKind(PNK_RETURN) && !IsVoid(f.returnedType()))
+    if (!lastNonEmptyStmt->isKind(ParseNodeKind::Return) && !IsVoid(f.returnedType()))
         return f.fail(lastNonEmptyStmt, "void incompatible with previous return type");
 
     return true;
@@ -3974,7 +3997,7 @@ CheckFinalReturn(FunctionValidator& f, ParseNode* lastNonEmptyStmt)
 static bool
 CheckVariable(FunctionValidator& f, ParseNode* var, ValTypeVector* types, Vector<NumLit>* inits)
 {
-    if (!var->isKind(PNK_NAME))
+    if (!var->isKind(ParseNodeKind::Name))
         return f.fail(var, "local variable is not a plain name");
 
     PropertyName* name = var->name();
@@ -4010,7 +4033,7 @@ CheckVariables(FunctionValidator& f, ParseNode** stmtIter)
     ValTypeVector types;
     Vector<NumLit> inits(f.cx());
 
-    for (; stmt && stmt->isKind(PNK_VAR); stmt = NextNonEmptyStatement(stmt)) {
+    for (; stmt && stmt->isKind(ParseNodeKind::Var); stmt = NextNonEmptyStatement(stmt)) {
         for (ParseNode* var = VarListHead(stmt); var; var = NextNode(var)) {
             if (!CheckVariable(f, var, &types, &inits))
                 return false;
@@ -4111,7 +4134,7 @@ static bool
 CheckArrayAccess(FunctionValidator& f, ParseNode* viewName, ParseNode* indexExpr,
                  bool isSimd, Scalar::Type* viewType)
 {
-    if (!viewName->isKind(PNK_NAME))
+    if (!viewName->isKind(ParseNodeKind::Name))
         return f.fail(viewName, "base of array access must be a typed array view name");
 
     const ModuleValidator::Global* global = f.lookupGlobal(viewName->name());
@@ -4135,7 +4158,7 @@ CheckArrayAccess(FunctionValidator& f, ParseNode* viewName, ParseNode* indexExpr
     // loses the low two bits.
     int32_t mask = ~(TypedArrayElemSize(*viewType) - 1);
 
-    if (indexExpr->isKind(PNK_RSH)) {
+    if (indexExpr->isKind(ParseNodeKind::Rsh)) {
         ParseNode* shiftAmountNode = BitwiseRight(indexExpr);
 
         uint32_t shift;
@@ -4380,15 +4403,15 @@ CheckAssignName(FunctionValidator& f, ParseNode* lhs, ParseNode* rhs, Type* type
 static bool
 CheckAssign(FunctionValidator& f, ParseNode* assign, Type* type)
 {
-    MOZ_ASSERT(assign->isKind(PNK_ASSIGN));
+    MOZ_ASSERT(assign->isKind(ParseNodeKind::Assign));
 
     ParseNode* lhs = BinaryLeft(assign);
     ParseNode* rhs = BinaryRight(assign);
 
-    if (lhs->getKind() == PNK_ELEM)
+    if (lhs->getKind() == ParseNodeKind::Elem)
         return CheckStoreArray(f, lhs, rhs, type);
 
-    if (lhs->getKind() == PNK_NAME)
+    if (lhs->getKind() == ParseNodeKind::Name)
         return CheckAssignName(f, lhs, rhs, type);
 
     return f.fail(assign, "left-hand side of assignment must be a variable or array access");
@@ -4922,7 +4945,7 @@ CheckFuncPtrCall(FunctionValidator& f, ParseNode* callNode, Type ret, Type* type
     ParseNode* tableNode = ElemBase(callee);
     ParseNode* indexExpr = ElemIndex(callee);
 
-    if (!tableNode->isKind(PNK_NAME))
+    if (!tableNode->isKind(ParseNodeKind::Name))
         return f.fail(tableNode, "expecting name of function-pointer array");
 
     PropertyName* name = tableNode->name();
@@ -4931,7 +4954,7 @@ CheckFuncPtrCall(FunctionValidator& f, ParseNode* callNode, Type ret, Type* type
             return f.failName(tableNode, "'%s' is not the name of a function-pointer array", name);
     }
 
-    if (!indexExpr->isKind(PNK_BITAND))
+    if (!indexExpr->isKind(ParseNodeKind::BitAnd))
         return f.fail(indexExpr, "function-pointer table index expression needs & mask");
 
     ParseNode* indexNode = BitwiseLeft(indexExpr);
@@ -5033,7 +5056,7 @@ CheckCoercionArg(FunctionValidator& f, ParseNode* arg, Type expected, Type* type
 {
     MOZ_ASSERT(expected.isCanonicalValType());
 
-    if (arg->isKind(PNK_CALL))
+    if (arg->isKind(ParseNodeKind::Call))
         return CheckCoercedCall(f, arg, expected, type);
 
     Type argType;
@@ -5545,7 +5568,7 @@ static bool
 CheckSimdLoadStoreArgs(FunctionValidator& f, ParseNode* call, Scalar::Type* viewType)
 {
     ParseNode* view = CallArgList(call);
-    if (!view->isKind(PNK_NAME))
+    if (!view->isKind(ParseNodeKind::Name))
         return f.fail(view, "expected Uint8Array view as SIMD.*.load/store first argument");
 
     ParseNode* indexExpr = NextNode(view);
@@ -5764,7 +5787,7 @@ static bool
 CheckSimdCtorCall(FunctionValidator& f, ParseNode* call, const ModuleValidator::Global* global,
                   Type* type)
 {
-    MOZ_ASSERT(call->isKind(PNK_CALL));
+    MOZ_ASSERT(call->isKind(ParseNodeKind::Call));
 
     SimdType simdType = global->simdCtorType();
     unsigned length = GetSimdLanes(simdType);
@@ -5781,7 +5804,7 @@ CheckSimdCtorCall(FunctionValidator& f, ParseNode* call, const ModuleValidator::
 static bool
 CheckUncoercedCall(FunctionValidator& f, ParseNode* expr, Type* type)
 {
-    MOZ_ASSERT(expr->isKind(PNK_CALL));
+    MOZ_ASSERT(expr->isKind(ParseNodeKind::Call));
 
     const ModuleValidator::Global* global;
     if (IsCallToGlobal(f.m(), expr, &global)) {
@@ -5910,10 +5933,10 @@ CheckCoercedCall(FunctionValidator& f, ParseNode* call, Type ret, Type* type)
 
     ParseNode* callee = CallCallee(call);
 
-    if (callee->isKind(PNK_ELEM))
+    if (callee->isKind(ParseNodeKind::Elem))
         return CheckFuncPtrCall(f, call, ret, type);
 
-    if (!callee->isKind(PNK_NAME))
+    if (!callee->isKind(ParseNodeKind::Name))
         return f.fail(callee, "unexpected callee expression type");
 
     PropertyName* calleeName = callee->name();
@@ -5947,10 +5970,10 @@ CheckCoercedCall(FunctionValidator& f, ParseNode* call, Type ret, Type* type)
 static bool
 CheckPos(FunctionValidator& f, ParseNode* pos, Type* type)
 {
-    MOZ_ASSERT(pos->isKind(PNK_POS));
+    MOZ_ASSERT(pos->isKind(ParseNodeKind::Pos));
     ParseNode* operand = UnaryKid(pos);
 
-    if (operand->isKind(PNK_CALL))
+    if (operand->isKind(ParseNodeKind::Call))
         return CheckCoercedCall(f, operand, Type::Double, type);
 
     Type actual;
@@ -5963,7 +5986,7 @@ CheckPos(FunctionValidator& f, ParseNode* pos, Type* type)
 static bool
 CheckNot(FunctionValidator& f, ParseNode* expr, Type* type)
 {
-    MOZ_ASSERT(expr->isKind(PNK_NOT));
+    MOZ_ASSERT(expr->isKind(ParseNodeKind::Not));
     ParseNode* operand = UnaryKid(expr);
 
     Type operandType;
@@ -5980,7 +6003,7 @@ CheckNot(FunctionValidator& f, ParseNode* expr, Type* type)
 static bool
 CheckNeg(FunctionValidator& f, ParseNode* expr, Type* type)
 {
-    MOZ_ASSERT(expr->isKind(PNK_NEG));
+    MOZ_ASSERT(expr->isKind(ParseNodeKind::Neg));
     ParseNode* operand = UnaryKid(expr);
 
     Type operandType;
@@ -6008,7 +6031,7 @@ CheckNeg(FunctionValidator& f, ParseNode* expr, Type* type)
 static bool
 CheckCoerceToInt(FunctionValidator& f, ParseNode* expr, Type* type)
 {
-    MOZ_ASSERT(expr->isKind(PNK_BITNOT));
+    MOZ_ASSERT(expr->isKind(ParseNodeKind::BitNot));
     ParseNode* operand = UnaryKid(expr);
 
     Type operandType;
@@ -6031,10 +6054,10 @@ CheckCoerceToInt(FunctionValidator& f, ParseNode* expr, Type* type)
 static bool
 CheckBitNot(FunctionValidator& f, ParseNode* neg, Type* type)
 {
-    MOZ_ASSERT(neg->isKind(PNK_BITNOT));
+    MOZ_ASSERT(neg->isKind(ParseNodeKind::BitNot));
     ParseNode* operand = UnaryKid(neg);
 
-    if (operand->isKind(PNK_BITNOT))
+    if (operand->isKind(ParseNodeKind::BitNot))
         return CheckCoerceToInt(f, operand, type);
 
     Type operandType;
@@ -6057,7 +6080,7 @@ CheckAsExprStatement(FunctionValidator& f, ParseNode* exprStmt);
 static bool
 CheckComma(FunctionValidator& f, ParseNode* comma, Type* type)
 {
-    MOZ_ASSERT(comma->isKind(PNK_COMMA));
+    MOZ_ASSERT(comma->isKind(ParseNodeKind::Comma));
     ParseNode* operands = ListHead(comma);
 
     // The block depth isn't taken into account here, because a comma list can't
@@ -6086,7 +6109,7 @@ CheckComma(FunctionValidator& f, ParseNode* comma, Type* type)
 static bool
 CheckConditional(FunctionValidator& f, ParseNode* ternary, Type* type)
 {
-    MOZ_ASSERT(ternary->isKind(PNK_CONDITIONAL));
+    MOZ_ASSERT(ternary->isKind(ParseNodeKind::Conditional));
 
     ParseNode* cond = TernaryKid1(ternary);
     ParseNode* thenExpr = TernaryKid2(ternary);
@@ -6170,7 +6193,7 @@ IsValidIntMultiplyConstant(ModuleValidator& m, ParseNode* expr)
 static bool
 CheckMultiply(FunctionValidator& f, ParseNode* star, Type* type)
 {
-    MOZ_ASSERT(star->isKind(PNK_STAR));
+    MOZ_ASSERT(star->isKind(ParseNodeKind::Star));
     ParseNode* lhs = MultiplyLeft(star);
     ParseNode* rhs = MultiplyRight(star);
 
@@ -6208,14 +6231,14 @@ CheckAddOrSub(FunctionValidator& f, ParseNode* expr, Type* type, unsigned* numAd
     if (!CheckRecursionLimitDontReport(f.cx()))
         return f.m().failOverRecursed();
 
-    MOZ_ASSERT(expr->isKind(PNK_ADD) || expr->isKind(PNK_SUB));
+    MOZ_ASSERT(expr->isKind(ParseNodeKind::Add) || expr->isKind(ParseNodeKind::Sub));
     ParseNode* lhs = AddSubLeft(expr);
     ParseNode* rhs = AddSubRight(expr);
 
     Type lhsType, rhsType;
     unsigned lhsNumAddOrSub, rhsNumAddOrSub;
 
-    if (lhs->isKind(PNK_ADD) || lhs->isKind(PNK_SUB)) {
+    if (lhs->isKind(ParseNodeKind::Add) || lhs->isKind(ParseNodeKind::Sub)) {
         if (!CheckAddOrSub(f, lhs, &lhsType, &lhsNumAddOrSub))
             return false;
         if (lhsType == Type::Intish)
@@ -6226,7 +6249,7 @@ CheckAddOrSub(FunctionValidator& f, ParseNode* expr, Type* type, unsigned* numAd
         lhsNumAddOrSub = 0;
     }
 
-    if (rhs->isKind(PNK_ADD) || rhs->isKind(PNK_SUB)) {
+    if (rhs->isKind(ParseNodeKind::Add) || rhs->isKind(ParseNodeKind::Sub)) {
         if (!CheckAddOrSub(f, rhs, &rhsType, &rhsNumAddOrSub))
             return false;
         if (rhsType == Type::Intish)
@@ -6242,15 +6265,15 @@ CheckAddOrSub(FunctionValidator& f, ParseNode* expr, Type* type, unsigned* numAd
         return f.fail(expr, "too many + or - without intervening coercion");
 
     if (lhsType.isInt() && rhsType.isInt()) {
-        if (!f.encoder().writeOp(expr->isKind(PNK_ADD) ? Op::I32Add : Op::I32Sub))
+        if (!f.encoder().writeOp(expr->isKind(ParseNodeKind::Add) ? Op::I32Add : Op::I32Sub))
             return false;
         *type = Type::Intish;
     } else if (lhsType.isMaybeDouble() && rhsType.isMaybeDouble()) {
-        if (!f.encoder().writeOp(expr->isKind(PNK_ADD) ? Op::F64Add : Op::F64Sub))
+        if (!f.encoder().writeOp(expr->isKind(ParseNodeKind::Add) ? Op::F64Add : Op::F64Sub))
             return false;
         *type = Type::Double;
     } else if (lhsType.isMaybeFloat() && rhsType.isMaybeFloat()) {
-        if (!f.encoder().writeOp(expr->isKind(PNK_ADD) ? Op::F32Add : Op::F32Sub))
+        if (!f.encoder().writeOp(expr->isKind(ParseNodeKind::Add) ? Op::F32Add : Op::F32Sub))
             return false;
         *type = Type::Floatish;
     } else {
@@ -6266,7 +6289,7 @@ CheckAddOrSub(FunctionValidator& f, ParseNode* expr, Type* type, unsigned* numAd
 static bool
 CheckDivOrMod(FunctionValidator& f, ParseNode* expr, Type* type)
 {
-    MOZ_ASSERT(expr->isKind(PNK_DIV) || expr->isKind(PNK_MOD));
+    MOZ_ASSERT(expr->isKind(ParseNodeKind::Div) || expr->isKind(ParseNodeKind::Mod));
 
     ParseNode* lhs = DivOrModLeft(expr);
     ParseNode* rhs = DivOrModRight(expr);
@@ -6279,14 +6302,14 @@ CheckDivOrMod(FunctionValidator& f, ParseNode* expr, Type* type)
 
     if (lhsType.isMaybeDouble() && rhsType.isMaybeDouble()) {
         *type = Type::Double;
-        if (expr->isKind(PNK_DIV))
+        if (expr->isKind(ParseNodeKind::Div))
             return f.encoder().writeOp(Op::F64Div);
         return f.encoder().writeOp(MozOp::F64Mod);
     }
 
     if (lhsType.isMaybeFloat() && rhsType.isMaybeFloat()) {
         *type = Type::Floatish;
-        if (expr->isKind(PNK_DIV))
+        if (expr->isKind(ParseNodeKind::Div))
             return f.encoder().writeOp(Op::F32Div);
         else
             return f.fail(expr, "modulo cannot receive float arguments");
@@ -6294,12 +6317,12 @@ CheckDivOrMod(FunctionValidator& f, ParseNode* expr, Type* type)
 
     if (lhsType.isSigned() && rhsType.isSigned()) {
         *type = Type::Intish;
-        return f.encoder().writeOp(expr->isKind(PNK_DIV) ? Op::I32DivS : Op::I32RemS);
+        return f.encoder().writeOp(expr->isKind(ParseNodeKind::Div) ? Op::I32DivS : Op::I32RemS);
     }
 
     if (lhsType.isUnsigned() && rhsType.isUnsigned()) {
         *type = Type::Intish;
-        return f.encoder().writeOp(expr->isKind(PNK_DIV) ? Op::I32DivU : Op::I32RemU);
+        return f.encoder().writeOp(expr->isKind(ParseNodeKind::Div) ? Op::I32DivU : Op::I32RemU);
     }
 
     return f.failf(expr, "arguments to / or %% must both be double?, float?, signed, or unsigned; "
@@ -6309,8 +6332,12 @@ CheckDivOrMod(FunctionValidator& f, ParseNode* expr, Type* type)
 static bool
 CheckComparison(FunctionValidator& f, ParseNode* comp, Type* type)
 {
-    MOZ_ASSERT(comp->isKind(PNK_LT) || comp->isKind(PNK_LE) || comp->isKind(PNK_GT) ||
-               comp->isKind(PNK_GE) || comp->isKind(PNK_EQ) || comp->isKind(PNK_NE));
+    MOZ_ASSERT(comp->isKind(ParseNodeKind::Lt) ||
+               comp->isKind(ParseNodeKind::Le) ||
+               comp->isKind(ParseNodeKind::Gt) ||
+               comp->isKind(ParseNodeKind::Ge) ||
+               comp->isKind(ParseNodeKind::Eq) ||
+               comp->isKind(ParseNodeKind::Ne));
 
     ParseNode* lhs = ComparisonLeft(comp);
     ParseNode* rhs = ComparisonRight(comp);
@@ -6333,42 +6360,42 @@ CheckComparison(FunctionValidator& f, ParseNode* comp, Type* type)
     Op stmt;
     if (lhsType.isSigned() && rhsType.isSigned()) {
         switch (comp->getKind()) {
-          case PNK_EQ: stmt = Op::I32Eq;  break;
-          case PNK_NE: stmt = Op::I32Ne;  break;
-          case PNK_LT: stmt = Op::I32LtS; break;
-          case PNK_LE: stmt = Op::I32LeS; break;
-          case PNK_GT: stmt = Op::I32GtS; break;
-          case PNK_GE: stmt = Op::I32GeS; break;
+          case ParseNodeKind::Eq: stmt = Op::I32Eq;  break;
+          case ParseNodeKind::Ne: stmt = Op::I32Ne;  break;
+          case ParseNodeKind::Lt: stmt = Op::I32LtS; break;
+          case ParseNodeKind::Le: stmt = Op::I32LeS; break;
+          case ParseNodeKind::Gt: stmt = Op::I32GtS; break;
+          case ParseNodeKind::Ge: stmt = Op::I32GeS; break;
           default: MOZ_CRASH("unexpected comparison op");
         }
     } else if (lhsType.isUnsigned() && rhsType.isUnsigned()) {
         switch (comp->getKind()) {
-          case PNK_EQ: stmt = Op::I32Eq;  break;
-          case PNK_NE: stmt = Op::I32Ne;  break;
-          case PNK_LT: stmt = Op::I32LtU; break;
-          case PNK_LE: stmt = Op::I32LeU; break;
-          case PNK_GT: stmt = Op::I32GtU; break;
-          case PNK_GE: stmt = Op::I32GeU; break;
+          case ParseNodeKind::Eq: stmt = Op::I32Eq;  break;
+          case ParseNodeKind::Ne: stmt = Op::I32Ne;  break;
+          case ParseNodeKind::Lt: stmt = Op::I32LtU; break;
+          case ParseNodeKind::Le: stmt = Op::I32LeU; break;
+          case ParseNodeKind::Gt: stmt = Op::I32GtU; break;
+          case ParseNodeKind::Ge: stmt = Op::I32GeU; break;
           default: MOZ_CRASH("unexpected comparison op");
         }
     } else if (lhsType.isDouble()) {
         switch (comp->getKind()) {
-          case PNK_EQ: stmt = Op::F64Eq; break;
-          case PNK_NE: stmt = Op::F64Ne; break;
-          case PNK_LT: stmt = Op::F64Lt; break;
-          case PNK_LE: stmt = Op::F64Le; break;
-          case PNK_GT: stmt = Op::F64Gt; break;
-          case PNK_GE: stmt = Op::F64Ge; break;
+          case ParseNodeKind::Eq: stmt = Op::F64Eq; break;
+          case ParseNodeKind::Ne: stmt = Op::F64Ne; break;
+          case ParseNodeKind::Lt: stmt = Op::F64Lt; break;
+          case ParseNodeKind::Le: stmt = Op::F64Le; break;
+          case ParseNodeKind::Gt: stmt = Op::F64Gt; break;
+          case ParseNodeKind::Ge: stmt = Op::F64Ge; break;
           default: MOZ_CRASH("unexpected comparison op");
         }
     } else if (lhsType.isFloat()) {
         switch (comp->getKind()) {
-          case PNK_EQ: stmt = Op::F32Eq; break;
-          case PNK_NE: stmt = Op::F32Ne; break;
-          case PNK_LT: stmt = Op::F32Lt; break;
-          case PNK_LE: stmt = Op::F32Le; break;
-          case PNK_GT: stmt = Op::F32Gt; break;
-          case PNK_GE: stmt = Op::F32Ge; break;
+          case ParseNodeKind::Eq: stmt = Op::F32Eq; break;
+          case ParseNodeKind::Ne: stmt = Op::F32Ne; break;
+          case ParseNodeKind::Lt: stmt = Op::F32Lt; break;
+          case ParseNodeKind::Le: stmt = Op::F32Le; break;
+          case ParseNodeKind::Gt: stmt = Op::F32Gt; break;
+          case ParseNodeKind::Ge: stmt = Op::F32Ge; break;
           default: MOZ_CRASH("unexpected comparison op");
         }
     } else {
@@ -6388,12 +6415,36 @@ CheckBitwise(FunctionValidator& f, ParseNode* bitwise, Type* type)
     int32_t identityElement;
     bool onlyOnRight;
     switch (bitwise->getKind()) {
-      case PNK_BITOR:  identityElement = 0;  onlyOnRight = false; *type = Type::Signed;   break;
-      case PNK_BITAND: identityElement = -1; onlyOnRight = false; *type = Type::Signed;   break;
-      case PNK_BITXOR: identityElement = 0;  onlyOnRight = false; *type = Type::Signed;   break;
-      case PNK_LSH:    identityElement = 0;  onlyOnRight = true;  *type = Type::Signed;   break;
-      case PNK_RSH:    identityElement = 0;  onlyOnRight = true;  *type = Type::Signed;   break;
-      case PNK_URSH:   identityElement = 0;  onlyOnRight = true;  *type = Type::Unsigned; break;
+      case ParseNodeKind::BitOr:
+        identityElement = 0;
+        onlyOnRight = false;
+        *type = Type::Signed;
+        break;
+      case ParseNodeKind::BitAnd:
+        identityElement = -1;
+        onlyOnRight = false;
+        *type = Type::Signed;
+        break;
+      case ParseNodeKind::BitXor:
+        identityElement = 0;
+        onlyOnRight = false;
+        *type = Type::Signed;
+        break;
+      case ParseNodeKind::Lsh:
+        identityElement = 0;
+        onlyOnRight = true;
+        *type = Type::Signed;
+        break;
+      case ParseNodeKind::Rsh:
+        identityElement = 0;
+        onlyOnRight = true;
+        *type = Type::Signed;
+        break;
+      case ParseNodeKind::Ursh:
+        identityElement = 0;
+        onlyOnRight = true;
+        *type = Type::Unsigned;
+        break;
       default: MOZ_CRASH("not a bitwise op");
     }
 
@@ -6408,7 +6459,7 @@ CheckBitwise(FunctionValidator& f, ParseNode* bitwise, Type* type)
     }
 
     if (IsLiteralInt(f.m(), rhs, &i) && i == uint32_t(identityElement)) {
-        if (bitwise->isKind(PNK_BITOR) && lhs->isKind(PNK_CALL))
+        if (bitwise->isKind(ParseNodeKind::BitOr) && lhs->isKind(ParseNodeKind::Call))
             return CheckCoercedCall(f, lhs, Type::Int, type);
 
         Type lhsType;
@@ -6433,12 +6484,12 @@ CheckBitwise(FunctionValidator& f, ParseNode* bitwise, Type* type)
         return f.failf(rhs, "%s is not a subtype of intish", rhsType.toChars());
 
     switch (bitwise->getKind()) {
-      case PNK_BITOR:  if (!f.encoder().writeOp(Op::I32Or))   return false; break;
-      case PNK_BITAND: if (!f.encoder().writeOp(Op::I32And))  return false; break;
-      case PNK_BITXOR: if (!f.encoder().writeOp(Op::I32Xor))  return false; break;
-      case PNK_LSH:    if (!f.encoder().writeOp(Op::I32Shl))  return false; break;
-      case PNK_RSH:    if (!f.encoder().writeOp(Op::I32ShrS)) return false; break;
-      case PNK_URSH:   if (!f.encoder().writeOp(Op::I32ShrU)) return false; break;
+      case ParseNodeKind::BitOr:  if (!f.encoder().writeOp(Op::I32Or))   return false; break;
+      case ParseNodeKind::BitAnd: if (!f.encoder().writeOp(Op::I32And))  return false; break;
+      case ParseNodeKind::BitXor: if (!f.encoder().writeOp(Op::I32Xor))  return false; break;
+      case ParseNodeKind::Lsh:    if (!f.encoder().writeOp(Op::I32Shl))  return false; break;
+      case ParseNodeKind::Rsh:    if (!f.encoder().writeOp(Op::I32ShrS)) return false; break;
+      case ParseNodeKind::Ursh:   if (!f.encoder().writeOp(Op::I32ShrU)) return false; break;
       default: MOZ_CRASH("not a bitwise op");
     }
 
@@ -6455,37 +6506,37 @@ CheckExpr(FunctionValidator& f, ParseNode* expr, Type* type)
         return CheckNumericLiteral(f, expr, type);
 
     switch (expr->getKind()) {
-      case PNK_NAME:        return CheckVarRef(f, expr, type);
-      case PNK_ELEM:        return CheckLoadArray(f, expr, type);
-      case PNK_ASSIGN:      return CheckAssign(f, expr, type);
-      case PNK_POS:         return CheckPos(f, expr, type);
-      case PNK_NOT:         return CheckNot(f, expr, type);
-      case PNK_NEG:         return CheckNeg(f, expr, type);
-      case PNK_BITNOT:      return CheckBitNot(f, expr, type);
-      case PNK_COMMA:       return CheckComma(f, expr, type);
-      case PNK_CONDITIONAL: return CheckConditional(f, expr, type);
-      case PNK_STAR:        return CheckMultiply(f, expr, type);
-      case PNK_CALL:        return CheckUncoercedCall(f, expr, type);
+      case ParseNodeKind::Name:        return CheckVarRef(f, expr, type);
+      case ParseNodeKind::Elem:        return CheckLoadArray(f, expr, type);
+      case ParseNodeKind::Assign:      return CheckAssign(f, expr, type);
+      case ParseNodeKind::Pos:         return CheckPos(f, expr, type);
+      case ParseNodeKind::Not:         return CheckNot(f, expr, type);
+      case ParseNodeKind::Neg:         return CheckNeg(f, expr, type);
+      case ParseNodeKind::BitNot:      return CheckBitNot(f, expr, type);
+      case ParseNodeKind::Comma:       return CheckComma(f, expr, type);
+      case ParseNodeKind::Conditional: return CheckConditional(f, expr, type);
+      case ParseNodeKind::Star:        return CheckMultiply(f, expr, type);
+      case ParseNodeKind::Call:        return CheckUncoercedCall(f, expr, type);
 
-      case PNK_ADD:
-      case PNK_SUB:         return CheckAddOrSub(f, expr, type);
+      case ParseNodeKind::Add:
+      case ParseNodeKind::Sub:         return CheckAddOrSub(f, expr, type);
 
-      case PNK_DIV:
-      case PNK_MOD:         return CheckDivOrMod(f, expr, type);
+      case ParseNodeKind::Div:
+      case ParseNodeKind::Mod:         return CheckDivOrMod(f, expr, type);
 
-      case PNK_LT:
-      case PNK_LE:
-      case PNK_GT:
-      case PNK_GE:
-      case PNK_EQ:
-      case PNK_NE:          return CheckComparison(f, expr, type);
+      case ParseNodeKind::Lt:
+      case ParseNodeKind::Le:
+      case ParseNodeKind::Gt:
+      case ParseNodeKind::Ge:
+      case ParseNodeKind::Eq:
+      case ParseNodeKind::Ne:          return CheckComparison(f, expr, type);
 
-      case PNK_BITOR:
-      case PNK_BITAND:
-      case PNK_BITXOR:
-      case PNK_LSH:
-      case PNK_RSH:
-      case PNK_URSH:        return CheckBitwise(f, expr, type);
+      case ParseNodeKind::BitOr:
+      case ParseNodeKind::BitAnd:
+      case ParseNodeKind::BitXor:
+      case ParseNodeKind::Lsh:
+      case ParseNodeKind::Rsh:
+      case ParseNodeKind::Ursh:        return CheckBitwise(f, expr, type);
 
       default:;
     }
@@ -6499,7 +6550,7 @@ CheckStatement(FunctionValidator& f, ParseNode* stmt);
 static bool
 CheckAsExprStatement(FunctionValidator& f, ParseNode* expr)
 {
-    if (expr->isKind(PNK_CALL)) {
+    if (expr->isKind(ParseNodeKind::Call)) {
         Type ignored;
         return CheckCoercedCall(f, expr, Type::Void, &ignored);
     }
@@ -6519,7 +6570,7 @@ CheckAsExprStatement(FunctionValidator& f, ParseNode* expr)
 static bool
 CheckExprStatement(FunctionValidator& f, ParseNode* exprStmt)
 {
-    MOZ_ASSERT(exprStmt->isKind(PNK_SEMI));
+    MOZ_ASSERT(exprStmt->isKind(ParseNodeKind::Semi));
     ParseNode* expr = UnaryKid(exprStmt);
     if (!expr)
         return true;
@@ -6552,7 +6603,7 @@ CheckLoopConditionOnEntry(FunctionValidator& f, ParseNode* cond)
 static bool
 CheckWhile(FunctionValidator& f, ParseNode* whileStmt, const NameVector* labels = nullptr)
 {
-    MOZ_ASSERT(whileStmt->isKind(PNK_WHILE));
+    MOZ_ASSERT(whileStmt->isKind(ParseNodeKind::While));
     ParseNode* cond = BinaryLeft(whileStmt);
     ParseNode* body = BinaryRight(whileStmt);
 
@@ -6587,11 +6638,11 @@ CheckWhile(FunctionValidator& f, ParseNode* whileStmt, const NameVector* labels 
 static bool
 CheckFor(FunctionValidator& f, ParseNode* forStmt, const NameVector* labels = nullptr)
 {
-    MOZ_ASSERT(forStmt->isKind(PNK_FOR));
+    MOZ_ASSERT(forStmt->isKind(ParseNodeKind::For));
     ParseNode* forHead = BinaryLeft(forStmt);
     ParseNode* body = BinaryRight(forStmt);
 
-    if (!forHead->isKind(PNK_FORHEAD))
+    if (!forHead->isKind(ParseNodeKind::ForHead))
         return f.fail(forHead, "unsupported for-loop statement");
 
     ParseNode* maybeInit = TernaryKid1(forHead);
@@ -6659,7 +6710,7 @@ CheckFor(FunctionValidator& f, ParseNode* forStmt, const NameVector* labels = nu
 static bool
 CheckDoWhile(FunctionValidator& f, ParseNode* whileStmt, const NameVector* labels = nullptr)
 {
-    MOZ_ASSERT(whileStmt->isKind(PNK_DOWHILE));
+    MOZ_ASSERT(whileStmt->isKind(ParseNodeKind::DoWhile));
     ParseNode* body = BinaryLeft(whileStmt);
     ParseNode* cond = BinaryRight(whileStmt);
 
@@ -6709,7 +6760,7 @@ static bool CheckStatementList(FunctionValidator& f, ParseNode*, const NameVecto
 static bool
 CheckLabel(FunctionValidator& f, ParseNode* labeledStmt)
 {
-    MOZ_ASSERT(labeledStmt->isKind(PNK_LABEL));
+    MOZ_ASSERT(labeledStmt->isKind(ParseNodeKind::Label));
 
     NameVector labels;
     ParseNode* innermost = labeledStmt;
@@ -6717,16 +6768,16 @@ CheckLabel(FunctionValidator& f, ParseNode* labeledStmt)
         if (!labels.append(LabeledStatementLabel(innermost)))
             return false;
         innermost = LabeledStatementStatement(innermost);
-    } while (innermost->getKind() == PNK_LABEL);
+    } while (innermost->getKind() == ParseNodeKind::Label);
 
     switch (innermost->getKind()) {
-      case PNK_FOR:
+      case ParseNodeKind::For:
         return CheckFor(f, innermost, &labels);
-      case PNK_DOWHILE:
+      case ParseNodeKind::DoWhile:
         return CheckDoWhile(f, innermost, &labels);
-      case PNK_WHILE:
+      case ParseNodeKind::While:
         return CheckWhile(f, innermost, &labels);
-      case PNK_STATEMENTLIST:
+      case ParseNodeKind::StatementList:
         return CheckStatementList(f, innermost, &labels);
       default:
         break;
@@ -6749,7 +6800,7 @@ CheckIf(FunctionValidator& f, ParseNode* ifStmt)
     uint32_t numIfEnd = 1;
 
   recurse:
-    MOZ_ASSERT(ifStmt->isKind(PNK_IF));
+    MOZ_ASSERT(ifStmt->isKind(ParseNodeKind::If));
     ParseNode* cond = TernaryKid1(ifStmt);
     ParseNode* thenStmt = TernaryKid2(ifStmt);
     ParseNode* elseStmt = TernaryKid3(ifStmt);
@@ -6773,7 +6824,7 @@ CheckIf(FunctionValidator& f, ParseNode* ifStmt)
         if (!f.switchToElse())
             return false;
 
-        if (elseStmt->isKind(PNK_IF)) {
+        if (elseStmt->isKind(ParseNodeKind::If)) {
             ifStmt = elseStmt;
             if (numIfEnd++ == UINT32_MAX)
                 return false;
@@ -6897,12 +6948,12 @@ CheckSwitchExpr(FunctionValidator& f, ParseNode* switchExpr)
 static bool
 CheckSwitch(FunctionValidator& f, ParseNode* switchStmt)
 {
-    MOZ_ASSERT(switchStmt->isKind(PNK_SWITCH));
+    MOZ_ASSERT(switchStmt->isKind(ParseNodeKind::Switch));
 
     ParseNode* switchExpr = BinaryLeft(switchStmt);
     ParseNode* switchBody = BinaryRight(switchStmt);
 
-    if (switchBody->isKind(PNK_LEXICALSCOPE)) {
+    if (switchBody->isKind(ParseNodeKind::LexicalScope)) {
         if (!switchBody->isEmptyScope())
             return f.fail(switchBody, "switch body may not contain lexical declarations");
         switchBody = switchBody->scopeBody();
@@ -7063,7 +7114,7 @@ CheckReturn(FunctionValidator& f, ParseNode* returnStmt)
 static bool
 CheckStatementList(FunctionValidator& f, ParseNode* stmtList, const NameVector* labels /*= nullptr */)
 {
-    MOZ_ASSERT(stmtList->isKind(PNK_STATEMENTLIST));
+    MOZ_ASSERT(stmtList->isKind(ParseNodeKind::StatementList));
 
     if (!f.pushUnbreakableBlock(labels))
         return false;
@@ -7081,7 +7132,7 @@ CheckStatementList(FunctionValidator& f, ParseNode* stmtList, const NameVector* 
 static bool
 CheckLexicalScope(FunctionValidator& f, ParseNode* lexicalScope)
 {
-    MOZ_ASSERT(lexicalScope->isKind(PNK_LEXICALSCOPE));
+    MOZ_ASSERT(lexicalScope->isKind(ParseNodeKind::LexicalScope));
 
     if (!lexicalScope->isEmptyScope())
         return f.fail(lexicalScope, "cannot have 'let' or 'const' declarations");
@@ -7104,18 +7155,18 @@ CheckStatement(FunctionValidator& f, ParseNode* stmt)
         return f.m().failOverRecursed();
 
     switch (stmt->getKind()) {
-      case PNK_SEMI:          return CheckExprStatement(f, stmt);
-      case PNK_WHILE:         return CheckWhile(f, stmt);
-      case PNK_FOR:           return CheckFor(f, stmt);
-      case PNK_DOWHILE:       return CheckDoWhile(f, stmt);
-      case PNK_LABEL:         return CheckLabel(f, stmt);
-      case PNK_IF:            return CheckIf(f, stmt);
-      case PNK_SWITCH:        return CheckSwitch(f, stmt);
-      case PNK_RETURN:        return CheckReturn(f, stmt);
-      case PNK_STATEMENTLIST: return CheckStatementList(f, stmt);
-      case PNK_BREAK:         return CheckBreakOrContinue(f, true, stmt);
-      case PNK_CONTINUE:      return CheckBreakOrContinue(f, false, stmt);
-      case PNK_LEXICALSCOPE:  return CheckLexicalScope(f, stmt);
+      case ParseNodeKind::Semi:          return CheckExprStatement(f, stmt);
+      case ParseNodeKind::While:         return CheckWhile(f, stmt);
+      case ParseNodeKind::For:           return CheckFor(f, stmt);
+      case ParseNodeKind::DoWhile:       return CheckDoWhile(f, stmt);
+      case ParseNodeKind::Label:         return CheckLabel(f, stmt);
+      case ParseNodeKind::If:            return CheckIf(f, stmt);
+      case ParseNodeKind::Switch:        return CheckSwitch(f, stmt);
+      case ParseNodeKind::Return:        return CheckReturn(f, stmt);
+      case ParseNodeKind::StatementList: return CheckStatementList(f, stmt);
+      case ParseNodeKind::Break:         return CheckBreakOrContinue(f, true, stmt);
+      case ParseNodeKind::Continue:      return CheckBreakOrContinue(f, false, stmt);
+      case ParseNodeKind::LexicalScope:  return CheckLexicalScope(f, stmt);
       default:;
     }
 
@@ -7125,15 +7176,19 @@ CheckStatement(FunctionValidator& f, ParseNode* stmt)
 static bool
 ParseFunction(ModuleValidator& m, ParseNode** fnOut, unsigned* line)
 {
-    TokenStream& tokenStream = m.tokenStream();
+    auto& tokenStream = m.tokenStream();
 
-    tokenStream.consumeKnownToken(TOK_FUNCTION, TokenStream::Operand);
-    uint32_t toStringStart = tokenStream.currentToken().pos.begin;
-    *line = tokenStream.srcCoords.lineNum(tokenStream.currentToken().pos.end);
+    tokenStream.consumeKnownToken(TokenKind::TOK_FUNCTION, TokenStreamShared::Operand);
+
+    auto& anyChars = tokenStream.anyCharsAccess();
+    uint32_t toStringStart = anyChars.currentToken().pos.begin;
+    *line = anyChars.srcCoords.lineNum(anyChars.currentToken().pos.end);
 
     TokenKind tk;
-    if (!tokenStream.getToken(&tk, TokenStream::Operand))
+    if (!tokenStream.getToken(&tk, TokenStreamShared::Operand))
         return false;
+    if (tk == TokenKind::TOK_MUL)
+        return m.failCurrentOffset("unexpected generator function");
     if (!TokenKindIsPossibleIdentifier(tk))
         return false;  // The regular parser will throw a SyntaxError, no need to m.fail.
 
@@ -7152,7 +7207,8 @@ ParseFunction(ModuleValidator& m, ParseNode** fnOut, unsigned* line)
     ParseContext* outerpc = m.parser().pc;
     Directives directives(outerpc);
     FunctionBox* funbox = m.parser().newFunctionBox(fn, fun, toStringStart, directives,
-                                                    GeneratorKind::NotGenerator, SyncFunction);
+                                                    GeneratorKind::NotGenerator,
+                                                    FunctionAsyncKind::SyncFunction);
     if (!funbox)
         return false;
     funbox->initWithEnclosingParseContext(outerpc, frontend::Statement);
@@ -7163,13 +7219,13 @@ ParseFunction(ModuleValidator& m, ParseNode** fnOut, unsigned* line)
         return false;
 
     if (!m.parser().functionFormalParametersAndBody(InAllowed, YieldIsName, fn, Statement)) {
-        if (tokenStream.hadError() || directives == newDirectives)
+        if (anyChars.hadError() || directives == newDirectives)
             return false;
 
         return m.fail(fn, "encountered new directive in function");
     }
 
-    MOZ_ASSERT(!tokenStream.hadError());
+    MOZ_ASSERT(!anyChars.hadError());
     MOZ_ASSERT(directives == newDirectives);
 
     *fnOut = fn;
@@ -7251,7 +7307,7 @@ CheckFunctions(ModuleValidator& m)
         if (!PeekToken(m.parser(), &tk))
             return false;
 
-        if (tk != TOK_FUNCTION)
+        if (tk != TokenKind::TOK_FUNCTION)
             break;
 
         if (!CheckFunction(m))
@@ -7264,11 +7320,11 @@ CheckFunctions(ModuleValidator& m)
 static bool
 CheckFuncPtrTable(ModuleValidator& m, ParseNode* var)
 {
-    if (!var->isKind(PNK_NAME))
+    if (!var->isKind(ParseNodeKind::Name))
         return m.fail(var, "function-pointer table name is not a plain name");
 
     ParseNode* arrayLiteral = MaybeInitializer(var);
-    if (!arrayLiteral || !arrayLiteral->isKind(PNK_ARRAY))
+    if (!arrayLiteral || !arrayLiteral->isKind(ParseNodeKind::Array))
         return m.fail(var, "function-pointer table's initializer must be an array literal");
 
     unsigned length = ListLength(arrayLiteral);
@@ -7281,7 +7337,7 @@ CheckFuncPtrTable(ModuleValidator& m, ParseNode* var)
     Uint32Vector elemFuncDefIndices;
     const Sig* sig = nullptr;
     for (ParseNode* elem = ListHead(arrayLiteral); elem; elem = NextNode(elem)) {
-        if (!elem->isKind(PNK_NAME))
+        if (!elem->isKind(ParseNodeKind::Name))
             return m.fail(elem, "function-pointer table's elements must be names of functions");
 
         PropertyName* funcName = elem->name();
@@ -7345,7 +7401,7 @@ CheckFuncPtrTables(ModuleValidator& m)
 static bool
 CheckModuleExportFunction(ModuleValidator& m, ParseNode* pn, PropertyName* maybeFieldName = nullptr)
 {
-    if (!pn->isKind(PNK_NAME))
+    if (!pn->isKind(ParseNodeKind::Name))
         return m.fail(pn, "expected name of exported function");
 
     PropertyName* funcName = pn->name();
@@ -7359,7 +7415,7 @@ CheckModuleExportFunction(ModuleValidator& m, ParseNode* pn, PropertyName* maybe
 static bool
 CheckModuleExportObject(ModuleValidator& m, ParseNode* object)
 {
-    MOZ_ASSERT(object->isKind(PNK_OBJECT));
+    MOZ_ASSERT(object->isKind(ParseNodeKind::Object));
 
     for (ParseNode* pn = ListHead(object); pn; pn = NextNode(pn)) {
         if (!IsNormalObjectField(m.cx(), pn))
@@ -7368,7 +7424,7 @@ CheckModuleExportObject(ModuleValidator& m, ParseNode* object)
         PropertyName* fieldName = ObjectNormalFieldName(m.cx(), pn);
 
         ParseNode* initNode = ObjectNormalFieldInitializer(m.cx(), pn);
-        if (!initNode->isKind(PNK_NAME))
+        if (!initNode->isKind(ParseNodeKind::Name))
             return m.fail(initNode, "initializer of exported object literal must be name of function");
 
         if (!CheckModuleExportFunction(m, initNode, fieldName))
@@ -7384,13 +7440,13 @@ CheckModuleReturn(ModuleValidator& m)
     TokenKind tk;
     if (!GetToken(m.parser(), &tk))
         return false;
-    TokenStream& ts = m.parser().tokenStream;
-    if (tk != TOK_RETURN) {
-        return m.failCurrentOffset((tk == TOK_RC || tk == TOK_EOF)
+    auto& ts = m.parser().tokenStream;
+    if (tk != TokenKind::TOK_RETURN) {
+        return m.failCurrentOffset((tk == TokenKind::TOK_RC || tk == TokenKind::TOK_EOF)
                                    ? "expecting return statement"
                                    : "invalid asm.js. statement");
     }
-    ts.ungetToken();
+    ts.anyCharsAccess().ungetToken();
 
     ParseNode* returnStmt = m.parser().statementListItem(YieldIsName);
     if (!returnStmt)
@@ -7400,7 +7456,7 @@ CheckModuleReturn(ModuleValidator& m)
     if (!returnExpr)
         return m.fail(returnStmt, "export statement must return something");
 
-    if (returnExpr->isKind(PNK_OBJECT)) {
+    if (returnExpr->isKind(ParseNodeKind::Object)) {
         if (!CheckModuleExportObject(m, returnExpr))
             return false;
     } else {
@@ -7418,10 +7474,10 @@ CheckModuleEnd(ModuleValidator &m)
     if (!GetToken(m.parser(), &tk))
         return false;
 
-    if (tk != TOK_EOF && tk != TOK_RC)
+    if (tk != TokenKind::TOK_EOF && tk != TokenKind::TOK_RC)
         return m.failCurrentOffset("top-level export (return) must be the last statement");
 
-    m.parser().tokenStream.ungetToken();
+    m.parser().tokenStream.anyCharsAccess().ungetToken();
     return true;
 }
 
@@ -8022,8 +8078,13 @@ CheckBuffer(JSContext* cx, const AsmJSMetadata& metadata, HandleValue bufferVal,
         if (!ArrayBufferObject::prepareForAsmJS(cx, arrayBuffer, needGuard))
             return LinkFail(cx, "Unable to prepare ArrayBuffer for asm.js use");
     } else {
-        if (!buffer->as<SharedArrayBufferObject>().isPreparedForAsmJS())
-            return LinkFail(cx, "SharedArrayBuffer must be created with wasm test mode enabled");
+        if (!buffer->as<SharedArrayBufferObject>().isPreparedForAsmJS()) {
+            if (buffer->as<SharedArrayBufferObject>().isWasm())
+                return LinkFail(cx, "SharedArrayBuffer created for Wasm cannot be used for asm.js");
+            if (!jit::JitOptions.asmJSAtomicsEnable)
+                return LinkFail(cx, "Can link with SharedArrayBuffer only when asmjs.atomics.enable is set");
+            return LinkFail(cx, "Unable to prepare SharedArrayBuffer for asm.js use");
+        }
     }
 
     MOZ_ASSERT(buffer->isPreparedForAsmJS());
@@ -8336,7 +8397,7 @@ class ModuleChars
 
     static uint32_t endOffset(AsmJSParser& parser) {
         TokenPos pos(0, 0);  // initialize to silence GCC warning
-        MOZ_ALWAYS_TRUE(parser.tokenStream.peekTokenPos(&pos, TokenStream::Operand));
+        MOZ_ALWAYS_TRUE(parser.tokenStream.peekTokenPos(&pos, TokenStreamShared::Operand));
         return pos.end;
     }
 };
@@ -8655,13 +8716,23 @@ NoExceptionPending(JSContext* cx)
 }
 
 static bool
-Warn(AsmJSParser& parser, int errorNumber, const char* str)
+SuccessfulValidation(AsmJSParser& parser, UniqueChars str)
 {
-    ParseReportKind reportKind = parser.options().throwOnAsmJSValidationFailureOption &&
-                                 errorNumber == JSMSG_USE_ASM_TYPE_FAIL
-                                 ? ParseError
-                                 : ParseWarning;
-    parser.reportNoOffset(reportKind, /* strict = */ false, errorNumber, str ? str : "");
+    return parser.warningNoOffset(JSMSG_USE_ASM_TYPE_OK, str.get());
+}
+
+static bool
+TypeFailureWarning(AsmJSParser& parser, const char* str)
+{
+    if (parser.options().throwOnAsmJSValidationFailureOption) {
+        parser.errorNoOffset(JSMSG_USE_ASM_TYPE_FAIL, str ? str : "");
+        return false;
+    }
+
+    // Per the asm.js standard convention, whether failure sets a pending
+    // exception determines whether to attempt non-asm.js reparsing, so ignore
+    // the return value below.
+    Unused << parser.warningNoOffset(JSMSG_USE_ASM_TYPE_FAIL, str ? str : "");
     return false;
 }
 
@@ -8669,29 +8740,29 @@ static bool
 EstablishPreconditions(JSContext* cx, AsmJSParser& parser)
 {
     if (!HasCompilerSupport(cx))
-        return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by lack of compiler support");
+        return TypeFailureWarning(parser, "Disabled by lack of compiler support");
 
     switch (parser.options().asmJSOption) {
       case AsmJSOption::Disabled:
-        return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by 'asmjs' runtime option");
+        return TypeFailureWarning(parser, "Disabled by 'asmjs' runtime option");
       case AsmJSOption::DisabledByDebugger:
-        return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by debugger");
+        return TypeFailureWarning(parser, "Disabled by debugger");
       case AsmJSOption::Enabled:
         break;
     }
 
     if (parser.pc->isGenerator())
-        return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by generator context");
+        return TypeFailureWarning(parser, "Disabled by generator context");
 
     if (parser.pc->isAsync())
-        return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by async context");
+        return TypeFailureWarning(parser, "Disabled by async context");
 
     if (parser.pc->isArrowFunction())
-        return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by arrow function context");
+        return TypeFailureWarning(parser, "Disabled by arrow function context");
 
     // Class constructors are also methods
     if (parser.pc->isMethod() || parser.pc->isGetterOrSetter())
-        return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by class constructor or method context");
+        return TypeFailureWarning(parser, "Disabled by class constructor or method context");
 
     return true;
 }
@@ -8805,7 +8876,7 @@ js::CompileAsmJS(JSContext* cx, AsmJSParser& parser, ParseNode* stmtList, bool* 
 
     // Success! Write to the console with a "warning" message.
     *validated = true;
-    Warn(parser, JSMSG_USE_ASM_TYPE_OK, message.get());
+    SuccessfulValidation(parser, Move(message));
     return NoExceptionPending(cx);
 }
 

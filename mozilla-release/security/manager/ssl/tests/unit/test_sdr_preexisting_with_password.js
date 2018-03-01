@@ -49,11 +49,9 @@ function run_test() {
   let windowWatcherCID =
     MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1",
                            gWindowWatcher);
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     MockRegistrar.unregister(windowWatcherCID);
   });
-
-  Services.prefs.setBoolPref("security.use_sqldb", true);
 
   let profile = do_get_profile();
   let keyDBFile = do_get_file("test_sdr_preexisting_with_password/key3.db");

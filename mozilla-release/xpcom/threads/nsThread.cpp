@@ -38,16 +38,14 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "nsICrashReporter.h"
 #include "nsThreadSyncDispatch.h"
+#include "nsServiceManagerUtils.h"
 #include "GeckoProfiler.h"
 #include "InputEventStatistics.h"
 #include "ThreadEventTarget.h"
 
-#ifdef MOZ_CRASHREPORTER
-#include "nsServiceManagerUtils.h"
-#include "nsICrashReporter.h"
 #include "mozilla/dom/ContentChild.h"
-#endif
 
 #ifdef XP_LINUX
 #include <sys/time.h>
@@ -476,7 +474,6 @@ nsThread::ThreadFunc(void* aArg)
 
 //-----------------------------------------------------------------------------
 
-#ifdef MOZ_CRASHREPORTER
 // Tell the crash reporter to save a memory report if our heuristics determine
 // that an OOM failure is likely to occur soon.
 // Memory usage will not be checked more than every 30 seconds or saved more
@@ -541,7 +538,6 @@ nsThread::SaveMemoryReportNearOOM(ShouldSaveMemoryReport aShouldSave)
 
   return recentlySavedReport;
 }
-#endif
 
 #ifdef MOZ_CANARY
 int sCanaryOutputFD = -1;
@@ -888,7 +884,9 @@ void canary_alarm_handler(int signum)
 
 #ifndef RELEASE_OR_BETA
 static bool
-GetLabeledRunnableName(nsIRunnable* aEvent, nsACString& aName)
+GetLabeledRunnableName(nsIRunnable* aEvent,
+                       nsACString& aName,
+                       EventPriority aPriority)
 {
   bool labeled = false;
   if (RefPtr<SchedulerGroup::Runnable> groupRunnable = do_QueryObject(aEvent)) {
@@ -901,6 +899,10 @@ GetLabeledRunnableName(nsIRunnable* aEvent, nsACString& aName)
   }
   if (aName.IsEmpty()) {
     aName.AssignLiteral("anonymous runnable");
+  }
+
+  if (!labeled && aPriority > EventPriority::Input) {
+    aName.AppendLiteral("(unlabeled)");
   }
 
   return labeled;
@@ -983,14 +985,15 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult)
 
       nsAutoCString name;
       if ((MAIN_THREAD == mIsMainThread) || mNextIdleDeadline) {
-        bool labeled = GetLabeledRunnableName(event, name);
+        bool labeled = GetLabeledRunnableName(event, name, priority);
 
         if (MAIN_THREAD == mIsMainThread) {
           timer.emplace(name);
 
           // High-priority runnables are ignored here since they'll run right away
           // even with the cooperative scheduler.
-          if (!labeled && priority == EventPriority::Normal) {
+          if (!labeled && (priority == EventPriority::Normal ||
+                           priority == EventPriority::Idle)) {
             TimeStamp now = TimeStamp::Now();
             double diff = (now - mLastUnlabeledRunnable).ToMilliseconds();
             Telemetry::Accumulate(Telemetry::TIME_BETWEEN_UNLABELED_RUNNABLES_MS, diff);
@@ -1207,11 +1210,9 @@ nsThread::DoMainThreadSpecificProcessing(bool aReallyWait)
     }
   }
 
-#ifdef MOZ_CRASHREPORTER
   if (!ShuttingDown()) {
     SaveMemoryReportNearOOM(ShouldSaveMemoryReport::kMaybeReport);
   }
-#endif
 }
 
 NS_IMETHODIMP

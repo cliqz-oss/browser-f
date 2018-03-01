@@ -74,7 +74,6 @@
 @BINPATH@/@DLL_PREFIX@mozglue@DLL_SUFFIX@
 # This should be MOZ_CHILD_PROCESS_NAME, but that has a "lib/" prefix.
 @BINPATH@/@MOZ_CHILD_PROCESS_NAME@
-@BINPATH@/@MOZ_CHILD_PROCESS_NAME_PIE@
 
 #ifdef MOZ_ANDROID_GOOGLE_VR
 @BINPATH@/@DLL_PREFIX@gvr@DLL_SUFFIX@
@@ -120,9 +119,11 @@
 @BINPATH@/components/dom.xpt
 @BINPATH@/components/dom_base.xpt
 @BINPATH@/components/dom_bindings.xpt
+#ifdef MOZ_DEBUG
+@BINPATH@/components/dom_bindings_test.xpt
+#endif
 @BINPATH@/components/dom_canvas.xpt
 @BINPATH@/components/dom_core.xpt
-@BINPATH@/components/dom_css.xpt
 @BINPATH@/components/dom_events.xpt
 @BINPATH@/components/dom_file.xpt
 @BINPATH@/components/dom_geolocation.xpt
@@ -131,7 +132,6 @@
 @BINPATH@/components/dom_notification.xpt
 @BINPATH@/components/dom_html.xpt
 @BINPATH@/components/dom_offline.xpt
-@BINPATH@/components/dom_json.xpt
 @BINPATH@/components/dom_payments.xpt
 @BINPATH@/components/dom_power.xpt
 #ifdef MOZ_ANDROID_GCM
@@ -141,12 +141,9 @@
 @BINPATH@/components/dom_range.xpt
 @BINPATH@/components/dom_security.xpt
 @BINPATH@/components/dom_sidebar.xpt
-@BINPATH@/components/dom_mobilemessage.xpt
 @BINPATH@/components/dom_storage.xpt
-@BINPATH@/components/dom_stylesheets.xpt
 @BINPATH@/components/dom_system.xpt
 @BINPATH@/components/dom_traversal.xpt
-@BINPATH@/components/dom_tv.xpt
 #ifdef MOZ_WEBSPEECH
 @BINPATH@/components/dom_webspeechrecognition.xpt
 #endif
@@ -244,7 +241,6 @@
 @BINPATH@/components/widget.xpt
 @BINPATH@/components/widget_android.xpt
 @BINPATH@/components/windowcreator.xpt
-@BINPATH@/components/windowds.xpt
 @BINPATH@/components/windowwatcher.xpt
 @BINPATH@/components/xpcom_base.xpt
 @BINPATH@/components/xpcom_system.xpt
@@ -256,16 +252,11 @@
 @BINPATH@/components/xpconnect.xpt
 @BINPATH@/components/xulapp.xpt
 @BINPATH@/components/xul.xpt
-@BINPATH@/components/xultmpl.xpt
 @BINPATH@/components/zipwriter.xpt
 
 ; JavaScript components
 @BINPATH@/components/ConsoleAPI.manifest
 @BINPATH@/components/ConsoleAPIStorage.js
-@BINPATH@/components/ContactManager.js
-@BINPATH@/components/ContactManager.manifest
-@BINPATH@/components/PhoneNumberService.js
-@BINPATH@/components/PhoneNumberService.manifest
 @BINPATH@/components/NotificationStorage.js
 @BINPATH@/components/NotificationStorage.manifest
 #ifdef MOZ_ANDROID_GCM
@@ -405,9 +396,6 @@
 @BINPATH@/components/PresentationDataChannelSessionTransport.manifest
 @BINPATH@/components/AndroidCastDeviceProvider.manifest
 @BINPATH@/components/AndroidCastDeviceProvider.js
-
-@BINPATH@/components/TVSimulatorService.js
-@BINPATH@/components/TVSimulatorService.manifest
 #endif
 
 @BINPATH@/components/mozIntl.manifest
@@ -481,7 +469,6 @@
 @BINPATH@/res/table-remove-row.gif
 @BINPATH@/res/grabber.gif
 @BINPATH@/res/dtd/*
-@BINPATH@/res/html/*
 @BINPATH@/res/language.properties
 
 #ifndef MOZ_ANDROID_EXCLUDE_FONTS

@@ -3,29 +3,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 function run_test() {
-  // If we can't get the profiler component then assume gecko was
-  // built without it and pass all the tests
-  var profilerCc = Cc["@mozilla.org/tools/profiler;1"];
-  if (!profilerCc)
+  if (!AppConstants.MOZ_GECKO_PROFILER) {
     return;
+  }
 
-  var profiler = Cc["@mozilla.org/tools/profiler;1"].getService(Ci.nsIProfiler);
-  if (!profiler)
-    return;
+  var libs = Services.profiler.sharedLibraries;
 
-  var libs = profiler.sharedLibraries;
-
-  do_check_eq(typeof libs, "object");
-  do_check_true(Array.isArray(libs));
-  do_check_eq(typeof libs, "object");
-  do_check_true(libs.length >= 1);
-  do_check_eq(typeof libs[0], "object");
-  do_check_eq(typeof libs[0].name, "string");
-  do_check_eq(typeof libs[0].path, "string");
-  do_check_eq(typeof libs[0].debugName, "string");
-  do_check_eq(typeof libs[0].debugPath, "string");
-  do_check_eq(typeof libs[0].arch, "string");
-  do_check_eq(typeof libs[0].start, "number");
-  do_check_eq(typeof libs[0].end, "number");
-  do_check_true(libs[0].start <= libs[0].end);
+  Assert.equal(typeof libs, "object");
+  Assert.ok(Array.isArray(libs));
+  Assert.equal(typeof libs, "object");
+  Assert.ok(libs.length >= 1);
+  Assert.equal(typeof libs[0], "object");
+  Assert.equal(typeof libs[0].name, "string");
+  Assert.equal(typeof libs[0].path, "string");
+  Assert.equal(typeof libs[0].debugName, "string");
+  Assert.equal(typeof libs[0].debugPath, "string");
+  Assert.equal(typeof libs[0].arch, "string");
+  Assert.equal(typeof libs[0].start, "number");
+  Assert.equal(typeof libs[0].end, "number");
+  Assert.ok(libs[0].start <= libs[0].end);
 }

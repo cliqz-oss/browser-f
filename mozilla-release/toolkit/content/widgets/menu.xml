@@ -10,11 +10,10 @@
    xmlns:xbl="http://www.mozilla.org/xbl">
 
   <binding id="menuitem-base" role="xul:menuitem"
-           extends="chrome://global/content/bindings/general.xml#control-item">
-    <resources>
-      <stylesheet src="chrome://global/skin/menu.css"/>
-    </resources>
+           extends="chrome://global/content/bindings/general.xml#basetext">
     <implementation implements="nsIDOMXULSelectControlItemElement, nsIDOMXULContainerItemElement">
+      <property name="value" onset="this.setAttribute('value', val); return val;"
+                             onget="return this.getAttribute('value');"/>
       <!-- nsIDOMXULSelectControlItemElement -->
       <property name="selected" readonly="true"
                 onget="return this.getAttribute('selected') == 'true';"/>
@@ -187,12 +186,6 @@
     </content>
   </binding>
 
-  <binding id="menucaption" extends="chrome://global/content/bindings/menu.xml#menu-base">
-    <content>
-      <xul:label class="menu-text" xbl:inherits="value=label,crop" crop="right"/>
-    </content>
-  </binding>
-
   <binding id="menu-menubar"
            extends="chrome://global/content/bindings/menu.xml#menu-base">
     <content>
@@ -236,7 +229,7 @@
     </content>
   </binding>
 
-  <binding id="menucaption-inmenulist" extends="chrome://global/content/bindings/menu.xml#menucaption">
+  <binding id="menucaption" extends="chrome://global/content/bindings/menu.xml#menu-base">
     <content>
       <xul:hbox class="menu-iconic-left" align="center" pack="center"
                 xbl:inherits="selected,disabled,checked">
@@ -282,9 +275,4 @@
       <children includes="menupopup"/>
     </content>
   </binding>
-
-  <binding id="menuseparator" role="xul:menuseparator"
-           extends="chrome://global/content/bindings/menu.xml#menuitem-base">
-  </binding>
-
 </bindings>

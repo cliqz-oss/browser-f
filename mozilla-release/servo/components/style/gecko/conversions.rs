@@ -17,13 +17,12 @@ use gecko_bindings::structs::{nsStyleImage, nsresult, SheetType};
 use gecko_bindings::sugar::ns_style_coord::{CoordDataValue, CoordData, CoordDataMut};
 use std::f32::consts::PI;
 use stylesheets::{Origin, RulesMutateError};
-use values::computed::{Angle, CalcLengthOrPercentage, Gradient, Image};
-use values::computed::{Integer, LengthOrPercentage, LengthOrPercentageOrAuto, Percentage};
+use values::computed::{Angle, CalcLengthOrPercentage, ComputedUrl, Gradient, Image};
+use values::computed::{Integer, LengthOrPercentage, LengthOrPercentageOrAuto, Percentage, TextAlign};
 use values::generics::box_::VerticalAlign;
 use values::generics::grid::{TrackListValue, TrackSize};
 use values::generics::image::{CompatMode, Image as GenericImage, GradientItem};
 use values::generics::rect::Rect;
-use values::specified::url::SpecifiedUrl;
 
 impl From<CalcLengthOrPercentage> for nsStyleCoord_CalcValue {
     fn from(other: CalcLengthOrPercentage) -> nsStyleCoord_CalcValue {
@@ -116,9 +115,9 @@ impl From<nsStyleCoord_CalcValue> for LengthOrPercentageOrAuto {
 impl From<Angle> for CoordDataValue {
     fn from(reference: Angle) -> Self {
         match reference {
-            Angle::Degree(val) => CoordDataValue::Degree(val),
-            Angle::Gradian(val) => CoordDataValue::Grad(val),
-            Angle::Radian(val) => CoordDataValue::Radian(val),
+            Angle::Deg(val) => CoordDataValue::Degree(val),
+            Angle::Grad(val) => CoordDataValue::Grad(val),
+            Angle::Rad(val) => CoordDataValue::Radian(val),
             Angle::Turn(val) => CoordDataValue::Turn(val),
         }
     }
@@ -128,9 +127,9 @@ impl Angle {
     /// Converts Angle struct into (value, unit) pair.
     pub fn to_gecko_values(&self) -> (f32, nsCSSUnit) {
         match *self {
-            Angle::Degree(val) => (val, nsCSSUnit::eCSSUnit_Degree),
-            Angle::Gradian(val) => (val, nsCSSUnit::eCSSUnit_Grad),
-            Angle::Radian(val) => (val, nsCSSUnit::eCSSUnit_Radian),
+            Angle::Deg(val) => (val, nsCSSUnit::eCSSUnit_Degree),
+            Angle::Grad(val) => (val, nsCSSUnit::eCSSUnit_Grad),
+            Angle::Rad(val) => (val, nsCSSUnit::eCSSUnit_Radian),
             Angle::Turn(val) => (val, nsCSSUnit::eCSSUnit_Turn),
         }
     }
@@ -138,11 +137,11 @@ impl Angle {
     /// Converts gecko (value, unit) pair into Angle struct
     pub fn from_gecko_values(value: f32, unit: nsCSSUnit) -> Angle {
         match unit {
-            nsCSSUnit::eCSSUnit_Degree => Angle::Degree(value),
-            nsCSSUnit::eCSSUnit_Grad => Angle::Gradian(value),
-            nsCSSUnit::eCSSUnit_Radian => Angle::Radian(value),
+            nsCSSUnit::eCSSUnit_Degree => Angle::Deg(value),
+            nsCSSUnit::eCSSUnit_Grad => Angle::Grad(value),
+            nsCSSUnit::eCSSUnit_Radian => Angle::Rad(value),
             nsCSSUnit::eCSSUnit_Turn => Angle::Turn(value),
-            _ => panic!("Unexpected unit {:?} for angle", unit),
+            _ => panic!("Unexpected unit for angle"),
         }
     }
 }
@@ -416,15 +415,15 @@ impl nsStyleImage {
                 let atom = Gecko_GetImageElement(self);
                 Some(GenericImage::Element(Atom::from(atom)))
             },
-            x => panic!("Unexpected image type {:?}", x)
+            _ => panic!("Unexpected image type")
         }
     }
 
-    unsafe fn get_image_url(self: &nsStyleImage) -> SpecifiedUrl {
+    unsafe fn get_image_url(self: &nsStyleImage) -> ComputedUrl {
         use gecko_bindings::bindings::Gecko_GetURLValue;
         let url_value = Gecko_GetURLValue(self);
-        let mut url = SpecifiedUrl::from_url_value_data(url_value.as_ref().unwrap())
-                                    .expect("Could not convert to SpecifiedUrl");
+        let mut url = ComputedUrl::from_url_value_data(url_value.as_ref().unwrap())
+                                    .expect("Could not convert to ComputedUrl");
         url.build_image_value();
         url
     }
@@ -504,7 +503,7 @@ impl nsStyleImage {
                         // FIXME: We should support ShapeExtent::Contain and ShapeExtent::Cover.
                         // But we can't choose those yet since Gecko does not support both values.
                         // https://bugzilla.mozilla.org/show_bug.cgi?id=1217664
-                        x => panic!("Found unexpected gecko_size: {:?}", x),
+                        _ => panic!("Found unexpected gecko_size"),
                     }
                 };
 
@@ -540,7 +539,7 @@ impl nsStyleImage {
                         };
                         EndingShape::Ellipse(length_percentage_keyword)
                     },
-                    x => panic!("Found unexpected mShape: {:?}", x),
+                    _ => panic!("Found unexpected mShape"),
                 };
 
                 let position = match (horizontal_style, vertical_style) {
@@ -596,7 +595,8 @@ pub mod basic_shape {
     use gecko_bindings::structs::{nsStyleCoord, nsStyleCorners};
     use gecko_bindings::sugar::ns_style_coord::{CoordDataMut, CoordDataValue};
     use std::borrow::Borrow;
-    use values::computed::basic_shape::{BasicShape, ShapeRadius};
+    use values::computed::ComputedUrl;
+    use values::computed::basic_shape::{BasicShape, ClippingShape, FloatAreaShape, ShapeRadius};
     use values::computed::border::{BorderCornerRadius, BorderRadius};
     use values::computed::length::LengthOrPercentage;
     use values::computed::position;
@@ -605,34 +605,69 @@ pub mod basic_shape {
     use values::generics::basic_shape::{GeometryBox, ShapeBox, ShapeSource};
     use values::generics::border::BorderRadius as GenericBorderRadius;
     use values::generics::rect::Rect;
-    use values::specified::url::SpecifiedUrl;
 
-    impl<'a, ReferenceBox> From<&'a StyleShapeSource> for ShapeSource<BasicShape, ReferenceBox, SpecifiedUrl>
-    where
-        ReferenceBox: From<StyleGeometryBox>,
+    impl StyleShapeSource {
+        /// Convert StyleShapeSource to ShapeSource except URL and Image
+        /// types.
+        fn into_shape_source<ReferenceBox, ImageOrUrl>(
+            &self
+        ) -> Option<ShapeSource<BasicShape, ReferenceBox, ImageOrUrl>>
+        where
+            ReferenceBox: From<StyleGeometryBox>
+        {
+            match self.mType {
+                StyleShapeSourceType::None => Some(ShapeSource::None),
+                StyleShapeSourceType::Box => Some(ShapeSource::Box(self.mReferenceBox.into())),
+                StyleShapeSourceType::Shape => {
+                    let other_shape = unsafe { &*self.mBasicShape.mPtr };
+                    let shape = other_shape.into();
+                    let reference_box = if self.mReferenceBox == StyleGeometryBox::NoBox {
+                        None
+                    } else {
+                        Some(self.mReferenceBox.into())
+                    };
+                    Some(ShapeSource::Shape(shape, reference_box))
+                },
+                StyleShapeSourceType::URL | StyleShapeSourceType::Image => None,
+            }
+        }
+    }
+
+    impl<'a> From<&'a StyleShapeSource> for ClippingShape
     {
         fn from(other: &'a StyleShapeSource) -> Self {
             match other.mType {
-                StyleShapeSourceType::None => ShapeSource::None,
-                StyleShapeSourceType::Box => ShapeSource::Box(other.mReferenceBox.into()),
                 StyleShapeSourceType::URL => {
                     unsafe {
                         let shape_image = &*other.mShapeImage.mPtr;
                         let other_url = &(**shape_image.__bindgen_anon_1.mURLValue.as_ref());
-                        let url = SpecifiedUrl::from_url_value_data(&other_url._base).unwrap();
-                        ShapeSource::Url(url)
+                        let url = ComputedUrl::from_url_value_data(&other_url._base).unwrap();
+                        ShapeSource::ImageOrUrl(url)
                     }
                 },
-                StyleShapeSourceType::Shape => {
-                    let other_shape = unsafe { &*other.mBasicShape.mPtr };
-                    let shape = other_shape.into();
-                    let reference_box = if other.mReferenceBox == StyleGeometryBox::NoBox {
-                        None
-                    } else {
-                        Some(other.mReferenceBox.into())
-                    };
-                    ShapeSource::Shape(shape, reference_box)
+                StyleShapeSourceType::Image => {
+                    unreachable!("ClippingShape doesn't support Image!");
                 }
+                _ => other.into_shape_source().expect("Couldn't convert to StyleSource!")
+            }
+        }
+    }
+
+    impl<'a> From<&'a StyleShapeSource> for FloatAreaShape
+    {
+        fn from(other: &'a StyleShapeSource) -> Self {
+            match other.mType {
+                StyleShapeSourceType::URL => {
+                    unreachable!("FloatAreaShape doesn't support URL!");
+                },
+                StyleShapeSourceType::Image => {
+                    unsafe {
+                        let shape_image = &*other.mShapeImage.mPtr;
+                        let image = shape_image.into_image().expect("Cannot convert to Image");
+                        ShapeSource::ImageOrUrl(image)
+                    }
+                }
+                _ => other.into_shape_source().expect("Couldn't convert to StyleSource!")
             }
         }
     }
@@ -807,7 +842,7 @@ pub mod basic_shape {
                 FillBox => GeometryBox::FillBox,
                 StrokeBox => GeometryBox::StrokeBox,
                 ViewBox => GeometryBox::ViewBox,
-                other => panic!("Unexpected StyleGeometryBox::{:?} while converting to GeometryBox", other),
+                _ => panic!("Unexpected StyleGeometryBox while converting to GeometryBox"),
             }
         }
     }
@@ -820,7 +855,7 @@ pub mod basic_shape {
                 PaddingBox => ShapeBox::PaddingBox,
                 BorderBox => ShapeBox::BorderBox,
                 MarginBox => ShapeBox::MarginBox,
-                other => panic!("Unexpected StyleGeometryBox::{:?} while converting to ShapeBox", other),
+                _ => panic!("Unexpected StyleGeometryBox while converting to ShapeBox"),
             }
         }
     }
@@ -956,6 +991,26 @@ impl<L> VerticalAlign<L> {
                 VerticalAlign::MozMiddleWithBaseline
             },
             _ => panic!("unexpected enumerated value for vertical-align"),
+        }
+    }
+}
+
+impl TextAlign {
+    /// Obtain a specified value from a Gecko keyword value
+    ///
+    /// Intended for use with presentation attributes, not style structs
+    pub fn from_gecko_keyword(kw: u32) -> Self {
+        match kw  {
+            structs::NS_STYLE_TEXT_ALIGN_LEFT => TextAlign::Left,
+            structs::NS_STYLE_TEXT_ALIGN_RIGHT => TextAlign::Right,
+            structs::NS_STYLE_TEXT_ALIGN_CENTER => TextAlign::Center,
+            structs::NS_STYLE_TEXT_ALIGN_JUSTIFY => TextAlign::Justify,
+            structs::NS_STYLE_TEXT_ALIGN_MOZ_LEFT => TextAlign::MozLeft,
+            structs::NS_STYLE_TEXT_ALIGN_MOZ_RIGHT => TextAlign::MozRight,
+            structs::NS_STYLE_TEXT_ALIGN_MOZ_CENTER => TextAlign::MozCenter,
+            structs::NS_STYLE_TEXT_ALIGN_CHAR => TextAlign::Char,
+            structs::NS_STYLE_TEXT_ALIGN_END => TextAlign::End,
+            _ => panic!("Found unexpected value in style struct for text-align property"),
         }
     }
 }

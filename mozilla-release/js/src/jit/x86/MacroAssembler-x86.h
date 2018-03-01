@@ -93,6 +93,32 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
         return ToType(Operand(base)).toAddress();
     }
 
+    template <typename T>
+    void add64FromMemory(const T& address, Register64 dest) {
+        addl(Operand(LowWord(address)), dest.low);
+        adcl(Operand(HighWord(address)), dest.high);
+    }
+    template <typename T>
+    void sub64FromMemory(const T& address, Register64 dest) {
+        subl(Operand(LowWord(address)), dest.low);
+        sbbl(Operand(HighWord(address)), dest.high);
+    }
+    template <typename T>
+    void and64FromMemory(const T& address, Register64 dest) {
+        andl(Operand(LowWord(address)), dest.low);
+        andl(Operand(HighWord(address)), dest.high);
+    }
+    template <typename T>
+    void or64FromMemory(const T& address, Register64 dest) {
+        orl(Operand(LowWord(address)), dest.low);
+        orl(Operand(HighWord(address)), dest.high);
+    }
+    template <typename T>
+    void xor64FromMemory(const T& address, Register64 dest) {
+        xorl(Operand(LowWord(address)), dest.low);
+        xorl(Operand(HighWord(address)), dest.high);
+    }
+
     /////////////////////////////////////////////////////////////////
     // X86/X64-common interface.
     /////////////////////////////////////////////////////////////////
@@ -827,7 +853,7 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
 
   public:
     // Used from within an Exit frame to handle a pending exception.
-    void handleFailureWithHandlerTail(void* handler);
+    void handleFailureWithHandlerTail(void* handler, Label* profilerExitTail);
 
     // Instrumentation for entering and leaving the profiler.
     void profilerEnterFrame(Register framePtr, Register scratch);

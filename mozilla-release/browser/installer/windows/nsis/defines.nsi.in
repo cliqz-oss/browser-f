@@ -36,7 +36,9 @@
 !ifndef DEV_EDITION
 !define BrandShortName        "@MOZ_APP_DISPLAYNAME@"
 !endif
+!ifndef BrandFullName
 !define BrandFullName         "${BrandFullNameInternal}"
+!endif
 
 !define CERTIFICATE_NAME            "Mozilla Corporation"
 !define CERTIFICATE_ISSUER          "DigiCert SHA2 Assured ID Code Signing CA"
@@ -101,6 +103,12 @@
 #ifdef MOZ_MAINTENANCE_SERVICE
 !define MOZ_MAINTENANCE_SERVICE
 #endif
+
+!if "@AB_CD@" == "en-US"
+!define MOZ_OPTIONAL_EXTENSIONS
+!else if "@AB_CD@" == "zh-CN"
+!define MOZ_OPTIONAL_EXTENSIONS
+!endif
 
 # File details shared by both the installer and uninstaller
 VIProductVersion "1.0.0.0"

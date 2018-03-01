@@ -83,6 +83,12 @@ MacroAssembler::PushWithPatch(ImmPtr imm)
 // Simple call functions.
 
 void
+MacroAssembler::call(TrampolinePtr code)
+{
+    call(ImmPtr(code.value));
+}
+
+void
 MacroAssembler::call(const wasm::CallSiteDesc& desc, const Register reg)
 {
     CodeOffset l = call(reg);
@@ -233,6 +239,14 @@ MacroAssembler::callJit(JitCode* callee)
     return currentOffset();
 }
 
+uint32_t
+MacroAssembler::callJit(TrampolinePtr code)
+{
+    AutoProfilerCallInstrumentation profiler(*this);
+    call(code);
+    return currentOffset();
+}
+
 void
 MacroAssembler::makeFrameDescriptor(Register frameSizeReg, FrameType type, uint32_t headerSize)
 {
@@ -297,48 +311,32 @@ MacroAssembler::buildFakeExitFrame(Register scratch)
 // Exit frame footer.
 
 void
-MacroAssembler::PushStubCode()
-{
-    // Make sure that we do not erase an existing self-reference.
-    MOZ_ASSERT(!hasSelfReference());
-    selfReferencePatch_ = PushWithPatch(ImmWord(-1));
-}
-
-void
 MacroAssembler::enterExitFrame(Register cxreg, Register scratch, const VMFunction* f)
 {
+    MOZ_ASSERT(f);
     linkExitFrame(cxreg, scratch);
-    // Push the JitCode pointer. (Keep the code alive, when on the stack)
-    PushStubCode();
     // Push VMFunction pointer, to mark arguments.
     Push(ImmPtr(f));
 }
 
 void
-MacroAssembler::enterFakeExitFrame(Register cxreg, Register scratch, ExitFrameToken token)
+MacroAssembler::enterFakeExitFrame(Register cxreg, Register scratch, ExitFrameType type)
 {
     linkExitFrame(cxreg, scratch);
-    Push(Imm32(int32_t(token)));
-    Push(ImmPtr(nullptr));
+    Push(Imm32(int32_t(type)));
 }
 
 void
 MacroAssembler::enterFakeExitFrameForNative(Register cxreg, Register scratch, bool isConstructing)
 {
-    enterFakeExitFrame(cxreg, scratch, isConstructing ? ExitFrameToken::ConstructNative
-                                                      : ExitFrameToken::CallNative);
+    enterFakeExitFrame(cxreg, scratch, isConstructing ? ExitFrameType::ConstructNative
+                                                      : ExitFrameType::CallNative);
 }
 
 void
 MacroAssembler::leaveExitFrame(size_t extraFrame)
 {
     freeStack(ExitFooterFrame::Size() + extraFrame);
-}
-
-bool
-MacroAssembler::hasSelfReference() const
-{
-    return selfReferencePatch_.bound();
 }
 
 // ===============================================================
@@ -473,8 +471,10 @@ MacroAssembler::branchIfFunctionHasNoScript(Register fun, Label* label)
 {
     // 16-bit loads are slow and unaligned 32-bit loads may be too so
     // perform an aligned 32-bit load and adjust the bitmask accordingly.
-    MOZ_ASSERT(JSFunction::offsetOfNargs() % sizeof(uint32_t) == 0);
-    MOZ_ASSERT(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2);
+    static_assert(JSFunction::offsetOfNargs() % sizeof(uint32_t) == 0,
+                  "The code in this function and the ones below must change");
+    static_assert(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2,
+                  "The code in this function and the ones below must change");
     Address address(fun, JSFunction::offsetOfNargs());
     int32_t bit = IMM32_16ADJ(JSFunction::INTERPRETED);
     branchTest32(Assembler::Zero, address, Imm32(bit), label);
@@ -485,8 +485,6 @@ MacroAssembler::branchIfInterpreted(Register fun, Label* label)
 {
     // 16-bit loads are slow and unaligned 32-bit loads may be too so
     // perform an aligned 32-bit load and adjust the bitmask accordingly.
-    MOZ_ASSERT(JSFunction::offsetOfNargs() % sizeof(uint32_t) == 0);
-    MOZ_ASSERT(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2);
     Address address(fun, JSFunction::offsetOfNargs());
     int32_t bit = IMM32_16ADJ(JSFunction::INTERPRETED);
     branchTest32(Assembler::NonZero, address, Imm32(bit), label);

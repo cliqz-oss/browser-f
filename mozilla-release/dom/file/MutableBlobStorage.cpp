@@ -302,8 +302,6 @@ public:
   {
     MOZ_ASSERT(!NS_IsMainThread());
 
-    mBlobStorage->CloseFD();
-
     RefPtr<Runnable> runnable =
       new CreateBlobRunnable(mBlobStorage, mParent.forget(),
                              mContentType, mCallback.forget());
@@ -364,7 +362,7 @@ MutableBlobStorage::~MutableBlobStorage()
 
   if (mFD) {
     RefPtr<Runnable> runnable = new CloseFileRunnable(mFD);
-    DispatchToIOThread(runnable.forget());
+    Unused << DispatchToIOThread(runnable.forget());
   }
 
   if (mTaskQueue) {
@@ -408,7 +406,10 @@ MutableBlobStorage::GetBlobWhenReady(nsISupports* aParent,
     // This Runnable will also close the FD on the I/O thread.
     RefPtr<Runnable> runnable =
       new LastRunnable(this, aParent, aContentType, aCallback);
-    DispatchToIOThread(runnable.forget());
+
+    // If the dispatching fails, we are shutting down and it's fine to do not
+    // run the callback.
+    Unused << DispatchToIOThread(runnable.forget());
     return;
   }
 
@@ -475,7 +476,10 @@ MutableBlobStorage::Append(const void* aData, uint32_t aLength)
       return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    DispatchToIOThread(runnable.forget());
+    nsresult rv = DispatchToIOThread(runnable.forget());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
 
     mDataLen += aLength;
     return NS_OK;
@@ -581,10 +585,13 @@ MutableBlobStorage::TemporaryFileCreated(PRFileDesc* aFD)
   // callback, we need just to close the file descriptor in the correct thread.
   if (mStorageState == eClosed && !mPendingCallback) {
     RefPtr<Runnable> runnable = new CloseFileRunnable(aFD);
-    DispatchToIOThread(runnable.forget());
+
+    // If this dispatching fails, CloseFileRunnable will close the FD in the
+    // DTOR on the current thread.
+    Unused << DispatchToIOThread(runnable.forget());
 
     // Let's inform the parent that we have nothing else to do.
-    mActor->SendOperationDone(false, EmptyCString());
+    mActor->SendOperationFailed();
     mActor = nullptr;
     return;
   }
@@ -605,7 +612,11 @@ MutableBlobStorage::TemporaryFileCreated(PRFileDesc* aFD)
 
   mData = nullptr;
 
-  DispatchToIOThread(runnable.forget());
+  nsresult rv = DispatchToIOThread(runnable.forget());
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    // Shutting down, we cannot continue.
+    return;
+  }
 
   // If we are closed, it means that GetBlobWhenReady() has been called when we
   // were already waiting for a temporary file-descriptor. Finally we are here,
@@ -618,7 +629,7 @@ MutableBlobStorage::TemporaryFileCreated(PRFileDesc* aFD)
     RefPtr<Runnable> runnable =
       new LastRunnable(this, mPendingParent, mPendingContentType,
                        mPendingCallback);
-    DispatchToIOThread(runnable.forget());
+    Unused << DispatchToIOThread(runnable.forget());
 
     mPendingParent = nullptr;
     mPendingCallback = nullptr;
@@ -631,11 +642,21 @@ MutableBlobStorage::AskForBlob(TemporaryIPCBlobChildCallback* aCallback,
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mStorageState == eClosed);
-  MOZ_ASSERT(!mFD);
+  MOZ_ASSERT(mFD);
   MOZ_ASSERT(mActor);
   MOZ_ASSERT(aCallback);
 
-  mActor->AskForBlob(aCallback, aContentType);
+  // Let's pass the FileDescriptor to the parent actor in order to keep the file
+  // locked on windows.
+  mActor->AskForBlob(aCallback, aContentType, mFD);
+
+  // The previous operation has duplicated the file descriptor. Now we can close
+  // mFD. The parent will take care of closing the duplicated file descriptor on
+  // its side.
+  RefPtr<Runnable> runnable = new CloseFileRunnable(mFD);
+  Unused << DispatchToIOThread(runnable.forget());
+
+  mFD = nullptr;
   mActor = nullptr;
 }
 
@@ -646,12 +667,12 @@ MutableBlobStorage::ErrorPropagated(nsresult aRv)
   mErrorResult = aRv;
 
   if (mActor) {
-    mActor->SendOperationDone(false, EmptyCString());
+    mActor->SendOperationFailed();
     mActor = nullptr;
   }
 }
 
-void
+nsresult
 MutableBlobStorage::DispatchToIOThread(already_AddRefed<nsIRunnable> aRunnable)
 {
   if (!mTaskQueue) {
@@ -663,7 +684,12 @@ MutableBlobStorage::DispatchToIOThread(already_AddRefed<nsIRunnable> aRunnable)
   }
 
   nsCOMPtr<nsIRunnable> runnable(aRunnable);
-  mTaskQueue->Dispatch(runnable.forget());
+  nsresult rv = mTaskQueue->Dispatch(runnable.forget());
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  return NS_OK;
 }
 
 size_t

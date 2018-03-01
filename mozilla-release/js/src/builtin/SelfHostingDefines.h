@@ -84,13 +84,6 @@
 #define ITEM_KIND_VALUE 1
 #define ITEM_KIND_KEY_AND_VALUE 2
 
-// NB: keep these in sync with the copy in jsfriendapi.h.
-#define JSITER_OWNONLY    0x8   /* iterate over obj's own properties only */
-#define JSITER_HIDDEN     0x10  /* also enumerate non-enumerable properties */
-#define JSITER_SYMBOLS    0x20  /* also include symbol property keys */
-#define JSITER_SYMBOLSONLY 0x40 /* exclude string property keys */
-
-
 #define REGEXP_SOURCE_SLOT 1
 #define REGEXP_FLAGS_SLOT 2
 
@@ -100,18 +93,18 @@
 #define REGEXP_STICKY_FLAG      0x08
 #define REGEXP_UNICODE_FLAG     0x10
 
-#define MODULE_OBJECT_ENVIRONMENT_SLOT        2
-#define MODULE_OBJECT_STATUS_SLOT             4
-#define MODULE_OBJECT_ERROR_SLOT              5
-#define MODULE_OBJECT_DFS_INDEX_SLOT          16
-#define MODULE_OBJECT_DFS_ANCESTOR_INDEX_SLOT 17
+#define MODULE_OBJECT_ENVIRONMENT_SLOT        1
+#define MODULE_OBJECT_STATUS_SLOT             3
+#define MODULE_OBJECT_EVALUATION_ERROR_SLOT   4
+#define MODULE_OBJECT_DFS_INDEX_SLOT          13
+#define MODULE_OBJECT_DFS_ANCESTOR_INDEX_SLOT 14
 
-#define MODULE_STATUS_ERRORED        0
-#define MODULE_STATUS_UNINSTANTIATED 1
-#define MODULE_STATUS_INSTANTIATING  2
-#define MODULE_STATUS_INSTANTIATED   3
-#define MODULE_STATUS_EVALUATING     4
-#define MODULE_STATUS_EVALUATED      5
+#define MODULE_STATUS_UNINSTANTIATED  0
+#define MODULE_STATUS_INSTANTIATING   1
+#define MODULE_STATUS_INSTANTIATED    2
+#define MODULE_STATUS_EVALUATING      3
+#define MODULE_STATUS_EVALUATED       4
+#define MODULE_STATUS_EVALUATED_ERROR 5
 
 #define STRING_GENERICS_CHAR_AT               0
 #define STRING_GENERICS_CHAR_CODE_AT          1

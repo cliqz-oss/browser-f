@@ -994,12 +994,12 @@ add_task(async function test_reconcile_three_way_merge() {
   };
 
   for (let collectionName in TESTCASES) {
-    do_print(`Start to test reconcile on ${collectionName}`);
+    info(`Start to test reconcile on ${collectionName}`);
 
     let profileStorage = await initProfileStorage(TEST_STORE_FILE_NAME, null, collectionName);
 
     for (let test of TESTCASES[collectionName]) {
-      do_print(test.description);
+      info(test.description);
 
       profileStorage[collectionName].add(test.parent, {sourceSync: true});
 
@@ -1011,7 +1011,14 @@ add_task(async function test_reconcile_three_way_merge() {
         rawData: true,
       });
 
+      let onReconciled = TestUtils.topicObserved(
+        "formautofill-storage-changed",
+        (subject, data) =>
+          data == "reconcile" &&
+          subject.wrappedJSObject.collectionName == collectionName
+      );
       let {forkedGUID} = profileStorage[collectionName].reconcile(test.remote);
+      await onReconciled;
       let reconciledRecord = profileStorage[collectionName].get(test.parent.guid, {
         rawData: true,
       });

@@ -21,11 +21,11 @@ using namespace mozilla::dom;
 NS_IMETHODIMP
 ScriptElement::ScriptAvailable(nsresult aResult,
                                nsIScriptElement* aElement,
-                               bool aIsInline,
+                               bool aIsInlineClassicScript,
                                nsIURI* aURI,
                                int32_t aLineNo)
 {
-  if (!aIsInline && NS_FAILED(aResult)) {
+  if (!aIsInlineClassicScript && NS_FAILED(aResult)) {
     nsCOMPtr<nsIParser> parser = do_QueryReferent(mCreatorParser);
     if (parser) {
       parser->PushDefinedInsertionPoint();
@@ -126,11 +126,11 @@ ScriptElement::MaybeProcessScript()
     return false;
   }
 
-  FreezeUriAsyncDefer();
+  nsIDocument* ownerDoc = cont->OwnerDoc();
+  FreezeExecutionAttrs(ownerDoc);
 
   mAlreadyStarted = true;
 
-  nsIDocument* ownerDoc = cont->OwnerDoc();
   nsCOMPtr<nsIParser> parser = ((nsIScriptElement*) this)->GetCreatorParser();
   if (parser) {
     nsCOMPtr<nsIContentSink> sink = parser->GetContentSink();

@@ -9,12 +9,12 @@
  * This module records detailed timing information about selected
  * GCs. The data is sent back in the telemetry session ping. To avoid
  * bloating the ping, only a few GCs are included. There are two
- * selection strategies. We always save the five GCs with the worst
- * max_pause time. Additionally, five collections are selected at
+ * selection strategies. We always save the two GCs with the worst
+ * max_pause time. Additionally, two collections are selected at
  * random. If a GC runs for C milliseconds and the total time for all
  * GCs since the session began is T milliseconds, then the GC has a
- * 5*C/T probablility of being selected (the factor of 5 is because we
- * save 5 of them).
+ * 2*C/T probablility of being selected (the factor of 2 is because we
+ * save two of them).
  *
  * GCs from both the main process and all content processes are
  * recorded. The data is cleared for each new subsession.
@@ -23,6 +23,7 @@
 const Cu = Components.utils;
 
 Cu.import("resource://gre/modules/Services.jsm", this);
+Cu.import("resource://gre/modules/Log.jsm");
 
 this.EXPORTED_SYMBOLS = ["GCTelemetry"];
 
@@ -82,7 +83,7 @@ class GCData {
       }
     }
 
-    // Save the 5 worst GCs based on max_pause. A GC may appear in
+    // Save the 2 worst GCs based on max_pause. A GC may appear in
     // both worst and randomlySelected.
     for (let i = 0; i < this.worst.length; i++) {
       if (!this.worst[i]) {
@@ -110,22 +111,44 @@ class GCData {
 // make sure to update the JSON schema at:
 // https://github.com/mozilla-services/mozilla-pipeline-schemas/blob/master/telemetry/main.schema.json
 // You should also adjust browser_TelemetryGC.js.
-const MAX_GC_KEYS = 30;
+const MAX_GC_KEYS = 24;
 const MAX_SLICES = 4;
-const MAX_SLICE_KEYS = 15;
+const MAX_SLICE_KEYS = 12;
 const MAX_PHASES = 65;
+const LOGGER_NAME = "Toolkit.Telemetry";
 
-function limitProperties(obj, count) {
-  // If there are too many properties, just delete them all. We don't
+function limitProperties(name, obj, count, log) {
+  log.trace("limitProperties");
+
+  // If there are too many properties delete all/most of them. We don't
   // expect this ever to happen.
-  if (Object.keys(obj).length > count) {
+  if (Object.keys(obj).length >= count) {
     for (let key of Object.keys(obj)) {
+      // If this is the main GC object then save some of the critical
+      // properties.
+      if (name === "data" && (
+          key === "max_pause" ||
+          key === "num_slices" ||
+          key === "slices_list" ||
+          key === "status" ||
+          key === "timestamp" ||
+          key === "total_time" ||
+          key === "totals")) {
+        continue;
+      }
+
       delete obj[key];
     }
+    log.warn("Number of properties exceeded in the GC telemetry " +
+        name + " ping");
   }
 }
 
-function limitSize(data) {
+/*
+ * Reduce the size of the object by limiting the number of slices or times
+ * etc.
+ */
+function limitSize(data, log) {
   // Store the number of slices so we know if we lost any at the end.
   data.num_slices = data.slices_list.length;
 
@@ -144,14 +167,14 @@ function limitSize(data) {
 
   data.slices_list.sort((a, b) => a.slice - b.slice);
 
-  limitProperties(data, MAX_GC_KEYS);
+  limitProperties("data", data, MAX_GC_KEYS, log);
 
   for (let slice of data.slices_list) {
-    limitProperties(slice, MAX_SLICE_KEYS);
-    limitProperties(slice.times, MAX_PHASES);
+    limitProperties("slice", slice, MAX_SLICE_KEYS, log);
+    limitProperties("slice.times", slice.times, MAX_PHASES, log);
   }
 
-  limitProperties(data.totals, MAX_PHASES);
+  limitProperties("data.totals", data.totals, MAX_PHASES, log);
 }
 
 let processData = new Map();
@@ -168,6 +191,9 @@ var GCTelemetry = {
     }
 
     this.initialized = true;
+    this._log = Log.repository.getLoggerWithMessagePrefix(
+      LOGGER_NAME, "GCTelemetry::");
+
     Services.obs.addObserver(this, "garbage-collection-statistics");
 
     if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT) {
@@ -191,9 +217,13 @@ var GCTelemetry = {
   },
 
   observe(subject, topic, arg) {
-    let data = JSON.parse(arg);
+    this.observeRaw(JSON.parse(arg));
+  },
 
-    limitSize(data);
+  // We expose this method so unit tests can call it, no need to test JSON
+  // parsing.
+  observeRaw(data) {
+    limitSize(data, this._log);
 
     if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT) {
       processData.get("main").record(data);

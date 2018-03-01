@@ -1,8 +1,5 @@
-commit a456b0a390bb0f70b4cb8d38cb5ab0ecb557a851
-Merge: db05f2f 297502b
+commit 73120a5492ce274d551d2a215e65ba30085be7ef
 Author: Rick Waldron <waldron.rick@gmail.com>
-Date:   Mon Oct 23 11:02:44 2017 -0400
+Date:   Wed Jan 10 17:33:03 2018 -0500
 
-    Merge pull request #1310 from bocoup/contributing
-    
-    CONTRIBUTING.md Fix mistake in test generation section
+    Fix: various lint fixes

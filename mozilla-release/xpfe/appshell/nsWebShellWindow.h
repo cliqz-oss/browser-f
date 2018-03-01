@@ -29,29 +29,44 @@ class nsWebShellWindow final : public nsXULWindow,
 public:
 
   // The implementation of non-refcounted nsIWidgetListener, which would hold a
-  // strong reference on stack before calling nsWebShellWindow
+  // strong reference on stack before calling nsWebShellWindow's
+  // MOZ_CAN_RUN_SCRIPT methods.
   class WidgetListenerDelegate : public nsIWidgetListener
   {
   public:
     explicit WidgetListenerDelegate(nsWebShellWindow* aWebShellWindow)
       : mWebShellWindow(aWebShellWindow) {}
 
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual nsIXULWindow* GetXULWindow() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual nsIPresShell* GetPresShell() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual bool WindowMoved(nsIWidget* aWidget, int32_t x, int32_t y) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual bool WindowResized(nsIWidget* aWidget, int32_t aWidth, int32_t aHeight) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual bool RequestWindowClose(nsIWidget* aWidget) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void SizeModeChanged(nsSizeMode sizeMode) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void UIResolutionChanged() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void FullscreenWillChange(bool aInFullscreen) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void FullscreenChanged(bool aInFullscreen) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void OcclusionStateChanged(bool aIsFullyOccluded) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void OSToolbarButtonPressed() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual bool ZLevelChanged(bool aImmediate,
                                nsWindowZ *aPlacement,
                                nsIWidget* aRequestBelow,
                                nsIWidget** aActualBelow) override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void WindowActivated() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY
     virtual void WindowDeactivated() override;
 
   private:
@@ -85,19 +100,22 @@ public:
   // nsIWidgetListener methods for WidgetListenerDelegate.
   nsIXULWindow* GetXULWindow() { return this; }
   nsIPresShell* GetPresShell();
+  MOZ_CAN_RUN_SCRIPT
   bool WindowMoved(nsIWidget* aWidget, int32_t aX, int32_t aY);
+  MOZ_CAN_RUN_SCRIPT
   bool WindowResized(nsIWidget* aWidget, int32_t aWidth, int32_t aHeight);
-  bool RequestWindowClose(nsIWidget* aWidget);
-  void SizeModeChanged(nsSizeMode aSizeMode);
-  void UIResolutionChanged();
-  void FullscreenWillChange(bool aInFullscreen);
-  void FullscreenChanged(bool aInFullscreen);
-  void OcclusionStateChanged(bool aIsFullyOccluded);
-  void OSToolbarButtonPressed();
+  MOZ_CAN_RUN_SCRIPT bool RequestWindowClose(nsIWidget* aWidget);
+  MOZ_CAN_RUN_SCRIPT void SizeModeChanged(nsSizeMode aSizeMode);
+  MOZ_CAN_RUN_SCRIPT void UIResolutionChanged();
+  MOZ_CAN_RUN_SCRIPT void FullscreenWillChange(bool aInFullscreen);
+  MOZ_CAN_RUN_SCRIPT void FullscreenChanged(bool aInFullscreen);
+  MOZ_CAN_RUN_SCRIPT void OcclusionStateChanged(bool aIsFullyOccluded);
+  MOZ_CAN_RUN_SCRIPT void OSToolbarButtonPressed();
+  MOZ_CAN_RUN_SCRIPT
   bool ZLevelChanged(bool aImmediate, nsWindowZ *aPlacement,
                      nsIWidget* aRequestBelow, nsIWidget** aActualBelow);
-  void WindowActivated();
-  void WindowDeactivated();
+  MOZ_CAN_RUN_SCRIPT void WindowActivated();
+  MOZ_CAN_RUN_SCRIPT void WindowDeactivated();
 
 protected:
   friend class mozilla::WebShellWindowTimerCallback;

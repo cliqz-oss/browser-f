@@ -91,6 +91,7 @@ this.ClientEngine = function ClientEngine(service) {
   this.resetLastSync();
   this.fxAccounts = fxAccounts;
   this.addClientCommandQueue = Promise.resolve();
+  Utils.defineLazyIDProperty(this, "localID", "services.sync.client.GUID");
 };
 ClientEngine.prototype = {
   __proto__: SyncEngine.prototype,
@@ -99,6 +100,7 @@ ClientEngine.prototype = {
   _trackerObj: ClientsTracker,
   allowSkippedRecord: false,
   _knownStaleFxADeviceIds: null,
+  _lastDeviceCounts: null,
 
   // These two properties allow us to avoid replaying the same commands
   // continuously if we cannot manage to upload our own record.
@@ -186,15 +188,6 @@ ClientEngine.prototype = {
     return counts;
   },
 
-  get localID() {
-    // Generate a random GUID id we don't have one
-    let localID = Svc.Prefs.get("client.GUID", "");
-    return localID == "" ? this.localID = Utils.makeGUID() : localID;
-  },
-  set localID(value) {
-    Svc.Prefs.set("client.GUID", value);
-  },
-
   get brandName() {
     let brand = Services.strings.createBundle(
       "chrome://branding/locale/brand.properties");
@@ -202,12 +195,7 @@ ClientEngine.prototype = {
   },
 
   get localName() {
-    let name = Utils.getDeviceName();
-    // If `getDeviceName` returns the default name, set the pref. FxA registers
-    // the device before syncing, so we don't need to update the registration
-    // in this case.
-    Svc.Prefs.set("client.name", name);
-    return name;
+    return Utils.getDeviceName();
   },
   set localName(value) {
     Svc.Prefs.set("client.name", value);
@@ -562,7 +550,8 @@ ClientEngine.prototype = {
     // so non-histogram telemetry (eg, UITelemetry) and the sync scheduler
     // has easy access to them, and so they are accurate even before we've
     // successfully synced the first time after startup.
-    for (let [deviceType, count] of this.deviceTypes) {
+    let deviceTypeCounts = this.deviceTypes;
+    for (let [deviceType, count] of deviceTypeCounts) {
       let hid;
       let prefName = this.name + ".devices.";
       switch (deviceType) {
@@ -579,8 +568,13 @@ ClientEngine.prototype = {
           continue;
       }
       Services.telemetry.getHistogramById(hid).add(count);
-      Svc.Prefs.set(prefName, count);
+      // Optimization: only write the pref if it changed since our last sync.
+      if (this._lastDeviceCounts == null ||
+          this._lastDeviceCounts.get(prefName) != count) {
+        Svc.Prefs.set(prefName, count);
+      }
     }
+    this._lastDeviceCounts = deviceTypeCounts;
     return SyncEngine.prototype._syncFinish.call(this);
   },
 
@@ -648,17 +642,18 @@ ClientEngine.prototype = {
   /**
    * A hash of valid commands that the client knows about. The key is a command
    * and the value is a hash containing information about the command such as
-   * number of arguments and description.
+   * number of arguments, description, and importance (lower importance numbers
+   * indicate higher importance.
    */
   _commands: {
-    resetAll:    { args: 0, desc: "Clear temporary local data for all engines" },
-    resetEngine: { args: 1, desc: "Clear temporary local data for engine" },
-    wipeAll:     { args: 0, desc: "Delete all client data for all engines" },
-    wipeEngine:  { args: 1, desc: "Delete all client data for engine" },
-    logout:      { args: 0, desc: "Log out client" },
-    displayURI:  { args: 3, desc: "Instruct a client to display a URI" },
-    repairRequest:  {args: 1, desc: "Instruct a client to initiate a repair"},
-    repairResponse: {args: 1, desc: "Instruct a client a repair request is complete"},
+    resetAll:    { args: 0, importance: 0, desc: "Clear temporary local data for all engines" },
+    resetEngine: { args: 1, importance: 0, desc: "Clear temporary local data for engine" },
+    wipeAll:     { args: 0, importance: 0, desc: "Delete all client data for all engines" },
+    wipeEngine:  { args: 1, importance: 0, desc: "Delete all client data for engine" },
+    logout:      { args: 0, importance: 0, desc: "Log out client" },
+    displayURI:  { args: 3, importance: 1, desc: "Instruct a client to display a URI" },
+    repairRequest:  { args: 1, importance: 2, desc: "Instruct a client to initiate a repair" },
+    repairResponse: { args: 1, importance: 2, desc: "Instruct a client a repair request is complete" },
   },
 
   /**
@@ -883,7 +878,7 @@ ClientEngine.prototype = {
    *        Title of the page being sent.
    */
   async sendURIToClientForDisplay(uri, clientId, title) {
-    this._log.info("Sending URI to client: " + uri + " -> " +
+    this._log.trace("Sending URI to client: " + uri + " -> " +
                    clientId + " (" + title + ")");
     await this.sendCommand("displayURI", [uri, this.localID, title], clientId);
 
@@ -997,7 +992,39 @@ ClientStore.prototype = {
         delete record.cleartext.stale;
       }
     }
-
+    if (record.commands) {
+      const maxPayloadSize = this.engine.service.getMemcacheMaxRecordPayloadSize();
+      let origOrder = new Map(record.commands.map((c, i) => [c, i]));
+      // we sort first by priority, and second by age (indicated by order in the
+      // original list)
+      let commands = record.commands.slice().sort((a, b) => {
+        let infoA = this.engine._commands[a.command];
+        let infoB = this.engine._commands[b.command];
+        // Treat unknown command types as highest priority, to allow us to add
+        // high priority commands in the future without worrying about clients
+        // removing them on each-other unnecessarially.
+        let importA = infoA ? infoA.importance : 0;
+        let importB = infoB ? infoB.importance : 0;
+        // Higher importantance numbers indicate that we care less, so they
+        // go to the end of the list where they'll be popped off.
+        let importDelta = importA - importB;
+        if (importDelta != 0) {
+          return importDelta;
+        }
+        let origIdxA = origOrder.get(a);
+        let origIdxB = origOrder.get(b);
+        // Within equivalent priorities, we put older entries near the end
+        // of the list, so that they are removed first.
+        return origIdxB - origIdxA;
+      });
+      let truncatedCommands = Utils.tryFitItems(commands, maxPayloadSize);
+      if (truncatedCommands.length != record.commands.length) {
+        this._log.warn(`Removing commands from client ${id} (from ${record.commands.length} to ${truncatedCommands.length})`);
+        // Restore original order.
+        record.commands = truncatedCommands.sort((a, b) =>
+          origOrder.get(a) - origOrder.get(b));
+      }
+    }
     return record;
   },
 
@@ -1044,7 +1071,7 @@ ClientsTracker.prototype = {
         break;
       case "nsPref:changed":
         this._log.debug("client.name preference changed");
-        this.addChangedID(Svc.Prefs.get("client.GUID"));
+        this.addChangedID(this.engine.localID);
         this.score += SCORE_INCREMENT_XLARGE;
         break;
     }

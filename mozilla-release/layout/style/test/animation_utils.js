@@ -258,13 +258,16 @@ function runOMTATest(aTestFunction, aOnSkip, specialPowersForPrefs) {
     return waitForDocumentLoad()
       .then(loadPaintListener)
       .then(function() {
-        // Put refresh driver under test control and trigger animation
+        // Put refresh driver under test control and flush all pending style,
+        // layout and paint to avoid the situation that waitForPaintsFlush()
+        // receives unexpected MozAfterpaint event for those pending
+        // notifications.
         utils.advanceTimeAndRefresh(0);
+        return waitForPaintsFlushed();
+      }).then(function() {
         div.style.animation = animationName + " 10s";
 
-        // Trigger style flush
-        div.clientTop;
-        return waitForPaints();
+        return waitForPaintsFlushed();
       }).then(function() {
         var opacity = utils.getOMTAStyle(div, "opacity");
         cleanUp();
@@ -282,12 +285,6 @@ function runOMTATest(aTestFunction, aOnSkip, specialPowersForPrefs) {
       } else {
         window.addEventListener("load", resolve);
       }
-    });
-  }
-
-  function waitForPaints() {
-    return new Promise(function(resolve, reject) {
-      waitForAllPaintsFlushed(resolve);
     });
   }
 

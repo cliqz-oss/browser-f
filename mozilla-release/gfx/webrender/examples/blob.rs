@@ -17,8 +17,8 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use webrender::api::{self, DeviceUintRect, DisplayListBuilder, DocumentId, LayoutSize, PipelineId,
-                     RenderApi, ResourceUpdates};
+use webrender::api::{self,
+    DisplayListBuilder, DocumentId, PipelineId, RenderApi, ResourceUpdates};
 
 // This example shows how to implement a very basic BlobImageRenderer that can only render
 // a checkerboard pattern.
@@ -85,7 +85,7 @@ fn render_blob(
                     texels.push(color.r * checker + tc);
                     texels.push(color.a * checker + tc);
                 }
-                api::ImageFormat::A8 => {
+                api::ImageFormat::R8 => {
                     texels.push(color.a * checker + tc);
                 }
                 _ => {
@@ -145,7 +145,7 @@ impl api::BlobImageRenderer for CheckerboardRenderer {
             .insert(key, Arc::new(deserialize_blob(&cmds[..]).unwrap()));
     }
 
-    fn update(&mut self, key: api::ImageKey, cmds: api::BlobImageData, _dirty_rect: Option<DeviceUintRect>) {
+    fn update(&mut self, key: api::ImageKey, cmds: api::BlobImageData, _dirty_rect: Option<api::DeviceUintRect>) {
         // Here, updating is just replacing the current version of the commands with
         // the new one (no incremental updates).
         self.image_cmds
@@ -227,7 +227,7 @@ impl Example for App {
         api: &RenderApi,
         builder: &mut DisplayListBuilder,
         resources: &mut ResourceUpdates,
-        layout_size: LayoutSize,
+        _framebuffer_size: api::DeviceUintSize,
         _pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
@@ -247,7 +247,7 @@ impl Example for App {
             None,
         );
 
-        let bounds = api::LayoutRect::new(api::LayoutPoint::zero(), layout_size);
+        let bounds = api::LayoutRect::new(api::LayoutPoint::zero(), builder.content_size());
         let info = api::LayoutPrimitiveInfo::new(bounds);
         builder.push_stacking_context(
             &info,
@@ -265,6 +265,7 @@ impl Example for App {
             api::LayoutSize::new(500.0, 500.0),
             api::LayoutSize::new(0.0, 0.0),
             api::ImageRendering::Auto,
+            api::AlphaType::PremultipliedAlpha,
             blob_img1,
         );
 
@@ -274,19 +275,11 @@ impl Example for App {
             api::LayoutSize::new(200.0, 200.0),
             api::LayoutSize::new(0.0, 0.0),
             api::ImageRendering::Auto,
+            api::AlphaType::PremultipliedAlpha,
             blob_img2,
         );
 
         builder.pop_stacking_context();
-    }
-
-    fn on_event(
-        &mut self,
-        _event: glutin::Event,
-        _api: &RenderApi,
-        _document_id: DocumentId,
-    ) -> bool {
-        false
     }
 }
 

@@ -1,5 +1,5 @@
 <html>
-<head>
+  <head>
 <meta charset="UTF-8"/>
 <title>DAMP - Devtools At Maximum Performance</title>
 
@@ -28,11 +28,17 @@ var defaultConfig = {
     "complicated.netmonitor": true,
     "complicated.saveAndReadHeapSnapshot": true,
 
+    "custom.inspector": true,
+    "custom.debugger": true,
+
     "console.bulklog": true,
     "console.streamlog": true,
     "console.objectexpand": true,
     "console.openwithcache": true,
     "inspector.mutations": true,
+    "inspector.layout": true,
+
+    "panelsInBackground.reload": true,
   }
 };
 
@@ -60,6 +66,9 @@ var testsInfo = {
   "console.objectexpand": "Measure time to expand a large object and close the console",
   "console.openwithcache": "Measure time to render last logged messages in console for a page with 100 logged messages",
   "inspector.mutations": "Measure the time to perform childList mutations when inspector is enabled",
+  "inspector.layout": "Measure the time to open/close toolbox on inspector with layout tab against big document with grid containers",
+
+  "panelsInBackground.reload": "Measure page reload time when all panels are in background",
 };
 
 function updateConfig() {

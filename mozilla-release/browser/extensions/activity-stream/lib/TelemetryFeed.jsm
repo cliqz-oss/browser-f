@@ -246,7 +246,7 @@ this.TelemetryFeed = class TelemetryFeed {
    */
   handleNewTabInit(action) {
     const session = this.addSession(au.getPortIdOfSender(action), action.data.url);
-    session.perf.is_preloaded = action.data.browser.getAttribute("isPreloadBrowser") === "true";
+    session.perf.is_preloaded = action.data.browser.getAttribute("preloadedState") === "preloaded";
   }
 
   /**
@@ -259,7 +259,7 @@ this.TelemetryFeed = class TelemetryFeed {
     const appInfo = this.store.getState().App;
     const ping = {
       addon_version: appInfo.version,
-      locale: Services.locale.getRequestedLocale(),
+      locale: Services.locale.getAppLocaleAsLangTag(),
       user_prefs: this.userPreferences
     };
 

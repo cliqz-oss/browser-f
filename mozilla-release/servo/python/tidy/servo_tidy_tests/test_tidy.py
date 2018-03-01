@@ -210,12 +210,12 @@ class CheckTidiness(unittest.TestCase):
 
     def test_non_list_mapped_buildbot_steps(self):
         errors = tidy.collect_errors_for_files(iterFile('non_list_mapping_buildbot_steps.yml'), [tidy.check_yaml], [], print_text=False)
-        self.assertEqual("Key 'non-list-key' maps to type 'str', but list expected", errors.next()[2])
+        self.assertEqual("expected a list for dictionary value @ data['non-list-key']", errors.next()[2])
         self.assertNoMoreErrors(errors)
 
     def test_non_string_list_mapping_buildbot_steps(self):
         errors = tidy.collect_errors_for_files(iterFile('non_string_list_buildbot_steps.yml'), [tidy.check_yaml], [], print_text=False)
-        self.assertEqual("List mapped to 'mapping_key' contains non-string element", errors.next()[2])
+        self.assertEqual("expected str @ data['mapping_key'][0]", errors.next()[2])
         self.assertNoMoreErrors(errors)
 
     def test_lock(self):
@@ -231,6 +231,24 @@ class CheckTidiness(unittest.TestCase):
 \t\x1b[93mThe following packages depend on version 0.5.1 from 'https://github.com/user/test3':\x1b[0m
 \t\ttest5"""
         self.assertEqual(msg2, errors.next()[2])
+        self.assertNoMoreErrors(errors)
+
+    def test_lock_ignore_without_duplicates(self):
+        tidy.config["ignore"]["packages"] = ["test", "test2", "test3", "test5"]
+        errors = tidy.collect_errors_for_files(iterFile('duplicated_package.lock'), [tidy.check_lock], [], print_text=False)
+
+        msg = (
+            "duplicates for `test2` are allowed, but only single version found"
+            "\n\t\x1b[93mThe following packages depend on version 0.1.0 from 'https://github.com/user/test2':\x1b[0m"
+        )
+        self.assertEqual(msg, errors.next()[2])
+
+        msg2 = (
+            "duplicates for `test5` are allowed, but only single version found"
+            "\n\t\x1b[93mThe following packages depend on version 0.1.0 from 'https://github.com/':\x1b[0m"
+        )
+        self.assertEqual(msg2, errors.next()[2])
+
         self.assertNoMoreErrors(errors)
 
     def test_lint_runner(self):

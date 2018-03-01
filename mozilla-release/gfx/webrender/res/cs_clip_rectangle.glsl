@@ -58,14 +58,11 @@ ClipData fetch_clip(ivec2 address) {
 void main(void) {
     ClipMaskInstance cmi = fetch_clip_item();
     ClipArea area = fetch_clip_area(cmi.render_task_address);
-    Layer layer = fetch_layer(cmi.layer_address, cmi.layer_address);
+    ClipScrollNode scroll_node = fetch_clip_scroll_node(cmi.scroll_node_id);
     ClipData clip = fetch_clip(cmi.clip_data_address);
     RectWithSize local_rect = clip.rect.rect;
 
-    ClipVertexInfo vi = write_clip_tile_vertex(local_rect,
-                                               layer,
-                                               area,
-                                               cmi.segment);
+    ClipVertexInfo vi = write_clip_tile_vertex(local_rect, scroll_node, area);
     vPos = vi.local_pos;
 
     vClipMode = clip.rect.mode.x;
@@ -93,8 +90,8 @@ void main(void) {
 
 #ifdef WR_FRAGMENT_SHADER
 void main(void) {
-    float alpha = 1.f;
-    vec2 local_pos = init_transform_fs(vPos, alpha);
+    vec2 local_pos = vPos.xy / vPos.z;
+    float alpha = init_transform_fs(local_pos);
 
     float aa_range = compute_aa_range(local_pos);
 

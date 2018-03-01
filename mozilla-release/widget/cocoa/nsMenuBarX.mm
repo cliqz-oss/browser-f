@@ -28,6 +28,8 @@
 #include "nsIStringBundle.h"
 #include "nsToolkitCompsCID.h"
 
+#include "mozilla/dom/Element.h"
+
 NativeMenuItemTarget* nsMenuBarX::sNativeEventTarget = nil;
 nsMenuBarX* nsMenuBarX::sLastGeckoMenuBarPainted = nullptr;
 NSMenu* sApplicationMenu = nil;
@@ -44,7 +46,8 @@ static nsIContent* sQuitItemContent   = nullptr;
 
 NS_IMPL_ISUPPORTS(nsNativeMenuServiceX, nsINativeMenuService)
 
-NS_IMETHODIMP nsNativeMenuServiceX::CreateNativeMenuBar(nsIWidget* aParent, nsIContent* aMenuBarNode)
+NS_IMETHODIMP nsNativeMenuServiceX::CreateNativeMenuBar(nsIWidget* aParent,
+                                                        mozilla::dom::Element* aMenuBarElement)
 {
   NS_ASSERTION(NS_IsMainThread(), "Attempting to create native menu bar on wrong thread!");
 
@@ -52,7 +55,7 @@ NS_IMETHODIMP nsNativeMenuServiceX::CreateNativeMenuBar(nsIWidget* aParent, nsIC
   if (!mb)
     return NS_ERROR_OUT_OF_MEMORY;
 
-  return mb->Create(aParent, aMenuBarNode);
+  return mb->Create(aParent, aMenuBarElement);
 }
 
 //
@@ -131,7 +134,7 @@ nsMenuBarX::~nsMenuBarX()
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
-nsresult nsMenuBarX::Create(nsIWidget* aParent, nsIContent* aContent)
+nsresult nsMenuBarX::Create(nsIWidget* aParent, Element* aContent)
 {
   if (!aParent)
     return NS_ERROR_INVALID_ARG;
@@ -142,7 +145,7 @@ nsresult nsMenuBarX::Create(nsIWidget* aParent, nsIContent* aContent)
   if (mContent) {
     AquifyMenuBar();
 
-    nsresult rv = nsMenuGroupOwnerX::Create(mContent);
+    nsresult rv = nsMenuGroupOwnerX::Create(aContent);
     if (NS_FAILED(rv))
       return rv;
 
@@ -160,14 +163,12 @@ nsresult nsMenuBarX::Create(nsIWidget* aParent, nsIContent* aContent)
 
 void nsMenuBarX::ConstructNativeMenus()
 {
-  uint32_t count = mContent->GetChildCount();
-  for (uint32_t i = 0; i < count; i++) {
-    nsIContent *menuContent = mContent->GetChildAt(i);
-    if (menuContent &&
-        menuContent->IsXULElement(nsGkAtoms::menu)) {
+  for (nsIContent* menuContent = mContent->GetFirstChild();
+       menuContent; menuContent = menuContent->GetNextSibling()) {
+    if (menuContent->IsXULElement(nsGkAtoms::menu)) {
       nsMenuX* newMenu = new nsMenuX();
       if (newMenu) {
-        nsresult rv = newMenu->Create(this, this, menuContent);
+        nsresult rv = newMenu->Create(this, this, menuContent->AsElement());
         if (NS_SUCCEEDED(rv))
           InsertMenuAtIndex(newMenu, GetMenuCount());
         else
@@ -486,7 +487,7 @@ char nsMenuBarX::GetLocalizedAccelKey(const char *shortcutID)
   NS_ConvertASCIItoUTF16 shortcutIDStr((const char *)shortcutID);
   nsCOMPtr<nsIDOMElement> shortcutElement;
   domDoc->GetElementById(shortcutIDStr, getter_AddRefs(shortcutElement));
-  nsCOMPtr<nsIContent> shortcutContent = do_QueryInterface(shortcutElement);
+  nsCOMPtr<Element> shortcutContent = do_QueryInterface(shortcutElement);
   if (!shortcutContent)
     return 0;
 
@@ -543,11 +544,11 @@ void nsMenuBarX::HideItem(nsIDOMDocument* inDoc, const nsAString & inID, nsICont
 {
   nsCOMPtr<nsIDOMElement> menuItem;
   inDoc->GetElementById(inID, getter_AddRefs(menuItem));
-  nsCOMPtr<nsIContent> menuContent(do_QueryInterface(menuItem));
-  if (menuContent) {
-    menuContent->SetAttr(kNameSpaceID_None, nsGkAtoms::hidden, NS_LITERAL_STRING("true"), false);
+  nsCOMPtr<Element> menuElement(do_QueryInterface(menuItem));
+  if (menuElement) {
+    menuElement->SetAttr(kNameSpaceID_None, nsGkAtoms::hidden, NS_LITERAL_STRING("true"), false);
     if (outHiddenNode) {
-      *outHiddenNode = menuContent.get();
+      *outHiddenNode = menuElement.get();
       NS_IF_ADDREF(*outHiddenNode);
     }
   }
@@ -624,7 +625,7 @@ NSMenuItem* nsMenuBarX::CreateNativeAppMenuItem(nsMenuX* inMenu, const nsAString
     nsCOMPtr<nsIDOMElement> keyElement;
     domdoc->GetElementById(key, getter_AddRefs(keyElement));
     if (keyElement) {
-      nsCOMPtr<nsIContent> keyContent (do_QueryInterface(keyElement));
+      nsCOMPtr<Element> keyContent (do_QueryInterface(keyElement));
       // first grab the key equivalent character
       nsAutoString keyChar(NS_LITERAL_STRING(" "));
       keyContent->GetAttr(kNameSpaceID_None, nsGkAtoms::key, keyChar);

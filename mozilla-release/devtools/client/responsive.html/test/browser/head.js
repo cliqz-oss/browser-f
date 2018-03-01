@@ -65,23 +65,23 @@ loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsiv
 /**
  * Open responsive design mode for the given tab.
  */
-var openRDM = Task.async(function* (tab) {
+var openRDM = async function (tab) {
   info("Opening responsive design mode");
   let manager = ResponsiveUIManager;
-  let ui = yield manager.openIfNeeded(tab.ownerGlobal, tab);
+  let ui = await manager.openIfNeeded(tab.ownerGlobal, tab);
   info("Responsive design mode opened");
   return { ui, manager };
-});
+};
 
 /**
  * Close responsive design mode for the given tab.
  */
-var closeRDM = Task.async(function* (tab, options) {
+var closeRDM = async function (tab, options) {
   info("Closing responsive design mode");
   let manager = ResponsiveUIManager;
-  yield manager.closeIfNeeded(tab.ownerGlobal, tab, options);
+  await manager.closeIfNeeded(tab.ownerGlobal, tab, options);
   info("Responsive design mode closed");
-});
+};
 
 /**
  * Adds a new test task that adds a tab with the given URL, opens responsive
@@ -90,23 +90,23 @@ var closeRDM = Task.async(function* (tab, options) {
  *
  * Example usage:
  *
- *   addRDMTask(TEST_URL, function*({ ui, manager }) {
+ *   addRDMTask(TEST_URL, async function ({ ui, manager }) {
  *     // Your tests go here...
  *   });
  */
-function addRDMTask(url, generator) {
-  add_task(function* () {
-    const tab = yield addTab(url);
-    const results = yield openRDM(tab);
+function addRDMTask(url, task) {
+  add_task(async function () {
+    const tab = await addTab(url);
+    const results = await openRDM(tab);
 
     try {
-      yield* generator(results);
+      await task(results);
     } catch (err) {
       ok(false, "Got an error: " + DevToolsUtils.safeErrorString(err));
     }
 
-    yield closeRDM(tab);
-    yield removeTab(tab);
+    await closeRDM(tab);
+    await removeTab(tab);
   });
 }
 
@@ -115,22 +115,22 @@ function spawnViewportTask(ui, args, task) {
 }
 
 function waitForFrameLoad(ui, targetURL) {
-  return spawnViewportTask(ui, { targetURL }, function* (args) {
+  return spawnViewportTask(ui, { targetURL }, async function (args) {
     if ((content.document.readyState == "complete" ||
          content.document.readyState == "interactive") &&
         content.location.href == args.targetURL) {
       return;
     }
-    yield ContentTaskUtils.waitForEvent(this, "DOMContentLoaded");
+    await ContentTaskUtils.waitForEvent(this, "DOMContentLoaded");
   });
 }
 
 function waitForViewportResizeTo(ui, width, height) {
-  return new Promise(Task.async(function* (resolve) {
+  return new Promise(async function (resolve) {
     let isSizeMatching = (data) => data.width == width && data.height == height;
 
     // If the viewport has already the expected size, we resolve the promise immediately.
-    let size = yield getContentSize(ui);
+    let size = await getContentSize(ui);
     if (isSizeMatching(size)) {
       resolve();
       return;
@@ -152,28 +152,34 @@ function waitForViewportResizeTo(ui, width, height) {
       resolve();
     };
 
-    let onBrowserLoadEnd = Task.async(function* () {
-      let data = yield getContentSize(ui);
+    let onBrowserLoadEnd = async function () {
+      let data = await getContentSize(ui);
       onResize(undefined, data);
-    });
+    };
 
     info(`Waiting for content-resize to ${width} x ${height}`);
     ui.on("content-resize", onResize);
     browser.addEventListener("mozbrowserloadend",
       onBrowserLoadEnd, { once: true });
-  }));
+  });
 }
 
-var setViewportSize = Task.async(function* (ui, manager, width, height) {
+var setViewportSize = async function (ui, manager, width, height) {
   let size = ui.getViewportSize();
   info(`Current size: ${size.width} x ${size.height}, ` +
        `set to: ${width} x ${height}`);
   if (size.width != width || size.height != height) {
     let resized = waitForViewportResizeTo(ui, width, height);
     ui.setViewportSize({ width, height });
-    yield resized;
+    await resized;
   }
-});
+};
+
+function getViewportDevicePixelRatio(ui) {
+  return ContentTask.spawn(ui.getViewportBrowser(), {}, async function () {
+    return content.devicePixelRatio;
+  });
+}
 
 function getElRect(selector, win) {
   let el = win.document.querySelector(selector);
@@ -185,8 +191,8 @@ function getElRect(selector, win) {
  * the rect of the dragged element as it was before drag.
  */
 function dragElementBy(selector, x, y, win) {
-  let React = win.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
+  let ReactDOM = win.require("devtools/client/shared/vendor/react-dom");
+  let { Simulate } = ReactDOM.TestUtils;
   let rect = getElRect(selector, win);
   let startPoint = {
     clientX: Math.floor(rect.left + rect.width / 2),
@@ -206,12 +212,12 @@ function dragElementBy(selector, x, y, win) {
   return rect;
 }
 
-function* testViewportResize(ui, selector, moveBy,
+async function testViewportResize(ui, selector, moveBy,
                              expectedViewportSize, expectedHandleMove) {
   let win = ui.toolWindow;
   let resized = waitForViewportResizeTo(ui, ...expectedViewportSize);
   let startRect = dragElementBy(selector, ...moveBy, win);
-  yield resized;
+  await resized;
 
   let endRect = getElRect(selector, win);
   is(endRect.left - startRect.left, expectedHandleMove[0],
@@ -222,8 +228,8 @@ function* testViewportResize(ui, selector, moveBy,
 
 function openDeviceModal({ toolWindow }) {
   let { document } = toolWindow;
-  let React = toolWindow.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
+  let ReactDOM = toolWindow.require("devtools/client/shared/vendor/react-dom");
+  let { Simulate } = ReactDOM.TestUtils;
   let select = document.querySelector(".viewport-device-selector");
   let modal = document.querySelector("#device-modal-wrapper");
 
@@ -240,8 +246,8 @@ function openDeviceModal({ toolWindow }) {
 
 function changeSelectValue({ toolWindow }, selector, value) {
   let { document } = toolWindow;
-  let React = toolWindow.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
+  let ReactDOM = toolWindow.require("devtools/client/shared/vendor/react-dom");
+  let { Simulate } = ReactDOM.TestUtils;
 
   info(`Selecting ${value} in ${selector}.`);
 
@@ -260,8 +266,8 @@ const selectDevice = (ui, value) => Promise.all([
   changeSelectValue(ui, ".viewport-device-selector", value)
 ]);
 
-const selectDPR = (ui, value) =>
-  changeSelectValue(ui, "#global-dpr-selector > select", value);
+const selectDevicePixelRatio = (ui, value) =>
+  changeSelectValue(ui, "#global-device-pixel-ratio-selector", value);
 
 const selectNetworkThrottling = (ui, value) => Promise.all([
   once(ui, "network-throttling-changed"),
@@ -269,7 +275,7 @@ const selectNetworkThrottling = (ui, value) => Promise.all([
 ]);
 
 function getSessionHistory(browser) {
-  return ContentTask.spawn(browser, {}, function* () {
+  return ContentTask.spawn(browser, {}, async function () {
     /* eslint-disable no-undef */
     let { utils: Cu } = Components;
     const { SessionHistory } =
@@ -301,12 +307,7 @@ function waitForPageShow(browser) {
 }
 
 function waitForViewportLoad(ui) {
-  return new Promise(resolve => {
-    let browser = ui.getViewportBrowser();
-    browser.addEventListener("mozbrowserloadend", () => {
-      resolve();
-    }, { once: true });
-  });
+  return BrowserTestUtils.waitForContentEvent(ui.getViewportBrowser(), "load", true);
 }
 
 function load(browser, url) {
@@ -337,21 +338,17 @@ function addDeviceForTest(device) {
   });
 }
 
-function waitForClientClose(ui) {
-  return new Promise(resolve => {
-    info("Waiting for RDM debugger client to close");
-    ui.client.addOneTimeListener("closed", () => {
-      info("RDM's debugger client is now closed");
-      resolve();
-    });
-  });
+async function waitForClientClose(ui) {
+  info("Waiting for RDM debugger client to close");
+  await ui.client.addOneTimeListener("closed");
+  info("RDM's debugger client is now closed");
 }
 
-function* testTouchEventsOverride(ui, expected) {
+async function testTouchEventsOverride(ui, expected) {
   let { document } = ui.toolWindow;
   let touchButton = document.querySelector("#global-touch-simulation-button");
 
-  let flag = yield ui.emulationFront.getTouchEventsOverride();
+  let flag = await ui.emulationFront.getTouchEventsOverride();
   is(flag === Ci.nsIDocShell.TOUCHEVENTS_OVERRIDE_ENABLED, expected,
     `Touch events override should be ${expected ? "enabled" : "disabled"}`);
   is(touchButton.classList.contains("checked"), expected,
@@ -366,17 +363,21 @@ function testViewportDeviceSelectLabel(ui, expected) {
      `Device Select value should be: ${expected}`);
 }
 
-function* toggleTouchSimulation(ui) {
+async function toggleTouchSimulation(ui) {
   let { document } = ui.toolWindow;
   let touchButton = document.querySelector("#global-touch-simulation-button");
   let changed = once(ui, "touch-simulation-changed");
   let loaded = waitForViewportLoad(ui);
   touchButton.click();
-  yield Promise.all([ changed, loaded ]);
+  await Promise.all([ changed, loaded ]);
 }
 
-function* testUserAgent(ui, expected) {
-  let ua = yield ContentTask.spawn(ui.getViewportBrowser(), {}, function* () {
+function testUserAgent(ui, expected) {
+  testUserAgentFromBrowser(ui.getViewportBrowser(), expected);
+}
+
+async function testUserAgentFromBrowser(browser, expected) {
+  let ua = await ContentTask.spawn(browser, {}, async function () {
     return content.navigator.userAgent;
   });
   is(ua, expected, `UA should be set to ${expected}`);
@@ -387,10 +388,9 @@ function* testUserAgent(ui, expected) {
  * function adds `device` via the form, saves it, and waits for it to appear in the store.
  */
 function addDeviceInModal(ui, device) {
-  let { toolWindow } = ui;
+  let ReactDOM = ui.toolWindow.require("devtools/client/shared/vendor/react-dom");
+  let { Simulate } = ReactDOM.TestUtils;
   let { store, document } = ui.toolWindow;
-  let React = toolWindow.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
 
   let nameInput = document.querySelector("#device-adder-name input");
   let [ widthInput, heightInput ] = document.querySelectorAll("#device-adder-size input");

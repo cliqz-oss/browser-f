@@ -184,16 +184,17 @@ class Profile(object):
                     break
 
     @classmethod
-    def clone(cls, path_from, path_to=None, **kwargs):
+    def clone(cls, path_from, path_to=None, ignore=None, **kwargs):
         """Instantiate a temporary profile via cloning
         - path: path of the basis to clone
+        - ignore: callable passed to shutil.copytree
         - kwargs: arguments to the profile constructor
         """
         if not path_to:
             tempdir = tempfile.mkdtemp()  # need an unused temp dir name
             mozfile.remove(tempdir)  # copytree requires that dest does not exist
             path_to = tempdir
-        copytree(path_from, path_to)
+        copytree(path_from, path_to, ignore=ignore)
 
         c = cls(path_to, **kwargs)
         c.create_new = True  # deletes a cloned profile when restore is True
@@ -254,7 +255,7 @@ class Profile(object):
         """
 
         path = os.path.join(self.profile, filename)
-        with file(path) as f:
+        with open(path) as f:
             lines = f.read().splitlines()
 
         def last_index(_list, value):
@@ -281,7 +282,7 @@ class Profile(object):
 
         # write the prefs
         cleaned_prefs = '\n'.join(lines[:s] + lines[e + 1:])
-        with file(path, 'w') as f:
+        with open(path, 'w') as f:
             f.write(cleaned_prefs)
         return True
 

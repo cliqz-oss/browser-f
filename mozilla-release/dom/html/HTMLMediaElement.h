@@ -145,9 +145,14 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLMediaElement,
                                            nsGenericHTMLElement)
 
+  // nsIDOMEventTarget
+  virtual nsresult
+  GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+
   virtual bool ParseAttribute(int32_t aNamespaceID,
                               nsAtom* aAttribute,
                               const nsAString& aValue,
+                              nsIPrincipal* aMaybeScriptedPrincipal,
                               nsAttrValue& aResult) override;
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
@@ -243,8 +248,9 @@ public:
 
   // Called after the MediaStream we're playing rendered a frame to aContainer
   // with a different principalHandle than the previous frame.
-  void PrincipalHandleChangedForVideoFrameContainer(VideoFrameContainer* aContainer,
-                                                    const PrincipalHandle& aNewPrincipalHandle);
+  void PrincipalHandleChangedForVideoFrameContainer(
+    VideoFrameContainer* aContainer,
+    const PrincipalHandle& aNewPrincipalHandle) override;
 
   // Dispatch events
   virtual void DispatchAsyncEvent(const nsAString& aName) final override;
@@ -329,6 +335,10 @@ public:
   // Like UpdateMediaSize, but only updates the size if no size has yet
   // been set.
   void UpdateInitialMediaSize(const nsIntSize& aSize);
+
+  void Invalidate(bool aImageSizeChanged,
+                  Maybe<nsIntSize>& aNewIntrinsicSize,
+                  bool aForceInvalidate) override;
 
   // Returns the CanPlayStatus indicating if we can handle the
   // full MIME type including the optional codecs parameter.
@@ -432,10 +442,6 @@ public:
 
   MediaError* GetError() const;
 
-  void GetSrc(nsString& aSrc, nsIPrincipal*)
-  {
-    GetSrc(aSrc);
-  }
   void SetSrc(const nsAString& aSrc, nsIPrincipal* aTriggeringPrincipal, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::src, aSrc, aTriggeringPrincipal, aRv);
@@ -625,6 +631,13 @@ public:
   // data from decoder/reader/MDSM. Used for debugging purposes.
   already_AddRefed<Promise> MozRequestDebugInfo(ErrorResult& aRv);
 
+  // Enables DecoderDoctorLogger logging. Used for debugging purposes.
+  static void MozEnableDebugLog(const GlobalObject&);
+
+  // Returns a promise which will be resolved after collecting debugging
+  // log associated with this element. Used for debugging purposes.
+  already_AddRefed<Promise> MozRequestDebugLog(ErrorResult& aRv);
+
   already_AddRefed<Promise> MozDumpDebugInfo();
 
   // For use by mochitests. Enabling pref "media.test.video-suspend"
@@ -675,11 +688,6 @@ public:
   bool ContainsRestrictedContent();
 
   void NotifyWaitingForKey() override;
-
-  bool MozAutoplayEnabled() const
-  {
-    return mAutoplayEnabled;
-  }
 
   already_AddRefed<DOMMediaStream> CaptureAudio(ErrorResult& aRv,
                                                 MediaStreamGraph* aGraph);
@@ -736,9 +744,9 @@ public:
 
   void NotifyCueDisplayStatesChanged();
 
-  bool GetHasUserInteraction()
+  bool IsBlessed() const
   {
-    return mHasUserInteraction;
+    return mIsBlessed;
   }
 
   // A method to check whether we are currently playing.
@@ -805,7 +813,6 @@ protected:
   class StreamListener;
   class StreamSizeListener;
   class ShutdownObserver;
-  class ForceReloadListener;
 
   MediaDecoderOwner::NextFrameStatus NextFrameStatus();
 
@@ -982,7 +989,7 @@ protected:
   /**
    * Call this before modifying mLoadingSrc.
    */
-  void RemoveMediaElementFromURITable(bool aFroceClearEntry = false);
+  void RemoveMediaElementFromURITable();
   /**
    * Call this to find a media element with the same NodePrincipal and mLoadingSrc
    * set to aURI, and with a decoder on which Load() has been called.
@@ -1062,7 +1069,7 @@ protected:
    * during the resource selection algorithm. Stores the return value in
    * mSourceLoadCandidate before returning.
    */
-  nsIContent* GetNextSource();
+  Element* GetNextSource();
 
   /**
    * Changes mDelayingLoadEvent, and will call BlockOnLoad()/UnblockOnLoad()
@@ -1395,7 +1402,6 @@ protected:
   RefPtr<VideoStreamTrack> mSelectedVideoStreamTrack;
 
   const RefPtr<ShutdownObserver> mShutdownObserver;
-  RefPtr<ForceReloadListener> mForceReloadListener;
 
   // Holds a reference to the MediaSource, if any, referenced by the src
   // attribute on the media element.
@@ -1565,10 +1571,6 @@ protected:
   // 'mAutoplaying' flag, which indicates whether the current playback
   // is a result of the autoplay attribute.
   bool mAutoplaying;
-
-  // Indicates whether |autoplay| will actually autoplay based on the pref
-  // media.autoplay.enabled
-  bool mAutoplayEnabled;
 
   // Playback of the video is paused either due to calling the
   // 'Pause' method, or playback not yet having started.
@@ -1782,9 +1784,9 @@ private:
   // Total time a video has (or would have) spent in video-decode-suspend mode.
   TimeDurationAccumulator mVideoDecodeSuspendTime;
 
-  // Indicates if user has interacted with the element.
-  // Used to block autoplay when disabled.
-  bool mHasUserInteraction;
+  // True if user has called load(), seek() or element has started playing before.
+  // It's *only* use for checking autoplay policy
+  bool mIsBlessed = false;
 
   // True if the first frame has been successfully loaded.
   bool mFirstFrameLoaded;

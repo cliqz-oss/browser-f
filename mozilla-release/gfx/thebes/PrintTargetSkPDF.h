@@ -41,10 +41,10 @@ public:
 
   virtual already_AddRefed<DrawTarget>
   MakeDrawTarget(const IntSize& aSize,
-                 DrawEventRecorder* aRecorder = nullptr) final;
+                 DrawEventRecorder* aRecorder = nullptr) final override;
 
   virtual already_AddRefed<DrawTarget>
-  GetReferenceDrawTarget(DrawEventRecorder* aRecorder) override final;
+  GetReferenceDrawTarget() override final;
 
 private:
   PrintTargetSkPDF(const IntSize& aSize,

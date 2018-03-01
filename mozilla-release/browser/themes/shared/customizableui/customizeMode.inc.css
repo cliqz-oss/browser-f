@@ -8,7 +8,7 @@
   --drag-drop-transition-duration: .3s;
 }
 
-#main-window[customizing] .customization-target:not(#PanelUI-contents):not(#widget-overflow-fixed-list) {
+#main-window[customizing] .customization-target:not(#widget-overflow-fixed-list) {
   min-width: 100px;
 }
 
@@ -165,7 +165,7 @@
   background-image: url("chrome://browser/skin/customizableui/density-normal.svg");
 }
 
-#widget-overflow-fixed-list > toolbarpaletteitem[place="panel"],
+#widget-overflow-fixed-list > toolbarpaletteitem[place="menu-panel"],
 toolbarpaletteitem[place="toolbar"] {
   transition: border-width 250ms ease-in-out;
 }
@@ -174,9 +174,8 @@ toolbarpaletteitem[mousedown] {
   cursor: -moz-grabbing;
 }
 
-.panel-customization-placeholder,
 toolbarpaletteitem[place="palette"],
-toolbarpaletteitem[place="panel"] {
+toolbarpaletteitem[place="menu-panel"] {
   transition: transform var(--drag-drop-transition-duration) ease-in-out;
 }
 
@@ -193,17 +192,17 @@ toolbarpaletteitem toolbarbutton[disabled] {
   color: inherit !important;
 }
 
-#widget-overflow-fixed-list > toolbarpaletteitem[notransition][place="panel"],
-toolbarpaletteitem[notransition].panel-customization-placeholder,
+#widget-overflow-fixed-list > toolbarpaletteitem[notransition][place="menu-panel"],
 toolbarpaletteitem[notransition][place="toolbar"],
 toolbarpaletteitem[notransition][place="palette"],
-toolbarpaletteitem[notransition][place="panel"] {
+toolbarpaletteitem[notransition][place="menu-panel"] {
   transition: none;
 }
 
 toolbarpaletteitem > toolbarbutton > .toolbarbutton-icon,
 toolbarpaletteitem > toolbarbutton > .toolbarbutton-badge-stack > .toolbarbutton-icon,
-toolbarpaletteitem > toolbaritem.panel-wide-item {
+toolbarpaletteitem > #search-container,
+toolbarpaletteitem > toolbaritem.toolbaritem-combined-buttons {
   transition: transform var(--drag-drop-transition-duration) cubic-bezier(.6, 2, .75, 1.5) !important;
 }
 
@@ -212,7 +211,8 @@ toolbarpaletteitem[mousedown] > toolbarbutton > .toolbarbutton-badge-stack > .to
   transform: scale(1.3);
 }
 
-toolbarpaletteitem[mousedown] > toolbaritem.panel-wide-item {
+toolbarpaletteitem[mousedown] > #search-container,
+toolbarpaletteitem[mousedown] > toolbaritem.toolbaritem-combined-buttons {
   transform: scale(1.1);
 }
 
@@ -223,7 +223,7 @@ toolbarpaletteitem[place="toolbar"] {
   margin-right: 0;
   margin-left: 0;
 }
-#widget-overflow-fixed-list > toolbarpaletteitem[place="panel"] {
+#widget-overflow-fixed-list > toolbarpaletteitem[place="menu-panel"] {
   border-top: 0px solid transparent;
   border-bottom: 0px solid transparent;
 }
@@ -237,13 +237,13 @@ toolbarpaletteitem[place="toolbar"] {
 }
 
 toolbarpaletteitem[place="palette"]:-moz-focusring,
-toolbarpaletteitem[place="panel"]:-moz-focusring,
+toolbarpaletteitem[place="menu-panel"]:-moz-focusring,
 toolbarpaletteitem[place="toolbar"]:-moz-focusring {
   outline-width: 0;
 }
 
 toolbarpaletteitem[place="palette"]:not([mousedown="true"]):-moz-focusring,
-toolbarpaletteitem[place="panel"]:not([mousedown="true"]):-moz-focusring,
+toolbarpaletteitem[place="menu-panel"]:not([mousedown="true"]):-moz-focusring,
 toolbarpaletteitem[place="toolbar"]:not([mousedown="true"]):-moz-focusring {
   /* Delay adding the focusring back until after the transform transition completes. */
   transition: outline-width .01s linear var(--drag-drop-transition-duration);
@@ -456,17 +456,16 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 
 #customization-panelWrapper > .panel-arrowbox > .panel-arrow[side="top"] {
 %ifdef XP_MACOSX
-  list-style-image: var(--panel-arrow-image-vertical,
-                        url("chrome://global/skin/arrow/panelarrow-vertical.png"));
   /* The OS X image is 2px narrower than the windows/linux one.
    * Add padding to compensate: */
   padding: 0 1px;
   /* specify width for hidpi image to fit correctly */
   width: 20px;
-%else
-  list-style-image: var(--panel-arrow-image-vertical,
-                        url("chrome://global/skin/arrow/panelarrow-vertical-themed.svg"));
 %endif
+  list-style-image: url("chrome://global/skin/arrow/panelarrow-vertical.svg");
+  -moz-context-properties: fill, stroke;
+  fill: var(--arrowpanel-background);
+  stroke: var(--arrowpanel-border-color);
   /* The arrow needs to point to the overflow button. The numbers involved
    * are:
    * overflow button width: (16px + 2 * 2px padding
@@ -485,15 +484,6 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   margin-inline-end: calc(9px + 3 * var(--toolbarbutton-inner-padding));
   vertical-align: top;
 }
-
-%ifdef XP_MACOSX
-@media (min-resolution: 2dppx) {
-  #customization-panelWrapper > .panel-arrowbox > .panel-arrow[side="top"] {
-    list-style-image: var(--panel-arrow-image-vertical,
-                          url("chrome://global/skin/arrow/panelarrow-vertical@2x.png"));
-  }
-}
-%endif
 
 #customization-panelDescription {
   font-size: 1.1em;
@@ -580,6 +570,14 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   margin: 0 -7px;
 }
 
+%ifdef XP_UNIX
+%ifndef XP_MACOSX
+#customization-palette[whimsypong] > toolbarpaletteitem > toolbarspring {
+  font-size: 12px;
+}
+%endif
+%endif
+
 #wp-lives,
 #wp-ball {
   /* Don't need HiDPI versions since the size used will be scaled down to 20x20. */
@@ -665,6 +663,10 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 }
 
 @keyframes game-over {
+  0% {
+    transform: scale(1) translateY(0) rotateZ(0);
+    opacity: 1;
+  }
   15% {
     transform: scale(2) translateY(-10px) rotateZ(-90deg);
   }

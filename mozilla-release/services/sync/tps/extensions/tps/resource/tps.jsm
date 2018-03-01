@@ -48,13 +48,18 @@ Cu.import("resource://tps/modules/windows.jsm");
 
 var hh = Cc["@mozilla.org/network/protocol;1?name=http"]
          .getService(Ci.nsIHttpProtocolHandler);
-var prefs = Cc["@mozilla.org/preferences-service;1"]
-            .getService(Ci.nsIPrefBranch);
 
 XPCOMUtils.defineLazyGetter(this, "fileProtocolHandler", () => {
   let fileHandler = Services.io.getProtocolHandler("file");
   return fileHandler.QueryInterface(Ci.nsIFileProtocolHandler);
 });
+
+XPCOMUtils.defineLazyGetter(this, "gTextDecoder", () => {
+  return new TextDecoder();
+});
+
+XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
+                                  "resource://gre/modules/NetUtil.jsm");
 
 // Options for wiping data during a sync
 const SYNC_RESET_CLIENT = "resetClient";
@@ -401,22 +406,23 @@ var TPS = {
   async HandleHistory(entries, action) {
     try {
       for (let entry of entries) {
+        const entryString = JSON.stringify(entry);
         Logger.logInfo("executing action " + action.toUpperCase() +
-                       " on history entry " + JSON.stringify(entry));
+                       " on history entry " + entryString);
         switch (action) {
           case ACTION_ADD:
-            HistoryEntry.Add(entry, this._usSinceEpoch);
+            await HistoryEntry.Add(entry, this._usSinceEpoch);
             break;
           case ACTION_DELETE:
-            HistoryEntry.Delete(entry, this._usSinceEpoch);
+            await HistoryEntry.Delete(entry, this._usSinceEpoch);
             break;
           case ACTION_VERIFY:
             Logger.AssertTrue((await HistoryEntry.Find(entry, this._usSinceEpoch)),
-              "Uri visits not found in history database");
+              "Uri visits not found in history database: " + entryString);
             break;
           case ACTION_VERIFY_NOT:
             Logger.AssertTrue(!(await HistoryEntry.Find(entry, this._usSinceEpoch)),
-              "Uri visits found in history database, but they shouldn't be");
+              "Uri visits found in history database, but they shouldn't be: " + entryString);
             break;
           default:
             Logger.AssertTrue(false, "invalid action: " + action);
@@ -737,10 +743,13 @@ var TPS = {
         this.quit();
         return;
       }
-      this.seconds_since_epoch = prefs.getIntPref("tps.seconds_since_epoch");
-      if (this.seconds_since_epoch)
-        this._usSinceEpoch = this.seconds_since_epoch * 1000 * 1000;
-      else {
+      this.seconds_since_epoch = Services.prefs.getIntPref("tps.seconds_since_epoch");
+      if (this.seconds_since_epoch) {
+        // Places dislikes it if we add visits in the future. We pretend the
+        // real time is 1 minute ago to avoid issues caused by places using a
+        // different clock than the one that set the seconds_since_epoch pref.
+        this._usSinceEpoch = (this.seconds_since_epoch - 60) * 1000 * 1000;
+      } else {
         this.DumpError("seconds-since-epoch not set");
         return;
       }
@@ -794,11 +803,10 @@ var TPS = {
       let stream = Cc["@mozilla.org/network/file-input-stream;1"]
                    .createInstance(Ci.nsIFileInputStream);
 
-      let jsonReader = Cc["@mozilla.org/dom/json;1"]
-                       .createInstance(Components.interfaces.nsIJSON);
-
       stream.init(schemaFile, FileUtils.MODE_RDONLY, FileUtils.PERMS_FILE, 0);
-      let schema = jsonReader.decodeFromStream(stream, stream.available());
+
+      let bytes = NetUtil.readInputStream(stream, stream.available());
+      let schema = JSON.parse(gTextDecoder.decode(bytes));
       Logger.logInfo("Successfully loaded schema");
 
       // Importing resource://testing-common/* isn't possible from within TPS,
@@ -861,6 +869,8 @@ var TPS = {
         this.waitForEvent("weave:service:ready");
       }
 
+      await Weave.Service.promiseInitialized;
+
       // We only want to do this if we modified the bookmarks this phase.
       this.shouldValidateBookmarks = false;
 
@@ -881,7 +891,7 @@ var TPS = {
    */
   async _executeTestPhase(file, phase, settings) {
     try {
-      this.config = JSON.parse(prefs.getCharPref("tps.config"));
+      this.config = JSON.parse(Services.prefs.getCharPref("tps.config"));
       // parse the test file
       Services.scriptloader.loadSubScript(file, this);
       this._currentPhase = phase;

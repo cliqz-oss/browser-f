@@ -18,13 +18,11 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(EditTransactionBase)
   NS_INTERFACE_MAP_ENTRY(nsITransaction)
-  NS_INTERFACE_MAP_ENTRY(nsPIEditorTransaction)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsITransaction)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(EditTransactionBase)
-NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(EditTransactionBase,
-                                                   LastRelease())
+NS_IMPL_CYCLE_COLLECTING_RELEASE(EditTransactionBase)
 
 EditTransactionBase::~EditTransactionBase()
 {

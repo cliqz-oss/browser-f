@@ -196,7 +196,12 @@ DataChannelConnectionShutdown::Notify(nsITimer* aTimer)
 {
   // safely release reference to ourself
   RefPtr<DataChannelConnectionShutdown> grip(this);
-  sDataChannelShutdown->RemoveConnectionShutdown(this);
+  // Might not be set. We don't actually use the |this| pointer in
+  // RemoveConnectionShutdown right now, which makes this a bit gratuitous
+  // anyway...
+  if (sDataChannelShutdown) {
+    sDataChannelShutdown->RemoveConnectionShutdown(this);
+  }
   return NS_OK;
 }
 
@@ -812,6 +817,7 @@ DataChannelConnection::SctpDtlsInput(TransportFlow *flow,
     }
   }
   // Pass the data to SCTP
+  MutexAutoLock lock(mLock);
   usrsctp_conninput(static_cast<void *>(this), data, len, 0);
 }
 
@@ -1219,7 +1225,7 @@ DataChannelConnection::SendDeferredMessages()
   RefPtr<DataChannel> channel; // we may null out the refs to this
 
   // This may block while something is modifying channels, but should not block for IO
-  MutexAutoLock lock(mLock);
+  mLock.AssertCurrentThreadOwns();
 
   LOG(("SendDeferredMessages called, pending type: %d", mPendingType));
   if (!mPendingType) {
@@ -2302,7 +2308,7 @@ DataChannelConnection::ReceiveCallback(struct socket* sock, void *data, size_t d
   if (!data) {
     usrsctp_close(sock); // SCTP has finished shutting down
   } else {
-    MutexAutoLock lock(mLock);
+    mLock.AssertCurrentThreadOwns();
     if (flags & MSG_NOTIFICATION) {
       HandleNotification(static_cast<union sctp_notification *>(data), datalen);
     } else {

@@ -493,10 +493,10 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     }
 
     using vixl::MacroAssembler::B;
-    void B(wasm::TrapDesc) {
+    void B(wasm::OldTrapDesc) {
         MOZ_CRASH("NYI");
     }
-    void B(wasm::TrapDesc, Condition cond) {
+    void B(wasm::OldTrapDesc, Condition cond) {
         MOZ_CRASH("NYI");
     }
 
@@ -658,6 +658,11 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void jump(JitCode* code) {
         branch(code);
     }
+    void jump(TrampolinePtr code) {
+        syncStackPtr();
+        BufferOffset loc = b(-1); // The jump target will be patched by executableCopy().
+        addPendingJump(loc, ImmPtr(code.value), Relocation::HARDCODED);
+    }
     void jump(RepatchLabel* label) {
         MOZ_CRASH("jump (repatchlabel)");
     }
@@ -668,7 +673,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         loadPtr(addr, ip0);
         Br(vixl::ip0);
     }
-    void jump(wasm::TrapDesc target) {
+    void jump(wasm::OldTrapDesc target) {
         MOZ_CRASH("NYI");
     }
 
@@ -998,6 +1003,9 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void cmp32(const Address& lhs, Register rhs) {
         cmp32(Operand(lhs.base, lhs.offset), rhs);
     }
+    void cmp32(Register lhs, const Address& rhs) {
+        cmp32(lhs, Operand(rhs.base, rhs.offset));
+    }
     void cmp32(const Operand& lhs, Imm32 rhs) {
         vixl::UseScratchRegisterScope temps(this);
         const ARMRegister scratch32 = temps.AcquireW();
@@ -1009,6 +1017,12 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         const ARMRegister scratch32 = temps.AcquireW();
         Mov(scratch32, lhs);
         Cmp(scratch32, Operand(ARMRegister(rhs, 32)));
+    }
+    void cmp32(Register lhs, const Operand& rhs) {
+        vixl::UseScratchRegisterScope temps(this);
+        const ARMRegister scratch32 = temps.AcquireW();
+        Mov(scratch32, rhs);
+        Cmp(scratch32, Operand(ARMRegister(lhs, 32)));
     }
 
     void cmpPtr(Register lhs, Imm32 rhs) {
@@ -1856,11 +1870,11 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         return CodeOffset(nextOffset().getOffset());
     }
 
-    void handleFailureWithHandlerTail(void* handler);
+    void handleFailureWithHandlerTail(void* handler, Label* profilerExitTail);
 
     void profilerEnterFrame(Register framePtr, Register scratch);
     void profilerExitFrame() {
-        branch(GetJitContext()->runtime->jitRuntime()->getProfilerExitFrameTail());
+        jump(GetJitContext()->runtime->jitRuntime()->getProfilerExitFrameTail());
     }
     Address ToPayload(Address value) {
         return value;
@@ -1868,267 +1882,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     Address ToType(Address value) {
         return value;
     }
-
-  private:
-    template <typename T>
-    void compareExchange(int nbytes, bool signExtend, const T& address, Register oldval,
-                         Register newval, Register output)
-    {
-        MOZ_CRASH("compareExchange");
-    }
-
-    template <typename T>
-    void atomicFetchOp(int nbytes, bool signExtend, AtomicOp op, const Imm32& value,
-                       const T& address, Register temp, Register output)
-    {
-        MOZ_CRASH("atomicFetchOp");
-    }
-
-    template <typename T>
-    void atomicFetchOp(int nbytes, bool signExtend, AtomicOp op, const Register& value,
-                       const T& address, Register temp, Register output)
-    {
-        MOZ_CRASH("atomicFetchOp");
-    }
-
-    template <typename T>
-    void atomicEffectOp(int nbytes, AtomicOp op, const Register& value, const T& mem) {
-        MOZ_CRASH("atomicEffectOp");
-    }
-
-    template <typename T>
-    void atomicEffectOp(int nbytes, AtomicOp op, const Imm32& value, const T& mem) {
-        MOZ_CRASH("atomicEffectOp");
-    }
-
-  public:
-    // T in {Address,BaseIndex}
-    // S in {Imm32,Register}
-
-    template <typename T>
-    void compareExchange8SignExtend(const T& mem, Register oldval, Register newval, Register output)
-    {
-        compareExchange(1, true, mem, oldval, newval, output);
-    }
-    template <typename T>
-    void compareExchange8ZeroExtend(const T& mem, Register oldval, Register newval, Register output)
-    {
-        compareExchange(1, false, mem, oldval, newval, output);
-    }
-    template <typename T>
-    void compareExchange16SignExtend(const T& mem, Register oldval, Register newval, Register output)
-    {
-        compareExchange(2, true, mem, oldval, newval, output);
-    }
-    template <typename T>
-    void compareExchange16ZeroExtend(const T& mem, Register oldval, Register newval, Register output)
-    {
-        compareExchange(2, false, mem, oldval, newval, output);
-    }
-    template <typename T>
-    void compareExchange32(const T& mem, Register oldval, Register newval, Register output)  {
-        compareExchange(4, false, mem, oldval, newval, output);
-    }
-    template <typename T>
-    void atomicExchange32(const T& mem, Register value, Register output) {
-        MOZ_CRASH("atomicExchang32");
-    }
-
-    template <typename T>
-    void atomicExchange8ZeroExtend(const T& mem, Register value, Register output) {
-        MOZ_CRASH("atomicExchange8ZeroExtend");
-    }
-    template <typename T>
-    void atomicExchange8SignExtend(const T& mem, Register value, Register output) {
-        MOZ_CRASH("atomicExchange8SignExtend");
-    }
-
-    template <typename T, typename S>
-    void atomicFetchAdd8SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, true, AtomicFetchAddOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAdd8ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, false, AtomicFetchAddOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAdd16SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, true, AtomicFetchAddOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAdd16ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, false, AtomicFetchAddOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAdd32(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(4, false, AtomicFetchAddOp, value, mem, temp, output);
-    }
-
-    template <typename T, typename S>
-    void atomicAdd8(const S& value, const T& mem) {
-        atomicEffectOp(1, AtomicFetchAddOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicAdd16(const S& value, const T& mem) {
-        atomicEffectOp(2, AtomicFetchAddOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicAdd32(const S& value, const T& mem) {
-        atomicEffectOp(4, AtomicFetchAddOp, value, mem);
-    }
-
-    template <typename T>
-    void atomicExchange16ZeroExtend(const T& mem, Register value, Register output) {
-        MOZ_CRASH("atomicExchange16ZeroExtend");
-    }
-    template <typename T>
-    void atomicExchange16SignExtend(const T& mem, Register value, Register output) {
-        MOZ_CRASH("atomicExchange16SignExtend");
-    }
-
-    template <typename T, typename S>
-    void atomicFetchSub8SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, true, AtomicFetchSubOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchSub8ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, false, AtomicFetchSubOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchSub16SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, true, AtomicFetchSubOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchSub16ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, false, AtomicFetchSubOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchSub32(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(4, false, AtomicFetchSubOp, value, mem, temp, output);
-    }
-
-    template <typename T, typename S>
-    void atomicSub8(const S& value, const T& mem) {
-        atomicEffectOp(1, AtomicFetchSubOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicSub16(const S& value, const T& mem) {
-        atomicEffectOp(2, AtomicFetchSubOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicSub32(const S& value, const T& mem) {
-        atomicEffectOp(4, AtomicFetchSubOp, value, mem);
-    }
-
-    template <typename T, typename S>
-    void atomicFetchAnd8SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, true, AtomicFetchAndOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAnd8ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, false, AtomicFetchAndOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAnd16SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, true, AtomicFetchAndOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAnd16ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, false, AtomicFetchAndOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchAnd32(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(4, false, AtomicFetchAndOp, value, mem, temp, output);
-    }
-
-    template <typename T, typename S>
-    void atomicAnd8(const S& value, const T& mem) {
-        atomicEffectOp(1, AtomicFetchAndOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicAnd16(const S& value, const T& mem) {
-        atomicEffectOp(2, AtomicFetchAndOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicAnd32(const S& value, const T& mem) {
-        atomicEffectOp(4, AtomicFetchAndOp, value, mem);
-    }
-
-    template <typename T, typename S>
-    void atomicFetchOr8SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, true, AtomicFetchOrOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchOr8ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, false, AtomicFetchOrOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchOr16SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, true, AtomicFetchOrOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchOr16ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, false, AtomicFetchOrOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchOr32(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(4, false, AtomicFetchOrOp, value, mem, temp, output);
-    }
-
-    template <typename T, typename S>
-    void atomicOr8(const S& value, const T& mem) {
-        atomicEffectOp(1, AtomicFetchOrOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicOr16(const S& value, const T& mem) {
-        atomicEffectOp(2, AtomicFetchOrOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicOr32(const S& value, const T& mem) {
-        atomicEffectOp(4, AtomicFetchOrOp, value, mem);
-    }
-
-    template <typename T, typename S>
-    void atomicFetchXor8SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, true, AtomicFetchXorOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchXor8ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(1, false, AtomicFetchXorOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchXor16SignExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, true, AtomicFetchXorOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchXor16ZeroExtend(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(2, false, AtomicFetchXorOp, value, mem, temp, output);
-    }
-    template <typename T, typename S>
-    void atomicFetchXor32(const S& value, const T& mem, Register temp, Register output) {
-        atomicFetchOp(4, false, AtomicFetchXorOp, value, mem, temp, output);
-    }
-
-    template <typename T, typename S>
-    void atomicXor8(const S& value, const T& mem) {
-        atomicEffectOp(1, AtomicFetchXorOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicXor16(const S& value, const T& mem) {
-        atomicEffectOp(2, AtomicFetchXorOp, value, mem);
-    }
-    template <typename T, typename S>
-    void atomicXor32(const S& value, const T& mem) {
-        atomicEffectOp(4, AtomicFetchXorOp, value, mem);
-    }
-
-    template<typename T>
-    void compareExchangeToTypedIntArray(Scalar::Type arrayType, const T& mem, Register oldval, Register newval,
-                                        Register temp, AnyRegister output);
-
-    template<typename T>
-    void atomicExchangeToTypedIntArray(Scalar::Type arrayType, const T& mem, Register value,
-                                       Register temp, AnyRegister output);
 
     // Emit a BLR or NOP instruction. ToggleCall can be used to patch
     // this instruction.

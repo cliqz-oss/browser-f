@@ -188,10 +188,12 @@ HUD_SERVICE.prototype =
     {
       let deferred = defer();
 
-      if (!DebuggerServer.initialized) {
-        DebuggerServer.init();
-        DebuggerServer.addBrowserActors();
-      }
+      // Ensure that the root actor and the tab actors have been registered on the DebuggerServer,
+      // so that the Browser Console can retrieve the console actors.
+      // (See Bug 1416105 for rationale).
+      DebuggerServer.init();
+      DebuggerServer.registerActors({ root: true, tab: true });
+
       DebuggerServer.allowChromeProcess = true;
 
       let client = new DebuggerClient(DebuggerServer.connectPipe());
@@ -418,9 +420,14 @@ WebConsole.prototype = {
    * @param string aLink
    *        The URL you want to open in a new tab.
    */
-  openLink: function WC_openLink(aLink)
+  openLink: function WC_openLink(aLink, e)
   {
-    this.chromeUtilsWindow.openUILinkIn(aLink, "tab");
+    let isOSX = Services.appinfo.OS == "Darwin";
+    if (e != null && (e.button === 1 || (e.button === 0 && (isOSX ? e.metaKey : e.ctrlKey)))) {
+      this.chromeUtilsWindow.openUILinkIn(aLink, "tabshifted");
+    } else {
+      this.chromeUtilsWindow.openUILinkIn(aLink, "tab");
+    }
   },
 
   /**

@@ -91,7 +91,8 @@ const TEST_CASES = [
       "node-menu-pastelastchild",
       "node-menu-copy-attribute",
       "node-menu-edit-attribute",
-      "node-menu-remove-attribute"
+      "node-menu-remove-attribute",
+      "node-menu-delete"
     ],
   },
   {
@@ -258,8 +259,9 @@ add_task(function* () {
     for (let id of ALL_MENU_ITEMS) {
       let menuItem = allMenuItems.find(item => item.id === id);
       let shouldBeDisabled = disabled.indexOf(id) !== -1;
+      let shouldBeDisabledText = shouldBeDisabled ? "disabled" : "enabled";
       is(menuItem.disabled, shouldBeDisabled,
-        `#${id} should be ${shouldBeDisabled ? "disabled" : "enabled"}`);
+        `#${id} should be ${shouldBeDisabledText} for test case ${desc}`);
     }
   }
 });
@@ -308,13 +310,9 @@ function copyImageToClipboard(data) {
   // Image data is stored as base64 in the test.
   let image = atob(data);
 
-  let input = Cc["@mozilla.org/io/string-input-stream;1"]
-                .createInstance(Ci.nsIStringInputStream);
-  input.setData(image, image.length);
-
   let imgPtr = Cc["@mozilla.org/supports-interface-pointer;1"]
                  .createInstance(Ci.nsISupportsInterfacePointer);
-  imgPtr.data = imageTools.decodeImage(input, "image/png");
+  imgPtr.data = imageTools.decodeImageFromBuffer(image, image.length, "image/png");
 
   let xferable = Cc["@mozilla.org/widget/transferable;1"]
                    .createInstance(Ci.nsITransferable);

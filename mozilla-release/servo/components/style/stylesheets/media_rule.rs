@@ -12,8 +12,9 @@ use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
 use media_queries::MediaList;
 use servo_arc::Arc;
 use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked, SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
-use std::fmt;
-use style_traits::ToCss;
+use std::fmt::{self, Write};
+use str::CssStringWriter;
+use style_traits::{CssWriter, ToCss};
 use stylesheets::CssRules;
 
 /// An [`@media`][media] urle.
@@ -42,16 +43,10 @@ impl MediaRule {
 impl ToCssWithGuard for MediaRule {
     // Serialization of MediaRule is not specced.
     // https://drafts.csswg.org/cssom/#serialize-a-css-rule CSSMediaRule
-    fn to_css<W>(&self, guard: &SharedRwLockReadGuard, dest: &mut W) -> fmt::Result
-    where W: fmt::Write {
+    fn to_css(&self, guard: &SharedRwLockReadGuard, dest: &mut CssStringWriter) -> fmt::Result {
         dest.write_str("@media ")?;
-        self.media_queries.read_with(guard).to_css(dest)?;
-        dest.write_str(" {")?;
-        for rule in self.rules.read_with(guard).0.iter() {
-            dest.write_str(" ")?;
-            rule.to_css(guard, dest)?;
-        }
-        dest.write_str(" }")
+        self.media_queries.read_with(guard).to_css(&mut CssWriter::new(dest))?;
+        self.rules.read_with(guard).to_css_block(guard, dest)
     }
 }
 

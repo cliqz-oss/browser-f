@@ -29,22 +29,18 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(
     ServoKeyframeDeclaration, nsICSSDeclaration)
 
-  NS_IMETHOD GetParentRule(nsIDOMCSSRule** aParent) final
-  {
-    NS_IF_ADDREF(*aParent = mRule);
-    return NS_OK;
-  }
+  css::Rule* GetParentRule() final override { return mRule; }
 
   void DropReference() {
     mRule = nullptr;
     mDecls->SetOwningRule(nullptr);
   }
 
-  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final
+  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final override
   {
     return mDecls;
   }
-  nsresult SetCSSDeclaration(DeclarationBlock* aDecls) final
+  nsresult SetCSSDeclaration(DeclarationBlock* aDecls) final override
   {
     if (!mRule) {
       return NS_OK;
@@ -59,21 +55,33 @@ public:
     });
     return NS_OK;
   }
-  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv) final
+  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
+                                nsIPrincipal* aSubjectPrincipal) final override
   {
     MOZ_ASSERT_UNREACHABLE("GetCSSParsingEnvironment "
                            "shouldn't be calling for a Servo rule");
     GetCSSParsingEnvironmentForRule(mRule, aCSSParseEnv);
   }
-  ServoCSSParsingEnvironment GetServoCSSParsingEnvironment() const final
+  ServoCSSParsingEnvironment GetServoCSSParsingEnvironment(
+      nsIPrincipal* aSubjectPrincipal) const final override
   {
     return GetServoCSSParsingEnvironmentForRule(mRule);
   }
-  nsIDocument* DocToUpdate() final { return nullptr; }
+  nsIDocument* DocToUpdate() final override { return nullptr; }
 
-  nsINode* GetParentObject() final
+  nsINode* GetParentObject() final override
   {
     return mRule ? mRule->GetDocument() : nullptr;
+  }
+
+  DocGroup* GetDocGroup() const final override
+  {
+    if (!mRule) {
+      return nullptr;
+    }
+
+    nsIDocument* document = mRule->GetDocument();
+    return document ? document->GetDocGroup() : nullptr;
   }
 
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
@@ -172,28 +180,23 @@ ServoKeyframeRule::UpdateRule(Func aCallback)
   aCallback();
 
   if (StyleSheet* sheet = GetStyleSheet()) {
-    // FIXME sheet->AsGecko()->SetModifiedByChildRule();
-    if (doc) {
-      doc->StyleRuleChanged(sheet, this);
-    }
+    sheet->RuleChanged(this);
   }
 }
 
-NS_IMETHODIMP
+void
 ServoKeyframeRule::GetKeyText(nsAString& aKeyText)
 {
   Servo_Keyframe_GetKeyText(mRaw, &aKeyText);
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 ServoKeyframeRule::SetKeyText(const nsAString& aKeyText)
 {
   NS_ConvertUTF16toUTF8 keyText(aKeyText);
   UpdateRule([this, &keyText]() {
     Servo_Keyframe_SetKeyText(mRaw, &keyText);
   });
-  return NS_OK;
 }
 
 void

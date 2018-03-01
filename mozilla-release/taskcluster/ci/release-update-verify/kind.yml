@@ -1,0 +1,435 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+loader: taskgraph.loader.transform:loader
+
+kind-dependencies:
+   - post-balrog-dummy
+   - post-beetmover-dummy
+   - release-updates-builder
+
+transforms:
+   - taskgraph.transforms.release_deps:transforms
+   - taskgraph.transforms.update_verify:transforms
+   - taskgraph.transforms.release_notifications:transforms
+   - taskgraph.transforms.task:transforms
+
+job-defaults:
+   name: update-verify
+   run-on-projects: []  # to make sure this never runs as part of CI
+   shipping-phase: promote
+   worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+   worker:
+      implementation: docker-worker
+      os: linux
+      docker-image:
+         in-tree: "update-verify"
+      max-run-time: 7200
+      retry-exit-status:
+         - 255
+      env:
+         NO_BBCONFIG: "1"
+         BUILD_TOOLS_REPO:
+            by-project:
+               jamun: https://hg.mozilla.org/users/stage-ffxbld/tools
+               maple: https://hg.mozilla.org/users/asasaki_mozilla.com/tools
+               default: https://hg.mozilla.org/build/tools
+   extra:
+      chunks: 12
+
+jobs:
+   firefox-linux64:
+      description: linux64 update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "beta-localtest"
+                  maple: "beta-localtest"
+                  mozilla-beta: "beta-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "beta-firefox-linux64.cfg"
+                  maple: "beta-firefox-linux64.cfg"
+                  mozilla-beta: "beta-firefox-linux64.cfg"
+                  mozilla-release: "release-firefox-linux64.cfg"
+                  mozilla-esr52: "esr-firefox-linux64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: linux64/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: linux64
+
+   firefox-linux:
+      description: linux update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "beta-localtest"
+                  maple: "beta-localtest"
+                  mozilla-beta: "beta-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "beta-firefox-linux.cfg"
+                  maple: "beta-firefox-linux.cfg"
+                  mozilla-beta: "beta-firefox-linux.cfg"
+                  mozilla-release: "release-firefox-linux.cfg"
+                  mozilla-esr52: "esr-firefox-linux.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: linux/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: linux
+
+   firefox-win64:
+      description: win64 update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "beta-localtest"
+                  maple: "beta-localtest"
+                  mozilla-beta: "beta-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "beta-firefox-win64.cfg"
+                  maple: "beta-firefox-win64.cfg"
+                  mozilla-beta: "beta-firefox-win64.cfg"
+                  mozilla-release: "release-firefox-win64.cfg"
+                  mozilla-esr52: "esr-firefox-win64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: win64/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: win64
+
+   firefox-win32:
+      description: win32 update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "beta-localtest"
+                  maple: "beta-localtest"
+                  mozilla-beta: "beta-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "beta-firefox-win32.cfg"
+                  maple: "beta-firefox-win32.cfg"
+                  mozilla-beta: "beta-firefox-win32.cfg"
+                  mozilla-release: "release-firefox-win32.cfg"
+                  mozilla-esr52: "esr-firefox-win32.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: win32/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: win32
+
+   firefox-macosx64:
+      description: macosx64 update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "beta-localtest"
+                  maple: "beta-localtest"
+                  mozilla-beta: "beta-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "beta-firefox-macosx64.cfg"
+                  maple: "beta-firefox-macosx64.cfg"
+                  mozilla-beta: "beta-firefox-macosx64.cfg"
+                  mozilla-release: "release-firefox-macosx64.cfg"
+                  mozilla-esr52: "esr-firefox-macosx64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: macosx64/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: macosx64
+
+   firefox-secondary-linux64:
+      description: linux64 secondary channel update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  mozilla-release: "beta-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  mozilla-release: "beta-firefox-linux64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UVS
+         platform: linux64/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: linux64
+
+   firefox-secondary-linux:
+      description: linux secondary channel update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  mozilla-release: "beta-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  mozilla-release: "beta-firefox-linux.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UVS
+         platform: linux/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: linux
+
+   firefox-secondary-win64:
+      description: win64 secondary channel update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  mozilla-release: "beta-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  mozilla-release: "beta-firefox-win64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UVS
+         platform: win64/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: win64
+
+   firefox-secondary-win32:
+      description: win32 secondary channel update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  mozilla-release: "beta-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  mozilla-release: "beta-firefox-win32.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UVS
+         platform: win32/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: win32
+
+   firefox-secondary-macosx64:
+      description: macosx64 secondary channel update verify
+      shipping-product: firefox
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  mozilla-release: "beta-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  mozilla-release: "beta-firefox-macosx64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UVS
+         platform: macosx64/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: macosx64
+
+   devedition-linux64:
+      description: linux64 update verify
+      shipping-product: devedition
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "aurora-localtest"
+                  maple: "aurora-localtest"
+                  mozilla-beta: "aurora-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "aurora-devedition-linux64.cfg"
+                  maple: "aurora-devedition-linux64.cfg"
+                  mozilla-beta: "aurora-devedition-linux64.cfg"
+                  mozilla-release: "release-devedition-linux64.cfg"
+                  mozilla-esr52: "esr-devedition-linux64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: linux64-devedition/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: linux64-devedition
+
+   devedition-linux:
+      description: linux update verify
+      shipping-product: devedition
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "aurora-localtest"
+                  maple: "aurora-localtest"
+                  mozilla-beta: "aurora-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "aurora-devedition-linux.cfg"
+                  maple: "aurora-devedition-linux.cfg"
+                  mozilla-beta: "aurora-devedition-linux.cfg"
+                  mozilla-release: "release-devedition-linux.cfg"
+                  mozilla-esr52: "esr-devedition-linux.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: linux-devedition/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: linux-devedition
+
+   devedition-win64:
+      description: win64 update verify
+      shipping-product: devedition
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "aurora-localtest"
+                  maple: "aurora-localtest"
+                  mozilla-beta: "aurora-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "aurora-devedition-win64.cfg"
+                  maple: "aurora-devedition-win64.cfg"
+                  mozilla-beta: "aurora-devedition-win64.cfg"
+                  mozilla-release: "release-devedition-win64.cfg"
+                  mozilla-esr52: "esr-devedition-win64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: win64-devedition/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: win64-devedition
+
+   devedition-win32:
+      description: win32 update verify
+      shipping-product: devedition
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "aurora-localtest"
+                  maple: "aurora-localtest"
+                  mozilla-beta: "aurora-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "aurora-devedition-win32.cfg"
+                  maple: "aurora-devedition-win32.cfg"
+                  mozilla-beta: "aurora-devedition-win32.cfg"
+                  mozilla-release: "release-devedition-win32.cfg"
+                  mozilla-esr52: "esr-devedition-win32.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: win32-devedition/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: win32-devedition
+
+   devedition-macosx64:
+      description: macosx64 update verify
+      shipping-product: devedition
+      worker:
+         env:
+            CHANNEL:
+               by-project:
+                  jamun: "aurora-localtest"
+                  maple: "aurora-localtest"
+                  mozilla-beta: "aurora-localtest"
+                  mozilla-release: "release-localtest"
+                  mozilla-esr52: "esr-localtest"
+                  default: "default"
+            VERIFY_CONFIG:
+               by-project:
+                  jamun: "aurora-devedition-macosx64.cfg"
+                  maple: "aurora-devedition-macosx64.cfg"
+                  mozilla-beta: "aurora-devedition-macosx64.cfg"
+                  mozilla-release: "release-devedition-macosx64.cfg"
+                  mozilla-esr52: "esr-devedition-macosx64.cfg"
+                  default: "none"
+      treeherder:
+         symbol: UV
+         platform: macosx64-devedition/opt
+         kind: test
+         tier: 1
+      attributes:
+         build_platform: macosx64-devedition

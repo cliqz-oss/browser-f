@@ -8,7 +8,9 @@
 #define mozilla_dom_InternalResponse_h
 
 #include "nsIInputStream.h"
+#include "nsICacheInfoChannel.h"
 #include "nsISupportsImpl.h"
+#include "nsProxyRelease.h"
 
 #include "mozilla/dom/InternalHeaders.h"
 #include "mozilla/dom/ResponseBinding.h"
@@ -53,13 +55,15 @@ public:
   already_AddRefed<InternalResponse> Clone(CloneType eCloneType);
 
   static already_AddRefed<InternalResponse>
-  NetworkError()
+  NetworkError(nsresult aRv)
   {
+    MOZ_DIAGNOSTIC_ASSERT(NS_FAILED(aRv));
     RefPtr<InternalResponse> response = new InternalResponse(0, EmptyCString());
     ErrorResult result;
     response->Headers()->SetGuard(HeadersGuardEnum::Immutable, result);
     MOZ_ASSERT(!result.Failed());
     response->mType = ResponseType::Error;
+    response->mErrorCode = aRv;
     return response.forget();
   }
 
@@ -246,6 +250,57 @@ public:
   SetPaddingSize(int64_t aPaddingSize);
 
   void
+  SetAlternativeBody(nsIInputStream* aAlternativeBody)
+  {
+    if (mWrappedResponse) {
+      return mWrappedResponse->SetAlternativeBody(aAlternativeBody);
+    }
+    // A request's body may not be reset once set.
+    MOZ_DIAGNOSTIC_ASSERT(!mAlternativeBody);
+
+    mAlternativeBody = aAlternativeBody;
+  }
+
+  already_AddRefed<nsIInputStream>
+  TakeAlternativeBody()
+  {
+    if (mWrappedResponse) {
+      return mWrappedResponse->TakeAlternativeBody();
+    }
+
+    if (!mAlternativeBody) {
+      return nullptr;
+    }
+
+    // cleanup the non-alternative body here.
+    // Once alternative data is used, the real body is no need anymore.
+    mBody = nullptr;
+    mBodySize = UNKNOWN_BODY_SIZE;
+    return mAlternativeBody.forget();
+  }
+
+  void
+  SetCacheInfoChannel(const nsMainThreadPtrHandle<nsICacheInfoChannel>& aCacheInfoChannel)
+  {
+    if (mWrappedResponse) {
+      return mWrappedResponse->SetCacheInfoChannel(aCacheInfoChannel);
+    }
+    MOZ_ASSERT(!mCacheInfoChannel);
+    mCacheInfoChannel = aCacheInfoChannel;
+  }
+
+  nsMainThreadPtrHandle<nsICacheInfoChannel>
+  TakeCacheInfoChannel()
+  {
+    if (mWrappedResponse) {
+      return mWrappedResponse->TakeCacheInfoChannel();
+    }
+    nsMainThreadPtrHandle<nsICacheInfoChannel> rtn = mCacheInfoChannel;
+    mCacheInfoChannel = nullptr;
+    return rtn;
+  }
+
+  void
   InitChannelInfo(nsIChannel* aChannel)
   {
     mChannelInfo.InitFromChannel(aChannel);
@@ -279,6 +334,12 @@ public:
   IsRedirected() const
   {
     return mURLList.Length() > 1;
+  }
+
+  nsresult
+  GetErrorCode() const
+  {
+    return mErrorCode;
   }
 
   // Takes ownership of the principal info.
@@ -317,6 +378,12 @@ private:
   // generate the padding size for resposne, we don't need it anymore.
   Maybe<uint32_t> mPaddingInfo;
   int64_t mPaddingSize;
+  nsresult mErrorCode;
+
+  // For alternative data such as JS Bytecode cached in the HTTP cache.
+  nsCOMPtr<nsIInputStream> mAlternativeBody;
+  nsMainThreadPtrHandle<nsICacheInfoChannel> mCacheInfoChannel;
+
 public:
   static const int64_t UNKNOWN_BODY_SIZE = -1;
   static const int64_t UNKNOWN_PADDING_SIZE = -1;

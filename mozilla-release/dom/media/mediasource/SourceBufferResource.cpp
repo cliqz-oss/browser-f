@@ -17,15 +17,17 @@ mozilla::LogModule* GetSourceBufferResourceLog()
 }
 
 #define SBR_DEBUG(arg, ...)                                                    \
-  MOZ_LOG(                                                                     \
-    GetSourceBufferResourceLog(),                                              \
-    mozilla::LogLevel::Debug,                                                  \
-    ("SourceBufferResource(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
+  DDMOZ_LOG(GetSourceBufferResourceLog(),                                      \
+            mozilla::LogLevel::Debug,                                          \
+            "::%s: " arg,                                                      \
+            __func__,                                                          \
+            ##__VA_ARGS__)
 #define SBR_DEBUGV(arg, ...)                                                   \
-  MOZ_LOG(                                                                     \
-    GetSourceBufferResourceLog(),                                              \
-    mozilla::LogLevel::Verbose,                                                \
-    ("SourceBufferResource(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
+  DDMOZ_LOG(GetSourceBufferResourceLog(),                                      \
+            mozilla::LogLevel::Verbose,                                        \
+            "::%s: " arg,                                                      \
+            __func__,                                                          \
+            ##__VA_ARGS__)
 
 namespace mozilla {
 
@@ -66,10 +68,6 @@ SourceBufferResource::ReadAtInternal(int64_t aOffset,
 
   uint32_t available = GetLength() - aOffset;
   uint32_t count = std::min(aCount, available);
-
-  // Keep the position of the last read to have Tell() approximately give us
-  // the position we're up to in the stream.
-  mOffset = aOffset + count;
 
   SBR_DEBUGV("offset=%" PRId64 " GetLength()=%" PRId64
              " available=%u count=%u mEnded=%d",
@@ -160,12 +158,7 @@ SourceBufferResource::~SourceBufferResource()
 SourceBufferResource::SourceBufferResource()
 #if defined(DEBUG)
   : mTaskQueue(AbstractThread::GetCurrent()->AsTaskQueue())
-  , mOffset(0)
-#else
-  : mOffset(0)
 #endif
-  , mClosed(false)
-  , mEnded(false)
 {
   SBR_DEBUG("");
 }

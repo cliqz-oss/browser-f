@@ -73,6 +73,7 @@ html|hr {
 
 xul|caption {
   -moz-appearance: none;
+  font-size: 1.14em;
   margin: 0;
 }
 
@@ -80,7 +81,7 @@ html|h2,
 xul|caption xul|checkbox,
 xul|caption xul|label {
   font-weight: 600;
-  line-height: 22px;
+  line-height: 1.4em;
 }
 
 xul|caption xul|checkbox,
@@ -93,10 +94,6 @@ xul|caption xul|label {
   overflow: auto;
 }
 
-xul|prefpane > xul|*.content-box {
-  overflow: visible;
-}
-
 /* groupboxes */
 
 xul|groupbox {
@@ -104,7 +101,6 @@ xul|groupbox {
   border: none;
   margin: 0;
   padding: 0;
-  font-size: 1.25rem;
 }
 
 xul|groupbox > xul|caption {
@@ -122,8 +118,6 @@ xul|groupbox xul|description {
 
 xul|tabpanels {
   -moz-appearance: none;
-  font-size: 1.25rem;
-  line-height: 22px;
   border: none;
   padding: 0;
   background-color: transparent;
@@ -135,11 +129,6 @@ xul|tabs {
   border-top: 1px solid var(--in-content-box-border-color);
   border-bottom: 1px solid var(--in-content-box-border-color);
   background-color: var(--in-content-page-background);
-}
-
-xul|*.tabs-left,
-xul|*.tabs-right {
-  border-bottom: none;
 }
 
 xul|tab {
@@ -165,11 +154,6 @@ xul|tab[selected] {
   border-bottom: 4px solid var(--in-content-border-highlight);
 }
 
-xul|*.tab-text {
-  font-size: 1.3rem;
-  line-height: 22px;
-}
-
 /* html buttons */
 
 html|button {
@@ -186,10 +170,6 @@ xul|menulist {
   min-height: 30px;
   color: var(--in-content-text-color);
   border: 1px solid var(--in-content-box-border-color);
-  -moz-border-top-colors: none !important;
-  -moz-border-right-colors: none !important;
-  -moz-border-bottom-colors: none !important;
-  -moz-border-left-colors: none !important;
   border-radius: 2px;
   background-color: var(--in-content-page-background);
   margin: 4px 8px;
@@ -239,8 +219,13 @@ html|button:disabled,
 html|select:disabled,
 xul|button[disabled="true"],
 xul|colorpicker[type="button"][disabled="true"],
-xul|menulist[disabled="true"] {
+xul|menulist[disabled="true"],
+xul|listbox[disabled="true"] {
   opacity: 0.5;
+}
+
+xul|listbox[disabled="true"] xul|listitem:hover {
+  background-color: transparent;
 }
 
 *|button.primary {
@@ -484,10 +469,6 @@ xul|textbox {
   -moz-appearance: none;
   color: var(--in-content-text-color);
   border: 1px solid var(--in-content-box-border-color);
-  -moz-border-top-colors: none !important;
-  -moz-border-right-colors: none !important;
-  -moz-border-bottom-colors: none !important;
-  -moz-border-left-colors: none !important;
   border-radius: 2px;
   background-color: var(--in-content-box-background);
 }
@@ -702,7 +683,8 @@ xul|*.radio-label-box {
 }
 
 *|*.category-name {
-  line-height: 22px;
+  font-size: 1.07em;
+  line-height: 1.4em;
   padding-bottom: 2px;
   padding-inline-start: 9px;
   margin: 0;
@@ -755,8 +737,9 @@ xul|*.radio-label-box {
 }
 
 *|*.header-name {
+  font-size: 1.46em;
   font-weight: 300;
-  line-height: 30px;
+  line-height: 1.3em;
   margin: 0;
   -moz-user-select: none;
 }

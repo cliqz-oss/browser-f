@@ -59,6 +59,8 @@ from ..frontend.data import (
     Library,
     Linkable,
     LocalInclude,
+    LocalizedFiles,
+    LocalizedPreprocessedFiles,
     ObjdirFiles,
     ObjdirPreprocessedFiles,
     PerSourceFlag,
@@ -199,7 +201,7 @@ class BackendMakeFile(object):
     actually change. We use FileAvoidWrite to accomplish this.
     """
 
-    def __init__(self, srcdir, objdir, environment, topsrcdir, topobjdir):
+    def __init__(self, srcdir, objdir, environment, topsrcdir, topobjdir, dry_run):
         self.topsrcdir = topsrcdir
         self.srcdir = srcdir
         self.objdir = objdir
@@ -209,7 +211,7 @@ class BackendMakeFile(object):
 
         self.xpt_name = None
 
-        self.fh = FileAvoidWrite(self.name, capture_diff=True)
+        self.fh = FileAvoidWrite(self.name, capture_diff=True, dry_run=dry_run)
         self.fh.write('# THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT EDIT.\n')
         self.fh.write('\n')
 
@@ -431,7 +433,7 @@ class RecursiveMakeBackend(CommonBackend):
         if obj.objdir not in self._backend_files:
             self._backend_files[obj.objdir] = \
                 BackendMakeFile(obj.srcdir, obj.objdir, obj.config,
-                    obj.topsrcdir, self.environment.topobjdir)
+                    obj.topsrcdir, self.environment.topobjdir, self.dry_run)
         return self._backend_files[obj.objdir]
 
     def consume_object(self, obj):
@@ -518,25 +520,38 @@ class RecursiveMakeBackend(CommonBackend):
             self._process_defines(obj, backend_file)
 
         elif isinstance(obj, GeneratedFile):
-            export_suffixes = (
-                '.c',
-                '.cpp',
-                '.h',
-                '.inc',
-                '.py',
-                '.rs',
-                'new', # 'new' is an output from make-stl-wrappers.py
-            )
-            tier = 'export' if any(f.endswith(export_suffixes) for f in obj.outputs) else 'misc'
+            if obj.required_for_compile:
+                tier = 'export'
+            elif obj.localized:
+                tier = 'libs'
+            else:
+                tier = 'misc'
             self._no_skip[tier].add(backend_file.relobjdir)
             first_output = obj.outputs[0]
             dep_file = "%s.pp" % first_output
+
+            if obj.inputs:
+                if obj.localized:
+                    # Localized generated files can have locale-specific inputs, which are
+                    # indicated by paths starting with `en-US/`.
+                    def srcpath(p):
+                        bits = p.split('en-US/', 1)
+                        if len(bits) == 2:
+                            e, f = bits
+                            assert(not e)
+                            return '$(call MERGE_FILE,%s)' % f
+                        return self._pretty_path(p, backend_file)
+                    inputs = [srcpath(f) for f in obj.inputs]
+                else:
+                    inputs = [self._pretty_path(f, backend_file) for f in obj.inputs]
+            else:
+                inputs = []
 
             # If we're doing this during export that means we need it during
             # compile, but if we have an artifact build we don't run compile,
             # so we can skip it altogether or let the rule run as the result of
             # something depending on it.
-            if tier == 'misc' or not self.environment.is_artifact_build:
+            if tier != 'export' or not self.environment.is_artifact_build:
                 backend_file.write('%s:: %s\n' % (tier, first_output))
             for output in obj.outputs:
                 if output != first_output:
@@ -544,15 +559,21 @@ class RecursiveMakeBackend(CommonBackend):
                 backend_file.write('GARBAGE += %s\n' % output)
             backend_file.write('EXTRA_MDDEPEND_FILES += %s\n' % dep_file)
             if obj.script:
-                backend_file.write("""{output}: {script}{inputs}{backend}
+                backend_file.write("""{output}: {script}{inputs}{backend}{repack_force}
 \t$(REPORT_BUILD)
-\t$(call py_action,file_generate,{script} {method} {output} $(MDDEPDIR)/{dep_file}{inputs}{flags})
+\t$(call py_action,file_generate,{locale}{script} {method} {output} $(MDDEPDIR)/{dep_file}{inputs}{flags})
 
 """.format(output=first_output,
            dep_file=dep_file,
-           inputs=' ' + ' '.join([self._pretty_path(f, backend_file) for f in obj.inputs]) if obj.inputs else '',
+           inputs=' ' + ' '.join(inputs) if inputs else '',
            flags=' ' + ' '.join(shell_quote(f) for f in obj.flags) if obj.flags else '',
            backend=' backend.mk' if obj.flags else '',
+           # Locale repacks repack multiple locales from a single configured objdir,
+           # so standard mtime dependencies won't work properly when the build is re-run
+           # with a different locale as input. IS_LANGUAGE_REPACK will reliably be set
+           # in this situation, so simply force the generation to run in that case.
+           repack_force=' $(if $(IS_LANGUAGE_REPACK),FORCE)' if obj.localized else '',
+           locale='--locale=$(AB_CD) ' if obj.localized else '',
            script=obj.script,
            method=obj.method))
 
@@ -644,6 +665,12 @@ class RecursiveMakeBackend(CommonBackend):
 
         elif isinstance(obj, ObjdirPreprocessedFiles):
             self._process_final_target_pp_files(obj, obj.files, backend_file, 'OBJDIR_PP_FILES')
+
+        elif isinstance(obj, LocalizedFiles):
+            self._process_localized_files(obj, obj.files, backend_file)
+
+        elif isinstance(obj, LocalizedPreprocessedFiles):
+            self._process_localized_pp_files(obj, obj.files, backend_file)
 
         elif isinstance(obj, FinalTargetFiles):
             self._process_final_target_files(obj, obj.files, backend_file)
@@ -1378,7 +1405,6 @@ class RecursiveMakeBackend(CommonBackend):
             'dist/xpi-stage',
             '_tests',
             'dist/include',
-            'dist/branding',
         ))
         if not path:
             raise Exception("Cannot install to " + target)
@@ -1390,14 +1416,6 @@ class RecursiveMakeBackend(CommonBackend):
         manifest = path.replace('/', '_')
         install_manifest = self._install_manifests[manifest]
         reltarget = mozpath.relpath(target, path)
-
-        # Also emit the necessary rules to create $(DIST)/branding during
-        # partial tree builds. The locale makefiles rely on this working.
-        if path == 'dist/branding':
-            backend_file.write('NONRECURSIVE_TARGETS += export\n')
-            backend_file.write('NONRECURSIVE_TARGETS_export += branding\n')
-            backend_file.write('NONRECURSIVE_TARGETS_export_branding_DIRECTORY = $(DEPTH)\n')
-            backend_file.write('NONRECURSIVE_TARGETS_export_branding_TARGETS += install-dist/branding\n')
 
         for path, files in files.walk():
             target_var = (mozpath.join(target, path)
@@ -1453,6 +1471,58 @@ class RecursiveMakeBackend(CommonBackend):
             backend_file.write('%s_TARGET := misc\n' % var)
             backend_file.write('PP_TARGETS += %s\n' % var)
 
+    def _write_localized_files_files(self, files, name, backend_file):
+        for f in files:
+            if not isinstance(f, ObjDirPath):
+                # The emitter asserts that all srcdir files start with `en-US/`
+                e, f = f.split('en-US/')
+                assert(not e)
+                if '*' in f:
+                    # We can't use MERGE_FILE for wildcards because it takes
+                    # only the first match internally. This is only used
+                    # in one place in the tree currently so we'll hardcode
+                    # that specific behavior for now.
+                    backend_file.write('%s += $(wildcard $(LOCALE_SRCDIR)/%s)\n' % (name, f))
+                else:
+                    backend_file.write('%s += $(call MERGE_FILE,%s)\n' % (name, f))
+            else:
+                # Objdir files are allowed from LOCALIZED_GENERATED_FILES
+                backend_file.write('%s += %s\n' % (name, self._pretty_path(f, backend_file)))
+
+    def _process_localized_files(self, obj, files, backend_file):
+        target = obj.install_target
+        path = mozpath.basedir(target, ('dist/bin', ))
+        if not path:
+            raise Exception('Cannot install localized files to ' + target)
+        for i, (path, files) in enumerate(files.walk()):
+            name = 'LOCALIZED_FILES_%d' % i
+            self._no_skip['libs'].add(backend_file.relobjdir)
+            self._write_localized_files_files(files, name + '_FILES', backend_file)
+            # Use FINAL_TARGET here because some l10n repack rules set
+            # XPI_NAME to generate langpacks.
+            backend_file.write('%s_DEST = $(FINAL_TARGET)/%s\n' % (name, path))
+            backend_file.write('%s_TARGET := libs\n' % name)
+            backend_file.write('INSTALL_TARGETS += %s\n' % name)
+
+    def _process_localized_pp_files(self, obj, files, backend_file):
+        target = obj.install_target
+        path = mozpath.basedir(target, ('dist/bin', ))
+        if not path:
+            raise Exception('Cannot install localized files to ' + target)
+        for i, (path, files) in enumerate(files.walk()):
+            name = 'LOCALIZED_PP_FILES_%d' % i
+            self._no_skip['libs'].add(backend_file.relobjdir)
+            self._write_localized_files_files(files, name, backend_file)
+            # Use FINAL_TARGET here because some l10n repack rules set
+            # XPI_NAME to generate langpacks.
+            backend_file.write('%s_PATH = $(FINAL_TARGET)/%s\n' % (name, path))
+            backend_file.write('%s_TARGET := libs\n' % name)
+            # Localized files will have different content in different
+            # localizations, and some preprocessed files may not have
+            # any preprocessor directives.
+            backend_file.write('%s_FLAGS := --silence-missing-directive-warnings\n' % name)
+            backend_file.write('PP_TARGETS += %s\n' % name)
+
     def _process_objdir_files(self, obj, files, backend_file):
         # We can't use an install manifest for the root of the objdir, since it
         # would delete all the other files that get put there by the build
@@ -1487,7 +1557,7 @@ class RecursiveMakeBackend(CommonBackend):
         rule.add_commands(['$(call py_action,buildlist,%s)' % ' '.join(args)])
         fragment.dump(backend_file.fh, removal_guard=False)
 
-        self._no_skip['misc'].add(obj.relativedir)
+        self._no_skip['misc'].add(obj.relsrcdir)
 
     def _write_manifests(self, dest, manifests):
         man_dir = mozpath.join(self.environment.topobjdir, '_build_manifests',
@@ -1557,18 +1627,32 @@ class RecursiveMakeBackend(CommonBackend):
 
         backend_file.write('RS_STATICLIB_CRATE_SRC := %s\n' % extern_crate_file)
 
-    def _handle_ipdl_sources(self, ipdl_dir, sorted_ipdl_sources,
-                             unified_ipdl_cppsrcs_mapping):
+    def _handle_ipdl_sources(self, ipdl_dir, sorted_ipdl_sources, sorted_nonstatic_ipdl_sources,
+                             sorted_static_ipdl_sources, unified_ipdl_cppsrcs_mapping):
         # Write out a master list of all IPDL source files.
         mk = Makefile()
 
-        mk.add_statement('ALL_IPDLSRCS := %s' % ' '.join(sorted_ipdl_sources))
+        sorted_nonstatic_ipdl_basenames = list()
+        for source in sorted_nonstatic_ipdl_sources:
+            basename = os.path.basename(source)
+            sorted_nonstatic_ipdl_basenames.append(basename)
+            rule = mk.create_rule([basename])
+            rule.add_dependencies([source])
+            rule.add_commands([
+                '$(RM) $@',
+                '$(call py_action,preprocessor,$(DEFINES) $(ACDEFINES) '
+                    '$< -o $@)'
+            ])
+
+        mk.add_statement('ALL_IPDLSRCS := %s %s' % (' '.join(sorted_nonstatic_ipdl_basenames),
+                         ' '.join(sorted_static_ipdl_sources)))
 
         self._add_unified_build_rules(mk, unified_ipdl_cppsrcs_mapping,
                                       unified_files_makefile_variable='CPPSRCS')
 
-        mk.add_statement('IPDLDIRS := %s' % ' '.join(sorted(set(mozpath.dirname(p)
-            for p in self._ipdl_sources))))
+        # Preprocessed ipdl files are generated in ipdl_dir.
+        mk.add_statement('IPDLDIRS := %s %s' % (ipdl_dir, ' '.join(sorted(set(mozpath.dirname(p)
+            for p in sorted_static_ipdl_sources)))))
 
         with self._write_file(mozpath.join(ipdl_dir, 'ipdlsrcs.mk')) as ipdls:
             mk.dump(ipdls, removal_guard=False)

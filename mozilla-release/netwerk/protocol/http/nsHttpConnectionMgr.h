@@ -60,8 +60,10 @@ public:
         THROTTLING_ENABLED,
         THROTTLING_SUSPEND_FOR,
         THROTTLING_RESUME_FOR,
-        THROTTLING_RESUME_IN,
-        THROTTLING_TIME_WINDOW
+        THROTTLING_READ_LIMIT,
+        THROTTLING_READ_INTERVAL,
+        THROTTLING_HOLD_TIME,
+        THROTTLING_MAX_TIME
     };
 
     //-------------------------------------------------------------------------
@@ -76,10 +78,13 @@ public:
                                uint16_t maxPersistentConnectionsPerProxy,
                                uint16_t maxRequestDelay,
                                bool throttleEnabled,
+                               uint32_t throttleVersion,
                                uint32_t throttleSuspendFor,
                                uint32_t throttleResumeFor,
-                               uint32_t throttleResumeIn,
-                               uint32_t throttleTimeWindow);
+                               uint32_t throttleReadLimit,
+                               uint32_t throttleReadInterval,
+                               uint32_t throttleHoldTime,
+                               uint32_t throttleMaxTime);
     MOZ_MUST_USE nsresult Shutdown();
 
     //-------------------------------------------------------------------------
@@ -89,6 +94,9 @@ public:
     // Schedules next pruning of dead connection to happen after
     // given time.
     void PruneDeadConnectionsAfter(uint32_t time);
+
+    // this cancels all outstanding transactions but does not shut down the mgr
+    void AbortAndCloseAllConnections(int32_t, ARefBase *);
 
     // Stops timer scheduled for next pruning of dead connections if
     // there are no more idle connections or active spdy ones
@@ -225,19 +233,19 @@ public:
     void UpdateActiveTransaction(nsHttpTransaction* aTrans);
 
     // called by nsHttpTransaction::WriteSegments.  decides whether the transaction
-    // should stop reading data based on: the throttling ticker status, overall
-    // status of all active transactions regarding active tab and respective
-    // throttling state.
-    bool ShouldStopReading(nsHttpTransaction* aTrans);
+    // should limit reading its reponse data.  There are various conditions this
+    // methods evaluates.  If called by an active-tab non-throttled transaction,
+    // the throttling window time will be prolonged.
+    bool ShouldThrottle(nsHttpTransaction* aTrans);
 
-    // prolongs the throttling time window to now + the window preferred size
+    // prolongs the throttling time window to now + the window preferred delay.
     // called when:
     // - any transaction is activated
     // - or when a currently unthrottled transaction for the active window receives data
     void TouchThrottlingTimeWindow(bool aEnsureTicker = true);
 
     // return true iff the connection has pending transactions for the active tab.
-    // it's mainly used to disallow throttling (stop reading) of a response
+    // it's mainly used to disallow throttling (limit reading) of a response
     // belonging to the same conn info to free up a connection ASAP.
     // NOTE: relatively expensive to call, there are two hashtable lookups.
     bool IsConnEntryUnderPressure(nsHttpConnectionInfo*);
@@ -388,7 +396,8 @@ private:
                          nsAHttpTransaction *trans,
                          uint32_t caps,
                          bool speculative,
-                         bool isFromPredictor);
+                         bool isFromPredictor,
+                         bool urgentStart);
 
         MOZ_MUST_USE nsresult SetupStreams(nsISocketTransport **,
                                            nsIAsyncInputStream **,
@@ -416,6 +425,10 @@ private:
 
         void PrintDiagnostics(nsCString &log);
 
+        // Checks whether the transaction can be dispatched using this
+        // half-open's connection.  If this half-open is marked as urgent-start,
+        // it only accepts urgent start transactions.  Call only before Claim().
+        bool AcceptsTransaction(nsHttpTransaction* trans);
         bool Claim();
         void Unclaim();
 
@@ -452,6 +465,10 @@ private:
         // more connections that are needed.)
         bool                           mSpeculative;
 
+        // If created with a non-null urgent transaction, remember it, so we can
+        // mark the connection as urgent rightaway it's created.
+        bool                           mUrgentStart;
+
         // mIsFromPredictor is set if the socket originated from the network
         // Predictor. It is used to gather telemetry data on used speculative
         // connections from the predictor.
@@ -468,6 +485,7 @@ private:
 
         bool                           mPrimaryConnectedOK;
         bool                           mBackupConnectedOK;
+        bool                           mBackupConnStatsSet;
 
         // A nsHalfOpenSocket can be made for a concrete non-null transaction,
         // but the transaction can be dispatch to another connection. In that
@@ -495,7 +513,7 @@ private:
             : mTransaction(trans)
         {}
 
-        NS_INLINE_DECL_THREADSAFE_REFCOUNTING(PendingTransactionInfo)
+        NS_INLINE_DECL_THREADSAFE_REFCOUNTING(PendingTransactionInfo, override)
 
         void PrintDiagnostics(nsCString &log);
     public: // meant to be public.
@@ -531,10 +549,13 @@ private:
     uint16_t mMaxPersistConnsPerProxy;
     uint16_t mMaxRequestDelay; // in seconds
     bool mThrottleEnabled;
+    uint32_t mThrottleVersion;
     uint32_t mThrottleSuspendFor;
     uint32_t mThrottleResumeFor;
-    uint32_t mThrottleResumeIn;
-    TimeDuration mThrottleTimeWindow;
+    uint32_t mThrottleReadLimit;
+    uint32_t mThrottleReadInterval;
+    uint32_t mThrottleHoldTime;
+    TimeDuration mThrottleMaxTime;
     Atomic<bool, mozilla::Relaxed> mIsShuttingDown;
 
     //-------------------------------------------------------------------------
@@ -571,6 +592,10 @@ private:
     MOZ_MUST_USE nsresult TryDispatchTransaction(nsConnectionEntry *ent,
                                                  bool onlyReusedConnection,
                                                  PendingTransactionInfo *pendingTransInfo);
+    MOZ_MUST_USE nsresult TryDispatchTransactionOnIdleConn(nsConnectionEntry *ent,
+                                                           PendingTransactionInfo *pendingTransInfo,
+                                                           bool respectUrgency,
+                                                           bool *allUrgent = nullptr);
     MOZ_MUST_USE nsresult DispatchTransaction(nsConnectionEntry *,
                                               nsHttpTransaction *,
                                               nsHttpConnection *);
@@ -586,7 +611,7 @@ private:
     void     ReportProxyTelemetry(nsConnectionEntry *ent);
     MOZ_MUST_USE nsresult CreateTransport(nsConnectionEntry *,
                                           nsAHttpTransaction *, uint32_t, bool,
-                                          bool, bool,
+                                          bool, bool, bool,
                                           PendingTransactionInfo *pendingTransInfo);
     void     AddActiveConn(nsHttpConnection *, nsConnectionEntry *);
     void     DecrementActiveConnCount(nsHttpConnection *);
@@ -717,6 +742,7 @@ private:
     // mActiveTransactions[0] are all unthrottled transactions, mActiveTransactions[1] throttled.
     nsClassHashtable<nsUint64HashKey, nsTArray<RefPtr<nsHttpTransaction>>> mActiveTransactions[2];
 
+    // V1 specific
     // Whether we are inside the "stop reading" interval, altered by the throttle ticker
     bool mThrottlingInhibitsReading;
 
@@ -729,10 +755,17 @@ private:
     // The method also unschedules the delayed resume of background tabs timer
     // if the ticker was about to be scheduled.
     void EnsureThrottleTickerIfNeeded();
+    // V1:
     // Drops also the mThrottlingInhibitsReading flag.  Immediate or delayed resume
     // of currently throttled transactions is not affected by this method.
+    // V2:
+    // Immediate or delayed resume of currently throttled transactions is not
+    // affected by this method.
     void DestroyThrottleTicker();
+    // V1:
     // Handler for the ticker: alters the mThrottlingInhibitsReading flag.
+    // V2:
+    // Handler for the ticker: calls ResumeReading() for all throttled transactions.
     void ThrottlerTick();
 
     // mechanism to delay immediate resume of background tabs and chrome initiated

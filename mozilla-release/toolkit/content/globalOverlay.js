@@ -8,9 +8,7 @@ function closeWindow(aClose, aPromptFunction) {
   // Closing the last window doesn't quit the application on OS X.
   if (AppConstants.platform != "macosx") {
     var windowCount = 0;
-    var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"]
-                       .getService(Components.interfaces.nsIWindowMediator);
-    var e = wm.getEnumerator(null);
+    var e = Services.wm.getEnumerator(null);
 
     while (e.hasMoreElements()) {
       var w = e.getNext();
@@ -39,14 +37,10 @@ function closeWindow(aClose, aPromptFunction) {
 }
 
 function canQuitApplication(aData) {
-  var os = Components.classes["@mozilla.org/observer-service;1"]
-                     .getService(Components.interfaces.nsIObserverService);
-  if (!os) return true;
-
   try {
     var cancelQuit = Components.classes["@mozilla.org/supports-PRBool;1"]
                               .createInstance(Components.interfaces.nsISupportsPRBool);
-    os.notifyObservers(cancelQuit, "quit-application-requested", aData || null);
+    Services.obs.notifyObservers(cancelQuit, "quit-application-requested", aData || null);
 
     // Something aborted the quit process.
     if (cancelQuit.data)
@@ -59,10 +53,7 @@ function goQuitApplication() {
   if (!canQuitApplication())
     return false;
 
-  var appStartup = Components.classes["@mozilla.org/toolkit/app-startup;1"].
-                     getService(Components.interfaces.nsIAppStartup);
-
-  appStartup.quit(Components.interfaces.nsIAppStartup.eAttemptQuit);
+  Services.startup.quit(Components.interfaces.nsIAppStartup.eAttemptQuit);
   return true;
 }
 
@@ -107,44 +98,6 @@ function goSetCommandEnabled(aID, aEnabled) {
     else
       node.setAttribute("disabled", "true");
   }
-}
-
-function goSetMenuValue(aCommand, aLabelAttribute) {
-  var commandNode = top.document.getElementById(aCommand);
-  if (commandNode) {
-    var label = commandNode.getAttribute(aLabelAttribute);
-    if (label)
-      commandNode.setAttribute("label", label);
-  }
-}
-
-function goSetAccessKey(aCommand, aValueAttribute) {
-  var commandNode = top.document.getElementById(aCommand);
-  if (commandNode) {
-    var value = commandNode.getAttribute(aValueAttribute);
-    if (value)
-      commandNode.setAttribute("accesskey", value);
-  }
-}
-
-// this function is used to inform all the controllers attached to a node that an event has occurred
-// (e.g. the tree controllers need to be informed of blur events so that they can change some of the
-// menu items back to their default values)
-function goOnEvent(aNode, aEvent) {
-  var numControllers = aNode.controllers.getControllerCount();
-  var controller;
-
-  for (var controllerIndex = 0; controllerIndex < numControllers; controllerIndex++) {
-    controller = aNode.controllers.getControllerAt(controllerIndex);
-    if (controller)
-      controller.onEvent(aEvent);
-  }
-}
-
-function setTooltipText(aID, aTooltipText) {
-  var element = document.getElementById(aID);
-  if (element)
-    element.setAttribute("tooltiptext", aTooltipText);
 }
 
 Object.defineProperty(this, "NS_ASSERT", {

@@ -77,7 +77,6 @@ public:
   static void RemoveDataEntry(const nsACString& aUri,
                               bool aBroadcastToOTherProcesses = true);
 
-  // This is for IPC only.
   static void RemoveDataEntries();
 
   static bool HasDataEntry(const nsACString& aUri);
@@ -88,6 +87,9 @@ public:
   static bool
   GetAllBlobURLEntries(nsTArray<mozilla::dom::BlobURLRegistrationData>& aRegistrations,
                        mozilla::dom::ContentParent* aCP);
+
+  // This is for nsHostObjectURI.
+  static void StoreClonedURI(const nsACString& aSpec, nsIURI* aURI);
 
 protected:
   virtual ~nsHostObjectProtocolHandler() {}

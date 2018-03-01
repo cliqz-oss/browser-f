@@ -58,8 +58,10 @@ struct BaseRect {
   }
 
   // Emptiness. An empty rect is one that has no area, i.e. its height or width
-  // is <= 0
-  bool IsEmpty() const { return height <= 0 || width <= 0; }
+  // is <= 0.  Zero rect is the one with height and width set to zero.  Note
+  // that SetEmpty() may change a rectangle that identified as IsEmpty().
+  MOZ_ALWAYS_INLINE bool IsZeroArea() const { return height == 0 || width == 0; }
+  MOZ_ALWAYS_INLINE bool IsEmpty() const { return height <= 0 || width <= 0; }
   void SetEmpty() { width = height = 0; }
 
   // "Finite" means not inf and not NaN
@@ -84,10 +86,18 @@ struct BaseRect {
   // Returns true if this rectangle contains the point. Points are considered
   // in the rectangle if they are on the left or top edge, but outside if they
   // are on the right or bottom edge.
-  bool Contains(T aX, T aY) const
+  MOZ_ALWAYS_INLINE bool Contains(T aX, T aY) const
   {
     return x <= aX && aX < XMost() &&
            y <= aY && aY < YMost();
+  }
+  MOZ_ALWAYS_INLINE bool ContainsX(T aX) const
+  {
+    return x <= aX && aX < XMost();
+  }
+  MOZ_ALWAYS_INLINE bool ContainsY(T aY) const
+  {
+    return y <= aY && aY < YMost();
   }
   // Returns true if this rectangle contains the point. Points are considered
   // in the rectangle if they are on the left or top edge, but outside if they
@@ -172,6 +182,11 @@ struct BaseRect {
     *static_cast<Sub*>(this) = aRect1.Union(aRect2);
   }
 
+  void OrWith(const Sub& aRect1)
+  {
+    UnionRect(*static_cast<Sub*>(this), aRect1);
+  }
+
   // Computes the smallest rectangle that contains both the points (including
   // edges) of both aRect1 and aRect2.
   // Thus, empty input rectangles are allowed to affect the result.
@@ -199,25 +214,55 @@ struct BaseRect {
     }
   }
 
-  void SetRect(T aX, T aY, T aWidth, T aHeight)
+  MOZ_ALWAYS_INLINE void SetRect(T aX, T aY, T aWidth, T aHeight)
   {
     x = aX; y = aY; width = aWidth; height = aHeight;
+  }
+  MOZ_ALWAYS_INLINE void SetRectX(T aX, T aWidth)
+  {
+    x = aX; width = aWidth;
+  }
+  MOZ_ALWAYS_INLINE void SetRectY(T aY, T aHeight)
+  {
+    y = aY; height = aHeight;
+  }
+  MOZ_ALWAYS_INLINE void SetBox(T aX, T aY, T aXMost, T aYMost)
+  {
+    x = aX; y = aY; width = aXMost - aX; height = aYMost - aY;
+  }
+  MOZ_ALWAYS_INLINE void SetNonEmptyBox(T aX, T aY, T aXMost, T aYMost)
+  {
+    x = aX; y = aY;
+    width = std::max(0,aXMost - aX);
+    height = std::max(0,aYMost - aY);
+  }
+  MOZ_ALWAYS_INLINE void SetBoxX(T aX, T aXMost)
+  {
+    x = aX; width = aXMost - aX;
+  }
+  MOZ_ALWAYS_INLINE void SetBoxY(T aY, T aYMost)
+  {
+    y = aY; height = aYMost - aY;
   }
   void SetRect(const Point& aPt, const SizeT& aSize)
   {
     SetRect(aPt.x, aPt.y, aSize.width, aSize.height);
   }
-  void GetRect(T* aX, T* aY, T* aWidth, T* aHeight)
+  MOZ_ALWAYS_INLINE void GetRect(T* aX, T* aY, T* aWidth, T* aHeight) const
   {
     *aX = x; *aY = y; *aWidth = width; *aHeight = height;
   }
 
-  void MoveTo(T aX, T aY) { x = aX; y = aY; }
-  void MoveTo(const Point& aPoint) { x = aPoint.x; y = aPoint.y; }
-  void MoveBy(T aDx, T aDy) { x += aDx; y += aDy; }
-  void MoveBy(const Point& aPoint) { x += aPoint.x; y += aPoint.y; }
-  void SizeTo(T aWidth, T aHeight) { width = aWidth; height = aHeight; }
-  void SizeTo(const SizeT& aSize) { width = aSize.width; height = aSize.height; }
+  MOZ_ALWAYS_INLINE void MoveTo(T aX, T aY) { x = aX; y = aY; }
+  MOZ_ALWAYS_INLINE void MoveToX(T aX) { x = aX; }
+  MOZ_ALWAYS_INLINE void MoveToY(T aY) { y = aY; }
+  MOZ_ALWAYS_INLINE void MoveTo(const Point& aPoint) { x = aPoint.x; y = aPoint.y; }
+  MOZ_ALWAYS_INLINE void MoveBy(T aDx, T aDy) { x += aDx; y += aDy; }
+  MOZ_ALWAYS_INLINE void MoveByX(T aDx) { x += aDx; }
+  MOZ_ALWAYS_INLINE void MoveByY(T aDy) { y += aDy; }
+  MOZ_ALWAYS_INLINE void MoveBy(const Point& aPoint) { x += aPoint.x; y += aPoint.y; }
+  MOZ_ALWAYS_INLINE void SizeTo(T aWidth, T aHeight) { width = aWidth; height = aHeight; }
+  MOZ_ALWAYS_INLINE void SizeTo(const SizeT& aSize) { width = aSize.width; height = aSize.height; }
 
   void Inflate(T aD) { Inflate(aD, aD); }
   void Inflate(T aDx, T aDy)
@@ -262,6 +307,20 @@ struct BaseRect {
     return x == aRect.x && y == aRect.y &&
            width == aRect.width && height == aRect.height;
   }
+  MOZ_ALWAYS_INLINE bool IsEqualRect(T aX, T aY, T aW, T aH)
+  {
+    return x == aX && y == aY && width == aW && height == aH;
+  }
+  MOZ_ALWAYS_INLINE bool IsEqualXY(T aX, T aY)
+  {
+    return x == aX && y == aY;
+  }
+
+  MOZ_ALWAYS_INLINE bool IsEqualSize(T aW, T aH)
+  {
+    return width == aW && height == aH;
+  }
+
   // Return true if the rectangles contain the same area of the plane.
   // Use when we do not care about differences in empty rectangles.
   bool IsEqualInterior(const Sub& aRect) const
@@ -383,22 +442,18 @@ struct BaseRect {
 
   // Moves one edge of the rect without moving the opposite edge.
   void SetLeftEdge(T aX) {
-    MOZ_ASSERT(aX <= XMost());
     width = XMost() - aX;
     x = aX;
   }
-  void SetRightEdge(T aXMost) { 
-    MOZ_ASSERT(aXMost >= x);
-    width = aXMost - x; 
+  void SetRightEdge(T aXMost) {
+    width = aXMost - x;
   }
   void SetTopEdge(T aY) {
-    MOZ_ASSERT(aY <= YMost());
     height = YMost() - aY;
     y = aY;
   }
-  void SetBottomEdge(T aYMost) { 
-    MOZ_ASSERT(aYMost >= y);
-    height = aYMost - y; 
+  void SetBottomEdge(T aYMost) {
+    height = aYMost - y;
   }
   void Swap() {
     std::swap(x, y);
@@ -418,10 +473,10 @@ struct BaseRect {
   // new |RoundAwayFromZero()| method.
   void Round()
   {
-    T x0 = static_cast<T>(floor(T(X()) + 0.5));
-    T y0 = static_cast<T>(floor(T(Y()) + 0.5));
-    T x1 = static_cast<T>(floor(T(XMost()) + 0.5));
-    T y1 = static_cast<T>(floor(T(YMost()) + 0.5));
+    T x0 = static_cast<T>(std::floor(T(X()) + 0.5f));
+    T y0 = static_cast<T>(std::floor(T(Y()) + 0.5f));
+    T x1 = static_cast<T>(std::floor(T(XMost()) + 0.5f));
+    T y1 = static_cast<T>(std::floor(T(YMost()) + 0.5f));
 
     x = x0;
     y = y0;
@@ -434,10 +489,10 @@ struct BaseRect {
   // original rectangle contains the resulting rectangle.
   void RoundIn()
   {
-    T x0 = static_cast<T>(ceil(T(X())));
-    T y0 = static_cast<T>(ceil(T(Y())));
-    T x1 = static_cast<T>(floor(T(XMost())));
-    T y1 = static_cast<T>(floor(T(YMost())));
+    T x0 = static_cast<T>(std::ceil(T(X())));
+    T y0 = static_cast<T>(std::ceil(T(Y())));
+    T x1 = static_cast<T>(std::floor(T(XMost())));
+    T y1 = static_cast<T>(std::floor(T(YMost())));
 
     x = x0;
     y = y0;
@@ -450,10 +505,10 @@ struct BaseRect {
   // resulting rectangle contains the original rectangle.
   void RoundOut()
   {
-    T x0 = static_cast<T>(floor(T(X())));
-    T y0 = static_cast<T>(floor(T(Y())));
-    T x1 = static_cast<T>(ceil(T(XMost())));
-    T y1 = static_cast<T>(ceil(T(YMost())));
+    T x0 = static_cast<T>(std::floor(T(X())));
+    T y0 = static_cast<T>(std::floor(T(Y())));
+    T x1 = static_cast<T>(std::ceil(T(XMost())));
+    T y1 = static_cast<T>(std::ceil(T(YMost())));
 
     x = x0;
     y = y0;

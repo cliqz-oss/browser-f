@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXPORTS.mozilla.dom += [
+  'ClientChannelHelper.h',
   'ClientHandle.h',
   'ClientInfo.h',
   'ClientIPCUtils.h',
@@ -18,6 +19,7 @@ EXPORTS.mozilla.dom += [
 ]
 
 UNIFIED_SOURCES += [
+  'ClientChannelHelper.cpp',
   'ClientHandle.cpp',
   'ClientHandleChild.cpp',
   'ClientHandleOpChild.cpp',
@@ -36,12 +38,15 @@ UNIFIED_SOURCES += [
   'ClientOpenWindowOpActors.cpp',
   'ClientOpenWindowOpChild.cpp',
   'ClientOpenWindowOpParent.cpp',
+  'ClientOpenWindowUtils.cpp',
+  'ClientPrefs.cpp',
   'ClientSource.cpp',
   'ClientSourceChild.cpp',
   'ClientSourceOpChild.cpp',
   'ClientSourceOpParent.cpp',
   'ClientSourceParent.cpp',
   'ClientState.cpp',
+  'ClientValidation.cpp',
 ]
 
 IPDL_SOURCES += [

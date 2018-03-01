@@ -1,8 +1,6 @@
-"use strict";
-const injector = require("inject!lib/TopStoriesFeed.jsm");
-const {FakePrefs} = require("test/unit/utils");
-const {actionTypes: at} = require("common/Actions.jsm");
-const {GlobalOverrider} = require("test/unit/utils");
+import {FakePrefs, GlobalOverrider} from "test/unit/utils";
+import {actionTypes as at} from "common/Actions.jsm";
+import injector from "inject!lib/TopStoriesFeed.jsm";
 
 describe("Top Stories Feed", () => {
   let TopStoriesFeed;
@@ -34,7 +32,6 @@ describe("Top Stories Feed", () => {
     FakePrefs.prototype.prefs.apiKeyPref = "test-api-key";
 
     globals = new GlobalOverrider();
-    globals.set("Services", {locale: {getRequestedLocale: () => "en-CA"}, obs: {addObserver: () => {}, removeObserver: () => {}}});
     globals.set("PlacesUtils", {history: {}});
     clock = sinon.useFakeTimers();
     shortURLStub = sinon.stub().callsFake(site => site.url);
@@ -131,8 +128,6 @@ describe("Top Stories Feed", () => {
       assert.called(Components.utils.reportError);
     });
     it("should report error for missing api key", () => {
-      let fakeServices = {prefs: {getCharPref: sinon.spy()}, locale: {getRequestedLocale: sinon.spy()}};
-      globals.set("Services", fakeServices);
       globals.sandbox.spy(global.Components.utils, "reportError");
       sectionsManagerStub.sections.set("topstories", {
         options: {

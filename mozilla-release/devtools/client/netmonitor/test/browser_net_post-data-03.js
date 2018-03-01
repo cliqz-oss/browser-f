@@ -19,14 +19,14 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 0, 1);
+  let wait = waitForNetworkEvents(monitor, 1);
   yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
     content.wrappedJSObject.performRequests();
   });
   yield wait;
 
   // Wait for all tree view updated by react
-  wait = waitForDOM(document, "#headers-panel");
+  wait = waitForDOM(document, "#headers-panel .tree-section .treeLabel", 3);
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector(".network-details-panel-toggle"));
   EventUtils.sendMouseEvent({ type: "click" },
@@ -34,7 +34,6 @@ add_task(function* () {
   yield wait;
 
   let tabpanel = document.querySelector("#headers-panel");
-
   is(tabpanel.querySelectorAll(".tree-section .treeLabel").length, 3,
     "There should be 3 header sections displayed in this tabpanel.");
 

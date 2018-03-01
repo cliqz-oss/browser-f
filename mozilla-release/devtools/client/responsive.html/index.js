@@ -13,7 +13,6 @@ const { require } = BrowserLoader({
   baseURI: "resource://devtools/client/responsive.html/",
   window
 });
-const { Task } = require("devtools/shared/task");
 const Telemetry = require("devtools/client/shared/telemetry");
 const { loadAgentSheet } = require("./utils/css");
 
@@ -39,7 +38,7 @@ let bootstrap = {
 
   store: null,
 
-  init: Task.async(function* () {
+  async init() {
     // Load a special UA stylesheet to reset certain styles such as dropdown
     // lists.
     loadAgentSheet(
@@ -51,7 +50,7 @@ let bootstrap = {
     let provider = createElement(Provider, { store }, App());
     ReactDOM.render(provider, document.querySelector("#root"));
     message.post(window, "init:done");
-  }),
+  },
 
   destroy() {
     this.store = null;
@@ -102,14 +101,14 @@ Object.defineProperty(window, "store", {
 // TODO: It would be better to move this watching into the actor, so that it can be
 // better synchronized with any overrides that might be applied.  Also, reading a single
 // value like this makes less sense with multiple viewports.
-function onDPRChange() {
+function onDevicePixelRatioChange() {
   let dpr = window.devicePixelRatio;
   let mql = window.matchMedia(`(resolution: ${dpr}dppx)`);
 
   function listener() {
     bootstrap.dispatch(changeDisplayPixelRatio(window.devicePixelRatio));
     mql.removeListener(listener);
-    onDPRChange();
+    onDevicePixelRatioChange();
   }
 
   mql.addListener(listener);
@@ -120,7 +119,7 @@ function onDPRChange() {
  */
 window.addInitialViewport = contentURI => {
   try {
-    onDPRChange();
+    onDevicePixelRatioChange();
     bootstrap.dispatch(changeLocation(contentURI));
     bootstrap.dispatch(changeDisplayPixelRatio(window.devicePixelRatio));
     bootstrap.dispatch(addViewport());

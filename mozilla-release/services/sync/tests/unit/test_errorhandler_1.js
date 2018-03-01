@@ -9,14 +9,13 @@ Cu.import("resource://services-sync/policies.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/status.js");
 Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 Cu.import("resource://gre/modules/FileUtils.jsm");
 Cu.import("resource://gre/modules/PromiseUtils.jsm");
 
 var fakeServer = new SyncServer();
 fakeServer.start();
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   return new Promise(resolve => {
     fakeServer.stop(resolve);
     Svc.Prefs.resetBranch("");
@@ -43,12 +42,6 @@ let errorHandler = Service.errorHandler;
 let engine;
 
 add_task(async function setup() {
-  initTestLogging("Trace");
-
-  Log.repository.getLogger("Sync.Service").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.SyncScheduler").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.ErrorHandler").level = Log.Level.Trace;
-
   Service.engineManager.clear();
   await Service.engineManager.register(EHTestsCommon.CatapultEngine);
   engine = Service.engineManager.get("catapult");
@@ -61,6 +54,8 @@ async function clean() {
   Status.resetSync();
   Status.resetBackoff();
   errorHandler.didReportProlongedError = false;
+  // Move log levels back to trace (startOver will have reversed this), sicne
+  syncTestLogging();
 }
 
 add_task(async function test_401_logout() {
@@ -71,8 +66,8 @@ add_task(async function test_401_logout() {
 
   // By calling sync, we ensure we're logged in.
   await sync_and_validate_telem();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED);
-  do_check_true(Service.isLoggedIn);
+  Assert.equal(Status.sync, SYNC_SUCCEEDED);
+  Assert.ok(Service.isLoggedIn);
 
   let promiseErrors = new Promise(res => {
     Svc.Obs.add("weave:service:sync:error", onSyncError);
@@ -100,8 +95,8 @@ add_task(async function test_401_logout() {
   _("First sync done.");
 
   await promiseErrors;
-  do_check_eq(Status.login, LOGIN_FAILED_NETWORK_ERROR);
-  do_check_false(Service.isLoggedIn);
+  Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR);
+  Assert.ok(!Service.isLoggedIn);
 
   // Clean up.
   await Service.startOver();
@@ -116,8 +111,8 @@ add_task(async function test_credentials_changed_logout() {
 
   // By calling sync, we ensure we're logged in.
   await sync_and_validate_telem();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED);
-  do_check_true(Service.isLoggedIn);
+  Assert.equal(Status.sync, SYNC_SUCCEEDED);
+  Assert.ok(Service.isLoggedIn);
 
   await EHTestsCommon.generateCredentialsChangedFailure();
 
@@ -128,8 +123,8 @@ add_task(async function test_credentials_changed_logout() {
     error: "Error: Aborting sync, remote setup failed"
   });
 
-  do_check_eq(Status.sync, CREDENTIALS_CHANGED);
-  do_check_false(Service.isLoggedIn);
+  Assert.equal(Status.sync, CREDENTIALS_CHANGED);
+  Assert.ok(!Service.isLoggedIn);
 
   // Clean up.
   await Service.startOver();
@@ -137,23 +132,24 @@ add_task(async function test_credentials_changed_logout() {
 });
 
 add_task(function test_no_lastSync_pref() {
+  syncTestLogging();
   // Test reported error.
   Status.resetSync();
   errorHandler.dontIgnoreErrors = true;
   Status.sync = CREDENTIALS_CHANGED;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
   // Test unreported error.
   Status.resetSync();
   errorHandler.dontIgnoreErrors = true;
   Status.login = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
 });
 
 add_task(function test_shouldReportError() {
   Status.login = MASTER_PASSWORD_LOCKED;
-  do_check_false(errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.shouldReportError());
 
   // Give ourselves a clusterURL so that the temporary 401 no-error situation
   // doesn't come into play.
@@ -164,42 +160,42 @@ add_task(function test_shouldReportError() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.sync = CREDENTIALS_CHANGED;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
   // Test dontIgnoreErrors, non-network, prolonged, sync error reported
   Status.resetSync();
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.sync = CREDENTIALS_CHANGED;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
   // Test dontIgnoreErrors, network, non-prolonged, login error reported
   Status.resetSync();
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.login = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
   // Test dontIgnoreErrors, network, non-prolonged, sync error reported
   Status.resetSync();
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.sync = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
   // Test dontIgnoreErrors, network, prolonged, login error reported
   Status.resetSync();
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.login = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
   // Test dontIgnoreErrors, network, prolonged, sync error reported
   Status.resetSync();
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.sync = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
 
   // Test non-network, prolonged, sync error reported
   Status.resetSync();
@@ -207,8 +203,8 @@ add_task(function test_shouldReportError() {
   errorHandler.dontIgnoreErrors = false;
   errorHandler.didReportProlongedError = false;
   Status.sync = CREDENTIALS_CHANGED;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.didReportProlongedError);
   errorHandler.didReportProlongedError = false;
 
   // Test network, prolonged, login error reported
@@ -216,8 +212,8 @@ add_task(function test_shouldReportError() {
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.login = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.didReportProlongedError);
   errorHandler.didReportProlongedError = false;
 
   // Test network, prolonged, sync error reported
@@ -225,8 +221,8 @@ add_task(function test_shouldReportError() {
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.sync = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.didReportProlongedError);
   errorHandler.didReportProlongedError = false;
 
   // Test non-network, non-prolonged, sync error reported
@@ -234,48 +230,48 @@ add_task(function test_shouldReportError() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.sync = CREDENTIALS_CHANGED;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test network, non-prolonged, login error reported
   Status.resetSync();
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.login = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_false(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(!errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test network, non-prolonged, sync error reported
   Status.resetSync();
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.sync = LOGIN_FAILED_NETWORK_ERROR;
-  do_check_false(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(!errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test server maintenance, sync errors are not reported
   Status.resetSync();
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.sync = SERVER_MAINTENANCE;
-  do_check_false(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(!errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test server maintenance, login errors are not reported
   Status.resetSync();
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.login = SERVER_MAINTENANCE;
-  do_check_false(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(!errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test prolonged, server maintenance, sync errors are reported
   Status.resetSync();
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.sync = SERVER_MAINTENANCE;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.didReportProlongedError);
   errorHandler.didReportProlongedError = false;
 
   // Test prolonged, server maintenance, login errors are reported
@@ -283,8 +279,8 @@ add_task(function test_shouldReportError() {
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = false;
   Status.login = SERVER_MAINTENANCE;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.didReportProlongedError);
   errorHandler.didReportProlongedError = false;
 
   // Test dontIgnoreErrors, server maintenance, sync errors are reported
@@ -292,17 +288,17 @@ add_task(function test_shouldReportError() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.sync = SERVER_MAINTENANCE;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
   // dontIgnoreErrors means we don't set didReportProlongedError
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test dontIgnoreErrors, server maintenance, login errors are reported
   Status.resetSync();
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.login = SERVER_MAINTENANCE;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test dontIgnoreErrors, prolonged, server maintenance,
   // sync errors are reported
@@ -310,8 +306,8 @@ add_task(function test_shouldReportError() {
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.sync = SERVER_MAINTENANCE;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   // Test dontIgnoreErrors, prolonged, server maintenance,
   // login errors are reported
@@ -319,8 +315,8 @@ add_task(function test_shouldReportError() {
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.dontIgnoreErrors = true;
   Status.login = SERVER_MAINTENANCE;
-  do_check_true(errorHandler.shouldReportError());
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.didReportProlongedError);
 });
 
 add_task(async function test_shouldReportError_master_password() {
@@ -338,7 +334,7 @@ add_task(async function test_shouldReportError_master_password() {
 
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   await Service.sync();
-  do_check_false(errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.shouldReportError());
 
   // Clean up.
   Service.verifyLogin = Service._verifyLogin;
@@ -356,11 +352,11 @@ add_task(function test_shouldReportLoginFailureWithNoCluster() {
   Status.resetSync();
   // If we have a LOGIN_REJECTED state, we always report the error.
   Status.login = LOGIN_FAILED_LOGIN_REJECTED;
-  do_check_true(errorHandler.shouldReportError());
+  Assert.ok(errorHandler.shouldReportError());
   // But any other status with a missing clusterURL is treated as a mid-sync
   // 401 (ie, should be treated as a node reassignment)
   Status.login = LOGIN_SUCCEEDED;
-  do_check_false(errorHandler.shouldReportError());
+  Assert.ok(!errorHandler.shouldReportError());
 });
 
 add_task(async function test_login_syncAndReportErrors_non_network_error() {
@@ -377,7 +373,7 @@ add_task(async function test_login_syncAndReportErrors_non_network_error() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.syncAndReportErrors();
   await promiseObserved;
-  do_check_eq(Status.login, LOGIN_FAILED_NO_PASSPHRASE);
+  Assert.equal(Status.login, LOGIN_FAILED_NO_PASSPHRASE);
 
   await clean();
   await promiseStopServer(server);
@@ -393,8 +389,8 @@ add_task(async function test_sync_syncAndReportErrors_non_network_error() {
 
   // By calling sync, we ensure we're logged in.
   await Service.sync();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED);
-  do_check_true(Service.isLoggedIn);
+  Assert.equal(Status.sync, SYNC_SUCCEEDED);
+  Assert.ok(Service.isLoggedIn);
 
   await EHTestsCommon.generateCredentialsChangedFailure();
 
@@ -409,7 +405,7 @@ add_task(async function test_sync_syncAndReportErrors_non_network_error() {
   });
   await promiseObserved;
 
-  do_check_eq(Status.sync, CREDENTIALS_CHANGED);
+  Assert.equal(Status.sync, CREDENTIALS_CHANGED);
   // If we clean this tick, telemetry won't get the right error
   await Async.promiseYield();
   await clean();
@@ -430,7 +426,7 @@ add_task(async function test_login_syncAndReportErrors_prolonged_non_network_err
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.syncAndReportErrors();
   await promiseObserved;
-  do_check_eq(Status.login, LOGIN_FAILED_NO_PASSPHRASE);
+  Assert.equal(Status.login, LOGIN_FAILED_NO_PASSPHRASE);
 
   await clean();
   await promiseStopServer(server);
@@ -446,8 +442,8 @@ add_task(async function test_sync_syncAndReportErrors_prolonged_non_network_erro
 
   // By calling sync, we ensure we're logged in.
   await Service.sync();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED);
-  do_check_true(Service.isLoggedIn);
+  Assert.equal(Status.sync, SYNC_SUCCEEDED);
+  Assert.ok(Service.isLoggedIn);
 
   await EHTestsCommon.generateCredentialsChangedFailure();
 
@@ -462,7 +458,7 @@ add_task(async function test_sync_syncAndReportErrors_prolonged_non_network_erro
   });
   await promiseObserved;
 
-  do_check_eq(Status.sync, CREDENTIALS_CHANGED);
+  Assert.equal(Status.sync, CREDENTIALS_CHANGED);
   // If we clean this tick, telemetry won't get the right error
   await Async.promiseYield();
   await clean();
@@ -482,7 +478,7 @@ add_task(async function test_login_syncAndReportErrors_network_error() {
   errorHandler.syncAndReportErrors();
   await promiseObserved;
 
-  do_check_eq(Status.login, LOGIN_FAILED_NETWORK_ERROR);
+  Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR);
 
   await clean();
 });
@@ -499,7 +495,7 @@ add_task(async function test_sync_syncAndReportErrors_network_error() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   errorHandler.syncAndReportErrors();
   await promiseUISyncError;
-  do_check_eq(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
+  Assert.equal(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
 
   Services.io.offline = false;
   await clean();
@@ -519,7 +515,7 @@ add_task(async function test_login_syncAndReportErrors_prolonged_network_error()
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.syncAndReportErrors();
   await promiseObserved;
-  do_check_eq(Status.login, LOGIN_FAILED_NETWORK_ERROR);
+  Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR);
 
   await clean();
 });
@@ -536,7 +532,7 @@ add_task(async function test_sync_syncAndReportErrors_prolonged_network_error() 
   setLastSync(PROLONGED_ERROR_DURATION);
   errorHandler.syncAndReportErrors();
   await promiseUISyncError;
-  do_check_eq(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
+  Assert.equal(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
 
   Services.io.offline = false;
   await clean();
@@ -555,8 +551,8 @@ add_task(async function test_login_prolonged_non_network_error() {
   setLastSync(PROLONGED_ERROR_DURATION);
   await Service.sync();
   await promiseObserved;
-  do_check_eq(Status.sync, PROLONGED_SYNC_FAILURE);
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.equal(Status.sync, PROLONGED_SYNC_FAILURE);
+  Assert.ok(errorHandler.didReportProlongedError);
 
   await clean();
   await promiseStopServer(server);
@@ -571,8 +567,8 @@ add_task(async function test_sync_prolonged_non_network_error() {
 
   // By calling sync, we ensure we're logged in.
   await Service.sync();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED);
-  do_check_true(Service.isLoggedIn);
+  Assert.equal(Status.sync, SYNC_SUCCEEDED);
+  Assert.ok(Service.isLoggedIn);
 
   await EHTestsCommon.generateCredentialsChangedFailure();
 
@@ -587,8 +583,8 @@ add_task(async function test_sync_prolonged_non_network_error() {
     error: "Error: Aborting sync, remote setup failed"
   });
   await promiseObserved;
-  do_check_eq(Status.sync, PROLONGED_SYNC_FAILURE);
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.equal(Status.sync, PROLONGED_SYNC_FAILURE);
+  Assert.ok(errorHandler.didReportProlongedError);
   await clean();
   await promiseStopServer(server);
 });
@@ -605,8 +601,8 @@ add_task(async function test_login_prolonged_network_error() {
   setLastSync(PROLONGED_ERROR_DURATION);
   await Service.sync();
   await promiseObserved;
-  do_check_eq(Status.sync, PROLONGED_SYNC_FAILURE);
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.equal(Status.sync, PROLONGED_SYNC_FAILURE);
+  Assert.ok(errorHandler.didReportProlongedError);
 
   await clean();
 });
@@ -622,8 +618,8 @@ add_task(async function test_sync_prolonged_network_error() {
   setLastSync(PROLONGED_ERROR_DURATION);
   await Service.sync();
   await promiseUISyncError;
-  do_check_eq(Status.sync, PROLONGED_SYNC_FAILURE);
-  do_check_true(errorHandler.didReportProlongedError);
+  Assert.equal(Status.sync, PROLONGED_SYNC_FAILURE);
+  Assert.ok(errorHandler.didReportProlongedError);
 
   Services.io.offline = false;
   await clean();
@@ -642,8 +638,8 @@ add_task(async function test_login_non_network_error() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   await Service.sync();
   await promiseObserved;
-  do_check_eq(Status.login, LOGIN_FAILED_NO_PASSPHRASE);
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.equal(Status.login, LOGIN_FAILED_NO_PASSPHRASE);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   await clean();
   await promiseStopServer(server);
@@ -658,8 +654,8 @@ add_task(async function test_sync_non_network_error() {
 
   // By calling sync, we ensure we're logged in.
   await Service.sync();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED);
-  do_check_true(Service.isLoggedIn);
+  Assert.equal(Status.sync, SYNC_SUCCEEDED);
+  Assert.ok(Service.isLoggedIn);
 
   await EHTestsCommon.generateCredentialsChangedFailure();
 
@@ -668,8 +664,8 @@ add_task(async function test_sync_non_network_error() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   await Service.sync();
   await promiseObserved;
-  do_check_eq(Status.sync, CREDENTIALS_CHANGED);
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.equal(Status.sync, CREDENTIALS_CHANGED);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   await clean();
   await promiseStopServer(server);
@@ -687,8 +683,8 @@ add_task(async function test_login_network_error() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   await Service.sync();
   await promiseObserved;
-  do_check_eq(Status.login, LOGIN_FAILED_NETWORK_ERROR);
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   Services.io.offline = false;
   await clean();
@@ -705,8 +701,8 @@ add_task(async function test_sync_network_error() {
   setLastSync(NON_PROLONGED_ERROR_DURATION);
   await Service.sync();
   await promiseSyncFinished;
-  do_check_eq(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.equal(Status.sync, LOGIN_FAILED_NETWORK_ERROR);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   Services.io.offline = false;
   await clean();
@@ -729,7 +725,7 @@ add_task(async function test_sync_server_maintenance_error() {
   }
   Svc.Obs.add("weave:ui:sync:error", onSyncError);
 
-  do_check_eq(Status.service, STATUS_OK);
+  Assert.equal(Status.service, STATUS_OK);
 
   let promiseObserved = promiseOneObserver("weave:ui:sync:finish");
 
@@ -739,9 +735,9 @@ add_task(async function test_sync_server_maintenance_error() {
   deepEqual(ping.engines.find(e => e.failureReason).failureReason, { name: "httperror", code: 503 });
 
   await promiseObserved;
-  do_check_eq(Status.service, SYNC_FAILED_PARTIAL);
-  do_check_eq(Status.sync, SERVER_MAINTENANCE);
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.equal(Status.service, SYNC_FAILED_PARTIAL);
+  Assert.equal(Status.sync, SERVER_MAINTENANCE);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   await clean();
   await promiseStopServer(server);
@@ -767,8 +763,8 @@ add_task(async function test_info_collections_login_server_maintenance_error() {
   }
   Svc.Obs.add("weave:ui:login:error", onUIUpdate);
 
-  do_check_false(Status.enforceBackoff);
-  do_check_eq(Status.service, STATUS_OK);
+  Assert.ok(!Status.enforceBackoff);
+  Assert.equal(Status.service, STATUS_OK);
 
   let promiseObserved = promiseOneObserver("weave:ui:clear-error");
 
@@ -776,11 +772,11 @@ add_task(async function test_info_collections_login_server_maintenance_error() {
   await Service.sync();
   await promiseObserved;
 
-  do_check_true(Status.enforceBackoff);
-  do_check_eq(backoffInterval, 42);
-  do_check_eq(Status.service, LOGIN_FAILED);
-  do_check_eq(Status.login, SERVER_MAINTENANCE);
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(Status.enforceBackoff);
+  Assert.equal(backoffInterval, 42);
+  Assert.equal(Status.service, LOGIN_FAILED);
+  Assert.equal(Status.login, SERVER_MAINTENANCE);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   Svc.Obs.remove("weave:ui:login:error", onUIUpdate);
   await clean();
@@ -807,8 +803,8 @@ add_task(async function test_meta_global_login_server_maintenance_error() {
   }
   Svc.Obs.add("weave:ui:login:error", onUIUpdate);
 
-  do_check_false(Status.enforceBackoff);
-  do_check_eq(Status.service, STATUS_OK);
+  Assert.ok(!Status.enforceBackoff);
+  Assert.equal(Status.service, STATUS_OK);
 
   let promiseObserved = promiseOneObserver("weave:ui:clear-error");
 
@@ -816,11 +812,11 @@ add_task(async function test_meta_global_login_server_maintenance_error() {
   await Service.sync();
   await promiseObserved;
 
-  do_check_true(Status.enforceBackoff);
-  do_check_eq(backoffInterval, 42);
-  do_check_eq(Status.service, LOGIN_FAILED);
-  do_check_eq(Status.login, SERVER_MAINTENANCE);
-  do_check_false(errorHandler.didReportProlongedError);
+  Assert.ok(Status.enforceBackoff);
+  Assert.equal(backoffInterval, 42);
+  Assert.equal(Status.service, LOGIN_FAILED);
+  Assert.equal(Status.login, SERVER_MAINTENANCE);
+  Assert.ok(!errorHandler.didReportProlongedError);
 
   Svc.Obs.remove("weave:ui:login:error", onUIUpdate);
   await clean();

@@ -744,15 +744,6 @@ RecomputePosition(nsIFrame* aFrame)
   if (display->IsRelativelyPositionedStyle()) {
     // Move the frame
     if (display->mPosition == NS_STYLE_POSITION_STICKY) {
-      if (display->IsInnerTableStyle()) {
-        // We don't currently support sticky positioning of inner table
-        // elements (bug 975644). Bail.
-        //
-        // When this is fixed, remove the null-check for the computed
-        // offsets in nsTableRowFrame::ReflowChildren.
-        return true;
-      }
-
       // Update sticky positioning for an entire element at once, starting with
       // the first continuation or ib-split sibling.
       // It's rare that the frame we already have isn't already the first
@@ -1382,10 +1373,6 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
     }
   }
 
-  // Make sure to not rebuild quote or counter lists while we're
-  // processing restyles
-  frameConstructor->BeginUpdate();
-
   bool didUpdateCursor = false;
 
   for (size_t i = 0; i < aChangeList.Length(); ++i) {
@@ -1730,8 +1717,6 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
       }
     }
   }
-
-  frameConstructor->EndUpdate();
 
 #ifdef DEBUG
   // Verify the style tree.  Note that this needs to happen once we've

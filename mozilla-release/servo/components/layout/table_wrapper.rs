@@ -17,8 +17,8 @@ use app_units::Au;
 use block::{AbsoluteNonReplaced, BlockFlow, FloatNonReplaced, ISizeAndMarginsComputer, ISizeConstraintInput};
 use block::{ISizeConstraintSolution, MarginsMayCollapseFlag};
 use context::LayoutContext;
-use display_list_builder::{BlockFlowDisplayListBuilding, DisplayListBuildState, StackingContextCollectionFlags};
-use display_list_builder::StackingContextCollectionState;
+use display_list::{BlockFlowDisplayListBuilding, DisplayListBuildState, StackingContextCollectionFlags};
+use display_list::StackingContextCollectionState;
 use euclid::Point2D;
 use floats::FloatKind;
 use flow::{Flow, FlowClass, ImmutableFlowUtils, FlowFlags, OpaqueFlow};
@@ -67,7 +67,7 @@ impl TableWrapperFlow {
                                         -> TableWrapperFlow {
         let mut block_flow = BlockFlow::from_fragment_and_float_kind(fragment, float_kind);
         let table_layout = if block_flow.fragment().style().get_table().table_layout ==
-                              table_layout::T::fixed {
+                              table_layout::T::Fixed {
             TableLayout::Fixed
         } else {
             TableLayout::Auto

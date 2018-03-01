@@ -5,14 +5,12 @@
 "use strict";
 
 const Services = require("Services");
-const {
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const { gDevTools } = require("devtools/client/framework/devtools");
 const { L10N } = require("../utils/l10n");
 
-const { a } = DOM;
+const { a } = dom;
 
 const LEARN_MORE = L10N.getStr("netmonitor.headers.learnMore");
 
@@ -37,7 +35,9 @@ function onLearnMoreClick(e, url) {
   e.preventDefault();
 
   let win = Services.wm.getMostRecentWindow(gDevTools.chromeWindowType);
-  if (e.button === 1) {
+  let { button, ctrlKey, metaKey } = e;
+  let isOSX = Services.appinfo.OS == "Darwin";
+  if (button === 1 || (button === 0 && (isOSX ? metaKey : ctrlKey))) {
     win.openUILinkIn(url, "tabshifted");
   } else {
     win.openUILinkIn(url, "tab");
