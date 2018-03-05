@@ -299,37 +299,17 @@
                      key="key_gotoHistory"
                      observes="viewHistorySidebar"
                      oncommand="SidebarUI.show('viewHistorySidebar');">
-<<<<<<< HEAD
-         <observes element="viewHistorySidebar" attribute="checked"/>
-       </toolbarbutton>
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-         <observes element="viewHistorySidebar" attribute="checked"/>
-       </toolbarbutton>
-=======
         <observes element="viewHistorySidebar" attribute="checked"/>
       </toolbarbutton>
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
       <toolbarbutton id="sidebar-switcher-tabs"
                      label="&syncedTabs.sidebar.label;"
                      class="subviewbutton subviewbutton-iconic"
                      observes="viewTabsSidebar"
                      oncommand="SidebarUI.show('viewTabsSidebar');">
-<<<<<<< HEAD
-         <observes element="viewTabsSidebar" attribute="checked"/>
-       </toolbarbutton>
-#endif
-      <toolbarseparator/>
-      <vbox id="sidebar-extensions"></vbox>
-||||||| merged common ancestors
-         <observes element="viewTabsSidebar" attribute="checked"/>
-       </toolbarbutton>
-      <toolbarseparator/>
-      <vbox id="sidebar-extensions"></vbox>
-=======
         <observes element="viewTabsSidebar" attribute="checked"/>
       </toolbarbutton>
->>>>>>> origin/upstream-releases
+#endif
       <toolbarseparator/>
       <!-- Extension toolbarbuttons go here. -->
       <toolbarseparator id="sidebar-extensions-separator"/>

@@ -718,13 +718,7 @@ var gViewController = {
     this.headeredViews = document.getElementById("headered-views");
     this.headeredViewsDeck = document.getElementById("headered-views-content");
 
-<<<<<<< HEAD
 #if 0
-    this.viewObjects.search = gSearchView;
-||||||| merged common ancestors
-    this.viewObjects.search = gSearchView;
-=======
->>>>>>> origin/upstream-releases
     this.viewObjects.discover = gDiscoverView;
 #endif
     this.viewObjects.list = gListView;
@@ -2017,21 +2011,6 @@ var gCategories = {
     if (item)
       item.badgeCount = aCount;
   },
-<<<<<<< HEAD
-
-  maybeHideSearch() {
-    var view = gViewController.parseViewId(this.node.selectedItem.value);
-    if (this._search)
-      this._search.disabled = view.type != "search";
-  }
-||||||| merged common ancestors
-
-  maybeHideSearch() {
-    var view = gViewController.parseViewId(this.node.selectedItem.value);
-    this._search.disabled = view.type != "search";
-  }
-=======
->>>>>>> origin/upstream-releases
 };
 
 

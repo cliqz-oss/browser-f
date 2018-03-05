@@ -762,15 +762,9 @@ nsContextMenu.prototype = {
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
                    frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-<<<<<<< HEAD
-                   noReferrer: this.linkHasNoReferrer,
+                   noReferrer: this.linkHasNoReferrer || this.onPlainTextLink,
                    private: this.browser.loadContext.usePrivateBrowsing
     };
-||||||| merged common ancestors
-                   noReferrer: this.linkHasNoReferrer };
-=======
-                   noReferrer: this.linkHasNoReferrer || this.onPlainTextLink };
->>>>>>> origin/upstream-releases
     for (let p in extra) {
       params[p] = extra[p];
     }

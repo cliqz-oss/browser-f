@@ -139,22 +139,8 @@
   <hbox flex="1">
     <vbox id="category-box">
       <!-- category list -->
-<<<<<<< HEAD
-      <richlistbox id="categories" flex="1" last-selected="category-plugin">
+      <richlistbox id="categories" flex="1">
 #if 0
-        <richlistitem id="category-search" value="addons://search/"
-                      class="category"
-                      name="&view.search.label;" priority="0"
-                      tooltiptext="&view.search.label;" disabled="true"/>
-||||||| merged common ancestors
-      <richlistbox id="categories" flex="1">
-        <richlistitem id="category-search" value="addons://search/"
-                      class="category"
-                      name="&view.search.label;" priority="0"
-                      tooltiptext="&view.search.label;" disabled="true"/>
-=======
-      <richlistbox id="categories" flex="1">
->>>>>>> origin/upstream-releases
         <richlistitem id="category-discover" value="addons://discover/"
                       class="category"
                       name="&view.discover.label;" priority="1000"

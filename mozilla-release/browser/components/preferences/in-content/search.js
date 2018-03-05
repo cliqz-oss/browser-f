@@ -14,7 +14,9 @@ Preferences.addAll([
   { id: "browser.search.suggest.enabled", type: "bool" },
   { id: "browser.urlbar.suggest.searches", type: "bool" },
   { id: "browser.search.hiddenOneOffs", type: "unichar" },
+/* Cliqz. Not used
   { id: "browser.search.widget.inNavBar", type: "bool" },
+*/
   { id: "browser.urlbar.matchBuckets", type: "string" },
 ]);
 

@@ -397,14 +397,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuRemoteTabs.noclients.title "Noch keine synchronisierten Tabs">
 <!ENTITY appMenuRemoteTabs.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
-<<<<<<< HEAD
 <!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
-||||||| merged common ancestors
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
-=======
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
 <!ENTITY appMenuRemoteTabs.unverified.label "Ihr Konto muss verifiziert werden.">
->>>>>>> origin/upstream-releases
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
 <!ENTITY appMenuRemoteTabs.managedevices.label "Geräte verwalten…">
 <!ENTITY appMenuRemoteTabs.sidebar.label "Sidebar mit synchronisierten Tabs">
@@ -829,17 +823,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
 <!ENTITY syncedTabs.sidebar.noclients.label    "Melde dich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.noclients.title    "Noch keine synchronisierten Tabs">
-<<<<<<< HEAD
 <!ENTITY syncedTabs.sidebar.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY syncedTabs.sidebar.notsignedin.label  "Melde dich an, um eine Liste der Tabs von deinen anderen Geräten angezeigt zu bekommen.">
-||||||| merged common ancestors
-<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
-=======
-<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.unverified.label   "Ihr Konto muss verifiziert werden.">
->>>>>>> origin/upstream-releases
 <!ENTITY syncedTabs.sidebar.notabs.label       "Keine offenen Tabs">
 <!ENTITY syncedTabs.sidebar.openprefs.label    "Einstellungen von &syncBrand.shortName.label; öffnen">
 <!-- LOCALIZATION NOTE (syncedTabs.sidebar.tabsnotsyncing.label): This is shown

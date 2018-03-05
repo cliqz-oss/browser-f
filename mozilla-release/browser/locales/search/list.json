@@ -197,13 +197,7 @@
     "de": {
       "default": {
         "visibleDefaultEngines": [
-<<<<<<< HEAD
           "google", "yahoo-de", "bing", "ddg", "youtube-de", "ecosia", "twitter", "amazondotcom-de", "eBay-de", "wikipedia-de", "leo_ende_de", "gmaps-de", "gimages-de", "startpage-de", "qwant"
-||||||| merged common ancestors
-          "google", "yahoo-de", "amazondotcom-de", "bing", "ddg", "ebay-de", "leo_ende_de", "wikipedia-de"
-=======
-          "google", "yahoo-de", "amazondotcom-de", "bing", "ddg", "ebay-de", "ecosia", "leo_ende_de", "wikipedia-de"
->>>>>>> origin/upstream-releases
         ]
       }
     },

@@ -222,19 +222,11 @@
 #include search.xul
 #include privacy.xul
 #include containers.xul
-<<<<<<< HEAD
 #if MOZ_SERVICES_SYNC
   #include sync.xul
 #endif
 #include connect.xul
-        </prefpane>
-||||||| merged common ancestors
-#include sync.xul
-        </prefpane>
-=======
-#include sync.xul
         </vbox>
->>>>>>> origin/upstream-releases
       </vbox>
     </vbox>
   </hbox>

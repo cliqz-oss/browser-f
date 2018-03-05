@@ -33,31 +33,7 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 #files were generated.  Like the tests subpackage, we
 #probably only need to conditionaly define the %files
 #section.
-<<<<<<< HEAD
-%if 0%{?createdevel:1}
-%package devel
-Summary:    %{pr_name} SDK
-Group:      Development/Libraries
-requires:   %{name} = %{version}-%{release}
-%description devel
-%{pr_name} SDK libraries, headers and interface descriptions
-%endif
-
 %if 0%{?createtests:1}
-||||||| merged common ancestors
-%if %{?createdevel:1}
-%package devel
-Summary:    %{pr_name} SDK
-Group:      Development/Libraries
-requires:   %{name} = %{version}-%{release}
-%description devel
-%{pr_name} SDK libraries, headers and interface descriptions
-%endif
-
-%if %{?createtests:1}
-=======
-%if %{?createtests:1}
->>>>>>> origin/upstream-releases
 %package tests
 Summary:    %{pr_name} tests
 Group:      Developement/Libraries
@@ -136,31 +112,7 @@ fi
 %doc
 
 
-<<<<<<< HEAD
-%if 0%{?createdevel:1}
-%files devel
-%defattr(-,root,root,-)
-%{_includedir}
-%{_sdkdir}
-%{_idldir}
-%endif
-
-
 %if 0%{?createtests:1}
-||||||| merged common ancestors
-%if %{?createdevel:1}
-%files devel
-%defattr(-,root,root,-)
-%{_includedir}
-%{_sdkdir}
-%{_idldir}
-%endif
-
-
-%if %{?createtests:1}
-=======
-%if %{?createtests:1}
->>>>>>> origin/upstream-releases
 %files tests
 %{_datadir}/%{_testsinstalldir}/tests/
 %endif

@@ -25,16 +25,12 @@ Components.utils.import("resource://gre/modules/AddonManager.jsm");
 
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
 
-<<<<<<< HEAD
-var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
-
-||||||| merged common ancestors
-=======
 const TRACKING_PROTECTION_KEY = "websites.trackingProtectionMode";
 const TRACKING_PROTECTION_PREFS = ["privacy.trackingprotection.enabled",
                                    "privacy.trackingprotection.pbmode.enabled"];
 
->>>>>>> origin/upstream-releases
+var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
+
 XPCOMUtils.defineLazyGetter(this, "AlertsServiceDND", function() {
   try {
     let alertsService = Cc["@mozilla.org/alerts-service;1"]
@@ -303,15 +299,10 @@ var gPrivacyPane = {
 #if 0
     this._initTrackingProtection();
     this._initTrackingProtectionPBM();
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
     this._initTrackingProtectionExtensionControl();
->>>>>>> origin/upstream-releases
+#endif
     this._initAutocomplete();
 
-<<<<<<< HEAD
     this._initHttpsEverywhere();
 #if CQZ_AUTO_PRIVATE_TAB
     const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
@@ -319,16 +310,6 @@ var gPrivacyPane = {
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
 
-    setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
-      gPrivacyPane._updateSanitizeSettingsButton);
-    setEventListener("browser.privatebrowsing.autostart", "change",
-      gPrivacyPane.updatePrivacyMicroControls);
-||||||| merged common ancestors
-    setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
-      gPrivacyPane._updateSanitizeSettingsButton);
-    setEventListener("browser.privatebrowsing.autostart", "change",
-      gPrivacyPane.updatePrivacyMicroControls);
-=======
     Preferences.get("privacy.sanitize.sanitizeOnShutdown").on("change",
       gPrivacyPane._updateSanitizeSettingsButton.bind(gPrivacyPane));
     Preferences.get("browser.privatebrowsing.autostart").on("change",
@@ -337,7 +318,6 @@ var gPrivacyPane = {
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
     Preferences.get("privacy.trackingprotection.pbmode.enabled").on("change",
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
->>>>>>> origin/upstream-releases
     setEventListener("historyMode", "command", function() {
       gPrivacyPane.updateHistoryModePane();
       gPrivacyPane.updateHistoryModePrefs();
@@ -376,14 +356,10 @@ var gPrivacyPane = {
       gPrivacyPane.showCookies);
     setEventListener("clearDataSettings", "command",
       gPrivacyPane.showClearPrivateDataSettings);
-<<<<<<< HEAD
 #if 0
-||||||| merged common ancestors
-=======
     setEventListener("disableTrackingProtectionExtension", "command",
       makeDisableControllingExtension(
         PREF_SETTING_TYPE, TRACKING_PROTECTION_KEY));
->>>>>>> origin/upstream-releases
     setEventListener("trackingProtectionRadioGroup", "command",
       gPrivacyPane.trackingProtectionWritePrefs);
     setEventListener("trackingProtectionExceptions", "command",

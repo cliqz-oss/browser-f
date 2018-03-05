@@ -7,13 +7,6 @@
 <!ENTITY searchBar.hidden.label                "Adressleiste für Suche und Seitenaufrufe verwenden">
 <!ENTITY searchBar.shown.label                 "Suchleiste zur Symbolleiste hinzufügen">
 
-<<<<<<< HEAD
-<!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
-||||||| merged common ancestors
-<!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
-
-<!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
-=======
 <!-- LOCALIZATION NOTE (showSearchSuggestionsAboveHistory.label): This string
      describes what the user will observe when the system prioritizes search
      suggestions over browsing history in the results that extend down from the
@@ -21,10 +14,9 @@
      (appearing most proximate to), not time (appearing before). -->
 <!ENTITY showSearchSuggestionsAboveHistory.label "In Adressleiste Suchvorschläge vor Einträgen aus der Browser-Chronik anzeigen">
 
-<!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
+<!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
 
 <!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
->>>>>>> origin/upstream-releases
 
 <!ENTITY chooseYourDefaultSearchEngine2.label  "Wähle deine alternative Suchmaschine. Wenn du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst du deren Ergebnisse wenn du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">

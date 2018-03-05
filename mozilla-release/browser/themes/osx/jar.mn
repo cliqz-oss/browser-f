@@ -20,14 +20,8 @@ browser.jar:
   skin/classic/browser/panel-plus-sign.png
   skin/classic/browser/page-livemarks.png
 * skin/classic/browser/pageInfo.css
-<<<<<<< HEAD
   skin/classic/browser/privatebrowsing-eraser.svg
-  skin/classic/browser/searchbar.css
-||||||| merged common ancestors
-  skin/classic/browser/searchbar.css
-=======
 * skin/classic/browser/searchbar.css
->>>>>>> origin/upstream-releases
   skin/classic/browser/slowStartup-16.png
   skin/classic/browser/toolbarbutton-dropmarker.png
   skin/classic/browser/toolbarbutton-dropmarker@2x.png

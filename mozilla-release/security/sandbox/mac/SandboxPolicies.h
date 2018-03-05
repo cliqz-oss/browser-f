@@ -283,19 +283,7 @@ static const char contentSandboxRules[] = R"(
 
   ; level 3: Does not have any of it's own rules. The global rules provide:
   ;          no global read/write access,
-<<<<<<< HEAD
   ;          read access permitted to $PROFILE/{extensions,features,chrome}
-  (if (string=? hasFilePrivileges "TRUE")
-    ; This process has blanket file read privileges
-    (allow file-read*))
-||||||| merged common ancestors
-  ;          read access permitted to $PROFILE/{extensions,chrome}
-  (if (string=? hasFilePrivileges "TRUE")
-    ; This process has blanket file read privileges
-    (allow file-read*))
-=======
-  ;          read access permitted to $PROFILE/{extensions,chrome}
->>>>>>> origin/upstream-releases
 
   (if (string=? hasProfileDir "TRUE")
     ; we have a profile dir

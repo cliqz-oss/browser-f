@@ -211,6 +211,11 @@ Preferences.addAll([
   { id: "browser.search.update", type: "bool" },
 
   { id: "privacy.userContext.enabled", type: "bool" },
+
+  // Cliqz
+  { id: "browser.privatebrowsing.apt", type: "bool" },
+  { id: "browser.startup.restoreTabs", type: "bool" },
+  { id: "browser.startup.addFreshTab", type: "bool" },
 ]);
 
 if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -949,21 +954,9 @@ var gMainPane = {
    * on the value of the browser.privatebrowsing.autostart pref.
    */
   updateBrowserStartupLastSession() {
-<<<<<<< HEAD
-    let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
+    let pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
     let restorePref = document.getElementById("browser.startup.restoreTabs");
     let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
-||||||| merged common ancestors
-    let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
-    let startupPref = document.getElementById("browser.startup.page");
-    let group = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
-=======
-    let pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
-    let startupPref = Preferences.get("browser.startup.page");
-    let group = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
->>>>>>> origin/upstream-releases
     if (pbAutoStartPref.value) {
       restoreCheckbox.setAttribute("disabled", "true");
       restoreCheckbox.checked = false;

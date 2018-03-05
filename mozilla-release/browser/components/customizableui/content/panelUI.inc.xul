@@ -650,14 +650,8 @@
                        label="&appMenuRemoteTabs.label;"
                        closemenu="none"
                        oncommand="PanelUI.showSubView('PanelUI-remotetabs', this)"/>
-<<<<<<< HEAD
 #endif
-        <toolbarseparator/>
-||||||| merged common ancestors
-        <toolbarseparator/>
-=======
         <toolbarseparator hidden="true"/>
->>>>>>> origin/upstream-releases
         <label value="&appMenuRecentHighlights.label;"
                hidden="true"
                class="subview-subheader"/>
