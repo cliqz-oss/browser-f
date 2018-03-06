@@ -183,7 +183,7 @@ let InternalFaviconLoader = {
     let {innerWindowID, currentURI} = browser;
 
     // First we do the actual setAndFetch call:
-    let loadType = PrivateBrowsingUtils.isWindowPrivate(win)
+    let loadType = PrivateBrowsingUtils.isBrowserPrivate(browser)
       ? PlacesUtils.favicons.FAVICON_LOAD_PRIVATE
       : PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE;
     let callback = this._makeCompletionCallback(win, innerWindowID);
