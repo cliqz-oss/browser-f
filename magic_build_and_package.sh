@@ -43,8 +43,11 @@ echo '***** Packaging *****'
 ./mach package
 
 echo '***** Prepare build symbols *****'
-if [ "$MOZ_UPDATE_CHANNEL" == "release" ] || [ "$MOZ_UPDATE_CHANNEL" == "beta" ]; then
-  ./mach buildsymbols
+# Because of Rust problem with dsymutil on Mac (stylo) - only for Windows platform
+if [ $IS_WIN ]; then
+  if [ "$MOZ_UPDATE_CHANNEL" == "release" ] || [ "$MOZ_UPDATE_CHANNEL" == "beta" ]; then
+    ./mach buildsymbols
+  fi
 fi
 
 echo '***** Build DE language pack *****'
