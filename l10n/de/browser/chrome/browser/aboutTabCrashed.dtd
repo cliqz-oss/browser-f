@@ -22,7 +22,7 @@
 <!ENTITY tabCrashed.requestHelp "Unterstütze uns!">
 <!ENTITY tabCrashed.requestHelpMessage "Absturzberichte helfen uns beim Analysieren von Problemen und dabei, &brandShortName; besser zu machen.">
 <!ENTITY tabCrashed.requestReport "Diesen Tab melden">
-<!ENTITY tabCrashed.sendReport3 "Automatischen Absturzbericht an Mozilla senden, damit solche Probleme von uns behoben werden können.">
+<!ENTITY tabCrashed.sendReport3 "Automatischen Absturzbericht an Cliqz senden, damit solche Probleme von uns behoben werden können.">
 <!ENTITY tabCrashed.commentPlaceholder2 "Einen Kommentar hinzufügen (Kommentare sind freiwillig und öffentlich sichtbar)">
 <!ENTITY tabCrashed.includeURL3 "Adressen der während des Absturzes &brandShortName; geöffneten Seiten mitsenden">
 <!ENTITY tabCrashed.emailPlaceholder "Deine E-Mail-Adresse">
