@@ -11,7 +11,7 @@
 #include "base/task.h"                  // for CancelableTask, etc
 #include "base/thread.h"                // for Thread
 #ifdef XP_WIN
-#include "mozilla/gfx/DeviceManagerDx.h"// for DeviceManagerDx
+#include "mozilla/gfx/DeviceManagerDx.h" // for DeviceManagerDx
 #endif
 #include "mozilla/ipc/Transport.h"      // for Transport
 #include "mozilla/layers/AnimationHelper.h" // for CompositorAnimationStorage
@@ -131,7 +131,7 @@ CrossProcessCompositorBridgeParent::AllocPAPZCTreeManagerParent(const uint64_t& 
   if (!state.mParent) {
     // Note: we immediately call ClearTree since otherwise the APZCTM will
     // retain a reference to itself, through the checkerboard observer.
-    RefPtr<APZCTreeManager> temp = new APZCTreeManager();
+    RefPtr<APZCTreeManager> temp = new APZCTreeManager(0);
     temp->ClearTree();
     return new APZCTreeManagerParent(aLayersId, temp);
   }
@@ -228,7 +228,8 @@ CrossProcessCompositorBridgeParent::AllocPWebRenderBridgeParent(const wr::Pipeli
     return parent;
   }
 
-  RefPtr<wr::WebRenderAPI> api = root->GetWebRenderAPI()->Clone();
+  RefPtr<wr::WebRenderAPI> api = root->GetWebRenderAPI();
+  api = api->Clone();
   RefPtr<AsyncImagePipelineManager> holder = root->AsyncImageManager();
   RefPtr<CompositorAnimationStorage> animStorage = cbp->GetAnimationStorage();
   parent = new WebRenderBridgeParent(this, aPipelineId, nullptr, root->CompositorScheduler(), Move(api), Move(holder), Move(animStorage));

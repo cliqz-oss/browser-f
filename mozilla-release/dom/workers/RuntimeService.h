@@ -45,7 +45,7 @@ class RuntimeService final : public nsIObserver
     nsTArray<WorkerPrivate*> mActiveWorkers;
     nsTArray<WorkerPrivate*> mActiveServiceWorkers;
     nsTArray<WorkerPrivate*> mQueuedWorkers;
-    nsClassHashtable<nsCStringHashKey, SharedWorkerInfo> mSharedWorkerInfos;
+    nsTArray<UniquePtr<SharedWorkerInfo>> mSharedWorkerInfos;
     uint32_t mChildWorkerCount;
 
     WorkerDomainInfo()
@@ -91,7 +91,6 @@ class RuntimeService final : public nsIObserver
   nsCOMPtr<nsITimer> mIdleThreadTimer;
 
   static JSSettings sDefaultJSSettings;
-  static bool sDefaultPreferences[WORKERPREF_COUNT];
 
 public:
   struct NavigatorProperties
@@ -174,13 +173,6 @@ public:
   }
 
   static void
-  GetDefaultPreferences(bool aPreferences[WORKERPREF_COUNT])
-  {
-    AssertIsOnMainThread();
-    memcpy(aPreferences, sDefaultPreferences, WORKERPREF_COUNT * sizeof(bool));
-  }
-
-  static void
   SetDefaultContextOptions(const JS::ContextOptions& aContextOptions)
   {
     AssertIsOnMainThread();
@@ -201,9 +193,6 @@ public:
 
   void
   UpdateAllWorkerLanguages(const nsTArray<nsString>& aLanguages);
-
-  void
-  UpdateAllWorkerPreference(WorkerPreference aPref, bool aValue);
 
   static void
   SetDefaultJSGCSettings(JSGCParamKey aKey, uint32_t aValue)
@@ -242,6 +231,8 @@ public:
 
   uint32_t ClampedHardwareConcurrency() const;
 
+  void CrashIfHanging();
+
 private:
   RuntimeService();
   ~RuntimeService();
@@ -267,9 +258,6 @@ private:
 
   static void
   ShutdownIdleThreads(nsITimer* aTimer, void* aClosure);
-
-  static void
-  WorkerPrefChanged(const char* aPrefName, void* aClosure);
 
   nsresult
   CreateSharedWorkerFromLoadInfo(JSContext* aCx,

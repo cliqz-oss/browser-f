@@ -184,7 +184,7 @@ private:
     // Object that implements native GeckoEditable calls.
     // Strong referenced by the Java instance.
     NativePtr<mozilla::widget::GeckoEditableSupport> mEditableSupport;
-    mozilla::java::GeckoEditable::GlobalRef mEditable;
+    mozilla::jni::Object::GlobalRef mEditableParent;
 
     class GeckoViewSupport;
     // Object that implements native GeckoView calls and associated states.
@@ -195,6 +195,8 @@ private:
 
     // Class that implements native PresentationMediaPlayerManager calls.
     class PMPMSupport;
+
+    mozilla::Atomic<bool, mozilla::ReleaseAcquire> mContentDocumentDisplayed;
 
 public:
     static nsWindow* TopWindow();
@@ -300,13 +302,14 @@ public:
 
     mozilla::layers::CompositorBridgeChild* GetCompositorBridgeChild() const;
 
-    mozilla::jni::DependentRef<mozilla::java::GeckoLayerClient> GetLayerClient();
+    void SetContentDocumentDisplayed(bool aDisplayed);
+    bool IsContentDocumentDisplayed();
 
     // Call this function when the users activity is the direct cause of an
     // event (like a keypress or mouse click).
     void UserActivity();
 
-    mozilla::java::GeckoEditable::Ref& GetEditableParent() { return mEditable; }
+    mozilla::jni::Object::Ref& GetEditableParent() { return mEditableParent; }
 
     void RecvToolbarAnimatorMessageFromCompositor(int32_t aMessage) override;
     void UpdateRootFrameMetrics(const ScreenPoint& aScrollOffset, const CSSToScreenScale& aZoom) override;

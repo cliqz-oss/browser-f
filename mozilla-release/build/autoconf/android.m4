@@ -40,20 +40,17 @@ AC_DEFUN([MOZ_ANDROID_CPU_ARCH],
 [
 
 if test "$OS_TARGET" = "Android"; then
-    case "${CPU_ARCH}-${MOZ_ARCH}" in
-    arm-armv7*)
+    case "${CPU_ARCH}" in
+    arm)
         ANDROID_CPU_ARCH=armeabi-v7a
         ;;
-    arm-*)
-        ANDROID_CPU_ARCH=armeabi
-        ;;
-    x86-*)
+    x86)
         ANDROID_CPU_ARCH=x86
         ;;
-    mips32-*) # When target_cpu is mipsel, CPU_ARCH is mips32
+    mips32) # When target_cpu is mipsel, CPU_ARCH is mips32
         ANDROID_CPU_ARCH=mips
         ;;
-    aarch64-*)
+    aarch64)
         ANDROID_CPU_ARCH=arm64-v8a
         ;;
     esac
@@ -88,7 +85,7 @@ if test "$OS_TARGET" = "Android"; then
         done
     fi
 fi
-AC_SUBST([STLPORT_LIBS])
+AC_SUBST_LIST([STLPORT_LIBS])
 
 ])
 
@@ -275,13 +272,9 @@ case "$target" in
     dnl Android Tools 26 changes emulator path.
     dnl Although android_sdk_root/tools still has emulator command,
     dnl it doesn't work correctly
-    MOZ_PATH_PROG(EMULATOR, emulator, :, [$android_sdk_root/emulator])
+    MOZ_PATH_PROG(EMULATOR, emulator, :, [$android_sdk_root/emulator:$android_tools])
     if test -z "$EMULATOR" -o "$EMULATOR" = ":"; then
-        dnl old emulator path until Android Tools 25.x
-        MOZ_PATH_PROG(EMULATOR, emulator, :, [$android_tools])
-        if test -z "$EMULATOR" -o "$EMULATOR" = ":"; then
-            AC_MSG_ERROR([The program emulator was not found.  Try |mach bootstrap|.])
-        fi
+        AC_MSG_ERROR([The program emulator was not found.  Try |mach bootstrap|.])
     fi
 
     # `compileSdkVersion ANDROID_COMPILE_SDK_VERSION` is Gradle-only,

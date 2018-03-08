@@ -7,6 +7,7 @@
 
 #include "mozilla/EditorBase.h"         // mEditorBase
 #include "mozilla/SelectionState.h"     // RangeUpdater
+#include "mozilla/TextComposition.h"    // TextComposition
 #include "mozilla/dom/Selection.h"      // local var
 #include "mozilla/dom/Text.h"           // mTextNode
 #include "nsAString.h"                  // params
@@ -20,21 +21,52 @@ namespace mozilla {
 
 using namespace dom;
 
+// static
+already_AddRefed<CompositionTransaction>
+CompositionTransaction::Create(EditorBase& aEditorBase,
+                               const nsAString& aStringToInsert,
+                               Text& aTextNode,
+                               uint32_t aOffset)
+{
+  TextComposition* composition = aEditorBase.GetComposition();
+  MOZ_RELEASE_ASSERT(composition);
+  // XXX Actually, we get different text node and offset from editor in some
+  //     cases.  If composition stores text node, we should use it and offset
+  //     in it.
+  Text* textNode = composition->GetContainerTextNode();
+  uint32_t offset;
+  if (textNode) {
+    offset = composition->XPOffsetInTextNode();
+    NS_WARNING_ASSERTION(&aTextNode == composition->GetContainerTextNode(),
+      "The editor tries to insert composition string into different node");
+    NS_WARNING_ASSERTION(aOffset == composition->XPOffsetInTextNode(),
+      "The editor tries to insert composition string into different offset");
+  } else {
+    textNode = &aTextNode;
+    offset = aOffset;
+  }
+  RefPtr<CompositionTransaction> transaction =
+    new CompositionTransaction(aEditorBase, aStringToInsert,
+                               *textNode, offset);
+  // XXX Now, it might be better to modify the text node information of
+  //     the TextComposition instance in DoTransaction() because updating
+  //     the information before changing actual DOM tree is pretty odd.
+  composition->OnCreateCompositionTransaction(aStringToInsert,
+                                              textNode, offset);
+  return transaction.forget();
+}
+
 CompositionTransaction::CompositionTransaction(
-                          Text& aTextNode,
-                          uint32_t aOffset,
-                          uint32_t aReplaceLength,
-                          TextRangeArray* aTextRangeArray,
-                          const nsAString& aStringToInsert,
                           EditorBase& aEditorBase,
-                          RangeUpdater* aRangeUpdater)
+                          const nsAString& aStringToInsert,
+                          Text& aTextNode,
+                          uint32_t aOffset)
   : mTextNode(&aTextNode)
   , mOffset(aOffset)
-  , mReplaceLength(aReplaceLength)
-  , mRanges(aTextRangeArray)
+  , mReplaceLength(aEditorBase.GetComposition()->XPLengthInTextNode())
+  , mRanges(aEditorBase.GetComposition()->GetRanges())
   , mStringToInsert(aStringToInsert)
   , mEditorBase(&aEditorBase)
-  , mRangeUpdater(aRangeUpdater)
   , mFixed(false)
 {
   MOZ_ASSERT(mTextNode->TextLength() >= mOffset);
@@ -76,7 +108,8 @@ CompositionTransaction::DoTransaction()
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
-    mRangeUpdater->SelAdjInsertText(*mTextNode, mOffset, mStringToInsert);
+    mEditorBase->RangeUpdaterRef().
+                   SelAdjInsertText(*mTextNode, mOffset, mStringToInsert);
   } else {
     uint32_t replaceableLength = mTextNode->TextLength() - mOffset;
     nsresult rv =
@@ -84,8 +117,10 @@ CompositionTransaction::DoTransaction()
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
-    mRangeUpdater->SelAdjDeleteText(mTextNode, mOffset, mReplaceLength);
-    mRangeUpdater->SelAdjInsertText(*mTextNode, mOffset, mStringToInsert);
+    mEditorBase->RangeUpdaterRef().
+                   SelAdjDeleteText(mTextNode, mOffset, mReplaceLength);
+    mEditorBase->RangeUpdaterRef().
+                   SelAdjInsertText(*mTextNode, mOffset, mStringToInsert);
 
     // If IME text node is multiple node, ReplaceData doesn't remove all IME
     // text.  So we need remove remained text into other text node.
@@ -97,7 +132,7 @@ CompositionTransaction::DoTransaction()
         Text* text = static_cast<Text*>(node.get());
         uint32_t textLength = text->TextLength();
         text->DeleteData(0, remainLength);
-        mRangeUpdater->SelAdjDeleteText(text, 0, remainLength);
+        mEditorBase->RangeUpdaterRef().SelAdjDeleteText(text, 0, remainLength);
         remainLength -= textLength;
         node = node->GetNextSibling();
       }
@@ -165,14 +200,6 @@ void
 CompositionTransaction::MarkFixed()
 {
   mFixed = true;
-}
-
-NS_IMETHODIMP
-CompositionTransaction::GetTxnDescription(nsAString& aString)
-{
-  aString.AssignLiteral("CompositionTransaction: ");
-  aString += mStringToInsert;
-  return NS_OK;
 }
 
 /* ============ private methods ================== */

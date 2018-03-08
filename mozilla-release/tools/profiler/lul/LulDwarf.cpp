@@ -336,15 +336,15 @@ class CallFrameInfo::UndefinedRule: public CallFrameInfo::Rule {
  public:
   UndefinedRule() { }
   ~UndefinedRule() { }
-  CFIRTag getTag() const { return CFIR_UNDEFINED_RULE; }
-  bool Handle(Handler *handler, uint64 address, int reg) const {
+  CFIRTag getTag() const override { return CFIR_UNDEFINED_RULE; }
+  bool Handle(Handler *handler, uint64 address, int reg) const override {
     return handler->UndefinedRule(address, reg);
   }
-  bool operator==(const Rule &rhs) const {
+  bool operator==(const Rule &rhs) const override {
     if (rhs.getTag() != CFIR_UNDEFINED_RULE) return false;
     return true;
   }
-  Rule *Copy() const { return new UndefinedRule(*this); }
+  Rule *Copy() const override { return new UndefinedRule(*this); }
 };
 
 // Rule: the register's value is the same as that it had in the caller.
@@ -352,15 +352,15 @@ class CallFrameInfo::SameValueRule: public CallFrameInfo::Rule {
  public:
   SameValueRule() { }
   ~SameValueRule() { }
-  CFIRTag getTag() const { return CFIR_SAME_VALUE_RULE; }
-  bool Handle(Handler *handler, uint64 address, int reg) const {
+  CFIRTag getTag() const override { return CFIR_SAME_VALUE_RULE; }
+  bool Handle(Handler *handler, uint64 address, int reg) const override {
     return handler->SameValueRule(address, reg);
   }
-  bool operator==(const Rule &rhs) const {
+  bool operator==(const Rule &rhs) const override {
     if (rhs.getTag() != CFIR_SAME_VALUE_RULE) return false;
     return true;
   }
-  Rule *Copy() const { return new SameValueRule(*this); }
+  Rule *Copy() const override { return new SameValueRule(*this); }
 };
 
 // Rule: the register is saved at OFFSET from BASE_REGISTER.  BASE_REGISTER
@@ -370,17 +370,17 @@ class CallFrameInfo::OffsetRule: public CallFrameInfo::Rule {
   OffsetRule(int base_register, long offset)
       : base_register_(base_register), offset_(offset) { }
   ~OffsetRule() { }
-  CFIRTag getTag() const { return CFIR_OFFSET_RULE; }
-  bool Handle(Handler *handler, uint64 address, int reg) const {
+  CFIRTag getTag() const override { return CFIR_OFFSET_RULE; }
+  bool Handle(Handler *handler, uint64 address, int reg) const override {
     return handler->OffsetRule(address, reg, base_register_, offset_);
   }
-  bool operator==(const Rule &rhs) const {
+  bool operator==(const Rule &rhs) const override {
     if (rhs.getTag() != CFIR_OFFSET_RULE) return false;
     const OffsetRule *our_rhs = static_cast<const OffsetRule *>(&rhs);
     return (base_register_ == our_rhs->base_register_ &&
             offset_ == our_rhs->offset_);
   }
-  Rule *Copy() const { return new OffsetRule(*this); }
+  Rule *Copy() const override { return new OffsetRule(*this); }
   // We don't actually need SetBaseRegister or SetOffset here, since they
   // are only ever applied to CFA rules, for DW_CFA_def_cfa_offset, and it
   // doesn't make sense to use OffsetRule for computing the CFA: it
@@ -398,19 +398,19 @@ class CallFrameInfo::ValOffsetRule: public CallFrameInfo::Rule {
   ValOffsetRule(int base_register, long offset)
       : base_register_(base_register), offset_(offset) { }
   ~ValOffsetRule() { }
-  CFIRTag getTag() const { return CFIR_VAL_OFFSET_RULE; }
-  bool Handle(Handler *handler, uint64 address, int reg) const {
+  CFIRTag getTag() const override { return CFIR_VAL_OFFSET_RULE; }
+  bool Handle(Handler *handler, uint64 address, int reg) const override {
     return handler->ValOffsetRule(address, reg, base_register_, offset_);
   }
-  bool operator==(const Rule &rhs) const {
+  bool operator==(const Rule &rhs) const override {
     if (rhs.getTag() != CFIR_VAL_OFFSET_RULE) return false;
     const ValOffsetRule *our_rhs = static_cast<const ValOffsetRule *>(&rhs);
     return (base_register_ == our_rhs->base_register_ &&
             offset_ == our_rhs->offset_);
   }
-  Rule *Copy() const { return new ValOffsetRule(*this); }
-  void SetBaseRegister(unsigned reg) { base_register_ = reg; }
-  void SetOffset(long long offset) { offset_ = offset; }
+  Rule *Copy() const override { return new ValOffsetRule(*this); }
+  void SetBaseRegister(unsigned reg) override { base_register_ = reg; }
+  void SetOffset(long long offset) override { offset_ = offset; }
  private:
   int base_register_;
   long offset_;
@@ -422,16 +422,16 @@ class CallFrameInfo::RegisterRule: public CallFrameInfo::Rule {
   explicit RegisterRule(int register_number)
       : register_number_(register_number) { }
   ~RegisterRule() { }
-  CFIRTag getTag() const { return CFIR_REGISTER_RULE; }
-  bool Handle(Handler *handler, uint64 address, int reg) const {
+  CFIRTag getTag() const override { return CFIR_REGISTER_RULE; }
+  bool Handle(Handler *handler, uint64 address, int reg) const override {
     return handler->RegisterRule(address, reg, register_number_);
   }
-  bool operator==(const Rule &rhs) const {
+  bool operator==(const Rule &rhs) const override {
     if (rhs.getTag() != CFIR_REGISTER_RULE) return false;
     const RegisterRule *our_rhs = static_cast<const RegisterRule *>(&rhs);
     return (register_number_ == our_rhs->register_number_);
   }
-  Rule *Copy() const { return new RegisterRule(*this); }
+  Rule *Copy() const override { return new RegisterRule(*this); }
  private:
   int register_number_;
 };
@@ -442,16 +442,16 @@ class CallFrameInfo::ExpressionRule: public CallFrameInfo::Rule {
   explicit ExpressionRule(const string &expression)
       : expression_(expression) { }
   ~ExpressionRule() { }
-  CFIRTag getTag() const { return CFIR_EXPRESSION_RULE; }
-  bool Handle(Handler *handler, uint64 address, int reg) const {
+  CFIRTag getTag() const override { return CFIR_EXPRESSION_RULE; }
+  bool Handle(Handler *handler, uint64 address, int reg) const override {
     return handler->ExpressionRule(address, reg, expression_);
   }
-  bool operator==(const Rule &rhs) const {
+  bool operator==(const Rule &rhs) const override {
     if (rhs.getTag() != CFIR_EXPRESSION_RULE) return false;
     const ExpressionRule *our_rhs = static_cast<const ExpressionRule *>(&rhs);
     return (expression_ == our_rhs->expression_);
   }
-  Rule *Copy() const { return new ExpressionRule(*this); }
+  Rule *Copy() const override { return new ExpressionRule(*this); }
  private:
   string expression_;
 };
@@ -462,17 +462,17 @@ class CallFrameInfo::ValExpressionRule: public CallFrameInfo::Rule {
   explicit ValExpressionRule(const string &expression)
       : expression_(expression) { }
   ~ValExpressionRule() { }
-  CFIRTag getTag() const { return CFIR_VAL_EXPRESSION_RULE; }
-  bool Handle(Handler *handler, uint64 address, int reg) const {
+  CFIRTag getTag() const override { return CFIR_VAL_EXPRESSION_RULE; }
+  bool Handle(Handler *handler, uint64 address, int reg) const override {
     return handler->ValExpressionRule(address, reg, expression_);
   }
-  bool operator==(const Rule &rhs) const {
+  bool operator==(const Rule &rhs) const override {
     if (rhs.getTag() != CFIR_VAL_EXPRESSION_RULE) return false;
     const ValExpressionRule *our_rhs =
         static_cast<const ValExpressionRule *>(&rhs);
     return (expression_ == our_rhs->expression_);
   }
-  Rule *Copy() const { return new ValExpressionRule(*this); }
+  Rule *Copy() const override { return new ValExpressionRule(*this); }
  private:
   string expression_;
 };
@@ -1297,11 +1297,11 @@ bool CallFrameInfo::ReadCIEFields(CIE *cie) {
   cursor++;
 
   // If we don't recognize the version, we can't parse any more fields of the
-  // CIE. For DWARF CFI, we handle versions 1 through 3 (there was never a
-  // version 2 of CFI data). For .eh_frame, we handle versions 1 and 3 as well;
+  // CIE. For DWARF CFI, we handle versions 1 through 4 (there was never a
+  // version 2 of CFI data). For .eh_frame, we handle versions 1 and 4 as well;
   // the difference between those versions seems to be the same as for
   // .debug_frame.
-  if (cie->version < 1 || cie->version > 3) {
+  if (cie->version < 1 || cie->version > 4) {
     reporter_->UnrecognizedVersion(cie->offset, cie->version);
     return false;
   }
@@ -1328,6 +1328,34 @@ bool CallFrameInfo::ReadCIEFields(CIE *cie) {
       reporter_->UnrecognizedAugmentation(cie->offset, cie->augmentation);
       return false;
     }
+  }
+
+  if (cie->version >= 4) {
+    // Check that the address_size and segment_size fields are plausible.
+    if (cie->end - cursor < 2) {
+      return ReportIncomplete(cie);
+    }
+    uint8_t address_size = reader_->ReadOneByte(cursor);
+    cursor++;
+    if (address_size != sizeof(void*)) {
+      // This is not per-se invalid CFI.  But we can reasonably expect to
+      // be running on a target of the same word size as the CFI is for,
+      // so we reject this case.
+      reporter_->InvalidDwarf4Artefact(cie->offset, "Invalid address_size");
+      return false;
+    }
+    uint8_t segment_size = reader_->ReadOneByte(cursor);
+    cursor++;
+    if (segment_size != 0) {
+      // This is also not per-se invalid CFI, but we don't currently handle
+      // the case of non-zero |segment_size|.
+      reporter_->InvalidDwarf4Artefact(cie->offset, "Invalid segment_size");
+      return false;
+    }
+    // We only continue parsing if |segment_size| is zero.  If this routine
+    // is ever changed to allow non-zero |segment_size|, then
+    // ReadFDEFields() below will have to be changed to match, per comments
+    // there.
   }
 
   // Parse the code alignment factor.
@@ -1454,6 +1482,12 @@ bool CallFrameInfo::ReadCIEFields(CIE *cie) {
 bool CallFrameInfo::ReadFDEFields(FDE *fde) {
   const char *cursor = fde->fields;
   size_t size;
+
+  // At this point, for Dwarf 4 and above, we are assuming that the
+  // associated CIE has its |segment_size| field equal to zero.  This is
+  // checked for in ReadCIEFields() above.  If ReadCIEFields() is ever
+  // changed to allow non-zero |segment_size| CIEs then we will have to read
+  // the segment_selector value at this point.
 
   fde->address = reader_->ReadEncodedPointer(cursor, fde->cie->pointer_encoding,
                                              &size);
@@ -1716,6 +1750,18 @@ void CallFrameInfo::Reporter::UnrecognizedAugmentation(uint64 offset,
                  " CIE specifies unrecognized augmentation: '%s'\n",
                  filename_.c_str(), offset, section_.c_str(), aug.c_str());
   log_(buf);
+}
+
+void CallFrameInfo::Reporter::InvalidDwarf4Artefact(uint64 offset,
+                                                    const char* what) {
+  char* what_safe = strndup(what, 100);
+  char buf[300];
+  SprintfLiteral(buf,
+                 "%s: CFI frame description entry at offset 0x%llx in '%s':"
+                 " CIE specifies invalid Dwarf4 artefact: %s\n",
+                 filename_.c_str(), offset, section_.c_str(), what_safe);
+  log_(buf);
+  free(what_safe);
 }
 
 void CallFrameInfo::Reporter::InvalidPointerEncoding(uint64 offset,

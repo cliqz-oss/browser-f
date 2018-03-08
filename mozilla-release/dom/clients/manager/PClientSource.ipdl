@@ -20,7 +20,11 @@ sync protocol PClientSource
   manages PClientSourceOp;
 
 parent:
+  sync WorkerSyncPing();
   async Teardown();
+  async ExecutionReady(ClientSourceExecutionReadyArgs aArgs);
+  async Freeze();
+  async Thaw();
 
 child:
   async PClientSourceOp(ClientOpConstructorArgs aArgs);

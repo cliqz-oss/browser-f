@@ -307,13 +307,9 @@ var gEditItemOverlay = {
       // Note: since all controls are collapsed by default, we don't get the
       // default XUL dialog behavior, that selects the first control, so we set
       // the focus explicitly.
-      // Note: If focusedElement === "preferred", this file expects gPrefService
-      // to be defined in the global scope.
       let elt;
       if (focusedElement === "preferred") {
-        /* eslint-disable no-undef */
-        elt = this._element(gPrefService.getCharPref("browser.bookmarks.editDialog.firstEditField"));
-        /* eslint-enable no-undef */
+        elt = this._element(Services.prefs.getCharPref("browser.bookmarks.editDialog.firstEditField"));
       } else if (focusedElement === "first") {
         elt = document.querySelector("textbox:not([collapsed=true])");
       }
@@ -629,7 +625,7 @@ var gEditItemOverlay = {
 
     // Here we update either the item title or its cached static title
     let newTitle = this._namePicker.value;
-    if (!newTitle && this._paneInfo.parentGuid == PlacesUtils.bookmarks.tagsGuid) {
+    if (!newTitle && this._paneInfo.isTag) {
       // We don't allow setting an empty title for a tag, restore the old one.
       this._initNamePicker();
     } else {
@@ -1112,8 +1108,6 @@ var gEditItemOverlay = {
   },
 
   _onItemTitleChange(aItemId, aNewTitle) {
-    if (!this._paneInfo.isBookmark)
-      return;
     if (aItemId == this._paneInfo.itemId) {
       this._paneInfo.title = aNewTitle;
       this._initTextField(this._namePicker, aNewTitle);
@@ -1130,10 +1124,12 @@ var gEditItemOverlay = {
       }
     }
     // We need to also update title of recent folders.
-    for (let folder of this._recentFolders) {
-      if (folder.folderId == aItemId) {
-        folder.title = aNewTitle;
-        break;
+    if (this._recentFolders) {
+      for (let folder of this._recentFolders) {
+        if (folder.folderId == aItemId) {
+          folder.title = aNewTitle;
+          break;
+        }
       }
     }
   },
@@ -1145,7 +1141,7 @@ var gEditItemOverlay = {
       this._onTagsChange(aGuid).catch(Components.utils.reportError);
       return;
     }
-    if (aProperty == "title" && this._paneInfo.isItem) {
+    if (aProperty == "title" && (this._paneInfo.isItem || this._paneInfo.isTag)) {
       // This also updates titles of folders in the folder menu list.
       this._onItemTitleChange(aItemId, aValue);
       return;

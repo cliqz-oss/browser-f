@@ -9,7 +9,6 @@ with Files('**'):
 
 XPIDL_SOURCES += [
     'nsIBackgroundChannelRegistrar.idl',
-    'nsIHstsPrimingCallback.idl',
     'nsIHttpActivityObserver.idl',
     'nsIHttpAuthenticableChannel.idl',
     'nsIHttpAuthenticator.idl',
@@ -45,6 +44,7 @@ EXPORTS.mozilla.net += [
     'HttpChannelChild.h',
     'HttpChannelParent.h',
     'HttpInfo.h',
+    'nsServerTiming.h',
     'NullHttpChannel.h',
     'PHttpChannelParams.h',
     'PSpdyPush.h',
@@ -63,7 +63,6 @@ UNIFIED_SOURCES += [
     'BackgroundChannelRegistrar.cpp',
     'CacheControlParser.cpp',
     'ConnectionDiagnostics.cpp',
-    'HSTSPrimerListener.cpp',
     'Http2Compression.cpp',
     'Http2Push.cpp',
     'Http2Session.cpp',
@@ -95,6 +94,7 @@ UNIFIED_SOURCES += [
     'nsHttpRequestHead.cpp',
     'nsHttpResponseHead.cpp',
     'nsHttpTransaction.cpp',
+    'nsServerTiming.cpp',
     'NullHttpChannel.cpp',
     'NullHttpTransaction.cpp',
     'TunnelUtils.cpp',
@@ -135,7 +135,11 @@ EXTRA_COMPONENTS += [
 ]
 
 if CONFIG['OS_TARGET'] == 'Darwin':
-    if CONFIG['HOST_MAJOR_VERSION'] >= '15':
+    if not CONFIG['HOST_MAJOR_VERSION']:
+        DEFINES.update(
+            HAS_CONNECTX=True,
+        )
+    elif CONFIG['HOST_MAJOR_VERSION'] >= '15':
         DEFINES.update(
             HAS_CONNECTX=True,
         )

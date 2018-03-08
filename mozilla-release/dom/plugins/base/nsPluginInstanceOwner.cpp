@@ -46,7 +46,6 @@ using mozilla::DefaultXDisplay;
 #include "nsIScrollableFrame.h"
 #include "nsIDocShell.h"
 #include "ImageContainer.h"
-#include "nsIDOMHTMLCollection.h"
 #include "GLContext.h"
 #include "EGLUtils.h"
 #include "nsIContentInlines.h"
@@ -997,15 +996,13 @@ NPBool nsPluginInstanceOwner::ConvertPointPuppet(PuppetWidget *widget,
     return false;
   }
   CSSIntPoint chromeSize = CSSIntPoint::Truncate(
-    LayoutDeviceIntPoint::FromUnknownPoint(rootWidget->GetChromeDimensions()) /
-    scaleFactor);
+    rootWidget->GetChromeOffset() / scaleFactor);
   nsIntSize intScreenDims = rootWidget->GetScreenDimensions();
   CSSIntSize screenDims = CSSIntSize::Truncate(
     LayoutDeviceIntSize::FromUnknownSize(intScreenDims) / scaleFactor);
   int32_t screenH = screenDims.height;
   CSSIntPoint windowPosition = CSSIntPoint::Truncate(
-    LayoutDeviceIntPoint::FromUnknownPoint(rootWidget->GetWindowPosition()) /
-    scaleFactor);
+    rootWidget->GetWindowPosition() / scaleFactor);
 
   // Window size is tab size + chrome size.
   LayoutDeviceIntRect tabContentBounds = puppetWidget->GetBounds();

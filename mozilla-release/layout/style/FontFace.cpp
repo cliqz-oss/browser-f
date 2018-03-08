@@ -13,6 +13,7 @@
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "mozilla/CycleCollectedJSContext.h"
+#include "mozilla/ServoCSSParser.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/ServoUtils.h"
 #include "nsCSSFontFaceRule.h"
@@ -34,7 +35,7 @@ class FontFaceBufferSource : public gfxFontFaceBufferSource
 public:
   explicit FontFaceBufferSource(FontFace* aFontFace)
     : mFontFace(aFontFace) {}
-  virtual void TakeBuffer(uint8_t*& aBuffer, uint32_t& aLength);
+  virtual void TakeBuffer(uint8_t*& aBuffer, uint32_t& aLength) override;
 
 private:
   RefPtr<FontFace> mFontFace;
@@ -513,8 +514,6 @@ FontFace::ParseDescriptor(nsCSSFontDesc aDescID,
                           const nsAString& aString,
                           nsCSSValue& aResult)
 {
-  nsCSSParser parser;
-
   nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mParent);
   nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull();
 
@@ -522,6 +521,12 @@ FontFace::ParseDescriptor(nsCSSFontDesc aDescID,
   nsCOMPtr<nsIURI> docURI = window->GetDocumentURI();
   nsCOMPtr<nsIURI> base = window->GetDocBaseURI();
 
+  if (mFontFaceSet->Document()->IsStyledByServo()) {
+    RefPtr<URLExtraData> url = new URLExtraData(base, docURI, principal);
+    return ServoCSSParser::ParseFontDescriptor(aDescID, aString, url, aResult);
+  }
+
+  nsCSSParser parser;
   if (!parser.ParseFontFaceDescriptor(aDescID, aString,
                                       docURI, // aSheetURL
                                       base,

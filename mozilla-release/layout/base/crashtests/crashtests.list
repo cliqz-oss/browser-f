@@ -383,7 +383,7 @@ load 629035-1.html
 load 629908-1.html
 load 635329.html
 load 636229-1.html
-== 640272.html 640272-ref.html
+skip-if(webrender&&winWidget) == 640272.html 640272-ref.html # bug 1426199 for webrender
 load 645193.html
 load 645572-1.html
 load 650475.xhtml
@@ -470,12 +470,12 @@ load 1127198-1.html
 load 1140198.html
 load 1143535.html
 load 1153716.html
-pref(layout.css.grid.enabled,true) load 1156588.html
+load 1156588.html
 load 1162813.xul
 load 1163583.html
 load 1234622-1.html
 load 1235467-1.html
-pref(dom.webcomponents.enabled,true) load 1261351.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1261351.html
 load 1270797-1.html
 load 1278455-1.html
 load 1286889.html
@@ -516,3 +516,10 @@ load 1409088.html
 load 1409147.html
 load 1411138.html
 load 1419762.html
+load 1420533.html
+load 1425959.html
+load 1425893.html
+load 1428353.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1429088.html
+load 1429961.html
+load 1435015.html

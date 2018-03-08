@@ -15,13 +15,17 @@
 #include "mozilla/dom/Attr.h"
 #include "mozilla/ErrorResult.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsIDOMMozNamedAttrMap.h"
 #include "nsRefPtrHashtable.h"
 #include "nsString.h"
 #include "nsWrapperCache.h"
 
 class nsAtom;
 class nsIDocument;
+namespace mozilla {
+namespace dom {
+class DocGroup;
+} // namespace dom
+} // namespace mozilla
 
 /**
  * Structure used as a key for caching Attrs in nsDOMAttributeMap's mAttributeCache.
@@ -81,12 +85,12 @@ private:
   nsAttrKey mKey;
 };
 
-// Helper class that implements the nsIDOMMozNamedAttrMap interface.
-class nsDOMAttributeMap final : public nsIDOMMozNamedAttrMap
+class nsDOMAttributeMap final : public nsISupports
                               , public nsWrapperCache
 {
 public:
   typedef mozilla::dom::Attr Attr;
+  typedef mozilla::dom::DocGroup DocGroup;
   typedef mozilla::dom::Element Element;
   typedef mozilla::ErrorResult ErrorResult;
 
@@ -94,9 +98,6 @@ public:
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS(nsDOMAttributeMap)
-
-  // nsIDOMMozNamedAttrMap interface
-  NS_DECL_NSIDOMMOZNAMEDATTRMAP
 
   void DropReference();
 
@@ -135,6 +136,7 @@ public:
     return mContent;
   }
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+  DocGroup* GetDocGroup() const;
 
   // WebIDL
   Attr* GetNamedItem(const nsAString& aAttrName);

@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use {ColorF, ColorU, IdNamespace, LayoutPoint, ToBits};
-use app_units::Au;
+use {ColorU, IdNamespace, LayoutPoint};
 #[cfg(target_os = "macos")]
 use core_foundation::string::CFString;
 #[cfg(target_os = "macos")]
@@ -94,7 +93,6 @@ pub enum FontRenderMode {
     Mono = 0,
     Alpha,
     Subpixel,
-    Bitmap,
 }
 
 #[repr(u32)]
@@ -131,7 +129,6 @@ impl FontRenderMode {
     // Combine two font render modes such that the lesser amount of AA limits the AA of the result.
     pub fn limit_by(self, other: FontRenderMode) -> FontRenderMode {
         match (self, other) {
-            (FontRenderMode::Bitmap, _) | (_, FontRenderMode::Bitmap) => FontRenderMode::Bitmap,
             (FontRenderMode::Subpixel, _) | (_, FontRenderMode::Mono) => other,
             _ => self,
         }
@@ -142,7 +139,7 @@ impl SubpixelDirection {
     // Limit the subpixel direction to what is supported by the render mode.
     pub fn limit_by(self, render_mode: FontRenderMode) -> SubpixelDirection {
         match render_mode {
-            FontRenderMode::Mono | FontRenderMode::Bitmap => SubpixelDirection::None,
+            FontRenderMode::Mono => SubpixelDirection::None,
             FontRenderMode::Alpha | FontRenderMode::Subpixel => self,
         }
     }
@@ -178,14 +175,14 @@ pub struct FontVariation {
 impl Ord for FontVariation {
     fn cmp(&self, other: &FontVariation) -> Ordering {
         self.tag.cmp(&other.tag)
-            .then(self.value._to_bits().cmp(&other.value._to_bits()))
+            .then(self.value.to_bits().cmp(&other.value.to_bits()))
     }
 }
 
 impl PartialEq for FontVariation {
     fn eq(&self, other: &FontVariation) -> bool {
         self.tag == other.tag &&
-        self.value._to_bits() == other.value._to_bits()
+        self.value.to_bits() == other.value.to_bits()
     }
 }
 
@@ -194,7 +191,7 @@ impl Eq for FontVariation {}
 impl Hash for FontVariation {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.tag.hash(state);
-        self.value._to_bits().hash(state);
+        self.value.to_bits().hash(state);
     }
 }
 
@@ -202,14 +199,68 @@ impl Hash for FontVariation {
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct GlyphOptions {
     pub render_mode: FontRenderMode,
+    pub flags: FontInstanceFlags,
 }
+
+impl Default for GlyphOptions {
+    fn default() -> GlyphOptions {
+        GlyphOptions {
+            render_mode: FontRenderMode::Subpixel,
+            flags: FontInstanceFlags::empty(),
+        }
+    }
+}
+
+bitflags! {
+    #[repr(C)]
+    #[derive(Deserialize, Serialize)]
+    pub struct FontInstanceFlags: u32 {
+        // Common flags
+        const SYNTHETIC_ITALICS = 1 << 0;
+        const SYNTHETIC_BOLD    = 1 << 1;
+        const EMBEDDED_BITMAPS  = 1 << 2;
+        const SUBPIXEL_BGR      = 1 << 3;
+        const TRANSPOSE         = 1 << 4;
+        const FLIP_X            = 1 << 5;
+        const FLIP_Y            = 1 << 6;
+
+        // Windows flags
+        const FORCE_GDI         = 1 << 16;
+
+        // Mac flags
+        const FONT_SMOOTHING    = 1 << 16;
+
+        // FreeType flags
+        const FORCE_AUTOHINT    = 1 << 16;
+        const NO_AUTOHINT       = 1 << 17;
+        const VERTICAL_LAYOUT   = 1 << 18;
+    }
+}
+
+impl Default for FontInstanceFlags {
+    #[cfg(target_os = "windows")]
+    fn default() -> FontInstanceFlags {
+        FontInstanceFlags::empty()
+    }
+
+    #[cfg(target_os = "macos")]
+    fn default() -> FontInstanceFlags {
+        FontInstanceFlags::FONT_SMOOTHING
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn default() -> FontInstanceFlags {
+        FontInstanceFlags::empty()
+    }
+}
+
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct FontInstanceOptions {
     pub render_mode: FontRenderMode,
     pub subpx_dir: SubpixelDirection,
-    pub synthetic_italics: bool,
+    pub flags: FontInstanceFlags,
     /// When bg_color.a is != 0 and render_mode is FontRenderMode::Subpixel,
     /// the text will be rendered with bg_color.r/g/b as an opaque estimated
     /// background color.
@@ -221,7 +272,7 @@ impl Default for FontInstanceOptions {
         FontInstanceOptions {
             render_mode: FontRenderMode::Subpixel,
             subpx_dir: SubpixelDirection::Horizontal,
-            synthetic_italics: false,
+            flags: Default::default(),
             bg_color: ColorU::new(0, 0, 0, 0),
         }
     }
@@ -231,16 +282,14 @@ impl Default for FontInstanceOptions {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct FontInstancePlatformOptions {
-    pub use_embedded_bitmap: bool,
-    pub force_gdi_rendering: bool,
+    pub unused: u32,
 }
 
 #[cfg(target_os = "windows")]
 impl Default for FontInstancePlatformOptions {
     fn default() -> FontInstancePlatformOptions {
         FontInstancePlatformOptions {
-            use_embedded_bitmap: false,
-            force_gdi_rendering: false,
+            unused: 0,
         }
     }
 }
@@ -249,24 +298,17 @@ impl Default for FontInstancePlatformOptions {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct FontInstancePlatformOptions {
-    pub font_smoothing: bool,
+    pub unused: u32,
 }
 
 #[cfg(target_os = "macos")]
 impl Default for FontInstancePlatformOptions {
     fn default() -> FontInstancePlatformOptions {
         FontInstancePlatformOptions {
-            font_smoothing: true,
+            unused: 0,
         }
     }
 }
-
-pub const FONT_FORCE_AUTOHINT: u16  = 0b1;
-pub const FONT_NO_AUTOHINT: u16     = 0b10;
-pub const FONT_EMBEDDED_BITMAP: u16 = 0b100;
-pub const FONT_EMBOLDEN: u16        = 0b1000;
-pub const FONT_VERTICAL_LAYOUT: u16 = 0b10000;
-pub const FONT_SUBPIXEL_BGR: u16    = 0b100000;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[repr(u8)]
@@ -293,7 +335,6 @@ pub enum FontHinting {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct FontInstancePlatformOptions {
-    pub flags: u16,
     pub lcd_filter: FontLCDFilter,
     pub hinting: FontHinting,
 }
@@ -302,61 +343,8 @@ pub struct FontInstancePlatformOptions {
 impl Default for FontInstancePlatformOptions {
     fn default() -> FontInstancePlatformOptions {
         FontInstancePlatformOptions {
-            flags: 0,
             lcd_filter: FontLCDFilter::Default,
             hinting: FontHinting::LCD,
-        }
-    }
-}
-
-#[derive(Clone, Hash, PartialEq, Eq, Debug, Deserialize, Serialize, Ord, PartialOrd)]
-pub struct FontInstance {
-    pub font_key: FontKey,
-    // The font size is in *device* pixels, not logical pixels.
-    // It is stored as an Au since we need sub-pixel sizes, but
-    // can't store as a f32 due to use of this type as a hash key.
-    // TODO(gw): Perhaps consider having LogicalAu and DeviceAu
-    //           or something similar to that.
-    pub size: Au,
-    pub color: ColorU,
-    pub bg_color: ColorU,
-    pub render_mode: FontRenderMode,
-    pub subpx_dir: SubpixelDirection,
-    pub platform_options: Option<FontInstancePlatformOptions>,
-    pub variations: Vec<FontVariation>,
-    pub synthetic_italics: bool,
-}
-
-impl FontInstance {
-    pub fn new(
-        font_key: FontKey,
-        size: Au,
-        color: ColorF,
-        bg_color: ColorU,
-        render_mode: FontRenderMode,
-        subpx_dir: SubpixelDirection,
-        platform_options: Option<FontInstancePlatformOptions>,
-        variations: Vec<FontVariation>,
-        synthetic_italics: bool,
-    ) -> FontInstance {
-        FontInstance {
-            font_key,
-            size,
-            color: color.into(),
-            bg_color,
-            render_mode,
-            subpx_dir,
-            platform_options,
-            variations,
-            synthetic_italics,
-        }
-    }
-
-    pub fn get_subpx_offset(&self, glyph: &GlyphKey) -> (f64, f64) {
-        match self.subpx_dir {
-            SubpixelDirection::None => (0.0, 0.0),
-            SubpixelDirection::Horizontal => (glyph.subpixel_offset.into(), 0.0),
-            SubpixelDirection::Vertical => (0.0, glyph.subpixel_offset.into()),
         }
     }
 }

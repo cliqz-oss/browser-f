@@ -11,7 +11,6 @@ toolkit.jar:
   skin/classic/global/checkbox.css
   skin/classic/global/colorpicker.css
   skin/classic/global/commonDialog.css
-  skin/classic/global/customizeToolbar.css
   skin/classic/global/dialog.css
   skin/classic/global/dropmarker.css
   skin/classic/global/filefield.css
@@ -25,7 +24,6 @@ toolkit.jar:
   skin/classic/global/netError.css
   skin/classic/global/numberbox.css
   skin/classic/global/popup.css
-  skin/classic/global/preferences.css
   skin/classic/global/progressmeter.css
   skin/classic/global/radio.css
   skin/classic/global/resizer.css
@@ -37,7 +35,6 @@ toolkit.jar:
   skin/classic/global/tabprompts.css
   skin/classic/global/tabbox.css
   skin/classic/global/textbox.css
-  skin/classic/global/datetimepicker.css
   skin/classic/global/toolbar.css
   skin/classic/global/toolbarbutton.css
 * skin/classic/global/tree.css
@@ -49,20 +46,15 @@ toolkit.jar:
   skin/classic/global/arrow/arrow-dn.gif                             (arrow/arrow-dn.gif)
   skin/classic/global/arrow/arrow-dn.png                             (arrow/arrow-dn.png)
   skin/classic/global/arrow/arrow-lft-dis.gif                        (arrow/arrow-lft-dis.gif)
-  skin/classic/global/arrow/arrow-lft-hov.gif                        (arrow/arrow-lft-hov.gif)
   skin/classic/global/arrow/arrow-lft-sharp.gif                      (arrow/arrow-lft-sharp.gif)
-  skin/classic/global/arrow/arrow-lft.gif                            (arrow/arrow-lft.gif)
   skin/classic/global/arrow/arrow-rit-dis.gif                        (arrow/arrow-rit-dis.gif)
-  skin/classic/global/arrow/arrow-rit-hov.gif                        (arrow/arrow-rit-hov.gif)
   skin/classic/global/arrow/arrow-rit-sharp.gif                      (arrow/arrow-rit-sharp.gif)
   skin/classic/global/arrow/arrow-rit.gif                            (arrow/arrow-rit.gif)
   skin/classic/global/arrow/arrow-up-dis.gif                         (arrow/arrow-up-dis.gif)
   skin/classic/global/arrow/arrow-up-sharp.gif                       (arrow/arrow-up-sharp.gif)
   skin/classic/global/arrow/arrow-up.gif                             (arrow/arrow-up.gif)
-  skin/classic/global/arrow/panelarrow-horizontal.png                (arrow/panelarrow-horizontal.png)
-  skin/classic/global/arrow/panelarrow-horizontal@2x.png             (arrow/panelarrow-horizontal@2x.png)
-  skin/classic/global/arrow/panelarrow-vertical.png                  (arrow/panelarrow-vertical.png)
-  skin/classic/global/arrow/panelarrow-vertical@2x.png               (arrow/panelarrow-vertical@2x.png)
+  skin/classic/global/arrow/panelarrow-horizontal.svg                (arrow/panelarrow-horizontal.svg)
+  skin/classic/global/arrow/panelarrow-vertical.svg                  (arrow/panelarrow-vertical.svg)
   skin/classic/global/checkbox/cbox-check.gif                        (checkbox/cbox-check.gif)
   skin/classic/global/checkbox/cbox-check-dis.gif                    (checkbox/cbox-check-dis.gif)
   skin/classic/global/dirListing/dirListing.css                      (dirListing/dirListing.css)
@@ -73,8 +65,6 @@ toolkit.jar:
   skin/classic/global/icons/glyph-dropdown.png                       (icons/glyph-dropdown.png)
   skin/classic/global/icons/glyph-dropdown@2x.png                    (icons/glyph-dropdown@2x.png)
   skin/classic/global/icons/notfound.png                             (icons/notfound.png)
-  skin/classic/global/icons/panebutton-active.png                    (icons/panebutton-active.png)
-  skin/classic/global/icons/panebutton-inactive.png                  (icons/panebutton-inactive.png)
   skin/classic/global/icons/panel-dropmarker.png                     (icons/panel-dropmarker.png)
   skin/classic/global/icons/resizer.png                              (icons/resizer.png)
   skin/classic/global/icons/resizer@2x.png                           (icons/resizer@2x.png)

@@ -6,7 +6,6 @@
 
 use byteorder::{BigEndian, WriteBytesExt};
 use computed_values::{font_feature_settings, font_stretch, font_style, font_weight};
-use computed_values::font_family::FamilyName;
 use counter_style;
 use cssparser::UnicodeRange;
 use font_face::{FontFaceRuleData, Source, FontDisplay, FontWeight};
@@ -18,7 +17,10 @@ use gecko_bindings::sugar::refptr::{RefPtr, UniqueRefPtr};
 use nsstring::nsString;
 use properties::longhands::font_language_override;
 use shared_lock::{ToCssWithGuard, SharedRwLockReadGuard};
-use std::{fmt, str};
+use std::fmt::{self, Write};
+use std::str;
+use str::CssStringWriter;
+use values::computed::font::FamilyName;
 use values::generics::FontSettings;
 
 /// A @font-face rule
@@ -102,21 +104,21 @@ macro_rules! map_enum {
 
 map_enum! {
     font_style {
-        normal => NS_FONT_STYLE_NORMAL,
-        italic => NS_FONT_STYLE_ITALIC,
-        oblique => NS_FONT_STYLE_OBLIQUE,
+        Normal => NS_FONT_STYLE_NORMAL,
+        Italic => NS_FONT_STYLE_ITALIC,
+        Oblique => NS_FONT_STYLE_OBLIQUE,
     }
 
     font_stretch {
-        normal          => NS_FONT_STRETCH_NORMAL,
-        ultra_condensed => NS_FONT_STRETCH_ULTRA_CONDENSED,
-        extra_condensed => NS_FONT_STRETCH_EXTRA_CONDENSED,
-        condensed       => NS_FONT_STRETCH_CONDENSED,
-        semi_condensed  => NS_FONT_STRETCH_SEMI_CONDENSED,
-        semi_expanded   => NS_FONT_STRETCH_SEMI_EXPANDED,
-        expanded        => NS_FONT_STRETCH_EXPANDED,
-        extra_expanded  => NS_FONT_STRETCH_EXTRA_EXPANDED,
-        ultra_expanded  => NS_FONT_STRETCH_ULTRA_EXPANDED,
+        Normal          => NS_FONT_STRETCH_NORMAL,
+        UltraCondensed  => NS_FONT_STRETCH_ULTRA_CONDENSED,
+        ExtraCondensed  => NS_FONT_STRETCH_EXTRA_CONDENSED,
+        Condensed       => NS_FONT_STRETCH_CONDENSED,
+        SemiCondensed   => NS_FONT_STRETCH_SEMI_CONDENSED,
+        SemiExpanded    => NS_FONT_STRETCH_SEMI_EXPANDED,
+        Expanded        => NS_FONT_STRETCH_EXPANDED,
+        ExtraExpanded   => NS_FONT_STRETCH_EXTRA_EXPANDED,
+        UltraExpanded   => NS_FONT_STRETCH_ULTRA_EXPANDED,
     }
 }
 
@@ -200,8 +202,7 @@ impl From<FontFaceRuleData> for FontFaceRule {
 }
 
 impl ToCssWithGuard for FontFaceRule {
-    fn to_css<W>(&self, _guard: &SharedRwLockReadGuard, dest: &mut W) -> fmt::Result
-    where W: fmt::Write {
+    fn to_css(&self, _guard: &SharedRwLockReadGuard, dest: &mut CssStringWriter) -> fmt::Result {
         let mut css_text = nsString::new();
         unsafe {
             bindings::Gecko_CSSFontFaceRule_GetCssText(self.get(), &mut *css_text);
@@ -237,8 +238,7 @@ impl From<counter_style::CounterStyleRuleData> for CounterStyleRule {
 }
 
 impl ToCssWithGuard for CounterStyleRule {
-    fn to_css<W>(&self, _guard: &SharedRwLockReadGuard, dest: &mut W) -> fmt::Result
-    where W: fmt::Write {
+    fn to_css(&self, _guard: &SharedRwLockReadGuard, dest: &mut CssStringWriter) -> fmt::Result {
         let mut css_text = nsString::new();
         unsafe {
             bindings::Gecko_CSSCounterStyle_GetCssText(self.get(), &mut *css_text);

@@ -34,8 +34,6 @@
 #include "gfxSVGGlyphs.h"
 #include "gfx2DGlue.h"
 
-#include "cairo.h"
-
 #include "harfbuzz/hb.h"
 #include "harfbuzz/hb-ot.h"
 #include "graphite2/Font.h"
@@ -319,22 +317,15 @@ gfxFontEntry::HasSVGGlyph(uint32_t aGlyphId)
 
 bool
 gfxFontEntry::GetSVGGlyphExtents(DrawTarget* aDrawTarget, uint32_t aGlyphId,
-                                 gfxRect *aResult)
+                                 gfxFloat aSize, gfxRect* aResult)
 {
     MOZ_ASSERT(mSVGInitialized,
                "SVG data has not yet been loaded. TryGetSVGData() first.");
     MOZ_ASSERT(mUnitsPerEm >= kMinUPEM && mUnitsPerEm <= kMaxUPEM,
                "font has invalid unitsPerEm");
 
-    cairo_matrix_t fontMatrix;
-    cairo_get_font_matrix(gfxFont::RefCairo(aDrawTarget), &fontMatrix);
-
-    gfxMatrix svgToAppSpace(fontMatrix.xx, fontMatrix.yx,
-                            fontMatrix.xy, fontMatrix.yy,
-                            fontMatrix.x0, fontMatrix.y0);
-    svgToAppSpace.PreScale(1.0f / mUnitsPerEm, 1.0f / mUnitsPerEm);
-
-    return mSVGGlyphs->GetGlyphExtents(aGlyphId, svgToAppSpace, aResult);
+    gfxMatrix svgToApp(aSize / mUnitsPerEm, 0, 0, aSize / mUnitsPerEm, 0, 0);
+    return mSVGGlyphs->GetGlyphExtents(aGlyphId, svgToApp, aResult);
 }
 
 void
@@ -857,7 +848,8 @@ gfxFontEntry::InputsForOpenTypeFeature(Script aScript, uint32_t aFeatureTag)
     }
 
     NS_ASSERTION(aFeatureTag == HB_TAG('s','u','p','s') ||
-                 aFeatureTag == HB_TAG('s','u','b','s'),
+                 aFeatureTag == HB_TAG('s','u','b','s') ||
+                 aFeatureTag == HB_TAG('v','e','r','t'),
                  "use of unknown feature tag");
 
     uint32_t scriptFeature = SCRIPT_FEATURE(aScript, aFeatureTag);

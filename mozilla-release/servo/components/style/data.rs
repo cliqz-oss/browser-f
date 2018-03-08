@@ -11,7 +11,7 @@ use invalidation::element::restyle_hints::RestyleHint;
 #[cfg(feature = "gecko")]
 use malloc_size_of::MallocSizeOfOps;
 use properties::ComputedValues;
-use properties::longhands::display::computed_value as display;
+use properties::longhands::display::computed_value::T as Display;
 use rule_tree::StrongRuleNode;
 use selector_parser::{EAGER_PSEUDO_COUNT, PseudoElement, RestyleDamage};
 use selectors::NthIndexCache;
@@ -38,15 +38,16 @@ bitflags! {
         /// traversed, so each traversal simply updates it with the appropriate
         /// value.
         const TRAVERSED_WITHOUT_STYLING = 1 << 1;
-        /// Whether we reframed/reconstructed any ancestor or self.
-        const ANCESTOR_WAS_RECONSTRUCTED = 1 << 2;
-        /// Whether the primary style of this element data was reused from another
-        /// element via a rule node comparison. This allows us to differentiate
-        /// between elements that shared styles because they met all the criteria
-        /// of the style sharing cache, compared to elements that reused style
-        /// structs via rule node identity. The former gives us stronger transitive
-        /// guarantees that allows us to apply the style sharing cache to cousins.
-        const PRIMARY_STYLE_REUSED_VIA_RULE_NODE = 1 << 3;
+
+        /// Whether the primary style of this element data was reused from
+        /// another element via a rule node comparison. This allows us to
+        /// differentiate between elements that shared styles because they met
+        /// all the criteria of the style sharing cache, compared to elements
+        /// that reused style structs via rule node identity.
+        ///
+        /// The former gives us stronger transitive guarantees that allows us to
+        /// apply the style sharing cache to cousins.
+        const PRIMARY_STYLE_REUSED_VIA_RULE_NODE = 1 << 2;
     }
 }
 
@@ -168,7 +169,7 @@ impl ElementStyles {
 
     /// Whether this element `display` value is `none`.
     pub fn is_display_none(&self) -> bool {
-        self.primary().get_box().clone_display() == display::T::none
+        self.primary().get_box().clone_display() == Display::None
     }
 
     #[cfg(feature = "gecko")]
@@ -245,8 +246,8 @@ impl ElementData {
             return InvalidationResult::empty();
         }
 
-        use invalidation::element::collector::StateAndAttrInvalidationProcessor;
         use invalidation::element::invalidator::TreeStyleInvalidator;
+        use invalidation::element::state_and_attributes::StateAndAttrInvalidationProcessor;
 
         debug!("invalidate_style_if_needed: {:?}, flags: {:?}, has_snapshot: {}, \
                 handled_snapshot: {}, pseudo: {:?}",
@@ -261,8 +262,12 @@ impl ElementData {
         }
 
         let mut xbl_stylists = SmallVec::<[_; 3]>::new();
+        // FIXME(emilio): This is wrong, needs to account for ::slotted rules
+        // that may apply to elements down the tree.
         let cut_off_inheritance =
-            element.each_xbl_stylist(|s| xbl_stylists.push(s));
+            element.each_applicable_non_document_style_rule_data(|data, quirks_mode| {
+                xbl_stylists.push((data, quirks_mode))
+            });
 
         let mut processor = StateAndAttrInvalidationProcessor::new(
             shared_context,
@@ -405,35 +410,12 @@ impl ElementData {
     #[inline]
     pub fn clear_restyle_flags_and_damage(&mut self) {
         self.damage = RestyleDamage::empty();
-        self.flags.remove(ElementDataFlags::WAS_RESTYLED | ElementDataFlags::ANCESTOR_WAS_RECONSTRUCTED)
-    }
-
-    /// Returns whether this element or any ancestor is going to be
-    /// reconstructed.
-    pub fn reconstructed_self_or_ancestor(&self) -> bool {
-        self.reconstructed_ancestor() || self.reconstructed_self()
+        self.flags.remove(ElementDataFlags::WAS_RESTYLED);
     }
 
     /// Returns whether this element is going to be reconstructed.
     pub fn reconstructed_self(&self) -> bool {
         self.damage.contains(RestyleDamage::reconstruct())
-    }
-
-    /// Returns whether any ancestor of this element is going to be
-    /// reconstructed.
-    fn reconstructed_ancestor(&self) -> bool {
-        self.flags.contains(ElementDataFlags::ANCESTOR_WAS_RECONSTRUCTED)
-    }
-
-    /// Sets the flag that tells us whether we've reconstructed an ancestor.
-    pub fn set_reconstructed_ancestor(&mut self, reconstructed: bool) {
-        if reconstructed {
-            // If it weren't for animation-only traversals, we could assert
-            // `!self.reconstructed_ancestor()` here.
-            self.flags.insert(ElementDataFlags::ANCESTOR_WAS_RECONSTRUCTED);
-        } else {
-            self.flags.remove(ElementDataFlags::ANCESTOR_WAS_RECONSTRUCTED);
-        }
     }
 
     /// Mark this element as restyled, which is useful to know whether we need

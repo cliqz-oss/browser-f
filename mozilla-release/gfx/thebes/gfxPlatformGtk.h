@@ -11,12 +11,6 @@
 #include "nsTArray.h"
 #include "mozilla/gfx/gfxVars.h"
 
-#if (MOZ_WIDGET_GTK == 2)
-extern "C" {
-    typedef struct _GdkDrawable GdkDrawable;
-}
-#endif
-
 #ifdef MOZ_X11
 struct _XDisplay;
 typedef struct _XDisplay Display;
@@ -94,12 +88,6 @@ public:
 
     FT_Library GetFTLibrary() override;
 
-#if (MOZ_WIDGET_GTK == 2)
-    static void SetGdkDrawable(cairo_surface_t *target,
-                               GdkDrawable *drawable);
-    static GdkDrawable *GetGdkDrawable(cairo_surface_t *target);
-#endif
-
     static int32_t GetFontScaleDPI();
     static double  GetFontScaleFactor();
 
@@ -127,9 +115,7 @@ public:
       return true;
     }
 
-    bool AccelerateLayersByDefault() override {
-      return false;
-    }
+    bool AccelerateLayersByDefault() override;
 
 #ifdef GL_PROVIDER_GLX
     already_AddRefed<mozilla::gfx::VsyncSource> CreateHardwareVsyncSource() override;

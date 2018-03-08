@@ -40,17 +40,11 @@ const TOPIC_TABS_CHANGED = "services.sync.tabs.changed";
 // of tabs "fresh enough" and don't force a new sync.
 const TABS_FRESH_ENOUGH_INTERVAL = 30;
 
-let log = Log.repository.getLogger("Sync.RemoteTabs");
-// A new scope to do the logging thang...
-(function() {
-  let level = Preferences.get("services.sync.log.logger.tabs");
-  if (level) {
-    let appender = new Log.DumpAppender();
-    log.level = appender.level = Log.Level[level] || Log.Level.Debug;
-    log.addAppender(appender);
-  }
-})();
-
+XPCOMUtils.defineLazyGetter(this, "log", function() {
+  let log = Log.repository.getLogger("Sync.RemoteTabs");
+  log.manageLevelFromPref("services.sync.log.logger.tabs");
+  return log;
+});
 
 // A private singleton that does the work.
 let SyncedTabsInternal = {
@@ -161,7 +155,7 @@ let SyncedTabsInternal = {
     // Ask Sync to just do the tabs engine if it can.
     try {
       log.info("Doing a tab sync.");
-      await Weave.Service.sync(["tabs"]);
+      await Weave.Service.sync({why: "tabs", engines: ["tabs"]});
       return true;
     } catch (ex) {
       log.error("Sync failed", ex);
@@ -245,6 +239,11 @@ this.SyncedTabs = {
   // are waiting for that first sync to complete.
   get hasSyncedThisSession() {
     return this._internal.hasSyncedThisSession;
+  },
+
+  // Returns true if Sync is in a "need to reauthenticate" state.
+  get loginFailed() {
+    return this._internal.loginFailed;
   },
 
   // Return a promise that resolves with an array of client records, each with

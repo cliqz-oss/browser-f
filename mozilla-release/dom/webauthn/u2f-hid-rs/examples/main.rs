@@ -9,7 +9,7 @@ use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use std::io;
 use std::sync::mpsc::channel;
-use u2fhid::U2FManager;
+use u2fhid::{AuthenticatorTransports, KeyHandle, RegisterFlags, SignFlags, U2FManager};
 
 extern crate log;
 extern crate env_logger;
@@ -49,10 +49,12 @@ fn main() {
     application.result(&mut app_bytes);
 
     let manager = U2FManager::new().unwrap();
+    let flags = RegisterFlags::empty();
 
     let (tx, rx) = channel();
     manager
         .register(
+            flags,
             15_000,
             chall_bytes.clone(),
             app_bytes.clone(),
@@ -64,11 +66,17 @@ fn main() {
     let register_data = rx.recv().unwrap();
     println!("Register result: {}", base64::encode(&register_data));
     println!("Asking a security key to sign now, with the data from the register...");
-    let key_handle = u2f_get_key_handle_from_register_response(&register_data).unwrap();
+    let credential = u2f_get_key_handle_from_register_response(&register_data).unwrap();
+    let key_handle = KeyHandle {
+        credential,
+        transports: AuthenticatorTransports::empty(),
+    };
 
+    let flags = SignFlags::empty();
     let (tx, rx) = channel();
     manager
         .sign(
+            flags,
             15_000,
             chall_bytes,
             app_bytes,

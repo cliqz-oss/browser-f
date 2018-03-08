@@ -11,8 +11,12 @@ DIRS += [
 DevToolsModules(
     'Headers.js',
     'HeadersPanel.js',
+    'HeadersToolbar.js',
     'JsonPanel.js',
+    'JsonToolbar.js',
+    'LiveText.js',
     'MainTabbedArea.js',
     'SearchBox.js',
-    'TextPanel.js'
+    'TextPanel.js',
+    'TextToolbar.js'
 )

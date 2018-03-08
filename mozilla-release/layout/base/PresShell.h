@@ -42,6 +42,7 @@ class ReflowCountMgr;
 
 class nsPresShellEventCB;
 class nsAutoCauseReflowNotifier;
+class AutoPointerEventTargetUpdater;
 
 namespace mozilla {
 
@@ -70,7 +71,6 @@ typedef nsClassHashtable<nsUint64HashKey, mozilla::CSSIntRegion> VisibleRegions;
 #endif
 
 class PresShell final : public nsIPresShell,
-                        public nsStubDocumentObserver,
                         public nsISelectionController,
                         public nsIObserver,
                         public nsSupportsWeakReference
@@ -108,8 +108,6 @@ public:
                                      int16_t aFlags) override;
   NS_IMETHOD RepaintSelection(RawSelectionType aRawSelectionType) override;
 
-  virtual void BeginObservingDocument() override;
-  virtual void EndObservingDocument() override;
   virtual nsresult Initialize(nscoord aWidth, nscoord aHeight) override;
   virtual nsresult ResizeReflow(nscoord aWidth, nscoord aHeight,
                                 nscoord aOldWidth = 0, nscoord aOldHeight = 0,
@@ -176,7 +174,9 @@ public:
                                  mozilla::WidgetEvent* aEvent,
                                  nsIFrame* aFrame,
                                  nsIContent* aContent,
-                                 nsEventStatus* aStatus) override;
+                                 nsEventStatus* aStatus,
+                                 bool aIsHandlingNativeEvent = false,
+                                 nsIContent** aTargetContent = nullptr) override;
   virtual nsIFrame* GetEventTargetFrame() override;
   virtual already_AddRefed<nsIContent> GetEventTargetContent(
                                                      mozilla::WidgetEvent* aEvent) override;
@@ -234,8 +234,7 @@ public:
   virtual nsresult HandleEvent(nsIFrame* aFrame,
                                mozilla::WidgetGUIEvent* aEvent,
                                bool aDontRetargetEvents,
-                               nsEventStatus* aEventStatus,
-                               nsIContent** aTargetContent) override;
+                               nsEventStatus* aEventStatus) override;
   virtual nsresult HandleDOMEventWithTarget(
                                  nsIContent* aTargetContent,
                                  mozilla::WidgetEvent* aEvent,
@@ -299,9 +298,6 @@ public:
   NS_DECL_NSIDOCUMENTOBSERVER_STYLESHEETADDED
   NS_DECL_NSIDOCUMENTOBSERVER_STYLESHEETREMOVED
   NS_DECL_NSIDOCUMENTOBSERVER_STYLESHEETAPPLICABLESTATECHANGED
-  NS_DECL_NSIDOCUMENTOBSERVER_STYLERULECHANGED
-  NS_DECL_NSIDOCUMENTOBSERVER_STYLERULEADDED
-  NS_DECL_NSIDOCUMENTOBSERVER_STYLERULEREMOVED
 
   // nsIMutationObserver
   NS_DECL_NSIMUTATIONOBSERVER_CHARACTERDATACHANGED
@@ -413,6 +409,12 @@ public:
     return mHasHandledUserInput;
   }
 
+  virtual void FireResizeEvent() override;
+
+  static PresShell* GetShellForEventTarget(nsIFrame* aFrame,
+                                           nsIContent* aContent);
+  static PresShell* GetShellForTouchEvent(WidgetGUIEvent* aEvent);
+
 protected:
   virtual ~PresShell();
 
@@ -428,6 +430,7 @@ protected:
   }
   nsresult DidCauseReflow();
   friend class ::nsAutoCauseReflowNotifier;
+  friend class ::AutoPointerEventTargetUpdater;
 
   nsresult DispatchEventToDOM(mozilla::WidgetEvent* aEvent,
                               nsEventStatus* aStatus,
@@ -516,6 +519,7 @@ protected:
 
 #ifdef DEBUG
   nsStyleSet* CloneStyleSet(nsStyleSet* aSet);
+  ServoStyleSet* CloneStyleSet(ServoStyleSet* aSet);
   bool VerifyIncrementalReflow();
   bool mInVerifyReflow;
   void ShowEventTargetDebug();
@@ -683,9 +687,6 @@ protected:
   nsresult HandleEventInternal(mozilla::WidgetEvent* aEvent,
                                nsEventStatus* aStatus,
                                bool aIsHandlingNativeEvent);
-  nsresult HandlePositionedEvent(nsIFrame* aTargetFrame,
-                                 mozilla::WidgetGUIEvent* aEvent,
-                                 nsEventStatus* aEventStatus);
 
   /*
    * This and the next two helper methods are used to target and position the
@@ -714,9 +715,6 @@ protected:
                                            nsIContent **aTargetToUse,
                                            mozilla::LayoutDeviceIntPoint& aTargetPt,
                                            nsIWidget *aRootWidget);
-
-  void FireResizeEvent();
-  static void AsyncResizeEventCallback(nsITimer* aTimer, void* aPresShell);
 
   virtual void SynthesizeMouseMove(bool aFromScroll) override;
 
@@ -807,8 +805,6 @@ protected:
   nsTArray<nsIFrame*>       mDirtyRoots;
 
   nsTArray<nsAutoPtr<DelayedEvent> > mDelayedEvents;
-  nsRevocableEventPtr<nsRunnableMethod<PresShell> > mResizeEvent;
-  nsCOMPtr<nsITimer>        mAsyncResizeEventTimer;
 private:
   nsIFrame*                 mCurrentEventFrame;
   nsCOMPtr<nsIContent>      mCurrentEventContent;
@@ -867,16 +863,11 @@ protected:
   bool                      mNoDelayedMouseEvents : 1;
   bool                      mNoDelayedKeyEvents : 1;
 
-  // We've been disconnected from the document.  We will refuse to paint the
-  // document until either our timer fires or all frames are constructed.
-  bool                      mIsDocumentGone : 1;
-
   // Indicates that it is safe to unlock painting once all pending reflows
   // have been processed.
   bool                      mShouldUnsuppressPainting : 1;
 
-  bool                      mAsyncResizeTimerIsActive : 1;
-  bool                      mInResize : 1;
+  bool                      mResizeEventPending : 1;
 
   bool                      mApproximateFrameVisibilityVisited : 1;
 

@@ -325,9 +325,6 @@ namespace TuningDefaults {
     /* JSGC_DYNAMIC_MARK_SLICE */
     static const bool DynamicMarkSliceEnabled = false;
 
-    /* JSGC_REFRESH_FRAME_SLICES_ENABLED */
-    static const bool RefreshFrameSlicesEnabled = true;
-
     /* JSGC_MIN_EMPTY_CHUNK_COUNT */
     static const uint32_t MinEmptyChunkCount = 1;
 
@@ -942,7 +939,6 @@ GCRuntime::GCRuntime(JSRuntime* rt) :
 #ifdef JS_GC_ZEAL
     markingValidator(nullptr),
 #endif
-    interFrameGC(false),
     defaultTimeBudget_(TuningDefaults::DefaultTimeBudget),
     incrementalAllowed(true),
     compactingEnabled(TuningDefaults::CompactingEnabled),
@@ -990,9 +986,7 @@ const char* gc::ZealModeHelpText =
     "    0: (None) Normal amount of collection (resets all modes)\n"
     "    1: (RootsChange) Collect when roots are added or removed\n"
     "    2: (Alloc) Collect when every N allocations (default: 100)\n"
-    "    3: (FrameGC) Collect when the window paints (browser only)\n"
     "    4: (VerifierPre) Verify pre write barriers between instructions\n"
-    "    5: (FrameVerifierPre) Verify pre write barriers between paints\n"
     "    7: (GenerationalGC) Collect the nursery every N nursery allocations\n"
     "    8: (IncrementalRootsThenFinish) Incremental GC in two slices: 1) mark roots 2) finish collection\n"
     "    9: (IncrementalMarkAllThenFinish) Incremental GC in two slices: 1) mark all 2) new marking and finish\n"
@@ -1378,9 +1372,6 @@ GCSchedulingTunables::setParameter(JSGCParamKey key, uint32_t value, const AutoL
       case JSGC_MAX_EMPTY_CHUNK_COUNT:
         setMaxEmptyChunkCount(value);
         break;
-      case JSGC_REFRESH_FRAME_SLICES_ENABLED:
-        refreshFrameSlicesEnabled_ = value != 0;
-        break;
       default:
         MOZ_CRASH("Unknown GC parameter.");
     }
@@ -1446,7 +1437,6 @@ GCSchedulingTunables::GCSchedulingTunables()
     highFrequencyHeapGrowthMin_(TuningDefaults::HighFrequencyHeapGrowthMin),
     lowFrequencyHeapGrowth_(TuningDefaults::LowFrequencyHeapGrowth),
     dynamicMarkSliceEnabled_(TuningDefaults::DynamicMarkSliceEnabled),
-    refreshFrameSlicesEnabled_(TuningDefaults::RefreshFrameSlicesEnabled),
     minEmptyChunkCount_(TuningDefaults::MinEmptyChunkCount),
     maxEmptyChunkCount_(TuningDefaults::MaxEmptyChunkCount)
 {}
@@ -1534,9 +1524,6 @@ GCSchedulingTunables::resetParameter(JSGCParamKey key, const AutoLockGC& lock)
       case JSGC_MAX_EMPTY_CHUNK_COUNT:
         setMaxEmptyChunkCount(TuningDefaults::MaxEmptyChunkCount);
         break;
-      case JSGC_REFRESH_FRAME_SLICES_ENABLED:
-        refreshFrameSlicesEnabled_ = TuningDefaults::RefreshFrameSlicesEnabled;
-        break;
       default:
         MOZ_CRASH("Unknown GC parameter.");
     }
@@ -1598,8 +1585,6 @@ GCRuntime::getParameter(JSGCParamKey key, const AutoLockGC& lock)
         return tunables.maxEmptyChunkCount();
       case JSGC_COMPACTING_ENABLED:
         return compactingEnabled;
-      case JSGC_REFRESH_FRAME_SLICES_ENABLED:
-        return tunables.areRefreshFrameSlicesEnabled();
       default:
         MOZ_ASSERT(key == JSGC_NUMBER);
         return uint32_t(number);
@@ -3275,7 +3260,7 @@ GCRuntime::triggerZoneGC(Zone* zone, JS::gcreason::Reason reason, size_t used, s
     MOZ_ASSERT(CurrentThreadCanAccessRuntime(rt));
 
     /* GC is already running. */
-    if (JS::CurrentThreadIsHeapCollecting())
+    if (JS::CurrentThreadIsHeapBusy())
         return false;
 
 #ifdef JS_GC_ZEAL
@@ -4443,7 +4428,7 @@ void
 GCRuntime::markGrayReferences(gcstats::PhaseKind phase)
 {
     gcstats::AutoPhase ap(stats(), phase);
-    if (hasBufferedGrayRoots()) {
+    if (hasValidGrayRootsBuffer()) {
         for (ZoneIterT zone(rt); !zone.done(); zone.next())
             markBufferedGrayRoots(zone);
     } else {
@@ -6953,9 +6938,10 @@ GCRuntime::incrementalCollectSlice(SliceBudget& budget, JS::gcreason::Reason rea
             AutoGCRooter::traceAllWrappers(target, &marker);
 
         /* If we needed delayed marking for gray roots, then collect until done. */
-        if (!hasBufferedGrayRoots()) {
+        if (isIncremental && !hasValidGrayRootsBuffer()) {
             budget.makeUnlimited();
             isIncremental = false;
+            stats().nonincremental(AbortReason::GrayRootBufferingFailed);
         }
 
         if (drainMarkStack(budget, gcstats::PhaseKind::MARK) == NotFinished)
@@ -7285,7 +7271,6 @@ GCRuntime::gcCycle(bool nonincrementalByAPI, SliceBudget& budget, JS::gcreason::
     AutoTraceSession session(rt, JS::HeapState::MajorCollecting);
 
     majorGCTriggerReason = JS::gcreason::NO_REASON;
-    interFrameGC = true;
 
     number++;
     if (!isIncrementalGCInProgress())
@@ -7511,7 +7496,7 @@ GCRuntime::collect(bool nonincrementalByAPI, SliceBudget budget, JS::gcreason::R
         gcstats::AutoPhase ap(rt->gc.stats(), gcstats::PhaseKind::TRACE_HEAP);
         CheckHeapAfterGC(rt);
     }
-    if (rt->hasZealMode(ZealMode::CheckGrayMarking)) {
+    if (rt->hasZealMode(ZealMode::CheckGrayMarking) && !isIncrementalGCInProgress()) {
         MOZ_RELEASE_ASSERT(CheckGrayMarkingState(rt));
     }
 #endif
@@ -7592,30 +7577,6 @@ GCRuntime::abortGC()
     MOZ_ASSERT(!TlsContext.get()->suppressGC);
 
     collect(false, SliceBudget::unlimited(), JS::gcreason::ABORT_GC);
-}
-
-void
-GCRuntime::notifyDidPaint()
-{
-    MOZ_ASSERT(CurrentThreadCanAccessRuntime(rt));
-
-#ifdef JS_GC_ZEAL
-    if (hasZealMode(ZealMode::FrameVerifierPre))
-        verifyPreBarriers();
-
-    if (hasZealMode(ZealMode::FrameGC)) {
-        JS::PrepareForFullGC(rt->activeContextFromOwnThread());
-        gc(GC_NORMAL, JS::gcreason::REFRESH_FRAME);
-        return;
-    }
-#endif
-
-    if (isIncrementalGCInProgress() && !interFrameGC && tunables.areRefreshFrameSlicesEnabled()) {
-        JS::PrepareForIncrementalGC(rt->activeContextFromOwnThread());
-        gcSlice(JS::gcreason::REFRESH_FRAME);
-    }
-
-    interFrameGC = false;
 }
 
 static bool
@@ -8268,7 +8229,7 @@ JS_FRIEND_API(void)
 JS::AssertGCThingIsNotAnObjectSubclass(Cell* cell)
 {
     MOZ_ASSERT(cell);
-    MOZ_ASSERT(cell->getTraceKind() != JS::TraceKind::Object);
+    MOZ_ASSERT(!cell->is<JSObject>());
 }
 
 JS_FRIEND_API(void)
@@ -9046,3 +9007,29 @@ js::gc::detail::CellIsNotGray(const Cell* cell)
     return false;
 }
 #endif
+
+js::gc::ClearEdgesTracer::ClearEdgesTracer()
+  : CallbackTracer(TlsContext.get(), TraceWeakMapKeysValues)
+{}
+
+template <typename S>
+inline void
+js::gc::ClearEdgesTracer::clearEdge(S** thingp)
+{
+    InternalBarrierMethods<S*>::preBarrier(*thingp);
+    InternalBarrierMethods<S*>::postBarrier(thingp, *thingp, nullptr);
+    *thingp = nullptr;
+}
+
+void js::gc::ClearEdgesTracer::onObjectEdge(JSObject** objp) { clearEdge(objp); }
+void js::gc::ClearEdgesTracer::onStringEdge(JSString** strp) { clearEdge(strp); }
+void js::gc::ClearEdgesTracer::onSymbolEdge(JS::Symbol** symp) { clearEdge(symp); }
+void js::gc::ClearEdgesTracer::onScriptEdge(JSScript** scriptp) { clearEdge(scriptp); }
+void js::gc::ClearEdgesTracer::onShapeEdge(js::Shape** shapep) { clearEdge(shapep); }
+void js::gc::ClearEdgesTracer::onObjectGroupEdge(js::ObjectGroup** groupp) { clearEdge(groupp); }
+void js::gc::ClearEdgesTracer::onBaseShapeEdge(js::BaseShape** basep) { clearEdge(basep); }
+void js::gc::ClearEdgesTracer::onJitCodeEdge(js::jit::JitCode** codep) { clearEdge(codep); }
+void js::gc::ClearEdgesTracer::onLazyScriptEdge(js::LazyScript** lazyp) { clearEdge(lazyp); }
+void js::gc::ClearEdgesTracer::onScopeEdge(js::Scope** scopep) { clearEdge(scopep); }
+void js::gc::ClearEdgesTracer::onRegExpSharedEdge(js::RegExpShared** sharedp) { clearEdge(sharedp); }
+void js::gc::ClearEdgesTracer::onChild(const JS::GCCellPtr& thing) { MOZ_CRASH(); }

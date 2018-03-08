@@ -1549,8 +1549,12 @@ class CGAbstractMethod(CGThing):
     If templateArgs is not None it should be a list of strings containing
     template arguments, and the function will be templatized using those
     arguments.
+
+    canRunScript should be True to generate a MOZ_CAN_RUN_SCRIPT annotation.
     """
-    def __init__(self, descriptor, name, returnType, args, inline=False, alwaysInline=False, static=False, templateArgs=None):
+    def __init__(self, descriptor, name, returnType, args, inline=False,
+                 alwaysInline=False, static=False, templateArgs=None,
+                 canRunScript=False):
         CGThing.__init__(self)
         self.descriptor = descriptor
         self.name = name
@@ -1560,6 +1564,7 @@ class CGAbstractMethod(CGThing):
         self.alwaysInline = alwaysInline
         self.static = static
         self.templateArgs = templateArgs
+        self.canRunScript = canRunScript
 
     def _argstring(self, declare):
         return ', '.join([a.declare() if declare else a.define() for a in self.args])
@@ -1571,6 +1576,8 @@ class CGAbstractMethod(CGThing):
 
     def _decorators(self):
         decorators = []
+        if self.canRunScript:
+            decorators.append('MOZ_CAN_RUN_SCRIPT');
         if self.alwaysInline:
             decorators.append('MOZ_ALWAYS_INLINE')
         elif self.inline:
@@ -1618,9 +1625,10 @@ class CGAbstractStaticMethod(CGAbstractMethod):
     Abstract base class for codegen of implementation-only (no
     declaration) static methods.
     """
-    def __init__(self, descriptor, name, returnType, args):
+    def __init__(self, descriptor, name, returnType, args, canRunScript=False):
         CGAbstractMethod.__init__(self, descriptor, name, returnType, args,
-                                  inline=False, static=True)
+                                  inline=False, static=True,
+                                  canRunScript=canRunScript)
 
     def declare(self):
         # We only have implementation
@@ -1761,6 +1769,23 @@ def JSNativeArguments():
             Argument('JS::Value*', 'vp')]
 
 
+class CGIsInstanceMethod(CGAbstractStaticMethod):
+    """
+    A class for generating the static isInstance method.
+    """
+    def __init__(self, descriptor):
+        assert descriptor.interface.hasInterfacePrototypeObject()
+        CGAbstractStaticMethod.__init__(self, descriptor, "isInstance", "bool",
+                                        JSNativeArguments())
+
+    def definition_body(self):
+        return fill(
+            """
+            return InterfaceIsInstance(cx, argc, vp, prototypes::id::${name},
+                                       PrototypeTraits<prototypes::id::${name}>::Depth);
+            """,
+            name=self.descriptor.name)
+
 class CGClassConstructor(CGAbstractStaticMethod):
     """
     JS-visible constructor for our objects
@@ -1899,11 +1924,11 @@ class CGClassConstructor(CGAbstractStaticMethod):
             signatures = self._ctor.signatures()
             assert len(signatures) == 1
             # Given that HTMLConstructor takes no args, we can just codegen a
-            # call to CreateHTMLElement() in BindingUtils which reuses the
+            # call to CreateXULOrHTMLElement() in BindingUtils which reuses the
             # factory thing in HTMLContentSink. Then we don't have to implement
             # Constructor on all the HTML elements.
             callGenerator = CGPerSignatureCall(signatures[0][0], signatures[0][1],
-                                               "CreateHTMLElement", True,
+                                               "CreateXULOrHTMLElement", True,
                                                self.descriptor, self._ctor,
                                                isConstructor=True)
         else:
@@ -2373,22 +2398,11 @@ class MethodDefiner(PropertyDefiner):
                 if len(signatures) > 1 or len(signatures[0][1]) > 1 or not argTypeIsIID(signatures[0][1][0]):
                     raise TypeError("There should be only one queryInterface method with 1 argument of type IID")
 
-                # Make sure to not stick QueryInterface on abstract interfaces that
-                # have hasXPConnectImpls (like EventTarget).  So only put it on
-                # interfaces that are concrete and all of whose ancestors are abstract.
-                def allAncestorsAbstract(iface):
-                    if not iface.parent:
-                        return True
-                    desc = self.descriptor.getDescriptor(iface.parent.identifier.name)
-                    if desc.concrete:
-                        return False
-                    return allAncestorsAbstract(iface.parent)
+                # Make sure to not stick QueryInterface on abstract interfaces.
                 if (not self.descriptor.interface.hasInterfacePrototypeObject() or
-                    not self.descriptor.concrete or
-                    not allAncestorsAbstract(self.descriptor.interface)):
+                    not self.descriptor.concrete):
                     raise TypeError("QueryInterface is only supported on "
-                                    "interfaces that are concrete and all "
-                                    "of whose ancestors are abstract: " +
+                                    "interfaces that are concrete: " +
                                     self.descriptor.name)
                 condition = "WantsQueryInterface<%s>::Enabled" % descriptor.nativeType
                 self.regular.append({
@@ -2418,6 +2432,18 @@ class MethodDefiner(PropertyDefiner):
                 self.chrome.append(method)
             else:
                 self.regular.append(method)
+
+        # Generate the isInstance static method.
+        if (static and
+            (self.descriptor.interface.hasInterfaceObject() and
+             self.descriptor.interface.hasInterfacePrototypeObject())):
+            self.chrome.append({
+                "name": "isInstance",
+                "methodInfo": False,
+                "length": 1,
+                "flags": "JSPROP_ENUMERATE",
+                "condition": MemberCondition(),
+            })
 
         # TODO: Once iterable is implemented, use tiebreak rules instead of
         # failing. Also, may be more tiebreak rules to implement once spec bug
@@ -2806,6 +2832,7 @@ class ConstDefiner(PropertyDefiner):
 
 class PropertyArrays():
     def __init__(self, descriptor):
+        self.descriptor = descriptor
         self.staticMethods = MethodDefiner(descriptor, "StaticMethods",
                                            static=True)
         self.staticAttrs = AttrDefiner(descriptor, "StaticAttributes",
@@ -2824,7 +2851,11 @@ class PropertyArrays():
                 "unforgeableMethods", "unforgeableAttrs", "consts"]
 
     def hasChromeOnly(self):
-        return any(getattr(self, a).hasChromeOnly() for a in self.arrayNames())
+        # All interfaces that generate an interface object and interface
+        # prototype object have a chrome only isInstance static method.
+        return ((self.staticMethods.descriptor.interface.hasInterfaceObject() and
+                 self.staticMethods.descriptor.interface.hasInterfacePrototypeObject()) or
+                any(getattr(self, a).hasChromeOnly() for a in self.arrayNames()))
 
     def hasNonChromeOnly(self):
         return any(getattr(self, a).hasNonChromeOnly() for a in self.arrayNames())
@@ -2988,7 +3019,8 @@ class CGJsonifyAttributesMethod(CGAbstractMethod):
                 Argument('JS::Handle<JSObject*>', 'obj'),
                 Argument('%s*' % descriptor.nativeType, 'self'),
                 Argument('JS::Rooted<JSObject*>&', 'aResult')]
-        CGAbstractMethod.__init__(self, descriptor, 'JsonifyAttributes', 'bool', args)
+        CGAbstractMethod.__init__(self, descriptor, 'JsonifyAttributes',
+                                  'bool', args, canRunScript=True)
 
     def definition_body(self):
         ret = ''
@@ -7693,23 +7725,6 @@ class CGPerSignatureCall(CGThing):
         self.isConstructor = isConstructor
         cgThings = []
 
-        # Here, we check if the current getter, setter, method, interface or
-        # inherited interfaces have the UnsafeInPrerendering extended attribute
-        # and if so, we add a check to make sure it is safe.
-        if (idlNode.getExtendedAttribute("UnsafeInPrerendering") or
-            descriptor.interface.getExtendedAttribute("UnsafeInPrerendering") or
-            any(i.getExtendedAttribute("UnsafeInPrerendering")
-                for i in descriptor.interface.getInheritedInterfaces())):
-                cgThings.append(CGGeneric(dedent(
-                    """
-                    if (!mozilla::dom::EnforceNotInPrerendering(cx, obj)) {
-                        // Return false from the JSNative in order to trigger
-                        // an uncatchable exception.
-                        MOZ_ASSERT(!JS_IsExceptionPending(cx));
-                        return false;
-                    }
-                    """)))
-
         deprecated = (idlNode.getExtendedAttribute("Deprecated") or
                       (idlNode.isStatic() and descriptor.interface.getExtendedAttribute("Deprecated")))
         if deprecated:
@@ -7880,16 +7895,16 @@ class CGPerSignatureCall(CGThing):
 
         if (idlNode.getExtendedAttribute('CEReactions') is not None and
             not getter):
-            cgThings.append(CGGeneric(fill(
+            cgThings.append(CGGeneric(dedent(
                 """
                 Maybe<AutoCEReaction> ceReaction;
                 if (CustomElementRegistry::IsCustomElementEnabled()) {
-                  CustomElementReactionsStack* reactionsStack = GetCustomElementReactionsStack(${obj});
-                  if (reactionsStack) {
-                    ceReaction.emplace(reactionsStack);
+                  DocGroup* docGroup = self->GetDocGroup();
+                  if (docGroup) {
+                    ceReaction.emplace(docGroup->CustomElementReactionsStack(), cx);
                   }
                 }
-                """, obj=objectName)))
+                """)))
 
         # If this is a method that was generated by a maplike/setlike
         # interface, use the maplike/setlike generator to fill in the body.
@@ -8865,7 +8880,8 @@ class CGSpecializedMethod(CGAbstractStaticMethod):
                 Argument('JS::Handle<JSObject*>', 'obj'),
                 Argument('%s*' % descriptor.nativeType, 'self'),
                 Argument('const JSJitMethodCallArgs&', 'args')]
-        CGAbstractStaticMethod.__init__(self, descriptor, name, 'bool', args)
+        CGAbstractStaticMethod.__init__(self, descriptor, name, 'bool', args,
+                                        canRunScript=True)
 
     def definition_body(self):
         nativeName = CGSpecializedMethod.makeNativeName(self.descriptor,
@@ -8888,7 +8904,8 @@ class CGMethodPromiseWrapper(CGAbstractStaticMethod):
         self.method = methodToWrap
         name = self.makeName(methodToWrap.name)
         args = list(methodToWrap.args)
-        CGAbstractStaticMethod.__init__(self, descriptor, name, 'bool', args)
+        CGAbstractStaticMethod.__init__(self, descriptor, name, 'bool', args,
+                                        canRunScript=True)
 
     def definition_body(self):
         return fill(
@@ -9235,7 +9252,13 @@ class CGSpecializedGetter(CGAbstractStaticMethod):
             Argument('%s*' % descriptor.nativeType, 'self'),
             Argument('JSJitGetterCallArgs', 'args')
         ]
-        CGAbstractStaticMethod.__init__(self, descriptor, name, "bool", args)
+        # StoreInSlot attributes have their getters called from Wrap().  We
+        # really hope they can't run script, and don't want to annotate Wrap()
+        # methods as doing that anyway, so let's not annotate them as
+        # MOZ_CAN_RUN_SCRIPT.
+        CGAbstractStaticMethod.__init__(
+            self, descriptor, name, "bool", args,
+            canRunScript=not attr.getExtendedAttribute("StoreInSlot"))
 
     def definition_body(self):
         if self.attr.isMaplikeOrSetlikeAttr():
@@ -9345,7 +9368,8 @@ class CGGetterPromiseWrapper(CGAbstractStaticMethod):
         self.getter = getterToWrap
         name = self.makeName(getterToWrap.name)
         args = list(getterToWrap.args)
-        CGAbstractStaticMethod.__init__(self, descriptor, name, 'bool', args)
+        CGAbstractStaticMethod.__init__(self, descriptor, name, 'bool', args,
+                                        canRunScript=True)
 
     def definition_body(self):
         return fill(
@@ -9448,7 +9472,8 @@ class CGSpecializedSetter(CGAbstractStaticMethod):
                 Argument('JS::Handle<JSObject*>', 'obj'),
                 Argument('%s*' % descriptor.nativeType, 'self'),
                 Argument('JSJitSetterCallArgs', 'args')]
-        CGAbstractStaticMethod.__init__(self, descriptor, name, "bool", args)
+        CGAbstractStaticMethod.__init__(self, descriptor, name, "bool", args,
+                                        canRunScript=True)
 
     def definition_body(self):
         nativeName = CGSpecializedSetter.makeNativeName(self.descriptor,
@@ -11044,19 +11069,6 @@ class ClassMember(ClassItem):
                                    self.name, body)
 
 
-class ClassTypedef(ClassItem):
-    def __init__(self, name, type, visibility="public"):
-        self.type = type
-        ClassItem.__init__(self, name, visibility)
-
-    def declare(self, cgClass):
-        return 'typedef %s %s;\n' % (self.type, self.name)
-
-    def define(self, cgClass):
-        # Only goes in the header
-        return ''
-
-
 class ClassEnum(ClassItem):
     def __init__(self, name, entries, values=None, visibility="public"):
         self.entries = entries
@@ -11095,7 +11107,7 @@ class ClassUnion(ClassItem):
 class CGClass(CGThing):
     def __init__(self, name, bases=[], members=[], constructors=[],
                  destructor=None, methods=[],
-                 typedefs=[], enums=[], unions=[], templateArgs=[],
+                 enums=[], unions=[], templateArgs=[],
                  templateSpecialization=[], isStruct=False,
                  disallowCopyConstruction=False, indent='',
                  decorators='',
@@ -11110,7 +11122,6 @@ class CGClass(CGThing):
         # code wants lists of members.
         self.destructors = [destructor] if destructor else []
         self.methods = methods
-        self.typedefs = typedefs
         self.enums = enums
         self.unions = unions
         self.templateArgs = templateArgs
@@ -11205,7 +11216,7 @@ class CGClass(CGThing):
             disallowedCopyConstructors = []
 
         order = [self.enums, self.unions,
-                 self.typedefs, self.members,
+                 self.members,
                  self.constructors + disallowedCopyConstructors,
                  self.destructors, self.methods]
 
@@ -11984,7 +11995,7 @@ class CGDeleteNamedProperty(CGAbstractStaticMethod):
             MOZ_ASSERT(js::IsProxy(proxy));
             MOZ_ASSERT(!xpc::WrapperFactory::IsXrayWrapper(proxy));
             JSAutoCompartment ac(cx, proxy);
-            bool deleteSucceeded;
+            bool deleteSucceeded = false;
             bool found = false;
             $*{namedBody}
             if (!found || deleteSucceeded) {
@@ -12751,6 +12762,9 @@ class CGDescriptor(CGThing):
         for n in descriptor.interface.namedConstructors:
             cgThings.append(CGClassConstructor(descriptor, n,
                                                NamedConstructorName(n)))
+        if (descriptor.interface.hasInterfaceObject() and
+            descriptor.interface.hasInterfacePrototypeObject()):
+            cgThings.append(CGIsInstanceMethod(descriptor))
         for m in descriptor.interface.members:
             if m.isMethod() and m.identifier.name == 'queryInterface':
                 continue
@@ -14178,6 +14192,8 @@ class CGForwardDeclarations(CGWrapper):
             builder.add(d.nativeType + "Atoms", isStruct=True)
             for t in getTypesFromDescriptor(d):
                 builder.forwardDeclareForType(t, config)
+            if d.hasCEReactions():
+                builder.addInMozillaDom("DocGroup")
 
         for d in dictionaries:
             if len(d.members) > 0:
@@ -14249,18 +14265,15 @@ class CGBindingRoot(CGThing):
             iface = desc.interface
             return any(m.getExtendedAttribute("Deprecated") for m in iface.members + [iface])
 
-        def descriptorHasCEReactions(desc):
-            iface = desc.interface
-            return any(m.getExtendedAttribute("CEReactions") for m in iface.members + [iface])
-
         bindingHeaders["nsIDocument.h"] = any(
             descriptorDeprecated(d) for d in descriptors)
         bindingHeaders["mozilla/Preferences.h"] = any(
             descriptorRequiresPreferences(d) for d in descriptors)
         bindingHeaders["mozilla/dom/DOMJSProxyHandler.h"] = any(
             d.concrete and d.proxy for d in descriptors)
-        bindingHeaders["mozilla/dom/CustomElementRegistry.h"] = any(
-            descriptorHasCEReactions(d) for d in descriptors)
+        hasCEReactions = any(d.hasCEReactions() for d in descriptors)
+        bindingHeaders["mozilla/dom/CustomElementRegistry.h"] = hasCEReactions
+        bindingHeaders["mozilla/dom/DocGroup.h"] = hasCEReactions
 
         def descriptorHasChromeOnly(desc):
             ctor = desc.interface.ctor()
@@ -14272,9 +14285,13 @@ class CGBindingRoot(CGThing):
                     # JS-implemented interfaces with an interface object get a
                     # chromeonly _create method.  And interfaces with an
                     # interface object might have a ChromeOnly constructor.
+                    # Also interfaces whose interface prototype object is
+                    # generated (which is most of them) for the isInstance
+                    # method.
                     (desc.interface.hasInterfaceObject() and
                      (desc.interface.isJSImplemented() or
-                      (ctor and isChromeOnly(ctor)))) or
+                      (ctor and isChromeOnly(ctor)) or
+                      desc.interface.hasInterfacePrototypeObject())) or
                     # JS-implemented interfaces with clearable cached
                     # attrs have chromeonly _clearFoo methods.
                     (desc.interface.isJSImplemented() and
@@ -15113,6 +15130,12 @@ class CGBindingImplClass(CGClass):
                                             breakAfterReturnDecl=" ",
                                             override=descriptor.wrapperCache,
                                             body=self.getWrapObjectBody()))
+        if descriptor.hasCEReactions():
+            self.methodDecls.insert(0,
+                                    ClassMethod("GetDocGroup", "DocGroup*", [],
+                                                const=True,
+                                                breakAfterReturnDecl=" ",
+                                                body=self.getGetDocGroupBody()))
         if wantGetParent:
             self.methodDecls.insert(0,
                                     ClassMethod("GetParentObject",
@@ -15131,6 +15154,9 @@ class CGBindingImplClass(CGClass):
                 "%s*" % self.descriptor.nativeType.split('::')[-1])
 
     def getGetParentObjectBody(self):
+        return None
+
+    def getGetDocGroupBody(self):
         return None
 
     def deps(self):
@@ -15272,6 +15298,8 @@ class CGExampleRoot(CGThing):
         self.root = CGNamespace.build(["mozilla", "dom"], self.root)
 
         builder = ForwardDeclarationBuilder()
+        if descriptor.hasCEReactions():
+            builder.addInMozillaDom("DocGroup")
         for member in descriptor.interface.members:
             if not member.isAttr() and not member.isMethod():
                 continue
@@ -15589,7 +15617,7 @@ class CGJSImplClass(CGBindingImplClass):
 
             private:
               RefPtr<${jsImplName}> mImpl;
-              nsCOMPtr<nsISupports> mParent;
+              nsCOMPtr<nsIGlobalObject> mParent;
 
             """,
             isupportsDecl=isupportsDecl,
@@ -15678,6 +15706,16 @@ class CGJSImplClass(CGBindingImplClass):
 
     def getGetParentObjectBody(self):
         return "return mParent;\n"
+
+    def getGetDocGroupBody(self):
+        return dedent(
+            """
+            nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(mParent);
+            if (!window) {
+              return nullptr;
+            }
+            return window->GetDocGroup();
+            """)
 
     def getCreateFromExistingBody(self):
         # XXXbz we could try to get parts of this (e.g. the argument

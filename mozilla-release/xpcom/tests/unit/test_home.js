@@ -1,5 +1,4 @@
-var Ci = Components.interfaces;
-var Cc = Components.classes;
+Cu.import("resource://gre/modules/Services.jsm");
 
 const CWD = do_get_cwd();
 function checkOS(os) {
@@ -13,12 +12,11 @@ const isWin = checkOS("Win");
 function run_test() {
   var envVar = isWin ? "USERPROFILE" : "HOME";
 
-  var dirSvc = Cc["@mozilla.org/file/directory_service;1"].getService(Ci.nsIProperties);
-  var homeDir = dirSvc.get("Home", Ci.nsIFile);
+  var homeDir = Services.dirsvc.get("Home", Ci.nsIFile);
 
   var env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
   var expected = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   expected.initWithPath(env.get(envVar));
 
-  do_check_eq(homeDir.path, expected.path);
+  Assert.equal(homeDir.path, expected.path);
 }

@@ -287,9 +287,19 @@ nsNavHistory::nsNavHistory()
   , mLastCachedEndOfDay(0)
   , mCanNotify(true)
   , mCacheObservers("history-observers")
+#ifdef XP_WIN
+  , mCryptoProviderInitialized(false)
+#endif
 {
   NS_ASSERTION(!gHistoryService,
                "Attempting to create two instances of the service!");
+#ifdef XP_WIN
+  BOOL cryptoAcquired = CryptAcquireContext(&mCryptoProvider, 0, 0, PROV_RSA_FULL,
+                                            CRYPT_VERIFYCONTEXT | CRYPT_SILENT);
+  if (cryptoAcquired) {
+    mCryptoProviderInitialized = true;
+  }
+#endif
   gHistoryService = this;
 }
 
@@ -300,8 +310,15 @@ nsNavHistory::~nsNavHistory()
   // in case somebody creates an extra instance of the service.
   NS_ASSERTION(gHistoryService == this,
                "Deleting a non-singleton instance of the service");
+
   if (gHistoryService == this)
     gHistoryService = nullptr;
+
+#ifdef XP_WIN
+  if (mCryptoProviderInitialized) {
+    Unused << CryptReleaseContext(mCryptoProvider, 0);
+  }
+#endif
 }
 
 
@@ -411,43 +428,54 @@ nsNavHistory::GetOrCreateIdForPage(nsIURI* aURI,
     return NS_OK;
   }
 
-  // Create a new hidden, untyped and unvisited entry.
-  nsCOMPtr<mozIStorageStatement> stmt = mDB->GetStatement(
-    "INSERT INTO moz_places (url, url_hash, rev_host, hidden, frecency, guid) "
-    "VALUES (:page_url, hash(:page_url), :rev_host, :hidden, :frecency, :guid) "
-  );
-  NS_ENSURE_STATE(stmt);
-  mozStorageStatementScoper scoper(stmt);
+  {
+    // Create a new hidden, untyped and unvisited entry.
+    nsCOMPtr<mozIStorageStatement> stmt = mDB->GetStatement(
+      "INSERT INTO moz_places (url, url_hash, rev_host, hidden, frecency, guid) "
+      "VALUES (:page_url, hash(:page_url), :rev_host, :hidden, :frecency, :guid) "
+    );
+    NS_ENSURE_STATE(stmt);
+    mozStorageStatementScoper scoper(stmt);
 
-  rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
-  NS_ENSURE_SUCCESS(rv, rv);
-  // host (reversed with trailing period)
-  nsAutoString revHost;
-  rv = GetReversedHostname(aURI, revHost);
-  // Not all URI types have hostnames, so this is optional.
-  if (NS_SUCCEEDED(rv)) {
-    rv = stmt->BindStringByName(NS_LITERAL_CSTRING("rev_host"), revHost);
-  } else {
-    rv = stmt->BindNullByName(NS_LITERAL_CSTRING("rev_host"));
+    rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
+    NS_ENSURE_SUCCESS(rv, rv);
+    // host (reversed with trailing period)
+    nsAutoString revHost;
+    rv = GetReversedHostname(aURI, revHost);
+    // Not all URI types have hostnames, so this is optional.
+    if (NS_SUCCEEDED(rv)) {
+      rv = stmt->BindStringByName(NS_LITERAL_CSTRING("rev_host"), revHost);
+    } else {
+      rv = stmt->BindNullByName(NS_LITERAL_CSTRING("rev_host"));
+    }
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = stmt->BindInt32ByName(NS_LITERAL_CSTRING("hidden"), 1);
+    NS_ENSURE_SUCCESS(rv, rv);
+    nsAutoCString spec;
+    rv = aURI->GetSpec(spec);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = stmt->BindInt32ByName(NS_LITERAL_CSTRING("frecency"),
+                               IsQueryURI(spec) ? 0 : -1);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = GenerateGUID(_GUID);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = stmt->BindUTF8StringByName(NS_LITERAL_CSTRING("guid"), _GUID);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = stmt->Execute();
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    *_pageId = sLastInsertedPlaceId;
   }
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = stmt->BindInt32ByName(NS_LITERAL_CSTRING("hidden"), 1);
-  NS_ENSURE_SUCCESS(rv, rv);
-  nsAutoCString spec;
-  rv = aURI->GetSpec(spec);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = stmt->BindInt32ByName(NS_LITERAL_CSTRING("frecency"),
-                             IsQueryURI(spec) ? 0 : -1);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = GenerateGUID(_GUID);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = stmt->BindUTF8StringByName(NS_LITERAL_CSTRING("guid"), _GUID);
-  NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = stmt->Execute();
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  *_pageId = sLastInsertedPlaceId;
+  {
+    // Trigger the updates to moz_hosts
+    nsCOMPtr<mozIStorageStatement> stmt = mDB->GetStatement(
+      "DELETE FROM moz_updatehostsinsert_temp"
+    );
+    NS_ENSURE_STATE(stmt);
+    mozStorageStatementScoper scoper(stmt);
+  }
 
   return NS_OK;
 }
@@ -490,35 +518,27 @@ nsNavHistory::LoadPrefs()
 #undef FRECENCY_PREF
 }
 
-
 void
-nsNavHistory::NotifyOnVisit(nsIURI* aURI,
-                            int64_t aVisitId,
-                            PRTime aTime,
-                            int64_t aReferrerVisitId,
-                            int32_t aTransitionType,
-                            const nsACString& aGuid,
-                            bool aHidden,
-                            uint32_t aVisitCount,
-                            uint32_t aTyped,
-                            const nsAString& aLastKnownTitle)
+nsNavHistory::NotifyOnVisits(nsIVisitData** aVisits, uint32_t aVisitsCount)
 {
-  MOZ_ASSERT(!aGuid.IsEmpty());
-  MOZ_ASSERT(aVisitCount, "Should have at least 1 visit when notifying");
-  // If there's no history, this visit will surely add a day.  If the visit is
-  // added before or after the last cached day, the day count may have changed.
-  // Otherwise adding multiple visits in the same day should not invalidate
-  // the cache.
+  MOZ_ASSERT(aVisits, "Can't call NotifyOnVisits with a NULL aVisits");
+  MOZ_ASSERT(aVisitsCount, "Should have at least 1 visit when notifying");
+
   if (mDaysOfHistory == 0) {
     mDaysOfHistory = 1;
-  } else if (aTime > mLastCachedEndOfDay || aTime < mLastCachedStartOfDay) {
-    mDaysOfHistory = -1;
+  }
+
+  for (uint32_t i = 0; i < aVisitsCount; ++i) {
+    PRTime time;
+    MOZ_ALWAYS_SUCCEEDS(aVisits[i]->GetTime(&time));
+    if (time > mLastCachedEndOfDay || time < mLastCachedStartOfDay) {
+      mDaysOfHistory = -1;
+    }
   }
 
   NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
                    nsINavHistoryObserver,
-                   OnVisit(aURI, aVisitId, aTime, 0, aReferrerVisitId,
-                           aTransitionType, aGuid, aHidden, aVisitCount, aTyped, aLastKnownTitle));
+                   OnVisits(aVisits, aVisitsCount));
 }
 
 void
@@ -1022,7 +1042,7 @@ public:
   {
   }
 
-  NS_IMETHOD HandleCompletion(uint16_t aReason)
+  NS_IMETHOD HandleCompletion(uint16_t aReason) override
   {
     if (aReason == REASON_FINISHED) {
       nsNavHistory *navHistory = nsNavHistory::GetHistoryService();
@@ -1472,7 +1492,6 @@ PlacesSQLQueryBuilder::Select()
       break;
 
     case nsINavHistoryQueryOptions::RESULTS_AS_VISIT:
-    case nsINavHistoryQueryOptions::RESULTS_AS_FULL_VISIT:
       rv = SelectAsVisit();
       NS_ENSURE_SUCCESS(rv, rv);
       break;
@@ -2518,7 +2537,7 @@ nsNavHistory::CleanupPlacesOnVisitsDelete(const nsCString& aPlaceIdsQueryString)
   // Hosts accumulated during the places delete are updated through a trigger
   // (see nsPlacesTriggers.h).
   rv = conn->ExecuteSimpleSQL(
-    NS_LITERAL_CSTRING("DELETE FROM moz_updatehosts_temp")
+    NS_LITERAL_CSTRING("DELETE FROM moz_updatehostsdelete_temp")
   );
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -3032,7 +3051,7 @@ public:
   {
   }
 
-  NS_IMETHOD HandleCompletion(uint16_t aReason)
+  NS_IMETHOD HandleCompletion(uint16_t aReason) override
   {
     (void)AsyncStatementTelemetryTimer::HandleCompletion(aReason);
     if (aReason == REASON_FINISHED) {
@@ -3269,7 +3288,7 @@ nsNavHistory::QueryToSelectClause(nsNavHistoryQuery* aQuery, // const
          "JOIN moz_bookmarks tags ON bms.parent = tags.id "
          "WHERE tags.parent =").
            Param(":tags_folder").
-           Str("AND tags.title IN (");
+           Str("AND lower(tags.title) IN (");
     for (uint32_t i = 0; i < tags.Length(); ++i) {
       nsPrintfCString param(":tag%d_", i);
       clause.Param(param.get());
@@ -3446,6 +3465,7 @@ nsNavHistory::BindQueryClauseParameters(mozIStorageBaseStatement* statement,
     for (uint32_t i = 0; i < tags.Length(); ++i) {
       nsPrintfCString paramName("tag%d_", i);
       NS_ConvertUTF16toUTF8 tag(tags[i]);
+      ToLowerCase(tag);
       rv = statement->BindUTF8StringByName(paramName + qIndex, tag);
       NS_ENSURE_SUCCESS(rv, rv);
     }
@@ -3979,7 +3999,6 @@ nsNavHistory::VisitIdToResultNode(int64_t visitId,
   switch (aOptions->ResultType())
   {
     case nsNavHistoryQueryOptions::RESULTS_AS_VISIT:
-    case nsNavHistoryQueryOptions::RESULTS_AS_FULL_VISIT:
       // visit query - want exact visit time
       // Should match kGetInfoIndex_* (see GetQueryResults)
       statement = mDB->GetStatement(NS_LITERAL_CSTRING(
@@ -4371,7 +4390,7 @@ public:
   {
   }
 
-  NS_IMETHOD HandleCompletion(uint16_t aReason)
+  NS_IMETHOD HandleCompletion(uint16_t aReason) override
   {
     nsresult rv = AsyncStatementCallbackNotifier::HandleCompletion(aReason);
     NS_ENSURE_SUCCESS(rv, rv);

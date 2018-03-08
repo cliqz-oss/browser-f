@@ -12,7 +12,7 @@
 #include "mozilla/Preferences.h"
 
 #include "nsError.h"
-#include "nsIDOMCSSPrimitiveValue.h"
+#include "mozilla/dom/CSSPrimitiveValueBinding.h"
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
 #include "nsStyleContext.h"
@@ -419,7 +419,8 @@ nsComputedDOMStyle::GetPropertyValue(const nsCSSPropertyID aPropID,
 
 NS_IMETHODIMP
 nsComputedDOMStyle::SetPropertyValue(const nsCSSPropertyID aPropID,
-                                     const nsAString& aValue)
+                                     const nsAString& aValue,
+                                     nsIPrincipal* aSubjectPrincipal)
 {
   return NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR;
 }
@@ -433,7 +434,8 @@ nsComputedDOMStyle::GetCssText(nsAString& aCssText)
 }
 
 NS_IMETHODIMP
-nsComputedDOMStyle::SetCssText(const nsAString& aCssText)
+nsComputedDOMStyle::SetCssText(const nsAString& aCssText,
+                               nsIPrincipal* aSubjectPrincipal)
 {
   return NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR;
 }
@@ -461,12 +463,10 @@ nsComputedDOMStyle::GetLength(uint32_t* aLength)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsComputedDOMStyle::GetParentRule(nsIDOMCSSRule** aParentRule)
+css::Rule*
+nsComputedDOMStyle::GetParentRule()
 {
-  *aParentRule = nullptr;
-
-  return NS_OK;
+  return nullptr;
 }
 
 NS_IMETHODIMP
@@ -743,9 +743,15 @@ nsComputedDOMStyle::DoGetStyleContextNoFlush(Element* aElement,
                      aElement, result->AsGecko(),
                      eRestyle_AllHintsWithAnimations);
           } else {
+            Element* elementOrPseudoElement =
+              EffectCompositor::GetElementToRestyle(aElement, pseudoType);
+            if (!elementOrPseudoElement) {
+              return nullptr;
+            }
             return presContext->StyleSet()->AsServo()->
-              GetBaseContextForElement(aElement, presContext,
-                                       pseudoType, result->AsServo());
+              GetBaseContextForElement(elementOrPseudoElement,
+                                       presContext,
+                                       result->AsServo());
           }
         }
 
@@ -777,8 +783,14 @@ nsComputedDOMStyle::DoGetStyleContextNoFlush(Element* aElement,
       return result.forget();
     }
 
-    return servoSet->GetBaseContextForElement(aElement, presContext,
-                                              pseudoType, result);
+    Element* elementOrPseudoElement =
+      EffectCompositor::GetElementToRestyle(aElement, pseudoType);
+    if (!elementOrPseudoElement) {
+      return nullptr;
+    }
+    return servoSet->GetBaseContextForElement(elementOrPseudoElement,
+                                              presContext,
+                                              result);
   }
 
   RefPtr<GeckoStyleContext> parentContext;
@@ -856,13 +868,15 @@ nsComputedDOMStyle::DocToUpdate()
 }
 
 void
-nsComputedDOMStyle::GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv)
+nsComputedDOMStyle::GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
+                                             nsIPrincipal* aSubjectPrincipal)
 {
   MOZ_CRASH("called nsComputedDOMStyle::GetCSSParsingEnvironment");
 }
 
 nsDOMCSSDeclaration::ServoCSSParsingEnvironment
-nsComputedDOMStyle::GetServoCSSParsingEnvironment() const
+nsComputedDOMStyle::GetServoCSSParsingEnvironment(
+  nsIPrincipal* aSubjectPrincipal) const
 {
   MOZ_CRASH("called nsComputedDOMStyle::GetServoCSSParsingEnvironment");
 }
@@ -1196,15 +1210,10 @@ nsComputedDOMStyle::GetPropertyPriority(const nsAString& aPropertyName,
 NS_IMETHODIMP
 nsComputedDOMStyle::SetProperty(const nsAString& aPropertyName,
                                 const nsAString& aValue,
-                                const nsAString& aPriority)
+                                const nsAString& aPriority,
+                                nsIPrincipal* aSubjectPrincipal)
 {
   return NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR;
-}
-
-NS_IMETHODIMP
-nsComputedDOMStyle::Item(uint32_t aIndex, nsAString& aReturn)
-{
-  return nsDOMCSSDeclaration::Item(aIndex, aReturn);
 }
 
 void
@@ -1267,7 +1276,7 @@ nsComputedDOMStyle::DoGetBinding()
 
   const nsStyleDisplay* display = StyleDisplay();
 
-  if (display->mBinding) {
+  if (display->mBinding && display->mBinding->GetURI()) {
     val->SetURI(display->mBinding->GetURI());
   } else {
     val->SetIdent(eCSSKeyword_none);
@@ -1534,7 +1543,7 @@ nsComputedDOMStyle::DoGetContent()
         nsAutoString str;
         nsStyleUtil::AppendEscapedCSSIdent(
           nsDependentString(data.GetString()), str);
-        val->SetString(str, nsIDOMCSSPrimitiveValue::CSS_ATTR);
+        val->SetString(str, CSSPrimitiveValueBinding::CSS_ATTR);
         break;
       }
       case eStyleContentType_Counter:
@@ -1559,7 +1568,7 @@ nsComputedDOMStyle::DoGetContent()
         }
 
         str.Append(char16_t(')'));
-        val->SetString(str, nsIDOMCSSPrimitiveValue::CSS_COUNTER);
+        val->SetString(str, CSSPrimitiveValueBinding::CSS_COUNTER);
         break;
       }
       case eStyleContentType_OpenQuote:
@@ -3252,8 +3261,7 @@ nsComputedDOMStyle::DoGetGridTemplateColumns()
   const ComputedGridTrackInfo* info = nullptr;
 
   nsGridContainerFrame* gridFrame =
-    nsGridContainerFrame::GetGridFrameWithComputedInfo(
-      mContent->GetPrimaryFrame());
+    nsGridContainerFrame::GetGridFrameWithComputedInfo(mInnerFrame);
 
   if (gridFrame) {
     info = gridFrame->GetComputedTemplateColumns();
@@ -3269,14 +3277,14 @@ nsComputedDOMStyle::DoGetGridTemplateRows()
   const ComputedGridTrackInfo* info = nullptr;
 
   nsGridContainerFrame* gridFrame =
-    nsGridContainerFrame::GetGridFrameWithComputedInfo(
-      mContent->GetPrimaryFrame());
+    nsGridContainerFrame::GetGridFrameWithComputedInfo(mInnerFrame);
 
   if (gridFrame) {
     info = gridFrame->GetComputedTemplateRows();
   }
 
-  return GetGridTemplateColumnsRows(StylePosition()->GridTemplateRows(), info);
+  return GetGridTemplateColumnsRows(
+    StylePosition()->GridTemplateRows(), info);
 }
 
 already_AddRefed<CSSValue>
@@ -3603,6 +3611,26 @@ nsComputedDOMStyle::DoGetScrollBehavior()
   val->SetIdent(
     nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mScrollBehavior,
                                    nsCSSProps::kScrollBehaviorKTable));
+  return val.forget();
+}
+
+already_AddRefed<CSSValue>
+nsComputedDOMStyle::DoGetOverscrollBehaviorX()
+{
+  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
+  val->SetIdent(
+    nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverscrollBehaviorX,
+                                   nsCSSProps::kOverscrollBehaviorKTable));
+  return val.forget();
+}
+
+already_AddRefed<CSSValue>
+nsComputedDOMStyle::DoGetOverscrollBehaviorY()
+{
+  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
+  val->SetIdent(
+    nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverscrollBehaviorY,
+                                   nsCSSProps::kOverscrollBehaviorKTable));
   return val.forget();
 }
 
@@ -5101,11 +5129,21 @@ nsComputedDOMStyle::DoGetOverflowY()
 }
 
 already_AddRefed<CSSValue>
-nsComputedDOMStyle::DoGetOverflowClipBox()
+nsComputedDOMStyle::DoGetOverflowClipBoxBlock()
 {
   RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
   val->SetIdent(
-    nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverflowClipBox,
+    nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverflowClipBoxBlock,
+                                   nsCSSProps::kOverflowClipBoxKTable));
+  return val.forget();
+}
+
+already_AddRefed<CSSValue>
+nsComputedDOMStyle::DoGetOverflowClipBoxInline()
+{
+  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
+  val->SetIdent(
+    nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverflowClipBoxInline,
                                    nsCSSProps::kOverflowClipBoxKTable));
   return val.forget();
 }
@@ -5756,7 +5794,7 @@ nsComputedDOMStyle::SetValueToCoord(nsROCSSPrimitiveValue* aValue,
     case eStyleUnit_Calc:
       nscoord percentageBase;
       if (!aCoord.CalcHasPercent()) {
-        nscoord val = nsRuleNode::ComputeCoordPercentCalc(aCoord, 0);
+        nscoord val = aCoord.ComputeCoordPercentCalc(0);
         if (aClampNegativeCalc && val < 0) {
           MOZ_ASSERT(aCoord.IsCalcUnit(),
                      "parser should have rejected value");
@@ -5765,8 +5803,7 @@ nsComputedDOMStyle::SetValueToCoord(nsROCSSPrimitiveValue* aValue,
         aValue->SetAppUnits(std::max(aMinAppUnits, std::min(val, aMaxAppUnits)));
       } else if (aPercentageBaseGetter &&
                  (this->*aPercentageBaseGetter)(percentageBase)) {
-        nscoord val =
-          nsRuleNode::ComputeCoordPercentCalc(aCoord, percentageBase);
+        nscoord val = aCoord.ComputeCoordPercentCalc(percentageBase);
         if (aClampNegativeCalc && val < 0) {
           MOZ_ASSERT(aCoord.IsCalcUnit(),
                      "parser should have rejected value");
@@ -5822,8 +5859,7 @@ nsComputedDOMStyle::StyleCoordToNSCoord(const nsStyleCoord& aCoord,
   if (aCoord.GetUnit() == eStyleUnit_Percent || aCoord.IsCalcUnit()) {
     nscoord percentageBase;
     if ((this->*aPercentageBaseGetter)(percentageBase)) {
-      nscoord result =
-        nsRuleNode::ComputeCoordPercentCalc(aCoord, percentageBase);
+      nscoord result = aCoord.ComputeCoordPercentCalc(percentageBase);
       if (aClampNegativeCalc && result < 0) {
         // It's expected that we can get a negative value here with calc().
         // We can also get a negative value with a percentage value if
@@ -6519,8 +6555,11 @@ nsComputedDOMStyle::GetShapeSource(
       val->SetIdent(eCSSKeyword_none);
       return val.forget();
     }
-    default:
-      NS_NOTREACHED("unexpected type");
+    case StyleShapeSourceType::Image: {
+      RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
+      SetValueToStyleImage(*aShapeSource.GetShapeImage(), val);
+      return val.forget();
+    }
   }
   return nullptr;
 }
@@ -6530,6 +6569,14 @@ nsComputedDOMStyle::DoGetClipPath()
 {
   return GetShapeSource(StyleSVGReset()->mClipPath,
                         nsCSSProps::kClipPathGeometryBoxKTable);
+}
+
+already_AddRefed<CSSValue>
+nsComputedDOMStyle::DoGetShapeImageThreshold()
+{
+  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
+  val->SetNumber(StyleDisplay()->mShapeImageThreshold);
+  return val.forget();
 }
 
 already_AddRefed<CSSValue>

@@ -5,7 +5,7 @@
 /*---
 esid: sec-bigint.prototype.tostring
 description: BigInt.prototype.toString.length property descriptor
-info: >
+info: |
   BigInt.prototype.toString ( [ radix ] )
 
   17 ECMAScript Standard Built-in Objects
@@ -14,7 +14,7 @@ features: [BigInt]
 ---*/
 
 verifyProperty(BigInt.prototype.toString, "length", {
-  value: 1,
+  value: 0,
   writable: false,
   enumerable: false,
   configurable: true

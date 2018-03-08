@@ -27,7 +27,7 @@ public:
   static VRListenerThreadHolder* GetSingleton();
 
   static bool IsActive() {
-    return !!GetSingleton();
+    return GetSingleton() && Loop();
   }
 
   static void Start();
@@ -45,6 +45,34 @@ private:
 };
 
 base::Thread* VRListenerThread();
+
+class VRThread final
+{
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VRThread)
+
+public:
+  explicit VRThread(const nsCString& aName);
+
+  void Start();
+  void Shutdown();
+  void SetLifeTime(uint32_t aLifeTime);
+  uint32_t GetLifeTime();
+  void CheckLife(TimeStamp aCheckTimestamp);
+  void PostTask(already_AddRefed<Runnable> aTask);
+  void PostDelayedTask(already_AddRefed<Runnable> aTask, uint32_t aTime);
+  const nsCOMPtr<nsIThread> GetThread() const;
+  bool IsActive();
+
+protected:
+  ~VRThread();
+
+private:
+  nsCOMPtr<nsIThread> mThread;
+  TimeStamp mLastActiveTime;
+  nsCString mName;
+  uint32_t mLifeTime;
+  Atomic<bool> mStarted;
+};
 
 } // namespace gfx
 } // namespace mozilla

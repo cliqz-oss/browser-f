@@ -52,6 +52,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/Navigator.h"
+#include "mozilla/Monitor.h"
 #include "nsContentUtils.h"
 #include "nsCycleCollector.h"
 #include "nsDOMJSUtils.h"
@@ -251,26 +252,6 @@ GetWorkerPref(const nsACString& aPref,
   }
 
   return result;
-}
-
-// This fn creates a key for a SharedWorker that contains the name, script
-// spec, and the serialized origin attributes:
-// "name|scriptSpec^key1=val1&key2=val2&key3=val3"
-void
-GenerateSharedWorkerKey(const nsACString& aScriptSpec,
-                        const nsAString& aName,
-                        const OriginAttributes& aAttrs,
-                        nsCString& aKey)
-{
-  nsAutoCString suffix;
-  aAttrs.CreateSuffix(suffix);
-
-  aKey.Truncate();
-  aKey.SetCapacity(aName.Length() + aScriptSpec.Length() + suffix.Length() + 2);
-  aKey.Append(NS_ConvertUTF16toUTF8(aName));
-  aKey.Append('|');
-  aKey.Append(aScriptSpec);
-  aKey.Append(suffix);
 }
 
 void
@@ -568,15 +549,6 @@ LoadJSGCMemoryOptions(const char* aPrefName, void* /* aClosure */)
         (gRuntimeServiceDuringInit && index == 14)) {
       bool prefValue = GetWorkerPref(matchName, false);
       UpdateOtherJSGCMemoryOption(rts, JSGC_COMPACTING_ENABLED,
-                                 prefValue ? 0 : 1);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "gc_refresh_frame_slices_enabled");
-    if (memPrefName == matchName ||
-        (gRuntimeServiceDuringInit && index == 15)) {
-      bool prefValue = GetWorkerPref(matchName, false);
-      UpdateOtherJSGCMemoryOption(rts, JSGC_REFRESH_FRAME_SLICES_ENABLED,
                                  prefValue ? 0 : 1);
       continue;
     }
@@ -1012,6 +984,8 @@ public:
     // The CC is shut down, and the superclass destructor will GC, so make sure
     // we don't try to CC again.
     mWorkerPrivate = nullptr;
+
+    CycleCollectedJSRuntime::Shutdown(cx);
   }
 
   ~WorkerJSRuntime()
@@ -1462,7 +1436,6 @@ struct RuntimeService::IdleThreadInfo
 
 // This is only touched on the main thread. Initialized in Init() below.
 JSSettings RuntimeService::sDefaultJSSettings;
-bool RuntimeService::sDefaultPreferences[WORKERPREF_COUNT] = { false };
 
 RuntimeService::RuntimeService()
 : mMutex("RuntimeService::mMutex"), mObserved(false),
@@ -1602,16 +1575,23 @@ RuntimeService::RegisterWorker(WorkerPrivate* aWorkerPrivate)
     }
 
     if (isSharedWorker) {
-      const nsString& sharedWorkerName(aWorkerPrivate->WorkerName());
-      nsAutoCString key;
-      GenerateSharedWorkerKey(sharedWorkerScriptSpec, sharedWorkerName,
-                              aWorkerPrivate->GetOriginAttributes(), key);
-      MOZ_ASSERT(!domainInfo->mSharedWorkerInfos.Get(key));
+#ifdef DEBUG
+      for (const UniquePtr<SharedWorkerInfo>& data : domainInfo->mSharedWorkerInfos) {
+         if (data->mScriptSpec == sharedWorkerScriptSpec &&
+             data->mName == aWorkerPrivate->WorkerName() &&
+             // We want to be sure that the window's principal subsumes the
+             // SharedWorker's principal and vice versa.
+             data->mWorkerPrivate->GetPrincipal()->Subsumes(aWorkerPrivate->GetPrincipal()) &&
+             aWorkerPrivate->GetPrincipal()->Subsumes(data->mWorkerPrivate->GetPrincipal())) {
+           MOZ_CRASH("We should not instantiate a new SharedWorker!");
+         }
+      }
+#endif
 
-      SharedWorkerInfo* sharedWorkerInfo =
+      UniquePtr<SharedWorkerInfo> sharedWorkerInfo(
         new SharedWorkerInfo(aWorkerPrivate, sharedWorkerScriptSpec,
-                             sharedWorkerName);
-      domainInfo->mSharedWorkerInfos.Put(key, sharedWorkerInfo);
+                             aWorkerPrivate->WorkerName()));
+      domainInfo->mSharedWorkerInfos.AppendElement(Move(sharedWorkerInfo));
     }
   }
 
@@ -1671,18 +1651,11 @@ void
 RuntimeService::RemoveSharedWorker(WorkerDomainInfo* aDomainInfo,
                                    WorkerPrivate* aWorkerPrivate)
 {
-  for (auto iter = aDomainInfo->mSharedWorkerInfos.Iter();
-       !iter.Done();
-       iter.Next()) {
-    SharedWorkerInfo* data = iter.UserData();
+  for (uint32_t i = 0; i < aDomainInfo->mSharedWorkerInfos.Length(); ++i) {
+    const UniquePtr<SharedWorkerInfo>& data =
+      aDomainInfo->mSharedWorkerInfos[i];
     if (data->mWorkerPrivate == aWorkerPrivate) {
-#ifdef DEBUG
-      nsAutoCString key;
-      GenerateSharedWorkerKey(data->mScriptSpec, data->mName,
-                              aWorkerPrivate->GetOriginAttributes(), key);
-      MOZ_ASSERT(iter.Key() == key);
-#endif
-      iter.Remove();
+      aDomainInfo->mSharedWorkerInfos.RemoveElementAt(i);
       break;
     }
   }
@@ -1923,7 +1896,6 @@ RuntimeService::Init()
   if (sDefaultJSSettings.gcSettings[0].key.isNothing()) {
     sDefaultJSSettings.contextOptions = JS::ContextOptions();
     sDefaultJSSettings.chrome.maxScriptRuntime = -1;
-    sDefaultJSSettings.chrome.compartmentOptions.behaviors().setVersion(JSVERSION_DEFAULT);
     sDefaultJSSettings.content.maxScriptRuntime = MAX_SCRIPT_RUN_TIME_SEC;
 #ifdef JS_GC_ZEAL
     sDefaultJSSettings.gcZealFrequency = JS_DEFAULT_ZEAL_FREQ;
@@ -1987,17 +1959,17 @@ RuntimeService::Init()
                                              PREF_JS_OPTIONS_PREFIX PREF_GCZEAL)) ||
 #endif
 
-#define WORKER_SIMPLE_PREF(name, getter, NAME)                                \
-      NS_FAILED(Preferences::RegisterCallbackAndCall(                         \
-                  WorkerPrefChanged,                                          \
-                  name,                                                       \
-                  reinterpret_cast<void*>(WORKERPREF_##NAME))) ||
 #define WORKER_PREF(name, callback)                                           \
       NS_FAILED(Preferences::RegisterCallbackAndCall(                         \
                   callback,                                                   \
                   name)) ||
-#include "WorkerPrefs.h"
-#undef WORKER_SIMPLE_PREF
+      WORKER_PREF("intl.accept_languages", PrefLanguagesChanged)
+      WORKER_PREF("general.appname.override", AppNameOverrideChanged)
+      WORKER_PREF("general.appversion.override", AppVersionOverrideChanged)
+      WORKER_PREF("general.platform.override", PlatformOverrideChanged)
+#ifdef JS_GC_ZEAL
+      WORKER_PREF("dom.workers.options.gcZeal", LoadGCZealOptions)
+#endif
 #undef WORKER_PREF
 
       NS_FAILED(Preferences::RegisterPrefixCallbackAndCall(
@@ -2088,6 +2060,133 @@ RuntimeService::Shutdown()
   }
 }
 
+namespace {
+
+class CrashIfHangingRunnable : public WorkerControlRunnable
+{
+public:
+  explicit CrashIfHangingRunnable(WorkerPrivate* aWorkerPrivate)
+    : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount)
+    , mMonitor("CrashIfHangingRunnable::mMonitor")
+  {}
+
+  bool
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
+  {
+    aWorkerPrivate->DumpCrashInformation(mMsg);
+
+    MonitorAutoLock lock(mMonitor);
+    lock.Notify();
+    return true;
+  }
+
+  nsresult
+  Cancel() override
+  {
+    mMsg.Assign("Canceled");
+
+    MonitorAutoLock lock(mMonitor);
+    lock.Notify();
+
+    return NS_OK;
+  }
+
+  void
+  DispatchAndWait()
+  {
+    MonitorAutoLock lock(mMonitor);
+
+    if (!Dispatch()) {
+      mMsg.Assign("Dispatch Error");
+      return;
+    }
+
+    lock.Wait();
+  }
+
+  const nsCString&
+  MsgData() const
+  {
+    return mMsg;
+  }
+
+private:
+  bool
+  PreDispatch(WorkerPrivate* aWorkerPrivate) override
+  {
+    return true;
+  }
+
+  void
+  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override
+  {}
+
+  Monitor mMonitor;
+  nsCString mMsg;
+};
+
+} // anonymous
+
+void
+RuntimeService::CrashIfHanging()
+{
+  MutexAutoLock lock(mMutex);
+
+  if (mDomainMap.IsEmpty()) {
+    return;
+  }
+
+  uint32_t activeWorkers = 0;
+  uint32_t activeServiceWorkers = 0;
+  uint32_t inactiveWorkers = 0;
+
+  nsTArray<WorkerPrivate*> workers;
+
+  for (auto iter = mDomainMap.Iter(); !iter.Done(); iter.Next()) {
+    WorkerDomainInfo* aData = iter.UserData();
+
+    activeWorkers += aData->mActiveWorkers.Length();
+    activeServiceWorkers += aData->mActiveServiceWorkers.Length();
+
+    workers.AppendElements(aData->mActiveWorkers);
+    workers.AppendElements(aData->mActiveServiceWorkers);
+
+    // These might not be top-level workers...
+    for (uint32_t index = 0; index < aData->mQueuedWorkers.Length(); index++) {
+      WorkerPrivate* worker = aData->mQueuedWorkers[index];
+      if (!worker->GetParent()) {
+        ++inactiveWorkers;
+      }
+    }
+  }
+
+  // We must have something pending...
+  MOZ_DIAGNOSTIC_ASSERT(activeWorkers + activeServiceWorkers + inactiveWorkers);
+
+  nsCString msg;
+
+  // A: active Workers | S: active ServiceWorkers | Q: queued Workers
+  msg.AppendPrintf("Workers Hanging - A:%d|S:%d|Q:%d", activeWorkers,
+                   activeServiceWorkers, inactiveWorkers);
+
+  // For each thread, let's print some data to know what is going wrong.
+  for (uint32_t i = 0; i < workers.Length(); ++i) {
+    WorkerPrivate* workerPrivate = workers[i];
+
+    // BC: Busy Count
+    msg.AppendPrintf("-BC:%d", workerPrivate->BusyCount());
+
+    RefPtr<CrashIfHangingRunnable> runnable = new
+      CrashIfHangingRunnable(workerPrivate);
+    runnable->DispatchAndWait();
+
+    msg.Append(runnable->MsgData());
+  }
+
+  // This string will be leaked.
+  MOZ_CRASH_UNSAFE_OOL(strdup(msg.BeginReading()));
+}
+
 // This spins the event loop until all workers are finished and their threads
 // have been joined.
 void
@@ -2159,17 +2258,17 @@ RuntimeService::Cleanup()
         NS_FAILED(Preferences::UnregisterPrefixCallback(LoadContextOptions,
                                                         PREF_WORKERS_OPTIONS_PREFIX)) ||
 
-#define WORKER_SIMPLE_PREF(name, getter, NAME)                                \
-      NS_FAILED(Preferences::UnregisterCallback(                              \
-                  WorkerPrefChanged,                                          \
-                  name,                                                       \
-                  reinterpret_cast<void*>(WORKERPREF_##NAME))) ||
 #define WORKER_PREF(name, callback)                                           \
       NS_FAILED(Preferences::UnregisterCallback(                              \
                   callback,                                                   \
                   name)) ||
-#include "WorkerPrefs.h"
-#undef WORKER_SIMPLE_PREF
+      WORKER_PREF("intl.accept_languages", PrefLanguagesChanged)
+      WORKER_PREF("general.appname.override", AppNameOverrideChanged)
+      WORKER_PREF("general.appversion.override", AppVersionOverrideChanged)
+      WORKER_PREF("general.platform.override", PlatformOverrideChanged)
+#ifdef JS_GC_ZEAL
+      WORKER_PREF("dom.workers.options.gcZeal", LoadGCZealOptions)
+#endif
 #undef WORKER_PREF
 
 #ifdef JS_GC_ZEAL
@@ -2348,6 +2447,31 @@ RuntimeService::CreateSharedWorker(const GlobalObject& aGlobal,
   nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(aGlobal.GetAsSupports());
   MOZ_ASSERT(window);
 
+  // If the window is blocked from accessing storage, do not allow it
+  // to connect to a SharedWorker.  This would potentially allow it
+  // to communicate with other windows that do have storage access.
+  // Allow private browsing, however, as we handle that isolation
+  // via the principal.
+  auto storageAllowed = nsContentUtils::StorageAllowedForWindow(window);
+  if (storageAllowed != nsContentUtils::StorageAccess::eAllow &&
+      storageAllowed != nsContentUtils::StorageAccess::ePrivateBrowsing) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  // Assert that the principal private browsing state matches the
+  // StorageAccess value.
+#ifdef  MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  if (storageAllowed == nsContentUtils::StorageAccess::ePrivateBrowsing) {
+    nsCOMPtr<nsIDocument> doc = window->GetExtantDoc();
+    nsCOMPtr<nsIPrincipal> principal = doc ? doc->NodePrincipal() : nullptr;
+    uint32_t privateBrowsingId = 0;
+    if (principal) {
+      MOZ_ALWAYS_SUCCEEDS(principal->GetPrivateBrowsingId(&privateBrowsingId));
+    }
+    MOZ_DIAGNOSTIC_ASSERT(privateBrowsingId != 0);
+  }
+#endif // MOZ_DIAGNOSTIC_ASSERT_ENABLED
+
   JSContext* cx = aGlobal.Context();
 
   WorkerLoadInfo loadInfo;
@@ -2376,21 +2500,25 @@ RuntimeService::CreateSharedWorkerFromLoadInfo(JSContext* aCx,
   {
     MutexAutoLock lock(mMutex);
 
-    WorkerDomainInfo* domainInfo;
-    SharedWorkerInfo* sharedWorkerInfo;
-
     nsCString scriptSpec;
     nsresult rv = aLoadInfo->mResolvedScriptURI->GetSpec(scriptSpec);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    MOZ_ASSERT(aLoadInfo->mPrincipal);
-    nsAutoCString key;
-    GenerateSharedWorkerKey(scriptSpec, aName,
-        aLoadInfo->mPrincipal->OriginAttributesRef(), key);
+    MOZ_DIAGNOSTIC_ASSERT(aLoadInfo->mPrincipal && aLoadInfo->mLoadingPrincipal);
 
-    if (mDomainMap.Get(aLoadInfo->mDomain, &domainInfo) &&
-        domainInfo->mSharedWorkerInfos.Get(key, &sharedWorkerInfo)) {
-      workerPrivate = sharedWorkerInfo->mWorkerPrivate;
+    WorkerDomainInfo* domainInfo;
+    if (mDomainMap.Get(aLoadInfo->mDomain, &domainInfo)) {
+      for (const UniquePtr<SharedWorkerInfo>& data : domainInfo->mSharedWorkerInfos) {
+        if (data->mScriptSpec == scriptSpec &&
+            data->mName == aName &&
+            // We want to be sure that the window's principal subsumes the
+            // SharedWorker's loading principal and vice versa.
+            aLoadInfo->mLoadingPrincipal->Subsumes(data->mWorkerPrivate->GetLoadingPrincipal()) &&
+            data->mWorkerPrivate->GetLoadingPrincipal()->Subsumes(aLoadInfo->mLoadingPrincipal)) {
+          workerPrivate = data->mWorkerPrivate;
+          break;
+        }
+      }
     }
   }
 
@@ -2566,12 +2694,6 @@ RuntimeService::UpdatePlatformOverridePreference(const nsAString& aValue)
 }
 
 void
-RuntimeService::UpdateAllWorkerPreference(WorkerPreference aPref, bool aValue)
-{
-  BROADCAST_ALL_WORKERS(UpdatePreference, aPref, aValue);
-}
-
-void
 RuntimeService::UpdateAllWorkerLanguages(const nsTArray<nsString>& aLanguages)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -2688,34 +2810,6 @@ RuntimeService::Observe(nsISupports* aSubject, const char* aTopic,
 
   NS_NOTREACHED("Unknown observer topic!");
   return NS_OK;
-}
-
-/* static */ void
-RuntimeService::WorkerPrefChanged(const char* aPrefName, void* aClosure)
-{
-  AssertIsOnMainThread();
-
-  const WorkerPreference key =
-    static_cast<WorkerPreference>(reinterpret_cast<uintptr_t>(aClosure));
-
-  switch (key) {
-#define WORKER_SIMPLE_PREF(name, getter, NAME) case WORKERPREF_##NAME:
-#define WORKER_PREF(name, callback)
-#include "WorkerPrefs.h"
-#undef WORKER_SIMPLE_PREF
-#undef WORKER_PREF
-      sDefaultPreferences[key] = Preferences::GetBool(aPrefName, false);
-      break;
-
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid pref key");
-      break;
-  }
-
-  RuntimeService* rts = RuntimeService::GetService();
-  if (rts) {
-    rts->UpdateAllWorkerPreference(key, sDefaultPreferences[key]);
-  }
 }
 
 bool

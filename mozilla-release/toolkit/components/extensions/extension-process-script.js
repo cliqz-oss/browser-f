@@ -114,7 +114,7 @@ class ExtensionGlobal {
     return this.frameData;
   }
 
-  receiveMessage({target, messageName, recipient, data, name}) {
+  async receiveMessage({target, messageName, recipient, data, name}) {
     switch (name) {
       case "Extension:SetFrameData":
         if (this.frameData) {
@@ -142,11 +142,14 @@ class ExtensionGlobal {
           wantReturnValue: data.options.wantReturnValue,
           removeCSS: data.options.remove_css,
           cssOrigin: data.options.css_origin,
-          cssCode: data.options.cssCode,
           jsCode: data.options.jsCode,
         });
 
         let script = contentScripts.get(matcher);
+
+        // Add the cssCode to the script, so that it can be converted into a cached URL.
+        await script.addCSSCode(data.options.cssCode);
+        delete data.options.cssCode;
 
         return ExtensionContent.handleExtensionExecute(this.global, target, data.options, script);
       case "WebNavigation:GetFrame":
@@ -278,12 +281,17 @@ DocumentManager = {
 };
 
 ExtensionManager = {
+  // WeakMap<WebExtensionPolicy, Map<string, WebExtensionContentScript>>
+  registeredContentScripts: new DefaultWeakMap((extension) => new Map()),
+
   init() {
     MessageChannel.setupMessageManagers([Services.cpmm]);
 
     Services.cpmm.addMessageListener("Extension:Startup", this);
     Services.cpmm.addMessageListener("Extension:Shutdown", this);
     Services.cpmm.addMessageListener("Extension:FlushJarCache", this);
+    Services.cpmm.addMessageListener("Extension:RegisterContentScript", this);
+    Services.cpmm.addMessageListener("Extension:UnregisterContentScripts", this);
 
     let procData = Services.cpmm.initialProcessData || {};
 
@@ -337,6 +345,22 @@ ExtensionManager = {
 
         contentScripts: extension.contentScripts.map(parseScriptOptions),
       });
+
+      policy.debugName = `${JSON.stringify(policy.name)} (ID: ${policy.id}, ${policy.getURL()})`;
+
+      // Register any existent dinamically registered content script for the extension
+      // when a content process is started for the first time (which also cover
+      // a content process that crashed and it has been recreated).
+      const registeredContentScripts = this.registeredContentScripts.get(policy);
+
+      if (extension.registeredContentScripts) {
+        for (let [scriptId, options] of extension.registeredContentScripts) {
+          const parsedOptions = parseScriptOptions(options);
+          const script = new WebExtensionContentScript(policy, parsedOptions);
+          policy.registerContentScript(script);
+          registeredContentScripts.set(scriptId, script);
+        }
+      }
 
       policy.active = true;
       policy.initData = extension;
@@ -397,6 +421,54 @@ ExtensionManager = {
         }
         break;
       }
+
+      case "Extension:RegisterContentScript": {
+        let policy = WebExtensionPolicy.getByID(data.id);
+
+        if (policy) {
+          const registeredContentScripts = this.registeredContentScripts.get(policy);
+
+          if (registeredContentScripts.has(data.scriptId)) {
+            Cu.reportError(new Error(
+              `Registering content script ${data.scriptId} on ${data.id} more than once`));
+          } else {
+            try {
+              const parsedOptions = parseScriptOptions(data.options);
+              const script = new WebExtensionContentScript(policy, parsedOptions);
+              policy.registerContentScript(script);
+              registeredContentScripts.set(data.scriptId, script);
+            } catch (e) {
+              Cu.reportError(e);
+            }
+          }
+        }
+
+        Services.cpmm.sendAsyncMessage("Extension:RegisterContentScriptComplete");
+        break;
+      }
+
+      case "Extension:UnregisterContentScripts": {
+        let policy = WebExtensionPolicy.getByID(data.id);
+
+        if (policy) {
+          const registeredContentScripts = this.registeredContentScripts.get(policy);
+
+          for (const scriptId of data.scriptIds) {
+            const script = registeredContentScripts.get(scriptId);
+            if (script) {
+              try {
+                policy.unregisterContentScript(script);
+                registeredContentScripts.delete(scriptId);
+              } catch (e) {
+                Cu.reportError(e);
+              }
+            }
+          }
+        }
+
+        Services.cpmm.sendAsyncMessage("Extension:UnregisterContentScriptsComplete");
+        break;
+      }
     }
   },
 };
@@ -428,6 +500,13 @@ ExtensionProcessScript.prototype = {
   initExtensionDocument(policy, doc) {
     if (DocumentManager.globals.has(getMessageManager(doc.defaultView))) {
       DocumentManager.loadInto(policy, doc.defaultView);
+    }
+  },
+
+  getExtensionChild(id) {
+    let policy = WebExtensionPolicy.getByID(id);
+    if (policy) {
+      return extensions.get(policy);
     }
   },
 

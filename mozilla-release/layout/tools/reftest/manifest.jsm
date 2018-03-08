@@ -31,16 +31,16 @@ function ReadTopManifest(aFileURL, aFilter)
         throw "Expected a file or http URL for the manifest.";
 
     g.manifestsLoaded = {};
-    ReadManifest(url, EXPECTED_PASS, aFilter);
+    ReadManifest(url, aFilter);
 }
 
 // Note: If you materially change the reftest manifest parsing,
 // please keep the parser in print-manifest-dirs.py in sync.
-function ReadManifest(aURL, inherited_status, aFilter)
+function ReadManifest(aURL, aFilter)
 {
-    // Ensure each manifest is only read once. This assumes that manifests that are
-    // included with an unusual inherited_status or filters will be read via their
-    // include before they are read directly in the case of a duplicate
+    // Ensure each manifest is only read once. This assumes that manifests that
+    // are included with filters will be read via their include before they are
+    // read directly in the case of a duplicate
     if (g.manifestsLoaded.hasOwnProperty(aURL.spec)) {
         if (g.manifestsLoaded[aURL.spec] === null)
             return;
@@ -68,6 +68,10 @@ function ReadManifest(aURL, inherited_status, aFilter)
     var lineNo = 0;
     var urlprefix = "";
     var defaultTestPrefSettings = [], defaultRefPrefSettings = [];
+    if (g.compareRetainedDisplayLists) {
+        AddRetainedDisplayListTestPrefs(sandbox, defaultTestPrefSettings,
+                                        defaultRefPrefSettings);
+    }
     if (g.compareStyloToGecko) {
         AddStyloTestPrefs(sandbox, defaultTestPrefSettings,
                           defaultRefPrefSettings);
@@ -106,6 +110,10 @@ function ReadManifest(aURL, inherited_status, aFilter)
                     throw "Error in pref value in manifest file " + aURL.spec + " line " + lineNo;
                 }
             }
+            if (g.compareRetainedDisplayLists) {
+                AddRetainedDisplayListTestPrefs(sandbox, defaultTestPrefSettings,
+                                                defaultRefPrefSettings);
+            }
             if (g.compareStyloToGecko) {
                 AddStyloTestPrefs(sandbox, defaultTestPrefSettings,
                                   defaultRefPrefSettings);
@@ -124,6 +132,7 @@ function ReadManifest(aURL, inherited_status, aFilter)
         var fuzzy_delta = { min: 0, max: 2 };
         var fuzzy_pixels = { min: 0, max: 1 };
         var chaosMode = false;
+        var nonSkipUsed = false;
 
         while (items[0].match(/^(fails|needs-focus|random|skip|asserts|slow|require-or|silentfail|pref|test-pref|ref-pref|fuzzy|chaos-mode)/)) {
             var item = items.shift();
@@ -211,6 +220,10 @@ function ReadManifest(aURL, inherited_status, aFilter)
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": unexpected item " + item;
             }
 
+            if (stat != "skip") {
+                nonSkipUsed = true;
+            }
+
             if (cond) {
                 if (stat == "fails") {
                     expected_status = EXPECTED_FAIL;
@@ -223,8 +236,6 @@ function ReadManifest(aURL, inherited_status, aFilter)
                 }
             }
         }
-
-        expected_status = Math.max(expected_status, inherited_status);
 
         if (minAsserts > maxAsserts) {
             throw "Bad range in manifest file " + aURL.spec + " line " + lineNo;
@@ -263,10 +274,28 @@ function ReadManifest(aURL, inherited_status, aFilter)
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": incorrect number of arguments to include";
             if (runHttp)
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": use of include with http";
-            var incURI = g.ioService.newURI(items[1], null, listURL);
-            secMan.checkLoadURIWithPrincipal(principal, incURI,
-                                             CI.nsIScriptSecurityManager.DISALLOW_SCRIPT);
-            ReadManifest(incURI, expected_status, aFilter);
+
+            // If the expected_status is EXPECTED_PASS (the default) then allow
+            // the include. If it is EXPECTED_DEATH, that means there was a skip
+            // or skip-if annotation (with a true condition) on this include
+            // statement, so we should skip the include. Any other expected_status
+            // is disallowed since it's nonintuitive as to what the intended
+            // effect is.
+            if (nonSkipUsed) {
+                throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": include statement with annotation other than 'skip' or 'skip-if'";
+            } else if (expected_status == EXPECTED_DEATH) {
+                g.logger.info("Skipping included manifest at " + aURL.spec + " line " + lineNo + " due to matching skip condition");
+            } else {
+                // poor man's assertion
+                if (expected_status != EXPECTED_PASS) {
+                    throw "Error in manifest file parsing code: we should never get expected_status=" + expected_status + " when nonSkipUsed=false (from " + aURL.spec + " line " + lineNo + ")";
+                }
+
+                var incURI = g.ioService.newURI(items[1], null, listURL);
+                secMan.checkLoadURIWithPrincipal(principal, incURI,
+                                                 CI.nsIScriptSecurityManager.DISALLOW_SCRIPT);
+                ReadManifest(incURI, aFilter);
+            }
         } else if (items[0] == TYPE_LOAD) {
             if (items.length != 2)
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": incorrect number of arguments to load";
@@ -351,7 +380,7 @@ function ReadManifest(aURL, inherited_status, aFilter)
             secMan.checkLoadURIWithPrincipal(principal, refURI,
                                              CI.nsIScriptSecurityManager.DISALLOW_SCRIPT);
             var type = items[0];
-            if (g.compareStyloToGecko) {
+            if (g.compareStyloToGecko || g.compareRetainedDisplayLists) {
                 type = TYPE_REFTEST_EQUAL;
                 refURI = testURI;
 
@@ -482,8 +511,7 @@ function BuildConditionSandbox(aURL) {
     // Shortcuts for widget toolkits.
     sandbox.Android = xr.OS == "Android";
     sandbox.cocoaWidget = xr.widgetToolkit == "cocoa";
-    sandbox.gtkWidget = xr.widgetToolkit == "gtk2"
-                        || xr.widgetToolkit == "gtk3";
+    sandbox.gtkWidget = xr.widgetToolkit == "gtk3";
     sandbox.qtWidget = xr.widgetToolkit == "qt";
     sandbox.winWidget = xr.widgetToolkit == "windows";
 
@@ -509,6 +537,10 @@ function BuildConditionSandbox(aURL) {
 #else
     sandbox.webrtc = false;
 #endif
+
+let retainedDisplayListsEnabled = prefs.getBoolPref("layout.display-list.retain", false);
+sandbox.retainedDisplayLists = retainedDisplayListsEnabled && !g.compareRetainedDisplayLists;
+sandbox.compareRetainedDisplayLists = g.compareRetainedDisplayLists;
 
 #ifdef MOZ_STYLO
     let styloEnabled = false;
@@ -597,6 +629,14 @@ function BuildConditionSandbox(aURL) {
     return sandbox;
 }
 
+function AddRetainedDisplayListTestPrefs(aSandbox, aTestPrefSettings,
+                                         aRefPrefSettings) {
+    AddPrefSettings("test-", "layout.display-list.retain", "true", aSandbox,
+                    aTestPrefSettings, aRefPrefSettings);
+    AddPrefSettings("ref-", "layout.display-list.retain", "false", aSandbox,
+                    aTestPrefSettings, aRefPrefSettings);
+}
+
 function AddStyloTestPrefs(aSandbox, aTestPrefSettings, aRefPrefSettings) {
     AddPrefSettings("test-", "layout.css.servo.enabled", "true", aSandbox,
                     aTestPrefSettings, aRefPrefSettings);
@@ -621,7 +661,8 @@ function AddPrefSettings(aWhere, aPrefName, aPrefValExpression, aSandbox, aTestP
                     type: prefType,
                     value: prefVal };
 
-    if (g.compareStyloToGecko && aPrefName != "layout.css.servo.enabled") {
+    if ((g.compareStyloToGecko && aPrefName != "layout.css.servo.enabled") ||
+        (g.compareRetainedDisplayLists && aPrefName != "layout.display-list.retain")) {
         // ref-pref() is ignored, test-pref() and pref() are added to both
         if (aWhere != "ref-") {
             aTestPrefSettings.push(setting);

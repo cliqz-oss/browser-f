@@ -6,12 +6,14 @@
 #ifndef _mozilla_dom_ClientManagerService_h
 #define _mozilla_dom_ClientManagerService_h
 
+#include "ClientOpPromise.h"
 #include "nsDataHashtable.h"
 
 namespace mozilla {
 
 namespace dom {
 
+class ClientManagerParent;
 class ClientSourceParent;
 
 // Define a singleton service to manage client activity throughout the
@@ -23,22 +25,55 @@ class ClientManagerService final
   // optimize for insertion, removal, and lookup by UUID.
   nsDataHashtable<nsIDHashKey, ClientSourceParent*> mSourceTable;
 
+  nsTArray<ClientManagerParent*> mManagerList;
+
+  bool mShutdown;
+
   ClientManagerService();
   ~ClientManagerService();
+
+  void
+  Shutdown();
 
 public:
   static already_AddRefed<ClientManagerService>
   GetOrCreateInstance();
 
-  void
+  // Returns nullptr if the service is not already created.
+  static already_AddRefed<ClientManagerService>
+  GetInstance();
+
+  bool
   AddSource(ClientSourceParent* aSource);
 
-  void
+  bool
   RemoveSource(ClientSourceParent* aSource);
 
   ClientSourceParent*
   FindSource(const nsID& aID,
              const mozilla::ipc::PrincipalInfo& aPrincipalInfo);
+
+  void
+  AddManager(ClientManagerParent* aManager);
+
+  void
+  RemoveManager(ClientManagerParent* aManager);
+
+  RefPtr<ClientOpPromise>
+  Navigate(const ClientNavigateArgs& aArgs);
+
+  RefPtr<ClientOpPromise>
+  MatchAll(const ClientMatchAllArgs& aArgs);
+
+  RefPtr<ClientOpPromise>
+  Claim(const ClientClaimArgs& aArgs);
+
+  RefPtr<ClientOpPromise>
+  GetInfoAndState(const ClientGetInfoAndStateArgs& aArgs);
+
+  RefPtr<ClientOpPromise>
+  OpenWindow(const ClientOpenWindowArgs& aArgs,
+             already_AddRefed<ContentParent> aSourceProcess);
 
   NS_INLINE_DECL_REFCOUNTING(mozilla::dom::ClientManagerService)
 };

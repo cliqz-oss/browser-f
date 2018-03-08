@@ -6,11 +6,13 @@
 
 #include "StorageManager.h"
 
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/PromiseWorkerProxy.h"
 #include "mozilla/dom/quota/QuotaManagerService.h"
 #include "mozilla/dom/StorageManagerBinding.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/EventStateManager.h"
 #include "mozilla/Telemetry.h"
 #include "nsContentPermissionHelper.h"
 #include "nsIQuotaCallbacks.h"
@@ -167,15 +169,18 @@ class PersistentStoragePermissionRequest final
 {
   nsCOMPtr<nsIPrincipal> mPrincipal;
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
+  bool mIsHandlingUserInput;
   RefPtr<Promise> mPromise;
   nsCOMPtr<nsIContentPermissionRequester> mRequester;
 
 public:
   PersistentStoragePermissionRequest(nsIPrincipal* aPrincipal,
                                      nsPIDOMWindowInner* aWindow,
+                                     bool aIsHandlingUserInput,
                                      Promise* aPromise)
     : mPrincipal(aPrincipal)
     , mWindow(aWindow)
+    , mIsHandlingUserInput(aIsHandlingUserInput)
     , mPromise(aPromise)
   {
     MOZ_ASSERT(aPrincipal);
@@ -303,7 +308,10 @@ ExecuteOpOnMainOrWorkerThread(nsIGlobalObject* aGlobal,
 
       case RequestResolver::Type::Persist: {
         RefPtr<PersistentStoragePermissionRequest> request =
-          new PersistentStoragePermissionRequest(principal, window, promise);
+          new PersistentStoragePermissionRequest(principal,
+                                                 window,
+                                                 EventStateManager::IsHandlingUserInput(),
+                                                 promise);
 
         // In private browsing mode, no permission prompt.
         if (nsContentUtils::IsInPrivateBrowsing(doc)) {
@@ -717,6 +725,13 @@ PersistentStoragePermissionRequest::GetPrincipal(nsIPrincipal** aPrincipal)
 }
 
 NS_IMETHODIMP
+PersistentStoragePermissionRequest::GetIsHandlingUserInput(bool* aIsHandlingUserInput)
+{
+  *aIsHandlingUserInput = mIsHandlingUserInput;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 PersistentStoragePermissionRequest::GetWindow(mozIDOMWindow** aRequestingWindow)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -849,20 +864,6 @@ StorageManager::Estimate(ErrorResult& aRv)
   return ExecuteOpOnMainOrWorkerThread(mOwner,
                                        RequestResolver::Type::Estimate,
                                        aRv);
-}
-
-// static
-bool
-StorageManager::PrefEnabled(JSContext* aCx, JSObject* aObj)
-{
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("dom.storageManager.enabled");
-  }
-
-  WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-  MOZ_ASSERT(workerPrivate);
-
-  return workerPrivate->StorageManagerEnabled();
 }
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(StorageManager, mOwner)

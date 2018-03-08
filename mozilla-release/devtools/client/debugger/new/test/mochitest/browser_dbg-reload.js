@@ -7,18 +7,32 @@
  * 2. re-sync breakpoints
  */
 
-add_task(async function() {
-  const dbg = await initDebugger("reload/doc_reload.html", "sjs_code_reload");
+async function waitForBreakpoint(dbg, location) {
+  return waitForState(
+    dbg,
+    state => {
+      return dbg.selectors.getBreakpoint(dbg.getState(), location);
+    },
+    "Waiting for breakpoint"
+  );
+}
 
-  const sym = waitForDispatch(dbg, "SET_SYMBOLS");
+add_task(async function() {
+
+  const dbg = await initDebugger("reload/doc-reload.html");
+  await waitForSource(dbg, "sjs_code_reload");
+
   await selectSource(dbg, "sjs_code_reload");
-  await sym;
+  await waitForSelectedSource(dbg, "sjs_code_reload");
 
   await addBreakpoint(dbg, "sjs_code_reload", 2);
 
-  const sync = waitForDispatch(dbg, "SYNC_BREAKPOINT");
   await reload(dbg, "sjs_code_reload");
-  await sync;
+
+  const source = findSource(dbg, "sjs_code_reload");
+  const location = { sourceId: source.id, line: 6 };
+
+  await waitForBreakpoint(dbg, location);
 
   const breakpoints = dbg.selectors.getBreakpoints(dbg.getState());
   const breakpointList = breakpoints.valueSeq().toJS();

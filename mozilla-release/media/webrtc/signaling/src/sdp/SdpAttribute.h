@@ -250,6 +250,22 @@ operator&(SdpDirectionAttribute::Direction d1,
   return (SdpDirectionAttribute::Direction)((unsigned)d1 & (unsigned)d2);
 }
 
+inline SdpDirectionAttribute::Direction
+operator|=(SdpDirectionAttribute::Direction& d1,
+           SdpDirectionAttribute::Direction d2)
+{
+  d1 = d1 | d2;
+  return d1;
+}
+
+inline SdpDirectionAttribute::Direction
+operator&=(SdpDirectionAttribute::Direction& d1,
+           SdpDirectionAttribute::Direction d2)
+{
+  d1 = d1 & d2;
+  return d1;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // a=dtls-message, draft-rescorla-dtls-in-sdp
 //-------------------------------------------------------------------------
@@ -1741,7 +1757,7 @@ public:
     mValues.push_back(entry);
   }
 
-  virtual void Serialize(std::ostream& os) const;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<std::string> mValues;
 };
@@ -1762,7 +1778,7 @@ public:
 
   void Load(const std::string& value);
 
-  virtual void Serialize(std::ostream& os) const;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<std::string> mValues;
 };

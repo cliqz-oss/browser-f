@@ -28,6 +28,7 @@ const BEZIER_SWATCH_CLASS = "ruleview-bezierswatch";
 const FILTER_SWATCH_CLASS = "ruleview-filterswatch";
 const ANGLE_SWATCH_CLASS = "ruleview-angleswatch";
 const INSET_POINT_TYPES = ["top", "right", "bottom", "left"];
+const FONT_FAMILY_CLASS = "ruleview-font-family";
 
 /*
  * An actionable element is an element which on click triggers a specific action
@@ -39,6 +40,21 @@ const ACTIONABLE_ELEMENTS_SELECTORS = [
   `.${FILTER_SWATCH_CLASS}`,
   `.${ANGLE_SWATCH_CLASS}`,
   "a"
+];
+
+// In order to highlight the used fonts in font-family properties, we
+// retrieve the list of used fonts from the server. That always
+// returns the actually used font family name(s). If the property's
+// authored value is sans-serif for instance, the used font might be
+// arial instead.  So we need the list of all generic font family
+// names to underline those when we find them.
+const GENERIC_FONT_FAMILIES = [
+  "serif",
+  "sans-serif",
+  "cursive",
+  "fantasy",
+  "monospace",
+  "system-ui"
 ];
 
 /**
@@ -360,12 +376,15 @@ TextPropertyEditor.prototype = {
       colorSwatchClass: SHARED_SWATCH_CLASS + " " + COLOR_SWATCH_CLASS,
       filterClass: "ruleview-filter",
       filterSwatchClass: SHARED_SWATCH_CLASS + " " + FILTER_SWATCH_CLASS,
+      flexClass: "ruleview-flex",
       gridClass: "ruleview-grid",
       shapeClass: "ruleview-shape",
       defaultColorType: !propDirty,
       urlClass: "theme-link",
+      fontFamilyClass: FONT_FAMILY_CLASS,
       baseURI: this.sheetHref,
-      unmatchedVariableClass: "ruleview-variable-unmatched",
+      unmatchedVariableClass: "ruleview-unmatched-variable",
+      matchedVariableClass: "ruleview-variable",
       isVariableInUse: varName => this.rule.elementStyle.getVariable(varName),
     };
     let frag = outputParser.parseCssProperty(name, val, parserOptions);
@@ -373,6 +392,36 @@ TextPropertyEditor.prototype = {
     this.valueSpan.appendChild(frag);
 
     this.ruleView.emit("property-value-updated", this.valueSpan);
+
+    // Highlight the currently used font in font-family properties.
+    // If we cannot find a match, highlight the first generic family instead.
+    let fontFamilySpans = this.valueSpan.querySelectorAll("." + FONT_FAMILY_CLASS);
+    if (fontFamilySpans.length && this.prop.enabled && !this.prop.overridden) {
+      this.rule.elementStyle.getUsedFontFamilies().then(families => {
+        const usedFontFamilies = families.map(font => font.toLowerCase());
+        let foundMatchingFamily = false;
+        let firstGenericSpan = null;
+
+        for (let span of fontFamilySpans) {
+          const authoredFont = span.textContent.toLowerCase();
+
+          if (!firstGenericSpan && GENERIC_FONT_FAMILIES.includes(authoredFont)) {
+            firstGenericSpan = span;
+          }
+
+          if (usedFontFamilies.includes(authoredFont)) {
+            span.classList.add("used-font");
+            foundMatchingFamily = true;
+          }
+        }
+
+        if (!foundMatchingFamily && firstGenericSpan) {
+          firstGenericSpan.classList.add("used-font");
+        }
+
+        this.ruleView.emit("font-highlighted", this.valueSpan);
+      }).catch(e => console.error("Could not get the list of font families", e));
+    }
 
     // Attach the color picker tooltip to the color swatches
     this._colorSwatchSpans =
@@ -436,6 +485,15 @@ TextPropertyEditor.prototype = {
         angleSpan.on("unit-change", this._onSwatchCommit);
         let title = l10n("rule.angleSwatch.tooltip");
         angleSpan.setAttribute("title", title);
+      }
+    }
+
+    let flexToggle = this.valueSpan.querySelector(".ruleview-flex");
+    if (flexToggle) {
+      flexToggle.setAttribute("title", l10n("rule.flexToggle.tooltip"));
+      if (this.ruleView.highlighters.flexboxHighlighterShown ===
+          this.ruleView.inspector.selection.nodeFront) {
+        flexToggle.classList.add("active");
       }
     }
 
@@ -620,7 +678,8 @@ TextPropertyEditor.prototype = {
       computed.name, computed.value, {
         colorSwatchClass: "ruleview-swatch ruleview-colorswatch",
         urlClass: "theme-link",
-        baseURI: this.sheetHref
+        baseURI: this.sheetHref,
+        fontFamilyClass: "ruleview-font-family"
       }
     );
 
@@ -800,6 +859,7 @@ TextPropertyEditor.prototype = {
                            !parsedProperties.propertiesToAdd.length &&
                            this.committed.value === val.value &&
                            this.committed.priority === val.priority;
+
     // If the value is not empty and unchanged, revert the property back to
     // its original value and enabled or disabled state
     if (value.trim() && isValueUnchanged) {
@@ -807,6 +867,12 @@ TextPropertyEditor.prototype = {
                                                 val.priority);
       this.rule.setPropertyEnabled(this.prop, this.prop.enabled);
       return;
+    }
+
+    // Since the value was changed, check if the original propertywas a flex or grid
+    // display declaration and hide their respective highlighters.
+    if (this.isDisplayFlex()) {
+      this.ruleView.highlighters.hideFlexboxHighlighter();
     }
 
     if (this.isDisplayGrid()) {
@@ -942,14 +1008,23 @@ TextPropertyEditor.prototype = {
   },
 
   /**
+   * Returns true if the property is a `display: [inline-]flex` declaration.
+   *
+   * @return {Boolean} true if the property is a `display: [inline-]flex` declaration.
+   */
+  isDisplayFlex: function () {
+    return this.prop.name === "display" &&
+      (this.prop.value === "flex" || this.prop.value === "inline-flex");
+  },
+
+  /**
    * Returns true if the property is a `display: [inline-]grid` declaration.
    *
    * @return {Boolean} true if the property is a `display: [inline-]grid` declaration.
    */
   isDisplayGrid: function () {
     return this.prop.name === "display" &&
-      (this.prop.value === "grid" ||
-       this.prop.value === "inline-grid");
+      (this.prop.value === "grid" || this.prop.value === "inline-grid");
   },
 
   /**
@@ -1014,4 +1089,4 @@ TextPropertyEditor.prototype = {
   },
 };
 
-exports.TextPropertyEditor = TextPropertyEditor;
+module.exports = TextPropertyEditor;

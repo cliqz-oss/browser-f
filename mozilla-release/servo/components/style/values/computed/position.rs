@@ -7,10 +7,11 @@
 //!
 //! [position]: https://drafts.csswg.org/css-backgrounds-3/#position
 
-use std::fmt;
-use style_traits::ToCss;
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ToCss};
 use values::computed::{LengthOrPercentage, Percentage};
 use values::generics::position::Position as GenericPosition;
+pub use values::specified::position::{GridAutoFlow, GridTemplateAreas};
 
 /// The computed value of a CSS `<position>`
 pub type Position = GenericPosition<HorizontalPosition, VerticalPosition>;
@@ -39,7 +40,10 @@ impl Position {
 }
 
 impl ToCss for Position {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         self.horizontal.to_css(dest)?;
         dest.write_str(" ")?;
         self.vertical.to_css(dest)

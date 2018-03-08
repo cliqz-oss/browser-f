@@ -28,7 +28,7 @@ const INITIAL_STATE = {
     // context menu to TopSitesEdit.
     editForm: {
       visible: false,
-      site: null
+      index: -1
     }
   },
   Prefs: {
@@ -95,7 +95,7 @@ function TopSites(prevState = INITIAL_STATE.TopSites, action) {
       }
       return Object.assign({}, prevState, {initialized: true, rows: action.data});
     case at.TOP_SITES_EDIT:
-      return Object.assign({}, prevState, {editForm: {visible: true, site: action.data}});
+      return Object.assign({}, prevState, {editForm: {visible: true, index: action.data.index}});
     case at.TOP_SITES_CANCEL_EDIT:
       return Object.assign({}, prevState, {editForm: {visible: false}});
     case at.SCREENSHOT_UPDATED:
@@ -133,13 +133,6 @@ function TopSites(prevState = INITIAL_STATE.TopSites, action) {
         }
         return site;
       });
-      return Object.assign({}, prevState, {rows: newRows});
-    case at.BLOCK_URL:
-    case at.DELETE_HISTORY_URL:
-      // Optimistically update the UI by responding to the context menu action
-      // events and removing the site that was blocked/deleted with an empty slot.
-      // Once refresh() finishes, we update the UI again with a new site
-      newRows = prevState.rows.filter(val => val && val.url !== action.data.url);
       return Object.assign({}, prevState, {rows: newRows});
     default:
       return prevState;

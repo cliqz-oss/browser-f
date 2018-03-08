@@ -105,6 +105,7 @@
     _(SetArgumentsObjectArg)        \
     _(ReturnFromCtor)               \
     _(ComputeThis)                  \
+    _(ImplicitThis)                 \
     _(BitNotI)                      \
     _(BitNotV)                      \
     _(BitOpI)                       \
@@ -276,6 +277,7 @@
     _(BoundsCheck)                  \
     _(BoundsCheckRange)             \
     _(BoundsCheckLower)             \
+    _(SpectreMaskIndex)             \
     _(LoadElementV)                 \
     _(LoadElementT)                 \
     _(LoadElementHole)              \
@@ -424,10 +426,10 @@
     _(GetPrototypeOf)               \
     _(AsmJSLoadHeap)                \
     _(AsmJSStoreHeap)               \
-    _(AsmJSCompareExchangeHeap)     \
-    _(AsmJSAtomicExchangeHeap)      \
-    _(AsmJSAtomicBinopHeap)         \
-    _(AsmJSAtomicBinopHeapForEffect)\
+    _(WasmCompareExchangeHeap)      \
+    _(WasmAtomicExchangeHeap)       \
+    _(WasmAtomicBinopHeap)          \
+    _(WasmAtomicBinopHeapForEffect) \
     _(WasmTruncateToInt32)          \
     _(WasmTrap)                     \
     _(WasmReinterpret)              \
@@ -436,6 +438,7 @@
     _(WasmSelect)                   \
     _(WasmSelectI64)                \
     _(WasmBoundsCheck)              \
+    _(WasmAlignmentCheck)           \
     _(WasmLoadTls)                  \
     _(WasmAddOffset)                \
     _(WasmLoad)                     \

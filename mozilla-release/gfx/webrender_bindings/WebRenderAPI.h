@@ -12,6 +12,7 @@
 #include <unordered_set>
 
 #include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/gfx/CompositorHitTestInfo.h"
 #include "mozilla/layers/SyncObject.h"
 #include "mozilla/Range.h"
 #include "mozilla/webrender/webrender_ffi.h"
@@ -62,11 +63,11 @@ public:
 
   void AddImage(wr::ImageKey aKey,
                 const ImageDescriptor& aDescriptor,
-                wr::Vec_u8& aBytes);
+                wr::Vec<uint8_t>& aBytes);
 
   void AddBlobImage(wr::ImageKey aKey,
                     const ImageDescriptor& aDescriptor,
-                    wr::Vec_u8& aBytes);
+                    wr::Vec<uint8_t>& aBytes);
 
   void AddExternalImageBuffer(ImageKey key,
                               const ImageDescriptor& aDescriptor,
@@ -80,11 +81,11 @@ public:
 
   void UpdateImageBuffer(wr::ImageKey aKey,
                          const ImageDescriptor& aDescriptor,
-                         wr::Vec_u8& aBytes);
+                         wr::Vec<uint8_t>& aBytes);
 
   void UpdateBlobImage(wr::ImageKey aKey,
                        const ImageDescriptor& aDescriptor,
-                       wr::Vec_u8& aBytes,
+                       wr::Vec<uint8_t>& aBytes,
                        const wr::DeviceUintRect& aDirtyRect);
 
   void UpdateExternalImage(ImageKey aKey,
@@ -95,9 +96,9 @@ public:
 
   void DeleteImage(wr::ImageKey aKey);
 
-  void AddRawFont(wr::FontKey aKey, wr::Vec_u8& aBytes, uint32_t aIndex);
+  void AddRawFont(wr::FontKey aKey, wr::Vec<uint8_t>& aBytes, uint32_t aIndex);
 
-  void AddFontDescriptor(wr::FontKey aKey, wr::Vec_u8& aBytes, uint32_t aIndex);
+  void AddFontDescriptor(wr::FontKey aKey, wr::Vec<uint8_t>& aBytes, uint32_t aIndex);
 
   void DeleteFont(wr::FontKey aKey);
 
@@ -106,7 +107,7 @@ public:
                        float aGlyphSize,
                        const wr::FontInstanceOptions* aOptions,
                        const wr::FontInstancePlatformOptions* aPlatformOptions,
-                       wr::Vec_u8& aVariations);
+                       wr::Vec<uint8_t>& aVariations);
 
   void DeleteFontInstance(wr::FontInstanceKey aKey);
 
@@ -122,9 +123,51 @@ protected:
   wr::ResourceUpdates* mUpdates;
 };
 
+class TransactionBuilder {
+public:
+  TransactionBuilder();
+
+  ~TransactionBuilder();
+
+  void UpdateEpoch(PipelineId aPipelineId, Epoch aEpoch);
+
+  void SetRootPipeline(PipelineId aPipelineId);
+
+  void RemovePipeline(PipelineId aPipelineId);
+
+  void SetDisplayList(gfx::Color aBgColor,
+                      Epoch aEpoch,
+                      mozilla::LayerSize aViewportSize,
+                      wr::WrPipelineId pipeline_id,
+                      const wr::LayoutSize& content_size,
+                      wr::BuiltDisplayListDescriptor dl_descriptor,
+                      wr::Vec<uint8_t>& dl_data);
+
+  void ClearDisplayList(Epoch aEpoch, wr::WrPipelineId aPipeline);
+
+  void GenerateFrame();
+
+  void UpdateDynamicProperties(const nsTArray<wr::WrOpacityProperty>& aOpacityArray,
+                               const nsTArray<wr::WrTransformProperty>& aTransformArray);
+
+  void SetWindowParameters(LayoutDeviceIntSize size);
+
+  void UpdateResources(ResourceUpdateQueue& aUpdates);
+
+  void UpdateScrollPosition(const wr::WrPipelineId& aPipelineId,
+                            const layers::FrameMetrics::ViewID& aScrollId,
+                            const wr::LayoutPoint& aScrollPosition);
+
+  bool IsEmpty() const;
+
+  Transaction* Raw() { return mTxn; }
+protected:
+  Transaction* mTxn;
+};
+
 class WebRenderAPI
 {
-  NS_INLINE_DECL_REFCOUNTING(WebRenderAPI);
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WebRenderAPI);
 
 public:
   /// This can be called on the compositor thread only.
@@ -140,33 +183,12 @@ public:
 
   wr::WindowId GetId() const { return mId; }
 
-  void UpdateScrollPosition(const wr::WrPipelineId& aPipelineId,
-                            const layers::FrameMetrics::ViewID& aScrollId,
-                            const wr::LayoutPoint& aScrollPosition);
+  bool HitTest(const wr::WorldPoint& aPoint,
+               wr::WrPipelineId& aOutPipelineId,
+               layers::FrameMetrics::ViewID& aOutScrollId,
+               gfx::CompositorHitTestInfo& aOutHitInfo);
 
-  void GenerateFrame();
-  void GenerateFrame(const nsTArray<wr::WrOpacityProperty>& aOpacityArray,
-                     const nsTArray<wr::WrTransformProperty>& aTransformArray);
-
-  void SetWindowParameters(LayoutDeviceIntSize size);
-
-  void SetDisplayList(gfx::Color aBgColor,
-                      Epoch aEpoch,
-                      mozilla::LayerSize aViewportSize,
-                      wr::WrPipelineId pipeline_id,
-                      const wr::LayoutSize& content_size,
-                      wr::BuiltDisplayListDescriptor dl_descriptor,
-                      uint8_t *dl_data,
-                      size_t dl_size,
-                      ResourceUpdateQueue& aResources);
-
-  void ClearDisplayList(Epoch aEpoch, wr::WrPipelineId pipeline_id);
-
-  void SetRootPipeline(wr::PipelineId aPipeline);
-
-  void UpdateResources(ResourceUpdateQueue& aUpdates);
-
-  void UpdatePipelineResources(ResourceUpdateQueue& aUpdates, PipelineId aPipeline, Epoch aEpoch);
+  void SendTransaction(TransactionBuilder& aTxn);
 
   void SetFrameStartTime(const TimeStamp& aTime);
 
@@ -221,12 +243,13 @@ public:
   void Save();
   void Restore();
   void ClearSave();
+  void Dump();
 
   void Finalize(wr::LayoutSize& aOutContentSize,
                 wr::BuiltDisplayList& aOutDisplayList);
 
   void PushStackingContext(const wr::LayoutRect& aBounds, // TODO: We should work with strongly typed rects
-                           const uint64_t& aAnimationId,
+                           const wr::WrAnimationProperty* aAnimation,
                            const float* aOpacity,
                            const gfx::Matrix4x4* aTransform,
                            wr::TransformStyle aTransformStyle,
@@ -301,7 +324,8 @@ public:
                  const wr::LayoutRect& aClip,
                  bool aIsBackfaceVisible,
                  wr::ImageRendering aFilter,
-                 wr::ImageKey aImage);
+                 wr::ImageKey aImage,
+                 bool aPremultipliedAlpha = true);
 
   void PushImage(const wr::LayoutRect& aBounds,
                  const wr::LayoutRect& aClip,
@@ -309,7 +333,8 @@ public:
                  const wr::LayoutSize& aStretchSize,
                  const wr::LayoutSize& aTileSpacing,
                  wr::ImageRendering aFilter,
-                 wr::ImageKey aImage);
+                 wr::ImageKey aImage,
+                 bool aPremultipliedAlpha = true);
 
   void PushYCbCrPlanarImage(const wr::LayoutRect& aBounds,
                             const wr::LayoutRect& aClip,
@@ -354,7 +379,7 @@ public:
                        const wr::BorderWidths& aWidths,
                        wr::ImageKey aImage,
                        const wr::NinePatchDescriptor& aPatch,
-                       const wr::SideOffsets2D_f32& aOutset,
+                       const wr::SideOffsets2D<float>& aOutset,
                        const wr::RepeatMode& aRepeatHorizontal,
                        const wr::RepeatMode& aRepeatVertical);
 
@@ -366,7 +391,7 @@ public:
                           const wr::LayoutPoint& aEndPoint,
                           const nsTArray<wr::GradientStop>& aStops,
                           wr::ExtendMode aExtendMode,
-                          const wr::SideOffsets2D_f32& aOutset);
+                          const wr::SideOffsets2D<float>& aOutset);
 
   void PushBorderRadialGradient(const wr::LayoutRect& aBounds,
                                 const wr::LayoutRect& aClip,
@@ -376,7 +401,7 @@ public:
                                 const wr::LayoutSize& aRadius,
                                 const nsTArray<wr::GradientStop>& aStops,
                                 wr::ExtendMode aExtendMode,
-                                const wr::SideOffsets2D_f32& aOutset);
+                                const wr::SideOffsets2D<float>& aOutset);
 
   void PushText(const wr::LayoutRect& aBounds,
                 const wr::LayoutRect& aClip,
@@ -418,6 +443,13 @@ public:
   layers::FrameMetrics::ViewID TopmostScrollId();
   // If the topmost item on the stack is a clip or a scroll layer
   bool TopmostIsClip();
+
+  // Set the hit-test info to be used for all display items until the next call
+  // to SetHitTestInfo or ClearHitTestInfo.
+  void SetHitTestInfo(const layers::FrameMetrics::ViewID& aScrollId,
+                      gfx::CompositorHitTestInfo aHitInfo);
+  // Clears the hit-test info so that subsequent display items will not have it.
+  void ClearHitTestInfo();
 
   // Try to avoid using this when possible.
   wr::WrState* Raw() { return mWrState; }

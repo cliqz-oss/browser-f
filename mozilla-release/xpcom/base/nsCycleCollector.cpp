@@ -167,6 +167,7 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsCycleCollectionNoteRootCallback.h"
 #include "nsDeque.h"
+#include "nsExceptionHandler.h"
 #include "nsCycleCollector.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
@@ -190,10 +191,6 @@
 #include "mozilla/PoisonIOInterposer.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/ThreadLocal.h"
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
 
 using namespace mozilla;
 
@@ -668,14 +665,12 @@ PtrInfo::AnnotatedReleaseAssert(bool aCondition, const char* aMessage)
     return;
   }
 
-#ifdef MOZ_CRASHREPORTER
   const char* piName = "Unknown";
   if (mParticipant) {
     piName = mParticipant->ClassName();
   }
   nsPrintfCString msg("%s, for class %s", aMessage, piName);
   CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("CycleCollector"), msg);
-#endif
 
   MOZ_CRASH();
 }
@@ -2163,24 +2158,28 @@ private:
 public:
   // nsCycleCollectionNoteRootCallback methods.
   NS_IMETHOD_(void) NoteXPCOMRoot(nsISupports* aRoot,
-                                  nsCycleCollectionParticipant* aParticipant);
-  NS_IMETHOD_(void) NoteJSRoot(JSObject* aRoot);
+                                  nsCycleCollectionParticipant* aParticipant)
+                                  override;
+  NS_IMETHOD_(void) NoteJSRoot(JSObject* aRoot) override;
   NS_IMETHOD_(void) NoteNativeRoot(void* aRoot,
-                                   nsCycleCollectionParticipant* aParticipant);
+                                   nsCycleCollectionParticipant* aParticipant)
+                                   override;
   NS_IMETHOD_(void) NoteWeakMapping(JSObject* aMap, JS::GCCellPtr aKey,
-                                    JSObject* aKdelegate, JS::GCCellPtr aVal);
+                                    JSObject* aKdelegate, JS::GCCellPtr aVal)
+                                    override;
 
   // nsCycleCollectionTraversalCallback methods.
   NS_IMETHOD_(void) DescribeRefCountedNode(nsrefcnt aRefCount,
-                                           const char* aObjName);
+                                           const char* aObjName) override;
   NS_IMETHOD_(void) DescribeGCedNode(bool aIsMarked, const char* aObjName,
-                                     uint64_t aCompartmentAddress);
+                                     uint64_t aCompartmentAddress) override;
 
-  NS_IMETHOD_(void) NoteXPCOMChild(nsISupports* aChild);
-  NS_IMETHOD_(void) NoteJSChild(const JS::GCCellPtr& aThing);
+  NS_IMETHOD_(void) NoteXPCOMChild(nsISupports* aChild) override;
+  NS_IMETHOD_(void) NoteJSChild(const JS::GCCellPtr& aThing) override;
   NS_IMETHOD_(void) NoteNativeChild(void* aChild,
-                                    nsCycleCollectionParticipant* aParticipant);
-  NS_IMETHOD_(void) NoteNextEdgeName(const char* aName);
+                                    nsCycleCollectionParticipant* aParticipant)
+                                    override;
+  NS_IMETHOD_(void) NoteNextEdgeName(const char* aName) override;
 
 private:
   void NoteJSChild(JS::GCCellPtr aChild);
@@ -2555,21 +2554,22 @@ public:
 
   // The logic of the Note*Child functions must mirror that of their
   // respective functions in CCGraphBuilder.
-  NS_IMETHOD_(void) NoteXPCOMChild(nsISupports* aChild);
+  NS_IMETHOD_(void) NoteXPCOMChild(nsISupports* aChild) override;
   NS_IMETHOD_(void) NoteNativeChild(void* aChild,
-                                    nsCycleCollectionParticipant* aHelper);
-  NS_IMETHOD_(void) NoteJSChild(const JS::GCCellPtr& aThing);
+                                    nsCycleCollectionParticipant* aHelper)
+                                    override;
+  NS_IMETHOD_(void) NoteJSChild(const JS::GCCellPtr& aThing) override;
 
   NS_IMETHOD_(void) DescribeRefCountedNode(nsrefcnt aRefcount,
-                                           const char* aObjname)
+                                           const char* aObjname) override
   {
   }
   NS_IMETHOD_(void) DescribeGCedNode(bool aIsMarked,
                                      const char* aObjname,
-                                     uint64_t aCompartmentAddress)
+                                     uint64_t aCompartmentAddress) override
   {
   }
-  NS_IMETHOD_(void) NoteNextEdgeName(const char* aName)
+  NS_IMETHOD_(void) NoteNextEdgeName(const char* aName) override
   {
   }
   bool MayHaveChild()

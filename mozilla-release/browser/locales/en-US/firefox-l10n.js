@@ -3,10 +3,3 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #filter substitution
-
-# LOCALIZATION NOTE: this preference is set to true for en-US specifically,
-# locales without this line have the setting set to false by default.
-# Geo-specific search engine selection is disabled in Cliqz.
-pref("browser.search.geoSpecificDefaults", false);
-
-pref("general.useragent.locale", "@AB_CD@");

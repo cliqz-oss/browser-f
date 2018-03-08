@@ -149,10 +149,7 @@ BaselineCacheIRCompiler::callVM(MacroAssembler& masm, const VMFunction& fun)
 {
     MOZ_ASSERT(inStubFrame_);
 
-    JitCode* code = cx_->runtime()->jitRuntime()->getVMWrapper(fun);
-    if (!code)
-        return false;
-
+    TrampolinePtr code = cx_->runtime()->jitRuntime()->getVMWrapper(fun);
     MOZ_ASSERT(fun.expectTailCall == NonTailCall);
     MOZ_ASSERT(engine_ == ICStubEngine::Baseline);
 
@@ -618,7 +615,7 @@ BaselineCacheIRCompiler::emitCallScriptedGetterResult()
     AutoScratchRegister callee(allocator, masm);
     AutoScratchRegister scratch(allocator, masm);
 
-    // First, ensure our getter is non-lazy and has JIT code.
+    // First, ensure our getter is non-lazy.
     {
         FailurePath* failure;
         if (!addFailurePath(&failure))
@@ -626,8 +623,7 @@ BaselineCacheIRCompiler::emitCallScriptedGetterResult()
 
         masm.loadPtr(getterAddr, callee);
         masm.branchIfFunctionHasNoScript(callee, failure->label());
-        masm.loadPtr(Address(callee, JSFunction::offsetOfNativeOrScript()), code);
-        masm.loadBaselineOrIonRaw(code, code, failure->label());
+        masm.loadJitCodeRaw(callee, code);
     }
 
     allocator.discardStack(masm);
@@ -655,9 +651,8 @@ BaselineCacheIRCompiler::emitCallScriptedGetterResult()
     masm.branch32(Assembler::Equal, callee, Imm32(0), &noUnderflow);
     {
         // Call the arguments rectifier.
-        JitCode* argumentsRectifier = cx_->runtime()->jitRuntime()->getArgumentsRectifier();
-        masm.movePtr(ImmGCPtr(argumentsRectifier), code);
-        masm.loadPtr(Address(code, JitCode::offsetOfCode()), code);
+        TrampolinePtr argumentsRectifier = cx_->runtime()->jitRuntime()->getArgumentsRectifier();
+        masm.movePtr(argumentsRectifier, code);
     }
 
     masm.bind(&noUnderflow);
@@ -861,7 +856,7 @@ BaselineCacheIRCompiler::emitLoadTypedObjectResult()
     masm.addPtr(scratch2, scratch1);
 
     Address fieldAddr(scratch1, 0);
-    emitLoadTypedObjectResultShared(fieldAddr, scratch2, layout, typeDescr, output);
+    emitLoadTypedObjectResultShared(fieldAddr, scratch2, typeDescr, output);
     return true;
 }
 
@@ -870,15 +865,16 @@ BaselineCacheIRCompiler::emitLoadFrameArgumentResult()
 {
     AutoOutputRegister output(*this);
     Register index = allocator.useRegister(masm, reader.int32OperandId());
-    AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
+    AutoScratchRegister scratch1(allocator, masm);
+    AutoScratchRegisterMaybeOutput scratch2(allocator, masm, output);
 
     FailurePath* failure;
     if (!addFailurePath(&failure))
         return false;
 
     // Bounds check.
-    masm.loadPtr(Address(BaselineFrameReg, BaselineFrame::offsetOfNumActualArgs()), scratch);
-    masm.branch32(Assembler::AboveOrEqual, index, scratch, failure->label());
+    masm.loadPtr(Address(BaselineFrameReg, BaselineFrame::offsetOfNumActualArgs()), scratch1);
+    masm.boundsCheck32ForLoad(index, scratch1, scratch2, failure->label());
 
     // Load the argument.
     masm.loadValue(BaseValueIndex(BaselineFrameReg, index, BaselineFrame::offsetOfArg(0)),
@@ -1718,8 +1714,8 @@ BaselineCacheIRCompiler::emitCallScriptedSetter()
     Address setterAddr(stubAddress(reader.stubOffset()));
     ValueOperand val = allocator.useValueRegister(masm, reader.valOperandId());
 
-    // First, ensure our setter is non-lazy and has JIT code. This also loads
-    // the callee in scratch1.
+    // First, ensure our setter is non-lazy. This also loads the callee in
+    // scratch1.
     {
         FailurePath* failure;
         if (!addFailurePath(&failure))
@@ -1727,8 +1723,6 @@ BaselineCacheIRCompiler::emitCallScriptedSetter()
 
         masm.loadPtr(setterAddr, scratch1);
         masm.branchIfFunctionHasNoScript(scratch1, failure->label());
-        masm.loadPtr(Address(scratch1, JSFunction::offsetOfNativeOrScript()), scratch2);
-        masm.loadBaselineOrIonRaw(scratch2, scratch2, failure->label());
     }
 
     allocator.discardStack(masm);
@@ -1759,16 +1753,14 @@ BaselineCacheIRCompiler::emitCallScriptedSetter()
     // Load callee->nargs in scratch2 and the JIT code in scratch.
     Label noUnderflow;
     masm.load16ZeroExtend(Address(scratch1, JSFunction::offsetOfNargs()), scratch2);
-    masm.loadPtr(Address(scratch1, JSFunction::offsetOfNativeOrScript()), scratch1);
-    masm.loadBaselineOrIonRaw(scratch1, scratch1, nullptr);
+    masm.loadJitCodeRaw(scratch1, scratch1);
 
     // Handle arguments underflow.
     masm.branch32(Assembler::BelowOrEqual, scratch2, Imm32(1), &noUnderflow);
     {
         // Call the arguments rectifier.
-        JitCode* argumentsRectifier = cx_->runtime()->jitRuntime()->getArgumentsRectifier();
-        masm.movePtr(ImmGCPtr(argumentsRectifier), scratch1);
-        masm.loadPtr(Address(scratch1, JitCode::offsetOfCode()), scratch1);
+        TrampolinePtr argumentsRectifier = cx_->runtime()->jitRuntime()->getArgumentsRectifier();
+        masm.movePtr(argumentsRectifier, scratch1);
     }
 
     masm.bind(&noUnderflow);

@@ -49,7 +49,8 @@ enum class State {
     D(MallocBytesTrigger) \
     D(GCBytesTrigger) \
     D(ZoneChange) \
-    D(CompartmentRevived)
+    D(CompartmentRevived) \
+    D(GrayRootBufferingFailed)
 enum class AbortReason {
 #define MAKE_REASON(name) name,
     GC_ABORT_REASONS(MAKE_REASON)
@@ -59,9 +60,7 @@ enum class AbortReason {
 #define JS_FOR_EACH_ZEAL_MODE(D)       \
     D(RootsChange, 1)                  \
     D(Alloc, 2)                        \
-    D(FrameGC, 3)                      \
     D(VerifierPre, 4)                  \
-    D(FrameVerifierPre, 5)             \
     D(GenerationalGC, 7)               \
     D(IncrementalRootsThenFinish, 8)   \
     D(IncrementalMarkAllThenFinish, 9) \

@@ -43,22 +43,25 @@ add_task(async function test_support_toolbar_property() {
   for (let toolbar of toolbars) {
     info(`Testing ${toolbar.id}`);
     Assert.equal(window.getComputedStyle(toolbar).backgroundColor,
-      "rgb(" + hexToRGB(TOOLBAR_COLOR).join(", ") + ")", "Toolbar background color should be set.");
+                 hexToCSS(TOOLBAR_COLOR),
+                 "Toolbar background color should be set.");
     Assert.equal(window.getComputedStyle(toolbar).color,
-      "rgb(" + hexToRGB(TOOLBAR_TEXT_COLOR).join(", ") + ")", "Toolbar text color should be set.");
+                 hexToCSS(TOOLBAR_TEXT_COLOR),
+                 "Toolbar text color should be set.");
   }
 
   info("Checking selected tab colors");
   let selectedTab = document.querySelector(".tabbrowser-tab[selected]");
   Assert.equal(window.getComputedStyle(selectedTab).color,
-    "rgb(" + hexToRGB(TOOLBAR_TEXT_COLOR).join(", ") + ")", "Selected tab text color should be set.");
+               hexToCSS(TOOLBAR_TEXT_COLOR),
+               "Selected tab text color should be set.");
 
   await extension.unload();
 });
 
 add_task(async function test_bookmark_text_property() {
-  const TOOLBAR_COLOR = "#ff00ff";
-  const TOOLBAR_TEXT_COLOR = "#9400ff";
+  const TOOLBAR_COLOR = [255, 0, 255];
+  const TOOLBAR_TEXT_COLOR = [48, 0, 255];
   let extension = ExtensionTestUtils.loadExtension({
     manifest: {
       "theme": {
@@ -66,8 +69,8 @@ add_task(async function test_bookmark_text_property() {
           "headerURL": "image1.png",
         },
         "colors": {
-          "accentcolor": ACCENT_COLOR,
-          "textcolor": TEXT_COLOR,
+          "frame": ACCENT_COLOR,
+          "background_tab_text": TEXT_COLOR,
           "toolbar": TOOLBAR_COLOR,
           "bookmark_text": TOOLBAR_TEXT_COLOR,
         },
@@ -90,14 +93,15 @@ add_task(async function test_bookmark_text_property() {
   for (let toolbar of toolbars) {
     info(`Testing ${toolbar.id}`);
     Assert.equal(window.getComputedStyle(toolbar).color,
-      "rgb(" + hexToRGB(TOOLBAR_TEXT_COLOR).join(", ") + ")",
-      "bookmark_text should be an alias for toolbar_text");
+                 rgbToCSS(TOOLBAR_TEXT_COLOR),
+                 "bookmark_text should be an alias for toolbar_text");
   }
 
   info("Checking selected tab colors");
   let selectedTab = document.querySelector(".tabbrowser-tab[selected]");
   Assert.equal(window.getComputedStyle(selectedTab).color,
-    "rgb(" + hexToRGB(TOOLBAR_TEXT_COLOR).join(", ") + ")", "Selected tab text color should be set.");
+               rgbToCSS(TOOLBAR_TEXT_COLOR),
+               "Selected tab text color should be set.");
 
   await extension.unload();
 });

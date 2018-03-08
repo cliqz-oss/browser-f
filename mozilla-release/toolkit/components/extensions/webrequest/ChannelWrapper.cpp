@@ -130,6 +130,18 @@ ChannelWrapper::RedirectTo(nsIURI* aURI, ErrorResult& aRv)
 }
 
 void
+ChannelWrapper::UpgradeToSecure(ErrorResult& aRv)
+{
+  nsresult rv = NS_ERROR_UNEXPECTED;
+  if (nsCOMPtr<nsIHttpChannel> chan = MaybeHttpChannel()) {
+    rv = chan->UpgradeToSecure();
+  }
+  if (NS_FAILED(rv)) {
+    aRv.Throw(rv);
+  }
+}
+
+void
 ChannelWrapper::SetSuspended(bool aSuspended, ErrorResult& aRv)
 {
   if (aSuspended != mSuspended) {
@@ -277,11 +289,11 @@ ChannelWrapper::GetResponseHeaders(nsTArray<dom::MozHTTPHeader>& aRetVal, ErrorR
 }
 
 void
-ChannelWrapper::SetRequestHeader(const nsCString& aHeader, const nsCString& aValue, ErrorResult& aRv)
+ChannelWrapper::SetRequestHeader(const nsCString& aHeader, const nsCString& aValue, bool aMerge, ErrorResult& aRv)
 {
   nsresult rv = NS_ERROR_UNEXPECTED;
   if (nsCOMPtr<nsIHttpChannel> chan = MaybeHttpChannel()) {
-    rv = chan->SetRequestHeader(aHeader, aValue, false);
+    rv = chan->SetRequestHeader(aHeader, aValue, aMerge);
   }
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
@@ -289,7 +301,7 @@ ChannelWrapper::SetRequestHeader(const nsCString& aHeader, const nsCString& aVal
 }
 
 void
-ChannelWrapper::SetResponseHeader(const nsCString& aHeader, const nsCString& aValue, ErrorResult& aRv)
+ChannelWrapper::SetResponseHeader(const nsCString& aHeader, const nsCString& aValue, bool aMerge, ErrorResult& aRv)
 {
   nsresult rv = NS_ERROR_UNEXPECTED;
   if (nsCOMPtr<nsIHttpChannel> chan = MaybeHttpChannel()) {
@@ -299,7 +311,7 @@ ChannelWrapper::SetResponseHeader(const nsCString& aHeader, const nsCString& aVa
         mContentTypeHdr = aValue;
       }
     } else {
-      rv = chan->SetResponseHeader(aHeader, aValue, false);
+      rv = chan->SetResponseHeader(aHeader, aValue, aMerge);
     }
   }
   if (NS_FAILED(rv)) {

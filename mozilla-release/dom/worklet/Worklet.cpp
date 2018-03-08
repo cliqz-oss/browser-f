@@ -130,7 +130,7 @@ public:
     }
 
     nsCOMPtr<nsIInputStreamPump> pump;
-    rv = NS_NewInputStreamPump(getter_AddRefs(pump), inputStream);
+    rv = NS_NewInputStreamPump(getter_AddRefs(pump), inputStream.forget());
     if (NS_WARN_IF(NS_FAILED(rv))) {
       RejectPromises(rv);
       return;
@@ -206,7 +206,6 @@ public:
     JS::CompileOptions compileOptions(cx);
     compileOptions.setIntroductionType("Worklet");
     compileOptions.setFileAndLine(url.get(), 0);
-    compileOptions.setVersion(JSVERSION_DEFAULT);
     compileOptions.setIsRunOnce(true);
     compileOptions.setNoScriptRval(true);
 

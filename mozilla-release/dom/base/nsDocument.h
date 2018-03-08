@@ -149,36 +149,6 @@ public:
   nsDocHeaderData*  mNext;
 };
 
-class nsDOMStyleSheetList : public mozilla::dom::StyleSheetList,
-                            public nsStubDocumentObserver
-{
-public:
-  explicit nsDOMStyleSheetList(nsIDocument* aDocument);
-
-  NS_DECL_ISUPPORTS_INHERITED
-
-  // nsIDocumentObserver
-  NS_DECL_NSIDOCUMENTOBSERVER_STYLESHEETADDED
-  NS_DECL_NSIDOCUMENTOBSERVER_STYLESHEETREMOVED
-
-  // nsIMutationObserver
-  NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
-
-  virtual nsINode* GetParentObject() const override
-  {
-    return mDocument;
-  }
-
-  uint32_t Length() override;
-  mozilla::StyleSheet* IndexedGetter(uint32_t aIndex, bool& aFound) override;
-
-protected:
-  virtual ~nsDOMStyleSheetList();
-
-  int32_t       mLength;
-  nsIDocument*  mDocument;
-};
-
 class nsOnloadBlocker final : public nsIRequest
 {
 public:
@@ -359,14 +329,12 @@ class nsDocument : public nsIDocument,
                    public nsIRadioGroupContainer,
                    public nsIApplicationCacheContainer,
                    public nsStubMutationObserver,
-                   public nsIObserver,
                    public nsIDOMXPathEvaluator
 {
   friend class nsIDocument;
 
 public:
   typedef mozilla::dom::Element Element;
-  using nsIDocument::GetElementsByTagName;
   typedef mozilla::net::ReferrerPolicy ReferrerPolicy;
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -455,13 +423,14 @@ public:
   already_AddRefed<nsIPresShell> CreateShell(nsPresContext* aContext,
                                              nsViewManager* aViewManager,
                                              mozilla::StyleSetHandle aStyleSet)
-    final;
+    final override;
   virtual void DeleteShell() override;
 
   virtual bool GetAllowPlugins() override;
 
   static bool IsElementAnimateEnabled(JSContext* aCx, JSObject* aObject);
   static bool IsWebAnimationsEnabled(JSContext* aCx, JSObject* aObject);
+  static bool IsWebAnimationsEnabled(mozilla::dom::CallerType aCallerType);
   virtual mozilla::dom::DocumentTimeline* Timeline() override;
   virtual void GetAnimations(
       nsTArray<RefPtr<mozilla::dom::Animation>>& aAnimations) override;
@@ -478,14 +447,6 @@ public:
 
   virtual void EnsureOnDemandBuiltInUASheet(mozilla::StyleSheet* aSheet) override;
 
-  /**
-   * Get the (document) style sheets owned by this document.
-   * These are ordered, highest priority last
-   */
-  virtual int32_t GetNumberOfStyleSheets() const override;
-  virtual mozilla::StyleSheet* GetStyleSheetAt(int32_t aIndex) const override;
-  virtual int32_t GetIndexOfStyleSheet(
-      const mozilla::StyleSheet* aSheet) const override;
   virtual void AddStyleSheet(mozilla::StyleSheet* aSheet) override;
   virtual void RemoveStyleSheet(mozilla::StyleSheet* aSheet) override;
 
@@ -496,7 +457,7 @@ public:
   virtual void RemoveStyleSheetFromStyleSets(mozilla::StyleSheet* aSheet);
 
   virtual void InsertStyleSheetAt(mozilla::StyleSheet* aSheet,
-                                  int32_t aIndex) override;
+                                  size_t aIndex) override;
   virtual void SetStyleSheetApplicableState(mozilla::StyleSheet* aSheet,
                                             bool aApplicable) override;
 
@@ -593,12 +554,13 @@ public:
 
   // nsINode
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
-  virtual nsIContent *GetChildAt(uint32_t aIndex) const override;
+  virtual nsIContent *GetChildAt_Deprecated(uint32_t aIndex) const override;
   virtual int32_t IndexOf(const nsINode* aPossibleChild) const override;
   virtual uint32_t GetChildCount() const override;
   virtual nsresult InsertChildAt(nsIContent* aKid, uint32_t aIndex,
                                  bool aNotify) override;
-  virtual void RemoveChildAt(uint32_t aIndex, bool aNotify) override;
+  virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
+  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override
   {
@@ -664,6 +626,10 @@ public:
   virtual void ResolveScheduledSVGPresAttrs() override;
   bool IsSynthesized();
 
+  // Check whether shadow DOM is enabled for the global of aObject.
+  static bool IsShadowDOMEnabled(JSContext* aCx, JSObject* aObject);
+  // Check whether shadow DOM is enabled for the document this node belongs to.
+  static bool IsShadowDOMEnabled(const nsINode* aNode);
 private:
   void AddOnDemandBuiltInUASheet(mozilla::StyleSheet* aSheet);
   void SendToConsole(nsCOMArray<nsISecurityConsoleMessage>& aMessages);
@@ -678,6 +644,11 @@ public:
   // nsIDOMDocumentXBL
   NS_DECL_NSIDOMDOCUMENTXBL
 
+  using mozilla::dom::DocumentOrShadowRoot::GetElementById;
+  using mozilla::dom::DocumentOrShadowRoot::GetElementsByTagName;
+  using mozilla::dom::DocumentOrShadowRoot::GetElementsByTagNameNS;
+  using mozilla::dom::DocumentOrShadowRoot::GetElementsByClassName;
+
   // nsIDOMEventTarget
   virtual nsresult GetEventTargetParent(
                      mozilla::EventChainPreVisitor& aVisitor) override;
@@ -691,9 +662,6 @@ public:
 
   // nsIApplicationCacheContainer
   NS_DECL_NSIAPPLICATIONCACHECONTAINER
-
-  // nsIObserver
-  NS_DECL_NSIOBSERVER
 
   NS_DECL_NSIDOMXPATHEVALUATOR
 
@@ -842,13 +810,6 @@ public:
 
   virtual nsISupports* GetCurrentContentSink() override;
 
-  virtual mozilla::EventStates GetDocumentState() final;
-  // GetDocumentState() mutates the state due to lazy resolution;
-  // and can't be used during parallel traversal. Use this instead,
-  // and ensure GetDocumentState() has been called first.
-  // This will assert if the state is stale.
-  virtual mozilla::EventStates ThreadSafeGetDocumentState() const final;
-
   // Only BlockOnload should call this!
   void AsyncBlockOnload();
 
@@ -857,10 +818,7 @@ public:
   virtual void ResetScrolledToRefAlready() override;
   virtual void SetChangeScrollPosWhenScrollingToRef(bool aValue) override;
 
-  virtual Element *GetElementById(const nsAString& aElementId) override;
-  virtual const nsTArray<Element*>* GetAllElementsForId(const nsAString& aElementId) const override;
-
-  virtual Element *LookupImageElement(const nsAString& aElementId) override;
+  virtual Element* LookupImageElement(const nsAString& aElementId) override;
   virtual void MozSetImageElement(const nsAString& aImageElementId,
                                   Element* aElement) override;
 
@@ -993,12 +951,7 @@ public:
   // WebIDL bits
   virtual mozilla::dom::DOMImplementation*
     GetImplementation(mozilla::ErrorResult& rv) override;
-  virtual void
-    RegisterElement(JSContext* aCx, const nsAString& aName,
-                    const mozilla::dom::ElementRegistrationOptions& aOptions,
-                    JS::MutableHandle<JSObject*> aRetval,
-                    mozilla::ErrorResult& rv) override;
-  virtual mozilla::dom::StyleSheetList* StyleSheets() override;
+
   virtual void SetSelectedStyleSheetSet(const nsAString& aSheetSet) override;
   virtual void GetLastStyleSheetSet(nsString& aSheetSet) override;
   virtual mozilla::dom::DOMStringList* StyleSheetSets() override;
@@ -1110,9 +1063,15 @@ protected:
   virtual mozilla::dom::FlashClassification DocumentFlashClassification() override;
   virtual bool IsThirdParty() override;
 
-#define NS_DOCUMENT_NOTIFY_OBSERVERS(func_, params_)                        \
-  NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mObservers, nsIDocumentObserver, \
-                                           func_, params_);
+#define NS_DOCUMENT_NOTIFY_OBSERVERS(func_, params_) do {                     \
+    NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mObservers, nsIDocumentObserver, \
+                                             func_, params_);                 \
+    /* FIXME(emilio): Apparently we can keep observing from the BFCache? That \
+       looks bogus. */                                                        \
+    if (nsIPresShell* shell = GetObservingShell()) {                          \
+      shell->func_ params_;                                                   \
+    }                                                                         \
+  } while(0)
 
 #ifdef DEBUG
   void VerifyRootContentState();
@@ -1152,7 +1111,6 @@ protected:
   // EndLoad() has already happened.
   nsWeakPtr mWeakSink;
 
-  nsTArray<RefPtr<mozilla::StyleSheet>> mStyleSheets;
   nsTArray<RefPtr<mozilla::StyleSheet>> mOnDemandBuiltInUASheets;
   nsTArray<RefPtr<mozilla::StyleSheet>> mAdditionalSheets[AdditionalSheetTypeCount];
 
@@ -1186,27 +1144,12 @@ protected:
   // Do not use this value directly. Call the |IsThirdParty()| method, which
   // caches its result here.
   mozilla::Maybe<bool> mIsThirdParty;
-private:
-  void UpdatePossiblyStaleDocumentState();
-  static bool CustomElementConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp);
 
 public:
-  virtual already_AddRefed<mozilla::dom::CustomElementRegistry>
-    GetCustomElementRegistry() override;
-
   RefPtr<mozilla::EventListenerManager> mListenerManager;
-  RefPtr<mozilla::dom::StyleSheetList> mDOMStyleSheets;
   RefPtr<nsDOMStyleSheetSetList> mStyleSheetSetList;
   RefPtr<mozilla::dom::ScriptLoader> mScriptLoader;
   nsDocHeaderData* mHeaderData;
-  /* mIdentifierMap works as follows for IDs:
-   * 1) Attribute changes affect the table immediately (removing and adding
-   *    entries as needed).
-   * 2) Removals from the DOM affect the table immediately
-   * 3) Additions to the DOM always update existing entries for names, and add
-   *    new ones for IDs.
-   */
-  nsTHashtable<nsIdentifierMapEntry> mIdentifierMap;
 
   nsClassHashtable<nsStringHashKey, nsRadioGroupStruct> mRadioGroups;
 
@@ -1277,9 +1220,6 @@ public:
   nsCOMPtr<nsIApplicationCache> mApplicationCache;
 
   nsCOMPtr<nsIContent> mFirstBaseNodeWithHref;
-
-  mozilla::EventStates mDocumentState;
-  mozilla::EventStates mGotDocumentState;
 
   RefPtr<nsDOMNavigationTiming> mTiming;
 private:

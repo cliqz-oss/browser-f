@@ -8,6 +8,7 @@
 
 #include "mozilla/dom/nsSpeechTask.h"
 #include "mozilla/dom/nsSynthVoiceRegistry.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Preferences.h"
 #include "nsEscape.h"
 #include "nsISupports.h"
@@ -513,8 +514,7 @@ SpeechDispatcherService::Speak(const nsAString& aText, const nsAString& aUri,
   // speech-dispatcher expects -100 to 100 with 0 being default.
   spd_set_voice_pitch(mSpeechdClient, static_cast<int>((aPitch - 1) * 100));
 
-  // The last three parameters don't matter for an indirect service
-  nsresult rv = aTask->Setup(callback, 0, 0, 0);
+  nsresult rv = aTask->Setup(callback);
 
   if (NS_FAILED(rv)) {
     return rv;
@@ -549,13 +549,6 @@ SpeechDispatcherService::Speak(const nsAString& aText, const nsAString& aUri,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-SpeechDispatcherService::GetServiceType(SpeechServiceType* aServiceType)
-{
-  *aServiceType = nsISpeechService::SERVICETYPE_INDIRECT_AUDIO;
-  return NS_OK;
-}
-
 SpeechDispatcherService*
 SpeechDispatcherService::GetInstance(bool create)
 {
@@ -568,6 +561,7 @@ SpeechDispatcherService::GetInstance(bool create)
   if (!sSingleton && create) {
     sSingleton = new SpeechDispatcherService();
     sSingleton->Init();
+    ClearOnShutdown(&sSingleton);
   }
 
   return sSingleton;
@@ -591,16 +585,6 @@ SpeechDispatcherService::EventNotify(uint32_t aMsgId, uint32_t aState)
       mCallbacks.Remove(aMsgId);
     }
   }
-}
-
-void
-SpeechDispatcherService::Shutdown()
-{
-  if (!sSingleton) {
-    return;
-  }
-
-  sSingleton = nullptr;
 }
 
 } // namespace dom

@@ -75,6 +75,7 @@ function FeedWriter() {
   this._subscribeCallback = null;
   this._defaultHandlerMenuItem = null;
 
+  Services.telemetry.scalarAdd("browser.feeds.preview_loaded", 1);
 
   XPCOMUtils.defineLazyGetter(this, "_mm", () =>
     this._window.QueryInterface(Ci.nsIInterfaceRequestor).
@@ -192,7 +193,7 @@ FeedWriter.prototype = {
         timeStyle: "short",
         dateStyle: "long"
       };
-      this.__dateFormatter = Services.intl.createDateTimeFormat(undefined, dtOptions);
+      this.__dateFormatter = new Services.intl.DateTimeFormat(undefined, dtOptions);
     }
     return this.__dateFormatter;
   },

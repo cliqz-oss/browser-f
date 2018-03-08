@@ -40,7 +40,7 @@ const callExpressionMultiDefinitions = [
 ];
 
 const imports = [
-  /^(?:Cu|Components\.utils)\.import\(".*\/((.*?)\.jsm?)"(?:, this)?\)/
+  /^(?:Cu|Components\.utils|ChromeUtils)\.import\(".*\/((.*?)\.jsm?)"(?:, this)?\)/
 ];
 
 const workerImportFilenameMatch = /(.*\/)*(.*?\.jsm?)/;
@@ -248,6 +248,23 @@ module.exports = {
    *                     If the global is writeable or not.
    */
   convertCallExpressionToGlobals(node, isGlobal) {
+    let express = node.expression;
+    if (express.type === "CallExpression" &&
+        express.callee.type === "MemberExpression" &&
+        express.callee.object &&
+        express.callee.object.type === "Identifier" &&
+        express.arguments.length === 1 &&
+        express.arguments[0].type === "ArrayExpression" &&
+        express.callee.property.type === "Identifier" &&
+        express.callee.property.name === "importGlobalProperties") {
+      return express.arguments[0].elements.map(literal => {
+        return {
+          name: literal.value,
+          writable: false
+        };
+      });
+    }
+
     let source;
     try {
       source = this.getASTSource(node);
@@ -377,6 +394,25 @@ module.exports = {
   },
 
   /**
+   * Check whether a node is a function.
+   *
+   * @param {Object} node
+   *        The AST node to check
+   *
+   * @return {Boolean}
+   *         True or false
+   */
+  getIsFunctionNode(node) {
+    switch (node.type) {
+      case "ArrowFunctionExpression":
+      case "FunctionDeclaration":
+      case "FunctionExpression":
+        return true;
+    }
+    return false;
+  },
+
+  /**
    * Check whether the context is the global scope.
    *
    * @param {Array} ancestors
@@ -387,9 +423,7 @@ module.exports = {
    */
   getIsGlobalScope(ancestors) {
     for (let parent of ancestors) {
-      if (parent.type == "FunctionExpression" ||
-          parent.type == "FunctionDeclaration" ||
-          parent.type == "ArrowFunctionExpression") {
+      if (this.getIsFunctionNode(parent)) {
         return false;
       }
     }

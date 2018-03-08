@@ -17,7 +17,7 @@ config = {
         for d in ["mobile/android/config/mozconfigs/android-api-16/",
                   "mobile/android/config/mozconfigs/android-x86/",
                   "mobile/android/config/mozconfigs/android-aarch64/"]
-        for f in ["debug", "nightly", "l10n-nightly"]
+        for f in ["debug", "nightly"]
     ] + [
         # File, from, to
         (f, "ac_add_options --with-branding=browser/branding/nightly",
@@ -27,17 +27,6 @@ config = {
                   "browser/config/mozconfigs/win32/l10n-mozconfig",
                   "browser/config/mozconfigs/win64/l10n-mozconfig",
                   "browser/config/mozconfigs/macosx64/l10n-mozconfig"]
-    ] + [
-        # File, from, to
-        (f, "ac_add_options --enable-profiling", "") for f in
-        ["mobile/android/config/mozconfigs/android-api-16/nightly",
-         "mobile/android/config/mozconfigs/android-x86/nightly",
-         "mobile/android/config/mozconfigs/android-aarch64/nightly",
-         "browser/config/mozconfigs/linux32/nightly",
-         "browser/config/mozconfigs/linux64/nightly",
-         "browser/config/mozconfigs/macosx64/nightly",
-         "browser/config/mozconfigs/win32/nightly",
-         "browser/config/mozconfigs/win64/nightly"]
     ] + [
         # File, from, to
         ("browser/confvars.sh",
@@ -60,8 +49,8 @@ config = {
     # "hg_share_base": None,
     "tools_repo_url": "https://hg.mozilla.org/build/tools",
     "tools_repo_branch": "default",
-    "from_repo_url": "ssh://hg.mozilla.org/mozilla-central",
-    "to_repo_url": "ssh://hg.mozilla.org/releases/mozilla-beta",
+    "from_repo_url": "https://hg.mozilla.org/mozilla-central",
+    "to_repo_url": "https://hg.mozilla.org/releases/mozilla-beta",
 
     "base_tag": "FIREFOX_BETA_%(major_version)s_BASE",
     "end_tag": "FIREFOX_BETA_%(major_version)s_END",

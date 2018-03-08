@@ -18,7 +18,6 @@
 #include "nsIDOMXULMenuListElement.h"
 #include "nsIDOMXULMultSelectCntrlEl.h"
 #include "nsIDOMNodeList.h"
-#include "nsIDOMXULPopupElement.h"
 #include "nsIDOMXULSelectCntrlItemEl.h"
 #include "nsIMutableArray.h"
 #include "nsIPersistentProperties2.h"
@@ -127,8 +126,8 @@ XULListboxAccessible::NativeState()
 
   // see if we are multiple select if so set ourselves as such
 
-  if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::seltype,
-                            nsGkAtoms::multiple, eCaseMatters)) {
+  if (mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::seltype,
+                                         nsGkAtoms::multiple, eCaseMatters)) {
       states |= states::MULTISELECTABLE | states::EXTSELECTABLE;
   }
 
@@ -157,9 +156,7 @@ XULListboxAccessible::NativeRole()
 {
   // A richlistbox is used with the new autocomplete URL bar, and has a parent
   // popup <panel>.
-  nsCOMPtr<nsIDOMXULPopupElement> xulPopup =
-    do_QueryInterface(mContent->GetParent());
-  if (xulPopup)
+  if (mContent->GetParent() && mContent->GetParent()->IsXULElement(nsGkAtoms::panel))
     return roles::COMBOBOX_LIST;
 
   return IsMulticolumn() ? roles::TABLE : roles::LISTBOX;
@@ -539,10 +536,10 @@ XULListitemAccessible::
   XULListitemAccessible(nsIContent* aContent, DocAccessible* aDoc) :
   XULMenuitemAccessible(aContent, aDoc)
 {
-  mIsCheckbox = mContent->AttrValueIs(kNameSpaceID_None,
-                                      nsGkAtoms::type,
-                                      nsGkAtoms::checkbox,
-                                      eCaseMatters);
+  mIsCheckbox = mContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                                   nsGkAtoms::type,
+                                                   nsGkAtoms::checkbox,
+                                                   eCaseMatters);
   mType = eXULListItemType;
 
   // Walk XBL anonymous children for list items. Overrides the flag value from
@@ -600,7 +597,7 @@ XULListitemAccessible::NativeName(nsString& aName)
   if (childContent) {
     if (childContent->NodeInfo()->Equals(nsGkAtoms::listcell,
                                          kNameSpaceID_XUL)) {
-      childContent->GetAttr(kNameSpaceID_None, nsGkAtoms::label, aName);
+      childContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, aName);
       return eNameOK;
     }
   }

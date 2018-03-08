@@ -378,7 +378,6 @@ nsAppStartup::Quit(uint32_t aMode)
           windowEnumerator->GetNext(getter_AddRefs(window));
           nsCOMPtr<nsPIDOMWindowOuter> domWindow(do_QueryInterface(window));
           if (domWindow) {
-            MOZ_ASSERT(domWindow->IsOuterWindow());
             if (!domWindow->CanClose())
               return NS_OK;
           }
@@ -516,7 +515,6 @@ nsAppStartup::CloseAllWindows()
     nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryInterface(isupports);
     NS_ASSERTION(window, "not an nsPIDOMWindow");
     if (window) {
-      MOZ_ASSERT(window->IsOuterWindow());
       window->ForceClose();
     }
   }
@@ -961,7 +959,8 @@ nsAppStartup::TrackStartupCrashEnd()
     // in regular mode before returning to safe mode.
     int32_t maxResumedCrashes = 0;
     int32_t prefType;
-    rv = Preferences::GetDefaultRootBranch()->GetPrefType(kPrefMaxResumedCrashes, &prefType);
+    rv = Preferences::GetRootBranch(
+      PrefValueKind::Default)->GetPrefType(kPrefMaxResumedCrashes, &prefType);
     NS_ENSURE_SUCCESS(rv, rv);
     if (prefType == nsIPrefBranch::PREF_INT) {
       rv = Preferences::GetInt(kPrefMaxResumedCrashes, &maxResumedCrashes);

@@ -16,7 +16,9 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/Animation.h"
 #include "mozilla/dom/Attr.h"
+#include "mozilla/dom/Flex.h"
 #include "mozilla/dom/Grid.h"
+#include "mozilla/gfx/Matrix.h"
 #include "nsDOMAttributeMap.h"
 #include "nsAtom.h"
 #include "nsIContentInlines.h"
@@ -26,6 +28,7 @@
 #include "nsIDOMNodeList.h"
 #include "nsIDOMDocument.h"
 #include "nsIContentIterator.h"
+#include "nsFlexContainerFrame.h"
 #include "nsFocusManager.h"
 #include "nsFrameManager.h"
 #include "nsILinkHandler.h"
@@ -41,7 +44,6 @@
 #include "nsIDOMEvent.h"
 #include "nsDOMCID.h"
 #include "nsIServiceManager.h"
-#include "nsIDOMCSSStyleDeclaration.h"
 #include "nsDOMCSSAttrDeclaration.h"
 #include "nsNameSpaceManager.h"
 #include "nsContentList.h"
@@ -161,6 +163,8 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
+using mozilla::gfx::Matrix4x4;
+
 //
 // Verify sizes of elements on 64-bit platforms. This should catch most memory
 // regressions, and is easy to verify locally since most developers are on
@@ -202,18 +206,10 @@ nsIContent::DoGetID() const
 }
 
 const nsAttrValue*
-Element::DoGetClasses() const
+Element::GetSVGAnimatedClass() const
 {
-  MOZ_ASSERT(MayHaveClass(), "Unexpected call");
-  if (IsSVGElement()) {
-    const nsAttrValue* animClass =
-      static_cast<const nsSVGElement*>(this)->GetAnimatedClassName();
-    if (animClass) {
-      return animClass;
-    }
-  }
-
-  return GetParsedAttr(nsGkAtoms::_class);
+  MOZ_ASSERT(MayHaveClass() && IsSVGElement(), "Unexpected call");
+  return static_cast<const nsSVGElement*>(this)->GetAnimatedClassName();
 }
 
 NS_IMETHODIMP
@@ -367,6 +363,54 @@ Element::SetTabIndex(int32_t aTabIndex, mozilla::ErrorResult& aError)
 }
 
 void
+Element::SetXBLBinding(nsXBLBinding* aBinding,
+                       nsBindingManager* aOldBindingManager)
+{
+  nsBindingManager* bindingManager;
+  if (aOldBindingManager) {
+    MOZ_ASSERT(!aBinding, "aOldBindingManager should only be provided "
+                          "when removing a binding.");
+    bindingManager = aOldBindingManager;
+  } else {
+    bindingManager = OwnerDoc()->BindingManager();
+  }
+
+  // After this point, aBinding will be the most-derived binding for aContent.
+  // If we already have a binding for aContent, make sure to
+  // remove it from the attached stack.  Otherwise we might end up firing its
+  // constructor twice (if aBinding inherits from it) or firing its constructor
+  // after aContent has been deleted (if aBinding is null and the content node
+  // dies before we process mAttachedStack).
+  RefPtr<nsXBLBinding> oldBinding = GetXBLBinding();
+  if (oldBinding) {
+    bindingManager->RemoveFromAttachedQueue(oldBinding);
+  }
+
+  if (aBinding) {
+    SetFlags(NODE_MAY_BE_IN_BINDING_MNGR);
+    nsExtendedDOMSlots* slots = ExtendedDOMSlots();
+    slots->mXBLBinding = aBinding;
+    bindingManager->AddBoundContent(this);
+  } else {
+    nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots();
+    if (slots) {
+      slots->mXBLBinding = nullptr;
+    }
+    bindingManager->RemoveBoundContent(this);
+    if (oldBinding) {
+      oldBinding->SetBoundElement(nullptr);
+    }
+  }
+}
+
+void
+Element::SetShadowRoot(ShadowRoot* aShadowRoot)
+{
+  nsExtendedDOMSlots* slots = ExtendedDOMSlots();
+  slots->mShadowRoot = aShadowRoot;
+}
+
+void
 Element::Blur(mozilla::ErrorResult& aError)
 {
   if (!ShouldBlur(this)) {
@@ -512,44 +556,9 @@ Element::GetBindingURL(nsIDocument *aDocument, css::URLValue **aResult)
 JSObject*
 Element::WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  JS::Rooted<JSObject*> givenProto(aCx, aGivenProto);
-  JS::Rooted<JSObject*> customProto(aCx);
-
-  if (!givenProto) {
-    // Custom element prototype swizzling.
-    CustomElementData* data = GetCustomElementData();
-    if (data) {
-      // If this is a registered custom element then fix the prototype.
-      nsContentUtils::GetCustomPrototype(OwnerDoc(), NodeInfo()->NamespaceID(),
-                                         data->mType, &customProto);
-      if (customProto &&
-          NodePrincipal()->SubsumesConsideringDomain(nsContentUtils::ObjectPrincipal(customProto))) {
-        // Just go ahead and create with the right proto up front.  Set
-        // customProto to null to flag that we don't need to do any post-facto
-        // proto fixups here.
-        givenProto = customProto;
-        customProto = nullptr;
-      }
-    }
-  }
-
-  JS::Rooted<JSObject*> obj(aCx, nsINode::WrapObject(aCx, givenProto));
+  JS::Rooted<JSObject*> obj(aCx, nsINode::WrapObject(aCx, aGivenProto));
   if (!obj) {
     return nullptr;
-  }
-
-  if (customProto) {
-    // We want to set the custom prototype in the compartment where it was
-    // registered. In the case that |obj| and |prototype| are in different
-    // compartments, this will set the prototype on the |obj|'s wrapper and
-    // thus only visible in the wrapper's compartment, since we know obj's
-    // principal does not subsume customProto's in this case.
-    JSAutoCompartment ac(aCx, customProto);
-    JS::Rooted<JSObject*> wrappedObj(aCx, obj);
-    if (!JS_WrapObject(aCx, &wrappedObj) ||
-        !JS_SetPrototype(aCx, wrappedObj, customProto)) {
-      return nullptr;
-    }
   }
 
   nsIDocument* doc;
@@ -1297,83 +1306,6 @@ Element::AttachShadowInternal(bool aClosed, ErrorResult& aError)
   return shadowRoot.forget();
 }
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(DestinationInsertionPointList, mParent,
-                                      mDestinationPoints)
-
-NS_INTERFACE_TABLE_HEAD(DestinationInsertionPointList)
-  NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
-  NS_INTERFACE_TABLE(DestinationInsertionPointList, nsINodeList, nsIDOMNodeList)
-  NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(DestinationInsertionPointList)
-NS_INTERFACE_MAP_END
-
-NS_IMPL_CYCLE_COLLECTING_ADDREF(DestinationInsertionPointList)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(DestinationInsertionPointList)
-
-DestinationInsertionPointList::DestinationInsertionPointList(Element* aElement)
-  : mParent(aElement)
-{
-  nsTArray<nsIContent*>* destPoints = aElement->GetExistingDestInsertionPoints();
-  if (destPoints) {
-    for (uint32_t i = 0; i < destPoints->Length(); i++) {
-      mDestinationPoints.AppendElement(destPoints->ElementAt(i));
-    }
-  }
-}
-
-DestinationInsertionPointList::~DestinationInsertionPointList()
-{
-}
-
-nsIContent*
-DestinationInsertionPointList::Item(uint32_t aIndex)
-{
-  return mDestinationPoints.SafeElementAt(aIndex);
-}
-
-NS_IMETHODIMP
-DestinationInsertionPointList::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  nsIContent* item = Item(aIndex);
-  if (!item) {
-    return NS_ERROR_FAILURE;
-  }
-
-  return CallQueryInterface(item, aReturn);
-}
-
-uint32_t
-DestinationInsertionPointList::Length() const
-{
-  return mDestinationPoints.Length();
-}
-
-NS_IMETHODIMP
-DestinationInsertionPointList::GetLength(uint32_t* aLength)
-{
-  *aLength = Length();
-  return NS_OK;
-}
-
-int32_t
-DestinationInsertionPointList::IndexOf(nsIContent* aContent)
-{
-  return mDestinationPoints.IndexOf(aContent);
-}
-
-JSObject*
-DestinationInsertionPointList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
-  return NodeListBinding::Wrap(aCx, this, aGivenProto);
-}
-
-already_AddRefed<DestinationInsertionPointList>
-Element::GetDestinationInsertionPoints()
-{
-  RefPtr<DestinationInsertionPointList> list =
-    new DestinationInsertionPointList(this);
-  return list.forget();
-}
-
 void
 Element::GetAttribute(const nsAString& aName, DOMString& aReturn)
 {
@@ -1596,6 +1528,39 @@ Element::GetElementsByClassName(const nsAString& aClassNames)
   return nsContentUtils::GetElementsByClassName(this, aClassNames);
 }
 
+void
+Element::GetElementsWithGrid(nsTArray<RefPtr<Element>>& aElements)
+{
+  // This helper function is passed to GetElementsByMatching()
+  // to identify elements with styling which will cause them to
+  // generate a nsGridContainerFrame during layout.
+  auto IsDisplayGrid = [](Element* aElement) -> bool
+  {
+    RefPtr<nsStyleContext> styleContext =
+      nsComputedDOMStyle::GetStyleContext(aElement, nullptr, nullptr);
+    if (styleContext) {
+      const nsStyleDisplay* display = styleContext->StyleDisplay();
+      return (display->mDisplay == StyleDisplay::Grid ||
+              display->mDisplay == StyleDisplay::InlineGrid);
+    }
+    return false;
+  };
+
+  GetElementsByMatching(IsDisplayGrid, aElements);
+}
+
+void
+Element::GetElementsByMatching(nsElementMatchFunc aFunc,
+                               nsTArray<RefPtr<Element>>& aElements)
+{
+  for (nsINode* cur = this; cur; cur = cur->GetNextNode(this)) {
+    if (cur->IsElement() && aFunc(cur->AsElement())) {
+      aElements.AppendElement(cur->AsElement());
+    }
+  }
+}
+
+
 /**
  * Returns the count of descendants (inclusive of aContent) in
  * the uncomposed document that are explicitly set as editable.
@@ -1755,19 +1720,22 @@ Element::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
   if (CustomElementRegistry::IsCustomElementEnabled() && IsInComposedDoc()) {
     // Connected callback must be enqueued whenever a custom element becomes
     // connected.
-    if (GetCustomElementData()) {
-      nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eConnected, this);
+    CustomElementData* data = GetCustomElementData();
+    if (data) {
+      if (data->mState == CustomElementData::State::eCustom) {
+        nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eConnected, this);
+      } else {
+        // Step 7.7.2.2 https://dom.spec.whatwg.org/#concept-node-insert
+        nsContentUtils::TryToUpgradeElement(this);
+      }
     }
   }
 
   // Propagate scoped style sheet tracking bit.
   if (mParent->IsContent()) {
-    nsIContent* parent;
-    ShadowRoot* shadowRootParent = ShadowRoot::FromNode(mParent);
-    if (shadowRootParent) {
+    nsIContent* parent = mParent->AsContent();
+    if (ShadowRoot* shadowRootParent = ShadowRoot::FromNode(parent)) {
       parent = shadowRootParent->GetHost();
-    } else {
-      parent = mParent->AsContent();
     }
 
     bool inStyleScope = parent->IsElementInStyleScope();
@@ -2082,10 +2050,19 @@ Element::UnbindFromTree(bool aDeep, bool aNullParent)
 
      // Disconnected must be enqueued whenever a connected custom element becomes
      // disconnected.
-    if (CustomElementRegistry::IsCustomElementEnabled() &&
-        GetCustomElementData()) {
-      nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eDisconnected,
-                                               this);
+    if (CustomElementRegistry::IsCustomElementEnabled()) {
+      CustomElementData* data  = GetCustomElementData();
+      if (data) {
+        if (data->mState == CustomElementData::State::eCustom) {
+          nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eDisconnected,
+                                                   this);
+        } else {
+          // Remove an unresolved custom element that is a candidate for
+          // upgrade when a custom element is disconnected.
+          // We will make sure it's shadow-including tree order in bug 1326028.
+          nsContentUtils::UnregisterUnresolvedElement(this);
+        }
+      }
     }
   }
 
@@ -2628,7 +2605,8 @@ Element::SetAttr(int32_t aNamespaceID, nsAtom* aName,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (!preparsedAttrValue &&
-      !ParseAttribute(aNamespaceID, aName, aValue, attrValue)) {
+      !ParseAttribute(aNamespaceID, aName, aValue, aSubjectPrincipal,
+                      attrValue)) {
     attrValue.SetTo(aValue);
   }
 
@@ -2706,7 +2684,7 @@ Element::SetAttrAndNotify(int32_t aNamespaceID,
   // Copy aParsedValue for later use since it will be lost when we call
   // SetAndSwapMappedAttr below
   nsAttrValue valueForAfterSetAttr;
-  if (aCallAfterSetAttr) {
+  if (aCallAfterSetAttr || GetCustomElementData()) {
     valueForAfterSetAttr.SetTo(aParsedValue);
   }
 
@@ -2762,34 +2740,32 @@ Element::SetAttrAndNotify(int32_t aNamespaceID,
   }
 
   if (CustomElementRegistry::IsCustomElementEnabled()) {
-    if (CustomElementData* data = GetCustomElementData()) {
-      if (CustomElementDefinition* definition =
-            nsContentUtils::GetElementDefinitionIfObservingAttr(this,
-                                                                data->mType,
-                                                                aName)) {
-        RefPtr<nsAtom> oldValueAtom;
-        if (oldValue) {
-          oldValueAtom = oldValue->GetAsAtom();
-        } else {
-          // If there is no old value, get the value of the uninitialized
-          // attribute that was swapped with aParsedValue.
-          oldValueAtom = aParsedValue.GetAsAtom();
-        }
-        RefPtr<nsAtom> newValueAtom = valueForAfterSetAttr.GetAsAtom();
-        nsAutoString ns;
-        nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
-
-        LifecycleCallbackArgs args = {
-          nsDependentAtomString(aName),
-          aModType == nsIDOMMutationEvent::ADDITION ?
-            VoidString() : nsDependentAtomString(oldValueAtom),
-          nsDependentAtomString(newValueAtom),
-          (ns.IsEmpty() ? VoidString() : ns)
-        };
-
-        nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eAttributeChanged,
-          this, &args, nullptr, definition);
+    CustomElementDefinition* definition = GetCustomElementDefinition();
+    // Only custom element which is in `custom` state could get the
+    // CustomElementDefinition.
+    if (definition && definition->IsInObservedAttributeList(aName)) {
+      RefPtr<nsAtom> oldValueAtom;
+      if (oldValue) {
+        oldValueAtom = oldValue->GetAsAtom();
+      } else {
+        // If there is no old value, get the value of the uninitialized
+        // attribute that was swapped with aParsedValue.
+        oldValueAtom = aParsedValue.GetAsAtom();
       }
+      RefPtr<nsAtom> newValueAtom = valueForAfterSetAttr.GetAsAtom();
+      nsAutoString ns;
+      nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
+
+      LifecycleCallbackArgs args = {
+        nsDependentAtomString(aName),
+        aModType == nsIDOMMutationEvent::ADDITION ?
+          VoidString() : nsDependentAtomString(oldValueAtom),
+        nsDependentAtomString(newValueAtom),
+        (ns.IsEmpty() ? VoidString() : ns)
+      };
+
+      nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eAttributeChanged,
+        this, &args, nullptr, definition);
     }
   }
 
@@ -2845,6 +2821,7 @@ bool
 Element::ParseAttribute(int32_t aNamespaceID,
                         nsAtom* aAttribute,
                         const nsAString& aValue,
+                        nsIPrincipal* aMaybeScriptedPrincipal,
                         nsAttrValue& aResult)
 {
   if (aAttribute == nsGkAtoms::lang) {
@@ -2931,37 +2908,41 @@ Element::PostIdMaybeChange(int32_t aNamespaceID, nsAtom* aName,
   }
 }
 
+nsresult
+Element::OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
+                                const nsAttrValueOrString& aValue,
+                                bool aNotify)
+{
+  if (CustomElementRegistry::IsCustomElementEnabled()) {
+    // Only custom element which is in `custom` state could get the
+    // CustomElementDefinition.
+    CustomElementDefinition* definition = GetCustomElementDefinition();
+    if (definition && definition->IsInObservedAttributeList(aName)) {
+      nsAutoString ns;
+      nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
+
+      nsAutoString value(aValue.String());
+      LifecycleCallbackArgs args = {
+        nsDependentAtomString(aName),
+        value,
+        value,
+        (ns.IsEmpty() ? VoidString() : ns)
+      };
+
+      nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eAttributeChanged,
+        this, &args, nullptr, definition);
+    }
+  }
+
+  return NS_OK;
+}
+
 EventListenerManager*
 Element::GetEventListenerManagerForAttr(nsAtom* aAttrName,
                                         bool* aDefer)
 {
   *aDefer = true;
   return GetOrCreateListenerManager();
-}
-
-BorrowedAttrInfo
-Element::GetAttrInfo(int32_t aNamespaceID, nsAtom* aName) const
-{
-  NS_ASSERTION(nullptr != aName, "must have attribute name");
-  NS_ASSERTION(aNamespaceID != kNameSpaceID_Unknown,
-               "must have a real namespace ID!");
-
-  int32_t index = mAttrsAndChildren.IndexOfAttr(aName, aNamespaceID);
-  if (index < 0) {
-    return BorrowedAttrInfo(nullptr, nullptr);
-  }
-
-  return mAttrsAndChildren.AttrInfoAt(index);
-}
-
-BorrowedAttrInfo
-Element::GetAttrInfoAt(uint32_t aIndex) const
-{
-  if (aIndex >= mAttrsAndChildren.AttrCount()) {
-    return BorrowedAttrInfo(nullptr, nullptr);
-  }
-
-  return mAttrsAndChildren.AttrInfoAt(aIndex);
 }
 
 bool
@@ -3034,7 +3015,7 @@ Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName,
     attrNode = GetAttributeNodeNSInternal(ns, nsDependentAtomString(aName));
   }
 
-  // Clear binding to nsIDOMMozNamedAttrMap
+  // Clear the attribute out from attribute map.
   nsDOMSlots *slots = GetExistingDOMSlots();
   if (slots && slots->mAttributeMap) {
     slots->mAttributeMap->DropAttribute(aNameSpaceID, aName);
@@ -3066,25 +3047,23 @@ Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName,
   }
 
   if (CustomElementRegistry::IsCustomElementEnabled()) {
-    if (CustomElementData* data = GetCustomElementData()) {
-      if (CustomElementDefinition* definition =
-            nsContentUtils::GetElementDefinitionIfObservingAttr(this,
-                                                                data->mType,
-                                                                aName)) {
-        nsAutoString ns;
-        nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNameSpaceID, ns);
+    CustomElementDefinition* definition = GetCustomElementDefinition();
+    // Only custom element which is in `custom` state could get the
+    // CustomElementDefinition.
+    if (definition && definition->IsInObservedAttributeList(aName)) {
+      nsAutoString ns;
+      nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNameSpaceID, ns);
 
-        RefPtr<nsAtom> oldValueAtom = oldValue.GetAsAtom();
-        LifecycleCallbackArgs args = {
-          nsDependentAtomString(aName),
-          nsDependentAtomString(oldValueAtom),
-          VoidString(),
-          (ns.IsEmpty() ? VoidString() : ns)
-        };
+      RefPtr<nsAtom> oldValueAtom = oldValue.GetAsAtom();
+      LifecycleCallbackArgs args = {
+        nsDependentAtomString(aName),
+        nsDependentAtomString(oldValueAtom),
+        VoidString(),
+        (ns.IsEmpty() ? VoidString() : ns)
+      };
 
-        nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eAttributeChanged,
-          this, &args, nullptr, definition);
-      }
+      nsContentUtils::EnqueueLifecycleCallback(nsIDocument::eAttributeChanged,
+        this, &args, nullptr, definition);
     }
   }
 
@@ -3121,18 +3100,6 @@ Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName,
   }
 
   return NS_OK;
-}
-
-const nsAttrName*
-Element::GetAttrNameAt(uint32_t aIndex) const
-{
-  return mAttrsAndChildren.GetSafeAttrNameAt(aIndex);
-}
-
-uint32_t
-Element::GetAttrCount() const
-{
-  return mAttrsAndChildren.AttrCount();
 }
 
 void
@@ -3709,6 +3676,23 @@ Element::RequestPointerLock(CallerType aCallerType)
   OwnerDoc()->RequestPointerLock(this, aCallerType);
 }
 
+already_AddRefed<Flex>
+Element::GetAsFlexContainer()
+{
+  nsIFrame* frame = GetPrimaryFrame();
+
+  // We need the flex frame to compute additional info, and use
+  // that annotated version of the frame.
+  nsFlexContainerFrame* flexFrame =
+    nsFlexContainerFrame::GetFlexFrameWithComputedInfo(frame);
+
+  if (flexFrame) {
+    RefPtr<Flex> flex = new Flex(this, flexFrame);
+    return flex.forget();
+  }
+  return nullptr;
+}
+
 void
 Element::GetGridFragments(nsTArray<RefPtr<Grid>>& aResult)
 {
@@ -3740,7 +3724,7 @@ Element::GetTransformToAncestor(Element& aAncestor)
       ancestorFrame, nsIFrame::IN_CSS_UNITS);
   }
 
-  DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform);
+  DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform, IsStyledByServo());
   RefPtr<DOMMatrixReadOnly> result(matrix);
   return result.forget();
 }
@@ -3757,7 +3741,7 @@ Element::GetTransformToParent()
       parentFrame, nsIFrame::IN_CSS_UNITS);
   }
 
-  DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform);
+  DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform, IsStyledByServo());
   RefPtr<DOMMatrixReadOnly> result(matrix);
   return result.forget();
 }
@@ -3772,7 +3756,7 @@ Element::GetTransformToViewport()
       nsLayoutUtils::GetDisplayRootFrame(primaryFrame), nsIFrame::IN_CSS_UNITS);
   }
 
-  DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform);
+  DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform, IsStyledByServo());
   RefPtr<DOMMatrixReadOnly> result(matrix);
   return result.forget();
 }
@@ -3938,7 +3922,7 @@ Element::GetInnerHTML(nsAString& aInnerHTML)
 }
 
 void
-Element::SetInnerHTML(const nsAString& aInnerHTML, ErrorResult& aError)
+Element::SetInnerHTML(const nsAString& aInnerHTML, nsIPrincipal* aSubjectPrincipal, ErrorResult& aError)
 {
   SetInnerHTMLInternal(aInnerHTML, aError);
 }
@@ -4423,6 +4407,15 @@ Element::SetCustomElementData(CustomElementData* aData)
 {
   nsExtendedDOMSlots *slots = ExtendedDOMSlots();
   MOZ_ASSERT(!slots->mCustomElementData, "Custom element data may not be changed once set.");
+  #if DEBUG
+    nsAtom* name = NodeInfo()->NameAtom();
+    nsAtom* type = aData->GetCustomElementType();
+    if (nsContentUtils::IsCustomElementName(name)) {
+      MOZ_ASSERT(type == name);
+    } else {
+      MOZ_ASSERT(type != name);
+    }
+  #endif
   slots->mCustomElementData = aData;
 }
 
@@ -4605,12 +4598,26 @@ NoteDirtyElement(Element* aElement, uint32_t aBits)
   MOZ_ASSERT(aElement->IsInComposedDoc());
   MOZ_ASSERT(aElement->IsStyledByServo());
 
-  Element* parent = aElement->GetFlattenedTreeParentElementForStyle();
-  if (MOZ_LIKELY(parent)) {
+  // Check the existing root early on, since it may allow us to short-circuit
+  // before examining the parent chain.
+  nsIDocument* doc = aElement->GetComposedDoc();
+  nsINode* existingRoot = doc->GetServoRestyleRoot();
+  if (existingRoot == aElement) {
+    doc->SetServoRestyleRootDirtyBits(doc->GetServoRestyleRootDirtyBits() | aBits);
+    return;
+  }
+
+  nsINode* parent = aElement->GetFlattenedTreeParentNodeForStyle();
+  if (!parent) {
+    // The element is not in the flattened tree, bail.
+    return;
+  }
+
+  if (MOZ_LIKELY(parent->IsElement())) {
     // If our parent is unstyled, we can inductively assume that it will be
     // traversed when the time is right, and that the traversal will reach us
     // when it happens. Nothing left to do.
-    if (!parent->HasServoData()) {
+    if (!parent->AsElement()->HasServoData()) {
       return;
     }
 
@@ -4633,18 +4640,16 @@ NoteDirtyElement(Element* aElement, uint32_t aBits)
     // order to avoid work here, because since the style system keeps style data
     // in, e.g., subtrees under a leaf frame, missing restyles and such in there
     // has observable behavior via getComputedStyle, for example.
-    if (Servo_Element_IsDisplayNone(parent)) {
+    if (Servo_Element_IsDisplayNone(parent->AsElement())) {
       return;
     }
   }
 
-  nsIDocument* doc = aElement->GetComposedDoc();
   if (nsIPresShell* shell = doc->GetShell()) {
     shell->EnsureStyleFlush();
   }
 
-  nsINode* existingRoot = doc->GetServoRestyleRoot();
-  uint32_t existingBits = existingRoot ? doc->GetServoRestyleRootDirtyBits() : 0;
+  MOZ_ASSERT(parent->IsElement() || parent == doc);
 
   // The bit checks below rely on this to arrive to useful conclusions about the
   // shape of the tree.
@@ -4652,15 +4657,18 @@ NoteDirtyElement(Element* aElement, uint32_t aBits)
 
   // If there's no existing restyle root, or if the root is already aElement,
   // just note the root+bits and return.
-  if (!existingRoot || existingRoot == aElement) {
-    doc->SetServoRestyleRoot(aElement, existingBits | aBits);
+  if (!existingRoot) {
+    doc->SetServoRestyleRoot(aElement, aBits);
     return;
   }
 
   // There is an existing restyle root - walk up the tree from our element,
   // propagating bits as we go.
-  const bool reachedDocRoot = !parent || !PropagateBits(parent, aBits, existingRoot);
+  const bool reachedDocRoot =
+    !parent->IsElement() ||
+    !PropagateBits(parent->AsElement(), aBits, existingRoot);
 
+  uint32_t existingBits = existingRoot ? doc->GetServoRestyleRootDirtyBits() : 0;
   if (!reachedDocRoot || existingRoot == doc) {
       // We're a descendant of the existing root. All that's left to do is to
       // make sure the bit we propagated is also registered on the root.
@@ -4698,7 +4706,8 @@ NoteDirtyElement(Element* aElement, uint32_t aBits)
                aElement, doc->GetServoRestyleRoot()));
   MOZ_ASSERT(aElement == doc->GetServoRestyleRoot() ||
              !doc->GetServoRestyleRoot()->IsElement() ||
-             BitsArePropagated(parent, aBits, doc->GetServoRestyleRoot()));
+             !parent->IsElement() ||
+             BitsArePropagated(parent->AsElement(), aBits, doc->GetServoRestyleRoot()));
   MOZ_ASSERT(doc->GetServoRestyleRootDirtyBits() & aBits);
 }
 

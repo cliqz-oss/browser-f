@@ -21,12 +21,10 @@ public class AboutPages {
     public static final String CONFIG          = "about:config";
     public static final String DOWNLOADS       = "about:downloads";
     public static final String FIREFOX         = "about:firefox";
-    public static final String HEALTHREPORT    = "about:healthreport";
     public static final String HOME            = "about:home";
     public static final String LOGINS          = "about:logins";
     public static final String PRIVATEBROWSING = "about:privatebrowsing";
     public static final String READER          = "about:reader";
-    public static final String UPDATER         = "about:";
 
     public static final String URL_FILTER = "about:%";
 
@@ -82,9 +80,7 @@ public class AboutPages {
             ADDONS,
             CONFIG,
             DOWNLOADS,
-            FIREFOX,
-            HEALTHREPORT,
-            UPDATER
+            FIREFOX
     ));
 
     public static boolean isBuiltinIconPage(final String url) {

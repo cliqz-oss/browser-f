@@ -7,7 +7,7 @@
  * Tests middle-clicking items in the Library.
  */
 
-const URIs = ["about:license", "about:"];
+const URIs = ["about:license", "about:mozilla"];
 
 var gLibrary = null;
 
@@ -37,7 +37,7 @@ add_task(async function test_open_folder_in_tabs() {
     return {
       title: "Title",
       url
-    }
+    };
   });
 
   // Create a new folder.

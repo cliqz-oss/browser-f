@@ -203,6 +203,7 @@ class Bootstrapper(object):
                 args['distro'] = distro
             elif distro in DEBIAN_DISTROS:
                 cls = DebianBootstrapper
+                args['distro'] = distro
             elif distro == 'Gentoo Base System':
                 cls = GentooBootstrapper
             elif os.path.exists('/etc/arch-release'):
@@ -319,7 +320,10 @@ class Bootstrapper(object):
 
         state_dir_available = os.path.exists(state_dir)
 
+        # We need to enable the loading of hgrc in case extensions are
+        # required to open the repo.
         r = current_firefox_checkout(check_output=self.instance.check_output,
+                                     env=self.instance._hg_cleanenv(load_hgrc=True),
                                      hg=self.instance.which('hg'))
         (checkout_type, checkout_root) = r
 
@@ -503,7 +507,7 @@ def clone_firefox(hg, dest):
     return True
 
 
-def current_firefox_checkout(check_output, hg=None):
+def current_firefox_checkout(check_output, env, hg=None):
     """Determine whether we're in a Firefox checkout.
 
     Returns one of None, ``git``, or ``hg``.
@@ -520,7 +524,9 @@ def current_firefox_checkout(check_output, hg=None):
         if hg and os.path.exists(hg_dir):
             # Verify the hg repo is a Firefox repo by looking at rev 0.
             try:
-                node = check_output([hg, 'log', '-r', '0', '--template', '{node}'], cwd=path)
+                node = check_output([hg, 'log', '-r', '0', '--template', '{node}'],
+                                    cwd=path,
+                                    env=env)
                 if node in HG_ROOT_REVISIONS:
                     return ('hg', path)
                 # Else the root revision is different. There could be nested

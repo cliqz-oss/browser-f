@@ -43,6 +43,11 @@
 <!ENTITY  aboutDevtools.enable.menuMessage
           "Untersuchen, Bearbeiten und Debuggen von HTML, CSS und JavaScript mit Werkzeugen wie dem Inspektor und dem Debugger.">
 
+<!-- LOCALIZATION NOTE (aboutDevtools.enable.menuMessage2): Message displayed when users
+  -  clicked on a "Enable Developer Tools" menu item. -->
+<!ENTITY  aboutDevtools.enable.menuMessage2
+          "Optimieren Sie HTML, CSS und JavaScript Ihrer Website mit Werkzeugen wie Inspektor und Debugger.">
+
 <!-- LOCALIZATION NOTE (aboutDevtools.enable.commonMessage): Generic message displayed for
   -  all possible entry points (keyshortcut, menu item etc…). -->
 <!ENTITY  aboutDevtools.enable.commonMessage
@@ -55,6 +60,8 @@
 
 <!ENTITY  aboutDevtools.enable.enableButton "Entwicklerwerkzeuge aktivieren">
 <!ENTITY  aboutDevtools.enable.closeButton "Diese Seite schließen">
+
+<!ENTITY  aboutDevtools.enable.closeButton2 "Tab schließen">
 
 <!ENTITY  aboutDevtools.welcome.title "Willkommen zu den Entwicklerwerkzeugen von Firefox!">
 

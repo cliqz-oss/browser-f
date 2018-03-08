@@ -17,6 +17,9 @@ async function setup() {
   // handle things for us if the test actually hangs.
   requestLongerTimeout(100);
 
+  // Generate output so mozprocess knows we're still alive for the long session.
+  SimpleTest.requestCompleteLog();
+
   info("installing extension temporarily");
   let chromeURL = Services.io.newURI(EXTENSION_DIR);
   let dir = chromeRegistry.convertChromeURL(chromeURL).QueryInterface(Ci.nsIFileURL).file;
@@ -24,9 +27,10 @@ async function setup() {
 
   info("Checking for mozscreenshots extension");
   return new Promise((resolve) => {
-    AddonManager.getAddonByID("mozscreenshots@mozilla.org", function(aAddon) {
+    AddonManager.getAddonByID("mozscreenshots@mozilla.org", (aAddon) => {
       isnot(aAddon, null, "The mozscreenshots extension should be installed");
       TestRunner = Cu.import("chrome://mozscreenshots/content/TestRunner.jsm", {}).TestRunner;
+      TestRunner.initTest(this);
       resolve();
     });
   });

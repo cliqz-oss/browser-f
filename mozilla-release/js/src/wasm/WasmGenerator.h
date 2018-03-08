@@ -64,8 +64,9 @@ struct CompiledCode
     CodeRangeVector      codeRanges;
     CallSiteVector       callSites;
     CallSiteTargetVector callSiteTargets;
-    TrapSiteVector       trapSites;
-    TrapFarJumpVector    trapFarJumps;
+    TrapSiteVectorArray  trapSites;
+    OldTrapSiteVector    oldTrapSites;
+    OldTrapFarJumpVector oldTrapFarJumps;
     CallFarJumpVector    callFarJumps;
     MemoryAccessVector   memoryAccesses;
     SymbolicAccessVector symbolicAccesses;
@@ -79,7 +80,8 @@ struct CompiledCode
         callSites.clear();
         callSiteTargets.clear();
         trapSites.clear();
-        trapFarJumps.clear();
+        oldTrapSites.clear();
+        oldTrapFarJumps.clear();
         callFarJumps.clear();
         memoryAccesses.clear();
         symbolicAccesses.clear();
@@ -93,7 +95,8 @@ struct CompiledCode
                callSites.empty() &&
                callSiteTargets.empty() &&
                trapSites.empty() &&
-               trapFarJumps.empty() &&
+               oldTrapSites.empty() &&
+               oldTrapFarJumps.empty() &&
                callFarJumps.empty() &&
                memoryAccesses.empty() &&
                symbolicAccesses.empty() &&
@@ -145,7 +148,7 @@ struct CompileTask
 class MOZ_STACK_CLASS ModuleGenerator
 {
     typedef Vector<CompileTask, 0, SystemAllocPolicy> CompileTaskVector;
-    typedef EnumeratedArray<Trap, Trap::Limit, uint32_t> Uint32TrapArray;
+    typedef EnumeratedArray<Trap, Trap::Limit, uint32_t> OldTrapOffsetArray;
     typedef Vector<jit::CodeOffset, 0, SystemAllocPolicy> CodeOffsetVector;
 
     // Constant parameters
@@ -168,9 +171,9 @@ class MOZ_STACK_CLASS ModuleGenerator
     jit::TempAllocator              masmAlloc_;
     jit::MacroAssembler             masm_;
     Uint32Vector                    funcToCodeRange_;
-    Uint32TrapArray                 trapCodeOffsets_;
+    OldTrapOffsetArray              oldTrapCodeOffsets_;
     uint32_t                        debugTrapCodeOffset_;
-    TrapFarJumpVector               trapFarJumps_;
+    OldTrapFarJumpVector            oldTrapFarJumps_;
     CallFarJumpVector               callFarJumps_;
     CallSiteTargetVector            callSiteTargets_;
     uint32_t                        lastPatchedCallSite_;

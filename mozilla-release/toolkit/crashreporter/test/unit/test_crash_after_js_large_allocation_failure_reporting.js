@@ -13,14 +13,12 @@ function run_test() {
         CrashTestUtils.crash(crashType);
       }
 
-      var observerService = Components.classes["@mozilla.org/observer-service;1"]
-        .getService(Components.interfaces.nsIObserverService);
-      observerService.addObserver(crashWhileReporting, "memory-pressure");
+      Services.obs.addObserver(crashWhileReporting, "memory-pressure");
       Components.utils.getJSTestingFunctions().reportLargeAllocationFailure();
     },
     function(mdump, extra) {
-      do_check_eq(extra.TestingOOMCrash, "Yes");
-      do_check_eq(extra.JSLargeAllocationFailure, "Reporting");
+      Assert.equal(extra.TestingOOMCrash, "Yes");
+      Assert.equal(extra.JSLargeAllocationFailure, "Reporting");
     },
     true);
 }

@@ -15,7 +15,6 @@ typedef unsigned long long DOMTimeStamp;
 typedef double DOMHighResTimeStamp;
 
 // Core
-interface nsIDOMAttr;
 interface nsIDOMCDATASection;
 interface nsIDOMCharacterData;
 interface nsIDOMComment;
@@ -40,11 +39,6 @@ class DOMException;
 }
 %}
 
-// Style Sheets
-interface nsIDOMStyleSheetList;
-interface nsIDOMStyleSheet;
-interface nsIDOMMediaList;
-
 // Base
 interface nsIDOMWindow;
 interface nsIDOMWindowCollection;
@@ -59,29 +53,10 @@ interface nsIDOMEventListener;
 // HTML
 interface nsIDOMHTMLElement;
 interface nsIDOMHTMLFormElement;
-interface nsIDOMHTMLCollection;
 interface nsIDOMHTMLHeadElement;
-
-// CSS
-interface nsIDOMCSSValue;
-interface nsIDOMCSSPrimitiveValue;
-interface nsIDOMCSSRule;
-interface nsIDOMCSSRuleList;
-interface nsIDOMCSSKeyframeRule;
-interface nsIDOMCSSFontFeatureValuesRule;
-interface nsIDOMCSSStyleSheet;
-interface nsIDOMCSSStyleDeclaration;
-interface nsIDOMCounter;
-interface nsIDOMRect;
-interface nsIDOMCSSStyleRule;
-interface nsIDOMCSSStyleRuleCollection;
 
 // Range
 interface nsIDOMRange;
 
 // Crypto
 interface nsIDOMCrypto;
-
-// Used font face (for inspector)
-interface nsIDOMFontFace;
-interface nsIDOMFontFaceList;

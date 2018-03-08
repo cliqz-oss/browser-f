@@ -82,8 +82,8 @@
                           need_animatable=need_animatable, **kwargs)">
         #[allow(unused_imports)]
         use smallvec::SmallVec;
-        use std::fmt;
-        use style_traits::{Separator, ToCss};
+        use std::fmt::{self, Write};
+        use style_traits::{CssWriter, Separator, ToCss};
 
         pub mod single_value {
             #[allow(unused_imports)]
@@ -154,8 +154,9 @@
         }
 
         impl ToCss for computed_value::T {
-            fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-                where W: fmt::Write,
+            fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+            where
+                W: Write,
             {
                 let mut iter = self.0.iter();
                 if let Some(val) = iter.next() {
@@ -180,8 +181,9 @@
         pub struct SpecifiedValue(pub Vec<single_value::SpecifiedValue>);
 
         impl ToCss for SpecifiedValue {
-            fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-                where W: fmt::Write,
+            fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+            where
+                W: Write,
             {
                 let mut iter = self.0.iter();
                 if let Some(val) = iter.next() {
@@ -260,14 +262,12 @@
     %>
     /// ${property.spec}
     pub mod ${property.ident} {
-        % if not property.derived_from:
-            #[allow(unused_imports)]
-            use cssparser::{Parser, BasicParseError, Token};
-            #[allow(unused_imports)]
-            use parser::{Parse, ParserContext};
-            #[allow(unused_imports)]
-            use properties::{UnparsedValue, ShorthandId};
-        % endif
+        #[allow(unused_imports)]
+        use cssparser::{Parser, BasicParseError, Token};
+        #[allow(unused_imports)]
+        use parser::{Parse, ParserContext};
+        #[allow(unused_imports)]
+        use properties::{UnparsedValue, ShorthandId};
         #[allow(unused_imports)]
         use values::{Auto, Either, None_, Normal};
         #[allow(unused_imports)]
@@ -319,104 +319,95 @@
                     Some(LonghandId::${property.camel_case});
                 % endif
 
-            % if not property.derived_from:
-                match value {
-                    DeclaredValue::Value(specified_value) => {
-                        % if property.ident in SYSTEM_FONT_LONGHANDS and product == "gecko":
-                            if let Some(sf) = specified_value.get_system() {
-                                longhands::system_font::resolve_system_font(sf, context);
-                            }
-                        % endif
-                        % if not property.style_struct.inherited and property.logical:
-                            context.rule_cache_conditions.borrow_mut()
-                                .set_writing_mode_dependency(context.builder.writing_mode);
-                        % endif
-                        % if property.is_vector:
-                            // In the case of a vector property we want to pass
-                            // down an iterator so that this can be computed
-                            // without allocation
-                            //
-                            // However, computing requires a context, but the
-                            // style struct being mutated is on the context. We
-                            // temporarily remove it, mutate it, and then put it
-                            // back. Vector longhands cannot touch their own
-                            // style struct whilst computing, else this will
-                            // panic.
-                            let mut s =
-                                context.builder.take_${data.current_style_struct.name_lower}();
-                            {
-                                let iter = specified_value.compute_iter(context);
-                                s.set_${property.ident}(iter);
-                            }
-                            context.builder.put_${data.current_style_struct.name_lower}(s);
-                        % else:
-                            % if property.boxed:
-                            let computed = (**specified_value).to_computed_value(context);
-                            % else:
-                            let computed = specified_value.to_computed_value(context);
-                            % endif
-                            % if property.ident == "font_size":
-                                 specified::FontSize::cascade_specified_font_size(
-                                     context,
-                                     &specified_value,
-                                     computed,
-                                 );
-                            % else:
-                                context.builder.set_${property.ident}(computed)
-                            % endif
-                        % endif
-                    }
-                    DeclaredValue::WithVariables(_) => unreachable!(),
-                    DeclaredValue::CSSWideKeyword(keyword) => match keyword {
-                        % if not data.current_style_struct.inherited:
-                        CSSWideKeyword::Unset |
-                        % endif
-                        CSSWideKeyword::Initial => {
-                            % if property.ident == "font_size":
-                                computed::FontSize::cascade_initial_font_size(context);
-                            % else:
-                                context.builder.reset_${property.ident}();
-                            % endif
-                        },
-                        % if data.current_style_struct.inherited:
-                        CSSWideKeyword::Unset |
-                        % endif
-                        CSSWideKeyword::Inherit => {
-                            % if not property.style_struct.inherited:
-                                context.rule_cache_conditions.borrow_mut().set_uncacheable();
-                            % endif
-                            % if property.ident == "font_size":
-                                computed::FontSize::cascade_inherit_font_size(context);
-                            % else:
-                                context.builder.inherit_${property.ident}();
-                            % endif
+            match value {
+                DeclaredValue::Value(specified_value) => {
+                    % if property.ident in SYSTEM_FONT_LONGHANDS and product == "gecko":
+                        if let Some(sf) = specified_value.get_system() {
+                            longhands::system_font::resolve_system_font(sf, context);
                         }
+                    % endif
+                    % if not property.style_struct.inherited and property.logical:
+                        context.rule_cache_conditions.borrow_mut()
+                            .set_writing_mode_dependency(context.builder.writing_mode);
+                    % endif
+                    % if property.is_vector:
+                        // In the case of a vector property we want to pass
+                        // down an iterator so that this can be computed
+                        // without allocation
+                        //
+                        // However, computing requires a context, but the
+                        // style struct being mutated is on the context. We
+                        // temporarily remove it, mutate it, and then put it
+                        // back. Vector longhands cannot touch their own
+                        // style struct whilst computing, else this will
+                        // panic.
+                        let mut s =
+                            context.builder.take_${data.current_style_struct.name_lower}();
+                        {
+                            let iter = specified_value.compute_iter(context);
+                            s.set_${property.ident}(iter);
+                        }
+                        context.builder.put_${data.current_style_struct.name_lower}(s);
+                    % else:
+                        % if property.boxed:
+                        let computed = (**specified_value).to_computed_value(context);
+                        % else:
+                        let computed = specified_value.to_computed_value(context);
+                        % endif
+                        % if property.ident == "font_size":
+                             specified::FontSize::cascade_specified_font_size(
+                                 context,
+                                 &specified_value,
+                                 computed,
+                             );
+                        % else:
+                            context.builder.set_${property.ident}(computed)
+                        % endif
+                    % endif
+                }
+                DeclaredValue::WithVariables(_) => unreachable!(),
+                DeclaredValue::CSSWideKeyword(keyword) => match keyword {
+                    % if not data.current_style_struct.inherited:
+                    CSSWideKeyword::Unset |
+                    % endif
+                    CSSWideKeyword::Initial => {
+                        % if property.ident == "font_size":
+                            computed::FontSize::cascade_initial_font_size(context);
+                        % else:
+                            context.builder.reset_${property.ident}();
+                        % endif
+                    },
+                    % if data.current_style_struct.inherited:
+                    CSSWideKeyword::Unset |
+                    % endif
+                    CSSWideKeyword::Inherit => {
+                        % if not property.style_struct.inherited:
+                            context.rule_cache_conditions.borrow_mut().set_uncacheable();
+                        % endif
+                        % if property.ident == "font_size":
+                            computed::FontSize::cascade_inherit_font_size(context);
+                        % else:
+                            context.builder.inherit_${property.ident}();
+                        % endif
                     }
                 }
-
-                % if property.custom_cascade:
-                    cascade_property_custom(declaration, context);
-                % endif
-            % else:
-                // Do not allow stylesheets to set derived properties.
-            % endif
-        }
-        % if not property.derived_from:
-            pub fn parse_declared<'i, 't>(
-                context: &ParserContext,
-                input: &mut Parser<'i, 't>,
-            ) -> Result<PropertyDeclaration, ParseError<'i>> {
-                % if property.allow_quirks:
-                    parse_quirky(context, input, specified::AllowQuirks::Yes)
-                % else:
-                    parse(context, input)
-                % endif
-                % if property.boxed:
-                    .map(Box::new)
-                % endif
-                    .map(PropertyDeclaration::${property.camel_case})
             }
-        % endif
+        }
+
+        pub fn parse_declared<'i, 't>(
+            context: &ParserContext,
+            input: &mut Parser<'i, 't>,
+        ) -> Result<PropertyDeclaration, ParseError<'i>> {
+            % if property.allow_quirks:
+                parse_quirky(context, input, specified::AllowQuirks::Yes)
+            % else:
+                parse(context, input)
+            % endif
+            % if property.boxed:
+                .map(Box::new)
+            % endif
+                .map(PropertyDeclaration::${property.camel_case})
+        }
     }
 </%def>
 
@@ -439,7 +430,7 @@
             use style_traits::ParseError;
             define_css_keyword_enum! { T:
                 % for value in keyword.values_for(product):
-                    "${value}" => ${to_rust_ident(value)},
+                    "${value}" => ${to_camel_case(value)},
                 % endfor
             }
 
@@ -484,11 +475,11 @@
 
         #[inline]
         pub fn get_initial_value() -> computed_value::T {
-            computed_value::T::${to_rust_ident(values.split()[0])}
+            computed_value::T::${to_camel_case(values.split()[0])}
         }
         #[inline]
         pub fn get_initial_specified_value() -> SpecifiedValue {
-            SpecifiedValue::Keyword(computed_value::T::${to_rust_ident(values.split()[0])})
+            SpecifiedValue::Keyword(computed_value::T::${to_camel_case(values.split()[0])})
         }
 
         impl SpecifiedValue {
@@ -508,6 +499,8 @@
 
 <%def name="single_keyword(name, values, vector=False, **kwargs)">
     <%call expr="single_keyword_computed(name, values, vector, **kwargs)">
+        // FIXME(emilio): WTF is this even trying to do? Those are no-ops,
+        // should be derived instead!
         impl ToComputedValue for SpecifiedValue {
             type ComputedValue = computed_value::T;
 
@@ -515,7 +508,7 @@
             fn to_computed_value(&self, _context: &Context) -> computed_value::T {
                 match *self {
                     % for value in data.longhands_by_name[name].keyword.values_for(product):
-                        SpecifiedValue::${to_rust_ident(value)} => computed_value::T::${to_rust_ident(value)},
+                        SpecifiedValue::${to_camel_case(value)} => computed_value::T::${to_camel_case(value)},
                     % endfor
                 }
             }
@@ -523,7 +516,7 @@
             fn from_computed_value(computed: &computed_value::T) -> Self {
                 match *computed {
                     % for value in data.longhands_by_name[name].keyword.values_for(product):
-                        computed_value::T::${to_rust_ident(value)} => SpecifiedValue::${to_rust_ident(value)},
+                        computed_value::T::${to_camel_case(value)} => SpecifiedValue::${to_camel_case(value)},
                     % endfor
                 }
             }
@@ -552,9 +545,9 @@
             % endfor
             match kw ${maybe_cast} {
                 % for value in values:
-                    ${to_rust_ident(value).upper()} => ${type}::${to_rust_ident(value)},
+                    ${to_rust_ident(value).upper()} => ${type}::${to_camel_case(value)},
                 % endfor
-                x => panic!("Found unexpected value in style struct for ${keyword.name} property: {:?}", x),
+                _ => panic!("Found unexpected value in style struct for ${keyword.name} property"),
             }
         }
     }
@@ -614,12 +607,12 @@
             define_css_keyword_enum! { SpecifiedValue:
                 values {
                     % for value in keyword.values_for(product) + (extra_specified or "").split():
-                        "${value}" => ${to_rust_ident(value)},
+                        "${value}" => ${to_camel_case(value)},
                     % endfor
                 }
                 aliases {
                     % for alias, value in keyword.aliases_for(product).iteritems():
-                        "${alias}" => ${to_rust_ident(value)},
+                        "${alias}" => ${to_camel_case(value)},
                     % endfor
                 }
             }
@@ -629,17 +622,17 @@
         pub mod computed_value {
             define_css_keyword_enum! { T:
                 % for value in data.longhands_by_name[name].keyword.values_for(product):
-                    "${value}" => ${to_rust_ident(value)},
+                    "${value}" => ${to_camel_case(value)},
                 % endfor
             }
         }
         #[inline]
         pub fn get_initial_value() -> computed_value::T {
-            computed_value::T::${to_rust_ident(values.split()[0])}
+            computed_value::T::${to_camel_case(values.split()[0])}
         }
         #[inline]
         pub fn get_initial_specified_value() -> SpecifiedValue {
-            SpecifiedValue::${to_rust_ident(values.split()[0])}
+            SpecifiedValue::${to_camel_case(values.split()[0])}
         }
         #[inline]
         pub fn parse<'i, 't>(_context: &ParserContext, input: &mut Parser<'i, 't>)
@@ -678,10 +671,9 @@
     % endif
 </%def>
 
-<%def name="shorthand(name, sub_properties, experimental=False, derive_serialize=False, **kwargs)">
+<%def name="shorthand(name, sub_properties, derive_serialize=False, **kwargs)">
 <%
-    shorthand = data.declare_shorthand(name, sub_properties.split(), experimental=experimental,
-                                       **kwargs)
+    shorthand = data.declare_shorthand(name, sub_properties.split(), **kwargs)
 %>
     % if shorthand:
     /// ${shorthand.spec}
@@ -692,11 +684,11 @@
         #[allow(unused_imports)]
         use selectors::parser::SelectorParseErrorKind;
         #[allow(unused_imports)]
-        use std::fmt;
+        use std::fmt::{self, Write};
         #[allow(unused_imports)]
         use style_traits::{ParseError, StyleParseErrorKind};
         #[allow(unused_imports)]
-        use style_traits::ToCss;
+        use style_traits::{CssWriter, ToCss};
 
         pub struct Longhands {
             % for sub_property in shorthand.sub_properties:
@@ -816,7 +808,10 @@
         }
 
         impl<'a> ToCss for LonghandsToSerialize<'a> {
-            fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+            fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+            where
+                W: Write,
+            {
                 let rect = Rect::new(
                     % for side in ["top", "right", "bottom", "left"]:
                     &self.${to_rust_ident(sub_property_pattern % side)},

@@ -666,6 +666,25 @@ function checkSystemSection(data) {
   } else {
     Assert.ok(checkNullOrString(data.system.appleModelId));
   }
+
+  // This feature is only available on Windows 8+
+  if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+    Assert.ok("sec" in data.system, "sec must be available under data.system");
+
+    let SEC_FIELDS = ["antivirus", "antispyware", "firewall"];
+    for (let f of SEC_FIELDS) {
+      Assert.ok(f in data.system.sec, f + " must be available under data.system.sec");
+
+      let value = data.system.sec[f];
+      // value is null on Windows Server
+      Assert.ok(value === null || Array.isArray(value), f + " must be either null or an array");
+      if (Array.isArray(value)) {
+        for (let product of value) {
+          Assert.equal(typeof product, "string", "Each element of " + f + " must be a string");
+        }
+      }
+    }
+  }
 }
 
 function checkActiveAddon(data, partialRecord) {
@@ -889,7 +908,7 @@ add_task(async function setup() {
   gHttpRoot = "http://localhost:" + port + "/";
   gDataRoot = gHttpRoot + "data/";
   gHttpServer.registerDirectory("/data/", do_get_cwd());
-  do_register_cleanup(() => gHttpServer.stop(() => {}));
+  registerCleanupFunction(() => gHttpServer.stop(() => {}));
 
   // Spoof the the hotfixVersion
   Preferences.set("extensions.hotfix.lastVersion", APP_HOTFIX_VERSION);
@@ -901,7 +920,7 @@ add_task(async function setup() {
   // The attribution functionality only exists in Firefox.
   if (AppConstants.MOZ_BUILD_APP == "browser") {
     spoofAttributionData();
-    do_register_cleanup(cleanupAttributionData);
+    registerCleanupFunction(cleanupAttributionData);
   }
 
   await spoofProfileReset();
@@ -1176,8 +1195,8 @@ add_task(async function test_addonsWatch_NotInterestingChange() {
       deferred.resolve();
     });
 
-  await AddonManagerTesting.installXPIFromURL(DICTIONARY_ADDON_INSTALL_URL);
-  await AddonManagerTesting.installXPIFromURL(INTERESTING_ADDON_INSTALL_URL);
+  let dictionaryAddon = await AddonManagerTesting.installXPIFromURL(DICTIONARY_ADDON_INSTALL_URL);
+  let interestingAddon = await AddonManagerTesting.installXPIFromURL(INTERESTING_ADDON_INSTALL_URL);
 
   await deferred.promise;
   Assert.ok(!("telemetry-dictionary@tests.mozilla.org" in
@@ -1185,6 +1204,10 @@ add_task(async function test_addonsWatch_NotInterestingChange() {
             "Dictionaries should not appear in active addons.");
 
   TelemetryEnvironment.unregisterChangeListener("testNotInteresting");
+
+  dictionaryAddon.uninstall();
+  await interestingAddon.startupPromise;
+  interestingAddon.uninstall();
 });
 
 add_task(async function test_addonsAndPlugins() {
@@ -1268,7 +1291,7 @@ add_task(async function test_addonsAndPlugins() {
   );
 
   // Install an add-on so we have some data.
-  await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
 
   // Install a webextension as well.
   ExtensionTestUtils.init(this);
@@ -1338,7 +1361,8 @@ add_task(async function test_addonsAndPlugins() {
   Assert.equal(data.addons.persona, PERSONA_ID, "The correct Persona Id must be reported.");
 
   // Uninstall the addon.
-  await AddonManagerTesting.uninstallAddonByID(ADDON_ID);
+  await addon.startupPromise;
+  addon.uninstall();
 });
 
 add_task(async function test_signedAddon() {
@@ -1367,7 +1391,7 @@ add_task(async function test_signedAddon() {
   TelemetryEnvironment.registerChangeListener("test_signedAddon", deferred.resolve);
 
   // Install the addon.
-  await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
 
   await deferred.promise;
   // Unregister the listener.
@@ -1384,6 +1408,8 @@ add_task(async function test_signedAddon() {
   }
 
   AddonTestUtils.useRealCertChecks = false;
+  await addon.startupPromise;
+  addon.uninstall();
 });
 
 add_task(async function test_addonsFieldsLimit() {
@@ -1393,7 +1419,7 @@ add_task(async function test_addonsFieldsLimit() {
   // Install the addon and wait for the TelemetryEnvironment to pick it up.
   let deferred = PromiseUtils.defer();
   TelemetryEnvironment.registerChangeListener("test_longFieldsAddon", deferred.resolve);
-  await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
   await deferred.promise;
   TelemetryEnvironment.unregisterChangeListener("test_longFieldsAddon");
 
@@ -1412,6 +1438,9 @@ add_task(async function test_addonsFieldsLimit() {
                "The name string must have been limited");
   Assert.lessOrEqual(targetAddon.description.length, 100,
                "The description string must have been limited");
+
+  await addon.startupPromise;
+  addon.uninstall();
 });
 
 add_task(async function test_collectionWithbrokenAddonData() {
@@ -1470,7 +1499,7 @@ add_task(async function test_collectionWithbrokenAddonData() {
 
   // Now install an addon which returns the correct information.
   checkpointPromise = registerCheckpointPromise(2);
-  await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
   await checkpointPromise;
   assertCheckpoint(2);
 
@@ -1493,7 +1522,8 @@ add_task(async function test_collectionWithbrokenAddonData() {
   AddonManagerPrivate.unregisterProvider(brokenAddonProvider);
 
   // Uninstall the valid addon.
-  await AddonManagerTesting.uninstallAddonByID(ADDON_ID);
+  await addon.startupPromise;
+  addon.uninstall();
 });
 
 add_task(async function test_defaultSearchEngine() {
@@ -1578,7 +1608,7 @@ add_task(async function test_defaultSearchEngine() {
     Services.obs.addObserver(function obs(obsSubject, obsTopic, obsData) {
       try {
         let searchEngine = obsSubject.QueryInterface(Ci.nsISearchEngine);
-        do_print("Observed " + obsData + " for " + searchEngine.name);
+        info("Observed " + obsData + " for " + searchEngine.name);
         if (obsData != "engine-added" || searchEngine.name != "engine-telemetry") {
           return;
         }

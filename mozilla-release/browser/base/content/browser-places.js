@@ -1778,8 +1778,7 @@ var BookmarkingUI = {
     view.addEventListener("ViewShowing", this);
     view.addEventListener("ViewHiding", this);
     anchor.setAttribute("closemenu", "none");
-    PanelUI.showSubView("PanelUI-bookmarks", anchor,
-                        CustomizableUI.AREA_PANEL, event);
+    PanelUI.showSubView("PanelUI-bookmarks", anchor, event);
   },
 
   onCommand: function BUI_onCommand(aEvent) {

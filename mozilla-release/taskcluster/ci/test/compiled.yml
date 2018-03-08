@@ -9,6 +9,7 @@ job-defaults:
         config:
             by-test-platform:
                 android.*:
+                    - android/android_common.py
                     - android/androidarm_4_3.py
                 linux.*:
                     - unittests/linux_unittest.py
@@ -21,11 +22,15 @@ job-defaults:
 cppunit:
     description: "CPP Unit Tests"
     suite: cppunittest
-    treeherder-symbol: tc(Cpp)
+    treeherder-symbol: Cpp
+    instance-size:
+        by-test-platform:
+            android.*: xlarge
+            default: default
     run-on-projects:
         by-test-platform:
             windows10-64-asan/opt: []  # as an exception to windows.*
-            linux64-qr/.*: ['mozilla-central', 'try']
+            .*-qr/.*: ['mozilla-central', 'try']
             default: built-projects
     tier:
         by-test-platform:
@@ -35,14 +40,14 @@ cppunit:
 gtest:
     description: "GTests run"
     suite: gtest
-    treeherder-symbol: tc(GTest)
+    treeherder-symbol: GTest
     instance-size: xlarge
     run-on-projects:
         by-test-platform:
-            linux64-qr/.*: ['mozilla-central', 'try']
-            windows.*-pgo/.*: [] # permafails on pgo
-            windows.*-nightly/.*: [] # permafails on nightly too
-            .*-devedition/.*: [] # don't run on devedition
+            .*-qr/.*: ['mozilla-central', 'try']
+            windows.*-pgo/.*: []  # permafails on pgo
+            windows.*-nightly/.*: []  # permafails on nightly too
+            .*-devedition/.*: []  # don't run on devedition
             default: built-projects
     tier:
         by-test-platform:
@@ -54,22 +59,23 @@ gtest:
 jittest:
     description: "JIT Test run"
     suite: jittest/jittest-chunked
-    treeherder-symbol: tc(Jit)
+    treeherder-symbol: Jit
     run-on-projects:
         by-test-platform:
-            linux64-qr/.*: ['mozilla-central', 'try']
+            .*-qr/.*: ['mozilla-central', 'try']
             default: built-projects
     chunks:
         by-test-platform:
             windows.*: 1
+            windows10-64-ccov/debug: 6
             macosx.*: 1
             default: 6
     mozharness:
         chunked:
-          by-test-platform:
-            windows.*: false
-            macosx.*: false
-            default: true
+            by-test-platform:
+                windows.*: false
+                macosx.*: false
+                default: true
     tier:
         by-test-platform:
             windows10-64-asan.*: 3

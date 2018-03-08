@@ -1,6 +1,7 @@
-const prerender = require("content-src/activity-stream-prerender");
-const {prerenderStore} = prerender;
-const {PrerenderData} = require("common/PrerenderData.jsm");
+import {prerender, prerenderStore} from "content-src/activity-stream-prerender";
+import {PrerenderData} from "common/PrerenderData.jsm";
+
+const messages = require("data/locales.json")["en-US"]; // eslint-disable-line import/no-commonjs
 
 describe("prerenderStore", () => {
   it("should start uninitialized", () => {
@@ -29,7 +30,7 @@ describe("prerenderStore", () => {
 
 describe("prerender", () => {
   it("should provide initial rendered state", () => {
-    const {store} = prerender();
+    const {store} = prerender("en-US", messages);
 
     const state = store.getState();
     assert.equal(state.App.initialized, false);

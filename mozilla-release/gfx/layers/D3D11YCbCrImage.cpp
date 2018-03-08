@@ -123,7 +123,7 @@ D3D11YCbCrImage::SetData(KnowsCompositor* aAllocator,
 }
 
 IntSize
-D3D11YCbCrImage::GetSize()
+D3D11YCbCrImage::GetSize() const
 {
   return mPictureRect.Size();
 }
@@ -206,6 +206,13 @@ D3D11YCbCrImage::GetAsSourceSurface()
   desc.Usage = D3D11_USAGE_STAGING;
 
   dev->CreateTexture2D(&desc, nullptr, getter_AddRefs(softTexCb));
+
+  texCr->GetDesc(&desc);
+  desc.BindFlags = 0;
+  desc.MiscFlags = 0;
+  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  desc.Usage = D3D11_USAGE_STAGING;
+
   dev->CreateTexture2D(&desc, nullptr, getter_AddRefs(softTexCr));
 
   RefPtr<ID3D11DeviceContext> ctx;
@@ -246,8 +253,8 @@ D3D11YCbCrImage::GetAsSourceSurface()
 
   MOZ_ASSERT(mapCb.RowPitch == mapCr.RowPitch);
 
-  data.mPicX = mPictureRect.x;
-  data.mPicY = mPictureRect.y;
+  data.mPicX = mPictureRect.X();
+  data.mPicY = mPictureRect.Y();
   data.mPicSize = mPictureRect.Size();
   data.mStereoMode = StereoMode::MONO;
   data.mYUVColorSpace = mColorSpace;

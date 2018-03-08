@@ -6,6 +6,7 @@
 #if !defined(MediaResource_h_)
 #define MediaResource_h_
 
+#include "DecoderDoctorLogger.h"
 #include "Intervals.h"
 #include "MediaData.h"
 #include "mozilla/Attributes.h"
@@ -21,6 +22,8 @@ namespace mozilla {
 
 typedef media::Interval<int64_t> MediaByteRange;
 typedef media::IntervalSet<int64_t> MediaByteRangeSet;
+
+DDLoggedTypeDeclName(MediaResource);
 
 /**
  * Provides a thread-safe, seek/read interface to resources
@@ -45,7 +48,7 @@ typedef media::IntervalSet<int64_t> MediaByteRangeSet;
  * For cross-process blob URL, CloneableWithRangeMediaResource is used.
  * MediaResource::Create automatically chooses the best implementation class.
  */
-class MediaResource
+class MediaResource : public DecoderDoctorLifeLogger<MediaResource>
 {
 public:
   // Our refcounting is threadsafe, and when our refcount drops to zero
@@ -55,6 +58,11 @@ public:
   // the main thread.
   NS_METHOD_(MozExternalRefCountType) AddRef(void);
   NS_METHOD_(MozExternalRefCountType) Release(void);
+
+  // Close the resource, stop any listeners, channels, etc.
+  // Cancels any currently blocking Read request and forces that request to
+  // return an error.
+  virtual nsresult Close() { return NS_OK; }
 
   // These methods are called off the main thread.
   // Read up to aCount bytes from the stream. The read starts at
@@ -68,12 +76,6 @@ public:
   // waste, but caching lock/IO-bound resources means reducing the impact of
   // each read.
   virtual bool ShouldCacheReads() = 0;
-
-  // Report the current offset in bytes from the start of the stream.
-  // This is used to approximate where we currently are in the playback of a
-  // media.
-  // A call to ReadAt will update this position.
-  virtual int64_t Tell() = 0;
 
   // These can be called on any thread.
   // Cached blocks associated with this stream will not be evicted
@@ -148,6 +150,8 @@ private:
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
+DDLoggedTypeDeclName(MediaResourceIndex);
+
 /*
  * MediaResourceIndex provides a way to access MediaResource objects.
  * Read, Seek and Tell must only be called on non-main threads.
@@ -155,7 +159,7 @@ private:
  * example. You must ensure that no threads are calling these methods once
  * the MediaResource has been Closed.
  */
-class MediaResourceIndex
+class MediaResourceIndex : public DecoderDoctorLifeLogger<MediaResourceIndex>
 {
 public:
   explicit MediaResourceIndex(MediaResource* aResource);
@@ -264,9 +268,6 @@ private:
                          char* aBuffer,
                          uint32_t aCount,
                          uint32_t* aBytes);
-
-  // Select the next power of 2 (in range 32B-128KB, or 0 -> no cache)
-  static uint32_t SelectCacheSize(uint32_t aHint);
 
   // Maps a file offset to a mCachedBlock index.
   uint32_t IndexInCache(int64_t aOffsetInFile) const;

@@ -9,18 +9,66 @@ loader.lazyImporter(this, "BrowserToolboxProcess",
 loader.lazyImporter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
 loader.lazyImporter(this, "AddonManagerPrivate", "resource://gre/modules/AddonManager.jsm");
 
-let toolbox = null;
+var {TargetFactory} = require("devtools/client/framework/target");
+var {Toolbox} = require("devtools/client/framework/toolbox");
 
-exports.debugAddon = function (addonID) {
-  if (toolbox) {
-    toolbox.close();
+var {gDevTools} = require("devtools/client/framework/devtools");
+
+let browserToolboxProcess = null;
+let remoteAddonToolbox = null;
+function closeToolbox() {
+  if (browserToolboxProcess) {
+    browserToolboxProcess.close();
   }
 
-  toolbox = BrowserToolboxProcess.init({
+  if (remoteAddonToolbox) {
+    remoteAddonToolbox.destroy();
+  }
+}
+
+/**
+ * Start debugging an addon in the current instance of Firefox.
+ *
+ * @param {String} addonID
+ *        String id of the addon to debug.
+ */
+exports.debugLocalAddon = async function (addonID) {
+  // Close previous addon debugging toolbox.
+  closeToolbox();
+
+  browserToolboxProcess = BrowserToolboxProcess.init({
     addonID,
     onClose: () => {
-      toolbox = null;
+      browserToolboxProcess = null;
     }
+  });
+};
+
+/**
+ * Start debugging an addon in a remote instance of Firefox.
+ *
+ * @param {Object} addonForm
+ *        Necessary to create an addon debugging target.
+ * @param {DebuggerClient} client
+ *        Required for remote debugging.
+ */
+exports.debugRemoteAddon = async function (addonForm, client) {
+  // Close previous addon debugging toolbox.
+  closeToolbox();
+
+  let options = {
+    form: addonForm,
+    chrome: true,
+    client,
+    isTabActor: addonForm.isWebExtension
+  };
+
+  let target = await TargetFactory.forRemoteTab(options);
+
+  let hostType = Toolbox.HostType.WINDOW;
+  remoteAddonToolbox = await gDevTools.showToolbox(target, null, hostType);
+  remoteAddonToolbox.once("destroy", () => {
+    remoteAddonToolbox = null;
   });
 };
 
@@ -31,6 +79,19 @@ exports.uninstallAddon = async function (addonID) {
 
 exports.isTemporaryID = function (addonID) {
   return AddonManagerPrivate.isTemporaryInstallID(addonID);
+};
+
+exports.isLegacyTemporaryExtension = function (addonForm) {
+  if (!addonForm.type) {
+    // If about:debugging is connected to an older then 59 remote Firefox, and type is
+    // not available on the addon/webextension actors, return false to avoid showing
+    // irrelevant warning messages.
+    return false;
+  }
+  return addonForm.type == "extension" &&
+         addonForm.temporarilyInstalled &&
+         !addonForm.isWebExtension &&
+         !addonForm.isAPIExtension;
 };
 
 exports.parseFileUri = function (url) {

@@ -51,6 +51,8 @@ scheme host and port.""")
                         help="Regenerate the test manifest.")
     parser.add_argument("--no-manifest-update", action="store_false", dest="manifest_update",
                         help="Prevent regeneration of the test manifest.")
+    parser.add_argument("--manifest-download", action="store_true", default=None,
+                        help="Attempt to download a preexisting manifest when updating.")
 
     parser.add_argument("--timeout-multiplier", action="store", type=float, default=None,
                         help="Multiplier relative to standard test timeout to use")
@@ -77,6 +79,9 @@ scheme host and port.""")
     mode_group.add_argument("--verify", action="store_true",
                             default=False,
                             help="Run a stability check on the selected tests")
+    mode_group.add_argument("--verify-log-full", action="store_true",
+                            default=False,
+                            help="Output per-iteration test results when running verify")
 
     test_selection_group = parser.add_argument_group("Test Selection")
     test_selection_group.add_argument("--test-types", action="store",
@@ -405,7 +410,7 @@ def check_args(kwargs):
             sys.exit(1)
         kwargs["openssl_binary"] = path
 
-    if kwargs["ssl_type"] != "none" and kwargs["product"] == "firefox":
+    if kwargs["ssl_type"] != "none" and kwargs["product"] == "firefox" and kwargs["certutil_binary"]:
         path = exe_path(kwargs["certutil_binary"])
         if path is None:
             print >> sys.stderr, "certutil-binary argument missing or not a valid executable"

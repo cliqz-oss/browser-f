@@ -7,3 +7,17 @@ from __future__ import absolute_import, print_function, unicode_literals
 import os
 
 GECKO = os.path.realpath(os.path.join(__file__, '..', '..', '..'))
+
+APP_VERSION_PATH = os.path.join(GECKO, "browser", "config", "version.txt")
+VERSION_PATH = os.path.join(GECKO, "browser", "config", "version_display.txt")
+
+# Maximum number of dependencies a single task can have
+# https://docs.taskcluster.net/reference/platform/taskcluster-queue/references/api#createTask
+# specifies 100, but we also optionally add the decision task id as a dep in
+# taskgraph.create, so let's set this to 99.
+MAX_DEPENDENCIES = 99
+
+# Enable fast task generation for local debugging
+# This is normally switched on via the --fast/-F flag to `mach taskgraph`
+# Currently this skips toolchain task optimizations and schema validation
+fast = False

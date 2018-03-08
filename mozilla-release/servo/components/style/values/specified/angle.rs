@@ -7,8 +7,8 @@
 use cssparser::{Parser, Token};
 use parser::{ParserContext, Parse};
 #[allow(unused_imports)] use std::ascii::AsciiExt;
-use std::fmt;
-use style_traits::{ToCss, ParseError};
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ParseError, ToCss};
 use values::CSSFloat;
 use values::computed::{Context, ToComputedValue};
 use values::computed::angle::Angle as ComputedAngle;
@@ -27,7 +27,10 @@ pub struct Angle {
 }
 
 impl ToCss for Angle {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         if self.was_calc {
             dest.write_str("calc(")?;
         }
@@ -57,12 +60,12 @@ impl ToComputedValue for Angle {
 impl Angle {
     /// Creates an angle with the given value in degrees.
     pub fn from_degrees(value: CSSFloat, was_calc: bool) -> Self {
-        Angle { value: ComputedAngle::Degree(value), was_calc }
+        Angle { value: ComputedAngle::Deg(value), was_calc }
     }
 
     /// Creates an angle with the given value in gradians.
     pub fn from_gradians(value: CSSFloat, was_calc: bool) -> Self {
-        Angle { value: ComputedAngle::Gradian(value), was_calc }
+        Angle { value: ComputedAngle::Grad(value), was_calc }
     }
 
     /// Creates an angle with the given value in turns.
@@ -72,13 +75,20 @@ impl Angle {
 
     /// Creates an angle with the given value in radians.
     pub fn from_radians(value: CSSFloat, was_calc: bool) -> Self {
-        Angle { value: ComputedAngle::Radian(value), was_calc }
+        Angle { value: ComputedAngle::Rad(value), was_calc }
     }
 
     /// Returns the amount of radians this angle represents.
     #[inline]
     pub fn radians(self) -> f32 {
         self.value.radians()
+    }
+
+    /// Returns the amount of degrees this angle represents.
+    #[inline]
+    pub fn degrees(self) -> f32 {
+        use std::f32::consts::PI;
+        self.radians() * 360. / (2. * PI)
     }
 
     /// Returns `0deg`.
@@ -89,10 +99,29 @@ impl Angle {
     /// Returns an `Angle` parsed from a `calc()` expression.
     pub fn from_calc(radians: CSSFloat) -> Self {
         Angle {
-            value: ComputedAngle::Radian(radians),
+            value: ComputedAngle::Rad(radians),
             was_calc: true,
         }
     }
+}
+
+impl AsRef<ComputedAngle> for Angle {
+    #[inline]
+    fn as_ref(&self) -> &ComputedAngle {
+        &self.value
+    }
+}
+
+/// Whether to allow parsing an unitless zero as a valid angle.
+///
+/// This should always be `No`, except for exceptions like:
+///
+///   https://github.com/w3c/fxtf-drafts/issues/228
+///
+/// See also: https://github.com/w3c/csswg-drafts/issues/1162.
+enum AllowUnitlessZeroAngle {
+    Yes,
+    No,
 }
 
 impl Parse for Angle {
@@ -101,17 +130,7 @@ impl Parse for Angle {
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self, ParseError<'i>> {
-        // FIXME: remove clone() when lifetimes are non-lexical
-        let token = input.next()?.clone();
-        match token {
-            Token::Dimension { value, ref unit, .. } => {
-                Angle::parse_dimension(value, unit, /* from_calc = */ false)
-            }
-            Token::Function(ref name) if name.eq_ignore_ascii_case("calc") => {
-                return input.parse_nested_block(|i| CalcNode::parse_angle(context, i))
-            }
-            _ => Err(())
-        }.map_err(|()| input.new_unexpected_token_error(token.clone()))
+        Self::parse_internal(context, input, AllowUnitlessZeroAngle::No)
     }
 }
 
@@ -120,9 +139,8 @@ impl Angle {
     pub fn parse_dimension(
         value: CSSFloat,
         unit: &str,
-        from_calc: bool)
-        -> Result<Angle, ()>
-    {
+        from_calc: bool,
+    ) -> Result<Angle, ()> {
         let angle = match_ignore_ascii_case! { unit,
             "deg" => Angle::from_degrees(value, from_calc),
             "grad" => Angle::from_gradians(value, from_calc),
@@ -133,23 +151,33 @@ impl Angle {
         Ok(angle)
     }
 
-    /// Parse an angle, including unitless 0 degree.
+    /// Parse an `<angle>` allowing unitless zero to represent a zero angle.
     ///
-    /// Note that numbers without any AngleUnit, including unitless 0 angle,
-    /// should be invalid. However, some properties still accept unitless 0
-    /// angle and stores it as '0deg'.
-    ///
-    /// We can remove this and get back to the unified version Angle::parse once
-    /// https://github.com/w3c/csswg-drafts/issues/1162 is resolved.
-    pub fn parse_with_unitless<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                                       -> Result<Self, ParseError<'i>> {
+    /// See the comment in `AllowUnitlessZeroAngle` for why.
+    pub fn parse_with_unitless<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        Self::parse_internal(context, input, AllowUnitlessZeroAngle::Yes)
+    }
+
+    fn parse_internal<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+        allow_unitless_zero: AllowUnitlessZeroAngle,
+    ) -> Result<Self, ParseError<'i>> {
         // FIXME: remove clone() when lifetimes are non-lexical
         let token = input.next()?.clone();
         match token {
             Token::Dimension { value, ref unit, .. } => {
                 Angle::parse_dimension(value, unit, /* from_calc = */ false)
             }
-            Token::Number { value, .. } if value == 0. => Ok(Angle::zero()),
+            Token::Number { value, .. } if value == 0. => {
+                match allow_unitless_zero {
+                    AllowUnitlessZeroAngle::Yes => Ok(Angle::zero()),
+                    AllowUnitlessZeroAngle::No => Err(()),
+                }
+            },
             Token::Function(ref name) if name.eq_ignore_ascii_case("calc") => {
                 return input.parse_nested_block(|i| CalcNode::parse_angle(context, i))
             }

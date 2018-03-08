@@ -14,7 +14,6 @@
 #include "mozilla/Keyframe.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/TimeStamp.h"
-#include "nsRFPService.h"
 
 class nsIGlobalObject;
 class nsStyleContext;
@@ -41,24 +40,23 @@ struct AnimationEventInfo {
   InternalAnimationEvent mEvent;
   TimeStamp mTimeStamp;
 
-  AnimationEventInfo(dom::Element* aElement,
-                     CSSPseudoElementType aPseudoType,
+  AnimationEventInfo(const NonOwningAnimationTarget& aTarget,
                      EventMessage aMessage,
                      nsAtom* aAnimationName,
-                     const StickyTimeDuration& aElapsedTime,
+                     double aElapsedTime,
                      const TimeStamp& aTimeStamp,
                      dom::Animation* aAnimation)
-    : mElement(aElement)
+    : mElement(aTarget.mElement)
     , mAnimation(aAnimation)
     , mEvent(true, aMessage)
     , mTimeStamp(aTimeStamp)
   {
     // XXX Looks like nobody initialize WidgetEvent::time
     aAnimationName->ToString(mEvent.mAnimationName);
-    mEvent.mElapsedTime =
-      nsRFPService::ReduceTimePrecisionAsSecs(aElapsedTime.ToSeconds());
+    mEvent.mElapsedTime = aElapsedTime;
     mEvent.mPseudoElement =
-      AnimationCollection<dom::CSSAnimation>::PseudoTypeAsString(aPseudoType);
+      AnimationCollection<dom::CSSAnimation>::PseudoTypeAsString(
+        aTarget.mPseudoType);
   }
 
   // InternalAnimationEvent doesn't support copy-construction, so we need
@@ -122,8 +120,9 @@ public:
   // specifies that reading playState does *not* flush style (and we drop the
   // following override), then we should update tabbrowser.xml to check
   // the playState instead.
-  virtual AnimationPlayState PlayStateFromJS() const override;
-  virtual void PlayFromJS(ErrorResult& aRv) override;
+  AnimationPlayState PlayStateFromJS() const override;
+  bool PendingFromJS() const override;
+  void PlayFromJS(ErrorResult& aRv) override;
 
   void PlayFromStyle();
   void PauseFromStyle();
@@ -151,7 +150,7 @@ public:
   }
 
   void Tick() override;
-  void QueueEvents(StickyTimeDuration aActiveTime = StickyTimeDuration());
+  void QueueEvents(const StickyTimeDuration& aActiveTime = StickyTimeDuration());
 
   bool IsStylePaused() const { return mIsStylePaused; }
 
@@ -180,7 +179,7 @@ public:
   // reflect changes to that markup.
   bool IsTiedToMarkup() const { return mOwningElement.IsSet(); }
 
-  void MaybeQueueCancelEvent(StickyTimeDuration aActiveTime) override {
+  void MaybeQueueCancelEvent(const StickyTimeDuration& aActiveTime) override {
     QueueEvents(aActiveTime);
   }
 
@@ -312,11 +311,13 @@ struct AnimationTypeTraits<dom::CSSAnimation>
 } /* namespace mozilla */
 
 class nsAnimationManager final
-  : public mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation>
+  : public mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation,
+                                           mozilla::AnimationEventInfo>
 {
 public:
   explicit nsAnimationManager(nsPresContext *aPresContext)
-    : mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation>(aPresContext)
+    : mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation,
+                                      mozilla::AnimationEventInfo>(aPresContext)
   {
   }
 
@@ -349,15 +350,6 @@ public:
     const mozilla::ServoStyleContext* aComputedValues);
 
   /**
-   * Add a pending event.
-   */
-  void QueueEvent(mozilla::AnimationEventInfo&& aEventInfo)
-  {
-    mEventDispatcher.QueueEvent(
-      mozilla::Forward<mozilla::AnimationEventInfo>(aEventInfo));
-  }
-
-  /**
    * Dispatch any pending events.  We accumulate animationend and
    * animationiteration events only during refresh driver notifications
    * (and dispatch them at the end of such notifications), but we
@@ -369,8 +361,6 @@ public:
     RefPtr<nsAnimationManager> kungFuDeathGrip(this);
     mEventDispatcher.DispatchEvents(mPresContext);
   }
-  void SortEvents()      { mEventDispatcher.SortEvents(); }
-  void ClearEventQueue() { mEventDispatcher.ClearEventQueue(); }
 
   // Utility function to walk through |aIter| to find the Keyframe with
   // matching offset and timing function but stopping as soon as the offset
@@ -414,8 +404,6 @@ private:
     const mozilla::NonOwningAnimationTarget& aTarget,
     const nsStyleDisplay& aStyleDisplay,
     BuilderType& aBuilder);
-
-  mozilla::DelayedEventDispatcher<mozilla::AnimationEventInfo> mEventDispatcher;
 };
 
 #endif /* !defined(nsAnimationManager_h_) */

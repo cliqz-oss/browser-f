@@ -5,9 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "gfxUtils.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/Range.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/InlineTranslator.h"
+#include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/RecordedEvent.h"
 #include "WebRenderTypes.h"
 #include "webrender_ffi.h"
@@ -50,11 +52,28 @@ struct FontTemplate {
   RefPtr<UnscaledFont> mUnscaledFont;
 };
 
+StaticMutex sFontDataTableLock;
 std::unordered_map<FontKey, FontTemplate> sFontDataTable;
+
+void
+ClearBlobImageResources(WrIdNamespace aNamespace) {
+  StaticMutexAutoLock lock(sFontDataTableLock);
+  for (auto i = sFontDataTable.begin(); i != sFontDataTable.end();) {
+    if (i->first.mNamespace == aNamespace) {
+      if (i->second.mVec) {
+        wr_dec_ref_arc(i->second.mVec);
+      }
+      i = sFontDataTable.erase(i);
+    } else {
+      i++;
+    }
+  }
+}
 
 extern "C" {
 void
 AddFontData(WrFontKey aKey, const uint8_t *aData, size_t aSize, uint32_t aIndex, const ArcVecU8 *aVec) {
+  StaticMutexAutoLock lock(sFontDataTableLock);
   auto i = sFontDataTable.find(aKey);
   if (i == sFontDataTable.end()) {
     FontTemplate font;
@@ -68,6 +87,7 @@ AddFontData(WrFontKey aKey, const uint8_t *aData, size_t aSize, uint32_t aIndex,
 
 void
 AddNativeFontHandle(WrFontKey aKey, void* aHandle, uint32_t aIndex) {
+  StaticMutexAutoLock lock(sFontDataTableLock);
   auto i = sFontDataTable.find(aKey);
   if (i == sFontDataTable.end()) {
     FontTemplate font;
@@ -90,6 +110,7 @@ AddNativeFontHandle(WrFontKey aKey, void* aHandle, uint32_t aIndex) {
 
 void
 DeleteFontData(WrFontKey aKey) {
+  StaticMutexAutoLock lock(sFontDataTableLock);
   auto i = sFontDataTable.find(aKey);
   if (i != sFontDataTable.end()) {
     if (i->second.mVec) {
@@ -102,8 +123,13 @@ DeleteFontData(WrFontKey aKey) {
 
 RefPtr<UnscaledFont>
 GetUnscaledFont(Translator *aTranslator, wr::FontKey key) {
-  MOZ_ASSERT(sFontDataTable.find(key) != sFontDataTable.end());
-  auto &data = sFontDataTable[key];
+  StaticMutexAutoLock lock(sFontDataTableLock);
+  auto i = sFontDataTable.find(key);
+  if (i == sFontDataTable.end()) {
+    gfxDevCrash(LogReason::UnscaledFontNotFound) << "Failed to get UnscaledFont entry for FontKey " << key.mHandle;
+    return nullptr;
+  }
+  auto &data = i->second;
   if (data.mUnscaledFont) {
     return data.mUnscaledFont;
   }
@@ -124,10 +150,15 @@ GetUnscaledFont(Translator *aTranslator, wr::FontKey key) {
                                                                               type,
                                                                               aTranslator->GetFontContext());
   RefPtr<UnscaledFont> unscaledFont;
-  if (fontResource) {
+  if (!fontResource) {
+    gfxDevCrash(LogReason::NativeFontResourceNotFound) << "Failed to create NativeFontResource for FontKey " << key.mHandle;
+  } else {
     // Instance data is only needed for GDI fonts which webrender does not
     // support.
     unscaledFont = fontResource->CreateUnscaledFont(data.mIndex, nullptr, 0);
+    if (!unscaledFont) {
+      gfxDevCrash(LogReason::UnscaledFontNotFound) << "Failed to create UnscaledFont for FontKey " << key.mHandle;
+    }
   }
   data.mUnscaledFont = unscaledFont;
   return unscaledFont;

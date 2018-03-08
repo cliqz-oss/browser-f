@@ -19,30 +19,50 @@ include protocol PBackground;
 namespace mozilla {
 namespace dom {
 
-struct WebAuthnScopedCredentialDescriptor {
+struct WebAuthnAuthenticatorSelection {
+  bool requireResidentKey;
+  bool requireUserVerification;
+  bool requirePlatformAttachment;
+};
+
+struct WebAuthnScopedCredential {
   uint8_t[] id;
+  uint8_t transports;
 };
 
 struct WebAuthnExtension {
   /* TODO Fill in with predefined extensions */
 };
 
-struct WebAuthnTransactionInfo {
+struct WebAuthnMakeCredentialInfo {
   uint8_t[] RpIdHash;
   uint8_t[] ClientDataHash;
   uint32_t TimeoutMS;
-  WebAuthnScopedCredentialDescriptor[] Descriptors;
+  WebAuthnScopedCredential[] ExcludeList;
+  WebAuthnExtension[] Extensions;
+  WebAuthnAuthenticatorSelection AuthenticatorSelection;
+};
+
+struct WebAuthnGetAssertionInfo {
+  uint8_t[] RpIdHash;
+  uint8_t[] ClientDataHash;
+  uint32_t TimeoutMS;
+  WebAuthnScopedCredential[] AllowList;
+  bool RequireUserVerification;
   WebAuthnExtension[] Extensions;
 };
 
 async protocol PWebAuthnTransaction {
   manager PBackground;
+
   parent:
-    async __delete__();
-    async RequestRegister(uint64_t aTransactionId, WebAuthnTransactionInfo aTransactionInfo);
-    async RequestSign(uint64_t aTransactionId, WebAuthnTransactionInfo aTransactionInfo);
+    async RequestRegister(uint64_t aTransactionId, WebAuthnMakeCredentialInfo aTransactionInfo);
+    async RequestSign(uint64_t aTransactionId, WebAuthnGetAssertionInfo aTransactionInfo);
     async RequestCancel(uint64_t aTransactionId);
+    async DestroyMe();
+
   child:
+    async __delete__();
     async ConfirmRegister(uint64_t aTransactionId, uint8_t[] RegBuffer);
     async ConfirmSign(uint64_t aTransactionId, uint8_t[] CredentialID, uint8_t[] ReplyBuffer);
     async Abort(uint64_t aTransactionId, nsresult Error);

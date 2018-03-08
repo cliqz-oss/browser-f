@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import socket
 import time
 
@@ -20,7 +22,7 @@ class TestMarionette(MarionetteTestCase):
             func=self.test_correct_test_name.__name__,
         )
 
-        self.assertEqual(self.marionette.test_name, expected_test_name)
+        self.assertIn(expected_test_name, self.marionette.test_name)
 
     @run_if_manage_instance("Only runnable if Marionette manages the instance")
     @skip_if_mobile("Bug 1322993 - Missing temporary folder")
@@ -46,7 +48,7 @@ class TestMarionette(MarionetteTestCase):
             self.assertRaises(socket.timeout, marionette.raise_for_port, timeout=1.0)
 
             self.marionette._send_message("acceptConnections", {"value": True})
-            marionette.raise_for_port(timeout=1.0)
+            marionette.raise_for_port(timeout=10.0)
 
         finally:
             self.marionette._send_message("acceptConnections", {"value": True})

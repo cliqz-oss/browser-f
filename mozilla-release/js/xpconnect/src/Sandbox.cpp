@@ -31,10 +31,13 @@
 #include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/cache/CacheStorage.h"
 #include "mozilla/dom/CSSBinding.h"
+#include "mozilla/dom/CSSRuleBinding.h"
 #include "mozilla/dom/DirectoryBinding.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/IndexedDatabaseManager.h"
 #include "mozilla/dom/Fetch.h"
 #include "mozilla/dom/FileBinding.h"
+#include "mozilla/dom/InspectorUtilsBinding.h"
 #include "mozilla/dom/MessageChannelBinding.h"
 #include "mozilla/dom/MessagePortBinding.h"
 #include "mozilla/dom/PromiseBinding.h"
@@ -114,7 +117,7 @@ xpc::NewSandboxConstructor()
 static bool
 SandboxDump(JSContext* cx, unsigned argc, Value* vp)
 {
-    if (!nsContentUtils::DOMWindowDumpEnabled()) {
+    if (!DOMPrefs::DumpEnabled()) {
         return true;
     }
 
@@ -753,6 +756,19 @@ bool WrapAccessorFunction(JSContext* cx, Op& op, PropertyDescriptor* desc,
     return true;
 }
 
+static bool
+IsMaybeWrappedDOMConstructor(JSObject* obj)
+{
+    // We really care about the underlying object here, which might be wrapped
+    // in cross-compartment wrappers.
+    obj = js::CheckedUnwrap(obj);
+    if (!obj) {
+        return false;
+    }
+
+    return dom::IsDOMConstructor(obj);
+}
+
 bool
 xpc::SandboxProxyHandler::getPropertyDescriptor(JSContext* cx,
                                                 JS::Handle<JSObject*> proxy,
@@ -777,7 +793,11 @@ xpc::SandboxProxyHandler::getPropertyDescriptor(JSContext* cx,
         return false;
     if (desc.value().isObject()) {
         RootedObject val (cx, &desc.value().toObject());
-        if (JS::IsCallable(val)) {
+        if (JS::IsCallable(val) &&
+            // Don't wrap DOM constructors: they don't care about the "this"
+            // they're invoked with anyway, being constructors.  And if we wrap
+            // them here we break invariants like Node == Node and whatnot.
+            !IsMaybeWrappedDOMConstructor(val)) {
             val = WrapCallable(cx, val, proxy);
             if (!val)
                 return false;
@@ -908,6 +928,8 @@ xpc::GlobalProperties::Parse(JSContext* cx, JS::HandleObject obj)
             return false;
         if (!strcmp(name.ptr(), "CSS")) {
             CSS = true;
+        } else if (!strcmp(name.ptr(), "CSSRule")) {
+            CSSRule = true;
         } else if (!strcmp(name.ptr(), "indexedDB")) {
             indexedDB = true;
         } else if (!strcmp(name.ptr(), "XMLHttpRequest")) {
@@ -944,6 +966,10 @@ xpc::GlobalProperties::Parse(JSContext* cx, JS::HandleObject obj)
             fileReader = true;
         } else if (!strcmp(name.ptr(), "MessageChannel")) {
             messageChannel = true;
+        } else if (!strcmp(name.ptr(), "InspectorUtils")) {
+            inspectorUtils = true;
+        } else if (!strcmp(name.ptr(), "ChromeUtils")) {
+            ChromeUtils = true;
         } else {
             JS_ReportErrorUTF8(cx, "Unknown property name: %s", name.ptr());
             return false;
@@ -962,6 +988,9 @@ xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj)
     // to be requested either in |Cu.importGlobalProperties| or
     // |wantGlobalProperties| of a sandbox.
     if (CSS && !dom::CSSBinding::GetConstructorObject(cx))
+        return false;
+
+    if (CSSRule && !dom::CSSRuleBinding::GetConstructorObject(cx))
         return false;
 
     if (XMLHttpRequest &&
@@ -1024,6 +1053,13 @@ xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj)
     if (messageChannel &&
         (!dom::MessageChannelBinding::GetConstructorObject(cx) ||
          !dom::MessagePortBinding::GetConstructorObject(cx)))
+        return false;
+
+    if (inspectorUtils &&
+        !dom::InspectorUtilsBinding::GetConstructorObject(cx))
+        return false;
+
+    if (ChromeUtils && !dom::ChromeUtilsBinding::GetConstructorObject(cx))
         return false;
 
     return true;
@@ -1843,7 +1879,7 @@ nsXPCComponents_utils_Sandbox::CallOrConstruct(nsIXPConnectWrappedNative* wrappe
 nsresult
 xpc::EvalInSandbox(JSContext* cx, HandleObject sandboxArg, const nsAString& source,
                    const nsACString& filename, int32_t lineNo,
-                   JSVersion jsVersion, MutableHandleValue rval)
+                   MutableHandleValue rval)
 {
     JS_AbortIfWrongThread(cx);
     rval.set(UndefinedValue());
@@ -1883,8 +1919,7 @@ xpc::EvalInSandbox(JSContext* cx, HandleObject sandboxArg, const nsAString& sour
         JSAutoCompartment ac(sandcx, sandbox);
 
         JS::CompileOptions options(sandcx);
-        options.setFileAndLine(filenameBuf.get(), lineNo)
-               .setVersion(jsVersion);
+        options.setFileAndLine(filenameBuf.get(), lineNo);
         MOZ_ASSERT(JS_IsGlobalObject(sandbox));
         ok = JS::Evaluate(sandcx, options,
                           PromiseFlatString(source).get(), source.Length(), &v);

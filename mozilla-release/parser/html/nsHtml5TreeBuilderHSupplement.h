@@ -67,9 +67,17 @@
       accumulateCharacters(aBuf, aStart, aLength);
     }
 
-    void MarkAsBrokenAndRequestSuspension(nsresult aRv)
+    void
+    MarkAsBrokenAndRequestSuspensionWithBuilder(nsresult aRv)
     {
       mBuilder->MarkAsBroken(aRv);
+      requestSuspension();
+    }
+
+    void
+    MarkAsBrokenAndRequestSuspensionWithoutBuilder(nsresult aRv)
+    {
+      MarkAsBroken(aRv);
       requestSuspension();
     }
 
@@ -118,6 +126,8 @@
     void MaybeComplainAboutCharset(const char* aMsgId,
                                    bool aError,
                                    int32_t aLineNumber);
+
+    void TryToDisableEncodingMenu();
 
     void AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot, int32_t aLine);
 

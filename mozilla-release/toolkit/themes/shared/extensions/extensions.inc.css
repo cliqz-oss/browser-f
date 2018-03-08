@@ -195,9 +195,6 @@ button.warning {
   display: none;
 }
 
-#category-search > .category-icon {
-  list-style-image: url("chrome://mozapps/skin/extensions/category-search.svg");
-}
 #category-discover > .category-icon {
   list-style-image: url("chrome://mozapps/skin/extensions/category-discover.svg");
 }
@@ -635,29 +632,6 @@ button.warning {
 }
 
 
-/*** search view ***/
-
-#search-filter {
-  padding: 5px 20px;
-  margin-right: 48px;
-  margin-left: 48px;
-  font-size: 120%;
-  border-bottom: 1px solid #c1c1c1;
-  overflow-x: hidden;
-}
-
-#search-filter-label {
-  font-weight: bold;
-  color: grey;
-  margin-inline-end: 10px;
-}
-
-#search-allresults-link {
-  margin-top: 1em;
-  margin-bottom: 2em;
-}
-
-
 /*** detail view ***/
 
 #detail-view > .scrollbox-innerbox {
@@ -809,14 +783,12 @@ button.warning {
 }
 
 .detail-row[first-row="true"],
-.detail-row-complex[first-row="true"],
-setting[first-row="true"] {
+.detail-row-complex[first-row="true"] {
   border-top: none;
 }
 
 .detail-row,
-.detail-row-complex,
-setting {
+.detail-row-complex {
   border-top: 1px solid var(--in-content-box-border-color);
   -moz-box-align: center;
   min-height: 35px;
@@ -828,13 +800,8 @@ setting {
   margin-bottom: 1em;
 }
 
-.inline-options-browser,
-setting[first-row="true"] {
+.inline-options-browser {
   margin-top: 2em;
-}
-
-setting {
-  -moz-box-align: start;
 }
 
 .preferences-alignment {
@@ -852,10 +819,6 @@ setting {
 
 .preferences-description:empty {
   display: none;
-}
-
-setting[type="radio"] > radiogroup {
-  -moz-box-orient: horizontal;
 }
 
 
@@ -1100,4 +1063,22 @@ button.button-link:not([disabled="true"]):active:hover {
 #detail-findUpdates-btn[hidden] {
   display: -moz-box;
   visibility: hidden;
+}
+
+/*** Reset PopupAutoComplete richlistbox styles ***/
+
+#PopupAutoComplete richlistbox,
+#PopupAutoComplete listbox {
+  -moz-appearance: initial;
+  margin-inline-start: 0;
+  border: none;
+  border-radius: 0;
+}
+
+#PopupAutoComplete > richlistbox > richlistitem > .ac-type-icon,
+#PopupAutoComplete > richlistbox > richlistitem > .ac-site-icon,
+#PopupAutoComplete > richlistbox > richlistitem > .ac-tags,
+#PopupAutoComplete > richlistbox > richlistitem > .ac-separator,
+#PopupAutoComplete > richlistbox > richlistitem > .ac-url {
+  display: none;
 }

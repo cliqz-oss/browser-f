@@ -18,6 +18,14 @@ const DEFAULT_ADDRESS_RECORD = {
   "tel-national": "9876543210",
 };
 
+const ADDRESS_RECORD_2 = {
+  "guid": "address2",
+  "given-name": "John",
+  "additional-name": "Middle",
+  "family-name": "Doe",
+  "postal-code": "940012345",
+};
+
 const DEFAULT_CREDITCARD_RECORD = {
   "guid": "123",
   "cc-exp-month": 1,
@@ -29,6 +37,8 @@ const TESTCASES = [
   {
     description: "Address form with street-address",
     document: `<form>
+               <input autocomplete="given-name">
+               <input autocomplete="family-name">
                <input id="street-addr" autocomplete="street-address">
                </form>`,
     profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
@@ -70,6 +80,7 @@ const TESTCASES = [
   {
     description: "Address form with street-address, address-line1",
     document: `<form>
+               <input autocomplete="given-name">
                <input id="street-addr" autocomplete="street-address">
                <input id="line1" autocomplete="address-line1">
                </form>`,
@@ -109,7 +120,8 @@ const TESTCASES = [
     }],
   },
   {
-    description: "Address form with street-address, address-line[1, 3]",
+    description: "Address form with street-address, address-line[1, 3]" +
+                 ", determined by autocomplete attr",
     document: `<form>
                <input id="street-addr" autocomplete="street-address">
                <input id="line1" autocomplete="address-line1">
@@ -120,8 +132,34 @@ const TESTCASES = [
       "guid": "123",
       "street-address": "2 Harrison St line2 line3",
       "-moz-street-address-one-line": "2 Harrison St line2 line3",
-      "address-line1": "2 Harrison St",
-      "address-line2": "line2 line3",
+      // Since the form is missing address-line2 field, the value of
+      // address-line1 should contain line2 value as well.
+      "address-line1": "2 Harrison St line2",
+      "address-line2": "line2",
+      "address-line3": "line3",
+      "address-level1": "CA",
+      "country": "US",
+      "tel": "+19876543210",
+      "tel-national": "9876543210",
+    }],
+  },
+  {
+    description: "Address form with street-address, address-line[1, 3]" +
+                 ", determined by heuristics",
+    document: `<form>
+               <input id="street-address">
+               <input id="address-line1">
+               <input id="address-line3">
+               </form>`,
+    profileData: [Object.assign({}, DEFAULT_ADDRESS_RECORD)],
+    expectedResult: [{
+      "guid": "123",
+      "street-address": "2 Harrison St line2 line3",
+      "-moz-street-address-one-line": "2 Harrison St line2 line3",
+      // Since the form is missing address-line2 field, the value of
+      // address-line1 should contain line2 value as well.
+      "address-line1": "2 Harrison St line2",
+      "address-line2": "line2",
       "address-line3": "line3",
       "address-level1": "CA",
       "country": "US",
@@ -132,6 +170,7 @@ const TESTCASES = [
   {
     description: "Address form with exact matching options in select",
     document: `<form>
+               <input autocomplete="given-name">
                <select autocomplete="address-level1">
                  <option id="option-address-level1-XX" value="XX">Dummy</option>
                  <option id="option-address-level1-CA" value="CA">California</option>
@@ -162,6 +201,7 @@ const TESTCASES = [
   {
     description: "Address form with inexact matching options in select",
     document: `<form>
+               <input autocomplete="given-name">
                <select autocomplete="address-level1">
                  <option id="option-address-level1-XX" value="XX">Dummy</option>
                  <option id="option-address-level1-OO" value="OO">California</option>
@@ -192,6 +232,7 @@ const TESTCASES = [
   {
     description: "Address form with value-omitted options in select",
     document: `<form>
+               <input autocomplete="given-name">
                <select autocomplete="address-level1">
                  <option id="option-address-level1-1" value="">Dummy</option>
                  <option id="option-address-level1-2" value="">California</option>
@@ -222,6 +263,7 @@ const TESTCASES = [
   {
     description: "Address form with options with the same value in select ",
     document: `<form>
+               <input autocomplete="given-name">
                <select autocomplete="address-level1">
                  <option id="option-address-level1-same1" value="same">Dummy</option>
                  <option id="option-address-level1-same2" value="same">California</option>
@@ -252,6 +294,7 @@ const TESTCASES = [
   {
     description: "Address form without matching options in select for address-level1 and country",
     document: `<form>
+               <input autocomplete="given-name">
                <select autocomplete="address-level1">
                  <option id="option-address-level1-dummy1" value="">Dummy</option>
                  <option id="option-address-level1-dummy2" value="">Dummy 2</option>
@@ -442,7 +485,7 @@ const TESTCASES = [
     }],
   },
   {
-    description: "Checking maxlength first when a field is with maxlength.",
+    description: "Checking maxlength of tel field first when a field is with maxlength.",
     document: `<form>
                <input id="tel" autocomplete="tel" maxlength="10">
                <input id="line1" autocomplete="address-line1">
@@ -463,8 +506,41 @@ const TESTCASES = [
     }],
   },
   {
+    description: "Address form with maxlength restriction",
+    document: `<form>
+               <input autocomplete="given-name" maxlength="1">
+               <input autocomplete="additional-name" maxlength="1">
+               <input autocomplete="family-name" maxlength="1">
+               <input autocomplete="postal-code" maxlength="5">
+               </form>`,
+    profileData: [Object.assign({}, ADDRESS_RECORD_2)],
+    expectedResult: [{
+      "guid": "address2",
+      "given-name": "J",
+      "additional-name": "M",
+      "family-name": "D",
+      "postal-code": "94001",
+    }],
+  },
+  {
+    description: "Address form with the special cases of the maxlength restriction",
+    document: `<form>
+               <input autocomplete="given-name" maxlength="-1">
+               <input autocomplete="additional-name" maxlength="0">
+               <input autocomplete="family-name" maxlength="1">
+               </form>`,
+    profileData: [Object.assign({}, ADDRESS_RECORD_2)],
+    expectedResult: [{
+      "guid": "address2",
+      "given-name": "John",
+      "family-name": "D",
+      "postal-code": "940012345",
+    }],
+  },
+  {
     description: "Credit Card form with matching options of cc-exp-year and cc-exp-month",
     document: `<form>
+               <input autocomplete="cc-number">
                <select autocomplete="cc-exp-month">
                  <option id="option-cc-exp-month-01" value="1">01</option>
                  <option id="option-cc-exp-month-02" value="2">02</option>
@@ -504,6 +580,7 @@ const TESTCASES = [
   {
     description: "Credit Card form with matching options which contain labels",
     document: `<form>
+               <input autocomplete="cc-number">
                <select autocomplete="cc-exp-month">
                  <option value="" selected="selected">Month</option>
                  <option label="01 - January" id="option-cc-exp-month-01" value="object:17">dummy</option>
@@ -551,7 +628,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON1}/{YEAR2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="3/17">3/17</option>
                  <option value="1/25" id="selected-cc-exp">1/25</option>
                </select></form>`,
@@ -561,7 +640,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON1}/{YEAR4}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="3/2017">3/2017</option>
                  <option value="1/2025" id="selected-cc-exp">1/2025</option>
                </select></form>`,
@@ -571,7 +652,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON2}/{YEAR2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="03/17">03/17</option>
                  <option value="01/25" id="selected-cc-exp">01/25</option>
                </select></form>`,
@@ -581,7 +664,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON2}/{YEAR4}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="03/2017">03/2017</option>
                  <option value="01/2025" id="selected-cc-exp">01/2025</option>
                </select></form>`,
@@ -591,7 +676,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON1}-{YEAR2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="3-17">3-17</option>
                  <option value="1-25" id="selected-cc-exp">1-25</option>
                </select></form>`,
@@ -601,7 +688,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON1}-{YEAR4}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="3-2017">3-2017</option>
                  <option value="1-2025" id="selected-cc-exp">1-2025</option>
                </select></form>`,
@@ -611,7 +700,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON2}-{YEAR2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="03-17">03-17</option>
                  <option value="01-25" id="selected-cc-exp">01-25</option>
                </select></form>`,
@@ -621,7 +712,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON2}-{YEAR4}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="03-2017">03-2017</option>
                  <option value="01-2025" id="selected-cc-exp">01-2025</option>
                </select></form>`,
@@ -631,7 +724,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {YEAR2}-{MON2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="17-03">17-03</option>
                  <option value="25-01" id="selected-cc-exp">25-01</option>
                </select></form>`,
@@ -641,7 +736,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {YEAR4}-{MON2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="2017-03">2017-03</option>
                  <option value="2025-01" id="selected-cc-exp">2025-01</option>
                </select></form>`,
@@ -651,7 +748,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {YEAR4}/{MON2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="2017/3">2017/3</option>
                  <option value="2025/1" id="selected-cc-exp">2025/1</option>
                </select></form>`,
@@ -661,7 +760,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {MON2}{YEAR2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="0317">0317</option>
                  <option value="0125" id="selected-cc-exp">0125</option>
                </select></form>`,
@@ -671,7 +772,9 @@ const TESTCASES = [
   },
   {
     description: "Compound cc-exp: {YEAR2}{MON2}",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="1703">1703</option>
                  <option value="2501" id="selected-cc-exp">2501</option>
                </select></form>`,
@@ -681,7 +784,9 @@ const TESTCASES = [
   },
   {
     description: "Fill a cc-exp without cc-exp-month value in the profile",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="03/17">03/17</option>
                  <option value="01/25">01/25</option>
                </select></form>`,
@@ -697,7 +802,9 @@ const TESTCASES = [
   },
   {
     description: "Fill a cc-exp without cc-exp-year value in the profile",
-    document: `<form><select autocomplete="cc-exp">
+    document: `<form>
+               <input autocomplete="cc-number">
+               <select autocomplete="cc-exp">
                  <option value="03/17">03/17</option>
                  <option value="01/25">01/25</option>
                </select></form>`,
@@ -714,6 +821,7 @@ const TESTCASES = [
   {
     description: "Fill a cc-exp* without cc-exp-month value in the profile",
     document: `<form>
+               <input autocomplete="cc-number">
                <select autocomplete="cc-exp-month">
                  <option value="03">03</option>
                  <option value="01">01</option>
@@ -736,6 +844,7 @@ const TESTCASES = [
   {
     description: "Fill a cc-exp* without cc-exp-year value in the profile",
     document: `<form>
+               <input autocomplete="cc-number">
                <select autocomplete="cc-exp-month">
                  <option value="03">03</option>
                  <option value="01">01</option>
@@ -757,7 +866,8 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [mm/yy].",
-    document: `<form><input placeholder="mm/yy" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="mm/yy" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
       "cc-exp": "01/25",
@@ -765,7 +875,8 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [mm / yy].",
-    document: `<form><input placeholder="mm / yy" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="mm / yy" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
       "cc-exp": "01/25",
@@ -773,7 +884,8 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [MM / YY].",
-    document: `<form><input placeholder="MM / YY" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="MM / YY" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
       "cc-exp": "01/25",
@@ -781,7 +893,8 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [mm / yyyy].",
-    document: `<form><input placeholder="mm / yyyy" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="mm / yyyy" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
       "cc-exp": "01/2025",
@@ -789,7 +902,8 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [mm - yyyy].",
-    document: `<form><input placeholder="mm - yyyy" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="mm - yyyy" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
       "cc-exp": "01-2025",
@@ -797,7 +911,8 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [yyyy-mm].",
-    document: `<form><input placeholder="yyyy-mm" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="yyyy-mm" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
       "cc-exp": "2025-01",
@@ -805,7 +920,8 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [yyy-mm].",
-    document: `<form><input placeholder="yyy-mm" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="yyy-mm" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD, {
       "cc-exp": "025-01",
@@ -813,19 +929,22 @@ const TESTCASES = [
   },
   {
     description: "Use placeholder to adjust cc-exp format [mmm yyyy].",
-    document: `<form><input placeholder="mmm yyyy" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="mmm yyyy" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
   },
   {
     description: "Use placeholder to adjust cc-exp format [mm foo yyyy].",
-    document: `<form><input placeholder="mm foo yyyy" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="mm foo yyyy" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
   },
   {
     description: "Use placeholder to adjust cc-exp format [mm - - yyyy].",
-    document: `<form><input placeholder="mm - - yyyy" autocomplete="cc-exp"></form>`,
+    document: `<form><input autocomplete="cc-number">
+               <input placeholder="mm - - yyyy" autocomplete="cc-exp"></form>`,
     profileData: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
     expectedResult: [Object.assign({}, DEFAULT_CREDITCARD_RECORD)],
   },
@@ -833,7 +952,7 @@ const TESTCASES = [
 
 for (let testcase of TESTCASES) {
   add_task(async function() {
-    do_print("Starting testcase: " + testcase.description);
+    info("Starting testcase: " + testcase.description);
 
     let doc = MockDocument.createTestDocument("http://localhost:8080/test/",
                                               testcase.document);
@@ -842,7 +961,8 @@ for (let testcase of TESTCASES) {
     let handler = new FormAutofillHandler(formLike);
 
     handler.collectFormFields();
-    let adaptedRecords = handler.getAdaptedProfiles(testcase.profileData);
+    handler.focusedInput = form.elements[0];
+    let adaptedRecords = handler.activeSection.getAdaptedProfiles(testcase.profileData);
     Assert.deepEqual(adaptedRecords, testcase.expectedResult);
 
     if (testcase.expectedOptionElements) {
@@ -853,7 +973,7 @@ for (let testcase of TESTCASES) {
           Assert.notEqual(expectedOption, null);
 
           let value = testcase.profileData[i][field];
-          let cache = handler._cacheValue.matchingSelectOption.get(select);
+          let cache = handler.activeSection._cacheValue.matchingSelectOption.get(select);
           let targetOption = cache[value] && cache[value].get();
           Assert.notEqual(targetOption, null);
 

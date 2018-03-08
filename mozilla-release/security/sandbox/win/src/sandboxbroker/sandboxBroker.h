@@ -10,6 +10,8 @@
 #include <stdint.h>
 #include <windows.h>
 
+#include "build/build_config.h"
+#include "mozilla/ipc/EnvironmentMap.h"
 #include "nsXULAppAPI.h"
 
 namespace sandbox {
@@ -34,6 +36,7 @@ public:
 
   bool LaunchApp(const wchar_t *aPath,
                  const wchar_t *aArguments,
+                 base::EnvironmentMap& aEnvironment,
                  GeckoProcessType aProcessType,
                  const bool aEnableLogging,
                  void **aProcessHandle);
@@ -48,6 +51,9 @@ public:
   void SetSecurityLevelForGPUProcess(int32_t aSandboxLevel);
 
   bool SetSecurityLevelForPluginProcess(int32_t aSandboxLevel);
+#ifdef MOZ_ENABLE_SKIA_PDF
+  bool SetSecurityLevelForPDFiumProcess();
+#endif
   enum SandboxLevel {
     LockDown,
     Restricted

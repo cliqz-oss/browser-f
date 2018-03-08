@@ -138,6 +138,26 @@ ElementStyle.prototype = {
   },
 
   /**
+   * Get the font families in use by the element.
+   *
+   * Returns a promise that will be resolved to a list of CSS family
+   * names.  The list might have duplicates.
+   */
+  getUsedFontFamilies: function () {
+    return new Promise((resolve, reject) => {
+      this.ruleView.styleWindow.requestIdleCallback(async () => {
+        try {
+          let fonts = await this.pageStyle.getUsedFontFaces(
+            this.element, { includePreviews: false });
+          resolve(fonts.map(font => font.CSSFamilyName));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  },
+
+  /**
    * Put pseudo elements in front of others.
    */
   _sortRulesForPseudoElement: function () {
@@ -388,20 +408,20 @@ UserProperties.prototype = {
    *
    * @param {CSSStyleDeclaration} style
    *        The CSSStyleDeclaration against which the property is to be mapped.
-   * @param {String} bame
+   * @param {String} name
    *        The name of the property to set.
    * @param {String} userValue
    *        The value of the property to set.
    */
-  setProperty: function (style, bame, userValue) {
-    let key = this.getKey(style, bame);
+  setProperty: function (style, name, userValue) {
+    let key = this.getKey(style, name);
     let entry = this.map.get(key, null);
 
     if (entry) {
-      entry[bame] = userValue;
+      entry[name] = userValue;
     } else {
       let props = {};
-      props[bame] = userValue;
+      props[name] = userValue;
       this.map.set(key, props);
     }
   },

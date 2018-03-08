@@ -1286,7 +1286,6 @@ JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
     nativeStackBase(GetNativeStackBase()),
     entryMonitor(nullptr),
     noExecuteDebuggerTop(nullptr),
-    handlingSegFault(false),
     activityCallback(nullptr),
     activityCallbackArg(nullptr),
     requestDepth(0),
@@ -1593,21 +1592,6 @@ JSContext::initJitStackLimit()
     resetJitStackLimit();
 }
 
-JSVersion
-JSContext::findVersion()
-{
-    if (JSScript* script = currentScript(nullptr, ALLOW_CROSS_COMPARTMENT))
-        return script->getVersion();
-
-    if (compartment() && compartment()->behaviors().version() != JSVERSION_UNKNOWN)
-        return compartment()->behaviors().version();
-
-    if (!CurrentThreadCanAccessRuntime(runtime()))
-        return JSVERSION_DEFAULT;
-
-    return runtime()->defaultVersion();
-}
-
 void
 JSContext::updateMallocCounter(size_t nbytes)
 {
@@ -1661,6 +1645,7 @@ void
 AutoEnterOOMUnsafeRegion::crash(const char* reason)
 {
     char msgbuf[1024];
+    js::NoteIntentionalCrash();
     SprintfLiteral(msgbuf, "[unhandlable oom] %s", reason);
     MOZ_ReportAssertionFailure(msgbuf, __FILE__, __LINE__);
     MOZ_CRASH();

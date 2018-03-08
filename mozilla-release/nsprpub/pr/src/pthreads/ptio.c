@@ -1895,19 +1895,6 @@ static PRInt32 pt_Send(
 	PRInt32 tmp_amount = amount;
 #endif
 
-    /*
-     * Under HP-UX DCE threads, pthread.h includes dce/cma_ux.h,
-     * which has the following:
-     *     #  define send        cma_send
-     *     extern int  cma_send (int , void *, int, int );
-     * So we need to cast away the 'const' of argument #2 for send().
-     */
-#if defined (HPUX) && defined(_PR_DCETHREADS)
-#define PT_SENDBUF_CAST (void *)
-#else
-#define PT_SENDBUF_CAST
-#endif
-
     if (pt_TestAbort()) return bytes;
 
     /*
@@ -1918,9 +1905,9 @@ static PRInt32 pt_Send(
 #if defined(SOLARIS)
     PR_ASSERT(0 == flags);
 retry:
-    bytes = write(fd->secret->md.osfd, PT_SENDBUF_CAST buf, tmp_amount);
+    bytes = write(fd->secret->md.osfd, buf, tmp_amount);
 #else
-    bytes = send(fd->secret->md.osfd, PT_SENDBUF_CAST buf, amount, flags);
+    bytes = send(fd->secret->md.osfd, buf, amount, flags);
 #endif
     syserrno = errno;
 
@@ -4743,14 +4730,6 @@ PR_IMPLEMENT(PRInt32) PR_FileDesc2NativeHandle(PRFileDesc *bottom)
     else osfd = bottom->secret->md.osfd;
     return osfd;
 }  /* PR_FileDesc2NativeHandle */
-
-/* Expose OVERLAPPED if present. OVERLAPPED is implemented only on WIN95. */
-PR_IMPLEMENT(PRStatus)
-PR_EXPERIMENTAL_ONLY_IN_4_17_GetOverlappedIOHandle(PRFileDesc *fd, void **ol)
-{
-    PR_SetError(PR_NOT_IMPLEMENTED_ERROR, 0);
-    return PR_FAILURE;
-}
 
 PR_IMPLEMENT(void) PR_ChangeFileDescNativeHandle(PRFileDesc *fd,
     PRInt32 handle)

@@ -162,6 +162,7 @@ EXPORTS.mozilla.dom += [
     'DispatcherTrait.h',
     'DocGroup.h',
     'DocumentFragment.h',
+    'DocumentOrShadowRoot.h',
     'DocumentType.h',
     'DOMCursor.h',
     'DOMError.h',
@@ -171,6 +172,8 @@ EXPORTS.mozilla.dom += [
     'DOMMatrix.h',
     'DOMParser.h',
     'DOMPoint.h',
+    'DOMPrefs.h',
+    'DOMPrefsInternal.h',
     'DOMQuad.h',
     'DOMRect.h',
     'DOMRequest.h',
@@ -182,7 +185,6 @@ EXPORTS.mozilla.dom += [
     'FormData.h',
     'FragmentOrElement.h',
     'FromParser.h',
-    'GroupedSHistory.h',
     'IdleDeadline.h',
     'IdleRequest.h',
     'IDTracker.h',
@@ -196,7 +198,6 @@ EXPORTS.mozilla.dom += [
     'NodeInfo.h',
     'NodeInfoInlines.h',
     'NodeIterator.h',
-    'PartialSHistory.h',
     'Pose.h',
     'ProcessGlobal.h',
     'ResponsiveImageSelector.h',
@@ -240,6 +241,7 @@ UNIFIED_SOURCES += [
     'DispatcherTrait.cpp',
     'DocGroup.cpp',
     'DocumentFragment.cpp',
+    'DocumentOrShadowRoot.cpp',
     'DocumentType.cpp',
     'DOMCursor.cpp',
     'DOMError.cpp',
@@ -248,6 +250,7 @@ UNIFIED_SOURCES += [
     'DOMMatrix.cpp',
     'DOMParser.cpp',
     'DOMPoint.cpp',
+    'DOMPrefs.cpp',
     'DOMQuad.cpp',
     'DOMRect.cpp',
     'DOMRequest.cpp',
@@ -256,7 +259,6 @@ UNIFIED_SOURCES += [
     'EventSource.cpp',
     'FormData.cpp',
     'FragmentOrElement.cpp',
-    'GroupedSHistory.cpp',
     'IdleDeadline.cpp',
     'IdleRequest.cpp',
     'IDTracker.cpp',
@@ -338,7 +340,6 @@ UNIFIED_SOURCES += [
     'nsXHTMLContentSerializer.cpp',
     'nsXMLContentSerializer.cpp',
     'nsXMLNameSpaceMap.cpp',
-    'PartialSHistory.cpp',
     'Pose.cpp',
     'PostMessageEvent.cpp',
     'ProcessGlobal.cpp',
@@ -363,6 +364,7 @@ UNIFIED_SOURCES += [
     'TimeoutManager.cpp',
     'TreeWalker.cpp',
     'WebKitCSSMatrix.cpp',
+    'WindowDestroyedEvent.cpp',
     'WindowNamedPropertiesHandler.cpp',
     'WindowOrientationObserver.cpp',
     'XPathGenerator.cpp',
@@ -388,8 +390,9 @@ SOURCES += [
     'nsDOMWindowUtils.cpp',
     # Conflicts with windows.h's definition of SendMessage.
     'nsFrameMessageManager.cpp',
-    # This file has a #error "Never include windows.h in this file!"
-    'nsGlobalWindow.cpp',
+    # These files have a #error "Never include windows.h in this file!"
+    'nsGlobalWindowInner.cpp',
+    'nsGlobalWindowOuter.cpp',
     # Conflicts with windows.h's definition of LoadImage.
     'nsImageLoadingContent.cpp',
     # Because of OS X headers.
@@ -441,6 +444,7 @@ LOCAL_INCLUDES += [
     '/dom/xul',
     '/gfx/2d',
     '/image',
+    '/js/xpconnect/loader',
     '/js/xpconnect/src',
     '/js/xpconnect/wrappers',
     '/layout/base',
@@ -483,5 +487,5 @@ counterlist = GENERATED_FILES['UseCounterList.h']
 counterlist.script = 'gen-usecounters.py:use_counter_list'
 counterlist.inputs = ['UseCounters.conf']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

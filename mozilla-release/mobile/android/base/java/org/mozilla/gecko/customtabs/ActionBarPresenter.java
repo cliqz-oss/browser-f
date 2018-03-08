@@ -8,6 +8,7 @@ package org.mozilla.gecko.customtabs;
 import android.content.res.Resources;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.support.annotation.ColorInt;
@@ -188,7 +189,7 @@ public class ActionBarPresenter {
         @SuppressWarnings("deprecation")
         final Drawable icon = mActionBar.getThemedContext()
                 .getResources()
-                .getDrawable(R.drawable.ic_close_light);
+                .getDrawable(R.drawable.close);
 
         Drawable wrapped = DrawableCompat.wrap(icon);
         DrawableCompat.setTint(wrapped, mTextPrimaryColor);
@@ -219,7 +220,7 @@ public class ActionBarPresenter {
             }
 
             mIconView.setVisibility(View.VISIBLE);
-            mIconView.setImageLevel(SecurityModeUtil.getImageLevel(icon));
+            mIconView.setImageLevel(icon.getImageLevel());
             mIdentityPopup.setSecurityInformation(security);
 
             if (icon == SecurityModeUtil.IconType.LOCK_SECURE) {
@@ -238,7 +239,8 @@ public class ActionBarPresenter {
             mUrlView.setVisibility(View.GONE);
         } else {
             mTitleView.setText(title);
-            mUrlView.setText(url);
+            String domain = Uri.parse(url).getHost();
+            mUrlView.setText(domain);
             mUrlView.setVisibility(View.VISIBLE);
         }
     }

@@ -114,7 +114,7 @@ impl nsCSSValue {
             nsCSSUnit::eCSSUnit_Calc => {
                 LengthOrPercentage::Calc(bindings::Gecko_CSSValue_GetCalc(self).into())
             },
-            x => panic!("The unit should not be {:?}", x),
+            _ => panic!("Unexpected unit"),
         }
     }
 
@@ -124,7 +124,7 @@ impl nsCSSValue {
             nsCSSUnit::eCSSUnit_Pixel => {
                 Length::new(bindings::Gecko_CSSValue_GetNumber(self))
             },
-            x => panic!("The unit should not be {:?}", x),
+            _ => panic!("Unexpected unit"),
         }
     }
 
@@ -226,9 +226,7 @@ impl nsCSSValue {
     /// Panics if the unit is not `eCSSUnit_Degree` `eCSSUnit_Grad`, `eCSSUnit_Turn`
     /// or `eCSSUnit_Radian`.
     pub fn get_angle(&self) -> Angle {
-        unsafe {
-            Angle::from_gecko_values(self.float_unchecked(), self.mUnit)
-        }
+        Angle::from_gecko_values(self.float_unchecked(), self.mUnit)
     }
 
     /// Sets Angle value to this nsCSSValue.

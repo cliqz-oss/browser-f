@@ -1,6 +1,5 @@
-"use strict";
-const {TippyTopProvider} = require("lib/TippyTopProvider.jsm");
-const {GlobalOverrider} = require("test/unit/utils");
+import {GlobalOverrider} from "test/unit/utils";
+import {TippyTopProvider} from "lib/TippyTopProvider.jsm";
 
 describe("TippyTopProvider", () => {
   let instance;
@@ -39,10 +38,10 @@ describe("TippyTopProvider", () => {
     assert.equal(site.tippyTopIcon, "resource://activity-stream/data/content/tippytop/images/facebook-com.png");
     assert.equal(site.backgroundColor, "#3b5998");
   });
-  it("should not provide an icon for facebook.com/foobar", () => {
+  it("should provide an icon for facebook.com/foobar", () => {
     const site = instance.processSite({url: "https://facebook.com/foobar"});
-    assert.isUndefined(site.tippyTopIcon);
-    assert.isUndefined(site.backgroundColor);
+    assert.equal(site.tippyTopIcon, "resource://activity-stream/data/content/tippytop/images/facebook-com.png");
+    assert.equal(site.backgroundColor, "#3b5998");
   });
   it("should provide an icon for gmail.com", () => {
     const site = instance.processSite({url: "https://gmail.com"});
@@ -66,6 +65,6 @@ describe("TippyTopProvider", () => {
     fetchStub.rejects("whaaaa");
     instance = new TippyTopProvider();
     await instance.init();
-    instance.processSite("https://facebook.com");
+    instance.processSite({url: "https://facebook.com"});
   });
 });

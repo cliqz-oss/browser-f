@@ -59,7 +59,7 @@ const observer = {
 add_task(function setup() {
   Services.prefs.setBoolPref("extensions.webextOptionalPermissionPrompts", true);
   Services.obs.addObserver(observer, "webextension-optional-permission-prompt");
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Services.obs.removeObserver(observer, "webextension-optional-permission-prompt");
     Services.prefs.clearUserPref("extensions.webextOptionalPermissionPrompts");
   });
@@ -431,7 +431,7 @@ add_task(function test_permissions_have_localization_strings() {
         ok(str.length, `Found localization string for '${perm}' permission`);
       } catch (e) {
         ok(GRANTED_WITHOUT_USER_PROMPT.includes(perm),
-          `Permission '${perm}' intentionally granted without prompting the user`);
+           `Permission '${perm}' intentionally granted without prompting the user`);
       }
     }
   }

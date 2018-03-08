@@ -24,7 +24,7 @@ impl Example for App {
         _api: &RenderApi,
         builder: &mut DisplayListBuilder,
         resources: &mut ResourceUpdates,
-        _layout_size: LayoutSize,
+        _framebuffer_size: DeviceUintSize,
         _pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
@@ -59,6 +59,7 @@ impl Example for App {
             image_size,
             LayoutSize::zero(),
             ImageRendering::Auto,
+            AlphaType::PremultipliedAlpha,
             self.image_key,
         );
 
@@ -71,6 +72,7 @@ impl Example for App {
             image_size,
             LayoutSize::zero(),
             ImageRendering::Pixelated,
+            AlphaType::PremultipliedAlpha,
             self.image_key,
         );
 
@@ -98,8 +100,10 @@ impl Example for App {
                             ImageData::new(image_data),
                             None,
                         );
-                        api.update_resources(updates);
-                        api.generate_frame(document_id, None);
+                        let mut txn = Transaction::new();
+                        txn.update_resources(updates);
+                        txn.generate_frame();
+                        api.send_transaction(document_id, txn);
                     }
                     _ => {}
                 }

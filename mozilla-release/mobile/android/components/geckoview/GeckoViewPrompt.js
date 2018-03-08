@@ -401,7 +401,7 @@ PromptDelegate.prototype = {
       return true;
 
     } catch (ex) {
-      Cu.reportError("Failed to change modal state: " + e);
+      Cu.reportError("Failed to change modal state: " + ex);
     }
     return false;
   },
@@ -713,7 +713,7 @@ PromptDelegate.prototype = {
   },
 
   asyncPromptAuth: function(aChannel, aCallback, aContext, aLevel, aAuthInfo,
-                            aCheckLabel, aCheckState) {
+                            aCheckMsg, aCheckState) {
     let responded = false;
     let callback = result => {
       // OK: result && result.password !== undefined

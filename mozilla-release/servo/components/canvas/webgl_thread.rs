@@ -91,13 +91,18 @@ impl<VR: WebVRRenderHandler + 'static, OB: WebGLThreadObserver> WebGLThread<VR, 
         match msg {
             WebGLMsg::CreateContext(version, size, attributes, result_sender) => {
                 let result = self.create_webgl_context(version, size, attributes);
-                result_sender.send(result.map(|(id, limits, share_mode)|
+                result_sender.send(result.map(|(id, limits, share_mode)| {
+                    let ctx = Self::make_current_if_needed(id, &self.contexts, &mut self.bound_context_id)
+                                    .expect("WebGLContext not found");
+                    let glsl_version = Self::get_glsl_version(ctx);
+
                     WebGLCreateContextResult {
                         sender: WebGLMsgSender::new(id, webgl_chan.clone()),
-                        limits: limits,
-                        share_mode: share_mode,
+                        limits,
+                        share_mode,
+                        glsl_version,
                     }
-                )).unwrap();
+                })).unwrap();
             },
             WebGLMsg::ResizeContext(ctx_id, size, sender) => {
                 self.resize_webgl_context(ctx_id, size, sender);
@@ -348,7 +353,9 @@ impl<VR: WebVRRenderHandler + 'static, OB: WebGLThreadObserver> WebGLThread<VR, 
                 self.dom_outputs.insert(pipeline_id, DOMToTextureData {
                     context_id, texture_id, document_id, size
                 });
-                self.webrender_api.enable_frame_output(document_id, pipeline_id, true);
+                let mut txn = webrender_api::Transaction::new();
+                txn.enable_frame_output(pipeline_id, true);
+                self.webrender_api.send_transaction(document_id, txn);
             },
             DOMToTextureCommand::Lock(pipeline_id, gl_sync, sender) => {
                 let contexts = &self.contexts;
@@ -371,7 +378,9 @@ impl<VR: WebVRRenderHandler + 'static, OB: WebGLThreadObserver> WebGLThread<VR, 
                 if let Some((pipeline_id, document_id)) = self.dom_outputs.iter()
                                                                           .find(|&(_, v)| v.texture_id == texture_id)
                                                                           .map(|(k, v)| (*k, v.document_id)) {
-                    self.webrender_api.enable_frame_output(document_id, pipeline_id, false);
+                    let mut txn = webrender_api::Transaction::new();
+                    txn.enable_frame_output(pipeline_id, false);
+                    self.webrender_api.send_transaction(document_id, txn);
                     self.dom_outputs.remove(&pipeline_id);
                 }
             },
@@ -482,7 +491,7 @@ impl<VR: WebVRRenderHandler + 'static, OB: WebGLThreadObserver> WebGLThread<VR, 
             width: size.width as u32,
             height: size.height as u32,
             stride: None,
-            format: if alpha { webrender_api::ImageFormat::BGRA8 } else { webrender_api::ImageFormat::RGB8 },
+            format: webrender_api::ImageFormat::BGRA8,
             offset: 0,
             is_opaque: !alpha,
         }
@@ -518,6 +527,20 @@ impl<VR: WebVRRenderHandler + 'static, OB: WebGLThreadObserver> WebGLThread<VR, 
         }
         byte_swap(&mut pixels);
         pixels
+    }
+
+    /// Gets the GLSL Version supported by a GLContext.
+    fn get_glsl_version(context: &GLContextWrapper) -> WebGLSLVersion {
+        let version = context.gl().get_string(gl::SHADING_LANGUAGE_VERSION);
+        // Fomat used by SHADING_LANGUAGE_VERSION query : major.minor[.release] [vendor info]
+        let mut values = version.split(&['.', ' '][..]);
+        let major = values.next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
+        let minor = values.next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(20);
+
+        WebGLSLVersion {
+            major,
+            minor,
+        }
     }
 }
 

@@ -66,9 +66,7 @@ function checkModuleTelemetry(additionalExpectedModule = undefined) {
     expectedModules.push(additionalExpectedModule);
   }
   expectedModules.sort();
-  let telemetryService = Cc["@mozilla.org/base/telemetry;1"]
-                           .getService(Ci.nsITelemetry);
-  let telemetry = telemetryService.snapshotKeyedScalars(
+  let telemetry = Services.telemetry.snapshotKeyedScalars(
     Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTOUT).parent;
   let moduleTelemetry = telemetry["security.pkcs11_modules_loaded"];
   let actualModules = [];
@@ -123,6 +121,6 @@ function run_test() {
   checkTestModuleNotPresent();
 
   // Check miscellaneous module DB methods and attributes.
-  ok(gModuleDB.canToggleFIPS, "It should be possible to toggle FIPS");
+  ok(!gModuleDB.canToggleFIPS, "It should NOT be possible to toggle FIPS");
   ok(!gModuleDB.isFIPSEnabled, "FIPS should not be enabled");
 }

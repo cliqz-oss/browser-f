@@ -12,6 +12,7 @@
 #include "mozilla/RefCounted.h"
 #include "mozilla/UniquePtr.h"
 #include "double-conversion/utils.h" // for DISALLOW_COPY_AND_ASSIGN
+#include "RtpSourceObserver.h"
 #include "CodecConfig.h"
 #include "VideoTypes.h"
 #include "MediaConduitErrors.h"
@@ -33,6 +34,8 @@ class VideoFrame;
 
 namespace mozilla {
 
+using RtpExtList = std::vector<webrtc::RtpExtension>;
+
 // Wrap the webrtc.org Call class adding mozilla add/ref support.
 class WebRtcCallWrapper : public RefCounted<WebRtcCallWrapper>
 {
@@ -42,6 +45,11 @@ public:
   static RefPtr<WebRtcCallWrapper> Create()
   {
     return new WebRtcCallWrapper();
+  }
+
+  static RefPtr<WebRtcCallWrapper> Create(UniquePtr<webrtc::Call>&& aCall)
+  {
+    return new WebRtcCallWrapper(std::move(aCall));
   }
 
   webrtc::Call* Call() const
@@ -70,6 +78,13 @@ private:
     webrtc::Call::Config config(&mEventLog);
     mCall.reset(webrtc::Call::Create(config));
   }
+
+  explicit WebRtcCallWrapper(UniquePtr<webrtc::Call>&& aCall)
+  {
+    MOZ_ASSERT(aCall);
+    mCall = std::move(aCall);
+  }
+
   DISALLOW_COPY_AND_ASSIGN(WebRtcCallWrapper);
   UniquePtr<webrtc::Call> mCall;
   webrtc::RtcEventLogNullImpl mEventLog;
@@ -225,6 +240,17 @@ public:
   virtual bool SetLocalSSRCs(const std::vector<unsigned int>& aSSRCs) = 0;
   virtual std::vector<unsigned int> GetLocalSSRCs() const = 0;
 
+  /**
+  * Adds negotiated RTP extensions
+  * XXX Move to MediaSessionConduit
+  */
+  virtual void
+  SetLocalRTPExtensions(bool aIsSend, const RtpExtList& extensions) = 0;
+  /**
+  * Returns the negotiated RTP extensions
+  */
+  virtual RtpExtList GetLocalRTPExtensions(bool aIsSend) const = 0;
+
   virtual bool GetRemoteSSRC(unsigned int* ssrc) = 0;
   virtual bool SetRemoteSSRC(unsigned int ssrc) = 0;
   virtual bool SetLocalCNAME(const char* cname) = 0;
@@ -329,20 +355,13 @@ public:
 
   virtual ~VideoSessionConduit() {}
 
-  virtual Type type() const { return VIDEO; }
+  Type type() const override { return VIDEO; }
 
-  /**
-  * Adds negotiated RTP extensions
-  * XXX Move to MediaSessionConduit
-  */
-  virtual void SetLocalRTPExtensions(bool aIsSend,
-                                     const std::vector<webrtc::RtpExtension>& extensions) = 0;
+  void
+  SetLocalRTPExtensions(bool aIsSend,
+                        const RtpExtList& extensions) override = 0;
 
-  /**
-  * Returns the negotiated RTP extensions
-  */
-  virtual std::vector<webrtc::RtpExtension> GetLocalRTPExtensions(bool aIsSend) const = 0;
-
+  RtpExtList GetLocalRTPExtensions(bool aIsSend) const override = 0;
 
   /**
    * Function to attach Renderer end-point of the Media-Video conduit.
@@ -353,7 +372,7 @@ public:
   virtual MediaConduitErrorCode AttachRenderer(RefPtr<mozilla::VideoRenderer> aRenderer) = 0;
   virtual void DetachRenderer() = 0;
 
-  virtual bool SetRemoteSSRC(unsigned int ssrc) = 0;
+  bool SetRemoteSSRC(unsigned int ssrc) override = 0;
 
   /**
    * Function to deliver a capture video frame for encoding and transport
@@ -366,13 +385,14 @@ public:
    * NOTE: ConfigureSendMediaCodec() MUST be called before this function can be invoked
    *       This ensures the inserted video-frames can be transmitted by the conduit
    */
-  virtual MediaConduitErrorCode SendVideoFrame(unsigned char* video_frame,
+  virtual MediaConduitErrorCode SendVideoFrame(const unsigned char* video_frame,
                                                unsigned int video_frame_length,
                                                unsigned short width,
                                                unsigned short height,
                                                VideoType video_type,
                                                uint64_t capture_time) = 0;
-  virtual MediaConduitErrorCode SendVideoFrame(webrtc::VideoFrame& frame) = 0;
+  virtual MediaConduitErrorCode SendVideoFrame(
+    const webrtc::VideoFrame& frame) = 0;
 
   virtual MediaConduitErrorCode ConfigureCodecMode(webrtc::VideoCodecMode) = 0;
   /**
@@ -448,9 +468,14 @@ public:
 
   virtual ~AudioSessionConduit() {}
 
-  virtual Type type() const { return AUDIO; }
+  Type type() const override { return AUDIO; }
 
+  void
+  SetLocalRTPExtensions(bool aIsSend,
+                        const RtpExtList& extensions) override {};
 
+  RtpExtList
+  GetLocalRTPExtensions(bool aIsSend) const override {return RtpExtList();}
   /**
    * Function to deliver externally captured audio sample for encoding and transport
    * @param audioData [in]: Pointer to array containing a frame of audio
@@ -494,6 +519,12 @@ public:
                                               int32_t capture_delay,
                                               int& lengthSamples) = 0;
 
+  /**
+   * Checks if given sampling frequency is supported
+   * @param freq: Sampling rate (in Hz) to check
+   */
+  virtual bool IsSamplingFreqSupported(int freq) const = 0;
+
    /**
     * Function to configure send codec for the audio session
     * @param sendSessionConfig: CodecConfiguration
@@ -511,17 +542,26 @@ public:
                                 const std::vector<AudioCodecConfig* >& recvCodecConfigList) = 0;
    /**
     * Function to enable the audio level extension
-    * @param enabled: enable extension
-    * @param id: id to be used for this rtp header extension
-    * NOTE: See AudioConduit for more information
+    * @param aEnabled: enable extension
+    * @param aId: the RTP extension header ID to use
+    * @param aDirectionIsSend: indicates whether to set the extension on the
+    *                          sender or the receiver side
+    * returns an error if the extension could not be set
     */
-  virtual MediaConduitErrorCode EnableAudioLevelExtension(bool enabled, uint8_t id) = 0;
-  virtual MediaConduitErrorCode EnableMIDExtension(bool enabled, uint8_t id) = 0;
+  virtual MediaConduitErrorCode
+  EnableAudioLevelExtension(bool aEnabled,
+                            uint8_t aId,
+                            bool aDirectionIsSend) = 0;
+  virtual MediaConduitErrorCode
+  EnableMIDExtension(bool enabled, uint8_t id) = 0;
 
   virtual bool SetDtmfPayloadType(unsigned char type, int freq) = 0;
 
   virtual bool InsertDTMFTone(int channel, int eventCode, bool outOfBand,
                               int lengthMs, int attenuationDb) = 0;
+
+  virtual void GetRtpSources(const int64_t aTimeNow,
+                             nsTArray<dom::RTCRtpSourceEntry>& outSources) = 0;
 
 };
 }

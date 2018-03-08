@@ -8,6 +8,7 @@
 
 /* all localizable skin settings shall live here */
 @import url("chrome://global/locale/intl.css");
+@import url("chrome://global/skin/menu.css");
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
@@ -25,13 +26,18 @@ menulist > menupopup {
   --arrowpanel-border-color: ThreeDShadow;
 }
 
+@media (-moz-windows-default-theme) {
+  :root {
+    --arrowpanel-border-color: hsla(210,4%,10%,.2);
+  }
+}
+
 /* ::::: root elements ::::: */
 
 window,
 page,
 dialog,
-wizard,
-prefwindow {
+wizard {
   -moz-appearance: window;
   background-color: -moz-Dialog;
   color: -moz-DialogText;
@@ -60,7 +66,7 @@ window.dialog {
   list-style-image: url("chrome://global/skin/icons/info.svg");
 }
 
-.alert-dialog #info\.icon,
+.alert-dialog #infoIcon,
 .alert-icon {
   list-style-image: url("chrome://global/skin/icons/Warning.png");
 }
@@ -73,6 +79,17 @@ window.dialog {
   list-style-image: url("chrome://global/skin/icons/Question.png");
 }
 
+@media (min-resolution: 1.1dppx) {
+  .alert-dialog #info\.icon,
+  .alert-icon {
+    list-style-image: url("chrome://global/skin/icons/warning-64.png");
+  }
+
+  .question-icon {
+    list-style-image: url("chrome://global/skin/icons/question-64.png");
+  }
+}
+
 /* ::::: iframe ::::: */
 
 iframe {
@@ -81,50 +98,6 @@ iframe {
   height: 100px;
   min-width: 10px;
   min-height: 10px;
-}
-
-/* ::::: statusbar ::::: */
-
-statusbar {
-  -moz-appearance: statusbar;
-  border-top: 1px solid ThreeDLightShadow;
-  border-left: 1px solid ThreeDShadow;
-  border-right: 1px solid ThreeDHighlight;
-  border-bottom: 1px solid ThreeDHighlight;
-  background-color: -moz-Dialog;
-  min-height: 22px;
-}
-
-statusbarpanel {
-  -moz-appearance: statusbarpanel;
-  -moz-box-align: center;
-  -moz-box-pack: center;
-  border-left: 1px solid ThreeDHighlight;
-  border-top: 1px solid ThreeDHighlight;
-  border-right: 1px solid ThreeDShadow;
-  border-bottom: 1px solid ThreeDShadow;
-  padding: 0 4px;
-}
-
-statusbarpanel:not(.statusbar-resizerpanel):-moz-lwtheme {
-  -moz-appearance: none;
-  border-top-style: none;
-  border-bottom-style: none;
-  border-inline-start-style: none;
-}
-
-.statusbar-resizerpanel {
-  -moz-box-align: end;
-  -moz-box-pack: end;
-  -moz-appearance: resizerpanel;
-  padding: 0;
-  border: none;
-}
-
-.statusbarpanel-iconic,
-.statusbarpanel-iconic-text,
-.statusbarpanel-menu-iconic {
-  padding: 0 1px;
 }
 
 /* XXXBlake yeah, shoot me -- these don't belong here.  I'll move them later. */
@@ -155,12 +128,6 @@ toolbar[mode="text"] .toolbarbutton-text {
 
 :root:-moz-lwtheme-brighttext {
   text-shadow: 1px 1px 1.5px black;
-}
-
-statusbar:-moz-lwtheme {
-  -moz-appearance: none;
-  background: none;
-  border-style: none;
 }
 
 .inset {
@@ -265,10 +232,6 @@ label[disabled="true"] {
   margin: 3px 5px 4px;
 }
 
-.wizard-box {
-  padding: 20px 44px 10px;
-}
-
 .text-link {
   color: -moz-nativehyperlinktext;
   cursor: pointer;
@@ -291,10 +254,7 @@ popupnotificationcontent {
 /* :::::: autoscroll popup ::::: */
 
 .autoscroller {
-  height: 28px;
-  width: 28px;
   border: none;
-  margin: -14px;
   padding: 0;
   background-image: url("chrome://global/skin/icons/autoscroll.svg");
   background-size: contain;

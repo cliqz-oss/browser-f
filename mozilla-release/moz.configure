@@ -139,6 +139,8 @@ include('build/moz.configure/headers.configure',
         when='--enable-compile-environment')
 include('build/moz.configure/warnings.configure',
         when='--enable-compile-environment')
+include('build/moz.configure/flags.configure',
+        when='--enable-compile-environment')
 
 
 @depends(target, host)
@@ -277,6 +279,13 @@ def build_gtest(pgo, build_project, target, automation, enabled, enable_tests):
         return True
 
 set_config('LINK_GTEST_DURING_COMPILE', build_gtest)
+
+# Localization
+# ==============================================================
+option('--enable-ui-locale', default='en-US',
+       help='Select the user interface locale (default: en-US)')
+
+set_config('MOZ_UI_LOCALE', depends('--enable-ui-locale')(lambda x: x))
 
 # clang-plugin location
 # ==============================================================

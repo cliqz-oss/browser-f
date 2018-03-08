@@ -10,7 +10,6 @@
  *  sendWheelAndPaintNoFlush
  *  synthesizeMouse
  *  synthesizeMouseAtCenter
- *  synthesizePointer
  *  synthesizeWheel
  *  synthesizeWheelAtPoint
  *  synthesizeKey
@@ -212,6 +211,10 @@ function sendDragEvent(aEvent, aTarget, aWindow = window) {
                       ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg,
                       buttonArg, relatedTargetArg, dataTransfer);
 
+  if (aEvent._domDispatchOnly) {
+    return aTarget.dispatchEvent(event);
+  }
+
   var utils = _getDOMWindowUtils(aWindow);
   return utils.dispatchDOMEventViaPresShell(aTarget, event, true);
 }
@@ -363,12 +366,6 @@ function synthesizeTouch(aTarget, aOffsetX, aOffsetY, aEvent, aWindow)
   synthesizeTouchAtPoint(rect.left + aOffsetX, rect.top + aOffsetY,
        aEvent, aWindow);
 }
-function synthesizePointer(aTarget, aOffsetX, aOffsetY, aEvent, aWindow)
-{
-  var rect = aTarget.getBoundingClientRect();
-  return synthesizePointerAtPoint(rect.left + aOffsetX, rect.top + aOffsetY,
-       aEvent, aWindow);
-}
 
 /*
  * Synthesize a mouse event at a particular point in aWindow.
@@ -452,35 +449,6 @@ function synthesizeTouchAtPoint(left, top, aEvent, aWindow = window)
       utils.sendTouchEvent("touchend", [id], [left], [top], [rx], [ry], [angle], [force], 1, modifiers);
     }
   }
-}
-
-function synthesizePointerAtPoint(left, top, aEvent, aWindow = window)
-{
-  var utils = _getDOMWindowUtils(aWindow);
-  var defaultPrevented = false;
-
-  if (utils) {
-    var button = computeButton(aEvent);
-    var clickCount = aEvent.clickCount || 1;
-    var modifiers = _parseModifiers(aEvent, aWindow);
-    var pressure = ("pressure" in aEvent) ? aEvent.pressure : 0;
-    var inputSource = ("inputSource" in aEvent) ? aEvent.inputSource : 0;
-    var synthesized = ("isSynthesized" in aEvent) ? aEvent.isSynthesized : true;
-    var isPrimary = ("isPrimary" in aEvent) ? aEvent.isPrimary : false;
-
-    if (("type" in aEvent) && aEvent.type) {
-      defaultPrevented = utils.sendPointerEventToWindow(aEvent.type, left, top, button,
-                                                        clickCount, modifiers, false,
-                                                        pressure, inputSource,
-                                                        synthesized, 0, 0, 0, 0, isPrimary);
-    }
-    else {
-      utils.sendPointerEventToWindow("pointerdown", left, top, button, clickCount, modifiers, false, pressure, inputSource);
-      utils.sendPointerEventToWindow("pointerup", left, top, button, clickCount, modifiers, false, pressure, inputSource);
-    }
-  }
-
-  return defaultPrevented;
 }
 
 // Call synthesizeMouse with coordinates at the center of aTarget.
@@ -2170,6 +2138,7 @@ function createDragEventObject(aType, aDestElement, aDestWindow, aDataTransfer,
     screenX: destScreenX, screenY: destScreenY,
     clientX: destClientX, clientY: destClientY,
     dataTransfer: dataTransfer,
+    _domDispatchOnly: aDragEvent._domDispatchOnly,
   }, aDragEvent);
 }
 

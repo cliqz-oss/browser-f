@@ -14,27 +14,16 @@ option('--enable-jemalloc', env='MOZ_MEMORY',
        help='Replace memory allocator with jemalloc')
 
 
-@depends('--enable-jemalloc', target, build_project, c_compiler)
-def jemalloc(value, target, build_project, c_compiler):
+@depends('--enable-jemalloc', target, c_compiler)
+def jemalloc(value, target, c_compiler):
     if value.origin != 'default':
         return bool(value) or None
 
-    if build_project == 'js':
-        return True
-
-    if target.kernel == 'Darwin' and target.cpu == 'x86_64':
-        # Don't enable by default on 32-bits OSX. See bug 702250.
+    if target.kernel in ('Darwin', 'Linux'):
         return True
 
     if target.kernel == 'WINNT' and c_compiler.type in ('msvc', 'clang-cl'):
         return True
-
-    if target.kernel == 'Linux':
-        return True
-
-    if value and target.kernel not in ('WINNT', 'Linux', 'Darwin', 'kFreeBSD',
-                                       'FreeBSD', 'NetBSD'):
-        die('--enable-jemalloc is not supported on %s', target.kernel)
 
 
 set_config('MOZ_MEMORY', jemalloc)
@@ -64,6 +53,8 @@ def replace_malloc(value, jemalloc, milestone, build_project):
         die('--enable-replace-malloc requires --enable-jemalloc')
     if value.origin != 'default':
         return bool(value) or None
+    if build_project == 'memory':
+        return True
     if milestone.is_nightly and jemalloc and build_project != 'js':
         return True
 
@@ -71,3 +62,14 @@ def replace_malloc(value, jemalloc, milestone, build_project):
 set_config('MOZ_REPLACE_MALLOC', replace_malloc)
 set_define('MOZ_REPLACE_MALLOC', replace_malloc)
 add_old_configure_assignment('MOZ_REPLACE_MALLOC', replace_malloc)
+
+
+@depends(replace_malloc, build_project)
+def replace_malloc_static(replace_malloc, build_project):
+    # Default to statically linking replace-malloc libraries that can be
+    # statically linked, except when building with --enable-project=memory.
+    if replace_malloc and build_project != 'memory':
+        return True
+
+
+set_config('MOZ_REPLACE_MALLOC_STATIC', replace_malloc_static)

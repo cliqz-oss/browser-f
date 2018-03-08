@@ -453,20 +453,31 @@ class AssemblerX86Shared : public AssemblerShared
         masm.jumpTablePointer(-1);
         label->bind(masm.size());
     }
-    void cmovz(const Operand& src, Register dest) {
+    void cmovCCl(Condition cond, const Operand& src, Register dest) {
+        X86Encoding::Condition cc = static_cast<X86Encoding::Condition>(cond);
         switch (src.kind()) {
           case Operand::REG:
-            masm.cmovz_rr(src.reg(), dest.encoding());
+            masm.cmovCCl_rr(cc, src.reg(), dest.encoding());
             break;
           case Operand::MEM_REG_DISP:
-            masm.cmovz_mr(src.disp(), src.base(), dest.encoding());
+            masm.cmovCCl_mr(cc, src.disp(), src.base(), dest.encoding());
             break;
           case Operand::MEM_SCALE:
-            masm.cmovz_mr(src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
+            masm.cmovCCl_mr(cc, src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");
         }
+    }
+    void cmovCCl(Condition cond, Register src, Register dest) {
+        X86Encoding::Condition cc = static_cast<X86Encoding::Condition>(cond);
+        masm.cmovCCl_rr(cc, src.encoding(), dest.encoding());
+    }
+    void cmovzl(const Operand& src, Register dest) {
+        cmovCCl(Condition::Zero, src, dest);
+    }
+    void cmovnzl(const Operand& src, Register dest) {
+        cmovCCl(Condition::NonZero, src, dest);
     }
     void movl(Imm32 imm32, Register dest) {
         masm.movl_i32r(imm32.value, dest.encoding());
@@ -922,12 +933,12 @@ class AssemblerX86Shared : public AssemblerShared
     void j(Condition cond, RepatchLabel* label) { jSrc(cond, label); }
     void jmp(RepatchLabel* label) { jmpSrc(label); }
 
-    void j(Condition cond, wasm::TrapDesc target) {
+    void j(Condition cond, wasm::OldTrapDesc target) {
         Label l;
         j(cond, &l);
         bindLater(&l, target);
     }
-    void jmp(wasm::TrapDesc target) {
+    void jmp(wasm::OldTrapDesc target) {
         Label l;
         jmp(&l);
         bindLater(&l, target);
@@ -963,11 +974,11 @@ class AssemblerX86Shared : public AssemblerShared
         }
         label->bind(dst.offset());
     }
-    void bindLater(Label* label, wasm::TrapDesc target) {
+    void bindLater(Label* label, wasm::OldTrapDesc target) {
         if (label->used()) {
             JmpSrc jmp(label->offset());
             do {
-                append(wasm::TrapSite(target, jmp.offset()));
+                append(wasm::OldTrapSite(target, jmp.offset()));
             } while (masm.nextJump(jmp, &jmp));
         }
         label->reset();
@@ -1100,6 +1111,11 @@ class AssemblerX86Shared : public AssemblerShared
 
     void breakpoint() {
         masm.int3();
+    }
+    CodeOffset ud2() {
+        CodeOffset off(masm.currentOffset());
+        masm.ud2();
+        return off;
     }
 
     static bool HasSSE2() { return CPUInfo::IsSSE2Present(); }
@@ -1999,6 +2015,21 @@ class AssemblerX86Shared : public AssemblerShared
             break;
           case Operand::MEM_SCALE:
             masm.cmpxchgl(src.encoding(), mem.disp(), mem.base(), mem.index(), mem.scale());
+            break;
+          default:
+            MOZ_CRASH("unexpected operand kind");
+        }
+    }
+    void lock_cmpxchg8b(Register srcHi, Register srcLo, Register newHi, Register newLo, const Operand& mem) {
+        masm.prefix_lock();
+        switch (mem.kind()) {
+          case Operand::MEM_REG_DISP:
+            masm.cmpxchg8b(srcHi.encoding(), srcLo.encoding(), newHi.encoding(), newLo.encoding(),
+                           mem.disp(), mem.base());
+            break;
+          case Operand::MEM_SCALE:
+            masm.cmpxchg8b(srcHi.encoding(), srcLo.encoding(), newHi.encoding(), newLo.encoding(),
+                           mem.disp(), mem.base(), mem.index(), mem.scale());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");

@@ -7,7 +7,7 @@ job-defaults:
         script: awsy_script.py
         config:
             by-test-platform:
-                windows.*/opt:
+                windows.*:
                     - awsy/taskcluster_windows_config.py
                 macosx.*/opt:
                     - awsy/macosx_config.py
@@ -16,18 +16,18 @@ job-defaults:
 
 awsy:
     description: "Are we slim yet"
-    treeherder-symbol: tc-SY(sy)
+    treeherder-symbol: SY(sy)
     run-on-projects:
         by-test-platform:
-            .*-devedition/.*: [] # don't run on devedition
+            .*-devedition/.*: []  # don't run on devedition
             default: built-projects
 
 awsy-stylo-disabled:
     description: "Are we slim yet for Stylo disabled"
-    treeherder-symbol: tc-SYsd(sy)
+    treeherder-symbol: SYsd(sy)
     run-on-projects:
         by-test-platform:
-            .*-devedition/.*: [] # don't run on devedition
+            .*-devedition/.*: []  # don't run on devedition
             default: built-projects
     mozharness:
         extra-options:
@@ -35,10 +35,10 @@ awsy-stylo-disabled:
 
 awsy-stylo-sequential:
     description: "Are we slim yet for Stylo sequential"
-    treeherder-symbol: tc-SYss(sy)
+    treeherder-symbol: SYss(sy)
     run-on-projects:
         by-test-platform:
-            .*-devedition/.*: [] # don't run on devedition
+            .*-devedition/.*: []  # don't run on devedition
             default: built-projects
     mozharness:
         extra-options:

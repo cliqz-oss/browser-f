@@ -48,10 +48,12 @@ HTMLVideoElement::HTMLVideoElement(already_AddRefed<NodeInfo>& aNodeInfo)
   : HTMLMediaElement(aNodeInfo)
   , mIsOrientationLocked(false)
 {
+  DecoderDoctorLogger::LogConstruction(this);
 }
 
 HTMLVideoElement::~HTMLVideoElement()
 {
+  DecoderDoctorLogger::LogDestruction(this);
 }
 
 nsresult HTMLVideoElement::GetVideoSize(nsIntSize* size)
@@ -86,6 +88,7 @@ bool
 HTMLVideoElement::ParseAttribute(int32_t aNamespaceID,
                                  nsAtom* aAttribute,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
    if (aAttribute == nsGkAtoms::width || aAttribute == nsGkAtoms::height) {
@@ -93,7 +96,7 @@ HTMLVideoElement::ParseAttribute(int32_t aNamespaceID,
    }
 
    return HTMLMediaElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                           aResult);
+                                           aMaybeScriptedPrincipal, aResult);
 }
 
 void

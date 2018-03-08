@@ -27,6 +27,7 @@ class nsIParser;
 namespace mozilla {
 namespace dom {
 class NodeInfo;
+class ProcessingInstruction;
 } // namespace dom
 } // namespace mozilla
 
@@ -99,7 +100,7 @@ protected:
   // stylesheets are all done loading.
   virtual void MaybeStartLayout(bool aIgnorePendingSheets);
 
-  virtual nsresult AddAttributes(const char16_t** aNode, nsIContent* aContent);
+  virtual nsresult AddAttributes(const char16_t** aNode, Element* aElement);
   nsresult AddText(const char16_t* aString, int32_t aLength);
 
   virtual bool OnOpenContainer(const char16_t **aAtts,
@@ -145,13 +146,29 @@ protected:
   }
 
   // nsContentSink override
-  virtual nsresult ProcessStyleLink(nsIContent* aElement,
-                                    const nsAString& aHref,
-                                    bool aAlternate,
-                                    const nsAString& aTitle,
-                                    const nsAString& aType,
-                                    const nsAString& aMedia,
-                                    const nsAString& aReferrerPolicy) override;
+  virtual nsresult ProcessStyleLinkFromHeader(
+    const nsAString& aHref,
+    bool aAlternate,
+    const nsAString& aTitle,
+    const nsAString& aType,
+    const nsAString& aMedia,
+    const nsAString& aReferrerPolicy) override;
+
+  // Try to handle an XSLT style link.  If NS_OK is returned and aWasXSLT is not
+  // null, *aWasXSLT will be set to whether we processed this link as XSLT.
+  //
+  // aProcessingInstruction can be null if this information comes from a Link
+  // header; otherwise it will be the xml-styleshset XML PI that the loading
+  // information comes from.
+  virtual nsresult MaybeProcessXSLTLink(
+    mozilla::dom::ProcessingInstruction* aProcessingInstruction,
+    const nsAString& aHref,
+    bool aAlternate,
+    const nsAString& aTitle,
+    const nsAString& aType,
+    const nsAString& aMedia,
+    const nsAString& aReferrerPolicy,
+    bool* aWasXSLT = nullptr);
 
   nsresult LoadXSLStyleSheet(nsIURI* aUrl);
 

@@ -19,12 +19,14 @@ extern crate webrender;
 mod boilerplate;
 
 use boilerplate::{Example, HandyDandyRectBuilder};
-use euclid::Radians;
+use euclid::Angle;
 use webrender::api::*;
 
 struct App {
     property_key: PropertyBindingKey<LayoutTransform>,
+    opacity_key: PropertyBindingKey<f32>,
     transform: LayoutTransform,
+    opacity: f32,
 }
 
 impl Example for App {
@@ -33,7 +35,7 @@ impl Example for App {
         _api: &RenderApi,
         builder: &mut DisplayListBuilder,
         _resources: &mut ResourceUpdates,
-        _layout_size: LayoutSize,
+        _framebuffer_size: DeviceUintSize,
         _pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
@@ -49,6 +51,10 @@ impl Example for App {
             .. LayoutPrimitiveInfo::new(bounds)
         };
 
+        let filters = vec![
+            FilterOp::Opacity(PropertyBinding::Binding(self.opacity_key), self.opacity),
+        ];
+
         builder.push_stacking_context(
             &info,
             ScrollPolicy::Scrollable,
@@ -56,11 +62,11 @@ impl Example for App {
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
-            Vec::new(),
+            filters,
         );
 
         // Fill it with a white rect
-        builder.push_rect(&info, ColorF::new(1.0, 1.0, 1.0, 1.0));
+        builder.push_rect(&info, ColorF::new(0.0, 1.0, 0.0, 1.0));
 
         builder.pop_stacking_context();
     }
@@ -68,33 +74,43 @@ impl Example for App {
     fn on_event(&mut self, event: glutin::Event, api: &RenderApi, document_id: DocumentId) -> bool {
         match event {
             glutin::Event::KeyboardInput(glutin::ElementState::Pressed, _, Some(key)) => {
-                let (offset_x, offset_y, angle) = match key {
-                    glutin::VirtualKeyCode::Down => (0.0, 10.0, 0.0),
-                    glutin::VirtualKeyCode::Up => (0.0, -10.0, 0.0),
-                    glutin::VirtualKeyCode::Right => (10.0, 0.0, 0.0),
-                    glutin::VirtualKeyCode::Left => (-10.0, 0.0, 0.0),
-                    glutin::VirtualKeyCode::Comma => (0.0, 0.0, 0.1),
-                    glutin::VirtualKeyCode::Period => (0.0, 0.0, -0.1),
+                let (offset_x, offset_y, angle, delta_opacity) = match key {
+                    glutin::VirtualKeyCode::Down => (0.0, 10.0, 0.0, 0.0),
+                    glutin::VirtualKeyCode::Up => (0.0, -10.0, 0.0, 0.0),
+                    glutin::VirtualKeyCode::Right => (10.0, 0.0, 0.0, 0.0),
+                    glutin::VirtualKeyCode::Left => (-10.0, 0.0, 0.0, 0.0),
+                    glutin::VirtualKeyCode::Comma => (0.0, 0.0, 0.1, 0.0),
+                    glutin::VirtualKeyCode::Period => (0.0, 0.0, -0.1, 0.0),
+                    glutin::VirtualKeyCode::Z => (0.0, 0.0, 0.0, -0.1),
+                    glutin::VirtualKeyCode::X => (0.0, 0.0, 0.0, 0.1),
                     _ => return false,
                 };
                 // Update the transform based on the keyboard input and push it to
                 // webrender using the generate_frame API. This will recomposite with
                 // the updated transform.
+                self.opacity += delta_opacity;
                 let new_transform = self.transform
-                    .pre_rotate(0.0, 0.0, 1.0, Radians::new(angle))
+                    .pre_rotate(0.0, 0.0, 1.0, Angle::radians(angle))
                     .post_translate(LayoutVector3D::new(offset_x, offset_y, 0.0));
-                api.generate_frame(
-                    document_id,
-                    Some(DynamicProperties {
+                let mut txn = Transaction::new();
+                txn.update_dynamic_properties(
+                    DynamicProperties {
                         transforms: vec![
                             PropertyValue {
                                 key: self.property_key,
                                 value: new_transform,
                             },
                         ],
-                        floats: vec![],
-                    }),
+                        floats: vec![
+                            PropertyValue {
+                                key: self.opacity_key,
+                                value: self.opacity,
+                            }
+                        ],
+                    },
                 );
+                txn.generate_frame();
+                api.send_transaction(document_id, txn);
                 self.transform = new_transform;
             }
             _ => (),
@@ -107,7 +123,9 @@ impl Example for App {
 fn main() {
     let mut app = App {
         property_key: PropertyBindingKey::new(42), // arbitrary magic number
+        opacity_key: PropertyBindingKey::new(43),
         transform: LayoutTransform::create_translation(0.0, 0.0, 0.0),
+        opacity: 0.5,
     };
     boilerplate::main_wrapper(&mut app, None);
 }

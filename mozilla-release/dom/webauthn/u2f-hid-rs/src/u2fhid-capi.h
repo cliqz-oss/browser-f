@@ -15,6 +15,14 @@ const uint8_t U2F_RESBUF_ID_REGISTRATION = 0;
 const uint8_t U2F_RESBUF_ID_KEYHANDLE = 1;
 const uint8_t U2F_RESBUF_ID_SIGNATURE = 2;
 
+const uint64_t U2F_FLAG_REQUIRE_RESIDENT_KEY = 1;
+const uint64_t U2F_FLAG_REQUIRE_USER_VERIFICATION = 2;
+const uint64_t U2F_FLAG_REQUIRE_PLATFORM_ATTACHMENT = 4;
+
+const uint8_t U2F_AUTHENTICATOR_TRANSPORT_USB = 1;
+const uint8_t U2F_AUTHENTICATOR_TRANSPORT_NFC = 2;
+const uint8_t U2F_AUTHENTICATOR_TRANSPORT_BLE = 4;
+
 // NOTE: Preconditions
 // * All rust_u2f_mgr* pointers must refer to pointers which are returned
 //   by rust_u2f_mgr_new, and must be freed with rust_u2f_mgr_free.
@@ -42,6 +50,7 @@ rust_u2f_manager* rust_u2f_mgr_new();
 /* unsafe */ void rust_u2f_mgr_free(rust_u2f_manager* mgr);
 
 uint64_t rust_u2f_mgr_register(rust_u2f_manager* mgr,
+                               uint64_t flags,
                                uint64_t timeout,
                                rust_u2f_callback,
                                const uint8_t* challenge_ptr,
@@ -51,6 +60,7 @@ uint64_t rust_u2f_mgr_register(rust_u2f_manager* mgr,
                                const rust_u2f_key_handles* khs);
 
 uint64_t rust_u2f_mgr_sign(rust_u2f_manager* mgr,
+                           uint64_t flags,
                            uint64_t timeout,
                            rust_u2f_callback,
                            const uint8_t* challenge_ptr,
@@ -67,7 +77,8 @@ uint64_t rust_u2f_mgr_cancel(rust_u2f_manager* mgr);
 rust_u2f_key_handles* rust_u2f_khs_new();
 void rust_u2f_khs_add(rust_u2f_key_handles* khs,
                       const uint8_t* key_handle,
-                      size_t key_handle_len);
+                      size_t key_handle_len,
+                      uint8_t transports);
 /* unsafe */ void rust_u2f_khs_free(rust_u2f_key_handles* khs);
 
 

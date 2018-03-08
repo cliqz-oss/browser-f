@@ -10,11 +10,14 @@ const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
 const CUST_TAB = "chrome://browser/skin/customize.svg";
 const PREFS_TAB = "chrome://browser/skin/settings.svg";
-const DEFAULT_FAVICON_TAB = `data:text/html,<meta charset="utf-8">
-<title>No favicon</title>`;
+const DEFAULT_FAVICON_TAB = `data:text/html,<meta%20charset="utf-8"><title>No%20favicon</title>`;
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Timer.jsm");
+Cu.import("resource://testing-common/TestUtils.jsm");
+Cu.import("resource://testing-common/BrowserTestUtils.jsm");
+
+Cu.importGlobalProperties(["InspectorUtils"]);
 
 this.Tabs = {
   init(libDir) {},
@@ -29,6 +32,7 @@ this.Tabs = {
         await new Promise((resolve, reject) => {
           setTimeout(resolve, 3000);
         });
+        await allTabTitlesDisplayed(browserWindow);
       },
     },
 
@@ -49,13 +53,15 @@ this.Tabs = {
         hoverTab(browserWindow.gBrowser.tabs[2]);
         // also hover the new tab button
         let newTabButton = browserWindow.document.getAnonymousElementByAttribute(browserWindow.
-                           gBrowser.tabContainer, "class", "tabs-newtab-button");
+                           gBrowser.tabContainer, "anonid", "tabs-newtab-button");
         hoverTab(newTabButton);
         browserWindow.gBrowser.tabs[browserWindow.gBrowser.tabs.length - 1].
                       setAttribute("beforehovered", true);
+
         await new Promise((resolve, reject) => {
           setTimeout(resolve, 3000);
         });
+        await allTabTitlesDisplayed(browserWindow);
       },
     },
 
@@ -105,9 +111,16 @@ this.Tabs = {
         browserWindow.gBrowser.pinTab(browserWindow.gBrowser.tabs[2]);
         browserWindow.gBrowser.selectTabAtIndex(3);
         hoverTab(browserWindow.gBrowser.tabs[5]);
+
         await new Promise((resolve, reject) => {
           setTimeout(resolve, 3000);
         });
+        // Make sure the tabstrip is scrolled all the way to the left.
+        let scrolled = BrowserTestUtils.waitForEvent(browserWindow.gBrowser.tabContainer, "scrollend");
+        browserWindow.gBrowser.tabContainer.arrowScrollbox.scrollByIndex(-100);
+        await scrolled;
+
+        await allTabTitlesDisplayed(browserWindow);
       },
     },
   },
@@ -115,6 +128,35 @@ this.Tabs = {
 
 
 /* helpers */
+
+async function allTabTitlesDisplayed(browserWindow) {
+  let specToTitleMap = {
+    "about:home": "New Tab",
+    "about:newtab": "New Tab",
+    "about:addons": "Add-ons Manager",
+    "about:privatebrowsing": "Open a private window?"
+  };
+  specToTitleMap[PREFS_TAB] = "browser/skin/settings.svg";
+  specToTitleMap[CUST_TAB] = "browser/skin/customize.svg";
+  specToTitleMap[DEFAULT_FAVICON_TAB] = "No favicon";
+
+  let tabTitlePromises = [];
+  for (let tab of browserWindow.gBrowser.tabs) {
+    function tabTitleLoaded(spec) {
+      return () => {
+        return spec ? tab.label == specToTitleMap[spec] : false;
+      };
+    }
+    let spec = tab.linkedBrowser &&
+               tab.linkedBrowser.documentURI &&
+               tab.linkedBrowser.documentURI.spec;
+    let promise =
+      TestUtils.waitForCondition(tabTitleLoaded(spec), `Tab (${spec}) should be showing "${specToTitleMap[spec]}". Got "${tab.label}"`);
+    tabTitlePromises.push(promise);
+  }
+
+  return Promise.all(tabTitlePromises);
+}
 
 function fiveTabsHelper() {
   // some with no favicon and some with. Selected tab in middle.
@@ -150,11 +192,10 @@ function closeAllButOneTab(url = "about:blank") {
 }
 
 function hoverTab(tab, hover = true) {
-  const inIDOMUtils = Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils);
   if (hover) {
-    inIDOMUtils.addPseudoClassLock(tab, ":hover");
+    InspectorUtils.addPseudoClassLock(tab, ":hover");
   } else {
-    inIDOMUtils.clearPseudoClassLocks(tab);
+    InspectorUtils.clearPseudoClassLocks(tab);
   }
   // XXX TODO: this isn't necessarily testing what we ship
   if (tab.nextElementSibling)

@@ -97,6 +97,7 @@ public:
                               bool aMerge) override;
   NS_IMETHOD SetEmptyRequestHeader(const nsACString& aHeader) override;
   NS_IMETHOD RedirectTo(nsIURI *newURI) override;
+  NS_IMETHOD UpgradeToSecure() override;
   NS_IMETHOD GetProtocolVersion(nsACString& aProtocolVersion) override;
   // nsIHttpChannelInternal
   NS_IMETHOD SetupFallbackChannel(const char *aFallbackKey) override;
@@ -210,7 +211,8 @@ private:
                      InterceptStreamListener* aListener,
                      nsIInputStream* aInput,
                      nsIInterceptedBodyCallback* aCallback,
-                     nsAutoPtr<nsHttpResponseHead>& aHead);
+                     nsAutoPtr<nsHttpResponseHead>& aHead,
+                     nsICacheInfoChannel* aCacheInfo);
 
     NS_IMETHOD Run() override;
     void OverrideWithSynthesizedResponse();
@@ -221,6 +223,7 @@ private:
     nsCOMPtr<nsIInputStream> mInput;
     nsCOMPtr<nsIInterceptedBodyCallback> mCallback;
     nsAutoPtr<nsHttpResponseHead> mHead;
+    nsCOMPtr<nsICacheInfoChannel> mSynthesizedCacheInfo;
   };
 
   // Sets the event target for future IPC messages. Messages will either be
@@ -242,7 +245,8 @@ private:
                                  const uint32_t& aCount,
                                  const nsCString& aData);
   void ProcessOnStopRequest(const nsresult& aStatusCode,
-                            const ResourceTimingStruct& aTiming);
+                            const ResourceTimingStruct& aTiming,
+                            const nsHttpHeaderArray& aResponseTrailers);
   void ProcessOnProgress(const int64_t& aProgress, const int64_t& aProgressMax);
   void ProcessOnStatus(const nsresult& aStatus);
   void ProcessFlushedForDiversion();
@@ -272,10 +276,12 @@ private:
   void OverrideWithSynthesizedResponse(nsAutoPtr<nsHttpResponseHead>& aResponseHead,
                                        nsIInputStream* aSynthesizedInput,
                                        nsIInterceptedBodyCallback* aSynthesizedCallback,
-                                       InterceptStreamListener* aStreamListener);
+                                       InterceptStreamListener* aStreamListener,
+                                       nsICacheInfoChannel* aCacheInfoChannel);
 
   void ForceIntercepted(nsIInputStream* aSynthesizedInput,
-                        nsIInterceptedBodyCallback* aSynthesizedCallback);
+                        nsIInterceptedBodyCallback* aSynthesizedCallback,
+                        nsICacheInfoChannel* aCacheInfo);
 
   // Try send DeletingChannel message to parent side. Dispatch an async task to
   // main thread if invoking on non-main thread.
@@ -301,6 +307,8 @@ private:
   int32_t      mCacheFetchCount;
   uint32_t     mCacheExpirationTime;
   nsCString    mCachedCharset;
+
+  nsCOMPtr<nsICacheInfoChannel> mSynthesizedCacheInfo;
 
   nsCString mProtocolVersion;
 
@@ -411,7 +419,9 @@ private:
                           const uint64_t& offset,
                           const uint32_t& count,
                           const nsCString& data);
-  void OnStopRequest(const nsresult& channelStatus, const ResourceTimingStruct& timing);
+  void OnStopRequest(const nsresult& channelStatus,
+                     const ResourceTimingStruct& timing,
+                     const nsHttpHeaderArray& aResponseTrailers);
   void MaybeDivertOnStop(const nsresult& aChannelStatus);
   void OnProgress(const int64_t& progress, const int64_t& progressMax);
   void OnStatus(const nsresult& status);
@@ -435,7 +445,8 @@ private:
 
   // Perform a redirection without communicating with the parent process at all.
   void BeginNonIPCRedirect(nsIURI* responseURI,
-                           const nsHttpResponseHead* responseHead);
+                           const nsHttpResponseHead* responseHead,
+                           bool responseRedirected);
 
   // Override the default security info pointer during a non-IPC redirection.
   void OverrideSecurityInfoForNonIPCRedirect(nsISupports* securityInfo);

@@ -234,7 +234,7 @@ nsImageBoxFrame::UpdateImage()
 
   // get the new image src
   nsAutoString src;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::src, src);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::src, src);
   mUseSrcAttr = !src.IsEmpty();
   if (mUseSrcAttr) {
     nsIDocument* doc = mContent->GetComposedDoc();
@@ -305,10 +305,11 @@ nsImageBoxFrame::UpdateImage()
 void
 nsImageBoxFrame::UpdateLoadFlags()
 {
-  static nsIContent::AttrValuesArray strings[] =
+  static Element::AttrValuesArray strings[] =
     {&nsGkAtoms::always, &nsGkAtoms::never, nullptr};
-  switch (mContent->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::validate,
-                                    strings, eCaseMatters)) {
+  switch (mContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
+                                                 nsGkAtoms::validate, strings,
+                                                 eCaseMatters)) {
     case 0:
       mLoadFlags = nsIRequest::VALIDATE_ALWAYS;
       break;
@@ -344,8 +345,8 @@ nsImageBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   DisplayListClipState::AutoClipContainingBlockDescendantsToContentBox
     clip(aBuilder, this, clipFlags);
 
-  nsDisplayList list(aBuilder);
-  list.AppendNewToTop(
+  nsDisplayList list;
+  list.AppendToTop(
     new (aBuilder) nsDisplayXULImage(aBuilder, this));
 
   CreateOwnLayerIfNeeded(aBuilder, &list);
@@ -355,13 +356,13 @@ nsImageBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 already_AddRefed<imgIContainer>
 nsImageBoxFrame::GetImageContainerForPainting(const nsPoint& aPt,
-                                              DrawResult& aDrawResult,
+                                              ImgDrawResult& aDrawResult,
                                               Maybe<nsPoint>& aAnchorPoint,
                                               nsRect& aDest)
 {
   if (!mImageRequest) {
     // This probably means we're drawn by a native theme.
-    aDrawResult = DrawResult::SUCCESS;
+    aDrawResult = ImgDrawResult::SUCCESS;
     return nullptr;
   }
 
@@ -369,7 +370,7 @@ nsImageBoxFrame::GetImageContainerForPainting(const nsPoint& aPt,
   uint32_t imgStatus;
   if (!NS_SUCCEEDED(mImageRequest->GetImageStatus(&imgStatus)) ||
       !(imgStatus & imgIRequest::STATUS_SIZE_AVAILABLE)) {
-    aDrawResult = DrawResult::NOT_READY;
+    aDrawResult = ImgDrawResult::NOT_READY;
     return nullptr;
   }
 
@@ -377,21 +378,21 @@ nsImageBoxFrame::GetImageContainerForPainting(const nsPoint& aPt,
   mImageRequest->GetImage(getter_AddRefs(imgCon));
 
   if (!imgCon) {
-    aDrawResult = DrawResult::NOT_READY;
+    aDrawResult = ImgDrawResult::NOT_READY;
     return nullptr;
   }
 
   aDest = GetDestRect(aPt, aAnchorPoint);
-  aDrawResult = DrawResult::SUCCESS;
+  aDrawResult = ImgDrawResult::SUCCESS;
   return imgCon.forget();
 }
 
-DrawResult
+ImgDrawResult
 nsImageBoxFrame::PaintImage(gfxContext& aRenderingContext,
                             const nsRect& aDirtyRect, nsPoint aPt,
                             uint32_t aFlags)
 {
-  DrawResult result;
+  ImgDrawResult result;
   Maybe<nsPoint> anchorPoint;
   nsRect dest;
   nsCOMPtr<imgIContainer> imgCon = GetImageContainerForPainting(aPt, result,
@@ -405,7 +406,7 @@ nsImageBoxFrame::PaintImage(gfxContext& aRenderingContext,
   // XXX(seth): Can this actually happen anymore?
   nsRect dirty;
   if (!dirty.IntersectRect(aDirtyRect, dest)) {
-    return DrawResult::TEMPORARY_ERROR;
+    return ImgDrawResult::TEMPORARY_ERROR;
   }
 
   bool hasSubRect = !mUseSrcAttr && (mSubRect.width > 0 || mSubRect.height > 0);
@@ -422,7 +423,7 @@ nsImageBoxFrame::PaintImage(gfxContext& aRenderingContext,
            hasSubRect ? &mSubRect : nullptr);
 }
 
-DrawResult
+ImgDrawResult
 nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
                                          mozilla::wr::IpcResourceUpdateQueue& aResources,
                                          const StackingContextHelper& aSc,
@@ -431,7 +432,7 @@ nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
                                          nsPoint aPt,
                                          uint32_t aFlags)
 {
-  DrawResult result;
+  ImgDrawResult result;
   Maybe<nsPoint> anchorPoint;
   nsRect dest;
   nsCOMPtr<imgIContainer> imgCon = GetImageContainerForPainting(aPt, result,
@@ -441,15 +442,26 @@ nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
     return result;
   }
 
-  uint32_t containerFlags = imgIContainer::FLAG_NONE;
+  uint32_t containerFlags = imgIContainer::FLAG_ASYNC_NOTIFY;
+  if (aFlags & nsImageRenderer::FLAG_PAINTING_TO_WINDOW) {
+    containerFlags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
+  }
   if (aFlags & nsImageRenderer::FLAG_SYNC_DECODE_IMAGES) {
     containerFlags |= imgIContainer::FLAG_SYNC_DECODE;
   }
+
+  const int32_t appUnitsPerDevPixel = PresContext()->AppUnitsPerDevPixel();
+  LayoutDeviceRect fillRect = LayoutDeviceRect::FromAppUnits(dest,
+                                                             appUnitsPerDevPixel);
+  Maybe<SVGImageContext> svgContext;
+  gfx::IntSize decodeSize =
+    nsLayoutUtils::ComputeImageContainerDrawingParameters(imgCon, aItem->Frame(), fillRect,
+                                                          aSc, containerFlags, svgContext);
   RefPtr<layers::ImageContainer> container =
-    imgCon->GetImageContainer(aManager, containerFlags);
+    imgCon->GetImageContainerAtSize(aManager, decodeSize, svgContext, containerFlags);
   if (!container) {
     NS_WARNING("Failed to get image container");
-    return DrawResult::NOT_READY;
+    return ImgDrawResult::NOT_READY;
   }
 
   gfx::IntSize size;
@@ -457,11 +469,8 @@ nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
                                                                       aBuilder, aResources,
                                                                       aSc, size, Nothing());
   if (key.isNothing()) {
-    return DrawResult::BAD_IMAGE;
+    return ImgDrawResult::BAD_IMAGE;
   }
-  const int32_t appUnitsPerDevPixel = PresContext()->AppUnitsPerDevPixel();
-  LayoutDeviceRect fillRect = LayoutDeviceRect::FromAppUnits(dest,
-                                                             appUnitsPerDevPixel);
   wr::LayoutRect fill = aSc.ToRelativeLayoutRect(fillRect);
 
   LayoutDeviceSize gapSize(0, 0);
@@ -470,7 +479,7 @@ nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
                      wr::ToLayoutSize(fillRect.Size()), wr::ToLayoutSize(gapSize),
                      wr::ToImageRendering(sampleFilter), key.value());
 
-  return DrawResult::SUCCESS;
+  return ImgDrawResult::SUCCESS;
 }
 
 nsRect
@@ -531,7 +540,7 @@ void nsDisplayXULImage::Paint(nsDisplayListBuilder* aBuilder,
   if (aBuilder->IsPaintingToWindow())
     flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
 
-  DrawResult result = static_cast<nsImageBoxFrame*>(mFrame)->
+  ImgDrawResult result = static_cast<nsImageBoxFrame*>(mFrame)->
     PaintImage(*aCtx, mVisibleRect, ToReferenceFrame(), flags);
 
   nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, result);
@@ -564,8 +573,12 @@ nsDisplayXULImage::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBui
                                            mozilla::layers::WebRenderLayerManager* aManager,
                                            nsDisplayListBuilder* aDisplayListBuilder)
 {
-  ContainerLayerParameters parameter;
-  if (GetLayerState(aDisplayListBuilder, aManager, parameter) != LAYER_ACTIVE) {
+  nsImageBoxFrame* imageFrame = static_cast<nsImageBoxFrame*>(mFrame);
+  if (!imageFrame->CanOptimizeToImageLayer()) {
+    return false;
+  }
+
+  if (!imageFrame->mImageRequest) {
     return false;
   }
 
@@ -577,7 +590,7 @@ nsDisplayXULImage::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBui
     flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
   }
 
-  DrawResult result = static_cast<nsImageBoxFrame*>(mFrame)->
+  ImgDrawResult result = imageFrame->
     CreateWebRenderCommands(aBuilder, aResources, aSc, aManager, this, ToReferenceFrame(), flags);
 
   nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, result);

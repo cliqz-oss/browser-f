@@ -21,7 +21,7 @@ LOCAL_INCLUDES += [
     '/toolkit/xre',
 ]
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     # Always enter a Windows program through wmain, whether or not we're
     # a console application.
     WIN32_EXE_LDFLAGS += ['-ENTRY:wmainCRTStartup']
@@ -49,9 +49,6 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     DELAYLOAD_DLLS += [
         'xul.dll',
     ]
-
-if CONFIG['OS_TARGET'] == 'Android':
-    LDFLAGS += ['-pie']
 
 CFLAGS += CONFIG['TK_CFLAGS']
 CXXFLAGS += CONFIG['TK_CFLAGS']

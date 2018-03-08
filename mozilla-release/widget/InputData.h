@@ -244,7 +244,8 @@ public:
       MOUSE_DRAG_START,
       MOUSE_DRAG_END,
       MOUSE_WIDGET_ENTER,
-      MOUSE_WIDGET_EXIT
+      MOUSE_WIDGET_EXIT,
+      MOUSE_HITTEST
   ));
 
   MOZ_DEFINE_ENUM_AT_CLASS_SCOPE(
@@ -385,6 +386,14 @@ public:
   // confirmed target.
   // This is used by events that can result in a swipe instead of a scroll.
   bool mRequiresContentResponseIfCannotScrollHorizontallyInStartDirection;
+
+  // This is used by APZ to communicate to the macOS widget code whether
+  // the overscroll-behavior of the scroll frame handling this swipe allows
+  // non-local overscroll behaviors in the horizontal direction (such as
+  // swipe navigation).
+  bool mOverscrollBehaviorAllowsSwipe;
+
+  // XXX: If adding any more bools, switch to using bitfields instead.
 };
 
 /**

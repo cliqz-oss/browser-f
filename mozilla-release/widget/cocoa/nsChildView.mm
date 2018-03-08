@@ -19,6 +19,7 @@
 #include "mozilla/TouchEvents.h"
 
 #include "nsArrayUtils.h"
+#include "nsExceptionHandler.h"
 #include "nsObjCExceptions.h"
 #include "nsCOMPtr.h"
 #include "nsThreadUtils.h"
@@ -82,9 +83,6 @@
 #ifdef ACCESSIBILITY
 #include "nsAccessibilityService.h"
 #include "mozilla/a11y/Platform.h"
-#endif
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
 #endif
 
 #include "mozilla/Preferences.h"
@@ -2484,9 +2482,10 @@ FindTitlebarBottom(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometries,
                    int32_t aWindowWidth)
 {
   int32_t titlebarBottom = 0;
-  for (uint32_t i = 0; i < aThemeGeometries.Length(); ++i) {
-    const nsIWidget::ThemeGeometry& g = aThemeGeometries[i];
-    if ((g.mType == nsNativeThemeCocoa::eThemeGeometryTypeTitlebar) &&
+  for (auto& g : aThemeGeometries) {
+    if ((g.mType == nsNativeThemeCocoa::eThemeGeometryTypeTitlebar ||
+         g.mType == nsNativeThemeCocoa::eThemeGeometryTypeVibrantTitlebarLight ||
+         g.mType == nsNativeThemeCocoa::eThemeGeometryTypeVibrantTitlebarDark) &&
         g.mRect.X() <= 0 &&
         g.mRect.XMost() >= aWindowWidth &&
         g.mRect.Y() <= 0) {
@@ -2560,15 +2559,43 @@ nsChildView::UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometri
   [win placeFullScreenButton:[mView convertRect:DevPixelsToCocoaPoints(fullScreenButtonRect) toView:nil]];
 }
 
+static Maybe<VibrancyType>
+ThemeGeometryTypeToVibrancyType(nsITheme::ThemeGeometryType aThemeGeometryType)
+{
+  switch (aThemeGeometryType) {
+    case nsNativeThemeCocoa::eThemeGeometryTypeVibrancyLight:
+    case nsNativeThemeCocoa::eThemeGeometryTypeVibrantTitlebarLight:
+      return Some(VibrancyType::LIGHT);
+    case nsNativeThemeCocoa::eThemeGeometryTypeVibrancyDark:
+    case nsNativeThemeCocoa::eThemeGeometryTypeVibrantTitlebarDark:
+      return Some(VibrancyType::DARK);
+    case nsNativeThemeCocoa::eThemeGeometryTypeSheet:
+      return Some(VibrancyType::SHEET);
+    case nsNativeThemeCocoa::eThemeGeometryTypeTooltip:
+      return Some(VibrancyType::TOOLTIP);
+    case nsNativeThemeCocoa::eThemeGeometryTypeMenu:
+      return Some(VibrancyType::MENU);
+    case nsNativeThemeCocoa::eThemeGeometryTypeHighlightedMenuItem:
+      return Some(VibrancyType::HIGHLIGHTED_MENUITEM);
+    case nsNativeThemeCocoa::eThemeGeometryTypeSourceList:
+      return Some(VibrancyType::SOURCE_LIST);
+    case nsNativeThemeCocoa::eThemeGeometryTypeSourceListSelection:
+      return Some(VibrancyType::SOURCE_LIST_SELECTION);
+    case nsNativeThemeCocoa::eThemeGeometryTypeActiveSourceListSelection:
+      return Some(VibrancyType::ACTIVE_SOURCE_LIST_SELECTION);
+    default:
+      return Nothing();
+  }
+}
+
 static LayoutDeviceIntRegion
-GatherThemeGeometryRegion(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometries,
-                          nsITheme::ThemeGeometryType aThemeGeometryType)
+GatherVibrantRegion(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometries,
+                    VibrancyType aVibrancyType)
 {
   LayoutDeviceIntRegion region;
-  for (size_t i = 0; i < aThemeGeometries.Length(); ++i) {
-    const nsIWidget::ThemeGeometry& g = aThemeGeometries[i];
-    if (g.mType == aThemeGeometryType) {
-      region.OrWith(g.mRect);
+  for (auto& geometry : aThemeGeometries) {
+    if (ThemeGeometryTypeToVibrancyType(geometry.mType) == Some(aVibrancyType)) {
+      region.OrWith(geometry.mRect);
     }
   }
   return region;
@@ -2604,23 +2631,23 @@ nsChildView::UpdateVibrancy(const nsTArray<ThemeGeometry>& aThemeGeometries)
   }
 
   LayoutDeviceIntRegion sheetRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeSheet);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::SHEET);
   LayoutDeviceIntRegion vibrantLightRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeVibrancyLight);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::LIGHT);
   LayoutDeviceIntRegion vibrantDarkRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeVibrancyDark);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::DARK);
   LayoutDeviceIntRegion menuRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeMenu);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::MENU);
   LayoutDeviceIntRegion tooltipRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeTooltip);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::TOOLTIP);
   LayoutDeviceIntRegion highlightedMenuItemRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeHighlightedMenuItem);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::HIGHLIGHTED_MENUITEM);
   LayoutDeviceIntRegion sourceListRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeSourceList);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::SOURCE_LIST);
   LayoutDeviceIntRegion sourceListSelectionRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeSourceListSelection);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::SOURCE_LIST_SELECTION);
   LayoutDeviceIntRegion activeSourceListSelectionRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeActiveSourceListSelection);
+    GatherVibrantRegion(aThemeGeometries, VibrancyType::ACTIVE_SOURCE_LIST_SELECTION);
 
   MakeRegionsNonOverlapping(sheetRegion, vibrantLightRegion, vibrantDarkRegion,
                             menuRegion, tooltipRegion, highlightedMenuItemRegion,
@@ -2629,14 +2656,14 @@ nsChildView::UpdateVibrancy(const nsTArray<ThemeGeometry>& aThemeGeometries)
 
   auto& vm = EnsureVibrancyManager();
   vm.UpdateVibrantRegion(VibrancyType::LIGHT, vibrantLightRegion);
-  vm.UpdateVibrantRegion(VibrancyType::TOOLTIP, tooltipRegion);
+  vm.UpdateVibrantRegion(VibrancyType::DARK, vibrantDarkRegion);
   vm.UpdateVibrantRegion(VibrancyType::MENU, menuRegion);
+  vm.UpdateVibrantRegion(VibrancyType::TOOLTIP, tooltipRegion);
   vm.UpdateVibrantRegion(VibrancyType::HIGHLIGHTED_MENUITEM, highlightedMenuItemRegion);
   vm.UpdateVibrantRegion(VibrancyType::SHEET, sheetRegion);
   vm.UpdateVibrantRegion(VibrancyType::SOURCE_LIST, sourceListRegion);
   vm.UpdateVibrantRegion(VibrancyType::SOURCE_LIST_SELECTION, sourceListSelectionRegion);
   vm.UpdateVibrantRegion(VibrancyType::ACTIVE_SOURCE_LIST_SELECTION, activeSourceListSelectionRegion);
-  vm.UpdateVibrantRegion(VibrancyType::DARK, vibrantDarkRegion);
 }
 
 void
@@ -2647,39 +2674,14 @@ nsChildView::ClearVibrantAreas()
   }
 }
 
-static VibrancyType
-ThemeGeometryTypeToVibrancyType(nsITheme::ThemeGeometryType aThemeGeometryType)
-{
-  switch (aThemeGeometryType) {
-    case nsNativeThemeCocoa::eThemeGeometryTypeVibrancyLight:
-      return VibrancyType::LIGHT;
-    case nsNativeThemeCocoa::eThemeGeometryTypeVibrancyDark:
-      return VibrancyType::DARK;
-    case nsNativeThemeCocoa::eThemeGeometryTypeTooltip:
-      return VibrancyType::TOOLTIP;
-    case nsNativeThemeCocoa::eThemeGeometryTypeMenu:
-      return VibrancyType::MENU;
-    case nsNativeThemeCocoa::eThemeGeometryTypeHighlightedMenuItem:
-      return VibrancyType::HIGHLIGHTED_MENUITEM;
-    case nsNativeThemeCocoa::eThemeGeometryTypeSheet:
-      return VibrancyType::SHEET;
-    case nsNativeThemeCocoa::eThemeGeometryTypeSourceList:
-      return VibrancyType::SOURCE_LIST;
-    case nsNativeThemeCocoa::eThemeGeometryTypeSourceListSelection:
-      return VibrancyType::SOURCE_LIST_SELECTION;
-    case nsNativeThemeCocoa::eThemeGeometryTypeActiveSourceListSelection:
-      return VibrancyType::ACTIVE_SOURCE_LIST_SELECTION;
-    default:
-      MOZ_CRASH();
-  }
-}
-
 NSColor*
 nsChildView::VibrancyFillColorForThemeGeometryType(nsITheme::ThemeGeometryType aThemeGeometryType)
 {
   if (VibrancyManager::SystemSupportsVibrancy()) {
-    return EnsureVibrancyManager().VibrancyFillColorForType(
-      ThemeGeometryTypeToVibrancyType(aThemeGeometryType));
+    Maybe<VibrancyType> vibrancyType =
+      ThemeGeometryTypeToVibrancyType(aThemeGeometryType);
+    MOZ_RELEASE_ASSERT(vibrancyType, "should only encounter vibrant theme geometry types here");
+    return EnsureVibrancyManager().VibrancyFillColorForType(*vibrancyType);
   }
   return [NSColor whiteColor];
 }
@@ -2921,7 +2923,7 @@ nsChildView::DispatchAPZWheelInputEvent(InputData& aEvent, bool aCanTriggerSwipe
         PanGestureInput& panInput = aEvent.AsPanGestureInput();
 
         event = panInput.ToWidgetWheelEvent(this);
-        if (aCanTriggerSwipe) {
+        if (aCanTriggerSwipe && panInput.mOverscrollBehaviorAllowsSwipe) {
           SwipeInfo swipeInfo = SendMayStartSwipe(panInput);
           event.mCanTriggerSwipe = swipeInfo.wantsSwipe;
           if (swipeInfo.wantsSwipe) {
@@ -5519,31 +5521,30 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
 #if !defined(RELEASE_OR_BETA) || defined(DEBUG)
   if (!Preferences::GetBool("intl.allow-insecure-text-input", false) &&
       mGeckoChild && mTextInputHandler && mTextInputHandler->IsFocused()) {
-#ifdef MOZ_CRASHREPORTER
     NSWindow* window = [self window];
     NSString* info = [NSString stringWithFormat:@"\nview [%@], window [%@], window is key %i, is fullscreen %i, app is active %i",
                       self, window, [window isKeyWindow], ([window styleMask] & (1 << 14)) != 0,
                       [NSApp isActive]];
     nsAutoCString additionalInfo([info UTF8String]);
-#endif
+
     if (mGeckoChild->GetInputContext().IsPasswordEditor() &&
                !TextInputHandler::IsSecureEventInputEnabled()) {
       #define CRASH_MESSAGE "A password editor has focus, but not in secure input mode"
-#ifdef MOZ_CRASHREPORTER
+
       CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("\nBug 893973: ") +
                                                  NS_LITERAL_CSTRING(CRASH_MESSAGE));
       CrashReporter::AppendAppNotesToCrashReport(additionalInfo);
-#endif
+
       MOZ_CRASH(CRASH_MESSAGE);
       #undef CRASH_MESSAGE
     } else if (!mGeckoChild->GetInputContext().IsPasswordEditor() &&
                TextInputHandler::IsSecureEventInputEnabled()) {
       #define CRASH_MESSAGE "A non-password editor has focus, but in secure input mode"
-#ifdef MOZ_CRASHREPORTER
+
       CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("\nBug 893973: ") +
                                                  NS_LITERAL_CSTRING(CRASH_MESSAGE));
       CrashReporter::AppendAppNotesToCrashReport(additionalInfo);
-#endif
+
       MOZ_CRASH(CRASH_MESSAGE);
       #undef CRASH_MESSAGE
     }
@@ -5586,7 +5587,299 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
 - (void)insertNewline:(id)sender
 {
   if (mTextInputHandler) {
-    mTextInputHandler->InsertNewline();
+    mTextInputHandler->HandleCommand(CommandInsertParagraph);
+  }
+}
+
+- (void)insertLineBreak:(id)sender
+{
+  // Ctrl + Enter in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandInsertLineBreak);
+  }
+}
+
+- (void) deleteBackward:(id)sender
+{
+  // Backspace in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandDeleteCharBackward);
+  }
+}
+
+- (void) deleteBackwardByDecomposingPreviousCharacter:(id)sender
+{
+  // Ctrl + Backspace in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandDeleteCharBackward);
+  }
+}
+
+- (void) deleteWordBackward:(id)sender
+{
+  // Alt + Backspace in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandDeleteWordBackward);
+  }
+}
+
+- (void) deleteToBeginningOfBackward:(id)sender
+{
+  // Command + Backspace in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandDeleteToBeginningOfLine);
+  }
+}
+
+- (void) deleteForward:(id)sender
+{
+  // Delete in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandDeleteCharForward);
+  }
+}
+
+- (void) deleteWordForward:(id)sender
+{
+  // Alt + Delete in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandDeleteWordForward);
+  }
+}
+
+- (void) insertTab:(id)sender
+{
+  // Tab in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandInsertTab);
+  }
+}
+
+- (void) insertBacktab:(id)sender
+{
+  // Shift + Tab in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandInsertBacktab);
+  }
+}
+
+- (void) moveRight:(id)sender
+{
+  // RightArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandCharNext);
+  }
+}
+
+- (void) moveRightAndModifySelection:(id)sender
+{
+  // Shift + RightArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectCharNext);
+  }
+}
+
+- (void) moveWordRight:(id)sender
+{
+  // Alt + RightArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandWordNext);
+  }
+}
+
+- (void) moveWordRightAndModifySelection:(id)sender
+{
+  // Alt + Shift + RightArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectWordNext);
+  }
+}
+
+- (void) moveToRightEndOfLine:(id)sender
+{
+  // Command + RightArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandEndLine);
+  }
+}
+
+- (void) moveToRightEndOfLineAndModifySelection:(id)sender
+{
+  // Command + Shift + RightArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectEndLine);
+  }
+}
+
+- (void) moveLeft:(id)sender
+{
+  // LeftArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandCharPrevious);
+  }
+}
+
+- (void) moveLeftAndModifySelection:(id)sender
+{
+  // Shift + LeftArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectCharPrevious);
+  }
+}
+
+- (void) moveWordLeft:(id)sender
+{
+  // Alt + LeftArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandWordPrevious);
+  }
+}
+
+- (void) moveWordLeftAndModifySelection:(id)sender
+{
+  // Alt + Shift + LeftArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectWordPrevious);
+  }
+}
+
+- (void) moveToLeftEndOfLine:(id)sender
+{
+  // Command + LeftArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandBeginLine);
+  }
+}
+
+- (void) moveToLeftEndOfLineAndModifySelection:(id)sender
+{
+  // Command + Shift + LeftArrow in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectBeginLine);
+  }
+}
+
+- (void) moveUp:(id)sender
+{
+  // ArrowUp in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandLinePrevious);
+  }
+}
+
+- (void) moveUpAndModifySelection:(id)sender
+{
+  // Shift + ArrowUp in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectLinePrevious);
+  }
+}
+
+- (void) moveToBeginningOfDocument:(id)sender
+{
+  // Command + ArrowUp in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandMoveTop);
+  }
+}
+
+- (void) moveToBeginningOfDocumentAndModifySelection:(id)sender
+{
+  // Command + Shift + ArrowUp or Shift + Home in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectTop);
+  }
+}
+
+- (void) moveDown:(id)sender
+{
+  // ArrowDown in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandLineNext);
+  }
+}
+
+- (void) moveDownAndModifySelection:(id)sender
+{
+  // Shift + ArrowDown in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectLineNext);
+  }
+}
+
+- (void) moveToEndOfDocument:(id)sender
+{
+  // Command + ArrowDown in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandMoveBottom);
+  }
+}
+
+- (void) moveToEndOfDocumentAndModifySelection:(id)sender
+{
+  // Command + Shift + ArrowDown or Shift + End in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectBottom);
+  }
+}
+
+- (void) scrollPageUp:(id)sender
+{
+  // PageUp in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandScrollPageUp);
+  }
+}
+
+- (void) pageUpAndModifySelection:(id)sender
+{
+  // Shift + PageUp in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectPageUp);
+  }
+}
+
+- (void) scrollPageDown:(id)sender
+{
+  // PageDown in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandScrollPageDown);
+  }
+}
+
+- (void) pageDownAndModifySelection:(id)sender
+{
+  // Shift + PageDown in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandSelectPageDown);
+  }
+}
+
+- (void) scrollToEndOfDocument:(id)sender
+{
+  // End in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandScrollBottom);
+  }
+}
+
+- (void) scrollToBeginningOfDocument:(id)sender
+{
+  // Home in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandScrollTop);
+  }
+}
+
+// XXX Don't decleare nor implement calcelOperation: because it
+//     causes not calling keyDown: for Command + Period.
+//     We need to handle it from doCommandBySelector:.
+
+- (void) complete:(id)sender
+{
+  // Alt + Escape or Alt + Shift + Escape in the default settings.
+  if (mTextInputHandler) {
+    mTextInputHandler->HandleCommand(CommandComplete);
   }
 }
 

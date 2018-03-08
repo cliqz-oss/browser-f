@@ -218,13 +218,18 @@ HTMLSelectElement::InsertChildAt(nsIContent* aKid,
 }
 
 void
-HTMLSelectElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
+HTMLSelectElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 {
   SafeOptionListMutation safeMutation(this, this, nullptr, aIndex, aNotify);
-  nsGenericHTMLFormElementWithState::RemoveChildAt(aIndex, aNotify);
+  nsGenericHTMLFormElementWithState::RemoveChildAt_Deprecated(aIndex, aNotify);
 }
 
-
+void
+HTMLSelectElement::RemoveChildNode(nsIContent* aKid, bool aNotify)
+{
+  SafeOptionListMutation safeMutation(this, this, nullptr, IndexOf(aKid), aNotify);
+  nsGenericHTMLFormElementWithState::RemoveChildNode(aKid, aNotify);
+}
 
 void
 HTMLSelectElement::InsertOptionsIntoList(nsIContent* aOptions,
@@ -420,7 +425,7 @@ HTMLSelectElement::WillAddOptions(nsIContent* aOptions,
       // If the content insert is somewhere in the middle of the container, then
       // we want to get the option currently at the index and insert in front of
       // that.
-      nsIContent* currentKid = aParent->GetChildAt(aContentIndex);
+      nsIContent* currentKid = aParent->GetChildAt_Deprecated(aContentIndex);
       NS_ASSERTION(currentKid, "Child not found!");
       if (currentKid) {
         ind = GetOptionIndexAt(currentKid);
@@ -445,7 +450,7 @@ HTMLSelectElement::WillRemoveOptions(nsIContent* aParent,
   int32_t level = this == aParent ? 0 : 1;
 
   // Get the index where the options will be removed
-  nsIContent* currentKid = aParent->GetChildAt(aContentIndex);
+  nsIContent* currentKid = aParent->GetChildAt_Deprecated(aContentIndex);
   if (currentKid) {
     int32_t ind;
     if (!mNonOptionChildren) {
@@ -530,7 +535,7 @@ HTMLSelectElement::GetFirstChildOptionIndex(nsIContent* aOptions,
   int32_t retval = -1;
 
   for (int32_t i = aStartIndex; i < aEndIndex; ++i) {
-    retval = GetFirstOptionIndex(aOptions->GetChildAt(i));
+    retval = GetFirstOptionIndex(aOptions->GetChildAt_Deprecated(i));
     if (retval != -1) {
       break;
     }
@@ -1257,6 +1262,7 @@ bool
 HTMLSelectElement::ParseAttribute(int32_t aNamespaceID,
                                   nsAtom* aAttribute,
                                   const nsAString& aValue,
+                                  nsIPrincipal* aMaybeScriptedPrincipal,
                                   nsAttrValue& aResult)
 {
   if (kNameSpaceID_None == aNamespaceID) {
@@ -1268,7 +1274,7 @@ HTMLSelectElement::ParseAttribute(int32_t aNamespaceID,
     }
   }
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void

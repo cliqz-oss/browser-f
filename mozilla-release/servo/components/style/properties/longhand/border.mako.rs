@@ -33,7 +33,7 @@
     )}
 
     ${helpers.predefined_type("border-%s-style" % side_name, "BorderStyle",
-                              "specified::BorderStyle::none",
+                              "specified::BorderStyle::None",
                               alias=maybe_moz_logical_alias(product, side, "-moz-border-%s-style"),
                               spec=maybe_logical_spec(side, "style"),
                               flags="APPLIES_TO_FIRST_LETTER",
@@ -74,9 +74,10 @@ ${helpers.gecko_keyword_conversion(Keyword('border-style',
                        spec="Nonstandard (https://developer.mozilla.org/en-US/docs/Web/CSS/-moz-border-*-colors)"
                        products="gecko"
                        flags="APPLIES_TO_FIRST_LETTER"
+                       enabled_in="chrome"
                        ignored_when_colors_disabled="True">
-        use std::fmt;
-        use style_traits::ToCss;
+        use std::fmt::{self, Write};
+        use style_traits::{CssWriter, ToCss};
         use values::specified::RGBAColor;
 
         pub mod computed_value {
@@ -92,7 +93,7 @@ ${helpers.gecko_keyword_conversion(Keyword('border-style',
         }
 
         impl ToCss for computed_value::T {
-            fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+            fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
                 match self.0 {
                     None => return dest.write_str("none"),
                     Some(ref vec) => {
@@ -111,7 +112,7 @@ ${helpers.gecko_keyword_conversion(Keyword('border-style',
         }
 
         impl ToCss for SpecifiedValue {
-            fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+            fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
                 match *self {
                     SpecifiedValue::None => return dest.write_str("none"),
                     SpecifiedValue::Colors(ref vec) => {
@@ -191,6 +192,7 @@ ${helpers.gecko_keyword_conversion(Keyword('border-style',
 
 ${helpers.single_keyword("box-decoration-break", "slice clone",
                          gecko_enum_prefix="StyleBoxDecorationBreak",
+                         gecko_pref="layout.css.box-decoration-break.enabled",
                          spec="https://drafts.csswg.org/css-break/#propdef-box-decoration-break",
                          products="gecko", animation_value_type="discrete")}
 
@@ -208,7 +210,7 @@ ${helpers.predefined_type("border-image-source", "ImageLayer",
     vector=False,
     animation_value_type="discrete",
     flags="APPLIES_TO_FIRST_LETTER",
-    boxed="True")}
+    boxed=True)}
 
 ${helpers.predefined_type("border-image-outset", "LengthOrNumberRect",
     parse_method="parse_non_negative",

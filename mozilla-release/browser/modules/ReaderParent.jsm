@@ -22,29 +22,13 @@ var ReaderParent = {
   // Listeners are added in nsBrowserGlue.js
   receiveMessage(message) {
     switch (message.name) {
-      case "Reader:ArticleGet":
-        this._getArticle(message.data.url, message.target).then((article) => {
-          // Make sure the target browser is still alive before trying to send data back.
-          if (message.target.messageManager) {
-            message.target.messageManager.sendAsyncMessage("Reader:ArticleData", { article });
-          }
-        }, e => {
-          if (e && e.newURL) {
-            // Make sure the target browser is still alive before trying to send data back.
-            if (message.target.messageManager) {
-              message.target.messageManager.sendAsyncMessage("Reader:ArticleData", { newURL: e.newURL });
-            }
-          }
-        });
-        break;
-
       case "Reader:FaviconRequest": {
         if (message.target.messageManager) {
           let faviconUrl = PlacesUtils.promiseFaviconLinkUrl(message.data.url);
           faviconUrl.then(function onResolution(favicon) {
             message.target.messageManager.sendAsyncMessage("Reader:FaviconReturn", {
               url: message.data.url,
-              faviconUrl: favicon.path.replace(/^favicon:/, "")
+              faviconUrl: favicon.pathQueryRef.replace(/^favicon:/, "")
             });
           },
           function onRejection(reason) {
@@ -74,6 +58,10 @@ var ReaderParent = {
     let button = win.document.getElementById("reader-mode-button");
     let command = win.document.getElementById("View:ReaderView");
     let key = win.document.getElementById("key_toggleReaderMode");
+    // aria-reader is not a real ARIA attribute. However, this will cause
+    // Gecko accessibility to expose the "reader" object attribute. We do this
+    // so that the reader state is easy for accessibility clients to access
+    // programmatically.
     if (browser.currentURI.spec.startsWith("about:reader")) {
       button.setAttribute("readeractive", true);
       button.hidden = false;
@@ -83,6 +71,7 @@ var ReaderParent = {
       command.setAttribute("hidden", false);
       command.setAttribute("accesskey", gStringBundle.GetStringFromName("readerView.close.accesskey"));
       key.setAttribute("disabled", false);
+      browser.setAttribute("aria-reader", "active");
     } else {
       button.removeAttribute("readeractive");
       button.hidden = !browser.isArticle;
@@ -92,6 +81,11 @@ var ReaderParent = {
       command.setAttribute("hidden", !browser.isArticle);
       command.setAttribute("accesskey", gStringBundle.GetStringFromName("readerView.enter.accesskey"));
       key.setAttribute("disabled", !browser.isArticle);
+      if (browser.isArticle) {
+        browser.setAttribute("aria-reader", "available");
+      } else {
+        browser.removeAttribute("aria-reader");
+      }
     }
   },
 

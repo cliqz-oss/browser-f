@@ -312,13 +312,15 @@ add_task(function* () {
       yield waitUntil(() => requestsListStatus.title);
     }
 
-    isnot(getSelectedRequest(store.getState()), undefined,
-      "There should still be a selected item after filtering.");
-    is(getSelectedIndex(store.getState()), 0,
-      "The first item should be still selected after filtering.");
+    let items = getSortedRequests(store.getState());
+    let visibleItems;
 
-    const items = getSortedRequests(store.getState());
-    const visibleItems = getDisplayedRequests(store.getState());
+    // Filter results will be updated asynchronously, so we should wait until
+    // displayed requests reach final state.
+    yield waitUntil(() => {
+      visibleItems = getDisplayedRequests(store.getState());
+      return visibleItems.size === visibility.filter(e => e).length;
+    });
 
     is(items.size, visibility.length,
        "There should be a specific amount of items in the requests menu.");

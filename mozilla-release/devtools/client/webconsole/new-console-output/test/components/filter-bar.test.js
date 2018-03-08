@@ -6,7 +6,8 @@ const expect = require("expect");
 const sinon = require("sinon");
 const { render, mount, shallow } = require("enzyme");
 
-const { createFactory, DOM } = require("devtools/client/shared/vendor/react");
+const { createFactory } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const Provider = createFactory(require("react-redux").Provider);
 
 const actions = require("devtools/client/webconsole/new-console-output/actions/index");
@@ -30,7 +31,7 @@ describe("FilterBar component:", () => {
   });
 
   it("initial render", () => {
-    const store = setupStore([]);
+    const store = setupStore();
 
     const wrapper = render(Provider({store}, FilterBar({ serviceContainer })));
     const toolbar = wrapper.find(
@@ -89,7 +90,7 @@ describe("FilterBar component:", () => {
     // Toolbar is now hidden
     const toolbar = wrapper.find(".webconsole-filterbar-filtered-messages");
     expect(toolbar.exists()).toBeFalsy();
-    expect(getAllFilters(store.getState()).get(FILTERS.LOG)).toBeTruthy();
+    expect(getAllFilters(store.getState())[FILTERS.LOG]).toBeTruthy();
   });
 
   it("displays the number of hidden messages when a search hide messages", () => {
@@ -168,7 +169,7 @@ describe("FilterBar component:", () => {
   });
 
   it("does not display the number of hidden messages when there are no messages", () => {
-    const store = setupStore([]);
+    const store = setupStore();
     const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
     const toolbar = wrapper.find(".webconsole-filterbar-filtered-messages");
     expect(toolbar.exists()).toBeFalsy();
@@ -184,16 +185,16 @@ describe("FilterBar component:", () => {
 
     // Let's make sure those non-default filters are off.
     const filters = getAllFilters(store.getState());
-    expect(filters.get(FILTERS.CSS)).toBe(false);
-    expect(filters.get(FILTERS.NET)).toBe(false);
-    expect(filters.get(FILTERS.NETXHR)).toBe(false);
+    expect(filters[FILTERS.CSS]).toBe(false);
+    expect(filters[FILTERS.NET]).toBe(false);
+    expect(filters[FILTERS.NETXHR]).toBe(false);
 
     const toolbar = wrapper.find(".webconsole-filterbar-filtered-messages");
     expect(toolbar.exists()).toBeFalsy();
   });
 
   it("displays filter bar when button is clicked", () => {
-    const store = setupStore([]);
+    const store = setupStore();
 
     expect(getAllUi(store.getState()).filterBarVisible).toBe(false);
     expect(ServicesMock.prefs.getBoolPref(PREFS.UI.FILTER_BAR), false);
@@ -221,7 +222,7 @@ describe("FilterBar component:", () => {
       filterBtn({ label: "Logs", filterKey: FILTERS.LOG }),
       filterBtn({ label: "Info", filterKey: FILTERS.INFO }),
       filterBtn({ label: "Debug", filterKey: FILTERS.DEBUG }),
-      DOM.div({
+      dom.div({
         className: "devtools-separator",
       }),
       filterBtn({ label: "CSS", filterKey: "css", active: false }),
@@ -235,7 +236,7 @@ describe("FilterBar component:", () => {
   });
 
   it("fires MESSAGES_CLEAR action when clear button is clicked", () => {
-    const store = setupStore([]);
+    const store = setupStore();
     store.dispatch = sinon.spy();
 
     const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
@@ -247,7 +248,7 @@ describe("FilterBar component:", () => {
   });
 
   it("sets filter text when text is typed", () => {
-    const store = setupStore([]);
+    const store = setupStore();
 
     const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
     wrapper.find(".devtools-plaininput").simulate("input", { target: { value: "a" } });
@@ -255,7 +256,7 @@ describe("FilterBar component:", () => {
   });
 
   it("toggles persist logs when checkbox is clicked", () => {
-    const store = setupStore([]);
+    const store = setupStore();
 
     expect(getAllUi(store.getState()).persistLogs).toBe(false);
     expect(ServicesMock.prefs.getBoolPref(PREFS.UI.PERSIST), false);

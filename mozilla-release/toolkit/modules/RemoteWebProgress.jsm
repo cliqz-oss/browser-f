@@ -10,17 +10,13 @@ const Cc = Components.classes;
 const Cu = Components.utils;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-function newURI(spec) {
-  return Cc["@mozilla.org/network/io-service;1"].getService(Ci.nsIIOService)
-                                                .newURI(spec);
-}
+Cu.import("resource://gre/modules/Services.jsm");
 
 function RemoteWebProgressRequest(spec, originalSpec, requestCPOW) {
   this.wrappedJSObject = this;
 
-  this._uri = newURI(spec);
-  this._originalURI = newURI(originalSpec);
+  this._uri = Services.io.newURI(spec);
+  this._originalURI = Services.io.newURI(originalSpec);
   this._requestCPOW = requestCPOW;
 }
 
@@ -222,6 +218,7 @@ RemoteWebProgressManager.prototype = {
 
     if (isTopLevel) {
       this._browser._contentWindow = objects.contentWindow;
+      this._browser._contentDocument = objects.contentDocument;
       // Setting a content-type back to `null` is quite nonsensical for the
       // frontend, especially since we're not expecting it.
       if (json.documentContentType !== null) {
@@ -239,7 +236,7 @@ RemoteWebProgressManager.prototype = {
     switch (aMessage.name) {
     case "Content:StateChange":
       if (isTopLevel) {
-        this._browser._documentURI = newURI(json.documentURI);
+        this._browser._documentURI = Services.io.newURI(json.documentURI);
       }
       this._callProgressListeners(
         Ci.nsIWebProgress.NOTIFY_STATE_ALL, "onStateChange", webProgress,
@@ -248,7 +245,7 @@ RemoteWebProgressManager.prototype = {
       break;
 
     case "Content:LocationChange":
-      let location = newURI(json.location);
+      let location = Services.io.newURI(json.location);
       let flags = json.flags;
       let remoteWebNav = this._browser._remoteWebNavigationImpl;
 
@@ -258,7 +255,7 @@ RemoteWebProgressManager.prototype = {
 
       if (isTopLevel) {
         remoteWebNav._currentURI = location;
-        this._browser._documentURI = newURI(json.documentURI);
+        this._browser._documentURI = Services.io.newURI(json.documentURI);
         this._browser._contentTitle = json.title;
         this._browser._imageDocument = null;
         this._browser._contentPrincipal = json.principal;

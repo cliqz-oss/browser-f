@@ -39,15 +39,13 @@ function getEventDir() {
  */
 function do_crash(setup, callback, canReturnZero) {
   // get current process filename (xpcshell)
-  let ds = Components.classes["@mozilla.org/file/directory_service;1"]
-    .getService(Components.interfaces.nsIProperties);
-  let bin = ds.get("XREExeF", Components.interfaces.nsIFile);
+  let bin = Services.dirsvc.get("XREExeF", Components.interfaces.nsIFile);
   if (!bin.exists()) {
     // weird, can't find xpcshell binary?
     do_throw("Can't find xpcshell binary!");
   }
   // get Gre dir (GreD)
-  let greD = ds.get("GreD", Components.interfaces.nsIFile);
+  let greD = Services.dirsvc.get("GreD", Components.interfaces.nsIFile);
   let headfile = do_get_file("crasher_subprocess_head.js");
   let tailfile = do_get_file("crasher_subprocess_tail.js");
   // run xpcshell -g GreD -f head -e "some setup code" -f tail
@@ -85,7 +83,7 @@ function do_crash(setup, callback, canReturnZero) {
 
   if (!canReturnZero) {
     // should exit with an error (should have crashed)
-    do_check_neq(process.exitValue, 0);
+    Assert.notEqual(process.exitValue, 0);
   }
 
   handleMinidump(callback);
@@ -109,9 +107,7 @@ function runMinidumpAnalyzer(dumpFile, additionalArgs) {
   }
 
   // find minidump-analyzer executable.
-  let ds = Cc["@mozilla.org/file/directory_service;1"]
-             .getService(Ci.nsIProperties);
-  let bin = ds.get("XREExeF", Ci.nsIFile);
+  let bin = Services.dirsvc.get("XREExeF", Ci.nsIFile);
   ok(bin && bin.exists());
   bin = bin.parent;
   ok(bin && bin.exists());
@@ -144,7 +140,7 @@ function handleMinidump(callback) {
   memoryfile.leafName = memoryfile.leafName.slice(0, -4) + ".memory.json.gz";
 
   // Just in case, don't let these files linger.
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     if (minidump.exists()) {
       minidump.remove(false);
     }
@@ -156,7 +152,7 @@ function handleMinidump(callback) {
     }
   });
 
-  do_check_true(extrafile.exists());
+  Assert.ok(extrafile.exists());
   let extra = parseKeyValuePairsFromFile(extrafile);
 
   if (callback) {
@@ -221,7 +217,7 @@ function do_content_crash(setup, callback) {
     sendCommand("load(\"" + headfile.path.replace(/\\/g, "/") + "\");", () =>
       sendCommand(setup, () =>
         sendCommand("load(\"" + tailfile.path.replace(/\\/g, "/") + "\");", () =>
-          do_execute_soon(handleCrash)
+          executeSoon(handleCrash)
         )
       )
     );
@@ -271,7 +267,7 @@ function do_triggered_content_crash(trigger, callback) {
   makeFakeAppDir().then(() => {
     sendCommand("load(\"" + headfile.path.replace(/\\/g, "/") + "\");", () =>
       sendCommand(trigger, () =>
-        do_execute_soon(handleCrash)
+        executeSoon(handleCrash)
       )
     );
   });

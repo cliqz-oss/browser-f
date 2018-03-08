@@ -179,6 +179,8 @@ SetupABIArguments(MacroAssembler& masm, const FuncExport& fe, Register argv, Reg
                 MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("unexpected stack arg type");
             }
             break;
+          case ABIArg::Uninitialized:
+            MOZ_CRASH("Uninitialized ABIArg kind");
         }
     }
 }
@@ -197,13 +199,11 @@ StoreABIReturn(MacroAssembler& masm, const FuncExport& fe, Register argv)
         masm.store64(ReturnReg64, Address(argv, 0));
         break;
       case ExprType::F32:
-        if (!JitOptions.wasmTestMode)
-            masm.canonicalizeFloat(ReturnFloat32Reg);
+        masm.canonicalizeFloat(ReturnFloat32Reg);
         masm.storeFloat32(ReturnFloat32Reg, Address(argv, 0));
         break;
       case ExprType::F64:
-        if (!JitOptions.wasmTestMode)
-            masm.canonicalizeDouble(ReturnDoubleReg);
+        masm.canonicalizeDouble(ReturnDoubleReg);
         masm.storeDouble(ReturnDoubleReg, Address(argv, 0));
         break;
       case ExprType::I8x16:
@@ -239,11 +239,7 @@ static const LiveRegisterSet NonVolatileRegs =
                     FloatRegisterSet(FloatRegisters::NonVolatileMask));
 #endif
 
-#if defined(JS_CODEGEN_MIPS32)
-static const unsigned NonVolatileRegsPushSize = NonVolatileRegs.gprs().size() * sizeof(intptr_t) +
-                                                NonVolatileRegs.fpus().getPushSizeInBytes() +
-                                                sizeof(double);
-#elif defined(JS_CODEGEN_NONE)
+#if defined(JS_CODEGEN_NONE)
 static const unsigned NonVolatileRegsPushSize = 0;
 #else
 static const unsigned NonVolatileRegsPushSize = NonVolatileRegs.gprs().size() * sizeof(intptr_t) +
@@ -263,20 +259,18 @@ GenerateInterpEntry(MacroAssembler& masm, const FuncExport& fe, Offsets* offsets
     offsets->begin = masm.currentOffset();
 
     // Save the return address if it wasn't already saved by the call insn.
-#if defined(JS_CODEGEN_ARM)
-    masm.push(lr);
-#elif defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
-    masm.push(ra);
+#ifdef JS_USE_LINK_REGISTER
+    masm.pushReturnAddress();
 #endif
 
     // Save all caller non-volatile registers before we clobber them here and in
-    // the asm.js callee (which does not preserve non-volatile registers).
+    // the wasm callee (which does not preserve non-volatile registers).
     masm.setFramePushed(0);
     masm.PushRegsInMask(NonVolatileRegs);
     MOZ_ASSERT(masm.framePushed() == NonVolatileRegsPushSize);
 
     // Put the 'argv' argument into a non-argument/return/TLS register so that
-    // we can use 'argv' while we fill in the arguments for the asm.js callee.
+    // we can use 'argv' while we fill in the arguments for the wasm callee.
     // Use a second non-argument/return register as temporary scratch.
     Register argv = ABINonArgReturnReg0;
     Register scratch = ABINonArgReturnReg1;
@@ -490,6 +484,8 @@ FillArgumentArray(MacroAssembler& masm, const ValTypeVector& args, unsigned argO
             }
             break;
           }
+          case ABIArg::Uninitialized:
+            MOZ_CRASH("Uninitialized ABIArg kind");
         }
     }
 }
@@ -537,7 +533,7 @@ GenerateImportFunction(jit::MacroAssembler& masm, const FuncImport& fi, SigIdDes
 
     GenerateFunctionEpilogue(masm, framePushed, offsets);
 
-    masm.wasmEmitTrapOutOfLineCode();
+    masm.wasmEmitOldTrapOutOfLineCode();
 
     return FinishOffsets(masm, offsets);
 }
@@ -654,8 +650,7 @@ GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi, uint32_t fu
         break;
       case ExprType::I64:
         masm.call(SymbolicAddress::CallImport_I64);
-        masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
-        masm.load64(argv, ReturnReg64);
+        masm.jump(throwLabel);
         break;
       case ExprType::F32:
         masm.call(SymbolicAddress::CallImport_F64);
@@ -761,8 +756,7 @@ GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi, Label* throwLa
     masm.branch32(Assembler::Above, scratch, Imm32(fi.sig().args().length()), &rectify);
 
     // 7. If we haven't rectified arguments, load callee executable entry point
-    masm.loadPtr(Address(callee, JSFunction::offsetOfNativeOrScript()), callee);
-    masm.loadBaselineOrIonNoArgCheck(callee, callee, nullptr);
+    masm.loadJitCodeNoArgCheck(callee, callee);
 
     Label rejoinBeforeCall;
     masm.bind(&rejoinBeforeCall);
@@ -813,12 +807,9 @@ GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi, Label* throwLa
       case ExprType::Void:
         break;
       case ExprType::I32:
-        masm.convertValueToInt32(JSReturnOperand, ReturnDoubleReg, ReturnReg, &oolConvert,
-                                 /* -0 check */ false);
+        masm.truncateValueToInt32(JSReturnOperand, ReturnDoubleReg, ReturnReg, &oolConvert);
         break;
       case ExprType::I64:
-        // We don't expect int64 to be returned from Ion yet, because of a
-        // guard in callImport.
         masm.breakpoint();
         break;
       case ExprType::F32:
@@ -849,7 +840,6 @@ GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi, Label* throwLa
         masm.bind(&rectify);
         masm.loadPtr(Address(WasmTlsReg, offsetof(TlsData, instance)), callee);
         masm.loadPtr(Address(callee, Instance::offsetOfJSJitArgsRectifier()), callee);
-        masm.loadPtr(Address(callee, JitCode::offsetOfCode()), callee);
         masm.jump(&rejoinBeforeCall);
     }
 
@@ -1010,12 +1000,35 @@ wasm::GenerateBuiltinThunk(MacroAssembler& masm, ABIFunctionType abiType, ExitRe
     return FinishOffsets(masm, offsets);
 }
 
-// Generate a stub that calls into ReportTrap with the right trap reason.
+// Generate a stub which calls WasmReportTrap() and can be executed by having
+// the signal handler redirect PC from any trapping instruction.
+static bool
+GenerateTrapExit(MacroAssembler& masm, Label* throwLabel, Offsets* offsets)
+{
+    masm.haltingAlign(CodeAlignment);
+
+    offsets->begin = masm.currentOffset();
+
+    // We know that StackPointer is word-aligned, but not necessarily
+    // stack-aligned, so we need to align it dynamically.
+    masm.andToStackPtr(Imm32(~(ABIStackAlignment - 1)));
+    if (ShadowStackSpace)
+        masm.subFromStackPtr(Imm32(ShadowStackSpace));
+
+    masm.assertStackAlignment(ABIStackAlignment);
+    masm.call(SymbolicAddress::ReportTrap);
+
+    masm.jump(throwLabel);
+
+    return FinishOffsets(masm, offsets);
+}
+
+// Generate a stub that calls into WasmOldReportTrap with the right trap reason.
 // This stub is called with ABIStackAlignment by a trap out-of-line path. An
 // exit prologue/epilogue is used so that stack unwinding picks up the
 // current JitActivation. Unwinding will begin at the caller of this trap exit.
 static bool
-GenerateTrapExit(MacroAssembler& masm, Trap trap, Label* throwLabel, CallableOffsets* offsets)
+GenerateOldTrapExit(MacroAssembler& masm, Trap trap, Label* throwLabel, CallableOffsets* offsets)
 {
     masm.haltingAlign(CodeAlignment);
 
@@ -1037,7 +1050,7 @@ GenerateTrapExit(MacroAssembler& masm, Trap trap, Label* throwLabel, CallableOff
     MOZ_ASSERT(i.done());
 
     masm.assertStackAlignment(ABIStackAlignment);
-    masm.call(SymbolicAddress::ReportTrap);
+    masm.call(SymbolicAddress::OldReportTrap);
 
     masm.jump(throwLabel);
 
@@ -1377,11 +1390,30 @@ wasm::GenerateStubs(const ModuleEnvironment& env, const FuncImportVector& import
     }
 
     for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
-        CallableOffsets offsets;
-        if (!GenerateTrapExit(masm, trap, &throwLabel, &offsets))
-            return false;
-        if (!code->codeRanges.emplaceBack(trap, offsets))
-            return false;
+        switch (trap) {
+          case Trap::Unreachable:
+            break;
+          // The TODO list of "old" traps to convert to new traps:
+          case Trap::IntegerOverflow:
+          case Trap::InvalidConversionToInteger:
+          case Trap::IntegerDivideByZero:
+          case Trap::OutOfBounds:
+          case Trap::UnalignedAccess:
+          case Trap::IndirectCallToNull:
+          case Trap::IndirectCallBadSig:
+          case Trap::ImpreciseSimdConversion:
+          case Trap::StackOverflow:
+          case Trap::ThrowReported: {
+            CallableOffsets offsets;
+            if (!GenerateOldTrapExit(masm, trap, &throwLabel, &offsets))
+                return false;
+            if (!code->codeRanges.emplaceBack(trap, offsets))
+                return false;
+            break;
+          }
+          case Trap::Limit:
+            MOZ_CRASH("impossible");
+        }
     }
 
     Offsets offsets;
@@ -1394,6 +1426,11 @@ wasm::GenerateStubs(const ModuleEnvironment& env, const FuncImportVector& import
     if (!GenerateUnalignedExit(masm, &throwLabel, &offsets))
         return false;
     if (!code->codeRanges.emplaceBack(CodeRange::UnalignedExit, offsets))
+        return false;
+
+    if (!GenerateTrapExit(masm, &throwLabel, &offsets))
+        return false;
+    if (!code->codeRanges.emplaceBack(CodeRange::TrapExit, offsets))
         return false;
 
     if (!GenerateInterruptExit(masm, &throwLabel, &offsets))

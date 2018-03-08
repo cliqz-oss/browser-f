@@ -98,8 +98,8 @@ class Theme {
 
       LightweightThemeManager.fallbackThemeData = this.lwtStyles;
       Services.obs.notifyObservers(null,
-        "lightweight-theme-styling-update",
-        JSON.stringify(this.lwtStyles));
+                                   "lightweight-theme-styling-update",
+                                   JSON.stringify(this.lwtStyles));
     } else {
       this.logger.warn("Your theme doesn't include one of the following required " +
         "properties: 'headerURL', 'accentcolor' or 'textcolor'");
@@ -130,7 +130,7 @@ class Theme {
           this.lwtStyles.accentcolor = cssColor;
           break;
         case "textcolor":
-        case "tab_text":
+        case "background_tab_text":
           this.lwtStyles.textcolor = cssColor;
           break;
         case "toolbar":
@@ -140,8 +140,11 @@ class Theme {
         case "bookmark_text":
           this.lwtStyles.toolbar_text = cssColor;
           break;
+        case "tab_text":
         case "toolbar_field":
         case "toolbar_field_text":
+        case "toolbar_field_border":
+        case "toolbar_field_separator":
         case "toolbar_top_separator":
         case "toolbar_bottom_separator":
         case "toolbar_vertical_separator":
@@ -293,8 +296,8 @@ class Theme {
     }
     LightweightThemeManager.fallbackThemeData = null;
     Services.obs.notifyObservers(null,
-      "lightweight-theme-styling-update",
-      JSON.stringify(lwtStyles));
+                                 "lightweight-theme-styling-update",
+                                 JSON.stringify(lwtStyles));
   }
 }
 

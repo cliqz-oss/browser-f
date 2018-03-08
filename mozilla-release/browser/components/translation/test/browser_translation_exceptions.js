@@ -21,7 +21,7 @@ function test() {
     gBrowser.removeTab(tab);
     Services.prefs.clearUserPref(kShowUIPref);
   });
-  tab.linkedBrowser.addEventListener("load", function() {
+  BrowserTestUtils.browserLoaded(tab.linkedBrowser).then(() => {
     (async function() {
       for (let testCase of gTests) {
         info(testCase.desc);
@@ -31,9 +31,9 @@ function test() {
      ok(false, "Unexpected Exception: " + ex);
      finish();
     });
-   }, {capture: true, once: true});
+   });
 
-  content.location = "http://example.com/";
+  gBrowser.selectedBrowser.loadURI("http://example.com/");
 }
 
 function getLanguageExceptions() {
@@ -75,7 +75,7 @@ function openPopup(aPopup) {
   return new Promise(resolve => {
 
     aPopup.addEventListener("popupshown", function() {
-      resolve();
+      TestUtils.executeSoon(resolve);
     }, {once: true});
 
     aPopup.focus();
@@ -90,7 +90,7 @@ function waitForWindowLoad(aWin) {
   return new Promise(resolve => {
 
     aWin.addEventListener("load", function() {
-      resolve();
+      TestUtils.executeSoon(resolve);
     }, {capture: true, once: true});
 
   });

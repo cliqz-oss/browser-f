@@ -84,9 +84,12 @@ public:
     return mMediaSource;
   }
 
-  bool ChooseCapability(const NormalizedConstraints &aConstraints,
-                        const MediaEnginePrefs &aPrefs,
-                        const nsString& aDeviceId) override;
+  bool ChooseCapability(
+    const NormalizedConstraints &aConstraints,
+    const MediaEnginePrefs &aPrefs,
+    const nsString& aDeviceId,
+    webrtc::CaptureCapability& aCapability,
+    const DistanceCalculation aCalculate) override;
 
   void Refresh(int aIndex);
 
@@ -101,12 +104,13 @@ private:
   // Initialize the needed Video engine interfaces.
   void Init();
   size_t NumCapabilities() const override;
-  void GetCapability(size_t aIndex, webrtc::CaptureCapability& aOut) const override;
+  webrtc::CaptureCapability GetCapability(size_t aIndex) const override;
   void SetLastCapability(const webrtc::CaptureCapability& aCapability);
 
   nsresult
   UpdateSingleSource(const AllocationHandle* aHandle,
                      const NormalizedConstraints& aNetConstraints,
+                     const NormalizedConstraints& aNewConstraint,
                      const MediaEnginePrefs& aPrefs,
                      const nsString& aDeviceId,
                      const char** aOutBadConstraint) override;

@@ -157,7 +157,7 @@ ContentClient::BeginPaint(PaintedLayer* aLayer,
   bool asyncPaint = (aFlags & PAINT_ASYNC);
 
   IntRect drawBounds = result.mRegionToDraw.GetBounds();
-  OpenMode lockMode = asyncPaint ? OpenMode::OPEN_READ_ASYNC_WRITE
+  OpenMode lockMode = asyncPaint ? OpenMode::OPEN_READ_WRITE_ASYNC
                                  : OpenMode::OPEN_READ_WRITE;
 
   if (asyncPaint) {
@@ -250,8 +250,8 @@ ContentClient::BeginPaint(PaintedLayer* aLayer,
     if (!newBuffer) {
       if (Factory::ReasonableSurfaceSize(IntSize(dest.mBufferRect.Width(), dest.mBufferRect.Height()))) {
         gfxCriticalNote << "Failed buffer for "
-                        << dest.mBufferRect.x << ", "
-                        << dest.mBufferRect.y << ", "
+                        << dest.mBufferRect.X() << ", "
+                        << dest.mBufferRect.Y() << ", "
                         << dest.mBufferRect.Width() << ", "
                         << dest.mBufferRect.Height();
       }
@@ -406,9 +406,9 @@ ContentClient::PrepareDrawTargetForPainting(CapturedPaintState* aState)
     }
     for (auto iter = aState->mRegionToDraw.RectIter(); !iter.Done(); iter.Next()) {
       const IntRect& rect = iter.Get();
-      target->FillRect(Rect(rect.x, rect.y, rect.Width(), rect.Height()),
+      target->FillRect(Rect(rect.X(), rect.Y(), rect.Width(), rect.Height()),
                             ColorPattern(Color(0.0, 0.0, 0.0, 1.0)));
-      whiteTarget->FillRect(Rect(rect.x, rect.y, rect.Width(), rect.Height()),
+      whiteTarget->FillRect(Rect(rect.X(), rect.Y(), rect.Width(), rect.Height()),
                                  ColorPattern(Color(1.0, 1.0, 1.0, 1.0)));
     }
   } else if (aState->mContentType == gfxContentType::COLOR_ALPHA &&
@@ -416,7 +416,7 @@ ContentClient::PrepareDrawTargetForPainting(CapturedPaintState* aState)
     // HaveBuffer() => we have an existing buffer that we must clear
     for (auto iter = aState->mRegionToDraw.RectIter(); !iter.Done(); iter.Next()) {
       const IntRect& rect = iter.Get();
-      target->ClearRect(Rect(rect.x, rect.y, rect.Width(), rect.Height()));
+      target->ClearRect(Rect(rect.X(), rect.Y(), rect.Width(), rect.Height()));
     }
   }
 
@@ -639,7 +639,7 @@ public:
     }
   }
 
-  virtual void ProcessReadback(gfx::DataSourceSurface *aSourceSurface)
+  virtual void ProcessReadback(gfx::DataSourceSurface *aSourceSurface) override
   {
     SourceRotatedBuffer rotBuffer(aSourceSurface, nullptr, mBufferRect, mBufferRotation);
 
@@ -944,8 +944,8 @@ ContentClientDoubleBuffered::FinalizeFrame(const nsIntRegion& aRegionToDraw)
 
   MOZ_LAYERS_LOG(("BasicShadowableThebes(%p): reading back <x=%d,y=%d,w=%d,h=%d>",
                   this,
-                  mFrontUpdatedRegion.GetBounds().x,
-                  mFrontUpdatedRegion.GetBounds().y,
+                  mFrontUpdatedRegion.GetBounds().X(),
+                  mFrontUpdatedRegion.GetBounds().Y(),
                   mFrontUpdatedRegion.GetBounds().Width(),
                   mFrontUpdatedRegion.GetBounds().Height()));
 

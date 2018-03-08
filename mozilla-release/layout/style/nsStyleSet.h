@@ -341,9 +341,29 @@ class nsStyleSet final
   // Free all of the data associated with this style set.
   void Shutdown();
 
+  void RuleAdded(mozilla::CSSStyleSheet& aSheet, mozilla::css::Rule&)
+  {
+    SheetChanged(aSheet);
+  }
+
+  void RuleRemoved(mozilla::CSSStyleSheet& aSheet, mozilla::css::Rule&)
+  {
+    SheetChanged(aSheet);
+  }
+
+  void RuleChanged(mozilla::CSSStyleSheet& aSheet, mozilla::css::Rule*)
+  {
+    SheetChanged(aSheet);
+  }
+
   // Notes that a style sheet has changed.
-  void RecordStyleSheetChange(mozilla::CSSStyleSheet* aStyleSheet,
-                              mozilla::StyleSheet::ChangeType);
+  void RecordStyleSheetChange(mozilla::CSSStyleSheet* aSheet,
+                              mozilla::StyleSheet::ChangeType)
+  {
+    SheetChanged(*aSheet);
+  }
+
+  void SheetChanged(mozilla::CSSStyleSheet&);
 
   // Notes that style sheets have changed in a shadow root.
   void RecordShadowStyleChange(mozilla::dom::ShadowRoot* aShadowRoot);
@@ -495,11 +515,6 @@ class nsStyleSet final
   // Tells the RestyleManager for the document using this style set
   // to drop any nsCSSSelector pointers it has.
   void ClearSelectors();
-
-  // Returns whether aSheetType represents a level of the cascade that uses
-  // CSSStyleSheets.  See gCSSSheetTypes in nsStyleSet.cpp for the list
-  // of CSS sheet types.
-  static bool IsCSSSheetType(mozilla::SheetType aSheetType);
 
   void SetUsesViewportUnits(bool aValue) {
     mUsesViewportUnits = aValue;

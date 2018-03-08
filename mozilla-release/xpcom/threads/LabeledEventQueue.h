@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "mozilla/AbstractEventQueue.h"
 #include "mozilla/LinkedList.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Queue.h"
 #include "nsClassHashtable.h"
 #include "nsHashKeys.h"
@@ -30,23 +31,23 @@ class SchedulerGroup;
 class LabeledEventQueue final : public AbstractEventQueue
 {
 public:
-  LabeledEventQueue();
+  explicit LabeledEventQueue(EventPriority aPriority);
   ~LabeledEventQueue();
 
   void PutEvent(already_AddRefed<nsIRunnable>&& aEvent,
                 EventPriority aPriority,
-                const MutexAutoLock& aProofOfLock) final;
+                const MutexAutoLock& aProofOfLock) final override;
   already_AddRefed<nsIRunnable> GetEvent(EventPriority* aPriority,
-                                         const MutexAutoLock& aProofOfLock) final;
+                                         const MutexAutoLock& aProofOfLock) final override;
 
-  bool IsEmpty(const MutexAutoLock& aProofOfLock) final;
-  size_t Count(const MutexAutoLock& aProofOfLock) const final;
-  bool HasReadyEvent(const MutexAutoLock& aProofOfLock) final;
+  bool IsEmpty(const MutexAutoLock& aProofOfLock) final override;
+  size_t Count(const MutexAutoLock& aProofOfLock) const final override;
+  bool HasReadyEvent(const MutexAutoLock& aProofOfLock) final override;
 
-  void EnableInputEventPrioritization(const MutexAutoLock& aProofOfLock) final {}
-  void FlushInputEventPrioritization(const MutexAutoLock& aProofOfLock) final {}
-  void SuspendInputEventPrioritization(const MutexAutoLock& aProofOfLock) final {}
-  void ResumeInputEventPrioritization(const MutexAutoLock& aProofOfLock) final {}
+  void EnableInputEventPrioritization(const MutexAutoLock& aProofOfLock) final override {}
+  void FlushInputEventPrioritization(const MutexAutoLock& aProofOfLock) final override {}
+  void SuspendInputEventPrioritization(const MutexAutoLock& aProofOfLock) final override {}
+  void ResumeInputEventPrioritization(const MutexAutoLock& aProofOfLock) final override {}
 
 private:
 
@@ -82,17 +83,6 @@ private:
   // is labeled, we can pop from any of the SchedulerGroup queues. Then we
   // decrement the number of events in the current epoch. If this number reaches
   // zero, we pop from the epoch queue.
-
-  struct QueueEntry
-  {
-    nsCOMPtr<nsIRunnable> mRunnable;
-    uintptr_t mEpochNumber;
-
-    QueueEntry(already_AddRefed<nsIRunnable> aRunnable, uintptr_t aEpoch)
-      : mRunnable(aRunnable)
-      , mEpochNumber(aEpoch)
-    {}
-  };
 
   struct Epoch
   {
@@ -131,8 +121,7 @@ private:
   void PopEpoch();
   static SchedulerGroup* NextSchedulerGroup(SchedulerGroup* aGroup);
 
-  using RunnableEpochQueue = Queue<QueueEntry, 32>;
-  using LabeledMap = nsClassHashtable<nsRefPtrHashKey<SchedulerGroup>, RunnableEpochQueue>;
+  using RunnableEpochQueue = SchedulerGroup::RunnableEpochQueue;
   using EpochQueue = Queue<Epoch, 8>;
 
   // List of SchedulerGroups that might have events. This is static, so it
@@ -144,16 +133,16 @@ private:
   static size_t sLabeledEventQueueCount;
   static SchedulerGroup* sCurrentSchedulerGroup;
 
-  LabeledMap mLabeled;
   RunnableEpochQueue mUnlabeled;
   EpochQueue mEpochs;
   size_t mNumEvents = 0;
 
-  // Number of SchedulerGroups that must be processed before we prioritize an
-  // active tab. This field is designed to guarantee a 1:1 interleaving between
+  // Number of SchedulerGroups that must be processed before we prioritize a
+  // visible tab. This field is designed to guarantee a 1:1 interleaving between
   // foreground and background SchedulerGroups. For details, see its usage in
   // LabeledEventQueue.cpp.
-  int64_t mAvoidActiveTabCount = 0;
+  int64_t mAvoidVisibleTabCount = 0;
+  EventPriority mPriority;
 };
 
 } // namespace mozilla

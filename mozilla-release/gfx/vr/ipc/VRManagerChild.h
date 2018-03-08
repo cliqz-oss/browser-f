@@ -76,6 +76,7 @@ public:
   void FireDOMVRDisplayConnectEvent(uint32_t aDisplayID);
   void FireDOMVRDisplayDisconnectEvent(uint32_t aDisplayID);
   void FireDOMVRDisplayPresentChangeEvent(uint32_t aDisplayID);
+  void FireDOMVRDisplayConnectEventsForLoad(dom::VREventObserver* aObserver);
 
   virtual void HandleFatalError(const char* aName, const char* aMsg) const override;
 
@@ -112,6 +113,8 @@ private:
   void FireDOMVRDisplayConnectEventInternal(uint32_t aDisplayID);
   void FireDOMVRDisplayDisconnectEventInternal(uint32_t aDisplayID);
   void FireDOMVRDisplayPresentChangeEventInternal(uint32_t aDisplayID);
+  void FireDOMVRDisplayConnectEventsForLoadInternal(uint32_t aDisplayID,
+                                                    dom::VREventObserver* aObserver);
 
   nsTArray<RefPtr<VRDisplayClient> > mDisplays;
   bool mDisplaysInitialized;
@@ -132,7 +135,7 @@ private:
 
   layers::LayersBackend mBackend;
   RefPtr<layers::SyncObjectClient> mSyncObject;
-  nsRefPtrHashtable<nsUint32HashKey, dom::Promise> mGamepadPromiseList; // TODO: check if it can merge into one list?
+  nsRefPtrHashtable<nsUint32HashKey, dom::Promise> mGamepadPromiseList;
   uint32_t mPromiseID;
   nsRefPtrHashtable<nsUint32HashKey, dom::Promise> mPromiseList;
   RefPtr<dom::VRMockDisplay> mVRMockDisplay;

@@ -101,11 +101,24 @@ this.AutoCompletePopup = {
     for (let msg of this.MESSAGES) {
       Services.mm.addMessageListener(msg, this);
     }
+    Services.obs.addObserver(this, "message-manager-disconnect");
   },
 
   uninit() {
     for (let msg of this.MESSAGES) {
       Services.mm.removeMessageListener(msg, this);
+    }
+    Services.obs.removeObserver(this, "message-manager-disconnect");
+  },
+
+  observe(subject, topic, data) {
+    switch (topic) {
+      case "message-manager-disconnect": {
+        if (this.openedPopup) {
+          this.openedPopup.closePopup();
+        }
+        break;
+      }
     }
   },
 
@@ -146,7 +159,8 @@ this.AutoCompletePopup = {
 
     let window = browser.ownerGlobal;
     // Also check window top in case this is a sidebar.
-    if (Services.focus.activeWindow !== window.top) {
+    if (Services.focus.activeWindow !== window.top &&
+        Services.focus.focusedWindow.top !== window.top) {
       // We were sent a message from a window or tab that went into the
       // background, so we'll ignore it for now.
       return;
@@ -312,8 +326,14 @@ this.AutoCompletePopup = {
     let browser = this.weakBrowser ?
       this.weakBrowser.get() :
       null;
-    if (browser) {
+    if (!browser) {
+      return;
+    }
+
+    if (browser.messageManager) {
       browser.messageManager.sendAsyncMessage(msgName, data);
+    } else {
+      Cu.reportError(`AutoCompletePopup: No messageManager for message "${msgName}"`);
     }
   },
 

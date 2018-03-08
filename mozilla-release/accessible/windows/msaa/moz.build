@@ -23,6 +23,7 @@ UNIFIED_SOURCES += [
     'ApplicationAccessibleWrap.cpp',
     'ARIAGridAccessibleWrap.cpp',
     'Compatibility.cpp',
+    'CompatibilityUIA.cpp',
     'DocAccessibleWrap.cpp',
     'EnumVariant.cpp',
     'GeckoCustom.cpp',
@@ -43,6 +44,10 @@ SOURCES += [
     'LazyInstantiator.cpp',
     # This file cannot be built in unified mode because it includes ISimpleDOMNode_i.c.
     'ServiceProvider.cpp',
+]
+
+OS_LIBS += [
+    'ntdll',
 ]
 
 if CONFIG['MOZ_XUL']:
@@ -73,7 +78,7 @@ LOCAL_INCLUDES += [
 #   #endif !_MIDL_USE_GUIDDEF_
 #
 # which clang-cl complains about.  MSVC doesn't, so turn this warning off.
-if CONFIG['CLANG_CL']:
+if CONFIG['CC_TYPE'] == 'clang-cl':
     CXXFLAGS += ['-Wno-extra-tokens']
 
 include('/ipc/chromium/chromium-config.mozbuild')

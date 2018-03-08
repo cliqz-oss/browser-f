@@ -181,8 +181,10 @@ nsXULTooltipListener::MouseMove(nsIDOMEvent* aEvent)
     // when hovering over an element inside it. The popupsinherittooltip
     // attribute may be used to disable this behaviour, which is useful for
     // large menu hierarchies such as bookmarks.
-    if (!sourceContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::popupsinherittooltip,
-                                    nsGkAtoms::_true, eCaseMatters)) {
+    if (!sourceContent->IsElement() ||
+        !sourceContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                                 nsGkAtoms::popupsinherittooltip,
+                                                 nsGkAtoms::_true, eCaseMatters)) {
       nsCOMPtr<nsIContent> targetContent = do_QueryInterface(eventTarget);
       while (targetContent && targetContent != sourceContent) {
         if (targetContent->IsAnyOfXULElements(nsGkAtoms::menupopup,
@@ -477,7 +479,7 @@ GetTreeCellCoords(nsITreeBoxObject* aTreeBox, nsIContent* aSourceNode,
 #endif
 
 static void
-SetTitletipLabel(nsITreeBoxObject* aTreeBox, nsIContent* aTooltip,
+SetTitletipLabel(nsITreeBoxObject* aTreeBox, Element* aTooltip,
                  int32_t aRow, nsITreeColumn* aCol)
 {
   nsCOMPtr<nsITreeView> view;
@@ -497,7 +499,7 @@ SetTitletipLabel(nsITreeBoxObject* aTreeBox, nsIContent* aTooltip,
 void
 nsXULTooltipListener::LaunchTooltip()
 {
-  nsCOMPtr<nsIContent> currentTooltip = do_QueryReferent(mCurrentTooltip);
+  nsCOMPtr<Element> currentTooltip = do_QueryReferent(mCurrentTooltip);
   if (!currentTooltip)
     return;
 
@@ -553,13 +555,10 @@ static void
 GetImmediateChild(nsIContent* aContent, nsAtom *aTag, nsIContent** aResult)
 {
   *aResult = nullptr;
-  uint32_t childCount = aContent->GetChildCount();
-  for (uint32_t i = 0; i < childCount; i++) {
-    nsIContent *child = aContent->GetChildAt(i);
-
-    if (child->IsXULElement(aTag)) {
-      *aResult = child;
-      NS_ADDREF(*aResult);
+  for (nsCOMPtr<nsIContent> childContent = aContent->GetFirstChild();
+       childContent; childContent = childContent->GetNextSibling()) {
+    if (childContent->IsXULElement(aTag)) {
+      childContent.forget(aResult);
       return;
     }
   }
@@ -587,21 +586,24 @@ nsXULTooltipListener::FindTooltip(nsIContent* aTarget, nsIContent** aTooltip)
   }
 
   nsAutoString tooltipText;
-  aTarget->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, tooltipText);
+  if (aTarget->IsElement()) {
+    aTarget->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, tooltipText);
+  }
   if (!tooltipText.IsEmpty()) {
     // specifying tooltiptext means we will always use the default tooltip
     nsIRootBox* rootBox = nsIRootBox::GetRootBox(document->GetShell());
     NS_ENSURE_STATE(rootBox);
-    *aTooltip = rootBox->GetDefaultTooltip();
-    if (*aTooltip) {
-      NS_ADDREF(*aTooltip);
-      (*aTooltip)->SetAttr(kNameSpaceID_None, nsGkAtoms::label, tooltipText, true);
+    if (RefPtr<Element> tooltip = rootBox->GetDefaultTooltip()) {
+      tooltip->SetAttr(kNameSpaceID_None, nsGkAtoms::label, tooltipText, true);
+      tooltip.forget(aTooltip);
     }
     return NS_OK;
   }
 
   nsAutoString tooltipId;
-  aTarget->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltip, tooltipId);
+  if (aTarget->IsElement()) {
+    aTarget->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltip, tooltipId);
+  }
 
   // if tooltip == _child, look for first <tooltip> child
   if (tooltipId.EqualsLiteral("_child")) {

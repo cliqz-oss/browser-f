@@ -402,7 +402,6 @@ WiFiRuntime.prototype = {
         }, {once: true});
       },
       onCloseWindow() {},
-      onWindowTitleChange() {}
     };
     Services.wm.addListener(windowListener);
 
@@ -437,10 +436,8 @@ exports._WiFiRuntime = WiFiRuntime;
 var gLocalRuntime = {
   type: RuntimeTypes.LOCAL,
   connect: function (connection) {
-    if (!DebuggerServer.initialized) {
-      DebuggerServer.init();
-      DebuggerServer.addBrowserActors();
-    }
+    DebuggerServer.init();
+    DebuggerServer.registerAllActors();
     DebuggerServer.allowChromeProcess = true;
     connection.host = null; // Force Pipe transport
     connection.port = null;

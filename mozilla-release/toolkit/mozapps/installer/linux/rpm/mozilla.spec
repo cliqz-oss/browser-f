@@ -33,15 +33,6 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 #files were generated.  Like the tests subpackage, we
 #probably only need to conditionaly define the %files
 #section.
-%if 0%{?createdevel:1}
-%package devel
-Summary:    %{pr_name} SDK
-Group:      Development/Libraries
-requires:   %{name} = %{version}-%{release}
-%description devel
-%{pr_name} SDK libraries, headers and interface descriptions
-%endif
-
 %if 0%{?createtests:1}
 %package tests
 Summary:    %{pr_name} tests
@@ -68,7 +59,7 @@ desktop-file-install \
     %{SOURCE0}
 
 # copy pref file
-cat %{_sourcedir}/no-updates.js > $RPM_BUILD_ROOT/%{_libdir}/%{name}-%{moz_app_version}/cliqz.cfg
+cat %{_sourcedir}/no-updates.js > $RPM_BUILD_ROOT/%{_libdir}/%{name}/cliqz.cfg
 
 #In order to make branding work in a generic way, We find
 #all the icons that are likely to be used for desktop files
@@ -119,15 +110,6 @@ fi
 %{_datadir}/applications/
 %{_datadir}/icons/
 %doc
-
-
-%if 0%{?createdevel:1}
-%files devel
-%defattr(-,root,root,-)
-%{_includedir}
-%{_sdkdir}
-%{_idldir}
-%endif
 
 
 %if 0%{?createtests:1}

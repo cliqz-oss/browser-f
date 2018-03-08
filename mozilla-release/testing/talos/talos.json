@@ -1,11 +1,11 @@
 {
     "suites": {
         "chromez-e10s": {
-            "tests": ["tresize", "tcanvasmark"]
+            "tests": ["tresize"]
         },
         "chromez-stylo-disabled-e10s": {
             "talos_options": ["--disable-stylo"],
-            "tests": ["tresize", "tcanvasmark"]
+            "tests": ["tresize"]
         },
         "dromaeojs-e10s": {
             "tests": ["dromaeo_css", "kraken"]
@@ -47,7 +47,7 @@
             "talos_options": ["--disable-stylo"]
         },
         "g4-e10s": {
-            "tests": ["basic_compositor_video", "glvideo", "displaylist_mutate"]
+            "tests": ["basic_compositor_video", "glvideo", "displaylist_mutate", "rasterflood_svg", "rasterflood_gradient"]
         },
         "g4-stylo-disabled-e10s": {
             "tests": ["basic_compositor_video", "glvideo"],
@@ -84,7 +84,7 @@
             "talos_options": ["--disable-stylo"]
         },
         "speedometer-e10s": {
-            "tests": ["speedometer"]
+            "tests": ["speedometer", "stylebench"]
         },
         "speedometer-stylo-disabled-e10s": {
             "talos_options": ["--disable-stylo"],

@@ -1,9 +1,24 @@
 add_task(async function() {
-  gPrefService.setBoolPref("browser.ctrlTab.previews", true);
+  Services.prefs.setBoolPref("browser.ctrlTab.previews", true);
 
   BrowserTestUtils.addTab(gBrowser);
   BrowserTestUtils.addTab(gBrowser);
   BrowserTestUtils.addTab(gBrowser);
+
+  // While doing this test, we should make sure the selected tab in the tab
+  // preview is not changed by mouse events.  That may happen after closing
+  // the selected tab with ctrl+W.  Disable all mouse events to prevent it.
+  for (let node of ctrlTab.previews) {
+    node.style.pointerEvents = "none";
+  }
+  registerCleanupFunction(function() {
+    for (let node of ctrlTab.previews) {
+      try {
+        node.style.removeProperty("pointer-events");
+      } catch (e) {
+      }
+    }
+  });
 
   checkTabs(4);
 
@@ -97,8 +112,8 @@ add_task(async function() {
   }
 
   // cleanup
-  if (gPrefService.prefHasUserValue("browser.ctrlTab.previews"))
-    gPrefService.clearUserPref("browser.ctrlTab.previews");
+  if (Services.prefs.prefHasUserValue("browser.ctrlTab.previews"))
+    Services.prefs.clearUserPref("browser.ctrlTab.previews");
 
   /* private utility functions */
 
@@ -135,7 +150,7 @@ add_task(async function() {
   }
 
   function canOpen() {
-    return gPrefService.getBoolPref("browser.ctrlTab.previews") && gBrowser.tabs.length > 2;
+    return Services.prefs.getBoolPref("browser.ctrlTab.previews") && gBrowser.tabs.length > 2;
   }
 
   function checkTabs(aTabs) {

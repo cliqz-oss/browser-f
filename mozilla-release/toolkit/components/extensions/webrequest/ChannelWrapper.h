@@ -133,6 +133,7 @@ public:
   void Cancel(uint32_t result, ErrorResult& aRv);
 
   void RedirectTo(nsIURI* uri, ErrorResult& aRv);
+  void UpgradeToSecure(ErrorResult& aRv);
 
 
   bool Suspended() const { return mSuspended; }
@@ -220,9 +221,9 @@ public:
 
   void GetResponseHeaders(nsTArray<dom::MozHTTPHeader>& aRetVal, ErrorResult& aRv) const;
 
-  void SetRequestHeader(const nsCString& header, const nsCString& value, ErrorResult& aRv);
+  void SetRequestHeader(const nsCString& header, const nsCString& value, bool merge, ErrorResult& aRv);
 
-  void SetResponseHeader(const nsCString& header, const nsCString& value, ErrorResult& aRv);
+  void SetResponseHeader(const nsCString& header, const nsCString& value, bool merge, ErrorResult& aRv);
 
 
   using EventTarget::EventListenerAdded;

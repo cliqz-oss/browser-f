@@ -8,31 +8,78 @@ varying vec3 vUv;
 flat varying vec4 vUvBounds;
 flat varying float vAmount;
 flat varying int vOp;
+flat varying mat4 vColorMat;
 
 #ifdef WR_VERTEX_SHADER
 void main(void) {
     CompositeInstance ci = fetch_composite_instance();
-    AlphaBatchTask dest_task = fetch_alpha_batch_task(ci.render_task_index);
-    AlphaBatchTask src_task = fetch_alpha_batch_task(ci.src_task_index);
+    PictureTask dest_task = fetch_picture_task(ci.render_task_index);
+    PictureTask src_task = fetch_picture_task(ci.src_task_index);
 
-    vec2 dest_origin = dest_task.render_target_origin -
-                       dest_task.screen_space_origin +
-                       src_task.screen_space_origin;
+    vec2 dest_origin = dest_task.common_data.task_rect.p0 -
+                       dest_task.content_origin +
+                       src_task.content_origin;
 
     vec2 local_pos = mix(dest_origin,
-                         dest_origin + src_task.size,
+                         dest_origin + src_task.common_data.task_rect.size,
                          aPosition.xy);
 
     vec2 texture_size = vec2(textureSize(sCacheRGBA8, 0));
-    vec2 st0 = src_task.render_target_origin;
-    vec2 st1 = src_task.render_target_origin + src_task.size;
+    vec2 st0 = src_task.common_data.task_rect.p0;
+    vec2 st1 = src_task.common_data.task_rect.p0 + src_task.common_data.task_rect.size;
 
-    vec2 uv = src_task.render_target_origin + aPosition.xy * src_task.size;
-    vUv = vec3(uv / texture_size, src_task.render_target_layer_index);
+    vec2 uv = src_task.common_data.task_rect.p0 + aPosition.xy * src_task.common_data.task_rect.size;
+    vUv = vec3(uv / texture_size, src_task.common_data.texture_layer_index);
     vUvBounds = vec4(st0 + 0.5, st1 - 0.5) / texture_size.xyxy;
 
     vOp = ci.user_data0;
     vAmount = float(ci.user_data1) / 65535.0;
+
+    float lumR = 0.2126;
+    float lumG = 0.7152;
+    float lumB = 0.0722;
+    float oneMinusLumR = 1.0 - lumR;
+    float oneMinusLumG = 1.0 - lumG;
+    float oneMinusLumB = 1.0 - lumB;
+    float oneMinusAmount = 1.0 - vAmount;
+
+    switch (vOp) {
+        case 2: {
+            // Grayscale
+            vColorMat = mat4(vec4(lumR + oneMinusLumR * oneMinusAmount, lumR - lumR * oneMinusAmount, lumR - lumR * oneMinusAmount, 0.0),
+                             vec4(lumG - lumG * oneMinusAmount, lumG + oneMinusLumG * oneMinusAmount, lumG - lumG * oneMinusAmount, 0.0),
+                             vec4(lumB - lumB * oneMinusAmount, lumB - lumB * oneMinusAmount, lumB + oneMinusLumB * oneMinusAmount, 0.0),
+                             vec4(0.0, 0.0, 0.0, 1.0));
+            break;
+        }
+        case 3: {
+            // HueRotate
+            float c = cos(vAmount * 0.01745329251);
+            float s = sin(vAmount * 0.01745329251);
+            vColorMat = mat4(vec4(lumR + oneMinusLumR * c - lumR * s, lumR - lumR * c + 0.143 * s, lumR - lumR * c - oneMinusLumR * s, 0.0),
+                            vec4(lumG - lumG * c - lumG * s, lumG + oneMinusLumG * c + 0.140 * s, lumG - lumG * c + lumG * s, 0.0),
+                            vec4(lumB - lumB * c + oneMinusLumB * s, lumB - lumB * c - 0.283 * s, lumB + oneMinusLumB * c + lumB * s, 0.0),
+                            vec4(0.0, 0.0, 0.0, 1.0));
+            break;
+        }
+        case 5: {
+            // Saturate
+            vColorMat = mat4(vec4(oneMinusAmount * lumR + vAmount, oneMinusAmount * lumR, oneMinusAmount * lumR, 0.0),
+                             vec4(oneMinusAmount * lumG, oneMinusAmount * lumG + vAmount, oneMinusAmount * lumG, 0.0),
+                             vec4(oneMinusAmount * lumB, oneMinusAmount * lumB, oneMinusAmount * lumB + vAmount, 0.0),
+                             vec4(0.0, 0.0, 0.0, 1.0));
+            break;
+        }
+        case 6: {
+            // Sepia
+            vColorMat = mat4(vec4(0.393 + 0.607 * oneMinusAmount, 0.349 - 0.349 * oneMinusAmount, 0.272 - 0.272 * oneMinusAmount, 0.0),
+                             vec4(0.769 - 0.769 * oneMinusAmount, 0.686 + 0.314 * oneMinusAmount, 0.534 - 0.534 * oneMinusAmount, 0.0),
+                             vec4(0.189 - 0.189 * oneMinusAmount, 0.168 - 0.168 * oneMinusAmount, 0.131 + 0.869 * oneMinusAmount, 0.0),
+                             vec4(0.0, 0.0, 0.0, 1.0));
+            break;
+        }
+    }
+
 
     gl_Position = uTransform * vec4(local_pos, ci.z, 1.0);
 }
@@ -43,114 +90,23 @@ void main(void) {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-vec3 rgbToHsv(vec3 c) {
-    float value = max(max(c.r, c.g), c.b);
-
-    float chroma = value - min(min(c.r, c.g), c.b);
-    if (chroma == 0.0) {
-        return vec3(0.0);
-    }
-    float saturation = chroma / value;
-
-    float hue;
-    if (c.r == value)
-        hue = (c.g - c.b) / chroma;
-    else if (c.g == value)
-        hue = 2.0 + (c.b - c.r) / chroma;
-    else // if (c.b == value)
-        hue = 4.0 + (c.r - c.g) / chroma;
-
-    hue *= 1.0/6.0;
-    if (hue < 0.0)
-        hue += 1.0;
-    return vec3(hue, saturation, value);
-}
-
-vec3 hsvToRgb(vec3 c) {
-    if (c.s == 0.0) {
-        return vec3(c.z);
-    }
-
-    float hue = c.x * 6.0;
-    int sector = int(hue);
-    float residualHue = hue - float(sector);
-
-    vec3 pqt = c.z * vec3(1.0 - c.y, 1.0 - c.y * residualHue, 1.0 - c.y * (1.0 - residualHue));
-    switch (sector) {
-        case 0:
-            return vec3(c.z, pqt.z, pqt.x);
-        case 1:
-            return vec3(pqt.y, c.z, pqt.x);
-        case 2:
-            return vec3(pqt.x, c.z, pqt.z);
-        case 3:
-            return vec3(pqt.x, pqt.y, c.z);
-        case 4:
-            return vec3(pqt.z, pqt.x, c.z);
-        default:
-            return vec3(c.z, pqt.x, pqt.y);
-    }
-}
-
-vec4 Blur(float radius, vec2 direction) {
-    // TODO(gw): Support blur in WR2!
-    return vec4(1.0);
-}
-
 vec4 Contrast(vec4 Cs, float amount) {
-    return vec4(Cs.rgb * amount - 0.5 * amount + 0.5, 1.0);
-}
-
-vec4 Grayscale(vec4 Cs, float amount) {
-    float ia = 1.0 - amount;
-    return mat4(vec4(0.2126 + 0.7874 * ia, 0.2126 - 0.2126 * ia, 0.2126 - 0.2126 * ia, 0.0),
-                vec4(0.7152 - 0.7152 * ia, 0.7152 + 0.2848 * ia, 0.7152 - 0.7152 * ia, 0.0),
-                vec4(0.0722 - 0.0722 * ia, 0.0722 - 0.0722 * ia, 0.0722 + 0.9278 * ia, 0.0),
-                vec4(0.0, 0.0, 0.0, 1.0)) * Cs;
-}
-
-vec4 HueRotate(vec4 Cs, float amount) {
-    vec3 CsHsv = rgbToHsv(Cs.rgb);
-    CsHsv.x = mod(CsHsv.x + amount / 6.283185307179586, 1.0);
-    return vec4(hsvToRgb(CsHsv), Cs.a);
+    return vec4(Cs.rgb * amount - 0.5 * amount + 0.5, Cs.a);
 }
 
 vec4 Invert(vec4 Cs, float amount) {
-    Cs.rgb /= Cs.a;
-
-    vec3 color = mix(Cs.rgb, vec3(1.0) - Cs.rgb, amount);
-
-    // Pre-multiply the alpha into the output value.
-    return vec4(color.rgb * Cs.a, Cs.a);
-}
-
-vec4 Saturate(vec4 Cs, float amount) {
-    return vec4(hsvToRgb(min(vec3(1.0, amount, 1.0) * rgbToHsv(Cs.rgb), vec3(1.0))), Cs.a);
-}
-
-vec4 Sepia(vec4 Cs, float amount) {
-    float ia = 1.0 - amount;
-    return mat4(vec4(0.393 + 0.607 * ia, 0.349 - 0.349 * ia, 0.272 - 0.272 * ia, 0.0),
-                vec4(0.769 - 0.769 * ia, 0.686 + 0.314 * ia, 0.534 - 0.534 * ia, 0.0),
-                vec4(0.189 - 0.189 * ia, 0.168 - 0.168 * ia, 0.131 + 0.869 * ia, 0.0),
-                vec4(0.0, 0.0, 0.0, 1.0)) * Cs;
+    return vec4(mix(Cs.rgb, vec3(1.0) - Cs.rgb, amount), Cs.a);
 }
 
 vec4 Brightness(vec4 Cs, float amount) {
-    // Un-premultiply the input.
-    Cs.rgb /= Cs.a;
-
     // Apply the brightness factor.
     // Resulting color needs to be clamped to output range
     // since we are pre-multiplying alpha in the shader.
-    vec3 color = clamp(Cs.rgb * amount, vec3(0.0), vec3(1.0));
-
-    // Pre-multiply the alpha into the output value.
-    return vec4(color.rgb * Cs.a, Cs.a);
+    return vec4(clamp(Cs.rgb * amount, vec3(0.0), vec3(1.0)), Cs.a);
 }
 
 vec4 Opacity(vec4 Cs, float amount) {
-    return Cs * amount;
+    return vec4(Cs.rgb, Cs.a * amount);
 }
 
 void main(void) {
@@ -161,28 +117,18 @@ void main(void) {
         discard;
     }
 
+    // Un-premultiply the input.
+    Cs.rgb /= Cs.a;
+
     switch (vOp) {
         case 0:
-            // Gaussian blur is specially handled:
-            oFragColor = Cs;// Blur(vAmount, vec2(0,0));
+            oFragColor = Cs;
             break;
         case 1:
             oFragColor = Contrast(Cs, vAmount);
             break;
-        case 2:
-            oFragColor = Grayscale(Cs, vAmount);
-            break;
-        case 3:
-            oFragColor = HueRotate(Cs, vAmount);
-            break;
         case 4:
             oFragColor = Invert(Cs, vAmount);
-            break;
-        case 5:
-            oFragColor = Saturate(Cs, vAmount);
-            break;
-        case 6:
-            oFragColor = Sepia(Cs, vAmount);
             break;
         case 7:
             oFragColor = Brightness(Cs, vAmount);
@@ -190,6 +136,11 @@ void main(void) {
         case 8:
             oFragColor = Opacity(Cs, vAmount);
             break;
+        default:
+            oFragColor = vColorMat * Cs;
     }
+
+    // Pre-multiply the alpha into the output value.
+    oFragColor.rgb *= oFragColor.a;
 }
 #endif

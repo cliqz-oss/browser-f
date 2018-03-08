@@ -184,7 +184,8 @@ nsCoreUtils::GetAccessKeyFor(nsIContent* aContent)
   // Accesskeys are registered by @accesskey attribute only. At first check
   // whether it is presented on the given element to avoid the slow
   // EventStateManager::GetRegisteredAccessKey() method.
-  if (!aContent->HasAttr(kNameSpaceID_None, nsGkAtoms::accesskey))
+  if (!aContent->IsElement() ||
+      !aContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::accesskey))
     return 0;
 
   nsIPresShell* presShell = aContent->OwnerDoc()->GetShell();
@@ -199,7 +200,7 @@ nsCoreUtils::GetAccessKeyFor(nsIContent* aContent)
   if (!esm)
     return 0;
 
-  return esm->GetRegisteredAccessKey(aContent);
+  return esm->GetRegisteredAccessKey(aContent->AsElement());
 }
 
 nsIContent *
@@ -225,7 +226,7 @@ nsCoreUtils::GetDOMNodeFromDOMPoint(nsINode *aNode, uint32_t aOffset)
     // is placed immediately after the last child. In this case use the DOM node
     // from the given DOM point is used as result node.
     if (aOffset != childCount)
-      return aNode->GetChildAt(aOffset);
+      return aNode->GetChildAt_Deprecated(aOffset);
   }
 
   return aNode;
@@ -301,7 +302,7 @@ nsCoreUtils::ScrollFrameToPoint(nsIFrame *aScrollableFrame,
   nsPoint point =
     ToAppUnits(aPoint, aFrame->PresContext()->AppUnitsPerDevPixel());
   nsRect frameRect = aFrame->GetScreenRectInAppUnits();
-  nsPoint deltaPoint(point.x - frameRect.x, point.y - frameRect.y);
+  nsPoint deltaPoint = point - frameRect.TopLeft();
 
   nsPoint scrollPoint = scrollableFrame->GetScrollPosition();
   scrollPoint -= deltaPoint;
@@ -455,14 +456,18 @@ nsCoreUtils::IsErrorPage(nsIDocument *aDocument)
 bool
 nsCoreUtils::GetID(nsIContent *aContent, nsAString& aID)
 {
-  return aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::id, aID);
+  return aContent->IsElement() &&
+    aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::id, aID);
 }
 
 bool
 nsCoreUtils::GetUIntAttr(nsIContent *aContent, nsAtom *aAttr, int32_t *aUInt)
 {
   nsAutoString value;
-  aContent->GetAttr(kNameSpaceID_None, aAttr, value);
+  if (!aContent->IsElement()) {
+    return false;
+  }
+  aContent->AsElement()->GetAttr(kNameSpaceID_None, aAttr, value);
   if (!value.IsEmpty()) {
     nsresult error = NS_OK;
     int32_t integer = value.ToInteger(&error);
@@ -483,7 +488,8 @@ nsCoreUtils::GetLanguageFor(nsIContent *aContent, nsIContent *aRootContent,
 
   nsIContent *walkUp = aContent;
   while (walkUp && walkUp != aRootContent &&
-         !walkUp->GetAttr(kNameSpaceID_None, nsGkAtoms::lang, aLanguage))
+         (!walkUp->IsElement() ||
+          !walkUp->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::lang, aLanguage)))
     walkUp = walkUp->GetParent();
 }
 
@@ -617,7 +623,7 @@ nsCoreUtils::IsColumnHidden(nsITreeColumn *aColumn)
 {
   nsCOMPtr<nsIDOMElement> element;
   aColumn->GetElement(getter_AddRefs(element));
-  nsCOMPtr<nsIContent> content = do_QueryInterface(element);
+  nsCOMPtr<Element> content = do_QueryInterface(element);
   return content->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidden,
                               nsGkAtoms::_true, eCaseMatters);
 }
@@ -677,7 +683,7 @@ nsCoreUtils::XBLBindingRole(const nsIContent* aEl, nsAString& aRole)
 {
   for (const nsXBLBinding* binding = aEl->GetXBLBinding(); binding;
        binding = binding->GetBaseBinding()) {
-    nsIContent* bindingElm = binding->PrototypeBinding()->GetBindingElement();
+    Element* bindingElm = binding->PrototypeBinding()->GetBindingElement();
     bindingElm->GetAttr(kNameSpaceID_None, nsGkAtoms::role, aRole);
     if (!aRole.IsEmpty())
       break;

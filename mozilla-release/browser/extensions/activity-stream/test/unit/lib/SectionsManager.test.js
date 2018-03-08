@@ -1,7 +1,7 @@
 "use strict";
-const {SectionsFeed, SectionsManager} = require("lib/SectionsManager.jsm");
-const {EventEmitter, GlobalOverrider} = require("test/unit/utils");
-const {MAIN_MESSAGE_TYPE, CONTENT_MESSAGE_TYPE} = require("common/Actions.jsm");
+import {CONTENT_MESSAGE_TYPE, MAIN_MESSAGE_TYPE, PRELOAD_MESSAGE_TYPE} from "common/Actions.jsm";
+import {EventEmitter, GlobalOverrider} from "test/unit/utils";
+import {SectionsFeed, SectionsManager} from "lib/SectionsManager.jsm";
 
 const FAKE_ID = "FAKE_ID";
 const FAKE_OPTIONS = {icon: "FAKE_ICON", title: "FAKE_TITLE"};
@@ -354,8 +354,9 @@ describe("SectionsFeed", () => {
       const action = feed.store.dispatch.firstCall.args[0];
       assert.equal(action.type, "SECTION_UPDATE");
       assert.deepEqual(action.data, {id: FAKE_ID, rows: FAKE_ROWS});
-      // Should be not broadcast by default, so meta should not exist
-      assert.notOk(action.meta);
+      // Should be not broadcast by default, but should update the preloaded tab, so check meta
+      assert.equal(action.meta.from, MAIN_MESSAGE_TYPE);
+      assert.equal(action.meta.to, PRELOAD_MESSAGE_TYPE);
     });
     it("should broadcast the action only if shouldBroadcast is true", () => {
       feed.onUpdateSection(null, FAKE_ID, {rows: FAKE_ROWS}, true);
@@ -375,8 +376,9 @@ describe("SectionsFeed", () => {
       const action = feed.store.dispatch.firstCall.args[0];
       assert.equal(action.type, "SECTION_UPDATE_CARD");
       assert.deepEqual(action.data, {id: FAKE_ID, url: FAKE_URL, options: FAKE_CARD_OPTIONS});
-      // Should be not broadcast by default, so meta should not exist
-      assert.notOk(action.meta);
+      // Should be not broadcast by default, but should update the preloaded tab, so check meta
+      assert.equal(action.meta.from, MAIN_MESSAGE_TYPE);
+      assert.equal(action.meta.to, PRELOAD_MESSAGE_TYPE);
     });
     it("should broadcast the action only if shouldBroadcast is true", () => {
       feed.onUpdateSectionCard(null, FAKE_ID, FAKE_URL, FAKE_CARD_OPTIONS, true);

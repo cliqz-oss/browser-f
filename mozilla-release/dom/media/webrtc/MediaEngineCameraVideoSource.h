@@ -16,6 +16,7 @@
 #include "ipc/IPCMessageUtils.h"
 
 // WebRTC includes
+#include "webrtc/common_video/include/i420_buffer_pool.h"
 #include "webrtc/modules/video_capture/video_capture_defines.h"
 
 namespace webrtc {
@@ -23,6 +24,19 @@ namespace webrtc {
 }
 
 namespace mozilla {
+
+// Fitness distance is defined in
+// https://www.w3.org/TR/2017/CR-mediacapture-streams-20171003/#dfn-selectsettings
+// The main difference of feasibility and fitness distance is that if the
+// constraint is required ('max', or 'exact'), and the settings dictionary's value
+// for the constraint does not satisfy the constraint, the fitness distance is
+// positive infinity. Given a continuous space of settings dictionaries comprising
+// all discrete combinations of dimension and frame-rate related properties,
+// the feasibility distance is still in keeping with the constraints algorithm.
+enum DistanceCalculation {
+  kFitness,
+  kFeasibility
+};
 
 class MediaEngineCameraVideoSource : public MediaEngineVideoSource
 {
@@ -32,6 +46,8 @@ public:
                                         const char* aMonitorName = "Camera.Monitor")
     : MediaEngineVideoSource(kReleased)
     , mMonitor(aMonitorName)
+    , mRescalingBufferPool(/* zero_initialize */ false,
+                           /* max_number_of_buffers */ 1)
     , mWidth(0)
     , mHeight(0)
     , mInitDone(false)
@@ -66,17 +82,28 @@ public:
     Unused << NS_WARN_IF(mImage);
     mImage = nullptr;
     mImageContainer = nullptr;
+    mRescalingBufferPool.Release();
   }
 
 protected:
   struct CapabilityCandidate {
-    explicit CapabilityCandidate(uint8_t index, uint32_t distance = 0)
-    : mIndex(index), mDistance(distance) {}
+    explicit CapabilityCandidate(webrtc::CaptureCapability&& aCapability,
+                                 uint32_t aDistance = 0)
+    : mCapability(Forward<webrtc::CaptureCapability>(aCapability))
+    , mDistance(aDistance) {}
 
-    size_t mIndex;
+    const webrtc::CaptureCapability mCapability;
     uint32_t mDistance;
   };
-  typedef nsTArray<CapabilityCandidate> CapabilitySet;
+
+  class CapabilityComparator {
+  public:
+    bool Equals(const CapabilityCandidate& aCandidate,
+                const webrtc::CaptureCapability& aCapability) const
+    {
+      return aCandidate.mCapability == aCapability;
+    }
+  };
 
   ~MediaEngineCameraVideoSource() {}
 
@@ -86,19 +113,30 @@ protected:
                              TrackID aID,
                              StreamTime delta,
                              const PrincipalHandle& aPrincipalHandle);
+  uint32_t GetDistance(const webrtc::CaptureCapability& aCandidate,
+                       const NormalizedConstraintSet &aConstraints,
+                       const nsString& aDeviceId,
+                       const DistanceCalculation aCalculate) const;
   uint32_t GetFitnessDistance(const webrtc::CaptureCapability& aCandidate,
                               const NormalizedConstraintSet &aConstraints,
                               const nsString& aDeviceId) const;
-  static void TrimLessFitCandidates(CapabilitySet& set);
+  uint32_t GetFeasibilityDistance(const webrtc::CaptureCapability& aCandidate,
+                              const NormalizedConstraintSet &aConstraints,
+                              const nsString& aDeviceId) const;
+  static void TrimLessFitCandidates(nsTArray<CapabilityCandidate>& aSet);
   static void LogConstraints(const NormalizedConstraintSet& aConstraints);
   static void LogCapability(const char* aHeader,
                             const webrtc::CaptureCapability &aCapability,
                             uint32_t aDistance);
   virtual size_t NumCapabilities() const;
-  virtual void GetCapability(size_t aIndex, webrtc::CaptureCapability& aOut) const;
-  virtual bool ChooseCapability(const NormalizedConstraints &aConstraints,
-                                const MediaEnginePrefs &aPrefs,
-                                const nsString& aDeviceId);
+  virtual webrtc::CaptureCapability GetCapability(size_t aIndex) const;
+  virtual bool ChooseCapability(
+    const NormalizedConstraints &aConstraints,
+    const MediaEnginePrefs &aPrefs,
+    const nsString& aDeviceId,
+    webrtc::CaptureCapability& aCapability,
+    const DistanceCalculation aCalculate
+  );
   void SetName(nsString aName);
   void SetUUID(const char* aUUID);
   const nsCString& GetUUID() const; // protected access
@@ -116,8 +154,15 @@ protected:
   nsTArray<RefPtr<SourceMediaStream>> mSources; // When this goes empty, we shut down HW
   nsTArray<PrincipalHandle> mPrincipalHandles; // Directly mapped to mSources.
   RefPtr<layers::Image> mImage;
+  nsTArray<RefPtr<layers::Image>> mImages;
+  nsTArray<webrtc::CaptureCapability> mTargetCapabilities;
+  nsTArray<uint64_t> mHandleIds;
   RefPtr<layers::ImageContainer> mImageContainer;
   // end of data protected by mMonitor
+
+  // A buffer pool used to manage the temporary buffer used when rescaling
+  // incoming images. Cameras IPC thread only.
+  webrtc::I420BufferPool mRescalingBufferPool;
 
   int mWidth, mHeight;
   bool mInitDone;
@@ -125,6 +170,7 @@ protected:
   TrackID mTrackID;
 
   webrtc::CaptureCapability mCapability;
+  webrtc::CaptureCapability mTargetCapability;
 
   mutable nsTArray<webrtc::CaptureCapability> mHardcodedCapabilities;
 private:

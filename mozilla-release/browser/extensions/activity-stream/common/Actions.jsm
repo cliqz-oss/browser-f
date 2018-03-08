@@ -5,6 +5,7 @@
 
 this.MAIN_MESSAGE_TYPE = "ActivityStream:Main";
 this.CONTENT_MESSAGE_TYPE = "ActivityStream:Content";
+this.PRELOAD_MESSAGE_TYPE = "ActivityStream:PreloadedBrowser";
 this.UI_CODE = 1;
 this.BACKGROUND_PROCESS = 2;
 
@@ -69,16 +70,18 @@ for (const type of [
   "SETTINGS_OPEN",
   "SET_PREF",
   "SHOW_FIREFOX_ACCOUNTS",
+  "SNIPPETS_BLOCKLIST_UPDATED",
   "SNIPPETS_DATA",
   "SNIPPETS_RESET",
+  "SNIPPET_BLOCKED",
   "SYSTEM_TICK",
   "TELEMETRY_IMPRESSION_STATS",
   "TELEMETRY_PERFORMANCE_EVENT",
   "TELEMETRY_UNDESIRED_EVENT",
   "TELEMETRY_USER_EVENT",
-  "TOP_SITES_ADD",
   "TOP_SITES_CANCEL_EDIT",
   "TOP_SITES_EDIT",
+  "TOP_SITES_INSERT",
   "TOP_SITES_PIN",
   "TOP_SITES_UNPIN",
   "TOP_SITES_UPDATED",
@@ -150,6 +153,19 @@ function SendToContent(action, target) {
     from: MAIN_MESSAGE_TYPE,
     to: CONTENT_MESSAGE_TYPE,
     toTarget: target
+  });
+}
+
+/**
+ * SendToPreloaded - Creates a message that will be sent to the preloaded tab.
+ *
+ * @param  {object} action Any redux action (required)
+ * @return {object} An action with added .meta properties
+ */
+function SendToPreloaded(action) {
+  return _RouteMessage(action, {
+    from: MAIN_MESSAGE_TYPE,
+    to: PRELOAD_MESSAGE_TYPE
   });
 }
 
@@ -227,6 +243,7 @@ this.actionCreators = {
   ImpressionStats,
   SendToContent,
   SendToMain,
+  SendToPreloaded,
   SetPref
 };
 
@@ -256,6 +273,13 @@ this.actionUtils = {
     }
     return false;
   },
+  isSendToPreloaded(action) {
+    if (!action.meta) {
+      return false;
+    }
+    return action.meta.to === PRELOAD_MESSAGE_TYPE &&
+      action.meta.from === MAIN_MESSAGE_TYPE;
+  },
   isFromMain(action) {
     if (!action.meta) {
       return false;
@@ -277,5 +301,6 @@ this.EXPORTED_SYMBOLS = [
   "UI_CODE",
   "BACKGROUND_PROCESS",
   "MAIN_MESSAGE_TYPE",
-  "CONTENT_MESSAGE_TYPE"
+  "CONTENT_MESSAGE_TYPE",
+  "PRELOAD_MESSAGE_TYPE"
 ];

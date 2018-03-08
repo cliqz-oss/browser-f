@@ -37,7 +37,6 @@ LOCAL_INCLUDES += [
     '/dom/filesystem',
     '/dom/geolocation',
     '/dom/html',
-    '/dom/json',
     '/dom/jsurl',
     '/dom/media',
     '/dom/offline',
@@ -49,7 +48,6 @@ LOCAL_INCLUDES += [
     '/dom/xslt/xpath',
     '/dom/xslt/xslt',
     '/dom/xul',
-    '/dom/xul/templates',
     '/editor/composer',
     '/editor/txmgr',
     '/editor/txtsvc',
@@ -88,5 +86,5 @@ if CONFIG['MOZ_SECUREELEMENT']:
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

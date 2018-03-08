@@ -44,7 +44,6 @@ const GRID_COLORS = [
 ];
 
 class GridInspector {
-
   constructor(inspector, window) {
     this.document = window.document;
     this.highlighters = inspector.highlighters;
@@ -293,7 +292,7 @@ class GridInspector {
     // Get all the GridFront from the server if no gridFronts were provided.
     let gridFronts;
     try {
-      gridFronts = await this.layoutInspector.getAllGrids(this.walker.rootNode);
+      gridFronts = await this.layoutInspector.getGrids(this.walker.rootNode);
     } catch (e) {
       // This call might fail if called asynchrously after the toolbox is finished
       // closing.
@@ -409,7 +408,7 @@ class GridInspector {
     // The new list of grids from the server.
     let newGridFronts;
     try {
-      newGridFronts = await this.layoutInspector.getAllGrids(this.walker.rootNode);
+      newGridFronts = await this.layoutInspector.getGrids(this.walker.rootNode);
     } catch (e) {
       // This call might fail if called asynchrously after the toolbox is finished
       // closing.
@@ -665,7 +664,6 @@ class GridInspector {
       }
     }
   }
-
 }
 
 module.exports = GridInspector;

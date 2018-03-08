@@ -21,26 +21,29 @@ protected:
   using Rule::Rule;
 
 public:
-  bool IsCCLeaf() const final {
+  bool IsCCLeaf() const final override {
     return Rule::IsCCLeaf();
   }
-  int32_t GetType() const final {
+  int32_t GetType() const final override {
     return Rule::NAMESPACE_RULE;
   }
-  using Rule::GetType;
 
   virtual nsAtom* GetPrefix() const = 0;
   virtual void GetURLSpec(nsString& aURLSpec) const = 0;
 
   // WebIDL interfaces
-  uint16_t Type() const final {
-    return nsIDOMCSSRule::NAMESPACE_RULE;
+  uint16_t Type() const final override { return CSSRuleBinding::NAMESPACE_RULE; }
+  void GetNamespaceURI(nsString& aNamespaceURI) {
+    GetURLSpec(aNamespaceURI);
+  }
+  void GetPrefix(DOMString& aPrefix) {
+    aPrefix.SetKnownLiveAtom(GetPrefix(), DOMString::eTreatNullAsEmpty);
   }
 
-  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const = 0;
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override = 0;
 
   JSObject* WrapObject(JSContext* aCx,
-                       JS::Handle<JSObject*> aGivenProto) final {
+                       JS::Handle<JSObject*> aGivenProto) final override {
     return CSSNamespaceRuleBinding::Wrap(aCx, this, aGivenProto);
   }
 };

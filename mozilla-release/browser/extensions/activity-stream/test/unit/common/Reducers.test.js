@@ -1,7 +1,6 @@
-const {reducers, INITIAL_STATE, insertPinned} = require("common/Reducers.jsm");
+import {INITIAL_STATE, insertPinned, reducers} from "common/Reducers.jsm";
 const {TopSites, App, Snippets, Prefs, Dialog, Sections, PreferencesPane} = reducers;
-
-const {actionTypes: at} = require("common/Actions.jsm");
+import {actionTypes as at} from "common/Actions.jsm";
 
 describe("Reducers", () => {
   describe("App", () => {
@@ -37,13 +36,13 @@ describe("Reducers", () => {
       assert.equal(nextState, INITIAL_STATE.TopSites);
     });
     it("should set editForm.visible to true on TOP_SITES_EDIT", () => {
-      const nextState = TopSites(undefined, {type: at.TOP_SITES_EDIT});
+      const nextState = TopSites(undefined, {type: at.TOP_SITES_EDIT, data: {index: 3}});
       assert.isTrue(nextState.editForm.visible);
     });
     it("should set editForm.site to action.data on TOP_SITES_EDIT", () => {
-      const data = {url: "foo", label: "label"};
+      const data = {index: 7};
       const nextState = TopSites(undefined, {type: at.TOP_SITES_EDIT, data});
-      assert.equal(nextState.editForm.site, data);
+      assert.equal(nextState.editForm.index, data.index);
     });
     it("should set editForm.visible to false on TOP_SITES_CANCEL_EDIT", () => {
       const nextState = TopSites(undefined, {type: at.TOP_SITES_CANCEL_EDIT});
@@ -111,15 +110,6 @@ describe("Reducers", () => {
     it("should not update state for empty action.data on PLACES_BOOKMARK_REMOVED", () => {
       const nextState = TopSites(undefined, {type: at.PLACES_BOOKMARK_REMOVED});
       assert.equal(nextState, INITIAL_STATE.TopSites);
-    });
-    it("should remove a link on BLOCK_URL and DELETE_HISTORY_URL", () => {
-      const events = [at.BLOCK_URL, at.DELETE_HISTORY_URL];
-      events.forEach(event => {
-        const oldState = {rows: [{url: "foo.com"}, {url: "bar.com"}]};
-        const action = {type: event, data: {url: "bar.com"}};
-        const nextState = TopSites(oldState, action);
-        assert.deepEqual(nextState.rows, [{url: "foo.com"}]);
-      });
     });
   });
   describe("Prefs", () => {

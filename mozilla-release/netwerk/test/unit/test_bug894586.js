@@ -11,9 +11,10 @@ var contentSecManager = Cc["@mozilla.org/contentsecuritymanager;1"]
                           .getService(Ci.nsIContentSecurityManager);
 
 function ProtocolHandler() {
-  this.uri = Cc["@mozilla.org/network/simple-uri;1"].
-               createInstance(Ci.nsIURI);
-  this.uri.spec = this.scheme + ":dummy";
+  this.uri = Cc["@mozilla.org/network/simple-uri-mutator;1"]
+               .createInstance(Ci.nsIURIMutator)
+               .setSpec(this.scheme + ":dummy")
+               .finalize();
   this.uri.QueryInterface(Ci.nsIMutable).mutable = false;
 }
 
@@ -73,7 +74,7 @@ ProtocolHandler.prototype = {
   },
   open: function() {
     var file = do_get_file("test_bug894586.js", false);
-    do_check_true(file.exists());
+    Assert.ok(file.exists());
     var url = Services.io.newFileURI(file);
     return NetUtil.newChannel({uri: url, loadUsingSystemPrincipal: true}).open2();
   },
@@ -148,7 +149,7 @@ function run_test()
     var ss = Cc["@mozilla.org/content/style-sheet-service;1"].
                getService(Ci.nsIStyleSheetService);
     ss.loadAndRegisterSheet(handler.uri, Ci.nsIStyleSheetService.AGENT_SHEET);
-    do_check_true(ss.sheetRegistered(handler.uri, Ci.nsIStyleSheetService.AGENT_SHEET));
+    Assert.ok(ss.sheetRegistered(handler.uri, Ci.nsIStyleSheetService.AGENT_SHEET));
   } finally {
     registrar.unregisterFactory(handler.classID, handler);
   }

@@ -7,13 +7,15 @@
   --rule-highlight-background-color: var(--theme-highlight-yellow);
   --rule-overridden-item-border-color: var(--theme-content-color3);
   --rule-header-background-color: var(--theme-toolbar-background);
+  --rule-flex-toggle-color: var(--grey-90);
   --rule-shape-toggle-color: var(--grey-90);
 }
 
 :root.theme-dark {
   --rule-highlight-background-color: #521C76;
   --rule-overridden-item-border-color: var(--theme-content-color1);
-  --rule-header-background-color: #141416;
+  --rule-header-background-color: #222225;
+  --rule-flex-toggle-color: var(--grey-10);
   --rule-shape-toggle-color: var(--grey-10);
 }
 
@@ -452,6 +454,7 @@
   display: none;
 }
 
+.ruleview-flex,
 .ruleview-grid,
 .ruleview-swatch,
 .ruleview-shape {
@@ -465,6 +468,14 @@
   margin-inline-end: 5px;
   display: inline-block;
   position: relative;
+}
+
+.ruleview-flex {
+  background: url("chrome://devtools/skin/images/command-frames.svg");
+  -moz-context-properties: fill;
+  fill: var(--rule-shape-toggle-color);
+  border-radius: 0;
+  background-size: 1em;
 }
 
 .ruleview-grid {
@@ -530,6 +541,10 @@
   text-decoration-color: var(--theme-content-color3);
 }
 
+.ruleview-font-family.used-font {
+  text-decoration: underline;
+}
+
 .styleinspector-propertyeditor {
   border: 1px solid #CCC;
   padding: 0;
@@ -576,7 +591,7 @@
 
 .ruleview-selector-separator,
 .ruleview-selector-unmatched,
-.ruleview-variable-unmatched {
+.ruleview-unmatched-variable {
   color: #888;
 }
 
@@ -610,6 +625,7 @@
   filter: var(--theme-icon-checked-filter);
 }
 
+.ruleview-flex.active,
 .ruleview-grid.active,
 .ruleview-selectorhighlighter:active,
 .ruleview-selectorhighlighter.highlighted,

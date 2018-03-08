@@ -11,12 +11,9 @@ DIRS += [
     'reducers',
     'selectors',
     'utils',
+    'widgets',
 ]
 
 DevToolsModules(
     'constants.js',
-    'request-list-context-menu.js',
-    'request-list-header-context-menu.js',
-    'request-list-tooltip.js',
-    'waterfall-background.js',
 )

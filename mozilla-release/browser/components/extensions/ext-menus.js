@@ -182,10 +182,26 @@ var gMenuBuilder = {
         // The rendering engine will truncate the title if it's longer than 64 characters.
         // But if it makes sense let's try truncate selection text only, to handle cases like
         // 'look up "%s" in MyDictionary' more elegantly.
-        let maxSelectionLength = gMaxLabelLength - label.length + 2;
-        if (maxSelectionLength > 4) {
-          selection = selection.substring(0, maxSelectionLength - 3) + "...";
+
+        let codePointsToRemove = 0;
+
+        let selectionArray = Array.from(selection);
+
+        let completeLabelLength = label.length - 2 + selectionArray.length;
+        if (completeLabelLength > gMaxLabelLength) {
+          codePointsToRemove = completeLabelLength - gMaxLabelLength;
         }
+
+        if (codePointsToRemove) {
+          let ellipsis = "\u2026";
+          try {
+            ellipsis = Services.prefs.getComplexValue("intl.ellipsis",
+                                                      Ci.nsIPrefLocalizedString).data;
+          } catch (e) { }
+          codePointsToRemove += 1;
+          selection = selectionArray.slice(0, -codePointsToRemove).join("") + ellipsis;
+        }
+
         label = label.replace(/%s/g, selection);
       }
 
@@ -193,8 +209,7 @@ var gMenuBuilder = {
     }
 
     if (item.id && item.extension && item.extension.id) {
-      element.setAttribute("id",
-        `${makeWidgetId(item.extension.id)}_${item.id}`);
+      element.setAttribute("id", `${makeWidgetId(item.extension.id)}_${item.id}`);
     }
 
     if (item.icons) {
@@ -236,7 +251,9 @@ var gMenuBuilder = {
         item.checked = true;
       }
 
-      item.tabManager.addActiveTabPermission();
+      if (!contextData.onBookmark) {
+        item.tabManager.addActiveTabPermission();
+      }
 
       let tab = contextData.tab && item.tabManager.convert(contextData.tab);
       let info = item.getClickInfo(contextData, wasChecked);
@@ -317,6 +334,7 @@ const contextsMap = {
   isTextSelected: "selection",
   onVideo: "video",
 
+  onBookmark: "bookmark",
   onBrowserAction: "browser_action",
   onPageAction: "page_action",
   onTab: "tab",
@@ -337,7 +355,7 @@ const getMenuContexts = contextData => {
   }
 
   // New non-content contexts supported in Firefox are not part of "all".
-  if (!contextData.onTab && !contextData.inToolsMenu) {
+  if (!contextData.onBookmark && !contextData.onTab && !contextData.inToolsMenu) {
     contexts.add("all");
   }
 
@@ -523,6 +541,7 @@ MenuItem.prototype = {
     setIfDefined("frameUrl", contextData.frameUrl);
     setIfDefined("frameId", contextData.frameId);
     setIfDefined("selectionText", contextData.selectionText);
+    setIfDefined("bookmarkId", contextData.bookmarkId);
 
     if ((this.type === "checkbox") || (this.type === "radio")) {
       info.checked = this.checked;
@@ -536,6 +555,10 @@ MenuItem.prototype = {
     let contexts = getMenuContexts(contextData);
     if (!this.contexts.some(n => contexts.has(n))) {
       return false;
+    }
+
+    if (contextData.onBookmark) {
+      return this.extension.hasPermission("bookmarks");
     }
 
     let docPattern = this.documentUrlMatchPattern;
@@ -566,7 +589,7 @@ MenuItem.prototype = {
 // While any extensions are active, this Tracker registers to observe/listen
 // for menu events from both Tools and context menus, both content and chrome.
 const menuTracker = {
-  menuIds: ["menu_ToolsPopup", "tabContextMenu"],
+  menuIds: ["placesContext", "menu_ToolsPopup", "tabContextMenu"],
 
   register() {
     Services.obs.addObserver(this, "on-build-contextmenu");
@@ -601,6 +624,18 @@ const menuTracker = {
 
   handleEvent(event) {
     const menu = event.target;
+    if (menu.id === "placesContext") {
+      const trigger = menu.triggerNode;
+      if (!trigger._placesNode) {
+        return;
+      }
+
+      gMenuBuilder.build({
+        menu,
+        bookmarkId: trigger._placesNode.bookmarkGuid,
+        onBookmark: true,
+      });
+    }
     if (menu.id === "menu_ToolsPopup") {
       const tab = tabTracker.activeTab;
       const pageUrl = tab.linkedBrowser.currentURI.spec;

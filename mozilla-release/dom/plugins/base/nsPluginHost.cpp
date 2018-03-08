@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <stdio.h>
 #include "prio.h"
+#include "nsExceptionHandler.h"
 #include "nsNPAPIPlugin.h"
 #include "nsNPAPIPluginStreamListener.h"
 #include "nsNPAPIPluginInstance.h"
@@ -52,6 +53,7 @@
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/FakePluginTagInitBinding.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/plugins/PluginBridge.h"
 #include "mozilla/plugins/PluginTypes.h"
@@ -103,10 +105,6 @@
 #include "winbase.h"
 #endif
 
-#if MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
-
 #include "npapi.h"
 
 using namespace mozilla;
@@ -153,7 +151,7 @@ LazyLogModule nsPluginLogging::gPluginLog(PLUGIN_LOG_NAME);
 #define DEFAULT_NUMBER_OF_STOPPED_INSTANCES 50
 
 nsIFile *nsPluginHost::sPluginTempDir;
-nsPluginHost *nsPluginHost::sInst;
+StaticRefPtr<nsPluginHost> nsPluginHost::sInst;
 
 /* to cope with short read */
 /* we should probably put this into a global library now that this is the second
@@ -299,7 +297,6 @@ nsPluginHost::~nsPluginHost()
   PLUGIN_LOG(PLUGIN_LOG_ALWAYS,("nsPluginHost::dtor\n"));
 
   UnloadPlugins();
-  sInst = nullptr;
 }
 
 NS_IMPL_ISUPPORTS(nsPluginHost,
@@ -314,13 +311,10 @@ nsPluginHost::GetInst()
 {
   if (!sInst) {
     sInst = new nsPluginHost();
-    if (!sInst)
-      return nullptr;
-    NS_ADDREF(sInst);
+    ClearOnShutdown(&sInst);
   }
 
-  RefPtr<nsPluginHost> inst = sInst;
-  return inst.forget();
+  return do_AddRef(sInst);
 }
 
 bool nsPluginHost::IsRunningPlugin(nsPluginTag * aPluginTag)
@@ -3384,7 +3378,6 @@ NS_IMETHODIMP nsPluginHost::Observe(nsISupports *aSubject,
 {
   if (!strcmp(NS_XPCOM_SHUTDOWN_OBSERVER_ID, aTopic)) {
     UnloadPlugins();
-    sInst->Release();
   }
   if (!strcmp(NS_PREFBRANCH_PREFCHANGE_TOPIC_ID, aTopic)) {
     mPluginsDisabled = Preferences::GetBool("plugin.disable", false);

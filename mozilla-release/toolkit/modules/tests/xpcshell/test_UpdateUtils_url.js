@@ -136,38 +136,16 @@ function getProcArchitecture() {
 
 // Gets the supported CPU instruction set.
 function getInstructionSet() {
-  if (AppConstants.platform == "win") {
-    const PF_MMX_INSTRUCTIONS_AVAILABLE = 3; // MMX
-    const PF_XMMI_INSTRUCTIONS_AVAILABLE = 6; // SSE
-    const PF_XMMI64_INSTRUCTIONS_AVAILABLE = 10; // SSE2
-    const PF_SSE3_INSTRUCTIONS_AVAILABLE = 13; // SSE3
-
-    let lib = ctypes.open("kernel32.dll");
-    let IsProcessorFeaturePresent = lib.declare("IsProcessorFeaturePresent",
-                                                ctypes.winapi_abi,
-                                                ctypes.int32_t, /* success */
-                                                ctypes.uint32_t); /* DWORD */
-    let instructionSet = "unknown";
-    try {
-      if (IsProcessorFeaturePresent(PF_SSE3_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE3";
-      } else if (IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE2";
-      } else if (IsProcessorFeaturePresent(PF_XMMI_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE";
-      } else if (IsProcessorFeaturePresent(PF_MMX_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "MMX";
-      }
-    } catch (e) {
-      Cu.reportError("Error getting processor instruction set. " +
-                     "Exception: " + e);
+  const CPU_EXTENSIONS = ["hasSSE4_2", "hasSSE4_1", "hasSSE4A", "hasSSSE3",
+                          "hasSSE3", "hasSSE2", "hasSSE", "hasMMX",
+                          "hasNEON", "hasARMv7", "hasARMv6"];
+  for (let ext of CPU_EXTENSIONS) {
+    if (Services.sysinfo.getProperty(ext)) {
+      return ext.substring(3);
     }
-
-    lib.close();
-    return instructionSet;
   }
 
-  return "NA";
+  return "error";
 }
 
 // Gets the RAM size in megabytes. This will round the value because sysinfo
@@ -354,11 +332,6 @@ add_task(async function test_custom() {
 add_task(async function test_systemCapabilities() {
   let url = URL_PREFIX + "%SYSTEM_CAPABILITIES%/";
   let systemCapabilities = "ISET:" + getInstructionSet() + ",MEM:" + getMemoryMB();
-  if (AppConstants.platform == "win") {
-    // The default value for shouldBlockIncompatJaws in the mock
-    // Services.appinfo is false so the value should be JAWS:0
-    systemCapabilities += ",JAWS:0";
-  }
   Assert.equal(await getResult(url), systemCapabilities,
                "the url param for %SYSTEM_CAPABILITIES%" + MSG_SHOULD_EQUAL);
 });

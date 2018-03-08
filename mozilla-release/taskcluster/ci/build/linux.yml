@@ -5,16 +5,15 @@ linux64/opt:
         job-name: linux64-opt
     treeherder:
         platform: linux64/opt
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -34,24 +33,24 @@ linux64-dmd/opt:
         job-name: linux64-dmd-opt
     treeherder:
         platform: linux64-dmd/opt
-        symbol: tc(Bdmd)
+        symbol: Bdmd
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
         script: "mozharness/scripts/fx_desktop_build.py"
-        custom-build-variant-cfg: dmd
+        extra-config:
+            mozconfig_variant: 'opt-dmd'
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: [ ]
+    run-on-projects: []
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -65,17 +64,16 @@ linux64/pgo:
         job-name: linux64-pgo
     treeherder:
         platform: linux64/pgo
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         options: [enable-pgo]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -88,6 +86,37 @@ linux64/pgo:
         - linux64-rust
         - linux64-sccache
 
+linux64-fuzzing/debug:
+    description: "Linux64 Fuzzing Debug"
+    index:
+        product: firefox
+        job-name: linux64-fuzzing-debug
+    treeherder:
+        platform: linux64/debug
+        symbol: Bf
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        max-run-time: 36000
+        env:
+            PERFHERDER_EXTRA_OPTIONS: fuzzing
+    run:
+        using: mozharness
+        actions: [get-secrets build check-test update]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+            - balrog/production.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: fuzzing-debug
+        tooltool-downloads: public
+        need-xvfb: true
+    toolchains:
+        - linux64-clang
+        - linux64-gcc
+        - linux64-sccache
+        - linux64-rust
+
 linux64/debug:
     description: "Linux64 Debug"
     index:
@@ -95,16 +124,15 @@ linux64/debug:
         job-name: linux64-debug
     treeherder:
         platform: linux64/debug
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -122,31 +150,33 @@ linux64-devedition-nightly/opt:
     description: "Linux64 devedition Nightly"
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: devedition
     index:
         product: devedition
         job-name: linux64-opt
         type: nightly
     treeherder:
         platform: linux64-devedition/opt
-        symbol: tc(N)
+        symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - disable_signing.py
             - balrog/production.py
+            - taskcluster_nightly.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
         custom-build-variant-cfg: devedition
-    run-on-projects: [ 'mozilla-beta', ]
+    run-on-projects: ['mozilla-beta']
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -160,17 +190,17 @@ linux64-base-toolchains/opt:
         job-name: linux64-base-toolchains-opt
     treeherder:
         platform: linux64/opt
-        symbol: tc(Bb)
+        symbol: Bb
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/base-toolchains.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -180,7 +210,7 @@ linux64-base-toolchains/opt:
     toolchains:
         - linux64-clang-3.9
         - linux64-gcc-4.9
-        - linux64-rust-1.21
+        - linux64-rust-1.22
         - linux64-sccache
 
 linux64-base-toolchains/debug:
@@ -190,17 +220,17 @@ linux64-base-toolchains/debug:
         job-name: linux64-base-toolchains-debug
     treeherder:
         platform: linux64/debug
-        symbol: tc(Bb)
+        symbol: Bb
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/base-toolchains.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -211,7 +241,7 @@ linux64-base-toolchains/debug:
     toolchains:
         - linux64-clang-3.9
         - linux64-gcc-4.9
-        - linux64-rust-1.21
+        - linux64-rust-1.22
         - linux64-sccache
 
 linux/opt:
@@ -221,16 +251,15 @@ linux/opt:
         job-name: linux-opt
     treeherder:
         platform: linux32/opt
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux32/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -250,16 +279,15 @@ linux/debug:
         job-name: linux-debug
     treeherder:
         platform: linux32/debug
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux32/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -280,17 +308,16 @@ linux/pgo:
         job-name: linux-pgo
     treeherder:
         platform: linux32/pgo
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux32/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         options: [enable-pgo]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -309,18 +336,19 @@ linux-rusttests/opt:
         product: firefox
         job-name: linux-rusttests-opt
     treeherder:
-        platform: linux32-rusttests/opt
-        symbol: tc(BR)
+        platform: linux32/opt
+        symbol: BR
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 5400
         env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux32/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: rusttests
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -329,7 +357,7 @@ linux-rusttests/opt:
         tooltool-downloads: public
         keep-artifacts: false
         need-xvfb: true
-    run-on-projects: [ 'trunk', 'try' ]
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -342,18 +370,19 @@ linux-rusttests/debug:
         product: firefox
         job-name: linux-rusttests-debug
     treeherder:
-        platform: linux32-rusttests/debug
-        symbol: tc(BR)
+        platform: linux32/debug
+        symbol: BR
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 5400
         env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux32/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: rusttests
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -362,7 +391,7 @@ linux-rusttests/debug:
         tooltool-downloads: public
         keep-artifacts: false
         need-xvfb: true
-    run-on-projects: [ 'trunk', 'try' ]
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -373,31 +402,33 @@ linux-devedition-nightly/opt:
     description: "Linux32 devedition Nightly"
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: devedition
     index:
         product: devedition
         job-name: linux-opt
         type: nightly
     treeherder:
         platform: linux32-devedition/opt
-        symbol: tc(N)
+        symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux32/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
             - disable_signing.py
             - balrog/production.py
+            - taskcluster_nightly.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
         custom-build-variant-cfg: devedition
-    run-on-projects: [ 'mozilla-beta', ]
+    run-on-projects: ['mozilla-beta']
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -408,22 +439,23 @@ linux-nightly/opt:
     description: "Linux32 Nightly"
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: firefox
     index:
         product: firefox
         job-name: linux-opt
         type: nightly
     treeherder:
         platform: linux32/opt
-        symbol: tc(N)
+        symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux32/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
             - disable_signing.py
             - taskcluster_nightly.py
@@ -445,17 +477,17 @@ linux64-asan/opt:
         job-name: linux64-asan-opt
     treeherder:
         platform: linux64/asan
-        symbol: tc(Bo)
+        symbol: Bo
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: "opt asan"
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
         max-run-time: 36000
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -464,7 +496,7 @@ linux64-asan/opt:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang
+        - linux64-clang-6-pre
         - linux64-gcc
         - linux64-rust
         - linux64-sccache
@@ -477,17 +509,17 @@ linux64-asan-fuzzing/opt:
         job-name: linux64-fuzzing-asan-opt
     treeherder:
         platform: linux64/asan
-        symbol: tc(Bof)
+        symbol: Bof
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-fuzzing
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
         max-run-time: 36000
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -496,7 +528,7 @@ linux64-asan-fuzzing/opt:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang-4
+        - linux64-clang-6-pre
         - linux64-gcc
         - linux64-rust
         - linux64-sccache
@@ -508,17 +540,17 @@ linux64-asan-reporter/opt:
         job-name: linux64-asan-reporter-opt
     treeherder:
         platform: linux64/asan
-        symbol: tc(BoR)
+        symbol: BoR
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-reporter
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
         max-run-time: 36000
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -527,7 +559,7 @@ linux64-asan-reporter/opt:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang-4
+        - linux64-clang-6-pre
         - linux64-gcc
         - linux64-rust
         - linux64-sccache
@@ -539,17 +571,17 @@ linux64-asan/debug:
         job-name: linux64-asan-debug
     treeherder:
         platform: linux64/asan
-        symbol: tc(Bd)
+        symbol: Bd
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: "debug asan"
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
         max-run-time: 36000
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -558,7 +590,7 @@ linux64-asan/debug:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang
+        - linux64-clang-6-pre
         - linux64-gcc
         - linux64-rust
         - linux64-sccache
@@ -567,22 +599,23 @@ linux64-nightly/opt:
     description: "Linux64 Nightly"
     attributes:
         nightly: true
+    shipping-phase: build
+    shipping-product: firefox
     index:
         product: firefox
         job-name: linux64-opt
         type: nightly
     treeherder:
         platform: linux64/opt
-        symbol: tc(N)
+        symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - disable_signing.py
             - taskcluster_nightly.py
@@ -603,17 +636,16 @@ linux64-noopt/debug:
         job-name: linux64-noopt-debug
     treeherder:
         platform: linux64-noopt/debug
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 3600
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -622,7 +654,7 @@ linux64-noopt/debug:
         tooltool-downloads: public
         keep-artifacts: false
         need-xvfb: true
-    run-on-projects: [ 'trunk', 'try' ]
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -635,18 +667,19 @@ linux64-rusttests/opt:
         product: firefox
         job-name: linux64-rusttests-opt
     treeherder:
-        platform: linux64-rusttests/opt
-        symbol: tc(BR)
+        platform: linux64/opt
+        symbol: BR
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 5400
         env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: rusttests
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -655,7 +688,7 @@ linux64-rusttests/opt:
         tooltool-downloads: public
         keep-artifacts: false
         need-xvfb: true
-    run-on-projects: [ 'trunk', 'try' ]
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -668,18 +701,19 @@ linux64-rusttests/debug:
         product: firefox
         job-name: linux64-rusttests-debug
     treeherder:
-        platform: linux64-rusttests/debug
-        symbol: tc(BR)
+        platform: linux64/debug
+        symbol: BR
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 5400
         env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: rusttests
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -688,7 +722,7 @@ linux64-rusttests/debug:
         tooltool-downloads: public
         keep-artifacts: false
         need-xvfb: true
-    run-on-projects: [ 'trunk', 'try' ]
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - linux64-clang
         - linux64-gcc
@@ -702,18 +736,17 @@ linux64-jsdcov/opt:
         job-name: linux64-jsdcov-opt
     treeherder:
         platform: linux64-jsdcov/opt
-        symbol: tc(B)
+        symbol: B
         tier: 2
-    run-on-projects: [ ]
+    run-on-projects: []
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -733,18 +766,17 @@ linux64-ccov/opt:
         job-name: linux64-ccov-opt
     treeherder:
         platform: linux64-ccov/opt
-        symbol: tc(B)
+        symbol: B
         tier: 2
-    run-on-projects: [ ]
+    run-on-projects: []
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -764,17 +796,16 @@ linux64-add-on-devel/opt:
         job-name: linux64-add-on-devel
     treeherder:
         platform: linux64-add-on-devel/opt
-        symbol: tc(B)
+        symbol: B
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
+            - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
             - balrog/production.py
         script: "mozharness/scripts/fx_desktop_build.py"
@@ -782,7 +813,7 @@ linux64-add-on-devel/opt:
         custom-build-variant-cfg: add-on-devel
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: [ 'mozilla-beta', 'mozilla-release', 'mozilla-esr45' ]
+    run-on-projects: ['mozilla-beta', 'mozilla-release', 'mozilla-esr45']
     toolchains:
         - linux64-clang
         - linux64-gcc

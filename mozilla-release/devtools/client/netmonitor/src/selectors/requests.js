@@ -38,8 +38,8 @@ function sortWithClones(requests, sorter, a, b) {
 const getFilterFn = createSelector(
   state => state.filters,
   filters => r => {
-    const matchesType = filters.requestFilterTypes.some((enabled, filter) => {
-      return enabled && Filters[filter] && Filters[filter](r);
+    const matchesType = Object.keys(filters.requestFilterTypes).some(filter => {
+      return filters.requestFilterTypes[filter] && Filters[filter] && Filters[filter](r);
     });
     return matchesType && isFreetextMatch(r, filters.requestFilterText);
   }
@@ -48,17 +48,16 @@ const getFilterFn = createSelector(
 const getTypeFilterFn = createSelector(
   state => state.filters,
   filters => r => {
-    const matchesType = filters.requestFilterTypes.some((enabled, filter) => {
-      return enabled && Filters[filter] && Filters[filter](r);
+    return Object.keys(filters.requestFilterTypes).some(filter => {
+      return filters.requestFilterTypes[filter] && Filters[filter] && Filters[filter](r);
     });
-    return matchesType;
   }
 );
 
 const getSortFn = createSelector(
-  state => state.requests.requests,
+  state => state.requests,
   state => state.sort,
-  (requests, sort) => {
+  ({ requests }, sort) => {
     const sorter = Sorters[sort.type || "waterfall"];
     const ascending = sort.ascending ? +1 : -1;
     return (a, b) => ascending * sortWithClones(requests, sorter, a, b);
@@ -66,23 +65,34 @@ const getSortFn = createSelector(
 );
 
 const getSortedRequests = createSelector(
-  state => state.requests.requests,
+  state => state.requests,
   getSortFn,
-  (requests, sortFn) => requests.valueSeq().sort(sortFn).toList()
+  ({ requests }, sortFn) => {
+    let arr = requests.valueSeq().sort(sortFn);
+    arr.get = index => arr[index];
+    arr.isEmpty = () => this.length == 0;
+    arr.size = arr.length;
+    return arr;
+  }
 );
 
 const getDisplayedRequests = createSelector(
-  state => state.requests.requests,
+  state => state.requests,
   getFilterFn,
   getSortFn,
-  (requests, filterFn, sortFn) => requests.valueSeq()
-    .filter(filterFn).sort(sortFn).toList()
+  ({ requests }, filterFn, sortFn) => {
+    let arr = requests.valueSeq().filter(filterFn).sort(sortFn);
+    arr.get = index => arr[index];
+    arr.isEmpty = () => this.length == 0;
+    arr.size = arr.length;
+    return arr;
+  }
 );
 
 const getTypeFilteredRequests = createSelector(
-  state => state.requests.requests,
+  state => state.requests,
   getTypeFilterFn,
-  (requests, filterFn) => requests.valueSeq().filter(filterFn).toList()
+  ({ requests }, filterFn) => requests.valueSeq().filter(filterFn)
 );
 
 const getDisplayedRequestsSummary = createSelector(
@@ -119,6 +129,13 @@ const getSelectedRequest = createSelector(
   ({ selectedId, requests }) => selectedId ? requests.get(selectedId) : undefined
 );
 
+const isSelectedRequestVisible = createSelector(
+  state => state.requests,
+  getDisplayedRequests,
+  ({ selectedId }, displayedRequests) =>
+    displayedRequests.some(r => r.id === selectedId)
+);
+
 function getRequestById(state, id) {
   return state.requests.requests.get(id);
 }
@@ -144,4 +161,5 @@ module.exports = {
   getSelectedRequest,
   getSortedRequests,
   getTypeFilteredRequests,
+  isSelectedRequestVisible,
 };

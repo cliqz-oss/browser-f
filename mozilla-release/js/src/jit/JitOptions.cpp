@@ -232,14 +232,13 @@ DefaultJitOptions::DefaultJitOptions()
             Warn(forcedRegisterAllocatorEnv, env);
     }
 
+    SET_DEFAULT(spectreIndexMasking, true);
+
     // Toggles whether unboxed plain objects can be created by the VM.
     SET_DEFAULT(disableUnboxedObjects, false);
 
     // Test whether Atomics are allowed in asm.js code.
     SET_DEFAULT(asmJSAtomicsEnable, false);
-
-    // Test whether wasm int64 / double NaN bits testing is enabled.
-    SET_DEFAULT(wasmTestMode, false);
 
     // Toggles the optimization whereby offsets are folded into loads and not
     // included in the bounds check.

@@ -262,6 +262,74 @@ browser.engagement.navigation:
     record_in_processes:
       - 'main'
 
+# The following section contains (RSS/Atom) feed usage
+browser.feeds:
+  preview_loaded:
+    bug_numbers:
+      - 1350349
+    description: >
+      The number of times a feed preview page is loaded.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - gijs@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+      - 'content'
+
+  feed_subscribed:
+    bug_numbers:
+      - 1350349
+    description: >
+      The number of times a user subscribes to a feed.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - gijs@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  livebookmark_opened:
+    bug_numbers:
+      - 1350349
+    description: >
+      The number of times a user opens a live bookmark dropdown.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - gijs@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  livebookmark_item_opened:
+    bug_numbers:
+      - 1350349
+    description: >
+      The number of times a user opens an item that is part of a live bookmark.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - gijs@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  livebookmark_count:
+    bug_numbers:
+      - 1350349
+    description: >
+      The number of live bookmark folders the user has (ie not individual items).
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - gijs@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
 # The following section contains the browser usage scalars.
 browser.usage:
   graphite:
@@ -269,7 +337,7 @@ browser.usage:
       - 1331915
     description: >
       The number of times a graphite2 font has been loaded.
-    expires: "60"
+    expires: "65"
     kind: uint
     notification_emails:
       - tom@mozilla.com
@@ -443,21 +511,6 @@ storage.sync.api.usage:
       - main
 
 services.sync:
-  fxa_verification_method:
-    bug_numbers:
-      - 1353645
-    description: >
-      The method we used ("push" or "poll") to determine the verification of a
-      Firefox Account email.
-    expires: "60"
-    kind: string
-    keyed: false
-    notification_emails:
-      - sync-staff@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - main
-
   sync_login_state_transitions:
     bug_numbers:
       - 1375635
@@ -755,7 +808,7 @@ mediarecorder:
       - 1400757
     description: >
       The number of times a MediaRecorder has been started. Recorded when a MediaRecorder starts
-    expires: "60"
+    expires: "64"
     kind: uint
     notification_emails:
       - bvandyk@mozilla.com
@@ -927,7 +980,7 @@ devtools.aboutdevtools:
       - 1412029
     description: >
       Number of times about:devtools was opened.
-    expires: "60"
+    expires: "63"
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
@@ -938,7 +991,7 @@ devtools.aboutdevtools:
       - 1412029
     description: >
       Number of times devtools were enabled/installed in about:devtools.
-    expires: "60"
+    expires: "63"
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
@@ -949,7 +1002,7 @@ devtools.aboutdevtools:
       - 1412029
     description: >
       Number of times the user left about:devtools without enabling devtools.
-    expires: "60"
+    expires: "63"
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
@@ -962,7 +1015,7 @@ devtools.onboarding:
       - 1408339
     description: >
       How many users are flagged as existing devtools users.
-    expires: "60"
+    expires: "63"
     kind: boolean
     notification_emails:
       - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
@@ -1016,6 +1069,24 @@ telemetry:
     release_channel_collection: opt-out
     record_in_processes:
       - all
+
+  accumulate_clamped_values:
+    bug_numbers:
+      - 1438335
+    description: >
+      The count of accumulations that had to be clamped down to not overflow,
+      keyed to the histogram name of the overflowing accumulation.
+      This is doubled for non-keyed desktop Firefox Histograms because of
+      saved-session pings.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - chutten@mozilla.com
+    release_channel_collection: opt-in
+    record_in_processes:
+      - 'main'
 
 telemetry.discarded:
   accumulations:
@@ -1106,10 +1177,10 @@ gfx.omtp:
       for a paint for more than 200us, versus the total number of paints.
     keyed: false
     kind: uint
-    expires: "61"
+    expires: "66"
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
-      - danderson@mozilla.com
+      - rhunt@mozilla.com
     record_in_processes:
       - 'content'
 
@@ -1267,38 +1338,6 @@ screenshots:
     record_in_processes:
       - 'main'
 
-# The following section is for probes for tcp protocol.
-network.tcp:
-  overlapped_io_canceled_before_finished:
-    bug_numbers:
-      - 1363372
-    description: >
-      Count the number of sockets that use overlapped io and are canceled before
-      the overlapped io finishes. (We only use overlapped io for connectEx when
-      TCP Fast Open is used.)
-    expires: "58"
-    kind: uint
-    notification_emails:
-      - necko@mozilla.com
-      - ddamjanovic@ozilla.com
-    record_in_processes:
-      - 'main'
-
-  overlapped_result_delayed:
-    bug_numbers:
-      - 1363372
-    description: >
-      Count the number of overlapped io that are canceled but cancelation
-      have not completed immediately. (We only use overlapped io for
-      connectEx when TCP Fast Open is used.)
-    expires: "58"
-    kind: uint
-    notification_emails:
-      - necko@mozilla.com
-      - ddamjanovic@mozilla.com
-    record_in_processes:
-      - 'main'
-
 idb.type:
   persistent_count:
     bug_numbers:
@@ -1343,6 +1382,22 @@ timestamps:
     record_in_processes:
       - main
 
+browser.timings:
+  last_shutdown:
+    bug_numbers:
+      - 1429510
+    description: >
+      The time, in milliseconds, it took to complete the last shutdown.
+      On successful shutdown, Telemetry saves this to disk into Telemetry.ShutdownTime.txt.
+      On the next startup this is loaded and recorded.
+    expires: never
+    kind: uint
+    notification_emails:
+      - florian@mozilla.com
+    release_channel_collection: opt-in
+    record_in_processes:
+      - 'main'
+
 # The following section contains the service worker scalars.
 sw:
   synthesized_res_count:
@@ -1371,6 +1426,21 @@ sw:
     notification_emails:
       - sw-telemetry@mozilla.com
       - ttung@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+      - 'content'
+
+  alternative_body_used_count:
+    bug_numbers:
+      - 1423623
+    description: >
+      The count of number of synthesize response using alternative body.
+    expires: "61"
+    kind: uint
+    notification_emails:
+      - sw-telemetry@mozilla.com
+      - echuang@mozilla.com
     release_channel_collection: opt-out
     record_in_processes:
       - 'main'

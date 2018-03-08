@@ -535,10 +535,10 @@ AsyncCompositionManager::AlignFixedAndStickyLayers(Layer* aTransformedSubtreeRoo
     const LayerRect& stickyInner = layer->GetStickyScrollRangeInner();
 
     LayerPoint originalTranslation = translation;
-    translation.y = IntervalOverlap(translation.y, stickyOuter.y, stickyOuter.YMost()) -
-                    IntervalOverlap(translation.y, stickyInner.y, stickyInner.YMost());
-    translation.x = IntervalOverlap(translation.x, stickyOuter.x, stickyOuter.XMost()) -
-                    IntervalOverlap(translation.x, stickyInner.x, stickyInner.XMost());
+    translation.y = IntervalOverlap(translation.y, stickyOuter.Y(), stickyOuter.YMost()) -
+                    IntervalOverlap(translation.y, stickyInner.Y(), stickyInner.YMost());
+    translation.x = IntervalOverlap(translation.x, stickyOuter.X(), stickyOuter.XMost()) -
+                    IntervalOverlap(translation.x, stickyInner.X(), stickyInner.XMost());
     unconsumedTranslation = translation - originalTranslation;
   }
 
@@ -756,7 +756,7 @@ AdjustForClip(const AsyncTransformComponentMatrix& asyncTransform, Layer* aLayer
   // apply the tree transform, and translate back.
   if (const Maybe<ParentLayerIntRect>& shadowClipRect = aLayer->AsHostLayer()->GetShadowClipRect()) {
     if (shadowClipRect->TopLeft() != ParentLayerIntPoint()) {  // avoid a gratuitous change of basis
-      result.ChangeBasis(shadowClipRect->x, shadowClipRect->y, 0);
+      result.ChangeBasis(shadowClipRect->X(), shadowClipRect->Y(), 0);
     }
   }
   return result;
@@ -796,7 +796,8 @@ MoveScrollbarForLayerMargin(Layer* aRoot, FrameMetrics::ViewID aRootScrollId,
   // adjustment on the layer tree.
   Layer* scrollbar = BreadthFirstSearch<ReverseIterator>(aRoot,
     [aRootScrollId](Layer* aNode) {
-      return (aNode->GetScrollThumbData().mDirection == ScrollDirection::HORIZONTAL &&
+      return (aNode->GetScrollThumbData().mDirection.isSome() &&
+              *aNode->GetScrollThumbData().mDirection == ScrollDirection::eHorizontal &&
               aNode->GetScrollbarTargetContainerId() == aRootScrollId);
     });
   if (scrollbar) {
@@ -1073,7 +1074,7 @@ AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer,
 
         ExpandRootClipRect(layer, fixedLayerMargins);
 
-        if (layer->GetScrollThumbData().mDirection != ScrollDirection::NONE) {
+        if (layer->GetScrollThumbData().mDirection.isSome()) {
           ApplyAsyncTransformToScrollbar(layer);
         }
       });
@@ -1154,7 +1155,7 @@ AsyncCompositionManager::ComputeTransformForScrollThumb(
   // on the painted content, we need to adjust it based on asyncTransform so that
   // it reflects what the user is actually seeing now.
   AsyncTransformComponentMatrix scrollbarTransform;
-  if (aThumbData.mDirection == ScrollDirection::VERTICAL) {
+  if (*aThumbData.mDirection == ScrollDirection::eVertical) {
     const ParentLayerCoord asyncScrollY = asyncTransform._42;
     const float asyncZoomY = asyncTransform._22;
 
@@ -1206,7 +1207,7 @@ AsyncCompositionManager::ComputeTransformForScrollThumb(
     scrollbarTransform.PostScale(1.f, yScale, 1.f);
     scrollbarTransform.PostTranslate(0, yTranslation, 0);
   }
-  if (aThumbData.mDirection == ScrollDirection::HORIZONTAL) {
+  if (*aThumbData.mDirection == ScrollDirection::eHorizontal) {
     // See detailed comments under the VERTICAL case.
 
     const ParentLayerCoord asyncScrollX = asyncTransform._41;

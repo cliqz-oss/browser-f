@@ -291,7 +291,7 @@ async function test_unsafe_grips(principal, tests) {
         resolve();
       });
 
-      data = Object.assign({}, defaults, data);
+      data = {...defaults, ...data};
 
       // Run the code and test the results.
       let sandbox = Cu.Sandbox(systemPrincipal);

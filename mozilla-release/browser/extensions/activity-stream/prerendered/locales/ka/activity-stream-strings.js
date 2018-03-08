@@ -65,7 +65,7 @@ window.gActivityStreamStrings = {
   "settings_pane_highlights_options_bookmarks": "სანიშნები",
   "settings_pane_highlights_options_visited": "მონახულებული საიტები",
   "settings_pane_snippets_header": "ცნობები",
-  "settings_pane_snippets_body": "გაეცანით მოკლე, საინტერესო სიახლეებს Mozilla-სგან, Firefox-ის, ინტერნეტ სამყაროს მიღწევებისა და სხვა დასამახსოვრებელი ფაქტების შესახებ.",
+  "settings_pane_snippets_body": "გაეცანით მოკლე, საინტერესო სიახლეებს Mozilla-სგან, Firefox-ის, ინტერნეტსამყაროს მიღწევებისა და სხვა დასამახსოვრებელი ფაქტების შესახებ.",
   "settings_pane_done_button": "მზადაა",
   "settings_pane_topstories_options_sponsored": "დარეკლამებული სტატიების ჩვენება",
   "edit_topsites_button_text": "ჩასწორება",
@@ -94,5 +94,7 @@ window.gActivityStreamStrings = {
   "topstories_empty_state": "უკვე ყველაფერი წაკითხული გაქვთ. {provider}-იდან ახალი რჩეული სტატიების მისაღებად, მოგვიანებით შემოიარეთ. თუ ვერ ითმენთ, აირჩიეთ რომელიმე მოთხოვნადი თემა, ახალი საინტერესო სტატიების მოსაძიებლად.",
   "manual_migration_explanation2": "გადმოიტანეთ სხვა ბრაუზერებიდან თქვენი სანიშნები, ისტორია და პაროლები Firefox-ში.",
   "manual_migration_cancel_button": "არა, გმადლობთ",
-  "manual_migration_import_button": "ახლავე გადმოტანა"
+  "manual_migration_import_button": "ახლავე გადმოტანა",
+  "context_menu_button_sr": "კონტექსტური მენიუს გახსნა {title}",
+  "edit_topsites_add_button_tooltip": "რჩეული საიტის დამატება"
 };

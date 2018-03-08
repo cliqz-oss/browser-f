@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_workers_serviceworkerevents_h__
 #define mozilla_dom_workers_serviceworkerevents_h__
 
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/ExtendableEventBinding.h"
 #include "mozilla/dom/ExtendableMessageEventBinding.h"
@@ -25,6 +26,7 @@ class nsIInterceptedChannel;
 namespace mozilla {
 namespace dom {
 class Blob;
+class Client;
 class MessagePort;
 class Request;
 class ResponseOrPromise;
@@ -269,7 +271,7 @@ class ExtendableMessageEvent final : public ExtendableEvent
   JS::Heap<JS::Value> mData;
   nsString mOrigin;
   nsString mLastEventId;
-  RefPtr<ServiceWorkerClient> mClient;
+  RefPtr<Client> mClient;
   RefPtr<ServiceWorker> mServiceWorker;
   RefPtr<MessagePort> mMessagePort;
   nsTArray<RefPtr<MessagePort>> mPorts;

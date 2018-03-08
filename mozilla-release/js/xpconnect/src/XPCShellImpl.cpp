@@ -13,6 +13,7 @@
 #include "mozilla/Preferences.h"
 #include "nsServiceManagerUtils.h"
 #include "nsComponentManagerUtils.h"
+#include "nsExceptionHandler.h"
 #include "nsIServiceManager.h"
 #include "nsIFile.h"
 #include "nsString.h"
@@ -59,11 +60,6 @@
 #endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>     /* for isatty() */
-#endif
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#include "nsICrashReporter.h"
 #endif
 
 #ifdef ENABLE_TESTS
@@ -387,16 +383,6 @@ Load(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
-Version(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    args.rval().setInt32(JS_GetVersion(cx));
-    if (args.get(0).isInt32())
-        SetVersionForCurrentRealm(cx, JSVersion(args[0].toInt32()));
-    return true;
-}
-
-static bool
 Quit(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -662,7 +648,6 @@ static const JSFunctionSpec glob_functions[] = {
     JS_FN("readline",        ReadLine,       1,0),
     JS_FN("load",            Load,           1,0),
     JS_FN("quit",            Quit,           0,0),
-    JS_FN("version",         Version,        1,0),
     JS_FN("dumpXPC",         DumpXPC,        1,0),
     JS_FN("dump",            Dump,           1,0),
     JS_FN("gc",              GC,             0,0),
@@ -840,7 +825,7 @@ static int
 usage()
 {
     fprintf(gErrFile, "%s\n", JS_GetImplementationVersion());
-    fprintf(gErrFile, "usage: xpcshell [-g gredir] [-a appdir] [-r manifest]... [-WwxiCSsmIp] [-v version] [-f scriptfile] [-e script] [scriptfile] [scriptarg...]\n");
+    fprintf(gErrFile, "usage: xpcshell [-g gredir] [-a appdir] [-r manifest]... [-WwxiCSsmIp] [-f scriptfile] [-e script] [scriptfile] [scriptarg...]\n");
     return 2;
 }
 
@@ -953,12 +938,6 @@ ProcessArgs(AutoJSAPI& jsapi, char** argv, int argc, XPCShellDirProvider* aDirPr
             break;
         }
         switch (argv[i][1]) {
-        case 'v':
-            if (++i == argc) {
-                return printUsageAndSetExitCode();
-            }
-            SetVersionForCurrentRealm(cx, JSVersion(atoi(argv[i])));
-            break;
         case 'W':
             reportWarnings = false;
             break;
@@ -1210,9 +1189,8 @@ XRE_XPCShellMain(int argc, char** argv, char** envp,
             argv += 2;
         }
 
-#ifdef MOZ_CRASHREPORTER
         const char* val = getenv("MOZ_CRASHREPORTER");
-        if (val && *val) {
+        if (val && *val && !CrashReporter::IsDummy()) {
             rv = CrashReporter::SetExceptionHandler(greDir, true);
             if (NS_FAILED(rv)) {
                 printf("CrashReporter::SetExceptionHandler failed!\n");
@@ -1220,7 +1198,6 @@ XRE_XPCShellMain(int argc, char** argv, char** envp,
             }
             MOZ_ASSERT(CrashReporter::GetEnabled());
         }
-#endif
 
         if (argc > 1 && !strcmp(argv[1], "--greomni")) {
             nsCOMPtr<nsIFile> greOmni;
@@ -1307,7 +1284,6 @@ XRE_XPCShellMain(int argc, char** argv, char** envp,
         options.creationOptions().setNewZoneInSystemZoneGroup();
         if (xpc::SharedMemoryEnabled())
             options.creationOptions().setSharedMemoryAndAtomicsEnabled(true);
-        options.behaviors().setVersion(JSVERSION_DEFAULT);
         JS::Rooted<JSObject*> glob(cx);
         rv = xpc::InitClassesWithNewWrappedGlobal(cx,
                                                   static_cast<nsIGlobalObject*>(backstagePass),
@@ -1413,11 +1389,10 @@ XRE_XPCShellMain(int argc, char** argv, char** envp,
     rv = NS_ShutdownXPCOM( nullptr );
     MOZ_ASSERT(NS_SUCCEEDED(rv), "NS_ShutdownXPCOM failed");
 
-#ifdef MOZ_CRASHREPORTER
     // Shut down the crashreporter service to prevent leaking some strings it holds.
-    if (CrashReporter::GetEnabled())
+    if (CrashReporter::GetEnabled()) {
         CrashReporter::UnsetExceptionHandler();
-#endif
+    }
 
 #ifdef MOZ_GECKO_PROFILER
     // This must precede NS_LogTerm(), otherwise xpcshell return non-zero

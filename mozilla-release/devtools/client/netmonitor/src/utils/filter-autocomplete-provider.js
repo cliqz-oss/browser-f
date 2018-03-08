@@ -6,7 +6,7 @@
 
 const { FILTER_FLAGS } = require("../constants");
 
-/*
+/**
  * Generates a value for the given filter
  * ie. if flag = status-code, will generate "200" from the given request item.
  * For flags related to cookies, it might generate an array based on the request
@@ -56,8 +56,8 @@ function getAutocompleteValuesForFlag(flag, request) {
       break;
     case "has-response-header":
       // Some requests not having responseHeaders..?
-      values = request.responseHeaders &&
-        request.responseHeaders.headers.map(h => h.name);
+      values = request.responseHeaders ?
+        request.responseHeaders.headers.map(h => h.name) : [];
       break;
     case "protocol":
       values.push(request.httpVersion);
@@ -70,7 +70,7 @@ function getAutocompleteValuesForFlag(flag, request) {
   return values;
 }
 
-/*
+/**
  * For a given lastToken passed ie. "is:", returns an array of populated flag
  * values for consumption in autocompleteProvider
  * ie. ["is:cached", "is:running", "is:from-cache"]
@@ -108,10 +108,11 @@ function getLastTokenFlagValues(lastToken, requests) {
   values = [...new Set(values)];
 
   return values
+    .filter(value => value)
     .filter(value => {
-      if (typedFlagValue) {
-        let lowerTyped = typedFlagValue.toLowerCase(),
-          lowerValue = value.toLowerCase();
+      if (typedFlagValue && value) {
+        let lowerTyped = typedFlagValue.toLowerCase();
+        let lowerValue = value.toLowerCase();
         return lowerValue.includes(lowerTyped) && lowerValue !== lowerTyped;
       }
       return typeof value !== "undefined" && value !== "" && value !== "undefined";

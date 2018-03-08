@@ -95,6 +95,10 @@ nsCanvasFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 
   aElements.AppendElement(mCustomContentContainer);
 
+  // Do not create an accessible object for the container.
+  mCustomContentContainer->SetAttr(kNameSpaceID_None, nsGkAtoms::role,
+                                   NS_LITERAL_STRING("presentation"), false);
+
   // XXX add :moz-native-anonymous or will that be automatically set?
   rv = mCustomContentContainer->SetAttr(kNameSpaceID_None, nsGkAtoms::_class,
                                         NS_LITERAL_STRING("moz-custom-content-container"),
@@ -508,11 +512,11 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
         dependentFrame = nullptr;
       }
     }
-    aLists.BorderBackground()->AppendNewToTop(
+    aLists.BorderBackground()->AppendToTop(
         new (aBuilder) nsDisplayCanvasBackgroundColor(aBuilder, this));
 
     if (isThemed) {
-      aLists.BorderBackground()->AppendNewToTop(
+      aLists.BorderBackground()->AppendToTop(
         new (aBuilder) nsDisplayCanvasThemedBackground(aBuilder, this));
       return;
     }
@@ -540,7 +544,7 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
       nsRect bgRect = GetRectRelativeToSelf() + aBuilder->ToReferenceFrame(this);
 
       const ActiveScrolledRoot* thisItemASR = asr;
-      nsDisplayList thisItemList(aBuilder);
+      nsDisplayList thisItemList;
       nsDisplayBackgroundImage::InitData bgData =
         nsDisplayBackgroundImage::GetInitData(aBuilder, this, i, bgRect, bg,
                                               nsDisplayBackgroundImage::LayerizeFixed::ALWAYS_LAYERIZE_FIXED_BACKGROUND);
@@ -571,18 +575,18 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
           bgItem = new (aBuilder) nsDisplayCanvasBackgroundImage(bgData);
           bgItem->SetDependentFrame(aBuilder, dependentFrame);
         }
-        thisItemList.AppendNewToTop(
+        thisItemList.AppendToTop(
           nsDisplayFixedPosition::CreateForFixedBackground(aBuilder, this, bgItem, i));
 
       } else {
         nsDisplayCanvasBackgroundImage* bgItem = new (aBuilder) nsDisplayCanvasBackgroundImage(bgData);
         bgItem->SetDependentFrame(aBuilder, dependentFrame);
-        thisItemList.AppendNewToTop(bgItem);
+        thisItemList.AppendToTop(bgItem);
       }
 
       if (layers.mLayers[i].mBlendMode != NS_STYLE_BLEND_NORMAL) {
         DisplayListClipState::AutoSaveRestore blendClip(aBuilder);
-        thisItemList.AppendNewToTop(
+        thisItemList.AppendToTop(
           new (aBuilder) nsDisplayBlendMode(aBuilder, this, &thisItemList,
                                             layers.mLayers[i].mBlendMode,
                                             thisItemASR, i + 1));
@@ -593,7 +597,7 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     if (needBlendContainer) {
       const ActiveScrolledRoot* containerASR = contASRTracker.GetContainerASR();
       DisplayListClipState::AutoSaveRestore blendContainerClip(aBuilder);
-      aLists.BorderBackground()->AppendNewToTop(
+      aLists.BorderBackground()->AppendToTop(
         nsDisplayBlendContainer::CreateForBackgroundBlendMode(aBuilder, this,
                                                               aLists.BorderBackground(),
                                                               containerASR));
@@ -631,7 +635,7 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   if (!StyleVisibility()->IsVisible())
     return;
 
-  aLists.Outlines()->AppendNewToTop(new (aBuilder)
+  aLists.Outlines()->AppendToTop(new (aBuilder)
     nsDisplayCanvasFocus(aBuilder, this));
 }
 

@@ -254,9 +254,6 @@ public:
     nsCSSPropertyID aProperty,
     const AnimationPerformanceWarning& aWarning);
 
-  // Record telemetry about the size of the content being animated.
-  void RecordFrameSizeTelemetry(uint32_t aPixelArea);
-
   // Cumulative change hint on each segment for each property.
   // This is used for deciding the animation is paint-only.
   template<typename StyleType>
@@ -382,7 +379,6 @@ protected:
   // Stylo version of the above function that also first checks for an additive
   // value in |aProperty|'s list of segments.
   void EnsureBaseStyle(const AnimationProperty& aProperty,
-                       CSSPseudoElementType aPseudoType,
                        nsPresContext* aPresContext,
                        const ServoStyleContext* aComputedValues,
                        RefPtr<mozilla::ServoStyleContext>& aBaseComputedValues);
@@ -423,15 +419,6 @@ protected:
   // EffectSet.
   bool mInEffectSet = false;
 
-  // We only want to record telemetry data for "ContentTooLarge" warnings once
-  // per effect:target pair so we use this member to record if we have already
-  // reported a "ContentTooLarge" warning for the current target.
-  bool mRecordedContentTooLarge = false;
-  // Similarly, as a point of comparison we record telemetry whether or not
-  // we get a "ContentTooLarge" warning, but again only once per effect:target
-  // pair.
-  bool mRecordedFrameSize = false;
-
 private:
   nsChangeHint mCumulativeChangeHint;
 
@@ -464,7 +451,8 @@ private:
   nsIFrame* GetAnimationFrame() const;
 
   bool CanThrottle() const;
-  bool CanThrottleTransformChanges(nsIFrame& aFrame) const;
+  bool CanThrottleTransformChanges(const nsIFrame& aFrame) const;
+  bool CanThrottleTransformChangesForCompositor(nsIFrame& aFrame) const;
 
   // Returns true if the computedTiming has changed since the last
   // composition.

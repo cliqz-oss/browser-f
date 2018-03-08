@@ -6,6 +6,7 @@
 
 #include "PerformanceMainThread.h"
 #include "PerformanceNavigation.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "nsICacheInfoChannel.h"
 
 namespace mozilla {
@@ -141,6 +142,17 @@ PerformanceMainThread::AddEntry(nsIHttpChannel* channel,
     originalURI->GetSpec(name);
     NS_ConvertUTF8toUTF16 entryName(name);
 
+    bool reportTiming = true;
+    timedChannel->GetReportResourceTiming(&reportTiming);
+
+    if (!reportTiming) {
+#ifdef DEBUG_jwatt
+      NS_WARNING(
+        nsPrintfCString("Not reporting CORS resource: %s", name.get()).get());
+#endif
+      return;
+    }
+
     // The nsITimedChannel argument will be used to gather all the timings.
     // The nsIHttpChannel argument will be used to check if any cross-origin
     // redirects occurred.
@@ -271,7 +283,7 @@ PerformanceMainThread::InsertUserEntry(PerformanceEntry* aEntry)
   nsAutoCString uri;
   uint64_t markCreationEpoch = 0;
 
-  if (nsContentUtils::IsUserTimingLoggingEnabled() ||
+  if (DOMPrefs::PerformanceLoggingEnabled() ||
       nsContentUtils::SendPerformanceTimingNotifications()) {
     nsresult rv = NS_ERROR_FAILURE;
     nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner();
@@ -285,7 +297,7 @@ PerformanceMainThread::InsertUserEntry(PerformanceEntry* aEntry)
     }
     markCreationEpoch = static_cast<uint64_t>(PR_Now() / PR_USEC_PER_MSEC);
 
-    if (nsContentUtils::IsUserTimingLoggingEnabled()) {
+    if (DOMPrefs::PerformanceLoggingEnabled()) {
       Performance::LogEntry(aEntry, uri);
     }
   }

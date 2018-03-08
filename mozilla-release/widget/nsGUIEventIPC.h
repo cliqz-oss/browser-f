@@ -21,23 +21,11 @@ namespace IPC
 {
 
 template<>
-struct ParamTraits<mozilla::EventMessage>
-{
-  typedef mozilla::EventMessage paramType;
-
-  static void Write(Message* aMsg, const paramType& aParam)
-  {
-    WriteParam(aMsg, static_cast<const mozilla::EventMessageType&>(aParam));
-  }
-
-  static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
-  {
-    mozilla::EventMessageType eventMessage = 0;
-    bool ret = ReadParam(aMsg, aIter, &eventMessage);
-    *aResult = static_cast<paramType>(eventMessage);
-    return ret;
-  }
-};
+struct ParamTraits<mozilla::EventMessage> :
+  public ContiguousEnumSerializer<mozilla::EventMessage,
+                                  mozilla::EventMessage(0),
+                                  mozilla::EventMessage::eEventMessage_MaxValue>
+{};
 
 template<>
 struct ParamTraits<mozilla::BaseEventFlags>
@@ -1225,6 +1213,7 @@ struct ParamTraits<mozilla::PanGestureInput>
     WriteParam(aMsg, aParam.mHandledByAPZ);
     WriteParam(aMsg, aParam.mFollowedByMomentum);
     WriteParam(aMsg, aParam.mRequiresContentResponseIfCannotScrollHorizontallyInStartDirection);
+    WriteParam(aMsg, aParam.mOverscrollBehaviorAllowsSwipe);
   }
 
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
@@ -1241,7 +1230,8 @@ struct ParamTraits<mozilla::PanGestureInput>
            ReadParam(aMsg, aIter, &aResult->mUserDeltaMultiplierY) &&
            ReadParam(aMsg, aIter, &aResult->mHandledByAPZ) &&
            ReadParam(aMsg, aIter, &aResult->mFollowedByMomentum) &&
-           ReadParam(aMsg, aIter, &aResult->mRequiresContentResponseIfCannotScrollHorizontallyInStartDirection);
+           ReadParam(aMsg, aIter, &aResult->mRequiresContentResponseIfCannotScrollHorizontallyInStartDirection) &&
+           ReadParam(aMsg, aIter, &aResult->mOverscrollBehaviorAllowsSwipe);
   }
 };
 

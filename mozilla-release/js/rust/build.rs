@@ -143,7 +143,8 @@ const UNSAFE_IMPL_SYNC_TYPES: &'static [&'static str] = &[
 /// Flags passed through bindgen directly to Clang.
 const EXTRA_CLANG_FLAGS: &'static [&'static str] = &[
     "-x", "c++",
-    "-std=c++14",
+    "-std=gnu++14",
+    "-fno-sized-deallocation",
     "-DRUST_BINDGEN",
 ];
 
@@ -162,6 +163,7 @@ const WHITELIST_TYPES: &'static [&'static str] = &[
     "js::ESClass",
     "JS::ForOfIterator",
     "JS::Handle",
+    "JS::HandleFunction",
     "JS::HandleId",
     "JS::HandleObject",
     "JS::HandleString",
@@ -225,6 +227,7 @@ const WHITELIST_TYPES: &'static [&'static str] = &[
     "js::shadow::Object",
     "js::shadow::ObjectGroup",
     "JS::SourceBufferHolder",
+    "js::StackFormat",
     "JSStructuredCloneCallbacks",
     "JS::Symbol",
     "JS::SymbolCode",
@@ -253,6 +256,7 @@ const WHITELIST_VARS: &'static [&'static str] = &[
 /// Functions we want to generate bindings to.
 const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "INTERNED_STRING_TO_JSID",
+    "JS::ExceptionStackOrNull",
     "JS_AddExtraGCRootsTracer",
     "JS_AddInterruptCallback",
     "JS::AddPromiseReactions",
@@ -260,7 +264,9 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS_AlreadyHasOwnPropertyById",
     "JS_AtomizeAndPinString",
     "js::AssertSameCompartment",
+    "JS::BuildStackString",
     "JS::Call",
+    "JS_CallFunctionName",
     "JS_CallFunctionValue",
     "JS::CallOriginalPromiseThen",
     "JS::CallOriginalPromiseResolve",
@@ -287,6 +293,7 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS_GetObjectPrototype",
     "JS_GetObjectRuntime",
     "JS_GetOwnPropertyDescriptorById",
+    "JS::GetPromiseResult",
     "JS::GetPromiseState",
     "JS_GetPropertyDescriptorById",
     "js::GetPropertyKeys",
@@ -321,6 +328,7 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS_EnumerateStandardClasses",
     "JS_ErrorFromException",
     "JS_FireOnNewGlobalObject",
+    "JS_free",
     "JS_GC",
     "JS_GetArrayBufferData",
     "JS_GetArrayBufferViewType",
@@ -385,11 +393,13 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS_ReadBytes",
     "JS_ReadStructuredClone",
     "JS_ReadUint32Pair",
+    "JS_RemoveExtraGCRootsTracer",
     "js::RemoveRawValueRoot",
     "JS_ReportErrorASCII",
     "JS_ReportErrorNumberUTF8",
     "JS_RequestInterruptCallback",
     "JS_ResolveStandardClass",
+    "js::RunJobs",
     "JS_SameValue",
     "js::SetDOMCallbacks",
     "js::SetDOMProxyInformation",
@@ -407,6 +417,7 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS_SetParallelParsingEnabled",
     "JS_SetPendingException",
     "js::SetPreserveWrapperCallback",
+    "JS::SetPromiseRejectionTrackerCallback",
     "JS_SetPrototype",
     "js::SetWindowProxy",
     "js::SetWindowProxyClass",
@@ -415,6 +426,7 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS_SetWrapObjectCallbacks",
     "JS_ShutDown",
     "JS_SplicePrototype",
+    "js::StopDrainingJobQueue",
     "JS_StrictPropertyStub",
     "JS_StringEqualsAscii",
     "JS_StringHasLatin1Chars",
@@ -448,6 +460,8 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "js::UnwrapUint32Array",
     "js::UnwrapUint8Array",
     "js::UnwrapUint8ClampedArray",
+    "js::UseInternalJobQueues",
+    "JS_ValueToFunction",
 ];
 
 /// Types that should be treated as an opaque blob of bytes whenever they show

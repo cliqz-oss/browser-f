@@ -16,7 +16,7 @@
 #include "nsIPrintingPromptService.h"
 #include "nsIPrintSession.h"
 #include "nsPIDOMWindow.h"
-#include "nsPrintOptionsImpl.h"
+#include "nsPrintSettingsService.h"
 #include "nsServiceManagerUtils.h"
 #include "PrintDataUtils.h"
 #include "PrintProgressDialogChild.h"
@@ -148,7 +148,7 @@ nsPrintingProxy::ShowProgress(mozIDOMWindowProxy*      parent,
   TabChild* pBrowser = static_cast<TabChild*>(tabchild.get());
 
   RefPtr<PrintProgressDialogChild> dialogChild =
-    new PrintProgressDialogChild(openDialogObserver);
+    new PrintProgressDialogChild(openDialogObserver, printSettings);
 
   SendPPrintProgressDialogConstructor(dialogChild);
 

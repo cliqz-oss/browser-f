@@ -1,9 +1,10 @@
 "use strict";
-const injector = require("inject!lib/TopSitesFeed.jsm");
-const {Screenshots} = require("lib/Screenshots.jsm");
-const {FakePrefs, GlobalOverrider} = require("test/unit/utils");
-const {actionTypes: at, actionCreators: ac} = require("common/Actions.jsm");
-const {insertPinned, TOP_SITES_SHOWMORE_LENGTH} = require("common/Reducers.jsm");
+
+import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
+import {FakePrefs, GlobalOverrider} from "test/unit/utils";
+import {insertPinned, TOP_SITES_SHOWMORE_LENGTH} from "common/Reducers.jsm";
+import injector from "inject!lib/TopSitesFeed.jsm";
+import {Screenshots} from "lib/Screenshots.jsm";
 
 const FAKE_FAVICON = "data987";
 const FAKE_FAVICON_SIZE = 128;
@@ -423,12 +424,12 @@ describe("Top Sites Feed", () => {
       await feed.refresh({broadcast: true});
       assert.calledOnce(feed.store.dispatch);
     });
-    it("should dispatch sendToMain when broadcast is false", async () => {
+    it("should dispatch SendToPreloaded when broadcast is false", async () => {
       sandbox.stub(feed, "getLinksWithDefaults").returns([]);
       await feed.refresh({broadcast: false});
 
       assert.calledOnce(feed.store.dispatch);
-      assert.calledWithExactly(feed.store.dispatch, ac.SendToMain({
+      assert.calledWithExactly(feed.store.dispatch, ac.SendToPreloaded({
         type: at.TOP_SITES_UPDATED,
         data: []
       }));
@@ -488,6 +489,20 @@ describe("Top Sites Feed", () => {
       assert.notProperty(link, "screenshot");
       assert.notCalled(fakeScreenshot.getScreenshotForURL);
     });
+    it("should use the link's rich icon even if there's a tippy top", () => {
+      feed._tippyTopProvider.processSite = site => {
+        site.tippyTopIcon = "icon.png";
+        site.backgroundColor = "#fff";
+        return site;
+      };
+      const link = {
+        url: "foo.com",
+        favicon: "data:foo",
+        faviconSize: 196
+      };
+      feed._fetchIcon(link);
+      assert.notProperty(link, "tippyTopIcon");
+    });
   });
   describe("#onAction", () => {
     it("should refresh on SYSTEM_TICK", async () => {
@@ -515,9 +530,9 @@ describe("Top Sites Feed", () => {
 
       assert.calledOnce(feed.refresh);
     });
-    it("should trigger refresh on TOP_SITES_ADD", () => {
+    it("should trigger refresh on TOP_SITES_INSERT", () => {
       sinon.stub(feed, "refresh");
-      const addAction = {type: at.TOP_SITES_ADD, data: {site: {url: "foo.com"}}};
+      const addAction = {type: at.TOP_SITES_INSERT, data: {site: {url: "foo.com"}}};
 
       feed.onAction(addAction);
 
@@ -572,14 +587,23 @@ describe("Top Sites Feed", () => {
       assert.calledOnce(feed.refresh);
       assert.calledWithExactly(feed.refresh, {broadcast: true});
     });
-    it("should call pin with correct args on TOP_SITES_ADD", () => {
+    it("should call pin with correct args on TOP_SITES_INSERT without an index specified", () => {
       const addAction = {
-        type: at.TOP_SITES_ADD,
+        type: at.TOP_SITES_INSERT,
         data: {site: {url: "foo.bar", label: "foo"}}
       };
       feed.onAction(addAction);
       assert.calledOnce(fakeNewTabUtils.pinnedLinks.pin);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, addAction.data.site, 0);
+    });
+    it("should call pin with correct args on TOP_SITES_INSERT", () => {
+      const dropAction = {
+        type: at.TOP_SITES_INSERT,
+        data: {site: {url: "foo.bar", label: "foo"}, index: 3}
+      };
+      feed.onAction(dropAction);
+      assert.calledOnce(fakeNewTabUtils.pinnedLinks.pin);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, dropAction.data.site, 3);
     });
     it("should remove the expiration filter on UNINIT", () => {
       feed.onAction({type: "UNINIT"});
@@ -590,14 +614,14 @@ describe("Top Sites Feed", () => {
   describe("#add", () => {
     it("should pin site in first slot of empty pinned list", () => {
       const site = {url: "foo.bar", label: "foo"};
-      feed.add({data: {site}});
+      feed.insert({data: {site}});
       assert.calledOnce(fakeNewTabUtils.pinnedLinks.pin);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 0);
     });
     it("should pin site in first slot of pinned list with empty first slot", () => {
       fakeNewTabUtils.pinnedLinks.links = [null, {url: "example.com"}];
       const site = {url: "foo.bar", label: "foo"};
-      feed.add({data: {site}});
+      feed.insert({data: {site}});
       assert.calledOnce(fakeNewTabUtils.pinnedLinks.pin);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 0);
     });
@@ -605,7 +629,7 @@ describe("Top Sites Feed", () => {
       const site1 = {url: "example.com"};
       fakeNewTabUtils.pinnedLinks.links = [site1];
       const site = {url: "foo.bar", label: "foo"};
-      feed.add({data: {site}});
+      feed.insert({data: {site}});
       assert.calledTwice(fakeNewTabUtils.pinnedLinks.pin);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 0);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site1, 1);
@@ -615,10 +639,28 @@ describe("Top Sites Feed", () => {
       const site2 = {url: "example.org"};
       fakeNewTabUtils.pinnedLinks.links = [site1, null, site2];
       const site = {url: "foo.bar", label: "foo"};
-      feed.add({data: {site}});
+      feed.insert({data: {site}});
       assert.calledTwice(fakeNewTabUtils.pinnedLinks.pin);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 0);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site1, 1);
+    });
+    it("should unpin the site if all slots are already pinned", () => {
+      const site1 = {url: "example.com"};
+      const site2 = {url: "example.org"};
+      const site3 = {url: "example.net"};
+      const site4 = {url: "example.biz"};
+      const site5 = {url: "example.info"};
+      const site6 = {url: "example.news"};
+      fakeNewTabUtils.pinnedLinks.links = [site1, site2, site3, site4, site5, site6];
+      const site = {url: "foo.bar", label: "foo"};
+      feed.insert({data: {site}});
+      assert.equal(fakeNewTabUtils.pinnedLinks.pin.callCount, 6);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 0);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site1, 1);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site2, 2);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site3, 3);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site4, 4);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site5, 5);
     });
   });
   describe("#pin", () => {
@@ -643,6 +685,42 @@ describe("Top Sites Feed", () => {
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 2);
     });
   });
+  describe("#drop", () => {
+    it("should pin site in specified slot that is free", () => {
+      fakeNewTabUtils.pinnedLinks.links = [null, {url: "example.com"}];
+      const site = {url: "foo.bar", label: "foo"};
+      feed.insert({data: {index: 2, site, draggedFromIndex: 0}});
+      assert.calledOnce(fakeNewTabUtils.pinnedLinks.pin);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 2);
+    });
+    it("should move a pinned site in specified slot to the next slot", () => {
+      fakeNewTabUtils.pinnedLinks.links = [null, null, {url: "example.com"}];
+      const site = {url: "foo.bar", label: "foo"};
+      feed.insert({data: {index: 2, site, draggedFromIndex: 3}});
+      assert.calledTwice(fakeNewTabUtils.pinnedLinks.pin);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 2);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, {url: "example.com"}, 3);
+    });
+    it("should move pinned sites in the direction of the dragged site", () => {
+      const site1 = {url: "foo.bar", label: "foo"};
+      const site2 = {url: "example.com", label: "example"};
+      fakeNewTabUtils.pinnedLinks.links = [null, null, site2];
+      feed.insert({data: {index: 2, site: site1, draggedFromIndex: 0}});
+      assert.calledTwice(fakeNewTabUtils.pinnedLinks.pin);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site1, 2);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site2, 1);
+      fakeNewTabUtils.pinnedLinks.pin.reset();
+      feed.insert({data: {index: 2, site: site1, draggedFromIndex: 5}});
+      assert.calledTwice(fakeNewTabUtils.pinnedLinks.pin);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site1, 2);
+      assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site2, 3);
+    });
+    it("should not insert past the topSitesCount", () => {
+      const site1 = {url: "foo.bar", label: "foo"};
+      feed.insert({data: {index: 42, site: site1, draggedFromIndex: 0}});
+      assert.notCalled(fakeNewTabUtils.pinnedLinks.pin);
+    });
+  });
   describe("integration", () => {
     let resolvers = [];
     beforeEach(() => {
@@ -664,7 +742,7 @@ describe("Top Sites Feed", () => {
         fakeNewTabUtils.pinnedLinks.links.push(link);
       });
 
-      await forDispatch({type: at.TOP_SITES_ADD, data: {site: {url}}});
+      await forDispatch({type: at.TOP_SITES_INSERT, data: {site: {url}}});
       fakeNewTabUtils.pinnedLinks.links.pop();
       await forDispatch({type: at.PLACES_LINK_BLOCKED});
 

@@ -327,8 +327,8 @@ XULTreeGridRowAccessible::ChildAtPoint(int32_t aX, int32_t aY,
 
   CSSIntRect rootRect = rootFrame->GetScreenRect();
 
-  int32_t clientX = presContext->DevPixelsToIntCSSPixels(aX) - rootRect.x;
-  int32_t clientY = presContext->DevPixelsToIntCSSPixels(aY) - rootRect.y;
+  int32_t clientX = presContext->DevPixelsToIntCSSPixels(aX) - rootRect.X();
+  int32_t clientY = presContext->DevPixelsToIntCSSPixels(aY) - rootRect.Y();
 
   int32_t row = -1;
   nsCOMPtr<nsITreeColumn> column;
@@ -822,14 +822,14 @@ XULTreeGridCellAccessible::IsEditable() const
   if (!columnElm)
     return false;
 
-  nsCOMPtr<nsIContent> columnContent(do_QueryInterface(columnElm));
+  nsCOMPtr<Element> columnContent(do_QueryInterface(columnElm));
   if (!columnContent->AttrValueIs(kNameSpaceID_None,
                                   nsGkAtoms::editable,
                                   nsGkAtoms::_true,
                                   eCaseMatters))
     return false;
 
-  return mContent->AttrValueIs(kNameSpaceID_None,
-                               nsGkAtoms::editable,
-                               nsGkAtoms::_true, eCaseMatters);
+  return mContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                            nsGkAtoms::editable,
+                                            nsGkAtoms::_true, eCaseMatters);
 }

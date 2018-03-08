@@ -13,8 +13,6 @@ const {
   NoSuchWindowError,
   UnsupportedOperationError,
 } = Cu.import("chrome://marionette/content/error.js", {});
-Cu.import("chrome://marionette/content/frame.js");
-const {WindowState} = Cu.import("chrome://marionette/content/wm.js", {});
 
 this.EXPORTED_SYMBOLS = ["browser", "Context", "WindowState"];
 
@@ -29,37 +27,36 @@ const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
  * Choosing a context through the <tt>Marionette:SetContext</tt>
  * command directs all subsequent browsing context scoped commands
  * to that context.
- *
- * @enum
  */
-const Context = {
-  Chrome: "chrome",
-  Content: "content",
-};
-this.Context = Context;
+class Context {
+  /**
+   * Gets the correct context from a string.
+   *
+   * @param {string} s
+   *     Context string serialisation.
+   *
+   * @return {Context}
+   *     Context.
+   *
+   * @throws {TypeError}
+   *     If <var>s</var> is not a context.
+   */
+  static fromString(s) {
+    switch (s) {
+      case "chrome":
+        return Context.Chrome;
 
-/**
- * Gets the correct context from a string.
- *
- * @param {string} s
- *     Context string serialisation.
- *
- * @return {Context}
- *     Context.
- *
- * @throws {TypeError}
- *     If <var>s</var> is not a context.
- */
-Context.fromString = function(s) {
-  switch (s) {
-    case "chrome":
-      return Context.Chrome;
-    case "content":
-      return Context.Content;
-    default:
-      throw new TypeError(`Unknown context: ${s}`);
+      case "content":
+        return Context.Content;
+
+      default:
+        throw new TypeError(`Unknown context: ${s}`);
+    }
   }
-};
+}
+Context.Chrome = "chrome";
+Context.Content = "content";
+this.Context = Context;
 
 /**
  * Get the <code>&lt;xul:browser&gt;</code> for the specified tab.
@@ -151,13 +148,8 @@ browser.Context = class {
     this.pendingCommands = [];
     this._needsFlushPendingCommands = false;
 
-    // We should have one frame.Manager per browser.Context so that we
-    // can handle modals in each <xul:browser>.
-    this.frameManager = new frame.Manager(driver);
     this.frameRegsPending = 0;
 
-    // register all message listeners
-    this.frameManager.addMessageManagerListeners(driver.mm);
     this.getIdForBrowser = driver.getIdForBrowser.bind(driver);
     this.updateIdForBrowser = driver.updateIdForBrowser.bind(driver);
   }
@@ -179,6 +171,20 @@ browser.Context = class {
 
   get messageManager() {
     return this.contentBrowser.messageManager;
+  }
+
+  /**
+   * Checks if the browsing context has been discarded.
+   *
+   * The browsing context will have been discarded if the content
+   * browser, represented by the <code>&lt;xul:browser&gt;</code>,
+   * has been detached.
+   *
+   * @return {boolean}
+   *     True if browsing context has been discarded, false otherwise.
+   */
+  get closed() {
+    return this.contentBrowser === null;
   }
 
   /**
@@ -490,3 +496,47 @@ browser.Windows = class extends Map {
   }
 
 };
+
+/**
+ * Marionette representation of the {@link ChromeWindow} window state.
+ *
+ * @enum {string}
+ */
+const WindowState = {
+  Maximized: "maximized",
+  Minimized: "minimized",
+  Normal: "normal",
+  Fullscreen: "fullscreen",
+
+  /**
+   * Converts {@link nsIDOMChromeWindow.windowState} to WindowState.
+   *
+   * @param {number} windowState
+   *     Attribute from {@link nsIDOMChromeWindow.windowState}.
+   *
+   * @return {WindowState}
+   *     JSON representation.
+   *
+   * @throws {TypeError}
+   *     If <var>windowState</var> was unknown.
+   */
+  from(windowState) {
+    switch (windowState) {
+      case 1:
+        return WindowState.Maximized;
+
+      case 2:
+        return WindowState.Minimized;
+
+      case 3:
+        return WindowState.Normal;
+
+      case 4:
+        return WindowState.Fullscreen;
+
+      default:
+        throw new TypeError(`Unknown window state: ${windowState}`);
+    }
+  },
+};
+this.WindowState = WindowState;

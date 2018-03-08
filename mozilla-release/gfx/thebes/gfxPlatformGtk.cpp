@@ -13,13 +13,13 @@
 #include "nsUnicodeProperties.h"
 #include "gfx2DGlue.h"
 #include "gfxFcPlatformFontList.h"
-#include "gfxFontconfigFonts.h"
 #include "gfxConfig.h"
 #include "gfxContext.h"
 #include "gfxUserFontSet.h"
 #include "gfxUtils.h"
 #include "gfxFT2FontBase.h"
 #include "gfxPrefs.h"
+#include "gfxTextRun.h"
 #include "VsyncSource.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Monitor.h"
@@ -66,10 +66,6 @@ using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::unicode;
 using mozilla::dom::SystemFontListEntry;
-
-#if (MOZ_WIDGET_GTK == 2)
-static cairo_user_data_key_t cairo_gdk_drawable_key;
-#endif
 
 gfxPlatformGtk::gfxPlatformGtk()
 {
@@ -217,24 +213,20 @@ gfxPlatformGtk::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
                                        Script aRunScript,
                                        nsTArray<const char*>& aFontList)
 {
-    if (aNextCh == 0xfe0fu) {
-      // if char is followed by VS16, try for a color emoji glyph
-      aFontList.AppendElement(kFontEmojiOneMozilla);
+    EmojiPresentation emoji = GetEmojiPresentation(aCh);
+    if (emoji != EmojiPresentation::TextOnly) {
+        if (aNextCh == kVariationSelector16 ||
+           (aNextCh != kVariationSelector15 &&
+            emoji == EmojiPresentation::EmojiDefault)) {
+            // if char is followed by VS16, try for a color emoji glyph
+            aFontList.AppendElement(kFontEmojiOneMozilla);
+        }
     }
 
     aFontList.AppendElement(kFontDejaVuSerif);
     aFontList.AppendElement(kFontFreeSerif);
     aFontList.AppendElement(kFontDejaVuSans);
     aFontList.AppendElement(kFontFreeSans);
-
-    if (!IS_IN_BMP(aCh)) {
-        uint32_t p = aCh >> 16;
-        if (p == 1) { // try color emoji font, unless VS15 (text style) present
-            if (aNextCh != 0xfe0fu && aNextCh != 0xfe0eu) {
-                aFontList.AppendElement(kFontEmojiOneMozilla);
-            }
-        }
-    }
 
     // add fonts for CJK ranges
     // xxx - this isn't really correct, should use the same CJK font ordering
@@ -400,6 +392,12 @@ uint32_t gfxPlatformGtk::MaxGenericSubstitions()
     return uint32_t(mMaxGenericSubstitutions);
 }
 
+bool
+gfxPlatformGtk::AccelerateLayersByDefault()
+{
+    return gfxPrefs::WebRenderAll();
+}
+
 void
 gfxPlatformGtk::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
 {
@@ -529,51 +527,6 @@ gfxPlatformGtk::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
 #endif
 }
 
-
-#if (MOZ_WIDGET_GTK == 2)
-void
-gfxPlatformGtk::SetGdkDrawable(cairo_surface_t *target,
-                               GdkDrawable *drawable)
-{
-    if (cairo_surface_status(target))
-        return;
-
-    g_object_ref(drawable);
-
-    cairo_surface_set_user_data (target,
-                                 &cairo_gdk_drawable_key,
-                                 drawable,
-                                 g_object_unref);
-}
-
-GdkDrawable *
-gfxPlatformGtk::GetGdkDrawable(cairo_surface_t *target)
-{
-    if (cairo_surface_status(target))
-        return nullptr;
-
-    GdkDrawable *result;
-
-    result = (GdkDrawable*) cairo_surface_get_user_data (target,
-                                                         &cairo_gdk_drawable_key);
-    if (result)
-        return result;
-
-#ifdef MOZ_X11
-    if (cairo_surface_get_type(target) != CAIRO_SURFACE_TYPE_XLIB)
-        return nullptr;
-
-    // try looking it up in gdk's table
-    result = (GdkDrawable*) gdk_xid_table_lookup(cairo_xlib_surface_get_drawable(target));
-    if (result) {
-        SetGdkDrawable(target, result);
-        return result;
-    }
-#endif
-
-    return nullptr;
-}
-#endif
 
 #ifdef GL_PROVIDER_GLX
 

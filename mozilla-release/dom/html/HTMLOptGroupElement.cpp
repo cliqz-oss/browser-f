@@ -88,11 +88,19 @@ HTMLOptGroupElement::InsertChildAt(nsIContent* aKid,
 }
 
 void
-HTMLOptGroupElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
+HTMLOptGroupElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 {
   SafeOptionListMutation safeMutation(GetSelect(), this, nullptr, aIndex,
                                       aNotify);
-  nsGenericHTMLElement::RemoveChildAt(aIndex, aNotify);
+  nsGenericHTMLElement::RemoveChildAt_Deprecated(aIndex, aNotify);
+}
+
+void
+HTMLOptGroupElement::RemoveChildNode(nsIContent* aKid, bool aNotify)
+{
+  SafeOptionListMutation safeMutation(GetSelect(), this, nullptr, IndexOf(aKid),
+                                      aNotify);
+  nsGenericHTMLElement::RemoveChildNode(aKid, aNotify);
 }
 
 nsresult

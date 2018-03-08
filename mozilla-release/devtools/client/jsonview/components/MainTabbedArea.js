@@ -7,8 +7,8 @@
 "use strict";
 
 define(function (require, exports, module) {
-  const { createClass, PropTypes } = require("devtools/client/shared/vendor/react");
-
+  const { Component } = require("devtools/client/shared/vendor/react");
+  const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
   const { createFactories } = require("devtools/client/shared/react-utils");
   const { JsonPanel } = createFactories(require("./JsonPanel"));
   const { TextPanel } = createFactories(require("./TextPanel"));
@@ -19,39 +19,43 @@ define(function (require, exports, module) {
    * This object represents the root application template
    * responsible for rendering the basic tab layout.
    */
-  let MainTabbedArea = createClass({
-    displayName: "MainTabbedArea",
-
-    propTypes: {
-      jsonText: PropTypes.string,
-      tabActive: PropTypes.number,
-      actions: PropTypes.object,
-      headers: PropTypes.object,
-      searchFilter: PropTypes.string,
-      json: PropTypes.oneOfType([
-        PropTypes.string,
-        PropTypes.object,
-        PropTypes.array,
-        PropTypes.bool,
-        PropTypes.number
-      ]),
-      expandedNodes: PropTypes.instanceOf(Set),
-    },
-
-    getInitialState: function () {
+  class MainTabbedArea extends Component {
+    static get propTypes() {
       return {
-        json: {},
-        headers: {},
-        jsonText: this.props.jsonText,
-        tabActive: this.props.tabActive
+        jsonText: PropTypes.instanceOf(Text),
+        tabActive: PropTypes.number,
+        actions: PropTypes.object,
+        headers: PropTypes.object,
+        searchFilter: PropTypes.string,
+        json: PropTypes.oneOfType([
+          PropTypes.string,
+          PropTypes.object,
+          PropTypes.array,
+          PropTypes.bool,
+          PropTypes.number
+        ]),
+        expandedNodes: PropTypes.instanceOf(Set),
       };
-    },
+    }
 
-    onTabChanged: function (index) {
+    constructor(props) {
+      super(props);
+
+      this.state = {
+        json: props.json,
+        expandedNodes: props.expandedNodes,
+        jsonText: props.jsonText,
+        tabActive: props.tabActive
+      };
+
+      this.onTabChanged = this.onTabChanged.bind(this);
+    }
+
+    onTabChanged(index) {
       this.setState({tabActive: index});
-    },
+    }
 
-    render: function () {
+    render() {
       return (
         Tabs({
           tabActive: this.state.tabActive,
@@ -60,8 +64,8 @@ define(function (require, exports, module) {
             className: "json",
             title: JSONView.Locale.$STR("jsonViewer.tab.JSON")},
             JsonPanel({
-              data: this.props.json,
-              expandedNodes: this.props.expandedNodes,
+              data: this.state.json,
+              expandedNodes: this.state.expandedNodes,
               actions: this.props.actions,
               searchFilter: this.state.searchFilter
             })
@@ -70,7 +74,8 @@ define(function (require, exports, module) {
             className: "rawdata",
             title: JSONView.Locale.$STR("jsonViewer.tab.RawData")},
             TextPanel({
-              isValidJson: !(this.props.json instanceof Error),
+              isValidJson: !(this.state.json instanceof Error) &&
+                           document.readyState != "loading",
               data: this.state.jsonText,
               actions: this.props.actions
             })
@@ -87,7 +92,7 @@ define(function (require, exports, module) {
         )
       );
     }
-  });
+  }
 
   // Exports from this module
   exports.MainTabbedArea = MainTabbedArea;

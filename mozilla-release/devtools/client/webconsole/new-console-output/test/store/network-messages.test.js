@@ -24,7 +24,7 @@ describe("Network message reducer:", () => {
   });
 
   beforeEach(() => {
-    const store = setupStore([]);
+    const store = setupStore();
 
     getState = store.getState;
     dispatch = store.dispatch;
@@ -34,8 +34,8 @@ describe("Network message reducer:", () => {
 
     packet.actor = "message1";
     updatePacket.networkInfo.actor = "message1";
-    dispatch(actions.messageAdd(packet));
-    dispatch(actions.networkMessageUpdate(updatePacket.networkInfo));
+    dispatch(actions.messagesAdd([packet]));
+    dispatch(actions.networkMessageUpdate(updatePacket.networkInfo, null, updatePacket));
   });
 
   describe("networkMessagesUpdateById", () => {

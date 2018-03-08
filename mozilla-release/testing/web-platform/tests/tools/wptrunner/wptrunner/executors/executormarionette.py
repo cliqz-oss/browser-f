@@ -43,12 +43,13 @@ def do_delayed_imports():
 
 
 class MarionetteProtocol(Protocol):
-    def __init__(self, executor, browser, timeout_multiplier=1):
+    def __init__(self, executor, browser, capabilities=None, timeout_multiplier=1):
         do_delayed_imports()
 
         Protocol.__init__(self, executor, browser)
         self.marionette = None
         self.marionette_port = browser.marionette_port
+        self.capabilities = capabilities
         self.timeout_multiplier = timeout_multiplier
         self.timeout = None
         self.runner_handle = None
@@ -63,7 +64,6 @@ class MarionetteProtocol(Protocol):
                                                 port=self.marionette_port,
                                                 socket_timeout=None,
                                                 startup_timeout=startup_timeout)
-
         try:
             self.logger.debug("Waiting for Marionette connection")
             while True:
@@ -96,7 +96,7 @@ class MarionetteProtocol(Protocol):
     def teardown(self):
         try:
             self.marionette._request_in_app_shutdown()
-            self.marionette.delete_session(send_request=False, reset_session_id=True)
+            self.marionette.delete_session(send_request=False)
         except Exception:
             # This is typically because the session never started
             pass
@@ -370,13 +370,14 @@ class ExecuteAsyncScriptRun(object):
 
 class MarionetteTestharnessExecutor(TestharnessExecutor):
     def __init__(self, browser, server_config, timeout_multiplier=1,
-                 close_after_done=True, debug_info=None, **kwargs):
+                 close_after_done=True, debug_info=None, capabilities=None,
+                 **kwargs):
         """Marionette-based executor for testharness.js tests"""
         TestharnessExecutor.__init__(self, browser, server_config,
                                      timeout_multiplier=timeout_multiplier,
                                      debug_info=debug_info)
 
-        self.protocol = MarionetteProtocol(self, browser, timeout_multiplier)
+        self.protocol = MarionetteProtocol(self, browser, capabilities, timeout_multiplier)
         self.script = open(os.path.join(here, "testharness_marionette.js")).read()
         self.close_after_done = close_after_done
         self.window_id = str(uuid.uuid4())
@@ -435,7 +436,7 @@ class MarionetteRefTestExecutor(RefTestExecutor):
                  screenshot_cache=None, close_after_done=True,
                  debug_info=None, reftest_internal=False,
                  reftest_screenshot="unexpected",
-                 group_metadata=None, **kwargs):
+                 group_metadata=None, capabilities=None, **kwargs):
         """Marionette-based executor for reftests"""
         RefTestExecutor.__init__(self,
                                  browser,
@@ -443,7 +444,8 @@ class MarionetteRefTestExecutor(RefTestExecutor):
                                  screenshot_cache=screenshot_cache,
                                  timeout_multiplier=timeout_multiplier,
                                  debug_info=debug_info)
-        self.protocol = MarionetteProtocol(self, browser)
+        self.protocol = MarionetteProtocol(self, browser, capabilities,
+                                           timeout_multiplier)
         self.implementation = (InternalRefTestImplementation
                                if reftest_internal
                                else RefTestImplementation)(self)
@@ -566,7 +568,7 @@ class InternalRefTestImplementation(object):
             self.executor.protocol.marionette.set_context(self.executor.protocol.marionette.CONTEXT_CONTENT)
         except Exception as e:
             # Ignore errors during teardown
-            self.logger.warning(traceback.traceback.format_exc(e))
+            self.logger.warning(traceback.format_exc(e))
 
 
 

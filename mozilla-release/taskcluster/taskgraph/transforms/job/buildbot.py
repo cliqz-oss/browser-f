@@ -11,7 +11,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import slugid
 from urlparse import urlparse
 
-from taskgraph.util.schema import Schema
+from taskgraph.util.schema import Schema, optionally_keyed_by, resolve_keyed_by
 from taskgraph.util.scriptworker import get_release_config
 from voluptuous import Optional, Required, Any
 
@@ -28,22 +28,51 @@ buildbot_run_schema = Schema({
     # the product to use
     Required('product'): Any('firefox', 'mobile', 'fennec', 'devedition', 'thunderbird'),
 
+    Optional('channels'): optionally_keyed_by('project', basestring),
+
     Optional('release-promotion'): bool,
+
+    Optional('release-eta'): basestring,
 })
+
+
+def _get_balrog_api_root(branch):
+    if branch in ('mozilla-beta', 'mozilla-release') or branch.startswith('mozilla-esr'):
+        return 'https://aus4-admin.mozilla.org/api'
+    else:
+        return 'https://balrog-admin.stage.mozaws.net/api'
 
 
 def bb_release_worker(config, worker, run):
     # props
-    release_props = get_release_config(config, force=True)
+    release_props = get_release_config(config)
     repo_path = urlparse(config.params['head_repository']).path.lstrip('/')
     revision = config.params['head_rev']
+    branch = config.params['project']
+    product = run['product']
+
     release_props.update({
         'release_promotion': True,
         'repo_path': repo_path,
         'revision': revision,
-        'script_repo_revision': revision,
     })
+
+    if 'channels' in run:
+        release_props['channels'] = run['channels']
+        resolve_keyed_by(release_props, 'channels', 'channels', **config.params)
+
+    if product in ('devedition', 'firefox'):
+        release_props['balrog_api_root'] = _get_balrog_api_root(branch)
+
+    if run.get('release-eta'):
+        # TODO Use same property name when we move away from BuildBot
+        release_props['schedule_at'] = run['release-eta']
+
     worker['properties'].update(release_props)
+    # Setting script_repo_revision to the gecko revision doesn't work for
+    # jobs that clone build/tools or other repos instead of gecko.
+    if 'script_repo_revision' not in worker['properties']:
+        worker['properties']['script_repo_revision'] = revision
 
 
 def bb_ci_worker(config, worker):

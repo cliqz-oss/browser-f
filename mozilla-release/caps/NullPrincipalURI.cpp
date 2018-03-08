@@ -257,8 +257,8 @@ NullPrincipalURI::GetHasRef(bool* _result)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-NullPrincipalURI::SetSpec(const nsACString& aSpec)
+nsresult
+NullPrincipalURI::SetSpecInternal(const nsACString& aSpec)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -309,6 +309,20 @@ NullPrincipalURI::CloneWithNewRef(const nsACString& newRef, nsIURI** _newURI)
   // GetRef/SetRef not supported by NullPrincipalURI, so
   // CloneWithNewRef() is the same as Clone().
   return Clone(_newURI);
+}
+
+NS_IMPL_ISUPPORTS(NullPrincipalURI::Mutator, nsIURISetters, nsIURIMutator)
+
+NS_IMETHODIMP
+NullPrincipalURI::Mutate(nsIURIMutator** aMutator)
+{
+    RefPtr<NullPrincipalURI::Mutator> mutator = new NullPrincipalURI::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+    mutator.forget(aMutator);
+    return NS_OK;
 }
 
 NS_IMETHODIMP

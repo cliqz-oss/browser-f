@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "EMEDecoderModule.h"
+#include "Adts.h"
 #include "GMPDecoderModule.h"
 #include "GMPService.h"
 #include "MediaInfo.h"
@@ -13,32 +14,71 @@
 #include "mozIGeckoMediaPluginService.h"
 #include "mozilla/CDMProxy.h"
 #include "mozilla/EMEUtils.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "nsAutoPtr.h"
 #include "nsClassHashtable.h"
 #include "nsServiceManagerUtils.h"
 #include "DecryptThroughputLimit.h"
 #include "ChromiumCDMVideoDecoder.h"
+#include <algorithm>
 
 namespace mozilla {
 
 typedef MozPromiseRequestHolder<DecryptPromise> DecryptPromiseRequestHolder;
 extern already_AddRefed<PlatformDecoderModule> CreateBlankDecoderModule();
 
-class EMEDecryptor : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(EMEDecryptor, MediaDataDecoder);
+
+class ADTSSampleConverter
 {
 public:
-  EMEDecryptor(MediaDataDecoder* aDecoder, CDMProxy* aProxy,
-               TaskQueue* aDecodeTaskQueue, TrackInfo::TrackType aType,
-               MediaEventProducer<TrackInfo::TrackType>* aOnWaitingForKey)
+  explicit ADTSSampleConverter(const AudioInfo& aInfo)
+    : mNumChannels(aInfo.mChannels)
+    // Note: we clamp profile to 4 so that HE-AACv2 (profile 5) can pass
+    // through the conversion to ADTS and back again.
+    , mProfile(
+        std::min<uint8_t>(static_cast<uint8_t>(0xff & aInfo.mProfile), 4))
+    , mFrequencyIndex(Adts::GetFrequencyIndex(aInfo.mRate))
+  {
+  }
+  bool Convert(MediaRawData* aSample) const
+  {
+    return Adts::ConvertSample(
+      mNumChannels, mFrequencyIndex, mProfile, aSample);
+  }
+  bool Revert(MediaRawData* aSample) const
+  {
+    return Adts::RevertSample(aSample);
+  }
+
+private:
+  const uint32_t mNumChannels;
+  const uint8_t mProfile;
+  const uint8_t mFrequencyIndex;
+};
+
+class EMEDecryptor
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<EMEDecryptor>
+{
+public:
+  EMEDecryptor(MediaDataDecoder* aDecoder,
+               CDMProxy* aProxy,
+               TaskQueue* aDecodeTaskQueue,
+               TrackInfo::TrackType aType,
+               MediaEventProducer<TrackInfo::TrackType>* aOnWaitingForKey,
+               UniquePtr<ADTSSampleConverter> aConverter = nullptr)
     : mDecoder(aDecoder)
     , mTaskQueue(aDecodeTaskQueue)
     , mProxy(aProxy)
     , mSamplesWaitingForKey(
         new SamplesWaitingForKey(mProxy, aType, aOnWaitingForKey))
     , mThroughputLimiter(aDecodeTaskQueue)
+    , mADTSSampleConverter(Move(aConverter))
     , mIsShutdown(false)
   {
+    DDLINKCHILD("decoder", mDecoder.get());
   }
 
   RefPtr<InitPromise> Init() override
@@ -93,9 +133,14 @@ public:
       return;
     }
 
-    nsAutoPtr<MediaRawDataWriter> writer(aSample->CreateWriter());
-    mProxy->GetSessionIdsForKeyId(aSample->mCrypto.mKeyId,
-                                  writer->mCrypto.mSessionIds);
+    if (mADTSSampleConverter && !mADTSSampleConverter->Convert(aSample)) {
+      mDecodePromise.RejectIfExists(
+        MediaResult(
+          NS_ERROR_DOM_MEDIA_FATAL_ERR,
+          RESULT_DETAIL("Failed to convert encrypted AAC sample to ADTS")),
+        __func__);
+      return;
+    }
 
     mDecrypts.Put(aSample, new DecryptPromiseRequestHolder());
     mProxy->Decrypt(aSample)
@@ -117,6 +162,16 @@ public:
     } else {
       // Decryption is not in the list of decrypt operations waiting
       // for a result. It must have been flushed or drained. Ignore result.
+      return;
+    }
+
+    if (mADTSSampleConverter &&
+        !mADTSSampleConverter->Revert(aDecrypted.mSample)) {
+      mDecodePromise.RejectIfExists(
+        MediaResult(
+          NS_ERROR_DOM_MEDIA_FATAL_ERR,
+          RESULT_DETAIL("Failed to revert decrypted ADTS sample to AAC")),
+        __func__);
       return;
     }
 
@@ -228,7 +283,7 @@ private:
   MozPromiseHolder<DecodePromise> mDrainPromise;
   MozPromiseHolder<FlushPromise> mFlushPromise;
   MozPromiseRequestHolder<DecodePromise> mDecodeRequest;
-
+  UniquePtr<ADTSSampleConverter> mADTSSampleConverter;
   bool mIsShutdown;
 };
 
@@ -271,9 +326,6 @@ EMEMediaDataDecoderProxy::Decode(MediaRawData* aSample)
            [self, this](RefPtr<MediaRawData> aSample) {
              mKeyRequest.Complete();
 
-             nsAutoPtr<MediaRawDataWriter> writer(aSample->CreateWriter());
-             mProxy->GetSessionIdsForKeyId(aSample->mCrypto.mKeyId,
-                                           writer->mCrypto.mSessionIds);
              MediaDataDecoderProxy::Decode(aSample)
                ->Then(mTaskQueue, __func__,
                       [self, this](const DecodedData& aResults) {
@@ -386,14 +438,25 @@ EMEDecoderModule::CreateAudioDecoder(const CreateDecoderParams& aParams)
     return m->CreateAudioDecoder(aParams);
   }
 
+  UniquePtr<ADTSSampleConverter> converter = nullptr;
+  if (MP4Decoder::IsAAC(aParams.mConfig.mMimeType)) {
+    // The CDM expects encrypted AAC to be in ADTS format.
+    // See bug 1433344.
+    converter = MakeUnique<ADTSSampleConverter>(aParams.AudioConfig());
+  }
+
   RefPtr<MediaDataDecoder> decoder(mPDM->CreateDecoder(aParams));
   if (!decoder) {
     return nullptr;
   }
 
-  RefPtr<MediaDataDecoder> emeDecoder(new EMEDecryptor(
-    decoder, mProxy, AbstractThread::GetCurrent()->AsTaskQueue(),
-    aParams.mType, aParams.mOnWaitingForKeyEvent));
+  RefPtr<MediaDataDecoder> emeDecoder(
+    new EMEDecryptor(decoder,
+                     mProxy,
+                     AbstractThread::GetCurrent()->AsTaskQueue(),
+                     aParams.mType,
+                     aParams.mOnWaitingForKeyEvent,
+                     Move(converter)));
   return emeDecoder.forget();
 }
 

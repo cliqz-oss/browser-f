@@ -41,7 +41,6 @@ EXPORTS += [
     'LayerTreeInvalidation.h',
     'LayerUserData.h',
     'opengl/OGLShaderProgram.h',
-    'opengl/TexturePoolOGL.h',
     'protobuf/LayerScopePacket.pb.h',
     'ReadbackLayer.h',
     'TiledLayerBuffer.h',
@@ -117,7 +116,6 @@ EXPORTS.mozilla.layers += [
     'apz/util/ContentProcessController.h',
     'apz/util/DoubleTapToZoom.h',
     'apz/util/InputAPZContext.h',
-    'apz/util/ScrollInputMethods.h',
     'apz/util/ScrollLinkedEffectDetector.h',
     'apz/util/TouchActionHelper.h',
     'AsyncCanvasRenderer.h',
@@ -190,6 +188,7 @@ EXPORTS.mozilla.layers += [
     'ipc/LayerTransactionChild.h',
     'ipc/LayerTransactionParent.h',
     'ipc/LayerTreeOwnerTracker.h',
+    'ipc/RefCountedShmem.h',
     'ipc/RemoteContentController.h',
     'ipc/ShadowLayers.h',
     'ipc/SharedPlanarYCbCrImage.h',
@@ -343,7 +342,6 @@ UNIFIED_SOURCES += [
     'basic/BasicLayerManager.cpp',
     'basic/BasicLayersImpl.cpp',
     'basic/BasicPaintedLayer.cpp',
-    'basic/BasicTextLayer.cpp',
     'basic/TextureHostBasic.cpp',
     'BSPTree.cpp',
     'BufferTexture.cpp',
@@ -358,7 +356,6 @@ UNIFIED_SOURCES += [
     'client/ClientImageLayer.cpp',
     'client/ClientLayerManager.cpp',
     'client/ClientPaintedLayer.cpp',
-    'client/ClientTextLayer.cpp',
     'client/ClientTiledPaintedLayer.cpp',
     'client/CompositableClient.cpp',
     'client/ContentClient.cpp',
@@ -415,6 +412,7 @@ UNIFIED_SOURCES += [
     'ipc/LayerTransactionChild.cpp',
     'ipc/LayerTransactionParent.cpp',
     'ipc/LayerTreeOwnerTracker.cpp',
+    'ipc/RefCountedShmem.cpp',
     'ipc/RemoteContentController.cpp',
     'ipc/ShadowLayers.cpp',
     'ipc/SharedPlanarYCbCrImage.cpp',
@@ -453,7 +451,6 @@ UNIFIED_SOURCES += [
     'opengl/OGLShaderProgram.cpp',
     'opengl/TextureClientOGL.cpp',
     'opengl/TextureHostOGL.cpp',
-    'opengl/TexturePoolOGL.cpp',
     'PaintThread.cpp',
     'ReadbackProcessor.cpp',
     'RenderTrace.cpp',
@@ -495,7 +492,7 @@ DEFINES['GOOGLE_PROTOBUF_NO_RTTI'] = True
 DEFINES['GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER'] = True
 
 # Workaround compiler bug (Bug 795594)
-if CONFIG['_MSC_VER'] and CONFIG['CPU_ARCH'] == 'x86_64':
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl') and CONFIG['CPU_ARCH'] == 'x86_64':
     for src in [
         'Layers.cpp',
         'LayerTreeInvalidation.cpp',
@@ -566,7 +563,7 @@ CXXFLAGS += CONFIG['TK_CFLAGS']
 
 LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
     # Suppress warnings in third-party code.
     CXXFLAGS += [

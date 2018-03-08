@@ -79,6 +79,7 @@ function isDefaultHandler() {
 }
 
 function initializeDefaultPreferences() {
+  /* eslint-disable semi */
   var DEFAULT_PREFERENCES =
 {
   "showPreviousViewOnLoad": true,
@@ -103,6 +104,7 @@ function initializeDefaultPreferences() {
   "disablePageLabels": false
 }
 
+  /* eslint-enable semi */
 
   var defaultBranch = Services.prefs.getDefaultBranch(PREF_PREFIX + ".");
   var defaultValue;

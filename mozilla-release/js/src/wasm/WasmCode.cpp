@@ -242,9 +242,6 @@ CodeSegment::create(Tier tier,
                     const Metadata& metadata)
 {
     // These should always exist and should never be first in the code segment.
-    MOZ_ASSERT(linkData.interruptOffset != 0);
-    MOZ_ASSERT(linkData.outOfBoundsOffset != 0);
-    MOZ_ASSERT(linkData.unalignedAccessOffset != 0);
 
     auto cs = js::MakeUnique<CodeSegment>();
     if (!cs)
@@ -268,6 +265,7 @@ CodeSegment::initialize(Tier tier,
     MOZ_ASSERT(linkData.interruptOffset);
     MOZ_ASSERT(linkData.outOfBoundsOffset);
     MOZ_ASSERT(linkData.unalignedAccessOffset);
+    MOZ_ASSERT(linkData.trapOffset);
 
     tier_ = tier;
     bytes_ = Move(codeBytes);
@@ -275,6 +273,7 @@ CodeSegment::initialize(Tier tier,
     interruptCode_ = bytes_.get() + linkData.interruptOffset;
     outOfBoundsCode_ = bytes_.get() + linkData.outOfBoundsOffset;
     unalignedAccessCode_ = bytes_.get() + linkData.unalignedAccessOffset;
+    trapCode_ = bytes_.get() + linkData.trapOffset;
 
     if (!StaticallyLink(*this, linkData))
         return false;
@@ -459,6 +458,7 @@ MetadataTier::serializedSize() const
     return SerializedPodVectorSize(memoryAccesses) +
            SerializedPodVectorSize(codeRanges) +
            SerializedPodVectorSize(callSites) +
+           trapSites.serializedSize() +
            SerializedVectorSize(funcImports) +
            SerializedVectorSize(funcExports);
 }
@@ -469,6 +469,7 @@ MetadataTier::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
     return memoryAccesses.sizeOfExcludingThis(mallocSizeOf) +
            codeRanges.sizeOfExcludingThis(mallocSizeOf) +
            callSites.sizeOfExcludingThis(mallocSizeOf) +
+           trapSites.sizeOfExcludingThis(mallocSizeOf) +
            SizeOfVectorExcludingThis(funcImports, mallocSizeOf) +
            SizeOfVectorExcludingThis(funcExports, mallocSizeOf);
 }
@@ -480,6 +481,7 @@ MetadataTier::serialize(uint8_t* cursor) const
     cursor = SerializePodVector(cursor, memoryAccesses);
     cursor = SerializePodVector(cursor, codeRanges);
     cursor = SerializePodVector(cursor, callSites);
+    cursor = trapSites.serialize(cursor);
     cursor = SerializeVector(cursor, funcImports);
     cursor = SerializeVector(cursor, funcExports);
     return cursor;
@@ -491,6 +493,7 @@ MetadataTier::deserialize(const uint8_t* cursor)
     (cursor = DeserializePodVector(cursor, &memoryAccesses)) &&
     (cursor = DeserializePodVector(cursor, &codeRanges)) &&
     (cursor = DeserializePodVector(cursor, &callSites)) &&
+    (cursor = trapSites.deserialize(cursor)) &&
     (cursor = DeserializeVector(cursor, &funcImports)) &&
     (cursor = DeserializeVector(cursor, &funcExports));
     debugTrapFarJumpOffsets.clear();
@@ -750,7 +753,7 @@ Code::segment(Tier tier) const
 bool
 Code::containsCodePC(const void* pc) const
 {
-    for (auto t : tiers()) {
+    for (Tier t : tiers()) {
         const CodeSegment& cs = segment(t);
         if (cs.containsCodePC(pc))
             return true;
@@ -767,50 +770,10 @@ struct CallSiteRetAddrOffset
     }
 };
 
-size_t
-Code::serializedSize() const
-{
-    return metadata().serializedSize() +
-           segment(Tier::Serialized).serializedSize();
-}
-
-uint8_t*
-Code::serialize(uint8_t* cursor, const LinkData& linkData) const
-{
-    MOZ_RELEASE_ASSERT(!metadata().debugEnabled);
-
-    cursor = metadata().serialize(cursor);
-    cursor = segment(Tier::Serialized).serialize(cursor, linkData.linkData(Tier::Serialized));
-    return cursor;
-}
-
-const uint8_t*
-Code::deserialize(const uint8_t* cursor, const SharedBytes& bytecode, const LinkData& linkData,
-                  Metadata& metadata)
-{
-    cursor = metadata.deserialize(cursor);
-    if (!cursor)
-        return nullptr;
-
-    UniqueCodeSegment codeSegment = js::MakeUnique<CodeSegment>();
-    if (!codeSegment)
-        return nullptr;
-
-    cursor = codeSegment->deserialize(cursor, *bytecode, linkData.linkData(Tier::Serialized),
-                                      metadata);
-    if (!cursor)
-        return nullptr;
-
-    segment1_ = takeOwnership(Move(codeSegment));
-    metadata_ = &metadata;
-
-    return cursor;
-}
-
 const CallSite*
 Code::lookupCallSite(void* returnAddress) const
 {
-    for (auto t : tiers()) {
+    for (Tier t : tiers()) {
         uint32_t target = ((uint8_t*)returnAddress) - segment(t).base();
         size_t lowerBound = 0;
         size_t upperBound = metadata(t).callSites.length();
@@ -827,7 +790,7 @@ Code::lookupCallSite(void* returnAddress) const
 const CodeRange*
 Code::lookupRange(void* pc) const
 {
-    for (auto t : tiers()) {
+    for (Tier t : tiers()) {
         CodeRange::OffsetInCode target((uint8_t*)pc - segment(t).base());
         const CodeRange* result = LookupInSorted(metadata(t).codeRanges, target);
         if (result)
@@ -849,7 +812,7 @@ struct MemoryAccessOffset
 const MemoryAccess*
 Code::lookupMemoryAccess(void* pc) const
 {
-    for (auto t : tiers()) {
+    for (Tier t : tiers()) {
         const MemoryAccessVector& memoryAccesses = metadata(t).memoryAccesses;
 
         uint32_t target = ((uint8_t*)pc) - segment(t).base();
@@ -865,6 +828,40 @@ Code::lookupMemoryAccess(void* pc) const
         }
     }
     return nullptr;
+}
+
+struct TrapSitePCOffset
+{
+    const TrapSiteVector& trapSites;
+    explicit TrapSitePCOffset(const TrapSiteVector& trapSites) : trapSites(trapSites) {}
+    uint32_t operator[](size_t index) const {
+        return trapSites[index].pcOffset;
+    }
+};
+
+bool
+Code::lookupTrap(void* pc, Trap* trapOut, BytecodeOffset* bytecode) const
+{
+    for (Tier t : tiers()) {
+        const TrapSiteVectorArray& trapSitesArray = metadata(t).trapSites;
+        for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
+            const TrapSiteVector& trapSites = trapSitesArray[trap];
+
+            uint32_t target = ((uint8_t*)pc) - segment(t).base();
+            size_t lowerBound = 0;
+            size_t upperBound = trapSites.length();
+
+            size_t match;
+            if (BinarySearch(TrapSitePCOffset(trapSites), lowerBound, upperBound, target, &match)) {
+                MOZ_ASSERT(segment(t).containsCodePC(pc));
+                *trapOut = trap;
+                *bytecode = trapSites[match].bytecode;
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 // When enabled, generate profiling labels for every name in funcNames_ that is
@@ -958,4 +955,44 @@ Code::addSizeOfMiscIfNotSeen(MallocSizeOf mallocSizeOf,
 
     for (auto t : tiers())
         segment(t).addSizeOfMisc(mallocSizeOf, code, data);
+}
+
+size_t
+Code::serializedSize() const
+{
+    return metadata().serializedSize() +
+           segment(Tier::Serialized).serializedSize();
+}
+
+uint8_t*
+Code::serialize(uint8_t* cursor, const LinkData& linkData) const
+{
+    MOZ_RELEASE_ASSERT(!metadata().debugEnabled);
+
+    cursor = metadata().serialize(cursor);
+    cursor = segment(Tier::Serialized).serialize(cursor, linkData.linkData(Tier::Serialized));
+    return cursor;
+}
+
+const uint8_t*
+Code::deserialize(const uint8_t* cursor, const SharedBytes& bytecode, const LinkData& linkData,
+                  Metadata& metadata)
+{
+    cursor = metadata.deserialize(cursor);
+    if (!cursor)
+        return nullptr;
+
+    UniqueCodeSegment codeSegment = js::MakeUnique<CodeSegment>();
+    if (!codeSegment)
+        return nullptr;
+
+    cursor = codeSegment->deserialize(cursor, *bytecode, linkData.linkData(Tier::Serialized),
+                                      metadata);
+    if (!cursor)
+        return nullptr;
+
+    segment1_ = takeOwnership(Move(codeSegment));
+    metadata_ = &metadata;
+
+    return cursor;
 }

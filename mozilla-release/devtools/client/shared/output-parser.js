@@ -4,6 +4,13 @@
 
 "use strict";
 
+const Services = require("Services");
+const {angleUtils} = require("devtools/client/shared/css-angle");
+const {colorUtils} = require("devtools/shared/css/color");
+const {getCSSLexer} = require("devtools/shared/css/lexer");
+const EventEmitter = require("devtools/shared/old-event-emitter");
+const {appendText} = require("devtools/client/inspector/shared/utils");
+
 loader.lazyRequireGetter(this, "ANGLE_TAKING_FUNCTIONS",
   "devtools/shared/css/properties-db", true);
 loader.lazyRequireGetter(this, "BASIC_SHAPE_FUNCTIONS",
@@ -15,18 +22,13 @@ loader.lazyRequireGetter(this, "COLOR_TAKING_FUNCTIONS",
 loader.lazyRequireGetter(this, "CSS_TYPES",
   "devtools/shared/css/properties-db", true);
 
-const {angleUtils} = require("devtools/client/shared/css-angle");
-const {colorUtils} = require("devtools/shared/css/color");
-const {getCSSLexer} = require("devtools/shared/css/lexer");
-const EventEmitter = require("devtools/shared/old-event-emitter");
-const {appendText} = require("devtools/client/inspector/shared/utils");
-const Services = require("Services");
-
 const STYLE_INSPECTOR_PROPERTIES = "devtools/shared/locales/styleinspector.properties";
 const {LocalizationHelper} = require("devtools/shared/l10n");
 const STYLE_INSPECTOR_L10N = new LocalizationHelper(STYLE_INSPECTOR_PROPERTIES);
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
+
+const FLEXBOX_HIGHLIGHTER_ENABLED_PREF = "devtools.inspector.flexboxHighlighter.enabled";
 const CSS_SHAPES_ENABLED_PREF = "devtools.inspector.shapesHighlighter.enabled";
 const CSS_SHAPE_OUTSIDE_ENABLED_PREF = "layout.css.shape-outside.enabled";
 
@@ -91,6 +93,7 @@ OutputParser.prototype = {
     options.expectShape = name === "clip-path" ||
                           (name === "shape-outside"
                            && Services.prefs.getBoolPref(CSS_SHAPE_OUTSIDE_ENABLED_PREF));
+    options.expectFont = name === "font-family";
     options.supportsColor = this.supportsType(name, CSS_TYPES.COLOR) ||
                             this.supportsType(name, CSS_TYPES.GRADIENT);
 
@@ -227,14 +230,15 @@ OutputParser.prototype = {
     if (typeof varValue === "string") {
       // The variable value is valid, set the variable name's title of the first argument
       // in var() to display the variable name and value.
-      firstOpts.title =
+      firstOpts["data-variable"] =
         STYLE_INSPECTOR_L10N.getFormatStr("rule.variableValue", varName, varValue);
+      firstOpts.class = options.matchedVariableClass;
       secondOpts.class = options.unmatchedVariableClass;
     } else {
       // The variable name is not valid, mark it unmatched.
       firstOpts.class = options.unmatchedVariableClass;
-      firstOpts.title = STYLE_INSPECTOR_L10N.getFormatStr("rule.variableUnset",
-                                                          varName);
+      firstOpts["data-variable"] = STYLE_INSPECTOR_L10N.getFormatStr("rule.variableUnset",
+                                                                      varName);
     }
 
     variableNode.appendChild(this._createNode("span", firstOpts, result));
@@ -282,6 +286,7 @@ OutputParser.prototype = {
   _doParse: function (text, options, tokenStream, stopAtCloseParen) {
     let parenDepth = stopAtCloseParen ? 1 : 0;
     let outerMostFunctionTakesColor = false;
+    let fontFamilyNameParts = [];
 
     let colorOK = function () {
       return options.supportsColor ||
@@ -299,6 +304,9 @@ OutputParser.prototype = {
     while (!done) {
       let token = tokenStream.nextToken();
       if (!token) {
+        if (options.expectFont && fontFamilyNameParts.length !== 0) {
+          this._appendFontFamily(fontFamilyNameParts.join(""), options);
+        }
         break;
       }
 
@@ -370,13 +378,18 @@ OutputParser.prototype = {
           if (options.expectCubicBezier &&
               BEZIER_KEYWORDS.indexOf(token.text) >= 0) {
             this._appendCubicBezier(token.text, options);
+          } else if (this._isDisplayFlex(text, token, options) &&
+                     Services.prefs.getBoolPref(FLEXBOX_HIGHLIGHTER_ENABLED_PREF)) {
+            this._appendHighlighterToggle(token.text, options.flexClass);
           } else if (this._isDisplayGrid(text, token, options)) {
-            this._appendGrid(token.text, options);
+            this._appendHighlighterToggle(token.text, options.gridClass);
           } else if (colorOK() &&
                      colorUtils.isValidCSSColor(token.text, this.cssColor4)) {
             this._appendColor(token.text, options);
           } else if (angleOK(token.text)) {
             this._appendAngle(token.text, options);
+          } else if (options.expectFont) {
+            fontFamilyNameParts.push(token.text);
           } else {
             this._appendTextNode(text.substring(token.startOffset,
                                                 token.endOffset));
@@ -412,6 +425,24 @@ OutputParser.prototype = {
                           token.text, options);
           break;
 
+        case "string":
+          if (options.expectFont) {
+            fontFamilyNameParts.push(text.substring(token.startOffset, token.endOffset));
+          } else {
+            this._appendTextNode(
+              text.substring(token.startOffset, token.endOffset));
+          }
+          break;
+
+        case "whitespace":
+          if (options.expectFont) {
+            fontFamilyNameParts.push(" ");
+          } else {
+            this._appendTextNode(
+              text.substring(token.startOffset, token.endOffset));
+          }
+          break;
+
         case "symbol":
           if (token.text === "(") {
             ++parenDepth;
@@ -426,6 +457,10 @@ OutputParser.prototype = {
             if (parenDepth === 0) {
               outerMostFunctionTakesColor = false;
             }
+          } else if (token.text === "," &&
+                     options.expectFont && fontFamilyNameParts.length !== 0) {
+            this._appendFontFamily(fontFamilyNameParts.join(""), options);
+            fontFamilyNameParts = [];
           }
           // falls through
         default:
@@ -472,14 +507,29 @@ OutputParser.prototype = {
   },
 
   /**
-   * Return true if it's a display:[inline-]grid token.
+   * Returns true if it's a "display: [inline-]flex" token.
    *
    * @param  {String} text
-   *         the parsed text.
+   *         The parsed text.
    * @param  {Object} token
-   *         the parsed token.
+   *         The parsed token.
    * @param  {Object} options
-   *         the options given to _parse.
+   *         The options given to _parse.
+   */
+  _isDisplayFlex: function (text, token, options) {
+    return options.expectDisplay &&
+      (token.text === "flex" || token.text === "inline-flex");
+  },
+
+  /**
+   * Returns true if it's a "display: [inline-]grid" token.
+   *
+   * @param  {String} text
+   *         The parsed text.
+   * @param  {Object} token
+   *         The parsed token.
+   * @param  {Object} options
+   *         The options given to _parse.
    */
   _isDisplayGrid: function (text, token, options) {
     return options.expectDisplay &&
@@ -516,24 +566,23 @@ OutputParser.prototype = {
   },
 
   /**
-   * Append a CSS Grid highlighter toggle icon next to the value in a
-   * 'display: grid' declaration
+   * Append a Flexbox|Grid highlighter toggle icon next to the value in a
+   * "display: [inline-]flex" or "display: [inline-]grid" declaration.
    *
-   * @param {String} grid
-   *        The grid text value to append
-   * @param {Object} options
-   *        Options object. For valid options and default values see
-   *        _mergeOptions()
+   * @param {String} text
+   *        The text value to append
+   * @param {String} className
+   *        The class name for the toggle span
    */
-  _appendGrid: function (grid, options) {
+  _appendHighlighterToggle: function (text, className) {
     let container = this._createNode("span", {});
 
     let toggle = this._createNode("span", {
-      class: options.gridClass
+      class: className
     });
 
     let value = this._createNode("span", {});
-    value.textContent = grid;
+    value.textContent = text;
 
     container.appendChild(toggle);
     container.appendChild(value);
@@ -1310,6 +1359,58 @@ OutputParser.prototype = {
   },
 
   /**
+   * Append a font family to the output.
+   *
+   * @param  {String} fontFamily
+   *         Font family to append
+   * @param  {Object} options
+   *         Options object. For valid options and default values see
+   *         _mergeOptions().
+   */
+  _appendFontFamily: function (fontFamily, options) {
+    let spanContents = fontFamily;
+    let quoteChar = null;
+    let trailingWhitespace = false;
+
+    // Before appending the actual font-family span, we need to trim
+    // down the actual contents by removing any whitespace before and
+    // after, and any quotation characters in the passed string.  Any
+    // such characters are preserved in the actual output, but just
+    // not inside the span element.
+
+    if (spanContents[0] === " ") {
+      this._appendTextNode(" ");
+      spanContents = spanContents.slice(1);
+    }
+
+    if (spanContents[spanContents.length - 1] === " ") {
+      spanContents = spanContents.slice(0, -1);
+      trailingWhitespace = true;
+    }
+
+    if (spanContents[0] === "'" || spanContents[0] === "\"") {
+      quoteChar = spanContents[0];
+    }
+
+    if (quoteChar) {
+      this._appendTextNode(quoteChar);
+      spanContents = spanContents.slice(1, -1);
+    }
+
+    this._appendNode("span", {
+      class: options.fontFamilyClass
+    }, spanContents);
+
+    if (quoteChar) {
+      this._appendTextNode(quoteChar);
+    }
+
+    if (trailingWhitespace) {
+      this._appendTextNode(" ");
+    }
+  },
+
+  /**
    * Create a node.
    *
    * @param  {String} tagName
@@ -1415,10 +1516,12 @@ OutputParser.prototype = {
    *                                    // parser to skip the call to
    *                                    // _wrapFilter.  Used only for
    *                                    // previewing with the filter swatch.
+   *           - flexClass: ""          // The class to use for the flex icon.
    *           - gridClass: ""          // The class to use for the grid icon.
    *           - shapeClass: ""         // The class to use for the shape icon.
    *           - supportsColor: false   // Does the CSS property support colors?
    *           - urlClass: ""           // The class to be used for url() links.
+   *           - fontFamilyClass: ""    // The class to be used for font families.
    *           - baseURI: undefined     // A string used to resolve
    *                                    // relative links.
    *           - isVariableInUse        // A function taking a single
@@ -1442,10 +1545,12 @@ OutputParser.prototype = {
       colorClass: "",
       colorSwatchClass: "",
       filterSwatch: false,
+      flexClass: "",
       gridClass: "",
       shapeClass: "",
       supportsColor: false,
       urlClass: "",
+      fontFamilyClass: "",
       baseURI: undefined,
       isVariableInUse: null,
       unmatchedVariableClass: null,

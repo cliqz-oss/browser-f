@@ -77,6 +77,7 @@ function setPrefDefaults() {
   Services.prefs.setBoolPref("devtools.debugger.source-maps-enabled", false);
   Services.prefs.setBoolPref("devtools.debugger.new-debugger-frontend", true);
   Services.prefs.setBoolPref("devtools.webconsole.new-frontend-enabled", false);
+  Services.prefs.setBoolPref("devtools.preference.new-panel-enabled", false);
 }
 window.addEventListener("load", function () {
   let cmdClose = document.getElementById("toolbox-cmd-close");
@@ -163,7 +164,7 @@ function bindToolboxHandlers() {
 }
 
 function setupThreadListeners(panel) {
-  updateBadgeText(panel._selectors.getPause(panel._getState()));
+  updateBadgeText(panel.isPaused());
 
   let onPaused = updateBadgeText.bind(null, true);
   let onResumed = updateBadgeText.bind(null, false);

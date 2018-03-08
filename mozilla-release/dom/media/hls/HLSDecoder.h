@@ -41,11 +41,11 @@ public:
   void Resume() override;
   void Shutdown() override;
 
+  // Called as data arrives on the underlying HLS player. Main thread only.
+  void NotifyDataArrived();
+
 private:
   friend class HLSResourceCallbacksSupport;
-
-  void PinForSeek() override {}
-  void UnpinForSeek() override {}
 
   MediaDecoderStateMachine* CreateStateMachine();
 
@@ -55,8 +55,6 @@ private:
     // For now we just return true for 'autoplay' can work.
     return true;
   }
-
-  bool IsLiveStream() override final { return false; }
 
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsIURI> mURI;

@@ -280,7 +280,7 @@ nsColumnSetFrame::CreateBorderRenderers(nsTArray<nsCSSBorderRenderer>& aBorderRe
                 (const nsRect& aLineRect)
                 {
                   // Assert that we're not drawing a border-image here; if we were, we
-                  // couldn't ignore the DrawResult that PaintBorderWithStyleBorder returns.
+                  // couldn't ignore the ImgDrawResult that PaintBorderWithStyleBorder returns.
                   MOZ_ASSERT(border.mBorderImageSource.GetType() == eStyleImageType_Null);
 
                   gfx::DrawTarget* dt = aCtx ? aCtx->GetDrawTarget() : nullptr;
@@ -1285,7 +1285,7 @@ nsColumnSetFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   if (IsVisibleForPainting(aBuilder)) {
     aLists.BorderBackground()->
-      AppendNewToTop(new (aBuilder) nsDisplayColumnRule(aBuilder, this));
+      AppendToTop(new (aBuilder) nsDisplayColumnRule(aBuilder, this));
   }
 
   // Our children won't have backgrounds so it doesn't matter where we put them.

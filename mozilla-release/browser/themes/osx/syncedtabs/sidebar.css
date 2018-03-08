@@ -43,7 +43,7 @@
   background-image: url("chrome://global/skin/tree/arrow-disclosure.svg#arrow-disclosure-expanded");
 }
 
-@media not all and (-moz-mac-yosemite-theme) {
+@media (-moz-mac-yosemite-theme: 0) {
   .item.client.selected .item-twisty-container {
     background-image: url("chrome://global/skin/tree/arrow-disclosure.svg#arrow-disclosure-expanded-inverted");
   }
@@ -106,18 +106,7 @@
   font-size: 12px;
   cursor: text;
   margin: 4px;
-  border-width: 3px;
-  border-style: solid;
-  border-color: currentcolor;
-  border-image: none;
-  -moz-border-top-colors: transparent #888 #000;
-  -moz-border-right-colors: transparent #FFF #000;
-  -moz-border-bottom-colors: transparent #FFF #000;
-  -moz-border-left-colors: transparent #888 #000;
-  border-top-right-radius: 2px;
-  border-bottom-left-radius: 2px;
-  background-color: #FFF;
-  color: #000;
+  color: -moz-fieldText;
   -moz-user-select: text;
   text-shadow: none;
 }
@@ -130,24 +119,12 @@
   height: 11px;
 }
 
-.search-box.compact > .textbox-input-box > .textbox-search-icons > .textbox-search-icon {
-  display: none;
-}
-
-.search-box[focused="true"] {
-  -moz-border-top-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-  -moz-border-right-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-  -moz-border-bottom-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-  -moz-border-left-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-}
-
 .search-box.compact {
     padding: 0px;
     /* font size is in px because the XUL it was copied from uses px */
     font-size: 11px;
 }
 
-.textbox-search-clear,
-.textbox-search-icon {
+.textbox-search-clear {
   margin-top: 1px;
 }

@@ -4,14 +4,15 @@
 
 "use strict";
 
+const { Component } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const {
-  Component,
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
-const { getResponseHeader } = require("../utils/request-utils");
+  getResponseHeader,
+  fetchNetworkUpdatePacket
+} = require("../utils/request-utils");
 
-const { div } = DOM;
+const { div } = dom;
 
 /**
  * Renders a response header column in the requests list.  The actual
@@ -20,9 +21,20 @@ const { div } = DOM;
 class RequestListColumnResponseHeader extends Component {
   static get propTypes() {
     return {
+      connector: PropTypes.object.isRequired,
       item: PropTypes.object.isRequired,
       header: PropTypes.string.isRequired,
     };
+  }
+
+  componentDidMount() {
+    let { item, connector } = this.props;
+    fetchNetworkUpdatePacket(connector.requestData, item, ["responseHeaders"]);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    let { item, connector } = nextProps;
+    fetchNetworkUpdatePacket(connector.requestData, item, ["responseHeaders"]);
   }
 
   shouldComponentUpdate(nextProps) {

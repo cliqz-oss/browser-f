@@ -107,7 +107,7 @@ function truncateEntry(entry, entryInput) {
 
 function check_open_result(name, expectedRv) {
   return function openSignedAppFileCallback(rv, aZipReader, aSignerCert) {
-    do_print("openSignedAppFileCallback called for " + name);
+    info("openSignedAppFileCallback called for " + name);
     equal(rv, expectedRv, "Actual and expected return value should match");
     equal(aZipReader != null, Components.isSuccessCode(expectedRv),
           "ZIP reader should be null only if the return value denotes failure");
@@ -189,8 +189,28 @@ var hashTestcases = [
     expectedResult: Cr.NS_ERROR_SIGNED_JAR_MANIFEST_INVALID },
 ];
 
-for (let testcase of hashTestcases) {
+// Policy values for the preference "security.signed_app_signatures.policy"
+const PKCS7WithSHA1OrSHA256 = 0b0;
+const PKCS7WithSHA256 = 0b1;
+const COSEAndPKCS7WithSHA1OrSHA256 = 0b10;
+const COSEAndPKCS7WithSHA256 = 0b11;
+const COSERequiredAndPKCS7WithSHA1OrSHA256 = 0b100;
+const COSERequiredAndPKCS7WithSHA256 = 0b101;
+const COSEOnly = 0b110;
+const COSEOnlyAgain = 0b111;
+
+function add_signature_test(policy, test) {
+  // First queue up a test to set the desired policy:
   add_test(function () {
+    Services.prefs.setIntPref("security.signed_app_signatures.policy", policy);
+    run_next_test();
+  });
+  // Then queue up the test itself:
+  add_test(test);
+}
+
+for (let testcase of hashTestcases) {
+  add_signature_test(PKCS7WithSHA1OrSHA256, function () {
     certdb.openSignedAppFileAsync(
       Ci.nsIX509CertDB.AppXPCShellRoot,
       original_app_path(testcase.name),
@@ -198,7 +218,7 @@ for (let testcase of hashTestcases) {
   });
 }
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   certdb.openSignedAppFileAsync(
     Ci.nsIX509CertDB.AppXPCShellRoot,
     original_app_path("empty_signerInfos"),
@@ -206,21 +226,111 @@ add_test(function () {
                       Cr.NS_ERROR_CMS_VERIFY_NOT_SIGNED));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   certdb.openSignedAppFileAsync(
     Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("unsigned_app"),
     check_open_result("unsigned", Cr.NS_ERROR_SIGNED_JAR_NOT_SIGNED));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   certdb.openSignedAppFileAsync(
     Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("unknown_issuer_app"),
     check_open_result("unknown_issuer",
                       getXPCOMStatusFromNSS(SEC_ERROR_UNKNOWN_ISSUER)));
 });
 
+add_signature_test(COSEAndPKCS7WithSHA1OrSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("cose_signed_with_pkcs7"),
+    check_open_result("cose_signed_with_pkcs7", Cr.NS_OK));
+});
+
+add_signature_test(COSEAndPKCS7WithSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("app_mf-256_sf-256_p7-256"),
+    check_open_result("no COSE but correct PK#7", Cr.NS_OK));
+});
+
+add_signature_test(COSEAndPKCS7WithSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("app_mf-1_sf-256_p7-256"),
+    check_open_result("no COSE and wrong PK#7 hash", Cr.NS_ERROR_SIGNED_JAR_MANIFEST_INVALID));
+});
+
+add_signature_test(COSERequiredAndPKCS7WithSHA1OrSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("app_mf-256_sf-256_p7-256"),
+    check_open_result("COSE signature missing (SHA1 or 256)", Cr.NS_ERROR_SIGNED_JAR_WRONG_SIGNATURE));
+});
+
+add_signature_test(COSERequiredAndPKCS7WithSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("app_mf-256_sf-256_p7-256"),
+    check_open_result("COSE signature missing (SHA256)", Cr.NS_ERROR_SIGNED_JAR_WRONG_SIGNATURE));
+});
+
+add_signature_test(COSERequiredAndPKCS7WithSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("only_cose_signed"),
+    check_open_result("COSE signature only (PK#7 allowed, not present)", Cr.NS_OK));
+});
+
+add_signature_test(COSERequiredAndPKCS7WithSHA1OrSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("only_cose_signed"),
+    check_open_result("COSE signature only (PK#7 allowed, not present)", Cr.NS_OK));
+});
+
+add_signature_test(COSEAndPKCS7WithSHA1OrSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("cose_multiple_signed_with_pkcs7"),
+    check_open_result("cose_multiple_signed_with_pkcs7", Cr.NS_OK));
+});
+
+add_signature_test(COSEAndPKCS7WithSHA1OrSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("cose_int_signed_with_pkcs7"),
+    check_open_result("COSE signed with an intermediate", Cr.NS_OK));
+});
+
+add_signature_test(COSEAndPKCS7WithSHA1OrSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("only_cose_signed"),
+    check_open_result("PK7 signature missing", Cr.NS_ERROR_SIGNED_JAR_NOT_SIGNED));
+});
+
+add_signature_test(COSEOnly, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("cose_multiple_signed_with_pkcs7"),
+    check_open_result("Expected only COSE signature", Cr.NS_ERROR_SIGNED_JAR_UNSIGNED_ENTRY));
+});
+
+add_signature_test(COSEOnly, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("only_cose_multiple_signed"),
+    check_open_result("only Multiple COSE signatures", Cr.NS_OK));
+});
+
+add_signature_test(COSEOnly, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("only_cose_signed"),
+    check_open_result("only_cose_signed", Cr.NS_OK));
+});
+
+add_signature_test(COSEOnlyAgain, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("only_cose_signed"),
+    check_open_result("only_cose_signed (again)", Cr.NS_OK));
+});
+
+add_signature_test(COSEOnly, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot, original_app_path("cose_signed_with_pkcs7"),
+    check_open_result("COSE only expected but also PK#7 signed", Cr.NS_ERROR_SIGNED_JAR_UNSIGNED_ENTRY));
+});
+
 // Sanity check to ensure a no-op tampering gives a valid result
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("identity_tampering");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered, { }, []);
   certdb.openSignedAppFileAsync(
@@ -228,7 +338,7 @@ add_test(function () {
     check_open_result("identity_tampering", Cr.NS_OK));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("missing_rsa");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "META-INF/A.RSA": removeEntry }, []);
@@ -237,7 +347,7 @@ add_test(function () {
     check_open_result("missing_rsa", Cr.NS_ERROR_SIGNED_JAR_NOT_SIGNED));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("missing_sf");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "META-INF/A.SF": removeEntry }, []);
@@ -246,7 +356,7 @@ add_test(function () {
     check_open_result("missing_sf", Cr.NS_ERROR_SIGNED_JAR_MANIFEST_INVALID));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("missing_manifest_mf");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "META-INF/MANIFEST.MF": removeEntry }, []);
@@ -256,7 +366,7 @@ add_test(function () {
                       Cr.NS_ERROR_SIGNED_JAR_MANIFEST_INVALID));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("missing_entry");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "manifest.json": removeEntry }, []);
@@ -265,7 +375,7 @@ add_test(function () {
     check_open_result("missing_entry", Cr.NS_ERROR_SIGNED_JAR_ENTRY_MISSING));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("truncated_entry");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "manifest.json": truncateEntry }, []);
@@ -275,7 +385,7 @@ add_test(function () {
                       Cr.NS_ERROR_SIGNED_JAR_MODIFIED_ENTRY));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("truncated_manifestFile");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "META-INF/MANIFEST.MF": truncateEntry }, []);
@@ -285,7 +395,7 @@ add_test(function () {
                       Cr.NS_ERROR_SIGNED_JAR_MANIFEST_INVALID));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("truncated_signatureFile");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "META-INF/A.SF": truncateEntry }, []);
@@ -295,7 +405,7 @@ add_test(function () {
                       getXPCOMStatusFromNSS(SEC_ERROR_PKCS7_BAD_SIGNATURE)));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("truncated_pkcs7File");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered,
          { "META-INF/A.RSA": truncateEntry }, []);
@@ -305,7 +415,7 @@ add_test(function () {
                       Cr.NS_ERROR_CMS_VERIFY_NOT_SIGNED));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("unsigned_entry");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered, {},
     [ { "name": "unsigned.txt", "content": "unsigned content!" } ]);
@@ -314,7 +424,7 @@ add_test(function () {
     check_open_result("unsigned_entry", Cr.NS_ERROR_SIGNED_JAR_UNSIGNED_ENTRY));
 });
 
-add_test(function () {
+add_signature_test(PKCS7WithSHA1OrSHA256, function () {
   let tampered = tampered_app_path("unsigned_metainf_entry");
   tamper(original_app_path("app_mf-1_sf-1_p7-1"), tampered, {},
     [ { name: "META-INF/unsigned.txt", content: "unsigned content!" } ]);
@@ -322,6 +432,32 @@ add_test(function () {
     Ci.nsIX509CertDB.AppXPCShellRoot, tampered,
     check_open_result("unsigned_metainf_entry",
                       Cr.NS_ERROR_SIGNED_JAR_UNSIGNED_ENTRY));
+});
+
+add_signature_test(PKCS7WithSHA256, function testSHA1Disabled() {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot,
+    original_app_path("app_mf-1_sf-1_p7-1"),
+    check_open_result("SHA-1 should not be accepted if disabled by policy",
+                      Cr.NS_ERROR_SIGNED_JAR_WRONG_SIGNATURE));
+});
+
+add_signature_test(PKCS7WithSHA256, function testSHA256WorksWithSHA1Disabled() {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot,
+    original_app_path("app_mf-256_sf-256_p7-256"),
+    check_open_result("SHA-256 should work if SHA-1 is disabled by policy",
+                      Cr.NS_OK));
+});
+
+add_signature_test(PKCS7WithSHA256,
+  function testMultipleSignaturesWorkWithSHA1Disabled() {
+    certdb.openSignedAppFileAsync(
+      Ci.nsIX509CertDB.AppXPCShellRoot,
+      original_app_path("app_mf-1-256_sf-1-256_p7-1-256"),
+      check_open_result("Multiple signatures should work if SHA-1 is " +
+                        "disabled by policy (if SHA-256 signature verifies)",
+                        Cr.NS_OK));
 });
 
 // TODO: tampered MF, tampered SF

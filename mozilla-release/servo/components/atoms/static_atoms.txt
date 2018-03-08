@@ -1,3 +1,4 @@
+DOMContentLoaded
 abort
 activate
 beforeunload
@@ -10,13 +11,12 @@ characteristicvaluechanged
 checkbox
 click
 close
+color
 controllerchange
 cursive
 date
-datetime
 datetime-local
 dir
-DOMContentLoaded
 email
 emptied
 error
@@ -54,6 +54,7 @@ playing
 print
 progress
 radio
+range
 readystatechange
 reftest-wait
 reset

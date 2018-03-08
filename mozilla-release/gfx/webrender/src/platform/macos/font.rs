@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{ColorU, FontKey, FontRenderMode, GlyphDimensions};
-use api::{FontInstance, FontVariation, NativeFontHandle};
+use api::{FontInstanceFlags, FontVariation, NativeFontHandle};
 use api::{GlyphKey, SubpixelDirection};
 use app_units::Au;
 use core_foundation::array::{CFArray, CFArrayRef};
@@ -16,16 +16,15 @@ use core_graphics::base::kCGBitmapByteOrder32Little;
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::context::{CGContext, CGTextDrawingMode};
 use core_graphics::data_provider::CGDataProvider;
-use core_graphics::font::{CGFont, CGFontRef, CGGlyph};
-use core_graphics::geometry::{CGPoint, CGRect, CGSize};
+use core_graphics::font::{CGFont, CGGlyph};
+use core_graphics::geometry::{CGAffineTransform, CGPoint, CGRect, CGSize};
 use core_text;
 use core_text::font::{CTFont, CTFontRef};
 use core_text::font_descriptor::{kCTFontDefaultOrientation, kCTFontColorGlyphsTrait};
 use gamma_lut::{ColorLut, GammaLut};
-use glyph_rasterizer::{GlyphFormat, RasterizedGlyph};
+use glyph_rasterizer::{FontInstance, FontTransform, GlyphFormat, RasterizedGlyph};
 use internal_types::FastHashMap;
 use std::collections::hash_map::Entry;
-use std::ptr;
 use std::sync::Arc;
 
 pub struct FontContext {
@@ -64,7 +63,6 @@ fn supports_subpixel_aa() -> bool {
     let ct_font = core_text::font::new_from_name("Helvetica", 16.).unwrap();
     cg_context.set_should_smooth_fonts(true);
     cg_context.set_should_antialias(true);
-    cg_context.set_allows_font_smoothing(true);
     cg_context.set_rgb_fill_color(1.0, 1.0, 1.0, 1.0);
     let point = CGPoint { x: -1., y: 0. };
     let glyph = '|' as CGGlyph;
@@ -81,11 +79,13 @@ fn should_use_white_on_black(color: ColorU) -> bool {
 
 fn get_glyph_metrics(
     ct_font: &CTFont,
+    transform: Option<&CGAffineTransform>,
     glyph: CGGlyph,
     x_offset: f64,
     y_offset: f64,
+    extra_width: f64,
 ) -> GlyphMetrics {
-    let bounds = ct_font.get_bounding_rects_for_glyphs(kCTFontDefaultOrientation, &[glyph]);
+    let mut bounds = ct_font.get_bounding_rects_for_glyphs(kCTFontDefaultOrientation, &[glyph]);
 
     if bounds.origin.x.is_nan() || bounds.origin.y.is_nan() || bounds.size.width.is_nan() ||
         bounds.size.height.is_nan()
@@ -103,6 +103,20 @@ fn get_glyph_metrics(
             rasterized_descent: 0,
             advance: 0.0,
         };
+    }
+
+    let mut advance = CGSize { width: 0.0, height: 0.0 };
+    ct_font.get_advances_for_glyphs(kCTFontDefaultOrientation, &glyph, &mut advance, 1);
+
+    if bounds.size.width > 0.0 {
+        bounds.size.width += extra_width;
+    }
+    if advance.width > 0.0 {
+        advance.width += extra_width;
+    }
+
+    if let Some(transform) = transform {
+        bounds = bounds.apply_transform(transform);
     }
 
     // First round out to pixel boundaries
@@ -124,16 +138,13 @@ fn get_glyph_metrics(
     let width = right - left;
     let height = top - bottom;
 
-    let advance =
-        ct_font.get_advances_for_glyphs(kCTFontDefaultOrientation, &glyph, ptr::null_mut(), 1);
-
     let metrics = GlyphMetrics {
         rasterized_left: left,
         rasterized_width: width as u32,
         rasterized_height: height as u32,
         rasterized_ascent: top,
         rasterized_descent: -bottom,
-        advance: advance as f32,
+        advance: advance.width as f32,
     };
 
     metrics
@@ -148,13 +159,11 @@ extern {
     static kCTFontVariationAxisDefaultValueKey: CFStringRef;
 
     fn CTFontCopyVariationAxes(font: CTFontRef) -> CFArrayRef;
-
-    fn CGFontCreateCopyWithVariations(font: CGFontRef, vars: CFDictionaryRef) -> CGFontRef;
 }
 
-fn new_ct_font_with_variations(cg_font: &CGFont, size: Au, variations: &[FontVariation]) -> CTFont {
+fn new_ct_font_with_variations(cg_font: &CGFont, size: f64, variations: &[FontVariation]) -> CTFont {
     unsafe {
-        let ct_font = core_text::font::new_from_CGFont(cg_font, size.to_f64_px());
+        let ct_font = core_text::font::new_from_CGFont(cg_font, size);
         if variations.is_empty() {
             return ct_font;
         }
@@ -237,18 +246,25 @@ fn new_ct_font_with_variations(cg_font: &CGFont, size: Au, variations: &[FontVar
 
             val = val.max(min_val).min(max_val);
             if val != def_val {
-                vals.push((name, CFNumber::from_f64(val)));
+                vals.push((name, CFNumber::from(val)));
             }
         }
         if vals.is_empty() {
             return ct_font;
         }
         let vals_dict = CFDictionary::from_CFType_pairs(&vals);
-        let cg_var_font_ref = CGFontCreateCopyWithVariations(cg_font.as_concrete_TypeRef(), vals_dict.as_concrete_TypeRef());
-        let cg_var_font: CGFont = TCFType::wrap_under_create_rule(cg_var_font_ref);
-        core_text::font::new_from_CGFont(&cg_var_font, size.to_f64_px())
+        let cg_var_font = cg_font.create_copy_from_variations(&vals_dict).unwrap();
+        core_text::font::new_from_CGFont(&cg_var_font, size)
     }
 }
+
+fn is_bitmap_font(ct_font: &CTFont) -> bool {
+    let traits = ct_font.symbolic_traits();
+    (traits & kCTFontColorGlyphsTrait) != 0
+}
+
+// Skew factor matching Gecko/CG.
+const OBLIQUE_SKEW_FACTOR: f32 = 0.25;
 
 impl FontContext {
     pub fn new() -> FontContext {
@@ -275,12 +291,12 @@ impl FontContext {
         }
 
         assert_eq!(index, 0);
-        let data_provider = CGDataProvider::from_buffer(&**bytes);
+        let data_provider = CGDataProvider::from_buffer(bytes);
         let cg_font = match CGFont::from_data_provider(data_provider) {
             Err(_) => return,
             Ok(cg_font) => cg_font,
         };
-        self.cg_fonts.insert((*font_key).clone(), cg_font);
+        self.cg_fonts.insert(*font_key, cg_font);
     }
 
     pub fn add_native_font(&mut self, font_key: &FontKey, native_font_handle: NativeFontHandle) {
@@ -289,21 +305,12 @@ impl FontContext {
         }
 
         self.cg_fonts
-            .insert((*font_key).clone(), native_font_handle.0);
+            .insert(*font_key, native_font_handle.0);
     }
 
     pub fn delete_font(&mut self, font_key: &FontKey) {
         if let Some(_) = self.cg_fonts.remove(font_key) {
-            // Unstable Rust has a retain() method on HashMap that will
-            // let us do this in-place. https://github.com/rust-lang/rust/issues/36648
-            let ct_font_keys = self.ct_fonts
-                .keys()
-                .filter(|k| k.0 == *font_key)
-                .cloned()
-                .collect::<Vec<_>>();
-            for ct_font_key in ct_font_keys {
-                self.ct_fonts.remove(&ct_font_key);
-            }
+            self.ct_fonts.retain(|k, _| k.0 != *font_key);
         }
     }
 
@@ -320,7 +327,7 @@ impl FontContext {
                     None => return None,
                     Some(cg_font) => cg_font,
                 };
-                let ct_font = new_ct_font_with_variations(cg_font, size, variations);
+                let ct_font = new_ct_font_with_variations(cg_font, size.to_f64_px(), variations);
                 entry.insert(ct_font.clone());
                 Some(ct_font)
             }
@@ -331,7 +338,7 @@ impl FontContext {
         let character = ch as u16;
         let mut glyph = 0;
 
-        self.get_ct_font(font_key, Au(16 * 60), &[])
+        self.get_ct_font(font_key, Au::from_px(16), &[])
             .and_then(|ref ct_font| {
                 let result = ct_font.get_glyphs_for_characters(&character, &mut glyph, 1);
 
@@ -351,8 +358,45 @@ impl FontContext {
         self.get_ct_font(font.font_key, font.size, &font.variations)
             .and_then(|ref ct_font| {
                 let glyph = key.index as CGGlyph;
-                let (x_offset, y_offset) = font.get_subpx_offset(key);
-                let metrics = get_glyph_metrics(ct_font, glyph, x_offset, y_offset);
+                let bitmap = is_bitmap_font(ct_font);
+                let (x_offset, y_offset) = if bitmap { (0.0, 0.0) } else { font.get_subpx_offset(key) };
+                let transform = if font.flags.intersects(FontInstanceFlags::SYNTHETIC_ITALICS |
+                                                         FontInstanceFlags::TRANSPOSE |
+                                                         FontInstanceFlags::FLIP_X |
+                                                         FontInstanceFlags::FLIP_Y) {
+                    let mut shape = FontTransform::identity();
+                    if font.flags.contains(FontInstanceFlags::FLIP_X) {
+                        shape = shape.flip_x();
+                    }
+                    if font.flags.contains(FontInstanceFlags::FLIP_Y) {
+                        shape = shape.flip_y();
+                    }
+                    if font.flags.contains(FontInstanceFlags::TRANSPOSE) {
+                        shape = shape.swap_xy();
+                    }
+                    if font.flags.contains(FontInstanceFlags::SYNTHETIC_ITALICS) {
+                        shape = shape.synthesize_italics(OBLIQUE_SKEW_FACTOR);
+                    }
+                    Some(CGAffineTransform {
+                        a: shape.scale_x as f64,
+                        b: -shape.skew_y as f64,
+                        c: -shape.skew_x as f64,
+                        d: shape.scale_y as f64,
+                        tx: 0.0,
+                        ty: 0.0,
+                    })
+                } else {
+                    None
+                };
+                let extra_strikes = font.get_extra_strikes(1.0);
+                let metrics = get_glyph_metrics(
+                    ct_font,
+                    transform.as_ref(),
+                    glyph,
+                    x_offset,
+                    y_offset,
+                    extra_strikes as f64,
+                );
                 if metrics.rasterized_width == 0 || metrics.rasterized_height == 0 {
                     None
                 } else {
@@ -404,26 +448,16 @@ impl FontContext {
         }
     }
 
-    pub fn is_bitmap_font(&mut self, font: &FontInstance) -> bool {
-        match self.get_ct_font(font.font_key, font.size, &font.variations) {
-            Some(ref ct_font) => {
-                let traits = ct_font.symbolic_traits();
-                (traits & kCTFontColorGlyphsTrait) != 0
-            }
-            None => false,
-        }
-    }
-
     pub fn prepare_font(font: &mut FontInstance) {
         match font.render_mode {
-            FontRenderMode::Mono | FontRenderMode::Bitmap => {
-                // In mono/bitmap modes the color of the font is irrelevant.
+            FontRenderMode::Mono => {
+                // In mono mode the color of the font is irrelevant.
                 font.color = ColorU::new(255, 255, 255, 255);
-                // Subpixel positioning is disabled in mono and bitmap modes.
+                // Subpixel positioning is disabled in mono mode.
                 font.subpx_dir = SubpixelDirection::None;
             }
             FontRenderMode::Alpha => {
-                font.color = if font.platform_options.unwrap_or_default().font_smoothing {
+                font.color = if font.flags.contains(FontInstanceFlags::FONT_SMOOTHING) {
                     // Only the G channel is used to index grayscale tables,
                     // so use R and B to preserve light/dark determination.
                     let ColorU { g, a, .. } = font.color.luminance_color().quantized_ceil();
@@ -450,14 +484,55 @@ impl FontContext {
         font: &FontInstance,
         key: &GlyphKey,
     ) -> Option<RasterizedGlyph> {
-        let ct_font = match self.get_ct_font(font.font_key, font.size, &font.variations) {
+        let (x_scale, y_scale) = font.transform.compute_scale().unwrap_or((1.0, 1.0));
+        let size = font.size.scale_by(y_scale as f32);
+        let ct_font = match self.get_ct_font(font.font_key, size, &font.variations) {
             Some(font) => font,
             None => return None,
         };
 
+        let bitmap = is_bitmap_font(&ct_font);
+        let (mut shape, (x_offset, y_offset)) = if bitmap {
+            (FontTransform::identity(), (0.0, 0.0))
+        } else {
+            (font.transform.invert_scale(y_scale, y_scale), font.get_subpx_offset(key))
+        };
+        if font.flags.contains(FontInstanceFlags::FLIP_X) {
+            shape = shape.flip_x();
+        }
+        if font.flags.contains(FontInstanceFlags::FLIP_Y) {
+            shape = shape.flip_y();
+        }
+        if font.flags.contains(FontInstanceFlags::TRANSPOSE) {
+            shape = shape.swap_xy();
+        }
+        if font.flags.contains(FontInstanceFlags::SYNTHETIC_ITALICS) {
+            shape = shape.synthesize_italics(OBLIQUE_SKEW_FACTOR);
+        }
+        let transform = if !shape.is_identity() {
+            Some(CGAffineTransform {
+                a: shape.scale_x as f64,
+                b: -shape.skew_y as f64,
+                c: -shape.skew_x as f64,
+                d: shape.scale_y as f64,
+                tx: 0.0,
+                ty: 0.0,
+            })
+        } else {
+            None
+        };
+
         let glyph = key.index as CGGlyph;
-        let (x_offset, y_offset) = font.get_subpx_offset(key);
-        let metrics = get_glyph_metrics(&ct_font, glyph, x_offset, y_offset);
+        let (strike_scale, pixel_step) = if bitmap { (y_scale, 1.0) } else { (x_scale, y_scale / x_scale) };
+        let extra_strikes = font.get_extra_strikes(strike_scale);
+        let metrics = get_glyph_metrics(
+            &ct_font,
+            transform.as_ref(),
+            glyph,
+            x_offset,
+            y_offset,
+            extra_strikes as f64 * pixel_step,
+        );
         if metrics.rasterized_width == 0 || metrics.rasterized_height == 0 {
             return None;
         }
@@ -484,14 +559,10 @@ impl FontContext {
         // subpixel AA at all (which we need it to do in both Subpixel and
         // Alpha+smoothing mode). But little-endian is what we want anyway, so
         // this works out nicely.
-        let context_flags = match font.render_mode {
-            FontRenderMode::Subpixel | FontRenderMode::Alpha |
-            FontRenderMode::Mono => {
-                kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst
-            }
-            FontRenderMode::Bitmap => {
-                kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst
-            }
+        let context_flags = if bitmap {
+            kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst
+        } else {
+            kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst
         };
 
         let mut cg_context = CGContext::create_bitmap_context(
@@ -528,8 +599,10 @@ impl FontContext {
         // to both the Subpixel and the "Alpha + smoothing" modes, but not to
         // the "Alpha without smoothing" and Mono modes.
         let use_white_on_black = should_use_white_on_black(font.color);
-        let use_font_smoothing = font.platform_options.unwrap_or_default().font_smoothing;
-        let (antialias, smooth, text_color, bg_color, bg_alpha, invert) =
+        let use_font_smoothing = font.flags.contains(FontInstanceFlags::FONT_SMOOTHING);
+        let (antialias, smooth, text_color, bg_color, bg_alpha, invert) = if bitmap {
+            (true, false, 0.0, 0.0, 0.0, false)
+        } else {
             match (font.render_mode, use_font_smoothing) {
                 (FontRenderMode::Subpixel, _) |
                 (FontRenderMode::Alpha, true) => if use_white_on_black {
@@ -539,8 +612,8 @@ impl FontContext {
                 },
                 (FontRenderMode::Alpha, false) => (true, false, 0.0, 1.0, 1.0, true),
                 (FontRenderMode::Mono, _) => (false, false, 0.0, 1.0, 1.0, true),
-                (FontRenderMode::Bitmap, _) => (true, false, 0.0, 0.0, 0.0, false),
-            };
+            }
+        };
 
         // These are always true in Gecko, even for non-AA fonts
         cg_context.set_allows_font_subpixel_positioning(true);
@@ -550,16 +623,8 @@ impl FontContext {
         cg_context.set_allows_font_subpixel_quantization(false);
         cg_context.set_should_subpixel_quantize_fonts(false);
 
-        cg_context.set_allows_font_smoothing(smooth);
         cg_context.set_should_smooth_fonts(smooth);
-        cg_context.set_allows_antialiasing(antialias);
         cg_context.set_should_antialias(antialias);
-
-        // CG Origin is bottom left, WR is top left. Need -y offset
-        let rasterization_origin = CGPoint {
-            x: -metrics.rasterized_left as f64 + x_offset,
-            y: metrics.rasterized_descent as f64 - y_offset,
-        };
 
         // Fill the background. This could be opaque white, opaque black, or
         // transparency.
@@ -576,11 +641,33 @@ impl FontContext {
         // Set the text color and draw the glyphs.
         cg_context.set_rgb_fill_color(text_color, text_color, text_color, 1.0);
         cg_context.set_text_drawing_mode(CGTextDrawingMode::CGTextFill);
-        ct_font.draw_glyphs(&[glyph], &[rasterization_origin], cg_context.clone());
+
+        // CG Origin is bottom left, WR is top left. Need -y offset
+        let mut draw_origin = CGPoint {
+            x: -metrics.rasterized_left as f64 + x_offset,
+            y: metrics.rasterized_descent as f64 - y_offset,
+        };
+
+        if let Some(transform) = transform {
+            cg_context.set_text_matrix(&transform);
+
+            draw_origin = draw_origin.apply_transform(&transform.invert());
+        }
+
+        if extra_strikes > 0 {
+            let strikes = 1 + extra_strikes;
+            let glyphs = vec![glyph; strikes];
+            let origins = (0..strikes)
+                .map(|i| CGPoint { x: draw_origin.x + i as f64 * pixel_step, y: draw_origin.y })
+                .collect::<Vec<_>>();
+            ct_font.draw_glyphs(&glyphs, &origins, cg_context.clone());
+        } else {
+            ct_font.draw_glyphs(&[glyph], &[draw_origin], cg_context.clone());
+        }
 
         let mut rasterized_pixels = cg_context.data().to_vec();
 
-        if font.render_mode != FontRenderMode::Bitmap {
+        if !bitmap {
             // We rendered text into an opaque surface. The code below needs to
             // ignore the current value of each pixel's alpha channel. But it's
             // allowed to write to the alpha channel, because we're done calling
@@ -632,8 +719,8 @@ impl FontContext {
             top: metrics.rasterized_ascent as f32,
             width: metrics.rasterized_width,
             height: metrics.rasterized_height,
-            scale: 1.0,
-            format: GlyphFormat::from(font.render_mode),
+            scale: if bitmap { y_scale.recip() as f32 } else { 1.0 },
+            format: if bitmap { GlyphFormat::ColorBitmap } else { font.get_glyph_format() },
             bytes: rasterized_pixels,
         })
     }

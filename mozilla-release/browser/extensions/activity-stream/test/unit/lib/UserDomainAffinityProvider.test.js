@@ -1,6 +1,5 @@
-"use strict";
-const injector = require("inject!lib/UserDomainAffinityProvider.jsm");
-const {GlobalOverrider} = require("test/unit/utils");
+import {GlobalOverrider} from "test/unit/utils";
+import injector from "inject!lib/UserDomainAffinityProvider.jsm";
 
 const TIME_SEGMENTS = [
   {"id": "hour", "startTime": 3600, "endTime": 0, "weightPosition": 1},
@@ -37,7 +36,7 @@ describe("User Domain Affinity Provider", () => {
 
   beforeEach(() => {
     globals = new GlobalOverrider();
-    globals.set("Services", {locale: {getRequestedLocale: () => "en-CA"}, io: {newURI: u => ({host: "www.somedomain.org"})}});
+    globals.set("Services", {io: {newURI: u => ({host: "www.somedomain.org"})}});
     globals.set("PlacesUtils", {
       history: {
         getNewQuery: () => ({"TIME_RELATIVE_NOW": 1}),

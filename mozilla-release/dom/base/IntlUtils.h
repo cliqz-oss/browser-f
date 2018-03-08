@@ -7,11 +7,17 @@
 #define mozilla_dom_IntlUtils_h
 
 #include "mozilla/dom/IntlUtilsBinding.h"
+#include "nsWrapperCache.h"
+#include "xpcprivate.h"
 
 class nsPIDOMWindowInner;
 
 namespace mozilla {
 namespace dom {
+
+#ifdef XP_WIN
+#undef GetLocaleInfo
+#endif
 
 class IntlUtils final : public nsISupports
                       , public nsWrapperCache

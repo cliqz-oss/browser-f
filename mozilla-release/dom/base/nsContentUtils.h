@@ -20,6 +20,7 @@
 #include "js/TypeDecls.h"
 #include "js/Value.h"
 #include "js/RootingAPI.h"
+#include "mozilla/dom/FromParser.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/GuardObjects.h"
@@ -33,6 +34,8 @@
 #include "mozilla/dom/BindingDeclarations.h" // For CallerType
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/FloatingPoint.h"
+#include "mozilla/intl/LineBreaker.h"
+#include "mozilla/intl/WordBreaker.h"
 #include "mozilla/net/ReferrerPolicy.h"
 #include "mozilla/Logging.h"
 #include "mozilla/NotNull.h"
@@ -79,7 +82,6 @@ class nsIFrame;
 class nsIImageLoadingContent;
 class nsIInterfaceRequestor;
 class nsIIOService;
-class nsILineBreaker;
 class nsILoadInfo;
 class nsILoadGroup;
 class nsIMessageBroadcaster;
@@ -99,7 +101,6 @@ class nsISupportsHashKey;
 class nsIURI;
 class nsIUUIDGenerator;
 class nsIWidget;
-class nsIWordBreaker;
 class nsIXPConnect;
 class nsNodeInfoManager;
 class nsPIDOMWindowInner;
@@ -699,7 +700,7 @@ public:
 
   /**
    * Returns true if |aName| is a valid name to be registered via
-   * document.registerElement.
+   * customElements.define.
    */
   static bool IsCustomElementName(nsAtom* aName);
 
@@ -751,14 +752,14 @@ public:
   // Returns true if aDoc1 and aDoc2 have equal NodePrincipal()s.
   static bool HaveEqualPrincipals(nsIDocument* aDoc1, nsIDocument* aDoc2);
 
-  static nsILineBreaker* LineBreaker()
+  static mozilla::intl::LineBreaker* LineBreaker()
   {
-    return sLineBreaker;
+    return sLineBreaker.get();
   }
 
-  static nsIWordBreaker* WordBreaker()
+  static mozilla::intl::WordBreaker* WordBreaker()
   {
-    return sWordBreaker;
+    return sWordBreaker.get();
   }
 
   /**
@@ -1089,6 +1090,8 @@ public:
                                   uint32_t aLineNumber = 0,
                                   uint32_t aColumnNumber = 0);
 
+  static void ReportEmptyGetElementByIdArg(const nsIDocument* aDoc);
+
   static void LogMessageToConsole(const char* aMsg);
 
   /**
@@ -1133,6 +1136,14 @@ public:
 
   static bool PrefetchPreloadEnabled(nsIDocShell* aDocShell);
 
+  static void
+  ExtractErrorValues(JSContext* aCx, JS::Handle<JS::Value> aValue,
+                     nsAString& aSourceSpecOut, uint32_t *aLineOut,
+                     uint32_t *aColumnOut, nsString& aMessageOut);
+
+  // Variant on `ExtractErrorValues` with a `nsACString`. This
+  // method is provided for backwards compatibility. Prefer the
+  // faster method above for your code.
   static void
   ExtractErrorValues(JSContext* aCx, JS::Handle<JS::Value> aValue,
                      nsACString& aSourceSpecOut, uint32_t *aLineOut,
@@ -1999,16 +2010,6 @@ public:
    */
   static bool IsInStableOrMetaStableState();
 
-  /**
-   * Returns a nsISerialEventTarget which will run any event dispatched to it
-   * once the event loop has reached a "stable state". Runnables dispatched to
-   * this event target must not cause any queued events to be processed (i.e.
-   * must not spin the event loop).
-   *
-   * See RunInStableState for more information about stable states
-   */
-  static nsISerialEventTarget* GetStableStateEventTarget();
-
   /* Process viewport META data. This gives us information for the scale
    * and zoom of a page on mobile devices. We stick the information in
    * the document header and use it later on after rendering.
@@ -2308,14 +2309,6 @@ public:
   }
 
   /*
-   * Returns true if user timing API should print to console.
-   */
-  static bool IsUserTimingLoggingEnabled()
-  {
-    return sIsUserTimingLoggingEnabled;
-  }
-
-  /*
    * Returns true if the performance timing APIs are enabled.
    */
   static bool IsResourceTimingEnabled()
@@ -2380,6 +2373,15 @@ public:
   }
 
   /**
+   * Returns true if the DOM Animations API should report a pending animation
+   * using the separate 'pending' member instead of the 'playState' member.
+   */
+  static bool AnimationsAPIPendingMemberEnabled()
+  {
+    return sAnimationsAPIPendingMemberEnabled;
+  }
+
+  /**
    * Returns true if the getBoxQuads API should be enabled.
    */
   static bool GetBoxQuadsEnabled()
@@ -2417,11 +2419,6 @@ public:
   {
     return sIsScopedStyleEnabled;
   }
-
-  /**
-   * Return true if this doc is controlled by a ServiceWorker.
-   */
-  static bool IsControlledByServiceWorker(nsIDocument* aDocument);
 
   /**
    * Fire mutation events for changes caused by parsing directly into a
@@ -2655,12 +2652,6 @@ public:
    */
   static bool IsJavaScriptLanguage(const nsString& aName);
 
-  /**
-   * Returns the JSVersion for a string of the form '1.n', n = 0, ..., 8, and
-   * JSVERSION_UNKNOWN for other strings.
-   */
-  static JSVersion ParseJavascriptVersion(const nsAString& aVersionStr);
-
   static bool IsJavascriptMIMEType(const nsAString& aMIMEType);
 
   static void SplitMimeType(const nsAString& aValue, nsString& aType,
@@ -2719,11 +2710,6 @@ public:
   static mozilla::HTMLEditor* GetHTMLEditor(nsPresContext* aPresContext);
 
   /**
-   * Returns true if the browser.dom.window.dump.enabled pref is set.
-   */
-  static bool DOMWindowDumpEnabled();
-
-  /**
    * Returns true if the privacy.donottrackheader.enabled pref is set.
    */
   static bool DoNotTrackEnabled();
@@ -2734,24 +2720,6 @@ public:
    * content JS to other logging modules.
    */
   static mozilla::LogModule* DOMDumpLog();
-
-  /**
-   * Returns whether a content is an insertion point for XBL
-   * bindings or web components ShadowRoot. In web components,
-   * this corresponds to a <content> element that participates
-   * in node distribution. In XBL this corresponds to an
-   * <xbl:children> element in anonymous content.
-   *
-   * @param aContent The content to test for being an insertion point.
-   */
-  static bool IsContentInsertionPoint(nsIContent* aContent);
-
-
-  /**
-   * Returns whether the children of the provided content are
-   * nodes that are distributed to Shadow DOM insertion points.
-   */
-  static bool HasDistributedChildren(nsIContent* aContent);
 
   /**
    * Returns whether a given header is forbidden for an XHR or fetch
@@ -2959,18 +2927,7 @@ public:
    */
   static mozilla::net::ReferrerPolicy GetReferrerPolicyFromHeader(const nsAString& aHeader);
 
-  static bool PromiseRejectionEventsEnabled(JSContext* aCx, JSObject* aObj);
-
-  static bool PushEnabled(JSContext* aCx, JSObject* aObj);
-
-  static bool StreamsEnabled(JSContext* aCx, JSObject* aObj);
-
   static bool IsNonSubresourceRequest(nsIChannel* aChannel);
-
-  static uint32_t CookiesBehavior()
-  {
-    return sCookiesBehavior;
-  }
 
   // The order of these entries matters, as we use std::min for total ordering
   // of permissions. Private Browsing is considered to be more limiting
@@ -2985,6 +2942,8 @@ public:
     eSessionScoped = 2,
     // Allow access to the storage
     eAllow = 3,
+    // Keep this at the end.  Used for serialization, but not a valid value.
+    eNumValues = 4,
   };
 
   /*
@@ -3007,6 +2966,14 @@ public:
    * StorageAllowedForWindow(), however, will not work in these cases.
    */
   static StorageAccess StorageAllowedForDocument(nsIDocument* aDoc);
+
+  /*
+   * Checks if storage should be allowed for a new window with the given
+   * principal, load URI, and parent.
+   */
+  static StorageAccess StorageAllowedForNewWindow(nsIPrincipal* aPrincipal,
+                                                  nsIURI* aURI,
+                                                  nsPIDOMWindowInner* aParent);
 
   /*
    * Checks if storage for the given principal is permitted by the user's
@@ -3052,6 +3019,20 @@ public:
   static bool HttpsStateIsModern(nsIDocument* aDocument);
 
   /**
+   * Try to upgrade an element.
+   * https://html.spec.whatwg.org/multipage/custom-elements.html#concept-try-upgrade
+   */
+  static void TryToUpgradeElement(Element* aElement);
+
+  /**
+   * Creates a new XUL or XHTML element applying any appropriate custom element
+   * definition.
+   */
+  static nsresult NewXULOrHTMLElement(Element** aResult, mozilla::dom::NodeInfo* aNodeInfo,
+                                      mozilla::dom::FromParser aFromParser, nsAtom* aIsAtom,
+                                      mozilla::dom::CustomElementDefinition* aDefinition);
+
+  /**
    * Looking up a custom element definition.
    * https://html.spec.whatwg.org/#look-up-a-custom-element-definition
    */
@@ -3059,19 +3040,10 @@ public:
     LookupCustomElementDefinition(nsIDocument* aDoc,
                                   const nsAString& aLocalName,
                                   uint32_t aNameSpaceID,
-                                  const nsAString* aIs = nullptr);
+                                  nsAtom* aTypeAtom);
 
-  static void SetupCustomElement(Element* aElement,
-                                 const nsAString* aTypeExtension = nullptr);
-
-  static mozilla::dom::CustomElementDefinition*
-  GetElementDefinitionIfObservingAttr(Element* aCustomElement,
-                                      nsAtom* aExtensionType,
-                                      nsAtom* aAttrName);
-
-  static void SyncInvokeReactions(nsIDocument::ElementCallbackType aType,
-                                  Element* aCustomElement,
-                                  mozilla::dom::CustomElementDefinition* aDefinition);
+  static void RegisterUnresolvedElement(Element* aElement, nsAtom* aTypeName);
+  static void UnregisterUnresolvedElement(Element* aElement);
 
   static void EnqueueUpgradeReaction(Element* aElement,
                                      mozilla::dom::CustomElementDefinition* aDefinition);
@@ -3081,11 +3053,6 @@ public:
                                        mozilla::dom::LifecycleCallbackArgs* aArgs = nullptr,
                                        mozilla::dom::LifecycleAdoptedCallbackArgs* aAdoptedCallbackArgs = nullptr,
                                        mozilla::dom::CustomElementDefinition* aDefinition = nullptr);
-
-  static void GetCustomPrototype(nsIDocument* aDoc,
-                                 int32_t aNamespaceID,
-                                 nsAtom* aAtom,
-                                 JS::MutableHandle<JSObject*> prototype);
 
   static bool AttemptLargeAllocationLoad(nsIHttpChannel* aChannel);
 
@@ -3148,7 +3115,7 @@ public:
                                     JS::MutableHandle<JS::Value> aValue);
 
   static bool
-  IsWebComponentsEnabled() { return sIsWebComponentsEnabled; }
+  IsShadowDOMEnabled() { return sIsShadowDOMEnabled; }
 
   /**
    * Returns true if reserved key events should be prevented from being sent
@@ -3284,6 +3251,38 @@ public:
 
   static void AsyncPrecreateStringBundles();
 
+  static bool ContentIsLink(nsIContent* aContent);
+
+  static already_AddRefed<mozilla::dom::EventTarget>
+  TryGetTabChildGlobalAsEventTarget(nsISupports* aFrom);
+
+  static PopupControlState
+  PushPopupControlState(PopupControlState aState, bool aForce)
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+    PopupControlState old = sPopupControlState;
+    if (aState < old || aForce) {
+      sPopupControlState = aState;
+    }
+    return old;
+  }
+
+  static void
+  PopPopupControlState(PopupControlState aState)
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+    sPopupControlState = aState;
+  }
+
+  static PopupControlState GetPopupControlState() { return sPopupControlState; }
+
+  // Get a serial number for a newly created inner or outer window.
+  static uint32_t InnerOrOuterWindowCreated();
+  // Record that an inner or outer window has been destroyed.
+  static void InnerOrOuterWindowDestroyed();
+  // Get the current number of inner or outer windows.
+  static int32_t GetCurrentInnerOrOuterWindowCount() { return sInnerOrOuterWindowCount; }
+
 private:
   static bool InitializeEventTable();
 
@@ -3353,13 +3352,15 @@ private:
    * Checks if storage for a given principal is permitted by the user's
    * preferences. If aWindow is non-null, its principal must be passed as
    * aPrincipal, and the third-party iframe and sandboxing status of the window
-   * are also checked.
+   * are also checked.  If aURI is non-null, then it is used as the comparison
+   * against aWindow to determine if this is a third-party load.
    *
    * Used in the implementation of StorageAllowedForWindow and
    * StorageAllowedForPrincipal.
    */
   static StorageAccess InternalStorageAllowedForPrincipal(nsIPrincipal* aPrincipal,
-                                                          nsPIDOMWindowInner* aWindow);
+                                                          nsPIDOMWindowInner* aWindow,
+                                                          nsIURI* aURI);
 
   static nsINode* GetCommonAncestorHelper(nsINode* aNode1, nsINode* aNode2);
   static nsIContent* GetCommonFlattenedTreeAncestorHelper(nsIContent* aContent1,
@@ -3388,8 +3389,8 @@ private:
   static nsIContentPolicy* sContentPolicyService;
   static bool sTriedToGetContentPolicy;
 
-  static nsILineBreaker* sLineBreaker;
-  static nsIWordBreaker* sWordBreaker;
+  static RefPtr<mozilla::intl::LineBreaker> sLineBreaker;
+  static RefPtr<mozilla::intl::WordBreaker> sWordBreaker;
 
   static nsIBidiKeyboard* sBidiKeyboard;
 
@@ -3414,16 +3415,15 @@ private:
   static bool sIsPerformanceTimingEnabled;
   static bool sIsResourceTimingEnabled;
   static bool sIsPerformanceNavigationTimingEnabled;
-  static bool sIsUserTimingLoggingEnabled;
   static bool sIsFrameTimingPrefEnabled;
   static bool sIsFormAutofillAutocompleteEnabled;
-  static bool sIsWebComponentsEnabled;
+  static bool sIsShadowDOMEnabled;
   static bool sIsCustomElementsEnabled;
-  static bool sDevToolsEnabled;
   static bool sSendPerformanceTimingNotifications;
   static bool sUseActivityCursor;
   static bool sAnimationsAPICoreEnabled;
   static bool sAnimationsAPIElementAnimateEnabled;
+  static bool sAnimationsAPIPendingMemberEnabled;
   static bool sGetBoxQuadsEnabled;
   static bool sSkipCursorMoveForSameValueSet;
   static bool sRequestIdleCallbackEnabled;
@@ -3456,8 +3456,6 @@ private:
    */
   static bool sFragmentParsingActive;
 
-  static nsISerialEventTarget* sStableStateEventTarget;
-
   static nsString* sShiftText;
   static nsString* sControlText;
   static nsString* sMetaText;
@@ -3469,11 +3467,13 @@ private:
   // bytecode out of the nsCacheInfoChannel.
   static nsCString* sJSBytecodeMimeType;
 
-#if !(defined(DEBUG) || defined(MOZ_ENABLE_JS_DUMP))
-  static bool sDOMWindowDumpEnabled;
-#endif
   static bool sDoNotTrackEnabled;
   static mozilla::LazyLogModule sDOMDumpLog;
+
+  static PopupControlState sPopupControlState;
+
+  static int32_t sInnerOrOuterWindowCount;
+  static uint32_t sInnerOrOuterWindowSerialCounter;
 };
 
 /* static */ inline

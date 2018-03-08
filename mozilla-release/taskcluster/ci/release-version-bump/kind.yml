@@ -7,55 +7,39 @@ loader: taskgraph.loader.transform:loader
 transforms:
    - taskgraph.transforms.release_deps:transforms
    - taskgraph.transforms.job:transforms
+   - taskgraph.transforms.release_notifications:transforms
    - taskgraph.transforms.task:transforms
 
 kind-dependencies:
    - beetmover-cdns
 
 job-defaults:
+   description: Release Promotion version bump
+   worker-type: buildbot-bridge/buildbot-bridge
+   run-on-projects: []
    shipping-phase: ship
+   run:
+      using: buildbot
+      release-promotion: true
 
 jobs:
    fennec:
       name: fennec-version-bump
-      description: Release Promotion version bump
-      worker-type: buildbot-bridge/buildbot-bridge
-      run-on-projects: []
       shipping-product: fennec
       run:
-         using: buildbot
          product: fennec
          buildername: release-{branch}-fennec_version_bump
-         release-promotion: true
-      routes:
-         - index.releases.v1.{branch}.latest.fennec.latest.version_bump
-         - index.releases.v1.{branch}.{revision}.fennec.{underscore_version}.build{build_number}.version_bump
-      index:
-         type: release
-         product: fennec
-         job-name: android-api-16-opt
-      notifications:
-         completed:
-            by-project:
-               maple:
-                  - "release-drivers-staging"
-               try:
-                  #- "{task[tags][createdForUser]}"
-               default:
-                  - "releasetasks"
-         failed:
-            by-project:
-               maple:
-                  - "release-drivers-staging"
-               try:
-                  #- "{task[tags][createdForUser]}"
-               default:
-                  - "releasetasks"
-         exception:
-            by-project:
-               maple:
-                  - "release-drivers-staging"
-               try:
-                  #- "{task[tags][createdForUser]}"
-               default:
-                  - "releasetasks"
+
+   firefox:
+      name: firefox-version-bump
+      shipping-product: firefox
+      run:
+         product: firefox
+         buildername: release-{branch}-firefox_version_bump
+
+   devedition:
+      name: devedition-version-bump
+      shipping-product: devedition
+      run:
+         product: devedition
+         buildername: release-{branch}-devedition_version_bump

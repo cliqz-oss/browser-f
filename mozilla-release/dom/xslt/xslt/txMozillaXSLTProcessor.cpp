@@ -18,6 +18,7 @@
 #include "nsILoadGroup.h"
 #include "nsIStringBundle.h"
 #include "nsIURI.h"
+#include "nsMemory.h"
 #include "XPathResult.h"
 #include "txExecutionState.h"
 #include "txMozillaTextOutput.h"
@@ -50,7 +51,7 @@ class txToDocHandlerFactory : public txAOutputHandlerFactory
 {
 public:
     txToDocHandlerFactory(txExecutionState* aEs,
-                          nsIDOMDocument* aSourceDocument,
+                          nsIDocument* aSourceDocument,
                           nsITransformObserver* aObserver,
                           bool aDocumentIsData)
         : mEs(aEs), mSourceDocument(aSourceDocument), mObserver(aObserver),
@@ -62,7 +63,7 @@ public:
 
 private:
     txExecutionState* mEs;
-    nsCOMPtr<nsIDOMDocument> mSourceDocument;
+    nsCOMPtr<nsIDocument> mSourceDocument;
     nsCOMPtr<nsITransformObserver> mObserver;
     bool mDocumentIsData;
 };
@@ -246,7 +247,7 @@ public:
     {
         NS_ASSERTION(aValue, "missing value");
     }
-    nsresult getValue(txAExprResult** aValue)
+    nsresult getValue(txAExprResult** aValue) override
     {
         NS_ASSERTION(mValue || mTxValue, "variablevalue is null");
 
@@ -427,58 +428,58 @@ public:
     }
 
     // txIParseContext
-    nsresult resolveNamespacePrefix(nsAtom* aPrefix, int32_t& aID)
+    nsresult resolveNamespacePrefix(nsAtom* aPrefix, int32_t& aID) override
     {
         aID = mResolver->lookupNamespace(aPrefix);
         return aID == kNameSpaceID_Unknown ? NS_ERROR_DOM_NAMESPACE_ERR :
                                              NS_OK;
     }
     nsresult resolveFunctionCall(nsAtom* aName, int32_t aID,
-                                 FunctionCall** aFunction)
+                                 FunctionCall** aFunction) override
     {
         return NS_ERROR_XPATH_UNKNOWN_FUNCTION;
     }
-    bool caseInsensitiveNameTests()
+    bool caseInsensitiveNameTests() override
     {
         return false;
     }
-    void SetErrorOffset(uint32_t aOffset)
+    void SetErrorOffset(uint32_t aOffset) override
     {
     }
 
     // txIEvalContext
     nsresult getVariable(int32_t aNamespace, nsAtom* aLName,
-                         txAExprResult*& aResult)
+                         txAExprResult*& aResult) override
     {
         aResult = nullptr;
         return NS_ERROR_INVALID_ARG;
     }
-    nsresult isStripSpaceAllowed(const txXPathNode& aNode, bool& aAllowed)
+    nsresult isStripSpaceAllowed(const txXPathNode& aNode, bool& aAllowed) override
     {
         aAllowed = false;
 
         return NS_OK;
     }
-    void* getPrivateContext()
+    void* getPrivateContext() override
     {
         return nullptr;
     }
-    txResultRecycler* recycler()
+    txResultRecycler* recycler() override
     {
         return mRecycler;
     }
-    void receiveError(const nsAString& aMsg, nsresult aRes)
+    void receiveError(const nsAString& aMsg, nsresult aRes) override
     {
     }
-    const txXPathNode& getContextNode()
+    const txXPathNode& getContextNode() override
     {
       return mContext;
     }
-    uint32_t size()
+    uint32_t size() override
     {
       return 1;
     }
-    uint32_t position()
+    uint32_t position() override
     {
       return 1;
     }
@@ -664,14 +665,12 @@ txMozillaXSLTProcessor::TransformToDoc(nsIDOMDocument **aResult,
         return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    nsCOMPtr<nsIDOMDocument> sourceDOMDocument = do_QueryInterface(mSource->OwnerDoc());
-
     txExecutionState es(mStylesheet, IsLoadDisabled());
 
     // XXX Need to add error observers
 
     // If aResult is non-null, we're a data document
-    txToDocHandlerFactory handlerFactory(&es, sourceDOMDocument, mObserver,
+    txToDocHandlerFactory handlerFactory(&es, mSource->OwnerDoc(), mObserver,
                                          aCreateDataDocument);
     es.mOutputHandlerFactory = &handlerFactory;
 
@@ -1263,6 +1262,11 @@ txMozillaXSLTProcessor::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenP
     return XSLTProcessorBinding::Wrap(aCx, this, aGivenProto);
 }
 
+DocGroup*
+txMozillaXSLTProcessor::GetDocGroup() const
+{
+    return mStylesheetDocument ? mStylesheetDocument->GetDocGroup() : nullptr;
+}
 
 /* static */ already_AddRefed<txMozillaXSLTProcessor>
 txMozillaXSLTProcessor::Constructor(const GlobalObject& aGlobal,

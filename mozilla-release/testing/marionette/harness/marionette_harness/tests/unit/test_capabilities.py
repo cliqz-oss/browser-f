@@ -2,8 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from marionette_driver.errors import SessionNotCreatedException
+from __future__ import absolute_import, print_function
 
+from marionette_driver.errors import SessionNotCreatedException
 from marionette_harness import MarionetteTestCase
 
 # Unlike python 3, python 2 doesn't have a proper implementation of realpath or
@@ -67,14 +68,24 @@ class TestCapabilities(MarionetteTestCase):
 
         self.assertIn("moz:accessibilityChecks", self.caps)
         self.assertFalse(self.caps["moz:accessibilityChecks"])
+
+        self.assertIn("moz:useNonSpecCompliantPointerOrigin", self.caps)
+        self.assertFalse(self.caps["moz:useNonSpecCompliantPointerOrigin"])
+
         self.assertIn("moz:webdriverClick", self.caps)
-        self.assertEqual(self.caps["moz:webdriverClick"], True)
+        self.assertTrue(self.caps["moz:webdriverClick"])
 
     def test_disable_webdriver_click(self):
         self.marionette.delete_session()
         self.marionette.start_session({"moz:webdriverClick": False})
         caps = self.marionette.session_capabilities
-        self.assertEqual(False, caps["moz:webdriverClick"])
+        self.assertFalse(caps["moz:webdriverClick"])
+
+    def test_use_non_spec_compliant_pointer_origin(self):
+        self.marionette.delete_session()
+        self.marionette.start_session({"moz:useNonSpecCompliantPointerOrigin": True})
+        caps = self.marionette.session_capabilities
+        self.assertTrue(caps["moz:useNonSpecCompliantPointerOrigin"])
 
     def test_we_get_valid_uuid4_when_creating_a_session(self):
         self.assertNotIn("{", self.marionette.session_id,

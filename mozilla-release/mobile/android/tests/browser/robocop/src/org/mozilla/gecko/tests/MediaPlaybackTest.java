@@ -29,7 +29,7 @@ abstract class MediaPlaybackTest extends OldBaseTest {
     private JavascriptBridge mJs;
 
     private static final int UI_CHANGED_WAIT_MS = 6000;
-    private static final int MEDIA_PLAYBACK_CHANGED_WAIT_MS = 15000;
+    private static final int MEDIA_PLAYBACK_CHANGED_WAIT_MS = 30000;
 
     protected final void info(String msg) {
         mAsserter.dumpLog(msg);
@@ -213,7 +213,7 @@ abstract class MediaPlaybackTest extends OldBaseTest {
 
         Notification notification = sbns[0].getNotification();
         mAsserter.is(notification.icon,
-                     R.drawable.flat_icon,
+                     R.drawable.ic_status_logo,
                      "Notification shows correct small icon.");
         mAsserter.is(notification.extras.get(Notification.EXTRA_TITLE),
                      tab.getTitle(),

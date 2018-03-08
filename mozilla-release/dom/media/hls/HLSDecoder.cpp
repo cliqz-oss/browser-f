@@ -141,6 +141,7 @@ nsresult
 HLSDecoder::Load(nsIChannel* aChannel)
 {
   MOZ_ASSERT(NS_IsMainThread());
+  AbstractThread::AutoEnter context(AbstractMainThread());
 
   nsresult rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(mURI));
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -165,6 +166,8 @@ HLSDecoder::Load(nsIChannel* aChannel)
 
   SetStateMachine(CreateStateMachine());
   NS_ENSURE_TRUE(GetStateMachine(), NS_ERROR_FAILURE);
+
+  GetStateMachine()->DispatchIsLiveStream(false);
 
   return InitializeStateMachine();
 }
@@ -239,6 +242,16 @@ HLSDecoder::Shutdown()
     mJavaCallbacks = nullptr;
   }
   MediaDecoder::Shutdown();
+}
+
+void
+HLSDecoder::NotifyDataArrived()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_DIAGNOSTIC_ASSERT(!IsShutdown());
+  AbstractThread::AutoEnter context(AbstractMainThread());
+  NotifyReaderDataArrived();
+  GetOwner()->DownloadProgressed();
 }
 
 } // namespace mozilla

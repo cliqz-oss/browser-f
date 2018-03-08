@@ -48,18 +48,10 @@ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaEngine)
 
   static const int DEFAULT_VIDEO_FPS = 30;
-  static const int DEFAULT_VIDEO_MIN_FPS = 10;
   static const int DEFAULT_43_VIDEO_WIDTH = 640;
   static const int DEFAULT_43_VIDEO_HEIGHT = 480;
   static const int DEFAULT_169_VIDEO_WIDTH = 1280;
   static const int DEFAULT_169_VIDEO_HEIGHT = 720;
-
-  static const int DEFAULT_SAMPLE_RATE = 32000;
-
-  // This allows using whatever rate the graph is using for the
-  // MediaStreamTrack. This is useful for microphone data, we know it's already
-  // at the correct rate for insertion in the MSG.
-  static const int USE_GRAPH_RATE = -1;
 
   /* Populate an array of video sources in the nsTArray. Also include devices
    * that are currently unavailable. */
@@ -88,7 +80,6 @@ public:
     : mWidth(0)
     , mHeight(0)
     , mFPS(0)
-    , mMinFPS(0)
     , mFreq(0)
     , mAecOn(false)
     , mAgcOn(false)
@@ -96,7 +87,6 @@ public:
     , mAec(0)
     , mAgc(0)
     , mNoise(0)
-    , mPlayoutDelay(0)
     , mFullDuplex(false)
     , mExtendedFilter(false)
     , mDelayAgnostic(false)
@@ -107,7 +97,6 @@ public:
   int32_t mWidth;
   int32_t mHeight;
   int32_t mFPS;
-  int32_t mMinFPS;
   int32_t mFreq; // for test tones (fake:true)
   bool mAecOn;
   bool mAgcOn;
@@ -115,7 +104,6 @@ public:
   int32_t mAec;
   int32_t mAgc;
   int32_t mNoise;
-  int32_t mPlayoutDelay;
   bool mFullDuplex;
   bool mExtendedFilter;
   bool mDelayAgnostic;
@@ -222,6 +210,7 @@ public:
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(AllocationHandle);
   protected:
     ~AllocationHandle() {}
+    static uint64_t sId;
   public:
     AllocationHandle(const dom::MediaTrackConstraints& aConstraints,
                      const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
@@ -231,11 +220,15 @@ public:
     : mConstraints(aConstraints),
       mPrincipalInfo(aPrincipalInfo),
       mPrefs(aPrefs),
+#ifdef MOZ_WEBRTC
+      mId(sId++),
+#endif
       mDeviceId(aDeviceId) {}
   public:
     NormalizedConstraints mConstraints;
     mozilla::ipc::PrincipalInfo mPrincipalInfo;
     MediaEnginePrefs mPrefs;
+    uint64_t mId;
     nsString mDeviceId;
   };
 
@@ -371,6 +364,7 @@ protected:
   virtual nsresult
   UpdateSingleSource(const AllocationHandle* aHandle,
                      const NormalizedConstraints& aNetConstraints,
+                     const NormalizedConstraints& aNewConstraint,
                      const MediaEnginePrefs& aPrefs,
                      const nsString& aDeviceId,
                      const char** aOutBadConstraint) {
@@ -399,6 +393,7 @@ protected:
     // aHandle and/or aConstraintsUpdate may be nullptr (see below)
 
     AutoTArray<const NormalizedConstraints*, 10> allConstraints;
+    AutoTArray<const NormalizedConstraints*, 1> updatedConstraint;
     for (auto& registered : mRegisteredHandles) {
       if (aConstraintsUpdate && registered.get() == aHandle) {
         continue; // Don't count old constraints
@@ -407,9 +402,13 @@ protected:
     }
     if (aConstraintsUpdate) {
       allConstraints.AppendElement(aConstraintsUpdate);
+      updatedConstraint.AppendElement(aConstraintsUpdate);
     } else if (aHandle) {
       // In the case of AddShareOfSingleSource, the handle isn't registered yet.
       allConstraints.AppendElement(&aHandle->mConstraints);
+      updatedConstraint.AppendElement(&aHandle->mConstraints);
+    } else {
+      updatedConstraint.AppendElements(allConstraints);
     }
 
     NormalizedConstraints netConstraints(allConstraints);
@@ -418,7 +417,8 @@ protected:
       return NS_ERROR_FAILURE;
     }
 
-    nsresult rv = UpdateSingleSource(aHandle, netConstraints, aPrefs, aDeviceId,
+    NormalizedConstraints newConstraint(updatedConstraint);
+    nsresult rv = UpdateSingleSource(aHandle, netConstraints, newConstraint, aPrefs, aDeviceId,
                                      aOutBadConstraint);
     if (NS_FAILED(rv)) {
       return rv;

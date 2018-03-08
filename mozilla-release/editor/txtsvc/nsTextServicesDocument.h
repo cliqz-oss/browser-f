@@ -22,7 +22,6 @@ class nsIContentIterator;
 class nsIDOMCharacterData;
 class nsIDOMDocument;
 class nsIDOMNode;
-class nsIDOMRange;
 class nsIEditor;
 class nsISelection;
 class nsISelectionController;
@@ -77,8 +76,8 @@ public:
   /* nsITextServicesDocument method implementations. */
   NS_IMETHOD InitWithEditor(nsIEditor *aEditor) override;
   NS_IMETHOD GetDocument(nsIDOMDocument **aDoc) override;
-  NS_IMETHOD SetExtent(nsIDOMRange* aDOMRange) override;
-  NS_IMETHOD ExpandRangeToWordBoundaries(nsIDOMRange *aRange) override;
+  NS_IMETHOD SetExtent(nsRange* aRange) override;
+  NS_IMETHOD ExpandRangeToWordBoundaries(nsRange* aRange) override;
   NS_IMETHOD SetFilter(nsITextServicesFilter *aFilter) override;
   NS_IMETHOD GetCurrentTextBlock(nsString *aStr) override;
   NS_IMETHOD FirstBlock() override;
@@ -92,23 +91,17 @@ public:
   NS_IMETHOD InsertText(const nsString *aText) override;
 
   /* nsIEditActionListener method implementations. */
-  NS_IMETHOD WillInsertNode(nsIDOMNode *aNode,
-                            nsIDOMNode *aParent,
-                            int32_t      aPosition) override;
-  NS_IMETHOD DidInsertNode(nsIDOMNode *aNode,
-                           nsIDOMNode *aParent,
-                           int32_t     aPosition,
-                           nsresult    aResult) override;
+  NS_IMETHOD WillInsertNode(nsIDOMNode* aNode,
+                            nsIDOMNode* aNextSiblingOfNewNode) override;
+  NS_IMETHOD DidInsertNode(nsIDOMNode* aNode, nsresult aResult) override;
 
   NS_IMETHOD WillDeleteNode(nsIDOMNode *aChild) override;
   NS_IMETHOD DidDeleteNode(nsIDOMNode *aChild, nsresult aResult) override;
 
   NS_IMETHOD WillSplitNode(nsIDOMNode * aExistingRightNode,
                            int32_t      aOffset) override;
-  NS_IMETHOD DidSplitNode(nsIDOMNode *aExistingRightNode,
-                          int32_t     aOffset,
-                          nsIDOMNode *aNewLeftNode,
-                          nsresult    aResult) override;
+  NS_IMETHOD DidSplitNode(nsIDOMNode* aExistingRightNode,
+                          nsIDOMNode* aNewLeftNode) override;
 
   NS_IMETHOD WillJoinNodes(nsIDOMNode  *aLeftNode,
                            nsIDOMNode  *aRightNode,
@@ -132,13 +125,10 @@ public:
 
   /* Helper functions */
   static nsresult GetRangeEndPoints(nsRange* aRange,
-                                    nsIDOMNode** aStartContainer,
+                                    nsINode** aStartContainer,
                                     int32_t* aStartOffset,
-                                    nsIDOMNode** aEndContainer,
+                                    nsINode** aEndContainer,
                                     int32_t* aEndOffset);
-  static nsresult CreateRange(nsIDOMNode* aStartContainer, int32_t aStartOffset,
-                              nsIDOMNode* aEndContainer, int32_t aEndOffset,
-                              nsRange** aRange);
 
 private:
   /* nsTextServicesDocument private methods. */
@@ -146,12 +136,12 @@ private:
   nsresult CreateContentIterator(nsRange* aRange,
                                  nsIContentIterator** aIterator);
 
-  nsresult GetDocumentContentRootNode(nsIDOMNode **aNode);
-  nsresult CreateDocumentContentRange(nsRange** aRange);
-  nsresult CreateDocumentContentRootToNodeOffsetRange(nsIDOMNode* aParent,
-                                                      uint32_t aOffset,
-                                                      bool aToStart,
-                                                      nsRange** aRange);
+  already_AddRefed<nsINode> GetDocumentContentRootNode();
+  already_AddRefed<nsRange> CreateDocumentContentRange();
+  already_AddRefed<nsRange> CreateDocumentContentRootToNodeOffsetRange(
+                              nsINode* aParent,
+                              uint32_t aOffset,
+                              bool aToStart);
   nsresult CreateDocumentContentIterator(nsIContentIterator **aIterator);
 
   nsresult AdjustContentIterator();
@@ -190,7 +180,7 @@ private:
   static nsresult ClearOffsetTable(nsTArray<OffsetEntry*> *aOffsetTable);
 
   static nsresult NodeHasOffsetEntry(nsTArray<OffsetEntry*> *aOffsetTable,
-                                     nsIDOMNode *aNode,
+                                     nsINode *aNode,
                                      bool *aHasEntry,
                                      int32_t *aEntryIndex);
 
@@ -199,10 +189,10 @@ private:
 
   static nsresult FindWordBounds(nsTArray<OffsetEntry*> *offsetTable,
                                  nsString *blockStr,
-                                 nsIDOMNode *aNode, int32_t aNodeOffset,
-                                 nsIDOMNode **aWordStartNode,
+                                 nsINode* aNode, int32_t aNodeOffset,
+                                 nsINode** aWordStartNode,
                                  int32_t *aWordStartOffset,
-                                 nsIDOMNode **aWordEndNode,
+                                 nsINode** aWordEndNode,
                                  int32_t *aWordEndOffset);
 };
 

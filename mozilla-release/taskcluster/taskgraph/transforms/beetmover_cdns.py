@@ -12,7 +12,7 @@ from taskgraph.util.schema import (
     optionally_keyed_by, resolve_keyed_by, validate_schema, Schema
 )
 from taskgraph.util.scriptworker import (
-    get_beetmover_bucket_scope, get_beetmover_action_scope
+    get_beetmover_bucket_scope, get_beetmover_action_scope,
 )
 from taskgraph.transforms.job import job_description_schema
 from taskgraph.transforms.task import task_description_schema
@@ -43,6 +43,7 @@ beetmover_cdns_description_schema = Schema({
     Optional('routes'): [basestring],
     Required('shipping-phase'): task_description_schema['shipping-phase'],
     Required('shipping-product'): task_description_schema['shipping-product'],
+    Optional('extra'): task_description_schema['extra'],
 })
 
 
@@ -50,9 +51,10 @@ beetmover_cdns_description_schema = Schema({
 def validate(config, jobs):
     for job in jobs:
         label = job['name']
-        yield validate_schema(
+        validate_schema(
             beetmover_cdns_description_schema, job,
             "In cdns-signing ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
 
 
 @transforms.add
@@ -89,6 +91,10 @@ def make_beetmover_cdns_description(config, jobs):
             'attributes': job.get('attributes', {}),
             'run-on-projects': job.get('run-on-projects'),
             'treeherder': treeherder,
+            'shipping-phase': job.get('shipping-phase', 'push'),
+            'shipping-product': job.get('shipping-product'),
+            'routes': job.get('routes', []),
+            'extra': job.get('extra', {}),
         }
 
         yield task

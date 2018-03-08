@@ -33,9 +33,9 @@ NS_IMPL_ISUPPORTS_INHERITED0(HTMLPictureElement, nsGenericHTMLElement)
 NS_IMPL_ELEMENT_CLONE(HTMLPictureElement)
 
 void
-HTMLPictureElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
+HTMLPictureElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 {
-  nsCOMPtr<nsIContent> child = GetChildAt(aIndex);
+  nsCOMPtr<nsIContent> child = GetChildAt_Deprecated(aIndex);
 
   if (child && child->IsHTMLElement(nsGkAtoms::img)) {
     HTMLImageElement* img = HTMLImageElement::FromContent(child);
@@ -55,7 +55,31 @@ HTMLPictureElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
     }
   }
 
-  nsGenericHTMLElement::RemoveChildAt(aIndex, aNotify);
+  nsGenericHTMLElement::RemoveChildAt_Deprecated(aIndex, aNotify);
+}
+
+void
+HTMLPictureElement::RemoveChildNode(nsIContent* aKid, bool aNotify)
+{
+  if (aKid && aKid->IsHTMLElement(nsGkAtoms::img)) {
+    HTMLImageElement* img = HTMLImageElement::FromContent(aKid);
+    if (img) {
+      img->PictureSourceRemoved(aKid->AsContent());
+    }
+  } else if (aKid && aKid->IsHTMLElement(nsGkAtoms::source)) {
+    // Find all img siblings after this <source> to notify them of its demise
+    nsCOMPtr<nsIContent> nextSibling = aKid->GetNextSibling();
+    if (nextSibling && nextSibling->GetParentNode() == this) {
+      do {
+        HTMLImageElement* img = HTMLImageElement::FromContent(nextSibling);
+        if (img) {
+          img->PictureSourceRemoved(aKid->AsContent());
+        }
+      } while ( (nextSibling = nextSibling->GetNextSibling()) );
+    }
+  }
+
+  nsGenericHTMLElement::RemoveChildNode(aKid, aNotify);
 }
 
 nsresult

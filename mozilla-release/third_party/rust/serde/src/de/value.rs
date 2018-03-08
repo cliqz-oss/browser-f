@@ -37,7 +37,7 @@
 
 use lib::*;
 
-use de::{self, IntoDeserializer, Expected, SeqAccess};
+use de::{self, Expected, IntoDeserializer, SeqAccess};
 use private::de::size_hint;
 use ser;
 use self::private::{First, Second};
@@ -51,21 +51,23 @@ pub struct Error {
     err: ErrorImpl,
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 type ErrorImpl = Box<str>;
-#[cfg(not(any(feature = "std", feature = "collections")))]
+#[cfg(not(any(feature = "std", feature = "alloc")))]
 type ErrorImpl = ();
 
 impl de::Error for Error {
-    #[cfg(any(feature = "std", feature = "collections"))]
+    #[cfg(any(feature = "std", feature = "alloc"))]
     fn custom<T>(msg: T) -> Self
     where
         T: Display,
     {
-        Error { err: msg.to_string().into_boxed_str() }
+        Error {
+            err: msg.to_string().into_boxed_str(),
+        }
     }
 
-    #[cfg(not(any(feature = "std", feature = "collections")))]
+    #[cfg(not(any(feature = "std", feature = "alloc")))]
     fn custom<T>(msg: T) -> Self
     where
         T: Display,
@@ -85,12 +87,12 @@ impl ser::Error for Error {
 }
 
 impl Display for Error {
-    #[cfg(any(feature = "std", feature = "collections"))]
+    #[cfg(any(feature = "std", feature = "alloc"))]
     fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         formatter.write_str(&self.err)
     }
 
-    #[cfg(not(any(feature = "std", feature = "collections")))]
+    #[cfg(not(any(feature = "std", feature = "alloc")))]
     fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         formatter.write_str("Serde deserialization error")
     }
@@ -112,7 +114,9 @@ where
     type Deserializer = UnitDeserializer<E>;
 
     fn into_deserializer(self) -> UnitDeserializer<E> {
-        UnitDeserializer { marker: PhantomData }
+        UnitDeserializer {
+            marker: PhantomData,
+        }
     }
 }
 
@@ -425,14 +429,14 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A deserializer holding a `String`.
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 #[derive(Clone, Debug)]
 pub struct StringDeserializer<E> {
     value: String,
     marker: PhantomData<E>,
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, E> IntoDeserializer<'de, E> for String
 where
     E: de::Error,
@@ -447,7 +451,7 @@ where
     }
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, E> de::Deserializer<'de> for StringDeserializer<E>
 where
     E: de::Error,
@@ -482,7 +486,7 @@ where
     }
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, 'a, E> de::EnumAccess<'de> for StringDeserializer<E>
 where
     E: de::Error,
@@ -501,14 +505,14 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A deserializer holding a `Cow<str>`.
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 #[derive(Clone, Debug)]
 pub struct CowStrDeserializer<'a, E> {
     value: Cow<'a, str>,
     marker: PhantomData<E>,
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, 'a, E> IntoDeserializer<'de, E> for Cow<'a, str>
 where
     E: de::Error,
@@ -523,7 +527,7 @@ where
     }
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, 'a, E> de::Deserializer<'de> for CowStrDeserializer<'a, E>
 where
     E: de::Error,
@@ -561,7 +565,7 @@ where
     }
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, 'a, E> de::EnumAccess<'de> for CowStrDeserializer<'a, E>
 where
     E: de::Error,
@@ -658,7 +662,10 @@ where
         } else {
             // First argument is the number of elements in the data, second
             // argument is the number of elements expected by the Deserialize.
-            Err(de::Error::invalid_length(self.count + remaining, &ExpectedInSeq(self.count)),)
+            Err(de::Error::invalid_length(
+                self.count + remaining,
+                &ExpectedInSeq(self.count),
+            ))
         }
     }
 }
@@ -727,26 +734,26 @@ impl Expected for ExpectedInSeq {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, T, E> IntoDeserializer<'de, E> for Vec<T>
 where
     T: IntoDeserializer<'de, E>,
     E: de::Error,
 {
-    type Deserializer = SeqDeserializer<<Vec<T> as IntoIterator>::IntoIter, E>;
+    type Deserializer = SeqDeserializer<<Self as IntoIterator>::IntoIter, E>;
 
     fn into_deserializer(self) -> Self::Deserializer {
         SeqDeserializer::new(self.into_iter())
     }
 }
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, T, E> IntoDeserializer<'de, E> for BTreeSet<T>
 where
     T: IntoDeserializer<'de, E> + Eq + Ord,
     E: de::Error,
 {
-    type Deserializer = SeqDeserializer<<BTreeSet<T> as IntoIterator>::IntoIter, E>;
+    type Deserializer = SeqDeserializer<<Self as IntoIterator>::IntoIter, E>;
 
     fn into_deserializer(self) -> Self::Deserializer {
         SeqDeserializer::new(self.into_iter())
@@ -754,12 +761,13 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<'de, T, E> IntoDeserializer<'de, E> for HashSet<T>
+impl<'de, T, S, E> IntoDeserializer<'de, E> for HashSet<T, S>
 where
     T: IntoDeserializer<'de, E> + Eq + Hash,
+    S: BuildHasher,
     E: de::Error,
 {
-    type Deserializer = SeqDeserializer<<HashSet<T> as IntoIterator>::IntoIter, E>;
+    type Deserializer = SeqDeserializer<<Self as IntoIterator>::IntoIter, E>;
 
     fn into_deserializer(self) -> Self::Deserializer {
         SeqDeserializer::new(self.into_iter())
@@ -851,7 +859,10 @@ where
         } else {
             // First argument is the number of elements in the data, second
             // argument is the number of elements expected by the Deserialize.
-            Err(de::Error::invalid_length(self.count + remaining, &ExpectedInMap(self.count)),)
+            Err(de::Error::invalid_length(
+                self.count + remaining,
+                &ExpectedInMap(self.count),
+            ))
         }
     }
 }
@@ -900,11 +911,7 @@ where
         Ok(value)
     }
 
-    fn deserialize_tuple<V>(
-        self,
-        len: usize,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
@@ -1145,14 +1152,14 @@ impl Expected for ExpectedInMap {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[cfg(any(feature = "std", feature = "collections"))]
+#[cfg(any(feature = "std", feature = "alloc"))]
 impl<'de, K, V, E> IntoDeserializer<'de, E> for BTreeMap<K, V>
 where
     K: IntoDeserializer<'de, E> + Eq + Ord,
     V: IntoDeserializer<'de, E>,
     E: de::Error,
 {
-    type Deserializer = MapDeserializer<'de, <BTreeMap<K, V> as IntoIterator>::IntoIter, E>;
+    type Deserializer = MapDeserializer<'de, <Self as IntoIterator>::IntoIter, E>;
 
     fn into_deserializer(self) -> Self::Deserializer {
         MapDeserializer::new(self.into_iter())
@@ -1160,13 +1167,14 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<'de, K, V, E> IntoDeserializer<'de, E> for HashMap<K, V>
+impl<'de, K, V, S, E> IntoDeserializer<'de, E> for HashMap<K, V, S>
 where
     K: IntoDeserializer<'de, E> + Eq + Hash,
     V: IntoDeserializer<'de, E>,
+    S: BuildHasher,
     E: de::Error,
 {
-    type Deserializer = MapDeserializer<'de, <HashMap<K, V> as IntoIterator>::IntoIter, E>;
+    type Deserializer = MapDeserializer<'de, <Self as IntoIterator>::IntoIter, E>;
 
     fn into_deserializer(self) -> Self::Deserializer {
         MapDeserializer::new(self.into_iter())
@@ -1221,7 +1229,12 @@ mod private {
     }
 
     pub fn unit_only<T, E>(t: T) -> (T, UnitOnly<E>) {
-        (t, UnitOnly { marker: PhantomData })
+        (
+            t,
+            UnitOnly {
+                marker: PhantomData,
+            },
+        )
     }
 
     impl<'de, E> de::VariantAccess<'de> for UnitOnly<E>
@@ -1238,14 +1251,20 @@ mod private {
         where
             T: de::DeserializeSeed<'de>,
         {
-            Err(de::Error::invalid_type(Unexpected::UnitVariant, &"newtype variant"),)
+            Err(de::Error::invalid_type(
+                Unexpected::UnitVariant,
+                &"newtype variant",
+            ))
         }
 
         fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error>
         where
             V: de::Visitor<'de>,
         {
-            Err(de::Error::invalid_type(Unexpected::UnitVariant, &"tuple variant"),)
+            Err(de::Error::invalid_type(
+                Unexpected::UnitVariant,
+                &"tuple variant",
+            ))
         }
 
         fn struct_variant<V>(
@@ -1256,7 +1275,10 @@ mod private {
         where
             V: de::Visitor<'de>,
         {
-            Err(de::Error::invalid_type(Unexpected::UnitVariant, &"struct variant"),)
+            Err(de::Error::invalid_type(
+                Unexpected::UnitVariant,
+                &"struct variant",
+            ))
         }
     }
 

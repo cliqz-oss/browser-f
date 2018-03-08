@@ -450,6 +450,17 @@ LIRGenerator::visitComputeThis(MComputeThis* ins)
 }
 
 void
+LIRGenerator::visitImplicitThis(MImplicitThis* ins)
+{
+    MDefinition* env = ins->envChain();
+    MOZ_ASSERT(env->type() == MIRType::Object);
+
+    LImplicitThis* lir = new(alloc()) LImplicitThis(useRegisterAtStart(env));
+    defineReturn(lir, ins);
+    assignSafepoint(lir, ins);
+}
+
+void
 LIRGenerator::visitArrowNewTarget(MArrowNewTarget* ins)
 {
     MOZ_ASSERT(ins->type() == MIRType::Value);
@@ -3119,6 +3130,18 @@ LIRGenerator::visitBoundsCheck(MBoundsCheck* ins)
 }
 
 void
+LIRGenerator::visitSpectreMaskIndex(MSpectreMaskIndex* ins)
+{
+    MOZ_ASSERT(ins->index()->type() == MIRType::Int32);
+    MOZ_ASSERT(ins->length()->type() == MIRType::Int32);
+    MOZ_ASSERT(ins->type() == MIRType::Int32);
+
+    LSpectreMaskIndex* lir =
+        new(alloc()) LSpectreMaskIndex(useRegister(ins->index()), useAny(ins->length()));
+    define(lir, ins);
+}
+
+void
 LIRGenerator::visitBoundsCheckLower(MBoundsCheckLower* ins)
 {
     MOZ_ASSERT(ins->index()->type() == MIRType::Int32);
@@ -3193,7 +3216,7 @@ LIRGenerator::visitLoadElementHole(MLoadElementHole* ins)
     MOZ_ASSERT(ins->type() == MIRType::Value);
 
     LLoadElementHole* lir = new(alloc()) LLoadElementHole(useRegister(ins->elements()),
-                                                          useRegisterOrConstant(ins->index()),
+                                                          useRegister(ins->index()),
                                                           useRegister(ins->initLength()));
     if (ins->needsNegativeIntCheck())
         assignSnapshot(lir, Bailout_NegativeIndex);
@@ -3565,8 +3588,9 @@ LIRGenerator::visitLoadUnboxedScalar(MLoadUnboxedScalar* ins)
     if (ins->readType() == Scalar::Uint32 && IsFloatingPointType(ins->type()))
         tempDef = temp();
 
+    Synchronization sync = Synchronization::Load();
     if (ins->requiresMemoryBarrier()) {
-        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(MembarBeforeLoad);
+        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(sync.barrierBefore);
         add(fence, ins);
     }
     LLoadUnboxedScalar* lir = new(alloc()) LLoadUnboxedScalar(elements, index, tempDef);
@@ -3574,7 +3598,7 @@ LIRGenerator::visitLoadUnboxedScalar(MLoadUnboxedScalar* ins)
         assignSnapshot(lir, Bailout_Overflow);
     define(lir, ins);
     if (ins->requiresMemoryBarrier()) {
-        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(MembarAfterLoad);
+        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(sync.barrierAfter);
         add(fence, ins);
     }
 }
@@ -3622,9 +3646,10 @@ LIRGenerator::visitLoadTypedArrayElementHole(MLoadTypedArrayElementHole* ins)
     MOZ_ASSERT(ins->type() == MIRType::Value);
 
     const LUse object = useRegister(ins->object());
-    const LAllocation index = useRegisterOrConstant(ins->index());
+    const LAllocation index = useRegister(ins->index());
 
-    LLoadTypedArrayElementHole* lir = new(alloc()) LLoadTypedArrayElementHole(object, index);
+    LLoadTypedArrayElementHole* lir = new(alloc()) LLoadTypedArrayElementHole(object, index,
+                                                                              temp());
     if (ins->fallible())
         assignSnapshot(lir, Bailout_Overflow);
     defineBox(lir, ins);
@@ -3675,13 +3700,14 @@ LIRGenerator::visitStoreUnboxedScalar(MStoreUnboxedScalar* ins)
     // is a store instruction that incorporates the necessary
     // barriers, and we could use that instead of separate barrier and
     // store instructions.  See bug #1077027.
+    Synchronization sync = Synchronization::Store();
     if (ins->requiresMemoryBarrier()) {
-        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(MembarBeforeStore);
+        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(sync.barrierBefore);
         add(fence, ins);
     }
     add(new(alloc()) LStoreUnboxedScalar(elements, index, value), ins);
     if (ins->requiresMemoryBarrier()) {
-        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(MembarAfterStore);
+        LMemoryBarrier* fence = new(alloc()) LMemoryBarrier(sync.barrierAfter);
         add(fence, ins);
     }
 }
@@ -4421,6 +4447,7 @@ LIRGenerator::visitWasmAddOffset(MWasmAddOffset* ins)
 {
     MOZ_ASSERT(ins->base()->type() == MIRType::Int32);
     MOZ_ASSERT(ins->type() == MIRType::Int32);
+    MOZ_ASSERT(ins->offset());
     define(new(alloc()) LWasmAddOffset(useRegisterAtStart(ins->base())), ins);
 }
 
@@ -4454,6 +4481,16 @@ LIRGenerator::visitWasmBoundsCheck(MWasmBoundsCheck* ins)
                                               useRegisterAtStart(boundsCheckLimit));
     add(lir, ins);
 #endif
+}
+
+void
+LIRGenerator::visitWasmAlignmentCheck(MWasmAlignmentCheck* ins)
+{
+    MDefinition* index = ins->index();
+    MOZ_ASSERT(index->type() == MIRType::Int32);
+
+    auto* lir = new(alloc()) LWasmAlignmentCheck(useRegisterAtStart(index));
+    add(lir, ins);
 }
 
 void

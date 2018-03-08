@@ -25,6 +25,7 @@ class nsIWidget;
 namespace mozilla {
 
 class CancelableRunnable;
+class Runnable;
 
 namespace gfx {
 class DrawTarget;
@@ -55,6 +56,7 @@ public:
   void ResumeComposition();
   void ComposeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr);
   void PostCompositeTask(TimeStamp aCompositeTimestamp);
+  void PostVRTask(TimeStamp aTimestamp);
   void Destroy();
   void ScheduleComposition();
   void CancelCurrentCompositeTask();
@@ -119,7 +121,7 @@ private:
   RefPtr<CancelableRunnable> mSetNeedsCompositeTask;
 
   mozilla::Monitor mCurrentVRListenerTaskMonitor;
-  RefPtr<CancelableRunnable> mCurrentVRListenerTask;
+  RefPtr<Runnable> mCurrentVRListenerTask;
 };
 
 } // namespace layers

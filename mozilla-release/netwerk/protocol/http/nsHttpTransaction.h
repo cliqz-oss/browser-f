@@ -30,6 +30,7 @@ class nsIRequestContext;
 namespace mozilla { namespace net {
 
 class nsHttpChunkedDecoder;
+class nsHttpHeaderArray;
 class nsHttpRequestHead;
 class nsHttpResponseHead;
 
@@ -89,7 +90,7 @@ public:
                                uint64_t               topLevelOuterContentWindowId,
                                nsIAsyncInputStream  **responseBody);
 
-    void OnActivated(bool h2) override;
+    void OnActivated() override;
 
     // attributes
     nsHttpResponseHead    *ResponseHead()   { return mHaveAllHeaders ? mResponseHead : nullptr; }
@@ -103,6 +104,10 @@ public:
     // Called to take ownership of the response headers; the transaction
     // will drop any reference to the response headers after this call.
     nsHttpResponseHead *TakeResponseHead();
+
+    // Called to take ownership of the trailer headers.
+    // Returning null if there is no trailer.
+    nsHttpHeaderArray *TakeResponseTrailers();
 
     // Provides a thread safe reference of the connection
     // nsHttpTransaction::Connection should only be used on the socket thread
@@ -214,7 +219,7 @@ private:
 
     bool TimingEnabled() const { return mCaps & NS_HTTP_TIMING_ENABLED; }
 
-    bool ResponseTimeoutEnabled() const final;
+    bool ResponseTimeoutEnabled() const final override;
 
     void DisableSpdy() override;
     void ReuseConnectionOnRestartOK(bool reuseOk) override { mReuseOnRestart = reuseOk; }
@@ -229,7 +234,7 @@ private:
 
     // Called from WriteSegments.  Checks for conditions whether to throttle reading
     // the content.  When this returns true, WriteSegments returns WOULD_BLOCK.
-    bool ShouldStopReading();
+    bool ShouldThrottle();
 
 private:
     class UpdateSecurityCallbacks : public Runnable
@@ -311,6 +316,19 @@ private:
 
     uint32_t                        mCurrentHttpResponseHeaderSize;
 
+    int32_t const THROTTLE_NO_LIMIT = -1;
+    // This can have 3 possible values:
+    // * THROTTLE_NO_LIMIT - this means the transaction is not in any way limited
+    //                       to read the response, this is the default
+    // * a positive number - a limit is set because the transaction is obligated
+    //                       to throttle the response read, this is decresed with
+    //                       every piece of data the transaction receives
+    // * zero - when the transaction depletes the limit for reading, this makes it
+    //          stop reading and return WOULD_BLOCK from WriteSegments; transaction
+    //          then waits for a call of ResumeReading that resets this member back
+    //          to THROTTLE_NO_LIMIT
+    int32_t                         mThrottlingReadAllowance;
+
     // mCapsToClear holds flags that should be cleared in mCaps, e.g. unset
     // NS_HTTP_REFRESH_DNS when DNS refresh request has completed to avoid
     // redundant requests on the network. The member itself is atomic, but
@@ -331,7 +349,6 @@ private:
     bool                            mClosed;
     bool                            mConnected;
     bool                            mActivated;
-    bool                            mActivatedAsH2;
     bool                            mHaveStatusLine;
     bool                            mHaveAllHeaders;
     bool                            mTransactionDone;
@@ -364,6 +381,8 @@ private:
     // protected by nsHttp::GetLock()
     nsHttpResponseHead             *mForTakeResponseHead;
     bool                            mResponseHeadTaken;
+    nsAutoPtr<nsHttpHeaderArray>    mForTakeResponseTrailers;
+    bool                            mResponseTrailersTaken;
 
     // The time when the transaction was submitted to the Connection Manager
     TimeStamp                       mPendingTime;

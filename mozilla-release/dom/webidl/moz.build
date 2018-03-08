@@ -97,14 +97,11 @@ with Files("DelayNode.webidl"):
 with Files("DynamicsCompressorNode.webidl"):
     BUG_COMPONENT = ("Core", "Web Audio")
 
-with Files("DesktopNotification.webidl"):
-    BUG_COMPONENT = ("Toolkit", "Notifications and Alerts")
-
 with Files("FakePluginTagInit.webidl"):
     BUG_COMPONENT = ("Core", "Plug-ins")
 
-with Files("FlyWeb*"):
-    BUG_COMPONENT = ("Core", "DOM: Flyweb")
+with Files("Flex.webidl"):
+    BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
 
 with Files("FocusEvent.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Events")
@@ -205,9 +202,6 @@ with Files("MediaKey*"):
 with Files("Media*List*"):
     BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
 
-with Files("MediaStreamList.webidl"):
-    BUG_COMPONENT = ("Core", "Web Audio")
-
 with Files("*Record*"):
     BUG_COMPONENT = ("Core", "Audio/Video: Recording")
 
@@ -216,9 +210,6 @@ with Files("Media*Track*"):
 
 with Files("Mouse*"):
     BUG_COMPONENT = ("Core", "DOM: Events")
-
-with Files("MozSelfSupport.webidl"):
-    BUG_COMPONENT = ("Firefox Health Report", "Client: Desktop")
 
 with Files("MozTimeManager.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Device Interfaces")
@@ -372,6 +363,7 @@ GENERATED_WEBIDL_FILES = [
 ]
 
 PREPROCESSED_WEBIDL_FILES = [
+    'ChromeUtils.webidl',
     'Navigator.webidl',
     'Node.webidl',
     'Window.webidl',
@@ -434,7 +426,6 @@ WEBIDL_FILES = [
     'CheckerboardReportService.webidl',
     'ChildNode.webidl',
     'ChromeNodeList.webidl',
-    'ChromeUtils.webidl',
     'Client.webidl',
     'Clients.webidl',
     'ClipboardEvent.webidl',
@@ -484,11 +475,11 @@ WEBIDL_FILES = [
     'DecoderDoctorNotification.webidl',
     'DedicatedWorkerGlobalScope.webidl',
     'DelayNode.webidl',
-    'DesktopNotification.webidl',
     'DeviceMotionEvent.webidl',
     'Directory.webidl',
     'Document.webidl',
     'DocumentFragment.webidl',
+    'DocumentOrShadowRoot.webidl',
     'DocumentTimeline.webidl',
     'DocumentType.webidl',
     'DOMCursor.webidl',
@@ -530,10 +521,7 @@ WEBIDL_FILES = [
     'FileSystemDirectoryReader.webidl',
     'FileSystemEntry.webidl',
     'FileSystemFileEntry.webidl',
-    'FlyWebDiscoveryManager.webidl',
-    'FlyWebFetchEvent.webidl',
-    'FlyWebPublish.webidl',
-    'FlyWebWebSocketEvent.webidl',
+    'Flex.webidl',
     'FocusEvent.webidl',
     'FontFace.webidl',
     'FontFaceSet.webidl',
@@ -563,7 +551,6 @@ WEBIDL_FILES = [
     'HTMLButtonElement.webidl',
     'HTMLCanvasElement.webidl',
     'HTMLCollection.webidl',
-    'HTMLContentElement.webidl',
     'HTMLDataElement.webidl',
     'HTMLDataListElement.webidl',
     'HTMLDetailsElement.webidl',
@@ -700,12 +687,10 @@ WEBIDL_FILES = [
     'MimeTypeArray.webidl',
     'MouseEvent.webidl',
     'MouseScrollEvent.webidl',
-    'MozSelfSupport.webidl',
     'MozStorageAsyncStatementParams.webidl',
     'MozStorageStatementParams.webidl',
     'MozStorageStatementRow.webidl',
     'MozTimeManager.webidl',
-    'MozWakeLock.webidl',
     'MutationEvent.webidl',
     'MutationObserver.webidl',
     'NamedNodeMap.webidl',
@@ -987,13 +972,11 @@ WEBIDL_FILES = [
     'XULCommandEvent.webidl',
     'XULDocument.webidl',
     'XULElement.webidl',
-    'XULTemplateBuilder.webidl',
 ]
 
 if CONFIG['MOZ_WEBRTC']:
     WEBIDL_FILES += [
         'DataChannel.webidl',
-        'MediaStreamList.webidl',
         'PeerConnectionImpl.webidl',
         'PeerConnectionImplEnums.webidl',
         'PeerConnectionObserver.webidl',
@@ -1008,7 +991,10 @@ if CONFIG['MOZ_WEBRTC']:
         'RTCPeerConnectionStatic.webidl',
         'RTCRtpReceiver.webidl',
         'RTCRtpSender.webidl',
+        'RTCRtpSources.webidl',
+        'RTCRtpTransceiver.webidl',
         'RTCSessionDescription.webidl',
+        'TransceiverImpl.webidl',
         'WebrtcDeprecated.webidl',
         'WebrtcGlobalInformation.webidl',
     ]
@@ -1100,6 +1086,7 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     'ProgressEvent.webidl',
     'PromiseRejectionEvent.webidl',
     'ScrollViewChangeEvent.webidl',
+    'SecurityPolicyViolationEvent.webidl',
     'StyleRuleChangeEvent.webidl',
     'StyleSheetApplicableStateChangeEvent.webidl',
     'StyleSheetChangeEvent.webidl',

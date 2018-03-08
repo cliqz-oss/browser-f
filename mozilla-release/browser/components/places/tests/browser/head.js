@@ -63,7 +63,7 @@ function promiseLibraryClosed(organizer) {
   return new Promise(resolve => {
     // Wait for the Organizer window to actually be closed
     organizer.addEventListener("unload", function() {
-      resolve();
+      executeSoon(resolve);
     }, {once: true});
 
     // Close Library window.
@@ -391,8 +391,12 @@ function fillBookmarkTextField(id, text, win, blur = true) {
   let elt = win.document.getElementById(id);
   elt.focus();
   elt.select();
-  for (let c of text.split("")) {
-    EventUtils.synthesizeKey(c, {}, win);
+  if (!text) {
+    EventUtils.synthesizeKey("VK_DELETE", {}, win);
+  } else {
+    for (let c of text.split("")) {
+      EventUtils.synthesizeKey(c, {}, win);
+    }
   }
   if (blur)
     elt.blur();
@@ -413,7 +417,7 @@ var withSidebarTree = async function(type, taskFn) {
   info("withSidebarTree: waiting sidebar load");
   let sidebarLoadedPromise = new Promise(resolve => {
     sidebar.addEventListener("load", function() {
-      resolve();
+      executeSoon(resolve);
     }, {capture: true, once: true});
   });
   let sidebarId = type == "bookmarks" ? "viewBookmarksSidebar"
@@ -444,4 +448,30 @@ function promisePlacesInitComplete() {
     "places-browser-init-complete");
 
   return placesInitCompleteObserved;
+}
+
+// Function copied from browser/base/content/test/general/head.js.
+function promisePopupShown(popup) {
+  return new Promise(resolve => {
+    if (popup.state == "open") {
+      resolve();
+    } else {
+      let onPopupShown = event => {
+        popup.removeEventListener("popupshown", onPopupShown);
+        resolve();
+      };
+      popup.addEventListener("popupshown", onPopupShown);
+    }
+  });
+}
+
+// Function copied from browser/base/content/test/general/head.js.
+function promisePopupHidden(popup) {
+  return new Promise(resolve => {
+    let onPopupHidden = event => {
+      popup.removeEventListener("popuphidden", onPopupHidden);
+      resolve();
+    };
+    popup.addEventListener("popuphidden", onPopupHidden);
+  });
 }

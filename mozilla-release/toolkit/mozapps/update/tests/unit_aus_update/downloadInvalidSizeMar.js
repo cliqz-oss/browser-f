@@ -17,7 +17,7 @@ function run_test() {
   start_httpserver();
   setUpdateURL(gURLData + gHTTPHandlerPath);
   standardInit();
-  do_execute_soon(run_test_pt1);
+  executeSoon(run_test_pt1);
 }
 
 // mar download with an invalid file size
@@ -49,7 +49,11 @@ function downloadListenerStop() {
   Assert.equal(gStatusResult, Cr.NS_ERROR_UNEXPECTED,
                "the download status result" + MSG_SHOULD_EQUAL);
   gAUS.removeDownloadListener(downloadListener);
-  do_execute_soon(waitForUpdateXMLFiles);
+
+  // Cleaning up the active update along with reloading the update manager
+  // in doTestFinish will prevent writing the update xml files during shutdown.
+  gUpdateManager.cleanupActiveUpdate();
+  executeSoon(waitForUpdateXMLFiles);
 }
 
 /**

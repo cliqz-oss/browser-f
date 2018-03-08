@@ -11,12 +11,13 @@
 "use strict";
 
 let PaymentRequest = {
-  request: null,
   domReadyPromise: null,
 
   init() {
     // listen to content
     window.addEventListener("paymentChromeToContent", this);
+
+    window.addEventListener("keypress", this);
 
     this.domReadyPromise = new Promise(function dcl(resolve) {
       window.addEventListener("DOMContentLoaded", resolve, {once: true});
@@ -32,13 +33,12 @@ let PaymentRequest = {
         this.onPaymentRequestLoad();
         break;
       }
-      case "click": {
-        switch (event.target.id) {
-          case "cancel": {
-            this.onCancel();
-            break;
-          }
+      case "keypress": {
+        if (event.code != "KeyD" || !event.altKey || !event.ctrlKey) {
+          break;
         }
+        let debuggingConsole = document.getElementById("debugging-console");
+        debuggingConsole.hidden = !debuggingConsole.hidden;
         break;
       }
       case "unload": {
@@ -70,37 +70,34 @@ let PaymentRequest = {
 
     switch (messageType) {
       case "showPaymentRequest": {
-        this.request = detail.request;
-        this.onShowPaymentRequest();
+        this.onShowPaymentRequest(detail);
         break;
       }
     }
   },
 
   onPaymentRequestLoad(requestId) {
-    let cancelBtn = document.getElementById("cancel");
-    cancelBtn.addEventListener("click", this, {once: true});
-
     window.addEventListener("unload", this, {once: true});
     this.sendMessageToChrome("paymentDialogReady");
   },
 
-  async onShowPaymentRequest() {
+  async onShowPaymentRequest(detail) {
     // Handle getting called before the DOM is ready.
     await this.domReadyPromise;
 
-    let hostNameEl = document.getElementById("host-name");
-    hostNameEl.textContent = this.request.topLevelPrincipal.URI.displayHost;
-
-    let totalItem = this.request.paymentDetails.totalItem;
-    let totalEl = document.getElementById("total");
-    totalEl.querySelector(".value").textContent = totalItem.amount.value;
-    totalEl.querySelector(".currency").textContent = totalItem.amount.currency;
-    totalEl.querySelector(".label").textContent = totalItem.label;
+    document.querySelector("payment-dialog").setLoadingState({
+      request: detail.request,
+      savedAddresses: detail.savedAddresses,
+      savedBasicCards: detail.savedBasicCards,
+    });
   },
 
-  onCancel() {
+  cancel() {
     this.sendMessageToChrome("paymentCancel");
+  },
+
+  pay(data) {
+    this.sendMessageToChrome("pay", data);
   },
 
   onPaymentRequestUnload() {

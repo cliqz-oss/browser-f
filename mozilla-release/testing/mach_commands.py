@@ -17,6 +17,7 @@ from mach.decorators import (
     CommandArgument,
     CommandProvider,
     Command,
+    SettingsProvider,
 )
 
 from mozbuild.base import MachCommandBase, MachCommandConditions as conditions
@@ -51,16 +52,41 @@ The following test suites and aliases are supported: %s
 TEST_HELP = TEST_HELP.strip()
 
 
+@SettingsProvider
+class TestConfig(object):
+
+    @classmethod
+    def config_settings(cls):
+        from mozlog.commandline import log_formatters
+        from mozlog.structuredlog import log_levels
+        format_desc = "The default format to use when running tests with `mach test`."
+        format_choices = log_formatters.keys()
+        level_desc = "The default log level to use when running tests with `mach test`."
+        level_choices = [l.lower() for l in log_levels]
+        return [
+            ('test.format', 'string', format_desc, 'tbpl', {'choices': format_choices}),
+            ('test.level', 'string', level_desc, 'info', {'choices': level_choices}),
+        ]
+
+
+def get_test_parser():
+    from mozlog.commandline import add_logging_group
+    parser = argparse.ArgumentParser()
+    parser.add_argument('what', default=None, nargs='*', help=TEST_HELP)
+    parser.add_argument('extra_args', default=None, nargs=argparse.REMAINDER,
+                        help="Extra arguments to pass to the underlying test command(s). "
+                             "If an underlying command doesn't recognize the argument, it "
+                             "will fail.")
+    add_logging_group(parser)
+    return parser
+
+
 @CommandProvider
 class Test(MachCommandBase):
     @Command('test', category='testing',
-             description='Run tests (detects the kind of test and runs it).')
-    @CommandArgument('what', default=None, nargs='*', help=TEST_HELP)
-    @CommandArgument('extra_args', default=None, nargs=argparse.REMAINDER,
-                     help="Extra arguments to pass to the underlying test command(s). "
-                          "If an underlying command doesn't recognize the argument, it "
-                          "will fail.")
-    def test(self, what, extra_args):
+             description='Run tests (detects the kind of test and runs it).',
+             parser=get_test_parser)
+    def test(self, what, extra_args, **log_args):
         """Run tests from names or paths.
 
         mach test accepts arguments specifying which tests to run. Each argument
@@ -84,7 +110,9 @@ class Test(MachCommandBase):
         you specify a directory with xpcshell and browser chrome mochitests,
         both harnesses will be invoked.
         """
+        from mozlog.commandline import setup_logging
         from moztest.resolve import TestResolver, TEST_FLAVORS, TEST_SUITES
+
         resolver = self._spawn(TestResolver)
         run_suites, run_tests = resolver.resolve_metadata(what)
 
@@ -92,14 +120,23 @@ class Test(MachCommandBase):
             print(UNKNOWN_TEST)
             return 1
 
+        # Create shared logger
+        default_format = self._mach_context.settings['test']['format']
+        default_level = self._mach_context.settings['test']['level']
+        log = setup_logging('mach-test', log_args, {default_format: sys.stdout},
+                            {'level': default_level})
+        log.handlers[0].formatter.inner.summary_on_shutdown = True
+
         status = None
         for suite_name in run_suites:
             suite = TEST_SUITES[suite_name]
+            kwargs = suite['kwargs']
+            kwargs['log'] = log
 
             if 'mach_command' in suite:
                 res = self._mach_context.commands.dispatch(
                     suite['mach_command'], self._mach_context,
-                    argv=extra_args, **suite['kwargs'])
+                    argv=extra_args, **kwargs)
                 if res:
                     status = res
 
@@ -121,6 +158,7 @@ class Test(MachCommandBase):
                 continue
 
             kwargs = dict(m['kwargs'])
+            kwargs['log'] = log
             kwargs['subsuite'] = subsuite
 
             res = self._mach_context.commands.dispatch(
@@ -129,6 +167,7 @@ class Test(MachCommandBase):
             if res:
                 status = res
 
+        log.shutdown()
         return status
 
 
@@ -142,9 +181,12 @@ class MachCommands(MachCommandBase):
                      'executed.')
     def run_cppunit_test(self, **params):
         from mozlog import commandline
-        log = commandline.setup_logging("cppunittest",
-                                        {},
-                                        {"tbpl": sys.stdout})
+
+        log = params.get('log')
+        if not log:
+            log = commandline.setup_logging("cppunittest",
+                                            {},
+                                            {"tbpl": sys.stdout})
 
         # See if we have crash symbols
         symbols_path = os.path.join(self.distdir, 'crashreporter-symbols')

@@ -9,6 +9,7 @@ const promise = require("promise");
 const protocol = require("devtools/shared/protocol");
 const {LongStringActor} = require("devtools/server/actors/string");
 const {Task} = require("devtools/shared/task");
+const InspectorUtils = require("InspectorUtils");
 
 // This will also add the "stylesheet" actor type for protocol.js to recognize
 
@@ -27,10 +28,8 @@ loader.lazyRequireGetter(this, "UPDATE_PRESERVING_RULES",
 loader.lazyRequireGetter(this, "UPDATE_GENERAL",
   "devtools/server/actors/stylesheets", true);
 
-loader.lazyServiceGetter(this, "DOMUtils", "@mozilla.org/inspector/dom-utils;1", "inIDOMUtils");
-
 loader.lazyGetter(this, "PSEUDO_ELEMENTS", () => {
-  return DOMUtils.getCSSPseudoElementNames();
+  return InspectorUtils.getCSSPseudoElementNames();
 });
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -63,7 +62,7 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
                    "creating a PageStyleActor.");
     }
     this.walker = inspector.walker;
-    this.cssLogic = new CssLogic(DOMUtils.isInheritedProperty);
+    this.cssLogic = new CssLogic(InspectorUtils.isInheritedProperty);
 
     // Stores the association of DOM objects -> actors
     this.refMap = new Map();
@@ -166,8 +165,8 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
   },
 
   /**
-   * Return or create a StyleSheetActor for the given nsIDOMCSSStyleSheet.
-   * @param  {DOMStyleSheet} sheet
+   * Return or create a StyleSheetActor for the given CSSStyleSheet.
+   * @param  {CSSStyleSheet} sheet
    *         The style sheet to create an actor for.
    * @return {StyleSheetActor}
    *         The actor for this style sheet
@@ -271,11 +270,11 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
     // We don't get fonts for a node, but for a range
     let rng = contentDocument.createRange();
     rng.selectNodeContents(actualNode);
-    let fonts = DOMUtils.getUsedFontFaces(rng);
+    let fonts = InspectorUtils.getUsedFontFaces(rng);
     let fontsArray = [];
 
     for (let i = 0; i < fonts.length; i++) {
-      let font = fonts.item(i);
+      let font = fonts[i];
       let fontFace = {
         name: font.name,
         CSSFamilyName: font.CSSFamilyName,
@@ -466,7 +465,7 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
 
   _hasInheritedProps: function (style) {
     return Array.prototype.some.call(style, prop => {
-      return DOMUtils.isInheritedProperty(prop);
+      return InspectorUtils.isInheritedProperty(prop);
     });
   },
 
@@ -568,7 +567,7 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
    * @returns Array
    */
   _getElementRules: function (node, pseudo, inherited, options) {
-    let domRules = DOMUtils.getCSSStyleRules(node, pseudo);
+    let domRules = InspectorUtils.getCSSStyleRules(node, pseudo);
     if (!domRules) {
       return [];
     }
@@ -577,8 +576,8 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
 
     // getCSSStyleRules returns ordered from least-specific to
     // most-specific.
-    for (let i = domRules.Count() - 1; i >= 0; i--) {
-      let domRule = domRules.GetElementAt(i);
+    for (let i = domRules.length - 1; i >= 0; i--) {
+      let domRule = domRules[i];
 
       let isSystem = !SharedCssLogic.isContentStylesheet(domRule.parentStyleSheet);
 
@@ -590,7 +589,7 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
         // Don't include inherited rules if none of its properties
         // are inheritable.
         let hasInherited = [...domRule.style].some(
-          prop => DOMUtils.isInheritedProperty(prop)
+          prop => InspectorUtils.isInheritedProperty(prop)
         );
         if (!hasInherited) {
           continue;
@@ -678,8 +677,8 @@ var PageStyleActor = protocol.ActorClassWithSpec(pageStyleSpec, {
             CssLogic.getBindingElementAndPseudo(element);
         entry.matchedSelectors = [];
         for (let i = 0; i < selectors.length; i++) {
-          if (DOMUtils.selectorMatchesElement(bindingElement, domRule, i,
-                                              pseudo)) {
+          if (InspectorUtils.selectorMatchesElement(bindingElement, domRule, i,
+                                                    pseudo)) {
             entry.matchedSelectors.push(selectors[i]);
           }
         }
@@ -948,14 +947,14 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
     this._parentSheet = null;
     this._onStyleApplied = this._onStyleApplied.bind(this);
 
-    if (item instanceof (Ci.nsIDOMCSSRule)) {
+    if (CSSRule.isInstance(item)) {
       this.type = item.type;
       this.rawRule = item;
-      if ((this.type === Ci.nsIDOMCSSRule.STYLE_RULE ||
-           this.type === Ci.nsIDOMCSSRule.KEYFRAME_RULE) &&
+      if ((this.type === CSSRule.STYLE_RULE ||
+           this.type === CSSRule.KEYFRAME_RULE) &&
           this.rawRule.parentStyleSheet) {
-        this.line = DOMUtils.getRelativeRuleLine(this.rawRule);
-        this.column = DOMUtils.getRuleColumn(this.rawRule);
+        this.line = InspectorUtils.getRelativeRuleLine(this.rawRule);
+        this.column = InspectorUtils.getRuleColumn(this.rawRule);
         this._parentSheet = this.rawRule.parentStyleSheet;
         this._computeRuleIndex();
         this.sheetActor = this.pageStyle._sheetRef(this._parentSheet);
@@ -1003,10 +1002,10 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
   get canSetRuleText() {
     return this.type === ELEMENT_STYLE ||
            (this._parentSheet &&
-            // If a rule does not have source, then it has been modified via
-            // CSSOM; and we should fall back to non-authored editing.
+            // If a rule has been modified via CSSOM, then we should fall
+            // back to non-authored editing.
             // https://bugzilla.mozilla.org/show_bug.cgi?id=1224121
-            this.sheetActor.allRulesHaveSource() &&
+            !this.sheetActor.hasRulesModifiedByCSSOM() &&
             // Special case about:PreferenceStyleSheet, as it is generated on
             // the fly and the URI is not registered with the about:handler
             // https://bugzilla.mozilla.org/show_bug.cgi?id=935803#c37
@@ -1055,7 +1054,7 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
       // of MEDIA_RULEs. We need to check the parentRule to check if a rule is
       // a media rule so we do this here instead of in the switch statement
       // below.
-      if (this.rawRule.parentRule.type === Ci.nsIDOMCSSRule.MEDIA_RULE) {
+      if (this.rawRule.parentRule.type === CSSRule.MEDIA_RULE) {
         form.media = [];
         for (let i = 0, n = this.rawRule.parentRule.media.length; i < n; i++) {
           form.media.push(this.rawRule.parentRule.media.item(i));
@@ -1075,7 +1074,7 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
     form.authoredText = this.authoredText;
 
     switch (this.type) {
-      case Ci.nsIDOMCSSRule.STYLE_RULE:
+      case CSSRule.STYLE_RULE:
         form.selectors = CssLogic.getSelectors(this.rawRule);
         form.cssText = this.rawStyle.cssText || "";
         break;
@@ -1088,17 +1087,17 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
         form.cssText = this.rawStyle.cssText || "";
         form.authoredText = this.rawNode.getAttribute("style");
         break;
-      case Ci.nsIDOMCSSRule.CHARSET_RULE:
+      case CSSRule.CHARSET_RULE:
         form.encoding = this.rawRule.encoding;
         break;
-      case Ci.nsIDOMCSSRule.IMPORT_RULE:
+      case CSSRule.IMPORT_RULE:
         form.href = this.rawRule.href;
         break;
-      case Ci.nsIDOMCSSRule.KEYFRAMES_RULE:
+      case CSSRule.KEYFRAMES_RULE:
         form.cssText = this.rawRule.cssText;
         form.name = this.rawRule.name;
         break;
-      case Ci.nsIDOMCSSRule.KEYFRAME_RULE:
+      case CSSRule.KEYFRAME_RULE:
         form.cssText = this.rawStyle.cssText || "";
         form.keyText = this.rawRule.keyText || "";
         break;
@@ -1216,8 +1215,8 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
       // Also tell the page style so that future calls to _styleRef
       // return the same StyleRuleActor.
       this.pageStyle.updateStyleRef(oldRule, this.rawRule, this);
-      let line = DOMUtils.getRelativeRuleLine(this.rawRule);
-      let column = DOMUtils.getRuleColumn(this.rawRule);
+      let line = InspectorUtils.getRelativeRuleLine(this.rawRule);
+      let column = InspectorUtils.getRuleColumn(this.rawRule);
       if (line !== this.line || column !== this.column) {
         this._notifyLocationChanged(line, column);
       }
@@ -1236,8 +1235,8 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
    */
   getAuthoredCssText: function () {
     if (!this.canSetRuleText ||
-        (this.type !== Ci.nsIDOMCSSRule.STYLE_RULE &&
-         this.type !== Ci.nsIDOMCSSRule.KEYFRAME_RULE)) {
+        (this.type !== CSSRule.STYLE_RULE &&
+         this.type !== CSSRule.KEYFRAME_RULE)) {
       return promise.resolve("");
     }
 
@@ -1315,8 +1314,7 @@ var StyleRuleActor = protocol.ActorClassWithSpec(styleRuleSpec, {
       document = this.rawNode.ownerDocument;
     } else {
       let parentStyleSheet = this._parentSheet;
-      while (parentStyleSheet.ownerRule &&
-          parentStyleSheet.ownerRule instanceof Ci.nsIDOMCSSImportRule) {
+      while (parentStyleSheet.ownerRule) {
         parentStyleSheet = parentStyleSheet.ownerRule.parentStyleSheet;
       }
 
@@ -1583,7 +1581,7 @@ function getRuleText(initialText, line, column) {
 
   let {offset: textOffset, text} =
       getTextAtLineColumn(initialText, line, column);
-  let lexer = DOMUtils.getCSSLexer(text);
+  let lexer = InspectorUtils.getCSSLexer(text);
 
   // Search forward for the opening brace.
   while (true) {
@@ -1657,7 +1655,7 @@ function getSelectorOffsets(initialText, line, column) {
 
   let {offset: textOffset, text} =
       getTextAtLineColumn(initialText, line, column);
-  let lexer = DOMUtils.getCSSLexer(text);
+  let lexer = InspectorUtils.getCSSLexer(text);
 
   // Search forward for the opening brace.
   let endOffset;
@@ -1694,7 +1692,7 @@ function getSelectorOffsets(initialText, line, column) {
 function getTextAtLineColumn(text, line, column) {
   let offset;
   if (line > 1) {
-    let rx = new RegExp("(?:.*(?:\\r\\n|\\n|\\r|\\f)){" + (line - 1) + "}");
+    let rx = new RegExp("(?:[^\\r\\n\\f]*(?:\\r\\n|\\n|\\r|\\f)){" + (line - 1) + "}");
     offset = rx.exec(text)[0].length;
   } else {
     offset = 0;

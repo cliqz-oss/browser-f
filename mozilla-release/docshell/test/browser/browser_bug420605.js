@@ -55,8 +55,7 @@ function test() {
     var historyObserver = {
         onBeginUpdateBatch: function() {},
         onEndUpdateBatch: function() {},
-        onVisit: function(aURI, aVisitID, aTime, aSessionId, aReferringId,
-                          aTransitionType, _added) {},
+        onVisits: function() {},
         onTitleChanged: function(aURI, aPageTitle) {},
         onDeleteURI: function(aURI) {},
         onClearHistory: function() {},
@@ -103,8 +102,6 @@ function test() {
     historyService.addObserver(historyObserver);
 
     function onPageLoad() {
-      gBrowser.selectedBrowser
-              .removeEventListener("DOMContentLoaded", arguments.callee, true);
       clickLinkIfReady();
     }
 
@@ -116,7 +113,6 @@ function test() {
 
     // Now open the test page in a new tab.
     gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-    gBrowser.selectedBrowser.addEventListener(
-        "DOMContentLoaded", onPageLoad, true);
-    content.location = pageurl;
+    BrowserTestUtils.waitForContentEvent(gBrowser.selectedBrowser, "DOMContentLoaded", true).then(onPageLoad);
+    gBrowser.selectedBrowser.loadURI(pageurl);
 }

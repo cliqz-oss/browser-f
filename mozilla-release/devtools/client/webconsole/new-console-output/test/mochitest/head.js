@@ -3,12 +3,14 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* import-globals-from ../../../../framework/test/shared-head.js */
-/* exported WCUL10n, openNewTabAndConsole, waitForMessages, waitForMessage, waitFor,
-   findMessage, openContextMenu, hideContextMenu, loadDocument, hasFocus,
-   waitForNodeMutation, testOpenInDebugger, checkClickOnNode, jstermSetValueAndComplete,
-   openDebugger, openConsole */
+/* eslint no-unused-vars: [2, {"vars": "local"}] */
 
 "use strict";
+
+// Import helpers registering the test-actor in remote targets
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/shared/test/test-actor-registry.js",
+  this);
 
 // shared-head.js handles imports, constants, and utility functions
 // Load the shared-head file first.
@@ -18,6 +20,16 @@ Services.scriptloader.loadSubScript(
 
 var {HUDService} = require("devtools/client/webconsole/hudservice");
 var WCUL10n = require("devtools/client/webconsole/webconsole-l10n");
+const DOCS_GA_PARAMS = `?${new URLSearchParams({
+  "utm_source": "mozilla",
+  "utm_medium": "firefox-console-errors",
+  "utm_campaign": "default"
+})}`;
+const STATUS_CODES_GA_PARAMS = `?${new URLSearchParams({
+  "utm_source": "mozilla",
+  "utm_medium": "devtools-webconsole",
+  "utm_campaign": "default"
+})}`;
 
 Services.prefs.setBoolPref("devtools.webconsole.new-frontend-enabled", true);
 registerCleanupFunction(function* () {
@@ -207,10 +219,8 @@ function hideContextMenu(hud) {
 }
 
 function loadDocument(url, browser = gBrowser.selectedBrowser) {
-  return new Promise(resolve => {
-    browser.addEventListener("load", resolve, {capture: true, once: true});
-    BrowserTestUtils.loadURI(gBrowser.selectedBrowser, url);
-  });
+  BrowserTestUtils.loadURI(browser, url);
+  return BrowserTestUtils.browserLoaded(browser);
 }
 
 /**
@@ -295,16 +305,40 @@ function hasFocus(node) {
  * @param {Integer} caretIndexOffset : A number that will be added to value.length
  *                  when setting the caret. A negative number will place the caret
  *                  in (end - offset) position. Default to 0 (caret set at the end)
+ * @param {Integer} completionType : One of the following jsterm property
+ *                   - COMPLETE_FORWARD
+ *                   - COMPLETE_BACKWARD
+ *                   - COMPLETE_HINT_ONLY
+ *                   - COMPLETE_PAGEUP
+ *                   - COMPLETE_PAGEDOWN
+ *                  Will default to COMPLETE_HINT_ONLY.
  * @returns {Promise} resolves when the jsterm is completed.
  */
-function jstermSetValueAndComplete(jsterm, value, caretIndexOffset = 0) {
+function jstermSetValueAndComplete(jsterm, value, caretIndexOffset = 0, completionType) {
   const {inputNode} = jsterm;
   inputNode.value = value;
   let index = value.length + caretIndexOffset;
   inputNode.setSelectionRange(index, index);
 
+  return jstermComplete(jsterm, completionType);
+}
+
+/**
+ * Fires a completion request on the jsterm with the specified completionType
+ *
+ * @param {JsTerm} jsterm
+ * @param {Integer} completionType : One of the following jsterm property
+ *                   - COMPLETE_FORWARD
+ *                   - COMPLETE_BACKWARD
+ *                   - COMPLETE_HINT_ONLY
+ *                   - COMPLETE_PAGEUP
+ *                   - COMPLETE_PAGEDOWN
+ *                  Will default to COMPLETE_HINT_ONLY.
+ * @returns {Promise} resolves when the jsterm is completed.
+ */
+function jstermComplete(jsterm, completionType = jsterm.COMPLETE_HINT_ONLY) {
   const updated = jsterm.once("autocomplete-updated");
-  jsterm.complete(jsterm.COMPLETE_HINT_ONLY);
+  jsterm.complete(completionType);
   return updated;
 }
 
@@ -363,4 +397,136 @@ async function openConsole(tab) {
   let target = TargetFactory.forTab(tab || gBrowser.selectedTab);
   const toolbox = await gDevTools.showToolbox(target, "webconsole");
   return toolbox.getCurrentPanel().hud;
-};
+}
+
+/**
+ * Close the Web Console for the given tab.
+ *
+ * @param nsIDOMElement [tab]
+ *        Optional tab element for which you want close the Web Console.
+ *        Defaults to current selected tab.
+ * @return object
+ *         A promise that is resolved once the web console is closed.
+ */
+async function closeConsole(tab = gBrowser.selectedTab) {
+  let target = TargetFactory.forTab(tab);
+  let toolbox = gDevTools.getToolbox(target);
+  if (toolbox) {
+    await toolbox.destroy();
+  }
+}
+
+/**
+ * Fake clicking a link and return the URL we would have navigated to.
+ * This function should be used to check external links since we can't access
+ * network in tests.
+ * This can also be used to test that a click will not be fired.
+ *
+ * @param ElementNode element
+ *        The <a> element we want to simulate click on.
+ * @param Object clickEventProps
+ *        The custom properties which would be used to dispatch a click event
+ * @returns Promise
+ *          A Promise that is resolved when the link click simulation occured or when the click is not dispatched.
+ *          The promise resolves with an object that holds the following properties
+ *          - link: url of the link or null(if event not fired)
+ *          - where: "tab" if tab is active or "tabshifted" if tab is inactive or null(if event not fired)
+ */
+function simulateLinkClick(element, clickEventProps) {
+  // Override openUILinkIn to prevent navigating.
+  let oldOpenUILinkIn = window.openUILinkIn;
+
+  const onOpenLink = new Promise((resolve) => {
+    window.openUILinkIn = function (link, where) {
+      window.openUILinkIn = oldOpenUILinkIn;
+      resolve({link: link, where});
+    };
+
+    if (clickEventProps) {
+      // Click on the link using the event properties.
+      element.dispatchEvent(clickEventProps);
+    } else {
+      // Click on the link.
+      element.click();
+    }
+  });
+
+  // Declare a timeout Promise that we can use to make sure openUILinkIn was not called.
+  let timeoutId;
+  const onTimeout = new Promise(function(resolve, reject) {
+    timeoutId = setTimeout(() => {
+      window.openUILinkIn = oldOpenUILinkIn;
+      timeoutId = null;
+      resolve({link: null, where: null});
+    }, 1000);
+  });
+
+  onOpenLink.then(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
+  return Promise.race([onOpenLink, onTimeout]);
+}
+
+/**
+ * Open a new browser window and return a promise that resolves when the new window has
+ * fired the "browser-delayed-startup-finished" event.
+ *
+ * @returns Promise
+ *          A Promise that resolves when the window is ready.
+ */
+function openNewBrowserWindow() {
+  let win = OpenBrowserWindow();
+  return new Promise(resolve => {
+    Services.obs.addObserver(function observer(subject, topic) {
+      if (win == subject) {
+        Services.obs.removeObserver(observer, topic);
+        resolve(win);
+      }
+    }, "browser-delayed-startup-finished");
+  });
+}
+
+/**
+ * Open a network request logged in the webconsole in the netmonitor panel.
+ *
+ * @param {Object} toolbox
+ * @param {Object} hud
+ * @param {String} url
+ *        URL of the request as logged in the netmonitor.
+ * @param {String} urlInConsole
+ *        (optional) Use if the logged URL in webconsole is different from the real URL.
+ */
+async function openMessageInNetmonitor(toolbox, hud, url, urlInConsole) {
+  // By default urlInConsole should be the same as the complete url.
+  urlInConsole = urlInConsole || url;
+
+  let message = await waitFor(() => findMessage(hud, urlInConsole));
+
+  let onNetmonitorSelected = toolbox.once("netmonitor-selected", (event, panel) => {
+    return panel;
+  });
+
+  let menuPopup = await openContextMenu(hud, message);
+  let openInNetMenuItem = menuPopup.querySelector("#console-menu-open-in-network-panel");
+  ok(openInNetMenuItem, "open in network panel item is enabled");
+  openInNetMenuItem.click();
+
+  const {panelWin} = await onNetmonitorSelected;
+  ok(true, "The netmonitor panel is selected when clicking on the network message");
+
+  let { store, windowRequire } = panelWin;
+  let actions = windowRequire("devtools/client/netmonitor/src/actions/index");
+  let { getSelectedRequest } =
+    windowRequire("devtools/client/netmonitor/src/selectors/index");
+
+  store.dispatch(actions.batchEnable(false));
+
+  await waitUntil(() => {
+    const selected = getSelectedRequest(store.getState());
+    return selected && selected.url === url;
+  });
+
+  ok(true, "The attached url is correct.");
+}

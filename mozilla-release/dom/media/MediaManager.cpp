@@ -148,20 +148,9 @@ using media::NewTaskFrom;
 using media::Pledge;
 using media::Refcountable;
 
-static Atomic<bool> sInShutdown;
+static Atomic<bool> sHasShutdown;
 
 typedef media::Pledge<bool, dom::MediaStreamError*> PledgeVoid;
-
-static bool
-HostIsHttps(nsIURI &docURI)
-{
-  bool isHttps;
-  nsresult rv = docURI.SchemeIs("https", &isHttps);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return false;
-  }
-  return isHttps;
-}
 
 class SourceListener : public MediaStreamListener {
 public:
@@ -605,14 +594,10 @@ public:
 private:
   ~GetUserMediaWindowListener()
   {
-    for (auto& l : mInactiveListeners) {
-      l->NotifyRemoved();
-    }
-    mInactiveListeners.Clear();
-    for (auto& l : mActiveListeners) {
-      l->NotifyRemoved();
-    }
-    mActiveListeners.Clear();
+    MOZ_ASSERT(mInactiveListeners.Length() == 0,
+               "Inactive listeners should already be removed");
+    MOZ_ASSERT(mActiveListeners.Length() == 0,
+               "Active listeners should already be removed");
     Unused << mMediaThread;
     // It's OK to release mStream on any thread; they have thread-safe
     // refcounts.
@@ -1106,7 +1091,7 @@ public:
                          const MediaTrackConstraints& aConstraints,
                          dom::CallerType aCallerType) override
         {
-          if (sInShutdown || !mListener) {
+          if (sHasShutdown || !mListener) {
             // Track has been stopped, or we are in shutdown. In either case
             // there's no observable outcome, so pretend we succeeded.
             RefPtr<PledgeVoid> p = new PledgeVoid();
@@ -1187,14 +1172,14 @@ public:
       }
     }
 
-    if (!domStream || !stream || sInShutdown) {
+    if (!domStream || !stream || sHasShutdown) {
       nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure = mOnFailure.forget();
       LOG(("Returning error for getUserMedia() - no stream"));
 
       if (auto* window = nsGlobalWindowInner::GetInnerWindowWithId(mWindowID)) {
         RefPtr<MediaStreamError> error = new MediaStreamError(window->AsInner(),
             NS_LITERAL_STRING("InternalError"),
-            sInShutdown ? NS_LITERAL_STRING("In shutdown") :
+            sHasShutdown ? NS_LITERAL_STRING("In shutdown") :
                           NS_LITERAL_STRING("No stream."));
         onFailure->OnError(error);
       }
@@ -1717,25 +1702,25 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
     }
   }
 
+  bool hasVideo = aVideoType != MediaSourceEnum::Other;
+  bool hasAudio = aAudioType != MediaSourceEnum::Other;
+  bool fakeCams = aFake && aVideoType == MediaSourceEnum::Camera;
+  bool fakeMics = aFake && aAudioType == MediaSourceEnum::Microphone;
+  bool realDevicesRequested = (!fakeCams && hasVideo) || (!fakeMics && hasAudio);
+
   RefPtr<Runnable> task = NewTaskFrom([id, aWindowId, audioLoopDev,
                                        videoLoopDev, aVideoType,
-                                       aAudioType, aFake]() mutable {
+                                       aAudioType, hasVideo, hasAudio,
+                                       fakeCams, fakeMics, realDevicesRequested]() {
     // Only enumerate what's asked for, and only fake cams and mics.
-    bool hasVideo = aVideoType != MediaSourceEnum::Other;
-    bool hasAudio = aAudioType != MediaSourceEnum::Other;
-    bool fakeCams = aFake && aVideoType == MediaSourceEnum::Camera;
-    bool fakeMics = aFake && aAudioType == MediaSourceEnum::Microphone;
-
     RefPtr<MediaEngine> fakeBackend, realBackend;
     if (fakeCams || fakeMics) {
       fakeBackend = new MediaEngineDefault();
     }
-    if ((!fakeCams && hasVideo) || (!fakeMics && hasAudio)) {
+    if (realDevicesRequested) {
       MediaManager* manager = MediaManager::GetIfExists();
       MOZ_RELEASE_ASSERT(manager); // Must exist while media thread is alive
       realBackend = manager->GetBackend(aWindowId);
-      // We need to listen to this event even JS didn't listen to it.
-      realBackend->AddDeviceChangeCallback(manager);
     }
 
     auto result = MakeUnique<SourceSet>();
@@ -1773,9 +1758,7 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
     }));
   });
 
-  if (!aFake &&
-      (aVideoType == MediaSourceEnum::Camera ||
-       aAudioType == MediaSourceEnum::Microphone) &&
+  if (realDevicesRequested &&
       Preferences::GetBool("media.navigator.permission.device", false)) {
     // Need to ask permission to retrieve list of all devices;
     // notify frontend observer and wait for callback notification to post task.
@@ -1803,7 +1786,6 @@ MediaManager::MediaManager()
   mPrefs.mWidth        = 0; // adaptive default
   mPrefs.mHeight       = 0; // adaptive default
   mPrefs.mFPS          = MediaEngine::DEFAULT_VIDEO_FPS;
-  mPrefs.mMinFPS       = MediaEngine::DEFAULT_VIDEO_MIN_FPS;
   mPrefs.mAecOn        = false;
   mPrefs.mAgcOn        = false;
   mPrefs.mNoiseOn      = false;
@@ -1819,7 +1801,6 @@ MediaManager::MediaManager()
   mPrefs.mAgc          = 0;
   mPrefs.mNoise        = 0;
 #endif
-  mPrefs.mPlayoutDelay = 0;
   mPrefs.mFullDuplex = false;
   mPrefs.mChannels     = 0; // max channels default
   nsresult rv;
@@ -1830,14 +1811,14 @@ MediaManager::MediaManager()
       GetPrefs(branch, nullptr);
     }
   }
-  LOG(("%s: default prefs: %dx%d @%dfps (min %d), %dHz test tones, aec: %s,"
+  LOG(("%s: default prefs: %dx%d @%dfps, %dHz test tones, aec: %s,"
        "agc: %s, noise: %s, aec level: %d, agc level: %d, noise level: %d,"
-       "playout delay: %d, %sfull_duplex, extended aec %s, delay_agnostic %s "
+       "%sfull_duplex, extended aec %s, delay_agnostic %s "
        "channels %d",
        __FUNCTION__, mPrefs.mWidth, mPrefs.mHeight,
-       mPrefs.mFPS, mPrefs.mMinFPS, mPrefs.mFreq, mPrefs.mAecOn ? "on" : "off",
+       mPrefs.mFPS, mPrefs.mFreq, mPrefs.mAecOn ? "on" : "off",
        mPrefs.mAgcOn ? "on": "off", mPrefs.mNoiseOn ? "on": "off", mPrefs.mAec,
-       mPrefs.mAgc, mPrefs.mNoise, mPrefs.mPlayoutDelay, mPrefs.mFullDuplex ? "" : "not ",
+       mPrefs.mAgc, mPrefs.mNoise, mPrefs.mFullDuplex ? "" : "not ",
        mPrefs.mExtendedFilter ? "on" : "off", mPrefs.mDelayAgnostic ? "on" : "off",
        mPrefs.mChannels));
 }
@@ -1900,7 +1881,6 @@ MediaManager::Get() {
       prefs->AddObserver("media.navigator.video.default_width", sSingleton, false);
       prefs->AddObserver("media.navigator.video.default_height", sSingleton, false);
       prefs->AddObserver("media.navigator.video.default_fps", sSingleton, false);
-      prefs->AddObserver("media.navigator.video.default_minfps", sSingleton, false);
       prefs->AddObserver("media.navigator.audio.fake_frequency", sSingleton, false);
       prefs->AddObserver("media.navigator.audio.full_duplex", sSingleton, false);
 #ifdef MOZ_WEBRTC
@@ -1910,7 +1890,6 @@ MediaManager::Get() {
       prefs->AddObserver("media.getusermedia.agc", sSingleton, false);
       prefs->AddObserver("media.getusermedia.noise_enabled", sSingleton, false);
       prefs->AddObserver("media.getusermedia.noise", sSingleton, false);
-      prefs->AddObserver("media.getusermedia.playout_delay", sSingleton, false);
       prefs->AddObserver("media.ondevicechange.fakeDeviceChangeEvent.enabled", sSingleton, false);
       prefs->AddObserver("media.getusermedia.channels", sSingleton, false);
 #endif
@@ -1993,7 +1972,7 @@ MediaManager::StartupInit()
 void
 MediaManager::PostTask(already_AddRefed<Runnable> task)
 {
-  if (sInShutdown) {
+  if (sHasShutdown) {
     // Can't safely delete task here since it may have items with specific
     // thread-release requirements.
     // XXXkhuey well then who is supposed to delete it?! We don't signal
@@ -2044,6 +2023,9 @@ int MediaManager::AddDeviceChangeCallback(DeviceChangeCallback* aCallback)
   MediaManager::PostTask(NewTaskFrom([fakeDeviceChangeEventOn]() {
     MediaManager* manager = MediaManager::GetIfExists();
     MOZ_RELEASE_ASSERT(manager); // Must exist while media thread is alive
+    // this is needed in case persistent permission is given but no gUM()
+    // or enumeration() has created the real backend yet
+    manager->GetBackend(0);
     if (fakeDeviceChangeEventOn)
       manager->GetBackend(0)->SetFakeDeviceChangeEvents();
   }));
@@ -2070,7 +2052,7 @@ void MediaManager::OnDeviceChange() {
   RefPtr<MediaManager> self(this);
   NS_DispatchToMainThread(media::NewRunnableFrom([self]() mutable {
     MOZ_ASSERT(NS_IsMainThread());
-    if (sInShutdown) {
+    if (sHasShutdown) {
       return NS_OK;
     }
     self->DeviceChangeCallback::OnDeviceChange();
@@ -2170,6 +2152,29 @@ enum class GetUserMediaSecurityState {
 };
 
 /**
+ * This function is used in getUserMedia when privacy.resistFingerprinting is true.
+ * Only mediaSource of audio/video constraint will be kept.
+ */
+static void
+ReduceConstraint(
+    mozilla::dom::OwningBooleanOrMediaTrackConstraints& aConstraint) {
+  // Not requesting stream.
+  if (!IsOn(aConstraint)) {
+    return;
+  }
+
+  // It looks like {audio: true}, do nothing.
+  if (!aConstraint.IsMediaTrackConstraints()) {
+    return;
+  }
+
+  // Keep mediaSource, ignore all other constraints.
+  auto& c = aConstraint.GetAsMediaTrackConstraints();
+  nsString mediaSource = c.mMediaSource;
+  aConstraint.SetAsMediaTrackConstraints().mMediaSource = mediaSource;
+}
+
+/**
  * The entry point for this file. A call from Navigator::mozGetUserMedia
  * will end up here. MediaManager is a singleton that is responsible
  * for handling all incoming getUserMedia calls from every window.
@@ -2210,7 +2215,7 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
     return NS_OK;
   }
 
-  if (sInShutdown) {
+  if (sHasShutdown) {
     RefPtr<MediaStreamError> error =
         new MediaStreamError(aWindow,
                              NS_LITERAL_STRING("AbortError"),
@@ -2280,6 +2285,13 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
     return rv;
   }
 
+  const bool resistFingerprinting = nsContentUtils::ResistFingerprinting(aCallerType);
+
+  if (resistFingerprinting) {
+    ReduceConstraint(c.mVideo);
+    ReduceConstraint(c.mAudio);
+  }
+
   if (!Preferences::GetBool("media.navigator.video.enabled", true)) {
     c.mVideo.SetAsBoolean() = false;
   }
@@ -2316,7 +2328,7 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
                                    "media.getusermedia.browser.enabled" :
                                    "media.getusermedia.screensharing.enabled"),
                                   false) ||
-            (!privileged && !HostIsHttps(*docURI))) {
+            (!privileged && !aWindow->IsSecureContext())) {
           RefPtr<MediaStreamError> error =
               new MediaStreamError(aWindow,
                                    NS_LITERAL_STRING("NotAllowedError"));
@@ -2500,16 +2512,22 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
   bool fake = c.mFake.WasPassed()? c.mFake.Value() :
       Preferences::GetBool("media.navigator.streams.fake");
 
+  bool hasVideo = videoType != MediaSourceEnum::Other;
+  bool hasAudio = audioType != MediaSourceEnum::Other;
+  bool fakeCams = fake && videoType == MediaSourceEnum::Camera;
+  bool fakeMics = fake && audioType == MediaSourceEnum::Microphone;
+  bool realDevicesRequested = (!fakeCams && hasVideo) || (!fakeMics && hasAudio);
+
   bool askPermission =
       (!privileged || Preferences::GetBool("media.navigator.permission.force")) &&
-      (!fake || Preferences::GetBool("media.navigator.permission.fake"));
+      (realDevicesRequested || Preferences::GetBool("media.navigator.permission.fake"));
 
   RefPtr<PledgeSourceSet> p = EnumerateDevicesImpl(windowID, videoType,
                                                    audioType, fake);
   RefPtr<MediaManager> self = this;
   p->Then([self, onSuccess, onFailure, windowID, c, windowListener,
            sourceListener, askPermission, prefs, isHTTPS, callID, principalInfo,
-           isChrome](SourceSet*& aDevices) mutable {
+           isChrome, resistFingerprinting](SourceSet*& aDevices) mutable {
     // grab result
     auto devices = MakeRefPtr<Refcountable<UniquePtr<SourceSet>>>(aDevices);
 
@@ -2523,7 +2541,7 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
 
     p2->Then([self, onSuccess, onFailure, windowID, c,
               windowListener, sourceListener, askPermission, prefs, isHTTPS,
-              callID, principalInfo, isChrome, devices
+              callID, principalInfo, isChrome, devices, resistFingerprinting
              ](const char*& badConstraint) mutable {
 
       // Ensure that the captured 'this' pointer and our windowID are still good.
@@ -2547,7 +2565,13 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
       }
       if (!(*devices)->Length()) {
         RefPtr<MediaStreamError> error =
-            new MediaStreamError(window, NS_LITERAL_STRING("NotFoundError"));
+            new MediaStreamError(
+                window,
+                // When privacy.resistFingerprinting = true, no available
+                // device implies content script is requesting a fake
+                // device, so report NotAllowedError.
+                resistFingerprinting ? NS_LITERAL_STRING("NotAllowedError")
+                                     : NS_LITERAL_STRING("NotFoundError"));
         onFailure->OnError(error);
         return;
       }
@@ -2791,10 +2815,11 @@ MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
 nsresult
 MediaManager::EnumerateDevices(nsPIDOMWindowInner* aWindow,
                                nsIGetUserMediaDevicesSuccessCallback* aOnSuccess,
-                               nsIDOMGetUserMediaErrorCallback* aOnFailure)
+                               nsIDOMGetUserMediaErrorCallback* aOnFailure,
+                               dom::CallerType aCallerType)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  NS_ENSURE_TRUE(!sInShutdown, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(!sHasShutdown, NS_ERROR_FAILURE);
   nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> onSuccess(aOnSuccess);
   nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure(aOnFailure);
   uint64_t windowId = aWindow->WindowID();
@@ -2818,7 +2843,8 @@ MediaManager::EnumerateDevices(nsPIDOMWindowInner* aWindow,
   RefPtr<SourceListener> sourceListener = new SourceListener();
   windowListener->Register(sourceListener);
 
-  bool fake = Preferences::GetBool("media.navigator.streams.fake");
+  bool fake = Preferences::GetBool("media.navigator.streams.fake") ||
+              nsContentUtils::ResistFingerprinting(aCallerType);
 
   RefPtr<PledgeSourceSet> p = EnumerateDevicesImpl(windowId,
                                                    MediaSourceEnum::Camera,
@@ -2885,12 +2911,13 @@ MediaManager::GetBackend(uint64_t aWindowId)
   // includes picture support for Android.
   // This IS called off main-thread.
   if (!mBackend) {
-    MOZ_RELEASE_ASSERT(!sInShutdown);  // we should never create a new backend in shutdown
+    MOZ_RELEASE_ASSERT(!sHasShutdown);  // we should never create a new backend in shutdown
 #if defined(MOZ_WEBRTC)
     mBackend = new MediaEngineWebRTC(mPrefs);
 #else
     mBackend = new MediaEngineDefault();
 #endif
+    mBackend->AddDeviceChangeCallback(this);
   }
   return mBackend;
 }
@@ -3043,7 +3070,6 @@ MediaManager::GetPrefs(nsIPrefBranch *aBranch, const char *aData)
   GetPref(aBranch, "media.navigator.video.default_width", aData, &mPrefs.mWidth);
   GetPref(aBranch, "media.navigator.video.default_height", aData, &mPrefs.mHeight);
   GetPref(aBranch, "media.navigator.video.default_fps", aData, &mPrefs.mFPS);
-  GetPref(aBranch, "media.navigator.video.default_minfps", aData, &mPrefs.mMinFPS);
   GetPref(aBranch, "media.navigator.audio.fake_frequency", aData, &mPrefs.mFreq);
 #ifdef MOZ_WEBRTC
   GetPrefBool(aBranch, "media.getusermedia.aec_enabled", aData, &mPrefs.mAecOn);
@@ -3052,7 +3078,6 @@ MediaManager::GetPrefs(nsIPrefBranch *aBranch, const char *aData)
   GetPref(aBranch, "media.getusermedia.aec", aData, &mPrefs.mAec);
   GetPref(aBranch, "media.getusermedia.agc", aData, &mPrefs.mAgc);
   GetPref(aBranch, "media.getusermedia.noise", aData, &mPrefs.mNoise);
-  GetPref(aBranch, "media.getusermedia.playout_delay", aData, &mPrefs.mPlayoutDelay);
   GetPrefBool(aBranch, "media.getusermedia.aec_extended_filter", aData, &mPrefs.mExtendedFilter);
   GetPrefBool(aBranch, "media.getusermedia.aec_aec_delay_agnostic", aData, &mPrefs.mDelayAgnostic);
   GetPref(aBranch, "media.getusermedia.channels", aData, &mPrefs.mChannels);
@@ -3065,10 +3090,9 @@ void
 MediaManager::Shutdown()
 {
   MOZ_ASSERT(NS_IsMainThread());
-  if (sInShutdown) {
+  if (sHasShutdown) {
     return;
   }
-  sInShutdown = true;
 
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
 
@@ -3083,7 +3107,6 @@ MediaManager::Shutdown()
     prefs->RemoveObserver("media.navigator.video.default_width", this);
     prefs->RemoveObserver("media.navigator.video.default_height", this);
     prefs->RemoveObserver("media.navigator.video.default_fps", this);
-    prefs->RemoveObserver("media.navigator.video.default_minfps", this);
     prefs->RemoveObserver("media.navigator.audio.fake_frequency", this);
 #ifdef MOZ_WEBRTC
     prefs->RemoveObserver("media.getusermedia.aec_enabled", this);
@@ -3092,14 +3115,30 @@ MediaManager::Shutdown()
     prefs->RemoveObserver("media.getusermedia.agc", this);
     prefs->RemoveObserver("media.getusermedia.noise_enabled", this);
     prefs->RemoveObserver("media.getusermedia.noise", this);
-    prefs->RemoveObserver("media.getusermedia.playout_delay", this);
     prefs->RemoveObserver("media.ondevicechange.fakeDeviceChangeEvent.enabled", this);
     prefs->RemoveObserver("media.getusermedia.channels", this);
 #endif
     prefs->RemoveObserver("media.navigator.audio.full_duplex", this);
   }
 
-  // Close off any remaining active windows.
+  {
+    // Close off any remaining active windows.
+
+    // Live capture at this point is rare but can happen. Stopping it will make
+    // the window listeners attempt to remove themselves from the active windows
+    // table. We cannot touch the table at point so we grab a copy of the window
+    // listeners first.
+    nsTArray<RefPtr<GetUserMediaWindowListener>> listeners(GetActiveWindows()->Count());
+    for (auto iter = GetActiveWindows()->Iter(); !iter.Done(); iter.Next()) {
+      listeners.AppendElement(iter.UserData());
+    }
+    for (auto& listener : listeners) {
+      listener->Stop();
+      listener->RemoveAll();
+    }
+  }
+  MOZ_ASSERT(GetActiveWindows()->Count() == 0);
+
   GetActiveWindows()->Clear();
   mActiveCallbacks.Clear();
   mCallIds.Clear();
@@ -3108,6 +3147,10 @@ MediaManager::Shutdown()
 #ifdef MOZ_WEBRTC
   StopWebRtcLog();
 #endif
+
+  // From main thread's point of view, shutdown is now done.
+  // All that remains is shutting down the media thread.
+  sHasShutdown = true;
 
   // Because mMediaThread is not an nsThread, we must dispatch to it so it can
   // clean up BackgroundChild. Continue stopping thread once this is done.
@@ -3161,7 +3204,7 @@ MediaManager::Shutdown()
   RefPtr<MediaManager> that = this;
 
   // Release the backend (and call Shutdown()) from within the MediaManager thread
-  // Don't use MediaManager::PostTask() because we're sInShutdown=true here!
+  // Don't use MediaManager::PostTask() because we're sHasShutdown=true here!
   RefPtr<ShutdownTask> shutdown = new ShutdownTask(this,
       media::NewRunnableFrom([this, that]() mutable {
     LOG(("MediaManager shutdown lambda running, releasing MediaManager singleton and thread"));
@@ -3202,8 +3245,8 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
     nsCOMPtr<nsIPrefBranch> branch( do_QueryInterface(aSubject) );
     if (branch) {
       GetPrefs(branch,NS_ConvertUTF16toUTF8(aData).get());
-      LOG(("%s: %dx%d @%dfps (min %d)", __FUNCTION__,
-           mPrefs.mWidth, mPrefs.mHeight, mPrefs.mFPS, mPrefs.mMinFPS));
+      LOG(("%s: %dx%d @%dfps", __FUNCTION__,
+           mPrefs.mWidth, mPrefs.mHeight, mPrefs.mFPS));
     }
   } else if (!strcmp(aTopic, "last-pb-context-exited")) {
     // Clear memory of private-browsing-specific deviceIds. Fire and forget.
@@ -3272,7 +3315,7 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
       }
     }
 
-    if (sInShutdown) {
+    if (sHasShutdown) {
       return task->Denied(NS_LITERAL_STRING("In shutdown"));
     }
     // Reuse the same thread to save memory.

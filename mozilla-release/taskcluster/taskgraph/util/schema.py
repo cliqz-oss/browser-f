@@ -5,10 +5,11 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 import re
-import copy
 import pprint
 import collections
 import voluptuous
+
+import taskgraph
 
 from .attributes import keymatch
 
@@ -18,9 +19,10 @@ def validate_schema(schema, obj, msg_prefix):
     Validate that object satisfies schema.  If not, generate a useful exception
     beginning with msg_prefix.
     """
+    if taskgraph.fast:
+        return
     try:
-        # deep copy the result since it may include mutable defaults
-        return copy.deepcopy(schema(obj))
+        schema(obj)
     except voluptuous.MultipleInvalid as exc:
         msg = [msg_prefix]
         for error in exc.errors:
@@ -148,6 +150,8 @@ WHITELISTED_SCHEMA_IDENTIFIERS = [
     lambda path: path.endswith("[u'build_number']"),
     lambda path: path.endswith("[u'tuxedo_server_url']"),
     lambda path: path.endswith("[u'release_promotion']"),
+    lambda path: path.endswith("[u'generate_bz2_blob']"),
+    lambda path: path.endswith("[u'release_eta']"),
 ]
 
 
@@ -158,16 +162,28 @@ def check_schema(schema):
         return any(f(path) for f in WHITELISTED_SCHEMA_IDENTIFIERS)
 
     def iter(path, sch):
+        def check_identifier(path, k):
+            if k in (basestring, voluptuous.Extra):
+                pass
+            elif isinstance(k, basestring):
+                if not identifier_re.match(k) and not whitelisted(path):
+                    raise RuntimeError(
+                        'YAML schemas should use dashed lower-case identifiers, '
+                        'not {!r} @ {}'.format(k, path))
+            elif isinstance(k, (voluptuous.Optional, voluptuous.Required)):
+                check_identifier(path, k.schema)
+            elif isinstance(k, voluptuous.Any):
+                for v in k.validators:
+                    check_identifier(path, v)
+            elif not whitelisted(path):
+                raise RuntimeError(
+                    'Unexpected type in YAML schema: {} @ {}'.format(
+                        type(k).__name__, path))
+
         if isinstance(sch, collections.Mapping):
             for k, v in sch.iteritems():
                 child = "{}[{!r}]".format(path, k)
-                if isinstance(k, (voluptuous.Optional, voluptuous.Required)):
-                    k = str(k)
-                if isinstance(k, basestring):
-                    if not identifier_re.match(k) and not whitelisted(child):
-                        raise RuntimeError(
-                            'YAML schemas should use dashed lower-case identifiers, '
-                            'not {!r} @ {}'.format(k, child))
+                check_identifier(child, k)
                 iter(child, v)
         elif isinstance(sch, (list, tuple)):
             for i, v in enumerate(sch):

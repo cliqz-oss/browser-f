@@ -81,7 +81,7 @@ ServiceWorkerRegistrationInfo::ServiceWorkerRegistrationInfo(
     const nsACString& aScope,
     nsIPrincipal* aPrincipal,
     ServiceWorkerUpdateViaCache aUpdateViaCache)
-  : mControlledDocumentsCounter(0)
+  : mControlledClientsCounter(0)
   , mUpdateState(NoUpdate)
   , mCreationTime(PR_Now())
   , mCreationTimeStamp(TimeStamp::Now())
@@ -94,9 +94,7 @@ ServiceWorkerRegistrationInfo::ServiceWorkerRegistrationInfo(
 
 ServiceWorkerRegistrationInfo::~ServiceWorkerRegistrationInfo()
 {
-  if (IsControllingDocuments()) {
-    NS_WARNING("ServiceWorkerRegistrationInfo is still controlling documents. This can be a bug or a leak in ServiceWorker API or in any other API that takes the document alive.");
-  }
+  MOZ_DIAGNOSTIC_ASSERT(!IsControllingClients());
 }
 
 NS_IMPL_ISUPPORTS(ServiceWorkerRegistrationInfo, nsIServiceWorkerRegistrationInfo)
@@ -248,7 +246,7 @@ void
 ServiceWorkerRegistrationInfo::TryToActivate()
 {
   AssertIsOnMainThread();
-  bool controlling = IsControllingDocuments();
+  bool controlling = IsControllingClients();
   bool skipWaiting = mWaitingWorker && mWaitingWorker->SkipWaitingFlag();
   bool idle = IsIdle();
   if (idle && (!controlling || skipWaiting)) {
@@ -274,13 +272,8 @@ ServiceWorkerRegistrationInfo::Activate()
   // FIXME(nsm): Unlink appcache if there is one.
 
   // "Queue a task to fire a simple event named controllerchange..."
-  nsCOMPtr<nsIRunnable> controllerChangeRunnable =
-    NewRunnableMethod<RefPtr<ServiceWorkerRegistrationInfo>>(
-      "dom::workers::ServiceWorkerManager::FireControllerChange",
-      swm,
-      &ServiceWorkerManager::FireControllerChange,
-      this);
-  NS_DispatchToMainThread(controllerChangeRunnable);
+  MOZ_DIAGNOSTIC_ASSERT(mActiveWorker);
+  swm->UpdateClientControllers(this);
 
   nsCOMPtr<nsIRunnable> failRunnable = NewRunnableMethod<bool>(
     "dom::workers::ServiceWorkerRegistrationInfo::FinishActivate",
@@ -290,7 +283,7 @@ ServiceWorkerRegistrationInfo::Activate()
 
   nsMainThreadPtrHandle<ServiceWorkerRegistrationInfo> handle(
     new nsMainThreadPtrHolder<ServiceWorkerRegistrationInfo>(
-      "ServiceWorkerRegistrationInfo", this));
+      "ServiceWorkerRegistrationInfoProxy", this));
   RefPtr<LifeCycleEventCallback> callback = new ContinueActivateRunnable(handle);
 
   ServiceWorkerPrivate* workerPrivate = mActiveWorker->WorkerPrivate();

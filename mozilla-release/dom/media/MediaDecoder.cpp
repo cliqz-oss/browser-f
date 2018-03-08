@@ -15,17 +15,13 @@
 #include "VideoFrameContainer.h"
 #include "VideoUtils.h"
 #include "mozilla/AbstractThread.h"
-#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/dom/AudioTrack.h"
-#include "mozilla/dom/AudioTrackList.h"
-#include "mozilla/dom/VideoTrack.h"
-#include "mozilla/dom/VideoTrackList.h"
-#include "mozilla/layers/ShadowLayers.h"
+#include "Visibility.h"
+#include "mozilla/Unused.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -53,8 +49,8 @@ namespace mozilla {
 #undef DUMP
 
 LazyLogModule gMediaDecoderLog("MediaDecoder");
-#define LOG(x, ...) \
-  MOZ_LOG(gMediaDecoderLog, LogLevel::Debug, ("Decoder=%p " x, this, ##__VA_ARGS__))
+#define LOG(x, ...)                                                            \
+  DDMOZ_LOG(gMediaDecoderLog, LogLevel::Debug, x, ##__VA_ARGS__)
 
 #define DUMP(x, ...) printf_stderr(x "\n", ##__VA_ARGS__)
 
@@ -121,177 +117,6 @@ public:
     }
   }
 };
-
-class MediaDecoder::BackgroundVideoDecodingPermissionObserver final :
-  public nsIObserver
-{
-  public:
-    NS_DECL_ISUPPORTS
-
-    explicit BackgroundVideoDecodingPermissionObserver(MediaDecoder* aDecoder)
-      : mDecoder(aDecoder)
-      , mIsRegisteredForEvent(false)
-    {
-      MOZ_ASSERT(mDecoder);
-    }
-
-    NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
-                       const char16_t* aData) override
-    {
-      if (!MediaPrefs::ResumeVideoDecodingOnTabHover()) {
-        return NS_OK;
-      }
-
-      if (!IsValidEventSender(aSubject)) {
-        return NS_OK;
-      }
-
-      if (strcmp(aTopic, "unselected-tab-hover") == 0) {
-        mDecoder->mIsBackgroundVideoDecodingAllowed = !NS_strcmp(aData, u"true");
-        mDecoder->UpdateVideoDecodeMode();
-      }
-      return NS_OK;
-    }
-
-    void RegisterEvent() {
-      MOZ_ASSERT(!mIsRegisteredForEvent);
-      nsCOMPtr<nsIObserverService> observerService = services::GetObserverService();
-      if (observerService) {
-        observerService->AddObserver(this, "unselected-tab-hover", false);
-        mIsRegisteredForEvent = true;
-        if (nsContentUtils::IsInStableOrMetaStableState()) {
-          // Events shall not be fired synchronously to prevent anything visible
-          // from the scripts while we are in stable state.
-          if (nsCOMPtr<nsIDocument> doc = GetOwnerDoc()) {
-            doc->Dispatch(TaskCategory::Other,
-              NewRunnableMethod(
-                "MediaDecoder::BackgroundVideoDecodingPermissionObserver::EnableEvent",
-                this, &MediaDecoder::BackgroundVideoDecodingPermissionObserver::EnableEvent));
-          }
-        } else {
-          EnableEvent();
-        }
-      }
-    }
-
-    void UnregisterEvent() {
-      MOZ_ASSERT(mIsRegisteredForEvent);
-      nsCOMPtr<nsIObserverService> observerService = services::GetObserverService();
-      if (observerService) {
-        observerService->RemoveObserver(this, "unselected-tab-hover");
-        mIsRegisteredForEvent = false;
-        mDecoder->mIsBackgroundVideoDecodingAllowed = false;
-        mDecoder->UpdateVideoDecodeMode();
-        if (nsContentUtils::IsInStableOrMetaStableState()) {
-          // Events shall not be fired synchronously to prevent anything visible
-          // from the scripts while we are in stable state.
-          if (nsCOMPtr<nsIDocument> doc = GetOwnerDoc()) {
-            doc->Dispatch(TaskCategory::Other,
-              NewRunnableMethod(
-                "MediaDecoder::BackgroundVideoDecodingPermissionObserver::DisableEvent",
-                this, &MediaDecoder::BackgroundVideoDecodingPermissionObserver::DisableEvent));
-          }
-        } else {
-          DisableEvent();
-        }
-      }
-    }
-  private:
-    ~BackgroundVideoDecodingPermissionObserver() {
-      MOZ_ASSERT(!mIsRegisteredForEvent);
-    }
-
-    void EnableEvent() const
-    {
-      nsIDocument* doc = GetOwnerDoc();
-      if (!doc) {
-        return;
-      }
-
-      RefPtr<AsyncEventDispatcher> asyncDispatcher =
-        new AsyncEventDispatcher(doc,
-                                 NS_LITERAL_STRING("UnselectedTabHover:Enable"),
-                                 /* Bubbles */ true,
-                                 /* OnlyChromeDispatch */ true);
-      asyncDispatcher->PostDOMEvent();
-    }
-
-    void DisableEvent() const
-    {
-      nsIDocument* doc = GetOwnerDoc();
-      if (!doc) {
-        return;
-      }
-
-      RefPtr<AsyncEventDispatcher> asyncDispatcher =
-        new AsyncEventDispatcher(doc,
-                                 NS_LITERAL_STRING("UnselectedTabHover:Disable"),
-                                 /* Bubbles */ true,
-                                 /* OnlyChromeDispatch */ true);
-      asyncDispatcher->PostDOMEvent();
-    }
-
-    already_AddRefed<nsPIDOMWindowOuter> GetOwnerWindow() const
-    {
-      nsIDocument* doc = GetOwnerDoc();
-      if (!doc) {
-        return nullptr;
-      }
-
-      nsCOMPtr<nsPIDOMWindowInner> innerWin = doc->GetInnerWindow();
-      if (!innerWin) {
-        return nullptr;
-      }
-
-      nsCOMPtr<nsPIDOMWindowOuter> outerWin = innerWin->GetOuterWindow();
-      if (!outerWin) {
-        return nullptr;
-      }
-
-      nsCOMPtr<nsPIDOMWindowOuter> topWin = outerWin->GetTop();
-      return topWin.forget();
-    }
-
-    nsIDocument* GetOwnerDoc() const
-    {
-      if (!mDecoder->mOwner) {
-        return nullptr;
-      }
-
-      return mDecoder->mOwner->GetDocument();
-    }
-
-    bool IsValidEventSender(nsISupports* aSubject) const
-    {
-      nsCOMPtr<nsPIDOMWindowInner> senderInner(do_QueryInterface(aSubject));
-      if (!senderInner) {
-        return false;
-      }
-
-      nsCOMPtr<nsPIDOMWindowOuter> senderOuter = senderInner->GetOuterWindow();
-      if (!senderOuter) {
-        return false;
-      }
-
-      nsCOMPtr<nsPIDOMWindowOuter> senderTop = senderOuter->GetTop();
-      if (!senderTop) {
-        return false;
-      }
-
-      nsCOMPtr<nsPIDOMWindowOuter> ownerTop = GetOwnerWindow();
-      if (!ownerTop) {
-        return false;
-      }
-
-      return ownerTop == senderTop;
-    }
-    // The life cycle of observer would always be shorter than decoder, so we
-    // use raw pointer here.
-    MediaDecoder* mDecoder;
-    bool mIsRegisteredForEvent;
-};
-
-NS_IMPL_ISUPPORTS(MediaDecoder::BackgroundVideoDecodingPermissionObserver, nsIObserver)
 
 StaticRefPtr<MediaMemoryTracker> MediaMemoryTracker::sUniqueInstance;
 
@@ -402,7 +227,6 @@ MediaDecoder::MediaDecoder(MediaDecoderInit& aInit)
   , INIT_MIRROR(mBuffered, TimeIntervals())
   , INIT_MIRROR(mCurrentPosition, TimeUnit::Zero())
   , INIT_MIRROR(mStateMachineDuration, NullableTimeUnit())
-  , INIT_MIRROR(mPlaybackPosition, 0)
   , INIT_MIRROR(mIsAudioDataAudible, false)
   , INIT_CANONICAL(mVolume, aInit.mVolume)
   , INIT_CANONICAL(mPreservesPitch, aInit.mPreservesPitch)
@@ -455,13 +279,14 @@ MediaDecoder::Shutdown()
   MOZ_DIAGNOSTIC_ASSERT(!IsShutdown());
   AbstractThread::AutoEnter context(AbstractMainThread());
 
-  UnpinForSeek();
-
   // Unwatch all watch targets to prevent further notifications.
   mWatchManager.Shutdown();
 
   DiscardOngoingSeekIfExists();
 
+#ifdef NIGHTLY_BUILD
+  DUMP("[DEBUG SHUTDOWN] %s: decoder=%p state machine=%p", __func__, this, mDecoderStateMachine.get());
+#endif
   // This changes the decoder state to SHUTDOWN and does other things
   // necessary to unblock the state machine thread if it's blocked, so
   // the asynchronous shutdown in nsDestroyStateMachine won't deadlock.
@@ -527,34 +352,38 @@ MediaDecoder::~MediaDecoder()
 }
 
 void
-MediaDecoder::OnPlaybackEvent(MediaEventType aEvent)
+MediaDecoder::OnPlaybackEvent(MediaPlaybackEvent&& aEvent)
 {
-  switch (aEvent) {
-    case MediaEventType::PlaybackEnded:
+  switch (aEvent.mType) {
+    case MediaPlaybackEvent::PlaybackEnded:
       PlaybackEnded();
       break;
-    case MediaEventType::SeekStarted:
+    case MediaPlaybackEvent::SeekStarted:
       SeekingStarted();
       break;
-    case MediaEventType::Invalidate:
+    case MediaPlaybackEvent::Loop:
+      GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("seeking"));
+      GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("seeked"));
+      break;
+    case MediaPlaybackEvent::Invalidate:
       Invalidate();
       break;
-    case MediaEventType::EnterVideoSuspend:
+    case MediaPlaybackEvent::EnterVideoSuspend:
       GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("mozentervideosuspend"));
       break;
-    case MediaEventType::ExitVideoSuspend:
+    case MediaPlaybackEvent::ExitVideoSuspend:
       GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("mozexitvideosuspend"));
       break;
-    case MediaEventType::StartVideoSuspendTimer:
+    case MediaPlaybackEvent::StartVideoSuspendTimer:
       GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("mozstartvideosuspendtimer"));
       break;
-    case MediaEventType::CancelVideoSuspendTimer:
+    case MediaPlaybackEvent::CancelVideoSuspendTimer:
       GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("mozcancelvideosuspendtimer"));
       break;
-    case MediaEventType::VideoOnlySeekBegin:
+    case MediaPlaybackEvent::VideoOnlySeekBegin:
       GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("mozvideoonlyseekbegin"));
       break;
-    case MediaEventType::VideoOnlySeekCompleted:
+    case MediaPlaybackEvent::VideoOnlySeekCompleted:
       GetOwner()->DispatchAsyncEvent(NS_LITERAL_STRING("mozvideoonlyseekcompleted"));
       break;
     default:
@@ -712,7 +541,6 @@ MediaDecoder::Seek(double aTime, SeekTarget::Type aSeekType)
   CallSeek(target);
 
   if (mPlayState == PLAY_STATE_ENDED) {
-    PinForSeek();
     ChangeState(GetOwner()->GetPaused() ? PLAY_STATE_PAUSED : PLAY_STATE_PLAYING);
   }
   return NS_OK;
@@ -733,11 +561,6 @@ MediaDecoder::CallSeek(const SeekTarget& aTarget)
   MOZ_ASSERT(NS_IsMainThread());
   AbstractThread::AutoEnter context(AbstractMainThread());
   DiscardOngoingSeekIfExists();
-
-  // Since we don't have a listener for changes in IsLiveStream, our best bet
-  // is to ensure IsLiveStream is uptodate when seek begins. This value will be
-  // checked when seek is completed.
-  mDecoderStateMachine->DispatchIsLiveStream(IsLiveStream());
 
   mDecoderStateMachine->InvokeSeek(aTarget)
   ->Then(mAbstractMainThread, __func__, this,
@@ -949,15 +772,6 @@ MediaDecoder::PlaybackEnded()
 }
 
 void
-MediaDecoder::DownloadProgressed()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_DIAGNOSTIC_ASSERT(!IsShutdown());
-  AbstractThread::AutoEnter context(AbstractMainThread());
-  GetOwner()->DownloadProgressed();
-}
-
-void
 MediaDecoder::NotifyPrincipalChanged()
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -976,12 +790,7 @@ MediaDecoder::OnSeekResolved()
   AbstractThread::AutoEnter context(AbstractMainThread());
   mSeekRequest.Complete();
 
-  {
-    // An additional seek was requested while the current seek was
-    // in operation.
-    UnpinForSeek();
-    mLogicallySeeking = false;
-  }
+  mLogicallySeeking = false;
 
   // Ensure logical position is updated after seek.
   UpdateLogicalPositionInternal();
@@ -1018,7 +827,9 @@ MediaDecoder::ChangeState(PlayState aState)
     mNextState = PLAY_STATE_PAUSED;
   }
 
-  LOG("ChangeState %s => %s", PlayStateStr(), ToPlayStateStr(aState));
+  if (mPlayState != aState) {
+    DDLOG(DDLogCategory::Property, "play_state", ToPlayStateStr(aState));
+  }
   mPlayState = aState;
 
   if (mPlayState == PLAY_STATE_PLAYING) {
@@ -1040,6 +851,7 @@ MediaDecoder::UpdateLogicalPositionInternal()
   }
   bool logicalPositionChanged = mLogicalPosition != currentPosition;
   mLogicalPosition = currentPosition;
+  DDLOG(DDLogCategory::Property, "currentTime", mLogicalPosition);
 
   // Invalidate the frame so any video data is displayed.
   // Do this before the timeupdate event so that if that
@@ -1096,7 +908,7 @@ MediaDecoder::GetCompositor()
     ownerDoc ? nsContentUtils::LayerManagerForDocument(ownerDoc) : nullptr;
   RefPtr<KnowsCompositor> knows =
     layerManager ? layerManager->AsKnowsCompositor() : nullptr;
-  return knows.forget();
+  return knows ? knows->GetForMedia().forget() : nullptr;
 }
 
 void
@@ -1110,8 +922,7 @@ MediaDecoder::NotifyCompositor()
         mReader,
         &MediaFormatReader::UpdateCompositor,
         knowsCompositor.forget());
-    mReader->OwnerThread()->Dispatch(r.forget(),
-                                     AbstractThread::DontAssertDispatchSuccess);
+    Unused << mReader->OwnerThread()->Dispatch(r.forget());
   }
 }
 
@@ -1201,6 +1012,13 @@ MediaDecoder::UpdateVideoDecodeMode()
     LOG("UpdateVideoDecodeMode(), set Suspend because the element is not visible.");
     mDecoderStateMachine->SetVideoDecodeMode(VideoDecodeMode::Suspend);
   }
+}
+
+void
+MediaDecoder::SetIsBackgroundVideoDecodingAllowed(bool aAllowed)
+{
+  mIsBackgroundVideoDecodingAllowed = aAllowed;
+  UpdateVideoDecodeMode();
 }
 
 bool
@@ -1305,7 +1123,6 @@ MediaDecoder::ConnectMirrors(MediaDecoderStateMachine* aObject)
   mStateMachineDuration.Connect(aObject->CanonicalDuration());
   mBuffered.Connect(aObject->CanonicalBuffered());
   mCurrentPosition.Connect(aObject->CanonicalCurrentPosition());
-  mPlaybackPosition.Connect(aObject->CanonicalPlaybackOffset());
   mIsAudioDataAudible.Connect(aObject->CanonicalIsAudioDataAudible());
 }
 
@@ -1316,7 +1133,6 @@ MediaDecoder::DisconnectMirrors()
   mStateMachineDuration.DisconnectIfConnected();
   mBuffered.DisconnectIfConnected();
   mCurrentPosition.DisconnectIfConnected();
-  mPlaybackPosition.DisconnectIfConnected();
   mIsAudioDataAudible.DisconnectIfConnected();
 }
 
@@ -1325,11 +1141,14 @@ MediaDecoder::SetStateMachine(MediaDecoderStateMachine* aStateMachine)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT_IF(aStateMachine, !mDecoderStateMachine);
-  mDecoderStateMachine = aStateMachine;
   if (aStateMachine) {
+    mDecoderStateMachine = aStateMachine;
+    DDLINKCHILD("decoder state machine", mDecoderStateMachine.get());
     ConnectMirrors(aStateMachine);
     UpdateVideoDecodeMode();
-  } else {
+  } else if (mDecoderStateMachine) {
+    DDUNLINKCHILD(mDecoderStateMachine.get());
+    mDecoderStateMachine = nullptr;
     DisconnectMirrors();
   }
 }
@@ -1387,21 +1206,17 @@ MediaDecoder::SizeOfAudioQueue()
 }
 
 void
-MediaDecoder::NotifyDataArrivedInternal()
+MediaDecoder::NotifyReaderDataArrived()
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(!IsShutdown());
-  mReader->OwnerThread()->Dispatch(
+
+  nsresult rv = mReader->OwnerThread()->Dispatch(
     NewRunnableMethod("MediaFormatReader::NotifyDataArrived",
                       mReader.get(),
                       &MediaFormatReader::NotifyDataArrived));
-}
-
-void
-MediaDecoder::NotifyDataArrived()
-{
-  NotifyDataArrivedInternal();
-  DownloadProgressed();
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 // Provide access to the state machine object
@@ -1426,12 +1241,7 @@ MediaDecoder::CanPlayThrough()
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(!IsShutdown());
   AbstractThread::AutoEnter context(AbstractMainThread());
-  bool val = CanPlayThroughImpl();
-  if (val != mCanPlayThrough) {
-    mCanPlayThrough = val;
-    mDecoderStateMachine->DispatchCanPlayThrough(val);
-  }
-  return val;
+  return CanPlayThroughImpl();
 }
 
 RefPtr<SetCDMPromise>

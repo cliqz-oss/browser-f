@@ -14,7 +14,8 @@ from taskgraph.util.partials import (get_balrog_platform_name,
                                      get_partials_artifact_map)
 from taskgraph.util.schema import validate_schema, Schema
 from taskgraph.util.scriptworker import (get_beetmover_bucket_scope,
-                                         get_beetmover_action_scope)
+                                         get_beetmover_action_scope,
+                                         get_phase)
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import Any, Required, Optional
 
@@ -26,7 +27,9 @@ logger = logging.getLogger(__name__)
 
 _WINDOWS_BUILD_PLATFORMS = [
     'win64-nightly',
-    'win32-nightly'
+    'win32-nightly',
+    'win64-devedition-nightly',
+    'win32-devedition-nightly',
 ]
 
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
@@ -68,15 +71,18 @@ _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_L10N = [
 # with a beetmover patch in https://github.com/mozilla-releng/beetmoverscript/.
 # See example in bug 1348286
 UPSTREAM_ARTIFACT_UNSIGNED_PATHS = {
-    r'^(linux(|64)|macosx64)-nightly$': _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US + [
-        'host/bin/mar',
-        'host/bin/mbsdiff',
-    ],
-    r'^win(32|64)-nightly$': _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US + [
-        "host/bin/mar.exe",
-        "host/bin/mbsdiff.exe",
-    ],
-    r'^(linux(|64)|macosx64|win(32|64))-nightly-l10n$': _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_L10N,
+    r'^(linux(|64)|macosx64)(|-devedition)-nightly$':
+        _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US + [
+            'host/bin/mar',
+            'host/bin/mbsdiff',
+        ],
+    r'^win(32|64)(|-devedition)-nightly$':
+        _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US + [
+            "host/bin/mar.exe",
+            "host/bin/mbsdiff.exe",
+        ],
+    r'^(linux(|64)|macosx64|win(32|64))(|-devedition)-nightly-l10n$':
+        _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_L10N,
 }
 
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
@@ -84,8 +90,8 @@ UPSTREAM_ARTIFACT_UNSIGNED_PATHS = {
 # with a beetmover patch in https://github.com/mozilla-releng/beetmoverscript/.
 # See example in bug 1348286
 UPSTREAM_ARTIFACT_SIGNED_PATHS = {
-    r'^linux(|64)-nightly(|-l10n)$': ['target.tar.bz2', 'target.tar.bz2.asc'],
-    r'^win(32|64)-nightly(|-l10n)$': ['target.zip'],
+    r'^linux(|64)(|-devedition)-nightly(|-l10n)$': ['target.tar.bz2', 'target.tar.bz2.asc'],
+    r'^win(32|64)(|-devedition)-nightly(|-l10n)$': ['target.zip'],
 }
 
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
@@ -93,16 +99,16 @@ UPSTREAM_ARTIFACT_SIGNED_PATHS = {
 # with a beetmover patch in https://github.com/mozilla-releng/beetmoverscript/.
 # See example in bug 1348286
 UPSTREAM_ARTIFACT_REPACKAGE_PATHS = {
-    r'^macosx64-nightly(|-l10n)$': ['target.dmg'],
+    r'^macosx64(|-devedition)-nightly(|-l10n)$': ['target.dmg'],
 }
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
 # need to be transfered to S3, please be aware you also need to follow-up
 # with a beetmover patch in https://github.com/mozilla-releng/beetmoverscript/.
 # See example in bug 1348286
 UPSTREAM_ARTIFACT_SIGNED_REPACKAGE_PATHS = {
-    r'^(linux(|64)|macosx64)-nightly(|-l10n)$': ['target.complete.mar'],
-    r'^win64-nightly(|-l10n)$': ['target.complete.mar', 'target.installer.exe'],
-    r'^win32-nightly(|-l10n)$': [
+    r'^(linux(|64)|macosx64)(|-devedition)-nightly(|-l10n)$': ['target.complete.mar'],
+    r'^win64(|-devedition)-nightly(|-l10n)$': ['target.complete.mar', 'target.installer.exe'],
+    r'^win32(|-devedition)-nightly(|-l10n)$': [
         'target.complete.mar',
         'target.installer.exe',
         'target.stub-installer.exe'
@@ -147,6 +153,8 @@ beetmover_description_schema = Schema({
 
     # locale is passed only for l10n beetmoving
     Optional('locale'): basestring,
+    Optional('shipping-phase'): task_description_schema['shipping-phase'],
+    Optional('shipping-product'): task_description_schema['shipping-product'],
 })
 
 
@@ -154,9 +162,10 @@ beetmover_description_schema = Schema({
 def validate(config, jobs):
     for job in jobs:
         label = job.get('dependent-task', object).__dict__.get('label', '?no-label?')
-        yield validate_schema(
+        validate_schema(
             beetmover_description_schema, job,
             "In beetmover ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
 
 
 @transforms.add
@@ -166,7 +175,7 @@ def make_task_description(config, jobs):
         attributes = dep_job.attributes
 
         treeherder = job.get('treeherder', {})
-        treeherder.setdefault('symbol', 'tc(BM-R)')
+        treeherder.setdefault('symbol', 'BM-R')
         dep_th_platform = dep_job.task.get('extra', {}).get(
             'treeherder', {}).get('machine', {}).get('platform', '')
         treeherder.setdefault('platform',
@@ -185,15 +194,6 @@ def make_task_description(config, jobs):
 
         dependent_kind = str(dep_job.kind)
         dependencies = {dependent_kind: dep_job.label}
-
-        if 'docker-image' in dep_job.dependencies:
-            # macosx nightly builds depend on repackage which use in tree
-            # docker images and thus have two dependencies
-            # change the signing_dependencies to be use the ones in
-            docker_dependencies = {"docker-image":
-                                   dep_job.dependencies['docker-image']
-                                   }
-            dependencies.update(docker_dependencies)
 
         signing_name = "build-signing"
         if job.get('locale'):
@@ -232,6 +232,7 @@ def make_task_description(config, jobs):
 
         bucket_scope = get_beetmover_bucket_scope(config)
         action_scope = get_beetmover_action_scope(config)
+        phase = get_phase(config)
 
         task = {
             'label': label,
@@ -242,6 +243,8 @@ def make_task_description(config, jobs):
             'attributes': attributes,
             'run-on-projects': dep_job.attributes.get('run_on_projects'),
             'treeherder': treeherder,
+            'shipping-phase': job.get('shipping-phase', phase),
+            'shipping-product': job.get('shipping-product'),
         }
 
         yield task
@@ -330,11 +333,9 @@ def is_valid_beetmover_job(job):
     # windows builds w/o partials don't have docker-image, so fewer
     # dependencies
     if 'partials-signing' in job['dependencies'].keys():
-        expected_dep_count = 6
-    elif any(b in job['attributes']['build_platform'] for b in _WINDOWS_BUILD_PLATFORMS):
-        expected_dep_count = 4
-    else:
         expected_dep_count = 5
+    else:
+        expected_dep_count = 4
 
     return (len(job["dependencies"]) == expected_dep_count and
             any(['repackage' in j for j in job['dependencies']]))
@@ -344,7 +345,9 @@ def is_valid_beetmover_job(job):
 def make_task_worker(config, jobs):
     for job in jobs:
         if not is_valid_beetmover_job(job):
-            raise NotImplementedError("Beetmover_repackage must have five dependencies.")
+            raise NotImplementedError(
+                "{}: Beetmover_repackage must have five dependencies.".format(job['label'])
+            )
 
         locale = job["attributes"].get("locale")
         platform = job["attributes"]["build_platform"]
@@ -423,12 +426,16 @@ def make_partials_artifacts(config, jobs):
         artifact_map = get_partials_artifact_map(
             config.params.get('release_history'), balrog_platform, locale)
         for artifact in artifact_map:
-            extra.append({
+            artifact_extra = {
                 'locale': locale,
                 'artifact_name': artifact,
-                'buildid': artifact_map[artifact],
+                'buildid': artifact_map[artifact]['buildid'],
                 'platform': balrog_platform,
-            })
+            }
+            for rel_attr in ('previousBuildNumber', 'previousVersion'):
+                if artifact_map[artifact].get(rel_attr):
+                    artifact_extra[rel_attr] = artifact_map[artifact][rel_attr]
+            extra.append(artifact_extra)
 
         job.setdefault('extra', {})
         job['extra']['partials'] = extra

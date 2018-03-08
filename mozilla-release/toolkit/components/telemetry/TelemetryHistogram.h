@@ -36,8 +36,11 @@ void SetHistogramRecordingEnabled(mozilla::Telemetry::HistogramID aID, bool aEna
 nsresult SetHistogramRecordingEnabled(const nsACString &id, bool aEnabled);
 
 void Accumulate(mozilla::Telemetry::HistogramID aHistogram, uint32_t aSample);
+void Accumulate(mozilla::Telemetry::HistogramID aHistogram, const nsTArray<uint32_t>& aSamples);
 void Accumulate(mozilla::Telemetry::HistogramID aID, const nsCString& aKey,
                                             uint32_t aSample);
+void Accumulate(mozilla::Telemetry::HistogramID aID, const nsCString& aKey,
+                                          const nsTArray<uint32_t>& aSamples);
 void Accumulate(const char* name, uint32_t sample);
 void Accumulate(const char* name, const nsCString& key, uint32_t sample);
 

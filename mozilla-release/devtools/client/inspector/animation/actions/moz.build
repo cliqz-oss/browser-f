@@ -4,6 +4,5 @@
 
 DevToolsModules(
     'animations.js',
-    'element-picker.js',
-    'index.js'
+    'index.js',
 )

@@ -133,14 +133,19 @@ CompositorVsyncScheduler::PostCompositeTask(TimeStamp aCompositeTimestamp)
     mCurrentCompositeTask = task;
     ScheduleTask(task.forget(), 0);
   }
+}
+
+void
+CompositorVsyncScheduler::PostVRTask(TimeStamp aTimestamp)
+{
+  MonitorAutoLock lockVR(mCurrentVRListenerTaskMonitor);
   if (mCurrentVRListenerTask == nullptr && VRListenerThreadHolder::Loop()) {
-    RefPtr<CancelableRunnable> task = NewCancelableRunnableMethod<TimeStamp>(
+    RefPtr<Runnable> task = NewRunnableMethod<TimeStamp>(
       "layers::CompositorVsyncScheduler::DispatchVREvents",
       this,
       &CompositorVsyncScheduler::DispatchVREvents,
-      aCompositeTimestamp);
+      aTimestamp);
     mCurrentVRListenerTask = task;
-    MOZ_ASSERT(VRListenerThreadHolder::Loop());
     VRListenerThreadHolder::Loop()->PostDelayedTask(Move(task.forget()), 0);
   }
 }
@@ -228,6 +233,7 @@ CompositorVsyncScheduler::NotifyVsync(TimeStamp aVsyncTimestamp)
   MOZ_ASSERT_IF(XRE_GetProcessType() == GeckoProcessType_GPU, CompositorThreadHolder::IsInCompositorThread());
   MOZ_ASSERT(!NS_IsMainThread());
   PostCompositeTask(aVsyncTimestamp);
+  PostVRTask(aVsyncTimestamp);
   return true;
 }
 
@@ -339,10 +345,15 @@ CompositorVsyncScheduler::DispatchTouchEvents(TimeStamp aVsyncTimestamp)
 void
 CompositorVsyncScheduler::DispatchVREvents(TimeStamp aVsyncTimestamp)
 {
-  MOZ_ASSERT(VRListenerThreadHolder::IsInVRListenerThread());
   {
     MonitorAutoLock lock(mCurrentVRListenerTaskMonitor);
     mCurrentVRListenerTask = nullptr;
+  }
+  // This only allows to be called by CompositorVsyncScheduler::PostVRTask()
+  // When the process is going to shutdown, the runnable has chance to be executed
+  // by other threads, we only want it to be run at VRListenerThread.
+  if (!VRListenerThreadHolder::IsInVRListenerThread()) {
+    return;
   }
 
   VRManager* vm = VRManager::Get();

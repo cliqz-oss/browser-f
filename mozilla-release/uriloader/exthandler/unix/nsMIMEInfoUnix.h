@@ -19,14 +19,11 @@ public:
   static bool HandlerExists(const char *aProtocolScheme);
 
 protected:
-  NS_IMETHOD GetHasDefaultHandler(bool *_retval);
+  NS_IMETHOD GetHasDefaultHandler(bool *_retval) override;
 
-  virtual nsresult LoadUriInternal(nsIURI *aURI);
+  virtual nsresult LoadUriInternal(nsIURI *aURI) override;
 
-  virtual nsresult LaunchDefaultWithFile(nsIFile *aFile);
-#if defined(MOZ_ENABLE_CONTENTACTION)
-  NS_IMETHOD GetPossibleApplicationHandlers(nsIMutableArray * *aPossibleAppHandlers);
-#endif
+  virtual nsresult LaunchDefaultWithFile(nsIFile *aFile) override;
 };
 
 #endif // nsMIMEInfoUnix_h_

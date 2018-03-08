@@ -12,14 +12,9 @@ chrome.jar:
   skin/aboutAddons.css                      (aboutAddons.css)
   skin/aboutBase.css                        (aboutBase.css)
   skin/aboutDownloads.css                   (aboutDownloads.css)
-#ifdef MOZ_SERVICES_HEALTHREPORT
-  skin/aboutHealthReport.css                (aboutHealthReport.css)
-#endif
   skin/aboutMemory.css                      (aboutMemory.css)
   skin/aboutPrivateBrowsing.css             (aboutPrivateBrowsing.css)
   skin/aboutReader.css                      (aboutReader.css)
-  skin/aboutReaderContent.css               (aboutReaderContent.css)
-  skin/aboutReaderControls.css              (aboutReaderControls.css)
   skin/aboutSupport.css                     (aboutSupport.css)
   skin/config.css                           (config.css)
   skin/defines.css                          (defines.css)
@@ -28,8 +23,6 @@ chrome.jar:
 % override chrome://global/skin/about.css chrome://browser/skin/about.css
 % override chrome://global/skin/aboutMemory.css chrome://browser/skin/aboutMemory.css
 % override chrome://global/skin/aboutReader.css chrome://browser/skin/aboutReader.css
-% override chrome://global/skin/aboutReaderContent.css chrome://browser/skin/aboutReaderContent.css
-% override chrome://global/skin/aboutReaderControls.css chrome://browser/skin/aboutReaderControls.css
 % override chrome://global/skin/aboutSupport.css chrome://browser/skin/aboutSupport.css
 % override chrome://global/skin/netError.css chrome://browser/skin/netError.css
 

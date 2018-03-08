@@ -769,7 +769,7 @@ var clear = async function(db) {
     // Remove all non-bookmarked places entries first, this will speed up the
     // triggers work.
     await db.execute(`DELETE FROM moz_places WHERE foreign_count = 0`);
-    await db.execute(`DELETE FROM moz_updatehosts_temp`);
+    await db.execute(`DELETE FROM moz_updatehostsdelete_temp`);
 
     // Expire orphan icons.
     await db.executeCached(`DELETE FROM moz_pages_w_icons
@@ -858,7 +858,7 @@ var cleanupPages = async function(db, pages) {
                     AND foreign_count = 0 AND last_visit_date ISNULL`);
   // Hosts accumulated during the places delete are updated through a trigger
   // (see nsPlacesTriggers.h).
-  await db.executeCached(`DELETE FROM moz_updatehosts_temp`);
+  await db.executeCached(`DELETE FROM moz_updatehostsdelete_temp`);
 
   // Expire orphans.
   let hashesToRemove = pagesToRemove.map(p => p.hash);
@@ -1315,6 +1315,7 @@ var remove = async function(db, {guids, urls}, onResult = null) {
  */
 function mergeUpdateInfoIntoPageInfo(updateInfo, pageInfo = {}) {
   pageInfo.guid = updateInfo.guid;
+  pageInfo.title = updateInfo.title;
   if (!pageInfo.url) {
     pageInfo.url = new URL(updateInfo.uri.spec);
     pageInfo.title = updateInfo.title;
@@ -1388,27 +1389,31 @@ var insertMany = function(db, pageInfos, onResult, onError) {
 var update = async function(db, pageInfo) {
   let updateFragments = [];
   let whereClauseFragment = "";
-  let info = {};
+  let params = {};
 
   // Prefer GUID over url if it's present
   if (typeof pageInfo.guid === "string") {
-    whereClauseFragment = "WHERE guid = :guid";
-    info.guid = pageInfo.guid;
+    whereClauseFragment = "guid = :guid";
+    params.guid = pageInfo.guid;
   } else {
-    whereClauseFragment = "WHERE url_hash = hash(:url) AND url = :url";
-    info.url = pageInfo.url.href;
+    whereClauseFragment = "url_hash = hash(:url) AND url = :url";
+    params.url = pageInfo.url.href;
   }
 
   if (pageInfo.description || pageInfo.description === null) {
-    updateFragments.push("description = :description");
-    info.description = pageInfo.description;
+    updateFragments.push("description");
+    params.description = pageInfo.description;
   }
   if (pageInfo.previewImageURL || pageInfo.previewImageURL === null) {
-    updateFragments.push("preview_image_url = :previewImageURL");
-    info.previewImageURL = pageInfo.previewImageURL ? pageInfo.previewImageURL.href : null;
+    updateFragments.push("preview_image_url");
+    params.preview_image_url = pageInfo.previewImageURL ? pageInfo.previewImageURL.href : null;
   }
-  let query = `UPDATE moz_places
-               SET ${updateFragments.join(", ")}
-               ${whereClauseFragment}`;
-  await db.execute(query, info);
+  // Since this data may be written at every visit and is textual, avoid
+  // overwriting the existing record if it didn't change.
+  await db.execute(`
+    UPDATE moz_places
+    SET ${updateFragments.map(v => `${v} = :${v}`).join(", ")}
+    WHERE ${whereClauseFragment}
+      AND (${updateFragments.map(v => `IFNULL(${v}, "") <> IFNULL(:${v}, "")`).join(" OR ")})
+  `, params);
 };

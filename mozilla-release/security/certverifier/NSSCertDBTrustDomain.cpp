@@ -19,12 +19,10 @@
 #include "mozilla/Casting.h"
 #include "mozilla/Move.h"
 #include "mozilla/PodOperations.h"
-#include "mozilla/Preferences.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Unused.h"
 #include "nsCRTGlue.h"
 #include "nsNSSCertificate.h"
-#include "nsNativeCharsetUtils.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
 #include "nss.h"
@@ -1064,16 +1062,7 @@ InitializeNSS(const nsACString& dir, bool readOnly, bool loadPKCS11Modules)
   if (!loadPKCS11Modules) {
     flags |= NSS_INIT_NOMODDB;
   }
-  // At the moment, sqldb does not work with non-ASCII file paths on Windows.
-  bool useSQLDB = Preferences::GetBool("security.use_sqldb", false) &&
-    (NS_IsNativeUTF8() || NS_IsAscii(PromiseFlatCString(dir).get()));
-  nsAutoCString dbTypeAndDirectory;
-  // Don't change any behavior if the user has specified an alternative database
-  // location with MOZPSM_NSSDBDIR_OVERRIDE.
-  const char* dbDirOverride = getenv("MOZPSM_NSSDBDIR_OVERRIDE");
-  if (useSQLDB && (!dbDirOverride || strlen(dbDirOverride) == 0)) {
-    dbTypeAndDirectory.Append("sql:");
-  }
+  nsAutoCString dbTypeAndDirectory("sql:");
   dbTypeAndDirectory.Append(dir);
   MOZ_LOG(gCertVerifierLog, LogLevel::Debug,
           ("InitializeNSS(%s, %d, %d)", dbTypeAndDirectory.get(), readOnly,

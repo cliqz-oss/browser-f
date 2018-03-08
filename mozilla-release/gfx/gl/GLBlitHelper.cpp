@@ -19,6 +19,7 @@
 #include "GPUVideoImage.h"
 
 #ifdef MOZ_WIDGET_ANDROID
+#include "GeneratedJNIWrappers.h"
 #include "AndroidSurfaceTexture.h"
 #include "GLImages.h"
 #include "GLLibraryEGL.h"
@@ -54,11 +55,10 @@ const char* const kFragHeader_Tex2DRect = "\
     #endif                                                                   \n\
 ";
 const char* const kFragHeader_TexExt = "\
+    #extension GL_OES_EGL_image_external : require                           \n\
     #if __VERSION__ >= 130                                                   \n\
-        #extension GL_OES_EGL_image_external_essl3 : require                 \n\
         #define TEXTURE texture                                              \n\
     #else                                                                    \n\
-        #extension GL_OES_EGL_image_external : require                       \n\
         #define TEXTURE texture2D                                            \n\
     #endif                                                                   \n\
     #define SAMPLER samplerExternalOES                                       \n\
@@ -174,20 +174,20 @@ SubRectMat3(const float x, const float y, const float w, const float h)
 Mat3
 SubRectMat3(const gfx::IntRect& subrect, const gfx::IntSize& size)
 {
-    return SubRectMat3(float(subrect.x) / size.width,
-                       float(subrect.y) / size.height,
-                       float(subrect.width) / size.width,
-                       float(subrect.height) / size.height);
+    return SubRectMat3(float(subrect.X()) / size.width,
+                       float(subrect.Y()) / size.height,
+                       float(subrect.Width()) / size.width,
+                       float(subrect.Height()) / size.height);
 }
 
 Mat3
 SubRectMat3(const gfx::IntRect& bigSubrect, const gfx::IntSize& smallSize,
             const gfx::IntSize& divisors)
 {
-    const float x = float(bigSubrect.x) / divisors.width;
-    const float y = float(bigSubrect.y) / divisors.height;
-    const float w = float(bigSubrect.width) / divisors.width;
-    const float h = float(bigSubrect.height) / divisors.height;
+    const float x = float(bigSubrect.X()) / divisors.width;
+    const float y = float(bigSubrect.Y()) / divisors.height;
+    const float w = float(bigSubrect.Width()) / divisors.width;
+    const float h = float(bigSubrect.Height()) / divisors.height;
     return SubRectMat3(x / smallSize.width,
                        y / smallSize.height,
                        w / smallSize.width,
@@ -425,10 +425,10 @@ DrawBlitProg::Draw(const BaseArgs& args, const YUVArgs* const argsYUV) const
     Mat3 destMatrix;
     if (args.destRect) {
         const auto& destRect = args.destRect.value();
-        destMatrix = SubRectMat3(destRect.x / args.destSize.width,
-                                 destRect.y / args.destSize.height,
-                                 destRect.width / args.destSize.width,
-                                 destRect.height / args.destSize.height);
+        destMatrix = SubRectMat3(destRect.X() / args.destSize.width,
+                                 destRect.Y() / args.destSize.height,
+                                 destRect.Width() / args.destSize.width,
+                                 destRect.Height() / args.destSize.height);
     } else {
         destMatrix = Mat3::I();
     }
@@ -549,14 +549,14 @@ GLBlitHelper::GLBlitHelper(GLContext* const gl)
     // --
 
     const auto glslVersion = mGL->ShadingLanguageVersion();
+
+    // Always use 100 on ES because some devices have OES_EGL_image_external but not
+    // OES_EGL_image_external_essl3. We could just use 100 in that particular case, but
+    // this is a lot easier and is not harmful to other usages.
     if (mGL->IsGLES()) {
-        if (glslVersion >= 300) {
-            mDrawBlitProg_VersionLine = nsPrintfCString("#version %u es\n", glslVersion);
-        }
-    } else {
-        if (glslVersion >= 130) {
-            mDrawBlitProg_VersionLine = nsPrintfCString("#version %u\n", glslVersion);
-        }
+        mDrawBlitProg_VersionLine = nsCString("#version 100\n");
+    } else if (glslVersion >= 130) {
+        mDrawBlitProg_VersionLine = nsPrintfCString("#version %u\n", glslVersion);
     }
 
     const char kVertSource[] = "\
@@ -758,14 +758,71 @@ GLBlitHelper::BlitImageToFramebuffer(layers::Image* const srcImage,
 
 #ifdef MOZ_WIDGET_ANDROID
 bool
-GLBlitHelper::BlitImage(layers::SurfaceTextureImage* srcImage, const gfx::IntSize&,
-                        const OriginPos) const
+GLBlitHelper::BlitImage(layers::SurfaceTextureImage* srcImage, const gfx::IntSize& destSize,
+                        const OriginPos destOrigin) const
 {
-    // FIXME
+    AndroidSurfaceTextureHandle handle = srcImage->GetHandle();
+    const auto& surfaceTexture = java::GeckoSurfaceTexture::Lookup(handle);
+
+    if (!surfaceTexture) {
+        return false;
+    }
+
+    const ScopedBindTextureUnit boundTU(mGL, LOCAL_GL_TEXTURE0);
+
+    if (!surfaceTexture->IsAttachedToGLContext((int64_t)mGL)) {
+        GLuint tex;
+        mGL->MakeCurrent();
+        mGL->fGenTextures(1, &tex);
+
+        if (NS_FAILED(surfaceTexture->AttachToGLContext((int64_t)mGL, tex))) {
+            mGL->fDeleteTextures(1, &tex);
+            return false;
+        }
+    }
+
+    const ScopedBindTexture savedTex(mGL, surfaceTexture->GetTexName(), LOCAL_GL_TEXTURE_EXTERNAL);
+    surfaceTexture->UpdateTexImage();
+
+    gfx::Matrix4x4 transform4;
+    AndroidSurfaceTexture::GetTransformMatrix(java::sdk::SurfaceTexture::Ref::From(surfaceTexture),
+                                              &transform4);
+    Mat3 transform3;
+    transform3.at(0,0) = transform4._11;
+    transform3.at(0,1) = transform4._12;
+    transform3.at(0,2) = transform4._14;
+    transform3.at(1,0) = transform4._21;
+    transform3.at(1,1) = transform4._22;
+    transform3.at(1,2) = transform4._24;
+    transform3.at(2,0) = transform4._41;
+    transform3.at(2,1) = transform4._42;
+    transform3.at(2,2) = transform4._44;
+
+    // We don't do w-divison, so if these aren't what we expect, we're probably doing
+    // something wrong.
+    MOZ_ASSERT(transform3.at(0,2) == 0);
+    MOZ_ASSERT(transform3.at(1,2) == 0);
+    MOZ_ASSERT(transform3.at(2,2) == 1);
+
     const auto& srcOrigin = srcImage->GetOriginPos();
-    (void)srcOrigin;
-    gfxCriticalError() << "BlitImage(SurfaceTextureImage) not implemented.";
-    return false;
+
+    // I honestly have no idea why this logic is flipped, but changing the
+    // source origin would mean we'd have to flip it in the compositor
+    // which makes just as little sense as this.
+    const bool yFlip = (srcOrigin == destOrigin);
+
+    const auto& prog = GetDrawBlitProg({kFragHeader_TexExt, kFragBody_RGBA});
+    MOZ_RELEASE_ASSERT(prog);
+
+    // There is no padding on these images, so we can use the GetTransformMatrix directly.
+    const DrawBlitProg::BaseArgs baseArgs = { transform3, yFlip, destSize, Nothing() };
+    prog->Draw(baseArgs, nullptr);
+
+    if (surfaceTexture->IsSingleBuffer()) {
+        surfaceTexture->ReleaseTexImage();
+    }
+
+    return true;
 }
 #endif
 

@@ -7,23 +7,25 @@ use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
 use std::time::Duration;
 
 use consts::PARAMETER_SIZE;
-use platform::PlatformManager;
+use statemachine::StateMachine;
 use runloop::RunLoop;
 use util::{to_io_err, OnceCallback};
 
-pub enum QueueAction {
+enum QueueAction {
     Register {
+        flags: ::RegisterFlags,
         timeout: u64,
         challenge: Vec<u8>,
         application: Vec<u8>,
-        key_handles: Vec<Vec<u8>>,
+        key_handles: Vec<::KeyHandle>,
         callback: OnceCallback<Vec<u8>>,
     },
     Sign {
+        flags: ::SignFlags,
         timeout: u64,
         challenge: Vec<u8>,
         application: Vec<u8>,
-        key_handles: Vec<Vec<u8>>,
+        key_handles: Vec<::KeyHandle>,
         callback: OnceCallback<(Vec<u8>, Vec<u8>)>,
     },
     Cancel,
@@ -40,11 +42,12 @@ impl U2FManager {
 
         // Start a new work queue thread.
         let queue = RunLoop::new(move |alive| {
-            let mut pm = PlatformManager::new();
+            let mut sm = StateMachine::new();
 
             while alive() {
                 match rx.recv_timeout(Duration::from_millis(50)) {
                     Ok(QueueAction::Register {
+                           flags,
                            timeout,
                            challenge,
                            application,
@@ -52,9 +55,17 @@ impl U2FManager {
                            callback,
                        }) => {
                         // This must not block, otherwise we can't cancel.
-                        pm.register(timeout, challenge, application, key_handles, callback);
+                        sm.register(
+                            flags,
+                            timeout,
+                            challenge,
+                            application,
+                            key_handles,
+                            callback,
+                        );
                     }
                     Ok(QueueAction::Sign {
+                           flags,
                            timeout,
                            challenge,
                            application,
@@ -62,12 +73,19 @@ impl U2FManager {
                            callback,
                        }) => {
                         // This must not block, otherwise we can't cancel.
-                        pm.sign(timeout, challenge, application, key_handles, callback);
+                        sm.sign(
+                            flags,
+                            timeout,
+                            challenge,
+                            application,
+                            key_handles,
+                            callback,
+                        );
                     }
                     Ok(QueueAction::Cancel) => {
                         // Cancelling must block so that we don't start a new
                         // polling thread before the old one has shut down.
-                        pm.cancel();
+                        sm.cancel();
                     }
                     Err(RecvTimeoutError::Disconnected) => {
                         break;
@@ -77,7 +95,7 @@ impl U2FManager {
             }
 
             // Cancel any ongoing activity.
-            pm.cancel();
+            sm.cancel();
         })?;
 
         Ok(Self {
@@ -88,10 +106,11 @@ impl U2FManager {
 
     pub fn register<F>(
         &self,
+        flags: ::RegisterFlags,
         timeout: u64,
         challenge: Vec<u8>,
         application: Vec<u8>,
-        key_handles: Vec<Vec<u8>>,
+        key_handles: Vec<::KeyHandle>,
         callback: F,
     ) -> io::Result<()>
     where
@@ -106,7 +125,7 @@ impl U2FManager {
         }
 
         for key_handle in &key_handles {
-            if key_handle.len() > 256 {
+            if key_handle.credential.len() > 256 {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "Key handle too large",
@@ -116,6 +135,7 @@ impl U2FManager {
 
         let callback = OnceCallback::new(callback);
         let action = QueueAction::Register {
+            flags,
             timeout,
             challenge,
             application,
@@ -127,10 +147,11 @@ impl U2FManager {
 
     pub fn sign<F>(
         &self,
+        flags: ::SignFlags,
         timeout: u64,
         challenge: Vec<u8>,
         application: Vec<u8>,
-        key_handles: Vec<Vec<u8>>,
+        key_handles: Vec<::KeyHandle>,
         callback: F,
     ) -> io::Result<()>
     where
@@ -152,7 +173,7 @@ impl U2FManager {
         }
 
         for key_handle in &key_handles {
-            if key_handle.len() > 256 {
+            if key_handle.credential.len() > 256 {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "Key handle too large",
@@ -162,6 +183,7 @@ impl U2FManager {
 
         let callback = OnceCallback::new(callback);
         let action = QueueAction::Sign {
+            flags,
             timeout,
             challenge,
             application,

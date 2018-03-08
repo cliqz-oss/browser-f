@@ -5,18 +5,14 @@
 "use strict";
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
+/* import-globals-from ../../../client/framework/test/shared-head.js */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  this);
 
-const {console} = Cu.import("resource://gre/modules/Console.jsm", {});
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
 const {DebuggerClient} = require("devtools/shared/client/debugger-client");
 const {DebuggerServer} = require("devtools/server/main");
-const {defer} = require("promise");
-const DevToolsUtils = require("devtools/shared/DevToolsUtils");
-const Services = require("Services");
 
 const PATH = "browser/devtools/server/tests/browser/";
 const MAIN_DOMAIN = "http://test1.example.org/" + PATH;
@@ -105,7 +101,42 @@ function initDebuggerServer() {
     info(`DebuggerServer destroy error: ${e}\n${e.stack}`);
   }
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
+  DebuggerServer.registerAllActors();
+}
+
+async function initPerfFront() {
+  const {PerfFront} = require("devtools/shared/fronts/perf");
+
+  initDebuggerServer();
+  let client = new DebuggerClient(DebuggerServer.connectPipe());
+  await waitUntilClientConnected(client);
+  const rootForm = await getRootForm(client);
+  const front = PerfFront(client, rootForm);
+  return {front, client};
+}
+
+/**
+ * Gets the RootActor form from a DebuggerClient.
+ * @param {DebuggerClient} client
+ * @return {RootActor} Resolves when connected.
+ */
+function getRootForm(client) {
+  return new Promise(resolve => {
+    client.listTabs(rootForm => {
+      resolve(rootForm);
+    });
+  });
+}
+
+/**
+ * Wait until a DebuggerClient is connected.
+ * @param {DebuggerClient} client
+ * @return {Promise} Resolves when connected.
+ */
+function waitUntilClientConnected(client) {
+  return new Promise(resolve => {
+    client.addOneTimeListener("connected", resolve);
+  });
 }
 
 /**
