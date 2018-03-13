@@ -101,24 +101,6 @@ WeakReferenceSupport::WeakReferenceSupport(Flags aFlags)
   , mFlags(aFlags)
 {
   mSharedRef = new detail::SharedRef(this);
-  ::InitializeCS(mCSForQI);
-}
-
-WeakReferenceSupport::~WeakReferenceSupport()
-{
-  ::DeleteCriticalSection(&mCSForQI);
-}
-
-void
-WeakReferenceSupport::Lock()
-{
-  ::EnterCriticalSection(&mCSForQI);
-}
-
-void
-WeakReferenceSupport::Unlock()
-{
-  ::LeaveCriticalSection(&mCSForQI);
 }
 
 HRESULT
@@ -131,13 +113,12 @@ WeakReferenceSupport::QueryInterface(REFIID riid, void** ppv)
   *ppv = nullptr;
 
   // Raise the refcount for stabilization purposes during aggregation
-  RefPtr<IUnknown> kungFuDeathGrip(this);
+  StabilizeRefCount stabilize(*this);
 
   if (riid == IID_IUnknown || riid == IID_IWeakReferenceSource) {
     punk = static_cast<IUnknown*>(this);
   } else {
-    AutoCriticalSection lock(&mCSForQI);
-    HRESULT hr = ThreadSafeQueryInterface(riid, getter_AddRefs(punk));
+    HRESULT hr = WeakRefQueryInterface(riid, getter_AddRefs(punk));
     if (FAILED(hr)) {
       return hr;
     }
@@ -149,6 +130,23 @@ WeakReferenceSupport::QueryInterface(REFIID riid, void** ppv)
 
   punk.forget(ppv);
   return S_OK;
+}
+
+WeakReferenceSupport::StabilizeRefCount::StabilizeRefCount(WeakReferenceSupport& aObject)
+  : mObject(aObject)
+{
+  SharedRefAutoLock lock(*mObject.mSharedRef);
+  ++mObject.mRefCnt;
+}
+
+WeakReferenceSupport::StabilizeRefCount::~StabilizeRefCount()
+{
+  // We directly access these fields instead of calling Release() because we
+  // want to adjust the ref count without the other side effects (such as
+  // deleting this if the count drops back to zero, which may happen during
+  // an initial QI during object creation).
+  SharedRefAutoLock lock(*mObject.mSharedRef);
+  --mObject.mRefCnt;
 }
 
 ULONG
