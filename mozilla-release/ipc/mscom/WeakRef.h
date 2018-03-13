@@ -12,7 +12,6 @@
 
 #include "mozilla/Assertions.h"
 #include "mozilla/Atomics.h"
-#include "mozilla/Mutex.h"
 #include "mozilla/RefPtr.h"
 #include "nsISupportsImpl.h"
 
@@ -97,22 +96,32 @@ public:
 
 protected:
   explicit WeakReferenceSupport(Flags aFlags);
-  virtual ~WeakReferenceSupport();
+  virtual ~WeakReferenceSupport() = default;
 
-  virtual HRESULT ThreadSafeQueryInterface(REFIID aIid,
-                                           IUnknown** aOutInterface) = 0;
+  virtual HRESULT WeakRefQueryInterface(REFIID aIid,
+                                        IUnknown** aOutInterface) = 0;
 
-  void Lock();
-  void Unlock();
+  class MOZ_RAII StabilizeRefCount final
+  {
+  public:
+    explicit StabilizeRefCount(WeakReferenceSupport& aObject);
+    ~StabilizeRefCount();
 
-  typedef BaseAutoLock<WeakReferenceSupport> AutoLock;
-  friend class BaseAutoLock<WeakReferenceSupport>;
+    StabilizeRefCount(const StabilizeRefCount&) = delete;
+    StabilizeRefCount(StabilizeRefCount&&) = delete;
+    StabilizeRefCount& operator=(const StabilizeRefCount&) = delete;
+    StabilizeRefCount& operator=(StabilizeRefCount&&) = delete;
+
+  private:
+    WeakReferenceSupport& mObject;
+  };
+
+  friend class StabilizeRefCount;
 
 private:
   RefPtr<detail::SharedRef> mSharedRef;
   ULONG                     mRefCnt;
   Flags                     mFlags;
-  CRITICAL_SECTION          mCSForQI;
 };
 
 class WeakRef final : public IWeakReference

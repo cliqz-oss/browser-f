@@ -281,7 +281,8 @@ Interceptor::Create(STAUniquePtr<IUnknown> aTarget, IInterceptorSink* aSink,
 Interceptor::Interceptor(IInterceptorSink* aSink)
   : WeakReferenceSupport(WeakReferenceSupport::Flags::eDestroyOnMainThread)
   , mEventSink(aSink)
-  , mMutex("mozilla::mscom::Interceptor::mMutex")
+  , mInterceptorMapMutex("mozilla::mscom::Interceptor::mInterceptorMapMutex")
+  , mStdMarshalMutex("mozilla::mscom::Interceptor::mStdMarshalMutex")
   , mStdMarshal(nullptr)
 {
   MOZ_ASSERT(aSink);
@@ -447,7 +448,7 @@ Interceptor::DisconnectObject(DWORD dwReserved)
 Interceptor::MapEntry*
 Interceptor::Lookup(REFIID aIid)
 {
-  mMutex.AssertCurrentThreadOwns();
+  mInterceptorMapMutex.AssertCurrentThreadOwns();
 
   for (uint32_t index = 0, len = mInterceptorMap.Length(); index < len; ++index) {
     if (mInterceptorMap[index].mIID == aIid) {
@@ -461,7 +462,7 @@ HRESULT
 Interceptor::GetTargetForIID(REFIID aIid,
                              InterceptorTargetPtr<IUnknown>& aTarget)
 {
-  MutexAutoLock lock(mMutex);
+  MutexAutoLock lock(mInterceptorMapMutex);
   MapEntry* entry = Lookup(aIid);
   if (entry) {
     aTarget.reset(entry->mTargetInterface);
@@ -550,9 +551,9 @@ Interceptor::GetInitialInterceptorForIID(detail::LiveSetAutoLock& aLiveSetLock,
   MOZ_ASSERT(!IsProxy(aTarget.get()));
 
   if (aTargetIid == IID_IUnknown) {
-    // We must lock ourselves so that nothing can race with us once we have been
-    // published to the live set.
-    AutoLock lock(*this);
+    // We must lock mInterceptorMapMutex so that nothing can race with us once
+    // we have been published to the live set.
+    MutexAutoLock lock(mInterceptorMapMutex);
 
     HRESULT hr = PublishTarget(aLiveSetLock, nullptr, aTargetIid, Move(aTarget));
     ENSURE_HR_SUCCEEDED(hr);
@@ -563,11 +564,11 @@ Interceptor::GetInitialInterceptorForIID(detail::LiveSetAutoLock& aLiveSetLock,
   }
 
   // Raise the refcount for stabilization purposes during aggregation
-  RefPtr<IUnknown> kungFuDeathGrip(static_cast<IUnknown*>(
-        static_cast<WeakReferenceSupport*>(this)));
+  WeakReferenceSupport::StabilizeRefCount stabilizer(*this);
 
   RefPtr<IUnknown> unkInterceptor;
-  HRESULT hr = CreateInterceptor(aTargetIid, kungFuDeathGrip,
+  HRESULT hr = CreateInterceptor(aTargetIid,
+                                 static_cast<WeakReferenceSupport*>(this),
                                  getter_AddRefs(unkInterceptor));
   ENSURE_HR_SUCCEEDED(hr);
 
@@ -579,9 +580,9 @@ Interceptor::GetInitialInterceptorForIID(detail::LiveSetAutoLock& aLiveSetLock,
   hr = interceptor->RegisterSink(mEventSink);
   ENSURE_HR_SUCCEEDED(hr);
 
-  // We must lock ourselves so that nothing can race with us once we have been
-  // published to the live set.
-  AutoLock lock(*this);
+  // We must lock mInterceptorMapMutex so that nothing can race with us once we have
+  // been published to the live set.
+  MutexAutoLock lock(mInterceptorMapMutex);
 
   hr = PublishTarget(aLiveSetLock, unkInterceptor, aTargetIid, Move(aTarget));
   ENSURE_HR_SUCCEEDED(hr);
@@ -630,7 +631,7 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
   // interceptorIid.
 
   { // Scope for lock
-    MutexAutoLock lock(mMutex);
+    MutexAutoLock lock(mInterceptorMapMutex);
     MapEntry* entry = Lookup(interceptorIid);
     if (entry) {
       unkInterceptor = entry->mInterceptor;
@@ -677,10 +678,10 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
   // IUnknown to |this|.
 
   // Raise the refcount for stabilization purposes during aggregation
-  RefPtr<IUnknown> kungFuDeathGrip(static_cast<IUnknown*>(
-        static_cast<WeakReferenceSupport*>(this)));
+  WeakReferenceSupport::StabilizeRefCount stabilizer(*this);
 
-  hr = CreateInterceptor(interceptorIid, kungFuDeathGrip,
+  hr = CreateInterceptor(interceptorIid,
+                         static_cast<WeakReferenceSupport*>(this),
                          getter_AddRefs(unkInterceptor));
   ENSURE_HR_SUCCEEDED(hr);
 
@@ -697,11 +698,17 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
   // (5) Now that we have this new COM interceptor, insert it into the map.
 
   { // Scope for lock
-    MutexAutoLock lock(mMutex);
+    MutexAutoLock lock(mInterceptorMapMutex);
     // We might have raced with another thread, so first check that we don't
     // already have an entry for this
     MapEntry* entry = Lookup(interceptorIid);
     if (entry && entry->mInterceptor) {
+      // Bug 1433046: Because of aggregation, the QI for |interceptor|
+      // AddRefed |this|, not |unkInterceptor|. Thus, releasing |unkInterceptor|
+      // will destroy the object. Before we do that, we must first release
+      // |interceptor|. Otherwise, |interceptor| would be invalidated when
+      // |unkInterceptor| is destroyed.
+      interceptor = nullptr;
       unkInterceptor = entry->mInterceptor;
     } else {
       // MapEntry has a RefPtr to unkInterceptor, OTOH we must not touch the
@@ -754,7 +761,7 @@ Interceptor::QueryInterface(REFIID riid, void** ppv)
 }
 
 HRESULT
-Interceptor::ThreadSafeQueryInterface(REFIID aIid, IUnknown** aOutInterface)
+Interceptor::WeakRefQueryInterface(REFIID aIid, IUnknown** aOutInterface)
 {
   if (aIid == IID_IStdMarshalInfo) {
     detail::ReentrySentinel sentinel(this);
@@ -777,6 +784,8 @@ Interceptor::ThreadSafeQueryInterface(REFIID aIid, IUnknown** aOutInterface)
   }
 
   if (aIid == IID_IMarshal) {
+    MutexAutoLock lock(mStdMarshalMutex);
+
     HRESULT hr;
 
     if (!mStdMarshalUnk) {
