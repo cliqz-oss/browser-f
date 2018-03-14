@@ -823,26 +823,26 @@ Function createInstall
   SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
 
   ; load all images
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap1
   ${NSD_SetImage} $Bitmap1 $PLUGINSDIR\artboard1.bmp $HwndBitmap1
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap2
   ${NSD_SetImage} $Bitmap2 $PLUGINSDIR\artboard2.bmp $HwndBitmap2
   ShowWindow $Bitmap2 ${SW_HIDE}
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap3
   ${NSD_SetImage} $Bitmap3 $PLUGINSDIR\artboard3.bmp $HwndBitmap3
   ShowWindow $Bitmap3 ${SW_HIDE}
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap4
   ${NSD_SetImage} $Bitmap4 $PLUGINSDIR\artboard4.bmp $HwndBitmap4
   ShowWindow $Bitmap4 ${SW_HIDE}
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap5
   ${NSD_SetImage} $Bitmap5 $PLUGINSDIR\artboard5.bmp $HwndBitmap5
   ShowWindow $Bitmap5 ${SW_HIDE}
