@@ -10,7 +10,7 @@
 <!ENTITY refreshProfile.dialog.items.label3  "Folgende Daten werden zurückgesetzt:">
 <!ENTITY refreshProfile.dialog.items.label4  "• Cookies">
 <!ENTITY refreshProfile.dialog.items.label5  "• Browser-Chronik und Lesezeichen">
-<!ENTITY refreshProfile.dialog.items.label6  "• Eingegebene Suchbegriffe & Formulardaten">
+<!ENTITY refreshProfile.dialog.items.label6  "• Eingegebene Suchbegriffe &amp; Formulardaten">
 <!ENTITY refreshProfile.dialog.items.label7  "• Gespeicherte Passwörter">
 <!ENTITY refreshProfile.dialog.items.label8  "• Cliqz Tab Favoriten">
 <!ENTITY refreshProfile.dialog.items.label9  "• Cliqz Tab Meistbesuchte Seiten">
