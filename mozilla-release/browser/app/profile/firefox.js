@@ -1269,7 +1269,7 @@ pref("browser.menu.showCharacterEncoding", "chrome://browser/locale/browser.prop
 pref("prompts.tab_modal.enabled", true);
 
 // Activates preloading of the new tab url.
-pref("browser.newtab.preload", true);
+pref("browser.newtab.preload", false);
 
 // Remembers if the about:newtab intro has been shown
 // NOTE: This preference is unused but was not removed in case
