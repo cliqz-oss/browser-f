@@ -677,7 +677,6 @@ html|input.urlbar-input[textoverflow]:not([focused]) {
 }
 
 #urlbar[pageproxystate=invalid] > #page-action-buttons > .urlbar-page-action,
-#navigator-toolbox[on_private_tab="true"] #urlbar > #page-action-buttons > .urlbar-page-action,
 #identity-box.chromeUI ~ #page-action-buttons > .urlbar-page-action:not(#star-button-box),
 .urlbar-history-dropmarker[usertyping],
 .urlbar-go-button:not([usertyping]),
