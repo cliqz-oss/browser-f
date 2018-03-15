@@ -2794,6 +2794,11 @@ function URLBarSetURI(aURI) {
     }
 
     valid = !isBlankPageURL(uri.spec) || uri.schemeIs("moz-extension");
+
+    // Cliqz. Invalidate page proxy state for inital pages opened in private tabs
+    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) && isInitialPage(uri.spec)) {
+      valid = false;
+    }
   } else if (isInitialPage(value) &&
              checkEmptyPageOrigin(gBrowser.selectedBrowser)) {
     value = "";
