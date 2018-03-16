@@ -1,101 +1,32 @@
 FROM ubuntu:16.04
-
-RUN apt-get update && apt-get install -y \
-  gcc \
-  alien \
-  fakeroot \
-  rpm \
-  git \
-  python-dev \
-  python-pip \
-  desktop-file-utils \
-  wget \
-  sudo \
-  libgstreamer1.0-dev \
-  libgstreamer-plugins-base1.0-dev \
-  libgstreamer-plugins-base0.10-0 \
-  libgstreamer0.10-0 \
-  libgstreamer0.10-dev \
-  autoconf2.13 \
-  build-essential \
-  ccache \
-  python-dev \
-  python-pip \
-  python-setuptools \
-  unzip \
-  uuid \
-  zip \
-  libasound2-dev \
-  libcurl4-openssl-dev \
-  libdbus-1-dev \
-  libdbus-glib-1-dev \
-  libgconf2-dev \
-  libgtk-3-dev \
-  libgtk2.0-dev \
-  libiw-dev \
-  libnotify-dev \
-  libpulse-dev \
-  libx11-xcb-dev \
-  libxt-dev \
-  mesa-common-dev \
-  python-dbus \
-  clang-5.0 \
-  xvfb \
-  yasm 
-
-RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/aptly.list; \
-  apt-key adv --keyserver keys.gnupg.net --recv-keys 9E3E53F19C7DE460; \
-  apt-get update; \
-  apt-get install aptly -y
-
-RUN pip install awscli \
-  compare-locales
-
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
-
-RUN set -eux; \
-    \
-# this "case" statement is generated via "update.sh"
-    dpkgArch="$(dpkg --print-architecture)"; \
-    case "${dpkgArch##*-}" in \
-        amd64) rustArch='x86_64-unknown-linux-gnu'; rustupSha256='5a38dbaf7ab2e4335a3dfc42698a5b15e7167c93b0b06fc95f53c1da6379bf1a' ;; \
-        armhf) rustArch='armv7-unknown-linux-gnueabihf'; rustupSha256='67a98a67f7f7bf19c5cde166499acb8299f2f8fa88c155093df53b66da1f512a' ;; \
-        arm64) rustArch='aarch64-unknown-linux-gnu'; rustupSha256='82fe368c4ebf1683d57e137242793a4417042639aace8bd514601db7d79d3645' ;; \
-        i386) rustArch='i686-unknown-linux-gnu'; rustupSha256='7a1c085591f6c1305877919f8495c04a1c97546d001d1357a7a879cedea5afbb' ;; \
-        *) echo >&2 "unsupported architecture: ${dpkgArch}"; exit 1 ;; \
-    esac; \
-    \
-    url="https://static.rust-lang.org/rustup/archive/1.7.0/${rustArch}/rustup-init"; \
-    wget "$url"; \
-    echo "${rustupSha256} *rustup-init" | sha256sum -c -; \
-    chmod +x rustup-init; \
-    ./rustup-init -y --no-modify-path --default-toolchain 1.20.0; \
-    rm rustup-init; \
-    chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
-    rustup --version; \
-    cargo --version; \
-    rustc --version; \
-    rustup self update; \
-    rustup toolchain install stable-x86_64-unknown-linux-gnu; \
-    rustup default stable-x86_64-unknown-linux-gnu
-
-
-RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
-  python bootstrap.py --application-choice=browser --no-interactive && \
-  rm bootstrap.py
-
-ARG uid
-ARG gid
-ARG user
-ENV SHELL=/bin/bash
-
-RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && usermod -aG sudo $user
-
-# Enable passwordless sudo for users under the "sudo" group
-RUN sed -i.bkp -e \
-      's/%sudo\s\+ALL=(ALL\(:ALL\)\?)\s\+ALL/%sudo ALL=NOPASSWD:ALL/g' \
-      /etc/sudoers
-
-RUN mkdir /builds
+MAINTAINER Sharath Ganesh Pai <sharath@cliqz.com>
+ENV DEBIAN_FRONTEND noninteractive
+RUN dpkg --add-architecture i386 && \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y autoconf2.13 build-essential ccache curl git lib32z1 \
+        libc6:i386 libncurses5:i386 libstdc++6:i386 mercurial openjdk-8-jdk \
+        python-dev python-pip python-setuptools unzip uuid \
+        wget xz-utils zip && \
+    apt-get clean -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    mkdir -p /root/.mozbuild/proguard/lib && \
+    wget --output-document=/tmp/proguard.tgz --quiet "https://vorboss.dl.sourceforge.net/project/proguard/proguard/5.3/proguard5.3.3.tar.gz" && \
+    (cd /tmp; tar xf proguard.tgz && cp proguard5.3.3/lib/proguard.jar /root/.mozbuild/proguard/lib) && \
+    rm -rf /tmp/proguard*
+ENV SHELL /bin/bash
+ENV ANDROID_HOME /root/.mozbuild/android-sdk-linux
+RUN mkdir -p $ANDROID_HOME; \
+    cd $ANDROID_HOME; \
+    wget --output-document=sdktools.zip --quiet 'https://dl.google.com/android/repository/sdk-tools-linux-3859397.zip'; \
+    unzip sdktools.zip; \
+    rm -r sdktools.zip; \
+    (while (true); do echo y; sleep 2; done) | \
+      tools/bin/sdkmanager  "build-tools;25.0.3" "platforms;android-23" "platform-tools" "tools" "extras;google;m2repository" "extras;android;m2repository" "extras;google;google_play_services" "emulator";
+RUN cd /root && \
+    wget --output-document=nodejs.tgz --quiet \
+      'https://nodejs.org/dist/v8.9.3/node-v8.9.3-linux-x64.tar.xz' && \
+    tar xf nodejs.tgz && \
+    rm -f nodejs.tgz
+ENV PATH "/root/node-v8.9.3-linux-x64/bin:$PATH"
+RUN npm install -g yarn

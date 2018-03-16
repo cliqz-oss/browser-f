@@ -129,8 +129,9 @@ def check_install_tracking(install_tracking,
             die('You must specify MOZ_NATIVE_DEVICES=1 when'
                 ' building with MOZ_INSTALL_TRACKING=1')
         if not adjust_sdk_keyfile:
-            die('You must specify --with-adjust-sdk-keyfile=/path/to/keyfile when'
-                ' building with MOZ_INSTALL_TRACKING=1')
+            # Using default if Adjust SDK keyfile is not specified
+            # See https://issues.adblockplus.org/ticket/5920
+            adjust_sdk_keyfile = "$topsrcdir/mobile/android/base/adjust-sdk-sandbox.token"
 
 # Must come after the ../../toolkit/moz.configure.
 @depends('MOZ_ANDROID_MMA',
