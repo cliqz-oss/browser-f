@@ -18,6 +18,7 @@ Cu.import("resource://gre/modules/FileUtils.jsm");
 Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.import("resource://gre/modules/NetUtil.jsm");
 
 Cu.import("resource:///modules/AutoForgetTabs-utils.jsm");
 
@@ -259,8 +260,12 @@ AutoForgetTabsService.prototype = {
     let stream;
     try {
       let adultDomainsURI = Services.io.newURI(ADULT_DOMAINS_BF_RESOURCE_PATH);
-      let channel = Services.io.newChannelFromURIWithLoadInfo(adultDomainsURI,
-                                                              null);
+      let channel = NetUtil.newChannel({
+        uri: adultDomainsURI,
+        loadingPrincipal: Services.scriptSecurityManager.createCodebasePrincipal(adultDomainsURI, {}),
+        securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
+        contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_XMLHTTPREQUEST
+      });
       stream = channel.open();
     }
     catch(e) {
