@@ -367,7 +367,6 @@ var gMainPane = {
 
 #if 0
     this.updateBrowserStartupLastSession();
-#endif
     handleControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY);
     let newTabObserver = {
       observe(subject, topic, data) {
@@ -378,6 +377,7 @@ var gMainPane = {
     window.addEventListener("unload", () => {
       Services.obs.removeObserver(newTabObserver, "newtab-url-changed");
     });
+#endif
 
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
