@@ -351,6 +351,15 @@ function isInitialPage(url) {
   return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
 }
 
+var gCliqzPages = [
+  "resource://cliqz/freshtab/home.html",
+  "chrome://cliqz/content/onboarding-v3/index.html"
+];
+
+function isCliqzPage(url) {
+  return gCliqzPages.includes(url);
+}
+
 function* browserWindows() {
   let windows = Services.wm.getEnumerator("navigator:browser");
   while (windows.hasMoreElements())
@@ -2796,7 +2805,9 @@ function URLBarSetURI(aURI) {
     valid = !isBlankPageURL(uri.spec) || uri.schemeIs("moz-extension");
 
     // Cliqz. Invalidate page proxy state for inital pages opened in private tabs
-    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) && isInitialPage(uri.spec)) {
+    // and Cliqz pages.
+    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) && isInitialPage(uri.spec) ||
+        isCliqzPage(uri.spec)) {
       valid = false;
     }
   } else if (isInitialPage(value) &&
