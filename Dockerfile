@@ -41,10 +41,10 @@ RUN apt-get update && apt-get install -y \
   python-dbus \
   clang-5.0 \
   xvfb \
-  yasm 
+  yasm
 
 RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/aptly.list; \
-  apt-key adv --keyserver keys.gnupg.net --recv-keys 9E3E53F19C7DE460; \
+  apt-key adv --keyserver keys.gnupg.net --recv-keys ED75B5A4483DA07C; \
   apt-get update; \
   apt-get install aptly -y
 
