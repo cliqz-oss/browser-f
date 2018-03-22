@@ -554,10 +554,7 @@ ICStubCompiler::getStubCode()
 bool
 ICStubCompiler::tailCallVM(const VMFunction& fun, MacroAssembler& masm)
 {
-    JitCode* code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
-    if (!code)
-        return false;
-
+    TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
     MOZ_ASSERT(fun.expectTailCall == TailCall);
     uint32_t argSize = fun.explicitStackSlots() * sizeof(void*);
     if (engine_ == Engine::Baseline) {
@@ -574,10 +571,7 @@ ICStubCompiler::callVM(const VMFunction& fun, MacroAssembler& masm)
 {
     MOZ_ASSERT(inStubFrame_);
 
-    JitCode* code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
-    if (!code)
-        return false;
-
+    TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
     MOZ_ASSERT(fun.expectTailCall == NonTailCall);
     MOZ_ASSERT(engine_ == Engine::Baseline);
 
@@ -1259,7 +1253,6 @@ DoUnaryArithFallback(JSContext* cx, void* payload, ICUnaryArith_Fallback* stub_,
 {
     SharedStubInfo info(cx, payload, stub_->icEntry());
     ICStubCompiler::Engine engine = info.engine();
-    HandleScript script = info.innerScript();
 
     // This fallback stub may trigger debug mode toggling.
     DebugModeOSRVolatileStub<ICUnaryArith_Fallback*> stub(engine, info.maybeFrame(), stub_);
@@ -1277,7 +1270,7 @@ DoUnaryArithFallback(JSContext* cx, void* payload, ICUnaryArith_Fallback* stub_,
         break;
       }
       case JSOP_NEG:
-        if (!NegOperation(cx, script, pc, val, res))
+        if (!NegOperation(cx, val, res))
             return false;
         break;
       default:

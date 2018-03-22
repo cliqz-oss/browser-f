@@ -5,13 +5,13 @@
 loader: taskgraph.loader.transform:loader
 
 kind-dependencies:
-   - toolchain
+    - toolchain
 
 transforms:
-   - taskgraph.transforms.build_attrs:transforms
-   - taskgraph.transforms.use_toolchains:transforms
-   - taskgraph.transforms.job:transforms
-   - taskgraph.transforms.task:transforms
+    - taskgraph.transforms.build_attrs:transforms
+    - taskgraph.transforms.use_toolchains:transforms
+    - taskgraph.transforms.job:transforms
+    - taskgraph.transforms.task:transforms
 
 job-defaults:
     treeherder:
@@ -30,10 +30,7 @@ jobs:
             job-name: shell-haz-debug
         treeherder:
             platform: linux64/debug
-            symbol: SM-tc(H)
-        worker:
-            env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
+            symbol: SM(H)
         run:
             using: hazard
             command: >
@@ -56,10 +53,7 @@ jobs:
             job-name: browser-haz-debug
         treeherder:
             platform: linux64/debug
-            symbol: tc(H)
-        worker:
-            env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
+            symbol: H
         run:
             using: hazard
             mozconfig: "browser/config/mozconfigs/linux64/hazards"

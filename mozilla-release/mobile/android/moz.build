@@ -11,9 +11,6 @@ with Files('**'):
 with Files('branding/**'):
     BUG_COMPONENT = ('Firefox for Android', 'General')
 
-with Files('build/**'):
-    BUG_COMPONENT = ('Firefox for Android', 'Build Config & IDE Support')
-
 with Files('config/**'):
     BUG_COMPONENT = ('Firefox for Android', 'Build Config & IDE Support')
 
@@ -58,7 +55,6 @@ DIRS += [
     'base',
     'chrome',
     'components',
-    'extensions',
     'modules',
     'themes/core',
     'themes/geckoview',
@@ -71,3 +67,6 @@ TEST_DIRS += [
 ]
 
 SPHINX_TREES['fennec'] = 'docs'
+
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']

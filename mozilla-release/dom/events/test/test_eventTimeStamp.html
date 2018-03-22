@@ -38,9 +38,16 @@ SimpleTest.requestFlakyTimeout("untriaged");
 // We don't use SpecialPowers.pushPrefEnv since it can delay the test
 // function until after the load event has fired which means we can't
 // test the timestamp of the load event.
-const kPrefName = "dom.event.highrestimestamp.enabled";
-var prevPrefValue = SpecialPowers.getBoolPref(kPrefName);
-SpecialPowers.setBoolPref(kPrefName, true);
+const kHighResTimestampsPrefName = "dom.event.highrestimestamp.enabled";
+var highRestimerPrevPrefValue = SpecialPowers.getBoolPref(kHighResTimestampsPrefName);
+SpecialPowers.setBoolPref(kHighResTimestampsPrefName, true);
+
+// This file performs tests that normalize the timeOrigin within a worker
+// and compare it to the page. When this occurs, time can appear to go backwards.
+// This is a known (and accepted) regression.
+const kReduceTimePrecisionPrefName = "privacy.reduceTimerPrecision";
+var reduceTimePrecisionPrevPrefValue = SpecialPowers.getBoolPref(kReduceTimePrecisionPrefName);
+SpecialPowers.setBoolPref(kReduceTimePrecisionPrefName, false);
 testRegularEvents();
 
 // Event.timeStamp should be relative to the time origin which is:
@@ -60,10 +67,10 @@ function testRegularEvents() {
   var timeBeforeEvent = performance.now();
   addEventListener("load", function(evt) {
     var timeAfterEvent = performance.now();
-    ok(evt.timeStamp > timeBeforeEvent &&
-       evt.timeStamp < timeAfterEvent,
-       "Event timestamp (" + evt.timeStamp + ") is in expected range: (" +
-         timeBeforeEvent + ", " + timeAfterEvent + ")");
+    ok(evt.timeStamp >= timeBeforeEvent &&
+       evt.timeStamp <= timeAfterEvent,
+       "Event timestamp (" + evt.timeStamp + ") is in expected range: [" +
+         timeBeforeEvent + ", " + timeAfterEvent + "]");
     testWorkerEvents();
   });
 }
@@ -77,8 +84,8 @@ function testWorkerEvents() {
     ok(evt.data >= timeBeforeEvent &&
        evt.data <= timeAfterEvent,
        "Event timestamp in dedicated worker (" + evt.data +
-         ") is in expected range: (" +
-         timeBeforeEvent + ", " + timeAfterEvent + ")");
+         ") is in expected range: [" +
+         timeBeforeEvent + ", " + timeAfterEvent + "]");
     worker.terminate();
     testSharedWorkerEvents();
   };
@@ -111,7 +118,8 @@ function testSharedWorkerEvents() {
 }
 
 var finishTests = function() {
-  SpecialPowers.setBoolPref(kPrefName, prevPrefValue);
+  SpecialPowers.setBoolPref(kHighResTimestampsPrefName, highRestimerPrevPrefValue);
+  SpecialPowers.setBoolPref(kReduceTimePrecisionPrefName, reduceTimePrecisionPrevPrefValue);
   SimpleTest.finish();
 };
 

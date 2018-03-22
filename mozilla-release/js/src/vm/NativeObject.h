@@ -550,6 +550,10 @@ class NativeObject : public ShapedObject
     static inline JS::Result<NativeObject*, JS::OOM&>
     createWithTemplate(JSContext* cx, js::gc::InitialHeap heap, HandleObject templateObject);
 
+#ifdef DEBUG
+    static void enableShapeConsistencyChecks();
+#endif
+
   protected:
 #ifdef DEBUG
     friend class js::AutoCheckShapeConsistency;
@@ -854,6 +858,14 @@ class NativeObject : public ShapedObject
                                                              HandleShape parent,
                                                              MutableHandle<StackShape> child);
 
+    static MOZ_ALWAYS_INLINE bool
+    maybeConvertToOrGrowDictionaryForAdd(JSContext* cx, HandleNativeObject obj, HandleId id,
+                                         ShapeTable** table, ShapeTable::Entry** entry,
+                                         const AutoKeepShapeTables& keep);
+
+    static bool maybeToDictionaryModeForPut(JSContext* cx, HandleNativeObject obj,
+                                            MutableHandleShape shape);
+
   public:
     /* Add a property whose id is not yet in this scope. */
     static MOZ_ALWAYS_INLINE Shape* addDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
@@ -898,13 +910,14 @@ class NativeObject : public ShapedObject
      */
     static Shape*
     addDataPropertyInternal(JSContext* cx, HandleNativeObject obj, HandleId id,
-                            uint32_t slot, unsigned attrs, ShapeTable::Entry* entry,
-                            const AutoKeepShapeTables& keep);
+                            uint32_t slot, unsigned attrs, ShapeTable* table,
+                            ShapeTable::Entry* entry, const AutoKeepShapeTables& keep);
 
     static Shape*
     addAccessorPropertyInternal(JSContext* cx, HandleNativeObject obj, HandleId id,
                                 JSGetterOp getter, JSSetterOp setter, unsigned attrs,
-                                ShapeTable::Entry* entry, const AutoKeepShapeTables& keep);
+                                ShapeTable* table, ShapeTable::Entry* entry,
+                                const AutoKeepShapeTables& keep);
 
     static MOZ_MUST_USE bool fillInAfterSwap(JSContext* cx, HandleNativeObject obj,
                                              const Vector<Value>& values, void* priv);
@@ -1004,7 +1017,7 @@ class NativeObject : public ShapedObject
         MOZ_ASSERT(end <= getDenseInitializedLength());
         MOZ_ASSERT(!denseElementsAreCopyOnWrite());
         for (size_t i = start; i < end; i++)
-            elements_[i].HeapSlot::~HeapSlot();
+            elements_[i].destroy();
     }
 
     /*
@@ -1013,7 +1026,7 @@ class NativeObject : public ShapedObject
      */
     void prepareSlotRangeForOverwrite(size_t start, size_t end) {
         for (size_t i = start; i < end; i++)
-            getSlotAddressUnchecked(i)->HeapSlot::~HeapSlot();
+            getSlotAddressUnchecked(i)->destroy();
     }
 
     inline void shiftDenseElementsUnchecked(uint32_t count);
@@ -1165,8 +1178,7 @@ class NativeObject : public ShapedObject
     }
 
   private:
-    inline void ensureDenseInitializedLengthNoPackedCheck(JSContext* cx,
-                                                          uint32_t index, uint32_t extra);
+    inline void ensureDenseInitializedLengthNoPackedCheck(uint32_t index, uint32_t extra);
 
     // Run a post write barrier that encompasses multiple contiguous elements in a
     // single step.
@@ -1234,6 +1246,7 @@ class NativeObject : public ShapedObject
     inline void initDenseElements(NativeObject* src, uint32_t srcStart, uint32_t count);
     inline void moveDenseElements(uint32_t dstStart, uint32_t srcStart, uint32_t count);
     inline void moveDenseElementsNoPreBarrier(uint32_t dstStart, uint32_t srcStart, uint32_t count);
+    inline void reverseDenseElementsNoPreBarrier(uint32_t length);
 
     inline DenseElementResult
     setOrExtendDenseElements(JSContext* cx, uint32_t start, const Value* vp, uint32_t count,

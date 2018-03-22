@@ -1306,12 +1306,19 @@ extends="chrome://global/content/bindings/popup.xml#popup">
               originalText = item.getAttribute("ac-text");
               originalType = item.getAttribute("originaltype");
 
-              // All of types are reusable except for autofill-profile,
-              // which has different structure of <content> and overrides
-              // _adjustAcItem().
+              // The styles on the list which have different <content> structure and overrided
+              // _adjustAcItem() are unreusable.
+              const UNREUSEABLE_STYLES = [
+                "autofill-profile",
+                "autofill-footer",
+                "autofill-clear-button",
+                "autofill-insecureWarning",
+              ];
+              // Reuse the item when its style is exactly equal to the previous style or
+              // neither of their style are in the UNREUSEABLE_STYLES.
               reusable = originalType === style ||
-                         (style !== "autofill-profile" && originalType !== "autofill-profile" &&
-                         style !== "autofill-footer" && originalType !== "autofill-footer");
+                !(UNREUSEABLE_STYLES.includes(style) || UNREUSEABLE_STYLES.includes(originalType));
+
             } else {
               // need to create a new item
               item = document.createElementNS("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul", "richlistitem");
@@ -1632,7 +1639,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
               this.getAttribute("title"),
               this.getAttribute("displayurl"),
             ];
-            let label = parts.filter(str => str).join(" ")
+            let label = parts.filter(str => str).join(" ");
 
             // allow consumers that have extended popups to override
             // the label values for the richlistitems
@@ -2396,7 +2403,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
             // search components.
             action.params = {
               url: params,
-            }
+            };
           }
 
           return action;
@@ -2506,6 +2513,19 @@ extends="chrome://global/content/bindings/popup.xml#popup">
   <binding id="autocomplete-treebody">
     <implementation>
       <field name="mLastMoveTime">Date.now()</field>
+      <property name="noSelectOnMouseMove">
+        <getter><![CDATA[
+          return this.getAttribute("noSelectOnMouseMove") == "true";
+        ]]></getter>
+        <setter><![CDATA[
+          if (val) {
+            this.setAttribute("noSelectOnMouseMove", "true");
+          } else {
+            this.removeAttribute("noSelectOnMouseMove");
+          }
+          return !!val;
+        ]]></setter>
+      </property>
     </implementation>
 
     <handlers>
@@ -2518,8 +2538,8 @@ extends="chrome://global/content/bindings/popup.xml#popup">
       ]]></handler>
 
       <handler event="mousemove"><![CDATA[
-        if (event.defaultPrevented) {
-          // Allow bindings that extend this one to cancel the event so that
+        if (this.noSelectOnMouseMove) {
+          // Allow uses of this binding to cancel the event so that
           // nothing is selected.
           return;
         }

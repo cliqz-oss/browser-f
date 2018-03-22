@@ -91,6 +91,7 @@ Var EndDownloadPhaseTickCount
 Var EndPreInstallPhaseTickCount
 Var EndInstallPhaseTickCount
 Var EndFinishPhaseTickCount
+Var SendPingTimestamp
 
 Var InitialInstallRequirementsCode
 Var ExistingProfile
@@ -532,7 +533,7 @@ Function .onInit
 
   Call CanWrite
   ${If} "$CanWriteToInstallDir" == "false"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "$(WARN_WRITE_ACCESS_QUIT)\n\n$INSTDIR"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(WARN_WRITE_ACCESS_QUIT)$\n$\n$INSTDIR"
     Quit
   ${EndIf}
 
@@ -822,26 +823,26 @@ Function createInstall
   SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
 
   ; load all images
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap1
   ${NSD_SetImage} $Bitmap1 $PLUGINSDIR\artboard1.bmp $HwndBitmap1
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap2
   ${NSD_SetImage} $Bitmap2 $PLUGINSDIR\artboard2.bmp $HwndBitmap2
   ShowWindow $Bitmap2 ${SW_HIDE}
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap3
   ${NSD_SetImage} $Bitmap3 $PLUGINSDIR\artboard3.bmp $HwndBitmap3
   ShowWindow $Bitmap3 ${SW_HIDE}
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap4
   ${NSD_SetImage} $Bitmap4 $PLUGINSDIR\artboard4.bmp $HwndBitmap4
   ShowWindow $Bitmap4 ${SW_HIDE}
 
-  ${NSD_CreateBitmap} 43 81 312 220 100% ""
+  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap5
   ${NSD_SetImage} $Bitmap5 $PLUGINSDIR\artboard5.bmp $HwndBitmap5
   ShowWindow $Bitmap5 ${SW_HIDE}
@@ -1339,6 +1340,10 @@ Function SendPing
       StrCpy $EndInstallPhaseTickCount "$EndFinishPhaseTickCount"
     ${EndIf}
 
+    ; Get current time (UTC)
+    ${GetTime} "" "LS" $0 $1 $2 $3 $4 $5 $6
+    StrCpy $SendPingTimestamp "$2$1$0$4$5$6"
+
     ; Get the seconds elapsed from the start of the download phase to the end of
     ; the download phase.
     ${GetSecondsElapsed} "$StartDownloadPhaseTickCount" "$EndDownloadPhaseTickCount" $0
@@ -1497,6 +1502,7 @@ Function SendPing
                       $\nPreinstall Phase Seconds = $2 \
                       $\nInstall Phase Seconds = $3 \
                       $\nFinish Phase Seconds = $4 \
+                      $\nSeng Ping Timestamp = $SendPingTimestamp \
                       $\nInitial Install Requirements Code = $InitialInstallRequirementsCode \
                       $\nOpened Download Page = $OpenedDownloadPage \
                       $\nExisting Profile = $ExistingProfile \
@@ -1518,7 +1524,7 @@ Function SendPing
     Call RelativeGotoPage
 !else
     ${NSD_CreateTimer} OnPing ${DownloadIntervalMS}
-    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData/$ProfileCleanupPromptType/$CheckboxCleanupProfile" \
+    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$SendPingTimestamp/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData/$ProfileCleanupPromptType/$CheckboxCleanupProfile" \
                   "$PLUGINSDIR\_temp" /END
 !endif
   ${Else}

@@ -13,7 +13,11 @@ const ROOT = `http://localhost:${server.identity.primaryPort}`;
 const BASE = `${ROOT}/`;
 const HEADLESS_URL = `${BASE}/headless.html`;
 const HEADLESS_BUTTON_URL = `${BASE}/headless_button.html`;
-do_register_cleanup(() => { server.stop(() => {})});
+registerCleanupFunction(() => { server.stop(() => {})});
+
+// Refrences to the progress listeners to keep them from being gc'ed
+// before they are called.
+const progressListeners = new Map();
 
 function loadContentWindow(webNavigation, uri) {
   return new Promise((resolve, reject) => {
@@ -37,6 +41,7 @@ function loadContentWindow(webNavigation, uri) {
         let contentWindow = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                             .getInterface(Ci.nsIDOMWindow);
         webProgress.removeProgressListener(progressListener);
+        progressListeners.delete(progressListener);
         contentWindow.addEventListener("load", (event) => {
           resolve(contentWindow);
         }, { once: true });
@@ -44,6 +49,7 @@ function loadContentWindow(webNavigation, uri) {
       QueryInterface: XPCOMUtils.generateQI(["nsIWebProgressListener",
                                             "nsISupportsWeakReference"])
     };
+    progressListeners.set(progressListener, progressListener);
     webProgress.addProgressListener(progressListener,
                                     Ci.nsIWebProgress.NOTIFY_LOCATION);
   });
@@ -164,7 +170,7 @@ add_task(async function test_mouse_drag() {
   utils.sendMouseEvent("mousemove", left, top, 0, 1, 0, false, 0, 0);
   // Wait for a turn of the event loop since the synthetic mouse event
   // that creates the drag service is processed during the refresh driver.
-  await new Promise((r) => {do_execute_soon(r)});
+  await new Promise((r) => {executeSoon(r)});
   utils.sendMouseEvent("mouseup", left, top, 0, 1, 0, false, 0, 0);
 
   ok(true, "Send mouse event didn't crash");

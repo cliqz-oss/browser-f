@@ -89,10 +89,7 @@ StatusMsg(const char* aFmt, ...)
   void operator=(const T&)
 #endif
 
-static const malloc_table_t* gMallocTable = nullptr;
-
-// Whether DMD finished initializing.
-static bool gIsDMDInitialized = false;
+static malloc_table_t gMallocTable;
 
 // This provides infallible allocations (they abort on OOM).  We use it for all
 // of DMD's own allocations, which fall into the following three cases.
@@ -118,13 +115,13 @@ public:
   {
     if (aNumElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value)
       return nullptr;
-    return (T*)gMallocTable->malloc(aNumElems * sizeof(T));
+    return (T*)gMallocTable.malloc(aNumElems * sizeof(T));
   }
 
   template <typename T>
   static T* maybe_pod_calloc(size_t aNumElems)
   {
-    return (T*)gMallocTable->calloc(aNumElems, sizeof(T));
+    return (T*)gMallocTable.calloc(aNumElems, sizeof(T));
   }
 
   template <typename T>
@@ -132,12 +129,12 @@ public:
   {
     if (aNewSize & mozilla::tl::MulOverflowMask<sizeof(T)>::value)
       return nullptr;
-    return (T*)gMallocTable->realloc(aPtr, aNewSize * sizeof(T));
+    return (T*)gMallocTable.realloc(aPtr, aNewSize * sizeof(T));
   }
 
   static void* malloc_(size_t aSize)
   {
-    void* p = gMallocTable->malloc(aSize);
+    void* p = gMallocTable.malloc(aSize);
     ExitOnFailure(p);
     return p;
   }
@@ -152,7 +149,7 @@ public:
 
   static void* calloc_(size_t aSize)
   {
-    void* p = gMallocTable->calloc(1, aSize);
+    void* p = gMallocTable.calloc(1, aSize);
     ExitOnFailure(p);
     return p;
   }
@@ -168,7 +165,7 @@ public:
   // This realloc_ is the one we use for direct reallocs within DMD.
   static void* realloc_(void* aPtr, size_t aNewSize)
   {
-    void* p = gMallocTable->realloc(aPtr, aNewSize);
+    void* p = gMallocTable.realloc(aPtr, aNewSize);
     ExitOnFailure(p);
     return p;
   }
@@ -184,12 +181,12 @@ public:
 
   static void* memalign_(size_t aAlignment, size_t aSize)
   {
-    void* p = gMallocTable->memalign(aAlignment, aSize);
+    void* p = gMallocTable.memalign(aAlignment, aSize);
     ExitOnFailure(p);
     return p;
   }
 
-  static void free_(void* aPtr) { gMallocTable->free(aPtr); }
+  static void free_(void* aPtr) { gMallocTable.free(aPtr); }
 
   static char* strdup_(const char* aStr)
   {
@@ -229,7 +226,7 @@ public:
 static size_t
 MallocSizeOf(const void* aPtr)
 {
-  return gMallocTable->malloc_usable_size(const_cast<void*>(aPtr));
+  return gMallocTable.malloc_usable_size(const_cast<void*>(aPtr));
 }
 
 void
@@ -767,22 +764,7 @@ StackTrace::Get(Thread* aT)
     RtlCaptureContext(&context);
     void** fp = reinterpret_cast<void**>(context.Ebp);
 
-    // Offset 0x18 from the FS segment register gives a pointer to the thread
-    // information block for the current thread.
-#if defined(_MSC_VER)
-    NT_TIB* pTib;
-    __asm {
-      MOV EAX, FS:[18h]
-      MOV pTib, EAX
-    }
-#elif defined(__GNUC__)
-    NT_TIB* pTib;
-    asm ( "movl %%fs:0x18, %0\n"
-         : "=r" (pTib)
-        );
-#else
-#   error "unknown compiler"
-#endif
+    PNT_TIB pTib = reinterpret_cast<PNT_TIB>(NtCurrentTeb());
     void* stackEnd = static_cast<void*>(pTib->StackBase);
     FramePointerStackWalk(StackWalkCallback, /* skipFrames = */ 0, MaxFrames,
                           &tmp, fp, stackEnd);
@@ -1220,7 +1202,7 @@ AllocCallback(void* aPtr, size_t aReqSize, Thread* aT)
   AutoLockState lock;
   AutoBlockIntercepts block(aT);
 
-  size_t actualSize = gMallocTable->malloc_usable_size(aPtr);
+  size_t actualSize = gMallocTable.malloc_usable_size(aPtr);
 
   // We may or may not record the allocation stack trace, depending on the
   // options and the outcome of a Bernoulli trial.
@@ -1259,35 +1241,15 @@ FreeCallback(void* aPtr, Thread* aT, DeadBlock* aDeadBlock)
 // malloc/free interception
 //---------------------------------------------------------------------------
 
-static void Init(const malloc_table_t* aMallocTable);
+static bool Init(malloc_table_t* aMallocTable);
 
 } // namespace dmd
 } // namespace mozilla
 
-void
-replace_init(const malloc_table_t* aMallocTable)
-{
-  mozilla::dmd::Init(aMallocTable);
-}
-
-ReplaceMallocBridge*
-replace_get_bridge()
-{
-  return mozilla::dmd::gDMDBridge;
-}
-
-void*
+static void*
 replace_malloc(size_t aSize)
 {
   using namespace mozilla::dmd;
-
-  if (!gIsDMDInitialized) {
-    // DMD hasn't started up, either because it wasn't enabled by the user, or
-    // we're still in Init() and something has indirectly called malloc.  Do a
-    // vanilla malloc.  (In the latter case, if it fails we'll crash.  But
-    // OOM is highly unlikely so early on.)
-    return gMallocTable->malloc(aSize);
-  }
 
   Thread* t = Thread::Fetch();
   if (t->InterceptsAreBlocked()) {
@@ -1297,38 +1259,30 @@ replace_malloc(size_t aSize)
   }
 
   // This must be a call to malloc from outside DMD.  Intercept it.
-  void* ptr = gMallocTable->malloc(aSize);
+  void* ptr = gMallocTable.malloc(aSize);
   AllocCallback(ptr, aSize, t);
   return ptr;
 }
 
-void*
+static void*
 replace_calloc(size_t aCount, size_t aSize)
 {
   using namespace mozilla::dmd;
-
-  if (!gIsDMDInitialized) {
-    return gMallocTable->calloc(aCount, aSize);
-  }
 
   Thread* t = Thread::Fetch();
   if (t->InterceptsAreBlocked()) {
     return InfallibleAllocPolicy::calloc_(aCount * aSize);
   }
 
-  void* ptr = gMallocTable->calloc(aCount, aSize);
+  void* ptr = gMallocTable.calloc(aCount, aSize);
   AllocCallback(ptr, aCount * aSize, t);
   return ptr;
 }
 
-void*
+static void*
 replace_realloc(void* aOldPtr, size_t aSize)
 {
   using namespace mozilla::dmd;
-
-  if (!gIsDMDInitialized) {
-    return gMallocTable->realloc(aOldPtr, aSize);
-  }
 
   Thread* t = Thread::Fetch();
   if (t->InterceptsAreBlocked()) {
@@ -1346,7 +1300,7 @@ replace_realloc(void* aOldPtr, size_t aSize)
   // move, but doing better isn't worth the effort.
   DeadBlock db;
   FreeCallback(aOldPtr, t, &db);
-  void* ptr = gMallocTable->realloc(aOldPtr, aSize);
+  void* ptr = gMallocTable.realloc(aOldPtr, aSize);
   if (ptr) {
     AllocCallback(ptr, aSize, t);
     MaybeAddToDeadBlockTable(db);
@@ -1357,39 +1311,30 @@ replace_realloc(void* aOldPtr, size_t aSize)
     // block will end up looking like it was allocated for the first time here,
     // which is untrue, and the slop bytes will be zero, which may be untrue.
     // But this case is rare and doing better isn't worth the effort.
-    AllocCallback(aOldPtr, gMallocTable->malloc_usable_size(aOldPtr), t);
+    AllocCallback(aOldPtr, gMallocTable.malloc_usable_size(aOldPtr), t);
   }
   return ptr;
 }
 
-void*
+static void*
 replace_memalign(size_t aAlignment, size_t aSize)
 {
   using namespace mozilla::dmd;
-
-  if (!gIsDMDInitialized) {
-    return gMallocTable->memalign(aAlignment, aSize);
-  }
 
   Thread* t = Thread::Fetch();
   if (t->InterceptsAreBlocked()) {
     return InfallibleAllocPolicy::memalign_(aAlignment, aSize);
   }
 
-  void* ptr = gMallocTable->memalign(aAlignment, aSize);
+  void* ptr = gMallocTable.memalign(aAlignment, aSize);
   AllocCallback(ptr, aSize, t);
   return ptr;
 }
 
-void
+static void
 replace_free(void* aPtr)
 {
   using namespace mozilla::dmd;
-
-  if (!gIsDMDInitialized) {
-    gMallocTable->free(aPtr);
-    return;
-  }
 
   Thread* t = Thread::Fetch();
   if (t->InterceptsAreBlocked()) {
@@ -1402,7 +1347,18 @@ replace_free(void* aPtr)
   DeadBlock db;
   FreeCallback(aPtr, t, &db);
   MaybeAddToDeadBlockTable(db);
-  gMallocTable->free(aPtr);
+  gMallocTable.free(aPtr);
+}
+
+void
+replace_init(malloc_table_t* aMallocTable, ReplaceMallocBridge** aBridge)
+{
+  if (mozilla::dmd::Init(aMallocTable)) {
+#define MALLOC_FUNCS MALLOC_FUNCS_MALLOC_BASE
+#define MALLOC_DECL(name, ...) aMallocTable->name = replace_ ## name;
+#include "malloc_decls.h"
+    *aBridge = mozilla::dmd::gDMDBridge;
+  }
 }
 
 namespace mozilla {
@@ -1469,9 +1425,6 @@ Options::Options(const char* aDMDEnvVar)
   , mStacks(Stacks::Partial)
   , mShowDumpStats(false)
 {
-  // It's no longer necessary to set the DMD env var to "1" if you want default
-  // options (you can leave it undefined) but we still accept "1" for
-  // backwards compatibility.
   char* e = mDMDEnvVar;
   if (e && strcmp(e, "1") != 0) {
     bool isEnd = false;
@@ -1581,10 +1534,21 @@ postfork()
 // have run.  For this reason, non-scalar globals such as gStateLock and
 // gStackTraceTable are allocated dynamically (so we can guarantee their
 // construction in this function) rather than statically.
-static void
-Init(const malloc_table_t* aMallocTable)
+static bool
+Init(malloc_table_t* aMallocTable)
 {
-  gMallocTable = aMallocTable;
+  // DMD is controlled by the |DMD| environment variable.
+  const char* e = getenv("DMD");
+
+  if (!e) {
+    return false;
+  }
+  // Initialize the function table first, because StatusMsg uses
+  // InfallibleAllocPolicy::malloc_, which uses it.
+  gMallocTable = *aMallocTable;
+
+  StatusMsg("$DMD = '%s'\n", e);
+
   gDMDBridge = InfallibleAllocPolicy::new_<DMDBridge>();
 
 #ifndef XP_WIN
@@ -1596,16 +1560,6 @@ Init(const malloc_table_t* aMallocTable)
   // system malloc a chance to insert its own atfork handler.
   pthread_atfork(prefork, postfork, postfork);
 #endif
-
-  // DMD is controlled by the |DMD| environment variable.
-  const char* e = getenv("DMD");
-
-  if (e) {
-    StatusMsg("$DMD = '%s'\n", e);
-  } else {
-    StatusMsg("$DMD is undefined\n");
-  }
-
   // Parse $DMD env var.
   gOptions = InfallibleAllocPolicy::new_<Options>(e);
 
@@ -1634,7 +1588,7 @@ Init(const malloc_table_t* aMallocTable)
     MOZ_ALWAYS_TRUE(gDeadBlockTable->init(tableSize));
   }
 
-  gIsDMDInitialized = true;
+  return true;
 }
 
 //---------------------------------------------------------------------------

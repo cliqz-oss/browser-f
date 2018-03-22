@@ -24,16 +24,14 @@ const device2 = Object.assign({}, device, {
   name: "Test Device 2",
 });
 
-addRDMTask(TEST_URL, function* ({ ui }) {
+addRDMTask(TEST_URL, async function ({ ui }) {
   let { toolWindow } = ui;
   let { store, document } = toolWindow;
-  let React = toolWindow.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
 
   info("Verify that remove buttons affect the correct device");
 
   // Wait until the viewport has been added and the device list has been loaded
-  yield waitUntilState(store, state => state.viewports.length == 1
+  await waitUntilState(store, state => state.viewports.length == 1
     && state.devices.listState == Types.deviceListState.LOADED);
 
   let deviceSelector = document.querySelector(".viewport-device-selector");
@@ -43,17 +41,17 @@ addRDMTask(TEST_URL, function* ({ ui }) {
 
   info("Reveal device adder form");
   let adderShow = document.querySelector("#device-adder-show");
-  Simulate.click(adderShow);
+  adderShow.click();
 
   info("Add test device 1");
-  yield addDeviceInModal(ui, device1);
+  await addDeviceInModal(ui, device1);
 
   info("Reveal device adder form");
   adderShow = document.querySelector("#device-adder-show");
-  Simulate.click(adderShow);
+  adderShow.click();
 
   info("Add test device 2");
-  yield addDeviceInModal(ui, device2);
+  await addDeviceInModal(ui, device2);
 
   info("Verify all custom devices default to enabled in modal");
   let deviceCbs =
@@ -62,7 +60,7 @@ addRDMTask(TEST_URL, function* ({ ui }) {
   for (let cb of deviceCbs) {
     ok(cb.checked, "Custom device enabled");
   }
-  Simulate.click(submitButton);
+  submitButton.click();
 
   info("Look for device 1 in device selector");
   let deviceOption1 = [...deviceSelector.options].find(opt => opt.value == device1.name);
@@ -78,9 +76,9 @@ addRDMTask(TEST_URL, function* ({ ui }) {
   let deviceRemoveButtons = [...document.querySelectorAll(".device-remove-button")];
   is(deviceRemoveButtons.length, 2, "Both devices have a remove button in modal");
   let removed = waitUntilState(store, state => state.devices.custom.length == 1);
-  Simulate.click(deviceRemoveButtons[1]);
-  yield removed;
-  Simulate.click(submitButton);
+  deviceRemoveButtons[1].click();
+  await removed;
+  submitButton.click();
 
   info("Ensure device 1 is still in device selector");
   deviceOption1 = [...deviceSelector.options].find(opt => opt.value == device1.name);
@@ -91,12 +89,12 @@ addRDMTask(TEST_URL, function* ({ ui }) {
   ok(!deviceOption2, "Test device 2 option removed");
 });
 
-addRDMTask(TEST_URL, function* ({ ui }) {
+addRDMTask(TEST_URL, async function ({ ui }) {
   let { toolWindow } = ui;
   let { store, document } = toolWindow;
 
   // Wait until the viewport has been added and the device list has been loaded
-  yield waitUntilState(store, state => state.viewports.length == 1
+  await waitUntilState(store, state => state.viewports.length == 1
     && state.devices.listState == Types.deviceListState.LOADED);
 
   let deviceSelector = document.querySelector(".viewport-device-selector");

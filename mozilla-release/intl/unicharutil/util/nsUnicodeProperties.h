@@ -46,6 +46,15 @@ enum IdentifierType {
   IDTYPE_ALLOWED = 1,
 };
 
+enum EmojiPresentation {
+  TextOnly = 0,
+  TextDefault = 1,
+  EmojiDefault = 2
+};
+
+const uint32_t kVariationSelector15 = 0xFE0E; // text presentation
+const uint32_t kVariationSelector16 = 0xFE0F; // emoji presentation
+
 extern const hb_unicode_general_category_t sICUtoHBcategory[];
 
 inline uint32_t
@@ -110,7 +119,11 @@ inline uint32_t
 GetScriptTagForCode(Script aScriptCode)
 {
   const char* tag = uscript_getShortName(UScriptCode(aScriptCode));
-  return HB_TAG(tag[0], tag[1], tag[2], tag[3]);
+  if (tag) {
+    return HB_TAG(tag[0], tag[1], tag[2], tag[3]);
+  }
+  // return UNKNOWN script tag (running with older ICU?)
+  return HB_SCRIPT_UNKNOWN;
 }
 
 inline PairedBracketType
@@ -170,6 +183,19 @@ inline bool
 IsDefaultIgnorable(uint32_t aCh)
 {
   return u_hasBinaryProperty(aCh, UCHAR_DEFAULT_IGNORABLE_CODE_POINT);
+}
+
+inline EmojiPresentation
+GetEmojiPresentation(uint32_t aCh)
+{
+  if (!u_hasBinaryProperty(aCh, UCHAR_EMOJI)) {
+    return TextOnly;
+  }
+
+  if (u_hasBinaryProperty(aCh, UCHAR_EMOJI_PRESENTATION)) {
+    return EmojiDefault;
+  }
+  return TextDefault;
 }
 
 // returns the simplified Gen Category as defined in nsUGenCategory

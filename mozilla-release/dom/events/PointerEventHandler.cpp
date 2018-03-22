@@ -195,6 +195,59 @@ PointerEventHandler::GetPointerInfo(uint32_t aPointerId, bool& aActiveState)
 }
 
 /* static */ void
+PointerEventHandler::MaybeProcessPointerCapture(WidgetGUIEvent* aEvent)
+{
+  switch (aEvent->mClass) {
+  case eMouseEventClass:
+    ProcessPointerCaptureForMouse(aEvent->AsMouseEvent());
+    break;
+  case eTouchEventClass:
+    ProcessPointerCaptureForTouch(aEvent->AsTouchEvent());
+    break;
+  default:
+    break;
+  }
+}
+
+/* static */ void
+PointerEventHandler::ProcessPointerCaptureForMouse(WidgetMouseEvent* aEvent)
+{
+  if (!ShouldGeneratePointerEventFromMouse(aEvent)) {
+    return;
+  }
+
+  PointerCaptureInfo* info = GetPointerCaptureInfo(aEvent->pointerId);
+  if (!info || info->mPendingContent == info->mOverrideContent) {
+    return;
+  }
+  WidgetPointerEvent localEvent(*aEvent);
+  InitPointerEventFromMouse(&localEvent, aEvent, eVoidEvent);
+  CheckPointerCaptureState(&localEvent);
+}
+
+/* static */ void
+PointerEventHandler::ProcessPointerCaptureForTouch(WidgetTouchEvent* aEvent)
+{
+  if (!ShouldGeneratePointerEventFromTouch(aEvent)) {
+    return;
+  }
+
+  for (uint32_t i = 0; i < aEvent->mTouches.Length(); ++i) {
+    Touch* touch = aEvent->mTouches[i];
+    if (!TouchManager::ShouldConvertTouchToPointer(touch, aEvent)) {
+      continue;
+    }
+    PointerCaptureInfo* info = GetPointerCaptureInfo(touch->Identifier());
+    if (!info || info->mPendingContent == info->mOverrideContent) {
+      continue;
+    }
+    WidgetPointerEvent event(aEvent->IsTrusted(), eVoidEvent, aEvent->mWidget);
+    InitPointerEventFromTouch(&event, aEvent, touch, i == 0);
+    CheckPointerCaptureState(&event);
+  }
+}
+
+/* static */ void
 PointerEventHandler::CheckPointerCaptureState(WidgetPointerEvent* aEvent)
 {
   // Handle pending pointer capture before any pointer events except
@@ -207,24 +260,25 @@ PointerEventHandler::CheckPointerCaptureState(WidgetPointerEvent* aEvent)
 
   PointerCaptureInfo* captureInfo = GetPointerCaptureInfo(aEvent->pointerId);
 
-  if (captureInfo &&
-      captureInfo->mPendingContent != captureInfo->mOverrideContent) {
-    // cache captureInfo->mPendingContent since it may be changed in the pointer
-    // event listener
-    nsIContent* pendingContent = captureInfo->mPendingContent.get();
-    if (captureInfo->mOverrideContent) {
-      DispatchGotOrLostPointerCaptureEvent(/* aIsGotCapture */ false, aEvent,
-                                           captureInfo->mOverrideContent);
-    }
-    if (pendingContent) {
-      DispatchGotOrLostPointerCaptureEvent(/* aIsGotCapture */ true, aEvent,
-                                           pendingContent);
-    }
+  if (!captureInfo ||
+      captureInfo->mPendingContent == captureInfo->mOverrideContent) {
+    return;
+  }
+  // cache captureInfo->mPendingContent since it may be changed in the pointer
+  // event listener
+  nsIContent* pendingContent = captureInfo->mPendingContent.get();
+  if (captureInfo->mOverrideContent) {
+    DispatchGotOrLostPointerCaptureEvent(/* aIsGotCapture */ false, aEvent,
+                                         captureInfo->mOverrideContent);
+  }
+  if (pendingContent) {
+    DispatchGotOrLostPointerCaptureEvent(/* aIsGotCapture */ true, aEvent,
+                                         pendingContent);
+  }
 
-    captureInfo->mOverrideContent = pendingContent;
-    if (captureInfo->Empty()) {
-      sPointerCaptureList->Remove(aEvent->pointerId);
-    }
+  captureInfo->mOverrideContent = pendingContent;
+  if (captureInfo->Empty()) {
+    sPointerCaptureList->Remove(aEvent->pointerId);
   }
 }
 
@@ -277,33 +331,22 @@ PointerEventHandler::GetPointerCapturingContent(uint32_t aPointerId)
   return nullptr;
 }
 
-/* static */ nsIFrame*
-PointerEventHandler::GetPointerCapturingFrame(nsIFrame* aFrameUnderCursor,
-                                              WidgetGUIEvent* aEvent)
+/* static */ nsIContent*
+PointerEventHandler::GetPointerCapturingContent(WidgetGUIEvent* aEvent)
 {
   if (!IsPointerEventEnabled() || (aEvent->mClass != ePointerEventClass &&
                                    aEvent->mClass != eMouseEventClass) ||
       aEvent->mMessage == ePointerDown || aEvent->mMessage == eMouseDown) {
     // Pointer capture should only be applied to all pointer events and mouse
     // events except ePointerDown and eMouseDown;
-    return aFrameUnderCursor;
+    return nullptr;
   }
 
   WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent();
   if (!mouseEvent) {
-    return aFrameUnderCursor;
+    return nullptr;
   }
-
-  // Find the content which captures the pointer.
-  nsIContent* capturingContent =
-    GetPointerCapturingContent(mouseEvent->pointerId);
-
-  if (!capturingContent) {
-    return aFrameUnderCursor;
-  }
-  // Return the content's primary frame as the target frame.
-  nsIFrame* capturingFrame = capturingContent->GetPrimaryFrame();
-  return capturingFrame ? capturingFrame : aFrameUnderCursor;
+  return GetPointerCapturingContent(mouseEvent->pointerId);
 }
 
 /* static */ void
@@ -377,16 +420,72 @@ PointerEventHandler::PostHandlePointerEventsPreventDefault(
 }
 
 /* static */ void
+PointerEventHandler::InitPointerEventFromMouse(
+                       WidgetPointerEvent* aPointerEvent,
+                       WidgetMouseEvent* aMouseEvent,
+                       EventMessage aMessage)
+{
+  MOZ_ASSERT(aPointerEvent);
+  MOZ_ASSERT(aMouseEvent);
+  aPointerEvent->pointerId = aMouseEvent->pointerId;
+  aPointerEvent->inputSource = aMouseEvent->inputSource;
+  aPointerEvent->mMessage = aMessage;
+  aPointerEvent->button = aMouseEvent->mMessage == eMouseMove ?
+                            WidgetMouseEvent::eNoButton : aMouseEvent->button;
+
+  aPointerEvent->buttons = aMouseEvent->buttons;
+  aPointerEvent->pressure = aPointerEvent->buttons ?
+                              aMouseEvent->pressure ?
+                                aMouseEvent->pressure : 0.5f :
+                              0.0f;
+}
+
+/* static */ void
+PointerEventHandler::InitPointerEventFromTouch(
+                       WidgetPointerEvent* aPointerEvent,
+                       WidgetTouchEvent* aTouchEvent,
+                       mozilla::dom::Touch* aTouch,
+                       bool aIsPrimary)
+{
+  MOZ_ASSERT(aPointerEvent);
+  MOZ_ASSERT(aTouchEvent);
+
+  int16_t button = aTouchEvent->mMessage == eTouchMove ?
+                     WidgetMouseEvent::eNoButton :
+                     WidgetMouseEvent::eLeftButton;
+
+  int16_t buttons = aTouchEvent->mMessage == eTouchEnd ?
+                      WidgetMouseEvent::eNoButtonFlag :
+                      WidgetMouseEvent::eLeftButtonFlag;
+
+  aPointerEvent->mIsPrimary = aIsPrimary;
+  aPointerEvent->pointerId = aTouch->Identifier();
+  aPointerEvent->mRefPoint = aTouch->mRefPoint;
+  aPointerEvent->mModifiers = aTouchEvent->mModifiers;
+  aPointerEvent->mWidth = aTouch->RadiusX(CallerType::System);
+  aPointerEvent->mHeight = aTouch->RadiusY(CallerType::System);
+  aPointerEvent->tiltX = aTouch->tiltX;
+  aPointerEvent->tiltY = aTouch->tiltY;
+  aPointerEvent->mTime = aTouchEvent->mTime;
+  aPointerEvent->mTimeStamp = aTouchEvent->mTimeStamp;
+  aPointerEvent->mFlags = aTouchEvent->mFlags;
+  aPointerEvent->button = button;
+  aPointerEvent->buttons = buttons;
+  aPointerEvent->inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+}
+
+/* static */ void
 PointerEventHandler::DispatchPointerFromMouseOrTouch(
                        PresShell* aShell,
                        nsIFrame* aFrame,
+                       nsIContent* aContent,
                        WidgetGUIEvent* aEvent,
                        bool aDontRetargetEvents,
                        nsEventStatus* aStatus,
                        nsIContent** aTargetContent)
 {
   MOZ_ASSERT(IsPointerEventEnabled());
-  MOZ_ASSERT(aFrame);
+  MOZ_ASSERT(aFrame || aContent);
   MOZ_ASSERT(aEvent);
 
   EventMessage pointerMessage = eVoidEvent;
@@ -418,34 +517,31 @@ PointerEventHandler::DispatchPointerFromMouseOrTouch(
     }
 
     WidgetPointerEvent event(*mouseEvent);
-    event.pointerId = mouseEvent->pointerId;
-    event.inputSource = mouseEvent->inputSource;
-    event.mMessage = pointerMessage;
-    event.button = button;
-    event.buttons = mouseEvent->buttons;
-    event.pressure = event.buttons ?
-                     mouseEvent->pressure ? mouseEvent->pressure : 0.5f :
-                     0.0f;
+    InitPointerEventFromMouse(&event, mouseEvent, pointerMessage);
     event.convertToPointer = mouseEvent->convertToPointer = false;
-    PreHandlePointerEventsPreventDefault(&event, aEvent);
     RefPtr<PresShell> shell(aShell);
-    shell->HandleEvent(aFrame, &event, aDontRetargetEvents, aStatus,
-                       aTargetContent);
+    if (!aFrame) {
+      shell = PresShell::GetShellForEventTarget(nullptr, aContent);
+      if (!shell) {
+        return;
+      }
+    }
+    PreHandlePointerEventsPreventDefault(&event, aEvent);
+    // Dispatch pointer event to the same target which is found by the
+    // corresponding mouse event.
+    shell->HandleEventWithTarget(&event, aFrame, aContent, aStatus, true,
+                                 aTargetContent);
     PostHandlePointerEventsPreventDefault(&event, aEvent);
   } else if (aEvent->mClass == eTouchEventClass) {
     WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent();
-    int16_t button = WidgetMouseEvent::eLeftButton;
-    int16_t buttons = WidgetMouseEvent::eLeftButtonFlag;
     // loop over all touches and dispatch pointer events on each touch
     // copy the event
     switch (touchEvent->mMessage) {
     case eTouchMove:
       pointerMessage = ePointerMove;
-      button = WidgetMouseEvent::eNoButton;
       break;
     case eTouchEnd:
       pointerMessage = ePointerUp;
-      buttons = WidgetMouseEvent::eNoButtonFlag;
       break;
     case eTouchStart:
       pointerMessage = ePointerDown;
@@ -467,25 +563,36 @@ PointerEventHandler::DispatchPointerFromMouseOrTouch(
 
       WidgetPointerEvent event(touchEvent->IsTrusted(), pointerMessage,
                                touchEvent->mWidget);
-      event.mIsPrimary = i == 0;
-      event.pointerId = touch->Identifier();
-      event.mRefPoint = touch->mRefPoint;
-      event.mModifiers = touchEvent->mModifiers;
-      event.mWidth = touch->RadiusX(CallerType::System);
-      event.mHeight = touch->RadiusY(CallerType::System);
-      event.tiltX = touch->tiltX;
-      event.tiltY = touch->tiltY;
-      event.mTime = touchEvent->mTime;
-      event.mTimeStamp = touchEvent->mTimeStamp;
-      event.mFlags = touchEvent->mFlags;
-      event.button = button;
-      event.buttons = buttons;
-      event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+
+      InitPointerEventFromTouch(&event, touchEvent, touch, i == 0);
       event.convertToPointer = touch->convertToPointer = false;
-      PreHandlePointerEventsPreventDefault(&event, aEvent);
-      shell->HandleEvent(aFrame, &event, aDontRetargetEvents, aStatus,
-                         aTargetContent);
-      PostHandlePointerEventsPreventDefault(&event, aEvent);
+      if (aEvent->mMessage == eTouchStart) {
+        // We already did hit test for touchstart in PresShell. We should
+        // dispatch pointerdown to the same target as touchstart.
+        nsCOMPtr<nsIContent> content = do_QueryInterface(touch->mTarget);
+        if (!content) {
+          continue;
+        }
+
+        nsIFrame* frame = content->GetPrimaryFrame();
+        shell = PresShell::GetShellForEventTarget(frame, content);
+        if (!shell) {
+          continue;
+        }
+
+        PreHandlePointerEventsPreventDefault(&event, aEvent);
+        shell->HandleEventWithTarget(&event, frame, content, aStatus, true,
+                                     nullptr);
+        PostHandlePointerEventsPreventDefault(&event, aEvent);
+      } else {
+        // We didn't hit test for other touch events. Spec doesn't mention that
+        // all pointer events should be dispatched to the same target as their
+        // corresponding touch events. Call PresShell::HandleEvent so that we do
+        // hit test for pointer events.
+        PreHandlePointerEventsPreventDefault(&event, aEvent);
+        shell->HandleEvent(aFrame, &event, aDontRetargetEvents, aStatus);
+        PostHandlePointerEventsPreventDefault(&event, aEvent);
+      }
     }
   }
 }

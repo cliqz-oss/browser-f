@@ -12,10 +12,11 @@
 #include "mozilla/FileUtils.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/Sprintf.h"
+#include "mozilla/Printf.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "MainThreadUtils.h"
 #include "nsClassHashtable.h"
 #include "nsDebug.h"
 #include "NSPRLogModulesParser.h"
@@ -179,6 +180,7 @@ public:
     , mAddTimestamp(false)
     , mIsSync(false)
     , mRotate(0)
+    , mInitialized(false)
   {
   }
 
@@ -190,9 +192,17 @@ public:
 
   /**
    * Loads config from env vars if present.
+   *
+   * Notes:
+   *
+   * 1) This function is only intended to be called once per session.
+   * 2) None of the functions used in Init should rely on logging.
    */
   void Init()
   {
+    MOZ_DIAGNOSTIC_ASSERT(!mInitialized);
+    mInitialized = true;
+
     bool shouldAppend = false;
     bool addTimestamp = false;
     bool isSync = false;
@@ -213,8 +223,10 @@ public:
       }
     }
 
+    // Need to capture `this` since `sLogModuleManager` is not set until after
+    // initialization is complete.
     NSPRLogModulesParser(modules,
-        [&shouldAppend, &addTimestamp, &isSync, &rotate]
+        [this, &shouldAppend, &addTimestamp, &isSync, &rotate]
             (const char* aName, LogLevel aLevel, int32_t aValue) mutable {
           if (strcmp(aName, "append") == 0) {
             shouldAppend = true;
@@ -225,7 +237,7 @@ public:
           } else if (strcmp(aName, "rotate") == 0) {
             rotate = (aValue << 20) / kRotateFilesNumber;
           } else {
-            LogModule::Get(aName)->SetLevel(aLevel);
+            this->CreateOrGetModule(aName)->SetLevel(aLevel);
           }
     });
 
@@ -363,6 +375,8 @@ public:
   void Print(const char* aName, LogLevel aLevel, const char* aFmt, va_list aArgs)
     MOZ_FORMAT_PRINTF(4, 0)
   {
+    // We don't do nuwa-style forking anymore, so our pid can't change.
+    static long pid = static_cast<long>(base::GetCurrentProcId());
     const size_t kBuffSize = 1024;
     char buff[kBuffSize];
 
@@ -426,18 +440,18 @@ public:
 
     if (!mAddTimestamp) {
       fprintf_stderr(out,
-                     "[%s]: %s/%s %s%s",
-                     currentThreadName, ToLogStr(aLevel),
+                     "[%ld:%s]: %s/%s %s%s",
+                     pid, currentThreadName, ToLogStr(aLevel),
                      aName, buffToWrite, newline);
     } else {
       PRExplodedTime now;
       PR_ExplodeTime(PR_Now(), PR_GMTParameters, &now);
       fprintf_stderr(
           out,
-          "%04d-%02d-%02d %02d:%02d:%02d.%06d UTC - [%s]: %s/%s %s%s",
+          "%04d-%02d-%02d %02d:%02d:%02d.%06d UTC - [%ld:%s]: %s/%s %s%s",
           now.tm_year, now.tm_month + 1, now.tm_mday,
           now.tm_hour, now.tm_min, now.tm_sec, now.tm_usec,
-          currentThreadName, ToLogStr(aLevel),
+          pid, currentThreadName, ToLogStr(aLevel),
           aName, buffToWrite, newline);
     }
 
@@ -511,6 +525,7 @@ private:
   Atomic<bool, Relaxed> mAddTimestamp;
   Atomic<bool, Relaxed> mIsSync;
   int32_t mRotate;
+  bool mInitialized;
 };
 
 StaticAutoPtr<LogModuleManager> sLogModuleManager;
@@ -555,6 +570,8 @@ LogModule::Init()
 {
   // NB: This method is not threadsafe; it is expected to be called very early
   //     in startup prior to any other threads being run.
+  MOZ_DIAGNOSTIC_ASSERT(NS_IsMainThread());
+
   if (sLogModuleManager) {
     // Already initialized.
     return;
@@ -563,8 +580,12 @@ LogModule::Init()
   // NB: We intentionally do not register for ClearOnShutdown as that happens
   //     before all logging is complete. And, yes, that means we leak, but
   //     we're doing that intentionally.
-  sLogModuleManager = new LogModuleManager();
-  sLogModuleManager->Init();
+
+  // Don't assign the pointer until after Init is called. This should help us
+  // detect if any of the functions called by Init somehow rely on logging.
+  auto mgr = new LogModuleManager();
+  mgr->Init();
+  sLogModuleManager = mgr;
 }
 
 void

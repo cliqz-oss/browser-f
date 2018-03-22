@@ -4,19 +4,29 @@
 
 "use strict";
 
-const {
-  Component,
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
+const { Component } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const { fetchNetworkUpdatePacket } = require("../utils/request-utils");
 
-const { div } = DOM;
+const { div } = dom;
 
 class RequestListColumnCookies extends Component {
   static get propTypes() {
     return {
+      connector: PropTypes.object.isRequired,
       item: PropTypes.object.isRequired,
     };
+  }
+
+  componentDidMount() {
+    let { item, connector } = this.props;
+    fetchNetworkUpdatePacket(connector.requestData, item, ["requestCookies"]);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    let { item, connector } = nextProps;
+    fetchNetworkUpdatePacket(connector.requestData, item, ["requestCookies"]);
   }
 
   shouldComponentUpdate(nextProps) {

@@ -15,12 +15,6 @@ gTestserver.start(-1);
 gPort = gTestserver.identity.primaryPort;
 mapFile("/data/test_gfxBlacklist_OSVersion.xml", gTestserver);
 
-function get_platform() {
-  var xulRuntime = Cc["@mozilla.org/xre/app-info;1"]
-                             .getService(Ci.nsIXULRuntime);
-  return xulRuntime.OS;
-}
-
 function load_blocklist(file) {
   Services.prefs.setCharPref("extensions.blocklist.url", "http://localhost:" +
                              gPort + "/data/" + file);
@@ -47,7 +41,7 @@ function run_test() {
   gfxInfo.spoofDeviceID("0x1234");
 
   // Spoof the version of the OS appropriately to test the test file.
-  switch (get_platform()) {
+  switch (Services.appinfo.OS) {
     case "WINNT":
       // Windows 8
       gfxInfo.spoofOSVersion(0x60002);
@@ -73,12 +67,12 @@ function run_test() {
   do_test_pending();
 
   function checkBlacklist() {
-    if (get_platform() == "WINNT") {
+    if (Services.appinfo.OS == "WINNT") {
       var status = gfxInfo.getFeatureStatus(Ci.nsIGfxInfo.FEATURE_DIRECT2D);
-      do_check_eq(status, Ci.nsIGfxInfo.FEATURE_BLOCKED_DRIVER_VERSION);
-    } else if (get_platform() == "Darwin") {
+      Assert.equal(status, Ci.nsIGfxInfo.FEATURE_BLOCKED_DRIVER_VERSION);
+    } else if (Services.appinfo.OS == "Darwin") {
       status = gfxInfo.getFeatureStatus(Ci.nsIGfxInfo.FEATURE_OPENGL_LAYERS);
-      do_check_eq(status, Ci.nsIGfxInfo.FEATURE_BLOCKED_DRIVER_VERSION);
+      Assert.equal(status, Ci.nsIGfxInfo.FEATURE_BLOCKED_DRIVER_VERSION);
     }
 
     gTestserver.stop(do_test_finished);
@@ -87,7 +81,7 @@ function run_test() {
   Services.obs.addObserver(function(aSubject, aTopic, aData) {
     // If we wait until after we go through the event loop, gfxInfo is sure to
     // have processed the gfxItems event.
-    do_execute_soon(checkBlacklist);
+    executeSoon(checkBlacklist);
   }, "blocklist-data-gfxItems");
 
   load_blocklist("test_gfxBlacklist_OSVersion.xml");

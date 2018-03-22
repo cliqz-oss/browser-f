@@ -32,15 +32,18 @@ add_task(async function testSettingsProperties() {
   let settings = await extension.awaitMessage("settings");
 
   // Verify that we get the keys back we expect.
-  deepEqual(Object.keys(settings.dataToRemove).sort(), SETTINGS_LIST,
-    "dataToRemove contains expected properties.");
-  deepEqual(Object.keys(settings.dataRemovalPermitted).sort(), SETTINGS_LIST,
-    "dataToRemove contains expected properties.");
+  deepEqual(Object.keys(settings.dataToRemove).sort(),
+            SETTINGS_LIST,
+            "dataToRemove contains expected properties.");
+  deepEqual(Object.keys(settings.dataRemovalPermitted).sort(),
+            SETTINGS_LIST,
+            "dataToRemove contains expected properties.");
 
   let dataTypeSet = settings.dataToRemove;
   for (let key of Object.keys(dataTypeSet)) {
-    equal(Preferences.get(`${PREF_DOMAIN}${key.toLowerCase()}`), dataTypeSet[key],
-      `${key} property of dataToRemove matches the expected pref.`);
+    equal(Preferences.get(`${PREF_DOMAIN}${key.toLowerCase()}`),
+          dataTypeSet[key],
+          `${key} property of dataToRemove matches the expected pref.`);
   }
 
   dataTypeSet = settings.dataRemovalPermitted;
@@ -52,7 +55,7 @@ add_task(async function testSettingsProperties() {
   const SINGLE_OPTION = "cache";
   const SINGLE_PREF = "privacy.cpd.cache";
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Preferences.reset(SINGLE_PREF);
   });
 
@@ -97,7 +100,7 @@ add_task(async function testSettingsSince() {
 
   await extension.startup();
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Preferences.reset(TIMESPAN_PREF);
   });
 

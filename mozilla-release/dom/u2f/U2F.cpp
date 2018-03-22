@@ -6,12 +6,19 @@
 
 #include "mozilla/dom/U2F.h"
 #include "mozilla/dom/WebCryptoCommon.h"
+#include "mozilla/ipc/PBackgroundChild.h"
+#include "mozilla/ipc/BackgroundChild.h"
+#include "mozilla/dom/WebAuthnTransactionChild.h"
 #include "nsContentUtils.h"
+#include "nsICryptoHash.h"
 #include "nsIEffectiveTLDService.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsURLParsers.h"
-#include "U2FManager.h"
+#include "U2FUtil.h"
+#include "hasht.h"
+
+using namespace mozilla::ipc;
 
 // Forward decl because of nsHTMLDocument.h's complex dependency on /layout/style
 class nsHTMLDocument {
@@ -31,12 +38,30 @@ NS_NAMED_LITERAL_STRING(kGetAssertion, "navigator.id.getAssertion");
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(U2F)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRY(nsISupports)
+  NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(U2F)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(U2F)
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(U2F, mParent)
+
+/***********************************************************************
+ * Utility Functions
+ **********************************************************************/
+
+static ErrorCode
+ConvertNSResultToErrorCode(const nsresult& aError)
+{
+  if (aError == NS_ERROR_DOM_TIMEOUT_ERR) {
+    return ErrorCode::TIMEOUT;
+  }
+  /* Emitted by U2F{Soft,HID}TokenManager when we really mean ineligible */
+  if (aError == NS_ERROR_DOM_NOT_ALLOWED_ERR) {
+    return ErrorCode::DEVICE_INELIGIBLE;
+  }
+  return ErrorCode::OTHER_ERROR;
+}
 
 static uint32_t
 AdjustedTimeoutMillis(const Optional<Nullable<int32_t>>& opt_aSeconds)
@@ -71,7 +96,7 @@ AssembleClientData(const nsAString& aOrigin, const nsAString& aTyp,
 static void
 RegisteredKeysToScopedCredentialList(const nsAString& aAppId,
   const nsTArray<RegisteredKey>& aKeys,
-  nsTArray<WebAuthnScopedCredentialDescriptor>& aList)
+  nsTArray<WebAuthnScopedCredential>& aList)
 {
   for (const RegisteredKey& key : aKeys) {
     // Check for required attributes
@@ -91,7 +116,7 @@ RegisteredKeysToScopedCredentialList(const nsAString& aAppId,
       continue;
     }
 
-    WebAuthnScopedCredentialDescriptor c;
+    WebAuthnScopedCredential c;
     c.id() = keyHandle;
     aList.AppendElement(c);
   }
@@ -133,6 +158,23 @@ EvaluateAppID(nsPIDOMWindowInner* aParent, const nsString& aOrigin,
     return ErrorCode::BAD_REQUEST;
   }
 
+  nsAutoCString appIdHost;
+  if (NS_FAILED(appIdUri->GetAsciiHost(appIdHost))) {
+    return ErrorCode::BAD_REQUEST;
+  }
+
+  // Allow localhost.
+  if (appIdHost.EqualsLiteral("localhost")) {
+    nsAutoCString facetHost;
+    if (NS_FAILED(facetUri->GetAsciiHost(facetHost))) {
+      return ErrorCode::BAD_REQUEST;
+    }
+
+    if (facetHost.EqualsLiteral("localhost")) {
+      return ErrorCode::OK;
+    }
+  }
+
   // Run the HTML5 algorithm to relax the same-origin policy, copied from W3C
   // Web Authentication. See Bug 1244959 comment #8 for context on why we are
   // doing this instead of implementing the external-fetch FacetID logic.
@@ -157,10 +199,6 @@ EvaluateAppID(nsPIDOMWindowInner* aParent, const nsString& aOrigin,
   if (NS_FAILED(tldService->GetBaseDomain(facetUri, 0, lowestFacetHost))) {
     return ErrorCode::BAD_REQUEST;
   }
-  nsAutoCString appIdHost;
-  if (NS_FAILED(appIdUri->GetAsciiHost(appIdHost))) {
-    return ErrorCode::BAD_REQUEST;
-  }
 
   MOZ_LOG(gU2FLog, LogLevel::Debug,
           ("AppId %s Facet %s", appIdHost.get(), lowestFacetHost.get()));
@@ -173,44 +211,82 @@ EvaluateAppID(nsPIDOMWindowInner* aParent, const nsString& aOrigin,
   return ErrorCode::BAD_REQUEST;
 }
 
-template<typename T, typename C>
-static void
-ExecuteCallback(T& aResp, Maybe<nsMainThreadPtrHandle<C>>& aCb)
+static nsresult
+BuildTransactionHashes(const nsCString& aRpId,
+                       const nsCString& aClientDataJSON,
+                       /* out */ CryptoBuffer& aRpIdHash,
+                       /* out */ CryptoBuffer& aClientDataHash)
 {
-  MOZ_ASSERT(NS_IsMainThread());
-  if (aCb.isNothing()) {
-    return;
+  nsresult srv;
+  nsCOMPtr<nsICryptoHash> hashService =
+    do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &srv);
+  if (NS_FAILED(srv)) {
+    return srv;
   }
 
-  // reset callback earlier to allow reentry from callback.
-  nsMainThreadPtrHandle<C> callback(aCb.ref());
-  aCb.reset();
-  MOZ_ASSERT(aCb.isNothing());
-  MOZ_ASSERT(!!callback);
+  if (!aRpIdHash.SetLength(SHA256_LENGTH, fallible)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+  srv = HashCString(hashService, aRpId, aRpIdHash);
+  if (NS_WARN_IF(NS_FAILED(srv))) {
+    return NS_ERROR_FAILURE;
+  }
 
-  ErrorResult error;
-  callback->Call(aResp, error);
-  NS_WARNING_ASSERTION(!error.Failed(), "dom::U2F::Promise callback failed");
-  error.SuppressException(); // Useful exceptions already emitted
+  if (!aClientDataHash.SetLength(SHA256_LENGTH, fallible)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+  srv = HashCString(hashService, aClientDataJSON, aClientDataHash);
+  if (NS_WARN_IF(NS_FAILED(srv))) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (MOZ_LOG_TEST(gU2FLog, LogLevel::Debug)) {
+    nsString base64;
+    Unused << NS_WARN_IF(NS_FAILED(aRpIdHash.ToJwkBase64(base64)));
+
+    MOZ_LOG(gU2FLog, LogLevel::Debug,
+            ("dom::U2FManager::RpID: %s", aRpId.get()));
+
+    MOZ_LOG(gU2FLog, LogLevel::Debug,
+            ("dom::U2FManager::Rp ID Hash (base64): %s",
+              NS_ConvertUTF16toUTF8(base64).get()));
+
+    Unused << NS_WARN_IF(NS_FAILED(aClientDataHash.ToJwkBase64(base64)));
+
+    MOZ_LOG(gU2FLog, LogLevel::Debug,
+            ("dom::U2FManager::Client Data JSON: %s", aClientDataJSON.get()));
+
+    MOZ_LOG(gU2FLog, LogLevel::Debug,
+            ("dom::U2FManager::Client Data Hash (base64): %s",
+              NS_ConvertUTF16toUTF8(base64).get()));
+  }
+
+  return NS_OK;
 }
 
-U2F::U2F(nsPIDOMWindowInner* aParent)
-  : mParent(aParent)
-{
-}
+/***********************************************************************
+ * U2F JavaScript API Implementation
+ **********************************************************************/
 
 U2F::~U2F()
 {
-  mPromiseHolder.DisconnectIfExists();
-  mRegisterCallback.reset();
-  mSignCallback.reset();
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mTransaction.isSome()) {
+    RejectTransaction(NS_ERROR_ABORT);
+  }
+
+  if (mChild) {
+    RefPtr<WebAuthnTransactionChild> c;
+    mChild.swap(c);
+    c->Disconnect();
+  }
 }
 
 void
 U2F::Init(ErrorResult& aRv)
 {
   MOZ_ASSERT(mParent);
-  MOZ_ASSERT(!mEventTarget);
 
   nsCOMPtr<nsIDocument> doc = mParent->GetDoc();
   MOZ_ASSERT(doc);
@@ -229,15 +305,29 @@ U2F::Init(ErrorResult& aRv)
     aRv.Throw(NS_ERROR_FAILURE);
     return;
   }
-
-  mEventTarget = doc->EventTargetFor(TaskCategory::Other);
-  MOZ_ASSERT(mEventTarget);
 }
 
 /* virtual */ JSObject*
 U2F::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   return U2FBinding::Wrap(aCx, this, aGivenProto);
+}
+
+template<typename T, typename C>
+void
+U2F::ExecuteCallback(T& aResp, nsMainThreadPtrHandle<C>& aCb)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aCb);
+
+  // Assert that mTransaction was cleared before before we were called to allow
+  // reentrancy from microtask checkpoints.
+  MOZ_ASSERT(mTransaction.isNothing());
+
+  ErrorResult error;
+  aCb->Call(aResp, error);
+  NS_WARNING_ASSERTION(!error.Failed(), "dom::U2F::Promise callback failed");
+  error.SuppressException(); // Useful exceptions already emitted
 }
 
 void
@@ -250,14 +340,18 @@ U2F::Register(const nsAString& aAppId,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  Cancel();
+  if (mTransaction.isSome()) {
+    CancelTransaction(NS_ERROR_ABORT);
+  }
 
-  MOZ_ASSERT(mRegisterCallback.isNothing());
-  mRegisterCallback = Some(nsMainThreadPtrHandle<U2FRegisterCallback>(
-                        new nsMainThreadPtrHolder<U2FRegisterCallback>(
-                            "U2F::Register::callback", &aCallback)));
+  nsMainThreadPtrHandle<U2FRegisterCallback> callback(
+    new nsMainThreadPtrHolder<U2FRegisterCallback>("U2F::Register::callback",
+                                                   &aCallback));
 
-  uint32_t adjustedTimeoutMillis = AdjustedTimeoutMillis(opt_aTimeoutSeconds);
+  // Ensure we have a callback.
+  if (NS_WARN_IF(!callback)) {
+    return;
+  }
 
   // Evaluate the AppID
   nsString adjustedAppId;
@@ -266,7 +360,7 @@ U2F::Register(const nsAString& aAppId,
   if (appIdResult != ErrorCode::OK) {
     RegisterResponse response;
     response.mErrorCode.Construct(static_cast<uint32_t>(appIdResult));
-    ExecuteCallback(response, mRegisterCallback);
+    ExecuteCallback(response, callback);
     return;
   }
 
@@ -293,47 +387,109 @@ U2F::Register(const nsAString& aAppId,
   if (clientDataJSON.IsEmpty()) {
     RegisterResponse response;
     response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::BAD_REQUEST));
-    ExecuteCallback(response, mRegisterCallback);
+    ExecuteCallback(response, callback);
     return;
   }
 
   // Build the exclusion list, if any
-  nsTArray<WebAuthnScopedCredentialDescriptor> excludeList;
+  nsTArray<WebAuthnScopedCredential> excludeList;
   RegisteredKeysToScopedCredentialList(adjustedAppId, aRegisteredKeys,
                                        excludeList);
 
-  auto& localReqHolder = mPromiseHolder;
-  auto& localCb = mRegisterCallback;
-  RefPtr<U2FManager> mgr = U2FManager::GetOrCreate();
-  RefPtr<U2FPromise> p = mgr->Register(mParent, cAppId,
-                                       NS_ConvertUTF16toUTF8(clientDataJSON),
-                                       adjustedTimeoutMillis, excludeList);
-  p->Then(mEventTarget, "dom::U2F::Register::Promise::Resolve",
-          [&localCb, &localReqHolder](nsString aResponse) {
-              MOZ_LOG(gU2FLog, LogLevel::Debug,
-                      ("dom::U2F::Register::Promise::Resolve, response was %s",
-                        NS_ConvertUTF16toUTF8(aResponse).get()));
-              RegisterResponse response;
-              response.Init(aResponse);
+  auto clientData = NS_ConvertUTF16toUTF8(clientDataJSON);
 
-              // U2F could be reentered from microtask-checkpoint while calling
-              // ExecuteCallback(), so we should mark Complete() earlier.
-              localReqHolder.Complete();
-              ExecuteCallback(response, localCb);
-          },
-          [&localCb, &localReqHolder](ErrorCode aErrorCode) {
-              MOZ_LOG(gU2FLog, LogLevel::Debug,
-                      ("dom::U2F::Register::Promise::Reject, response was %d",
-                        static_cast<uint32_t>(aErrorCode)));
-              RegisterResponse response;
-              response.mErrorCode.Construct(static_cast<uint32_t>(aErrorCode));
+  CryptoBuffer rpIdHash, clientDataHash;
+  if (NS_FAILED(BuildTransactionHashes(cAppId, clientData,
+                                       rpIdHash, clientDataHash))) {
+    RegisterResponse response;
+    response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::OTHER_ERROR));
+    ExecuteCallback(response, callback);
+    return;
+  }
 
-              // U2F could be reentered from microtask-checkpoint while calling
-              // ExecuteCallback(), so we should mark Complete() earlier.
-              localReqHolder.Complete();
-              ExecuteCallback(response, localCb);
-          })
-  ->Track(mPromiseHolder);
+  if (!MaybeCreateBackgroundActor()) {
+    RegisterResponse response;
+    response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::OTHER_ERROR));
+    ExecuteCallback(response, callback);
+    return;
+  }
+
+  ListenForVisibilityEvents();
+
+  // Always blank for U2F
+  nsTArray<WebAuthnExtension> extensions;
+
+  // Default values for U2F.
+  WebAuthnAuthenticatorSelection authSelection(false /* requireResidentKey */,
+                                               false /* requireUserVerification */,
+                                               false /* requirePlatformAttachment */);
+
+  uint32_t adjustedTimeoutMillis = AdjustedTimeoutMillis(opt_aTimeoutSeconds);
+
+  WebAuthnMakeCredentialInfo info(rpIdHash,
+                                  clientDataHash,
+                                  adjustedTimeoutMillis,
+                                  excludeList,
+                                  extensions,
+                                  authSelection);
+
+  MOZ_ASSERT(mTransaction.isNothing());
+  mTransaction = Some(U2FTransaction(clientData, Move(AsVariant(callback))));
+  mChild->SendRequestRegister(mTransaction.ref().mId, info);
+}
+
+void
+U2F::FinishMakeCredential(const uint64_t& aTransactionId,
+                          nsTArray<uint8_t>& aRegBuffer)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  // Check for a valid transaction.
+  if (mTransaction.isNothing() || mTransaction.ref().mId != aTransactionId) {
+    return;
+  }
+
+  if (NS_WARN_IF(!mTransaction.ref().HasRegisterCallback())) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  CryptoBuffer clientDataBuf;
+  if (NS_WARN_IF(!clientDataBuf.Assign(mTransaction.ref().mClientData))) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  CryptoBuffer regBuf;
+  if (NS_WARN_IF(!regBuf.Assign(aRegBuffer))) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  nsString clientDataBase64;
+  nsString registrationDataBase64;
+  nsresult rvClientData = clientDataBuf.ToJwkBase64(clientDataBase64);
+  nsresult rvRegistrationData = regBuf.ToJwkBase64(registrationDataBase64);
+
+  if (NS_WARN_IF(NS_FAILED(rvClientData)) ||
+      NS_WARN_IF(NS_FAILED(rvRegistrationData))) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  // Assemble a response object to return
+  RegisterResponse response;
+  response.mVersion.Construct(kRequiredU2FVersion);
+  response.mClientData.Construct(clientDataBase64);
+  response.mRegistrationData.Construct(registrationDataBase64);
+  response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::OK));
+
+  // Keep the callback pointer alive.
+  nsMainThreadPtrHandle<U2FRegisterCallback> callback(
+    mTransaction.ref().GetRegisterCallback());
+
+  ClearTransaction();
+  ExecuteCallback(response, callback);
 }
 
 void
@@ -346,14 +502,18 @@ U2F::Sign(const nsAString& aAppId,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  Cancel();
+  if (mTransaction.isSome()) {
+    CancelTransaction(NS_ERROR_ABORT);
+  }
 
-  MOZ_ASSERT(mSignCallback.isNothing());
-  mSignCallback = Some(nsMainThreadPtrHandle<U2FSignCallback>(
-                    new nsMainThreadPtrHolder<U2FSignCallback>(
-                        "U2F::Sign::callback", &aCallback)));
+  nsMainThreadPtrHandle<U2FSignCallback> callback(
+    new nsMainThreadPtrHolder<U2FSignCallback>("U2F::Sign::callback",
+                                               &aCallback));
 
-  uint32_t adjustedTimeoutMillis = AdjustedTimeoutMillis(opt_aTimeoutSeconds);
+  // Ensure we have a callback.
+  if (NS_WARN_IF(!callback)) {
+    return;
+  }
 
   // Evaluate the AppID
   nsString adjustedAppId;
@@ -362,7 +522,7 @@ U2F::Sign(const nsAString& aAppId,
   if (appIdResult != ErrorCode::OK) {
     SignResponse response;
     response.mErrorCode.Construct(static_cast<uint32_t>(appIdResult));
-    ExecuteCallback(response, mSignCallback);
+    ExecuteCallback(response, callback);
     return;
   }
 
@@ -375,73 +535,173 @@ U2F::Sign(const nsAString& aAppId,
   if (NS_WARN_IF(NS_FAILED(rv))) {
     SignResponse response;
     response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::BAD_REQUEST));
-    ExecuteCallback(response, mSignCallback);
+    ExecuteCallback(response, callback);
     return;
   }
 
   // Build the key list, if any
-  nsTArray<WebAuthnScopedCredentialDescriptor> permittedList;
+  nsTArray<WebAuthnScopedCredential> permittedList;
   RegisteredKeysToScopedCredentialList(adjustedAppId, aRegisteredKeys,
                                        permittedList);
-  auto& localReqHolder = mPromiseHolder;
-  auto& localCb = mSignCallback;
-  RefPtr<U2FManager> mgr = U2FManager::GetOrCreate();
-  RefPtr<U2FPromise> p = mgr->Sign(mParent, cAppId,
-                                   NS_ConvertUTF16toUTF8(clientDataJSON),
-                                   adjustedTimeoutMillis, permittedList);
-  p->Then(mEventTarget, "dom::U2F::Sign::Promise::Resolve",
-          [&localCb, &localReqHolder](nsString aResponse) {
-              MOZ_LOG(gU2FLog, LogLevel::Debug,
-                      ("dom::U2F::Sign::Promise::Resolve, response was %s",
-                        NS_ConvertUTF16toUTF8(aResponse).get()));
-              SignResponse response;
-              response.Init(aResponse);
 
-              // U2F could be reentered from microtask-checkpoint while calling
-              // ExecuteCallback(), so we should mark Complete() earlier.
-              localReqHolder.Complete();
-              ExecuteCallback(response, localCb);
-          },
-          [&localCb, &localReqHolder](ErrorCode aErrorCode) {
-              MOZ_LOG(gU2FLog, LogLevel::Debug,
-                      ("dom::U2F::Sign::Promise::Reject, response was %d",
-                        static_cast<uint32_t>(aErrorCode)));
-              SignResponse response;
-              response.mErrorCode.Construct(static_cast<uint32_t>(aErrorCode));
+  auto clientData = NS_ConvertUTF16toUTF8(clientDataJSON);
 
-              // U2F could be reentered from microtask-checkpoint while calling
-              // ExecuteCallback(), so we should mark Complete() earlier.
-              localReqHolder.Complete();
-              ExecuteCallback(response, localCb);
-          })
-  ->Track(mPromiseHolder);
+  CryptoBuffer rpIdHash, clientDataHash;
+  if (NS_FAILED(BuildTransactionHashes(cAppId, clientData,
+                                       rpIdHash, clientDataHash))) {
+    SignResponse response;
+    response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::OTHER_ERROR));
+    ExecuteCallback(response, callback);
+    return;
+  }
+
+  if (!MaybeCreateBackgroundActor()) {
+    SignResponse response;
+    response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::OTHER_ERROR));
+    ExecuteCallback(response, callback);
+    return;
+  }
+
+  ListenForVisibilityEvents();
+
+  // Always blank for U2F
+  nsTArray<WebAuthnExtension> extensions;
+
+  uint32_t adjustedTimeoutMillis = AdjustedTimeoutMillis(opt_aTimeoutSeconds);
+
+  WebAuthnGetAssertionInfo info(rpIdHash,
+                                clientDataHash,
+                                adjustedTimeoutMillis,
+                                permittedList,
+                                false, /* requireUserVerification */
+                                extensions);
+
+  MOZ_ASSERT(mTransaction.isNothing());
+  mTransaction = Some(U2FTransaction(clientData, Move(AsVariant(callback))));
+  mChild->SendRequestSign(mTransaction.ref().mId, info);
 }
 
 void
-U2F::Cancel()
+U2F::FinishGetAssertion(const uint64_t& aTransactionId,
+                        nsTArray<uint8_t>& aCredentialId,
+                        nsTArray<uint8_t>& aSigBuffer)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  const ErrorCode errorCode = ErrorCode::OTHER_ERROR;
+  // Check for a valid transaction.
+  if (mTransaction.isNothing() || mTransaction.ref().mId != aTransactionId) {
+    return;
+  }
 
-  if (mRegisterCallback.isSome()) {
+  if (NS_WARN_IF(!mTransaction.ref().HasSignCallback())) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  CryptoBuffer clientDataBuf;
+  if (NS_WARN_IF(!clientDataBuf.Assign(mTransaction.ref().mClientData))) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  CryptoBuffer credBuf;
+  if (NS_WARN_IF(!credBuf.Assign(aCredentialId))) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  CryptoBuffer sigBuf;
+  if (NS_WARN_IF(!sigBuf.Assign(aSigBuffer))) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  // Assemble a response object to return
+  nsString clientDataBase64;
+  nsString signatureDataBase64;
+  nsString keyHandleBase64;
+  nsresult rvClientData = clientDataBuf.ToJwkBase64(clientDataBase64);
+  nsresult rvSignatureData = sigBuf.ToJwkBase64(signatureDataBase64);
+  nsresult rvKeyHandle = credBuf.ToJwkBase64(keyHandleBase64);
+  if (NS_WARN_IF(NS_FAILED(rvClientData)) ||
+      NS_WARN_IF(NS_FAILED(rvSignatureData) ||
+      NS_WARN_IF(NS_FAILED(rvKeyHandle)))) {
+    RejectTransaction(NS_ERROR_ABORT);
+    return;
+  }
+
+  SignResponse response;
+  response.mKeyHandle.Construct(keyHandleBase64);
+  response.mClientData.Construct(clientDataBase64);
+  response.mSignatureData.Construct(signatureDataBase64);
+  response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::OK));
+
+  // Keep the callback pointer alive.
+  nsMainThreadPtrHandle<U2FSignCallback> callback(
+    mTransaction.ref().GetSignCallback());
+
+  ClearTransaction();
+  ExecuteCallback(response, callback);
+}
+
+void
+U2F::ClearTransaction()
+{
+  if (!NS_WARN_IF(mTransaction.isNothing())) {
+    StopListeningForVisibilityEvents();
+  }
+
+  mTransaction.reset();
+}
+
+void
+U2F::RejectTransaction(const nsresult& aError)
+{
+  if (NS_WARN_IF(mTransaction.isNothing())) {
+    return;
+  }
+
+  StopListeningForVisibilityEvents();
+
+  // Clear out mTransaction before calling ExecuteCallback() below to allow
+  // reentrancy from microtask checkpoints.
+  Maybe<U2FTransaction> maybeTransaction(Move(mTransaction));
+  MOZ_ASSERT(mTransaction.isNothing() && maybeTransaction.isSome());
+
+  U2FTransaction& transaction = maybeTransaction.ref();
+  ErrorCode code = ConvertNSResultToErrorCode(aError);
+
+  if (transaction.HasRegisterCallback()) {
     RegisterResponse response;
-    response.mErrorCode.Construct(static_cast<uint32_t>(errorCode));
-    ExecuteCallback(response, mRegisterCallback);
+    response.mErrorCode.Construct(static_cast<uint32_t>(code));
+    ExecuteCallback(response, transaction.GetRegisterCallback());
   }
 
-  if (mSignCallback.isSome()) {
+  if (transaction.HasSignCallback()) {
     SignResponse response;
-    response.mErrorCode.Construct(static_cast<uint32_t>(errorCode));
-    ExecuteCallback(response, mSignCallback);
+    response.mErrorCode.Construct(static_cast<uint32_t>(code));
+    ExecuteCallback(response, transaction.GetSignCallback());
+  }
+}
+
+void
+U2F::CancelTransaction(const nsresult& aError)
+{
+  if (!NS_WARN_IF(!mChild || mTransaction.isNothing())) {
+    mChild->SendRequestCancel(mTransaction.ref().mId);
   }
 
-  RefPtr<U2FManager> mgr = U2FManager::Get();
-  if (mgr) {
-    mgr->MaybeCancelTransaction(NS_ERROR_DOM_OPERATION_ERR);
-  }
+  RejectTransaction(aError);
+}
 
-  mPromiseHolder.DisconnectIfExists();
+void
+U2F::RequestAborted(const uint64_t& aTransactionId, const nsresult& aError)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mTransaction.isSome() && mTransaction.ref().mId == aTransactionId) {
+    RejectTransaction(aError);
+  }
 }
 
 } // namespace dom

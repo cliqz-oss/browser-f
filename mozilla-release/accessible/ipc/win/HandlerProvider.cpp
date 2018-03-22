@@ -10,6 +10,7 @@
 
 #include "Accessible2_3.h"
 #include "AccessibleDocument.h"
+#include "AccessibleRelation.h"
 #include "AccessibleTable.h"
 #include "AccessibleTable2.h"
 #include "AccessibleTableCell.h"
@@ -23,11 +24,14 @@
 #include "mozilla/mscom/AgileReference.h"
 #include "mozilla/mscom/FastMarshaler.h"
 #include "mozilla/mscom/Interceptor.h"
+#include "mozilla/mscom/MainThreadHandoff.h"
 #include "mozilla/mscom/MainThreadInvoker.h"
 #include "mozilla/mscom/Ptr.h"
 #include "mozilla/mscom/StructStream.h"
 #include "mozilla/mscom/Utils.h"
+#include "mozilla/UniquePtr.h"
 #include "nsThreadUtils.h"
+#include "nsTArray.h"
 
 #include <memory.h>
 
@@ -397,27 +401,7 @@ HandlerProvider::CleanupStaticIA2Data(StaticIA2Data& aData)
 {
   // When CoMarshalInterface writes interfaces out to a stream, it AddRefs.
   // Therefore, we must release our references after this.
-  if (aData.mIA2) {
-    aData.mIA2->Release();
-  }
-  if (aData.mIEnumVARIANT) {
-    aData.mIEnumVARIANT->Release();
-  }
-  if (aData.mIAHypertext) {
-    aData.mIAHypertext->Release();
-  }
-  if (aData.mIAHyperlink) {
-    aData.mIAHyperlink->Release();
-  }
-  if (aData.mIATable) {
-    aData.mIATable->Release();
-  }
-  if (aData.mIATable2) {
-    aData.mIATable2->Release();
-  }
-  if (aData.mIATableCell) {
-    aData.mIATableCell->Release();
-  }
+  ReleaseStaticIA2DataInterfaces(aData);
   ZeroMemory(&aData, sizeof(StaticIA2Data));
 }
 
@@ -560,6 +544,186 @@ HandlerProvider::Refresh(DynamicIA2Data* aOutData)
   }
 
   return S_OK;
+}
+
+template<typename Interface>
+HRESULT
+HandlerProvider::ToWrappedObject(Interface** aObj)
+{
+  mscom::STAUniquePtr<Interface> inObj(*aObj);
+  RefPtr<HandlerProvider> hprov = new HandlerProvider(__uuidof(Interface),
+    mscom::ToInterceptorTargetPtr(inObj));
+  HRESULT hr = mscom::MainThreadHandoff::WrapInterface(Move(inObj), hprov,
+                                                       aObj);
+  if (FAILED(hr)) {
+    *aObj = nullptr;
+  }
+  return hr;
+}
+
+void
+HandlerProvider::GetAllTextInfoMainThread(BSTR* aText,
+                                          IAccessibleHyperlink*** aHyperlinks,
+                                          long* aNHyperlinks,
+                                          IA2TextSegment** aAttribRuns,
+                                          long* aNAttribRuns, HRESULT* result)
+{
+  MOZ_ASSERT(aText);
+  MOZ_ASSERT(aHyperlinks);
+  MOZ_ASSERT(aNHyperlinks);
+  MOZ_ASSERT(aAttribRuns);
+  MOZ_ASSERT(aNAttribRuns);
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(mTargetUnk);
+
+  RefPtr<IAccessibleHypertext2> ht;
+  HRESULT hr = mTargetUnk->QueryInterface(IID_IAccessibleHypertext2,
+                                          getter_AddRefs(ht));
+  if (FAILED(hr)) {
+    *result = hr;
+    return;
+  }
+
+  hr = ht->get_text(0, IA2_TEXT_OFFSET_LENGTH, aText);
+  if (FAILED(hr)) {
+    *result = hr;
+    return;
+  }
+
+  if (hr == S_FALSE) {
+    // No text.
+    *aHyperlinks = nullptr;
+    *aNHyperlinks = 0;
+    *aAttribRuns = nullptr;
+    *aNAttribRuns = 0;
+    *result = S_FALSE;
+    return;
+  }
+
+  hr = ht->get_hyperlinks(aHyperlinks, aNHyperlinks);
+  if (FAILED(hr)) {
+    *aHyperlinks = nullptr;
+    // -1 signals to the handler that it should call hyperlinks itself.
+    *aNHyperlinks = -1;
+  }
+  // We must wrap these hyperlinks in an interceptor.
+  for (long index = 0; index < *aNHyperlinks; ++index) {
+    ToWrappedObject(&(*aHyperlinks)[index]);
+  }
+
+  // Fetch all attribute runs.
+  nsTArray<IA2TextSegment> attribRuns;
+  long end = 0;
+  long length = ::SysStringLen(*aText);
+  while (end < length) {
+    long offset = end;
+    long start;
+    BSTR attribs;
+    // The (exclusive) end of the last run is the start of the next run.
+    hr = ht->get_attributes(offset, &start, &end, &attribs);
+    // Bug 1421873: Gecko can return end <= offset in some rare cases, which
+    // isn't valid. This is perhaps because the text mutated during the loop
+    // for some reason, making this offset invalid.
+    if (FAILED(hr) || end <= offset) {
+      break;
+    }
+    attribRuns.AppendElement(IA2TextSegment({attribs, start, end}));
+  }
+
+  // Put the attribute runs in a COM array.
+  *aNAttribRuns = attribRuns.Length();
+  *aAttribRuns = static_cast<IA2TextSegment*>(::CoTaskMemAlloc(
+    sizeof(IA2TextSegment) * *aNAttribRuns));
+  for (long index = 0; index < *aNAttribRuns; ++index) {
+    (*aAttribRuns)[index] = attribRuns[index];
+  }
+
+  *result = S_OK;
+}
+
+HRESULT
+HandlerProvider::get_AllTextInfo(BSTR* aText,
+                                 IAccessibleHyperlink*** aHyperlinks,
+                                 long* aNHyperlinks,
+                                 IA2TextSegment** aAttribRuns,
+                                 long* aNAttribRuns)
+{
+  MOZ_ASSERT(mscom::IsCurrentThreadMTA());
+
+  HRESULT hr;
+  if (!mscom::InvokeOnMainThread("HandlerProvider::GetAllTextInfoMainThread",
+                                 this,
+                                 &HandlerProvider::GetAllTextInfoMainThread,
+                                 aText, aHyperlinks, aNHyperlinks,
+                                 aAttribRuns, aNAttribRuns, &hr)) {
+    return E_FAIL;
+  }
+
+  return hr;
+}
+
+void
+HandlerProvider::GetRelationsInfoMainThread(IARelationData** aRelations,
+                                            long* aNRelations,
+                                            HRESULT* hr)
+{
+  MOZ_ASSERT(aRelations);
+  MOZ_ASSERT(aNRelations);
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(mTargetUnk);
+
+  RefPtr<NEWEST_IA2_INTERFACE> acc;
+  *hr = mTargetUnk.get()->QueryInterface(NEWEST_IA2_IID,
+    getter_AddRefs(acc));
+  if (FAILED(*hr)) {
+    return;
+  }
+
+  *hr = acc->get_nRelations(aNRelations);
+  if (FAILED(*hr)) {
+    return;
+  }
+
+  auto rawRels = MakeUnique<IAccessibleRelation*[]>(*aNRelations);
+  *hr = acc->get_relations(*aNRelations, rawRels.get(), aNRelations);
+  if (FAILED(*hr)) {
+    return;
+  }
+
+  *aRelations = static_cast<IARelationData*>(::CoTaskMemAlloc(
+    sizeof(IARelationData) * *aNRelations));
+  for (long index = 0; index < *aNRelations; ++index) {
+    IAccessibleRelation* rawRel = rawRels[index];
+    IARelationData& relData = (*aRelations)[index];
+    *hr = rawRel->get_relationType(&relData.mType);
+    if (FAILED(*hr)) {
+      relData.mType = nullptr;
+    }
+    *hr = rawRel->get_nTargets(&relData.mNTargets);
+    if (FAILED(*hr)) {
+      relData.mNTargets = -1;
+    }
+    rawRel->Release();
+  }
+
+  *hr = S_OK;
+}
+
+HRESULT
+HandlerProvider::get_RelationsInfo(IARelationData** aRelations,
+                                   long* aNRelations)
+{
+  MOZ_ASSERT(mscom::IsCurrentThreadMTA());
+
+  HRESULT hr;
+  if (!mscom::InvokeOnMainThread("HandlerProvider::GetRelationsInfoMainThread",
+                                 this,
+                                 &HandlerProvider::GetRelationsInfoMainThread,
+                                 aRelations, aNRelations, &hr)) {
+    return E_FAIL;
+  }
+
+  return hr;
 }
 
 } // namespace a11y

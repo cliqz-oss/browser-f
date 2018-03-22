@@ -34,8 +34,8 @@ add_task(async function() {
   await promiseTabLoadEvent(gBrowser.selectedTab, "data:text/html,<html>hi</html>");
 
   // Make sure the blocklist service(s) are running
-  Components.classes["@mozilla.org/extensions/blocklist;1"]
-            .getService(Components.interfaces.nsIBlocklistService);
+  // eslint-disable-next-line no-unused-expressions
+  Services.blocklist;
   let exmsg = await promiseInitContentBlocklistSvc(gBrowser.selectedBrowser);
   ok(!exmsg, "exception: " + exmsg);
 });
@@ -70,7 +70,7 @@ add_task(async function() {
       "Test 18a, Plugin should have an update link");
   });
 
-  let promise = waitForEvent(gBrowser.tabContainer, "TabOpen", null, true);
+  let promise = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen", true);
 
   await ContentTask.spawn(gTestBrowser, {}, async function() {
     let doc = content.document;
@@ -86,7 +86,7 @@ add_task(async function() {
   });
   await promise;
 
-  promise = waitForEvent(gBrowser.tabContainer, "TabClose", null, true);
+  promise = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabClose", true);
   gBrowser.removeCurrentTab();
   await promise;
 });
@@ -313,4 +313,3 @@ add_task(async function() {
     Assert.ok(!objLoadingContent.activated, "Plugin should not be activated.");
   });
 });
-

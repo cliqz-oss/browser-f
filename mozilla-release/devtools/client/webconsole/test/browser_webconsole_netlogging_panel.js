@@ -21,10 +21,11 @@ add_task(function* () {
   yield hud.ui.openNetworkPanel(request.actor);
   let toolbox = gDevTools.getToolbox(hud.target);
   is(toolbox.currentToolId, "netmonitor", "Network panel was opened");
-  let panel = toolbox.getCurrentPanel();
+  let monitor = toolbox.getCurrentPanel();
 
-  let { store, windowRequire } = panel.panelWin;
-  let { getSelectedRequest } = windowRequire("devtools/client/netmonitor/src/selectors/index");
+  let { store, windowRequire } = monitor.panelWin;
+  let { getSelectedRequest } =
+    windowRequire("devtools/client/netmonitor/src/selectors/index");
 
   let selected = getSelectedRequest(store.getState());
   is(selected.method, request.request.method,

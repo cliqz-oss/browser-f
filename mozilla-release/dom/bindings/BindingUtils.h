@@ -1025,7 +1025,9 @@ struct TypeNeedsOuterization
   // We only need to outerize Window objects, so anything inheriting from
   // nsGlobalWindow (which inherits from EventTarget itself).
   static const bool value =
-    IsBaseOf<nsGlobalWindow, T>::value || IsSame<EventTarget, T>::value;
+    IsBaseOf<nsGlobalWindowInner, T>::value ||
+    IsBaseOf<nsGlobalWindowOuter, T>::value ||
+    IsSame<EventTarget, T>::value;
 };
 
 #ifdef DEBUG
@@ -2615,6 +2617,20 @@ UseDOMXray(JSObject* obj)
          IsDOMIfaceAndProtoClass(clasp);
 }
 
+inline bool
+IsDOMConstructor(JSObject* obj)
+{
+  if (JS_IsNativeFunction(obj, dom::Constructor)) {
+    // NamedConstructor, like Image
+    return true;
+  }
+
+  const js::Class* clasp = js::GetObjectClass(obj);
+  // Check for a DOM interface object.
+  return dom::IsDOMIfaceAndProtoClass(clasp) &&
+         dom::DOMIfaceAndProtoJSClass::FromJSClass(clasp)->mType == dom::eInterface;
+}
+
 #ifdef DEBUG
 inline bool
 HasConstructor(JSObject* obj)
@@ -2710,6 +2726,11 @@ bool
 InterfaceHasInstance(JSContext* cx, int prototypeID, int depth,
                      JS::Handle<JSObject*> instance,
                      bool* bp);
+
+// Used to implement the cross-context <Interface>.isInstance static method.
+bool
+InterfaceIsInstance(JSContext* cx, unsigned argc, JS::Value* vp,
+                    prototypes::ID prototypeID, int depth);
 
 // Helper for lenient getters/setters to report to console.  If this
 // returns false, we couldn't even get a global.
@@ -3239,21 +3260,6 @@ AssertReturnTypeMatchesJitinfo(const JSJitInfo* aJitinfo,
                                JS::Handle<JS::Value> aValue);
 #endif
 
-// This function is called by the bindings layer for methods/getters/setters
-// that are not safe to be called in prerendering mode.  It checks to make sure
-// that the |this| object is not running in a global that is in prerendering
-// mode.  Otherwise, it aborts execution of timers and event handlers, and
-// returns false which gets converted to an uncatchable exception by the
-// bindings layer.
-bool
-EnforceNotInPrerendering(JSContext* aCx, JSObject* aObj);
-
-// Handles the violation of a blacklisted action in prerendering mode by
-// aborting the scripts, and preventing timers and event handlers from running
-// in the window in the future.
-void
-HandlePrerenderingViolation(nsPIDOMWindowInner* aWindow);
-
 bool
 CallerSubsumes(JSObject* aObject);
 
@@ -3382,18 +3388,12 @@ bool
 GetDesiredProto(JSContext* aCx, const JS::CallArgs& aCallArgs,
                 JS::MutableHandle<JSObject*> aDesiredProto);
 
-// Get the CustomElementReactionsStack for the docgroup of the global
-// of the underlying object of aObj.  This can be null if aObj can't
-// be CheckUnwrapped, or if the global of the result has no docgroup
-// (e.g. because it's not a Window global).
-CustomElementReactionsStack*
-GetCustomElementReactionsStack(JS::Handle<JSObject*> aObj);
 // This function is expected to be called from the constructor function for an
-// HTML element interface; the global/callargs need to be whatever was passed to
-// that constructor function.
-already_AddRefed<nsGenericHTMLElement>
-CreateHTMLElement(const GlobalObject& aGlobal, const JS::CallArgs& aCallArgs,
-                  JS::Handle<JSObject*> aGivenProto, ErrorResult& aRv);
+// HTML or XUL element interface; the global/callargs need to be whatever was
+// passed to that constructor function.
+already_AddRefed<Element>
+CreateXULOrHTMLElement(const GlobalObject& aGlobal, const JS::CallArgs& aCallArgs,
+                       JS::Handle<JSObject*> aGivenProto, ErrorResult& aRv);
 
 void
 SetDocumentAndPageUseCounter(JSObject* aObject, UseCounter aUseCounter);

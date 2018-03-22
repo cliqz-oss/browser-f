@@ -17,7 +17,11 @@ const WindowWatcher = {
         Assert.equal(aText, text,
                      "the ui string for message" + MSG_SHOULD_EQUAL);
 
-        doTestFinish();
+        // Cleaning up the active update along with reloading the update manager
+        // in doTestFinish will prevent writing the update xml files during
+        // shutdown.
+        gUpdateManager.cleanupActiveUpdate();
+        executeSoon(waitForUpdateXMLFiles);
       }
     };
   },
@@ -39,7 +43,7 @@ function run_test() {
   let windowWatcherCID =
     MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1",
                            WindowWatcher);
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     MockRegistrar.unregister(windowWatcherCID);
   });
 
@@ -59,4 +63,11 @@ function run_test() {
   let prompter = Cc["@mozilla.org/updates/update-prompt;1"].
                  createInstance(Ci.nsIUpdatePrompt);
   prompter.showUpdateError(update);
+}
+
+/**
+ * Called after the call to waitForUpdateXMLFiles finishes.
+ */
+function waitForUpdateXMLFilesFinished() {
+  executeSoon(doTestFinish);
 }

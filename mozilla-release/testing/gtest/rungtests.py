@@ -57,7 +57,8 @@ class GTests(object):
                 process_output = lambda line: stream_output(stack_fixer(line))
 
 
-        proc = mozprocess.ProcessHandler([prog, "-unittest"],
+        proc = mozprocess.ProcessHandler([prog, "-unittest",
+                                         "--gtest_death_test_style=threadsafe"],
                                          cwd=cwd,
                                          env=env,
                                          processOutputLine=process_output)
@@ -67,7 +68,12 @@ class GTests(object):
                  outputTimeout=GTests.TEST_PROC_NO_OUTPUT_TIMEOUT)
         proc.wait()
         if proc.timedOut:
-            log.testFail("gtest | timed out after %d seconds", GTests.TEST_PROC_TIMEOUT)
+            if proc.outputTimedOut:
+                log.testFail("gtest | timed out after %d seconds without output",
+                             GTests.TEST_PROC_NO_OUTPUT_TIMEOUT)
+            else:
+                log.testFail("gtest | timed out after %d seconds",
+                             GTests.TEST_PROC_TIMEOUT)
             return False
         if mozcrash.check_for_crashes(cwd, symbols_path, test_name="gtest"):
             # mozcrash will output the log failure line for us.

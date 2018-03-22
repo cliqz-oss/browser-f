@@ -29,13 +29,14 @@ public:
 
   NS_IMETHOD GetInnerHTML(nsAString& aInnerHTML) override;
   virtual void SetInnerHTML(const nsAString& aInnerHTML,
+                            nsIPrincipal* aSubjectPrincipal,
                             mozilla::ErrorResult& aError) override;
 
   // nsIScriptElement
   virtual bool GetScriptType(nsAString& type) override;
   virtual void GetScriptText(nsAString& text) override;
   virtual void GetScriptCharset(nsAString& charset) override;
-  virtual void FreezeUriAsyncDefer() override;
+  virtual void FreezeExecutionAttrs(nsIDocument* aOwnerDoc) override;
   virtual CORSMode GetCORSMode() const override;
 
   // nsIContent
@@ -45,6 +46,7 @@ public:
   virtual bool ParseAttribute(int32_t aNamespaceID,
                               nsAtom* aAttribute,
                               const nsAString& aValue,
+                              nsIPrincipal* aMaybeScriptedPrincipal,
                               nsAttrValue& aResult) override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
@@ -80,10 +82,6 @@ public:
     SetHTMLBoolAttr(nsGkAtoms::defer, aDefer, aRv);
   }
 
-  void GetSrc(nsAString& aSrc, nsIPrincipal*)
-  {
-    GetSrc(aSrc);
-  }
   void GetSrc(nsAString& aSrc)
   {
     GetURIAttr(nsGkAtoms::src, nullptr, aSrc);

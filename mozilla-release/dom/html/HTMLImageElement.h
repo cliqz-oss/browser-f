@@ -58,6 +58,7 @@ public:
   virtual bool ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
   virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
@@ -97,7 +98,7 @@ public:
   {
     SetHTMLBoolAttr(nsGkAtoms::ismap, aIsMap, aError);
   }
-  uint32_t Width()
+  MOZ_CAN_RUN_SCRIPT uint32_t Width()
   {
     return GetWidthHeightForImage(mCurrentRequest).width;
   }
@@ -105,7 +106,7 @@ public:
   {
     SetUnsignedIntAttr(nsGkAtoms::width, aWidth, 0, aError);
   }
-  uint32_t Height()
+  MOZ_CAN_RUN_SCRIPT uint32_t Height()
   {
     return GetWidthHeightForImage(mCurrentRequest).height;
   }
@@ -141,10 +142,6 @@ public:
   {
     SetHTMLAttr(nsGkAtoms::alt, aAlt, aError);
   }
-  void GetSrc(nsAString& aSrc, nsIPrincipal*)
-  {
-    GetSrc(aSrc);
-  }
   void GetSrc(nsAString& aSrc)
   {
     GetURIAttr(nsGkAtoms::src, nullptr, aSrc);
@@ -157,7 +154,7 @@ public:
   {
     SetHTMLAttr(nsGkAtoms::src, aSrc, aTriggeringPrincipal, aError);
   }
-  void GetSrcset(nsAString& aSrcset, nsIPrincipal*)
+  void GetSrcset(nsAString& aSrcset)
   {
     GetHTMLAttr(nsGkAtoms::srcset, aSrcset);
   }
@@ -240,8 +237,8 @@ public:
     return GetReferrerPolicyAsEnum();
   }
 
-  int32_t X();
-  int32_t Y();
+  MOZ_CAN_RUN_SCRIPT int32_t X();
+  MOZ_CAN_RUN_SCRIPT int32_t Y();
   void GetLowsrc(nsAString& aLowsrc)
   {
     GetURIAttr(nsGkAtoms::lowsrc, nullptr, aLowsrc);
@@ -373,9 +370,9 @@ protected:
   // If the node's srcset/sizes make for an invalid selector, returns
   // false. This does not guarantee the resulting selector matches an image,
   // only that it is valid.
-  bool TryCreateResponsiveSelector(nsIContent *aSourceNode);
+  bool TryCreateResponsiveSelector(Element* aSourceElement);
 
-  CSSIntPoint GetXY();
+  MOZ_CAN_RUN_SCRIPT CSSIntPoint GetXY();
   virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
   void UpdateFormOwner();
 
@@ -403,7 +400,7 @@ protected:
   RefPtr<ResponsiveImageSelector> mResponsiveSelector;
 
 private:
-  bool SourceElementMatches(nsIContent* aSourceNode);
+  bool SourceElementMatches(Element* aSourceElement);
 
   static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                     GenericSpecifiedValues* aGenericData);

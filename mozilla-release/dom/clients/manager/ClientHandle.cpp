@@ -9,10 +9,15 @@
 #include "ClientHandleChild.h"
 #include "ClientHandleOpChild.h"
 #include "ClientManager.h"
+#include "ClientState.h"
 #include "mozilla/dom/PClientManagerChild.h"
+#include "mozilla/dom/ServiceWorkerDescriptor.h"
+#include "mozilla/dom/ipc/StructuredCloneData.h"
 
 namespace mozilla {
 namespace dom {
+
+using mozilla::dom::ipc::StructuredCloneData;
 
 ClientHandle::~ClientHandle()
 {
@@ -52,10 +57,22 @@ ClientHandle::StartOp(const ClientOpConstructorArgs& aArgs)
       // Constructor failure will reject promise via ActorDestroy()
       return;
     }
+  }, [promise] {
+    promise->Reject(NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
   });
 
   RefPtr<ClientOpPromise> ref = promise.get();
   return ref.forget();
+}
+
+void
+ClientHandle::OnShutdownThing()
+{
+  NS_ASSERT_OWNINGTHREAD(ClientHandle);
+  if (!mDetachPromise) {
+    return;
+  }
+  mDetachPromise->Resolve(true, __func__);
 }
 
 ClientHandle::ClientHandle(ClientManager* aManager,
@@ -89,10 +106,106 @@ ClientHandle::Activate(PClientManagerChild* aActor)
   ActivateThing(static_cast<ClientHandleChild*>(actor));
 }
 
+void
+ClientHandle::ExecutionReady(const ClientInfo& aClientInfo)
+{
+  mClientInfo = aClientInfo;
+}
+
 const ClientInfo&
 ClientHandle::Info() const
 {
   return mClientInfo;
+}
+
+RefPtr<GenericPromise>
+ClientHandle::Control(const ServiceWorkerDescriptor& aServiceWorker)
+{
+  RefPtr<GenericPromise::Private> outerPromise =
+    new GenericPromise::Private(__func__);
+
+  RefPtr<ClientOpPromise> innerPromise =
+    StartOp(ClientControlledArgs(aServiceWorker.ToIPC()));
+
+  innerPromise->Then(mSerialEventTarget, __func__,
+    [outerPromise](const ClientOpResult& aResult) {
+      outerPromise->Resolve(true, __func__);
+    },
+    [outerPromise](const ClientOpResult& aResult) {
+      outerPromise->Reject(aResult.get_nsresult(), __func__);
+    });
+
+  return outerPromise.forget();
+}
+
+RefPtr<ClientStatePromise>
+ClientHandle::Focus()
+{
+  RefPtr<ClientStatePromise::Private> outerPromise =
+    new ClientStatePromise::Private(__func__);
+
+  RefPtr<ClientOpPromise> innerPromise = StartOp(ClientFocusArgs());
+
+  innerPromise->Then(mSerialEventTarget, __func__,
+    [outerPromise](const ClientOpResult& aResult) {
+      outerPromise->Resolve(ClientState::FromIPC(aResult.get_IPCClientState()), __func__);
+    }, [outerPromise](const ClientOpResult& aResult) {
+      outerPromise->Reject(aResult.get_nsresult(), __func__);
+    });
+
+  RefPtr<ClientStatePromise> ref = outerPromise.get();
+  return ref.forget();
+}
+
+RefPtr<GenericPromise>
+ClientHandle::PostMessage(StructuredCloneData& aData,
+                          const ServiceWorkerDescriptor& aSource)
+{
+  RefPtr<GenericPromise> ref;
+
+  if (IsShutdown()) {
+    ref = GenericPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
+    return ref.forget();
+  }
+
+  ClientPostMessageArgs args;
+  args.serviceWorker() = aSource.ToIPC();
+
+  if (!aData.BuildClonedMessageDataForBackgroundChild(GetActor()->Manager()->Manager(),
+                                                      args.clonedData())) {
+    ref = GenericPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
+    return ref.forget();
+  }
+
+  RefPtr<GenericPromise::Private> outerPromise =
+    new GenericPromise::Private(__func__);
+
+  RefPtr<ClientOpPromise> innerPromise = StartOp(args);
+  innerPromise->Then(mSerialEventTarget, __func__,
+    [outerPromise](const ClientOpResult& aResult) {
+      outerPromise->Resolve(true, __func__);
+    }, [outerPromise](const ClientOpResult& aResult) {
+      outerPromise->Reject(aResult.get_nsresult(), __func__);
+    });
+
+  ref = outerPromise.get();
+  return ref.forget();
+}
+
+RefPtr<GenericPromise>
+ClientHandle::OnDetach()
+{
+  NS_ASSERT_OWNINGTHREAD(ClientSource);
+
+  if (!mDetachPromise) {
+    mDetachPromise = new GenericPromise::Private(__func__);
+    if (IsShutdown()) {
+      mDetachPromise->Resolve(true, __func__);
+    }
+  }
+
+  RefPtr<GenericPromise> ref(mDetachPromise);
+  return Move(ref);
 }
 
 } // namespace dom

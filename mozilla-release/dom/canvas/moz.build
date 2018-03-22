@@ -49,11 +49,6 @@ EXPORTS += [
     'nsICanvasRenderingContextInternal.h',
 ]
 
-EXPORTS.mozilla.ipc += [
-    'DocumentRendererChild.h',
-    'DocumentRendererParent.h',
-]
-
 EXPORTS.mozilla.dom += [
     'BasicRenderingContext2D.h',
     'CanvasGradient.h',
@@ -78,8 +73,6 @@ UNIFIED_SOURCES += [
     'CanvasRenderingContext2D.cpp',
     'CanvasRenderingContextHelper.cpp',
     'CanvasUtils.cpp',
-    'DocumentRendererChild.cpp',
-    'DocumentRendererParent.cpp',
     'ImageBitmap.cpp',
     'ImageBitmapColorUtils.cpp',
     'ImageBitmapRenderingContext.cpp',
@@ -189,7 +182,7 @@ SOURCES += [
 ]
 
 # Suppress warnings from third-party code.
-if CONFIG['CLANG_CXX'] or CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     SOURCES['MurmurHash3.cpp'].flags += ['-Wno-implicit-fallthrough']
 
 LOCAL_INCLUDES += [
@@ -220,10 +213,5 @@ CXXFLAGS += CONFIG['TK_CFLAGS']
 
 LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
-
-if CONFIG['_MSC_VER']:
-    # This is intended as a temporary workaround to unblock compilation
-    # on VS2015 in warnings as errors mode.
-    CXXFLAGS += ['-wd4312']

@@ -5,8 +5,8 @@
 //! CSS handling for the [`basic-shape`](https://drafts.csswg.org/css-shapes/#typedef-basic-shape)
 //! types that are generic over their `ToCss` implementations.
 
-use std::fmt;
-use style_traits::ToCss;
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ToCss};
 use values::animated::{Animate, Procedure, ToAnimatedZero};
 use values::distance::{ComputeSquaredDistance, SquaredDistance};
 use values::generics::border::BorderRadius;
@@ -27,7 +27,7 @@ pub enum GeometryBox {
 }
 
 /// A float area shape, for `shape-outside`.
-pub type FloatAreaShape<BasicShape, Url> = ShapeSource<BasicShape, ShapeBox, Url>;
+pub type FloatAreaShape<BasicShape, Image> = ShapeSource<BasicShape, ShapeBox, Image>;
 
 // https://drafts.csswg.org/css-shapes-1/#typedef-shape-box
 define_css_keyword_enum!(ShapeBox:
@@ -41,9 +41,9 @@ add_impls_for_keyword_enum!(ShapeBox);
 /// A shape source, for some reference box.
 #[allow(missing_docs)]
 #[derive(Animate, Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
-pub enum ShapeSource<BasicShape, ReferenceBox, Url> {
+pub enum ShapeSource<BasicShape, ReferenceBox, ImageOrUrl> {
     #[animation(error)]
-    Url(Url),
+    ImageOrUrl(ImageOrUrl),
     Shape(
         BasicShape,
         #[animation(constant)]
@@ -152,7 +152,10 @@ impl<B, T, U> ToAnimatedZero for ShapeSource<B, T, U> {
 impl<L> ToCss for InsetRect<L>
     where L: ToCss + PartialEq
 {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("inset(")?;
         self.rect.to_css(dest)?;
         if let Some(ref radius) = self.round {
@@ -210,7 +213,10 @@ where
 }
 
 impl<L: ToCss> ToCss for Polygon<L> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("polygon(")?;
         if self.fill != FillRule::default() {
             self.fill.to_css(dest)?;

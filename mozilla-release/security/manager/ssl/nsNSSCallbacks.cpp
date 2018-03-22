@@ -24,12 +24,14 @@
 #include "nsITokenDialogs.h"
 #include "nsIUploadChannel.h"
 #include "nsIWebProgressListener.h"
+#include "nsNSSCertHelper.h"
 #include "nsNSSCertificate.h"
 #include "nsNSSComponent.h"
 #include "nsNSSIOLayer.h"
 #include "nsNetUtil.h"
 #include "nsProtectedAuthThread.h"
 #include "nsProxyRelease.h"
+#include "nsStringStream.h"
 #include "pkix/pkixtypes.h"
 #include "ssl.h"
 #include "sslproto.h"
@@ -64,7 +66,7 @@ public:
   nsHTTPDownloadEvent();
   ~nsHTTPDownloadEvent();
 
-  NS_IMETHOD Run();
+  NS_IMETHOD Run() override;
 
   RefPtr<nsNSSHttpRequestSession> mRequestSession;
 
@@ -117,13 +119,19 @@ nsHTTPDownloadEvent::Run()
   chan->SetLoadFlags(nsIRequest::LOAD_ANONYMOUS |
                      nsIChannel::LOAD_BYPASS_SERVICE_WORKER);
 
-  // For OCSP requests, only the first party domain aspect of origin attributes
-  // is used. This means that OCSP requests are shared across different
-  // containers.
+  // For OCSP requests, only the first party domain and private browsing id
+  // aspects of origin attributes are used. This means that:
+  // a) if first party isolation is enabled, OCSP requests will be isolated
+  // according to the first party domain of the original https request
+  // b) OCSP requests are shared across different containers as long as first
+  // party isolation is not enabled and none of the containers are in private
+  // browsing mode.
   if (mRequestSession->mOriginAttributes != OriginAttributes()) {
     OriginAttributes attrs;
     attrs.mFirstPartyDomain =
       mRequestSession->mOriginAttributes.mFirstPartyDomain;
+    attrs.mPrivateBrowsingId =
+      mRequestSession->mOriginAttributes.mPrivateBrowsingId;
 
     nsCOMPtr<nsILoadInfo> loadInfo = chan->GetLoadInfo();
     if (loadInfo) {
@@ -140,9 +148,8 @@ nsHTTPDownloadEvent::Run()
   if (mRequestSession->mHasPostData)
   {
     nsCOMPtr<nsIInputStream> uploadStream;
-    rv = NS_NewPostDataStream(getter_AddRefs(uploadStream),
-                              false,
-                              mRequestSession->mPostData);
+    rv = NS_NewCStringInputStream(getter_AddRefs(uploadStream),
+                                  mRequestSession->mPostData);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIUploadChannel> uploadChannel(do_QueryInterface(chan));
@@ -763,8 +770,6 @@ PK11PasswordPromptRunnable::~PK11PasswordPromptRunnable()
 void
 PK11PasswordPromptRunnable::RunOnTargetThread()
 {
-  static NS_DEFINE_CID(kNSSComponentCID, NS_NSSCOMPONENT_CID);
-
   nsNSSShutDownPreventionLock locker;
   if (isAlreadyShutDown()) {
     return;
@@ -791,24 +796,17 @@ PK11PasswordPromptRunnable::RunOnTargetThread()
     return;
   }
 
-  nsCOMPtr<nsINSSComponent> nssComponent(do_GetService(kNSSComponentCID));
-  if (!nssComponent) {
-    return;
-  }
-
   nsAutoString promptString;
   if (PK11_IsInternal(mSlot)) {
-    rv = nssComponent->GetPIPNSSBundleString("CertPassPromptDefault",
-                                             promptString);
+    rv = GetPIPNSSBundleString("CertPassPromptDefault", promptString);
   } else {
     NS_ConvertUTF8toUTF16 tokenName(PK11_GetTokenName(mSlot));
     const char16_t* formatStrings[] = {
       tokenName.get(),
     };
-    rv = nssComponent->PIPBundleFormatStringFromName("CertPassPrompt",
-                                                     formatStrings,
-                                                     ArrayLength(formatStrings),
-                                                     promptString);
+    rv = PIPBundleFormatStringFromName("CertPassPrompt", formatStrings,
+                                       ArrayLength(formatStrings),
+                                       promptString);
   }
   if (NS_FAILED(rv)) {
     return;

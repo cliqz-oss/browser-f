@@ -179,6 +179,20 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId) {
 
   this.on("picker-started", this._onPickerStarted);
   this.on("picker-stopped", this._onPickerStopped);
+
+  /**
+   * Get text direction for the current locale direction.
+   *
+   * `getComputedStyle` forces a synchronous reflow, so use a lazy getter in order to
+   * call it only once.
+   */
+  loader.lazyGetter(this, "direction", () => {
+    // Get the direction from browser.xul document
+    let top = this.win.top;
+    let topDocEl = top.document.documentElement;
+    let isRtl = top.getComputedStyle(topDocEl).direction === "rtl";
+    return isRtl ? "rtl" : "ltr";
+  });
 }
 exports.Toolbox = Toolbox;
 
@@ -504,7 +518,15 @@ Toolbox.prototype = {
       // can take a few hundred milliseconds seconds to start up.
       // But wait for toolbar buttons to be set before updating this react component.
       buttonsPromise.then(() => {
-        this.component.setCanRender();
+        // Delay React rendering as Toolbox.open and buttonsPromise are synchronous.
+        // Even if this involve promises, this is synchronous. Toolbox.open already loads
+        // react modules and freeze the event loop for a significant time.
+        // requestIdleCallback allows releasing it to allow user events to be processed.
+        // Use 16ms maximum delay to allow one frame to be rendered at 60FPS
+        // (1000ms/60FPS=16ms)
+        this.win.requestIdleCallback(() => {
+          this.component.setCanRender();
+        }, {timeout: 16});
       });
 
       yield this.selectTool(this._defaultToolId);
@@ -1732,10 +1754,7 @@ Toolbox.prototype = {
 
     if (docEl.hasAttribute("dir")) {
       // Set the dir attribute value only if dir is already present on the document.
-      let top = this.win.top;
-      let topDocEl = top.document.documentElement;
-      let isRtl = top.getComputedStyle(topDocEl).direction === "rtl";
-      docEl.setAttribute("dir", isRtl ? "rtl" : "ltr");
+      docEl.setAttribute("dir", this.direction);
     }
   },
 
@@ -1755,7 +1774,45 @@ Toolbox.prototype = {
         node.removeAttribute("selected");
         node.removeAttribute("aria-selected");
       }
+      // The webconsole panel is in a special location due to split console
+      if (!node.id) {
+        node = this.webconsolePanel;
+      }
+
+      let iframe = node.querySelector(".toolbox-panel-iframe");
+      if (iframe) {
+        let visible = node.id == id;
+        // Prevents hiding the split-console if it is currently enabled
+        if (node == this.webconsolePanel && this.splitConsole) {
+          visible = true;
+        }
+        this.setIframeVisible(iframe, visible);
+      }
     });
+  },
+
+  /**
+   * Make a privileged iframe visible/hidden.
+   *
+   * For now, XUL Iframes loading chrome documents (i.e. <iframe type!="content" />)
+   * can't be hidden at platform level. And so don't support 'visibilitychange' event.
+   *
+   * This helper workarounds that by at least being able to send these kind of events.
+   * It will help panel react differently depending on them being displayed or in
+   * background.
+   */
+  setIframeVisible: function (iframe, visible) {
+    let state = visible ? "visible" : "hidden";
+    let win = iframe.contentWindow;
+    let doc = win.document;
+    if (doc.visibilityState != state) {
+      // 1) Overload document's `visibilityState` attribute
+      // Use defineProperty, as by default `document.visbilityState` is read only.
+      Object.defineProperty(doc, "visibilityState", { value: state, configurable: true });
+
+      // 2) Fake the 'visibilitychange' event
+      win.dispatchEvent(new win.Event("visibilitychange"));
+    }
   },
 
   /**
@@ -1873,6 +1930,12 @@ Toolbox.prototype = {
     Services.prefs.setBoolPref(SPLITCONSOLE_ENABLED_PREF, true);
     this._refreshConsoleDisplay();
 
+    // Ensure split console is visible if console was already loaded in background
+    let iframe = this.webconsolePanel.querySelector(".toolbox-panel-iframe");
+    if (iframe) {
+      this.setIframeVisible(iframe, true);
+    }
+
     return this.loadTool("webconsole").then(() => {
       this.emit("split-console");
       this.focusConsoleInput();
@@ -1989,8 +2052,8 @@ Toolbox.prototype = {
    */
   async _onWillNavigate() {
     let toolId = this.currentToolId;
-    // For now, only inspector and webconsole fires "reloaded" event
-    if (toolId != "inspector" && toolId != "webconsole") {
+    // For now, only inspector, webconsole and netmonitor fire "reloaded" event
+    if (toolId != "inspector" && toolId != "webconsole" && toolId != "netmonitor") {
       return;
     }
 

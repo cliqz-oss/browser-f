@@ -658,12 +658,11 @@ nsListBoxBodyFrame::GetFixedRowSize()
   nsresult dummy;
 
   nsAutoString rows;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::rows, rows);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::rows, rows);
   if (!rows.IsEmpty())
     return rows.ToInteger(&dummy);
 
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::size, rows);
-
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::size, rows);
   if (!rows.IsEmpty())
     return rows.ToInteger(&dummy);
 
@@ -715,11 +714,10 @@ nsListBoxBodyFrame::ComputeIntrinsicISize(nsBoxLayoutState& aBoxLayoutState)
   nsCOMPtr<nsIContent> firstRowContent(do_QueryInterface(firstRowEl));
 
   if (firstRowContent) {
-    RefPtr<nsStyleContext> styleContext;
-    nsPresContext *presContext = aBoxLayoutState.PresContext();
-    styleContext = presContext->StyleSet()->
-      ResolveStyleFor(firstRowContent->AsElement(), nullptr,
-                      LazyComputeBehavior::Allow);
+    nsPresContext* presContext = aBoxLayoutState.PresContext();
+    RefPtr<nsStyleContext> styleContext =
+      presContext->StyleSet()->ResolveStyleFor(
+          firstRowContent->AsElement(), nullptr, LazyComputeBehavior::Allow);
 
     nscoord width = 0;
     nsMargin margin(0,0,0,0);
@@ -736,10 +734,9 @@ nsListBoxBodyFrame::ComputeIntrinsicISize(nsBoxLayoutState& aBoxLayoutState)
         gfxContext* rendContext = aBoxLayoutState.GetRenderingContext();
         if (rendContext) {
           nsAutoString value;
-          uint32_t textCount = child->GetChildCount();
-          for (uint32_t j = 0; j < textCount; ++j) {
-            nsIContent* text = child->GetChildAt(j);
-            if (text && text->IsNodeOfType(nsINode::eTEXT)) {
+          for (nsIContent* text = child->GetFirstChild();
+               text; text = text->GetNextSibling()) {
+            if (text->IsNodeOfType(nsINode::eTEXT)) {
               text->AppendTextTo(value);
             }
           }
@@ -922,14 +919,11 @@ nsListBoxBodyFrame::DoInternalPositionChanged(bool aUp, int32_t aDelta)
       // We have scrolled so much that all of our current frames will
       // go off screen, so blow them all away. Weeee!
       nsIFrame *currBox = mFrames.FirstChild();
-      nsCSSFrameConstructor* fc = presContext->PresShell()->FrameConstructor();
-      fc->BeginUpdate();
       while (currBox) {
         nsIFrame *nextBox = currBox->GetNextSibling();
         RemoveChildFrame(state, currBox);
         currBox = nextBox;
       }
-      fc->EndUpdate();
     }
 
     // clear frame markers so that CreateRows will re-create
@@ -1074,8 +1068,6 @@ nsListBoxBodyFrame::DestroyRows(int32_t& aRowsToLose)
   nsIFrame* childFrame = GetFirstFrame();
   nsBoxLayoutState state(PresContext());
 
-  nsCSSFrameConstructor* fc = PresShell()->FrameConstructor();
-  fc->BeginUpdate();
   while (childFrame && aRowsToLose > 0) {
     --aRowsToLose;
 
@@ -1084,7 +1076,6 @@ nsListBoxBodyFrame::DestroyRows(int32_t& aRowsToLose)
 
     mTopFrame = childFrame = nextFrame;
   }
-  fc->EndUpdate();
 
   PresShell()->
     FrameNeedsReflow(this, nsIPresShell::eTreeChange,
@@ -1099,8 +1090,6 @@ nsListBoxBodyFrame::ReverseDestroyRows(int32_t& aRowsToLose)
   nsIFrame* childFrame = GetLastFrame();
   nsBoxLayoutState state(PresContext());
 
-  nsCSSFrameConstructor* fc = PresShell()->FrameConstructor();
-  fc->BeginUpdate();
   while (childFrame && aRowsToLose > 0) {
     --aRowsToLose;
 
@@ -1110,7 +1099,6 @@ nsListBoxBodyFrame::ReverseDestroyRows(int32_t& aRowsToLose)
 
     mBottomFrame = childFrame = prevFrame;
   }
-  fc->EndUpdate();
 
   PresShell()->
     FrameNeedsReflow(this, nsIPresShell::eTreeChange,
@@ -1172,7 +1160,7 @@ nsListBoxBodyFrame::GetFirstItemBox(int32_t aOffset, bool* aCreated)
     contentIndex -= aOffset;
     if (contentIndex < 0)
       return nullptr;
-    startContent = topParent->GetChildAt(contentIndex - mRowsToPrepend);
+    startContent = topParent->GetChildAt_Deprecated(contentIndex - mRowsToPrepend);
   } else {
     // This will be the first item frame we create.  Use the content
     // at the current index, which is the first index scrolled into view
@@ -1193,10 +1181,9 @@ nsListBoxBodyFrame::GetFirstItemBox(int32_t aOffset, bool* aCreated)
     //     display: none was on listitem content
     bool isAppend = mRowsToPrepend <= 0;
 
-    nsPresContext* presContext = PresContext();
-    nsCSSFrameConstructor* fc = presContext->PresShell()->FrameConstructor();
     nsIFrame* topFrame = nullptr;
-    fc->CreateListBoxContent(this, nullptr, startContent, &topFrame, isAppend);
+    PresContext()->FrameConstructor()->CreateListBoxContent(
+        this, nullptr, startContent, &topFrame, isAppend);
     mTopFrame = topFrame;
     if (mTopFrame) {
       if (aCreated)
@@ -1235,7 +1222,7 @@ nsListBoxBodyFrame::GetNextItemBox(nsIFrame* aBox, int32_t aOffset,
     uint32_t childCount = parentContent->GetChildCount();
     if (((uint32_t)i + aOffset + 1) < childCount) {
       // There is a content node that wants a frame.
-      nsIContent *nextContent = parentContent->GetChildAt(i + aOffset + 1);
+      nsIContent *nextContent = parentContent->GetChildAt_Deprecated(i + aOffset + 1);
 
       nsIFrame* existingFrame;
       if (!IsListItemChild(this, nextContent, &existingFrame)) {
@@ -1246,10 +1233,8 @@ nsListBoxBodyFrame::GetNextItemBox(nsIFrame* aBox, int32_t aOffset,
         bool isAppend = result != mLinkupFrame && mRowsToPrepend <= 0;
         nsIFrame* prevFrame = isAppend ? nullptr : aBox;
 
-        nsPresContext* presContext = PresContext();
-        nsCSSFrameConstructor* fc = presContext->PresShell()->FrameConstructor();
-        fc->CreateListBoxContent(this, prevFrame, nextContent,
-                                 &result, isAppend);
+        PresContext()->FrameConstructor()->CreateListBoxContent(
+            this, prevFrame, nextContent, &result, isAppend);
 
         if (result) {
           if (aCreated)
@@ -1300,15 +1285,11 @@ nsListBoxBodyFrame::ContinueReflow(nscoord height)
       nsIFrame* currFrame = startingPoint->GetNextSibling();
       nsBoxLayoutState state(PresContext());
 
-      nsCSSFrameConstructor* fc =
-        PresShell()->FrameConstructor();
-      fc->BeginUpdate();
       while (currFrame) {
         nsIFrame* nextFrame = currFrame->GetNextSibling();
         RemoveChildFrame(state, currFrame);
         currFrame = nextFrame;
       }
-      fc->EndUpdate();
 
       PresShell()->
         FrameNeedsReflow(this, nsIPresShell::eTreeChange,

@@ -34,6 +34,9 @@ struct BasePoint {
   constexpr BasePoint() : x(0), y(0) {}
   constexpr BasePoint(Coord aX, Coord aY) : x(aX), y(aY) {}
 
+  MOZ_ALWAYS_INLINE T X() const { return x; }
+  MOZ_ALWAYS_INLINE T Y() const { return y; }
+
   void MoveTo(T aX, T aY) { x = aX; y = aY; }
   void MoveBy(T aDx, T aDy) { x += aDx; y += aDy; }
 
@@ -91,8 +94,8 @@ struct BasePoint {
   // They are always rounding as floor(n + 0.5).
   // See https://bugzilla.mozilla.org/show_bug.cgi?id=410748#c14
   Sub& Round() {
-    x = Coord(floor(T(x) + T(0.5)));
-    y = Coord(floor(T(y) + T(0.5)));
+    x = Coord(std::floor(T(x) + T(0.5f)));
+    y = Coord(std::floor(T(y) + T(0.5f)));
     return *static_cast<Sub*>(this);
   }
 

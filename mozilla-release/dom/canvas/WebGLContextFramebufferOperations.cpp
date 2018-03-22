@@ -20,8 +20,6 @@ WebGLContext::Clear(GLbitfield mask)
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
-
     uint32_t m = mask & (LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT | LOCAL_GL_STENCIL_BUFFER_BIT);
     if (mask != m)
         return ErrorInvalidValue("%s: invalid mask bits", funcName);
@@ -32,10 +30,7 @@ WebGLContext::Clear(GLbitfield mask)
         GenerateWarning("Calling gl.clear() with RASTERIZER_DISCARD enabled has no effects.");
     }
 
-    if (mBoundDrawFramebuffer) {
-        if (!mBoundDrawFramebuffer->ValidateAndInitAttachments(funcName))
-            return;
-
+    if (mask & LOCAL_GL_COLOR_BUFFER_BIT && mBoundDrawFramebuffer) {
         if (mask & LOCAL_GL_COLOR_BUFFER_BIT) {
             for (const auto& cur : mBoundDrawFramebuffer->ColorDrawBuffers()) {
                 if (!cur->IsDefined())
@@ -57,8 +52,21 @@ WebGLContext::Clear(GLbitfield mask)
         }
     }
 
-    ScopedDrawCallWrapper wrapper(*this);
-    gl->fClear(mask);
+    if (!BindCurFBForDraw(funcName))
+        return;
+
+    auto driverMask = mask;
+    if (!mBoundDrawFramebuffer) {
+        if (mNeedsFakeNoDepth) {
+            driverMask &= ~LOCAL_GL_DEPTH_BUFFER_BIT;
+        }
+        if (mNeedsFakeNoStencil) {
+            driverMask &= ~LOCAL_GL_STENCIL_BUFFER_BIT;
+        }
+    }
+
+    const ScopedDrawCallWrapper wrapper(*this);
+    gl->fClear(driverMask);
 }
 
 static GLfloat
@@ -78,8 +86,6 @@ WebGLContext::ClearColor(GLfloat r, GLfloat g, GLfloat b, GLfloat a)
 {
     if (IsContextLost())
         return;
-
-    MakeContextCurrent();
 
     const bool supportsFloatColorBuffers = (IsExtensionEnabled(WebGLExtensionID::EXT_color_buffer_float) ||
                                             IsExtensionEnabled(WebGLExtensionID::EXT_color_buffer_half_float) ||
@@ -105,7 +111,6 @@ WebGLContext::ClearDepth(GLclampf v)
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
     mDepthClearValue = GLClampFloat(v);
     gl->fClearDepth(mDepthClearValue);
 }
@@ -116,7 +121,6 @@ WebGLContext::ClearStencil(GLint v)
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
     mStencilClearValue = v;
     gl->fClearStencil(v);
 }
@@ -127,12 +131,10 @@ WebGLContext::ColorMask(WebGLboolean r, WebGLboolean g, WebGLboolean b, WebGLboo
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
-    mColorWriteMask[0] = r;
-    mColorWriteMask[1] = g;
-    mColorWriteMask[2] = b;
-    mColorWriteMask[3] = a;
-    gl->fColorMask(r, g, b, a);
+    mColorWriteMask = uint8_t(bool(r)) << 0 |
+                      uint8_t(bool(g)) << 1 |
+                      uint8_t(bool(b)) << 2 |
+                      uint8_t(bool(a)) << 3;
 }
 
 void
@@ -141,7 +143,6 @@ WebGLContext::DepthMask(WebGLboolean b)
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
     mDepthWriteMask = b;
     gl->fDepthMask(b);
 }
@@ -183,7 +184,7 @@ WebGLContext::DrawBuffers(const dom::Sequence<GLenum>& buffers)
     }
 
     mDefaultFB_DrawBuffer0 = buffers[0];
-    gl->Screen()->SetDrawBuffer(buffers[0]);
+    // Don't actually set it.
 }
 
 void
@@ -195,7 +196,6 @@ WebGLContext::StencilMask(GLuint mask)
     mStencilWriteMaskFront = mask;
     mStencilWriteMaskBack = mask;
 
-    MakeContextCurrent();
     gl->fStencilMask(mask);
 }
 
@@ -221,7 +221,6 @@ WebGLContext::StencilMaskSeparate(GLenum face, GLuint mask)
             break;
     }
 
-    MakeContextCurrent();
     gl->fStencilMaskSeparate(face, mask);
 }
 

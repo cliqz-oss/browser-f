@@ -41,6 +41,7 @@ InternalRequest::GetRequestConstructorCopy(nsIGlobalObject* aGlobal, ErrorResult
   copy->mReferrerPolicy = mReferrerPolicy;
   copy->mEnvironmentReferrerPolicy = mEnvironmentReferrerPolicy;
   copy->mIntegrity = mIntegrity;
+  copy->mMozErrors = mMozErrors;
 
   copy->mContentPolicyType = mContentPolicyTypeOverridden ?
                              mContentPolicyType :
@@ -51,6 +52,8 @@ InternalRequest::GetRequestConstructorCopy(nsIGlobalObject* aGlobal, ErrorResult
   copy->mRedirectMode = mRedirectMode;
   copy->mCreatedByFetchEvent = mCreatedByFetchEvent;
   copy->mContentPolicyTypeOverridden = mContentPolicyTypeOverridden;
+
+  copy->mPreferredAlternativeDataType = mPreferredAlternativeDataType;
   return copy.forget();
 }
 
@@ -90,6 +93,7 @@ InternalRequest::InternalRequest(const nsACString& aURL,
   , mResponseTainting(LoadTainting::Basic)
   , mCacheMode(RequestCache::Default)
   , mRedirectMode(RequestRedirect::Follow)
+  , mMozErrors(false)
   , mAuthenticationFlag(false)
   , mForceOriginHeader(false)
   , mPreserveContentCodings(false)
@@ -130,6 +134,7 @@ InternalRequest::InternalRequest(const nsACString& aURL,
   , mCacheMode(aCacheMode)
   , mRedirectMode(aRequestRedirect)
   , mIntegrity(aIntegrity)
+  , mMozErrors(false)
   , mAuthenticationFlag(false)
   , mForceOriginHeader(false)
   , mPreserveContentCodings(false)
@@ -158,6 +163,7 @@ InternalRequest::InternalRequest(const InternalRequest& aOther)
   , mCacheMode(aOther.mCacheMode)
   , mRedirectMode(aOther.mRedirectMode)
   , mIntegrity(aOther.mIntegrity)
+  , mMozErrors(aOther.mMozErrors)
   , mFragment(aOther.mFragment)
   , mAuthenticationFlag(aOther.mAuthenticationFlag)
   , mForceOriginHeader(aOther.mForceOriginHeader)
@@ -323,6 +329,9 @@ InternalRequest::MapContentPolicyTypeToRequestContext(nsContentPolicyType aConte
     break;
   case nsIContentPolicy::TYPE_WEB_MANIFEST:
     context = RequestContext::Manifest;
+    break;
+  case nsIContentPolicy::TYPE_SAVEAS_DOWNLOAD:
+    context = RequestContext::Internal;
     break;
   default:
     MOZ_ASSERT(false, "Unhandled nsContentPolicyType value");

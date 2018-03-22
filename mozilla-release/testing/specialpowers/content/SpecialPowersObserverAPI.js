@@ -4,8 +4,14 @@
 
 "use strict";
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
+Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ExtensionData: "resource://gre/modules/Extension.jsm",
+  ExtensionTestCommon: "resource://testing-common/ExtensionTestCommon.jsm",
+  NetUtil: "resource://gre/modules/NetUtil.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+});
 
 if (typeof(Ci) == "undefined") {
   var Ci = Components.interfaces;
@@ -20,7 +26,7 @@ this.SpecialPowersError = function(aMsg) {
   // let {stack} = new Error();
   this.message = aMsg;
   this.name = "SpecialPowersError";
-}
+};
 SpecialPowersError.prototype = Object.create(Error.prototype);
 
 SpecialPowersError.prototype.toString = function() {
@@ -32,7 +38,7 @@ this.SpecialPowersObserverAPI = function SpecialPowersObserverAPI() {
   this._processCrashObserversRegistered = false;
   this._chromeScriptListeners = [];
   this._extensions = new Map();
-}
+};
 
 function parseKeyValuePairs(text) {
   var lines = text.split("\n");
@@ -446,7 +452,7 @@ SpecialPowersObserverAPI.prototype = {
         let topic = aMessage.json.observerTopic;
         switch (aMessage.json.op) {
           case "notify":
-            let data = aMessage.json.observerData
+            let data = aMessage.json.observerData;
             Services.obs.notifyObservers(null, topic, data);
             break;
           case "add":
@@ -481,7 +487,7 @@ SpecialPowersObserverAPI.prototype = {
         let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
         let sandboxOptions = aMessage.json.sandboxOptions;
         if (!sandboxOptions) {
-          sandboxOptions = {}
+          sandboxOptions = {};
         }
         let sb = Components.utils.Sandbox(systemPrincipal, sandboxOptions);
         let mm = aMessage.target.frameLoader
@@ -572,11 +578,9 @@ SpecialPowersObserverAPI.prototype = {
       }
 
       case "SPLoadExtension": {
-        let {Extension} = Components.utils.import("resource://gre/modules/Extension.jsm", {});
-
         let id = aMessage.data.id;
         let ext = aMessage.data.ext;
-        let extension = Extension.generate(ext);
+        let extension = ExtensionTestCommon.generate(ext);
 
         let resultListener = (...args) => {
           this._sendReply(aMessage, "SPExtensionMessage", {id, type: "testResult", args});
@@ -600,8 +604,6 @@ SpecialPowersObserverAPI.prototype = {
       }
 
       case "SPStartupExtension": {
-        let {ExtensionData} = Components.utils.import("resource://gre/modules/Extension.jsm", {});
-
         let id = aMessage.data.id;
         let extension = this._extensions.get(id);
         extension.on("startup", () => {

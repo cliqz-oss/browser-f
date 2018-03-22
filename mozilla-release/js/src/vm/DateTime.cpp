@@ -18,12 +18,14 @@
 
 #include "js/Date.h"
 #include "threading/ExclusiveData.h"
+
 #if ENABLE_INTL_API
 #include "unicode/timezone.h"
 #if defined(XP_WIN)
 #include "unicode/unistr.h"
 #endif
 #endif /* ENABLE_INTL_API */
+
 #include "vm/MutexIDs.h"
 
 using mozilla::UnspecifiedNaN;

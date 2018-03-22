@@ -748,7 +748,7 @@ nsBaseWidget::GetWindowClipRegion(nsTArray<LayoutDeviceIntRect>* aRects)
   if (mClipRects) {
     aRects->AppendElements(mClipRects.get(), mClipRectCount);
   } else {
-    aRects->AppendElement(LayoutDeviceIntRect(0, 0, mBounds.width, mBounds.height));
+    aRects->AppendElement(LayoutDeviceIntRect(0, 0, mBounds.Width(), mBounds.Height()));
   }
 }
 
@@ -837,10 +837,11 @@ nsBaseWidget::InfallibleMakeFullScreen(bool aFullScreen, nsIScreen* aScreen)
   } else if (mOriginalBounds) {
     if (BoundsUseDesktopPixels()) {
       DesktopRect deskRect = *mOriginalBounds / GetDesktopToDeviceScale();
-      Resize(deskRect.x, deskRect.y, deskRect.width, deskRect.height, true);
+      Resize(deskRect.X(), deskRect.Y(),
+	     deskRect.Width(), deskRect.Height(), true);
     } else {
-      Resize(mOriginalBounds->x, mOriginalBounds->y, mOriginalBounds->width,
-             mOriginalBounds->height, true);
+      Resize(mOriginalBounds->X(), mOriginalBounds->Y(),
+	     mOriginalBounds->Width(), mOriginalBounds->Height(), true);
     }
   }
 }
@@ -885,6 +886,12 @@ bool nsBaseWidget::IsSmallPopup() const
 bool
 nsBaseWidget::ComputeShouldAccelerate()
 {
+  if (gfx::gfxVars::UseWebRender() && !AllowWebRenderForThisWindow()) {
+    // If WebRender is enabled, non-WebRender widgets use the basic compositor
+    // (at least for now), even though they would get an accelerated compositor
+    // if WebRender wasn't enabled.
+    return false;
+  }
   return gfx::gfxConfig::IsEnabled(gfx::Feature::HW_COMPOSITING) &&
          WidgetTypeSupportsAcceleration();
 }
@@ -899,10 +906,19 @@ nsBaseWidget::UseAPZ()
             gfxPrefs::APZPopupsEnabled())));
 }
 
+bool
+nsBaseWidget::AllowWebRenderForThisWindow()
+{
+  return WindowType() == eWindowType_toplevel ||
+         WindowType() == eWindowType_child ||
+         WindowType() == eWindowType_dialog ||
+         (WindowType() == eWindowType_popup && HasRemoteContent());
+}
+
 void nsBaseWidget::CreateCompositor()
 {
   LayoutDeviceIntRect rect = GetBounds();
-  CreateCompositor(rect.width, rect.height);
+  CreateCompositor(rect.Width(), rect.Height());
 }
 
 already_AddRefed<GeckoContentController>
@@ -1255,10 +1271,11 @@ void nsBaseWidget::CreateCompositorVsyncDispatcher()
   }
 }
 
-CompositorVsyncDispatcher*
+already_AddRefed<CompositorVsyncDispatcher>
 nsBaseWidget::GetCompositorVsyncDispatcher()
 {
-  return mCompositorVsyncDispatcher;
+  RefPtr<CompositorVsyncDispatcher> dispatcher = mCompositorVsyncDispatcher;
+  return dispatcher.forget();
 }
 
 already_AddRefed<LayerManager>
@@ -1274,7 +1291,8 @@ nsBaseWidget::CreateCompositorSession(int aWidth,
     // If widget type does not supports acceleration, we use ClientLayerManager
     // even when gfxVars::UseWebRender() is true. WebRender could coexist only
     // with BasicCompositor.
-    bool enableWR = gfx::gfxVars::UseWebRender() && WidgetTypeSupportsAcceleration();
+    bool enableWR = gfx::gfxVars::UseWebRender() && WidgetTypeSupportsAcceleration()
+      && AllowWebRenderForThisWindow();
     bool enableAPZ = UseAPZ();
     CompositorOptions options(enableAPZ, enableWR);
 
@@ -1404,7 +1422,7 @@ void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
     }
 
     lf->SetShadowManager(shadowManager);
-    lm->UpdateTextureFactoryIdentifier(textureFactoryIdentifier, 0);
+    lm->UpdateTextureFactoryIdentifier(textureFactoryIdentifier);
     // Some popup or transparent widgets may use a different backend than the
     // compositors used with ImageBridge and VR (and more generally web content).
     if (WidgetTypeSupportsAcceleration()) {
@@ -1533,13 +1551,13 @@ nsBaseWidget::ResizeClient(double aWidth, double aHeight, bool aRepaint)
   // if that's what this widget uses for the Move/Resize APIs
   if (BoundsUseDesktopPixels()) {
     DesktopSize desktopDelta =
-      (LayoutDeviceIntSize(mBounds.width, mBounds.height) -
+      (LayoutDeviceIntSize(mBounds.Width(), mBounds.Height()) -
        clientBounds.Size()) / GetDesktopToDeviceScale();
     Resize(aWidth + desktopDelta.width, aHeight + desktopDelta.height,
            aRepaint);
   } else {
-    Resize(mBounds.width + (aWidth - clientBounds.width),
-           mBounds.height + (aHeight - clientBounds.height), aRepaint);
+    Resize(mBounds.Width() + (aWidth - clientBounds.Width()),
+           mBounds.Height() + (aHeight - clientBounds.Height()), aRepaint);
   }
 }
 
@@ -1560,15 +1578,15 @@ nsBaseWidget::ResizeClient(double aX,
     DesktopToLayoutDeviceScale scale = GetDesktopToDeviceScale();
     DesktopPoint desktopOffset = clientOffset / scale;
     DesktopSize desktopDelta =
-      (LayoutDeviceIntSize(mBounds.width, mBounds.height) -
+      (LayoutDeviceIntSize(mBounds.Width(), mBounds.Height()) -
        clientBounds.Size()) / scale;
     Resize(aX - desktopOffset.x, aY - desktopOffset.y,
            aWidth + desktopDelta.width, aHeight + desktopDelta.height,
            aRepaint);
   } else {
     Resize(aX - clientOffset.x, aY - clientOffset.y,
-           aWidth + mBounds.width - clientBounds.width,
-           aHeight + mBounds.height - clientBounds.height,
+           aWidth + mBounds.Width() - clientBounds.Width(),
+           aHeight + mBounds.Height() - clientBounds.Height(),
            aRepaint);
   }
 }
@@ -1973,8 +1991,8 @@ nsBaseWidget::GetWidgetScreen()
   LayoutDeviceIntRect bounds = GetScreenBounds();
   DesktopIntRect deskBounds = RoundedToInt(bounds / GetDesktopToDeviceScale());
   nsCOMPtr<nsIScreen> screen;
-  screenManager->ScreenForRect(deskBounds.x, deskBounds.y,
-                               deskBounds.width, deskBounds.height,
+  screenManager->ScreenForRect(deskBounds.X(), deskBounds.Y(),
+                               deskBounds.Width(), deskBounds.Height(),
                                getter_AddRefs(screen));
   return screen.forget();
 }
@@ -2321,7 +2339,7 @@ void
 nsBaseWidget::UpdateScrollCapture()
 {
   // Don't capture if no container or no size.
-  if (!mScrollCaptureContainer || mBounds.width <= 0 || mBounds.height <= 0) {
+  if (!mScrollCaptureContainer || mBounds.IsEmpty()) {
     return;
   }
 
@@ -3378,7 +3396,7 @@ nsBaseWidget::debug_DumpPaintEvent(FILE *                aFileOut,
           (void *) aWidget,
           aWidgetName,
           aWindowID,
-          rect.x, rect.y, rect.width, rect.height
+          rect.X(), rect.Y(), rect.Width(), rect.Height()
     );
 
   fprintf(aFileOut,"\n");
@@ -3407,7 +3425,7 @@ nsBaseWidget::debug_DumpInvalidate(FILE* aFileOut,
   if (aRect) {
     fprintf(aFileOut,
             " rect=%3d,%-3d %3d,%-3d",
-            aRect->x, aRect->y, aRect->width, aRect->height);
+            aRect->X(), aRect->Y(), aRect->Width(), aRect->Height());
   } else {
     fprintf(aFileOut,
             " rect=%-15s",

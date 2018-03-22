@@ -29,17 +29,6 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
 /*
  * A module that provides utility functions for form security.
  *
- * Note:
- *  This module uses isSecureContextIfOpenerIgnored instead of isSecureContext.
- *
- *  We don't want to expose JavaScript APIs in a non-Secure Context even if
- *  the context is only insecure because the windows has an insecure opener.
- *  Doing so prevents sites from implementing postMessage workarounds to enable
- *  an insecure opener to gain access to Secure Context-only APIs. However,
- *  in the case of form fields such as password fields we don't need to worry
- *  about whether the opener is secure or not. In fact to flag a password
- *  field as insecure in such circumstances would unnecessarily confuse our
- *  users.
  */
 this.InsecurePasswordUtils = {
   _formRootsWarned: new WeakMap(),
@@ -87,7 +76,10 @@ this.InsecurePasswordUtils = {
 
       if (uri.schemeIs("http")) {
         isFormSubmitHTTP = true;
-        if (gContentSecurityManager.isOriginPotentiallyTrustworthy(principal)) {
+        if (gContentSecurityManager.isOriginPotentiallyTrustworthy(principal) ||
+            // Ignore sites with local IP addresses pointing to local forms.
+            (this._isPrincipalForLocalIPAddress(aForm.rootElement.nodePrincipal) &&
+             this._isPrincipalForLocalIPAddress(principal))) {
           isFormSubmitSecure = true;
         }
       } else {
@@ -120,8 +112,7 @@ this.InsecurePasswordUtils = {
    * @return {boolean} whether the form is secure
    */
   isFormSecure(aForm) {
-    // Ignores window.opener, see top level documentation.
-    let isSafePage = aForm.ownerDocument.defaultView.isSecureContextIfOpenerIgnored;
+    let isSafePage = aForm.ownerDocument.defaultView.isSecureContext;
 
     // Ignore insecure documents with URLs that are local IP addresses.
     // This is done because the vast majority of routers and other devices
@@ -156,8 +147,7 @@ this.InsecurePasswordUtils = {
     }
 
     let domDoc = aForm.ownerDocument;
-    // Ignores window.opener, see top level documentation.
-    let isSafePage = domDoc.defaultView.isSecureContextIfOpenerIgnored;
+    let isSafePage = domDoc.defaultView.isSecureContext;
 
     let { isFormSubmitHTTP, isFormSubmitSecure } = this._checkFormSecurity(aForm);
 

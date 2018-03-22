@@ -1,7 +1,7 @@
-const {PlacesFeed} = require("lib/PlacesFeed.jsm");
+import {actionTypes as at} from "common/Actions.jsm";
+import {GlobalOverrider} from "test/unit/utils";
+import {PlacesFeed} from "lib/PlacesFeed.jsm";
 const {HistoryObserver, BookmarksObserver} = PlacesFeed;
-const {GlobalOverrider} = require("test/unit/utils");
-const {actionTypes: at} = require("common/Actions.jsm");
 
 const FAKE_BOOKMARK = {bookmarkGuid: "xi31", bookmarkTitle: "Foo", dateAdded: 123214232, url: "foo.com"};
 const TYPE_BOOKMARK = 0; // This is fake, for testing
@@ -217,7 +217,7 @@ describe("PlacesFeed", () => {
       it("should have a various empty functions for xpconnect happiness", () => {
         observer.onBeginUpdateBatch();
         observer.onEndUpdateBatch();
-        observer.onVisit();
+        observer.onVisits();
         observer.onTitleChanged();
         observer.onFrecencyChanged();
         observer.onManyFrecenciesChanged();

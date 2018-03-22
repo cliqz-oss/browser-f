@@ -4,29 +4,29 @@
 
 "use strict";
 
-const {
-  Component,
-  createFactory,
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
+const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { L10N } = require("../utils/l10n");
 const {
   decodeUnicodeBase64,
+  fetchNetworkUpdatePacket,
   formDataURI,
   getUrlBaseName,
 } = require("../utils/request-utils");
+const { Filters } = require("../utils/filter-predicates");
 
 // Components
 const PropertiesView = createFactory(require("./PropertiesView"));
 
-const { div, img } = DOM;
+const { div, img } = dom;
 const JSON_SCOPE_NAME = L10N.getStr("jsonScopeName");
 const JSON_FILTER_TEXT = L10N.getStr("jsonFilterText");
 const RESPONSE_IMG_NAME = L10N.getStr("netmonitor.response.name");
 const RESPONSE_IMG_DIMENSIONS = L10N.getStr("netmonitor.response.dimensions");
 const RESPONSE_IMG_MIMETYPE = L10N.getStr("netmonitor.response.mime");
 const RESPONSE_PAYLOAD = L10N.getStr("responsePayload");
+const RESPONSE_PREVIEW = L10N.getStr("responsePreview");
 
 const JSON_VIEW_MIME_TYPE = "application/vnd.mozilla.json.view";
 
@@ -39,6 +39,7 @@ class ResponsePanel extends Component {
     return {
       request: PropTypes.object.isRequired,
       openLink: PropTypes.func,
+      connector: PropTypes.object.isRequired,
     };
   }
 
@@ -54,6 +55,16 @@ class ResponsePanel extends Component {
 
     this.updateImageDimemsions = this.updateImageDimemsions.bind(this);
     this.isJSON = this.isJSON.bind(this);
+  }
+
+  componentDidMount() {
+    let { request, connector } = this.props;
+    fetchNetworkUpdatePacket(connector.requestData, request, ["responseContent"]);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    let { request, connector } = nextProps;
+    fetchNetworkUpdatePacket(connector.requestData, request, ["responseContent"]);
   }
 
   updateImageDimemsions({ target }) {
@@ -176,6 +187,13 @@ class ResponsePanel extends Component {
       object[sectionName] = json;
     }
 
+    // Display HTML under Properties View
+    if (Filters.html(this.props.request)) {
+      object[RESPONSE_PREVIEW] = {
+        HTML_PREVIEW: { responseContent }
+      };
+    }
+
     // Others like text/html, text/plain, application/javascript
     object[RESPONSE_PAYLOAD] = {
       EDITOR_CONFIG: {
@@ -184,8 +202,13 @@ class ResponsePanel extends Component {
       },
     };
 
+    let classList = ["panel-container"];
+    if (Filters.html(this.props.request)) {
+      classList.push("contains-html-preview");
+    }
+
     return (
-      div({ className: "panel-container" },
+      div({ className: classList.join(" ") },
         error && div({ className: "response-error-header", title: error },
           error
         ),

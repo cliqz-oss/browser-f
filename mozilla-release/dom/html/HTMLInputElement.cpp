@@ -11,6 +11,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/Date.h"
 #include "mozilla/dom/Directory.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/HTMLFormSubmission.h"
 #include "mozilla/dom/FileSystemUtils.h"
 #include "mozilla/dom/GetFilesHelper.h"
@@ -57,7 +58,6 @@
 #include "nsPresState.h"
 #include "nsIDOMEvent.h"
 #include "nsIDOMNodeList.h"
-#include "nsIDOMHTMLCollection.h"
 #include "nsLinebreakConverter.h" //to strip out carriage returns
 #include "nsReadableUtils.h"
 #include "nsUnicharUtils.h"
@@ -686,7 +686,7 @@ HTMLInputElement::nsFilePickerShownCallback::Done(int16_t aResult)
   RefPtr<DispatchChangeEventCallback> dispatchChangeEventCallback =
     new DispatchChangeEventCallback(mInput);
 
-  if (IsWebkitDirPickerEnabled() &&
+  if (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
       mInput->HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory)) {
     ErrorResult error;
     GetFilesHelper* helper = mInput->GetOrCreateGetFilesHelper(true, error);
@@ -2747,7 +2747,7 @@ HTMLInputElement::GetDisplayFileName(nsAString& aValue) const
 
   if (mFileData->mFilesOrDirectories.IsEmpty()) {
     if ((IsDirPickerEnabled() && Allowdirs()) ||
-        (IsWebkitDirPickerEnabled() &&
+        (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
          HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory))) {
       nsContentUtils::GetLocalizedString(nsContentUtils::eFORMS_PROPERTIES,
                                          "NoDirSelected", value);
@@ -2840,7 +2840,7 @@ HTMLInputElement::MozSetDndFilesAndDirectories(const nsTArray<OwningFileOrDirect
   RefPtr<DispatchChangeEventCallback> dispatchChangeEventCallback =
     new DispatchChangeEventCallback(this);
 
-  if (IsWebkitDirPickerEnabled() &&
+  if (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
       HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory)) {
     ErrorResult rv;
     GetFilesHelper* helper = GetOrCreateGetFilesHelper(true /* recursionFlag */,
@@ -2922,7 +2922,7 @@ HTMLInputElement::GetFiles()
   }
 
   if (IsDirPickerEnabled() && Allowdirs() &&
-      (!IsWebkitDirPickerEnabled() ||
+      (!DOMPrefs::WebkitBlinkDirectoryPickerEnabled() ||
        !HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory))) {
     return nullptr;
   }
@@ -4136,7 +4136,7 @@ HTMLInputElement::ShouldPreventDOMActivateDispatch(EventTarget* aOriginalTarget)
     return false;
   }
 
-  nsCOMPtr<nsIContent> target = do_QueryInterface(aOriginalTarget);
+  nsCOMPtr<Element> target = do_QueryInterface(aOriginalTarget);
   if (!target) {
     return false;
   }
@@ -4173,7 +4173,7 @@ HTMLInputElement::MaybeInitPickers(EventChainPostVisitor& aVisitor)
     if (target &&
         target->FindFirstNonChromeOnlyAccessContent() == this &&
         ((IsDirPickerEnabled() && Allowdirs()) ||
-         (IsWebkitDirPickerEnabled() &&
+         (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
           HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory)))) {
       type = FILE_PICKER_DIRECTORY;
     }
@@ -4701,8 +4701,7 @@ HTMLInputElement::PostHandleEventForRangeThumb(EventChainPostVisitor& aVisitor)
 {
   MOZ_ASSERT(mType == NS_FORM_INPUT_RANGE);
 
-  if ((nsEventStatus_eConsumeNoDefault == aVisitor.mEventStatus &&
-       !MozInputRangeIgnorePreventDefault()) ||
+  if (nsEventStatus_eConsumeNoDefault == aVisitor.mEventStatus ||
       !(aVisitor.mEvent->mClass == eMouseEventClass ||
         aVisitor.mEvent->mClass == eTouchEventClass ||
         aVisitor.mEvent->mClass == eKeyboardEventClass)) {
@@ -5636,21 +5635,6 @@ HTMLInputElement::IsDateTimeTypeSupported(uint8_t aDateTimeInputType)
 }
 
 /* static */ bool
-HTMLInputElement::IsWebkitDirPickerEnabled()
-{
-  static bool sWebkitDirPickerEnabled = false;
-  static bool sWebkitDirPickerPrefCached = false;
-  if (!sWebkitDirPickerPrefCached) {
-    sWebkitDirPickerPrefCached = true;
-    Preferences::AddBoolVarCache(&sWebkitDirPickerEnabled,
-                                 "dom.webkitBlink.dirPicker.enabled",
-                                 false);
-  }
-
-  return sWebkitDirPickerEnabled;
-}
-
-/* static */ bool
 HTMLInputElement::IsWebkitFileSystemEnabled()
 {
   static bool sWebkitFileSystemEnabled = false;
@@ -5754,6 +5738,7 @@ bool
 HTMLInputElement::ParseAttribute(int32_t aNamespaceID,
                                  nsAtom* aAttribute,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
   // We can't make these static_asserts because kInputDefaultType and
@@ -5826,7 +5811,7 @@ HTMLInputElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
@@ -6615,7 +6600,7 @@ HTMLInputElement::IntrinsicState() const
 
   if (PlaceholderApplies() &&
       HasAttr(kNameSpaceID_None, nsGkAtoms::placeholder) &&
-      IsValueEmpty()) {
+      ShouldShowPlaceholder()) {
     state |= NS_EVENT_STATE_PLACEHOLDERSHOWN;
   }
 
@@ -6624,6 +6609,24 @@ HTMLInputElement::IntrinsicState() const
   }
 
   return state;
+}
+
+bool
+HTMLInputElement::ShouldShowPlaceholder() const
+{
+  MOZ_ASSERT(PlaceholderApplies());
+
+  if (!IsValueEmpty()) {
+    return false;
+  }
+
+  // For number controls, even though the (sanitized) value is empty, there may
+  // be text in the anon text control.
+  if (nsNumberControlFrame* frame = do_QueryFrame(GetPrimaryFrame())) {
+    return frame->AnonTextControlIsEmpty();
+  }
+
+  return true;
 }
 
 void
@@ -7041,7 +7044,7 @@ HTMLInputElement::PlaceholderApplies() const
     return false;
   }
 
-  return IsSingleLineTextControl(false);
+  return IsSingleLineTextOrNumberControl(false);
 }
 
 bool

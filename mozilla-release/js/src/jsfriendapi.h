@@ -152,7 +152,6 @@ enum {
     JS_TELEMETRY_GC_NURSERY_BYTES,
     JS_TELEMETRY_GC_PRETENURE_COUNT,
     JS_TELEMETRY_DEPRECATED_LANGUAGE_EXTENSIONS_IN_CONTENT,
-    JS_TELEMETRY_DEPRECATED_LANGUAGE_EXTENSIONS_IN_ADDONS,
     JS_TELEMETRY_ADDON_EXCEPTIONS,
     JS_TELEMETRY_PRIVILEGED_PARSER_COMPILE_LAZY_AFTER_MS,
     JS_TELEMETRY_WEB_PARSER_COMPILE_LAZY_AFTER_MS,
@@ -1001,10 +1000,9 @@ IsObjectInContextCompartment(JSObject* obj, const JSContext* cx);
 
 /*
  * NB: keep these in sync with the copy in builtin/SelfHostingDefines.h.
- * The first two are omitted because they shouldn't be used in new code.
  */
-#define JSITER_ENUMERATE  0x1   /* for-in compatible hidden default iterator */
-#define JSITER_FOREACH    0x2   /* get obj[key] for each property */
+/* 0x1 is no longer used */
+/* 0x2 is no longer used */
 /* 0x4 is no longer used */
 #define JSITER_OWNONLY    0x8   /* iterate over obj's own properties only */
 #define JSITER_HIDDEN     0x10  /* also enumerate non-enumerable properties */
@@ -1059,7 +1057,7 @@ CheckRecursionLimit(JSContext* cx, uintptr_t limit)
 }
 
 MOZ_ALWAYS_INLINE bool
-CheckRecursionLimitDontReport(JSContext* cx, uintptr_t limit)
+CheckRecursionLimitDontReport(uintptr_t limit)
 {
     int stackDummy;
 
@@ -1078,7 +1076,7 @@ CheckRecursionLimit(JSContext* cx)
     // use. To work around this, check the untrusted limit first to avoid the
     // overhead in most cases.
     uintptr_t untrustedLimit = GetNativeStackLimit(cx, JS::StackForUntrustedScript);
-    if (MOZ_LIKELY(CheckRecursionLimitDontReport(cx, untrustedLimit)))
+    if (MOZ_LIKELY(CheckRecursionLimitDontReport(untrustedLimit)))
         return true;
     return CheckRecursionLimit(cx, GetNativeStackLimit(cx));
 }
@@ -1086,7 +1084,7 @@ CheckRecursionLimit(JSContext* cx)
 MOZ_ALWAYS_INLINE bool
 CheckRecursionLimitDontReport(JSContext* cx)
 {
-    return CheckRecursionLimitDontReport(cx, GetNativeStackLimit(cx));
+    return CheckRecursionLimitDontReport(GetNativeStackLimit(cx));
 }
 
 MOZ_ALWAYS_INLINE bool
@@ -1125,8 +1123,8 @@ CheckRecursionLimitConservative(JSContext* cx)
 MOZ_ALWAYS_INLINE bool
 CheckRecursionLimitConservativeDontReport(JSContext* cx)
 {
-    return CheckRecursionLimitDontReport(cx, GetNativeStackLimit(cx, JS::StackForUntrustedScript,
-                                                                 -1024 * int(sizeof(size_t))));
+    return CheckRecursionLimitDontReport(GetNativeStackLimit(cx, JS::StackForUntrustedScript,
+                                                             -1024 * int(sizeof(size_t))));
 }
 
 JS_FRIEND_API(void)

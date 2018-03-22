@@ -9,9 +9,10 @@
 #include "mozilla/css/Rule.h"
 #include "mozilla/StyleBackendType.h"
 #include "mozilla/ServoBindings.h"
+#include "mozilla/ServoCSSRuleList.h"
 #include "mozilla/ServoImportRule.h"
 #include "mozilla/ServoMediaList.h"
-#include "mozilla/ServoCSSRuleList.h"
+#include "mozilla/ServoStyleSet.h"
 #include "mozilla/css/GroupRule.h"
 #include "mozilla/dom/CSSRuleList.h"
 #include "mozilla/dom/MediaList.h"
@@ -20,7 +21,6 @@
 
 
 #include "mozAutoDocUpdate.h"
-#include "nsIDOMCSSStyleSheet.h"
 
 using namespace mozilla::dom;
 
@@ -149,7 +149,7 @@ ServoStyleSheet::ServoStyleSheet(const ServoStyleSheet& aCopy,
                aDocumentToUse,
                aOwningNodeToUse)
 {
-  if (mDirty) { // CSSOM's been there, force full copy now
+  if (HasForcedUniqueInner()) { // CSSOM's been there, force full copy now
     NS_ASSERTION(mInner->mComplete,
                  "Why have rules been accessed on an incomplete sheet?");
     // FIXME: handle failure?
@@ -172,7 +172,6 @@ ServoStyleSheet::LastRelease()
 
 // QueryInterface implementation for ServoStyleSheet
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ServoStyleSheet)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMCSSStyleSheet)
   if (aIID.Equals(NS_GET_IID(ServoStyleSheet)))
     foundInterface = reinterpret_cast<nsISupports*>(this);
   else
@@ -280,9 +279,8 @@ ServoStyleSheet::ReparseSheet(const nsAString& aInput)
     }
   }
 
-  // Notify mDocument that all our rules are removed.
-  if (mDocument) {
-    // Get the rule list.
+  // Notify to the stylesets about the old rules going away.
+  {
     ServoCSSRuleList* ruleList = GetCssRulesInternal();
     MOZ_ASSERT(ruleList);
 
@@ -294,13 +292,7 @@ ServoStyleSheet::ReparseSheet(const nsAString& aInput)
           RuleHasPendingChildSheet(rule)) {
         continue; // notify when loaded (see StyleSheetLoaded)
       }
-      mDocument->StyleRuleRemoved(this, rule);
-
-      // Document observers could possibly detach document from this sheet.
-      if (!mDocument) {
-        // If detached, don't process any more rules.
-        break;
-      }
+      RuleRemoved(*rule);
     }
   }
 
@@ -317,8 +309,8 @@ ServoStyleSheet::ReparseSheet(const nsAString& aInput)
   DidDirty();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Notify mDocument that all our new rules are added.
-  if (mDocument) {
+  // Notify the stylesets about the new rules.
+  {
     // Get the rule list (which will need to be regenerated after ParseSheet).
     ServoCSSRuleList* ruleList = GetCssRulesInternal();
     MOZ_ASSERT(ruleList);
@@ -332,15 +324,12 @@ ServoStyleSheet::ReparseSheet(const nsAString& aInput)
         continue; // notify when loaded (see StyleSheetLoaded)
       }
 
-      mDocument->StyleRuleAdded(this, rule);
-
-      // Document observers could possibly detach document from this sheet.
-      if (!mDocument) {
-        // If detached, don't process any more rules.
-        break;
-      }
+      RuleAdded(*rule);
     }
   }
+
+  // Our rules are no longer considered modified.
+  ClearModifiedRules();
 
   return NS_OK;
 }
@@ -355,15 +344,15 @@ ServoStyleSheet::StyleSheetLoaded(StyleSheet* aSheet,
              "why we were called back with a CSSStyleSheet?");
 
   ServoStyleSheet* sheet = aSheet->AsServo();
-  if (sheet->GetParentSheet() == nullptr) {
+  if (!sheet->GetParentSheet()) {
     return NS_OK; // ignore if sheet has been detached already
   }
   NS_ASSERTION(this == sheet->GetParentSheet(),
                "We are being notified of a sheet load for a sheet that is not our child!");
 
-  if (mDocument && NS_SUCCEEDED(aStatus)) {
+  if (NS_SUCCEEDED(aStatus)) {
     mozAutoDocUpdate updateBatch(mDocument, UPDATE_STYLE, true);
-    mDocument->StyleRuleAdded(this, sheet->GetOwnerRule());
+    RuleAdded(*sheet->GetOwnerRule());
   }
 
   return NS_OK;
@@ -418,14 +407,15 @@ ServoStyleSheet::InsertRuleInternal(const nsAString& aRule,
   if (aRv.Failed()) {
     return 0;
   }
-  if (mDocument) {
-    if (mRuleList->GetDOMCSSRuleType(aIndex) != nsIDOMCSSRule::IMPORT_RULE ||
-        !RuleHasPendingChildSheet(mRuleList->GetRule(aIndex))) {
-      // XXX We may not want to get the rule when stylesheet change event
-      // is not enabled.
-      mDocument->StyleRuleAdded(this, mRuleList->GetRule(aIndex));
-    }
+
+  // XXX We may not want to get the rule when stylesheet change event
+  // is not enabled.
+  css::Rule* rule = mRuleList->GetRule(aIndex);
+  if (rule->GetType() != css::Rule::IMPORT_RULE ||
+      !RuleHasPendingChildSheet(rule)) {
+    RuleAdded(*rule);
   }
+
   return aIndex;
 }
 
@@ -447,8 +437,8 @@ ServoStyleSheet::DeleteRuleInternal(uint32_t aIndex, ErrorResult& aRv)
   aRv = mRuleList->DeleteRule(aIndex);
   MOZ_ASSERT(!aRv.ErrorCodeIs(NS_ERROR_DOM_INDEX_SIZE_ERR),
              "IndexSizeError should have been handled earlier");
-  if (!aRv.Failed() && mDocument) {
-    mDocument->StyleRuleRemoved(this, rule);
+  if (!aRv.Failed()) {
+    RuleRemoved(*rule);
   }
 }
 

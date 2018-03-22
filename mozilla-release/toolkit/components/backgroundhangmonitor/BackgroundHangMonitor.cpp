@@ -29,6 +29,10 @@
 #include "nsNetCID.h"
 #include "HangDetails.h"
 
+#ifdef MOZ_GECKO_PROFILER
+#include "ProfilerMarkerPayload.h"
+#endif
+
 #include <algorithm>
 
 // Activate BHR only for one every BHR_BETA_MOD users.
@@ -469,12 +473,22 @@ BackgroundHangThread::ReportHang(PRIntervalTime aHangTime)
   // Recovered from a hang; called on the monitor thread
   // mManager->mLock IS locked
 
-  HangDetails hangDetails(aHangTime,
-                          XRE_GetProcessType(),
-                          mThreadName,
-                          mRunnableName,
-                          Move(mHangStack),
-                          Move(mAnnotations));
+  nsTArray<HangAnnotation> annotations;
+  for (auto& annotation : mAnnotations) {
+    HangAnnotation annot(annotation.mName, annotation.mValue);
+    annotations.AppendElement(mozilla::Move(annot));
+  }
+
+  HangDetails hangDetails(
+    aHangTime,
+    nsDependentCString(XRE_ChildProcessTypeToString(XRE_GetProcessType())),
+    VoidString(),
+    mThreadName,
+    mRunnableName,
+    Move(mHangStack),
+    Move(annotations)
+  );
+
   // If we have the stream transport service avaliable, we can process the
   // native stack on it. Otherwise, we are unable to report a native stack, so
   // we just report without one.
@@ -487,6 +501,18 @@ BackgroundHangThread::ReportHang(PRIntervalTime aHangTime)
     RefPtr<nsHangDetails> hd = new nsHangDetails(Move(hangDetails));
     hd->Submit();
   }
+
+  // If the profiler is enabled, add a marker.
+#ifdef MOZ_GECKO_PROFILER
+  if (profiler_is_active()) {
+    TimeStamp endTime = TimeStamp::Now();
+    TimeStamp startTime = endTime - TimeDuration::FromMilliseconds(aHangTime);
+    profiler_add_marker_for_thread(
+      mStackHelper.GetThreadId(),
+      "BHR-detected hang",
+      MakeUnique<HangMarkerPayload>(startTime, endTime));
+  }
+#endif
 }
 
 void
@@ -577,7 +603,7 @@ BackgroundHangMonitor::DisableOnBeta() {
   nsAutoCString clientID;
   nsresult rv =
     Preferences::GetCString("toolkit.telemetry.cachedClientID", clientID);
-  bool telemetryEnabled = Preferences::GetBool("toolkit.telemetry.enabled");
+  bool telemetryEnabled = Telemetry::CanRecordPrereleaseData();
 
   if (!telemetryEnabled || NS_FAILED(rv) ||
       BackgroundHangMonitor::ShouldDisableOnBeta(clientID)) {

@@ -14,6 +14,7 @@
  * http://www.w3.org/TR/beacon/#sec-beacon-method
  * https://html.spec.whatwg.org/#navigatorconcurrenthardware
  * http://wicg.github.io/netinfo/#extensions-to-the-navigator-interface
+ * https://w3c.github.io/webappsec-credential-management/#framework-credential-management
  *
  * © Copyright 2004-2011 Apple Computer, Inc., Mozilla Foundation, and
  * Opera Software ASA. You are granted a license to use, reproduce
@@ -78,7 +79,7 @@ interface NavigatorContentUtils {
   // content handler registration
   [Throws]
   void registerProtocolHandler(DOMString scheme, DOMString url, DOMString title);
-  [Throws]
+  [Pref="dom.registerContentHandler.enabled", Throws]
   void registerContentHandler(DOMString mimeType, DOMString url, DOMString title);
   // NOT IMPLEMENTED
   //DOMString isProtocolHandlerRegistered(DOMString scheme, DOMString url);
@@ -89,7 +90,7 @@ interface NavigatorContentUtils {
 
 [SecureContext, NoInterfaceObject, Exposed=(Window,Worker)]
 interface NavigatorStorage {
-  [Func="mozilla::dom::StorageManager::PrefEnabled"]
+  [Func="mozilla::dom::DOMPrefs::StorageManagerEnabled"]
   readonly attribute StorageManager storage;
 };
 
@@ -131,12 +132,6 @@ partial interface Navigator {
   // ChromeOnly to prevent web content from fingerprinting users' batteries.
   [Throws, ChromeOnly, Pref="dom.battery.enabled"]
   Promise<BatteryManager> getBattery();
-};
-
-partial interface Navigator {
-  [NewObject, Pref="dom.flyweb.enabled"]
-  Promise<FlyWebPublishedServer> publishServer(DOMString name,
-                                               optional FlyWebPublishOptions options);
 };
 
 // http://www.w3.org/TR/vibration/#vibration-interface
@@ -204,49 +199,6 @@ partial interface Navigator {
    */
   [Throws, ChromeOnly]
   void removeIdleObserver(MozIdleObserver aIdleObserver);
-
-  /**
-   * Request a wake lock for a resource.
-   *
-   * A page holds a wake lock to request that a resource not be turned
-   * off (or otherwise made unavailable).
-   *
-   * The topic is the name of a resource that might be made unavailable for
-   * various reasons. For example, on a mobile device the power manager might
-   * decide to turn off the screen after a period of idle time to save power.
-   *
-   * The resource manager checks the lock state of a topic before turning off
-   * the associated resource. For example, a page could hold a lock on the
-   * "screen" topic to prevent the screensaver from appearing or the screen
-   * from turning off.
-   *
-   * The resource manager defines what each topic means and sets policy.  For
-   * example, the resource manager might decide to ignore 'screen' wake locks
-   * held by pages which are not visible.
-   *
-   * One topic can be locked multiple times; it is considered released only when
-   * all locks on the topic have been released.
-   *
-   * The returned MozWakeLock object is a token of the lock.  You can
-   * unlock the lock via the object's |unlock| method.  The lock is released
-   * automatically when its associated window is unloaded.
-   *
-   * @param aTopic resource name
-   */
-  [Throws, Pref="dom.wakelock.enabled", Func="Navigator::HasWakeLockSupport", UnsafeInPrerendering]
-  MozWakeLock requestWakeLock(DOMString aTopic);
-
-  /**
-   * Make CPU instruction subset information available for UpdateUtils.
-   */
-  [ChromeOnly]
-  readonly attribute boolean cpuHasSSE2;
-};
-
-// nsIDOMNavigatorDesktopNotification
-partial interface Navigator {
-  [Throws, Pref="notification.feature.enabled", UnsafeInPrerendering]
-  readonly attribute DesktopNotificationCenter mozNotification;
 };
 
 // NetworkInformation
@@ -286,7 +238,7 @@ partial interface Navigator {
 #ifdef MOZ_TIME_MANAGER
 // nsIDOMMozNavigatorTime
 partial interface Navigator {
-  [Throws, ChromeOnly, UnsafeInPrerendering]
+  [Throws, ChromeOnly]
   readonly attribute MozTimeManager mozTime;
 };
 #endif // MOZ_TIME_MANAGER
@@ -300,7 +252,7 @@ partial interface Navigator {
 
   // Deprecated. Use mediaDevices.getUserMedia instead.
   [Deprecated="NavigatorGetUserMedia", Throws,
-   Func="Navigator::HasUserMediaSupport", UnsafeInPrerendering,
+   Func="Navigator::HasUserMediaSupport",
    NeedsCallerType]
   void mozGetUserMedia(MediaStreamConstraints constraints,
                        NavigatorUserMediaSuccessCallback successCallback,
@@ -360,7 +312,8 @@ interface NavigatorConcurrentHardware {
   readonly attribute unsigned long long hardwareConcurrency;
 };
 
+// https://w3c.github.io/webappsec-credential-management/#framework-credential-management
 partial interface Navigator {
-  [Pref="security.webauth.webauthn", SameObject]
+  [Pref="security.webauth.webauthn", SecureContext, SameObject]
   readonly attribute CredentialsContainer credentials;
 };

@@ -195,6 +195,7 @@ public:
   virtual bool ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
   virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
@@ -567,7 +568,7 @@ public:
     SetHTMLAttr(nsGkAtoms::formtarget, aValue, aRv);
   }
 
-  uint32_t Height();
+  MOZ_CAN_RUN_SCRIPT uint32_t Height();
 
   void SetHeight(uint32_t aValue, ErrorResult& aRv)
   {
@@ -578,6 +579,12 @@ public:
   {
     return mIndeterminate;
   }
+
+  bool IsDraggingRange() const
+  {
+    return mIsDraggingRange;
+  }
+
   // XPCOM SetIndeterminate() is OK
 
   void GetInputMode(nsAString& aValue);
@@ -707,7 +714,7 @@ public:
     SetUnsignedIntAttr(nsGkAtoms::size, aValue, DEFAULT_COLS, aRv);
   }
 
-  void GetSrc(nsAString& aValue, nsIPrincipal*)
+  void GetSrc(nsAString& aValue)
   {
     GetURIAttr(nsGkAtoms::src, nullptr, aValue);
   }
@@ -756,7 +763,7 @@ public:
 
   void SetValueAsNumber(double aValue, ErrorResult& aRv);
 
-  uint32_t Width();
+  MOZ_CAN_RUN_SCRIPT uint32_t Width();
 
   void SetWidth(uint32_t aValue, ErrorResult& aRv)
   {
@@ -861,12 +868,6 @@ public:
   void MozSetFileNameArray(const Sequence< nsString >& aFileNames, ErrorResult& aRv);
   void MozSetFileArray(const Sequence<OwningNonNull<File>>& aFiles);
   void MozSetDirectory(const nsAString& aDirectoryPath, ErrorResult& aRv);
-
-  bool MozInputRangeIgnorePreventDefault() const
-  {
-    return (IsInChromeDocument() || IsInNativeAnonymousSubtree()) &&
-      GetBoolAttr(nsGkAtoms::mozinputrangeignorepreventdefault);
-  }
 
   /*
    * The following functions are called from datetime picker to let input box
@@ -1057,6 +1058,11 @@ protected:
    * @return whether the current value is the empty string.
    */
   bool IsValueEmpty() const;
+
+  /**
+   * Returns whether the current placeholder value should be shown.
+   */
+  bool ShouldShowPlaceholder() const;
 
   void ClearFiles(bool aSetValueChanged);
 
@@ -1725,13 +1731,6 @@ private:
    */
   static bool
   IsDateTimeTypeSupported(uint8_t aDateTimeInputType);
-
-  /**
-   * Checks preference "dom.webkitBlink.dirPicker.enabled" to determine if
-   * webkitdirectory should be supported.
-   */
-  static bool
-  IsWebkitDirPickerEnabled();
 
   /**
    * Checks preference "dom.webkitBlink.filesystem.enabled" to determine if

@@ -478,9 +478,9 @@ protected:
     static const char* GetGenericName(mozilla::FontFamilyType aGenericType);
 
     // gfxFontInfoLoader overrides, used to load in font cmaps
-    virtual void InitLoader();
-    virtual bool LoadFontInfo();
-    virtual void CleanupLoader();
+    virtual void InitLoader() override;
+    virtual bool LoadFontInfo() override;
+    virtual void CleanupLoader() override;
 
     // read the loader initialization prefs, and start it
     void GetPrefsAndStartLoader();
@@ -496,6 +496,15 @@ protected:
     ResolveGenericFontNames(mozilla::FontFamilyType aGenericType,
                             eFontPrefLang aPrefLang,
                             nsTArray<RefPtr<gfxFontFamily>>* aGenericFamilies);
+
+    void
+    ResolveEmojiFontNames(nsTArray<RefPtr<gfxFontFamily>>* aGenericFamilies);
+
+    void
+    GetFontFamiliesFromGenericFamilies(
+        nsTArray<nsString>& aGenericFamilies,
+        nsAtom* aLangGroup,
+        nsTArray<RefPtr<gfxFontFamily>>* aFontFamilies);
 
     virtual nsresult InitFontListForPlatform() = 0;
 
@@ -562,6 +571,7 @@ protected:
     mozilla::RangedArray<PrefFontsForLangGroup,
                          eFontPrefLang_First,
                          eFontPrefLang_Count> mLangGroupPrefFonts;
+    mozilla::UniquePtr<PrefFontList> mEmojiPrefFont;
 
     // when system-wide font lookup fails for a character, cache it to skip future searches
     gfxSparseBitSet mCodepointsWithNoFonts;

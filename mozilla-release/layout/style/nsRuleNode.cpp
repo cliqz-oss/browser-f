@@ -374,30 +374,6 @@ static inline nscoord ScaleViewportCoordTrunc(const nsCSSValue& aValue,
 /* static */
 already_AddRefed<nsFontMetrics>
 nsRuleNode::GetMetricsFor(nsPresContext* aPresContext,
-                          bool aIsVertical,
-                          const nsStyleFont* aStyleFont,
-                          nscoord aFontSize,
-                          bool aUseUserFontSet,
-                          FlushUserFontSet aFlushUserFontSet)
-{
-  nsFont font = aStyleFont->mFont;
-  font.size = aFontSize;
-  gfxFont::Orientation orientation
-    = aIsVertical ? gfxFont::eVertical : gfxFont::eHorizontal;
-  nsFontMetrics::Params params;
-  params.language = aStyleFont->mLanguage;
-  params.explicitLanguage = aStyleFont->mExplicitLanguage;
-  params.orientation = orientation;
-  params.userFontSet = aUseUserFontSet
-    ? aPresContext->GetUserFontSet(aFlushUserFontSet == FlushUserFontSet::Yes)
-    : nullptr;
-  params.textPerf = aPresContext->GetTextPerfMetrics();
-  return aPresContext->DeviceContext()->GetMetricsFor(font, params);
-}
-
-/* static */
-already_AddRefed<nsFontMetrics>
-nsRuleNode::GetMetricsFor(nsPresContext* aPresContext,
                           nsStyleContext* aStyleContext,
                           const nsStyleFont* aStyleFont,
                           nscoord aFontSize, // overrides value from aStyleFont
@@ -410,66 +386,9 @@ nsRuleNode::GetMetricsFor(nsPresContext* aPresContext,
       isVertical = true;
     }
   }
-  return nsRuleNode::GetMetricsFor(
+  return nsLayoutUtils::GetMetricsFor(
       aPresContext, isVertical, aStyleFont, aFontSize, aUseUserFontSet,
-      FlushUserFontSet::Yes);
-}
-
-/* static */
-void
-nsRuleNode::FixupNoneGeneric(nsFont* aFont,
-                             const nsPresContext* aPresContext,
-                             uint8_t aGenericFontID,
-                             const nsFont* aDefaultVariableFont)
-{
-  bool useDocumentFonts =
-    aPresContext->GetCachedBoolPref(kPresContext_UseDocumentFonts);
-  if (aGenericFontID == kGenericFont_NONE ||
-      (!useDocumentFonts && (aGenericFontID == kGenericFont_cursive ||
-                             aGenericFontID == kGenericFont_fantasy))) {
-    FontFamilyType defaultGeneric =
-      aDefaultVariableFont->fontlist.GetDefaultFontType();
-    MOZ_ASSERT(aDefaultVariableFont->fontlist.IsEmpty() &&
-               (defaultGeneric == eFamily_serif ||
-                defaultGeneric == eFamily_sans_serif));
-    if (defaultGeneric != eFamily_none) {
-      if (useDocumentFonts) {
-        aFont->fontlist.SetDefaultFontType(defaultGeneric);
-      } else {
-        // Either prioritize the first generic in the list,
-        // or (if there isn't one) prepend the default variable font.
-        if (!aFont->fontlist.PrioritizeFirstGeneric()) {
-          aFont->fontlist.PrependGeneric(defaultGeneric);
-        }
-      }
-    }
-  } else {
-    aFont->fontlist.SetDefaultFontType(eFamily_none);
-  }
-}
-
-/* static */
-void
-nsRuleNode::ApplyMinFontSize(nsStyleFont* aFont,
-                             const nsPresContext* aPresContext,
-                             nscoord aMinFontSize)
-{
-  nscoord fontSize = aFont->mSize;
-
-  // enforce the user' specified minimum font-size on the value that we expose
-  // (but don't change font-size:0, since that would unhide hidden text)
-  if (fontSize > 0) {
-    if (aMinFontSize < 0) {
-      aMinFontSize = 0;
-    } else {
-      aMinFontSize = (aMinFontSize * aFont->mMinFontSizeRatio) / 100;
-    }
-    if (fontSize < aMinFontSize && !aPresContext->IsChrome()) {
-      // override the minimum font-size constraint
-      fontSize = aMinFontSize;
-    }
-  }
-  aFont->mFont.size = fontSize;
+      nsLayoutUtils::FlushUserFontSet::Yes);
 }
 
 static nsSize CalcViewportUnitsScale(nsPresContext* aPresContext)
@@ -545,9 +464,6 @@ static nscoord CalcLengthWith(const nsCSSValue& aValue,
                "Must have style context or specify aUseProvidedRootEmSize");
   NS_ASSERTION(aPresContext, "Must have prescontext");
 
-  if (aValue.IsFixedLengthUnit()) {
-    return aValue.GetFixedLength(aPresContext);
-  }
   if (aValue.IsPixelLengthUnit()) {
     return aValue.GetPixelLength();
   }
@@ -849,34 +765,6 @@ nsRuleNode::SpecifiedCalcToComputedCalc(const nsCSSValue& aValue,
     MOZ_ASSERT_UNREACHABLE("unexpected ComputeCalc failure");
   }
   return result;
-}
-
-// This is our public API for handling calc() expressions that involve
-// percentages.
-/* static */ nscoord
-nsRuleNode::ComputeComputedCalc(const nsStyleCoord& aValue,
-                                nscoord aPercentageBasis)
-{
-  nsStyleCoord::Calc* calc = aValue.GetCalcValue();
-  return calc->mLength +
-         NSToCoordFloorClamped(aPercentageBasis * calc->mPercent);
-}
-
-/* static */ nscoord
-nsRuleNode::ComputeCoordPercentCalc(const nsStyleCoord& aCoord,
-                                    nscoord aPercentageBasis)
-{
-  switch (aCoord.GetUnit()) {
-    case eStyleUnit_Coord:
-      return aCoord.GetCoordValue();
-    case eStyleUnit_Percent:
-      return NSToCoordFloorClamped(aPercentageBasis * aCoord.GetPercentValue());
-    case eStyleUnit_Calc:
-      return ComputeComputedCalc(aCoord, aPercentageBasis);
-    default:
-      MOZ_ASSERT(false, "unexpected unit");
-      return 0;
-  }
 }
 
 /* Given an enumerated value that represents a box position, converts it to
@@ -1537,6 +1425,7 @@ struct SetEnumValueHelper
     aField = static_cast<type_>(value); \
   }
 
+  DEFINE_ENUM_CLASS_SETTER(StyleBorderImageRepeat, Stretch, Space)
   DEFINE_ENUM_CLASS_SETTER(StyleBoxAlign, Stretch, End)
   DEFINE_ENUM_CLASS_SETTER(StyleBoxDecorationBreak, Slice, Clone)
   DEFINE_ENUM_CLASS_SETTER(StyleBoxDirection, Normal, Reverse)
@@ -1549,6 +1438,7 @@ struct SetEnumValueHelper
   DEFINE_ENUM_CLASS_SETTER(StyleFloat, None, InlineEnd)
   DEFINE_ENUM_CLASS_SETTER(StyleFloatEdge, ContentBox, MarginBox)
   DEFINE_ENUM_CLASS_SETTER(StyleHyphens, None, Auto)
+  DEFINE_ENUM_CLASS_SETTER(StyleOverscrollBehavior, Auto, None)
   DEFINE_ENUM_CLASS_SETTER(StyleStackSizing, Ignore, IgnoreVertical)
   DEFINE_ENUM_CLASS_SETTER(StyleTextJustify, None, InterCharacter)
   DEFINE_ENUM_CLASS_SETTER(StyleUserFocus, None, SelectMenu)
@@ -2584,7 +2474,7 @@ nsRuleNode::WalkRuleTree(const nsStyleStructID aSID,
   AutoCSSValueArray dataArray(dataStorage, nprops);
 
   nsRuleData ruleData(nsCachedStyleData::GetBitForSID(aSID),
-                      dataArray.get(), mPresContext, aContext);
+                      dataArray.get(), aContext);
   ruleData.mValueOffsets[aSID] = 0;
 
   // We start at the most specific rule in the tree.
@@ -3569,59 +3459,6 @@ static int8_t ClampTo8Bit(int32_t aValue) {
 }
 
 /* static */ void
-nsRuleNode::ComputeSystemFont(nsFont* aSystemFont, LookAndFeel::FontID aFontID,
-                              const nsPresContext* aPresContext,
-                              const nsFont* aDefaultVariableFont)
-{
-  gfxFontStyle fontStyle;
-  float devPerCSS =
-    (float)nsPresContext::AppUnitsPerCSSPixel() /
-    aPresContext->DeviceContext()->AppUnitsPerDevPixelAtUnitFullZoom();
-  nsAutoString systemFontName;
-  if (LookAndFeel::GetFont(aFontID, systemFontName, fontStyle, devPerCSS)) {
-    systemFontName.Trim("\"'");
-    aSystemFont->fontlist = FontFamilyList(systemFontName, eUnquotedName);
-    aSystemFont->fontlist.SetDefaultFontType(eFamily_none);
-    aSystemFont->style = fontStyle.style;
-    aSystemFont->systemFont = fontStyle.systemFont;
-    aSystemFont->weight = fontStyle.weight;
-    aSystemFont->stretch = fontStyle.stretch;
-    aSystemFont->size =
-      NSFloatPixelsToAppUnits(fontStyle.size,
-                              aPresContext->DeviceContext()->
-                                AppUnitsPerDevPixelAtUnitFullZoom());
-    //aSystemFont->langGroup = fontStyle.langGroup;
-    aSystemFont->sizeAdjust = fontStyle.sizeAdjust;
-
-#ifdef XP_WIN
-    // XXXldb This platform-specific stuff should be in the
-    // LookAndFeel implementation, not here.
-    // XXXzw Should we even still *have* this code?  It looks to be making
-    // old, probably obsolete assumptions.
-
-    if (aFontID == LookAndFeel::eFont_Field ||
-        aFontID == LookAndFeel::eFont_Button ||
-        aFontID == LookAndFeel::eFont_List) {
-      // As far as I can tell the system default fonts and sizes
-      // on MS-Windows for Buttons, Listboxes/Comboxes and Text Fields are
-      // all pre-determined and cannot be changed by either the control panel
-      // or programmatically.
-      // Fields (text fields)
-      // Button and Selects (listboxes/comboboxes)
-      //    We use whatever font is defined by the system. Which it appears
-      //    (and the assumption is) it is always a proportional font. Then we
-      //    always use 2 points smaller than what the browser has defined as
-      //    the default proportional font.
-      // Assumption: system defined font is proportional
-      aSystemFont->size =
-        std::max(aDefaultVariableFont->size -
-                 nsPresContext::CSSPointsToAppUnits(2), 0);
-    }
-#endif
-  }
-}
-
-/* static */ void
 nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
                     uint8_t aGenericFontID, const nsRuleData* aRuleData,
                     const nsStyleFont* aParentFont,
@@ -3689,8 +3526,8 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
     lazySystemFont.emplace(*defaultVariableFont);
     LookAndFeel::FontID fontID =
       (LookAndFeel::FontID)systemFontValue->GetIntValue();
-    ComputeSystemFont(lazySystemFont.ptr(), fontID, aPresContext,
-                      defaultVariableFont);
+    nsLayoutUtils::ComputeSystemFont(lazySystemFont.ptr(), fontID, aPresContext,
+                                     defaultVariableFont);
   }
   const nsFont& systemFont = lazySystemFont.refOr(*defaultVariableFont);
 
@@ -3699,8 +3536,8 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
     case eCSSUnit_FontFamilyList:
       // set the correct font if we are using DocumentFonts OR we are overriding
       // for XUL - MJA: bug 31816
-      nsRuleNode::FixupNoneGeneric(&aFont->mFont, aPresContext,
-                                   aGenericFontID, defaultVariableFont);
+      nsLayoutUtils::FixupNoneGeneric(&aFont->mFont, aPresContext,
+                                      aGenericFontID, defaultVariableFont);
 
       aFont->mFont.systemFont = false;
       // Technically this is redundant with the code below, but it's good
@@ -3727,8 +3564,8 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
       // with the default generic from defaultVariableFont, which is computed
       // using aFont->mLanguage above.
       if (aRuleData->ValueForLang()->GetUnit() != eCSSUnit_Null) {
-        FixupNoneGeneric(&aFont->mFont, aPresContext, aGenericFontID,
-                         defaultVariableFont);
+        nsLayoutUtils::FixupNoneGeneric(&aFont->mFont, aPresContext,
+                                        aGenericFontID, defaultVariableFont);
       }
       break;
     case eCSSUnit_Initial:
@@ -4030,8 +3867,9 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
 
     case eCSSUnit_PairList:
     case eCSSUnit_PairListDep:
-      ComputeFontFeatures(featureSettingsValue->GetPairListValue(),
-                          aFont->mFont.fontFeatureSettings);
+      nsLayoutUtils::ComputeFontFeatures(
+        featureSettingsValue->GetPairListValue(),
+        aFont->mFont.fontFeatureSettings);
       break;
 
     default:
@@ -4065,8 +3903,9 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
 
     case eCSSUnit_PairList:
     case eCSSUnit_PairListDep:
-      ComputeFontVariations(variationSettingsValue->GetPairListValue(),
-                            aFont->mFont.fontVariationSettings);
+      nsLayoutUtils::ComputeFontVariations(
+        variationSettingsValue->GetPairListValue(),
+        aFont->mFont.fontVariationSettings);
       break;
 
     default:
@@ -4089,7 +3928,8 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
   } else if (eCSSUnit_String == languageOverrideValue->GetUnit()) {
     nsAutoString lang;
     languageOverrideValue->GetStringValue(lang);
-    aFont->mFont.languageOverride = ParseFontLanguageOverride(lang);
+    aFont->mFont.languageOverride =
+      nsLayoutUtils::ParseFontLanguageOverride(lang);
   }
 
   // -moz-min-font-size-ratio: percent, inherit
@@ -4180,8 +4020,8 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
   NS_ASSERTION(aFont->mScriptUnconstrainedSize <= aFont->mSize,
                "scriptminsize should never be making things bigger");
 
-  nsRuleNode::ApplyMinFontSize(aFont, aPresContext,
-                               aPresContext->MinFontSize(aFont->mLanguage));
+  nsLayoutUtils::ApplyMinFontSize(aFont, aPresContext,
+                                  aPresContext->MinFontSize(aFont->mLanguage));
 
   // font-size-adjust: number, none, inherit, initial, -moz-system-font
   const nsCSSValue* sizeAdjustValue = aRuleData->ValueForFontSizeAdjust();
@@ -4191,80 +4031,6 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
     SetFactor(*sizeAdjustValue, aFont->mFont.sizeAdjust,
               aConditions, aParentFont->mFont.sizeAdjust, -1.0f,
               SETFCT_NONE | SETFCT_UNSET_INHERIT);
-}
-
-static inline void
-AssertValidFontTag(const nsString& aString)
-{
-  // To be valid as a font feature tag, a string MUST be:
-  MOZ_ASSERT(aString.Length() == 4 &&              // (1) exactly 4 chars long
-             NS_IsAscii(aString.BeginReading()) && // (2) entirely ASCII
-             isprint(aString[0]) &&                // (3) all printable chars
-             isprint(aString[1]) &&
-             isprint(aString[2]) &&
-             isprint(aString[3]));
-}
-
-/* static */ void
-nsRuleNode::ComputeFontFeatures(const nsCSSValuePairList *aFeaturesList,
-                                nsTArray<gfxFontFeature>& aFeatureSettings)
-{
-  aFeatureSettings.Clear();
-  for (const nsCSSValuePairList* p = aFeaturesList; p; p = p->mNext) {
-    gfxFontFeature feat;
-
-    MOZ_ASSERT(aFeaturesList->mXValue.GetUnit() == eCSSUnit_String,
-               "unexpected value unit");
-
-    // tag is a 4-byte ASCII sequence
-    nsAutoString tag;
-    p->mXValue.GetStringValue(tag);
-    AssertValidFontTag(tag);
-    if (tag.Length() != 4) {
-      continue;
-    }
-    // parsing validates that these are ASCII chars
-    // tags are always big-endian
-    feat.mTag = (tag[0] << 24) | (tag[1] << 16) | (tag[2] << 8)  | tag[3];
-
-    // value
-    NS_ASSERTION(p->mYValue.GetUnit() == eCSSUnit_Integer,
-                 "should have found an integer unit");
-    feat.mValue = p->mYValue.GetIntValue();
-
-    aFeatureSettings.AppendElement(feat);
-  }
-}
-
-/* static */ void
-nsRuleNode::ComputeFontVariations(const nsCSSValuePairList* aVariationsList,
-                                  nsTArray<gfxFontVariation>& aVariationSettings)
-{
-  aVariationSettings.Clear();
-  for (const nsCSSValuePairList* p = aVariationsList; p; p = p->mNext) {
-    gfxFontVariation var;
-
-    MOZ_ASSERT(aVariationsList->mXValue.GetUnit() == eCSSUnit_String,
-               "unexpected value unit");
-
-    // tag is a 4-byte ASCII sequence
-    nsAutoString tag;
-    p->mXValue.GetStringValue(tag);
-    AssertValidFontTag(tag);
-    if (tag.Length() != 4) {
-      continue;
-    }
-    // parsing validates that these are ASCII chars
-    // tags are always big-endian
-    var.mTag = (tag[0] << 24) | (tag[1] << 16) | (tag[2] << 8)  | tag[3];
-
-    // value
-    NS_ASSERTION(p->mYValue.GetUnit() == eCSSUnit_Number,
-                 "should have found a number unit");
-    var.mValue = p->mYValue.GetFloatValue();
-
-    aVariationSettings.AppendElement(var);
-  }
 }
 
 // This should die (bug 380915).
@@ -4318,8 +4084,7 @@ nsRuleNode::SetGenericFont(nsPresContext* aPresContext,
     GeckoStyleContext* context = contextPath[i];
     AutoCSSValueArray dataArray(dataStorage, nprops);
 
-    nsRuleData ruleData(NS_STYLE_INHERIT_BIT(Font), dataArray.get(),
-                        aPresContext, context);
+    nsRuleData ruleData(NS_STYLE_INHERIT_BIT(Font), dataArray.get(), context);
     ruleData.mValueOffsets[eStyleStruct_Font] = 0;
 
     // Trimmed down version of ::WalkRuleTree() to re-apply the style rules
@@ -4438,26 +4203,6 @@ nsRuleNode::ComputeFontData(void* aStartStruct,
   }
 
   COMPUTE_END_INHERITED(Font, font)
-}
-
-/*static*/ uint32_t
-nsRuleNode::ParseFontLanguageOverride(const nsAString& aLangTag)
-{
-  if (!aLangTag.Length() || aLangTag.Length() > 4) {
-    return NO_FONT_LANGUAGE_OVERRIDE;
-  }
-  uint32_t index, result = 0;
-  for (index = 0; index < aLangTag.Length(); ++index) {
-    char16_t ch = aLangTag[index];
-    if (!nsCRT::IsAscii(ch)) { // valid tags are pure ASCII
-      return NO_FONT_LANGUAGE_OVERRIDE;
-    }
-    result = (result << 8) + ch;
-  }
-  while (index++ < 4) {
-    result = (result << 8) + 0x20;
-  }
-  return result;
 }
 
 template <typename T>
@@ -5110,7 +4855,7 @@ nsRuleNode::ComputeTextData(void* aStartStruct,
            conditions,
            SETVAL_ENUMERATED | SETVAL_UNSET_INHERIT,
            parentText->mControlCharacterVisibility,
-           nsCSSParser::ControlCharVisibilityDefault());
+           nsLayoutUtils::ControlCharVisibilityDefault());
 
   COMPUTE_END_INHERITED(Text, text)
 }
@@ -6067,6 +5812,22 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
            SETVAL_ENUMERATED | SETVAL_UNSET_INITIAL,
            parentDisplay->mScrollBehavior, NS_STYLE_SCROLL_BEHAVIOR_AUTO);
 
+  // overscroll-behavior-x: none, enum, inherit, initial
+  SetValue(*aRuleData->ValueForOverscrollBehaviorX(),
+           display->mOverscrollBehaviorX,
+           conditions,
+           SETVAL_ENUMERATED | SETVAL_UNSET_INITIAL,
+           parentDisplay->mOverscrollBehaviorX,
+           StyleOverscrollBehavior::Auto);
+
+  // overscroll-behavior-y: none, enum, inherit, initial
+  SetValue(*aRuleData->ValueForOverscrollBehaviorY(),
+           display->mOverscrollBehaviorY,
+           conditions,
+           SETVAL_ENUMERATED | SETVAL_UNSET_INITIAL,
+           parentDisplay->mOverscrollBehaviorY,
+           StyleOverscrollBehavior::Auto);
+
   // scroll-snap-type-x: none, enum, inherit, initial
   SetValue(*aRuleData->ValueForScrollSnapTypeX(), display->mScrollSnapTypeX,
            conditions,
@@ -6231,16 +5992,16 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
   if (eCSSUnit_URL == bindingValue->GetUnit()) {
     mozilla::css::URLValue* url = bindingValue->GetURLStructValue();
     NS_ASSERTION(url, "What's going on here?");
-    display->mBinding.Set(url);
+    display->mBinding = url;
   }
   else if (eCSSUnit_None == bindingValue->GetUnit() ||
            eCSSUnit_Initial == bindingValue->GetUnit() ||
            eCSSUnit_Unset == bindingValue->GetUnit()) {
-    display->mBinding.Set(nullptr);
+    display->mBinding = nullptr;
   }
   else if (eCSSUnit_Inherit == bindingValue->GetUnit()) {
     conditions.SetUncacheable();
-    display->mBinding.Set(parentDisplay->mBinding);
+    display->mBinding = parentDisplay->mBinding;
   }
 
   // position: enum, inherit, initial
@@ -6382,10 +6143,17 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
     }
   }
 
-  SetValue(*aRuleData->ValueForOverflowClipBox(), display->mOverflowClipBox,
+  SetValue(*aRuleData->ValueForOverflowClipBoxBlock(),
+           display->mOverflowClipBoxBlock,
            conditions,
            SETVAL_ENUMERATED | SETVAL_UNSET_INITIAL,
-           parentDisplay->mOverflowClipBox,
+           parentDisplay->mOverflowClipBoxBlock,
+           NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX);
+  SetValue(*aRuleData->ValueForOverflowClipBoxInline(),
+           display->mOverflowClipBoxInline,
+           conditions,
+           SETVAL_ENUMERATED | SETVAL_UNSET_INITIAL,
+           parentDisplay->mOverflowClipBoxInline,
            NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX);
 
   SetValue(*aRuleData->ValueForResize(), display->mResize, conditions,
@@ -6659,6 +6427,12 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
            parentDisplay->mOrient,
            StyleOrient::Inline);
 
+  // shape-image-threshold: number, inherit, initial
+  SetFactor(*aRuleData->ValueForShapeImageThreshold(),
+            display->mShapeImageThreshold, conditions,
+            parentDisplay->mShapeImageThreshold, 0.0f,
+            SETFCT_OPACITY | SETFCT_UNSET_INITIAL);
+
   // shape-outside: none | [ <basic-shape> || <shape-box> ] | <image>
   const nsCSSValue* shapeOutsideValue = aRuleData->ValueForShapeOutside();
   switch (shapeOutsideValue->GetUnit()) {
@@ -6673,9 +6447,14 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
       conditions.SetUncacheable();
       display->mShapeOutside = parentDisplay->mShapeOutside;
       break;
-    case eCSSUnit_URL: {
+    case eCSSUnit_Image:
+    case eCSSUnit_Function:
+    case eCSSUnit_Gradient:
+    case eCSSUnit_Element: {
+      auto shapeImage = MakeUnique<nsStyleImage>();
+      SetStyleImage(aContext, *shapeOutsideValue, *shapeImage, conditions);
       display->mShapeOutside = StyleShapeSource();
-      display->mShapeOutside.SetURL(shapeOutsideValue->GetURLStructValue());
+      display->mShapeOutside.SetShapeImage(Move(shapeImage));
       break;
     }
     case eCSSUnit_Array: {
@@ -7353,85 +7132,6 @@ SetImageLayerPairList(GeckoStyleContext* aStyleContext,
     aMaxItemCount = aItemCount;
 }
 
-template <class ComputedValueItem>
-static void
-FillImageLayerList(
-    nsStyleAutoArray<nsStyleImageLayers::Layer>& aLayers,
-    ComputedValueItem nsStyleImageLayers::Layer::* aResultLocation,
-    uint32_t aItemCount, uint32_t aFillCount)
-{
-  NS_PRECONDITION(aFillCount <= aLayers.Length(), "unexpected array length");
-  for (uint32_t sourceLayer = 0, destLayer = aItemCount;
-       destLayer < aFillCount;
-       ++sourceLayer, ++destLayer) {
-    aLayers[destLayer].*aResultLocation =
-      aLayers[sourceLayer].*aResultLocation;
-  }
-}
-
-// The same as FillImageLayerList, but for values stored in
-// layer.mPosition.*aResultLocation instead of layer.*aResultLocation.
-static void
-FillImageLayerPositionCoordList(
-    nsStyleAutoArray<nsStyleImageLayers::Layer>& aLayers,
-    Position::Coord
-        Position::* aResultLocation,
-    uint32_t aItemCount, uint32_t aFillCount)
-{
-  NS_PRECONDITION(aFillCount <= aLayers.Length(), "unexpected array length");
-  for (uint32_t sourceLayer = 0, destLayer = aItemCount;
-       destLayer < aFillCount;
-       ++sourceLayer, ++destLayer) {
-    aLayers[destLayer].mPosition.*aResultLocation =
-      aLayers[sourceLayer].mPosition.*aResultLocation;
-  }
-}
-
-/* static */
-void
-nsRuleNode::FillAllBackgroundLists(nsStyleImageLayers& aImage,
-                                   uint32_t aMaxItemCount)
-{
-  // Delete any extra items.  We need to keep layers in which any
-  // property was specified.
-  aImage.mLayers.TruncateLengthNonZero(aMaxItemCount);
-
-  uint32_t fillCount = aImage.mImageCount;
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mImage,
-                     aImage.mImageCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mRepeat,
-                     aImage.mRepeatCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mAttachment,
-                     aImage.mAttachmentCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mClip,
-                     aImage.mClipCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mBlendMode,
-                     aImage.mBlendModeCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mOrigin,
-                     aImage.mOriginCount, fillCount);
-  FillImageLayerPositionCoordList(aImage.mLayers,
-                                  &Position::mXPosition,
-                                  aImage.mPositionXCount, fillCount);
-  FillImageLayerPositionCoordList(aImage.mLayers,
-                                  &Position::mYPosition,
-                                  aImage.mPositionYCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mSize,
-                     aImage.mSizeCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mMaskMode,
-                     aImage.mMaskModeCount, fillCount);
-  FillImageLayerList(aImage.mLayers,
-                     &nsStyleImageLayers::Layer::mComposite,
-                     aImage.mCompositeCount, fillCount);
-}
-
 const void*
 nsRuleNode::ComputeBackgroundData(void* aStartStruct,
                                   const nsRuleData* aRuleData,
@@ -7547,7 +7247,7 @@ nsRuleNode::ComputeBackgroundData(void* aStartStruct,
                         conditions);
 
   if (rebuild) {
-    FillAllBackgroundLists(bg->mImage, maxItemCount);
+    bg->mImage.FillAllLayers(maxItemCount);
   }
 
   COMPUTE_END_RESET(Background, bg)
@@ -7902,14 +7602,14 @@ nsRuleNode::ComputeBorderData(void* aStartStruct,
            conditions,
            SETVAL_ENUMERATED | SETVAL_UNSET_INITIAL,
            parentBorder->mBorderImageRepeatH,
-           NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH);
+           StyleBorderImageRepeat::Stretch);
 
   SetValue(borderImageRepeat.mYValue,
            border->mBorderImageRepeatV,
            conditions,
            SETVAL_ENUMERATED | SETVAL_UNSET_INITIAL,
            parentBorder->mBorderImageRepeatV,
-           NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH);
+           StyleBorderImageRepeat::Stretch);
 
   COMPUTE_END_RESET(Border, border)
 }
@@ -9446,47 +9146,6 @@ SetSVGOpacity(const nsCSSValue& aValue,
   }
 }
 
-/* static */
-void
-nsRuleNode::FillAllMaskLists(nsStyleImageLayers& aMask,
-                             uint32_t aMaxItemCount)
-{
-
-  // Delete any extra items.  We need to keep layers in which any
-  // property was specified.
-  aMask.mLayers.TruncateLengthNonZero(aMaxItemCount);
-
-  uint32_t fillCount = aMask.mImageCount;
-
-  FillImageLayerList(aMask.mLayers,
-                     &nsStyleImageLayers::Layer::mImage,
-                     aMask.mImageCount, fillCount);
-  FillImageLayerList(aMask.mLayers,
-                     &nsStyleImageLayers::Layer::mRepeat,
-                     aMask.mRepeatCount, fillCount);
-  FillImageLayerList(aMask.mLayers,
-                     &nsStyleImageLayers::Layer::mClip,
-                     aMask.mClipCount, fillCount);
-  FillImageLayerList(aMask.mLayers,
-                     &nsStyleImageLayers::Layer::mOrigin,
-                     aMask.mOriginCount, fillCount);
-  FillImageLayerPositionCoordList(aMask.mLayers,
-                                  &Position::mXPosition,
-                                  aMask.mPositionXCount, fillCount);
-  FillImageLayerPositionCoordList(aMask.mLayers,
-                                  &Position::mYPosition,
-                                  aMask.mPositionYCount, fillCount);
-  FillImageLayerList(aMask.mLayers,
-                     &nsStyleImageLayers::Layer::mSize,
-                     aMask.mSizeCount, fillCount);
-  FillImageLayerList(aMask.mLayers,
-                     &nsStyleImageLayers::Layer::mMaskMode,
-                     aMask.mMaskModeCount, fillCount);
-  FillImageLayerList(aMask.mLayers,
-                     &nsStyleImageLayers::Layer::mComposite,
-                     aMask.mCompositeCount, fillCount);
-}
-
 const void*
 nsRuleNode::ComputeSVGData(void* aStartStruct,
                            const nsRuleData* aRuleData,
@@ -10245,7 +9904,7 @@ nsRuleNode::ComputeSVGResetData(void* aStartStruct,
                     svgReset->mMask.mCompositeCount, maxItemCount, rebuild, conditions);
 
   if (rebuild) {
-    FillAllBackgroundLists(svgReset->mMask, maxItemCount);
+    svgReset->mMask.FillAllLayers(maxItemCount);
   }
 
   COMPUTE_END_RESET(SVGReset, svgReset)
@@ -10533,8 +10192,7 @@ nsRuleNode::HasAuthorSpecifiedRules(GeckoStyleContext* aStyleContext,
   AutoCSSValueArray dataArray(dataStorage, nprops);
 
   /* We're relying on the use of |styleContext| not mutating it! */
-  nsRuleData ruleData(inheritBits, dataArray.get(),
-                      styleContext->PresContext(), styleContext);
+  nsRuleData ruleData(inheritBits, dataArray.get(), styleContext);
 
   if (ruleTypeMask & NS_AUTHOR_SPECIFIED_BACKGROUND) {
     ruleData.mValueOffsets[eStyleStruct_Background] = backgroundOffset;
@@ -10727,8 +10385,7 @@ nsRuleNode::ComputePropertiesOverridingAnimation(
   AutoCSSValueArray dataArray(dataStorage, nprops);
 
   // We're relying on the use of |aStyleContext| not mutating it!
-  nsRuleData ruleData(structBits, dataArray.get(),
-                      aStyleContext->PresContext(), aStyleContext);
+  nsRuleData ruleData(structBits, dataArray.get(), aStyleContext);
   for (nsStyleStructID sid = nsStyleStructID(0);
        sid < nsStyleStructID_Length; sid = nsStyleStructID(sid + 1)) {
     if (structBits & nsCachedStyleData::GetBitForSID(sid)) {

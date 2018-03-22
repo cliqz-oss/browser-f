@@ -57,6 +57,7 @@
 #include "FrameLayerBuilder.h"
 #include "nsISelectionController.h"
 #include "nsISelection.h"
+#include "nsIURIMutator.h"
 
 #include "imgIContainer.h"
 #include "imgLoader.h"
@@ -101,7 +102,7 @@ using namespace mozilla::layers;
 #define ALIGN_UNSET uint8_t(-1)
 
 // static icon information
-nsImageFrame::IconLoad* nsImageFrame::gIconLoad = nullptr;
+StaticRefPtr<nsImageFrame::IconLoad> nsImageFrame::gIconLoad;
 
 // cached IO service for loading icons
 nsIIOService* nsImageFrame::sIOService;
@@ -583,6 +584,8 @@ nsImageFrame::OnSizeAvailable(imgIRequest* aRequest, imgIContainer* aImage)
     intrinsicSizeChanged = true;
   }
 
+  MarkNeedsDisplayItemRebuild();
+
   if (intrinsicSizeChanged && (mState & IMAGE_GOTINITIALREFLOW)) {
     // Now we need to reflow if we have an unconstrained size and have
     // already gotten the initial reflow
@@ -919,7 +922,9 @@ Element*
 nsImageFrame::GetMapElement() const
 {
   nsAutoString usemap;
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::usemap, usemap)) {
+  if (mContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                     nsGkAtoms::usemap,
+                                     usemap)) {
     return mContent->OwnerDoc()->FindImageMap(usemap);
   }
   return nullptr;
@@ -1342,7 +1347,7 @@ public:
     uint32_t flags = imgIContainer::FLAG_SYNC_DECODE;
 
     nsImageFrame* f = static_cast<nsImageFrame*>(mFrame);
-    DrawResult result =
+    ImgDrawResult result =
       f->DisplayAltFeedback(*aCtx,
                             mVisibleRect,
                             ToReferenceFrame(),
@@ -1354,7 +1359,7 @@ public:
   NS_DISPLAY_DECL_NAME("AltFeedback", TYPE_ALT_FEEDBACK)
 };
 
-DrawResult
+ImgDrawResult
 nsImageFrame::DisplayAltFeedback(gfxContext& aRenderingContext,
                                  const nsRect& aDirtyRect,
                                  nsPoint aPt,
@@ -1381,7 +1386,7 @@ nsImageFrame::DisplayAltFeedback(gfxContext& aRenderingContext,
   // Make sure we have enough room to actually render the border within
   // our frame bounds
   if ((inner.width < 2 * borderEdgeWidth) || (inner.height < 2 * borderEdgeWidth)) {
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
 
   // Paint the border
@@ -1389,7 +1394,7 @@ nsImageFrame::DisplayAltFeedback(gfxContext& aRenderingContext,
     nsRecessedBorder recessedBorder(borderEdgeWidth, PresContext());
 
     // Assert that we're not drawing a border-image here; if we were, we
-    // couldn't ignore the DrawResult that PaintBorderWithStyleBorder returns.
+    // couldn't ignore the ImgDrawResult that PaintBorderWithStyleBorder returns.
     MOZ_ASSERT(recessedBorder.mBorderImageSource.GetType() == eStyleImageType_Null);
 
     Unused <<
@@ -1404,7 +1409,7 @@ nsImageFrame::DisplayAltFeedback(gfxContext& aRenderingContext,
   inner.Deflate(nsPresContext::CSSPixelsToAppUnits(ICON_PADDING+ALT_BORDER_WIDTH),
                 nsPresContext::CSSPixelsToAppUnits(ICON_PADDING+ALT_BORDER_WIDTH));
   if (inner.IsEmpty()) {
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
 
   DrawTarget* drawTarget = aRenderingContext.GetDrawTarget();
@@ -1414,12 +1419,12 @@ nsImageFrame::DisplayAltFeedback(gfxContext& aRenderingContext,
   aRenderingContext.Clip(
     NSRectToSnappedRect(inner, PresContext()->AppUnitsPerDevPixel(), *drawTarget));
 
-  DrawResult result = DrawResult::NOT_READY;
+  ImgDrawResult result = ImgDrawResult::NOT_READY;
 
   // Check if we should display image placeholders
   if (!gIconLoad->mPrefShowPlaceholders ||
       (isLoading && !gIconLoad->mPrefShowLoadingPlaceholder)) {
-    result = DrawResult::SUCCESS;
+    result = ImgDrawResult::SUCCESS;
   } else {
     nscoord size = nsPresContext::CSSPixelsToAppUnits(ICON_SIZE);
 
@@ -1456,7 +1461,7 @@ nsImageFrame::DisplayAltFeedback(gfxContext& aRenderingContext,
     }
 
     // If we could not draw the icon, just draw some graffiti in the mean time.
-    if (result == DrawResult::NOT_READY) {
+    if (result == ImgDrawResult::NOT_READY) {
       ColorPattern color(ToDeviceColor(Color(1.f, 0.f, 0.f, 1.f)));
 
       nscoord iconXPos = flushRight ? inner.XMost() - size : inner.x;
@@ -1499,7 +1504,7 @@ nsImageFrame::DisplayAltFeedback(gfxContext& aRenderingContext,
     nsIContent* content = GetContent();
     if (content) {
       nsAutoString altText;
-      nsCSSFrameConstructor::GetAlternateTextFor(content,
+      nsCSSFrameConstructor::GetAlternateTextFor(content->AsElement(),
                                                  content->NodeInfo()->NameAtom(),
                                                  altText);
       DisplayAltText(PresContext(), aRenderingContext, altText, inner);
@@ -1540,12 +1545,12 @@ nsDisplayImage::Paint(nsDisplayListBuilder* aBuilder,
     flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
   }
 
-  DrawResult result = static_cast<nsImageFrame*>(mFrame)->
+  ImgDrawResult result = static_cast<nsImageFrame*>(mFrame)->
     PaintImage(*aCtx, ToReferenceFrame(), mVisibleRect, mImage, flags);
 
-  if (result == DrawResult::NOT_READY ||
-      result == DrawResult::INCOMPLETE ||
-      result == DrawResult::TEMPORARY_ERROR) {
+  if (result == ImgDrawResult::NOT_READY ||
+      result == ImgDrawResult::INCOMPLETE ||
+      result == ImgDrawResult::TEMPORARY_ERROR) {
     // If the current image failed to paint because it's still loading or
     // decoding, try painting the previous image.
     if (mPrevImage) {
@@ -1683,7 +1688,7 @@ nsDisplayImage::BuildLayer(nsDisplayListBuilder* aBuilder,
 
   RefPtr<ImageContainer> container =
     mImage->GetImageContainer(aManager, flags);
-  if (!container) {
+  if (!container || !container->HasCurrentImage()) {
     return nullptr;
   }
 
@@ -1706,29 +1711,43 @@ nsDisplayImage::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilde
                                         WebRenderLayerManager* aManager,
                                         nsDisplayListBuilder* aDisplayListBuilder)
 {
-  if (!CanOptimizeToImageLayer(aManager, aDisplayListBuilder)) {
+  if (!mImage) {
     return false;
   }
 
+  if (mFrame->IsImageFrame()) {
+    // Image layer doesn't support draw focus ring for image map.
+    nsImageFrame* f = static_cast<nsImageFrame*>(mFrame);
+    if (f->HasImageMap()) {
+      return false;
+    }
+  }
+
   uint32_t flags = imgIContainer::FLAG_ASYNC_NOTIFY;
+  if (aDisplayListBuilder->IsPaintingToWindow()) {
+    flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
+  }
   if (aDisplayListBuilder->ShouldSyncDecodeImages()) {
     flags |= imgIContainer::FLAG_SYNC_DECODE;
   }
 
+  const int32_t factor = mFrame->PresContext()->AppUnitsPerDevPixel();
+  const LayoutDeviceRect destRect(
+    LayoutDeviceRect::FromAppUnits(GetDestRect(), factor));
+  Maybe<SVGImageContext> svgContext;
+  IntSize decodeSize =
+    nsLayoutUtils::ComputeImageContainerDrawingParameters(mImage, mFrame, destRect,
+                                                          aSc, flags, svgContext);
   RefPtr<ImageContainer> container =
-    mImage->GetImageContainer(aManager, flags);
+    mImage->GetImageContainerAtSize(aManager, decodeSize, svgContext, flags);
   if (!container) {
     return false;
   }
 
-
-  const int32_t factor = mFrame->PresContext()->AppUnitsPerDevPixel();
-  const LayoutDeviceRect destRect(
-    LayoutDeviceRect::FromAppUnits(GetDestRect(), factor));
   return aManager->CommandBuilder().PushImage(this, container, aBuilder, aResources, aSc, destRect);
 }
 
-DrawResult
+ImgDrawResult
 nsImageFrame::PaintImage(gfxContext& aRenderingContext, nsPoint aPt,
                          const nsRect& aDirtyRect, imgIContainer* aImage,
                          uint32_t aFlags)
@@ -1761,7 +1780,7 @@ nsImageFrame::PaintImage(gfxContext& aRenderingContext, nsPoint aPt,
   Maybe<SVGImageContext> svgContext;
   SVGImageContext::MaybeStoreContextPaint(svgContext, this, aImage);
 
-  DrawResult result =
+  ImgDrawResult result =
     nsLayoutUtils::DrawSingleImage(aRenderingContext,
       PresContext(), aImage,
       nsLayoutUtils::GetSamplingFilterForFrame(this), dest, aDirtyRect,
@@ -1786,9 +1805,9 @@ nsImageFrame::PaintImage(gfxContext& aRenderingContext, nsPoint aPt,
     map->Draw(this, *drawTarget, black, strokeOptions);
   }
 
-  if (result == DrawResult::SUCCESS) {
+  if (result == ImgDrawResult::SUCCESS) {
     mPrevImage = aImage;
-  } else if (result == DrawResult::BAD_IMAGE) {
+  } else if (result == ImgDrawResult::BAD_IMAGE) {
     mPrevImage = nullptr;
   }
 
@@ -1830,7 +1849,7 @@ nsImageFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     if (!imageOK || !mImage || !SizeIsAvailable(currentRequest)) {
       // No image yet, or image load failed. Draw the alt-text and an icon
       // indicating the status
-      aLists.Content()->AppendNewToTop(new (aBuilder)
+      aLists.Content()->AppendToTop(new (aBuilder)
         nsDisplayAltFeedback(aBuilder, this));
 
       // This image is visible (we are being asked to paint it) but it's not
@@ -1848,7 +1867,7 @@ nsImageFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
         }
       }
     } else {
-      aLists.Content()->AppendNewToTop(new (aBuilder)
+      aLists.Content()->AppendToTop(new (aBuilder)
         nsDisplayImage(aBuilder, this, mImage, mPrevImage));
 
       // If we were previously displaying an icon, we're not anymore
@@ -1859,7 +1878,7 @@ nsImageFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 #ifdef DEBUG
       if (GetShowFrameBorders() && GetImageMap()) {
-        aLists.Outlines()->AppendNewToTop(new (aBuilder)
+        aLists.Outlines()->AppendToTop(new (aBuilder)
           nsDisplayGeneric(aBuilder, this, PaintDebugImageMap, "DebugImageMap",
                            DisplayItemType::TYPE_DEBUG_IMAGE_MAP));
       }
@@ -1951,7 +1970,7 @@ nsImageFrame::GetImageMap()
 bool
 nsImageFrame::IsServerImageMap()
 {
-  return mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::ismap);
+  return mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::ismap);
 }
 
 // Translate an point that is relative to our frame
@@ -2091,7 +2110,9 @@ nsImageFrame::HandleEvent(nsPresContext* aPresContext,
           NS_ENSURE_SUCCESS(rv, rv);
 
           spec += nsPrintfCString("?%d,%d", p.x, p.y);
-          rv = uri->SetSpec(spec);
+          rv = NS_MutateURI(uri)
+                 .SetSpec(spec)
+                 .Finalize(uri);
           NS_ENSURE_SUCCESS(rv, rv);
 
           bool clicked = false;
@@ -2337,7 +2358,6 @@ nsresult nsImageFrame::LoadIcons(nsPresContext *aPresContext)
   NS_NAMED_LITERAL_STRING(brokenSrc,"resource://gre-resources/broken-image.png");
 
   gIconLoad = new IconLoad();
-  NS_ADDREF(gIconLoad);
 
   nsresult rv;
   // create a loader and load the images

@@ -7,6 +7,10 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: Events")
 
+BROWSER_CHROME_MANIFESTS += [
+  'test/browser.ini',
+]
+
 MOCHITEST_MANIFESTS += [
     'test/mochitest.ini',
     'test/pointerevents/mochitest.ini',
@@ -45,6 +49,7 @@ EXPORTS.mozilla.dom += [
     'ClipboardEvent.h',
     'CommandEvent.h',
     'CompositionEvent.h',
+    'ConstructibleEventTarget.h',
     'CustomEvent.h',
     'DataTransfer.h',
     'DataTransferItem.h',
@@ -87,6 +92,7 @@ UNIFIED_SOURCES += [
     'ClipboardEvent.cpp',
     'CommandEvent.cpp',
     'CompositionEvent.cpp',
+    'ConstructibleEventTarget.cpp',
     'ContentEventHandler.cpp',
     'CustomEvent.cpp',
     'DataTransfer.cpp',
@@ -155,5 +161,5 @@ LOCAL_INCLUDES += [
     '/layout/xul/tree/',
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

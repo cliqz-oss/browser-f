@@ -2,6 +2,11 @@
 ac_add_options --disable-debug
 ac_add_options --enable-optimize="-O2 -gline-tables-only"
 
+#add-on signing is checked but not enforced
+MOZ_REQUIRE_SIGNING=0
+# Enable MOZ_ALLOW_LEGACY_EXTENSIONS
+ac_add_options "MOZ_ALLOW_LEGACY_EXTENSIONS=1"
+
 . $topsrcdir/build/mozconfig.stylo
 
 # ASan specific options on Linux
@@ -10,10 +15,11 @@ ac_add_options --enable-valgrind
 . $topsrcdir/build/unix/mozconfig.fuzzing
 
 ac_add_options --enable-fuzzing
-ac_add_options --disable-stdcxx-compat
+unset MOZ_STDCXX_COMPAT
 
-export PKG_CONFIG_LIBDIR=/usr/lib64/pkgconfig:/usr/share/pkgconfig
-. $topsrcdir/build/unix/mozconfig.gtk
+if [ -f /etc/redhat-release ]; then
+export PKG_CONFIG_LIBDIR=/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig
+fi
 
 # Package js shell.
 export MOZ_PACKAGE_JSSHELL=1

@@ -209,7 +209,7 @@ public:
   // returned.
   void NotifyCompositorSessionLost(mozilla::layers::CompositorSession* aSession);
 
-  mozilla::CompositorVsyncDispatcher* GetCompositorVsyncDispatcher();
+  already_AddRefed<mozilla::CompositorVsyncDispatcher> GetCompositorVsyncDispatcher();
   void            CreateCompositorVsyncDispatcher();
   virtual void            CreateCompositor();
   virtual void            CreateCompositor(int aWidth, int aHeight);
@@ -601,6 +601,8 @@ protected:
   void OnRenderingDeviceReset();
 
   bool UseAPZ();
+
+  bool AllowWebRenderForThisWindow();
 
   /**
    * For widgets that support synthesizing native touch events, this function

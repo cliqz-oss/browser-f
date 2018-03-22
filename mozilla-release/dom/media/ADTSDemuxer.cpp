@@ -12,10 +12,10 @@
 #include <inttypes.h>
 
 extern mozilla::LazyLogModule gMediaDemuxerLog;
-#define ADTSLOG(msg, ...) \
-  MOZ_LOG(gMediaDemuxerLog, LogLevel::Debug, ("ADTSDemuxer " msg, ##__VA_ARGS__))
-#define ADTSLOGV(msg, ...) \
-  MOZ_LOG(gMediaDemuxerLog, LogLevel::Verbose, ("ADTSDemuxer " msg, ##__VA_ARGS__))
+#define ADTSLOG(msg, ...)                                                      \
+  DDMOZ_LOG(gMediaDemuxerLog, LogLevel::Debug, msg, ##__VA_ARGS__)
+#define ADTSLOGV(msg, ...)                                                     \
+  DDMOZ_LOG(gMediaDemuxerLog, LogLevel::Verbose, msg, ##__VA_ARGS__)
 
 namespace mozilla {
 namespace adts {
@@ -234,48 +234,6 @@ private:
   Frame mFrame;
 };
 
-
-// Return the AAC Profile Level Indication based upon sample rate and channels
-// Information based upon table 1.10 from ISO/IEC 14496-3:2005(E)
-static int8_t
-ProfileLevelIndication(const Frame& frame)
-{
-  const FrameHeader& header = frame.Header();
-  MOZ_ASSERT(header.IsValid());
-
-  if (!header.IsValid()) {
-    return 0;
-  }
-
-  const int channels = header.mChannels;
-  const int sampleRate = header.mSampleRate;
-
-  if (channels <= 2) {
-    if (sampleRate <= 24000) {
-      // AAC Profile  L1
-      return 0x28;
-    }
-    else if (sampleRate <= 48000) {
-      // AAC Profile  L2
-      return 0x29;
-    }
-  }
-  else if (channels <= 5) {
-    if (sampleRate <= 48000) {
-      // AAC Profile  L4
-      return 0x2A;
-    }
-    else if (sampleRate <= 96000) {
-      // AAC Profile  L5
-      return 0x2B;
-    }
-  }
-
-  // TODO: Should this be 0xFE for 'no audio profile specified'?
-  return 0;
-}
-
-
 // Initialize the AAC AudioSpecificConfig.
 // Only handles two-byte version for AAC-LC.
 static void
@@ -305,6 +263,7 @@ using media::TimeUnit;
 ADTSDemuxer::ADTSDemuxer(MediaResource* aSource)
   : mSource(aSource)
 {
+  DDLINKCHILD("source", aSource);
 }
 
 bool
@@ -312,6 +271,7 @@ ADTSDemuxer::InitInternal()
 {
   if (!mTrackDemuxer) {
     mTrackDemuxer = new ADTSTrackDemuxer(mSource);
+    DDLINKCHILD("track demuxer", mTrackDemuxer.get());
   }
   return mTrackDemuxer->Init();
 }
@@ -368,6 +328,7 @@ ADTSTrackDemuxer::ADTSTrackDemuxer(MediaResource* aSource)
   , mSamplesPerSecond(0)
   , mChannels(0)
 {
+  DDLINKCHILD("source", aSource);
   Reset();
 }
 
@@ -406,15 +367,10 @@ ADTSTrackDemuxer::Init()
   mInfo->mMimeType = "audio/mp4a-latm";
 
   // Configure AAC codec-specific values.
-
-  // According to
-  // https://msdn.microsoft.com/en-us/library/windows/desktop/dd742784%28v=vs.85%29.aspx,
-  // wAudioProfileLevelIndication, which is passed mInfo->mProfile, is
-  // a value from Table 1.12 -- audioProfileLevelIndication values, ISO/IEC 14496-3.
-  mInfo->mProfile = ProfileLevelIndication(mParser->FirstFrame());
-  // For AAC, mExtendedProfile contains the audioObjectType from Table
-  // 1.3 -- Audio Profile definition, ISO/IEC 14496-3. Eg. 2 == AAC LC
-  mInfo->mExtendedProfile = mParser->FirstFrame().Header().mObjectType;
+  // For AAC, mProfile and mExtendedProfile contain the audioObjectType from
+  // Table 1.3 -- Audio Profile definition, ISO/IEC 14496-3. Eg. 2 == AAC LC
+  mInfo->mProfile = mInfo->mExtendedProfile =
+    mParser->FirstFrame().Header().mObjectType;
   InitAudioSpecificConfig(mParser->FirstFrame(), mInfo->mCodecSpecificConfig);
 
   ADTSLOG("Init mInfo={mRate=%u mChannels=%u mBitDepth=%u mDuration=%" PRId64

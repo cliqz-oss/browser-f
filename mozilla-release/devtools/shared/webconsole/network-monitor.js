@@ -279,6 +279,8 @@ function NetworkResponseListener(owner, httpActivity) {
   this.receivedData = "";
   this.httpActivity = httpActivity;
   this.bodySize = 0;
+  // Indicates if the response had a size greater than RESPONSE_BODY_LIMIT.
+  this.truncated = false;
   // Note that this is really only needed for the non-e10s case.
   // See bug 1309523.
   let channel = this.httpActivity.channel;
@@ -412,10 +414,13 @@ NetworkResponseListener.prototype = {
 
     this.bodySize += count;
 
-    if (!this.httpActivity.discardResponseBody &&
-        this.receivedData.length < RESPONSE_BODY_LIMIT) {
-      this.receivedData +=
-        NetworkHelper.convertToUnicode(data, request.contentCharset);
+    if (!this.httpActivity.discardResponseBody) {
+      if (this.receivedData.length < RESPONSE_BODY_LIMIT) {
+        this.receivedData +=
+          NetworkHelper.convertToUnicode(data, request.contentCharset);
+      } else {
+        this.truncated = true;
+      }
     }
   },
 
@@ -523,6 +528,11 @@ NetworkResponseListener.prototype = {
    * https://developer.mozilla.org/En/NsIRequestObserver
    */
   onStopRequest: function () {
+    // Bug 1429365: onStopRequest may be called after onComplete for resources loaded
+    // from bytecode cache.
+    if (!this.httpActivity) {
+      return;
+    }
     this._findOpenResponse();
     this.sink.outputStream.close();
   },
@@ -640,7 +650,10 @@ NetworkResponseListener.prototype = {
 
     this.httpActivity.owner.addResponseContent(
       response,
-      this.httpActivity.discardResponseBody
+      {
+        discardResponseBody: this.httpActivity.discardResponseBody,
+        truncated: this.truncated
+      }
     );
 
     this._wrappedNotificationCallbacks = null;
@@ -874,13 +887,13 @@ NetworkMonitor.prototype = {
       cookies: [],
     };
 
-    let setCookieHeader = null;
+    let setCookieHeaders = [];
 
-    channel.visitResponseHeaders({
+    channel.visitOriginalResponseHeaders({
       visitHeader: function (name, value) {
         let lowerName = name.toLowerCase();
         if (lowerName == "set-cookie") {
-          setCookieHeader = value;
+          setCookieHeaders.push(value);
         }
         response.headers.push({ name: name, value: value });
       }
@@ -891,8 +904,11 @@ NetworkMonitor.prototype = {
       return;
     }
 
-    if (setCookieHeader) {
-      response.cookies = NetworkHelper.parseSetCookieHeader(setCookieHeader);
+    if (setCookieHeaders.length) {
+      response.cookies = setCookieHeaders.reduce((result, header) => {
+        let cookies = NetworkHelper.parseSetCookieHeader(header);
+        return result.concat(cookies);
+      }, []);
     }
 
     // Determine the HTTP version.

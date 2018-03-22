@@ -40,6 +40,7 @@
 #include "nsIFile.h"
 #include "nsCRT.h"
 #include "nsINetworkPredictor.h"
+#include "nsReadableUtils.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
 
@@ -312,6 +313,48 @@ private:
           surfacePathPrefix.AppendInt(uint32_t(counter.Key().Flags()),
                                       /* aRadix = */ 16);
         }
+
+        if (counter.Key().SVGContext()) {
+          const SVGImageContext& context = counter.Key().SVGContext().ref();
+          surfacePathPrefix.AppendLiteral(", svgContext:[ ");
+          if (context.GetViewportSize()) {
+            const CSSIntSize& size = context.GetViewportSize().ref();
+            surfacePathPrefix.AppendLiteral("viewport=(");
+            surfacePathPrefix.AppendInt(size.width);
+            surfacePathPrefix.AppendLiteral("x");
+            surfacePathPrefix.AppendInt(size.height);
+            surfacePathPrefix.AppendLiteral(") ");
+          }
+          if (context.GetPreserveAspectRatio()) {
+            nsAutoString aspect;
+            context.GetPreserveAspectRatio()->ToString(aspect);
+            surfacePathPrefix.AppendLiteral("preserveAspectRatio=(");
+            LossyAppendUTF16toASCII(aspect, surfacePathPrefix);
+            surfacePathPrefix.AppendLiteral(") ");
+          }
+          if (context.GetContextPaint()) {
+            const SVGEmbeddingContextPaint* paint = context.GetContextPaint();
+            surfacePathPrefix.AppendLiteral("contextPaint=(");
+            if (paint->GetFill()) {
+              surfacePathPrefix.AppendLiteral(" fill=");
+              surfacePathPrefix.AppendInt(paint->GetFill()->ToABGR(), 16);
+            }
+            if (paint->GetFillOpacity()) {
+              surfacePathPrefix.AppendLiteral(" fillOpa=");
+              surfacePathPrefix.AppendFloat(paint->GetFillOpacity());
+            }
+            if (paint->GetStroke()) {
+              surfacePathPrefix.AppendLiteral(" stroke=");
+              surfacePathPrefix.AppendInt(paint->GetStroke()->ToABGR(), 16);
+            }
+            if (paint->GetStrokeOpacity()) {
+              surfacePathPrefix.AppendLiteral(" strokeOpa=");
+              surfacePathPrefix.AppendFloat(paint->GetStrokeOpacity());
+            }
+            surfacePathPrefix.AppendLiteral(" ) ");
+          }
+          surfacePathPrefix.AppendLiteral("]");
+        }
       } else if (counter.Type() == SurfaceMemoryCounterType::COMPOSITING) {
         surfacePathPrefix.AppendLiteral(", compositing frame");
       } else if (counter.Type() == SurfaceMemoryCounterType::COMPOSITING_PREV) {
@@ -577,14 +620,14 @@ ShouldLoadCachedImage(imgRequest* aImgRequest,
    * Cached images are keyed off of the first uri in a redirect chain.
    * Hence content policies don't get a chance to test the intermediate hops
    * or the final desitnation.  Here we test the final destination using
-   * mCurrentURI off of the imgRequest and passing it into content policies.
+   * mFinalURI off of the imgRequest and passing it into content policies.
    * For Mixed Content Blocker, we do an additional check to determine if any
    * of the intermediary hops went through an insecure redirect with the
    * mHadInsecureRedirect flag
    */
   bool insecureRedirect = aImgRequest->HadInsecureRedirect();
   nsCOMPtr<nsIURI> contentLocation;
-  aImgRequest->GetCurrentURI(getter_AddRefs(contentLocation));
+  aImgRequest->GetFinalURI(getter_AddRefs(contentLocation));
   nsresult rv;
 
   int16_t decision = nsIContentPolicy::REJECT_REQUEST;
@@ -640,19 +683,6 @@ ShouldLoadCachedImage(imgRequest* aImgRequest,
         return false;
       }
     }
-  }
-
-  bool sendPriming = false;
-  bool mixedContentWouldBlock = false;
-  rv = nsMixedContentBlocker::GetHSTSPrimingFromRequestingContext(contentLocation,
-      aLoadingContext, &sendPriming, &mixedContentWouldBlock);
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-  if (sendPriming && mixedContentWouldBlock) {
-    // if either of the securty checks above would cause a priming request, we
-    // can't load this image from the cache, so go ahead and return false here
-    return false;
   }
 
   return true;
@@ -887,8 +917,8 @@ NewImageChannel(nsIChannel** aResult,
   return NS_OK;
 }
 
-static uint32_t
-SecondsFromPRTime(PRTime prTime)
+/* static */ uint32_t
+imgCacheEntry::SecondsFromPRTime(PRTime prTime)
 {
   return uint32_t(int64_t(prTime) / int64_t(PR_USEC_PER_SEC));
 }
@@ -1838,13 +1868,11 @@ imgLoader::ValidateEntry(imgCacheEntry* aEntry,
 {
   LOG_SCOPE(gImgLog, "imgLoader::ValidateEntry");
 
-  bool hasExpired;
-  uint32_t expirationTime = aEntry->GetExpiryTime();
-  if (expirationTime <= SecondsFromPRTime(PR_Now())) {
-    hasExpired = true;
-  } else {
-    hasExpired = false;
-  }
+  // If the expiration time is zero, then the request has not gotten far enough
+  // to know when it will expire.
+  uint32_t expiryTime = aEntry->GetExpiryTime();
+  bool hasExpired = expiryTime != 0 &&
+                    expiryTime <= imgCacheEntry::SecondsFromPRTime(PR_Now());
 
   nsresult rv;
 
@@ -1861,7 +1889,8 @@ imgLoader::ValidateEntry(imgCacheEntry* aEntry,
       if (NS_SUCCEEDED(rv)) {
         // nsIFile uses millisec, NSPR usec
         fileLastMod *= 1000;
-        hasExpired = SecondsFromPRTime((PRTime)fileLastMod) > lastModTime;
+        hasExpired =
+          imgCacheEntry::SecondsFromPRTime((PRTime)fileLastMod) > lastModTime;
       }
     }
   }
@@ -2689,8 +2718,8 @@ imgLoader::GetMimeTypeFromContent(const char* aContents,
                                   nsACString& aContentType)
 {
   /* Is it a GIF? */
-  if (aLength >= 6 && (!nsCRT::strncmp(aContents, "GIF87a", 6) ||
-                       !nsCRT::strncmp(aContents, "GIF89a", 6))) {
+  if (aLength >= 6 && (!strncmp(aContents, "GIF87a", 6) ||
+                       !strncmp(aContents, "GIF89a", 6))) {
     aContentType.AssignLiteral(IMAGE_GIF);
 
   /* or a PNG? */
@@ -2727,7 +2756,7 @@ imgLoader::GetMimeTypeFromContent(const char* aContents,
              ((unsigned char) aContents[4])==0x00 ) {
     aContentType.AssignLiteral(IMAGE_ART);
 
-  } else if (aLength >= 2 && !nsCRT::strncmp(aContents, "BM", 2)) {
+  } else if (aLength >= 2 && !strncmp(aContents, "BM", 2)) {
     aContentType.AssignLiteral(IMAGE_BMP);
 
   // ICOs always begin with a 2-byte 0 followed by a 2-byte 1.
@@ -2942,12 +2971,12 @@ imgCacheValidator::OnStartRequest(nsIRequest* aRequest, nsISupports* ctxt)
     nsCOMPtr<nsIURI> channelURI;
     channel->GetURI(getter_AddRefs(channelURI));
 
-    nsCOMPtr<nsIURI> currentURI;
-    mRequest->GetCurrentURI(getter_AddRefs(currentURI));
+    nsCOMPtr<nsIURI> finalURI;
+    mRequest->GetFinalURI(getter_AddRefs(finalURI));
 
     bool sameURI = false;
-    if (channelURI && currentURI) {
-      channelURI->Equals(currentURI, &sameURI);
+    if (channelURI && finalURI) {
+      channelURI->Equals(finalURI, &sameURI);
     }
 
     if (isFromCache && sameURI) {

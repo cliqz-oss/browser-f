@@ -20,6 +20,7 @@
 #include "mozilla/webrender/RenderD3D11TextureHostOGL.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderAPI.h"
+#include "PaintThread.h"
 
 namespace mozilla {
 
@@ -287,18 +288,37 @@ D3D11TextureData::D3D11TextureData(ID3D11Texture2D* aTexture,
   mHasSynchronization = HasKeyedMutex(aTexture);
 }
 
-D3D11TextureData::~D3D11TextureData()
+static void DestroyDrawTarget(RefPtr<DrawTarget>& aDT, RefPtr<ID3D11Texture2D>& aTexture)
 {
-#ifdef DEBUG
   // An Azure DrawTarget needs to be locked when it gets nullptr'ed as this is
   // when it calls EndDraw. This EndDraw should not execute anything so it
   // shouldn't -really- need the lock but the debug layer chokes on this.
-  if (mDrawTarget) {
-    Lock(OpenMode::OPEN_NONE);
-    mDrawTarget = nullptr;
-    Unlock();
-  }
+#ifdef DEBUG
+  LockD3DTexture(aTexture.get());
 #endif
+  aDT = nullptr;
+#ifdef DEBUG
+  UnlockD3DTexture(aTexture.get());
+#endif
+  aTexture = nullptr;
+}
+
+D3D11TextureData::~D3D11TextureData()
+{
+  if (mDrawTarget) {
+    if (PaintThread::Get() && gfxPrefs::Direct2DDestroyDTOnPaintThread()) {
+      RefPtr<DrawTarget> dt = mDrawTarget;
+      RefPtr<ID3D11Texture2D> tex = mTexture;
+      RefPtr<Runnable> task = NS_NewRunnableFunction("PaintThread::RunFunction",
+        [dt, tex]() mutable { DestroyDrawTarget(dt, tex); });
+      PaintThread::Get()->Dispatch(task);
+    }
+#ifdef DEBUG
+    else {
+      DestroyDrawTarget(mDrawTarget, mTexture);
+    }
+#endif
+  }
 }
 
 bool
@@ -743,10 +763,6 @@ CreateTextureHostD3D11(const SurfaceDescriptor& aDesc,
 {
   RefPtr<TextureHost> result;
   switch (aDesc.type()) {
-    case SurfaceDescriptor::TSurfaceDescriptorBuffer: {
-      result = CreateBackendIndependentTextureHost(aDesc, aDeallocator, aBackend, aFlags);
-      break;
-    }
     case SurfaceDescriptor::TSurfaceDescriptorD3D10: {
       result = new DXGITextureHostD3D11(aFlags,
                                         aDesc.get_SurfaceDescriptorD3D10());
@@ -758,7 +774,7 @@ CreateTextureHostD3D11(const SurfaceDescriptor& aDesc,
       break;
     }
     default: {
-      NS_WARNING("Unsupported SurfaceDescriptor type");
+      MOZ_ASSERT_UNREACHABLE("Unsupported SurfaceDescriptor type");
     }
   }
   return result.forget();
@@ -1085,18 +1101,18 @@ DXGITextureHostD3D11::PushResourceUpdates(wr::ResourceUpdateQueue& aResources,
     case gfx::SurfaceFormat::B8G8R8X8: {
       MOZ_ASSERT(aImageKeys.length() == 1);
 
-      wr::ImageDescriptor descriptor(GetSize(), GetFormat());
-      auto bufferType = wr::WrExternalImageBufferType::Texture2DHandle;
+      wr::ImageDescriptor descriptor(mSize, GetFormat());
+      auto bufferType = wr::WrExternalImageBufferType::TextureExternalHandle;
       (aResources.*method)(aImageKeys[0], descriptor, aExtID, bufferType, 0);
       break;
     }
     case gfx::SurfaceFormat::NV12: {
       MOZ_ASSERT(aImageKeys.length() == 2);
-      MOZ_ASSERT(GetSize().width % 2 == 0);
-      MOZ_ASSERT(GetSize().height % 2 == 0);
+      MOZ_ASSERT(mSize.width % 2 == 0);
+      MOZ_ASSERT(mSize.height % 2 == 0);
 
-      wr::ImageDescriptor descriptor0(GetSize(), gfx::SurfaceFormat::A8);
-      wr::ImageDescriptor descriptor1(GetSize() / 2, gfx::SurfaceFormat::R8G8);
+      wr::ImageDescriptor descriptor0(mSize, gfx::SurfaceFormat::A8);
+      wr::ImageDescriptor descriptor1(mSize / 2, gfx::SurfaceFormat::R8G8);
       auto bufferType = wr::WrExternalImageBufferType::TextureExternalHandle;
       (aResources.*method)(aImageKeys[0], descriptor0, aExtID, bufferType, 0);
       (aResources.*method)(aImageKeys[1], descriptor1, aExtID, bufferType, 1);
@@ -1121,7 +1137,7 @@ DXGITextureHostD3D11::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
     case gfx::SurfaceFormat::B8G8R8A8:
     case gfx::SurfaceFormat::B8G8R8X8: {
       MOZ_ASSERT(aImageKeys.length() == 1);
-      aBuilder.PushImage(aBounds, aClip, true, aFilter, aImageKeys[0]);
+      aBuilder.PushImage(aBounds, aClip, true, aFilter, aImageKeys[0], !(mFlags & TextureFlags::NON_PREMULTIPLIED));
       break;
     }
     case gfx::SurfaceFormat::NV12: {
@@ -1131,7 +1147,7 @@ DXGITextureHostD3D11::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
                              true,
                              aImageKeys[0],
                              aImageKeys[1],
-                             wr::WrYuvColorSpace::Rec601,
+                             wr::ToWrYuvColorSpace(YUVColorSpace::BT601),
                              aFilter);
       break;
     }
@@ -1145,6 +1161,7 @@ DXGIYCbCrTextureHostD3D11::DXGIYCbCrTextureHostD3D11(TextureFlags aFlags,
   const SurfaceDescriptorDXGIYCbCr& aDescriptor)
   : TextureHost(aFlags)
   , mSize(aDescriptor.size())
+  , mSizeCbCr(aDescriptor.sizeCbCr())
   , mIsLocked(false)
   , mYUVColorSpace(aDescriptor.yUVColorSpace())
 {
@@ -1302,7 +1319,7 @@ void
 DXGIYCbCrTextureHostD3D11::CreateRenderTexture(const wr::ExternalImageId& aExternalImageId)
 {
   RefPtr<wr::RenderTextureHost> texture =
-      new wr::RenderDXGIYCbCrTextureHostOGL(mHandles, mSize);
+      new wr::RenderDXGIYCbCrTextureHostOGL(mHandles, mSize, mSizeCbCr);
 
   wr::RenderThread::Get()->RegisterExternalImage(wr::AsUint64(aExternalImageId), texture.forget());
 }
@@ -1322,17 +1339,17 @@ DXGIYCbCrTextureHostD3D11::PushResourceUpdates(wr::ResourceUpdateQueue& aResourc
 {
   MOZ_ASSERT(mHandles[0] && mHandles[1] && mHandles[2]);
   MOZ_ASSERT(aImageKeys.length() == 3);
-  MOZ_ASSERT(GetSize().width % 2 == 0);
-  MOZ_ASSERT(GetSize().height % 2 == 0);
+  MOZ_ASSERT(mSize.width % 2 == 0);
+  MOZ_ASSERT(mSize.height % 2 == 0);
 
   auto method = aOp == TextureHost::ADD_IMAGE ? &wr::ResourceUpdateQueue::AddExternalImage
                                               : &wr::ResourceUpdateQueue::UpdateExternalImage;
   auto bufferType = wr::WrExternalImageBufferType::TextureExternalHandle;
 
   // y
-  wr::ImageDescriptor descriptor0(GetSize(), gfx::SurfaceFormat::A8);
+  wr::ImageDescriptor descriptor0(mSize, gfx::SurfaceFormat::A8);
   // cb and cr
-  wr::ImageDescriptor descriptor1(GetSize() / 2, gfx::SurfaceFormat::A8);
+  wr::ImageDescriptor descriptor1(mSizeCbCr, gfx::SurfaceFormat::A8);
   (aResources.*method)(aImageKeys[0], descriptor0, aExtID, bufferType, 0);
   (aResources.*method)(aImageKeys[1], descriptor1, aExtID, bufferType, 1);
   (aResources.*method)(aImageKeys[2], descriptor1, aExtID, bufferType, 2);
@@ -1353,7 +1370,7 @@ DXGIYCbCrTextureHostD3D11::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
                                 aImageKeys[0],
                                 aImageKeys[1],
                                 aImageKeys[2],
-                                wr::WrYuvColorSpace::Rec601,
+                                wr::ToWrYuvColorSpace(mYUVColorSpace),
                                 aFilter);
 }
 
@@ -1443,12 +1460,12 @@ DataTextureSourceD3D11::Update(DataSourceSurface* aSurface,
         D3D11_BOX box;
         box.front = 0;
         box.back = 1;
-        box.left = rect.x;
-        box.top = rect.y;
+        box.left = rect.X();
+        box.top = rect.Y();
         box.right = rect.XMost();
         box.bottom = rect.YMost();
 
-        void* data = map.mData + map.mStride * rect.y + BytesPerPixel(aSurface->GetFormat()) * rect.x;
+        void* data = map.mData + map.mStride * rect.Y() + BytesPerPixel(aSurface->GetFormat()) * rect.X();
 
         context->UpdateSubresource(mTexture, 0, &box, data, map.mStride, map.mStride * rect.Height());
       }
@@ -1483,8 +1500,8 @@ DataTextureSourceD3D11::Update(DataSourceSurface* aSurface,
 
       D3D11_SUBRESOURCE_DATA initData;
       initData.pSysMem = map.GetData() +
-                         tileRect.y * map.GetStride() +
-                         tileRect.x * bpp;
+                         tileRect.Y() * map.GetStride() +
+                         tileRect.X() * bpp;
       initData.SysMemPitch = map.GetStride();
 
       hr = mDevice->CreateTexture2D(&desc, &initData, getter_AddRefs(mTileTextures[i]));
@@ -1555,7 +1572,7 @@ IntRect
 DataTextureSourceD3D11::GetTileRect()
 {
   IntRect rect = GetTileRect(mCurrentTile);
-  return IntRect(rect.x, rect.y, rect.Width(), rect.Height());
+  return IntRect(rect.X(), rect.Y(), rect.Width(), rect.Height());
 }
 
 CompositingRenderTargetD3D11::CompositingRenderTargetD3D11(ID3D11Texture2D* aTexture,

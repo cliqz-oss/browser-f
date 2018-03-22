@@ -28,12 +28,12 @@ function run_test() {
   // doTestFinish will prevent writing the update xml files during shutdown.
   gAUS.pauseDownload();
   gUpdateManager.cleanupActiveUpdate();
-  do_execute_soon(waitForUpdateXMLFiles);
+  executeSoon(waitForUpdateXMLFiles);
 }
 
 /**
  * Called after the call to waitForUpdateXMLFiles finishes.
  */
 function waitForUpdateXMLFilesFinished() {
-  do_execute_soon(doTestFinish);
+  executeSoon(doTestFinish);
 }

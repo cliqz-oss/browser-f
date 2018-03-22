@@ -72,7 +72,7 @@ add_task(async function test_privacy() {
     }
   }
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     // Reset the prefs.
     for (let setting in SETTINGS) {
       for (let pref in SETTINGS[setting]) {
@@ -80,6 +80,8 @@ add_task(async function test_privacy() {
       }
     }
   });
+
+  await promiseStartupManager();
 
   // Create an array of extensions to install.
   let testExtensions = [
@@ -100,8 +102,6 @@ add_task(async function test_privacy() {
     }),
   ];
 
-  await promiseStartupManager();
-
   for (let extension of testExtensions) {
     await extension.startup();
   }
@@ -111,20 +111,20 @@ add_task(async function test_privacy() {
     let data = await testExtensions[0].awaitMessage("gotData");
     ok(data.value, "get returns expected value.");
     equal(data.levelOfControl, "controllable_by_this_extension",
-      "get returns expected levelOfControl.");
+          "get returns expected levelOfControl.");
 
     testExtensions[0].sendMessage("get", {incognito: true}, setting);
     data = await testExtensions[0].awaitMessage("gotData");
     ok(data.value, "get returns expected value with incognito.");
     equal(data.levelOfControl, "not_controllable",
-      "get returns expected levelOfControl with incognito.");
+          "get returns expected levelOfControl with incognito.");
 
     // Change the value to false.
     testExtensions[0].sendMessage("set", {value: false}, setting);
     data = await testExtensions[0].awaitMessage("afterSet");
     ok(!data.value, "get returns expected value after setting.");
     equal(data.levelOfControl, "controlled_by_this_extension",
-      "get returns expected levelOfControl after setting.");
+          "get returns expected levelOfControl after setting.");
 
     // Verify the prefs have been set to match the "false" setting.
     for (let pref in SETTINGS[setting]) {
@@ -141,7 +141,7 @@ add_task(async function test_privacy() {
     data = await testExtensions[1].awaitMessage("afterSet");
     ok(data.value, "get returns expected value after setting via newer extension.");
     equal(data.levelOfControl, "controlled_by_this_extension",
-      "get returns expected levelOfControl after setting.");
+          "get returns expected levelOfControl after setting.");
 
     // Verify the prefs have been set to match the "true" setting.
     for (let pref in SETTINGS[setting]) {
@@ -158,27 +158,27 @@ add_task(async function test_privacy() {
     data = await testExtensions[0].awaitMessage("afterSet");
     ok(data.value, "Newer extension remains in control.");
     equal(data.levelOfControl, "controlled_by_other_extensions",
-      "get returns expected levelOfControl when controlled by other.");
+          "get returns expected levelOfControl when controlled by other.");
 
     // Clear the value of the newer extension.
     testExtensions[1].sendMessage("clear", {}, setting);
     data = await testExtensions[1].awaitMessage("afterClear");
     ok(!data.value, "Older extension gains control.");
     equal(data.levelOfControl, "controllable_by_this_extension",
-      "Expected levelOfControl returned after clearing.");
+          "Expected levelOfControl returned after clearing.");
 
     testExtensions[0].sendMessage("get", {}, setting);
     data = await testExtensions[0].awaitMessage("gotData");
     ok(!data.value, "Current, older extension has control.");
     equal(data.levelOfControl, "controlled_by_this_extension",
-      "Expected levelOfControl returned after clearing.");
+          "Expected levelOfControl returned after clearing.");
 
     // Set the value again with the newer extension.
     testExtensions[1].sendMessage("set", {value: true}, setting);
     data = await testExtensions[1].awaitMessage("afterSet");
     ok(data.value, "get returns expected value after setting via newer extension.");
     equal(data.levelOfControl, "controlled_by_this_extension",
-      "get returns expected levelOfControl after setting.");
+          "get returns expected levelOfControl after setting.");
 
     // Unload the newer extension. Expect the older extension to regain control.
     await testExtensions[1].unload();
@@ -186,7 +186,7 @@ add_task(async function test_privacy() {
     data = await testExtensions[0].awaitMessage("gotData");
     ok(!data.value, "Older extension regained control.");
     equal(data.levelOfControl, "controlled_by_this_extension",
-      "Expected levelOfControl returned after unloading.");
+          "Expected levelOfControl returned after unloading.");
 
     // Reload the extension for the next iteration of the loop.
     testExtensions[1] = ExtensionTestUtils.loadExtension({
@@ -203,7 +203,7 @@ add_task(async function test_privacy() {
     data = await testExtensions[0].awaitMessage("afterClear");
     ok(data.value, "Setting returns to original value when all are cleared.");
     equal(data.levelOfControl, "controllable_by_this_extension",
-      "Expected levelOfControl returned after clearing.");
+          "Expected levelOfControl returned after clearing.");
 
     // Verify that our initial values were restored.
     for (let pref in SETTINGS[setting]) {
@@ -219,6 +219,8 @@ add_task(async function test_privacy() {
 });
 
 add_task(async function test_privacy_other_prefs() {
+  const cookieSvc = Ci.nsICookieService;
+
   // Create an object to hold the values to which we will initialize the prefs.
   const SETTINGS = {
     "network.webRTCIPHandlingPolicy": {
@@ -240,6 +242,10 @@ add_task(async function test_privacy_other_prefs() {
     },
     "websites.firstPartyIsolate": {
       "privacy.firstparty.isolate": true,
+    },
+    "websites.cookieConfig": {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_ACCEPT,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
     },
   };
 
@@ -267,7 +273,7 @@ add_task(async function test_privacy_other_prefs() {
     }
   }
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     // Reset the prefs.
     for (let setting in SETTINGS) {
       for (let pref in SETTINGS[setting]) {
@@ -275,6 +281,8 @@ add_task(async function test_privacy_other_prefs() {
       }
     }
   });
+
+  await promiseStartupManager();
 
   let extension = ExtensionTestUtils.loadExtension({
     background,
@@ -284,13 +292,12 @@ add_task(async function test_privacy_other_prefs() {
     useAddonManager: "temporary",
   });
 
-  await promiseStartupManager();
   await extension.startup();
 
-  async function testSetting(setting, value, expected) {
+  async function testSetting(setting, value, expected, expectedValue = value) {
     extension.sendMessage("set", {value: value}, setting);
     let data = await extension.awaitMessage("settingData");
-    equal(data.value, value);
+    deepEqual(data.value, expectedValue);
     for (let pref in expected) {
       equal(Preferences.get(pref), expected[pref], `${pref} set correctly for ${value}`);
     }
@@ -320,70 +327,158 @@ add_task(async function test_privacy_other_prefs() {
       "media.peerconnection.ice.no_host": false,
       "media.peerconnection.ice.proxy_only": true,
     });
-  await testSetting("network.webRTCIPHandlingPolicy", "default",
+  await testSetting(
+    "network.webRTCIPHandlingPolicy", "default",
     {
       "media.peerconnection.ice.default_address_only": false,
       "media.peerconnection.ice.no_host": false,
       "media.peerconnection.ice.proxy_only": false,
     });
 
-  await testSetting("network.peerConnectionEnabled", false,
+  await testSetting(
+    "network.peerConnectionEnabled", false,
     {
       "media.peerconnection.enabled": false,
     });
-  await testSetting("network.peerConnectionEnabled", true,
+  await testSetting(
+    "network.peerConnectionEnabled", true,
     {
       "media.peerconnection.enabled": true,
     });
 
-  await testSetting("websites.referrersEnabled", false,
+  await testSetting(
+    "websites.referrersEnabled", false,
     {
       "network.http.sendRefererHeader": 0,
     });
-  await testSetting("websites.referrersEnabled", true,
+  await testSetting(
+    "websites.referrersEnabled", true,
     {
       "network.http.sendRefererHeader": 2,
     });
 
-  await testSetting("websites.resistFingerprinting", false,
+  await testSetting(
+    "websites.resistFingerprinting", false,
     {
       "privacy.resistFingerprinting": false,
     });
-  await testSetting("websites.resistFingerprinting", true,
+  await testSetting(
+    "websites.resistFingerprinting", true,
     {
       "privacy.resistFingerprinting": true,
     });
 
-  await testSetting("websites.firstPartyIsolate", false,
+  await testSetting(
+    "websites.firstPartyIsolate", false,
     {
       "privacy.firstparty.isolate": false,
     });
-  await testSetting("websites.firstPartyIsolate", true,
+  await testSetting(
+    "websites.firstPartyIsolate", true,
     {
       "privacy.firstparty.isolate": true,
     });
 
-  await testSetting("websites.trackingProtectionMode", "always", {
-    "privacy.trackingprotection.enabled": true,
-    "privacy.trackingprotection.pbmode.enabled": true,
-  });
-  await testSetting("websites.trackingProtectionMode", "never", {
-    "privacy.trackingprotection.enabled": false,
-    "privacy.trackingprotection.pbmode.enabled": false,
-  });
-  await testSetting("websites.trackingProtectionMode", "private_browsing", {
-    "privacy.trackingprotection.enabled": false,
-    "privacy.trackingprotection.pbmode.enabled": true,
-  });
+  await testSetting(
+    "websites.trackingProtectionMode", "always", {
+      "privacy.trackingprotection.enabled": true,
+      "privacy.trackingprotection.pbmode.enabled": true,
+    });
+  await testSetting(
+    "websites.trackingProtectionMode", "never", {
+      "privacy.trackingprotection.enabled": false,
+      "privacy.trackingprotection.pbmode.enabled": false,
+    });
+  await testSetting(
+    "websites.trackingProtectionMode", "private_browsing", {
+      "privacy.trackingprotection.enabled": false,
+      "privacy.trackingprotection.pbmode.enabled": true,
+    });
 
-  await testSetting("services.passwordSavingEnabled", false,
+  await testSetting(
+    "services.passwordSavingEnabled", false,
     {
       "signon.rememberSignons": false,
     });
-  await testSetting("services.passwordSavingEnabled", true,
+  await testSetting(
+    "services.passwordSavingEnabled", true,
     {
       "signon.rememberSignons": true,
     });
+
+  await testSetting(
+    "websites.cookieConfig",
+    {behavior: "reject_third_party", nonPersistentCookies: true},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_REJECT_FOREIGN,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_SESSION,
+    },
+  );
+  // A missing nonPersistentCookies property should default to false.
+  await testSetting(
+    "websites.cookieConfig",
+    {behavior: "reject_third_party"},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_REJECT_FOREIGN,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {behavior: "reject_third_party", nonPersistentCookies: false},
+  );
+  // A missing behavior property should reset the pref.
+  await testSetting(
+    "websites.cookieConfig",
+    {nonPersistentCookies: true},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_ACCEPT,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_SESSION,
+    },
+    {behavior: "allow_all", nonPersistentCookies: true},
+  );
+  await testSetting(
+    "websites.cookieConfig",
+    {behavior: "reject_all"},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_REJECT,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {behavior: "reject_all", nonPersistentCookies: false},
+  );
+  await testSetting(
+    "websites.cookieConfig",
+    {behavior: "allow_visited"},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_LIMIT_FOREIGN,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {behavior: "allow_visited", nonPersistentCookies: false},
+  );
+  await testSetting(
+    "websites.cookieConfig",
+    {behavior: "allow_all"},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_ACCEPT,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {behavior: "allow_all", nonPersistentCookies: false},
+  );
+  await testSetting(
+    "websites.cookieConfig",
+    {nonPersistentCookies: true},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_ACCEPT,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_SESSION,
+    },
+    {behavior: "allow_all", nonPersistentCookies: true},
+  );
+  await testSetting(
+    "websites.cookieConfig",
+    {nonPersistentCookies: false},
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_ACCEPT,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {behavior: "allow_all", nonPersistentCookies: false},
+  );
 
   await extension.unload();
 

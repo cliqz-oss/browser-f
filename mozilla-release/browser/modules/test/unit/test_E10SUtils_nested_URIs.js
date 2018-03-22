@@ -3,7 +3,7 @@
 
 const {utils: Cu, interfaces: Ci} = Components;
 
-Cu.import("resource:///modules/E10SUtils.jsm");
+Cu.import("resource://gre/modules/E10SUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
 var TEST_PREFERRED_REMOTE_TYPES = [
@@ -29,14 +29,6 @@ var TEST_CASES = [
     plainURL: "http://some.site/file",
   },
   {
-    nestedURL: "feed:http://some.site",
-    plainURL: "http://some.site",
-  },
-  {
-    nestedURL: "pcast:http://some.site",
-    plainURL: "http://some.site",
-  },
-  {
     nestedURL: "view-source:http://some.site",
     plainURL: "http://some.site",
   },
@@ -51,10 +43,6 @@ var TEST_CASES = [
   {
     nestedURL: "view-source:about:robots",
     plainURL: "about:robots",
-  },
-  {
-    nestedURL: "view-source:feed:http://some.site",
-    plainURL: "http://some.site",
   },
   {
     nestedURL: "view-source:pcast:http://some.site",

@@ -188,7 +188,12 @@ def update(new_info):
                      to a json file containing the new info.
     """
 
-    if isinstance(new_info, basestring):
+    PY3 = sys.version_info[0] == 3
+    if PY3:
+        string_types = str,
+    else:
+        string_types = basestring,
+    if isinstance(new_info, string_types):
         # lazy import
         import mozfile
         import json
@@ -252,7 +257,7 @@ def output_to_file(path):
 update({})
 
 # exports
-__all__ = info.keys()
+__all__ = list(info.keys())
 __all__ += ['is' + os_name.title() for os_name in choices['os']]
 __all__ += [
     'info',
@@ -283,7 +288,7 @@ def main(args=None):
         import json
         for arg in args:
             if _os.path.exists(arg):
-                string = file(arg).read()
+                string = open(arg).read()
             else:
                 string = arg
             update(json.loads(string))

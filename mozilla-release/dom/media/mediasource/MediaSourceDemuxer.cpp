@@ -10,6 +10,7 @@
 #include "OpusDecoder.h"
 #include "SourceBufferList.h"
 #include "VorbisDecoder.h"
+#include "VideoUtils.h"
 #include "nsPrintfCString.h"
 
 #include <algorithm>
@@ -64,7 +65,9 @@ MediaSourceDemuxer::AddSizeOfResources(
       }
     });
 
-  GetTaskQueue()->Dispatch(task.forget());
+  nsresult rv = GetTaskQueue()->Dispatch(task.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 void MediaSourceDemuxer::NotifyInitDataArrived()
@@ -79,7 +82,9 @@ void MediaSourceDemuxer::NotifyInitDataArrived()
         self->mInitPromise.ResolveIfExists(NS_OK, __func__);
       }
     });
-  GetTaskQueue()->Dispatch(task.forget());
+  nsresult rv = GetTaskQueue()->Dispatch(task.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 bool
@@ -142,6 +147,7 @@ MediaSourceDemuxer::GetTrackDemuxer(TrackType aType, uint32_t aTrackNumber)
   }
   RefPtr<MediaSourceTrackDemuxer> e =
     new MediaSourceTrackDemuxer(this, aType, manager);
+  DDLINKCHILD("track demuxer", e.get());
   mDemuxers.AppendElement(e);
   return e.forget();
 }
@@ -170,7 +176,9 @@ MediaSourceDemuxer::AttachSourceBuffer(
     this,
     &MediaSourceDemuxer::DoAttachSourceBuffer,
     aSourceBuffer);
-  GetTaskQueue()->Dispatch(task.forget());
+  nsresult rv = GetTaskQueue()->Dispatch(task.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 void
@@ -191,7 +199,9 @@ MediaSourceDemuxer::DetachSourceBuffer(
     this,
     &MediaSourceDemuxer::DoDetachSourceBuffer,
     aSourceBuffer);
-  GetTaskQueue()->Dispatch(task.forget());
+  nsresult rv = GetTaskQueue()->Dispatch(task.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 void
@@ -364,7 +374,9 @@ MediaSourceTrackDemuxer::Reset()
           self->mType, MediaSourceDemuxer::EOS_FUZZ);
       }
     });
-  mParent->GetTaskQueue()->Dispatch(task.forget());
+  nsresult rv = mParent->GetTaskQueue()->Dispatch(task.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 nsresult
@@ -404,7 +416,9 @@ MediaSourceTrackDemuxer::BreakCycles()
       self->DetachManager();
       self->mParent = nullptr;
     });
-  mParent->GetTaskQueue()->Dispatch(task.forget());
+  nsresult rv = mParent->GetTaskQueue()->Dispatch(task.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 RefPtr<MediaSourceTrackDemuxer::SeekPromise>

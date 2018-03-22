@@ -4,31 +4,70 @@
 
 "use strict";
 
-const { DOM: dom, createClass, PropTypes } =
-  require("devtools/client/shared/vendor/react");
+const { Component } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const { isKeyIn } = require("../utils/key");
 
 const Constants = require("../constants");
 const Types = require("../types");
 
-module.exports = createClass({
-  displayName: "ViewportDimension",
+/**
+ * Get the increment/decrement step to use for the provided key event.
+ */
+function getIncrement(event) {
+  const defaultIncrement = 1;
+  const largeIncrement = 100;
+  const mediumIncrement = 10;
 
-  propTypes: {
-    viewport: PropTypes.shape(Types.viewport).isRequired,
-    onChangeSize: PropTypes.func.isRequired,
-    onRemoveDeviceAssociation: PropTypes.func.isRequired,
-  },
+  let increment = 0;
+  let key = event.keyCode;
 
-  getInitialState() {
-    let { width, height } = this.props.viewport;
+  if (isKeyIn(key, "UP", "PAGE_UP")) {
+    increment = 1 * defaultIncrement;
+  } else if (isKeyIn(key, "DOWN", "PAGE_DOWN")) {
+    increment = -1 * defaultIncrement;
+  }
 
+  if (event.shiftKey) {
+    if (isKeyIn(key, "PAGE_UP", "PAGE_DOWN")) {
+      increment *= largeIncrement;
+    } else {
+      increment *= mediumIncrement;
+    }
+  }
+
+  return increment;
+}
+
+class ViewportDimension extends Component {
+  static get propTypes() {
     return {
+      viewport: PropTypes.shape(Types.viewport).isRequired,
+      onChangeSize: PropTypes.func.isRequired,
+      onRemoveDeviceAssociation: PropTypes.func.isRequired,
+    };
+  }
+
+  constructor(props) {
+    super(props);
+    let { width, height } = props.viewport;
+
+    this.state = {
       width,
       height,
       isEditing: false,
       isInvalid: false,
     };
-  },
+
+    this.validateInput = this.validateInput.bind(this);
+    this.onInputBlur = this.onInputBlur.bind(this);
+    this.onInputChange = this.onInputChange.bind(this);
+    this.onInputFocus = this.onInputFocus.bind(this);
+    this.onInputKeyDown = this.onInputKeyDown.bind(this);
+    this.onInputKeyUp = this.onInputKeyUp.bind(this);
+    this.onInputSubmit = this.onInputSubmit.bind(this);
+  }
 
   componentWillReceiveProps(nextProps) {
     let { width, height } = nextProps.viewport;
@@ -37,7 +76,7 @@ module.exports = createClass({
       width,
       height,
     });
-  },
+  }
 
   validateInput(value) {
     let isInvalid = true;
@@ -51,7 +90,7 @@ module.exports = createClass({
     this.setState({
       isInvalid,
     });
-  },
+  }
 
   onInputBlur() {
     let { width, height } = this.props.viewport;
@@ -64,29 +103,39 @@ module.exports = createClass({
       isEditing: false,
       inInvalid: false,
     });
-  },
+  }
 
-  onInputChange({ target }) {
+  onInputChange({ target }, callback) {
     if (target.value.length > 4) {
       return;
     }
 
     if (this.refs.widthInput == target) {
-      this.setState({ width: target.value });
+      this.setState({ width: target.value }, callback);
       this.validateInput(target.value);
     }
 
     if (this.refs.heightInput == target) {
-      this.setState({ height: target.value });
+      this.setState({ height: target.value }, callback);
       this.validateInput(target.value);
     }
-  },
+  }
 
   onInputFocus() {
     this.setState({
       isEditing: true,
     });
-  },
+  }
+
+  onInputKeyDown(event) {
+    let { target } = event;
+    let increment = getIncrement(event);
+    if (!increment) {
+      return;
+    }
+    target.value = parseInt(target.value, 10) + increment;
+    this.onInputChange(event, this.onInputSubmit);
+  }
 
   onInputKeyUp({ target, keyCode }) {
     // On Enter, submit the input
@@ -98,7 +147,7 @@ module.exports = createClass({
     if (keyCode == 27) {
       target.blur();
     }
-  },
+  }
 
   onInputSubmit() {
     if (this.state.isInvalid) {
@@ -120,7 +169,7 @@ module.exports = createClass({
     }
     this.props.onChangeSize(parseInt(this.state.width, 10),
                             parseInt(this.state.height, 10));
-  },
+  }
 
   render() {
     let editableClass = "viewport-dimension-editable";
@@ -151,6 +200,7 @@ module.exports = createClass({
           onBlur: this.onInputBlur,
           onChange: this.onInputChange,
           onFocus: this.onInputFocus,
+          onKeyDown: this.onInputKeyDown,
           onKeyUp: this.onInputKeyUp,
         }),
         dom.span({
@@ -164,10 +214,12 @@ module.exports = createClass({
           onBlur: this.onInputBlur,
           onChange: this.onInputChange,
           onFocus: this.onInputFocus,
+          onKeyDown: this.onInputKeyDown,
           onKeyUp: this.onInputKeyUp,
         })
       )
     );
-  },
+  }
+}
 
-});
+module.exports = ViewportDimension;

@@ -29,11 +29,6 @@ var HeuristicsRegExp = {
     ),
 
     // ==== Telephone ====
-    "tel-extension": new RegExp(
-      "\\bext|ext\\b|extension" +
-      "|ramal", // pt-BR, pt-PT
-      "iu"
-    ),
     "tel": new RegExp(
       "phone|mobile|contact.?number" +
       "|telefonnummer" + // de-DE
@@ -66,6 +61,7 @@ var HeuristicsRegExp = {
     ),
     "address-line1": new RegExp(
       "^address$|address[_-]?line(one)?|address1|addr1|street" +
+      "|addrline1|address_1" + // Extra rules by Firefox
       "|(?:shipping|billing)address$" +
       "|strasse|straße|hausnummer|housenumber" + // de-DE
       "|house.?name" + // en-GB
@@ -81,6 +77,7 @@ var HeuristicsRegExp = {
     ),
     "address-line2": new RegExp(
       "address[_-]?line(2|two)|address2|addr2|street|suite|unit" +
+      "|addrline2|address_2" + // Extra rules by Firefox
       "|adresszusatz|ergänzende.?angaben" + // de-DE
       "|direccion2|colonia|adicional" + // es
       "|addresssuppl|complementnom|appartement" + // fr-FR
@@ -94,6 +91,7 @@ var HeuristicsRegExp = {
     ),
     "address-line3": new RegExp(
       "address[_-]?line(3|three)|address3|addr3|street|suite|unit" +
+      "|addrline3|address_3" + // Extra rules by Firefox
       "|adresszusatz|ergänzende.?angaben" + // de-DE
       "|direccion3|colonia|adicional" + // es
       "|addresssuppl|complementnom|appartement" + // fr-FR
@@ -219,6 +217,7 @@ var HeuristicsRegExp = {
     ),
     "cc-number": new RegExp(
       "(add)?(?:card|cc|acct).?(?:number|#|no|num|field)" +
+      "|(cc|kk)nr" + // Extra rules by Firefox for de-DE
       "|nummer" + // de-DE
       "|credito|numero|número" + // es
       "|numéro" + // fr-FR
@@ -231,6 +230,7 @@ var HeuristicsRegExp = {
     ),
     "cc-exp-month": new RegExp(
       "expir|exp.*mo|exp.*date|ccmonth|cardmonth|addmonth" +
+      "|(cc|kk)month" + // Extra rules by Firefox for de-DE
       "|gueltig|gültig|monat" + // de-DE
       "|fecha" + // es
       "|date.*exp" + // fr-FR
@@ -243,6 +243,7 @@ var HeuristicsRegExp = {
     ),
     "cc-exp-year": new RegExp(
       "exp|^/|(add)?year" +
+      "|(cc|kk)year" + // Extra rules by Firefox for de-DE
       "|ablaufdatum|gueltig|gültig|jahr" + // de-DE
       "|fecha" + // es
       "|scadenza" + // it-IT

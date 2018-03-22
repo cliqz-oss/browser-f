@@ -19,6 +19,8 @@
 #ifndef wasm_validate_h
 #define wasm_validate_h
 
+#include "mozilla/TypeTraits.h"
+
 #include "wasm/WasmCode.h"
 #include "wasm/WasmTypes.h"
 
@@ -57,6 +59,7 @@ struct ModuleEnvironment
     const DebugEnabled        debug;
     const ModuleKind          kind;
     const CompileMode         mode;
+    const Shareable           sharedMemoryEnabled;
     const Tier                tier;
 
     // Module fields decoded from the module environment (or initialized while
@@ -84,10 +87,12 @@ struct ModuleEnvironment
     explicit ModuleEnvironment(CompileMode mode = CompileMode::Once,
                                Tier tier = Tier::Ion,
                                DebugEnabled debug = DebugEnabled::False,
+                               Shareable sharedMemoryEnabled = Shareable::False,
                                ModuleKind kind = ModuleKind::Wasm)
       : debug(debug),
         kind(kind),
         mode(mode),
+        sharedMemoryEnabled(sharedMemoryEnabled),
         tier(tier),
         memoryUsage(MemoryUsage::None),
         minMemoryLength(0)
@@ -109,7 +114,10 @@ struct ModuleEnvironment
         return funcSigs.length() - funcImportGlobalDataOffsets.length();
     }
     bool usesMemory() const {
-        return UsesMemory(memoryUsage);
+        return memoryUsage != MemoryUsage::None;
+    }
+    bool usesSharedMemory() const {
+        return memoryUsage == MemoryUsage::Shared;
     }
     bool isAsmJS() const {
         return kind == ModuleKind::AsmJS;
@@ -276,6 +284,12 @@ class Encoder
         return writeFixedU8(uint8_t(Op::MozPrefix)) &&
                writeFixedU8(uint8_t(op));
     }
+    MOZ_MUST_USE bool writeOp(ThreadOp op) {
+        static_assert(size_t(ThreadOp::Limit) <= 256, "fits");
+        MOZ_ASSERT(size_t(op) < size_t(ThreadOp::Limit));
+        return writeFixedU8(uint8_t(Op::ThreadPrefix)) &&
+               writeFixedU8(uint8_t(op));
+    }
 
     // Fixed-length encodings that allow back-patching.
 
@@ -386,6 +400,7 @@ class Decoder
 
     template <typename SInt>
     MOZ_MUST_USE bool readVarS(SInt* out) {
+        using UInt = typename mozilla::MakeUnsigned<SInt>::Type;
         const unsigned numBits = sizeof(SInt) * CHAR_BIT;
         const unsigned remainderBits = numBits % 7;
         const unsigned numBitsInSevens = numBits - remainderBits;
@@ -399,7 +414,7 @@ class Decoder
             shift += 7;
             if (!(byte & 0x80)) {
                 if (byte & 0x40)
-                    s |= SInt(-1) << shift;
+                    s |= UInt(-1) << shift;
                 *out = s;
                 return true;
             }
@@ -409,7 +424,7 @@ class Decoder
         uint8_t mask = 0x7f & (uint8_t(-1) << remainderBits);
         if ((byte & mask) != ((byte & (1 << (remainderBits - 1))) ? mask : 0))
             return false;
-        *out = s | SInt(byte) << shift;
+        *out = s | UInt(byte) << shift;
         return true;
     }
 
@@ -709,7 +724,7 @@ DecodeModuleTail(Decoder& d, ModuleEnvironment* env);
 //  - otherwise, there was a legitimate error described by *error
 
 MOZ_MUST_USE bool
-Validate(const ShareableBytes& bytecode, UniqueChars* error);
+Validate(JSContext* cx, const ShareableBytes& bytecode, UniqueChars* error);
 
 }  // namespace wasm
 }  // namespace js

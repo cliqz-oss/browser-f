@@ -8,12 +8,8 @@
 #include "MediaDataDemuxer.h"
 #include "MediaResource.h"
 
-namespace mp4_demuxer {
-class BufferReader;
-}
-using mp4_demuxer::BufferReader;
-
 namespace mozilla {
+class BufferReader;
 
 static const uint32_t FRMT_CODE = 0x666d7420;
 static const uint32_t DATA_CODE = 0x64617461;
@@ -30,7 +26,12 @@ static const uint16_t DATA_CHUNK_SIZE = 768;
 
 class WAVTrackDemuxer;
 
-class WAVDemuxer : public MediaDataDemuxer
+DDLoggedTypeDeclNameAndBase(WAVDemuxer, MediaDataDemuxer);
+DDLoggedTypeNameAndBase(WAVTrackDemuxer, MediaTrackDemuxer);
+
+class WAVDemuxer
+  : public MediaDataDemuxer
+  , public DecoderDoctorLifeLogger<WAVDemuxer>
 {
 public:
   // MediaDataDemuxer interface.
@@ -180,7 +181,9 @@ private:
   DataChunk mChunk;
 };
 
-class WAVTrackDemuxer : public MediaTrackDemuxer
+class WAVTrackDemuxer
+  : public MediaTrackDemuxer
+  , public DecoderDoctorLifeLogger<WAVTrackDemuxer>
 {
 public:
   explicit WAVTrackDemuxer(MediaResource* aSource);

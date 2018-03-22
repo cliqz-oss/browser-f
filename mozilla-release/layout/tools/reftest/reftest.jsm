@@ -273,6 +273,9 @@ function InitAndStartRefTests()
         g.startAfter = undefined;
     }
 
+    try {
+        g.compareRetainedDisplayLists = prefs.getBoolPref("reftest.compareRetainedDisplayLists");
+    } catch (e) {}
 #ifdef MOZ_STYLO
     try {
         g.compareStyloToGecko = prefs.getBoolPref("reftest.compareStyloToGecko");
@@ -364,6 +367,8 @@ function StartTests()
 
     g.runUntilFailure = prefs.getBoolPref("reftest.runUntilFailure", false);
 
+    g.verify = prefs.getBoolPref("reftest.verify", false);
+
     g.cleanupPendingCrashes = prefs.getBoolPref("reftest.cleanupPendingCrashes", false);
 
     // Check if there are any crash dump files from the startup procedure, before
@@ -448,7 +453,8 @@ function StartTests()
             var ids = g.urls.map(function(obj) {
                 return obj.identifier;
             });
-            logger.suiteStart(ids, {"skipped": g.urls.length - numActiveTests});
+            var suite = prefs.getCharPref('reftest.suite', 'reftest');
+            logger.suiteStart(ids, suite, {"skipped": g.urls.length - numActiveTests});
             g.suiteStarted = true
         }
 
@@ -475,7 +481,7 @@ function StartTests()
 
         g.totalTests = g.urls.length;
 
-        if (!g.totalTests)
+        if (!g.totalTests && !g.verify)
             throw "No tests to run";
 
         g.uriCanvases = {};

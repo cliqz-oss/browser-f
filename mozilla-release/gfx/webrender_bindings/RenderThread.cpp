@@ -118,7 +118,7 @@ RenderThread::AddRenderer(wr::WindowId aWindowId, UniquePtr<RendererOGL> aRender
   mRenderers[aWindowId] = Move(aRenderer);
 
   MutexAutoLock lock(mFrameCountMapLock);
-  mPendingFrameCounts.Put(AsUint64(aWindowId), FrameCount());
+  mWindowInfos.Put(AsUint64(aWindowId), WindowInfo());
 }
 
 void
@@ -133,7 +133,7 @@ RenderThread::RemoveRenderer(wr::WindowId aWindowId)
   mRenderers.erase(aWindowId);
 
   MutexAutoLock lock(mFrameCountMapLock);
-  mPendingFrameCounts.Remove(AsUint64(aWindowId));
+  mWindowInfos.Remove(AsUint64(aWindowId));
 }
 
 RendererOGL*
@@ -164,6 +164,10 @@ RenderThread::NewFrameReady(wr::WindowId aWindowId)
                                       this,
                                       &RenderThread::NewFrameReady,
                                       aWindowId));
+    return;
+  }
+
+  if (IsDestroyed(aWindowId)) {
     return;
   }
 
@@ -230,6 +234,7 @@ RenderThread::UpdateAndRender(wr::WindowId aWindowId)
 
   auto epochs = renderer->FlushRenderedEpochs();
   layers::CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(
+    "NotifyDidRenderRunnable",
     &NotifyDidRender,
     renderer->GetCompositorBridge(),
     epochs,
@@ -274,17 +279,42 @@ RenderThread::TooManyPendingFrames(wr::WindowId aWindowId)
   // or if RenderBackend is still processing a frame.
 
   MutexAutoLock lock(mFrameCountMapLock);
-  FrameCount count;
-  if (!mPendingFrameCounts.Get(AsUint64(aWindowId), &count)) {
+  WindowInfo info;
+  if (!mWindowInfos.Get(AsUint64(aWindowId), &info)) {
     MOZ_ASSERT(false);
     return true;
   }
 
-  if (count.mPendingCount > maxFrameCount) {
+  if (info.mPendingCount > maxFrameCount) {
     return true;
   }
-  MOZ_ASSERT(count.mPendingCount >= count.mRenderingCount);
-  return count.mPendingCount > count.mRenderingCount;
+  MOZ_ASSERT(info.mPendingCount >= info.mRenderingCount);
+  return info.mPendingCount > info.mRenderingCount;
+}
+
+bool
+RenderThread::IsDestroyed(wr::WindowId aWindowId)
+{
+  MutexAutoLock lock(mFrameCountMapLock);
+  WindowInfo info;
+  if (!mWindowInfos.Get(AsUint64(aWindowId), &info)) {
+    return true;
+  }
+
+  return info.mIsDestroyed;
+}
+
+void
+RenderThread::SetDestroyed(wr::WindowId aWindowId)
+{
+  MutexAutoLock lock(mFrameCountMapLock);
+  WindowInfo info;
+  if (!mWindowInfos.Get(AsUint64(aWindowId), &info)) {
+    MOZ_ASSERT(false);
+    return;
+  }
+  info.mIsDestroyed = true;
+  mWindowInfos.Put(AsUint64(aWindowId), info);
 }
 
 void
@@ -292,14 +322,14 @@ RenderThread::IncPendingFrameCount(wr::WindowId aWindowId)
 {
   MutexAutoLock lock(mFrameCountMapLock);
   // Get the old count.
-  FrameCount count;
-  if (!mPendingFrameCounts.Get(AsUint64(aWindowId), &count)) {
+  WindowInfo info;
+  if (!mWindowInfos.Get(AsUint64(aWindowId), &info)) {
     MOZ_ASSERT(false);
     return;
   }
   // Update pending frame count.
-  count.mPendingCount = count.mPendingCount + 1;
-  mPendingFrameCounts.Put(AsUint64(aWindowId), count);
+  info.mPendingCount = info.mPendingCount + 1;
+  mWindowInfos.Put(AsUint64(aWindowId), info);
 }
 
 void
@@ -307,14 +337,14 @@ RenderThread::IncRenderingFrameCount(wr::WindowId aWindowId)
 {
   MutexAutoLock lock(mFrameCountMapLock);
   // Get the old count.
-  FrameCount count;
-  if (!mPendingFrameCounts.Get(AsUint64(aWindowId), &count)) {
+  WindowInfo info;
+  if (!mWindowInfos.Get(AsUint64(aWindowId), &info)) {
     MOZ_ASSERT(false);
     return;
   }
   // Update rendering frame count.
-  count.mRenderingCount = count.mRenderingCount + 1;
-  mPendingFrameCounts.Put(AsUint64(aWindowId), count);
+  info.mRenderingCount = info.mRenderingCount + 1;
+  mWindowInfos.Put(AsUint64(aWindowId), info);
 }
 
 void
@@ -322,20 +352,20 @@ RenderThread::DecPendingFrameCount(wr::WindowId aWindowId)
 {
   MutexAutoLock lock(mFrameCountMapLock);
   // Get the old count.
-  FrameCount count;
-  if (!mPendingFrameCounts.Get(AsUint64(aWindowId), &count)) {
+  WindowInfo info;
+  if (!mWindowInfos.Get(AsUint64(aWindowId), &info)) {
     MOZ_ASSERT(false);
     return;
   }
-  MOZ_ASSERT(count.mPendingCount > 0);
-  MOZ_ASSERT(count.mRenderingCount > 0);
-  if (count.mPendingCount <= 0) {
+  MOZ_ASSERT(info.mPendingCount > 0);
+  MOZ_ASSERT(info.mRenderingCount > 0);
+  if (info.mPendingCount <= 0) {
     return;
   }
   // Update frame counts.
-  count.mPendingCount = count.mPendingCount - 1;
-  count.mRenderingCount = count.mRenderingCount - 1;
-  mPendingFrameCounts.Put(AsUint64(aWindowId), count);
+  info.mPendingCount = info.mPendingCount - 1;
+  info.mRenderingCount = info.mRenderingCount - 1;
+  mWindowInfos.Put(AsUint64(aWindowId), info);
 }
 
 void
@@ -393,6 +423,17 @@ RenderThread::GetRenderTexture(wr::WrExternalImageId aExternalImageId)
   return mRenderTextures.GetWeak(aExternalImageId.mHandle);
 }
 
+WebRenderProgramCache*
+RenderThread::ProgramCache()
+{
+  MOZ_ASSERT(IsInRenderThread());
+
+  if (!mProgramCache) {
+    mProgramCache = MakeUnique<WebRenderProgramCache>();
+  }
+  return mProgramCache.get();
+}
+
 WebRenderThreadPool::WebRenderThreadPool()
 {
   mThreadPool = wr_thread_pool_new();
@@ -403,23 +444,41 @@ WebRenderThreadPool::~WebRenderThreadPool()
   wr_thread_pool_delete(mThreadPool);
 }
 
+WebRenderProgramCache::WebRenderProgramCache()
+{
+  mProgramCache = wr_program_cache_new();
+}
+
+WebRenderProgramCache::~WebRenderProgramCache()
+{
+  wr_program_cache_delete(mProgramCache);
+}
+
 } // namespace wr
 } // namespace mozilla
 
 extern "C" {
 
-void wr_notifier_new_frame_ready(mozilla::wr::WrWindowId aWindowId)
+static void NewFrameReady(mozilla::wr::WrWindowId aWindowId)
 {
   mozilla::wr::RenderThread::Get()->IncRenderingFrameCount(aWindowId);
   mozilla::wr::RenderThread::Get()->NewFrameReady(mozilla::wr::WindowId(aWindowId));
 }
 
+void wr_notifier_new_frame_ready(mozilla::wr::WrWindowId aWindowId)
+{
+  NewFrameReady(aWindowId);
+}
+
 void wr_notifier_new_scroll_frame_ready(mozilla::wr::WrWindowId aWindowId, bool aCompositeNeeded)
 {
-  // It is not necessary to update rendering with new_scroll_frame_ready.
-  // WebRenderBridgeParent::CompositeToTarget() is implemented to call
-  // WebRenderAPI::GenerateFrame() if it is necessary to trigger UpdateAndRender().
-  // See Bug 1377688.
+  // If we sent a transaction that contained both scrolling updates and a
+  // GenerateFrame, we can get this function called with aCompositeNeeded=true
+  // instead of wr_notifier_new_frame_ready. In that case we want to update the
+  // rendering.
+  if (aCompositeNeeded) {
+    NewFrameReady(aWindowId);
+  }
 }
 
 void wr_notifier_external_event(mozilla::wr::WrWindowId aWindowId, size_t aRawEvent)

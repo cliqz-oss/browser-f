@@ -24,7 +24,7 @@ add_task(async function() {
   clickElement(dbg, "resume");
 
   await waitForPaused(dbg);
-  await waitForLoadedSource(dbg, "average.c");
+  await waitForSelectedSource(dbg, "average.c");
   assertPausedLocation(dbg);
 
   const frames = findAllElements(dbg, "frames");

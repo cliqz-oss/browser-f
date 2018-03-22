@@ -69,6 +69,7 @@ XPCOMUtils.defineLazyGetter(this, "browserSessionID", Utils.makeGUID);
 
 function Sync11Service() {
   this._notify = Utils.notify("weave:service:");
+  Utils.defineLazyIDProperty(this, "syncID", "services.sync.client.syncID");
 }
 Sync11Service.prototype = {
 
@@ -93,15 +94,6 @@ Sync11Service.prototype = {
     }
     this._clusterURL = value;
     this._updateCachedURLs();
-  },
-
-  get syncID() {
-    // Generate a random syncID id we don't have one
-    let syncID = Svc.Prefs.get("client.syncID", "");
-    return syncID == "" ? this.syncID = Utils.makeGUID() : syncID;
-  },
-  set syncID(value) {
-    Svc.Prefs.set("client.syncID", value);
   },
 
   get isLoggedIn() { return this._loggedIn; },
@@ -292,11 +284,11 @@ Sync11Service.prototype = {
     this.identity = Status._authManager;
     this.collectionKeys = new CollectionKeyManager();
 
+    this.scheduler = new SyncScheduler(this);
     this.errorHandler = new ErrorHandler(this);
 
     this._log = Log.repository.getLogger("Sync.Service");
-    this._log.level =
-      Log.Level[Svc.Prefs.get("log.logger.service.main")];
+    this._log.manageLevelFromPref("services.sync.log.logger.service.main");
 
     this._log.info("Loading Weave " + WEAVE_VERSION);
 
@@ -321,8 +313,6 @@ Sync11Service.prototype = {
     Svc.Obs.add("sync:collection_changed", this); // Pulled from FxAccountsCommon
     Svc.Obs.add("fxaccounts:device_disconnected", this);
     Services.prefs.addObserver(PREFS_BRANCH + "engine.", this);
-
-    this.scheduler = new SyncScheduler(this);
 
     if (!this.enabled) {
       this._log.info("Firefox Sync disabled.");
@@ -433,7 +423,7 @@ Sync11Service.prototype = {
           // Sync in the background (it's fine not to wait on the returned promise
           // because sync() has a lock).
           // [] = clients collection only
-          this.sync([]).catch(e => {
+          this.sync({why: "collection_changed", engines: []}).catch(e => {
             this._log.error(e);
           });
         }
@@ -614,6 +604,17 @@ Sync11Service.prototype = {
       return config.max_post_bytes - 4096;
     }
     return payloadMax;
+  },
+
+  getMemcacheMaxRecordPayloadSize() {
+    // Collections stored in memcached ("tabs", "clients" or "meta") have a
+    // different max size than ones stored in the normal storage server db.
+    // In practice, the real limit here is 1M (bug 1300451 comment 40), but
+    // there's overhead involved that is hard to calculate on the client, so we
+    // use 512k to be safe (at the recommendation of the server team). Note
+    // that if the server reports a lower limit (via info/configuration), we
+    // respect that limit instead. See also bug 1403052.
+    return Math.min(512 * 1024, this.getMaxRecordPayloadSize());
   },
 
   async verifyLogin(allow40XRecovery = true) {
@@ -823,7 +824,7 @@ Sync11Service.prototype = {
   async login() {
     async function onNotify() {
       this._loggedIn = false;
-      if (Services.io.offline) {
+      if (this.scheduler.offline) {
         this.status.login = LOGIN_FAILED_NETWORK_ERROR;
         throw new Error("Application is offline, login should not be called");
       }
@@ -897,8 +898,8 @@ Sync11Service.prototype = {
 
   // Stuff we need to do after login, before we can really do
   // anything (e.g. key setup).
-  async _remoteSetup(infoResponse) {
-    if (!(await this._fetchServerConfiguration())) {
+  async _remoteSetup(infoResponse, fetchConfig = true) {
+    if (fetchConfig && !(await this._fetchServerConfiguration())) {
       return false;
     }
 
@@ -1033,7 +1034,7 @@ Sync11Service.prototype = {
    */
   _shouldLogin: function _shouldLogin() {
     return this.enabled &&
-           !Services.io.offline &&
+           !this.scheduler.offline &&
            !this.isLoggedIn &&
            Async.isAppReady();
   },
@@ -1053,7 +1054,7 @@ Sync11Service.prototype = {
       reason = kSyncNotConfigured;
     else if (Status.service == STATUS_DISABLED || !this.enabled)
       reason = kSyncWeaveDisabled;
-    else if (Services.io.offline)
+    else if (this.scheduler.offline)
       reason = kSyncNetworkOffline;
     else if (this.status.minimumNextSync > Date.now())
       reason = kSyncBackoffNotMet;
@@ -1071,9 +1072,10 @@ Sync11Service.prototype = {
     return reason;
   },
 
-  async sync(engineNamesToSync) {
+  async sync({engines, why} = {}) {
     let dateStr = Utils.formatTimestamp(new Date());
     this._log.debug("User-Agent: " + Utils.userAgent);
+    await this.promiseInitialized;
     this._log.info(`Starting sync at ${dateStr} in browser session ${browserSessionID}`);
     return this._catch(async function() {
       // Make sure we're logged in.
@@ -1086,22 +1088,22 @@ Sync11Service.prototype = {
       } else {
         this._log.trace("In sync: no need to login.");
       }
-      await this._lockedSync(engineNamesToSync);
+      await this._lockedSync(engines, why);
     })();
   },
 
   /**
    * Sync up engines with the server.
    */
-  async _lockedSync(engineNamesToSync) {
+  async _lockedSync(engineNamesToSync, why) {
     return this._lock("service.js: sync",
-                      this._notify("sync", "", async function onNotify() {
+                      this._notify("sync", JSON.stringify({why}), async function onNotify() {
 
       let histogram = Services.telemetry.getHistogramById("WEAVE_START_COUNT");
       histogram.add(1);
 
       let synchronizer = new EngineSynchronizer(this);
-      await synchronizer.sync(engineNamesToSync); // Might throw!
+      await synchronizer.sync(engineNamesToSync, why); // Might throw!
 
       histogram = Services.telemetry.getHistogramById("WEAVE_COMPLETE_SUCCESS_COUNT");
       histogram.add(1);

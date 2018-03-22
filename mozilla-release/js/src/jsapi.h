@@ -549,53 +549,6 @@ struct JSFreeOp {
 
 /************************************************************************/
 
-typedef enum JSGCStatus {
-    JSGC_BEGIN,
-    JSGC_END
-} JSGCStatus;
-
-typedef void
-(* JSGCCallback)(JSContext* cx, JSGCStatus status, void* data);
-
-typedef void
-(* JSObjectsTenuredCallback)(JSContext* cx, void* data);
-
-typedef enum JSFinalizeStatus {
-    /**
-     * Called when preparing to sweep a group of zones, before anything has been
-     * swept.  The collector will not yield to the mutator before calling the
-     * callback with JSFINALIZE_GROUP_START status.
-     */
-    JSFINALIZE_GROUP_PREPARE,
-
-    /**
-     * Called after preparing to sweep a group of zones. Weak references to
-     * unmarked things have been removed at this point, but no GC things have
-     * been swept. The collector may yield to the mutator after this point.
-     */
-    JSFINALIZE_GROUP_START,
-
-    /**
-     * Called after sweeping a group of zones. All dead GC things have been
-     * swept at this point.
-     */
-    JSFINALIZE_GROUP_END,
-
-    /**
-     * Called at the end of collection when everything has been swept.
-     */
-    JSFINALIZE_COLLECTION_END
-} JSFinalizeStatus;
-
-typedef void
-(* JSFinalizeCallback)(JSFreeOp* fop, JSFinalizeStatus status, void* data);
-
-typedef void
-(* JSWeakPointerZonesCallback)(JSContext* cx, void* data);
-
-typedef void
-(* JSWeakPointerCompartmentCallback)(JSContext* cx, JSCompartment* comp, void* data);
-
 typedef bool
 (* JSInterruptCallback)(JSContext* cx);
 
@@ -607,14 +560,19 @@ typedef bool
                                 JS::HandleObject allocationSite, JS::HandleObject incumbentGlobal,
                                 void* data);
 
+namespace JS {
+
 enum class PromiseRejectionHandlingState {
     Unhandled,
     Handled
 };
 
+} /* namespace JS */
+
 typedef void
 (* JSPromiseRejectionTrackerCallback)(JSContext* cx, JS::HandleObject promise,
-                                      PromiseRejectionHandlingState state, void* data);
+                                      JS::PromiseRejectionHandlingState state,
+                                      void* data);
 
 typedef void
 (* JSProcessPromiseCallback)(JSContext* cx, JS::HandleObject promise);
@@ -726,6 +684,18 @@ typedef void
  */
 using JSExternalStringSizeofCallback =
     size_t (*)(JSString* str, mozilla::MallocSizeOf mallocSizeOf);
+
+/**
+ * Callback used to intercept JavaScript errors.
+ */
+struct JSErrorInterceptor {
+    /**
+     * This method is called whenever an error has been raised from JS code.
+     *
+     * This method MUST be infallible.
+     */
+    virtual void interceptError(JSContext* cx, const JS::Value& error) = 0;
+};
 
 /************************************************************************/
 
@@ -1123,15 +1093,6 @@ class MOZ_RAII JSAutoRequest
 #endif
 };
 
-extern JS_PUBLIC_API(JSVersion)
-JS_GetVersion(JSContext* cx);
-
-extern JS_PUBLIC_API(const char*)
-JS_VersionToString(JSVersion version);
-
-extern JS_PUBLIC_API(JSVersion)
-JS_StringToVersion(const char* string);
-
 namespace JS {
 
 class JS_PUBLIC_API(ContextOptions) {
@@ -1152,7 +1113,6 @@ class JS_PUBLIC_API(ContextOptions) {
         werror_(false),
         strictMode_(false),
         extraWarnings_(false),
-        forEachStatement_(false),
         streams_(false)
 #ifdef FUZZING
         , fuzzing_(false)
@@ -1304,12 +1264,6 @@ class JS_PUBLIC_API(ContextOptions) {
         return *this;
     }
 
-    bool forEachStatement() const { return forEachStatement_; }
-    ContextOptions& setForEachStatement(bool flag) {
-        forEachStatement_ = flag;
-        return *this;
-    }
-
 #ifdef FUZZING
     bool fuzzing() const { return fuzzing_; }
     ContextOptions& setFuzzing(bool flag) {
@@ -1344,7 +1298,6 @@ class JS_PUBLIC_API(ContextOptions) {
     bool werror_ : 1;
     bool strictMode_ : 1;
     bool extraWarnings_ : 1;
-    bool forEachStatement_: 1;
     bool streams_: 1;
 #ifdef FUZZING
     bool fuzzing_ : 1;
@@ -1390,6 +1343,33 @@ JS_SetWrapObjectCallbacks(JSContext* cx, const JSWrapObjectCallbacks* callbacks)
 
 extern JS_PUBLIC_API(void)
 JS_SetExternalStringSizeofCallback(JSContext* cx, JSExternalStringSizeofCallback callback);
+
+#if defined(NIGHTLY_BUILD)
+
+// Set a callback that will be called whenever an error
+// is thrown in this runtime. This is designed as a mechanism
+// for logging errors. Note that the VM makes no attempt to sanitize
+// the contents of the error (so it may contain private data)
+// or to sort out among errors (so it may not be the error you
+// are interested in or for the component in which you are
+// interested).
+//
+// If the callback sets a new error, this new error
+// will replace the original error.
+//
+// May be `nullptr`.
+extern JS_PUBLIC_API(void)
+JS_SetErrorInterceptorCallback(JSRuntime*, JSErrorInterceptor* callback);
+
+extern JS_PUBLIC_API(JSErrorInterceptor*)
+JS_GetErrorInterceptorCallback(JSRuntime*);
+
+// Examine a value to determine if it is one of the built-in Error types.
+// If so, return the error type.
+extern JS_PUBLIC_API(mozilla::Maybe<JSExnType>)
+JS_GetErrorType(const JS::Value& val);
+
+#endif // defined(NIGHTLY_BUILD)
 
 extern JS_PUBLIC_API(void)
 JS_SetCompartmentPrivate(JSCompartment* compartment, void* data);
@@ -1730,349 +1710,6 @@ JS_updateMallocCounter(JSContext* cx, size_t nbytes);
 
 extern JS_PUBLIC_API(char*)
 JS_strdup(JSContext* cx, const char* s);
-
-/**
- * Register externally maintained GC roots.
- *
- * traceOp: the trace operation. For each root the implementation should call
- *          JS::TraceEdge whenever the root contains a traceable thing.
- * data:    the data argument to pass to each invocation of traceOp.
- */
-extern JS_PUBLIC_API(bool)
-JS_AddExtraGCRootsTracer(JSContext* cx, JSTraceDataOp traceOp, void* data);
-
-/** Undo a call to JS_AddExtraGCRootsTracer. */
-extern JS_PUBLIC_API(void)
-JS_RemoveExtraGCRootsTracer(JSContext* cx, JSTraceDataOp traceOp, void* data);
-
-/*
- * Garbage collector API.
- */
-namespace JS {
-
-extern JS_PUBLIC_API(bool)
-IsIdleGCTaskNeeded(JSRuntime* rt);
-
-extern JS_PUBLIC_API(void)
-RunIdleTimeGCTask(JSRuntime* rt);
-
-} // namespace JS
-
-extern JS_PUBLIC_API(void)
-JS_GC(JSContext* cx);
-
-extern JS_PUBLIC_API(void)
-JS_MaybeGC(JSContext* cx);
-
-extern JS_PUBLIC_API(void)
-JS_SetGCCallback(JSContext* cx, JSGCCallback cb, void* data);
-
-extern JS_PUBLIC_API(void)
-JS_SetObjectsTenuredCallback(JSContext* cx, JSObjectsTenuredCallback cb,
-                             void* data);
-
-extern JS_PUBLIC_API(bool)
-JS_AddFinalizeCallback(JSContext* cx, JSFinalizeCallback cb, void* data);
-
-extern JS_PUBLIC_API(void)
-JS_RemoveFinalizeCallback(JSContext* cx, JSFinalizeCallback cb);
-
-/*
- * Weak pointers and garbage collection
- *
- * Weak pointers are by their nature not marked as part of garbage collection,
- * but they may need to be updated in two cases after a GC:
- *
- *  1) Their referent was found not to be live and is about to be finalized
- *  2) Their referent has been moved by a compacting GC
- *
- * To handle this, any part of the system that maintain weak pointers to
- * JavaScript GC things must register a callback with
- * JS_(Add,Remove)WeakPointer{ZoneGroup,Compartment}Callback(). This callback
- * must then call JS_UpdateWeakPointerAfterGC() on all weak pointers it knows
- * about.
- *
- * Since sweeping is incremental, we have several callbacks to avoid repeatedly
- * having to visit all embedder structures. The WeakPointerZonesCallback is
- * called once for each strongly connected group of zones, whereas the
- * WeakPointerCompartmentCallback is called once for each compartment that is
- * visited while sweeping. Structures that cannot contain references in more
- * than one compartment should sweep the relevant per-compartment structures
- * using the latter callback to minimizer per-slice overhead.
- *
- * The argument to JS_UpdateWeakPointerAfterGC() is an in-out param. If the
- * referent is about to be finalized the pointer will be set to null. If the
- * referent has been moved then the pointer will be updated to point to the new
- * location.
- *
- * Callers of this method are responsible for updating any state that is
- * dependent on the object's address. For example, if the object's address is
- * used as a key in a hashtable, then the object must be removed and
- * re-inserted with the correct hash.
- */
-
-extern JS_PUBLIC_API(bool)
-JS_AddWeakPointerZonesCallback(JSContext* cx, JSWeakPointerZonesCallback cb, void* data);
-
-extern JS_PUBLIC_API(void)
-JS_RemoveWeakPointerZonesCallback(JSContext* cx, JSWeakPointerZonesCallback cb);
-
-extern JS_PUBLIC_API(bool)
-JS_AddWeakPointerCompartmentCallback(JSContext* cx, JSWeakPointerCompartmentCallback cb,
-                                     void* data);
-
-extern JS_PUBLIC_API(void)
-JS_RemoveWeakPointerCompartmentCallback(JSContext* cx, JSWeakPointerCompartmentCallback cb);
-
-extern JS_PUBLIC_API(void)
-JS_UpdateWeakPointerAfterGC(JS::Heap<JSObject*>* objp);
-
-extern JS_PUBLIC_API(void)
-JS_UpdateWeakPointerAfterGCUnbarriered(JSObject** objp);
-
-typedef enum JSGCParamKey {
-    /**
-     * Maximum nominal heap before last ditch GC.
-     *
-     * Soft limit on the number of bytes we are allowed to allocate in the GC
-     * heap. Attempts to allocate gcthings over this limit will return null and
-     * subsequently invoke the standard OOM machinery, independent of available
-     * physical memory.
-     *
-     * Pref: javascript.options.mem.max
-     * Default: 0xffffffff
-     */
-    JSGC_MAX_BYTES          = 0,
-
-    /**
-     * Initial value for the malloc bytes threshold.
-     *
-     * Pref: javascript.options.mem.high_water_mark
-     * Default: TuningDefaults::MaxMallocBytes
-     */
-    JSGC_MAX_MALLOC_BYTES   = 1,
-
-    /**
-     * Maximum size of the generational GC nurseries.
-     *
-     * Pref: javascript.options.mem.nursery.max_kb
-     * Default: JS::DefaultNurseryBytes
-     */
-    JSGC_MAX_NURSERY_BYTES  = 2,
-
-    /** Amount of bytes allocated by the GC. */
-    JSGC_BYTES = 3,
-
-    /** Number of times GC has been invoked. Includes both major and minor GC. */
-    JSGC_NUMBER = 4,
-
-    /**
-     * Select GC mode.
-     *
-     * See: JSGCMode in GCAPI.h
-     * prefs: javascript.options.mem.gc_per_zone and
-     *   javascript.options.mem.gc_incremental.
-     * Default: JSGC_MODE_INCREMENTAL
-     */
-    JSGC_MODE = 6,
-
-    /** Number of cached empty GC chunks. */
-    JSGC_UNUSED_CHUNKS = 7,
-
-    /** Total number of allocated GC chunks. */
-    JSGC_TOTAL_CHUNKS = 8,
-
-    /**
-     * Max milliseconds to spend in an incremental GC slice.
-     *
-     * Pref: javascript.options.mem.gc_incremental_slice_ms
-     * Default: DefaultTimeBudget.
-     */
-    JSGC_SLICE_TIME_BUDGET = 9,
-
-    /**
-     * Maximum size the GC mark stack can grow to.
-     *
-     * Pref: none
-     * Default: MarkStack::DefaultCapacity
-     */
-    JSGC_MARK_STACK_LIMIT = 10,
-
-    /**
-     * GCs less than this far apart in time will be considered 'high-frequency
-     * GCs'.
-     *
-     * See setGCLastBytes in jsgc.cpp.
-     *
-     * Pref: javascript.options.mem.gc_high_frequency_time_limit_ms
-     * Default: HighFrequencyThresholdUsec
-     */
-    JSGC_HIGH_FREQUENCY_TIME_LIMIT = 11,
-
-    /**
-     * Start of dynamic heap growth.
-     *
-     * Pref: javascript.options.mem.gc_high_frequency_low_limit_mb
-     * Default: HighFrequencyLowLimitBytes
-     */
-    JSGC_HIGH_FREQUENCY_LOW_LIMIT = 12,
-
-    /**
-     * End of dynamic heap growth.
-     *
-     * Pref: javascript.options.mem.gc_high_frequency_high_limit_mb
-     * Default: HighFrequencyHighLimitBytes
-     */
-    JSGC_HIGH_FREQUENCY_HIGH_LIMIT = 13,
-
-    /**
-     * Upper bound of heap growth.
-     *
-     * Pref: javascript.options.mem.gc_high_frequency_heap_growth_max
-     * Default: HighFrequencyHeapGrowthMax
-     */
-    JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MAX = 14,
-
-    /**
-     * Lower bound of heap growth.
-     *
-     * Pref: javascript.options.mem.gc_high_frequency_heap_growth_min
-     * Default: HighFrequencyHeapGrowthMin
-     */
-    JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MIN = 15,
-
-    /**
-     * Heap growth for low frequency GCs.
-     *
-     * Pref: javascript.options.mem.gc_low_frequency_heap_growth
-     * Default: LowFrequencyHeapGrowth
-     */
-    JSGC_LOW_FREQUENCY_HEAP_GROWTH = 16,
-
-    /**
-     * If false, the heap growth factor is fixed at 3. If true, it is determined
-     * based on whether GCs are high- or low- frequency.
-     *
-     * Pref: javascript.options.mem.gc_dynamic_heap_growth
-     * Default: DynamicHeapGrowthEnabled
-     */
-    JSGC_DYNAMIC_HEAP_GROWTH = 17,
-
-    /**
-     * If true, high-frequency GCs will use a longer mark slice.
-     *
-     * Pref: javascript.options.mem.gc_dynamic_mark_slice
-     * Default: DynamicMarkSliceEnabled
-     */
-    JSGC_DYNAMIC_MARK_SLICE = 18,
-
-    /**
-     * Lower limit after which we limit the heap growth.
-     *
-     * The base value used to compute zone->threshold.gcTriggerBytes(). When
-     * usage.gcBytes() surpasses threshold.gcTriggerBytes() for a zone, the
-     * zone may be scheduled for a GC, depending on the exact circumstances.
-     *
-     * Pref: javascript.options.mem.gc_allocation_threshold_mb
-     * Default GCZoneAllocThresholdBase
-     */
-    JSGC_ALLOCATION_THRESHOLD = 19,
-
-    /**
-     * We try to keep at least this many unused chunks in the free chunk pool at
-     * all times, even after a shrinking GC.
-     *
-     * Pref: javascript.options.mem.gc_min_empty_chunk_count
-     * Default: MinEmptyChunkCount
-     */
-    JSGC_MIN_EMPTY_CHUNK_COUNT = 21,
-
-    /**
-     * We never keep more than this many unused chunks in the free chunk
-     * pool.
-     *
-     * Pref: javascript.options.mem.gc_min_empty_chunk_count
-     * Default: MinEmptyChunkCount
-     */
-    JSGC_MAX_EMPTY_CHUNK_COUNT = 22,
-
-    /**
-     * Whether compacting GC is enabled.
-     *
-     * Pref: javascript.options.mem.gc_compacting
-     * Default: CompactingEnabled
-     */
-    JSGC_COMPACTING_ENABLED = 23,
-
-    /**
-     * If true, painting can trigger IGC slices.
-     *
-     * Pref: javascript.options.mem.gc_refresh_frame_slices_enabled
-     * Default: RefreshFrameSlicesEnabled
-     */
-    JSGC_REFRESH_FRAME_SLICES_ENABLED = 24,
-
-    /**
-     * Factor for triggering a GC based on JSGC_ALLOCATION_THRESHOLD
-     *
-     * Default: ZoneAllocThresholdFactorDefault
-     * Pref: None
-     */
-    JSGC_ALLOCATION_THRESHOLD_FACTOR = 25,
-
-    /**
-     * Factor for triggering a GC based on JSGC_ALLOCATION_THRESHOLD.
-     * Used if another GC (in different zones) is already running.
-     *
-     * Default: ZoneAllocThresholdFactorAvoidInterruptDefault
-     * Pref: None
-     */
-    JSGC_ALLOCATION_THRESHOLD_FACTOR_AVOID_INTERRUPT = 26,
-} JSGCParamKey;
-
-extern JS_PUBLIC_API(void)
-JS_SetGCParameter(JSContext* cx, JSGCParamKey key, uint32_t value);
-
-extern JS_PUBLIC_API(void)
-JS_ResetGCParameter(JSContext* cx, JSGCParamKey key);
-
-extern JS_PUBLIC_API(uint32_t)
-JS_GetGCParameter(JSContext* cx, JSGCParamKey key);
-
-extern JS_PUBLIC_API(void)
-JS_SetGCParametersBasedOnAvailableMemory(JSContext* cx, uint32_t availMem);
-
-/**
- * Create a new JSString whose chars member refers to external memory, i.e.,
- * memory requiring application-specific finalization.
- */
-extern JS_PUBLIC_API(JSString*)
-JS_NewExternalString(JSContext* cx, const char16_t* chars, size_t length,
-                     const JSStringFinalizer* fin);
-
-/**
- * Create a new JSString whose chars member may refer to external memory.
- * If a new external string is allocated, |*allocatedExternal| is set to true.
- * Otherwise the returned string is either not an external string or an
- * external string allocated by a previous call and |*allocatedExternal| is set
- * to false. If |*allocatedExternal| is false, |fin| won't be called.
- */
-extern JS_PUBLIC_API(JSString*)
-JS_NewMaybeExternalString(JSContext* cx, const char16_t* chars, size_t length,
-                          const JSStringFinalizer* fin, bool* allocatedExternal);
-
-/**
- * Return whether 'str' was created with JS_NewExternalString or
- * JS_NewExternalStringWithClosure.
- */
-extern JS_PUBLIC_API(bool)
-JS_IsExternalString(JSString* str);
-
-/**
- * Return the 'fin' arg passed to JS_NewExternalString.
- */
-extern JS_PUBLIC_API(const JSStringFinalizer*)
-JS_GetExternalStringFinalizer(JSString* str);
 
 /**
  * Set the size of the native stack that should not be exceed. To disable
@@ -2594,18 +2231,10 @@ class JS_PUBLIC_API(CompartmentBehaviors)
     };
 
     CompartmentBehaviors()
-      : version_(JSVERSION_UNKNOWN)
-      , discardSource_(false)
+      : discardSource_(false)
       , disableLazyParsing_(false)
       , singletonsAsTemplates_(true)
     {
-    }
-
-    JSVersion version() const { return version_; }
-    CompartmentBehaviors& setVersion(JSVersion aVersion) {
-        MOZ_ASSERT(aVersion != JSVERSION_UNKNOWN);
-        version_ = aVersion;
-        return *this;
     }
 
     // For certain globals, we know enough about the code that will run in them
@@ -2634,7 +2263,6 @@ class JS_PUBLIC_API(CompartmentBehaviors)
     }
 
   private:
-    JSVersion version_;
     bool discardSource_;
     bool disableLazyParsing_;
     Override extraWarningsOverride_;
@@ -4030,23 +3658,16 @@ class JS_FRIEND_API(TransitiveCompileOptions)
     const char* introducerFilename_;
     const char16_t* sourceMapURL_;
 
-    // This constructor leaves 'version' set to JSVERSION_UNKNOWN. The structure
-    // is unusable until that's set to something more specific; the derived
-    // classes' constructors take care of that, in ways appropriate to their
-    // purpose.
     TransitiveCompileOptions()
       : mutedErrors_(false),
         filename_(nullptr),
         introducerFilename_(nullptr),
         sourceMapURL_(nullptr),
-        version(JSVERSION_UNKNOWN),
-        versionSet(false),
         utf8(false),
         selfHostingMode(false),
         canLazilyParse(true),
         strictOption(false),
         extraWarningsOption(false),
-        forEachStatementOption(false),
         werrorOption(false),
         asmJSOption(AsmJSOption::Disabled),
         throwOnAsmJSValidationFailureOption(false),
@@ -4076,14 +3697,11 @@ class JS_FRIEND_API(TransitiveCompileOptions)
     virtual JSScript* introductionScript() const = 0;
 
     // POD options.
-    JSVersion version;
-    bool versionSet;
     bool utf8;
     bool selfHostingMode;
     bool canLazilyParse;
     bool strictOption;
     bool extraWarningsOption;
-    bool forEachStatementOption;
     bool werrorOption;
     AsmJSOption asmJSOption;
     bool throwOnAsmJSValidationFailureOption;
@@ -4136,9 +3754,9 @@ class JS_FRIEND_API(ReadOnlyCompileOptions) : public TransitiveCompileOptions
     const char* filename() const { return filename_; }
     const char* introducerFilename() const { return introducerFilename_; }
     const char16_t* sourceMapURL() const { return sourceMapURL_; }
-    virtual JSObject* element() const = 0;
-    virtual JSString* elementAttributeName() const = 0;
-    virtual JSScript* introductionScript() const = 0;
+    virtual JSObject* element() const override = 0;
+    virtual JSString* elementAttributeName() const override = 0;
+    virtual JSScript* introductionScript() const override = 0;
 
     // POD options.
     unsigned lineno;
@@ -4183,10 +3801,7 @@ class JS_FRIEND_API(OwningCompileOptions) : public ReadOnlyCompileOptions
     PersistentRootedScript introductionScriptRoot;
 
   public:
-    // A minimal constructor, for use with OwningCompileOptions::copy. This
-    // leaves |this.version| set to JSVERSION_UNKNOWN; the instance
-    // shouldn't be used until we've set that to something real (as |copy|
-    // will).
+    // A minimal constructor, for use with OwningCompileOptions::copy.
     explicit OwningCompileOptions(JSContext* cx);
     ~OwningCompileOptions();
 
@@ -4219,11 +3834,6 @@ class JS_FRIEND_API(OwningCompileOptions) : public ReadOnlyCompileOptions
     }
     OwningCompileOptions& setMutedErrors(bool mute) {
         mutedErrors_ = mute;
-        return *this;
-    }
-    OwningCompileOptions& setVersion(JSVersion v) {
-        version = v;
-        versionSet = true;
         return *this;
     }
     OwningCompileOptions& setUTF8(bool u) { utf8 = u; return *this; }
@@ -4266,7 +3876,7 @@ class MOZ_STACK_CLASS JS_FRIEND_API(CompileOptions) final : public ReadOnlyCompi
     RootedScript introductionScriptRoot;
 
   public:
-    explicit CompileOptions(JSContext* cx, JSVersion version = JSVERSION_UNKNOWN);
+    explicit CompileOptions(JSContext* cx);
     CompileOptions(JSContext* cx, const ReadOnlyCompileOptions& rhs)
       : ReadOnlyCompileOptions(), elementRoot(cx), elementAttributeNameRoot(cx),
         introductionScriptRoot(cx)
@@ -4316,11 +3926,6 @@ class MOZ_STACK_CLASS JS_FRIEND_API(CompileOptions) final : public ReadOnlyCompi
     }
     CompileOptions& setMutedErrors(bool mute) {
         mutedErrors_ = mute;
-        return *this;
-    }
-    CompileOptions& setVersion(JSVersion v) {
-        version = v;
-        versionSet = true;
         return *this;
     }
     CompileOptions& setUTF8(bool u) { utf8 = u; return *this; }
@@ -4695,12 +4300,6 @@ GetRequestedModuleSpecifier(JSContext* cx, JS::HandleValue requestedModuleObject
 extern JS_PUBLIC_API(void)
 GetRequestedModuleSourcePos(JSContext* cx, JS::HandleValue requestedModuleObject,
                             uint32_t* lineNumber, uint32_t* columnNumber);
-
-extern JS_PUBLIC_API(bool)
-IsModuleErrored(JSObject* moduleRecord);
-
-extern JS_PUBLIC_API(JS::Value)
-GetModuleError(JSObject* moduleRecord);
 
 } /* namespace JS */
 
@@ -5608,6 +5207,28 @@ JS_GetLocaleCallbacks(JSRuntime* rt);
 
 /*
  * Error reporting.
+ *
+ * There are four encoding variants for the error reporting API:
+ *   UTF-8
+ *     JSAPI's default encoding for error handling.  Use this when the encoding
+ *     of the error message, format string, and arguments is UTF-8.
+ *   ASCII
+ *     Equivalent to UTF-8, but also asserts that the error message, format
+ *     string, and arguments are all ASCII.  Because ASCII is a subset of UTF-8,
+ *     any use of this encoding variant *could* be replaced with use of the
+ *     UTF-8 variant.  This variant exists solely to double-check the
+ *     developer's assumption that all these strings truly are ASCII, given that
+ *     UTF-8 and ASCII strings regrettably have the same C++ type.
+ *   UC = UTF-16
+ *     Use this when arguments are UTF-16.  The format string must be UTF-8.
+ *   Latin1 (planned to be removed)
+ *     In this variant, all strings are interpreted byte-for-byte as the
+ *     corresponding Unicode codepoint.  This encoding may *safely* be used on
+ *     any null-terminated string, regardless of its encoding.  (You shouldn't
+ *     *actually* be uncertain, but in the real world, a string's encoding -- if
+ *     promised at all -- may be more...aspirational...than reality.)  This
+ *     encoding variant will eventually be removed -- work to convert your uses
+ *     to UTF-8 as you're able.
  */
 
 namespace JS {
@@ -6190,6 +5811,7 @@ JS_DropExceptionState(JSContext* cx, JSExceptionState* state);
 extern JS_PUBLIC_API(JSErrorReport*)
 JS_ErrorFromException(JSContext* cx, JS::HandleObject obj);
 
+namespace JS {
 /**
  * If the given object is an exception object (or an unwrappable
  * cross-compartment wrapper for one), return the stack for that exception, if
@@ -6199,6 +5821,8 @@ JS_ErrorFromException(JSContext* cx, JS::HandleObject obj);
  */
 extern JS_PUBLIC_API(JSObject*)
 ExceptionStackOrNull(JS::HandleObject obj);
+
+} /* namespace JS */
 
 /**
  * A JS context always has an "owner thread". The owner thread is set when the
@@ -6257,8 +5881,8 @@ JS_SetOffthreadIonCompilationEnabled(JSContext* cx, bool enabled);
     Register(FULL_DEBUG_CHECKS, "jit.full-debug-checks")                    \
     Register(JUMP_THRESHOLD, "jump-threshold")                              \
     Register(SIMULATOR_ALWAYS_INTERRUPT, "simulator.always-interrupt")      \
+    Register(SPECTRE_INDEX_MASKING, "spectre.index-masking")                \
     Register(ASMJS_ATOMICS_ENABLE, "asmjs.atomics.enable")                  \
-    Register(WASM_TEST_MODE, "wasm.test-mode")                              \
     Register(WASM_FOLD_OFFSETS, "wasm.fold-offsets")
 
 typedef enum JSJitCompilerOption {
@@ -7169,6 +6793,13 @@ typedef bool
 (*GetGroupsCallback)(JSContext*, PerformanceGroupVector&, void*);
 extern JS_PUBLIC_API(bool)
 SetGetPerformanceGroupsCallback(JSContext*, GetGroupsCallback, void*);
+
+/**
+ * Hint that we expect a crash. Currently, the only thing that cares is the
+ * breakpad injector, which (if loaded) will suppress minidump generation.
+ */
+extern JS_PUBLIC_API(void)
+NoteIntentionalCrash();
 
 } /* namespace js */
 

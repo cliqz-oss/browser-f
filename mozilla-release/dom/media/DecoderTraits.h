@@ -53,7 +53,14 @@ public:
   // Returns true if aType is MIME type of hls.
   static bool IsHttpLiveStreamingType(const MediaContainerType& aType);
 
+  // Returns true if aType is matroska type.
+  static bool IsMatroskaType(const MediaContainerType& aType);
+
   static bool IsSupportedType(const MediaContainerType& aType);
+
+  // For some content types we block channel redirects to cross origin
+  // destinations due to security constraints. See bug 1441153.
+  static bool CrossOriginRedirectsProhibited(const MediaContainerType& aType);
 };
 
 } // namespace mozilla

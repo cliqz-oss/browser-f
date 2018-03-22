@@ -36,6 +36,7 @@ function mockSyncedTabs() {
   // configure our broadcasters so we are in the right state.
   document.getElementById("sync-reauth-state").hidden = true;
   document.getElementById("sync-setup-state").hidden = true;
+  document.getElementById("sync-unverified-state").hidden = true;
   document.getElementById("sync-syncnow-state").hidden = false;
 
   registerCleanupFunction(() => {
@@ -43,6 +44,7 @@ function mockSyncedTabs() {
 
     document.getElementById("sync-reauth-state").hidden = true;
     document.getElementById("sync-setup-state").hidden = false;
+    document.getElementById("sync-unverified-state").hidden = true;
     document.getElementById("sync-syncnow-state").hidden = true;
   });
 }
@@ -92,7 +94,7 @@ add_task(async function test_sidebar() {
 
   let syncedTabsDeckComponent = SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
 
-  syncedTabsDeckComponent._accountStatus = () => Promise.resolve(true);
+  syncedTabsDeckComponent._getSignedInUser = () => Promise.resolve({verified: true});
 
   // Once the tabs container has been selected (which here means "'selected'
   // added to the class list") we are ready to test.

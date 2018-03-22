@@ -11,9 +11,10 @@ def merge_resource(ctx, reference, current, transforms, in_changeset):
     """Transform legacy translations into FTL.
 
     Use the `reference` FTL AST as a template.  For each en-US string in the
-    reference, first check if it's in the currently processed changeset with
-    `in_changeset`; then check for an existing translation in the current FTL
-    `localization` or for a migration specification in `transforms`.
+    reference, first check for an existing translation in the current FTL
+    `localization` and use it if it's present; then if the string has
+    a transform defined in the migration specification and if it's in the
+    currently processed changeset, evaluate the transform.
     """
 
     def merge_body(body):
@@ -25,11 +26,7 @@ def merge_resource(ctx, reference, current, transforms, in_changeset):
 
     def merge_entry(entry):
         # All standalone comments will be merged.
-        if isinstance(entry, FTL.Comment):
-            return entry
-
-        # All section headers will be merged.
-        if isinstance(entry, FTL.Section):
+        if isinstance(entry, FTL.BaseComment):
             return entry
 
         # Ignore Junk
@@ -55,4 +52,4 @@ def merge_resource(ctx, reference, current, transforms, in_changeset):
             return evaluate(ctx, transform)
 
     body = merge_body(reference.body)
-    return FTL.Resource(body, reference.comment)
+    return FTL.Resource(body)

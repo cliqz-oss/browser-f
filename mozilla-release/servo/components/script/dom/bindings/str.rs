@@ -4,6 +4,8 @@
 
 //! The `ByteString` struct.
 
+use chrono::{Datelike, TimeZone};
+use chrono::prelude::{Weekday, Utc};
 use cssparser::CowRcStr;
 use html5ever::{LocalName, Namespace};
 use servo_atoms::Atom;
@@ -208,6 +210,128 @@ impl DOMString {
         self.0.truncate(last_non_whitespace);
         let _ = self.0.splice(0..first_non_whitespace, "");
     }
+
+    /// Validates this `DOMString` is a time string according to
+    /// <https://html.spec.whatwg.org/multipage/#valid-time-string>.
+    pub fn is_valid_time_string(&self) -> bool {
+        enum State {
+            HourHigh,
+            HourLow09,
+            HourLow03,
+            MinuteColon,
+            MinuteHigh,
+            MinuteLow,
+            SecondColon,
+            SecondHigh,
+            SecondLow,
+            MilliStop,
+            MilliHigh,
+            MilliMiddle,
+            MilliLow,
+            Done,
+            Error,
+        }
+        let next_state = |valid: bool, next: State| -> State { if valid { next } else { State::Error } };
+
+        let state = self.chars().fold(State::HourHigh, |state, c| {
+            match state {
+                // Step 1 "HH"
+                State::HourHigh => {
+                    match c {
+                        '0' | '1' => State::HourLow09,
+                        '2' => State::HourLow03,
+                        _ => State::Error,
+                    }
+                },
+                State::HourLow09 => next_state(c.is_digit(10), State::MinuteColon),
+                State::HourLow03 => next_state(c.is_digit(4), State::MinuteColon),
+
+                // Step 2 ":"
+                State::MinuteColon => next_state(c == ':', State::MinuteHigh),
+
+                // Step 3 "mm"
+                State::MinuteHigh => next_state(c.is_digit(6), State::MinuteLow),
+                State::MinuteLow => next_state(c.is_digit(10), State::SecondColon),
+
+                // Step 4.1 ":"
+                State::SecondColon => next_state(c == ':', State::SecondHigh),
+                // Step 4.2 "ss"
+                State::SecondHigh => next_state(c.is_digit(6), State::SecondLow),
+                State::SecondLow => next_state(c.is_digit(10), State::MilliStop),
+
+                // Step 4.3.1 "."
+                State::MilliStop => next_state(c == '.', State::MilliHigh),
+                // Step 4.3.2 "SSS"
+                State::MilliHigh => next_state(c.is_digit(6), State::MilliMiddle),
+                State::MilliMiddle => next_state(c.is_digit(10), State::MilliLow),
+                State::MilliLow => next_state(c.is_digit(10), State::Done),
+
+                _ => State::Error,
+            }
+        });
+
+        match state {
+            State::Done |
+            // Step 4 (optional)
+            State::SecondColon |
+            // Step 4.3 (optional)
+            State::MilliStop |
+            // Step 4.3.2 (only 1 digit required)
+            State::MilliMiddle | State::MilliLow => true,
+            _ => false
+        }
+    }
+
+    /// A valid date string should be "YYYY-MM-DD"
+    /// YYYY must be four or more digits, MM and DD both must be two digits
+    /// https://html.spec.whatwg.org/multipage/#valid-date-string
+    pub fn is_valid_date_string(&self) -> bool {
+        parse_date_string(&self.0).is_ok()
+    }
+
+    /// A valid month string should be "YYYY-MM"
+    /// YYYY must be four or more digits, MM both must be two digits
+    /// https://html.spec.whatwg.org/multipage/#valid-month-string
+    pub fn is_valid_month_string(&self) -> bool {
+        parse_month_string(&self.0).is_ok()
+    }
+
+    /// A valid week string should be like {YYYY}-W{WW}, such as "2017-W52"
+    /// YYYY must be four or more digits, WW both must be two digits
+    /// https://html.spec.whatwg.org/multipage/#valid-week-string
+    pub fn is_valid_week_string(&self) -> bool {
+        parse_week_string(&self.0).is_ok()
+    }
+
+    /// https://html.spec.whatwg.org/multipage/#valid-floating-point-number
+    pub fn is_valid_floating_point_number_string(&self) -> bool {
+        // for the case that `parse_floating_point_number` cannot handle
+        if self.0.contains(" ") {
+            return false;
+        }
+        parse_floating_point_number(&self.0).is_ok()
+    }
+
+    /// https://html.spec.whatwg.org/multipage/#best-representation-of-the-number-as-a-floating-point-number
+    pub fn set_best_representation_of_the_floating_point_number(&mut self) {
+        if let Ok(val) = parse_floating_point_number(&self.0) {
+            self.0 = val.to_string();
+        }
+    }
+
+    /// A valid normalized local date and time string should be "{date}T{time}"
+    /// where date and time are both valid, and the time string must be as short as possible
+    /// https://html.spec.whatwg.org/multipage/#valid-normalised-local-date-and-time-string
+    pub fn convert_valid_normalized_local_date_and_time_string(&mut self) -> Result<(), ()> {
+        let ((year, month, day), (hour, minute, second)) = parse_local_date_and_time_string(&*self.0)?;
+        if second == 0.0 {
+            self.0 = format!("{:04}-{:02}-{:02}T{:02}:{:02}", year, month, day, hour, minute);
+        } else {
+            self.0 = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{}", year, month, day, hour, minute, second);
+        }
+        Ok(())
+    }
+
 }
 
 impl Borrow<str> for DOMString {
@@ -330,5 +454,241 @@ impl<'a> Into<CowRcStr<'a>> for DOMString {
 impl Extend<char> for DOMString {
     fn extend<I>(&mut self, iterable: I) where I: IntoIterator<Item=char> {
         self.0.extend(iterable)
+    }
+}
+
+/// https://html.spec.whatwg.org/multipage/#parse-a-month-string
+fn parse_month_string(value: &str) -> Result<(u32, u32), ()> {
+    // Step 1, 2, 3
+    let (year_int, month_int) = parse_month_component(value)?;
+
+    // Step 4
+    if value.split("-").nth(2).is_some() {
+        return Err(());
+    }
+    // Step 5
+    Ok((year_int, month_int))
+}
+
+/// https://html.spec.whatwg.org/multipage/#parse-a-date-string
+fn parse_date_string(value: &str) -> Result<(u32, u32, u32), ()> {
+    // Step 1, 2, 3
+    let (year_int, month_int, day_int) = parse_date_component(value)?;
+
+    // Step 4
+    if value.split('-').nth(3).is_some() {
+        return Err(());
+    }
+
+    // Step 5, 6
+    Ok((year_int, month_int, day_int))
+}
+
+/// https://html.spec.whatwg.org/multipage/#parse-a-week-string
+fn parse_week_string(value: &str) -> Result<(u32, u32), ()> {
+    // Step 1, 2, 3
+    let mut iterator = value.split('-');
+    let year = iterator.next().ok_or(())?;
+
+    // Step 4
+    let year_int = year.parse::<u32>().map_err(|_| ())?;
+    if year.len() < 4 || year_int == 0 {
+        return Err(());
+    }
+
+    // Step 5, 6
+    let week = iterator.next().ok_or(())?;
+    let (week_first, week_last) = week.split_at(1);
+    if week_first != "W" {
+        return Err(());
+    }
+
+    // Step 7
+    let week_int = week_last.parse::<u32>().map_err(|_| ())?;
+    if week_last.len() != 2 {
+        return Err(());
+    }
+
+    // Step 8
+    let max_week = max_week_in_year(year_int);
+
+    // Step 9
+    if week_int < 1 || week_int > max_week {
+        return Err(());
+    }
+
+    // Step 10
+    if iterator.next().is_some() {
+        return Err(());
+    }
+
+    // Step 11
+    Ok((year_int, week_int))
+}
+
+/// https://html.spec.whatwg.org/multipage/#parse-a-month-component
+fn parse_month_component(value: &str) -> Result<(u32, u32), ()> {
+    // Step 3
+    let mut iterator = value.split('-');
+    let year = iterator.next().ok_or(())?;
+    let month = iterator.next().ok_or(())?;
+
+    // Step 1, 2
+    let year_int = year.parse::<u32>().map_err(|_| ())?;
+    if year.len() < 4 || year_int == 0 {
+        return Err(());
+    }
+
+    // Step 4, 5
+    let month_int = month.parse::<u32>().map_err(|_| ())?;
+    if month.len() != 2 ||  month_int > 12 || month_int < 1 {
+        return Err(());
+    }
+
+    // Step 6
+    Ok((year_int, month_int))
+}
+
+/// https://html.spec.whatwg.org/multipage/#parse-a-date-component
+fn parse_date_component(value: &str) -> Result<(u32, u32, u32), ()> {
+    // Step 1
+    let (year_int, month_int) = parse_month_component(value)?;
+
+    // Step 3, 4
+    let day = value.split('-').nth(2).ok_or(())?;
+    let day_int = day.parse::<u32>().map_err(|_| ())?;
+    if day.len() != 2 {
+        return Err(());
+    }
+
+    // Step 2, 5
+    let max_day = max_day_in_month(year_int, month_int)?;
+    if day_int == 0 || day_int > max_day {
+        return Err(());
+    }
+
+    // Step 6
+    Ok((year_int, month_int, day_int))
+}
+
+/// https://html.spec.whatwg.org/multipage/#parse-a-time-component
+fn parse_time_component(value: &str) -> Result<(u32, u32, f32), ()> {
+    // Step 1
+    let mut iterator = value.split(':');
+    let hour = iterator.next().ok_or(())?;
+    if hour.len() != 2 {
+        return Err(());
+    }
+    let hour_int = hour.parse::<u32>().map_err(|_| ())?;
+
+    // Step 2
+    if hour_int > 23 {
+        return Err(());
+    }
+
+    // Step 3, 4
+    let minute = iterator.next().ok_or(())?;
+    if minute.len() != 2 {
+        return Err(());
+    }
+    let minute_int = minute.parse::<u32>().map_err(|_| ())?;
+
+    // Step 5
+    if minute_int > 59 {
+        return Err(());
+    }
+
+    // Step 6, 7
+    let second_float = match iterator.next() {
+        Some(second) => {
+            let mut second_iterator = second.split('.');
+            if second_iterator.next().ok_or(())?.len() != 2 {
+                return Err(());
+            }
+            match second_iterator.next() {
+                Some(second_last) => {
+                    if second_last.len() > 3 {
+                        return Err(());
+                    }
+                },
+                None => {}
+            }
+
+            second.parse::<f32>().map_err(|_| ())?
+        },
+        None => 0.0
+    };
+
+    // Step 8
+    Ok((hour_int, minute_int, second_float))
+}
+
+/// https://html.spec.whatwg.org/multipage/#parse-a-local-date-and-time-string
+fn parse_local_date_and_time_string(value: &str) ->  Result<((u32, u32, u32), (u32, u32, f32)), ()> {
+    // Step 1, 2, 4
+    let mut iterator = if value.contains('T') {
+        value.split('T')
+    } else {
+        value.split(' ')
+    };
+
+    // Step 3
+    let date = iterator.next().ok_or(())?;
+    let date_tuple = parse_date_component(date)?;
+
+    // Step 5
+    let time = iterator.next().ok_or(())?;
+    let time_tuple = parse_time_component(time)?;
+
+    // Step 6
+    if iterator.next().is_some() {
+        return Err(());
+    }
+
+    // Step 7, 8, 9
+    Ok((date_tuple, time_tuple))
+}
+
+fn max_day_in_month(year_num: u32, month_num: u32) -> Result<u32, ()> {
+    match month_num {
+        1|3|5|7|8|10|12 => Ok(31),
+        4|6|9|11 => Ok(30),
+        2 => {
+            if is_leap_year(year_num) {
+                Ok(29)
+            } else {
+                Ok(28)
+            }
+        },
+        _ => Err(())
+    }
+}
+
+/// https://html.spec.whatwg.org/multipage/#week-number-of-the-last-day
+fn max_week_in_year(year: u32) -> u32 {
+    match Utc.ymd(year as i32, 1, 1).weekday() {
+        Weekday::Thu => 53,
+        Weekday::Wed if is_leap_year(year) => 53,
+        _ => 52
+    }
+}
+
+#[inline]
+fn is_leap_year(year: u32) -> bool {
+    year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)
+}
+
+/// https://html.spec.whatwg.org/multipage/#rules-for-parsing-floating-point-number-values
+fn parse_floating_point_number(input: &str) -> Result<f64, ()> {
+    match input.trim().parse::<f64>() {
+        Ok(val) if !(
+            // A valid number is the same as what rust considers to be valid,
+            // except for +1., NaN, and Infinity.
+            val.is_infinite() || val.is_nan() || input.ends_with(".") || input.starts_with("+")
+        ) => {
+            // TODO(#19773): need consider `min`, `max`, `step`, when they are implemented
+            Ok(val.round())
+        },
+        _ => Err(())
     }
 }

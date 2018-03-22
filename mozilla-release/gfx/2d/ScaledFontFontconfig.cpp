@@ -16,17 +16,6 @@
 #include <fontconfig/fcfreetype.h>
 
 namespace mozilla {
-namespace wr {
-  enum {
-    FONT_FORCE_AUTOHINT  = 1 << 0,
-    FONT_NO_AUTOHINT     = 1 << 1,
-    FONT_EMBEDDED_BITMAP = 1 << 2,
-    FONT_EMBOLDEN        = 1 << 3,
-    FONT_VERTICAL_LAYOUT = 1 << 4,
-    FONT_SUBPIXEL_BGR    = 1 << 5
-  };
-}
-
 namespace gfx {
 
 // On Linux and Android our "platform" font is a cairo_scaled_font_t and we use
@@ -37,8 +26,8 @@ ScaledFontFontconfig::ScaledFontFontconfig(cairo_scaled_font_t* aScaledFont,
                                            FcPattern* aPattern,
                                            const RefPtr<UnscaledFont>& aUnscaledFont,
                                            Float aSize)
-  : ScaledFontBase(aUnscaledFont, aSize),
-    mPattern(aPattern)
+  : ScaledFontBase(aUnscaledFont, aSize)
+  , mPattern(aPattern)
 {
   SetCairoScaledFont(aScaledFont);
   FcPatternReference(aPattern);
@@ -252,25 +241,24 @@ ScaledFontFontconfig::GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* a
   wr::FontInstanceOptions options;
   options.render_mode = wr::FontRenderMode::Alpha;
   options.subpx_dir = wr::SubpixelDirection::Horizontal;
-  options.synthetic_italics = false;
+  options.flags = 0;
   options.bg_color = wr::ToColorU(Color());
 
   wr::FontInstancePlatformOptions platformOptions;
-  platformOptions.flags = 0;
   platformOptions.lcd_filter = wr::FontLCDFilter::Legacy;
   platformOptions.hinting = wr::FontHinting::Normal;
 
   FcBool autohint;
   if (FcPatternGetBool(mPattern, FC_AUTOHINT, 0, &autohint) == FcResultMatch && autohint) {
-    platformOptions.flags |= wr::FONT_FORCE_AUTOHINT;
+    options.flags |= wr::FontInstanceFlags::FORCE_AUTOHINT;
   }
   FcBool embolden;
   if (FcPatternGetBool(mPattern, FC_EMBOLDEN, 0, &embolden) == FcResultMatch && embolden) {
-    platformOptions.flags |= wr::FONT_EMBOLDEN;
+    options.flags |= wr::FontInstanceFlags::SYNTHETIC_BOLD;
   }
   FcBool vertical;
   if (FcPatternGetBool(mPattern, FC_VERTICAL_LAYOUT, 0, &vertical) == FcResultMatch && vertical) {
-    platformOptions.flags |= wr::FONT_VERTICAL_LAYOUT;
+    options.flags |= wr::FontInstanceFlags::VERTICAL_LAYOUT;
   }
 
   FcBool antialias;
@@ -288,7 +276,7 @@ ScaledFontFontconfig::GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* a
             }
             platformOptions.hinting = wr::FontHinting::LCD;
             if (rgba == FC_RGBA_BGR || rgba == FC_RGBA_VBGR) {
-                platformOptions.flags |= wr::FONT_SUBPIXEL_BGR;
+                options.flags |= wr::FontInstanceFlags::SUBPIXEL_BGR;
             }
             break;
         case FC_RGBA_NONE:
@@ -323,13 +311,13 @@ ScaledFontFontconfig::GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* a
     // Otherwise, disable embedded bitmaps unless explicitly enabled.
     FcBool bitmap;
     if (FcPatternGetBool(mPattern, FC_EMBEDDED_BITMAP, 0, &bitmap) == FcResultMatch && bitmap) {
-      platformOptions.flags |= wr::FONT_EMBEDDED_BITMAP;
+      options.flags |= wr::FontInstanceFlags::EMBEDDED_BITMAPS;
     }
   } else {
     options.render_mode = wr::FontRenderMode::Mono;
     options.subpx_dir = wr::SubpixelDirection::None;
     platformOptions.hinting = wr::FontHinting::Mono;
-    platformOptions.flags |= wr::FONT_EMBEDDED_BITMAP;
+    options.flags |= wr::FontInstanceFlags::EMBEDDED_BITMAPS;
   }
 
   FcBool hinting;
@@ -409,7 +397,7 @@ ScaledFontFontconfig::CreateFromInstanceData(const InstanceData& aInstanceData,
   FcPatternAddDouble(pattern, FC_PIXEL_SIZE, aSize);
   aInstanceData.SetupPattern(pattern);
 
-  cairo_font_face_t* font = cairo_ft_font_face_create_for_pattern(pattern);
+  cairo_font_face_t* font = cairo_ft_font_face_create_for_pattern(pattern, nullptr, 0);
   if (cairo_font_face_status(font) != CAIRO_STATUS_SUCCESS) {
     gfxWarning() << "Failed creating Cairo font face for Fontconfig pattern";
     FcPatternDestroy(pattern);

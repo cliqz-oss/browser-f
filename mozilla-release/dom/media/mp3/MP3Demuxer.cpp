@@ -16,27 +16,32 @@
 #include "VideoUtils.h"
 
 extern mozilla::LazyLogModule gMediaDemuxerLog;
-#define MP3LOG(msg, ...) \
-  MOZ_LOG(gMediaDemuxerLog, LogLevel::Debug, ("MP3Demuxer " msg, ##__VA_ARGS__))
-#define MP3LOGV(msg, ...) \
-  MOZ_LOG(gMediaDemuxerLog, LogLevel::Verbose, ("MP3Demuxer " msg, ##__VA_ARGS__))
+#define MP3LOG(msg, ...)                                                       \
+  DDMOZ_LOG(gMediaDemuxerLog, LogLevel::Debug, msg, ##__VA_ARGS__)
+#define MP3LOGV(msg, ...)                                                      \
+  DDMOZ_LOG(gMediaDemuxerLog, LogLevel::Verbose, msg, ##__VA_ARGS__)
 
 using mozilla::media::TimeUnit;
 using mozilla::media::TimeInterval;
 using mozilla::media::TimeIntervals;
-using mp4_demuxer::BufferReader;
+using mozilla::BufferReader;
 
 namespace mozilla {
 
 // MP3Demuxer
 
-MP3Demuxer::MP3Demuxer(MediaResource* aSource) : mSource(aSource) { }
+MP3Demuxer::MP3Demuxer(MediaResource* aSource)
+  : mSource(aSource)
+{
+  DDLINKCHILD("source", aSource);
+}
 
 bool
 MP3Demuxer::InitInternal()
 {
   if (!mTrackDemuxer) {
     mTrackDemuxer = new MP3TrackDemuxer(mSource);
+    DDLINKCHILD("track demuxer", mTrackDemuxer.get());
   }
   return mTrackDemuxer->Init();
 }
@@ -107,6 +112,7 @@ MP3TrackDemuxer::MP3TrackDemuxer(MediaResource* aSource)
   , mSamplesPerSecond(0)
   , mChannels(0)
 {
+  DDLINKCHILD("source", aSource);
   Reset();
 }
 
@@ -385,16 +391,31 @@ MP3TrackDemuxer::Duration() const
   if (mParser.VBRInfo().IsValid() && numAudioFrames.valueOr(0) + 1 > 1) {
     // VBR headers don't include the VBR header frame.
     numFrames = numAudioFrames.value() + 1;
-  } else {
-    const int64_t streamLen = StreamLength();
-    if (streamLen < 0) {
-      // Unknown length, we can't estimate duration.
-      return TimeUnit::FromMicroseconds(-1);
-    }
-    if (AverageFrameLength() > 0) {
-      numFrames = (streamLen - mFirstFrameOffset) / AverageFrameLength();
-    }
+    return Duration(numFrames);
   }
+
+  const int64_t streamLen = StreamLength();
+  if (streamLen < 0) { // Live streams.
+    // Unknown length, we can't estimate duration.
+    return TimeUnit::FromMicroseconds(-1);
+  }
+  // We can't early return when streamLen < 0 before checking numAudioFrames
+  // since some live radio will give an opening remark before playing music
+  // and the duration of the opening talk can be calculated by numAudioFrames.
+
+  const int64_t size = streamLen - mFirstFrameOffset;
+  MOZ_ASSERT(size);
+
+  // If it's CBR, calculate the duration by bitrate.
+  if (!mParser.VBRInfo().IsValid()) {
+    const int32_t bitrate = mParser.CurrentFrame().Header().Bitrate();
+    return media::TimeUnit::FromSeconds(static_cast<double>(size) * 8 / bitrate);
+  }
+
+  if (AverageFrameLength() > 0) {
+    numFrames = size / AverageFrameLength();
+  }
+
   return Duration(numFrames);
 }
 
@@ -541,7 +562,7 @@ MP3TrackDemuxer::FindNextFrame()
     BufferReader reader(buffer, read);
     uint32_t bytesToSkip = 0;
     auto res = mParser.Parse(&reader, &bytesToSkip);
-    foundFrame = res.isOk() ? res.unwrap() : false;
+    foundFrame = res.unwrapOr(false);
     frameHeaderOffset =
       mOffset + reader.Offset() - FrameParser::FrameHeader::SIZE;
 
@@ -767,3 +788,6 @@ MP3TrackDemuxer::AverageFrameLength() const
 }
 
 } // namespace mozilla
+
+#undef MP3LOG
+#undef MP3LOGV

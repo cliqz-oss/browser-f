@@ -8,40 +8,28 @@
 #define mozilla_dom_CSSMozDocumentRule_h
 
 #include "mozilla/css/GroupRule.h"
-#include "nsIDOMCSSMozDocumentRule.h"
+#include "mozilla/css/URLMatchingFunction.h"
 
 namespace mozilla {
 namespace dom {
 
 class CSSMozDocumentRule : public css::ConditionRule
-                         , public nsIDOMCSSMozDocumentRule
 {
 protected:
   using ConditionRule::ConditionRule;
   virtual ~CSSMozDocumentRule() {}
 
 public:
-  NS_DECL_ISUPPORTS_INHERITED
-
   int32_t GetType() const final override { return css::Rule::DOCUMENT_RULE; }
-  using Rule::GetType;
 
-  // nsIDOMCSSGroupingRule interface
-  NS_DECL_NSIDOMCSSGROUPINGRULE
-
-  // nsIDOMCSSConditionRule interface
-  NS_IMETHOD SetConditionText(const nsAString& aConditionText) override = 0;
-
-  // nsIDOMCSSMozDocumentRule interface
-  NS_DECL_NSIDOMCSSMOZDOCUMENTRULE
+  static bool Match(nsIDocument* aDoc,
+                    nsIURI* aDocURI,
+                    const nsACString& aDocURISpec,
+                    const nsACString& aPattern,
+                    css::URLMatchingFunction aUrlMatchingFunction);
 
   // WebIDL interface
-  uint16_t Type() const final override {
-    return nsIDOMCSSRule::DOCUMENT_RULE;
-  }
-  // Our XPCOM GetConditionText is OK
-  void SetConditionText(const nsAString& aConditionText,
-                        ErrorResult& aRv) final;
+  uint16_t Type() const final override { return CSSRuleBinding::DOCUMENT_RULE; }
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;

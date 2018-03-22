@@ -5,12 +5,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cr = Components.results;
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const CC = Components.Constructor;
-
 const nsIWindowsRegKey = Ci.nsIWindowsRegKey;
 let regKeyComponent = Cc["@mozilla.org/windows-registry-key;1"];
 
@@ -44,10 +38,10 @@ function run_test() {
 }
 
 function setup_test_run(testKey, keyName) {
-    do_print("Setup test run");
+    info("Setup test run");
     try {
         testKey.open(nsIWindowsRegKey.ROOT_KEY_CURRENT_USER, keyName, nsIWindowsRegKey.ACCESS_READ);
-        do_print("Test key exists. Needs cleanup.");
+        info("Test key exists. Needs cleanup.");
         cleanup_test_run(testKey, keyName);
     } catch (e) {
         if (!(e instanceof Ci.nsIException && e.result == Cr.NS_ERROR_FAILURE)) {
@@ -182,7 +176,7 @@ function test_watching_functions(testKey) {
 }
 
 function cleanup_test_run(testKey, keyName) {
-    do_print("Cleaning up test.");
+    info("Cleaning up test.");
 
     for (var i = 0; i < testKey.childCount; i++) {
         testKey.removeChild(testKey.getChildName(i));

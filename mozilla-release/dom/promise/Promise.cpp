@@ -656,7 +656,7 @@ public:
   }
 
   virtual bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     MOZ_ASSERT(aWorkerPrivate);
     aWorkerPrivate->AssertIsOnWorkerThread();
@@ -696,7 +696,8 @@ class PromiseWorkerHolder final : public WorkerHolder
 
 public:
   explicit PromiseWorkerHolder(PromiseWorkerProxy* aProxy)
-    : mProxy(aProxy)
+    : WorkerHolder("PromiseWorkerHolder")
+    , mProxy(aProxy)
   {
     MOZ_ASSERT(aProxy);
   }

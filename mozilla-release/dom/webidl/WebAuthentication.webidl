@@ -4,7 +4,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  * The origin of this IDL file is
- * https://www.w3.org/TR/webauthn/
+ * https://w3c.github.io/webauthn/
  */
 
 /***** Interfaces to Data *****/
@@ -19,7 +19,7 @@ interface PublicKeyCredential : Credential {
 
 [SecureContext]
 partial interface PublicKeyCredential {
-    static Promise<boolean> isPlatformAuthenticatorAvailable();
+    static Promise<boolean> isUserVerifyingPlatformAuthenticatorAvailable();
 };
 
 [SecureContext, Pref="security.webauth.webauthn"]
@@ -36,7 +36,7 @@ interface AuthenticatorAttestationResponse : AuthenticatorResponse {
 interface AuthenticatorAssertionResponse : AuthenticatorResponse {
     [SameObject] readonly attribute ArrayBuffer      authenticatorData;
     [SameObject] readonly attribute ArrayBuffer      signature;
-    readonly attribute DOMString                     userId;
+    [SameObject] readonly attribute ArrayBuffer      userHandle;
 };
 
 dictionary PublicKeyCredentialParameters {
@@ -59,8 +59,8 @@ dictionary MakePublicKeyCredentialOptions {
 };
 
 dictionary PublicKeyCredentialEntity {
-    DOMString      name;
-    USVString      icon;
+    required DOMString    name;
+    USVString             icon;
 };
 
 dictionary PublicKeyCredentialRpEntity : PublicKeyCredentialEntity {
@@ -68,14 +68,14 @@ dictionary PublicKeyCredentialRpEntity : PublicKeyCredentialEntity {
 };
 
 dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
-    BufferSource   id;
-    DOMString      displayName;
+    required BufferSource   id;
+    required DOMString      displayName;
 };
 
 dictionary AuthenticatorSelectionCriteria {
     AuthenticatorAttachment      authenticatorAttachment;
     boolean                      requireResidentKey = false;
-    boolean                      requireUserVerification = false;
+    UserVerificationRequirement  userVerification = "preferred";
 };
 
 enum AuthenticatorAttachment {
@@ -83,11 +83,18 @@ enum AuthenticatorAttachment {
     "cross-platform"  // Cross-platform attachment
 };
 
+enum UserVerificationRequirement {
+    "required",
+    "preferred",
+    "discouraged"
+};
+
 dictionary PublicKeyCredentialRequestOptions {
     required BufferSource                challenge;
     unsigned long                        timeout;
     USVString                            rpId;
     sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
+    UserVerificationRequirement          userVerification = "preferred";
     // Extensions are not supported yet.
     // AuthenticationExtensions             extensions; // Add in Bug 1406458
 };
@@ -109,9 +116,9 @@ enum PublicKeyCredentialType {
 };
 
 dictionary PublicKeyCredentialDescriptor {
-    required PublicKeyCredentialType type;
-    required BufferSource id;
-    sequence<AuthenticatorTransport>   transports;
+    required PublicKeyCredentialType      type;
+    required BufferSource                 id;
+    sequence<AuthenticatorTransport>      transports;
 };
 
 enum AuthenticatorTransport {
@@ -125,3 +132,4 @@ typedef long COSEAlgorithmIdentifier;
 typedef sequence<AAGUID>      AuthenticatorSelectionList;
 
 typedef BufferSource      AAGUID;
+

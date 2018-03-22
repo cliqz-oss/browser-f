@@ -18,15 +18,13 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/gfx/DeviceManagerDx.h"
 #include "mozilla/gfx/Logging.h"
+#include "nsExceptionHandler.h"
+#include "nsICrashReporter.h"
 #include "nsPrintfCString.h"
 #include "jsapi.h"
 #include <intrin.h>
 
-#if defined(MOZ_CRASHREPORTER)
-#include "nsExceptionHandler.h"
-#include "nsICrashReporter.h"
 #define NS_CRASHREPORTER_CONTRACTID "@mozilla.org/toolkit/crash-reporter;1"
-#endif
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -266,6 +264,11 @@ ParseIDFromDeviceID(const nsAString &key, const char *prefix, int length)
   if (start != -1) {
     id.Cut(0, start + strlen(prefix));
     id.Truncate(length);
+  }
+  if (id.Equals(L"QCOM", nsCaseInsensitiveStringComparator())) {
+    // String format assumptions are broken, so use a Qualcomm PCI Vendor ID
+    // for now. See also GfxDriverInfo::GetDeviceVendor.
+    return 0x5143;
   }
   nsresult err;
   return id.ToInteger(&err, 16);
@@ -854,7 +857,6 @@ GfxInfo::GetIsGPU2Active(bool* aIsGPU2Active)
   return NS_OK;
 }
 
-#if defined(MOZ_CRASHREPORTER)
 /* Cisco's VPN software can cause corruption of the floating point state.
  * Make a note of this in our crash reports so that some weird crashes
  * make more sense */
@@ -869,12 +871,10 @@ CheckForCiscoVPN() {
     CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("Cisco VPN\n"));
   }
 }
-#endif
 
 void
 GfxInfo::AddCrashReportAnnotations()
 {
-#if defined(MOZ_CRASHREPORTER)
   CheckForCiscoVPN();
 
   if (mHasDriverVersionMismatch) {
@@ -954,8 +954,6 @@ GfxInfo::AddCrashReportAnnotations()
     note.Append(NS_LossyConvertUTF16toASCII(adapterDriverVersionString2));
   }
   CrashReporter::AppendAppNotesToCrashReport(note);
-
-#endif
 }
 
 static OperatingSystem
@@ -1208,6 +1206,14 @@ GfxInfo::GetGfxDriverInfo()
       nsIGfxInfo::FEATURE_DIRECT2D, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
       DRIVER_LESS_THAN_OR_EQUAL, V(8,15,10,2302), "FEATURE_FAILURE_BUG_804144" );
 
+    /* Disable D2D on Win7 on Intel HD Graphics on driver == 8.15.10.2418
+     * See bug 1433790
+     */
+    APPEND_TO_DRIVER_BLOCKLIST2(OperatingSystem::Windows7,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(IntelHDGraphicsToSandyBridge),
+      nsIGfxInfo::FEATURE_DIRECT2D, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
+      DRIVER_EQUAL, V(8, 15, 10, 2418), "FEATURE_FAILURE_BUG_1433790");
+
     /* Disable D3D11 layers on Intel G41 express graphics and Intel GM965, Intel X3100, for causing device resets.
      * See bug 1116812.
      */
@@ -1416,6 +1422,8 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
         !adapterVendorID.Equals(GfxDriverInfo::GetDeviceVendor(VendorAMD), nsCaseInsensitiveStringComparator()) &&
         !adapterVendorID.Equals(GfxDriverInfo::GetDeviceVendor(VendorATI), nsCaseInsensitiveStringComparator()) &&
         !adapterVendorID.Equals(GfxDriverInfo::GetDeviceVendor(VendorMicrosoft), nsCaseInsensitiveStringComparator()) &&
+        !adapterVendorID.Equals(GfxDriverInfo::GetDeviceVendor(VendorParallels), nsCaseInsensitiveStringComparator()) &&
+        !adapterVendorID.Equals(GfxDriverInfo::GetDeviceVendor(VendorQualcomm), nsCaseInsensitiveStringComparator()) &&
         // FIXME - these special hex values are currently used in xpcshell tests introduced by
         // bug 625160 patch 8/8. Maybe these tests need to be adjusted now that we're only whitelisting
         // intel/ati/nvidia.

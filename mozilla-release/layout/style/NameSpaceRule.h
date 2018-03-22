@@ -13,8 +13,6 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/CSSNamespaceRule.h"
 
-#include "nsIDOMCSSRule.h"
-
 class nsAtom;
 
 // IID for the NameSpaceRule class {f0b0dbe1-5031-4a21-b06a-dc141ef2af98}
@@ -44,13 +42,13 @@ public:
 #endif
   virtual already_AddRefed<Rule> Clone() const override;
 
-  nsAtom* GetPrefix() const final { return mPrefix; }
-  void GetURLSpec(nsString& aURLSpec) const final { aURLSpec = mURLSpec; }
+  nsAtom* GetPrefix() const final override { return mPrefix; }
+  void GetURLSpec(nsString& aURLSpec) const final override { aURLSpec = mURLSpec; }
 
   // WebIDL interface
   void GetCssTextImpl(nsAString& aCssText) const override;
 
-  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const final;
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const final override;
 
 private:
   RefPtr<nsAtom> mPrefix;

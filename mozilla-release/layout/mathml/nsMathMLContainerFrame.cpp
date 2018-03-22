@@ -624,7 +624,7 @@ nsMathMLContainerFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     if (!IsVisibleForPainting(aBuilder))
       return;
 
-    aLists.Content()->AppendNewToTop(
+    aLists.Content()->AppendToTop(
       new (aBuilder) nsDisplayMathMLError(aBuilder, this));
     return;
   }
@@ -1416,8 +1416,7 @@ nsMathMLContainerFrame::DidReflowChildren(nsIFrame* aFirst, nsIFrame* aStop)
       if (grandchild)
         DidReflowChildren(grandchild, nullptr);
 
-      frame->DidReflow(frame->PresContext(), nullptr,
-                       nsDidReflowStatus::FINISHED);
+      frame->DidReflow(frame->PresContext(), nullptr);
     }
   }
 }

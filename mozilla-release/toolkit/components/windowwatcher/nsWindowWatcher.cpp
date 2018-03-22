@@ -853,7 +853,8 @@ nsWindowWatcher::OpenWindowInternal(mozIDOMWindowProxy* aParent,
                                      sizeSpec.PositionSpecified(),
                                      sizeSpec.SizeSpecified(),
                                      uriToLoad, name, features, aForceNoOpener,
-                                     &windowIsNew, getter_AddRefs(newWindow));
+                                     aLoadInfo, &windowIsNew,
+                                     getter_AddRefs(newWindow));
 
         if (NS_SUCCEEDED(rv)) {
           GetWindowTreeItem(newWindow, getter_AddRefs(newDocShellItem));
@@ -1457,15 +1458,6 @@ nsWindowWatcher::AddWindow(mozIDOMWindowProxy* aWindow, nsIWebBrowserChrome* aCh
   if (!aWindow) {
     return NS_ERROR_INVALID_ARG;
   }
-
-#ifdef DEBUG
-  {
-    nsCOMPtr<nsPIDOMWindowOuter> win(do_QueryInterface(aWindow));
-
-    NS_ASSERTION(win->IsOuterWindow(),
-                 "Uh, the active window must be an outer window!");
-  }
-#endif
 
   {
     nsWatcherWindowEntry* info;

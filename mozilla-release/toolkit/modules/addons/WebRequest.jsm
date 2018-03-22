@@ -124,23 +124,38 @@ class HeaderChanger {
       }
     }
 
-    // Set new or changed headers.
+    // Set new or changed headers.  If there are multiple headers with the same
+    // name (e.g. Set-Cookie), merge them, instead of having new values
+    // overwrite previous ones.
+    //
+    // When the new value of a header is equal the existing value of the header
+    // (e.g. the initial response set "Set-Cookie: examplename=examplevalue",
+    // and an extension also added the header
+    // "Set-Cookie: examplename=examplevalue") then the header value is not
+    // re-set, but subsequent headers of the same type will be merged in.
+    let headersAlreadySet = new Set();
     for (let {name, value, binaryValue} of headers) {
       if (binaryValue) {
         value = String.fromCharCode(...binaryValue);
       }
-      let original = origHeaders.get(name.toLowerCase());
+
+      let lowerCaseName = name.toLowerCase();
+      let original = origHeaders.get(lowerCaseName);
+
       if (!original || value !== original.value) {
-        this.setHeader(name, value);
+        let shouldMerge = headersAlreadySet.has(lowerCaseName);
+        this.setHeader(name, value, shouldMerge);
       }
+
+      headersAlreadySet.add(lowerCaseName);
     }
   }
 }
 
 class RequestHeaderChanger extends HeaderChanger {
-  setHeader(name, value) {
+  setHeader(name, value, merge) {
     try {
-      this.channel.setRequestHeader(name, value);
+      this.channel.setRequestHeader(name, value, merge);
     } catch (e) {
       Cu.reportError(new Error(`Error setting request header ${name}: ${e}`));
     }
@@ -152,9 +167,9 @@ class RequestHeaderChanger extends HeaderChanger {
 }
 
 class ResponseHeaderChanger extends HeaderChanger {
-  setHeader(name, value) {
+  setHeader(name, value, merge) {
     try {
-      this.channel.setResponseHeader(name, value);
+      this.channel.setResponseHeader(name, value, merge);
     } catch (e) {
       Cu.reportError(new Error(`Error setting response header ${name}: ${e}`));
     }
@@ -655,7 +670,8 @@ HttpObserverManager = {
       Services.tm.dispatchToMainThread(() => {
         channel.errorCheck();
         if (!channel.errorString) {
-          this.runChannelListener(channel, "onError",
+          this.runChannelListener(
+            channel, "onError",
             {error: this.activityErrorsMap.get(lastActivity) ||
                     `NS_ERROR_NET_UNKNOWN_${lastActivity}`});
         }
@@ -787,7 +803,15 @@ HttpObserverManager = {
           try {
             result = await result;
           } catch (e) {
-            Cu.reportError(e);
+            let error;
+
+            if (e instanceof Error) {
+              error = e;
+            } else if (typeof e === "object" && e.message) {
+              error = new Error(e.message, e.fileName, e.lineNumber);
+            }
+
+            Cu.reportError(error);
             continue;
           }
           if (!result || typeof result !== "object") {
@@ -816,6 +840,14 @@ HttpObserverManager = {
             channel.suspended = false;
             channel.redirectTo(Services.io.newURI(result.redirectUrl));
             return;
+          } catch (e) {
+            Cu.reportError(e);
+          }
+        }
+
+        if (result.upgradeToSecure && kind === "opening") {
+          try {
+            channel.upgradeToSecure();
           } catch (e) {
             Cu.reportError(e);
           }

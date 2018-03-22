@@ -175,5 +175,16 @@ function run_test() {
   Assert.equal(patch.state, STATE_FAILED,
                "the update patch state attribute" + MSG_SHOULD_EQUAL);
 
-  doTestFinish();
+  // Cleaning up the active update along with reloading the update manager
+  // in doTestFinish will prevent writing the update xml files during
+  // shutdown.
+  gUpdateManager.cleanupActiveUpdate();
+  executeSoon(waitForUpdateXMLFiles);
+}
+
+/**
+ * Called after the call to waitForUpdateXMLFiles finishes.
+ */
+function waitForUpdateXMLFilesFinished() {
+  executeSoon(doTestFinish);
 }

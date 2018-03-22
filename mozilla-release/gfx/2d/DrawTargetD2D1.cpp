@@ -76,16 +76,21 @@ DrawTargetD2D1::~DrawTargetD2D1()
     mDC->EndDraw();
   }
 
-  // Targets depending on us can break that dependency, since we're obviously not going to
-  // be modified in the future.
-  for (auto iter = mDependentTargets.begin();
-       iter != mDependentTargets.end(); iter++) {
-    (*iter)->mDependingOnTargets.erase(this);
-  }
-  // Our dependencies on other targets no longer matter.
-  for (TargetSet::iterator iter = mDependingOnTargets.begin();
-       iter != mDependingOnTargets.end(); iter++) {
-    (*iter)->mDependentTargets.erase(this);
+  {
+    // Until this point in the destructor it -must- still be valid for FlushInternal
+    // to be called on this.
+    StaticMutexAutoLock lock(Factory::mDTDependencyLock);
+    // Targets depending on us can break that dependency, since we're obviously not going to
+    // be modified in the future.
+    for (auto iter = mDependentTargets.begin();
+      iter != mDependentTargets.end(); iter++) {
+      (*iter)->mDependingOnTargets.erase(this);
+    }
+    // Our dependencies on other targets no longer matter.
+    for (TargetSet::iterator iter = mDependingOnTargets.begin();
+      iter != mDependingOnTargets.end(); iter++) {
+      (*iter)->mDependentTargets.erase(this);
+    }
   }
 }
 
@@ -156,28 +161,7 @@ static const uint32_t kPushedLayersBeforePurge = 25;
 void
 DrawTargetD2D1::Flush()
 {
-  if (IsDeviceContextValid()) {
-    if ((mUsedCommandListsSincePurge >= kPushedLayersBeforePurge) &&
-        mPushedLayers.size() == 1) {
-      // It's important to pop all clips as otherwise layers can forget about
-      // their clip when doing an EndDraw. When we have layers pushed we cannot
-      // easily pop all underlying clips to delay the purge until we have no
-      // layers pushed.
-      PopAllClips();
-      mUsedCommandListsSincePurge = 0;
-      mDC->EndDraw();
-      mDC->BeginDraw();
-    } else {
-      mDC->Flush();
-    }
-  }
-
-  // We no longer depend on any target.
-  for (TargetSet::iterator iter = mDependingOnTargets.begin();
-       iter != mDependingOnTargets.end(); iter++) {
-    (*iter)->mDependentTargets.erase(this);
-  }
-  mDependingOnTargets.clear();
+  FlushInternal();
 }
 
 void
@@ -205,7 +189,7 @@ DrawTargetD2D1::DrawSurface(SourceSurface *aSurface,
   // Here we scale the source pattern up to the size and position where we want
   // it to be.
   Matrix transform;
-  transform.PreTranslate(aDest.x - aSource.x * xScale, aDest.y - aSource.y * yScale);
+  transform.PreTranslate(aDest.X() - aSource.X() * xScale, aDest.Y() - aSource.Y() * yScale);
   transform.PreScale(xScale, yScale);
 
   RefPtr<ID2D1Image> image = GetImageForSurface(aSurface, transform, ExtendMode::CLAMP);
@@ -358,7 +342,7 @@ DrawTargetD2D1::ClearRect(const Rect &aRect)
 
   RefPtr<ID2D1SolidColorBrush> brush;
   mDC->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), getter_AddRefs(brush));
-  mDC->PushAxisAlignedClip(D2D1::RectF(addClipRect.x, addClipRect.y, addClipRect.XMost(), addClipRect.YMost()), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+  mDC->PushAxisAlignedClip(D2D1::RectF(addClipRect.X(), addClipRect.Y(), addClipRect.XMost(), addClipRect.YMost()), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
   mDC->FillGeometry(geom, brush);
   mDC->PopAxisAlignedClip();
 
@@ -458,7 +442,7 @@ DrawTargetD2D1::CopySurface(SourceSurface *aSurface,
   mDC->SetTransform(D2D1::IdentityMatrix());
   mTransformDirty = true;
 
-  Matrix mat = Matrix::Translation(aDestination.x - aSourceRect.x, aDestination.y - aSourceRect.y);
+  Matrix mat = Matrix::Translation(aDestination.x - aSourceRect.X(), aDestination.y - aSourceRect.Y());
   RefPtr<ID2D1Image> image = GetImageForSurface(aSurface, mat, ExtendMode::CLAMP, nullptr, false);
 
   if (!image) {
@@ -472,10 +456,8 @@ DrawTargetD2D1::CopySurface(SourceSurface *aSurface,
   }
 
   IntRect sourceRect = aSourceRect;
-  sourceRect.x += (aDestination.x - aSourceRect.x) - mat._31;
-  sourceRect.width -= (aDestination.x - aSourceRect.x) - mat._31;
-  sourceRect.y += (aDestination.y - aSourceRect.y) - mat._32;
-  sourceRect.height -= (aDestination.y - aSourceRect.y) - mat._32;
+  sourceRect.SetLeftEdge(sourceRect.X() + (aDestination.x - aSourceRect.X()) - mat._31);
+  sourceRect.SetTopEdge(sourceRect.Y() + (aDestination.y - aSourceRect.Y()) - mat._32);
 
   RefPtr<ID2D1Bitmap> bitmap;
   HRESULT hr = image->QueryInterface((ID2D1Bitmap**)getter_AddRefs(bitmap));
@@ -492,7 +474,7 @@ DrawTargetD2D1::CopySurface(SourceSurface *aSurface,
     return;
   }
 
-  Rect srcRect(Float(sourceRect.x), Float(sourceRect.y),
+  Rect srcRect(Float(sourceRect.X()), Float(sourceRect.Y()),
                Float(aSourceRect.Width()), Float(aSourceRect.Height()));
 
   Rect dstRect(Float(aDestination.x), Float(aDestination.y),
@@ -1274,6 +1256,41 @@ DrawTargetD2D1::CleanupD2D()
 }
 
 void
+DrawTargetD2D1::FlushInternal(bool aHasDependencyMutex /* = false */)
+{
+  if (IsDeviceContextValid()) {
+    if ((mUsedCommandListsSincePurge >= kPushedLayersBeforePurge) &&
+      mPushedLayers.size() == 1) {
+      // It's important to pop all clips as otherwise layers can forget about
+      // their clip when doing an EndDraw. When we have layers pushed we cannot
+      // easily pop all underlying clips to delay the purge until we have no
+      // layers pushed.
+      PopAllClips();
+      mUsedCommandListsSincePurge = 0;
+      mDC->EndDraw();
+      mDC->BeginDraw();
+    }
+    else {
+      mDC->Flush();
+    }
+  }
+
+  Maybe<StaticMutexAutoLock> lock;
+
+  if (!aHasDependencyMutex) {
+    lock.emplace(Factory::mDTDependencyLock);
+  }
+
+  Factory::mDTDependencyLock.AssertCurrentThreadOwns();
+  // We no longer depend on any target.
+  for (TargetSet::iterator iter = mDependingOnTargets.begin();
+    iter != mDependingOnTargets.end(); iter++) {
+    (*iter)->mDependentTargets.erase(this);
+  }
+  mDependingOnTargets.clear();
+}
+
+void
 DrawTargetD2D1::MarkChanged()
 {
   if (mSnapshot) {
@@ -1287,15 +1304,19 @@ DrawTargetD2D1::MarkChanged()
       MOZ_ASSERT(!mSnapshot);
     }
   }
-  if (mDependentTargets.size()) {
-    // Copy mDependentTargets since the Flush()es below will modify it.
-    TargetSet tmpTargets = mDependentTargets;
-    for (TargetSet::iterator iter = tmpTargets.begin();
-         iter != tmpTargets.end(); iter++) {
-      (*iter)->Flush();
+
+  {
+    StaticMutexAutoLock lock(Factory::mDTDependencyLock);
+    if (mDependentTargets.size()) {
+      // Copy mDependentTargets since the Flush()es below will modify it.
+      TargetSet tmpTargets = mDependentTargets;
+      for (TargetSet::iterator iter = tmpTargets.begin();
+        iter != tmpTargets.end(); iter++) {
+        (*iter)->FlushInternal(true);
+      }
+      // The Flush() should have broken all dependencies on this target.
+      MOZ_ASSERT(!mDependentTargets.size());
     }
-    // The Flush() should have broken all dependencies on this target.
-    MOZ_ASSERT(!mDependentTargets.size());
   }
 }
 
@@ -1466,9 +1487,18 @@ DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp, const Pattern &aPattern)
 void
 DrawTargetD2D1::AddDependencyOnSource(SourceSurfaceD2D1* aSource)
 {
-  if (aSource->mDrawTarget && !mDependingOnTargets.count(aSource->mDrawTarget)) {
-    aSource->mDrawTarget->mDependentTargets.insert(this);
-    mDependingOnTargets.insert(aSource->mDrawTarget);
+  Maybe<MutexAutoLock> snapshotLock;
+  // We grab the SnapshotLock as well, this guaranteeds aSource->mDrawTarget
+  // cannot be cleared in between the if statement and the dereference.
+  if (aSource->mSnapshotLock) {
+    snapshotLock.emplace(*aSource->mSnapshotLock);
+  }
+  {
+    StaticMutexAutoLock lock(Factory::mDTDependencyLock);
+    if (aSource->mDrawTarget && !mDependingOnTargets.count(aSource->mDrawTarget)) {
+      aSource->mDrawTarget->mDependentTargets.insert(this);
+      mDependingOnTargets.insert(aSource->mDrawTarget);
+    }
   }
 }
 
@@ -1883,7 +1913,7 @@ DrawTargetD2D1::CreateBrushForPattern(const Pattern &aPattern, Float aAlpha)
                                    Float(pat->mSurface->GetSize().height));
     } else if (pat->mSurface->GetType() == SurfaceType::D2D1_1_IMAGE) {
       samplingBounds = D2DRect(pat->mSamplingRect);
-      mat.PreTranslate(pat->mSamplingRect.x, pat->mSamplingRect.y);
+      mat.PreTranslate(pat->mSamplingRect.X(), pat->mSamplingRect.Y());
     } else {
       // We will do a partial upload of the sampling restricted area from GetImageForSurface.
       samplingBounds = D2D1::RectF(0, 0, pat->mSamplingRect.Width(), pat->mSamplingRect.Height());

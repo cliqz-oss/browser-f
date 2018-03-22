@@ -75,7 +75,7 @@ function run_test() {
       todo(false, "Aborting test due to unmovable blocklist file: " + e);
       return;
     }
-    do_register_cleanup(function() {
+    registerCleanupFunction(function() {
       clearBlocklists();
       appBlocklist.moveTo(gAppDir, FILE_BLOCKLIST);
     });
@@ -93,12 +93,11 @@ add_test(function test_copy() {
   startupManager();
 
   reloadBlocklist();
-  let blocklist = AM_Cc["@mozilla.org/extensions/blocklist;1"].
-                  getService(AM_Ci.nsIBlocklistService);
-  do_check_false(blocklist.isAddonBlocklisted(invalidAddon));
-  do_check_false(blocklist.isAddonBlocklisted(ancientAddon));
-  do_check_true(blocklist.isAddonBlocklisted(oldAddon));
-  do_check_false(blocklist.isAddonBlocklisted(newAddon));
+
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(invalidAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(ancientAddon));
+  Assert.ok(Services.blocklist.isAddonBlocklisted(oldAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(newAddon));
 
   shutdownManager();
 
@@ -115,12 +114,11 @@ add_test(function test_ancient() {
   startupManager();
 
   reloadBlocklist();
-  let blocklist = AM_Cc["@mozilla.org/extensions/blocklist;1"].
-                  getService(AM_Ci.nsIBlocklistService);
-  do_check_false(blocklist.isAddonBlocklisted(invalidAddon));
-  do_check_false(blocklist.isAddonBlocklisted(ancientAddon));
-  do_check_true(blocklist.isAddonBlocklisted(oldAddon));
-  do_check_false(blocklist.isAddonBlocklisted(newAddon));
+
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(invalidAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(ancientAddon));
+  Assert.ok(Services.blocklist.isAddonBlocklisted(oldAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(newAddon));
 
   shutdownManager();
 
@@ -137,12 +135,11 @@ add_test(function test_override() {
   startupManager();
 
   reloadBlocklist();
-  let blocklist = AM_Cc["@mozilla.org/extensions/blocklist;1"].
-                  getService(AM_Ci.nsIBlocklistService);
-  do_check_false(blocklist.isAddonBlocklisted(invalidAddon));
-  do_check_false(blocklist.isAddonBlocklisted(ancientAddon));
-  do_check_false(blocklist.isAddonBlocklisted(oldAddon));
-  do_check_true(blocklist.isAddonBlocklisted(newAddon));
+
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(invalidAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(ancientAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(oldAddon));
+  Assert.ok(Services.blocklist.isAddonBlocklisted(newAddon));
 
   shutdownManager();
 
@@ -159,12 +156,11 @@ add_test(function test_retain() {
   startupManager();
 
   reloadBlocklist();
-  let blocklist = AM_Cc["@mozilla.org/extensions/blocklist;1"].
-                  getService(AM_Ci.nsIBlocklistService);
-  do_check_false(blocklist.isAddonBlocklisted(invalidAddon));
-  do_check_false(blocklist.isAddonBlocklisted(ancientAddon));
-  do_check_false(blocklist.isAddonBlocklisted(oldAddon));
-  do_check_true(blocklist.isAddonBlocklisted(newAddon));
+
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(invalidAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(ancientAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(oldAddon));
+  Assert.ok(Services.blocklist.isAddonBlocklisted(newAddon));
 
   shutdownManager();
 
@@ -186,12 +182,11 @@ add_test(function test_missing() {
   startupManager(false);
 
   reloadBlocklist();
-  blocklist = AM_Cc["@mozilla.org/extensions/blocklist;1"].
-              getService(AM_Ci.nsIBlocklistService);
-  do_check_false(blocklist.isAddonBlocklisted(invalidAddon));
-  do_check_false(blocklist.isAddonBlocklisted(ancientAddon));
-  do_check_true(blocklist.isAddonBlocklisted(oldAddon));
-  do_check_false(blocklist.isAddonBlocklisted(newAddon));
+
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(invalidAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(ancientAddon));
+  Assert.ok(Services.blocklist.isAddonBlocklisted(oldAddon));
+  Assert.ok(!Services.blocklist.isAddonBlocklisted(newAddon));
 
   shutdownManager();
 

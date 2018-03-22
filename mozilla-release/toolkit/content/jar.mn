@@ -7,8 +7,6 @@ toolkit.jar:
    content/global/textbox.css
    content/global/menulist.css
    content/global/autocomplete.css
-   content/global/about.js
-   content/global/about.xhtml
    content/global/aboutAbout.js
    content/global/aboutAbout.xhtml
 #ifdef MOZILLA_OFFICIAL
@@ -42,22 +40,15 @@ toolkit.jar:
    content/global/browser-content.js
 *   content/global/buildconfig.html
    content/global/contentAreaUtils.js
-#ifndef MOZ_FENNEC
-   content/global/customizeToolbar.css
-   content/global/customizeToolbar.js
-   content/global/customizeToolbar.xul
-#endif
    content/global/datepicker.xhtml
 #ifndef MOZ_FENNEC
    content/global/editMenuOverlay.js
 *  content/global/editMenuOverlay.xul
-   content/global/finddialog.js
-*  content/global/finddialog.xul
-   content/global/findUtils.js
 #endif
    content/global/filepicker.properties
    content/global/globalOverlay.js
    content/global/mozilla.xhtml
+   content/global/preferencesBindings.js
    content/global/process-content.js
    content/global/resetProfile.css
    content/global/resetProfile.js
@@ -66,7 +57,9 @@ toolkit.jar:
    content/global/TopLevelVideoDocument.js
    content/global/timepicker.xhtml
    content/global/treeUtils.js
+#ifndef MOZ_FENNEC
    content/global/viewZoomOverlay.js
+#endif
    content/global/bindings/autocomplete.xml    (widgets/autocomplete.xml)
    content/global/bindings/browser.xml         (widgets/browser.xml)
    content/global/bindings/button.xml          (widgets/button.xml)
@@ -75,13 +68,11 @@ toolkit.jar:
    content/global/bindings/colorpicker.xml     (widgets/colorpicker.xml)
    content/global/bindings/datekeeper.js       (widgets/datekeeper.js)
    content/global/bindings/datepicker.js       (widgets/datepicker.js)
-   content/global/bindings/datetimepicker.xml  (widgets/datetimepicker.xml)
    content/global/bindings/datetimepopup.xml   (widgets/datetimepopup.xml)
    content/global/bindings/datetimebox.xml     (widgets/datetimebox.xml)
    content/global/bindings/datetimebox.css     (widgets/datetimebox.css)
 *  content/global/bindings/dialog.xml          (widgets/dialog.xml)
    content/global/bindings/editor.xml          (widgets/editor.xml)
-   content/global/bindings/expander.xml        (widgets/expander.xml)
    content/global/bindings/filefield.xml       (widgets/filefield.xml)
 *  content/global/bindings/findbar.xml         (widgets/findbar.xml)
    content/global/bindings/general.xml         (widgets/general.xml)
@@ -92,7 +83,6 @@ toolkit.jar:
    content/global/bindings/notification.xml    (widgets/notification.xml)
    content/global/bindings/numberbox.xml       (widgets/numberbox.xml)
    content/global/bindings/popup.xml           (widgets/popup.xml)
-*  content/global/bindings/preferences.xml     (widgets/preferences.xml)
    content/global/bindings/progressmeter.xml   (widgets/progressmeter.xml)
    content/global/bindings/radio.xml           (widgets/radio.xml)
    content/global/bindings/remote-browser.xml  (widgets/remote-browser.xml)

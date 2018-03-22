@@ -21,15 +21,12 @@
 #include "mozilla/layers/DeviceAttachmentsD3D11.h"
 #include "mozilla/layers/MLGDeviceD3D11.h"
 #include "mozilla/layers/PaintThread.h"
+#include "nsExceptionHandler.h"
 #include "nsIGfxInfo.h"
+#include "nsPrintfCString.h"
 #include "nsString.h"
 #include <d3d11.h>
 #include <ddraw.h>
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#include "nsPrintfCString.h"
-#endif
 
 namespace mozilla {
 namespace gfx {
@@ -109,6 +106,7 @@ DeviceManagerDx::ReleaseD3D11()
 {
   MOZ_ASSERT(!mCompositorDevice);
   MOZ_ASSERT(!mContentDevice);
+  MOZ_ASSERT(!mVRDevice);
   MOZ_ASSERT(!mDecoderDevice);
 
   mD3D11Module.reset();
@@ -166,6 +164,46 @@ DeviceManagerDx::CreateCompositorDevices()
   }
 
   PreloadAttachmentsOnCompositorThread();
+  return true;
+}
+
+bool
+DeviceManagerDx::CreateVRDevice()
+{
+  MOZ_ASSERT(ProcessOwnsCompositor());
+
+  if (mVRDevice) {
+    return true;
+  }
+
+  if (!gfxConfig::IsEnabled(Feature::D3D11_COMPOSITING)) {
+    NS_WARNING("Direct3D11 Compositing required for VR");
+    return false;
+  }
+
+  if (!LoadD3D11()) {
+    return false;
+  }
+
+  RefPtr<IDXGIAdapter1> adapter = GetDXGIAdapter();
+  if (!adapter) {
+    NS_WARNING("Failed to acquire a DXGI adapter for VR");
+    return false;
+  }
+
+  UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+
+  HRESULT hr;
+  if (!CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, flags, hr, mVRDevice)) {
+    gfxCriticalError() << "Crash during D3D11 device creation for VR";
+    return false;
+  }
+
+  if (FAILED(hr) || !mVRDevice) {
+    NS_WARNING("Failed to acquire a D3D11 device for VR");
+    return false;
+  }
+
   return true;
 }
 
@@ -772,12 +810,10 @@ DeviceManagerDx::MaybeResetAndReacquireDevices()
     Telemetry::Accumulate(Telemetry::DEVICE_RESET_REASON, uint32_t(resetReason));
   }
 
-#ifdef MOZ_CRASHREPORTER
   nsPrintfCString reasonString("%d", int(resetReason));
   CrashReporter::AnnotateCrashReport(
     NS_LITERAL_CSTRING("DeviceResetReason"),
     reasonString);
-#endif
 
   bool createCompositorDevice = !!mCompositorDevice;
   bool createContentDevice = !!mContentDevice;
@@ -941,6 +977,16 @@ DeviceManagerDx::GetContentDevice()
 {
   MutexAutoLock lock(mDeviceLock);
   return mContentDevice;
+}
+
+RefPtr<ID3D11Device>
+DeviceManagerDx::GetVRDevice()
+{
+  MutexAutoLock lock(mDeviceLock);
+  if (!mVRDevice) {
+    CreateVRDevice();
+  }
+  return mVRDevice;
 }
 
 unsigned

@@ -31,37 +31,6 @@ class WasmInstanceScope;
 
 namespace wasm {
 
-// Creates a testing-only NaN JS object with fields as described above, for
-// T=float or T=double.
-
-template<typename T>
-JSObject*
-CreateCustomNaNObject(JSContext* cx, T* addr);
-
-// Converts a testing-only NaN JS object with a nan_low field to a float32 NaN
-// with nan_low as the payload.
-
-bool
-ReadCustomFloat32NaNObject(JSContext* cx, HandleValue v, uint32_t* ret);
-
-// Converts a testing-only NaN JS object with nan_{low,high} components to a
-// double NaN with nan_low|(nan_high)>>32 as the payload.
-
-bool
-ReadCustomDoubleNaNObject(JSContext* cx, HandleValue v, uint64_t* ret);
-
-// Creates a JS object containing two fields (low: low 32 bits; high: high 32
-// bits) of a given Int64 value. For testing purposes only.
-
-JSObject*
-CreateI64Object(JSContext* cx, int64_t i64);
-
-// Reads an int64 from a JS object with the same shape as described in the
-// comment above. For testing purposes only.
-
-bool
-ReadI64Object(JSContext* cx, HandleValue v, int64_t* i64);
-
 // Return whether WebAssembly can be compiled on this platform.
 // This must be checked and must be true to call any of the top-level wasm
 // eval/compile methods.
@@ -101,6 +70,9 @@ ExportedFunctionToInstanceObject(JSFunction* fun);
 
 extern uint32_t
 ExportedFunctionToFuncIndex(JSFunction* fun);
+
+extern bool
+IsSharedWasmMemoryObject(JSObject* obj);
 
 } // namespace wasm
 
@@ -223,6 +195,7 @@ class WasmMemoryObject : public NativeObject
     static bool bufferGetter(JSContext* cx, unsigned argc, Value* vp);
     static bool growImpl(JSContext* cx, const CallArgs& args);
     static bool grow(JSContext* cx, unsigned argc, Value* vp);
+    static uint32_t growShared(HandleWasmMemoryObject memory, uint32_t delta, JSContext* cx);
 
     using InstanceSet = JS::WeakCache<GCHashSet<ReadBarrieredWasmInstanceObject,
                                                 MovableCellHasher<ReadBarrieredWasmInstanceObject>,
@@ -242,9 +215,27 @@ class WasmMemoryObject : public NativeObject
     static WasmMemoryObject* create(JSContext* cx,
                                     Handle<ArrayBufferObjectMaybeShared*> buffer,
                                     HandleObject proto);
+
+    // `buffer()` returns the current buffer object always.  If the buffer
+    // represents shared memory then `buffer().byteLength()` never changes, and
+    // in particular it may be a smaller value than that returned from
+    // `volatileMemoryLength()` below.
+    //
+    // Generally, you do not want to call `buffer().byteLength()`, but to call
+    // `volatileMemoryLength()`, instead.
     ArrayBufferObjectMaybeShared& buffer() const;
 
+    // The current length of the memory.  In the case of shared memory, the
+    // length can change at any time.  Also note that this will acquire a lock
+    // for shared memory, so do not call this from a signal handler.
+    uint32_t volatileMemoryLength() const;
+
+    bool isShared() const;
     bool movingGrowable() const;
+
+    // If isShared() is true then obtain the underlying buffer object.
+    SharedArrayRawBuffer* sharedArrayRawBuffer() const;
+
     bool addMovingGrowObserver(JSContext* cx, WasmInstanceObject* instance);
     static uint32_t grow(HandleWasmMemoryObject memory, uint32_t delta, JSContext* cx);
 };

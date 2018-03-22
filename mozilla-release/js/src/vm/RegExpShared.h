@@ -274,6 +274,11 @@ class RegExpZone
 
     bool empty() const { return set_.empty(); }
 
+    RegExpShared* maybeGet(JSAtom* source, RegExpFlag flags) const {
+        Set::Ptr p = set_.lookup(Key(source, flags));
+        return p ? *p : nullptr;
+    }
+
     RegExpShared* get(JSContext* cx, HandleAtom source, RegExpFlag flags);
 
     /* Like 'get', but compile 'maybeOpt' (if non-null). */
@@ -319,9 +324,9 @@ class RegExpCompartment
     ArrayObject* createMatchResultTemplateObject(JSContext* cx);
 
   public:
-    explicit RegExpCompartment(Zone* zone);
+    explicit RegExpCompartment();
 
-    void sweep(JSRuntime* rt);
+    void sweep();
 
     /* Get or create template object used to base the result of .exec() on. */
     ArrayObject* getOrCreateMatchResultTemplateObject(JSContext* cx) {
@@ -367,7 +372,7 @@ class Concrete<js::RegExpShared> : TracerConcrete<js::RegExpShared>
         new (storage) Concrete(ptr);
     }
 
-    CoarseType coarseType() const final { return CoarseType::Other; }
+    CoarseType coarseType() const final override { return CoarseType::Other; }
 
     Size size(mozilla::MallocSizeOf mallocSizeOf) const override;
 

@@ -4,7 +4,7 @@
 
 Servo is a prototype web browser engine written in the
 [Rust](https://github.com/rust-lang/rust) language. It is currently developed on
-64-bit OS X, 64-bit Linux, and Android.
+64-bit OS X, 64-bit Linux, 64-bit Windows, and Android.
 
 Servo welcomes contribution from everyone.  See
 [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`HACKING_QUICKSTART.md`](docs/HACKING_QUICKSTART.md)
@@ -13,6 +13,32 @@ for help getting started.
 Visit the [Servo Project page](https://servo.org/) for news and guides.
 
 ## Setting up your environment
+
+### Rustup.rs
+
+Building servo requires [rustup](https://rustup.rs/), version 1.8.0 or more recent.
+If you have an older version, run `rustup self update`.
+
+To install on Windows, download and run [`rustup-init.exe`](https://win.rustup.rs/)
+then follow the onscreen instructions.
+
+To install on other systems, run:
+
+```sh
+curl https://sh.rustup.rs -sSf | sh
+```
+
+This will also download the current stable version of Rust, which Servo won’t use.
+To skip that step, run instead:
+
+```
+curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain none
+```
+
+See also [Other installation methods](
+https://github.com/rust-lang-nursery/rustup.rs/#other-installation-methods)
+
+### Other dependencies
 
 Please select your operating system:
 * [OS X](#os-x)
@@ -80,10 +106,9 @@ sudo dnf install curl freeglut-devel libtool gcc-c++ libXi-devel \
 sudo yum install curl freeglut-devel libtool gcc-c++ libXi-devel \
     freetype-devel mesa-libGL-devel mesa-libEGL-devel glib2-devel libX11-devel libXrandr-devel gperf \
     fontconfig-devel cabextract ttmkfdir python python-virtualenv python-pip expat-devel \
-    rpm-build openssl-devel cmake bzip2-devel libXcursor-devel libXmu-devel mesa-libOSMesa-devel \
+    rpm-build openssl-devel cmake3 bzip2-devel libXcursor-devel libXmu-devel mesa-libOSMesa-devel \
     dbus-devel ncurses-devel python34
 ```
-
 #### On openSUSE Linux
 ``` sh
 sudo zypper install libX11-devel libexpat-devel libbz2-devel Mesa-libEGL-devel Mesa-libGL-devel cabextract cmake \
@@ -125,9 +150,9 @@ list of installed components. It is not on by default. Visual Studio 2017 MUST i
 > If you encountered errors with the environment above, do the following for a workaround:
 > 1.  Download and install [Build Tools for Visual Studio 2017](https://www.visualstudio.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=15)
 > 2.  Install `python2.7 x86-x64` and `virtualenv`
-> 3.  Run `mach.bat build -d`. 
+> 3.  Run `mach.bat build -d`.
 
->If you have troubles with `x64 type` prompt as `mach.bat` set by default:  
+>If you have troubles with `x64 type` prompt as `mach.bat` set by default:
 > 1. you may need to choose and launch the type manually, such as `x86_x64 Cross Tools Command Prompt for VS 2017` in the Windows menu.)
 > 2. `cd to/the/path/servo`
 > 3. `python mach build -d`
@@ -139,11 +164,9 @@ Pre-installed Android tools are needed. See wiki for
 
 ## The Rust compiler
 
-Servo's build system automatically downloads a Rust compiler to build itself.
-This is normally a specific revision of Rust upstream, but sometimes has a
-backported patch or two.
-If you'd like to know which nightly build of Rust we use, see
-[`rust-toolchain`](https://github.com/servo/servo/blob/master/rust-toolchain).
+Servo's build system uses rustup.rs to automatically download a Rust compiler.
+This is a specific version of Rust Nightly determined by the
+[`rust-toolchain`](https://github.com/servo/servo/blob/master/rust-toolchain) file.
 
 ## Building
 
@@ -217,9 +240,13 @@ cp servobuild.example .servobuild
 
 ## Running
 
-Use `./mach run [url]` to run Servo. Like so,
+Run Servo with the command:
 
-``` shell
+```sh
+./servo [url] [arguments] # if you run with nightly build
+./mach run [url] [arguments] # if you run with mach
+
+# For example
 ./mach run https://www.google.com
 ```
 

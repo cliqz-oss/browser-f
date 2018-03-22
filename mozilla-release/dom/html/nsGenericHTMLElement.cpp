@@ -27,7 +27,6 @@
 #include "nsIDocument.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIDOMHTMLDocument.h"
-#include "nsIDOMAttr.h"
 #include "nsIDOMDocumentFragment.h"
 #include "nsIDOMHTMLElement.h"
 #include "nsIDOMWindow.h"
@@ -381,10 +380,11 @@ nsGenericHTMLElement::Spellcheck()
   nsIContent* node;
   for (node = this; node; node = node->GetParent()) {
     if (node->IsHTMLElement()) {
-      static nsIContent::AttrValuesArray strings[] =
+      static Element::AttrValuesArray strings[] =
         {&nsGkAtoms::_true, &nsGkAtoms::_false, nullptr};
-      switch (node->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::spellcheck,
-                                    strings, eCaseMatters)) {
+      switch (node->AsElement()->FindAttrValueIn(kNameSpaceID_None,
+                                                 nsGkAtoms::spellcheck, strings,
+                                                 eCaseMatters)) {
         case 0:                         // spellcheck = "true"
           return true;
         case 1:                         // spellcheck = "false"
@@ -927,6 +927,7 @@ bool
 nsGenericHTMLElement::ParseAttribute(int32_t aNamespaceID,
                                      nsAtom* aAttribute,
                                      const nsAString& aValue,
+                                     nsIPrincipal* aMaybeScriptedPrincipal,
                                      nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -964,7 +965,8 @@ nsGenericHTMLElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElementBase::ParseAttribute(aNamespaceID, aAttribute,
-                                                  aValue, aResult);
+                                                  aValue, aMaybeScriptedPrincipal,
+                                                  aResult);
 }
 
 bool
@@ -1541,7 +1543,7 @@ nsGenericHTMLElement::MapBackgroundInto(const nsMappedAttributes* aAttributes,
     return;
 
   if (!aData->PropertyIsSet(eCSSProperty_background_image) &&
-      aData->PresContext()->UseDocumentColors()) {
+      !aData->ShouldIgnoreColors()) {
     // background
     nsAttrValue* value =
       const_cast<nsAttrValue*>(aAttributes->GetAttr(nsGkAtoms::background));
@@ -1559,7 +1561,7 @@ nsGenericHTMLElement::MapBGColorInto(const nsMappedAttributes* aAttributes,
     return;
 
   if (!aData->PropertyIsSet(eCSSProperty_background_color) &&
-      aData->PresContext()->UseDocumentColors()) {
+      !aData->ShouldIgnoreColors()) {
     const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::bgcolor);
     nscolor color;
     if (value && value->GetColorValue(color)) {
@@ -2784,7 +2786,9 @@ MakeContentDescendantsEditable(nsIContent *aContent, nsIDocument *aDocument)
   for (nsIContent *child = aContent->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    if (!child->HasAttr(kNameSpaceID_None, nsGkAtoms::contenteditable)) {
+    if (!child->IsElement() ||
+        !child->AsElement()->HasAttr(kNameSpaceID_None,
+                                     nsGkAtoms::contenteditable)) {
       MakeContentDescendantsEditable(child, aDocument);
     }
   }
@@ -3081,7 +3085,7 @@ nsGenericHTMLElement::GetInnerText(mozilla::dom::DOMString& aValue,
     }
   }
 
-  nsRange::GetInnerTextNoFlush(aValue, aError, this, 0, this, GetChildCount());
+  nsRange::GetInnerTextNoFlush(aValue, aError, this);
 }
 
 void
@@ -3097,12 +3101,12 @@ nsGenericHTMLElement::SetInnerText(const nsAString& aValue)
     UPDATE_CONTENT_MODEL, true);
   nsAutoMutationBatch mb;
 
-  uint32_t childCount = GetChildCount();
-
   mb.Init(this, true, false);
-  for (uint32_t i = 0; i < childCount; ++i) {
-    RemoveChildAt(0, true);
+
+  while (HasChildren()) {
+    RemoveChildNode(nsINode::GetFirstChild(), true);
   }
+
   mb.RemovalDone();
 
   nsString str;

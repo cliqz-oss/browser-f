@@ -6,9 +6,9 @@
    :maxdepth: 2
 
 This is the "main" Telemetry ping type, whose payload contains most of the measurements that are used to track the performance and health of Firefox in the wild.
-It includes the histograms and other performance and diagnostic data.
+It includes histograms and other performance and diagnostic data.
 
-This ping is triggered by different scenarios, which is documented by the ``reason`` field:
+This ping may be triggered for one of many reasons documented by the ``reason`` field:
 
 * ``aborted-session`` - this ping is regularly saved to disk (every 5 minutes), overwriting itself, and deleted at shutdown. If a previous aborted session ping is found at startup, it gets sent to the server. The first aborted-session ping is generated as soon as Telemetry starts
 * ``environment-change`` - the :doc:`environment` changed, so the session measurements got reset and a new subsession starts
@@ -157,7 +157,7 @@ Note: Before Firefox 51 and bug 1218576, content process histograms and keyedHis
 
 simpleMeasurements
 ------------------
-This section contains a list of simple measurements, or counters. In addition to the ones highlighted below, Telemetry timestamps (see `here <https://dxr.mozilla.org/mozilla-central/search?q=%22TelemetryTimestamps.add%22&redirect=false&case=true>`_ and `here <https://dxr.mozilla.org/mozilla-central/search?q=%22recordTimestamp%22&redirect=false&case=true>`_) can be reported.
+This section contains a list of simple measurements, or counters. In addition to the ones highlighted below, Telemetry timestamps (see `here <https://dxr.mozilla.org/mozilla-central/search?q=%22TelemetryTimestamps.add%22&redirect=false&case=true>`__ and `here <https://dxr.mozilla.org/mozilla-central/search?q=%22recordTimestamp%22&redirect=false&case=true>`__) can be reported.
 
 totalTime
 ~~~~~~~~~
@@ -169,7 +169,7 @@ A non-monotonic integer representing the number of minutes the session has been 
 
 addonManager
 ~~~~~~~~~~~~
-Only available in the extended set of measures, it contains a set of counters related to Addons. See `here <https://dxr.mozilla.org/mozilla-central/search?q=%22AddonManagerPrivate.recordSimpleMeasure%22&redirect=false&case=true>`_ for a list of recorded measures.
+Only available in the extended set of measures, it contains a set of counters related to Addons. See `here <https://dxr.mozilla.org/mozilla-central/search?q=%22AddonManagerPrivate.recordSimpleMeasure%22&redirect=false&case=true>`__ for a list of recorded measures.
 
 UITelemetry
 ~~~~~~~~~~~
@@ -241,7 +241,7 @@ Integer count of pending pings that are overdue.
 
 histograms
 ----------
-This section contains the histograms that are valid for the current platform. ``Flag`` and ``count`` histograms are always created and submitted, with their default value being respectively ``false`` and ``0``. Other histogram types (see :ref:`choosing-histogram-type`) are not created nor submitted if no data was added to them. The type and format of the reported histograms is described by the ``Histograms.json`` file. Its most recent version is available `here <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Histograms.json>`_. The ``info.revision`` field indicates the revision of the file that describes the reported histograms.
+This section contains the histograms that are valid for the current platform. ``Flag`` histograms are always created and submitted with a default value of ``false`` if a value of ``true`` is not recorded during the time period. Other histogram types (see :ref:`choosing-histogram-type`) are not created nor submitted if no data was added to them. The type and format of the reported histograms is described by the ``Histograms.json`` file. Its most recent version is available `here <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Histograms.json>`_. The ``info.revision`` field indicates the revision of the file that describes the reported histograms.
 
 keyedHistograms
 ---------------
@@ -251,7 +251,7 @@ As of Firefox 48, this section does not contain empty keyed histograms anymore.
 
 threadHangStats
 ---------------
-As of Firefox 57 this section is no longer present, and has been replaced with the 'bhr' ping.
+As of Firefox 57 this section is no longer present, and has been replaced with the :doc:`bhr ping <backgroundhangmonitor-ping>`.
 
 Contains the statistics about the hangs in main and background threads. Note that hangs in this section capture the `C++ pseudostack <https://developer.mozilla.org/en-US/docs/Mozilla/Performance/Profiling_with_the_Built-in_Profiler#Native_stack_vs._Pseudo_stack>`_ and an incomplete JS stack, which is not 100% precise. For particularly egregious hangs, and on nightly, an unsymbolicated native stack is also captured. The amount of time that is considered "egregious" is different from thread to thread, and is set when the BackgroundHangMonitor is constructed for that thread. In general though, hangs from 5 - 10 seconds are generally considered egregious. Shorter hangs (1 - 2s) are considered egregious for other threads (the compositor thread, and the hang monitor that is only enabled during tab switch).
 
@@ -481,6 +481,7 @@ Structure:
           "total_zones": 9,
           "total_compartments": 309,
           "minor_gcs": 44,
+          // Present if non-zero.
           "store_buffer_overflows": 19,
           "mmu_20ms": 0,
           "mmu_50ms": 0,
@@ -488,11 +489,14 @@ Structure:
           // "AbortRequested", "KeepAtomsSet", "IncrementalDisabled",
           // "ModeChange", "MallocBytesTrigger", "GCBytesTrigger",
           // "ZoneChange", "CompartmentRevived".
-          "nonincremental_reason": "None",
-          "allocated": 37, // In megabytes.
+          // Present for non-incremental GCs only.
+          "nonincremental_reason": "GCBytesTrigger",
           "allocated_bytes": 38853696 // in bytes
+
+          // Present if non-zero.
           "added_chunks": 54,
           "removed_chunks": 12,
+
           // Total number of slices (some of which may not appear
           // in the "slices" array).
           "slices": 15,
@@ -501,8 +505,7 @@ Structure:
           "slices_list": [
             {
               "slice": 218,  // The global index of this slice.
-              "pause": 23.221,  // How long the slice took.
-              "when": 0,  // Milliseconds since the start of the GC.
+              "pause": 23.221,  // How long the slice took (milliseconds).
               "reason": "SET_NEW_DOCUMENT",
               // GC state when the slice started
               "initial_state": "NotActive",
@@ -512,9 +515,11 @@ Structure:
               // "unlimited".
               "budget": "10ms",
               // Number of page faults during the slice.
-              "page_faults": 0,
+              // optional field, missing means 0.
+              "page_faults": 1,
+              // The start time of this slice in seconds.  The end time is
+              // given by the start_timestamp + pause.
               "start_timestamp": 294875,
-              "end_timestamp": 294879,
               // Time taken by each phase. There are at most 65 possible
               // phases, but usually only a few phases run in a given slice.
               "times": {

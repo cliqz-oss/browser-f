@@ -509,7 +509,7 @@ function IsASCIIAlphaString(s) {
     for (var i = 0; i < s.length; i++) {
         var c = callFunction(std_String_charCodeAt, s, i);
         if (!((0x41 <= c && c <= 0x5A) || (0x61 <= c && c <= 0x7A)))
-            return false
+            return false;
     }
     return true;
 }
@@ -657,13 +657,13 @@ function DefaultLocaleIgnoringAvailableLocales() {
  * Spec: ECMAScript Internationalization API Specification, 6.2.4.
  */
 function DefaultLocale() {
-    const runtimeDefaultLocale = RuntimeDefaultLocale();
-    if (runtimeDefaultLocale === localeCache.runtimeDefaultLocale)
+    if (IsRuntimeDefaultLocale(localeCache.runtimeDefaultLocale))
         return localeCache.defaultLocale;
 
     // If we didn't have a cache hit, compute the candidate default locale.
     // Then use it as the actual default locale if ICU supports that locale
     // (perhaps via fallback).  Otherwise use the last-ditch locale.
+    var runtimeDefaultLocale = RuntimeDefaultLocale();
     var candidate = DefaultLocaleIgnoringAvailableLocales();
     var locale;
     if (BestAvailableLocaleIgnoringDefault(callFunction(collatorInternalProperties.availableLocales,
@@ -761,11 +761,11 @@ function CanonicalizeTimeZoneName(timeZone) {
  * ES2017 Intl draft rev 4a23f407336d382ed5e3471200c690c9b020b5f3
  */
 function DefaultTimeZone() {
-    const icuDefaultTimeZone = intl_defaultTimeZone();
-    if (timeZoneCache.icuDefaultTimeZone === icuDefaultTimeZone)
+    if (intl_isDefaultTimeZone(timeZoneCache.icuDefaultTimeZone))
         return timeZoneCache.defaultTimeZone;
 
     // Verify that the current ICU time zone is a valid ECMA-402 time zone.
+    var icuDefaultTimeZone = intl_defaultTimeZone();
     var timeZone = intl_IsValidTimeZoneName(icuDefaultTimeZone);
     if (timeZone === null) {
         // Before defaulting to "UTC", try to represent the default time zone
@@ -1502,13 +1502,13 @@ function getInternals(obj) {
     // Otherwise it's time to fully create them.
     var type = internals.type;
     if (type === "Collator")
-        internalProps = resolveCollatorInternals(internals.lazyData)
+        internalProps = resolveCollatorInternals(internals.lazyData);
     else if (type === "DateTimeFormat")
-        internalProps = resolveDateTimeFormatInternals(internals.lazyData)
+        internalProps = resolveDateTimeFormatInternals(internals.lazyData);
     else if (type === "NumberFormat")
         internalProps = resolveNumberFormatInternals(internals.lazyData);
     else
-        internalProps = resolvePluralRulesInternals(internals.lazyData)
+        internalProps = resolvePluralRulesInternals(internals.lazyData);
     setInternalProperties(internals, internalProps);
     return internalProps;
 }
@@ -3617,6 +3617,7 @@ function resolveRelativeTimeFormatInternals(lazyRelativeTimeFormatData) {
     // Step 17.
     internalProps.locale = r.locale;
     internalProps.style = lazyRelativeTimeFormatData.style;
+    internalProps.type = lazyRelativeTimeFormatData.type;
 
     return internalProps;
 }
@@ -3663,6 +3664,7 @@ function InitializeRelativeTimeFormat(relativeTimeFormat, locales, options) {
     //   {
     //     requestedLocales: List of locales,
     //     style: "long" / "short" / "narrow",
+    //     type: "numeric" / "text",
     //
     //     opt: // opt object computer in InitializeRelativeTimeFormat
     //       {
@@ -3698,7 +3700,12 @@ function InitializeRelativeTimeFormat(relativeTimeFormat, locales, options) {
     const style = GetOption(options, "style", "string", ["long", "short", "narrow"], "long");
     lazyRelativeTimeFormatData.style = style;
 
-    initializeIntlObject(relativeTimeFormat, "RelativeTimeFormat", lazyRelativeTimeFormatData)
+    // This option is in the process of being added to the spec.
+    // See: https://github.com/tc39/proposal-intl-relative-time/issues/9
+    const type = GetOption(options, "type", "string", ["numeric", "text"], "numeric");
+    lazyRelativeTimeFormatData.type = type;
+
+    initializeIntlObject(relativeTimeFormat, "RelativeTimeFormat", lazyRelativeTimeFormatData);
 }
 
 /**
@@ -3780,6 +3787,7 @@ function Intl_RelativeTimeFormat_resolvedOptions() {
     var result = {
         locale: internals.locale,
         style: internals.style,
+        type: internals.type,
     };
 
     return result;
@@ -4001,4 +4009,3 @@ function Intl_getLocaleInfo(locales) {
 
   return intl_GetLocaleInfo(r.locale);
 }
-

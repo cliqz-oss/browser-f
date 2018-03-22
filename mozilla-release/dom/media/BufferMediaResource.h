@@ -12,17 +12,20 @@
 
 namespace mozilla {
 
+DDLoggedTypeDeclNameAndBase(BufferMediaResource, MediaResource);
+
 // A simple MediaResource based on an in memory buffer.  This class accepts
 // the address and the length of the buffer, and simulates a read/seek API
 // on top of it.  The Read implementation involves copying memory, which is
 // unfortunate, but the MediaResource interface mandates that.
-class BufferMediaResource : public MediaResource
+class BufferMediaResource
+  : public MediaResource
+  , public DecoderDoctorLifeLogger<BufferMediaResource>
 {
 public:
   BufferMediaResource(const uint8_t* aBuffer, uint32_t aLength)
     : mBuffer(aBuffer)
     , mLength(aLength)
-    , mOffset(0)
   {
   }
 
@@ -41,13 +44,10 @@ private:
     }
     *aBytes = std::min(mLength - static_cast<uint32_t>(aOffset), aCount);
     memcpy(aBuffer, mBuffer + aOffset, *aBytes);
-    mOffset = aOffset + *aBytes;
     return NS_OK;
   }
   // Memory-based and no locks, caching discouraged.
   bool ShouldCacheReads() override { return false; }
-
-  int64_t Tell() override { return mOffset; }
 
   void Pin() override {}
   void Unpin() override {}
@@ -80,7 +80,6 @@ private:
 private:
   const uint8_t * mBuffer;
   uint32_t mLength;
-  uint32_t mOffset;
 };
 
 } // namespace mozilla

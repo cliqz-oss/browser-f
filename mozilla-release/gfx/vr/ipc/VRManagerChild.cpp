@@ -156,7 +156,8 @@ VRManagerChild::Destroy()
   // The DeferredDestroyVRManager task takes ownership of
   // the VRManagerChild and will release it when it runs.
   MessageLoop::current()->PostTask(
-             NewRunnableFunction(DeferredDestroy, selfRef));
+             NewRunnableFunction("VRManagerChildDestroyRunnable",
+                                 DeferredDestroy, selfRef));
 }
 
 PVRLayerChild*
@@ -405,7 +406,14 @@ VRManagerChild::RecvReplyCreateVRServiceTestController(const nsCString& aID,
     MOZ_CRASH("We should always have a promise.");
   }
 
-  p->MaybeResolve(new VRMockController(aID, aDeviceID));
+  if (aDeviceID == 0) {
+    // A value of 0 indicates that the controller could not
+    // be created.  Most likely due to having no VR display
+    // to associate it with.
+    p->MaybeRejectWithUndefined();
+  } else {
+    p->MaybeResolve(new VRMockController(aID, aDeviceID));
+  }
   mPromiseList.Remove(aPromiseID);
   return IPC_OK();
 }
@@ -530,6 +538,33 @@ VRManagerChild::FireDOMVRDisplayPresentChangeEventInternal(uint32_t aDisplayID)
   listeners = mListeners;
   for (auto& listener : listeners) {
     listener->NotifyVRDisplayPresentChange(aDisplayID);
+  }
+}
+
+void
+VRManagerChild::FireDOMVRDisplayConnectEventsForLoadInternal(uint32_t aDisplayID,
+                                                            dom::VREventObserver* aObserver)
+{
+  aObserver->NotifyVRDisplayConnect(aDisplayID);
+}
+
+void
+VRManagerChild::FireDOMVRDisplayConnectEventsForLoad(dom::VREventObserver* aObserver)
+{
+  // We need to fire the VRDisplayConnect event when a page is loaded
+  // for each VR Display that has already been enumerated
+  nsTArray<RefPtr<VRDisplayClient>> displays;
+  displays = mDisplays;
+  for (auto& display : displays) {
+    const VRDisplayInfo& info = display->GetDisplayInfo();
+    if (info.GetIsConnected()) {
+        nsContentUtils::AddScriptRunner(NewRunnableMethod<uint32_t, RefPtr<dom::VREventObserver>>(
+      "gfx::VRManagerChild::FireDOMVRDisplayConnectEventsForLoadInternal",
+      this,
+      &VRManagerChild::FireDOMVRDisplayConnectEventsForLoadInternal,
+      info.GetDisplayID(),
+      aObserver));
+    }
   }
 }
 

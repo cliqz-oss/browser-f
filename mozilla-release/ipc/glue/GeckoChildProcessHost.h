@@ -16,6 +16,7 @@
 #include "mozilla/ipc/FileDescriptor.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/UniquePtr.h"
 
 #include "nsCOMPtr.h"
 #include "nsXULAppAPI.h"        // for GeckoProcessType
@@ -73,14 +74,14 @@ public:
 
   virtual bool PerformAsyncLaunch(StringVector aExtraOpts=StringVector());
 
-  virtual void OnChannelConnected(int32_t peer_pid);
-  virtual void OnMessageReceived(IPC::Message&& aMsg);
-  virtual void OnChannelError();
-  virtual void GetQueuedMessages(std::queue<IPC::Message>& queue);
+  virtual void OnChannelConnected(int32_t peer_pid) override;
+  virtual void OnMessageReceived(IPC::Message&& aMsg) override;
+  virtual void OnChannelError() override;
+  virtual void GetQueuedMessages(std::queue<IPC::Message>& queue) override;
 
   virtual void InitializeChannel();
 
-  virtual bool CanShutdown() { return true; }
+  virtual bool CanShutdown() override { return true; }
 
   IPC::Channel* GetChannel() {
     return channelp();
@@ -118,6 +119,11 @@ protected:
   bool mIsFileContent;
   Monitor mMonitor;
   FilePath mProcessPath;
+  // GeckoChildProcessHost holds the launch options so they can be set
+  // up on the main thread using main-thread-only APIs like prefs, and
+  // then used for the actual launch on another thread.  This pointer
+  // is set to null to free the options after the child is launched.
+  UniquePtr<base::LaunchOptions> mLaunchOptions;
 
   // This value must be accessed while holding mMonitor.
   enum {
@@ -152,10 +158,6 @@ protected:
 #endif
 #endif // XP_WIN
 
-#if defined(OS_POSIX)
-  base::file_handle_mapping_vector mFileMap;
-#endif
-
   ProcessHandle mChildProcessHandle;
 #if defined(OS_MACOSX)
   task_t mChildTask;
@@ -180,8 +182,7 @@ private:
 
   // The buffer is passed to preserve its lifetime until we are done
   // with launching the sub-process.
-  void SetChildLogName(const char* varName, const char* origLogName,
-                       nsACString &buffer);
+  void GetChildLogName(const char* origLogName, nsACString &buffer);
 
   // In between launching the subprocess and handing off its IPC
   // channel, there's a small window of time in which *we* might still
@@ -191,13 +192,6 @@ private:
   //
   // FIXME/cjones: this strongly indicates bad design.  Shame on us.
   std::queue<IPC::Message> mQueue;
-
-  // Remember original env values so we can restore it (there is no other
-  // simple way how to change environment of a child process than to modify
-  // the current environment).
-  nsCString mRestoreOrigNSPRLogName;
-  nsCString mRestoreOrigMozLogName;
-  nsCString mRestoreOrigRustLog;
 
   static uint32_t sNextUniqueID;
 

@@ -401,7 +401,6 @@ var gCookiesWindow = {
       return 0;
     },
     getImageSrc(aIndex, aColumn) {},
-    getProgressMode(aIndex, aColumn) {},
     getCellValue(aIndex, aColumn) {},
     setTree(aTree) {},
     toggleOpenState(aIndex) {
@@ -491,7 +490,7 @@ var gCookiesWindow = {
   formatExpiresString(aExpires) {
     if (aExpires) {
       var date = new Date(1000 * aExpires);
-      const dateTimeFormatter = Services.intl.createDateTimeFormat(undefined, {
+      const dateTimeFormatter = new Services.intl.DateTimeFormat(undefined, {
         dateStyle: "long", timeStyle: "long"
       });
       return dateTimeFormatter.format(date);

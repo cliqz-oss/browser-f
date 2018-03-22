@@ -337,8 +337,8 @@ nsStylePadding::CalcDifference(const nsStylePadding& aNewData) const
 
 nsStyleBorder::nsStyleBorder(const nsPresContext* aContext)
   : mBorderImageFill(NS_STYLE_BORDER_IMAGE_SLICE_NOFILL)
-  , mBorderImageRepeatH(NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH)
-  , mBorderImageRepeatV(NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH)
+  , mBorderImageRepeatH(StyleBorderImageRepeat::Stretch)
+  , mBorderImageRepeatV(StyleBorderImageRepeat::Stretch)
   , mFloatEdge(StyleFloatEdge::ContentBox)
   , mBoxDecorationBreak(StyleBoxDecorationBreak::Slice)
   , mComputedBorder(0, 0, 0, 0)
@@ -1073,19 +1073,27 @@ StyleShapeSource::operator==(const StyleShapeSource& aOther) const
     return false;
   }
 
-  if (mType == StyleShapeSourceType::URL) {
-    return DefinitelyEqualURIs(GetURL(), aOther.GetURL());
-  } else if (mType == StyleShapeSourceType::Shape) {
-    return *mBasicShape == *aOther.mBasicShape &&
-      mReferenceBox == aOther.mReferenceBox;
-  } else if (mType == StyleShapeSourceType::Box) {
-    return mReferenceBox == aOther.mReferenceBox;
+  switch (mType) {
+    case StyleShapeSourceType::None:
+      return true;
+
+    case StyleShapeSourceType::URL:
+    case StyleShapeSourceType::Image:
+      return *mShapeImage == *aOther.mShapeImage;
+
+    case StyleShapeSourceType::Shape:
+      return *mBasicShape == *aOther.mBasicShape &&
+        mReferenceBox == aOther.mReferenceBox;
+
+    case StyleShapeSourceType::Box:
+      return mReferenceBox == aOther.mReferenceBox;
   }
 
+  MOZ_ASSERT_UNREACHABLE("Unexpected shape source type!");
   return true;
 }
 
-bool
+void
 StyleShapeSource::SetURL(css::URLValue* aValue)
 {
   MOZ_ASSERT(aValue);
@@ -1094,14 +1102,21 @@ StyleShapeSource::SetURL(css::URLValue* aValue)
   }
   mShapeImage->SetURLValue(do_AddRef(aValue));
   mType = StyleShapeSourceType::URL;
-  return true;
+}
+
+void
+StyleShapeSource::SetShapeImage(UniquePtr<nsStyleImage> aShapeImage)
+{
+  MOZ_ASSERT(aShapeImage);
+  mShapeImage = Move(aShapeImage);
+  mType = StyleShapeSourceType::Image;
 }
 
 void
 StyleShapeSource::SetBasicShape(UniquePtr<StyleBasicShape> aBasicShape,
                                 StyleGeometryBox aReferenceBox)
 {
-  NS_ASSERTION(aBasicShape, "expected pointer");
+  MOZ_ASSERT(aBasicShape);
   mBasicShape = Move(aBasicShape);
   mReferenceBox = aReferenceBox;
   mType = StyleShapeSourceType::Shape;
@@ -1117,7 +1132,6 @@ StyleShapeSource::SetReferenceBox(StyleGeometryBox aReferenceBox)
 void
 StyleShapeSource::DoCopy(const StyleShapeSource& aOther)
 {
-
   switch (aOther.mType) {
     case StyleShapeSourceType::None:
       mReferenceBox = StyleGeometryBox::NoBox;
@@ -1126,6 +1140,10 @@ StyleShapeSource::DoCopy(const StyleShapeSource& aOther)
 
     case StyleShapeSourceType::URL:
       SetURL(aOther.GetURL());
+      break;
+
+    case StyleShapeSourceType::Image:
+      SetShapeImage(MakeUnique<nsStyleImage>(*aOther.GetShapeImage()));
       break;
 
     case StyleShapeSourceType::Shape:
@@ -2087,7 +2105,7 @@ public:
   {
   }
 
-  NS_IMETHOD Run() final
+  NS_IMETHOD Run() final override
   {
     MOZ_ASSERT(!mRequestProxy || NS_IsMainThread(),
                "If mRequestProxy is non-null, we need to run on main thread!");
@@ -2270,7 +2288,7 @@ CachedBorderImageData::GetCachedSVGViewportSize()
 struct PurgeCachedImagesTask : mozilla::Runnable
 {
   PurgeCachedImagesTask() : mozilla::Runnable("PurgeCachedImagesTask") {}
-  NS_IMETHOD Run() final
+  NS_IMETHOD Run() final override
   {
     mSubImages.Clear();
     return NS_OK;
@@ -3177,6 +3195,83 @@ nsStyleImageLayers::Layer::operator==(const Layer& aOther) const
          mComposite == aOther.mComposite;
 }
 
+template <class ComputedValueItem>
+static void
+FillImageLayerList(
+    nsStyleAutoArray<nsStyleImageLayers::Layer>& aLayers,
+    ComputedValueItem nsStyleImageLayers::Layer::* aResultLocation,
+    uint32_t aItemCount, uint32_t aFillCount)
+{
+  NS_PRECONDITION(aFillCount <= aLayers.Length(), "unexpected array length");
+  for (uint32_t sourceLayer = 0, destLayer = aItemCount;
+       destLayer < aFillCount;
+       ++sourceLayer, ++destLayer) {
+    aLayers[destLayer].*aResultLocation =
+      aLayers[sourceLayer].*aResultLocation;
+  }
+}
+
+// The same as FillImageLayerList, but for values stored in
+// layer.mPosition.*aResultLocation instead of layer.*aResultLocation.
+static void
+FillImageLayerPositionCoordList(
+    nsStyleAutoArray<nsStyleImageLayers::Layer>& aLayers,
+    Position::Coord
+        Position::* aResultLocation,
+    uint32_t aItemCount, uint32_t aFillCount)
+{
+  NS_PRECONDITION(aFillCount <= aLayers.Length(), "unexpected array length");
+  for (uint32_t sourceLayer = 0, destLayer = aItemCount;
+       destLayer < aFillCount;
+       ++sourceLayer, ++destLayer) {
+    aLayers[destLayer].mPosition.*aResultLocation =
+      aLayers[sourceLayer].mPosition.*aResultLocation;
+  }
+}
+
+void
+nsStyleImageLayers::FillAllLayers(uint32_t aMaxItemCount)
+{
+  // Delete any extra items.  We need to keep layers in which any
+  // property was specified.
+  mLayers.TruncateLengthNonZero(aMaxItemCount);
+
+  uint32_t fillCount = mImageCount;
+  FillImageLayerList(mLayers,
+                     &Layer::mImage,
+                     mImageCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mRepeat,
+                     mRepeatCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mAttachment,
+                     mAttachmentCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mClip,
+                     mClipCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mBlendMode,
+                     mBlendModeCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mOrigin,
+                     mOriginCount, fillCount);
+  FillImageLayerPositionCoordList(mLayers,
+                                  &Position::mXPosition,
+                                  mPositionXCount, fillCount);
+  FillImageLayerPositionCoordList(mLayers,
+                                  &Position::mYPosition,
+                                  mPositionYCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mSize,
+                     mSizeCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mMaskMode,
+                     mMaskModeCount, fillCount);
+  FillImageLayerList(mLayers,
+                     &Layer::mComposite,
+                     mCompositeCount, fillCount);
+}
+
 nsChangeHint
 nsStyleImageLayers::Layer::CalcDifference(const nsStyleImageLayers::Layer& aNewLayer) const
 {
@@ -3483,7 +3578,8 @@ nsStyleDisplay::nsStyleDisplay(const nsPresContext* aContext)
   , mBreakAfter(false)
   , mOverflowX(NS_STYLE_OVERFLOW_VISIBLE)
   , mOverflowY(NS_STYLE_OVERFLOW_VISIBLE)
-  , mOverflowClipBox(NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX)
+  , mOverflowClipBoxBlock(NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX)
+  , mOverflowClipBoxInline(NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX)
   , mResize(NS_STYLE_RESIZE_NONE)
   , mOrient(StyleOrient::Inline)
   , mIsolation(NS_STYLE_ISOLATION_AUTO)
@@ -3491,6 +3587,8 @@ nsStyleDisplay::nsStyleDisplay(const nsPresContext* aContext)
   , mWillChangeBitField(0)
   , mTouchAction(NS_STYLE_TOUCH_ACTION_AUTO)
   , mScrollBehavior(NS_STYLE_SCROLL_BEHAVIOR_AUTO)
+  , mOverscrollBehaviorX(StyleOverscrollBehavior::Auto)
+  , mOverscrollBehaviorY(StyleOverscrollBehavior::Auto)
   , mScrollSnapTypeX(NS_STYLE_SCROLL_SNAP_TYPE_NONE)
   , mScrollSnapTypeY(NS_STYLE_SCROLL_SNAP_TYPE_NONE)
   , mScrollSnapPointsX(eStyleUnit_None)
@@ -3545,7 +3643,8 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
   , mBreakAfter(aSource.mBreakAfter)
   , mOverflowX(aSource.mOverflowX)
   , mOverflowY(aSource.mOverflowY)
-  , mOverflowClipBox(aSource.mOverflowClipBox)
+  , mOverflowClipBoxBlock(aSource.mOverflowClipBoxBlock)
+  , mOverflowClipBoxInline(aSource.mOverflowClipBoxInline)
   , mResize(aSource.mResize)
   , mOrient(aSource.mOrient)
   , mIsolation(aSource.mIsolation)
@@ -3554,6 +3653,8 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
   , mWillChange(aSource.mWillChange)
   , mTouchAction(aSource.mTouchAction)
   , mScrollBehavior(aSource.mScrollBehavior)
+  , mOverscrollBehaviorX(aSource.mOverscrollBehaviorX)
+  , mOverscrollBehaviorY(aSource.mOverscrollBehaviorY)
   , mScrollSnapTypeX(aSource.mScrollSnapTypeX)
   , mScrollSnapTypeY(aSource.mScrollSnapTypeY)
   , mScrollSnapPointsX(aSource.mScrollSnapPointsX)
@@ -3585,6 +3686,7 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
   , mAnimationFillModeCount(aSource.mAnimationFillModeCount)
   , mAnimationPlayStateCount(aSource.mAnimationPlayStateCount)
   , mAnimationIterationCountCount(aSource.mAnimationIterationCountCount)
+  , mShapeImageThreshold(aSource.mShapeImageThreshold)
   , mShapeOutside(aSource.mShapeOutside)
 {
   MOZ_COUNT_CTOR(nsStyleDisplay);
@@ -3617,12 +3719,26 @@ nsStyleDisplay::~nsStyleDisplay()
   MOZ_COUNT_DTOR(nsStyleDisplay);
 }
 
+void
+nsStyleDisplay::FinishStyle(nsPresContext* aPresContext)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPresContext->StyleSet()->IsServo());
+
+  if (mShapeOutside.GetType() == StyleShapeSourceType::Image) {
+    const UniquePtr<nsStyleImage>& shapeImage = mShapeOutside.GetShapeImage();
+    if (shapeImage) {
+      shapeImage->ResolveImage(aPresContext);
+    }
+  }
+}
+
 nsChangeHint
 nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
 {
   nsChangeHint hint = nsChangeHint(0);
 
-  if (!DefinitelyEqualURIsAndPrincipal(mBinding.ForceGet(), aNewData.mBinding.ForceGet())
+  if (!DefinitelyEqualURIsAndPrincipal(mBinding, aNewData.mBinding)
       || mPosition != aNewData.mPosition
       || mDisplay != aNewData.mDisplay
       || mContain != aNewData.mContain
@@ -3673,10 +3789,13 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
     hint |= nsChangeHint_ReflowHintsForFloatAreaChange;
   }
 
-  if (mShapeOutside != aNewData.mShapeOutside) {
+  if (mShapeOutside != aNewData.mShapeOutside ||
+      mShapeImageThreshold != aNewData.mShapeImageThreshold) {
     if (aNewData.mFloat != StyleFloat::None) {
-      // If we are floating, and our shape-outside property changes, our
-      // descendants are not impacted, but our ancestor and siblings are.
+      // If we are floating, and our shape-outside or shape-image-threshold
+      // are changed, our descendants are not impacted, but our ancestor and
+      // siblings are.
+      //
       // This is similar to a float-only change, but since the ISize of the
       // float area changes arbitrarily along its block axis, more is required
       // to get the siblings to adjust properly. Hinting overflow change is
@@ -3688,8 +3807,8 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
       hint |= nsChangeHint_ReflowHintsForFloatAreaChange |
               nsChangeHint_CSSOverflowChange;
     } else {
-      // shape-outside changed, but we don't need to reflow because we're not
-      // floating.
+      // shape-outside or shape-image-threshold changed, but we don't need
+      // to reflow because we're not floating.
       hint |= nsChangeHint_NeutralChange;
     }
   }
@@ -3708,7 +3827,8 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
       || mBreakAfter != aNewData.mBreakAfter
       || mAppearance != aNewData.mAppearance
       || mOrient != aNewData.mOrient
-      || mOverflowClipBox != aNewData.mOverflowClipBox) {
+      || mOverflowClipBoxBlock != aNewData.mOverflowClipBoxBlock
+      || mOverflowClipBoxInline != aNewData.mOverflowClipBoxInline) {
     hint |= nsChangeHint_AllReflowHints |
             nsChangeHint_RepaintFrame;
   }
@@ -3816,6 +3936,13 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
   // the layers and send it over to the compositor for APZ to handle.
   if (mTouchAction != aNewData.mTouchAction) {
     hint |= nsChangeHint_RepaintFrame;
+  }
+
+  // If overscroll-behavior has changed, the changes are picked up
+  // during a repaint.
+  if (mOverscrollBehaviorX != aNewData.mOverscrollBehaviorX ||
+      mOverscrollBehaviorY != aNewData.mOverscrollBehaviorY) {
+    hint |= nsChangeHint_SchedulePaint;
   }
 
   // Note:  Our current behavior for handling changes to the
@@ -4185,7 +4312,7 @@ nsStyleText::nsStyleText(const nsPresContext* aContext)
   , mRubyPosition(NS_STYLE_RUBY_POSITION_OVER)
   , mTextSizeAdjust(NS_STYLE_TEXT_SIZE_ADJUST_AUTO)
   , mTextCombineUpright(NS_STYLE_TEXT_COMBINE_UPRIGHT_NONE)
-  , mControlCharacterVisibility(nsCSSParser::ControlCharVisibilityDefault())
+  , mControlCharacterVisibility(nsLayoutUtils::ControlCharVisibilityDefault())
   , mTextEmphasisStyle(NS_STYLE_TEXT_EMPHASIS_STYLE_NONE)
   , mTextRendering(NS_STYLE_TEXT_RENDERING_AUTO)
   , mTextEmphasisColor(StyleComplexColor::CurrentColor())

@@ -7,7 +7,6 @@ Cu.import("resource://services-sync/engines/clients.js");
 Cu.import("resource://services-sync/record.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
 
 const MORE_THAN_CLIENTS_TTL_REFRESH = 691200; // 8 days
 const LESS_THAN_CLIENTS_TTL_REFRESH = 86400; // 1 day
@@ -61,6 +60,9 @@ async function cleanup() {
   Svc.Prefs.resetBranch("");
   engine._tracker.clearChangedIDs();
   await engine._resetClient();
+  // un-cleanup the logs (the resetBranch will have reset their levels), since
+  // not all the tests use SyncTestingInfrastructure, and it's cheap.
+  syncTestLogging();
   // We don't finalize storage at cleanup, since we use the same clients engine
   // instance across all tests.
 }
@@ -1812,8 +1814,83 @@ add_task(async function process_incoming_refreshes_known_stale_clients() {
   stubRemoveLocalCommand.restore();
 });
 
-function run_test() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Engine.Clients").level = Log.Level.Trace;
-  run_next_test();
-}
+add_task(async function test_create_record_command_limit() {
+  await engine._store.wipe();
+  await generateNewKeys(Service.collectionKeys);
+
+  let server = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+
+  const fakeLimit = 4 * 1024;
+
+  let maxSizeStub = sinon.stub(Service,
+    "getMemcacheMaxRecordPayloadSize", () => fakeLimit);
+
+  let user = server.user("foo");
+  let remoteId = Utils.makeGUID();
+
+  _("Create remote client record");
+  server.insertWBO("foo", "clients", new ServerWBO(remoteId, encryptPayload({
+    id: remoteId,
+    name: "Remote client",
+    type: "desktop",
+    commands: [],
+    version: "57",
+    protocols: ["1.5"],
+  }), Date.now() / 1000));
+
+  try {
+    _("Initial sync.");
+    await syncClientsEngine(server);
+
+    _("Send a fairly sane number of commands.");
+
+    for (let i = 0; i < 5; ++i) {
+      await engine.sendURIToClientForDisplay(
+        `https://www.example.com/1/${i}`, remoteId, `Page 1.${i}`);
+    }
+
+    await syncClientsEngine(server);
+
+    _("Make sure they all fit and weren't dropped.");
+    let parsedServerRecord = JSON.parse(JSON.parse(
+      user.collection("clients").payload(remoteId)).ciphertext);
+
+    equal(parsedServerRecord.commands.length, 5);
+
+    await engine.sendCommand("wipeEngine", ["history"], remoteId);
+
+    _("Send a not-sane number of commands.");
+    // Much higher than the maximum number of commands we could actually fit.
+    for (let i = 0; i < 500; ++i) {
+      await engine.sendURIToClientForDisplay(
+        `https://www.example.com/2/${i}`, remoteId, `Page 2.${i}`);
+    }
+
+    await syncClientsEngine(server);
+
+    _("Ensure we didn't overflow the server limit.");
+    let payload = user.collection("clients").payload(remoteId);
+    less(payload.length, fakeLimit);
+
+    _("And that the data we uploaded is both sane json and containing some commands.");
+    let remoteCommands = JSON.parse(JSON.parse(payload).ciphertext).commands;
+    greater(remoteCommands.length, 2);
+    let firstCommand = remoteCommands[0];
+    _("The first command should still be present, since it had a high priority");
+    equal(firstCommand.command, "wipeEngine");
+    _("And the last command in the list should be the last command we sent.");
+    let lastCommand = remoteCommands[remoteCommands.length - 1];
+    equal(lastCommand.command, "displayURI");
+    deepEqual(lastCommand.args, ["https://www.example.com/2/499", engine.localID, "Page 2.499"]);
+  } finally {
+    maxSizeStub.restore();
+    await cleanup();
+    try {
+      let collection = server.getCollection("foo", "clients");
+      collection.remove(remoteId);
+    } finally {
+      await promiseStopServer(server);
+    }
+  }
+});

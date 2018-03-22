@@ -31,6 +31,119 @@ class VerifyToolsMixin(object):
         self.verify_suites = {}
         self.verify_downloaded = False
         self.reftest_test_dir = None
+        self.jsreftest_test_dir = None
+
+    def _find_misc_tests(self, dirs, changed_files):
+        manifests = [
+            (os.path.join(dirs['abs_mochitest_dir'], 'tests', 'mochitest.ini'), 'plain'),
+            (os.path.join(dirs['abs_mochitest_dir'], 'chrome', 'chrome.ini'), 'chrome'),
+            (os.path.join(dirs['abs_mochitest_dir'], 'browser', 'browser-chrome.ini'), 'browser-chrome'),
+            (os.path.join(dirs['abs_mochitest_dir'], 'a11y', 'a11y.ini'), 'a11y'),
+            (os.path.join(dirs['abs_xpcshell_dir'], 'tests', 'xpcshell.ini'), 'xpcshell'),
+        ]
+        tests_by_path = {}
+        for (path, suite) in manifests:
+            if os.path.exists(path):
+                man = TestManifest([path], strict=False)
+                active = man.active_tests(exists=False, disabled=False, filters=[], **mozinfo.info)
+                tests_by_path.update({t['relpath']:(suite,t.get('subsuite')) for t in active})
+                self.info("Verification updated with manifest %s" % path)
+
+        ref_manifests = [
+            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'layout', 'reftests', 'reftest.list'), 'reftest'),
+            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'testing', 'crashtest', 'crashtests.list'), 'crashtest'),
+        ]
+        sys.path.append(dirs['abs_reftest_dir'])
+        import manifest
+        self.reftest_test_dir = os.path.join(dirs['abs_reftest_dir'], 'tests')
+        for (path, suite) in ref_manifests:
+            if os.path.exists(path):
+                man = manifest.ReftestManifest()
+                man.load(path)
+                tests_by_path.update({os.path.relpath(t,self.reftest_test_dir):(suite,None) for t in man.files})
+                self.info("Verification updated with manifest %s" % path)
+
+        suite = 'jsreftest'
+        self.jsreftest_test_dir = os.path.join(dirs['abs_test_install_dir'], 'jsreftest', 'tests')
+        path = os.path.join(self.jsreftest_test_dir, 'jstests.list')
+        if os.path.exists(path):
+            man = manifest.ReftestManifest()
+            man.load(path)
+            for t in man.files:
+                # expect manifest test to look like:
+                #    ".../tests/jsreftest/tests/jsreftest.html?test=test262/.../some_test.js"
+                # while the test is in mercurial at:
+                #    js/src/tests/test262/.../some_test.js
+                epos = t.find('=')
+                if epos > 0:
+                    relpath = t[epos+1:]
+                    relpath = os.path.join('js', 'src', 'tests', relpath)
+                    tests_by_path.update({relpath:(suite,None)})
+                else:
+                    self.warning("unexpected jsreftest test format: %s" % str(t))
+            self.info("Verification updated with manifest %s" % path)
+
+        # for each changed file, determine if it is a test file, and what suite it is in
+        for file in changed_files:
+            # manifest paths use os.sep (like backslash on Windows) but
+            # automation-relevance uses posixpath.sep
+            file = file.replace(posixpath.sep, os.sep)
+            entry = tests_by_path.get(file)
+            if entry:
+                self.info("Verification found test %s" % file)
+                subsuite_mapping = {
+                    ('browser-chrome', 'clipboard') : 'browser-chrome-clipboard',
+                    ('chrome', 'clipboard') : 'chrome-clipboard',
+                    ('plain', 'clipboard') : 'plain-clipboard',
+                    ('browser-chrome', 'devtools') : 'mochitest-devtools-chrome',
+                    ('browser-chrome', 'gpu') : 'browser-chrome-gpu',
+                    ('browser-chrome', 'screenshots') : 'browser-chrome-screenshots',
+                    ('chrome', 'gpu') : 'chrome-gpu',
+                    ('plain', 'gpu') : 'plain-gpu',
+                    ('plain', 'media') : 'mochitest-media',
+                    ('plain', 'webgl') : 'mochitest-gl',
+                }
+                if entry in subsuite_mapping:
+                    suite = subsuite_mapping[entry]
+                else:
+                    suite = entry[0]
+                suite_files = self.verify_suites.get(suite)
+                if not suite_files:
+                    suite_files = []
+                suite_files.append(file)
+                self.verify_suites[suite] = suite_files
+
+    def _find_wpt_tests(self, dirs, changed_files):
+        # Setup sys.path to include all the dependencies required to import
+        # the web-platform-tests manifest parser. web-platform-tests provides
+        # the localpaths.py to do the path manipulation, which we load,
+        # providing the __file__ variable so it can resolve the relative
+        # paths correctly.
+        paths_file = os.path.join(dirs['abs_wpttest_dir'],
+                                  "tests", "tools", "localpaths.py")
+        execfile(paths_file, {"__file__": paths_file})
+        import manifest as wptmanifest
+        tests_root = os.path.join(dirs['abs_wpttest_dir'], "tests")
+        man_path = os.path.join(dirs['abs_wpttest_dir'], "meta", "MANIFEST.json")
+        man = wptmanifest.manifest.load(tests_root, man_path)
+
+        repo_tests_path = os.path.join("testing", "web-platform", "tests")
+        tests_path = os.path.join("tests", "web-platform", "tests")
+        for (type, path, test) in man:
+            if type not in ["testharness", "reftest", "wdspec"]:
+                continue
+            repo_path = os.path.join(repo_tests_path, path)
+            # manifest paths use os.sep (like backslash on Windows) but
+            # automation-relevance uses posixpath.sep
+            repo_path = repo_path.replace(os.sep, posixpath.sep)
+            if repo_path in changed_files:
+                self.info("found web-platform test file '%s', type %s" % (path, type))
+                suite_files = self.verify_suites.get(type)
+                if not suite_files:
+                    suite_files = []
+                path = os.path.join(tests_path, path)
+                suite_files.append(path)
+                self.verify_suites[type] = suite_files
 
     @PostScriptAction('download-and-extract')
     def find_tests_for_verification(self, action, success=None):
@@ -58,41 +171,13 @@ class VerifyToolsMixin(object):
 
         dirs = self.query_abs_dirs()
         mozinfo.find_and_update_from_json(dirs['abs_test_install_dir'])
-        if self.config.get('e10s') == True:
-            mozinfo.update({"e10s": True})
-            # Additional mozinfo properties like "headless" and "coverage" are
-            # also normally updated dynamically in the harness, but neither of
-            # these apply to the test-verify task.
-
-        manifests = [
-            (os.path.join(dirs['abs_mochitest_dir'], 'tests', 'mochitest.ini'), 'plain'),
-            (os.path.join(dirs['abs_mochitest_dir'], 'chrome', 'chrome.ini'), 'chrome'),
-            (os.path.join(dirs['abs_mochitest_dir'], 'browser', 'browser-chrome.ini'), 'browser-chrome'),
-            (os.path.join(dirs['abs_mochitest_dir'], 'a11y', 'a11y.ini'), 'a11y'),
-            (os.path.join(dirs['abs_xpcshell_dir'], 'tests', 'xpcshell.ini'), 'xpcshell'),
-        ]
-        tests_by_path = {}
-        for (path, suite) in manifests:
-            if os.path.exists(path):
-                man = TestManifest([path], strict=False)
-                active = man.active_tests(exists=False, disabled=False, filters=[], **mozinfo.info)
-                tests_by_path.update({t['relpath']:(suite,t.get('subsuite')) for t in active})
-                self.info("Verification updated with manifest %s" % path)
-
-        ref_manifests = [
-            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'layout', 'reftests', 'reftest.list'), 'reftest'),
-            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'testing', 'crashtest', 'crashtests.list'), 'crashtest'),
-            # TODO (os.path.join(dirs['abs_test_install_dir'], 'jsreftest', 'tests', 'jstests.list'), 'jstestbrowser'),
-        ]
-        sys.path.append(dirs['abs_reftest_dir'])
-        import manifest
-        self.reftest_test_dir = os.path.join(dirs['abs_reftest_dir'], 'tests')
-        for (path, suite) in ref_manifests:
-            if os.path.exists(path):
-                man = manifest.ReftestManifest()
-                man.load(path)
-                tests_by_path.update({os.path.relpath(t,self.reftest_test_dir):(suite,None) for t in man.files})
-                self.info("Verification updated with manifest %s" % path)
+        e10s = self.config.get('e10s', False)
+        mozinfo.update({"e10s": e10s})
+        headless = self.config.get('headless', False)
+        mozinfo.update({"headless": headless})
+        stylo = self.config.get('enable_stylo', False)
+        mozinfo.update({'stylo': stylo})
+        self.info("Verification using mozinfo: %s" % str(mozinfo.info))
 
         # determine which files were changed on this push
         url = '%s/json-automationrelevance/%s' % (repository.rstrip('/'), revision)
@@ -104,34 +189,11 @@ class VerifyToolsMixin(object):
                 desc=c['desc'].splitlines()[0].encode('ascii', 'ignore')))
             changed_files |= set(c['files'])
 
-        # for each changed file, determine if it is a test file, and what suite it is in
-        for file in changed_files:
-            # manifest paths use os.sep (like backslash on Windows) but
-            # automation-relevance uses posixpath.sep
-            file = file.replace(posixpath.sep, os.sep)
-            entry = tests_by_path.get(file)
-            if entry:
-                self.info("Verification found test %s" % file)
-                subsuite_mapping = {
-                    ('browser-chrome', 'clipboard') : 'browser-chrome-clipboard',
-                    ('chrome', 'clipboard') : 'chrome-clipboard',
-                    ('plain', 'clipboard') : 'plain-clipboard',
-                    ('browser-chrome', 'devtools') : 'mochitest-devtools-chrome',
-                    ('browser-chrome', 'gpu') : 'browser-chrome-gpu',
-                    ('chrome', 'gpu') : 'chrome-gpu',
-                    ('plain', 'gpu') : 'plain-gpu',
-                    ('plain', 'media') : 'mochitest-media',
-                    ('plain', 'webgl') : 'mochitest-gl',
-                }
-                if entry in subsuite_mapping:
-                    suite = subsuite_mapping[entry]
-                else:
-                    suite = entry[0]
-                suite_files = self.verify_suites.get(suite)
-                if not suite_files:
-                    suite_files = []
-                suite_files.append(file)
-                self.verify_suites[suite] = suite_files
+        if self.config.get('verify_category') == "web-platform":
+            self._find_wpt_tests(dirs, changed_files)
+        else:
+            self._find_misc_tests(dirs, changed_files)
+
         self.verify_downloaded = True
 
     def query_verify_args(self, suite):
@@ -154,22 +216,35 @@ class VerifyToolsMixin(object):
             # in verify mode, run nothing by default (unsupported suite or no files modified)
             args = []
             # otherwise, run once for each file in requested suite
-            files = self.verify_suites.get(suite)
             references = re.compile(r"(-ref|-noref|-noref.)\.")
-            for file in files:
-                if suite in ['reftest', 'crashtest']:
+            files = []
+            jsreftest_extra_dir = os.path.join('js', 'src', 'tests')
+            # For some suites, the test path needs to be updated before passing to
+            # the test harness.
+            for file in self.verify_suites.get(suite):
+                if (self.config.get('verify_category') != "web-platform" and
+                    suite in ['reftest', 'crashtest']):
                     file = os.path.join(self.reftest_test_dir, file)
-                if suite == 'reftest':
-                    # Special handling for modified reftest reference files:
-                    #  - if both test and reference modified, verify the test file
-                    #  - if only reference modified, verify the test file
-                    nonref = references.sub('.', file)
-                    if nonref != file:
-                        file = None
-                        if nonref not in files and os.path.exists(nonref):
-                            file = nonref
-                if file:
-                    args.append(['--verify-max-time=%d' % MAX_TIME_PER_TEST, '--verify', file])
+                elif (self.config.get('verify_category') != "web-platform" and
+                      suite == 'jsreftest'):
+                    file = os.path.relpath(file, jsreftest_extra_dir)
+                    file = os.path.join(self.jsreftest_test_dir, file)
+                files.append(file)
+            for file in files:
+                if self.config.get('verify_category') == "web-platform":
+                    args.append(['--verify-log-full', '--verify', file])
+                else:
+                    if suite == 'reftest':
+                        # Special handling for modified reftest reference files:
+                        #  - if both test and reference modified, verify the test file
+                        #  - if only reference modified, verify the test file
+                        nonref = references.sub('.', file)
+                        if nonref != file:
+                            file = None
+                            if nonref not in files and os.path.exists(nonref):
+                                file = nonref
+                    if file:
+                        args.append(['--verify-max-time=%d' % MAX_TIME_PER_TEST, '--verify', file])
             self.info("Verification file(s) for '%s': %s" % (suite, files))
         return args
 
@@ -180,7 +255,9 @@ class VerifyToolsMixin(object):
         """
         suites = None
         if self.config.get('verify') == True:
-            if all_suites and self.verify_downloaded:
+            if self.config.get('verify_category') == "web-platform":
+                suites = self.verify_suites.keys()
+            elif all_suites and self.verify_downloaded:
                 suites = dict((key, all_suites.get(key)) for key in
                     self.verify_suites if key in all_suites.keys())
             else:

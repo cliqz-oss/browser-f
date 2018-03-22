@@ -13,9 +13,7 @@
 #include "mozilla/StyleBackendType.h"
 #include "mozilla/CORSMode.h"
 #include "mozilla/ServoUtils.h"
-
 #include "nsICSSLoaderObserver.h"
-#include "nsIDOMCSSStyleSheet.h"
 #include "nsWrapperCache.h"
 
 class nsIDocument;
@@ -46,8 +44,7 @@ class Rule;
 /**
  * Superclass for data common to CSSStyleSheet and ServoStyleSheet.
  */
-class StyleSheet : public nsIDOMCSSStyleSheet
-                 , public nsICSSLoaderObserver
+class StyleSheet : public nsICSSLoaderObserver
                  , public nsWrapperCache
 {
 protected:
@@ -61,8 +58,7 @@ protected:
 
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(StyleSheet,
-                                                         nsIDOMCSSStyleSheet)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(StyleSheet)
 
   /**
    * The different changes that a stylesheet may go through.
@@ -100,7 +96,7 @@ public:
    * BeginUpdate() or EndUpdate() on the document -- calling those is
    * the caller's responsibility.  This allows use of SetEnabled when
    * batched updates are desired.  If you want updates handled for
-   * you, see nsIDOMStyleSheet::SetDisabled().
+   * you, see SetDisabled().
    */
   void SetEnabled(bool aEnabled);
 
@@ -136,7 +132,11 @@ public:
                                              nsIDocument* aCloneDocument,
                                              nsINode* aCloneOwningNode) const = 0;
 
-  bool IsModified() const { return mDirty; }
+  bool HasForcedUniqueInner() const { return mDirtyFlags &
+                                             FORCED_UNIQUE_INNER; }
+  bool HasModifiedRules() const { return mDirtyFlags &
+                                         MODIFIED_RULES; }
+  void ClearModifiedRules() { mDirtyFlags &= ~MODIFIED_RULES; }
 
   inline bool HasUniqueInner() const;
   void EnsureUniqueInner();
@@ -206,14 +206,14 @@ public:
 #endif
 
   // WebIDL StyleSheet API
-  // The XPCOM GetType is fine for WebIDL.
-  // The XPCOM GetHref is fine for WebIDL
+  void GetType(nsAString& aType);
+  void GetHref(nsAString& aHref, ErrorResult& aRv);
   // GetOwnerNode is defined above.
   inline StyleSheet* GetParentStyleSheet() const;
-  // The XPCOM GetTitle is fine for WebIDL.
+  void GetTitle(nsAString& aTitle);
   dom::MediaList* Media();
   bool Disabled() const { return mDisabled; }
-  // The XPCOM SetDisabled is fine for WebIDL.
+  void SetDisabled(bool aDisabled);
   void GetSourceMapURL(nsAString& aTitle);
   void SetSourceMapURL(const nsAString& aSourceMapURL);
   void SetSourceMapURLFromComment(const nsAString& aSourceMapURLFromComment);
@@ -236,30 +236,20 @@ public:
 
   // WebIDL miscellaneous bits
   inline dom::ParentObject GetParentObject() const;
-  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) final;
-
-  // nsIDOMStyleSheet interface
-  NS_IMETHOD GetType(nsAString& aType) final;
-  NS_IMETHOD GetDisabled(bool* aDisabled) final;
-  NS_IMETHOD SetDisabled(bool aDisabled) final;
-  NS_IMETHOD GetOwnerNode(nsIDOMNode** aOwnerNode) final;
-  NS_IMETHOD GetParentStyleSheet(nsIDOMStyleSheet** aParentStyleSheet) final;
-  NS_IMETHOD GetHref(nsAString& aHref) final;
-  NS_IMETHOD GetTitle(nsAString& aTitle) final;
-  NS_IMETHOD GetMedia(nsIDOMMediaList** aMedia) final;
-
-  // nsIDOMCSSStyleSheet
-  NS_IMETHOD GetOwnerRule(nsIDOMCSSRule** aOwnerRule) final;
-  NS_IMETHOD GetCssRules(nsIDOMCSSRuleList** aCssRules) final;
-  NS_IMETHOD InsertRule(const nsAString& aRule, uint32_t aIndex,
-                      uint32_t* aReturn) final;
-  NS_IMETHOD DeleteRule(uint32_t aIndex) final;
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) final override;
 
   // Changes to sheets should be inside of a WillDirty-DidDirty pair.
   // However, the calls do not need to be matched; it's ok to call
   // WillDirty and then make no change and skip the DidDirty call.
   void WillDirty();
   virtual void DidDirty() {}
+
+  // Called when a rule changes from CSSOM.
+  //
+  // FIXME(emilio): This shouldn't allow null, but MediaList doesn't know about
+  // it's owning media rule, plus it's used for the stylesheet media itself.
+  void RuleChanged(css::Rule*);
 
   void AddStyleSet(const StyleSetHandle& aStyleSet);
   void DropStyleSet(const StyleSetHandle& aStyleSet);
@@ -292,6 +282,15 @@ private:
                          ErrorResult& aRv);
 
 protected:
+  // Called when a rule is removed from the sheet from CSSOM.
+  void RuleAdded(css::Rule&);
+
+  // Called when a rule is added to the sheet from CSSOM.
+  void RuleRemoved(css::Rule&);
+
+  // Called from SetEnabled when the enabled state changed.
+  void EnabledStateChanged();
+
   struct ChildSheetListBuilder {
     RefPtr<StyleSheet>* sheetSlot;
     StyleSheet* parent;
@@ -315,9 +314,6 @@ protected:
 
   // Drop our reference to mMedia
   void DropMedia();
-
-  // Called from SetEnabled when the enabled state changed.
-  void EnabledStateChanged();
 
   // Unlink our inner, if needed, for cycle collection
   virtual void UnlinkInner();
@@ -346,7 +342,11 @@ protected:
   const StyleBackendType mType;
   bool                  mDisabled;
 
-  bool mDirty; // has been modified
+  enum dirtyFlagAttributes {
+    FORCED_UNIQUE_INNER = 0x1,
+    MODIFIED_RULES = 0x2,
+  };
+  uint8_t mDirtyFlags; // has been modified
 
   // mDocumentAssociationMode determines whether mDocument directly owns us (in
   // the sense that if it's known-live then we're known-live).  Always

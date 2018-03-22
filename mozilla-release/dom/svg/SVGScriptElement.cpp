@@ -139,7 +139,7 @@ SVGScriptElement::GetScriptCharset(nsAString& charset)
 }
 
 void
-SVGScriptElement::FreezeUriAsyncDefer()
+SVGScriptElement::FreezeExecutionAttrs(nsIDocument* aOwnerDoc)
 {
   if (mFrozen) {
     return;
@@ -252,6 +252,7 @@ bool
 SVGScriptElement::ParseAttribute(int32_t aNamespaceID,
                                  nsAtom* aAttribute,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None &&
@@ -261,7 +262,9 @@ SVGScriptElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return SVGScriptElementBase::ParseAttribute(aNamespaceID, aAttribute,
-                                              aValue, aResult);
+                                              aValue,
+                                              aMaybeScriptedPrincipal,
+                                              aResult);
 }
 
 CORSMode

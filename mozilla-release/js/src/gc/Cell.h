@@ -10,6 +10,7 @@
 #include "gc/GCEnum.h"
 #include "gc/Heap.h"
 #include "js/GCAnnotations.h"
+#include "js/TraceKind.h"
 
 namespace JS {
 
@@ -75,6 +76,23 @@ struct Cell
 
     static MOZ_ALWAYS_INLINE bool needWriteBarrierPre(JS::Zone* zone);
 
+    template <class T>
+    inline bool is() const {
+        return getTraceKind() == JS::MapTypeToTraceKind<T>::kind;
+    }
+
+    template<class T>
+    inline T* as() {
+        MOZ_ASSERT(this->is<T>());
+        return static_cast<T*>(this);
+    }
+
+    template <class T>
+    inline const T* as() const {
+        MOZ_ASSERT(this->is<T>());
+        return static_cast<const T*>(this);
+    }
+
 #ifdef DEBUG
     inline bool isAligned() const;
     void dump(GenericPrinter& out) const;
@@ -118,6 +136,23 @@ class TenuredCell : public Cell
     }
     MOZ_ALWAYS_INLINE JS::shadow::Zone* shadowZoneFromAnyThread() const {
         return JS::shadow::Zone::asShadowZone(zoneFromAnyThread());
+    }
+
+    template <class T>
+    inline bool is() const {
+        return getTraceKind() == JS::MapTypeToTraceKind<T>::kind;
+    }
+
+    template<class T>
+    inline T* as() {
+        MOZ_ASSERT(is<T>());
+        return static_cast<T*>(this);
+    }
+
+    template <class T>
+    inline const T* as() const {
+        MOZ_ASSERT(is<T>());
+        return static_cast<const T*>(this);
     }
 
     static MOZ_ALWAYS_INLINE void readBarrier(TenuredCell* thing);

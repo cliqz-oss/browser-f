@@ -9,7 +9,6 @@
 
 #include "nsCOMPtr.h"
 #include "nsExpirationTracker.h"
-#include "nsIPartialSHistoryListener.h"
 #include "nsISHistory.h"
 #include "nsISHistoryInternal.h"
 #include "nsISimpleEnumerator.h"
@@ -49,7 +48,7 @@ public:
     }
 
   protected:
-    virtual void NotifyExpired(nsSHEntryShared* aObj)
+    virtual void NotifyExpired(nsSHEntryShared* aObj) override
     {
       RemoveObject(aObj);
       mSHistory->EvictExpiredContentViewerForEntry(aObj);
@@ -59,6 +58,15 @@ public:
     // HistoryTracker is owned by nsSHistory; it always outlives HistoryTracker
     // so it's safe to use raw pointer here.
     nsSHistory* mSHistory;
+  };
+
+  // Structure used in SetChildHistoryEntry
+  struct SwapEntriesData
+  {
+    nsDocShell* ignoreShell;     // constant; the shell to ignore
+    nsISHEntry* destTreeRoot;    // constant; the root of the dest tree
+    nsISHEntry* destTreeParent;  // constant; the node under destTreeRoot
+                                 // whose children will correspond to aEntry
   };
 
   nsSHistory();
@@ -77,6 +85,50 @@ public:
   // this value is calculated based on the total amount of memory.
   // Otherwise, it comes straight from the pref.
   static uint32_t GetMaxTotalViewers() { return sHistoryMaxTotalViewers; }
+
+  // Get the root SHEntry from a given entry.
+  static nsISHEntry* GetRootSHEntry(nsISHEntry* aEntry);
+
+  // Callback prototype for WalkHistoryEntries.
+  // aEntry is the child history entry, aShell is its corresponding docshell,
+  // aChildIndex is the child's index in its parent entry, and aData is
+  // the opaque pointer passed to WalkHistoryEntries.
+  typedef nsresult(*WalkHistoryEntriesFunc)(nsISHEntry* aEntry,
+                                            nsDocShell* aShell,
+                                            int32_t aChildIndex,
+                                            void* aData);
+
+  // Clone a session history tree for subframe navigation.
+  // The tree rooted at |aSrcEntry| will be cloned into |aDestEntry|, except
+  // for the entry with id |aCloneID|, which will be replaced with
+  // |aReplaceEntry|. |aSrcShell| is a (possibly null) docshell which
+  // corresponds to |aSrcEntry| via its mLSHE or mOHE pointers, and will
+  // have that pointer updated to point to the cloned history entry.
+  // If aCloneChildren is true then the children of the entry with id
+  // |aCloneID| will be cloned into |aReplaceEntry|.
+  static nsresult CloneAndReplace(nsISHEntry* aSrcEntry,
+                                  nsDocShell* aSrcShell,
+                                  uint32_t aCloneID,
+                                  nsISHEntry* aReplaceEntry,
+                                  bool aCloneChildren,
+                                  nsISHEntry** aDestEntry);
+
+  // Child-walking callback for CloneAndReplace
+  static nsresult CloneAndReplaceChild(nsISHEntry* aEntry, nsDocShell* aShell,
+                                       int32_t aChildIndex, void* aData);
+
+
+  // Child-walking callback for SetHistoryEntry
+  static nsresult SetChildHistoryEntry(nsISHEntry* aEntry, nsDocShell* aShell,
+                                       int32_t aEntryIndex, void* aData);
+
+  // For each child of aRootEntry, find the corresponding docshell which is
+  // a child of aRootShell, and call aCallback. The opaque pointer aData
+  // is passed to the callback.
+  static nsresult WalkHistoryEntries(nsISHEntry* aRootEntry,
+                                     nsDocShell* aRootShell,
+                                     WalkHistoryEntriesFunc aCallback,
+                                     void* aData);
 
 private:
   virtual ~nsSHistory();
@@ -129,23 +181,11 @@ private:
   int32_t mLength;
   int32_t mRequestedIndex;
 
-  // The number of entries before this session history object.
-  int32_t mGlobalIndexOffset;
-
-  // The number of entries after this session history object.
-  int32_t mEntriesInFollowingPartialHistories;
-
   // Session History listeners
   nsAutoTObserverArray<nsWeakPtr, 2> mListeners;
 
-  // Partial session history listener
-  nsWeakPtr mPartialHistoryListener;
-
   // Weak reference. Do not refcount this.
   nsIDocShell* mRootDocShell;
-
-  // Set to true if attached to a grouped session history.
-  bool mIsPartial;
 
   // Max viewers allowed total, across all SHistory objects
   static int32_t sHistoryMaxTotalViewers;

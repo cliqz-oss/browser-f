@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{LayerVector2D, LayerRect, LayerToWorldTransform, WorldToLayerTransform};
+use api::{LayerToWorldTransform};
 use gpu_cache::GpuCacheAddress;
+use prim_store::EdgeAaSegmentMask;
 use render_task::RenderTaskAddress;
 
 // Contains type that must exactly match the same structures declared in GLSL.
 
 #[repr(i32)]
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub enum BlurDirection {
     Horizontal = 0,
     Vertical,
@@ -17,21 +19,22 @@ pub enum BlurDirection {
 
 #[derive(Debug)]
 #[repr(C)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub struct BlurInstance {
     pub task_address: RenderTaskAddress,
     pub src_task_address: RenderTaskAddress,
     pub blur_direction: BlurDirection,
-    pub region: LayerRect,
 }
 
 /// A clipping primitive drawn into the clipping mask.
 /// Could be an image or a rectangle, which defines the
 /// way `address` is treated.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 #[repr(C)]
 pub struct ClipMaskInstance {
     pub render_task_address: RenderTaskAddress,
-    pub scroll_node_id: ClipScrollNodeIndex,
+    pub scroll_node_data_index: ClipScrollNodeIndex,
     pub segment: i32,
     pub clip_data_address: GpuCacheAddress,
     pub resource_address: GpuCacheAddress,
@@ -39,6 +42,7 @@ pub struct ClipMaskInstance {
 
 // 32 bytes per instance should be enough for anyone!
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub struct PrimitiveInstance {
     data: [i32; 8],
 }
@@ -47,7 +51,7 @@ pub struct SimplePrimitiveInstance {
     pub specific_prim_address: GpuCacheAddress,
     pub task_address: RenderTaskAddress,
     pub clip_task_address: RenderTaskAddress,
-    pub clip_id: ClipScrollNodeIndex,
+    pub clip_chain_rect_index: ClipChainRectIndex,
     pub scroll_id: ClipScrollNodeIndex,
     pub z_sort_index: i32,
 }
@@ -57,15 +61,15 @@ impl SimplePrimitiveInstance {
         specific_prim_address: GpuCacheAddress,
         task_address: RenderTaskAddress,
         clip_task_address: RenderTaskAddress,
-        clip_id: ClipScrollNodeIndex,
+        clip_chain_rect_index: ClipChainRectIndex,
         scroll_id: ClipScrollNodeIndex,
         z_sort_index: i32,
-    ) -> SimplePrimitiveInstance {
+    ) -> Self {
         SimplePrimitiveInstance {
             specific_prim_address,
             task_address,
             clip_task_address,
-            clip_id,
+            clip_chain_rect_index,
             scroll_id,
             z_sort_index,
         }
@@ -77,7 +81,7 @@ impl SimplePrimitiveInstance {
                 self.specific_prim_address.as_int(),
                 self.task_address.0 as i32,
                 self.clip_task_address.0 as i32,
-                ((self.clip_id.0 as i32) << 16) | self.scroll_id.0 as i32,
+                ((self.clip_chain_rect_index.0 as i32) << 16) | self.scroll_id.0 as i32,
                 self.z_sort_index,
                 data0,
                 data1,
@@ -108,7 +112,7 @@ impl CompositePrimitiveInstance {
         z: i32,
         data2: i32,
         data3: i32,
-    ) -> CompositePrimitiveInstance {
+    ) -> Self {
         CompositePrimitiveInstance {
             task_address,
             src_task_address,
@@ -123,7 +127,7 @@ impl CompositePrimitiveInstance {
 }
 
 impl From<CompositePrimitiveInstance> for PrimitiveInstance {
-    fn from(instance: CompositePrimitiveInstance) -> PrimitiveInstance {
+    fn from(instance: CompositePrimitiveInstance) -> Self {
         PrimitiveInstance {
             data: [
                 instance.task_address.0 as i32,
@@ -139,11 +143,6 @@ impl From<CompositePrimitiveInstance> for PrimitiveInstance {
     }
 }
 
-// Whether this brush is being drawn on a Picture
-// task (new) or an alpha batch task (legacy).
-// Can be removed once everything uses pictures.
-pub const BRUSH_FLAG_USES_PICTURE: i32 = (1 << 0);
-
 // TODO(gw): While we are comverting things over, we
 //           need to have the instance be the same
 //           size as an old PrimitiveInstance. In the
@@ -155,25 +154,26 @@ pub const BRUSH_FLAG_USES_PICTURE: i32 = (1 << 0);
 pub struct BrushInstance {
     pub picture_address: RenderTaskAddress,
     pub prim_address: GpuCacheAddress,
-    pub clip_id: ClipScrollNodeIndex,
+    pub clip_chain_rect_index: ClipChainRectIndex,
     pub scroll_id: ClipScrollNodeIndex,
     pub clip_task_address: RenderTaskAddress,
     pub z: i32,
-    pub flags: i32,
+    pub segment_index: i32,
+    pub edge_flags: EdgeAaSegmentMask,
     pub user_data0: i32,
     pub user_data1: i32,
 }
 
 impl From<BrushInstance> for PrimitiveInstance {
-    fn from(instance: BrushInstance) -> PrimitiveInstance {
+    fn from(instance: BrushInstance) -> Self {
         PrimitiveInstance {
             data: [
                 instance.picture_address.0 as i32,
                 instance.prim_address.as_int(),
-                ((instance.clip_id.0 as i32) << 16) | instance.scroll_id.0 as i32,
+                ((instance.clip_chain_rect_index.0 as i32) << 16) | instance.scroll_id.0 as i32,
                 instance.clip_task_address.0 as i32,
                 instance.z,
-                instance.flags,
+                instance.segment_index | ((instance.edge_flags.bits() as i32) << 16),
                 instance.user_data0,
                 instance.user_data1,
             ]
@@ -185,34 +185,46 @@ impl From<BrushInstance> for PrimitiveInstance {
 // In the future, we may draw with segments for each portion
 // of the primitive, in which case this will be redundant.
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub enum BrushImageKind {
     Simple = 0,     // A normal rect
     NinePatch = 1,  // A nine-patch image (stretch inside segments)
     Mirror = 2,     // A top left corner only (mirror across x/y axes)
 }
 
-#[derive(Copy, Debug, Clone)]
+#[derive(Copy, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 #[repr(C)]
 pub struct ClipScrollNodeIndex(pub u32);
 
 #[derive(Debug)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 #[repr(C)]
 pub struct ClipScrollNodeData {
     pub transform: LayerToWorldTransform,
-    pub inv_transform: WorldToLayerTransform,
-    pub local_clip_rect: LayerRect,
-    pub reference_frame_relative_scroll_offset: LayerVector2D,
-    pub scroll_offset: LayerVector2D,
+    pub transform_kind: f32,
+    pub padding: [f32; 3],
 }
 
 impl ClipScrollNodeData {
-    pub fn invalid() -> ClipScrollNodeData {
+    pub fn invalid() -> Self {
         ClipScrollNodeData {
             transform: LayerToWorldTransform::identity(),
-            inv_transform: WorldToLayerTransform::identity(),
-            local_clip_rect: LayerRect::zero(),
-            reference_frame_relative_scroll_offset: LayerVector2D::zero(),
-            scroll_offset: LayerVector2D::zero(),
+            transform_kind: 0.0,
+            padding: [0.0; 3],
         }
     }
+}
+
+#[derive(Copy, Debug, Clone, PartialEq)]
+#[repr(C)]
+pub struct ClipChainRectIndex(pub usize);
+
+#[derive(Copy, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[repr(C)]
+pub enum PictureType {
+    Image = 1,
+    TextShadow = 2,
+    BoxShadow = 3,
 }

@@ -2,17 +2,22 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+from __future__ import absolute_import
+
 import os
 import sys
 import tempfile
 import time
+import traceback
 
 from copy import deepcopy
 
 import mozversion
 
+from mozdevice import DMError
 from mozprofile import Profile
 from mozrunner import Runner, FennecEmulatorRunner
+from six import reraise
 
 
 class GeckoInstance(object):
@@ -27,7 +32,6 @@ class GeckoInstance(object):
 
         # Do not send Firefox health reports to the production server
         "datareporting.healthreport.documentServerURI": "http://%(server)s/dummy/healthreport/",
-        "datareporting.healthreport.about.reportUrl": "http://%(server)s/dummy/abouthealthreport/",
 
         # Do not show datareporting policy notifications which can interfer with tests
         "datareporting.policy.dataSubmissionPolicyBypassNotification": True,
@@ -141,6 +145,8 @@ class GeckoInstance(object):
         self._gecko_log = None
         self.verbose = verbose
         self.headless = headless
+        # keep track of errors to decide whether instance is unresponsive
+        self.unresponsive_count = 0
 
     @property
     def gecko_log(self):
@@ -210,7 +216,7 @@ class GeckoInstance(object):
         except (IOError, KeyError):
             exc, val, tb = sys.exc_info()
             msg = 'Application "{0}" unknown (should be one of {1})'
-            raise NotImplementedError, msg.format(app, apps.keys()), tb
+            reraise(NotImplementedError, msg.format(app, apps.keys()), tb)
 
         return instance_class(*args, **kwargs)
 
@@ -353,7 +359,7 @@ class FennecInstance(GeckoInstance):
         except Exception as e:
             exc, val, tb = sys.exc_info()
             message = "Error possibly due to runner or device args: {}"
-            raise exc, message.format(e.message), tb
+            reraise(exc, message.format(e.message), tb)
         # gecko_log comes from logcat when running with device/emulator
         logcat_args = {
             "filterspec": "Gecko",
@@ -403,8 +409,13 @@ class FennecInstance(GeckoInstance):
         """
         super(FennecInstance, self).close(clean)
         if clean and self.runner and self.runner.device.connected:
-            self.runner.device.dm.remove_forward(
-                "tcp:{}".format(self.marionette_port))
+            try:
+                self.runner.device.dm.remove_forward(
+                    "tcp:{}".format(self.marionette_port))
+                self.unresponsive_count = 0
+            except DMError:
+                self.unresponsive_count += 1
+                traceback.print_exception(*sys.exc_info())
 
 
 class DesktopInstance(GeckoInstance):

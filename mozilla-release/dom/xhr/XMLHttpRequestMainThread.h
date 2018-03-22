@@ -203,7 +203,6 @@ public:
     MOZ_ASSERT(aPrincipal);
     nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(aGlobalObject);
     if (win) {
-      MOZ_ASSERT(win->IsInnerWindow());
       if (win->GetExtantDoc()) {
         mStyleBackend = win->GetExtantDoc()->GetStyleBackendType();
       }
@@ -352,8 +351,8 @@ public:
   void
   Abort()
   {
-    ErrorResult rv;
-    Abort(rv);
+    IgnoredErrorResult rv;
+    AbortInternal(rv);
     MOZ_ASSERT(!rv.Failed());
   }
 
@@ -562,6 +561,9 @@ protected:
 
   void SuspendEventDispatching();
   void ResumeEventDispatching();
+
+  void
+  AbortInternal(ErrorResult& aRv);
 
   struct PendingEvent
   {

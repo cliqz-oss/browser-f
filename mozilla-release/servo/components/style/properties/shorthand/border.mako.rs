@@ -34,7 +34,7 @@ ${helpers.four_sides_shorthand("border-style", "border-%s-style",
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             % for side in PHYSICAL_SIDES:
             let ${side} = &self.border_${side}_width;
             % endfor
@@ -80,7 +80,7 @@ pub fn parse_border<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
     }
     if any {
         Ok((color.unwrap_or_else(|| Color::currentcolor()),
-            style.unwrap_or(BorderStyle::none),
+            style.unwrap_or(BorderStyle::None),
             width.unwrap_or(BorderSideWidth::Medium)))
     } else {
         Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
@@ -113,7 +113,7 @@ pub fn parse_border<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             super::serialize_directional_border(
                 dest,
                 self.border_${to_rust_ident(side)}_width,
@@ -131,15 +131,8 @@ pub fn parse_border<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
         for side in PHYSICAL_SIDES
         for prop in ['color', 'style', 'width'])}
         ${' '.join('border-image-%s' % name
-        for name in ['outset', 'repeat', 'slice', 'source', 'width'])}
-        ${' '.join('-moz-border-%s-colors' % side
-        for side in PHYSICAL_SIDES) if product == 'gecko' else ''}"
+        for name in ['outset', 'repeat', 'slice', 'source', 'width'])}"
     spec="https://drafts.csswg.org/css-backgrounds/#border">
-
-    % if product == "gecko":
-        use properties::longhands::{_moz_border_top_colors, _moz_border_right_colors,
-                                    _moz_border_bottom_colors, _moz_border_left_colors};
-    % endif
 
     pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
                                -> Result<Longhands, ParseError<'i>> {
@@ -152,9 +145,6 @@ pub fn parse_border<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
                 border_${side}_color: color.clone(),
                 border_${side}_style: style,
                 border_${side}_width: width.clone(),
-                % if product == "gecko":
-                    _moz_border_${side}_colors: _moz_border_${side}_colors::get_initial_specified_value(),
-                % endif
             % endfor
 
             // The ‘border’ shorthand resets ‘border-image’ to its initial value.
@@ -166,7 +156,7 @@ pub fn parse_border<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             let all_equal = {
                 % for side in PHYSICAL_SIDES:
                   let border_${side}_width = self.border_${side}_width;
@@ -225,7 +215,7 @@ pub fn parse_border<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             let LonghandsToSerialize {
                 border_top_left_radius: &BorderCornerRadius(ref tl),
                 border_top_right_radius: &BorderCornerRadius(ref tr),
@@ -325,7 +315,7 @@ pub fn parse_border<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             self.border_image_source.to_css(dest)?;
             dest.write_str(" ")?;
             self.border_image_slice.to_css(dest)?;

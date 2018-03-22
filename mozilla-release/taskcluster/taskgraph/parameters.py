@@ -6,6 +6,7 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 
+import functools
 import json
 import time
 import yaml
@@ -14,7 +15,7 @@ from datetime import datetime
 from mozbuild.util import ReadOnlyDict, memoize
 from mozversioncontrol import get_repository_object
 
-from . import GECKO
+from . import APP_VERSION_PATH, GECKO, VERSION_PATH
 
 
 class ParameterMismatch(Exception):
@@ -26,9 +27,20 @@ def get_head_ref():
     return get_repository_object(GECKO).head_ref
 
 
+def get_contents(path):
+    with open(path, "r") as fh:
+        contents = fh.readline().rstrip()
+    return contents
+
+
+get_version = functools.partial(get_contents, VERSION_PATH)
+get_app_version = functools.partial(get_contents, APP_VERSION_PATH)
+
+
 # Please keep this list sorted and in sync with taskcluster/docs/parameters.rst
 # Parameters are of the form: {name: default}
 PARAMETERS = {
+    'app_version': get_app_version(),
     'base_repository': 'https://hg.mozilla.org/mozilla-unified',
     'build_date': lambda: int(time.time()),
     'build_number': 1,
@@ -48,11 +60,14 @@ PARAMETERS = {
     'project': 'mozilla-central',
     'pushdate': lambda: int(time.time()),
     'pushlog_id': '0',
+    'release_eta': '',
     'release_history': {},
+    'release_type': '',
     'target_tasks_method': 'default',
     'try_mode': None,
     'try_options': None,
     'try_task_config': None,
+    'version': get_version(),
 }
 
 COMM_PARAMETERS = {
@@ -118,6 +133,31 @@ class Parameters(ReadOnlyDict):
             return super(Parameters, self).__getitem__(k)
         except KeyError:
             raise KeyError("taskgraph parameter {!r} not found".format(k))
+
+    def is_try(self):
+        """
+        Determine whether this graph is being built on a try project.
+        """
+        return 'try' in self['project']
+
+    def file_url(self, path):
+        """
+        Determine the VCS URL for viewing a file in the tree, suitable for
+        viewing by a human.
+
+        :param basestring path: The path, relative to the root of the repository.
+
+        :return basestring: The URL displaying the given path.
+        """
+        if path.startswith('comm/'):
+            path = path[len('comm/'):]
+            repo = self['comm_head_repository']
+            rev = self['comm_head_rev']
+        else:
+            repo = self['head_repository']
+            rev = self['head_rev']
+
+        return '{}/file/{}/{}'.format(repo, rev, path)
 
 
 def load_parameters_file(filename, strict=True):

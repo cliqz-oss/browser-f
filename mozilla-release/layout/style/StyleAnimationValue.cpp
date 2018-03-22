@@ -30,9 +30,9 @@
 #include "mozilla/css/Declaration.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/FloatingPoint.h"
-#include "mozilla/KeyframeUtils.h" // KeyframeUtils::ParseProperty
 #include "mozilla/Likely.h"
 #include "mozilla/ServoBindings.h" // RawServoDeclarationBlock
+#include "mozilla/ServoCSSParser.h"
 #include "gfxMatrix.h"
 #include "gfxQuaternion.h"
 #include "nsIDocument.h"
@@ -4245,6 +4245,9 @@ ExtractComputedValueFromShapeSource(const StyleShapeSource& aShapeSource,
     aComputedValue.SetCSSValueArrayValue(result,
                                          StyleAnimationValue::eUnit_Shape);
 
+  } else if (type == StyleShapeSourceType::Image) {
+    // XXX: Won't implement because Gecko style system will be removed.
+    return false;
   } else {
     MOZ_ASSERT(type == StyleShapeSourceType::None, "unknown type");
     aComputedValue.SetNoneValue();
@@ -4891,7 +4894,7 @@ StyleAnimationValue::ExtractComputedValue(nsCSSPropertyID aProperty,
   return false;
 }
 
-gfxSize
+Size
 StyleAnimationValue::GetScaleValue(const nsIFrame* aForFrame) const
 {
   MOZ_ASSERT(GetUnit() == StyleAnimationValue::eUnit_Transform);
@@ -5361,7 +5364,7 @@ AnimationValue::GetTransformList() const
   return transform.forget();
 }
 
-gfxSize
+Size
 AnimationValue::GetScaleValue(const nsIFrame* aFrame) const
 {
   MOZ_ASSERT(!mServo != mGecko.IsNull());
@@ -5474,7 +5477,8 @@ AnimationValue::FromString(nsCSSPropertyID aProperty,
     }
 
     RefPtr<RawServoDeclarationBlock> declarations =
-      KeyframeUtils::ParseProperty(aProperty, aValue, doc);
+      ServoCSSParser::ParseProperty(aProperty, aValue,
+                                    ServoCSSParser::GetParsingEnvironment(doc));
 
     if (!declarations) {
       return result;

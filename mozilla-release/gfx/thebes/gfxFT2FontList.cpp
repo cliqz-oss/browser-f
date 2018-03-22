@@ -181,23 +181,6 @@ FT2FontEntry::CreateScaledFont(const gfxFontStyle *aStyle)
     cairo_matrix_init_scale(&sizeMatrix, aStyle->size, aStyle->size);
     cairo_matrix_init_identity(&identityMatrix);
 
-    // synthetic oblique by skewing via the font matrix
-    bool needsOblique = IsUpright() &&
-                        aStyle->style != NS_FONT_STYLE_NORMAL &&
-                        aStyle->allowSyntheticStyle;
-
-    if (needsOblique) {
-        cairo_matrix_t style;
-        cairo_matrix_init(&style,
-                          1,                //xx
-                          0,                //yx
-                          -1 * OBLIQUE_SKEW_FACTOR, //xy
-                          1,                //yy
-                          0,                //x0
-                          0);               //y0
-        cairo_matrix_multiply(&sizeMatrix, &sizeMatrix, &style);
-    }
-
     cairo_font_options_t *fontOptions = cairo_font_options_create();
 
     if (gfxPlatform::GetPlatform()->RequiresLinearZoom()) {
@@ -407,7 +390,7 @@ FT2FontEntry::CreateFontEntry(FT_Face aFace,
         int flags = gfxPlatform::GetPlatform()->FontHintingEnabled() ?
                     FT_LOAD_DEFAULT :
                     (FT_LOAD_NO_AUTOHINT | FT_LOAD_NO_HINTING);
-        fe->mFontFace = cairo_ft_font_face_create_for_ft_face(aFace, flags);
+        fe->mFontFace = cairo_ft_font_face_create_for_ft_face(aFace, flags, nullptr, 0);
         FTUserFontData *userFontData = new FTUserFontData(aFace, aFontData);
         cairo_font_face_set_user_data(fe->mFontFace, &sFTUserFontDataKey,
                                       userFontData, FTFontDestroyFunc);
@@ -451,7 +434,7 @@ FT2FontEntry::CairoFontFace()
         int flags = gfxPlatform::GetPlatform()->FontHintingEnabled() ?
                     FT_LOAD_DEFAULT :
                     (FT_LOAD_NO_AUTOHINT | FT_LOAD_NO_HINTING);
-        mFontFace = cairo_ft_font_face_create_for_ft_face(face, flags);
+        mFontFace = cairo_ft_font_face_create_for_ft_face(face, flags, nullptr, 0);
         FTUserFontData *userFontData = new FTUserFontData(face, face.FontData());
         cairo_font_face_set_user_data(mFontFace, &sFTUserFontDataKey,
                                       userFontData, FTFontDestroyFunc);

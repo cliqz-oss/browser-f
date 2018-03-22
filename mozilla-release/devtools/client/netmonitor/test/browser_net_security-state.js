@@ -56,10 +56,7 @@ add_task(function* () {
       });
     }
 
-    // waitForNetworkEvents does not work for requests with security errors as
-    // those only emit 9/13 events of a successful request.
-    let done = waitForSecurityBrokenNetworkEvent();
-
+    let done = waitForNetworkEvents(monitor, 1);
     info("Requesting a resource that has a certificate problem.");
     yield executeRequests(1, "https://nocert.example.com");
 
@@ -80,7 +77,7 @@ add_task(function* () {
     yield executeRequests(1, "https://example.com" + CORS_SJS_PATH);
     yield done;
 
-    done = waitForSecurityBrokenNetworkEvent(true);
+    done = waitForNetworkEvents(monitor, 1);
     info("Requesting a resource over HTTP to localhost.");
     yield executeRequests(1, "http://localhost" + CORS_SJS_PATH);
     yield done;
@@ -89,35 +86,5 @@ add_task(function* () {
     is(store.getState().requests.requests.size,
       expectedCount,
       expectedCount + " events logged.");
-  }
-
-  /**
-   * Returns a promise that's resolved once a request with security issues is
-   * completed.
-   */
-  function waitForSecurityBrokenNetworkEvent(networkError) {
-    let awaitedEvents = [
-      "UPDATING_REQUEST_HEADERS",
-      "RECEIVED_REQUEST_HEADERS",
-      "UPDATING_REQUEST_COOKIES",
-      "RECEIVED_REQUEST_COOKIES",
-      "STARTED_RECEIVING_RESPONSE",
-      "UPDATING_RESPONSE_CONTENT",
-      "RECEIVED_RESPONSE_CONTENT",
-      "UPDATING_EVENT_TIMINGS",
-      "RECEIVED_EVENT_TIMINGS",
-    ];
-
-    // If the reason for breakage is a network error, then the
-    // STARTED_RECEIVING_RESPONSE event does not fire.
-    if (networkError) {
-      awaitedEvents = awaitedEvents.filter(e => e !== "STARTED_RECEIVING_RESPONSE");
-    }
-
-    let promises = awaitedEvents.map((event) => {
-      return monitor.panelWin.once(EVENTS[event]);
-    });
-
-    return Promise.all(promises);
   }
 });

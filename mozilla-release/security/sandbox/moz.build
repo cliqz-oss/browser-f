@@ -44,10 +44,12 @@ elif CONFIG['OS_ARCH'] == 'WINNT':
         'chromium/base/cpu.cc',
         'chromium/base/debug/alias.cc',
         'chromium/base/debug/profiler.cc',
+        'chromium/base/environment.cc',
         'chromium/base/hash.cc',
         'chromium/base/lazy_instance.cc',
         'chromium/base/location.cc',
         'chromium/base/memory/ref_counted.cc',
+        'chromium/base/memory/shared_memory_handle.cc',
         'chromium/base/memory/shared_memory_handle_win.cc',
         'chromium/base/memory/shared_memory_win.cc',
         'chromium/base/memory/singleton.cc',
@@ -76,6 +78,7 @@ elif CONFIG['OS_ARCH'] == 'WINNT':
         'chromium/base/threading/thread_restrictions.cc',
         'chromium/base/time/time.cc',
         'chromium/base/time/time_win.cc',
+        'chromium/base/unguessable_token.cc',
         'chromium/base/win/pe_image.cc',
         'chromium/base/win/scoped_handle.cc',
         'chromium/base/win/scoped_process_information.cc',
@@ -93,6 +96,7 @@ elif CONFIG['OS_ARCH'] == 'WINNT':
         'chromium/sandbox/win/src/handle_dispatcher.cc',
         'chromium/sandbox/win/src/handle_interception.cc',
         'chromium/sandbox/win/src/handle_policy.cc',
+        'chromium/sandbox/win/src/heap_helper.cc',
         'chromium/sandbox/win/src/interception.cc',
         'chromium/sandbox/win/src/interception_agent.cc',
         'chromium/sandbox/win/src/job.cc',
@@ -168,7 +172,7 @@ elif CONFIG['OS_ARCH'] == 'WINNT':
     DisableStlWrapping()
 
     # Suppress warnings in third-party code.
-    if CONFIG['_MSC_VER']:
+    if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
         CXXFLAGS += [
             '-wd4275', # non dll-interface class exception used as base for dll-interface class
             '-wd4717', # recursive on all control paths, function will cause runtime stack overflow

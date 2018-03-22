@@ -109,7 +109,6 @@ this.ShieldPreferences = {
     checkbox.setAttribute("class", "tail-with-learn-more");
     checkbox.setAttribute("label", "Allow Firefox to install and run studies");
     checkbox.setAttribute("preference", OPT_OUT_STUDIES_ENABLED_PREF);
-    checkbox.setAttribute("disabled", !Services.prefs.getBoolPref(FHR_UPLOAD_ENABLED_PREF));
     hContainer.appendChild(checkbox);
 
     const viewStudies = doc.createElementNS(XUL_NS, "label");
@@ -120,29 +119,29 @@ this.ShieldPreferences = {
     viewStudies.classList.add("learnMore", "text-link");
     hContainer.appendChild(viewStudies);
 
-    // <prefrence> elements for prefs that we need to monitor while the page is open.
-    const optOutPref = doc.createElementNS(XUL_NS, "preference");
-    optOutPref.setAttribute("id", OPT_OUT_STUDIES_ENABLED_PREF);
-    optOutPref.setAttribute("name", OPT_OUT_STUDIES_ENABLED_PREF);
-    optOutPref.setAttribute("type", "bool");
+    // Preference instances for prefs that we need to monitor while the page is open.
+    doc.defaultView.Preferences.add({ id: OPT_OUT_STUDIES_ENABLED_PREF, type: "bool" });
 
-    // Weirdly, FHR doesn't have a <preference> element on the page, so we create it.
-    const fhrPref = doc.createElementNS(XUL_NS, "preference");
-    fhrPref.setAttribute("id", FHR_UPLOAD_ENABLED_PREF);
-    fhrPref.setAttribute("name", FHR_UPLOAD_ENABLED_PREF);
-    fhrPref.setAttribute("type", "bool");
-    fhrPref.addEventListener("change", function(event) {
-      // Avoid reference to the document directly, to avoid leaks.
-      const eventTargetCheckbox = event.target.ownerDocument.getElementById("optOutStudiesEnabled");
-      eventTargetCheckbox.disabled = !Services.prefs.getBoolPref(FHR_UPLOAD_ENABLED_PREF);
-    });
+    // Weirdly, FHR doesn't have a Preference instance on the page, so we create it.
+    const fhrPref = doc.defaultView.Preferences.add({ id: FHR_UPLOAD_ENABLED_PREF, type: "bool" });
+    function onChangeFHRPref() {
+      let isDisabled = Services.prefs.prefIsLocked(FHR_UPLOAD_ENABLED_PREF) ||
+                       !AppConstants.MOZ_TELEMETRY_REPORTING ||
+                       !Services.prefs.getBoolPref(FHR_UPLOAD_ENABLED_PREF);
+      // We can't use checkbox.disabled here because the XBL binding may not be present,
+      // in which case setting the property won't work properly.
+      if (isDisabled) {
+        checkbox.setAttribute("disabled", "true");
+      } else {
+        checkbox.removeAttribute("disabled");
+      }
+    }
+    fhrPref.on("change", onChangeFHRPref);
+    onChangeFHRPref();
+    doc.defaultView.addEventListener("unload", () => fhrPref.off("change", onChangeFHRPref), { once: true });
 
     // Actually inject the elements we've created.
-    const parent = doc.getElementById("submitHealthReportBox").closest("vbox");
+    const parent = doc.getElementById("submitHealthReportBox").closest("description");
     parent.appendChild(container);
-
-    const preferences = doc.getElementById("privacyPreferences");
-    preferences.appendChild(optOutPref);
-    preferences.appendChild(fhrPref);
   },
 };

@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "base/macros.h"
+#include "base/environment.h"
 #include "base/memory/free_deleter.h"
 #include "base/win/scoped_handle.h"
 #include "base/win/scoped_process_information.h"
@@ -28,7 +29,6 @@ class StartupInformation;
 
 namespace sandbox {
 
-class AttributeList;
 class SharedMemIPCServer;
 class ThreadProvider;
 
@@ -57,6 +57,7 @@ class TargetProcess {
                     bool inherit_handles,
                     const base::win::StartupInformation& startup_info,
                     base::win::ScopedProcessInformation* target_info,
+                    base::EnvironmentMap& env_map,
                     DWORD* win_error);
 
   // Assign a new lowbox token to the process post creation. The process

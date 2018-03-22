@@ -4,6 +4,7 @@
 
 /* all localizable skin settings shall live here */
 @import url("chrome://global/locale/intl.css");
+@import url("chrome://global/skin/menu.css");
 
 %include shared.inc
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
@@ -17,7 +18,7 @@ menulist > menupopup {
 /* ::::: Variables ::::: */
 :root {
   --arrowpanel-padding: 16px;
-  --arrowpanel-background: linear-gradient(hsla(0,0%,99%,1), hsla(0,0%,99%,.975) 10%, hsla(0,0%,98%,.975));
+  --arrowpanel-background: hsla(0,0%,99%,.975);
   --arrowpanel-color: hsl(0,0%,10%);
   --arrowpanel-border-color: hsla(210,4%,10%,.05);
   --arrowpanel-border-radius: 3.5px;
@@ -29,19 +30,11 @@ menulist > menupopup {
 window,
 page,
 dialog,
-wizard,
-prefwindow {
+wizard {
   -moz-appearance: dialog;
   background-color: #FFFFFF;
   color: -moz-DialogText;
   font: message-box;
-}
-
-prefwindow[type="child"] {
-  padding-top: 18px;
-  padding-bottom: 15px;
-  padding-inline-start: 18px;
-  padding-inline-end: 20px;
 }
 
 /* deprecated */
@@ -58,8 +51,8 @@ window.dialog {
 .alert-icon,
 .error-icon,
 .question-icon {
-  width: 64px;
-  height: 64px;
+  width: 32px;
+  height: 32px;
   margin: 6px;
   margin-inline-end: 20px;
 }
@@ -68,7 +61,7 @@ window.dialog {
   list-style-image: url("chrome://global/skin/icons/info.svg");
 }
 
-.alert-dialog #info\.icon,
+.alert-dialog #infoIcon,
 .alert-icon {
   list-style-image: url("chrome://global/skin/icons/warning-64.png");
 }
@@ -91,29 +84,6 @@ iframe {
   min-height: 10px;
 }
 
-/* ::::: statusbar ::::: */
-
-statusbar {
-  min-width: 1px; /* DON'T DELETE!
-  Prevents hiding of scrollbars in browser when window is made smaller.*/
-  min-height: 15px !important;
-  margin: 0px !important;
-  /* need to use padding-inline-end when/if bug 631729 gets fixed: */
-  padding: 0px 16px 1px 1px;
-  -moz-appearance: statusbar;
-  text-shadow: rgba(255, 255, 255, 0.4) 0 1px;
-}
-
-statusbarpanel {
-  -moz-box-align: center;
-  -moz-box-pack: center;
-  padding: 0 4px;
-}
-
-.statusbarpanel-iconic {
-  padding: 0px;
-}
-
 /* ::::: miscellaneous formatting ::::: */
 
 sidebarheader {
@@ -132,13 +102,6 @@ sidebarheader {
 
 :root:-moz-lwtheme-brighttext {
   text-shadow: 1px 1px 1.5px black;
-}
-
-statusbar:-moz-lwtheme {
-  -moz-appearance: none;
-  background: none;
-  border-style: none;
-  text-shadow: inherit;
 }
 
 .inset {
@@ -229,10 +192,6 @@ label[disabled="true"] {
   margin: 3px 5px 4px;
 }
 
-.wizard-box {
-  padding: 20px 44px 10px;
-}
-
 .text-link {
   color: -moz-nativehyperlinktext;
   cursor: pointer;
@@ -291,10 +250,7 @@ popupnotificationcontent {
 /* :::::: autoscroll popup ::::: */
 
 .autoscroller {
-  height: 28px;
-  width: 28px;
   border: none;
-  margin: -14px;
   padding: 0;
   background-image: url("chrome://global/skin/icons/autoscroll.svg");
   background-size: contain;

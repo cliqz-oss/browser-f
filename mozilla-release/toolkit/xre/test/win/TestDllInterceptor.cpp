@@ -442,6 +442,10 @@ bool TestPrintDlgW(void* aFunc)
 
 int main()
 {
+  // We disable this part of the test because the code coverage instrumentation
+  // injects code in rotatePayload in a way that WindowsDllInterceptor doesn't
+  // understand.
+#ifndef MOZ_CODE_COVERAGE
   payload initial = { 0x12345678, 0xfc4e9d31, 0x87654321 };
   payload p0, p1;
   ZeroMemory(&p0, sizeof(p0));
@@ -494,6 +498,7 @@ int main()
     printf("TEST-UNEXPECTED-FAIL | WindowsDllInterceptor | Original function didn't return the right information\n");
     return 1;
   }
+#endif
 
   if (TestHook(TestGetWindowInfo, "user32.dll", "GetWindowInfo") &&
 #ifdef _WIN64
@@ -514,8 +519,11 @@ int main()
       TestHook(TestNtWriteFile, "ntdll.dll", "NtWriteFile") &&
       TestHook(TestNtWriteFileGather, "ntdll.dll", "NtWriteFileGather") &&
       TestHook(TestNtQueryFullAttributesFile, "ntdll.dll", "NtQueryFullAttributesFile") &&
+#ifndef MOZ_ASAN
       // Bug 733892: toolkit/crashreporter/nsExceptionHandler.cpp
+      // This fails on ASan because the ASan runtime already hooked this function
       TestHook(TestSetUnhandledExceptionFilter, "kernel32.dll", "SetUnhandledExceptionFilter") &&
+#endif
 #ifdef _M_IX86
       // Bug 670967: xpcom/base/AvailableMemoryTracker.cpp
       TestHook(TestVirtualAlloc, "kernel32.dll", "VirtualAlloc") &&

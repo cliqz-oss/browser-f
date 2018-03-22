@@ -179,11 +179,18 @@ HttpBackgroundChannelChild::RecvOnTransportAndData(
 
 IPCResult
 HttpBackgroundChannelChild::RecvOnStopRequest(
-                                            const nsresult& aChannelStatus,
-                                            const ResourceTimingStruct& aTiming)
+                                    const nsresult& aChannelStatus,
+                                    const ResourceTimingStruct& aTiming,
+                                    const TimeStamp& aLastActiveTabOptHit,
+                                    const nsHttpHeaderArray& aResponseTrailers)
 {
   LOG(("HttpBackgroundChannelChild::RecvOnStopRequest [this=%p]\n", this));
   MOZ_ASSERT(OnSocketThread());
+
+  // It's enough to set this from (just before) OnStopRequest notification, since
+  // we don't need this value sooner than a channel was done loading - everything
+  // this timestamp affects takes place only after a channel's OnStopRequest.
+  nsHttp::SetLastActiveTabLoadOptimizationHit(aLastActiveTabOptHit);
 
   if (NS_WARN_IF(!mChannelChild)) {
     return IPC_OK();
@@ -194,17 +201,22 @@ HttpBackgroundChannelChild::RecvOnStopRequest(
          static_cast<uint32_t>(aChannelStatus)));
 
     mQueuedRunnables.AppendElement(
-      NewRunnableMethod<const nsresult, const ResourceTimingStruct>(
+      NewRunnableMethod<const nsresult,
+                        const ResourceTimingStruct,
+                        const TimeStamp,
+                        const nsHttpHeaderArray>(
         "HttpBackgroundChannelChild::RecvOnStopRequest",
         this,
         &HttpBackgroundChannelChild::RecvOnStopRequest,
         aChannelStatus,
-        aTiming));
+        aTiming,
+        aLastActiveTabOptHit,
+        aResponseTrailers));
 
     return IPC_OK();
   }
 
-  mChannelChild->ProcessOnStopRequest(aChannelStatus, aTiming);
+  mChannelChild->ProcessOnStopRequest(aChannelStatus, aTiming, aResponseTrailers);
 
   return IPC_OK();
 }

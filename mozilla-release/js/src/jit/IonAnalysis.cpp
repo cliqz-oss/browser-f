@@ -2231,6 +2231,12 @@ IsRegExpHoistable(MIRGenerator* mir, MDefinition* regexp, MDefinitionVector& wor
 bool
 jit::MakeMRegExpHoistable(MIRGenerator* mir, MIRGraph& graph)
 {
+    // If we are compiling try blocks, regular expressions may be observable
+    // from catch blocks (which Ion does not compile). For now just disable the
+    // pass in this case.
+    if (graph.hasTryBlock())
+        return true;
+
     MDefinitionVector worklist(graph.alloc());
 
     for (ReversePostorderIterator block(graph.rpoBegin()); block != graph.rpoEnd(); block++) {
@@ -3205,7 +3211,7 @@ jit::ExtractLinearSum(MDefinition* ins, MathSpace space)
     if (ins->isAdd()) {
         int32_t constant;
         if (space == MathSpace::Modulo)
-            constant = lsum.constant + rsum.constant;
+            constant = uint32_t(lsum.constant) + uint32_t(rsum.constant);
         else if (!SafeAdd(lsum.constant, rsum.constant, &constant))
             return SimpleLinearSum(ins, 0);
         return SimpleLinearSum(lsum.term ? lsum.term : rsum.term, constant);
@@ -3216,7 +3222,7 @@ jit::ExtractLinearSum(MDefinition* ins, MathSpace space)
     if (lsum.term) {
         int32_t constant;
         if (space == MathSpace::Modulo)
-            constant = lsum.constant - rsum.constant;
+            constant = uint32_t(lsum.constant) - uint32_t(rsum.constant);
         else if (!SafeSub(lsum.constant, rsum.constant, &constant))
             return SimpleLinearSum(ins, 0);
         return SimpleLinearSum(lsum.term, constant);

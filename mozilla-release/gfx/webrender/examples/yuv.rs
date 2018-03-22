@@ -170,11 +170,11 @@ impl Example for App {
         api: &RenderApi,
         builder: &mut DisplayListBuilder,
         resources: &mut ResourceUpdates,
-        layout_size: LayoutSize,
+        _framebuffer_size: DeviceUintSize,
         _pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
-        let bounds = LayoutRect::new(LayoutPoint::zero(), layout_size);
+        let bounds = LayoutRect::new(LayoutPoint::zero(), builder.content_size());
         let info = LayoutPrimitiveInfo::new(bounds);
         builder.push_stacking_context(
             &info,
@@ -192,7 +192,7 @@ impl Example for App {
         let yuv_chanel3 = api.generate_image_key();
         resources.add_image(
             yuv_chanel1,
-            ImageDescriptor::new(100, 100, ImageFormat::A8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::R8, true),
             ImageData::new(vec![127; 100 * 100]),
             None,
         );
@@ -204,13 +204,13 @@ impl Example for App {
         );
         resources.add_image(
             yuv_chanel2_1,
-            ImageDescriptor::new(100, 100, ImageFormat::A8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::R8, true),
             ImageData::new(vec![127; 100 * 100]),
             None,
         );
         resources.add_image(
             yuv_chanel3,
-            ImageDescriptor::new(100, 100, ImageFormat::A8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::R8, true),
             ImageData::new(vec![127; 100 * 100]),
             None,
         );
@@ -241,19 +241,23 @@ impl Example for App {
     }
 
     fn on_event(&mut self, event: glutin::Event, api: &RenderApi, document_id: DocumentId) -> bool {
+        let mut txn = Transaction::new();
         match event {
             glutin::Event::Touch(touch) => match self.touch_state.handle_event(touch) {
                 TouchResult::Pan(pan) => {
-                    api.set_pan(document_id, pan);
-                    api.generate_frame(document_id, None);
+                    txn.set_pan(pan);
                 }
                 TouchResult::Zoom(zoom) => {
-                    api.set_pinch_zoom(document_id, ZoomFactor::new(zoom));
-                    api.generate_frame(document_id, None);
+                    txn.set_pinch_zoom(ZoomFactor::new(zoom));
                 }
                 TouchResult::None => {}
             },
             _ => (),
+        }
+
+        if !txn.is_empty() {
+            txn.generate_frame();
+            api.send_transaction(document_id, txn);
         }
 
         false

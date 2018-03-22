@@ -13,7 +13,6 @@ marionette.jar:
   content/accessibility.js (accessibility.js)
   content/listener.js (listener.js)
   content/element.js (element.js)
-  content/frame.js (frame.js)
   content/cert.js (cert.js)
   content/event.js  (event.js)
   content/error.js (error.js)
@@ -37,7 +36,6 @@ marionette.jar:
   content/reftest.xul (reftest.xul)
   content/dom.js (dom.js)
   content/format.js (format.js)
-  content/wm.js (wm.js)
 #ifdef ENABLE_TESTS
   content/test.xul (chrome/test.xul)
   content/test2.xul (chrome/test2.xul)

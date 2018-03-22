@@ -9,13 +9,15 @@ use api::DebugCommand;
 use device::TextureFilter;
 use fxhash::FxHasher;
 use profiler::BackendProfileCounters;
-use renderer::BlendMode;
 use std::{usize, i32};
 use std::collections::{HashMap, HashSet};
 use std::f32;
 use std::hash::BuildHasherDefault;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+#[cfg(feature = "capture")]
+use capture::{CaptureConfig, ExternalCaptureImage};
 use tiling;
 
 pub type FastHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
@@ -31,7 +33,12 @@ pub type FastHashSet<K> = HashSet<K, BuildHasherDefault<FxHasher>>;
 // map from cache texture ID to native texture.
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub struct CacheTextureId(pub usize);
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+pub struct RenderPassIndex(pub usize);
 
 // Represents the source for a texture.
 // These are passed from throughout the
@@ -40,52 +47,26 @@ pub struct CacheTextureId(pub usize);
 // native texture ID.
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
 pub enum SourceTexture {
     Invalid,
     TextureCache(CacheTextureId),
     External(ExternalImageData),
     CacheA8,
     CacheRGBA8,
+    // XXX Remove this once RenderTaskCacheA8 is used.
+    #[allow(dead_code)]
+    RenderTaskCacheA8(RenderPassIndex),
+    RenderTaskCacheRGBA8(RenderPassIndex),
 }
 
 pub const ORTHO_NEAR_PLANE: f32 = -1000000.0;
 pub const ORTHO_FAR_PLANE: f32 = 1000000.0;
 
-/// Optional textures that can be used as a source in the shaders.
-/// Textures that are not used by the batch are equal to TextureId::invalid().
-#[derive(Copy, Clone, Debug)]
-pub struct BatchTextures {
-    pub colors: [SourceTexture; 3],
-}
-
-impl BatchTextures {
-    pub fn no_texture() -> Self {
-        BatchTextures {
-            colors: [SourceTexture::Invalid; 3],
-        }
-    }
-
-    pub fn render_target_cache() -> Self {
-        BatchTextures {
-            colors: [
-                SourceTexture::CacheRGBA8,
-                SourceTexture::CacheA8,
-                SourceTexture::Invalid,
-            ],
-        }
-    }
-
-    pub fn color(texture: SourceTexture) -> Self {
-        BatchTextures {
-            colors: [texture, SourceTexture::Invalid, SourceTexture::Invalid],
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum RenderTargetMode {
-    None,
-    RenderTarget,
+#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+pub struct RenderTargetInfo {
+    pub has_depth: bool,
 }
 
 #[derive(Debug)]
@@ -104,7 +85,7 @@ pub enum TextureUpdateOp {
         height: u32,
         format: ImageFormat,
         filter: TextureFilter,
-        mode: RenderTargetMode,
+        render_target: Option<RenderTargetInfo>,
         layer_count: i32,
     },
     Update {
@@ -123,12 +104,13 @@ pub struct TextureUpdate {
     pub op: TextureUpdateOp,
 }
 
+#[derive(Default)]
 pub struct TextureUpdateList {
     pub updates: Vec<TextureUpdate>,
 }
 
 impl TextureUpdateList {
-    pub fn new() -> TextureUpdateList {
+    pub fn new() -> Self {
         TextureUpdateList {
             updates: Vec::new(),
         }
@@ -141,7 +123,7 @@ impl TextureUpdateList {
 }
 
 /// Mostly wraps a tiling::Frame, adding a bit of extra information.
-pub struct RendererFrame {
+pub struct RenderedDocument {
     /// The last rendered epoch for each pipeline present in the frame.
     /// This information is used to know if a certain transformation on the layout has
     /// been rendered, which is necessary for reftests.
@@ -149,16 +131,16 @@ pub struct RendererFrame {
     /// The layers that are currently affected by the over-scrolling animation.
     pub layers_bouncing_back: FastHashSet<ClipId>,
 
-    pub frame: Option<tiling::Frame>,
+    pub frame: tiling::Frame,
 }
 
-impl RendererFrame {
+impl RenderedDocument {
     pub fn new(
         pipeline_epoch_map: FastHashMap<PipelineId, Epoch>,
         layers_bouncing_back: FastHashSet<ClipId>,
-        frame: Option<tiling::Frame>,
+        frame: tiling::Frame,
     ) -> Self {
-        RendererFrame {
+        RenderedDocument {
             pipeline_epoch_map,
             layers_bouncing_back,
             frame,
@@ -169,15 +151,19 @@ impl RendererFrame {
 pub enum DebugOutput {
     FetchDocuments(String),
     FetchClipScrollTree(String),
+    #[cfg(feature = "capture")]
+    SaveCapture(CaptureConfig, Vec<ExternalCaptureImage>),
+    #[cfg(feature = "capture")]
+    LoadCapture(PathBuf),
 }
 
 pub enum ResultMsg {
     DebugCommand(DebugCommand),
     DebugOutput(DebugOutput),
     RefreshShader(PathBuf),
-    NewFrame(
+    PublishDocument(
         DocumentId,
-        RendererFrame,
+        RenderedDocument,
         TextureUpdateList,
         BackendProfileCounters,
     ),
@@ -187,24 +173,8 @@ pub enum ResultMsg {
     },
 }
 
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
-pub struct StackingContextIndex(pub usize);
-
 #[derive(Clone, Copy, Debug)]
 pub struct UvRect {
     pub uv0: DevicePoint,
     pub uv1: DevicePoint,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum HardwareCompositeOp {
-    PremultipliedAlpha,
-}
-
-impl HardwareCompositeOp {
-    pub fn to_blend_mode(&self) -> BlendMode {
-        match *self {
-            HardwareCompositeOp::PremultipliedAlpha => BlendMode::PremultipliedAlpha,
-        }
-    }
 }

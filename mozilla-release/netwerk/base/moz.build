@@ -62,6 +62,7 @@ XPIDL_SOURCES += [
     'nsINestedURI.idl',
     'nsINetAddr.idl',
     'nsINetUtil.idl',
+    'nsINetworkActivityData.idl',
     'nsINetworkInfoService.idl',
     'nsINetworkInterceptController.idl',
     'nsINetworkLinkService.idl',
@@ -125,6 +126,7 @@ XPIDL_SOURCES += [
     'nsIUploadChannel2.idl',
     'nsIURI.idl',
     'nsIURIClassifier.idl',
+    'nsIURIMutator.idl',
     'nsIURIWithBlobImpl.idl',
     'nsIURIWithPrincipal.idl',
     'nsIURL.idl',
@@ -211,6 +213,7 @@ UNIFIED_SOURCES += [
     'nsInputStreamChannel.cpp',
     'nsInputStreamPump.cpp',
     'nsIOService.cpp',
+    'nsIURIMutatorUtils.cpp',
     'nsLoadGroup.cpp',
     'nsMediaFragmentURIParser.cpp',
     'nsMIMEInputStream.cpp',
@@ -303,5 +306,5 @@ LOCAL_INCLUDES += [
     '/security/pkix/include'
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

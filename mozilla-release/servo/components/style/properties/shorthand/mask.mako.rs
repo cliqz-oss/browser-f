@@ -14,22 +14,23 @@
     use values::specified::{Position, PositionComponent};
     use parser::Parse;
 
+    // FIXME(emilio): These two mask types should be the same!
     impl From<mask_origin::single_value::SpecifiedValue> for mask_clip::single_value::SpecifiedValue {
         fn from(origin: mask_origin::single_value::SpecifiedValue) -> mask_clip::single_value::SpecifiedValue {
             match origin {
-                mask_origin::single_value::SpecifiedValue::content_box =>
-                    mask_clip::single_value::SpecifiedValue::content_box,
-                mask_origin::single_value::SpecifiedValue::padding_box =>
-                    mask_clip::single_value::SpecifiedValue::padding_box,
-                mask_origin::single_value::SpecifiedValue::border_box =>
-                    mask_clip::single_value::SpecifiedValue::border_box,
+                mask_origin::single_value::SpecifiedValue::ContentBox =>
+                    mask_clip::single_value::SpecifiedValue::ContentBox,
+                mask_origin::single_value::SpecifiedValue::PaddingBox =>
+                    mask_clip::single_value::SpecifiedValue::PaddingBox ,
+                mask_origin::single_value::SpecifiedValue::BorderBox =>
+                    mask_clip::single_value::SpecifiedValue::BorderBox,
                 % if product == "gecko":
-                mask_origin::single_value::SpecifiedValue::fill_box =>
-                    mask_clip::single_value::SpecifiedValue::fill_box,
-                mask_origin::single_value::SpecifiedValue::stroke_box =>
-                    mask_clip::single_value::SpecifiedValue::stroke_box,
-                mask_origin::single_value::SpecifiedValue::view_box =>
-                    mask_clip::single_value::SpecifiedValue::view_box,
+                mask_origin::single_value::SpecifiedValue::FillBox =>
+                    mask_clip::single_value::SpecifiedValue::FillBox ,
+                mask_origin::single_value::SpecifiedValue::StrokeBox =>
+                    mask_clip::single_value::SpecifiedValue::StrokeBox,
+                mask_origin::single_value::SpecifiedValue::ViewBox=>
+                    mask_clip::single_value::SpecifiedValue::ViewBox,
                 % endif
             }
         }
@@ -120,7 +121,7 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             use properties::longhands::mask_origin::single_value::computed_value::T as Origin;
             use properties::longhands::mask_clip::single_value::computed_value::T as Clip;
 
@@ -160,7 +161,7 @@
                 dest.write_str(" ")?;
                 repeat.to_css(dest)?;
 
-                if *origin != Origin::border_box || *clip != Clip::border_box {
+                if *origin != Origin::BorderBox || *clip != Clip::BorderBox {
                     dest.write_str(" ")?;
                     origin.to_css(dest)?;
                     if *clip != From::from(*origin) {
@@ -213,7 +214,7 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             let len = self.mask_position_x.0.len();
             if len == 0 || self.mask_position_y.0.len() != len {
                 return Ok(());

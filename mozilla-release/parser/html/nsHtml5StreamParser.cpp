@@ -16,6 +16,7 @@
 #include "nsHtml5AtomTable.h"
 #include "nsHtml5Module.h"
 #include "nsHtml5StreamParserPtr.h"
+#include "nsIDocShell.h"
 #include "nsIScriptError.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/SystemGroup.h"
@@ -181,6 +182,7 @@ nsHtml5StreamParser::nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
   , mLoadFlusher(new nsHtml5LoadFlusher(aExecutor))
   , mFeedChardet(false)
   , mInitialEncodingWasFromParentFrame(false)
+  , mHasHadErrors(false)
   , mFlushTimer(NS_NewTimer())
   , mFlushTimerMutex("nsHtml5StreamParser mFlushTimerMutex")
   , mFlushTimerArmed(false)
@@ -846,7 +848,7 @@ nsHtml5StreamParser::WriteStreamBytes(const uint8_t* aFromSegment,
     bool hadErrors;
     Tie(result, read, written, hadErrors) =
       mUnicodeDecoder->DecodeToUTF16(src, dst, false);
-    Unused << hadErrors;
+    mHasHadErrors |= hadErrors;
     src = src.From(read);
     totalRead += read;
     mLastBuffer->AdvanceEnd(written);
@@ -877,7 +879,7 @@ public:
   {
   }
 
-  NS_IMETHOD Run()
+  NS_IMETHOD Run() override
   {
     nsJSContext::MaybeRunNextCollectorSlice(mDocShell, JS::gcreason::HTML_PARSER);
     return NS_OK;
@@ -1094,7 +1096,7 @@ nsHtml5StreamParser::DoStopRequest()
     bool hadErrors;
     Tie(result, read, written, hadErrors) =
       mUnicodeDecoder->DecodeToUTF16(src, dst, true);
-    Unused << hadErrors;
+    mHasHadErrors |= hadErrors;
     MOZ_ASSERT(read == 0, "How come an empty span was read form?");
     mLastBuffer->AdvanceEnd(written);
     if (result == kOutputFull) {
@@ -1454,6 +1456,9 @@ nsHtml5StreamParser::ParseAvailableData()
               return;
             }
             mAtEOF = true;
+            if (mEncoding == UTF_8_ENCODING && !mHasHadErrors) {
+              mTreeBuilder->TryToDisableEncodingMenu();
+            }
             if (mCharsetSource < kCharsetFromMetaTag) {
               if (mInitialEncodingWasFromParentFrame) {
                 // Unfortunately, this check doesn't take effect for

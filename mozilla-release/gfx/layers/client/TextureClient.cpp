@@ -338,13 +338,15 @@ DeallocateTextureClient(TextureDeallocParams params)
       bool done = false;
       ReentrantMonitor barrier("DeallocateTextureClient");
       ReentrantMonitorAutoEnter autoMon(barrier);
-      ipdlMsgLoop->PostTask(NewRunnableFunction(DeallocateTextureClientSyncProxy,
+      ipdlMsgLoop->PostTask(NewRunnableFunction("DeallocateTextureClientSyncProxyRunnable",
+                                                DeallocateTextureClientSyncProxy,
                                                 params, &barrier, &done));
       while (!done) {
         barrier.Wait();
       }
     } else {
-      ipdlMsgLoop->PostTask(NewRunnableFunction(DeallocateTextureClient,
+      ipdlMsgLoop->PostTask(NewRunnableFunction("DeallocateTextureClientRunnable",
+                                                DeallocateTextureClient,
                                                 params));
     }
     // The work has been forwarded to the IPDL thread, we are done.
@@ -551,7 +553,7 @@ TextureClient::Unlock()
   }
 
   if (mBorrowedDrawTarget) {
-    if (!(mOpenMode & OpenMode::OPEN_ASYNC_WRITE)) {
+    if (!(mOpenMode & OpenMode::OPEN_ASYNC)) {
       if (mOpenMode & OpenMode::OPEN_WRITE) {
         mBorrowedDrawTarget->Flush();
         if (mReadbackSink && !mData->ReadBack(mReadbackSink)) {
@@ -840,7 +842,8 @@ void CancelTextureClientRecycle(uint64_t aTextureId, LayersIPCChannel* aAllocato
   if (MessageLoop::current() == msgLoop) {
     aAllocator->CancelWaitForRecycle(aTextureId);
   } else {
-    msgLoop->PostTask(NewRunnableFunction(CancelTextureClientRecycle,
+    msgLoop->PostTask(NewRunnableFunction("CancelTextureClientRecycleRunnable",
+                                          CancelTextureClientRecycle,
                                           aTextureId, aAllocator));
   }
 }
@@ -1169,7 +1172,8 @@ TextureClient::CreateFromSurface(KnowsCompositor* aAllocator,
 
   int32_t maxTextureSize = aAllocator->GetMaxTextureSize();
 
-  if (layersBackend == LayersBackend::LAYERS_D3D11 &&
+  if ((layersBackend == LayersBackend::LAYERS_D3D11 ||
+       layersBackend == LayersBackend::LAYERS_WR) &&
     (moz2DBackend == gfx::BackendType::DIRECT2D ||
       moz2DBackend == gfx::BackendType::DIRECT2D1_1 ||
       (!!(aAllocFlags & ALLOC_FOR_OUT_OF_BAND_CONTENT) &&
@@ -1249,9 +1253,9 @@ TextureClient::CreateForRawBufferAccess(LayersIPCChannel* aAllocator,
   // Note that we ignore the backend type if we get here. It should only be D2D
   // or Skia, and D2D does not support data surfaces. Therefore it is safe to
   // force the buffer to be Skia.
-  NS_WARNING_ASSERTION(aMoz2DBackend != gfx::BackendType::SKIA &&
-                       aMoz2DBackend != gfx::BackendType::DIRECT2D &&
-                       aMoz2DBackend != gfx::BackendType::DIRECT2D1_1,
+  NS_WARNING_ASSERTION(aMoz2DBackend == gfx::BackendType::SKIA ||
+                       aMoz2DBackend == gfx::BackendType::DIRECT2D ||
+                       aMoz2DBackend == gfx::BackendType::DIRECT2D1_1,
                        "Unsupported TextureClient backend type");
 
   TextureData* texData = BufferTextureData::Create(aSize, aFormat, gfx::BackendType::SKIA,
@@ -1812,6 +1816,30 @@ TextureClient::CreateWithData(TextureData* aData, TextureFlags aFlags, LayersIPC
   return MakeAndAddRef<TextureClient>(aData, aFlags, aAllocator);
 }
 
+template<class PixelDataType>
+static void
+copyData(PixelDataType* aDst,
+         const MappedYCbCrChannelData& aChannelDst,
+         PixelDataType* aSrc,
+         const MappedYCbCrChannelData& aChannelSrc)
+{
+  uint8_t* srcByte = reinterpret_cast<uint8_t*>(aSrc);
+  const int32_t srcSkip = aChannelSrc.skip + 1;
+  uint8_t* dstByte = reinterpret_cast<uint8_t*>(aDst);
+  const int32_t dstSkip = aChannelDst.skip + 1;
+  for (int32_t i = 0; i < aChannelSrc.size.height; ++i) {
+    for (int32_t j = 0; j < aChannelSrc.size.width; ++j) {
+      *aDst = *aSrc;
+      aSrc += srcSkip;
+      aDst += dstSkip;
+    }
+    srcByte += aChannelSrc.stride;
+    aSrc = reinterpret_cast<PixelDataType*>(srcByte);
+    dstByte += aChannelDst.stride;
+    aDst = reinterpret_cast<PixelDataType*>(dstByte);
+  }
+}
+
 bool
 MappedYCbCrChannelData::CopyInto(MappedYCbCrChannelData& aDst)
 {
@@ -1819,7 +1847,7 @@ MappedYCbCrChannelData::CopyInto(MappedYCbCrChannelData& aDst)
     return false;
   }
 
-  if (stride == aDst.stride) {
+  if (stride == aDst.stride && skip == aDst.skip) {
     // fast path!
     // We assume that the padding in the destination is there for alignment
     // purposes and doesn't contain useful data.
@@ -1827,26 +1855,32 @@ MappedYCbCrChannelData::CopyInto(MappedYCbCrChannelData& aDst)
     return true;
   }
 
-  for (int32_t i = 0; i < size.height; ++i) {
-    if (aDst.skip == 0 && skip == 0) {
-      // fast-ish path
+  if (aDst.skip == 0 && skip == 0) {
+    // fast-ish path
+    for (int32_t i = 0; i < size.height; ++i) {
       memcpy(aDst.data + i * aDst.stride,
              data + i * stride,
              size.width * bytesPerPixel);
-    } else {
-      // slow path
-      uint8_t* src = data + i * stride;
-      uint8_t* dst = aDst.data + i * aDst.stride;
-      for (int32_t j = 0; j < size.width; ++j) {
-        for (uint32_t k = 0; k < bytesPerPixel; ++k) {
-          *dst = *src;
-          src += 1;
-          dst += 1;
-        }
-        src += skip;
-        dst += aDst.skip;
-      }
     }
+    return true;
+  }
+
+  MOZ_ASSERT(bytesPerPixel == 1 || bytesPerPixel == 2);
+  // slow path
+  if (bytesPerPixel == 1) {
+    copyData(aDst.data, aDst, data, *this);
+  } else if (bytesPerPixel == 2) {
+    if (skip != 0) {
+      // The skip value definition doesn't specify if it's in bytes, or in
+      // "pixels". We will assume the later. There are currently no decoders
+      // returning HDR content with a skip value different than zero anyway.
+      NS_WARNING("skip value non zero for HDR content, please verify code "
+                 "(see bug 1421187)");
+    }
+    copyData(reinterpret_cast<uint16_t*>(aDst.data),
+             aDst,
+             reinterpret_cast<uint16_t*>(data),
+             *this);
   }
   return true;
 }

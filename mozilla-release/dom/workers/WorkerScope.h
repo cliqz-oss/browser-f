@@ -19,6 +19,9 @@ namespace dom {
 
 class AnyCallback;
 struct ChannelPixelLayout;
+class ClientInfo;
+class Clients;
+class ClientState;
 class Console;
 class Crypto;
 class Function;
@@ -40,7 +43,6 @@ class CacheStorage;
 
 namespace workers {
 
-class ServiceWorkerClients;
 class WorkerPrivate;
 
 } // namespace workers
@@ -92,7 +94,7 @@ public:
     return this;
   }
 
-  Console*
+  already_AddRefed<Console>
   GetConsole(ErrorResult& aRv);
 
   Console*
@@ -221,6 +223,15 @@ public:
 
   AbstractThread*
   AbstractMainThreadFor(TaskCategory aCategory) override;
+
+  Maybe<ClientInfo>
+  GetClientInfo() const override;
+
+  Maybe<ClientState>
+  GetClientState() const;
+
+  Maybe<ServiceWorkerDescriptor>
+  GetController() const override;
 };
 
 class DedicatedWorkerGlobalScope final : public WorkerGlobalScope
@@ -282,7 +293,7 @@ public:
 class ServiceWorkerGlobalScope final : public WorkerGlobalScope
 {
   const nsString mScope;
-  RefPtr<workers::ServiceWorkerClients> mClients;
+  RefPtr<Clients> mClients;
   RefPtr<ServiceWorkerRegistration> mRegistration;
 
   ~ServiceWorkerGlobalScope();
@@ -300,17 +311,14 @@ public:
   WrapGlobalObject(JSContext* aCx,
                    JS::MutableHandle<JSObject*> aReflector) override;
 
-  static bool
-  OpenWindowEnabled(JSContext* aCx, JSObject* aObj);
-
   void
   GetScope(nsString& aScope) const
   {
     aScope = mScope;
   }
 
-  workers::ServiceWorkerClients*
-  Clients();
+  already_AddRefed<Clients>
+  GetClients();
 
   ServiceWorkerRegistration*
   Registration();
@@ -413,7 +421,7 @@ public:
   SetConsoleEventHandler(JSContext* aCx, AnyCallback* aHandler,
                          ErrorResult& aRv);
 
-  Console*
+  already_AddRefed<Console>
   GetConsole(ErrorResult& aRv);
 
   Console*

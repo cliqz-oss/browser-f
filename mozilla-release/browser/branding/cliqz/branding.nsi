@@ -9,6 +9,7 @@
 # BrandFullNameInternal is used for some registry and file system values
 # instead of BrandFullName and typically should not be modified.
 !define BrandFullNameInternal "Cliqz"
+!define BrandFullName         "Cliqz"
 !define CompanyName           "Cliqz GmbH"
 !define URLInfoAbout          "https://www.cliqz.com"
 !define URLUpdateInfo         "https://www.cliqz.com?version=${AppVersion}"

@@ -40,7 +40,11 @@ elif CONFIG['OS_TARGET'] in ('FreeBSD', 'OpenBSD', 'NetBSD'):
     SOURCES += ['/nsprpub/pr/src/md/unix/%s.c' % CONFIG['OS_TARGET'].lower()]
 elif CONFIG['OS_TARGET'] == 'Darwin':
     OS_LIBS += ['-framework CoreServices']
-    if CONFIG['HOST_MAJOR_VERSION'] >= '15':
+    if not CONFIG['HOST_MAJOR_VERSION']:
+        DEFINES.update(
+            HAS_CONNECTX=True,
+        )
+    elif CONFIG['HOST_MAJOR_VERSION'] >= '15':
         DEFINES.update(
             HAS_CONNECTX=True,
         )
@@ -85,6 +89,8 @@ elif CONFIG['OS_TARGET'] == 'WINNT':
         WINNT=False,
         _PR_GLOBAL_THREADS_ONLY=True,
     )
+    if not CONFIG['DEBUG']:
+      DEFINES['DO_NOT_WAIT_FOR_CONNECT_OVERLAPPED_OPERATIONS'] = True
     if CONFIG['CPU_ARCH'] == 'x86_64':
         DEFINES['_AMD64_'] = True
     else:

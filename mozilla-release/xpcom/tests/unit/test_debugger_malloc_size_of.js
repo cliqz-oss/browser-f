@@ -9,7 +9,6 @@
 // expected byte sizes within SpiderMonkey's jit-tests, we just want to make
 // sure that Gecko is providing SpiderMonkey with the callback it needs.
 
-var Cu = Components.utils;
 const { byteSize } = Cu.getJSTestingFunctions();
 
 function run_test() {
@@ -27,7 +26,7 @@ function run_test() {
   ];
 
   for (let obj of objects) {
-    do_print(uneval(obj));
+    info(uneval(obj));
     ok(byteSize(obj), "We should get some (non-zero) byte size");
   }
 }

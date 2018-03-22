@@ -39,14 +39,15 @@ function build_js_shell () {
     (
     unset MOZ_OBJDIR
     unset MOZCONFIG
-    ( cd $JS_SRCDIR; autoconf-2.13 )
+    cp -P $JS_SRCDIR/configure.in $JS_SRCDIR/configure
+    chmod +x $JS_SRCDIR/configure
     if [[ -z "$HAZ_DEP" ]]; then
         [ -d $HAZARD_SHELL_OBJDIR ] && rm -rf $HAZARD_SHELL_OBJDIR
     fi
     mkdir -p $HAZARD_SHELL_OBJDIR || true
     cd $HAZARD_SHELL_OBJDIR
-    $JS_SRCDIR/configure --enable-optimize --disable-debug --enable-ctypes --enable-nspr-build --without-intl-api --with-ccache
-    make -j4
+    $JS_SRCDIR/configure --enable-optimize --disable-debug --enable-ctypes --enable-nspr-build --without-intl-api
+    make -j$(nproc)
     ) # Restore MOZ_OBJDIR and MOZCONFIG
 }
 

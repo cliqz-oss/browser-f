@@ -141,8 +141,8 @@ HyperTextAccessible::GetBoundsInFrame(nsIFrame* aFrame,
     rv = frame->GetPointFromOffset(startContentOffset + frameSubStringLength, &frameTextEndPoint);
     NS_ENSURE_SUCCESS(rv, nsIntRect());
 
-    frameScreenRect.x += std::min(frameTextStartPoint.x, frameTextEndPoint.x);
-    frameScreenRect.width = mozilla::Abs(frameTextStartPoint.x - frameTextEndPoint.x);
+    frameScreenRect.SetRectX(frameScreenRect.X() + std::min(frameTextStartPoint.x, frameTextEndPoint.x),
+                             mozilla::Abs(frameTextStartPoint.x - frameTextEndPoint.x));
 
     screenRect.UnionRect(frameScreenRect, screenRect);
 
@@ -242,7 +242,7 @@ HyperTextAccessible::DOMPointToOffset(nsINode* aNode, int32_t aNodeOffset,
     //    we're an empty nsIAccessibleText
     // 3) there are children and we're at the end of the children
 
-    findNode = aNode->GetChildAt(aNodeOffset);
+    findNode = aNode->GetChildAt_Deprecated(aNodeOffset);
     if (!findNode) {
       if (aNodeOffset == 0) {
         if (aNode == GetNode()) {
@@ -269,12 +269,11 @@ HyperTextAccessible::DOMPointToOffset(nsINode* aNode, int32_t aNodeOffset,
   Accessible* descendant = nullptr;
   if (findNode) {
     nsCOMPtr<nsIContent> findContent(do_QueryInterface(findNode));
-    if (findContent && findContent->IsHTMLElement() &&
-        findContent->NodeInfo()->Equals(nsGkAtoms::br) &&
-        findContent->AttrValueIs(kNameSpaceID_None,
-                                 nsGkAtoms::mozeditorbogusnode,
-                                 nsGkAtoms::_true,
-                                 eIgnoreCase)) {
+    if (findContent && findContent->IsHTMLElement(nsGkAtoms::br) &&
+        findContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                              nsGkAtoms::mozeditorbogusnode,
+                                              nsGkAtoms::_true,
+                                              eIgnoreCase)) {
       // This <br> is the hacky "bogus node" used when there is no text in a control
       return 0;
     }
@@ -1178,8 +1177,8 @@ HyperTextAccessible::OffsetAtPoint(int32_t aX, int32_t aY, uint32_t aCoordType)
   if (!frameScreenRect.Contains(coordsInAppUnits.x, coordsInAppUnits.y))
     return -1; // Not found
 
-  nsPoint pointInHyperText(coordsInAppUnits.x - frameScreenRect.x,
-                           coordsInAppUnits.y - frameScreenRect.y);
+  nsPoint pointInHyperText(coordsInAppUnits.x - frameScreenRect.X(),
+                           coordsInAppUnits.y - frameScreenRect.Y());
 
   // Go through the frames to check if each one has the point.
   // When one does, add up the character offsets until we have a match
@@ -1268,7 +1267,10 @@ HyperTextAccessible::TextBounds(int32_t aStartOffset, int32_t aEndOffset,
     offset1 = 0;
   }
 
-  nsAccUtils::ConvertScreenCoordsTo(&bounds.x, &bounds.y, aCoordType, this);
+  auto boundsX = bounds.X();
+  auto boundsY = bounds.Y();
+  nsAccUtils::ConvertScreenCoordsTo(&boundsX, &boundsY, aCoordType, this);
+  bounds.MoveTo(boundsX, boundsY);
   return bounds;
 }
 
@@ -1523,8 +1525,7 @@ HyperTextAccessible::GetCaretRect(nsIWidget** aWidget)
   nsIntRect charRect = CharBounds(CaretOffset(),
                                   nsIAccessibleCoordinateType::COORDTYPE_SCREEN_RELATIVE);
   if (!charRect.IsEmpty()) {
-    caretRect.height -= charRect.y - caretRect.y;
-    caretRect.y = charRect.y;
+    caretRect.SetTopEdge(charRect.Y());
   }
   return caretRect;
 }
@@ -1715,8 +1716,8 @@ HyperTextAccessible::ScrollSubstringToPoint(int32_t aStartOffset,
         // Scroll substring to the given point. Turn the point into percents
         // relative scrollable area to use nsCoreUtils::ScrollSubstringTo.
         nsRect frameRect = parentFrame->GetScreenRectInAppUnits();
-        nscoord offsetPointX = coordsInAppUnits.x - frameRect.x;
-        nscoord offsetPointY = coordsInAppUnits.y - frameRect.y;
+        nscoord offsetPointX = coordsInAppUnits.x - frameRect.X();
+        nscoord offsetPointY = coordsInAppUnits.y - frameRect.Y();
 
         nsSize size(parentFrame->GetSize());
 
@@ -1852,7 +1853,8 @@ HyperTextAccessible::NativeName(nsString& aName)
   // Check @alt attribute for invalid img elements.
   bool hasImgAlt = false;
   if (mContent->IsHTMLElement(nsGkAtoms::img)) {
-    hasImgAlt = mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::alt, aName);
+    hasImgAlt =
+      mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::alt, aName);
     if (!aName.IsEmpty())
       return eNameOK;
   }
@@ -1865,7 +1867,7 @@ HyperTextAccessible::NativeName(nsString& aName)
   // a valid name from markup. Otherwise their name isn't picked up by recursive
   // name computation algorithm. See NS_OK_NAME_FROM_TOOLTIP.
   if (IsAbbreviation() &&
-      mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::title, aName))
+      mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::title, aName))
     aName.CompressWhitespace();
 
   return hasImgAlt ? eNoNameOnPurpose : eNameOK;

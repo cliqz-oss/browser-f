@@ -158,7 +158,7 @@ const NETWORK_ERROR_OFFLINE             = 111;
 const HTTP_ERROR_OFFSET                 = 1000;
 
 const DOWNLOAD_CHUNK_SIZE           = 300000; // bytes
-const DOWNLOAD_BACKGROUND_INTERVAL  = 600;    // seconds
+const DOWNLOAD_BACKGROUND_INTERVAL  = 600; // seconds
 const DOWNLOAD_FOREGROUND_INTERVAL  = 0;
 
 const UPDATE_WINDOW_NAME      = "Update:Wizard";
@@ -207,7 +207,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
                                   "resource://gre/modules/DeferredTask.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gLogEnabled", function aus_gLogEnabled() {
-  return getPref("getBoolPref", PREF_APP_UPDATE_LOG, false);
+  return Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false);
 });
 
 XPCOMUtils.defineLazyGetter(this, "gUpdateBundle", function aus_gUpdateBundle() {
@@ -505,7 +505,7 @@ XPCOMUtils.defineLazyGetter(this, "gCanStageUpdatesSession", function aus_gCSUS(
  */
 function getCanStageUpdates() {
   // If staging updates are disabled, then just bail out!
-  if (!getPref("getBoolPref", PREF_APP_UPDATE_STAGING_ENABLED, false)) {
+  if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_STAGING_ENABLED, false)) {
     LOG("getCanStageUpdates - staging updates is disabled by preference " +
         PREF_APP_UPDATE_STAGING_ENABLED);
     return false;
@@ -532,7 +532,7 @@ XPCOMUtils.defineLazyGetter(this, "gCanCheckForUpdates", function aus_gCanCheckF
   // If the administrator has disabled app update and locked the preference so
   // users can't check for updates. This preference check is ok in this lazy
   // getter since locked prefs don't change until the application is restarted.
-  var enabled = getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true);
+  var enabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED, true);
   if (!enabled && Services.prefs.prefIsLocked(PREF_APP_UPDATE_ENABLED)) {
     LOG("gCanCheckForUpdates - unable to automatically check for updates, " +
         "the preference is disabled and admistratively locked.");
@@ -566,26 +566,6 @@ function LOG(string) {
     dump("*** AUS:SVC " + string + "\n");
     Services.console.logStringMessage("AUS:SVC " + string);
   }
-}
-
-/**
- * Gets a preference value, handling the case where there is no default.
- * @param   func
- *          The name of the preference function to call, on nsIPrefBranch
- * @param   preference
- *          The name of the preference
- * @param   defaultValue
- *          The default value to return in the event the preference has
- *          no setting
- * @return  The value of the preference, or undefined if there was no
- *          user or default value.
- */
-function getPref(func, preference, defaultValue) {
-  try {
-    return Services.prefs[func](preference);
-  } catch (e) {
-  }
-  return defaultValue;
 }
 
 /**
@@ -755,7 +735,7 @@ function shouldUseService() {
   // 2) The maintenance service is installed
   // 3) The pref for using the service is enabled
   if (!AppConstants.MOZ_MAINTENANCE_SERVICE || !isServiceInstalled() ||
-      !getPref("getBoolPref", PREF_APP_UPDATE_SERVICE_ENABLED, false)) {
+      !Services.prefs.getBoolPref(PREF_APP_UPDATE_SERVICE_ENABLED, false)) {
     LOG("shouldUseService - returning false");
     return false;
   }
@@ -945,11 +925,11 @@ function handleUpdateFailure(update, errorCode) {
   }
 
   if (update.errorCode == ELEVATION_CANCELED) {
-    if (getPref("getBoolPref", PREF_APP_UPDATE_DOORHANGER, false)) {
-      let elevationAttempts = getPref("getIntPref", PREF_APP_UPDATE_ELEVATE_ATTEMPTS, 0);
+    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_DOORHANGER, false)) {
+      let elevationAttempts = Services.prefs.getIntPref(PREF_APP_UPDATE_ELEVATE_ATTEMPTS, 0);
       elevationAttempts++;
       Services.prefs.setIntPref(PREF_APP_UPDATE_ELEVATE_ATTEMPTS, elevationAttempts);
-      let maxAttempts = Math.min(getPref("getIntPref", PREF_APP_UPDATE_ELEVATE_MAXATTEMPTS, 2), 10);
+      let maxAttempts = Math.min(Services.prefs.getIntPref(PREF_APP_UPDATE_ELEVATE_MAXATTEMPTS, 2), 10);
 
       if (elevationAttempts > maxAttempts) {
         LOG("handleUpdateFailure - notifying observers of error. " +
@@ -962,18 +942,18 @@ function handleUpdateFailure(update, errorCode) {
       }
     }
 
-    let cancelations = getPref("getIntPref", PREF_APP_UPDATE_CANCELATIONS, 0);
+    let cancelations = Services.prefs.getIntPref(PREF_APP_UPDATE_CANCELATIONS, 0);
     cancelations++;
     Services.prefs.setIntPref(PREF_APP_UPDATE_CANCELATIONS, cancelations);
     if (AppConstants.platform == "macosx") {
-      let osxCancelations = getPref("getIntPref",
-                                    PREF_APP_UPDATE_CANCELATIONS_OSX, 0);
+      let osxCancelations =
+        Services.prefs.getIntPref(PREF_APP_UPDATE_CANCELATIONS_OSX, 0);
       osxCancelations++;
       Services.prefs.setIntPref(PREF_APP_UPDATE_CANCELATIONS_OSX,
                                 osxCancelations);
-      let maxCancels = getPref("getIntPref",
-                               PREF_APP_UPDATE_CANCELATIONS_OSX_MAX,
-                               DEFAULT_CANCELATIONS_OSX_MAX);
+      let maxCancels =
+        Services.prefs.getIntPref(PREF_APP_UPDATE_CANCELATIONS_OSX_MAX,
+                                  DEFAULT_CANCELATIONS_OSX_MAX);
       // Prevent the preference from setting a value greater than 5.
       maxCancels = Math.min(maxCancels, 5);
       if (osxCancelations >= maxCancels) {
@@ -1002,11 +982,9 @@ function handleUpdateFailure(update, errorCode) {
   }
 
   if (SERVICE_ERRORS.includes(update.errorCode)) {
-    var failCount = getPref("getIntPref",
-                            PREF_APP_UPDATE_SERVICE_ERRORS, 0);
-    var maxFail = getPref("getIntPref",
-                          PREF_APP_UPDATE_SERVICE_MAXERRORS,
-                          DEFAULT_SERVICE_MAX_ERRORS);
+    var failCount = Services.prefs.getIntPref(PREF_APP_UPDATE_SERVICE_ERRORS, 0);
+    var maxFail = Services.prefs.getIntPref(PREF_APP_UPDATE_SERVICE_MAXERRORS,
+                                            DEFAULT_SERVICE_MAX_ERRORS);
     // Prevent the preference from setting a value greater than 10.
     maxFail = Math.min(maxFail, 10);
     // As a safety, when the service reaches maximum failures, it will
@@ -1140,7 +1118,6 @@ function UpdatePatch(patch) {
   this._properties = {};
   for (var i = 0; i < patch.attributes.length; ++i) {
     var attr = patch.attributes.item(i);
-    attr.QueryInterface(Ci.nsIDOMAttr);
     switch (attr.name) {
       case "selected":
         this.selected = attr.value == "true";
@@ -1273,9 +1250,9 @@ function Update(update) {
   this.isCompleteUpdate = false;
   this.unsupported = false;
   this.channel = "default";
-  this.promptWaitTime = getPref("getIntPref", PREF_APP_UPDATE_PROMPTWAITTIME, 43200);
-  this.backgroundInterval = getPref("getIntPref", PREF_APP_UPDATE_BACKGROUNDINTERVAL,
-                                    DOWNLOAD_BACKGROUND_INTERVAL);
+  this.promptWaitTime = Services.prefs.getIntPref(PREF_APP_UPDATE_PROMPTWAITTIME, 43200);
+  this.backgroundInterval = Services.prefs.getIntPref(PREF_APP_UPDATE_BACKGROUNDINTERVAL,
+                                                      DOWNLOAD_BACKGROUND_INTERVAL);
 
   // Null <update>, assume this is a message container and do no
   // further initialization
@@ -1312,7 +1289,6 @@ function Update(update) {
 
   for (let i = 0; i < update.attributes.length; ++i) {
     var attr = update.attributes.item(i);
-    attr.QueryInterface(Ci.nsIDOMAttr);
     if (attr.value == "undefined") {
       continue;
     } else if (attr.name == "detailsURL") {
@@ -1664,7 +1640,7 @@ UpdateService.prototype = {
         break;
       case "nsPref:changed":
         if (data == PREF_APP_UPDATE_LOG) {
-          gLogEnabled = getPref("getBoolPref", PREF_APP_UPDATE_LOG, false);
+          gLogEnabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false);
         }
         break;
       case "quit-application":
@@ -1951,11 +1927,11 @@ UpdateService.prototype = {
     // Send the error code to telemetry
     AUSTLMY.pingCheckExError(this._pingSuffix, update.errorCode);
     update.errorCode = BACKGROUNDCHECK_MULTIPLE_FAILURES;
-    let errCount = getPref("getIntPref", PREF_APP_UPDATE_BACKGROUNDERRORS, 0);
+    let errCount = Services.prefs.getIntPref(PREF_APP_UPDATE_BACKGROUNDERRORS, 0);
     errCount++;
     Services.prefs.setIntPref(PREF_APP_UPDATE_BACKGROUNDERRORS, errCount);
     // Don't allow the preference to set a value greater than 20 for max errors.
-    let maxErrors = Math.min(getPref("getIntPref", PREF_APP_UPDATE_BACKGROUNDMAXERRORS, 10), 20);
+    let maxErrors = Math.min(Services.prefs.getIntPref(PREF_APP_UPDATE_BACKGROUNDMAXERRORS, 10), 20);
 
     if (errCount >= maxErrors) {
       let prompter = Cc["@mozilla.org/updates/update-prompt;1"].
@@ -2133,7 +2109,7 @@ UpdateService.prototype = {
       } else if (!validUpdateURL) {
         AUSTLMY.pingCheckCode(this._pingSuffix,
                               AUSTLMY.CHK_INVALID_DEFAULT_URL);
-      } else if (!getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true)) {
+      } else if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED, true)) {
         AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_PREF_DISABLED);
       } else if (!hasUpdateMutex()) {
         AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_NO_MUTEX);
@@ -2209,9 +2185,8 @@ UpdateService.prototype = {
     let update = minorUpdate || majorUpdate;
     if (AppConstants.platform == "macosx" && update) {
       if (getElevationRequired()) {
-        let installAttemptVersion = getPref("getCharPref",
-                                            PREF_APP_UPDATE_ELEVATE_VERSION,
-                                            null);
+        let installAttemptVersion =
+          Services.prefs.getCharPref(PREF_APP_UPDATE_ELEVATE_VERSION, null);
         if (vc.compare(installAttemptVersion, update.appVersion) != 0) {
           Services.prefs.setCharPref(PREF_APP_UPDATE_ELEVATE_VERSION,
                                      update.appVersion);
@@ -2223,13 +2198,13 @@ UpdateService.prototype = {
             Services.prefs.clearUserPref(PREF_APP_UPDATE_ELEVATE_NEVER);
           }
         } else {
-          let numCancels = getPref("getIntPref",
-                                   PREF_APP_UPDATE_CANCELATIONS_OSX, 0);
-          let rejectedVersion = getPref("getCharPref",
-                                        PREF_APP_UPDATE_ELEVATE_NEVER, "");
-          let maxCancels = getPref("getIntPref",
-                                   PREF_APP_UPDATE_CANCELATIONS_OSX_MAX,
-                                   DEFAULT_CANCELATIONS_OSX_MAX);
+          let numCancels =
+            Services.prefs.getIntPref(PREF_APP_UPDATE_CANCELATIONS_OSX, 0);
+          let rejectedVersion =
+            Services.prefs.getCharPref(PREF_APP_UPDATE_ELEVATE_NEVER, "");
+          let maxCancels =
+            Services.prefs.getIntPref(PREF_APP_UPDATE_CANCELATIONS_OSX_MAX,
+                                      DEFAULT_CANCELATIONS_OSX_MAX);
           if (numCancels >= maxCancels) {
             LOG("UpdateService:selectUpdate - the user requires elevation to " +
                 "install this update, but the user has exceeded the max " +
@@ -2287,7 +2262,7 @@ UpdateService.prototype = {
       return;
     }
 
-    var updateEnabled = getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true);
+    var updateEnabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED, true);
     if (!updateEnabled) {
       AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_PREF_DISABLED);
       LOG("UpdateService:_selectAndInstallUpdate - not prompting because " +
@@ -2304,7 +2279,7 @@ UpdateService.prototype = {
       LOG("UpdateService:_selectAndInstallUpdate - update not supported for " +
           "this system. Notifying observers. topic: update-available, " +
           "status: unsupported");
-      if (!getPref("getBoolPref", PREF_APP_UPDATE_NOTIFIEDUNSUPPORTED, false)) {
+      if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_NOTIFIEDUNSUPPORTED, false)) {
         LOG("UpdateService:_selectAndInstallUpdate - notifying that the " +
             "update is not supported for this system");
         this._showPrompt(update);
@@ -2341,7 +2316,7 @@ UpdateService.prototype = {
      * Major         Notify
      * Minor         Auto Install
      */
-    if (!getPref("getBoolPref", PREF_APP_UPDATE_AUTO, true)) {
+    if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_AUTO, true)) {
       LOG("UpdateService:_selectAndInstallUpdate - prompting because silent " +
           "install is disabled. Notifying observers. topic: update-available, " +
           "status: show-prompt");
@@ -2839,7 +2814,7 @@ UpdateManager.prototype = {
     Services.obs.notifyObservers(update, "update-staged", update.state);
 
     // Only prompt when the UI isn't already open.
-    let windowType = getPref("getCharPref", PREF_APP_UPDATE_ALTWINDOWTYPE, null);
+    let windowType = Services.prefs.getCharPref(PREF_APP_UPDATE_ALTWINDOWTYPE, null);
     if (Services.wm.getMostRecentWindow(UPDATE_WINDOW_NAME) ||
         windowType && Services.wm.getMostRecentWindow(windowType)) {
       return;
@@ -3176,7 +3151,7 @@ Checker.prototype = {
    */
   _enabled: true,
   get enabled() {
-    return getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true) &&
+    return Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED, true) &&
            gCanCheckForUpdates && hasUpdateMutex() && this._enabled;
   },
 
@@ -3593,12 +3568,12 @@ Downloader.prototype = {
     var shouldRegisterOnlineObserver = false;
     var shouldRetrySoon = false;
     var deleteActiveUpdate = false;
-    var retryTimeout = getPref("getIntPref", PREF_APP_UPDATE_SOCKET_RETRYTIMEOUT,
-                               DEFAULT_SOCKET_RETRYTIMEOUT);
+    var retryTimeout = Services.prefs.getIntPref(PREF_APP_UPDATE_SOCKET_RETRYTIMEOUT,
+                                                 DEFAULT_SOCKET_RETRYTIMEOUT);
     // Prevent the preference from setting a value greater than 10000.
     retryTimeout = Math.min(retryTimeout, 10000);
-    var maxFail = getPref("getIntPref", PREF_APP_UPDATE_SOCKET_MAXERRORS,
-                          DEFAULT_SOCKET_MAX_ERRORS);
+    var maxFail = Services.prefs.getIntPref(PREF_APP_UPDATE_SOCKET_MAXERRORS,
+                                            DEFAULT_SOCKET_MAX_ERRORS);
     // Prevent the preference from setting a value greater than 20.
     maxFail = Math.min(maxFail, 20);
     LOG("Downloader:onStopRequest - status: " + status + ", " +
@@ -3739,11 +3714,11 @@ Downloader.prototype = {
       }
 
       if (allFailed) {
-        if (getPref("getBoolPref", PREF_APP_UPDATE_DOORHANGER, false)) {
-          let downloadAttempts = getPref("getIntPref", PREF_APP_UPDATE_DOWNLOAD_ATTEMPTS, 0);
+        if (Services.prefs.getBoolPref(PREF_APP_UPDATE_DOORHANGER, false)) {
+          let downloadAttempts = Services.prefs.getIntPref(PREF_APP_UPDATE_DOWNLOAD_ATTEMPTS, 0);
           downloadAttempts++;
           Services.prefs.setIntPref(PREF_APP_UPDATE_DOWNLOAD_ATTEMPTS, downloadAttempts);
-          let maxAttempts = Math.min(getPref("getIntPref", PREF_APP_UPDATE_DOWNLOAD_MAXATTEMPTS, 2), 10);
+          let maxAttempts = Math.min(Services.prefs.getIntPref(PREF_APP_UPDATE_DOWNLOAD_MAXATTEMPTS, 2), 10);
 
           if (downloadAttempts > maxAttempts) {
             LOG("Downloader:onStopRequest - notifying observers of error. " +
@@ -3874,8 +3849,8 @@ UpdatePrompt.prototype = {
    * See nsIUpdateService.idl
    */
   showUpdateAvailable: function UP_showUpdateAvailable(update) {
-    if (getPref("getBoolPref", PREF_APP_UPDATE_SILENT, false) ||
-        getPref("getBoolPref", PREF_APP_UPDATE_DOORHANGER, false) ||
+    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_SILENT, false) ||
+        Services.prefs.getBoolPref(PREF_APP_UPDATE_DOORHANGER, false) ||
         this._getUpdateWindow() || this._getAltUpdateWindow()) {
       return;
     }
@@ -3888,7 +3863,7 @@ UpdatePrompt.prototype = {
    * See nsIUpdateService.idl
    */
   showUpdateDownloaded: function UP_showUpdateDownloaded(update, background) {
-    if (background && getPref("getBoolPref", PREF_APP_UPDATE_SILENT, false)) {
+    if (background && Services.prefs.getBoolPref(PREF_APP_UPDATE_SILENT, false)) {
       return;
     }
 
@@ -3897,7 +3872,7 @@ UpdatePrompt.prototype = {
         "an update was downloaded. topic: update-downloaded, status: " + update.state);
     Services.obs.notifyObservers(update, "update-downloaded", update.state);
 
-    if (getPref("getBoolPref", PREF_APP_UPDATE_DOORHANGER, false)) {
+    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_DOORHANGER, false)) {
       return;
     }
 
@@ -3917,8 +3892,8 @@ UpdatePrompt.prototype = {
    * See nsIUpdateService.idl
    */
   showUpdateError: function UP_showUpdateError(update) {
-    if (getPref("getBoolPref", PREF_APP_UPDATE_SILENT, false) ||
-        getPref("getBoolPref", PREF_APP_UPDATE_DOORHANGER, false) ||
+    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_SILENT, false) ||
+        Services.prefs.getBoolPref(PREF_APP_UPDATE_DOORHANGER, false) ||
         this._getAltUpdateWindow())
       return;
 
@@ -3955,7 +3930,7 @@ UpdatePrompt.prototype = {
    * See nsIUpdateService.idl
    */
   showUpdateElevationRequired: function UP_showUpdateElevationRequired() {
-    if (getPref("getBoolPref", PREF_APP_UPDATE_SILENT, false) ||
+    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_SILENT, false) ||
         this._getAltUpdateWindow()) {
       return;
     }
@@ -3979,7 +3954,7 @@ UpdatePrompt.prototype = {
    * application update user interface window.
    */
   _getAltUpdateWindow: function UP__getAltUpdateWindow() {
-    let windowType = getPref("getCharPref", PREF_APP_UPDATE_ALTWINDOWTYPE, null);
+    let windowType = Services.prefs.getCharPref(PREF_APP_UPDATE_ALTWINDOWTYPE, null);
     if (!windowType)
       return null;
     return Services.wm.getMostRecentWindow(windowType);
@@ -4031,7 +4006,7 @@ UpdatePrompt.prototype = {
       var idleService = Cc["@mozilla.org/widget/idleservice;1"].
                         getService(Ci.nsIIdleService);
       // Don't allow the preference to set a value greater than 600 seconds for the idle time.
-      const IDLE_TIME = Math.min(getPref("getIntPref", PREF_APP_UPDATE_IDLETIME, 60), 600);
+      const IDLE_TIME = Math.min(Services.prefs.getIntPref(PREF_APP_UPDATE_IDLETIME, 60), 600);
       if (idleService.idleTime / 1000 >= IDLE_TIME) {
         this._showUI(parent, uri, features, name, page, update);
         return;
@@ -4076,7 +4051,7 @@ UpdatePrompt.prototype = {
                       getService(Ci.nsIIdleService);
 
     // Don't allow the preference to set a value greater than 600 seconds for the idle time.
-    const IDLE_TIME = Math.min(getPref("getIntPref", PREF_APP_UPDATE_IDLETIME, 60), 600);
+    const IDLE_TIME = Math.min(Services.prefs.getIntPref(PREF_APP_UPDATE_IDLETIME, 60), 600);
     if (idleService.idleTime / 1000 >= IDLE_TIME) {
       this._showUI(parent, uri, features, name, page, update);
     } else {

@@ -3,14 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
+Cu.import("resource://gre/modules/Services.jsm");
 
 function run_test() {
   // Create the base directory.
-  let base = Cc["@mozilla.org/file/directory_service;1"]
-             .getService(Ci.nsIProperties)
-             .get("TmpD", Ci.nsIFile);
+  let base = Services.dirsvc.get("TmpD", Ci.nsIFile);
   base.append("renameTesting");
   if (base.exists()) {
     base.remove(true);
@@ -29,26 +26,26 @@ function run_test() {
 
   // Test renameTo in the base directory
   tempFile.renameTo(null, "file1.txt");
-  do_check_true(exists(subdir, "file1.txt"));
+  Assert.ok(exists(subdir, "file1.txt"));
 
   // Test moving across directories
   tempFile = subdir.clone();
   tempFile.append("file1.txt");
   tempFile.renameTo(base, "");
-  do_check_true(exists(base, "file1.txt"));
+  Assert.ok(exists(base, "file1.txt"));
 
   // Test moving across directories and renaming at the same time
   tempFile = base.clone();
   tempFile.append("file1.txt");
   tempFile.renameTo(subdir, "file2.txt");
-  do_check_true(exists(subdir, "file2.txt"));
+  Assert.ok(exists(subdir, "file2.txt"));
 
   // Test moving a directory
   subdir.renameTo(base, "renamed");
-  do_check_true(exists(base, "renamed"));
+  Assert.ok(exists(base, "renamed"));
   let renamed = base.clone();
   renamed.append("renamed");
-  do_check_true(exists(renamed, "file2.txt"));
+  Assert.ok(exists(renamed, "file2.txt"));
 
   base.remove(true);
 }

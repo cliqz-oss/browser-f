@@ -17,48 +17,17 @@
 #include "nsAccessibilityService.h"
 #include "nsWindowsHelpers.h"
 #include "nsCOMPtr.h"
+#include "nsExceptionHandler.h"
 #include "nsIFile.h"
 #include "nsXPCOM.h"
 #include "RootAccessibleWrap.h"
 #include "WinUtils.h"
-
-#if defined(MOZ_TELEMETRY_REPORTING)
-#include "mozilla/Telemetry.h"
-#endif // defined(MOZ_TELEMETRY_REPORTING)
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
 
 #include <oaidl.h>
 
 #if !defined(STATE_SYSTEM_NORMAL)
 #define STATE_SYSTEM_NORMAL (0)
 #endif // !defined(STATE_SYSTEM_NORMAL)
-
-/**
- * Because our wrapped accessible is cycle-collected, we can't safely AddRef()
- * or Release() ourselves off the main thread. This template specialization
- * forces NewRunnableMethod() to use STAUniquePtr instead of RefPtr for managing
- * a runnable's lifetime. Once the runnable has completed, the STAUniquePtr will
- * post a runnable to the main thread to release ourselves from there.
- */
-template<>
-struct nsRunnableMethodReceiver<mozilla::a11y::LazyInstantiator, true>
-{
-  mozilla::mscom::STAUniquePtr<mozilla::a11y::LazyInstantiator> mObj;
-  explicit nsRunnableMethodReceiver(mozilla::a11y::LazyInstantiator* aObj)
-    : mObj(aObj)
-  {
-    MOZ_ASSERT(NS_IsMainThread());
-    // STAUniquePtr does not implicitly AddRef(), so we must explicitly do so
-    // here.
-    aObj->AddRef();
-  }
-  ~nsRunnableMethodReceiver() { Revoke(); }
-  mozilla::a11y::LazyInstantiator* Get() const { return mObj.get(); }
-  void Revoke() { mObj = nullptr; }
-};
 
 namespace mozilla {
 namespace a11y {
@@ -182,53 +151,18 @@ LazyInstantiator::ClearProp()
 }
 
 /**
- * Given the remote client's thread ID, resolve its execuatable image name.
+ * Given the remote client's thread ID, resolve its process ID.
  */
-bool
-LazyInstantiator::GetClientExecutableName(const DWORD aClientTid,
-                                          nsIFile** aOutClientExe)
+DWORD
+LazyInstantiator::GetClientPid(const DWORD aClientTid)
 {
   nsAutoHandle callingThread(::OpenThread(THREAD_QUERY_LIMITED_INFORMATION,
                                           FALSE, aClientTid));
   if (!callingThread) {
-    return false;
+    return 0;
   }
 
-  DWORD callingPid = ::GetProcessIdOfThread(callingThread);
-
-  nsAutoHandle callingProcess(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
-                                            FALSE, callingPid));
-  if (!callingProcess) {
-    return false;
-  }
-
-  DWORD bufLen = MAX_PATH;
-  UniquePtr<wchar_t[]> buf;
-
-  while (true) {
-    buf = MakeUnique<wchar_t[]>(bufLen);
-    if (::QueryFullProcessImageName(callingProcess, 0, buf.get(), &bufLen)) {
-      break;
-    }
-
-    DWORD lastError = ::GetLastError();
-    MOZ_ASSERT(lastError == ERROR_INSUFFICIENT_BUFFER);
-    if (lastError != ERROR_INSUFFICIENT_BUFFER) {
-      return false;
-    }
-
-    bufLen *= 2;
-  }
-
-  nsCOMPtr<nsIFile> file;
-  nsresult rv = NS_NewLocalFile(nsDependentString(buf.get(), bufLen), false,
-                                getter_AddRefs(file));
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-
-  file.forget(aOutClientExe);
-  return NS_SUCCEEDED(rv);
+  return ::GetProcessIdOfThread(callingThread);
 }
 
 /**
@@ -240,6 +174,13 @@ static const wchar_t* gBlockedInprocDlls[] = {
 };
 
 /**
+ * This is the blocklist for known "bad" remote clients that instantiate a11y.
+ */
+static const char* gBlockedRemoteClients[] = {
+  "tbnnotifier.exe" // Ask.com Toolbar, bug 1421018
+};
+
+/**
  * Check for the presence of any known "bad" injected DLLs that may be trying
  * to instantiate a11y.
  *
@@ -248,6 +189,11 @@ static const wchar_t* gBlockedInprocDlls[] = {
 bool
 LazyInstantiator::IsBlockedInjection()
 {
+  // Check debugging options see if we should disable the blocklist.
+  if (PR_GetEnv("MOZ_DISABLE_ACCESSIBLE_BLOCKLIST")) {
+    return false;
+  }
+
   if (Compatibility::HasKnownNonUiaConsumer()) {
     // If we already see a known AT, don't block a11y instantiation
     return false;
@@ -281,144 +227,30 @@ LazyInstantiator::ShouldInstantiate(const DWORD aClientTid)
     return !IsBlockedInjection();
   }
 
+  a11y::SetInstantiator(GetClientPid(aClientTid));
+
   nsCOMPtr<nsIFile> clientExe;
-  if (!GetClientExecutableName(aClientTid, getter_AddRefs(clientExe))) {
-#if defined(MOZ_TELEMETRY_REPORTING)
-    AccumulateTelemetry(NS_LITERAL_STRING("(Failed to retrieve client image name)"));
-#endif // defined(MOZ_TELEMETRY_REPORTING)
-    // We should return true as a failsafe
+  if (!a11y::GetInstantiator(getter_AddRefs(clientExe))) {
     return true;
   }
 
-  // Blocklist checks for external clients should go here.
-  // return false if we should not instantiate.
-  /*
-  if (ClientShouldBeBlocked(clientExe)) {
-    return false;
+  nsresult rv;
+  if (!PR_GetEnv("MOZ_DISABLE_ACCESSIBLE_BLOCKLIST")) {
+    // Debugging option is not present, so check blocklist.
+    nsAutoString leafName;
+    rv = clientExe->GetLeafName(leafName);
+    if (NS_SUCCEEDED(rv)) {
+      for (size_t i = 0, len = ArrayLength(gBlockedRemoteClients); i < len; ++i) {
+        if (leafName.EqualsIgnoreCase(gBlockedRemoteClients[i])) {
+          // If client exe is in our blocklist, do not instantiate.
+          return false;
+        }
+      }
+    }
   }
-  */
-
-  // Store full path to executable for support purposes.
-  nsAutoString filePath;
-  nsresult rv = clientExe->GetPath(filePath);
-  if (NS_SUCCEEDED(rv)) {
-    a11y::SetInstantiator(filePath);
-  }
-
-#if defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
-  if (!mTelemetryThread) {
-    // Call GatherTelemetry on a background thread because it does I/O on
-    // the executable file to retrieve version information.
-    nsCOMPtr<nsIRunnable> runnable(
-        NewRunnableMethod<nsCOMPtr<nsIFile>, RefPtr<AccumulateRunnable>>(
-                                             "LazyInstantiator::GatherTelemetry",
-                                             this,
-                                             &LazyInstantiator::GatherTelemetry,
-                                             clientExe,
-                                             new AccumulateRunnable(this)));
-    NS_NewThread(getter_AddRefs(mTelemetryThread), runnable);
-  }
-#endif // defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
 
   return true;
 }
-
-#if defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
-/**
- * Appends version information in the format "|a.b.c.d".
- * If there is no version information, we append nothing.
- */
-void
-LazyInstantiator::AppendVersionInfo(nsIFile* aClientExe,
-                                    nsAString& aStrToAppend)
-{
-  MOZ_ASSERT(!NS_IsMainThread());
-
-  nsAutoString fullPath;
-  nsresult rv = aClientExe->GetPath(fullPath);
-  if (NS_FAILED(rv)) {
-    return;
-  }
-
-  DWORD verInfoSize = ::GetFileVersionInfoSize(fullPath.get(), nullptr);
-  if (!verInfoSize) {
-    return;
-  }
-
-  auto verInfoBuf = MakeUnique<BYTE[]>(verInfoSize);
-
-  if (!::GetFileVersionInfo(fullPath.get(), 0, verInfoSize, verInfoBuf.get())) {
-    return;
-  }
-
-  VS_FIXEDFILEINFO* fixedInfo = nullptr;
-  UINT fixedInfoLen = 0;
-
-  if (!::VerQueryValue(verInfoBuf.get(), L"\\", (LPVOID*) &fixedInfo,
-                       &fixedInfoLen)) {
-    return;
-  }
-
-  uint32_t major = HIWORD(fixedInfo->dwFileVersionMS);
-  uint32_t minor = LOWORD(fixedInfo->dwFileVersionMS);
-  uint32_t patch = HIWORD(fixedInfo->dwFileVersionLS);
-  uint32_t build = LOWORD(fixedInfo->dwFileVersionLS);
-
-  aStrToAppend.AppendLiteral(u"|");
-
-  NS_NAMED_LITERAL_STRING(dot, ".");
-
-  aStrToAppend.AppendInt(major);
-  aStrToAppend.Append(dot);
-  aStrToAppend.AppendInt(minor);
-  aStrToAppend.Append(dot);
-  aStrToAppend.AppendInt(patch);
-  aStrToAppend.Append(dot);
-  aStrToAppend.AppendInt(build);
-}
-
-void
-LazyInstantiator::GatherTelemetry(nsIFile* aClientExe,
-                                  AccumulateRunnable* aRunnable)
-{
-  MOZ_ASSERT(!NS_IsMainThread());
-
-  nsAutoString value;
-  nsresult rv = aClientExe->GetLeafName(value);
-  if (NS_SUCCEEDED(rv)) {
-    AppendVersionInfo(aClientExe, value);
-  }
-
-  aRunnable->SetData(value);
-
-  // Now that we've (possibly) obtained version info, send the resulting
-  // string back to the main thread to accumulate in telemetry.
-  NS_DispatchToMainThread(aRunnable);
-}
-
-void
-LazyInstantiator::AccumulateTelemetry(const nsString& aValue)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-
-  if (!aValue.IsEmpty()) {
-#if defined(MOZ_TELEMETRY_REPORTING)
-    Telemetry::ScalarSet(Telemetry::ScalarID::A11Y_INSTANTIATORS,
-                         aValue);
-#endif // defined(MOZ_TELEMETRY_REPORTING)
-#if defined(MOZ_CRASHREPORTER)
-    CrashReporter::
-      AnnotateCrashReport(NS_LITERAL_CSTRING("AccessibilityClient"),
-                          NS_ConvertUTF16toUTF8(aValue));
-#endif // defined(MOZ_CRASHREPORTER)
-  }
-
-  if (mTelemetryThread) {
-    mTelemetryThread->Shutdown();
-    mTelemetryThread = nullptr;
-  }
-}
-#endif // defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
 
 RootAccessibleWrap*
 LazyInstantiator::ResolveRootAccWrap()
@@ -909,4 +741,3 @@ LazyInstantiator::QueryService(REFGUID aServiceId, REFIID aServiceIid,
 
 } // namespace a11y
 } // namespace mozilla
-

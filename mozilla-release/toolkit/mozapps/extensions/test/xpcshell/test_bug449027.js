@@ -196,8 +196,7 @@ function MockPluginTag(name, version, start, appBlocks, toolkitBlocks) {
 }
 Object.defineProperty(MockPluginTag.prototype, "blocklisted", {
   get: function MockPluginTag_getBlocklisted() {
-    let bls = AM_Cc["@mozilla.org/extensions/blocklist;1"].getService(Ci.nsIBlocklistService);
-    return bls.getPluginBlocklistState(this) == bls.STATE_BLOCKED;
+    return Services.blocklist.getPluginBlocklistState(this) == Services.blocklist.STATE_BLOCKED;
   }
 });
 
@@ -254,8 +253,8 @@ var PluginHost = {
 var WindowWatcher = {
   openWindow(parent, url, name, features, args) {
     // Should be called to list the newly blocklisted items
-    do_check_eq(url, URI_EXTENSION_BLOCKLIST_DIALOG);
-    do_check_neq(gCallback, null);
+    Assert.equal(url, URI_EXTENSION_BLOCKLIST_DIALOG);
+    Assert.notEqual(gCallback, null);
 
     args = args.wrappedJSObject;
 
@@ -346,9 +345,9 @@ function check_state(test, lastTest, callback) {
         }
       }
 
-      do_check_eq(expected, gNewBlocks.length);
+      Assert.equal(expected, gNewBlocks.length);
     }
-    do_execute_soon(callback);
+    executeSoon(callback);
   });
 }
 
@@ -391,7 +390,7 @@ function check_test_pt1() {
         do_throw("Addon " + (i + 1) + " did not get installed correctly");
     }
 
-    do_execute_soon(function checkstate1() { check_state("start", null, run_test_pt2); });
+    executeSoon(function checkstate1() { check_state("start", null, run_test_pt2); });
   });
 }
 

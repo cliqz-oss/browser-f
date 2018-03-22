@@ -30,6 +30,7 @@ namespace gfx {
 class VRLayerParent;
 class VRDisplayHost;
 class VRControllerHost;
+class VRManagerPromise;
 
 enum class VRDeviceType : uint16_t {
   Oculus,
@@ -95,7 +96,7 @@ enum class VRDisplayCapabilityFlags : uint16_t {
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(VRDisplayCapabilityFlags)
 
 struct VRFieldOfView {
-  VRFieldOfView() {}
+  VRFieldOfView() = default;
   VRFieldOfView(double up, double right, double down, double left)
     : upDegrees(up), rightDegrees(right), downDegrees(down), leftDegrees(left)
   {}
@@ -347,14 +348,17 @@ public:
 
   virtual void Destroy() = 0;
   virtual void Shutdown() = 0;
-  virtual bool GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult) = 0;
+  virtual void Enumerate() = 0;
+  virtual void NotifyVSync();
+  virtual bool ShouldInhibitEnumeration();
+  virtual void GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult) = 0;
   virtual bool GetIsPresenting() = 0;
   virtual void HandleInput() = 0;
   virtual void GetControllers(nsTArray<RefPtr<VRControllerHost>>& aControllerResult) = 0;
   virtual void ScanForControllers() = 0;
   virtual void RemoveControllers() = 0;
   virtual void VibrateHaptic(uint32_t aControllerIdx, uint32_t aHapticIndex,
-                             double aIntensity, double aDuration, uint32_t aPromiseID) = 0;
+                             double aIntensity, double aDuration, const VRManagerPromise& aPromise) = 0;
   virtual void StopVibrateHaptic(uint32_t aControllerIdx) = 0;
   void NewButtonEvent(uint32_t aIndex, uint32_t aButton, bool aPressed, bool aTouched,
                       double aValue);
@@ -366,7 +370,7 @@ public:
 
 protected:
   VRSystemManager() : mControllerCount(0) { }
-  virtual ~VRSystemManager() { }
+  virtual ~VRSystemManager() = default;
 
   uint32_t mControllerCount;
 };

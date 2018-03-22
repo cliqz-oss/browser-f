@@ -30,6 +30,7 @@ from mach.decorators import (
 from mach.main import Mach
 
 from mozbuild.base import (
+    BuildEnvironmentNotFoundException,
     MachCommandBase,
     MachCommandConditions as conditions,
     MozbuildObject,
@@ -364,6 +365,13 @@ class Clobber(MachCommandBase):
             ret = subprocess.call(cmd, cwd=self.topsrcdir)
         return ret
 
+    @property
+    def substs(self):
+        try:
+            return super(Clobber, self).substs
+        except BuildEnvironmentNotFoundException:
+            return {}
+
 @CommandProvider
 class Logs(MachCommandBase):
     """Provide commands to read mach logs."""
@@ -558,7 +566,7 @@ class GTestCommands(MachCommandBase):
                        print_directory=False, ensure_exit_code=True)
 
         app_path = self.get_binary_path('app')
-        args = [app_path, '-unittest'];
+        args = [app_path, '-unittest', '--gtest_death_test_style=threadsafe'];
 
         if debug or debugger or debugger_args:
             args = self.prepend_debugger_args(args, debugger, debugger_args)
@@ -920,33 +928,10 @@ class RunProgram(MachCommandBase):
             if show_dump_stats:
                 dmd_params.append('--show-dump-stats=yes')
 
-            bin_dir = os.path.dirname(binpath)
-            lib_name = self.substs['DLL_PREFIX'] + 'dmd' + self.substs['DLL_SUFFIX']
-            dmd_lib = os.path.join(bin_dir, lib_name)
-            if not os.path.exists(dmd_lib):
-                print("Please build with |--enable-dmd| to use DMD.")
-                return 1
-
-            env_vars = {
-                "Darwin": {
-                    "DYLD_INSERT_LIBRARIES": dmd_lib,
-                    "LD_LIBRARY_PATH": bin_dir,
-                },
-                "Linux": {
-                    "LD_PRELOAD": dmd_lib,
-                    "LD_LIBRARY_PATH": bin_dir,
-                },
-                "WINNT": {
-                    "MOZ_REPLACE_MALLOC_LIB": dmd_lib,
-                },
-            }
-
-            arch = self.substs['OS_ARCH']
-
             if dmd_params:
-                env_vars[arch]["DMD"] = " ".join(dmd_params)
-
-            extra_env.update(env_vars.get(arch, {}))
+                extra_env['DMD'] = ' '.join(dmd_params)
+            else:
+                extra_env['DMD'] = '1'
 
         return self.run_process(args=args, ensure_exit_code=False,
             pass_thru=True, append_env=extra_env)
@@ -1021,7 +1006,7 @@ class MachDebug(MachCommandBase):
     @Command('environment', category='build-dev',
         description='Show info about the mach and build environment.')
     @CommandArgument('--format', default='pretty',
-        choices=['pretty', 'client.mk', 'configure', 'json'],
+        choices=['pretty', 'configure', 'json'],
         help='Print data in the given format.')
     @CommandArgument('--output', '-o', type=str,
         help='Output to the given file.')
@@ -1088,21 +1073,6 @@ class MachDebug(MachCommandBase):
                 print('config defines:', file=out)
                 for k in sorted(config.defines):
                     print('\t%s' % k, file=out)
-
-    def _environment_client_mk(self, out, verbose):
-        if self.mozconfig['make_extra']:
-            for arg in self.mozconfig['make_extra']:
-                print(arg, file=out)
-        if self.mozconfig['make_flags']:
-            print('MOZ_MAKE_FLAGS=%s' % ' '.join(self.mozconfig['make_flags']))
-        objdir = mozpath.normsep(self.topobjdir)
-        print('MOZ_OBJDIR=%s' % objdir, file=out)
-        if 'MOZ_CURRENT_PROJECT' in os.environ:
-            objdir = mozpath.join(objdir, os.environ['MOZ_CURRENT_PROJECT'])
-        print('OBJDIR=%s' % objdir, file=out)
-        if self.mozconfig['path']:
-            print('FOUND_MOZCONFIG=%s' % mozpath.normsep(self.mozconfig['path']),
-                file=out)
 
     def _environment_json(self, out, verbose):
         import json
@@ -1364,18 +1334,10 @@ class PackageFrontend(MachCommandBase):
                          'should be determined in the decision task.')
                 return 1
             from taskgraph.optimize import IndexSearch
-            params = {
-                'message': '',
-                'project': '',
-                'level': os.environ.get('MOZ_SCM_LEVEL', '3'),
-                'base_repository': '',
-                'head_repository': '',
-                'head_rev': '',
-                'moz_build_date': '',
-                'build_date': 0,
-                'pushlog_id': 0,
-                'owner': '',
-            }
+            from taskgraph.parameters import Parameters
+            params = Parameters(
+                level=os.environ.get('MOZ_SCM_LEVEL', '3'),
+                strict=False)
 
             # TODO: move to the taskcluster package
             def tasks(kind_name):
@@ -1414,7 +1376,10 @@ class PackageFrontend(MachCommandBase):
                 if task_id in (True, False) or not artifact_name:
                     self.log(logging.ERROR, 'artifact', {'build': user_value},
                              'Could not find artifacts for a toolchain build '
-                             'named `{build}`')
+                             'named `{build}`. Local commits and other changes '
+                             'in your checkout may cause this error. Try '
+                             'updating to a fresh checkout of mozilla-central '
+                             'to use artifact builds.')
                     return 1
 
                 record = ArtifactRecord(task_id, artifact_name)

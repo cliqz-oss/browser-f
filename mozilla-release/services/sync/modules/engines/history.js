@@ -69,6 +69,10 @@ HistoryEngine.prototype = {
     }
   },
 
+  shouldSyncURL(url) {
+    return !url.startsWith("file:");
+  },
+
   async pullNewChanges() {
     let modifiedGUIDs = Object.keys(this._tracker.changedIDs);
     if (!modifiedGUIDs.length) {
@@ -97,6 +101,10 @@ HistoryStore.prototype = {
   __proto__: Store.prototype,
 
   __asyncHistory: null,
+
+  // We try and only update this many visits at one time.
+  MAX_VISITS_PER_INSERT: 500,
+
   get _asyncHistory() {
     if (!this.__asyncHistory) {
       this.__asyncHistory = Cc["@mozilla.org/browser/history;1"]
@@ -170,6 +178,9 @@ HistoryStore.prototype = {
 
     let urlsByGUID = {};
     for (let url of urls) {
+      if (!this.engine.shouldSyncURL(url)) {
+        continue;
+      }
       let guid = await this.GUIDForUri(url, true);
       urlsByGUID[guid] = url;
     }
@@ -212,10 +223,64 @@ HistoryStore.prototype = {
     records.length = k; // truncate array
 
     if (records.length) {
-      await PlacesUtils.history.insertMany(records);
+      for (let chunk of this._generateChunks(records)) {
+        // Per bug 1415560, we ignore any exceptions returned by insertMany
+        // as they are likely to be spurious. We do supply an onError handler
+        // and log the exceptions seen there as they are likely to be
+        // informative, but we still never abort the sync based on them.
+        try {
+          await PlacesUtils.history.insertMany(chunk, null, failedVisit => {
+            this._log.info("Failed to insert a history record", failedVisit.guid);
+            this._log.trace("The record that failed", failedVisit);
+            failed.push(failedVisit.guid);
+          });
+        } catch (ex) {
+          this._log.info("Failed to insert history records", ex);
+        }
+      }
     }
 
     return failed;
+  },
+
+  /**
+   * Returns a generator that splits records into sanely sized chunks suitable
+   * for passing to places to prevent places doing bad things at shutdown.
+   */
+  * _generateChunks(records) {
+    // We chunk based on the number of *visits* inside each record. However,
+    // we do not split a single record into multiple records, because at some
+    // time in the future, we intend to ensure these records are ordered by
+    // lastModified, and advance the engine's timestamp as we process them,
+    // meaning we can resume exactly where we left off next sync - although
+    // currently that's not done, so we will retry the entire batch next sync
+    // if interrupted.
+    // ie, this means that if a single record has more than MAX_VISITS_PER_INSERT
+    // visits, we will call insertMany() with exactly 1 record, but with
+    // more than MAX_VISITS_PER_INSERT visits.
+    let curIndex = 0;
+    this._log.debug(`adding ${records.length} records to history`);
+    while (curIndex < records.length) {
+      Async.checkAppReady(); // may throw if we are shutting down.
+      let toAdd = []; // what we are going to insert.
+      let count = 0; // a counter which tells us when toAdd is full.
+      do {
+        let record = records[curIndex];
+        curIndex += 1;
+        toAdd.push(record);
+        count += record.visits.length;
+      } while (curIndex < records.length &&
+               count + records[curIndex].visits.length <= this.MAX_VISITS_PER_INSERT);
+      this._log.trace(`adding ${toAdd.length} items in this chunk`);
+      yield toAdd;
+    }
+  },
+
+  /* An internal helper to determine if we can add an entry to places.
+     Exists primarily so tests can override it.
+   */
+  _canAddURI(uri) {
+    return PlacesUtils.history.canAddURI(uri);
   },
 
   /**
@@ -236,7 +301,8 @@ HistoryStore.prototype = {
     }
     record.guid = record.id;
 
-    if (!PlacesUtils.history.canAddURI(record.uri)) {
+    if (!this._canAddURI(record.uri) ||
+        !this.engine.shouldSyncURL(record.uri.spec)) {
       this._log.trace("Ignoring record " + record.id + " with URI "
                       + record.uri.spec + ": can't add this URI.");
       return false;
@@ -253,10 +319,20 @@ HistoryStore.prototype = {
     } catch (e) {
       this._log.error("Error while fetching visits for URL ${record.histUri}", record.histUri);
     }
+    let oldestAllowed = PlacesSyncUtils.bookmarks.EARLIEST_BOOKMARK_TIMESTAMP;
+    if (curVisitsAsArray.length == 20) {
+      let oldestVisit = curVisitsAsArray[curVisitsAsArray.length - 1];
+      oldestAllowed = PlacesSyncUtils.history.clampVisitDate(
+        PlacesUtils.toDate(oldestVisit.date).getTime());
+    }
 
     let i, k;
     for (i = 0; i < curVisitsAsArray.length; i++) {
-      curVisits.add(curVisitsAsArray[i].date + "," + curVisitsAsArray[i].type);
+      // Same logic as used in the loop below to generate visitKey.
+      let {date, type} = curVisitsAsArray[i];
+      let dateObj = PlacesUtils.toDate(date);
+      let millis = PlacesSyncUtils.history.clampVisitDate(dateObj).getTime();
+      curVisits.add(`${millis},${type}`);
     }
 
     // Walk through the visits, make sure we have sound data, and eliminate
@@ -282,8 +358,12 @@ HistoryStore.prototype = {
       let originalVisitDate = PlacesUtils.toDate(Math.round(visit.date));
       visit.date = PlacesSyncUtils.history.clampVisitDate(originalVisitDate);
 
-      let visitDateAsPRTime = PlacesUtils.toPRTime(visit.date);
-      let visitKey = visitDateAsPRTime + "," + visit.type;
+      if (visit.date.getTime() < oldestAllowed) {
+        // Visit is older than the oldest visit we have, and we have so many
+        // visits for this uri that we hit our limit when inserting.
+        continue;
+      }
+      let visitKey = `${visit.date.getTime()},${visit.type}`;
       if (curVisits.has(visitKey)) {
         // Visit is a dupe, don't increment 'k' so the element will be
         // overwritten.
@@ -390,15 +470,17 @@ HistoryTracker.prototype = {
     this.onDeleteAffectsGUID(uri, guid, reason, "onDeleteURI", SCORE_INCREMENT_XLARGE);
   },
 
-  onVisit(uri, vid, time, session, referrer, trans, guid) {
+  onVisits(aVisits) {
     if (this.ignoreAll) {
-      this._log.trace("ignoreAll: ignoring visit for " + guid);
+      this._log.trace("ignoreAll: ignoring visits [" +
+                      aVisits.map(v => v.guid).join(",") + "]");
       return;
     }
-
-    this._log.trace("onVisit: " + uri.spec);
-    if (this.addChangedID(guid)) {
-      this.score += SCORE_INCREMENT_SMALL;
+    for (let {uri, guid} of aVisits) {
+      this._log.trace("onVisits: " + uri.spec);
+      if (this.engine.shouldSyncURL(uri.spec) && this.addChangedID(guid)) {
+        this.score += SCORE_INCREMENT_SMALL;
+      }
     }
   },
 

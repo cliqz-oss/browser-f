@@ -16,6 +16,7 @@ class OpenBSDBootstrapper(BaseBootstrapper):
             'autoconf-2.13',
             'gmake',
             'gtar',
+            'node',
             'rust',
             'wget',
             'unzip',

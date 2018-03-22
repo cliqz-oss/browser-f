@@ -77,25 +77,6 @@ Request::~Request()
 {
 }
 
-// static
-bool
-Request::RequestContextEnabled(JSContext* aCx, JSObject* aObj)
-{
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("dom.requestcontext.enabled", false);
-  }
-
-  using namespace workers;
-
-  // Otherwise, check the pref via the WorkerPrivate
-  WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-  if (!workerPrivate) {
-    return false;
-  }
-
-  return workerPrivate->RequestContextEnabled();
-}
-
 already_AddRefed<InternalRequest>
 Request::GetInternalRequest()
 {
@@ -500,6 +481,10 @@ Request::Constructor(const GlobalObject& aGlobal,
 
   if (aInit.mIntegrity.WasPassed()) {
     request->SetIntegrity(aInit.mIntegrity.Value());
+  }
+
+  if (aInit.mMozErrors.WasPassed() && aInit.mMozErrors.Value()) {
+    request->SetMozErrors();
   }
 
   // Request constructor step 14.

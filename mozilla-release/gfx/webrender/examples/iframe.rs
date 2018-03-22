@@ -24,7 +24,7 @@ impl Example for App {
         api: &RenderApi,
         builder: &mut DisplayListBuilder,
         _resources: &mut ResourceUpdates,
-        _layout_size: LayoutSize,
+        _framebuffer_size: DeviceUintSize,
         pipeline_id: PipelineId,
         document_id: DocumentId,
     ) {
@@ -50,15 +50,15 @@ impl Example for App {
         sub_builder.push_rect(&info, ColorF::new(0.0, 1.0, 0.0, 1.0));
         sub_builder.pop_stacking_context();
 
-        api.set_display_list(
-            document_id,
+        let mut txn = Transaction::new();
+        txn.set_display_list(
             Epoch(0),
             None,
             sub_bounds.size,
             sub_builder.finalize(),
             true,
-            ResourceUpdates::new(),
         );
+        api.send_transaction(document_id, txn);
 
         // And this is for the root pipeline
         builder.push_stacking_context(
@@ -74,15 +74,6 @@ impl Example for App {
         builder.push_rect(&info, ColorF::new(1.0, 0.0, 0.0, 1.0));
         builder.push_iframe(&info, sub_pipeline_id);
         builder.pop_stacking_context();
-    }
-
-    fn on_event(
-        &mut self,
-        _event: glutin::Event,
-        _api: &RenderApi,
-        _document_id: DocumentId,
-    ) -> bool {
-        false
     }
 }
 

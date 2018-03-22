@@ -30,7 +30,6 @@ GraphDriver::GraphDriver(MediaStreamGraphImpl* aGraphImpl)
   : mIterationStart(0),
     mIterationEnd(0),
     mGraphImpl(aGraphImpl),
-    mWaitState(WAITSTATE_RUNNING),
     mCurrentTimeStamp(TimeStamp::Now()),
     mPreviousDriver(nullptr),
     mNextDriver(nullptr)
@@ -50,6 +49,7 @@ void GraphDriver::SetGraphTime(GraphDriver* aPreviousDriver,
 
   MOZ_ASSERT(!PreviousDriver());
   MOZ_ASSERT(aPreviousDriver);
+  MOZ_DIAGNOSTIC_ASSERT(GraphImpl()->CurrentDriver() == aPreviousDriver);
 
   LOG(LogLevel::Debug,
       ("Setting previous driver: %p (%s)",
@@ -255,6 +255,7 @@ SystemClockDriver::SystemClockDriver(MediaStreamGraphImpl* aGraphImpl)
   : ThreadedDriver(aGraphImpl),
     mInitialTimeStamp(TimeStamp::Now()),
     mLastTimeStamp(TimeStamp::Now()),
+    mWaitState(WAITSTATE_RUNNING),
     mIsFallback(false)
 {}
 
@@ -573,7 +574,7 @@ bool IsMacbookOrMacbookAir()
     char* substring = strstr(model.get(), "MacBook");
     if (substring) {
       const size_t offset = strlen("MacBook");
-      if (strncmp(model.get() + offset, "Air", len - offset) ||
+      if (!strncmp(model.get() + offset, "Air", 3) ||
           isdigit(model[offset + 1])) {
         return true;
       }
@@ -613,12 +614,19 @@ AudioCallbackDriver::Init()
   }
 
   // Query and set the number of channels this AudioCallbackDriver will use.
-  mOutputChannels = std::max<uint32_t>(1, mGraphImpl->AudioChannelCount());
+  mOutputChannels = mGraphImpl->AudioChannelCount();
+  if (!mOutputChannels) {
+    LOG(LogLevel::Warning, ("Output number of channels is 0."));
+    MonitorAutoLock lock(GraphImpl()->GetMonitor());
+    FallbackToSystemClockDriver();
+    return true;
+  }
+
   mBuffer = AudioCallbackBufferWrapper<AudioDataValue>(mOutputChannels);
   mScratchBuffer = SpillBuffer<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 2>(mOutputChannels);
 
   output.channels = mOutputChannels;
-  output.layout = CUBEB_LAYOUT_UNDEFINED;
+  output.layout = CubebUtils::GetPreferredChannelLayoutOrSMPTE(cubebContext, mOutputChannels);
 
   Maybe<uint32_t> latencyPref = CubebUtils::GetCubebMSGLatencyInFrames();
   if (latencyPref) {
@@ -695,18 +703,8 @@ AudioCallbackDriver::Init()
       if (!mFromFallback) {
         CubebUtils::ReportCubebStreamInitFailure(firstStream);
       }
-      // Fall back to a driver using a normal thread. If needed,
-      // the graph will try to re-open an audio stream later.
       MonitorAutoLock lock(GraphImpl()->GetMonitor());
-      SystemClockDriver* nextDriver = new SystemClockDriver(GraphImpl());
-      SetNextDriver(nextDriver);
-      nextDriver->MarkAsFallback();
-      nextDriver->SetGraphTime(this, mIterationStart, mIterationEnd);
-      // We're not using SwitchAtNextIteration here, because there
-      // won't be a next iteration if we don't restart things manually:
-      // the audio stream just signaled that it's in error state.
-      mGraphImpl->SetCurrentDriver(nextDriver);
-      nextDriver->Start();
+      FallbackToSystemClockDriver();
       return true;
     }
   }
@@ -722,15 +720,6 @@ AudioCallbackDriver::Init()
 
   LOG(LogLevel::Debug, ("AudioCallbackDriver started."));
   return true;
-}
-
-
-void
-AudioCallbackDriver::Destroy()
-{
-  LOG(LogLevel::Debug, ("AudioCallbackDriver destroyed."));
-  mAudioInput = nullptr;
-  mAudioStream.reset();
 }
 
 void
@@ -773,7 +762,6 @@ AudioCallbackDriver::StartStream()
   {
     MonitorAutoLock mon(mGraphImpl->GetMonitor());
     mStarted = true;
-    mWaitState = WAITSTATE_RUNNING;
   }
   return true;
 }
@@ -1051,19 +1039,10 @@ AudioCallbackDriver::StateCallback(cubeb_state aState)
   LOG(LogLevel::Debug, ("AudioCallbackDriver State: %d", aState));
 
   if (aState == CUBEB_STATE_ERROR && mShouldFallbackIfError) {
+    mShouldFallbackIfError = false;
     MonitorAutoLock lock(GraphImpl()->GetMonitor());
-    // Fall back to a driver using a normal thread. If needed,
-    // the graph will try to re-open an audio stream later.
-    SystemClockDriver* nextDriver = new SystemClockDriver(GraphImpl());
-    SetNextDriver(nextDriver);
     RemoveCallback();
-    nextDriver->MarkAsFallback();
-    nextDriver->SetGraphTime(this, mIterationStart, mIterationEnd);
-    // We're not using SwitchAtNextIteration here, because there
-    // won't be a next iteration if we don't restart things manually:
-    // the audio stream just signaled that it's in error state.
-    mGraphImpl->SetCurrentDriver(nextDriver);
-    nextDriver->Start();
+    FallbackToSystemClockDriver();
   }
 }
 
@@ -1207,6 +1186,19 @@ void AudioCallbackDriver::CompleteAudioContextOperations(AsyncCubebOperation aOp
   }
 }
 
+void AudioCallbackDriver::FallbackToSystemClockDriver()
+{
+  GraphImpl()->GetMonitor().AssertCurrentThreadOwns();
+  SystemClockDriver* nextDriver = new SystemClockDriver(GraphImpl());
+  SetNextDriver(nextDriver);
+  nextDriver->MarkAsFallback();
+  nextDriver->SetGraphTime(this, mIterationStart, mIterationEnd);
+  // We're not using SwitchAtNextIteration here, because there
+  // won't be a next iteration if we don't restart things manually:
+  // the audio stream just signaled that it's in error state.
+  mGraphImpl->SetCurrentDriver(nextDriver);
+  nextDriver->Start();
+}
 
 } // namespace mozilla
 

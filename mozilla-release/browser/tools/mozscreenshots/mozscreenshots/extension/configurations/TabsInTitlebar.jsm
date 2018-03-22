@@ -21,7 +21,7 @@ this.TabsInTitlebar = {
       selectors: ["#navigator-toolbox"],
       async applyConfig() {
         if (Services.appinfo.OS == "Linux") {
-          return Promise.reject("TabsInTitlebar isn't supported on Linux");
+          return "TabsInTitlebar isn't supported on Linux";
         }
         Services.prefs.setBoolPref(PREF_TABS_IN_TITLEBAR, true);
         return undefined;
@@ -29,7 +29,7 @@ this.TabsInTitlebar = {
     },
 
     tabsOutsideTitlebar: {
-      selectors: ["#navigator-toolbox", "#titlebar"],
+      selectors: ["#navigator-toolbox"].concat(Services.appinfo.OS == "Linux" ? [] : ["#titlebar"]),
       async applyConfig() {
         Services.prefs.setBoolPref(PREF_TABS_IN_TITLEBAR, false);
       },

@@ -34,12 +34,15 @@ node(MAC_BUILD_NODE) {
   ```
 */
 
+/* Turn off bootstrap step for now, because it's add a mess now on build server.
+ * Better to create a separate job with bootstrap steps to apply on fresh image.
 stage('bootstrap') {
     sh 'pip install compare-locales'
     sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
     sh 'brew uninstall terminal-notifier'
     sh '/bin/bash -lc "rustup install 1.21.0 && rustup default 1.21.0-x86_64-apple-darwin"'
 }
+*/
 
 withEnv([
     "CQZ_BUILD_ID=$CQZ_BUILD_ID",

@@ -75,15 +75,19 @@
 #include "nsHttpHandler.h"
 #include "nsNSSComponent.h"
 #include "nsIRedirectHistoryEntry.h"
+#include "nsICertBlocklist.h"
+#include "nsICertOverrideService.h"
 
 #include <limits>
 
 using namespace mozilla;
 using namespace mozilla::net;
 
-#define DEFAULT_USER_CONTROL_RP 3
+#define DEFAULT_RP 3
+#define DEFAULT_PRIVATE_RP 2
 
-static uint32_t sUserControlRp = DEFAULT_USER_CONTROL_RP;
+static uint32_t sDefaultRp = DEFAULT_RP;
+static uint32_t defaultPrivateRp = DEFAULT_PRIVATE_RP;
 
 already_AddRefed<nsIIOService>
 do_GetIOService(nsresult *error /* = 0 */)
@@ -538,13 +542,13 @@ NS_GetRealPort(nsIURI *aURI)
     return NS_GetDefaultPort(scheme.get());
 }
 
-nsresult /* NS_NewInputStreamChannelWithLoadInfo */
-NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
-                                 nsIURI             *aUri,
-                                 nsIInputStream     *aStream,
-                                 const nsACString   &aContentType,
-                                 const nsACString   &aContentCharset,
-                                 nsILoadInfo        *aLoadInfo)
+nsresult
+NS_NewInputStreamChannelInternal(nsIChannel** outChannel,
+                                 nsIURI* aUri,
+                                 already_AddRefed<nsIInputStream> aStream,
+                                 const nsACString& aContentType,
+                                 const nsACString& aContentCharset,
+                                 nsILoadInfo* aLoadInfo)
 {
   nsresult rv;
   nsCOMPtr<nsIInputStreamChannel> isc =
@@ -552,7 +556,9 @@ NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
   NS_ENSURE_SUCCESS(rv, rv);
   rv = isc->SetURI(aUri);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = isc->SetContentStream(aStream);
+
+  nsCOMPtr<nsIInputStream> stream = Move(aStream);
+  rv = isc->SetContentStream(stream);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIChannel> channel = do_QueryInterface(isc, &rv);
@@ -581,15 +587,15 @@ NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
 }
 
 nsresult
-NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
-                                 nsIURI             *aUri,
-                                 nsIInputStream     *aStream,
-                                 const nsACString   &aContentType,
-                                 const nsACString   &aContentCharset,
-                                 nsINode            *aLoadingNode,
-                                 nsIPrincipal       *aLoadingPrincipal,
-                                 nsIPrincipal       *aTriggeringPrincipal,
-                                 nsSecurityFlags     aSecurityFlags,
+NS_NewInputStreamChannelInternal(nsIChannel** outChannel,
+                                 nsIURI* aUri,
+                                 already_AddRefed<nsIInputStream> aStream,
+                                 const nsACString& aContentType,
+                                 const nsACString& aContentCharset,
+                                 nsINode* aLoadingNode,
+                                 nsIPrincipal* aLoadingPrincipal,
+                                 nsIPrincipal* aTriggeringPrincipal,
+                                 nsSecurityFlags aSecurityFlags,
                                  nsContentPolicyType aContentPolicyType)
 {
   nsCOMPtr<nsILoadInfo> loadInfo =
@@ -601,27 +607,31 @@ NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
   if (!loadInfo) {
     return NS_ERROR_UNEXPECTED;
   }
+
+  nsCOMPtr<nsIInputStream> stream = Move(aStream);
+
   return NS_NewInputStreamChannelInternal(outChannel,
                                           aUri,
-                                          aStream,
+                                          stream.forget(),
                                           aContentType,
                                           aContentCharset,
                                           loadInfo);
 }
 
-nsresult /* NS_NewInputStreamChannelPrincipal */
-NS_NewInputStreamChannel(nsIChannel        **outChannel,
-                         nsIURI             *aUri,
-                         nsIInputStream     *aStream,
-                         nsIPrincipal       *aLoadingPrincipal,
-                         nsSecurityFlags     aSecurityFlags,
+nsresult
+NS_NewInputStreamChannel(nsIChannel** outChannel,
+                         nsIURI* aUri,
+                         already_AddRefed<nsIInputStream> aStream,
+                         nsIPrincipal* aLoadingPrincipal,
+                         nsSecurityFlags aSecurityFlags,
                          nsContentPolicyType aContentPolicyType,
-                         const nsACString   &aContentType    /* = EmptyCString() */,
-                         const nsACString   &aContentCharset /* = EmptyCString() */)
+                         const nsACString& aContentType    /* = EmptyCString() */,
+                         const nsACString& aContentCharset /* = EmptyCString() */)
 {
+  nsCOMPtr<nsIInputStream> stream = aStream;
   return NS_NewInputStreamChannelInternal(outChannel,
                                           aUri,
-                                          aStream,
+                                          stream.forget(),
                                           aContentType,
                                           aContentCharset,
                                           nullptr, // aLoadingNode
@@ -651,7 +661,7 @@ NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
   nsCOMPtr<nsIChannel> channel;
   rv = NS_NewInputStreamChannelInternal(getter_AddRefs(channel),
                                         aUri,
-                                        stream,
+                                        stream.forget(),
                                         aContentType,
                                         NS_LITERAL_CSTRING("UTF-8"),
                                         aLoadInfo);
@@ -709,47 +719,24 @@ NS_NewInputStreamChannel(nsIChannel        **outChannel,
 }
 
 nsresult
-NS_NewInputStreamPump(nsIInputStreamPump **result,
-                      nsIInputStream      *stream,
-                      uint32_t             segsize /* = 0 */,
-                      uint32_t             segcount /* = 0 */,
-                      bool                 closeWhenDone /* = false */,
-                      nsIEventTarget      *mainThreadTarget /* = nullptr */)
+NS_NewInputStreamPump(nsIInputStreamPump** aResult,
+                      already_AddRefed<nsIInputStream> aStream,
+                      uint32_t aSegsize /* = 0 */,
+                      uint32_t aSegcount /* = 0 */,
+                      bool aCloseWhenDone /* = false */,
+                      nsIEventTarget* aMainThreadTarget /* = nullptr */)
 {
+    nsCOMPtr<nsIInputStream> stream = Move(aStream);
+
     nsresult rv;
     nsCOMPtr<nsIInputStreamPump> pump =
         do_CreateInstance(NS_INPUTSTREAMPUMP_CONTRACTID, &rv);
     if (NS_SUCCEEDED(rv)) {
-        rv = pump->Init(stream, segsize, segcount, closeWhenDone,
-                        mainThreadTarget);
+        rv = pump->Init(stream, aSegsize, aSegcount, aCloseWhenDone,
+                        aMainThreadTarget);
         if (NS_SUCCEEDED(rv)) {
-            *result = nullptr;
-            pump.swap(*result);
-        }
-    }
-    return rv;
-}
-
-nsresult
-NS_NewAsyncStreamCopier(nsIAsyncStreamCopier **result,
-                        nsIInputStream        *source,
-                        nsIOutputStream       *sink,
-                        nsIEventTarget        *target,
-                        bool                   sourceBuffered /* = true */,
-                        bool                   sinkBuffered /* = true */,
-                        uint32_t               chunkSize /* = 0 */,
-                        bool                   closeSource /* = true */,
-                        bool                   closeSink /* = true */)
-{
-    nsresult rv;
-    nsCOMPtr<nsIAsyncStreamCopier> copier =
-        do_CreateInstance(NS_ASYNCSTREAMCOPIER_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv)) {
-        rv = copier->Init(source, sink, target, sourceBuffered, sinkBuffered,
-                          chunkSize, closeSource, closeSink);
-        if (NS_SUCCEEDED(rv)) {
-            *result = nullptr;
-            copier.swap(*result);
+            *aResult = nullptr;
+            pump.swap(*aResult);
         }
     }
     return rv;
@@ -1376,43 +1363,6 @@ NS_NewBufferedInputStream(nsIInputStream** aResult,
     return rv;
 }
 
-nsresult
-NS_NewPostDataStream(nsIInputStream  **result,
-                     bool              isFile,
-                     const nsACString &data)
-{
-    nsresult rv;
-
-    if (isFile) {
-        nsCOMPtr<nsIFile> file;
-        nsCOMPtr<nsIInputStream> fileStream;
-
-        rv = NS_NewNativeLocalFile(data, false, getter_AddRefs(file));
-        if (NS_SUCCEEDED(rv)) {
-            rv = NS_NewLocalFileInputStream(getter_AddRefs(fileStream), file);
-            if (NS_SUCCEEDED(rv)) {
-                // wrap the file stream with a buffered input stream
-                rv = NS_NewBufferedInputStream(result, fileStream.forget(),
-                                               8192);
-            }
-        }
-        return rv;
-    }
-
-    // otherwise, create a string stream for the data (copies)
-    nsCOMPtr<nsIStringInputStream> stream
-        (do_CreateInstance("@mozilla.org/io/string-input-stream;1", &rv));
-    if (NS_FAILED(rv))
-        return rv;
-
-    rv = stream->SetData(data.BeginReading(), data.Length());
-    if (NS_FAILED(rv))
-        return rv;
-
-    stream.forget(result);
-    return NS_OK;
-}
-
 namespace {
 
 #define BUFFER_SIZE 4096
@@ -1552,8 +1502,7 @@ private:
         MonitorAutoLock lock(mMonitor);
 
         nsCOMPtr<nsIRunnable> runnable = this;
-        nsresult rv = mTaskQueue->Dispatch(runnable.forget(),
-                                           AbstractThread::DontAssertDispatchSuccess);
+        nsresult rv = mTaskQueue->Dispatch(runnable.forget());
         NS_ENSURE_SUCCESS(rv, rv);
 
         rv = lock.Wait();
@@ -1607,8 +1556,7 @@ private:
             }
 
             nsCOMPtr<nsIRunnable> runnable = this;
-            rv = mTaskQueue->Dispatch(runnable.forget(),
-                                      AbstractThread::DontAssertDispatchSuccess);
+            rv = mTaskQueue->Dispatch(runnable.forget());
             if (NS_WARN_IF(NS_FAILED(rv))) {
                 OperationCompleted(lock, rv);
             }
@@ -1756,11 +1704,37 @@ NS_ReadInputStreamToString(nsIInputStream* aInputStream,
         aWritten = &dummyWritten;
     }
 
+    // Nothing to do if aCount is 0.
+    if (aCount == 0) {
+        aDest.Truncate();
+        *aWritten = 0;
+        return NS_OK;
+    }
+
+    // If we have the size, we can pre-allocate the buffer.
+    if (aCount > 0) {
+        if (NS_WARN_IF(aCount  >= INT32_MAX) ||
+            NS_WARN_IF(!aDest.SetLength(aCount, mozilla::fallible))) {
+            return NS_ERROR_OUT_OF_MEMORY;
+        }
+
+        void* dest = aDest.BeginWriting();
+        nsresult rv = NS_ReadInputStreamToBuffer(aInputStream, &dest, aCount,
+                                                 aWritten);
+        NS_ENSURE_SUCCESS(rv, rv);
+
+       if ((uint64_t)aCount > *aWritten) {
+           aDest.Truncate(*aWritten);
+       }
+
+       return NS_OK;
+    }
+
+    // If the size is unknown, BufferWriter will allocate the buffer.
     void* dest = nullptr;
     nsresult rv = NS_ReadInputStreamToBuffer(aInputStream, &dest, aCount,
                                              aWritten);
     MOZ_ASSERT_IF(NS_FAILED(rv), dest == nullptr);
-
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (!dest) {
@@ -2715,6 +2689,10 @@ void net_EnsurePSMInit()
     nsresult rv;
     nsCOMPtr<nsISupports> psm = do_GetService(PSM_COMPONENT_CONTRACTID, &rv);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+    nsCOMPtr<nsISupports> sss = do_GetService(NS_SSSERVICE_CONTRACTID);
+    nsCOMPtr<nsISupports> cbl = do_GetService(NS_CERTBLOCKLIST_CONTRACTID);
+    nsCOMPtr<nsISupports> cos = do_GetService(NS_CERTOVERRIDE_CONTRACTID);
 }
 
 bool NS_IsAboutBlank(nsIURI *uri)
@@ -2857,14 +2835,6 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
         aShouldUpgrade = true;
         return NS_OK;
       }
-
-      if (aLoadInfo->GetForceHSTSPriming()) {
-        // don't log requests which might be upgraded due to HSTS Priming
-        // they get logged in nsHttpChannel::OnHSTSPrimingSucceeded or
-        // nsHttpChannel::OnHSTSPrimingFailed if the load is allowed to proceed.
-        aShouldUpgrade = false;
-        return NS_OK;
-      }
     }
 
     // enforce Strict-Transport-Security
@@ -2894,9 +2864,6 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
           case nsISiteSecurityService::SOURCE_ORGANIC_REQUEST:
               Telemetry::Accumulate(Telemetry::HSTS_UPGRADE_SOURCE, 1);
               break;
-          case nsISiteSecurityService::SOURCE_HSTS_PRIMING:
-              Telemetry::Accumulate(Telemetry::HSTS_UPGRADE_SOURCE, 2);
-              break;
           case nsISiteSecurityService::SOURCE_UNKNOWN:
           default:
               // record this as an organic request
@@ -2911,21 +2878,6 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
       Telemetry::Accumulate(Telemetry::HTTP_SCHEME_UPGRADE, 1);
     }
   } else {
-    if (aLoadInfo) {
-      if (aLoadInfo->GetIsHSTSPriming()) {
-        // don't log HSTS priming requests
-        aShouldUpgrade = false;
-        return NS_OK;
-      }
-
-      if (aLoadInfo->GetIsHSTSPrimingUpgrade()) {
-        // if the upgrade occured due to HSTS priming, it was logged in
-        // nsHttpChannel::OnHSTSPrimingSucceeded before redirect
-        aShouldUpgrade = false;
-        return NS_OK;
-      }
-    }
-
     Telemetry::Accumulate(Telemetry::HTTP_SCHEME_UPGRADE, 0);
   }
   aShouldUpgrade = false;
@@ -3049,18 +3001,28 @@ NS_CompareLoadInfoAndLoadContext(nsIChannel *aChannel)
 }
 
 uint32_t
-NS_GetDefaultReferrerPolicy()
+NS_GetDefaultReferrerPolicy(bool privateBrowsing)
 {
   static bool preferencesInitialized = false;
 
   if (!preferencesInitialized) {
-    mozilla::Preferences::AddUintVarCache(&sUserControlRp,
-                                          "network.http.referer.userControlPolicy",
-                                          DEFAULT_USER_CONTROL_RP);
+    mozilla::Preferences::AddUintVarCache(&sDefaultRp,
+                                          "network.http.referer.defaultPolicy",
+                                          DEFAULT_RP);
+    mozilla::Preferences::AddUintVarCache(&defaultPrivateRp,
+                                          "network.http.referer.defaultPolicy.pbmode",
+                                          DEFAULT_PRIVATE_RP);
     preferencesInitialized = true;
   }
 
-  switch (sUserControlRp) {
+  uint32_t defaultToUse;
+  if (privateBrowsing) {
+      defaultToUse = defaultPrivateRp;
+  } else {
+      defaultToUse = sDefaultRp;
+  }
+
+  switch (defaultToUse) {
     case 0:
       return nsIHttpChannel::REFERRER_POLICY_NO_REFERRER;
     case 1:

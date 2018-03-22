@@ -59,6 +59,10 @@ let expectedContentApis = [
 let expectedBackgroundApis = [
   ...expectedCommonApis,
   ...expectedBackgroundApisTargetSpecific,
+  "contentScripts.register",
+  "experiments.APIChildScope",
+  "experiments.APIEvent",
+  "experiments.APIParentScope",
   "extension.ViewType",
   "extension.getBackgroundPage",
   "extension.getViews",

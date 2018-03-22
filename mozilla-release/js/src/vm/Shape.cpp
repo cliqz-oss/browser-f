@@ -499,39 +499,62 @@ class MOZ_RAII AutoCheckShapeConsistency
 
 } // namespace js
 
+/* static */ MOZ_ALWAYS_INLINE bool
+NativeObject::maybeConvertToOrGrowDictionaryForAdd(JSContext* cx, HandleNativeObject obj, HandleId id,
+                                                   ShapeTable** table, ShapeTable::Entry** entry,
+                                                   const AutoKeepShapeTables& keep)
+{
+    MOZ_ASSERT(!!*table == !!*entry);
+
+    // The code below deals with either converting obj to dictionary mode or
+    // growing an object that's already in dictionary mode.
+    if (!obj->inDictionaryMode()) {
+        if (!ShouldConvertToDictionary(obj))
+            return true;
+        if (!toDictionaryMode(cx, obj))
+            return false;
+        *table = obj->lastProperty()->maybeTable(keep);
+    } else {
+        if (!(*table)->needsToGrow())
+            return true;
+        if (!(*table)->grow(cx))
+            return false;
+    }
+
+    *entry = &(*table)->search<MaybeAdding::Adding>(id, keep);
+    MOZ_ASSERT(!(*entry)->shape());
+    return true;
+}
+
+MOZ_ALWAYS_INLINE void
+Shape::updateDictionaryTable(ShapeTable* table, ShapeTable::Entry* entry,
+                             const AutoKeepShapeTables& keep)
+{
+    MOZ_ASSERT(table);
+    MOZ_ASSERT(entry);
+    MOZ_ASSERT(inDictionary());
+
+    // Store this Shape in the table entry.
+    entry->setPreservingCollision(this);
+    table->incEntryCount();
+
+    // Pass the table along to the new last property, namely *this.
+    MOZ_ASSERT(parent->maybeTable(keep) == table);
+    parent->handoffTableTo(this);
+}
+
 /* static */ Shape*
 NativeObject::addAccessorPropertyInternal(JSContext* cx,
                                           HandleNativeObject obj, HandleId id,
-                                          GetterOp getter, SetterOp setter,
-                                          unsigned attrs, ShapeTable::Entry* entry,
+                                          GetterOp getter, SetterOp setter, unsigned attrs,
+                                          ShapeTable* table, ShapeTable::Entry* entry,
                                           const AutoKeepShapeTables& keep)
 {
     AutoCheckShapeConsistency check(obj);
     AutoRooterGetterSetter gsRoot(cx, attrs, &getter, &setter);
 
-    // The code below deals with either converting obj to dictionary mode or
-    // growing an object that's already in dictionary mode.
-    ShapeTable* table = nullptr;
-    if (!obj->inDictionaryMode()) {
-        if (ShouldConvertToDictionary(obj)) {
-            if (!toDictionaryMode(cx, obj))
-                return nullptr;
-            table = obj->lastProperty()->maybeTable(keep);
-            entry = &table->search<MaybeAdding::Adding>(id, keep);
-        }
-    } else {
-        table = obj->lastProperty()->ensureTableForDictionary(cx, keep);
-        if (!table)
-            return nullptr;
-        if (table->needsToGrow()) {
-            if (!table->grow(cx))
-                return nullptr;
-            entry = &table->search<MaybeAdding::Adding>(id, keep);
-            MOZ_ASSERT(!entry->shape());
-        }
-    }
-
-    MOZ_ASSERT(!!table == !!entry);
+    if (!maybeConvertToOrGrowDictionaryForAdd(cx, obj, id, &table, &entry, keep))
+        return nullptr;
 
     // Find or create a property tree node labeled by our arguments.
     RootedShape shape(cx);
@@ -550,15 +573,8 @@ NativeObject::addAccessorPropertyInternal(JSContext* cx,
 
     MOZ_ASSERT(shape == obj->lastProperty());
 
-    if (table) {
-        // Store the tree node pointer in the table entry for id.
-        entry->setPreservingCollision(shape);
-        table->incEntryCount();
-
-        // Pass the table along to the new last property, namely shape.
-        MOZ_ASSERT(shape->parent->maybeTable(keep) == table);
-        shape->parent->handoffTableTo(shape);
-    }
+    if (table)
+        shape->updateDictionaryTable(table, entry, keep);
 
     return shape;
 }
@@ -567,7 +583,9 @@ NativeObject::addAccessorPropertyInternal(JSContext* cx,
 NativeObject::addDataPropertyInternal(JSContext* cx,
                                       HandleNativeObject obj, HandleId id,
                                       uint32_t slot, unsigned attrs,
-                                      ShapeTable::Entry* entry, const AutoKeepShapeTables& keep)
+                                      ShapeTable* table,
+                                      ShapeTable::Entry* entry,
+                                      const AutoKeepShapeTables& keep)
 {
     AutoCheckShapeConsistency check(obj);
 
@@ -575,29 +593,8 @@ NativeObject::addDataPropertyInternal(JSContext* cx,
     MOZ_ASSERT(slot == SHAPE_INVALID_SLOT ||
                slot < JSCLASS_RESERVED_SLOTS(obj->getClass()));
 
-    // The code below deals with either converting obj to dictionary mode or
-    // growing an object that's already in dictionary mode.
-    ShapeTable* table = nullptr;
-    if (!obj->inDictionaryMode()) {
-        if (ShouldConvertToDictionary(obj)) {
-            if (!toDictionaryMode(cx, obj))
-                return nullptr;
-            table = obj->lastProperty()->maybeTable(keep);
-            entry = &table->search<MaybeAdding::Adding>(id, keep);
-        }
-    } else {
-        table = obj->lastProperty()->ensureTableForDictionary(cx, keep);
-        if (!table)
-            return nullptr;
-        if (table->needsToGrow()) {
-            if (!table->grow(cx))
-                return nullptr;
-            entry = &table->search<MaybeAdding::Adding>(id, keep);
-            MOZ_ASSERT(!entry->shape());
-        }
-    }
-
-    MOZ_ASSERT(!!table == !!entry);
+    if (!maybeConvertToOrGrowDictionaryForAdd(cx, obj, id, &table, &entry, keep))
+        return nullptr;
 
     // Find or create a property tree node labeled by our arguments.
     RootedShape shape(cx);
@@ -615,17 +612,39 @@ NativeObject::addDataPropertyInternal(JSContext* cx,
 
     MOZ_ASSERT(shape == obj->lastProperty());
 
-    if (table) {
-        // Store the tree node pointer in the table entry for id.
-        entry->setPreservingCollision(shape);
-        table->incEntryCount();
-
-        // Pass the table along to the new last property, namely shape.
-        MOZ_ASSERT(shape->parent->maybeTable(keep) == table);
-        shape->parent->handoffTableTo(shape);
-    }
+    if (table)
+        shape->updateDictionaryTable(table, entry, keep);
 
     return shape;
+}
+
+static MOZ_ALWAYS_INLINE Shape*
+PropertyTreeReadBarrier(Shape* parent, Shape* shape)
+{
+    JS::Zone* zone = shape->zone();
+    if (zone->needsIncrementalBarrier()) {
+        // We need a read barrier for the shape tree, since these are weak
+        // pointers.
+        Shape* tmp = shape;
+        TraceManuallyBarrieredEdge(zone->barrierTracer(), &tmp, "read barrier");
+        MOZ_ASSERT(tmp == shape);
+        return shape;
+    }
+
+    if (MOZ_LIKELY(!zone->isGCSweepingOrCompacting() ||
+                   !IsAboutToBeFinalizedUnbarriered(&shape)))
+    {
+        if (shape->isMarkedGray())
+            UnmarkGrayShapeRecursively(shape);
+        return shape;
+    }
+
+    // The shape we've found is unreachable and due to be finalized, so
+    // remove our weak reference to it and don't use it.
+    MOZ_ASSERT(parent->isMarkedAny());
+    parent->removeChild(shape);
+
+    return nullptr;
 }
 
 /* static */ Shape*
@@ -634,9 +653,43 @@ NativeObject::addEnumerableDataProperty(JSContext* cx, HandleNativeObject obj, H
     // Like addProperty(Internal), but optimized for the common case of adding a
     // new enumerable data property.
 
-    AutoKeepShapeTables keep(cx);
     AutoCheckShapeConsistency check(obj);
 
+    // Fast path for non-dictionary shapes with a single kid.
+    do {
+        AutoCheckCannotGC nogc;
+
+        Shape* lastProperty = obj->lastProperty();
+        if (lastProperty->inDictionary())
+            break;
+
+        KidsPointer* kidp = &lastProperty->kids;
+        if (!kidp->isShape())
+            break;
+
+        Shape* kid = kidp->toShape();
+        MOZ_ASSERT(!kid->inDictionary());
+
+        if (kid->propidRaw() != id ||
+            kid->isAccessorShape() ||
+            kid->attributes() != JSPROP_ENUMERATE ||
+            kid->base()->unowned() != lastProperty->base()->unowned())
+        {
+            break;
+        }
+
+        MOZ_ASSERT(kid->isDataProperty());
+
+        kid = PropertyTreeReadBarrier(lastProperty, kid);
+        if (!kid)
+            break;
+
+        if (!obj->setLastProperty(cx, kid))
+            return nullptr;
+        return kid;
+    } while (0);
+
+    AutoKeepShapeTables keep(cx);
     ShapeTable* table = nullptr;
     ShapeTable::Entry* entry = nullptr;
 
@@ -704,15 +757,8 @@ NativeObject::addEnumerableDataProperty(JSContext* cx, HandleNativeObject obj, H
 
     MOZ_ASSERT(shape == obj->lastProperty());
 
-    if (table) {
-        /* Store the tree node pointer in the table entry for id. */
-        entry->setPreservingCollision(shape);
-        table->incEntryCount();
-
-        /* Pass the table along to the new last property, namely shape. */
-        MOZ_ASSERT(shape->parent->maybeTable(keep) == table);
-        shape->parent->handoffTableTo(shape);
-    }
+    if (table)
+        shape->updateDictionaryTable(table, entry, keep);
 
     return shape;
 }
@@ -748,7 +794,7 @@ js::ReshapeForAllocKind(JSContext* cx, Shape* shape, TaggedProto proto,
     for (unsigned i = 0; i < ids.length(); i++) {
         id = ids[i];
 
-        Rooted<UnownedBaseShape*> nbase(cx, GetBaseShapeForNewShape(cx, newShape, id));
+        UnownedBaseShape* nbase = GetBaseShapeForNewShape(cx, newShape, id);
         if (!nbase)
             return nullptr;
 
@@ -794,6 +840,27 @@ AssertValidArrayIndex(NativeObject* obj, jsid id)
 #endif
 }
 
+/* static */ bool
+NativeObject::maybeToDictionaryModeForPut(JSContext* cx, HandleNativeObject obj,
+                                          MutableHandleShape shape)
+{
+    // Overwriting a non-last property requires switching to dictionary mode.
+    // The shape tree is shared immutable, and we can't removeProperty and then
+    // addAccessorPropertyInternal because a failure under add would lose data.
+
+    if (shape == obj->lastProperty() || obj->inDictionaryMode())
+        return true;
+
+    if (!toDictionaryMode(cx, obj))
+        return false;
+
+    AutoCheckCannotGC nogc;
+    ShapeTable* table = obj->lastProperty()->maybeTable(nogc);
+    MOZ_ASSERT(table);
+    shape.set(table->search<MaybeAdding::NotAdding>(shape->propid(), nogc).shape());
+    return true;
+}
+
 /* static */ Shape*
 NativeObject::putDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
                               unsigned attrs)
@@ -805,22 +872,26 @@ NativeObject::putDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id
 
     // Search for id in order to claim its entry if table has been allocated.
     AutoKeepShapeTables keep(cx);
-    ShapeTable::Entry* entry;
     RootedShape shape(cx);
-    if (!Shape::search<MaybeAdding::Adding>(cx, obj->lastProperty(), id, keep,
-                                            shape.address(), &entry))
     {
-        return nullptr;
-    }
+        ShapeTable* table;
+        ShapeTable::Entry* entry;
+        if (!Shape::search<MaybeAdding::Adding>(cx, obj->lastProperty(), id, keep,
+                                                shape.address(), &table, &entry))
+        {
+            return nullptr;
+        }
 
-    if (!shape) {
-        MOZ_ASSERT(obj->nonProxyIsExtensible(),
-                   "Can't add new property to non-extensible object");
-        return addDataPropertyInternal(cx, obj, id, SHAPE_INVALID_SLOT, attrs, entry, keep);
-    }
+        if (!shape) {
+            MOZ_ASSERT(obj->nonProxyIsExtensible(),
+                       "Can't add new property to non-extensible object");
+            return addDataPropertyInternal(cx, obj, id, SHAPE_INVALID_SLOT, attrs, table, entry,
+                                           keep);
+        }
 
-    // Property exists: search must have returned a valid entry.
-    MOZ_ASSERT_IF(entry, !entry->isRemoved());
+        // Property exists: search must have returned a valid entry.
+        MOZ_ASSERT_IF(entry, !entry->isRemoved());
+    }
 
     AssertCanChangeAttrs(shape, attrs);
 
@@ -844,17 +915,8 @@ NativeObject::putDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id
     if (shape->matchesParamsAfterId(nbase, slot, attrs, nullptr, nullptr))
         return shape;
 
-    // Overwriting a non-last property requires switching to dictionary mode.
-    // The shape tree is shared immutable, and we can't removeProperty and then
-    // addDataPropertyInternal because a failure under add would lose data.
-    if (shape != obj->lastProperty() && !obj->inDictionaryMode()) {
-        if (!toDictionaryMode(cx, obj))
-            return nullptr;
-        ShapeTable* table = obj->lastProperty()->maybeTable(keep);
-        MOZ_ASSERT(table);
-        entry = &table->search<MaybeAdding::NotAdding>(shape->propid(), keep);
-        shape = entry->shape();
-    }
+    if (!maybeToDictionaryModeForPut(cx, obj, &shape))
+        return nullptr;
 
     MOZ_ASSERT_IF(shape->isDataProperty(), shape->slot() == slot);
 
@@ -887,11 +949,6 @@ NativeObject::putDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id
     } else {
         // Updating the last property in a non-dictionary-mode object. Find an
         // alternate shared child of the last property's previous shape.
-        StackBaseShape base(obj->lastProperty()->base());
-
-        UnownedBaseShape* nbase = BaseShape::getUnowned(cx, base);
-        if (!nbase)
-            return nullptr;
 
         MOZ_ASSERT(shape == obj->lastProperty());
 
@@ -920,22 +977,26 @@ NativeObject::putAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleI
 
     // Search for id in order to claim its entry if table has been allocated.
     AutoKeepShapeTables keep(cx);
-    ShapeTable::Entry* entry;
     RootedShape shape(cx);
-    if (!Shape::search<MaybeAdding::Adding>(cx, obj->lastProperty(), id, keep,
-                                            shape.address(), &entry))
     {
-        return nullptr;
-    }
+        ShapeTable* table;
+        ShapeTable::Entry* entry;
+        if (!Shape::search<MaybeAdding::Adding>(cx, obj->lastProperty(), id, keep,
+                                                shape.address(), &table, &entry))
+        {
+            return nullptr;
+        }
 
-    if (!shape) {
-        MOZ_ASSERT(obj->nonProxyIsExtensible(),
-                   "Can't add new property to non-extensible object");
-        return addAccessorPropertyInternal(cx, obj, id, getter, setter, attrs, entry, keep);
-    }
+        if (!shape) {
+            MOZ_ASSERT(obj->nonProxyIsExtensible(),
+                       "Can't add new property to non-extensible object");
+            return addAccessorPropertyInternal(cx, obj, id, getter, setter, attrs, table, entry,
+                                               keep);
+        }
 
-    // Property exists: search must have returned a valid entry.
-    MOZ_ASSERT_IF(entry, !entry->isRemoved());
+        // Property exists: search must have returned a valid entry.
+        MOZ_ASSERT_IF(entry, !entry->isRemoved());
+    }
 
     AssertCanChangeAttrs(shape, attrs);
 
@@ -955,17 +1016,8 @@ NativeObject::putAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleI
     if (shape->matchesParamsAfterId(nbase, SHAPE_INVALID_SLOT, attrs, getter, setter))
         return shape;
 
-    // Overwriting a non-last property requires switching to dictionary mode.
-    // The shape tree is shared immutable, and we can't removeProperty and then
-    // addAccessorPropertyInternal because a failure under add would lose data.
-    if (shape != obj->lastProperty() && !obj->inDictionaryMode()) {
-        if (!toDictionaryMode(cx, obj))
-            return nullptr;
-        ShapeTable* table = obj->lastProperty()->maybeTable(keep);
-        MOZ_ASSERT(table);
-        entry = &table->search<MaybeAdding::NotAdding>(shape->propid(), keep);
-        shape = entry->shape();
-    }
+    if (!maybeToDictionaryModeForPut(cx, obj, &shape))
+        return nullptr;
 
     if (obj->inDictionaryMode()) {
         // Updating some property in a dictionary-mode object. Create a new
@@ -996,11 +1048,6 @@ NativeObject::putAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleI
     } else {
         // Updating the last property in a non-dictionary-mode object. Find an
         // alternate shared child of the last property's previous shape.
-        StackBaseShape base(obj->lastProperty()->base());
-
-        UnownedBaseShape* nbase = BaseShape::getUnowned(cx, base);
-        if (!nbase)
-            return nullptr;
 
         MOZ_ASSERT(shape == obj->lastProperty());
 
@@ -1055,9 +1102,10 @@ NativeObject::removeProperty(JSContext* cx, HandleNativeObject obj, jsid id_)
     RootedId id(cx, id_);
 
     AutoKeepShapeTables keep(cx);
+    ShapeTable* table;
     ShapeTable::Entry* entry;
     RootedShape shape(cx);
-    if (!Shape::search(cx, obj->lastProperty(), id, keep, shape.address(), &entry))
+    if (!Shape::search(cx, obj->lastProperty(), id, keep, shape.address(), &table, &entry))
         return false;
 
     if (!shape)
@@ -1070,7 +1118,7 @@ NativeObject::removeProperty(JSContext* cx, HandleNativeObject obj, jsid id_)
     if (!obj->inDictionaryMode() && (shape != obj->lastProperty() || !obj->canRemoveLastProperty())) {
         if (!toDictionaryMode(cx, obj))
             return false;
-        ShapeTable* table = obj->lastProperty()->maybeTable(keep);
+        table = obj->lastProperty()->maybeTable(keep);
         MOZ_ASSERT(table);
         entry = &table->search<MaybeAdding::NotAdding>(shape->propid(), keep);
         shape = entry->shape();
@@ -1116,8 +1164,7 @@ NativeObject::removeProperty(JSContext* cx, HandleNativeObject obj, jsid id_)
      * list and hash in place.
      */
     if (obj->inDictionaryMode()) {
-        ShapeTable* table = obj->lastProperty()->maybeTable(keep);
-        MOZ_ASSERT(table);
+        MOZ_ASSERT(obj->lastProperty()->maybeTable(keep) == table);
 
         if (entry->hadCollision()) {
             entry->setRemoved();
@@ -1282,6 +1329,10 @@ JSObject::setFlags(JSContext* cx, HandleObject obj, BaseShape::Flag flags,
     if (obj->hasAllFlags(flags))
         return true;
 
+    Shape* existingShape = obj->ensureShape(cx);
+    if (!existingShape)
+        return false;
+
     if (obj->isNative() && obj->as<NativeObject>().inDictionaryMode()) {
         if (generateShape == GENERATE_SHAPE) {
             if (!NativeObject::generateOwnShape(cx, obj.as<NativeObject>()))
@@ -1296,10 +1347,6 @@ JSObject::setFlags(JSContext* cx, HandleObject obj, BaseShape::Flag flags,
         obj->as<NativeObject>().lastProperty()->base()->adoptUnowned(nbase);
         return true;
     }
-
-    Shape* existingShape = obj->ensureShape(cx);
-    if (!existingShape)
-        return false;
 
     Shape* newShape = Shape::setObjectFlags(cx, flags, obj->taggedProto(), existingShape);
     if (!newShape)
@@ -1682,30 +1729,9 @@ PropertyTree::inlinedGetChild(JSContext* cx, Shape* parent, Handle<StackShape> c
     }
 
     if (existingShape) {
-        JS::Zone* zone = existingShape->zone();
-        if (zone->needsIncrementalBarrier()) {
-            /*
-             * We need a read barrier for the shape tree, since these are weak
-             * pointers.
-             */
-            Shape* tmp = existingShape;
-            TraceManuallyBarrieredEdge(zone->barrierTracer(), &tmp, "read barrier");
-            MOZ_ASSERT(tmp == existingShape);
+        existingShape = PropertyTreeReadBarrier(parent, existingShape);
+        if (existingShape)
             return existingShape;
-        }
-        if (!zone->isGCSweepingOrCompacting() ||
-            !IsAboutToBeFinalizedUnbarriered(&existingShape))
-        {
-            if (existingShape->isMarkedGray())
-                UnmarkGrayShapeRecursively(existingShape);
-            return existingShape;
-        }
-        /*
-         * The shape we've found is unreachable and due to be finalized, so
-         * remove our weak reference to it and don't use it.
-         */
-        MOZ_ASSERT(parent->isMarkedAny());
-        parent->removeChild(existingShape);
     }
 
     RootedShape parentRoot(cx, parent);
@@ -1958,6 +1984,13 @@ Shape::dump(js::GenericPrinter& out) const
 }
 
 void
+Shape::dump() const
+{
+    Fprinter out(stderr);
+    dump(out);
+}
+
+void
 Shape::dumpSubtree(int level, js::GenericPrinter& out) const
 {
     if (!parent) {
@@ -2079,7 +2112,7 @@ EmptyShape::getInitialShape(JSContext* cx, const Class* clasp, TaggedProto proto
     }
 
     if (!shape) {
-        StackBaseShape base(cx, clasp, objectFlags);
+        StackBaseShape base(clasp, objectFlags);
         Rooted<UnownedBaseShape*> nbase(cx, BaseShape::getUnowned(cx, base));
         if (!nbase)
             return nullptr;

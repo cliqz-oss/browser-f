@@ -70,6 +70,7 @@
 #include "gfxGradientCache.h"
 #include "gfxUtils.h" // for NextPowerOfTwo
 
+#include "nsExceptionHandler.h"
 #include "nsUnicodeRange.h"
 #include "nsServiceManagerUtils.h"
 #include "nsTArray.h"
@@ -77,9 +78,6 @@
 #include "nsIScreenManager.h"
 #include "FrameMetrics.h"
 #include "MainThreadUtils.h"
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
 
 #include "nsWeakReference.h"
 
@@ -93,10 +91,6 @@
 #include "GLContext.h"
 #include "GLContextProvider.h"
 #include "mozilla/gfx/Logging.h"
-
-#ifdef MOZ_WIDGET_ANDROID
-#include "TexturePoolOGL.h"
-#endif
 
 #ifdef USE_SKIA
 # ifdef __GNUC__
@@ -298,12 +292,9 @@ void CrashStatsLogForwarder::UpdateCrashReport()
     message << logAnnotation << Get<0>(it) << "]" << Get<1>(it) << " (t=" << Get<2>(it) << ") ";
   }
 
-#ifdef MOZ_CRASHREPORTER
   nsCString reportString(message.str().c_str());
   nsresult annotated = CrashReporter::AnnotateCrashReport(mCrashCriticalKey, reportString);
-#else
-  nsresult annotated = NS_ERROR_NOT_IMPLEMENTED;
-#endif
+
   if (annotated != NS_OK) {
     printf("Crash Annotation %s: %s",
            mCrashCriticalKey.get(), message.str().c_str());
@@ -607,19 +598,22 @@ void
 WebRenderDebugPrefChangeCallback(const char* aPrefName, void*)
 {
   int32_t flags = 0;
+#define GFX_WEBRENDER_DEBUG(suffix, bit)                          \
+  if (Preferences::GetBool(WR_DEBUG_PREF suffix, false)) {        \
+    flags |= (bit);                                             \
+  }
+
   // TODO: It would be nice to get the bit patterns directly from the rust code.
-  if (Preferences::GetBool(WR_DEBUG_PREF".profiler", false)) {
-    flags |= (1 << 0);
-  }
-  if (Preferences::GetBool(WR_DEBUG_PREF".render-targets", false)) {
-    flags |= (1 << 1);
-  }
-  if (Preferences::GetBool(WR_DEBUG_PREF".texture-cache", false)) {
-    flags |= (1 << 2);
-  }
-  if (Preferences::GetBool(WR_DEBUG_PREF".alpha-primitives", false)) {
-    flags |= (1 << 3);
-  }
+  GFX_WEBRENDER_DEBUG(".profiler",           1 << 0)
+  GFX_WEBRENDER_DEBUG(".render-targets",     1 << 1)
+  GFX_WEBRENDER_DEBUG(".texture-cache",      1 << 2)
+  GFX_WEBRENDER_DEBUG(".alpha-primitives",   1 << 3)
+  GFX_WEBRENDER_DEBUG(".gpu-time-queries",   1 << 4)
+  GFX_WEBRENDER_DEBUG(".gpu-sample-queries", 1 << 5)
+  GFX_WEBRENDER_DEBUG(".disable-batching",   1 << 6)
+  GFX_WEBRENDER_DEBUG(".epochs",             1 << 7)
+  GFX_WEBRENDER_DEBUG(".compact-profiler",   1 << 8)
+#undef GFX_WEBRENDER_DEBUG
 
   gfx::gfxVars::SetWebRenderDebugFlags(flags);
 }
@@ -775,10 +769,6 @@ gfxPlatform::Init()
 #  endif
 #endif
 
-#ifdef MOZ_GL_DEBUG
-    GLContext::StaticInit();
-#endif
-
     InitLayersIPC();
 
     gPlatform->PopulateScreenInfo();
@@ -827,11 +817,6 @@ gfxPlatform::Init()
     Preferences::AddStrongObservers(gPlatform->mFontPrefsObserver, kObservedPrefs);
 
     GLContext::PlatformStartup();
-
-#ifdef MOZ_WIDGET_ANDROID
-    // Texture pool init
-    TexturePoolOGL::Init();
-#endif
 
     Preferences::RegisterCallbackAndCall(RecordingPrefChanged, "gfx.2d.recording");
 
@@ -984,11 +969,6 @@ gfxPlatform::Shutdown()
     }
 
     gPlatform->mVsyncSource = nullptr;
-
-#ifdef MOZ_WIDGET_ANDROID
-    // Shut down the texture pool
-    TexturePoolOGL::Shutdown();
-#endif
 
     // Shut down the default GL context provider.
     GLContextProvider::Shutdown();
@@ -2480,10 +2460,23 @@ gfxPlatform::InitCompositorAccelerationPrefs()
   }
 }
 
+/*static*/ bool
+gfxPlatform::WebRenderPrefEnabled()
+{
+  return gfxPrefs::WebRenderAll() || gfxPrefs::WebRenderEnabledDoNotUseDirectly();
+}
+
+/*static*/ bool
+gfxPlatform::WebRenderEnvvarEnabled()
+{
+  const char* env = PR_GetEnv("MOZ_WEBRENDER");
+  return (env && *env == '1');
+}
+
 void
 gfxPlatform::InitWebRenderConfig()
 {
-  bool prefEnabled = Preferences::GetBool("gfx.webrender.enabled", false);
+  bool prefEnabled = WebRenderPrefEnabled();
 
   ScopedGfxFeatureReporter reporter("WR", prefEnabled);
   if (!XRE_IsParentProcess()) {
@@ -2505,11 +2498,8 @@ gfxPlatform::InitWebRenderConfig()
 
   if (prefEnabled) {
     featureWebRender.UserEnable("Enabled by pref");
-  } else {
-    const char* env = PR_GetEnv("MOZ_WEBRENDER");
-    if (env && *env == '1') {
-      featureWebRender.UserEnable("Enabled by envvar");
-    }
+  } else if (WebRenderEnvvarEnabled()) {
+    featureWebRender.UserEnable("Enabled by envvar");
   }
 
   // HW_COMPOSITING being disabled implies interfacing with the GPU might break
@@ -2557,6 +2547,10 @@ gfxPlatform::InitWebRenderConfig()
   }
 #endif
 
+  if (Preferences::GetBool("gfx.webrender.program-binary", false)) {
+    gfx::gfxVars::SetUseWebRenderProgramBinary(gfxConfig::IsEnabled(Feature::WEBRENDER));
+  }
+
 #ifdef MOZ_WIDGET_ANDROID
   featureWebRender.ForceDisable(
     FeatureStatus::Unavailable,
@@ -2596,7 +2590,7 @@ gfxPlatform::InitOMTPConfig()
   omtp.SetDefaultFromPref(
     "layers.omtp.enabled",
     true,
-    Preferences::GetDefaultBool("layers.omtp.enabled", false));
+    Preferences::GetBool("layers.omtp.enabled", false, PrefValueKind::Default));
 
   if (mContentBackend == BackendType::CAIRO) {
     omtp.ForceDisable(FeatureStatus::Broken, "OMTP is not supported when using cairo",
@@ -2606,8 +2600,8 @@ gfxPlatform::InitOMTPConfig()
   if (InSafeMode()) {
     omtp.ForceDisable(FeatureStatus::Blocked, "OMTP blocked by safe-mode",
                       NS_LITERAL_CSTRING("FEATURE_FAILURE_COMP_SAFEMODE"));
-  } else if (gfxPrefs::LayersTilesEnabled()) {
-    omtp.ForceDisable(FeatureStatus::Blocked, "OMTP does not yet support tiling",
+  } else if (gfxPlatform::UsesTiling() && gfxPrefs::TileEdgePaddingEnabled()) {
+    omtp.ForceDisable(FeatureStatus::Blocked, "OMTP does not yet support tiling with edge padding",
                       NS_LITERAL_CSTRING("FEATURE_FAILURE_OMTP_TILING"));
   }
 
@@ -2676,6 +2670,12 @@ gfxPlatform::UsesOffMainThreadCompositing()
   }
 
   return result;
+}
+
+bool
+gfxPlatform::UsesTiling() const
+{
+  return gfxPrefs::LayersTilesEnabled();
 }
 
 /***

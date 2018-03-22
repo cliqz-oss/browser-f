@@ -6,7 +6,8 @@
 
 #include "mozilla/dom/KeyframeEffectReadOnly.h"
 
-#include "gfxPrefs.h"
+#include "FrameLayerBuilder.h"
+#include "mozilla/dom/Animation.h"
 #include "mozilla/dom/KeyframeAnimationOptionsBinding.h"
   // For UnrestrictedDoubleOrKeyframeAnimationOptions;
 #include "mozilla/dom/CSSPseudoElement.h"
@@ -15,20 +16,24 @@
 #include "mozilla/AnimationUtils.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/EffectSet.h"
-#include "mozilla/GeckoStyleContext.h"
 #include "mozilla/FloatingPoint.h" // For IsFinite
+#include "mozilla/GeckoStyleContext.h"
+#include "mozilla/LayerAnimationInfo.h"
 #include "mozilla/LookAndFeel.h" // For LookAndFeel::GetInt
 #include "mozilla/KeyframeUtils.h"
 #include "mozilla/ServoBindings.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/TypeTraits.h"
 #include "Layers.h" // For Layer
 #include "nsComputedDOMStyle.h" // nsComputedDOMStyle::GetStyleContext
+#include "nsContentUtils.h"
 #include "nsCSSPropertyIDSet.h"
 #include "nsCSSProps.h" // For nsCSSProps::PropHasFlags
 #include "nsCSSPseudoElements.h" // For CSSPseudoElementType
+#include "nsDocument.h" // For nsDocument::IsWebAnimationsEnabled
+#include "nsIFrame.h"
 #include "nsIPresShell.h"
 #include "nsIScriptError.h"
+#include "nsRefreshDriver.h"
 #include "nsStyleContextInlines.h"
 
 namespace mozilla {
@@ -175,7 +180,7 @@ KeyframesEqualIgnoringComputedOffsets(const nsTArray<Keyframe>& aLhs,
   return true;
 }
 
-// https://w3c.github.io/web-animations/#dom-keyframeeffect-setkeyframes
+// https://drafts.csswg.org/web-animations/#dom-keyframeeffect-setkeyframes
 void
 KeyframeEffectReadOnly::SetKeyframes(JSContext* aContext,
                                      JS::Handle<JSObject*> aKeyframes,
@@ -518,15 +523,23 @@ KeyframeEffectReadOnly::EnsureBaseStyles(
 
   nsPresContext* presContext =
     nsContentUtils::GetContextForContent(mTarget->mElement);
-  MOZ_ASSERT(presContext,
-             "nsPresContext should not be nullptr since this EnsureBaseStyles "
-             "supposed to be called right after getting computed values with "
-             "a valid nsPresContext");
+  // If |aProperties| is empty we're not going to dereference |presContext| so
+  // we don't care if it is nullptr.
+  //
+  // We could just return early when |aProperties| is empty and save looking up
+  // the pres context, but that won't save any effort normally since we don't
+  // call this function if we have no keyframes to begin with. Furthermore, the
+  // case where |presContext| is nullptr is so rare (we've only ever seen in
+  // fuzzing, and even then we've never been able to reproduce it reliably)
+  // it's not worth the runtime cost of an extra branch.
+  MOZ_ASSERT(presContext || aProperties.IsEmpty(),
+             "Typically presContext should not be nullptr but if it is"
+             " we should have also failed to calculate the computed values"
+             " passed-in as aProperties");
 
   RefPtr<ServoStyleContext> baseStyleContext;
   for (const AnimationProperty& property : aProperties) {
     EnsureBaseStyle(property,
-                    mTarget->mPseudoType,
                     presContext,
                     aComputedValues,
                     baseStyleContext);
@@ -536,7 +549,6 @@ KeyframeEffectReadOnly::EnsureBaseStyles(
 void
 KeyframeEffectReadOnly::EnsureBaseStyle(
   const AnimationProperty& aProperty,
-  CSSPseudoElementType aPseudoType,
   nsPresContext* aPresContext,
   const ServoStyleContext* aComputedStyle,
  RefPtr<ServoStyleContext>& aBaseStyleContext)
@@ -555,11 +567,13 @@ KeyframeEffectReadOnly::EnsureBaseStyle(
   }
 
   if (!aBaseStyleContext) {
+    Element* animatingElement =
+      EffectCompositor::GetElementToRestyle(mTarget->mElement,
+                                            mTarget->mPseudoType);
     aBaseStyleContext =
       aPresContext->StyleSet()->AsServo()->GetBaseContextForElement(
-          mTarget->mElement,
+          animatingElement,
           aPresContext,
-          aPseudoType,
           aComputedStyle);
   }
   RefPtr<RawServoAnimationValue> baseValue =
@@ -823,7 +837,7 @@ KeyframeEffectParamsFromUnion(const OptionsType& aOptions,
   if (aOptions.IsUnrestrictedDouble() ||
       // Ignore iterationComposite if the Web Animations API is not enabled,
       // then the default value 'Replace' will be used.
-      !AnimationUtils::IsCoreAPIEnabledForCaller(aCallerType)) {
+      !nsDocument::IsWebAnimationsEnabled(aCallerType)) {
     return result;
   }
 
@@ -1274,7 +1288,7 @@ KeyframeEffectReadOnly::GetKeyframes(JSContext*& aCx,
     } // else if null, leave easing as its default "linear".
 
     if (keyframe.mComposite) {
-      keyframeDict.mComposite.Construct(keyframe.mComposite.value());
+      keyframeDict.mComposite.SetValue(keyframe.mComposite.value());
     }
 
     JS::Rooted<JS::Value> keyframeJSValue(aCx);
@@ -1456,7 +1470,7 @@ KeyframeEffectReadOnly::CanThrottle() const
     // If this is a transform animation that affects the overflow region,
     // we should unthrottle the animation periodically.
     if (record.mProperty == eCSSProperty_transform &&
-        !CanThrottleTransformChanges(*frame)) {
+        !CanThrottleTransformChangesForCompositor(*frame)) {
       return false;
     }
   }
@@ -1471,16 +1485,8 @@ KeyframeEffectReadOnly::CanThrottle() const
 }
 
 bool
-KeyframeEffectReadOnly::CanThrottleTransformChanges(nsIFrame& aFrame) const
+KeyframeEffectReadOnly::CanThrottleTransformChanges(const nsIFrame& aFrame) const
 {
-  // If we know that the animation cannot cause overflow,
-  // we can just disable flushes for this animation.
-
-  // If we don't show scrollbars, we don't care about overflow.
-  if (LookAndFeel::GetInt(LookAndFeel::eIntID_ShowHideScrollbars) == 0) {
-    return true;
-  }
-
   TimeStamp now = aFrame.PresContext()->RefreshDriver()->MostRecentRefresh();
 
   EffectSet* effectSet = EffectSet::GetEffectSet(mTarget->mElement,
@@ -1491,8 +1497,22 @@ KeyframeEffectReadOnly::CanThrottleTransformChanges(nsIFrame& aFrame) const
                          " on an effect with a parent animation");
   TimeStamp lastSyncTime = effectSet->LastTransformSyncTime();
   // If this animation can cause overflow, we can throttle some of the ticks.
-  if (!lastSyncTime.IsNull() &&
-      (now - lastSyncTime) < OverflowRegionRefreshInterval()) {
+  return (!lastSyncTime.IsNull() &&
+    (now - lastSyncTime) < OverflowRegionRefreshInterval());
+}
+
+bool
+KeyframeEffectReadOnly::CanThrottleTransformChangesForCompositor(nsIFrame& aFrame) const
+{
+  // If we know that the animation cannot cause overflow,
+  // we can just disable flushes for this animation.
+
+  // If we don't show scrollbars, we don't care about overflow.
+  if (LookAndFeel::GetInt(LookAndFeel::eIntID_ShowHideScrollbars) == 0) {
+    return true;
+  }
+
+  if (CanThrottleTransformChanges(aFrame)) {
     return true;
   }
 
@@ -1676,31 +1696,6 @@ KeyframeEffectReadOnly::SetPerformanceWarning(
   nsCSSPropertyID aProperty,
   const AnimationPerformanceWarning& aWarning)
 {
-  if (aWarning.mType == AnimationPerformanceWarning::Type::ContentTooLarge &&
-      !mRecordedContentTooLarge) {
-    // ContentTooLarge stores: frameSize (w x h),
-    //                         relativeLimit (w x h), i.e. =~ viewport size *
-    //                                                          ratioLimit
-    //                         absoluteLimit (w x h)
-    MOZ_ASSERT(aWarning.mParams && aWarning.mParams->Length() >= 4,
-               "ContentTooLarge warning should have at least 4 parameters");
-    const nsTArray<int32_t>& params = aWarning.mParams.ref();
-    uint32_t frameSize = uint32_t(params[0]) * params[1];
-    float viewportRatioX = gfxPrefs::AnimationPrerenderViewportRatioLimitX();
-    float viewportRatioY = gfxPrefs::AnimationPrerenderViewportRatioLimitY();
-    double viewportWidth = viewportRatioX ? params[2] / viewportRatioX
-                                          : params[2];
-    double viewportHeight = viewportRatioY ? params[3] / viewportRatioY
-                                           : params[3];
-    double viewportSize = viewportWidth * viewportHeight;
-    uint32_t frameToViewport = frameSize / viewportSize * 100.0;
-    Telemetry::Accumulate(
-      Telemetry::ASYNC_ANIMATION_CONTENT_TOO_LARGE_FRAME_SIZE, frameSize);
-    Telemetry::Accumulate(
-      Telemetry::ASYNC_ANIMATION_CONTENT_TOO_LARGE_PERCENTAGE, frameToViewport);
-    mRecordedContentTooLarge = true;
-  }
-
   for (AnimationProperty& property : mProperties) {
     if (property.mProperty == aProperty &&
         (!property.mPerformanceWarning ||
@@ -1715,14 +1710,6 @@ KeyframeEffectReadOnly::SetPerformanceWarning(
       }
       return;
     }
-  }
-}
-
-void
-KeyframeEffectReadOnly::RecordFrameSizeTelemetry(uint32_t aPixelArea) {
-  if (!mRecordedFrameSize) {
-    Telemetry::Accumulate(Telemetry::ASYNC_ANIMATION_FRAME_SIZE, aPixelArea);
-    mRecordedFrameSize = true;
   }
 }
 
@@ -1783,6 +1770,15 @@ KeyframeEffectReadOnly::CalculateCumulativeChangeHint(StyleType* aStyleContext)
   mCumulativeChangeHint = nsChangeHint(0);
 
   for (const AnimationProperty& property : mProperties) {
+    // For opacity property we don't produce any change hints that are not
+    // included in nsChangeHint_Hints_CanIgnoreIfNotVisible so we can throttle
+    // opacity animations regardless of the change they produce.  This
+    // optimization is particularly important since it allows us to throttle
+    // opacity animations with missing 0%/100% keyframes.
+    if (property.mProperty == eCSSProperty_opacity) {
+      continue;
+    }
+
     for (const AnimationPropertySegment& segment : property.mSegments) {
       // In case composite operation is not 'replace' or value is null,
       // we can't throttle animations which will not cause any layout changes
@@ -1928,8 +1924,8 @@ KeyframeEffectReadOnly::ContainsAnimatedScale(const nsIFrame* aFrame) const
       // here just to be safe.
       return true;
     }
-    gfxSize size = baseStyle.GetScaleValue(aFrame);
-    if (size != gfxSize(1.0f, 1.0f)) {
+    gfx::Size size = baseStyle.GetScaleValue(aFrame);
+    if (size != gfx::Size(1.0f, 1.0f)) {
       return true;
     }
 
@@ -1938,14 +1934,14 @@ KeyframeEffectReadOnly::ContainsAnimatedScale(const nsIFrame* aFrame) const
     // really matter.
     for (const AnimationPropertySegment& segment : prop.mSegments) {
       if (!segment.mFromValue.IsNull()) {
-        gfxSize from = segment.mFromValue.GetScaleValue(aFrame);
-        if (from != gfxSize(1.0f, 1.0f)) {
+        gfx::Size from = segment.mFromValue.GetScaleValue(aFrame);
+        if (from != gfx::Size(1.0f, 1.0f)) {
           return true;
         }
       }
       if (!segment.mToValue.IsNull()) {
-        gfxSize to = segment.mToValue.GetScaleValue(aFrame);
-        if (to != gfxSize(1.0f, 1.0f)) {
+        gfx::Size to = segment.mToValue.GetScaleValue(aFrame);
+        if (to != gfx::Size(1.0f, 1.0f)) {
           return true;
         }
       }
@@ -1970,11 +1966,18 @@ KeyframeEffectReadOnly::UpdateEffectSet(EffectSet* aEffectSet) const
     return;
   }
 
+  nsIFrame* frame = GetAnimationFrame();
   if (HasAnimationOfProperty(eCSSProperty_opacity)) {
     effectSet->SetMayHaveOpacityAnimation();
+    if (frame) {
+      frame->SetMayHaveOpacityAnimation();
+    }
   }
   if (HasAnimationOfProperty(eCSSProperty_transform)) {
     effectSet->SetMayHaveTransformAnimation();
+    if (frame) {
+      frame->SetMayHaveTransformAnimation();
+    }
   }
 }
 

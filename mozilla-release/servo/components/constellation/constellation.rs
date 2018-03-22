@@ -106,7 +106,7 @@ use compositing::compositor_thread::{CompositorProxy, EmbedderMsg, EmbedderProxy
 use compositing::compositor_thread::Msg as ToCompositorMsg;
 use debugger;
 use devtools_traits::{ChromeToDevtoolsControlMsg, DevtoolsControlMsg};
-use euclid::{Size2D, TypedSize2D, ScaleFactor};
+use euclid::{Size2D, TypedSize2D, TypedScale};
 use event_loop::EventLoop;
 use gfx::font_cache_thread::FontCacheThread;
 use gfx_traits::Epoch;
@@ -152,7 +152,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use style_traits::CSSPixel;
-use style_traits::cursor::Cursor;
+use style_traits::cursor::CursorKind;
 use style_traits::viewport::ViewportConstraints;
 use timer_scheduler::TimerScheduler;
 use webrender_api;
@@ -594,9 +594,9 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
                 mem_profiler_chan: state.mem_profiler_chan,
                 window_size: WindowSizeData {
                     initial_viewport: opts::get().initial_window_size.to_f32() *
-                        ScaleFactor::new(1.0),
+                        TypedScale::new(1.0),
                     device_pixel_ratio:
-                        ScaleFactor::new(opts::get().device_pixels_per_px.unwrap_or(1.0)),
+                        TypedScale::new(opts::get().device_pixels_per_px.unwrap_or(1.0)),
                 },
                 phantom: PhantomData,
                 clipboard_ctx: if state.supports_clipboard {
@@ -1108,9 +1108,9 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
             FromScriptMsg::PipelineExited => {
                 self.handle_pipeline_exited(source_pipeline_id);
             }
-            FromScriptMsg::InitiateNavigateRequest(req_init) => {
+            FromScriptMsg::InitiateNavigateRequest(req_init, cancel_chan) => {
                 debug!("constellation got initiate navigate request message");
-                self.handle_navigate_request(source_pipeline_id, req_init);
+                self.handle_navigate_request(source_pipeline_id, req_init, cancel_chan);
             }
             FromScriptMsg::ScriptLoadedURLInIFrame(load_info) => {
                 debug!("constellation got iframe URL load message {:?} {:?} {:?}",
@@ -1259,6 +1259,14 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
 
             FromScriptMsg::ResizeTo(size) => {
                 self.embedder_proxy.send(EmbedderMsg::ResizeTo(source_top_ctx_id, size));
+            }
+
+            FromScriptMsg::GetScreenSize(send) => {
+                self.embedder_proxy.send(EmbedderMsg::GetScreenSize(source_top_ctx_id, send));
+            }
+
+            FromScriptMsg::GetScreenAvailSize(send) => {
+                self.embedder_proxy.send(EmbedderMsg::GetScreenAvailSize(source_top_ctx_id, send));
             }
 
             FromScriptMsg::Exit => {
@@ -1669,14 +1677,15 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
 
     fn handle_navigate_request(&self,
                               id: PipelineId,
-                              req_init: RequestInit) {
+                              req_init: RequestInit,
+                              cancel_chan: IpcReceiver<()>) {
         let listener = NetworkListener::new(
                            req_init,
                            id,
                            self.public_resource_threads.clone(),
                            self.network_listener_sender.clone());
 
-        listener.initiate_fetch();
+        listener.initiate_fetch(Some(cancel_chan));
     }
 
     // The script thread associated with pipeline_id has loaded a URL in an iframe via script. This
@@ -1797,7 +1806,7 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
         self.compositor_proxy.send(ToCompositorMsg::PendingPaintMetric(pipeline_id, epoch))
     }
 
-    fn handle_set_cursor_msg(&mut self, cursor: Cursor) {
+    fn handle_set_cursor_msg(&mut self, cursor: CursorKind) {
         self.embedder_proxy.send(EmbedderMsg::SetCursor(cursor))
     }
 

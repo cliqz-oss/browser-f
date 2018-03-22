@@ -161,6 +161,8 @@ protected:
 };
 
 TEST_F(APZEventRegionsTester, HitRegionImmediateResponse) {
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+
   CreateEventRegionsLayerTree1();
 
   TestAsyncPanZoomController* root = ApzcOf(layers[0]);
@@ -226,6 +228,8 @@ TEST_F(APZEventRegionsTester, HitRegionAccumulatesChildren) {
 }
 
 TEST_F(APZEventRegionsTester, Obscuration) {
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+
   CreateObscuringLayerTree();
   ScopedLayerTreeRegistration registration(manager, 0, root, mcc);
 
@@ -236,21 +240,21 @@ TEST_F(APZEventRegionsTester, Obscuration) {
 
   ApzcPanNoFling(parent, 75, 25);
 
-  HitTestResult result;
+  gfx::CompositorHitTestInfo result;
   RefPtr<AsyncPanZoomController> hit = manager->GetTargetAPZC(ScreenPoint(50, 75), &result);
   EXPECT_EQ(child, hit.get());
-  EXPECT_EQ(HitTestResult::HitLayer, result);
+  EXPECT_EQ(CompositorHitTestInfo::eVisibleToHitTest, result);
 }
 
 TEST_F(APZEventRegionsTester, Bug1119497) {
   CreateBug1119497LayerTree();
 
-  HitTestResult result;
+  gfx::CompositorHitTestInfo result;
   RefPtr<AsyncPanZoomController> hit = manager->GetTargetAPZC(ScreenPoint(50, 50), &result);
-  // We should hit layers[2], so |result| will be HitLayer but there's no
+  // We should hit layers[2], so |result| will be eVisibleToHitTest but there's no
   // actual APZC on layers[2], so it will be the APZC of the root layer.
   EXPECT_EQ(ApzcOf(layers[0]), hit.get());
-  EXPECT_EQ(HitTestResult::HitLayer, result);
+  EXPECT_EQ(CompositorHitTestInfo::eVisibleToHitTest, result);
 }
 
 TEST_F(APZEventRegionsTester, Bug1117712) {

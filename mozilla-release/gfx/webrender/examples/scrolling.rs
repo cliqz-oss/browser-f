@@ -24,11 +24,13 @@ impl Example for App {
         _api: &RenderApi,
         builder: &mut DisplayListBuilder,
         _resources: &mut ResourceUpdates,
-        layout_size: LayoutSize,
+        _framebuffer_size: DeviceUintSize,
         _pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
-        let info = LayoutPrimitiveInfo::new(LayoutRect::new(LayoutPoint::zero(), layout_size));
+        let info = LayoutPrimitiveInfo::new(
+            LayoutRect::new(LayoutPoint::zero(), builder.content_size())
+        );
         builder.push_stacking_context(
             &info,
             ScrollPolicy::Scrollable,
@@ -135,6 +137,7 @@ impl Example for App {
     }
 
     fn on_event(&mut self, event: glutin::Event, api: &RenderApi, document_id: DocumentId) -> bool {
+        let mut txn = Transaction::new();
         match event {
             glutin::Event::KeyboardInput(glutin::ElementState::Pressed, _, Some(key)) => {
                 let offset = match key {
@@ -145,8 +148,7 @@ impl Example for App {
                     _ => return false,
                 };
 
-                api.scroll(
-                    document_id,
+                txn.scroll(
                     ScrollLocation::Delta(LayoutVector2D::new(offset.0, offset.1)),
                     self.cursor_position,
                     ScrollEventPhase::Start,
@@ -166,8 +168,7 @@ impl Example for App {
                     glutin::MouseScrollDelta::PixelDelta(dx, dy) => (dx, dy),
                 };
 
-                api.scroll(
-                    document_id,
+                txn.scroll(
                     ScrollLocation::Delta(LayoutVector2D::new(dx, dy)),
                     self.cursor_position,
                     ScrollEventPhase::Start,
@@ -175,6 +176,8 @@ impl Example for App {
             }
             _ => (),
         }
+
+        api.send_transaction(document_id, txn);
 
         false
     }

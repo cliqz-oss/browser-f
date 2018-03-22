@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import json
 import os
 import random
@@ -20,14 +22,17 @@ import mozinfo
 import moznetwork
 import mozprofile
 import mozversion
-import serve
 
 from manifestparser import TestManifest
 from manifestparser.filters import tags
 from marionette_driver.marionette import Marionette
 from moztest.adapters.unit import StructuredTestResult, StructuredTestRunner
 from moztest.results import TestResult, TestResultCollection, relevant_line
-from serve import iter_proc, iter_url
+
+from six import reraise
+
+from . import serve
+
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -356,7 +361,7 @@ class BaseMarionetteArguments(ArgumentParser):
                           dest='e10s',
                           default=True,
                           help='Disable e10s when running marionette tests.')
-        self.add_argument("--headless",
+        self.add_argument("-z", "--headless",
                           action="store_true",
                           dest="headless",
                           default=os.environ.get("MOZ_HEADLESS", False),
@@ -656,7 +661,7 @@ class BaseMarionetteTestRunner(object):
                 except ValueError as e:
                     exc, val, tb = sys.exc_info()
                     msg = "JSON file ({0}) is not properly formatted: {1}"
-                    raise exc, msg.format(os.path.abspath(path), e.message), tb
+                    reraise(exc, msg.format(os.path.abspath(path), e.message), tb)
         return data
 
     @property
@@ -767,7 +772,7 @@ class BaseMarionetteTestRunner(object):
                 except Exception as e:
                     exc, val, tb = sys.exc_info()
                     msg = "Connection attempt to {0}:{1} failed with error: {2}"
-                    raise exc, msg.format(host, port, e), tb
+                    reraise(exc, msg.format(host, port, e), tb)
         if self.workspace:
             kwargs['workspace'] = self.workspace_path
         if self.headless:
@@ -804,11 +809,26 @@ class BaseMarionetteTestRunner(object):
         filename = os.path.basename(filename)
         return self.filename_pattern.match(filename)
 
+    def _fix_test_path(self, path):
+        """Normalize a logged test path from the test package."""
+        test_path_prefixes = [
+            "tests{}".format(os.path.sep),
+        ]
+
+        for prefix in test_path_prefixes:
+            if path.startswith(prefix):
+                path = path[len(prefix):]
+                break
+        return path
+
     def _log_skipped_tests(self):
         for test in self.manifest_skipped_tests:
-            name = os.path.basename(test['path'])
-            self.logger.test_start(name)
-            self.logger.test_end(name,
+            rel_path = None
+            if os.path.exists(test['path']):
+                rel_path = self._fix_test_path(os.path.relpath(test['path']))
+
+            self.logger.test_start(rel_path)
+            self.logger.test_end(rel_path,
                                  'SKIP',
                                  message=test['disabled'])
             self.todo += 1
@@ -841,7 +861,7 @@ class BaseMarionetteTestRunner(object):
                 any(not server.is_alive for _, server in self.fixture_servers):
             self.logger.info("Starting fixture servers")
             self.fixture_servers = self.start_fixture_servers()
-            for url in iter_url(self.fixture_servers):
+            for url in serve.iter_url(self.fixture_servers):
                 self.logger.info("Fixture server listening on %s" % url)
 
             # backwards compatibility
@@ -869,6 +889,7 @@ class BaseMarionetteTestRunner(object):
             tests_by_group[test['group']].append(test['filepath'])
 
         self.logger.suite_start(tests_by_group,
+                                name='marionette-test',
                                 version_info=self.version_info,
                                 device_info=device_info)
 
@@ -917,7 +938,7 @@ class BaseMarionetteTestRunner(object):
 
             # reraise previous interruption now
             if interrupted:
-                raise interrupted[0], interrupted[1], interrupted[2]
+                reraise(interrupted[0], interrupted[1], interrupted[2])
 
     def _print_summary(self, tests):
         self.logger.info('\nSUMMARY\n-------')
@@ -1088,7 +1109,7 @@ class BaseMarionetteTestRunner(object):
         self.run_test_set(self.tests)
 
     def cleanup(self):
-        for proc in iter_proc(self.fixture_servers):
+        for proc in serve.iter_proc(self.fixture_servers):
             proc.stop()
             proc.kill()
         self.fixture_servers = {}

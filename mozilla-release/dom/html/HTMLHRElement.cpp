@@ -30,6 +30,7 @@ bool
 HTMLHRElement::ParseAttribute(int32_t aNamespaceID,
                               nsAtom* aAttribute,
                               const nsAString& aValue,
+                              nsIPrincipal* aMaybeScriptedPrincipal,
                               nsAttrValue& aResult)
 {
   static const nsAttrValue::EnumTable kAlignTable[] = {
@@ -55,7 +56,7 @@ HTMLHRElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
@@ -168,8 +169,7 @@ HTMLHRElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
   if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(Color))) {
     // color: a color
     // (we got the color attribute earlier)
-    if (colorIsSet &&
-        aData->PresContext()->UseDocumentColors()) {
+    if (colorIsSet && !aData->ShouldIgnoreColors()) {
       aData->SetColorValueIfUnset(eCSSProperty_color, color);
     }
   }

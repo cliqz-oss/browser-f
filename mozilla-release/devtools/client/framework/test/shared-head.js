@@ -88,7 +88,7 @@ const ConsoleObserver = {
   observe: function (subject, topic, data) {
     let message = subject.wrappedJSObject.arguments[0];
 
-    if (/Failed propType/.test(message)) {
+    if (message && /Failed propType/.test(message.toString())) {
       ok(false, message);
     }
   }
@@ -118,6 +118,7 @@ registerCleanupFunction(() => {
   Services.prefs.clearUserPref("devtools.toolbox.host");
   Services.prefs.clearUserPref("devtools.toolbox.previousHost");
   Services.prefs.clearUserPref("devtools.toolbox.splitconsoleEnabled");
+  Services.prefs.clearUserPref("devtools.toolbox.splitconsoleHeight");
 });
 
 registerCleanupFunction(function* cleanup() {
@@ -172,17 +173,17 @@ var removeTab = Task.async(function* (tab) {
 });
 
 /**
- * Refresh the given tab.
- * @param {Object} tab The tab to be refreshed.
+ * Refresh the provided tab.
+ * @param {Object} tab The tab to be refreshed. Defaults to the currently selected tab.
  * @return Promise<undefined> resolved when the tab is successfully refreshed.
  */
-var refreshTab = Task.async(function*(tab) {
+var refreshTab = async function (tab = gBrowser.selectedTab) {
   info("Refreshing tab.");
   const finished = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-  gBrowser.reloadTab(gBrowser.selectedTab);
-  yield finished;
+  gBrowser.reloadTab(tab);
+  await finished;
   info("Tab finished refreshing.");
-});
+};
 
 /**
  * Simulate a key event from a <key> element.
@@ -691,4 +692,48 @@ function createTestHTTPServer() {
 
   server.start(-1);
   return server;
+}
+
+/**
+ * Inject `EventUtils` helpers into ContentTask scope.
+ *
+ * This helper is automatically exposed to mochitest browser tests,
+ * but is missing from content task scope.
+ * You should call this method only once per <browser> tag
+ *
+ * @param {xul:browser} browser
+ *        Reference to the browser in which we load content task
+ */
+async function injectEventUtilsInContentTask(browser) {
+  await ContentTask.spawn(browser, {}, function* () {
+    if ("EventUtils" in this) {
+      return;
+    }
+
+    let EventUtils = this.EventUtils = {};
+
+    EventUtils.window = {};
+    EventUtils.parent = EventUtils.window;
+    /* eslint-disable camelcase */
+    EventUtils._EU_Ci = Components.interfaces;
+    EventUtils._EU_Cc = Components.classes;
+    /* eslint-enable camelcase */
+    // EventUtils' `sendChar` function relies on the navigator to synthetize events.
+    EventUtils.navigator = content.navigator;
+    EventUtils.KeyboardEvent = content.KeyboardEvent;
+
+    EventUtils.synthesizeClick = element => new Promise(resolve => {
+      element.addEventListener("click", function () {
+        resolve();
+      }, {once: true});
+
+      EventUtils.synthesizeMouseAtCenter(element,
+        { type: "mousedown", isSynthesized: false }, content);
+      EventUtils.synthesizeMouseAtCenter(element,
+        { type: "mouseup", isSynthesized: false }, content);
+    });
+
+    Services.scriptloader.loadSubScript(
+      "chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
+  });
 }

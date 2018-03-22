@@ -54,10 +54,11 @@ public:
   BeginConsumeBodyMainThread();
 
   void
-  ContinueConsumeBody(nsresult aStatus, uint32_t aLength, uint8_t* aResult);
+  ContinueConsumeBody(nsresult aStatus, uint32_t aLength, uint8_t* aResult,
+                      bool aShuttingDown = false);
 
   void
-  ContinueConsumeBlobBody(BlobImpl* aBlobImpl);
+  ContinueConsumeBlobBody(BlobImpl* aBlobImpl, bool aShuttingDown = false);
 
   void
   ShutDownMainThreadConsuming();
@@ -103,7 +104,9 @@ private:
   RefPtr<FetchBody<Derived>> mBody;
 #endif
 
+  // This is nullified when the consuming of the body starts.
   nsCOMPtr<nsIInputStream> mBodyStream;
+
   MutableBlobStorage::MutableBlobStorageType mBlobStorageType;
   nsCString mBodyMimeType;
 

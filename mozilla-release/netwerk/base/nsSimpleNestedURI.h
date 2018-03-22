@@ -19,6 +19,7 @@
 #include "nsCOMPtr.h"
 #include "nsSimpleURI.h"
 #include "nsINestedURI.h"
+#include "nsIURIMutator.h"
 
 #include "nsIIPCSerializableURI.h"
 
@@ -53,6 +54,7 @@ public:
                                     bool* result) override;
     virtual nsSimpleURI* StartClone(RefHandlingEnum refHandlingMode,
                                     const nsACString& newRef) override;
+    NS_IMETHOD Mutate(nsIURIMutator * *_retval) override;
 
     // nsISerializable overrides
     NS_IMETHOD Read(nsIObjectInputStream* aStream) override;
@@ -67,6 +69,58 @@ public:
 
 protected:
     nsCOMPtr<nsIURI> mInnerURI;
+
+
+public:
+    class Mutator
+        : public nsIURIMutator
+        , public BaseURIMutator<nsSimpleNestedURI>
+    {
+        NS_DECL_ISUPPORTS
+        NS_FORWARD_SAFE_NSIURISETTERS_RET(mURI)
+
+        explicit Mutator() { }
+    private:
+        virtual ~Mutator() { }
+
+        MOZ_MUST_USE NS_IMETHOD
+        Deserialize(const mozilla::ipc::URIParams& aParams) override
+        {
+            return InitFromIPCParams(aParams);
+        }
+
+        MOZ_MUST_USE NS_IMETHOD
+        Read(nsIObjectInputStream* aStream) override
+        {
+            return InitFromInputStream(aStream);
+        }
+
+        MOZ_MUST_USE NS_IMETHOD
+        Finalize(nsIURI** aURI) override
+        {
+            mURI->mMutable = false;
+            mURI.forget(aURI);
+            return NS_OK;
+        }
+
+        MOZ_MUST_USE NS_IMETHOD
+        SetSpec(const nsACString& aSpec, nsIURIMutator** aMutator) override
+        {
+            if (aMutator) {
+                NS_ADDREF(*aMutator = this);
+            }
+            return InitFromSpec(aSpec);
+        }
+
+        void ResetMutable()
+        {
+            if (mURI) {
+                mURI->mMutable = true;
+            }
+        }
+
+        friend class nsSimpleNestedURI;
+    };
 };
 
 } // namespace net

@@ -4,24 +4,14 @@
     "permissions": [],
     "types": [
       {
-        "id": "WebExtensionManifest",
+        "id": "ManifestBase",
         "type": "object",
-        "description": "Represents a WebExtension manifest.json file",
+        "description": "Common properties for all manifest.json files",
         "properties": {
           "manifest_version": {
             "type": "integer",
             "minimum": 2,
             "maximum": 2
-          },
-
-          "minimum_chrome_version":{
-            "type": "string",
-            "optional": true
-          },
-
-          "minimum_opera_version":{
-            "type": "string",
-            "optional": true
           },
 
           "applications": {
@@ -81,6 +71,24 @@
             "format": "url",
             "optional": true,
             "preprocess": "localize"
+          }
+        }
+      },
+      {
+        "id": "WebExtensionManifest",
+        "type": "object",
+        "description": "Represents a WebExtension manifest.json file",
+
+        "$import": "ManifestBase",
+        "properties": {
+          "minimum_chrome_version":{
+            "type": "string",
+            "optional": true
+          },
+
+          "minimum_opera_version":{
+            "type": "string",
+            "optional": true
           },
 
           "icons": {
@@ -220,65 +228,9 @@
         "id": "WebExtensionLangpackManifest",
         "type": "object",
         "description": "Represents a WebExtension language pack manifest.json file",
+
+        "$import": "ManifestBase",
         "properties": {
-          "manifest_version": {
-            "type": "integer",
-            "minimum": 2,
-            "maximum": 2
-          },
-
-          "applications": {
-            "type": "object",
-            "optional": true,
-            "properties": {
-              "gecko": {
-                "$ref": "FirefoxSpecificProperties",
-                "optional": true
-              }
-            }
-          },
-
-          "browser_specific_settings": {
-            "type": "object",
-            "optional": true,
-            "properties": {
-              "gecko": {
-                "$ref": "FirefoxSpecificProperties",
-                "optional": true
-              }
-            }
-          },
-
-          "name": {
-            "type": "string",
-            "optional": false,
-            "preprocess": "localize"
-          },
-
-          "short_name": {
-            "type": "string",
-            "optional": true,
-            "preprocess": "localize"
-          },
-
-          "description": {
-            "type": "string",
-            "optional": true,
-            "preprocess": "localize"
-          },
-
-          "author": {
-            "type": "string",
-            "optional": true,
-            "preprocess": "localize",
-            "onError": "warn"
-          },
-
-          "version": {
-            "type": "string",
-            "optional": false
-          },
-
           "homepage_url": {
             "type": "string",
             "format": "url",
@@ -474,6 +426,15 @@
             "enum": ["<all_urls>"]
           },
           {
+            "$ref": "MatchPatternRestricted"
+          }
+        ]
+      },
+      {
+        "id": "MatchPatternRestricted",
+        "description": "Same as MatchPattern above, but excludes <all_urls>",
+        "choices": [
+          {
             "type": "string",
             "pattern": "^(https?|wss?|file|ftp|\\*)://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$"
           },
@@ -538,7 +499,7 @@
           "js": {
             "type": "array",
             "optional": true,
-            "description": "The list of CSS files to inject",
+            "description": "The list of JS files to inject",
             "items": { "$ref": "ExtensionURL" }
           },
           "all_frames": {"type": "boolean", "optional": true, "description": "If allFrames is <code>true</code>, implies that the JavaScript or CSS should be injected into all frames of current page. By default, it's <code>false</code> and is only injected into the top frame."},

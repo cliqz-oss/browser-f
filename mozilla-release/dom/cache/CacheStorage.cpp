@@ -7,7 +7,10 @@
 #include "mozilla/dom/cache/CacheStorage.h"
 
 #include "mozilla/Unused.h"
+#include "mozilla/dom/CacheBinding.h"
 #include "mozilla/dom/CacheStorageBinding.h"
+#include "mozilla/dom/DOMPrefs.h"
+#include "mozilla/dom/InternalRequest.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/Response.h"
 #include "mozilla/dom/cache/AutoUtils.h"
@@ -159,7 +162,7 @@ CacheStorage::CreateOnMainThread(Namespace aNamespace, nsIGlobalObject* aGlobal,
 
   bool testingEnabled = aForceTrustedOrigin ||
     Preferences::GetBool("dom.caches.testing.enabled", false) ||
-    Preferences::GetBool("dom.serviceWorkers.testing.enabled", false);
+    DOMPrefs::ServiceWorkersTestingEnabled();
 
   if (!IsTrusted(principalInfo, testingEnabled)) {
     NS_WARNING("CacheStorage not supported on untrusted origins.");
@@ -217,8 +220,8 @@ CacheStorage::CreateOnWorker(Namespace aNamespace, nsIGlobalObject* aGlobal,
   //    origin checks.  The ServiceWorker has its own trusted origin checks
   //    that are better than ours.  In addition, we don't have information
   //    about the window any more, so we can't do our own checks.
-  bool testingEnabled = aWorkerPrivate->DOMCachesTestingEnabled() ||
-                        aWorkerPrivate->ServiceWorkersTestingEnabled() ||
+  bool testingEnabled = DOMPrefs::DOMCachesTestingEnabled() ||
+                        DOMPrefs::ServiceWorkersTestingEnabled() ||
                         aWorkerPrivate->ServiceWorkersTestingInWindow() ||
                         aWorkerPrivate->IsServiceWorker();
 
@@ -440,13 +443,6 @@ CacheStorage::Keys(ErrorResult& aRv)
   RunRequest(Move(entry));
 
   return promise.forget();
-}
-
-// static
-bool
-CacheStorage::PrefEnabled(JSContext* aCx, JSObject* aObj)
-{
-  return Cache::PrefEnabled(aCx, aObj);
 }
 
 // static

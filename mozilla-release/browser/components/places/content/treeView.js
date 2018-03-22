@@ -556,7 +556,7 @@ PlacesTreeView.prototype = {
   get _todayFormatter() {
     if (!this.__todayFormatter) {
       const dtOptions = { timeStyle: "short" };
-      this.__todayFormatter = Services.intl.createDateTimeFormat(undefined, dtOptions);
+      this.__todayFormatter = new Services.intl.DateTimeFormat(undefined, dtOptions);
     }
     return this.__todayFormatter;
   },
@@ -568,7 +568,7 @@ PlacesTreeView.prototype = {
         dateStyle: "short",
         timeStyle: "short"
       };
-      this.__dateFormatter = Services.intl.createDateTimeFormat(undefined, dtOptions);
+      this.__dateFormatter = new Services.intl.DateTimeFormat(undefined, dtOptions);
     }
     return this.__dateFormatter;
   },
@@ -1509,7 +1509,6 @@ PlacesTreeView.prototype = {
     return node.icon;
   },
 
-  getProgressMode(aRow, aColumn) { },
   getCellValue(aRow, aColumn) { },
 
   getCellText: function PTV_getCellText(aRow, aColumn) {
@@ -1738,11 +1737,11 @@ PlacesTreeView.prototype = {
       Cu.reportError("isEditable called for an unbuilt row.");
       return false;
     }
-    let itemId = node.itemId;
+    let itemGuid = node.bookmarkGuid;
 
     // Only bookmark-nodes are editable.  Fortunately, this checks also takes
     // care of livemark children.
-    if (itemId == -1)
+    if (itemGuid == "")
       return false;
 
     // The following items are also not editable, even though they are bookmark
@@ -1755,7 +1754,7 @@ PlacesTreeView.prototype = {
     // Note that concrete itemIds aren't used intentionally.  For example, we
     // have no reason to disallow renaming a shortcut to the Bookmarks Toolbar,
     // except for the one under All Bookmarks.
-    if (PlacesUtils.nodeIsSeparator(node) || PlacesUtils.isRootItem(itemId))
+    if (PlacesUtils.nodeIsSeparator(node) || PlacesUtils.isRootItem(itemGuid))
       return false;
 
     let parentId = PlacesUtils.getConcreteItemId(node.parent);

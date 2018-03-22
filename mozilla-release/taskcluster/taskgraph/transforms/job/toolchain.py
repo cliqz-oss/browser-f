@@ -7,8 +7,6 @@ Support for running toolchain-building jobs via dedicated scripts
 
 from __future__ import absolute_import, print_function, unicode_literals
 
-import hashlib
-
 from mozbuild.shellutil import quote as shell_quote
 
 from taskgraph.util.schema import Schema
@@ -23,9 +21,11 @@ from taskgraph.transforms.job.common import (
 )
 from taskgraph.util.hash import hash_paths
 from taskgraph import GECKO
+from taskgraph.util.cached_tasks import add_optimization
+import taskgraph
 
 
-TOOLCHAIN_INDEX = 'gecko.cache.level-{level}.toolchains.v1.{name}.{digest}'
+CACHE_TYPE = 'toolchains.v2'
 
 toolchain_run_schema = Schema({
     Required('using'): 'toolchain-script',
@@ -40,7 +40,7 @@ toolchain_run_schema = Schema({
 
     # If not false, tooltool downloads will be enabled via relengAPIProxy
     # for either just public files, or all files.  Not supported on Windows
-    Required('tooltool-downloads', default=False): Any(
+    Required('tooltool-downloads'): Any(
         False,
         'public',
         'internal',
@@ -51,7 +51,7 @@ toolchain_run_schema = Schema({
     # "toolchain-build", i.e., to
     # `build/sparse-profiles/toolchain-build`.  If `None`, instructs
     # `run-task` to not use a sparse profile at all.
-    Required('sparse-profile', default='toolchain-build'): Any(basestring, None),
+    Required('sparse-profile'): Any(basestring, None),
 
     # Paths/patterns pointing to files that influence the outcome of a
     # toolchain build.
@@ -66,7 +66,7 @@ toolchain_run_schema = Schema({
 })
 
 
-def add_optimization(config, run, taskdesc):
+def get_digest_data(config, run, taskdesc):
     files = list(run.get('resources', []))
     # This file
     files.append('taskcluster/taskgraph/transforms/job/toolchain.py')
@@ -88,34 +88,34 @@ def add_optimization(config, run, taskdesc):
     if deps:
         data.extend(sorted(deps.values()))
 
+    # If the task uses an in-tree docker image, we want it to influence
+    # the index path as well. Ideally, the content of the docker image itself
+    # should have an influence, but at the moment, we can't get that
+    # information here. So use the docker image name as a proxy. Not a lot of
+    # changes to docker images actually have an impact on the resulting
+    # toolchain artifact, so we'll just rely on such important changes to be
+    # accompanied with a docker image name change.
+    image = taskdesc['worker'].get('docker-image', {}).get('in-tree')
+    if image:
+        data.extend(image)
+
     # Likewise script arguments should influence the index.
     args = run.get('arguments')
     if args:
         data.extend(args)
-
-    label = taskdesc['label']
-    subs = {
-        'name': label.replace('%s-' % config.kind, ''),
-        'digest': hashlib.sha256('\n'.join(data)).hexdigest()
-    }
-
-    # We'll try to find a cached version of the toolchain at levels above
-    # and including the current level, starting at the highest level.
-    index_routes = []
-    for level in reversed(range(int(config.params['level']), 4)):
-        subs['level'] = level
-        index_routes.append(TOOLCHAIN_INDEX.format(**subs))
-    taskdesc['optimization'] = {'index-search': index_routes}
-
-    # ... and cache at the lowest level.
-    taskdesc.setdefault('routes', []).append(
-        'index.{}'.format(TOOLCHAIN_INDEX.format(**subs)))
+    return data
 
 
-@run_job_using("docker-worker", "toolchain-script", schema=toolchain_run_schema)
+toolchain_defaults = {
+    'tooltool-downloads': False,
+    'sparse-profile': 'toolchain-build',
+}
+
+
+@run_job_using("docker-worker", "toolchain-script",
+               schema=toolchain_run_schema, defaults=toolchain_defaults)
 def docker_worker_toolchain(config, job, taskdesc):
     run = job['run']
-    taskdesc['run-on-projects'] = ['trunk', 'try']
 
     worker = taskdesc['worker']
     worker['chain-of-trust'] = True
@@ -173,13 +173,20 @@ def docker_worker_toolchain(config, job, taskdesc):
     if 'toolchain-alias' in run:
         attributes['toolchain-alias'] = run['toolchain-alias']
 
-    add_optimization(config, run, taskdesc)
+    if not taskgraph.fast:
+        name = taskdesc['label'].replace('{}-'.format(config.kind), '', 1)
+        add_optimization(
+            config, taskdesc,
+            cache_type=CACHE_TYPE,
+            cache_name=name,
+            digest_data=get_digest_data(config, run, taskdesc),
+        )
 
 
-@run_job_using("generic-worker", "toolchain-script", schema=toolchain_run_schema)
+@run_job_using("generic-worker", "toolchain-script",
+               schema=toolchain_run_schema, defaults=toolchain_defaults)
 def windows_toolchain(config, job, taskdesc):
     run = job['run']
-    taskdesc['run-on-projects'] = ['trunk', 'try']
 
     worker = taskdesc['worker']
 
@@ -229,4 +236,11 @@ def windows_toolchain(config, job, taskdesc):
     if 'toolchain-alias' in run:
         attributes['toolchain-alias'] = run['toolchain-alias']
 
-    add_optimization(config, run, taskdesc)
+    if not taskgraph.fast:
+        name = taskdesc['label'].replace('{}-'.format(config.kind), '', 1)
+        add_optimization(
+            config, taskdesc,
+            cache_type=CACHE_TYPE,
+            cache_name=name,
+            digest_data=get_digest_data(config, run, taskdesc),
+        )

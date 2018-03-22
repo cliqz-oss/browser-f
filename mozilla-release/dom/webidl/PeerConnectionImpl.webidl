@@ -41,30 +41,35 @@ interface PeerConnectionImpl  {
 
   /* Adds the tracks created by GetUserMedia */
   [Throws]
-  void addTrack(MediaStreamTrack track, MediaStream... streams);
+  TransceiverImpl createTransceiverImpl(DOMString kind,
+                                        MediaStreamTrack? track);
   [Throws]
-  void removeTrack(MediaStreamTrack track);
+  boolean checkNegotiationNeeded();
   [Throws]
-  void insertDTMF(RTCRtpSender sender, DOMString tones,
+  void insertDTMF(TransceiverImpl transceiver, DOMString tones,
                   optional unsigned long duration = 100,
                   optional unsigned long interToneGap = 70);
   [Throws]
   DOMString getDTMFToneBuffer(RTCRtpSender sender);
+  sequence<RTCRtpSourceEntry> getRtpSources(MediaStreamTrack track,
+                                            DOMHighResTimeStamp rtpSourceNow);
+  DOMHighResTimeStamp getNowInRtpSourceReferenceTime();
+
   [Throws]
-  void replaceTrack(MediaStreamTrack thisTrack, MediaStreamTrack withTrack);
-  [Throws]
-  void setParameters(MediaStreamTrack track,
-                     optional RTCRtpParameters parameters);
-  [Throws]
-  RTCRtpParameters getParameters(MediaStreamTrack track);
+  void replaceTrackNoRenegotiation(TransceiverImpl transceiverImpl,
+                                   MediaStreamTrack? withTrack);
   [Throws]
   void closeStreams();
 
-  sequence<MediaStream> getLocalStreams();
-  sequence<MediaStream> getRemoteStreams();
-
   void addRIDExtension(MediaStreamTrack recvTrack, unsigned short extensionId);
   void addRIDFilter(MediaStreamTrack recvTrack, DOMString rid);
+
+  // Inserts CSRC data for the RtpSourceObserver for testing
+  void insertAudioLevelForContributingSource(MediaStreamTrack recvTrack,
+                                             unsigned long source,
+                                             DOMHighResTimeStamp timestamp,
+                                             boolean hasLevel,
+                                             byte level);
 
   void enablePacketDump(unsigned long level,
                         mozPacketDumpType type,

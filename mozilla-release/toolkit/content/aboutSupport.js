@@ -183,6 +183,18 @@ var snapshotFormatters = {
     }));
   },
 
+  securitySoftware: function securitySoftware(data) {
+    if (!AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+      $("security-software-title").hidden = true;
+      $("security-software-table").hidden = true;
+      return;
+    }
+
+    $("security-software-antivirus").textContent = data.registeredAntiVirus;
+    $("security-software-antispyware").textContent = data.registeredAntiSpyware;
+    $("security-software-firewall").textContent = data.registeredFirewall;
+  },
+
   features: function features(data) {
     $.append($("features-tbody"), data.map(function(feature) {
       return $.new("tr", [
@@ -901,9 +913,7 @@ function copyRawDataToClipboard(button) {
       transferable.init(getLoadContext());
       transferable.addDataFlavor("text/unicode");
       transferable.setTransferData("text/unicode", str, str.data.length * 2);
-      Cc["@mozilla.org/widget/clipboard;1"].
-        getService(Ci.nsIClipboard).
-        setData(transferable, null, Ci.nsIClipboard.kGlobalClipboard);
+      Services.clipboard.setData(transferable, null, Ci.nsIClipboard.kGlobalClipboard);
       if (AppConstants.platform == "android") {
         // Present a toast notification.
         let message = {
@@ -953,9 +963,7 @@ function copyContentsToClipboard() {
   transferable.setTransferData("text/unicode", ssText, dataText.length * 2);
 
   // Store the data into the clipboard.
-  let clipboard = Cc["@mozilla.org/widget/clipboard;1"]
-                    .getService(Ci.nsIClipboard);
-  clipboard.setData(transferable, null, clipboard.kGlobalClipboard);
+  Services.clipboard.setData(transferable, null, Services.clipboard.kGlobalClipboard);
 
   if (AppConstants.platform == "android") {
     // Present a toast notification.
@@ -1212,10 +1220,15 @@ function setupEventListeners() {
     });
     $("verify-place-integrity-button").addEventListener("click", function(event) {
       PlacesDBUtils.checkAndFixDatabase().then((tasksStatusMap) => {
-        let msg = PlacesDBUtils.getLegacyLog(tasksStatusMap).join("\n");
+        let logs = [];
+        for (let [key, value] of tasksStatusMap) {
+          logs.push(`> Task: ${key}`);
+          let prefix = value.succeeded ? "+ " : "- ";
+          logs = logs.concat(value.logs.map(m => `${prefix}${m}`));
+        }
         $("verify-place-result").style.display = "block";
         $("verify-place-result").classList.remove("no-copy");
-        $("verify-place-result").textContent = msg;
+        $("verify-place-result").textContent = logs.join("\n");
       });
     });
   }

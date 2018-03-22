@@ -120,7 +120,7 @@
             return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
 
-        let family = FontFamily::parse(input)?;
+        let family = FontFamily::parse_specified(input)?;
         Ok(expanded! {
             % for name in "style weight stretch variant_caps".split():
                 font_${name}: unwrap_or_initial!(font_${name}, ${name}),
@@ -151,9 +151,14 @@
     }
 
     impl<'a> LonghandsToSerialize<'a> {
-        fn to_css_for<W>(&self,
-                         serialize_for: SerializeFor,
-                         dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css_for<W>(
+            &self,
+            serialize_for: SerializeFor,
+            dest: &mut CssWriter<W>,
+        ) -> fmt::Result
+        where
+            W: Write,
+        {
             % if product == "gecko":
                 match self.check_system() {
                     CheckSystemResult::AllSystem(sys) => return sys.to_css(dest),
@@ -226,7 +231,7 @@
             }
 
             /// Serialize the shorthand value for canvas font attribute.
-            pub fn to_css_for_canvas<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+            pub fn to_css_for_canvas<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
                 self.to_css_for(SerializeFor::Canvas, dest)
             }
         % endif
@@ -234,7 +239,7 @@
 
     // This may be a bit off, unsure, possibly needs changes
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             self.to_css_for(SerializeFor::Normal, dest)
         }
     }
@@ -258,6 +263,8 @@
 % for prop in sub_properties:
     use properties::longhands::font_variant_${prop};
 % endfor
+    #[allow(unused_imports)]
+    use values::specified::FontVariantLigatures;
 
     pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
                                -> Result<Longhands, ParseError<'i>> {
@@ -271,7 +278,7 @@
             // The 'none' value sets 'font-variant-ligatures' to 'none' and resets all other sub properties
             // to their initial value.
         % if product == "gecko":
-            ligatures = Some(font_variant_ligatures::get_none_specified_value());
+            ligatures = Some(FontVariantLigatures::none());
         % endif
         } else {
             let mut has_custom_value: bool = false;
@@ -307,11 +314,11 @@
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
         #[allow(unused_assignments)]
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
 
             let has_none_ligatures =
             % if product == "gecko":
-                self.font_variant_ligatures == &font_variant_ligatures::get_none_specified_value();
+                self.font_variant_ligatures == &FontVariantLigatures::none();
             % else:
                 false;
             % endif

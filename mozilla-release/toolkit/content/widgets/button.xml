@@ -184,7 +184,7 @@
 
         if (event.keyCode || event.charCode <= 32 || event.altKey ||
             event.ctrlKey || event.metaKey)
-          return;  // No printable char pressed, not a potential accesskey
+          return; // No printable char pressed, not a potential accesskey
 
         // Possible accesskey pressed
         var charPressedLower = String.fromCharCode(event.charCode).toLowerCase();
@@ -199,7 +199,7 @@
         // Get the buttons for the main document and all sub-frames
         for (var frameCount = -1; frameCount < window.top.frames.length; frameCount++) {
           var doc = (frameCount == -1) ? window.top.document :
-            window.top.frames[frameCount].document
+            window.top.frames[frameCount].document;
           if (this.fireAccessKeyButton(doc.documentElement, charPressedLower))
             return;
         }
@@ -369,13 +369,6 @@
         <children/>
       </xul:button>
       <xul:dropmarker class="button-menubutton-dropmarker" xbl:inherits="open,disabled,label"/>
-    </content>
-  </binding>
-
-  <binding id="button-image" display="xul:button"
-           extends="chrome://global/content/bindings/button.xml#button">
-    <content>
-      <xul:image class="button-image-icon" xbl:inherits="src=image"/>
     </content>
   </binding>
 

@@ -9,6 +9,7 @@
 #include "mozilla/dom/CanvasRenderingContext2D.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/UniquePtr.h"
+#include "MozFramebuffer.h"
 #include "nsContentUtils.h"
 #include "nsDOMJSUtils.h"
 #include "nsIScriptContext.h"
@@ -37,7 +38,7 @@ CanvasRenderingContextHelper::ToBlob(JSContext* aCx,
       , mBlobCallback(aCallback) {}
 
     // This is called on main thread.
-    nsresult ReceiveBlob(already_AddRefed<Blob> aBlob)
+    nsresult ReceiveBlob(already_AddRefed<Blob> aBlob) override
     {
       RefPtr<Blob> blob = aBlob;
 

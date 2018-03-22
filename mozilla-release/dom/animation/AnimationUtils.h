@@ -33,7 +33,7 @@ public:
 
     if (!aTime.IsNull()) {
       result.SetValue(
-        nsRFPService::ReduceTimePrecisionAsMSecs(aTime.Value().ToMilliseconds())
+        nsRFPService::ReduceTimePrecisionAsMSecs(aTime.Value().ToMilliseconds(), TimerPrecisionType::RFPOnly)
       );
     }
 
@@ -66,18 +66,6 @@ public:
    */
   static bool
   IsOffscreenThrottlingEnabled();
-
-  /**
-   * Returns true if the preference to enable the core Web Animations API is
-   * true.
-   */
-  static bool IsCoreAPIEnabled();
-
-  /**
-   * Returns true if the preference to enable the core Web Animations API is
-   * true or the caller is chrome.
-   */
-  static bool IsCoreAPIEnabledForCaller(dom::CallerType aCallerType);
 
   /**
    * Returns true if the given EffectSet contains a current effect that animates

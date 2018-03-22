@@ -38,7 +38,6 @@
 #include "mozilla/dom/Response.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/URLSearchParams.h"
-#include "mozilla/dom/workers/ServiceWorkerManager.h"
 #include "mozilla/Telemetry.h"
 
 #include "BodyExtractor.h"
@@ -170,7 +169,7 @@ class WorkerNotifier final : public WorkerHolder
 
 public:
   explicit WorkerNotifier(WorkerFetchResolver* aResolver)
-    : WorkerHolder(AllowIdleShutdownStart)
+    : WorkerHolder("WorkerNotifier", AllowIdleShutdownStart)
     , mResolver(aResolver)
   {}
 
@@ -291,7 +290,6 @@ public:
 
     if (mSignalProxy) {
       mSignalProxy->Shutdown();
-      mSignalProxy = nullptr;
     }
 
     mWorkerHolder = nullptr;
@@ -334,16 +332,18 @@ class MainThreadFetchResolver final : public FetchDriverObserver
   RefPtr<Response> mResponse;
   RefPtr<FetchObserver> mFetchObserver;
   RefPtr<AbortSignal> mSignal;
+  const bool mMozErrors;
 
   nsCOMPtr<nsILoadGroup> mLoadGroup;
 
   NS_DECL_OWNINGTHREAD
 public:
   MainThreadFetchResolver(Promise* aPromise, FetchObserver* aObserver,
-                          AbortSignal* aSignal)
+                          AbortSignal* aSignal, bool aMozErrors)
     : mPromise(aPromise)
     , mFetchObserver(aObserver)
     , mSignal(aSignal)
+    , mMozErrors(aMozErrors)
   {}
 
   void
@@ -518,7 +518,7 @@ FetchRequest(nsIGlobalObject* aGlobal, const RequestOrUSVString& aInput,
     Telemetry::Accumulate(Telemetry::FETCH_IS_MAINTHREAD, 1);
 
     RefPtr<MainThreadFetchResolver> resolver =
-      new MainThreadFetchResolver(p, observer, signal);
+      new MainThreadFetchResolver(p, observer, signal, request->MozErrors());
     RefPtr<FetchDriver> fetch =
       new FetchDriver(r, principal, loadGroup,
                       aGlobal->EventTargetFor(TaskCategory::Other), isTrackingFetch);
@@ -571,6 +571,11 @@ MainThreadFetchResolver::OnResponseAvailableInternal(InternalResponse* aResponse
   } else {
     if (mFetchObserver) {
       mFetchObserver->SetState(FetchState::Errored);
+    }
+
+    if (mMozErrors) {
+      mPromise->MaybeReject(aResponse->GetErrorCode());
+      return;
     }
 
     ErrorResult result;
@@ -860,13 +865,7 @@ WorkerFetchResolver::FlushConsoleReport()
 
   if (worker->IsServiceWorker()) {
     // Flush to service worker
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    if (!swm) {
-      mReporter->FlushReportsToConsole(0);
-      return;
-    }
-
-    swm->FlushReportsToAllClients(worker->ServiceWorkerScope(), mReporter);
+    mReporter->FlushReportsToConsoleForServiceWorkerScope(worker->ServiceWorkerScope());
     return;
   }
 

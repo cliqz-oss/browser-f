@@ -25,8 +25,16 @@ public:
                                      nsISupports*        aContainer,
                                      nsIStreamListener** aDocListener,
                                      bool                aReset = true,
-                                     nsIContentSink*     aSink = nullptr);
-  virtual void SetScriptGlobalObject(nsIScriptGlobalObject* aScriptGlobalObject);
+                                     nsIContentSink*     aSink = nullptr) override;
+  virtual void SetScriptGlobalObject(nsIScriptGlobalObject* aScriptGlobalObject) override;
+
+  virtual void Destroy() override
+  {
+    if (mStreamListener) {
+      mStreamListener->DropDocumentRef();
+    }
+    MediaDocument::Destroy();
+  }
 
 protected:
 

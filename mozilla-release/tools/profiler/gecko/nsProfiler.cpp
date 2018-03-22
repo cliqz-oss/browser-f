@@ -165,7 +165,7 @@ namespace {
     nsAString& mBuffer; // This struct must not outlive this buffer
     explicit StringWriteFunc(nsAString& buffer) : mBuffer(buffer) {}
 
-    void Write(const char* aStr)
+    void Write(const char* aStr) override
     {
       mBuffer.Append(NS_ConvertUTF8toUTF16(aStr));
     }
@@ -626,7 +626,7 @@ nsProfiler::StartGathering(double aSinceTime)
       [self](const nsCString& aResult) {
         self->GatheredOOPProfile(aResult);
       },
-      [self](ipc::PromiseRejectReason aReason) {
+      [self](ipc::ResponseRejectReason aReason) {
         self->GatheredOOPProfile(NS_LITERAL_CSTRING(""));
       });
   }
@@ -665,4 +665,3 @@ nsProfiler::ResetGathering()
   mGathering = false;
   mWriter.reset();
 }
-

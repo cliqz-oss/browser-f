@@ -17,7 +17,7 @@
 namespace mozilla {
 
 class EditorBase;
-class RangeUpdater;
+class TextComposition;
 class TextRangeArray;
 
 namespace dom {
@@ -32,26 +32,34 @@ class Text;
  */
 class CompositionTransaction final : public EditTransactionBase
 {
+protected:
+  CompositionTransaction(EditorBase& aEditorBase,
+                         const nsAString& aStringToInsert,
+                         dom::Text& aTextNode,
+                         uint32_t aOffset);
+
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_IMETEXTTXN_IID)
 
   /**
-   * @param aTextNode           The start node of text content.
-   * @param aOffset             The location in aTextNode to do the insertion.
-   * @param aReplaceLength      The length of text to replace. 0 means not
-   *                            replacing existing text.
-   * @param aTextRangeArray     Clauses and/or caret information. This may be
-   *                            null.
-   * @param aString             The new text to insert.
-   * @param aEditorBase         Used to get and set the selection.
-   * @param aRangeUpdater       The range updater
+   * Creates a composition transaction.  aEditorBase must not return from
+   * GetComposition() while calling this method.  Note that this method will
+   * update text node information of aEditorBase.mComposition.
+   *
+   * @param aEditorBase         The editor which has composition.
+   * @param aStringToInsert     The new composition string to insert.  This may
+   *                            be different from actual composition string.
+   *                            E.g., password editor can hide the character
+   *                            with a different character.
+   * @param aTextNode           The text node which will have aStringToInsert.
+   * @param aOffset             The offset in aTextNode where aStringToInsert
+   *                            will be inserted.
    */
-  CompositionTransaction(dom::Text& aTextNode,
-                         uint32_t aOffset, uint32_t aReplaceLength,
-                         TextRangeArray* aTextRangeArray,
-                         const nsAString& aString,
-                         EditorBase& aEditorBase,
-                         RangeUpdater* aRangeUpdater);
+  static already_AddRefed<CompositionTransaction>
+  Create(EditorBase& aEditorBase,
+         const nsAString& aStringToInsert,
+         dom::Text& aTextNode,
+         uint32_t aOffset);
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(CompositionTransaction,
                                            EditTransactionBase)
@@ -91,8 +99,6 @@ private:
 
   // The editor, which is used to get the selection controller.
   RefPtr<EditorBase> mEditorBase;
-
-  RangeUpdater* mRangeUpdater;
 
   bool mFixed;
 };

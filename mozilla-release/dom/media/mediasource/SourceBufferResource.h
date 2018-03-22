@@ -7,6 +7,7 @@
 #ifndef MOZILLA_SOURCEBUFFERRESOURCE_H_
 #define MOZILLA_SOURCEBUFFERRESOURCE_H_
 
+#include "mozilla/AbstractThread.h"
 #include "mozilla/Logging.h"
 #include "MediaResource.h"
 #include "nsIPrincipal.h"
@@ -25,19 +26,22 @@ class SourceBuffer;
 
 } // namespace dom
 
+DDLoggedTypeDeclNameAndBase(SourceBufferResource, MediaResource);
+
 // SourceBufferResource is not thread safe.
-class SourceBufferResource final : public MediaResource
+class SourceBufferResource final
+  : public MediaResource
+  , public DecoderDoctorLifeLogger<SourceBufferResource>
 {
 public:
   SourceBufferResource();
-  nsresult Close();
+  nsresult Close() override;
   nsresult ReadAt(int64_t aOffset,
                   char* aBuffer,
                   uint32_t aCount,
                   uint32_t* aBytes) override;
   // Memory-based and no locks, caching discouraged.
   bool ShouldCacheReads() override { return false; }
-  int64_t Tell() override { return mOffset; }
   void Pin() override { UNIMPLEMENTED(); }
   void Unpin() override { UNIMPLEMENTED(); }
   int64_t GetLength() override { return mInputBuffer.GetLength(); }
@@ -139,9 +143,8 @@ private:
   // The buffer holding resource data.
   ResourceQueue mInputBuffer;
 
-  uint64_t mOffset;
-  bool mClosed;
-  bool mEnded;
+  bool mClosed = false;
+  bool mEnded = false;
 };
 
 } // namespace mozilla

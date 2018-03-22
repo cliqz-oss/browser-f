@@ -81,7 +81,7 @@ LOCAL_INCLUDES += [
 
 CXXFLAGS += CONFIG['SQLITE_CFLAGS']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
     # Suppress warnings in third-party code.
     CXXFLAGS += [
@@ -92,5 +92,8 @@ if CONFIG['NIGHTLY_BUILD'] or CONFIG['MOZ_DEBUG']:
     DEFINES['MOZ_SAFEBROWSING_DUMP_FAILED_UPDATES'] = True
 
 SPHINX_TREES['url-classifier'] = 'docs'
+
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']
 
 include('/ipc/chromium/chromium-config.mozbuild')

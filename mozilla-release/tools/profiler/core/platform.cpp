@@ -42,12 +42,14 @@
 #include "GeckoProfilerReporter.h"
 #include "ProfilerIOInterposeObserver.h"
 #include "mozilla/AutoProfilerLabel.h"
+#include "mozilla/ExtensionPolicyService.h"
 #include "mozilla/Scheduler.h"
 #include "mozilla/StackWalk.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/ThreadLocal.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/extensions/WebExtensionPolicy.h"
 #include "ThreadInfo.h"
 #include "nsIHttpProtocolHandler.h"
 #include "nsIObserverService.h"
@@ -107,7 +109,8 @@
 #endif
 
 // Linux builds use LUL, which uses DWARF info to unwind stacks.
-#if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_x86_linux) || defined(GP_PLAT_mips64_linux)
+#if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_x86_linux) || \
+    defined(GP_PLAT_mips64_linux)
 # define HAVE_NATIVE_UNWIND
 # define USE_LUL_STACKWALK
 # include "lul/LulMain.h"
@@ -1133,6 +1136,10 @@ DoLULBacktrace(PSLockRef aLock, const ThreadInfo& aThreadInfo,
   startRegs.xip = lul::TaggedUWord(mc->gregs[REG_EIP]);
   startRegs.xsp = lul::TaggedUWord(mc->gregs[REG_ESP]);
   startRegs.xbp = lul::TaggedUWord(mc->gregs[REG_EBP]);
+#elif defined(GP_PLAT_mips64_linux)
+  startRegs.pc = lul::TaggedUWord(mc->pc);
+  startRegs.sp = lul::TaggedUWord(mc->gregs[29]);
+  startRegs.fp = lul::TaggedUWord(mc->gregs[30]);
 #else
 # error "Unknown plat"
 #endif
@@ -1180,6 +1187,9 @@ DoLULBacktrace(PSLockRef aLock, const ThreadInfo& aThreadInfo,
 #elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
     uintptr_t rEDZONE_SIZE = 0;
     uintptr_t start = startRegs.xsp.Value() - rEDZONE_SIZE;
+#elif defined(GP_PLAT_mips64_linux)
+    uintptr_t rEDZONE_SIZE = 0;
+    uintptr_t start = startRegs.sp.Value() - rEDZONE_SIZE;
 #else
 #   error "Unknown plat"
 #endif
@@ -1536,6 +1546,41 @@ StreamMetaJSCustomObject(PSLockRef aLock, SpliceableJSONWriter& aWriter,
     if (!NS_FAILED(res))
       aWriter.StringProperty("product", string.Data());
   }
+
+  aWriter.StartObjectProperty("extensions");
+  {
+    {
+      JSONSchemaWriter schema(aWriter);
+      schema.WriteField("id");
+      schema.WriteField("name");
+      schema.WriteField("baseURL");
+    }
+
+    aWriter.StartArrayProperty("data");
+    {
+      nsTArray<RefPtr<WebExtensionPolicy>> exts;
+      ExtensionPolicyService::GetSingleton().GetAll(exts);
+
+      for (auto& ext : exts) {
+        aWriter.StartArrayElement(JSONWriter::SingleLineStyle);
+
+        nsAutoString id;
+        ext->GetId(id);
+        aWriter.StringElement(NS_ConvertUTF16toUTF8(id).get());
+
+        aWriter.StringElement(NS_ConvertUTF16toUTF8(ext->Name()).get());
+
+        auto url = ext->GetURL(NS_LITERAL_STRING(""));
+        if (url.isOk()) {
+          aWriter.StringElement(NS_ConvertUTF16toUTF8(url.unwrap()).get());
+        }
+
+        aWriter.EndArray();
+      }
+    }
+    aWriter.EndArray();
+  }
+  aWriter.EndObject();
 }
 
 #if defined(GP_OS_android)
@@ -3236,6 +3281,46 @@ void
 profiler_add_marker(const char* aMarkerName)
 {
   profiler_add_marker(aMarkerName, nullptr);
+}
+
+// This logic needs to add a marker for a different thread, so we actually need
+// to lock here.
+void
+profiler_add_marker_for_thread(int aThreadId,
+                               const char* aMarkerName,
+                               UniquePtr<ProfilerMarkerPayload> aPayload)
+{
+  MOZ_RELEASE_ASSERT(CorePS::Exists());
+
+  // Create the ProfilerMarker which we're going to store.
+  TimeStamp origin = (aPayload && !aPayload->GetStartTime().IsNull())
+                   ? aPayload->GetStartTime()
+                   : TimeStamp::Now();
+  TimeDuration delta = origin - CorePS::ProcessStartTime();
+  ProfilerMarker* marker =
+    new ProfilerMarker(aMarkerName, aThreadId, Move(aPayload),
+                       delta.ToMilliseconds());
+
+  PSAutoLock lock(gPSMutex);
+
+#ifdef DEBUG
+  // Assert that our thread ID makes sense
+  bool realThread = false;
+  const CorePS::ThreadVector& liveThreads = CorePS::LiveThreads(lock);
+  for (uint32_t i = 0; i < liveThreads.size(); i++) {
+    ThreadInfo* info = liveThreads.at(i);
+    if (info->ThreadId() == aThreadId) {
+      realThread = true;
+      break;
+    }
+  }
+  MOZ_ASSERT(realThread, "Invalid thread id");
+#endif
+
+  // Insert the marker into the buffer
+  ProfileBuffer& buffer = ActivePS::Buffer(lock);
+  buffer.AddStoredMarker(marker);
+  buffer.AddEntry(ProfileBufferEntry::Marker(marker));
 }
 
 void

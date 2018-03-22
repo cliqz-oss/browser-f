@@ -362,7 +362,7 @@ CodeGeneratorMIPS64::visitDivOrModI64(LDivOrModI64* lir)
 
     // Handle divide by zero.
     if (lir->canBeDivideByZero())
-        masm.ma_b(rhs, rhs, trap(lir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
+        masm.ma_b(rhs, rhs, oldTrap(lir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
 
     // Handle an integer overflow exception from INT64_MIN / -1.
     if (lir->canBeNegativeOverflow()) {
@@ -372,7 +372,7 @@ CodeGeneratorMIPS64::visitDivOrModI64(LDivOrModI64* lir)
         if (lir->mir()->isMod()) {
             masm.ma_xor(output, output);
         } else {
-            masm.jump(trap(lir, wasm::Trap::IntegerOverflow));
+            masm.jump(oldTrap(lir, wasm::Trap::IntegerOverflow));
         }
         masm.jump(&done);
         masm.bind(&notmin);
@@ -399,7 +399,7 @@ CodeGeneratorMIPS64::visitUDivOrModI64(LUDivOrModI64* lir)
 
     // Prevent divide by zero.
     if (lir->canBeDivideByZero())
-        masm.ma_b(rhs, rhs, trap(lir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
+        masm.ma_b(rhs, rhs, oldTrap(lir, wasm::Trap::IntegerDivideByZero), Assembler::Zero);
 
     masm.as_ddivu(lhs, rhs);
 
@@ -447,7 +447,7 @@ CodeGeneratorMIPS64::emitWasmLoadI64(T* lir)
       default: MOZ_CRASH("unexpected array type");
     }
 
-    masm.memoryBarrier(mir->access().barrierBefore());
+    masm.memoryBarrierBefore(mir->access().sync());
 
     if (IsUnaligned(mir->access())) {
         Register temp = ToRegister(lir->getTemp(1));
@@ -455,14 +455,13 @@ CodeGeneratorMIPS64::emitWasmLoadI64(T* lir)
         masm.ma_load_unaligned(mir->access(), ToOutRegister64(lir).reg, BaseIndex(HeapReg, ptr, TimesOne),
                                temp, static_cast<LoadStoreSize>(8 * byteSize),
                                isSigned ? SignExtend : ZeroExtend);
-        return;
+    } else {
+        masm.ma_load(ToOutRegister64(lir).reg, BaseIndex(HeapReg, ptr, TimesOne),
+                     static_cast<LoadStoreSize>(8 * byteSize), isSigned ? SignExtend : ZeroExtend);
+        masm.append(mir->access(), masm.size() - 4, masm.framePushed());
     }
 
-    masm.ma_load(ToOutRegister64(lir).reg, BaseIndex(HeapReg, ptr, TimesOne),
-                 static_cast<LoadStoreSize>(8 * byteSize), isSigned ? SignExtend : ZeroExtend);
-    masm.append(mir->access(), masm.size() - 4, masm.framePushed());
-
-    masm.memoryBarrier(mir->access().barrierAfter());
+    masm.memoryBarrierAfter(mir->access().sync());
 }
 
 void
@@ -513,7 +512,7 @@ CodeGeneratorMIPS64::emitWasmStoreI64(T* lir)
       default: MOZ_CRASH("unexpected array type");
     }
 
-    masm.memoryBarrier(mir->access().barrierBefore());
+    masm.memoryBarrierBefore(mir->access().sync());
 
     if (IsUnaligned(mir->access())) {
         Register temp = ToRegister(lir->getTemp(1));
@@ -521,13 +520,13 @@ CodeGeneratorMIPS64::emitWasmStoreI64(T* lir)
         masm.ma_store_unaligned(mir->access(), ToRegister64(lir->value()).reg, BaseIndex(HeapReg, ptr, TimesOne),
                                 temp, static_cast<LoadStoreSize>(8 * byteSize),
                                 isSigned ? SignExtend : ZeroExtend);
-        return;
+    } else {
+        masm.ma_store(ToRegister64(lir->value()).reg, BaseIndex(HeapReg, ptr, TimesOne),
+                      static_cast<LoadStoreSize>(8 * byteSize), isSigned ? SignExtend : ZeroExtend);
+        masm.append(mir->access(), masm.size() - 4, masm.framePushed());
     }
-    masm.ma_store(ToRegister64(lir->value()).reg, BaseIndex(HeapReg, ptr, TimesOne),
-                  static_cast<LoadStoreSize>(8 * byteSize), isSigned ? SignExtend : ZeroExtend);
-    masm.append(mir->access(), masm.size() - 4, masm.framePushed());
 
-    masm.memoryBarrier(mir->access().barrierAfter());
+    masm.memoryBarrierAfter(mir->access().sync());
 }
 
 void

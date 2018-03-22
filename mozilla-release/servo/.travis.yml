@@ -18,9 +18,10 @@ matrix:
         - sudo apt-get update -q
         - sudo apt-get install clang-3.9 llvm-3.9 llvm-3.9-runtime -y
         - export LLVM_CONFIG=/usr/lib/llvm-3.9/bin/llvm-config
+        - curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain none -y
+        - source ~/.profile
       script:
          - ./mach build -d --verbose
-         - ./mach test-compiletest
          - ./mach test-unit
          - ./mach clean
          - ./mach build-geckolib
@@ -28,13 +29,17 @@ matrix:
          - bash etc/ci/lockfile_changed.sh
       cache:
         directories:
-          - .cargo
           - .servo
+          - $HOME/.cargo
+          - $HOME/.rustup
           - $HOME/.ccache
       before_cache:
         - ./mach clean-nightlies --keep 2 --force
         - ./mach clean-cargo-cache --keep 2 --force
-      env: CCACHE=/usr/bin/ccache
+      env:
+        CCACHE=/usr/bin/ccache
+        RUSTFLAGS=-Dwarnings
+        CARGO_INCREMENTAL=0
       addons:
         apt:
           packages:

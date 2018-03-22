@@ -13,14 +13,16 @@
 #include "AppleVTLinker.h"
 #include "MediaData.h"
 #include "mozilla/ArrayUtils.h"
-#include "mp4_demuxer/H264.h"
+#include "H264.h"
 #include "nsAutoPtr.h"
 #include "nsThreadUtils.h"
 #include "mozilla/Logging.h"
 #include "VideoUtils.h"
 #include "gfxPlatform.h"
 
-#define LOG(...) MOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, (__VA_ARGS__))
+#define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
+#define LOGEX(_this, ...)                                                      \
+  DDMOZ_LOGEX(_this, sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
 
 namespace mozilla {
 
@@ -33,7 +35,7 @@ AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
   , mDisplayWidth(aConfig.mDisplay.width)
   , mDisplayHeight(aConfig.mDisplay.height)
   , mTaskQueue(aTaskQueue)
-  , mMaxRefFrames(mp4_demuxer::H264::ComputeMaxRefFrames(aConfig.mExtraData))
+  , mMaxRefFrames(H264::ComputeMaxRefFrames(aConfig.mExtraData))
   , mImageContainer(aImageContainer)
 #ifdef MOZ_WIDGET_UIKIT
   , mUseSoftwareImages(true)
@@ -291,10 +293,14 @@ PlatformCallback(void* decompressionOutputRefCon,
                  CMTime presentationTimeStamp,
                  CMTime presentationDuration)
 {
-  LOG("AppleVideoDecoder %s status %d flags %d", __func__, static_cast<int>(status), flags);
-
   AppleVTDecoder* decoder =
     static_cast<AppleVTDecoder*>(decompressionOutputRefCon);
+  LOGEX(decoder,
+        "AppleVideoDecoder %s status %d flags %d",
+        __func__,
+        static_cast<int>(status),
+        flags);
+
   nsAutoPtr<AppleVTDecoder::AppleFrameRef> frameRef(
     static_cast<AppleVTDecoder::AppleFrameRef*>(sourceFrameRefCon));
 
@@ -361,7 +367,7 @@ AppleVTDecoder::OutputFrame(CVPixelBufferRef aImage,
     size_t width = CVPixelBufferGetWidth(aImage);
     size_t height = CVPixelBufferGetHeight(aImage);
     DebugOnly<size_t> planes = CVPixelBufferGetPlaneCount(aImage);
-    MOZ_ASSERT(planes == 2, "Likely not NV12 format and it must be.");
+    MOZ_ASSERT(planes == 3, "Likely not YUV420 format and it must be.");
 
     VideoData::YCbCrBuffer buffer;
 
@@ -391,15 +397,15 @@ AppleVTDecoder::OutputFrame(CVPixelBufferRef aImage,
     buffer.mPlanes[1].mWidth = (width+1) / 2;
     buffer.mPlanes[1].mHeight = (height+1) / 2;
     buffer.mPlanes[1].mOffset = 0;
-    buffer.mPlanes[1].mSkip = 1;
+    buffer.mPlanes[1].mSkip = 0;
     // Cr plane.
     buffer.mPlanes[2].mData =
-      static_cast<uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(aImage, 1));
-    buffer.mPlanes[2].mStride = CVPixelBufferGetBytesPerRowOfPlane(aImage, 1);
+      static_cast<uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(aImage, 2));
+    buffer.mPlanes[2].mStride = CVPixelBufferGetBytesPerRowOfPlane(aImage, 2);
     buffer.mPlanes[2].mWidth = (width+1) / 2;
     buffer.mPlanes[2].mHeight = (height+1) / 2;
-    buffer.mPlanes[2].mOffset = 1;
-    buffer.mPlanes[2].mSkip = 1;
+    buffer.mPlanes[2].mOffset = 0;
+    buffer.mPlanes[2].mSkip = 0;
 
     gfx::IntRect visible = gfx::IntRect(0,
                                         0,
@@ -602,7 +608,7 @@ AppleVTDecoder::CreateOutputConfiguration()
   if (mUseSoftwareImages) {
     // Output format type:
     SInt32 PixelFormatTypeValue =
-      kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+      kCVPixelFormatType_420YpCbCr8Planar;
     AutoCFRelease<CFNumberRef> PixelFormatTypeNumber =
       CFNumberCreate(kCFAllocatorDefault,
                      kCFNumberSInt32Type,
@@ -663,3 +669,6 @@ AppleVTDecoder::CreateOutputConfiguration()
 }
 
 } // namespace mozilla
+
+#undef LOG
+#undef LOGEX

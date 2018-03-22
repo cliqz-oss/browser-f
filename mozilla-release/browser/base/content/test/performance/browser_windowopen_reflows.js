@@ -15,29 +15,14 @@
 const EXPECTED_REFLOWS = [
   {
     stack: [
-      "select@chrome://global/content/bindings/textbox.xml",
-      "focusAndSelectUrlBar@chrome://browser/content/browser.js",
+      "onOverflow@resource:///modules/CustomizableUI.jsm",
+      "init@resource:///modules/CustomizableUI.jsm",
+      "observe@resource:///modules/CustomizableUI.jsm",
+      "_delayedStartup@chrome://browser/content/browser.js",
     ],
+    times: 2, // This number should only ever go down - never up.
   },
 ];
-
-if (Services.appinfo.OS == "Linux") {
-  if (gMultiProcessBrowser) {
-    EXPECTED_REFLOWS.push({
-      stack: [
-        "handleEvent@chrome://browser/content/tabbrowser.xml",
-      ],
-    });
-  } else {
-    EXPECTED_REFLOWS.push({
-      stack: [
-        "handleEvent@chrome://browser/content/tabbrowser.xml",
-        "inferFromText@chrome://browser/content/browser.js",
-        "handleEvent@chrome://browser/content/browser.js",
-      ],
-    });
-  }
-}
 
 if (Services.appinfo.OS == "WINNT") {
   EXPECTED_REFLOWS.push(
@@ -55,6 +40,12 @@ if (Services.appinfo.OS == "WINNT") {
 
 if (Services.appinfo.OS == "WINNT" || Services.appinfo.OS == "Darwin") {
   EXPECTED_REFLOWS.push(
+    {
+      stack: [
+        "select@chrome://global/content/bindings/textbox.xml",
+        "focusAndSelectUrlBar@chrome://browser/content/browser.js",
+      ],
+    },
     {
       stack: [
         "rect@chrome://browser/content/browser-tabsintitlebar.js",

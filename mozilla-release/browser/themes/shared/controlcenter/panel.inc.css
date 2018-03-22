@@ -11,6 +11,12 @@
   display: none;
 }
 
+/* This is used by screenshots tests to hide intermittently different
+ * identity popup shadows (see bug 1425253). */
+#identity-popup.no-shadow {
+  -moz-window-shadow: none;
+}
+
 /* Show the right elements for the right connection states. */
 #identity-popup[connection=not-secure] [when-connection~=not-secure],
 #identity-popup[connection=secure-cert-user-overridden] [when-connection~=secure-cert-user-overridden],
@@ -68,20 +74,6 @@
   max-width: 30em;
 }
 
-#identity-popup-multiView > .panel-viewcontainer > .panel-viewstack[viewtype="main"] > .panel-subviews {
-  transform: translateX(100%);
-  box-shadow: none;
-}
-
-#identity-popup-multiView > .panel-viewcontainer > .panel-viewstack[viewtype="main"] > .panel-subviews:-moz-locale-dir(rtl) {
-  transform: translateX(-100%);
-}
-
-#identity-popup-multiView > .panel-viewcontainer > .panel-viewstack > .panel-subviews {
-  background: var(--arrowpanel-background);
-  padding: 0;
-}
-
 .identity-popup-section:not(:first-child) {
   border-top: 1px solid var(--panel-separator-color);
 }
@@ -92,6 +84,9 @@
   background-repeat: no-repeat;
   background-position: 1em 1em;
   background-size: 24px auto;
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  fill-opacity: .6;
   padding: 0.5em 0 1em;
   /* .identity-popup-host depends on this width */
   padding-inline-start: calc(2em + 24px);
@@ -164,7 +159,7 @@
 .identity-popup-host {
   word-wrap: break-word;
   /* 1em + 2em + 24px is .identity-popup-security-content padding
-   * 30em is .panel-mainview width */
+   * 30em is the panel width */
   max-width: calc(30rem - 3rem - 24px - @identityPopupExpanderWidth@);
 }
 

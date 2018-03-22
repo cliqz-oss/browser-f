@@ -9,6 +9,7 @@
 #include "ClientHandle.h"
 #include "ClientManagerChild.h"
 #include "ClientManagerOpChild.h"
+#include "ClientPrefs.h"
 #include "ClientSource.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/workers/bindings/WorkerHolderToken.h"
@@ -97,22 +98,33 @@ ClientManager::Shutdown()
 
 UniquePtr<ClientSource>
 ClientManager::CreateSourceInternal(ClientType aType,
+                                    nsISerialEventTarget* aEventTarget,
                                     const PrincipalInfo& aPrincipal)
 {
   NS_ASSERT_OWNINGTHREAD(ClientManager);
 
-  if (IsShutdown()) {
-    return nullptr;
-  }
-
   nsID id;
   nsresult rv = nsContentUtils::GenerateUUIDInPlace(id);
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return nullptr;
+    // If we can't even get a UUID, at least make sure not to use a garbage
+    // value.  Instead return a shutdown ClientSource with a zero'd id.
+    // This should be exceptionally rare, if it happens at all.
+    id.Clear();
+    ClientSourceConstructorArgs args(id, aType, aPrincipal, TimeStamp::Now());
+    UniquePtr<ClientSource> source(new ClientSource(this, aEventTarget, args));
+    source->Shutdown();
+    return Move(source);
   }
 
   ClientSourceConstructorArgs args(id, aType, aPrincipal, TimeStamp::Now());
-  UniquePtr<ClientSource> source(new ClientSource(this, args));
+  UniquePtr<ClientSource> source(new ClientSource(this, aEventTarget, args));
+
+  if (IsShutdown()) {
+    source->Shutdown();
+    return Move(source);
+  }
+
   source->Activate(GetActor());
 
   return Move(source);
@@ -125,12 +137,14 @@ ClientManager::CreateHandleInternal(const ClientInfo& aClientInfo,
   NS_ASSERT_OWNINGTHREAD(ClientManager);
   MOZ_DIAGNOSTIC_ASSERT(aSerialEventTarget);
 
-  if (IsShutdown()) {
-    return nullptr;
-  }
-
   RefPtr<ClientHandle> handle = new ClientHandle(this, aSerialEventTarget,
                                                  aClientInfo);
+
+  if (IsShutdown()) {
+    handle->Shutdown();
+    return handle.forget();
+  }
+
   handle->Activate(GetActor());
 
   return handle.forget();
@@ -157,6 +171,8 @@ ClientManager::StartOp(const ClientOpConstructorArgs& aArgs,
       // Constructor failure will reject promise via ActorDestroy()
       return;
     }
+  }, [promise] {
+    promise->Reject(NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
   });
 
   RefPtr<ClientOpPromise> ref = promise.get();
@@ -203,11 +219,14 @@ ClientManager::Startup()
 #endif
     PR_NewThreadPrivateIndex(&sClientManagerThreadLocalIndex, nullptr);
   MOZ_DIAGNOSTIC_ASSERT(status == PR_SUCCESS);
+
+  ClientPrefsInit();
 }
 
 // static
 UniquePtr<ClientSource>
-ClientManager::CreateSource(ClientType aType, nsIPrincipal* aPrincipal)
+ClientManager::CreateSource(ClientType aType, nsISerialEventTarget* aEventTarget,
+                            nsIPrincipal* aPrincipal)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
@@ -215,19 +234,20 @@ ClientManager::CreateSource(ClientType aType, nsIPrincipal* aPrincipal)
   PrincipalInfo principalInfo;
   nsresult rv = PrincipalToPrincipalInfo(aPrincipal, &principalInfo);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return nullptr;
+    MOZ_CRASH("ClientManager::CreateSource() cannot serialize bad principal");
   }
 
   RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
-  return mgr->CreateSourceInternal(aType, principalInfo);
+  return mgr->CreateSourceInternal(aType, aEventTarget, principalInfo);
 }
 
 // static
 UniquePtr<ClientSource>
-ClientManager::CreateSource(ClientType aType, const PrincipalInfo& aPrincipal)
+ClientManager::CreateSource(ClientType aType, nsISerialEventTarget* aEventTarget,
+                            const PrincipalInfo& aPrincipal)
 {
   RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
-  return mgr->CreateSourceInternal(aType, aPrincipal);
+  return mgr->CreateSourceInternal(aType, aEventTarget, aPrincipal);
 }
 
 // static
@@ -237,6 +257,51 @@ ClientManager::CreateHandle(const ClientInfo& aClientInfo,
 {
   RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
   return mgr->CreateHandleInternal(aClientInfo, aSerialEventTarget);
+}
+
+// static
+RefPtr<ClientOpPromise>
+ClientManager::MatchAll(const ClientMatchAllArgs& aArgs,
+                        nsISerialEventTarget* aSerialEventTarget)
+{
+  RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
+  return mgr->StartOp(aArgs, aSerialEventTarget);
+}
+
+// static
+RefPtr<ClientOpPromise>
+ClientManager::Claim(const ClientClaimArgs& aArgs,
+                     nsISerialEventTarget* aSerialEventTarget)
+{
+  RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
+  return mgr->StartOp(aArgs, aSerialEventTarget);
+}
+
+// static
+RefPtr<ClientOpPromise>
+ClientManager::GetInfoAndState(const ClientGetInfoAndStateArgs& aArgs,
+                               nsISerialEventTarget* aSerialEventTarget)
+{
+  RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
+  return mgr->StartOp(aArgs, aSerialEventTarget);
+}
+
+// static
+RefPtr<ClientOpPromise>
+ClientManager::Navigate(const ClientNavigateArgs& aArgs,
+                        nsISerialEventTarget* aSerialEventTarget)
+{
+  RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
+  return mgr->StartOp(aArgs, aSerialEventTarget);
+}
+
+// static
+RefPtr<ClientOpPromise>
+ClientManager::OpenWindow(const ClientOpenWindowArgs& aArgs,
+                          nsISerialEventTarget* aSerialEventTarget)
+{
+  RefPtr<ClientManager> mgr = GetOrCreateForCurrentThread();
+  return mgr->StartOp(aArgs, aSerialEventTarget);
 }
 
 } // namespace dom

@@ -15,9 +15,7 @@
 #include "mozilla/TextComposition.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/dom/TabParent.h"
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
-#endif // #ifdef MOZ_CRASHREPORTER
 #include "nsIWidget.h"
 
 namespace mozilla {
@@ -46,13 +44,13 @@ public:
   explicit GetRectText(const LayoutDeviceIntRect& aRect)
   {
     AssignLiteral("{ x=");
-    AppendInt(aRect.x);
+    AppendInt(aRect.X());
     AppendLiteral(", y=");
-    AppendInt(aRect.y);
+    AppendInt(aRect.Y());
     AppendLiteral(", width=");
-    AppendInt(aRect.width);
+    AppendInt(aRect.Width());
     AppendLiteral(", height=");
-    AppendInt(aRect.height);
+    AppendInt(aRect.Height());
     AppendLiteral(" }");
   }
   virtual ~GetRectText() {}
@@ -295,11 +293,11 @@ ContentCacheInChild::QueryCharRect(nsIWidget* aWidget,
   aCharRect = textRect.mReply.mRect;
 
   // Guarantee the rect is not empty.
-  if (NS_WARN_IF(!aCharRect.height)) {
-    aCharRect.height = 1;
+  if (NS_WARN_IF(!aCharRect.Height())) {
+    aCharRect.SetHeight(1);
   }
-  if (NS_WARN_IF(!aCharRect.width)) {
-    aCharRect.width = 1;
+  if (NS_WARN_IF(!aCharRect.Width())) {
+    aCharRect.SetWidth(1);
   }
   return true;
 }
@@ -550,12 +548,12 @@ ContentCacheInParent::AssignContent(const ContentCache& aOther,
     IMEStateManager::MaybeStartOffsetUpdatedInChild(aWidget, mCompositionStart);
   }
 
-  // When the widget has composition, we should set mCompositionStart to
-  // *current* composition start offset.  Note that, in strictly speaking,
-  // widget should not use WidgetQueryContentEvent if there are some pending
-  // compositions (i.e., when mPendingCompositionCount is 2 or more).
+  // When this instance allows to query content relative to composition string,
+  // we should modify mCompositionStart with the latest information in the
+  // remote process because now we have the information around the composition
+  // string.
   mCompositionStartInChild = aOther.mCompositionStart;
-  if (mWidgetHasComposition) {
+  if (mWidgetHasComposition || mPendingCommitCount) {
     if (aOther.mCompositionStart != UINT32_MAX) {
       if (mCompositionStart != aOther.mCompositionStart) {
         mCompositionStart = aOther.mCompositionStart;
@@ -568,9 +566,6 @@ ContentCacheInParent::AssignContent(const ContentCache& aOther,
                            "mCompositionStart shouldn't be invalid offset when "
                            "the widget has composition");
     }
-  } else if (mCompositionStart != UINT32_MAX) {
-    mCompositionStart = UINT32_MAX;
-    mPendingCommitLength = 0;
   }
 
   MOZ_LOG(sContentCacheLog, LogLevel::Info,
@@ -642,7 +637,7 @@ ContentCacheInParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent,
            aEvent.mInput.mLength));
         return false;
       }
-    } else if (mWidgetHasComposition) {
+    } else if (mWidgetHasComposition || mPendingCommitCount) {
       if (NS_WARN_IF(!aEvent.mInput.MakeOffsetAbsolute(
                                       mCompositionStart +
                                         mPendingCommitLength))) {
@@ -1083,10 +1078,10 @@ ContentCacheInParent::GetCaretRect(uint32_t aOffset,
     }
 
     if (mSelection.mWritingMode.IsVertical()) {
-      aCaretRect.y = aCaretRect.YMost();
+      aCaretRect.MoveToY(aCaretRect.YMost());
     } else {
       // XXX bidi-unaware.
-      aCaretRect.x = aCaretRect.XMost();
+      aCaretRect.MoveToX(aCaretRect.XMost());
     }
   }
 
@@ -1094,9 +1089,9 @@ ContentCacheInParent::GetCaretRect(uint32_t aOffset,
   //     direction.  However, this is usually used by IME, so, assuming the
   //     character is in LRT context must not cause any problem.
   if (mSelection.mWritingMode.IsVertical()) {
-    aCaretRect.height = mCaret.IsValid() ? mCaret.mRect.height : 1;
+    aCaretRect.SetHeight(mCaret.IsValid() ? mCaret.mRect.Height() : 1);
   } else {
-    aCaretRect.width = mCaret.IsValid() ? mCaret.mRect.width : 1;
+    aCaretRect.SetWidth(mCaret.IsValid() ? mCaret.mRect.Width() : 1);
   }
   return true;
 }
@@ -1117,9 +1112,9 @@ ContentCacheInParent::OnCompositionEvent(const WidgetCompositionEvent& aEvent)
      mPendingCommitCount, GetBoolName(mIsChildIgnoringCompositionEvents),
      mCommitStringByRequest));
 
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
   mDispatchedEventMessages.AppendElement(aEvent.mMessage);
-#endif // #ifdef defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
   // We must be able to simulate the selection because
   // we might not receive selection updates in time
@@ -1144,7 +1139,8 @@ ContentCacheInParent::OnCompositionEvent(const WidgetCompositionEvent& aEvent)
   mWidgetHasComposition = !aEvent.CausesDOMCompositionEndEvent();
 
   if (!mWidgetHasComposition) {
-    mCompositionStart = UINT32_MAX;
+    // mCompositionStart will be reset when commit event is completely handled
+    // in the remote process.
     if (mPendingCompositionCount == 1) {
       mPendingCommitLength = aEvent.mData.Length();
     }
@@ -1202,9 +1198,9 @@ ContentCacheInParent::OnSelectionEvent(
      GetBoolName(mWidgetHasComposition), mPendingCompositionCount,
      mPendingCommitCount, GetBoolName(mIsChildIgnoringCompositionEvents)));
 
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
   mDispatchedEventMessages.AppendElement(aSelectionEvent.mMessage);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
   mPendingEventsNeedingAck++;
 }
@@ -1219,15 +1215,15 @@ ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
   MOZ_LOG(sContentCacheLog, LogLevel::Info,
     ("0x%p OnEventNeedingAckHandled(aWidget=0x%p, "
      "aMessage=%s), mPendingEventsNeedingAck=%u, "
-     "mPendingCompositionCount=%" PRIu8 ", mPendingCommitCount=%" PRIu8 ", "
-     "mIsChildIgnoringCompositionEvents=%s",
+     "mWidgetHasComposition=%s, mPendingCompositionCount=%" PRIu8 ", "
+     "mPendingCommitCount=%" PRIu8 ", mIsChildIgnoringCompositionEvents=%s",
      this, aWidget, ToChar(aMessage), mPendingEventsNeedingAck,
-     mPendingCompositionCount, mPendingCommitCount,
-     GetBoolName(mIsChildIgnoringCompositionEvents)));
+     GetBoolName(mWidgetHasComposition), mPendingCompositionCount,
+     mPendingCommitCount, GetBoolName(mIsChildIgnoringCompositionEvents)));
 
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
   mReceivedEventMessages.AppendElement(aMessage);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
   bool isCommittedInChild =
     // Commit requester in the remote process has committed the composition.
@@ -1237,22 +1233,22 @@ ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
      WidgetCompositionEvent::IsFollowedByCompositionEnd(aMessage));
 
   if (isCommittedInChild) {
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     if (mPendingCompositionCount == 1) {
       RemoveUnnecessaryEventMessageLog();
     }
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
     if (NS_WARN_IF(!mPendingCompositionCount)) {
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
       nsPrintfCString info("\nThere is no pending composition but received %s "
                            "message from the remote child\n\n",
                            ToChar(aMessage));
       AppendEventMessageLog(info);
       CrashReporter::AppendAppNotesToCrashReport(info);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
       MOZ_DIAGNOSTIC_ASSERT(false,
         "No pending composition but received unexpected commit event");
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
       // Prevent odd behavior in release channel.
       mPendingCompositionCount = 1;
@@ -1280,15 +1276,15 @@ ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
     mIsChildIgnoringCompositionEvents = false;
 
     if (NS_WARN_IF(!mPendingCommitCount)) {
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
       nsPrintfCString info("\nThere is no pending comment events but received "
                            "%s message from the remote child\n\n",
                            ToChar(aMessage));
       AppendEventMessageLog(info);
       CrashReporter::AppendAppNotesToCrashReport(info);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
       MOZ_DIAGNOSTIC_ASSERT(false,
         "No pending commit events but received unexpected commit event");
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
       // Prevent odd behavior in release channel.
       mPendingCommitCount = 1;
@@ -1304,14 +1300,21 @@ ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
     mIsChildIgnoringCompositionEvents = true;
   }
 
+  // If neither widget (i.e., IME) nor the remote process has composition,
+  // now, we can forget composition string informations.
+  if (!mWidgetHasComposition &&
+      !mPendingCompositionCount && !mPendingCommitCount) {
+    mCompositionStart = UINT32_MAX;
+  }
+
   if (NS_WARN_IF(!mPendingEventsNeedingAck)) {
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     nsPrintfCString info("\nThere is no pending events but received %s "
                          "message from the remote child\n\n",
                          ToChar(aMessage));
     AppendEventMessageLog(info);
     CrashReporter::AppendAppNotesToCrashReport(info);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     MOZ_DIAGNOSTIC_ASSERT(false,
       "No pending event message but received unexpected event");
     mPendingEventsNeedingAck = 1;
@@ -1347,11 +1350,11 @@ ContentCacheInParent::RequestIMEToCommitComposition(nsIWidget* aWidget,
   // composition events for cleaning up TextComposition and handle the
   // request as it's handled asynchronously.
   if (mPendingCompositionCount > 1) {
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.
       AppendElement(RequestIMEToCommitCompositionResult::
                       eToOldCompositionReceived);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     return false;
   }
 
@@ -1366,11 +1369,11 @@ ContentCacheInParent::RequestIMEToCommitComposition(nsIWidget* aWidget,
   //     which user typed.  So, perhaps, we should return true and the commit
   //     string.
   if (mPendingCommitCount) {
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.
       AppendElement(RequestIMEToCommitCompositionResult::
                       eToCommittedCompositionReceived);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     return false;
   }
 
@@ -1379,11 +1382,11 @@ ContentCacheInParent::RequestIMEToCommitComposition(nsIWidget* aWidget,
   if (!IMEStateManager::DoesTabParentHaveIMEFocus(&mTabParent)) {
     // Use the latest composition string which may not be handled in the
     // remote process for avoiding data loss.
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.
       AppendElement(RequestIMEToCommitCompositionResult::
                       eReceivedAfterTabParentBlur);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     aCommittedString = mCompositionString;
     // After we return true from here, i.e., without actually requesting IME
     // to commit composition, we will receive eCompositionCommitRequestHandled
@@ -1399,11 +1402,11 @@ ContentCacheInParent::RequestIMEToCommitComposition(nsIWidget* aWidget,
     MOZ_LOG(sContentCacheLog, LogLevel::Warning,
       ("  0x%p RequestToCommitComposition(), "
        "does nothing due to no composition", this));
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.
       AppendElement(RequestIMEToCommitCompositionResult::
                       eReceivedButNoTextComposition);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     return false;
   }
 
@@ -1434,11 +1437,11 @@ ContentCacheInParent::RequestIMEToCommitComposition(nsIWidget* aWidget,
     // normally. On the other hand, TextComposition instance in the remote
     // process won't dispatch following composition events and will be
     // destroyed by IMEStateManager::DispatchCompositionEvent().
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.
       AppendElement(RequestIMEToCommitCompositionResult::
                       eHandledAsynchronously);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     return false;
   }
 
@@ -1448,10 +1451,10 @@ ContentCacheInParent::RequestIMEToCommitComposition(nsIWidget* aWidget,
   // is aCommittedString of this method) and that causes destroying
   // TextComposition instance in the remote process (Note that TextComposition
   // instance in this process was already destroyed).
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
   mRequestIMEToCommitCompositionResults.
     AppendElement(RequestIMEToCommitCompositionResult::eHandledSynchronously);
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
   return true;
 }
 
@@ -1548,7 +1551,7 @@ ContentCacheInParent::FlushPendingNotifications(nsIWidget* aWidget)
   }
 }
 
-#if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
 void
 ContentCacheInParent::RemoveUnnecessaryEventMessageLog()
@@ -1637,7 +1640,7 @@ ContentCacheInParent::AppendEventMessageLog(nsACString& aLog) const
   aLog.AppendLiteral("\n");
 }
 
-#endif // #if defined(MOZ_CRASHREPORTER) && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#endif // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
 /*****************************************************************************
  * mozilla::ContentCache::TextRectArray

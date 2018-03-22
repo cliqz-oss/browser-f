@@ -20,23 +20,22 @@ public:
   ServoFontFeatureValuesRule(RefPtr<RawServoFontFeatureValuesRule> aRawRule,
                              uint32_t aLine, uint32_t aColumn);
 
-  NS_DECL_ISUPPORTS_INHERITED
-
   RawServoFontFeatureValuesRule* Raw() const { return mRawRule; }
-
-  // nsIDOMCSSFontFeatureValuesRule interface
-  NS_DECL_NSIDOMCSSFONTFEATUREVALUESRULE
 
   // WebIDL interface
   void GetCssTextImpl(nsAString& aCssText) const override;
+  void GetFontFamily(nsAString& aFamily) final override;
+  void SetFontFamily(const nsAString& aFamily, mozilla::ErrorResult& aRv) final override;
+  void GetValueText(nsAString& aValueText) final override;
+  void SetValueText(const nsAString& aValueText, mozilla::ErrorResult& aRv) final override;
 
   // Methods of mozilla::css::Rule
-  already_AddRefed<css::Rule> Clone() const final;
+  already_AddRefed<css::Rule> Clone() const final override;
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
-    const final;
+    const final override;
 
   #ifdef DEBUG
-    void List(FILE* out = stdout, int32_t aIndent = 0) const final;
+    void List(FILE* out = stdout, int32_t aIndent = 0) const final override;
   #endif
 
 private:

@@ -197,35 +197,39 @@ BuildHandlerChain(nsIContent* aContent, nsXBLPrototypeHandler** aResult)
   for (nsIContent* key = aContent->GetLastChild();
        key;
        key = key->GetPreviousSibling()) {
-
-    if (key->NodeInfo()->Equals(nsGkAtoms::key, kNameSpaceID_XUL)) {
-      // Check whether the key element has empty value at key/char attribute.
-      // Such element is used by localizers for alternative shortcut key
-      // definition on the locale. See bug 426501.
-      nsAutoString valKey, valCharCode, valKeyCode;
-      bool attrExists =
-        key->GetAttr(kNameSpaceID_None, nsGkAtoms::key, valKey) ||
-        key->GetAttr(kNameSpaceID_None, nsGkAtoms::charcode, valCharCode) ||
-        key->GetAttr(kNameSpaceID_None, nsGkAtoms::keycode, valKeyCode);
-      if (attrExists &&
-          valKey.IsEmpty() && valCharCode.IsEmpty() && valKeyCode.IsEmpty())
-        continue;
-
-      // reserved="pref" is the default for <key> elements.
-      XBLReservedKey reserved = XBLReservedKey_Unset;
-      if (key->AttrValueIs(kNameSpaceID_None, nsGkAtoms::reserved,
-                           nsGkAtoms::_true, eCaseMatters)) {
-        reserved = XBLReservedKey_True;
-      } else if (key->AttrValueIs(kNameSpaceID_None, nsGkAtoms::reserved,
-                                   nsGkAtoms::_false, eCaseMatters)) {
-        reserved = XBLReservedKey_False;
-      }
-
-      nsXBLPrototypeHandler* handler = new nsXBLPrototypeHandler(key, reserved);
-
-      handler->SetNextHandler(*aResult);
-      *aResult = handler;
+    if (!key->NodeInfo()->Equals(nsGkAtoms::key, kNameSpaceID_XUL)) {
+      continue;
     }
+
+    Element* keyElement = key->AsElement();
+    // Check whether the key element has empty value at key/char attribute.
+    // Such element is used by localizers for alternative shortcut key
+    // definition on the locale. See bug 426501.
+    nsAutoString valKey, valCharCode, valKeyCode;
+    bool attrExists =
+      keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::key, valKey) ||
+      keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::charcode, valCharCode) ||
+      keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::keycode, valKeyCode);
+    if (attrExists &&
+        valKey.IsEmpty() && valCharCode.IsEmpty() && valKeyCode.IsEmpty())
+      continue;
+
+    // reserved="pref" is the default for <key> elements.
+    XBLReservedKey reserved = XBLReservedKey_Unset;
+    if (keyElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::reserved,
+                                nsGkAtoms::_true, eCaseMatters)) {
+      reserved = XBLReservedKey_True;
+    } else if (keyElement->AttrValueIs(kNameSpaceID_None,
+                                       nsGkAtoms::reserved,
+                                       nsGkAtoms::_false, eCaseMatters)) {
+      reserved = XBLReservedKey_False;
+    }
+
+    nsXBLPrototypeHandler* handler =
+      new nsXBLPrototypeHandler(keyElement, reserved);
+
+    handler->SetNextHandler(*aResult);
+    *aResult = handler;
   }
 }
 
@@ -352,6 +356,12 @@ nsXBLWindowKeyHandler::InstallKeyboardEventListenersTo(
   aEventListenerManager->AddEventListenerByType(
                            this, NS_LITERAL_STRING("keypress"),
                            TrustedEventsAtSystemGroupBubble());
+  // mozaccesskeynotfound event is fired when modifiers of keypress event
+  // matches with modifier of content access key but it's not consumed by
+  // remote content.
+  aEventListenerManager->AddEventListenerByType(
+                           this, NS_LITERAL_STRING("mozaccesskeynotfound"),
+                           TrustedEventsAtSystemGroupBubble());
   aEventListenerManager->AddEventListenerByType(
                            this, NS_LITERAL_STRING("mozkeydownonplugin"),
                            TrustedEventsAtSystemGroupBubble());
@@ -404,6 +414,9 @@ nsXBLWindowKeyHandler::RemoveKeyboardEventListenersFrom(
                            TrustedEventsAtSystemGroupBubble());
   aEventListenerManager->RemoveEventListenerByType(
                            this, NS_LITERAL_STRING("keypress"),
+                           TrustedEventsAtSystemGroupBubble());
+  aEventListenerManager->RemoveEventListenerByType(
+                           this, NS_LITERAL_STRING("mozaccesskeynotfound"),
                            TrustedEventsAtSystemGroupBubble());
   aEventListenerManager->RemoveEventListenerByType(
                            this, NS_LITERAL_STRING("mozkeydownonplugin"),
@@ -461,7 +474,13 @@ nsXBLWindowKeyHandler::ConvertEventToDOMEventType(
   if (aWidgetKeyboardEvent.IsKeyUpOrKeyUpOnPlugin()) {
     return nsGkAtoms::keyup;
   }
-  if (aWidgetKeyboardEvent.mMessage == eKeyPress) {
+  // eAccessKeyNotFound event is always created from eKeyPress event and
+  // the original eKeyPress event has stopped its propagation before dispatched
+  // into the DOM tree in this process and not matched with remote content's
+  // access keys.  So, we should treat it as an eKeyPress event and execute
+  // a command if it's registered as a shortcut key.
+  if (aWidgetKeyboardEvent.mMessage == eKeyPress ||
+      aWidgetKeyboardEvent.mMessage == eAccessKeyNotFound) {
     return nsGkAtoms::keypress;
   }
   MOZ_ASSERT_UNREACHABLE(
@@ -870,7 +889,7 @@ nsXBLWindowKeyHandler::GetElementForHandler(nsXBLPrototypeHandler* aHandler,
   MOZ_ASSERT(aElementForHandler);
   *aElementForHandler = nullptr;
 
-  nsCOMPtr<nsIContent> keyContent = aHandler->GetHandlerElement();
+  RefPtr<Element> keyContent = aHandler->GetHandlerElement();
   if (!keyContent) {
     return true; // XXX Even though no key element?
   }

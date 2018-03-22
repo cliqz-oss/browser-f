@@ -562,6 +562,8 @@ GeckoRestyleManager::ProcessPendingRestyles()
   NS_PRECONDITION(PresContext()->Document(), "No document?  Pshaw!");
   NS_PRECONDITION(!nsContentUtils::IsSafeToRunScript(),
                   "Missing a script blocker!");
+  MOZ_ASSERT(!PresContext()->HasPendingMediaQueryUpdates(),
+             "Someone forgot to update media queries?");
 
   // First do any queued-up frame creation.  (We should really
   // merge this into the rest of the process, though; see bug 827239.)
@@ -635,10 +637,6 @@ GeckoRestyleManager::ProcessPendingRestyles()
 void
 GeckoRestyleManager::BeginProcessingRestyles(RestyleTracker& aRestyleTracker)
 {
-  // Make sure to not rebuild quote or counter lists while we're
-  // processing restyles
-  PresContext()->FrameConstructor()->BeginUpdate();
-
   mInStyleRefresh = true;
 
   if (ShouldStartRebuildAllFor(aRestyleTracker)) {
@@ -663,8 +661,6 @@ GeckoRestyleManager::EndProcessingRestyles()
   if (mInRebuildAllStyleData) {
     FinishRebuildAllStyleData();
   }
-
-  PresContext()->FrameConstructor()->EndUpdate();
 
 #ifdef DEBUG
   PresContext()->PresShell()->VerifyStyleTree();
@@ -3265,7 +3261,7 @@ ElementRestyler::RestyleUndisplayedNodes(nsRestyleHint      aChildRestyleHint,
     // not have a frame and would not otherwise be pushed as an ancestor.
     nsIContent* parent = undisplayed->mContent->GetParent();
     TreeMatchContext::AutoAncestorPusher insertionPointPusher(&mTreeMatchContext);
-    if (parent && nsContentUtils::IsContentInsertionPoint(parent)) {
+    if (parent && parent->IsActiveChildrenElement()) {
       insertionPointPusher.PushAncestorAndStyleScope(parent);
     }
 
@@ -3491,7 +3487,7 @@ ElementRestyler::RestyleContentChildren(nsIFrame* aParent,
         // nsPageFrame that does not have a content.
         nsIContent* parent = child->GetContent() ? child->GetContent()->GetParent() : nullptr;
         TreeMatchContext::AutoAncestorPusher insertionPointPusher(&mTreeMatchContext);
-        if (parent && nsContentUtils::IsContentInsertionPoint(parent)) {
+        if (parent && parent->IsActiveChildrenElement()) {
           insertionPointPusher.PushAncestorAndStyleScope(parent);
         }
 

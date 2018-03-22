@@ -20,7 +20,7 @@ function promiseOnVisitObserved() {
       onPageChanged: function onPageChanged() {},
       onTitleChanged: function onTitleChanged() {
       },
-      onVisit: function onVisit() {
+      onVisits: function onVisits() {
         PlacesUtils.history.removeObserver(this);
         res();
       },
@@ -47,15 +47,10 @@ var engine = new HistoryEngine(Service);
 Async.promiseSpinningly(engine.initialize());
 var store = engine._store;
 async function applyEnsureNoFailures(records) {
-  do_check_eq((await store.applyIncomingBatch(records)).length, 0);
+  Assert.equal((await store.applyIncomingBatch(records)).length, 0);
 }
 
 var fxuri, fxguid, tburi, tbguid;
-
-function run_test() {
-  initTestLogging("Trace");
-  run_next_test();
-}
 
 add_task(async function test_store() {
   _("Verify that we've got an empty store to work with.");
@@ -68,21 +63,21 @@ add_task(async function test_store() {
                                   visitDate: TIMESTAMP1 });
   _("Verify that the entry exists.");
   let ids = Object.keys((await store.getAllIDs()));
-  do_check_eq(ids.length, 1);
+  Assert.equal(ids.length, 1);
   fxguid = ids[0];
-  do_check_true((await store.itemExists(fxguid)));
+  Assert.ok((await store.itemExists(fxguid)));
 
   _("If we query a non-existent record, it's marked as deleted.");
   let record = await store.createRecord("non-existent");
-  do_check_true(record.deleted);
+  Assert.ok(record.deleted);
 
   _("Verify createRecord() returns a complete record.");
   record = await store.createRecord(fxguid);
-  do_check_eq(record.histUri, fxuri.spec);
-  do_check_eq(record.title, "Get Firefox!");
-  do_check_eq(record.visits.length, 1);
-  do_check_eq(record.visits[0].date, TIMESTAMP1);
-  do_check_eq(record.visits[0].type, Ci.nsINavHistoryService.TRANSITION_LINK);
+  Assert.equal(record.histUri, fxuri.spec);
+  Assert.equal(record.title, "Get Firefox!");
+  Assert.equal(record.visits.length, 1);
+  Assert.equal(record.visits[0].date, TIMESTAMP1);
+  Assert.equal(record.visits[0].type, Ci.nsINavHistoryService.TRANSITION_LINK);
 
   _("Let's modify the record and have the store update the database.");
   let secondvisit = {date: TIMESTAMP2,
@@ -98,8 +93,8 @@ add_task(async function test_store() {
   let queryres = await PlacesUtils.history.fetch(fxuri.spec, {
     includeVisits: true,
   });
-  do_check_eq(queryres.title, "Hol Dir Firefox!");
-  do_check_matches(queryres.visits, [{
+  Assert.equal(queryres.title, "Hol Dir Firefox!");
+  Assert.deepEqual(queryres.visits, [{
     date: new Date(TIMESTAMP2 / 1000),
     transition: Ci.nsINavHistoryService.TRANSITION_TYPED,
   }, {
@@ -122,13 +117,13 @@ add_task(async function test_store_create() {
                type: Ci.nsINavHistoryService.TRANSITION_TYPED}]}
   ]);
   await onVisitObserved;
-  do_check_true((await store.itemExists(tbguid)));
+  Assert.ok((await store.itemExists(tbguid)));
   do_check_attribute_count(await store.getAllIDs(), 1);
   let queryres = await PlacesUtils.history.fetch(tburi.spec, {
     includeVisits: true,
   });
-  do_check_eq(queryres.title, "The bird is the word!");
-  do_check_matches(queryres.visits, [{
+  Assert.equal(queryres.title, "The bird is the word!");
+  Assert.deepEqual(queryres.visits, [{
     date: new Date(TIMESTAMP3 / 1000),
     transition: Ci.nsINavHistoryService.TRANSITION_TYPED,
   }]);
@@ -151,8 +146,8 @@ add_task(async function test_null_title() {
   let queryres = await PlacesUtils.history.fetch(resuri.spec, {
     includeVisits: true,
   });
-  do_check_eq(queryres.title, "");
-  do_check_matches(queryres.visits, [{
+  Assert.equal(queryres.title, "");
+  Assert.deepEqual(queryres.visits, [{
     date: new Date(TIMESTAMP3 / 1000),
     transition: Ci.nsINavHistoryService.TRANSITION_TYPED,
   }]);
@@ -167,6 +162,9 @@ add_task(async function test_invalid_records() {
       + "(url, url_hash, title, rev_host, visit_count, last_visit_date) "
       + "VALUES ('invalid-uri', hash('invalid-uri'), 'Invalid URI', '.', 1, " + TIMESTAMP3 + ")"
     );
+    // Trigger the update on moz_hosts by deleting the added rows from
+    // moz_updatehostsinsert_temp
+    await db.execute("DELETE FROM moz_updatehostsinsert_temp");
     // Add the corresponding visit to retain database coherence.
     await db.execute(
       "INSERT INTO moz_historyvisits "
@@ -186,8 +184,8 @@ add_task(async function test_invalid_records() {
     visits: [{date: TIMESTAMP3,
               type: Ci.nsINavHistoryService.TRANSITION_EMBED}]}
   ]);
-  do_check_eq(failed.length, 1);
-  do_check_eq(failed[0], invalid_uri_guid);
+  Assert.equal(failed.length, 1);
+  Assert.equal(failed[0], invalid_uri_guid);
 
   _("Make sure we handle records with invalid GUIDs gracefully (ignore).");
   await applyEnsureNoFailures([
@@ -223,7 +221,7 @@ add_task(async function test_invalid_records() {
      visits: [{date: 1234.567,
                type: Ci.nsINavHistoryService.TRANSITION_EMBED}]}
   ]);
-  do_check_eq(failed.length, 0);
+  Assert.equal(failed.length, 0);
 
   _("Make sure we handle records with javascript: URLs gracefully.");
   await applyEnsureNoFailures([
@@ -241,6 +239,26 @@ add_task(async function test_invalid_records() {
      title: "Get Firebug!",
      visits: []}
   ]);
+});
+
+add_task(async function test_unknowingly_invalid_records() {
+  _("Make sure we handle rejection of records by places gracefully.");
+  let oldCAU = store._canAddURI;
+  store._canAddURI = () => true;
+  try {
+    _("Make sure that when places rejects this record we record it as failed");
+    let guid = Utils.makeGUID();
+    let result = await store.applyIncomingBatch([
+      {id: guid,
+       histUri: "javascript:''",
+       title: "javascript:''",
+       visits: [{date: TIMESTAMP3,
+                 type: Ci.nsINavHistoryService.TRANSITION_EMBED}]}
+    ]);
+    deepEqual(result, [guid]);
+  } finally {
+    store._canAddURI = oldCAU;
+  }
 });
 
 add_task(async function test_clamp_visit_dates() {
@@ -321,11 +339,11 @@ add_task(async function test_remove() {
   _("Remove an existent record and a non-existent from the store.");
   await applyEnsureNoFailures([{id: fxguid, deleted: true},
                          {id: Utils.makeGUID(), deleted: true}]);
-  do_check_false((await store.itemExists(fxguid)));
+  Assert.equal(false, (await store.itemExists(fxguid)));
   let queryres = await PlacesUtils.history.fetch(fxuri.spec, {
     includeVisits: true,
   });
-  do_check_null(queryres);
+  Assert.equal(null, queryres);
 
   _("Make sure wipe works.");
   await store.wipe();
@@ -333,11 +351,107 @@ add_task(async function test_remove() {
   queryres = await PlacesUtils.history.fetch(fxuri.spec, {
     includeVisits: true,
   });
-  do_check_null(queryres);
+  Assert.equal(null, queryres);
   queryres = await PlacesUtils.history.fetch(tburi.spec, {
     includeVisits: true,
   });
-  do_check_null(queryres);
+  Assert.equal(null, queryres);
+});
+
+add_task(async function test_chunking() {
+  let mvpi = store.MAX_VISITS_PER_INSERT;
+  store.MAX_VISITS_PER_INSERT = 3;
+  let checkChunks = function(input, expected) {
+    let chunks = Array.from(store._generateChunks(input));
+    deepEqual(chunks, expected);
+  };
+  try {
+    checkChunks([{visits: ["x"]}],
+                [[{visits: ["x"]}]]);
+
+    // 3 should still be one chunk.
+    checkChunks([{visits: ["x", "x", "x"]}],
+                [[{visits: ["x", "x", "x"]}]]);
+
+    // 4 should still be one chunk as we don't split individual records.
+    checkChunks([{visits: ["x", "x", "x", "x"]}],
+                [[{visits: ["x", "x", "x", "x"]}]]
+               );
+
+    // 4 in the first and 1 in the second should be 2 chunks.
+    checkChunks([
+                  {visits: ["x", "x", "x", "x"]},
+                  {visits: ["x"]}
+                ],
+                // expected
+                [
+                  [
+                    {visits: ["x", "x", "x", "x"]}
+                  ],
+                  [
+                    {visits: ["x"]}
+                  ],
+                ]
+               );
+
+    // we put multiple records into chunks
+    checkChunks([
+                  {visits: ["x", "x"]},
+                  {visits: ["x"]},
+                  {visits: ["x"]},
+                  {visits: ["x", "x"]},
+                  {visits: ["x", "x", "x", "x"]},
+                ],
+                // expected
+                [
+                  [
+                    {visits: ["x", "x"]},
+                    {visits: ["x"]},
+                  ],
+                  [
+                    {visits: ["x"]},
+                    {visits: ["x", "x"]},
+                  ],
+                  [
+                    {visits: ["x", "x", "x", "x"]},
+                  ],
+                ]
+               );
+  } finally {
+    store.MAX_VISITS_PER_INSERT = mvpi;
+  }
+});
+
+add_task(async function test_getAllIDs_filters_file_uris() {
+  let uri = CommonUtils.makeURI("file:///Users/eoger/tps/config.json");
+  let visitAddedPromise = promiseVisit("added", uri);
+  await PlacesTestUtils.addVisits({
+    uri,
+    visitDate: Date.now() * 1000,
+    transition: PlacesUtils.history.TRANSITION_LINK
+  });
+  await visitAddedPromise;
+
+  do_check_attribute_count(await store.getAllIDs(), 0);
+
+  await PlacesTestUtils.clearHistory();
+});
+
+add_task(async function test_applyIncomingBatch_filters_file_uris() {
+  const guid = Utils.makeGUID();
+  let uri = CommonUtils.makeURI("file:///Users/eoger/tps/config.json");
+  await applyEnsureNoFailures([
+    {id: guid,
+     histUri: uri.spec,
+     title: "TPS CONFIG",
+     visits: [{date: TIMESTAMP3,
+               type: Ci.nsINavHistoryService.TRANSITION_TYPED}]}
+  ]);
+  Assert.equal(false, (await store.itemExists(guid)));
+  let queryres = await PlacesUtils.history.fetch(uri.spec, {
+    includeVisits: true,
+  });
+  Assert.equal(null, queryres);
 });
 
 add_task(async function cleanup() {

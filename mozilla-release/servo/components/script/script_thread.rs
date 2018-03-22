@@ -62,6 +62,7 @@ use dom::worker::TrustedWorkerAddress;
 use dom::worklet::WorkletThreadPool;
 use dom::workletglobalscope::WorkletGlobalScopeInit;
 use euclid::{Point2D, Vector2D, Rect};
+use fetch::FetchCanceller;
 use hyper::header::{ContentType, HttpDate, Headers, LastModified};
 use hyper::header::ReferrerPolicy as ReferrerPolicyHeader;
 use hyper::mime::{Mime, SubLevel, TopLevel};
@@ -170,6 +171,8 @@ struct InProgressLoad {
     navigation_start: u64,
     /// High res timestamp reporting the time when the browser started this load.
     navigation_start_precise: u64,
+    /// For cancelling the fetch
+    canceller: FetchCanceller,
 }
 
 impl InProgressLoad {
@@ -198,6 +201,7 @@ impl InProgressLoad {
             origin: origin,
             navigation_start: (current_time.sec * 1000 + current_time.nsec as i64 / 1000000) as u64,
             navigation_start_precise: navigation_start_precise,
+            canceller: Default::default(),
         }
     }
 }
@@ -1248,6 +1252,9 @@ impl ScriptThread {
         for (doc_id, doc) in self.documents.borrow().iter() {
            if let Some(pipeline_id) = pipeline_id {
                 if pipeline_id == doc_id && end - start > MAX_TASK_NS {
+                    if opts::get().print_pwm {
+                        println!("Task took longer than max allowed ({:?}) {:?}", category, end - start);
+                    }
                     doc.start_tti();
                 }
             }
@@ -1550,7 +1557,8 @@ impl ScriptThread {
             paint_time_metrics: PaintTimeMetrics::new(new_pipeline_id,
                                                       self.time_profiler_chan.clone(),
                                                       self.layout_to_constellation_chan.clone(),
-                                                      self.control_chan.clone()),
+                                                      self.control_chan.clone(),
+                                                      load_data.url.clone()),
         });
 
         // Pick a layout thread, any layout thread
@@ -2212,7 +2220,8 @@ impl ScriptThread {
                                      DocumentSource::FromParser,
                                      loader,
                                      referrer,
-                                     referrer_policy);
+                                     referrer_policy,
+                                     incomplete.canceller);
         document.set_ready_state(DocumentReadyState::Loading);
 
         self.documents.borrow_mut().insert(incomplete.pipeline_id, &*document);
@@ -2229,6 +2238,7 @@ impl ScriptThread {
         let parse_input = DOMString::new();
 
         document.set_https_state(metadata.https_state);
+        document.set_navigation_start(incomplete.navigation_start_precise);
 
         if is_html_document == IsHTMLDocument::NonHTMLDocument {
             ServoParser::parse_xml_document(&document, parse_input, final_url);
@@ -2532,7 +2542,7 @@ impl ScriptThread {
 
     /// Instructs the constellation to fetch the document that will be loaded. Stores the InProgressLoad
     /// argument until a notification is received that the fetch is complete.
-    fn pre_page_load(&self, incomplete: InProgressLoad, load_data: LoadData) {
+    fn pre_page_load(&self, mut incomplete: InProgressLoad, load_data: LoadData) {
         let id = incomplete.pipeline_id.clone();
         let req_init = RequestInit {
             url: load_data.url.clone(),
@@ -2553,7 +2563,9 @@ impl ScriptThread {
         let context = ParserContext::new(id, load_data.url);
         self.incomplete_parser_contexts.borrow_mut().push((id, context));
 
-        self.script_sender.send((id, ScriptMsg::InitiateNavigateRequest(req_init))).unwrap();
+        let cancel_chan = incomplete.canceller.initialize();
+
+        self.script_sender.send((id, ScriptMsg::InitiateNavigateRequest(req_init, cancel_chan))).unwrap();
         self.incomplete_loads.borrow_mut().push(incomplete);
     }
 

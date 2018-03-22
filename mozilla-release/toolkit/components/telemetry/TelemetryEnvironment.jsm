@@ -208,7 +208,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["browser.startup.homepage", {what: RECORD_PREF_STATE}],
   ["browser.startup.restoreTabs", {what: RECORD_PREF_VALUE}],
   ["browser.startup.addFreshTab", {what: RECORD_PREF_VALUE}],
-  ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
+  ["browser.uidensity", {what: RECORD_PREF_VALUE}],
   ["browser.urlbar.suggest.searches", {what: RECORD_PREF_VALUE}],
   ["browser.urlbar.userMadeSearchSuggestionsChoice", {what: RECORD_PREF_VALUE}],
   ["devtools.chrome.enabled", {what: RECORD_PREF_VALUE}],
@@ -261,6 +261,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["privacy.donottrackheader.enabled", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_active_content", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_display_content", {what: RECORD_PREF_VALUE}],
+  ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
   ["xpinstall.signatures.required", {what: RECORD_PREF_VALUE}],
 ]);
 
@@ -1601,6 +1602,31 @@ EnvironmentCache.prototype = {
   },
 
   /**
+   * Get registered security product information.
+   * @return Object containing the security product data
+   */
+  _getSecurityAppData() {
+    const maxStringLength = 256;
+
+    const keys = [ ["registeredAntiVirus", "antivirus"],
+                   ["registeredAntiSpyware", "antispyware"],
+                   ["registeredFirewall", "firewall"] ];
+
+    let result = {};
+
+    for (let [inKey, outKey] of keys) {
+      let prop = getSysinfoProperty(inKey, null);
+      if (prop) {
+        prop = limitStringToLength(prop, maxStringLength).split(";");
+      }
+
+      result[outKey] = prop;
+    }
+
+    return result;
+  },
+
+  /**
    * Get the GFX information.
    * @return Object containing the GFX data.
    */
@@ -1685,6 +1711,11 @@ EnvironmentCache.prototype = {
       data.isWow64 = getSysinfoProperty("isWow64", null);
     } else if (AppConstants.platform == "android") {
       data.device = this._getDeviceData();
+    }
+
+    // Windows 8+
+    if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+      data.sec = this._getSecurityAppData();
     }
 
     return data;

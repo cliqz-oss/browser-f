@@ -92,6 +92,12 @@ const TEST_DATA = [{
 }];
 
 add_task(function* () {
+  Services.prefs.setBoolPref("privacy.reduceTimerPrecision", false);
+
+  registerCleanupFunction(function () {
+    Services.prefs.clearUserPref("privacy.reduceTimerPrecision");
+  });
+
   let {inspector, testActor} = yield openInspectorForURL(TEST_URL);
 
   // Make sure mutated nodes flash for a very long time so we can more easily

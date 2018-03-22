@@ -63,6 +63,8 @@ struct RuntimeStats;
 namespace mozilla {
 class ThrottledEventQueue;
 namespace dom {
+class ClientInfo;
+class ClientSource;
 class Function;
 class MessagePort;
 class MessagePortIdentifier;
@@ -236,7 +238,10 @@ private:
   // thread as SharedWorkers are always top-level).
   nsTArray<RefPtr<SharedWorker>> mSharedWorkers;
 
-  uint64_t mBusyCount;
+  // This is touched on parent thread only, but it can be read on a different
+  // thread before crashing because hanging.
+  Atomic<uint64_t> mBusyCount;
+
   // SharedWorkers may have multiple windows paused, so this must be
   // a count instead of just a boolean.
   uint32_t mParentWindowPausedDepth;
@@ -403,9 +408,6 @@ public:
 
   void
   UpdateLanguages(const nsTArray<nsString>& aLanguages);
-
-  void
-  UpdatePreference(WorkerPreference aPref, bool aValue);
 
   void
   UpdateJSWorkerMemoryParameter(JSGCParamKey key, uint32_t value);
@@ -645,6 +647,13 @@ public:
     return mLoadInfo.mPrincipal;
   }
 
+  nsIPrincipal*
+  GetLoadingPrincipal() const
+  {
+    AssertIsOnMainThread();
+    return mLoadInfo.mLoadingPrincipal;
+  }
+
   const nsAString& Origin() const
   {
     return mLoadInfo.mOrigin;
@@ -672,10 +681,10 @@ public:
   nsresult
   SetPrincipalFromChannel(nsIChannel* aChannel);
 
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   bool
   FinalChannelPrincipalIsValid(nsIChannel* aChannel);
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   bool
   PrincipalURIMatchesScriptURL();
 #endif
@@ -928,6 +937,14 @@ public:
   bool
   PrincipalIsValid() const;
 #endif
+
+  // This method is used by RuntimeService to know what is going wrong the
+  // shutting down.
+  uint32_t
+  BusyCount()
+  {
+    return mBusyCount;
+  }
 };
 
 class WorkerDebugger : public nsIWorkerDebugger {
@@ -1049,6 +1066,7 @@ class WorkerPrivate : public WorkerPrivateParent<WorkerPrivate>
   uint32_t mErrorHandlerRecursionCount;
   uint32_t mNextTimeoutId;
   Status mStatus;
+  UniquePtr<ClientSource> mClientSource;
   bool mFrozen;
   bool mTimerRunning;
   bool mRunningExpiredTimeouts;
@@ -1058,7 +1076,6 @@ class WorkerPrivate : public WorkerPrivateParent<WorkerPrivate>
   bool mIdleGCTimerRunning;
   bool mWorkerScriptExecutedSuccessfully;
   bool mFetchHandlerWasAdded;
-  bool mPreferences[WORKERPREF_COUNT];
   bool mOnLine;
 
 protected:
@@ -1098,8 +1115,11 @@ public:
               LoadGroupBehavior aLoadGroupBehavior, WorkerType aWorkerType,
               WorkerLoadInfo* aLoadInfo);
 
+  // The passed principal must be the Worker principal in case of a
+  // ServiceWorker and the loading principal for any other type.
   static void
-  OverrideLoadInfoLoadGroup(WorkerLoadInfo& aLoadInfo);
+  OverrideLoadInfoLoadGroup(WorkerLoadInfo& aLoadInfo,
+                            nsIPrincipal* aPrincipal);
 
   bool
   IsDebuggerRegistered()
@@ -1263,9 +1283,6 @@ public:
   UpdateLanguagesInternal(const nsTArray<nsString>& aLanguages);
 
   void
-  UpdatePreferenceInternal(WorkerPreference aPref, bool aValue);
-
-  void
   UpdateJSWorkerMemoryParameterInternal(JSContext* aCx, JSGCParamKey key, uint32_t aValue);
 
   enum WorkerRanOrNot {
@@ -1387,18 +1404,6 @@ public:
   bool
   RegisterDebuggerBindings(JSContext* aCx, JS::Handle<JSObject*> aGlobal);
 
-#define WORKER_SIMPLE_PREF(name, getter, NAME)                                \
-  bool                                                                        \
-  getter() const                                                              \
-  {                                                                           \
-    AssertIsOnWorkerThread();                                                 \
-    return mPreferences[WORKERPREF_##NAME];                                   \
-  }
-#define WORKER_PREF(name, callback)
-#include "WorkerPrefs.h"
-#undef WORKER_SIMPLE_PREF
-#undef WORKER_PREF
-
   bool
   OnLine() const
   {
@@ -1480,6 +1485,27 @@ public:
   nsISerialEventTarget*
   HybridEventTarget();
 
+  void
+  DumpCrashInformation(nsACString& aString);
+
+  bool
+  EnsureClientSource();
+
+  const ClientInfo&
+  GetClientInfo() const;
+
+  const ClientState
+  GetClientState() const;
+
+  const Maybe<ServiceWorkerDescriptor>
+  GetController() const;
+
+  void
+  Control(const ServiceWorkerDescriptor& aServiceWorker);
+
+  void
+  ExecutionReady();
+
 private:
   WorkerPrivate(WorkerPrivate* aParent,
                 const nsAString& aScriptURL, bool aIsChromeWorker,
@@ -1543,13 +1569,6 @@ private:
                               JS::Handle<JS::Value> aMessage,
                               const Sequence<JSObject*>& aTransferable,
                               ErrorResult& aRv);
-
-  void
-  GetAllPreferences(bool aPreferences[WORKERPREF_COUNT]) const
-  {
-    AssertIsOnWorkerThread();
-    memcpy(aPreferences, mPreferences, WORKERPREF_COUNT * sizeof(bool));
-  }
 
   // If the worker shutdown status is equal or greater then aFailStatus, this
   // operation will fail and nullptr will be returned. See WorkerHolder.h for

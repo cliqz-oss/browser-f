@@ -40,8 +40,8 @@
                     '#' + __LINE__ + ': ' + msg) \
     } while (false)
 #else
-#define assert(b, info) do {} while (false) // Elided assertion.
-#define dbg(msg) do {} while (false) // Elided debugging output.
+#define assert(b, info) ; // Elided assertion.
+#define dbg(msg) ; // Elided debugging output.
 #endif
 
 // All C++-implemented standard builtins library functions used in self-hosted
@@ -258,7 +258,7 @@ function CopyDataProperties(target, source, excluded) {
     source = ToObject(source);
 
     // Step 4.b.
-    var keys = OwnPropertyKeys(source, JSITER_OWNONLY | JSITER_HIDDEN | JSITER_SYMBOLS);
+    var keys = OwnPropertyKeys(source);
 
     // Step 5.
     for (var index = 0; index < keys.length; index++) {
@@ -289,7 +289,7 @@ function CopyDataPropertiesUnfiltered(target, source) {
     source = ToObject(source);
 
     // Step 4.b.
-    var keys = OwnPropertyKeys(source, JSITER_OWNONLY | JSITER_HIDDEN | JSITER_SYMBOLS);
+    var keys = OwnPropertyKeys(source);
 
     // Step 5.
     for (var index = 0; index < keys.length; index++) {
@@ -308,5 +308,5 @@ function CopyDataPropertiesUnfiltered(target, source) {
 function outer() {
     return function inner() {
         return "foo";
-    }
+    };
 }

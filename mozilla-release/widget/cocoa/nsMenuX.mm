@@ -155,12 +155,14 @@ nsMenuX::~nsMenuX()
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
-nsresult nsMenuX::Create(nsMenuObjectX* aParent, nsMenuGroupOwnerX* aMenuGroupOwner, nsIContent* aNode)
+nsresult nsMenuX::Create(nsMenuObjectX* aParent, nsMenuGroupOwnerX* aMenuGroupOwner, nsIContent* aContent)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
-  mContent = aNode;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::label, mLabel);
+  mContent = aContent;
+  if (mContent->IsElement()) {
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, mLabel);
+  }
   mNativeMenu = CreateMenuWithGeckoString(mLabel);
 
   // register this menu to be notified when changes are made to our content object
@@ -187,8 +189,9 @@ nsresult nsMenuX::Create(nsMenuObjectX* aParent, nsMenuGroupOwnerX* aMenuGroupOw
   mNativeMenuItem = [[NSMenuItem alloc] initWithTitle:newCocoaLabelString action:nil keyEquivalent:@""];
   [mNativeMenuItem setSubmenu:mNativeMenu];
 
-  SetEnabled(!mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
-                                    nsGkAtoms::_true, eCaseMatters));
+  SetEnabled(!mContent->IsElement() ||
+             !mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
+                                                 nsGkAtoms::_true, eCaseMatters));
 
   // We call MenuConstruct here because keyboard commands are dependent upon
   // native menu items being created. If we only call MenuConstruct when a menu
@@ -339,7 +342,10 @@ nsresult nsMenuX::RemoveAll()
 nsEventStatus nsMenuX::MenuOpened()
 {
   // Open the node.
-  mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::open, NS_LITERAL_STRING("true"), true);
+  if (mContent->IsElement()) {
+    mContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::open,
+                                   NS_LITERAL_STRING("true"), true);
+  }
 
   // Fire a handler. If we're told to stop, don't build the menu at all
   bool keepProcessing = OnOpen();
@@ -377,7 +383,9 @@ void nsMenuX::MenuClosed()
     if (mNeedsRebuild)
       mConstructed = false;
 
-    mContent->UnsetAttr(kNameSpaceID_None, nsGkAtoms::open, true);
+    if (mContent->IsElement()) {
+      mContent->AsElement()->UnsetAttr(kNameSpaceID_None, nsGkAtoms::open, true);
+    }
 
     nsEventStatus status = nsEventStatus_eIgnore;
     WidgetMouseEvent event(true, eXULPopupHidden, nullptr,
@@ -430,17 +438,14 @@ void nsMenuX::MenuConstruct()
   }
 
   // Iterate over the kids
-  uint32_t count = menuPopup->GetChildCount();
-  for (uint32_t i = 0; i < count; i++) {
-    nsIContent *child = menuPopup->GetChildAt(i);
-    if (child) {
-      // depending on the type, create a menu item, separator, or submenu
-      if (child->IsAnyOfXULElements(nsGkAtoms::menuitem,
-                                    nsGkAtoms::menuseparator)) {
-        LoadMenuItem(child);
-      } else if (child->IsXULElement(nsGkAtoms::menu)) {
-        LoadSubMenu(child);
-      }
+  for (nsIContent* child = menuPopup->GetFirstChild();
+       child; child = child->GetNextSibling()) {
+    // depending on the type, create a menu item, separator, or submenu
+    if (child->IsAnyOfXULElements(nsGkAtoms::menuitem,
+                                  nsGkAtoms::menuseparator)) {
+      LoadMenuItem(child);
+    } else if (child->IsXULElement(nsGkAtoms::menu)) {
+      LoadSubMenu(child);
     }
   } // for each menu item
 
@@ -505,19 +510,21 @@ void nsMenuX::LoadMenuItem(nsIContent* inMenuItemContent)
     return;
 
   nsAutoString menuitemName;
-  inMenuItemContent->GetAttr(kNameSpaceID_None, nsGkAtoms::label, menuitemName);
+  if (inMenuItemContent->IsElement()) {
+    inMenuItemContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, menuitemName);
+  }
 
   // printf("menuitem %s \n", NS_LossyConvertUTF16toASCII(menuitemName).get());
 
   EMenuItemType itemType = eRegularMenuItemType;
   if (inMenuItemContent->IsXULElement(nsGkAtoms::menuseparator)) {
     itemType = eSeparatorMenuItemType;
-  }
-  else {
-    static nsIContent::AttrValuesArray strings[] =
+  } else if (inMenuItemContent->IsElement()) {
+    static Element::AttrValuesArray strings[] =
   {&nsGkAtoms::checkbox, &nsGkAtoms::radio, nullptr};
-    switch (inMenuItemContent->FindAttrValueIn(kNameSpaceID_None, nsGkAtoms::type,
-                                               strings, eCaseMatters)) {
+    switch (inMenuItemContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
+                                                            nsGkAtoms::type,
+                                                            strings, eCaseMatters)) {
       case 0: itemType = eCheckboxMenuItemType; break;
       case 1: itemType = eRadioMenuItemType; break;
     }
@@ -632,24 +639,21 @@ void nsMenuX::GetMenuPopupContent(nsIContent** aResult)
     return;
   *aResult = nullptr;
 
+  int32_t dummy;
+
   // Check to see if we are a "menupopup" node (if we are a native menu).
   {
-    int32_t dummy;
     RefPtr<nsAtom> tag = mContent->OwnerDoc()->BindingManager()->ResolveTag(mContent, &dummy);
     if (tag == nsGkAtoms::menupopup) {
-      *aResult = mContent;
-      NS_ADDREF(*aResult);
+      NS_ADDREF(*aResult = mContent);
       return;
     }
   }
 
   // Otherwise check our child nodes.
 
-  uint32_t count = mContent->GetChildCount();
-
-  for (uint32_t i = 0; i < count; i++) {
-    int32_t dummy;
-    nsIContent *child = mContent->GetChildAt(i);
+  for (nsIContent* child = mContent->GetFirstChild();
+       child; child = child->GetNextSibling()) {
     RefPtr<nsAtom> tag = child->OwnerDoc()->BindingManager()->ResolveTag(child, &dummy);
     if (tag == nsGkAtoms::menupopup) {
       *aResult = child;
@@ -667,9 +671,9 @@ NSMenuItem* nsMenuX::NativeMenuItem()
 bool nsMenuX::IsXULHelpMenu(nsIContent* aMenuContent)
 {
   bool retval = false;
-  if (aMenuContent) {
+  if (aMenuContent && aMenuContent->IsElement()) {
     nsAutoString id;
-    aMenuContent->GetAttr(kNameSpaceID_None, nsGkAtoms::id, id);
+    aMenuContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::id, id);
     if (id.Equals(NS_LITERAL_STRING("helpMenu")))
       retval = true;
   }
@@ -692,11 +696,11 @@ void nsMenuX::ObserveAttributeChanged(nsIDocument *aDocument, nsIContent *aConte
   nsMenuObjectTypeX parentType = mParent->MenuObjectType();
 
   if (aAttribute == nsGkAtoms::disabled) {
-    SetEnabled(!mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
-                                      nsGkAtoms::_true, eCaseMatters));
+    SetEnabled(!mContent->AsElement()->AttrValueIs(
+      kNameSpaceID_None, nsGkAtoms::disabled, nsGkAtoms::_true, eCaseMatters));
   }
   else if (aAttribute == nsGkAtoms::label) {
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::label, mLabel);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, mLabel);
 
     // invalidate my parent. If we're a submenu parent, we have to rebuild
     // the parent menu in order for the changes to be picked up. If we're

@@ -12,7 +12,9 @@ UNIFIED_SOURCES += [
     'TestPartiallySeekableInputStream.cpp',
     'TestProtocolProxyService.cpp',
     'TestReadStreamToString.cpp',
+    'TestServerTimingHeader.cpp',
     'TestStandardURL.cpp',
+    'TestURIMutator.cpp',
 ]
 
 TEST_DIRS += [

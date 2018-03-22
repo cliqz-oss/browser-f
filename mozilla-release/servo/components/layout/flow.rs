@@ -28,7 +28,7 @@
 use app_units::Au;
 use block::{BlockFlow, FormattingContextType};
 use context::LayoutContext;
-use display_list_builder::{DisplayListBuildState, StackingContextCollectionState};
+use display_list::{DisplayListBuildState, StackingContextCollectionState};
 use euclid::{Transform3D, Point2D, Vector2D, Rect, Size2D};
 use flex::FlexFlow;
 use floats::{Floats, SpeculatedFloatPlacement};
@@ -43,13 +43,17 @@ use model::{CollapsibleMargins, IntrinsicISizes, MarginCollapseInfo};
 use multicol::MulticolFlow;
 use parallel::FlowParallelInfo;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
-use servo_geometry::{au_rect_to_f32_rect, f32_rect_to_au_rect, max_rect};
+use servo_geometry::{au_rect_to_f32_rect, f32_rect_to_au_rect, MaxRect};
 use std::fmt;
 use std::iter::Zip;
 use std::slice::IterMut;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use style::computed_values::{clear, float, overflow_x, position, text_align};
+use style::computed_values::clear::T as Clear;
+use style::computed_values::float::T as Float;
+use style::computed_values::overflow_x::T as StyleOverflow;
+use style::computed_values::position::T as Position;
+use style::computed_values::text_align::T as TextAlign;
 use style::context::SharedStyleContext;
 use style::logical_geometry::{LogicalRect, LogicalSize, WritingMode};
 use style::properties::ComputedValues;
@@ -71,6 +75,30 @@ use table_wrapper::TableWrapperFlow;
 /// of the memory representation of types implementing `HasBaseFlow`.
 #[allow(unsafe_code)]
 pub unsafe trait HasBaseFlow {}
+
+/// Methods to get the `BaseFlow` from any `HasBaseFlow` type.
+pub trait GetBaseFlow {
+    fn base(&self) -> &BaseFlow;
+    fn mut_base(&mut self) -> &mut BaseFlow;
+}
+
+impl<T: HasBaseFlow + ?Sized> GetBaseFlow for T {
+    #[inline(always)]
+    #[allow(unsafe_code)]
+    fn base(&self) -> &BaseFlow {
+        let ptr: *const Self = self;
+        let ptr = ptr as *const BaseFlow;
+        unsafe { &*ptr }
+    }
+
+    #[inline(always)]
+    #[allow(unsafe_code)]
+    fn mut_base(&mut self) -> &mut BaseFlow {
+        let ptr: *mut Self = self;
+        let ptr = ptr as *mut BaseFlow;
+        unsafe { &mut *ptr }
+    }
+}
 
 /// Virtual methods that make up a float context.
 ///
@@ -220,8 +248,8 @@ pub trait Flow: HasBaseFlow + fmt::Debug + Sync + Send + 'static {
                 layout_context: &LayoutContext,
                 _fragmentation_context: Option<FragmentationContext>)
                 -> Option<Arc<Flow>> {
-        fn recursive_assign_block_size<F: ?Sized + Flow>(flow: &mut F, ctx: &LayoutContext) {
-            for child in mut_base(flow).children.iter_mut() {
+        fn recursive_assign_block_size<F: ?Sized + Flow + GetBaseFlow>(flow: &mut F, ctx: &LayoutContext) {
+            for child in flow.mut_base().child_iter_mut() {
                 recursive_assign_block_size(child, ctx)
             }
             flow.assign_block_size(ctx);
@@ -247,12 +275,12 @@ pub trait Flow: HasBaseFlow + fmt::Debug + Sync + Send + 'static {
                                                         parent_thread_id: u8,
                                                         _content_box: LogicalRect<Au>)
                                                         -> bool {
-        let might_have_floats_in_or_out = base(self).might_have_floats_in() ||
-            base(self).might_have_floats_out();
+        let might_have_floats_in_or_out = self.base().might_have_floats_in() ||
+            self.base().might_have_floats_out();
         if might_have_floats_in_or_out {
-            mut_base(self).thread_id = parent_thread_id;
+            self.mut_base().thread_id = parent_thread_id;
             self.assign_block_size(layout_context);
-            mut_base(self).restyle_damage.remove(ServoRestyleDamage::REFLOW_OUT_OF_FLOW | ServoRestyleDamage::REFLOW);
+            self.mut_base().restyle_damage.remove(ServoRestyleDamage::REFLOW_OUT_OF_FLOW | ServoRestyleDamage::REFLOW);
         }
         might_have_floats_in_or_out
     }
@@ -260,9 +288,9 @@ pub trait Flow: HasBaseFlow + fmt::Debug + Sync + Send + 'static {
     fn get_overflow_in_parent_coordinates(&self) -> Overflow {
         // FIXME(#2795): Get the real container size.
         let container_size = Size2D::zero();
-        let position = base(self).position.to_physical(base(self).writing_mode, container_size);
+        let position = self.base().position.to_physical(self.base().writing_mode, container_size);
 
-        let mut overflow = base(self).overflow;
+        let mut overflow = self.base().overflow;
 
         match self.class() {
             FlowClass::Block | FlowClass::TableCaption | FlowClass::TableCell => {}
@@ -273,17 +301,17 @@ pub trait Flow: HasBaseFlow + fmt::Debug + Sync + Send + 'static {
         }
 
         let border_box = self.as_block().fragment.stacking_relative_border_box(
-            &base(self).stacking_relative_position,
-            &base(self).early_absolute_position_info.relative_containing_block_size,
-            base(self).early_absolute_position_info.relative_containing_block_mode,
+            &self.base().stacking_relative_position,
+            &self.base().early_absolute_position_info.relative_containing_block_size,
+            self.base().early_absolute_position_info.relative_containing_block_mode,
             CoordinateSystem::Own);
-        if overflow_x::T::visible != self.as_block().fragment.style.get_box().overflow_x {
+        if StyleOverflow::Visible != self.as_block().fragment.style.get_box().overflow_x {
             overflow.paint.origin.x = Au(0);
             overflow.paint.size.width = border_box.size.width;
             overflow.scroll.origin.x = Au(0);
             overflow.scroll.size.width = border_box.size.width;
         }
-        if overflow_x::T::visible != self.as_block().fragment.style.get_box().overflow_y {
+        if StyleOverflow::Visible != self.as_block().fragment.style.get_box().overflow_y {
             overflow.paint.origin.y = Au(0);
             overflow.paint.size.height = border_box.size.height;
             overflow.scroll.origin.y = Au(0);
@@ -337,13 +365,13 @@ pub trait Flow: HasBaseFlow + fmt::Debug + Sync + Send + 'static {
             FlowClass::Block |
             FlowClass::TableCaption |
             FlowClass::TableCell => {
-                for kid in mut_base(self).children.iter_mut() {
+                for kid in self.mut_base().children.iter_mut() {
                     overflow.union(&kid.get_overflow_in_parent_coordinates());
                 }
             }
             _ => {}
         }
-        mut_base(self).overflow = overflow
+        self.mut_base().overflow = overflow
     }
 
     /// Phase 4 of reflow: Compute the stacking-relative position (origin of the content box,
@@ -391,22 +419,22 @@ pub trait Flow: HasBaseFlow + fmt::Debug + Sync + Send + 'static {
     }
 
     /// The 'position' property of this flow.
-    fn positioning(&self) -> position::T {
-        position::T::static_
+    fn positioning(&self) -> Position {
+        Position::Static
     }
 
     /// Return true if this flow has position 'fixed'.
     fn is_fixed(&self) -> bool {
-        self.positioning() == position::T::fixed
+        self.positioning() == Position::Fixed
     }
 
     fn contains_positioned_fragments(&self) -> bool {
         self.contains_relatively_positioned_fragments() ||
-            base(self).flags.contains(FlowFlags::IS_ABSOLUTELY_POSITIONED)
+            self.base().flags.contains(FlowFlags::IS_ABSOLUTELY_POSITIONED)
     }
 
     fn contains_relatively_positioned_fragments(&self) -> bool {
-        self.positioning() == position::T::relative
+        self.positioning() == Position::Relative
     }
 
     /// Returns true if this is an absolute containing block.
@@ -444,39 +472,11 @@ pub trait Flow: HasBaseFlow + fmt::Debug + Sync + Send + 'static {
     fn print_extra_flow_children(&self, _: &mut PrintTree) { }
 
     fn clipping_and_scrolling(&self) -> ClippingAndScrolling {
-        match base(self).clipping_and_scrolling {
+        match self.base().clipping_and_scrolling {
             Some(info) => info,
             None => unreachable!("Tried to access scroll root id on Flow before assignment"),
         }
     }
-}
-
-// Base access
-
-#[inline(always)]
-#[allow(unsafe_code)]
-pub fn base<T: ?Sized + HasBaseFlow>(this: &T) -> &BaseFlow {
-    let ptr: *const T = this;
-    let ptr = ptr as *const BaseFlow;
-    unsafe { &*ptr }
-}
-
-/// Iterates over the children of this immutable flow.
-pub fn child_iter<'a>(flow: &'a Flow) -> FlowListIterator {
-    base(flow).children.iter()
-}
-
-#[inline(always)]
-#[allow(unsafe_code)]
-pub fn mut_base<T: ?Sized + HasBaseFlow>(this: &mut T) -> &mut BaseFlow {
-    let ptr: *mut T = this;
-    let ptr = ptr as *mut BaseFlow;
-    unsafe { &mut *ptr }
-}
-
-/// Iterates over the children of this flow.
-pub fn child_iter_mut<'a>(flow: &'a mut Flow) -> MutFlowListIterator<'a> {
-    mut_base(flow).children.iter_mut()
 }
 
 pub trait ImmutableFlowUtils {
@@ -552,11 +552,13 @@ pub trait MutableOwnedFlowUtils {
     /// Sets the flow as the containing block for all absolute descendants that have been marked
     /// as having reached their containing block. This is needed in order to handle cases like:
     ///
-    ///     <div>
-    ///         <span style="position: relative">
-    ///             <span style="position: absolute; ..."></span>
-    ///         </span>
-    ///     </div>
+    /// ```html
+    /// <div>
+    ///     <span style="position: relative">
+    ///         <span style="position: absolute; ..."></span>
+    ///     </span>
+    /// </div>
+    /// ```
     fn take_applicable_absolute_descendants(&mut self,
                                             absolute_descendants: &mut AbsoluteDescendants);
 }
@@ -647,24 +649,24 @@ static TEXT_ALIGN_SHIFT: usize = 11;
 
 impl FlowFlags {
     #[inline]
-    pub fn text_align(self) -> text_align::T {
-        text_align::T::from_u32((self & FlowFlags::TEXT_ALIGN).bits() >> TEXT_ALIGN_SHIFT).unwrap()
+    pub fn text_align(self) -> TextAlign {
+        TextAlign::from_u32((self & FlowFlags::TEXT_ALIGN).bits() >> TEXT_ALIGN_SHIFT).unwrap()
     }
 
     #[inline]
-    pub fn set_text_align(&mut self, value: text_align::T) {
+    pub fn set_text_align(&mut self, value: TextAlign) {
         *self = (*self & !FlowFlags::TEXT_ALIGN) |
-                FlowFlags::from_bits(value.to_u32() << TEXT_ALIGN_SHIFT).unwrap();
+                FlowFlags::from_bits((value as u32) << TEXT_ALIGN_SHIFT).unwrap();
     }
 
     #[inline]
-    pub fn float_kind(&self) -> float::T {
+    pub fn float_kind(&self) -> Float {
         if self.contains(FlowFlags::FLOATS_LEFT) {
-            float::T::left
+            Float::Left
         } else if self.contains(FlowFlags::FLOATS_RIGHT) {
-            float::T::right
+            Float::Right
         } else {
-            float::T::none
+            Float::None
         }
     }
 
@@ -742,12 +744,14 @@ pub struct AbsoluteDescendantInfo {
     /// Whether the absolute descendant has reached its containing block. This exists so that we
     /// can handle cases like the following:
     ///
-    ///     <div>
-    ///         <span id=a style="position: absolute; ...">foo</span>
-    ///         <span style="position: relative">
-    ///             <span id=b style="position: absolute; ...">bar</span>
-    ///         </span>
-    ///     </div>
+    /// ```html
+    /// <div>
+    ///     <span id=a style="position: absolute; ...">foo</span>
+    ///     <span style="position: relative">
+    ///         <span id=b style="position: absolute; ...">bar</span>
+    ///     </span>
+    /// </div>
+    /// ```
     ///
     /// When we go to create the `InlineFlow` for the outer `div`, our absolute descendants will
     /// be `a` and `b`. At this point, we need a way to distinguish between the two, because the
@@ -925,26 +929,29 @@ impl fmt::Debug for BaseFlow {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let child_count = self.parallel.children_count.load(Ordering::SeqCst);
         let child_count_string = if child_count > 0 {
-            format!(" children={}", child_count)
+            format!("\nchildren={}", child_count)
         } else {
             "".to_owned()
         };
 
         let absolute_descendants_string = if self.abs_descendants.len() > 0 {
-            format!(" abs-descendents={}", self.abs_descendants.len())
+            format!("\nabs-descendents={}", self.abs_descendants.len())
         } else {
             "".to_owned()
         };
 
         let damage_string = if self.restyle_damage != RestyleDamage::empty() {
-            format!(" damage={:?}", self.restyle_damage)
+            format!("\ndamage={:?}", self.restyle_damage)
         } else {
             "".to_owned()
         };
 
         write!(f,
-               "sc={:?} pos={:?}, {}{} floatspec-in={:?}, floatspec-out={:?}, \
-                overflow={:?}{}{}{}",
+               "\nsc={:?}\
+                \npos={:?}{}{}\
+                \nfloatspec-in={:?}\
+                \nfloatspec-out={:?}\
+                \noverflow={:?}{}{}{}",
                self.stacking_context_id,
                self.position,
                if self.flags.contains(FlowFlags::FLOATS_LEFT) { "FL" } else { "" },
@@ -989,8 +996,12 @@ impl BaseFlow {
         let mut flags = FlowFlags::empty();
         match style {
             Some(style) => {
+                if style.can_be_fragmented() {
+                    flags.insert(FlowFlags::CAN_BE_FRAGMENTED);
+                }
+
                 match style.get_box().position {
-                    position::T::absolute | position::T::fixed => {
+                    Position::Absolute | Position::Fixed => {
                         flags.insert(FlowFlags::IS_ABSOLUTELY_POSITIONED);
 
                         let logical_position = style.logical_position();
@@ -1008,17 +1019,17 @@ impl BaseFlow {
 
                 if force_nonfloated == ForceNonfloatedFlag::FloatIfNecessary {
                     match style.get_box().float {
-                        float::T::none => {}
-                        float::T::left => flags.insert(FlowFlags::FLOATS_LEFT),
-                        float::T::right => flags.insert(FlowFlags::FLOATS_RIGHT),
+                        Float::None => {}
+                        Float::Left => flags.insert(FlowFlags::FLOATS_LEFT),
+                        Float::Right => flags.insert(FlowFlags::FLOATS_RIGHT),
                     }
                 }
 
                 match style.get_box().clear {
-                    clear::T::none => {}
-                    clear::T::left => flags.insert(FlowFlags::CLEARS_LEFT),
-                    clear::T::right => flags.insert(FlowFlags::CLEARS_RIGHT),
-                    clear::T::both => {
+                    Clear::None => {}
+                    Clear::Left => flags.insert(FlowFlags::CLEARS_LEFT),
+                    Clear::Right => flags.insert(FlowFlags::CLEARS_RIGHT),
+                    Clear::Both => {
                         flags.insert(FlowFlags::CLEARS_LEFT);
                         flags.insert(FlowFlags::CLEARS_RIGHT);
                     }
@@ -1055,7 +1066,7 @@ impl BaseFlow {
             absolute_cb: ContainingBlockLink::new(),
             early_absolute_position_info: EarlyAbsolutePositionInfo::new(writing_mode),
             late_absolute_position_info: LateAbsolutePositionInfo::new(),
-            clip: max_rect(),
+            clip: MaxRect::max_rect(),
             flags: flags,
             writing_mode: writing_mode,
             thread_id: 0,
@@ -1100,6 +1111,11 @@ impl BaseFlow {
 
             ..*self
         }
+    }
+
+    /// Iterates over the children of this immutable flow.
+    pub fn child_iter(&self) -> FlowListIterator {
+        self.children.iter()
     }
 
     pub fn child_iter_mut(&mut self) -> MutFlowListIterator {
@@ -1212,12 +1228,12 @@ impl<'a> ImmutableFlowUtils for &'a Flow {
 
     /// Returns true if this flow has no children.
     fn is_leaf(self) -> bool {
-        base(self).children.is_empty()
+        self.base().children.is_empty()
     }
 
     /// Returns the number of children that this flow possesses.
     fn child_count(self) -> usize {
-        base(self).children.len()
+        self.base().children.len()
     }
 
     /// Return true if this flow is a Block Container.
@@ -1263,14 +1279,14 @@ impl<'a> ImmutableFlowUtils for &'a Flow {
     fn print_with_tree(self, print_tree: &mut PrintTree) {
         print_tree.new_level(format!("{:?}", self));
         self.print_extra_flow_children(print_tree);
-        for kid in child_iter(self) {
+        for kid in self.base().child_iter() {
             kid.print_with_tree(print_tree);
         }
         print_tree.end_level();
     }
 
     fn floats_might_flow_through(self) -> bool {
-        if !base(self).might_have_floats_in() && !base(self).might_have_floats_out() {
+        if !self.base().might_have_floats_in() && !self.base().might_have_floats_out() {
             return false
         }
         if self.is_root() {
@@ -1283,15 +1299,15 @@ impl<'a> ImmutableFlowUtils for &'a Flow {
     }
 
     fn baseline_offset_of_last_line_box_in_flow(self) -> Option<Au> {
-        for kid in base(self).children.iter().rev() {
+        for kid in self.base().children.iter().rev() {
             if kid.is_inline_flow() {
                 if let Some(baseline_offset) = kid.as_inline().baseline_offset_of_last_line() {
-                    return Some(base(kid).position.start.b + baseline_offset)
+                    return Some(kid.base().position.start.b + baseline_offset)
                 }
             }
-            if kid.is_block_like() && !base(kid).flags.contains(FlowFlags::IS_ABSOLUTELY_POSITIONED) {
+            if kid.is_block_like() && !kid.base().flags.contains(FlowFlags::IS_ABSOLUTELY_POSITIONED) {
                 if let Some(baseline_offset) = kid.baseline_offset_of_last_line_box_in_flow() {
-                    return Some(base(kid).position.start.b + baseline_offset)
+                    return Some(kid.base().position.start.b + baseline_offset)
                 }
             }
         }
@@ -1304,7 +1320,7 @@ impl<'a> MutableFlowUtils for &'a mut Flow {
     /// calling them individually, since there is no reason not to perform both operations.
     fn repair_style_and_bubble_inline_sizes(self, style: &::ServoArc<ComputedValues>) {
         self.repair_style(style);
-        mut_base(self).update_flags_if_needed(style);
+        self.mut_base().update_flags_if_needed(style);
         self.bubble_inline_sizes();
     }
 }
@@ -1319,11 +1335,11 @@ impl MutableOwnedFlowUtils for FlowRef {
     /// construction is allowed to possess.
     fn set_absolute_descendants(&mut self, abs_descendants: AbsoluteDescendants) {
         let this = self.clone();
-        let base = mut_base(FlowRef::deref_mut(self));
+        let base = FlowRef::deref_mut(self).mut_base();
         base.abs_descendants = abs_descendants;
         for descendant_link in base.abs_descendants.descendant_links.iter_mut() {
             debug_assert!(!descendant_link.has_reached_containing_block);
-            let descendant_base = mut_base(FlowRef::deref_mut(&mut descendant_link.flow));
+            let descendant_base = FlowRef::deref_mut(&mut descendant_link.flow).mut_base();
             descendant_base.absolute_cb.set(this.clone());
         }
     }
@@ -1331,11 +1347,13 @@ impl MutableOwnedFlowUtils for FlowRef {
     /// Sets the flow as the containing block for all absolute descendants that have been marked
     /// as having reached their containing block. This is needed in order to handle cases like:
     ///
-    ///     <div>
-    ///         <span style="position: relative">
-    ///             <span style="position: absolute; ..."></span>
-    ///         </span>
-    ///     </div>
+    /// ```html
+    /// <div>
+    ///     <span style="position: relative">
+    ///         <span style="position: absolute; ..."></span>
+    ///     </span>
+    /// </div>
+    /// ```
     fn take_applicable_absolute_descendants(&mut self,
                                             absolute_descendants: &mut AbsoluteDescendants) {
         let mut applicable_absolute_descendants = AbsoluteDescendants::new();
@@ -1349,10 +1367,10 @@ impl MutableOwnedFlowUtils for FlowRef {
         });
 
         let this = self.clone();
-        let base = mut_base(FlowRef::deref_mut(self));
+        let base = FlowRef::deref_mut(self).mut_base();
         base.abs_descendants = applicable_absolute_descendants;
         for descendant_link in base.abs_descendants.iter() {
-            let descendant_base = mut_base(descendant_link);
+            let descendant_base = descendant_link.mut_base();
             descendant_base.absolute_cb.set(this.clone());
         }
     }

@@ -62,6 +62,7 @@ job_description_schema = Schema({
     Optional('run-on-projects'): task_description_schema['run-on-projects'],
     Optional('shipping-phase'): task_description_schema['shipping-phase'],
     Optional('shipping-product'): task_description_schema['shipping-product'],
+    Optional('notifications'): task_description_schema['notifications'],
     Optional('coalesce'): task_description_schema['coalesce'],
     Optional('always-target'): task_description_schema['always-target'],
     Exclusive('optimization', 'optimization'): task_description_schema['optimization'],
@@ -101,8 +102,9 @@ transforms = TransformSequence()
 @transforms.add
 def validate(config, jobs):
     for job in jobs:
-        yield validate_schema(job_description_schema, job,
-                              "In job {!r}:".format(job.get('name', job.get('label'))))
+        validate_schema(job_description_schema, job,
+                        "In job {!r}:".format(job.get('name', job.get('label'))))
+        yield job
 
 
 @transforms.add
@@ -115,14 +117,8 @@ def rewrite_when_to_optimization(config, jobs):
 
         files_changed = when.get('files-changed')
 
-        # add some common files
-        files_changed.extend([
-            '{}/**'.format(config.path),
-            'taskcluster/taskgraph/**',
-        ])
-        if 'in-tree' in job.get('worker', {}).get('docker-image', {}):
-            files_changed.append('taskcluster/docker/{}/**'.format(
-                job['worker']['docker-image']['in-tree']))
+        # implicitly add task config directory.
+        files_changed.append('{}/**'.format(config.path))
 
         # "only when files changed" implies "skip if files have not changed"
         job['optimization'] = {'skip-unless-changed': files_changed}
@@ -177,7 +173,7 @@ def make_task_description(config, jobs):
 registry = {}
 
 
-def run_job_using(worker_implementation, run_using, schema=None):
+def run_job_using(worker_implementation, run_using, schema=None, defaults={}):
     """Register the decorated function as able to set up a task description for
     jobs with the given worker implementation and `run.using` property.  If
     `schema` is given, the job's run field will be verified to match it.
@@ -190,9 +186,15 @@ def run_job_using(worker_implementation, run_using, schema=None):
         if worker_implementation in for_run_using:
             raise Exception("run_job_using({!r}, {!r}) already exists: {!r}".format(
                 run_using, worker_implementation, for_run_using[run_using]))
-        for_run_using[worker_implementation] = (func, schema)
+        for_run_using[worker_implementation] = (func, schema, defaults)
         return func
     return wrap
+
+
+@run_job_using('always-optimized', 'always-optimized',
+               Schema({'using': 'always-optimized'}))
+def always_optimized(config, job, taskdesc):
+    pass
 
 
 def configure_taskdesc_for_run(config, job, taskdesc, worker_implementation):
@@ -211,13 +213,15 @@ def configure_taskdesc_for_run(config, job, taskdesc, worker_implementation):
         raise Exception("no functions for run.using {!r} on {!r}".format(
             run_using, worker_implementation))
 
-    func, schema = registry[run_using][worker_implementation]
-    if schema:
-        job['run'] = validate_schema(
-                schema, job['run'],
-                "In job.run using {!r} for job {!r}:".format(
-                    job['run']['using'], job['label']))
+    func, schema, defaults = registry[run_using][worker_implementation]
+    for k, v in defaults.items():
+        job['run'].setdefault(k, v)
 
+    if schema:
+        validate_schema(
+                schema, job['run'],
+                "In job.run using {!r}/{!r} for job {!r}:".format(
+                    job['run']['using'], worker_implementation, job['label']))
     func(config, job, taskdesc)
 
 

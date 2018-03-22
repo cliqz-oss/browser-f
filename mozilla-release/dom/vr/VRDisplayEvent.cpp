@@ -5,7 +5,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "VRDisplayEvent.h"
-#include "js/GCAPI.h"
+#include "js/RootingAPI.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/PrimitiveConversions.h"
 
@@ -33,10 +33,6 @@ NS_INTERFACE_MAP_END_INHERITING(Event)
 
 VRDisplayEvent::VRDisplayEvent(mozilla::dom::EventTarget* aOwner)
   : Event(aOwner, nullptr, nullptr)
-{
-}
-
-VRDisplayEvent::~VRDisplayEvent()
 {
 }
 
@@ -84,10 +80,9 @@ VRDisplayEvent::GetReason() const
 {
   if (mReason.isSome()) {
     return mReason.value();
-  } else {
-    return nullptr;
   }
 
+  return nullptr;
 }
 
 

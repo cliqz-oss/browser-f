@@ -18,6 +18,7 @@
 #include "IPCMessageStart.h"
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/ipc/ByteBuf.h"
 #include "mozilla/ipc/FileDescriptor.h"
 #include "mozilla/ipc/Shmem.h"
 #include "mozilla/ipc/Transport.h"
@@ -280,7 +281,7 @@ public:
 
     ProtocolId GetProtocolId() const { return mProtocolId; }
 
-    base::ProcessId OtherPid() const;
+    base::ProcessId OtherPid() const override;
     void SetOtherProcessId(base::ProcessId aOtherPid);
 
     bool TakeMinidump(nsIFile** aDump, uint32_t* aSequence);
@@ -307,16 +308,16 @@ public:
 
     void SetReplyTimeoutMs(int32_t aTimeoutMs);
 
-    virtual int32_t Register(IProtocol*);
-    virtual int32_t RegisterID(IProtocol*, int32_t);
-    virtual IProtocol* Lookup(int32_t);
-    virtual void Unregister(int32_t);
+    virtual int32_t Register(IProtocol*) override;
+    virtual int32_t RegisterID(IProtocol*, int32_t) override;
+    virtual IProtocol* Lookup(int32_t) override;
+    virtual void Unregister(int32_t) override;
 
     virtual Shmem::SharedMemory* CreateSharedMemory(
-        size_t, SharedMemory::SharedMemoryType, bool, int32_t*);
-    virtual Shmem::SharedMemory* LookupSharedMemory(int32_t);
-    virtual bool IsTrackingSharedMemory(Shmem::SharedMemory*);
-    virtual bool DestroySharedMemory(Shmem&);
+        size_t, SharedMemory::SharedMemoryType, bool, int32_t*) override;
+    virtual Shmem::SharedMemory* LookupSharedMemory(int32_t) override;
+    virtual bool IsTrackingSharedMemory(Shmem::SharedMemory*) override;
+    virtual bool DestroySharedMemory(Shmem&) override;
 
     void DeallocShmems();
 
@@ -403,7 +404,7 @@ public:
     GetActorEventTarget(IProtocol* aActor);
 
     virtual nsIEventTarget*
-    GetActorEventTarget();
+    GetActorEventTarget() override;
 
     virtual void OnChannelReceivedMessage(const Message& aMsg) {}
 
@@ -421,13 +422,14 @@ protected:
     virtual already_AddRefed<nsIEventTarget>
     GetSpecificMessageEventTarget(const Message& aMsg) { return nullptr; }
 
-    virtual void SetEventTargetForActorInternal(IProtocol* aActor, nsIEventTarget* aEventTarget);
+    virtual void SetEventTargetForActorInternal(IProtocol* aActor,
+                                                nsIEventTarget* aEventTarget) override;
     virtual void ReplaceEventTargetForActorInternal(
       IProtocol* aActor,
-      nsIEventTarget* aEventTarget);
+      nsIEventTarget* aEventTarget) override;
 
     virtual already_AddRefed<nsIEventTarget>
-    GetActorEventTargetInternal(IProtocol* aActor);
+    GetActorEventTargetInternal(IProtocol* aActor) override;
 
   private:
     ProtocolId mProtocolId;
@@ -573,11 +575,7 @@ DuplicateHandle(HANDLE aSourceHandle,
  * Annotate the crash reporter with the error code from the most recent system
  * call. Returns the system error.
  */
-#ifdef MOZ_CRASHREPORTER
 void AnnotateSystemError();
-#else
-#define AnnotateSystemError() do { } while (0)
-#endif
 
 /**
  * An endpoint represents one end of a partially initialized IPDL channel. To
@@ -696,7 +694,7 @@ private:
     ProcessId mMyPid, mOtherPid;
 };
 
-#if defined(MOZ_CRASHREPORTER) && defined(XP_MACOSX)
+#if defined(XP_MACOSX)
 void AnnotateCrashReportWithErrno(const char* tag, int error);
 #else
 static inline void AnnotateCrashReportWithErrno(const char* tag, int error)

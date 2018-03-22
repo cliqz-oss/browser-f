@@ -22,8 +22,8 @@
 #include "mozilla/layers/PaintThread.h"
 #include "mozilla/layers/PLayerTransactionChild.h"
 #include "mozilla/layers/PTextureChild.h"
-#include "mozilla/layers/TextureClient.h"// for TextureClient
-#include "mozilla/layers/TextureClientPool.h"// for TextureClientPool
+#include "mozilla/layers/TextureClient.h" // for TextureClient
+#include "mozilla/layers/TextureClientPool.h" // for TextureClientPool
 #include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUProcessManager.h"
@@ -87,7 +87,6 @@ CompositorBridgeChild::CompositorBridgeChild(CompositorManagerChild *aManager)
   , mCanSend(false)
   , mActorDestroyed(false)
   , mFwdTransactionId(0)
-  , mDeviceResetSequenceNumber(0)
   , mMessageLoop(MessageLoop::current())
   , mProcessToken(0)
   , mSectionAllocator(nullptr)
@@ -367,7 +366,7 @@ static void CalculatePluginClip(const LayoutDeviceIntRect& aBounds,
   for (uint32_t idx = 0; idx < aPluginClipRects.Length(); idx++) {
     LayoutDeviceIntRect rect = aPluginClipRects[idx];
     // shift to content origin
-    rect.MoveBy(aBounds.x, aBounds.y);
+    rect.MoveBy(aBounds.X(), aBounds.Y());
     // accumulate visible rects
     contentVisibleRegion.OrWith(rect);
   }
@@ -380,7 +379,7 @@ static void CalculatePluginClip(const LayoutDeviceIntRect& aBounds,
     return;
   }
   // shift to plugin widget origin
-  contentVisibleRegion.MoveBy(-aBounds.x, -aBounds.y);
+  contentVisibleRegion.MoveBy(-aBounds.X(), -aBounds.Y());
   for (auto iter = contentVisibleRegion.RectIter(); !iter.Done(); iter.Next()) {
     const LayoutDeviceIntRect& rect = iter.Get();
     aResult.AppendElement(rect);
@@ -439,8 +438,8 @@ CompositorBridgeChild::RecvUpdatePluginConfigurations(const LayoutDeviceIntPoint
         // by a child window move, and will call invalidate on the plugin
         // parent window which the browser owns. The latter gets picked up in
         // our OnPaint handler and forwarded over to the plugin process async.
-        widget->Resize(aContentOffset.x + bounds.x,
-                       aContentOffset.y + bounds.y,
+        widget->Resize(aContentOffset.x + bounds.X(),
+                       aContentOffset.y + bounds.Y(),
                        bounds.Width(), bounds.Height(), true);
       }
 
@@ -496,7 +495,8 @@ CompositorBridgeChild::RecvCaptureAllPlugins(const uintptr_t& aParentWidget)
   // Bounce the call to SendAllPluginsCaptured off the ImageBridgeChild loop,
   // to make sure that the image updates on that thread have been processed.
   ImageBridgeChild::GetSingleton()->GetMessageLoop()->PostTask(
-    NewRunnableFunction(&ScheduleSendAllPluginsCaptured, this,
+    NewRunnableFunction("ScheduleSendAllPluginsCapturedRunnable",
+                        &ScheduleSendAllPluginsCaptured, this,
                         MessageLoop::current()));
   return IPC_OK();
 #else
@@ -1193,103 +1193,28 @@ CompositorBridgeChild::FlushAsyncPaints()
   }
 }
 
-void
-CompositorBridgeChild::NotifyBeginAsyncPrepareBuffer(CapturedBufferState* aState)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-
-  MonitorAutoLock lock(mPaintLock);
-
-  // We must not be waiting for paints (or buffer copying) to complete yet. This
-  // would imply we started a new paint without waiting for a previous one, which
-  // could lead to incorrect rendering or IPDL deadlocks.
-  MOZ_ASSERT(!mIsDelayingForAsyncPaints);
-
-  mOutstandingAsyncPaints++;
-
-  // Mark texture clients that they are being used for async painting, and
-  // make sure we hold them alive on the main thread.
-  aState->GetTextureClients(mTextureClientsForAsyncPaint);
-}
-
-void
-CompositorBridgeChild::NotifyFinishedAsyncPrepareBuffer(CapturedBufferState* aState)
-{
-  MOZ_ASSERT(PaintThread::IsOnPaintThread());
-
-  MonitorAutoLock lock(mPaintLock);
-  mOutstandingAsyncPaints--;
-}
-
-void
-CompositorBridgeChild::NotifyBeginAsyncPaint(CapturedPaintState* aState)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-
-  MonitorAutoLock lock(mPaintLock);
-
-  // We must not be waiting for paints to complete yet. This would imply we
-  // started a new paint without waiting for a previous one, which could lead to
-  // incorrect rendering or IPDL deadlocks.
-  MOZ_ASSERT(!mIsDelayingForAsyncPaints);
-
-  mOutstandingAsyncPaints++;
-
-  // Mark texture clients that they are being used for async painting, and
-  // make sure we hold them alive on the main thread.
-  aState->mTextureClient->AddPaintThreadRef();
-  mTextureClientsForAsyncPaint.AppendElement(aState->mTextureClient);
-  if (aState->mTextureClientOnWhite) {
-    aState->mTextureClientOnWhite->AddPaintThreadRef();
-    mTextureClientsForAsyncPaint.AppendElement(aState->mTextureClientOnWhite);
-  }
-}
-
-void
-CompositorBridgeChild::NotifyFinishedAsyncPaint(CapturedPaintState* aState)
-{
-  MOZ_ASSERT(PaintThread::IsOnPaintThread());
-
-  MonitorAutoLock lock(mPaintLock);
-
-  mOutstandingAsyncPaints--;
-
-  // These textures should be held alive on the main thread. The ref we
-  // captured should not be the final ref.
-  MOZ_RELEASE_ASSERT(!aState->mTextureClient->HasOneRef());
-
-  // It's now safe to drop the paint thread ref we're holding, since we've
-  // flushed writes to the underlying TextureData. Note that we keep the
-  // main thread ref around until FlushAsyncPaints is called, lazily ensuring
-  // the Release occurs on the main thread (versus a message in the event
-  // loop).
-  //
-  // Note that we zap our ref immediately after. Otherwise, the main thread
-  // could wake up when we drop the lock, and we could still be holding a ref
-  // on the paint thread. If this causes TextureClient to destroy then it will
-  // be destroyed on the wrong thread.
-  aState->mTextureClient->DropPaintThreadRef();
-  aState->mTextureClient = nullptr;
-  if (aState->mTextureClientOnWhite) {
-    aState->mTextureClientOnWhite->DropPaintThreadRef();
-    aState->mTextureClientOnWhite = nullptr;
-  }
-}
-
-void
-CompositorBridgeChild::NotifyBeginAsyncEndLayerTransaction()
+bool
+CompositorBridgeChild::NotifyBeginAsyncEndLayerTransaction(SyncObjectClient* aSyncObject)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MonitorAutoLock lock(mPaintLock);
 
   MOZ_ASSERT(!mOutstandingAsyncEndTransaction);
   mOutstandingAsyncEndTransaction = true;
+  mOutstandingAsyncSyncObject = aSyncObject;
+  return mOutstandingAsyncPaints == 0;
 }
 
 void
 CompositorBridgeChild::NotifyFinishedAsyncEndLayerTransaction()
 {
   MOZ_ASSERT(PaintThread::IsOnPaintThread());
+
+  if (mOutstandingAsyncSyncObject) {
+    mOutstandingAsyncSyncObject->Synchronize();
+    mOutstandingAsyncSyncObject = nullptr;
+  }
+
   MonitorAutoLock lock(mPaintLock);
 
   // Since this should happen after ALL paints are done and

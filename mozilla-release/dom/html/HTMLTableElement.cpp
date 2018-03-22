@@ -32,13 +32,13 @@ public:
   explicit TableRowsCollection(HTMLTableElement* aParent);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_NSIDOMHTMLCOLLECTION
 
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
   NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
 
+  virtual uint32_t Length() override;
   virtual Element* GetElementAt(uint32_t aIndex) override;
   virtual nsINode* GetParentObject() override
   {
@@ -217,17 +217,15 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(TableRowsCollection,
 
 NS_INTERFACE_TABLE_HEAD(TableRowsCollection)
   NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
-  NS_INTERFACE_TABLE(TableRowsCollection, nsIHTMLCollection,
-                     nsIDOMHTMLCollection, nsIMutationObserver)
+  NS_INTERFACE_TABLE(TableRowsCollection, nsIHTMLCollection, nsIMutationObserver)
   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(TableRowsCollection)
 NS_INTERFACE_MAP_END
 
-NS_IMETHODIMP
-TableRowsCollection::GetLength(uint32_t* aLength)
+uint32_t
+TableRowsCollection::Length()
 {
   EnsureInitialized();
-  *aLength = mRows.Length();
-  return NS_OK;
+  return mRows.Length();
 }
 
 Element*
@@ -240,19 +238,6 @@ TableRowsCollection::GetElementAt(uint32_t aIndex)
   return nullptr;
 }
 
-NS_IMETHODIMP
-TableRowsCollection::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  nsISupports* node = GetElementAt(aIndex);
-  if (!node) {
-    *aReturn = nullptr;
-
-    return NS_OK;
-  }
-
-  return CallQueryInterface(node, aReturn);
-}
-
 Element*
 TableRowsCollection::GetFirstNamedElement(const nsAString& aName, bool& aFound)
 {
@@ -262,10 +247,10 @@ TableRowsCollection::GetFirstNamedElement(const nsAString& aName, bool& aFound)
   NS_ENSURE_TRUE(nameAtom, nullptr);
 
   for (auto& node : mRows) {
-    if (node->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
-                          nameAtom, eCaseMatters) ||
-        node->AttrValueIs(kNameSpaceID_None, nsGkAtoms::id,
-                          nameAtom, eCaseMatters)) {
+    if (node->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
+                                       nameAtom, eCaseMatters) ||
+        node->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::id,
+                                       nameAtom, eCaseMatters)) {
       aFound = true;
       return node->AsElement();
     }
@@ -305,21 +290,6 @@ TableRowsCollection::GetSupportedNames(nsTArray<nsString>& aNames)
   }
 }
 
-
-NS_IMETHODIMP
-TableRowsCollection::NamedItem(const nsAString& aName,
-                               nsIDOMNode** aReturn)
-{
-  bool found;
-  nsISupports* node = GetFirstNamedElement(aName, found);
-  if (!node) {
-    *aReturn = nullptr;
-
-    return NS_OK;
-  }
-
-  return CallQueryInterface(node, aReturn);
-}
 
 NS_IMETHODIMP
 TableRowsCollection::ParentDestroyed()
@@ -921,6 +891,7 @@ bool
 HTMLTableElement::ParseAttribute(int32_t aNamespaceID,
                                  nsAtom* aAttribute,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
   /* ignore summary, just a string */
@@ -962,7 +933,7 @@ HTMLTableElement::ParseAttribute(int32_t aNamespaceID,
                                                         aAttribute, aValue,
                                                         aResult) ||
          nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 
@@ -981,8 +952,7 @@ HTMLTableElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
   // which *element* it's matching (style rules should not stop matching
   // when the display type is changed).
 
-  nsPresContext* presContext = aData->PresContext();
-  nsCompatibility mode = presContext->CompatibilityMode();
+  nsCompatibility mode = aData->Document()->GetCompatibilityMode();
 
   if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(TableBorder))) {
     // cellspacing
@@ -1028,8 +998,7 @@ HTMLTableElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
     // bordercolor
     const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::bordercolor);
     nscolor color;
-    if (value && presContext->UseDocumentColors() &&
-        value->GetColorValue(color)) {
+    if (value && !aData->ShouldIgnoreColors() && value->GetColorValue(color)) {
       aData->SetColorValueIfUnset(eCSSProperty_border_top_color, color);
       aData->SetColorValueIfUnset(eCSSProperty_border_left_color, color);
       aData->SetColorValueIfUnset(eCSSProperty_border_bottom_color, color);

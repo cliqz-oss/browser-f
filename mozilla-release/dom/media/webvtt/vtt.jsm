@@ -127,9 +127,10 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
       for (var n = 0; n < a.length; ++n) {
         if (v === a[n]) {
           this.set(k, v);
-          break;
+          return true;
         }
       }
+      return false;
     },
     // Accept a setting if its a valid digits value (int or float)
     digitsValue: function(k, v) {
@@ -150,7 +151,13 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
         }
       }
       return false;
-    }
+    },
+    // Delete a setting
+    del: function (k) {
+      if (this.has(k)) {
+        delete this.values[k];
+      }
+    },
   };
 
   // Helper function to parse input into groups separated by 'groupDelim', and
@@ -189,7 +196,6 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
     // 4.4.2 WebVTT cue settings
     function consumeCueSettings(input, cue) {
       var settings = new Settings();
-
       parseOptions(input, function (k, v) {
         switch (k) {
         case "region":
@@ -216,9 +222,14 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
           break;
         case "position":
           vals = v.split(",");
-          settings.percent(k, vals[0]);
-          if (vals.length === 2) {
-            settings.alt("positionAlign", vals[1], ["line-left", "center", "line-right", "auto"]);
+          if (settings.percent(k, vals[0])) {
+            if (vals.length === 2) {
+              if (!settings.alt("positionAlign", vals[1], ["line-left", "center", "line-right"])) {
+                // Remove the "position" value because the "positionAlign" is not expected value.
+                // It will be set to default value below.
+                settings.del(k);
+              }
+            }
           }
           break;
         case "size":
@@ -228,9 +239,10 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
           settings.alt(k, v, ["start", "center", "end", "left", "right"]);
           break;
         }
-      }, /:/, /\s/);
+      }, /:/, /\t|\n|\f|\r| /); // groupDelim is ASCII whitespace
 
       // Apply default values for any missing fields.
+      // https://w3c.github.io/webvtt/#collect-a-webvtt-block step 11.4.1.3
       cue.region = settings.get("region", null);
       cue.vertical = settings.get("vertical", "");
       cue.line = settings.get("line", "auto");
@@ -239,7 +251,7 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
       cue.size = settings.get("size", 100);
       cue.align = settings.get("align", "center");
       cue.position = settings.get("position", "auto");
-      cue.positionAlign = settings.get("positionAlign", "center");
+      cue.positionAlign = settings.get("positionAlign", "auto");
     }
 
     function skipWhitespace() {
@@ -1158,7 +1170,12 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
         }
         self.buffer = buffer.substr(pos);
         // Spec defined replacement.
-        return line.replace(/[\u0000]/g, "\uFFFD");
+        line = line.replace(/[\u0000]/g, "\uFFFD");
+
+        if (/^NOTE($|[ \t])/.test(line)) {
+          line = null;
+        }
+        return line;
       }
 
       function createCueIfNeeded() {
@@ -1170,7 +1187,7 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
       // Parsing cue identifier and the identifier should be unique.
       // Return true if the input is a cue identifier.
       function parseCueIdentifier(input) {
-        if (maybeIsTimeStampFormat(line)) {
+        if (maybeIsTimeStampFormat(input)) {
           self.state = "CUE";
           return false;
         }
@@ -1200,7 +1217,6 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
       // 3.4 WebVTT region and WebVTT region settings syntax
       function parseRegion(input) {
         var settings = new Settings();
-
         parseOptions(input, function (k, v) {
           switch (k) {
           case "id":
@@ -1233,7 +1249,8 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
             settings.alt(k, v, ["up"]);
             break;
           }
-        }, /=/, /\s/);
+        }, /:/, /\t|\n|\f|\r| /); // groupDelim is ASCII whitespace
+        // https://infra.spec.whatwg.org/#ascii-whitespace, U+0009 TAB, U+000A LF, U+000C FF, U+000D CR, U+0020 SPACE
 
         // Create the region, using default values for any values that were not
         // specified.
@@ -1275,6 +1292,16 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
         }
       }
 
+      function parseRegionOrStyle(input) {
+        switch (self.substate) {
+          case "REGION":
+            parseRegion(input);
+          break;
+          case "STYLE":
+            // TODO : not supported yet.
+          break;
+        }
+      }
       // Parsing the region and style information.
       // See spec, https://w3c.github.io/webvtt/#collect-a-webvtt-block
       //
@@ -1290,33 +1317,46 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
         let line = null;
         while (self.buffer && self.state === "HEADER") {
           line = collectNextLine();
+          var tempStr = "";
+          if (/^REGION|^STYLE/.test(line)) {
+            self.substate = /^REGION/.test(line) ? "REGION" : "STYLE";
 
-          if (/^REGION|^STYLE/i.test(line)) {
-            parseOptions(line, function (k, v) {
-              switch (k.toUpperCase()) {
-              case "REGION":
-                parseRegion(v);
+            while (true) {
+              line = collectNextLine();
+              if (!line || maybeIsTimeStampFormat(line) || onlyContainsWhiteSpaces(line) || containsTimeDirectionSymbol(line)) {
+                // parse the tempStr and break the while loop.
+                parseRegionOrStyle(tempStr);
                 break;
-              case "STYLE":
-                // TODO : not supported yet.
-                break;
+              } else if (/^REGION|^STYLE/.test(line)) {
+                // The line is another REGION/STYLE, parse tempStr then reset tempStr.
+                // Don't break the while loop to parse the next REGION/STYLE.
+                parseRegionOrStyle(tempStr);
+                self.substate = /^REGION/.test(line) ? "REGION" : "STYLE";
+                tempStr = "";
+              } else {
+                tempStr = tempStr + " " + line;
               }
-            }, ":");
+            }
+          }
+
+          if (!line || onlyContainsWhiteSpaces(line)) {
+            // empty line, whitespaces
+            continue;
           } else if (maybeIsTimeStampFormat(line)) {
             self.state = "CUE";
             break;
-          } else if (!line ||
-                     onlyContainsWhiteSpaces(line) ||
-                     containsTimeDirectionSymbol(line)) {
-            // empty line, whitespaces or string contains "-->"
+          } else if (containsTimeDirectionSymbol(line)) {
+            // string contains "-->"
+            break;
+          } else {
+            //It is an ID.
             break;
           }
-        }
+        } // self.state === "HEADER"
 
         // End parsing header part and doesn't see the timestamp.
         if (self.state === "HEADER") {
           self.state = "ID";
-          line = null
         }
         return line;
       }
@@ -1346,13 +1386,9 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 
           switch (self.state) {
           case "ID":
-            // Ignore NOTE and line terminator
-            if (/^NOTE($|[ \t])/.test(line) || !line) {
-              break;
-            }
             // If there is no cue identifier, keep the line and reuse this line
             // in next iteration.
-            if (!parseCueIdentifier(line)) {
+            if (!line || !parseCueIdentifier(line)) {
               nextIteration = true;
               continue;
             }
@@ -1378,8 +1414,9 @@ const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
             break;
           case "BADCUE": // BADCUE
             // 54-62 - Collect and discard the remaining cue.
-            if (!line) {
-              self.state = "ID";
+            self.state = "ID";
+            if (line) { // keep this line to ID state.
+              continue;
             }
             break;
           }

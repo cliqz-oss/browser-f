@@ -35,6 +35,14 @@ function init(aEvent) {
         componentsVersion += `+${cliqzAddon.version}`;
       }
       distroIdField.value += ` (${componentsVersion})`;
+
+      // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
+      let bundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
+      let archResource = Services.appinfo.is64Bit
+                         ? "aboutDialog.architecture.sixtyFourBit"
+                         : "aboutDialog.architecture.thirtyTwoBit";
+      let arch = bundle.GetStringFromName(archResource);
+      distroIdField.value += ` (${arch})`;
     });
 
 #if 0
@@ -62,14 +70,6 @@ function init(aEvent) {
     document.getElementById("experimental").hidden = false;
     document.getElementById("communityDesc").hidden = true;
   }
-
-  // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
-  let bundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
-  let archResource = Services.appinfo.is64Bit
-                     ? "aboutDialog.architecture.sixtyFourBit"
-                     : "aboutDialog.architecture.thirtyTwoBit";
-  let arch = bundle.GetStringFromName(archResource);
-  versionField.textContent += ` (${arch})`;
 #endif
 
   // Show a release notes link if we have a URL.

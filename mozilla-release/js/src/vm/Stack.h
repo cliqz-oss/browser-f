@@ -398,7 +398,7 @@ class InterpreterFrame
      */
 
     /* Used for Invoke and Interpret. */
-    void initCallFrame(JSContext* cx, InterpreterFrame* prev, jsbytecode* prevpc, Value* prevsp,
+    void initCallFrame(InterpreterFrame* prev, jsbytecode* prevpc, Value* prevsp,
                        JSFunction& callee, JSScript* script, Value* argv, uint32_t nactual,
                        MaybeConstruct constructing);
 
@@ -1666,11 +1666,18 @@ class JitActivation : public Activation
     // Interrupts are started from the interrupt signal handler (or the ARM
     // simulator) and cleared by WasmHandleExecutionInterrupt or WasmHandleThrow
     // when the interrupt is handled.
+
     void startWasmInterrupt(const JS::ProfilingFrameIterator::RegisterState& state);
     void finishWasmInterrupt();
     bool isWasmInterrupted() const;
-    void* wasmUnwindPC() const;
-    void* wasmResumePC() const;
+    void* wasmInterruptUnwindPC() const;
+    void* wasmInterruptResumePC() const;
+
+    void startWasmTrap(wasm::Trap trap, uint32_t bytecodeOffset, void* pc, void* fp);
+    void finishWasmTrap();
+    bool isWasmTrapping() const;
+    void* wasmTrapPC() const;
+    uint32_t wasmTrapBytecodeOffset() const;
 };
 
 // A filtering of the ActivationIterator to only stop at JitActivations.
@@ -1780,12 +1787,13 @@ class JitFrameIter
   protected:
     jit::JitActivation* act_;
     mozilla::MaybeOneOf<jit::JSJitFrameIter, wasm::WasmFrameIter> iter_;
+    bool mustUnwindActivation_;
 
     void settle();
 
   public:
-    JitFrameIter() : act_(nullptr), iter_() {}
-    explicit JitFrameIter(jit::JitActivation* activation);
+    JitFrameIter() : act_(nullptr), iter_(), mustUnwindActivation_(false) {}
+    explicit JitFrameIter(jit::JitActivation* activation, bool mustUnwindActivation = false);
 
     explicit JitFrameIter(const JitFrameIter& another);
     JitFrameIter& operator=(const JitFrameIter& another);

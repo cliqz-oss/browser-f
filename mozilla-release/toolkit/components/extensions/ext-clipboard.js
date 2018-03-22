@@ -5,12 +5,10 @@
 XPCOMUtils.defineLazyServiceGetter(this, "imgTools",
                                    "@mozilla.org/image/tools;1", "imgITools");
 
-const ArrayBufferInputStream = Components.Constructor(
-    "@mozilla.org/io/arraybuffer-input-stream;1", "nsIArrayBufferInputStream");
 const SupportsInterfacePointer = Components.Constructor(
-    "@mozilla.org/supports-interface-pointer;1", "nsISupportsInterfacePointer");
+  "@mozilla.org/supports-interface-pointer;1", "nsISupportsInterfacePointer");
 const Transferable = Components.Constructor(
-    "@mozilla.org/widget/transferable;1", "nsITransferable");
+  "@mozilla.org/widget/transferable;1", "nsITransferable");
 
 this.clipboard = class extends ExtensionAPI {
   getAPI(context) {
@@ -21,12 +19,9 @@ this.clipboard = class extends ExtensionAPI {
             return Promise.reject({message: "Writing images to the clipboard is not supported on Android"});
           }
           let mimeType = `image/${imageType}`;
-          let input = new ArrayBufferInputStream();
-          input.setData(imageData, 0, imageData.byteLength);
-
           let container;
           try {
-            container = imgTools.decodeImage(input, mimeType);
+            container = imgTools.decodeImageFromArrayBuffer(imageData, mimeType);
           } catch (e) {
             return Promise.reject({message: `Data is not a valid ${imageType} image`});
           }

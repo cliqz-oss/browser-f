@@ -498,14 +498,12 @@ exports.setContents = function(elem, contents) {
     return;
   }
 
-  if ('unsafeSetInnerHTML' in elem) {
+  if ("unsafeSetInnerHTML" in elem) {
     // FIXME: Stop relying on unsanitized HTML.
     elem.unsafeSetInnerHTML(contents);
-  }
-  else if ('innerHTML' in elem) {
+  } else if ("innerHTML" in elem) {
     elem.innerHTML = contents;
-  }
-  else {
+  } else {
     try {
       var ns = elem.ownerDocument.documentElement.namespaceURI;
       if (!ns) {

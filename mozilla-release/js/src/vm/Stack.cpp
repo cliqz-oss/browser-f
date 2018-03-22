@@ -14,7 +14,6 @@
 #include "jit/BaselineFrame.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitCompartment.h"
-#include "js/GCAPI.h"
 #include "vm/Debugger.h"
 #include "vm/Opcodes.h"
 
@@ -446,7 +445,7 @@ InterpreterStack::pushInvokeFrame(JSContext* cx, const CallArgs& args, MaybeCons
         return nullptr;
 
     fp->mark_ = mark;
-    fp->initCallFrame(cx, nullptr, nullptr, nullptr, *fun, script, argv, args.length(),
+    fp->initCallFrame(nullptr, nullptr, nullptr, *fun, script, argv, args.length(),
                       constructing);
     return fp;
 }
@@ -483,6 +482,7 @@ JitFrameIter::operator=(const JitFrameIter& another)
     MOZ_ASSERT(this != &another);
 
     act_ = another.act_;
+    mustUnwindActivation_ = another.mustUnwindActivation_;
 
     if (isSome())
         iter_.destroy();
@@ -499,9 +499,10 @@ JitFrameIter::operator=(const JitFrameIter& another)
     return *this;
 }
 
-JitFrameIter::JitFrameIter(jit::JitActivation* act)
+JitFrameIter::JitFrameIter(jit::JitActivation* act, bool mustUnwindActivation)
 {
     act_ = act;
+    mustUnwindActivation_ = mustUnwindActivation;
     MOZ_ASSERT(act->hasExitFP(), "packedExitFP is used to determine if JSJit or wasm");
     if (act->hasJSExitFP()) {
         iter_.construct<jit::JSJitFrameIter>(act);
@@ -558,6 +559,10 @@ JitFrameIter::settle()
         // popped.
 
         wasm::Frame* prevFP = (wasm::Frame*) jitFrame.prevFp();
+
+        if (mustUnwindActivation_)
+            act_->setWasmExitFP(prevFP);
+
         iter_.destroy();
         iter_.construct<wasm::WasmFrameIter>(act_, prevFP);
         MOZ_ASSERT(!asWasm().done());
@@ -569,12 +574,28 @@ void
 JitFrameIter::operator++()
 {
     MOZ_ASSERT(isSome());
-    if (isJSJit())
+    if (isJSJit()) {
+        const jit::JSJitFrameIter& jitFrame = asJSJit();
+
+        jit::JitFrameLayout* prevFrame = nullptr;
+        if (mustUnwindActivation_ && jitFrame.isScripted())
+            prevFrame = jitFrame.jsFrame();
+
         ++asJSJit();
-    else if (isWasm())
+
+        if (prevFrame) {
+            // Unwind the frame by updating packedExitFP. This is necessary
+            // so that (1) debugger exception unwind and leave frame hooks
+            // don't see this frame when they use ScriptFrameIter, and (2)
+            // ScriptFrameIter does not crash when accessing an IonScript
+            // that's destroyed by the ionScript->decref call.
+            EnsureBareExitFrame(act_, prevFrame);
+        }
+    } else if (isWasm()) {
         ++asWasm();
-    else
+    } else {
         MOZ_CRASH("unhandled case");
+    }
     settle();
 }
 
@@ -1531,6 +1552,7 @@ jit::JitActivation::~JitActivation()
     MOZ_ASSERT(!bailoutData_);
 
     MOZ_ASSERT(!isWasmInterrupted());
+    MOZ_ASSERT(!isWasmTrapping());
 
     clearRematerializedFrames();
     js_delete(rematerializedFrames_);
@@ -1704,18 +1726,17 @@ jit::JitActivation::startWasmInterrupt(const JS::ProfilingFrameIterator::Registe
     MOZ_ASSERT(state.fp);
 
     // Execution can only be interrupted in function code. Afterwards, control
-    // flow does not reenter function code and thus there should be no
+    // flow does not reenter function code and thus there can be no
     // interrupt-during-interrupt.
-    MOZ_ASSERT(!isWasmInterrupted());
 
     bool ignoredUnwound;
     wasm::UnwindState unwindState;
-    MOZ_ALWAYS_TRUE(wasm::StartUnwinding(*this, state, &unwindState, &ignoredUnwound));
+    MOZ_ALWAYS_TRUE(wasm::StartUnwinding(state, &unwindState, &ignoredUnwound));
 
     void* pc = unwindState.pc;
     MOZ_ASSERT(wasm::LookupCode(pc)->lookupRange(pc)->isFunction());
 
-    cx_->runtime()->startWasmInterrupt(state.pc, pc);
+    cx_->runtime()->wasmUnwindData.ref().construct<wasm::InterruptData>(pc, state.pc);
     setWasmExitFP(unwindState.fp);
 
     MOZ_ASSERT(compartment() == unwindState.fp->tls->instance->compartment());
@@ -1725,18 +1746,17 @@ jit::JitActivation::startWasmInterrupt(const JS::ProfilingFrameIterator::Registe
 void
 jit::JitActivation::finishWasmInterrupt()
 {
-    MOZ_ASSERT(hasWasmExitFP());
     MOZ_ASSERT(isWasmInterrupted());
 
-    cx_->runtime()->finishWasmInterrupt();
+    cx_->runtime()->wasmUnwindData.ref().destroy();
     packedExitFP_ = nullptr;
 }
 
 bool
 jit::JitActivation::isWasmInterrupted() const
 {
-    void* pc = cx_->runtime()->wasmUnwindPC();
-    if (!pc)
+    JSRuntime* rt = cx_->runtime();
+    if (!rt->wasmUnwindData.ref().constructed<wasm::InterruptData>())
         return false;
 
     Activation* act = cx_->activation();
@@ -1747,24 +1767,76 @@ jit::JitActivation::isWasmInterrupted() const
         return false;
 
     DebugOnly<const wasm::Frame*> fp = wasmExitFP();
-    MOZ_ASSERT(fp && fp->instance()->code().containsCodePC(pc));
+    DebugOnly<void*> unwindPC = rt->wasmInterruptData().unwindPC;
+    MOZ_ASSERT(fp->instance()->code().containsCodePC(unwindPC));
     return true;
 }
 
 void*
-jit::JitActivation::wasmUnwindPC() const
+jit::JitActivation::wasmInterruptUnwindPC() const
 {
-    MOZ_ASSERT(hasWasmExitFP());
     MOZ_ASSERT(isWasmInterrupted());
-    return cx_->runtime()->wasmUnwindPC();
+    return cx_->runtime()->wasmInterruptData().unwindPC;
 }
 
 void*
-jit::JitActivation::wasmResumePC() const
+jit::JitActivation::wasmInterruptResumePC() const
 {
-    MOZ_ASSERT(hasWasmExitFP());
     MOZ_ASSERT(isWasmInterrupted());
-    return cx_->runtime()->wasmResumePC();
+    return cx_->runtime()->wasmInterruptData().resumePC;
+}
+
+void
+jit::JitActivation::startWasmTrap(wasm::Trap trap, uint32_t bytecodeOffset, void* pc, void* fp)
+{
+    MOZ_ASSERT(pc);
+    MOZ_ASSERT(fp);
+
+    cx_->runtime()->wasmUnwindData.ref().construct<wasm::TrapData>(pc, trap, bytecodeOffset);
+    setWasmExitFP((wasm::Frame*)fp);
+}
+
+void
+jit::JitActivation::finishWasmTrap()
+{
+    MOZ_ASSERT(isWasmTrapping());
+
+    cx_->runtime()->wasmUnwindData.ref().destroy();
+    packedExitFP_ = nullptr;
+}
+
+bool
+jit::JitActivation::isWasmTrapping() const
+{
+    JSRuntime* rt = cx_->runtime();
+    if (!rt->wasmUnwindData.ref().constructed<wasm::TrapData>())
+        return false;
+
+    Activation* act = cx_->activation();
+    while (act && !act->hasWasmExitFP())
+        act = act->prev();
+
+    if (act != this)
+        return false;
+
+    DebugOnly<const wasm::Frame*> fp = wasmExitFP();
+    DebugOnly<void*> unwindPC = rt->wasmTrapData().pc;
+    MOZ_ASSERT(fp->instance()->code().containsCodePC(unwindPC));
+    return true;
+}
+
+void*
+jit::JitActivation::wasmTrapPC() const
+{
+    MOZ_ASSERT(isWasmTrapping());
+    return cx_->runtime()->wasmTrapData().pc;
+}
+
+uint32_t
+jit::JitActivation::wasmTrapBytecodeOffset() const
+{
+    MOZ_ASSERT(isWasmTrapping());
+    return cx_->runtime()->wasmTrapData().bytecodeOffset;
 }
 
 InterpreterFrameIterator&

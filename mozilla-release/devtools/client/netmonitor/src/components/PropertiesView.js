@@ -6,31 +6,43 @@
 
 "use strict";
 
-const {
-  Component,
-  createFactory,
-  DOM,
-  PropTypes,
-} = require("devtools/client/shared/vendor/react");
-
-const { REPS, MODE } = require("devtools/client/shared/components/reps/reps");
-const { Rep } = REPS;
+const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 const { FILTER_SEARCH_DELAY } = require("../constants");
 
 // Components
-const SearchBox = createFactory(require("devtools/client/shared/components/SearchBox"));
 const TreeViewClass = require("devtools/client/shared/components/tree/TreeView");
 const TreeView = createFactory(TreeViewClass);
-const TreeRow = createFactory(require("devtools/client/shared/components/tree/TreeRow"));
-const SourceEditor = createFactory(require("./SourceEditor"));
 
-const { div, tr, td } = DOM;
+loader.lazyGetter(this, "SearchBox", function () {
+  return createFactory(require("devtools/client/shared/components/SearchBox"));
+});
+loader.lazyGetter(this, "TreeRow", function () {
+  return createFactory(require("devtools/client/shared/components/tree/TreeRow"));
+});
+loader.lazyGetter(this, "SourceEditor", function () {
+  return createFactory(require("./SourceEditor"));
+});
+loader.lazyGetter(this, "HTMLPreview", function () {
+  return createFactory(require("./HtmlPreview"));
+});
+
+loader.lazyGetter(this, "Rep", function () {
+  return require("devtools/client/shared/components/reps/reps").REPS.Rep;
+});
+loader.lazyGetter(this, "MODE", function () {
+  return require("devtools/client/shared/components/reps/reps").MODE;
+});
+
+const { div, tr, td } = dom;
 const AUTO_EXPAND_MAX_LEVEL = 7;
 const AUTO_EXPAND_MAX_NODES = 50;
 const EDITOR_CONFIG_ID = "EDITOR_CONFIG";
+const HTML_PREVIEW_ID = "HTML_PREVIEW";
 
-/*
+/**
  * Properties View component
  * A scrollable tree view component which provides some useful features for
  * representing object properties.
@@ -38,12 +50,14 @@ const EDITOR_CONFIG_ID = "EDITOR_CONFIG";
  * Search filter - Set enableFilter to enable / disable SearchBox feature.
  * Tree view - Default enabled.
  * Source editor - Enable by specifying object level 1 property name to EDITOR_CONFIG_ID.
+ * HTML preview - Enable by specifying object level 1 property name to HTML_PREVIEW_ID.
  * Rep - Default enabled.
  */
 class PropertiesView extends Component {
   static get propTypes() {
     return {
       object: PropTypes.object,
+      provider: PropTypes.object,
       enableInput: PropTypes.bool,
       expandableStrings: PropTypes.bool,
       filterPlaceHolder: PropTypes.string,
@@ -73,7 +87,7 @@ class PropertiesView extends Component {
 
     this.getRowClass = this.getRowClass.bind(this);
     this.onFilter = this.onFilter.bind(this);
-    this.renderRowWithEditor = this.renderRowWithEditor.bind(this);
+    this.renderRowWithExtras = this.renderRowWithExtras.bind(this);
     this.renderValueWithRep = this.renderValueWithRep.bind(this);
     this.shouldRenderSearchBox = this.shouldRenderSearchBox.bind(this);
     this.updateFilterText = this.updateFilterText.bind(this);
@@ -95,7 +109,7 @@ class PropertiesView extends Component {
     return jsonString.includes(filterText.toLowerCase());
   }
 
-  renderRowWithEditor(props) {
+  renderRowWithExtras(props) {
     const { level, name, value, path } = props.member;
 
     // Display source editor when specifying to EDITOR_CONFIG_ID along with config
@@ -109,8 +123,20 @@ class PropertiesView extends Component {
       );
     }
 
-    // Skip for editor config
-    if (level >= 1 && path.includes(EDITOR_CONFIG_ID)) {
+    // Similar to the source editor, display a preview when specifying HTML_PREVIEW_ID
+    if (level === 1 && name === HTML_PREVIEW_ID) {
+      return (
+        tr({ key: HTML_PREVIEW_ID, className: "response-preview-container" },
+          td({ colSpan: 2 },
+            HTMLPreview(value)
+          )
+        )
+      );
+    }
+
+    // Skip for editor config and HTML previews
+    if ((path.includes(EDITOR_CONFIG_ID) || path.includes(HTML_PREVIEW_ID))
+      && level >= 1) {
       return null;
     }
 
@@ -139,9 +165,13 @@ class PropertiesView extends Component {
     }));
   }
 
+  sectionIsSearchable(object, section) {
+    return !(object[section][EDITOR_CONFIG_ID] || object[section][HTML_PREVIEW_ID]);
+  }
+
   shouldRenderSearchBox(object) {
     return this.props.enableFilter && object && Object.keys(object)
-      .filter((section) => !object[section][EDITOR_CONFIG_ID]).length > 0;
+      .filter((section) => this.sectionIsSearchable(object, section)).length > 0;
   }
 
   updateFilterText(filterText) {
@@ -161,6 +191,7 @@ class PropertiesView extends Component {
       renderValue,
       sectionNames,
       openLink,
+      provider,
     } = this.props;
 
     return (
@@ -177,6 +208,7 @@ class PropertiesView extends Component {
         div({ className: "tree-container" },
           TreeView({
             object,
+            provider,
             columns: [{
               id: "value",
               width: "100%",
@@ -192,7 +224,7 @@ class PropertiesView extends Component {
               {maxLevel: AUTO_EXPAND_MAX_LEVEL, maxNodes: AUTO_EXPAND_MAX_NODES}
             ),
             onFilter: (props) => this.onFilter(props, sectionNames),
-            renderRow: renderRow || this.renderRowWithEditor,
+            renderRow: renderRow || this.renderRowWithExtras,
             renderValue: renderValue || this.renderValueWithRep,
             openLink,
           }),

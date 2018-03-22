@@ -12,6 +12,7 @@ echo "running as" $(id)
 
 : MOZHARNESS_SCRIPT             ${MOZHARNESS_SCRIPT}
 : MOZHARNESS_CONFIG             ${MOZHARNESS_CONFIG}
+: MOZHARNESS_CONFIG_PATHS       ${MOZHARNESS_CONFIG_PATHS}
 : MOZHARNESS_ACTIONS            ${MOZHARNESS_ACTIONS}
 : MOZHARNESS_OPTIONS            ${MOZHARNESS_OPTIONS}
 
@@ -41,9 +42,6 @@ export TINDERBOX_OUTPUT=1
 # use "simple" package names so that they can be hard-coded in the task's
 # extras.locations
 export MOZ_SIMPLE_PACKAGE_NAME=target
-
-# Do not try to upload symbols (see https://bugzilla.mozilla.org/show_bug.cgi?id=1164615)
-export MOZ_AUTOMATION_UPLOAD_SYMBOLS=0
 
 # Ensure that in tree libraries can be found
 export LIBRARY_PATH=$LIBRARY_PATH:$WORKSPACE/src/obj-firefox:$WORKSPACE/src/gcc/lib64
@@ -88,6 +86,11 @@ fi
 # entirely effective.
 export TOOLTOOL_CACHE
 
+config_path_cmds=""
+for path in ${MOZHARNESS_CONFIG_PATHS}; do
+    config_path_cmds="${config_path_cmds} --extra-config-path ${WORKSPACE}/build/src/${path}"
+done
+
 # support multiple, space delimited, config files
 config_cmds=""
 for cfg in $MOZHARNESS_CONFIG; do
@@ -114,7 +117,9 @@ fi
 
 cd /builds/worker
 
-python2.7 $WORKSPACE/build/src/testing/${MOZHARNESS_SCRIPT} ${config_cmds} \
+python2.7 $WORKSPACE/build/src/testing/${MOZHARNESS_SCRIPT} \
+  ${config_path_cmds} \
+  ${config_cmds} \
   $debug_flag \
   $custom_build_variant_cfg_flag \
   --disable-mock \

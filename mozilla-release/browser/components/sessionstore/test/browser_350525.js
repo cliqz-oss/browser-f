@@ -69,18 +69,18 @@ add_task(async function() {
 
   // get closed tab count
   let count = ss.getClosedTabCount(window);
-  let max_tabs_undo = gPrefService.getIntPref("browser.sessionstore.max_tabs_undo");
+  let max_tabs_undo = Services.prefs.getIntPref("browser.sessionstore.max_tabs_undo");
   ok(0 <= count && count <= max_tabs_undo,
      "getClosedTabCount returns zero or at most max_tabs_undo");
 
   // create a new tab
-  let testURL = "about:";
+  let testURL = "about:mozilla";
   tab = BrowserTestUtils.addTab(gBrowser, testURL);
   await promiseBrowserLoaded(tab.linkedBrowser);
 
   // make sure that the next closed tab will increase getClosedTabCount
-  gPrefService.setIntPref("browser.sessionstore.max_tabs_undo", max_tabs_undo + 1);
-  registerCleanupFunction(() => gPrefService.clearUserPref("browser.sessionstore.max_tabs_undo"));
+  Services.prefs.setIntPref("browser.sessionstore.max_tabs_undo", max_tabs_undo + 1);
+  registerCleanupFunction(() => Services.prefs.clearUserPref("browser.sessionstore.max_tabs_undo"));
 
   // remove tab
   await promiseRemoveTab(tab);

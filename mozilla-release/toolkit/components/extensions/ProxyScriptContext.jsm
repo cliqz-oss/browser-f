@@ -1,7 +1,8 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
 this.EXPORTED_SYMBOLS = ["ProxyScriptContext"];
@@ -137,15 +138,19 @@ const ProxyInfoData = {
       return defaultProxyInfo;
     }
     let failoverProxy = this.createProxyInfoFromData(proxyDataList, defaultProxyInfo, proxyDataListIndex + 1);
-    // When Bug 1360404 is fixed use ProxyService.newProxyInfoWithAuth() for all types.
+    // TODO When Bug 1360404 is fixed use ProxyService.newProxyInfoWithAuth() for all types.
     if (type === PROXY_TYPES.SOCKS || type === PROXY_TYPES.SOCKS4) {
       return ProxyService.newProxyInfoWithAuth(
-              type, host, port, username, password, proxyDNS ? TRANSPARENT_PROXY_RESOLVES_HOST : 0,
-              failoverTimeout ? failoverTimeout : PROXY_TIMEOUT_SEC, failoverProxy);
+        type, host, port, username, password,
+        proxyDNS ? TRANSPARENT_PROXY_RESOLVES_HOST : 0,
+        failoverTimeout ? failoverTimeout : PROXY_TIMEOUT_SEC,
+        failoverProxy);
     }
     return ProxyService.newProxyInfo(
-            type, host, port, proxyDNS ? TRANSPARENT_PROXY_RESOLVES_HOST : 0,
-            failoverTimeout ? failoverTimeout : PROXY_TIMEOUT_SEC, failoverProxy);
+      type, host, port,
+      proxyDNS ? TRANSPARENT_PROXY_RESOLVES_HOST : 0,
+      failoverTimeout ? failoverTimeout : PROXY_TIMEOUT_SEC,
+      failoverProxy);
   },
 
   /**
@@ -195,7 +200,7 @@ class ProxyScriptContext extends BaseContext {
     this.extension = extension;
     this.messageManager = Services.cpmm;
     this.sandbox = Cu.Sandbox(this.extension.principal, {
-      sandboxName: `proxyscript:${extension.id}:${url}`,
+      sandboxName: `Extension Proxy Script (${extension.policy.debugName}): ${url}`,
       metadata: {addonID: extension.id},
     });
     this.url = url;
@@ -291,7 +296,7 @@ class ProxyScriptContext extends BaseContext {
    */
   applyFilter(service, uri, defaultProxyInfo) {
     try {
-      // Bug 1337001 - provide path and query components to non-https URLs.
+      // TODO Bug 1337001 - provide path and query components to non-https URLs.
       let ret = this.FindProxyForURL(uri.prePath, uri.host, this.contextInfo);
       return this.proxyInfoFromProxyData(ret, defaultProxyInfo);
     } catch (e) {
@@ -319,14 +324,15 @@ class ProxyScriptContext extends BaseContext {
 
 class ProxyScriptAPIManager extends SchemaAPIManager {
   constructor() {
-    super("proxy");
+    super("proxy", Schemas);
     this.initialized = false;
   }
 
   lazyInit() {
     if (!this.initialized) {
-      for (let [/* name */, value] of XPCOMUtils.enumerateCategoryEntries(
-          CATEGORY_EXTENSION_SCRIPTS_CONTENT)) {
+      this.initGlobal();
+      let entries = XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCRIPTS_CONTENT);
+      for (let [/* name */, value] of entries) {
         this.loadScript(value);
       }
       this.initialized = true;
@@ -383,6 +389,6 @@ defineLazyGetter(ProxyScriptContext.prototype, "browserObj", function() {
 
   let browserObj = Cu.createObjectIn(this.sandbox);
   let injectionContext = new ProxyScriptInjectionContext(this, can);
-  Schemas.inject(browserObj, injectionContext);
+  proxyScriptAPIManager.schema.inject(browserObj, injectionContext);
   return browserObj;
 });

@@ -10,6 +10,15 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
 XPCOMUtils.defineLazyModuleGetter(this, "ExtensionSettingsStore",
                                   "resource://gre/modules/ExtensionSettingsStore.jsm");
 
+Preferences.addAll([
+  { id: "browser.search.suggest.enabled", type: "bool" },
+  { id: "browser.urlbar.suggest.searches", type: "bool" },
+  { id: "browser.search.hiddenOneOffs", type: "unichar" },
+/* Cliqz. Not used
+  { id: "browser.search.widget.inNavBar", type: "bool" },
+*/
+]);
+
 const ENGINE_FLAVOR = "text/x-moz-search-engine";
 const SEARCH_TYPE = "default_search";
 const SEARCH_KEY = "defaultSearch";
@@ -50,24 +59,19 @@ var gSearchPane = {
 
     this._initAutocomplete();
 
-    let suggestsPref =
-      document.getElementById("browser.search.suggest.enabled");
-    suggestsPref.addEventListener("change", () => {
-      this.updateSuggestsCheckbox();
-    });
+    let suggestsPref = Preferences.get("browser.search.suggest.enabled");
+    suggestsPref.on("change", this.updateSuggestsCheckbox.bind(this));
     this.updateSuggestsCheckbox();
   },
 
   updateSuggestsCheckbox() {
-    let suggestsPref =
-      document.getElementById("browser.search.suggest.enabled");
+    let suggestsPref = Preferences.get("browser.search.suggest.enabled");
     let permanentPB =
       Services.prefs.getBoolPref("browser.privatebrowsing.autostart");
     let urlbarSuggests = document.getElementById("urlBarSuggestion");
     urlbarSuggests.disabled = !suggestsPref.value || permanentPB;
 
-    let urlbarSuggestsPref =
-      document.getElementById("browser.urlbar.suggest.searches");
+    let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
     urlbarSuggests.checked = urlbarSuggestsPref.value;
     if (urlbarSuggests.disabled) {
       urlbarSuggests.checked = false;
@@ -315,7 +319,7 @@ var gSearchPane = {
       if (!engine.shown)
         hiddenList.push(engine.name);
     }
-    document.getElementById("browser.search.hiddenOneOffs").value =
+    Preferences.get("browser.search.hiddenOneOffs").value =
       hiddenList.join(",");
   },
 
@@ -339,7 +343,7 @@ function onDragEngineStart(event) {
 
 
 function EngineStore() {
-  let pref = document.getElementById("browser.search.hiddenOneOffs").value;
+  let pref = Preferences.get("browser.search.hiddenOneOffs").value;
   this.hiddenList = pref ? pref.split(",") : [];
 
   this._engines = Services.search.getVisibleEngines().map(this._cloneEngine, this);
@@ -586,7 +590,6 @@ EngineView.prototype = {
   getParentIndex(index) { return -1; },
   hasNextSibling(parentIndex, index) { return false; },
   getLevel(index) { return 0; },
-  getProgressMode(index, column) { },
   getCellValue(index, column) {
     if (column.id == "engineShown")
       return this._engineStore.engines[index].shown;

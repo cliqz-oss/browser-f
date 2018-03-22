@@ -50,6 +50,8 @@
 #include "mozilla/dom/cache/Cache.h"
 #include "mozilla/dom/cache/CacheStorage.h"
 #include "mozilla/dom/ChannelInfo.h"
+#include "mozilla/dom/ClientChannelHelper.h"
+#include "mozilla/dom/ClientInfo.h"
 #include "mozilla/dom/Exceptions.h"
 #include "mozilla/dom/InternalResponse.h"
 #include "mozilla/dom/nsCSPService.h"
@@ -259,6 +261,7 @@ struct ScriptLoadInfo
   nsCOMPtr<nsIInputStream> mCacheReadStream;
 
   nsCOMPtr<nsIChannel> mChannel;
+  Maybe<ClientInfo> mReservedClientInfo;
   char16_t* mScriptTextBuf;
   size_t mScriptTextLength;
 
@@ -567,6 +570,7 @@ class ScriptLoaderRunnable final : public nsIRunnable,
   nsCOMPtr<nsIEventTarget> mSyncLoopTarget;
   nsTArray<ScriptLoadInfo> mLoadInfos;
   RefPtr<CacheCreator> mCacheCreator;
+  Maybe<ServiceWorkerDescriptor> mController;
   bool mIsMainScript;
   WorkerScriptType mWorkerScriptType;
   bool mCanceled;
@@ -989,6 +993,17 @@ private:
       return rv;
     }
 
+    if (IsMainWorkerScript()) {
+      MOZ_DIAGNOSTIC_ASSERT(loadInfo.mReservedClientInfo.isSome());
+      rv = AddClientChannelHelper(channel,
+                                  Move(loadInfo.mReservedClientInfo),
+                                  Maybe<ClientInfo>(),
+                                  mWorkerPrivate->HybridEventTarget());
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+    }
+
     if (loadInfo.mCacheStatus != ScriptLoadInfo::ToBeCached) {
       rv = channel->AsyncOpen2(loader);
       if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1067,6 +1082,20 @@ private:
       MOZ_ASSERT(parentWorker, "Must have a parent!");
       principal = parentWorker->GetPrincipal();
     }
+
+#ifdef DEBUG
+    if (IsMainWorkerScript()) {
+      nsCOMPtr<nsIPrincipal> loadingPrincipal =
+        mWorkerPrivate->GetLoadingPrincipal();
+      // if we are not in a ServiceWorker, and the principal is not null, then the
+      // loading principal must subsume the worker principal if it is not a
+      // nullPrincipal (sandbox).
+      MOZ_ASSERT(!loadingPrincipal ||
+                 loadingPrincipal->GetIsNullPrincipal() ||
+                 principal->GetIsNullPrincipal() ||
+                 loadingPrincipal->Subsumes(principal));
+    }
+#endif
 
     // We don't mute the main worker script becase we've already done
     // same-origin checks on them so we should be able to see their errors.
@@ -1170,9 +1199,12 @@ private:
       // Store the channel info if needed.
       mWorkerPrivate->InitChannelInfo(channel);
 
-      // Our final channel principal should match the original principal
-      // in terms of the origin.
-      MOZ_DIAGNOSTIC_ASSERT(mWorkerPrivate->FinalChannelPrincipalIsValid(channel));
+      // Our final channel principal should match the loading principal
+      // in terms of the origin.  This used to be an assert, but it seems
+      // there are some rare cases where this check can fail in practice.
+      // Perhaps some browser script setting nsIChannel.owner, etc.
+      NS_ENSURE_TRUE(mWorkerPrivate->FinalChannelPrincipalIsValid(channel),
+                     NS_ERROR_FAILURE);
 
       // However, we must still override the principal since the nsIPrincipal
       // URL may be different due to same-origin redirects.  Unfortunately this
@@ -1201,6 +1233,10 @@ private:
       if (parent) {
         // XHR Params Allowed
         mWorkerPrivate->SetXHRParamsAllowed(parent->XHRParamsAllowed());
+      }
+
+      if (chanLoadInfo) {
+        mController = chanLoadInfo->GetController();
       }
     }
 
@@ -1371,7 +1407,8 @@ class MOZ_STACK_CLASS ScriptLoaderHolder final : public WorkerHolder
 
 public:
   explicit ScriptLoaderHolder(ScriptLoaderRunnable* aRunnable)
-    : mRunnable(aRunnable)
+    : WorkerHolder("ScriptLoaderHolder")
+    , mRunnable(aRunnable)
   {
     MOZ_ASSERT(aRunnable);
   }
@@ -1724,7 +1761,7 @@ CacheScriptLoader::ResolvedCallback(JSContext* aCx,
 
   MOZ_ASSERT(!mPump);
   rv = NS_NewInputStreamPump(getter_AddRefs(mPump),
-                             inputStream,
+                             inputStream.forget(),
                              0, /* default segsize */
                              0, /* default segcount */
                              false, /* default closeWhenDone */
@@ -1818,8 +1855,10 @@ public:
     // before doing anything else.  Normally we do this in the WorkerPrivate
     // Constructor, but we can't do so off the main thread when creating
     // a nested worker.  So do it here instead.
-    mLoadInfo.mPrincipal = mWorkerPrivate->GetPrincipal();
-    MOZ_ASSERT(mLoadInfo.mPrincipal);
+    mLoadInfo.mLoadingPrincipal = mWorkerPrivate->GetPrincipal();
+    MOZ_DIAGNOSTIC_ASSERT(mLoadInfo.mLoadingPrincipal);
+
+    mLoadInfo.mPrincipal = mLoadInfo.mLoadingPrincipal;
 
     // Figure out our base URI.
     nsCOMPtr<nsIURI> baseURI = mWorkerPrivate->GetBaseURI();
@@ -1832,7 +1871,7 @@ public:
 
     nsCOMPtr<nsIChannel> channel;
     mResult =
-      scriptloader::ChannelFromScriptURLMainThread(mLoadInfo.mPrincipal,
+      scriptloader::ChannelFromScriptURLMainThread(mLoadInfo.mLoadingPrincipal,
                                                    baseURI, parentDoc,
                                                    mLoadInfo.mLoadGroup,
                                                    mScriptURL,
@@ -1966,15 +2005,20 @@ ScriptExecutorRunnable::WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
       return true;
     }
 
+    // If this is a top level script that succeeded, then mark the
+    // Client execution ready and possible controlled by a service worker.
+    if (mIsWorkerScript) {
+      if (mScriptLoader.mController.isSome()) {
+        aWorkerPrivate->Control(mScriptLoader.mController.ref());
+      }
+      aWorkerPrivate->ExecutionReady();
+    }
+
     NS_ConvertUTF16toUTF8 filename(loadInfo.mURL);
 
     JS::CompileOptions options(aCx);
     options.setFileAndLine(filename.get(), 1)
            .setNoScriptRval(true);
-
-    if (mScriptLoader.mWorkerScriptType == DebuggerScript) {
-      options.setVersion(JSVERSION_DEFAULT);
-    }
 
     MOZ_ASSERT(loadInfo.mMutedErrorFlag.isSome());
     options.setMutedErrors(loadInfo.mMutedErrorFlag.valueOr(true));
@@ -2263,6 +2307,10 @@ LoadMainScript(WorkerPrivate* aWorkerPrivate,
   ScriptLoadInfo* info = loadInfos.AppendElement();
   info->mURL = aScriptURL;
   info->mLoadFlags = aWorkerPrivate->GetLoadFlags();
+
+  // We are loading the main script, so the worker's Client must be
+  // reserved.
+  info->mReservedClientInfo.emplace(aWorkerPrivate->GetClientInfo());
 
   LoadAllScripts(aWorkerPrivate, loadInfos, true, aWorkerScriptType, aRv);
 }

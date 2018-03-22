@@ -228,7 +228,8 @@ HashCompleter.prototype = {
       // Using the V4 backoff algorithm for both V2 and V4. See bug 1273398.
       this._backoffs[aGethashUrl] = new jslib.RequestBackoffV4(
         10 /* keep track of max requests */,
-        0 /* don't throttle on successful requests per time period */);
+        0 /* don't throttle on successful requests per time period */,
+        gUrlUtil.getProvider(aTableName) /* used by testcase */);
     }
 
     if (!this._nextGethashTimeMs[aGethashUrl]) {
@@ -579,7 +580,6 @@ HashCompleterRequest.prototype = {
                             aTableNames,
                             aPerHashCacheDuration) => {
         log("V4 fullhash response complete hash found callback: " +
-            JSON.stringify(aCompleteHash) + ", " +
             aTableNames + ", CacheDuration(" + aPerHashCacheDuration + ")");
 
         // Filter table names which we didn't requested.

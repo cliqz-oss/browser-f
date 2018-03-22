@@ -13,6 +13,7 @@
 #include "mozilla/layers/AnimationInfo.h"
 
 class nsDisplayItemGeometry;
+class nsIFrame;
 
 namespace mozilla {
 namespace wr {
@@ -34,6 +35,8 @@ class WebRenderUserData
 {
 public:
   typedef nsTHashtable<nsRefPtrHashKey<WebRenderUserData> > WebRenderUserDataRefTable;
+
+  static bool SupportsAsyncUpdate(nsIFrame* aFrame);
 
   NS_INLINE_DECL_REFCOUNTING(WebRenderUserData)
 
@@ -58,6 +61,7 @@ public:
   uint32_t GetDisplayItemKey() { return mDisplayItemKey; }
   void RemoveFromTable();
   virtual void ClearCachedResources() {};
+  virtual nsDisplayItemGeometry* GetGeometry() { return nullptr; }
 protected:
   virtual ~WebRenderUserData();
 
@@ -80,12 +84,12 @@ public:
   virtual UserDataType GetType() override { return UserDataType::eImage; }
   static UserDataType Type() { return UserDataType::eImage; }
   Maybe<wr::ImageKey> GetKey() { return mKey; }
-  void SetKey(const wr::ImageKey& aKey) { mKey = Some(aKey); }
+  void SetKey(const wr::ImageKey& aKey);
   already_AddRefed<ImageClient> GetImageClient();
 
   Maybe<wr::ImageKey> UpdateImageKey(ImageContainer* aContainer,
                                      wr::IpcResourceUpdateQueue& aResources,
-                                     bool aForceUpdate = false);
+                                     bool aFallback = false);
 
   void CreateAsyncImageWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
                                          ImageContainer* aContainer,
@@ -100,15 +104,23 @@ public:
 
   void CreateImageClientIfNeeded();
   void ClearCachedResources() override;
+
+  bool IsAsync()
+  {
+    return mPipelineId.isSome();
+  }
+
 protected:
+  void ClearImageKey();
   void CreateExternalImageIfNeeded();
+  void DoClearCachedResources();
 
   wr::MaybeExternalImageId mExternalImageId;
   Maybe<wr::ImageKey> mKey;
   RefPtr<ImageClient> mImageClient;
   Maybe<wr::PipelineId> mPipelineId;
   RefPtr<ImageContainer> mContainer;
-  uint32_t mGeneration;
+  bool mOwnsKey;
 };
 
 class WebRenderFallbackData : public WebRenderImageData
@@ -120,7 +132,8 @@ public:
   virtual WebRenderFallbackData* AsFallbackData() override { return this; }
   virtual UserDataType GetType() override { return UserDataType::eFallback; }
   static UserDataType Type() { return UserDataType::eFallback; }
-  nsAutoPtr<nsDisplayItemGeometry> GetGeometry();
+  void ClearCachedResources() override;
+  nsDisplayItemGeometry* GetGeometry() override;
   void SetGeometry(nsAutoPtr<nsDisplayItemGeometry> aGeometry);
   nsRect GetBounds() { return mBounds; }
   void SetBounds(const nsRect& aRect) { mBounds = aRect; }
@@ -166,6 +179,8 @@ public:
   WebRenderCanvasRendererAsync* CreateCanvasRenderer();
   void ClearCachedResources() override;
 protected:
+  void DoClearCachedResources();
+
   UniquePtr<WebRenderCanvasRendererAsync> mCanvasRenderer;
 };
 

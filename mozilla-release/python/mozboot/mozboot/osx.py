@@ -321,12 +321,14 @@ class OSXBootstrapper(BaseBootstrapper):
             # 10.8) and because the build system wants a version newer than
             # what Apple ships.
             'python',
+            'python3',
             'mercurial',
             'git',
             'autoconf@2.13',
             'gnu-tar',
             'watchman',
             'terminal-notifier',
+            'node',
         ]
         self._ensure_homebrew_packages(packages)
 
@@ -350,7 +352,7 @@ class OSXBootstrapper(BaseBootstrapper):
         self._ensure_homebrew_packages(packages)
 
         casks = [
-            'java',
+            'java8',
         ]
         installed = self._ensure_homebrew_casks(casks)
         if installed:
@@ -383,11 +385,13 @@ class OSXBootstrapper(BaseBootstrapper):
     def ensure_macports_system_packages(self):
         packages = [
             'python27',
+            'python36',
             'py27-gnureadline',
             'mercurial',
             'autoconf213',
             'gnutar',
             'watchman',
+            'nodejs8'
         ]
 
         self._ensure_macports_packages(packages)

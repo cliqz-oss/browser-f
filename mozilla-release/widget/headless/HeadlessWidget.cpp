@@ -10,6 +10,8 @@
 #include "MouseEvents.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/TextEvents.h"
+#include "HeadlessKeyBindings.h"
 
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
@@ -173,7 +175,9 @@ HeadlessWidget::GetTopLevelWidget()
 void
 HeadlessWidget::RaiseWindow()
 {
-  MOZ_ASSERT(mTopLevel == this || mWindowType == eWindowType_dialog, "Raising a non-toplevel window.");
+  MOZ_ASSERT(mTopLevel == this ||
+             mWindowType == eWindowType_dialog ||
+             mWindowType == eWindowType_sheet, "Raising a non-toplevel window.");
 
   // Do nothing if this is the currently active window.
   RefPtr<HeadlessWidget> activeWindow = GetActiveWindow();
@@ -212,7 +216,9 @@ HeadlessWidget::Show(bool aState)
   LOG(("HeadlessWidget::Show [%p] state %d\n", (void *)this, aState));
 
   // Top-level window and dialogs are activated/raised when shown.
-  if (aState && (mTopLevel == this || mWindowType == eWindowType_dialog)) {
+  if (aState && (mTopLevel == this ||
+                 mWindowType == eWindowType_dialog ||
+                 mWindowType == eWindowType_sheet)) {
     RaiseWindow();
   }
 
@@ -272,20 +278,19 @@ HeadlessWidget::Move(double aX, double aY)
   // Since a popup window's x/y coordinates are in relation to
   // the parent, the parent might have moved so we always move a
   // popup window.
-  if (x == mBounds.x && y == mBounds.y &&
+  if (mBounds.IsEqualXY(x, y) &&
       mWindowType != eWindowType_popup) {
     return;
   }
 
-  mBounds.x = x;
-  mBounds.y = y;
+  mBounds.MoveTo(x, y);
   NotifyRollupGeometryChange();
 }
 
 LayoutDeviceIntPoint
 HeadlessWidget::WidgetToScreenOffset()
 {
-  return LayoutDeviceIntPoint(mBounds.x, mBounds.y);
+  return mTopLevel->GetBounds().TopLeft();
 }
 
 LayerManager*
@@ -319,13 +324,13 @@ HeadlessWidget::Resize(double aWidth,
   mBounds.SizeTo(LayoutDeviceIntSize(width, height));
 
   if (mCompositorWidget) {
-    mCompositorWidget->NotifyClientSizeChanged(LayoutDeviceIntSize(mBounds.width, mBounds.height));
+    mCompositorWidget->NotifyClientSizeChanged(LayoutDeviceIntSize(mBounds.Width(), mBounds.Height()));
   }
   if (mWidgetListener) {
-    mWidgetListener->WindowResized(this, mBounds.width, mBounds.height);
+    mWidgetListener->WindowResized(this, mBounds.Width(), mBounds.Height());
   }
   if (mAttachedWidgetListener) {
-    mAttachedWidgetListener->WindowResized(this, mBounds.width, mBounds.height);
+    mAttachedWidgetListener->WindowResized(this, mBounds.Width(), mBounds.Height());
   }
 }
 
@@ -336,7 +341,7 @@ HeadlessWidget::Resize(double aX,
                        double aHeight,
                        bool   aRepaint)
 {
-  if (mBounds.x != aX || mBounds.y != aY) {
+  if (!mBounds.IsEqualXY(aX, aY)) {
     NotifyWindowMoved(aX, aY);
   }
   return Resize(aWidth, aHeight, aRepaint);
@@ -374,7 +379,7 @@ HeadlessWidget::ApplySizeModeSideEffects()
 
   switch(mSizeMode) {
   case nsSizeMode_Normal: {
-    Resize(mRestoreBounds.x, mRestoreBounds.y, mRestoreBounds.width, mRestoreBounds.height, false);
+    Resize(mRestoreBounds.X(), mRestoreBounds.Y(), mRestoreBounds.Width(), mRestoreBounds.Height(), false);
     break;
   }
   case nsSizeMode_Minimized:
@@ -422,6 +427,25 @@ HeadlessWidget::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen)
   }
 
   return NS_OK;
+}
+
+nsresult
+HeadlessWidget::AttachNativeKeyEvent(WidgetKeyboardEvent& aEvent)
+{
+  HeadlessKeyBindings& bindings = HeadlessKeyBindings::GetInstance();
+  return bindings.AttachNativeKeyEvent(aEvent);
+}
+
+void
+HeadlessWidget::GetEditCommands(NativeKeyBindingsType aType,
+                                const WidgetKeyboardEvent& aEvent,
+                                nsTArray<CommandInt>& aCommands)
+{
+  // Validate the arguments.
+  nsIWidget::GetEditCommands(aType, aEvent, aCommands);
+
+  HeadlessKeyBindings& bindings = HeadlessKeyBindings::GetInstance();
+  bindings.GetEditCommands(aType, aEvent, aCommands);
 }
 
 nsresult
@@ -488,10 +512,11 @@ HeadlessWidget::SynthesizeNativeMouseScrollEvent(mozilla::LayoutDeviceIntPoint a
                                                  nsIObserver* aObserver)
 {
   AutoObserverNotifier notifier(aObserver, "mousescrollevent");
+  printf(">>> DEBUG_ME: Synth: aDeltaY=%f\n", aDeltaY);
   // The various platforms seem to handle scrolling deltas differently,
   // but the following seems to emulate it well enough.
   WidgetWheelEvent event(true, eWheel, this);
-  event.mDeltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
+  event.mDeltaMode = MOZ_HEADLESS_SCROLL_DELTA_MODE;
   event.mIsNoLineOrPageDelta = true;
   event.mDeltaX = -aDeltaX * MOZ_HEADLESS_SCROLL_MULTIPLIER;
   event.mDeltaY = -aDeltaY * MOZ_HEADLESS_SCROLL_MULTIPLIER;

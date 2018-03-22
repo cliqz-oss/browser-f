@@ -127,22 +127,22 @@ nsresult nsWebShellWindow::Initialize(nsIXULWindow* aParent,
   int32_t initialX = 0, initialY = 0;
   nsCOMPtr<nsIBaseWindow> base(do_QueryInterface(aOpener));
   if (base) {
-    rv = base->GetPositionAndSize(&mOpenerScreenRect.x,
-                                  &mOpenerScreenRect.y,
-                                  &mOpenerScreenRect.width,
-                                  &mOpenerScreenRect.height);
+    int32_t x, y, width, height;
+    rv = base->GetPositionAndSize(&x, &y, &width, &height);
     if (NS_FAILED(rv)) {
       mOpenerScreenRect.SetEmpty();
     } else {
       double scale;
       if (NS_SUCCEEDED(base->GetUnscaledDevicePixelsPerCSSPixel(&scale))) {
-        mOpenerScreenRect.x = NSToIntRound(mOpenerScreenRect.x / scale);
-        mOpenerScreenRect.y = NSToIntRound(mOpenerScreenRect.y / scale);
-        mOpenerScreenRect.width = NSToIntRound(mOpenerScreenRect.width / scale);
-        mOpenerScreenRect.height = NSToIntRound(mOpenerScreenRect.height / scale);
+        mOpenerScreenRect.SetRect(NSToIntRound(x / scale),
+                                  NSToIntRound(y / scale),
+                                  NSToIntRound(width / scale),
+                                  NSToIntRound(height / scale));
+      } else {
+        mOpenerScreenRect.SetRect(x, y, width, height);
       }
-      initialX = mOpenerScreenRect.x;
-      initialY = mOpenerScreenRect.y;
+      initialX = mOpenerScreenRect.X();
+      initialY = mOpenerScreenRect.Y();
       ConstrainToOpenerScreen(&initialX, &initialY);
     }
   }
@@ -208,10 +208,10 @@ nsresult nsWebShellWindow::Initialize(nsIXULWindow* aParent,
   docShellAsItem->SetTreeOwner(mChromeTreeOwner);
   docShellAsItem->SetItemType(nsIDocShellTreeItem::typeChrome);
 
-  r.x = r.y = 0;
+  r.MoveTo(0, 0);
   nsCOMPtr<nsIBaseWindow> docShellAsWin(do_QueryInterface(mDocShell));
   NS_ENSURE_SUCCESS(docShellAsWin->InitWindow(nullptr, mWindow,
-   r.x, r.y, r.width, r.height), NS_ERROR_FAILURE);
+   r.X(), r.Y(), r.Width(), r.Height()), NS_ERROR_FAILURE);
   NS_ENSURE_SUCCESS(docShellAsWin->Create(), NS_ERROR_FAILURE);
 
   // Attach a WebProgress listener.during initialization...
@@ -367,8 +367,6 @@ nsWebShellWindow::SizeModeChanged(nsSizeMode sizeMode)
   nsCOMPtr<nsPIDOMWindowOuter> ourWindow =
     mDocShell ? mDocShell->GetWindow() : nullptr;
   if (ourWindow) {
-    MOZ_ASSERT(ourWindow->IsOuterWindow());
-
     // Ensure that the fullscreen state is synchronized between
     // the widget and the outer window object.
     if (sizeMode == nsSizeMode_Fullscreen) {
@@ -409,7 +407,6 @@ nsWebShellWindow::UIResolutionChanged()
   nsCOMPtr<nsPIDOMWindowOuter> ourWindow =
     mDocShell ? mDocShell->GetWindow() : nullptr;
   if (ourWindow) {
-    MOZ_ASSERT(ourWindow->IsOuterWindow());
     ourWindow->DispatchCustomEvent(NS_LITERAL_STRING("resolutionchange"));
   }
 }
@@ -440,7 +437,6 @@ nsWebShellWindow::OcclusionStateChanged(bool aIsFullyOccluded)
   nsCOMPtr<nsPIDOMWindowOuter> ourWindow =
     mDocShell ? mDocShell->GetWindow() : nullptr;
   if (ourWindow) {
-    MOZ_ASSERT(ourWindow->IsOuterWindow());
     // And always fire a user-defined occlusionstatechange event on the window
     ourWindow->DispatchCustomEvent(NS_LITERAL_STRING("occlusionstatechange"));
   }
@@ -534,7 +530,7 @@ static void LoadNativeMenus(nsIDOMDocument *aDOMDoc, nsIWidget *aParentWindow)
     menubarElements->Item(0, getter_AddRefs(menubarNode));
 
   if (menubarNode) {
-    nsCOMPtr<nsIContent> menubarContent(do_QueryInterface(menubarNode));
+    nsCOMPtr<Element> menubarContent(do_QueryInterface(menubarNode));
     nms->CreateNativeMenuBar(aParentWindow, menubarContent);
   } else {
     nms->CreateNativeMenuBar(aParentWindow, nullptr);
@@ -752,8 +748,8 @@ void nsWebShellWindow::ConstrainToOpenerScreen(int32_t* aX, int32_t* aY)
   nsCOMPtr<nsIScreenManager> screenmgr = do_GetService("@mozilla.org/gfx/screenmanager;1");
   if (screenmgr) {
     nsCOMPtr<nsIScreen> screen;
-    screenmgr->ScreenForRect(mOpenerScreenRect.x, mOpenerScreenRect.y,
-                             mOpenerScreenRect.width, mOpenerScreenRect.height,
+    screenmgr->ScreenForRect(mOpenerScreenRect.X(), mOpenerScreenRect.Y(),
+                             mOpenerScreenRect.Width(), mOpenerScreenRect.Height(),
                              getter_AddRefs(screen));
     if (screen) {
       screen->GetAvailRectDisplayPix(&left, &top, &width, &height);

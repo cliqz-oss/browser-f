@@ -15,7 +15,6 @@
 
 #include "builtin/SelfHostingDefines.h"
 #include "js/Class.h"
-#include "js/GCAPI.h"
 #include "js/GCHashTable.h"
 #include "vm/NativeObject.h"
 
@@ -477,6 +476,15 @@ intl_defaultTimeZone(JSContext* cx, unsigned argc, Value* vp);
  */
 extern MOZ_MUST_USE bool
 intl_defaultTimeZoneOffset(JSContext* cx, unsigned argc, Value* vp);
+
+/**
+ * Return true if the given string is the default time zone as returned by
+ * intl_defaultTimeZone(). Otherwise return false.
+ *
+ * Usage: isIcuDefaultTimeZone = intl_isDefaultTimeZone(icuDefaultTimeZone)
+ */
+extern MOZ_MUST_USE bool
+intl_isDefaultTimeZone(JSContext* cx, unsigned argc, Value* vp);
 
 /**
  * Return a pattern in the date-time format pattern language of Unicode

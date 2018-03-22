@@ -81,6 +81,26 @@ android {
         buildConfigField 'String', "USER_AGENT_GECKOVIEW_TABLET", "\"Mozilla/5.0 (Android \" + android.os.Build.VERSION.RELEASE + \"; Tablet; rv: ${mozconfig.substs.MOZ_APP_VERSION}) Gecko/${mozconfig.substs.MOZ_APP_VERSION} GeckoView/${mozconfig.substs.MOZ_APP_VERSION}\"";
 
         buildConfigField 'String', "ANDROID_CPU_ARCH", "\"${mozconfig.substs.ANDROID_CPU_ARCH}\"";
+
+        buildConfigField 'int', 'MIN_SDK_VERSION', mozconfig.substs.MOZ_ANDROID_MIN_SDK_VERSION;
+
+        // Is the underlying compiled C/C++ code compiled with --enable-debug?
+        buildConfigField 'boolean', 'DEBUG_BUILD', mozconfig.substs.MOZ_DEBUG ? 'true' : 'false';
+
+        // See this wiki page for more details about channel specific build defines:
+        // https://wiki.mozilla.org/Platform/Channel-specific_build_defines
+        // This makes no sense for GeckoView and should be removed as soon as possible.
+        buildConfigField 'boolean', 'RELEASE_OR_BETA', mozconfig.substs.RELEASE_OR_BETA ? 'true' : 'false';
+        // This makes no sense for GeckoView and should be removed as soon as possible.
+        buildConfigField 'boolean', 'NIGHTLY_BUILD', mozconfig.substs.NIGHTLY_BUILD ? 'true' : 'false';
+        // This makes no sense for GeckoView and should be removed as soon as possible.
+        buildConfigField 'boolean', 'MOZ_CRASHREPORTER', mozconfig.substs.MOZ_CRASHREPORTER ? 'true' : 'false';
+
+        // Official corresponds, roughly, to whether this build is performed on
+        // Mozilla's continuous integration infrastructure. You should disable
+        // developer-only functionality when this flag is set.
+        // This makes no sense for GeckoView and should be removed as soon as possible.
+        buildConfigField 'boolean', 'MOZILLA_OFFICIAL', mozconfig.substs.MOZILLA_OFFICIAL ? 'true' : 'false';
     }
 
     buildTypes {
@@ -110,7 +130,8 @@ android {
             java {
                 srcDir "${topsrcdir}/mobile/android/geckoview/src/thirdparty/java"
 
-                if (!mozconfig.substs.MOZ_ANDROID_HLS_SUPPORT) {
+                if (!mozconfig.substs.MOZ_ANDROID_HLS_SUPPORT ||
+                    !mozconfig.substs.get('MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE')) {
                     exclude 'com/google/android/exoplayer2/**'
                     exclude 'org/mozilla/gecko/media/GeckoHlsAudioRenderer.java'
                     exclude 'org/mozilla/gecko/media/GeckoHlsPlayer.java'
@@ -124,9 +145,6 @@ android {
                     srcDir "${topsrcdir}/media/webrtc/trunk/webrtc/modules/audio_device/android/java/src"
                     srcDir "${topsrcdir}/media/webrtc/trunk/webrtc/modules/video_capture/android/java/src"
                 }
-
-                // TODO: don't use AppConstants.
-                srcDir "${project.buildDir}/generated/source/preprocessed_code" // See syncPreprocessedCode.
             }
 
             assets {
@@ -140,20 +158,9 @@ dependencies {
     compile "com.android.support:palette-v7:${mozconfig.substs.ANDROID_SUPPORT_LIBRARY_VERSION}"
 }
 
-task syncPreprocessedCode(type: Sync, dependsOn: rootProject.generateCodeAndResources) {
-    into("${project.buildDir}/generated/source/preprocessed_code")
-    from("${topobjdir}/mobile/android/base/generated/preprocessed") {
-        // These constants files are included in the main app project.
-        exclude '**/AdjustConstants.java'
-        exclude '**/MmaConstants.java'
-    }
-}
-
 apply from: "${topsrcdir}/mobile/android/gradle/with_gecko_binaries.gradle"
 
 android.libraryVariants.all { variant ->
-    variant.preBuild.dependsOn syncPreprocessedCode
-
     // Like 'debug', 'release', or 'withGeckoBinaries'.
     def buildType = variant.buildType.name
 
@@ -173,19 +180,28 @@ android.libraryVariants.all { variant ->
     def name = variant.name
     def javadoc = task "javadoc${name.capitalize()}"(type: Javadoc) {
         description = "Generate Javadoc for build variant $name"
-        failOnError = false
         destinationDir = new File(destinationDir, variant.baseName)
+        classpath = files(variant.javaCompile.classpath.files)
+
         source = files(variant.javaCompile.source)
-        classpath = files(variant.javaCompile.classpath.files) + files(android.bootClasspath)
-        options.windowTitle("Mozilla GeckoView ${mozconfig.substs.MOZ_APP_VERSION} API Reference")
-        options.docTitle("Mozilla GeckoView ${mozconfig.substs.MOZ_APP_VERSION}")
-        options.header("Mozilla GeckoView ${mozconfig.substs.MOZ_APP_VERSION} API Reference")
-        options.bottom("&copy; 2016 Mozilla. All rights reserved.")
-        options.links("http://docs.oracle.com/javase/7/docs/api/")
-        options.linksOffline("http://d.android.com/reference/", "$System.env.ANDROID_HOME/docs/reference")
-        // TODO: options.overview("src/main/java/overview.html")
-        options.group("Mozilla GeckoView", "org.mozilla.gecko*") // TODO: narrow this down.
-        exclude '**/R.java', '**/BuildConfig.java', 'com/googlecode/**'
+        exclude '**/R.java', '**/BuildConfig.java', 'com/google/**', 'org/webrtc/**'
+        options.addPathOption('sourcepath', ':').setValue(
+            variant.sourceSets.collect({ it.javaDirectories }).flatten() +
+            variant.generateBuildConfig.sourceOutputDir)
+
+        // javadoc 8 has a bug that requires the rt.jar file from the JRE to be
+        // in the bootclasspath (https://stackoverflow.com/a/30458820).
+        options.bootClasspath = [
+            file("${System.properties['java.home']}/lib/rt.jar")] + android.bootClasspath
+        options.memberLevel = JavadocMemberLevel.PROTECTED
+        options.source = 7
+
+        options.docTitle = "GeckoView ${mozconfig.substs.MOZ_APP_VERSION} API"
+        options.header = "GeckoView ${mozconfig.substs.MOZ_APP_VERSION} API"
+        options.noTimestamp = true
+        options.noIndex = true
+        options.noQualifiers = ['java.lang']
+        options.tags = ['hide:a:']
     }
 
     task "javadocJar${name.capitalize()}"(type: Jar, dependsOn: javadoc) {

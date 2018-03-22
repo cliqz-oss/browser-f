@@ -71,17 +71,6 @@ using namespace mozilla::css;
 
 typedef nsCSSProps::KTableEntry KTableEntry;
 
-const uint32_t
-nsCSSProps::kParserVariantTable[eCSSProperty_COUNT_no_shorthands] = {
-#define CSS_PROP(name_, id_, method_, flags_, pref_, parsevariant_, kwtable_, \
-                 stylestruct_, stylestructoffset_, animtype_)                 \
-  parsevariant_,
-#define CSS_PROP_LIST_INCLUDE_LOGICAL
-#include "nsCSSPropList.h"
-#undef CSS_PROP_LIST_INCLUDE_LOGICAL
-#undef CSS_PROP
-};
-
 // Maximum number of repetitions for the repeat() function
 // in the grid-template-rows and grid-template-columns properties,
 // to limit high memory usage from small stylesheets.
@@ -359,7 +348,7 @@ public:
     return mParsingMode == css::eAgentSheetFeatures;
   }
   bool ChromeRulesEnabled() const {
-    return mIsChrome;
+    return mIsChrome || mParsingMode == css::eUserSheetFeatures;
   }
 
   CSSEnabledState EnabledState() const {
@@ -948,6 +937,7 @@ protected:
   bool ParseObjectPosition();
   bool ParseOutline();
   bool ParseOverflow();
+  bool ParseOverflowClipBox();
   bool ParsePadding();
   bool ParseQuotes();
   bool ParseTextAlign(nsCSSValue& aValue,
@@ -996,6 +986,7 @@ protected:
   bool ParseScrollSnapPoints(nsCSSValue& aValue, nsCSSPropertyID aPropID);
   bool ParseScrollSnapDestination(nsCSSValue& aValue);
   bool ParseScrollSnapCoordinate(nsCSSValue& aValue);
+  bool ParseOverscrollBehavior();
   bool ParseWebkitTextStroke();
 
   /**
@@ -1842,6 +1833,7 @@ CSSParserImpl::ParseTransformProperty(const nsAString& aPropValue,
   // We should now be at EOF
   if (parsedOK && GetToken(true)) {
     parsedOK = false;
+    mTempData.ClearProperty(eCSSProperty_transform);
   }
 
   bool changed = false;
@@ -1860,6 +1852,7 @@ CSSParserImpl::ParseTransformProperty(const nsAString& aPropValue,
     aValue.Reset();
   }
 
+  mTempData.AssertInitialState();
   ReleaseScanner();
 
   return parsedOK;
@@ -3779,6 +3772,11 @@ CSSParserImpl::ParseMediaRule(RuleAppendFunc aAppendFunc, void* aData)
 bool
 CSSParserImpl::ParseMozDocumentRule(RuleAppendFunc aAppendFunc, void* aData)
 {
+  if (mParsingMode == css::eAuthorSheetFeatures &&
+      !StylePrefs::sMozDocumentEnabledInContent) {
+    return false;
+  }
+
   css::DocumentRule::URL *urls = nullptr;
   css::DocumentRule::URL **next = &urls;
 
@@ -4528,7 +4526,7 @@ CSSParserImpl::ParseSupportsConditionInParens(bool& aConditionMet)
     return true;
   }
 
-  if (AgentRulesEnabled() &&
+  if ((AgentRulesEnabled() || ChromeRulesEnabled()) &&
       mToken.mType == eCSSToken_Function &&
       mToken.mIdent.LowerCaseEqualsLiteral("-moz-bool-pref")) {
     return ParseSupportsMozBoolPrefName(aConditionMet);
@@ -7361,7 +7359,6 @@ const UnitInfo UnitData[] = {
   { STR_WITH_LEN("ch"), eCSSUnit_Char, VARIANT_LENGTH },
   { STR_WITH_LEN("rem"), eCSSUnit_RootEM, VARIANT_LENGTH },
   { STR_WITH_LEN("mm"), eCSSUnit_Millimeter, VARIANT_LENGTH },
-  { STR_WITH_LEN("mozmm"), eCSSUnit_PhysicalMillimeter, VARIANT_LENGTH },
   { STR_WITH_LEN("vw"), eCSSUnit_ViewportWidth, VARIANT_LENGTH },
   { STR_WITH_LEN("vh"), eCSSUnit_ViewportHeight, VARIANT_LENGTH },
   { STR_WITH_LEN("vmin"), eCSSUnit_ViewportMin, VARIANT_LENGTH },
@@ -9125,7 +9122,7 @@ CSSParserImpl::ParseGridTemplateColumnsRows(nsCSSPropertyID aPropID)
   nsAString* ident = NextIdent();
   if (ident) {
     if (ident->LowerCaseEqualsLiteral("subgrid")) {
-      if (!nsLayoutUtils::IsGridTemplateSubgridValueEnabled()) {
+      if (!StylePrefs::sGridTemplateSubgridValueEnabled) {
         REPORT_UNEXPECTED(PESubgridNotSupported);
         return false;
       }
@@ -9313,7 +9310,7 @@ CSSParserImpl::ParseGridTemplate(bool aForGridShorthand)
   nsAString* ident = NextIdent();
   if (ident) {
     if (ident->LowerCaseEqualsLiteral("subgrid")) {
-      if (!nsLayoutUtils::IsGridTemplateSubgridValueEnabled()) {
+      if (!StylePrefs::sGridTemplateSubgridValueEnabled) {
         REPORT_UNEXPECTED(PESubgridNotSupported);
         return false;
       }
@@ -10659,7 +10656,7 @@ CSSParserImpl::ParseWebkitGradientRadius(float& aRadius)
 //   (either a percentage or a number between 0 and 1.0), and a color (any
 //   valid CSS color). In addition the shorthand functions from and to are
 //   supported. These functions only require a color argument and are
-//   equivalent to color-stop(0, ...) and color-stop(1.0, …) respectively.
+//   equivalent to color-stop(0, ...) and color-stop(1.0, ...) respectively.
 bool
 CSSParserImpl::ParseWebkitGradientColorStop(nsCSSValueGradient* aGradient)
 {
@@ -11778,6 +11775,8 @@ CSSParserImpl::ParsePropertyByFunction(nsCSSPropertyID aPropID)
     return ParseOutline();
   case eCSSProperty_overflow:
     return ParseOverflow();
+  case eCSSProperty_overflow_clip_box:
+    return ParseOverflowClipBox();
   case eCSSProperty_padding:
     return ParsePadding();
   case eCSSProperty_quotes:
@@ -11812,6 +11811,8 @@ CSSParserImpl::ParsePropertyByFunction(nsCSSPropertyID aPropID)
     return ParseMarker();
   case eCSSProperty_paint_order:
     return ParsePaintOrder();
+  case eCSSProperty_overscroll_behavior:
+    return ParseOverscrollBehavior();
   case eCSSProperty_scroll_snap_type:
     return ParseScrollSnapType();
   case eCSSProperty_mask:
@@ -13157,8 +13158,7 @@ CSSParserImpl::SetBorderImageInitialValues()
   // border-image-repeat: repeat
   nsCSSValue repeat;
   nsCSSValuePair repeatPair;
-  repeatPair.SetBothValuesTo(nsCSSValue(NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH,
-                                        eCSSUnit_Enumerated));
+  repeatPair.SetBothValuesTo(nsCSSValue(StyleBorderImageRepeat::Stretch));
   repeat.SetPairValue(&repeatPair);
   AppendValue(eCSSProperty_border_image_repeat, repeat);
 }
@@ -13451,13 +13451,6 @@ CSSParserImpl::ParseBorderSide(const nsCSSPropertyID aPropIDs[],
       AppendValue(kBorderColorIDs[index], values[2]);
     }
 
-    static const nsCSSPropertyID kBorderColorsProps[] = {
-      eCSSProperty__moz_border_top_colors,
-      eCSSProperty__moz_border_right_colors,
-      eCSSProperty__moz_border_bottom_colors,
-      eCSSProperty__moz_border_left_colors
-    };
-
     // Set the other properties that the border shorthand sets to their
     // initial values.
     nsCSSValue extraValue;
@@ -13477,9 +13470,6 @@ CSSParserImpl::ParseBorderSide(const nsCSSPropertyID aPropIDs[],
       extraValue.SetNoneValue();
       SetBorderImageInitialValues();
       break;
-    }
-    NS_FOR_CSS_SIDES(side) {
-      AppendValue(kBorderColorsProps[side], extraValue);
     }
   }
   else {
@@ -15357,6 +15347,31 @@ CSSParserImpl::ParseOverflow()
 }
 
 bool
+CSSParserImpl::ParseOverflowClipBox()
+{
+  nsCSSValue first;
+  if (ParseSingleTokenVariant(first, VARIANT_INHERIT, nullptr)) {
+    AppendValue(eCSSProperty_overflow_clip_box_block, first);
+    AppendValue(eCSSProperty_overflow_clip_box_inline, first);
+    return true;
+  }
+  const auto& kTable = nsCSSProps::kOverflowClipBoxKTable;
+  auto result = ParseVariant(first, VARIANT_KEYWORD, kTable);
+  if (result != CSSParseResult::Ok) {
+    return false;
+  }
+  nsCSSValue second;
+  result = ParseVariant(second, VARIANT_KEYWORD, kTable);
+  if (result == CSSParseResult::Error) {
+    return false;
+  }
+  AppendValue(eCSSProperty_overflow_clip_box_block, first);
+  AppendValue(eCSSProperty_overflow_clip_box_inline,
+              result == CSSParseResult::NotFound ? first : second);
+  return true;
+}
+
+bool
 CSSParserImpl::ParsePadding()
 {
   static const nsCSSPropertyID kPaddingSideIDs[] = {
@@ -16452,8 +16467,16 @@ CSSParserImpl::ParseClipPath(nsCSSValue& aValue)
 bool
 CSSParserImpl::ParseShapeOutside(nsCSSValue& aValue)
 {
-  if (ParseSingleTokenVariant(aValue, VARIANT_HUO, nullptr)) {
-    // 'inherit', 'initial', 'unset', 'none', and <image> url must be alone.
+  CSSParseResult result =
+    ParseVariant(aValue, VARIANT_IMAGE | VARIANT_INHERIT, nullptr);
+
+  if (result == CSSParseResult::Error) {
+    return false;
+  }
+
+  if (result == CSSParseResult::Ok) {
+    // 'inherit', 'initial', 'unset', 'none', and <image> (<url> or
+    // <gradient>) must be alone.
     return true;
   }
 
@@ -17494,6 +17517,31 @@ CSSParserImpl::ParseVariableDeclaration(CSSVariableDeclarations::Type* aType,
 }
 
 bool
+CSSParserImpl::ParseOverscrollBehavior()
+{
+  static const nsCSSPropertyID ids[] = {
+    eCSSProperty_overscroll_behavior_x,
+    eCSSProperty_overscroll_behavior_y
+  };
+  const int32_t numProps = MOZ_ARRAY_LENGTH(ids);
+
+  nsCSSValue values[numProps];
+  int32_t found = ParseChoice(values, ids, numProps);
+  if (found < 1) {
+    return false;
+  }
+
+  // If only one value is specified, it's used for both axes.
+  if (found == 1) {
+    values[1] = values[0];
+  }
+
+  AppendValue(eCSSProperty_overscroll_behavior_x, values[0]);
+  AppendValue(eCSSProperty_overscroll_behavior_y, values[1]);
+  return true;
+}
+
+bool
 CSSParserImpl::ParseScrollSnapType()
 {
   nsCSSValue value;
@@ -18201,13 +18249,4 @@ nsCSSParser::IsValueValidForProperty(const nsCSSPropertyID aPropID,
 {
   return static_cast<CSSParserImpl*>(mImpl)->
     IsValueValidForProperty(aPropID, aPropValue);
-}
-
-/* static */
-uint8_t
-nsCSSParser::ControlCharVisibilityDefault()
-{
-  return StylePrefs::sControlCharVisibility
-    ? NS_STYLE_CONTROL_CHARACTER_VISIBILITY_VISIBLE
-    : NS_STYLE_CONTROL_CHARACTER_VISIBILITY_HIDDEN;
 }

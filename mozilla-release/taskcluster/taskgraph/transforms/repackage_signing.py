@@ -10,7 +10,10 @@ from __future__ import absolute_import, print_function, unicode_literals
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.schema import validate_schema, Schema
-from taskgraph.util.scriptworker import get_signing_cert_scope_per_platform
+from taskgraph.util.scriptworker import (
+    get_signing_cert_scope_per_platform,
+    get_worker_type_for_scope,
+)
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import Required, Optional
 
@@ -25,6 +28,8 @@ repackage_signing_description_schema = Schema({
     Required('depname', default='repackage'): basestring,
     Optional('label'): basestring,
     Optional('treeherder'): task_description_schema['treeherder'],
+    Optional('shipping-product'): task_description_schema['shipping-product'],
+    Optional('shipping-phase'): task_description_schema['shipping-phase'],
 })
 
 
@@ -32,9 +37,10 @@ repackage_signing_description_schema = Schema({
 def validate(config, jobs):
     for job in jobs:
         label = job.get('dependent-task', object).__dict__.get('label', '?no-label?')
-        yield validate_schema(
+        validate_schema(
             repackage_signing_description_schema, job,
             "In repackage-signing ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
 
 
 @transforms.add
@@ -44,7 +50,7 @@ def make_repackage_signing_description(config, jobs):
         attributes = dep_job.attributes
 
         treeherder = job.get('treeherder', {})
-        treeherder.setdefault('symbol', 'tc-rs(N)')
+        treeherder.setdefault('symbol', 'rs(N)')
         dep_th_platform = dep_job.task.get('extra', {}).get(
             'treeherder', {}).get('machine', {}).get('platform', '')
         treeherder.setdefault('platform',
@@ -67,13 +73,14 @@ def make_repackage_signing_description(config, jobs):
         signing_dependencies = dep_job.dependencies
         # This is so we get the build task etc in our dependencies to
         # have better beetmover support.
-        dependencies.update(signing_dependencies)
+        dependencies.update({k: v for k, v in signing_dependencies.items()
+                             if k != 'docker-image'})
         attributes = copy_attributes_from_dependent_job(dep_job)
         attributes['repackage_type'] = 'repackage-signing'
 
         locale_str = ""
         if dep_job.attributes.get('locale'):
-            treeherder['symbol'] = 'tc-rs({})'.format(dep_job.attributes.get('locale'))
+            treeherder['symbol'] = 'rs({})'.format(dep_job.attributes.get('locale'))
             attributes['locale'] = dep_job.attributes.get('locale')
             locale_str = "{}/".format(dep_job.attributes.get('locale'))
 
@@ -118,7 +125,7 @@ def make_repackage_signing_description(config, jobs):
         task = {
             'label': label,
             'description': description,
-            'worker-type': _generate_worker_type(signing_cert_scope),
+            'worker-type': get_worker_type_for_scope(config, signing_cert_scope),
             'worker': {'implementation': 'scriptworker-signing',
                        'upstream-artifacts': upstream_artifacts,
                        'max-run-time': 3600},
@@ -130,8 +137,3 @@ def make_repackage_signing_description(config, jobs):
         }
 
         yield task
-
-
-def _generate_worker_type(signing_cert_scope):
-    worker_type = 'depsigning' if 'dep-signing' in signing_cert_scope else 'signing-linux-v1'
-    return 'scriptworker-prov-v1/{}'.format(worker_type)

@@ -17,11 +17,11 @@ SHA256SUM=95bf9580107f00d0e26f01026dcfe9e7a772e5449488b03ba832836c3760b3af
 mkdir -p $UPLOAD_DIR $STAGE
 
 cd $WORKSPACE
-wget $URL
+wget --progress=dot:mega $URL
 echo "$SHA256SUM  $ARCHIVE" | sha256sum -c -
 
 # Just the file we need.
-tar zxvf $ARCHIVE '*/proguard.jar'
+tar --wildcards -zxvf $ARCHIVE '*/proguard.jar'
 
 # The archive is to satisfy source distribution requirements.
 mv $ARCHIVE $UPLOAD_DIR

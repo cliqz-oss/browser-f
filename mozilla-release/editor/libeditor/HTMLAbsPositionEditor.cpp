@@ -12,6 +12,8 @@
 #include "TextEditUtils.h"
 #include "mozilla/EditorUtils.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/TextEditRules.h"
+#include "mozilla/dom/CSSPrimitiveValueBinding.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/mozalloc.h"
@@ -24,14 +26,12 @@
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
 #include "nsROCSSPrimitiveValue.h"
-#include "nsIDOMCSSStyleDeclaration.h"
 #include "nsIDOMElement.h"
 #include "nsIDOMEventListener.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIDOMNode.h"
 #include "nsDOMCSSRGBColor.h"
 #include "nsIDOMWindow.h"
-#include "nsIEditRules.h"
 #include "nsIHTMLObjectResizer.h"
 #include "nsINode.h"
 #include "nsIPresShell.h"
@@ -64,11 +64,11 @@ HTMLEditor::AbsolutePositionSelection(bool aEnabled)
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  TextRulesInfo ruleInfo(aEnabled ? EditAction::setAbsolutePosition :
-                                    EditAction::removeAbsolutePosition);
+  RulesInfo ruleInfo(aEnabled ? EditAction::setAbsolutePosition :
+                                EditAction::removeAbsolutePosition);
   bool cancel, handled;
   // Protect the edit rules object from dying
-  nsCOMPtr<nsIEditRules> rules(mRules);
+  RefPtr<TextEditRules> rules(mRules);
   nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
   if (NS_FAILED(rv) || cancel) {
     return rv;
@@ -190,11 +190,11 @@ HTMLEditor::RelativeChangeZIndex(int32_t aChange)
   // Find out if the selection is collapsed:
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
-  TextRulesInfo ruleInfo(aChange < 0 ? EditAction::decreaseZIndex :
-                                       EditAction::increaseZIndex);
+  RulesInfo ruleInfo(aChange < 0 ? EditAction::decreaseZIndex :
+                                   EditAction::increaseZIndex);
   bool cancel, handled;
   // Protect the edit rules object from dying
-  nsCOMPtr<nsIEditRules> rules(mRules);
+  RefPtr<TextEditRules> rules(mRules);
   nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
@@ -407,7 +407,7 @@ HTMLEditor::GrabberClicked()
     mMouseMotionListenerP = new ResizerMouseMotionListener(*this);
     if (!mMouseMotionListenerP) {return NS_ERROR_NULL_POINTER;}
 
-    nsCOMPtr<nsIDOMEventTarget> piTarget = GetDOMEventTarget();
+    nsIDOMEventTarget* piTarget = GetDOMEventTarget();
     NS_ENSURE_TRUE(piTarget, NS_ERROR_FAILURE);
 
     rv = piTarget->AddEventListener(NS_LITERAL_STRING("mousemove"),
@@ -534,9 +534,15 @@ HTMLEditor::AbsolutelyPositionElement(nsIDOMElement* aElement,
 
     nsINode* parentNode = element->GetParentNode();
     if (parentNode->GetChildCount() == 1) {
-      nsCOMPtr<nsIDOMNode> brNode;
-      nsresult rv = CreateBR(parentNode->AsDOMNode(), 0, address_of(brNode));
-      NS_ENSURE_SUCCESS(rv, rv);
+      RefPtr<Selection> selection = GetSelection();
+      if (NS_WARN_IF(!selection)) {
+        return NS_ERROR_FAILURE;
+      }
+      RefPtr<Element> newBRElement =
+        CreateBRImpl(*selection, EditorRawDOMPoint(parentNode, 0), eNone);
+      if (NS_WARN_IF(!newBRElement)) {
+        return NS_ERROR_FAILURE;
+      }
     }
   }
   else {
@@ -675,17 +681,17 @@ HTMLEditor::CheckPositionedElementBGandFG(nsIDOMElement* aElement,
       nsROCSSPrimitiveValue* val = cssVal->AsPrimitiveValue();
       NS_ENSURE_TRUE(val, NS_ERROR_FAILURE);
 
-      if (nsIDOMCSSPrimitiveValue::CSS_RGBCOLOR == val->PrimitiveType()) {
+      if (CSSPrimitiveValueBinding::CSS_RGBCOLOR == val->PrimitiveType()) {
         nsDOMCSSRGBColor* rgbVal = val->GetRGBColorValue(error);
         NS_ENSURE_TRUE(!error.Failed(), error.StealNSResult());
         float r = rgbVal->Red()->
-          GetFloatValue(nsIDOMCSSPrimitiveValue::CSS_NUMBER, error);
+          GetFloatValue(CSSPrimitiveValueBinding::CSS_NUMBER, error);
         NS_ENSURE_TRUE(!error.Failed(), error.StealNSResult());
         float g = rgbVal->Green()->
-          GetFloatValue(nsIDOMCSSPrimitiveValue::CSS_NUMBER, error);
+          GetFloatValue(CSSPrimitiveValueBinding::CSS_NUMBER, error);
         NS_ENSURE_TRUE(!error.Failed(), error.StealNSResult());
         float b = rgbVal->Blue()->
-          GetFloatValue(nsIDOMCSSPrimitiveValue::CSS_NUMBER, error);
+          GetFloatValue(CSSPrimitiveValueBinding::CSS_NUMBER, error);
         NS_ENSURE_TRUE(!error.Failed(), error.StealNSResult());
         if (r >= BLACK_BG_RGB_TRIGGER &&
             g >= BLACK_BG_RGB_TRIGGER &&

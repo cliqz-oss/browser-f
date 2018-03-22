@@ -17,7 +17,7 @@ interface Request {
   readonly attribute USVString url;
   [SameObject] readonly attribute Headers headers;
 
-  [Func="mozilla::dom::Request::RequestContextEnabled"]
+  [Func="mozilla::dom::DOMPrefs::RequestContextEnabled"]
   readonly attribute RequestContext context;
   readonly attribute USVString referrer;
   readonly attribute ReferrerPolicy referrerPolicy;
@@ -26,6 +26,11 @@ interface Request {
   readonly attribute RequestCache cache;
   readonly attribute RequestRedirect redirect;
   readonly attribute DOMString integrity;
+
+  // If a main-thread fetch() promise rejects, the error passed will be a
+  // nsresult code.
+  [ChromeOnly]
+  readonly attribute boolean mozErrors;
 
   [BinaryName="getOrCreateSignal"]
   readonly attribute AbortSignal signal;
@@ -51,9 +56,12 @@ dictionary RequestInit {
   RequestRedirect redirect;
   DOMString integrity;
 
+  [ChromeOnly]
+  boolean mozErrors;
+
   AbortSignal? signal;
 
-  [Func="FetchObserver::IsEnabled"]
+  [Func="mozilla::dom::DOMPrefs::FetchObserverEnabled"]
   ObserverCallback observe;
 };
 

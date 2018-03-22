@@ -10,13 +10,14 @@ use internal_types::FastHashMap;
 /// Stores a map of the animated property bindings for the current display list. These
 /// can be used to animate the transform and/or opacity of a display list without
 /// re-submitting the display list itself.
+#[cfg_attr(feature = "capture", derive(Serialize, Deserialize))]
 pub struct SceneProperties {
     transform_properties: FastHashMap<PropertyBindingId, LayoutTransform>,
     float_properties: FastHashMap<PropertyBindingId, f32>,
 }
 
 impl SceneProperties {
-    pub fn new() -> SceneProperties {
+    pub fn new() -> Self {
         SceneProperties {
             transform_properties: FastHashMap::default(),
             float_properties: FastHashMap::default(),
@@ -42,41 +43,45 @@ impl SceneProperties {
     /// Get the current value for a transform property.
     pub fn resolve_layout_transform(
         &self,
-        property: Option<&PropertyBinding<LayoutTransform>>,
+        property: &PropertyBinding<LayoutTransform>,
     ) -> LayoutTransform {
-        let property = match property {
-            Some(property) => property,
-            None => return LayoutTransform::identity(),
-        };
-
         match *property {
-            PropertyBinding::Value(matrix) => matrix,
-            PropertyBinding::Binding(ref key) => self.transform_properties
-                .get(&key.id)
-                .cloned()
-                .unwrap_or_else(|| {
-                    warn!("Property binding {:?} has an invalid value.", key);
-                    LayoutTransform::identity()
-                }),
+            PropertyBinding::Value(value) => value,
+            PropertyBinding::Binding(ref key) => {
+                self.transform_properties
+                    .get(&key.id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        warn!("Property binding {:?} has an invalid value.", key);
+                        LayoutTransform::identity()
+                    })
+            }
         }
     }
 
     /// Get the current value for a float property.
-    pub fn resolve_float(&self, property: &PropertyBinding<f32>, default_value: f32) -> f32 {
+    pub fn resolve_float(
+        &self,
+        property: &PropertyBinding<f32>,
+        default_value: f32
+    ) -> f32 {
         match *property {
             PropertyBinding::Value(value) => value,
-            PropertyBinding::Binding(ref key) => self.float_properties
-                .get(&key.id)
-                .cloned()
-                .unwrap_or_else(|| {
-                    warn!("Property binding {:?} has an invalid value.", key);
-                    default_value
-                }),
+            PropertyBinding::Binding(ref key) => {
+                self.float_properties
+                    .get(&key.id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        warn!("Property binding {:?} has an invalid value.", key);
+                        default_value
+                    })
+            }
         }
     }
 }
 
 /// A representation of the layout within the display port for a given document or iframe.
+#[cfg_attr(feature = "capture", derive(Serialize, Deserialize))]
 pub struct ScenePipeline {
     pub pipeline_id: PipelineId,
     pub epoch: Epoch,
@@ -87,6 +92,7 @@ pub struct ScenePipeline {
 }
 
 /// A complete representation of the layout bundling visible pipelines together.
+#[cfg_attr(feature = "capture", derive(Serialize, Deserialize))]
 pub struct Scene {
     pub root_pipeline_id: Option<PipelineId>,
     pub pipelines: FastHashMap<PipelineId, ScenePipeline>,
@@ -94,7 +100,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new() -> Scene {
+    pub fn new() -> Self {
         Scene {
             root_pipeline_id: None,
             pipelines: FastHashMap::default(),
@@ -141,19 +147,29 @@ impl Scene {
     }
 }
 
+/// An arbitrary number which we assume opacity is invisible below.
+pub const OPACITY_EPSILON: f32 = 0.001;
+
 pub trait FilterOpHelpers {
-    fn resolve(self, properties: &SceneProperties) -> FilterOp;
+    fn is_visible(&self) -> bool;
     fn is_noop(&self) -> bool;
 }
 
 impl FilterOpHelpers for FilterOp {
-    fn resolve(self, properties: &SceneProperties) -> FilterOp {
-        match self {
-            FilterOp::Opacity(ref value) => {
-                let amount = properties.resolve_float(value, 1.0);
-                FilterOp::Opacity(PropertyBinding::Value(amount))
+    fn is_visible(&self) -> bool {
+        match *self {
+            FilterOp::Blur(..) |
+            FilterOp::Brightness(..) |
+            FilterOp::Contrast(..) |
+            FilterOp::Grayscale(..) |
+            FilterOp::HueRotate(..) |
+            FilterOp::Invert(..) |
+            FilterOp::Saturate(..) |
+            FilterOp::Sepia(..) |
+            FilterOp::DropShadow(..) => true,
+            FilterOp::Opacity(_, amount) => {
+                amount > OPACITY_EPSILON
             }
-            _ => self,
         }
     }
 
@@ -165,14 +181,12 @@ impl FilterOpHelpers for FilterOp {
             FilterOp::Grayscale(amount) => amount == 0.0,
             FilterOp::HueRotate(amount) => amount == 0.0,
             FilterOp::Invert(amount) => amount == 0.0,
-            FilterOp::Opacity(value) => match value {
-                PropertyBinding::Value(amount) => amount == 1.0,
-                PropertyBinding::Binding(..) => {
-                    panic!("bug: binding value should be resolved");
-                }
-            },
+            FilterOp::Opacity(_, amount) => amount >= 1.0,
             FilterOp::Saturate(amount) => amount == 1.0,
             FilterOp::Sepia(amount) => amount == 0.0,
+            FilterOp::DropShadow(offset, blur, _) => {
+                offset.x == 0.0 && offset.y == 0.0 && blur == 0.0
+            }
         }
     }
 }
@@ -183,7 +197,6 @@ pub trait StackingContextHelpers {
         &self,
         display_list: &BuiltDisplayList,
         input_filters: ItemRange<FilterOp>,
-        properties: &SceneProperties,
     ) -> Vec<FilterOp>;
 }
 
@@ -199,14 +212,12 @@ impl StackingContextHelpers for StackingContext {
         &self,
         display_list: &BuiltDisplayList,
         input_filters: ItemRange<FilterOp>,
-        properties: &SceneProperties,
     ) -> Vec<FilterOp> {
+        // TODO(gw): Now that we resolve these later on,
+        //           we could probably make it a bit
+        //           more efficient than cloning these here.
         let mut filters = vec![];
         for filter in display_list.get(input_filters) {
-            let filter = filter.resolve(properties);
-            if filter.is_noop() {
-                continue;
-            }
             filters.push(filter);
         }
         filters

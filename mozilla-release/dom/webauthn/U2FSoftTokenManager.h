@@ -26,15 +26,17 @@ public:
   explicit U2FSoftTokenManager(uint32_t aCounter);
 
   virtual RefPtr<U2FRegisterPromise>
-  Register(const nsTArray<WebAuthnScopedCredentialDescriptor>& aDescriptors,
+  Register(const nsTArray<WebAuthnScopedCredential>& aCredentials,
+           const WebAuthnAuthenticatorSelection &aAuthenticatorSelection,
            const nsTArray<uint8_t>& aApplication,
            const nsTArray<uint8_t>& aChallenge,
            uint32_t aTimeoutMS) override;
 
   virtual RefPtr<U2FSignPromise>
-  Sign(const nsTArray<WebAuthnScopedCredentialDescriptor>& aDescriptors,
+  Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials,
        const nsTArray<uint8_t>& aApplication,
        const nsTArray<uint8_t>& aChallenge,
+       bool aRequireUserVerification,
        uint32_t aTimeoutMS) override;
 
   virtual void Cancel() override;
@@ -46,7 +48,6 @@ public:
 private:
   ~U2FSoftTokenManager();
   nsresult Init();
-  bool IsCompatibleVersion(const nsAString& aVersion);
 
   nsresult IsRegistered(const nsTArray<uint8_t>& aKeyHandle,
                         const nsTArray<uint8_t>& aAppParam,
@@ -56,7 +57,6 @@ private:
   mozilla::UniquePK11SymKey mWrappingKey;
 
   static const nsCString mSecretNickname;
-  static const nsString mVersion;
 
   nsresult GetOrCreateWrappingKey(const mozilla::UniquePK11SlotInfo& aSlot,
                                   const nsNSSShutDownPreventionLock&);

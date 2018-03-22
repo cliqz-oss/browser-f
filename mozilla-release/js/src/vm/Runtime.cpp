@@ -139,7 +139,6 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     numCompartments(0),
     localeCallbacks(nullptr),
     defaultLocale(nullptr),
-    defaultVersion_(JSVERSION_DEFAULT),
     profilingScripts(false),
     scriptAndCountsVector(nullptr),
     lcovOutput_(),
@@ -175,7 +174,7 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     oomCallback(nullptr),
     debuggerMallocSizeOf(ReturnZeroSize),
     lastAnimationTime(0),
-    performanceMonitoring_(thisFromCtor()),
+    performanceMonitoring_(),
     stackFormat_(parentRuntime ? js::StackFormat::Default
                                : js::StackFormat::SpiderMonkey)
 {
@@ -754,7 +753,7 @@ JSRuntime::addUnhandledRejectedPromise(JSContext* cx, js::HandleObject promise)
 
     void* data = cx->promiseRejectionTrackerCallbackData;
     cx->promiseRejectionTrackerCallback(cx, promise,
-                                        PromiseRejectionHandlingState::Unhandled, data);
+                                        JS::PromiseRejectionHandlingState::Unhandled, data);
 }
 
 void
@@ -766,7 +765,7 @@ JSRuntime::removeUnhandledRejectedPromise(JSContext* cx, js::HandleObject promis
 
     void* data = cx->promiseRejectionTrackerCallbackData;
     cx->promiseRejectionTrackerCallback(cx, promise,
-                                        PromiseRejectionHandlingState::Handled, data);
+                                        JS::PromiseRejectionHandlingState::Handled, data);
 }
 
 mozilla::non_crypto::XorShift128PlusRNG&

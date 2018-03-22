@@ -91,18 +91,13 @@
 
 /* The fullscreen button doesnt show on Yosemite(10.10) or above so dont give it a
    border there */
-@media not all and (-moz-mac-yosemite-theme) {
+@media (-moz-mac-yosemite-theme: 0) {
   .titlebar-placeholder[type="fullscreen-button"] {
     margin-right: 4px;
   }
 }
 
-#main-window:not(:-moz-lwtheme) > #titlebar {
-  -moz-appearance: -moz-window-titlebar;
-}
-
 #main-window:not([tabsintitlebar]) > #titlebar {
-  -moz-appearance: -moz-window-titlebar;
   height: 22px; /* The native titlebar on OS X is 22px tall. */
 }
 
@@ -815,8 +810,8 @@ html|span.ac-emphasize-text-url {
 }
 
 :root:-moz-any([inFullscreen], [tabsintitlebar]) #TabsToolbar:not(:-moz-lwtheme) {
-  -moz-appearance: -moz-mac-vibrancy-dark;
-  -moz-font-smoothing-background-color: -moz-mac-vibrancy-dark;
+  -moz-appearance: -moz-mac-vibrant-titlebar-dark;
+  -moz-font-smoothing-background-color: -moz-mac-vibrant-titlebar-dark;
   background-color: #232323;
   color: hsl(240, 9%, 98%);
   text-shadow: none;
@@ -849,20 +844,6 @@ html|span.ac-emphasize-text-url {
     list-style-image: url(chrome://browser/skin/tabbrowser/tabDragIndicator@2x.png);
     width: 12px;
   }
-}
-
-/**
- * In-tab close button
- */
-
-.tab-close-button > .toolbarbutton-icon {
-  margin-inline-end: 0px !important;
-}
-
-.tab-close-button {
-  border: none !important;
-  background: none;
-  cursor: default;
 }
 
 /* Bookmarks toolbar */
@@ -1051,24 +1032,13 @@ html|*.addon-webext-perm-list {
 }
 
 .popup-notification-description[popupid="addon-webext-permissions"],
-.popup-notification-description[popupid="addon-installed"] {
-  display: none;
+.popup-notification-description[popupid="addon-webext-permissions-notification"] {
+  margin-inline-start: -1px;
 }
 
 .addon-webext-perm-notification-content,
 .addon-installed-notification-content {
   margin-top: 0;
-}
-
-#addon-webext-perm-header {
-  /* Align the text more closely with the icon by clearing some top line height. */
-  margin-top: -1px;
-  margin-inline-start: 0;
-}
-
-#addon-installed-notification-header {
-  /* Align the text more closely with the icon by clearing some top line height. */
-  margin-top: -1px;
 }
 
 .addon-webext-name {
@@ -1155,8 +1125,8 @@ html|*.addon-webext-perm-list {
 
 /* Private browsing and accessibility indicators */
 
-:root[accessibilitymode][tabsintitlebar]:not([inFullscreen]) > #tab-view-deck > #browser-panel > #navigator-toolbox > #TabsToolbar > .accessibility-indicator,
-:root[privatebrowsingmode=temporary][tabsintitlebar]:not([inFullscreen]) > #tab-view-deck > #browser-panel > #navigator-toolbox > #TabsToolbar > .private-browsing-indicator,
+:root[accessibilitymode][tabsintitlebar]:not([inFullscreen]) > #navigator-toolbox > #TabsToolbar > .accessibility-indicator,
+:root[privatebrowsingmode=temporary][tabsintitlebar]:not([inFullscreen]) > #navigator-toolbox > #TabsToolbar > .private-browsing-indicator,
 :root[accessibilitymode]:not([tabsintitlebar]) > #titlebar > #titlebar-content > #titlebar-secondary-buttonbox > .accessibility-indicator,
 :root[privatebrowsingmode=temporary]:not([tabsintitlebar]) > #titlebar > #titlebar-content > #titlebar-secondary-buttonbox > .private-browsing-indicator {
   display: none;

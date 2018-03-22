@@ -8,31 +8,30 @@ use app_units::AU_PER_PX;
 use app_units::Au;
 use context::QuirksMode;
 use cssparser::{CssStringWriter, Parser, RGBA, Token, BasicParseErrorKind};
-use euclid::ScaleFactor;
 use euclid::Size2D;
+use euclid::TypedScale;
 use gecko::values::{convert_nscolor_to_rgba, convert_rgba_to_nscolor};
 use gecko_bindings::bindings;
 use gecko_bindings::structs;
 use gecko_bindings::structs::{nsCSSKeyword, nsCSSProps_KTableEntry, nsCSSValue, nsCSSUnit};
-use gecko_bindings::structs::{nsMediaExpression_Range, nsMediaFeature};
-use gecko_bindings::structs::{nsMediaFeature_ValueType, nsMediaFeature_RangeType};
+use gecko_bindings::structs::{nsMediaFeature, nsMediaFeature_ValueType, nsMediaFeature_RangeType};
 use gecko_bindings::structs::{nsPresContext, RawGeckoPresContextOwned};
 use media_queries::MediaType;
-use parser::ParserContext;
+use parser::{Parse, ParserContext};
 use properties::ComputedValues;
 use servo_arc::Arc;
 use std::fmt::{self, Write};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use str::starts_with_ignore_ascii_case;
 use string_cache::Atom;
-use style_traits::{CSSPixel, DevicePixel};
+use style_traits::{CSSPixel, CssWriter, DevicePixel};
 use style_traits::{ToCss, ParseError, StyleParseErrorKind};
 use style_traits::viewport::ViewportConstraints;
 use stylesheets::Origin;
-use values::{CSSFloat, CustomIdent, serialize_dimension};
+use values::{CSSFloat, CustomIdent};
 use values::computed::{self, ToComputedValue};
 use values::computed::font::FontSize;
-use values::specified::Length;
+use values::specified::{Integer, Length, Number};
 
 /// The `Device` in Gecko wraps a pres context, has a default values computed,
 /// and contains all the viewport rule state.
@@ -157,18 +156,16 @@ impl Device {
 
     /// Returns the current media type of the device.
     pub fn media_type(&self) -> MediaType {
-        unsafe {
-            // Gecko allows emulating random media with mIsEmulatingMedia and
-            // mMediaEmulated.
-            let context = self.pres_context();
-            let medium_to_use = if context.mIsEmulatingMedia() != 0 {
-                context.mMediaEmulated.mRawPtr
-            } else {
-                context.mMedium
-            };
+        // Gecko allows emulating random media with mIsEmulatingMedia and
+        // mMediaEmulated.
+        let context = self.pres_context();
+        let medium_to_use = if context.mIsEmulatingMedia() != 0 {
+            context.mMediaEmulated.mRawPtr
+        } else {
+            context.mMedium
+        };
 
-            MediaType(CustomIdent(Atom::from(medium_to_use)))
-        }
+        MediaType(CustomIdent(Atom::from(medium_to_use)))
     }
 
     /// Returns the current viewport size in app units.
@@ -190,12 +187,12 @@ impl Device {
     }
 
     /// Returns the device pixel ratio.
-    pub fn device_pixel_ratio(&self) -> ScaleFactor<f32, CSSPixel, DevicePixel> {
+    pub fn device_pixel_ratio(&self) -> TypedScale<f32, CSSPixel, DevicePixel> {
         let override_dppx = self.pres_context().mOverrideDPPX;
-        if override_dppx > 0.0 { return ScaleFactor::new(override_dppx); }
+        if override_dppx > 0.0 { return TypedScale::new(override_dppx); }
         let au_per_dpx = self.pres_context().mCurAppUnitsPerDevPixel as f32;
         let au_per_px = AU_PER_PX as f32;
-        ScaleFactor::new(au_per_px / au_per_dpx)
+        TypedScale::new(au_per_px / au_per_dpx)
     }
 
     /// Returns whether document colors are enabled.
@@ -218,17 +215,28 @@ impl Device {
     }
 }
 
+/// The kind of matching that should be performed on a media feature value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Range {
+    /// At least the specified value.
+    Min,
+    /// At most the specified value.
+    Max,
+    /// Exactly the specified value.
+    Equal,
+}
+
 /// A expression for gecko contains a reference to the media feature, the value
 /// the media query contained, and the range to evaluate.
 #[derive(Clone, Debug)]
 pub struct Expression {
     feature: &'static nsMediaFeature,
     value: Option<MediaExpressionValue>,
-    range: nsMediaExpression_Range
+    range: Range,
 }
 
 impl ToCss for Expression {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
         where W: fmt::Write,
     {
         dest.write_str("(")?;
@@ -237,9 +245,9 @@ impl ToCss for Expression {
             dest.write_str("-webkit-")?;
         }
         match self.range {
-            nsMediaExpression_Range::eMin => dest.write_str("min-")?,
-            nsMediaExpression_Range::eMax => dest.write_str("max-")?,
-            nsMediaExpression_Range::eEqual => {},
+            Range::Min => dest.write_str("min-")?,
+            Range::Max => dest.write_str("max-")?,
+            Range::Equal => {},
         }
 
         // NB: CssStringWriter not needed, feature names are under control.
@@ -262,13 +270,16 @@ impl PartialEq for Expression {
 }
 
 /// A resolution.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, ToCss)]
 pub enum Resolution {
     /// Dots per inch.
+    #[css(dimension)]
     Dpi(CSSFloat),
     /// Dots per pixel.
+    #[css(dimension)]
     Dppx(CSSFloat),
     /// Dots per centimeter.
+    #[css(dimension)]
     Dpcm(CSSFloat),
 }
 
@@ -303,19 +314,14 @@ impl Resolution {
     }
 }
 
-impl ToCss for Resolution {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write,
-    {
-        match *self {
-            Resolution::Dpi(v) => serialize_dimension(v, "dpi", dest),
-            Resolution::Dppx(v) => serialize_dimension(v, "dppx", dest),
-            Resolution::Dpcm(v) => serialize_dimension(v, "dpcm", dest),
-        }
-    }
-}
-
 /// A value found or expected in a media expression.
+///
+/// FIXME(emilio): How should calc() serialize in the Number / Integer /
+/// BoolInteger / IntRatio case, as computed or as specified value?
+///
+/// If the first, this would need to store the relevant values.
+///
+/// See: https://github.com/w3c/csswg-drafts/issues/1968
 #[derive(Clone, Debug, PartialEq)]
 pub enum MediaExpressionValue {
     /// A length.
@@ -402,7 +408,7 @@ impl MediaExpressionValue {
 }
 
 impl MediaExpressionValue {
-    fn to_css<W>(&self, dest: &mut W, for_expr: &Expression) -> fmt::Result
+    fn to_css<W>(&self, dest: &mut CssWriter<W>, for_expr: &Expression) -> fmt::Result
         where W: fmt::Write,
     {
         match *self {
@@ -448,7 +454,8 @@ impl MediaExpressionValue {
 }
 
 fn find_feature<F>(mut f: F) -> Option<&'static nsMediaFeature>
-    where F: FnMut(&'static nsMediaFeature) -> bool,
+where
+    F: FnMut(&'static nsMediaFeature) -> bool,
 {
     unsafe {
         let mut features = structs::nsMediaFeatures_features.as_ptr();
@@ -462,10 +469,12 @@ fn find_feature<F>(mut f: F) -> Option<&'static nsMediaFeature>
     None
 }
 
-unsafe fn find_in_table<F>(mut current_entry: *const nsCSSProps_KTableEntry,
-                           mut f: F)
-                           -> Option<(nsCSSKeyword, i16)>
-    where F: FnMut(nsCSSKeyword, i16) -> bool
+unsafe fn find_in_table<F>(
+    mut current_entry: *const nsCSSProps_KTableEntry,
+    mut f: F,
+) -> Option<(nsCSSKeyword, i16)>
+where
+    F: FnMut(nsCSSKeyword, i16) -> bool
 {
     loop {
         let value = (*current_entry).mValue;
@@ -483,66 +492,50 @@ unsafe fn find_in_table<F>(mut current_entry: *const nsCSSProps_KTableEntry,
     }
 }
 
-fn parse_feature_value<'i, 't>(feature: &nsMediaFeature,
-                               feature_value_type: nsMediaFeature_ValueType,
-                               context: &ParserContext,
-                               input: &mut Parser<'i, 't>)
-                               -> Result<MediaExpressionValue, ParseError<'i>> {
+fn parse_feature_value<'i, 't>(
+    feature: &nsMediaFeature,
+    feature_value_type: nsMediaFeature_ValueType,
+    context: &ParserContext,
+    input: &mut Parser<'i, 't>,
+) -> Result<MediaExpressionValue, ParseError<'i>> {
     let value = match feature_value_type {
         nsMediaFeature_ValueType::eLength => {
-           let length = Length::parse_non_negative(context, input)?;
-           // FIXME(canaltinova): See bug 1396057. Gecko doesn't support calc
-           // inside media queries. This check is for temporarily remove it
-           // for parity with gecko. We should remove this check when we want
-           // to support it.
-           if let Length::Calc(_) = length {
-               return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
-           }
-           MediaExpressionValue::Length(length)
+            let length = Length::parse_non_negative(context, input)?;
+            MediaExpressionValue::Length(length)
         },
         nsMediaFeature_ValueType::eInteger => {
-           // FIXME(emilio): We should use `Integer::parse` to handle `calc`
-           // properly in integer expressions. Note that calc is still not
-           // supported in media queries per FIXME above.
-           let i = input.expect_integer()?;
-           if i < 0 {
-               return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
-           }
-           MediaExpressionValue::Integer(i as u32)
+            let integer = Integer::parse_non_negative(context, input)?;
+            MediaExpressionValue::Integer(integer.value() as u32)
         }
         nsMediaFeature_ValueType::eBoolInteger => {
-           let i = input.expect_integer()?;
-           if i < 0 || i > 1 {
-               return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
-           }
-           MediaExpressionValue::BoolInteger(i == 1)
+            let integer = Integer::parse_non_negative(context, input)?;
+            let value = integer.value();
+            if value > 1 {
+                return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
+            }
+            MediaExpressionValue::BoolInteger(value == 1)
         }
         nsMediaFeature_ValueType::eFloat => {
-           MediaExpressionValue::Float(input.expect_number()?)
+            let number = Number::parse(context, input)?;
+            MediaExpressionValue::Float(number.get())
         }
         nsMediaFeature_ValueType::eIntRatio => {
-           let a = input.expect_integer()?;
-           if a <= 0 {
-               return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
-           }
-
-           input.expect_delim('/')?;
-
-           let b = input.expect_integer()?;
-           if b <= 0 {
-               return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
-           }
-           MediaExpressionValue::IntRatio(a as u32, b as u32)
+            let a = Integer::parse_positive(context, input)?;
+            input.expect_delim('/')?;
+            let b = Integer::parse_positive(context, input)?;
+            MediaExpressionValue::IntRatio(a.value() as u32, b.value() as u32)
         }
         nsMediaFeature_ValueType::eResolution => {
-           MediaExpressionValue::Resolution(Resolution::parse(input)?)
+            MediaExpressionValue::Resolution(Resolution::parse(input)?)
         }
         nsMediaFeature_ValueType::eEnumerated => {
             let location = input.current_source_location();
             let keyword = input.expect_ident()?;
             let keyword = unsafe {
-                bindings::Gecko_LookupCSSKeyword(keyword.as_bytes().as_ptr(),
-                keyword.len() as u32)
+                bindings::Gecko_LookupCSSKeyword(
+                    keyword.as_bytes().as_ptr(),
+                    keyword.len() as u32,
+                )
             };
 
             let first_table_entry: *const nsCSSProps_KTableEntry = unsafe {
@@ -566,14 +559,12 @@ fn parse_feature_value<'i, 't>(feature: &nsMediaFeature,
 
 impl Expression {
     /// Trivially construct a new expression.
-    fn new(feature: &'static nsMediaFeature,
-           value: Option<MediaExpressionValue>,
-           range: nsMediaExpression_Range) -> Self {
-        Expression {
-            feature: feature,
-            value: value,
-            range: range,
-        }
+    fn new(
+        feature: &'static nsMediaFeature,
+        value: Option<MediaExpressionValue>,
+        range: Range,
+    ) -> Self {
+        Self { feature, value, range }
     }
 
     /// Parse a media expression of the form:
@@ -607,7 +598,7 @@ impl Expression {
 
                 let mut flags = 0;
 
-                if context.in_chrome_stylesheet() ||
+                if context.chrome_rules_enabled() ||
                     context.stylesheet_origin == Origin::UserAgent {
                     flags |= structs::nsMediaFeature_RequirementFlags_eUserAgentAndChromeOnly;
                 }
@@ -626,12 +617,12 @@ impl Expression {
 
                     let range = if starts_with_ignore_ascii_case(feature_name, "min-") {
                         feature_name = &feature_name[4..];
-                        nsMediaExpression_Range::eMin
+                        Range::Min
                     } else if starts_with_ignore_ascii_case(feature_name, "max-") {
                         feature_name = &feature_name[4..];
-                        nsMediaExpression_Range::eMax
+                        Range::Max
                     } else {
-                        nsMediaExpression_Range::eEqual
+                        Range::Equal
                     };
 
                     let atom = Atom::from(feature_name);
@@ -659,7 +650,7 @@ impl Expression {
                     ))
                 }
 
-                if range != nsMediaExpression_Range::eEqual &&
+                if range != Range::Equal &&
                    feature.mRangeType != nsMediaFeature_RangeType::eMinMaxAllowed {
                     return Err(location.new_custom_error(
                         StyleParseErrorKind::MediaQueryExpectedFeatureName(ident.clone())
@@ -673,7 +664,7 @@ impl Expression {
             // Gecko doesn't allow ranged expressions without a value, so just
             // reject them here too.
             if input.try(|i| i.expect_colon()).is_err() {
-                if range != nsMediaExpression_Range::eEqual {
+                if range != Range::Equal {
                     return Err(input.new_custom_error(StyleParseErrorKind::RangedExpressionWithNoValue))
                 }
                 return Ok(Expression::new(feature, None, range));
@@ -693,9 +684,11 @@ impl Expression {
     pub fn matches(&self, device: &Device, quirks_mode: QuirksMode) -> bool {
         let mut css_value = nsCSSValue::null();
         unsafe {
-            (self.feature.mGetter.unwrap())(device.pres_context,
-                                            self.feature,
-                                            &mut css_value)
+            (self.feature.mGetter.unwrap())(
+                device.pres_context().mDocument.raw::<structs::nsIDocument>(),
+                self.feature,
+                &mut css_value,
+            )
         };
 
         let value = match MediaExpressionValue::from_css_value(self, &css_value) {
@@ -715,7 +708,7 @@ impl Expression {
         use self::MediaExpressionValue::*;
         use std::cmp::Ordering;
 
-        debug_assert!(self.range == nsMediaExpression_Range::eEqual ||
+        debug_assert!(self.range == Range::Equal ||
                       self.feature.mRangeType == nsMediaFeature_RangeType::eMinMaxAllowed,
                       "Whoops, wrong range");
 
@@ -781,9 +774,9 @@ impl Expression {
         };
 
         cmp == Ordering::Equal || match self.range {
-            nsMediaExpression_Range::eMin => cmp == Ordering::Less,
-            nsMediaExpression_Range::eEqual => false,
-            nsMediaExpression_Range::eMax => cmp == Ordering::Greater,
+            Range::Min => cmp == Ordering::Less,
+            Range::Equal => false,
+            Range::Max => cmp == Ordering::Greater,
         }
     }
 }

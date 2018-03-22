@@ -17,7 +17,11 @@ class nsIPrincipal;
 
 namespace mozilla {
 
-class BaseMediaResource : public MediaResource
+DDLoggedTypeDeclNameAndBase(BaseMediaResource, MediaResource);
+
+class BaseMediaResource
+  : public MediaResource
+  , public DecoderDoctorLifeLogger<BaseMediaResource>
 {
 public:
   /**
@@ -28,11 +32,6 @@ public:
     MediaResourceCallback* aCallback,
     nsIChannel* aChannel,
     bool aIsPrivateBrowsing);
-
-  // Close the resource, stop any listeners, channels, etc.
-  // Cancels any currently blocking Read request and forces that request to
-  // return an error.
-  virtual nsresult Close() = 0;
 
   // Pass true to limit the amount of readahead data (specified by
   // "media.cache_readahead_limit") or false to read as much as the
@@ -64,7 +63,7 @@ public:
   // Resume any downloads that have been suspended.
   virtual void Resume() = 0;
 
-  // The mode is initially MODE_PLAYBACK.
+  // The mode is initially MODE_METADATA.
   virtual void SetReadMode(MediaCacheStream::ReadMode aMode) = 0;
 
   // Returns true if the resource can be seeked to unbuffered ranges, i.e.
@@ -98,7 +97,7 @@ public:
   }
 
   // Returns true if the resource is a live stream.
-  bool IsLiveStream() { return GetLength() == -1; }
+  virtual bool IsLiveStream() const { return false; }
 
   virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
   {
@@ -133,10 +132,6 @@ protected:
   // load group, the request is removed from the group, the flags are set, and
   // then the request is added back to the load group.
   void ModifyLoadFlags(nsLoadFlags aFlags);
-
-  // Dispatches an event to call MediaDecoder::NotifyBytesConsumed(aNumBytes, aOffset)
-  // on the main thread. This is called automatically after every read.
-  void DispatchBytesConsumed(int64_t aNumBytes, int64_t aOffset);
 
   RefPtr<MediaResourceCallback> mCallback;
 

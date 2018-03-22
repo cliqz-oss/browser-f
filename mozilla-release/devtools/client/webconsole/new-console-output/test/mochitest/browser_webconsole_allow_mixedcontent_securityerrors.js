@@ -14,56 +14,59 @@
 "use strict";
 
 const TEST_URI = "https://example.com/browser/devtools/client/webconsole/" +
-                 "test/test-mixedcontent-securityerrors.html";
-const LEARN_MORE_URI = "https://developer.mozilla.org/docs/Web/Security/" +
-                       "Mixed_content" + DOCS_GA_PARAMS;
+  "new-console-output/test/mochitest/test-mixedcontent-securityerrors.html";
+const LEARN_MORE_URI =
+  "https://developer.mozilla.org/docs/Web/Security/Mixed_content" + DOCS_GA_PARAMS;
 
-add_task(function* () {
-  yield pushPrefEnv();
+add_task(async function () {
+  await Promise.all([
+    pushPref("security.mixed_content.block_active_content", false),
+    pushPref("security.mixed_content.block_display_content", false),
+  ]);
 
-  yield loadTab(TEST_URI);
+  const hud = await openNewTabAndConsole(TEST_URI);
 
-  let hud = yield openConsole();
+  const activeContentText = "Loading mixed (insecure) active content " +
+    "\u201chttp://example.com/\u201d on a secure page";
+  const displayContentText = "Loading mixed (insecure) display content " +
+    "\u201chttp://example.com/tests/image/test/mochitest/blue.png\u201d on a secure page";
 
-  let results = yield waitForMessages({
-    webconsole: hud,
-    messages: [
-      {
-        name: "Logged mixed active content",
-        text: "Loading mixed (insecure) active content " +
-              "\u201chttp://example.com/\u201d on a secure page",
-        category: CATEGORY_SECURITY,
-        severity: SEVERITY_WARNING,
-        objects: true,
-      },
-      {
-        name: "Logged mixed passive content - image",
-        text: "Loading mixed (insecure) display content " +
-              "\u201chttp://example.com/tests/image/test/mochitest/blue.png\u201d " +
-              "on a secure page",
-        category: CATEGORY_SECURITY,
-        severity: SEVERITY_WARNING,
-        objects: true,
-      },
-    ],
+  const waitUntilWarningMessage = text =>
+    waitFor(() => findMessage(hud, text, ".message.warn"), undefined, 100);
+
+  const onMixedActiveContent = waitUntilWarningMessage(activeContentText);
+  const onMixedDisplayContent = waitUntilWarningMessage(displayContentText);
+
+  await onMixedDisplayContent;
+  ok(true, "Mixed display content warning message is visible");
+
+  const mixedActiveContentMessage = await onMixedActiveContent;
+  ok(true, "Mixed active content warning message is visible");
+
+  const checkLink = ({ link, where, expectedLink, expectedTab }) => {
+    is(link, expectedLink, `Clicking the provided link opens ${link}`);
+    is(where, expectedTab, `Clicking the provided link opens in expected tab`);
+  }
+
+  info("Clicking on the Learn More link");
+  const learnMoreLink = mixedActiveContentMessage.querySelector(".learn-more-link");
+  let linkSimulation = await simulateLinkClick(learnMoreLink);
+  checkLink({
+    ...linkSimulation,
+    expectedLink: LEARN_MORE_URI,
+    expectedTab: "tab"
   });
 
-  yield testClickOpenNewTab(hud, results);
+  let isOSX = Services.appinfo.OS == "Darwin";
+  let ctrlOrCmdKeyMouseEvent = new MouseEvent("click", {
+    bubbles: true,
+    [isOSX ? "metaKey" : "ctrlKey"]: true,
+    view: window
+  });
+  linkSimulation = await simulateLinkClick(learnMoreLink, ctrlOrCmdKeyMouseEvent);
+  checkLink({
+    ...linkSimulation,
+    expectedLink: LEARN_MORE_URI,
+    expectedTab: "tabshifted"
+  });
 });
-
-function pushPrefEnv() {
-  let deferred = defer();
-  let options = {"set":
-      [["security.mixed_content.block_active_content", false],
-       ["security.mixed_content.block_display_content", false]
-  ]};
-  SpecialPowers.pushPrefEnv(options, deferred.resolve);
-  return deferred.promise;
-}
-
-function testClickOpenNewTab(hud, results) {
-  let warningNode = results[0].clickableElements[0];
-  ok(warningNode, "link element");
-  ok(warningNode.classList.contains("learn-more-link"), "link class name");
-  return simulateMessageLinkClick(warningNode, LEARN_MORE_URI);
-}

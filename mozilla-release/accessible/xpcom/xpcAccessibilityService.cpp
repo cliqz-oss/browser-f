@@ -46,7 +46,7 @@ xpcAccessibilityService::AddRef(void)
 
   // We want refcount to be > 1 because one reference is added in the XPCOM
   // accessibility service getter.
-  if (mRefCnt > 1 && PlatformDisabledState() != ePlatformIsDisabled) {
+  if (mRefCnt > 1) {
     GetOrCreateAccService(nsAccessibilityService::eXPCOM);
   }
 
@@ -258,6 +258,18 @@ xpcAccessibilityService::IsLogged(const nsAString& aModule, bool* aIsLogged)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+xpcAccessibilityService::GetConsumers(nsAString& aString)
+{
+  nsAccessibilityService* accService = GetAccService();
+  if (!accService) {
+    return NS_ERROR_SERVICE_NOT_AVAILABLE;
+  }
+
+  accService->GetConsumers(aString);
+  return NS_OK;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // NS_GetAccessibilityService
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,12 +280,9 @@ NS_GetAccessibilityService(nsIAccessibilityService** aResult)
   NS_ENSURE_TRUE(aResult, NS_ERROR_NULL_POINTER);
   *aResult = nullptr;
 
-  // Do not initialize accessibility if it is force disabled.
-  if (PlatformDisabledState() == ePlatformIsDisabled) {
+  if (!GetOrCreateAccService(nsAccessibilityService::eXPCOM)) {
     return NS_ERROR_SERVICE_NOT_AVAILABLE;
   }
-
-  GetOrCreateAccService(nsAccessibilityService::eXPCOM);
 
   xpcAccessibilityService* service = new xpcAccessibilityService();
   NS_ENSURE_TRUE(service, NS_ERROR_OUT_OF_MEMORY);

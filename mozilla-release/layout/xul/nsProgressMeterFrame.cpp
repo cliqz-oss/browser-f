@@ -133,23 +133,24 @@ nsProgressMeterFrame::AttributeChanged(int32_t aNameSpaceID,
   }
 
   // did the progress change?
-  bool undetermined = mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::mode,
-                                            nsGkAtoms::undetermined, eCaseMatters);
+  bool undetermined =
+    mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::mode,
+                                       nsGkAtoms::undetermined, eCaseMatters);
   if (nsGkAtoms::mode == aAttribute ||
       (!undetermined &&
        (nsGkAtoms::value == aAttribute || nsGkAtoms::max == aAttribute))) {
     nsIFrame* barChild = PrincipalChildList().FirstChild();
-    if (!barChild) return NS_OK;
+    if (!barChild || !barChild->GetContent()->IsElement()) return NS_OK;
     nsIFrame* remainderChild = barChild->GetNextSibling();
     if (!remainderChild) return NS_OK;
     nsCOMPtr<nsIContent> remainderContent = remainderChild->GetContent();
-    if (!remainderContent) return NS_OK;
+    if (!remainderContent->IsElement()) return NS_OK;
 
     int32_t flex = 1, maxFlex = 1;
     if (!undetermined) {
       nsAutoString value, maxValue;
-      mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::value, value);
-      mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::max, maxValue);
+      mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::value, value);
+      mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::max, maxValue);
 
       nsresult error;
       flex = value.ToInteger(&error);
@@ -169,9 +170,9 @@ nsProgressMeterFrame::AttributeChanged(int32_t aNameSpaceID,
     }
 
     nsContentUtils::AddScriptRunner(new nsSetAttrRunnable(
-      barChild->GetContent(), nsGkAtoms::flex, flex));
+      barChild->GetContent()->AsElement(), nsGkAtoms::flex, flex));
     nsContentUtils::AddScriptRunner(new nsSetAttrRunnable(
-      remainderContent, nsGkAtoms::flex, maxFlex - flex));
+      remainderContent->AsElement(), nsGkAtoms::flex, maxFlex - flex));
     nsContentUtils::AddScriptRunner(new nsReflowFrameRunnable(
       this, nsIPresShell::eTreeChange, NS_FRAME_IS_DIRTY));
   }

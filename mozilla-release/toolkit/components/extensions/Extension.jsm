@@ -1,7 +1,8 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
 this.EXPORTED_SYMBOLS = ["Extension", "ExtensionData", "Langpack"];
@@ -42,6 +43,7 @@ Cu.import("resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
+  AddonSettings: "resource://gre/modules/addons/AddonSettings.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
   ExtensionCommon: "resource://gre/modules/ExtensionCommon.jsm",
@@ -98,39 +100,6 @@ XPCOMUtils.defineLazyGetter(this, "LocaleData", () => ExtensionCommon.LocaleData
 
 // The maximum time to wait for extension shutdown blockers to complete.
 const SHUTDOWN_BLOCKER_MAX_MS = 8000;
-
-// The list of properties that themes are allowed to contain.
-XPCOMUtils.defineLazyGetter(this, "allowedThemeProperties", () => {
-  Cu.import("resource://gre/modules/ExtensionParent.jsm");
-  let propertiesInBaseManifest = ExtensionParent.baseManifestProperties;
-
-  // The properties found in the base manifest contain all of the properties that
-  // themes are allowed to have. However, the list also contains several properties
-  // that aren't allowed, so we need to filter them out first before the list can
-  // be used to validate themes.
-  return propertiesInBaseManifest.filter(prop => {
-    const propertiesToRemove = ["background", "content_scripts", "permissions"];
-    return !propertiesToRemove.includes(prop);
-  });
-});
-
-/**
- * Validates a theme to ensure it only contains static resources.
- *
- * @param {Array<string>} manifestProperties The list of top-level keys found in the
- *    the extension's manifest.
- * @returns {Array<string>} A list of invalid properties or an empty list
- *    if none are found.
- */
-function validateThemeManifest(manifestProperties) {
-  let invalidProps = [];
-  for (let propName of manifestProperties) {
-    if (propName != "theme" && !allowedThemeProperties.includes(propName)) {
-      invalidProps.push(propName);
-    }
-  }
-  return invalidProps;
-}
 
 /**
  * Classify an individual permission from a webextension manifest
@@ -279,15 +248,17 @@ var UninstallObserver = {
 
 UninstallObserver.init();
 
-// Represents the data contained in an extension, contained either
-// in a directory or a zip file, which may or may not be installed.
-// This class implements the functionality of the Extension class,
-// primarily related to manifest parsing and localization, which is
-// useful prior to extension installation or initialization.
-//
-// No functionality of this class is guaranteed to work before
-// |loadManifest| has been called, and completed.
-this.ExtensionData = class {
+/**
+ * Represents the data contained in an extension, contained either
+ * in a directory or a zip file, which may or may not be installed.
+ * This class implements the functionality of the Extension class,
+ * primarily related to manifest parsing and localization, which is
+ * useful prior to extension installation or initialization.
+ *
+ * No functionality of this class is guaranteed to work before
+ * `loadManifest` has been called, and completed.
+ */
+class ExtensionData {
   constructor(rootURI) {
     this.rootURI = rootURI;
     this.resourceURL = rootURI.spec;
@@ -318,11 +289,18 @@ this.ExtensionData = class {
     return Log.repository.getLogger(LOGGER_ID_BASE + id);
   }
 
-  // Report an error about the extension's manifest file.
+  /**
+   * Report an error about the extension's manifest file.
+   * @param {string} message The error message
+   */
   manifestError(message) {
     this.packagingError(`Reading manifest: ${message}`);
   }
 
+  /**
+   * Report a warning about the extension's manifest file.
+   * @param {string} message The warning message
+   */
   manifestWarning(message) {
     this.packagingWarning(`Reading manifest: ${message}`);
   }
@@ -514,15 +492,7 @@ this.ExtensionData = class {
     let manifestType = "manifest.WebExtensionManifest";
     if (this.manifest.theme) {
       this.type = "theme";
-      // XXX create a separate manifest type for themes
-      let invalidProps = validateThemeManifest(Object.getOwnPropertyNames(this.manifest));
-
-      if (invalidProps.length) {
-        let message = `Themes defined in the manifest may only contain static resources. ` +
-          `If you would like to use additional properties, please use the "theme" permission instead. ` +
-          `(the invalid properties found are: ${invalidProps})`;
-        this.manifestError(message);
-      }
+      manifestType = "manifest.ThemeManifest";
     } else if (this.manifest.langpack_id) {
       this.type = "langpack";
       manifestType = "manifest.WebExtensionLangpackManifest";
@@ -561,13 +531,28 @@ this.ExtensionData = class {
     let permissions = new Set();
     let webAccessibleResources = [];
 
+    let schemaPromises = new Map();
+
+    let result = {
+      apiNames,
+      dependencies,
+      id,
+      manifest,
+      modules: null,
+      originPermissions,
+      permissions,
+      schemaURLs: null,
+      type: this.type,
+      webAccessibleResources,
+    };
+
     if (this.type === "extension") {
       if (this.manifest.devtools_page) {
         permissions.add("devtools");
       }
 
       for (let perm of manifest.permissions) {
-        if (perm === "geckoProfiler") {
+        if (perm === "geckoProfiler" && !this.isPrivileged) {
           const acceptedExtensions = Services.prefs.getStringPref("extensions.geckoProfiler.acceptedExtensionIds", "");
           if (!acceptedExtensions.split(",").includes(id)) {
             this.manifestError("Only whitelisted extensions are allowed to access the geckoProfiler.");
@@ -607,10 +592,48 @@ this.ExtensionData = class {
         dependencies.add(`${api}@experiments.addons.mozilla.org`);
       }
 
+      let moduleData = data => ({
+        url: this.rootURI.resolve(data.script),
+        events: data.events,
+        paths: data.paths,
+        scopes: data.scopes,
+      });
+
+      let computeModuleInit = (scope, modules) => {
+        let manager = new ExtensionCommon.SchemaAPIManager(scope);
+        return manager.initModuleJSON([modules]);
+      };
+
+      if (manifest.experiment_apis) {
+        let parentModules = {};
+        let childModules = {};
+
+        for (let [name, data] of Object.entries(manifest.experiment_apis)) {
+          let schema = this.getURL(data.schema);
+
+          if (!schemaPromises.has(schema)) {
+            schemaPromises.set(schema, this.readJSON(data.schema).then(json => Schemas.processSchema(json)));
+          }
+
+          if (data.parent) {
+            parentModules[name] = moduleData(data.parent);
+          }
+
+          if (data.child) {
+            childModules[name] = moduleData(data.child);
+          }
+        }
+
+        result.modules = {
+          child: computeModuleInit("addon_child", childModules),
+          parent: computeModuleInit("addon_parent", parentModules),
+        };
+      }
+
       // Normalize all patterns to contain a single leading /
       if (manifest.web_accessible_resources) {
-        webAccessibleResources = manifest.web_accessible_resources
-          .map(path => path.replace(/^\/*/, "/"));
+        webAccessibleResources.push(...manifest.web_accessible_resources
+          .map(path => path.replace(/^\/*/, "/")));
       }
     } else if (this.type == "langpack") {
       // Compute the chrome resources to be registered for this langpack
@@ -632,8 +655,15 @@ this.ExtensionData = class {
       this.startupData = {chromeEntries};
     }
 
-    return {apiNames, dependencies, originPermissions, id, manifest, permissions,
-            webAccessibleResources, type: this.type};
+    if (schemaPromises.size) {
+      let schemas = new Map();
+      for (let [url, promise] of schemaPromises) {
+        schemas.set(url, await promise);
+      }
+      result.schemaURLs = schemas;
+    }
+
+    return result;
   }
 
   // Reads the extension's |manifest.json| file, and stores its
@@ -657,12 +687,42 @@ this.ExtensionData = class {
     this.apiNames = manifestData.apiNames;
     this.dependencies = manifestData.dependencies;
     this.permissions = manifestData.permissions;
+    this.schemaURLs = manifestData.schemaURLs;
     this.type = manifestData.type;
+
+    this.modules = manifestData.modules;
+
+    this.apiManager = this.getAPIManager();
+    await this.apiManager.lazyInit();
 
     this.webAccessibleResources = manifestData.webAccessibleResources.map(res => new MatchGlob(res));
     this.whiteListedHosts = new MatchPatternSet(manifestData.originPermissions);
 
     return this.manifest;
+  }
+
+  getAPIManager() {
+    let apiManagers = [Management];
+
+    for (let id of this.dependencies) {
+      let policy = WebExtensionPolicy.getByID(id);
+      if (policy) {
+        apiManagers.push(policy.extension.experimentAPIManager);
+      }
+    }
+
+    if (this.modules) {
+      this.experimentAPIManager =
+        new ExtensionCommon.LazyAPIManager("main", this.modules.parent, this.schemaURLs);
+
+      apiManagers.push(this.experimentAPIManager);
+    }
+
+    if (apiManagers.length == 1) {
+      return apiManagers[0];
+    }
+
+    return new ExtensionCommon.MultiAPIManager("main", apiManagers.reverse());
   }
 
   localizeMessage(...args) {
@@ -811,9 +871,6 @@ this.ExtensionData = class {
    *                        Origin permissions requested.
    * @param {array<string>} info.permissions.permissions
    *                        Regular (non-origin) permissions requested.
-   * @param {AddonWrapper} info.addonName
-   *                       The name of the addon for which permissions are
-   *                       being requested.
    * @param {boolean} info.unsigned
    *                  True if the prompt is for installing an unsigned addon.
    * @param {string} info.type
@@ -827,7 +884,10 @@ this.ExtensionData = class {
    *                          The string bundle to use for l10n.
    *
    * @returns {object} An object with properties containing localized strings
-   *                   for various elements of a permission dialog.
+   *                   for various elements of a permission dialog. The "header"
+   *                   property on this object is the notification header text
+   *                   and it has the string "<>" as a placeholder for the
+   *                   addon name.
    */
   static formatPermissionStrings(info, bundle) {
     let result = {};
@@ -916,7 +976,7 @@ this.ExtensionData = class {
 
     const haveAccessKeys = (AppConstants.platform !== "android");
 
-    result.header = bundle.formatStringFromName("webextPerms.header", [info.addonName], 1);
+    result.header = bundle.formatStringFromName("webextPerms.header", ["<>"], 1);
     result.text = info.unsigned ?
                   bundle.GetStringFromName("webextPerms.unsignedWarning") : "";
     result.listIntro = bundle.GetStringFromName("webextPerms.listIntro");
@@ -929,7 +989,7 @@ this.ExtensionData = class {
     }
 
     if (info.type == "sideload") {
-      result.header = bundle.formatStringFromName("webextPerms.sideloadHeader", [info.addonName], 1);
+      result.header = bundle.formatStringFromName("webextPerms.sideloadHeader", ["<>"], 1);
       let key = result.msgs.length == 0 ?
                 "webextPerms.sideloadTextNoPerms" : "webextPerms.sideloadText2";
       result.text = bundle.GetStringFromName(key);
@@ -940,14 +1000,14 @@ this.ExtensionData = class {
         result.cancelKey = bundle.GetStringFromName("webextPerms.sideloadCancel.accessKey");
       }
     } else if (info.type == "update") {
-      result.header = "";
-      result.text = bundle.formatStringFromName("webextPerms.updateText", [info.addonName], 1);
+      result.header = bundle.formatStringFromName("webextPerms.updateText", ["<>"], 1);
+      result.text = "";
       result.acceptText = bundle.GetStringFromName("webextPerms.updateAccept.label");
       if (haveAccessKeys) {
         result.acceptKey = bundle.GetStringFromName("webextPerms.updateAccept.accessKey");
       }
     } else if (info.type == "optional") {
-      result.header = bundle.formatStringFromName("webextPerms.optionalPermsHeader", [info.addonName], 1);
+      result.header = bundle.formatStringFromName("webextPerms.optionalPermsHeader", ["<>"], 1);
       result.text = "";
       result.listIntro = bundle.GetStringFromName("webextPerms.optionalPermsListIntro");
       result.acceptText = bundle.GetStringFromName("webextPerms.optionalPermsAllow.label");
@@ -960,7 +1020,7 @@ this.ExtensionData = class {
 
     return result;
   }
-};
+}
 
 const PROXIED_EVENTS = new Set(["test-harness-message", "add-permissions", "remove-permissions"]);
 
@@ -973,10 +1033,11 @@ class BootstrapScope {
   }
 
   update(data, reason) {
-    Management.emit("update", {id: data.id});
+    Management.emit("update", {id: data.id, resourceURI: data.resourceURI});
   }
 
   startup(data, reason) {
+    // eslint-disable-next-line no-use-before-define
     this.extension = new Extension(data, this.BOOTSTRAP_REASON_TO_STRING_MAP[reason]);
     return this.extension.startup();
   }
@@ -1007,6 +1068,7 @@ class LangpackBootstrapScope {
   uninstall(data, reason) {}
 
   startup(data, reason) {
+    // eslint-disable-next-line no-use-before-define
     this.langpack = new Langpack(data);
     return this.langpack.startup();
   }
@@ -1017,9 +1079,12 @@ class LangpackBootstrapScope {
   }
 }
 
-// We create one instance of this class per extension. |addonData|
-// comes directly from bootstrap.js when initializing.
-this.Extension = class extends ExtensionData {
+/**
+ * This class is the main representation of an active WebExtension
+ * in the main process.
+ * @extends ExtensionData
+ */
+class Extension extends ExtensionData {
   constructor(addonData, startupReason) {
     super(addonData.resourceURI);
 
@@ -1111,6 +1176,13 @@ this.Extension = class extends ExtensionData {
     });
     /* eslint-enable mozilla/balanced-listeners */
   }
+
+  // Some helpful properties added elsewhere:
+  /**
+   * An object used to map between extension-visible tab ids and
+   * native Tab object
+   * @property {TabManager} tabManager
+   */
 
   static getBootstrapScope(id, file) {
     return new BootstrapScope();
@@ -1212,10 +1284,21 @@ this.Extension = class extends ExtensionData {
     return [this.id, this.version, Services.locale.getAppLocaleAsLangTag()];
   }
 
+  get isPrivileged() {
+    return (this.addonData.signedState === AddonManager.SIGNEDSTATE_PRIVILEGED ||
+            (AppConstants.MOZ_ALLOW_LEGACY_EXTENSIONS &&
+             this.addonData.temporarilyInstalled));
+  }
+
+  get experimentsAllowed() {
+    return (AddonSettings.ALLOW_LEGACY_EXTENSIONS ||
+            this.isPrivileged);
+  }
+
   async _parseManifest() {
     let manifest = await super.parseManifest();
     if (manifest && manifest.permissions.has("mozillaAddons") &&
-        this.addonData.signedState !== AddonManager.SIGNEDSTATE_PRIVILEGED) {
+        !this.isPrivileged) {
       Cu.reportError(`Stripping mozillaAddons permission from ${this.id}`);
       manifest.permissions.delete("mozillaAddons");
       let i = manifest.manifest.permissions.indexOf("mozillaAddons");
@@ -1253,7 +1336,9 @@ this.Extension = class extends ExtensionData {
         Array.from(this.apiNames, api => ExtensionCommon.ExtensionAPIs.load(api)));
 
       for (let API of apis) {
-        this.apis.push(new API(this));
+        if (API) {
+          this.apis.push(new API(this));
+        }
       }
     }
 
@@ -1273,12 +1358,16 @@ this.Extension = class extends ExtensionData {
       resourceURL: this.resourceURL,
       baseURL: this.baseURI.spec,
       contentScripts: this.contentScripts,
+      registeredContentScripts: new Map(),
       webAccessibleResources: this.webAccessibleResources.map(res => res.glob),
       whiteListedHosts: this.whiteListedHosts.patterns.map(pat => pat.pattern),
       localeData: this.localeData.serialize(),
+      childModules: this.modules && this.modules.child,
+      dependencies: this.dependencies,
       permissions: this.permissions,
       principal: this.principal,
       optionalPermissions: this.manifest.optional_permissions,
+      schemaURLs: this.schemaURLs,
     };
   }
 
@@ -1334,7 +1423,15 @@ this.Extension = class extends ExtensionData {
     if (!data["Extension:Extensions"]) {
       data["Extension:Extensions"] = [];
     }
+
     let serial = this.serialize();
+
+    // Map of the programmatically registered content script definitions
+    // (by string scriptId), used in ext-contentScripts.js to propagate
+    // the registered content scripts to the child content processes
+    // (e.g. when a new content process starts after a content process crash).
+    this.registeredContentScripts = serial.registeredContentScripts;
+
     data["Extension:Extensions"].push(serial);
 
     return this.broadcast("Extension:Startup", serial).then(() => {
@@ -1342,6 +1439,15 @@ this.Extension = class extends ExtensionData {
     });
   }
 
+  /**
+   * Call the close() method on the given object when this extension
+   * is shut down.  This can happen during browser shutdown, or when
+   * an extension is manually disabled or uninstalled.
+   *
+   * @param {object} obj
+   *        An object on which to call the close() method when this
+   *        extension is shut down.
+   */
   callOnClose(obj) {
     this.onShutdown.add(obj);
   }
@@ -1443,6 +1549,8 @@ this.Extension = class extends ExtensionData {
       this.policy.active = true;
     }
 
+    this.policy.extension = this;
+
     TelemetryStopwatch.start("WEBEXT_EXTENSION_STARTUP_MS", this);
     try {
       await this.loadManifest();
@@ -1463,6 +1571,7 @@ this.Extension = class extends ExtensionData {
 
       this.policy.active = false;
       this.policy = processScript.initExtension(this);
+      this.policy.extension = this;
 
       this.updatePermissions(this.startupReason);
 
@@ -1641,9 +1750,9 @@ this.Extension = class extends ExtensionData {
     }
     return this._optionalOrigins;
   }
-};
+}
 
-this.Langpack = class extends ExtensionData {
+class Langpack extends ExtensionData {
   constructor(addonData, startupReason) {
     super(addonData.resourceURI);
     this.startupData = addonData.startupData;
@@ -1744,4 +1853,4 @@ this.Langpack = class extends ExtensionData {
 
     resourceProtocol.setSubstitution(this.langpackId, null);
   }
-};
+}

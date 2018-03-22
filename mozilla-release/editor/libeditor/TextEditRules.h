@@ -9,7 +9,6 @@
 #include "mozilla/EditorBase.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsIEditRules.h"
 #include "nsIEditor.h"
 #include "nsINamed.h"
 #include "nsISupportsImpl.h"
@@ -22,6 +21,8 @@ class nsIDOMNode;
 namespace mozilla {
 
 class AutoLockRulesSniffing;
+class HTMLEditRules;
+class RulesInfo;
 class TextEditor;
 namespace dom {
 class Selection;
@@ -39,8 +40,7 @@ class Selection;
  * 2. Selection must not be explicitly set by the rule method.
  *    Any manipulation of Selection must be done by the editor.
  */
-class TextEditRules : public nsIEditRules
-                    , public nsITimerCallback
+class TextEditRules : public nsITimerCallback
                     , public nsINamed
 {
 public:
@@ -50,28 +50,31 @@ public:
   template<typename T> using OwningNonNull = OwningNonNull<T>;
 
   NS_DECL_NSITIMERCALLBACK
+  NS_DECL_NSINAMED
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(TextEditRules, nsIEditRules)
+  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(TextEditRules, nsITimerCallback)
 
   TextEditRules();
 
-  // nsIEditRules methods
-  NS_IMETHOD Init(TextEditor* aTextEditor) override;
-  NS_IMETHOD SetInitialValue(const nsAString& aValue) override;
-  NS_IMETHOD DetachEditor() override;
-  NS_IMETHOD BeforeEdit(EditAction action,
-                        nsIEditor::EDirection aDirection) override;
-  NS_IMETHOD AfterEdit(EditAction action,
-                       nsIEditor::EDirection aDirection) override;
-  NS_IMETHOD WillDoAction(Selection* aSelection, RulesInfo* aInfo,
-                          bool* aCancel, bool* aHandled) override;
-  NS_IMETHOD DidDoAction(Selection* aSelection, RulesInfo* aInfo,
-                         nsresult aResult) override;
-  NS_IMETHOD_(bool) DocumentIsEmpty() override;
-  NS_IMETHOD DocumentModified() override;
+  HTMLEditRules* AsHTMLEditRules();
+  const HTMLEditRules* AsHTMLEditRules() const;
 
-  // nsINamed methods
-  NS_DECL_NSINAMED
+  virtual nsresult Init(TextEditor* aTextEditor);
+  virtual nsresult SetInitialValue(const nsAString& aValue);
+  virtual nsresult DetachEditor();
+  virtual nsresult BeforeEdit(EditAction aAction,
+                              nsIEditor::EDirection aDirection);
+  virtual nsresult AfterEdit(EditAction aAction,
+                             nsIEditor::EDirection aDirection);
+  virtual nsresult WillDoAction(Selection* aSelection,
+                                RulesInfo* aInfo,
+                                bool* aCancel,
+                                bool* aHandled);
+  virtual nsresult DidDoAction(Selection* aSelection,
+                               RulesInfo* aInfo,
+                               nsresult aResult);
+  virtual bool DocumentIsEmpty();
+  virtual nsresult DocumentModified();
 
 protected:
   virtual ~TextEditRules();
@@ -218,32 +221,42 @@ protected:
   void RemoveIMETextFromPWBuf(uint32_t& aStart, nsAString* aIMEString);
 
   /**
-   * Create a normal <br> element and insert it to aOffset at aParent.
+   * Create a normal <br> element and insert it to aPointToInsert.
    *
-   * @param aParent     The parent node which will have new <br> element.
-   * @param aOffset     The offset in aParent where the new <br> element will
-   *                    be inserted.
-   * @param aOutBRNode  Returns created <br> element.
+   * @param aPointToInsert  The point where the new <br> element will be
+   *                        inserted.
+   * @return                Returns created <br> element.
    */
-  nsresult CreateBR(nsIDOMNode* aParent, int32_t aOffset,
-                    nsIDOMNode** aOutBRNode = nullptr)
+  already_AddRefed<Element> CreateBR(const EditorRawDOMPoint& aPointToInsert)
   {
-    return CreateBRInternal(aParent, aOffset, false, aOutBRNode);
+    return CreateBRInternal(aPointToInsert, false);
   }
 
   /**
-   * Create a moz-<br> element and insert it to aOffset at aParent.
+   * Create a moz-<br> element and insert it to aPointToInsert.
    *
-   * @param aParent     The parent node which will have new <br> element.
-   * @param aOffset     The offset in aParent where the new <br> element will
-   *                    be inserted.
-   * @param aOutBRNode  Returns created <br> element.
+   * @param aPointToInsert  The point where the new moz-<br> element will be
+   *                        inserted.
+   * @return                Returns created moz-<br> element.
    */
-  nsresult CreateMozBR(nsIDOMNode* aParent, int32_t aOffset,
-                       nsIDOMNode** aOutBRNode = nullptr)
+  already_AddRefed<Element> CreateMozBR(const EditorRawDOMPoint& aPointToInsert)
   {
-    return CreateBRInternal(aParent, aOffset, true, aOutBRNode);
+    return CreateBRInternal(aPointToInsert, true);
   }
+
+  /**
+   * Create a normal <br> element or a moz-<br> element and insert it to
+   * aPointToInsert.
+   *
+   * @param aParentToInsert     The point where the new <br> element will be
+   *                            inserted.
+   * @param aCreateMozBR        true if the caller wants to create a moz-<br>
+   *                            element.  Otherwise, false.
+   * @return                    Returns created <br> element.
+   */
+  already_AddRefed<Element>
+  CreateBRInternal(const EditorRawDOMPoint& aPointToInsert,
+                   bool aCreateMozBR);
 
   void UndefineCaretBidiLevel(Selection* aSelection);
 
@@ -269,23 +282,6 @@ private:
   // Note that we do not refcount the editor.
   TextEditor* mTextEditor;
 
-  /**
-   * Create a normal <br> element or a moz-<br> element and insert it to
-   * aOffset at aParent.
-   *
-   * @param aParent     The parent node which will have new <br> element.
-   * @param aOffset     The offset in aParent where the new <br> element will
-   *                    be inserted.
-   * @param aMozBR      true if the caller wants to create a moz-<br> element.
-   *                    Otherwise, false.
-   * @param aOutBRNode  Returns created <br> element.
-   */
-  nsresult CreateBRInternal(nsIDOMNode* aParent,
-                            int32_t aOffset,
-                            bool aMozBR,
-                            nsIDOMNode** aOutBRNode = nullptr);
-
-
 protected:
   // A buffer we use to store the real value of password editors.
   nsString mPasswordText;
@@ -297,13 +293,14 @@ protected:
   // Cached selected node.
   nsCOMPtr<nsINode> mCachedSelectionNode;
   // Cached selected offset.
-  int32_t mCachedSelectionOffset;
+  uint32_t mCachedSelectionOffset;
   uint32_t mActionNesting;
   bool mLockRulesSniffing;
   bool mDidExplicitlySetInterline;
   // In bidirectional text, delete characters not visually adjacent to the
   // caret without moving the caret first.
   bool mDeleteBidiImmediately;
+  bool mIsHTMLEditRules;
   // The top level editor action.
   EditAction mTheAction;
   nsCOMPtr<nsITimer> mTimer;
@@ -314,13 +311,17 @@ protected:
   friend class AutoLockRulesSniffing;
 };
 
-// TODO: This class (almost struct, though) is ugly and its size isn't
-//       optimized.  Should be refined later.
-class TextRulesInfo final : public RulesInfo
+/**
+ * An object to encapsulate any additional info needed to be passed
+ * to rules system by the editor.
+ * TODO: This class (almost struct, though) is ugly and its size isn't
+ *       optimized.  Should be refined later.
+ */
+class RulesInfo final
 {
 public:
-  explicit TextRulesInfo(EditAction aAction)
-    : RulesInfo(aAction)
+  explicit RulesInfo(EditAction aAction)
+    : action(aAction)
     , inString(nullptr)
     , outString(nullptr)
     , outputFormat(nullptr)
@@ -334,6 +335,8 @@ public:
     , alignType(nullptr)
     , blockType(nullptr)
   {}
+
+  EditAction action;
 
   // EditAction::insertText / EditAction::insertIMEText
   const nsAString* inString;

@@ -20,6 +20,7 @@
 #include "mozilla/Services.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/intl/LocaleService.h"
+#include "nsNativeCharsetUtils.h"
 
 #include "nsAppRunner.h"
 #include "mozilla/XREAppData.h"
@@ -159,6 +160,7 @@
 #ifdef XP_WIN
 #include <process.h>
 #include <shlobj.h>
+#include "mozilla/WindowsDllServices.h"
 #include "nsThreadUtils.h"
 #include <comdef.h>
 #include <wbemidl.h>
@@ -200,7 +202,6 @@
 #include "jprof.h"
 #endif
 
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
 #include "nsICrashReporter.h"
 #define NS_CRASHREPORTER_CONTRACTID "@mozilla.org/toolkit/crash-reporter;1"
@@ -208,7 +209,6 @@
 #include "nsIMemoryInfoDumper.h"
 #if defined(XP_LINUX) && !defined(ANDROID)
 #include "mozilla/widget/LSBUtils.h"
-#endif
 #endif
 
 #include "base/command_line.h"
@@ -704,10 +704,8 @@ class nsXULAppInfo : public nsIXULAppInfo,
 #ifdef XP_WIN
                      public nsIWinAppHelper,
 #endif
-#ifdef MOZ_CRASHREPORTER
                      public nsICrashReporter,
                      public nsIFinishDumpingCallback,
-#endif
                      public nsIXULRuntime
 
 {
@@ -718,10 +716,8 @@ public:
   NS_DECL_NSIXULAPPINFO
   NS_DECL_NSIXULRUNTIME
   NS_DECL_NSIOBSERVER
-#ifdef MOZ_CRASHREPORTER
   NS_DECL_NSICRASHREPORTER
   NS_DECL_NSIFINISHDUMPINGCALLBACK
-#endif
 #ifdef XP_WIN
   NS_DECL_NSIWINAPPHELPER
 #endif
@@ -734,10 +730,8 @@ NS_INTERFACE_MAP_BEGIN(nsXULAppInfo)
 #ifdef XP_WIN
   NS_INTERFACE_MAP_ENTRY(nsIWinAppHelper)
 #endif
-#ifdef MOZ_CRASHREPORTER
   NS_INTERFACE_MAP_ENTRY(nsICrashReporter)
   NS_INTERFACE_MAP_ENTRY(nsIFinishDumpingCallback)
-#endif
   NS_INTERFACE_MAP_ENTRY(nsIPlatformInfo)
   NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIXULAppInfo, gAppData ||
                                      XRE_IsContentProcess())
@@ -909,9 +903,10 @@ SYNC_ENUMS(CONTENT, Content)
 SYNC_ENUMS(IPDLUNITTEST, IPDLUnitTest)
 SYNC_ENUMS(GMPLUGIN, GMPlugin)
 SYNC_ENUMS(GPU, GPU)
+SYNC_ENUMS(PDFIUM, PDFium)
 
 // .. and ensure that that is all of them:
-static_assert(GeckoProcessType_GPU + 1 == GeckoProcessType_End,
+static_assert(GeckoProcessType_PDFium + 1 == GeckoProcessType_End,
               "Did not find the final GeckoProcessType");
 
 NS_IMETHODIMP
@@ -1021,12 +1016,18 @@ nsXULAppInfo::GetAccessibilityInstantiator(nsAString &aInstantiator)
     aInstantiator = NS_LITERAL_STRING("");
     return NS_OK;
   }
-  nsAutoString oopClientInfo, ipClientInfo;
+  nsAutoString ipClientInfo;
   a11y::Compatibility::GetHumanReadableConsumersStr(ipClientInfo);
   aInstantiator.Append(ipClientInfo);
   aInstantiator.AppendLiteral("|");
-  a11y::GetInstantiator(oopClientInfo);
-  aInstantiator.Append(oopClientInfo);
+
+  nsCOMPtr<nsIFile> oopClientExe;
+  if (a11y::GetInstantiator(getter_AddRefs(oopClientExe))) {
+    nsAutoString oopClientInfo;
+    if (NS_SUCCEEDED(oopClientExe->GetPath(oopClientInfo))) {
+      aInstantiator.Append(oopClientInfo);
+    }
+  }
 #else
   aInstantiator = NS_LITERAL_STRING("");
 #endif
@@ -1206,7 +1207,6 @@ nsXULAppInfo::GetUserCanElevate(bool *aUserCanElevate)
 }
 #endif
 
-#ifdef MOZ_CRASHREPORTER
 NS_IMETHODIMP
 nsXULAppInfo::GetEnabled(bool *aEnabled)
 {
@@ -1436,7 +1436,6 @@ nsXULAppInfo::Callback(nsISupports* aData)
   CrashReporter::SetMemoryReportFile(file);
   return NS_OK;
 }
-#endif
 
 static const nsXULAppInfo kAppInfo;
 static nsresult AppInfoConstructor(nsISupports* aOuter,
@@ -1544,7 +1543,7 @@ static const mozilla::Module::ContractIDEntry kXREContracts[] = {
   { XULRUNTIME_SERVICE_CONTRACTID, &kAPPINFO_CID },
 #ifdef MOZ_CRASHREPORTER
   { NS_CRASHREPORTER_CONTRACTID, &kAPPINFO_CID },
-#endif
+#endif // MOZ_CRASHREPORTER
   { NS_PROFILESERVICE_CONTRACTID, &kProfileServiceCID },
   { NS_NATIVEAPPSUPPORT_CONTRACTID, &kNativeAppSupportCID },
   { nullptr }
@@ -1663,6 +1662,40 @@ ScopedXPCOMStartup::CreateAppSupport(nsISupports* aOuter, REFNSIID aIID, void** 
 }
 
 nsINativeAppSupport* ScopedXPCOMStartup::gNativeAppSupport;
+
+#if defined(XP_WIN)
+
+class DllNotifications : public mozilla::DllServices
+{
+public:
+  DllNotifications()
+  {
+    Enable();
+  }
+
+private:
+  ~DllNotifications() = default;
+
+  void NotifyDllLoad(const bool aIsMainThread, const nsString& aDllName) override;
+};
+
+void
+DllNotifications::NotifyDllLoad(const bool aIsMainThread,
+                                const nsString& aDllName)
+{
+  const char* topic;
+
+  if (aIsMainThread) {
+    topic = "dll-loaded-main-thread";
+  } else {
+    topic = "dll-loaded-non-main-thread";
+  }
+
+  nsCOMPtr<nsIObserverService> obsServ(mozilla::services::GetObserverService());
+  obsServ->NotifyObservers(nullptr, topic, aDllName.get());
+}
+
+#endif // defined(XP_WIN)
 
 static void DumpArbitraryHelp()
 {
@@ -2904,7 +2937,6 @@ static void RestoreStateForAppInitiatedRestart()
   }
 }
 
-#ifdef MOZ_CRASHREPORTER
 // When we first initialize the crash reporter we don't have a profile,
 // so we set the minidump path to $TEMP.  Once we have a profile,
 // we set it to $PROFILE/minidumps, creating the directory
@@ -2929,7 +2961,6 @@ static void MakeOrSetMinidumpPath(nsIFile* profD)
       CrashReporter::SetMinidumpPath(pathStr);
   }
 }
-#endif
 
 const XREAppData* gAppData = nullptr;
 
@@ -2951,7 +2982,7 @@ static void MOZ_gdk_display_close(GdkDisplay *display)
     g_free(theme_name);
   }
 
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
   // A workaround for https://bugzilla.gnome.org/show_bug.cgi?id=703257
   if (gtk_check_version(3,9,8) != NULL)
     skip_display_close = true;
@@ -3320,7 +3351,6 @@ XREMain::XRE_mainInit(bool* aExitFlag)
   if (NS_FAILED(rv))
     return 1;
 
-#ifdef MOZ_CRASHREPORTER
   if (EnvHasValue("MOZ_CRASHREPORTER")) {
     mAppData->flags |= NS_XRE_ENABLE_CRASH_REPORTER;
   }
@@ -3406,7 +3436,6 @@ XREMain::XRE_mainInit(bool* aExitFlag)
       }
     }
   }
-#endif
 
 #if defined(MOZ_SANDBOX) && defined(XP_WIN)
   if (mAppData->sandboxBrokerServices) {
@@ -3556,21 +3585,17 @@ XREMain::XRE_mainInit(bool* aExitFlag)
       }
     }
 
-#ifdef MOZ_CRASHREPORTER
     if (cpuUpdateRevision > 0) {
       CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("CPUMicrocodeVersion"),
                                          nsPrintfCString("0x%x",
                                                          cpuUpdateRevision));
     }
-#endif
   }
 #endif
 
-#ifdef MOZ_CRASHREPORTER
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("SafeMode"),
                                        gSafeMode ? NS_LITERAL_CSTRING("1") :
                                                    NS_LITERAL_CSTRING("0"));
-#endif
 
   // Handle --no-remote and --new-instance command line arguments. Setup
   // the environment to better accommodate other components and various
@@ -3634,7 +3659,6 @@ XREMain::XRE_mainInit(bool* aExitFlag)
   return 0;
 }
 
-#ifdef MOZ_CRASHREPORTER
 #ifdef XP_WIN
 /**
  * Uses WMI to read some manufacturer information that may be useful for
@@ -3728,8 +3752,6 @@ AnnotateLSBRelease(void*)
 
 #endif // defined(XP_LINUX) && !defined(ANDROID)
 
-#endif
-
 #ifdef XP_WIN
 static void ReadAheadDll(const wchar_t* dllName) {
   wchar_t dllPath[MAX_PATH];
@@ -3762,7 +3784,11 @@ static void SetShutdownChecks() {
   // too.
 
 #ifdef DEBUG
+#if defined(MOZ_CODE_COVERAGE) && defined(XP_WIN)
+  gShutdownChecks = SCM_NOTHING;
+#else
   gShutdownChecks = SCM_CRASH;
+#endif // MOZ_CODE_COVERAGE && XP_WIN
 #else
   const char* releaseChannel = NS_STRINGIFY(MOZ_UPDATE_CHANNEL);
   if (strcmp(releaseChannel, "nightly") == 0 ||
@@ -3771,7 +3797,7 @@ static void SetShutdownChecks() {
   } else {
     gShutdownChecks = SCM_NOTHING;
   }
-#endif
+#endif // DEBUG
 
   // We let an environment variable override the default so that addons
   // authors can use it for debugging shutdown with released firefox versions.
@@ -3838,10 +3864,6 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
   // in nsAppShell::Create, but we need to get in before gtk
   // has been initialized to make sure everything is running
   // consistently.
-#if (MOZ_WIDGET_GTK == 2)
-  if (CheckArg("install"))
-    gdk_rgb_set_install(TRUE);
-#endif
 
   // Set program name to the one defined in application.ini.
   {
@@ -3852,7 +3874,7 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
 
   // Initialize GTK here for splash.
 
-#if (MOZ_WIDGET_GTK == 3) && defined(MOZ_X11)
+#if defined(MOZ_WIDGET_GTK) && defined(MOZ_X11)
   // Disable XInput2 support due to focus bugginess. See bugs 1182700, 1170342.
   const char* useXI2 = PR_GetEnv("MOZ_USE_XINPUT2");
   if (!useXI2 || (*useXI2 == '0'))
@@ -3944,7 +3966,7 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
 #endif
       }
     }
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
     else {
       mGdkDisplay = gdk_display_manager_open_display(gdk_display_manager_get(),
                                                      nullptr);
@@ -4046,9 +4068,6 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
   g_set_application_name(mAppData->name);
   gtk_window_set_auto_startup_notification(false);
 
-#if (MOZ_WIDGET_GTK == 2)
-  gtk_widget_set_default_colormap(gdk_rgb_get_colormap());
-#endif /* (MOZ_WIDGET_GTK == 2) */
 #endif /* defined(MOZ_WIDGET_GTK) */
 #ifdef MOZ_X11
   // Do this after initializing GDK, or GDK will install its own handler.
@@ -4184,12 +4203,10 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
 
   mozilla::Telemetry::SetProfileDir(mProfD);
 
-#ifdef MOZ_CRASHREPORTER
   if (mAppData->flags & NS_XRE_ENABLE_CRASH_REPORTER)
       MakeOrSetMinidumpPath(mProfD);
 
   CrashReporter::SetProfileDirectory(mProfD);
-#endif
 
   nsAutoCString version;
   BuildVersion(version);
@@ -4280,7 +4297,6 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
   return 0;
 }
 
-#if defined(MOZ_CRASHREPORTER)
 #if defined(MOZ_CONTENT_SANDBOX)
 void AddSandboxAnnotations()
 {
@@ -4311,7 +4327,6 @@ void AddSandboxAnnotations()
     sandboxCapable ? NS_LITERAL_CSTRING("1") : NS_LITERAL_CSTRING("0"));
 }
 #endif /* MOZ_CONTENT_SANDBOX */
-#endif /* MOZ_CRASHREPORTER */
 
 /*
  * XRE_mainRun - Command line startup, profile migration, and
@@ -4322,6 +4337,13 @@ XREMain::XRE_mainRun()
 {
   nsresult rv = NS_OK;
   NS_ASSERTION(mScopedXPCOM, "Scoped xpcom not initialized.");
+
+#if defined(XP_WIN)
+  RefPtr<DllNotifications> dllNotifications(new DllNotifications());
+  auto dllNotificationsDisable = MakeScopeExit([&dllNotifications]() {
+    dllNotifications->Disable();
+  });
+#endif // defined(XP_WIN)
 
 #ifdef NS_FUNCTION_TIMER
   // initialize some common services, so we don't pay the cost for these at odd times later on;
@@ -4346,7 +4368,6 @@ XREMain::XRE_mainRun()
   rv = mScopedXPCOM->SetWindowCreator(mNativeApp);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
 
-#ifdef MOZ_CRASHREPORTER
   // tell the crash reporter to also send the release channel
   nsCOMPtr<nsIPrefService> prefs = do_GetService("@mozilla.org/preferences-service;1", &rv);
   if (NS_SUCCEEDED(rv)) {
@@ -4380,8 +4401,6 @@ XREMain::XRE_mainRun()
 #if defined(XP_LINUX) && !defined(ANDROID)
   PR_CreateThread(PR_USER_THREAD, AnnotateLSBRelease, 0, PR_PRIORITY_LOW,
                   PR_GLOBAL_THREAD, PR_UNJOINABLE_THREAD, 0);
-#endif
-
 #endif
 
   if (mStartOffline) {
@@ -4491,6 +4510,16 @@ XREMain::XRE_mainRun()
     }
   }
 
+  if (NS_IsNativeUTF8()) {
+    nsCOMPtr<nsIFile> profileDir;
+    nsAutoCString path;
+    rv = mDirProvider.GetProfileStartupDir(getter_AddRefs(profileDir));
+    if (NS_SUCCEEDED(rv) && NS_SUCCEEDED(profileDir->GetNativePath(path)) && !IsUTF8(path)) {
+      PR_fprintf(PR_STDERR, "Error: The profile path is not valid UTF-8. Unable to continue.\n");
+      return NS_ERROR_FAILURE;
+    }
+  }
+
   // Initialize user preferences before notifying startup observers so they're
   // ready in time for early consumers, such as the component loader.
   mDirProvider.InitializeUserPrefs();
@@ -4511,11 +4540,9 @@ XREMain::XRE_mainRun()
 
   OverrideDefaultLocaleIfNeeded();
 
-#ifdef MOZ_CRASHREPORTER
   nsCString userAgentLocale;
   LocaleService::GetInstance()->GetAppLocaleAsLangTag(userAgentLocale);
   CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("useragent_locale"), userAgentLocale);
-#endif
 
   appStartup->GetShuttingDown(&mShuttingDown);
 
@@ -4606,10 +4633,8 @@ XREMain::XRE_mainRun()
 
     (void)appStartup->DoneStartingUp();
 
-#ifdef MOZ_CRASHREPORTER
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("StartupCrash"),
                                        NS_LITERAL_CSTRING("0"));
-#endif
 
     appStartup->GetShuttingDown(&mShuttingDown);
   }
@@ -4662,20 +4687,16 @@ XREMain::XRE_mainRun()
                         sandboxInfo.Test(SandboxInfo::kEnabledForContent));
   Telemetry::Accumulate(Telemetry::SANDBOX_MEDIA_ENABLED,
                         sandboxInfo.Test(SandboxInfo::kEnabledForMedia));
-#if defined(MOZ_CRASHREPORTER)
   nsAutoCString flagsString;
   flagsString.AppendInt(sandboxInfo.AsInteger());
 
   CrashReporter::AnnotateCrashReport(
     NS_LITERAL_CSTRING("ContentSandboxCapabilities"), flagsString);
-#endif /* MOZ_CRASHREPORTER */
 #endif /* MOZ_SANDBOX && XP_LINUX */
 
-#if defined(MOZ_CRASHREPORTER)
 #if defined(MOZ_CONTENT_SANDBOX)
   AddSandboxAnnotations();
 #endif /* MOZ_CONTENT_SANDBOX */
-#endif /* MOZ_CRASHREPORTER */
 
   {
     rv = appStartup->Run();
@@ -4687,25 +4708,6 @@ XREMain::XRE_mainRun()
 
   return rv;
 }
-
-#if MOZ_WIDGET_GTK == 2
-void XRE_GlibInit()
-{
-  static bool ran_once = false;
-
-  // glib < 2.24 doesn't want g_thread_init to be invoked twice, so ensure
-  // we only do it once. No need for thread safety here, since this is invoked
-  // well before any thread is spawned.
-  if (!ran_once) {
-    // glib version < 2.36 doesn't initialize g_slice in a static initializer.
-    // Ensure this happens through g_thread_init (glib version < 2.32) or
-    // g_type_init (2.32 <= gLib version < 2.36)."
-    g_thread_init(nullptr);
-    g_type_init();
-    ran_once = true;
-  }
-}
-#endif
 
 /*
  * XRE_main - A class based main entry point used by most platforms.
@@ -4814,10 +4816,6 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
   mozilla::mscom::MainThreadRuntime msCOMRuntime;
 #endif
 
-#if MOZ_WIDGET_GTK == 2
-  XRE_GlibInit();
-#endif
-
   // init
   bool exit = false;
   int result = XRE_mainInit(&exit);
@@ -4900,10 +4898,9 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
       rv = LaunchChild(mNativeApp, true);
     }
 
-#ifdef MOZ_CRASHREPORTER
     if (mAppData->flags & NS_XRE_ENABLE_CRASH_REPORTER)
       CrashReporter::UnsetExceptionHandler();
-#endif
+
     return rv == NS_ERROR_LAUNCHED_CHILD_PROCESS ? 0 : 1;
   }
 
@@ -4915,10 +4912,8 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
   }
 #endif
 
-#ifdef MOZ_CRASHREPORTER
   if (mAppData->flags & NS_XRE_ENABLE_CRASH_REPORTER)
       CrashReporter::UnsetExceptionHandler();
-#endif
 
   XRE_DeinitCommandLine();
 

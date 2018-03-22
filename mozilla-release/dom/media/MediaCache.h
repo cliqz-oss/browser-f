@@ -7,6 +7,7 @@
 #ifndef MediaCache_h_
 #define MediaCache_h_
 
+#include "DecoderDoctorLogger.h"
 #include "Intervals.h"
 #include "mozilla/Result.h"
 #include "mozilla/UniquePtr.h"
@@ -14,6 +15,8 @@
 #include "nsHashKeys.h"
 #include "nsTArray.h"
 #include "nsTHashtable.h"
+
+#include "MediaChannelStatistics.h"
 
 class nsIEventTarget;
 class nsIPrincipal;
@@ -23,7 +26,7 @@ namespace mozilla {
 class ChannelMediaResource;
 typedef media::IntervalSet<int64_t> MediaByteRangeSet;
 class MediaResource;
-class ReentrantMonitorAutoEnter;
+class MonitorAutoLock;
 
 /**
  * Media applications want fast, "on demand" random access to media data,
@@ -179,13 +182,18 @@ class ReentrantMonitorAutoEnter;
  */
 class MediaCache;
 
+DDLoggedTypeDeclName(MediaCacheStream);
+
 /**
  * If the cache fails to initialize then Init will fail, so nonstatic
  * methods of this class can assume gMediaCache is non-null.
  *
  * This class can be directly embedded as a value.
  */
-class MediaCacheStream {
+class MediaCacheStream : public DecoderDoctorLifeLogger<MediaCacheStream>
+{
+  using AutoLock = MonitorAutoLock;
+
 public:
   // This needs to be a power of two
   static const int64_t BLOCK_SIZE = 32768;
@@ -219,23 +227,31 @@ public:
   // used to create this MediaCacheStream is deleted.
   void Close();
   // This returns true when the stream has been closed.
-  // Must be used on the main thread or while holding the cache lock.
-  bool IsClosed() const { return mClosed; }
+  bool IsClosed(AutoLock&) const { return mClosed; }
   // Returns true when this stream is can be shared by a new resource load.
   // Called on the main thread only.
-  bool IsAvailableForSharing() const
-  {
-    return !mClosed && !mIsPrivateBrowsing &&
-      (!mDidNotifyDataEnded || NS_SUCCEEDED(mNotifyDataEndedStatus));
-  }
-  // Get the principal for this stream. Anything accessing the contents of
-  // this stream must have a principal that subsumes this principal.
-  nsIPrincipal* GetCurrentPrincipal() { return mPrincipal; }
+  bool IsAvailableForSharing() const { return !mIsPrivateBrowsing; }
 
   // These callbacks are called on the main thread by the client
   // when data has been received via the channel.
-  // Tells the cache what the server said the data length is going to be.
-  // The actual data length may be greater (we receive more data than
+
+  // Notifies the cache that a load has begun. We pass the offset
+  // because in some cases the offset might not be what the cache
+  // requested. In particular we might unexpectedly start providing
+  // data at offset 0. This need not be called if the offset is the
+  // offset that the cache requested in
+  // ChannelMediaResource::CacheClientSeek. This can be called at any
+  // time by the client, not just after a CacheClientSeek.
+  //
+  // aSeekable tells us whether the stream is seekable or not. Non-seekable
+  // streams will always pass 0 for aOffset to CacheClientSeek. This should only
+  // be called while the stream is at channel offset 0. Seekability can
+  // change during the lifetime of the MediaCacheStream --- every time
+  // we do an HTTP load the seekability may be different (and sometimes
+  // is, in practice, due to the effects of caching proxies).
+  //
+  // aLength tells the cache what the server said the data length is going to
+  // be. The actual data length may be greater (we receive more data than
   // specified) or smaller (the stream ends before we reach the given
   // length), because servers can lie. The server's reported data length
   // *and* the actual data length can even vary over time because a
@@ -245,21 +261,10 @@ public:
   // data available based on an incorrect reported length. Seeks relative
   // EOF also depend on the reported length if we haven't managed to
   // read the whole stream yet.
-  void NotifyDataLength(int64_t aLength);
-  // Notifies the cache that a load has begun. We pass the offset
-  // because in some cases the offset might not be what the cache
-  // requested. In particular we might unexpectedly start providing
-  // data at offset 0. This need not be called if the offset is the
-  // offset that the cache requested in
-  // ChannelMediaResource::CacheClientSeek. This can be called at any
-  // time by the client, not just after a CacheClientSeek.
-  // aSeekable tells us whether the stream is seekable or not. Non-seekable
-  // streams will always pass 0 for aOffset to CacheClientSeek. This should only
-  // be called while the stream is at channel offset 0. Seekability can
-  // change during the lifetime of the MediaCacheStream --- every time
-  // we do an HTTP load the seekability may be different (and sometimes
-  // is, in practice, due to the effects of caching proxies).
-  void NotifyDataStarted(uint32_t aLoadID, int64_t aOffset, bool aSeekable);
+  void NotifyDataStarted(uint32_t aLoadID,
+                         int64_t aOffset,
+                         bool aSeekable,
+                         int64_t aLength);
   // Notifies the cache that data has been received. The stream already
   // knows the offset because data is received in sequence and
   // the starting offset is known via NotifyDataStarted or because
@@ -268,34 +273,36 @@ public:
   void NotifyDataReceived(uint32_t aLoadID,
                           uint32_t aCount,
                           const uint8_t* aData);
-  // Notifies the cache that the current bytes should be written to disk.
-  // Called on the main thread.
-  void FlushPartialBlock();
-  // Notifies the cache that the channel has closed with the given status.
-  void NotifyDataEnded(nsresult aStatus);
 
-  // Notifies the stream that the channel is reopened. The stream should
-  // reset variables such as |mDidNotifyDataEnded|.
-  void NotifyChannelRecreated();
+  // Set the load ID so the following NotifyDataEnded() call can work properly.
+  // Used in some rare cases where NotifyDataEnded() is called without the
+  // preceding NotifyDataStarted().
+  void NotifyLoadID(uint32_t aLoadID);
+
+  // Notifies the cache that the channel has closed with the given status.
+  void NotifyDataEnded(uint32_t aLoadID,
+                       nsresult aStatus,
+                       bool aReopenOnError = false);
 
   // Notifies the stream that the suspend status of the client has changed.
   // Main thread only.
   void NotifyClientSuspended(bool aSuspended);
+
+  // Notifies the stream to resume download at the current offset.
+  void NotifyResume();
 
   // These methods can be called on any thread.
   // Cached blocks associated with this stream will not be evicted
   // while the stream is pinned.
   void Pin();
   void Unpin();
-  // See comments above for NotifyDataLength about how the length
+  // See comments above for NotifyDataStarted about how the length
   // can vary over time. Returns -1 if no length is known. Returns the
   // reported length if we haven't got any better information. If
   // the stream ended normally we return the length we actually got.
   // If we've successfully read data beyond the originally reported length,
   // we return the end of the data we've read.
   int64_t GetLength();
-  // Return the offset where next channel data will write to. Main thread only.
-  int64_t GetOffset() const;
   // Returns the unique resource ID. Call only on the main thread or while
   // holding the media cache lock.
   int64_t GetResourceID() { return mResourceID; }
@@ -310,6 +317,8 @@ public:
   // growing. The stream should be pinned while this runs and while its results
   // are used, to ensure no data is evicted.
   nsresult GetCachedRanges(MediaByteRangeSet& aRanges);
+
+  double GetDownloadRate(bool* aIsReliable);
 
   // Reads from buffered data only. Will fail if not all data to be read is
   // in the cache. Will not mark blocks as read. Can be called from the main
@@ -332,17 +341,16 @@ public:
 
   // Returns true when all streams for this resource are suspended or their
   // channel has ended.
-  bool AreAllStreamsForResourceSuspended();
+  bool AreAllStreamsForResourceSuspended(AutoLock&);
 
   // These methods must be called on a different thread from the main
   // thread. They should always be called on the same thread for a given
   // stream.
-  int64_t Tell();
   // *aBytes gets the number of bytes that were actually read. This can
   // be less than aCount. If the first byte of data is not in the cache,
   // this will block until the data is available or the stream is
   // closed, otherwise it won't block.
-  nsresult Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes);
+  nsresult Read(AutoLock&, char* aBuffer, uint32_t aCount, uint32_t* aBytes);
   // Seeks to aOffset in the stream then performs a Read operation. See
   // 'Read' for argument and return details.
   nsresult ReadAt(int64_t aOffset, char* aBuffer,
@@ -351,10 +359,6 @@ public:
   void ThrottleReadahead(bool bThrottle);
 
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const;
-
-  // Update mPrincipal for all streams of the same resource given that data has
-  // been received from aPrincipal
-  void UpdatePrincipal(nsIPrincipal* aPrincipal);
 
   nsCString GetDebugInfo();
 
@@ -423,41 +427,51 @@ private:
   // Read data from the partial block and return the number of bytes read
   // successfully. 0 if aOffset is not an offset in the partial block or there
   // is nothing to read.
-  uint32_t ReadPartialBlock(int64_t aOffset, Span<char> aBuffer);
+  uint32_t ReadPartialBlock(AutoLock&, int64_t aOffset, Span<char> aBuffer);
 
   // Read data from the cache block specified by aOffset. Return the number of
   // bytes read successfully or an error code if any failure.
-  Result<uint32_t, nsresult> ReadBlockFromCache(int64_t aOffset,
-                                                Span<char> aBuffer);
+  Result<uint32_t, nsresult> ReadBlockFromCache(AutoLock&,
+                                                int64_t aOffset,
+                                                Span<char> aBuffer,
+                                                bool aNoteBlockUsage = false);
 
   // Non-main thread only.
-  nsresult Seek(int64_t aOffset);
+  nsresult Seek(AutoLock&, int64_t aOffset);
 
   // Returns the end of the bytes starting at the given offset
   // which are in cache.
   // This method assumes that the cache monitor is held and can be called on
   // any thread.
-  int64_t GetCachedDataEndInternal(int64_t aOffset);
+  int64_t GetCachedDataEndInternal(AutoLock&, int64_t aOffset);
   // Returns the offset of the first byte of cached data at or after aOffset,
   // or -1 if there is no such cached data.
   // This method assumes that the cache monitor is held and can be called on
   // any thread.
-  int64_t GetNextCachedDataInternal(int64_t aOffset);
-  // Writes |mPartialBlock| to disk.
-  // Used by |NotifyDataEnded| and |FlushPartialBlock|.
+  int64_t GetNextCachedDataInternal(AutoLock&, int64_t aOffset);
+  // Used by |NotifyDataEnded| to write |mPartialBlock| to disk.
   // If |aNotifyAll| is true, this function will wake up readers who may be
   // waiting on the media cache monitor. Called on the main thread only.
-  void FlushPartialBlockInternal(bool aNotify, ReentrantMonitorAutoEnter& aReentrantMonitor);
+  void FlushPartialBlockInternal(AutoLock&, bool aNotify);
+
+  void NotifyDataStartedInternal(uint32_t aLoadID,
+                                 int64_t aOffset,
+                                 bool aSeekable,
+                                 int64_t aLength);
+
+  void NotifyDataEndedInternal(uint32_t aLoadID,
+                               nsresult aStatus,
+                               bool aReopenOnError);
+
+  void UpdateDownloadStatistics(AutoLock&);
+
+  void CloseInternal(AutoLock&);
+  void InitAsCloneInternal(MediaCacheStream* aOriginal);
 
   // Instance of MediaCache to use with this MediaCacheStream.
   RefPtr<MediaCache> mMediaCache;
 
   ChannelMediaResource* const mClient;
-
-  // These fields are main-thread-only.
-  nsCOMPtr<nsIPrincipal> mPrincipal;
-  // True if CacheClientNotifyDataEnded has been called for this stream.
-  bool                   mDidNotifyDataEnded;
 
   // The following fields must be written holding the cache's monitor and
   // only on the main thread, thus can be read either on the main thread
@@ -506,11 +520,13 @@ private:
   // The number of times this stream has been Pinned without a
   // corresponding Unpin
   uint32_t          mPinCount;
+  // True if CacheClientNotifyDataEnded has been called for this stream.
+  bool              mDidNotifyDataEnded = false;
   // The status used when we did CacheClientNotifyDataEnded. Only valid
   // when mDidNotifyDataEnded is true.
   nsresult          mNotifyDataEndedStatus;
   // The last reported read mode
-  ReadMode          mCurrentMode;
+  ReadMode mCurrentMode = MODE_METADATA;
   // True if some data in mPartialBlockBuffer has been read as metadata
   bool              mMetadataInPartialBlockBuffer;
   // The load ID of the current channel. Used to check whether the data is
@@ -536,6 +552,8 @@ private:
 
   // True if the client is suspended. Accessed on the owner thread only.
   bool mClientSuspended = false;
+
+  MediaChannelStatistics mDownloadStatistics;
 };
 
 } // namespace mozilla

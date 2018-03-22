@@ -6,9 +6,19 @@ XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
                                   "resource://gre/modules/Preferences.jsm");
 
 Cu.import("resource://gre/modules/ExtensionPreferencesManager.jsm");
+
 var {
   ExtensionError,
 } = ExtensionUtils;
+
+const cookieSvc = Ci.nsICookieService;
+
+const cookieBehaviorValues = new Map([
+  ["allow_all", cookieSvc.BEHAVIOR_ACCEPT],
+  ["reject_third_party", cookieSvc.BEHAVIOR_REJECT_FOREIGN],
+  ["reject_all", cookieSvc.BEHAVIOR_REJECT],
+  ["allow_visited", cookieSvc.BEHAVIOR_LIMIT_FOREIGN],
+]);
 
 const checkScope = scope => {
   if (scope && scope !== "regular") {
@@ -24,19 +34,19 @@ const getPrivacyAPI = (extension, name, callback) => {
         levelOfControl: details.incognito ?
           "not_controllable" :
           await ExtensionPreferencesManager.getLevelOfControl(
-            extension, name),
+            extension.id, name),
         value: await callback(),
       };
     },
     set(details) {
       checkScope(details.scope);
       return ExtensionPreferencesManager.setSetting(
-        extension, name, details.value);
+        extension.id, name, details.value);
     },
     clear(details) {
       checkScope(details.scope);
       return ExtensionPreferencesManager.removeSetting(
-        extension, name);
+        extension.id, name);
     },
   };
 };
@@ -115,6 +125,34 @@ ExtensionPreferencesManager.addSetting("services.passwordSavingEnabled", {
   },
 });
 
+ExtensionPreferencesManager.addSetting("websites.cookieConfig", {
+  prefNames: [
+    "network.cookie.cookieBehavior",
+    "network.cookie.lifetimePolicy",
+  ],
+
+  setCallback(value) {
+    return {
+      "network.cookie.cookieBehavior":
+        cookieBehaviorValues.get(value.behavior),
+      "network.cookie.lifetimePolicy":
+        value.nonPersistentCookies ?
+          cookieSvc.ACCEPT_SESSION :
+          cookieSvc.ACCEPT_NORMALLY,
+    };
+  },
+});
+
+ExtensionPreferencesManager.addSetting("websites.firstPartyIsolate", {
+  prefNames: [
+    "privacy.firstparty.isolate",
+  ],
+
+  setCallback(value) {
+    return {[this.prefNames[0]]: value};
+  },
+});
+
 ExtensionPreferencesManager.addSetting("websites.hyperlinkAuditingEnabled", {
   prefNames: [
     "browser.send_pings",
@@ -141,16 +179,6 @@ ExtensionPreferencesManager.addSetting("websites.referrersEnabled", {
 ExtensionPreferencesManager.addSetting("websites.resistFingerprinting", {
   prefNames: [
     "privacy.resistFingerprinting",
-  ],
-
-  setCallback(value) {
-    return {[this.prefNames[0]]: value};
-  },
-});
-
-ExtensionPreferencesManager.addSetting("websites.firstPartyIsolate", {
-  prefNames: [
-    "privacy.firstparty.isolate",
   ],
 
   setCallback(value) {
@@ -194,21 +222,21 @@ this.privacy = class extends ExtensionAPI {
     return {
       privacy: {
         network: {
-          networkPredictionEnabled: getPrivacyAPI(extension,
-            "network.networkPredictionEnabled",
+          networkPredictionEnabled: getPrivacyAPI(
+            extension, "network.networkPredictionEnabled",
             () => {
               return Preferences.get("network.predictor.enabled") &&
                 Preferences.get("network.prefetch-next") &&
                 Preferences.get("network.http.speculative-parallel-limit") > 0 &&
                 !Preferences.get("network.dns.disablePrefetch");
             }),
-          peerConnectionEnabled: getPrivacyAPI(extension,
-            "network.peerConnectionEnabled",
+          peerConnectionEnabled: getPrivacyAPI(
+            extension, "network.peerConnectionEnabled",
             () => {
               return Preferences.get("media.peerconnection.enabled");
             }),
-          webRTCIPHandlingPolicy: getPrivacyAPI(extension,
-            "network.webRTCIPHandlingPolicy",
+          webRTCIPHandlingPolicy: getPrivacyAPI(
+            extension, "network.webRTCIPHandlingPolicy",
             () => {
               if (Preferences.get("media.peerconnection.ice.proxy_only")) {
                 return "disable_non_proxied_udp";
@@ -228,41 +256,52 @@ this.privacy = class extends ExtensionAPI {
         },
 
         services: {
-          passwordSavingEnabled: getPrivacyAPI(extension,
-            "services.passwordSavingEnabled",
+          passwordSavingEnabled: getPrivacyAPI(
+            extension, "services.passwordSavingEnabled",
             () => {
               return Preferences.get("signon.rememberSignons");
             }),
         },
 
         websites: {
-          hyperlinkAuditingEnabled: getPrivacyAPI(extension,
-            "websites.hyperlinkAuditingEnabled",
+          cookieConfig: getPrivacyAPI(
+            extension, "websites.cookieConfig",
             () => {
-              return Preferences.get("browser.send_pings");
+              let prefValue = Preferences.get("network.cookie.cookieBehavior");
+              return {
+                behavior:
+                  Array.from(
+                    cookieBehaviorValues.entries()).find(entry => entry[1] === prefValue)[0],
+                nonPersistentCookies:
+                  Preferences.get("network.cookie.lifetimePolicy") === cookieSvc.ACCEPT_SESSION,
+              };
             }),
-          referrersEnabled: getPrivacyAPI(extension,
-            "websites.referrersEnabled",
-            () => {
-              return Preferences.get("network.http.sendRefererHeader") !== 0;
-            }),
-          resistFingerprinting: getPrivacyAPI(extension,
-            "websites.resistFingerprinting",
-            () => {
-              return Preferences.get("privacy.resistFingerprinting");
-            }),
-          firstPartyIsolate: getPrivacyAPI(extension,
-            "websites.firstPartyIsolate",
+          firstPartyIsolate: getPrivacyAPI(
+            extension, "websites.firstPartyIsolate",
             () => {
               return Preferences.get("privacy.firstparty.isolate");
             }),
-          trackingProtectionMode: getPrivacyAPI(extension,
-            "websites.trackingProtectionMode",
+          hyperlinkAuditingEnabled: getPrivacyAPI(
+            extension, "websites.hyperlinkAuditingEnabled",
+            () => {
+              return Preferences.get("browser.send_pings");
+            }),
+          referrersEnabled: getPrivacyAPI(
+            extension, "websites.referrersEnabled",
+            () => {
+              return Preferences.get("network.http.sendRefererHeader") !== 0;
+            }),
+          resistFingerprinting: getPrivacyAPI(
+            extension, "websites.resistFingerprinting",
+            () => {
+              return Preferences.get("privacy.resistFingerprinting");
+            }),
+          trackingProtectionMode: getPrivacyAPI(
+            extension, "websites.trackingProtectionMode",
             () => {
               if (Preferences.get("privacy.trackingprotection.enabled")) {
                 return "always";
-              } else if (
-                  Preferences.get("privacy.trackingprotection.pbmode.enabled")) {
+              } else if (Preferences.get("privacy.trackingprotection.pbmode.enabled")) {
                 return "private_browsing";
               }
               return "never";
