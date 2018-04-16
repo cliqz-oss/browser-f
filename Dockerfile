@@ -44,14 +44,11 @@ RUN apt-get update && apt-get install -y \
   yasm
 
 RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/aptly.list; \
-  apt-key adv --keyserver keys.gnupg.net --recv-keys ED75B5A4483DA07C; \
+  apt-key adv --keyserver pool.sks-keyservers.net --recv-keys ED75B5A4483DA07C; \
   apt-get update; \
   apt-get install aptly -y
 
-RUN pip install awscli \
-  compare-locales
-
-ENV RUSTUP_HOME=/usr/local/rustup \
+  ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
