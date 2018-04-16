@@ -8,14 +8,14 @@
 <!ENTITY refreshProfile.dialog.items.label1  "Remove your add-ons and customizations">
 <!ENTITY refreshProfile.dialog.items.label2  "Restore your browser settings to their defaults.">
 <!ENTITY refreshProfile.dialog.items.label3  "The following items will be reset:">
-<!ENTITY refreshProfile.dialog.items.label4  "• Cookies">
-<!ENTITY refreshProfile.dialog.items.label5  "• Browsing History and Bookmarks">
-<!ENTITY refreshProfile.dialog.items.label6  "• Saved Form History">
-<!ENTITY refreshProfile.dialog.items.label7  "• Saved Passwords">
-<!ENTITY refreshProfile.dialog.items.label8  "• Cliqz Tab Favorites">
-<!ENTITY refreshProfile.dialog.items.label9  "• Cliqz Tab Most visited Sites">
-<!ENTITY refreshProfile.dialog.items.label10 "• Windows and Tabs">
-<!ENTITY refreshProfile.dialog.items.label11 "• Other Data">
+<!ENTITY refreshProfile.dialog.items.label4  "• Website permissions">
+<!ENTITY refreshProfile.dialog.items.label5  "• Modified preferences (incl. Cliqz Tab)">
+<!ENTITY refreshProfile.dialog.items.label6  "• Cliqz Tab Favorites">
+<!ENTITY refreshProfile.dialog.items.label7  "• Added Search Engines">
+<!ENTITY refreshProfile.dialog.items.label8  "• Toolbar customizations">
+<!ENTITY refreshProfile.dialog.items.label9  "• Security certificate and device settings">
+<!ENTITY refreshProfile.dialog.items.label10 "• Download actions">
+<!ENTITY refreshProfile.dialog.items.label11 "• DOM storage">
 <!ENTITY refreshProfile.dialog.button.label  "Refresh &brandShortName;">
 
 <!ENTITY refreshProfile.title                "Give &brandShortName; a tune up">

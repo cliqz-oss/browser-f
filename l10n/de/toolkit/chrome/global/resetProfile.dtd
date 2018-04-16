@@ -8,14 +8,14 @@
 <!ENTITY refreshProfile.dialog.items.label1  "Deine Add-ons und Anpassungen entfernen">
 <!ENTITY refreshProfile.dialog.items.label2  "Die Browser-Einstellungen auf den Standard zurücksetzen.">
 <!ENTITY refreshProfile.dialog.items.label3  "Folgende Daten werden zurückgesetzt:">
-<!ENTITY refreshProfile.dialog.items.label4  "• Cookies">
-<!ENTITY refreshProfile.dialog.items.label5  "• Browser-Chronik und Lesezeichen">
-<!ENTITY refreshProfile.dialog.items.label6  "• Eingegebene Suchbegriffe &amp; Formulardaten">
-<!ENTITY refreshProfile.dialog.items.label7  "• Gespeicherte Passwörter">
-<!ENTITY refreshProfile.dialog.items.label8  "• Cliqz Tab Favoriten">
-<!ENTITY refreshProfile.dialog.items.label9  "• Cliqz Tab Meistbesuchte Seiten">
-<!ENTITY refreshProfile.dialog.items.label10 "• Fenster und Tabs">
-<!ENTITY refreshProfile.dialog.items.label11 "• Sonstige Daten">
+<!ENTITY refreshProfile.dialog.items.label4  "• Website-Berechtigungen">
+<!ENTITY refreshProfile.dialog.items.label5  "• Angepasste Einstellungen (inkl. Cliqz Tab)">
+<!ENTITY refreshProfile.dialog.items.label6  "• Cliqz Tab Favoriten">
+<!ENTITY refreshProfile.dialog.items.label7  "• Hinzugefügte Suchmaschinen">
+<!ENTITY refreshProfile.dialog.items.label8  "• Einstellungen der Symbolleisten">
+<!ENTITY refreshProfile.dialog.items.label9  "• Sicherheits-, Zertifikats- und Geräteeinstellungen">
+<!ENTITY refreshProfile.dialog.items.label10 "• Download-Aktionen">
+<!ENTITY refreshProfile.dialog.items.label11 "• DOM-Speicher">
 <!ENTITY refreshProfile.dialog.button.label  "&brandShorterName; bereinigen">
 
 <!ENTITY refreshProfile.title                "&brandShorterName; wieder flott machen.">
